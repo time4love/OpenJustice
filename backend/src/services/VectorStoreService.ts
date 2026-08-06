@@ -1,5 +1,5 @@
 import { Pinecone } from '@pinecone-database/pinecone';
-import { OpenAIEmbeddings } from '@langchain/openai';
+import { GoogleGenerativeAIEmbeddings } from '@langchain/google-genai';
 import { PineconeStore } from '@langchain/pinecone';
 import { Document } from '@langchain/core/documents';
 
@@ -38,8 +38,9 @@ export class VectorStoreService {
     const pinecone = new Pinecone({ apiKey });
     const pineconeIndex = pinecone.Index(indexName);
 
-    const embeddings = new OpenAIEmbeddings({
-      model: 'text-embedding-3-small',
+    const embeddings = new GoogleGenerativeAIEmbeddings({
+      model: 'text-embedding-004',
+      apiKey: process.env['GEMINI_API_KEY'],
     });
 
     const store = await PineconeStore.fromExistingIndex(embeddings, { pineconeIndex });
