@@ -1,37 +1,62 @@
 import { Router, Request, Response } from 'express';
+import multer from 'multer';
 import { z } from 'zod';
-import { IntakeAgent } from '../services/IntakeAgent.js';
-import { Web3Service, DuplicateEvidenceError } from '../services/Web3Service.js';
-import { VectorStoreService } from '../services/VectorStoreService.js';
+import { IntakeAgent, IntakeOutputSchema } from '../services/IntakeAgent';
+import { Web3Service, DuplicateEvidenceError } from '../services/Web3Service';
+import { VectorStoreService } from '../services/VectorStoreService';
 
 const router = Router();
 
 // ---------------------------------------------------------------------------
-// Request schemas
+// Multer — in-memory storage, images and PDFs only, max 10 MB
 // ---------------------------------------------------------------------------
 
-const IntakeBodySchema = z.object({
-  rawText: z.string().min(1, 'rawText must not be empty'),
-  submitterAddress: z.string().min(1, 'submitterAddress must not be empty'),
+const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'application/pdf'];
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (ALLOWED_MIME_TYPES.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error(`Unsupported file type: ${file.mimetype}. Allowed: JPEG, PNG, PDF.`));
+    }
+  },
 });
+
+// ---------------------------------------------------------------------------
+// Request schemas
+// ---------------------------------------------------------------------------
 
 const SearchQuerySchema = z.object({
   q: z.string().default(''),
   limit: z.coerce.number().int().min(1).max(20).default(5),
 });
 
+const ConfirmBodySchema = z.object({
+  analysis: z.string().min(1, 'analysis JSON is required'),
+  submitterAddress: z.string().min(1, 'submitterAddress must not be empty'),
+});
+
 // ---------------------------------------------------------------------------
-// Lazy singletons — constructed once on first request to avoid startup
-// failures when env vars may not yet be set during testing.
+// Lazy singletons
 // ---------------------------------------------------------------------------
 
-let _intakeAgent: IntakeAgent | null = null;
-let _web3Service: Web3Service | null = null;
 let _vectorStorePromise: Promise<VectorStoreService> | null = null;
+let _intakeAgentPromise: Promise<IntakeAgent> | null = null;
+let _web3Service: Web3Service | null = null;
 
-function getIntakeAgent(): IntakeAgent {
-  if (!_intakeAgent) _intakeAgent = new IntakeAgent();
-  return _intakeAgent;
+function getVectorStore(): Promise<VectorStoreService> {
+  if (!_vectorStorePromise) _vectorStorePromise = VectorStoreService.create();
+  return _vectorStorePromise;
+}
+
+function getIntakeAgent(): Promise<IntakeAgent> {
+  if (!_intakeAgentPromise) {
+    _intakeAgentPromise = getVectorStore().then((vs) => new IntakeAgent(vs));
+  }
+  return _intakeAgentPromise;
 }
 
 function getWeb3Service(): Web3Service {
@@ -39,92 +64,123 @@ function getWeb3Service(): Web3Service {
   return _web3Service;
 }
 
-function getVectorStore(): Promise<VectorStoreService> {
-  if (!_vectorStorePromise) _vectorStorePromise = VectorStoreService.create();
-  return _vectorStorePromise;
-}
-
 // ---------------------------------------------------------------------------
 // POST /api/evidence/intake
+// Accepts a multipart file upload. Runs vision extraction + AI classification.
+// Returns a draft analysis — NO hashing, blockchain, or vector store writes.
 // ---------------------------------------------------------------------------
 
-router.post('/intake', async (req: Request, res: Response): Promise<void> => {
-  // 1. Validate request body
-  const parsed = IntakeBodySchema.safeParse(req.body);
-  if (!parsed.success) {
-    res.status(400).json({ error: 'Invalid request', details: parsed.error.flatten() });
-    return;
-  }
-
-  const { rawText, submitterAddress } = parsed.data;
-
-  // 2. Run AI intake analysis
-  let analysis;
-  try {
-    analysis = await getIntakeAgent().analyzeEvidence(rawText);
-  } catch (err) {
-    console.error('[intake] IntakeAgent error:', err);
-    res.status(500).json({ error: 'AI analysis failed', message: String(err) });
-    return;
-  }
-
-  // 3. If not relevant, return early — no blockchain or vector DB action
-  if (!analysis.isRelevant) {
-    res.status(200).json({
-      relevant: false,
-      message: 'Evidence was analysed but deemed not relevant to the lawsuit.',
-      analysis,
-    });
-    return;
-  }
-
-  // 4. Hash the raw text to produce a bytes32 file hash
-  const fileHash = Web3Service.hashFile(Buffer.from(rawText, 'utf8'));
-
-  // 5. Register the hash on-chain
-  let txHash: string;
-  try {
-    txHash = await getWeb3Service().registerEvidenceHash(fileHash, submitterAddress, analysis.category);
-  } catch (err) {
-    if (err instanceof DuplicateEvidenceError) {
-      res.status(409).json({
-        error: 'duplicate',
-        message: 'This evidence has already been registered on-chain.',
-        fileHash,
-      });
+router.post(
+  '/intake',
+  upload.single('file'),
+  async (req: Request, res: Response): Promise<void> => {
+    if (!req.file) {
+      res.status(400).json({ error: 'No file uploaded', message: 'A file field named "file" is required.' });
       return;
     }
-    console.error('[intake] Web3Service error:', err);
-    res.status(500).json({ error: 'Blockchain registration failed', message: String(err) });
-    return;
-  }
 
-  // 6. Upsert the analysis into the vector store
-  try {
-    const vectorStore = await getVectorStore();
-    await vectorStore.upsertEvidence(rawText, {
+    let analysis;
+    try {
+      const agent = await getIntakeAgent();
+      analysis = await agent.analyzeEvidence(req.file.buffer, req.file.mimetype);
+    } catch (err) {
+      console.error('[intake] IntakeAgent error:', err);
+      res.status(500).json({ error: 'AI analysis failed', message: String(err) });
+      return;
+    }
+
+    res.status(200).json({ analysis });
+  },
+);
+
+// ---------------------------------------------------------------------------
+// POST /api/evidence/confirm
+// Accepts the original file + user-approved analysis JSON + submitterAddress.
+// Hashes the file, registers on-chain, upserts to vector store.
+// ---------------------------------------------------------------------------
+
+router.post(
+  '/confirm',
+  upload.single('file'),
+  async (req: Request, res: Response): Promise<void> => {
+    if (!req.file) {
+      res.status(400).json({ error: 'No file uploaded', message: 'A file field named "file" is required.' });
+      return;
+    }
+
+    // Parse the multipart text fields
+    const bodyParsed = ConfirmBodySchema.safeParse(req.body);
+    if (!bodyParsed.success) {
+      res.status(400).json({ error: 'Invalid request', details: bodyParsed.error.flatten() });
+      return;
+    }
+
+    // Parse the nested analysis JSON
+    let analysisRaw: unknown;
+    try {
+      analysisRaw = JSON.parse(bodyParsed.data.analysis);
+    } catch {
+      res.status(400).json({ error: 'Invalid JSON', message: 'The "analysis" field must be valid JSON.' });
+      return;
+    }
+
+    const analysisParsed = IntakeOutputSchema.safeParse(analysisRaw);
+    if (!analysisParsed.success) {
+      res.status(400).json({ error: 'Invalid analysis', details: analysisParsed.error.flatten() });
+      return;
+    }
+
+    const analysis = analysisParsed.data;
+    const { submitterAddress } = bodyParsed.data;
+
+    // If the AI marked as not relevant, still allow registration but flag it
+    // (the user consciously confirmed — their choice overrides the AI flag)
+
+    // Hash the file
+    const fileHash = Web3Service.hashFile(req.file.buffer);
+
+    // Register on-chain
+    let txHash: string;
+    try {
+      txHash = await getWeb3Service().registerEvidenceHash(fileHash, submitterAddress, analysis.category);
+    } catch (err) {
+      if (err instanceof DuplicateEvidenceError) {
+        res.status(409).json({
+          error: 'duplicate',
+          message: 'This evidence has already been registered on-chain.',
+          fileHash,
+        });
+        return;
+      }
+      console.error('[confirm] Web3Service error:', err);
+      res.status(500).json({ error: 'Blockchain registration failed', message: String(err) });
+      return;
+    }
+
+    // Upsert to vector store (non-fatal)
+    try {
+      const vectorStore = await getVectorStore();
+      await vectorStore.upsertEvidence(analysis.summary, {
+        fileHash,
+        category: analysis.category,
+        tier: analysis.evidenceTier,
+        summary: analysis.summary,
+        targetEntity: analysis.targetEntity,
+        submitterAddress,
+        timestamp: Date.now(),
+      });
+    } catch (err) {
+      console.error('[confirm] VectorStoreService upsert error (non-fatal):', err);
+    }
+
+    res.status(201).json({
+      relevant: analysis.isRelevant,
       fileHash,
-      category: analysis.category,
-      tier: analysis.evidenceTier,
-      summary: analysis.summary,
-      targetEntity: analysis.targetEntity,
-      submitterAddress,
-      timestamp: Date.now(),
+      txHash,
+      analysis,
     });
-  } catch (err) {
-    // Vector store failure is non-fatal: the on-chain record is the source of truth.
-    // Log and continue so the caller still gets their tx hash.
-    console.error('[intake] VectorStoreService upsert error (non-fatal):', err);
-  }
-
-  // 7. Return full result
-  res.status(201).json({
-    relevant: true,
-    fileHash,
-    txHash,
-    analysis,
-  });
-});
+  },
+);
 
 // ---------------------------------------------------------------------------
 // GET /api/evidence/search?q=query&limit=5

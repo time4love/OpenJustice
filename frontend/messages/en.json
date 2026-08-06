@@ -1,0 +1,111 @@
+{
+  "common": {
+    "appName": "Glass Fortress",
+    "operational": "Operational",
+    "nav": {
+      "evidenceVault": "Evidence Vault",
+      "caseBuilder": "Case Builder",
+      "submitEvidence": "+ Submit Evidence"
+    }
+  },
+  "dashboard": {
+    "tagline": "Evidence Vault · Legal Discovery Platform",
+    "analytics": {
+      "title": "Analytics Overview",
+      "total": "Total Evidence",
+      "totalSub": "All tiers combined",
+      "tier1": "Smoking Guns",
+      "tier1Sub": "Tier 1 — Highest weight",
+      "tier2": "Material",
+      "tier2Sub": "Tier 2 — Official docs",
+      "tier3": "Supporting",
+      "tier3Sub": "Tier 3 — Context",
+      "tier4": "Anecdotal",
+      "tier4Sub": "Tier 4 — Low weight"
+    },
+    "categories": {
+      "title": "Evidence by Legal Category"
+    },
+    "ledger": {
+      "title": "Evidence Ledger",
+      "records": "{count} records",
+      "searchPlaceholder": "Search evidence by keyword, entity, or legal claim…",
+      "searchBtn": "Search",
+      "searchingBtn": "Searching…",
+      "emptyTitle": "No evidence records found.",
+      "emptySub": "Submit evidence, or broaden your search query."
+    }
+  },
+  "submit": {
+    "backLink": "← Vault",
+    "pageTitle": "Submit Evidence",
+    "upload": {
+      "heading": "Upload Evidence File",
+      "body": "Upload a document, screenshot, or official record. Our AI will extract the text using vision, classify it, and return a draft analysis for your review before anything is registered on-chain.",
+      "dragDrop": "Drag & drop file here, or click to browse",
+      "fileTypes": "Supported: JPEG, PNG, PDF · Max 10 MB",
+      "fileSelected": "Selected:",
+      "analyzeBtn": "Analyse Evidence",
+      "analyzingBtn": "Analysing evidence…"
+    },
+    "review": {
+      "heading": "Review AI Analysis",
+      "body": "Review the AI's classification below. You may edit the category, entity, and tier before registering on-chain.",
+      "summaryLabel": "AI Summary",
+      "missingLabel": "Missing Information",
+      "editableTitle": "Classification",
+      "categoryLabel": "Legal Category",
+      "entityLabel": "Target Entity",
+      "tierLabel": "Evidence Tier",
+      "walletLabel": "Your Wallet Address",
+      "walletHint": "Used for attribution only. Your identity is not stored on-chain.",
+      "confirmBtn": "Confirm & Register On-Chain",
+      "confirmingBtn": "Registering on-chain…",
+      "changeFileBtn": "← Change File",
+      "irrelevantWarning": "The AI has flagged this evidence as not relevant to the lawsuit. You may still register it if you believe this is incorrect."
+    },
+    "result": {
+      "title": "Registration Result",
+      "onChainBanner": "Evidence Registered On-Chain",
+      "aiSummary": "AI Summary",
+      "missingInfo": "Missing Information",
+      "onChainProof": "On-Chain Proof",
+      "fileHash": "File Hash",
+      "txHash": "Tx Hash",
+      "duplicateBanner": "Duplicate Submission",
+      "failedBanner": "Submission Failed"
+    }
+  },
+  "caseBuilder": {
+    "tagline": "Case Builder · Argument Generation",
+    "params": {
+      "title": "Argument Parameters",
+      "categoryLabel": "Legal Category",
+      "entityLabel": "Target Entity",
+      "entityPlaceholder": "e.g. Ministry of Health, FDA, Pfizer…",
+      "entityHint": "The entity to build the argument against.",
+      "draftBtn": "Draft Argument",
+      "draftingBtn": "Drafting argument…"
+    },
+    "howItWorks": {
+      "title": "How it works",
+      "step1": "1. Retrieves top Tier 1 & 2 evidence filtered by your selection.",
+      "step2": "2. Passes the evidence corpus to a Senior Litigator AI agent.",
+      "step3": "3. Returns a formal argument with on-chain citations."
+    },
+    "paper": {
+      "title": "Legal Argument",
+      "generatedLabel": "Generated Legal Argument",
+      "theoryLabel": "Legal Theory",
+      "argumentLabel": "Argument",
+      "citedLabel": "Cited Evidence",
+      "citations": "{count} citations"
+    },
+    "empty": {
+      "text": "Select a legal category and target entity, then click Draft Argument to generate a formal legal argument from the evidence vault."
+    },
+    "error": {
+      "title": "Generation Failed"
+    }
+  }
+}

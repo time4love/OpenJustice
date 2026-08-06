@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { Geist, Geist_Mono } from 'next/font/google';
+import { getLocale } from 'next-intl/server';
 import './globals.css';
 
 const geistSans = Geist({
@@ -18,11 +19,18 @@ export const metadata: Metadata = {
     'AI-powered legal evidence discovery platform for the Covid-19 class-action lawsuit.',
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
+  const locale = await getLocale();
+  const dir = locale === 'he' ? 'rtl' : 'ltr';
+
   return (
-    <html lang="en" className={`${geistSans.variable} ${geistMono.variable} h-full`}>
+    <html
+      lang={locale}
+      dir={dir}
+      className={`${geistSans.variable} ${geistMono.variable} h-full`}
+    >
       <body className="min-h-full bg-slate-950 text-slate-100 antialiased">{children}</body>
     </html>
   );

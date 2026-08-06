@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useEffect, useCallback, FormEvent } from 'react';
-import Link from 'next/link';
+import { useTranslations, useLocale } from 'next-intl';
+import { Link, useRouter, usePathname } from '@/i18n/navigation';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -42,7 +43,7 @@ interface SearchResponse {
 }
 
 // ---------------------------------------------------------------------------
-// Mocked analytics (Phase 3 — real counts come in Phase 4 backend extension)
+// Mocked analytics
 // ---------------------------------------------------------------------------
 
 const MOCK_STATS = {
@@ -62,34 +63,37 @@ const MOCK_STATS = {
 };
 
 // ---------------------------------------------------------------------------
-// Style helpers
+// Tier accent colors (Tailwind v4 CSS variables for use in inline styles)
 // ---------------------------------------------------------------------------
 
-function tierStyle(tier: EvidenceTier): { badge: string; dot: string; border: string } {
+const TIER_ACCENT: Record<EvidenceTier, string> = {
+  'Tier 1: Smoking Gun': 'var(--color-red-500)',
+  'Tier 2: Material': 'var(--color-orange-500)',
+  'Tier 3: Supporting': 'var(--color-yellow-500)',
+  'Tier 4: Anecdotal': 'var(--color-slate-500)',
+};
+
+function tierStyle(tier: EvidenceTier): { badge: string; dot: string } {
   switch (tier) {
     case 'Tier 1: Smoking Gun':
       return {
         badge: 'bg-red-950 text-red-400 border border-red-800',
         dot: 'bg-red-500',
-        border: 'border-l-red-500',
       };
     case 'Tier 2: Material':
       return {
         badge: 'bg-orange-950 text-orange-400 border border-orange-800',
         dot: 'bg-orange-500',
-        border: 'border-l-orange-500',
       };
     case 'Tier 3: Supporting':
       return {
         badge: 'bg-yellow-950 text-yellow-400 border border-yellow-800',
         dot: 'bg-yellow-500',
-        border: 'border-l-yellow-500',
       };
     case 'Tier 4: Anecdotal':
       return {
         badge: 'bg-slate-800 text-slate-400 border border-slate-700',
         dot: 'bg-slate-500',
-        border: 'border-l-slate-600',
       };
   }
 }
@@ -154,7 +158,7 @@ function CategoryBar({ label, value, max }: { label: string; value: number; max:
       <div className="flex-1 h-2 bg-slate-800 rounded-full overflow-hidden">
         <div className="h-full bg-slate-500 rounded-full" style={{ width: `${pct}%` }} />
       </div>
-      <span className="text-xs font-mono text-slate-400 w-8 text-right">{value}</span>
+      <span className="text-xs font-mono text-slate-400 w-8 text-end">{value}</span>
     </div>
   );
 }
@@ -187,11 +191,11 @@ function EntityBadge({ entity }: { entity: string }) {
 
 function EvidenceCard({ result }: { result: SearchResult }) {
   const { metadata, score } = result;
-  const ts = tierStyle(metadata.tier);
 
   return (
     <div
-      className={`bg-slate-900 border border-slate-800 border-l-4 ${ts.border} rounded-lg p-5 space-y-3`}
+      style={{ borderInlineStartColor: TIER_ACCENT[metadata.tier] }}
+      className="bg-slate-900 border border-slate-800 border-s-4 rounded-lg p-5 space-y-3"
     >
       {/* Header row */}
       <div className="flex flex-wrap items-center gap-2">
@@ -199,7 +203,7 @@ function EvidenceCard({ result }: { result: SearchResult }) {
         <TierBadge tier={metadata.tier} />
         <CategoryBadge category={metadata.category} />
         {score !== undefined && (
-          <span className="ml-auto text-xs font-mono text-slate-600">
+          <span className="ms-auto text-xs font-mono text-slate-600">
             relevance {(score * 100).toFixed(1)}%
           </span>
         )}
@@ -227,10 +231,45 @@ function EvidenceCard({ result }: { result: SearchResult }) {
 }
 
 // ---------------------------------------------------------------------------
+// Language switcher
+// ---------------------------------------------------------------------------
+
+function LocaleSwitcher() {
+  const locale = useLocale();
+  const router = useRouter();
+  const pathname = usePathname();
+
+  function switchLocale(next: string) {
+    router.replace(pathname, { locale: next });
+  }
+
+  return (
+    <div className="flex items-center gap-1 text-xs font-mono">
+      {(['he', 'en'] as const).map((l) => (
+        <button
+          key={l}
+          onClick={() => switchLocale(l)}
+          className={`px-2 py-1 rounded transition-colors ${
+            locale === l
+              ? 'bg-slate-700 text-slate-100'
+              : 'text-slate-500 hover:text-slate-300'
+          }`}
+        >
+          {l.toUpperCase()}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Page
 // ---------------------------------------------------------------------------
 
 export default function DashboardPage() {
+  const t = useTranslations('dashboard');
+  const tc = useTranslations('common');
+
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
@@ -266,85 +305,91 @@ export default function DashboardPage() {
 
   return (
     <main className="min-h-screen bg-slate-950">
-      {/* ------------------------------------------------------------------ */}
-      {/* Header                                                              */}
-      {/* ------------------------------------------------------------------ */}
+      {/* Header */}
       <header className="sticky top-0 z-20 bg-slate-950/95 backdrop-blur border-b border-slate-800">
         <div className="max-w-7xl mx-auto px-6 h-14 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <span className="text-slate-500 text-lg">⬡</span>
             <div>
               <span className="font-mono text-sm font-semibold tracking-widest text-slate-100 uppercase">
-                Glass Fortress
+                {tc('appName')}
               </span>
-              <span className="ml-3 text-xs text-slate-600 tracking-wide hidden sm:inline">
-                Evidence Vault · Legal Discovery Platform
+              <span className="ms-3 text-xs text-slate-600 tracking-wide hidden sm:inline">
+                {t('tagline')}
               </span>
             </div>
           </div>
           <div className="flex items-center gap-4">
             <span className="flex items-center gap-1.5 text-xs text-slate-500">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              Operational
+              {tc('operational')}
             </span>
+            <nav className="flex items-center gap-1">
+              <span className="px-3 py-1.5 rounded text-xs font-medium bg-slate-800 text-slate-100 border border-slate-700">
+                {tc('nav.evidenceVault')}
+              </span>
+              <Link
+                href="/case-builder"
+                className="px-3 py-1.5 rounded text-xs font-medium text-slate-400 border border-transparent hover:bg-slate-800 hover:text-slate-200 hover:border-slate-700 transition-colors"
+              >
+                {tc('nav.caseBuilder')}
+              </Link>
+            </nav>
             <Link
               href="/submit"
               className="px-3 py-1.5 rounded text-xs font-medium bg-blue-900 text-blue-300 border border-blue-800 hover:bg-blue-800 transition-colors"
             >
-              + Submit Evidence
+              {tc('nav.submitEvidence')}
             </Link>
+            <LocaleSwitcher />
           </div>
         </div>
       </header>
 
       <div className="max-w-7xl mx-auto px-6 py-8 space-y-8">
-        {/* ---------------------------------------------------------------- */}
-        {/* Analytics — Tier Stat Cards                                      */}
-        {/* ---------------------------------------------------------------- */}
+        {/* Analytics — Tier Stat Cards */}
         <section>
           <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-4">
-            Analytics Overview
+            {t('analytics.title')}
           </h2>
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
             <StatCard
-              label="Total Evidence"
+              label={t('analytics.total')}
               value={MOCK_STATS.total}
-              sub="All tiers combined"
+              sub={t('analytics.totalSub')}
               colorClass="text-slate-100"
             />
             <StatCard
-              label="Smoking Guns"
+              label={t('analytics.tier1')}
               value={MOCK_STATS.tiers['Tier 1: Smoking Gun']}
-              sub="Tier 1 — Highest weight"
+              sub={t('analytics.tier1Sub')}
               colorClass="text-red-400"
             />
             <StatCard
-              label="Material"
+              label={t('analytics.tier2')}
               value={MOCK_STATS.tiers['Tier 2: Material']}
-              sub="Tier 2 — Official docs"
+              sub={t('analytics.tier2Sub')}
               colorClass="text-orange-400"
             />
             <StatCard
-              label="Supporting"
+              label={t('analytics.tier3')}
               value={MOCK_STATS.tiers['Tier 3: Supporting']}
-              sub="Tier 3 — Context"
+              sub={t('analytics.tier3Sub')}
               colorClass="text-yellow-400"
             />
             <StatCard
-              label="Anecdotal"
+              label={t('analytics.tier4')}
               value={MOCK_STATS.tiers['Tier 4: Anecdotal']}
-              sub="Tier 4 — Low weight"
+              sub={t('analytics.tier4Sub')}
               colorClass="text-slate-400"
             />
           </div>
         </section>
 
-        {/* ---------------------------------------------------------------- */}
-        {/* Analytics — Category Breakdown                                   */}
-        {/* ---------------------------------------------------------------- */}
+        {/* Analytics — Category Breakdown */}
         <section className="bg-slate-900 border border-slate-800 rounded-lg p-5">
           <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-5">
-            Evidence by Legal Category
+            {t('categories.title')}
           </h2>
           <div className="space-y-3">
             {(Object.entries(MOCK_STATS.categories) as [Category, number][]).map(([cat, count]) => (
@@ -353,16 +398,16 @@ export default function DashboardPage() {
           </div>
         </section>
 
-        {/* ---------------------------------------------------------------- */}
-        {/* Evidence Ledger                                                  */}
-        {/* ---------------------------------------------------------------- */}
+        {/* Evidence Ledger */}
         <section>
           <div className="flex items-baseline justify-between mb-4">
             <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-widest">
-              Evidence Ledger
+              {t('ledger.title')}
             </h2>
             {results.length > 0 && (
-              <span className="text-xs text-slate-600 font-mono">{results.length} records</span>
+              <span className="text-xs text-slate-600 font-mono">
+                {t('ledger.records', { count: results.length })}
+              </span>
             )}
           </div>
 
@@ -372,7 +417,7 @@ export default function DashboardPage() {
               type="text"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search evidence by keyword, entity, or legal claim…"
+              placeholder={t('ledger.searchPlaceholder')}
               className="flex-1 bg-slate-900 border border-slate-800 rounded px-4 py-2.5 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-slate-600 focus:ring-1 focus:ring-slate-700 font-mono"
             />
             <button
@@ -380,7 +425,7 @@ export default function DashboardPage() {
               disabled={loading}
               className="px-5 py-2.5 rounded text-sm font-medium bg-slate-800 text-slate-200 border border-slate-700 hover:bg-slate-700 disabled:opacity-50 transition-colors"
             >
-              {loading ? 'Searching…' : 'Search'}
+              {loading ? t('ledger.searchingBtn') : t('ledger.searchBtn')}
             </button>
           </form>
 
@@ -404,10 +449,8 @@ export default function DashboardPage() {
 
           {!loading && !error && results.length === 0 && (
             <div className="bg-slate-900 border border-slate-800 border-dashed rounded-lg p-12 text-center">
-              <p className="text-slate-600 text-sm">No evidence records found.</p>
-              <p className="text-slate-700 text-xs mt-1">
-                Submit evidence above, or broaden your search query.
-              </p>
+              <p className="text-slate-600 text-sm">{t('ledger.emptyTitle')}</p>
+              <p className="text-slate-700 text-xs mt-1">{t('ledger.emptySub')}</p>
             </div>
           )}
 

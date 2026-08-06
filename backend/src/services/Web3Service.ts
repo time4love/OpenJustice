@@ -1,5 +1,5 @@
 import { ethers } from 'ethers';
-import { EVIDENCE_REGISTRY_ABI } from '../abi/EvidenceRegistry.js';
+import { EVIDENCE_REGISTRY_ABI } from '../abi/EvidenceRegistry';
 
 // ---------------------------------------------------------------------------
 // Typed contract errors

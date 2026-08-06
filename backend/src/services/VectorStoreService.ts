@@ -79,8 +79,9 @@ export class VectorStoreService {
   async searchSimilarEvidence(
     query: string,
     limit: number = 5,
+    filter?: Record<string, unknown>,
   ): Promise<Array<{ content: string; metadata: EvidenceMetadata; score?: number }>> {
-    const results = await this.store.similaritySearchWithScore(query, limit);
+    const results = await this.store.similaritySearchWithScore(query, limit, filter);
 
     return results.map(([doc, score]) => ({
       content: doc.pageContent,

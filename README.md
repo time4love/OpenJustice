@@ -53,3 +53,20 @@ We are utilizing "The Wisdom of the Crowd" combined with Agentic AI to process, 
 - [x] **Task 4.1:** Initialize Next.js frontend (`/frontend`).
 - [x] **Task 4.2:** Build Evidence Vault Dashboard (analytics stats, category bars, live evidence ledger with targetEntity/tier/category badges).
 - [x] **Task 4.3:** Build Submit Evidence form — displays AI analysis result including targetEntity, evidenceTier, txHash, and missingInformation.
+
+### Phase 6: i18n & RTL Support
+- [x] **Task 6.1:** Install `next-intl`, move pages to `app/[locale]/`, create `proxy.ts` for locale routing (default: `he`, supported: `he`, `en`). Extract UI strings to `messages/en.json` and `messages/he.json`.
+- [x] **Task 6.2:** Set `lang={locale}` and `dir` on `<html>` tag. Replace all physical Tailwind directional classes (`ml-`, `pr-`, `border-l-`, etc.) with logical equivalents (`ms-`, `pe-`, `border-s-`, etc.) across all components.
+- [x] **Task 6.3:** Update `IntakeAgent.ts` and `LegalMasterAgent.ts` system prompts to output Hebrew (עברית). Keep category/tier enums in English for DB consistency.
+
+### Phase 5: The Legal Master Brain (Argument Generation)
+- [x] **Task 5.1:** Create `LegalMasterAgent.ts`. Use LangChain to build a RAG pipeline that fetches top Tier 1 & 2 evidence from Pinecone filtered by `targetEntity` and `category`.
+- [x] **Task 5.2:** Define Zod schema for argument output (`title`, `legalTheory`, `draftedText`, `citedHashes`) and write robust Jest tests for the agent.
+- [x] **Task 5.3:** Create `argumentRoutes.ts` with a `POST /api/arguments/generate` endpoint and mount it to the Express server.
+- [x] **Task 5.4:** Frontend - Create `/case-builder` page. Build a two-pane UI: A control panel (Category & Target Entity selectors) and a "Legal Paper" view to display the generated argument and citations.
+
+### Phase 7: Multimodal Intake & Human-in-the-Loop
+- [x] **Task 7.1:** Install `multer` + `@types/multer`. Update `POST /api/evidence/intake` to accept `multipart/form-data` file uploads (image/jpeg, image/png, application/pdf, max 10 MB). Returns draft analysis — no hashing or blockchain writes.
+- [x] **Task 7.2:** Rewrite `IntakeAgent.ts`. New workflow: (1) Vision extraction call — passes file buffer as Claude Vision content block; (2) Vector context search — `searchSimilarEvidence` top 3 for classification calibration; (3) Structured classification call with extracted text + context. Constructor now takes `VectorStoreService` dependency.
+- [x] **Task 7.3:** Create `POST /api/evidence/confirm` endpoint. Accepts original file + user-approved analysis JSON + `submitterAddress`. Hashes file → registers on-chain → upserts to vector store. Returns `{ fileHash, txHash, analysis }`.
+- [x] **Task 7.4:** Overhaul frontend submit page. Three-phase state machine: **Upload** (drag & drop zone), **Review** (editable AI classification — category/entity/tier — with confirm button), **Confirmed** (on-chain result). Update `IntakeAgent` Jest tests (20 tests, all passing).
