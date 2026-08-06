@@ -45,11 +45,11 @@ We are utilizing "The Wisdom of the Crowd" combined with Agentic AI to process, 
 - [x] **Task 2.5:** Write Jest tests for the IntakeAgent (mocking the LLM API response).
 
 ### Phase 3: Knowledge Base (RAG Integration)
-- [ ] **Task 3.1:** Setup Vector DB connection (e.g., Pinecone/Qdrant client).
-- [ ] **Task 3.2:** Build `VectorStoreService.ts` to generate embeddings for the summarized evidence and upsert to the DB.
-- [ ] **Task 3.3:** Implement a retrieval endpoint (`GET /evidence/search`) to query the vector store for specific legal claims.
+- [x] **Task 3.1:** Setup Vector DB connection (e.g., Pinecone/Qdrant client).
+- [x] **Task 3.2:** Build `VectorStoreService.ts` to generate embeddings for the summarized evidence and upsert to the DB.
+- [x] **Task 3.3:** Implement a retrieval endpoint (`GET /evidence/search`) to query the vector store for specific legal claims.
 
-### Phase 4: The Public Dashboard (Frontend MVP)
-- [ ] **Task 4.1:** Initialize Next.js frontend (`/frontend`).
-- [ ] **Task 4.2:** Build the "Chessboard UI" (Claim vs. Defense vs. Our Evidence).
-- [ ] **Task 4.3:** Build the "Submit Evidence" form (connecting to Backend Intake).
+### Phase 4: The Public Dashboard (Frontend MVP) — Evidence Vault
+- [x] **Task 4.1:** Initialize Next.js frontend (`/frontend`).
+- [x] **Task 4.2:** Build Evidence Vault Dashboard (analytics stats, category bars, live evidence ledger with targetEntity/tier/category badges).
+- [x] **Task 4.3:** Build Submit Evidence form — displays AI analysis result including targetEntity, evidenceTier, txHash, and missingInformation.

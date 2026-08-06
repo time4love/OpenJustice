@@ -38,6 +38,7 @@ const SMOKING_GUN_RESPONSE = {
     'for individuals under 30. The document is dated and bears an official department letterhead, ' +
     'making it a direct record of deliberate information suppression.',
   missingInformation: [],
+  targetEntity: 'Ministry of Health',
   evidenceTier: EVIDENCE_TIER.SMOKING_GUN,
 };
 
@@ -49,6 +50,7 @@ const ANECDOTAL_RESPONSE = {
     'No supporting documentation or named parties are provided. ' +
     'The account is first-hand but entirely unverifiable.',
   missingInformation: ['No employer name', 'No documentation of coercion', 'No date provided'],
+  targetEntity: 'Unknown',
   evidenceTier: EVIDENCE_TIER.ANECDOTAL,
 };
 
@@ -60,6 +62,7 @@ const MATERIAL_RESPONSE = {
     'that contradict later-released trial data. This is a public, attributable document ' +
     'directly relevant to misleading regulatory communications.',
   missingInformation: ['Original source URL not provided'],
+  targetEntity: 'FDA',
   evidenceTier: EVIDENCE_TIER.MATERIAL,
 };
 
@@ -71,6 +74,7 @@ const IRRELEVANT_RESPONSE = {
     'Covid-19 policy, side effects, regulatory decisions, or coercion. ' +
     'It has no legal relevance to the class-action.',
   missingInformation: [],
+  targetEntity: 'Unknown',
   evidenceTier: EVIDENCE_TIER.ANECDOTAL,
 };
 
@@ -116,6 +120,15 @@ describe('IntakeAgent', () => {
       const invalid = { ...SMOKING_GUN_RESPONSE, missingInformation: 'Missing date' };
       expect(() => IntakeOutputSchema.parse(invalid)).toThrow();
     });
+
+    it('rejects a missing targetEntity field', () => {
+      const { targetEntity: _removed, ...invalid } = SMOKING_GUN_RESPONSE;
+      expect(() => IntakeOutputSchema.parse(invalid)).toThrow();
+    });
+
+    it('accepts a targetEntity of "Unknown" for unidentifiable entity', () => {
+      expect(() => IntakeOutputSchema.parse(IRRELEVANT_RESPONSE)).not.toThrow();
+    });
   });
 
   // ---- analyzeEvidence — happy paths --------------------------------------
@@ -130,6 +143,7 @@ describe('IntakeAgent', () => {
       expect(result.category).toBe('Side Effect Withholding');
       expect(result.evidenceTier).toBe(EVIDENCE_TIER.SMOKING_GUN);
       expect(result.missingInformation).toHaveLength(0);
+      expect(result.targetEntity).toBe('Ministry of Health');
       expect(typeof result.summary).toBe('string');
     });
 

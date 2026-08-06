@@ -42,6 +42,14 @@ export const IntakeOutputSchema = z.object({
         '(e.g. "Missing original URL", "No date visible", "Author not identified").',
     ),
 
+  targetEntity: z
+    .string()
+    .describe(
+      'The specific entity, official, or organisation responsible for the offence described in the evidence ' +
+        '(e.g. "Ministry of Health", "FDA", "Pfizer", "Employer", "HMO", "Specific Politician Name"). ' +
+        'Extract directly from the evidence; do not invent.',
+    ),
+
   evidenceTier: z
     .enum([
       'Tier 4: Anecdotal',
@@ -75,7 +83,8 @@ Your task is to analyze the user-submitted text or document content and classify
 - Be objective and evidence-based.
 - Never invent facts, laws, or citations not present in the submitted content.
 - Assign the evidenceTier based solely on the legal strength and provenance of the material provided.
-- If the content is clearly unrelated to these legal theories, set isRelevant to false.`;
+- If the content is clearly unrelated to these legal theories, set isRelevant to false.
+- For targetEntity, extract the most specific named entity accountable for the offence. If multiple entities are responsible, name the primary one. If no entity can be identified, use "Unknown".`;
 
 // ---------------------------------------------------------------------------
 // IntakeAgent
