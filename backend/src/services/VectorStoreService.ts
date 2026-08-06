@@ -13,6 +13,7 @@ export interface EvidenceMetadata {
   tier: string;
   summary: string;
   targetEntity: string;
+  evidenceDate: string;
   submitterAddress?: string;
   timestamp: number;
 }
@@ -68,6 +69,48 @@ export class VectorStoreService {
     console.log(
       `[VectorStoreService] Upserted evidence | hash: ${metadata.fileHash} | tier: ${metadata.tier}`,
     );
+  }
+
+  /**
+   * Retrieve evidence sorted chronologically by evidenceDate (ascending).
+   *
+   * Pinecone's free tier does not support server-side ordering by metadata,
+   * so we fetch up to 100 records with a broad query and sort in-memory.
+   * Records with evidenceDate "Unknown" are placed at the end.
+   *
+   * @param targetEntity  Optional filter — only return evidence for this entity.
+   */
+  async getTimeline(
+    targetEntity?: string,
+  ): Promise<Array<{ content: string; metadata: EvidenceMetadata; score?: number }>> {
+    const filter: Record<string, unknown> | undefined = targetEntity
+      ? { targetEntity: { $eq: targetEntity } }
+      : undefined;
+
+    // Broad semantic query to retrieve a representative corpus
+    const results = await this.store.similaritySearchWithScore(
+      'Covid-19 policy evidence legal timeline',
+      100,
+      filter,
+    );
+
+    const docs = results.map(([doc, score]) => ({
+      content: doc.pageContent,
+      metadata: doc.metadata as EvidenceMetadata,
+      score,
+    }));
+
+    // Sort chronologically ascending; "Unknown" dates sort to the end
+    docs.sort((a, b) => {
+      const dateA = a.metadata.evidenceDate;
+      const dateB = b.metadata.evidenceDate;
+      if (dateA === 'Unknown' && dateB === 'Unknown') return 0;
+      if (dateA === 'Unknown') return 1;
+      if (dateB === 'Unknown') return -1;
+      return dateA.localeCompare(dateB);
+    });
+
+    return docs;
   }
 
   /**

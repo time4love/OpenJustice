@@ -63,8 +63,8 @@ function LocaleSwitcher() {
           onClick={() => switchLocale(l)}
           className={`px-2 py-1 rounded transition-colors ${
             locale === l
-              ? 'bg-slate-700 text-slate-100'
-              : 'text-slate-500 hover:text-slate-300'
+              ? 'bg-slate-200 text-slate-800'
+              : 'text-slate-400 hover:text-slate-600'
           }`}
         >
           {l.toUpperCase()}
@@ -86,13 +86,13 @@ function LegalPaper({
   t: ReturnType<typeof useTranslations<'caseBuilder.paper'>>;
 }) {
   return (
-    <div className="bg-slate-900 border border-slate-700 rounded-lg overflow-hidden">
+    <div className="bg-white border border-slate-200 rounded-lg overflow-hidden shadow-sm">
       {/* Paper header */}
-      <div className="bg-slate-800/60 border-b border-slate-700 px-6 py-4">
+      <div className="bg-slate-50 border-b border-slate-200 px-6 py-4">
         <p className="text-xs text-slate-500 uppercase tracking-widest mb-1">
           {t('generatedLabel')}
         </p>
-        <h2 className="text-base font-semibold text-slate-100 leading-snug">{result.title}</h2>
+        <h2 className="text-base font-semibold text-slate-900 leading-snug">{result.title}</h2>
       </div>
 
       <div className="p-6 space-y-6">
@@ -100,8 +100,8 @@ function LegalPaper({
         <div>
           <p className="text-xs text-slate-500 uppercase tracking-widest mb-2">{t('theoryLabel')}</p>
           <p
-            style={{ borderInlineStartColor: 'var(--color-slate-600)' }}
-            className="text-sm text-slate-300 italic leading-relaxed border-s-2 ps-4"
+            style={{ borderInlineStartColor: 'var(--color-slate-300)' }}
+            className="text-sm text-slate-600 italic leading-relaxed border-s-2 ps-4"
           >
             {result.legalTheory}
           </p>
@@ -112,23 +112,23 @@ function LegalPaper({
           <p className="text-xs text-slate-500 uppercase tracking-widest mb-3">
             {t('argumentLabel')}
           </p>
-          <div className="text-sm text-slate-200 leading-loose whitespace-pre-wrap font-serif">
+          <div className="text-sm text-slate-800 leading-loose whitespace-pre-wrap font-serif">
             {result.draftedText}
           </div>
         </div>
 
         {/* Citations */}
         {result.citedHashes.length > 0 && (
-          <div className="border-t border-slate-800 pt-5">
+          <div className="border-t border-slate-100 pt-5">
             <p className="text-xs text-slate-500 uppercase tracking-widest mb-3">
               {t('citedLabel')} ({t('citations', { count: result.citedHashes.length })})
             </p>
             <ul className="space-y-1.5">
               {result.citedHashes.map((hash, i) => (
                 <li key={hash} className="flex items-center gap-3">
-                  <span className="text-xs text-slate-600 w-5 text-end shrink-0">[{i + 1}]</span>
+                  <span className="text-xs text-slate-400 w-5 text-end shrink-0">[{i + 1}]</span>
                   <span
-                    className="font-mono text-xs text-emerald-500 bg-emerald-950/40 border border-emerald-900/50 rounded px-2 py-0.5"
+                    className="font-mono text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-2 py-0.5"
                     title={hash}
                   >
                     {formatHash(hash)}
@@ -145,29 +145,29 @@ function LegalPaper({
 
 function EmptyState({ text }: { text: string }) {
   return (
-    <div className="h-full flex flex-col items-center justify-center text-center px-8 py-24 border border-dashed border-slate-800 rounded-lg bg-slate-900/40">
-      <div className="text-3xl mb-4 text-slate-700">⚖</div>
-      <p className="text-sm text-slate-500 max-w-xs leading-relaxed">{text}</p>
+    <div className="h-full flex flex-col items-center justify-center text-center px-8 py-24 border border-dashed border-slate-200 rounded-lg bg-white shadow-sm">
+      <div className="text-3xl mb-4 text-slate-300">⚖</div>
+      <p className="text-sm text-slate-400 max-w-xs leading-relaxed">{text}</p>
     </div>
   );
 }
 
 function LoadingSkeleton() {
   return (
-    <div className="bg-slate-900 border border-slate-700 rounded-lg overflow-hidden animate-pulse">
-      <div className="bg-slate-800/60 border-b border-slate-700 px-6 py-4 space-y-2">
-        <div className="h-2 bg-slate-700 rounded w-32" />
-        <div className="h-4 bg-slate-700 rounded w-3/4" />
+    <div className="bg-white border border-slate-200 rounded-lg overflow-hidden animate-pulse shadow-sm">
+      <div className="bg-slate-50 border-b border-slate-200 px-6 py-4 space-y-2">
+        <div className="h-2 bg-slate-200 rounded w-32" />
+        <div className="h-4 bg-slate-200 rounded w-3/4" />
       </div>
       <div className="p-6 space-y-6">
         <div className="space-y-2">
-          <div className="h-2 bg-slate-800 rounded w-24" />
-          <div className="h-12 bg-slate-800 rounded" />
+          <div className="h-2 bg-slate-100 rounded w-24" />
+          <div className="h-12 bg-slate-100 rounded" />
         </div>
         <div className="space-y-2">
-          <div className="h-2 bg-slate-800 rounded w-20" />
+          <div className="h-2 bg-slate-100 rounded w-20" />
           {[1, 2, 3, 4, 5].map((i) => (
-            <div key={i} className="h-3 bg-slate-800 rounded" style={{ width: `${100 - i * 5}%` }} />
+            <div key={i} className="h-3 bg-slate-100 rounded" style={{ width: `${100 - i * 5}%` }} />
           ))}
         </div>
       </div>
@@ -220,17 +220,17 @@ export default function CaseBuilderPage() {
   const tPaper = useTranslations('caseBuilder.paper');
 
   return (
-    <main className="min-h-screen bg-slate-950">
+    <main className="min-h-screen bg-slate-50">
       {/* Header */}
-      <header className="sticky top-0 z-20 bg-slate-950/95 backdrop-blur border-b border-slate-800">
+      <header className="sticky top-0 z-20 bg-white/95 backdrop-blur border-b border-slate-200 shadow-sm">
         <div className="max-w-7xl mx-auto px-6 h-14 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <span className="text-slate-500 text-lg">⬡</span>
+            <span className="text-slate-400 text-lg">⬡</span>
             <div>
-              <span className="font-mono text-sm font-semibold tracking-widest text-slate-100 uppercase">
+              <span className="font-mono text-sm font-semibold tracking-widest text-slate-900 uppercase">
                 {tc('appName')}
               </span>
-              <span className="ms-3 text-xs text-slate-600 tracking-wide hidden sm:inline">
+              <span className="ms-3 text-xs text-slate-400 tracking-wide hidden sm:inline">
                 {t('tagline')}
               </span>
             </div>
@@ -243,11 +243,17 @@ export default function CaseBuilderPage() {
             <nav className="flex items-center gap-1">
               <Link
                 href="/"
-                className="px-3 py-1.5 rounded text-xs font-medium text-slate-400 border border-transparent hover:bg-slate-800 hover:text-slate-200 hover:border-slate-700 transition-colors"
+                className="px-3 py-1.5 rounded text-xs font-medium text-slate-600 border border-transparent hover:bg-slate-100 hover:text-slate-900 hover:border-slate-200 transition-colors"
               >
                 {tc('nav.evidenceVault')}
               </Link>
-              <span className="px-3 py-1.5 rounded text-xs font-medium bg-slate-800 text-slate-100 border border-slate-700">
+              <Link
+                href="/timeline"
+                className="px-3 py-1.5 rounded text-xs font-medium text-slate-600 border border-transparent hover:bg-slate-100 hover:text-slate-900 hover:border-slate-200 transition-colors"
+              >
+                {tc('nav.timeline')}
+              </Link>
+              <span className="px-3 py-1.5 rounded text-xs font-medium bg-slate-900 text-white border border-slate-700">
                 {tc('nav.caseBuilder')}
               </span>
             </nav>
@@ -266,17 +272,17 @@ export default function CaseBuilderPage() {
               <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-4">
                 {t('params.title')}
               </h2>
-              <div className="bg-slate-900 border border-slate-800 rounded-lg p-5">
+              <div className="bg-white border border-slate-200 rounded-lg p-5 shadow-sm">
                 <form onSubmit={handleSubmit} className="space-y-5">
                   {/* Category selector */}
                   <div className="space-y-1.5">
-                    <label className="block text-xs font-medium text-slate-400 uppercase tracking-widest">
+                    <label className="block text-xs font-medium text-slate-600 uppercase tracking-widest">
                       {t('params.categoryLabel')}
                     </label>
                     <select
                       value={category}
                       onChange={(e) => setCategory(e.target.value as Category)}
-                      className="w-full bg-slate-800 border border-slate-700 rounded px-3 py-2.5 text-sm text-slate-200 focus:outline-none focus:border-slate-500 focus:ring-1 focus:ring-slate-600 appearance-none"
+                      className="w-full bg-white border border-slate-300 rounded px-3 py-2.5 text-sm text-slate-800 focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-300/50 appearance-none shadow-sm"
                     >
                       {CATEGORIES.map((cat) => (
                         <option key={cat} value={cat}>
@@ -288,7 +294,7 @@ export default function CaseBuilderPage() {
 
                   {/* Target entity input */}
                   <div className="space-y-1.5">
-                    <label className="block text-xs font-medium text-slate-400 uppercase tracking-widest">
+                    <label className="block text-xs font-medium text-slate-600 uppercase tracking-widest">
                       {t('params.entityLabel')}
                     </label>
                     <input
@@ -297,20 +303,20 @@ export default function CaseBuilderPage() {
                       value={targetEntity}
                       onChange={(e) => setTargetEntity(e.target.value)}
                       placeholder={t('params.entityPlaceholder')}
-                      className="w-full bg-slate-800 border border-slate-700 rounded px-3 py-2.5 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-slate-500 focus:ring-1 focus:ring-slate-600 font-mono"
+                      className="w-full bg-white border border-slate-300 rounded px-3 py-2.5 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-300/50 font-mono shadow-sm"
                     />
-                    <p className="text-xs text-slate-700">{t('params.entityHint')}</p>
+                    <p className="text-xs text-slate-400">{t('params.entityHint')}</p>
                   </div>
 
                   {/* Submit */}
                   <button
                     type="submit"
                     disabled={loading || !targetEntity.trim()}
-                    className="w-full py-2.5 rounded text-sm font-semibold bg-blue-900 text-blue-200 border border-blue-800 hover:bg-blue-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                    className="w-full py-2.5 rounded text-sm font-semibold bg-blue-600 text-white border border-blue-700 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shadow-sm"
                   >
                     {loading ? (
                       <span className="flex items-center justify-center gap-2">
-                        <span className="w-3 h-3 rounded-full border-2 border-blue-500 border-t-transparent animate-spin" />
+                        <span className="w-3 h-3 rounded-full border-2 border-white/60 border-t-white animate-spin" />
                         {t('params.draftingBtn')}
                       </span>
                     ) : (
@@ -322,11 +328,11 @@ export default function CaseBuilderPage() {
             </div>
 
             {/* Info box */}
-            <div className="bg-slate-900/60 border border-slate-800 rounded-lg p-4 space-y-2">
+            <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 space-y-2">
               <p className="text-xs font-semibold text-slate-500 uppercase tracking-widest">
                 {t('howItWorks.title')}
               </p>
-              <ul className="space-y-1.5 text-xs text-slate-600 leading-relaxed">
+              <ul className="space-y-1.5 text-xs text-slate-500 leading-relaxed">
                 <li>{t('howItWorks.step1')}</li>
                 <li>{t('howItWorks.step2')}</li>
                 <li>{t('howItWorks.step3')}</li>
@@ -341,7 +347,7 @@ export default function CaseBuilderPage() {
                 {tPaper('title')}
               </h2>
               {result && (
-                <span className="text-xs font-mono text-slate-600">
+                <span className="text-xs font-mono text-slate-400">
                   {tPaper('citations', { count: result.citedHashes.length })}
                 </span>
               )}
@@ -350,10 +356,10 @@ export default function CaseBuilderPage() {
             {loading && <LoadingSkeleton />}
 
             {!loading && error && (
-              <div className="bg-red-950/40 border border-red-900 rounded-lg p-5 space-y-1">
+              <div className="bg-red-50 border border-red-200 rounded-lg p-5 space-y-1">
                 <div className="flex items-center gap-2">
                   <span className="w-2 h-2 rounded-full bg-red-500" />
-                  <span className="text-sm font-medium text-red-400">{t('error.title')}</span>
+                  <span className="text-sm font-medium text-red-700">{t('error.title')}</span>
                 </div>
                 <p className="text-sm text-red-600">{error}</p>
               </div>

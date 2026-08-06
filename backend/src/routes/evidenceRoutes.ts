@@ -43,20 +43,24 @@ const ConfirmBodySchema = z.object({
 // Lazy singletons
 // ---------------------------------------------------------------------------
 
+let _intakeAgent: IntakeAgent | null = null;
 let _vectorStorePromise: Promise<VectorStoreService> | null = null;
-let _intakeAgentPromise: Promise<IntakeAgent> | null = null;
 let _web3Service: Web3Service | null = null;
 
-function getVectorStore(): Promise<VectorStoreService> {
-  if (!_vectorStorePromise) _vectorStorePromise = VectorStoreService.create();
-  return _vectorStorePromise;
+function getIntakeAgent(): IntakeAgent {
+  if (!_intakeAgent) _intakeAgent = new IntakeAgent();
+  return _intakeAgent;
 }
 
-function getIntakeAgent(): Promise<IntakeAgent> {
-  if (!_intakeAgentPromise) {
-    _intakeAgentPromise = getVectorStore().then((vs) => new IntakeAgent(vs));
+function getVectorStore(): Promise<VectorStoreService> {
+  if (!_vectorStorePromise) {
+    _vectorStorePromise = VectorStoreService.create().catch((err) => {
+      // Reset so the next request retries initialisation (e.g. after an env fix)
+      _vectorStorePromise = null;
+      throw err;
+    });
   }
-  return _intakeAgentPromise;
+  return _vectorStorePromise;
 }
 
 function getWeb3Service(): Web3Service {
@@ -81,7 +85,7 @@ router.post(
 
     let analysis;
     try {
-      const agent = await getIntakeAgent();
+      const agent = getIntakeAgent();
       analysis = await agent.analyzeEvidence(req.file.buffer, req.file.mimetype);
     } catch (err) {
       console.error('[intake] IntakeAgent error:', err);
@@ -166,6 +170,7 @@ router.post(
         tier: analysis.evidenceTier,
         summary: analysis.summary,
         targetEntity: analysis.targetEntity,
+        evidenceDate: analysis.evidenceDate,
         submitterAddress,
         timestamp: Date.now(),
       });
@@ -181,6 +186,35 @@ router.post(
     });
   },
 );
+
+// ---------------------------------------------------------------------------
+// GET /api/evidence/timeline?targetEntity=...
+// Returns evidence sorted chronologically by evidenceDate (ascending).
+// ---------------------------------------------------------------------------
+
+const TimelineQuerySchema = z.object({
+  targetEntity: z.string().optional(),
+});
+
+router.get('/timeline', async (req: Request, res: Response): Promise<void> => {
+  const parsed = TimelineQuerySchema.safeParse(req.query);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Invalid query', details: parsed.error.flatten() });
+    return;
+  }
+
+  const { targetEntity } = parsed.data;
+
+  try {
+    const vectorStore = await getVectorStore();
+    const results = await vectorStore.getTimeline(targetEntity);
+    res.status(200).json({ targetEntity: targetEntity ?? null, count: results.length, results });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error('[timeline] VectorStoreService error:', err instanceof Error ? err.stack : err);
+    res.status(500).json({ error: 'Timeline fetch failed', message });
+  }
+});
 
 // ---------------------------------------------------------------------------
 // GET /api/evidence/search?q=query&limit=5
@@ -200,8 +234,10 @@ router.get('/search', async (req: Request, res: Response): Promise<void> => {
     const results = await vectorStore.searchSimilarEvidence(q, limit);
     res.status(200).json({ query: q, count: results.length, results });
   } catch (err) {
-    console.error('[search] VectorStoreService error:', err);
-    res.status(500).json({ error: 'Search failed', message: String(err) });
+    const message = err instanceof Error ? err.message : String(err);
+    console.error('[search] VectorStoreService error:', err instanceof Error ? err.stack : err);
+    console.error('[search] Hint: if this is a dimension mismatch, your Pinecone index was likely created for OpenAI (1536-dim). Gemini text-embedding-004 uses 768 dimensions — recreate the index with dimension=768.');
+    res.status(500).json({ error: 'Search failed', message });
   }
 });
 

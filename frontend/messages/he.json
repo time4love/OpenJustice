@@ -4,6 +4,7 @@
     "operational": "פעיל",
     "nav": {
       "evidenceVault": "כספת הראיות",
+      "timeline": "ציר זמן",
       "caseBuilder": "בניית תיק",
       "submitEvidence": "+ הגש ראיה"
     }
@@ -57,6 +58,8 @@
       "categoryLabel": "קטגוריה משפטית",
       "entityLabel": "גוף נתבע",
       "tierLabel": "דרגת ראיה",
+      "dateLabel": "תאריך הראיה",
+      "dateHint": "התאריך שבו הראיה נוצרה, פורסמה, או התרחשה (YYYY-MM-DD). שדה חובה.",
       "walletLabel": "כתובת הארנק שלך",
       "walletHint": "משמש לייחוס בלבד. זהותך אינה נשמרת בשרשרת הבלוקים.",
       "confirmBtn": "אשר ורשום בשרשרת הבלוקים",
@@ -107,5 +110,17 @@
     "error": {
       "title": "יצירת הטיעון נכשלה"
     }
+  },
+  "timeline": {
+    "tagline": "ציר זמן משפטי · ראיות כרונולוגיות",
+    "filterLabel": "סנן לפי גוף",
+    "filterPlaceholder": "כל הגופים",
+    "loadBtn": "טען ציר זמן",
+    "loadingBtn": "טוען…",
+    "count": "{count} רשומות",
+    "unknownDate": "תאריך לא ידוע",
+    "emptyTitle": "לא נמצאו רשומות בציר הזמן.",
+    "emptySub": "הגש ראיות עם תאריכים, או הסר את סינון הגוף.",
+    "errorTitle": "טעינת ציר הזמן נכשלה."
   }
 }

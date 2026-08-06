@@ -63,51 +63,39 @@ const MOCK_STATS = {
 };
 
 // ---------------------------------------------------------------------------
-// Tier accent colors (Tailwind v4 CSS variables for use in inline styles)
+// Tier accent colors (for the start-border on evidence cards)
 // ---------------------------------------------------------------------------
 
 const TIER_ACCENT: Record<EvidenceTier, string> = {
   'Tier 1: Smoking Gun': 'var(--color-red-500)',
   'Tier 2: Material': 'var(--color-orange-500)',
-  'Tier 3: Supporting': 'var(--color-yellow-500)',
-  'Tier 4: Anecdotal': 'var(--color-slate-500)',
+  'Tier 3: Supporting': 'var(--color-amber-500)',
+  'Tier 4: Anecdotal': 'var(--color-slate-300)',
 };
 
 function tierStyle(tier: EvidenceTier): { badge: string; dot: string } {
   switch (tier) {
     case 'Tier 1: Smoking Gun':
-      return {
-        badge: 'bg-red-950 text-red-400 border border-red-800',
-        dot: 'bg-red-500',
-      };
+      return { badge: 'bg-red-50 text-red-700 border border-red-200', dot: 'bg-red-500' };
     case 'Tier 2: Material':
-      return {
-        badge: 'bg-orange-950 text-orange-400 border border-orange-800',
-        dot: 'bg-orange-500',
-      };
+      return { badge: 'bg-orange-50 text-orange-700 border border-orange-200', dot: 'bg-orange-500' };
     case 'Tier 3: Supporting':
-      return {
-        badge: 'bg-yellow-950 text-yellow-400 border border-yellow-800',
-        dot: 'bg-yellow-500',
-      };
+      return { badge: 'bg-amber-50 text-amber-700 border border-amber-200', dot: 'bg-amber-500' };
     case 'Tier 4: Anecdotal':
-      return {
-        badge: 'bg-slate-800 text-slate-400 border border-slate-700',
-        dot: 'bg-slate-500',
-      };
+      return { badge: 'bg-slate-100 text-slate-600 border border-slate-200', dot: 'bg-slate-400' };
   }
 }
 
 function categoryStyle(cat: Category): string {
   switch (cat) {
     case 'Side Effect Withholding':
-      return 'bg-purple-950 text-purple-400 border border-purple-800';
+      return 'bg-purple-50 text-purple-700 border border-purple-200';
     case 'Regulatory Misleading':
-      return 'bg-blue-950 text-blue-400 border border-blue-800';
+      return 'bg-blue-50 text-blue-700 border border-blue-200';
     case 'Coercion':
-      return 'bg-rose-950 text-rose-400 border border-rose-800';
+      return 'bg-rose-50 text-rose-700 border border-rose-200';
     case 'Other':
-      return 'bg-slate-800 text-slate-400 border border-slate-700';
+      return 'bg-slate-100 text-slate-600 border border-slate-200';
   }
 }
 
@@ -142,10 +130,10 @@ function StatCard({
   colorClass: string;
 }) {
   return (
-    <div className="bg-slate-900 border border-slate-800 rounded-lg p-4 flex flex-col gap-1">
+    <div className="bg-white border border-slate-200 rounded-lg p-4 flex flex-col gap-1 shadow-sm">
       <span className="text-xs text-slate-500 uppercase tracking-widest">{label}</span>
       <span className={`text-3xl font-mono font-bold ${colorClass}`}>{value.toLocaleString()}</span>
-      {sub && <span className="text-xs text-slate-600">{sub}</span>}
+      {sub && <span className="text-xs text-slate-400">{sub}</span>}
     </div>
   );
 }
@@ -154,11 +142,11 @@ function CategoryBar({ label, value, max }: { label: string; value: number; max:
   const pct = Math.round((value / max) * 100);
   return (
     <div className="flex items-center gap-3">
-      <span className="text-xs text-slate-400 w-48 shrink-0">{label}</span>
-      <div className="flex-1 h-2 bg-slate-800 rounded-full overflow-hidden">
-        <div className="h-full bg-slate-500 rounded-full" style={{ width: `${pct}%` }} />
+      <span className="text-xs text-slate-600 w-48 shrink-0">{label}</span>
+      <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden">
+        <div className="h-full bg-slate-400 rounded-full" style={{ width: `${pct}%` }} />
       </div>
-      <span className="text-xs font-mono text-slate-400 w-8 text-end">{value}</span>
+      <span className="text-xs font-mono text-slate-500 w-8 text-end">{value}</span>
     </div>
   );
 }
@@ -183,7 +171,7 @@ function CategoryBadge({ category }: { category: Category }) {
 
 function EntityBadge({ entity }: { entity: string }) {
   return (
-    <span className="px-2 py-0.5 rounded text-xs font-medium bg-cyan-950 text-cyan-400 border border-cyan-800">
+    <span className="px-2 py-0.5 rounded text-xs font-medium bg-cyan-50 text-cyan-700 border border-cyan-200">
       ⚖ {entity}
     </span>
   );
@@ -195,7 +183,7 @@ function EvidenceCard({ result }: { result: SearchResult }) {
   return (
     <div
       style={{ borderInlineStartColor: TIER_ACCENT[metadata.tier] }}
-      className="bg-slate-900 border border-slate-800 border-s-4 rounded-lg p-5 space-y-3"
+      className="bg-white border border-slate-200 border-s-4 rounded-lg p-5 space-y-3 shadow-sm"
     >
       {/* Header row */}
       <div className="flex flex-wrap items-center gap-2">
@@ -203,25 +191,25 @@ function EvidenceCard({ result }: { result: SearchResult }) {
         <TierBadge tier={metadata.tier} />
         <CategoryBadge category={metadata.category} />
         {score !== undefined && (
-          <span className="ms-auto text-xs font-mono text-slate-600">
+          <span className="ms-auto text-xs font-mono text-slate-400">
             relevance {(score * 100).toFixed(1)}%
           </span>
         )}
       </div>
 
       {/* Summary */}
-      <p className="text-sm text-slate-300 leading-relaxed">{metadata.summary}</p>
+      <p className="text-sm text-slate-700 leading-relaxed">{metadata.summary}</p>
 
       {/* Footer */}
-      <div className="flex flex-wrap items-center gap-4 pt-1 border-t border-slate-800">
-        <span className="font-mono text-xs text-slate-600" title={metadata.fileHash}>
+      <div className="flex flex-wrap items-center gap-4 pt-1 border-t border-slate-100">
+        <span className="font-mono text-xs text-slate-400" title={metadata.fileHash}>
           {formatHash(metadata.fileHash)}
         </span>
         {metadata.timestamp > 0 && (
-          <span className="text-xs text-slate-600">{formatTimestamp(metadata.timestamp)}</span>
+          <span className="text-xs text-slate-400">{formatTimestamp(metadata.timestamp)}</span>
         )}
         {metadata.submitterAddress && (
-          <span className="font-mono text-xs text-slate-700" title={metadata.submitterAddress}>
+          <span className="font-mono text-xs text-slate-300" title={metadata.submitterAddress}>
             {formatHash(metadata.submitterAddress)}
           </span>
         )}
@@ -251,8 +239,8 @@ function LocaleSwitcher() {
           onClick={() => switchLocale(l)}
           className={`px-2 py-1 rounded transition-colors ${
             locale === l
-              ? 'bg-slate-700 text-slate-100'
-              : 'text-slate-500 hover:text-slate-300'
+              ? 'bg-slate-200 text-slate-800'
+              : 'text-slate-400 hover:text-slate-600'
           }`}
         >
           {l.toUpperCase()}
@@ -281,7 +269,10 @@ export default function DashboardPage() {
     try {
       const params = new URLSearchParams({ q, limit: '20' });
       const res = await fetch(`/api/evidence/search?${params.toString()}`);
-      if (!res.ok) throw new Error(`Search error ${res.status}: ${res.statusText}`);
+      if (!res.ok) {
+        const data = (await res.json()) as { message?: string };
+        throw new Error(data.message ?? `Search error ${res.status}`);
+      }
       const data = (await res.json()) as SearchResponse;
       setResults(data.results ?? []);
     } catch (e) {
@@ -304,17 +295,17 @@ export default function DashboardPage() {
   const categoryMax = Math.max(...Object.values(MOCK_STATS.categories));
 
   return (
-    <main className="min-h-screen bg-slate-950">
+    <main className="min-h-screen bg-slate-50">
       {/* Header */}
-      <header className="sticky top-0 z-20 bg-slate-950/95 backdrop-blur border-b border-slate-800">
+      <header className="sticky top-0 z-20 bg-white/95 backdrop-blur border-b border-slate-200 shadow-sm">
         <div className="max-w-7xl mx-auto px-6 h-14 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <span className="text-slate-500 text-lg">⬡</span>
+            <span className="text-slate-400 text-lg">⬡</span>
             <div>
-              <span className="font-mono text-sm font-semibold tracking-widest text-slate-100 uppercase">
+              <span className="font-mono text-sm font-semibold tracking-widest text-slate-900 uppercase">
                 {tc('appName')}
               </span>
-              <span className="ms-3 text-xs text-slate-600 tracking-wide hidden sm:inline">
+              <span className="ms-3 text-xs text-slate-400 tracking-wide hidden sm:inline">
                 {t('tagline')}
               </span>
             </div>
@@ -325,19 +316,25 @@ export default function DashboardPage() {
               {tc('operational')}
             </span>
             <nav className="flex items-center gap-1">
-              <span className="px-3 py-1.5 rounded text-xs font-medium bg-slate-800 text-slate-100 border border-slate-700">
+              <span className="px-3 py-1.5 rounded text-xs font-medium bg-slate-900 text-white border border-slate-700">
                 {tc('nav.evidenceVault')}
               </span>
               <Link
+                href="/timeline"
+                className="px-3 py-1.5 rounded text-xs font-medium text-slate-600 border border-transparent hover:bg-slate-100 hover:text-slate-900 hover:border-slate-200 transition-colors"
+              >
+                {tc('nav.timeline')}
+              </Link>
+              <Link
                 href="/case-builder"
-                className="px-3 py-1.5 rounded text-xs font-medium text-slate-400 border border-transparent hover:bg-slate-800 hover:text-slate-200 hover:border-slate-700 transition-colors"
+                className="px-3 py-1.5 rounded text-xs font-medium text-slate-600 border border-transparent hover:bg-slate-100 hover:text-slate-900 hover:border-slate-200 transition-colors"
               >
                 {tc('nav.caseBuilder')}
               </Link>
             </nav>
             <Link
               href="/submit"
-              className="px-3 py-1.5 rounded text-xs font-medium bg-blue-900 text-blue-300 border border-blue-800 hover:bg-blue-800 transition-colors"
+              className="px-3 py-1.5 rounded text-xs font-medium bg-blue-600 text-white border border-blue-700 hover:bg-blue-700 transition-colors"
             >
               {tc('nav.submitEvidence')}
             </Link>
@@ -357,37 +354,37 @@ export default function DashboardPage() {
               label={t('analytics.total')}
               value={MOCK_STATS.total}
               sub={t('analytics.totalSub')}
-              colorClass="text-slate-100"
+              colorClass="text-slate-900"
             />
             <StatCard
               label={t('analytics.tier1')}
               value={MOCK_STATS.tiers['Tier 1: Smoking Gun']}
               sub={t('analytics.tier1Sub')}
-              colorClass="text-red-400"
+              colorClass="text-red-600"
             />
             <StatCard
               label={t('analytics.tier2')}
               value={MOCK_STATS.tiers['Tier 2: Material']}
               sub={t('analytics.tier2Sub')}
-              colorClass="text-orange-400"
+              colorClass="text-orange-600"
             />
             <StatCard
               label={t('analytics.tier3')}
               value={MOCK_STATS.tiers['Tier 3: Supporting']}
               sub={t('analytics.tier3Sub')}
-              colorClass="text-yellow-400"
+              colorClass="text-amber-600"
             />
             <StatCard
               label={t('analytics.tier4')}
               value={MOCK_STATS.tiers['Tier 4: Anecdotal']}
               sub={t('analytics.tier4Sub')}
-              colorClass="text-slate-400"
+              colorClass="text-slate-500"
             />
           </div>
         </section>
 
         {/* Analytics — Category Breakdown */}
-        <section className="bg-slate-900 border border-slate-800 rounded-lg p-5">
+        <section className="bg-white border border-slate-200 rounded-lg p-5 shadow-sm">
           <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-5">
             {t('categories.title')}
           </h2>
@@ -405,7 +402,7 @@ export default function DashboardPage() {
               {t('ledger.title')}
             </h2>
             {results.length > 0 && (
-              <span className="text-xs text-slate-600 font-mono">
+              <span className="text-xs text-slate-400 font-mono">
                 {t('ledger.records', { count: results.length })}
               </span>
             )}
@@ -418,12 +415,12 @@ export default function DashboardPage() {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder={t('ledger.searchPlaceholder')}
-              className="flex-1 bg-slate-900 border border-slate-800 rounded px-4 py-2.5 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-slate-600 focus:ring-1 focus:ring-slate-700 font-mono"
+              className="flex-1 bg-white border border-slate-300 rounded px-4 py-2.5 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-300/50 font-mono shadow-sm"
             />
             <button
               type="submit"
               disabled={loading}
-              className="px-5 py-2.5 rounded text-sm font-medium bg-slate-800 text-slate-200 border border-slate-700 hover:bg-slate-700 disabled:opacity-50 transition-colors"
+              className="px-5 py-2.5 rounded text-sm font-medium bg-slate-100 text-slate-700 border border-slate-200 hover:bg-slate-200 disabled:opacity-50 transition-colors shadow-sm"
             >
               {loading ? t('ledger.searchingBtn') : t('ledger.searchBtn')}
             </button>
@@ -435,22 +432,22 @@ export default function DashboardPage() {
               {[1, 2, 3].map((i) => (
                 <div
                   key={i}
-                  className="h-32 bg-slate-900 border border-slate-800 rounded-lg animate-pulse"
+                  className="h-32 bg-white border border-slate-200 rounded-lg animate-pulse shadow-sm"
                 />
               ))}
             </div>
           )}
 
           {!loading && error && (
-            <div className="bg-red-950/40 border border-red-900 rounded-lg p-4 text-sm text-red-400">
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-sm text-red-700">
               {error}
             </div>
           )}
 
           {!loading && !error && results.length === 0 && (
-            <div className="bg-slate-900 border border-slate-800 border-dashed rounded-lg p-12 text-center">
-              <p className="text-slate-600 text-sm">{t('ledger.emptyTitle')}</p>
-              <p className="text-slate-700 text-xs mt-1">{t('ledger.emptySub')}</p>
+            <div className="bg-white border border-slate-200 border-dashed rounded-lg p-12 text-center shadow-sm">
+              <p className="text-slate-500 text-sm">{t('ledger.emptyTitle')}</p>
+              <p className="text-slate-400 text-xs mt-1">{t('ledger.emptySub')}</p>
             </div>
           )}
 

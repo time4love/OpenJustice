@@ -1,16 +1,12 @@
 import { IntakeAgent, IntakeOutputSchema, EVIDENCE_TIER } from '../src/services/IntakeAgent';
-import type { VectorStoreService } from '../src/services/VectorStoreService';
 
 // ---------------------------------------------------------------------------
 // Mock @langchain/anthropic so no real API calls are made.
-// The mock model exposes both .invoke() (for vision extraction) and
-// .withStructuredOutput() (which returns a chain with its own .invoke()).
 // ---------------------------------------------------------------------------
 
 jest.mock('@langchain/anthropic', () => {
   return {
     ChatAnthropic: jest.fn().mockImplementation(() => ({
-      invoke: jest.fn(),
       withStructuredOutput: jest.fn().mockReturnValue({
         invoke: jest.fn(),
       }),
@@ -22,39 +18,15 @@ jest.mock('@langchain/anthropic', () => {
 // Helpers
 // ---------------------------------------------------------------------------
 
-/** Returns the mocked extraction `invoke` from agent.model. */
-function getExtractionInvoke(agent: IntakeAgent): jest.Mock {
+/** Returns the mocked `invoke` function from the constructed IntakeAgent chain. */
+function getMockInvoke(agent: IntakeAgent): jest.Mock {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return (agent as any).model.invoke as jest.Mock;
-}
-
-/** Returns the mocked classification `invoke` from the structured output chain. */
-function getClassificationInvoke(agent: IntakeAgent): jest.Mock {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return (agent as any).classificationChain.invoke as jest.Mock;
-}
-
-/** Creates a minimal VectorStoreService mock. */
-function makeMockVectorStore(
-  contextResults: Array<{ metadata: { tier: string; category: string; summary: string } }> = [],
-): VectorStoreService {
-  return {
-    searchSimilarEvidence: jest.fn().mockResolvedValue(contextResults),
-  } as unknown as VectorStoreService;
-}
-
-/** Simulates a LangChain BaseMessageChunk with string content. */
-function mockExtractionMessage(text: string) {
-  return { content: text };
+  return (agent as any).chain.invoke as jest.Mock;
 }
 
 // ---------------------------------------------------------------------------
 // Fixtures
 // ---------------------------------------------------------------------------
-
-const EXTRACTED_TEXT = 'INTERNAL MEMO — Ministry of Health, Dept. of Vaccines. Date: 2021-03-10.\n' +
-  'Subject: Adverse event reporting — myocarditis cases under age 30.\n' +
-  'This memo instructs regional directors to delay publication of myocarditis figures pending review.';
 
 const SMOKING_GUN_RESPONSE = {
   isRelevant: true,
@@ -65,6 +37,7 @@ const SMOKING_GUN_RESPONSE = {
   missingInformation: [],
   targetEntity: 'Ministry of Health',
   evidenceTier: EVIDENCE_TIER.SMOKING_GUN,
+  evidenceDate: '2021-03-10',
 };
 
 const ANECDOTAL_RESPONSE = {
@@ -74,6 +47,18 @@ const ANECDOTAL_RESPONSE = {
   missingInformation: ['שם המעסיק חסר', 'אין תאריך', 'אין תיעוד כתוב'],
   targetEntity: 'Unknown',
   evidenceTier: EVIDENCE_TIER.ANECDOTAL,
+  evidenceDate: 'Unknown',
+};
+
+const MATERIAL_RESPONSE = {
+  isRelevant: true,
+  category: 'Regulatory Misleading' as const,
+  summary:
+    'הודעה רשמית לעיתונות מטעם רשות הבריאות כוללת טענות יעילות הסותרות נתוני ניסויים שפורסמו מאוחר יותר.',
+  missingInformation: ['כתובת מקור המקורית חסרה'],
+  targetEntity: 'FDA',
+  evidenceTier: EVIDENCE_TIER.MATERIAL,
+  evidenceDate: '2021-08-23',
 };
 
 const IRRELEVANT_RESPONSE = {
@@ -83,10 +68,12 @@ const IRRELEVANT_RESPONSE = {
   missingInformation: [],
   targetEntity: 'Unknown',
   evidenceTier: EVIDENCE_TIER.ANECDOTAL,
+  evidenceDate: 'Unknown',
 };
 
-const TEST_FILE_BUFFER = Buffer.from('fake-file-content');
+const TEST_FILE_BUFFER = Buffer.from('fake-image-content');
 const TEST_MIME_JPEG = 'image/jpeg';
+const TEST_MIME_PNG = 'image/png';
 const TEST_MIME_PDF = 'application/pdf';
 
 // ---------------------------------------------------------------------------
@@ -94,12 +81,10 @@ const TEST_MIME_PDF = 'application/pdf';
 // ---------------------------------------------------------------------------
 
 describe('IntakeAgent', () => {
-  let mockVectorStore: VectorStoreService;
   let agent: IntakeAgent;
 
   beforeEach(() => {
-    mockVectorStore = makeMockVectorStore();
-    agent = new IntakeAgent(mockVectorStore);
+    agent = new IntakeAgent();
     jest.clearAllMocks();
   });
 
@@ -115,23 +100,27 @@ describe('IntakeAgent', () => {
     });
 
     it('rejects an invalid evidenceTier value', () => {
-      const invalid = { ...SMOKING_GUN_RESPONSE, evidenceTier: 'Tier 99: Legendary' };
-      expect(() => IntakeOutputSchema.parse(invalid)).toThrow();
+      expect(() =>
+        IntakeOutputSchema.parse({ ...SMOKING_GUN_RESPONSE, evidenceTier: 'Tier 99: Legendary' }),
+      ).toThrow();
     });
 
     it('rejects an invalid category value', () => {
-      const invalid = { ...SMOKING_GUN_RESPONSE, category: 'Not A Category' };
-      expect(() => IntakeOutputSchema.parse(invalid)).toThrow();
+      expect(() =>
+        IntakeOutputSchema.parse({ ...SMOKING_GUN_RESPONSE, category: 'Not A Category' }),
+      ).toThrow();
     });
 
     it('rejects a non-boolean isRelevant', () => {
-      const invalid = { ...SMOKING_GUN_RESPONSE, isRelevant: 'yes' };
-      expect(() => IntakeOutputSchema.parse(invalid)).toThrow();
+      expect(() =>
+        IntakeOutputSchema.parse({ ...SMOKING_GUN_RESPONSE, isRelevant: 'yes' }),
+      ).toThrow();
     });
 
     it('rejects a non-array missingInformation', () => {
-      const invalid = { ...SMOKING_GUN_RESPONSE, missingInformation: 'Missing date' };
-      expect(() => IntakeOutputSchema.parse(invalid)).toThrow();
+      expect(() =>
+        IntakeOutputSchema.parse({ ...SMOKING_GUN_RESPONSE, missingInformation: 'Missing date' }),
+      ).toThrow();
     });
 
     it('rejects a missing targetEntity field', () => {
@@ -142,14 +131,30 @@ describe('IntakeAgent', () => {
     it('accepts a targetEntity of "Unknown" for unidentifiable entity', () => {
       expect(() => IntakeOutputSchema.parse(IRRELEVANT_RESPONSE)).not.toThrow();
     });
+
+    it('accepts a YYYY-MM-DD evidenceDate', () => {
+      expect(() =>
+        IntakeOutputSchema.parse({ ...SMOKING_GUN_RESPONSE, evidenceDate: '2021-03-10' }),
+      ).not.toThrow();
+    });
+
+    it('accepts "Unknown" as evidenceDate when no date is visible', () => {
+      expect(() =>
+        IntakeOutputSchema.parse({ ...SMOKING_GUN_RESPONSE, evidenceDate: 'Unknown' }),
+      ).not.toThrow();
+    });
+
+    it('rejects a missing evidenceDate field', () => {
+      const { evidenceDate: _removed, ...invalid } = SMOKING_GUN_RESPONSE;
+      expect(() => IntakeOutputSchema.parse(invalid)).toThrow();
+    });
   });
 
   // ---- analyzeEvidence — happy paths --------------------------------------
 
   describe('analyzeEvidence', () => {
-    it('returns a correctly typed Smoking Gun result', async () => {
-      getExtractionInvoke(agent).mockResolvedValueOnce(mockExtractionMessage(EXTRACTED_TEXT));
-      getClassificationInvoke(agent).mockResolvedValueOnce(SMOKING_GUN_RESPONSE);
+    it('returns a correctly typed Smoking Gun result including evidenceDate', async () => {
+      getMockInvoke(agent).mockResolvedValueOnce(SMOKING_GUN_RESPONSE);
 
       const result = await agent.analyzeEvidence(TEST_FILE_BUFFER, TEST_MIME_JPEG);
 
@@ -158,11 +163,19 @@ describe('IntakeAgent', () => {
       expect(result.evidenceTier).toBe(EVIDENCE_TIER.SMOKING_GUN);
       expect(result.missingInformation).toHaveLength(0);
       expect(result.targetEntity).toBe('Ministry of Health');
+      expect(result.evidenceDate).toBe('2021-03-10');
+    });
+
+    it('returns "Unknown" evidenceDate when no date is visible', async () => {
+      getMockInvoke(agent).mockResolvedValueOnce(ANECDOTAL_RESPONSE);
+
+      const result = await agent.analyzeEvidence(TEST_FILE_BUFFER, TEST_MIME_JPEG);
+
+      expect(result.evidenceDate).toBe('Unknown');
     });
 
     it('returns a correctly typed Anecdotal result', async () => {
-      getExtractionInvoke(agent).mockResolvedValueOnce(mockExtractionMessage(EXTRACTED_TEXT));
-      getClassificationInvoke(agent).mockResolvedValueOnce(ANECDOTAL_RESPONSE);
+      getMockInvoke(agent).mockResolvedValueOnce(ANECDOTAL_RESPONSE);
 
       const result = await agent.analyzeEvidence(TEST_FILE_BUFFER, TEST_MIME_JPEG);
 
@@ -170,9 +183,17 @@ describe('IntakeAgent', () => {
       expect(result.missingInformation).toHaveLength(3);
     });
 
+    it('returns a correctly typed Material result', async () => {
+      getMockInvoke(agent).mockResolvedValueOnce(MATERIAL_RESPONSE);
+
+      const result = await agent.analyzeEvidence(TEST_FILE_BUFFER, TEST_MIME_JPEG);
+
+      expect(result.evidenceTier).toBe(EVIDENCE_TIER.MATERIAL);
+      expect(result.category).toBe('Regulatory Misleading');
+    });
+
     it('returns isRelevant=false for unrelated content', async () => {
-      getExtractionInvoke(agent).mockResolvedValueOnce(mockExtractionMessage('Great pasta restaurant!'));
-      getClassificationInvoke(agent).mockResolvedValueOnce(IRRELEVANT_RESPONSE);
+      getMockInvoke(agent).mockResolvedValueOnce(IRRELEVANT_RESPONSE);
 
       const result = await agent.analyzeEvidence(TEST_FILE_BUFFER, TEST_MIME_JPEG);
 
@@ -180,175 +201,116 @@ describe('IntakeAgent', () => {
       expect(result.category).toBe('Other');
     });
 
-    it('passes a system prompt and file content block to the extraction model', async () => {
-      getExtractionInvoke(agent).mockResolvedValueOnce(mockExtractionMessage(EXTRACTED_TEXT));
-      getClassificationInvoke(agent).mockResolvedValueOnce(SMOKING_GUN_RESPONSE);
+    it('invokes the chain with a system prompt and file content block', async () => {
+      getMockInvoke(agent).mockResolvedValueOnce(SMOKING_GUN_RESPONSE);
 
       await agent.analyzeEvidence(TEST_FILE_BUFFER, TEST_MIME_JPEG);
 
-      const extractionArgs = getExtractionInvoke(agent).mock.calls[0][0] as Array<{
+      const callArgs = getMockInvoke(agent).mock.calls[0][0] as Array<{
         role: string;
         content: unknown;
       }>;
-      expect(extractionArgs[0].role).toBe('system');
-      expect(extractionArgs[1].role).toBe('human');
-      // Human message content should be an array (file block + text block)
-      expect(Array.isArray(extractionArgs[1].content)).toBe(true);
+      expect(callArgs).toHaveLength(2);
+      expect(callArgs[0].role).toBe('system');
+      expect(callArgs[1].role).toBe('human');
+      // Human content must be an array (file block + text prompt)
+      expect(Array.isArray(callArgs[1].content)).toBe(true);
     });
 
-    it('embeds the file as an image_url block for JPEG', async () => {
-      getExtractionInvoke(agent).mockResolvedValueOnce(mockExtractionMessage(EXTRACTED_TEXT));
-      getClassificationInvoke(agent).mockResolvedValueOnce(SMOKING_GUN_RESPONSE);
+    it('embeds the system prompt with Hebrew and date-hunting directives', async () => {
+      getMockInvoke(agent).mockResolvedValueOnce(SMOKING_GUN_RESPONSE);
 
       await agent.analyzeEvidence(TEST_FILE_BUFFER, TEST_MIME_JPEG);
 
-      const extractionArgs = getExtractionInvoke(agent).mock.calls[0][0] as Array<{
-        role: string;
-        content: Array<{ type: string; image_url?: { url: string } }>;
-      }>;
-      const humanContent = extractionArgs[1].content;
+      const systemContent = (
+        getMockInvoke(agent).mock.calls[0][0] as Array<{ role: string; content: string }>
+      )[0].content;
+      expect(systemContent).toContain('Hebrew');
+      expect(systemContent).toContain('Senior Legal Analyst');
+      expect(systemContent).toContain('YYYY-MM-DD');
+      expect(systemContent).toContain('evidenceDate');
+    });
+
+    it('encodes JPEG as an image_url content block', async () => {
+      getMockInvoke(agent).mockResolvedValueOnce(SMOKING_GUN_RESPONSE);
+
+      await agent.analyzeEvidence(TEST_FILE_BUFFER, TEST_MIME_JPEG);
+
+      const humanContent = (
+        getMockInvoke(agent).mock.calls[0][0] as Array<{
+          role: string;
+          content: Array<{ type: string; image_url?: { url: string } }>;
+        }>
+      )[1].content;
       expect(humanContent[0].type).toBe('image_url');
       expect(humanContent[0].image_url?.url).toMatch(/^data:image\/jpeg;base64,/);
     });
 
-    it('embeds the file as a document block for PDF', async () => {
-      getExtractionInvoke(agent).mockResolvedValueOnce(mockExtractionMessage(EXTRACTED_TEXT));
-      getClassificationInvoke(agent).mockResolvedValueOnce(SMOKING_GUN_RESPONSE);
+    it('encodes PNG as an image_url content block', async () => {
+      getMockInvoke(agent).mockResolvedValueOnce(SMOKING_GUN_RESPONSE);
+
+      await agent.analyzeEvidence(TEST_FILE_BUFFER, TEST_MIME_PNG);
+
+      const humanContent = (
+        getMockInvoke(agent).mock.calls[0][0] as Array<{
+          role: string;
+          content: Array<{ type: string; image_url?: { url: string } }>;
+        }>
+      )[1].content;
+      expect(humanContent[0].type).toBe('image_url');
+      expect(humanContent[0].image_url?.url).toMatch(/^data:image\/png;base64,/);
+    });
+
+    it('encodes PDF as a native document content block', async () => {
+      getMockInvoke(agent).mockResolvedValueOnce(SMOKING_GUN_RESPONSE);
 
       await agent.analyzeEvidence(TEST_FILE_BUFFER, TEST_MIME_PDF);
 
-      const extractionArgs = getExtractionInvoke(agent).mock.calls[0][0] as Array<{
-        role: string;
-        content: Array<{ type: string; source?: { media_type: string } }>;
-      }>;
-      const humanContent = extractionArgs[1].content;
+      const humanContent = (
+        getMockInvoke(agent).mock.calls[0][0] as Array<{
+          role: string;
+          content: Array<{ type: string; source?: { media_type: string } }>;
+        }>
+      )[1].content;
       expect(humanContent[0].type).toBe('document');
       expect(humanContent[0].source?.media_type).toBe('application/pdf');
     });
 
-    it('queries the vector store with the first 500 chars of extracted text', async () => {
-      const longText = 'A'.repeat(600);
-      getExtractionInvoke(agent).mockResolvedValueOnce(mockExtractionMessage(longText));
-      getClassificationInvoke(agent).mockResolvedValueOnce(SMOKING_GUN_RESPONSE);
+    it('base64-encodes the file buffer correctly', async () => {
+      getMockInvoke(agent).mockResolvedValueOnce(SMOKING_GUN_RESPONSE);
+
+      const knownBuffer = Buffer.from('hello');
+      await agent.analyzeEvidence(knownBuffer, TEST_MIME_JPEG);
+
+      const url = (
+        getMockInvoke(agent).mock.calls[0][0] as Array<{
+          role: string;
+          content: Array<{ type: string; image_url?: { url: string } }>;
+        }>
+      )[1].content[0].image_url?.url ?? '';
+      expect(url).toContain(knownBuffer.toString('base64'));
+    });
+
+    it('makes exactly one chain invocation per analyzeEvidence call', async () => {
+      getMockInvoke(agent).mockResolvedValueOnce(SMOKING_GUN_RESPONSE);
 
       await agent.analyzeEvidence(TEST_FILE_BUFFER, TEST_MIME_JPEG);
 
-      const searchArg = (mockVectorStore.searchSimilarEvidence as jest.Mock).mock.calls[0][0] as string;
-      expect(searchArg).toHaveLength(500);
+      expect(getMockInvoke(agent)).toHaveBeenCalledTimes(1);
     });
 
-    it('requests exactly 3 context results from the vector store', async () => {
-      getExtractionInvoke(agent).mockResolvedValueOnce(mockExtractionMessage(EXTRACTED_TEXT));
-      getClassificationInvoke(agent).mockResolvedValueOnce(SMOKING_GUN_RESPONSE);
-
-      await agent.analyzeEvidence(TEST_FILE_BUFFER, TEST_MIME_JPEG);
-
-      const limitArg = (mockVectorStore.searchSimilarEvidence as jest.Mock).mock.calls[0][1] as number;
-      expect(limitArg).toBe(3);
-    });
-
-    it('includes extracted text in the classification human message', async () => {
-      getExtractionInvoke(agent).mockResolvedValueOnce(mockExtractionMessage(EXTRACTED_TEXT));
-      getClassificationInvoke(agent).mockResolvedValueOnce(SMOKING_GUN_RESPONSE);
-
-      await agent.analyzeEvidence(TEST_FILE_BUFFER, TEST_MIME_JPEG);
-
-      const classArgs = getClassificationInvoke(agent).mock.calls[0][0] as Array<{
-        role: string;
-        content: string;
-      }>;
-      expect(classArgs[0].role).toBe('system');
-      expect(classArgs[1].role).toBe('human');
-      expect(classArgs[1].content).toContain(EXTRACTED_TEXT);
-    });
-
-    it('appends context block to classification message when vector store returns results', async () => {
-      const contextResults = [
-        { metadata: { tier: 'Tier 1: Smoking Gun', category: 'Side Effect Withholding', summary: 'Related existing evidence.' } },
-      ];
-      mockVectorStore = makeMockVectorStore(contextResults);
-      agent = new IntakeAgent(mockVectorStore);
-
-      getExtractionInvoke(agent).mockResolvedValueOnce(mockExtractionMessage(EXTRACTED_TEXT));
-      getClassificationInvoke(agent).mockResolvedValueOnce(SMOKING_GUN_RESPONSE);
-
-      await agent.analyzeEvidence(TEST_FILE_BUFFER, TEST_MIME_JPEG);
-
-      const classArgs = getClassificationInvoke(agent).mock.calls[0][0] as Array<{
-        role: string;
-        content: string;
-      }>;
-      expect(classArgs[1].content).toContain('Context');
-      expect(classArgs[1].content).toContain('Related existing evidence.');
-    });
-
-    it('sends no context block when vector store returns empty results', async () => {
-      getExtractionInvoke(agent).mockResolvedValueOnce(mockExtractionMessage(EXTRACTED_TEXT));
-      getClassificationInvoke(agent).mockResolvedValueOnce(SMOKING_GUN_RESPONSE);
-
-      await agent.analyzeEvidence(TEST_FILE_BUFFER, TEST_MIME_JPEG);
-
-      const classArgs = getClassificationInvoke(agent).mock.calls[0][0] as Array<{
-        role: string;
-        content: string;
-      }>;
-      expect(classArgs[1].content).not.toContain('Context');
-      expect(classArgs[1].content).toBe(EXTRACTED_TEXT);
-    });
-
-    it('propagates errors thrown by the extraction model', async () => {
-      getExtractionInvoke(agent).mockRejectedValueOnce(new Error('Vision API timeout'));
+    it('propagates errors thrown by the chain', async () => {
+      getMockInvoke(agent).mockRejectedValueOnce(new Error('API timeout'));
 
       await expect(agent.analyzeEvidence(TEST_FILE_BUFFER, TEST_MIME_JPEG)).rejects.toThrow(
-        'Vision API timeout',
+        'API timeout',
       );
     });
 
-    it('propagates errors thrown by the classification chain', async () => {
-      getExtractionInvoke(agent).mockResolvedValueOnce(mockExtractionMessage(EXTRACTED_TEXT));
-      getClassificationInvoke(agent).mockRejectedValueOnce(new Error('Classification failed'));
-
-      await expect(agent.analyzeEvidence(TEST_FILE_BUFFER, TEST_MIME_JPEG)).rejects.toThrow(
-        'Classification failed',
-      );
-    });
-
-    it('propagates errors thrown by the vector store', async () => {
-      getExtractionInvoke(agent).mockResolvedValueOnce(mockExtractionMessage(EXTRACTED_TEXT));
-      (mockVectorStore.searchSimilarEvidence as jest.Mock).mockRejectedValueOnce(
-        new Error('Pinecone unavailable'),
-      );
-
-      await expect(agent.analyzeEvidence(TEST_FILE_BUFFER, TEST_MIME_JPEG)).rejects.toThrow(
-        'Pinecone unavailable',
-      );
-    });
-
-    it('throws a Zod error if the classification LLM returns a malformed object', async () => {
-      getExtractionInvoke(agent).mockResolvedValueOnce(mockExtractionMessage(EXTRACTED_TEXT));
-      getClassificationInvoke(agent).mockResolvedValueOnce({ isRelevant: 'not-a-boolean' });
+    it('throws a Zod error if the LLM returns a malformed object', async () => {
+      getMockInvoke(agent).mockResolvedValueOnce({ isRelevant: 'not-a-boolean' });
 
       await expect(agent.analyzeEvidence(TEST_FILE_BUFFER, TEST_MIME_JPEG)).rejects.toThrow();
-    });
-
-    it('handles BaseMessageChunk with content block array (not plain string)', async () => {
-      // Simulate Claude returning content as an array of text blocks
-      const arrayContentMessage = {
-        content: [{ type: 'text', text: 'Block one. ' }, { type: 'text', text: 'Block two.' }],
-      };
-      getExtractionInvoke(agent).mockResolvedValueOnce(arrayContentMessage);
-      getClassificationInvoke(agent).mockResolvedValueOnce(SMOKING_GUN_RESPONSE);
-
-      const result = await agent.analyzeEvidence(TEST_FILE_BUFFER, TEST_MIME_JPEG);
-      expect(result.isRelevant).toBe(true);
-
-      // Verify the classification received the concatenated text
-      const classArgs = getClassificationInvoke(agent).mock.calls[0][0] as Array<{
-        role: string;
-        content: string;
-      }>;
-      expect(classArgs[1].content).toContain('Block one.');
-      expect(classArgs[1].content).toContain('Block two.');
     });
   });
 

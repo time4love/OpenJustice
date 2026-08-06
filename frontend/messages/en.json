@@ -4,6 +4,7 @@
     "operational": "Operational",
     "nav": {
       "evidenceVault": "Evidence Vault",
+      "timeline": "Timeline",
       "caseBuilder": "Case Builder",
       "submitEvidence": "+ Submit Evidence"
     }
@@ -57,6 +58,8 @@
       "categoryLabel": "Legal Category",
       "entityLabel": "Target Entity",
       "tierLabel": "Evidence Tier",
+      "dateLabel": "Evidence Date",
+      "dateHint": "The date the evidence was created, published, or occurred (YYYY-MM-DD). Required.",
       "walletLabel": "Your Wallet Address",
       "walletHint": "Used for attribution only. Your identity is not stored on-chain.",
       "confirmBtn": "Confirm & Register On-Chain",
@@ -107,5 +110,17 @@
     "error": {
       "title": "Generation Failed"
     }
+  },
+  "timeline": {
+    "tagline": "Legal Timeline · Chronological Evidence",
+    "filterLabel": "Filter by Entity",
+    "filterPlaceholder": "All entities",
+    "loadBtn": "Load Timeline",
+    "loadingBtn": "Loading…",
+    "count": "{count} records",
+    "unknownDate": "Unknown Date",
+    "emptyTitle": "No timeline records found.",
+    "emptySub": "Submit evidence with dates, or remove the entity filter.",
+    "errorTitle": "Failed to load timeline."
   }
 }
