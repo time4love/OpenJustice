@@ -332,6 +332,12 @@ export default function DashboardPage() {
               >
                 {tc('nav.caseBuilder')}
               </Link>
+              <Link
+                href="/about"
+                className="px-3 py-1.5 rounded text-xs font-medium text-slate-600 border border-transparent hover:bg-slate-100 hover:text-slate-900 hover:border-slate-200 transition-colors"
+              >
+                {tc('nav.about')}
+              </Link>
             </nav>
             <Link
               href="/submit"

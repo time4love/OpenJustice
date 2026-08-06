@@ -3,6 +3,7 @@ import express, { Request, Response } from 'express';
 import cors from 'cors';
 import { evidenceRouter } from './routes/evidenceRoutes';
 import { argumentRouter } from './routes/argumentRoutes';
+import { chatRouter } from './routes/chatRoutes';
 
 const app = express();
 const PORT = process.env['PORT'] ?? 3000;
@@ -41,6 +42,7 @@ app.get('/health', (_req: Request, res: Response) => {
 
 app.use('/api/evidence', evidenceRouter);
 app.use('/api/arguments', argumentRouter);
+app.use('/api/chat', chatRouter);
 
 // ---------------------------------------------------------------------------
 // Start

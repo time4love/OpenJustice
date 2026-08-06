@@ -6,7 +6,8 @@
       "evidenceVault": "Evidence Vault",
       "timeline": "Timeline",
       "caseBuilder": "Case Builder",
-      "submitEvidence": "+ Submit Evidence"
+      "submitEvidence": "+ Submit Evidence",
+      "about": "About"
     }
   },
   "dashboard": {
@@ -130,5 +131,62 @@
     "emptyTitle": "No timeline records found.",
     "emptySub": "Submit evidence with dates, or remove the entity filter.",
     "errorTitle": "Failed to load timeline."
+  },
+  "about": {
+    "badge": "Open Source Project · Full Transparency",
+    "hero": {
+      "title": "The Glass Fortress Manifesto",
+      "subtitle": "A decentralised, blockchain-protected legal evidence platform for building a class-action lawsuit against COVID-19 health policy failures.",
+      "ctaSubmit": "Submit Evidence Now",
+      "ctaVault": "View Evidence Vault"
+    },
+    "pillarsHeading": "The Three Pillars",
+    "mission": {
+      "title": "The Mission",
+      "p1": "We are building a multi-dimensional legal case against public health authorities who concealed, misled, and coerced — during the COVID-19 crisis.",
+      "p2": "Our platform lets citizens, doctors, and whistleblowers submit evidence with full anonymity. The AI classifies, summarises, and tiers each submission.",
+      "item1": "Concealment of side-effect data",
+      "item2": "Misleading regulatory bodies",
+      "item3": "Coercion and threats against refusers"
+    },
+    "blockchain": {
+      "title": "The Blockchain Guarantee",
+      "p1": "We do NOT store files on the blockchain — only a digital fingerprint: a SHA-256 hash of the file. Every piece of evidence receives an immutable timestamp on the Arbitrum network.",
+      "p2": "The cryptographic timestamp proves in court that a document existed and was unchanged from that moment — defeating any deepfake or forgery claim.",
+      "hashLabel": "Example cryptographic hash (illustrative)",
+      "footer": "The record is independent and immutable — no single party can delete it."
+    },
+    "vault": {
+      "title": "The Dark Vault — Your Privacy",
+      "p1": "The blockchain is fully anonymous. Your name is never recorded there. The file itself is not stored.",
+      "p2": "If you choose to leave contact details, they are AES-256 encrypted in the 'Dark Vault' — a physically isolated database with no public internet access.",
+      "item1": "No IP · No location",
+      "item2": "No name · No identity",
+      "item3": "Legal access only, with your consent"
+    },
+    "trust": {
+      "heading": "Why Trust Us",
+      "badge1": "Open source — every line of code is auditable",
+      "badge2": "Immutable blockchain — Arbitrum L2",
+      "badge3": "Full anonymity — no account, no registration",
+      "badge4": "AES-256 encryption for all sensitive data",
+      "badge5": "No central server — decentralised and resilient"
+    },
+    "cta": {
+      "title": "Have evidence? Time to submit it.",
+      "body": "Any document, screenshot, or testimony — even if it seems small — could be the link that completes the case. Anonymous submission. No registration required.",
+      "btn": "Submit Evidence Now — Free & Anonymous",
+      "hint": "Questions? Click the chat bubble and the Trust Agent will help."
+    }
+  },
+  "chat": {
+    "greeting": "Hello, I am the Glass Fortress Trust Agent. How can I help you understand our system's security?",
+    "placeholder": "Ask a question…",
+    "sendBtn": "Send",
+    "agentName": "Trust Agent",
+    "agentStatus": "Glass Fortress · Online",
+    "closeLabel": "Close chat",
+    "openLabel": "Open chat assistant",
+    "errorFallback": "An error occurred. Please try again."
   }
 }
