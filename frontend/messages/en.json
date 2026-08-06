@@ -60,8 +60,6 @@
       "tierLabel": "Evidence Tier",
       "dateLabel": "Evidence Date",
       "dateHint": "The date the evidence was created, published, or occurred (YYYY-MM-DD). Required.",
-      "walletLabel": "Your Wallet Address",
-      "walletHint": "Used for attribution only. Your identity is not stored on-chain.",
       "confirmBtn": "Confirm & Register On-Chain",
       "confirmingBtn": "Registering on-chain…",
       "changeFileBtn": "← Change File",
@@ -77,6 +75,16 @@
       "txHash": "Tx Hash",
       "duplicateBanner": "Duplicate Submission",
       "failedBanner": "Submission Failed"
+    },
+    "contact": {
+      "heading": "Evidence Secured",
+      "message": "If this goes to trial, our legal team might need to verify this with you discreetly. Leave an email or phone number (optional).",
+      "placeholder": "Email or phone number",
+      "consent": "I consent to the Privacy Policy and allow the legal team to contact me for trial purposes. My data will be encrypted and will not be shared publicly.",
+      "saveBtn": "Save Contact",
+      "savingBtn": "Saving…",
+      "savedMsg": "Contact saved securely.",
+      "skipBtn": "Skip"
     }
   },
   "caseBuilder": {

@@ -100,7 +100,7 @@ function LocaleSwitcher() {
 }
 
 // ---------------------------------------------------------------------------
-// Upload Zone component
+// Upload Zone
 // ---------------------------------------------------------------------------
 
 function UploadZone({
@@ -166,7 +166,7 @@ function UploadZone({
 }
 
 // ---------------------------------------------------------------------------
-// Skeleton / loading
+// Analyzing skeleton
 // ---------------------------------------------------------------------------
 
 function AnalyzingSkeleton() {
@@ -181,7 +181,7 @@ function AnalyzingSkeleton() {
 }
 
 // ---------------------------------------------------------------------------
-// Review panel
+// Review panel — no wallet field
 // ---------------------------------------------------------------------------
 
 function ReviewPanel({
@@ -190,38 +190,31 @@ function ReviewPanel({
   targetEntity,
   evidenceTier,
   evidenceDate,
-  walletAddress,
   onCategoryChange,
   onEntityChange,
   onTierChange,
   onDateChange,
-  onWalletChange,
   onConfirm,
   onReset,
   confirming,
   t,
-  tc,
 }: {
   draft: DraftAnalysis;
   category: Category;
   targetEntity: string;
   evidenceTier: EvidenceTier;
   evidenceDate: string;
-  walletAddress: string;
   onCategoryChange: (v: Category) => void;
   onEntityChange: (v: string) => void;
   onTierChange: (v: EvidenceTier) => void;
   onDateChange: (v: string) => void;
-  onWalletChange: (v: string) => void;
   onConfirm: () => void;
   onReset: () => void;
   confirming: boolean;
   t: ReturnType<typeof useTranslations<'submit.review'>>;
-  tc: ReturnType<typeof useTranslations<'common'>>;
 }) {
   return (
     <div className="space-y-6">
-      {/* Back link */}
       <button
         onClick={onReset}
         className="text-xs text-slate-500 hover:text-slate-700 transition-colors"
@@ -229,27 +222,21 @@ function ReviewPanel({
         {t('changeFileBtn')}
       </button>
 
-      {/* Irrelevant warning */}
       {!draft.isRelevant && (
         <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
           <p className="text-xs text-amber-700 leading-relaxed">{t('irrelevantWarning')}</p>
         </div>
       )}
 
-      {/* AI summary (read-only) */}
+      {/* AI summary */}
       <div className="bg-white border border-slate-200 rounded-lg p-5 space-y-4 shadow-sm">
         <div>
-          <p className="text-xs text-slate-500 uppercase tracking-widest mb-1.5">
-            {t('summaryLabel')}
-          </p>
+          <p className="text-xs text-slate-500 uppercase tracking-widest mb-1.5">{t('summaryLabel')}</p>
           <p className="text-sm text-slate-700 leading-relaxed">{draft.summary}</p>
         </div>
-
         {draft.missingInformation.length > 0 && (
           <div>
-            <p className="text-xs text-slate-500 uppercase tracking-widest mb-2">
-              {t('missingLabel')}
-            </p>
+            <p className="text-xs text-slate-500 uppercase tracking-widest mb-2">{t('missingLabel')}</p>
             <ul className="space-y-1">
               {draft.missingInformation.map((item, i) => (
                 <li key={i} className="flex items-start gap-2 text-xs text-amber-700">
@@ -264,33 +251,21 @@ function ReviewPanel({
 
       {/* Editable classification */}
       <div className="bg-white border border-slate-200 rounded-lg p-5 space-y-4 shadow-sm">
-        <p className="text-xs font-semibold text-slate-500 uppercase tracking-widest">
-          {t('editableTitle')}
-        </p>
+        <p className="text-xs font-semibold text-slate-500 uppercase tracking-widest">{t('editableTitle')}</p>
 
-        {/* Category */}
         <div className="space-y-1.5">
-          <label className="block text-xs font-medium text-slate-600 uppercase tracking-widest">
-            {t('categoryLabel')}
-          </label>
+          <label className="block text-xs font-medium text-slate-600 uppercase tracking-widest">{t('categoryLabel')}</label>
           <select
             value={category}
             onChange={(e) => onCategoryChange(e.target.value as Category)}
             className="w-full bg-white border border-slate-300 rounded px-3 py-2.5 text-sm text-slate-800 focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-300/50 appearance-none shadow-sm"
           >
-            {CATEGORIES.map((cat) => (
-              <option key={cat} value={cat}>
-                {cat}
-              </option>
-            ))}
+            {CATEGORIES.map((cat) => <option key={cat} value={cat}>{cat}</option>)}
           </select>
         </div>
 
-        {/* Target entity */}
         <div className="space-y-1.5">
-          <label className="block text-xs font-medium text-slate-600 uppercase tracking-widest">
-            {t('entityLabel')}
-          </label>
+          <label className="block text-xs font-medium text-slate-600 uppercase tracking-widest">{t('entityLabel')}</label>
           <input
             type="text"
             value={targetEntity}
@@ -299,35 +274,24 @@ function ReviewPanel({
           />
         </div>
 
-        {/* Evidence tier */}
         <div className="space-y-1.5">
-          <label className="block text-xs font-medium text-slate-600 uppercase tracking-widest">
-            {t('tierLabel')}
-          </label>
+          <label className="block text-xs font-medium text-slate-600 uppercase tracking-widest">{t('tierLabel')}</label>
           <select
             value={evidenceTier}
             onChange={(e) => onTierChange(e.target.value as EvidenceTier)}
             className="w-full bg-white border border-slate-300 rounded px-3 py-2.5 text-sm text-slate-800 focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-300/50 appearance-none shadow-sm"
           >
-            {TIERS.map((tier) => (
-              <option key={tier} value={tier}>
-                {tier}
-              </option>
-            ))}
+            {TIERS.map((tier) => <option key={tier} value={tier}>{tier}</option>)}
           </select>
           <div className="flex items-center gap-1.5 mt-1">
             <span className={`w-2 h-2 rounded-full ${tierDotColor(evidenceTier)}`} />
-            <span className={`text-xs font-medium ${tierColor(evidenceTier).split(' ')[0]}`}>
-              {evidenceTier}
-            </span>
+            <span className={`text-xs font-medium ${tierColor(evidenceTier).split(' ')[0]}`}>{evidenceTier}</span>
           </div>
         </div>
 
-        {/* Evidence date — required */}
         <div className="space-y-1.5">
           <label className="block text-xs font-medium text-slate-600 uppercase tracking-widest">
-            {t('dateLabel')}
-            <span className="ms-1 text-red-500">*</span>
+            {t('dateLabel')}<span className="ms-1 text-red-500">*</span>
           </label>
           <input
             type="date"
@@ -344,26 +308,9 @@ function ReviewPanel({
         </div>
       </div>
 
-      {/* Wallet address */}
-      <div className="space-y-1.5">
-        <label className="block text-xs font-medium text-slate-600 uppercase tracking-widest">
-          {t('walletLabel')}
-        </label>
-        <input
-          type="text"
-          required
-          value={walletAddress}
-          onChange={(e) => onWalletChange(e.target.value)}
-          placeholder="0x…"
-          className="w-full bg-white border border-slate-300 rounded-lg px-4 py-2.5 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-300/50 font-mono shadow-sm"
-        />
-        <p className="text-xs text-slate-400">{t('walletHint')}</p>
-      </div>
-
-      {/* Confirm button */}
       <button
         onClick={onConfirm}
-        disabled={confirming || !walletAddress.trim() || !targetEntity.trim() || !evidenceDate.trim()}
+        disabled={confirming || !targetEntity.trim() || !evidenceDate.trim()}
         className="w-full py-3 rounded-lg text-sm font-semibold bg-blue-600 text-white border border-blue-700 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shadow-sm"
       >
         {confirming ? (
@@ -380,83 +327,175 @@ function ReviewPanel({
 }
 
 // ---------------------------------------------------------------------------
-// Confirmed result
+// Confirmed view with optional contact form
 // ---------------------------------------------------------------------------
 
 function ConfirmedView({
   result,
-  t,
+  tResult,
+  tContact,
 }: {
   result: ConfirmedResult;
-  t: ReturnType<typeof useTranslations<'submit.result'>>;
+  tResult: ReturnType<typeof useTranslations<'submit.result'>>;
+  tContact: ReturnType<typeof useTranslations<'submit.contact'>>;
 }) {
   const { analysis, fileHash, txHash } = result;
+
+  const [contactInfo, setContactInfo] = useState('');
+  const [consentGiven, setConsentGiven] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [contactError, setContactError] = useState<string | null>(null);
+  const [skipped, setSkipped] = useState(false);
+
+  async function handleSaveContact() {
+    setSaving(true);
+    setContactError(null);
+    try {
+      const res = await fetch(apiUrl('/api/evidence/contact'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fileHash, contactInfo, consentGiven }),
+      });
+      if (!res.ok) {
+        const data = (await res.json()) as { message?: string };
+        setContactError(data.message ?? `Error ${res.status}`);
+        return;
+      }
+      setSaved(true);
+    } catch {
+      setContactError('Could not reach the backend.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
-    <div className="bg-white border border-emerald-200 rounded-lg overflow-hidden shadow-sm">
-      <div className="bg-emerald-50 border-b border-emerald-200 px-5 py-3 flex items-center gap-2">
-        <span className="w-2 h-2 rounded-full bg-emerald-500" />
-        <span className="text-sm font-medium text-emerald-700">{t('onChainBanner')}</span>
-      </div>
-
-      <div className="p-5 space-y-5">
-        {/* Badges */}
-        <div className="flex flex-wrap gap-2 items-center">
-          <span className="px-2.5 py-1 rounded text-xs font-medium bg-cyan-50 text-cyan-700 border border-cyan-200">
-            ⚖ {analysis.targetEntity}
-          </span>
-          <span
-            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium border ${tierColor(analysis.evidenceTier)}`}
-          >
-            <span className={`w-1.5 h-1.5 rounded-full ${tierDotColor(analysis.evidenceTier)}`} />
-            {analysis.evidenceTier}
-          </span>
-          <span className="px-2.5 py-1 rounded text-xs font-medium bg-slate-100 text-slate-600 border border-slate-200">
-            {analysis.category}
-          </span>
+    <div className="space-y-6">
+      {/* On-chain success card */}
+      <div className="bg-white border border-emerald-200 rounded-lg overflow-hidden shadow-sm">
+        <div className="bg-emerald-50 border-b border-emerald-200 px-5 py-3 flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full bg-emerald-500" />
+          <span className="text-sm font-medium text-emerald-700">{tResult('onChainBanner')}</span>
         </div>
+        <div className="p-5 space-y-5">
+          <div className="flex flex-wrap gap-2 items-center">
+            <span className="px-2.5 py-1 rounded text-xs font-medium bg-cyan-50 text-cyan-700 border border-cyan-200">
+              ⚖ {analysis.targetEntity}
+            </span>
+            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium border ${tierColor(analysis.evidenceTier)}`}>
+              <span className={`w-1.5 h-1.5 rounded-full ${tierDotColor(analysis.evidenceTier)}`} />
+              {analysis.evidenceTier}
+            </span>
+            <span className="px-2.5 py-1 rounded text-xs font-medium bg-slate-100 text-slate-600 border border-slate-200">
+              {analysis.category}
+            </span>
+          </div>
 
-        {/* Summary */}
-        <div>
-          <p className="text-xs text-slate-500 uppercase tracking-widest mb-1">{t('aiSummary')}</p>
-          <p className="text-sm text-slate-700 leading-relaxed">{analysis.summary}</p>
-        </div>
-
-        {/* Missing info */}
-        {analysis.missingInformation.length > 0 && (
           <div>
-            <p className="text-xs text-slate-500 uppercase tracking-widest mb-2">{t('missingInfo')}</p>
-            <ul className="space-y-1">
-              {analysis.missingInformation.map((item, i) => (
-                <li key={i} className="flex items-start gap-2 text-xs text-amber-700">
-                  <span className="mt-0.5">△</span>
-                  <span>{item}</span>
-                </li>
-              ))}
-            </ul>
+            <p className="text-xs text-slate-500 uppercase tracking-widest mb-1">{tResult('aiSummary')}</p>
+            <p className="text-sm text-slate-700 leading-relaxed">{analysis.summary}</p>
           </div>
-        )}
 
-        {/* On-chain proof */}
-        <div className="border-t border-slate-100 pt-4 space-y-2">
-          <p className="text-xs text-slate-500 uppercase tracking-widest mb-3">{t('onChainProof')}</p>
-          <div className="flex flex-col gap-2">
-            <div className="flex items-start gap-3">
-              <span className="text-xs text-slate-400 w-20 shrink-0 pt-0.5">{t('fileHash')}</span>
-              <span className="font-mono text-xs text-slate-600 break-all">{fileHash}</span>
+          {analysis.missingInformation.length > 0 && (
+            <div>
+              <p className="text-xs text-slate-500 uppercase tracking-widest mb-2">{tResult('missingInfo')}</p>
+              <ul className="space-y-1">
+                {analysis.missingInformation.map((item, i) => (
+                  <li key={i} className="flex items-start gap-2 text-xs text-amber-700">
+                    <span className="mt-0.5">△</span>
+                    <span>{item}</span>
+                  </li>
+                ))}
+              </ul>
             </div>
-            <div className="flex items-start gap-3">
-              <span className="text-xs text-slate-400 w-20 shrink-0 pt-0.5">{t('txHash')}</span>
-              <span className="font-mono text-xs text-emerald-700 break-all">{txHash}</span>
+          )}
+
+          <div className="border-t border-slate-100 pt-4">
+            <p className="text-xs text-slate-500 uppercase tracking-widest mb-3">{tResult('onChainProof')}</p>
+            <div className="flex flex-col gap-2">
+              <div className="flex items-start gap-3">
+                <span className="text-xs text-slate-400 w-20 shrink-0 pt-0.5">{tResult('fileHash')}</span>
+                <span className="font-mono text-xs text-slate-600 break-all">{fileHash}</span>
+              </div>
+              <div className="flex items-start gap-3">
+                <span className="text-xs text-slate-400 w-20 shrink-0 pt-0.5">{tResult('txHash')}</span>
+                <span className="font-mono text-xs text-emerald-700 break-all">{txHash}</span>
+              </div>
             </div>
           </div>
         </div>
       </div>
+
+      {/* Optional contact form — shown unless saved or skipped */}
+      {!saved && !skipped && (
+        <div className="bg-white border border-slate-200 rounded-lg p-5 space-y-4 shadow-sm">
+          <div>
+            <p className="text-sm font-semibold text-slate-800 mb-1">{tContact('heading')}</p>
+            <p className="text-xs text-slate-500 leading-relaxed">{tContact('message')}</p>
+          </div>
+
+          <input
+            type="text"
+            value={contactInfo}
+            onChange={(e) => setContactInfo(e.target.value)}
+            placeholder={tContact('placeholder')}
+            className="w-full bg-white border border-slate-300 rounded px-3 py-2.5 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-300/50 shadow-sm"
+          />
+
+          {/* Consent checkbox */}
+          <label className="flex items-start gap-3 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={consentGiven}
+              onChange={(e) => setConsentGiven(e.target.checked)}
+              className="mt-0.5 w-4 h-4 accent-blue-600 shrink-0"
+            />
+            <span className="text-xs text-slate-600 leading-relaxed">{tContact('consent')}</span>
+          </label>
+
+          {contactError && (
+            <p className="text-xs text-red-600">{contactError}</p>
+          )}
+
+          <div className="flex gap-3">
+            <button
+              onClick={handleSaveContact}
+              disabled={saving || !contactInfo.trim() || !consentGiven}
+              className="flex-1 py-2.5 rounded text-sm font-semibold bg-blue-600 text-white border border-blue-700 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shadow-sm"
+            >
+              {saving ? (
+                <span className="flex items-center justify-center gap-2">
+                  <span className="w-3 h-3 rounded-full border-2 border-white/60 border-t-white animate-spin" />
+                  {tContact('savingBtn')}
+                </span>
+              ) : (
+                tContact('saveBtn')
+              )}
+            </button>
+            <button
+              onClick={() => setSkipped(true)}
+              className="px-4 py-2.5 rounded text-sm font-medium text-slate-500 border border-slate-200 hover:bg-slate-100 transition-colors"
+            >
+              {tContact('skipBtn')}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Saved confirmation */}
+      {saved && (
+        <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-3">
+          <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
+          <p className="text-sm text-emerald-700">{tContact('savedMsg')}</p>
+        </div>
+      )}
     </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Error banner
+// Error / duplicate banners
 // ---------------------------------------------------------------------------
 
 function ErrorBanner({ message, t }: { message: string; t: ReturnType<typeof useTranslations<'submit.result'>> }) {
@@ -493,24 +532,20 @@ export default function SubmitPage() {
   const tUpload = useTranslations('submit.upload');
   const tReview = useTranslations('submit.review');
   const tResult = useTranslations('submit.result');
+  const tContact = useTranslations('submit.contact');
 
   const [phase, setPhase] = useState<Phase>('upload');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [draft, setDraft] = useState<DraftAnalysis | null>(null);
 
-  // Editable classification fields (initialised from draft, user may modify)
   const [editCategory, setEditCategory] = useState<Category>('Side Effect Withholding');
   const [editEntity, setEditEntity] = useState('');
   const [editTier, setEditTier] = useState<EvidenceTier>('Tier 4: Anecdotal');
-  // evidenceDate: pre-filled by AI (YYYY-MM-DD) or empty string when AI returned "Unknown"
   const [editDate, setEditDate] = useState('');
 
-  const [walletAddress, setWalletAddress] = useState('');
   const [confirmedResult, setConfirmedResult] = useState<ConfirmedResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [duplicateHash, setDuplicateHash] = useState<string | null>(null);
-
-  // ---- Handlers -----------------------------------------------------------
 
   function handleFileSelect(file: File) {
     setSelectedFile(file);
@@ -540,7 +575,6 @@ export default function SubmitPage() {
       setEditCategory(analysis.category);
       setEditEntity(analysis.targetEntity);
       setEditTier(analysis.evidenceTier);
-      // Pre-fill date only when AI found a valid YYYY-MM-DD; leave empty for "Unknown"
       setEditDate(analysis.evidenceDate === 'Unknown' ? '' : analysis.evidenceDate);
       setPhase('review');
     } catch {
@@ -566,7 +600,7 @@ export default function SubmitPage() {
     const formData = new FormData();
     formData.append('file', selectedFile);
     formData.append('analysis', JSON.stringify(approvedAnalysis));
-    formData.append('submitterAddress', walletAddress);
+    // No submitterAddress — backend registers anonymously with ZeroAddress
 
     try {
       const res = await fetch(apiUrl('/api/evidence/confirm'), { method: 'POST', body: formData });
@@ -613,11 +647,8 @@ export default function SubmitPage() {
     setConfirmedResult(null);
   }
 
-  // ---- Render -------------------------------------------------------------
-
   return (
     <main className="min-h-screen bg-slate-50">
-      {/* Header */}
       <header className="sticky top-0 z-20 bg-white/95 backdrop-blur border-b border-slate-200 shadow-sm">
         <div className="max-w-3xl mx-auto px-6 h-14 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -641,7 +672,7 @@ export default function SubmitPage() {
 
       <div className="max-w-3xl mx-auto px-6 py-10 space-y-8">
 
-        {/* ── Phase: upload ─────────────────────────────────────────── */}
+        {/* Upload phase */}
         {(phase === 'upload' || phase === 'analyzing') && (
           <>
             <div className="bg-white border border-slate-200 rounded-lg p-5 shadow-sm">
@@ -680,7 +711,7 @@ export default function SubmitPage() {
           </>
         )}
 
-        {/* ── Phase: review / confirming ────────────────────────────── */}
+        {/* Review phase */}
         {(phase === 'review' || phase === 'confirming') && draft && (
           <>
             <div className="bg-white border border-slate-200 rounded-lg p-5 shadow-sm">
@@ -697,31 +728,25 @@ export default function SubmitPage() {
               targetEntity={editEntity}
               evidenceTier={editTier}
               evidenceDate={editDate}
-              walletAddress={walletAddress}
               onCategoryChange={setEditCategory}
               onEntityChange={setEditEntity}
               onTierChange={setEditTier}
               onDateChange={setEditDate}
-              onWalletChange={setWalletAddress}
               onConfirm={handleConfirm}
               onReset={handleReset}
               confirming={phase === 'confirming'}
               t={tReview}
-              tc={tc}
             />
           </>
         )}
 
-        {/* ── Phase: confirmed ──────────────────────────────────────── */}
+        {/* Confirmed phase */}
         {phase === 'confirmed' && confirmedResult && (
           <>
-            <div>
-              <p className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-3">
-                {tResult('title')}
-              </p>
-              <ConfirmedView result={confirmedResult} t={tResult} />
-            </div>
-
+            <p className="text-xs font-semibold text-slate-500 uppercase tracking-widest">
+              {tResult('title')}
+            </p>
+            <ConfirmedView result={confirmedResult} tResult={tResult} tContact={tContact} />
             <button
               onClick={handleReset}
               className="w-full py-2.5 rounded-lg text-xs font-medium text-slate-600 border border-slate-200 hover:bg-slate-100 hover:text-slate-800 transition-colors shadow-sm"

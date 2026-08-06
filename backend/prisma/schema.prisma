@@ -1,0 +1,20 @@
+// Prisma schema for the Glass Fortress Dark Vault.
+// PII is stored here only — never in Pinecone or any AI-accessible layer.
+// Switch datasource to postgresql for production by updating DATABASE_URL.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Whistleblower {
+  id               String   @id @default(uuid())
+  fileHash         String   @unique
+  encryptedContact String
+  consentGiven     Boolean
+  createdAt        DateTime @default(now())
+}

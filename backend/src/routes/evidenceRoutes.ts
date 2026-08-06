@@ -1,9 +1,12 @@
 import { Router, Request, Response } from 'express';
 import multer from 'multer';
 import { z } from 'zod';
+import { ethers } from 'ethers';
 import { IntakeAgent, IntakeOutputSchema } from '../services/IntakeAgent';
 import { Web3Service, DuplicateEvidenceError } from '../services/Web3Service';
 import { VectorStoreService } from '../services/VectorStoreService';
+import { encryptContact } from '../lib/encrypt';
+import { prisma } from '../lib/prisma';
 
 const router = Router();
 
@@ -34,9 +37,15 @@ const SearchQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(20).default(5),
 });
 
+// submitterAddress removed — anonymised to ZeroAddress on-chain
 const ConfirmBodySchema = z.object({
   analysis: z.string().min(1, 'analysis JSON is required'),
-  submitterAddress: z.string().min(1, 'submitterAddress must not be empty'),
+});
+
+const ContactBodySchema = z.object({
+  fileHash: z.string().min(1, 'fileHash is required'),
+  contactInfo: z.string().min(1, 'contactInfo must not be empty'),
+  consentGiven: z.literal(true, { error: 'Consent is required to save contact information.' }),
 });
 
 // ---------------------------------------------------------------------------
@@ -99,8 +108,9 @@ router.post(
 
 // ---------------------------------------------------------------------------
 // POST /api/evidence/confirm
-// Accepts the original file + user-approved analysis JSON + submitterAddress.
-// Hashes the file, registers on-chain, upserts to vector store.
+// Accepts the original file + user-approved analysis JSON.
+// Hashes the file, registers on-chain anonymously (ZeroAddress), upserts to
+// vector store. No submitter identity is required or stored.
 // ---------------------------------------------------------------------------
 
 router.post(
@@ -135,18 +145,14 @@ router.post(
     }
 
     const analysis = analysisParsed.data;
-    const { submitterAddress } = bodyParsed.data;
-
-    // If the AI marked as not relevant, still allow registration but flag it
-    // (the user consciously confirmed — their choice overrides the AI flag)
 
     // Hash the file
     const fileHash = Web3Service.hashFile(req.file.buffer);
 
-    // Register on-chain
+    // Register on-chain anonymously — backend wallet pays gas, ZeroAddress preserves whistleblower privacy
     let txHash: string;
     try {
-      txHash = await getWeb3Service().registerEvidenceHash(fileHash, submitterAddress, analysis.category);
+      txHash = await getWeb3Service().registerEvidenceHash(fileHash, ethers.ZeroAddress, analysis.category);
     } catch (err) {
       if (err instanceof DuplicateEvidenceError) {
         res.status(409).json({
@@ -161,7 +167,7 @@ router.post(
       return;
     }
 
-    // Upsert to vector store (non-fatal)
+    // Upsert to vector store — no PII stored here
     try {
       const vectorStore = await getVectorStore();
       await vectorStore.upsertEvidence(analysis.summary, {
@@ -171,7 +177,6 @@ router.post(
         summary: analysis.summary,
         targetEntity: analysis.targetEntity,
         evidenceDate: analysis.evidenceDate,
-        submitterAddress,
         timestamp: Date.now(),
       });
     } catch (err) {
@@ -186,6 +191,38 @@ router.post(
     });
   },
 );
+
+// ---------------------------------------------------------------------------
+// POST /api/evidence/contact
+// Dark Vault endpoint — stores encrypted whistleblower contact info in SQLite.
+// Pinecone is never touched. Requires explicit consent.
+// ---------------------------------------------------------------------------
+
+router.post('/contact', async (req: Request, res: Response): Promise<void> => {
+  const parsed = ContactBodySchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Invalid request', details: parsed.error.flatten() });
+    return;
+  }
+
+  const { fileHash, contactInfo } = parsed.data;
+
+  try {
+    const encryptedContact = encryptContact(contactInfo);
+    await prisma.whistleblower.upsert({
+      where: { fileHash },
+      update: { encryptedContact, consentGiven: true },
+      create: { fileHash, encryptedContact, consentGiven: true },
+    });
+    res.status(200).json({ saved: true });
+  } catch (err) {
+    console.error('[contact] Dark Vault error:', err instanceof Error ? err.stack : err);
+    res.status(500).json({
+      error: 'Failed to save contact',
+      message: err instanceof Error ? err.message : String(err),
+    });
+  }
+});
 
 // ---------------------------------------------------------------------------
 // GET /api/evidence/timeline?targetEntity=...
