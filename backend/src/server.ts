@@ -8,10 +8,27 @@ const app = express();
 const PORT = process.env['PORT'] ?? 3000;
 
 // ---------------------------------------------------------------------------
-// Middleware
+// CORS — allow configured frontend origin(s) + localhost for dev
 // ---------------------------------------------------------------------------
 
-app.use(cors());
+const allowedOrigins = [
+  process.env['FRONTEND_URL'],          // e.g. https://glass-fortress.vercel.app
+  'http://localhost:3001',              // Next.js dev default
+  'http://localhost:3000',
+].filter(Boolean) as string[];
+
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      // Allow server-to-server requests (no Origin header) and Next.js SSR rewrites
+      if (!origin) return callback(null, true);
+      if (allowedOrigins.includes(origin)) return callback(null, true);
+      callback(new Error(`CORS: origin '${origin}' is not allowed`));
+    },
+    credentials: true,
+  }),
+);
+
 app.use(express.json());
 
 // ---------------------------------------------------------------------------

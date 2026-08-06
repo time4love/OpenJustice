@@ -3,6 +3,7 @@
 import { useState, FormEvent } from 'react';
 import { useTranslations, useLocale } from 'next-intl';
 import { Link, useRouter, usePathname } from '@/i18n/navigation';
+import { apiUrl } from '@/lib/api';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -196,7 +197,7 @@ export default function CaseBuilderPage() {
     setError(null);
 
     try {
-      const res = await fetch('/api/arguments/generate', {
+      const res = await fetch(apiUrl('/api/arguments/generate'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ category, targetEntity }),

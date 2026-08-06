@@ -10,3 +10,9 @@ remappings = [
 ]
 
 # See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options
+
+[rpc_endpoints]
+arbitrum_sepolia = "https://sepolia-rollup.arbitrum.io/rpc"
+base_sepolia     = "https://sepolia.base.org"
+# Override either with an env var holding an Alchemy/Infura URL for higher rate limits:
+# arbitrum_sepolia = "${ARBITRUM_SEPOLIA_RPC_URL}"

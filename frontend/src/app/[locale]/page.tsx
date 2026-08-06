@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, FormEvent } from 'react';
 import { useTranslations, useLocale } from 'next-intl';
 import { Link, useRouter, usePathname } from '@/i18n/navigation';
+import { apiUrl } from '@/lib/api';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -268,7 +269,7 @@ export default function DashboardPage() {
     setError(null);
     try {
       const params = new URLSearchParams({ q, limit: '20' });
-      const res = await fetch(`/api/evidence/search?${params.toString()}`);
+      const res = await fetch(apiUrl(`/api/evidence/search?${params.toString()}`));
       if (!res.ok) {
         const data = (await res.json()) as { message?: string };
         throw new Error(data.message ?? `Search error ${res.status}`);

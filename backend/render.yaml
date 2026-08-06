@@ -1,0 +1,29 @@
+# Render.com deployment configuration for the Glass Fortress backend.
+# Docs: https://render.com/docs/infrastructure-as-code
+
+services:
+  - type: web
+    name: glass-fortress-backend
+    runtime: node
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # Set the following secrets in the Render dashboard (not committed):
+      - key: FRONTEND_URL
+        sync: false   # e.g. https://glass-fortress.vercel.app
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: PINECONE_API_KEY
+        sync: false
+      - key: PINECONE_INDEX
+        sync: false
+      - key: EVIDENCE_REGISTRY_ADDRESS
+        sync: false
+      - key: REGISTRAR_PRIVATE_KEY
+        sync: false
+      - key: RPC_URL
+        sync: false   # e.g. Arbitrum Sepolia RPC URL

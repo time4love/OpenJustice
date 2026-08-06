@@ -3,6 +3,7 @@
 import { useState, useEffect, FormEvent } from 'react';
 import { useTranslations, useLocale } from 'next-intl';
 import { Link, useRouter, usePathname } from '@/i18n/navigation';
+import { apiUrl } from '@/lib/api';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -217,7 +218,7 @@ export default function TimelinePage() {
     try {
       const params = new URLSearchParams();
       if (entity.trim()) params.set('targetEntity', entity.trim());
-      const res = await fetch(`/api/evidence/timeline?${params.toString()}`);
+      const res = await fetch(apiUrl(`/api/evidence/timeline?${params.toString()}`));
       if (!res.ok) {
         const data = (await res.json()) as { message?: string };
         setError(data.message ?? `Error ${res.status}`);

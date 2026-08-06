@@ -3,6 +3,7 @@
 import { useState, useRef, DragEvent, ChangeEvent } from 'react';
 import { useTranslations, useLocale } from 'next-intl';
 import { Link, useRouter, usePathname } from '@/i18n/navigation';
+import { apiUrl } from '@/lib/api';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -525,7 +526,7 @@ export default function SubmitPage() {
     formData.append('file', selectedFile);
 
     try {
-      const res = await fetch('/api/evidence/intake', { method: 'POST', body: formData });
+      const res = await fetch(apiUrl('/api/evidence/intake'), { method: 'POST', body: formData });
       const data = await res.json() as { analysis?: DraftAnalysis; error?: string; message?: string };
 
       if (!res.ok) {
@@ -568,7 +569,7 @@ export default function SubmitPage() {
     formData.append('submitterAddress', walletAddress);
 
     try {
-      const res = await fetch('/api/evidence/confirm', { method: 'POST', body: formData });
+      const res = await fetch(apiUrl('/api/evidence/confirm'), { method: 'POST', body: formData });
       const data = await res.json() as {
         relevant?: boolean;
         fileHash?: string;
