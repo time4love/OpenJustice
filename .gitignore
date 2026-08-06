@@ -1,0 +1,45 @@
+# ============================================================
+# Node.js / Backend
+# ============================================================
+node_modules/
+dist/
+*.tsbuildinfo
+
+# ============================================================
+# Environment & secrets — NEVER commit these
+# ============================================================
+.env
+.env.local
+.env.*.local
+
+# ============================================================
+# Foundry / Solidity
+# ============================================================
+# Compiled artifacts
+out/
+# Forge cache
+cache/
+# Anvil broadcast receipts (contain private key usage records)
+broadcast/
+# Coverage reports
+lcov.info
+coverage_html/
+
+# ============================================================
+# OS & Editor noise
+# ============================================================
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ============================================================
+# Logs & reports
+# ============================================================
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+coverage/

@@ -1,0 +1,122 @@
+import { ethers } from 'ethers';
+import { EVIDENCE_REGISTRY_ABI } from '../abi/EvidenceRegistry.js';
+
+// ---------------------------------------------------------------------------
+// Typed contract errors
+// ---------------------------------------------------------------------------
+
+export class DuplicateEvidenceError extends Error {
+  constructor(public readonly fileHash: string) {
+    super(`Evidence with hash ${fileHash} is already registered on-chain.`);
+    this.name = 'DuplicateEvidenceError';
+  }
+}
+
+export class ContractRevertError extends Error {
+  constructor(
+    public readonly reason: string,
+    public readonly originalError: unknown,
+  ) {
+    super(`Contract reverted: ${reason}`);
+    this.name = 'ContractRevertError';
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Web3Service
+// ---------------------------------------------------------------------------
+
+export class Web3Service {
+  private readonly provider: ethers.JsonRpcProvider;
+  private readonly wallet: ethers.Wallet;
+  private readonly contract: ethers.Contract;
+
+  constructor() {
+    const rpcUrl = process.env['RPC_URL'];
+    const privateKey = process.env['REGISTRAR_PRIVATE_KEY'];
+    const contractAddress = process.env['EVIDENCE_REGISTRY_ADDRESS'];
+
+    if (!rpcUrl) throw new Error('RPC_URL environment variable is not set.');
+    if (!privateKey) throw new Error('REGISTRAR_PRIVATE_KEY environment variable is not set.');
+    if (!contractAddress)
+      throw new Error('EVIDENCE_REGISTRY_ADDRESS environment variable is not set.');
+
+    this.provider = new ethers.JsonRpcProvider(rpcUrl);
+    this.wallet = new ethers.Wallet(privateKey, this.provider);
+    this.contract = new ethers.Contract(contractAddress, EVIDENCE_REGISTRY_ABI, this.wallet);
+  }
+
+  /**
+   * Hash a raw file buffer with SHA-256 and return it as a bytes32 hex string
+   * suitable for passing directly to the smart contract.
+   */
+  static hashFile(fileBuffer: Buffer): string {
+    return ethers.sha256(fileBuffer);
+  }
+
+  /**
+   * Register an evidence hash on-chain via the EvidenceRegistry `submit` function.
+   *
+   * @param fileHash         SHA-256 hash of the evidence file as a 0x-prefixed hex string.
+   * @param submitterAddress Off-chain address of the citizen who submitted the evidence
+   *                         (informational — the on-chain msg.sender is always the REGISTRAR wallet).
+   * @param category         Legal category string (must match the contract's accepted values).
+   * @returns                The transaction hash of the confirmed submission.
+   * @throws DuplicateEvidenceError  If the hash already exists in the registry.
+   * @throws ContractRevertError     For any other contract-level revert.
+   */
+  async registerEvidenceHash(
+    fileHash: string,
+    submitterAddress: string,
+    category: string,
+  ): Promise<string> {
+    // Validate & normalise the hash to bytes32
+    const bytes32Hash = ethers.zeroPadValue(fileHash, 32);
+
+    try {
+      const tx: ethers.TransactionResponse = await (
+        this.contract['submit'] as (
+          fileHash: string,
+          category: string,
+        ) => Promise<ethers.TransactionResponse>
+      )(bytes32Hash, category);
+
+      console.log(
+        `[Web3Service] Submitted evidence for ${submitterAddress} | tx: ${tx.hash} | category: ${category}`,
+      );
+
+      // Wait for one confirmation before returning
+      await tx.wait(1);
+
+      return tx.hash;
+    } catch (err: unknown) {
+      // ethers v6: use the isError type guard to narrow CALL_EXCEPTION errors.
+      // A CALL_EXCEPTION carries a `.revert` object with the custom error name and args.
+      if (ethers.isError(err, 'CALL_EXCEPTION')) {
+        if (err.revert?.name === 'DuplicateEvidence') {
+          throw new DuplicateEvidenceError(fileHash);
+        }
+        throw new ContractRevertError(err.reason ?? err.message, err);
+      }
+
+      // Re-throw unknown errors
+      throw err;
+    }
+  }
+
+  /**
+   * Check whether a hash is already registered without sending a transaction.
+   */
+  async isHashRegistered(fileHash: string): Promise<{ registered: boolean; evidenceId: bigint }> {
+    const bytes32Hash = ethers.zeroPadValue(fileHash, 32);
+    const [registered, evidenceId] = (await (
+      this.contract['isRegistered'] as (fileHash: string) => Promise<[boolean, bigint]>
+    )(bytes32Hash)) as [boolean, bigint];
+    return { registered, evidenceId };
+  }
+
+  /** Total number of evidence records stored on-chain. */
+  async getTotalEvidence(): Promise<bigint> {
+    return (await (this.contract['totalEvidence'] as () => Promise<bigint>)()) as bigint;
+  }
+}
