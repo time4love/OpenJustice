@@ -69,18 +69,21 @@ export const IntakeOutputSchema = z.object({
 
   keyFigures: z
     .array(z.string())
+    .transform((arr) => arr.filter((name) => name.trim().length > 3))
     .describe(
       'Extract ONLY the names of figures DIRECTLY INVOLVED, actively participating, or legally ' +
         'responsible for the events described in the evidence. ' +
         'Do NOT include background names, external politicians, or commentators cited merely for context ' +
         '(e.g., exclude Anthony Fauci or Albert Bourla if they are only mentioned in passing and bear ' +
         'no direct responsibility for the specific act described). ' +
-        'ALL names MUST be transliterated or translated into Hebrew ' +
-        '(e.g., "ד"ר שרון אלרוי-פריס", "פרופ\' מתי ברקוביץ\'", "אלברט בורלה"). ' +
-        'CRITICAL — Full name extraction: When a name is preceded by a title such as "ד"ר" or "פרופ\'", ' +
-        'you MUST output the complete title + full name (e.g., "ד"ר שרון אלרוי-פריס"). ' +
-        'NEVER truncate to just the title or a single letter (e.g., never output "ד" alone). ' +
-        'If the source text is unclear or OCR is messy, reconstruct the full name logically from context. ' +
+        'ALL names MUST be transliterated or translated into Hebrew. ' +
+        'CRITICAL — Titles and gershayim encoding: The Hebrew title "ד״ר" (Doctor) uses the gershayim ' +
+        'character ״ (U+05F4), which looks like a double-quote. To avoid JSON encoding issues, ' +
+        'write it as "דר\' " (with a plain apostrophe) or simply prefix the surname directly. ' +
+        'Examples of correct output: "דר\' שרון אלרואי-פרייס", "פרופ\' מתי ברקוביץ\'", "אלברט בורלה". ' +
+        'NEVER output a bare single letter or title without a full name (never output "ד" alone — ' +
+        'if you see "ד״ר" in the text, the name that follows it MUST be included). ' +
+        'If OCR is messy, reconstruct the full name logically from context. ' +
         'Return an empty array if no directly responsible figures are named.',
     ),
 
@@ -135,7 +138,7 @@ Your task is to classify the evidence strictly according to the provided JSON sc
 - Assign the evidenceTier based solely on the legal strength and provenance of the material.
 - If the content is clearly unrelated to these legal theories, set isRelevant to false.
 - For targetEntity, extract the most specific named entity accountable for the offence. If no entity can be identified, use "Unknown".
-- For keyFigures, extract ONLY the names of individuals DIRECTLY RESPONSIBLE for or actively participating in the offence described. Do NOT include figures merely referenced for context. Transliterate all names into Hebrew (e.g., "ד\"ר שרון אלרוי-פריס", "פרופ' מתי ברקוביץ'"). CRITICAL: When a name has a title ("ד\"ר", "פרופ'"), output the FULL title + full name — never truncate to a single letter or title alone (never output "ד" by itself). If OCR is messy, reconstruct the full name from context. Return an empty array if none qualify.
+- For keyFigures, extract ONLY the names of individuals DIRECTLY RESPONSIBLE for or actively participating in the offence described. Do NOT include figures merely referenced for context. Transliterate all names into Hebrew. CRITICAL — gershayim encoding: The Hebrew character ״ (gershayim, U+05F4) used in titles like "ד״ר" looks like a double-quote and can corrupt JSON strings. Instead, write Doctor as "דר' " and Professor as "פרופ'" (plain apostrophe). Example: "דר' שרון אלרואי-פרייס", "פרופ' מתי ברקוביץ'". NEVER output a bare letter ("ד") — if you see a title in the text, the full name that follows it MUST be included. If OCR is messy, reconstruct the full name from context. Return an empty array if none qualify.
 - For medicalConditions, group symptoms under their major systemic Hebrew category to avoid clutter (e.g., "דלקת שריר הלב", "פגיעות נוירולוגיות", "שיבושים במחזור החודשי"). ALL medical tags MUST be in professional Hebrew. Return an empty array if none are mentioned.
 - For evidenceDate, scan the ENTIRE image/document for any date — letterhead dates, publication dates, email timestamps, article bylines, official report dates, chat message timestamps. Output the most legally relevant date in strict YYYY-MM-DD format. If no date is visible anywhere, output "Unknown".
 - CRITICAL LANGUAGE REQUIREMENT: ALL output strings (summary, missingInformation, rejectionReason, keyFigures, medicalConditions) MUST be written in highly professional Hebrew (עברית משפטית מקצועית). The category, evidenceTier, and evidenceDate fields must remain in English for database consistency.
@@ -165,7 +168,7 @@ Your task is to classify the evidence strictly according to the provided JSON sc
 - Assign the evidenceTier based solely on the legal strength and provenance of the material.
 - If the content is clearly unrelated to these legal theories, set isRelevant to false.
 - For targetEntity, extract the most specific named entity accountable for the offence. If no entity can be identified, use "Unknown".
-- For keyFigures, extract ONLY the names of individuals DIRECTLY RESPONSIBLE for or actively participating in the offence described. Do NOT include figures merely referenced for context. Transliterate all names into Hebrew (e.g., "ד\"ר שרון אלרוי-פריס", "פרופ' מתי ברקוביץ'"). CRITICAL: When a name has a title ("ד\"ר", "פרופ'"), output the FULL title + full name — never truncate to a single letter or title alone (never output "ד" by itself). If OCR is messy, reconstruct the full name from context. Return an empty array if none qualify.
+- For keyFigures, extract ONLY the names of individuals DIRECTLY RESPONSIBLE for or actively participating in the offence described. Do NOT include figures merely referenced for context. Transliterate all names into Hebrew. CRITICAL — gershayim encoding: The Hebrew character ״ (gershayim, U+05F4) used in titles like "ד״ר" looks like a double-quote and can corrupt JSON strings. Instead, write Doctor as "דר' " and Professor as "פרופ'" (plain apostrophe). Example: "דר' שרון אלרואי-פרייס", "פרופ' מתי ברקוביץ'". NEVER output a bare letter ("ד") — if you see a title in the text, the full name that follows it MUST be included. If OCR is messy, reconstruct the full name from context. Return an empty array if none qualify.
 - For medicalConditions, group symptoms under their major systemic Hebrew category to avoid clutter (e.g., "דלקת שריר הלב", "פגיעות נוירולוגיות", "שיבושים במחזור החודשי"). ALL medical tags MUST be in professional Hebrew. Return an empty array if none are mentioned.
 - For evidenceDate, scan the text for any date — article publication dates, bylines, official report dates. Output the most legally relevant date in strict YYYY-MM-DD format. If no date is visible, output "Unknown".
 - CRITICAL LANGUAGE REQUIREMENT: ALL output strings (summary, missingInformation, rejectionReason, keyFigures, medicalConditions) MUST be written in highly professional Hebrew (עברית משפטית מקצועית). The category, evidenceTier, and evidenceDate fields must remain in English for database consistency.
