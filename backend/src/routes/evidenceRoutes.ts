@@ -1,6 +1,3 @@
-import path from 'path';
-import fs from 'fs';
-import crypto from 'crypto';
 import { Router, Request, Response, NextFunction } from 'express';
 import multer from 'multer';
 import { z } from 'zod';
@@ -11,7 +8,7 @@ import { VectorStoreService } from '../services/VectorStoreService';
 import { encryptContact } from '../lib/encrypt';
 import { prisma } from '../lib/prisma';
 import { scrapeUrl } from '../utils/webScraper';
-import { UPLOADS_DIR } from '../server';
+import { StorageService } from '../services/StorageService';
 
 // ---------------------------------------------------------------------------
 // Response types
@@ -91,6 +88,7 @@ const ContactBodySchema = z.object({
 let _intakeAgent: IntakeAgent | null = null;
 let _vectorStorePromise: Promise<VectorStoreService> | null = null;
 let _web3Service: Web3Service | null = null;
+let _storageService: StorageService | null = null;
 
 function getIntakeAgent(): IntakeAgent {
   if (!_intakeAgent) _intakeAgent = new IntakeAgent();
@@ -111,6 +109,11 @@ function getVectorStore(): Promise<VectorStoreService> {
 function getWeb3Service(): Web3Service {
   if (!_web3Service) _web3Service = new Web3Service();
   return _web3Service;
+}
+
+function getStorageService(): StorageService {
+  if (!_storageService) _storageService = new StorageService();
+  return _storageService;
 }
 
 // ---------------------------------------------------------------------------
@@ -214,12 +217,19 @@ router.post(
         }
         fileHash = Web3Service.hashFile(req.file.buffer);
 
-        // Persist the original file to disk so it can be presented as evidence.
-        // Filename: <uuid>.<ext> — uuid prevents collisions, ext preserves type for browser preview.
-        const ext = path.extname(req.file.originalname).toLowerCase() || `.${req.file.mimetype.split('/')[1]}`;
-        const filename = `${crypto.randomUUID()}${ext}`;
-        fs.writeFileSync(path.join(UPLOADS_DIR, filename), req.file.buffer);
-        fileUrl = `/api/uploads/${filename}`;
+        // Upload original file to Supabase Storage before registering on-chain.
+        // If storage fails we abort cleanly — nothing is written to chain or DB.
+        try {
+          fileUrl = await getStorageService().uploadEvidenceFile(
+            req.file.buffer,
+            req.file.originalname,
+            req.file.mimetype,
+          );
+        } catch (err) {
+          console.error('[confirm] StorageService upload error:', err);
+          res.status(500).json({ error: 'File storage failed', message: String(err) });
+          return;
+        }
       } else {
         // --- URL submission path ---
         const urlBodyParsed = UrlConfirmBodySchema.safeParse(req.body);
