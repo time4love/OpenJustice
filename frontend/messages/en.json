@@ -263,7 +263,10 @@
     "fetchingResults": "Loading results…",
     "jobStalled": "The scan appears to have stalled.",
     "resumeBtn": "Resume Process",
-    "resumingBtn": "Resuming…"
+    "resumingBtn": "Resuming…",
+    "flaggedBadge": "AI-Flagged as Significant",
+    "auditBadge": "Version Change",
+    "auditTotal": "{count} total version changes"
   },
   "chat": {
     "greeting": "Hello, I am the Glass Fortress Trust Agent. How can I help you understand our system's security?",

@@ -359,10 +359,7 @@ export class WaybackScraper {
           relatedEvidence,
         );
 
-        // Only persist legally significant findings (saves DB space)
-        if (!analysis.isLegallySignificant) continue;
-
-        // Step 4: Persist the diff to Prisma
+        // Step 4: Persist ALL diffs — AI recommendation stored but never used to censor
         const diffRecord = await prisma.urlVersionDiff.create({
           data: {
             trackedUrlId: trackedUrl.id,
@@ -372,20 +369,23 @@ export class WaybackScraper {
             deletedText: JSON.stringify(analysis.deletedClaims),
             addedText: JSON.stringify(analysis.addedClaims),
             aiSignificance: analysis.legalSignificance,
-            isLegallySignificant: true,
+            isLegallySignificant: analysis.isLegallySignificant,
           },
         });
 
-        results.push({
-          id: diffRecord.id,
-          timestamp: snap.timestamp,
-          beforeDate,
-          date: afterDate,
-          snapshotUrl,
-          deletedClaims: analysis.deletedClaims,
-          addedClaims: analysis.addedClaims,
-          legalSignificance: analysis.legalSignificance,
-        });
+        // Only surface AI-flagged diffs in the legacy sync response (drill-down shows all)
+        if (analysis.isLegallySignificant) {
+          results.push({
+            id: diffRecord.id,
+            timestamp: snap.timestamp,
+            beforeDate,
+            date: afterDate,
+            snapshotUrl,
+            deletedClaims: analysis.deletedClaims,
+            addedClaims: analysis.addedClaims,
+            legalSignificance: analysis.legalSignificance,
+          });
+        }
       } catch (err) {
         console.error(
           `[WaybackScraper] ForensicAgent failed for ${snap.timestamp}:`,
@@ -407,8 +407,8 @@ export class WaybackScraper {
   /**
    * Phase 1 of the job queue flow: create a WaybackScrapeJob record.
    *
-   * Fetches the CDX snapshot list, records all snapshots as PENDING in the job's
-   * `snapshotsList` JSON, and persists the job to Prisma.
+   * Returns immediately — the CDX snapshot list is fetched lazily in processJob.
+   * This keeps the creation endpoint fast so the frontend can start polling at once.
    *
    * If an incomplete (PENDING or IN_PROGRESS) job for this URL already exists,
    * returns that job to allow the client to resume it instead of starting over.
@@ -427,20 +427,14 @@ export class WaybackScraper {
     });
     if (existing) return existing;
 
-    const rawSnapshots = await this.getSnapshotsList(url);
-    const snapshotsList: JobSnapshotEntry[] = rawSnapshots.map((s) => ({
-      timestamp: s.timestamp,
-      digest: s.digest,
-      status: 'PENDING',
-    }));
-
+    // Create the job shell immediately — CDX fetch happens in processJob
     return prisma.waybackScrapeJob.create({
       data: {
         url,
         status: 'PENDING',
-        totalSnapshots: rawSnapshots.length,
+        totalSnapshots: 0,
         processedSnapshots: 0,
-        snapshotsList: JSON.stringify(snapshotsList),
+        snapshotsList: '[]',
       },
     });
   }
@@ -467,7 +461,24 @@ export class WaybackScraper {
       data: { status: 'IN_PROGRESS' },
     });
 
-    const snapshotsList = JSON.parse(job.snapshotsList) as JobSnapshotEntry[];
+    let snapshotsList = JSON.parse(job.snapshotsList) as JobSnapshotEntry[];
+
+    // Lazy CDX fetch — populate snapshots on first processJob call
+    if (snapshotsList.length === 0) {
+      const rawSnapshots = await this.getSnapshotsList(job.url);
+      snapshotsList = rawSnapshots.map((s) => ({
+        timestamp: s.timestamp,
+        digest: s.digest,
+        status: 'PENDING' as const,
+      }));
+      await prisma.waybackScrapeJob.update({
+        where: { id: jobId },
+        data: {
+          totalSnapshots: rawSnapshots.length,
+          snapshotsList: JSON.stringify(snapshotsList),
+        },
+      });
+    }
 
     // Ensure a TrackedUrl record exists (create on first run; reuse on resume)
     let trackedUrlId = job.trackedUrlId;
@@ -550,20 +561,19 @@ export class WaybackScraper {
               relatedEvidence,
             );
 
-            if (analysis.isLegallySignificant) {
-              await prisma.urlVersionDiff.create({
-                data: {
-                  trackedUrlId,
-                  beforeDate,
-                  afterDate,
-                  snapshotUrl,
-                  deletedText: JSON.stringify(analysis.deletedClaims),
-                  addedText: JSON.stringify(analysis.addedClaims),
-                  aiSignificance: analysis.legalSignificance,
-                  isLegallySignificant: true,
-                },
-              });
-            }
+            // Save ALL diffs — AI recommendation stored but never used to censor data
+            await prisma.urlVersionDiff.create({
+              data: {
+                trackedUrlId,
+                beforeDate,
+                afterDate,
+                snapshotUrl,
+                deletedText: JSON.stringify(analysis.deletedClaims),
+                addedText: JSON.stringify(analysis.addedClaims),
+                aiSignificance: analysis.legalSignificance,
+                isLegallySignificant: analysis.isLegallySignificant,
+              },
+            });
           } catch (err) {
             console.error(
               `[WaybackScraper] Job ${jobId} — ForensicAgent failed for ${entry.timestamp}:`,

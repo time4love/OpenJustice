@@ -97,8 +97,9 @@ router.get('/tracked/:id', async (req: Request, res: Response): Promise<void> =>
     }
 
     // Separate queries avoid deep-include TypeScript inference issues
+    // Full audit trail — return ALL diffs, not just AI-flagged ones
     const rawDiffs = await prisma.urlVersionDiff.findMany({
-      where: { trackedUrlId, isLegallySignificant: true },
+      where: { trackedUrlId },
       orderBy: { afterDate: 'asc' },
     });
 
@@ -118,6 +119,7 @@ router.get('/tracked/:id', async (req: Request, res: Response): Promise<void> =>
       deletedClaims: JSON.parse(d.deletedText) as string[],
       addedClaims: JSON.parse(d.addedText) as string[],
       legalSignificance: d.aiSignificance,
+      isLegallySignificant: d.isLegallySignificant,
       promotedEvidence: promotedByDiffId.get(d.id) ?? null,
     }));
 

@@ -33,7 +33,8 @@ export const ForensicOutputSchema = z.object({
     .describe(
       'One item per substantive DELETION. Write each item in highly professional Hebrew as a ' +
         'concise factual statement of what was removed (e.g., "הובטח כי החיסון יישאר בגוף לפחות 3 חודשים"). ' +
-        'Return an empty array if no substantive claims were deleted or if isLegallySignificant is false.',
+        'Always populate this array with the actual text changes — even for cosmetic diffs. ' +
+        'Return an empty array only if there were literally no deletions in the diff.',
     ),
 
   addedClaims: z
@@ -41,18 +42,21 @@ export const ForensicOutputSchema = z.object({
     .describe(
       'One item per substantive ADDITION. Write each item in highly professional Hebrew as a ' +
         'concise factual statement of what was newly introduced (e.g., "נוספה הוראה המחייבת עובדים לקבל חיסון"). ' +
-        'Return an empty array if no substantive claims were added or if isLegallySignificant is false.',
+        'Always populate this array with the actual text changes — even for cosmetic diffs. ' +
+        'Return an empty array only if there were literally no additions in the diff.',
     ),
 
   legalSignificance: z
     .string()
     .describe(
-      'A sharp, professional forensic explanation in highly professional Hebrew (2-4 sentences) of WHY ' +
-        'this change matters legally. CRITICAL: if correlated evidence from the database was provided ' +
+      'A sharp, professional forensic note in highly professional Hebrew (1-4 sentences). ' +
+        'For SIGNIFICANT changes: explain WHY this matters legally. ' +
+        'CRITICAL: if correlated evidence from the database was provided ' +
         'AND a meaningful correlation exists (same entity, overlapping dates, related subject), you MUST ' +
         'explicitly reference it — e.g., "שינוי זה נעשה כ-18 יום לאחר שדו\"ח פנימי של משרד הבריאות ' +
         'הדגיש סיכונים קרדיולוגיים — מה שמציע כי מחיקת האזהרה לא הייתה מקרית." ' +
-        'If isLegallySignificant is false, return an empty string.',
+        'For NON-SIGNIFICANT changes: write a brief 1-sentence note explaining why this change was classified as cosmetic ' +
+        '(e.g., "עדכון קישורי ניווט בלבד ללא שינוי בתוכן הרפואי או הרגולטורי.").',
     ),
 });
 
@@ -90,8 +94,10 @@ YOUR TASK:
 2. If correlated DB evidence exists (same entity, overlapping timeframe, related subject matter), EXPLICITLY cross-reference it in your legalSignificance explanation. The correlation is the most powerful forensic finding — "they silently deleted the mRNA safety claim 3 weeks after this internal report surfaced."
 
 LEGAL SIGNIFICANCE CRITERIA:
-- SIGNIFICANT: Deletion of safety warnings, removal of EUA/emergency-use qualifiers, addition of coercion/mandate language, changes to efficacy statistics, removal of named officials or accountability references, removal of informed consent disclosures.
-- NOT SIGNIFICANT (return isLegallySignificant: false): Navigation updates, formatting changes, broken link fixes, contact page updates, language tweaks with identical meaning, unrelated page sections (budget, tenders, press releases about unrelated topics).
+- SIGNIFICANT (isLegallySignificant: true): Deletion of safety warnings or biological safety promises (e.g., claims about mRNA remaining in the body for a limited period, immune system effects), removal of EUA/emergency-use qualifiers, addition of coercion/mandate language, silent changes to efficacy or adverse-event statistics, removal of named officials or accountability references, removal of informed consent disclosures, deletion of adverse event reporting links, removal of contraindications or risk disclosures, alterations that downplay or conceal known side effects.
+- NOT SIGNIFICANT (isLegallySignificant: false): Navigation updates, formatting changes, broken link fixes, contact page updates, language tweaks with identical meaning, unrelated page sections (budget, tenders, press releases about unrelated topics).
+
+IMPORTANT: Err on the side of significance. A deleted safety promise that seems minor may be the most critical piece of evidence in a class-action. When in doubt about a biological/medical claim being removed, flag it as significant.
 
 LANGUAGE RULES:
 - deletedClaims and addedClaims: concise factual statements in highly professional Hebrew
