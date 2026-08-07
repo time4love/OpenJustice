@@ -197,6 +197,14 @@ function computeNextFromDate(snapshotsListJson: string, totalSnapshots: number):
   }
 }
 
+/** Thrown when a scan is cancelled mid-flight so runFullScan exits cleanly. */
+class ScanCancelledError extends Error {
+  constructor(trackedUrlId: string) {
+    super(`Scan cancelled: ${trackedUrlId}`);
+    this.name = 'ScanCancelledError';
+  }
+}
+
 // ---------------------------------------------------------------------------
 // WaybackScraper
 // ---------------------------------------------------------------------------
@@ -205,9 +213,20 @@ export class WaybackScraper {
   private readonly forensicAgent: ForensicAgent;
   /** In-memory guard preventing concurrent runFullScan calls for the same TrackedUrl. */
   private readonly _runningScanIds = new Set<string>();
+  /** TrackedUrl IDs that have been cancelled — processJob checks this and aborts. */
+  private readonly _cancelledScanIds = new Set<string>();
 
   constructor() {
     this.forensicAgent = new ForensicAgent();
+  }
+
+  /**
+   * Signal a running scan to stop at its next checkpoint.
+   * Called by the delete handler so the scan stops creating new DB records
+   * before the deletion begins.
+   */
+  cancelScan(trackedUrlId: string): void {
+    this._cancelledScanIds.add(trackedUrlId);
   }
 
   /**
@@ -610,6 +629,11 @@ export class WaybackScraper {
     for (let i = 0; i < snapshotsList.length; i++) {
       const entry = snapshotsList[i];
 
+      // Cancellation checkpoint — throw so runFullScan exits cleanly without marking FAILED
+      if (trackedUrlId && this._cancelledScanIds.has(trackedUrlId)) {
+        throw new ScanCancelledError(trackedUrlId);
+      }
+
       if (entry.status === 'DONE') {
         try {
           previousText = await this.scrapeSnapshot(job.url, entry.timestamp);
@@ -839,15 +863,21 @@ export class WaybackScraper {
         // from this newly-COMPLETED job, and create the following batch.
       }
     } catch (err) {
-      console.error(
-        `[WaybackScraper] runFullScan error for ${trackedUrlId}:`,
-        err instanceof Error ? err.stack : err,
-      );
-      await prisma.trackedUrl
-        .update({ where: { id: trackedUrlId }, data: { status: 'FAILED' } })
-        .catch(() => {});
+      if (err instanceof ScanCancelledError) {
+        // Clean exit — TrackedUrl is being deleted, do nothing
+        console.log(`[WaybackScraper] runFullScan for ${trackedUrlId} stopped by cancellation.`);
+      } else {
+        console.error(
+          `[WaybackScraper] runFullScan error for ${trackedUrlId}:`,
+          err instanceof Error ? err.stack : err,
+        );
+        await prisma.trackedUrl
+          .update({ where: { id: trackedUrlId }, data: { status: 'FAILED' } })
+          .catch(() => {});
+      }
     } finally {
       this._runningScanIds.delete(trackedUrlId);
+      this._cancelledScanIds.delete(trackedUrlId);
     }
   }
 }

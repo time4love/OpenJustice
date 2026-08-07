@@ -309,15 +309,36 @@ router.delete('/tracked/:id', async (req: Request, res: Response): Promise<void>
       return;
     }
 
+    // Signal any running scan to stop creating new records
+    getWaybackScraper().cancelScan(trackedUrlId);
+
     // Unlink Evidence records (keep them — they are on-chain)
     await prisma.evidence.updateMany({
       where: { urlVersionDiff: { trackedUrlId } },
       data: { urlVersionDiffId: null },
     });
 
-    await prisma.urlVersionDiff.deleteMany({ where: { trackedUrlId } });
-    await prisma.waybackScrapeJob.deleteMany({ where: { trackedUrlId } });
-    await prisma.trackedUrl.delete({ where: { id: trackedUrlId } });
+    // Delete children then parent with retry: a concurrent scan may still be inserting
+    // UrlVersionDiff records during the first attempt. Retrying after a brief delay lets the
+    // cancellation signal take effect so the scan stops writing before the next attempt.
+    let deleted = false;
+    let lastErr: unknown;
+    for (let attempt = 0; attempt <= 3 && !deleted; attempt++) {
+      if (attempt > 0) await new Promise((r) => setTimeout(r, 2_000));
+      try {
+        await prisma.urlVersionDiff.deleteMany({ where: { trackedUrlId } });
+        await prisma.waybackScrapeJob.deleteMany({ where: { trackedUrlId } });
+        await prisma.trackedUrl.delete({ where: { id: trackedUrlId } });
+        deleted = true;
+      } catch (err) {
+        lastErr = err;
+        // Only retry on FK constraint violations (P2003 = concurrent scan still writing)
+        const isFKError = err instanceof Error && 'code' in err && err.code === 'P2003';
+        if (!isFKError) throw err;
+        console.warn(`[forensics/delete] FK constraint on attempt ${attempt + 1}, retrying…`);
+      }
+    }
+    if (!deleted) throw lastErr;
 
     res.status(200).json({ deleted: true });
   } catch (err) {
