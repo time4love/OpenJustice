@@ -15,6 +15,7 @@ import { scrapeUrl } from '../utils/webScraper';
 
 interface EvidenceRecord {
   fileHash: string;
+  evidenceRole: string;
   category: string;
   tier: string;
   evidencePerspective?: string | null;
@@ -257,6 +258,7 @@ router.post(
       await prisma.evidence.upsert({
         where: { fileHash },
         update: {
+          evidenceRole: analysis.evidenceRole,
           category: analysis.category,
           targetEntity: analysis.targetEntity,
           evidenceTier: analysis.evidenceTier,
@@ -269,6 +271,7 @@ router.post(
         },
         create: {
           fileHash,
+          evidenceRole: analysis.evidenceRole,
           category: analysis.category,
           targetEntity: analysis.targetEntity,
           evidenceTier: analysis.evidenceTier,
@@ -360,6 +363,7 @@ router.get('/timeline', async (req: Request, res: Response): Promise<void> => {
       content: r.summary,
       metadata: {
         fileHash: r.fileHash,
+        evidenceRole: r.evidenceRole,
         category: r.category,
         tier: r.evidenceTier,
         evidencePerspective: r.evidencePerspective,
@@ -439,6 +443,7 @@ router.get('/search', async (req: Request, res: Response): Promise<void> => {
           score: r.score,
           metadata: {
             fileHash: row.fileHash,
+            evidenceRole: row.evidenceRole,
             category: row.category,
             tier: row.evidenceTier,
             evidencePerspective: row.evidencePerspective,

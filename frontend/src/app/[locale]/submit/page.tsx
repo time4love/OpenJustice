@@ -9,7 +9,8 @@ import { apiUrl } from '@/lib/api';
 // Types
 // ---------------------------------------------------------------------------
 
-type Category = 'Side Effect Withholding' | 'Regulatory Misleading' | 'Coercion' | 'Other';
+type Category = 'Side Effect Withholding' | 'Regulatory Misleading' | 'Coercion' | 'Other' | 'Factual Baseline';
+type EvidenceRole = 'Incriminating' | 'ContextAnchor';
 
 type EvidenceTier =
   | 'Tier 1: Smoking Gun'
@@ -22,6 +23,7 @@ const CATEGORIES: Category[] = [
   'Regulatory Misleading',
   'Coercion',
   'Other',
+  'Factual Baseline',
 ];
 
 type Phase = 'upload' | 'analyzing' | 'scanning' | 'review' | 'confirming' | 'confirmed';
@@ -30,6 +32,7 @@ type InputMode = 'file' | 'url';
 type EvidencePerspective = 'Internal Knowledge' | 'Public Statement' | 'Citizen Experience';
 
 interface DraftAnalysis {
+  evidenceRole: EvidenceRole;
   isRelevant: boolean;
   category: Category;
   summary: string;
@@ -271,7 +274,18 @@ function ReviewPanel({
       {/* AI summary */}
       <div className="bg-white border border-slate-200 rounded-lg p-5 space-y-4 shadow-sm">
         <div>
-          <p className="text-xs text-slate-500 uppercase tracking-widest mb-1.5">{t('summaryLabel')}</p>
+          <div className="flex items-center justify-between mb-1.5">
+            <p className="text-xs text-slate-500 uppercase tracking-widest">{t('summaryLabel')}</p>
+            {draft.evidenceRole && (
+              <span className={`px-2 py-0.5 rounded text-xs font-semibold border ${
+                draft.evidenceRole === 'Incriminating'
+                  ? 'bg-red-50 text-red-700 border-red-200'
+                  : 'bg-slate-100 text-slate-600 border-slate-200'
+              }`}>
+                {draft.evidenceRole === 'Incriminating' ? t('roleIncriminating') : t('roleContextAnchor')}
+              </span>
+            )}
+          </div>
           <p className="text-sm text-slate-700 leading-relaxed">{draft.summary}</p>
         </div>
 
@@ -446,6 +460,15 @@ function ConfirmedView({
             <span className="px-2.5 py-1 rounded text-xs font-medium bg-slate-100 text-slate-600 border border-slate-200">
               {analysis.category}
             </span>
+            {analysis.evidenceRole && (
+              <span className={`px-2.5 py-1 rounded text-xs font-medium border ${
+                analysis.evidenceRole === 'Incriminating'
+                  ? 'bg-red-50 text-red-700 border-red-200'
+                  : 'bg-slate-100 text-slate-600 border-slate-200'
+              }`}>
+                {analysis.evidenceRole === 'Incriminating' ? tResult('roleIncriminating') : tResult('roleContextAnchor')}
+              </span>
+            )}
           </div>
 
           <div>

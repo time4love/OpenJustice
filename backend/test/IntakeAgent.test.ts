@@ -31,6 +31,7 @@ function getMockInvoke(agent: IntakeAgent): jest.Mock {
 // ---------------------------------------------------------------------------
 
 const SMOKING_GUN_RESPONSE = {
+  evidenceRole: 'Incriminating' as const,
   isRelevant: true,
   category: 'Side Effect Withholding' as const,
   summary:
@@ -48,6 +49,7 @@ const SMOKING_GUN_RESPONSE = {
 };
 
 const ANECDOTAL_RESPONSE = {
+  evidenceRole: 'Incriminating' as const,
   isRelevant: true,
   category: 'Coercion' as const,
   summary: 'פוסט ברשת חברתית מתאר לחץ מצד מעסיק להתחסן. אין תיעוד נוסף או פרטים מזהים.',
@@ -63,6 +65,7 @@ const ANECDOTAL_RESPONSE = {
 };
 
 const MATERIAL_RESPONSE = {
+  evidenceRole: 'Incriminating' as const,
   isRelevant: true,
   category: 'Regulatory Misleading' as const,
   summary:
@@ -79,6 +82,7 @@ const MATERIAL_RESPONSE = {
 };
 
 const IRRELEVANT_RESPONSE = {
+  evidenceRole: 'Incriminating' as const,
   isRelevant: false,
   category: 'Other' as const,
   summary: 'הטקסט שהוגש הוא ביקורת מסעדה ואינו רלוונטי לתביעה.',
@@ -96,6 +100,7 @@ const IRRELEVANT_RESPONSE = {
 };
 
 const OPINION_PIECE_RESPONSE = {
+  evidenceRole: 'Incriminating' as const,
   isRelevant: false,
   category: 'Other' as const,
   summary: 'מאמר דעה הקורא לאחריות ממשלתית ללא ראיות עובדתיות ספציפיות.',
@@ -110,6 +115,23 @@ const OPINION_PIECE_RESPONSE = {
   medicalConditions: [],
   rejectionReason:
     'המאמר מהווה פרשנות עיתונאית ודעה אישית בלבד, ואינו מכיל ראיות עובדתיות ישירות הנדרשות לבית המשפט.',
+};
+
+const CONTEXT_ANCHOR_RESPONSE = {
+  evidenceRole: 'ContextAnchor' as const,
+  isRelevant: true,
+  category: 'Factual Baseline' as const,
+  summary:
+    'הודעת ה-FDA מיום 23.08.2021 מאשרת כי אישור ה-BLA המלא ניתן לחיסון רק במועד זה.',
+  missingInformation: [],
+  targetEntity: 'FDA',
+  evidencePerspective: 'Public Statement' as const,
+  tierReasoning:
+    'מסמך רשמי ופומבי של רגולטור — עוגן עובדתי ברמת דרגה 2.',
+  evidenceTier: EVIDENCE_TIER.MATERIAL,
+  evidenceDate: '2021-08-23',
+  keyFigures: [],
+  medicalConditions: [],
 };
 
 const TEST_FILE_BUFFER = Buffer.from('fake-image-content');
@@ -286,6 +308,14 @@ describe('IntakeAgent', () => {
       expect(result.evidencePerspective).toBe('Internal Knowledge');
     });
 
+    it('returns evidenceRole=ContextAnchor for a factual baseline document', async () => {
+      getMockInvoke(agent).mockResolvedValueOnce(CONTEXT_ANCHOR_RESPONSE);
+      const result = await agent.analyzeEvidence(TEST_FILE_BUFFER, TEST_MIME_JPEG);
+      expect(result.evidenceRole).toBe('ContextAnchor');
+      expect(result.category).toBe('Factual Baseline');
+      expect(result.isRelevant).toBe(true);
+    });
+
     // rejectionReason
     it('accepts a response with rejectionReason populated when isRelevant is false', () => {
       expect(() => IntakeOutputSchema.parse(IRRELEVANT_RESPONSE)).not.toThrow();
@@ -304,6 +334,31 @@ describe('IntakeAgent', () => {
       expect(() =>
         IntakeOutputSchema.parse({ ...IRRELEVANT_RESPONSE, rejectionReason: 42 }),
       ).toThrow();
+    });
+
+    // evidenceRole
+    it('accepts a valid ContextAnchor response', () => {
+      expect(() => IntakeOutputSchema.parse(CONTEXT_ANCHOR_RESPONSE)).not.toThrow();
+    });
+
+    it('accepts both valid evidenceRole values', () => {
+      expect(() =>
+        IntakeOutputSchema.parse({ ...SMOKING_GUN_RESPONSE, evidenceRole: 'Incriminating' }),
+      ).not.toThrow();
+      expect(() =>
+        IntakeOutputSchema.parse({ ...CONTEXT_ANCHOR_RESPONSE, evidenceRole: 'ContextAnchor' }),
+      ).not.toThrow();
+    });
+
+    it('rejects an invalid evidenceRole value', () => {
+      expect(() =>
+        IntakeOutputSchema.parse({ ...SMOKING_GUN_RESPONSE, evidenceRole: 'Neutral' }),
+      ).toThrow();
+    });
+
+    it('rejects a missing evidenceRole field', () => {
+      const { evidenceRole: _removed, ...invalid } = SMOKING_GUN_RESPONSE;
+      expect(() => IntakeOutputSchema.parse(invalid)).toThrow();
     });
   });
 

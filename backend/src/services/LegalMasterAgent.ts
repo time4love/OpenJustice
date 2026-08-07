@@ -38,16 +38,18 @@ export type ArgumentOutput = z.infer<typeof ArgumentOutputSchema>;
 
 const SYSTEM_PROMPT = `You are a Senior Class-Action Litigator preparing a formal legal brief against state authorities and pharmaceutical entities regarding Covid-19 policy failures.
 
-You will be provided with a JSON array of evidence items. Each item includes a summary, tier, category, targetEntity, and fileHash.
+You will be provided with a JSON array of evidence items. Each item has a role — either "Incriminating" or "ContextAnchor" — along with summary, tier, category, targetEntity, and fileHash.
 
 Your task:
 1. Draft a compelling, formal legal argument section against the specified target entity.
 2. Base your argument EXCLUSIVELY on the evidence provided — do not invent facts, laws, or citations.
 3. Cite specific evidence fileHashes in square brackets within the draftedText, e.g. [0xabc...def].
 4. The draftedText should read as a formal legal brief section — structured, professional, and persuasive.
-5. Prioritise Tier 1 (Smoking Gun) and Tier 2 (Material) evidence as primary citations.
-6. Populate citedHashes with every fileHash you reference in the text.
-7. CRITICAL LANGUAGE REQUIREMENT: You MUST draft the entire legal argument — title, legalTheory, and draftedText — in highly professional, formal Hebrew legal terminology (עברית משפטית תקנית). The argument must read as a proper Israeli legal pleading document.`;
+5. Use "Incriminating" evidence to prove how the target entity violated the law.
+6. Use "ContextAnchor" evidence strictly to establish the factual or regulatory baseline (e.g. "As of [date], FDA had only granted EUA — not full BLA approval [hash]"), then show how the defendant's conduct violated that known baseline.
+7. Prioritise Tier 1 (Smoking Gun) and Tier 2 (Material) Incriminating evidence as primary citations.
+8. Populate citedHashes with every fileHash you reference in the text.
+9. CRITICAL LANGUAGE REQUIREMENT: You MUST draft the entire legal argument — title, legalTheory, and draftedText — in highly professional, formal Hebrew legal terminology (עברית משפטית תקנית). The argument must read as a proper Israeli legal pleading document.`;
 
 // Tier sort order — lower number = higher priority
 const TIER_PRIORITY: Record<string, number> = {
@@ -90,15 +92,17 @@ export class LegalMasterAgent {
     const vectorResults = await this.vectorStore.searchSimilarEvidence(query, 20);
     const candidateHashes = vectorResults.map((r) => r.fileHash);
 
-    // 2. Enrich from Prisma with strict filter: category AND targetEntity
+    // 2. Enrich from Prisma — strict filter: Incriminating only, category AND targetEntity.
+    //    ContextAnchor evidence (Factual Baseline) is excluded here; it's used for timeline
+    //    context, not as direct offense evidence in argument building.
     let records = await prisma.evidence.findMany({
-      where: { fileHash: { in: candidateHashes }, category, targetEntity },
+      where: { fileHash: { in: candidateHashes }, evidenceRole: 'Incriminating', category, targetEntity },
     });
 
-    // 3. Fallback: category only
+    // 3. Fallback: Incriminating + category only
     if (records.length === 0) {
       records = await prisma.evidence.findMany({
-        where: { fileHash: { in: candidateHashes }, category },
+        where: { fileHash: { in: candidateHashes }, evidenceRole: 'Incriminating', category },
       });
     }
 
@@ -117,6 +121,7 @@ export class LegalMasterAgent {
     const evidenceJson = JSON.stringify(
       sorted.map((e) => ({
         fileHash: e.fileHash,
+        role: e.evidenceRole,
         tier: e.evidenceTier,
         category: e.category,
         targetEntity: e.targetEntity,

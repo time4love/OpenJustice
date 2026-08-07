@@ -25,6 +25,7 @@ model Whistleblower {
 model Evidence {
   id                  String   @id @default(uuid())
   fileHash            String   @unique
+  evidenceRole        String   @default("Incriminating")
   category            String
   targetEntity        String
   evidenceTier        String

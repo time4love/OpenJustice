@@ -11,8 +11,11 @@ import { apiUrl } from '@/lib/api';
 
 type EvidencePerspective = 'Internal Knowledge' | 'Public Statement' | 'Citizen Experience';
 
+type EvidenceRole = 'Incriminating' | 'ContextAnchor';
+
 interface EvidenceMetadata {
   fileHash: string;
+  evidenceRole?: EvidenceRole;
   category: string;
   tier: string;
   tierReasoning?: string;
@@ -68,8 +71,8 @@ const FALLBACK_STYLES = {
   header: 'bg-slate-50 border-slate-100',
 };
 
-function perspectiveStyles(p?: string) {
-  return (p && PERSPECTIVE_STYLES[p as EvidencePerspective]) ?? FALLBACK_STYLES;
+function perspectiveStyles(p?: string): { dot: string; badge: string; border: string; header: string } {
+  return PERSPECTIVE_STYLES[p as EvidencePerspective] ?? FALLBACK_STYLES;
 }
 
 function formatHash(hash: string): string {
@@ -114,6 +117,8 @@ function TimelineNode({
   keyFiguresLabel,
   medicalContextLabel,
   perspectiveLabel,
+  roleIncriminatingLabel,
+  roleContextAnchorLabel,
 }: {
   record: TimelineRecord;
   index: number;
@@ -121,6 +126,8 @@ function TimelineNode({
   keyFiguresLabel: string;
   medicalContextLabel: string;
   perspectiveLabel: string;
+  roleIncriminatingLabel: string;
+  roleContextAnchorLabel: string;
 }) {
   const { metadata } = record;
   const styles = perspectiveStyles(metadata.evidencePerspective);
@@ -155,7 +162,18 @@ function TimelineNode({
                 {perspectiveLabel}
               </span>
             )}
-            <span className="text-xs text-slate-400 truncate">{metadata.category}</span>
+            {metadata.evidenceRole && (
+              <span className={`shrink-0 text-xs font-semibold px-2 py-0.5 rounded border ${
+                metadata.evidenceRole === 'Incriminating'
+                  ? 'bg-red-50 text-red-600 border-red-200'
+                  : 'bg-slate-100 text-slate-500 border-slate-200'
+              }`}>
+                {metadata.evidenceRole === 'Incriminating' ? roleIncriminatingLabel : roleContextAnchorLabel}
+              </span>
+            )}
+            {metadata.category && metadata.category !== 'Factual Baseline' && (
+              <span className="text-xs text-slate-400 truncate">{metadata.category}</span>
+            )}
           </div>
           <span className="text-xs text-slate-300 font-mono shrink-0">#{index + 1}</span>
         </div>
@@ -217,6 +235,8 @@ function SingleTimeline({
   keyFiguresLabel,
   medicalContextLabel,
   getPerspectiveLabel,
+  roleIncriminatingLabel,
+  roleContextAnchorLabel,
   spineOffset = 'calc(7rem + 6px)',
 }: {
   records: TimelineRecord[];
@@ -224,6 +244,8 @@ function SingleTimeline({
   keyFiguresLabel: string;
   medicalContextLabel: string;
   getPerspectiveLabel: (p?: string) => string;
+  roleIncriminatingLabel: string;
+  roleContextAnchorLabel: string;
   spineOffset?: string;
 }) {
   return (
@@ -242,6 +264,8 @@ function SingleTimeline({
             keyFiguresLabel={keyFiguresLabel}
             medicalContextLabel={medicalContextLabel}
             perspectiveLabel={getPerspectiveLabel(record.metadata.evidencePerspective)}
+            roleIncriminatingLabel={roleIncriminatingLabel}
+            roleContextAnchorLabel={roleContextAnchorLabel}
           />
         ))}
       </div>
@@ -262,6 +286,8 @@ function ContrastTimeline({
   keyFiguresLabel,
   medicalContextLabel,
   getPerspectiveLabel,
+  roleIncriminatingLabel,
+  roleContextAnchorLabel,
   emptyContrast,
   emptyContrastSub,
 }: {
@@ -273,6 +299,8 @@ function ContrastTimeline({
   keyFiguresLabel: string;
   medicalContextLabel: string;
   getPerspectiveLabel: (p?: string) => string;
+  roleIncriminatingLabel: string;
+  roleContextAnchorLabel: string;
   emptyContrast: string;
   emptyContrastSub: string;
 }) {
@@ -304,6 +332,8 @@ function ContrastTimeline({
             keyFiguresLabel={keyFiguresLabel}
             medicalContextLabel={medicalContextLabel}
             getPerspectiveLabel={getPerspectiveLabel}
+            roleIncriminatingLabel={roleIncriminatingLabel}
+            roleContextAnchorLabel={roleContextAnchorLabel}
             spineOffset="calc(7rem + 6px)"
           />
         )}
@@ -325,6 +355,8 @@ function ContrastTimeline({
             keyFiguresLabel={keyFiguresLabel}
             medicalContextLabel={medicalContextLabel}
             getPerspectiveLabel={getPerspectiveLabel}
+            roleIncriminatingLabel={roleIncriminatingLabel}
+            roleContextAnchorLabel={roleContextAnchorLabel}
             spineOffset="calc(7rem + 6px)"
           />
         )}
@@ -602,6 +634,8 @@ export default function TimelinePage() {
                 keyFiguresLabel={t('keyFiguresLabel')}
                 medicalContextLabel={t('medicalContextLabel')}
                 getPerspectiveLabel={getPerspectiveLabel}
+                roleIncriminatingLabel={t('roleIncriminating')}
+                roleContextAnchorLabel={t('roleContextAnchor')}
                 emptyContrast={t('emptyContrast')}
                 emptyContrastSub={t('emptyContrastSub')}
               />
@@ -613,6 +647,8 @@ export default function TimelinePage() {
                   keyFiguresLabel={t('keyFiguresLabel')}
                   medicalContextLabel={t('medicalContextLabel')}
                   getPerspectiveLabel={getPerspectiveLabel}
+                  roleIncriminatingLabel={t('roleIncriminating')}
+                  roleContextAnchorLabel={t('roleContextAnchor')}
                 />
               )
             )}

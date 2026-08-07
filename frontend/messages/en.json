@@ -64,7 +64,10 @@
       "medicalContextLabel": "Medical Context",
       "editableTitle": "Classification",
       "categoryLabel": "Legal Category",
-      "entityLabel": "Target Entity",
+      "entityLabel": "Source / Involved Entity",
+      "evidenceRoleLabel": "Evidence Role",
+      "roleIncriminating": "Incriminating Evidence",
+      "roleContextAnchor": "Factual Baseline / Timeline Anchor",
       "tierLabel": "Evidence Tier",
       "tierReasoningLabel": "Tier Reasoning:",
       "dateLabel": "Evidence Date",
@@ -87,6 +90,9 @@
       "keyFiguresLabel": "Key Figures",
       "medicalContextLabel": "Medical Context",
       "tierReasoningLabel": "Tier Reasoning:",
+      "evidenceRoleLabel": "Evidence Role",
+      "roleIncriminating": "Incriminating Evidence",
+      "roleContextAnchor": "Factual Baseline / Timeline Anchor",
       "duplicateBanner": "Duplicate Evidence — already registered",
       "failedBanner": "Submission Failed"
     },
@@ -160,7 +166,9 @@
     "contrastLeft": "What They Knew",
     "contrastRight": "What They Said",
     "emptyContrast": "No contradiction data yet.",
-    "emptyContrastSub": "Submit Internal Knowledge and Public Statement evidence to reveal discrepancies."
+    "emptyContrastSub": "Submit Internal Knowledge and Public Statement evidence to reveal discrepancies.",
+    "roleContextAnchor": "Factual Anchor",
+    "roleIncriminating": "Incriminating"
   },
   "about": {
     "badge": "Open Source Project · Full Transparency",

@@ -20,15 +20,29 @@ export type EvidenceTier = (typeof EVIDENCE_TIER)[keyof typeof EVIDENCE_TIER];
 // ---------------------------------------------------------------------------
 
 export const IntakeOutputSchema = z.object({
+  evidenceRole: z
+    .enum(['Incriminating', 'ContextAnchor'])
+    .describe(
+      'The fundamental role of this document in the legal case. ' +
+        '"Incriminating" — the document directly shows a state or corporate actor concealing, coercing, or misleading. ' +
+        '"ContextAnchor" — a neutral, official document (e.g. FDA/WHO announcement, scientific publication) that establishes a verifiable fact, date, or baseline against which incriminating conduct can be measured.',
+    ),
+
   isRelevant: z
     .boolean()
     .describe(
-      'Whether the submitted content contains evidence relevant to the Covid-19 policy lawsuit.',
+      'Whether the submitted content is relevant to the Covid-19 policy lawsuit. ' +
+        'Set true for BOTH Incriminating evidence AND ContextAnchor documents that establish a factual baseline (e.g. regulatory approval dates, official announcements, scientific consensus at a specific time). ' +
+        'Set false only for content with zero legal value: memes, satire, unrelated topics, vague political opinion.',
     ),
 
   category: z
-    .enum(['Side Effect Withholding', 'Regulatory Misleading', 'Coercion', 'Other'])
-    .describe('The legal category that best describes the nature of this evidence.'),
+    .enum(['Side Effect Withholding', 'Regulatory Misleading', 'Coercion', 'Other', 'Factual Baseline'])
+    .describe(
+      'The legal category of this evidence. ' +
+        'For Incriminating evidence: choose the offense category that best fits. ' +
+        'For ContextAnchor evidence: always use "Factual Baseline".',
+    ),
 
   summary: z
     .string()
@@ -48,9 +62,10 @@ export const IntakeOutputSchema = z.object({
   targetEntity: z
     .string()
     .describe(
-      'The specific entity, official, or organisation responsible for the offence described in the evidence ' +
-        '(e.g. "Ministry of Health", "FDA", "Pfizer", "Employer", "HMO", "Specific Politician Name"). ' +
-        'Extract directly from the evidence; do not invent.',
+      'The primary entity involved in this document. ' +
+        'For Incriminating evidence: the entity responsible for the offence (e.g. "Ministry of Health", "Pfizer", "HMO"). ' +
+        'For ContextAnchor evidence: the organisation that issued or published the document (e.g. "FDA", "WHO", "CDC"). ' +
+        'Extract directly from the evidence; do not invent. If no entity can be identified, use "Unknown".',
     ),
 
   evidencePerspective: z
@@ -182,7 +197,11 @@ assertIntakeSchemaCompatibility();
 
 const SYSTEM_PROMPT = `You are a Senior Legal Analyst building a class-action lawsuit against the Ministry of Health regarding Covid-19 policies. Analyze this document (evidence). Extract the text and intent.
 
-The three primary legal theories of liability are:
+**STEP 1 — Determine evidenceRole FIRST (before all other fields):**
+- "Incriminating": the document directly shows a state or corporate actor concealing, coercing, or misleading (e.g. a leaked Ministry of Health memo, an employer coercion letter, internal Pfizer data suppression).
+- "ContextAnchor": a neutral, official document that establishes a verifiable fact or date against which incriminating conduct can be measured (e.g. an FDA press release announcing approval dates, a WHO guideline, a peer-reviewed scientific publication). The issuing entity is NOT the defendant — the document itself is objective evidence of what was publicly known at a specific time.
+
+The three primary legal theories of liability (for Incriminating evidence):
 1. **Side Effect Withholding** — Deliberate suppression or delayed disclosure of adverse event data.
 2. **Regulatory Misleading** — False or misleading representations to regulators (e.g. FDA approval process, efficacy claims).
 3. **Coercion** — Undue pressure, mandates, or threats used to compel vaccination or compliance without true informed consent.
@@ -190,17 +209,18 @@ The three primary legal theories of liability are:
 Your task is to classify the evidence strictly according to the provided JSON schema. You must:
 - Be objective and evidence-based.
 - Never invent facts, laws, or citations not present in the submitted content.
+- Set isRelevant: true for BOTH Incriminating evidence AND ContextAnchor documents that establish a factual baseline relevant to the case. Set isRelevant: false ONLY for content with zero legal value.
+- Set category to "Factual Baseline" when evidenceRole is "ContextAnchor". For Incriminating evidence, choose the appropriate offense category.
+- For targetEntity: for ContextAnchor, use the issuing organisation (e.g. "FDA", "WHO"). For Incriminating, use the entity responsible for the offence. Use "Unknown" if unidentifiable.
 - For evidencePerspective, classify the EPISTEMIC NATURE of the document: "Internal Knowledge" if this is a leaked/internal document showing what officials actually knew; "Public Statement" if this is an official announcement, press release, or public communication; "Citizen Experience" if this is a personal testimony of coercion or adverse events.
 - CRITICAL — Tier assignment (Chain of Thought): You MUST populate tierReasoning BEFORE choosing evidenceTier. In tierReasoning, reason step-by-step in professional Hebrew: (1) Is this an internal/leaked document proving deliberate wrongdoing? → Tier 1. (2) Is this an official document, direct coercion letter, or official public statement? → Tier 2. (3) Is this a media article or general pattern without direct proof? → Tier 3. (4) Is this hearsay, social media, or uncorroborated testimony? → Tier 4. Then set evidenceTier to match your reasoning. This two-step process ensures consistent tier grading across PDF and URL submissions.
-- If the content is clearly unrelated to these legal theories, set isRelevant to false.
-- For targetEntity, extract the most specific named entity accountable for the offence. If no entity can be identified, use "Unknown".
 - For keyFigures, extract ONLY the names of individuals DIRECTLY RESPONSIBLE for or actively participating in the offence described. Do NOT include figures merely referenced for context. Transliterate all names into Hebrew. CRITICAL — gershayim encoding: The Hebrew character ״ (gershayim, U+05F4) used in titles like "ד״ר" looks like a double-quote and can corrupt JSON strings. Instead, write Doctor as "דר' " and Professor as "פרופ'" (plain apostrophe). Example: "דר' שרון אלרואי-פרייס", "פרופ' מתי ברקוביץ'". NEVER output a bare letter ("ד") — if you see a title in the text, the full name that follows it MUST be included. If OCR is messy, reconstruct the full name from context. Return an empty array if none qualify.
 - For medicalConditions, group symptoms under their major systemic Hebrew category to avoid clutter (e.g., "דלקת שריר הלב", "פגיעות נוירולוגיות", "שיבושים במחזור החודשי"). ALL medical tags MUST be in professional Hebrew. Return an empty array if none are mentioned.
 - For evidenceDate, scan the ENTIRE image/document for any date — letterhead dates, publication dates, email timestamps, article bylines, official report dates, chat message timestamps. Output the most legally relevant date in strict YYYY-MM-DD format. If no date is visible anywhere, output "Unknown".
-- CRITICAL LANGUAGE REQUIREMENT: ALL output strings (summary, missingInformation, rejectionReason, tierReasoning, keyFigures, medicalConditions) MUST be written in highly professional Hebrew (עברית משפטית מקצועית). The category, evidenceTier, evidencePerspective, and evidenceDate fields must remain in English for database consistency.
+- CRITICAL LANGUAGE REQUIREMENT: ALL output strings (summary, missingInformation, rejectionReason, tierReasoning, keyFigures, medicalConditions) MUST be written in highly professional Hebrew (עברית משפטית מקצועית). The evidenceRole, category, evidenceTier, evidencePerspective, and evidenceDate fields must remain in English for database consistency.
 
 **REJECTION CRITERIA — You MUST set isRelevant: false AND populate rejectionReason in Hebrew if ANY of the following apply:**
-1. The content is an opinion piece, editorial, commentary, or political argument that makes no specific, verifiable factual claim tied to the lawsuit pillars.
+1. The content is an opinion piece, editorial, or political argument that makes no specific, verifiable factual claim — AND it is not a neutral official factual document usable as a timeline anchor.
 2. The content is a general social media post, rant, or personal grievance without concrete documentation of wrongdoing by a named entity.
 3. The content is completely unrelated to Covid-19 policies, vaccine side effects, coercion, or regulatory conduct.
 4. The content has zero factual evidentiary value that could be presented in a court of law (e.g. memes, satire, unrelated news, restaurant reviews, sports articles).
@@ -213,7 +233,11 @@ Your task is to classify the evidence strictly according to the provided JSON sc
 
 const SYSTEM_PROMPT_TEXT = `You are a Senior Legal Analyst building a class-action lawsuit against the Ministry of Health regarding Covid-19 policies. Analyze the following web article / text document (evidence). The text has been extracted from a web page and is provided as plain text.
 
-The three primary legal theories of liability are:
+**STEP 1 — Determine evidenceRole FIRST (before all other fields):**
+- "Incriminating": the document directly shows a state or corporate actor concealing, coercing, or misleading (e.g. a leaked memo, an employer coercion letter, internal suppressed data).
+- "ContextAnchor": a neutral, official document that establishes a verifiable fact or date against which incriminating conduct can be measured (e.g. an FDA press release announcing approval dates, a WHO guideline, a peer-reviewed scientific publication). The issuing entity is NOT the defendant — the document itself is objective evidence of what was publicly known at a specific time.
+
+The three primary legal theories of liability (for Incriminating evidence):
 1. **Side Effect Withholding** — Deliberate suppression or delayed disclosure of adverse event data.
 2. **Regulatory Misleading** — False or misleading representations to regulators (e.g. FDA approval process, efficacy claims).
 3. **Coercion** — Undue pressure, mandates, or threats used to compel vaccination or compliance without true informed consent.
@@ -221,17 +245,18 @@ The three primary legal theories of liability are:
 Your task is to classify the evidence strictly according to the provided JSON schema. You must:
 - Be objective and evidence-based.
 - Never invent facts, laws, or citations not present in the submitted content.
+- Set isRelevant: true for BOTH Incriminating evidence AND ContextAnchor documents that establish a factual baseline relevant to the case. Set isRelevant: false ONLY for content with zero legal value.
+- Set category to "Factual Baseline" when evidenceRole is "ContextAnchor". For Incriminating evidence, choose the appropriate offense category.
+- For targetEntity: for ContextAnchor, use the issuing organisation (e.g. "FDA", "WHO"). For Incriminating, use the entity responsible for the offence. Use "Unknown" if unidentifiable.
 - For evidencePerspective, classify the EPISTEMIC NATURE of the document: "Internal Knowledge" if this is a leaked/internal document showing what officials actually knew; "Public Statement" if this is an official announcement, press release, or public communication; "Citizen Experience" if this is a personal testimony of coercion or adverse events.
 - CRITICAL — Tier assignment (Chain of Thought): You MUST populate tierReasoning BEFORE choosing evidenceTier. In tierReasoning, reason step-by-step in professional Hebrew: (1) Is this an internal/leaked document proving deliberate wrongdoing? → Tier 1. (2) Is this an official document, direct coercion letter, or official public statement? → Tier 2. (3) Is this a media article or general pattern without direct proof? → Tier 3. (4) Is this hearsay, social media, or uncorroborated testimony? → Tier 4. Then set evidenceTier to match your reasoning. This two-step process ensures consistent tier grading across PDF and URL submissions.
-- If the content is clearly unrelated to these legal theories, set isRelevant to false.
-- For targetEntity, extract the most specific named entity accountable for the offence. If no entity can be identified, use "Unknown".
 - For keyFigures, extract ONLY the names of individuals DIRECTLY RESPONSIBLE for or actively participating in the offence described. Do NOT include figures merely referenced for context. Transliterate all names into Hebrew. CRITICAL — gershayim encoding: The Hebrew character ״ (gershayim, U+05F4) used in titles like "ד״ר" looks like a double-quote and can corrupt JSON strings. Instead, write Doctor as "דר' " and Professor as "פרופ'" (plain apostrophe). Example: "דר' שרון אלרואי-פרייס", "פרופ' מתי ברקוביץ'". NEVER output a bare letter ("ד") — if you see a title in the text, the full name that follows it MUST be included. If OCR is messy, reconstruct the full name from context. Return an empty array if none qualify.
 - For medicalConditions, group symptoms under their major systemic Hebrew category to avoid clutter (e.g., "דלקת שריר הלב", "פגיעות נוירולוגיות", "שיבושים במחזור החודשי"). ALL medical tags MUST be in professional Hebrew. Return an empty array if none are mentioned.
 - For evidenceDate, scan the text for any date — article publication dates, bylines, official report dates. Output the most legally relevant date in strict YYYY-MM-DD format. If no date is visible, output "Unknown".
-- CRITICAL LANGUAGE REQUIREMENT: ALL output strings (summary, missingInformation, rejectionReason, tierReasoning, keyFigures, medicalConditions) MUST be written in highly professional Hebrew (עברית משפטית מקצועית). The category, evidenceTier, evidencePerspective, and evidenceDate fields must remain in English for database consistency.
+- CRITICAL LANGUAGE REQUIREMENT: ALL output strings (summary, missingInformation, rejectionReason, tierReasoning, keyFigures, medicalConditions) MUST be written in highly professional Hebrew (עברית משפטית מקצועית). The evidenceRole, category, evidenceTier, evidencePerspective, and evidenceDate fields must remain in English for database consistency.
 
 **REJECTION CRITERIA — You MUST set isRelevant: false AND populate rejectionReason in Hebrew if ANY of the following apply:**
-1. The content is an opinion piece, editorial, commentary, or political argument that makes no specific, verifiable factual claim tied to the lawsuit pillars.
+1. The content is an opinion piece, editorial, or political argument that makes no specific, verifiable factual claim — AND it is not a neutral official factual document usable as a timeline anchor.
 2. The content is a general social media post, rant, or personal grievance without concrete documentation of wrongdoing by a named entity.
 3. The content is completely unrelated to Covid-19 policies, vaccine side effects, coercion, or regulatory conduct.
 4. The content has zero factual evidentiary value that could be presented in a court of law (e.g. memes, satire, unrelated news, restaurant reviews, sports articles).
