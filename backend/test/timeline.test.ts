@@ -20,6 +20,8 @@ function makeEvidence(
       summary: `Summary for ${fileHash}`,
       targetEntity,
       evidenceDate,
+      keyFigures: [],
+      medicalConditions: [],
       timestamp: Date.now(),
     } satisfies EvidenceMetadata,
     score: 0.9,

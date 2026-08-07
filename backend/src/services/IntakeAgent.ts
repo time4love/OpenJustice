@@ -1,5 +1,5 @@
-import { ChatAnthropic } from '@langchain/anthropic';
 import { z } from 'zod';
+import { LLMFactory } from '../factories/LLMFactory';
 
 // ---------------------------------------------------------------------------
 // Evidence tier enum — business/legal classification
@@ -32,7 +32,9 @@ export const IntakeOutputSchema = z.object({
   summary: z
     .string()
     .describe(
-      'A concise 2-3 sentence summary of what the evidence shows and why it is legally significant.',
+      'A 2-3 sentence summary in highly professional Hebrew. It MUST include the SPECIFIC tactic or ' +
+        'Modus Operandi used by the entity (e.g., instead of just saying "they lied", explain HOW they lied, ' +
+        'such as "manipulated the mathematical denominator" or "hid the Re-challenge data").',
     ),
 
   missingInformation: z
@@ -65,6 +67,20 @@ export const IntakeOutputSchema = z.object({
         '  Tier 1: Smoking Gun — Internal leaked documents, definitive proof of withholding info or explicit coercion.',
     ),
 
+  keyFigures: z
+    .array(z.string())
+    .describe(
+      'An array of specific names of people, officials, or researchers mentioned in the evidence ' +
+        '(e.g., "Prof. Mati Berkovitch", "Dr. Sharon Alroy-Preis", "Albert Bourla"). Leave empty if none.',
+    ),
+
+  medicalConditions: z
+    .array(z.string())
+    .describe(
+      'An array of specific medical symptoms or conditions explicitly mentioned ' +
+        '(e.g., "Neurological issues", "Menstrual irregularities", "Myocarditis"). Leave empty if none.',
+    ),
+
   evidenceDate: z
     .string()
     .describe(
@@ -95,8 +111,10 @@ Your task is to classify the evidence strictly according to the provided JSON sc
 - Assign the evidenceTier based solely on the legal strength and provenance of the material.
 - If the content is clearly unrelated to these legal theories, set isRelevant to false.
 - For targetEntity, extract the most specific named entity accountable for the offence. If no entity can be identified, use "Unknown".
+- For keyFigures, extract every specific named individual (person, official, researcher, executive) mentioned. Return an empty array if none are named.
+- For medicalConditions, extract every specific medical symptom, condition, or adverse event explicitly named (e.g. "Myocarditis", "Menstrual irregularities"). Return an empty array if none are mentioned.
 - For evidenceDate, scan the ENTIRE image/document for any date — letterhead dates, publication dates, email timestamps, article bylines, official report dates, chat message timestamps. Output the most legally relevant date in strict YYYY-MM-DD format. If no date is visible anywhere, output "Unknown".
-- CRITICAL LANGUAGE REQUIREMENT: ALL output strings (summary, missingInformation) MUST be written in highly professional Hebrew (עברית משפטית מקצועית). The category, evidenceTier, and evidenceDate fields must remain in English for database consistency.`;
+- CRITICAL LANGUAGE REQUIREMENT: ALL output strings (summary, missingInformation) MUST be written in highly professional Hebrew (עברית משפטית מקצועית). The category, evidenceTier, evidenceDate, keyFigures, and medicalConditions fields must remain in English for database consistency.`;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -104,11 +122,17 @@ Your task is to classify the evidence strictly according to the provided JSON sc
 
 /**
  * Build the content block for the vision call.
- * Images are passed as image_url data-URIs; PDFs use Anthropic's native
- * document block format which LangChain passes through to the API.
+ *
+ * Gemini (default): both images and PDFs use the image_url data-URI format,
+ * which LangChain's Google GenAI adapter converts to inline-data blobs.
+ *
+ * Anthropic fallback: PDFs require Anthropic's native document block; images
+ * still use image_url.
  */
 function buildFileContentBlock(base64: string, mimeType: string) {
-  if (mimeType === 'application/pdf') {
+  const provider = (process.env['INTAKE_PROVIDER'] ?? 'gemini').toLowerCase().trim();
+
+  if (mimeType === 'application/pdf' && provider === 'anthropic') {
     return {
       type: 'document' as const,
       source: {
@@ -118,6 +142,8 @@ function buildFileContentBlock(base64: string, mimeType: string) {
       },
     };
   }
+
+  // Works for images (all providers) and PDFs (Gemini)
   return {
     type: 'image_url' as const,
     image_url: { url: `data:${mimeType};base64,${base64}` },
@@ -132,7 +158,7 @@ export class IntakeAgent {
   private readonly chain: { invoke(input: unknown): Promise<unknown> };
 
   constructor() {
-    const model = new ChatAnthropic({ model: 'claude-sonnet-4-6', temperature: 0 });
+    const model = LLMFactory.getChatModel('INTAKE', { temperature: 0 });
     this.chain = model.withStructuredOutput(IntakeOutputSchema, {
       name: 'intake_analysis',
     }) as { invoke(input: unknown): Promise<unknown> };

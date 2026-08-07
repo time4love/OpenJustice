@@ -1,5 +1,5 @@
-import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
 import { HumanMessage, AIMessage, SystemMessage, BaseMessage } from '@langchain/core/messages';
+import { LLMFactory, FactoryChatModel } from '../factories/LLMFactory';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -100,14 +100,10 @@ function getSystemPrompt(locale: string): string {
 }
 
 export class TrustAgent {
-  private readonly model: ChatGoogleGenerativeAI;
+  private readonly model: FactoryChatModel;
 
   constructor() {
-    this.model = new ChatGoogleGenerativeAI({
-      model: 'gemini-2.0-flash',
-      apiKey: process.env['GEMINI_API_KEY'],
-      temperature: 0.7,
-    });
+    this.model = LLMFactory.getChatModel('TRUST', { temperature: 0.7 });
   }
 
   async chat(message: string, history: ChatMessage[], locale: string): Promise<string> {

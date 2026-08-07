@@ -74,6 +74,8 @@
       "onChainProof": "On-Chain Proof",
       "fileHash": "File Hash",
       "txHash": "Tx Hash",
+      "figuresLabel": "Figures:",
+      "medicalLabel": "Medical:",
       "duplicateBanner": "Duplicate Submission",
       "failedBanner": "Submission Failed"
     },

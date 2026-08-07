@@ -1,18 +1,20 @@
 import { IntakeAgent, IntakeOutputSchema, EVIDENCE_TIER } from '../src/services/IntakeAgent';
 
 // ---------------------------------------------------------------------------
-// Mock @langchain/anthropic so no real API calls are made.
+// Mock LLMFactory so no real API calls are made.
+// The factory returns a model stub whose withStructuredOutput() returns a
+// chain stub with a jest.fn() invoke — identical shape to the real chain.
 // ---------------------------------------------------------------------------
 
-jest.mock('@langchain/anthropic', () => {
-  return {
-    ChatAnthropic: jest.fn().mockImplementation(() => ({
+jest.mock('../src/factories/LLMFactory', () => ({
+  LLMFactory: {
+    getChatModel: jest.fn().mockReturnValue({
       withStructuredOutput: jest.fn().mockReturnValue({
         invoke: jest.fn(),
       }),
-    })),
-  };
-});
+    }),
+  },
+}));
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -38,6 +40,8 @@ const SMOKING_GUN_RESPONSE = {
   targetEntity: 'Ministry of Health',
   evidenceTier: EVIDENCE_TIER.SMOKING_GUN,
   evidenceDate: '2021-03-10',
+  keyFigures: ['Dr. Sharon Alroy-Preis', 'Prof. Mati Berkovitch'],
+  medicalConditions: ['Myocarditis'],
 };
 
 const ANECDOTAL_RESPONSE = {
@@ -48,6 +52,8 @@ const ANECDOTAL_RESPONSE = {
   targetEntity: 'Unknown',
   evidenceTier: EVIDENCE_TIER.ANECDOTAL,
   evidenceDate: 'Unknown',
+  keyFigures: [],
+  medicalConditions: [],
 };
 
 const MATERIAL_RESPONSE = {
@@ -59,6 +65,8 @@ const MATERIAL_RESPONSE = {
   targetEntity: 'FDA',
   evidenceTier: EVIDENCE_TIER.MATERIAL,
   evidenceDate: '2021-08-23',
+  keyFigures: ['Albert Bourla'],
+  medicalConditions: ['Neurological issues', 'Menstrual irregularities'],
 };
 
 const IRRELEVANT_RESPONSE = {
@@ -69,6 +77,8 @@ const IRRELEVANT_RESPONSE = {
   targetEntity: 'Unknown',
   evidenceTier: EVIDENCE_TIER.ANECDOTAL,
   evidenceDate: 'Unknown',
+  keyFigures: [],
+  medicalConditions: [],
 };
 
 const TEST_FILE_BUFFER = Buffer.from('fake-image-content');
@@ -148,12 +158,62 @@ describe('IntakeAgent', () => {
       const { evidenceDate: _removed, ...invalid } = SMOKING_GUN_RESPONSE;
       expect(() => IntakeOutputSchema.parse(invalid)).toThrow();
     });
+
+    it('accepts an empty keyFigures array', () => {
+      expect(() => IntakeOutputSchema.parse({ ...SMOKING_GUN_RESPONSE, keyFigures: [] })).not.toThrow();
+    });
+
+    it('accepts a populated keyFigures array', () => {
+      expect(() =>
+        IntakeOutputSchema.parse({
+          ...SMOKING_GUN_RESPONSE,
+          keyFigures: ['Dr. Sharon Alroy-Preis', 'Albert Bourla'],
+        }),
+      ).not.toThrow();
+    });
+
+    it('rejects a non-array keyFigures', () => {
+      expect(() =>
+        IntakeOutputSchema.parse({ ...SMOKING_GUN_RESPONSE, keyFigures: 'Dr. Sharon' }),
+      ).toThrow();
+    });
+
+    it('rejects a missing keyFigures field', () => {
+      const { keyFigures: _removed, ...invalid } = SMOKING_GUN_RESPONSE;
+      expect(() => IntakeOutputSchema.parse(invalid)).toThrow();
+    });
+
+    it('accepts an empty medicalConditions array', () => {
+      expect(() =>
+        IntakeOutputSchema.parse({ ...SMOKING_GUN_RESPONSE, medicalConditions: [] }),
+      ).not.toThrow();
+    });
+
+    it('accepts a populated medicalConditions array', () => {
+      expect(() =>
+        IntakeOutputSchema.parse({
+          ...SMOKING_GUN_RESPONSE,
+          medicalConditions: ['Myocarditis', 'Neurological issues'],
+        }),
+      ).not.toThrow();
+    });
+
+    it('rejects a non-array medicalConditions', () => {
+      expect(() =>
+        IntakeOutputSchema.parse({ ...SMOKING_GUN_RESPONSE, medicalConditions: 'Myocarditis' }),
+      ).toThrow();
+    });
+
+    it('rejects a missing medicalConditions field', () => {
+      const { medicalConditions: _removed, ...invalid } = SMOKING_GUN_RESPONSE;
+      expect(() => IntakeOutputSchema.parse(invalid)).toThrow();
+    });
   });
 
   // ---- analyzeEvidence — happy paths --------------------------------------
 
   describe('analyzeEvidence', () => {
-    it('returns a correctly typed Smoking Gun result including evidenceDate', async () => {
+    it('returns a correctly typed Smoking Gun result including evidenceDate, keyFigures, medicalConditions', async () => {
       getMockInvoke(agent).mockResolvedValueOnce(SMOKING_GUN_RESPONSE);
 
       const result = await agent.analyzeEvidence(TEST_FILE_BUFFER, TEST_MIME_JPEG);
@@ -164,6 +224,8 @@ describe('IntakeAgent', () => {
       expect(result.missingInformation).toHaveLength(0);
       expect(result.targetEntity).toBe('Ministry of Health');
       expect(result.evidenceDate).toBe('2021-03-10');
+      expect(result.keyFigures).toEqual(['Dr. Sharon Alroy-Preis', 'Prof. Mati Berkovitch']);
+      expect(result.medicalConditions).toEqual(['Myocarditis']);
     });
 
     it('returns "Unknown" evidenceDate when no date is visible', async () => {
@@ -261,7 +323,24 @@ describe('IntakeAgent', () => {
       expect(humanContent[0].image_url?.url).toMatch(/^data:image\/png;base64,/);
     });
 
-    it('encodes PDF as a native document content block', async () => {
+    it('encodes PDF as an image_url data-URI for Gemini (default provider)', async () => {
+      getMockInvoke(agent).mockResolvedValueOnce(SMOKING_GUN_RESPONSE);
+
+      await agent.analyzeEvidence(TEST_FILE_BUFFER, TEST_MIME_PDF);
+
+      const humanContent = (
+        getMockInvoke(agent).mock.calls[0][0] as Array<{
+          role: string;
+          content: Array<{ type: string; image_url?: { url: string } }>;
+        }>
+      )[1].content;
+      expect(humanContent[0].type).toBe('image_url');
+      expect(humanContent[0].image_url?.url).toMatch(/^data:application\/pdf;base64,/);
+    });
+
+    it('encodes PDF as a native document block when INTAKE_PROVIDER=anthropic', async () => {
+      const original = process.env['INTAKE_PROVIDER'];
+      process.env['INTAKE_PROVIDER'] = 'anthropic';
       getMockInvoke(agent).mockResolvedValueOnce(SMOKING_GUN_RESPONSE);
 
       await agent.analyzeEvidence(TEST_FILE_BUFFER, TEST_MIME_PDF);
@@ -274,6 +353,7 @@ describe('IntakeAgent', () => {
       )[1].content;
       expect(humanContent[0].type).toBe('document');
       expect(humanContent[0].source?.media_type).toBe('application/pdf');
+      process.env['INTAKE_PROVIDER'] = original;
     });
 
     it('base64-encodes the file buffer correctly', async () => {

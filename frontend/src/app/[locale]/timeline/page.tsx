@@ -16,6 +16,8 @@ interface EvidenceMetadata {
   summary: string;
   targetEntity: string;
   evidenceDate: string;
+  keyFigures?: string[];
+  medicalConditions?: string[];
   submitterAddress?: string;
   timestamp: number;
 }
@@ -166,6 +168,36 @@ function TimelineNode({
           <p className="text-sm text-slate-700 leading-relaxed" dir="auto">
             {metadata.summary}
           </p>
+
+          {/* Key figures + medical condition tags */}
+          {((metadata.keyFigures?.length ?? 0) > 0 || (metadata.medicalConditions?.length ?? 0) > 0) && (
+            <div className="space-y-1.5">
+              {(metadata.keyFigures?.length ?? 0) > 0 && (
+                <div className="flex flex-wrap items-center gap-1">
+                  <span className="text-xs font-semibold text-slate-400 uppercase tracking-widest shrink-0 me-1">
+                    Figures:
+                  </span>
+                  {metadata.keyFigures!.map((f) => (
+                    <span key={f} className="px-1.5 py-0.5 rounded text-xs bg-violet-50 text-violet-700 border border-violet-200">
+                      {f}
+                    </span>
+                  ))}
+                </div>
+              )}
+              {(metadata.medicalConditions?.length ?? 0) > 0 && (
+                <div className="flex flex-wrap items-center gap-1">
+                  <span className="text-xs font-semibold text-slate-400 uppercase tracking-widest shrink-0 me-1">
+                    Medical:
+                  </span>
+                  {metadata.medicalConditions!.map((c) => (
+                    <span key={c} className="px-1.5 py-0.5 rounded text-xs bg-rose-50 text-rose-700 border border-rose-200">
+                      {c}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Footer row */}
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 pt-1 border-t border-slate-100">

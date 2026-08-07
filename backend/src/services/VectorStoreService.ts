@@ -14,6 +14,8 @@ export interface EvidenceMetadata {
   summary: string;
   targetEntity: string;
   evidenceDate: string;
+  keyFigures: string[];
+  medicalConditions: string[];
   submitterAddress?: string;
   timestamp: number;
 }

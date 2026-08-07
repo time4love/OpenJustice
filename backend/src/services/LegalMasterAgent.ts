@@ -1,6 +1,6 @@
-import { ChatAnthropic } from '@langchain/anthropic';
 import { z } from 'zod';
 import { VectorStoreService } from './VectorStoreService';
+import { LLMFactory } from '../factories/LLMFactory';
 
 // ---------------------------------------------------------------------------
 // Zod output schema
@@ -64,11 +64,7 @@ export class LegalMasterAgent {
   private readonly chain: { invoke(input: unknown): Promise<unknown> };
 
   constructor(private readonly vectorStore: VectorStoreService) {
-    const model = new ChatAnthropic({
-      model: 'claude-sonnet-4-6',
-      temperature: 0,
-    });
-
+    const model = LLMFactory.getChatModel('LEGAL', { temperature: 0 });
     this.chain = model.withStructuredOutput(ArgumentOutputSchema, {
       name: 'legal_argument',
     }) as { invoke(input: unknown): Promise<unknown> };

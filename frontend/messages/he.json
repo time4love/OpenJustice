@@ -74,6 +74,8 @@
       "onChainProof": "הוכחה בשרשרת הבלוקים",
       "fileHash": "חתימת קובץ",
       "txHash": "מזהה עסקה",
+      "figuresLabel": "דמויות:",
+      "medicalLabel": "רפואי:",
       "duplicateBanner": "הגשה כפולה",
       "failedBanner": "ההגשה נכשלה"
     },

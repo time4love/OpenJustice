@@ -177,6 +177,8 @@ router.post(
         summary: analysis.summary,
         targetEntity: analysis.targetEntity,
         evidenceDate: analysis.evidenceDate,
+        keyFigures: analysis.keyFigures,
+        medicalConditions: analysis.medicalConditions,
         timestamp: Date.now(),
       });
     } catch (err) {

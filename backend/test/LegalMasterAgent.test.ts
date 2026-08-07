@@ -2,15 +2,17 @@ import { LegalMasterAgent, ArgumentOutputSchema } from '../src/services/LegalMas
 import { VectorStoreService, EvidenceMetadata } from '../src/services/VectorStoreService';
 
 // ---------------------------------------------------------------------------
-// Mock @langchain/anthropic — no real API calls
+// Mock LLMFactory — no real API calls
 // ---------------------------------------------------------------------------
 
-jest.mock('@langchain/anthropic', () => ({
-  ChatAnthropic: jest.fn().mockImplementation(() => ({
-    withStructuredOutput: jest.fn().mockReturnValue({
-      invoke: jest.fn(),
+jest.mock('../src/factories/LLMFactory', () => ({
+  LLMFactory: {
+    getChatModel: jest.fn().mockReturnValue({
+      withStructuredOutput: jest.fn().mockReturnValue({
+        invoke: jest.fn(),
+      }),
     }),
-  })),
+  },
 }));
 
 // ---------------------------------------------------------------------------
@@ -48,6 +50,8 @@ const TIER1_EVIDENCE = {
     targetEntity: 'Ministry of Health',
     summary: 'Internal memo explicitly instructing staff to suppress myocarditis reporting.',
     evidenceDate: '2021-03-10',
+    keyFigures: ['Dr. Sharon Alroy-Preis'],
+    medicalConditions: ['Myocarditis'],
     timestamp: 1700000000000,
   } satisfies EvidenceMetadata,
   score: 0.95,
@@ -62,6 +66,8 @@ const TIER2_EVIDENCE = {
     targetEntity: 'Ministry of Health',
     summary: 'Official document directly contradicting later-released trial data.',
     evidenceDate: '2021-08-23',
+    keyFigures: [],
+    medicalConditions: [],
     timestamp: 1700000001000,
   } satisfies EvidenceMetadata,
   score: 0.88,
@@ -76,6 +82,8 @@ const TIER3_EVIDENCE = {
     targetEntity: 'Unknown',
     summary: 'Media report on patterns of unreported adverse events.',
     evidenceDate: 'Unknown',
+    keyFigures: [],
+    medicalConditions: ['Neurological issues'],
     timestamp: 1700000002000,
   } satisfies EvidenceMetadata,
   score: 0.72,

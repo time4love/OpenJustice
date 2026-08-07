@@ -41,6 +41,8 @@ interface DraftAnalysis {
   targetEntity: string;
   evidenceTier: EvidenceTier;
   evidenceDate: string;
+  keyFigures: string[];
+  medicalConditions: string[];
 }
 
 interface ConfirmedResult {
@@ -408,6 +410,35 @@ function ConfirmedView({
                   </li>
                 ))}
               </ul>
+            </div>
+          )}
+
+          {(analysis.keyFigures.length > 0 || analysis.medicalConditions.length > 0) && (
+            <div className="space-y-2">
+              {analysis.keyFigures.length > 0 && (
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="text-xs font-semibold text-slate-400 uppercase tracking-widest shrink-0">
+                    {tResult('figuresLabel')}
+                  </span>
+                  {analysis.keyFigures.map((f) => (
+                    <span key={f} className="px-2 py-0.5 rounded text-xs bg-violet-50 text-violet-700 border border-violet-200">
+                      {f}
+                    </span>
+                  ))}
+                </div>
+              )}
+              {analysis.medicalConditions.length > 0 && (
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="text-xs font-semibold text-slate-400 uppercase tracking-widest shrink-0">
+                    {tResult('medicalLabel')}
+                  </span>
+                  {analysis.medicalConditions.map((c) => (
+                    <span key={c} className="px-2 py-0.5 rounded text-xs bg-rose-50 text-rose-700 border border-rose-200">
+                      {c}
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
