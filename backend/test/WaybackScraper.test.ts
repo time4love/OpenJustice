@@ -71,6 +71,19 @@ const CDX_RESPONSE_ALL_SAME_DIGEST = [
   ['20220101140000', 'SAMESAME'],
 ];
 
+/**
+ * CDX response with MAX_SNAPSHOTS+1 data rows (51 rows) — signals hasMore=true.
+ * Built dynamically so it stays in sync if MAX_SNAPSHOTS changes.
+ */
+const CDX_RESPONSE_FULL_PAGE: string[][] = [
+  ['timestamp', 'digest'],
+  // 51 rows with unique digests → hasMore=true
+  ...Array.from({ length: 51 }, (_, i) => [
+    `202201${String(i + 1).padStart(2, '0')}120000`,
+    `DIGEST${String(i).padStart(3, '0')}`,
+  ]),
+];
+
 // ---------------------------------------------------------------------------
 // HTML fixture for scrapeSnapshot
 // ---------------------------------------------------------------------------
@@ -137,33 +150,36 @@ describe('WaybackScraper.getSnapshotsList', () => {
   it('returns deduplicated snapshots in chronological order', async () => {
     mockAxiosGet.mockResolvedValueOnce(makeAxiosResponse(CDX_RESPONSE));
     const scraper = new WaybackScraper();
-    const snapshots = await scraper.getSnapshotsList('https://health.gov.il/page');
+    const { snapshots, hasMore } = await scraper.getSnapshotsList('https://health.gov.il/page');
     expect(snapshots).toHaveLength(3);
     expect(snapshots[0].timestamp).toBe('20210101120000');
     expect(snapshots[2].timestamp).toBe('20220101140000');
+    expect(hasMore).toBe(false); // CDX returned fewer than MAX_SNAPSHOTS+1 rows
   });
 
   it('deduplicates snapshots with the same digest', async () => {
     mockAxiosGet.mockResolvedValueOnce(makeAxiosResponse(CDX_RESPONSE_ALL_SAME_DIGEST));
     const scraper = new WaybackScraper();
-    const snapshots = await scraper.getSnapshotsList('https://health.gov.il/page');
+    const { snapshots } = await scraper.getSnapshotsList('https://health.gov.il/page');
     // Only the first occurrence per digest is kept
     expect(snapshots).toHaveLength(1);
     expect(snapshots[0].digest).toBe('SAMESAME');
   });
 
-  it('returns an empty array when CDX returns no data rows', async () => {
+  it('returns empty snapshots when CDX returns no data rows', async () => {
     mockAxiosGet.mockResolvedValueOnce(makeAxiosResponse([['timestamp', 'digest']]));
     const scraper = new WaybackScraper();
-    const result = await scraper.getSnapshotsList('https://health.gov.il/page');
-    expect(result).toEqual([]);
+    const { snapshots, hasMore } = await scraper.getSnapshotsList('https://health.gov.il/page');
+    expect(snapshots).toEqual([]);
+    expect(hasMore).toBe(false);
   });
 
-  it('returns an empty array when CDX returns an empty array', async () => {
+  it('returns empty snapshots when CDX returns an empty array', async () => {
     mockAxiosGet.mockResolvedValueOnce(makeAxiosResponse([]));
     const scraper = new WaybackScraper();
-    const result = await scraper.getSnapshotsList('https://health.gov.il/page');
-    expect(result).toEqual([]);
+    const { snapshots, hasMore } = await scraper.getSnapshotsList('https://health.gov.il/page');
+    expect(snapshots).toEqual([]);
+    expect(hasMore).toBe(false);
   });
 
   it('throws on non-http/https protocol', async () => {
@@ -180,6 +196,31 @@ describe('WaybackScraper.getSnapshotsList', () => {
     const calledUrl: string = mockAxiosGet.mock.calls[0][0] as string;
     expect(calledUrl).toContain('web.archive.org/cdx/search/cdx');
     expect(calledUrl).toContain('collapse=digest');
+  });
+
+  it('returns hasMore=true when CDX returns MAX_SNAPSHOTS+1 rows', async () => {
+    mockAxiosGet.mockResolvedValueOnce(makeAxiosResponse(CDX_RESPONSE_FULL_PAGE));
+    const scraper = new WaybackScraper();
+    const { snapshots, hasMore } = await scraper.getSnapshotsList('https://health.gov.il/page');
+    // Returns MAX_SNAPSHOTS (50) snapshots — the 51st row is the sentinel that triggers hasMore
+    expect(snapshots).toHaveLength(50);
+    expect(hasMore).toBe(true);
+  });
+
+  it('returns hasMore=true even when dedup reduces snapshots below MAX_SNAPSHOTS', async () => {
+    // 51 data rows but some have duplicate digests — dedup reduces count below 50.
+    // hasMore must still be true since CDX signalled more exist.
+    const cdxWithDupes: string[][] = [
+      ['timestamp', 'digest'],
+      // 40 unique + 11 duplicates = 51 rows total, 40 unique
+      ...Array.from({ length: 40 }, (_, i) => [`20220101${String(i).padStart(6, '0')}`, `UNIQUE${i}`]),
+      ...Array.from({ length: 11 }, (_, i) => [`20220201${String(i).padStart(6, '0')}`, `UNIQUE${i % 5}`]),
+    ];
+    mockAxiosGet.mockResolvedValueOnce(makeAxiosResponse(cdxWithDupes));
+    const scraper = new WaybackScraper();
+    const { snapshots, hasMore } = await scraper.getSnapshotsList('https://health.gov.il/page');
+    expect(snapshots.length).toBeLessThan(50);
+    expect(hasMore).toBe(true);
   });
 });
 

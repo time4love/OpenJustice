@@ -181,7 +181,10 @@ export class WaybackScraper {
    * Fetch the deduplicated list of archive snapshots for a URL via the CDX API.
    * Uses server-side `collapse=digest` to return only content-changed snapshots.
    */
-  async getSnapshotsList(url: string, fromDate?: string): Promise<RawSnapshot[]> {
+  async getSnapshotsList(
+    url: string,
+    fromDate?: string,
+  ): Promise<{ snapshots: RawSnapshot[]; hasMore: boolean }> {
     const parsed = new URL(url);
     if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
       throw new Error('URL must use http or https protocol.');
@@ -193,7 +196,7 @@ export class WaybackScraper {
       `&output=json` +
       `&fl=timestamp,digest` +
       `&collapse=digest` +
-      `&limit=${MAX_SNAPSHOTS + 1}` + // +1 to account for the header row
+      `&limit=${MAX_SNAPSHOTS + 1}` + // request one extra row to detect "more exist"
       (fromDate ? `&from=${fromDate}` : '');
 
     const response = await axios.get<unknown[][]>(cdxUrl, {
@@ -202,12 +205,18 @@ export class WaybackScraper {
     });
 
     const rows = response.data;
-    if (!Array.isArray(rows) || rows.length < 2) return [];
+    if (!Array.isArray(rows) || rows.length < 2) return { snapshots: [], hasMore: false };
 
     // Row 0 is ["timestamp","digest"] — skip it
     const dataRows = rows.slice(1) as string[][];
 
-    // Client-side dedup guard (CDX collapse should handle this, but belt-and-suspenders)
+    // If CDX returned MAX_SNAPSHOTS+1 rows, there are more snapshots beyond this batch.
+    // This must be checked BEFORE dedup since dedup can reduce the count below MAX_SNAPSHOTS
+    // even when CDX has more data — which would otherwise cause premature batch termination.
+    const hasMore = dataRows.length > MAX_SNAPSHOTS;
+
+    // Client-side dedup guard (CDX collapse removes consecutive duplicates; this handles
+    // non-consecutive ones where content reverts to a previously-seen digest)
     const seenDigests = new Set<string>();
     const snapshots: RawSnapshot[] = [];
 
@@ -219,7 +228,7 @@ export class WaybackScraper {
       snapshots.push({ timestamp, digest });
     }
 
-    return snapshots.slice(0, MAX_SNAPSHOTS);
+    return { snapshots: snapshots.slice(0, MAX_SNAPSHOTS), hasMore };
   }
 
   /**
@@ -298,7 +307,7 @@ export class WaybackScraper {
    * Prefer runFullScan() for new usage.
    */
   async analyzePageHistory(url: string): Promise<PageHistoryResult> {
-    const snapshots = await this.getSnapshotsList(url);
+    const { snapshots } = await this.getSnapshotsList(url);
 
     const trackedUrl = await prisma.trackedUrl.create({
       data: { url },
@@ -510,8 +519,12 @@ export class WaybackScraper {
     // Lazy CDX fetch — populate snapshots on first processJob call
     if (snapshotsList.length === 0) {
       let rawSnapshots: RawSnapshot[];
+      let hasMore: boolean;
       try {
-        rawSnapshots = await this.getSnapshotsList(job.url, job.fromDate ?? undefined);
+        ({ snapshots: rawSnapshots, hasMore } = await this.getSnapshotsList(
+          job.url,
+          job.fromDate ?? undefined,
+        ));
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         console.error(`[WaybackScraper] Job ${jobId} — CDX fetch failed:`, message);
@@ -528,7 +541,11 @@ export class WaybackScraper {
       await prisma.waybackScrapeJob.update({
         where: { id: jobId },
         data: {
-          totalSnapshots: rawSnapshots.length,
+          // Store MAX_SNAPSHOTS+1 as a sentinel when CDX signalled more data exists.
+          // computeNextFromDate checks totalSnapshots >= MAX_SNAPSHOTS to decide whether to
+          // chain — this must reflect the raw CDX response, not the post-dedup count, because
+          // dedup can reduce the count below MAX_SNAPSHOTS even when CDX has more batches.
+          totalSnapshots: hasMore ? MAX_SNAPSHOTS + 1 : rawSnapshots.length,
           snapshotsList: JSON.stringify(snapshotsList),
         },
       });
