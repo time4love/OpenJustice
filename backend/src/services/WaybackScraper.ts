@@ -61,6 +61,12 @@ const MAX_SNAPSHOTS = 50;
 /** Milliseconds to wait between Wayback Machine HTTP requests — respects rate limits. */
 const FETCH_DELAY_MS = 1_500;
 
+/** Retry attempts for transient CDX / snapshot 503s before giving up. */
+const CDX_MAX_RETRIES = 4;
+
+/** Base delay (ms) for exponential back-off on 503 retries. Doubles each attempt. */
+const CDX_RETRY_BASE_MS = 8_000;
+
 /** Minimum character length for a diff chunk to be considered substantive. */
 const MIN_CHUNK_LENGTH = 40;
 
@@ -79,6 +85,33 @@ const MAX_CONTEXT_RECORDS = 5;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Thin retry wrapper for Wayback Machine HTTP requests.
+ * Retries up to CDX_MAX_RETRIES times on 503 responses, with exponential back-off.
+ * All other errors are rethrown immediately.
+ */
+async function withRetry<T>(fn: () => Promise<T>): Promise<T> {
+  let lastErr: unknown;
+  for (let attempt = 0; attempt <= CDX_MAX_RETRIES; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      const status = axios.isAxiosError(err) ? err.response?.status : undefined;
+      if (status === 503 && attempt < CDX_MAX_RETRIES) {
+        const delay = CDX_RETRY_BASE_MS * Math.pow(2, attempt);
+        console.warn(
+          `[WaybackScraper] 503 received — retrying in ${delay}ms (attempt ${attempt + 1}/${CDX_MAX_RETRIES})`,
+        );
+        await sleep(delay);
+        lastErr = err;
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw lastErr;
 }
 
 /** Convert a raw Wayback timestamp (YYYYMMDDHHMMSS) to YYYY-MM-DD. */
@@ -199,10 +232,12 @@ export class WaybackScraper {
       `&limit=${MAX_SNAPSHOTS + 1}` + // request one extra row to detect "more exist"
       (fromDate ? `&from=${fromDate}` : '');
 
-    const response = await axios.get<unknown[][]>(cdxUrl, {
-      timeout: 30_000,
-      headers: { 'User-Agent': 'GlassFortress-ForensicScanner/1.0 (legal research)' },
-    });
+    const response = await withRetry(() =>
+      axios.get<unknown[][]>(cdxUrl, {
+        timeout: 30_000,
+        headers: { 'User-Agent': 'GlassFortress-ForensicScanner/1.0 (legal research)' },
+      }),
+    );
 
     const rows = response.data;
     if (!Array.isArray(rows) || rows.length < 2) return { snapshots: [], hasMore: false };
@@ -240,17 +275,19 @@ export class WaybackScraper {
 
     let html: string;
     try {
-      const response = await axios.get<string>(archiveUrl, {
-        timeout: 25_000,
-        headers: {
-          'User-Agent':
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
-            '(KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
-          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        },
-        responseType: 'text',
-        maxContentLength: 5 * 1024 * 1024,
-      });
+      const response = await withRetry(() =>
+        axios.get<string>(archiveUrl, {
+          timeout: 25_000,
+          headers: {
+            'User-Agent':
+              'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
+              '(KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          },
+          responseType: 'text',
+          maxContentLength: 5 * 1024 * 1024,
+        }),
+      );
       html = response.data;
     } catch (err) {
       if (axios.isAxiosError(err)) {
