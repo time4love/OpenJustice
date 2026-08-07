@@ -134,7 +134,7 @@
     }
   },
   "timeline": {
-    "tagline": "ציר זמן משפטי · ראיות כרונולוגיות",
+    "tagline": "ציר הסתירות · מה ידעו לעומת מה אמרו",
     "filterLabel": "סנן לפי גוף",
     "filterPlaceholder": "כל הגופים",
     "loadBtn": "טען ציר זמן",
@@ -146,7 +146,21 @@
     "tierReasoningLabel": "נימוק דירוג:",
     "emptyTitle": "לא נמצאו רשומות בציר הזמן.",
     "emptySub": "הגש ראיות עם תאריכים, או הסר את סינון הגוף.",
-    "errorTitle": "טעינת ציר הזמן נכשלה."
+    "errorTitle": "טעינת ציר הזמן נכשלה.",
+    "viewToggle": {
+      "internal": "ידע פנימי",
+      "public": "פרסומים רשמיים",
+      "combined": "ציר הסתירות"
+    },
+    "perspective": {
+      "Internal Knowledge": "ידע פנימי",
+      "Public Statement": "פרסום רשמי",
+      "Citizen Experience": "חוויה אישית"
+    },
+    "contrastLeft": "מה שידעו",
+    "contrastRight": "מה שאמרו",
+    "emptyContrast": "אין עדיין נתוני סתירה.",
+    "emptyContrastSub": "הגש ראיות מסוג 'ידע פנימי' ו'פרסום רשמי' כדי לחשוף את הפערים."
   },
   "about": {
     "badge": "פרויקט קוד פתוח · שקיפות מלאה",

@@ -243,6 +243,7 @@ router.post(
           category: analysis.category,
           tier: analysis.evidenceTier,
           tierReasoning: analysis.tierReasoning,
+          evidencePerspective: analysis.evidencePerspective,
           summary: analysis.summary,
           targetEntity: analysis.targetEntity,
           evidenceDate: analysis.evidenceDate,

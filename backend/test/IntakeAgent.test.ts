@@ -38,6 +38,7 @@ const SMOKING_GUN_RESPONSE = {
     'המסמך נושא תאריך ולוגו רשמי ומהווה הוכחה ישירה להסתרת מידע.',
   missingInformation: [],
   targetEntity: 'Ministry of Health',
+  evidencePerspective: 'Internal Knowledge' as const,
   tierReasoning:
     'מדובר במסמך פנימי דלוף המוכיח ידיעה מוקדמת ומכוונת על הסתרת נתונים — עומד בהגדרת דרגה 1 ולא דרגה 2, שכן הוא אינו הצהרה פומבית אלא הנחיה פנימית.',
   evidenceTier: EVIDENCE_TIER.SMOKING_GUN,
@@ -52,6 +53,7 @@ const ANECDOTAL_RESPONSE = {
   summary: 'פוסט ברשת חברתית מתאר לחץ מצד מעסיק להתחסן. אין תיעוד נוסף או פרטים מזהים.',
   missingInformation: ['שם המעסיק חסר', 'אין תאריך', 'אין תיעוד כתוב'],
   targetEntity: 'Unknown',
+  evidencePerspective: 'Citizen Experience' as const,
   tierReasoning:
     'התוכן הוא פוסט ברשת חברתית ללא תיעוד כתוב או שם מעסיק — עומד בהגדרת דרגה 4 אנקדוטית בלבד.',
   evidenceTier: EVIDENCE_TIER.ANECDOTAL,
@@ -67,6 +69,7 @@ const MATERIAL_RESPONSE = {
     'הודעה רשמית לעיתונות מטעם רשות הבריאות כוללת טענות יעילות הסותרות נתוני ניסויים שפורסמו מאוחר יותר.',
   missingInformation: ['כתובת מקור המקורית חסרה'],
   targetEntity: 'FDA',
+  evidencePerspective: 'Public Statement' as const,
   tierReasoning:
     'מדובר בהצהרה רשמית ופומבית של רגולטור — עומדת בהגדרת דרגה 2, אך אינה מסמך פנימי דלוף הנדרש לדרגה 1.',
   evidenceTier: EVIDENCE_TIER.MATERIAL,
@@ -81,6 +84,7 @@ const IRRELEVANT_RESPONSE = {
   summary: 'הטקסט שהוגש הוא ביקורת מסעדה ואינו רלוונטי לתביעה.',
   missingInformation: [],
   targetEntity: 'Unknown',
+  evidencePerspective: 'Citizen Experience' as const,
   tierReasoning:
     'התוכן אינו קשור לתביעה — אין אפשרות לדרג אותו לפי קריטריוני הדרגות המשפטיות.',
   evidenceTier: EVIDENCE_TIER.ANECDOTAL,
@@ -97,6 +101,7 @@ const OPINION_PIECE_RESPONSE = {
   summary: 'מאמר דעה הקורא לאחריות ממשלתית ללא ראיות עובדתיות ספציפיות.',
   missingInformation: [],
   targetEntity: 'Unknown',
+  evidencePerspective: 'Public Statement' as const,
   tierReasoning:
     'מאמר דעה בלבד ללא ראיות עובדתיות — אינו ניתן לדירוג לפי קריטריונים משפטיים.',
   evidenceTier: EVIDENCE_TIER.ANECDOTAL,
@@ -252,6 +257,33 @@ describe('IntakeAgent', () => {
       expect(() =>
         IntakeOutputSchema.parse({ ...SMOKING_GUN_RESPONSE, tierReasoning: 42 }),
       ).toThrow();
+    });
+
+    // evidencePerspective
+    it('accepts all three valid evidencePerspective values', () => {
+      const perspectives = ['Internal Knowledge', 'Public Statement', 'Citizen Experience'] as const;
+      for (const p of perspectives) {
+        expect(() =>
+          IntakeOutputSchema.parse({ ...SMOKING_GUN_RESPONSE, evidencePerspective: p }),
+        ).not.toThrow();
+      }
+    });
+
+    it('rejects an invalid evidencePerspective value', () => {
+      expect(() =>
+        IntakeOutputSchema.parse({ ...SMOKING_GUN_RESPONSE, evidencePerspective: 'Unknown Source' }),
+      ).toThrow();
+    });
+
+    it('rejects a missing evidencePerspective field', () => {
+      const { evidencePerspective: _removed, ...invalid } = SMOKING_GUN_RESPONSE;
+      expect(() => IntakeOutputSchema.parse(invalid)).toThrow();
+    });
+
+    it('evidencePerspective flows through analyzeEvidence correctly', async () => {
+      getMockInvoke(agent).mockResolvedValueOnce(SMOKING_GUN_RESPONSE);
+      const result = await agent.analyzeEvidence(TEST_FILE_BUFFER, TEST_MIME_JPEG);
+      expect(result.evidencePerspective).toBe('Internal Knowledge');
     });
 
     // rejectionReason
@@ -563,6 +595,44 @@ describe('IntakeAgent', () => {
       const zodEnum = IntakeOutputSchema.shape.evidenceTier.options as string[];
       const tierValues = Object.values(EVIDENCE_TIER) as string[];
       expect(tierValues.sort()).toEqual(zodEnum.sort());
+    });
+  });
+
+  // ---- LangChain JSON Schema compatibility --------------------------------
+  // Regression guard: verifies that every field in IntakeOutputSchema is
+  // preserved by LangChain's Zod → JSON Schema conversion. Any field that is
+  // silently dropped will be absent from the model's function-calling schema,
+  // causing Zod parse failures on every request.
+  //
+  // Common silent-drop causes: Zod v4 ZodPipe (.transform()/.pipe()) applied
+  // at the field level. If this test fails, move the transform to post-parse
+  // logic in analyzeEvidence / analyzeText instead.
+
+  describe('IntakeOutputSchema — LangChain JSON Schema compatibility', () => {
+    it('preserves all required fields through LangChain zodToJsonSchema conversion', () => {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { toJsonSchema } = require('@langchain/core/utils/json_schema') as {
+        toJsonSchema: (s: unknown) => { properties?: Record<string, unknown> };
+      };
+      const jsonSchema = toJsonSchema(IntakeOutputSchema);
+      const schemaFields = Object.keys(IntakeOutputSchema.shape);
+      const jsonSchemaFields = Object.keys(jsonSchema.properties ?? {});
+
+      for (const field of schemaFields) {
+        expect(jsonSchemaFields).toContain(field);
+      }
+    });
+
+    it('generates exactly the set of fields defined in the schema shape', () => {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { toJsonSchema } = require('@langchain/core/utils/json_schema') as {
+        toJsonSchema: (s: unknown) => { properties?: Record<string, unknown> };
+      };
+      const jsonSchema = toJsonSchema(IntakeOutputSchema);
+      const schemaFields = Object.keys(IntakeOutputSchema.shape).sort();
+      const jsonSchemaFields = Object.keys(jsonSchema.properties ?? {}).sort();
+
+      expect(jsonSchemaFields).toEqual(schemaFields);
     });
   });
 });

@@ -134,7 +134,7 @@
     }
   },
   "timeline": {
-    "tagline": "Legal Timeline · Chronological Evidence",
+    "tagline": "Contradiction Timeline · What They Knew vs What They Said",
     "filterLabel": "Filter by Entity",
     "filterPlaceholder": "All entities",
     "loadBtn": "Load Timeline",
@@ -146,7 +146,21 @@
     "tierReasoningLabel": "Tier Reasoning:",
     "emptyTitle": "No timeline records found.",
     "emptySub": "Submit evidence with dates, or remove the entity filter.",
-    "errorTitle": "Failed to load timeline."
+    "errorTitle": "Failed to load timeline.",
+    "viewToggle": {
+      "internal": "Internal Knowledge",
+      "public": "Public Statements",
+      "combined": "Contradiction View"
+    },
+    "perspective": {
+      "Internal Knowledge": "Internal Knowledge",
+      "Public Statement": "Public Statement",
+      "Citizen Experience": "Citizen Experience"
+    },
+    "contrastLeft": "What They Knew",
+    "contrastRight": "What They Said",
+    "emptyContrast": "No contradiction data yet.",
+    "emptyContrastSub": "Submit Internal Knowledge and Public Statement evidence to reveal discrepancies."
   },
   "about": {
     "badge": "Open Source Project · Full Transparency",

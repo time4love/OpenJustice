@@ -24,15 +24,10 @@ const CATEGORIES: Category[] = [
   'Other',
 ];
 
-const TIERS: EvidenceTier[] = [
-  'Tier 1: Smoking Gun',
-  'Tier 2: Material',
-  'Tier 3: Supporting',
-  'Tier 4: Anecdotal',
-];
-
 type Phase = 'upload' | 'analyzing' | 'scanning' | 'review' | 'confirming' | 'confirmed';
 type InputMode = 'file' | 'url';
+
+type EvidencePerspective = 'Internal Knowledge' | 'Public Statement' | 'Citizen Experience';
 
 interface DraftAnalysis {
   isRelevant: boolean;
@@ -40,6 +35,7 @@ interface DraftAnalysis {
   summary: string;
   missingInformation: string[];
   targetEntity: string;
+  evidencePerspective: EvidencePerspective;
   tierReasoning: string;
   evidenceTier: EvidenceTier;
   evidenceDate: string;
@@ -52,24 +48,6 @@ interface ConfirmedResult {
   fileHash: string;
   txHash: string;
   analysis: DraftAnalysis;
-}
-
-// ---------------------------------------------------------------------------
-// Style helpers
-// ---------------------------------------------------------------------------
-
-function tierColor(tier: string): string {
-  if (tier.startsWith('Tier 1')) return 'text-red-700 border-red-200 bg-red-50';
-  if (tier.startsWith('Tier 2')) return 'text-orange-700 border-orange-200 bg-orange-50';
-  if (tier.startsWith('Tier 3')) return 'text-amber-700 border-amber-200 bg-amber-50';
-  return 'text-slate-600 border-slate-200 bg-slate-100';
-}
-
-function tierDotColor(tier: string): string {
-  if (tier.startsWith('Tier 1')) return 'bg-red-500';
-  if (tier.startsWith('Tier 2')) return 'bg-orange-500';
-  if (tier.startsWith('Tier 3')) return 'bg-amber-500';
-  return 'bg-slate-400';
 }
 
 // ---------------------------------------------------------------------------
@@ -245,11 +223,9 @@ function ReviewPanel({
   draft,
   category,
   targetEntity,
-  evidenceTier,
   evidenceDate,
   onCategoryChange,
   onEntityChange,
-  onTierChange,
   onDateChange,
   onConfirm,
   onReset,
@@ -260,11 +236,9 @@ function ReviewPanel({
   draft: DraftAnalysis;
   category: Category;
   targetEntity: string;
-  evidenceTier: EvidenceTier;
   evidenceDate: string;
   onCategoryChange: (v: Category) => void;
   onEntityChange: (v: string) => void;
-  onTierChange: (v: EvidenceTier) => void;
   onDateChange: (v: string) => void;
   onConfirm: () => void;
   onReset: () => void;
@@ -372,27 +346,6 @@ function ReviewPanel({
         </div>
 
         <div className="space-y-1.5">
-          <label className="block text-xs font-medium text-slate-600 uppercase tracking-widest">{t('tierLabel')}</label>
-          <select
-            value={evidenceTier}
-            onChange={(e) => onTierChange(e.target.value as EvidenceTier)}
-            className="w-full bg-white border border-slate-300 rounded px-3 py-2.5 text-sm text-slate-800 focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-300/50 appearance-none shadow-sm"
-          >
-            {TIERS.map((tier) => <option key={tier} value={tier}>{tier}</option>)}
-          </select>
-          <div className="flex items-center gap-1.5 mt-1">
-            <span className={`w-2 h-2 rounded-full ${tierDotColor(evidenceTier)}`} />
-            <span className={`text-xs font-medium ${tierColor(evidenceTier).split(' ')[0]}`}>{evidenceTier}</span>
-          </div>
-          {draft.tierReasoning && (
-            <p className="text-xs text-slate-500 italic leading-relaxed mt-1.5" dir="rtl">
-              <span className="not-italic font-medium text-slate-400">{t('tierReasoningLabel')} </span>
-              {draft.tierReasoning}
-            </p>
-          )}
-        </div>
-
-        <div className="space-y-1.5">
           <label className="block text-xs font-medium text-slate-600 uppercase tracking-widest">
             {t('dateLabel')}<span className="ms-1 text-red-500">*</span>
           </label>
@@ -490,21 +443,10 @@ function ConfirmedView({
             <span className="px-2.5 py-1 rounded text-xs font-medium bg-cyan-50 text-cyan-700 border border-cyan-200">
               ⚖ {analysis.targetEntity}
             </span>
-            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium border ${tierColor(analysis.evidenceTier)}`}>
-              <span className={`w-1.5 h-1.5 rounded-full ${tierDotColor(analysis.evidenceTier)}`} />
-              {analysis.evidenceTier}
-            </span>
             <span className="px-2.5 py-1 rounded text-xs font-medium bg-slate-100 text-slate-600 border border-slate-200">
               {analysis.category}
             </span>
           </div>
-
-          {analysis.tierReasoning && (
-            <p className="text-xs text-slate-500 italic leading-relaxed" dir="rtl">
-              <span className="not-italic font-medium text-slate-400">{tResult('tierReasoningLabel')} </span>
-              {analysis.tierReasoning}
-            </p>
-          )}
 
           <div>
             <p className="text-xs text-slate-500 uppercase tracking-widest mb-1">{tResult('aiSummary')}</p>
@@ -948,11 +890,9 @@ export default function SubmitPage() {
               draft={draft}
               category={editCategory}
               targetEntity={editEntity}
-              evidenceTier={editTier}
               evidenceDate={editDate}
               onCategoryChange={setEditCategory}
               onEntityChange={setEditEntity}
-              onTierChange={setEditTier}
               onDateChange={setEditDate}
               onConfirm={handleConfirm}
               onReset={handleReset}

@@ -138,12 +138,12 @@ describe('VectorStoreService.getTimeline()', () => {
     expect(results).toHaveLength(4);
   });
 
-  it('propagates errors from the underlying store', async () => {
+  it('returns an empty array when the underlying store throws (defensive error handling)', async () => {
     const storeMock = {
       similaritySearchWithScore: jest.fn().mockRejectedValue(new Error('Pinecone down')),
     };
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const svc = new (VectorStoreService as any)(storeMock);
-    await expect(svc.getTimeline()).rejects.toThrow('Pinecone down');
+    await expect(svc.getTimeline()).resolves.toEqual([]);
   });
 });

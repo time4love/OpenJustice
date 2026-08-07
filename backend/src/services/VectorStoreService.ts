@@ -18,6 +18,7 @@ export interface EvidenceMetadata {
   category: string;
   tier: string;
   tierReasoning?: string;
+  evidencePerspective?: string;
   summary: string;
   targetEntity: string;
   evidenceDate: string;
