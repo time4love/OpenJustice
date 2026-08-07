@@ -16,48 +16,13 @@ const WaybackQuerySchema = z.object({
   url: z.string().url('A valid URL is required'),
 });
 
-const WaybackJobBodySchema = z.object({
+const ScanBodySchema = z.object({
   url: z.string().url('A valid URL is required'),
-  /** Optional CDX start date (YYYYMMDD or YYYYMMDDHHMMSS) for batch pagination. */
-  fromDate: z.string().regex(/^\d{8}(\d{6})?$/).optional(),
 });
 
 const PromoteSchema = z.object({
   urlVersionDiffId: z.string().min(1, 'urlVersionDiffId is required'),
 });
-
-// ---------------------------------------------------------------------------
-// Lazy singletons
-// ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-/** Must match MAX_SNAPSHOTS in WaybackScraper.ts. */
-const MAX_SNAPSHOTS = 50;
-
-/**
- * Compute the CDX `from` value for the next batch given the last snapshot
- * timestamp stored in the job's snapshotsList JSON.
- * Returns null when:
- *   - the batch is incomplete (< MAX_SNAPSHOTS) → we've reached the end of CDX history, or
- *   - no snapshots were processed yet.
- */
-function computeNextFromDate(snapshotsListJson: string, totalSnapshots: number): string | null {
-  try {
-    // If CDX returned fewer than MAX_SNAPSHOTS, this is the final batch.
-    if (totalSnapshots < MAX_SNAPSHOTS) return null;
-    const list = JSON.parse(snapshotsListJson) as Array<{ timestamp: string; status: string }>;
-    const done = list.filter((s) => s.status === 'DONE');
-    if (done.length === 0) return null;
-    const last = done[done.length - 1].timestamp; // YYYYMMDDHHMMSS (14 digits)
-    // Increment by 1 second so the next batch starts strictly after this snapshot
-    return (BigInt(last) + BigInt(1)).toString().padStart(14, '0');
-  } catch {
-    return null;
-  }
-}
 
 // ---------------------------------------------------------------------------
 // Lazy singletons
@@ -77,17 +42,105 @@ function getWeb3Service(): Web3Service {
 }
 
 // ---------------------------------------------------------------------------
+// POST /api/forensics/scan
+//
+// Start (or resume) a forensic scan for a URL.
+//
+// - If a SCANNING TrackedUrl already exists for this URL, resumes it.
+// - Otherwise creates a new TrackedUrl (status=SCANNING) and starts fresh.
+//
+// Returns immediately with { trackedUrlId }. Processing runs server-side via
+// runFullScan() (fire-and-forget). Poll GET /api/forensics/tracked/:id/status
+// to track progress.
+// ---------------------------------------------------------------------------
+
+router.post('/scan', async (req: Request, res: Response): Promise<void> => {
+  const parsed = ScanBodySchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Invalid request', details: parsed.error.flatten() });
+    return;
+  }
+
+  const { url } = parsed.data;
+
+  try {
+    // Resume an existing in-progress scan, or start fresh
+    let trackedUrl = await prisma.trackedUrl.findFirst({
+      where: { url, status: 'SCANNING' },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (!trackedUrl) {
+      trackedUrl = await prisma.trackedUrl.create({ data: { url, status: 'SCANNING' } });
+    }
+
+    res.status(201).json({ trackedUrlId: trackedUrl.id });
+
+    // Fire-and-forget — concurrent-guard inside runFullScan prevents double-runs
+    void getWaybackScraper()
+      .runFullScan(trackedUrl.id, url)
+      .catch((err: unknown) => {
+        console.error('[forensics/scan] runFullScan error:', err instanceof Error ? err.stack : err);
+      });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error('[forensics/scan] Error:', err instanceof Error ? err.stack : err);
+    res.status(500).json({ error: 'Failed to start scan', message });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/forensics/tracked/:id/status
+//
+// Polling endpoint. Returns the TrackedUrl status and, if a job is currently
+// active (PENDING or IN_PROGRESS), its progress for the UI progress bar.
+//
+// Frontend polls this every 3 s until status is COMPLETED or FAILED.
+// ---------------------------------------------------------------------------
+
+router.get('/tracked/:id/status', async (req: Request, res: Response): Promise<void> => {
+  const trackedUrlId = String(req.params['id'] ?? '');
+  if (!trackedUrlId) {
+    res.status(400).json({ error: 'Missing trackedUrl id' });
+    return;
+  }
+
+  try {
+    const trackedUrl = await prisma.trackedUrl.findUnique({ where: { id: trackedUrlId } });
+    if (!trackedUrl) {
+      res.status(404).json({ error: 'TrackedUrl not found' });
+      return;
+    }
+
+    const activeJob = await prisma.waybackScrapeJob.findFirst({
+      where: { trackedUrlId, status: { in: ['PENDING', 'IN_PROGRESS'] } },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        status: true,
+        totalSnapshots: true,
+        processedSnapshots: true,
+        updatedAt: true,
+      },
+    });
+
+    res.status(200).json({
+      id: trackedUrl.id,
+      url: trackedUrl.url,
+      status: trackedUrl.status,
+      activeJob: activeJob ?? null,
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ error: 'Failed to fetch scan status', message });
+  }
+});
+
+// ---------------------------------------------------------------------------
 // GET /api/forensics/wayback?url=<target-url>
 //
-// 3-step forensic pipeline:
-//   1. CDX API → unique archived snapshots
-//   2. Diff consecutive snapshot pairs for substantive text changes
-//   3. ForensicAgent: classify + cross-reference with correlated DB evidence
-//
-// Persists a TrackedUrl record + all significant UrlVersionDiff records to Prisma.
-// Returns ONLY legally significant changes with the trackedUrlId for drill-down navigation.
-//
-// NOTE: Multiple sequential HTTP requests + AI inference — typical response: 1–3 minutes.
+// Legacy synchronous pipeline (kept for backward compatibility).
+// NOTE: This blocks for 1–3 minutes. Prefer POST /scan for new usage.
 // ---------------------------------------------------------------------------
 
 router.get('/wayback', async (req: Request, res: Response): Promise<void> => {
@@ -114,8 +167,7 @@ router.get('/wayback', async (req: Request, res: Response): Promise<void> => {
 // ---------------------------------------------------------------------------
 // GET /api/forensics/tracked
 //
-// Returns all TrackedUrl records ordered by most recently scanned.
-// Used by the "Previously Scanned" list on the forensics landing page.
+// Returns all TrackedUrl records ordered by most recently created.
 // ---------------------------------------------------------------------------
 
 router.get('/tracked', async (_req: Request, res: Response): Promise<void> => {
@@ -129,6 +181,7 @@ router.get('/tracked', async (_req: Request, res: Response): Promise<void> => {
       id: t.id,
       url: t.url,
       title: t.title,
+      status: t.status,
       createdAt: t.createdAt,
       totalDiffs: t._count.diffs,
     }));
@@ -144,11 +197,9 @@ router.get('/tracked', async (_req: Request, res: Response): Promise<void> => {
 // GET /api/forensics/tracked/:id
 //
 // Returns the TrackedUrl record and all its persisted UrlVersionDiff records.
-// Used by the drill-down page at /forensics/[trackedUrlId].
 // ---------------------------------------------------------------------------
 
 router.get('/tracked/:id', async (req: Request, res: Response): Promise<void> => {
-  // req.params is typed as Record<string, string | string[]> — coerce to string
   const trackedUrlId = String(req.params['id'] ?? '');
 
   if (!trackedUrlId) {
@@ -164,8 +215,6 @@ router.get('/tracked/:id', async (req: Request, res: Response): Promise<void> =>
       return;
     }
 
-    // Separate queries avoid deep-include TypeScript inference issues
-    // Full audit trail — return ALL diffs, not just AI-flagged ones
     const rawDiffs = await prisma.urlVersionDiff.findMany({
       where: { trackedUrlId },
       orderBy: { afterDate: 'asc' },
@@ -178,7 +227,6 @@ router.get('/tracked/:id', async (req: Request, res: Response): Promise<void> =>
 
     const promotedByDiffId = new Map(promotedEvidence.map((e) => [e.urlVersionDiffId, e]));
 
-    // Deserialise JSON arrays stored as strings
     const diffs = rawDiffs.map((d) => ({
       id: d.id,
       beforeDate: d.beforeDate,
@@ -211,10 +259,9 @@ router.get('/tracked/:id', async (req: Request, res: Response): Promise<void> =>
 // ---------------------------------------------------------------------------
 // DELETE /api/forensics/tracked/:id
 //
-// Deletes a TrackedUrl and all its UrlVersionDiff children, plus any
-// WaybackScrapeJob records for the same URL (regardless of status).
-// Evidence records that were promoted from this TrackedUrl are NOT deleted
-// — they are on-chain and must remain in the Evidence table.
+// Deletes a TrackedUrl, all its UrlVersionDiff children, and all associated
+// WaybackScrapeJob records. Evidence records promoted from this TrackedUrl
+// are NOT deleted — they are on-chain and must remain.
 // ---------------------------------------------------------------------------
 
 router.delete('/tracked/:id', async (req: Request, res: Response): Promise<void> => {
@@ -231,23 +278,15 @@ router.delete('/tracked/:id', async (req: Request, res: Response): Promise<void>
       return;
     }
 
-    // Unlink Evidence records that point to diffs of this TrackedUrl
-    // (we keep the Evidence records — they are on-chain — but clear the FK)
+    // Unlink Evidence records (keep them — they are on-chain)
     await prisma.evidence.updateMany({
-      where: {
-        urlVersionDiff: { trackedUrlId },
-      },
+      where: { urlVersionDiff: { trackedUrlId } },
       data: { urlVersionDiffId: null },
     });
 
-    // Delete diffs (cascade would handle this, but Prisma requires explicit delete)
     await prisma.urlVersionDiff.deleteMany({ where: { trackedUrlId } });
-
-    // Delete the TrackedUrl itself
+    await prisma.waybackScrapeJob.deleteMany({ where: { trackedUrlId } });
     await prisma.trackedUrl.delete({ where: { id: trackedUrlId } });
-
-    // Delete all scan jobs for this URL
-    await prisma.waybackScrapeJob.deleteMany({ where: { url: trackedUrl.url } });
 
     res.status(200).json({ deleted: true });
   } catch (err) {
@@ -265,8 +304,6 @@ router.delete('/tracked/:id', async (req: Request, res: Response): Promise<void>
 //   2. Derives a deterministic analysis object from the diff data
 //   3. Hashes the diff content → registers on Ethereum → writes Evidence record
 //   4. Links the new Evidence record back to the UrlVersionDiff
-//
-// Body: { urlVersionDiffId: string }
 // ---------------------------------------------------------------------------
 
 router.post('/promote', async (req: Request, res: Response): Promise<void> => {
@@ -289,7 +326,6 @@ router.post('/promote', async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    // Guard against duplicate promotions of the same diff
     const existing = await prisma.evidence.findFirst({ where: { urlVersionDiffId } });
     if (existing) {
       res.status(409).json({
@@ -306,7 +342,6 @@ router.post('/promote', async (req: Request, res: Response): Promise<void> => {
       try { return new URL(diff.trackedUrl.url).hostname; } catch { return 'Unknown'; }
     })();
 
-    // Deterministic content representation — same diff always produces the same hash
     const content = [
       diff.trackedUrl.url,
       diff.afterDate,
@@ -315,7 +350,6 @@ router.post('/promote', async (req: Request, res: Response): Promise<void> => {
     ].join('\n');
     const fileHash = Web3Service.hashFile(Buffer.from(content, 'utf8'));
 
-    // Build analysis compatible with IntakeOutputSchema for on-chain registration
     const analysis = IntakeOutputSchema.parse({
       evidenceRole: 'Incriminating',
       isRelevant: true,
@@ -334,7 +368,6 @@ router.post('/promote', async (req: Request, res: Response): Promise<void> => {
       evidenceDate: diff.afterDate,
     });
 
-    // Register on-chain anonymously
     let txHash: string;
     try {
       txHash = await getWeb3Service().registerEvidenceHash(
@@ -349,7 +382,6 @@ router.post('/promote', async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    // Create the linked Evidence record
     await prisma.evidence.create({
       data: {
         fileHash,
@@ -376,94 +408,6 @@ router.post('/promote', async (req: Request, res: Response): Promise<void> => {
     const message = err instanceof Error ? err.message : String(err);
     console.error('[forensics/promote] Error:', err instanceof Error ? err.stack : err);
     res.status(500).json({ error: 'Promotion failed', message });
-  }
-});
-
-// ---------------------------------------------------------------------------
-// POST /api/forensics/wayback/job
-//
-// Phase 1 — create a new WaybackScrapeJob for a URL.
-// Calls the CDX API, records all snapshots as PENDING, and persists the job.
-// If an incomplete job for this URL already exists, returns it (resumability).
-//
-// Body: { url: string }
-// ---------------------------------------------------------------------------
-
-router.post('/wayback/job', async (req: Request, res: Response): Promise<void> => {
-  const parsed = WaybackJobBodySchema.safeParse(req.body);
-  if (!parsed.success) {
-    res.status(400).json({ error: 'Invalid request', details: parsed.error.flatten() });
-    return;
-  }
-
-  try {
-    const job = await getWaybackScraper().createJob(parsed.data.url, parsed.data.fromDate);
-    res.status(201).json(job);
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    console.error('[forensics/wayback/job] Error:', err instanceof Error ? err.stack : err);
-    res.status(500).json({ error: 'Failed to create scan job', message });
-  }
-});
-
-// ---------------------------------------------------------------------------
-// POST /api/forensics/wayback/job/:jobId/process
-//
-// Phase 2 — process a WaybackScrapeJob.
-// Iterates over PENDING snapshots sequentially, persists state after each one,
-// and marks the job COMPLETED when done. Safe to call again after a crash
-// (resumes from the last PENDING snapshot).
-//
-// Returns the final job record.
-// ---------------------------------------------------------------------------
-
-router.post('/wayback/job/:jobId/process', async (req: Request, res: Response): Promise<void> => {
-  const jobId = String(req.params['jobId'] ?? '');
-  if (!jobId) {
-    res.status(400).json({ error: 'Missing jobId' });
-    return;
-  }
-
-  try {
-    const job = await getWaybackScraper().processJob(jobId);
-    const nextFromDate = job.status === 'COMPLETED'
-      ? computeNextFromDate(job.snapshotsList, job.totalSnapshots)
-      : null;
-    res.status(200).json({ ...job, nextFromDate });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    console.error('[forensics/wayback/job/process] Error:', err instanceof Error ? err.stack : err);
-    res.status(500).json({ error: 'Job processing failed', message });
-  }
-});
-
-// ---------------------------------------------------------------------------
-// GET /api/forensics/wayback/job/:jobId
-//
-// Returns the current state of a WaybackScrapeJob for polling.
-// The frontend calls this every 3 seconds to update the progress bar.
-// ---------------------------------------------------------------------------
-
-router.get('/wayback/job/:jobId', async (req: Request, res: Response): Promise<void> => {
-  const jobId = String(req.params['jobId'] ?? '');
-  if (!jobId) {
-    res.status(400).json({ error: 'Missing jobId' });
-    return;
-  }
-
-  try {
-    const job = await prisma.waybackScrapeJob.findUnique({ where: { id: jobId } });
-    if (!job) {
-      res.status(404).json({ error: 'Job not found' });
-      return;
-    }
-    const nextFromDate = job.status === 'COMPLETED'
-      ? computeNextFromDate(job.snapshotsList, job.totalSnapshots)
-      : null;
-    res.status(200).json({ ...job, nextFromDate });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    res.status(500).json({ error: 'Failed to fetch job', message });
   }
 });
 

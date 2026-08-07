@@ -13,9 +13,12 @@ datasource db {
 }
 
 // ---------------------------------------------------------------------------
-// Job queue for long-running Wayback Machine scans.
-// Each scan is a WaybackScrapeJob. The snapshotsList JSON field tracks the
-// per-snapshot status so processing can resume after crashes.
+// Wayback Machine forensic scan entities.
+//
+// TrackedUrl       — primary entity: a URL being tracked for silent edits.
+// WaybackScrapeJob — internal batch unit; multiple per TrackedUrl for paginated
+//                    CDX scans. Chained server-side by runFullScan(), not exposed
+//                    directly in the UI.
 // ---------------------------------------------------------------------------
 
 enum WaybackJobStatus {
@@ -25,6 +28,27 @@ enum WaybackJobStatus {
   FAILED
 }
 
+enum TrackedUrlStatus {
+  IDLE      // created via legacy sync endpoint; no async status tracking
+  SCANNING  // runFullScan is active (or was interrupted — resumable)
+  COMPLETED // all CDX batches processed
+  FAILED    // unrecoverable error during processing
+}
+
+// Tracks a government/health URL submitted for Wayback Machine forensic analysis.
+// Primary entity — navigate directly to this for version history and status.
+model TrackedUrl {
+  id        String           @id @default(uuid())
+  url       String
+  title     String?
+  status    TrackedUrlStatus @default(IDLE)
+  createdAt DateTime         @default(now())
+  diffs     UrlVersionDiff[]
+  jobs      WaybackScrapeJob[]
+}
+
+// Internal batch-processing record. Processes up to MAX_SNAPSHOTS CDX results.
+// Multiple jobs are chained server-side — not visible in the main UI.
 model WaybackScrapeJob {
   id                  String           @id @default(uuid())
   url                 String
@@ -33,19 +57,11 @@ model WaybackScrapeJob {
   processedSnapshots  Int              @default(0)
   // JSON: Array<{ timestamp: string; digest: string; status: 'PENDING' | 'DONE' | 'FAILED' }>
   snapshotsList       String           @default("[]")
-  trackedUrlId        String?          // linked after first significant diff is saved
+  trackedUrlId        String?
+  trackedUrl          TrackedUrl?      @relation(fields: [trackedUrlId], references: [id], onDelete: SetNull)
   fromDate            String?          // YYYYMMDD — CDX query start date for this batch
   createdAt           DateTime         @default(now())
   updatedAt           DateTime         @updatedAt
-}
-
-// Tracks a government/health URL that has been submitted for Wayback Machine analysis.
-model TrackedUrl {
-  id        String           @id @default(uuid())
-  url       String
-  title     String?
-  createdAt DateTime         @default(now())
-  diffs     UrlVersionDiff[]
 }
 
 // Records a single detected change between two consecutive archived snapshots of a TrackedUrl.

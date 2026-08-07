@@ -137,12 +137,33 @@ function offsetDate(dateStr: string, days: number): string {
   return d.toISOString().slice(0, 10);
 }
 
+/**
+ * Compute the CDX `from` value for the next batch given a completed job's
+ * snapshotsList. Returns null when the batch had fewer than MAX_SNAPSHOTS
+ * (meaning CDX history is exhausted) or when no snapshots were processed.
+ */
+function computeNextFromDate(snapshotsListJson: string, totalSnapshots: number): string | null {
+  try {
+    if (totalSnapshots < MAX_SNAPSHOTS) return null;
+    const list = JSON.parse(snapshotsListJson) as Array<{ timestamp: string; status: string }>;
+    const done = list.filter((s) => s.status === 'DONE');
+    if (done.length === 0) return null;
+    const last = done[done.length - 1].timestamp; // YYYYMMDDHHMMSS (14 digits)
+    // Increment by 1 second so the next batch starts strictly after this snapshot
+    return (BigInt(last) + BigInt(1)).toString().padStart(14, '0');
+  } catch {
+    return null;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // WaybackScraper
 // ---------------------------------------------------------------------------
 
 export class WaybackScraper {
   private readonly forensicAgent: ForensicAgent;
+  /** In-memory guard preventing concurrent runFullScan calls for the same TrackedUrl. */
+  private readonly _runningScanIds = new Set<string>();
 
   constructor() {
     this.forensicAgent = new ForensicAgent();
@@ -151,8 +172,6 @@ export class WaybackScraper {
   /**
    * Fetch the deduplicated list of archive snapshots for a URL via the CDX API.
    * Uses server-side `collapse=digest` to return only content-changed snapshots.
-   *
-   * @param url The original URL to look up.
    */
   async getSnapshotsList(url: string, fromDate?: string): Promise<RawSnapshot[]> {
     const parsed = new URL(url);
@@ -160,8 +179,6 @@ export class WaybackScraper {
       throw new Error('URL must use http or https protocol.');
     }
 
-    // collapse=digest dedups at the CDX server — one result per unique content hash
-    // Oldest-first (default CDX order). fromDate is YYYYMMDD to start from a specific date.
     const cdxUrl =
       `http://web.archive.org/cdx/search/cdx` +
       `?url=${encodeURIComponent(url)}` +
@@ -200,12 +217,8 @@ export class WaybackScraper {
   /**
    * Fetch a single archived snapshot and extract clean readable text.
    * Uses the `id_` modifier to suppress the Wayback Machine toolbar.
-   *
-   * @param url       The original URL.
-   * @param timestamp The snapshot timestamp (YYYYMMDDHHMMSS).
    */
   async scrapeSnapshot(url: string, timestamp: string): Promise<string> {
-    // id_ strips the Wayback toolbar so it doesn't corrupt the diff
     const archiveUrl = `http://web.archive.org/web/${timestamp}id_/${url}`;
 
     let html: string;
@@ -236,7 +249,6 @@ export class WaybackScraper {
     const article = reader.parse();
 
     if (!article?.textContent?.trim()) {
-      // Readability couldn't extract an article — fall back to full body text
       const bodyText = dom.window.document.body?.textContent ?? '';
       return normaliseText(bodyText);
     }
@@ -247,11 +259,6 @@ export class WaybackScraper {
   /**
    * Query the evidence database for records whose `evidenceDate` falls within
    * ±CONTEXT_WINDOW_DAYS of the given snapshot date.
-   *
-   * Used to provide the ForensicAgent with correlated internal evidence for
-   * its cross-referencing analysis.
-   *
-   * @param snapshotDate YYYY-MM-DD
    */
   async fetchCorrelatedEvidence(snapshotDate: string): Promise<RelatedEvidenceContext[]> {
     const windowStart = offsetDate(snapshotDate, -CONTEXT_WINDOW_DAYS);
@@ -279,21 +286,12 @@ export class WaybackScraper {
   }
 
   /**
-   * Full 3-step pipeline:
-   *   1. Fetch all unique archive snapshots (CDX API)
-   *   2. Scrape and diff consecutive snapshot pairs
-   *   3. For each diff with substantive changes:
-   *        a. Fetch correlated evidence from the DB (±60-day window)
-   *        b. Run ForensicAgent to classify and cross-reference
-   *   4. Persist the TrackedUrl + legally significant UrlVersionDiff records to Prisma
-   *   5. Return the trackedUrlId and the persisted diffs
-   *
-   * @param url The target URL to analyse.
+   * Legacy synchronous pipeline (used by GET /api/forensics/wayback).
+   * Prefer runFullScan() for new usage.
    */
   async analyzePageHistory(url: string): Promise<PageHistoryResult> {
     const snapshots = await this.getSnapshotsList(url);
 
-    // Create a TrackedUrl record immediately so we have an ID to link diffs to
     const trackedUrl = await prisma.trackedUrl.create({
       data: { url },
     });
@@ -302,7 +300,6 @@ export class WaybackScraper {
       return { trackedUrlId: trackedUrl.id, diffs: [] };
     }
 
-    // Step 1: Scrape all snapshots sequentially with rate-limit delay
     const texts: string[] = [];
     for (const snap of snapshots) {
       try {
@@ -313,12 +310,11 @@ export class WaybackScraper {
             err instanceof Error ? err.message : String(err)
           }`,
         );
-        texts.push(''); // keep index alignment
+        texts.push('');
       }
       await sleep(FETCH_DELAY_MS);
     }
 
-    // Step 2: Diff consecutive pairs, run forensic analysis on changed snapshots
     const results: SnapshotDiff[] = [];
 
     for (let i = 1; i < snapshots.length; i++) {
@@ -338,7 +334,6 @@ export class WaybackScraper {
       const snapshotUrl = `https://web.archive.org/web/${snap.timestamp}/${url}`;
 
       if (deletions.length === 0 && additions.length === 0) {
-        // No substantive chunks — record the pair as a minor/cosmetic change
         await prisma.urlVersionDiff.create({
           data: {
             trackedUrlId: trackedUrl.id,
@@ -354,7 +349,6 @@ export class WaybackScraper {
         continue;
       }
 
-      // Step 3a: RAG context — correlated DB evidence within ±60 days
       let relatedEvidence: RelatedEvidenceContext[] = [];
       try {
         relatedEvidence = await this.fetchCorrelatedEvidence(afterDate);
@@ -365,7 +359,6 @@ export class WaybackScraper {
         );
       }
 
-      // Step 3b: ForensicAgent — classify and cross-reference
       try {
         const analysis = await this.forensicAgent.analyzeChange(
           deletions,
@@ -375,7 +368,6 @@ export class WaybackScraper {
           relatedEvidence,
         );
 
-        // Step 4: Persist ALL diffs — AI claims stored as primary labels; raw chunks preserved verbatim
         const diffRecord = await prisma.urlVersionDiff.create({
           data: {
             trackedUrlId: trackedUrl.id,
@@ -391,7 +383,6 @@ export class WaybackScraper {
           },
         });
 
-        // Only surface AI-flagged diffs in the legacy sync response (drill-down shows all)
         if (analysis.isLegallySignificant) {
           results.push({
             id: diffRecord.id,
@@ -409,7 +400,6 @@ export class WaybackScraper {
           `[WaybackScraper] ForensicAgent failed for ${snap.timestamp}:`,
           err instanceof Error ? err.message : err,
         );
-        // Save raw chunks without AI analysis so the snapshot pair is never lost
         await prisma.urlVersionDiff.create({
           data: {
             trackedUrlId: trackedUrl.id,
@@ -433,34 +423,28 @@ export class WaybackScraper {
   }
 
   // ---------------------------------------------------------------------------
-  // Job queue API — for long-running, resumable scans
+  // Job queue API — internal; called by runFullScan
   // ---------------------------------------------------------------------------
 
   /**
-   * Phase 1 of the job queue flow: create a WaybackScrapeJob record.
+   * Create a WaybackScrapeJob for a given TrackedUrl.
    *
    * Returns immediately — the CDX snapshot list is fetched lazily in processJob.
-   * This keeps the creation endpoint fast so the frontend can start polling at once.
-   *
-   * If an incomplete (PENDING or IN_PROGRESS) job for this URL already exists,
-   * returns that job to allow the client to resume it instead of starting over.
-   *
-   * @param url The URL to scan.
-   * @returns The created (or existing incomplete) WaybackScrapeJob record.
+   * If an incomplete (PENDING or IN_PROGRESS) job for this trackedUrlId + fromDate
+   * already exists, returns that job to allow resumption.
    */
-  async createJob(url: string, fromDate?: string) {
-    // Resumability — return existing incomplete job for this URL + fromDate window
+  async createJob(url: string, fromDate?: string, trackedUrlId?: string) {
     const existing = await prisma.waybackScrapeJob.findFirst({
       where: {
         url,
         fromDate: fromDate ?? null,
         status: { in: ['PENDING', 'IN_PROGRESS'] },
+        ...(trackedUrlId ? { trackedUrlId } : {}),
       },
       orderBy: { createdAt: 'desc' },
     });
     if (existing) return existing;
 
-    // Create the job shell immediately — CDX fetch happens in processJob
     return prisma.waybackScrapeJob.create({
       data: {
         url,
@@ -469,27 +453,21 @@ export class WaybackScraper {
         processedSnapshots: 0,
         snapshotsList: '[]',
         fromDate: fromDate ?? null,
+        trackedUrlId: trackedUrlId ?? null,
       },
     });
   }
 
   /**
-   * Phase 2 of the job queue flow: process a WaybackScrapeJob.
-   *
-   * Iterates over PENDING snapshots, diffs each one against the last successfully
-   * processed text, runs ForensicAgent analysis, and persists results. After every
-   * snapshot, writes the updated job state back to Prisma so progress survives
-   * crashes. When all snapshots are processed, marks the job as COMPLETED.
-   *
-   * @param jobId The WaybackScrapeJob.id to process.
-   * @returns The updated WaybackScrapeJob record after processing completes.
+   * Process a WaybackScrapeJob: fetch snapshots, diff pairs, run ForensicAgent,
+   * persist results. Saves state after every snapshot for crash-resumability.
+   * When all snapshots are processed, marks the job COMPLETED.
    */
   async processJob(jobId: string) {
     const job = await prisma.waybackScrapeJob.findUnique({ where: { id: jobId } });
     if (!job) throw new Error(`WaybackScrapeJob not found: ${jobId}`);
     if (job.status === 'COMPLETED') return job;
 
-    // Mark as IN_PROGRESS
     await prisma.waybackScrapeJob.update({
       where: { id: jobId },
       data: { status: 'IN_PROGRESS' },
@@ -524,8 +502,7 @@ export class WaybackScraper {
       });
     }
 
-    // Ensure a TrackedUrl record exists. For multi-batch pagination, all batches
-    // for the same URL reuse the same TrackedUrl so diffs accumulate in one timeline.
+    // Resolve the TrackedUrl — should be set upfront in new flow; fallback for legacy jobs
     let trackedUrlId = job.trackedUrlId;
     if (!trackedUrlId) {
       const existing = await prisma.trackedUrl.findFirst({
@@ -541,29 +518,21 @@ export class WaybackScraper {
       });
     }
 
-    // Build a map of already-scraped texts for the DONE snapshots so resumption
-    // can diff against the last successful snapshot.
-    //
-    // We track the running "previous text" across iterations; on resume, the last
-    // DONE snapshot's text is re-fetched (a trade-off vs. caching in the DB to
-    // avoid storing large text blobs in the job record).
     let previousText = '';
     let processedCount = snapshotsList.filter((s) => s.status === 'DONE').length;
 
     for (let i = 0; i < snapshotsList.length; i++) {
       const entry = snapshotsList[i];
 
-      // Re-scrape DONE entries only to rebuild the previousText cursor for resume
       if (entry.status === 'DONE') {
         try {
           previousText = await this.scrapeSnapshot(job.url, entry.timestamp);
         } catch {
-          // If a previously-done snapshot can't be re-fetched, keep the last good text
+          // Keep last good text if re-fetch fails during resume
         }
         continue;
       }
 
-      // Process PENDING entries
       let currentText = '';
       try {
         currentText = await this.scrapeSnapshot(job.url, entry.timestamp);
@@ -595,7 +564,6 @@ export class WaybackScraper {
         const snapshotUrl = `https://web.archive.org/web/${entry.timestamp}/${job.url}`;
 
         if (deletions.length > 0 || additions.length > 0) {
-          // Substantive changes — run ForensicAgent for classification
           let relatedEvidence: RelatedEvidenceContext[] = [];
           try {
             relatedEvidence = await this.fetchCorrelatedEvidence(afterDate);
@@ -631,7 +599,6 @@ export class WaybackScraper {
               `[WaybackScraper] Job ${jobId} — ForensicAgent failed for ${entry.timestamp}:`,
               err instanceof Error ? err.message : err,
             );
-            // Save raw chunks without AI analysis so the snapshot pair is never lost
             await prisma.urlVersionDiff.create({
               data: {
                 trackedUrlId,
@@ -648,7 +615,6 @@ export class WaybackScraper {
             });
           }
         } else {
-          // No substantive chunks (minor/cosmetic change) — still record the pair
           await prisma.urlVersionDiff.create({
             data: {
               trackedUrlId,
@@ -668,7 +634,6 @@ export class WaybackScraper {
       entry.status = 'DONE';
       processedCount++;
 
-      // Persist state after every snapshot — ensures resumability after crashes
       await prisma.waybackScrapeJob.update({
         where: { id: jobId },
         data: {
@@ -680,10 +645,102 @@ export class WaybackScraper {
       await sleep(FETCH_DELAY_MS);
     }
 
-    // Mark the job as complete
     return prisma.waybackScrapeJob.update({
       where: { id: jobId },
       data: { status: 'COMPLETED', processedSnapshots: processedCount },
     });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Primary API — replaces manual job orchestration
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Run a full forensic scan for the given TrackedUrl.
+   *
+   * Handles all CDX batch pagination server-side: creates jobs, processes them,
+   * chains batches automatically until CDX history is exhausted.
+   *
+   * Idempotent for SCANNING TrackedUrls — safe to call again to resume after
+   * a server crash (in-memory guard prevents concurrent runs for the same id).
+   *
+   * @param trackedUrlId  The TrackedUrl to scan (must already exist with status SCANNING).
+   * @param url           The original URL (needed to create jobs).
+   */
+  async runFullScan(trackedUrlId: string, url: string): Promise<void> {
+    if (this._runningScanIds.has(trackedUrlId)) return; // concurrent guard
+    this._runningScanIds.add(trackedUrlId);
+
+    try {
+      while (true) {
+        // Check for an existing incomplete job (resume path)
+        let job = await prisma.waybackScrapeJob.findFirst({
+          where: { trackedUrlId, status: { in: ['PENDING', 'IN_PROGRESS'] } },
+          orderBy: { createdAt: 'desc' },
+        });
+
+        if (!job) {
+          // Determine where to start the next batch
+          const lastCompleted = await prisma.waybackScrapeJob.findFirst({
+            where: { trackedUrlId, status: 'COMPLETED' },
+            orderBy: { createdAt: 'desc' },
+          });
+
+          if (lastCompleted) {
+            const nextFromDate = computeNextFromDate(
+              lastCompleted.snapshotsList,
+              lastCompleted.totalSnapshots,
+            );
+            if (nextFromDate === null) {
+              // Last batch had < MAX_SNAPSHOTS — CDX history exhausted
+              await prisma.trackedUrl.update({
+                where: { id: trackedUrlId },
+                data: { status: 'COMPLETED' },
+              });
+              return;
+            }
+            job = await this.createJob(url, nextFromDate, trackedUrlId);
+          } else {
+            // Fresh scan — no batches yet
+            job = await this.createJob(url, undefined, trackedUrlId);
+          }
+        }
+
+        const processedJob = await this.processJob(job.id);
+
+        if (processedJob.status === 'FAILED') {
+          await prisma.trackedUrl.update({
+            where: { id: trackedUrlId },
+            data: { status: 'FAILED' },
+          });
+          return;
+        }
+
+        // COMPLETED — check if another batch is needed
+        const nextFromDate = computeNextFromDate(
+          processedJob.snapshotsList,
+          processedJob.totalSnapshots,
+        );
+        if (nextFromDate === null) {
+          await prisma.trackedUrl.update({
+            where: { id: trackedUrlId },
+            data: { status: 'COMPLETED' },
+          });
+          return;
+        }
+        // Loop: next iteration will find no incomplete job, compute nextFromDate
+        // from this newly-COMPLETED job, and create the following batch.
+      }
+    } catch (err) {
+      console.error(
+        `[WaybackScraper] runFullScan error for ${trackedUrlId}:`,
+        err instanceof Error ? err.stack : err,
+      );
+      await prisma.trackedUrl
+        .update({ where: { id: trackedUrlId }, data: { status: 'FAILED' } })
+        .catch(() => {});
+    } finally {
+      this._runningScanIds.delete(trackedUrlId);
+    }
   }
 }
