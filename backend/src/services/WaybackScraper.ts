@@ -375,15 +375,15 @@ export class WaybackScraper {
           relatedEvidence,
         );
 
-        // Step 4: Persist ALL diffs — AI recommendation stored but never used to censor
+        // Step 4: Persist ALL diffs — raw chunks stored verbatim; AI provides classification only
         const diffRecord = await prisma.urlVersionDiff.create({
           data: {
             trackedUrlId: trackedUrl.id,
             beforeDate,
             afterDate,
             snapshotUrl,
-            deletedText: JSON.stringify(analysis.deletedClaims),
-            addedText: JSON.stringify(analysis.addedClaims),
+            deletedText: JSON.stringify(deletions),
+            addedText: JSON.stringify(additions),
             aiSignificance: analysis.legalSignificance,
             isLegallySignificant: analysis.isLegallySignificant,
           },
@@ -397,8 +397,8 @@ export class WaybackScraper {
             beforeDate,
             date: afterDate,
             snapshotUrl,
-            deletedClaims: analysis.deletedClaims,
-            addedClaims: analysis.addedClaims,
+            deletedClaims: deletions,
+            addedClaims: additions,
             legalSignificance: analysis.legalSignificance,
           });
         }
@@ -614,8 +614,8 @@ export class WaybackScraper {
                 beforeDate,
                 afterDate,
                 snapshotUrl,
-                deletedText: JSON.stringify(analysis.deletedClaims),
-                addedText: JSON.stringify(analysis.addedClaims),
+                deletedText: JSON.stringify(deletions),
+                addedText: JSON.stringify(additions),
                 aiSignificance: analysis.legalSignificance,
                 isLegallySignificant: analysis.isLegallySignificant,
               },
