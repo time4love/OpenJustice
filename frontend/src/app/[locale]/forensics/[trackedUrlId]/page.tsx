@@ -22,6 +22,8 @@ interface DiffRecord {
   snapshotUrl: string;
   deletedClaims: string[];
   addedClaims: string[];
+  rawDeletedChunks: string[];
+  rawAddedChunks: string[];
   legalSignificance: string;
   isLegallySignificant: boolean;
   promotedEvidence: PromotedEvidence | null;
@@ -181,6 +183,80 @@ function PromoteButton({
 }
 
 // ---------------------------------------------------------------------------
+// Claim block — AI summary label (header) with raw page text below
+// ---------------------------------------------------------------------------
+
+function ClaimBlock({
+  claim,
+  rawChunk,
+  type,
+}: {
+  claim: string | null;
+  rawChunk: string | undefined;
+  type: 'deleted' | 'added';
+}) {
+  const isDel = type === 'deleted';
+
+  return (
+    <div
+      className={`rounded-lg border overflow-hidden ${
+        isDel ? 'border-red-200 bg-red-50' : 'border-emerald-200 bg-emerald-50'
+      }`}
+    >
+      {/* AI claim label — the concise Hebrew summary */}
+      {claim && (
+        <div
+          className={`flex items-start gap-2 px-3 py-2 ${
+            isDel ? 'border-b border-red-200' : 'border-b border-emerald-200'
+          }`}
+        >
+          <span
+            className={`mt-0.5 shrink-0 select-none font-semibold ${
+              isDel ? 'text-red-400' : 'text-emerald-500'
+            }`}
+          >
+            {isDel ? '—' : '+'}
+          </span>
+          <p
+            className={`text-sm font-medium leading-relaxed ${
+              isDel
+                ? 'text-red-700 line-through decoration-red-400'
+                : 'text-emerald-800'
+            }`}
+            dir="auto"
+          >
+            {claim}
+          </p>
+        </div>
+      )}
+
+      {/* Raw page text — the actual verbatim content that changed */}
+      {rawChunk && (
+        <div className={`px-3 py-2 ${claim ? 'bg-white/60' : ''}`}>
+          {!claim && (
+            <span
+              className={`mt-0.5 me-2 shrink-0 select-none font-semibold ${
+                isDel ? 'text-red-400' : 'text-emerald-500'
+              }`}
+            >
+              {isDel ? '—' : '+'}
+            </span>
+          )}
+          <p
+            className={`text-xs leading-relaxed whitespace-pre-wrap font-mono ${
+              isDel ? 'text-red-600/70' : 'text-emerald-700/70'
+            }`}
+            dir="auto"
+          >
+            {rawChunk}
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Diff card — visual hierarchy based on AI significance flag
 // ---------------------------------------------------------------------------
 
@@ -252,49 +328,48 @@ function DiffCard({
 
         {/* Body */}
         <div className="px-4 py-3 space-y-4">
-          {/* Deletions — always shown */}
-          {diff.deletedClaims.length > 0 && (
+          {/* Deletions */}
+          {(diff.deletedClaims.length > 0 || diff.rawDeletedChunks.length > 0) && (
             <div className="space-y-1.5">
               <span className="text-xs font-bold text-red-600 uppercase tracking-widest">
                 {labels.deletionsLabel}
               </span>
-              <div className="space-y-1">
-                {diff.deletedClaims.map((claim, i) => (
-                  <div
-                    key={`del-${i}`}
-                    className="flex items-start gap-2 px-3 py-2 rounded-lg bg-red-50 border border-red-200"
-                  >
-                    <span className="mt-0.5 text-red-400 shrink-0 select-none">&#x2014;</span>
-                    <p
-                      className="text-sm text-red-700 leading-relaxed line-through decoration-red-400"
-                      dir="auto"
-                    >
-                      {claim}
-                    </p>
-                  </div>
-                ))}
+              <div className="space-y-2">
+                {diff.deletedClaims.length > 0
+                  ? diff.deletedClaims.map((claim, i) => (
+                      <ClaimBlock
+                        key={`del-${i}`}
+                        claim={claim}
+                        rawChunk={diff.rawDeletedChunks[i]}
+                        type="deleted"
+                      />
+                    ))
+                  : diff.rawDeletedChunks.map((chunk, i) => (
+                      <ClaimBlock key={`del-raw-${i}`} claim={null} rawChunk={chunk} type="deleted" />
+                    ))}
               </div>
             </div>
           )}
 
-          {/* Additions — always shown */}
-          {diff.addedClaims.length > 0 && (
+          {/* Additions */}
+          {(diff.addedClaims.length > 0 || diff.rawAddedChunks.length > 0) && (
             <div className="space-y-1.5">
               <span className="text-xs font-bold text-emerald-600 uppercase tracking-widest">
                 {labels.additionsLabel}
               </span>
-              <div className="space-y-1">
-                {diff.addedClaims.map((claim, i) => (
-                  <div
-                    key={`add-${i}`}
-                    className="flex items-start gap-2 px-3 py-2 rounded-lg bg-emerald-50 border border-emerald-200"
-                  >
-                    <span className="mt-0.5 text-emerald-500 shrink-0 select-none">+</span>
-                    <p className="text-sm text-emerald-800 leading-relaxed" dir="auto">
-                      {claim}
-                    </p>
-                  </div>
-                ))}
+              <div className="space-y-2">
+                {diff.addedClaims.length > 0
+                  ? diff.addedClaims.map((claim, i) => (
+                      <ClaimBlock
+                        key={`add-${i}`}
+                        claim={claim}
+                        rawChunk={diff.rawAddedChunks[i]}
+                        type="added"
+                      />
+                    ))
+                  : diff.rawAddedChunks.map((chunk, i) => (
+                      <ClaimBlock key={`add-raw-${i}`} claim={null} rawChunk={chunk} type="added" />
+                    ))}
               </div>
             </div>
           )}

@@ -375,15 +375,17 @@ export class WaybackScraper {
           relatedEvidence,
         );
 
-        // Step 4: Persist ALL diffs — raw chunks stored verbatim; AI provides classification only
+        // Step 4: Persist ALL diffs — AI claims stored as primary labels; raw chunks preserved verbatim
         const diffRecord = await prisma.urlVersionDiff.create({
           data: {
             trackedUrlId: trackedUrl.id,
             beforeDate,
             afterDate,
             snapshotUrl,
-            deletedText: JSON.stringify(deletions),
-            addedText: JSON.stringify(additions),
+            deletedText: JSON.stringify(analysis.deletedClaims),
+            addedText: JSON.stringify(analysis.addedClaims),
+            rawDeletedText: JSON.stringify(deletions),
+            rawAddedText: JSON.stringify(additions),
             aiSignificance: analysis.legalSignificance,
             isLegallySignificant: analysis.isLegallySignificant,
           },
@@ -397,8 +399,8 @@ export class WaybackScraper {
             beforeDate,
             date: afterDate,
             snapshotUrl,
-            deletedClaims: deletions,
-            addedClaims: additions,
+            deletedClaims: analysis.deletedClaims,
+            addedClaims: analysis.addedClaims,
             legalSignificance: analysis.legalSignificance,
           });
         }
@@ -407,15 +409,17 @@ export class WaybackScraper {
           `[WaybackScraper] ForensicAgent failed for ${snap.timestamp}:`,
           err instanceof Error ? err.message : err,
         );
-        // Save without AI analysis so the snapshot pair is never lost
+        // Save raw chunks without AI analysis so the snapshot pair is never lost
         await prisma.urlVersionDiff.create({
           data: {
             trackedUrlId: trackedUrl.id,
             beforeDate,
             afterDate,
             snapshotUrl,
-            deletedText: JSON.stringify(deletions),
-            addedText: JSON.stringify(additions),
+            deletedText: '[]',
+            addedText: '[]',
+            rawDeletedText: JSON.stringify(deletions),
+            rawAddedText: JSON.stringify(additions),
             aiSignificance: '',
             isLegallySignificant: false,
           },
@@ -614,8 +618,10 @@ export class WaybackScraper {
                 beforeDate,
                 afterDate,
                 snapshotUrl,
-                deletedText: JSON.stringify(deletions),
-                addedText: JSON.stringify(additions),
+                deletedText: JSON.stringify(analysis.deletedClaims),
+                addedText: JSON.stringify(analysis.addedClaims),
+                rawDeletedText: JSON.stringify(deletions),
+                rawAddedText: JSON.stringify(additions),
                 aiSignificance: analysis.legalSignificance,
                 isLegallySignificant: analysis.isLegallySignificant,
               },
@@ -625,15 +631,17 @@ export class WaybackScraper {
               `[WaybackScraper] Job ${jobId} — ForensicAgent failed for ${entry.timestamp}:`,
               err instanceof Error ? err.message : err,
             );
-            // Save without AI analysis so the snapshot pair is never lost
+            // Save raw chunks without AI analysis so the snapshot pair is never lost
             await prisma.urlVersionDiff.create({
               data: {
                 trackedUrlId,
                 beforeDate,
                 afterDate,
                 snapshotUrl,
-                deletedText: JSON.stringify(deletions),
-                addedText: JSON.stringify(additions),
+                deletedText: '[]',
+                addedText: '[]',
+                rawDeletedText: JSON.stringify(deletions),
+                rawAddedText: JSON.stringify(additions),
                 aiSignificance: '',
                 isLegallySignificant: false,
               },

@@ -186,6 +186,8 @@ router.get('/tracked/:id', async (req: Request, res: Response): Promise<void> =>
       snapshotUrl: d.snapshotUrl,
       deletedClaims: JSON.parse(d.deletedText) as string[],
       addedClaims: JSON.parse(d.addedText) as string[],
+      rawDeletedChunks: JSON.parse(d.rawDeletedText) as string[],
+      rawAddedChunks: JSON.parse(d.rawAddedText) as string[],
       legalSignificance: d.aiSignificance,
       isLegallySignificant: d.isLegallySignificant,
       promotedEvidence: promotedByDiffId.get(d.id) ?? null,

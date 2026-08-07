@@ -57,8 +57,10 @@ model UrlVersionDiff {
   beforeDate           String
   afterDate            String
   snapshotUrl          String
-  deletedText          String     @default("[]") // JSON array of deleted claim strings
-  addedText            String     @default("[]") // JSON array of added claim strings
+  deletedText          String     @default("[]") // JSON array of AI-extracted claim strings (Hebrew summaries)
+  addedText            String     @default("[]") // JSON array of AI-extracted claim strings (Hebrew summaries)
+  rawDeletedText       String     @default("[]") // JSON array of raw page text chunks that were removed
+  rawAddedText         String     @default("[]") // JSON array of raw page text chunks that were added
   aiSignificance       String     @default("") // Hebrew forensic explanation
   isLegallySignificant Boolean    @default(false)
   createdAt            DateTime   @default(now())

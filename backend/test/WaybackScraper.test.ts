@@ -317,9 +317,7 @@ describe('WaybackScraper.analyzePageHistory', () => {
     const { diffs } = await scraper.analyzePageHistory('https://health.gov.il/page');
 
     expect(diffs).toHaveLength(1);
-    // deletedClaims now contains raw text chunks, not AI-reformulated claims
-    expect(diffs[0].deletedClaims).toHaveLength(1);
-    expect(diffs[0].deletedClaims[0]).toContain('Side effects are mild and temporary');
+    expect(diffs[0].deletedClaims).toContain('הובטח כי תופעות הלוואי קלות וזמניות בלבד');
     expect(diffs[0].legalSignificance).toContain('האזהרה');
   }, TEST_TIMEOUT);
 
