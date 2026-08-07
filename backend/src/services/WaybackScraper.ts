@@ -55,8 +55,8 @@ interface RawSnapshot {
 // Constants
 // ---------------------------------------------------------------------------
 
-/** Maximum unique snapshots to process per URL — prevents multi-minute timeouts. */
-const MAX_SNAPSHOTS = 15;
+/** Maximum unique snapshots to process per URL per scan window. */
+const MAX_SNAPSHOTS = 50;
 
 /** Milliseconds to wait between Wayback Machine HTTP requests — respects rate limits. */
 const FETCH_DELAY_MS = 1_500;
@@ -154,20 +154,22 @@ export class WaybackScraper {
    *
    * @param url The original URL to look up.
    */
-  async getSnapshotsList(url: string): Promise<RawSnapshot[]> {
+  async getSnapshotsList(url: string, fromDate?: string): Promise<RawSnapshot[]> {
     const parsed = new URL(url);
     if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
       throw new Error('URL must use http or https protocol.');
     }
 
     // collapse=digest dedups at the CDX server — one result per unique content hash
+    // Oldest-first (default CDX order). fromDate is YYYYMMDD to start from a specific date.
     const cdxUrl =
       `http://web.archive.org/cdx/search/cdx` +
       `?url=${encodeURIComponent(url)}` +
       `&output=json` +
       `&fl=timestamp,digest` +
       `&collapse=digest` +
-      `&limit=${MAX_SNAPSHOTS + 1}`; // +1 to account for the header row
+      `&limit=${MAX_SNAPSHOTS + 1}` + // +1 to account for the header row
+      (fromDate ? `&from=${fromDate}` : '');
 
     const response = await axios.get<unknown[][]>(cdxUrl, {
       timeout: 30_000,
@@ -331,12 +333,26 @@ export class WaybackScraper {
       const deletions = extractChunks(rawDiff, 'removed');
       const additions = extractChunks(rawDiff, 'added');
 
-      // Skip if no substantive text changed
-      if (deletions.length === 0 && additions.length === 0) continue;
-
       const beforeDate = timestampToDate(prevSnap.timestamp);
       const afterDate = timestampToDate(snap.timestamp);
       const snapshotUrl = `https://web.archive.org/web/${snap.timestamp}/${url}`;
+
+      if (deletions.length === 0 && additions.length === 0) {
+        // No substantive chunks — record the pair as a minor/cosmetic change
+        await prisma.urlVersionDiff.create({
+          data: {
+            trackedUrlId: trackedUrl.id,
+            beforeDate,
+            afterDate,
+            snapshotUrl,
+            deletedText: '[]',
+            addedText: '[]',
+            aiSignificance: '',
+            isLegallySignificant: false,
+          },
+        });
+        continue;
+      }
 
       // Step 3a: RAG context — correlated DB evidence within ±60 days
       let relatedEvidence: RelatedEvidenceContext[] = [];
@@ -391,7 +407,19 @@ export class WaybackScraper {
           `[WaybackScraper] ForensicAgent failed for ${snap.timestamp}:`,
           err instanceof Error ? err.message : err,
         );
-        // Don't include failed analyses — better to surface fewer, accurate results
+        // Save without AI analysis so the snapshot pair is never lost
+        await prisma.urlVersionDiff.create({
+          data: {
+            trackedUrlId: trackedUrl.id,
+            beforeDate,
+            afterDate,
+            snapshotUrl,
+            deletedText: JSON.stringify(deletions),
+            addedText: JSON.stringify(additions),
+            aiSignificance: '',
+            isLegallySignificant: false,
+          },
+        });
       }
 
       await sleep(FETCH_DELAY_MS);
@@ -416,11 +444,12 @@ export class WaybackScraper {
    * @param url The URL to scan.
    * @returns The created (or existing incomplete) WaybackScrapeJob record.
    */
-  async createJob(url: string) {
-    // Resumability — return existing incomplete job for this URL
+  async createJob(url: string, fromDate?: string) {
+    // Resumability — return existing incomplete job for this URL + fromDate window
     const existing = await prisma.waybackScrapeJob.findFirst({
       where: {
         url,
+        fromDate: fromDate ?? null,
         status: { in: ['PENDING', 'IN_PROGRESS'] },
       },
       orderBy: { createdAt: 'desc' },
@@ -435,6 +464,7 @@ export class WaybackScraper {
         totalSnapshots: 0,
         processedSnapshots: 0,
         snapshotsList: '[]',
+        fromDate: fromDate ?? null,
       },
     });
   }
@@ -467,7 +497,7 @@ export class WaybackScraper {
     if (snapshotsList.length === 0) {
       let rawSnapshots: RawSnapshot[];
       try {
-        rawSnapshots = await this.getSnapshotsList(job.url);
+        rawSnapshots = await this.getSnapshotsList(job.url, job.fromDate ?? undefined);
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         console.error(`[WaybackScraper] Job ${jobId} — CDX fetch failed:`, message);
@@ -490,10 +520,16 @@ export class WaybackScraper {
       });
     }
 
-    // Ensure a TrackedUrl record exists (create on first run; reuse on resume)
+    // Ensure a TrackedUrl record exists. For multi-batch pagination, all batches
+    // for the same URL reuse the same TrackedUrl so diffs accumulate in one timeline.
     let trackedUrlId = job.trackedUrlId;
     if (!trackedUrlId) {
-      const trackedUrl = await prisma.trackedUrl.create({ data: { url: job.url } });
+      const existing = await prisma.trackedUrl.findFirst({
+        where: { url: job.url },
+        orderBy: { createdAt: 'asc' },
+      });
+      const trackedUrl =
+        existing ?? (await prisma.trackedUrl.create({ data: { url: job.url } }));
       trackedUrlId = trackedUrl.id;
       await prisma.waybackScrapeJob.update({
         where: { id: jobId },
@@ -550,11 +586,12 @@ export class WaybackScraper {
         const deletions = extractChunks(rawDiff, 'removed');
         const additions = extractChunks(rawDiff, 'added');
 
-        if (deletions.length > 0 || additions.length > 0) {
-          const beforeDate = i > 0 ? timestampToDate(snapshotsList[i - 1].timestamp) : 'Unknown';
-          const afterDate = timestampToDate(entry.timestamp);
-          const snapshotUrl = `https://web.archive.org/web/${entry.timestamp}/${job.url}`;
+        const beforeDate = i > 0 ? timestampToDate(snapshotsList[i - 1].timestamp) : 'Unknown';
+        const afterDate = timestampToDate(entry.timestamp);
+        const snapshotUrl = `https://web.archive.org/web/${entry.timestamp}/${job.url}`;
 
+        if (deletions.length > 0 || additions.length > 0) {
+          // Substantive changes — run ForensicAgent for classification
           let relatedEvidence: RelatedEvidenceContext[] = [];
           try {
             relatedEvidence = await this.fetchCorrelatedEvidence(afterDate);
@@ -571,7 +608,6 @@ export class WaybackScraper {
               relatedEvidence,
             );
 
-            // Save ALL diffs — AI recommendation stored but never used to censor data
             await prisma.urlVersionDiff.create({
               data: {
                 trackedUrlId,
@@ -589,7 +625,34 @@ export class WaybackScraper {
               `[WaybackScraper] Job ${jobId} — ForensicAgent failed for ${entry.timestamp}:`,
               err instanceof Error ? err.message : err,
             );
+            // Save without AI analysis so the snapshot pair is never lost
+            await prisma.urlVersionDiff.create({
+              data: {
+                trackedUrlId,
+                beforeDate,
+                afterDate,
+                snapshotUrl,
+                deletedText: JSON.stringify(deletions),
+                addedText: JSON.stringify(additions),
+                aiSignificance: '',
+                isLegallySignificant: false,
+              },
+            });
           }
+        } else {
+          // No substantive chunks (minor/cosmetic change) — still record the pair
+          await prisma.urlVersionDiff.create({
+            data: {
+              trackedUrlId,
+              beforeDate,
+              afterDate,
+              snapshotUrl,
+              deletedText: '[]',
+              addedText: '[]',
+              aiSignificance: '',
+              isLegallySignificant: false,
+            },
+          });
         }
       }
 

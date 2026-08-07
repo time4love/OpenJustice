@@ -16,9 +16,48 @@ const WaybackQuerySchema = z.object({
   url: z.string().url('A valid URL is required'),
 });
 
+const WaybackJobBodySchema = z.object({
+  url: z.string().url('A valid URL is required'),
+  /** Optional CDX start date (YYYYMMDD or YYYYMMDDHHMMSS) for batch pagination. */
+  fromDate: z.string().regex(/^\d{8}(\d{6})?$/).optional(),
+});
+
 const PromoteSchema = z.object({
   urlVersionDiffId: z.string().min(1, 'urlVersionDiffId is required'),
 });
+
+// ---------------------------------------------------------------------------
+// Lazy singletons
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/** Must match MAX_SNAPSHOTS in WaybackScraper.ts. */
+const MAX_SNAPSHOTS = 50;
+
+/**
+ * Compute the CDX `from` value for the next batch given the last snapshot
+ * timestamp stored in the job's snapshotsList JSON.
+ * Returns null when:
+ *   - the batch is incomplete (< MAX_SNAPSHOTS) → we've reached the end of CDX history, or
+ *   - no snapshots were processed yet.
+ */
+function computeNextFromDate(snapshotsListJson: string, totalSnapshots: number): string | null {
+  try {
+    // If CDX returned fewer than MAX_SNAPSHOTS, this is the final batch.
+    if (totalSnapshots < MAX_SNAPSHOTS) return null;
+    const list = JSON.parse(snapshotsListJson) as Array<{ timestamp: string; status: string }>;
+    const done = list.filter((s) => s.status === 'DONE');
+    if (done.length === 0) return null;
+    const last = done[done.length - 1].timestamp; // YYYYMMDDHHMMSS (14 digits)
+    // Increment by 1 second so the next batch starts strictly after this snapshot
+    return (BigInt(last) + BigInt(1)).toString().padStart(14, '0');
+  } catch {
+    return null;
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Lazy singletons
@@ -349,14 +388,14 @@ router.post('/promote', async (req: Request, res: Response): Promise<void> => {
 // ---------------------------------------------------------------------------
 
 router.post('/wayback/job', async (req: Request, res: Response): Promise<void> => {
-  const parsed = z.object({ url: z.string().url() }).safeParse(req.body);
+  const parsed = WaybackJobBodySchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: 'Invalid request', details: parsed.error.flatten() });
     return;
   }
 
   try {
-    const job = await getWaybackScraper().createJob(parsed.data.url);
+    const job = await getWaybackScraper().createJob(parsed.data.url, parsed.data.fromDate);
     res.status(201).json(job);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -385,7 +424,10 @@ router.post('/wayback/job/:jobId/process', async (req: Request, res: Response): 
 
   try {
     const job = await getWaybackScraper().processJob(jobId);
-    res.status(200).json(job);
+    const nextFromDate = job.status === 'COMPLETED'
+      ? computeNextFromDate(job.snapshotsList, job.totalSnapshots)
+      : null;
+    res.status(200).json({ ...job, nextFromDate });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error('[forensics/wayback/job/process] Error:', err instanceof Error ? err.stack : err);
@@ -413,7 +455,10 @@ router.get('/wayback/job/:jobId', async (req: Request, res: Response): Promise<v
       res.status(404).json({ error: 'Job not found' });
       return;
     }
-    res.status(200).json(job);
+    const nextFromDate = job.status === 'COMPLETED'
+      ? computeNextFromDate(job.snapshotsList, job.totalSnapshots)
+      : null;
+    res.status(200).json({ ...job, nextFromDate });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     res.status(500).json({ error: 'Failed to fetch job', message });

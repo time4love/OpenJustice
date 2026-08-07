@@ -19,6 +19,7 @@ interface ScrapeJob {
   processedSnapshots: number;
   trackedUrlId: string | null;
   updatedAt: string;
+  nextFromDate?: string | null;
 }
 
 interface SnapshotDiff {
@@ -102,6 +103,7 @@ function ProgressState({
   resuming,
   processingLabel,
   progressLabel,
+  batchLabel,
   stalledLabel,
   resumeBtn,
   resumingBtn,
@@ -112,6 +114,7 @@ function ProgressState({
   resuming: boolean;
   processingLabel: string;
   progressLabel: string;
+  batchLabel: string | null;
   stalledLabel: string;
   resumeBtn: string;
   resumingBtn: string;
@@ -132,6 +135,9 @@ function ProgressState({
 
       {/* Label */}
       <p className="text-sm font-medium text-slate-700">{processingLabel}</p>
+      {batchLabel && (
+        <p className="text-xs font-mono text-slate-400 -mt-3">{batchLabel}</p>
+      )}
 
       {/* Progress bar */}
       <div className="w-full max-w-xs space-y-1.5">
@@ -370,6 +376,7 @@ export default function ForensicsPage() {
   const [stalled, setStalled] = useState(false);
   const [resuming, setResuming] = useState(false);
   const [history, setHistory] = useState<TrackedUrlItem[]>([]);
+  const [batchNum, setBatchNum] = useState(1);
 
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -387,6 +394,12 @@ export default function ForensicsPage() {
   const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastUpdatedAtRef = useRef<string | null>(null);
   const lastUpdateTimeRef = useRef<number | null>(null);
+  // Tracks the TrackedUrl from the first batch — reused by all subsequent batches
+  const baseTrackedUrlIdRef = useRef<string | null>(null);
+  // Current batch number (1-based) for display
+  const batchRef = useRef<number>(1);
+  // Ref to the latest pollJob to avoid circular useCallback deps
+  const pollJobRef = useRef<((jobId: string) => Promise<void>) | null>(null);
 
   const stopPolling = useCallback(() => {
     if (pollIntervalRef.current) {
@@ -415,6 +428,17 @@ export default function ForensicsPage() {
     [loadHistory],
   );
 
+  // startPolling uses pollJobRef.current to avoid circular dependency with pollJob
+  const startPolling = useCallback(
+    (jobId: string) => {
+      stopPolling();
+      pollIntervalRef.current = setInterval(() => {
+        void pollJobRef.current?.(jobId);
+      }, POLL_INTERVAL_MS);
+    },
+    [stopPolling],
+  );
+
   const pollJob = useCallback(
     async (jobId: string) => {
       try {
@@ -436,13 +460,47 @@ export default function ForensicsPage() {
         }
 
         if (data.status === 'COMPLETED') {
-          stopPolling();
-          if (data.trackedUrlId) {
-            await fetchResults(data.trackedUrlId);
+          // Remember the first batch's TrackedUrl — all batches share the same one
+          if (data.trackedUrlId && !baseTrackedUrlIdRef.current) {
+            baseTrackedUrlIdRef.current = data.trackedUrlId;
+          }
+
+          if (data.nextFromDate) {
+            // More snapshots exist — automatically start the next batch
+            stopPolling();
+            batchRef.current += 1;
+            setBatchNum(batchRef.current);
+            lastUpdatedAtRef.current = null;
+            lastUpdateTimeRef.current = Date.now();
+            setStalled(false);
+
+            const nextRes = await fetch(apiUrl('/api/forensics/wayback/job'), {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ url: data.url, fromDate: data.nextFromDate }),
+            });
+            if (!nextRes.ok) {
+              setError('Failed to start next batch.');
+              setPhase('error');
+              return;
+            }
+            const nextJob = (await nextRes.json()) as ScrapeJob;
+            setJob(nextJob);
+            lastUpdatedAtRef.current = nextJob.updatedAt;
+            void fetch(apiUrl(`/api/forensics/wayback/job/${nextJob.id}/process`), {
+              method: 'POST',
+            });
+            startPolling(nextJob.id);
           } else {
-            // Job completed but no significant diffs were found
-            setResult({ trackedUrlId: '', url: data.url, title: null, count: 0, diffs: [] });
-            setPhase('done');
+            // Final batch — fetch the unified results for all batches
+            stopPolling();
+            const resultId = baseTrackedUrlIdRef.current ?? data.trackedUrlId;
+            if (resultId) {
+              await fetchResults(resultId);
+            } else {
+              setResult({ trackedUrlId: '', url: data.url, title: null, count: 0, diffs: [] });
+              setPhase('done');
+            }
           }
         } else if (data.status === 'FAILED') {
           stopPolling();
@@ -453,18 +511,11 @@ export default function ForensicsPage() {
         // Network blip — keep polling
       }
     },
-    [stopPolling, fetchResults],
+    [stopPolling, fetchResults, startPolling],
   );
 
-  const startPolling = useCallback(
-    (jobId: string) => {
-      stopPolling();
-      pollIntervalRef.current = setInterval(() => {
-        void pollJob(jobId);
-      }, POLL_INTERVAL_MS);
-    },
-    [stopPolling, pollJob],
-  );
+  // Keep ref current so startPolling's setInterval closure always calls the latest pollJob
+  useEffect(() => { pollJobRef.current = pollJob; }, [pollJob]);
 
   async function handleScan(e: FormEvent) {
     e.preventDefault();
@@ -482,6 +533,9 @@ export default function ForensicsPage() {
     setStalled(false);
     lastUpdatedAtRef.current = null;
     lastUpdateTimeRef.current = null;
+    baseTrackedUrlIdRef.current = null;
+    batchRef.current = 1;
+    setBatchNum(1);
 
     try {
       // Step 1: Create the job
@@ -685,6 +739,7 @@ export default function ForensicsPage() {
               processed: job.processedSnapshots,
               total: job.totalSnapshots,
             })}
+            batchLabel={batchNum > 1 ? t('batchProgress', { batch: batchNum }) : null}
             stalledLabel={t('jobStalled')}
             resumeBtn={t('resumeBtn')}
             resumingBtn={t('resumingBtn')}

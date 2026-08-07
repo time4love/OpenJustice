@@ -34,6 +34,7 @@ model WaybackScrapeJob {
   // JSON: Array<{ timestamp: string; digest: string; status: 'PENDING' | 'DONE' | 'FAILED' }>
   snapshotsList       String           @default("[]")
   trackedUrlId        String?          // linked after first significant diff is saved
+  fromDate            String?          // YYYYMMDD — CDX query start date for this batch
   createdAt           DateTime         @default(now())
   updatedAt           DateTime         @updatedAt
 }

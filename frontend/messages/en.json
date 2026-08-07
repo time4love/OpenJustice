@@ -260,6 +260,7 @@
     "creatingJob": "Creating scan job…",
     "processingSnapshots": "Processing snapshots…",
     "snapshotProgress": "{processed} of {total} snapshots processed",
+    "batchProgress": "Batch {batch}",
     "fetchingResults": "Loading results…",
     "jobStalled": "The scan appears to have stalled.",
     "resumeBtn": "Resume Process",
