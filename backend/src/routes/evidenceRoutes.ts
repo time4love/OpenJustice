@@ -26,6 +26,9 @@ interface EvidenceRecord {
   evidenceDate: string;
   keyFigures: string[];
   medicalConditions: string[];
+  statisticalClaims: string[];
+  regulatoryMentions: string[];
+  euaOmissionStatus: string;
   sourceUrl?: string | null;
   fileUrl?: string | null;
   timestamp: number;
@@ -294,6 +297,9 @@ router.post(
           evidenceDate: analysis.evidenceDate,
           keyFigures: JSON.stringify(analysis.keyFigures),
           medicalConditions: JSON.stringify(analysis.medicalConditions),
+          statisticalClaims: JSON.stringify(analysis.statisticalClaims),
+          regulatoryMentions: JSON.stringify(analysis.regulatoryMentions),
+          euaOmissionStatus: analysis.euaOmissionStatus,
           sourceUrl,
           fileUrl,
         },
@@ -309,6 +315,9 @@ router.post(
           evidenceDate: analysis.evidenceDate,
           keyFigures: JSON.stringify(analysis.keyFigures),
           medicalConditions: JSON.stringify(analysis.medicalConditions),
+          statisticalClaims: JSON.stringify(analysis.statisticalClaims),
+          regulatoryMentions: JSON.stringify(analysis.regulatoryMentions),
+          euaOmissionStatus: analysis.euaOmissionStatus,
           sourceUrl,
           fileUrl,
         },
@@ -403,6 +412,9 @@ router.get('/timeline', async (req: Request, res: Response): Promise<void> => {
         evidenceDate: r.evidenceDate,
         keyFigures: JSON.parse(r.keyFigures) as string[],
         medicalConditions: JSON.parse(r.medicalConditions) as string[],
+        statisticalClaims: JSON.parse(r.statisticalClaims) as string[],
+        regulatoryMentions: JSON.parse(r.regulatoryMentions) as string[],
+        euaOmissionStatus: r.euaOmissionStatus,
         sourceUrl: r.sourceUrl,
         fileUrl: r.fileUrl,
         timestamp: r.createdAt.getTime(),

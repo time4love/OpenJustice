@@ -25,6 +25,9 @@ interface EvidenceMetadata {
   evidenceDate: string;
   keyFigures?: string[];
   medicalConditions?: string[];
+  statisticalClaims?: string[];
+  regulatoryMentions?: string[];
+  euaOmissionStatus?: string;
   sourceUrl?: string | null;
   fileUrl?: string | null;
   timestamp: number;
@@ -120,6 +123,10 @@ interface NodeLabels {
   unknownDate: string;
   keyFigures: string;
   medicalContext: string;
+  statisticalClaims: string;
+  regulatoryMentions: string;
+  euaOmitted: string;
+  euaMentioned: string;
   perspective: string;
   roleIncriminating: string;
   roleContextAnchor: string;
@@ -205,12 +212,29 @@ function TimelineNode({
 
         {/* Card body */}
         <div className="px-4 py-3 space-y-3">
+          {metadata.euaOmissionStatus === 'Omits EUA (Misleading)' && (
+            <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-rose-50 border border-rose-300">
+              <span className="w-2 h-2 rounded-full bg-rose-500 shrink-0" />
+              <span className="text-xs font-bold text-rose-700 uppercase tracking-wide">
+                {labels.euaOmitted}
+              </span>
+            </div>
+          )}
+          {metadata.euaOmissionStatus === 'Explicitly Mentions EUA' && (
+            <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-50 border border-slate-200">
+              <span className="w-2 h-2 rounded-full bg-slate-400 shrink-0" />
+              <span className="text-xs font-medium text-slate-600">{labels.euaMentioned}</span>
+            </div>
+          )}
+
           <p className="text-sm text-slate-700 leading-relaxed" dir="auto">
             {metadata.summary}
           </p>
 
           {((metadata.keyFigures?.length ?? 0) > 0 ||
-            (metadata.medicalConditions?.length ?? 0) > 0) && (
+            (metadata.medicalConditions?.length ?? 0) > 0 ||
+            (metadata.statisticalClaims?.length ?? 0) > 0 ||
+            (metadata.regulatoryMentions?.length ?? 0) > 0) && (
             <div className="space-y-1.5">
               {(metadata.keyFigures?.length ?? 0) > 0 && (
                 <div className="flex flex-wrap items-center gap-1.5">
@@ -238,6 +262,36 @@ function TimelineNode({
                       className="px-1.5 py-0.5 rounded text-xs bg-purple-50 text-purple-700 border border-purple-200"
                     >
                       {c}
+                    </span>
+                  ))}
+                </div>
+              )}
+              {(metadata.statisticalClaims?.length ?? 0) > 0 && (
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="text-xs font-semibold text-slate-400 uppercase tracking-widest shrink-0">
+                    {labels.statisticalClaims}
+                  </span>
+                  {metadata.statisticalClaims!.map((c, i) => (
+                    <span
+                      key={`${c}-${i}`}
+                      className="px-1.5 py-0.5 rounded text-xs bg-emerald-50 text-emerald-700 border border-emerald-200"
+                    >
+                      {c}
+                    </span>
+                  ))}
+                </div>
+              )}
+              {(metadata.regulatoryMentions?.length ?? 0) > 0 && (
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="text-xs font-semibold text-slate-400 uppercase tracking-widest shrink-0">
+                    {labels.regulatoryMentions}
+                  </span>
+                  {metadata.regulatoryMentions!.map((m, i) => (
+                    <span
+                      key={`${m}-${i}`}
+                      className="px-1.5 py-0.5 rounded text-xs bg-amber-50 text-amber-700 border border-amber-200"
+                    >
+                      {m}
                     </span>
                   ))}
                 </div>
@@ -425,6 +479,10 @@ export default function TimelinePage() {
     unknownDate: t('unknownDate'),
     keyFigures: t('keyFiguresLabel'),
     medicalContext: t('medicalContextLabel'),
+    statisticalClaims: t('statisticalClaimsLabel'),
+    regulatoryMentions: t('regulatoryMentionsLabel'),
+    euaOmitted: t('euaOmitted'),
+    euaMentioned: t('euaMentioned'),
     perspective: '',
     roleIncriminating: t('roleIncriminating'),
     roleContextAnchor: t('roleContextAnchor'),

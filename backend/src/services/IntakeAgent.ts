@@ -145,6 +145,38 @@ export const IntakeOutputSchema = z.object({
         'If absolutely no date can be found, output "Unknown".',
     ),
 
+  statisticalClaims: z
+    .array(z.string())
+    .describe(
+      'Extract EXACT verbatim numerical or percentage claims about vaccine efficacy, safety, or ' +
+        'trial results as they appear in the source (e.g., "יעיל ב-94% בקרב בני 55 ומעלה בשלב 3"). ' +
+        'These are direct quotes — preserve the original source language verbatim. ' +
+        'Return an empty array if no statistics are present.',
+    ),
+
+  regulatoryMentions: z
+    .array(z.string())
+    .describe(
+      'Extract EXACT verbatim phrases describing regulatory approval status or legal classification ' +
+        'as they appear in the source (e.g., "ביום חמישי צפוי להתקבל אישור מה-FDA"). ' +
+        'These are direct quotes — preserve the original source language verbatim. ' +
+        'Return an empty array if no regulatory language is present.',
+    ),
+
+  euaOmissionStatus: z
+    .enum(['Omits EUA (Misleading)', 'Explicitly Mentions EUA', 'Not Applicable'])
+    .describe(
+      'DETERMINISTIC CHECK — do not infer, do not hallucinate. ' +
+        'Step 1: Does the text discuss FDA approval, vaccine authorization, or regulatory clearance? ' +
+        'If NO → output "Not Applicable". ' +
+        'Step 2: Does the text EXPLICITLY use any of these terms: ' +
+        '"Emergency Use Authorization", "EUA", "אישור חירום", "אישור שימוש חירום"? ' +
+        'If YES → output "Explicitly Mentions EUA". ' +
+        'If NO → output "Omits EUA (Misleading)". ' +
+        'This is a strict binary check on the text as written — ' +
+        '"Omits EUA (Misleading)" means the approval was discussed but the EUA qualifier was absent.',
+    ),
+
   rejectionReason: z
     .string()
     .optional()
@@ -216,8 +248,11 @@ Your task is to classify the evidence strictly according to the provided JSON sc
 - CRITICAL — Tier assignment (Chain of Thought): You MUST populate tierReasoning BEFORE choosing evidenceTier. In tierReasoning, reason step-by-step in professional Hebrew: (1) Is this an internal/leaked document proving deliberate wrongdoing? → Tier 1. (2) Is this an official document, direct coercion letter, or official public statement? → Tier 2. (3) Is this a media article or general pattern without direct proof? → Tier 3. (4) Is this hearsay, social media, or uncorroborated testimony? → Tier 4. Then set evidenceTier to match your reasoning. This two-step process ensures consistent tier grading across PDF and URL submissions.
 - For keyFigures, extract ONLY the names of individuals DIRECTLY RESPONSIBLE for or actively participating in the offence described. Do NOT include figures merely referenced for context. Transliterate all names into Hebrew. CRITICAL — gershayim encoding: The Hebrew character ״ (gershayim, U+05F4) used in titles like "ד״ר" looks like a double-quote and can corrupt JSON strings. Instead, write Doctor as "דר' " and Professor as "פרופ'" (plain apostrophe). Example: "דר' שרון אלרואי-פרייס", "פרופ' מתי ברקוביץ'". NEVER output a bare letter ("ד") — if you see a title in the text, the full name that follows it MUST be included. If OCR is messy, reconstruct the full name from context. Return an empty array if none qualify.
 - For medicalConditions, group symptoms under their major systemic Hebrew category to avoid clutter (e.g., "דלקת שריר הלב", "פגיעות נוירולוגיות", "שיבושים במחזור החודשי"). ALL medical tags MUST be in professional Hebrew. Return an empty array if none are mentioned.
+- For statisticalClaims, extract EXACT verbatim numerical or percentage claims about vaccine efficacy, safety, or trial results as they appear in the source (e.g., "יעיל ב-94% בקרב בני 55 ומעלה"). These are direct quotes — preserve the original source language verbatim. Return an empty array if no statistics are present.
+- For regulatoryMentions, extract EXACT verbatim phrases describing regulatory approval status or legal classification as they appear in the source (e.g., "ביום חמישי צפוי להתקבל אישור מה-FDA"). These are direct quotes — preserve the original source language verbatim. Return an empty array if no regulatory language is present.
+- For euaOmissionStatus, perform a strict two-step check: (1) Does the text discuss FDA approval, vaccine authorization, or regulatory clearance? If NO → "Not Applicable". (2) Does it EXPLICITLY use "Emergency Use Authorization", "EUA", "אישור חירום", or "אישור שימוש חירום"? If YES → "Explicitly Mentions EUA". If NO → "Omits EUA (Misleading)". This is a binary check on the literal text — never infer or hallucinate. "Omits EUA (Misleading)" requires that an approval was discussed AND the EUA qualifier was absent from the text.
 - For evidenceDate, scan the ENTIRE image/document for any date — letterhead dates, publication dates, email timestamps, article bylines, official report dates, chat message timestamps. Output the most legally relevant date in strict YYYY-MM-DD format. If no date is visible anywhere, output "Unknown".
-- CRITICAL LANGUAGE REQUIREMENT: ALL output strings (summary, missingInformation, rejectionReason, tierReasoning, keyFigures, medicalConditions) MUST be written in highly professional Hebrew (עברית משפטית מקצועית). The evidenceRole, category, evidenceTier, evidencePerspective, and evidenceDate fields must remain in English for database consistency.
+- CRITICAL LANGUAGE REQUIREMENT: ALL output strings (summary, missingInformation, rejectionReason, tierReasoning, keyFigures, medicalConditions) MUST be written in highly professional Hebrew (עברית משפטית מקצועית). statisticalClaims and regulatoryMentions extract VERBATIM quotes from the source — preserve the source language as-is. The evidenceRole, category, evidenceTier, evidencePerspective, and evidenceDate fields must remain in English for database consistency.
 
 **REJECTION CRITERIA — You MUST set isRelevant: false AND populate rejectionReason in Hebrew if ANY of the following apply:**
 1. The content is an opinion piece, editorial, or political argument that makes no specific, verifiable factual claim — AND it is not a neutral official factual document usable as a timeline anchor.
@@ -252,8 +287,11 @@ Your task is to classify the evidence strictly according to the provided JSON sc
 - CRITICAL — Tier assignment (Chain of Thought): You MUST populate tierReasoning BEFORE choosing evidenceTier. In tierReasoning, reason step-by-step in professional Hebrew: (1) Is this an internal/leaked document proving deliberate wrongdoing? → Tier 1. (2) Is this an official document, direct coercion letter, or official public statement? → Tier 2. (3) Is this a media article or general pattern without direct proof? → Tier 3. (4) Is this hearsay, social media, or uncorroborated testimony? → Tier 4. Then set evidenceTier to match your reasoning. This two-step process ensures consistent tier grading across PDF and URL submissions.
 - For keyFigures, extract ONLY the names of individuals DIRECTLY RESPONSIBLE for or actively participating in the offence described. Do NOT include figures merely referenced for context. Transliterate all names into Hebrew. CRITICAL — gershayim encoding: The Hebrew character ״ (gershayim, U+05F4) used in titles like "ד״ר" looks like a double-quote and can corrupt JSON strings. Instead, write Doctor as "דר' " and Professor as "פרופ'" (plain apostrophe). Example: "דר' שרון אלרואי-פרייס", "פרופ' מתי ברקוביץ'". NEVER output a bare letter ("ד") — if you see a title in the text, the full name that follows it MUST be included. If OCR is messy, reconstruct the full name from context. Return an empty array if none qualify.
 - For medicalConditions, group symptoms under their major systemic Hebrew category to avoid clutter (e.g., "דלקת שריר הלב", "פגיעות נוירולוגיות", "שיבושים במחזור החודשי"). ALL medical tags MUST be in professional Hebrew. Return an empty array if none are mentioned.
+- For statisticalClaims, extract EXACT verbatim numerical or percentage claims about vaccine efficacy, safety, or trial results as they appear in the source (e.g., "יעיל ב-94% בקרב בני 55 ומעלה"). These are direct quotes — preserve the original source language verbatim. Return an empty array if no statistics are present.
+- For regulatoryMentions, extract EXACT verbatim phrases describing regulatory approval status or legal classification as they appear in the source (e.g., "ביום חמישי צפוי להתקבל אישור מה-FDA"). These are direct quotes — preserve the original source language verbatim. Return an empty array if no regulatory language is present.
+- For euaOmissionStatus, perform a strict two-step check: (1) Does the text discuss FDA approval, vaccine authorization, or regulatory clearance? If NO → "Not Applicable". (2) Does it EXPLICITLY use "Emergency Use Authorization", "EUA", "אישור חירום", or "אישור שימוש חירום"? If YES → "Explicitly Mentions EUA". If NO → "Omits EUA (Misleading)". This is a binary check on the literal text — never infer or hallucinate. "Omits EUA (Misleading)" requires that an approval was discussed AND the EUA qualifier was absent from the text.
 - For evidenceDate, scan the text for any date — article publication dates, bylines, official report dates. Output the most legally relevant date in strict YYYY-MM-DD format. If no date is visible, output "Unknown".
-- CRITICAL LANGUAGE REQUIREMENT: ALL output strings (summary, missingInformation, rejectionReason, tierReasoning, keyFigures, medicalConditions) MUST be written in highly professional Hebrew (עברית משפטית מקצועית). The evidenceRole, category, evidenceTier, evidencePerspective, and evidenceDate fields must remain in English for database consistency.
+- CRITICAL LANGUAGE REQUIREMENT: ALL output strings (summary, missingInformation, rejectionReason, tierReasoning, keyFigures, medicalConditions) MUST be written in highly professional Hebrew (עברית משפטית מקצועית). statisticalClaims and regulatoryMentions extract VERBATIM quotes from the source — preserve the source language as-is. The evidenceRole, category, evidenceTier, evidencePerspective, and evidenceDate fields must remain in English for database consistency.
 
 **REJECTION CRITERIA — You MUST set isRelevant: false AND populate rejectionReason in Hebrew if ANY of the following apply:**
 1. The content is an opinion piece, editorial, or political argument that makes no specific, verifiable factual claim — AND it is not a neutral official factual document usable as a timeline anchor.

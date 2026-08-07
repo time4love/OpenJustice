@@ -7,8 +7,9 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 model Whistleblower {
@@ -35,6 +36,9 @@ model Evidence {
   evidenceDate        String
   keyFigures          String
   medicalConditions   String
+  statisticalClaims   String   @default("[]")
+  regulatoryMentions  String   @default("[]")
+  euaOmissionStatus   String   @default("Not Applicable")
   sourceUrl           String?
   fileUrl             String?
   createdAt           DateTime @default(now())

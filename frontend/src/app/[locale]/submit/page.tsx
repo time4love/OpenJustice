@@ -44,6 +44,9 @@ interface DraftAnalysis {
   evidenceDate: string;
   keyFigures: string[];
   medicalConditions: string[];
+  statisticalClaims: string[];
+  regulatoryMentions: string[];
+  euaOmissionStatus: 'Omits EUA (Misleading)' | 'Explicitly Mentions EUA' | 'Not Applicable';
   rejectionReason?: string;
 }
 
@@ -286,11 +289,27 @@ function ReviewPanel({
               </span>
             )}
           </div>
+          {draft.euaOmissionStatus === 'Omits EUA (Misleading)' && (
+            <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-rose-50 border border-rose-300">
+              <span className="w-2 h-2 rounded-full bg-rose-500 shrink-0" />
+              <span className="text-xs font-bold text-rose-700 uppercase tracking-wide">
+                {t('euaOmitted')}
+              </span>
+            </div>
+          )}
+          {draft.euaOmissionStatus === 'Explicitly Mentions EUA' && (
+            <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-50 border border-slate-200">
+              <span className="w-2 h-2 rounded-full bg-slate-400 shrink-0" />
+              <span className="text-xs font-medium text-slate-600">{t('euaMentioned')}</span>
+            </div>
+          )}
+
           <p className="text-sm text-slate-700 leading-relaxed">{draft.summary}</p>
         </div>
 
-        {/* Key figures + medical conditions */}
-        {((draft.keyFigures?.length ?? 0) > 0 || (draft.medicalConditions?.length ?? 0) > 0) && (
+        {/* Key figures, medical conditions, statistical claims, regulatory mentions */}
+        {((draft.keyFigures?.length ?? 0) > 0 || (draft.medicalConditions?.length ?? 0) > 0 ||
+          (draft.statisticalClaims?.length ?? 0) > 0 || (draft.regulatoryMentions?.length ?? 0) > 0) && (
           <div className="space-y-2.5 pt-1 border-t border-slate-100">
             {(draft.keyFigures?.length ?? 0) > 0 && (
               <div className="flex flex-wrap items-center gap-1.5">
@@ -312,6 +331,30 @@ function ReviewPanel({
                 {draft.medicalConditions!.map((c, i) => (
                   <span key={`${c}-${i}`} className="px-2 py-0.5 rounded text-xs bg-purple-50 text-purple-700 border border-purple-200">
                     {c}
+                  </span>
+                ))}
+              </div>
+            )}
+            {(draft.statisticalClaims?.length ?? 0) > 0 && (
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="text-xs font-semibold text-slate-400 uppercase tracking-widest shrink-0">
+                  {t('statisticalClaimsLabel')}
+                </span>
+                {draft.statisticalClaims!.map((c, i) => (
+                  <span key={`${c}-${i}`} className="px-2 py-0.5 rounded text-xs bg-emerald-50 text-emerald-700 border border-emerald-200">
+                    {c}
+                  </span>
+                ))}
+              </div>
+            )}
+            {(draft.regulatoryMentions?.length ?? 0) > 0 && (
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="text-xs font-semibold text-slate-400 uppercase tracking-widest shrink-0">
+                  {t('regulatoryMentionsLabel')}
+                </span>
+                {draft.regulatoryMentions!.map((m, i) => (
+                  <span key={`${m}-${i}`} className="px-2 py-0.5 rounded text-xs bg-amber-50 text-amber-700 border border-amber-200">
+                    {m}
                   </span>
                 ))}
               </div>
@@ -471,8 +514,22 @@ function ConfirmedView({
             )}
           </div>
 
-          <div>
-            <p className="text-xs text-slate-500 uppercase tracking-widest mb-1">{tResult('aiSummary')}</p>
+          <div className="space-y-2">
+            <p className="text-xs text-slate-500 uppercase tracking-widest">{tResult('aiSummary')}</p>
+            {analysis.euaOmissionStatus === 'Omits EUA (Misleading)' && (
+              <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-rose-50 border border-rose-300">
+                <span className="w-2 h-2 rounded-full bg-rose-500 shrink-0" />
+                <span className="text-xs font-bold text-rose-700 uppercase tracking-wide">
+                  {tResult('euaOmitted')}
+                </span>
+              </div>
+            )}
+            {analysis.euaOmissionStatus === 'Explicitly Mentions EUA' && (
+              <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-50 border border-slate-200">
+                <span className="w-2 h-2 rounded-full bg-slate-400 shrink-0" />
+                <span className="text-xs font-medium text-slate-600">{tResult('euaMentioned')}</span>
+              </div>
+            )}
             <p className="text-sm text-slate-700 leading-relaxed">{analysis.summary}</p>
           </div>
 
@@ -490,7 +547,8 @@ function ConfirmedView({
             </div>
           )}
 
-          {(analysis.keyFigures.length > 0 || analysis.medicalConditions.length > 0) && (
+          {(analysis.keyFigures.length > 0 || analysis.medicalConditions.length > 0 ||
+            (analysis.statisticalClaims?.length ?? 0) > 0 || (analysis.regulatoryMentions?.length ?? 0) > 0) && (
             <div className="space-y-2">
               {analysis.keyFigures.length > 0 && (
                 <div className="flex flex-wrap items-center gap-1.5">
@@ -512,6 +570,30 @@ function ConfirmedView({
                   {analysis.medicalConditions.map((c, i) => (
                     <span key={`${c}-${i}`} className="px-2 py-0.5 rounded text-xs bg-purple-50 text-purple-700 border border-purple-200">
                       {c}
+                    </span>
+                  ))}
+                </div>
+              )}
+              {(analysis.statisticalClaims?.length ?? 0) > 0 && (
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="text-xs font-semibold text-slate-400 uppercase tracking-widest shrink-0">
+                    {tResult('statisticalClaimsLabel')}
+                  </span>
+                  {analysis.statisticalClaims!.map((c, i) => (
+                    <span key={`${c}-${i}`} className="px-2 py-0.5 rounded text-xs bg-emerald-50 text-emerald-700 border border-emerald-200">
+                      {c}
+                    </span>
+                  ))}
+                </div>
+              )}
+              {(analysis.regulatoryMentions?.length ?? 0) > 0 && (
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="text-xs font-semibold text-slate-400 uppercase tracking-widest shrink-0">
+                    {tResult('regulatoryMentionsLabel')}
+                  </span>
+                  {analysis.regulatoryMentions!.map((m, i) => (
+                    <span key={`${m}-${i}`} className="px-2 py-0.5 rounded text-xs bg-amber-50 text-amber-700 border border-amber-200">
+                      {m}
                     </span>
                   ))}
                 </div>

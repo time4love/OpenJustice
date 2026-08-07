@@ -46,6 +46,9 @@ const SMOKING_GUN_RESPONSE = {
   evidenceDate: '2021-03-10',
   keyFigures: ['ד"ר שרון אלרוי-פריס', "פרופ' מתי ברקוביץ'"],
   medicalConditions: ['דלקת שריר הלב'],
+  statisticalClaims: [],
+  regulatoryMentions: [],
+  euaOmissionStatus: 'Not Applicable' as const,
 };
 
 const ANECDOTAL_RESPONSE = {
@@ -62,6 +65,9 @@ const ANECDOTAL_RESPONSE = {
   evidenceDate: 'Unknown',
   keyFigures: [],
   medicalConditions: [],
+  statisticalClaims: [],
+  regulatoryMentions: [],
+  euaOmissionStatus: 'Not Applicable' as const,
 };
 
 const MATERIAL_RESPONSE = {
@@ -79,6 +85,9 @@ const MATERIAL_RESPONSE = {
   evidenceDate: '2021-08-23',
   keyFigures: ['אלברט בורלה'],
   medicalConditions: ['פגיעות נוירולוגיות', 'שיבושים במחזור החודשי'],
+  statisticalClaims: ['יעיל ב-94% בקרב בני 55 ומעלה שהשתתפו בשלב השלישי בניסוי'],
+  regulatoryMentions: ['ביום חמישי צפוי להתקבל אישור מה-FDA'],
+  euaOmissionStatus: 'Omits EUA (Misleading)' as const,
 };
 
 const IRRELEVANT_RESPONSE = {
@@ -95,6 +104,9 @@ const IRRELEVANT_RESPONSE = {
   evidenceDate: 'Unknown',
   keyFigures: [],
   medicalConditions: [],
+  statisticalClaims: [],
+  regulatoryMentions: [],
+  euaOmissionStatus: 'Not Applicable' as const,
   rejectionReason:
     'הטקסט שהוגש הינו ביקורת מסעדה ואינו מכיל כל ראיה הנוגעת לעילות התביעה בעניין מדיניות הקורונה.',
 };
@@ -113,6 +125,9 @@ const OPINION_PIECE_RESPONSE = {
   evidenceDate: 'Unknown',
   keyFigures: [],
   medicalConditions: [],
+  statisticalClaims: [],
+  regulatoryMentions: [],
+  euaOmissionStatus: 'Not Applicable' as const,
   rejectionReason:
     'המאמר מהווה פרשנות עיתונאית ודעה אישית בלבד, ואינו מכיל ראיות עובדתיות ישירות הנדרשות לבית המשפט.',
 };
@@ -132,6 +147,9 @@ const CONTEXT_ANCHOR_RESPONSE = {
   evidenceDate: '2021-08-23',
   keyFigures: [],
   medicalConditions: [],
+  statisticalClaims: [],
+  regulatoryMentions: [],
+  euaOmissionStatus: 'Explicitly Mentions EUA' as const,
 };
 
 const TEST_FILE_BUFFER = Buffer.from('fake-image-content');
@@ -260,6 +278,104 @@ describe('IntakeAgent', () => {
     it('rejects a missing medicalConditions field', () => {
       const { medicalConditions: _removed, ...invalid } = SMOKING_GUN_RESPONSE;
       expect(() => IntakeOutputSchema.parse(invalid)).toThrow();
+    });
+
+    // statisticalClaims
+    it('accepts an empty statisticalClaims array', () => {
+      expect(() =>
+        IntakeOutputSchema.parse({ ...SMOKING_GUN_RESPONSE, statisticalClaims: [] }),
+      ).not.toThrow();
+    });
+
+    it('accepts a populated statisticalClaims array', () => {
+      expect(() =>
+        IntakeOutputSchema.parse({
+          ...SMOKING_GUN_RESPONSE,
+          statisticalClaims: ['יעיל ב-94% בקרב בני 55 ומעלה'],
+        }),
+      ).not.toThrow();
+    });
+
+    it('rejects a non-array statisticalClaims', () => {
+      expect(() =>
+        IntakeOutputSchema.parse({ ...SMOKING_GUN_RESPONSE, statisticalClaims: '94%' }),
+      ).toThrow();
+    });
+
+    it('rejects a missing statisticalClaims field', () => {
+      const { statisticalClaims: _removed, ...invalid } = SMOKING_GUN_RESPONSE;
+      expect(() => IntakeOutputSchema.parse(invalid)).toThrow();
+    });
+
+    // regulatoryMentions
+    it('accepts an empty regulatoryMentions array', () => {
+      expect(() =>
+        IntakeOutputSchema.parse({ ...SMOKING_GUN_RESPONSE, regulatoryMentions: [] }),
+      ).not.toThrow();
+    });
+
+    it('accepts a populated regulatoryMentions array', () => {
+      expect(() =>
+        IntakeOutputSchema.parse({
+          ...SMOKING_GUN_RESPONSE,
+          regulatoryMentions: ['ביום חמישי צפוי להתקבל אישור מה-FDA'],
+        }),
+      ).not.toThrow();
+    });
+
+    it('rejects a non-array regulatoryMentions', () => {
+      expect(() =>
+        IntakeOutputSchema.parse({ ...SMOKING_GUN_RESPONSE, regulatoryMentions: 'FDA approval' }),
+      ).toThrow();
+    });
+
+    it('rejects a missing regulatoryMentions field', () => {
+      const { regulatoryMentions: _removed, ...invalid } = SMOKING_GUN_RESPONSE;
+      expect(() => IntakeOutputSchema.parse(invalid)).toThrow();
+    });
+
+    it('statisticalClaims and regulatoryMentions flow through analyzeText correctly', async () => {
+      getMockInvoke(agent).mockResolvedValueOnce(MATERIAL_RESPONSE);
+      const result = await agent.analyzeText('Official FDA press release…', 'https://example.com');
+      expect(result.statisticalClaims).toEqual(['יעיל ב-94% בקרב בני 55 ומעלה שהשתתפו בשלב השלישי בניסוי']);
+      expect(result.regulatoryMentions).toEqual(['ביום חמישי צפוי להתקבל אישור מה-FDA']);
+    });
+
+    // euaOmissionStatus
+    it('accepts all three valid euaOmissionStatus values', () => {
+      const statuses = [
+        'Omits EUA (Misleading)',
+        'Explicitly Mentions EUA',
+        'Not Applicable',
+      ] as const;
+      for (const status of statuses) {
+        expect(() =>
+          IntakeOutputSchema.parse({ ...SMOKING_GUN_RESPONSE, euaOmissionStatus: status }),
+        ).not.toThrow();
+      }
+    });
+
+    it('rejects an invalid euaOmissionStatus value', () => {
+      expect(() =>
+        IntakeOutputSchema.parse({ ...SMOKING_GUN_RESPONSE, euaOmissionStatus: 'Unknown' }),
+      ).toThrow();
+    });
+
+    it('rejects a missing euaOmissionStatus field', () => {
+      const { euaOmissionStatus: _removed, ...invalid } = SMOKING_GUN_RESPONSE;
+      expect(() => IntakeOutputSchema.parse(invalid)).toThrow();
+    });
+
+    it('euaOmissionStatus="Omits EUA (Misleading)" flows through analyzeEvidence for a misleading article', async () => {
+      getMockInvoke(agent).mockResolvedValueOnce(MATERIAL_RESPONSE);
+      const result = await agent.analyzeEvidence(TEST_FILE_BUFFER, TEST_MIME_JPEG);
+      expect(result.euaOmissionStatus).toBe('Omits EUA (Misleading)');
+    });
+
+    it('euaOmissionStatus="Explicitly Mentions EUA" flows through for a transparent document', async () => {
+      getMockInvoke(agent).mockResolvedValueOnce(CONTEXT_ANCHOR_RESPONSE);
+      const result = await agent.analyzeEvidence(TEST_FILE_BUFFER, TEST_MIME_JPEG);
+      expect(result.euaOmissionStatus).toBe('Explicitly Mentions EUA');
     });
 
     // tierReasoning
