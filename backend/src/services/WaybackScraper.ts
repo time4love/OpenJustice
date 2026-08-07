@@ -465,7 +465,17 @@ export class WaybackScraper {
 
     // Lazy CDX fetch — populate snapshots on first processJob call
     if (snapshotsList.length === 0) {
-      const rawSnapshots = await this.getSnapshotsList(job.url);
+      let rawSnapshots: RawSnapshot[];
+      try {
+        rawSnapshots = await this.getSnapshotsList(job.url);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.error(`[WaybackScraper] Job ${jobId} — CDX fetch failed:`, message);
+        return prisma.waybackScrapeJob.update({
+          where: { id: jobId },
+          data: { status: 'FAILED' },
+        });
+      }
       snapshotsList = rawSnapshots.map((s) => ({
         timestamp: s.timestamp,
         digest: s.digest,
