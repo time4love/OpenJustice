@@ -92,8 +92,9 @@ router.post('/scan', async (req: Request, res: Response): Promise<void> => {
 // ---------------------------------------------------------------------------
 // GET /api/forensics/tracked/:id/status
 //
-// Polling endpoint. Returns the TrackedUrl status and, if a job is currently
-// active (PENDING or IN_PROGRESS), its progress for the UI progress bar.
+// Polling endpoint. Returns the TrackedUrl status, active job progress, and
+// all legally significant diffs found so far — enabling the frontend to render
+// diff cards incrementally while the scan is still running.
 //
 // Frontend polls this every 3 s until status is COMPLETED or FAILED.
 // ---------------------------------------------------------------------------
@@ -112,23 +113,49 @@ router.get('/tracked/:id/status', async (req: Request, res: Response): Promise<v
       return;
     }
 
-    const activeJob = await prisma.waybackScrapeJob.findFirst({
-      where: { trackedUrlId, status: { in: ['PENDING', 'IN_PROGRESS'] } },
-      orderBy: { createdAt: 'desc' },
-      select: {
-        id: true,
-        status: true,
-        totalSnapshots: true,
-        processedSnapshots: true,
-        updatedAt: true,
-      },
-    });
+    const [activeJob, rawDiffs] = await Promise.all([
+      prisma.waybackScrapeJob.findFirst({
+        where: { trackedUrlId, status: { in: ['PENDING', 'IN_PROGRESS'] } },
+        orderBy: { createdAt: 'desc' },
+        select: {
+          id: true,
+          status: true,
+          totalSnapshots: true,
+          processedSnapshots: true,
+          updatedAt: true,
+        },
+      }),
+      prisma.urlVersionDiff.findMany({
+        where: { trackedUrlId, isLegallySignificant: true },
+        orderBy: { afterDate: 'asc' },
+        select: {
+          id: true,
+          beforeDate: true,
+          afterDate: true,
+          snapshotUrl: true,
+          deletedText: true,
+          addedText: true,
+          aiSignificance: true,
+        },
+      }),
+    ]);
+
+    const liveDiffs = rawDiffs.map((d) => ({
+      id: d.id,
+      beforeDate: d.beforeDate,
+      date: d.afterDate,
+      snapshotUrl: d.snapshotUrl,
+      deletedClaims: JSON.parse(d.deletedText) as string[],
+      addedClaims: JSON.parse(d.addedText) as string[],
+      legalSignificance: d.aiSignificance,
+    }));
 
     res.status(200).json({
       id: trackedUrl.id,
       url: trackedUrl.url,
       status: trackedUrl.status,
       activeJob: activeJob ?? null,
+      liveDiffs,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

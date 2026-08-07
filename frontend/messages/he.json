@@ -257,6 +257,7 @@
     "viewEvidence": "צפה בראיה",
     "promoteSuccess": "הועלה לכספת הראיות",
     "promoteError": "הקידום נכשל.",
+    "liveFindings": "נמצאו {count} שינויים משמעותיים עד כה",
     "creatingJob": "יוצר משימת סריקה…",
     "processingSnapshots": "מעבד צילומי ארכיון…",
     "snapshotProgress": "עובד {processed} מתוך {total} צילומים",

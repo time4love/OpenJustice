@@ -257,6 +257,7 @@
     "viewEvidence": "View Evidence",
     "promoteSuccess": "Promoted to Evidence Vault",
     "promoteError": "Promotion failed.",
+    "liveFindings": "{count} significant {count, plural, one {change} other {changes}} found so far",
     "creatingJob": "Creating scan job…",
     "processingSnapshots": "Processing snapshots…",
     "snapshotProgress": "{processed} of {total} snapshots processed",

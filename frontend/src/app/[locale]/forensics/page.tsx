@@ -24,6 +24,7 @@ interface TrackedUrlStatusResponse {
   url: string;
   status: ScanStatus;
   activeJob: ActiveJob | null;
+  liveDiffs: SnapshotDiff[];
 }
 
 interface SnapshotDiff {
@@ -367,6 +368,7 @@ export default function ForensicsPage() {
   const [phase, setPhase] = useState<Phase>('idle');
   const [trackedUrlId, setTrackedUrlId] = useState<string | null>(null);
   const [scanProgress, setScanProgress] = useState<{ total: number; processed: number } | null>(null);
+  const [liveDiffs, setLiveDiffs] = useState<SnapshotDiff[]>([]);
   const [result, setResult] = useState<TrackedUrlResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [stalled, setStalled] = useState(false);
@@ -436,7 +438,7 @@ export default function ForensicsPage() {
         if (!res.ok) return;
         const data = (await res.json()) as TrackedUrlStatusResponse;
 
-        // Update progress bar from active job
+        // Update progress bar and live diffs
         if (data.activeJob) {
           setScanProgress({
             total: data.activeJob.totalSnapshots,
@@ -454,6 +456,10 @@ export default function ForensicsPage() {
           ) {
             setStalled(true);
           }
+        }
+
+        if (data.liveDiffs.length > 0) {
+          setLiveDiffs(data.liveDiffs);
         }
 
         if (data.status === 'COMPLETED') {
@@ -488,6 +494,7 @@ export default function ForensicsPage() {
     setTrackedUrlId(null);
     trackedUrlIdRef.current = null;
     setScanProgress(null);
+    setLiveDiffs([]);
     setStalled(false);
     lastJobUpdatedAtRef.current = null;
     lastUpdateTimeRef.current = null;
@@ -680,21 +687,38 @@ export default function ForensicsPage() {
 
         {/* Polling — TrackedUrl SCANNING */}
         {phase === 'polling' && (
-          <ProgressState
-            total={scanProgress?.total ?? 0}
-            processed={scanProgress?.processed ?? 0}
-            stalled={stalled}
-            resuming={resuming}
-            processingLabel={t('processingSnapshots')}
-            progressLabel={t('snapshotProgress', {
-              processed: scanProgress?.processed ?? 0,
-              total: scanProgress?.total ?? 0,
-            })}
-            stalledLabel={t('jobStalled')}
-            resumeBtn={t('resumeBtn')}
-            resumingBtn={t('resumingBtn')}
-            onResume={() => { void handleResume(); }}
-          />
+          <>
+            <ProgressState
+              total={scanProgress?.total ?? 0}
+              processed={scanProgress?.processed ?? 0}
+              stalled={stalled}
+              resuming={resuming}
+              processingLabel={t('processingSnapshots')}
+              progressLabel={t('snapshotProgress', {
+                processed: scanProgress?.processed ?? 0,
+                total: scanProgress?.total ?? 0,
+              })}
+              stalledLabel={t('jobStalled')}
+              resumeBtn={t('resumeBtn')}
+              resumingBtn={t('resumingBtn')}
+              onResume={() => { void handleResume(); }}
+            />
+
+            {/* Live findings — significant diffs found so far */}
+            {liveDiffs.length > 0 && (
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse shrink-0" />
+                  <span className="text-xs font-semibold text-slate-500 uppercase tracking-widest">
+                    {t('liveFindings', { count: liveDiffs.length })}
+                  </span>
+                </div>
+                {liveDiffs.map((diff, i) => (
+                  <DiffNode key={diff.id} diff={diff} index={i} labels={diffLabels} />
+                ))}
+              </div>
+            )}
+          </>
         )}
 
         {/* Fetching results */}
