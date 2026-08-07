@@ -91,9 +91,15 @@ export class Web3Service {
       return tx.hash;
     } catch (err: unknown) {
       // ethers v6: use the isError type guard to narrow CALL_EXCEPTION errors.
-      // A CALL_EXCEPTION carries a `.revert` object with the custom error name and args.
+      // NOTE: when the revert occurs during estimateGas, ethers v6 does NOT populate
+      // err.revert — it returns null. Fall back to matching the 4-byte selector from
+      // err.data so DuplicateEvidence is always detected correctly.
       if (ethers.isError(err, 'CALL_EXCEPTION')) {
-        if (err.revert?.name === 'DuplicateEvidence') {
+        const DUPLICATE_SELECTOR = ethers.id('DuplicateEvidence(bytes32)').slice(0, 10);
+        const isDuplicate =
+          err.revert?.name === 'DuplicateEvidence' ||
+          (typeof err.data === 'string' && err.data.slice(0, 10) === DUPLICATE_SELECTOR);
+        if (isDuplicate) {
           throw new DuplicateEvidenceError(fileHash);
         }
         throw new ContractRevertError(err.reason ?? err.message, err);

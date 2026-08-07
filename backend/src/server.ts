@@ -1,5 +1,5 @@
 import 'dotenv/config';
-import express, { Request, Response } from 'express';
+import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import { evidenceRouter } from './routes/evidenceRoutes';
 import { argumentRouter } from './routes/argumentRoutes';
@@ -43,6 +43,22 @@ app.get('/health', (_req: Request, res: Response) => {
 app.use('/api/evidence', evidenceRouter);
 app.use('/api/arguments', argumentRouter);
 app.use('/api/chat', chatRouter);
+
+// ---------------------------------------------------------------------------
+// Global error handler — must be registered AFTER all routes.
+// Catches anything passed to next(err) (e.g. multer rejections, unhandled
+// throws in async handlers) and returns a consistent JSON body so the
+// frontend never receives a plain-text "Internal Server Error".
+// ---------------------------------------------------------------------------
+
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
+  console.error('[server] Unhandled error:', err.stack ?? err.message);
+  const status = (err as { status?: number; statusCode?: number }).status
+    ?? (err as { status?: number; statusCode?: number }).statusCode
+    ?? 500;
+  res.status(status).json({ error: err.message ?? 'Internal server error' });
+});
 
 // ---------------------------------------------------------------------------
 // Start
