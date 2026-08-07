@@ -759,7 +759,7 @@ export default function SubmitPage() {
       return;
     }
 
-    const data = await res.json() as {
+    let data: {
       relevant?: boolean;
       fileHash?: string;
       txHash?: string;
@@ -767,6 +767,13 @@ export default function SubmitPage() {
       error?: string;
       message?: string;
     };
+    try {
+      data = await res.json();
+    } catch {
+      setError(`Server returned a non-JSON response (status ${res.status}). Check backend logs.`);
+      setPhase('review');
+      return;
+    }
 
     if (res.status === 409 && data.error === 'duplicate') {
       setDuplicateHash(data.fileHash ?? '');
@@ -775,7 +782,7 @@ export default function SubmitPage() {
     }
 
     if (!res.ok) {
-      setError(data.message ?? `Request failed with status ${res.status}`);
+      setError(data.message ?? data.error ?? `Request failed with status ${res.status}`);
       setPhase('review');
       return;
     }

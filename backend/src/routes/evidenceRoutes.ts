@@ -9,6 +9,24 @@ import { encryptContact } from '../lib/encrypt';
 import { prisma } from '../lib/prisma';
 import { scrapeUrl } from '../utils/webScraper';
 
+// ---------------------------------------------------------------------------
+// Response types
+// ---------------------------------------------------------------------------
+
+interface EvidenceRecord {
+  fileHash: string;
+  category: string;
+  tier: string;
+  evidencePerspective?: string | null;
+  tierReasoning?: string | null;
+  summary: string;
+  targetEntity: string;
+  evidenceDate: string;
+  keyFigures: string[];
+  medicalConditions: string[];
+  timestamp: number;
+}
+
 const router = Router();
 
 // ---------------------------------------------------------------------------
@@ -235,25 +253,39 @@ router.post(
         return;
       }
 
-      // Upsert to vector store — no PII stored here
-      try {
-        const vectorStore = await getVectorStore();
-        await vectorStore.upsertEvidence(analysis.summary, {
+      // Write structured metadata to Prisma — this is the authoritative structured store.
+      await prisma.evidence.upsert({
+        where: { fileHash },
+        update: {
+          category: analysis.category,
+          targetEntity: analysis.targetEntity,
+          evidenceTier: analysis.evidenceTier,
+          evidencePerspective: analysis.evidencePerspective ?? null,
+          tierReasoning: analysis.tierReasoning ?? null,
+          summary: analysis.summary,
+          evidenceDate: analysis.evidenceDate,
+          keyFigures: JSON.stringify(analysis.keyFigures),
+          medicalConditions: JSON.stringify(analysis.medicalConditions),
+        },
+        create: {
           fileHash,
           category: analysis.category,
-          tier: analysis.evidenceTier,
-          tierReasoning: analysis.tierReasoning,
-          evidencePerspective: analysis.evidencePerspective,
-          summary: analysis.summary,
           targetEntity: analysis.targetEntity,
+          evidenceTier: analysis.evidenceTier,
+          evidencePerspective: analysis.evidencePerspective ?? null,
+          tierReasoning: analysis.tierReasoning ?? null,
+          summary: analysis.summary,
           evidenceDate: analysis.evidenceDate,
-          keyFigures: analysis.keyFigures,
-          medicalConditions: analysis.medicalConditions,
-          timestamp: Date.now(),
-        });
-      } catch (err) {
-        console.error('[confirm] VectorStoreService upsert error (non-fatal):', err);
-      }
+          keyFigures: JSON.stringify(analysis.keyFigures),
+          medicalConditions: JSON.stringify(analysis.medicalConditions),
+        },
+      });
+
+      // Upsert embedding to Pinecone — fire-and-forget; stores ONLY the summary text
+      // and fileHash. All structured metadata lives in Prisma.
+      getVectorStore()
+        .then((vs) => vs.upsertEvidence(analysis.summary, fileHash))
+        .catch((err) => console.error('[confirm] VectorStoreService upsert error (non-fatal):', err));
 
       res.status(201).json({
         relevant: analysis.isRelevant,
@@ -318,12 +350,33 @@ router.get('/timeline', async (req: Request, res: Response): Promise<void> => {
   const { targetEntity } = parsed.data;
 
   try {
-    const vectorStore = await getVectorStore();
-    const results = await vectorStore.getTimeline(targetEntity);
+    const rows = await prisma.evidence.findMany({
+      where: targetEntity ? { targetEntity } : undefined,
+      orderBy: { evidenceDate: 'asc' },
+    });
+
+    // Wrap in { content, metadata } to match the TimelineRecord shape the frontend expects.
+    const results = rows.map((r) => ({
+      content: r.summary,
+      metadata: {
+        fileHash: r.fileHash,
+        category: r.category,
+        tier: r.evidenceTier,
+        evidencePerspective: r.evidencePerspective,
+        tierReasoning: r.tierReasoning,
+        summary: r.summary,
+        targetEntity: r.targetEntity,
+        evidenceDate: r.evidenceDate,
+        keyFigures: JSON.parse(r.keyFigures) as string[],
+        medicalConditions: JSON.parse(r.medicalConditions) as string[],
+        timestamp: r.createdAt.getTime(),
+      } satisfies EvidenceRecord,
+    }));
+
     res.status(200).json({ targetEntity: targetEntity ?? null, count: results.length, results });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    console.error('[timeline] VectorStoreService error:', err instanceof Error ? err.stack : err);
+    console.error('[timeline] Prisma error:', err instanceof Error ? err.stack : err);
     res.status(500).json({ error: 'Timeline fetch failed', message });
   }
 });
@@ -335,12 +388,22 @@ router.get('/timeline', async (req: Request, res: Response): Promise<void> => {
 
 router.get('/stats', async (_req: Request, res: Response): Promise<void> => {
   try {
-    const vectorStore = await getVectorStore();
-    const stats = await vectorStore.getEvidenceStats();
-    res.status(200).json(stats);
+    const [total, tierGroups, categoryGroups] = await Promise.all([
+      prisma.evidence.count(),
+      prisma.evidence.groupBy({ by: ['evidenceTier'], _count: { evidenceTier: true } }),
+      prisma.evidence.groupBy({ by: ['category'], _count: { category: true } }),
+    ]);
+
+    const byTier: Record<string, number> = {};
+    for (const g of tierGroups) byTier[g.evidenceTier] = g._count.evidenceTier;
+
+    const byCategory: Record<string, number> = {};
+    for (const g of categoryGroups) byCategory[g.category] = g._count.category;
+
+    res.status(200).json({ total, byTier, byCategory });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    console.error('[stats] VectorStoreService error:', err instanceof Error ? err.stack : err);
+    console.error('[stats] Prisma error:', err instanceof Error ? err.stack : err);
     res.status(500).json({ error: 'Stats fetch failed', message });
   }
 });
@@ -360,12 +423,40 @@ router.get('/search', async (req: Request, res: Response): Promise<void> => {
 
   try {
     const vectorStore = await getVectorStore();
-    const results = await vectorStore.searchSimilarEvidence(q, limit);
+    const vectorResults = await vectorStore.searchSimilarEvidence(q, limit);
+
+    // Enrich with structured metadata from Prisma, preserving semantic score order.
+    const fileHashes = vectorResults.map((r) => r.fileHash);
+    const rows = await prisma.evidence.findMany({ where: { fileHash: { in: fileHashes } } });
+
+    const byHash = new Map(rows.map((r) => [r.fileHash, r]));
+    const results = vectorResults
+      .filter((r) => byHash.has(r.fileHash))
+      .map((r) => {
+        const row = byHash.get(r.fileHash)!;
+        return {
+          content: r.content,
+          score: r.score,
+          metadata: {
+            fileHash: row.fileHash,
+            category: row.category,
+            tier: row.evidenceTier,
+            evidencePerspective: row.evidencePerspective,
+            tierReasoning: row.tierReasoning,
+            summary: row.summary,
+            targetEntity: row.targetEntity,
+            evidenceDate: row.evidenceDate,
+            keyFigures: JSON.parse(row.keyFigures) as string[],
+            medicalConditions: JSON.parse(row.medicalConditions) as string[],
+            timestamp: row.createdAt.getTime(),
+          } satisfies EvidenceRecord,
+        };
+      });
+
     res.status(200).json({ query: q, count: results.length, results });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    console.error('[search] VectorStoreService error:', err instanceof Error ? err.stack : err);
-    console.error('[search] Hint: if this is a dimension mismatch, your Pinecone index was likely created for OpenAI (1536-dim). Gemini text-embedding-004 uses 768 dimensions — recreate the index with dimension=768.');
+    console.error('[search] error:', err instanceof Error ? err.stack : err);
     res.status(500).json({ error: 'Search failed', message });
   }
 });

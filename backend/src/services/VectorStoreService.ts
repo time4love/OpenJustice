@@ -7,25 +7,11 @@ import { Document } from '@langchain/core/documents';
 // Types
 // ---------------------------------------------------------------------------
 
-export interface EvidenceStats {
-  total: number;
-  byTier: Record<string, number>;
-  byCategory: Record<string, number>;
-}
-
-export interface EvidenceMetadata {
+/** Shape of a single semantic search result returned to callers. */
+export interface VectorSearchResult {
   fileHash: string;
-  category: string;
-  tier: string;
-  tierReasoning?: string;
-  evidencePerspective?: string;
-  summary: string;
-  targetEntity: string;
-  evidenceDate: string;
-  keyFigures: string[];
-  medicalConditions: string[];
-  submitterAddress?: string;
-  timestamp: number;
+  content: string;
+  score?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -60,123 +46,40 @@ export class VectorStoreService {
   }
 
   /**
-   * Embed the evidence text and upsert it into the vector store.
-   * Uses `fileHash` as the document ID so re-submitting the same evidence
-   * is idempotent (Pinecone will overwrite, matching on-chain dedup logic).
+   * Embed the evidence summary and upsert it into Pinecone.
+   * Stores ONLY the fileHash in metadata — all structured fields live in Prisma.
+   * Uses `fileHash` as the vector ID for idempotent upserts.
    *
-   * @param text      Full text content to embed.
-   * @param metadata  Structured metadata stored alongside the vector.
+   * @param text      Summary text to embed.
+   * @param fileHash  SHA-256 hex hash — used as both vector ID and the only metadata field.
    */
-  async upsertEvidence(text: string, metadata: EvidenceMetadata): Promise<void> {
+  async upsertEvidence(text: string, fileHash: string): Promise<void> {
     const doc = new Document({
       pageContent: text,
-      metadata,
+      metadata: { fileHash },
     });
 
-    // Use fileHash as the Pinecone vector ID for idempotent upserts
-    await this.store.addDocuments([doc], { ids: [metadata.fileHash] });
+    await this.store.addDocuments([doc], { ids: [fileHash] });
 
-    console.log(
-      `[VectorStoreService] Upserted evidence | hash: ${metadata.fileHash} | tier: ${metadata.tier}`,
-    );
-  }
-
-  /**
-   * Retrieve evidence sorted chronologically by evidenceDate (ascending).
-   *
-   * Pinecone's free tier does not support server-side ordering by metadata,
-   * so we fetch up to 100 records with a broad query and sort in-memory.
-   * Records with evidenceDate "Unknown" are placed at the end.
-   *
-   * @param targetEntity  Optional filter — only return evidence for this entity.
-   */
-  async getTimeline(
-    targetEntity?: string,
-  ): Promise<Array<{ content: string; metadata: EvidenceMetadata; score?: number }>> {
-    const filter: Record<string, unknown> | undefined = targetEntity
-      ? { targetEntity: { $eq: targetEntity } }
-      : undefined;
-
-    // Broad semantic query to retrieve a representative corpus
-    let results: Awaited<ReturnType<typeof this.store.similaritySearchWithScore>>;
-    try {
-      results = await this.store.similaritySearchWithScore(
-        'Covid-19 policy evidence legal timeline',
-        100,
-        filter,
-      );
-    } catch (err) {
-      console.error('[VectorStoreService] getTimeline error:', err instanceof Error ? err.message : err);
-      return [];
-    }
-
-    const docs = results.map(([doc, score]) => ({
-      content: doc.pageContent,
-      metadata: doc.metadata as EvidenceMetadata,
-      score,
-    }));
-
-    // Sort chronologically ascending; "Unknown" dates sort to the end
-    docs.sort((a, b) => {
-      const dateA = a.metadata.evidenceDate;
-      const dateB = b.metadata.evidenceDate;
-      if (dateA === 'Unknown' && dateB === 'Unknown') return 0;
-      if (dateA === 'Unknown') return 1;
-      if (dateB === 'Unknown') return -1;
-      return dateA.localeCompare(dateB);
-    });
-
-    return docs;
-  }
-
-  /**
-   * Aggregate tier and category counts across all stored evidence.
-   *
-   * Uses a 768-dimension zero vector (Gemini text-embedding-004 dimension) to
-   * fetch all records without semantic bias. Pinecone's free tier does not
-   * support server-side aggregation, so we count in-memory.
-   *
-   * Returns zero stats on any Pinecone error rather than propagating a 500.
-   */
-  async getEvidenceStats(): Promise<EvidenceStats> {
-    const empty: EvidenceStats = { total: 0, byTier: {}, byCategory: {} };
-    try {
-      const zeroVector = Array(768).fill(0) as number[];
-      const results = await this.store.similaritySearchVectorWithScore(zeroVector, 10_000);
-
-      const byTier: Record<string, number> = {};
-      const byCategory: Record<string, number> = {};
-
-      for (const [doc] of results) {
-        const meta = doc.metadata as EvidenceMetadata;
-        if (meta.tier) byTier[meta.tier] = (byTier[meta.tier] ?? 0) + 1;
-        if (meta.category) byCategory[meta.category] = (byCategory[meta.category] ?? 0) + 1;
-      }
-
-      return { total: results.length, byTier, byCategory };
-    } catch (err) {
-      console.error('[VectorStoreService] getEvidenceStats error:', err instanceof Error ? err.message : err);
-      return empty;
-    }
+    console.log(`[VectorStoreService] Upserted embedding | hash: ${fileHash}`);
   }
 
   /**
    * Embed the query and retrieve the most semantically similar evidence records.
+   * Returns only fileHash + content — callers must enrich from Prisma for full metadata.
    *
    * @param query  Natural language search query.
    * @param limit  Maximum number of results to return (default: 5).
-   * @returns      Array of matched documents with their metadata.
    */
   async searchSimilarEvidence(
     query: string,
     limit: number = 5,
-    filter?: Record<string, unknown>,
-  ): Promise<Array<{ content: string; metadata: EvidenceMetadata; score?: number }>> {
+  ): Promise<VectorSearchResult[]> {
     try {
-      const results = await this.store.similaritySearchWithScore(query, limit, filter);
+      const results = await this.store.similaritySearchWithScore(query, limit);
       return results.map(([doc, score]) => ({
+        fileHash: (doc.metadata as { fileHash: string }).fileHash,
         content: doc.pageContent,
-        metadata: doc.metadata as EvidenceMetadata,
         score,
       }));
     } catch (err) {

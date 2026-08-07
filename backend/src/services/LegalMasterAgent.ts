@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { VectorStoreService } from './VectorStoreService';
 import { LLMFactory } from '../factories/LLMFactory';
+import { prisma } from '../lib/prisma';
 
 // ---------------------------------------------------------------------------
 // Zod output schema
@@ -85,43 +86,41 @@ export class LegalMasterAgent {
   async generateArgument(category: string, targetEntity: string): Promise<ArgumentOutput> {
     const query = `${targetEntity} ${category} evidence`;
 
-    // 1. Strict filter: category AND targetEntity
-    const strictFilter: Record<string, unknown> = {
-      $and: [
-        { category: { $eq: category } },
-        { targetEntity: { $eq: targetEntity } },
-      ],
-    };
+    // 1. Semantic search — retrieve candidate fileHashes from Pinecone
+    const vectorResults = await this.vectorStore.searchSimilarEvidence(query, 20);
+    const candidateHashes = vectorResults.map((r) => r.fileHash);
 
-    let evidence = await this.vectorStore.searchSimilarEvidence(query, 10, strictFilter);
+    // 2. Enrich from Prisma with strict filter: category AND targetEntity
+    let records = await prisma.evidence.findMany({
+      where: { fileHash: { in: candidateHashes }, category, targetEntity },
+    });
 
-    // 2. Fallback: category only
-    if (evidence.length === 0) {
-      const categoryFilter: Record<string, unknown> = {
-        category: { $eq: category },
-      };
-      evidence = await this.vectorStore.searchSimilarEvidence(query, 10, categoryFilter);
+    // 3. Fallback: category only
+    if (records.length === 0) {
+      records = await prisma.evidence.findMany({
+        where: { fileHash: { in: candidateHashes }, category },
+      });
     }
 
-    if (evidence.length === 0) {
+    if (records.length === 0) {
       throw new Error(
         `No evidence found for category "${category}" and target entity "${targetEntity}".`,
       );
     }
 
-    // 3. Sort to prioritise Tier 1 & 2
-    const sorted = [...evidence].sort(
-      (a, b) => (TIER_PRIORITY[a.metadata.tier] ?? 5) - (TIER_PRIORITY[b.metadata.tier] ?? 5),
+    // 4. Sort to prioritise Tier 1 & 2
+    const sorted = [...records].sort(
+      (a, b) => (TIER_PRIORITY[a.evidenceTier] ?? 5) - (TIER_PRIORITY[b.evidenceTier] ?? 5),
     );
 
-    // 4. Build the prompt
+    // 5. Build the prompt
     const evidenceJson = JSON.stringify(
       sorted.map((e) => ({
-        fileHash: e.metadata.fileHash,
-        tier: e.metadata.tier,
-        category: e.metadata.category,
-        targetEntity: e.metadata.targetEntity,
-        summary: e.metadata.summary,
+        fileHash: e.fileHash,
+        tier: e.evidenceTier,
+        category: e.category,
+        targetEntity: e.targetEntity,
+        summary: e.summary,
       })),
       null,
       2,
