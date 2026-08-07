@@ -268,7 +268,7 @@
     "resumingBtn": "Resuming…",
     "flaggedBadge": "AI-Flagged as Significant",
     "auditBadge": "Version Change",
-    "identicalContent": "Content identical after normalisation — no text changes detected.",
+    "identicalContent": "No text changes recorded for this version.",
     "auditTotal": "{count} total version changes",
     "historyHeading": "Previously Scanned URLs",
     "historyEmpty": "No URLs scanned yet.",
