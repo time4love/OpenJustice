@@ -1,6 +1,20 @@
 import 'dotenv/config';
 import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
+
+// ---------------------------------------------------------------------------
+// Process-level crash guards — must be registered before any other code.
+// Prevents the Node process from dying on unhandled promise rejections or
+// synchronous exceptions, which would cause ECONNRESET at the proxy layer.
+// ---------------------------------------------------------------------------
+
+process.on('unhandledRejection', (reason) => {
+  console.error('[process] Unhandled promise rejection (process kept alive):', reason);
+});
+
+process.on('uncaughtException', (err) => {
+  console.error('[process] Uncaught exception (process kept alive):', err);
+});
 import { evidenceRouter } from './routes/evidenceRoutes';
 import { argumentRouter } from './routes/argumentRoutes';
 import { chatRouter } from './routes/chatRoutes';
