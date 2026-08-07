@@ -48,13 +48,20 @@
       "fileTypes": "Supported: JPEG, PNG, PDF · Max 10 MB",
       "fileSelected": "Selected:",
       "analyzeBtn": "Analyse Evidence",
-      "analyzingBtn": "Analysing evidence…"
+      "analyzingBtn": "Analysing evidence…",
+      "orLabel": "or",
+      "urlLabel": "Paste a web link:",
+      "urlPlaceholder": "https://…",
+      "scanBtn": "Scan Link",
+      "scanningBtn": "Scanning…"
     },
     "review": {
       "heading": "Review AI Analysis",
       "body": "Review the AI's classification below. You may edit the category, entity, and tier before registering on-chain.",
       "summaryLabel": "AI Summary",
       "missingLabel": "Missing Information",
+      "keyFiguresLabel": "Key Figures",
+      "medicalContextLabel": "Medical Context",
       "editableTitle": "Classification",
       "categoryLabel": "Legal Category",
       "entityLabel": "Target Entity",
@@ -64,7 +71,9 @@
       "confirmBtn": "Confirm & Register On-Chain",
       "confirmingBtn": "Registering on-chain…",
       "changeFileBtn": "← Change File",
-      "irrelevantWarning": "The AI has flagged this evidence as not relevant to the lawsuit. You may still register it if you believe this is incorrect."
+      "changeLinkBtn": "← Change Link",
+      "rejectedTitle": "Evidence Rejected by Quality Gate",
+      "irrelevantWarning": "The AI quality gate rejected this submission. You may still override and register it if you are certain it is legally relevant."
     },
     "result": {
       "title": "Registration Result",
@@ -74,8 +83,8 @@
       "onChainProof": "On-Chain Proof",
       "fileHash": "File Hash",
       "txHash": "Tx Hash",
-      "figuresLabel": "Figures:",
-      "medicalLabel": "Medical:",
+      "keyFiguresLabel": "Key Figures",
+      "medicalContextLabel": "Medical Context",
       "duplicateBanner": "Duplicate Submission",
       "failedBanner": "Submission Failed"
     },
@@ -130,6 +139,8 @@
     "loadingBtn": "Loading…",
     "count": "{count} records",
     "unknownDate": "Unknown Date",
+    "keyFiguresLabel": "Key Figures",
+    "medicalContextLabel": "Medical Context",
     "emptyTitle": "No timeline records found.",
     "emptySub": "Submit evidence with dates, or remove the entity filter.",
     "errorTitle": "Failed to load timeline."

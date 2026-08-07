@@ -48,13 +48,20 @@
       "fileTypes": "נתמך: JPEG, PNG, PDF · עד 10 MB",
       "fileSelected": "נבחר:",
       "analyzeBtn": "נתח ראיה",
-      "analyzingBtn": "מנתח ראיות…"
+      "analyzingBtn": "מנתח ראיות…",
+      "orLabel": "או",
+      "urlLabel": "הדבק קישור אינטרנטי:",
+      "urlPlaceholder": "https://…",
+      "scanBtn": "סרוק קישור",
+      "scanningBtn": "סורק…"
     },
     "review": {
       "heading": "בדיקת ניתוח הבינה המלאכותית",
       "body": "בדוק את הסיווג שביצעה הבינה המלאכותית. ניתן לערוך את הקטגוריה, הגוף, והדרגה לפני הרישום בשרשרת הבלוקים.",
       "summaryLabel": "סיכום בינה מלאכותית",
       "missingLabel": "מידע חסר",
+      "keyFiguresLabel": "מעורבים",
+      "medicalContextLabel": "הקשר רפואי",
       "editableTitle": "סיווג",
       "categoryLabel": "קטגוריה משפטית",
       "entityLabel": "גוף נתבע",
@@ -64,7 +71,9 @@
       "confirmBtn": "אשר ורשום בשרשרת הבלוקים",
       "confirmingBtn": "רושם בשרשרת הבלוקים…",
       "changeFileBtn": "→ החלף קובץ",
-      "irrelevantWarning": "הבינה המלאכותית סימנה ראיה זו כבלתי רלוונטית לתביעה. תוכל עדיין לרשום אותה אם לדעתך זו טעות."
+      "changeLinkBtn": "→ החלף קישור",
+      "rejectedTitle": "הראיה נדחתה",
+      "irrelevantWarning": "שומר הסף לא אישר הגשה זו. ניתן לעקוף ולרשום אותה בכל זאת אם אתה בטוח שהיא רלוונטית מבחינה משפטית."
     },
     "result": {
       "title": "תוצאת הרישום",
@@ -74,8 +83,8 @@
       "onChainProof": "הוכחה בשרשרת הבלוקים",
       "fileHash": "חתימת קובץ",
       "txHash": "מזהה עסקה",
-      "figuresLabel": "דמויות:",
-      "medicalLabel": "רפואי:",
+      "keyFiguresLabel": "מעורבים",
+      "medicalContextLabel": "הקשר רפואי",
       "duplicateBanner": "הגשה כפולה",
       "failedBanner": "ההגשה נכשלה"
     },
@@ -130,6 +139,8 @@
     "loadingBtn": "טוען…",
     "count": "{count} רשומות",
     "unknownDate": "תאריך לא ידוע",
+    "keyFiguresLabel": "מעורבים",
+    "medicalContextLabel": "הקשר רפואי",
     "emptyTitle": "לא נמצאו רשומות בציר הזמן.",
     "emptySub": "הגש ראיות עם תאריכים, או הסר את סינון הגוף.",
     "errorTitle": "טעינת ציר הזמן נכשלה."

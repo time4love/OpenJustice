@@ -40,8 +40,8 @@ const SMOKING_GUN_RESPONSE = {
   targetEntity: 'Ministry of Health',
   evidenceTier: EVIDENCE_TIER.SMOKING_GUN,
   evidenceDate: '2021-03-10',
-  keyFigures: ['Dr. Sharon Alroy-Preis', 'Prof. Mati Berkovitch'],
-  medicalConditions: ['Myocarditis'],
+  keyFigures: ['ד"ר שרון אלרוי-פריס', "פרופ' מתי ברקוביץ'"],
+  medicalConditions: ['דלקת שריר הלב'],
 };
 
 const ANECDOTAL_RESPONSE = {
@@ -65,8 +65,8 @@ const MATERIAL_RESPONSE = {
   targetEntity: 'FDA',
   evidenceTier: EVIDENCE_TIER.MATERIAL,
   evidenceDate: '2021-08-23',
-  keyFigures: ['Albert Bourla'],
-  medicalConditions: ['Neurological issues', 'Menstrual irregularities'],
+  keyFigures: ['אלברט בורלה'],
+  medicalConditions: ['פגיעות נוירולוגיות', 'שיבושים במחזור החודשי'],
 };
 
 const IRRELEVANT_RESPONSE = {
@@ -79,6 +79,22 @@ const IRRELEVANT_RESPONSE = {
   evidenceDate: 'Unknown',
   keyFigures: [],
   medicalConditions: [],
+  rejectionReason:
+    'הטקסט שהוגש הינו ביקורת מסעדה ואינו מכיל כל ראיה הנוגעת לעילות התביעה בעניין מדיניות הקורונה.',
+};
+
+const OPINION_PIECE_RESPONSE = {
+  isRelevant: false,
+  category: 'Other' as const,
+  summary: 'מאמר דעה הקורא לאחריות ממשלתית ללא ראיות עובדתיות ספציפיות.',
+  missingInformation: [],
+  targetEntity: 'Unknown',
+  evidenceTier: EVIDENCE_TIER.ANECDOTAL,
+  evidenceDate: 'Unknown',
+  keyFigures: [],
+  medicalConditions: [],
+  rejectionReason:
+    'המאמר מהווה פרשנות עיתונאית ודעה אישית בלבד, ואינו מכיל ראיות עובדתיות ישירות הנדרשות לבית המשפט.',
 };
 
 const TEST_FILE_BUFFER = Buffer.from('fake-image-content');
@@ -163,11 +179,11 @@ describe('IntakeAgent', () => {
       expect(() => IntakeOutputSchema.parse({ ...SMOKING_GUN_RESPONSE, keyFigures: [] })).not.toThrow();
     });
 
-    it('accepts a populated keyFigures array', () => {
+    it('accepts a populated keyFigures array in Hebrew', () => {
       expect(() =>
         IntakeOutputSchema.parse({
           ...SMOKING_GUN_RESPONSE,
-          keyFigures: ['Dr. Sharon Alroy-Preis', 'Albert Bourla'],
+          keyFigures: ['ד"ר שרון אלרוי-פריס', 'אלברט בורלה'],
         }),
       ).not.toThrow();
     });
@@ -189,11 +205,11 @@ describe('IntakeAgent', () => {
       ).not.toThrow();
     });
 
-    it('accepts a populated medicalConditions array', () => {
+    it('accepts a populated medicalConditions array in Hebrew', () => {
       expect(() =>
         IntakeOutputSchema.parse({
           ...SMOKING_GUN_RESPONSE,
-          medicalConditions: ['Myocarditis', 'Neurological issues'],
+          medicalConditions: ['דלקת שריר הלב', 'פגיעות נוירולוגיות'],
         }),
       ).not.toThrow();
     });
@@ -207,6 +223,26 @@ describe('IntakeAgent', () => {
     it('rejects a missing medicalConditions field', () => {
       const { medicalConditions: _removed, ...invalid } = SMOKING_GUN_RESPONSE;
       expect(() => IntakeOutputSchema.parse(invalid)).toThrow();
+    });
+
+    // rejectionReason
+    it('accepts a response with rejectionReason populated when isRelevant is false', () => {
+      expect(() => IntakeOutputSchema.parse(IRRELEVANT_RESPONSE)).not.toThrow();
+    });
+
+    it('accepts a response without rejectionReason when isRelevant is true (field is optional)', () => {
+      expect(() => IntakeOutputSchema.parse(SMOKING_GUN_RESPONSE)).not.toThrow();
+    });
+
+    it('accepts a response with rejectionReason undefined when isRelevant is false', () => {
+      const noReason = { ...IRRELEVANT_RESPONSE, rejectionReason: undefined };
+      expect(() => IntakeOutputSchema.parse(noReason)).not.toThrow();
+    });
+
+    it('rejects a non-string rejectionReason', () => {
+      expect(() =>
+        IntakeOutputSchema.parse({ ...IRRELEVANT_RESPONSE, rejectionReason: 42 }),
+      ).toThrow();
     });
   });
 
@@ -224,8 +260,8 @@ describe('IntakeAgent', () => {
       expect(result.missingInformation).toHaveLength(0);
       expect(result.targetEntity).toBe('Ministry of Health');
       expect(result.evidenceDate).toBe('2021-03-10');
-      expect(result.keyFigures).toEqual(['Dr. Sharon Alroy-Preis', 'Prof. Mati Berkovitch']);
-      expect(result.medicalConditions).toEqual(['Myocarditis']);
+      expect(result.keyFigures).toEqual(['ד"ר שרון אלרוי-פריס', "פרופ' מתי ברקוביץ'"]);
+      expect(result.medicalConditions).toEqual(['דלקת שריר הלב']);
     });
 
     it('returns "Unknown" evidenceDate when no date is visible', async () => {
@@ -261,6 +297,26 @@ describe('IntakeAgent', () => {
 
       expect(result.isRelevant).toBe(false);
       expect(result.category).toBe('Other');
+    });
+
+    it('returns rejectionReason in Hebrew when the quality gate rejects unrelated content', async () => {
+      getMockInvoke(agent).mockResolvedValueOnce(IRRELEVANT_RESPONSE);
+
+      const result = await agent.analyzeEvidence(TEST_FILE_BUFFER, TEST_MIME_JPEG);
+
+      expect(result.isRelevant).toBe(false);
+      expect(result.rejectionReason).toBeDefined();
+      expect(typeof result.rejectionReason).toBe('string');
+      expect(result.rejectionReason!.length).toBeGreaterThan(0);
+    });
+
+    it('does not populate rejectionReason for relevant evidence', async () => {
+      getMockInvoke(agent).mockResolvedValueOnce(SMOKING_GUN_RESPONSE);
+
+      const result = await agent.analyzeEvidence(TEST_FILE_BUFFER, TEST_MIME_JPEG);
+
+      expect(result.isRelevant).toBe(true);
+      expect(result.rejectionReason).toBeUndefined();
     });
 
     it('invokes the chain with a system prompt and file content block', async () => {
@@ -391,6 +447,69 @@ describe('IntakeAgent', () => {
       getMockInvoke(agent).mockResolvedValueOnce({ isRelevant: 'not-a-boolean' });
 
       await expect(agent.analyzeEvidence(TEST_FILE_BUFFER, TEST_MIME_JPEG)).rejects.toThrow();
+    });
+  });
+
+  // ---- analyzeText — URL scraping path ------------------------------------
+
+  describe('analyzeText', () => {
+    const TEST_URL = 'https://example.com/opinion-piece';
+    const TEST_TEXT = 'In my opinion, the government handled the pandemic badly. Everyone should be angry.';
+
+    it('returns isRelevant=false and rejectionReason for an opinion piece', async () => {
+      getMockInvoke(agent).mockResolvedValueOnce(OPINION_PIECE_RESPONSE);
+
+      const result = await agent.analyzeText(TEST_TEXT, TEST_URL);
+
+      expect(result.isRelevant).toBe(false);
+      expect(result.rejectionReason).toBeDefined();
+      expect(typeof result.rejectionReason).toBe('string');
+      expect(result.rejectionReason!.length).toBeGreaterThan(0);
+    });
+
+    it('invokes the chain with a system prompt and source URL in the text block', async () => {
+      getMockInvoke(agent).mockResolvedValueOnce(OPINION_PIECE_RESPONSE);
+
+      await agent.analyzeText(TEST_TEXT, TEST_URL);
+
+      const callArgs = getMockInvoke(agent).mock.calls[0][0] as Array<{
+        role: string;
+        content: unknown;
+      }>;
+      expect(callArgs).toHaveLength(2);
+      expect(callArgs[0].role).toBe('system');
+      expect(callArgs[1].role).toBe('human');
+    });
+
+    it('includes the source URL in the human message text', async () => {
+      getMockInvoke(agent).mockResolvedValueOnce(OPINION_PIECE_RESPONSE);
+
+      await agent.analyzeText(TEST_TEXT, TEST_URL);
+
+      const humanContent = (
+        getMockInvoke(agent).mock.calls[0][0] as Array<{
+          role: string;
+          content: Array<{ type: string; text?: string }>;
+        }>
+      )[1].content;
+      const textBlock = humanContent.find((b) => b.type === 'text' && b.text?.includes(TEST_URL));
+      expect(textBlock).toBeDefined();
+    });
+
+    it('returns a valid result for relevant scraped content', async () => {
+      getMockInvoke(agent).mockResolvedValueOnce(MATERIAL_RESPONSE);
+
+      const result = await agent.analyzeText('Official FDA press release text here…', TEST_URL);
+
+      expect(result.isRelevant).toBe(true);
+      expect(result.evidenceTier).toBe(EVIDENCE_TIER.MATERIAL);
+      expect(result.rejectionReason).toBeUndefined();
+    });
+
+    it('propagates errors thrown by the chain', async () => {
+      getMockInvoke(agent).mockRejectedValueOnce(new Error('Network error'));
+
+      await expect(agent.analyzeText(TEST_TEXT, TEST_URL)).rejects.toThrow('Network error');
     });
   });
 

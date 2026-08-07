@@ -110,10 +110,14 @@ function TimelineNode({
   record,
   index,
   unknownDateLabel,
+  keyFiguresLabel,
+  medicalContextLabel,
 }: {
   record: TimelineRecord;
   index: number;
   unknownDateLabel: string;
+  keyFiguresLabel: string;
+  medicalContextLabel: string;
 }) {
   const { metadata } = record;
   const styles = tierStyles(metadata.tier);
@@ -169,28 +173,28 @@ function TimelineNode({
             {metadata.summary}
           </p>
 
-          {/* Key figures + medical condition tags */}
+          {/* Key figures + medical conditions */}
           {((metadata.keyFigures?.length ?? 0) > 0 || (metadata.medicalConditions?.length ?? 0) > 0) && (
             <div className="space-y-1.5">
               {(metadata.keyFigures?.length ?? 0) > 0 && (
-                <div className="flex flex-wrap items-center gap-1">
-                  <span className="text-xs font-semibold text-slate-400 uppercase tracking-widest shrink-0 me-1">
-                    Figures:
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="text-xs font-semibold text-slate-400 uppercase tracking-widest shrink-0">
+                    {keyFiguresLabel}
                   </span>
                   {metadata.keyFigures!.map((f) => (
-                    <span key={f} className="px-1.5 py-0.5 rounded text-xs bg-violet-50 text-violet-700 border border-violet-200">
+                    <span key={f} className="px-1.5 py-0.5 rounded text-xs bg-blue-50 text-blue-700 border border-blue-200">
                       {f}
                     </span>
                   ))}
                 </div>
               )}
               {(metadata.medicalConditions?.length ?? 0) > 0 && (
-                <div className="flex flex-wrap items-center gap-1">
-                  <span className="text-xs font-semibold text-slate-400 uppercase tracking-widest shrink-0 me-1">
-                    Medical:
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="text-xs font-semibold text-slate-400 uppercase tracking-widest shrink-0">
+                    {medicalContextLabel}
                   </span>
                   {metadata.medicalConditions!.map((c) => (
-                    <span key={c} className="px-1.5 py-0.5 rounded text-xs bg-rose-50 text-rose-700 border border-rose-200">
+                    <span key={c} className="px-1.5 py-0.5 rounded text-xs bg-purple-50 text-purple-700 border border-purple-200">
                       {c}
                     </span>
                   ))}
@@ -414,6 +418,8 @@ export default function TimelinePage() {
                   record={record}
                   index={i}
                   unknownDateLabel={t('unknownDate')}
+                  keyFiguresLabel={t('keyFiguresLabel')}
+                  medicalContextLabel={t('medicalContextLabel')}
                 />
               ))}
             </div>

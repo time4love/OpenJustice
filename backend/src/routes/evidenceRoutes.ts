@@ -7,6 +7,7 @@ import { Web3Service, DuplicateEvidenceError } from '../services/Web3Service';
 import { VectorStoreService } from '../services/VectorStoreService';
 import { encryptContact } from '../lib/encrypt';
 import { prisma } from '../lib/prisma';
+import { scrapeUrl } from '../utils/webScraper';
 
 const router = Router();
 
@@ -39,6 +40,16 @@ const SearchQuerySchema = z.object({
 
 // submitterAddress removed — anonymised to ZeroAddress on-chain
 const ConfirmBodySchema = z.object({
+  analysis: z.string().min(1, 'analysis JSON is required'),
+});
+
+const UrlIntakeSchema = z.object({
+  url: z.string().url('A valid URL is required'),
+});
+
+const UrlConfirmBodySchema = z.object({
+  url: z.string().url(),
+  scrapedText: z.string().min(1, 'scrapedText is required'),
   analysis: z.string().min(1, 'analysis JSON is required'),
 });
 
@@ -79,37 +90,73 @@ function getWeb3Service(): Web3Service {
 
 // ---------------------------------------------------------------------------
 // POST /api/evidence/intake
-// Accepts a multipart file upload. Runs vision extraction + AI classification.
-// Returns a draft analysis — NO hashing, blockchain, or vector store writes.
+// Accepts either:
+//   • multipart/form-data with a "file" field (image/PDF), OR
+//   • application/json with { "url": "https://..." }
+// Runs AI classification. Returns a draft analysis — NO hashing, blockchain,
+// or vector store writes.
 // ---------------------------------------------------------------------------
 
 router.post(
   '/intake',
   upload.single('file'),
   async (req: Request, res: Response): Promise<void> => {
-    if (!req.file) {
-      res.status(400).json({ error: 'No file uploaded', message: 'A file field named "file" is required.' });
+    const agent = getIntakeAgent();
+
+    // --- File upload path ---
+    if (req.file) {
+      let analysis;
+      try {
+        analysis = await agent.analyzeEvidence(req.file.buffer, req.file.mimetype);
+      } catch (err) {
+        console.error('[intake] IntakeAgent error:', err);
+        res.status(500).json({ error: 'AI analysis failed', message: String(err) });
+        return;
+      }
+      res.status(200).json({ analysis });
       return;
     }
 
-    let analysis;
-    try {
-      const agent = getIntakeAgent();
-      analysis = await agent.analyzeEvidence(req.file.buffer, req.file.mimetype);
-    } catch (err) {
-      console.error('[intake] IntakeAgent error:', err);
-      res.status(500).json({ error: 'AI analysis failed', message: String(err) });
+    // --- URL scraping path ---
+    const urlParsed = UrlIntakeSchema.safeParse(req.body);
+    if (urlParsed.success) {
+      const { url } = urlParsed.data;
+
+      let scraped;
+      try {
+        scraped = await scrapeUrl(url);
+      } catch (err) {
+        console.error('[intake] scrapeUrl error:', err);
+        res.status(422).json({ error: 'URL scraping failed', message: String(err) });
+        return;
+      }
+
+      let analysis;
+      try {
+        analysis = await agent.analyzeText(scraped.textContent, url);
+      } catch (err) {
+        console.error('[intake] IntakeAgent.analyzeText error:', err);
+        res.status(500).json({ error: 'AI analysis failed', message: String(err) });
+        return;
+      }
+
+      res.status(200).json({ analysis, scrapedText: scraped.textContent, url });
       return;
     }
 
-    res.status(200).json({ analysis });
+    res.status(400).json({
+      error: 'Invalid request',
+      message: 'Provide either a multipart "file" field or a JSON body with a "url" field.',
+    });
   },
 );
 
 // ---------------------------------------------------------------------------
 // POST /api/evidence/confirm
-// Accepts the original file + user-approved analysis JSON.
-// Hashes the file, registers on-chain anonymously (ZeroAddress), upserts to
+// Accepts either:
+//   • multipart/form-data — original file + analysis JSON string, OR
+//   • application/json   — { url, scrapedText, analysis } for URL submissions.
+// Hashes the content, registers on-chain anonymously (ZeroAddress), upserts to
 // vector store. No submitter identity is required or stored.
 // ---------------------------------------------------------------------------
 
@@ -117,25 +164,44 @@ router.post(
   '/confirm',
   upload.single('file'),
   async (req: Request, res: Response): Promise<void> => {
-    if (!req.file) {
-      res.status(400).json({ error: 'No file uploaded', message: 'A file field named "file" is required.' });
-      return;
-    }
-
-    // Parse the multipart text fields
-    const bodyParsed = ConfirmBodySchema.safeParse(req.body);
-    if (!bodyParsed.success) {
-      res.status(400).json({ error: 'Invalid request', details: bodyParsed.error.flatten() });
-      return;
-    }
-
-    // Parse the nested analysis JSON
     let analysisRaw: unknown;
-    try {
-      analysisRaw = JSON.parse(bodyParsed.data.analysis);
-    } catch {
-      res.status(400).json({ error: 'Invalid JSON', message: 'The "analysis" field must be valid JSON.' });
-      return;
+    let fileHash: string;
+
+    if (req.file) {
+      // --- File upload path ---
+      const bodyParsed = ConfirmBodySchema.safeParse(req.body);
+      if (!bodyParsed.success) {
+        res.status(400).json({ error: 'Invalid request', details: bodyParsed.error.flatten() });
+        return;
+      }
+      try {
+        analysisRaw = JSON.parse(bodyParsed.data.analysis);
+      } catch {
+        res.status(400).json({ error: 'Invalid JSON', message: 'The "analysis" field must be valid JSON.' });
+        return;
+      }
+      fileHash = Web3Service.hashFile(req.file.buffer);
+    } else {
+      // --- URL submission path ---
+      const urlBodyParsed = UrlConfirmBodySchema.safeParse(req.body);
+      if (!urlBodyParsed.success) {
+        res.status(400).json({
+          error: 'Invalid request',
+          message: 'Provide either a multipart "file" field, or a JSON body with "url", "scrapedText", and "analysis".',
+          details: urlBodyParsed.error.flatten(),
+        });
+        return;
+      }
+      const { url, scrapedText, analysis: analysisStr } = urlBodyParsed.data;
+      try {
+        analysisRaw = JSON.parse(analysisStr);
+      } catch {
+        res.status(400).json({ error: 'Invalid JSON', message: 'The "analysis" field must be valid JSON.' });
+        return;
+      }
+      // Hash URL + scraped content for legal provenance — proves exactly what
+      // existed at this link at the moment of submission.
+      fileHash = Web3Service.hashFile(Buffer.from(`${url}\n\n${scrapedText}`, 'utf8'));
     }
 
     const analysisParsed = IntakeOutputSchema.safeParse(analysisRaw);
@@ -145,9 +211,6 @@ router.post(
     }
 
     const analysis = analysisParsed.data;
-
-    // Hash the file
-    const fileHash = Web3Service.hashFile(req.file.buffer);
 
     // Register on-chain anonymously — backend wallet pays gas, ZeroAddress preserves whistleblower privacy
     let txHash: string;

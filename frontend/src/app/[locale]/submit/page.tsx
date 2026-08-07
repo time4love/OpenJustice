@@ -31,7 +31,8 @@ const TIERS: EvidenceTier[] = [
   'Tier 4: Anecdotal',
 ];
 
-type Phase = 'upload' | 'analyzing' | 'review' | 'confirming' | 'confirmed';
+type Phase = 'upload' | 'analyzing' | 'scanning' | 'review' | 'confirming' | 'confirmed';
+type InputMode = 'file' | 'url';
 
 interface DraftAnalysis {
   isRelevant: boolean;
@@ -43,6 +44,7 @@ interface DraftAnalysis {
   evidenceDate: string;
   keyFigures: string[];
   medicalConditions: string[];
+  rejectionReason?: string;
 }
 
 interface ConfirmedResult {
@@ -108,10 +110,20 @@ function LocaleSwitcher() {
 function UploadZone({
   selectedFile,
   onFileSelect,
+  urlInput,
+  onUrlChange,
+  onScanUrl,
+  scanning,
+  disabled,
   t,
 }: {
   selectedFile: File | null;
   onFileSelect: (file: File) => void;
+  urlInput: string;
+  onUrlChange: (v: string) => void;
+  onScanUrl: () => void;
+  scanning: boolean;
+  disabled: boolean;
   t: ReturnType<typeof useTranslations<'submit.upload'>>;
 }) {
   const [isDragging, setIsDragging] = useState(false);
@@ -130,39 +142,81 @@ function UploadZone({
   }
 
   return (
-    <div
-      onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
-      onDragLeave={() => setIsDragging(false)}
-      onDrop={handleDrop}
-      onClick={() => inputRef.current?.click()}
-      className={`relative cursor-pointer rounded-lg border-2 border-dashed px-6 py-12 text-center transition-colors ${
-        isDragging
-          ? 'border-blue-400 bg-blue-50'
-          : selectedFile
-          ? 'border-emerald-400 bg-emerald-50'
-          : 'border-slate-300 bg-slate-50 hover:border-slate-400 hover:bg-white'
-      }`}
-    >
-      <input
-        ref={inputRef}
-        type="file"
-        accept="image/jpeg,image/png,application/pdf"
-        className="hidden"
-        onChange={handleChange}
-      />
-      <div className="text-3xl mb-3 text-slate-400">
-        {selectedFile ? '📎' : '⬆'}
+    <div className="space-y-4">
+      <div
+        onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+        onDragLeave={() => setIsDragging(false)}
+        onDrop={handleDrop}
+        onClick={() => !disabled && inputRef.current?.click()}
+        className={`relative rounded-lg border-2 border-dashed px-6 py-12 text-center transition-colors ${
+          disabled
+            ? 'border-slate-200 bg-slate-50 opacity-50 cursor-not-allowed'
+            : isDragging
+            ? 'border-blue-400 bg-blue-50 cursor-pointer'
+            : selectedFile
+            ? 'border-emerald-400 bg-emerald-50 cursor-pointer'
+            : 'border-slate-300 bg-slate-50 hover:border-slate-400 hover:bg-white cursor-pointer'
+        }`}
+      >
+        <input
+          ref={inputRef}
+          type="file"
+          accept="image/jpeg,image/png,application/pdf"
+          className="hidden"
+          onChange={handleChange}
+          disabled={disabled}
+        />
+        <div className="text-3xl mb-3 text-slate-400">
+          {selectedFile ? '📎' : '⬆'}
+        </div>
+        {selectedFile ? (
+          <p className="text-sm text-emerald-700 font-medium">
+            {t('fileSelected')} {selectedFile.name}
+          </p>
+        ) : (
+          <>
+            <p className="text-sm text-slate-500">{t('dragDrop')}</p>
+            <p className="text-xs text-slate-400 mt-1">{t('fileTypes')}</p>
+          </>
+        )}
       </div>
-      {selectedFile ? (
-        <p className="text-sm text-emerald-700 font-medium">
-          {t('fileSelected')} {selectedFile.name}
-        </p>
-      ) : (
-        <>
-          <p className="text-sm text-slate-500">{t('dragDrop')}</p>
-          <p className="text-xs text-slate-400 mt-1">{t('fileTypes')}</p>
-        </>
-      )}
+
+      {/* URL input */}
+      <div className="flex items-center gap-3">
+        <div className="flex-1 h-px bg-slate-200" />
+        <span className="text-xs text-slate-400 uppercase tracking-widest shrink-0">{t('orLabel')}</span>
+        <div className="flex-1 h-px bg-slate-200" />
+      </div>
+      <div>
+        <label className="block text-xs font-medium text-slate-600 uppercase tracking-widest mb-1.5">
+          {t('urlLabel')}
+        </label>
+        <div className="flex gap-2">
+          <input
+            type="url"
+            value={urlInput}
+            onChange={(e) => onUrlChange(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter' && urlInput.trim() && !scanning) onScanUrl(); }}
+            placeholder={t('urlPlaceholder')}
+            disabled={!!selectedFile || scanning}
+            className="flex-1 bg-white border border-slate-300 rounded px-3 py-2.5 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-300/50 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed font-mono"
+          />
+          <button
+            onClick={onScanUrl}
+            disabled={!urlInput.trim() || !!selectedFile || scanning}
+            className="px-4 py-2.5 rounded text-sm font-semibold bg-blue-600 text-white border border-blue-700 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shadow-sm whitespace-nowrap"
+          >
+            {scanning ? (
+              <span className="flex items-center gap-2">
+                <span className="w-3 h-3 rounded-full border-2 border-white/60 border-t-white animate-spin" />
+                {t('scanningBtn')}
+              </span>
+            ) : (
+              t('scanBtn')
+            )}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -199,6 +253,7 @@ function ReviewPanel({
   onConfirm,
   onReset,
   confirming,
+  inputMode,
   t,
 }: {
   draft: DraftAnalysis;
@@ -213,6 +268,7 @@ function ReviewPanel({
   onConfirm: () => void;
   onReset: () => void;
   confirming: boolean;
+  inputMode: InputMode;
   t: ReturnType<typeof useTranslations<'submit.review'>>;
 }) {
   return (
@@ -221,12 +277,19 @@ function ReviewPanel({
         onClick={onReset}
         className="text-xs text-slate-500 hover:text-slate-700 transition-colors"
       >
-        {t('changeFileBtn')}
+        {inputMode === 'url' ? t('changeLinkBtn') : t('changeFileBtn')}
       </button>
 
       {!draft.isRelevant && (
-        <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
-          <p className="text-xs text-amber-700 leading-relaxed">{t('irrelevantWarning')}</p>
+        <div className="bg-red-50 border border-red-300 rounded-lg p-5 space-y-3">
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-red-500 shrink-0" />
+            <span className="text-sm font-semibold text-red-700">{t('rejectedTitle')}</span>
+          </div>
+          {draft.rejectionReason && (
+            <p className="text-sm text-red-700 leading-relaxed font-medium">{draft.rejectionReason}</p>
+          )}
+          <p className="text-xs text-red-500 leading-relaxed">{t('irrelevantWarning')}</p>
         </div>
       )}
 
@@ -236,6 +299,37 @@ function ReviewPanel({
           <p className="text-xs text-slate-500 uppercase tracking-widest mb-1.5">{t('summaryLabel')}</p>
           <p className="text-sm text-slate-700 leading-relaxed">{draft.summary}</p>
         </div>
+
+        {/* Key figures + medical conditions */}
+        {((draft.keyFigures?.length ?? 0) > 0 || (draft.medicalConditions?.length ?? 0) > 0) && (
+          <div className="space-y-2.5 pt-1 border-t border-slate-100">
+            {(draft.keyFigures?.length ?? 0) > 0 && (
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="text-xs font-semibold text-slate-400 uppercase tracking-widest shrink-0">
+                  {t('keyFiguresLabel')}
+                </span>
+                {draft.keyFigures!.map((f) => (
+                  <span key={f} className="px-2 py-0.5 rounded text-xs bg-blue-50 text-blue-700 border border-blue-200">
+                    {f}
+                  </span>
+                ))}
+              </div>
+            )}
+            {(draft.medicalConditions?.length ?? 0) > 0 && (
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="text-xs font-semibold text-slate-400 uppercase tracking-widest shrink-0">
+                  {t('medicalContextLabel')}
+                </span>
+                {draft.medicalConditions!.map((c) => (
+                  <span key={c} className="px-2 py-0.5 rounded text-xs bg-purple-50 text-purple-700 border border-purple-200">
+                    {c}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         {draft.missingInformation.length > 0 && (
           <div>
             <p className="text-xs text-slate-500 uppercase tracking-widest mb-2">{t('missingLabel')}</p>
@@ -313,7 +407,11 @@ function ReviewPanel({
       <button
         onClick={onConfirm}
         disabled={confirming || !targetEntity.trim() || !evidenceDate.trim()}
-        className="w-full py-3 rounded-lg text-sm font-semibold bg-blue-600 text-white border border-blue-700 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shadow-sm"
+        className={`w-full py-3 rounded-lg text-sm font-semibold transition-colors shadow-sm disabled:opacity-40 disabled:cursor-not-allowed ${
+          draft.isRelevant
+            ? 'bg-blue-600 text-white border border-blue-700 hover:bg-blue-700'
+            : 'hidden'
+        }`}
       >
         {confirming ? (
           <span className="flex items-center justify-center gap-2">
@@ -418,10 +516,10 @@ function ConfirmedView({
               {analysis.keyFigures.length > 0 && (
                 <div className="flex flex-wrap items-center gap-1.5">
                   <span className="text-xs font-semibold text-slate-400 uppercase tracking-widest shrink-0">
-                    {tResult('figuresLabel')}
+                    {tResult('keyFiguresLabel')}
                   </span>
                   {analysis.keyFigures.map((f) => (
-                    <span key={f} className="px-2 py-0.5 rounded text-xs bg-violet-50 text-violet-700 border border-violet-200">
+                    <span key={f} className="px-2 py-0.5 rounded text-xs bg-blue-50 text-blue-700 border border-blue-200">
                       {f}
                     </span>
                   ))}
@@ -430,10 +528,10 @@ function ConfirmedView({
               {analysis.medicalConditions.length > 0 && (
                 <div className="flex flex-wrap items-center gap-1.5">
                   <span className="text-xs font-semibold text-slate-400 uppercase tracking-widest shrink-0">
-                    {tResult('medicalLabel')}
+                    {tResult('medicalContextLabel')}
                   </span>
                   {analysis.medicalConditions.map((c) => (
-                    <span key={c} className="px-2 py-0.5 rounded text-xs bg-rose-50 text-rose-700 border border-rose-200">
+                    <span key={c} className="px-2 py-0.5 rounded text-xs bg-purple-50 text-purple-700 border border-purple-200">
                       {c}
                     </span>
                   ))}
@@ -566,7 +664,11 @@ export default function SubmitPage() {
   const tContact = useTranslations('submit.contact');
 
   const [phase, setPhase] = useState<Phase>('upload');
+  const [inputMode, setInputMode] = useState<InputMode>('file');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [urlInput, setUrlInput] = useState('');
+  const [scrapedText, setScrapedText] = useState('');
+  const [submittedUrl, setSubmittedUrl] = useState('');
   const [draft, setDraft] = useState<DraftAnalysis | null>(null);
 
   const [editCategory, setEditCategory] = useState<Category>('Side Effect Withholding');
@@ -580,7 +682,27 @@ export default function SubmitPage() {
 
   function handleFileSelect(file: File) {
     setSelectedFile(file);
+    setUrlInput('');
+    setInputMode('file');
     setError(null);
+  }
+
+  function handleUrlChange(v: string) {
+    setUrlInput(v);
+    if (v.trim()) {
+      setSelectedFile(null);
+      setInputMode('url');
+    }
+    setError(null);
+  }
+
+  function applyAnalysis(analysis: DraftAnalysis) {
+    setDraft(analysis);
+    setEditCategory(analysis.category);
+    setEditEntity(analysis.targetEntity);
+    setEditTier(analysis.evidenceTier);
+    setEditDate(analysis.evidenceDate === 'Unknown' ? '' : analysis.evidenceDate);
+    setPhase('review');
   }
 
   async function handleAnalyze() {
@@ -601,13 +723,41 @@ export default function SubmitPage() {
         return;
       }
 
-      const analysis = data.analysis!;
-      setDraft(analysis);
-      setEditCategory(analysis.category);
-      setEditEntity(analysis.targetEntity);
-      setEditTier(analysis.evidenceTier);
-      setEditDate(analysis.evidenceDate === 'Unknown' ? '' : analysis.evidenceDate);
-      setPhase('review');
+      applyAnalysis(data.analysis!);
+    } catch {
+      setError('Could not reach the backend. Is the server running?');
+      setPhase('upload');
+    }
+  }
+
+  async function handleScanUrl() {
+    if (!urlInput.trim()) return;
+    setPhase('scanning');
+    setError(null);
+
+    try {
+      const res = await fetch(apiUrl('/api/evidence/intake'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: urlInput.trim() }),
+      });
+      const data = await res.json() as {
+        analysis?: DraftAnalysis;
+        scrapedText?: string;
+        url?: string;
+        error?: string;
+        message?: string;
+      };
+
+      if (!res.ok) {
+        setError(data.message ?? `Request failed with status ${res.status}`);
+        setPhase('upload');
+        return;
+      }
+
+      setScrapedText(data.scrapedText ?? '');
+      setSubmittedUrl(data.url ?? urlInput.trim());
+      applyAnalysis(data.analysis!);
     } catch {
       setError('Could not reach the backend. Is the server running?');
       setPhase('upload');
@@ -615,7 +765,7 @@ export default function SubmitPage() {
   }
 
   async function handleConfirm() {
-    if (!selectedFile || !draft) return;
+    if (!draft) return;
     setPhase('confirming');
     setError(null);
     setDuplicateHash(null);
@@ -628,49 +778,67 @@ export default function SubmitPage() {
       evidenceDate: editDate,
     };
 
-    const formData = new FormData();
-    formData.append('file', selectedFile);
-    formData.append('analysis', JSON.stringify(approvedAnalysis));
-    // No submitterAddress — backend registers anonymously with ZeroAddress
-
+    let res: Response;
     try {
-      const res = await fetch(apiUrl('/api/evidence/confirm'), { method: 'POST', body: formData });
-      const data = await res.json() as {
-        relevant?: boolean;
-        fileHash?: string;
-        txHash?: string;
-        analysis?: DraftAnalysis;
-        error?: string;
-        message?: string;
-      };
-
-      if (res.status === 409 && data.error === 'duplicate') {
-        setDuplicateHash(data.fileHash ?? '');
-        setPhase('review');
-        return;
+      if (inputMode === 'url') {
+        res = await fetch(apiUrl('/api/evidence/confirm'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            url: submittedUrl,
+            scrapedText,
+            analysis: JSON.stringify(approvedAnalysis),
+          }),
+        });
+      } else {
+        if (!selectedFile) return;
+        const formData = new FormData();
+        formData.append('file', selectedFile);
+        formData.append('analysis', JSON.stringify(approvedAnalysis));
+        res = await fetch(apiUrl('/api/evidence/confirm'), { method: 'POST', body: formData });
       }
-
-      if (!res.ok) {
-        setError(data.message ?? `Request failed with status ${res.status}`);
-        setPhase('review');
-        return;
-      }
-
-      setConfirmedResult({
-        fileHash: data.fileHash!,
-        txHash: data.txHash!,
-        analysis: data.analysis!,
-      });
-      setPhase('confirmed');
     } catch {
       setError('Could not reach the backend. Is the server running?');
       setPhase('review');
+      return;
     }
+
+    const data = await res.json() as {
+      relevant?: boolean;
+      fileHash?: string;
+      txHash?: string;
+      analysis?: DraftAnalysis;
+      error?: string;
+      message?: string;
+    };
+
+    if (res.status === 409 && data.error === 'duplicate') {
+      setDuplicateHash(data.fileHash ?? '');
+      setPhase('review');
+      return;
+    }
+
+    if (!res.ok) {
+      setError(data.message ?? `Request failed with status ${res.status}`);
+      setPhase('review');
+      return;
+    }
+
+    setConfirmedResult({
+      fileHash: data.fileHash!,
+      txHash: data.txHash!,
+      analysis: data.analysis!,
+    });
+    setPhase('confirmed');
   }
 
   function handleReset() {
     setPhase('upload');
+    setInputMode('file');
     setSelectedFile(null);
+    setUrlInput('');
+    setScrapedText('');
+    setSubmittedUrl('');
     setDraft(null);
     setEditDate('');
     setError(null);
@@ -704,14 +872,23 @@ export default function SubmitPage() {
       <div className="max-w-3xl mx-auto px-6 py-10 space-y-8">
 
         {/* Upload phase */}
-        {(phase === 'upload' || phase === 'analyzing') && (
+        {(phase === 'upload' || phase === 'analyzing' || phase === 'scanning') && (
           <>
             <div className="bg-white border border-slate-200 rounded-lg p-5 shadow-sm">
               <h1 className="text-sm font-semibold text-slate-800 mb-2">{tUpload('heading')}</h1>
               <p className="text-sm text-slate-500 leading-relaxed">{tUpload('body')}</p>
             </div>
 
-            <UploadZone selectedFile={selectedFile} onFileSelect={handleFileSelect} t={tUpload} />
+            <UploadZone
+              selectedFile={selectedFile}
+              onFileSelect={handleFileSelect}
+              urlInput={urlInput}
+              onUrlChange={handleUrlChange}
+              onScanUrl={handleScanUrl}
+              scanning={phase === 'scanning'}
+              disabled={phase === 'analyzing' || phase === 'scanning'}
+              t={tUpload}
+            />
 
             {error && (
               <div className="bg-red-50 border border-red-200 rounded-lg p-4">
@@ -721,7 +898,7 @@ export default function SubmitPage() {
 
             <button
               onClick={handleAnalyze}
-              disabled={!selectedFile || phase === 'analyzing'}
+              disabled={!selectedFile || phase === 'analyzing' || phase === 'scanning'}
               className="w-full py-3 rounded-lg text-sm font-semibold bg-blue-600 text-white border border-blue-700 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shadow-sm"
             >
               {phase === 'analyzing' ? (
@@ -734,7 +911,7 @@ export default function SubmitPage() {
               )}
             </button>
 
-            {phase === 'analyzing' && (
+            {(phase === 'analyzing' || phase === 'scanning') && (
               <div className="bg-white border border-slate-200 rounded-lg p-5 shadow-sm">
                 <AnalyzingSkeleton />
               </div>
@@ -766,6 +943,7 @@ export default function SubmitPage() {
               onConfirm={handleConfirm}
               onReset={handleReset}
               confirming={phase === 'confirming'}
+              inputMode={inputMode}
               t={tReview}
             />
           </>
