@@ -154,19 +154,15 @@
     "emptySub": "Submit evidence with dates, or remove the entity filter.",
     "errorTitle": "Failed to load timeline.",
     "viewToggle": {
+      "all": "Show All",
       "internal": "Internal Knowledge",
-      "public": "Public Statements",
-      "combined": "Contradiction View"
+      "public": "Public Statements"
     },
     "perspective": {
       "Internal Knowledge": "Internal Knowledge",
       "Public Statement": "Public Statement",
       "Citizen Experience": "Citizen Experience"
     },
-    "contrastLeft": "What They Knew",
-    "contrastRight": "What They Said",
-    "emptyContrast": "No contradiction data yet.",
-    "emptyContrastSub": "Submit Internal Knowledge and Public Statement evidence to reveal discrepancies.",
     "roleContextAnchor": "Factual Anchor",
     "roleIncriminating": "Incriminating",
     "viewSource": "View Source"

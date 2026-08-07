@@ -154,19 +154,15 @@
     "emptySub": "הגש ראיות עם תאריכים, או הסר את סינון הגוף.",
     "errorTitle": "טעינת ציר הזמן נכשלה.",
     "viewToggle": {
+      "all": "הצג הכל",
       "internal": "ידע פנימי",
-      "public": "פרסומים רשמיים",
-      "combined": "ציר הסתירות"
+      "public": "פרסומים רשמיים"
     },
     "perspective": {
       "Internal Knowledge": "ידע פנימי",
       "Public Statement": "פרסום רשמי",
       "Citizen Experience": "חוויה אישית"
     },
-    "contrastLeft": "מה שידעו",
-    "contrastRight": "מה שאמרו",
-    "emptyContrast": "אין עדיין נתוני סתירה.",
-    "emptyContrastSub": "הגש ראיות מסוג 'ידע פנימי' ו'פרסום רשמי' כדי לחשוף את הפערים.",
     "roleContextAnchor": "עוגן עובדתי",
     "roleIncriminating": "ראיה מפלילה",
     "viewSource": "מקור הראיה"
