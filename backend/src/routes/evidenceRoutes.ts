@@ -1,3 +1,6 @@
+import path from 'path';
+import fs from 'fs';
+import crypto from 'crypto';
 import { Router, Request, Response, NextFunction } from 'express';
 import multer from 'multer';
 import { z } from 'zod';
@@ -8,6 +11,7 @@ import { VectorStoreService } from '../services/VectorStoreService';
 import { encryptContact } from '../lib/encrypt';
 import { prisma } from '../lib/prisma';
 import { scrapeUrl } from '../utils/webScraper';
+import { UPLOADS_DIR } from '../server';
 
 // ---------------------------------------------------------------------------
 // Response types
@@ -25,6 +29,8 @@ interface EvidenceRecord {
   evidenceDate: string;
   keyFigures: string[];
   medicalConditions: string[];
+  sourceUrl?: string | null;
+  fileUrl?: string | null;
   timestamp: number;
 }
 
@@ -190,6 +196,8 @@ router.post(
     try {
       let analysisRaw: unknown;
       let fileHash: string;
+      let sourceUrl: string | null = null;
+      let fileUrl: string | null = null;
 
       if (req.file) {
         // --- File upload path ---
@@ -205,6 +213,13 @@ router.post(
           return;
         }
         fileHash = Web3Service.hashFile(req.file.buffer);
+
+        // Persist the original file to disk so it can be presented as evidence.
+        // Filename: <uuid>.<ext> — uuid prevents collisions, ext preserves type for browser preview.
+        const ext = path.extname(req.file.originalname).toLowerCase() || `.${req.file.mimetype.split('/')[1]}`;
+        const filename = `${crypto.randomUUID()}${ext}`;
+        fs.writeFileSync(path.join(UPLOADS_DIR, filename), req.file.buffer);
+        fileUrl = `/api/uploads/${filename}`;
       } else {
         // --- URL submission path ---
         const urlBodyParsed = UrlConfirmBodySchema.safeParse(req.body);
@@ -223,6 +238,7 @@ router.post(
           res.status(400).json({ error: 'Invalid JSON', message: 'The "analysis" field must be valid JSON.' });
           return;
         }
+        sourceUrl = url;
         // Hash URL + scraped content for legal provenance — proves exactly what
         // existed at this link at the moment of submission.
         fileHash = Web3Service.hashFile(Buffer.from(`${url}\n\n${scrapedText}`, 'utf8'));
@@ -268,6 +284,8 @@ router.post(
           evidenceDate: analysis.evidenceDate,
           keyFigures: JSON.stringify(analysis.keyFigures),
           medicalConditions: JSON.stringify(analysis.medicalConditions),
+          sourceUrl,
+          fileUrl,
         },
         create: {
           fileHash,
@@ -281,6 +299,8 @@ router.post(
           evidenceDate: analysis.evidenceDate,
           keyFigures: JSON.stringify(analysis.keyFigures),
           medicalConditions: JSON.stringify(analysis.medicalConditions),
+          sourceUrl,
+          fileUrl,
         },
       });
 
@@ -373,6 +393,8 @@ router.get('/timeline', async (req: Request, res: Response): Promise<void> => {
         evidenceDate: r.evidenceDate,
         keyFigures: JSON.parse(r.keyFigures) as string[],
         medicalConditions: JSON.parse(r.medicalConditions) as string[],
+        sourceUrl: r.sourceUrl,
+        fileUrl: r.fileUrl,
         timestamp: r.createdAt.getTime(),
       } satisfies EvidenceRecord,
     }));
@@ -453,6 +475,8 @@ router.get('/search', async (req: Request, res: Response): Promise<void> => {
             evidenceDate: row.evidenceDate,
             keyFigures: JSON.parse(row.keyFigures) as string[],
             medicalConditions: JSON.parse(row.medicalConditions) as string[],
+            sourceUrl: row.sourceUrl,
+            fileUrl: row.fileUrl,
             timestamp: row.createdAt.getTime(),
           } satisfies EvidenceRecord,
         };

@@ -1,4 +1,6 @@
 import 'dotenv/config';
+import path from 'path';
+import fs from 'fs';
 import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 
@@ -45,6 +47,15 @@ app.use(
 );
 
 app.use(express.json());
+
+// ---------------------------------------------------------------------------
+// Uploads — serve retained evidence files (images/PDFs) at /api/uploads/
+// The directory is created on startup if it doesn't exist.
+// ---------------------------------------------------------------------------
+
+export const UPLOADS_DIR = path.join(process.cwd(), 'uploads');
+fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+app.use('/api/uploads', express.static(UPLOADS_DIR));
 
 // ---------------------------------------------------------------------------
 // Routes

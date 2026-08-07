@@ -25,6 +25,8 @@ interface EvidenceMetadata {
   evidenceDate: string;
   keyFigures?: string[];
   medicalConditions?: string[];
+  sourceUrl?: string | null;
+  fileUrl?: string | null;
   timestamp: number;
 }
 
@@ -119,6 +121,7 @@ function TimelineNode({
   perspectiveLabel,
   roleIncriminatingLabel,
   roleContextAnchorLabel,
+  viewSourceLabel,
 }: {
   record: TimelineRecord;
   index: number;
@@ -128,6 +131,7 @@ function TimelineNode({
   perspectiveLabel: string;
   roleIncriminatingLabel: string;
   roleContextAnchorLabel: string;
+  viewSourceLabel: string;
 }) {
   const { metadata } = record;
   const styles = perspectiveStyles(metadata.evidencePerspective);
@@ -218,6 +222,17 @@ function TimelineNode({
             <span className="font-mono text-xs text-emerald-600" title={metadata.fileHash}>
               {formatHash(metadata.fileHash)}
             </span>
+            {(metadata.sourceUrl ?? metadata.fileUrl) && (
+              <a
+                href={metadata.sourceUrl ?? metadata.fileUrl ?? ''}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="ms-auto flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-800 hover:underline transition-colors"
+              >
+                {viewSourceLabel}
+                <span aria-hidden="true">↗</span>
+              </a>
+            )}
           </div>
         </div>
       </div>
@@ -237,6 +252,7 @@ function SingleTimeline({
   getPerspectiveLabel,
   roleIncriminatingLabel,
   roleContextAnchorLabel,
+  viewSourceLabel,
   spineOffset = 'calc(7rem + 6px)',
 }: {
   records: TimelineRecord[];
@@ -246,6 +262,7 @@ function SingleTimeline({
   getPerspectiveLabel: (p?: string) => string;
   roleIncriminatingLabel: string;
   roleContextAnchorLabel: string;
+  viewSourceLabel: string;
   spineOffset?: string;
 }) {
   return (
@@ -266,6 +283,7 @@ function SingleTimeline({
             perspectiveLabel={getPerspectiveLabel(record.metadata.evidencePerspective)}
             roleIncriminatingLabel={roleIncriminatingLabel}
             roleContextAnchorLabel={roleContextAnchorLabel}
+            viewSourceLabel={viewSourceLabel}
           />
         ))}
       </div>
@@ -288,6 +306,7 @@ function ContrastTimeline({
   getPerspectiveLabel,
   roleIncriminatingLabel,
   roleContextAnchorLabel,
+  viewSourceLabel,
   emptyContrast,
   emptyContrastSub,
 }: {
@@ -301,6 +320,7 @@ function ContrastTimeline({
   getPerspectiveLabel: (p?: string) => string;
   roleIncriminatingLabel: string;
   roleContextAnchorLabel: string;
+  viewSourceLabel: string;
   emptyContrast: string;
   emptyContrastSub: string;
 }) {
@@ -334,6 +354,7 @@ function ContrastTimeline({
             getPerspectiveLabel={getPerspectiveLabel}
             roleIncriminatingLabel={roleIncriminatingLabel}
             roleContextAnchorLabel={roleContextAnchorLabel}
+            viewSourceLabel={viewSourceLabel}
             spineOffset="calc(7rem + 6px)"
           />
         )}
@@ -357,6 +378,7 @@ function ContrastTimeline({
             getPerspectiveLabel={getPerspectiveLabel}
             roleIncriminatingLabel={roleIncriminatingLabel}
             roleContextAnchorLabel={roleContextAnchorLabel}
+            viewSourceLabel={viewSourceLabel}
             spineOffset="calc(7rem + 6px)"
           />
         )}
@@ -636,6 +658,7 @@ export default function TimelinePage() {
                 getPerspectiveLabel={getPerspectiveLabel}
                 roleIncriminatingLabel={t('roleIncriminating')}
                 roleContextAnchorLabel={t('roleContextAnchor')}
+                viewSourceLabel={t('viewSource')}
                 emptyContrast={t('emptyContrast')}
                 emptyContrastSub={t('emptyContrastSub')}
               />
@@ -649,6 +672,7 @@ export default function TimelinePage() {
                   getPerspectiveLabel={getPerspectiveLabel}
                   roleIncriminatingLabel={t('roleIncriminating')}
                   roleContextAnchorLabel={t('roleContextAnchor')}
+                  viewSourceLabel={t('viewSource')}
                 />
               )
             )}

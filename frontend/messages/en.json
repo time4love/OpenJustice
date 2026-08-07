@@ -168,7 +168,8 @@
     "emptyContrast": "No contradiction data yet.",
     "emptyContrastSub": "Submit Internal Knowledge and Public Statement evidence to reveal discrepancies.",
     "roleContextAnchor": "Factual Anchor",
-    "roleIncriminating": "Incriminating"
+    "roleIncriminating": "Incriminating",
+    "viewSource": "View Source"
   },
   "about": {
     "badge": "Open Source Project · Full Transparency",

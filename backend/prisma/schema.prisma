@@ -35,5 +35,7 @@ model Evidence {
   evidenceDate        String
   keyFigures          String
   medicalConditions   String
+  sourceUrl           String?
+  fileUrl             String?
   createdAt           DateTime @default(now())
 }
