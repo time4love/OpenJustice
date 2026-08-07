@@ -266,7 +266,15 @@
     "resumingBtn": "Resuming…",
     "flaggedBadge": "AI-Flagged as Significant",
     "auditBadge": "Version Change",
-    "auditTotal": "{count} total version changes"
+    "auditTotal": "{count} total version changes",
+    "historyHeading": "Previously Scanned URLs",
+    "historyEmpty": "No URLs scanned yet.",
+    "historyViewBtn": "View Timeline",
+    "historyDiffsCount": "{count} version changes",
+    "historyDeleteBtn": "Delete",
+    "historyDeletingBtn": "Deleting…",
+    "historyDeleteConfirm": "Delete this scan and all its version diffs? This cannot be undone.",
+    "historyDeleteError": "Delete failed."
   },
   "chat": {
     "greeting": "Hello, I am the Glass Fortress Trust Agent. How can I help you understand our system's security?",

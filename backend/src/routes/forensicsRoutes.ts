@@ -73,6 +73,35 @@ router.get('/wayback', async (req: Request, res: Response): Promise<void> => {
 });
 
 // ---------------------------------------------------------------------------
+// GET /api/forensics/tracked
+//
+// Returns all TrackedUrl records ordered by most recently scanned.
+// Used by the "Previously Scanned" list on the forensics landing page.
+// ---------------------------------------------------------------------------
+
+router.get('/tracked', async (_req: Request, res: Response): Promise<void> => {
+  try {
+    const trackedUrls = await prisma.trackedUrl.findMany({
+      orderBy: { createdAt: 'desc' },
+      include: { _count: { select: { diffs: true } } },
+    });
+
+    const items = trackedUrls.map((t) => ({
+      id: t.id,
+      url: t.url,
+      title: t.title,
+      createdAt: t.createdAt,
+      totalDiffs: t._count.diffs,
+    }));
+
+    res.status(200).json({ items });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ error: 'Failed to list tracked URLs', message });
+  }
+});
+
+// ---------------------------------------------------------------------------
 // GET /api/forensics/tracked/:id
 //
 // Returns the TrackedUrl record and all its persisted UrlVersionDiff records.
@@ -135,6 +164,55 @@ router.get('/tracked/:id', async (req: Request, res: Response): Promise<void> =>
     const message = err instanceof Error ? err.message : String(err);
     console.error('[forensics/tracked] Error:', err instanceof Error ? err.stack : err);
     res.status(500).json({ error: 'Failed to fetch tracked URL history', message });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// DELETE /api/forensics/tracked/:id
+//
+// Deletes a TrackedUrl and all its UrlVersionDiff children, plus any
+// WaybackScrapeJob records for the same URL (regardless of status).
+// Evidence records that were promoted from this TrackedUrl are NOT deleted
+// — they are on-chain and must remain in the Evidence table.
+// ---------------------------------------------------------------------------
+
+router.delete('/tracked/:id', async (req: Request, res: Response): Promise<void> => {
+  const trackedUrlId = String(req.params['id'] ?? '');
+  if (!trackedUrlId) {
+    res.status(400).json({ error: 'Missing trackedUrl id' });
+    return;
+  }
+
+  try {
+    const trackedUrl = await prisma.trackedUrl.findUnique({ where: { id: trackedUrlId } });
+    if (!trackedUrl) {
+      res.status(404).json({ error: 'TrackedUrl not found' });
+      return;
+    }
+
+    // Unlink Evidence records that point to diffs of this TrackedUrl
+    // (we keep the Evidence records — they are on-chain — but clear the FK)
+    await prisma.evidence.updateMany({
+      where: {
+        urlVersionDiff: { trackedUrlId },
+      },
+      data: { urlVersionDiffId: null },
+    });
+
+    // Delete diffs (cascade would handle this, but Prisma requires explicit delete)
+    await prisma.urlVersionDiff.deleteMany({ where: { trackedUrlId } });
+
+    // Delete the TrackedUrl itself
+    await prisma.trackedUrl.delete({ where: { id: trackedUrlId } });
+
+    // Delete all scan jobs for this URL
+    await prisma.waybackScrapeJob.deleteMany({ where: { url: trackedUrl.url } });
+
+    res.status(200).json({ deleted: true });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error('[forensics/tracked/delete] Error:', err instanceof Error ? err.stack : err);
+    res.status(500).json({ error: 'Delete failed', message });
   }
 });
 

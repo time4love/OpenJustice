@@ -266,7 +266,15 @@
     "resumingBtn": "ממשיך…",
     "flaggedBadge": "סומן כמשמעותי על ידי הבינה המלאכותית",
     "auditBadge": "שינוי גרסה",
-    "auditTotal": "{count} שינויי גרסה סה\"כ"
+    "auditTotal": "{count} שינויי גרסה סה\"כ",
+    "historyHeading": "כתובות שנסרקו בעבר",
+    "historyEmpty": "טרם נסרקו כתובות.",
+    "historyViewBtn": "צפה בציר הזמן",
+    "historyDiffsCount": "{count} שינויי גרסה",
+    "historyDeleteBtn": "מחק",
+    "historyDeletingBtn": "מוחק…",
+    "historyDeleteConfirm": "למחוק סריקה זו ואת כל שינויי הגרסה שלה? פעולה זו אינה הפיכה.",
+    "historyDeleteError": "המחיקה נכשלה."
   },
   "chat": {
     "greeting": "שלום, אני נציג האמון של פרויקט מבצר הזכוכית. כיצד אוכל לעזור לך להבין את אבטחת המערכת שלנו?",

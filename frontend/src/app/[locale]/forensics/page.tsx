@@ -39,6 +39,14 @@ interface TrackedUrlResult {
   diffs: SnapshotDiff[];
 }
 
+interface TrackedUrlItem {
+  id: string;
+  url: string;
+  title: string | null;
+  createdAt: string;
+  totalDiffs: number;
+}
+
 type Phase = 'idle' | 'creating' | 'polling' | 'fetching' | 'done' | 'error';
 
 const POLL_INTERVAL_MS = 3_000;
@@ -273,6 +281,80 @@ function DiffNode({
 }
 
 // ---------------------------------------------------------------------------
+// History row — one previously scanned URL with delete action
+// ---------------------------------------------------------------------------
+
+function HistoryRow({
+  item,
+  labels,
+  onDeleted,
+}: {
+  item: TrackedUrlItem;
+  labels: {
+    viewBtn: string;
+    diffsCount: string;
+    deleteBtn: string;
+    deletingBtn: string;
+    deleteConfirm: string;
+    deleteError: string;
+  };
+  onDeleted: (id: string) => void;
+}) {
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  async function handleDelete() {
+    if (!window.confirm(labels.deleteConfirm)) return;
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      const res = await fetch(apiUrl(`/api/forensics/tracked/${item.id}`), { method: 'DELETE' });
+      if (!res.ok) {
+        const data = (await res.json()) as { message?: string };
+        setDeleteError(data.message ?? labels.deleteError);
+        return;
+      }
+      onDeleted(item.id);
+    } catch {
+      setDeleteError(labels.deleteError);
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  return (
+    <li className="flex items-center gap-3 px-4 py-3 hover:bg-slate-50 transition-colors">
+      <div className="flex-1 min-w-0 space-y-0.5">
+        <p className="text-xs font-mono text-slate-700 truncate" title={item.url} dir="ltr">
+          {item.url}
+        </p>
+        <p className="text-xs text-slate-400">
+          {labels.diffsCount}
+          <span className="mx-1.5 text-slate-200">·</span>
+          {new Date(item.createdAt).toLocaleDateString()}
+        </p>
+        {deleteError && <p className="text-xs text-red-600">{deleteError}</p>}
+      </div>
+      <div className="flex items-center gap-2 shrink-0">
+        <Link
+          href={`/forensics/${item.id}`}
+          className="px-3 py-1 rounded-lg text-xs font-medium bg-slate-900 text-white hover:bg-slate-700 transition-colors"
+        >
+          {labels.viewBtn}
+        </Link>
+        <button
+          onClick={() => { void handleDelete(); }}
+          disabled={deleting}
+          className="px-3 py-1 rounded-lg text-xs font-medium text-red-600 border border-red-200 hover:bg-red-50 disabled:opacity-40 transition-colors"
+        >
+          {deleting ? labels.deletingBtn : labels.deleteBtn}
+        </button>
+      </div>
+    </li>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Page
 // ---------------------------------------------------------------------------
 
@@ -287,8 +369,21 @@ export default function ForensicsPage() {
   const [error, setError] = useState<string | null>(null);
   const [stalled, setStalled] = useState(false);
   const [resuming, setResuming] = useState(false);
+  const [history, setHistory] = useState<TrackedUrlItem[]>([]);
 
   const inputRef = useRef<HTMLInputElement>(null);
+
+  const loadHistory = useCallback(() => {
+    fetch(apiUrl('/api/forensics/tracked'))
+      .then(async (res) => {
+        if (!res.ok) return;
+        const data = (await res.json()) as { items: TrackedUrlItem[] };
+        setHistory(data.items);
+      })
+      .catch(() => { /* non-fatal */ });
+  }, []);
+
+  useEffect(() => { loadHistory(); }, [loadHistory]);
   const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastUpdatedAtRef = useRef<string | null>(null);
   const lastUpdateTimeRef = useRef<number | null>(null);
@@ -311,12 +406,13 @@ export default function ForensicsPage() {
         if (!res.ok) throw new Error(data.message ?? data.error ?? `Error ${res.status}`);
         setResult(data);
         setPhase('done');
+        loadHistory();
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load results');
         setPhase('error');
       }
     },
-    [],
+    [loadHistory],
   );
 
   const pollJob = useCallback(
@@ -527,6 +623,34 @@ export default function ForensicsPage() {
             </button>
           </form>
         </div>
+
+        {/* Previously Scanned URLs */}
+        {history.length > 0 && (
+          <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+            <div className="px-4 py-3 border-b border-slate-100 bg-slate-50">
+              <h3 className="text-xs font-semibold text-slate-600 uppercase tracking-widest">
+                {t('historyHeading')}
+              </h3>
+            </div>
+            <ul className="divide-y divide-slate-100">
+              {history.map((item) => (
+                <HistoryRow
+                  key={item.id}
+                  item={item}
+                  labels={{
+                    viewBtn: t('historyViewBtn'),
+                    diffsCount: t('historyDiffsCount', { count: item.totalDiffs }),
+                    deleteBtn: t('historyDeleteBtn'),
+                    deletingBtn: t('historyDeletingBtn'),
+                    deleteConfirm: t('historyDeleteConfirm'),
+                    deleteError: t('historyDeleteError'),
+                  }}
+                  onDeleted={(id) => setHistory((prev) => prev.filter((h) => h.id !== id))}
+                />
+              ))}
+            </ul>
+          </div>
+        )}
 
         {/* Error */}
         {phase === 'error' && error && (
