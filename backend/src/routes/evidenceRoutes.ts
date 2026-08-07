@@ -1,4 +1,4 @@
-import { Router, Request, Response } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import multer from 'multer';
 import { z } from 'zod';
 import { ethers } from 'ethers';
@@ -100,54 +100,58 @@ function getWeb3Service(): Web3Service {
 router.post(
   '/intake',
   upload.single('file'),
-  async (req: Request, res: Response): Promise<void> => {
-    const agent = getIntakeAgent();
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const agent = getIntakeAgent();
 
-    // --- File upload path ---
-    if (req.file) {
-      let analysis;
-      try {
-        analysis = await agent.analyzeEvidence(req.file.buffer, req.file.mimetype);
-      } catch (err) {
-        console.error('[intake] IntakeAgent error:', err);
-        res.status(500).json({ error: 'AI analysis failed', message: String(err) });
+      // --- File upload path ---
+      if (req.file) {
+        let analysis;
+        try {
+          analysis = await agent.analyzeEvidence(req.file.buffer, req.file.mimetype);
+        } catch (err) {
+          console.error('[intake] IntakeAgent error:', err);
+          res.status(500).json({ error: 'AI analysis failed', message: String(err) });
+          return;
+        }
+        res.status(200).json({ analysis });
         return;
       }
-      res.status(200).json({ analysis });
-      return;
+
+      // --- URL scraping path ---
+      const urlParsed = UrlIntakeSchema.safeParse(req.body);
+      if (urlParsed.success) {
+        const { url } = urlParsed.data;
+
+        let scraped;
+        try {
+          scraped = await scrapeUrl(url);
+        } catch (err) {
+          console.error('[intake] scrapeUrl error:', err);
+          res.status(422).json({ error: 'URL scraping failed', message: String(err) });
+          return;
+        }
+
+        let analysis;
+        try {
+          analysis = await agent.analyzeText(scraped.textContent, url);
+        } catch (err) {
+          console.error('[intake] IntakeAgent.analyzeText error:', err);
+          res.status(500).json({ error: 'AI analysis failed', message: String(err) });
+          return;
+        }
+
+        res.status(200).json({ analysis, scrapedText: scraped.textContent, url });
+        return;
+      }
+
+      res.status(400).json({
+        error: 'Invalid request',
+        message: 'Provide either a multipart "file" field or a JSON body with a "url" field.',
+      });
+    } catch (err) {
+      next(err);
     }
-
-    // --- URL scraping path ---
-    const urlParsed = UrlIntakeSchema.safeParse(req.body);
-    if (urlParsed.success) {
-      const { url } = urlParsed.data;
-
-      let scraped;
-      try {
-        scraped = await scrapeUrl(url);
-      } catch (err) {
-        console.error('[intake] scrapeUrl error:', err);
-        res.status(422).json({ error: 'URL scraping failed', message: String(err) });
-        return;
-      }
-
-      let analysis;
-      try {
-        analysis = await agent.analyzeText(scraped.textContent, url);
-      } catch (err) {
-        console.error('[intake] IntakeAgent.analyzeText error:', err);
-        res.status(500).json({ error: 'AI analysis failed', message: String(err) });
-        return;
-      }
-
-      res.status(200).json({ analysis, scrapedText: scraped.textContent, url });
-      return;
-    }
-
-    res.status(400).json({
-      error: 'Invalid request',
-      message: 'Provide either a multipart "file" field or a JSON body with a "url" field.',
-    });
   },
 );
 
@@ -163,97 +167,101 @@ router.post(
 router.post(
   '/confirm',
   upload.single('file'),
-  async (req: Request, res: Response): Promise<void> => {
-    let analysisRaw: unknown;
-    let fileHash: string;
-
-    if (req.file) {
-      // --- File upload path ---
-      const bodyParsed = ConfirmBodySchema.safeParse(req.body);
-      if (!bodyParsed.success) {
-        res.status(400).json({ error: 'Invalid request', details: bodyParsed.error.flatten() });
-        return;
-      }
-      try {
-        analysisRaw = JSON.parse(bodyParsed.data.analysis);
-      } catch {
-        res.status(400).json({ error: 'Invalid JSON', message: 'The "analysis" field must be valid JSON.' });
-        return;
-      }
-      fileHash = Web3Service.hashFile(req.file.buffer);
-    } else {
-      // --- URL submission path ---
-      const urlBodyParsed = UrlConfirmBodySchema.safeParse(req.body);
-      if (!urlBodyParsed.success) {
-        res.status(400).json({
-          error: 'Invalid request',
-          message: 'Provide either a multipart "file" field, or a JSON body with "url", "scrapedText", and "analysis".',
-          details: urlBodyParsed.error.flatten(),
-        });
-        return;
-      }
-      const { url, scrapedText, analysis: analysisStr } = urlBodyParsed.data;
-      try {
-        analysisRaw = JSON.parse(analysisStr);
-      } catch {
-        res.status(400).json({ error: 'Invalid JSON', message: 'The "analysis" field must be valid JSON.' });
-        return;
-      }
-      // Hash URL + scraped content for legal provenance — proves exactly what
-      // existed at this link at the moment of submission.
-      fileHash = Web3Service.hashFile(Buffer.from(`${url}\n\n${scrapedText}`, 'utf8'));
-    }
-
-    const analysisParsed = IntakeOutputSchema.safeParse(analysisRaw);
-    if (!analysisParsed.success) {
-      res.status(400).json({ error: 'Invalid analysis', details: analysisParsed.error.flatten() });
-      return;
-    }
-
-    const analysis = analysisParsed.data;
-
-    // Register on-chain anonymously — backend wallet pays gas, ZeroAddress preserves whistleblower privacy
-    let txHash: string;
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      txHash = await getWeb3Service().registerEvidenceHash(fileHash, ethers.ZeroAddress, analysis.category);
-    } catch (err) {
-      if (err instanceof DuplicateEvidenceError) {
-        res.status(409).json({
-          error: 'duplicate',
-          message: 'This evidence has already been registered on-chain.',
+      let analysisRaw: unknown;
+      let fileHash: string;
+
+      if (req.file) {
+        // --- File upload path ---
+        const bodyParsed = ConfirmBodySchema.safeParse(req.body);
+        if (!bodyParsed.success) {
+          res.status(400).json({ error: 'Invalid request', details: bodyParsed.error.flatten() });
+          return;
+        }
+        try {
+          analysisRaw = JSON.parse(bodyParsed.data.analysis);
+        } catch {
+          res.status(400).json({ error: 'Invalid JSON', message: 'The "analysis" field must be valid JSON.' });
+          return;
+        }
+        fileHash = Web3Service.hashFile(req.file.buffer);
+      } else {
+        // --- URL submission path ---
+        const urlBodyParsed = UrlConfirmBodySchema.safeParse(req.body);
+        if (!urlBodyParsed.success) {
+          res.status(400).json({
+            error: 'Invalid request',
+            message: 'Provide either a multipart "file" field, or a JSON body with "url", "scrapedText", and "analysis".',
+            details: urlBodyParsed.error.flatten(),
+          });
+          return;
+        }
+        const { url, scrapedText, analysis: analysisStr } = urlBodyParsed.data;
+        try {
+          analysisRaw = JSON.parse(analysisStr);
+        } catch {
+          res.status(400).json({ error: 'Invalid JSON', message: 'The "analysis" field must be valid JSON.' });
+          return;
+        }
+        // Hash URL + scraped content for legal provenance — proves exactly what
+        // existed at this link at the moment of submission.
+        fileHash = Web3Service.hashFile(Buffer.from(`${url}\n\n${scrapedText}`, 'utf8'));
+      }
+
+      const analysisParsed = IntakeOutputSchema.safeParse(analysisRaw);
+      if (!analysisParsed.success) {
+        res.status(400).json({ error: 'Invalid analysis', details: analysisParsed.error.flatten() });
+        return;
+      }
+
+      const analysis = analysisParsed.data;
+
+      // Register on-chain anonymously — backend wallet pays gas, ZeroAddress preserves whistleblower privacy
+      let txHash: string;
+      try {
+        txHash = await getWeb3Service().registerEvidenceHash(fileHash, ethers.ZeroAddress, analysis.category);
+      } catch (err) {
+        if (err instanceof DuplicateEvidenceError) {
+          res.status(409).json({
+            error: 'duplicate',
+            message: 'This evidence has already been registered on-chain.',
+            fileHash,
+          });
+          return;
+        }
+        console.error('[confirm] Web3Service error:', err);
+        res.status(500).json({ error: 'Blockchain registration failed', message: String(err) });
+        return;
+      }
+
+      // Upsert to vector store — no PII stored here
+      try {
+        const vectorStore = await getVectorStore();
+        await vectorStore.upsertEvidence(analysis.summary, {
           fileHash,
+          category: analysis.category,
+          tier: analysis.evidenceTier,
+          summary: analysis.summary,
+          targetEntity: analysis.targetEntity,
+          evidenceDate: analysis.evidenceDate,
+          keyFigures: analysis.keyFigures,
+          medicalConditions: analysis.medicalConditions,
+          timestamp: Date.now(),
         });
-        return;
+      } catch (err) {
+        console.error('[confirm] VectorStoreService upsert error (non-fatal):', err);
       }
-      console.error('[confirm] Web3Service error:', err);
-      res.status(500).json({ error: 'Blockchain registration failed', message: String(err) });
-      return;
-    }
 
-    // Upsert to vector store — no PII stored here
-    try {
-      const vectorStore = await getVectorStore();
-      await vectorStore.upsertEvidence(analysis.summary, {
+      res.status(201).json({
+        relevant: analysis.isRelevant,
         fileHash,
-        category: analysis.category,
-        tier: analysis.evidenceTier,
-        summary: analysis.summary,
-        targetEntity: analysis.targetEntity,
-        evidenceDate: analysis.evidenceDate,
-        keyFigures: analysis.keyFigures,
-        medicalConditions: analysis.medicalConditions,
-        timestamp: Date.now(),
+        txHash,
+        analysis,
       });
     } catch (err) {
-      console.error('[confirm] VectorStoreService upsert error (non-fatal):', err);
+      next(err);
     }
-
-    res.status(201).json({
-      relevant: analysis.isRelevant,
-      fileHash,
-      txHash,
-      analysis,
-    });
   },
 );
 

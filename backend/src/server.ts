@@ -52,12 +52,22 @@ app.use('/api/chat', chatRouter);
 // ---------------------------------------------------------------------------
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
-  console.error('[server] Unhandled error:', err.stack ?? err.message);
-  const status = (err as { status?: number; statusCode?: number }).status
-    ?? (err as { status?: number; statusCode?: number }).statusCode
-    ?? 500;
-  res.status(status).json({ error: err.message ?? 'Internal server error' });
+app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
+  // Defensive: err may be any value (string, object, null) — never assume it is an Error instance.
+  const message = err instanceof Error ? err.message : String(err ?? 'Internal server error');
+  const stack   = err instanceof Error ? err.stack : undefined;
+  console.error('[server] Unhandled error:', stack ?? message);
+
+  const anyErr = err as { status?: number; statusCode?: number } | null;
+  const status = anyErr?.status ?? anyErr?.statusCode ?? 500;
+
+  // Guard against double-send (e.g. if a middleware partially wrote headers)
+  if (res.headersSent) return;
+  try {
+    res.status(status).json({ error: message });
+  } catch {
+    // Last-resort: response is already destroyed — nothing we can do
+  }
 });
 
 // ---------------------------------------------------------------------------
