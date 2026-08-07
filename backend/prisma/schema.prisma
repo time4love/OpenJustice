@@ -12,6 +12,58 @@ datasource db {
   directUrl = env("DIRECT_URL")
 }
 
+// ---------------------------------------------------------------------------
+// Job queue for long-running Wayback Machine scans.
+// Each scan is a WaybackScrapeJob. The snapshotsList JSON field tracks the
+// per-snapshot status so processing can resume after crashes.
+// ---------------------------------------------------------------------------
+
+enum WaybackJobStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+}
+
+model WaybackScrapeJob {
+  id                  String           @id @default(uuid())
+  url                 String
+  status              WaybackJobStatus @default(PENDING)
+  totalSnapshots      Int              @default(0)
+  processedSnapshots  Int              @default(0)
+  // JSON: Array<{ timestamp: string; digest: string; status: 'PENDING' | 'DONE' | 'FAILED' }>
+  snapshotsList       String           @default("[]")
+  trackedUrlId        String?          // linked after first significant diff is saved
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
+}
+
+// Tracks a government/health URL that has been submitted for Wayback Machine analysis.
+model TrackedUrl {
+  id        String           @id @default(uuid())
+  url       String
+  title     String?
+  createdAt DateTime         @default(now())
+  diffs     UrlVersionDiff[]
+}
+
+// Records a single detected change between two consecutive archived snapshots of a TrackedUrl.
+// Only legally significant diffs (isLegallySignificant: true) are persisted to save space.
+model UrlVersionDiff {
+  id                   String     @id @default(uuid())
+  trackedUrlId         String
+  trackedUrl           TrackedUrl @relation(fields: [trackedUrlId], references: [id])
+  beforeDate           String
+  afterDate            String
+  snapshotUrl          String
+  deletedText          String     @default("[]") // JSON array of deleted claim strings
+  addedText            String     @default("[]") // JSON array of added claim strings
+  aiSignificance       String     @default("") // Hebrew forensic explanation
+  isLegallySignificant Boolean    @default(false)
+  createdAt            DateTime   @default(now())
+  evidence             Evidence[]
+}
+
 model Whistleblower {
   id               String   @id @default(uuid())
   fileHash         String   @unique
@@ -41,5 +93,7 @@ model Evidence {
   euaOmissionStatus   String   @default("Not Applicable")
   sourceUrl           String?
   fileUrl             String?
+  urlVersionDiffId    String?
+  urlVersionDiff      UrlVersionDiff? @relation(fields: [urlVersionDiffId], references: [id])
   createdAt           DateTime @default(now())
 }

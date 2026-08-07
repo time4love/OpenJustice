@@ -7,7 +7,8 @@
       "timeline": "Timeline",
       "caseBuilder": "Case Builder",
       "submitEvidence": "+ Submit Evidence",
-      "about": "About"
+      "about": "About",
+      "forensics": "Forensics"
     }
   },
   "dashboard": {
@@ -177,7 +178,8 @@
     },
     "roleContextAnchor": "Factual Anchor",
     "roleIncriminating": "Incriminating",
-    "viewSource": "View Source"
+    "viewSource": "View Source",
+    "viewDiffHistory": "View Document History"
   },
   "about": {
     "badge": "Open Source Project · Full Transparency",
@@ -225,6 +227,43 @@
       "btn": "Submit Evidence Now — Free & Anonymous",
       "hint": "Questions? Click the chat bubble and the Trust Agent will help."
     }
+  },
+  "forensics": {
+    "tagline": "Wayback Machine Forensic Diff · Silent Edits Exposed",
+    "scanHeading": "Government URL History Scanner",
+    "scanDescription": "Enter an official government or health authority URL. We will fetch all archived versions from the Wayback Machine, diff them, and cross-reference any changes with our internal evidence database to expose silent cover-up edits.",
+    "urlLabel": "Target URL",
+    "urlPlaceholder": "https://www.health.gov.il/…",
+    "scanBtn": "Scan History",
+    "scanningBtn": "Scanning Archive…",
+    "scanningHint": "Fetching archive snapshots and running forensic analysis. This may take 1–3 minutes.",
+    "resultsHeading": "{count} legally significant changes detected",
+    "noChangesTitle": "No legally significant changes detected.",
+    "noChangesSub": "All archive snapshots for this URL contain identical content or only cosmetic edits.",
+    "noSnapshotsTitle": "No archive snapshots found.",
+    "noSnapshotsSub": "The Wayback Machine has no records for this URL.",
+    "errorTitle": "Scan failed.",
+    "deletionsLabel": "DELETED",
+    "additionsLabel": "ADDED",
+    "forensicLabel": "Forensic Analysis",
+    "viewSnapshot": "View in Archive",
+    "drillDownLink": "View Full Document History",
+    "drillDownTagline": "URL Change History · Forensic Diff Timeline",
+    "drillDownBack": "← Back to Scanner",
+    "drillDownHeading": "Forensic Timeline for",
+    "promoteBtn": "Promote to Main Evidence",
+    "promotingBtn": "Registering on-chain…",
+    "alreadyPromoted": "Already in Evidence Vault",
+    "viewEvidence": "View Evidence",
+    "promoteSuccess": "Promoted to Evidence Vault",
+    "promoteError": "Promotion failed.",
+    "creatingJob": "Creating scan job…",
+    "processingSnapshots": "Processing snapshots…",
+    "snapshotProgress": "{processed} of {total} snapshots processed",
+    "fetchingResults": "Loading results…",
+    "jobStalled": "The scan appears to have stalled.",
+    "resumeBtn": "Resume Process",
+    "resumingBtn": "Resuming…"
   },
   "chat": {
     "greeting": "Hello, I am the Glass Fortress Trust Agent. How can I help you understand our system's security?",

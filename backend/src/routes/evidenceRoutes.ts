@@ -31,6 +31,8 @@ interface EvidenceRecord {
   euaOmissionStatus: string;
   sourceUrl?: string | null;
   fileUrl?: string | null;
+  urlVersionDiffId?: string | null;
+  trackedUrlId?: string | null;
   timestamp: number;
 }
 
@@ -76,6 +78,7 @@ const UrlConfirmBodySchema = z.object({
   url: z.string().url(),
   scrapedText: z.string().min(1, 'scrapedText is required'),
   analysis: z.string().min(1, 'analysis JSON is required'),
+  urlVersionDiffId: z.string().optional(),
 });
 
 const ContactBodySchema = z.object({
@@ -204,6 +207,7 @@ router.post(
       let fileHash: string;
       let sourceUrl: string | null = null;
       let fileUrl: string | null = null;
+      let urlVersionDiffId: string | null = null;
 
       if (req.file) {
         // --- File upload path ---
@@ -244,7 +248,7 @@ router.post(
           });
           return;
         }
-        const { url, scrapedText, analysis: analysisStr } = urlBodyParsed.data;
+        const { url, scrapedText, analysis: analysisStr, urlVersionDiffId: diffId } = urlBodyParsed.data;
         try {
           analysisRaw = JSON.parse(analysisStr);
         } catch {
@@ -252,6 +256,7 @@ router.post(
           return;
         }
         sourceUrl = url;
+        urlVersionDiffId = diffId ?? null;
         // Hash URL + scraped content for legal provenance — proves exactly what
         // existed at this link at the moment of submission.
         fileHash = Web3Service.hashFile(Buffer.from(`${url}\n\n${scrapedText}`, 'utf8'));
@@ -302,6 +307,7 @@ router.post(
           euaOmissionStatus: analysis.euaOmissionStatus,
           sourceUrl,
           fileUrl,
+          urlVersionDiffId,
         },
         create: {
           fileHash,
@@ -320,6 +326,7 @@ router.post(
           euaOmissionStatus: analysis.euaOmissionStatus,
           sourceUrl,
           fileUrl,
+          urlVersionDiffId,
         },
       });
 
@@ -395,6 +402,7 @@ router.get('/timeline', async (req: Request, res: Response): Promise<void> => {
     const rows = await prisma.evidence.findMany({
       where: targetEntity ? { targetEntity } : undefined,
       orderBy: { evidenceDate: 'asc' },
+      include: { urlVersionDiff: { select: { trackedUrlId: true } } },
     });
 
     // Wrap in { content, metadata } to match the TimelineRecord shape the frontend expects.
@@ -417,6 +425,8 @@ router.get('/timeline', async (req: Request, res: Response): Promise<void> => {
         euaOmissionStatus: r.euaOmissionStatus,
         sourceUrl: r.sourceUrl,
         fileUrl: r.fileUrl,
+        urlVersionDiffId: r.urlVersionDiffId,
+        trackedUrlId: r.urlVersionDiff?.trackedUrlId ?? null,
         timestamp: r.createdAt.getTime(),
       } satisfies EvidenceRecord,
     }));
@@ -497,8 +507,12 @@ router.get('/search', async (req: Request, res: Response): Promise<void> => {
             evidenceDate: row.evidenceDate,
             keyFigures: JSON.parse(row.keyFigures) as string[],
             medicalConditions: JSON.parse(row.medicalConditions) as string[],
+            statisticalClaims: JSON.parse(row.statisticalClaims) as string[],
+            regulatoryMentions: JSON.parse(row.regulatoryMentions) as string[],
+            euaOmissionStatus: row.euaOmissionStatus,
             sourceUrl: row.sourceUrl,
             fileUrl: row.fileUrl,
+            urlVersionDiffId: row.urlVersionDiffId,
             timestamp: row.createdAt.getTime(),
           } satisfies EvidenceRecord,
         };

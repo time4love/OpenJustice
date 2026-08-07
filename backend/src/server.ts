@@ -18,6 +18,7 @@ process.on('uncaughtException', (err) => {
 import { evidenceRouter } from './routes/evidenceRoutes';
 import { argumentRouter } from './routes/argumentRoutes';
 import { chatRouter } from './routes/chatRoutes';
+import { forensicsRouter } from './routes/forensicsRoutes';
 
 const app = express();
 const PORT = process.env['PORT'] ?? 3000;
@@ -28,7 +29,8 @@ const PORT = process.env['PORT'] ?? 3000;
 
 const allowedOrigins = [
   process.env['FRONTEND_URL'],          // e.g. https://glass-fortress.vercel.app
-  'http://localhost:3001',              // Next.js dev default
+  'http://localhost:3001',              // Next.js dev (port may vary)
+  'http://localhost:3002',
   'http://localhost:3000',
 ].filter(Boolean) as string[];
 
@@ -57,6 +59,7 @@ app.get('/health', (_req: Request, res: Response) => {
 app.use('/api/evidence', evidenceRouter);
 app.use('/api/arguments', argumentRouter);
 app.use('/api/chat', chatRouter);
+app.use('/api/forensics', forensicsRouter);
 
 // ---------------------------------------------------------------------------
 // Global error handler — must be registered AFTER all routes.

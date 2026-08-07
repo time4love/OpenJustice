@@ -7,7 +7,8 @@
       "timeline": "ציר זמן",
       "caseBuilder": "בניית תיק",
       "submitEvidence": "+ הגש ראיה",
-      "about": "אודות"
+      "about": "אודות",
+      "forensics": "פורנזיקה"
     }
   },
   "dashboard": {
@@ -177,7 +178,8 @@
     },
     "roleContextAnchor": "עוגן עובדתי",
     "roleIncriminating": "ראיה מפלילה",
-    "viewSource": "מקור הראיה"
+    "viewSource": "מקור הראיה",
+    "viewDiffHistory": "צפה בהיסטוריית המסמך המלאה"
   },
   "about": {
     "badge": "פרויקט קוד פתוח · שקיפות מלאה",
@@ -225,6 +227,43 @@
       "btn": "הגש ראיה עכשיו — בחינם ובאנונימיות",
       "hint": "יש שאלות? לחץ על בועת הצ'אט ונציג האמון ישמח לעזור."
     }
+  },
+  "forensics": {
+    "tagline": "ניתוח פורנזי — Wayback Machine · עריכות שקטות נחשפות",
+    "scanHeading": "סורק היסטוריית כתובות ממשלתיות",
+    "scanDescription": "הכנס כתובת URL רשמית של גוף ממשלתי או רגולטורי. המערכת תשלוף את כל הגרסאות הארכיוניות ממכונת ה-Wayback, תשווה ביניהן, ותצלב כל שינוי מול מסד הראיות הפנימי שלנו כדי לחשוף עריכות השתקה שקטות.",
+    "urlLabel": "כתובת יעד",
+    "urlPlaceholder": "https://www.health.gov.il/…",
+    "scanBtn": "סרוק היסטוריה",
+    "scanningBtn": "סורק ארכיון…",
+    "scanningHint": "שולף צילומי ארכיון ומריץ ניתוח פורנזי. התהליך עשוי לארוך 1–3 דקות.",
+    "resultsHeading": "זוהו {count} שינויים בעלי משמעות משפטית",
+    "noChangesTitle": "לא זוהו שינויים בעלי משמעות משפטית.",
+    "noChangesSub": "כל צילומי הארכיון לכתובת זו מכילים תוכן זהה, או שינויים קוסמטיים בלבד ללא ערך ראייתי.",
+    "noSnapshotsTitle": "לא נמצאו צילומי ארכיון.",
+    "noSnapshotsSub": "ל-Wayback Machine אין רשומות לכתובת זו.",
+    "errorTitle": "הסריקה נכשלה.",
+    "deletionsLabel": "נמחק",
+    "additionsLabel": "נוסף",
+    "forensicLabel": "ניתוח פורנזי",
+    "viewSnapshot": "צפה בארכיון",
+    "drillDownLink": "צפה בהיסטוריית המסמך המלאה",
+    "drillDownTagline": "היסטוריית שינויים לפי כתובת URL · ציר זמן פורנזי",
+    "drillDownBack": "→ חזרה לסורק",
+    "drillDownHeading": "ציר זמן פורנזי עבור",
+    "promoteBtn": "קדם לראיה ראשית",
+    "promotingBtn": "רושם בשרשרת הבלוקים…",
+    "alreadyPromoted": "כבר קיים בכספת הראיות",
+    "viewEvidence": "צפה בראיה",
+    "promoteSuccess": "הועלה לכספת הראיות",
+    "promoteError": "הקידום נכשל.",
+    "creatingJob": "יוצר משימת סריקה…",
+    "processingSnapshots": "מעבד צילומי ארכיון…",
+    "snapshotProgress": "עובד {processed} מתוך {total} צילומים",
+    "fetchingResults": "טוען תוצאות…",
+    "jobStalled": "הסריקה נראית תקועה.",
+    "resumeBtn": "המשך תהליך",
+    "resumingBtn": "ממשיך…"
   },
   "chat": {
     "greeting": "שלום, אני נציג האמון של פרויקט מבצר הזכוכית. כיצד אוכל לעזור לך להבין את אבטחת המערכת שלנו?",

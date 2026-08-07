@@ -285,8 +285,8 @@ export default function DashboardPage() {
   useEffect(() => {
     void search('');
     fetch(apiUrl('/api/evidence/stats'))
-      .then((r) => r.json())
-      .then((data: EvidenceStats) => setStats(data))
+      .then((r) => r.ok ? r.json() as Promise<EvidenceStats> : Promise.reject(r.status))
+      .then((data) => setStats(data))
       .catch(() => {/* silently keep zero stats on error */})
       .finally(() => setStatsLoading(false));
   }, [search]);
@@ -335,6 +335,12 @@ export default function DashboardPage() {
                 className="px-3 py-1.5 rounded text-xs font-medium text-slate-600 border border-transparent hover:bg-slate-100 hover:text-slate-900 hover:border-slate-200 transition-colors"
               >
                 {tc('nav.caseBuilder')}
+              </Link>
+              <Link
+                href="/forensics"
+                className="px-3 py-1.5 rounded text-xs font-medium text-slate-600 border border-transparent hover:bg-slate-100 hover:text-slate-900 hover:border-slate-200 transition-colors"
+              >
+                {tc('nav.forensics')}
               </Link>
               <Link
                 href="/about"

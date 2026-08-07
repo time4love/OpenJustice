@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, FormEvent } from 'react';
+import { useState, useEffect } from 'react';
 import { useTranslations, useLocale } from 'next-intl';
 import { Link, useRouter, usePathname } from '@/i18n/navigation';
 import { apiUrl } from '@/lib/api';
@@ -30,6 +30,8 @@ interface EvidenceMetadata {
   euaOmissionStatus?: string;
   sourceUrl?: string | null;
   fileUrl?: string | null;
+  urlVersionDiffId?: string | null;
+  trackedUrlId?: string | null;
   timestamp: number;
 }
 
@@ -38,8 +40,6 @@ interface TimelineRecord {
   metadata: EvidenceMetadata;
   score?: number;
 }
-
-type ViewMode = 'all' | 'internal' | 'public';
 
 // ---------------------------------------------------------------------------
 // Perspective styles
@@ -131,6 +131,7 @@ interface NodeLabels {
   roleIncriminating: string;
   roleContextAnchor: string;
   viewSource: string;
+  viewDiffHistory: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -316,6 +317,15 @@ function TimelineNode({
                 <span aria-hidden="true">↗</span>
               </a>
             )}
+            {metadata.trackedUrlId && (
+              <Link
+                href={`/forensics/${metadata.trackedUrlId}`}
+                className="flex items-center gap-1 text-xs font-medium text-purple-600 hover:text-purple-800 hover:underline transition-colors"
+              >
+                {labels.viewDiffHistory}
+                <span aria-hidden="true">&#x2197;</span>
+              </Link>
+            )}
           </div>
         </div>
       </div>
@@ -400,80 +410,26 @@ export default function TimelinePage() {
   const t = useTranslations('timeline');
   const tc = useTranslations('common');
 
-  const [entityFilter, setEntityFilter] = useState('');
   const [records, setRecords] = useState<TimelineRecord[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [view, setView] = useState<ViewMode>('all');
-
-  async function fetchTimeline(entity: string) {
-    setLoading(true);
-    setError(null);
-    try {
-      const params = new URLSearchParams();
-      if (entity.trim()) params.set('targetEntity', entity.trim());
-      const res = await fetch(apiUrl(`/api/evidence/timeline?${params.toString()}`));
-      if (!res.ok) {
-        const data = (await res.json()) as { message?: string };
-        setError(data.message ?? `Error ${res.status}`);
-        setRecords(null);
-        return;
-      }
-      const data = (await res.json()) as { results: TimelineRecord[] };
-      setRecords(data.results);
-    } catch {
-      setError('Could not reach the backend. Is the server running?');
-      setRecords(null);
-    } finally {
-      setLoading(false);
-    }
-  }
 
   useEffect(() => {
-    void fetchTimeline('');
+    setLoading(true);
+    fetch(apiUrl('/api/evidence/timeline'))
+      .then(async (res) => {
+        const data = (await res.json()) as { results?: TimelineRecord[]; message?: string };
+        if (!res.ok) { setError(data.message ?? `Error ${res.status}`); return; }
+        setRecords(data.results ?? []);
+      })
+      .catch(() => setError('Could not reach the backend. Is the server running?'))
+      .finally(() => setLoading(false));
   }, []);
-
-  function handleSubmit(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    void fetchTimeline(entityFilter);
-  }
-
-  // Per-perspective counts for filter tab badges
-  const internalCount = records?.filter((r) => r.metadata.evidencePerspective === 'Internal Knowledge').length ?? 0;
-  const publicCount = records?.filter((r) => r.metadata.evidencePerspective === 'Public Statement').length ?? 0;
-
-  const visibleRecords =
-    view === 'internal'
-      ? (records?.filter((r) => r.metadata.evidencePerspective === 'Internal Knowledge') ?? [])
-      : view === 'public'
-        ? (records?.filter((r) => r.metadata.evidencePerspective === 'Public Statement') ?? [])
-        : (records ?? []);
 
   function getPerspectiveLabel(p?: string): string {
     if (!p) return '';
     return t(`perspective.${p as EvidencePerspective}` as Parameters<typeof t>[0]);
   }
-
-  const VIEW_TABS: { key: ViewMode; label: string; count: number; activeClass: string }[] = [
-    {
-      key: 'all',
-      label: t('viewToggle.all'),
-      count: records?.length ?? 0,
-      activeClass: 'bg-slate-800 text-white border-slate-700',
-    },
-    {
-      key: 'internal',
-      label: t('viewToggle.internal'),
-      count: internalCount,
-      activeClass: 'bg-red-600 text-white border-red-700',
-    },
-    {
-      key: 'public',
-      label: t('viewToggle.public'),
-      count: publicCount,
-      activeClass: 'bg-blue-600 text-white border-blue-700',
-    },
-  ];
 
   const nodeLabels = {
     unknownDate: t('unknownDate'),
@@ -487,6 +443,7 @@ export default function TimelinePage() {
     roleIncriminating: t('roleIncriminating'),
     roleContextAnchor: t('roleContextAnchor'),
     viewSource: t('viewSource'),
+    viewDiffHistory: t('viewDiffHistory'),
     getPerspectiveLabel,
   };
 
@@ -527,6 +484,12 @@ export default function TimelinePage() {
               >
                 {tc('nav.caseBuilder')}
               </Link>
+              <Link
+                href="/forensics"
+                className="px-3 py-1.5 rounded text-xs font-medium text-slate-600 border border-transparent hover:bg-slate-100 hover:text-slate-900 hover:border-slate-200 transition-colors"
+              >
+                {tc('nav.forensics')}
+              </Link>
             </nav>
             <LocaleSwitcher />
           </div>
@@ -534,63 +497,6 @@ export default function TimelinePage() {
       </header>
 
       <div className="max-w-4xl mx-auto px-4 sm:px-6 py-8 space-y-6">
-
-        {/* Controls row */}
-        <div className="flex flex-wrap items-end gap-4">
-          {/* Entity filter */}
-          <form onSubmit={handleSubmit} className="flex items-end gap-3">
-            <div className="space-y-1.5">
-              <label className="block text-xs font-medium text-slate-500 uppercase tracking-widest">
-                {t('filterLabel')}
-              </label>
-              <input
-                type="text"
-                value={entityFilter}
-                onChange={(e) => setEntityFilter(e.target.value)}
-                placeholder={t('filterPlaceholder')}
-                className="w-52 bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-300/50 font-mono shadow-sm"
-              />
-            </div>
-            <button
-              type="submit"
-              disabled={loading}
-              className="px-4 py-2 rounded-lg text-sm font-semibold bg-blue-600 text-white border border-blue-700 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shadow-sm"
-            >
-              {loading ? (
-                <span className="flex items-center gap-2">
-                  <span className="w-3 h-3 rounded-full border-2 border-white/60 border-t-white animate-spin" />
-                  {t('loadingBtn')}
-                </span>
-              ) : (
-                t('loadBtn')
-              )}
-            </button>
-          </form>
-
-          {/* Perspective filter tabs */}
-          <div className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white p-1 shadow-sm">
-            {VIEW_TABS.map(({ key, label, count, activeClass }) => (
-              <button
-                key={key}
-                onClick={() => setView(key)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-semibold border transition-colors ${
-                  view === key ? activeClass : 'text-slate-500 border-transparent hover:text-slate-700 hover:bg-slate-50'
-                }`}
-              >
-                {label}
-                {records !== null && (
-                  <span
-                    className={`text-[10px] font-mono tabular-nums ${
-                      view === key ? 'opacity-70' : 'text-slate-400'
-                    }`}
-                  >
-                    {count}
-                  </span>
-                )}
-              </button>
-            ))}
-          </div>
-        </div>
 
         {/* Error */}
         {error && (
@@ -603,17 +509,14 @@ export default function TimelinePage() {
           </div>
         )}
 
-        {/* Loading skeleton */}
         {loading && <TimelineSkeleton />}
 
-        {/* Empty state */}
-        {!loading && !error && records !== null && visibleRecords.length === 0 && (
+        {!loading && !error && records !== null && records.length === 0 && (
           <EmptyState title={t('emptyTitle')} sub={t('emptySub')} />
         )}
 
-        {/* Unified timeline */}
-        {!loading && !error && records !== null && visibleRecords.length > 0 && (
-          <UnifiedTimeline records={visibleRecords} labels={nodeLabels} />
+        {!loading && !error && records !== null && records.length > 0 && (
+          <UnifiedTimeline records={records} labels={nodeLabels} />
         )}
       </div>
     </main>
