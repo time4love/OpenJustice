@@ -242,6 +242,7 @@ router.post(
           fileHash,
           category: analysis.category,
           tier: analysis.evidenceTier,
+          tierReasoning: analysis.tierReasoning,
           summary: analysis.summary,
           targetEntity: analysis.targetEntity,
           evidenceDate: analysis.evidenceDate,

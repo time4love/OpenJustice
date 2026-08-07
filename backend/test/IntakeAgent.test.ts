@@ -38,6 +38,8 @@ const SMOKING_GUN_RESPONSE = {
     'המסמך נושא תאריך ולוגו רשמי ומהווה הוכחה ישירה להסתרת מידע.',
   missingInformation: [],
   targetEntity: 'Ministry of Health',
+  tierReasoning:
+    'מדובר במסמך פנימי דלוף המוכיח ידיעה מוקדמת ומכוונת על הסתרת נתונים — עומד בהגדרת דרגה 1 ולא דרגה 2, שכן הוא אינו הצהרה פומבית אלא הנחיה פנימית.',
   evidenceTier: EVIDENCE_TIER.SMOKING_GUN,
   evidenceDate: '2021-03-10',
   keyFigures: ['ד"ר שרון אלרוי-פריס', "פרופ' מתי ברקוביץ'"],
@@ -50,6 +52,8 @@ const ANECDOTAL_RESPONSE = {
   summary: 'פוסט ברשת חברתית מתאר לחץ מצד מעסיק להתחסן. אין תיעוד נוסף או פרטים מזהים.',
   missingInformation: ['שם המעסיק חסר', 'אין תאריך', 'אין תיעוד כתוב'],
   targetEntity: 'Unknown',
+  tierReasoning:
+    'התוכן הוא פוסט ברשת חברתית ללא תיעוד כתוב או שם מעסיק — עומד בהגדרת דרגה 4 אנקדוטית בלבד.',
   evidenceTier: EVIDENCE_TIER.ANECDOTAL,
   evidenceDate: 'Unknown',
   keyFigures: [],
@@ -63,6 +67,8 @@ const MATERIAL_RESPONSE = {
     'הודעה רשמית לעיתונות מטעם רשות הבריאות כוללת טענות יעילות הסותרות נתוני ניסויים שפורסמו מאוחר יותר.',
   missingInformation: ['כתובת מקור המקורית חסרה'],
   targetEntity: 'FDA',
+  tierReasoning:
+    'מדובר בהצהרה רשמית ופומבית של רגולטור — עומדת בהגדרת דרגה 2, אך אינה מסמך פנימי דלוף הנדרש לדרגה 1.',
   evidenceTier: EVIDENCE_TIER.MATERIAL,
   evidenceDate: '2021-08-23',
   keyFigures: ['אלברט בורלה'],
@@ -75,6 +81,8 @@ const IRRELEVANT_RESPONSE = {
   summary: 'הטקסט שהוגש הוא ביקורת מסעדה ואינו רלוונטי לתביעה.',
   missingInformation: [],
   targetEntity: 'Unknown',
+  tierReasoning:
+    'התוכן אינו קשור לתביעה — אין אפשרות לדרג אותו לפי קריטריוני הדרגות המשפטיות.',
   evidenceTier: EVIDENCE_TIER.ANECDOTAL,
   evidenceDate: 'Unknown',
   keyFigures: [],
@@ -89,6 +97,8 @@ const OPINION_PIECE_RESPONSE = {
   summary: 'מאמר דעה הקורא לאחריות ממשלתית ללא ראיות עובדתיות ספציפיות.',
   missingInformation: [],
   targetEntity: 'Unknown',
+  tierReasoning:
+    'מאמר דעה בלבד ללא ראיות עובדתיות — אינו ניתן לדירוג לפי קריטריונים משפטיים.',
   evidenceTier: EVIDENCE_TIER.ANECDOTAL,
   evidenceDate: 'Unknown',
   keyFigures: [],
@@ -225,6 +235,25 @@ describe('IntakeAgent', () => {
       expect(() => IntakeOutputSchema.parse(invalid)).toThrow();
     });
 
+    // tierReasoning
+    it('accepts a valid tierReasoning string', () => {
+      expect(() => IntakeOutputSchema.parse(SMOKING_GUN_RESPONSE)).not.toThrow();
+      expect(IntakeOutputSchema.parse(SMOKING_GUN_RESPONSE).tierReasoning).toBe(
+        SMOKING_GUN_RESPONSE.tierReasoning,
+      );
+    });
+
+    it('rejects a missing tierReasoning field', () => {
+      const { tierReasoning: _removed, ...invalid } = SMOKING_GUN_RESPONSE;
+      expect(() => IntakeOutputSchema.parse(invalid)).toThrow();
+    });
+
+    it('rejects a non-string tierReasoning', () => {
+      expect(() =>
+        IntakeOutputSchema.parse({ ...SMOKING_GUN_RESPONSE, tierReasoning: 42 }),
+      ).toThrow();
+    });
+
     // rejectionReason
     it('accepts a response with rejectionReason populated when isRelevant is false', () => {
       expect(() => IntakeOutputSchema.parse(IRRELEVANT_RESPONSE)).not.toThrow();
@@ -288,6 +317,16 @@ describe('IntakeAgent', () => {
 
       expect(result.evidenceTier).toBe(EVIDENCE_TIER.MATERIAL);
       expect(result.category).toBe('Regulatory Misleading');
+    });
+
+    it('returns tierReasoning alongside evidenceTier for CoT transparency', async () => {
+      getMockInvoke(agent).mockResolvedValueOnce(SMOKING_GUN_RESPONSE);
+
+      const result = await agent.analyzeEvidence(TEST_FILE_BUFFER, TEST_MIME_JPEG);
+
+      expect(result.tierReasoning).toBeDefined();
+      expect(typeof result.tierReasoning).toBe('string');
+      expect(result.tierReasoning.length).toBeGreaterThan(0);
     });
 
     it('returns isRelevant=false for unrelated content', async () => {

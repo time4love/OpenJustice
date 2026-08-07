@@ -52,6 +52,19 @@ export const IntakeOutputSchema = z.object({
         'Extract directly from the evidence; do not invent.',
     ),
 
+  tierReasoning: z
+    .string()
+    .describe(
+      'Chain-of-thought reasoning step — fill this BEFORE choosing evidenceTier. ' +
+        'Write 1-2 sentences in highly professional Hebrew explaining exactly WHY this specific tier was chosen. ' +
+        'Reference the tier definitions directly: ' +
+        'Tier 1 requires internal/leaked documents proving deliberate wrongdoing; ' +
+        'Tier 2 requires official documents, direct coercion letters, or official public statements; ' +
+        'Tier 3 covers media articles or general patterns without direct proof; ' +
+        'Tier 4 is hearsay, social media, or personal testimony without corroboration. ' +
+        'Example: "מסמך זה מסווג כדרגה 1 מכיוון שמדובר במסמך פנימי דלוף המוכיח ידיעה מוקדמת על תופעות הלוואי, בניגוד לדרגה 2 שדורשת הצהרה רשמית פומבית בלבד."',
+    ),
+
   evidenceTier: z
     .enum([
       'Tier 4: Anecdotal',
@@ -135,13 +148,13 @@ The three primary legal theories of liability are:
 Your task is to classify the evidence strictly according to the provided JSON schema. You must:
 - Be objective and evidence-based.
 - Never invent facts, laws, or citations not present in the submitted content.
-- Assign the evidenceTier based solely on the legal strength and provenance of the material.
+- CRITICAL — Tier assignment (Chain of Thought): You MUST populate tierReasoning BEFORE choosing evidenceTier. In tierReasoning, reason step-by-step in professional Hebrew: (1) Is this an internal/leaked document proving deliberate wrongdoing? → Tier 1. (2) Is this an official document, direct coercion letter, or official public statement? → Tier 2. (3) Is this a media article or general pattern without direct proof? → Tier 3. (4) Is this hearsay, social media, or uncorroborated testimony? → Tier 4. Then set evidenceTier to match your reasoning. This two-step process ensures consistent tier grading across PDF and URL submissions.
 - If the content is clearly unrelated to these legal theories, set isRelevant to false.
 - For targetEntity, extract the most specific named entity accountable for the offence. If no entity can be identified, use "Unknown".
 - For keyFigures, extract ONLY the names of individuals DIRECTLY RESPONSIBLE for or actively participating in the offence described. Do NOT include figures merely referenced for context. Transliterate all names into Hebrew. CRITICAL — gershayim encoding: The Hebrew character ״ (gershayim, U+05F4) used in titles like "ד״ר" looks like a double-quote and can corrupt JSON strings. Instead, write Doctor as "דר' " and Professor as "פרופ'" (plain apostrophe). Example: "דר' שרון אלרואי-פרייס", "פרופ' מתי ברקוביץ'". NEVER output a bare letter ("ד") — if you see a title in the text, the full name that follows it MUST be included. If OCR is messy, reconstruct the full name from context. Return an empty array if none qualify.
 - For medicalConditions, group symptoms under their major systemic Hebrew category to avoid clutter (e.g., "דלקת שריר הלב", "פגיעות נוירולוגיות", "שיבושים במחזור החודשי"). ALL medical tags MUST be in professional Hebrew. Return an empty array if none are mentioned.
 - For evidenceDate, scan the ENTIRE image/document for any date — letterhead dates, publication dates, email timestamps, article bylines, official report dates, chat message timestamps. Output the most legally relevant date in strict YYYY-MM-DD format. If no date is visible anywhere, output "Unknown".
-- CRITICAL LANGUAGE REQUIREMENT: ALL output strings (summary, missingInformation, rejectionReason, keyFigures, medicalConditions) MUST be written in highly professional Hebrew (עברית משפטית מקצועית). The category, evidenceTier, and evidenceDate fields must remain in English for database consistency.
+- CRITICAL LANGUAGE REQUIREMENT: ALL output strings (summary, missingInformation, rejectionReason, tierReasoning, keyFigures, medicalConditions) MUST be written in highly professional Hebrew (עברית משפטית מקצועית). The category, evidenceTier, and evidenceDate fields must remain in English for database consistency.
 
 **REJECTION CRITERIA — You MUST set isRelevant: false AND populate rejectionReason in Hebrew if ANY of the following apply:**
 1. The content is an opinion piece, editorial, commentary, or political argument that makes no specific, verifiable factual claim tied to the lawsuit pillars.
@@ -165,13 +178,13 @@ The three primary legal theories of liability are:
 Your task is to classify the evidence strictly according to the provided JSON schema. You must:
 - Be objective and evidence-based.
 - Never invent facts, laws, or citations not present in the submitted content.
-- Assign the evidenceTier based solely on the legal strength and provenance of the material.
+- CRITICAL — Tier assignment (Chain of Thought): You MUST populate tierReasoning BEFORE choosing evidenceTier. In tierReasoning, reason step-by-step in professional Hebrew: (1) Is this an internal/leaked document proving deliberate wrongdoing? → Tier 1. (2) Is this an official document, direct coercion letter, or official public statement? → Tier 2. (3) Is this a media article or general pattern without direct proof? → Tier 3. (4) Is this hearsay, social media, or uncorroborated testimony? → Tier 4. Then set evidenceTier to match your reasoning. This two-step process ensures consistent tier grading across PDF and URL submissions.
 - If the content is clearly unrelated to these legal theories, set isRelevant to false.
 - For targetEntity, extract the most specific named entity accountable for the offence. If no entity can be identified, use "Unknown".
 - For keyFigures, extract ONLY the names of individuals DIRECTLY RESPONSIBLE for or actively participating in the offence described. Do NOT include figures merely referenced for context. Transliterate all names into Hebrew. CRITICAL — gershayim encoding: The Hebrew character ״ (gershayim, U+05F4) used in titles like "ד״ר" looks like a double-quote and can corrupt JSON strings. Instead, write Doctor as "דר' " and Professor as "פרופ'" (plain apostrophe). Example: "דר' שרון אלרואי-פרייס", "פרופ' מתי ברקוביץ'". NEVER output a bare letter ("ד") — if you see a title in the text, the full name that follows it MUST be included. If OCR is messy, reconstruct the full name from context. Return an empty array if none qualify.
 - For medicalConditions, group symptoms under their major systemic Hebrew category to avoid clutter (e.g., "דלקת שריר הלב", "פגיעות נוירולוגיות", "שיבושים במחזור החודשי"). ALL medical tags MUST be in professional Hebrew. Return an empty array if none are mentioned.
 - For evidenceDate, scan the text for any date — article publication dates, bylines, official report dates. Output the most legally relevant date in strict YYYY-MM-DD format. If no date is visible, output "Unknown".
-- CRITICAL LANGUAGE REQUIREMENT: ALL output strings (summary, missingInformation, rejectionReason, keyFigures, medicalConditions) MUST be written in highly professional Hebrew (עברית משפטית מקצועית). The category, evidenceTier, and evidenceDate fields must remain in English for database consistency.
+- CRITICAL LANGUAGE REQUIREMENT: ALL output strings (summary, missingInformation, rejectionReason, tierReasoning, keyFigures, medicalConditions) MUST be written in highly professional Hebrew (עברית משפטית מקצועית). The category, evidenceTier, and evidenceDate fields must remain in English for database consistency.
 
 **REJECTION CRITERIA — You MUST set isRelevant: false AND populate rejectionReason in Hebrew if ANY of the following apply:**
 1. The content is an opinion piece, editorial, commentary, or political argument that makes no specific, verifiable factual claim tied to the lawsuit pillars.

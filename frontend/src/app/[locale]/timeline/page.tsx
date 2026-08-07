@@ -13,6 +13,7 @@ interface EvidenceMetadata {
   fileHash: string;
   category: string;
   tier: string;
+  tierReasoning?: string;
   summary: string;
   targetEntity: string;
   evidenceDate: string;
@@ -112,12 +113,14 @@ function TimelineNode({
   unknownDateLabel,
   keyFiguresLabel,
   medicalContextLabel,
+  tierReasoningLabel,
 }: {
   record: TimelineRecord;
   index: number;
   unknownDateLabel: string;
   keyFiguresLabel: string;
   medicalContextLabel: string;
+  tierReasoningLabel: string;
 }) {
   const { metadata } = record;
   const styles = tierStyles(metadata.tier);
@@ -172,6 +175,14 @@ function TimelineNode({
           <p className="text-sm text-slate-700 leading-relaxed" dir="auto">
             {metadata.summary}
           </p>
+
+          {/* Tier reasoning */}
+          {metadata.tierReasoning && (
+            <p className="text-xs text-slate-500 italic leading-relaxed" dir="rtl">
+              <span className="not-italic font-medium text-slate-400">{tierReasoningLabel} </span>
+              {metadata.tierReasoning}
+            </p>
+          )}
 
           {/* Key figures + medical conditions */}
           {((metadata.keyFigures?.length ?? 0) > 0 || (metadata.medicalConditions?.length ?? 0) > 0) && (
@@ -420,6 +431,7 @@ export default function TimelinePage() {
                   unknownDateLabel={t('unknownDate')}
                   keyFiguresLabel={t('keyFiguresLabel')}
                   medicalContextLabel={t('medicalContextLabel')}
+                  tierReasoningLabel={t('tierReasoningLabel')}
                 />
               ))}
             </div>

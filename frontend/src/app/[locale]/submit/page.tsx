@@ -40,6 +40,7 @@ interface DraftAnalysis {
   summary: string;
   missingInformation: string[];
   targetEntity: string;
+  tierReasoning: string;
   evidenceTier: EvidenceTier;
   evidenceDate: string;
   keyFigures: string[];
@@ -383,6 +384,12 @@ function ReviewPanel({
             <span className={`w-2 h-2 rounded-full ${tierDotColor(evidenceTier)}`} />
             <span className={`text-xs font-medium ${tierColor(evidenceTier).split(' ')[0]}`}>{evidenceTier}</span>
           </div>
+          {draft.tierReasoning && (
+            <p className="text-xs text-slate-500 italic leading-relaxed mt-1.5" dir="rtl">
+              <span className="not-italic font-medium text-slate-400">{t('tierReasoningLabel')} </span>
+              {draft.tierReasoning}
+            </p>
+          )}
         </div>
 
         <div className="space-y-1.5">
@@ -491,6 +498,13 @@ function ConfirmedView({
               {analysis.category}
             </span>
           </div>
+
+          {analysis.tierReasoning && (
+            <p className="text-xs text-slate-500 italic leading-relaxed" dir="rtl">
+              <span className="not-italic font-medium text-slate-400">{tResult('tierReasoningLabel')} </span>
+              {analysis.tierReasoning}
+            </p>
+          )}
 
           <div>
             <p className="text-xs text-slate-500 uppercase tracking-widest mb-1">{tResult('aiSummary')}</p>

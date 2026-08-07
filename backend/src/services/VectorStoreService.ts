@@ -17,6 +17,7 @@ export interface EvidenceMetadata {
   fileHash: string;
   category: string;
   tier: string;
+  tierReasoning?: string;
   summary: string;
   targetEntity: string;
   evidenceDate: string;

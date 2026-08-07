@@ -66,6 +66,7 @@
       "categoryLabel": "קטגוריה משפטית",
       "entityLabel": "גוף נתבע",
       "tierLabel": "דרגת ראיה",
+      "tierReasoningLabel": "נימוק דירוג:",
       "dateLabel": "תאריך הראיה",
       "dateHint": "התאריך שבו הראיה נוצרה, פורסמה, או התרחשה (YYYY-MM-DD). שדה חובה.",
       "confirmBtn": "אשר ורשום בשרשרת הבלוקים",
@@ -85,6 +86,7 @@
       "txHash": "מזהה עסקה",
       "keyFiguresLabel": "מעורבים",
       "medicalContextLabel": "הקשר רפואי",
+      "tierReasoningLabel": "נימוק דירוג:",
       "duplicateBanner": "ראיה זו כבר קיימת במערכת",
       "failedBanner": "ההגשה נכשלה"
     },
@@ -141,6 +143,7 @@
     "unknownDate": "תאריך לא ידוע",
     "keyFiguresLabel": "מעורבים",
     "medicalContextLabel": "הקשר רפואי",
+    "tierReasoningLabel": "נימוק דירוג:",
     "emptyTitle": "לא נמצאו רשומות בציר הזמן.",
     "emptySub": "הגש ראיות עם תאריכים, או הסר את סינון הגוף.",
     "errorTitle": "טעינת ציר הזמן נכשלה."

@@ -66,6 +66,7 @@
       "categoryLabel": "Legal Category",
       "entityLabel": "Target Entity",
       "tierLabel": "Evidence Tier",
+      "tierReasoningLabel": "Tier Reasoning:",
       "dateLabel": "Evidence Date",
       "dateHint": "The date the evidence was created, published, or occurred (YYYY-MM-DD). Required.",
       "confirmBtn": "Confirm & Register On-Chain",
@@ -85,6 +86,7 @@
       "txHash": "Tx Hash",
       "keyFiguresLabel": "Key Figures",
       "medicalContextLabel": "Medical Context",
+      "tierReasoningLabel": "Tier Reasoning:",
       "duplicateBanner": "Duplicate Evidence — already registered",
       "failedBanner": "Submission Failed"
     },
@@ -141,6 +143,7 @@
     "unknownDate": "Unknown Date",
     "keyFiguresLabel": "Key Figures",
     "medicalContextLabel": "Medical Context",
+    "tierReasoningLabel": "Tier Reasoning:",
     "emptyTitle": "No timeline records found.",
     "emptySub": "Submit evidence with dates, or remove the entity filter.",
     "errorTitle": "Failed to load timeline."
