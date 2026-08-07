@@ -273,11 +273,20 @@
     "historyHeading": "כתובות שנסרקו בעבר",
     "historyEmpty": "טרם נסרקו כתובות.",
     "historyViewBtn": "צפה בציר הזמן",
-    "historyDiffsCount": "{count} שינויי גרסה",
+    "historyDiffsCount": "{count} שינויים",
+    "historyBatchCount": "{count} {count, plural, one {אצווה} other {אצוות}}",
     "historyDeleteBtn": "מחק",
     "historyDeletingBtn": "מוחק…",
     "historyDeleteConfirm": "למחוק סריקה זו ואת כל שינויי הגרסה שלה? פעולה זו אינה הפיכה.",
-    "historyDeleteError": "המחיקה נכשלה."
+    "historyDeleteError": "המחיקה נכשלה.",
+    "historyExpandBatches": "הצג אצוות",
+    "historyCollapseBatches": "הסתר אצוות",
+    "historyBatchLabel": "אצווה {n}",
+    "historyBatchFrom": "מ־{date}",
+    "historyBatchStart": "התחלה",
+    "historyBatchSnapshots": "{processed}/{total} תמונות",
+    "historyJobsLoading": "טוען אצוות…",
+    "historyJobsError": "טעינת האצוות נכשלה."
   },
   "chat": {
     "greeting": "שלום, אני נציג האמון של פרויקט מבצר הזכוכית. כיצד אוכל לעזור לך להבין את אבטחת המערכת שלנו?",

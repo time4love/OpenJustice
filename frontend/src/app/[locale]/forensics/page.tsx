@@ -57,6 +57,15 @@ interface TrackedUrlItem {
   totalDiffs: number;
 }
 
+interface ScrapeJob {
+  id: string;
+  status: 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'FAILED';
+  fromDate: string | null;
+  totalSnapshots: number;
+  processedSnapshots: number;
+  createdAt: string;
+}
+
 type Phase = 'idle' | 'creating' | 'polling' | 'fetching' | 'done' | 'error';
 
 const POLL_INTERVAL_MS = 3_000;
@@ -285,10 +294,32 @@ function DiffNode({
 }
 
 // ---------------------------------------------------------------------------
-// History row — one previously scanned URL with delete action
+// Status badge — used for both TrackedUrl and ScrapeJob statuses
 // ---------------------------------------------------------------------------
 
-function HistoryRow({
+const STATUS_STYLES: Record<string, string> = {
+  SCANNING:    'bg-blue-100 text-blue-700 border-blue-200',
+  COMPLETED:   'bg-emerald-100 text-emerald-700 border-emerald-200',
+  FAILED:      'bg-red-100 text-red-700 border-red-200',
+  IDLE:        'bg-slate-100 text-slate-500 border-slate-200',
+  PENDING:     'bg-amber-100 text-amber-700 border-amber-200',
+  IN_PROGRESS: 'bg-blue-100 text-blue-700 border-blue-200',
+};
+
+function StatusBadge({ status }: { status: string }) {
+  const cls = STATUS_STYLES[status] ?? 'bg-slate-100 text-slate-500 border-slate-200';
+  return (
+    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold border ${cls}`}>
+      {status}
+    </span>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// History entry — one TrackedUrl row, expandable to show scrape job batches
+// ---------------------------------------------------------------------------
+
+function HistoryEntry({
   item,
   labels,
   onDeleted,
@@ -297,15 +328,45 @@ function HistoryRow({
   labels: {
     viewBtn: string;
     diffsCount: string;
+    batchCount: string;
     deleteBtn: string;
     deletingBtn: string;
     deleteConfirm: string;
     deleteError: string;
+    expandBatches: string;
+    collapseBatches: string;
+    batchLabel: (n: number) => string;
+    batchFrom: (date: string) => string;
+    batchStart: string;
+    batchSnapshots: (p: number, t: number) => string;
+    jobsLoading: string;
+    jobsError: string;
   };
   onDeleted: (id: string) => void;
 }) {
+  const [expanded, setExpanded] = useState(false);
+  const [jobs, setJobs] = useState<ScrapeJob[] | null>(null);
+  const [jobsError, setJobsError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  async function loadJobs() {
+    if (jobs !== null) return; // already loaded
+    try {
+      const res = await fetch(apiUrl(`/api/forensics/tracked/${item.id}/jobs`));
+      const data = (await res.json()) as { jobs?: ScrapeJob[]; message?: string };
+      if (!res.ok) { setJobsError(data.message ?? labels.jobsError); return; }
+      setJobs(data.jobs ?? []);
+    } catch {
+      setJobsError(labels.jobsError);
+    }
+  }
+
+  function handleToggle() {
+    const next = !expanded;
+    setExpanded(next);
+    if (next) void loadJobs();
+  }
 
   async function handleDelete() {
     if (!window.confirm(labels.deleteConfirm)) return;
@@ -327,33 +388,92 @@ function HistoryRow({
   }
 
   return (
-    <li className="flex items-center gap-3 px-4 py-3 hover:bg-slate-50 transition-colors">
-      <div className="flex-1 min-w-0 space-y-0.5">
-        <p className="text-xs font-mono text-slate-700 truncate" title={item.url} dir="ltr">
-          {item.url}
-        </p>
-        <p className="text-xs text-slate-400">
-          {labels.diffsCount}
-          <span className="mx-1.5 text-slate-200">·</span>
-          {new Date(item.createdAt).toLocaleDateString()}
-        </p>
-        {deleteError && <p className="text-xs text-red-600">{deleteError}</p>}
-      </div>
-      <div className="flex items-center gap-2 shrink-0">
-        <Link
-          href={`/forensics/${item.id}`}
-          className="px-3 py-1 rounded-lg text-xs font-medium bg-slate-900 text-white hover:bg-slate-700 transition-colors"
-        >
-          {labels.viewBtn}
-        </Link>
+    <li>
+      {/* Main row */}
+      <div className="flex items-center gap-3 px-4 py-3 hover:bg-slate-50 transition-colors">
+        {/* Expand toggle */}
         <button
-          onClick={() => { void handleDelete(); }}
-          disabled={deleting}
-          className="px-3 py-1 rounded-lg text-xs font-medium text-red-600 border border-red-200 hover:bg-red-50 disabled:opacity-40 transition-colors"
+          onClick={handleToggle}
+          className="shrink-0 w-5 h-5 flex items-center justify-center text-slate-400 hover:text-slate-700 transition-colors"
+          aria-label={expanded ? labels.collapseBatches : labels.expandBatches}
         >
-          {deleting ? labels.deletingBtn : labels.deleteBtn}
+          <span className={`text-xs transition-transform duration-150 ${expanded ? 'rotate-90' : ''}`}>
+            &#x25B6;
+          </span>
         </button>
+
+        {/* URL + meta */}
+        <div className="flex-1 min-w-0 space-y-0.5">
+          <p className="text-xs font-mono text-slate-700 truncate" title={item.url} dir="ltr">
+            {item.url}
+          </p>
+          <div className="flex items-center gap-2 flex-wrap">
+            <StatusBadge status={item.status} />
+            <span className="text-xs text-slate-400">{labels.diffsCount}</span>
+            <span className="text-slate-200">·</span>
+            <span className="text-xs text-slate-400">
+              {new Date(item.createdAt).toLocaleDateString()}
+            </span>
+          </div>
+          {deleteError && <p className="text-xs text-red-600">{deleteError}</p>}
+        </div>
+
+        {/* Actions */}
+        <div className="flex items-center gap-2 shrink-0">
+          <Link
+            href={`/forensics/${item.id}`}
+            className="px-3 py-1 rounded-lg text-xs font-medium bg-slate-900 text-white hover:bg-slate-700 transition-colors"
+          >
+            {labels.viewBtn}
+          </Link>
+          <button
+            onClick={() => { void handleDelete(); }}
+            disabled={deleting}
+            className="px-3 py-1 rounded-lg text-xs font-medium text-red-600 border border-red-200 hover:bg-red-50 disabled:opacity-40 transition-colors"
+          >
+            {deleting ? labels.deletingBtn : labels.deleteBtn}
+          </button>
+        </div>
       </div>
+
+      {/* Expanded jobs panel */}
+      {expanded && (
+        <div className="px-4 pb-3 ms-8">
+          {jobsError && (
+            <p className="text-xs text-red-600 py-2">{jobsError}</p>
+          )}
+          {!jobsError && jobs === null && (
+            <p className="text-xs text-slate-400 py-2">{labels.jobsLoading}</p>
+          )}
+          {jobs !== null && jobs.length === 0 && (
+            <p className="text-xs text-slate-400 py-2 italic">—</p>
+          )}
+          {jobs !== null && jobs.length > 0 && (
+            <table className="w-full text-xs border-collapse">
+              <tbody className="divide-y divide-slate-100">
+                {jobs.map((job, i) => (
+                  <tr key={job.id} className="text-slate-600">
+                    <td className="py-1.5 pe-3 font-medium text-slate-500 whitespace-nowrap">
+                      {labels.batchLabel(i + 1)}
+                    </td>
+                    <td className="py-1.5 pe-3">
+                      <StatusBadge status={job.status} />
+                    </td>
+                    <td className="py-1.5 pe-3 font-mono text-slate-400 whitespace-nowrap">
+                      {job.fromDate
+                        ? labels.batchFrom(job.fromDate.slice(0, 8).replace(/(\d{4})(\d{2})(\d{2})/, '$1-$2-$3'))
+                        : labels.batchStart}
+                    </td>
+                    <td className="py-1.5 font-mono text-slate-400 whitespace-nowrap">
+                      {labels.batchSnapshots(job.processedSnapshots, job.totalSnapshots)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
     </li>
   );
 }
@@ -647,16 +767,25 @@ export default function ForensicsPage() {
             </div>
             <ul className="divide-y divide-slate-100">
               {history.map((item) => (
-                <HistoryRow
+                <HistoryEntry
                   key={item.id}
                   item={item}
                   labels={{
                     viewBtn: t('historyViewBtn'),
                     diffsCount: t('historyDiffsCount', { count: item.totalDiffs }),
+                    batchCount: t('historyBatchCount', { count: item.totalDiffs }),
                     deleteBtn: t('historyDeleteBtn'),
                     deletingBtn: t('historyDeletingBtn'),
                     deleteConfirm: t('historyDeleteConfirm'),
                     deleteError: t('historyDeleteError'),
+                    expandBatches: t('historyExpandBatches'),
+                    collapseBatches: t('historyCollapseBatches'),
+                    batchLabel: (n) => t('historyBatchLabel', { n }),
+                    batchFrom: (date) => t('historyBatchFrom', { date }),
+                    batchStart: t('historyBatchStart'),
+                    batchSnapshots: (processed, total) => t('historyBatchSnapshots', { processed, total }),
+                    jobsLoading: t('historyJobsLoading'),
+                    jobsError: t('historyJobsError'),
                   }}
                   onDeleted={(id) => setHistory((prev) => prev.filter((h) => h.id !== id))}
                 />

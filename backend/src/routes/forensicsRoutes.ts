@@ -225,6 +225,40 @@ router.get('/tracked', async (_req: Request, res: Response): Promise<void> => {
 });
 
 // ---------------------------------------------------------------------------
+// GET /api/forensics/tracked/:id/jobs
+//
+// Returns all WaybackScrapeJob records for a TrackedUrl, ordered oldest-first.
+// Used by the history panel to show per-batch progress in the expanded view.
+// ---------------------------------------------------------------------------
+
+router.get('/tracked/:id/jobs', async (req: Request, res: Response): Promise<void> => {
+  const trackedUrlId = String(req.params['id'] ?? '');
+  if (!trackedUrlId) {
+    res.status(400).json({ error: 'Missing trackedUrl id' });
+    return;
+  }
+
+  try {
+    const jobs = await prisma.waybackScrapeJob.findMany({
+      where: { trackedUrlId },
+      orderBy: { createdAt: 'asc' },
+      select: {
+        id: true,
+        status: true,
+        fromDate: true,
+        totalSnapshots: true,
+        processedSnapshots: true,
+        createdAt: true,
+      },
+    });
+    res.status(200).json({ jobs });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ error: 'Failed to fetch jobs', message });
+  }
+});
+
+// ---------------------------------------------------------------------------
 // GET /api/forensics/tracked/:id
 //
 // Returns the TrackedUrl record and all its persisted UrlVersionDiff records.

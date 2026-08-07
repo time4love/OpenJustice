@@ -273,11 +273,20 @@
     "historyHeading": "Previously Scanned URLs",
     "historyEmpty": "No URLs scanned yet.",
     "historyViewBtn": "View Timeline",
-    "historyDiffsCount": "{count} version changes",
+    "historyDiffsCount": "{count} diffs",
+    "historyBatchCount": "{count} {count, plural, one {batch} other {batches}}",
     "historyDeleteBtn": "Delete",
     "historyDeletingBtn": "Deleting…",
     "historyDeleteConfirm": "Delete this scan and all its version diffs? This cannot be undone.",
-    "historyDeleteError": "Delete failed."
+    "historyDeleteError": "Delete failed.",
+    "historyExpandBatches": "Show batches",
+    "historyCollapseBatches": "Hide batches",
+    "historyBatchLabel": "Batch {n}",
+    "historyBatchFrom": "from {date}",
+    "historyBatchStart": "start",
+    "historyBatchSnapshots": "{processed}/{total} snapshots",
+    "historyJobsLoading": "Loading batches…",
+    "historyJobsError": "Failed to load batches."
   },
   "chat": {
     "greeting": "Hello, I am the Glass Fortress Trust Agent. How can I help you understand our system's security?",
