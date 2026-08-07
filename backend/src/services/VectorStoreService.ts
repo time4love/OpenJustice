@@ -7,6 +7,12 @@ import { Document } from '@langchain/core/documents';
 // Types
 // ---------------------------------------------------------------------------
 
+export interface EvidenceStats {
+  total: number;
+  byTier: Record<string, number>;
+  byCategory: Record<string, number>;
+}
+
 export interface EvidenceMetadata {
   fileHash: string;
   category: string;
@@ -90,11 +96,17 @@ export class VectorStoreService {
       : undefined;
 
     // Broad semantic query to retrieve a representative corpus
-    const results = await this.store.similaritySearchWithScore(
-      'Covid-19 policy evidence legal timeline',
-      100,
-      filter,
-    );
+    let results: Awaited<ReturnType<typeof this.store.similaritySearchWithScore>>;
+    try {
+      results = await this.store.similaritySearchWithScore(
+        'Covid-19 policy evidence legal timeline',
+        100,
+        filter,
+      );
+    } catch (err) {
+      console.error('[VectorStoreService] getTimeline error:', err instanceof Error ? err.message : err);
+      return [];
+    }
 
     const docs = results.map(([doc, score]) => ({
       content: doc.pageContent,
@@ -116,6 +128,37 @@ export class VectorStoreService {
   }
 
   /**
+   * Aggregate tier and category counts across all stored evidence.
+   *
+   * Uses a 768-dimension zero vector (Gemini text-embedding-004 dimension) to
+   * fetch all records without semantic bias. Pinecone's free tier does not
+   * support server-side aggregation, so we count in-memory.
+   *
+   * Returns zero stats on any Pinecone error rather than propagating a 500.
+   */
+  async getEvidenceStats(): Promise<EvidenceStats> {
+    const empty: EvidenceStats = { total: 0, byTier: {}, byCategory: {} };
+    try {
+      const zeroVector = Array(768).fill(0) as number[];
+      const results = await this.store.similaritySearchVectorWithScore(zeroVector, 10_000);
+
+      const byTier: Record<string, number> = {};
+      const byCategory: Record<string, number> = {};
+
+      for (const [doc] of results) {
+        const meta = doc.metadata as EvidenceMetadata;
+        if (meta.tier) byTier[meta.tier] = (byTier[meta.tier] ?? 0) + 1;
+        if (meta.category) byCategory[meta.category] = (byCategory[meta.category] ?? 0) + 1;
+      }
+
+      return { total: results.length, byTier, byCategory };
+    } catch (err) {
+      console.error('[VectorStoreService] getEvidenceStats error:', err instanceof Error ? err.message : err);
+      return empty;
+    }
+  }
+
+  /**
    * Embed the query and retrieve the most semantically similar evidence records.
    *
    * @param query  Natural language search query.
@@ -127,12 +170,16 @@ export class VectorStoreService {
     limit: number = 5,
     filter?: Record<string, unknown>,
   ): Promise<Array<{ content: string; metadata: EvidenceMetadata; score?: number }>> {
-    const results = await this.store.similaritySearchWithScore(query, limit, filter);
-
-    return results.map(([doc, score]) => ({
-      content: doc.pageContent,
-      metadata: doc.metadata as EvidenceMetadata,
-      score,
-    }));
+    try {
+      const results = await this.store.similaritySearchWithScore(query, limit, filter);
+      return results.map(([doc, score]) => ({
+        content: doc.pageContent,
+        metadata: doc.metadata as EvidenceMetadata,
+        score,
+      }));
+    } catch (err) {
+      console.error('[VectorStoreService] searchSimilarEvidence error:', err instanceof Error ? err.message : err);
+      return [];
+    }
   }
 }

@@ -308,8 +308,8 @@ function ReviewPanel({
                 <span className="text-xs font-semibold text-slate-400 uppercase tracking-widest shrink-0">
                   {t('keyFiguresLabel')}
                 </span>
-                {draft.keyFigures!.map((f) => (
-                  <span key={f} className="px-2 py-0.5 rounded text-xs bg-blue-50 text-blue-700 border border-blue-200">
+                {draft.keyFigures!.map((f, i) => (
+                  <span key={`${f}-${i}`} className="px-2 py-0.5 rounded text-xs bg-blue-50 text-blue-700 border border-blue-200">
                     {f}
                   </span>
                 ))}
@@ -320,8 +320,8 @@ function ReviewPanel({
                 <span className="text-xs font-semibold text-slate-400 uppercase tracking-widest shrink-0">
                   {t('medicalContextLabel')}
                 </span>
-                {draft.medicalConditions!.map((c) => (
-                  <span key={c} className="px-2 py-0.5 rounded text-xs bg-purple-50 text-purple-700 border border-purple-200">
+                {draft.medicalConditions!.map((c, i) => (
+                  <span key={`${c}-${i}`} className="px-2 py-0.5 rounded text-xs bg-purple-50 text-purple-700 border border-purple-200">
                     {c}
                   </span>
                 ))}
@@ -518,8 +518,8 @@ function ConfirmedView({
                   <span className="text-xs font-semibold text-slate-400 uppercase tracking-widest shrink-0">
                     {tResult('keyFiguresLabel')}
                   </span>
-                  {analysis.keyFigures.map((f) => (
-                    <span key={f} className="px-2 py-0.5 rounded text-xs bg-blue-50 text-blue-700 border border-blue-200">
+                  {analysis.keyFigures.map((f, i) => (
+                    <span key={`${f}-${i}`} className="px-2 py-0.5 rounded text-xs bg-blue-50 text-blue-700 border border-blue-200">
                       {f}
                     </span>
                   ))}
@@ -530,8 +530,8 @@ function ConfirmedView({
                   <span className="text-xs font-semibold text-slate-400 uppercase tracking-widest shrink-0">
                     {tResult('medicalContextLabel')}
                   </span>
-                  {analysis.medicalConditions.map((c) => (
-                    <span key={c} className="px-2 py-0.5 rounded text-xs bg-purple-50 text-purple-700 border border-purple-200">
+                  {analysis.medicalConditions.map((c, i) => (
+                    <span key={`${c}-${i}`} className="px-2 py-0.5 rounded text-xs bg-purple-50 text-purple-700 border border-purple-200">
                       {c}
                     </span>
                   ))}

@@ -181,8 +181,8 @@ function TimelineNode({
                   <span className="text-xs font-semibold text-slate-400 uppercase tracking-widest shrink-0">
                     {keyFiguresLabel}
                   </span>
-                  {metadata.keyFigures!.map((f) => (
-                    <span key={f} className="px-1.5 py-0.5 rounded text-xs bg-blue-50 text-blue-700 border border-blue-200">
+                  {metadata.keyFigures!.map((f, i) => (
+                    <span key={`${f}-${i}`} className="px-1.5 py-0.5 rounded text-xs bg-blue-50 text-blue-700 border border-blue-200">
                       {f}
                     </span>
                   ))}
@@ -193,8 +193,8 @@ function TimelineNode({
                   <span className="text-xs font-semibold text-slate-400 uppercase tracking-widest shrink-0">
                     {medicalContextLabel}
                   </span>
-                  {metadata.medicalConditions!.map((c) => (
-                    <span key={c} className="px-1.5 py-0.5 rounded text-xs bg-purple-50 text-purple-700 border border-purple-200">
+                  {metadata.medicalConditions!.map((c, i) => (
+                    <span key={`${c}-${i}`} className="px-1.5 py-0.5 rounded text-xs bg-purple-50 text-purple-700 border border-purple-200">
                       {c}
                     </span>
                   ))}

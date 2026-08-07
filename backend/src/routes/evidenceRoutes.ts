@@ -319,6 +319,23 @@ router.get('/timeline', async (req: Request, res: Response): Promise<void> => {
 });
 
 // ---------------------------------------------------------------------------
+// GET /api/evidence/stats
+// Returns aggregate counts by tier and category across all stored evidence.
+// ---------------------------------------------------------------------------
+
+router.get('/stats', async (_req: Request, res: Response): Promise<void> => {
+  try {
+    const vectorStore = await getVectorStore();
+    const stats = await vectorStore.getEvidenceStats();
+    res.status(200).json(stats);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error('[stats] VectorStoreService error:', err instanceof Error ? err.stack : err);
+    res.status(500).json({ error: 'Stats fetch failed', message });
+  }
+});
+
+// ---------------------------------------------------------------------------
 // GET /api/evidence/search?q=query&limit=5
 // ---------------------------------------------------------------------------
 

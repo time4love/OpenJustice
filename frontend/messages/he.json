@@ -85,7 +85,7 @@
       "txHash": "מזהה עסקה",
       "keyFiguresLabel": "מעורבים",
       "medicalContextLabel": "הקשר רפואי",
-      "duplicateBanner": "הגשה כפולה",
+      "duplicateBanner": "ראיה זו כבר קיימת במערכת",
       "failedBanner": "ההגשה נכשלה"
     },
     "contact": {

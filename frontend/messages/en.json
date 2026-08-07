@@ -85,7 +85,7 @@
       "txHash": "Tx Hash",
       "keyFiguresLabel": "Key Figures",
       "medicalContextLabel": "Medical Context",
-      "duplicateBanner": "Duplicate Submission",
+      "duplicateBanner": "Duplicate Evidence — already registered",
       "failedBanner": "Submission Failed"
     },
     "contact": {

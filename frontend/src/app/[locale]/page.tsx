@@ -44,24 +44,14 @@ interface SearchResponse {
 }
 
 // ---------------------------------------------------------------------------
-// Mocked analytics
+// Stats type
 // ---------------------------------------------------------------------------
 
-const MOCK_STATS = {
-  total: 247,
-  tiers: {
-    'Tier 1: Smoking Gun': 12,
-    'Tier 2: Material': 45,
-    'Tier 3: Supporting': 89,
-    'Tier 4: Anecdotal': 101,
-  } as Record<EvidenceTier, number>,
-  categories: {
-    'Side Effect Withholding': 89,
-    'Regulatory Misleading': 67,
-    Coercion: 78,
-    Other: 13,
-  } as Record<Category, number>,
-};
+interface EvidenceStats {
+  total: number;
+  byTier: Partial<Record<EvidenceTier, number>>;
+  byCategory: Partial<Record<Category, number>>;
+}
 
 // ---------------------------------------------------------------------------
 // Tier accent colors (for the start-border on evidence cards)
@@ -255,6 +245,12 @@ function LocaleSwitcher() {
 // Page
 // ---------------------------------------------------------------------------
 
+const ZERO_STATS: EvidenceStats = {
+  total: 0,
+  byTier: {},
+  byCategory: {},
+};
+
 export default function DashboardPage() {
   const t = useTranslations('dashboard');
   const tc = useTranslations('common');
@@ -263,6 +259,8 @@ export default function DashboardPage() {
   const [results, setResults] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [stats, setStats] = useState<EvidenceStats>(ZERO_STATS);
+  const [statsLoading, setStatsLoading] = useState(true);
 
   const search = useCallback(async (q: string) => {
     setLoading(true);
@@ -286,6 +284,11 @@ export default function DashboardPage() {
 
   useEffect(() => {
     void search('');
+    fetch(apiUrl('/api/evidence/stats'))
+      .then((r) => r.json())
+      .then((data: EvidenceStats) => setStats(data))
+      .catch(() => {/* silently keep zero stats on error */})
+      .finally(() => setStatsLoading(false));
   }, [search]);
 
   function handleSubmit(e: FormEvent<HTMLFormElement>) {
@@ -293,7 +296,8 @@ export default function DashboardPage() {
     void search(query);
   }
 
-  const categoryMax = Math.max(...Object.values(MOCK_STATS.categories));
+  const categoryValues = Object.values(stats.byCategory);
+  const categoryMax = categoryValues.length > 0 ? Math.max(...categoryValues) : 1;
 
   return (
     <main className="min-h-screen bg-slate-50">
@@ -359,31 +363,31 @@ export default function DashboardPage() {
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
             <StatCard
               label={t('analytics.total')}
-              value={MOCK_STATS.total}
+              value={statsLoading ? 0 : stats.total}
               sub={t('analytics.totalSub')}
               colorClass="text-slate-900"
             />
             <StatCard
               label={t('analytics.tier1')}
-              value={MOCK_STATS.tiers['Tier 1: Smoking Gun']}
+              value={statsLoading ? 0 : (stats.byTier['Tier 1: Smoking Gun'] ?? 0)}
               sub={t('analytics.tier1Sub')}
               colorClass="text-red-600"
             />
             <StatCard
               label={t('analytics.tier2')}
-              value={MOCK_STATS.tiers['Tier 2: Material']}
+              value={statsLoading ? 0 : (stats.byTier['Tier 2: Material'] ?? 0)}
               sub={t('analytics.tier2Sub')}
               colorClass="text-orange-600"
             />
             <StatCard
               label={t('analytics.tier3')}
-              value={MOCK_STATS.tiers['Tier 3: Supporting']}
+              value={statsLoading ? 0 : (stats.byTier['Tier 3: Supporting'] ?? 0)}
               sub={t('analytics.tier3Sub')}
               colorClass="text-amber-600"
             />
             <StatCard
               label={t('analytics.tier4')}
-              value={MOCK_STATS.tiers['Tier 4: Anecdotal']}
+              value={statsLoading ? 0 : (stats.byTier['Tier 4: Anecdotal'] ?? 0)}
               sub={t('analytics.tier4Sub')}
               colorClass="text-slate-500"
             />
@@ -396,9 +400,16 @@ export default function DashboardPage() {
             {t('categories.title')}
           </h2>
           <div className="space-y-3">
-            {(Object.entries(MOCK_STATS.categories) as [Category, number][]).map(([cat, count]) => (
-              <CategoryBar key={cat} label={cat} value={count} max={categoryMax} />
-            ))}
+            {(['Side Effect Withholding', 'Regulatory Misleading', 'Coercion', 'Other'] as Category[]).map(
+              (cat) => (
+                <CategoryBar
+                  key={cat}
+                  label={cat}
+                  value={statsLoading ? 0 : (stats.byCategory[cat] ?? 0)}
+                  max={categoryMax}
+                />
+              ),
+            )}
           </div>
         </section>
 
