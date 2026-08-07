@@ -280,6 +280,7 @@ function DiffCard({
     promoteError: string;
     flaggedBadge: string;
     auditBadge: string;
+    identicalContent: string;
   };
   onPromoted: (diffId: string, evidence: PromotedEvidence) => void;
 }) {
@@ -328,6 +329,12 @@ function DiffCard({
 
         {/* Body */}
         <div className="px-4 py-3 space-y-4">
+          {/* Identical content — no diff at all after normalisation */}
+          {diff.deletedClaims.length === 0 && diff.addedClaims.length === 0 &&
+           diff.rawDeletedChunks.length === 0 && diff.rawAddedChunks.length === 0 && (
+            <p className="text-xs text-slate-400 italic">{labels.identicalContent}</p>
+          )}
+
           {/* Deletions */}
           {(diff.deletedClaims.length > 0 || diff.rawDeletedChunks.length > 0) && (
             <div className="space-y-1.5">
@@ -467,6 +474,7 @@ export default function TrackedUrlPage() {
     promoteError: t('promoteError'),
     flaggedBadge: t('flaggedBadge'),
     auditBadge: t('auditBadge'),
+    identicalContent: t('identicalContent'),
   };
 
   const flaggedCount = data?.diffs.filter((d) => d.isLegallySignificant).length ?? 0;

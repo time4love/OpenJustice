@@ -100,9 +100,10 @@ function normaliseText(text: string): string {
 
 /**
  * Group consecutive diff changes of the same type into single string chunks.
- * Filters out chunks that are too short to be meaningful.
+ * Returns ALL non-empty chunks (no minimum length), largest first, capped at
+ * MAX_CHUNKS_PER_SIDE. Use this for storage and display.
  */
-function extractChunks(
+function groupDiffChunks(
   raw: ReturnType<typeof diffLines>,
   type: 'added' | 'removed',
 ): string[] {
@@ -115,17 +116,24 @@ function extractChunks(
       current += part.value;
     } else {
       const trimmed = current.trim();
-      if (trimmed.length >= MIN_CHUNK_LENGTH) chunks.push(trimmed);
+      if (trimmed.length > 0) chunks.push(trimmed);
       current = '';
     }
   }
   const trimmed = current.trim();
-  if (trimmed.length >= MIN_CHUNK_LENGTH) chunks.push(trimmed);
+  if (trimmed.length > 0) chunks.push(trimmed);
 
-  // Surface the most substantial chunks first
   return chunks
     .sort((a, b) => b.length - a.length)
     .slice(0, MAX_CHUNKS_PER_SIDE);
+}
+
+/**
+ * Returns only chunks long enough to be meaningful AI input (≥ MIN_CHUNK_LENGTH).
+ * Use this exclusively when deciding whether to invoke the ForensicAgent.
+ */
+function chunksForAI(chunks: string[]): string[] {
+  return chunks.filter((c) => c.length >= MIN_CHUNK_LENGTH);
 }
 
 /**
@@ -326,13 +334,18 @@ export class WaybackScraper {
       if (!prev || !curr) continue;
 
       const rawDiff = diffLines(prev, curr, { ignoreWhitespace: true });
-      const deletions = extractChunks(rawDiff, 'removed');
-      const additions = extractChunks(rawDiff, 'added');
+      // All changed chunks (any size) — stored verbatim for display
+      const deletions = groupDiffChunks(rawDiff, 'removed');
+      const additions = groupDiffChunks(rawDiff, 'added');
+      // Subset sent to AI — only substantial chunks worth analysing
+      const deletionsForAI = chunksForAI(deletions);
+      const additionsForAI = chunksForAI(additions);
 
       const beforeDate = timestampToDate(prevSnap.timestamp);
       const afterDate = timestampToDate(snap.timestamp);
       const snapshotUrl = `https://web.archive.org/web/${snap.timestamp}/${url}`;
 
+      // Truly identical after normalisation — record pair but skip AI
       if (deletions.length === 0 && additions.length === 0) {
         await prisma.urlVersionDiff.create({
           data: {
@@ -342,6 +355,25 @@ export class WaybackScraper {
             snapshotUrl,
             deletedText: '[]',
             addedText: '[]',
+            aiSignificance: '',
+            isLegallySignificant: false,
+          },
+        });
+        continue;
+      }
+
+      // Minor changes exist but nothing substantial enough for AI
+      if (deletionsForAI.length === 0 && additionsForAI.length === 0) {
+        await prisma.urlVersionDiff.create({
+          data: {
+            trackedUrlId: trackedUrl.id,
+            beforeDate,
+            afterDate,
+            snapshotUrl,
+            deletedText: '[]',
+            addedText: '[]',
+            rawDeletedText: JSON.stringify(deletions),
+            rawAddedText: JSON.stringify(additions),
             aiSignificance: '',
             isLegallySignificant: false,
           },
@@ -361,8 +393,8 @@ export class WaybackScraper {
 
       try {
         const analysis = await this.forensicAgent.analyzeChange(
-          deletions,
-          additions,
+          deletionsForAI,
+          additionsForAI,
           url,
           afterDate,
           relatedEvidence,
@@ -556,14 +588,48 @@ export class WaybackScraper {
 
       if (previousText) {
         const rawDiff = diffLines(previousText, currentText, { ignoreWhitespace: true });
-        const deletions = extractChunks(rawDiff, 'removed');
-        const additions = extractChunks(rawDiff, 'added');
+        // All changed chunks (any size) — for storage and display
+        const deletions = groupDiffChunks(rawDiff, 'removed');
+        const additions = groupDiffChunks(rawDiff, 'added');
+        // Substantial subset — for AI input only
+        const deletionsForAI = chunksForAI(deletions);
+        const additionsForAI = chunksForAI(additions);
 
         const beforeDate = i > 0 ? timestampToDate(snapshotsList[i - 1].timestamp) : 'Unknown';
         const afterDate = timestampToDate(entry.timestamp);
         const snapshotUrl = `https://web.archive.org/web/${entry.timestamp}/${job.url}`;
 
-        if (deletions.length > 0 || additions.length > 0) {
+        if (deletions.length === 0 && additions.length === 0) {
+          // Truly identical after normalisation — skip AI
+          await prisma.urlVersionDiff.create({
+            data: {
+              trackedUrlId,
+              beforeDate,
+              afterDate,
+              snapshotUrl,
+              deletedText: '[]',
+              addedText: '[]',
+              aiSignificance: '',
+              isLegallySignificant: false,
+            },
+          });
+        } else if (deletionsForAI.length === 0 && additionsForAI.length === 0) {
+          // Minor changes only — store raw chunks, skip AI
+          await prisma.urlVersionDiff.create({
+            data: {
+              trackedUrlId,
+              beforeDate,
+              afterDate,
+              snapshotUrl,
+              deletedText: '[]',
+              addedText: '[]',
+              rawDeletedText: JSON.stringify(deletions),
+              rawAddedText: JSON.stringify(additions),
+              aiSignificance: '',
+              isLegallySignificant: false,
+            },
+          });
+        } else {
           let relatedEvidence: RelatedEvidenceContext[] = [];
           try {
             relatedEvidence = await this.fetchCorrelatedEvidence(afterDate);
@@ -573,8 +639,8 @@ export class WaybackScraper {
 
           try {
             const analysis = await this.forensicAgent.analyzeChange(
-              deletions,
-              additions,
+              deletionsForAI,
+              additionsForAI,
               job.url,
               afterDate,
               relatedEvidence,
@@ -614,19 +680,6 @@ export class WaybackScraper {
               },
             });
           }
-        } else {
-          await prisma.urlVersionDiff.create({
-            data: {
-              trackedUrlId,
-              beforeDate,
-              afterDate,
-              snapshotUrl,
-              deletedText: '[]',
-              addedText: '[]',
-              aiSignificance: '',
-              isLegallySignificant: false,
-            },
-          });
         }
       }
 
