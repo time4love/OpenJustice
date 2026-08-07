@@ -135,6 +135,8 @@ router.get('/tracked/:id/status', async (req: Request, res: Response): Promise<v
           snapshotUrl: true,
           deletedText: true,
           addedText: true,
+          rawDeletedText: true,
+          rawAddedText: true,
           aiSignificance: true,
         },
       }),
@@ -147,6 +149,8 @@ router.get('/tracked/:id/status', async (req: Request, res: Response): Promise<v
       snapshotUrl: d.snapshotUrl,
       deletedClaims: JSON.parse(d.deletedText) as string[],
       addedClaims: JSON.parse(d.addedText) as string[],
+      rawDeletedChunks: JSON.parse(d.rawDeletedText) as string[],
+      rawAddedChunks: JSON.parse(d.rawAddedText) as string[],
       legalSignificance: d.aiSignificance,
     }));
 

@@ -4,6 +4,7 @@ import { useState, useRef, useCallback, useEffect, FormEvent } from 'react';
 import { useTranslations, useLocale } from 'next-intl';
 import { Link, useRouter, usePathname } from '@/i18n/navigation';
 import { apiUrl } from '@/lib/api';
+import { ClaimBlock } from '@/components/ClaimBlock';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -34,6 +35,8 @@ interface SnapshotDiff {
   snapshotUrl: string;
   deletedClaims: string[];
   addedClaims: string[];
+  rawDeletedChunks: string[];
+  rawAddedChunks: string[];
   legalSignificance: string;
 }
 
@@ -206,47 +209,46 @@ function DiffNode({
 
         {/* Body */}
         <div className="px-4 py-3 space-y-4">
-          {diff.deletedClaims.length > 0 && (
+          {(diff.deletedClaims.length > 0 || diff.rawDeletedChunks.length > 0) && (
             <div className="space-y-1.5">
               <span className="text-xs font-bold text-red-600 uppercase tracking-widest">
                 {labels.deletionsLabel}
               </span>
-              <div className="space-y-1">
-                {diff.deletedClaims.map((claim, i) => (
-                  <div
-                    key={`del-${i}`}
-                    className="flex items-start gap-2 px-3 py-2 rounded-lg bg-red-50 border border-red-200"
-                  >
-                    <span className="mt-0.5 text-red-400 shrink-0 select-none">&#x2014;</span>
-                    <p
-                      className="text-sm text-red-700 leading-relaxed line-through decoration-red-400"
-                      dir="auto"
-                    >
-                      {claim}
-                    </p>
-                  </div>
-                ))}
+              <div className="space-y-2">
+                {diff.deletedClaims.length > 0
+                  ? diff.deletedClaims.map((claim, i) => (
+                      <ClaimBlock
+                        key={`del-${i}`}
+                        claim={claim}
+                        rawChunk={diff.rawDeletedChunks[i]}
+                        type="deleted"
+                      />
+                    ))
+                  : diff.rawDeletedChunks.map((chunk, i) => (
+                      <ClaimBlock key={`del-raw-${i}`} claim={null} rawChunk={chunk} type="deleted" />
+                    ))}
               </div>
             </div>
           )}
 
-          {diff.addedClaims.length > 0 && (
+          {(diff.addedClaims.length > 0 || diff.rawAddedChunks.length > 0) && (
             <div className="space-y-1.5">
               <span className="text-xs font-bold text-emerald-600 uppercase tracking-widest">
                 {labels.additionsLabel}
               </span>
-              <div className="space-y-1">
-                {diff.addedClaims.map((claim, i) => (
-                  <div
-                    key={`add-${i}`}
-                    className="flex items-start gap-2 px-3 py-2 rounded-lg bg-emerald-50 border border-emerald-200"
-                  >
-                    <span className="mt-0.5 text-emerald-500 shrink-0 select-none">+</span>
-                    <p className="text-sm text-emerald-800 leading-relaxed" dir="auto">
-                      {claim}
-                    </p>
-                  </div>
-                ))}
+              <div className="space-y-2">
+                {diff.addedClaims.length > 0
+                  ? diff.addedClaims.map((claim, i) => (
+                      <ClaimBlock
+                        key={`add-${i}`}
+                        claim={claim}
+                        rawChunk={diff.rawAddedChunks[i]}
+                        type="added"
+                      />
+                    ))
+                  : diff.rawAddedChunks.map((chunk, i) => (
+                      <ClaimBlock key={`add-raw-${i}`} claim={null} rawChunk={chunk} type="added" />
+                    ))}
               </div>
             </div>
           )}
