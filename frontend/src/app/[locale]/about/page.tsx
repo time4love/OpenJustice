@@ -263,9 +263,6 @@ export default function AboutPage() {
             <Link href="/timeline" className="hover:text-slate-600 transition-colors">
               {tc('nav.timeline')}
             </Link>
-            <Link href="/case-builder" className="hover:text-slate-600 transition-colors">
-              {tc('nav.caseBuilder')}
-            </Link>
           </div>
         </div>
       </footer>

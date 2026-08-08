@@ -5,7 +5,6 @@
     "nav": {
       "evidenceVault": "Evidence Vault",
       "timeline": "Timeline",
-      "caseBuilder": "Case Builder",
       "submitEvidence": "+ Submit Evidence",
       "about": "About",
       "forensics": "Forensics"
@@ -114,38 +113,6 @@
       "savingBtn": "Saving…",
       "savedMsg": "Contact saved securely.",
       "skipBtn": "Skip"
-    }
-  },
-  "caseBuilder": {
-    "tagline": "Case Builder · Argument Generation",
-    "params": {
-      "title": "Argument Parameters",
-      "categoryLabel": "Legal Category",
-      "entityLabel": "Target Entity",
-      "entityPlaceholder": "e.g. Ministry of Health, FDA, Pfizer…",
-      "entityHint": "The entity to build the argument against.",
-      "draftBtn": "Draft Argument",
-      "draftingBtn": "Drafting argument…"
-    },
-    "howItWorks": {
-      "title": "How it works",
-      "step1": "1. Retrieves top Tier 1 & 2 evidence filtered by your selection.",
-      "step2": "2. Passes the evidence corpus to a Senior Litigator AI agent.",
-      "step3": "3. Returns a formal argument with on-chain citations."
-    },
-    "paper": {
-      "title": "Legal Argument",
-      "generatedLabel": "Generated Legal Argument",
-      "theoryLabel": "Legal Theory",
-      "argumentLabel": "Argument",
-      "citedLabel": "Cited Evidence",
-      "citations": "{count} citations"
-    },
-    "empty": {
-      "text": "Select a legal category and target entity, then click Draft Argument to generate a formal legal argument from the evidence vault."
-    },
-    "error": {
-      "title": "Generation Failed"
     }
   },
   "timeline": {

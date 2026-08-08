@@ -808,12 +808,6 @@ export default function ForensicsPage() {
               >
                 {tc('nav.timeline')}
               </Link>
-              <Link
-                href="/case-builder"
-                className="px-3 py-1.5 rounded text-xs font-medium text-slate-600 border border-transparent hover:bg-slate-100 hover:text-slate-900 hover:border-slate-200 transition-colors"
-              >
-                {tc('nav.caseBuilder')}
-              </Link>
               <span className="px-3 py-1.5 rounded text-xs font-medium bg-slate-900 text-white border border-slate-700">
                 {tc('nav.forensics')}
               </span>
