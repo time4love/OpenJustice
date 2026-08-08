@@ -2,8 +2,9 @@
 
 import { useState, useEffect } from 'react';
 import { useTranslations, useLocale } from 'next-intl';
-import { Link, useRouter, usePathname } from '@/i18n/navigation';
+import { Link } from '@/i18n/navigation';
 import { apiUrl } from '@/lib/api';
+import { TopNav } from '@/components/TopNav';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -12,10 +13,28 @@ import { apiUrl } from '@/lib/api';
 interface ThesisSummary {
   id: string;
   title: string;
+  status: string;
   publishedAt: string | null;
   createdAt: string;
   taggedFigures: { id: string; name: string }[];
   evidenceCount: number;
+}
+
+function StatusBadge({ status }: { status: string }) {
+  const styles =
+    status === 'PUBLISHED'
+      ? 'bg-emerald-100 text-emerald-700 border border-emerald-300'
+      : status === 'PENDING_MODERATION'
+      ? 'bg-amber-100 text-amber-700 border border-amber-300'
+      : status === 'AI_REVIEWED'
+      ? 'bg-violet-100 text-violet-700 border border-violet-300'
+      : 'bg-slate-100 text-slate-500 border border-slate-300';
+
+  return (
+    <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${styles}`}>
+      {status.replace(/_/g, ' ')}
+    </span>
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -26,8 +45,6 @@ export default function ThesesPage() {
   const t = useTranslations('theses');
   const tc = useTranslations('common');
   const locale = useLocale();
-  const router = useRouter();
-  const pathname = usePathname();
 
   const [theses, setTheses] = useState<ThesisSummary[]>([]);
   const [loading, setLoading] = useState(true);
@@ -49,48 +66,17 @@ export default function ThesesPage() {
     load();
   }, []);
 
-  function switchLocale(next: string) {
-    router.replace(pathname, { locale: next });
-  }
-
   return (
     <div className="min-h-screen bg-slate-50">
       {/* Header */}
-      <header className="border-b border-slate-200 bg-white/95 backdrop-blur sticky top-0 z-10 shadow-sm">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 h-14 flex items-center gap-4">
-          <Link href="/" className="text-slate-600 hover:text-slate-900 text-sm font-medium transition-colors">
-            {tc('appName')}
-          </Link>
-          <span className="text-slate-300">·</span>
-          <span className="text-slate-900 text-sm font-medium">{t('pageTitle')}</span>
-
-          <div className="ms-auto flex items-center gap-4">
-            <nav className="hidden sm:flex items-center gap-4 text-sm">
-              <Link href="/timeline" className="text-slate-600 hover:text-slate-900 transition-colors">
-                {tc('nav.timeline')}
-              </Link>
-              <Link href="/forensics" className="text-slate-600 hover:text-slate-900 transition-colors">
-                {tc('nav.forensics')}
-              </Link>
-              <Link href="/figures" className="text-slate-600 hover:text-slate-900 transition-colors">
-                {tc('nav.figures')}
-              </Link>
-            </nav>
-            <div className="flex items-center gap-1 text-xs">
-              <button
-                onClick={() => switchLocale('he')}
-                className={`px-2 py-0.5 rounded ${locale === 'he' ? 'bg-slate-200 text-slate-900' : 'text-slate-500 hover:text-slate-900'}`}
-              >
-                HE
-              </button>
-              <button
-                onClick={() => switchLocale('en')}
-                className={`px-2 py-0.5 rounded ${locale === 'en' ? 'bg-slate-200 text-slate-900' : 'text-slate-500 hover:text-slate-900'}`}
-              >
-                EN
-              </button>
-            </div>
+      <header className="sticky top-0 z-20 bg-white/95 backdrop-blur border-b border-slate-200 shadow-sm">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <span className="text-slate-400 text-lg">⬡</span>
+            <span className="font-mono text-sm font-semibold tracking-widest text-slate-900 uppercase">{tc('appName')}</span>
+            <span className="ms-3 text-xs text-slate-400 tracking-wide hidden sm:inline">{t('tagline')}</span>
           </div>
+          <TopNav current="theses" />
         </div>
       </header>
 
@@ -139,9 +125,12 @@ export default function ThesesPage() {
                 href={`/theses/${thesis.id}`}
                 className="block bg-white border border-slate-200 hover:border-slate-400 rounded-2xl p-5 transition-colors group shadow-sm"
               >
-                <h2 className="text-lg font-semibold text-slate-900 group-hover:text-violet-700 transition-colors">
-                  {thesis.title}
-                </h2>
+                <div className="flex items-start justify-between gap-3">
+                  <h2 className="text-lg font-semibold text-slate-900 group-hover:text-violet-700 transition-colors">
+                    {thesis.title}
+                  </h2>
+                  <StatusBadge status={thesis.status} />
+                </div>
 
                 <div className="flex flex-wrap items-center gap-3 mt-3 text-xs text-slate-500">
                   {thesis.publishedAt && (

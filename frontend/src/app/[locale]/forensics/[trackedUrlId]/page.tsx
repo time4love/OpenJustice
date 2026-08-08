@@ -2,8 +2,9 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams } from 'next/navigation';
-import { useTranslations, useLocale } from 'next-intl';
-import { Link, useRouter, usePathname } from '@/i18n/navigation';
+import { useTranslations } from 'next-intl';
+import { Link } from '@/i18n/navigation';
+import { TopNav } from '@/components/TopNav';
 import { apiUrl } from '@/lib/api';
 import { ClaimBlock } from '@/components/ClaimBlock';
 
@@ -53,28 +54,6 @@ const PAGE_SIZE = 20;
 // ---------------------------------------------------------------------------
 // Locale switcher
 // ---------------------------------------------------------------------------
-
-function LocaleSwitcher() {
-  const locale = useLocale();
-  const router = useRouter();
-  const pathname = usePathname();
-
-  return (
-    <div className="flex items-center gap-1 text-xs font-mono">
-      {(['he', 'en'] as const).map((l) => (
-        <button
-          key={l}
-          onClick={() => router.replace(pathname, { locale: l })}
-          className={`px-2 py-1 rounded transition-colors ${
-            locale === l ? 'bg-slate-200 text-slate-800' : 'text-slate-400 hover:text-slate-600'
-          }`}
-        >
-          {l.toUpperCase()}
-        </button>
-      ))}
-    </div>
-  );
-}
 
 // ---------------------------------------------------------------------------
 // Skeleton
@@ -516,33 +495,7 @@ export default function TrackedUrlPage() {
             </div>
           </div>
           <div className="flex items-center gap-4">
-            <nav className="flex items-center gap-1">
-              <Link
-                href="/"
-                className="px-3 py-1.5 rounded text-xs font-medium text-slate-600 border border-transparent hover:bg-slate-100 hover:text-slate-900 hover:border-slate-200 transition-colors"
-              >
-                {tc('nav.evidenceVault')}
-              </Link>
-              <Link
-                href="/timeline"
-                className="px-3 py-1.5 rounded text-xs font-medium text-slate-600 border border-transparent hover:bg-slate-100 hover:text-slate-900 hover:border-slate-200 transition-colors"
-              >
-                {tc('nav.timeline')}
-              </Link>
-              <Link
-                href="/forensics"
-                className="px-3 py-1.5 rounded text-xs font-medium bg-slate-900 text-white border border-slate-700"
-              >
-                {tc('nav.forensics')}
-              </Link>
-              <Link
-                href="/figures"
-                className="px-3 py-1.5 rounded text-xs font-medium text-slate-600 border border-transparent hover:bg-slate-100 hover:text-slate-900 hover:border-slate-200 transition-colors"
-              >
-                {tc('nav.figures')}
-              </Link>
-            </nav>
-            <LocaleSwitcher />
+            <TopNav current="forensics" />
           </div>
         </div>
       </header>

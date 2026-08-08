@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="./glass_fortress.png" alt="Glass Fortress" width="180" />
+</p>
+
 # OpenJustice: Project "Glass Fortress" 🏛️🔍
 
 ## 1. Project Overview & Motivation

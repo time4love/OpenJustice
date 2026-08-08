@@ -98,11 +98,11 @@ router.post('/', async (req: Request, res: Response): Promise<void> => {
 router.get('/', async (_req: Request, res: Response): Promise<void> => {
   try {
     const theses = await prisma.thesis.findMany({
-      where: { status: 'PUBLISHED' },
-      orderBy: { publishedAt: 'desc' },
+      orderBy: { createdAt: 'desc' },
       select: {
         id: true,
         title: true,
+        status: true,
         publishedAt: true,
         createdAt: true,
         taggedFigures: { select: { id: true, name: true } },
@@ -114,6 +114,7 @@ router.get('/', async (_req: Request, res: Response): Promise<void> => {
       theses: theses.map((t) => ({
         id: t.id,
         title: t.title,
+        status: t.status,
         publishedAt: t.publishedAt,
         createdAt: t.createdAt,
         taggedFigures: t.taggedFigures,
