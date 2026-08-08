@@ -14,10 +14,83 @@ interface VersionSummary {
   parentVersionId: string | null;
   status: 'PENDING_AI' | 'COMPLETE';
   contentHash: string;
+  userContent: Record<string, unknown>;
   preview: string;
   mentionCount: number;
   isHead: boolean;
   createdAt: string;
+}
+
+// ---------------------------------------------------------------------------
+// Word-level diff helpers
+// ---------------------------------------------------------------------------
+
+function extractText(node: Record<string, unknown>): string {
+  if (node.type === 'text') return String(node.text ?? '');
+  const children = node.content as Record<string, unknown>[] | undefined;
+  return (children ?? []).map(extractText).join(' ');
+}
+
+type DiffChunk = { type: 'equal' | 'delete' | 'insert'; text: string };
+
+function wordDiff(before: string, after: string): DiffChunk[] {
+  const wA = before.split(/\s+/).filter(Boolean);
+  const wB = after.split(/\s+/).filter(Boolean);
+  const m = wA.length, n = wB.length;
+  const dp = Array.from({ length: m + 1 }, () => new Array<number>(n + 1).fill(0));
+  for (let i = 1; i <= m; i++)
+    for (let j = 1; j <= n; j++)
+      dp[i][j] = wA[i - 1] === wB[j - 1] ? dp[i - 1][j - 1] + 1 : Math.max(dp[i - 1][j], dp[i][j - 1]);
+
+  const raw: DiffChunk[] = [];
+  let i = m, j = n;
+  while (i > 0 || j > 0) {
+    if (i > 0 && j > 0 && wA[i - 1] === wB[j - 1]) {
+      raw.unshift({ type: 'equal', text: wA[i - 1] });
+      i--; j--;
+    } else if (j > 0 && (i === 0 || dp[i][j - 1] >= dp[i - 1][j])) {
+      raw.unshift({ type: 'insert', text: wB[j - 1] });
+      j--;
+    } else {
+      raw.unshift({ type: 'delete', text: wA[i - 1] });
+      i--;
+    }
+  }
+  // Merge adjacent same-type chunks
+  return raw.reduce<DiffChunk[]>((acc, chunk) => {
+    const last = acc[acc.length - 1];
+    if (last?.type === chunk.type) { last.text += ' ' + chunk.text; return acc; }
+    return [...acc, { ...chunk }];
+  }, []);
+}
+
+// ---------------------------------------------------------------------------
+// VersionDiff — inline word-level diff panel
+// ---------------------------------------------------------------------------
+
+function VersionDiff({ before, after }: { before: Record<string, unknown>; after: Record<string, unknown> }) {
+  const textBefore = extractText(before);
+  const textAfter = extractText(after);
+  const chunks = wordDiff(textBefore, textAfter);
+  const hasChanges = chunks.some(c => c.type !== 'equal');
+
+  if (!hasChanges) {
+    return <p className="text-xs text-slate-400 italic px-1">No text changes (only structure or mentions changed)</p>;
+  }
+
+  return (
+    <p className="text-sm leading-relaxed text-slate-700 font-mono whitespace-pre-wrap break-words">
+      {chunks.map((chunk, i) => {
+        if (chunk.type === 'equal') return <span key={i}>{chunk.text} </span>;
+        if (chunk.type === 'delete') return (
+          <span key={i} className="bg-red-100 text-red-700 line-through rounded px-0.5 me-0.5">{chunk.text} </span>
+        );
+        return (
+          <span key={i} className="bg-emerald-100 text-emerald-700 rounded px-0.5 me-0.5">{chunk.text} </span>
+        );
+      })}
+    </p>
+  );
 }
 
 interface HistoryResponse {
@@ -38,6 +111,7 @@ export default function ThesisHistoryPage({ params }: { params: Promise<{ id: st
   const [data, setData] = useState<HistoryResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  const [expandedDiff, setExpandedDiff] = useState<string | null>(null);
 
   useEffect(() => {
     async function load() {
@@ -149,6 +223,14 @@ export default function ThesisHistoryPage({ params }: { params: Promise<{ id: st
                     <div className="flex items-center gap-4 mt-3 text-xs text-slate-400">
                       <span>{v.mentionCount} {t('mentions')}</span>
                       <span className="font-mono truncate max-w-[120px]">{v.contentHash.slice(0, 12)}…</span>
+                      {index > 0 && (
+                        <button
+                          onClick={() => setExpandedDiff(expandedDiff === v.id ? null : v.id)}
+                          className="text-slate-500 hover:text-slate-800 font-medium transition-colors"
+                        >
+                          {expandedDiff === v.id ? 'Hide diff' : 'View diff'}
+                        </button>
+                      )}
                       {v.isHead && (
                         <Link
                           href={`/theses/${id}/edit`}
@@ -158,6 +240,19 @@ export default function ThesisHistoryPage({ params }: { params: Promise<{ id: st
                         </Link>
                       )}
                     </div>
+
+                    {/* Diff panel */}
+                    {expandedDiff === v.id && index > 0 && (
+                      <div className="mt-3 pt-3 border-t border-slate-200 space-y-1">
+                        <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">
+                          Changes from v{index} → v{index + 1}
+                        </p>
+                        <VersionDiff
+                          before={data.versions[index - 1].userContent}
+                          after={v.userContent}
+                        />
+                      </div>
+                    )}
                   </div>
                 </li>
               ))}

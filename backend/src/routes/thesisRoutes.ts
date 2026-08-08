@@ -570,6 +570,7 @@ router.get('/:id/versions', async (req: Request, res: Response): Promise<void> =
         parentVersionId: v.parentVersionId,
         status: v.status,
         contentHash: v.contentHash,
+        userContent: v.userContent,
         preview: extractPreview(v.userContent),
         mentionCount: v._count.mentions,
         isHead: v.id === thesis.headVersionId,
