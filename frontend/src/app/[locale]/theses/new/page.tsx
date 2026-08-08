@@ -5,8 +5,11 @@ import {
   useImperativeHandle,
   useState,
   useEffect,
+  useRef,
+  useMemo,
 } from 'react';
-import { useEditor, EditorContent, ReactRenderer } from '@tiptap/react';
+import { createPortal } from 'react-dom';
+import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Mention from '@tiptap/extension-mention';
 import { PluginKey } from '@tiptap/pm/state';
@@ -43,15 +46,33 @@ interface TipTapNode {
   content?: TipTapNode[];
 }
 
+// Suggestion popup state
+interface ActiveSuggestion {
+  char: '@' | '#';
+  items: AnyItem[];
+  command: (item: AnyItem) => void;
+  rect: DOMRect;
+}
+
 // ---------------------------------------------------------------------------
-// Stable PluginKeys (module-level — never re-created)
+// Stable PluginKeys and editor props (module-level — never re-created)
 // ---------------------------------------------------------------------------
 
 const figureMentionKey = new PluginKey('figureMention');
 const evidenceMentionKey = new PluginKey('evidenceMention');
 
+// Must be module-level: useEditor's compareOptions does a reference check on
+// editorProps on every render. A new object literal would trigger setOptions →
+// plugin reconfiguration → AbortError on the in-flight items() fetch.
+const EDITOR_PROPS = {
+  attributes: {
+    class:
+      'prose prose-sm prose-invert max-w-none focus:outline-none min-h-[200px] px-4 py-4 text-slate-200 [&_.mention-pill]:inline-block [&_.mention-pill]:rounded-full [&_.mention-pill]:px-2 [&_.mention-pill]:py-0.5 [&_.mention-pill]:text-xs [&_.mention-pill]:font-medium [&_.mention-figure]:bg-violet-900/60 [&_.mention-figure]:text-violet-300 [&_.mention-evidence]:bg-amber-900/60 [&_.mention-evidence]:text-amber-300',
+  },
+};
+
 // ---------------------------------------------------------------------------
-// MentionList — suggestion dropdown (rendered via ReactRenderer)
+// MentionList — suggestion dropdown (rendered as a portal)
 // ---------------------------------------------------------------------------
 
 interface MentionListProps {
@@ -66,37 +87,38 @@ interface MentionListRef {
 
 const MentionList = forwardRef<MentionListRef, MentionListProps>(
   ({ items, char, command }, ref) => {
+    const safeItems = Array.isArray(items) ? items : [];
     const [selectedIndex, setSelectedIndex] = useState(0);
 
-    useEffect(() => setSelectedIndex(0), [items]);
+    useEffect(() => setSelectedIndex(0), [safeItems.length]);
 
     useImperativeHandle(ref, () => ({
       onKeyDown(event: KeyboardEvent) {
-        if (items.length === 0) return false;
+        if (safeItems.length === 0) return false;
         if (event.key === 'ArrowUp') {
-          setSelectedIndex(i => (i + items.length - 1) % items.length);
+          setSelectedIndex(i => (i + safeItems.length - 1) % safeItems.length);
           return true;
         }
         if (event.key === 'ArrowDown') {
-          setSelectedIndex(i => (i + 1) % items.length);
+          setSelectedIndex(i => (i + 1) % safeItems.length);
           return true;
         }
         if (event.key === 'Enter') {
-          command(items[selectedIndex]);
+          command(safeItems[selectedIndex]);
           return true;
         }
         return false;
       },
     }));
 
-    if (items.length === 0) return null;
+    if (safeItems.length === 0) return null;
 
     return (
-      <div className="bg-slate-900 border border-slate-700 rounded-lg shadow-2xl overflow-hidden z-50 min-w-[220px] max-w-xs">
-        {items.map((item, index) => (
+      <div className="bg-slate-900 border border-slate-700 rounded-lg shadow-2xl overflow-hidden min-w-[220px] max-w-xs">
+        {safeItems.map((item, index) => (
           <button
             key={item.id}
-            onClick={() => command(item)}
+            onMouseDown={e => { e.preventDefault(); command(item); }}
             className={`w-full text-start px-3 py-2 text-sm transition-colors border-b border-slate-800 last:border-0 ${
               index === selectedIndex ? 'bg-slate-700' : 'hover:bg-slate-800'
             }`}
@@ -123,51 +145,6 @@ const MentionList = forwardRef<MentionListRef, MentionListProps>(
 );
 
 MentionList.displayName = 'MentionList';
-
-// ---------------------------------------------------------------------------
-// Suggestion render factory
-// ---------------------------------------------------------------------------
-
-function makeSuggestionRender(char: string) {
-  return (): {
-    onStart?: (props: SuggestionProps<AnyItem>) => void;
-    onUpdate?: (props: SuggestionProps<AnyItem>) => void;
-    onExit?: (props: SuggestionProps<AnyItem>) => void;
-    onKeyDown?: (props: SuggestionKeyDownProps) => boolean;
-  } => {
-    let renderer: ReactRenderer<MentionListRef, MentionListProps>;
-    let unmount: (() => void) | undefined;
-
-    return {
-      onStart(props) {
-        renderer = new ReactRenderer(MentionList, {
-          props: { items: props.items, char, command: props.command as unknown as (item: AnyItem) => void },
-          editor: props.editor,
-        });
-        unmount = props.mount(renderer.element);
-      },
-      onUpdate(props) {
-        renderer.updateProps({
-          items: props.items,
-          char,
-          command: props.command as unknown as (item: AnyItem) => void,
-        });
-      },
-      onExit() {
-        unmount?.();
-        renderer.destroy();
-      },
-      onKeyDown({ event }) {
-        if (event.key === 'Escape') {
-          unmount?.();
-          renderer.destroy();
-          return true;
-        }
-        return renderer.ref?.onKeyDown(event) ?? false;
-      },
-    };
-  };
-}
 
 // ---------------------------------------------------------------------------
 // Extract tagged IDs from TipTap JSON doc
@@ -199,6 +176,140 @@ export default function NewThesisPage() {
   const t = useTranslations('theses');
   useLocale();
 
+  // -----------------------------------------------------------------------
+  // Suggestion popup — managed as React state, rendered as a portal
+  // -----------------------------------------------------------------------
+
+  const [activeSuggestion, setActiveSuggestion] = useState<ActiveSuggestion | null>(null);
+  // Stable ref so render callbacks (created once in useMemo) always call the latest setter
+  const setActiveSuggestionRef = useRef(setActiveSuggestion);
+  setActiveSuggestionRef.current = setActiveSuggestion;
+
+
+  const mentionListRef = useRef<MentionListRef>(null);
+  // Stable ref so render callbacks always reach the latest MentionList instance
+  const mentionListRefRef = useRef(mentionListRef);
+  mentionListRefRef.current = mentionListRef;
+
+  // -----------------------------------------------------------------------
+  // Suggestion render factory — uses refs so closures are never stale
+  // -----------------------------------------------------------------------
+
+  function buildRender(char: '@' | '#') {
+    return (): {
+      onStart?: (props: SuggestionProps<AnyItem>) => void;
+      onUpdate?: (props: SuggestionProps<AnyItem>) => void;
+      onExit?: () => void;
+      onKeyDown?: (props: SuggestionKeyDownProps) => boolean;
+    } => ({
+      onStart(props) {
+        const rect = props.clientRect?.();
+        if (!rect) return;
+        setActiveSuggestionRef.current({
+          char,
+          items: Array.isArray(props.items) ? props.items : [],
+          command: props.command as unknown as (item: AnyItem) => void,
+          rect,
+        });
+      },
+      onUpdate(props) {
+        const rect = props.clientRect?.();
+        setActiveSuggestionRef.current(prev =>
+          !prev
+            ? null
+            : {
+                ...prev,
+                items: Array.isArray(props.items) ? props.items : [],
+                command: props.command as unknown as (item: AnyItem) => void,
+                ...(rect && { rect }),
+              }
+        );
+      },
+      onExit() {
+        setActiveSuggestionRef.current(null);
+      },
+      onKeyDown({ event }) {
+        if (event.key === 'Escape') {
+          setActiveSuggestionRef.current(null);
+          return true;
+        }
+        return mentionListRefRef.current.current?.onKeyDown(event) ?? false;
+      },
+    });
+  }
+
+  // Stable suggestions config — created once, render callbacks use refs
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const suggestions = useMemo(() => [
+    {
+      char: '@' as const,
+      pluginKey: figureMentionKey,
+      items: async ({ query, signal }: { query: string; signal: AbortSignal }) => {
+        try {
+          const res = await fetch(
+            apiUrl(`/api/mentions/figures?q=${encodeURIComponent(query)}`),
+            { signal }
+          );
+          if (!res.ok) return [];
+          const data = await res.json() as { figures: AnyItem[] };
+          return data.figures ?? [];
+        } catch {
+          return [];
+        }
+      },
+      command({ editor: ed, range, props }: { editor: ReturnType<typeof useEditor>; range: { from: number; to: number }; props: unknown }) {
+        const item = props as FigureItem;
+        (ed as NonNullable<typeof ed>)
+          .chain()
+          .focus()
+          .deleteRange(range)
+          .insertContent({ type: 'mention', attrs: { id: item.id, label: item.name, mentionSuggestionChar: '@' } })
+          .insertContent(' ')
+          .run();
+      },
+      render: buildRender('@'),
+    },
+    {
+      char: '#' as const,
+      pluginKey: evidenceMentionKey,
+      items: async ({ query, signal }: { query: string; signal: AbortSignal }) => {
+        try {
+          const res = await fetch(
+            apiUrl(`/api/mentions/evidence?q=${encodeURIComponent(query)}`),
+            { signal }
+          );
+          if (!res.ok) return [];
+          const data = await res.json() as { evidence: AnyItem[] };
+          return data.evidence ?? [];
+        } catch {
+          return [];
+        }
+      },
+      command({ editor: ed, range, props }: { editor: ReturnType<typeof useEditor>; range: { from: number; to: number }; props: unknown }) {
+        const item = props as EvidenceItem;
+        (ed as NonNullable<typeof ed>)
+          .chain()
+          .focus()
+          .deleteRange(range)
+          .insertContent({
+            type: 'mention',
+            attrs: {
+              id: item.id,
+              label: item.summary?.slice(0, 30) ?? item.id,
+              mentionSuggestionChar: '#',
+            },
+          })
+          .insertContent(' ')
+          .run();
+      },
+      render: buildRender('#'),
+    },
+  ], []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // -----------------------------------------------------------------------
+  // Form state
+  // -----------------------------------------------------------------------
+
   const [title, setTitle] = useState('');
   const [authorAddress, setAuthorAddress] = useState('');
   const [thesisId, setThesisId] = useState<string | null>(null);
@@ -213,102 +324,42 @@ export default function NewThesisPage() {
   const [evalError, setEvalError] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
+  // -----------------------------------------------------------------------
+  // Editor — extensions must be stable to avoid aborting in-flight fetches
+  // -----------------------------------------------------------------------
+
+  const extensions = useMemo(() => [
+    StarterKit,
+    Mention.configure({
+      HTMLAttributes: {},
+      renderText({ node }) {
+        const char = node.attrs['mentionSuggestionChar'] ?? '@';
+        return `${char}${node.attrs['label'] ?? node.attrs['id']}`;
+      },
+      renderHTML({ node }) {
+        const char = node.attrs['mentionSuggestionChar'] ?? '@';
+        const label = node.attrs['label'] ?? node.attrs['id'];
+        return [
+          'span',
+          {
+            class: char === '@' ? 'mention-pill mention-figure' : 'mention-pill mention-evidence',
+            'data-type': 'mention',
+            'data-id': node.attrs['id'],
+            'data-char': char,
+          },
+          `${char}${label}`,
+        ];
+      },
+      suggestions,
+    }),
+  // suggestions is stable (useMemo []); this array must never be recreated
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  ], []);
+
   const editor = useEditor({
     immediatelyRender: false,
-    extensions: [
-      StarterKit,
-      Mention.configure({
-        HTMLAttributes: {},
-        renderText({ node }) {
-          const char = node.attrs['mentionSuggestionChar'] ?? '@';
-          return `${char}${node.attrs['label'] ?? node.attrs['id']}`;
-        },
-        renderHTML({ node }) {
-          const char = node.attrs['mentionSuggestionChar'] ?? '@';
-          const label = node.attrs['label'] ?? node.attrs['id'];
-          return [
-            'span',
-            {
-              class: char === '@' ? 'mention-pill mention-figure' : 'mention-pill mention-evidence',
-              'data-type': 'mention',
-              'data-id': node.attrs['id'],
-              'data-char': char,
-            },
-            `${char}${label}`,
-          ];
-        },
-        suggestions: [
-          {
-            char: '@',
-            pluginKey: figureMentionKey,
-            items: async ({ query, signal }) => {
-              try {
-                const res = await fetch(
-                  apiUrl(`/api/mentions/figures?q=${encodeURIComponent(query)}`),
-                  { signal }
-                );
-                if (!res.ok) return [];
-                return res.json() as Promise<AnyItem[]>;
-              } catch {
-                return [];
-              }
-            },
-            command({ editor: ed, range, props }) {
-              const item = props as FigureItem;
-              ed.chain()
-                .focus()
-                .deleteRange(range)
-                .insertContent({
-                  type: 'mention',
-                  attrs: { id: item.id, label: item.name, mentionSuggestionChar: '@' },
-                })
-                .insertContent(' ')
-                .run();
-            },
-            render: makeSuggestionRender('@'),
-          },
-          {
-            char: '#',
-            pluginKey: evidenceMentionKey,
-            items: async ({ query, signal }) => {
-              try {
-                const res = await fetch(
-                  apiUrl(`/api/mentions/evidence?q=${encodeURIComponent(query)}`),
-                  { signal }
-                );
-                if (!res.ok) return [];
-                return res.json() as Promise<AnyItem[]>;
-              } catch {
-                return [];
-              }
-            },
-            command({ editor: ed, range, props }) {
-              const item = props as EvidenceItem;
-              ed.chain()
-                .focus()
-                .deleteRange(range)
-                .insertContent({
-                  type: 'mention',
-                  attrs: {
-                    id: item.id,
-                    label: item.summary?.slice(0, 30) ?? item.id,
-                    mentionSuggestionChar: '#',
-                  },
-                })
-                .insertContent(' ')
-                .run();
-            },
-            render: makeSuggestionRender('#'),
-          },
-        ],
-      }),
-    ],
-    editorProps: {
-      attributes: {
-        class:
-          'prose prose-sm prose-invert max-w-none focus:outline-none min-h-[200px] px-4 py-4 text-slate-200 [&_.mention-pill]:inline-block [&_.mention-pill]:rounded-full [&_.mention-pill]:px-2 [&_.mention-pill]:py-0.5 [&_.mention-pill]:text-xs [&_.mention-pill]:font-medium [&_.mention-figure]:bg-violet-900/60 [&_.mention-figure]:text-violet-300 [&_.mention-evidence]:bg-amber-900/60 [&_.mention-evidence]:text-amber-300',
-      },
-    },
+    extensions,
+    editorProps: EDITOR_PROPS,
   });
 
   // -----------------------------------------------------------------------
@@ -321,7 +372,7 @@ export default function NewThesisPage() {
     setSaveError(null);
     setDraftSaved(false);
     try {
-      const doc = editor?.getJSON() as TipTapNode | undefined ?? { type: 'doc', content: [] };
+      const doc = (editor?.getJSON() as TipTapNode | undefined) ?? { type: 'doc', content: [] };
       const { figureIds, evidenceIds } = extractTaggedIds(doc);
       const content = JSON.stringify(doc);
 
@@ -447,6 +498,27 @@ export default function NewThesisPage() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100">
+      {/* Suggestion popup portal */}
+      {activeSuggestion &&
+        createPortal(
+          <div
+            style={{
+              position: 'fixed',
+              top: activeSuggestion.rect.bottom + 4,
+              left: activeSuggestion.rect.left,
+              zIndex: 9999,
+            }}
+          >
+            <MentionList
+              ref={mentionListRef}
+              items={activeSuggestion.items}
+              char={activeSuggestion.char}
+              command={activeSuggestion.command}
+            />
+          </div>,
+          document.body
+        )}
+
       {/* Header */}
       <header className="border-b border-slate-800 bg-slate-900/80 backdrop-blur sticky top-0 z-10">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between gap-4">
@@ -550,17 +622,13 @@ export default function NewThesisPage() {
         {evalError && <p className="text-red-400 text-sm">{evalError}</p>}
         {submitError && <p className="text-red-400 text-sm">{submitError}</p>}
 
-        {/* ---------------------------------------------------------------- */}
-        {/* Falsification results                                             */}
-        {/* ---------------------------------------------------------------- */}
-
+        {/* Falsification results */}
         {evaluation && (
           <section id="eval-results" className="space-y-5 pt-2">
             <h2 className="text-lg font-bold text-white border-b border-slate-800 pb-3">
               {t('evaluationTitle')}
             </h2>
 
-            {/* Surviving claims */}
             {evaluation.survivingClaims.length > 0 ? (
               <div className="bg-emerald-950/30 border border-emerald-700/40 rounded-xl p-4 space-y-2">
                 <h3 className="text-xs font-semibold text-emerald-400 uppercase tracking-wide">
@@ -581,17 +649,13 @@ export default function NewThesisPage() {
               </div>
             )}
 
-            {/* Falsification attempts */}
             {evaluation.falsificationAttempts.length > 0 && (
               <div className="space-y-3">
                 <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wide">
                   {t('falsificationLabel')}
                 </h3>
                 {evaluation.falsificationAttempts.map((attempt, i) => (
-                  <div
-                    key={i}
-                    className="bg-slate-900 border border-slate-700 rounded-xl p-4 space-y-3"
-                  >
+                  <div key={i} className="bg-slate-900 border border-slate-700 rounded-xl p-4 space-y-3">
                     <div>
                       <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
                         {t('claimLabel')}
@@ -615,7 +679,6 @@ export default function NewThesisPage() {
               </div>
             )}
 
-            {/* Weakest link */}
             <div className="bg-red-950/30 border border-red-800/40 rounded-xl p-4">
               <h3 className="text-xs font-semibold text-red-400 uppercase tracking-wide">
                 {t('weakestLinkLabel')}
@@ -623,7 +686,6 @@ export default function NewThesisPage() {
               <p className="text-sm text-red-200 mt-1">{evaluation.weakestLink}</p>
             </div>
 
-            {/* Recommended evidence */}
             {evaluation.recommendedEvidence.length > 0 && (
               <div className="bg-violet-950/30 border border-violet-800/40 rounded-xl p-4 space-y-2">
                 <h3 className="text-xs font-semibold text-violet-400 uppercase tracking-wide">
@@ -640,7 +702,6 @@ export default function NewThesisPage() {
               </div>
             )}
 
-            {/* Submit CTA */}
             <div className="flex items-center justify-between bg-slate-900 border border-slate-700 rounded-xl p-4 gap-4">
               <p className="text-sm text-slate-400">{t('submittedSub')}</p>
               <button
