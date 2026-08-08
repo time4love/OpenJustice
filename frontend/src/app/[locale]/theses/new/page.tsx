@@ -366,7 +366,7 @@ export default function NewThesisPage() {
   // -----------------------------------------------------------------------
 
   async function saveDraft(): Promise<string | null> {
-    if (!title.trim() || !authorAddress.trim()) return null;
+    if (!title.trim()) return null;
     setSaving(true);
     setSaveError(null);
     setDraftSaved(false);
