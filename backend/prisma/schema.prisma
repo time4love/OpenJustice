@@ -85,6 +85,16 @@ model UrlVersionDiff {
   evidence             Evidence[]
 }
 
+// A named public figure (official, politician, senior doctor, journalist) extracted
+// from evidence by the AI. Normalized here so every mention of the same person
+// across all evidence records links to a single canonical entity.
+model KeyFigure {
+  id        String     @id @default(cuid())
+  name      String     @unique
+  createdAt DateTime   @default(now())
+  evidence  Evidence[]
+}
+
 model Whistleblower {
   id               String   @id @default(uuid())
   fileHash         String   @unique
@@ -107,7 +117,7 @@ model Evidence {
   tierReasoning       String?
   summary             String
   evidenceDate        String
-  keyFigures          String
+  figures             KeyFigure[]
   medicalConditions   String
   statisticalClaims   String   @default("[]")
   regulatoryMentions  String   @default("[]")

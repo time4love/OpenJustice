@@ -19,6 +19,7 @@ import { evidenceRouter } from './routes/evidenceRoutes';
 import { argumentRouter } from './routes/argumentRoutes';
 import { chatRouter } from './routes/chatRoutes';
 import { forensicsRouter } from './routes/forensicsRoutes';
+import { figuresRouter } from './routes/figuresRoutes';
 
 const app = express();
 const PORT = process.env['PORT'] ?? 3000;
@@ -60,6 +61,7 @@ app.use('/api/evidence', evidenceRouter);
 app.use('/api/arguments', argumentRouter);
 app.use('/api/chat', chatRouter);
 app.use('/api/forensics', forensicsRouter);
+app.use('/api/figures', figuresRouter);
 
 // ---------------------------------------------------------------------------
 // Global error handler — must be registered AFTER all routes.

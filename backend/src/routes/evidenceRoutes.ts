@@ -24,7 +24,7 @@ interface EvidenceRecord {
   summary: string;
   targetEntity: string;
   evidenceDate: string;
-  keyFigures: string[];
+  figures: { id: string; name: string }[];
   medicalConditions: string[];
   statisticalClaims: string[];
   regulatoryMentions: string[];
@@ -288,6 +288,15 @@ router.post(
         return;
       }
 
+      // Ensure all KeyFigure records exist before linking (createMany is idempotent via skipDuplicates)
+      const figureNames = analysis.keyFigures;
+      if (figureNames.length > 0) {
+        await prisma.keyFigure.createMany({
+          data: figureNames.map((name) => ({ name })),
+          skipDuplicates: true,
+        });
+      }
+
       // Write structured metadata to Prisma — this is the authoritative structured store.
       await prisma.evidence.upsert({
         where: { fileHash },
@@ -300,7 +309,7 @@ router.post(
           tierReasoning: analysis.tierReasoning ?? null,
           summary: analysis.summary,
           evidenceDate: analysis.evidenceDate,
-          keyFigures: JSON.stringify(analysis.keyFigures),
+          figures: { set: figureNames.map((name) => ({ name })) },
           medicalConditions: JSON.stringify(analysis.medicalConditions),
           statisticalClaims: JSON.stringify(analysis.statisticalClaims),
           regulatoryMentions: JSON.stringify(analysis.regulatoryMentions),
@@ -319,7 +328,7 @@ router.post(
           tierReasoning: analysis.tierReasoning ?? null,
           summary: analysis.summary,
           evidenceDate: analysis.evidenceDate,
-          keyFigures: JSON.stringify(analysis.keyFigures),
+          figures: { connect: figureNames.map((name) => ({ name })) },
           medicalConditions: JSON.stringify(analysis.medicalConditions),
           statisticalClaims: JSON.stringify(analysis.statisticalClaims),
           regulatoryMentions: JSON.stringify(analysis.regulatoryMentions),
@@ -409,7 +418,10 @@ router.get('/timeline', async (req: Request, res: Response): Promise<void> => {
         orderBy: [{ evidenceDate: 'asc' }, { createdAt: 'asc' }],
         take: limit + 1,
         ...(cursor ? { cursor: { fileHash: cursor }, skip: 1 } : {}),
-        include: { urlVersionDiff: { select: { trackedUrlId: true } } },
+        include: {
+          urlVersionDiff: { select: { trackedUrlId: true } },
+          figures: { select: { id: true, name: true } },
+        },
       }),
     ]);
 
@@ -430,7 +442,7 @@ router.get('/timeline', async (req: Request, res: Response): Promise<void> => {
         summary: r.summary,
         targetEntity: r.targetEntity,
         evidenceDate: r.evidenceDate,
-        keyFigures: JSON.parse(r.keyFigures) as string[],
+        figures: r.figures,
         medicalConditions: JSON.parse(r.medicalConditions) as string[],
         statisticalClaims: JSON.parse(r.statisticalClaims) as string[],
         regulatoryMentions: JSON.parse(r.regulatoryMentions) as string[],
@@ -497,7 +509,10 @@ router.get('/search', async (req: Request, res: Response): Promise<void> => {
 
     // Enrich with structured metadata from Prisma, preserving semantic score order.
     const fileHashes = vectorResults.map((r) => r.fileHash);
-    const rows = await prisma.evidence.findMany({ where: { fileHash: { in: fileHashes } } });
+    const rows = await prisma.evidence.findMany({
+      where: { fileHash: { in: fileHashes } },
+      include: { figures: { select: { id: true, name: true } } },
+    });
 
     const byHash = new Map(rows.map((r) => [r.fileHash, r]));
     const results = vectorResults
@@ -517,7 +532,7 @@ router.get('/search', async (req: Request, res: Response): Promise<void> => {
             summary: row.summary,
             targetEntity: row.targetEntity,
             evidenceDate: row.evidenceDate,
-            keyFigures: JSON.parse(row.keyFigures) as string[],
+            figures: row.figures,
             medicalConditions: JSON.parse(row.medicalConditions) as string[],
             statisticalClaims: JSON.parse(row.statisticalClaims) as string[],
             regulatoryMentions: JSON.parse(row.regulatoryMentions) as string[],

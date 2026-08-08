@@ -535,6 +535,12 @@ export default function TrackedUrlPage() {
               >
                 {tc('nav.forensics')}
               </Link>
+              <Link
+                href="/figures"
+                className="px-3 py-1.5 rounded text-xs font-medium text-slate-600 border border-transparent hover:bg-slate-100 hover:text-slate-900 hover:border-slate-200 transition-colors"
+              >
+                {tc('nav.figures')}
+              </Link>
             </nav>
             <LocaleSwitcher />
           </div>

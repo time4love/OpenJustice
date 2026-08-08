@@ -811,6 +811,12 @@ export default function ForensicsPage() {
               <span className="px-3 py-1.5 rounded text-xs font-medium bg-slate-900 text-white border border-slate-700">
                 {tc('nav.forensics')}
               </span>
+              <Link
+                href="/figures"
+                className="px-3 py-1.5 rounded text-xs font-medium text-slate-600 border border-transparent hover:bg-slate-100 hover:text-slate-900 hover:border-slate-200 transition-colors"
+              >
+                {tc('nav.figures')}
+              </Link>
             </nav>
             <LocaleSwitcher />
           </div>

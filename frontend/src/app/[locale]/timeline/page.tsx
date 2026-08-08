@@ -25,7 +25,7 @@ interface EvidenceMetadata {
   summary: string;
   targetEntity: string;
   evidenceDate: string;
-  keyFigures?: string[];
+  figures?: { id: string; name: string }[];
   medicalConditions?: string[];
   statisticalClaims?: string[];
   regulatoryMentions?: string[];
@@ -234,23 +234,24 @@ function TimelineNode({
             {metadata.summary}
           </p>
 
-          {((metadata.keyFigures?.length ?? 0) > 0 ||
+          {((metadata.figures?.length ?? 0) > 0 ||
             (metadata.medicalConditions?.length ?? 0) > 0 ||
             (metadata.statisticalClaims?.length ?? 0) > 0 ||
             (metadata.regulatoryMentions?.length ?? 0) > 0) && (
             <div className="space-y-1.5">
-              {(metadata.keyFigures?.length ?? 0) > 0 && (
+              {(metadata.figures?.length ?? 0) > 0 && (
                 <div className="flex flex-wrap items-center gap-1.5">
                   <span className="text-xs font-semibold text-slate-400 uppercase tracking-widest shrink-0">
                     {labels.keyFigures}
                   </span>
-                  {metadata.keyFigures!.map((f, i) => (
-                    <span
-                      key={`${f}-${i}`}
-                      className="px-1.5 py-0.5 rounded text-xs bg-blue-50 text-blue-700 border border-blue-200"
+                  {metadata.figures!.map((f) => (
+                    <Link
+                      key={f.id}
+                      href={`/figures?id=${f.id}`}
+                      className="px-1.5 py-0.5 rounded text-xs bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 hover:border-blue-300 transition-colors"
                     >
-                      {f}
-                    </span>
+                      {f.name}
+                    </Link>
                   ))}
                 </div>
               )}
@@ -546,6 +547,12 @@ export default function TimelinePage() {
                 className="px-3 py-1.5 rounded text-xs font-medium text-slate-600 border border-transparent hover:bg-slate-100 hover:text-slate-900 hover:border-slate-200 transition-colors"
               >
                 {tc('nav.forensics')}
+              </Link>
+              <Link
+                href="/figures"
+                className="px-3 py-1.5 rounded text-xs font-medium text-slate-600 border border-transparent hover:bg-slate-100 hover:text-slate-900 hover:border-slate-200 transition-colors"
+              >
+                {tc('nav.figures')}
               </Link>
             </nav>
             <LocaleSwitcher />

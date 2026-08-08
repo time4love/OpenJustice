@@ -7,7 +7,8 @@
       "timeline": "ציר זמן",
       "submitEvidence": "+ הגש ראיה",
       "about": "אודות",
-      "forensics": "פורנזיקה"
+      "forensics": "פורנזיקה",
+      "figures": "דמויות"
     }
   },
   "dashboard": {
@@ -148,6 +149,17 @@
     "roleIncriminating": "ראיה מפלילה",
     "viewSource": "מקור הראיה",
     "viewDiffHistory": "צפה בהיסטוריית המסמך המלאה"
+  },
+  "figures": {
+    "tagline": "גרף ישויות · דמויות מפתח ורשת הקשרים",
+    "backLink": "→ ציר זמן",
+    "evidenceLinked": "{count} ראיות מקושרות",
+    "emptyTitle": "לא נמצאו ראיות מקושרות לדמות זו.",
+    "emptySub": "הגש ראיות שמזכירות דמות זו כדי לאכלס את הדף.",
+    "errorTitle": "טעינת פרופיל הדמות נכשלה.",
+    "nav": {
+      "figures": "דמויות"
+    }
   },
   "about": {
     "badge": "פרויקט קוד פתוח · שקיפות מלאה",

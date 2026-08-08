@@ -7,7 +7,8 @@
       "timeline": "Timeline",
       "submitEvidence": "+ Submit Evidence",
       "about": "About",
-      "forensics": "Forensics"
+      "forensics": "Forensics",
+      "figures": "Figures"
     }
   },
   "dashboard": {
@@ -148,6 +149,17 @@
     "roleIncriminating": "Incriminating",
     "viewSource": "View Source",
     "viewDiffHistory": "View Document History"
+  },
+  "figures": {
+    "tagline": "Entity Graph · Key Figures & Evidence Network",
+    "backLink": "← Timeline",
+    "evidenceLinked": "{count} evidence records linked",
+    "emptyTitle": "No evidence linked to this figure yet.",
+    "emptySub": "Submit evidence that mentions this figure to populate this page.",
+    "errorTitle": "Failed to load figure profile.",
+    "nav": {
+      "figures": "Figures"
+    }
   },
   "about": {
     "badge": "Open Source Project · Full Transparency",

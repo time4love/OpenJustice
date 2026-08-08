@@ -544,7 +544,6 @@ router.post('/promote', async (req: Request, res: Response): Promise<void> => {
         tierReasoning: analysis.tierReasoning ?? null,
         summary: analysis.summary,
         evidenceDate: analysis.evidenceDate,
-        keyFigures: JSON.stringify(analysis.keyFigures),
         medicalConditions: JSON.stringify(analysis.medicalConditions),
         statisticalClaims: JSON.stringify(analysis.statisticalClaims),
         regulatoryMentions: JSON.stringify(analysis.regulatoryMentions),
