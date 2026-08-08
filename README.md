@@ -81,3 +81,13 @@ We are utilizing "The Wisdom of the Crowd" combined with Agentic AI to process, 
 - [x] **Task 10.4:** Create `backend/src/factories/LLMFactory.ts`. `LLMFactory.getChatModel(agentType, options)` reads `[AGENT_TYPE]_PROVIDER` env var; returns `ChatGoogleGenerativeAI` (gemini-flash-latest) by default or `ChatAnthropic` (claude-sonnet-4-6) when set to `'anthropic'`. Swap any agent's provider with zero code changes.
 - [x] **Task 10.5:** Refactor `IntakeAgent.ts`, `LegalMasterAgent.ts`, `TrustAgent.ts` — all direct provider instantiations replaced with `LLMFactory.getChatModel('INTAKE'|'LEGAL'|'TRUST')`. Added `INTAKE_PROVIDER`, `LEGAL_PROVIDER`, `TRUST_PROVIDER` to `.env` and `.env.example`. Updated both test files to mock `LLMFactory` instead of `@langchain/anthropic`. 64/64 tests passing.
 - [x] **Task 10.3:** Frontend Trust Center — `app/[locale]/about/page.tsx` fully i18n'd via `useTranslations('about')` — all strings extracted to `messages/he.json` and `messages/en.json`. Three-pillar manifesto layout (Mission, Blockchain Guarantee, Dark Vault), trust badge row, hero, CTA. Global `FloatingChatWidget.tsx` in `[locale]/layout.tsx`: `useLocale()` drives the `locale` sent to `/api/chat`, the `dir` attribute on the chat panel, bubble alignment (`justify-start`/`justify-end` flipped per direction), tail corner rounding (`rounded-ss-none`/`rounded-se-none`), and all UI strings via `useTranslations('chat')`.
+### Phase 20: Thesis Builder — Crowdsourced Legal Theories
+> Full plan: [docs/phases/phase-20-thesis-builder.md](docs/phases/phase-20-thesis-builder.md)
+- [ ] **Task 20.1:** Prisma — `Thesis` model, `ThesisStatus` enum, M2M to `Evidence` + `KeyFigure`, migration.
+- [ ] **Task 20.2:** Mention endpoints — `GET /api/mentions/figures` + `GET /api/mentions/evidence` + tests.
+- [ ] **Task 20.3:** `ThesisValidatorAgent.ts` — devil's advocate falsification agent, `FalsificationResult` Zod schema, tests.
+- [ ] **Task 20.4:** Thesis CRUD + evaluate API — 7 endpoints in `thesisRoutes.ts`, rate limit on `/evaluate`, tests.
+- [ ] **Task 20.5:** Install TipTap dependencies in frontend.
+- [ ] **Task 20.6:** New thesis editor page — TipTap with `@figure` / `#evidence` mentions, falsification result display, i18n + RTL.
+- [ ] **Task 20.7:** Theses feed page — published theses list + full thesis view.
+- [ ] **Task 20.8:** Full test suite green (target >= 160 tests).
