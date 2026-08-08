@@ -28,7 +28,6 @@ interface Thesis {
   title: string;
   content: string;
   status: string;
-  authorAddress: string;
   publishedAt: string | null;
   createdAt: string;
   aiFeedback: FalsificationResult | null;
@@ -149,11 +148,6 @@ export default function ThesisPage({ params }: { params: Promise<{ id: string }>
 
         {/* Title */}
         <h1 className="text-3xl font-bold text-slate-900 leading-tight">{thesis.title}</h1>
-
-        {/* Author */}
-        {thesis.authorAddress && (
-          <p className="text-slate-500 text-sm font-mono">{thesis.authorAddress}</p>
-        )}
 
         {/* Body */}
         <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">

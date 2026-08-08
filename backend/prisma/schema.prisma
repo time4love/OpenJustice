@@ -143,15 +143,14 @@ enum ThesisStatus {
 // and key figures. AI acts as devil's advocate (falsification, not scoring)
 // before a human moderator approves publication.
 model Thesis {
-  id            String        @id @default(cuid())
-  title         String
-  content       String        // TipTap JSON (stringified)
-  status        ThesisStatus  @default(DRAFT)
-  aiFeedback    String?       // JSON: FalsificationResult (stringified)
-  authorAddress String        // submitter wallet address (accountability)
-  publishedAt   DateTime?
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
-  taggedEvidence Evidence[]   @relation("ThesisEvidence")
-  taggedFigures  KeyFigure[]  @relation("ThesisFigures")
+  id             String        @id @default(cuid())
+  title          String
+  content        String        // TipTap JSON (stringified)
+  status         ThesisStatus  @default(DRAFT)
+  aiFeedback     String?       // JSON: FalsificationResult (stringified)
+  publishedAt    DateTime?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  taggedEvidence Evidence[]    @relation("ThesisEvidence")
+  taggedFigures  KeyFigure[]   @relation("ThesisFigures")
 }

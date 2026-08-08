@@ -42,7 +42,6 @@ function getValidator(): ThesisValidatorAgent {
 export const CreateThesisSchema = z.object({
   title: z.string().min(1, 'Title is required').max(300),
   content: z.string().min(1, 'Content is required'),
-  authorAddress: z.string().min(1, 'Author address is required'),
   taggedEvidenceIds: z.array(z.string()).default([]),
   taggedFigureIds: z.array(z.string()).default([]),
 });
@@ -67,14 +66,13 @@ router.post('/', async (req: Request, res: Response): Promise<void> => {
     return;
   }
 
-  const { title, content, authorAddress, taggedEvidenceIds, taggedFigureIds } = parsed.data;
+  const { title, content, taggedEvidenceIds, taggedFigureIds } = parsed.data;
 
   try {
     const thesis = await prisma.thesis.create({
       data: {
         title,
         content,
-        authorAddress,
         taggedEvidence: { connect: taggedEvidenceIds.map((id) => ({ id })) },
         taggedFigures: { connect: taggedFigureIds.map((id) => ({ id })) },
       },
@@ -105,7 +103,6 @@ router.get('/', async (_req: Request, res: Response): Promise<void> => {
       select: {
         id: true,
         title: true,
-        authorAddress: true,
         publishedAt: true,
         createdAt: true,
         taggedFigures: { select: { id: true, name: true } },
@@ -117,7 +114,6 @@ router.get('/', async (_req: Request, res: Response): Promise<void> => {
       theses: theses.map((t) => ({
         id: t.id,
         title: t.title,
-        authorAddress: t.authorAddress,
         publishedAt: t.publishedAt,
         createdAt: t.createdAt,
         taggedFigures: t.taggedFigures,

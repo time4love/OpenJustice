@@ -311,7 +311,6 @@ export default function NewThesisPage() {
   // -----------------------------------------------------------------------
 
   const [title, setTitle] = useState('');
-  const [authorAddress, setAuthorAddress] = useState('');
   const [thesisId, setThesisId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [draftSaved, setDraftSaved] = useState(false);
@@ -379,7 +378,6 @@ export default function NewThesisPage() {
       const body = {
         title: title.trim(),
         content,
-        authorAddress: authorAddress.trim(),
         taggedEvidenceIds: evidenceIds,
         taggedFigureIds: figureIds,
       };
@@ -468,7 +466,7 @@ export default function NewThesisPage() {
     }
   }
 
-  const formReady = title.trim().length > 0 && authorAddress.trim().length > 0;
+  const formReady = title.trim().length > 0;
 
   // -----------------------------------------------------------------------
   // Submitted state
@@ -562,19 +560,6 @@ export default function NewThesisPage() {
             <p className="px-5 pb-3 text-xs text-slate-400">{t('contentPlaceholder')}</p>
           </div>
 
-          {/* Author */}
-          <div className="px-5 py-4">
-            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
-              {t('authorLabel')}
-            </label>
-            <input
-              type="text"
-              value={authorAddress}
-              onChange={e => setAuthorAddress(e.target.value)}
-              placeholder={t('authorPlaceholder')}
-              className="w-full bg-transparent text-slate-700 placeholder-slate-400 text-sm font-mono focus:outline-none"
-            />
-          </div>
         </div>
 
         {/* Errors */}

@@ -85,7 +85,6 @@ const DRAFT_THESIS = {
   title: 'תזה על הסתרת נתוני חיסונים',
   content: '{"type":"doc","content":[]}',
   status: 'DRAFT',
-  authorAddress: '0xabc',
   aiFeedback: null,
   publishedAt: null,
   createdAt: new Date(),
@@ -136,7 +135,6 @@ describe('CreateThesisSchema', () => {
       CreateThesisSchema.safeParse({
         title: 'My Thesis',
         content: '{"doc":"..."}',
-        authorAddress: '0xabc123',
         taggedEvidenceIds: ['ev-1'],
         taggedFigureIds: ['fig-1'],
       }).success,
@@ -147,7 +145,6 @@ describe('CreateThesisSchema', () => {
     const result = CreateThesisSchema.safeParse({
       title: 'My Thesis',
       content: '{"doc":"..."}',
-      authorAddress: '0xabc123',
     });
     expect(result.success).toBe(true);
     expect(result.data?.taggedEvidenceIds).toEqual([]);
@@ -156,23 +153,19 @@ describe('CreateThesisSchema', () => {
 
   it('rejects empty title', () => {
     expect(
-      CreateThesisSchema.safeParse({ title: '', content: 'x', authorAddress: '0x' }).success,
+      CreateThesisSchema.safeParse({ title: '', content: 'x' }).success,
     ).toBe(false);
   });
 
   it('rejects title over 300 chars', () => {
     expect(
-      CreateThesisSchema.safeParse({ title: 'a'.repeat(301), content: 'x', authorAddress: '0x' }).success,
+      CreateThesisSchema.safeParse({ title: 'a'.repeat(301), content: 'x' }).success,
     ).toBe(false);
-  });
-
-  it('rejects missing authorAddress', () => {
-    expect(CreateThesisSchema.safeParse({ title: 'T', content: 'x' }).success).toBe(false);
   });
 
   it('rejects empty content', () => {
     expect(
-      CreateThesisSchema.safeParse({ title: 'T', content: '', authorAddress: '0x' }).success,
+      CreateThesisSchema.safeParse({ title: 'T', content: '' }).success,
     ).toBe(false);
   });
 });

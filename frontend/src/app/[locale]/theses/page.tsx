@@ -12,7 +12,6 @@ import { apiUrl } from '@/lib/api';
 interface ThesisSummary {
   id: string;
   title: string;
-  authorAddress: string;
   publishedAt: string | null;
   createdAt: string;
   taggedFigures: { id: string; name: string }[];
@@ -145,9 +144,6 @@ export default function ThesesPage() {
                 </h2>
 
                 <div className="flex flex-wrap items-center gap-3 mt-3 text-xs text-slate-500">
-                  {thesis.authorAddress && (
-                    <span className="font-mono truncate max-w-[12rem]">{thesis.authorAddress}</span>
-                  )}
                   {thesis.publishedAt && (
                     <span>
                       {new Date(thesis.publishedAt).toLocaleDateString(locale === 'he' ? 'he-IL' : 'en-US')}
