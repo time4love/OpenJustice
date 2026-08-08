@@ -106,10 +106,16 @@ model Whistleblower {
 // Public evidence registry — structured metadata for stats and timeline queries.
 // Pinecone stores ONLY the embedding + fileHash; all queryable fields live here.
 // Linked to Whistleblower only by fileHash — never joined directly.
+enum EvidenceStatus {
+  PENDING_REVIEW // Created via MCP write tool — awaits human review before on-chain registration
+  CONFIRMED      // Registered on-chain and indexed in Pinecone
+}
+
 model Evidence {
-  id                  String   @id @default(uuid())
-  fileHash            String   @unique
-  evidenceRole        String   @default("Incriminating")
+  id                  String          @id @default(uuid())
+  fileHash            String          @unique
+  status              EvidenceStatus  @default(CONFIRMED)
+  evidenceRole        String          @default("Incriminating")
   category            String
   targetEntity        String
   evidenceTier        String
@@ -119,14 +125,14 @@ model Evidence {
   evidenceDate        String
   figures             KeyFigure[]
   medicalConditions   String
-  statisticalClaims   String   @default("[]")
-  regulatoryMentions  String   @default("[]")
-  euaOmissionStatus   String   @default("Not Applicable")
+  statisticalClaims   String          @default("[]")
+  regulatoryMentions  String          @default("[]")
+  euaOmissionStatus   String          @default("Not Applicable")
   sourceUrl           String?
   fileUrl             String?
   urlVersionDiffId    String?
   urlVersionDiff      UrlVersionDiff? @relation(fields: [urlVersionDiffId], references: [id])
-  createdAt           DateTime @default(now())
+  createdAt           DateTime        @default(now())
 }
 
 enum ThesisVersionStatus {

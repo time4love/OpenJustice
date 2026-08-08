@@ -22,6 +22,7 @@ import { forensicsRouter } from './routes/forensicsRoutes';
 import { figuresRouter } from './routes/figuresRoutes';
 import { mentionRouter } from './routes/mentionRoutes';
 import { thesisRouter } from './routes/thesisRoutes';
+import { mcpRouter } from './mcp/mcpRoutes';
 
 const app = express();
 const PORT = process.env['PORT'] ?? 3000;
@@ -66,6 +67,7 @@ app.use('/api/forensics', forensicsRouter);
 app.use('/api/figures', figuresRouter);
 app.use('/api/mentions', mentionRouter);
 app.use('/api/thesis', thesisRouter);
+app.use('/api/mcp', mcpRouter);
 
 // ---------------------------------------------------------------------------
 // Global error handler — must be registered AFTER all routes.
