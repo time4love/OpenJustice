@@ -561,4 +561,209 @@ router.post('/promote', async (req: Request, res: Response): Promise<void> => {
   }
 });
 
+// ---------------------------------------------------------------------------
+// Helpers for HTML report
+// ---------------------------------------------------------------------------
+
+function escHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function buildReportHtml(
+  url: string,
+  title: string | null,
+  diffs: Array<{
+    beforeDate: string;
+    date: string;
+    snapshotUrl: string;
+    deletedItems: DiffItem[];
+    addedItems: DiffItem[];
+    legalSignificance: string;
+    isLegallySignificant: boolean;
+  }>,
+): string {
+  const QUOTE_LIMIT = 400;
+  const truncate = (s: string) => (s.length > QUOTE_LIMIT ? `${s.slice(0, QUOTE_LIMIT)}…` : s);
+  const flaggedCount = diffs.filter((d) => d.isLegallySignificant).length;
+  const reportDate = new Date().toISOString().split('T')[0] ?? '';
+
+  const diffCards = diffs
+    .map((d, i) => {
+      const sig = d.isLegallySignificant;
+
+      const deletedHtml =
+        d.deletedItems.length > 0
+          ? `<div class="section deleted">
+              <div class="section-label deleted-label">DELETED</div>
+              ${d.deletedItems
+                .map(
+                  (item) => `<div class="claim-block">
+                  <div class="claim-summary" dir="auto">${escHtml(item.summary)}</div>
+                  ${item.exactQuote ? `<div class="claim-quote" dir="auto">"${escHtml(truncate(item.exactQuote))}"</div>` : ''}
+                </div>`,
+                )
+                .join('')}
+            </div>`
+          : '';
+
+      const addedHtml =
+        d.addedItems.length > 0
+          ? `<div class="section added">
+              <div class="section-label added-label">ADDED</div>
+              ${d.addedItems
+                .map(
+                  (item) => `<div class="claim-block">
+                  <div class="claim-summary" dir="auto">${escHtml(item.summary)}</div>
+                  ${item.exactQuote ? `<div class="claim-quote" dir="auto">"${escHtml(truncate(item.exactQuote))}"</div>` : ''}
+                </div>`,
+                )
+                .join('')}
+            </div>`
+          : '';
+
+      const analysisHtml =
+        sig && d.legalSignificance
+          ? `<div class="forensic-analysis" dir="auto">${escHtml(d.legalSignificance)}</div>`
+          : '';
+
+      return `<div class="diff-card ${sig ? 'sig' : 'audit'}">
+        <div class="diff-header">
+          <span class="date-range">
+            <span class="before-date">${escHtml(d.beforeDate)}</span>
+            <span class="arrow">→</span>
+            <span class="after-date">${escHtml(d.date)}</span>
+          </span>
+          ${sig ? '<span class="badge badge-flagged">AI-FLAGGED AS SIGNIFICANT</span>' : '<span class="badge badge-audit">VERSION CHANGE</span>'}
+          <span class="diff-num">#${i + 1}</span>
+        </div>
+        <div class="diff-body">
+          ${analysisHtml}
+          ${deletedHtml}
+          ${addedHtml}
+          <div class="snapshot-link">Archive snapshot: <a href="${escHtml(d.snapshotUrl)}">${escHtml(d.snapshotUrl)}</a></div>
+        </div>
+      </div>`;
+    })
+    .join('');
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Forensic Timeline Report — ${escHtml(url)}</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; font-size: 11pt; color: #1a1a2e; background: #fff; padding: 20mm; line-height: 1.5; }
+    @page { margin: 15mm 20mm; size: A4 portrait; }
+    @media print { body { padding: 0; } }
+    .cover { margin-bottom: 24pt; padding-bottom: 16pt; border-bottom: 2px solid #1a1a2e; }
+    .cover-title { font-size: 20pt; font-weight: 700; letter-spacing: -0.5px; margin-bottom: 6pt; }
+    .cover-subtitle { font-size: 11pt; color: #334155; margin-bottom: 4pt; }
+    .cover-url { font-family: monospace; font-size: 9pt; color: #555; word-break: break-all; margin-bottom: 12pt; }
+    .cover-meta { display: flex; gap: 16pt; flex-wrap: wrap; font-size: 9pt; color: #666; }
+    .cover-meta .label { font-weight: 600; color: #333; }
+    .cover-meta .flagged-count { color: #b91c1c; font-weight: 700; }
+    .cover-watermark { margin-top: 8pt; font-size: 8pt; color: #aaa; font-style: italic; }
+    .timeline-heading { font-size: 9pt; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: #94a3b8; margin-bottom: 10pt; }
+    .diff-card { page-break-inside: avoid; border-radius: 6px; border: 1px solid #e2e8f0; margin-bottom: 10pt; overflow: hidden; }
+    .diff-card.sig { border-color: #f87171; }
+    .diff-header { display: flex; align-items: center; flex-wrap: wrap; gap: 6pt; padding: 5pt 10pt; background: #f8fafc; border-bottom: 1px solid #e2e8f0; font-size: 8.5pt; }
+    .diff-card.sig .diff-header { background: #fff1f2; border-bottom-color: #fecaca; }
+    .date-range { font-family: monospace; display: inline-flex; align-items: center; gap: 4pt; }
+    .before-date { color: #94a3b8; }
+    .arrow { color: #cbd5e1; }
+    .after-date { font-weight: 600; color: #334155; }
+    .badge { font-size: 7pt; font-weight: 700; letter-spacing: 0.05em; padding: 2pt 5pt; border-radius: 100px; }
+    .badge-flagged { background: #fee2e2; color: #b91c1c; border: 1px solid #fca5a5; }
+    .badge-audit { background: #f1f5f9; color: #64748b; border: 1px solid #e2e8f0; }
+    .diff-num { margin-left: auto; font-family: monospace; color: #cbd5e1; font-size: 8pt; }
+    .diff-body { padding: 8pt 10pt; }
+    .forensic-analysis { font-size: 9.5pt; color: #374151; border-left: 2px solid #f87171; padding-left: 8pt; margin-bottom: 8pt; line-height: 1.6; }
+    .section { margin-top: 6pt; }
+    .section-label { font-size: 7.5pt; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 4pt; }
+    .deleted-label { color: #dc2626; }
+    .added-label { color: #16a34a; }
+    .claim-block { margin-bottom: 4pt; padding: 4pt 6pt; border-radius: 3px; }
+    .deleted .claim-block { background: #fff5f5; border-left: 2px solid #fca5a5; }
+    .added .claim-block { background: #f0fdf4; border-left: 2px solid #86efac; }
+    .claim-summary { font-size: 9.5pt; font-weight: 500; color: #1e293b; }
+    .claim-quote { font-size: 8.5pt; color: #64748b; font-style: italic; margin-top: 2pt; }
+    .snapshot-link { font-size: 7.5pt; color: #94a3b8; margin-top: 8pt; word-break: break-all; }
+    .snapshot-link a { color: #3b82f6; }
+    .no-diffs { color: #94a3b8; font-size: 9pt; font-style: italic; }
+    .footer { margin-top: 24pt; padding-top: 8pt; border-top: 1px solid #e2e8f0; font-size: 8pt; color: #aaa; text-align: center; }
+  </style>
+</head>
+<body>
+  <div class="cover">
+    <div class="cover-title">Forensic Timeline Report</div>
+    ${title ? `<div class="cover-subtitle">${escHtml(title)}</div>` : ''}
+    <div class="cover-url">${escHtml(url)}</div>
+    <div class="cover-meta">
+      <span><span class="label">Report generated:</span> ${reportDate}</span>
+      <span><span class="label">Total version changes:</span> ${diffs.length}</span>
+      <span><span class="label">AI-flagged as significant:</span> <span class="flagged-count">${flaggedCount}</span></span>
+    </div>
+    <div class="cover-watermark">Generated by Glass Fortress · OpenJustice · For legal review purposes only.</div>
+  </div>
+  <div class="timeline-heading">Change Timeline</div>
+  ${diffs.length === 0 ? '<p class="no-diffs">No version changes recorded for this URL.</p>' : diffCards}
+  <div class="footer">Glass Fortress — Forensic Evidence Platform · This document is auto-generated for legal review. Verify all claims independently.</div>
+  <script>window.addEventListener('load', function() { window.print(); });</script>
+</body>
+</html>`;
+}
+
+// ---------------------------------------------------------------------------
+// GET /api/forensics/tracked/:id/report
+//
+// Returns a print-ready HTML document containing the full diff timeline for
+// a TrackedUrl. Opens in a new tab; the browser auto-triggers the print
+// dialog so the user can save as PDF.
+// ---------------------------------------------------------------------------
+
+router.get('/tracked/:id/report', async (req: Request, res: Response): Promise<void> => {
+  const trackedUrlId = String(req.params['id'] ?? '');
+  if (!trackedUrlId) {
+    res.status(400).send('<h1>Missing trackedUrl id</h1>');
+    return;
+  }
+
+  try {
+    const trackedUrl = await prisma.trackedUrl.findUnique({ where: { id: trackedUrlId } });
+    if (!trackedUrl) {
+      res.status(404).send('<h1>TrackedUrl not found</h1>');
+      return;
+    }
+
+    const allDiffs = await prisma.urlVersionDiff.findMany({
+      where: { trackedUrlId },
+      orderBy: { afterDate: 'asc' },
+    });
+
+    const diffs = allDiffs.map((d) => ({
+      beforeDate: d.beforeDate,
+      date: d.afterDate,
+      snapshotUrl: d.snapshotUrl,
+      deletedItems: parseDiffItems(d.deletedText),
+      addedItems: parseDiffItems(d.addedText),
+      legalSignificance: d.aiSignificance,
+      isLegallySignificant: d.isLegallySignificant,
+    }));
+
+    const html = buildReportHtml(trackedUrl.url, trackedUrl.title, diffs);
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.send(html);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error('[forensics/report] Error:', err instanceof Error ? err.stack : err);
+    res.status(500).send(`<h1>Error generating report</h1><p>${escHtml(message)}</p>`);
+  }
+});
+
 export { router as forensicsRouter };

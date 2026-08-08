@@ -548,6 +548,17 @@ export default function TrackedUrlPage() {
                       {t('resultsHeading', { count: flaggedCount })}
                     </span>
                   )}
+                  <a
+                    href={apiUrl(`/api/forensics/tracked/${trackedUrlId}/report`)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="ms-auto inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-slate-900 text-white hover:bg-slate-700 transition-colors"
+                  >
+                    <svg className="w-3 h-3 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3M3 17V7a2 2 0 012-2h6l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
+                    </svg>
+                    {t('downloadPdf')}
+                  </a>
                 </div>
 
                 {/* Diff timeline */}

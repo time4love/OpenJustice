@@ -274,7 +274,8 @@
     "historyBatchStart": "start",
     "historyBatchSnapshots": "{processed}/{total} snapshots",
     "historyJobsLoading": "Loading batches…",
-    "historyJobsError": "Failed to load batches."
+    "historyJobsError": "Failed to load batches.",
+    "downloadPdf": "Download PDF Report"
   },
   "theses": {
     "pageTitle": "Legal Thesis Builder",

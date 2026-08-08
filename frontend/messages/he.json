@@ -274,7 +274,8 @@
     "historyBatchStart": "התחלה",
     "historyBatchSnapshots": "{processed}/{total} תמונות",
     "historyJobsLoading": "טוען אצוות…",
-    "historyJobsError": "טעינת האצוות נכשלה."
+    "historyJobsError": "טעינת האצוות נכשלה.",
+    "downloadPdf": "הורד דוח PDF"
   },
   "theses": {
     "pageTitle": "בונה תזות משפטיות",
