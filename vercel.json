@@ -10,7 +10,8 @@
             "framework": "nextjs"
         },
         "backend": {
-            "root": "backend"
+            "root": "backend",
+            "entrypoint": "dist/server.js"
         }
     },
     "rewrites": [
