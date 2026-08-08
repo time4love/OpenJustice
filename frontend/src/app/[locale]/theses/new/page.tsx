@@ -67,7 +67,7 @@ const evidenceMentionKey = new PluginKey('evidenceMention');
 const EDITOR_PROPS = {
   attributes: {
     class:
-      'prose prose-sm prose-invert max-w-none focus:outline-none min-h-[200px] px-4 py-4 text-slate-200 [&_.mention-pill]:inline-block [&_.mention-pill]:rounded-full [&_.mention-pill]:px-2 [&_.mention-pill]:py-0.5 [&_.mention-pill]:text-xs [&_.mention-pill]:font-medium [&_.mention-figure]:bg-violet-900/60 [&_.mention-figure]:text-violet-300 [&_.mention-evidence]:bg-amber-900/60 [&_.mention-evidence]:text-amber-300',
+      'prose prose-sm max-w-none focus:outline-none min-h-[200px] px-4 py-4 text-slate-800 [&_.mention-pill]:inline-block [&_.mention-pill]:rounded-full [&_.mention-pill]:px-2 [&_.mention-pill]:py-0.5 [&_.mention-pill]:text-xs [&_.mention-pill]:font-medium [&_.mention-figure]:bg-violet-100 [&_.mention-figure]:text-violet-700 [&_.mention-evidence]:bg-amber-100 [&_.mention-evidence]:text-amber-700',
   },
 };
 
@@ -114,25 +114,25 @@ const MentionList = forwardRef<MentionListRef, MentionListProps>(
     if (safeItems.length === 0) return null;
 
     return (
-      <div className="bg-slate-900 border border-slate-700 rounded-lg shadow-2xl overflow-hidden min-w-[220px] max-w-xs">
+      <div className="bg-white border border-slate-200 rounded-lg shadow-lg overflow-hidden min-w-[220px] max-w-xs">
         {safeItems.map((item, index) => (
           <button
             key={item.id}
             onMouseDown={e => { e.preventDefault(); command(item); }}
-            className={`w-full text-start px-3 py-2 text-sm transition-colors border-b border-slate-800 last:border-0 ${
-              index === selectedIndex ? 'bg-slate-700' : 'hover:bg-slate-800'
+            className={`w-full text-start px-3 py-2 text-sm transition-colors border-b border-slate-100 last:border-0 ${
+              index === selectedIndex ? 'bg-slate-100' : 'hover:bg-slate-50'
             }`}
           >
             {char === '@' ? (
-              <span className="text-violet-300 font-medium">
+              <span className="text-violet-700 font-medium">
                 {(item as FigureItem).name}
               </span>
             ) : (
               <div>
-                <div className="text-amber-400 font-medium text-xs">
+                <div className="text-amber-600 font-medium text-xs">
                   {(item as EvidenceItem).category}
                 </div>
-                <div className="text-slate-400 text-xs mt-0.5 truncate">
+                <div className="text-slate-500 text-xs mt-0.5 truncate">
                   {(item as EvidenceItem).summary?.slice(0, 70)}
                 </div>
               </div>
@@ -476,11 +476,11 @@ export default function NewThesisPage() {
 
   if (submitted) {
     return (
-      <div className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center p-6">
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
         <div className="max-w-md text-center space-y-4">
-          <div className="text-5xl text-emerald-400">✓</div>
-          <h2 className="text-2xl font-bold text-white">{t('submittedTitle')}</h2>
-          <p className="text-slate-400">{t('submittedSub')}</p>
+          <div className="text-5xl text-emerald-500">✓</div>
+          <h2 className="text-2xl font-bold text-slate-900">{t('submittedTitle')}</h2>
+          <p className="text-slate-600">{t('submittedSub')}</p>
           <Link
             href="/theses"
             className="inline-block mt-4 px-5 py-2 bg-violet-700 hover:bg-violet-600 rounded-lg text-white text-sm font-medium transition-colors"
@@ -497,7 +497,7 @@ export default function NewThesisPage() {
   // -----------------------------------------------------------------------
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100">
+    <div className="min-h-screen bg-slate-50">
       {/* Suggestion popup portal */}
       {activeSuggestion &&
         createPortal(
@@ -520,23 +520,23 @@ export default function NewThesisPage() {
         )}
 
       {/* Header */}
-      <header className="border-b border-slate-800 bg-slate-900/80 backdrop-blur sticky top-0 z-10">
+      <header className="border-b border-slate-200 bg-white/95 backdrop-blur sticky top-0 z-10 shadow-sm">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between gap-4">
-          <Link href="/theses" className="text-slate-400 hover:text-white text-sm transition-colors">
+          <Link href="/theses" className="text-slate-600 hover:text-slate-900 text-sm transition-colors">
             ← {t('pageTitle')}
           </Link>
-          <span className="text-slate-600 text-xs hidden sm:block">{t('tagline')}</span>
+          <span className="text-slate-400 text-xs hidden sm:block">{t('tagline')}</span>
         </div>
       </header>
 
       <main className="max-w-4xl mx-auto px-4 sm:px-6 py-10 space-y-8">
         {/* Heading */}
         <section>
-          <h1 className="text-2xl font-bold text-white">{t('newThesisHeading')}</h1>
+          <h1 className="text-2xl font-bold text-slate-900">{t('newThesisHeading')}</h1>
         </section>
 
         {/* Thesis card */}
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden divide-y divide-slate-800">
+        <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden divide-y divide-slate-100 shadow-sm">
           {/* Title */}
           <div className="px-5 py-4">
             <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
@@ -547,7 +547,7 @@ export default function NewThesisPage() {
               value={title}
               onChange={e => setTitle(e.target.value)}
               placeholder={t('titlePlaceholder')}
-              className="w-full bg-transparent text-white placeholder-slate-600 text-lg font-semibold focus:outline-none"
+              className="w-full bg-transparent text-slate-900 placeholder-slate-400 text-lg font-semibold focus:outline-none"
             />
           </div>
 
@@ -559,7 +559,7 @@ export default function NewThesisPage() {
               </label>
             </div>
             <EditorContent editor={editor} />
-            <p className="px-5 pb-3 text-xs text-slate-600">{t('contentPlaceholder')}</p>
+            <p className="px-5 pb-3 text-xs text-slate-400">{t('contentPlaceholder')}</p>
           </div>
 
           {/* Author */}
@@ -572,26 +572,26 @@ export default function NewThesisPage() {
               value={authorAddress}
               onChange={e => setAuthorAddress(e.target.value)}
               placeholder={t('authorPlaceholder')}
-              className="w-full bg-transparent text-slate-300 placeholder-slate-600 text-sm font-mono focus:outline-none"
+              className="w-full bg-transparent text-slate-700 placeholder-slate-400 text-sm font-mono focus:outline-none"
             />
           </div>
         </div>
 
         {/* Errors */}
-        {saveError && <p className="text-red-400 text-sm">{saveError}</p>}
+        {saveError && <p className="text-red-600 text-sm">{saveError}</p>}
 
         {/* Actions */}
         <div className="flex flex-wrap items-center gap-3">
           <button
             onClick={saveDraft}
             disabled={saving || !formReady}
-            className="px-4 py-2 bg-slate-700 hover:bg-slate-600 disabled:opacity-40 rounded-lg text-sm font-medium text-slate-200 transition-colors"
+            className="px-4 py-2 bg-slate-100 hover:bg-slate-200 disabled:opacity-40 rounded-lg text-sm font-medium text-slate-700 transition-colors"
           >
             {saving ? t('savingBtn') : t('saveDraftBtn')}
           </button>
 
           {draftSaved && !saving && (
-            <span className="text-emerald-400 text-xs">{t('draftSaved')}</span>
+            <span className="text-emerald-600 text-xs">{t('draftSaved')}</span>
           )}
 
           <button
@@ -606,7 +606,7 @@ export default function NewThesisPage() {
             <button
               onClick={handleSubmit}
               disabled={submitting}
-              className="ms-auto px-4 py-2 bg-emerald-700 hover:bg-emerald-600 disabled:opacity-40 rounded-lg text-sm font-medium text-white transition-colors"
+              className="ms-auto px-4 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 rounded-lg text-sm font-medium text-white transition-colors"
             >
               {submitting ? t('submittingBtn') : t('submitBtn')}
             </button>
@@ -614,87 +614,87 @@ export default function NewThesisPage() {
         </div>
 
         {evalLimitReached && (
-          <div className="bg-amber-950/40 border border-amber-700/40 rounded-xl px-4 py-3 text-amber-300 text-sm">
+          <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-amber-700 text-sm">
             {t('evalLimitWarning')}
           </div>
         )}
 
-        {evalError && <p className="text-red-400 text-sm">{evalError}</p>}
-        {submitError && <p className="text-red-400 text-sm">{submitError}</p>}
+        {evalError && <p className="text-red-600 text-sm">{evalError}</p>}
+        {submitError && <p className="text-red-600 text-sm">{submitError}</p>}
 
         {/* Falsification results */}
         {evaluation && (
           <section id="eval-results" className="space-y-5 pt-2">
-            <h2 className="text-lg font-bold text-white border-b border-slate-800 pb-3">
+            <h2 className="text-lg font-bold text-slate-900 border-b border-slate-200 pb-3">
               {t('evaluationTitle')}
             </h2>
 
             {evaluation.survivingClaims.length > 0 ? (
-              <div className="bg-emerald-950/30 border border-emerald-700/40 rounded-xl p-4 space-y-2">
-                <h3 className="text-xs font-semibold text-emerald-400 uppercase tracking-wide">
+              <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 space-y-2">
+                <h3 className="text-xs font-semibold text-emerald-700 uppercase tracking-wide">
                   {t('survivingClaimsLabel')}
                 </h3>
                 <ul className="space-y-1.5">
                   {evaluation.survivingClaims.map((claim, i) => (
-                    <li key={i} className="text-sm text-emerald-200 flex gap-2">
-                      <span className="text-emerald-500 shrink-0">✓</span>
+                    <li key={i} className="text-sm text-emerald-800 flex gap-2">
+                      <span className="text-emerald-600 shrink-0">✓</span>
                       <span>{claim}</span>
                     </li>
                   ))}
                 </ul>
               </div>
             ) : (
-              <div className="bg-red-950/30 border border-red-800/40 rounded-xl p-4 text-sm text-red-300">
+              <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-700">
                 {t('noSurvivingClaims')}
               </div>
             )}
 
             {evaluation.falsificationAttempts.length > 0 && (
               <div className="space-y-3">
-                <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wide">
+                <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
                   {t('falsificationLabel')}
                 </h3>
                 {evaluation.falsificationAttempts.map((attempt, i) => (
-                  <div key={i} className="bg-slate-900 border border-slate-700 rounded-xl p-4 space-y-3">
+                  <div key={i} className="bg-white border border-slate-200 rounded-xl p-4 space-y-3 shadow-sm">
                     <div>
                       <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
                         {t('claimLabel')}
                       </span>
-                      <p className="text-sm text-white mt-0.5">{attempt.claim}</p>
+                      <p className="text-sm text-slate-900 mt-0.5">{attempt.claim}</p>
                     </div>
                     <div>
-                      <span className="text-xs font-semibold text-red-400 uppercase tracking-wide">
+                      <span className="text-xs font-semibold text-red-600 uppercase tracking-wide">
                         {t('counterArgLabel')}
                       </span>
-                      <p className="text-sm text-red-300 mt-0.5">{attempt.counterArgument}</p>
+                      <p className="text-sm text-red-700 mt-0.5">{attempt.counterArgument}</p>
                     </div>
                     <div>
-                      <span className="text-xs font-semibold text-amber-400 uppercase tracking-wide">
+                      <span className="text-xs font-semibold text-amber-600 uppercase tracking-wide">
                         {t('evidenceGapLabel')}
                       </span>
-                      <p className="text-sm text-amber-300 mt-0.5">{attempt.evidenceGap}</p>
+                      <p className="text-sm text-amber-700 mt-0.5">{attempt.evidenceGap}</p>
                     </div>
                   </div>
                 ))}
               </div>
             )}
 
-            <div className="bg-red-950/30 border border-red-800/40 rounded-xl p-4">
-              <h3 className="text-xs font-semibold text-red-400 uppercase tracking-wide">
+            <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+              <h3 className="text-xs font-semibold text-red-600 uppercase tracking-wide">
                 {t('weakestLinkLabel')}
               </h3>
-              <p className="text-sm text-red-200 mt-1">{evaluation.weakestLink}</p>
+              <p className="text-sm text-red-700 mt-1">{evaluation.weakestLink}</p>
             </div>
 
             {evaluation.recommendedEvidence.length > 0 && (
-              <div className="bg-violet-950/30 border border-violet-800/40 rounded-xl p-4 space-y-2">
-                <h3 className="text-xs font-semibold text-violet-400 uppercase tracking-wide">
+              <div className="bg-violet-50 border border-violet-200 rounded-xl p-4 space-y-2">
+                <h3 className="text-xs font-semibold text-violet-700 uppercase tracking-wide">
                   {t('recommendedEvidenceLabel')}
                 </h3>
                 <ul className="space-y-1.5">
                   {evaluation.recommendedEvidence.map((rec, i) => (
-                    <li key={i} className="text-sm text-violet-200 flex gap-2">
-                      <span className="text-violet-500 shrink-0">→</span>
+                    <li key={i} className="text-sm text-violet-800 flex gap-2">
+                      <span className="text-violet-600 shrink-0">→</span>
                       <span>{rec}</span>
                     </li>
                   ))}
@@ -702,12 +702,12 @@ export default function NewThesisPage() {
               </div>
             )}
 
-            <div className="flex items-center justify-between bg-slate-900 border border-slate-700 rounded-xl p-4 gap-4">
-              <p className="text-sm text-slate-400">{t('submittedSub')}</p>
+            <div className="flex items-center justify-between bg-slate-50 border border-slate-200 rounded-xl p-4 gap-4">
+              <p className="text-sm text-slate-600">{t('submittedSub')}</p>
               <button
                 onClick={handleSubmit}
                 disabled={submitting}
-                className="shrink-0 px-4 py-2 bg-emerald-700 hover:bg-emerald-600 disabled:opacity-40 rounded-lg text-sm font-medium text-white transition-colors"
+                className="shrink-0 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 rounded-lg text-sm font-medium text-white transition-colors"
               >
                 {submitting ? t('submittingBtn') : t('submitBtn')}
               </button>

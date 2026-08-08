@@ -88,7 +88,7 @@ export default function ThesisPage({ params }: { params: Promise<{ id: string }>
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
         <p className="text-slate-500 text-sm">{t('savingBtn')}</p>
       </div>
     );
@@ -96,10 +96,10 @@ export default function ThesisPage({ params }: { params: Promise<{ id: string }>
 
   if (error || !thesis) {
     return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
         <div className="text-center space-y-3">
-          <p className="text-red-400">{t('errorEvaluate')}</p>
-          <Link href="/theses" className="text-slate-400 hover:text-white text-sm transition-colors">
+          <p className="text-red-600">{t('errorEvaluate')}</p>
+          <Link href="/theses" className="text-slate-600 hover:text-slate-900 text-sm transition-colors">
             ← {t('pageTitle')}
           </Link>
         </div>
@@ -114,14 +114,14 @@ export default function ThesisPage({ params }: { params: Promise<{ id: string }>
   // -----------------------------------------------------------------------
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100">
+    <div className="min-h-screen bg-slate-50">
       {/* Header */}
-      <header className="border-b border-slate-800 bg-slate-900/80 backdrop-blur sticky top-0 z-10">
+      <header className="border-b border-slate-200 bg-white/95 backdrop-blur sticky top-0 z-10 shadow-sm">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 h-14 flex items-center gap-4">
-          <Link href="/theses" className="text-slate-400 hover:text-white text-sm transition-colors">
+          <Link href="/theses" className="text-slate-600 hover:text-slate-900 text-sm transition-colors">
             ← {t('pageTitle')}
           </Link>
-          <span className="text-slate-700">·</span>
+          <span className="text-slate-300">·</span>
           <span className="text-slate-500 text-xs">{tc('appName')}</span>
         </div>
       </header>
@@ -132,10 +132,10 @@ export default function ThesisPage({ params }: { params: Promise<{ id: string }>
           <span
             className={`text-xs font-semibold px-3 py-1 rounded-full ${
               thesis.status === 'PUBLISHED'
-                ? 'bg-emerald-900/50 text-emerald-300 border border-emerald-700/50'
+                ? 'bg-emerald-100 text-emerald-700 border border-emerald-300'
                 : thesis.status === 'PENDING_MODERATION'
-                ? 'bg-amber-900/50 text-amber-300 border border-amber-700/50'
-                : 'bg-slate-800 text-slate-400 border border-slate-700'
+                ? 'bg-amber-100 text-amber-700 border border-amber-300'
+                : 'bg-slate-100 text-slate-600 border border-slate-300'
             }`}
           >
             {thesis.status.replace('_', ' ')}
@@ -148,7 +148,7 @@ export default function ThesisPage({ params }: { params: Promise<{ id: string }>
         </div>
 
         {/* Title */}
-        <h1 className="text-3xl font-bold text-white leading-tight">{thesis.title}</h1>
+        <h1 className="text-3xl font-bold text-slate-900 leading-tight">{thesis.title}</h1>
 
         {/* Author */}
         {thesis.authorAddress && (
@@ -156,8 +156,8 @@ export default function ThesisPage({ params }: { params: Promise<{ id: string }>
         )}
 
         {/* Body */}
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
-          <p className="text-slate-200 text-sm leading-relaxed whitespace-pre-wrap">
+        <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
+          <p className="text-slate-700 text-sm leading-relaxed whitespace-pre-wrap">
             {renderContent(thesis.content)}
           </p>
         </div>
@@ -173,7 +173,7 @@ export default function ThesisPage({ params }: { params: Promise<{ id: string }>
                 <Link
                   key={f.id}
                   href={`/figures?id=${f.id}`}
-                  className="bg-violet-900/50 hover:bg-violet-800/60 text-violet-300 text-xs px-3 py-1 rounded-full transition-colors"
+                  className="bg-violet-100 hover:bg-violet-200 text-violet-700 text-xs px-3 py-1 rounded-full transition-colors"
                 >
                   @{f.name}
                 </Link>
@@ -192,14 +192,14 @@ export default function ThesisPage({ params }: { params: Promise<{ id: string }>
               {thesis.taggedEvidence.map(ev => (
                 <div
                   key={ev.id}
-                  className="bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 flex gap-3 items-start"
+                  className="bg-white border border-slate-200 rounded-xl px-4 py-3 flex gap-3 items-start shadow-sm"
                 >
-                  <span className="bg-amber-900/50 text-amber-300 text-xs px-2 py-0.5 rounded-full shrink-0">
+                  <span className="bg-amber-100 text-amber-700 text-xs px-2 py-0.5 rounded-full shrink-0">
                     {ev.category}
                   </span>
                   <div className="min-w-0">
-                    <p className="text-sm text-slate-300 truncate">{ev.summary}</p>
-                    <p className="text-xs text-slate-600 mt-0.5">{ev.evidenceDate}</p>
+                    <p className="text-sm text-slate-700 truncate">{ev.summary}</p>
+                    <p className="text-xs text-slate-400 mt-0.5">{ev.evidenceDate}</p>
                   </div>
                 </div>
               ))}
@@ -209,26 +209,26 @@ export default function ThesisPage({ params }: { params: Promise<{ id: string }>
 
         {/* AI Falsification results */}
         {evaluation && (
-          <section className="space-y-5 pt-4 border-t border-slate-800">
-            <h2 className="text-lg font-bold text-white">{t('evaluationTitle')}</h2>
+          <section className="space-y-5 pt-4 border-t border-slate-200">
+            <h2 className="text-lg font-bold text-slate-900">{t('evaluationTitle')}</h2>
 
             {/* Surviving claims */}
             {evaluation.survivingClaims.length > 0 ? (
-              <div className="bg-emerald-950/30 border border-emerald-700/40 rounded-xl p-4 space-y-2">
-                <h3 className="text-xs font-semibold text-emerald-400 uppercase tracking-wide">
+              <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 space-y-2">
+                <h3 className="text-xs font-semibold text-emerald-700 uppercase tracking-wide">
                   {t('survivingClaimsLabel')}
                 </h3>
                 <ul className="space-y-1.5">
                   {evaluation.survivingClaims.map((claim, i) => (
-                    <li key={i} className="text-sm text-emerald-200 flex gap-2">
-                      <span className="text-emerald-500 shrink-0">✓</span>
+                    <li key={i} className="text-sm text-emerald-800 flex gap-2">
+                      <span className="text-emerald-600 shrink-0">✓</span>
                       <span>{claim}</span>
                     </li>
                   ))}
                 </ul>
               </div>
             ) : (
-              <div className="bg-red-950/30 border border-red-800/40 rounded-xl p-4 text-sm text-red-300">
+              <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-700">
                 {t('noSurvivingClaims')}
               </div>
             )}
@@ -236,31 +236,31 @@ export default function ThesisPage({ params }: { params: Promise<{ id: string }>
             {/* Falsification attempts */}
             {evaluation.falsificationAttempts.length > 0 && (
               <div className="space-y-3">
-                <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wide">
+                <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
                   {t('falsificationLabel')}
                 </h3>
                 {evaluation.falsificationAttempts.map((attempt, i) => (
                   <div
                     key={i}
-                    className="bg-slate-900 border border-slate-700 rounded-xl p-4 space-y-3"
+                    className="bg-white border border-slate-200 rounded-xl p-4 space-y-3 shadow-sm"
                   >
                     <div>
                       <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
                         {t('claimLabel')}
                       </span>
-                      <p className="text-sm text-white mt-0.5">{attempt.claim}</p>
+                      <p className="text-sm text-slate-900 mt-0.5">{attempt.claim}</p>
                     </div>
                     <div>
-                      <span className="text-xs font-semibold text-red-400 uppercase tracking-wide">
+                      <span className="text-xs font-semibold text-red-600 uppercase tracking-wide">
                         {t('counterArgLabel')}
                       </span>
-                      <p className="text-sm text-red-300 mt-0.5">{attempt.counterArgument}</p>
+                      <p className="text-sm text-red-700 mt-0.5">{attempt.counterArgument}</p>
                     </div>
                     <div>
-                      <span className="text-xs font-semibold text-amber-400 uppercase tracking-wide">
+                      <span className="text-xs font-semibold text-amber-600 uppercase tracking-wide">
                         {t('evidenceGapLabel')}
                       </span>
-                      <p className="text-sm text-amber-300 mt-0.5">{attempt.evidenceGap}</p>
+                      <p className="text-sm text-amber-700 mt-0.5">{attempt.evidenceGap}</p>
                     </div>
                   </div>
                 ))}
@@ -268,23 +268,23 @@ export default function ThesisPage({ params }: { params: Promise<{ id: string }>
             )}
 
             {/* Weakest link */}
-            <div className="bg-red-950/30 border border-red-800/40 rounded-xl p-4">
-              <h3 className="text-xs font-semibold text-red-400 uppercase tracking-wide">
+            <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+              <h3 className="text-xs font-semibold text-red-600 uppercase tracking-wide">
                 {t('weakestLinkLabel')}
               </h3>
-              <p className="text-sm text-red-200 mt-1">{evaluation.weakestLink}</p>
+              <p className="text-sm text-red-700 mt-1">{evaluation.weakestLink}</p>
             </div>
 
             {/* Recommended evidence */}
             {evaluation.recommendedEvidence.length > 0 && (
-              <div className="bg-violet-950/30 border border-violet-800/40 rounded-xl p-4 space-y-2">
-                <h3 className="text-xs font-semibold text-violet-400 uppercase tracking-wide">
+              <div className="bg-violet-50 border border-violet-200 rounded-xl p-4 space-y-2">
+                <h3 className="text-xs font-semibold text-violet-700 uppercase tracking-wide">
                   {t('recommendedEvidenceLabel')}
                 </h3>
                 <ul className="space-y-1.5">
                   {evaluation.recommendedEvidence.map((rec, i) => (
-                    <li key={i} className="text-sm text-violet-200 flex gap-2">
-                      <span className="text-violet-500 shrink-0">→</span>
+                    <li key={i} className="text-sm text-violet-800 flex gap-2">
+                      <span className="text-violet-600 shrink-0">→</span>
                       <span>{rec}</span>
                     </li>
                   ))}

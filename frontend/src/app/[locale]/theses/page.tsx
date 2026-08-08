@@ -55,38 +55,38 @@ export default function ThesesPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100">
+    <div className="min-h-screen bg-slate-50">
       {/* Header */}
-      <header className="border-b border-slate-800 bg-slate-900/80 backdrop-blur sticky top-0 z-10">
+      <header className="border-b border-slate-200 bg-white/95 backdrop-blur sticky top-0 z-10 shadow-sm">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 h-14 flex items-center gap-4">
-          <Link href="/" className="text-slate-400 hover:text-white text-sm font-medium transition-colors">
+          <Link href="/" className="text-slate-600 hover:text-slate-900 text-sm font-medium transition-colors">
             {tc('appName')}
           </Link>
-          <span className="text-slate-700">·</span>
-          <span className="text-white text-sm font-medium">{t('pageTitle')}</span>
+          <span className="text-slate-300">·</span>
+          <span className="text-slate-900 text-sm font-medium">{t('pageTitle')}</span>
 
           <div className="ms-auto flex items-center gap-4">
             <nav className="hidden sm:flex items-center gap-4 text-sm">
-              <Link href="/timeline" className="text-slate-400 hover:text-white transition-colors">
+              <Link href="/timeline" className="text-slate-600 hover:text-slate-900 transition-colors">
                 {tc('nav.timeline')}
               </Link>
-              <Link href="/forensics" className="text-slate-400 hover:text-white transition-colors">
+              <Link href="/forensics" className="text-slate-600 hover:text-slate-900 transition-colors">
                 {tc('nav.forensics')}
               </Link>
-              <Link href="/figures" className="text-slate-400 hover:text-white transition-colors">
+              <Link href="/figures" className="text-slate-600 hover:text-slate-900 transition-colors">
                 {tc('nav.figures')}
               </Link>
             </nav>
             <div className="flex items-center gap-1 text-xs">
               <button
                 onClick={() => switchLocale('he')}
-                className={`px-2 py-0.5 rounded ${locale === 'he' ? 'bg-slate-700 text-white' : 'text-slate-500 hover:text-white'}`}
+                className={`px-2 py-0.5 rounded ${locale === 'he' ? 'bg-slate-200 text-slate-900' : 'text-slate-500 hover:text-slate-900'}`}
               >
                 HE
               </button>
               <button
                 onClick={() => switchLocale('en')}
-                className={`px-2 py-0.5 rounded ${locale === 'en' ? 'bg-slate-700 text-white' : 'text-slate-500 hover:text-white'}`}
+                className={`px-2 py-0.5 rounded ${locale === 'en' ? 'bg-slate-200 text-slate-900' : 'text-slate-500 hover:text-slate-900'}`}
               >
                 EN
               </button>
@@ -99,7 +99,7 @@ export default function ThesesPage() {
         {/* Title row */}
         <div className="flex items-center justify-between mb-8 gap-4">
           <div>
-            <h1 className="text-2xl font-bold text-white">{t('pageTitle')}</h1>
+            <h1 className="text-2xl font-bold text-slate-900">{t('pageTitle')}</h1>
             <p className="text-slate-500 text-sm mt-1">{t('tagline')}</p>
           </div>
           <Link
@@ -116,12 +116,12 @@ export default function ThesesPage() {
         )}
 
         {error && (
-          <div className="text-red-400 text-sm">{t('errorSave')}</div>
+          <div className="text-red-600 text-sm">{t('errorSave')}</div>
         )}
 
         {!loading && !error && theses.length === 0 && (
           <div className="text-center py-24 space-y-3">
-            <p className="text-slate-400 text-lg">{t('noSurvivingClaims')}</p>
+            <p className="text-slate-500 text-lg">{t('noSurvivingClaims')}</p>
             <Link
               href="/theses/new"
               className="inline-block px-4 py-2 bg-violet-700 hover:bg-violet-600 rounded-lg text-sm font-medium text-white transition-colors"
@@ -138,9 +138,9 @@ export default function ThesesPage() {
               <Link
                 key={thesis.id}
                 href={`/theses/${thesis.id}`}
-                className="block bg-slate-900 border border-slate-800 hover:border-slate-600 rounded-2xl p-5 transition-colors group"
+                className="block bg-white border border-slate-200 hover:border-slate-400 rounded-2xl p-5 transition-colors group shadow-sm"
               >
-                <h2 className="text-lg font-semibold text-white group-hover:text-violet-300 transition-colors">
+                <h2 className="text-lg font-semibold text-slate-900 group-hover:text-violet-700 transition-colors">
                   {thesis.title}
                 </h2>
 
@@ -153,16 +153,16 @@ export default function ThesesPage() {
                       {new Date(thesis.publishedAt).toLocaleDateString(locale === 'he' ? 'he-IL' : 'en-US')}
                     </span>
                   )}
-                  <span className="text-slate-600">·</span>
+                  <span className="text-slate-300">·</span>
                   <span>{t('evidenceSuggestion')}: {thesis.evidenceCount}</span>
                   {thesis.taggedFigures.length > 0 && (
                     <>
-                      <span className="text-slate-600">·</span>
+                      <span className="text-slate-300">·</span>
                       <span className="flex gap-1 flex-wrap">
                         {thesis.taggedFigures.slice(0, 3).map(f => (
                           <span
                             key={f.id}
-                            className="bg-violet-900/50 text-violet-300 px-2 py-0.5 rounded-full"
+                            className="bg-violet-100 text-violet-700 px-2 py-0.5 rounded-full"
                           >
                             @{f.name}
                           </span>
