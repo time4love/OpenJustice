@@ -8,7 +8,8 @@
       "submitEvidence": "+ Submit Evidence",
       "about": "About",
       "forensics": "Forensics",
-      "figures": "Figures"
+      "figures": "Figures",
+      "theses": "Theses"
     }
   },
   "dashboard": {
@@ -274,6 +275,42 @@
     "historyBatchSnapshots": "{processed}/{total} snapshots",
     "historyJobsLoading": "Loading batches…",
     "historyJobsError": "Failed to load batches."
+  },
+  "theses": {
+    "pageTitle": "Legal Thesis Builder",
+    "tagline": "Write · Tag Evidence · Stress-Test with AI",
+    "newThesisHeading": "New Thesis",
+    "titleLabel": "Thesis Title",
+    "titlePlaceholder": "e.g. Concealment of Side-Effect Data by the Ministry of Health",
+    "contentLabel": "Thesis Body",
+    "contentPlaceholder": "Write your argument here. Use @ to tag key figures and # to tag evidence from the vault.",
+    "authorLabel": "Wallet Address (accountability)",
+    "authorPlaceholder": "0x…",
+    "saveDraftBtn": "Save Draft",
+    "savingBtn": "Saving…",
+    "draftSaved": "Draft saved",
+    "evaluateBtn": "Run Falsification Check",
+    "evaluatingBtn": "Checking…",
+    "submitBtn": "Submit for Review",
+    "submittingBtn": "Submitting…",
+    "submittedTitle": "Thesis submitted for moderation",
+    "submittedSub": "Moderators will review and publish if it meets the criteria.",
+    "evaluationTitle": "Falsification Check Results",
+    "survivingClaimsLabel": "Claims that survived scrutiny",
+    "falsificationLabel": "Falsification attempts",
+    "weakestLinkLabel": "Weakest link",
+    "recommendedEvidenceLabel": "Recommended evidence to strengthen",
+    "claimLabel": "Claim",
+    "counterArgLabel": "Counter-argument",
+    "evidenceGapLabel": "Evidence gap",
+    "noSurvivingClaims": "No claims survived scrutiny — all claims need stronger evidentiary support.",
+    "evalLimitWarning": "You have reached the evaluation limit for this thesis.",
+    "requiresEvaluation": "Run the falsification check before submitting.",
+    "errorSave": "Save failed. Please try again.",
+    "errorEvaluate": "Evaluation failed. Please try again.",
+    "errorSubmit": "Submission failed. Please try again.",
+    "figureSuggestion": "Key Figures",
+    "evidenceSuggestion": "Evidence"
   },
   "chat": {
     "greeting": "Hello, I am the Glass Fortress Trust Agent. How can I help you understand our system's security?",

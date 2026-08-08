@@ -93,6 +93,7 @@ model KeyFigure {
   name      String     @unique
   createdAt DateTime   @default(now())
   evidence  Evidence[]
+  theses    Thesis[]   @relation("ThesisFigures")
 }
 
 model Whistleblower {
@@ -127,4 +128,30 @@ model Evidence {
   urlVersionDiffId    String?
   urlVersionDiff      UrlVersionDiff? @relation(fields: [urlVersionDiffId], references: [id])
   createdAt           DateTime @default(now())
+  theses              Thesis[] @relation("ThesisEvidence")
+}
+
+enum ThesisStatus {
+  DRAFT
+  AI_REVIEWED
+  PENDING_MODERATION
+  PUBLISHED
+  REJECTED
+}
+
+// A crowdsourced legal thesis — anchors claims to specific evidence records
+// and key figures. AI acts as devil's advocate (falsification, not scoring)
+// before a human moderator approves publication.
+model Thesis {
+  id            String        @id @default(cuid())
+  title         String
+  content       String        // TipTap JSON (stringified)
+  status        ThesisStatus  @default(DRAFT)
+  aiFeedback    String?       // JSON: FalsificationResult (stringified)
+  authorAddress String        // submitter wallet address (accountability)
+  publishedAt   DateTime?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  taggedEvidence Evidence[]   @relation("ThesisEvidence")
+  taggedFigures  KeyFigure[]  @relation("ThesisFigures")
 }

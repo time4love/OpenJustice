@@ -30,3 +30,8 @@ Above all else, code must be clean and written to the highest standards:
 - After completing a phase/task, ask if the Task Tracker in MEMORY.md should be updated.
 - Do not commit unless explicitly asked.
 - Do not push unless explicitly asked.
+
+## npm Installs (Frontend)
+The global `~/.npmrc` routes all npm traffic through Wix's internal registry (`npm.dev.wixpress.com`), which requires Wix VPN. Direct access to `registry.npmjs.org` is also blocked by the corporate firewall (EBADF).
+- **On VPN:** `npm install <pkg>` works as-is — Wix registry proxies public npm.
+- **Off VPN:** Both registries fail. Cannot install packages without VPN.

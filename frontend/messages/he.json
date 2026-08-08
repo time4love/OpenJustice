@@ -8,7 +8,8 @@
       "submitEvidence": "+ הגש ראיה",
       "about": "אודות",
       "forensics": "פורנזיקה",
-      "figures": "דמויות"
+      "figures": "דמויות",
+      "theses": "תזות"
     }
   },
   "dashboard": {
@@ -274,6 +275,42 @@
     "historyBatchSnapshots": "{processed}/{total} תמונות",
     "historyJobsLoading": "טוען אצוות…",
     "historyJobsError": "טעינת האצוות נכשלה."
+  },
+  "theses": {
+    "pageTitle": "בונה תזות משפטיות",
+    "tagline": "כתיבה · תיוג ראיות · בדיקת ביקורת שתדים",
+    "newThesisHeading": "תזה חדשה",
+    "titleLabel": "כותרת התזה",
+    "titlePlaceholder": "לדוגמה: הסתרת נתוני תופעות לוואי על ידי משרד הבריאות",
+    "contentLabel": "גוף התזה",
+    "contentPlaceholder": "כתוב את הטיעון שלך כאן. השתמש ב-@ לתיוג דמויות מפתח ו-# לתיוג ראיות מהכספת.",
+    "authorLabel": "כתובת ארנק (אחריות)",
+    "authorPlaceholder": "0x…",
+    "saveDraftBtn": "שמור טיוטה",
+    "savingBtn": "שומר…",
+    "draftSaved": "הטיוטה נשמרה",
+    "evaluateBtn": "בדיקת ביקורת שתדים",
+    "evaluatingBtn": "בודק…",
+    "submitBtn": "שלח לאישור",
+    "submittingBtn": "שולח…",
+    "submittedTitle": "התזה נשלחה לאישור",
+    "submittedSub": "צוות האחראים יבדוק ויפרסם אם עומדת בקריטריונים.",
+    "evaluationTitle": "ניתוח ביקורת שתדים",
+    "survivingClaimsLabel": "טענות שעמדו בביקורת",
+    "falsificationLabel": "ניסיונות הפרכה",
+    "weakestLinkLabel": "החוליה החלשה ביותר",
+    "recommendedEvidenceLabel": "ראיות מומלצות לחיזוק",
+    "claimLabel": "טענה",
+    "counterArgLabel": "טיעון נגדי",
+    "evidenceGapLabel": "פער ראייתי",
+    "noSurvivingClaims": "אין טענות שעמדו בביקורת — כל הטענות דורשות חיזוק ראייתי.",
+    "evalLimitWarning": "הגעת למגבלת הבדיקות לתזה זו.",
+    "requiresEvaluation": "יש להריץ בדיקת ביקורת שתדים לפני שליחה.",
+    "errorSave": "שמירה נכשלה. נסה שוב.",
+    "errorEvaluate": "הבדיקה נכשלה. נסה שוב.",
+    "errorSubmit": "השליחה נכשלה. נסה שוב.",
+    "figureSuggestion": "דמויות מפתח",
+    "evidenceSuggestion": "ראיות"
   },
   "chat": {
     "greeting": "שלום, אני נציג האמון של פרויקט מבצר הזכוכית. כיצד אוכל לעזור לך להבין את אבטחת המערכת שלנו?",

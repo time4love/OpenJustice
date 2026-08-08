@@ -210,11 +210,11 @@ User writes thesis in TipTap
 
 ## Status
 
-- [ ] Task 20.1 — Prisma schema + migration
-- [ ] Task 20.2 — Mention endpoints + tests
-- [ ] Task 20.3 — ThesisValidatorAgent + tests
-- [ ] Task 20.4 — Thesis CRUD + evaluate API + tests
-- [ ] Task 20.5 — TipTap dependencies installed
-- [ ] Task 20.6 — New thesis editor page
-- [ ] Task 20.7 — Theses feed page
-- [ ] Task 20.8 — Full test suite green
+- [x] Task 20.1 — Prisma schema + migration
+- [x] Task 20.2 — Mention endpoints + tests
+- [x] Task 20.3 — ThesisValidatorAgent + tests
+- [x] Task 20.4 — Thesis CRUD + evaluate API + tests
+- [x] Task 20.5 — TipTap dependencies installed
+- [x] Task 20.6 — New thesis editor page
+- [x] Task 20.7 — Theses feed page
+- [ ] Task 20.8 — Full test suite green (188/188 backend; frontend has no unit tests)
