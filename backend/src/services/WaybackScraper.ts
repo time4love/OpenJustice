@@ -120,6 +120,37 @@ function timestampToDate(ts: string): string {
 }
 
 /**
+ * Convert an HTML string to plain text with structural line breaks preserved.
+ *
+ * Readability's .content is clean article HTML. Using .textContent instead
+ * smashes adjacent words together when they are separated only by tags
+ * (e.g. <p>word.</p><p>Word</p> → "word.Word"). This function inserts
+ * newlines at block boundaries so diffLines produces surgical, line-level
+ * diffs rather than one massive changed block per page.
+ */
+function htmlToText(html: string): string {
+  return html
+    // Block-level endings → paragraph break
+    .replace(/<\/(?:p|h[1-6]|blockquote|pre|table|tr|ul|ol|dl)>/gi, '\n\n')
+    // Inline block endings / single-line elements → line break
+    .replace(/<\/(?:div|li|td|th|dt|dd|section|article|header|footer|nav|main|figure|figcaption)>/gi, '\n')
+    .replace(/<br\s*\/?>/gi, '\n')
+    // List items get a bullet prefix
+    .replace(/<li[^>]*>/gi, '• ')
+    // Strip all remaining tags
+    .replace(/<[^>]*>/g, '')
+    // Decode common HTML entities
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#(?:x27|39);/gi, "'")
+    .replace(/&#x2019;/gi, '\u2019')
+    .replace(/&#x201[89];/gi, '\u201c');
+}
+
+/**
  * Normalise extracted text so trivial whitespace differences don't pollute the
  * diff with meaningless changes.
  */
@@ -127,6 +158,7 @@ function normaliseText(text: string): string {
   return text
     .replace(/\r\n/g, '\n')
     .replace(/[ \t]+/g, ' ')
+    .replace(/\n /g, '\n')   // strip leading spaces after newlines
     .replace(/\n{3,}/g, '\n\n')
     .trim();
 }
@@ -321,12 +353,15 @@ export class WaybackScraper {
     const reader = new Readability(dom.window.document);
     const article = reader.parse();
 
-    if (!article?.textContent?.trim()) {
-      const bodyText = dom.window.document.body?.textContent ?? '';
-      return normaliseText(bodyText);
+    // Prefer article.content (clean HTML from Readability) so htmlToText can
+    // insert proper line breaks. article.textContent smashes words together.
+    if (article?.content?.trim()) {
+      return normaliseText(htmlToText(article.content));
     }
 
-    return normaliseText(article.textContent);
+    // Fallback: convert full body HTML if Readability found nothing
+    const bodyHtml = dom.window.document.body?.innerHTML ?? '';
+    return normaliseText(htmlToText(bodyHtml));
   }
 
   /**

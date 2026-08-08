@@ -17,8 +17,10 @@ jest.mock('jsdom', () => ({
   })),
 }));
 
-// Readability mock — returns the document's body.textContent so each call
-// returns the content of the specific HTML that was fetched (enabling real diffs)
+// Readability mock — returns both content (HTML) and textContent so each call
+// reflects the specific HTML that was fetched, enabling real diffs in tests.
+// content is returned as a <p>-wrapped version so htmlToText exercises the
+// block-element newline insertion path.
 jest.mock('@mozilla/readability', () => ({
   Readability: jest
     .fn()
@@ -26,6 +28,7 @@ jest.mock('@mozilla/readability', () => ({
       parse: jest.fn().mockReturnValue({
         title: 'Mock Title',
         textContent: doc.body?.textContent ?? '',
+        content: `<p>${doc.body?.textContent ?? ''}</p>`,
       }),
     })),
 }));
