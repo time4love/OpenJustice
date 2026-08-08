@@ -4,8 +4,8 @@
   "description": "",
   "main": "dist/server.js",
   "scripts": {
-    "dev": "ts-node-dev --respawn --transpile-only --ignore-watch node_modules --ignore-watch dist --ignore-watch prisma src/server.ts",
-    "build": "tsc --project tsconfig.json",
+    "dev": "prisma generate && ts-node-dev --respawn --transpile-only --ignore-watch node_modules --ignore-watch dist --ignore-watch prisma src/server.ts",
+    "build": "prisma generate && tsc --project tsconfig.json",
     "start": "node dist/server.js",
     "lint": "eslint src/",
     "lint:fix": "eslint src/ --fix",
