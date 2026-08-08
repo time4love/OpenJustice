@@ -383,6 +383,7 @@ function HistoryEntry({
   item,
   labels,
   onDeleted,
+  onResume,
 }: {
   item: TrackedUrlItem;
   labels: {
@@ -401,8 +402,10 @@ function HistoryEntry({
     batchSnapshots: (p: number, t: number) => string;
     jobsLoading: string;
     jobsError: string;
+    resumeBtn: string;
   };
   onDeleted: (id: string) => void;
+  onResume: (item: TrackedUrlItem) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [jobs, setJobs] = useState<ScrapeJob[] | null>(null);
@@ -480,6 +483,14 @@ function HistoryEntry({
 
         {/* Actions */}
         <div className="flex items-center gap-2 shrink-0">
+          {(item.status === 'PAUSED' || item.status === 'SCANNING') && (
+            <button
+              onClick={() => onResume(item)}
+              className="px-3 py-1 rounded-lg text-xs font-medium bg-amber-500 text-white hover:bg-amber-600 transition-colors"
+            >
+              {labels.resumeBtn}
+            </button>
+          )}
           <Link
             href={`/forensics/${item.id}`}
             className="px-3 py-1 rounded-lg text-xs font-medium bg-slate-900 text-white hover:bg-slate-700 transition-colors"
@@ -744,6 +755,26 @@ export default function ForensicsPage() {
     }
   }
 
+  async function handleResumeFromHistory(item: TrackedUrlItem) {
+    setUrl(item.url);
+    trackedUrlIdRef.current = item.id;
+    setResuming(true);
+    setStalled(false);
+    setPausing(false);
+    lastUpdateTimeRef.current = Date.now();
+    setPhase('polling');
+    try {
+      void fetch(apiUrl('/api/forensics/scan'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: item.url }),
+      });
+      if (!pollIntervalRef.current) startPolling(item.id);
+    } finally {
+      setResuming(false);
+    }
+  }
+
   const scanning = phase === 'creating' || phase === 'polling' || phase === 'fetching';
 
   const diffLabels = {
@@ -843,8 +874,10 @@ export default function ForensicsPage() {
                     batchSnapshots: (processed, total) => t('historyBatchSnapshots', { processed, total }),
                     jobsLoading: t('historyJobsLoading'),
                     jobsError: t('historyJobsError'),
+                    resumeBtn: t('resumeBtn'),
                   }}
                   onDeleted={(id) => setHistory((prev) => prev.filter((h) => h.id !== id))}
+                  onResume={(item) => { void handleResumeFromHistory(item); }}
                 />
               ))}
             </ul>
