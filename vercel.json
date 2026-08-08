@@ -1,4 +1,9 @@
 {
+    "functions": {
+        "**/*": {
+            "maxDuration": 60
+        }
+    },
     "services": {
         "frontend": {
             "root": "frontend",
