@@ -123,15 +123,17 @@ const MOCK_HTML_CHANGED = `
 
 const SIGNIFICANT_FORENSIC_OUTPUT = {
   isLegallySignificant: true,
-  deletedClaims: ['הובטח כי תופעות הלוואי קלות וזמניות בלבד'],
-  addedClaims: [],
+  deletedItems: [
+    { summary: 'הובטח כי תופעות הלוואי קלות וזמניות בלבד', exactQuote: 'Side effects are mild and temporary.' },
+  ],
+  addedItems: [],
   legalSignificance: 'האזהרה בדבר תופעות לוואי נמחקה, וניסוח אישור החירום שונה לאישור מלא ממה שהוא בפועל.',
 };
 
 const COSMETIC_FORENSIC_OUTPUT = {
   isLegallySignificant: false,
-  deletedClaims: [],
-  addedClaims: [],
+  deletedItems: [],
+  addedItems: [],
   legalSignificance: '',
 };
 
@@ -361,7 +363,7 @@ describe('WaybackScraper.analyzePageHistory', () => {
     const { diffs } = await scraper.analyzePageHistory('https://health.gov.il/page');
 
     expect(diffs).toHaveLength(1);
-    expect(diffs[0].deletedClaims).toContain('הובטח כי תופעות הלוואי קלות וזמניות בלבד');
+    expect(diffs[0].deletedItems[0].summary).toBe('הובטח כי תופעות הלוואי קלות וזמניות בלבד');
     expect(diffs[0].legalSignificance).toContain('האזהרה');
   }, TEST_TIMEOUT);
 

@@ -18,6 +18,22 @@ export interface RelatedEvidenceContext {
 // Output schema
 // ---------------------------------------------------------------------------
 
+const DiffItemSchema = z.object({
+  summary: z
+    .string()
+    .describe(
+      'A concise 1-sentence forensic label in highly professional Hebrew describing this specific change.',
+    ),
+  exactQuote: z
+    .string()
+    .describe(
+      'The EXACT verbatim text from the diff input that this summary describes. ' +
+        'Copy it character-for-character — do not paraphrase, shorten, or reconstruct.',
+    ),
+});
+
+export type DiffItem = z.infer<typeof DiffItemSchema>;
+
 export const ForensicOutputSchema = z.object({
   isLegallySignificant: z
     .boolean()
@@ -28,20 +44,20 @@ export const ForensicOutputSchema = z.object({
         'language tweaks with no change in meaning, or completely unrelated page sections.',
     ),
 
-  deletedClaims: z
-    .array(z.string())
+  deletedItems: z
+    .array(DiffItemSchema)
     .describe(
-      'One item per substantive DELETION. Write each item in highly professional Hebrew as a ' +
-        'concise factual statement of what was removed (e.g., "הובטח כי החיסון יישאר בגוף לפחות 3 חודשים"). ' +
+      'One object per substantive DELETION. For each deleted chunk: write a Hebrew summary AND ' +
+        'copy the exact verbatim text from the diff that was removed. ' +
         'Always populate this array with the actual text changes — even for cosmetic diffs. ' +
         'Return an empty array only if there were literally no deletions in the diff.',
     ),
 
-  addedClaims: z
-    .array(z.string())
+  addedItems: z
+    .array(DiffItemSchema)
     .describe(
-      'One item per substantive ADDITION. Write each item in highly professional Hebrew as a ' +
-        'concise factual statement of what was newly introduced (e.g., "נוספה הוראה המחייבת עובדים לקבל חיסון"). ' +
+      'One object per substantive ADDITION. For each added chunk: write a Hebrew summary AND ' +
+        'copy the exact verbatim text from the diff that was introduced. ' +
         'Always populate this array with the actual text changes — even for cosmetic diffs. ' +
         'Return an empty array only if there were literally no additions in the diff.',
     ),
@@ -100,7 +116,8 @@ LEGAL SIGNIFICANCE CRITERIA:
 IMPORTANT: Err on the side of significance. A deleted safety promise that seems minor may be the most critical piece of evidence in a class-action. When in doubt about a biological/medical claim being removed, flag it as significant.
 
 LANGUAGE RULES:
-- deletedClaims and addedClaims: concise factual statements in highly professional Hebrew
+- deletedItems[].summary and addedItems[].summary: concise 1-sentence factual statements in highly professional Hebrew
+- deletedItems[].exactQuote and addedItems[].exactQuote: verbatim copy of the diff text — no Hebrew, no paraphrasing
 - legalSignificance: 2-4 sharp, forensic sentences in highly professional Hebrew
 - isLegallySignificant: boolean (strict binary — do not hedge)
 

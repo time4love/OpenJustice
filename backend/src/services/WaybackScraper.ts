@@ -2,7 +2,7 @@ import axios from 'axios';
 import { JSDOM } from 'jsdom';
 import { Readability } from '@mozilla/readability';
 import { diffLines } from 'diff';
-import { ForensicAgent, type RelatedEvidenceContext } from './ForensicAgent';
+import { ForensicAgent, type DiffItem, type RelatedEvidenceContext } from './ForensicAgent';
 import { prisma } from '../lib/prisma';
 
 // ---------------------------------------------------------------------------
@@ -20,10 +20,10 @@ export interface SnapshotDiff {
   date: string;
   /** Direct link to this snapshot in the Wayback Machine viewer */
   snapshotUrl: string;
-  /** Substantive claims deleted vs. the previous snapshot (Hebrew summaries) */
-  deletedClaims: string[];
-  /** Substantive claims added vs. the previous snapshot (Hebrew summaries) */
-  addedClaims: string[];
+  /** Substantive items deleted vs. the previous snapshot — coupled Hebrew summary + verbatim quote */
+  deletedItems: DiffItem[];
+  /** Substantive items added vs. the previous snapshot — coupled Hebrew summary + verbatim quote */
+  addedItems: DiffItem[];
   /** AI forensic explanation cross-referencing correlated DB evidence (Hebrew) */
   legalSignificance: string;
 }
@@ -506,8 +506,8 @@ export class WaybackScraper {
             beforeDate,
             afterDate,
             snapshotUrl,
-            deletedText: JSON.stringify(analysis.deletedClaims),
-            addedText: JSON.stringify(analysis.addedClaims),
+            deletedText: JSON.stringify(analysis.deletedItems),
+            addedText: JSON.stringify(analysis.addedItems),
             rawDeletedText: JSON.stringify(deletions),
             rawAddedText: JSON.stringify(additions),
             aiSignificance: analysis.legalSignificance,
@@ -522,8 +522,8 @@ export class WaybackScraper {
             beforeDate,
             date: afterDate,
             snapshotUrl,
-            deletedClaims: analysis.deletedClaims,
-            addedClaims: analysis.addedClaims,
+            deletedItems: analysis.deletedItems,
+            addedItems: analysis.addedItems,
             legalSignificance: analysis.legalSignificance,
           });
         }
@@ -765,8 +765,8 @@ export class WaybackScraper {
                 beforeDate,
                 afterDate,
                 snapshotUrl,
-                deletedText: JSON.stringify(analysis.deletedClaims),
-                addedText: JSON.stringify(analysis.addedClaims),
+                deletedText: JSON.stringify(analysis.deletedItems),
+                addedText: JSON.stringify(analysis.addedItems),
                 rawDeletedText: JSON.stringify(deletions),
                 rawAddedText: JSON.stringify(additions),
                 aiSignificance: analysis.legalSignificance,

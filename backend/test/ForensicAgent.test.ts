@@ -25,19 +25,21 @@ function getMockInvoke(agent: ForensicAgent): jest.Mock {
 
 const SIGNIFICANT_RESPONSE = {
   isLegallySignificant: true,
-  deletedClaims: [
-    'הובטח כי תופעות הלוואי קלות וזמניות בלבד',
-    'ניסוח "אישור שימוש חירום" הוסר מהדף',
+  deletedItems: [
+    { summary: 'הובטח כי תופעות הלוואי קלות וזמניות בלבד', exactQuote: 'Side effects are mild and temporary.' },
+    { summary: 'ניסוח "אישור שימוש חירום" הוסר מהדף', exactQuote: 'Emergency Use Authorization approved.' },
   ],
-  addedClaims: ['נוספה הוראה המחייבת עובדים לקבל חיסון'],
+  addedItems: [
+    { summary: 'נוספה הוראה המחייבת עובדים לקבל חיסון', exactQuote: 'All employees must be vaccinated.' },
+  ],
   legalSignificance:
     'הסרת האזהרה בדבר תופעות לוואי נעשתה 18 יום לאחר שדו"ח פנימי הדגיש סיכונים קרדיולוגיים.',
 };
 
 const COSMETIC_RESPONSE = {
   isLegallySignificant: false,
-  deletedClaims: [],
-  addedClaims: [],
+  deletedItems: [],
+  addedItems: [],
   legalSignificance: '',
 };
 
@@ -69,8 +71,10 @@ describe('ForensicAgent', () => {
     );
 
     expect(result.isLegallySignificant).toBe(true);
-    expect(result.deletedClaims).toHaveLength(2);
-    expect(result.addedClaims).toHaveLength(1);
+    expect(result.deletedItems).toHaveLength(2);
+    expect(result.addedItems).toHaveLength(1);
+    expect(result.deletedItems[0]).toHaveProperty('summary');
+    expect(result.deletedItems[0]).toHaveProperty('exactQuote');
     expect(result.legalSignificance).toContain('קרדיולוגיים');
   });
 
@@ -87,8 +91,8 @@ describe('ForensicAgent', () => {
     );
 
     expect(result.isLegallySignificant).toBe(false);
-    expect(result.deletedClaims).toEqual([]);
-    expect(result.addedClaims).toEqual([]);
+    expect(result.deletedItems).toEqual([]);
+    expect(result.addedItems).toEqual([]);
     expect(result.legalSignificance).toBe('');
   });
 
@@ -96,8 +100,8 @@ describe('ForensicAgent', () => {
     const agent = new ForensicAgent();
     getMockInvoke(agent).mockResolvedValueOnce({
       isLegallySignificant: 'yes', // should be boolean
-      deletedClaims: [],
-      addedClaims: [],
+      deletedItems: [],
+      addedItems: [],
       legalSignificance: '',
     });
 
@@ -159,17 +163,25 @@ describe('ForensicAgent', () => {
 
     it('rejects missing isLegallySignificant field', () => {
       const result = ForensicOutputSchema.safeParse({
-        deletedClaims: [],
-        addedClaims: [],
+        deletedItems: [],
+        addedItems: [],
         legalSignificance: '',
       });
       expect(result.success).toBe(false);
     });
 
-    it('rejects non-array deletedClaims', () => {
+    it('rejects non-array deletedItems', () => {
       const result = ForensicOutputSchema.safeParse({
         ...COSMETIC_RESPONSE,
-        deletedClaims: 'not an array',
+        deletedItems: 'not an array',
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it('rejects deletedItems entry missing exactQuote', () => {
+      const result = ForensicOutputSchema.safeParse({
+        ...COSMETIC_RESPONSE,
+        deletedItems: [{ summary: 'a summary' }],
       });
       expect(result.success).toBe(false);
     });

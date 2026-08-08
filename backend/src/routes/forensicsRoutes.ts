@@ -5,6 +5,18 @@ import { WaybackScraper } from '../services/WaybackScraper';
 import { prisma } from '../lib/prisma';
 import { Web3Service } from '../services/Web3Service';
 import { IntakeOutputSchema } from '../services/IntakeAgent';
+import { type DiffItem } from '../services/ForensicAgent';
+
+// Parses the deletedText/addedText JSON column, handling the legacy string[] format
+// produced before the coupled {summary, exactQuote} schema was introduced.
+function parseDiffItems(json: string): DiffItem[] {
+  const parsed = JSON.parse(json) as unknown[];
+  if (parsed.length === 0) return [];
+  if (typeof parsed[0] === 'string') {
+    return (parsed as string[]).map((s) => ({ summary: s, exactQuote: '' }));
+  }
+  return parsed as DiffItem[];
+}
 
 const router = Router();
 
@@ -147,8 +159,8 @@ router.get('/tracked/:id/status', async (req: Request, res: Response): Promise<v
       beforeDate: d.beforeDate,
       date: d.afterDate,
       snapshotUrl: d.snapshotUrl,
-      deletedClaims: JSON.parse(d.deletedText) as string[],
-      addedClaims: JSON.parse(d.addedText) as string[],
+      deletedItems: parseDiffItems(d.deletedText),
+      addedItems: parseDiffItems(d.addedText),
       rawDeletedChunks: JSON.parse(d.rawDeletedText) as string[],
       rawAddedChunks: JSON.parse(d.rawAddedText) as string[],
       legalSignificance: d.aiSignificance,
@@ -297,8 +309,8 @@ router.get('/tracked/:id', async (req: Request, res: Response): Promise<void> =>
       beforeDate: d.beforeDate,
       date: d.afterDate,
       snapshotUrl: d.snapshotUrl,
-      deletedClaims: JSON.parse(d.deletedText) as string[],
-      addedClaims: JSON.parse(d.addedText) as string[],
+      deletedItems: parseDiffItems(d.deletedText),
+      addedItems: parseDiffItems(d.addedText),
       rawDeletedChunks: JSON.parse(d.rawDeletedText) as string[],
       rawAddedChunks: JSON.parse(d.rawAddedText) as string[],
       legalSignificance: d.aiSignificance,
@@ -422,8 +434,8 @@ router.post('/promote', async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    const deletedClaims = JSON.parse(diff.deletedText) as string[];
-    const addedClaims = JSON.parse(diff.addedText) as string[];
+    const deletedItems = parseDiffItems(diff.deletedText);
+    const addedItems = parseDiffItems(diff.addedText);
     const targetEntity = (() => {
       try { return new URL(diff.trackedUrl.url).hostname; } catch { return 'Unknown'; }
     })();
@@ -448,7 +460,7 @@ router.post('/promote', async (req: Request, res: Response): Promise<void> => {
       evidenceTier: 'Tier 2: Material',
       keyFigures: [],
       medicalConditions: [],
-      statisticalClaims: deletedClaims.concat(addedClaims),
+      statisticalClaims: [...deletedItems, ...addedItems].map((item) => item.summary),
       regulatoryMentions: [],
       euaOmissionStatus: 'Not Applicable',
       evidenceDate: diff.afterDate,

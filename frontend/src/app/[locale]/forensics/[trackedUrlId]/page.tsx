@@ -16,13 +16,18 @@ interface PromotedEvidence {
   fileHash: string;
 }
 
+interface DiffItem {
+  summary: string;
+  exactQuote: string;
+}
+
 interface DiffRecord {
   id: string;
   beforeDate: string;
   date: string;
   snapshotUrl: string;
-  deletedClaims: string[];
-  addedClaims: string[];
+  deletedItems: DiffItem[];
+  addedItems: DiffItem[];
   rawDeletedChunks: string[];
   rawAddedChunks: string[];
   legalSignificance: string;
@@ -256,18 +261,18 @@ function DiffCard({
         {/* Body */}
         <div className="px-4 py-3 space-y-4">
           {/* Deletions */}
-          {(diff.deletedClaims.length > 0 || diff.rawDeletedChunks.length > 0) && (
+          {(diff.deletedItems.length > 0 || diff.rawDeletedChunks.length > 0) && (
             <div className="space-y-1.5">
               <span className="text-xs font-bold text-red-600 uppercase tracking-widest">
                 {labels.deletionsLabel}
               </span>
               <div className="space-y-2">
-                {diff.deletedClaims.length > 0
-                  ? diff.deletedClaims.map((claim, i) => (
+                {diff.deletedItems.length > 0
+                  ? diff.deletedItems.map((item, i) => (
                       <ClaimBlock
                         key={`del-${i}`}
-                        claim={claim}
-                        rawChunk={diff.rawDeletedChunks[i]}
+                        claim={item.summary}
+                        rawChunk={item.exactQuote || undefined}
                         type="deleted"
                       />
                     ))
@@ -279,18 +284,18 @@ function DiffCard({
           )}
 
           {/* Additions */}
-          {(diff.addedClaims.length > 0 || diff.rawAddedChunks.length > 0) && (
+          {(diff.addedItems.length > 0 || diff.rawAddedChunks.length > 0) && (
             <div className="space-y-1.5">
               <span className="text-xs font-bold text-emerald-600 uppercase tracking-widest">
                 {labels.additionsLabel}
               </span>
               <div className="space-y-2">
-                {diff.addedClaims.length > 0
-                  ? diff.addedClaims.map((claim, i) => (
+                {diff.addedItems.length > 0
+                  ? diff.addedItems.map((item, i) => (
                       <ClaimBlock
                         key={`add-${i}`}
-                        claim={claim}
-                        rawChunk={diff.rawAddedChunks[i]}
+                        claim={item.summary}
+                        rawChunk={item.exactQuote || undefined}
                         type="added"
                       />
                     ))
@@ -494,8 +499,8 @@ export default function TrackedUrlPage() {
                 <div>
                   {data.diffs.filter((d) =>
                   d.isLegallySignificant ||
-                  d.deletedClaims.length > 0 ||
-                  d.addedClaims.length > 0 ||
+                  d.deletedItems.length > 0 ||
+                  d.addedItems.length > 0 ||
                   d.rawDeletedChunks.length > 0 ||
                   d.rawAddedChunks.length > 0,
                 ).map((diff, i) => (
