@@ -150,7 +150,12 @@
     "roleIncriminating": "ראיה מפלילה",
     "viewSource": "מקור הראיה",
     "viewDiffHistory": "צפה בהיסטוריית המסמך המלאה",
-    "viewCitingTheses": "תזות המצטטות ראיה זו"
+    "viewCitingTheses": "תזות המצטטות ראיה זו",
+    "pendingReviewBadge": "ממתין לאישור",
+    "pendingReviewNote": "ראיה זו טרם נרשמה על הבלוקצ'יין. בדוק את ניתוח הבינה המלאכותית ולחץ קדם כדי לאשר.",
+    "promoteToVault": "קדם לכספת",
+    "promoting": "רושם...",
+    "promoteSuccess": "✓ נרשם בהצלחה"
   },
   "figures": {
     "tagline": "גרף ישויות · דמויות מפתח ורשת הקשרים",

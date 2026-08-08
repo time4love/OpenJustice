@@ -4,7 +4,9 @@ import { createHash } from 'crypto';
 import type { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { parseMentions } from '../utils/parseMentions';
-import { DevilsAdvocateAgent, type ReferencedEvidence } from '../services/DevilsAdvocateAgent';
+import { DevilsAdvocateAgent, type ReferencedEvidence, DevilsAdvocateOutputSchema } from '../services/DevilsAdvocateAgent';
+import { RevisionAgent } from '../services/RevisionAgent';
+import { buildTipTapDoc } from '../utils/tipTapUtils';
 
 const router = Router();
 
@@ -13,10 +15,16 @@ const router = Router();
 // ---------------------------------------------------------------------------
 
 let _agent: DevilsAdvocateAgent | null = null;
+let _revisionAgent: RevisionAgent | null = null;
 
 function getAgent(): DevilsAdvocateAgent {
   if (!_agent) _agent = new DevilsAdvocateAgent();
   return _agent;
+}
+
+function getRevisionAgent(): RevisionAgent {
+  if (!_revisionAgent) _revisionAgent = new RevisionAgent();
+  return _revisionAgent;
 }
 
 // ---------------------------------------------------------------------------
@@ -317,6 +325,121 @@ router.post('/:id/analyze', async (req: Request, res: Response): Promise<void> =
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     res.status(500).json({ error: 'Failed to trigger analysis', message });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/thesis/:id/suggest-revision
+//
+// Runs the RevisionAgent on the current head version:
+//   1. Parses the existing AI critique (must be COMPLETE)
+//   2. Finds CONFIRMED evidence not yet cited in the thesis
+//   3. Calls RevisionAgent → returns revised Markdown + hashes to include
+//   4. Converts revised Markdown to a TipTap doc via buildTipTapDoc
+//   5. Returns { suggestedContent, revisionsExplained, newEvidenceCount }
+//      — does NOT save; the client sends a POST /version to accept
+// ---------------------------------------------------------------------------
+
+router.post('/:id/suggest-revision', async (req: Request, res: Response): Promise<void> => {
+  const id = String(req.params['id'] ?? '');
+  if (!id) {
+    res.status(400).json({ error: 'Missing thesis id' });
+    return;
+  }
+
+  try {
+    const thesis = await prisma.thesis.findUnique({
+      where: { id },
+      include: { headVersion: { include: { mentions: true } } },
+    });
+
+    if (!thesis?.headVersion) {
+      res.status(404).json({ error: 'Thesis or head version not found' });
+      return;
+    }
+
+    const hv = thesis.headVersion;
+
+    if (hv.status !== 'COMPLETE' || hv.aiAnalysis === null) {
+      res.status(400).json({
+        error: 'Thesis must have a completed AI analysis before suggesting a revision. ' +
+          'Run POST /:id/analyze first.',
+      });
+      return;
+    }
+
+    const critique = DevilsAdvocateOutputSchema.safeParse(hv.aiAnalysis);
+    if (!critique.success) {
+      res.status(500).json({ error: 'AI analysis could not be parsed — schema mismatch.' });
+      return;
+    }
+
+    // Find CONFIRMED evidence not yet cited in this version
+    const citedHashes = new Set(
+      hv.mentions.filter((m) => m.type === 'EVIDENCE').map((m) => m.refId),
+    );
+
+    const allConfirmed = await prisma.evidence.findMany({
+      where: { status: 'CONFIRMED', fileHash: { notIn: Array.from(citedHashes) } },
+      select: {
+        fileHash: true,
+        summary: true,
+        category: true,
+        evidenceTier: true,
+        evidenceRole: true,
+        evidenceDate: true,
+        targetEntity: true,
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 10, // cap to avoid bloating the prompt
+    });
+
+    // Extract current thesis plain text for the agent
+    const currentText = extractText(hv.userContent);
+
+    // Run RevisionAgent
+    const revision = await getRevisionAgent().revise(currentText, critique.data, allConfirmed);
+
+    // Build label map for any newly cited evidence
+    const newlyIncluded = allConfirmed.filter((e) =>
+      revision.evidenceHashesToInclude.includes(e.fileHash),
+    );
+    const evidenceLabelMap = new Map(newlyIncluded.map((e) => [e.fileHash, e.summary.slice(0, 40)]));
+
+    // Preserve key figures from the current version
+    const currentFigures = hv.mentions
+      .filter((m) => m.type === 'KEY_FIGURE')
+      .map((m) => m.refId);
+
+    // All evidence to include: original cited + newly added
+    const allHashes = [...Array.from(citedHashes), ...revision.evidenceHashesToInclude];
+
+    // Enrich label map with already-cited evidence summaries
+    const existingEvidence = citedHashes.size > 0
+      ? await prisma.evidence.findMany({
+          where: { fileHash: { in: Array.from(citedHashes) } },
+          select: { fileHash: true, summary: true },
+        })
+      : [];
+    for (const e of existingEvidence) {
+      evidenceLabelMap.set(e.fileHash, e.summary.slice(0, 40));
+    }
+
+    const suggestedContent = buildTipTapDoc(
+      revision.revisedBody,
+      allHashes,
+      currentFigures,
+      evidenceLabelMap,
+    );
+
+    res.status(200).json({
+      suggestedContent,
+      revisionsExplained: revision.revisionsExplained,
+      newEvidenceCount: revision.evidenceHashesToInclude.length,
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ error: 'Failed to suggest revision', message });
   }
 });
 

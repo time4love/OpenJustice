@@ -297,6 +297,14 @@ export default function ThesisPage({ params }: { params: Promise<{ id: string }>
   const [analyzing, setAnalyzing] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  type RevisionState =
+    | null
+    | 'loading'
+    | { suggestedContent: Record<string, unknown>; revisionsExplained: string; newEvidenceCount: number };
+
+  const [revision, setRevision] = useState<RevisionState>(null);
+  const [savingRevision, setSavingRevision] = useState(false);
+
   useEffect(() => {
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
   }, []);
@@ -316,6 +324,39 @@ export default function ThesisPage({ params }: { params: Promise<{ id: string }>
       .finally(() => setLoading(false));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
+
+  async function runRevision() {
+    setRevision('loading');
+    try {
+      const res = await fetch(apiUrl(`/api/thesis/${id}/suggest-revision`), { method: 'POST' });
+      if (!res.ok) throw new Error();
+      const data = (await res.json()) as {
+        suggestedContent: Record<string, unknown>;
+        revisionsExplained: string;
+        newEvidenceCount: number;
+      };
+      setRevision(data);
+    } catch {
+      setRevision(null);
+    }
+  }
+
+  async function acceptRevision() {
+    if (!revision || revision === 'loading') return;
+    setSavingRevision(true);
+    try {
+      const res = await fetch(apiUrl(`/api/thesis/${id}/version`), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userContent: revision.suggestedContent }),
+      });
+      if (!res.ok) throw new Error();
+      setRevision(null);
+      await loadThesis();
+    } finally {
+      setSavingRevision(false);
+    }
+  }
 
   async function runAnalysis() {
     setAnalyzing(true);
@@ -525,6 +566,64 @@ export default function ThesisPage({ params }: { params: Promise<{ id: string }>
                     </li>
                   ))}
                 </ul>
+              </div>
+            )}
+
+            {/* Suggest Revision button */}
+            {revision === null && (
+              <div className="pt-2">
+                <button
+                  onClick={() => void runRevision()}
+                  className="px-4 py-2 bg-violet-700 hover:bg-violet-600 text-white text-sm font-semibold rounded-lg transition-colors"
+                >
+                  Suggest Revision
+                </button>
+              </div>
+            )}
+
+            {/* Revision loading */}
+            {revision === 'loading' && (
+              <div className="bg-violet-50 border border-violet-200 rounded-xl px-4 py-3 flex items-center gap-3 text-violet-700 text-sm">
+                <span className="animate-spin">⏳</span>
+                <span>Drafting revision… this takes ~30 seconds</span>
+              </div>
+            )}
+
+            {/* Revision preview */}
+            {revision !== null && revision !== 'loading' && (
+              <div className="space-y-4 border border-violet-200 rounded-2xl overflow-hidden">
+                <div className="bg-violet-50 px-5 py-4 space-y-1">
+                  <div className="flex items-center justify-between gap-4">
+                    <h3 className="text-sm font-bold text-violet-900">Suggested Revision</h3>
+                    {revision.newEvidenceCount > 0 && (
+                      <span className="text-xs bg-violet-200 text-violet-800 px-2 py-0.5 rounded-full font-semibold">
+                        +{revision.newEvidenceCount} evidence
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-sm text-violet-800 leading-relaxed">{revision.revisionsExplained}</p>
+                </div>
+
+                <div className="bg-white border-t border-violet-100 px-5 py-4">
+                  {renderDoc(revision.suggestedContent)}
+                </div>
+
+                <div className="bg-slate-50 border-t border-violet-200 px-5 py-3 flex gap-3">
+                  <button
+                    disabled={savingRevision}
+                    onClick={() => void acceptRevision()}
+                    className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-xs font-semibold rounded-lg transition-colors"
+                  >
+                    {savingRevision ? 'Saving…' : 'Accept & Save'}
+                  </button>
+                  <button
+                    disabled={savingRevision}
+                    onClick={() => setRevision(null)}
+                    className="px-4 py-1.5 bg-slate-200 hover:bg-slate-300 disabled:opacity-50 text-slate-700 text-xs font-semibold rounded-lg transition-colors"
+                  >
+                    Discard
+                  </button>
+                </div>
               </div>
             )}
           </section>

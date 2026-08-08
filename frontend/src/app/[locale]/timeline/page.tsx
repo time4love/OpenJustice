@@ -17,7 +17,9 @@ type EvidencePerspective = 'Internal Knowledge' | 'Public Statement' | 'Citizen 
 type EvidenceRole = 'Incriminating' | 'ContextAnchor';
 
 interface EvidenceMetadata {
+  evidenceId: string;
   fileHash: string;
+  status?: string;
   evidenceRole?: EvidenceRole;
   category: string;
   tier: string;
@@ -114,24 +116,79 @@ interface NodeLabels {
   viewSource: string;
   viewDiffHistory: string;
   viewCitingTheses: string;
+  pendingReviewBadge: string;
+  pendingReviewNote: string;
+  promoteToVault: string;
+  promoting: string;
+  promoteSuccess: string;
 }
 
 // ---------------------------------------------------------------------------
 // Timeline node card
 // ---------------------------------------------------------------------------
 
+function PromoteButton({
+  fileHash,
+  labels,
+  onPromoted,
+}: {
+  fileHash: string;
+  labels: NodeLabels;
+  onPromoted: () => void;
+}) {
+  const [state, setState] = useState<'idle' | 'loading' | 'done'>('idle');
+
+  async function handlePromote() {
+    setState('loading');
+    try {
+      const res = await fetch(apiUrl('/api/evidence/promote'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fileHash }),
+      });
+      if (res.ok) {
+        setState('done');
+        setTimeout(onPromoted, 1200);
+      } else {
+        setState('idle');
+      }
+    } catch {
+      setState('idle');
+    }
+  }
+
+  if (state === 'done') {
+    return (
+      <span className="text-xs font-semibold text-emerald-600">{labels.promoteSuccess}</span>
+    );
+  }
+
+  return (
+    <button
+      onClick={() => void handlePromote()}
+      disabled={state === 'loading'}
+      className="shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold bg-amber-500 hover:bg-amber-600 disabled:opacity-60 text-white transition-colors"
+    >
+      {state === 'loading' ? labels.promoting : labels.promoteToVault}
+    </button>
+  );
+}
+
 function TimelineNode({
   record,
   index,
   labels,
+  onPromoted,
 }: {
   record: TimelineRecord;
   index: number;
   labels: NodeLabels;
+  onPromoted: (fileHash: string) => void;
 }) {
   const { metadata } = record;
   const styles = perspectiveStyles(metadata.evidencePerspective);
   const isUnknown = metadata.evidenceDate === 'Unknown';
+  const isPending = metadata.status === 'PENDING_REVIEW';
 
   return (
     <div className="flex gap-3 sm:gap-4 mb-5 last:mb-0">
@@ -189,12 +246,32 @@ function TimelineNode({
             <span className="text-xs text-slate-400 min-w-0 truncate">{metadata.category}</span>
           )}
 
+          {/* Pending badge */}
+          {isPending && (
+            <span className="shrink-0 text-xs font-semibold px-2 py-0.5 rounded-full border bg-amber-100 text-amber-700 border-amber-300">
+              {labels.pendingReviewBadge}
+            </span>
+          )}
+
           {/* Index */}
           <span className="ms-auto text-xs text-slate-300 font-mono shrink-0">#{index + 1}</span>
         </div>
 
         {/* Card body */}
         <div className="px-4 py-3 space-y-3">
+          {isPending && (
+            <div className="flex items-start justify-between gap-3 px-3 py-2.5 rounded-lg bg-amber-50 border border-amber-300">
+              <div className="flex items-start gap-2 min-w-0">
+                <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0 mt-1" />
+                <span className="text-xs text-amber-800 leading-snug">{labels.pendingReviewNote}</span>
+              </div>
+              <PromoteButton
+                fileHash={metadata.fileHash}
+                labels={labels}
+                onPromoted={() => onPromoted(metadata.fileHash)}
+              />
+            </div>
+          )}
           {metadata.euaOmissionStatus === 'Omits EUA (Misleading)' && (
             <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-rose-50 border border-rose-300">
               <span className="w-2 h-2 rounded-full bg-rose-500 shrink-0" />
@@ -330,9 +407,11 @@ function TimelineNode({
 function UnifiedTimeline({
   records,
   labels,
+  onPromoted,
 }: {
   records: TimelineRecord[];
   labels: NodeLabels & { getPerspectiveLabel: (p?: string) => string };
+  onPromoted: (fileHash: string) => void;
 }) {
   return (
     <div>
@@ -342,6 +421,7 @@ function UnifiedTimeline({
           record={record}
           index={i}
           labels={{ ...labels, perspective: labels.getPerspectiveLabel(record.metadata.evidencePerspective) }}
+          onPromoted={onPromoted}
         />
       ))}
     </div>
@@ -482,6 +562,16 @@ export default function TimelinePage() {
     return t(`perspective.${p as EvidencePerspective}` as Parameters<typeof t>[0]);
   }
 
+  function handlePromoted(fileHash: string) {
+    setRecords((prev) =>
+      prev.map((r) =>
+        r.metadata.fileHash === fileHash
+          ? { ...r, metadata: { ...r.metadata, status: 'CONFIRMED' } }
+          : r,
+      ),
+    );
+  }
+
   const nodeLabels = {
     unknownDate: t('unknownDate'),
     keyFigures: t('keyFiguresLabel'),
@@ -496,6 +586,11 @@ export default function TimelinePage() {
     viewSource: t('viewSource'),
     viewDiffHistory: t('viewDiffHistory'),
     viewCitingTheses: t('viewCitingTheses'),
+    pendingReviewBadge: t('pendingReviewBadge'),
+    pendingReviewNote: t('pendingReviewNote'),
+    promoteToVault: t('promoteToVault'),
+    promoting: t('promoting'),
+    promoteSuccess: t('promoteSuccess'),
     getPerspectiveLabel,
   };
 
@@ -555,7 +650,7 @@ export default function TimelinePage() {
 
         {!initialLoading && !error && records.length > 0 && (
           <>
-            <UnifiedTimeline records={records} labels={nodeLabels} />
+            <UnifiedTimeline records={records} labels={nodeLabels} onPromoted={handlePromoted} />
 
             {/* Sentinel + load-more indicator */}
             <div ref={sentinelRef} className="py-2">

@@ -150,7 +150,12 @@
     "roleIncriminating": "Incriminating",
     "viewSource": "View Source",
     "viewDiffHistory": "View Document History",
-    "viewCitingTheses": "Theses citing this"
+    "viewCitingTheses": "Theses citing this",
+    "pendingReviewBadge": "Pending Review",
+    "pendingReviewNote": "This evidence has not been registered on-chain yet. Review the AI analysis and click Promote to confirm.",
+    "promoteToVault": "Promote to Vault",
+    "promoting": "Registering...",
+    "promoteSuccess": "✓ Registered"
   },
   "figures": {
     "tagline": "Entity Graph · Key Figures & Evidence Network",
