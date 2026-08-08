@@ -384,6 +384,7 @@ function HistoryEntry({
   labels,
   onDeleted,
   onResume,
+  scanning,
 }: {
   item: TrackedUrlItem;
   labels: {
