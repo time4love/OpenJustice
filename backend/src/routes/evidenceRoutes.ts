@@ -387,6 +387,8 @@ router.post('/contact', async (req: Request, res: Response): Promise<void> => {
 
 const TimelineQuerySchema = z.object({
   targetEntity: z.string().optional(),
+  cursor: z.string().optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
 });
 
 router.get('/timeline', async (req: Request, res: Response): Promise<void> => {
@@ -396,17 +398,27 @@ router.get('/timeline', async (req: Request, res: Response): Promise<void> => {
     return;
   }
 
-  const { targetEntity } = parsed.data;
+  const { targetEntity, cursor, limit } = parsed.data;
+  const where = targetEntity ? { targetEntity } : undefined;
 
   try {
-    const rows = await prisma.evidence.findMany({
-      where: targetEntity ? { targetEntity } : undefined,
-      orderBy: { evidenceDate: 'asc' },
-      include: { urlVersionDiff: { select: { trackedUrlId: true } } },
-    });
+    const [totalCount, rows] = await Promise.all([
+      prisma.evidence.count({ where }),
+      prisma.evidence.findMany({
+        where,
+        orderBy: [{ evidenceDate: 'asc' }, { createdAt: 'asc' }],
+        take: limit + 1,
+        ...(cursor ? { cursor: { fileHash: cursor }, skip: 1 } : {}),
+        include: { urlVersionDiff: { select: { trackedUrlId: true } } },
+      }),
+    ]);
+
+    const hasMore = rows.length > limit;
+    const page = hasMore ? rows.slice(0, limit) : rows;
+    const nextCursor = hasMore ? (page[page.length - 1]?.fileHash ?? null) : null;
 
     // Wrap in { content, metadata } to match the TimelineRecord shape the frontend expects.
-    const results = rows.map((r) => ({
+    const results = page.map((r) => ({
       content: r.summary,
       metadata: {
         fileHash: r.fileHash,
@@ -431,7 +443,7 @@ router.get('/timeline', async (req: Request, res: Response): Promise<void> => {
       } satisfies EvidenceRecord,
     }));
 
-    res.status(200).json({ targetEntity: targetEntity ?? null, count: results.length, results });
+    res.status(200).json({ targetEntity: targetEntity ?? null, totalCount, results, nextCursor, hasMore });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error('[timeline] Prisma error:', err instanceof Error ? err.stack : err);

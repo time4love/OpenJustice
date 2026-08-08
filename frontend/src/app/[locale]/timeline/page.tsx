@@ -1,9 +1,11 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useTranslations, useLocale } from 'next-intl';
 import { Link, useRouter, usePathname } from '@/i18n/navigation';
 import { apiUrl } from '@/lib/api';
+
+const PAGE_SIZE = 20;
 
 // ---------------------------------------------------------------------------
 // Types
@@ -410,21 +412,82 @@ export default function TimelinePage() {
   const t = useTranslations('timeline');
   const tc = useTranslations('common');
 
-  const [records, setRecords] = useState<TimelineRecord[] | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [records, setRecords] = useState<TimelineRecord[]>([]);
+  const [totalCount, setTotalCount] = useState<number | null>(null);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [hasMore, setHasMore] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    setLoading(true);
-    fetch(apiUrl('/api/evidence/timeline'))
-      .then(async (res) => {
-        const data = (await res.json()) as { results?: TimelineRecord[]; message?: string };
-        if (!res.ok) { setError(data.message ?? `Error ${res.status}`); return; }
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+  const fetchingRef = useRef(false);
+
+  async function fetchPage(cursor: string | null) {
+    if (fetchingRef.current) return;
+    fetchingRef.current = true;
+    try {
+      const params = new URLSearchParams({ limit: String(PAGE_SIZE) });
+      if (cursor) params.set('cursor', cursor);
+      const res = await fetch(apiUrl(`/api/evidence/timeline?${params.toString()}`));
+      const data = (await res.json()) as {
+        results?: TimelineRecord[];
+        totalCount?: number;
+        nextCursor?: string | null;
+        hasMore?: boolean;
+        message?: string;
+      };
+      if (!res.ok) {
+        setError(data.message ?? `Error ${res.status}`);
+        return;
+      }
+      if (cursor === null) {
+        // First page — replace everything and set total
         setRecords(data.results ?? []);
-      })
-      .catch(() => setError('Could not reach the backend. Is the server running?'))
-      .finally(() => setLoading(false));
+        setTotalCount(data.totalCount ?? null);
+      } else {
+        setRecords((prev) => [...prev, ...(data.results ?? [])]);
+      }
+      setNextCursor(data.nextCursor ?? null);
+      setHasMore(data.hasMore ?? false);
+    } catch {
+      setError('Could not reach the backend. Is the server running?');
+    } finally {
+      fetchingRef.current = false;
+    }
+  }
+
+  // Initial load
+  useEffect(() => {
+    setInitialLoading(true);
+    setRecords([]);
+    setNextCursor(null);
+    setHasMore(false);
+    setError(null);
+    void fetchPage(null).finally(() => setInitialLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // IntersectionObserver sentinel
+  const handleIntersect = useCallback(
+    (entries: IntersectionObserverEntry[]) => {
+      const entry = entries[0];
+      if (entry?.isIntersecting && hasMore && !loadingMore && !fetchingRef.current) {
+        setLoadingMore(true);
+        void fetchPage(nextCursor).finally(() => setLoadingMore(false));
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [hasMore, loadingMore, nextCursor],
+  );
+
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(handleIntersect, { rootMargin: '200px' });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [handleIntersect]);
 
   function getPerspectiveLabel(p?: string): string {
     if (!p) return '';
@@ -492,6 +555,15 @@ export default function TimelinePage() {
 
       <div className="max-w-4xl mx-auto px-4 sm:px-6 py-8 space-y-6">
 
+        {/* Count badge */}
+        {totalCount !== null && (
+          <div className="flex items-center gap-2">
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-600 border border-slate-200">
+              {t('count', { count: totalCount })}
+            </span>
+          </div>
+        )}
+
         {/* Error */}
         {error && (
           <div className="bg-red-50 border border-red-200 rounded-xl p-5 flex items-center gap-3">
@@ -503,14 +575,47 @@ export default function TimelinePage() {
           </div>
         )}
 
-        {loading && <TimelineSkeleton />}
+        {initialLoading && <TimelineSkeleton />}
 
-        {!loading && !error && records !== null && records.length === 0 && (
+        {!initialLoading && !error && records.length === 0 && (
           <EmptyState title={t('emptyTitle')} sub={t('emptySub')} />
         )}
 
-        {!loading && !error && records !== null && records.length > 0 && (
-          <UnifiedTimeline records={records} labels={nodeLabels} />
+        {!initialLoading && !error && records.length > 0 && (
+          <>
+            <UnifiedTimeline records={records} labels={nodeLabels} />
+
+            {/* Sentinel + load-more indicator */}
+            <div ref={sentinelRef} className="py-2">
+              {loadingMore && (
+                <div className="animate-pulse space-y-5">
+                  {[1, 2].map((i) => (
+                    <div key={i} className="flex gap-4">
+                      <div className="flex flex-col items-center shrink-0">
+                        <div className="w-3 h-3 rounded-full bg-slate-200 mt-[1.125rem]" />
+                        <div className="w-px flex-1 bg-slate-200 mt-1.5 min-h-16" />
+                      </div>
+                      <div className="flex-1 bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+                        <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-100 flex items-center gap-3">
+                          <div className="h-2.5 bg-slate-200 rounded-full w-20" />
+                          <div className="h-2.5 bg-slate-200 rounded-full w-28" />
+                        </div>
+                        <div className="px-4 py-3 space-y-2">
+                          <div className="h-2 bg-slate-100 rounded" />
+                          <div className="h-2 bg-slate-100 rounded w-5/6" />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {!hasMore && records.length > 0 && (
+                <p className="text-center text-xs text-slate-400 py-4">
+                  {t('allRecordsLoaded', { count: records.length })}
+                </p>
+              )}
+            </div>
+          </>
         )}
       </div>
     </main>

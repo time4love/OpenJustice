@@ -122,6 +122,7 @@
     "loadBtn": "Load Timeline",
     "loadingBtn": "Loading…",
     "count": "{count} records",
+    "allRecordsLoaded": "All {count} records loaded",
     "unknownDate": "Unknown Date",
     "keyFiguresLabel": "Key Figures",
     "medicalContextLabel": "Medical Context",

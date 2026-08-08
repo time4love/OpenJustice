@@ -122,6 +122,7 @@
     "loadBtn": "טען ציר זמן",
     "loadingBtn": "טוען…",
     "count": "{count} רשומות",
+    "allRecordsLoaded": "כל {count} הרשומות נטענו",
     "unknownDate": "תאריך לא ידוע",
     "keyFiguresLabel": "מעורבים",
     "medicalContextLabel": "הקשר רפואי",
