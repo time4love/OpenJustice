@@ -10,7 +10,7 @@ import { ClaimBlock } from '@/components/ClaimBlock';
 // Types
 // ---------------------------------------------------------------------------
 
-type ScanStatus = 'IDLE' | 'SCANNING' | 'COMPLETED' | 'FAILED';
+type ScanStatus = 'IDLE' | 'SCANNING' | 'PAUSED' | 'COMPLETED' | 'FAILED';
 
 interface ActiveJob {
   id: string;
@@ -71,7 +71,7 @@ interface ScrapeJob {
   createdAt: string;
 }
 
-type Phase = 'idle' | 'creating' | 'polling' | 'fetching' | 'done' | 'error';
+type Phase = 'idle' | 'creating' | 'polling' | 'paused' | 'fetching' | 'done' | 'error';
 
 const POLL_INTERVAL_MS = 3_000;
 const STALL_THRESHOLD_MS = 35_000;
@@ -124,24 +124,32 @@ function ProgressState({
   total,
   processed,
   stalled,
+  pausing,
   resuming,
   processingLabel,
   progressLabel,
   stalledLabel,
   resumeBtn,
   resumingBtn,
+  pauseBtn,
+  pausingBtn,
   onResume,
+  onPause,
 }: {
   total: number;
   processed: number;
   stalled: boolean;
+  pausing: boolean;
   resuming: boolean;
   processingLabel: string;
   progressLabel: string;
   stalledLabel: string;
   resumeBtn: string;
   resumingBtn: string;
+  pauseBtn: string;
+  pausingBtn: string;
   onResume: () => void;
+  onPause: () => void;
 }) {
   const pct = total > 0 ? Math.round((processed / total) * 100) : 0;
 
@@ -168,7 +176,7 @@ function ProgressState({
       </div>
 
       {/* Stall warning + resume */}
-      {stalled && (
+      {stalled ? (
         <div className="flex flex-col items-center gap-2">
           <p className="text-xs text-amber-600">{stalledLabel}</p>
           <button
@@ -179,7 +187,74 @@ function ProgressState({
             {resuming ? resumingBtn : resumeBtn}
           </button>
         </div>
+      ) : (
+        <button
+          onClick={onPause}
+          disabled={pausing}
+          className="px-4 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 text-slate-600 hover:bg-slate-200 disabled:opacity-50 transition-colors"
+        >
+          {pausing ? pausingBtn : pauseBtn}
+        </button>
       )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Paused state — shown when TrackedUrl is PAUSED
+// ---------------------------------------------------------------------------
+
+function PausedState({
+  total,
+  processed,
+  progressLabel,
+  pausedLabel,
+  pausedSub,
+  resumeBtn,
+  resuming,
+  onResume,
+}: {
+  total: number;
+  processed: number;
+  progressLabel: string;
+  pausedLabel: string;
+  pausedSub: string;
+  resumeBtn: string;
+  resuming: boolean;
+  onResume: () => void;
+}) {
+  const pct = total > 0 ? Math.round((processed / total) * 100) : 0;
+
+  return (
+    <div className="flex flex-col items-center justify-center text-center px-8 py-16 border border-amber-200 rounded-xl bg-amber-50/40 shadow-sm gap-5">
+      {/* Paused icon */}
+      <div className="w-10 h-10 rounded-full bg-amber-100 border border-amber-200 flex items-center justify-center">
+        <span className="text-amber-600 text-lg font-bold">⏸</span>
+      </div>
+
+      <div className="space-y-1">
+        <p className="text-sm font-semibold text-amber-800">{pausedLabel}</p>
+        <p className="text-xs text-amber-600 max-w-xs">{pausedSub}</p>
+      </div>
+
+      {/* Progress bar */}
+      <div className="w-full max-w-xs space-y-1.5">
+        <div className="h-2 rounded-full bg-amber-100 overflow-hidden">
+          <div
+            className="h-full rounded-full bg-amber-400 transition-all duration-500"
+            style={{ width: `${pct}%` }}
+          />
+        </div>
+        <p className="text-xs text-amber-500 font-mono">{progressLabel}</p>
+      </div>
+
+      <button
+        onClick={onResume}
+        disabled={resuming}
+        className="px-4 py-1.5 rounded-lg text-xs font-semibold bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-50 transition-colors"
+      >
+        {resumeBtn}
+      </button>
     </div>
   );
 }
@@ -304,6 +379,7 @@ function DiffNode({
 
 const STATUS_STYLES: Record<string, string> = {
   SCANNING:    'bg-blue-100 text-blue-700 border-blue-200',
+  PAUSED:      'bg-amber-100 text-amber-700 border-amber-200',
   COMPLETED:   'bg-emerald-100 text-emerald-700 border-emerald-200',
   FAILED:      'bg-red-100 text-red-700 border-red-200',
   IDLE:        'bg-slate-100 text-slate-500 border-slate-200',
@@ -499,6 +575,7 @@ export default function ForensicsPage() {
   const [result, setResult] = useState<TrackedUrlResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [stalled, setStalled] = useState(false);
+  const [pausing, setPausing] = useState(false);
   const [resuming, setResuming] = useState(false);
   const [history, setHistory] = useState<TrackedUrlItem[]>([]);
 
@@ -596,6 +673,11 @@ export default function ForensicsPage() {
           stopPolling();
           setError('Scan job failed on the server.');
           setPhase('error');
+        } else if (data.status === 'PAUSED') {
+          stopPolling();
+          setPausing(false);
+          setPhase('paused');
+          loadHistory();
         }
       } catch {
         // Network blip — keep polling
@@ -650,14 +732,28 @@ export default function ForensicsPage() {
     }
   }
 
+  async function handlePause() {
+    const id = trackedUrlIdRef.current;
+    if (!id) return;
+    setPausing(true);
+    try {
+      await fetch(apiUrl(`/api/forensics/pause/${id}`), { method: 'POST' });
+      // Polling will detect PAUSED status and transition phase
+    } catch {
+      setPausing(false);
+    }
+  }
+
   async function handleResume() {
     const id = trackedUrlIdRef.current;
     if (!id) return;
     setResuming(true);
     setStalled(false);
+    setPausing(false);
     lastUpdateTimeRef.current = Date.now();
+    setPhase('polling');
     try {
-      // Re-POST scan — server is idempotent for SCANNING URLs (resumes existing)
+      // Re-POST scan — server handles SCANNING and PAUSED TrackedUrls (resumes existing)
       void fetch(apiUrl('/api/forensics/scan'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -828,6 +924,7 @@ export default function ForensicsPage() {
               total={scanProgress?.total ?? 0}
               processed={scanProgress?.processed ?? 0}
               stalled={stalled}
+              pausing={pausing}
               resuming={resuming}
               processingLabel={t('processingSnapshots')}
               progressLabel={t('snapshotProgress', {
@@ -837,7 +934,10 @@ export default function ForensicsPage() {
               stalledLabel={t('jobStalled')}
               resumeBtn={t('resumeBtn')}
               resumingBtn={t('resumingBtn')}
+              pauseBtn={t('pauseBtn')}
+              pausingBtn={t('pausingBtn')}
               onResume={() => { void handleResume(); }}
+              onPause={() => { void handlePause(); }}
             />
 
             {/* Live findings — significant diffs found so far */}
@@ -845,6 +945,38 @@ export default function ForensicsPage() {
               <div className="space-y-3">
                 <div className="flex items-center gap-2">
                   <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse shrink-0" />
+                  <span className="text-xs font-semibold text-slate-500 uppercase tracking-widest">
+                    {t('liveFindings', { count: liveDiffs.length })}
+                  </span>
+                </div>
+                {liveDiffs.map((diff, i) => (
+                  <DiffNode key={diff.id} diff={diff} index={i} labels={diffLabels} />
+                ))}
+              </div>
+            )}
+          </>
+        )}
+
+        {/* Paused */}
+        {phase === 'paused' && (
+          <>
+            <PausedState
+              total={scanProgress?.total ?? 0}
+              processed={scanProgress?.processed ?? 0}
+              progressLabel={t('snapshotProgress', {
+                processed: scanProgress?.processed ?? 0,
+                total: scanProgress?.total ?? 0,
+              })}
+              pausedLabel={t('scanPaused')}
+              pausedSub={t('scanPausedSub')}
+              resumeBtn={t('resumeBtn')}
+              resuming={resuming}
+              onResume={() => { void handleResume(); }}
+            />
+            {liveDiffs.length > 0 && (
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <span className="w-1.5 h-1.5 rounded-full bg-red-500 shrink-0" />
                   <span className="text-xs font-semibold text-slate-500 uppercase tracking-widest">
                     {t('liveFindings', { count: liveDiffs.length })}
                   </span>

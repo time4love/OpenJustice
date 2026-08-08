@@ -31,6 +31,7 @@ enum WaybackJobStatus {
 enum TrackedUrlStatus {
   IDLE      // created via legacy sync endpoint; no async status tracking
   SCANNING  // runFullScan is active (or was interrupted — resumable)
+  PAUSED    // user paused mid-scan; resumable via POST /scan
   COMPLETED // all CDX batches processed
   FAILED    // unrecoverable error during processing
 }

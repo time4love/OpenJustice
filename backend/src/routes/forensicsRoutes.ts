@@ -76,13 +76,18 @@ router.post('/scan', async (req: Request, res: Response): Promise<void> => {
   const { url } = parsed.data;
 
   try {
-    // Resume an existing in-progress scan, or start fresh
+    // Resume an existing in-progress or paused scan, or start fresh
     let trackedUrl = await prisma.trackedUrl.findFirst({
-      where: { url, status: 'SCANNING' },
+      where: { url, status: { in: ['SCANNING', 'PAUSED'] } },
       orderBy: { createdAt: 'desc' },
     });
 
-    if (!trackedUrl) {
+    if (trackedUrl) {
+      // Ensure status is SCANNING before (re-)starting runFullScan
+      if (trackedUrl.status !== 'SCANNING') {
+        await prisma.trackedUrl.update({ where: { id: trackedUrl.id }, data: { status: 'SCANNING' } });
+      }
+    } else {
       trackedUrl = await prisma.trackedUrl.create({ data: { url, status: 'SCANNING' } });
     }
 
@@ -98,6 +103,39 @@ router.post('/scan', async (req: Request, res: Response): Promise<void> => {
     const message = err instanceof Error ? err.message : String(err);
     console.error('[forensics/scan] Error:', err instanceof Error ? err.stack : err);
     res.status(500).json({ error: 'Failed to start scan', message });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/forensics/pause/:id
+//
+// Signals a running scan to stop at its next snapshot boundary and set the
+// TrackedUrl status to PAUSED. Resume by calling POST /scan with the same URL.
+// ---------------------------------------------------------------------------
+
+router.post('/pause/:id', async (req: Request, res: Response): Promise<void> => {
+  const trackedUrlId = String(req.params['id'] ?? '');
+  if (!trackedUrlId) {
+    res.status(400).json({ error: 'Missing trackedUrl id' });
+    return;
+  }
+
+  try {
+    const trackedUrl = await prisma.trackedUrl.findUnique({ where: { id: trackedUrlId } });
+    if (!trackedUrl) {
+      res.status(404).json({ error: 'TrackedUrl not found' });
+      return;
+    }
+    if (trackedUrl.status !== 'SCANNING') {
+      res.status(409).json({ error: 'Scan is not currently running', status: trackedUrl.status });
+      return;
+    }
+
+    getWaybackScraper().pauseScan(trackedUrlId);
+    res.status(200).json({ paused: true, trackedUrlId });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ error: 'Failed to pause scan', message });
   }
 });
 

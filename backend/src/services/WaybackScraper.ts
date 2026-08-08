@@ -237,6 +237,14 @@ class ScanCancelledError extends Error {
   }
 }
 
+/** Thrown when a scan is paused mid-flight so runFullScan exits cleanly. */
+class ScanPausedError extends Error {
+  constructor(trackedUrlId: string) {
+    super(`Scan paused: ${trackedUrlId}`);
+    this.name = 'ScanPausedError';
+  }
+}
+
 // ---------------------------------------------------------------------------
 // WaybackScraper
 // ---------------------------------------------------------------------------
@@ -247,6 +255,8 @@ export class WaybackScraper {
   private readonly _runningScanIds = new Set<string>();
   /** TrackedUrl IDs that have been cancelled — processJob checks this and aborts. */
   private readonly _cancelledScanIds = new Set<string>();
+  /** TrackedUrl IDs that the user has paused — processJob checks this and suspends. */
+  private readonly _pausedScanIds = new Set<string>();
 
   constructor() {
     this.forensicAgent = new ForensicAgent();
@@ -259,6 +269,15 @@ export class WaybackScraper {
    */
   cancelScan(trackedUrlId: string): void {
     this._cancelledScanIds.add(trackedUrlId);
+  }
+
+  /**
+   * Signal a running scan to pause at its next snapshot boundary.
+   * The TrackedUrl status is set to PAUSED once the scan loop exits.
+   * Resume by calling POST /scan for the same URL.
+   */
+  pauseScan(trackedUrlId: string): void {
+    this._pausedScanIds.add(trackedUrlId);
   }
 
   /**
@@ -664,9 +683,12 @@ export class WaybackScraper {
     for (let i = 0; i < snapshotsList.length; i++) {
       const entry = snapshotsList[i];
 
-      // Cancellation checkpoint — throw so runFullScan exits cleanly without marking FAILED
+      // Cancellation/pause checkpoint — throw so runFullScan exits cleanly without marking FAILED
       if (trackedUrlId && this._cancelledScanIds.has(trackedUrlId)) {
         throw new ScanCancelledError(trackedUrlId);
+      }
+      if (trackedUrlId && this._pausedScanIds.has(trackedUrlId)) {
+        throw new ScanPausedError(trackedUrlId);
       }
 
       if (entry.status === 'DONE') {
@@ -901,6 +923,12 @@ export class WaybackScraper {
       if (err instanceof ScanCancelledError) {
         // Clean exit — TrackedUrl is being deleted, do nothing
         console.log(`[WaybackScraper] runFullScan for ${trackedUrlId} stopped by cancellation.`);
+      } else if (err instanceof ScanPausedError) {
+        // Clean exit — user paused; persist PAUSED status so frontend can show resume button
+        console.log(`[WaybackScraper] runFullScan for ${trackedUrlId} paused by user.`);
+        await prisma.trackedUrl
+          .update({ where: { id: trackedUrlId }, data: { status: 'PAUSED' } })
+          .catch(() => {});
       } else {
         console.error(
           `[WaybackScraper] runFullScan error for ${trackedUrlId}:`,
@@ -913,6 +941,7 @@ export class WaybackScraper {
     } finally {
       this._runningScanIds.delete(trackedUrlId);
       this._cancelledScanIds.delete(trackedUrlId);
+      this._pausedScanIds.delete(trackedUrlId);
     }
   }
 }
