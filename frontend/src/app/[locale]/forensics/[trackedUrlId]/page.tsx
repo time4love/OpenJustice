@@ -52,6 +52,113 @@ interface DiffPage {
 const PAGE_SIZE = 20;
 
 // ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function appendEvidenceMention(
+  doc: Record<string, unknown>,
+  fileHash: string,
+  label: string,
+): Record<string, unknown> {
+  const content = [...((doc.content as unknown[]) ?? [])];
+  content.push({
+    type: 'paragraph',
+    content: [{ type: 'evidenceMention', attrs: { id: fileHash, label: label.slice(0, 30) } }],
+  });
+  return { ...doc, content };
+}
+
+// ---------------------------------------------------------------------------
+// AddToThesisButton — fetch thesis list, pick one, append evidence mention
+// ---------------------------------------------------------------------------
+
+interface ThesisSummary { id: string; createdAt: string; headVersion: { preview: string } | null; }
+
+function AddToThesisButton({ fileHash, evidenceSummary }: { fileHash: string; evidenceSummary: string }) {
+  const [state, setState] = useState<'idle' | 'open' | 'saving' | 'done'>('idle');
+  const [theses, setTheses] = useState<ThesisSummary[]>([]);
+  const [loadingList, setLoadingList] = useState(false);
+
+  async function openPicker() {
+    if (state === 'open') { setState('idle'); return; }
+    setState('open');
+    if (theses.length > 0) return;
+    setLoadingList(true);
+    try {
+      const res = await fetch(apiUrl('/api/thesis'));
+      const data = (await res.json()) as { theses: ThesisSummary[] };
+      setTheses(data.theses ?? []);
+    } finally {
+      setLoadingList(false);
+    }
+  }
+
+  async function addTo(thesis: ThesisSummary) {
+    setState('saving');
+    try {
+      const res = await fetch(apiUrl(`/api/thesis/${thesis.id}`));
+      const data = (await res.json()) as { thesis: { headVersion: { userContent: Record<string, unknown> } | null } };
+      const currentContent = data.thesis.headVersion?.userContent ?? { type: 'doc', content: [] };
+      const newContent = appendEvidenceMention(currentContent, fileHash, evidenceSummary);
+      await fetch(apiUrl(`/api/thesis/${thesis.id}/version`), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userContent: newContent }),
+      });
+      setState('done');
+    } catch {
+      setState('open');
+    }
+  }
+
+  if (state === 'done') {
+    return (
+      <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700">
+        ✓ Added to thesis
+      </span>
+    );
+  }
+
+  return (
+    <div className="relative">
+      <button
+        onClick={() => { void openPicker(); }}
+        disabled={state === 'saving'}
+        className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-violet-100 hover:bg-violet-200 text-violet-700 disabled:opacity-40 transition-colors"
+      >
+        {state === 'saving' ? 'Saving…' : 'Add to Thesis'}
+      </button>
+
+      {state === 'open' && (
+        <div className="absolute bottom-full mb-2 end-0 z-30 w-64 bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden">
+          <div className="px-3 py-2 bg-slate-50 border-b border-slate-100">
+            <p className="text-xs font-semibold text-slate-600">Pick a thesis</p>
+          </div>
+          {loadingList && <p className="text-xs text-slate-400 px-3 py-3">Loading…</p>}
+          {!loadingList && theses.length === 0 && (
+            <p className="text-xs text-slate-400 px-3 py-3">No theses found</p>
+          )}
+          {!loadingList && theses.map(th => (
+            <button
+              key={th.id}
+              onClick={() => { void addTo(th); }}
+              className="w-full text-start px-3 py-2.5 hover:bg-violet-50 border-b border-slate-100 last:border-0 transition-colors"
+            >
+              <p className="text-xs font-medium text-slate-700 truncate">
+                {th.headVersion?.preview?.slice(0, 50) || `Thesis ${th.id.slice(0, 8)}`}
+              </p>
+              <p className="text-xs text-slate-400 mt-0.5">
+                {new Date(th.createdAt).toLocaleDateString()}
+              </p>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Locale switcher
 // ---------------------------------------------------------------------------
 
@@ -343,14 +450,22 @@ function DiffCard({
             </div>
           )}
 
-          {/* Footer — archive link + promote button (always visible) */}
+          {/* Footer — archive link + promote button + add to thesis (always visible) */}
           <div className={`flex flex-wrap items-center justify-between gap-3 pt-1 ${footerClass}`}>
-            <PromoteButton
-              diffId={diff.id}
-              promoted={diff.promotedEvidence}
-              labels={labels}
-              onPromoted={onPromoted}
-            />
+            <div className="flex flex-wrap items-center gap-2">
+              <PromoteButton
+                diffId={diff.id}
+                promoted={diff.promotedEvidence}
+                labels={labels}
+                onPromoted={onPromoted}
+              />
+              {diff.promotedEvidence && (
+                <AddToThesisButton
+                  fileHash={diff.promotedEvidence.fileHash}
+                  evidenceSummary={diff.legalSignificance.slice(0, 40) || diff.promotedEvidence.fileHash.slice(0, 12)}
+                />
+              )}
+            </div>
             <a
               href={diff.snapshotUrl}
               target="_blank"
