@@ -406,6 +406,7 @@ function HistoryEntry({
   };
   onDeleted: (id: string) => void;
   onResume: (item: TrackedUrlItem) => void;
+  scanning: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [jobs, setJobs] = useState<ScrapeJob[] | null>(null);
@@ -483,7 +484,7 @@ function HistoryEntry({
 
         {/* Actions */}
         <div className="flex items-center gap-2 shrink-0">
-          {(item.status === 'PAUSED' || item.status === 'SCANNING') && (
+          {!scanning && (item.status === 'PAUSED' || item.status === 'SCANNING') && (
             <button
               onClick={() => onResume(item)}
               className="px-3 py-1 rounded-lg text-xs font-medium bg-amber-500 text-white hover:bg-amber-600 transition-colors"
@@ -878,6 +879,7 @@ export default function ForensicsPage() {
                   }}
                   onDeleted={(id) => setHistory((prev) => prev.filter((h) => h.id !== id))}
                   onResume={(item) => { void handleResumeFromHistory(item); }}
+                  scanning={scanning}
                 />
               ))}
             </ul>
