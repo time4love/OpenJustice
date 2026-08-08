@@ -553,4 +553,50 @@ router.get('/search', async (req: Request, res: Response): Promise<void> => {
   }
 });
 
+// ---------------------------------------------------------------------------
+// GET /api/evidence/key-figures?q=&limit=20
+//
+// Returns distinct key figures extracted from evidence records.
+// Used by the TipTap @mention autocomplete in the thesis editor.
+// ---------------------------------------------------------------------------
+
+const KeyFiguresQuerySchema = z.object({
+  q: z.string().default(''),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+});
+
+router.get('/key-figures', async (req: Request, res: Response): Promise<void> => {
+  const parsed = KeyFiguresQuerySchema.safeParse(req.query);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Invalid query', details: parsed.error.flatten() });
+    return;
+  }
+
+  const { q, limit } = parsed.data;
+
+  try {
+    const keyFigures = await prisma.keyFigure.findMany({
+      where: q ? { name: { contains: q, mode: 'insensitive' } } : undefined,
+      orderBy: { name: 'asc' },
+      take: limit,
+      select: {
+        id: true,
+        name: true,
+        _count: { select: { evidence: true } },
+      },
+    });
+
+    res.status(200).json({
+      keyFigures: keyFigures.map((f) => ({
+        id: f.id,
+        name: f.name,
+        evidenceCount: f._count.evidence,
+      })),
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ error: 'Failed to fetch key figures', message });
+  }
+});
+
 export { router as evidenceRouter };

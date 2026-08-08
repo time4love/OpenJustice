@@ -1,54 +1,55 @@
-// ---------------------------------------------------------------------------
-// thesisRoutes tests
-//
-// Covers: Zod request schemas, status transition guards, rate-limit logic,
-// and the evaluate flow (mocking Prisma + ThesisValidatorAgent).
-// ---------------------------------------------------------------------------
-
 jest.mock('../src/lib/prisma', () => ({
   prisma: {
+    $transaction: jest.fn(),
     thesis: {
-      create: jest.fn(),
+      findMany: jest.fn(),
+      findUnique: jest.fn(),
+    },
+    thesisVersion: {
       findMany: jest.fn(),
       findUnique: jest.fn(),
       update: jest.fn(),
-      delete: jest.fn(),
+    },
+    evidence: {
+      findMany: jest.fn(),
     },
   },
 }));
 
-jest.mock('../src/services/ThesisValidatorAgent', () => ({
-  ThesisValidatorAgent: jest.fn().mockImplementation(() => ({
-    validate: jest.fn(),
+jest.mock('../src/services/DevilsAdvocateAgent', () => ({
+  DevilsAdvocateAgent: jest.fn().mockImplementation(() => ({
+    analyze: jest.fn().mockResolvedValue({
+      counterArguments: [],
+      evidenceGaps: [],
+      alternativeInterpretations: [],
+      overallStrengthAssessment: 'MODERATE',
+      summaryHe: 'ניתוח.',
+    }),
   })),
 }));
 
 import { prisma } from '../src/lib/prisma';
-import { ThesisValidatorAgent } from '../src/services/ThesisValidatorAgent';
 import { Request, Response } from 'express';
-import {
-  CreateThesisSchema,
-  UpdateThesisSchema,
-  getEvaluationCount,
-  incrementEvaluationCount,
-  thesisRouter,
-} from '../src/routes/thesisRoutes';
+import { thesisRouter } from '../src/routes/thesisRoutes';
+
+const mockThesisFindMany = prisma.thesis.findMany as jest.Mock;
+const mockThesisFindUnique = prisma.thesis.findUnique as jest.Mock;
+const mockVersionFindMany = prisma.thesisVersion.findMany as jest.Mock;
+const mockTransaction = prisma.$transaction as jest.Mock;
 
 // ---------------------------------------------------------------------------
-// Mock helpers
+// Test helpers
 // ---------------------------------------------------------------------------
 
-const mockPrisma = prisma.thesis as jest.Mocked<typeof prisma.thesis>;
+type RouterStack = Array<{
+  route?: {
+    path: string;
+    methods: Record<string, boolean>;
+    stack: Array<{ handle: (...args: unknown[]) => unknown }>;
+  };
+}>;
 
-// Extract a named route handler from the router by path + method.
-function getHandler(path: string, method: 'post' | 'get' | 'put' | 'delete') {
-  type RouterStack = Array<{
-    route?: {
-      path: string;
-      methods: Record<string, boolean>;
-      stack: Array<{ handle: Function }>;
-    };
-  }>;
+function getHandler(path: string, method: 'post' | 'get') {
   const layer = (thesisRouter as unknown as { stack: RouterStack }).stack.find(
     (l) => l.route?.path === path && l.route.methods[method],
   );
@@ -56,350 +57,346 @@ function getHandler(path: string, method: 'post' | 'get' | 'put' | 'delete') {
   return layer.route.stack[0].handle as (req: Request, res: Response) => Promise<void>;
 }
 
-// Captured response helper
-function mockRes(): { res: Response; json: jest.Mock; status: jest.Mock; getStatus: () => number } {
-  let code = 0;
-  const json = jest.fn();
-  const status = jest.fn((c: number) => { code = c; return { json }; });
-  return {
-    res: { status } as unknown as Response,
-    json,
-    status,
-    getStatus: () => code,
-  };
+function mockReq(params: Record<string, string> = {}, body: unknown = {}, query: Record<string, string> = {}): Request {
+  return { params, body, query } as unknown as Request;
 }
 
-function mockReq(
-  params: Record<string, string> = {},
-  body: unknown = {},
-): Request {
-  return { params, body } as unknown as Request;
+function mockRes() {
+  let code = 0;
+  const json = jest.fn();
+  const status = jest.fn((c: number) => {
+    code = c;
+    return { json };
+  });
+  return { res: { status } as unknown as Response, json, getStatus: () => code };
 }
 
 // ---------------------------------------------------------------------------
 // Fixtures
 // ---------------------------------------------------------------------------
 
-const DRAFT_THESIS = {
-  id: 'thesis-1',
-  title: 'תזה על הסתרת נתוני חיסונים',
-  content: '{"type":"doc","content":[]}',
-  status: 'DRAFT',
-  aiFeedback: null,
-  publishedAt: null,
-  createdAt: new Date(),
-  updatedAt: new Date(),
-  taggedEvidence: [],
-  taggedFigures: [],
-  _count: { taggedEvidence: 0 },
-};
-
-const AI_REVIEWED_THESIS = {
-  ...DRAFT_THESIS,
-  id: 'thesis-2',
-  status: 'AI_REVIEWED',
-  _count: { taggedEvidence: 2 },
-};
-
-const EVIDENCE_FOR_EVAL = [
-  {
-    id: 'ev-1',
-    summary: 'דו"ח זום פנימי',
-    category: 'Internal Communication',
-    evidenceDate: '2021-06-10',
-    targetEntity: 'Ministry of Health',
-    evidenceRole: 'Incriminating',
-  },
-];
-
-const FALSIFICATION_RESULT = {
-  survivingClaims: ['טענה שעמדה'],
-  falsificationAttempts: [
-    { claim: 'הצהרה שקרית', counterArgument: 'לא הוכחה ידיעה אישית', evidenceGap: 'נדרש מייל פנימי' },
+const TIPTAP_DOC = {
+  type: 'doc',
+  content: [
+    {
+      type: 'paragraph',
+      content: [{ type: 'text', text: 'Officials knew about cardiac risks but denied it publicly.' }],
+    },
   ],
-  weakestLink: 'חוסר הוכחה לידיעה ישירה',
-  recommendedEvidence: ['פרוטוקול ישיבה'],
 };
 
-beforeEach(() => {
-  jest.clearAllMocks();
+const TIPTAP_DOC_WITH_MENTIONS = {
+  type: 'doc',
+  content: [
+    {
+      type: 'paragraph',
+      content: [
+        { type: 'keyFigureMention', attrs: { id: 'Fauci', label: 'Fauci' } },
+        { type: 'text', text: ' cited in ' },
+        { type: 'evidenceMention', attrs: { id: 'hash-001', label: 'doc.pdf' } },
+      ],
+    },
+  ],
+};
+
+const NOW = new Date('2026-01-15T00:00:00.000Z');
+
+const THESIS_FIXTURE = { id: 'thesis-1', headVersionId: 'version-1', createdAt: NOW };
+
+const VERSION_FIXTURE = {
+  id: 'version-1',
+  thesisId: 'thesis-1',
+  parentVersionId: null,
+  userContent: TIPTAP_DOC,
+  aiAnalysis: null,
+  contentHash: 'deadbeef',
+  status: 'PENDING_AI',
+  createdAt: NOW,
+  mentions: [],
+  _count: { mentions: 0 },
+};
+
+function setupTransaction(overrides: {
+  thesisCreate?: object;
+  versionCreate?: object;
+  thesisUpdate?: object;
+} = {}) {
+  const mockTx = {
+    thesis: {
+      create: jest.fn().mockResolvedValue(overrides.thesisCreate ?? { id: 'thesis-1', createdAt: NOW }),
+      update: jest.fn().mockResolvedValue(overrides.thesisUpdate ?? THESIS_FIXTURE),
+    },
+    thesisVersion: {
+      create: jest.fn().mockResolvedValue(overrides.versionCreate ?? VERSION_FIXTURE),
+    },
+  };
+  mockTransaction.mockImplementation(async (cb: (tx: typeof mockTx) => Promise<unknown>) => cb(mockTx));
+  return mockTx;
+}
+
+beforeEach(() => jest.clearAllMocks());
+
+// ---------------------------------------------------------------------------
+// POST /
+// ---------------------------------------------------------------------------
+
+describe('POST /', () => {
+  const handle = getHandler('/', 'post');
+
+  it('returns 400 when userContent is missing', async () => {
+    const { res, getStatus } = mockRes();
+    await handle(mockReq({}, {}), res);
+    expect(getStatus()).toBe(400);
+  });
+
+  it('returns 400 when userContent is not a valid TipTap document', async () => {
+    const { res, getStatus } = mockRes();
+    await handle(mockReq({}, { userContent: { notType: 'invalid' } }), res);
+    expect(getStatus()).toBe(400);
+  });
+
+  it('returns 201 and creates thesis + version in a transaction', async () => {
+    setupTransaction();
+    const { res, getStatus, json } = mockRes();
+    await handle(mockReq({}, { userContent: TIPTAP_DOC }), res);
+    expect(getStatus()).toBe(201);
+    const body = (json.mock.calls[0] as [Record<string, unknown>])[0];
+    const thesis = body.thesis as Record<string, unknown>;
+    expect(thesis.id).toBe('thesis-1');
+    expect(thesis.headVersion).toBeDefined();
+    const hv = thesis.headVersion as Record<string, unknown>;
+    expect(hv.status).toBe('PENDING_AI');
+  });
+
+  it('includes a text preview in the response', async () => {
+    setupTransaction();
+    const { res, json } = mockRes();
+    await handle(mockReq({}, { userContent: TIPTAP_DOC }), res);
+    const thesis = ((json.mock.calls[0] as [Record<string, unknown>])[0].thesis as Record<string, unknown>);
+    const preview = (thesis.headVersion as Record<string, unknown>).preview as string;
+    expect(preview).toContain('Officials knew');
+  });
+
+  it('resolves mention nodes to readable tokens in preview', async () => {
+    setupTransaction();
+    const { res, json } = mockRes();
+    await handle(mockReq({}, { userContent: TIPTAP_DOC_WITH_MENTIONS }), res);
+    const thesis = ((json.mock.calls[0] as [Record<string, unknown>])[0].thesis as Record<string, unknown>);
+    const preview = (thesis.headVersion as Record<string, unknown>).preview as string;
+    expect(preview).toContain('@Fauci');
+    expect(preview).toContain('#ev_hash-001');
+  });
+
+  it('calls $transaction once', async () => {
+    setupTransaction();
+    const { res } = mockRes();
+    await handle(mockReq({}, { userContent: TIPTAP_DOC }), res);
+    expect(mockTransaction).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns 500 when transaction throws', async () => {
+    mockTransaction.mockRejectedValueOnce(new Error('DB error'));
+    const { res, getStatus } = mockRes();
+    await handle(mockReq({}, { userContent: TIPTAP_DOC }), res);
+    expect(getStatus()).toBe(500);
+  });
 });
 
 // ---------------------------------------------------------------------------
-// CreateThesisSchema
+// GET /
 // ---------------------------------------------------------------------------
 
-describe('CreateThesisSchema', () => {
-  it('accepts a valid full payload', () => {
-    expect(
-      CreateThesisSchema.safeParse({
-        title: 'My Thesis',
-        content: '{"doc":"..."}',
-        taggedEvidenceIds: ['ev-1'],
-        taggedFigureIds: ['fig-1'],
-      }).success,
-    ).toBe(true);
+describe('GET /', () => {
+  const handle = getHandler('/', 'get');
+
+  it('returns 200 with an empty list', async () => {
+    mockThesisFindMany.mockResolvedValueOnce([]);
+    const { res, getStatus, json } = mockRes();
+    await handle(mockReq(), res);
+    expect(getStatus()).toBe(200);
+    expect((json.mock.calls[0] as [{ theses: unknown[] }])[0].theses).toEqual([]);
   });
 
-  it('defaults taggedEvidenceIds and taggedFigureIds to empty arrays', () => {
-    const result = CreateThesisSchema.safeParse({
-      title: 'My Thesis',
-      content: '{"doc":"..."}',
+  it('returns theses with headVersion preview and mentionCount', async () => {
+    mockThesisFindMany.mockResolvedValueOnce([
+      { ...THESIS_FIXTURE, headVersion: { ...VERSION_FIXTURE, _count: { mentions: 3 } } },
+    ]);
+    const { res, getStatus, json } = mockRes();
+    await handle(mockReq(), res);
+    expect(getStatus()).toBe(200);
+    const theses = (json.mock.calls[0] as [{ theses: Record<string, unknown>[] }])[0].theses;
+    expect(theses).toHaveLength(1);
+    const hv = theses[0].headVersion as Record<string, unknown>;
+    expect(hv.mentionCount).toBe(3);
+    expect((hv.preview as string)).toContain('Officials knew');
+  });
+
+  it('returns null headVersion for a thesis with no versions yet', async () => {
+    mockThesisFindMany.mockResolvedValueOnce([
+      { id: 'thesis-empty', headVersionId: null, createdAt: NOW, headVersion: null },
+    ]);
+    const { res, json } = mockRes();
+    await handle(mockReq(), res);
+    const theses = (json.mock.calls[0] as [{ theses: { headVersion: null }[] }])[0].theses;
+    expect(theses[0].headVersion).toBeNull();
+  });
+
+  it('passes evidence filter to Prisma as a nested mention where clause', async () => {
+    mockThesisFindMany.mockResolvedValueOnce([]);
+    const { res } = mockRes();
+    await handle(mockReq({}, {}, { evidence: 'abc123' }), res);
+    expect(mockThesisFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { headVersion: { mentions: { some: { type: 'EVIDENCE', refId: 'abc123' } } } },
+      }),
+    );
+  });
+
+  it('passes no where clause when evidence param is absent', async () => {
+    mockThesisFindMany.mockResolvedValueOnce([]);
+    const { res } = mockRes();
+    await handle(mockReq(), res);
+    expect(mockThesisFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: undefined }),
+    );
+  });
+
+  it('returns 500 when Prisma throws', async () => {
+    mockThesisFindMany.mockRejectedValueOnce(new Error('DB error'));
+    const { res, getStatus } = mockRes();
+    await handle(mockReq(), res);
+    expect(getStatus()).toBe(500);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// GET /:id
+// ---------------------------------------------------------------------------
+
+describe('GET /:id', () => {
+  const handle = getHandler('/:id', 'get');
+
+  it('returns 404 when thesis does not exist', async () => {
+    mockThesisFindUnique.mockResolvedValueOnce(null);
+    const { res, getStatus } = mockRes();
+    await handle(mockReq({ id: 'thesis-x' }), res);
+    expect(getStatus()).toBe(404);
+  });
+
+  it('returns 200 with full thesis + headVersion + mentions', async () => {
+    mockThesisFindUnique.mockResolvedValueOnce({
+      ...THESIS_FIXTURE,
+      headVersion: {
+        ...VERSION_FIXTURE,
+        mentions: [{ id: 'm1', type: 'KEY_FIGURE', refId: 'Fauci' }],
+      },
     });
-    expect(result.success).toBe(true);
-    expect(result.data?.taggedEvidenceIds).toEqual([]);
-    expect(result.data?.taggedFigureIds).toEqual([]);
-  });
-
-  it('rejects empty title', () => {
-    expect(
-      CreateThesisSchema.safeParse({ title: '', content: 'x' }).success,
-    ).toBe(false);
-  });
-
-  it('rejects title over 300 chars', () => {
-    expect(
-      CreateThesisSchema.safeParse({ title: 'a'.repeat(301), content: 'x' }).success,
-    ).toBe(false);
-  });
-
-  it('rejects empty content', () => {
-    expect(
-      CreateThesisSchema.safeParse({ title: 'T', content: '' }).success,
-    ).toBe(false);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// UpdateThesisSchema
-// ---------------------------------------------------------------------------
-
-describe('UpdateThesisSchema', () => {
-  it('accepts a partial update with title only', () => {
-    expect(UpdateThesisSchema.safeParse({ title: 'New title' }).success).toBe(true);
-  });
-
-  it('accepts an empty object (no-op update)', () => {
-    expect(UpdateThesisSchema.safeParse({}).success).toBe(true);
-  });
-
-  it('accepts updating only taggedEvidenceIds', () => {
-    expect(UpdateThesisSchema.safeParse({ taggedEvidenceIds: ['ev-1'] }).success).toBe(true);
-  });
-
-  it('rejects empty title string', () => {
-    expect(UpdateThesisSchema.safeParse({ title: '' }).success).toBe(false);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Rate limiter helpers
-// ---------------------------------------------------------------------------
-
-describe('evaluation rate limiter', () => {
-  it('starts at 0 for an unseen thesis id', () => {
-    expect(getEvaluationCount('brand-new-id')).toBe(0);
-  });
-
-  it('increments correctly across multiple calls', () => {
-    const id = `rate-test-${Date.now()}`;
-    expect(incrementEvaluationCount(id)).toBe(1);
-    expect(incrementEvaluationCount(id)).toBe(2);
-    expect(getEvaluationCount(id)).toBe(2);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// POST /api/thesis/:id/evaluate — guards
-// ---------------------------------------------------------------------------
-
-describe('POST /api/thesis/:id/evaluate — guards', () => {
-  const handle = getHandler('/:id/evaluate', 'post');
-
-  it('returns 404 when thesis does not exist', async () => {
-    mockPrisma.findUnique.mockResolvedValueOnce(null as never);
-    const { res, getStatus } = mockRes();
-    await handle(mockReq({ id: 'thesis-1' }), res);
-    expect(getStatus()).toBe(404);
-  });
-
-  it('returns 409 when thesis is PUBLISHED', async () => {
-    mockPrisma.findUnique.mockResolvedValueOnce({ ...DRAFT_THESIS, status: 'PUBLISHED', taggedEvidence: [] } as never);
-    const { res, getStatus, json } = mockRes();
-    await handle(mockReq({ id: 'thesis-1' }), res);
-    expect(getStatus()).toBe(409);
-    expect((json.mock.calls[0] as [{ status: string }])[0].status).toBe('PUBLISHED');
-  });
-
-  it('returns 409 when thesis is PENDING_MODERATION', async () => {
-    mockPrisma.findUnique.mockResolvedValueOnce({ ...DRAFT_THESIS, status: 'PENDING_MODERATION', taggedEvidence: [] } as never);
-    const { res, getStatus } = mockRes();
-    await handle(mockReq({ id: 'thesis-1' }), res);
-    expect(getStatus()).toBe(409);
-  });
-
-  it('returns 429 when evaluation limit is exceeded', async () => {
-    const id = `rate-limited-${Date.now()}`;
-    // Exhaust the limit
-    for (let i = 0; i < 5; i++) incrementEvaluationCount(id);
-
-    mockPrisma.findUnique.mockResolvedValueOnce({ ...DRAFT_THESIS, id, taggedEvidence: [] } as never);
-    const { res, getStatus } = mockRes();
-    await handle(mockReq({ id }), res);
-    expect(getStatus()).toBe(429);
-  });
-
-  it('calls ThesisValidatorAgent.validate with thesis content and evidence summaries', async () => {
-    const MockValidator = ThesisValidatorAgent as jest.MockedClass<typeof ThesisValidatorAgent>;
-    const mockValidate = jest.fn().mockResolvedValue(FALSIFICATION_RESULT);
-    MockValidator.mockImplementationOnce(() => ({ validate: mockValidate }) as unknown as ThesisValidatorAgent);
-
-    // Force fresh singleton by resetting module-level cache via a new import cycle isn't possible
-    // without resetModules. Instead we test via the exported _validator path:
-    // Re-create the singleton by instantiating the mock directly and verifying argument contract.
-    const agent = new ThesisValidatorAgent();
-    await agent.validate(DRAFT_THESIS.content, EVIDENCE_FOR_EVAL);
-
-    expect(mockValidate).toHaveBeenCalledWith(
-      DRAFT_THESIS.content,
-      EVIDENCE_FOR_EVAL,
-    );
-  });
-
-  it('returns 200 with feedback when evaluation succeeds', async () => {
-    // Use a fresh thesis id so rate limit counter starts at 0
-    const id = `eval-ok-${Date.now()}`;
-    mockPrisma.findUnique.mockResolvedValueOnce({
-      ...DRAFT_THESIS,
-      id,
-      taggedEvidence: EVIDENCE_FOR_EVAL,
-    } as never);
-    mockPrisma.update.mockResolvedValueOnce({ ...DRAFT_THESIS, id, status: 'AI_REVIEWED' } as never);
-
-    // Patch the module-level singleton so validate returns our fixture
-    const MockValidator = ThesisValidatorAgent as jest.MockedClass<typeof ThesisValidatorAgent>;
-    MockValidator.mockImplementation(() => ({
-      validate: jest.fn().mockResolvedValue(FALSIFICATION_RESULT),
-    }) as unknown as ThesisValidatorAgent);
-
-    // Re-require to pick up fresh singleton (safe here — no resetModules called)
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const freshHandle = (require('../src/routes/thesisRoutes') as {
-      thesisRouter: import('express').Router;
-    }).thesisRouter;
-
-    type RouterStack = Array<{
-      route?: { path: string; methods: Record<string, boolean>; stack: Array<{ handle: Function }> };
-    }>;
-    const layer = (freshHandle as unknown as { stack: RouterStack }).stack.find(
-      (l) => l.route?.path === '/:id/evaluate' && l.route.methods['post'],
-    );
-    if (!layer?.route) throw new Error('evaluate route not found');
-    const h = layer.route.stack[0].handle as (req: Request, res: Response) => Promise<void>;
-
-    const { res, getStatus, json } = mockRes();
-    await h(mockReq({ id }), res);
-    expect(getStatus()).toBe(200);
-    expect((json.mock.calls[0] as [{ feedback: unknown }])[0]).toHaveProperty('feedback');
-  });
-});
-
-// ---------------------------------------------------------------------------
-// POST /api/thesis/:id/submit — guards
-// ---------------------------------------------------------------------------
-
-describe('POST /api/thesis/:id/submit — guards', () => {
-  const handle = getHandler('/:id/submit', 'post');
-
-  it('returns 404 when thesis does not exist', async () => {
-    mockPrisma.findUnique.mockResolvedValueOnce(null as never);
-    const { res, getStatus } = mockRes();
-    await handle(mockReq({ id: 'thesis-1' }), res);
-    expect(getStatus()).toBe(404);
-  });
-
-  it('returns 409 when status is DRAFT (not AI_REVIEWED)', async () => {
-    mockPrisma.findUnique.mockResolvedValueOnce({ ...DRAFT_THESIS, _count: { taggedEvidence: 2 } } as never);
-    const { res, getStatus, json } = mockRes();
-    await handle(mockReq({ id: 'thesis-1' }), res);
-    expect(getStatus()).toBe(409);
-    expect((json.mock.calls[0] as [{ error: string }])[0].error).toContain('AI_REVIEWED');
-  });
-
-  it('returns 422 when thesis has no tagged evidence', async () => {
-    mockPrisma.findUnique.mockResolvedValueOnce({ ...AI_REVIEWED_THESIS, _count: { taggedEvidence: 0 } } as never);
-    const { res, getStatus } = mockRes();
-    await handle(mockReq({ id: 'thesis-2' }), res);
-    expect(getStatus()).toBe(422);
-  });
-
-  it('returns 200 and PENDING_MODERATION on valid submit', async () => {
-    mockPrisma.findUnique.mockResolvedValueOnce(AI_REVIEWED_THESIS as never);
-    mockPrisma.update.mockResolvedValueOnce({ id: 'thesis-2', status: 'PENDING_MODERATION' } as never);
-    const { res, getStatus, json } = mockRes();
-    await handle(mockReq({ id: 'thesis-2' }), res);
-    expect(getStatus()).toBe(200);
-    expect((json.mock.calls[0] as [{ submitted: boolean }])[0].submitted).toBe(true);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// DELETE /api/thesis/:id — guards
-// ---------------------------------------------------------------------------
-
-describe('DELETE /api/thesis/:id — guards', () => {
-  const handle = getHandler('/:id', 'delete');
-
-  it('returns 409 for PUBLISHED thesis', async () => {
-    mockPrisma.findUnique.mockResolvedValueOnce({ ...DRAFT_THESIS, status: 'PUBLISHED' } as never);
-    const { res, getStatus } = mockRes();
-    await handle(mockReq({ id: 'thesis-1' }), res);
-    expect(getStatus()).toBe(409);
-  });
-
-  it('returns 409 for PENDING_MODERATION thesis', async () => {
-    mockPrisma.findUnique.mockResolvedValueOnce({ ...DRAFT_THESIS, status: 'PENDING_MODERATION' } as never);
-    const { res, getStatus } = mockRes();
-    await handle(mockReq({ id: 'thesis-1' }), res);
-    expect(getStatus()).toBe(409);
-  });
-
-  it('returns 200 and deletes a DRAFT thesis', async () => {
-    mockPrisma.findUnique.mockResolvedValueOnce(DRAFT_THESIS as never);
-    mockPrisma.delete.mockResolvedValueOnce(DRAFT_THESIS as never);
     const { res, getStatus, json } = mockRes();
     await handle(mockReq({ id: 'thesis-1' }), res);
     expect(getStatus()).toBe(200);
-    expect((json.mock.calls[0] as [{ deleted: boolean }])[0].deleted).toBe(true);
+    const thesis = (json.mock.calls[0] as [{ thesis: { id: string } }])[0].thesis;
+    expect(thesis.id).toBe('thesis-1');
   });
 
-  it('returns 200 and deletes a REJECTED thesis', async () => {
-    mockPrisma.findUnique.mockResolvedValueOnce({ ...DRAFT_THESIS, status: 'REJECTED' } as never);
-    mockPrisma.delete.mockResolvedValueOnce(DRAFT_THESIS as never);
+  it('returns 500 when Prisma throws', async () => {
+    mockThesisFindUnique.mockRejectedValueOnce(new Error('DB error'));
     const { res, getStatus } = mockRes();
     await handle(mockReq({ id: 'thesis-1' }), res);
-    expect(getStatus()).toBe(200);
+    expect(getStatus()).toBe(500);
   });
 });
 
 // ---------------------------------------------------------------------------
-// PUT /api/thesis/:id — guard
+// POST /:id/version
 // ---------------------------------------------------------------------------
 
-describe('PUT /api/thesis/:id — guards', () => {
-  const handle = getHandler('/:id', 'put');
+describe('POST /:id/version', () => {
+  const handle = getHandler('/:id/version', 'post');
 
-  it('returns 409 when trying to edit an AI_REVIEWED thesis', async () => {
-    mockPrisma.findUnique.mockResolvedValueOnce({ ...DRAFT_THESIS, status: 'AI_REVIEWED' } as never);
+  it('returns 400 when userContent is missing', async () => {
     const { res, getStatus } = mockRes();
-    await handle(mockReq({ id: 'thesis-1' }, { title: 'New title' }), res);
-    expect(getStatus()).toBe(409);
+    await handle(mockReq({ id: 'thesis-1' }, {}), res);
+    expect(getStatus()).toBe(400);
   });
 
   it('returns 404 when thesis does not exist', async () => {
-    mockPrisma.findUnique.mockResolvedValueOnce(null as never);
+    mockThesisFindUnique.mockResolvedValueOnce(null);
     const { res, getStatus } = mockRes();
-    await handle(mockReq({ id: 'thesis-1' }, { title: 'New' }), res);
+    await handle(mockReq({ id: 'thesis-x' }, { userContent: TIPTAP_DOC }), res);
     expect(getStatus()).toBe(404);
+  });
+
+  it('returns 201 with new version and parentVersionId set to previous head', async () => {
+    mockThesisFindUnique.mockResolvedValueOnce(THESIS_FIXTURE);
+    setupTransaction({
+      versionCreate: { ...VERSION_FIXTURE, id: 'version-2', parentVersionId: 'version-1' },
+      thesisUpdate: { ...THESIS_FIXTURE, headVersionId: 'version-2' },
+    });
+    const { res, getStatus, json } = mockRes();
+    await handle(mockReq({ id: 'thesis-1' }, { userContent: TIPTAP_DOC }), res);
+    expect(getStatus()).toBe(201);
+    const thesis = ((json.mock.calls[0] as [Record<string, unknown>])[0].thesis as Record<string, unknown>);
+    const hv = thesis.headVersion as Record<string, unknown>;
+    expect(hv.id).toBe('version-2');
+    expect(hv.parentVersionId).toBe('version-1');
+  });
+
+  it('returns 500 when transaction throws', async () => {
+    mockThesisFindUnique.mockResolvedValueOnce(THESIS_FIXTURE);
+    mockTransaction.mockRejectedValueOnce(new Error('DB error'));
+    const { res, getStatus } = mockRes();
+    await handle(mockReq({ id: 'thesis-1' }, { userContent: TIPTAP_DOC }), res);
+    expect(getStatus()).toBe(500);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// GET /:id/versions
+// ---------------------------------------------------------------------------
+
+describe('GET /:id/versions', () => {
+  const handle = getHandler('/:id/versions', 'get');
+
+  it('returns 404 when thesis does not exist', async () => {
+    mockThesisFindUnique.mockResolvedValueOnce(null);
+    const { res, getStatus } = mockRes();
+    await handle(mockReq({ id: 'thesis-x' }), res);
+    expect(getStatus()).toBe(404);
+  });
+
+  it('returns 200 with versions list and correct isHead flags', async () => {
+    mockThesisFindUnique.mockResolvedValueOnce(THESIS_FIXTURE);
+    mockVersionFindMany.mockResolvedValueOnce([
+      { ...VERSION_FIXTURE, id: 'version-1', _count: { mentions: 2 } },
+      { ...VERSION_FIXTURE, id: 'version-2', parentVersionId: 'version-1', _count: { mentions: 1 } },
+    ]);
+    const { res, getStatus, json } = mockRes();
+    await handle(mockReq({ id: 'thesis-1' }), res);
+    expect(getStatus()).toBe(200);
+    const body = (json.mock.calls[0] as [{ versions: { id: string; isHead: boolean }[]; headVersionId: string }])[0];
+    expect(body.headVersionId).toBe('version-1');
+    expect(body.versions).toHaveLength(2);
+    expect(body.versions.find((v) => v.id === 'version-1')?.isHead).toBe(true);
+    expect(body.versions.find((v) => v.id === 'version-2')?.isHead).toBe(false);
+  });
+
+  it('includes preview and mentionCount per version', async () => {
+    mockThesisFindUnique.mockResolvedValueOnce(THESIS_FIXTURE);
+    mockVersionFindMany.mockResolvedValueOnce([
+      { ...VERSION_FIXTURE, _count: { mentions: 5 } },
+    ]);
+    const { res, json } = mockRes();
+    await handle(mockReq({ id: 'thesis-1' }), res);
+    const versions = (json.mock.calls[0] as [{ versions: { preview: string; mentionCount: number }[] }])[0].versions;
+    expect(versions[0].preview).toContain('Officials knew');
+    expect(versions[0].mentionCount).toBe(5);
+  });
+
+  it('returns 500 when Prisma throws on versions query', async () => {
+    mockThesisFindUnique.mockResolvedValueOnce(THESIS_FIXTURE);
+    mockVersionFindMany.mockRejectedValueOnce(new Error('DB error'));
+    const { res, getStatus } = mockRes();
+    await handle(mockReq({ id: 'thesis-1' }), res);
+    expect(getStatus()).toBe(500);
   });
 });

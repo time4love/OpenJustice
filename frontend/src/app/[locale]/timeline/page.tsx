@@ -113,6 +113,7 @@ interface NodeLabels {
   roleContextAnchor: string;
   viewSource: string;
   viewDiffHistory: string;
+  viewCitingTheses: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -308,6 +309,13 @@ function TimelineNode({
                 <span aria-hidden="true">&#x2197;</span>
               </Link>
             )}
+            <Link
+              href={`/theses?evidence=${encodeURIComponent(metadata.fileHash)}`}
+              className="flex items-center gap-1 text-xs font-medium text-violet-600 hover:text-violet-800 hover:underline transition-colors"
+            >
+              {labels.viewCitingTheses}
+              <span aria-hidden="true">&#x2197;</span>
+            </Link>
           </div>
         </div>
       </div>
@@ -487,6 +495,7 @@ export default function TimelinePage() {
     roleContextAnchor: t('roleContextAnchor'),
     viewSource: t('viewSource'),
     viewDiffHistory: t('viewDiffHistory'),
+    viewCitingTheses: t('viewCitingTheses'),
     getPerspectiveLabel,
   };
 

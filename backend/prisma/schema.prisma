@@ -93,7 +93,6 @@ model KeyFigure {
   name      String     @unique
   createdAt DateTime   @default(now())
   evidence  Evidence[]
-  theses    Thesis[]   @relation("ThesisFigures")
 }
 
 model Whistleblower {
@@ -128,29 +127,54 @@ model Evidence {
   urlVersionDiffId    String?
   urlVersionDiff      UrlVersionDiff? @relation(fields: [urlVersionDiffId], references: [id])
   createdAt           DateTime @default(now())
-  theses              Thesis[] @relation("ThesisEvidence")
 }
 
-enum ThesisStatus {
-  DRAFT
-  AI_REVIEWED
-  PENDING_MODERATION
-  PUBLISHED
-  REJECTED
+enum ThesisVersionStatus {
+  PENDING_AI // AI devil's advocate analysis not yet complete
+  COMPLETE   // aiAnalysis populated, ready to display
 }
 
-// A crowdsourced legal thesis — anchors claims to specific evidence records
-// and key figures. AI acts as devil's advocate (falsification, not scoring)
-// before a human moderator approves publication.
+enum MentionType {
+  KEY_FIGURE  // @name — references a KeyFigure.name
+  EVIDENCE    // #ev_ — references an Evidence.fileHash
+  TRACKED_URL // #url_ — references a TrackedUrl.id
+}
+
+// A crowdsourced legal thesis — wiki-style versioned narrative that anchors
+// claims to evidence via @keyFigure and #evidence mentions.
+// headVersionId points to the canonical (latest-wins) version.
 model Thesis {
-  id             String        @id @default(cuid())
-  title          String
-  content        String        // TipTap JSON (stringified)
-  status         ThesisStatus  @default(DRAFT)
-  aiFeedback     String?       // JSON: FalsificationResult (stringified)
-  publishedAt    DateTime?
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
-  taggedEvidence Evidence[]    @relation("ThesisEvidence")
-  taggedFigures  KeyFigure[]   @relation("ThesisFigures")
+  id            String         @id @default(cuid())
+  headVersionId String?        @unique
+  headVersion   ThesisVersion? @relation("ThesisHead", fields: [headVersionId], references: [id])
+  versions      ThesisVersion[] @relation("ThesisVersions")
+  createdAt     DateTime       @default(now())
+}
+
+// One row per edit. userContent is TipTap JSON; aiAnalysis is devil's advocate output.
+// contentHash = SHA-256(userContent + aiAnalysis) for tamper evidence.
+model ThesisVersion {
+  id              String              @id @default(cuid())
+  thesisId        String
+  thesis          Thesis              @relation("ThesisVersions", fields: [thesisId], references: [id], onDelete: Cascade)
+  parentVersionId String?
+  parentVersion   ThesisVersion?      @relation("VersionTree", fields: [parentVersionId], references: [id])
+  childVersions   ThesisVersion[]     @relation("VersionTree")
+  userContent     Json                // TipTap document JSON
+  aiAnalysis      Json?               // DevilsAdvocateAgent output, null until COMPLETE
+  contentHash     String              // SHA-256 of userContent + aiAnalysis
+  status          ThesisVersionStatus @default(PENDING_AI)
+  mentions        ThesisMention[]
+  isHead          Thesis?             @relation("ThesisHead")
+  createdAt       DateTime            @default(now())
+}
+
+// Extracted first-class references from ThesisVersion.userContent nodes.
+// Queryable index — avoids parsing JSON at query time.
+model ThesisMention {
+  id               String        @id @default(cuid())
+  thesisVersionId  String
+  thesisVersion    ThesisVersion @relation(fields: [thesisVersionId], references: [id], onDelete: Cascade)
+  type             MentionType
+  refId            String        // KeyFigure.name | Evidence.fileHash | TrackedUrl.id
 }

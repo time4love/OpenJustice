@@ -149,7 +149,8 @@
     "roleContextAnchor": "עוגן עובדתי",
     "roleIncriminating": "ראיה מפלילה",
     "viewSource": "מקור הראיה",
-    "viewDiffHistory": "צפה בהיסטוריית המסמך המלאה"
+    "viewDiffHistory": "צפה בהיסטוריית המסמך המלאה",
+    "viewCitingTheses": "תזות המצטטות ראיה זו"
   },
   "figures": {
     "tagline": "גרף ישויות · דמויות מפתח ורשת הקשרים",
@@ -311,7 +312,24 @@
     "errorEvaluate": "הבדיקה נכשלה. נסה שוב.",
     "errorSubmit": "השליחה נכשלה. נסה שוב.",
     "figureSuggestion": "דמויות מפתח",
-    "evidenceSuggestion": "ראיות"
+    "evidenceSuggestion": "ראיות",
+    "keyFiguresLabel": "דמויות מפתח",
+    "emptyState": "אין תזות עדיין. היה/י הראשון/ה לכתוב.",
+    "mentions": "אזכורים",
+    "editBtn": "ערוך",
+    "historyBtn": "היסטוריה",
+    "aiAnalysisTitle": "ניתוח פרקליט השטן",
+    "counterArgumentsLabel": "טיעונים נגדיים",
+    "evidenceGapsLabel": "פערים ראייתיים",
+    "alternativeInterpretationsLabel": "פרשנויות חלופיות",
+    "pendingAiNotice": "ניתוח הבינה המלאכותית רץ ברקע. רענן בעוד רגע לצפייה בתוצאות.",
+    "filteredByEvidence": "מציג תזות המצטטות ראיה",
+    "clearFilter": "נקה סינון",
+    "editHint": "אתה יוצר גרסה חדשה. הגרסה הקודמת נשמרת בהיסטוריה.",
+    "cancelBtn": "בטל",
+    "historyHeading": "היסטוריית גרסאות",
+    "historyEmpty": "לא נמצאו גרסאות.",
+    "currentVersion": "נוכחית"
   },
   "chat": {
     "greeting": "שלום, אני נציג האמון של פרויקט מבצר הזכוכית. כיצד אוכל לעזור לך להבין את אבטחת המערכת שלנו?",

@@ -1,62 +1,112 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
+import { createHash } from 'crypto';
+import type { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
-import { ThesisValidatorAgent } from '../services/ThesisValidatorAgent';
-import type { EvidenceSummary } from '../services/ThesisValidatorAgent';
-import type { FalsificationResult } from '../services/ThesisValidatorAgent';
+import { parseMentions } from '../utils/parseMentions';
+import { DevilsAdvocateAgent, type ReferencedEvidence } from '../services/DevilsAdvocateAgent';
 
 const router = Router();
-
-// ---------------------------------------------------------------------------
-// Rate limit — max evaluations per thesis (in-memory guard, UX protection)
-// ---------------------------------------------------------------------------
-
-const EVALUATE_LIMIT = 5;
-const _evaluationCounts = new Map<string, number>();
-
-export function getEvaluationCount(thesisId: string): number {
-  return _evaluationCounts.get(thesisId) ?? 0;
-}
-
-export function incrementEvaluationCount(thesisId: string): number {
-  const next = getEvaluationCount(thesisId) + 1;
-  _evaluationCounts.set(thesisId, next);
-  return next;
-}
 
 // ---------------------------------------------------------------------------
 // Lazy singleton
 // ---------------------------------------------------------------------------
 
-let _validator: ThesisValidatorAgent | null = null;
+let _agent: DevilsAdvocateAgent | null = null;
 
-function getValidator(): ThesisValidatorAgent {
-  if (!_validator) _validator = new ThesisValidatorAgent();
-  return _validator;
+function getAgent(): DevilsAdvocateAgent {
+  if (!_agent) _agent = new DevilsAdvocateAgent();
+  return _agent;
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function sha256(value: unknown): string {
+  return createHash('sha256').update(JSON.stringify(value)).digest('hex');
+}
+
+/**
+ * Walk a TipTap document JSON and extract plain text, resolving mention nodes
+ * to human-readable tokens (e.g. @Netanyahu, #ev_abc123).
+ */
+function extractText(doc: unknown): string {
+  function walk(node: Record<string, unknown>): string {
+    if (node.type === 'text') return String(node.text ?? '');
+    const attrs = node.attrs as Record<string, unknown> | undefined;
+    if (node.type === 'keyFigureMention') return `@${String(attrs?.['id'] ?? '')}`;
+    if (node.type === 'evidenceMention') return `#ev_${String(attrs?.['id'] ?? '')}`;
+    if (node.type === 'trackedUrlMention') return `#url_${String(attrs?.['id'] ?? '')}`;
+    const content = node.content;
+    if (!Array.isArray(content)) return '';
+    return (content as unknown[]).map((c) => walk(c as Record<string, unknown>)).join(' ');
+  }
+  return walk(doc as Record<string, unknown>)
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function extractPreview(doc: unknown): string {
+  return extractText(doc).slice(0, 120);
+}
+
+// ---------------------------------------------------------------------------
+// Async AI trigger — fire-and-forget from POST routes
+// ---------------------------------------------------------------------------
+
+async function triggerAIAnalysis(versionId: string, userContent: unknown): Promise<void> {
+  try {
+    const version = await prisma.thesisVersion.findUnique({
+      where: { id: versionId },
+      include: { mentions: { where: { type: 'EVIDENCE' } } },
+    });
+    if (!version) return;
+
+    const evidenceRecords = await prisma.evidence.findMany({
+      where: { fileHash: { in: version.mentions.map((m) => m.refId) } },
+      select: {
+        fileHash: true,
+        category: true,
+        targetEntity: true,
+        evidenceTier: true,
+        evidenceRole: true,
+        evidenceDate: true,
+        summary: true,
+      },
+    });
+
+    const referenced: ReferencedEvidence[] = evidenceRecords;
+    const thesisText = extractText(userContent);
+    const aiAnalysis = await getAgent().analyze(thesisText, referenced);
+    const contentHash = sha256({ userContent, aiAnalysis });
+
+    await prisma.thesisVersion.update({
+      where: { id: versionId },
+      data: { aiAnalysis, contentHash, status: 'COMPLETE' },
+    });
+  } catch (err) {
+    console.error('[thesis] AI analysis failed for version', versionId, err);
+  }
 }
 
 // ---------------------------------------------------------------------------
 // Request schemas
 // ---------------------------------------------------------------------------
 
-export const CreateThesisSchema = z.object({
-  title: z.string().min(1, 'Title is required').max(300),
-  content: z.string().min(1, 'Content is required'),
-  taggedEvidenceIds: z.array(z.string()).default([]),
-  taggedFigureIds: z.array(z.string()).default([]),
+const CreateThesisSchema = z.object({
+  userContent: z.record(z.string(), z.unknown()),
 });
 
-export const UpdateThesisSchema = z.object({
-  title: z.string().min(1).max(300).optional(),
-  content: z.string().min(1).optional(),
-  taggedEvidenceIds: z.array(z.string()).optional(),
-  taggedFigureIds: z.array(z.string()).optional(),
+const ListThesesSchema = z.object({
+  evidence: z.string().optional(),
 });
 
 // ---------------------------------------------------------------------------
 // POST /api/thesis
 //
-// Create a new thesis draft.
+// Creates a new Thesis with its first ThesisVersion.
+// Mention extraction is synchronous; AI analysis fires in the background.
 // ---------------------------------------------------------------------------
 
 router.post('/', async (req: Request, res: Response): Promise<void> => {
@@ -66,23 +116,58 @@ router.post('/', async (req: Request, res: Response): Promise<void> => {
     return;
   }
 
-  const { title, content, taggedEvidenceIds, taggedFigureIds } = parsed.data;
+  const { userContent } = parsed.data;
+
+  let mentions: ReturnType<typeof parseMentions>;
+  try {
+    mentions = parseMentions(userContent);
+  } catch {
+    res.status(400).json({ error: 'userContent is not a valid TipTap document' });
+    return;
+  }
 
   try {
-    const thesis = await prisma.thesis.create({
-      data: {
-        title,
-        content,
-        taggedEvidence: { connect: taggedEvidenceIds.map((id) => ({ id })) },
-        taggedFigures: { connect: taggedFigureIds.map((id) => ({ id })) },
-      },
-      include: {
-        taggedEvidence: { select: { id: true, summary: true, category: true } },
-        taggedFigures: { select: { id: true, name: true } },
+    const contentHash = sha256(userContent);
+
+    const { updatedThesis, version } = await prisma.$transaction(async (tx) => {
+      const thesis = await tx.thesis.create({ data: {} });
+
+      const version = await tx.thesisVersion.create({
+        data: {
+          thesisId: thesis.id,
+          userContent: userContent as Prisma.InputJsonValue,
+          contentHash,
+          status: 'PENDING_AI',
+          mentions: {
+            createMany: { data: mentions.map((m) => ({ type: m.type, refId: m.refId })) },
+          },
+        },
+      });
+
+      const updatedThesis = await tx.thesis.update({
+        where: { id: thesis.id },
+        data: { headVersionId: version.id },
+      });
+
+      return { updatedThesis, version };
+    });
+
+    res.status(201).json({
+      thesis: {
+        id: updatedThesis.id,
+        createdAt: updatedThesis.createdAt,
+        headVersion: {
+          id: version.id,
+          status: version.status,
+          contentHash: version.contentHash,
+          preview: extractPreview(userContent),
+          createdAt: version.createdAt,
+        },
       },
     });
 
-    res.status(201).json({ thesis });
+    // Fire-and-forget — do not await
+    void triggerAIAnalysis(version.id, userContent);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     res.status(500).json({ error: 'Failed to create thesis', message });
@@ -92,33 +177,48 @@ router.post('/', async (req: Request, res: Response): Promise<void> => {
 // ---------------------------------------------------------------------------
 // GET /api/thesis
 //
-// List all PUBLISHED theses for the public feed.
+// Lists all theses with a preview of the head version.
 // ---------------------------------------------------------------------------
 
-router.get('/', async (_req: Request, res: Response): Promise<void> => {
+router.get('/', async (req: Request, res: Response): Promise<void> => {
+  const { evidence } = ListThesesSchema.parse(req.query ?? {});
+
+  const where = evidence
+    ? { headVersion: { mentions: { some: { type: 'EVIDENCE' as const, refId: evidence } } } }
+    : undefined;
+
   try {
     const theses = await prisma.thesis.findMany({
+      where,
       orderBy: { createdAt: 'desc' },
-      select: {
-        id: true,
-        title: true,
-        status: true,
-        publishedAt: true,
-        createdAt: true,
-        taggedFigures: { select: { id: true, name: true } },
-        _count: { select: { taggedEvidence: true } },
+      include: {
+        headVersion: {
+          select: {
+            id: true,
+            status: true,
+            contentHash: true,
+            userContent: true,
+            createdAt: true,
+            _count: { select: { mentions: true } },
+          },
+        },
       },
     });
 
     res.status(200).json({
       theses: theses.map((t) => ({
         id: t.id,
-        title: t.title,
-        status: t.status,
-        publishedAt: t.publishedAt,
         createdAt: t.createdAt,
-        taggedFigures: t.taggedFigures,
-        evidenceCount: t._count.taggedEvidence,
+        headVersion: t.headVersion
+          ? {
+              id: t.headVersion.id,
+              status: t.headVersion.status,
+              contentHash: t.headVersion.contentHash,
+              preview: extractPreview(t.headVersion.userContent),
+              mentionCount: t.headVersion._count.mentions,
+              createdAt: t.headVersion.createdAt,
+            }
+          : null,
       })),
     });
   } catch (err) {
@@ -130,7 +230,7 @@ router.get('/', async (_req: Request, res: Response): Promise<void> => {
 // ---------------------------------------------------------------------------
 // GET /api/thesis/:id
 //
-// Get a single thesis with full content and tagged items.
+// Returns a single thesis with its full head version content and AI analysis.
 // ---------------------------------------------------------------------------
 
 router.get('/:id', async (req: Request, res: Response): Promise<void> => {
@@ -144,114 +244,9 @@ router.get('/:id', async (req: Request, res: Response): Promise<void> => {
     const thesis = await prisma.thesis.findUnique({
       where: { id },
       include: {
-        taggedEvidence: {
-          select: { id: true, summary: true, category: true, evidenceDate: true },
-        },
-        taggedFigures: { select: { id: true, name: true } },
-      },
-    });
-
-    if (!thesis) {
-      res.status(404).json({ error: 'Thesis not found' });
-      return;
-    }
-
-    const aiFeedback = thesis.aiFeedback
-      ? (JSON.parse(thesis.aiFeedback) as FalsificationResult)
-      : null;
-
-    res.status(200).json({ thesis: { ...thesis, aiFeedback } });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    res.status(500).json({ error: 'Failed to fetch thesis', message });
-  }
-});
-
-// ---------------------------------------------------------------------------
-// PUT /api/thesis/:id
-//
-// Update a DRAFT thesis. Replaces M2M relations in full when provided.
-// ---------------------------------------------------------------------------
-
-router.put('/:id', async (req: Request, res: Response): Promise<void> => {
-  const id = String(req.params['id'] ?? '');
-  if (!id) {
-    res.status(400).json({ error: 'Missing thesis id' });
-    return;
-  }
-
-  const parsed = UpdateThesisSchema.safeParse(req.body);
-  if (!parsed.success) {
-    res.status(400).json({ error: 'Invalid request', details: parsed.error.flatten() });
-    return;
-  }
-
-  try {
-    const existing = await prisma.thesis.findUnique({ where: { id } });
-    if (!existing) {
-      res.status(404).json({ error: 'Thesis not found' });
-      return;
-    }
-    if (existing.status !== 'DRAFT') {
-      res.status(409).json({ error: 'Only DRAFT theses can be edited', status: existing.status });
-      return;
-    }
-
-    const { title, content, taggedEvidenceIds, taggedFigureIds } = parsed.data;
-
-    const thesis = await prisma.thesis.update({
-      where: { id },
-      data: {
-        ...(title !== undefined && { title }),
-        ...(content !== undefined && { content }),
-        ...(taggedEvidenceIds !== undefined && {
-          taggedEvidence: { set: taggedEvidenceIds.map((eid) => ({ id: eid })) },
-        }),
-        ...(taggedFigureIds !== undefined && {
-          taggedFigures: { set: taggedFigureIds.map((fid) => ({ id: fid })) },
-        }),
-      },
-      include: {
-        taggedEvidence: { select: { id: true, summary: true, category: true } },
-        taggedFigures: { select: { id: true, name: true } },
-      },
-    });
-
-    res.status(200).json({ thesis });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    res.status(500).json({ error: 'Failed to update thesis', message });
-  }
-});
-
-// ---------------------------------------------------------------------------
-// POST /api/thesis/:id/evaluate
-//
-// Runs the ThesisValidatorAgent (devil's advocate) against the thesis.
-// Fetches full evidence metadata from Prisma — the agent receives real text,
-// not just IDs. Saves the FalsificationResult to aiFeedback (JSON).
-// Rate-limited: max 5 evaluations per thesis (in-memory guard).
-// ---------------------------------------------------------------------------
-
-router.post('/:id/evaluate', async (req: Request, res: Response): Promise<void> => {
-  const id = String(req.params['id'] ?? '');
-  if (!id) {
-    res.status(400).json({ error: 'Missing thesis id' });
-    return;
-  }
-
-  try {
-    const thesis = await prisma.thesis.findUnique({
-      where: { id },
-      include: {
-        taggedEvidence: {
-          select: {
-            id: true,
-            summary: true,
-            category: true,
-            evidenceDate: true,
-            targetEntity: true,
-            evidenceRole: true,
+        headVersion: {
+          include: {
+            mentions: true,
           },
         },
       },
@@ -262,142 +257,149 @@ router.post('/:id/evaluate', async (req: Request, res: Response): Promise<void> 
       return;
     }
 
-    if (thesis.status === 'PUBLISHED' || thesis.status === 'PENDING_MODERATION') {
-      res.status(409).json({
-        error: 'Cannot evaluate a thesis that is already submitted or published',
-        status: thesis.status,
-      });
+    res.status(200).json({ thesis });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ error: 'Failed to fetch thesis', message });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/thesis/:id/version
+//
+// Creates a new ThesisVersion (wiki edit). The previous head becomes the
+// parentVersionId; the new version immediately becomes the head (latest-wins).
+// Mention extraction is synchronous; AI analysis fires in the background.
+// ---------------------------------------------------------------------------
+
+router.post('/:id/version', async (req: Request, res: Response): Promise<void> => {
+  const thesisId = String(req.params['id'] ?? '');
+  if (!thesisId) {
+    res.status(400).json({ error: 'Missing thesis id' });
+    return;
+  }
+
+  const parsed = CreateThesisSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Invalid request', details: parsed.error.flatten() });
+    return;
+  }
+
+  const { userContent } = parsed.data;
+
+  let mentions: ReturnType<typeof parseMentions>;
+  try {
+    mentions = parseMentions(userContent);
+  } catch {
+    res.status(400).json({ error: 'userContent is not a valid TipTap document' });
+    return;
+  }
+
+  try {
+    const thesis = await prisma.thesis.findUnique({ where: { id: thesisId } });
+    if (!thesis) {
+      res.status(404).json({ error: 'Thesis not found' });
       return;
     }
 
-    const count = getEvaluationCount(id);
-    if (count >= EVALUATE_LIMIT) {
-      res.status(429).json({
-        error: 'Evaluation limit reached',
-        message: `This thesis has already been evaluated ${EVALUATE_LIMIT} times. Revise and resubmit as a new draft if needed.`,
+    const contentHash = sha256(userContent);
+    const parentVersionId = thesis.headVersionId;
+
+    const { version, updatedThesis } = await prisma.$transaction(async (tx) => {
+      const version = await tx.thesisVersion.create({
+        data: {
+          thesisId,
+          parentVersionId,
+          userContent: userContent as Prisma.InputJsonValue,
+          contentHash,
+          status: 'PENDING_AI',
+          mentions: {
+            createMany: { data: mentions.map((m) => ({ type: m.type, refId: m.refId })) },
+          },
+        },
       });
-      return;
-    }
 
-    const evidenceSummaries: EvidenceSummary[] = thesis.taggedEvidence.map((e) => ({
-      id: e.id,
-      summary: e.summary,
-      category: e.category,
-      evidenceDate: e.evidenceDate,
-      targetEntity: e.targetEntity,
-      evidenceRole: e.evidenceRole,
-    }));
+      const updatedThesis = await tx.thesis.update({
+        where: { id: thesisId },
+        data: { headVersionId: version.id },
+      });
 
-    const feedback = await getValidator().validate(thesis.content, evidenceSummaries);
+      return { version, updatedThesis };
+    });
 
-    await prisma.thesis.update({
-      where: { id },
-      data: {
-        aiFeedback: JSON.stringify(feedback),
-        status: 'AI_REVIEWED',
+    res.status(201).json({
+      thesis: {
+        id: updatedThesis.id,
+        headVersion: {
+          id: version.id,
+          parentVersionId: version.parentVersionId,
+          status: version.status,
+          contentHash: version.contentHash,
+          preview: extractPreview(userContent),
+          createdAt: version.createdAt,
+        },
       },
     });
 
-    incrementEvaluationCount(id);
-
-    res.status(200).json({ feedback });
+    void triggerAIAnalysis(version.id, userContent);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    console.error('[thesis/evaluate] Error:', err instanceof Error ? err.stack : err);
-    res.status(500).json({ error: 'Evaluation failed', message });
+    res.status(500).json({ error: 'Failed to create version', message });
   }
 });
 
 // ---------------------------------------------------------------------------
-// POST /api/thesis/:id/submit
+// GET /api/thesis/:id/versions
 //
-// Moves an AI_REVIEWED thesis to PENDING_MODERATION.
-// Requires at least one tagged evidence item — unanchored theses cannot be
-// submitted for publication.
+// Returns all versions for a thesis, ordered oldest-first, with the head
+// version flagged. Does not include full userContent — use GET /:id for that.
 // ---------------------------------------------------------------------------
 
-router.post('/:id/submit', async (req: Request, res: Response): Promise<void> => {
-  const id = String(req.params['id'] ?? '');
-  if (!id) {
+router.get('/:id/versions', async (req: Request, res: Response): Promise<void> => {
+  const thesisId = String(req.params['id'] ?? '');
+  if (!thesisId) {
     res.status(400).json({ error: 'Missing thesis id' });
     return;
   }
 
   try {
-    const thesis = await prisma.thesis.findUnique({
-      where: { id },
-      include: { _count: { select: { taggedEvidence: true } } },
-    });
-
+    const thesis = await prisma.thesis.findUnique({ where: { id: thesisId } });
     if (!thesis) {
       res.status(404).json({ error: 'Thesis not found' });
       return;
     }
 
-    if (thesis.status !== 'AI_REVIEWED') {
-      res.status(409).json({
-        error: 'Only AI_REVIEWED theses can be submitted for moderation',
-        status: thesis.status,
-      });
-      return;
-    }
-
-    if (thesis._count.taggedEvidence === 0) {
-      res.status(422).json({
-        error: 'Cannot submit a thesis with no tagged evidence',
-      });
-      return;
-    }
-
-    const updated = await prisma.thesis.update({
-      where: { id },
-      data: { status: 'PENDING_MODERATION' },
-      select: { id: true, status: true },
+    const versions = await prisma.thesisVersion.findMany({
+      where: { thesisId },
+      orderBy: { createdAt: 'asc' },
+      select: {
+        id: true,
+        parentVersionId: true,
+        status: true,
+        contentHash: true,
+        userContent: true,
+        createdAt: true,
+        _count: { select: { mentions: true } },
+      },
     });
 
-    res.status(200).json({ submitted: true, thesis: updated });
+    res.status(200).json({
+      thesisId,
+      headVersionId: thesis.headVersionId,
+      versions: versions.map((v) => ({
+        id: v.id,
+        parentVersionId: v.parentVersionId,
+        status: v.status,
+        contentHash: v.contentHash,
+        preview: extractPreview(v.userContent),
+        mentionCount: v._count.mentions,
+        isHead: v.id === thesis.headVersionId,
+        createdAt: v.createdAt,
+      })),
+    });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    res.status(500).json({ error: 'Failed to submit thesis', message });
-  }
-});
-
-// ---------------------------------------------------------------------------
-// DELETE /api/thesis/:id
-//
-// Deletes a DRAFT or REJECTED thesis. Published / pending theses are
-// protected — contact a moderator to retract.
-// ---------------------------------------------------------------------------
-
-router.delete('/:id', async (req: Request, res: Response): Promise<void> => {
-  const id = String(req.params['id'] ?? '');
-  if (!id) {
-    res.status(400).json({ error: 'Missing thesis id' });
-    return;
-  }
-
-  try {
-    const thesis = await prisma.thesis.findUnique({ where: { id } });
-    if (!thesis) {
-      res.status(404).json({ error: 'Thesis not found' });
-      return;
-    }
-
-    if (thesis.status !== 'DRAFT' && thesis.status !== 'REJECTED') {
-      res.status(409).json({
-        error: 'Only DRAFT or REJECTED theses can be deleted',
-        status: thesis.status,
-      });
-      return;
-    }
-
-    await prisma.thesis.delete({ where: { id } });
-    _evaluationCounts.delete(id);
-
-    res.status(200).json({ deleted: true });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    res.status(500).json({ error: 'Failed to delete thesis', message });
+    res.status(500).json({ error: 'Failed to fetch version history', message });
   }
 });
 

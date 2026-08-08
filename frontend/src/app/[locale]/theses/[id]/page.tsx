@@ -7,33 +7,76 @@ import { Link } from '@/i18n/navigation';
 import { apiUrl } from '@/lib/api';
 
 // ---------------------------------------------------------------------------
-// Types
+// Types matching the versioned thesis API
 // ---------------------------------------------------------------------------
 
-interface FalsificationAttempt {
-  claim: string;
-  counterArgument: string;
-  evidenceGap: string;
+interface ThesisMention {
+  id: string;
+  type: 'KEY_FIGURE' | 'EVIDENCE' | 'TRACKED_URL';
+  refId: string;
 }
 
-interface FalsificationResult {
-  survivingClaims: string[];
-  falsificationAttempts: FalsificationAttempt[];
-  weakestLink: string;
-  recommendedEvidence: string[];
+interface CounterArgument {
+  claim: string;
+  counterArgument: string;
+  strengthOfCounter: string;
+}
+
+interface EvidenceGap {
+  description: string;
+  impact: string;
+}
+
+interface AIAnalysis {
+  counterArguments: CounterArgument[];
+  evidenceGaps: EvidenceGap[];
+  alternativeInterpretations: string[];
+  overallStrengthAssessment: 'WEAK' | 'MODERATE' | 'STRONG' | 'COMPELLING';
+  summaryHe: string;
+}
+
+interface HeadVersion {
+  id: string;
+  status: 'PENDING_AI' | 'COMPLETE';
+  contentHash: string;
+  userContent: Record<string, unknown>;
+  aiAnalysis: AIAnalysis | null;
+  mentions: ThesisMention[];
+  createdAt: string;
 }
 
 interface Thesis {
   id: string;
-  title: string;
-  content: string;
-  status: string;
-  publishedAt: string | null;
+  headVersionId: string | null;
   createdAt: string;
-  aiFeedback: FalsificationResult | null;
-  taggedEvidence: { id: string; summary: string; category: string; evidenceDate: string }[];
-  taggedFigures: { id: string; name: string }[];
+  headVersion: HeadVersion | null;
 }
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function extractText(doc: unknown): string {
+  function walk(node: Record<string, unknown>): string {
+    if (node.type === 'text') return String(node.text ?? '');
+    const attrs = node.attrs as Record<string, unknown> | undefined;
+    if (node.type === 'keyFigureMention') return `@${String(attrs?.['label'] ?? attrs?.['id'] ?? '')}`;
+    if (node.type === 'evidenceMention') return `#${String(attrs?.['label'] ?? attrs?.['id'] ?? '')}`;
+    if (node.type === 'trackedUrlMention') return `#${String(attrs?.['label'] ?? attrs?.['id'] ?? '')}`;
+    const content = node.content;
+    if (!Array.isArray(content)) return '';
+    const sep = ['paragraph', 'heading', 'blockquote', 'listItem'].includes(String(node.type ?? '')) ? '\n' : ' ';
+    return (content as unknown[]).map(c => walk(c as Record<string, unknown>)).join(sep);
+  }
+  return walk(doc as Record<string, unknown>).replace(/\n{3,}/g, '\n\n').trim();
+}
+
+const STRENGTH_STYLES: Record<string, string> = {
+  WEAK: 'bg-red-50 border-red-200 text-red-700',
+  MODERATE: 'bg-amber-50 border-amber-200 text-amber-700',
+  STRONG: 'bg-emerald-50 border-emerald-200 text-emerald-700',
+  COMPELLING: 'bg-violet-50 border-violet-200 text-violet-700',
+};
 
 // ---------------------------------------------------------------------------
 // Page
@@ -65,26 +108,6 @@ export default function ThesisPage({ params }: { params: Promise<{ id: string }>
     load();
   }, [id]);
 
-  // -----------------------------------------------------------------------
-  // Render content from TipTap JSON (plain text fallback for display)
-  // -----------------------------------------------------------------------
-  function renderContent(raw: string): string {
-    try {
-      const doc = JSON.parse(raw) as { content?: { content?: { text?: string }[] }[] };
-      return (
-        doc.content
-          ?.flatMap(block => block.content?.map(n => n.text ?? '') ?? [])
-          .join('') ?? raw
-      );
-    } catch {
-      return raw;
-    }
-  }
-
-  // -----------------------------------------------------------------------
-  // Loading / error
-  // -----------------------------------------------------------------------
-
   if (loading) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center">
@@ -106,11 +129,11 @@ export default function ThesisPage({ params }: { params: Promise<{ id: string }>
     );
   }
 
-  const evaluation = thesis.aiFeedback;
-
-  // -----------------------------------------------------------------------
-  // Main render
-  // -----------------------------------------------------------------------
+  const hv = thesis.headVersion;
+  const analysis = hv?.aiAnalysis ?? null;
+  const bodyText = hv ? extractText(hv.userContent) : '';
+  const keyFigureMentions = hv?.mentions.filter(m => m.type === 'KEY_FIGURE') ?? [];
+  const evidenceMentions = hv?.mentions.filter(m => m.type === 'EVIDENCE') ?? [];
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -122,170 +145,168 @@ export default function ThesisPage({ params }: { params: Promise<{ id: string }>
           </Link>
           <span className="text-slate-300">·</span>
           <span className="text-slate-500 text-xs">{tc('appName')}</span>
+          <div className="ms-auto flex items-center gap-2">
+            <Link
+              href={`/theses/${id}/edit`}
+              className="px-3 py-1.5 bg-violet-700 hover:bg-violet-600 rounded-lg text-xs font-medium text-white transition-colors"
+            >
+              {t('editBtn')}
+            </Link>
+            <Link
+              href={`/theses/${id}/history`}
+              className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 rounded-lg text-xs font-medium text-slate-700 transition-colors"
+            >
+              {t('historyBtn')}
+            </Link>
+          </div>
         </div>
       </header>
 
       <main className="max-w-4xl mx-auto px-4 sm:px-6 py-10 space-y-8">
-        {/* Status badge */}
-        <div className="flex items-center gap-3">
+        {/* Status + date */}
+        <div className="flex items-center gap-3 text-xs text-slate-500">
           <span
-            className={`text-xs font-semibold px-3 py-1 rounded-full ${
-              thesis.status === 'PUBLISHED'
-                ? 'bg-emerald-100 text-emerald-700 border border-emerald-300'
-                : thesis.status === 'PENDING_MODERATION'
-                ? 'bg-amber-100 text-amber-700 border border-amber-300'
-                : 'bg-slate-100 text-slate-600 border border-slate-300'
+            className={`font-semibold px-3 py-1 rounded-full border ${
+              hv?.status === 'COMPLETE'
+                ? 'bg-emerald-100 text-emerald-700 border-emerald-300'
+                : 'bg-amber-100 text-amber-700 border-amber-300'
             }`}
           >
-            {thesis.status.replace('_', ' ')}
+            {hv?.status === 'COMPLETE' ? 'AI reviewed' : 'Pending AI'}
           </span>
-          {thesis.publishedAt && (
-            <span className="text-slate-500 text-xs">
-              {new Date(thesis.publishedAt).toLocaleDateString(locale === 'he' ? 'he-IL' : 'en-US')}
-            </span>
-          )}
+          <span>
+            {new Date(thesis.createdAt).toLocaleDateString(locale === 'he' ? 'he-IL' : 'en-US')}
+          </span>
         </div>
 
-        {/* Title */}
-        <h1 className="text-3xl font-bold text-slate-900 leading-tight">{thesis.title}</h1>
-
-        {/* Body */}
+        {/* Thesis body */}
         <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
-          <p className="text-slate-700 text-sm leading-relaxed whitespace-pre-wrap">
-            {renderContent(thesis.content)}
-          </p>
+          <p className="text-slate-700 text-sm leading-relaxed whitespace-pre-wrap">{bodyText}</p>
         </div>
 
-        {/* Tagged figures */}
-        {thesis.taggedFigures.length > 0 && (
+        {/* Mentioned key figures */}
+        {keyFigureMentions.length > 0 && (
           <div className="space-y-2">
             <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
-              {t('figureSuggestion')}
+              {t('keyFiguresLabel')}
             </h3>
             <div className="flex flex-wrap gap-2">
-              {thesis.taggedFigures.map(f => (
-                <Link
-                  key={f.id}
-                  href={`/figures?id=${f.id}`}
-                  className="bg-violet-100 hover:bg-violet-200 text-violet-700 text-xs px-3 py-1 rounded-full transition-colors"
+              {keyFigureMentions.map(m => (
+                <span
+                  key={m.id}
+                  className="bg-violet-100 text-violet-700 text-xs px-3 py-1 rounded-full"
                 >
-                  @{f.name}
+                  @{m.refId}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Mentioned evidence */}
+        {evidenceMentions.length > 0 && (
+          <div className="space-y-2">
+            <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+              {t('evidenceSuggestion')} ({evidenceMentions.length})
+            </h3>
+            <div className="flex flex-wrap gap-2">
+              {evidenceMentions.map(m => (
+                <Link
+                  key={m.id}
+                  href={`/timeline?hash=${m.refId}`}
+                  className="bg-amber-100 hover:bg-amber-200 text-amber-700 text-xs px-3 py-1 rounded-full transition-colors"
+                >
+                  #{m.refId.slice(0, 8)}
                 </Link>
               ))}
             </div>
           </div>
         )}
 
-        {/* Tagged evidence */}
-        {thesis.taggedEvidence.length > 0 && (
-          <div className="space-y-2">
-            <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
-              {t('evidenceSuggestion')} ({thesis.taggedEvidence.length})
-            </h3>
-            <div className="space-y-2">
-              {thesis.taggedEvidence.map(ev => (
-                <div
-                  key={ev.id}
-                  className="bg-white border border-slate-200 rounded-xl px-4 py-3 flex gap-3 items-start shadow-sm"
-                >
-                  <span className="bg-amber-100 text-amber-700 text-xs px-2 py-0.5 rounded-full shrink-0">
-                    {ev.category}
-                  </span>
-                  <div className="min-w-0">
-                    <p className="text-sm text-slate-700 truncate">{ev.summary}</p>
-                    <p className="text-xs text-slate-400 mt-0.5">{ev.evidenceDate}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* AI Falsification results */}
-        {evaluation && (
+        {/* AI analysis — DevilsAdvocate */}
+        {analysis && (
           <section className="space-y-5 pt-4 border-t border-slate-200">
-            <h2 className="text-lg font-bold text-slate-900">{t('evaluationTitle')}</h2>
+            <div className="flex items-center gap-3">
+              <h2 className="text-lg font-bold text-slate-900">{t('aiAnalysisTitle')}</h2>
+              <span
+                className={`text-xs font-semibold px-3 py-1 rounded-full border ${
+                  STRENGTH_STYLES[analysis.overallStrengthAssessment] ?? ''
+                }`}
+              >
+                {analysis.overallStrengthAssessment}
+              </span>
+            </div>
 
-            {/* Surviving claims */}
-            {evaluation.survivingClaims.length > 0 ? (
-              <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 space-y-2">
-                <h3 className="text-xs font-semibold text-emerald-700 uppercase tracking-wide">
-                  {t('survivingClaimsLabel')}
-                </h3>
-                <ul className="space-y-1.5">
-                  {evaluation.survivingClaims.map((claim, i) => (
-                    <li key={i} className="text-sm text-emerald-800 flex gap-2">
-                      <span className="text-emerald-600 shrink-0">✓</span>
-                      <span>{claim}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ) : (
-              <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-700">
-                {t('noSurvivingClaims')}
+            {/* Hebrew summary */}
+            {analysis.summaryHe && (
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-4" dir="rtl">
+                <p className="text-sm text-slate-700 leading-relaxed">{analysis.summaryHe}</p>
               </div>
             )}
 
-            {/* Falsification attempts */}
-            {evaluation.falsificationAttempts.length > 0 && (
+            {/* Counter-arguments */}
+            {analysis.counterArguments.length > 0 && (
               <div className="space-y-3">
                 <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
-                  {t('falsificationLabel')}
+                  {t('counterArgumentsLabel')}
                 </h3>
-                {evaluation.falsificationAttempts.map((attempt, i) => (
+                {analysis.counterArguments.map((ca, i) => (
                   <div
                     key={i}
-                    className="bg-white border border-slate-200 rounded-xl p-4 space-y-3 shadow-sm"
+                    className="bg-white border border-slate-200 rounded-xl p-4 space-y-2 shadow-sm"
                   >
-                    <div>
-                      <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
-                        {t('claimLabel')}
-                      </span>
-                      <p className="text-sm text-slate-900 mt-0.5">{attempt.claim}</p>
-                    </div>
-                    <div>
-                      <span className="text-xs font-semibold text-red-600 uppercase tracking-wide">
-                        {t('counterArgLabel')}
-                      </span>
-                      <p className="text-sm text-red-700 mt-0.5">{attempt.counterArgument}</p>
-                    </div>
-                    <div>
-                      <span className="text-xs font-semibold text-amber-600 uppercase tracking-wide">
-                        {t('evidenceGapLabel')}
-                      </span>
-                      <p className="text-sm text-amber-700 mt-0.5">{attempt.evidenceGap}</p>
-                    </div>
+                    <p className="text-sm text-slate-900 font-medium">{ca.claim}</p>
+                    <p className="text-sm text-red-700">{ca.counterArgument}</p>
+                    <span className="inline-block text-xs text-slate-400 font-medium">
+                      {ca.strengthOfCounter}
+                    </span>
                   </div>
                 ))}
               </div>
             )}
 
-            {/* Weakest link */}
-            <div className="bg-red-50 border border-red-200 rounded-xl p-4">
-              <h3 className="text-xs font-semibold text-red-600 uppercase tracking-wide">
-                {t('weakestLinkLabel')}
-              </h3>
-              <p className="text-sm text-red-700 mt-1">{evaluation.weakestLink}</p>
-            </div>
+            {/* Evidence gaps */}
+            {analysis.evidenceGaps.length > 0 && (
+              <div className="space-y-3">
+                <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+                  {t('evidenceGapsLabel')}
+                </h3>
+                {analysis.evidenceGaps.map((gap, i) => (
+                  <div
+                    key={i}
+                    className="bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-1"
+                  >
+                    <p className="text-sm text-amber-800">{gap.description}</p>
+                    <p className="text-xs text-amber-600">{gap.impact}</p>
+                  </div>
+                ))}
+              </div>
+            )}
 
-            {/* Recommended evidence */}
-            {evaluation.recommendedEvidence.length > 0 && (
-              <div className="bg-violet-50 border border-violet-200 rounded-xl p-4 space-y-2">
-                <h3 className="text-xs font-semibold text-violet-700 uppercase tracking-wide">
-                  {t('recommendedEvidenceLabel')}
+            {/* Alternative interpretations */}
+            {analysis.alternativeInterpretations.length > 0 && (
+              <div className="space-y-2">
+                <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+                  {t('alternativeInterpretationsLabel')}
                 </h3>
                 <ul className="space-y-1.5">
-                  {evaluation.recommendedEvidence.map((rec, i) => (
-                    <li key={i} className="text-sm text-violet-800 flex gap-2">
-                      <span className="text-violet-600 shrink-0">→</span>
-                      <span>{rec}</span>
+                  {analysis.alternativeInterpretations.map((interp, i) => (
+                    <li key={i} className="text-sm text-slate-700 flex gap-2">
+                      <span className="text-slate-400 shrink-0">↔</span>
+                      <span>{interp}</span>
                     </li>
                   ))}
                 </ul>
               </div>
             )}
           </section>
+        )}
+
+        {/* Pending AI notice */}
+        {hv?.status === 'PENDING_AI' && (
+          <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-amber-700 text-sm">
+            {t('pendingAiNotice')}
+          </div>
         )}
       </main>
     </div>

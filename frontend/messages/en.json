@@ -149,7 +149,8 @@
     "roleContextAnchor": "Factual Anchor",
     "roleIncriminating": "Incriminating",
     "viewSource": "View Source",
-    "viewDiffHistory": "View Document History"
+    "viewDiffHistory": "View Document History",
+    "viewCitingTheses": "Theses citing this"
   },
   "figures": {
     "tagline": "Entity Graph · Key Figures & Evidence Network",
@@ -311,7 +312,24 @@
     "errorEvaluate": "Evaluation failed. Please try again.",
     "errorSubmit": "Submission failed. Please try again.",
     "figureSuggestion": "Key Figures",
-    "evidenceSuggestion": "Evidence"
+    "evidenceSuggestion": "Evidence",
+    "keyFiguresLabel": "Key Figures",
+    "emptyState": "No theses yet. Be the first to write one.",
+    "mentions": "mentions",
+    "editBtn": "Edit",
+    "historyBtn": "History",
+    "aiAnalysisTitle": "Devil's Advocate Analysis",
+    "counterArgumentsLabel": "Counter-arguments",
+    "evidenceGapsLabel": "Evidence gaps",
+    "alternativeInterpretationsLabel": "Alternative interpretations",
+    "pendingAiNotice": "AI analysis is running in the background. Refresh in a moment to see the results.",
+    "filteredByEvidence": "Showing theses citing evidence",
+    "clearFilter": "Clear filter",
+    "editHint": "You are creating a new version. The previous version is preserved in history.",
+    "cancelBtn": "Cancel",
+    "historyHeading": "Version History",
+    "historyEmpty": "No versions found.",
+    "currentVersion": "Current"
   },
   "chat": {
     "greeting": "Hello, I am the Glass Fortress Trust Agent. How can I help you understand our system's security?",
