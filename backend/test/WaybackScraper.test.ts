@@ -40,6 +40,7 @@ jest.mock('../src/lib/prisma', () => ({
     },
     trackedUrl: {
       create: jest.fn().mockResolvedValue({ id: 'tracked-url-id-123' }),
+      upsert: jest.fn().mockResolvedValue({ id: 'tracked-url-id-123' }),
     },
     urlVersionDiff: {
       create: jest.fn().mockResolvedValue({ id: 'diff-id-456' }),

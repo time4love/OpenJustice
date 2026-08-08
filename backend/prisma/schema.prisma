@@ -38,18 +38,19 @@ enum TrackedUrlStatus {
 
 // Tracks a government/health URL submitted for Wayback Machine forensic analysis.
 // Primary entity — navigate directly to this for version history and status.
+// url is unique: one TrackedUrl per URL, reused across re-scans.
 model TrackedUrl {
   id        String           @id @default(uuid())
-  url       String
+  url       String           @unique
   title     String?
   status    TrackedUrlStatus @default(IDLE)
   createdAt DateTime         @default(now())
   diffs     UrlVersionDiff[]
-  jobs      WaybackScrapeJob[]
+  job       WaybackScrapeJob?
 }
 
-// Internal batch-processing record. Processes up to MAX_SNAPSHOTS CDX results.
-// Multiple jobs are chained server-side — not visible in the main UI.
+// Internal scan-state record. One per TrackedUrl — updated in-place across
+// CDX batch iterations rather than creating new records per batch.
 model WaybackScrapeJob {
   id                  String           @id @default(uuid())
   url                 String
@@ -58,9 +59,9 @@ model WaybackScrapeJob {
   processedSnapshots  Int              @default(0)
   // JSON: Array<{ timestamp: string; digest: string; status: 'PENDING' | 'DONE' | 'FAILED' }>
   snapshotsList       String           @default("[]")
-  trackedUrlId        String?
-  trackedUrl          TrackedUrl?      @relation(fields: [trackedUrlId], references: [id], onDelete: SetNull)
-  fromDate            String?          // YYYYMMDD — CDX query start date for this batch
+  trackedUrlId        String           @unique
+  trackedUrl          TrackedUrl       @relation(fields: [trackedUrlId], references: [id], onDelete: Cascade)
+  fromDate            String?          // YYYYMMDD — CDX query start date for the current batch
   createdAt           DateTime         @default(now())
   updatedAt           DateTime         @updatedAt
 }

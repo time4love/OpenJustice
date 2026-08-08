@@ -81,20 +81,12 @@ router.post('/scan', async (req: Request, res: Response): Promise<void> => {
   const { url } = parsed.data;
 
   try {
-    // Resume an existing in-progress or paused scan, or start fresh
-    let trackedUrl = await prisma.trackedUrl.findFirst({
-      where: { url, status: { in: ['SCANNING', 'PAUSED'] } },
-      orderBy: { createdAt: 'desc' },
+    // One TrackedUrl per URL — upsert then set status to SCANNING
+    const trackedUrl = await prisma.trackedUrl.upsert({
+      where: { url },
+      update: { status: 'SCANNING' },
+      create: { url, status: 'SCANNING' },
     });
-
-    if (trackedUrl) {
-      // Ensure status is SCANNING before (re-)starting runFullScan
-      if (trackedUrl.status !== 'SCANNING') {
-        await prisma.trackedUrl.update({ where: { id: trackedUrl.id }, data: { status: 'SCANNING' } });
-      }
-    } else {
-      trackedUrl = await prisma.trackedUrl.create({ data: { url, status: 'SCANNING' } });
-    }
 
     res.status(201).json({ trackedUrlId: trackedUrl.id });
 
@@ -169,9 +161,8 @@ router.get('/tracked/:id/status', async (req: Request, res: Response): Promise<v
     }
 
     const [activeJob, rawDiffs] = await Promise.all([
-      prisma.waybackScrapeJob.findFirst({
-        where: { trackedUrlId, status: { in: ['PENDING', 'IN_PROGRESS'] } },
-        orderBy: { createdAt: 'desc' },
+      prisma.waybackScrapeJob.findUnique({
+        where: { trackedUrlId },
         select: {
           id: true,
           status: true,

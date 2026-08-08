@@ -419,8 +419,10 @@ export class WaybackScraper {
   async analyzePageHistory(url: string): Promise<PageHistoryResult> {
     const { snapshots } = await this.getSnapshotsList(url);
 
-    const trackedUrl = await prisma.trackedUrl.create({
-      data: { url },
+    const trackedUrl = await prisma.trackedUrl.upsert({
+      where: { url },
+      update: {},
+      create: { url },
     });
 
     if (snapshots.length === 0) {
@@ -578,33 +580,30 @@ export class WaybackScraper {
   // ---------------------------------------------------------------------------
 
   /**
-   * Create a WaybackScrapeJob for a given TrackedUrl.
+   * Create or reset the single WaybackScrapeJob for a TrackedUrl.
    *
-   * Returns immediately — the CDX snapshot list is fetched lazily in processJob.
-   * If an incomplete (PENDING or IN_PROGRESS) job for this trackedUrlId + fromDate
-   * already exists, returns that job to allow resumption.
+   * Since each TrackedUrl has at most one job (unique constraint), this upserts:
+   * - If a job already exists for this trackedUrlId, it is reset to PENDING
+   *   with the given fromDate (for the next CDX batch).
+   * - Otherwise a fresh job is created.
+   *
+   * The CDX snapshot list is populated lazily on the first processJob call.
    */
-  async createJob(url: string, fromDate?: string, trackedUrlId?: string) {
-    const existing = await prisma.waybackScrapeJob.findFirst({
-      where: {
-        url,
-        fromDate: fromDate ?? null,
-        status: { in: ['PENDING', 'IN_PROGRESS'] },
-        ...(trackedUrlId ? { trackedUrlId } : {}),
-      },
-      orderBy: { createdAt: 'desc' },
-    });
-    if (existing) return existing;
-
-    return prisma.waybackScrapeJob.create({
-      data: {
-        url,
+  async createJob(url: string, trackedUrlId: string, fromDate?: string) {
+    return prisma.waybackScrapeJob.upsert({
+      where: { trackedUrlId },
+      update: {
         status: 'PENDING',
+        fromDate: fromDate ?? null,
+        snapshotsList: '[]',
         totalSnapshots: 0,
         processedSnapshots: 0,
-        snapshotsList: '[]',
+      },
+      create: {
+        url,
+        status: 'PENDING',
+        trackedUrlId,
         fromDate: fromDate ?? null,
-        trackedUrlId: trackedUrlId ?? null,
       },
     });
   }
@@ -661,21 +660,7 @@ export class WaybackScraper {
       });
     }
 
-    // Resolve the TrackedUrl — should be set upfront in new flow; fallback for legacy jobs
-    let trackedUrlId = job.trackedUrlId;
-    if (!trackedUrlId) {
-      const existing = await prisma.trackedUrl.findFirst({
-        where: { url: job.url },
-        orderBy: { createdAt: 'asc' },
-      });
-      const trackedUrl =
-        existing ?? (await prisma.trackedUrl.create({ data: { url: job.url } }));
-      trackedUrlId = trackedUrl.id;
-      await prisma.waybackScrapeJob.update({
-        where: { id: jobId },
-        data: { trackedUrlId },
-      });
-    }
+    const trackedUrlId = job.trackedUrlId;
 
     let previousText = '';
     let processedCount = snapshotsList.filter((s) => s.status === 'DONE').length;
@@ -861,38 +846,32 @@ export class WaybackScraper {
 
     try {
       while (true) {
-        // Check for an existing incomplete job (resume path)
-        let job = await prisma.waybackScrapeJob.findFirst({
-          where: { trackedUrlId, status: { in: ['PENDING', 'IN_PROGRESS'] } },
-          orderBy: { createdAt: 'desc' },
-        });
+        // One job per TrackedUrl — find or create it
+        let job = await prisma.waybackScrapeJob.findUnique({ where: { trackedUrlId } });
 
         if (!job) {
-          // Determine where to start the next batch
-          const lastCompleted = await prisma.waybackScrapeJob.findFirst({
-            where: { trackedUrlId, status: 'COMPLETED' },
-            orderBy: { createdAt: 'desc' },
-          });
-
-          if (lastCompleted) {
-            const nextFromDate = computeNextFromDate(
-              lastCompleted.snapshotsList,
-              lastCompleted.totalSnapshots,
-            );
-            if (nextFromDate === null) {
-              // Last batch had < MAX_SNAPSHOTS — CDX history exhausted
-              await prisma.trackedUrl.update({
-                where: { id: trackedUrlId },
-                data: { status: 'COMPLETED' },
-              });
-              return;
-            }
-            job = await this.createJob(url, nextFromDate, trackedUrlId);
-          } else {
-            // Fresh scan — no batches yet
-            job = await this.createJob(url, undefined, trackedUrlId);
+          // Fresh scan
+          job = await this.createJob(url, trackedUrlId);
+        } else if (job.status === 'COMPLETED') {
+          // Previous batch done — check if CDX has more
+          const nextFromDate = computeNextFromDate(job.snapshotsList, job.totalSnapshots);
+          if (nextFromDate === null) {
+            await prisma.trackedUrl.update({
+              where: { id: trackedUrlId },
+              data: { status: 'COMPLETED' },
+            });
+            return;
           }
+          // Reset the same job record for the next batch
+          job = await this.createJob(url, trackedUrlId, nextFromDate);
+        } else if (job.status === 'FAILED') {
+          await prisma.trackedUrl.update({
+            where: { id: trackedUrlId },
+            data: { status: 'FAILED' },
+          });
+          return;
         }
+        // PENDING or IN_PROGRESS — process (or resume) it
 
         const processedJob = await this.processJob(job.id);
 
@@ -903,21 +882,7 @@ export class WaybackScraper {
           });
           return;
         }
-
-        // COMPLETED — check if another batch is needed
-        const nextFromDate = computeNextFromDate(
-          processedJob.snapshotsList,
-          processedJob.totalSnapshots,
-        );
-        if (nextFromDate === null) {
-          await prisma.trackedUrl.update({
-            where: { id: trackedUrlId },
-            data: { status: 'COMPLETED' },
-          });
-          return;
-        }
-        // Loop: next iteration will find no incomplete job, compute nextFromDate
-        // from this newly-COMPLETED job, and create the following batch.
+        // COMPLETED — loop back: next iteration checks whether another CDX batch exists
       }
     } catch (err) {
       if (err instanceof ScanCancelledError) {
