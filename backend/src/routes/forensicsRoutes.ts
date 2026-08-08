@@ -746,15 +746,17 @@ router.get('/tracked/:id/report', async (req: Request, res: Response): Promise<v
       orderBy: { afterDate: 'asc' },
     });
 
-    const diffs = allDiffs.map((d) => ({
-      beforeDate: d.beforeDate,
-      date: d.afterDate,
-      snapshotUrl: d.snapshotUrl,
-      deletedItems: parseDiffItems(d.deletedText),
-      addedItems: parseDiffItems(d.addedText),
-      legalSignificance: d.aiSignificance,
-      isLegallySignificant: d.isLegallySignificant,
-    }));
+    const diffs = allDiffs
+      .map((d) => ({
+        beforeDate: d.beforeDate,
+        date: d.afterDate,
+        snapshotUrl: d.snapshotUrl,
+        deletedItems: parseDiffItems(d.deletedText),
+        addedItems: parseDiffItems(d.addedText),
+        legalSignificance: d.aiSignificance,
+        isLegallySignificant: d.isLegallySignificant,
+      }))
+      .filter((d) => d.deletedItems.length > 0 || d.addedItems.length > 0);
 
     const html = buildReportHtml(trackedUrl.url, trackedUrl.title, diffs);
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
