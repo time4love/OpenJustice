@@ -274,6 +274,7 @@
     "auditBadge": "שינוי גרסה",
     "identicalContent": "לא נרשמו שינויי טקסט עבור גרסה זו.",
     "auditTotal": "{count} שינויי גרסה סה\"כ",
+    "allDiffsLoaded": "כל {count} שינויי הגרסה נטענו",
     "historyHeading": "כתובות שנסרקו בעבר",
     "historyEmpty": "טרם נסרקו כתובות.",
     "historyViewBtn": "צפה בציר הזמן",

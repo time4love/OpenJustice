@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import { useTranslations, useLocale } from 'next-intl';
 import { Link, useRouter, usePathname } from '@/i18n/navigation';
@@ -35,16 +35,20 @@ interface DiffRecord {
   promotedEvidence: PromotedEvidence | null;
 }
 
-interface TrackedUrlResponse {
+interface DiffPage {
   trackedUrlId: string;
   url: string;
   title: string | null;
   createdAt: string;
-  count: number;
+  totalCount: number;
   diffs: DiffRecord[];
+  nextCursor: string | null;
+  hasMore: boolean;
   error?: string;
   message?: string;
 }
+
+const PAGE_SIZE = 20;
 
 // ---------------------------------------------------------------------------
 // Locale switcher
@@ -355,36 +359,78 @@ export default function TrackedUrlPage() {
   const params = useParams<{ trackedUrlId: string }>();
   const trackedUrlId = params?.trackedUrlId ?? '';
 
-  const [data, setData] = useState<TrackedUrlResponse | null>(null);
-  const [loading, setLoading] = useState(true);
+  // Meta (url, title, totalCount) from the first page response
+  const [meta, setMeta] = useState<Pick<DiffPage, 'url' | 'title' | 'createdAt' | 'totalCount'> | null>(null);
+  const [diffs, setDiffs] = useState<DiffRecord[]>([]);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [hasMore, setHasMore] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Sentinel ref for IntersectionObserver
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+  // Guard against duplicate fetches
+  const fetchingRef = useRef(false);
+
+  async function fetchPage(cursor: string | null) {
+    if (fetchingRef.current) return;
+    fetchingRef.current = true;
+    try {
+      const url = cursor
+        ? apiUrl(`/api/forensics/tracked/${trackedUrlId}?cursor=${cursor}&limit=${PAGE_SIZE}`)
+        : apiUrl(`/api/forensics/tracked/${trackedUrlId}?limit=${PAGE_SIZE}`);
+      const res = await fetch(url);
+      const json = (await res.json()) as DiffPage;
+      if (!res.ok) {
+        setError(json.message ?? `Error ${res.status}`);
+        return;
+      }
+      // Functional update — sets meta only on the first page; safe against stale closures
+      setMeta((prev) => prev ?? { url: json.url, title: json.title, createdAt: json.createdAt, totalCount: json.totalCount });
+      setDiffs((prev) => [...prev, ...json.diffs]);
+      setNextCursor(json.nextCursor);
+      setHasMore(json.hasMore);
+    } catch {
+      setError('Could not reach the backend.');
+    } finally {
+      fetchingRef.current = false;
+    }
+  }
+
+  // Initial load
   useEffect(() => {
     if (!trackedUrlId) return;
-    setLoading(true);
-    fetch(apiUrl(`/api/forensics/tracked/${trackedUrlId}`))
-      .then(async (res) => {
-        const json = (await res.json()) as TrackedUrlResponse;
-        if (!res.ok) {
-          setError(json.message ?? `Error ${res.status}`);
-          return;
-        }
-        setData(json);
-      })
-      .catch(() => setError('Could not reach the backend.'))
-      .finally(() => setLoading(false));
+    void fetchPage(null).finally(() => setInitialLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [trackedUrlId]);
 
-  function handlePromoted(diffId: string, evidence: PromotedEvidence) {
-    setData((prev) => {
-      if (!prev) return prev;
-      return {
-        ...prev,
-        diffs: prev.diffs.map((d) =>
-          d.id === diffId ? { ...d, promotedEvidence: evidence } : d,
-        ),
-      };
+  // IntersectionObserver — fires when the sentinel enters the viewport
+  const handleIntersect = useCallback(
+    (entries: IntersectionObserverEntry[]) => {
+      const entry = entries[0];
+      if (entry?.isIntersecting && hasMore && !loadingMore && !fetchingRef.current) {
+        setLoadingMore(true);
+        void fetchPage(nextCursor).finally(() => setLoadingMore(false));
+      }
+    },
+    // nextCursor and hasMore must be deps so the callback sees current values
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [hasMore, loadingMore, nextCursor],
+  );
+
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(handleIntersect, {
+      rootMargin: '200px', // start loading 200px before reaching the bottom
     });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [handleIntersect]);
+
+  function handlePromoted(diffId: string, evidence: PromotedEvidence) {
+    setDiffs((prev) => prev.map((d) => (d.id === diffId ? { ...d, promotedEvidence: evidence } : d)));
   }
 
   const diffLabels = {
@@ -401,7 +447,16 @@ export default function TrackedUrlPage() {
     auditBadge: t('auditBadge'),
   };
 
-  const flaggedCount = data?.diffs.filter((d) => d.isLegallySignificant).length ?? 0;
+  const flaggedCount = diffs.filter((d) => d.isLegallySignificant).length;
+
+  const visibleDiffs = diffs.filter(
+    (d) =>
+      d.isLegallySignificant ||
+      d.deletedItems.length > 0 ||
+      d.addedItems.length > 0 ||
+      d.rawDeletedChunks.length > 0 ||
+      d.rawAddedChunks.length > 0,
+  );
 
   return (
     <main className="min-h-screen bg-slate-50">
@@ -455,10 +510,10 @@ export default function TrackedUrlPage() {
         </Link>
 
         {/* Heading */}
-        {data && (
+        {meta && (
           <div className="space-y-1">
             <h1 className="text-lg font-semibold text-slate-900">{t('drillDownHeading')}</h1>
-            <p className="font-mono text-xs text-slate-500 break-all">{data.url}</p>
+            <p className="font-mono text-xs text-slate-500 break-all">{meta.url}</p>
           </div>
         )}
 
@@ -470,13 +525,13 @@ export default function TrackedUrlPage() {
           </div>
         )}
 
-        {/* Loading */}
-        {loading && <Skeleton />}
+        {/* Initial loading skeleton */}
+        {initialLoading && <Skeleton />}
 
         {/* Results */}
-        {!loading && data && (
+        {!initialLoading && meta && (
           <>
-            {data.count === 0 ? (
+            {meta.totalCount === 0 ? (
               <div className="flex flex-col items-center justify-center text-center px-8 py-20 border border-dashed border-slate-200 rounded-xl bg-white shadow-sm">
                 <p className="text-sm font-medium text-slate-500">{t('noChangesTitle')}</p>
               </div>
@@ -485,7 +540,7 @@ export default function TrackedUrlPage() {
                 {/* Summary bar */}
                 <div className="flex flex-wrap items-center gap-3">
                   <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-600 border border-slate-200">
-                    {t('auditTotal', { count: data.count })}
+                    {t('auditTotal', { count: meta.totalCount })}
                   </span>
                   {flaggedCount > 0 && (
                     <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-red-100 text-red-700 border border-red-200">
@@ -495,15 +550,9 @@ export default function TrackedUrlPage() {
                   )}
                 </div>
 
-                {/* Full audit timeline */}
+                {/* Diff timeline */}
                 <div>
-                  {data.diffs.filter((d) =>
-                  d.isLegallySignificant ||
-                  d.deletedItems.length > 0 ||
-                  d.addedItems.length > 0 ||
-                  d.rawDeletedChunks.length > 0 ||
-                  d.rawAddedChunks.length > 0,
-                ).map((diff, i) => (
+                  {visibleDiffs.map((diff, i) => (
                     <DiffCard
                       key={diff.id}
                       diff={diff}
@@ -512,6 +561,36 @@ export default function TrackedUrlPage() {
                       onPromoted={handlePromoted}
                     />
                   ))}
+                </div>
+
+                {/* Sentinel + load-more indicator */}
+                <div ref={sentinelRef} className="py-2">
+                  {loadingMore && (
+                    <div className="animate-pulse space-y-5">
+                      {[1, 2].map((i) => (
+                        <div key={i} className="flex gap-4">
+                          <div className="flex flex-col items-center shrink-0">
+                            <div className="w-3 h-3 rounded-full bg-slate-200 mt-[1.125rem]" />
+                            <div className="w-px flex-1 bg-slate-200 mt-1.5 min-h-16" />
+                          </div>
+                          <div className="flex-1 bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+                            <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-100">
+                              <div className="h-2.5 bg-slate-200 rounded-full w-24" />
+                            </div>
+                            <div className="px-4 py-3 space-y-2">
+                              <div className="h-2 bg-slate-100 rounded w-3/4" />
+                              <div className="h-2 bg-slate-100 rounded w-1/2" />
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {!hasMore && diffs.length > 0 && (
+                    <p className="text-center text-xs text-slate-400 py-4">
+                      {t('allDiffsLoaded', { count: diffs.length })}
+                    </p>
+                  )}
                 </div>
               </>
             )}

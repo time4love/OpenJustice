@@ -36,6 +36,11 @@ const PromoteSchema = z.object({
   urlVersionDiffId: z.string().min(1, 'urlVersionDiffId is required'),
 });
 
+const DiffPageQuerySchema = z.object({
+  cursor: z.string().optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+});
+
 // ---------------------------------------------------------------------------
 // Lazy singletons
 // ---------------------------------------------------------------------------
@@ -322,6 +327,13 @@ router.get('/tracked/:id', async (req: Request, res: Response): Promise<void> =>
     return;
   }
 
+  const parsed = DiffPageQuerySchema.safeParse(req.query);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Invalid query params', details: parsed.error.flatten() });
+    return;
+  }
+  const { cursor, limit } = parsed.data;
+
   try {
     const trackedUrl = await prisma.trackedUrl.findUnique({ where: { id: trackedUrlId } });
 
@@ -330,19 +342,29 @@ router.get('/tracked/:id', async (req: Request, res: Response): Promise<void> =>
       return;
     }
 
+    // Total count (unfiltered) for the summary bar
+    const totalCount = await prisma.urlVersionDiff.count({ where: { trackedUrlId } });
+
+    // Fetch one extra record to determine if there is a next page
     const rawDiffs = await prisma.urlVersionDiff.findMany({
       where: { trackedUrlId },
       orderBy: { afterDate: 'asc' },
+      take: limit + 1,
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
     });
 
+    const hasMore = rawDiffs.length > limit;
+    const page = hasMore ? rawDiffs.slice(0, limit) : rawDiffs;
+    const nextCursor = hasMore ? page[page.length - 1]?.id : null;
+
     const promotedEvidence = await prisma.evidence.findMany({
-      where: { urlVersionDiffId: { in: rawDiffs.map((d) => d.id) } },
+      where: { urlVersionDiffId: { in: page.map((d) => d.id) } },
       select: { id: true, fileHash: true, urlVersionDiffId: true },
     });
 
     const promotedByDiffId = new Map(promotedEvidence.map((e) => [e.urlVersionDiffId, e]));
 
-    const diffs = rawDiffs.map((d) => ({
+    const diffs = page.map((d) => ({
       id: d.id,
       beforeDate: d.beforeDate,
       date: d.afterDate,
@@ -361,8 +383,10 @@ router.get('/tracked/:id', async (req: Request, res: Response): Promise<void> =>
       url: trackedUrl.url,
       title: trackedUrl.title,
       createdAt: trackedUrl.createdAt,
-      count: diffs.length,
+      totalCount,
       diffs,
+      nextCursor,
+      hasMore,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

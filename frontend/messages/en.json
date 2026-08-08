@@ -274,6 +274,7 @@
     "auditBadge": "Version Change",
     "identicalContent": "No text changes recorded for this version.",
     "auditTotal": "{count} total version changes",
+    "allDiffsLoaded": "All {count} version changes loaded",
     "historyHeading": "Previously Scanned URLs",
     "historyEmpty": "No URLs scanned yet.",
     "historyViewBtn": "View Timeline",
