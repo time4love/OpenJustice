@@ -240,6 +240,8 @@
     "scanPausedSub": "Progress is saved. Resume at any time to continue from where it stopped.",
     "flaggedBadge": "AI-Flagged as Significant",
     "auditBadge": "Version Change",
+    "showChanges": "Show changes",
+    "hideChanges": "Hide changes",
     "identicalContent": "No text changes recorded for this version.",
     "auditTotal": "{count} total version changes",
     "allDiffsLoaded": "All {count} version changes loaded",

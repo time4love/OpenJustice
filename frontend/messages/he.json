@@ -240,6 +240,8 @@
     "scanPausedSub": "ההתקדמות שמורה. ניתן להמשיך בכל עת מהנקודה שבה הסתיים.",
     "flaggedBadge": "סומן כמשמעותי על ידי הבינה המלאכותית",
     "auditBadge": "שינוי גרסה",
+    "showChanges": "הצג שינויים",
+    "hideChanges": "הסתר שינויים",
     "identicalContent": "לא נרשמו שינויי טקסט עבור גרסה זו.",
     "auditTotal": "{count} שינויי גרסה סה\"כ",
     "allDiffsLoaded": "כל {count} שינויי הגרסה נטענו",
