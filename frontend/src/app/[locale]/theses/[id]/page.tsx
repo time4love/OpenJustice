@@ -6,7 +6,7 @@ import { useTranslations, useLocale } from 'next-intl';
 import { Link } from '@/i18n/navigation';
 import { apiUrl } from '@/lib/api';
 
-type EvidenceInfo = { summary: string; category: string };
+type EvidenceInfo = { summary: string; category: string; evidenceTier?: string };
 
 // ---------------------------------------------------------------------------
 // Types matching the versioned thesis API
@@ -479,15 +479,21 @@ export default function ThesisPage({ params }: { params: Promise<{ id: string }>
               {t('evidenceSuggestion')} ({evidenceMentions.length})
             </h3>
             <div className="flex flex-wrap gap-2">
-              {evidenceMentions.map(m => (
-                <Link
-                  key={m.id}
-                  href={`/timeline?hash=${m.refId}`}
-                  className="bg-amber-100 hover:bg-amber-200 text-amber-700 text-xs px-3 py-1 rounded-full transition-colors"
-                >
-                  #{m.refId.slice(0, 8)}
-                </Link>
-              ))}
+              {evidenceMentions.map(m => {
+                const info = evidenceMap[m.refId];
+                const tierDotClass = gapTierDot(info?.evidenceTier ?? '');
+                const label = info?.summary?.slice(0, 35) || m.refId.slice(0, 8);
+                return (
+                  <Link
+                    key={m.id}
+                    href={`/timeline?hash=${m.refId}`}
+                    className="inline-flex items-center gap-1.5 bg-amber-100 hover:bg-amber-200 text-amber-700 text-xs px-3 py-1 rounded-full transition-colors"
+                  >
+                    <span className={`w-2 h-2 rounded-full shrink-0 ${tierDotClass}`} />
+                    #{label}
+                  </Link>
+                );
+              })}
             </div>
           </div>
         )}

@@ -273,12 +273,12 @@ router.get('/:id', async (req: Request, res: Response): Promise<void> => {
     const evidenceRecords = evidenceRefIds.length > 0
       ? await prisma.evidence.findMany({
           where: { fileHash: { in: evidenceRefIds } },
-          select: { fileHash: true, summary: true, category: true },
+          select: { fileHash: true, summary: true, category: true, evidenceTier: true },
         })
       : [];
 
     const evidenceMap = Object.fromEntries(
-      evidenceRecords.map((e) => [e.fileHash, { summary: e.summary, category: e.category }]),
+      evidenceRecords.map((e) => [e.fileHash, { summary: e.summary, category: e.category, evidenceTier: e.evidenceTier }]),
     );
 
     res.status(200).json({ thesis, evidenceMap });
