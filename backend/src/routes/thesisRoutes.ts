@@ -257,10 +257,66 @@ router.get('/:id', async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    res.status(200).json({ thesis });
+    // Enrich with evidence summaries so the UI can show readable labels on mention chips
+    const evidenceRefIds = (thesis.headVersion?.mentions ?? [])
+      .filter((m) => m.type === 'EVIDENCE')
+      .map((m) => m.refId);
+
+    const evidenceRecords = evidenceRefIds.length > 0
+      ? await prisma.evidence.findMany({
+          where: { fileHash: { in: evidenceRefIds } },
+          select: { fileHash: true, summary: true, category: true },
+        })
+      : [];
+
+    const evidenceMap = Object.fromEntries(
+      evidenceRecords.map((e) => [e.fileHash, { summary: e.summary, category: e.category }]),
+    );
+
+    res.status(200).json({ thesis, evidenceMap });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     res.status(500).json({ error: 'Failed to fetch thesis', message });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/thesis/:id/analyze
+//
+// Triggers Devil's Advocate AI analysis for the head version of a thesis that
+// is stuck in PENDING_AI (e.g. MCP-created drafts where analysis is not
+// triggered automatically). Returns 202 immediately; analysis runs async.
+// If the head version is already COMPLETE, returns 200 with no-op message.
+// ---------------------------------------------------------------------------
+
+router.post('/:id/analyze', async (req: Request, res: Response): Promise<void> => {
+  const id = String(req.params['id'] ?? '');
+  if (!id) {
+    res.status(400).json({ error: 'Missing thesis id' });
+    return;
+  }
+
+  try {
+    const thesis = await prisma.thesis.findUnique({
+      where: { id },
+      include: { headVersion: true },
+    });
+
+    if (!thesis?.headVersion) {
+      res.status(404).json({ error: 'Thesis or head version not found' });
+      return;
+    }
+
+    if (thesis.headVersion.status === 'COMPLETE') {
+      res.status(200).json({ message: 'Already analyzed', status: 'COMPLETE' });
+      return;
+    }
+
+    void triggerAIAnalysis(thesis.headVersion.id, thesis.headVersion.userContent);
+    res.status(202).json({ message: 'AI analysis started', versionId: thesis.headVersion.id });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ error: 'Failed to trigger analysis', message });
   }
 });
 

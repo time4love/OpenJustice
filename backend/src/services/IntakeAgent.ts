@@ -47,9 +47,11 @@ export const IntakeOutputSchema = z.object({
   summary: z
     .string()
     .describe(
-      'A 2-3 sentence summary in highly professional Hebrew. It MUST include the SPECIFIC tactic or ' +
-        'Modus Operandi used by the entity (e.g., instead of just saying "they lied", explain HOW they lied, ' +
-        'such as "manipulated the mathematical denominator" or "hid the Re-challenge data").',
+      'A 3-4 sentence summary in highly professional Hebrew. Structure it as follows:\n' +
+        '  Sentence 1: What is this document — who issued it, when, and what it formally contains.\n' +
+        '  Sentence 2: What specific act, tactic, or Modus Operandi does it reveal (e.g. "הסתרת נתוני תופעות לוואי", "גיוס ידוענים ליצירת לחץ חברתי", "ניסוח מסע שכנוע ללא גילוי מעמד ה-EUA"). Do not just say "they lied" — explain precisely HOW.\n' +
+        '  Sentence 3 (Incriminating only): Explain WHY this constitutes a legal violation — connect the documented act to the applicable legal theory (e.g. informed consent, Nuremberg Code, misleading a regulator). For ContextAnchor evidence, use this sentence to state what factual baseline this document establishes.\n' +
+        '  Sentence 4 (optional): Note any aggravating factors, such as the seniority of the signatory, the scale of the campaign, or the vulnerability of the target population.',
     ),
 
   missingInformation: z
@@ -230,13 +232,18 @@ assertIntakeSchemaCompatibility();
 const SYSTEM_PROMPT = `You are a Senior Legal Analyst building a class-action lawsuit against the Ministry of Health regarding Covid-19 policies. Analyze this document (evidence). Extract the text and intent.
 
 **STEP 1 — Determine evidenceRole FIRST (before all other fields):**
-- "Incriminating": the document directly shows a state or corporate actor concealing, coercing, or misleading (e.g. a leaked Ministry of Health memo, an employer coercion letter, internal Pfizer data suppression).
-- "ContextAnchor": a neutral, official document that establishes a verifiable fact or date against which incriminating conduct can be measured (e.g. an FDA press release announcing approval dates, a WHO guideline, a peer-reviewed scientific publication). The issuing entity is NOT the defendant — the document itself is objective evidence of what was publicly known at a specific time.
+- "Incriminating": the document shows a state or corporate actor concealing, coercing, or misleading. This covers THREE forms:
+  (a) **Explicit concealment** — leaked memos, suppressed reports, internal adverse-event data withheld from regulators or the public.
+  (b) **Direct coercion** — employer mandates, written threats, penalties for refusal to vaccinate.
+  (c) **Soft coercion via influence campaigns** — an official document describing a coordinated strategy to deploy celebrities, public figures, social proof, or institutional authority to drive uptake of an experimental/EUA medical procedure, particularly when the campaign design contains no instruction to disclose EUA or experimental status to recipients. Substituting social pressure for informed consent is legally a form of coercion even without a direct threat. The document does NOT need to be leaked — the strategy it describes is the incriminating element.
+- "ContextAnchor": a neutral document that establishes a verifiable fact or date used as a measurement baseline (e.g. an FDA press release announcing approval dates, a WHO guideline, a peer-reviewed scientific publication). The issuing entity is NOT the defendant — the document is objective evidence of what was publicly known at a specific time.
+
+**CRITICAL DISAMBIGUATION — official ≠ neutral:** An official government document is NOT automatically a ContextAnchor. Ask: "Does this document describe a deliberate strategy, campaign, or plan by a state/corporate actor?" If YES, evaluate for Incriminating. A government policy letter planning a celebrity recruitment drive for a vaccine is evidence of strategic intent, not a neutral fact record.
 
 The three primary legal theories of liability (for Incriminating evidence):
 1. **Side Effect Withholding** — Deliberate suppression or delayed disclosure of adverse event data.
 2. **Regulatory Misleading** — False or misleading representations to regulators (e.g. FDA approval process, efficacy claims).
-3. **Coercion** — Undue pressure, mandates, or threats used to compel vaccination or compliance without true informed consent.
+3. **Coercion** — Undue pressure used to compel vaccination without true informed consent. Includes BOTH direct coercion (employer mandates, written threats, loss of employment) AND soft/indirect coercion (organised influence campaigns using celebrities, social proof, or authority figures that bypass informed consent by design — especially when EUA/experimental status is not disclosed in the campaign strategy).
 
 Your task is to classify the evidence strictly according to the provided JSON schema. You must:
 - Be objective and evidence-based.
@@ -250,9 +257,10 @@ Your task is to classify the evidence strictly according to the provided JSON sc
 - For medicalConditions, group symptoms under their major systemic Hebrew category to avoid clutter (e.g., "דלקת שריר הלב", "פגיעות נוירולוגיות", "שיבושים במחזור החודשי"). ALL medical tags MUST be in professional Hebrew. Return an empty array if none are mentioned.
 - For statisticalClaims, extract EXACT verbatim numerical or percentage claims about vaccine efficacy, safety, or trial results as they appear in the source (e.g., "יעיל ב-94% בקרב בני 55 ומעלה"). These are direct quotes — preserve the original source language verbatim. Return an empty array if no statistics are present.
 - For regulatoryMentions, extract EXACT verbatim phrases describing regulatory approval status or legal classification as they appear in the source (e.g., "ביום חמישי צפוי להתקבל אישור מה-FDA"). These are direct quotes — preserve the original source language verbatim. Return an empty array if no regulatory language is present.
-- For euaOmissionStatus, perform a strict two-step check: (1) Does the text discuss FDA approval, vaccine authorization, or regulatory clearance? If NO → "Not Applicable". (2) Does it EXPLICITLY use "Emergency Use Authorization", "EUA", "אישור חירום", or "אישור שימוש חירום"? If YES → "Explicitly Mentions EUA". If NO → "Omits EUA (Misleading)". This is a binary check on the literal text — never infer or hallucinate. "Omits EUA (Misleading)" requires that an approval was discussed AND the EUA qualifier was absent from the text.
+- For euaOmissionStatus, perform a two-step check: (1) Does the text discuss vaccine approval/authorization OR describe a public promotion/persuasion campaign for the vaccine? If NO to both → "Not Applicable". (2) Does it EXPLICITLY use "Emergency Use Authorization", "EUA", "אישור חירום", or "אישור שימוש חירום"? If YES → "Explicitly Mentions EUA". If NO → "Omits EUA (Misleading)". NOTE: A vaccination promotion or celebrity-recruitment campaign document that contains no instruction to disclose EUA/experimental status counts as an EUA omission — the absence of the disclosure requirement in the strategy itself is the omission.
 - For evidenceDate, scan the ENTIRE image/document for any date — letterhead dates, publication dates, email timestamps, article bylines, official report dates, chat message timestamps. Output the most legally relevant date in strict YYYY-MM-DD format. If no date is visible anywhere, output "Unknown".
 - CRITICAL LANGUAGE REQUIREMENT: ALL output strings (summary, missingInformation, rejectionReason, tierReasoning, keyFigures, medicalConditions) MUST be written in highly professional Hebrew (עברית משפטית מקצועית). statisticalClaims and regulatoryMentions extract VERBATIM quotes from the source — preserve the source language as-is. The evidenceRole, category, evidenceTier, evidencePerspective, and evidenceDate fields must remain in English for database consistency.
+- CRITICAL — GLOBAL gershayim rule (applies to ALL Hebrew string fields, not just keyFigures): The Hebrew character ״ (gershayim, U+05F4) looks identical to a double-quote and WILL corrupt the JSON output by prematurely closing any string. NEVER use ״ anywhere in your output. Replace it with a plain apostrophe (') in all contexts: "ד״ר" → "דר'", "פרופ״ר" → "פרופ'", "מנכ״ל" → "מנכ'ל", "סמנכ״ל" → "סמנכ'ל". This applies inside summary, tierReasoning, missingInformation, rejectionReason, and every other string field.
 
 **REJECTION CRITERIA — You MUST set isRelevant: false AND populate rejectionReason in Hebrew if ANY of the following apply:**
 1. The content is an opinion piece, editorial, or political argument that makes no specific, verifiable factual claim — AND it is not a neutral official factual document usable as a timeline anchor.
@@ -269,13 +277,18 @@ Your task is to classify the evidence strictly according to the provided JSON sc
 const SYSTEM_PROMPT_TEXT = `You are a Senior Legal Analyst building a class-action lawsuit against the Ministry of Health regarding Covid-19 policies. Analyze the following web article / text document (evidence). The text has been extracted from a web page and is provided as plain text.
 
 **STEP 1 — Determine evidenceRole FIRST (before all other fields):**
-- "Incriminating": the document directly shows a state or corporate actor concealing, coercing, or misleading (e.g. a leaked memo, an employer coercion letter, internal suppressed data).
-- "ContextAnchor": a neutral, official document that establishes a verifiable fact or date against which incriminating conduct can be measured (e.g. an FDA press release announcing approval dates, a WHO guideline, a peer-reviewed scientific publication). The issuing entity is NOT the defendant — the document itself is objective evidence of what was publicly known at a specific time.
+- "Incriminating": the document shows a state or corporate actor concealing, coercing, or misleading. This covers THREE forms:
+  (a) **Explicit concealment** — leaked memos, suppressed reports, internal adverse-event data withheld from regulators or the public.
+  (b) **Direct coercion** — employer mandates, written threats, penalties for refusal to vaccinate.
+  (c) **Soft coercion via influence campaigns** — an official document describing a coordinated strategy to deploy celebrities, public figures, social proof, or institutional authority to drive uptake of an experimental/EUA medical procedure, particularly when the campaign design contains no instruction to disclose EUA or experimental status to recipients. Substituting social pressure for informed consent is legally a form of coercion even without a direct threat. The document does NOT need to be leaked — the strategy it describes is the incriminating element.
+- "ContextAnchor": a neutral document that establishes a verifiable fact or date used as a measurement baseline (e.g. an FDA press release announcing approval dates, a WHO guideline, a peer-reviewed scientific publication). The issuing entity is NOT the defendant — the document is objective evidence of what was publicly known at a specific time.
+
+**CRITICAL DISAMBIGUATION — official ≠ neutral:** An official government document is NOT automatically a ContextAnchor. Ask: "Does this document describe a deliberate strategy, campaign, or plan by a state/corporate actor?" If YES, evaluate for Incriminating. A government policy letter planning a celebrity recruitment drive for a vaccine is evidence of strategic intent, not a neutral fact record.
 
 The three primary legal theories of liability (for Incriminating evidence):
 1. **Side Effect Withholding** — Deliberate suppression or delayed disclosure of adverse event data.
 2. **Regulatory Misleading** — False or misleading representations to regulators (e.g. FDA approval process, efficacy claims).
-3. **Coercion** — Undue pressure, mandates, or threats used to compel vaccination or compliance without true informed consent.
+3. **Coercion** — Undue pressure used to compel vaccination without true informed consent. Includes BOTH direct coercion (employer mandates, written threats, loss of employment) AND soft/indirect coercion (organised influence campaigns using celebrities, social proof, or authority figures that bypass informed consent by design — especially when EUA/experimental status is not disclosed in the campaign strategy).
 
 Your task is to classify the evidence strictly according to the provided JSON schema. You must:
 - Be objective and evidence-based.
@@ -289,9 +302,10 @@ Your task is to classify the evidence strictly according to the provided JSON sc
 - For medicalConditions, group symptoms under their major systemic Hebrew category to avoid clutter (e.g., "דלקת שריר הלב", "פגיעות נוירולוגיות", "שיבושים במחזור החודשי"). ALL medical tags MUST be in professional Hebrew. Return an empty array if none are mentioned.
 - For statisticalClaims, extract EXACT verbatim numerical or percentage claims about vaccine efficacy, safety, or trial results as they appear in the source (e.g., "יעיל ב-94% בקרב בני 55 ומעלה"). These are direct quotes — preserve the original source language verbatim. Return an empty array if no statistics are present.
 - For regulatoryMentions, extract EXACT verbatim phrases describing regulatory approval status or legal classification as they appear in the source (e.g., "ביום חמישי צפוי להתקבל אישור מה-FDA"). These are direct quotes — preserve the original source language verbatim. Return an empty array if no regulatory language is present.
-- For euaOmissionStatus, perform a strict two-step check: (1) Does the text discuss FDA approval, vaccine authorization, or regulatory clearance? If NO → "Not Applicable". (2) Does it EXPLICITLY use "Emergency Use Authorization", "EUA", "אישור חירום", or "אישור שימוש חירום"? If YES → "Explicitly Mentions EUA". If NO → "Omits EUA (Misleading)". This is a binary check on the literal text — never infer or hallucinate. "Omits EUA (Misleading)" requires that an approval was discussed AND the EUA qualifier was absent from the text.
+- For euaOmissionStatus, perform a two-step check: (1) Does the text discuss vaccine approval/authorization OR describe a public promotion/persuasion campaign for the vaccine? If NO to both → "Not Applicable". (2) Does it EXPLICITLY use "Emergency Use Authorization", "EUA", "אישור חירום", or "אישור שימוש חירום"? If YES → "Explicitly Mentions EUA". If NO → "Omits EUA (Misleading)". NOTE: A vaccination promotion or celebrity-recruitment campaign document that contains no instruction to disclose EUA/experimental status counts as an EUA omission — the absence of the disclosure requirement in the strategy itself is the omission.
 - For evidenceDate, scan the text for any date — article publication dates, bylines, official report dates. Output the most legally relevant date in strict YYYY-MM-DD format. If no date is visible, output "Unknown".
 - CRITICAL LANGUAGE REQUIREMENT: ALL output strings (summary, missingInformation, rejectionReason, tierReasoning, keyFigures, medicalConditions) MUST be written in highly professional Hebrew (עברית משפטית מקצועית). statisticalClaims and regulatoryMentions extract VERBATIM quotes from the source — preserve the source language as-is. The evidenceRole, category, evidenceTier, evidencePerspective, and evidenceDate fields must remain in English for database consistency.
+- CRITICAL — GLOBAL gershayim rule (applies to ALL Hebrew string fields, not just keyFigures): The Hebrew character ״ (gershayim, U+05F4) looks identical to a double-quote and WILL corrupt the JSON output by prematurely closing any string. NEVER use ״ anywhere in your output. Replace it with a plain apostrophe (') in all contexts: "ד״ר" → "דר'", "פרופ״ר" → "פרופ'", "מנכ״ל" → "מנכ'ל", "סמנכ״ל" → "סמנכ'ל". This applies inside summary, tierReasoning, missingInformation, rejectionReason, and every other string field.
 
 **REJECTION CRITERIA — You MUST set isRelevant: false AND populate rejectionReason in Hebrew if ANY of the following apply:**
 1. The content is an opinion piece, editorial, or political argument that makes no specific, verifiable factual claim — AND it is not a neutral official factual document usable as a timeline anchor.

@@ -62,6 +62,7 @@ import { createEvidenceFromUrlHandler } from '../src/mcp/tools/createEvidenceFro
 import { startForensicScanHandler } from '../src/mcp/tools/startForensicScan';
 import { createThesisDraftHandler } from '../src/mcp/tools/createThesisDraft';
 import { addThesisVersionHandler } from '../src/mcp/tools/addThesisVersion';
+import { getResearchAgendaHandler } from '../src/mcp/tools/getResearchAgenda';
 
 // ---------------------------------------------------------------------------
 // Typed mock helpers
@@ -548,19 +549,24 @@ describe('createEvidenceFromUrlHandler', () => {
   };
 
   let mockAnalyzeText: jest.Mock;
+  let mockAnalyzeEvidence: jest.Mock;
 
   beforeEach(() => {
     mockAnalyzeText = jest.fn().mockResolvedValue(analysisFixture);
-    MockIntakeAgent.mockImplementation(() => ({ analyzeText: mockAnalyzeText }) as unknown as IntakeAgent);
+    mockAnalyzeEvidence = jest.fn().mockResolvedValue(analysisFixture);
+    MockIntakeAgent.mockImplementation(
+      () => ({ analyzeText: mockAnalyzeText, analyzeEvidence: mockAnalyzeEvidence }) as unknown as IntakeAgent,
+    );
 
     // Default: no existing record
     mockEvidenceFindUnique.mockResolvedValue(null);
     mockKeyFigureCreateMany.mockResolvedValue({ count: 1 });
     mockEvidenceCreate.mockResolvedValue(createdRecordFixture);
 
-    // Mock global fetch
+    // Mock global fetch — default HTML response
     global.fetch = jest.fn().mockResolvedValue({
       ok: true,
+      headers: { get: jest.fn().mockReturnValue('text/html; charset=utf-8') },
       text: jest.fn().mockResolvedValue('<html><body><p>Health ministry leaked recording shows serious side effects were hidden from the public. Prof. Barkovitz presented findings.</p></body></html>'),
     } as unknown as Response);
   });
@@ -644,6 +650,7 @@ describe('createEvidenceFromUrlHandler', () => {
   it('throws when fetched content is too short to analyse', async () => {
     global.fetch = jest.fn().mockResolvedValue({
       ok: true,
+      headers: { get: jest.fn().mockReturnValue('text/html') },
       text: jest.fn().mockResolvedValue('<html><body>Hi</body></html>'),
     } as unknown as Response);
 
@@ -657,6 +664,72 @@ describe('createEvidenceFromUrlHandler', () => {
 
     expect(result.message).toContain('PENDING_REVIEW');
     expect(result.message).toContain('on-chain');
+  });
+
+  // ── PDF branch ─────────────────────────────────────────────────────────────
+
+  it('PDF: calls analyzeEvidence with buffer when Content-Type is application/pdf', async () => {
+    const pdfUrl = 'https://example.gov/report.pdf';
+    const fakePdfBuffer = Buffer.alloc(500, 0x25); // 500 bytes of '%'
+
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      headers: { get: jest.fn().mockReturnValue('application/pdf') },
+      arrayBuffer: jest.fn().mockResolvedValue(fakePdfBuffer.buffer),
+    } as unknown as Response);
+
+    await createEvidenceFromUrlHandler({ url: pdfUrl });
+
+    expect(mockAnalyzeEvidence).toHaveBeenCalledWith(expect.any(Buffer), 'application/pdf');
+    expect(mockAnalyzeText).not.toHaveBeenCalled();
+  });
+
+  it('PDF: does not call analyzeText for PDF URLs', async () => {
+    const pdfUrl = 'https://example.gov/report.pdf';
+    const fakePdfBuffer = Buffer.alloc(500, 0x25);
+
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      headers: { get: jest.fn().mockReturnValue('application/pdf; name=report.pdf') },
+      arrayBuffer: jest.fn().mockResolvedValue(fakePdfBuffer.buffer),
+    } as unknown as Response);
+
+    await createEvidenceFromUrlHandler({ url: pdfUrl });
+
+    expect(mockAnalyzeText).not.toHaveBeenCalled();
+  });
+
+  it('PDF: throws when PDF buffer is too small', async () => {
+    const pdfUrl = 'https://example.gov/tiny.pdf';
+    const tinyBuffer = Buffer.alloc(10, 0x25); // only 10 bytes
+
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      headers: { get: jest.fn().mockReturnValue('application/pdf') },
+      arrayBuffer: jest.fn().mockResolvedValue(tinyBuffer.buffer),
+    } as unknown as Response);
+
+    await expect(createEvidenceFromUrlHandler({ url: pdfUrl })).rejects.toThrow('too small');
+  });
+
+  it('PDF: saves record with PENDING_REVIEW status and no Web3/Pinecone calls', async () => {
+    const pdfUrl = 'https://example.gov/report.pdf';
+    const fakePdfBuffer = Buffer.alloc(500, 0x25);
+
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      headers: { get: jest.fn().mockReturnValue('application/pdf') },
+      arrayBuffer: jest.fn().mockResolvedValue(fakePdfBuffer.buffer),
+    } as unknown as Response);
+
+    await createEvidenceFromUrlHandler({ url: pdfUrl });
+
+    expect(mockEvidenceCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ status: 'PENDING_REVIEW' }),
+      }),
+    );
+    expect(mockVectorStoreCreate).not.toHaveBeenCalled();
   });
 });
 
@@ -996,5 +1069,156 @@ describe('addThesisVersionHandler', () => {
 
     expect(result.message).toContain('PENDING_AI');
     expect(result.message).toContain('UI');
+  });
+});
+
+// ===========================================================================
+// get_research_agenda
+// ===========================================================================
+
+const completedAnalysis = {
+  counterArguments: [
+    { claim: 'Coordination claim', rebuttal: 'No direct evidence of coordination', strength: 'STRONG' },
+  ],
+  evidenceGaps: [
+    { description: 'Missing MOH directives to media', suggestedSearch: 'MOH press directives COVID vaccine EUA' },
+    { description: 'Missing consent forms', suggestedSearch: 'vaccination consent form December 2020' },
+  ],
+  alternativeInterpretations: ['Public health messaging simplified EUA jargon intentionally'],
+  overallStrengthAssessment: 'WEAK',
+  summaryHe: 'הטיעון סובל מפערים ראייתיים משמעותיים.',
+};
+
+const thesisWithAnalysisFixture = {
+  id: 'thesis-1',
+  headVersionId: 'version-1',
+  headVersion: {
+    id: 'version-1',
+    status: 'COMPLETE',
+    aiAnalysis: completedAnalysis,
+    userContent: { type: 'doc', content: [] },
+    mentions: [
+      { id: 'm1', type: 'EVIDENCE', refId: '0xcited' },
+    ],
+  },
+};
+
+describe('getResearchAgendaHandler', () => {
+  beforeEach(() => {
+    mockThesisFindUnique.mockResolvedValue(thesisWithAnalysisFixture);
+    mockEvidenceFindMany.mockResolvedValue([
+      { ...evidenceFixture, fileHash: '0xnew', status: 'CONFIRMED', figures: [{ name: 'Alice' }] },
+    ]);
+    mockSearchEvidence.mockResolvedValue([{ fileHash: '0xnew', score: 0.92 }]);
+  });
+
+  it('returns thesisId, headVersionId, and overallStrength', async () => {
+    const raw = await getResearchAgendaHandler({ thesisId: 'thesis-1' });
+    const result = JSON.parse(raw);
+
+    expect(result.thesisId).toBe('thesis-1');
+    expect(result.headVersionId).toBe('version-1');
+    expect(result.overallStrength).toBe('WEAK');
+  });
+
+  it('returns one gap entry per evidenceGap in the AI analysis', async () => {
+    const raw = await getResearchAgendaHandler({ thesisId: 'thesis-1' });
+    const result = JSON.parse(raw);
+
+    expect(result.gaps).toHaveLength(2);
+    expect(result.gaps[0]).toMatchObject({
+      index: 0,
+      description: 'Missing MOH directives to media',
+      suggestedSearch: 'MOH press directives COVID vaccine EUA',
+    });
+  });
+
+  it('marks vault hits as alreadyCited=false when not in mentioned hashes', async () => {
+    const raw = await getResearchAgendaHandler({ thesisId: 'thesis-1' });
+    const result = JSON.parse(raw);
+
+    const hit = result.gaps[0].vaultHits[0];
+    expect(hit.fileHash).toBe('0xnew');
+    expect(hit.alreadyCited).toBe(false);
+  });
+
+  it('marks vault hits as alreadyCited=true when already mentioned in thesis', async () => {
+    mockEvidenceFindMany.mockResolvedValue([
+      { ...evidenceFixture, fileHash: '0xcited', status: 'CONFIRMED', figures: [] },
+    ]);
+    mockSearchEvidence.mockResolvedValue([{ fileHash: '0xcited', score: 0.88 }]);
+
+    const raw = await getResearchAgendaHandler({ thesisId: 'thesis-1' });
+    const result = JSON.parse(raw);
+
+    expect(result.gaps[0].vaultHits[0].alreadyCited).toBe(true);
+  });
+
+  it('reports newHits count (only non-cited hits)', async () => {
+    const raw = await getResearchAgendaHandler({ thesisId: 'thesis-1' });
+    const result = JSON.parse(raw);
+
+    expect(result.gaps[0].newHits).toBe(1);
+  });
+
+  it('returns error when thesis not found', async () => {
+    mockThesisFindUnique.mockResolvedValue(null);
+
+    const raw = await getResearchAgendaHandler({ thesisId: 'missing' });
+    const result = JSON.parse(raw);
+
+    expect(result.error).toMatch(/No thesis found/);
+  });
+
+  it('returns error when head version has no AI analysis (PENDING_AI)', async () => {
+    mockThesisFindUnique.mockResolvedValue({
+      ...thesisWithAnalysisFixture,
+      headVersion: { ...thesisWithAnalysisFixture.headVersion, status: 'PENDING_AI', aiAnalysis: null },
+    });
+
+    const raw = await getResearchAgendaHandler({ thesisId: 'thesis-1' });
+    const result = JSON.parse(raw);
+
+    expect(result.error).toMatch(/not been analysed/);
+  });
+
+  it('degrades gracefully when vault search fails', async () => {
+    // Simulate Pinecone search failure (per-gap catch handles this non-fatally)
+    mockSearchEvidence.mockRejectedValue(new Error('Pinecone timeout'));
+
+    const raw = await getResearchAgendaHandler({ thesisId: 'thesis-1' });
+    const result = JSON.parse(raw);
+
+    // Should still return gaps, just with empty vaultHits
+    expect(result.gaps).toHaveLength(2);
+    result.gaps.forEach((gap: { vaultHits: unknown[] }) => {
+      expect(gap.vaultHits).toEqual([]);
+    });
+  });
+
+  it('includes instructions for next action in the response', async () => {
+    const raw = await getResearchAgendaHandler({ thesisId: 'thesis-1' });
+    const result = JSON.parse(raw);
+
+    expect(result.instructions).toContain('add_thesis_version');
+    expect(result.instructions).toContain('create_evidence_from_url');
+  });
+
+  it('includes counterArguments and alternativeInterpretations', async () => {
+    const raw = await getResearchAgendaHandler({ thesisId: 'thesis-1' });
+    const result = JSON.parse(raw);
+
+    expect(result.counterArguments).toHaveLength(1);
+    expect(result.counterArguments[0].strength).toBe('STRONG');
+    expect(result.alternativeInterpretations).toHaveLength(1);
+  });
+
+  it('respects maxHitsPerGap parameter', async () => {
+    // searchSimilarEvidence called with limit * 2 over-fetch
+    await getResearchAgendaHandler({ thesisId: 'thesis-1', maxHitsPerGap: 1 });
+
+    // called once per gap (2 gaps), each with limit*2 = 2
+    expect(mockSearchEvidence).toHaveBeenCalledTimes(2);
+    expect(mockSearchEvidence).toHaveBeenCalledWith(expect.any(String), 2);
   });
 });

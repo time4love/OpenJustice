@@ -3,17 +3,16 @@ import { z } from 'zod';
 import { prisma } from '../../lib/prisma';
 import { IntakeAgent } from '../../services/IntakeAgent';
 
-// IntakeAgent is instantiated per-call — construction is cheap (no LLM work);
-// only .analyzeText() triggers network I/O.
 function getAgent(): IntakeAgent {
   return new IntakeAgent();
 }
 
-export const createEvidenceFromUrlSchema = {
-  url: z.string().url().describe('Public URL of the article or document to analyse'),
+export const createEvidenceFromTextSchema = {
+  text: z.string().min(100).describe('The plain text content of the evidence (minimum 100 characters)'),
+  url: z.string().url().describe('The canonical source URL — used for provenance, not fetched'),
 };
 
-export interface CreateEvidenceFromUrlResult {
+export interface CreateEvidenceFromTextResult {
   evidenceId: string;
   fileHash: string;
   status: 'PENDING_REVIEW';
@@ -28,56 +27,24 @@ export interface CreateEvidenceFromUrlResult {
   message: string;
 }
 
-export async function createEvidenceFromUrlHandler(input: {
+export async function createEvidenceFromTextHandler(input: {
+  text: string;
   url: string;
 }): Promise<string> {
-  // 1. Fetch the resource
-  const response = await fetch(input.url, {
-    headers: { 'User-Agent': 'GlassFortress/1.0 (legal evidence archiver)' },
-    signal: AbortSignal.timeout(15_000),
-  });
+  const { text, url } = input;
 
-  if (!response.ok) {
-    throw new Error(`Failed to fetch URL (HTTP ${response.status}): ${input.url}`);
-  }
-
-  const contentType = response.headers.get('content-type') ?? '';
+  // Analyse with the same text path as URL submissions
   const agent = getAgent();
-  let analysis: Awaited<ReturnType<typeof agent.analyzeText>>;
-  let fileHash: string;
+  const analysis = await agent.analyzeText(text, url);
 
-  if (contentType.includes('application/pdf')) {
-    // 2a. PDF path — pass the raw buffer to analyzeEvidence so the LLM receives
-    //     the document as a proper content block (Anthropic native doc / Gemini base64).
-    //     Hash the buffer itself, consistent with the file-upload confirm route.
-    const buffer = Buffer.from(await response.arrayBuffer());
-    if (buffer.length < 100) {
-      throw new Error(`Fetched PDF too small to analyse (${buffer.length} bytes). Is the URL publicly accessible?`);
-    }
-    analysis = await agent.analyzeEvidence(buffer, 'application/pdf');
-    fileHash = '0x' + crypto.createHash('sha256').update(buffer).digest('hex');
-  } else {
-    // 2b. HTML/text path — strip markup and feed plain text to analyzeText.
-    const html = await response.text();
-    const text = html
-      .replace(/<script[\s\S]*?<\/script>/gi, '')
-      .replace(/<style[\s\S]*?<\/style>/gi, '')
-      .replace(/<[^>]+>/g, ' ')
-      .replace(/\s{2,}/g, ' ')
-      .trim();
+  // Hash: url + text slice (identical to the HTML path in createEvidenceFromUrl)
+  const fileHash =
+    '0x' + crypto.createHash('sha256').update(`${url}\n\n${text.slice(0, 40_000)}`, 'utf8').digest('hex');
 
-    if (text.length < 100) {
-      throw new Error(`Fetched content too short to analyse (${text.length} chars). Is the URL publicly accessible?`);
-    }
-    analysis = await agent.analyzeText(text, input.url);
-    fileHash =
-      '0x' + crypto.createHash('sha256').update(`${input.url}\n\n${text.slice(0, 40_000)}`, 'utf8').digest('hex');
-  }
-
-  // 5. Check for duplicate
+  // Duplicate guard
   const existing = await prisma.evidence.findUnique({ where: { fileHash } });
   if (existing) {
-    const result: CreateEvidenceFromUrlResult = {
+    const result: CreateEvidenceFromTextResult = {
       evidenceId: existing.id,
       fileHash: existing.fileHash,
       status: 'PENDING_REVIEW',
@@ -88,13 +55,13 @@ export async function createEvidenceFromUrlHandler(input: {
       targetEntity: existing.targetEntity,
       evidenceDate: existing.evidenceDate,
       keyFigures: [],
-      sourceUrl: input.url,
+      sourceUrl: url,
       message: `Evidence already exists with status ${existing.status}. No duplicate created.`,
     };
     return JSON.stringify(result);
   }
 
-  // 6. Upsert KeyFigure records (idempotent)
+  // Upsert KeyFigure records
   if (analysis.keyFigures.length > 0) {
     await prisma.keyFigure.createMany({
       data: analysis.keyFigures.map((name) => ({ name })),
@@ -102,7 +69,7 @@ export async function createEvidenceFromUrlHandler(input: {
     });
   }
 
-  // 7. Persist as PENDING_REVIEW — NO on-chain hash, NO Pinecone upsert
+  // Persist as PENDING_REVIEW
   const record = await prisma.evidence.create({
     data: {
       fileHash,
@@ -120,12 +87,12 @@ export async function createEvidenceFromUrlHandler(input: {
       statisticalClaims: JSON.stringify(analysis.statisticalClaims),
       regulatoryMentions: JSON.stringify(analysis.regulatoryMentions),
       euaOmissionStatus: analysis.euaOmissionStatus,
-      sourceUrl: input.url,
+      sourceUrl: url,
     },
     include: { figures: { select: { name: true } } },
   });
 
-  const result: CreateEvidenceFromUrlResult = {
+  const result: CreateEvidenceFromTextResult = {
     evidenceId: record.id,
     fileHash: record.fileHash,
     status: 'PENDING_REVIEW',
@@ -136,7 +103,7 @@ export async function createEvidenceFromUrlHandler(input: {
     targetEntity: record.targetEntity,
     evidenceDate: record.evidenceDate,
     keyFigures: record.figures.map((f) => f.name),
-    sourceUrl: input.url,
+    sourceUrl: url,
     message:
       'Evidence saved as PENDING_REVIEW. It will NOT appear in the public vault or be registered on-chain until a human reviewer promotes it via the UI.',
   };

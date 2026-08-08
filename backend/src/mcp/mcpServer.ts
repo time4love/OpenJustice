@@ -3,7 +3,9 @@ import { searchEvidenceSchema, searchEvidenceHandler } from './tools/searchEvide
 import { getForensicTimelineSchema, getForensicTimelineHandler } from './tools/getForensicTimeline';
 import { getFigureDossierSchema, getFigureDossierHandler } from './tools/getFigureDossier';
 import { getThesisContextSchema, getThesisContextHandler } from './tools/getThesisContext';
+import { getResearchAgendaSchema, getResearchAgendaHandler } from './tools/getResearchAgenda';
 import { createEvidenceFromUrlSchema, createEvidenceFromUrlHandler } from './tools/createEvidenceFromUrl';
+import { createEvidenceFromTextSchema, createEvidenceFromTextHandler } from './tools/createEvidenceFromText';
 import { startForensicScanSchema, startForensicScanHandler } from './tools/startForensicScan';
 import { createThesisDraftSchema, createThesisDraftHandler } from './tools/createThesisDraft';
 import { addThesisVersionSchema, addThesisVersionHandler } from './tools/addThesisVersion';
@@ -83,6 +85,24 @@ export function createMcpServer(): McpServer {
   );
 
   // -------------------------------------------------------------------------
+  // Tool: get_research_agenda
+  // Returns the AI critique gaps for a thesis, each enriched with vault hits
+  // (evidence already in the vault that may address the gap). Flags which hits
+  // are already cited vs. new. Includes instructions for the next action.
+  // -------------------------------------------------------------------------
+  server.tool(
+    'get_research_agenda',
+    'Given a thesis ID, returns the Devil\'s Advocate gaps with vault evidence hits for each gap. ' +
+      'Use this after get_thesis_context to know exactly what evidence is missing and whether the ' +
+      'vault already contains records that address each gap. Returns alreadyCited flags so you ' +
+      'can focus on new evidence only.',
+    getResearchAgendaSchema,
+    async (input) => ({
+      content: [{ type: 'text' as const, text: await getResearchAgendaHandler(input) }],
+    }),
+  );
+
+  // -------------------------------------------------------------------------
   // Tool: create_evidence_from_url  [WRITE — STAGING GATE]
   // Fetches a URL, runs IntakeAgent analysis, and saves as PENDING_REVIEW.
   // NEVER registers on-chain or indexes in Pinecone — human promotion required.
@@ -128,6 +148,24 @@ export function createMcpServer(): McpServer {
     addThesisVersionSchema,
     async (input) => ({
       content: [{ type: 'text' as const, text: await addThesisVersionHandler(input) }],
+    }),
+  );
+
+  // -------------------------------------------------------------------------
+  // Tool: create_evidence_from_text  [WRITE — STAGING GATE]
+  // Accepts raw text + source URL (for pages behind bot protection, paywalls,
+  // or dynamic SPAs that can't be fetched server-side). Same analysis pipeline
+  // and staging gate as create_evidence_from_url.
+  // -------------------------------------------------------------------------
+  server.tool(
+    'create_evidence_from_text',
+    'Submit evidence as raw text when the source URL cannot be fetched directly (e.g. behind ' +
+      'bot protection, JavaScript SPA, or paywall). Provide the plain text content and the ' +
+      'canonical source URL for provenance. Runs the same AI intake analysis and staging gate ' +
+      'as create_evidence_from_url — saved as PENDING_REVIEW, not registered on-chain until promoted.',
+    createEvidenceFromTextSchema,
+    async (input) => ({
+      content: [{ type: 'text' as const, text: await createEvidenceFromTextHandler(input) }],
     }),
   );
 

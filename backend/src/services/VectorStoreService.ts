@@ -36,7 +36,7 @@ export class VectorStoreService {
     const pineconeIndex = pinecone.Index(indexName);
 
     const embeddings = new GoogleGenerativeAIEmbeddings({
-      model: process.env['GOOGLE_EMBEDDING_MODEL'] ?? 'text-embedding-005',
+      model: process.env['GOOGLE_EMBEDDING_MODEL'] ?? 'gemini-embedding-001',
       apiKey: process.env['GEMINI_API_KEY'],
     });
 

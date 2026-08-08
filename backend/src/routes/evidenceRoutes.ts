@@ -15,7 +15,9 @@ import { StorageService } from '../services/StorageService';
 // ---------------------------------------------------------------------------
 
 interface EvidenceRecord {
+  evidenceId: string;
   fileHash: string;
+  status: string;
   evidenceRole: string;
   category: string;
   tier: string;
@@ -433,7 +435,9 @@ router.get('/timeline', async (req: Request, res: Response): Promise<void> => {
     const results = page.map((r) => ({
       content: r.summary,
       metadata: {
+        evidenceId: r.id,
         fileHash: r.fileHash,
+        status: r.status,
         evidenceRole: r.evidenceRole,
         category: r.category,
         tier: r.evidenceTier,
@@ -460,6 +464,82 @@ router.get('/timeline', async (req: Request, res: Response): Promise<void> => {
     const message = err instanceof Error ? err.message : String(err);
     console.error('[timeline] Prisma error:', err instanceof Error ? err.stack : err);
     res.status(500).json({ error: 'Timeline fetch failed', message });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/evidence/promote
+//
+// Promotes a PENDING_REVIEW evidence record to CONFIRMED:
+//   1. Registers the file hash on-chain (Web3Service)
+//   2. Upserts the summary embedding to Pinecone (VectorStoreService)
+//   3. Sets status = CONFIRMED in Prisma
+//
+// Idempotent for already-CONFIRMED records — returns 200 with existing txHash.
+// ---------------------------------------------------------------------------
+
+router.post('/promote', async (req: Request, res: Response): Promise<void> => {
+  const parsed = z.object({ fileHash: z.string().min(1) }).safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Missing fileHash', details: parsed.error.flatten() });
+    return;
+  }
+
+  const { fileHash } = parsed.data;
+
+  try {
+    const record = await prisma.evidence.findUnique({ where: { fileHash } });
+    if (!record) {
+      res.status(404).json({ error: 'Evidence not found', fileHash });
+      return;
+    }
+
+    if (record.status === 'CONFIRMED') {
+      res.status(200).json({ alreadyConfirmed: true, fileHash, message: 'Already promoted.' });
+      return;
+    }
+
+    // Register on-chain — ZeroAddress preserves submitter anonymity
+    let txHash: string;
+    try {
+      txHash = await getWeb3Service().registerEvidenceHash(
+        fileHash,
+        ethers.ZeroAddress,
+        record.category,
+      );
+    } catch (err) {
+      if (err instanceof DuplicateEvidenceError) {
+        // Already on-chain (e.g. promoted by another path) — continue to sync DB
+        txHash = 'already-on-chain';
+      } else {
+        throw err;
+      }
+    }
+
+    // Upsert embedding to Pinecone — best-effort with 15s timeout.
+    // Failure here does not block promotion; on-chain hash is the source of truth.
+    try {
+      await Promise.race([
+        getVectorStore().then((vs) => vs.upsertEvidence(record.summary, fileHash)),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('Pinecone upsert timed out')), 15_000),
+        ),
+      ]);
+    } catch (pineconeErr) {
+      console.warn(
+        '[promote] Pinecone upsert failed (non-fatal):',
+        pineconeErr instanceof Error ? pineconeErr.message : pineconeErr,
+      );
+    }
+
+    // Mark confirmed in Prisma
+    await prisma.evidence.update({ where: { fileHash }, data: { status: 'CONFIRMED' } });
+
+    res.status(200).json({ promoted: true, fileHash, txHash });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error('[promote] Error:', err instanceof Error ? err.stack : err);
+    res.status(500).json({ error: 'Promotion failed', message });
   }
 });
 
@@ -523,7 +603,9 @@ router.get('/search', async (req: Request, res: Response): Promise<void> => {
           content: r.content,
           score: r.score,
           metadata: {
+            evidenceId: row.id,
             fileHash: row.fileHash,
+            status: row.status,
             evidenceRole: row.evidenceRole,
             category: row.category,
             tier: row.evidenceTier,

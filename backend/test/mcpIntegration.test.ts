@@ -9,7 +9,7 @@
 
 jest.mock('../src/lib/prisma', () => ({
   prisma: {
-    evidence: { findUnique: jest.fn(), create: jest.fn() },
+    evidence: { findUnique: jest.fn(), create: jest.fn(), findMany: jest.fn() },
     keyFigure: { createMany: jest.fn() },
     trackedUrl: { upsert: jest.fn() },
     thesis: { create: jest.fn(), update: jest.fn(), findUnique: jest.fn() },
@@ -21,6 +21,23 @@ jest.mock('../src/lib/prisma', () => ({
 jest.mock('../src/services/IntakeAgent', () => ({
   IntakeAgent: jest.fn().mockImplementation(() => ({
     analyzeText: jest.fn().mockResolvedValue({
+      isRelevant: true,
+      evidenceRole: 'Incriminating',
+      category: 'Side Effect Withholding',
+      targetEntity: 'Ministry of Health',
+      evidenceTier: 'Tier 1: Smoking Gun',
+      evidencePerspective: 'Internal Knowledge',
+      tierReasoning: 'Leaked internal data.',
+      summary: 'Ministry suppressed side effect findings.',
+      evidenceDate: '2022-08-01',
+      keyFigures: ['Prof. Barkovitz'],
+      medicalConditions: ['myocarditis'],
+      statisticalClaims: [],
+      regulatoryMentions: [],
+      euaOmissionStatus: 'Not Applicable',
+      missingInformation: '',
+    }),
+    analyzeEvidence: jest.fn().mockResolvedValue({
       isRelevant: true,
       evidenceRole: 'Incriminating',
       category: 'Side Effect Withholding',
@@ -115,6 +132,7 @@ function mcpCall(toolName: string, args: Record<string, unknown>) {
 // ---------------------------------------------------------------------------
 
 const mockEvidenceFindUnique = prisma.evidence.findUnique as jest.Mock;
+const mockEvidenceFindMany = prisma.evidence.findMany as jest.Mock;
 const mockEvidenceCreate = prisma.evidence.create as jest.Mock;
 const mockKeyFigureCreateMany = prisma.keyFigure.createMany as jest.Mock;
 const mockTrackedUrlUpsert = prisma.trackedUrl.upsert as jest.Mock;
@@ -134,6 +152,7 @@ beforeEach(() => {
   // Fetch mock for create_evidence_from_url
   global.fetch = jest.fn().mockResolvedValue({
     ok: true,
+    headers: { get: jest.fn().mockReturnValue('text/html; charset=utf-8') },
     text: jest.fn().mockResolvedValue(
       '<html><body><p>Health ministry internal meeting recording leaked. ' +
       'Prof. Barkovitz presented alarming side effect findings that were suppressed ' +
@@ -142,6 +161,10 @@ beforeEach(() => {
   } as unknown as Response);
 
   mockEvidenceFindUnique.mockResolvedValue(null);
+  // evidence.findMany used by createThesisDraftHandler to look up summaries for mention labels
+  mockEvidenceFindMany.mockResolvedValue([
+    { fileHash: '0xabc123', summary: 'Ministry suppressed side effect findings.' },
+  ]);
   mockKeyFigureCreateMany.mockResolvedValue({ count: 1 });
   mockEvidenceCreate.mockResolvedValue({
     id: 'ev-int-1',

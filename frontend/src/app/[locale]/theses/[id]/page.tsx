@@ -1,10 +1,12 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { use } from 'react';
 import { useTranslations, useLocale } from 'next-intl';
 import { Link } from '@/i18n/navigation';
 import { apiUrl } from '@/lib/api';
+
+type EvidenceInfo = { summary: string; category: string };
 
 // ---------------------------------------------------------------------------
 // Types matching the versioned thesis API
@@ -25,6 +27,7 @@ interface CounterArgument {
 interface EvidenceGap {
   description: string;
   impact: string;
+  suggestedSearch: string;
 }
 
 interface AIAnalysis {
@@ -53,22 +56,221 @@ interface Thesis {
 }
 
 // ---------------------------------------------------------------------------
-// Helpers
+// TipTap JSON → JSX renderer
 // ---------------------------------------------------------------------------
 
-function extractText(doc: unknown): string {
-  function walk(node: Record<string, unknown>): string {
-    if (node.type === 'text') return String(node.text ?? '');
-    const attrs = node.attrs as Record<string, unknown> | undefined;
-    if (node.type === 'keyFigureMention') return `@${String(attrs?.['label'] ?? attrs?.['id'] ?? '')}`;
-    if (node.type === 'evidenceMention') return `#${String(attrs?.['label'] ?? attrs?.['id'] ?? '')}`;
-    if (node.type === 'trackedUrlMention') return `#${String(attrs?.['label'] ?? attrs?.['id'] ?? '')}`;
-    const content = node.content;
-    if (!Array.isArray(content)) return '';
-    const sep = ['paragraph', 'heading', 'blockquote', 'listItem'].includes(String(node.type ?? '')) ? '\n' : ' ';
-    return (content as unknown[]).map(c => walk(c as Record<string, unknown>)).join(sep);
+type TipTapNodeObj = Record<string, unknown>;
+
+function makeRenderer(evidenceMap: Record<string, EvidenceInfo>) {
+  function renderInline(node: TipTapNodeObj, index: number): JSX.Element | null {
+    if (node.type === 'text') {
+      const text = String(node.text ?? '');
+      const marks = node.marks as Array<{ type: string }> | undefined;
+      let el: JSX.Element | string = text;
+      if (marks?.some(m => m.type === 'italic')) el = <em key={`i${index}`}>{el}</em>;
+      if (marks?.some(m => m.type === 'bold')) el = <strong key={`b${index}`}>{el}</strong>;
+      return <span key={index}>{el}</span>;
+    }
+    if (node.type === 'evidenceMention') {
+      const attrs = node.attrs as TipTapNodeObj | undefined;
+      const id = String(attrs?.['id'] ?? '');
+      // Use DB summary if available, else fall back to label (strip # prefix for legacy records)
+      const rawLabel = String(attrs?.['label'] ?? '');
+      const storedLabel = rawLabel.startsWith('#') ? rawLabel.slice(1) : rawLabel;
+      const info = evidenceMap[id];
+      const displayLabel = (info?.summary?.slice(0, 35) ?? storedLabel) || id.slice(0, 12);
+      return (
+        <Link
+          key={index}
+          href={`/timeline?hash=${encodeURIComponent(id)}`}
+          className="inline-block bg-amber-100 hover:bg-amber-200 text-amber-700 text-xs font-medium px-2 py-0.5 rounded-full mx-0.5 transition-colors"
+        >
+          #{displayLabel}
+        </Link>
+      );
+    }
+    if (node.type === 'keyFigureMention') {
+      const attrs = node.attrs as TipTapNodeObj | undefined;
+      const raw = String(attrs?.['label'] ?? attrs?.['id'] ?? '');
+      const label = raw.startsWith('@') ? raw.slice(1) : raw;
+      return (
+        <Link
+          key={index}
+          href={`/timeline?entity=${encodeURIComponent(label)}`}
+          className="inline-block bg-violet-100 hover:bg-violet-200 text-violet-700 text-xs font-medium px-2 py-0.5 rounded-full mx-0.5 transition-colors"
+        >
+          @{label}
+        </Link>
+      );
+    }
+    return null;
   }
-  return walk(doc as Record<string, unknown>).replace(/\n{3,}/g, '\n\n').trim();
+
+  function renderTipTapNode(node: TipTapNodeObj, index: number): JSX.Element | null {
+    const content = node.content as TipTapNodeObj[] | undefined;
+    switch (node.type) {
+      case 'paragraph': {
+        if (!content?.length) return <div key={index} className="h-3" />;
+        return <p key={index} className="text-slate-700 text-sm leading-relaxed mb-3">{content.map((c, i) => renderInline(c, i))}</p>;
+      }
+      case 'heading': {
+        const level = Number((node.attrs as TipTapNodeObj | undefined)?.['level'] ?? 1);
+        const children = (content ?? []).map((c, i) => renderInline(c, i));
+        if (level === 1) return <h1 key={index} className="text-xl font-bold text-slate-900 mb-3 mt-6 first:mt-0">{children}</h1>;
+        if (level === 2) return <h2 key={index} className="text-base font-semibold text-slate-800 mb-2 mt-4">{children}</h2>;
+        return <h3 key={index} className="text-sm font-semibold text-slate-700 mb-2 mt-3">{children}</h3>;
+      }
+      case 'bulletList':
+        return <ul key={index} className="list-disc list-inside space-y-1 mb-3 ms-2">{(content ?? []).map((c, i) => renderTipTapNode(c, i))}</ul>;
+      case 'orderedList':
+        return <ol key={index} className="list-decimal list-inside space-y-1 mb-3 ms-2">{(content ?? []).map((c, i) => renderTipTapNode(c, i))}</ol>;
+      case 'listItem': {
+        const para = content?.[0] as TipTapNodeObj | undefined;
+        const inlines = (para?.content as TipTapNodeObj[] | undefined) ?? [];
+        return <li key={index} className="text-slate-700 text-sm">{inlines.map((c, i) => renderInline(c, i))}</li>;
+      }
+      default:
+        return null;
+    }
+  }
+
+  return function renderDoc(doc: Record<string, unknown>): JSX.Element {
+    const content = doc.content as TipTapNodeObj[] | undefined;
+    return <div>{(content ?? []).map((child, i) => renderTipTapNode(child, i))}</div>;
+  };
+}
+
+// ---------------------------------------------------------------------------
+// GapSearchPanel — inline vault search + Add to Thesis action
+// ---------------------------------------------------------------------------
+
+interface VaultHit {
+  fileHash: string;
+  summary: string;
+  category: string;
+  tier: string;
+  evidenceDate: string;
+  targetEntity: string;
+}
+
+const GAP_TIER_DOT: Record<string, string> = {
+  '1': 'bg-red-500', '2': 'bg-orange-500', '3': 'bg-yellow-500', '4': 'bg-slate-400',
+};
+function gapTierDot(tier: string) {
+  const num = tier?.match(/\d/)?.[0] ?? '';
+  return GAP_TIER_DOT[num] ?? 'bg-slate-300';
+}
+
+function appendEvidenceMention(
+  doc: Record<string, unknown>,
+  fileHash: string,
+  label: string,
+): Record<string, unknown> {
+  const content = [...((doc.content as unknown[]) ?? [])];
+  content.push({
+    type: 'paragraph',
+    content: [{ type: 'evidenceMention', attrs: { id: fileHash, label: label.slice(0, 30) } }],
+  });
+  return { ...doc, content };
+}
+
+function GapSearchPanel({
+  gap, thesisId, thesisContent, onVersionAdded,
+}: {
+  gap: EvidenceGap;
+  thesisId: string;
+  thesisContent: Record<string, unknown>;
+  onVersionAdded: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [hits, setHits] = useState<VaultHit[]>([]);
+  const [added, setAdded] = useState<Set<string>>(new Set());
+  const [adding, setAdding] = useState<Set<string>>(new Set());
+
+  async function search() {
+    if (open) { setOpen(false); return; }
+    setOpen(true);
+    if (hits.length > 0) return;
+    setLoading(true);
+    try {
+      const res = await fetch(apiUrl(`/api/evidence/search?q=${encodeURIComponent(gap.suggestedSearch)}&limit=5`));
+      if (!res.ok) throw new Error();
+      const data = (await res.json()) as { results: { metadata: VaultHit }[] };
+      setHits((data.results ?? []).map(r => r.metadata));
+    } catch {
+      setHits([]);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function addToThesis(hit: VaultHit) {
+    setAdding(prev => new Set(prev).add(hit.fileHash));
+    try {
+      const newContent = appendEvidenceMention(thesisContent, hit.fileHash, hit.summary);
+      const res = await fetch(apiUrl(`/api/thesis/${thesisId}/version`), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userContent: newContent }),
+      });
+      if (!res.ok) throw new Error();
+      setAdded(prev => new Set(prev).add(hit.fileHash));
+      onVersionAdded();
+    } finally {
+      setAdding(prev => { const s = new Set(prev); s.delete(hit.fileHash); return s; });
+    }
+  }
+
+  return (
+    <div className="border border-amber-200 rounded-xl overflow-hidden">
+      <div className="bg-amber-50 p-4 flex items-start justify-between gap-4">
+        <p className="text-sm text-amber-800 flex-1">{gap.description}</p>
+        <button
+          onClick={search}
+          className="shrink-0 text-xs font-semibold px-3 py-1.5 bg-amber-100 hover:bg-amber-200 text-amber-700 rounded-lg transition-colors"
+        >
+          {open ? 'Hide' : 'Search Vault'}
+        </button>
+      </div>
+
+      {open && (
+        <div className="bg-white border-t border-amber-200">
+          {gap.suggestedSearch && (
+            <p className="text-xs text-slate-400 px-4 pt-3 pb-1 font-mono">{gap.suggestedSearch}</p>
+          )}
+          {loading && <p className="text-xs text-slate-500 px-4 py-3">Searching vault…</p>}
+          {!loading && hits.length === 0 && (
+            <p className="text-xs text-slate-400 px-4 py-3">
+              No matching evidence in vault — submit new evidence via MCP or the evidence form.
+            </p>
+          )}
+          {!loading && hits.map(hit => (
+            <div key={hit.fileHash} className="flex items-start gap-3 px-4 py-3 border-b border-slate-100 last:border-0">
+              <span className={`mt-1 shrink-0 w-2 h-2 rounded-full ${gapTierDot(hit.tier)}`} />
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-medium text-slate-700 leading-snug">{hit.summary.slice(0, 120)}</p>
+                <p className="text-xs text-slate-400 mt-0.5">{hit.category} · {hit.evidenceDate}</p>
+              </div>
+              <button
+                disabled={added.has(hit.fileHash) || adding.has(hit.fileHash)}
+                onClick={() => void addToThesis(hit)}
+                className={`shrink-0 text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors ${
+                  added.has(hit.fileHash)
+                    ? 'bg-emerald-100 text-emerald-700 cursor-default'
+                    : adding.has(hit.fileHash)
+                    ? 'bg-slate-100 text-slate-400 cursor-wait'
+                    : 'bg-violet-100 hover:bg-violet-200 text-violet-700'
+                }`}
+              >
+                {added.has(hit.fileHash) ? 'Added ✓' : adding.has(hit.fileHash) ? '…' : 'Add to Thesis'}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 const STRENGTH_STYLES: Record<string, string> = {
@@ -89,24 +291,50 @@ export default function ThesisPage({ params }: { params: Promise<{ id: string }>
   const locale = useLocale();
 
   const [thesis, setThesis] = useState<Thesis | null>(null);
+  const [evidenceMap, setEvidenceMap] = useState<Record<string, EvidenceInfo>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  const [analyzing, setAnalyzing] = useState(false);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
-    async function load() {
-      try {
-        const res = await fetch(apiUrl(`/api/thesis/${id}`));
-        if (!res.ok) throw new Error();
-        const data = (await res.json()) as { thesis: Thesis };
-        setThesis(data.thesis);
-      } catch {
-        setError(true);
-      } finally {
-        setLoading(false);
-      }
-    }
-    load();
+    return () => { if (pollRef.current) clearInterval(pollRef.current); };
+  }, []);
+
+  async function loadThesis() {
+    const res = await fetch(apiUrl(`/api/thesis/${id}`));
+    if (!res.ok) throw new Error();
+    const data = (await res.json()) as { thesis: Thesis; evidenceMap: Record<string, EvidenceInfo> };
+    setThesis(data.thesis);
+    setEvidenceMap(data.evidenceMap ?? {});
+    return data.thesis;
+  }
+
+  useEffect(() => {
+    loadThesis()
+      .catch(() => setError(true))
+      .finally(() => setLoading(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
+
+  async function runAnalysis() {
+    setAnalyzing(true);
+    try {
+      await fetch(apiUrl(`/api/thesis/${id}/analyze`), { method: 'POST' });
+      pollRef.current = setInterval(async () => {
+        try {
+          const thesis = await loadThesis();
+          if (thesis.headVersion?.status === 'COMPLETE') {
+            clearInterval(pollRef.current!);
+            pollRef.current = null;
+            setAnalyzing(false);
+          }
+        } catch { /* keep polling */ }
+      }, 3000);
+    } catch {
+      setAnalyzing(false);
+    }
+  }
 
   if (loading) {
     return (
@@ -131,8 +359,8 @@ export default function ThesisPage({ params }: { params: Promise<{ id: string }>
 
   const hv = thesis.headVersion;
   const analysis = hv?.aiAnalysis ?? null;
-  const bodyText = hv ? extractText(hv.userContent) : '';
   const keyFigureMentions = hv?.mentions.filter(m => m.type === 'KEY_FIGURE') ?? [];
+  const renderDoc = makeRenderer(evidenceMap);
   const evidenceMentions = hv?.mentions.filter(m => m.type === 'EVIDENCE') ?? [];
 
   return (
@@ -181,7 +409,7 @@ export default function ThesisPage({ params }: { params: Promise<{ id: string }>
 
         {/* Thesis body */}
         <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
-          <p className="text-slate-700 text-sm leading-relaxed whitespace-pre-wrap">{bodyText}</p>
+          {hv ? renderDoc(hv.userContent) : null}
         </div>
 
         {/* Mentioned key figures */}
@@ -272,13 +500,13 @@ export default function ThesisPage({ params }: { params: Promise<{ id: string }>
                   {t('evidenceGapsLabel')}
                 </h3>
                 {analysis.evidenceGaps.map((gap, i) => (
-                  <div
+                  <GapSearchPanel
                     key={i}
-                    className="bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-1"
-                  >
-                    <p className="text-sm text-amber-800">{gap.description}</p>
-                    <p className="text-xs text-amber-600">{gap.impact}</p>
-                  </div>
+                    gap={gap}
+                    thesisId={id}
+                    thesisContent={hv.userContent}
+                    onVersionAdded={() => { void loadThesis(); }}
+                  />
                 ))}
               </div>
             )}
@@ -302,10 +530,22 @@ export default function ThesisPage({ params }: { params: Promise<{ id: string }>
           </section>
         )}
 
-        {/* Pending AI notice */}
-        {hv?.status === 'PENDING_AI' && (
-          <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-amber-700 text-sm">
-            {t('pendingAiNotice')}
+        {/* Pending AI notice + trigger button */}
+        {hv?.status === 'PENDING_AI' && !analyzing && (
+          <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex items-center justify-between gap-4">
+            <p className="text-amber-700 text-sm">{t('pendingAiNotice')}</p>
+            <button
+              onClick={runAnalysis}
+              className="shrink-0 px-4 py-1.5 bg-amber-600 hover:bg-amber-500 text-white text-xs font-semibold rounded-lg transition-colors"
+            >
+              Run AI Analysis
+            </button>
+          </div>
+        )}
+        {analyzing && (
+          <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex items-center gap-3 text-amber-700 text-sm">
+            <span className="animate-spin">⏳</span>
+            <span>Running Devil&apos;s Advocate analysis… this takes ~30 seconds</span>
           </div>
         )}
       </main>

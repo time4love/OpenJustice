@@ -30,8 +30,20 @@ export interface ThesisEditorHandle {
 // ---------------------------------------------------------------------------
 
 type FigureItem = { id: string; name: string };
-type EvidenceItem = { fileHash: string; summary: string; category: string };
+type EvidenceItem = { fileHash: string; summary: string; category: string; tier?: string };
 type AnyItem = FigureItem | EvidenceItem;
+
+const TIER_DOT: Record<string, string> = {
+  '1': 'bg-red-500',
+  '2': 'bg-orange-500',
+  '3': 'bg-yellow-500',
+  '4': 'bg-slate-400',
+};
+
+function tierDotClass(tier?: string): string {
+  const num = tier?.match(/\d/)?.[0] ?? '';
+  return TIER_DOT[num] ?? 'bg-slate-300';
+}
 
 interface ActiveSuggestion {
   char: '@' | '#';
@@ -176,8 +188,11 @@ const MentionList = forwardRef<MentionListHandle, { items: AnyItem[]; char: stri
               <span className="text-violet-700 font-medium">{(item as FigureItem).name}</span>
             ) : (
               <div>
-                <div className="text-amber-600 font-medium text-xs">{(item as EvidenceItem).category}</div>
-                <div className="text-slate-500 text-xs mt-0.5 truncate">{(item as EvidenceItem).summary?.slice(0, 70)}</div>
+                <div className="flex items-center gap-1.5">
+                  <span className={`shrink-0 w-2 h-2 rounded-full ${tierDotClass((item as EvidenceItem).tier)}`} />
+                  <span className="text-amber-600 font-medium text-xs">{(item as EvidenceItem).category}</span>
+                </div>
+                <div className="text-slate-500 text-xs mt-0.5 truncate ps-3.5">{(item as EvidenceItem).summary?.slice(0, 70)}</div>
               </div>
             )}
           </button>
