@@ -14,6 +14,10 @@ function sha256(value: unknown): string {
 // ---------------------------------------------------------------------------
 
 export const createThesisDraftSchema = {
+  title: z
+    .string()
+    .min(1)
+    .describe('Short declarative title for the thesis (Hebrew or English).'),
   body: z
     .string()
     .min(1)
@@ -29,6 +33,7 @@ export const createThesisDraftSchema = {
 };
 
 export async function createThesisDraftHandler(input: {
+  title: string;
   body: string;
   evidenceHashes?: string[];
   keyFigures?: string[];
@@ -50,7 +55,7 @@ export async function createThesisDraftHandler(input: {
   const contentHash = sha256(userContent);
 
   const { thesis, version } = await prisma.$transaction(async (tx) => {
-    const thesis = await tx.thesis.create({ data: {} });
+    const thesis = await tx.thesis.create({ data: { title: input.title } });
 
     const version = await tx.thesisVersion.create({
       data: {

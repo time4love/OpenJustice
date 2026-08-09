@@ -2,6 +2,8 @@ import { z } from 'zod';
 import { prisma } from '../../lib/prisma';
 import { VectorStoreService } from '../../services/VectorStoreService';
 import { DevilsAdvocateOutputSchema } from '../../services/DevilsAdvocateAgent';
+import { GapRevisionAgent } from '../../services/GapRevisionAgent';
+import { extractText } from '../../services/thesisAnalysis';
 
 // ---------------------------------------------------------------------------
 // Lazy singleton
@@ -28,13 +30,24 @@ export const getResearchAgendaSchema = {
     .max(5)
     .optional()
     .describe('Max vault hits to return per gap (default 3)'),
+  includeSuggestions: z
+    .boolean()
+    .optional()
+    .describe(
+      'When true, generate a suggestedVersionBody for each open gap that has new vault hits. ' +
+        'The suggested body is a revised Markdown thesis incorporating the top vault hit — ' +
+        'pass it directly as body to add_thesis_version. Adds one LLM call per open gap with hits. ' +
+        'Default false.',
+    ),
 };
 
 export async function getResearchAgendaHandler(input: {
   thesisId: string;
   maxHitsPerGap?: number;
+  includeSuggestions?: boolean;
 }): Promise<string> {
   const limit = input.maxHitsPerGap ?? 3;
+  const includeSuggestions = input.includeSuggestions ?? false;
 
   // -------------------------------------------------------------------------
   // 1. Fetch thesis head version with mentions
@@ -44,7 +57,13 @@ export async function getResearchAgendaHandler(input: {
     where: { id: input.thesisId },
     include: {
       headVersion: {
-        include: { mentions: true },
+        include: {
+          mentions: true,
+          gapResolutions: {
+            include: { evidence: { select: { summary: true } } },
+            orderBy: { gapIndex: 'asc' },
+          },
+        },
       },
     },
   });
@@ -81,12 +100,27 @@ export async function getResearchAgendaHandler(input: {
 
   const analysis = parsed.data;
 
+  // Extract plain text from TipTap JSON once — used by GapRevisionAgent if requested
+  const currentBodyText = extractText(head.userContent);
+
   // -------------------------------------------------------------------------
-  // 3. Build set of already-cited evidence hashes
+  // 3. Build set of already-cited evidence hashes + gap resolution map
   // -------------------------------------------------------------------------
 
   const alreadyCitedHashes = new Set(
     head.mentions.filter((m) => m.type === 'EVIDENCE').map((m) => m.refId),
+  );
+
+  // Map gapIndex → resolution metadata for O(1) lookup per gap
+  const resolutionMap = new Map(
+    head.gapResolutions.map((r) => [
+      r.gapIndex,
+      {
+        resolvedAt: r.createdAt.toISOString(),
+        resolvedBy: r.evidenceId,
+        evidenceSummary: r.evidence.summary.slice(0, 200),
+      },
+    ]),
   );
 
   // -------------------------------------------------------------------------
@@ -143,12 +177,40 @@ export async function getResearchAgendaHandler(input: {
         }
       }
 
+      const resolution = resolutionMap.get(index);
+      const isResolved = resolution !== undefined;
+
+      // Generate a ready-to-apply body revision for this gap when requested.
+      // Only for open gaps with at least one new (uncited) vault hit.
+      let suggestedVersionBody: string | null = null;
+      if (includeSuggestions && !isResolved) {
+        const topNewHit = (vaultHits as Array<{
+          fileHash: string; summary: string; evidenceTier: string; evidenceRole: string;
+          evidenceDate: string; category: string; targetEntity: string; alreadyCited: boolean;
+        }>).find((h) => !h.alreadyCited);
+
+        if (topNewHit) {
+          try {
+            const agent = new GapRevisionAgent();
+            const revision = await agent.suggest(currentBodyText, gap.description, topNewHit);
+            suggestedVersionBody = revision.suggestedBody;
+          } catch {
+            // Non-fatal — gap returned without suggestion
+          }
+        }
+      }
+
       return {
         index,
         description: gap.description,
         suggestedSearch: gap.suggestedSearch,
+        resolved: isResolved,
+        resolvedAt: resolution?.resolvedAt ?? null,
+        resolvedBy: resolution?.resolvedBy ?? null,
+        resolutionSummary: resolution?.evidenceSummary ?? null,
         newHits: vaultHits.filter((h) => !(h as { alreadyCited: boolean }).alreadyCited).length,
         vaultHits,
+        suggestedVersionBody,
       };
     }),
   );
@@ -159,6 +221,7 @@ export async function getResearchAgendaHandler(input: {
 
   return JSON.stringify({
     thesisId: thesis.id,
+    title: thesis.title ?? null,
     headVersionId: head.id,
     overallStrength: analysis.overallStrengthAssessment,
     summaryHe: analysis.summaryHe,
@@ -168,10 +231,12 @@ export async function getResearchAgendaHandler(input: {
     alternativeInterpretations: analysis.alternativeInterpretations,
     gaps,
     instructions:
-      'For each gap, review vaultHits where alreadyCited=false — these are new evidence records ' +
-      'already in the vault that may address the gap. To add one to the thesis, call ' +
-      'add_thesis_version with the existing body plus an evidenceMention for that fileHash. ' +
-      'If vaultHits is empty or insufficient, use create_evidence_from_url / ' +
-      'create_evidence_from_text to submit new evidence, then call get_research_agenda again.',
+      'Focus on gaps where resolved=false. For each open gap, review vaultHits where ' +
+      'alreadyCited=false — these are evidence records already in the vault that may address the gap. ' +
+      'To cite one, call add_thesis_version with the existing body plus an evidenceMention for that ' +
+      'fileHash. If vaultHits is empty or insufficient, use create_evidence_from_url / ' +
+      'create_evidence_from_text to submit new evidence, then call get_research_agenda again. ' +
+      'Gaps where resolved=true have already been addressed — skip them unless resolutionSummary ' +
+      'suggests the resolution was partial.',
   });
 }

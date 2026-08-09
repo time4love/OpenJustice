@@ -14,6 +14,7 @@ import { createResearchSessionSchema, createResearchSessionHandler } from './too
 import { addSessionNoteSchema, addSessionNoteHandler } from './tools/addSessionNote';
 import { closeResearchSessionSchema, closeResearchSessionHandler } from './tools/closeResearchSession';
 import { getSessionSummarySchema, getSessionSummaryHandler } from './tools/getSessionSummary';
+import { suggestThesisSchema, suggestThesisHandler } from './tools/suggestThesis';
 
 // ---------------------------------------------------------------------------
 // Factory — creates a fresh McpServer per request.
@@ -104,6 +105,24 @@ export function createMcpServer(): McpServer {
     getResearchAgendaSchema,
     async (input) => ({
       content: [{ type: 'text' as const, text: await getResearchAgendaHandler(input) }],
+    }),
+  );
+
+  // -------------------------------------------------------------------------
+  // Tool: suggest_thesis  [READ — no auth required]
+  // Searches the evidence vault semantically, builds a corpus, and asks the
+  // ThesisSynthesisAgent to propose the strongest defensible legal thesis.
+  // Returns a ready-to-use create_thesis_draft payload.
+  // -------------------------------------------------------------------------
+  server.tool(
+    'suggest_thesis',
+    'Search the evidence vault for a topic and propose the strongest legal thesis the evidence ' +
+      'supports. Returns a proposed title, thesis statement, full narrative body, supporting ' +
+      'evidence hashes, implicated key figures, and what evidence is still missing. ' +
+      'Pass the readyForDraft field directly to create_thesis_draft to save it.',
+    suggestThesisSchema,
+    async (input) => ({
+      content: [{ type: 'text' as const, text: await suggestThesisHandler(input) }],
     }),
   );
 

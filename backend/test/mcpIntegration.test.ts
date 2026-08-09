@@ -229,7 +229,7 @@ describe('write tool auth enforcement', () => {
   const writeTools = [
     { name: 'create_evidence_from_url', args: { url: 'https://example.gov' } },
     { name: 'start_forensic_scan', args: { url: 'https://corona.health.gov.il/' } },
-    { name: 'create_thesis_draft', args: { body: 'Test thesis.' } },
+    { name: 'create_thesis_draft', args: { title: 'Test', body: 'Test thesis.' } },
     { name: 'add_thesis_version', args: { thesisId: 'thesis-int-1', body: 'Updated.' } },
     { name: 'run_ai_analysis', args: { thesisId: 'thesis-int-1' } },
     { name: 'create_research_session', args: { thesisId: 'thesis-int-1' } },
@@ -351,6 +351,7 @@ describe('start_forensic_scan integration', () => {
 
 describe('create_thesis_draft integration', () => {
   const args = {
+    title: 'MOH Concealment of Vaccine Side Effects',
     body: 'The Ministry of Health concealed serious vaccine side effects.',
     evidenceHashes: ['0xabc123'],
     keyFigures: ['Prof. Barkovitz'],

@@ -152,6 +152,7 @@ enum MentionType {
 // headVersionId points to the canonical (latest-wins) version.
 model Thesis {
   id            String            @id @default(cuid())
+  title         String?
   headVersionId String?           @unique
   headVersion   ThesisVersion?    @relation("ThesisHead", fields: [headVersionId], references: [id])
   versions      ThesisVersion[]   @relation("ThesisVersions")

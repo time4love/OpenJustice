@@ -119,6 +119,7 @@ export async function getThesisContextHandler(input: { thesisId: string }): Prom
 
   return JSON.stringify({
     thesisId: thesis.id,
+    title: thesis.title ?? null,
     headVersionId: head.id,
     status: head.status,
     content: head.userContent,

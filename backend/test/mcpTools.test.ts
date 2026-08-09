@@ -57,6 +57,18 @@ jest.mock('../src/services/VectorStoreService', () => ({
   },
 }));
 
+jest.mock('../src/services/ThesisSynthesisAgent', () => ({
+  ThesisSynthesisAgent: jest.fn().mockImplementation(() => ({
+    synthesize: jest.fn(),
+  })),
+}));
+
+jest.mock('../src/services/GapRevisionAgent', () => ({
+  GapRevisionAgent: jest.fn().mockImplementation(() => ({
+    suggest: jest.fn(),
+  })),
+}));
+
 import { prisma } from '../src/lib/prisma';
 import { VectorStoreService } from '../src/services/VectorStoreService';
 import { IntakeAgent } from '../src/services/IntakeAgent';
@@ -849,7 +861,7 @@ describe('createThesisDraftHandler', () => {
   });
 
   it('returns thesisId, headVersionId, and PENDING_AI status', async () => {
-    const raw = await createThesisDraftHandler({ body: 'The ministry hid side effects.' });
+    const raw = await createThesisDraftHandler({ title: 'Test Thesis', body: 'The ministry hid side effects.' });
     const result = JSON.parse(raw);
 
     expect(result.thesisId).toBe('thesis-draft-1');
@@ -858,14 +870,14 @@ describe('createThesisDraftHandler', () => {
   });
 
   it('creates thesis in a transaction', async () => {
-    await createThesisDraftHandler({ body: 'Test thesis body.' });
+    await createThesisDraftHandler({ title: 'Test Thesis', body: 'Test thesis body.' });
 
     expect(mockTransaction).toHaveBeenCalledTimes(1);
-    expect(mockThesisCreate).toHaveBeenCalledWith({ data: {} });
+    expect(mockThesisCreate).toHaveBeenCalledWith({ data: { title: 'Test Thesis' } });
   });
 
   it('creates ThesisVersion with PENDING_AI status', async () => {
-    await createThesisDraftHandler({ body: 'Test.' });
+    await createThesisDraftHandler({ title: 'Test', body: 'Test.' });
 
     expect(mockThesisVersionCreate).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -875,7 +887,7 @@ describe('createThesisDraftHandler', () => {
   });
 
   it('sets headVersionId on the thesis after version creation', async () => {
-    await createThesisDraftHandler({ body: 'Test.' });
+    await createThesisDraftHandler({ title: 'Test', body: 'Test.' });
 
     expect(mockThesisUpdate).toHaveBeenCalledWith({
       where: { id: 'thesis-draft-1' },
@@ -885,6 +897,7 @@ describe('createThesisDraftHandler', () => {
 
   it('populates evidence mentions from evidenceHashes', async () => {
     await createThesisDraftHandler({
+      title: 'Evidence Test',
       body: 'Side effects were hidden.',
       evidenceHashes: ['0xabc123', '0xdef456'],
     });
@@ -901,6 +914,7 @@ describe('createThesisDraftHandler', () => {
 
   it('populates key figure mentions from keyFigures', async () => {
     await createThesisDraftHandler({
+      title: 'Figures Test',
       body: 'Officials suppressed data.',
       keyFigures: ['פרופ מתי ברקוביץ', 'Sharon Alroy-Preis'],
     });
@@ -917,6 +931,7 @@ describe('createThesisDraftHandler', () => {
 
   it('reports correct mention counts in the response', async () => {
     const raw = await createThesisDraftHandler({
+      title: 'Count Test',
       body: 'Test.',
       evidenceHashes: ['0xabc'],
       keyFigures: ['Alice', 'Bob'],
@@ -929,7 +944,7 @@ describe('createThesisDraftHandler', () => {
   });
 
   it('works with body only (no hashes or figures)', async () => {
-    const raw = await createThesisDraftHandler({ body: 'Minimal draft.' });
+    const raw = await createThesisDraftHandler({ title: 'Minimal', body: 'Minimal draft.' });
     const result = JSON.parse(raw);
 
     expect(result.thesisId).toBeDefined();
@@ -937,7 +952,7 @@ describe('createThesisDraftHandler', () => {
   });
 
   it('message instructs user to open in UI before publishing', async () => {
-    const raw = await createThesisDraftHandler({ body: 'Draft.' });
+    const raw = await createThesisDraftHandler({ title: 'Draft', body: 'Draft.' });
     const result = JSON.parse(raw);
 
     expect(result.message).toContain('PENDING_AI');
@@ -947,7 +962,7 @@ describe('createThesisDraftHandler', () => {
   it('does NOT trigger DevilsAdvocateAgent (staging gate)', async () => {
     // No DevilsAdvocateAgent mock needed — if it were called it would throw
     // (it's not mocked). The test passes because it isn't called.
-    await expect(createThesisDraftHandler({ body: 'Draft.' })).resolves.toBeDefined();
+    await expect(createThesisDraftHandler({ title: 'Draft', body: 'Draft.' })).resolves.toBeDefined();
   });
 });
 
@@ -1157,6 +1172,7 @@ const completedAnalysis = {
 
 const thesisWithAnalysisFixture = {
   id: 'thesis-1',
+  title: 'Test Thesis Title',
   headVersionId: 'version-1',
   headVersion: {
     id: 'version-1',
@@ -1166,6 +1182,7 @@ const thesisWithAnalysisFixture = {
     mentions: [
       { id: 'm1', type: 'EVIDENCE', refId: '0xcited' },
     ],
+    gapResolutions: [],
   },
 };
 
@@ -1286,6 +1303,174 @@ describe('getResearchAgendaHandler', () => {
     // called once per gap (2 gaps), each with limit*2 = 2
     expect(mockSearchEvidence).toHaveBeenCalledTimes(2);
     expect(mockSearchEvidence).toHaveBeenCalledWith(expect.any(String), 2);
+  });
+
+  it('returns resolved=false and null resolvedAt/resolvedBy for unresolved gaps', async () => {
+    const raw = await getResearchAgendaHandler({ thesisId: 'thesis-1' });
+    const result = JSON.parse(raw);
+
+    result.gaps.forEach((gap: { resolved: boolean; resolvedAt: unknown; resolvedBy: unknown }) => {
+      expect(gap.resolved).toBe(false);
+      expect(gap.resolvedAt).toBeNull();
+      expect(gap.resolvedBy).toBeNull();
+    });
+  });
+
+  it('marks a gap as resolved when a ThesisGapResolution exists for its index', async () => {
+    const resolvedAt = new Date('2026-06-01T10:00:00Z');
+    mockThesisFindUnique.mockResolvedValueOnce({
+      ...thesisWithAnalysisFixture,
+      headVersion: {
+        ...thesisWithAnalysisFixture.headVersion,
+        gapResolutions: [
+          {
+            gapIndex: 0,
+            evidenceId: '0xresolver',
+            createdAt: resolvedAt,
+            evidence: { summary: 'MOH directive found in archive.' },
+          },
+        ],
+      },
+    });
+
+    const raw = await getResearchAgendaHandler({ thesisId: 'thesis-1' });
+    const result = JSON.parse(raw);
+
+    expect(result.gaps[0].resolved).toBe(true);
+    expect(result.gaps[0].resolvedAt).toBe(resolvedAt.toISOString());
+    expect(result.gaps[0].resolvedBy).toBe('0xresolver');
+    expect(result.gaps[0].resolutionSummary).toBe('MOH directive found in archive.');
+  });
+
+  it('leaves other gaps unresolved when only one gap has a resolution', async () => {
+    mockThesisFindUnique.mockResolvedValueOnce({
+      ...thesisWithAnalysisFixture,
+      headVersion: {
+        ...thesisWithAnalysisFixture.headVersion,
+        gapResolutions: [
+          {
+            gapIndex: 0,
+            evidenceId: '0xresolver',
+            createdAt: new Date(),
+            evidence: { summary: 'Resolved.' },
+          },
+        ],
+      },
+    });
+
+    const raw = await getResearchAgendaHandler({ thesisId: 'thesis-1' });
+    const result = JSON.parse(raw);
+
+    expect(result.gaps[0].resolved).toBe(true);
+    expect(result.gaps[1].resolved).toBe(false);
+    expect(result.gaps[1].resolvedBy).toBeNull();
+  });
+
+  it('includes title in the response', async () => {
+    const raw = await getResearchAgendaHandler({ thesisId: 'thesis-1' });
+    const result = JSON.parse(raw);
+
+    expect(result.title).toBe('Test Thesis Title');
+  });
+
+  it('instructions mention resolved=false filter', async () => {
+    const raw = await getResearchAgendaHandler({ thesisId: 'thesis-1' });
+    const result = JSON.parse(raw);
+
+    expect(result.instructions).toContain('resolved=false');
+  });
+
+  it('returns suggestedVersionBody=null for all gaps when includeSuggestions is false (default)', async () => {
+    const raw = await getResearchAgendaHandler({ thesisId: 'thesis-1' });
+    const result = JSON.parse(raw);
+
+    result.gaps.forEach((gap: { suggestedVersionBody: unknown }) => {
+      expect(gap.suggestedVersionBody).toBeNull();
+    });
+  });
+
+  it('calls GapRevisionAgent for each open gap with new hits when includeSuggestions=true', async () => {
+    const { GapRevisionAgent: MockGapRevision } = jest.requireMock('../src/services/GapRevisionAgent');
+    MockGapRevision.mockImplementation(() => ({
+      suggest: jest.fn().mockResolvedValue({ suggestedBody: '## revised body' }),
+    }));
+
+    const raw = await getResearchAgendaHandler({ thesisId: 'thesis-1', includeSuggestions: true });
+    const result = JSON.parse(raw);
+
+    // Both gaps have new hits — both should get a suggestedVersionBody
+    const withSuggestion = result.gaps.filter(
+      (g: { suggestedVersionBody: string | null }) => g.suggestedVersionBody !== null,
+    );
+    expect(withSuggestion.length).toBeGreaterThan(0);
+    expect(withSuggestion[0].suggestedVersionBody).toBe('## revised body');
+  });
+
+  it('does not call GapRevisionAgent for resolved gaps even when includeSuggestions=true', async () => {
+    const { GapRevisionAgent: MockGapRevision } = jest.requireMock('../src/services/GapRevisionAgent');
+    const mockSuggest = jest.fn().mockResolvedValue({ suggestedBody: '## revised' });
+    MockGapRevision.mockImplementation(() => ({ suggest: mockSuggest }));
+
+    // Mark gap 0 as resolved
+    mockThesisFindUnique.mockResolvedValueOnce({
+      ...thesisWithAnalysisFixture,
+      headVersion: {
+        ...thesisWithAnalysisFixture.headVersion,
+        gapResolutions: [
+          {
+            gapIndex: 0,
+            evidenceId: '0xresolver',
+            createdAt: new Date(),
+            evidence: { summary: 'Already resolved.' },
+          },
+        ],
+      },
+    });
+
+    const raw = await getResearchAgendaHandler({ thesisId: 'thesis-1', includeSuggestions: true });
+    const result = JSON.parse(raw);
+
+    expect(result.gaps[0].resolved).toBe(true);
+    expect(result.gaps[0].suggestedVersionBody).toBeNull();
+    // Gap 1 is open — should have a suggestion
+    expect(result.gaps[1].resolved).toBe(false);
+    expect(result.gaps[1].suggestedVersionBody).toBe('## revised');
+  });
+
+  it('returns suggestedVersionBody=null when GapRevisionAgent throws', async () => {
+    const { GapRevisionAgent: MockGapRevision } = jest.requireMock('../src/services/GapRevisionAgent');
+    MockGapRevision.mockImplementation(() => ({
+      suggest: jest.fn().mockRejectedValue(new Error('LLM timeout')),
+    }));
+
+    const raw = await getResearchAgendaHandler({ thesisId: 'thesis-1', includeSuggestions: true });
+    const result = JSON.parse(raw);
+
+    // Non-fatal: gaps still returned, suggestedVersionBody is null
+    expect(result.gaps).toHaveLength(2);
+    result.gaps.forEach((gap: { suggestedVersionBody: unknown }) => {
+      expect(gap.suggestedVersionBody).toBeNull();
+    });
+  });
+
+  it('returns suggestedVersionBody=null for gaps where all vault hits are already cited', async () => {
+    const { GapRevisionAgent: MockGapRevision } = jest.requireMock('../src/services/GapRevisionAgent');
+    const mockSuggest = jest.fn();
+    MockGapRevision.mockImplementation(() => ({ suggest: mockSuggest }));
+
+    // All vault hits are already cited
+    mockEvidenceFindMany.mockResolvedValue([
+      { ...evidenceFixture, fileHash: '0xcited', status: 'CONFIRMED', figures: [] },
+    ]);
+    mockSearchEvidence.mockResolvedValue([{ fileHash: '0xcited', score: 0.9 }]);
+
+    const raw = await getResearchAgendaHandler({ thesisId: 'thesis-1', includeSuggestions: true });
+    const result = JSON.parse(raw);
+
+    expect(mockSuggest).not.toHaveBeenCalled();
+    result.gaps.forEach((gap: { suggestedVersionBody: unknown }) => {
+      expect(gap.suggestedVersionBody).toBeNull();
+    });
   });
 });
 
@@ -1426,5 +1611,191 @@ describe('getSessionSummaryHandler', () => {
     expect(result.session.events).toHaveLength(2);
     expect(result.session.summary.versionsCreated).toBe(1);
     expect(result.totalSessions).toBe(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// suggestThesisHandler
+// ---------------------------------------------------------------------------
+
+import { suggestThesisHandler } from '../src/mcp/tools/suggestThesis';
+import { ThesisSynthesisAgent } from '../src/services/ThesisSynthesisAgent';
+
+const SYNTHESIS_PROPOSAL = {
+  proposedTitle: 'Suppression of Adverse Event Data',
+  thesisStatement: 'משרד הבריאות ידע והסתיר.',
+  narrativeBody: '## עיקרי הטענה\n\nהמשרד הסתיר נתונים.',
+  supportingHashes: ['hash-001', 'hash-002'],
+  keyFigures: ['חזי לוי', 'שרון אלרוי-פריס'],
+  confidenceLevel: 'MODERATE' as const,
+  missingEvidence: ['תכתובות פנימיות'],
+  summaryHe: 'הראיות מצביעות על הסתרה מכוונת.',
+};
+
+const EVIDENCE_RECORDS = [
+  {
+    fileHash: 'hash-001',
+    summary: 'דוח פנימי על אירועי לב.',
+    evidenceTier: 'Tier1',
+    evidenceRole: 'Incriminating',
+    evidenceDate: '2021-06-10',
+    category: 'Internal Report',
+    targetEntity: 'Ministry of Health',
+    figures: [{ name: 'חזי לוי' }],
+  },
+  {
+    fileHash: 'hash-002',
+    summary: 'ראיון שבו הוכחשו הסיכונים.',
+    evidenceTier: 'Tier2',
+    evidenceRole: 'Incriminating',
+    evidenceDate: '2021-07-15',
+    category: 'Public Statement',
+    targetEntity: 'Dr. Sharon Alroy-Preis',
+    figures: [{ name: 'שרון אלרוי-פריס' }],
+  },
+];
+
+describe('suggestThesisHandler', () => {
+  // Stable object — the lazy VectorStoreService singleton inside suggestThesis.ts
+  // captures this reference on first call, so all tests must use the same object.
+  const mockVectorStore = { searchSimilarEvidence: jest.fn() };
+  let mockEvidence: { findMany: jest.Mock };
+
+  // Configure ThesisSynthesisAgent to return a specific value on next construction.
+  // Must be called BEFORE the handler — uses mockImplementationOnce so the next
+  // `new ThesisSynthesisAgent()` returns an instance whose synthesize resolves to value.
+  function setupSynthesizeResponse(response: typeof SYNTHESIS_PROPOSAL): void {
+    (ThesisSynthesisAgent as jest.Mock).mockImplementationOnce(() => ({
+      synthesize: jest.fn().mockResolvedValueOnce(response),
+    }));
+  }
+
+  // Get the synthesize mock from the most recently constructed instance.
+  // Uses mock.results (the returned object) rather than mock.instances (the `this` binding),
+  // because mockImplementationOnce(() => obj) returns obj but `this` is the raw mock object.
+  // Call AFTER awaiting the handler so the constructor has already run.
+  function getLastSynthesize(): jest.Mock {
+    const results = (ThesisSynthesisAgent as jest.Mock).mock.results;
+    return results[results.length - 1]?.value?.synthesize as jest.Mock;
+  }
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    // Re-apply after clearAllMocks clears the mockResolvedValue queue
+    (VectorStoreService.create as jest.Mock).mockResolvedValue(mockVectorStore);
+    mockEvidence = prisma.evidence as unknown as { findMany: jest.Mock };
+  });
+
+  it('returns a structured proposal when vault has matching evidence', async () => {
+    setupSynthesizeResponse(SYNTHESIS_PROPOSAL);
+    mockVectorStore.searchSimilarEvidence.mockResolvedValueOnce([
+      { fileHash: 'hash-001' },
+      { fileHash: 'hash-002' },
+    ]);
+    mockEvidence.findMany.mockResolvedValueOnce(EVIDENCE_RECORDS);
+
+    const result = JSON.parse(await suggestThesisHandler({ topic: 'adverse event suppression' }));
+
+    expect(result.proposedTitle).toBe(SYNTHESIS_PROPOSAL.proposedTitle);
+    expect(result.confidenceLevel).toBe('MODERATE');
+    expect(result.supportingHashes).toEqual(['hash-001', 'hash-002']);
+    expect(result.keyFigures).toHaveLength(2);
+    expect(result.evidenceCorpusSize).toBe(2);
+  });
+
+  it('includes readyForDraft with body, evidenceHashes, and keyFigures', async () => {
+    setupSynthesizeResponse(SYNTHESIS_PROPOSAL);
+    mockVectorStore.searchSimilarEvidence.mockResolvedValueOnce([{ fileHash: 'hash-001' }]);
+    mockEvidence.findMany.mockResolvedValueOnce([EVIDENCE_RECORDS[0]]);
+
+    const result = JSON.parse(await suggestThesisHandler({ topic: 'test' }));
+
+    expect(result.readyForDraft).toBeDefined();
+    expect(result.readyForDraft.body).toBe(SYNTHESIS_PROPOSAL.narrativeBody);
+    expect(result.readyForDraft.evidenceHashes).toEqual(SYNTHESIS_PROPOSAL.supportingHashes);
+    expect(result.readyForDraft.keyFigures).toEqual(SYNTHESIS_PROPOSAL.keyFigures);
+  });
+
+  it('returns an error when the vector search throws', async () => {
+    // The lazy singleton means VectorStoreService.create() is only called once across the suite.
+    // Test the unavailable scenario by making searchSimilarEvidence throw instead.
+    mockVectorStore.searchSimilarEvidence.mockRejectedValueOnce(new Error('connection refused'));
+
+    const result = JSON.parse(await suggestThesisHandler({ topic: 'test' }));
+    expect(result.error).toContain('Vector store unavailable');
+  });
+
+  it('returns an error when no vector results are found', async () => {
+    mockVectorStore.searchSimilarEvidence.mockResolvedValueOnce([]);
+
+    const result = JSON.parse(await suggestThesisHandler({ topic: 'unknown topic' }));
+    expect(result.error).toContain('No evidence found');
+    expect(result.topic).toBe('unknown topic');
+  });
+
+  it('returns an error when all vector hits are unconfirmed in Prisma', async () => {
+    mockVectorStore.searchSimilarEvidence.mockResolvedValueOnce([{ fileHash: 'hash-001' }]);
+    mockEvidence.findMany.mockResolvedValueOnce([]);
+
+    const result = JSON.parse(await suggestThesisHandler({ topic: 'test' }));
+    expect(result.error).toContain('none are CONFIRMED');
+  });
+
+  it('passes topic to the ThesisSynthesisAgent', async () => {
+    setupSynthesizeResponse(SYNTHESIS_PROPOSAL);
+    mockVectorStore.searchSimilarEvidence.mockResolvedValueOnce([{ fileHash: 'hash-001' }]);
+    mockEvidence.findMany.mockResolvedValueOnce([EVIDENCE_RECORDS[0]]);
+
+    await suggestThesisHandler({ topic: 'EUA suppression' });
+
+    expect(getLastSynthesize()).toHaveBeenCalledWith('EUA suppression', expect.any(Array));
+  });
+
+  it('maps Prisma figures into keyFigures array for the corpus', async () => {
+    setupSynthesizeResponse(SYNTHESIS_PROPOSAL);
+    mockVectorStore.searchSimilarEvidence.mockResolvedValueOnce([{ fileHash: 'hash-001' }]);
+    mockEvidence.findMany.mockResolvedValueOnce([EVIDENCE_RECORDS[0]]);
+
+    await suggestThesisHandler({ topic: 'test' });
+
+    const corpusArg = getLastSynthesize().mock.calls[0][1] as Array<{ keyFigures: string[] }>;
+    expect(corpusArg[0].keyFigures).toEqual(['חזי לוי']);
+  });
+
+  it('respects maxEvidence parameter — over-fetches from vector then limits Prisma', async () => {
+    setupSynthesizeResponse(SYNTHESIS_PROPOSAL);
+    mockVectorStore.searchSimilarEvidence.mockResolvedValueOnce([{ fileHash: 'hash-001' }]);
+    mockEvidence.findMany.mockResolvedValueOnce([EVIDENCE_RECORDS[0]]);
+
+    await suggestThesisHandler({ topic: 'test', maxEvidence: 3 });
+
+    expect(mockVectorStore.searchSimilarEvidence).toHaveBeenCalledWith('test', 6);
+    expect(mockEvidence.findMany).toHaveBeenCalledWith(expect.objectContaining({ take: 3 }));
+  });
+
+  it('preserves semantic ranking order from vector results', async () => {
+    setupSynthesizeResponse(SYNTHESIS_PROPOSAL);
+    // Vector returns hash-002 first (more relevant), hash-001 second
+    mockVectorStore.searchSimilarEvidence.mockResolvedValueOnce([
+      { fileHash: 'hash-002' },
+      { fileHash: 'hash-001' },
+    ]);
+    // Prisma returns them in arbitrary order
+    mockEvidence.findMany.mockResolvedValueOnce([EVIDENCE_RECORDS[0], EVIDENCE_RECORDS[1]]);
+
+    await suggestThesisHandler({ topic: 'test' });
+
+    const corpusArg = getLastSynthesize().mock.calls[0][1] as Array<{ fileHash: string }>;
+    expect(corpusArg[0].fileHash).toBe('hash-002');
+    expect(corpusArg[1].fileHash).toBe('hash-001');
+  });
+
+  it('includes instructions in the response', async () => {
+    setupSynthesizeResponse(SYNTHESIS_PROPOSAL);
+    mockVectorStore.searchSimilarEvidence.mockResolvedValueOnce([{ fileHash: 'hash-001' }]);
+    mockEvidence.findMany.mockResolvedValueOnce([EVIDENCE_RECORDS[0]]);
+
+    const result = JSON.parse(await suggestThesisHandler({ topic: 'test' }));
+    expect(result.instructions).toContain('create_thesis_draft');
   });
 });
