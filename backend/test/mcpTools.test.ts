@@ -26,6 +26,15 @@ jest.mock('../src/lib/prisma', () => ({
     thesisVersion: {
       create: jest.fn(),
     },
+    researchSession: {
+      findFirst: jest.fn(),
+      create: jest.fn(),
+      update: jest.fn(),
+      count: jest.fn(),
+    },
+    researchSessionEvent: {
+      create: jest.fn(),
+    },
     $transaction: jest.fn(),
   },
 }));
@@ -1275,5 +1284,145 @@ describe('getResearchAgendaHandler', () => {
     // called once per gap (2 gaps), each with limit*2 = 2
     expect(mockSearchEvidence).toHaveBeenCalledTimes(2);
     expect(mockSearchEvidence).toHaveBeenCalledWith(expect.any(String), 2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// createResearchSession / addSessionNote / closeResearchSession / getSessionSummary
+// ---------------------------------------------------------------------------
+
+import { createResearchSessionHandler } from '../src/mcp/tools/createResearchSession';
+import { addSessionNoteHandler } from '../src/mcp/tools/addSessionNote';
+import { closeResearchSessionHandler } from '../src/mcp/tools/closeResearchSession';
+import { getSessionSummaryHandler } from '../src/mcp/tools/getSessionSummary';
+
+const mockResearchSession = (prisma as unknown as {
+  researchSession: {
+    findFirst: jest.Mock;
+    findUnique: jest.Mock;
+    create: jest.Mock;
+    update: jest.Mock;
+    count: jest.Mock;
+  };
+}).researchSession;
+
+const mockResearchSessionEvent = (prisma as unknown as {
+  researchSessionEvent: { create: jest.Mock };
+}).researchSessionEvent;
+
+describe('createResearchSessionHandler', () => {
+  beforeEach(() => {
+    (prisma.thesis.findUnique as jest.Mock).mockResolvedValue({ id: 'thesis-1', headVersionId: 'v1' });
+    mockResearchSession.findFirst.mockResolvedValue(null);
+    mockResearchSession.create.mockResolvedValue({
+      id: 'session-1', thesisId: 'thesis-1', name: 'Test Session', status: 'ACTIVE', createdAt: new Date(),
+    });
+    mockResearchSessionEvent.create.mockResolvedValue({ id: 'evt-1' });
+  });
+
+  it('returns error when thesis not found', async () => {
+    (prisma.thesis.findUnique as jest.Mock).mockResolvedValueOnce(null);
+    const result = JSON.parse(await createResearchSessionHandler({ thesisId: 'bad-id' }));
+    expect(result.error).toMatch(/not found/);
+  });
+
+  it('creates a new session and logs SESSION_STARTED', async () => {
+    const result = JSON.parse(await createResearchSessionHandler({ thesisId: 'thesis-1', name: 'My Session' }));
+    expect(result.sessionId).toBe('session-1');
+    expect(result.status).toBe('ACTIVE');
+    expect(mockResearchSession.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ thesisId: 'thesis-1', name: 'My Session' }) }),
+    );
+    expect(mockResearchSessionEvent.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ type: 'SESSION_STARTED' }) }),
+    );
+  });
+
+  it('auto-closes existing active session before creating new one', async () => {
+    mockResearchSession.findFirst.mockResolvedValueOnce({
+      id: 'old-session', _count: { events: 3 },
+    });
+    mockResearchSession.update.mockResolvedValue({});
+    const result = JSON.parse(await createResearchSessionHandler({ thesisId: 'thesis-1' }));
+    expect(result.previousSessionClosed).toBe('old-session');
+    expect(mockResearchSession.update).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'old-session' }, data: expect.objectContaining({ status: 'CLOSED' }) }),
+    );
+  });
+});
+
+describe('addSessionNoteHandler', () => {
+  it('returns error when no active session', async () => {
+    mockResearchSession.findFirst.mockResolvedValueOnce(null);
+    const result = JSON.parse(await addSessionNoteHandler({ thesisId: 'thesis-1', note: 'test' }));
+    expect(result.error).toMatch(/No active session/);
+  });
+
+  it('logs a NOTE event to the active session', async () => {
+    mockResearchSession.findFirst.mockResolvedValueOnce({ id: 'session-1', name: 'Test' });
+    mockResearchSessionEvent.create.mockResolvedValueOnce({ id: 'evt-2', createdAt: new Date() });
+    const result = JSON.parse(await addSessionNoteHandler({ thesisId: 'thesis-1', note: 'Important observation' }));
+    expect(result.sessionId).toBe('session-1');
+    expect(mockResearchSessionEvent.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ type: 'NOTE', description: 'Important observation' }) }),
+    );
+  });
+});
+
+describe('closeResearchSessionHandler', () => {
+  const mockEvents = [
+    { type: 'SESSION_STARTED', description: 'started', createdAt: new Date() },
+    { type: 'VERSION_CREATED', description: 'v2', createdAt: new Date() },
+    { type: 'AI_ANALYSIS_RUN', description: 'MODERATE', createdAt: new Date() },
+    { type: 'GAP_RESOLVED', description: 'gap 0', createdAt: new Date() },
+    { type: 'NOTE', description: 'a note', createdAt: new Date() },
+  ];
+
+  it('returns error when no active session', async () => {
+    mockResearchSession.findFirst.mockResolvedValueOnce(null);
+    const result = JSON.parse(await closeResearchSessionHandler({ thesisId: 'thesis-1' }));
+    expect(result.error).toMatch(/No active session/);
+  });
+
+  it('closes session and returns summary with correct counts', async () => {
+    mockResearchSession.findFirst.mockResolvedValueOnce({
+      id: 'session-1', name: 'Sprint 1', createdAt: new Date(Date.now() - 60000), events: mockEvents,
+    });
+    mockResearchSessionEvent.create.mockResolvedValue({});
+    mockResearchSession.update.mockResolvedValue({ id: 'session-1', closedAt: new Date(), createdAt: new Date(Date.now() - 60000) });
+    const result = JSON.parse(await closeResearchSessionHandler({ thesisId: 'thesis-1' }));
+    expect(result.status).toBe('CLOSED');
+    expect(result.summary.versionsCreated).toBe(1);
+    expect(result.summary.gapsResolved).toBe(1);
+    expect(result.summary.aiAnalysesRun).toBe(1);
+    expect(result.summary.notes).toBe(1);
+    expect(result.events).toHaveLength(5);
+  });
+});
+
+describe('getSessionSummaryHandler', () => {
+  it('returns message when no sessions exist', async () => {
+    mockResearchSession.findFirst.mockResolvedValueOnce(null);
+    const result = JSON.parse(await getSessionSummaryHandler({ thesisId: 'thesis-1' }));
+    expect(result.session).toBeNull();
+    expect(result.message).toMatch(/create_research_session/);
+  });
+
+  it('returns active session with events and summary', async () => {
+    mockResearchSession.findFirst.mockResolvedValueOnce({
+      id: 'session-1', name: 'Active Sprint', status: 'ACTIVE',
+      createdAt: new Date(Date.now() - 120000), closedAt: null,
+      events: [
+        { type: 'SESSION_STARTED', description: 'started', refId: null, createdAt: new Date() },
+        { type: 'VERSION_CREATED', description: 'v2', refId: 'v2', createdAt: new Date() },
+      ],
+    });
+    mockResearchSession.count.mockResolvedValueOnce(1);
+    const result = JSON.parse(await getSessionSummaryHandler({ thesisId: 'thesis-1' }));
+    expect(result.session.id).toBe('session-1');
+    expect(result.session.status).toBe('ACTIVE');
+    expect(result.session.events).toHaveLength(2);
+    expect(result.session.summary.versionsCreated).toBe(1);
+    expect(result.totalSessions).toBe(1);
   });
 });

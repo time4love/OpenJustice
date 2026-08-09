@@ -7,6 +7,7 @@ import { DevilsAdvocateOutputSchema } from '../services/DevilsAdvocateAgent';
 import { RevisionAgent } from '../services/RevisionAgent';
 import { buildTipTapDoc } from '../utils/tipTapUtils';
 import { sha256, extractText, extractPreview, triggerAIAnalysis } from '../services/thesisAnalysis';
+import { logSessionEvent } from '../services/sessionService';
 
 const router = Router();
 
@@ -463,6 +464,7 @@ router.post('/:id/version', async (req: Request, res: Response): Promise<void> =
     });
 
     void triggerAIAnalysis(version.id, userContent);
+    void logSessionEvent(thesisId, 'VERSION_CREATED', `New version created: ${extractPreview(userContent)}`, version.id);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     res.status(500).json({ error: 'Failed to create version', message });
@@ -633,6 +635,12 @@ router.post('/:id/gaps/:gapIndex/resolve', async (req: Request, res: Response): 
       update: { evidenceId },
     });
 
+    void logSessionEvent(
+      thesisId,
+      'GAP_RESOLVED',
+      `Gap #${gapIndex + 1} resolved by evidence ${evidenceId.slice(0, 16)}…`,
+      resolution.id,
+    );
     res.status(200).json({ resolution });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

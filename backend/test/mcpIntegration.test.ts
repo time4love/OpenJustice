@@ -230,6 +230,9 @@ describe('write tool auth enforcement', () => {
     { name: 'create_thesis_draft', args: { body: 'Test thesis.' } },
     { name: 'add_thesis_version', args: { thesisId: 'thesis-int-1', body: 'Updated.' } },
     { name: 'run_ai_analysis', args: { thesisId: 'thesis-int-1' } },
+    { name: 'create_research_session', args: { thesisId: 'thesis-int-1' } },
+    { name: 'add_session_note', args: { thesisId: 'thesis-int-1', note: 'test' } },
+    { name: 'close_research_session', args: { thesisId: 'thesis-int-1' } },
   ];
 
   for (const { name, args } of writeTools) {

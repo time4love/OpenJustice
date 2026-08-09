@@ -18,6 +18,12 @@ jest.mock('../src/lib/prisma', () => ({
       upsert: jest.fn(),
       deleteMany: jest.fn(),
     },
+    researchSession: {
+      findFirst: jest.fn().mockResolvedValue(null), // no active session by default
+    },
+    researchSessionEvent: {
+      create: jest.fn(),
+    },
   },
 }));
 

@@ -12,6 +12,7 @@ import {
   type ReferencedEvidence,
   type ResolvedGapContext,
 } from './DevilsAdvocateAgent';
+import { logSessionEvent } from './sessionService';
 
 let _agent: DevilsAdvocateAgent | null = null;
 
@@ -114,6 +115,13 @@ export async function triggerAIAnalysis(
       where: { id: versionId },
       data: { aiAnalysis, contentHash, status: 'COMPLETE' },
     });
+
+    void logSessionEvent(
+      version.thesisId,
+      'AI_ANALYSIS_RUN',
+      `AI analysis complete: ${aiAnalysis.overallStrengthAssessment} — ${aiAnalysis.evidenceGaps.length} gap(s), ${aiAnalysis.counterArguments.length} counter-argument(s)`,
+      versionId,
+    );
   } catch (err) {
     console.error('[thesis] AI analysis failed for version', versionId, err);
     throw err;

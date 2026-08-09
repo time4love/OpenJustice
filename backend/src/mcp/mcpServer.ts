@@ -10,6 +10,10 @@ import { startForensicScanSchema, startForensicScanHandler } from './tools/start
 import { createThesisDraftSchema, createThesisDraftHandler } from './tools/createThesisDraft';
 import { addThesisVersionSchema, addThesisVersionHandler } from './tools/addThesisVersion';
 import { runAiAnalysisSchema, runAiAnalysisHandler } from './tools/runAiAnalysis';
+import { createResearchSessionSchema, createResearchSessionHandler } from './tools/createResearchSession';
+import { addSessionNoteSchema, addSessionNoteHandler } from './tools/addSessionNote';
+import { closeResearchSessionSchema, closeResearchSessionHandler } from './tools/closeResearchSession';
+import { getSessionSummarySchema, getSessionSummaryHandler } from './tools/getSessionSummary';
 
 // ---------------------------------------------------------------------------
 // Factory — creates a fresh McpServer per request.
@@ -168,6 +172,53 @@ export function createMcpServer(): McpServer {
     runAiAnalysisSchema,
     async (input) => ({
       content: [{ type: 'text' as const, text: await runAiAnalysisHandler(input) }],
+    }),
+  );
+
+  // -------------------------------------------------------------------------
+  // Tools: Research Sessions  [WRITE: create, note, close / READ: summary]
+  // Track the arc of a Claude+human research sprint on a thesis.
+  // Events (VERSION_CREATED, GAP_RESOLVED, AI_ANALYSIS_RUN) are logged
+  // automatically — no explicit logging needed.
+  // -------------------------------------------------------------------------
+  server.tool(
+    'create_research_session',
+    'Start a new named research session on a thesis. Only one session can be active per thesis — ' +
+      'creating a new one auto-closes the previous. Events (versions created, gaps resolved, ' +
+      'AI analyses run) are logged automatically. Name defaults to current date/time if omitted.',
+    createResearchSessionSchema,
+    async (input) => ({
+      content: [{ type: 'text' as const, text: await createResearchSessionHandler(input) }],
+    }),
+  );
+
+  server.tool(
+    'add_session_note',
+    'Add a manual note to the active research session for a thesis. Use to record observations, ' +
+      'dead ends, hypotheses, or next steps that are not captured by automatic events.',
+    addSessionNoteSchema,
+    async (input) => ({
+      content: [{ type: 'text' as const, text: await addSessionNoteHandler(input) }],
+    }),
+  );
+
+  server.tool(
+    'close_research_session',
+    'Close the active research session for a thesis and return a full summary of what was ' +
+      'accomplished: versions created, gaps resolved, AI analyses run, and the event timeline.',
+    closeResearchSessionSchema,
+    async (input) => ({
+      content: [{ type: 'text' as const, text: await closeResearchSessionHandler(input) }],
+    }),
+  );
+
+  server.tool(
+    'get_session_summary',
+    'Return the current (or most recent) research session for a thesis, including the full ' +
+      'event timeline and activity summary. Useful for resuming work after a break.',
+    getSessionSummarySchema,
+    async (input) => ({
+      content: [{ type: 'text' as const, text: await getSessionSummaryHandler(input) }],
     }),
   );
 

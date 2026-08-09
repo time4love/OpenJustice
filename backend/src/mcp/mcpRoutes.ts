@@ -16,6 +16,9 @@ const WRITE_TOOLS = new Set([
   'create_thesis_draft',
   'add_thesis_version',
   'run_ai_analysis',
+  'create_research_session',
+  'add_session_note',
+  'close_research_session',
 ]);
 
 // ---------------------------------------------------------------------------
@@ -134,8 +137,8 @@ router.get('/', (_req: Request, res: Response) => {
     name: 'Glass Fortress MCP',
     version: '1.0.0',
     transport: 'streamable-http',
-    readTools: ['search_evidence', 'get_forensic_timeline', 'get_figure_dossier', 'get_thesis_context', 'get_research_agenda'],
-    writeTools: ['create_evidence_from_url', 'create_evidence_from_text', 'start_forensic_scan', 'create_thesis_draft', 'add_thesis_version', 'run_ai_analysis'],
+    readTools: ['search_evidence', 'get_forensic_timeline', 'get_figure_dossier', 'get_thesis_context', 'get_research_agenda', 'get_session_summary'],
+    writeTools: ['create_evidence_from_url', 'create_evidence_from_text', 'start_forensic_scan', 'create_thesis_draft', 'add_thesis_version', 'run_ai_analysis', 'create_research_session', 'add_session_note', 'close_research_session'],
     auth: 'Write tools require Authorization: Bearer <MCP_WRITE_TOKEN>',
   });
 });

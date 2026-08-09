@@ -151,11 +151,12 @@ enum MentionType {
 // claims to evidence via @keyFigure and #evidence mentions.
 // headVersionId points to the canonical (latest-wins) version.
 model Thesis {
-  id            String         @id @default(cuid())
-  headVersionId String?        @unique
-  headVersion   ThesisVersion? @relation("ThesisHead", fields: [headVersionId], references: [id])
-  versions      ThesisVersion[] @relation("ThesisVersions")
-  createdAt     DateTime       @default(now())
+  id            String            @id @default(cuid())
+  headVersionId String?           @unique
+  headVersion   ThesisVersion?    @relation("ThesisHead", fields: [headVersionId], references: [id])
+  versions      ThesisVersion[]   @relation("ThesisVersions")
+  sessions      ResearchSession[]
+  createdAt     DateTime          @default(now())
 }
 
 // One row per edit. userContent is TipTap JSON; aiAnalysis is devil's advocate output.
@@ -200,4 +201,46 @@ model ThesisMention {
   thesisVersion    ThesisVersion @relation(fields: [thesisVersionId], references: [id], onDelete: Cascade)
   type             MentionType
   refId            String        // KeyFigure.name | Evidence.fileHash | TrackedUrl.id
+}
+
+// ---------------------------------------------------------------------------
+// Research Sessions
+// ---------------------------------------------------------------------------
+
+enum ResearchSessionStatus {
+  ACTIVE
+  CLOSED
+}
+
+enum ResearchSessionEventType {
+  SESSION_STARTED  // logged automatically on session creation
+  VERSION_CREATED  // logged automatically when a thesis version is created
+  GAP_RESOLVED     // logged automatically when a gap resolution is saved
+  AI_ANALYSIS_RUN  // logged automatically when AI analysis completes
+  NOTE             // logged manually via add_session_note MCP tool
+  SESSION_CLOSED   // logged automatically on session close
+}
+
+// A named Claude+human research sprint on a thesis.
+// Only one ACTIVE session per thesis at a time; creating a new one auto-closes the previous.
+model ResearchSession {
+  id        String                @id @default(cuid())
+  thesisId  String
+  thesis    Thesis                @relation(fields: [thesisId], references: [id], onDelete: Cascade)
+  name      String
+  status    ResearchSessionStatus @default(ACTIVE)
+  events    ResearchSessionEvent[]
+  createdAt DateTime              @default(now())
+  closedAt  DateTime?
+}
+
+// One event per significant action that occurred during a session.
+model ResearchSessionEvent {
+  id          String                   @id @default(cuid())
+  sessionId   String
+  session     ResearchSession          @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  type        ResearchSessionEventType
+  description String
+  refId       String?                  // ThesisVersion.id | Evidence.fileHash | ThesisGapResolution.id
+  createdAt   DateTime                 @default(now())
 }
