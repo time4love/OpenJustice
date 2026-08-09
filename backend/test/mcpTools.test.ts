@@ -81,6 +81,7 @@ import { getFigureDossierHandler } from '../src/mcp/tools/getFigureDossier';
 import { getThesisContextHandler } from '../src/mcp/tools/getThesisContext';
 import { createEvidenceFromUrlHandler } from '../src/mcp/tools/createEvidenceFromUrl';
 import { startForensicScanHandler } from '../src/mcp/tools/startForensicScan';
+import { enrichEvidenceWithHistoryHandler } from '../src/mcp/tools/enrichEvidenceWithHistory';
 import { createThesisDraftHandler } from '../src/mcp/tools/createThesisDraft';
 import { addThesisVersionHandler } from '../src/mcp/tools/addThesisVersion';
 import { getResearchAgendaHandler } from '../src/mcp/tools/getResearchAgenda';
@@ -1797,5 +1798,71 @@ describe('suggestThesisHandler', () => {
 
     const result = JSON.parse(await suggestThesisHandler({ topic: 'test' }));
     expect(result.instructions).toContain('create_thesis_draft');
+  });
+});
+
+// ===========================================================================
+// enrich_evidence_with_history
+// ===========================================================================
+
+describe('enrichEvidenceWithHistoryHandler', () => {
+  const fileHash = '0xdeadbeef';
+  const sourceUrl = 'https://corona.health.gov.il/vaccine-page/';
+  const evidenceFixture = { id: 'ev-1', fileHash, sourceUrl };
+  const trackedUrlFixture = { id: 'tu-enrich-1', url: sourceUrl, status: 'SCANNING' };
+
+  let mockRunFullScan: jest.Mock;
+
+  beforeEach(() => {
+    mockRunFullScan = jest.fn().mockResolvedValue(undefined);
+    MockWaybackScraper.mockImplementation(
+      () => ({ runFullScan: mockRunFullScan }) as unknown as WaybackScraper,
+    );
+    mockEvidenceFindUnique.mockResolvedValue(evidenceFixture);
+    mockTrackedUrlUpsert.mockResolvedValue(trackedUrlFixture);
+  });
+
+  it('returns trackedUrlId and SCANNING status', async () => {
+    const result = JSON.parse(await enrichEvidenceWithHistoryHandler({ fileHash }));
+    expect(result.trackedUrlId).toBe('tu-enrich-1');
+    expect(result.status).toBe('SCANNING');
+    expect(result.url).toBe(sourceUrl);
+  });
+
+  it('upserts TrackedUrl with status SCANNING', async () => {
+    await enrichEvidenceWithHistoryHandler({ fileHash });
+    expect(mockTrackedUrlUpsert).toHaveBeenCalledWith({
+      where: { url: sourceUrl },
+      update: { status: 'SCANNING' },
+      create: { url: sourceUrl, status: 'SCANNING' },
+    });
+  });
+
+  it('fires runFullScan fire-and-forget', async () => {
+    await enrichEvidenceWithHistoryHandler({ fileHash });
+    await Promise.resolve();
+    expect(mockRunFullScan).toHaveBeenCalledWith('tu-enrich-1', sourceUrl);
+  });
+
+  it('returns error when evidence not found', async () => {
+    mockEvidenceFindUnique.mockResolvedValue(null);
+    const result = JSON.parse(await enrichEvidenceWithHistoryHandler({ fileHash }));
+    expect(result.error).toContain(fileHash);
+  });
+
+  it('returns error when evidence has no sourceUrl', async () => {
+    mockEvidenceFindUnique.mockResolvedValue({ ...evidenceFixture, sourceUrl: null });
+    const result = JSON.parse(await enrichEvidenceWithHistoryHandler({ fileHash }));
+    expect(result.error).toContain('no sourceUrl');
+  });
+
+  it('does not throw when runFullScan rejects', async () => {
+    mockRunFullScan.mockRejectedValue(new Error('CDX unreachable'));
+    await expect(enrichEvidenceWithHistoryHandler({ fileHash })).resolves.toBeDefined();
+  });
+
+  it('message includes trackedUrlId for polling', async () => {
+    const result = JSON.parse(await enrichEvidenceWithHistoryHandler({ fileHash }));
+    expect(result.message).toContain('tu-enrich-1');
   });
 });

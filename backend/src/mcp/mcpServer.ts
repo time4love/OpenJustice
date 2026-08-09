@@ -15,6 +15,7 @@ import { addSessionNoteSchema, addSessionNoteHandler } from './tools/addSessionN
 import { closeResearchSessionSchema, closeResearchSessionHandler } from './tools/closeResearchSession';
 import { getSessionSummarySchema, getSessionSummaryHandler } from './tools/getSessionSummary';
 import { suggestThesisSchema, suggestThesisHandler } from './tools/suggestThesis';
+import { enrichEvidenceWithHistorySchema, enrichEvidenceWithHistoryHandler } from './tools/enrichEvidenceWithHistory';
 
 // ---------------------------------------------------------------------------
 // Factory — creates a fresh McpServer per request.
@@ -273,6 +274,23 @@ export function createMcpServer(): McpServer {
     startForensicScanSchema,
     async (input) => ({
       content: [{ type: 'text' as const, text: await startForensicScanHandler(input) }],
+    }),
+  );
+
+  // -------------------------------------------------------------------------
+  // Tool: enrich_evidence_with_history  [WRITE — FIRE-AND-FORGET]
+  // Given a fileHash, triggers a Wayback scan of the evidence's sourceUrl.
+  // Reverse enrichment: find the page history behind a submitted document.
+  // -------------------------------------------------------------------------
+  server.tool(
+    'enrich_evidence_with_history',
+    'Trigger a Wayback Machine forensic scan for the sourceUrl of an existing evidence record. ' +
+      'Given a fileHash, looks up the evidence sourceUrl, upserts a TrackedUrl, and starts ' +
+      'runFullScan() asynchronously. Legally significant page edits found during the scan are ' +
+      'auto-promoted to the evidence vault. Returns a trackedUrlId for status polling.',
+    enrichEvidenceWithHistorySchema,
+    async (input) => ({
+      content: [{ type: 'text' as const, text: await enrichEvidenceWithHistoryHandler(input) }],
     }),
   );
 

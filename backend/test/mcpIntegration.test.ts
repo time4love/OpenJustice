@@ -235,6 +235,7 @@ describe('write tool auth enforcement', () => {
     { name: 'create_research_session', args: { thesisId: 'thesis-int-1' } },
     { name: 'add_session_note', args: { thesisId: 'thesis-int-1', note: 'test' } },
     { name: 'close_research_session', args: { thesisId: 'thesis-int-1' } },
+    { name: 'enrich_evidence_with_history', args: { fileHash: '0xdeadbeef' } },
   ];
 
   for (const { name, args } of writeTools) {

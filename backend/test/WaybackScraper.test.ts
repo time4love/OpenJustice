@@ -33,10 +33,19 @@ jest.mock('@mozilla/readability', () => ({
     })),
 }));
 jest.mock('../src/services/ForensicAgent');
+jest.mock('../src/services/VectorStoreService', () => ({
+  VectorStoreService: {
+    create: jest.fn().mockResolvedValue({
+      upsertEvidence: jest.fn().mockResolvedValue(undefined),
+    }),
+  },
+}));
+
 jest.mock('../src/lib/prisma', () => ({
   prisma: {
     evidence: {
       findMany: jest.fn(),
+      upsert: jest.fn().mockResolvedValue({ id: 'evidence-id-xyz', fileHash: '0xabc' }),
     },
     trackedUrl: {
       create: jest.fn().mockResolvedValue({ id: 'tracked-url-id-123' }),
@@ -44,6 +53,9 @@ jest.mock('../src/lib/prisma', () => ({
     },
     urlVersionDiff: {
       create: jest.fn().mockResolvedValue({ id: 'diff-id-456' }),
+    },
+    urlSnapshot: {
+      upsert: jest.fn().mockResolvedValue({ id: 'snapshot-id-abc', onChainTxHash: null }),
     },
   },
 }));

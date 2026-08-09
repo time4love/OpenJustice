@@ -46,7 +46,30 @@ model TrackedUrl {
   status    TrackedUrlStatus @default(IDLE)
   createdAt DateTime         @default(now())
   diffs     UrlVersionDiff[]
+  snapshots UrlSnapshot[]
   job       WaybackScrapeJob?
+}
+
+// One record per unique archived snapshot of a TrackedUrl.
+// fullText is stored locally — immune to Wayback Machine takedowns.
+// contentHash (SHA-256 of fullText) can be registered on-chain for immutable chain of custody.
+// Shared across diffs: two diffs spanning the same snapshot reference the same row.
+model UrlSnapshot {
+  id               String     @id @default(cuid())
+  trackedUrlId     String
+  trackedUrl       TrackedUrl @relation(fields: [trackedUrlId], references: [id], onDelete: Cascade)
+  waybackTimestamp String     // YYYYMMDDHHMMSS — unique Wayback archive identifier
+  snapshotDate     String     // YYYY-MM-DD — human-readable date
+  snapshotUrl      String     // Wayback canonical URL (for reference/audit)
+  fullText         String     // Full scraped page text at this date
+  contentHash      String     // SHA-256(fullText) — chain of custody
+  onChainTxHash    String?    // Blockchain tx hash once contentHash is registered on-chain
+  createdAt        DateTime   @default(now())
+
+  beforeDiffs UrlVersionDiff[] @relation("BeforeSnapshot")
+  afterDiffs  UrlVersionDiff[] @relation("AfterSnapshot")
+
+  @@unique([trackedUrlId, waybackTimestamp])
 }
 
 // Internal scan-state record. One per TrackedUrl — updated in-place across
@@ -69,19 +92,23 @@ model WaybackScrapeJob {
 // Records a single detected change between two consecutive archived snapshots of a TrackedUrl.
 // Only legally significant diffs (isLegallySignificant: true) are persisted to save space.
 model UrlVersionDiff {
-  id                   String     @id @default(uuid())
+  id                   String       @id @default(uuid())
   trackedUrlId         String
-  trackedUrl           TrackedUrl @relation(fields: [trackedUrlId], references: [id])
+  trackedUrl           TrackedUrl   @relation(fields: [trackedUrlId], references: [id])
   beforeDate           String
   afterDate            String
   snapshotUrl          String
-  deletedText          String     @default("[]") // JSON array of AI-extracted claim strings (Hebrew summaries)
-  addedText            String     @default("[]") // JSON array of AI-extracted claim strings (Hebrew summaries)
-  rawDeletedText       String     @default("[]") // JSON array of raw page text chunks that were removed
-  rawAddedText         String     @default("[]") // JSON array of raw page text chunks that were added
-  aiSignificance       String     @default("") // Hebrew forensic explanation
-  isLegallySignificant Boolean    @default(false)
-  createdAt            DateTime   @default(now())
+  deletedText          String       @default("[]") // JSON array of AI-extracted claim strings (Hebrew summaries)
+  addedText            String       @default("[]") // JSON array of AI-extracted claim strings (Hebrew summaries)
+  rawDeletedText       String       @default("[]") // JSON array of raw page text chunks that were removed
+  rawAddedText         String       @default("[]") // JSON array of raw page text chunks that were added
+  aiSignificance       String       @default("") // Hebrew forensic explanation
+  isLegallySignificant Boolean      @default(false)
+  beforeSnapshotId     String?      // FK to the UrlSnapshot for the "before" state
+  beforeSnapshot       UrlSnapshot? @relation("BeforeSnapshot", fields: [beforeSnapshotId], references: [id])
+  afterSnapshotId      String?      // FK to the UrlSnapshot for the "after" state
+  afterSnapshot        UrlSnapshot? @relation("AfterSnapshot", fields: [afterSnapshotId], references: [id])
+  createdAt            DateTime     @default(now())
   evidence             Evidence[]
 }
 
@@ -111,10 +138,16 @@ enum EvidenceStatus {
   CONFIRMED      // Registered on-chain and indexed in Pinecone
 }
 
+enum EvidenceType {
+  DOCUMENT      // File upload or URL submission
+  FORENSIC_DIFF // Auto-promoted from UrlVersionDiff (isLegallySignificant=true)
+}
+
 model Evidence {
   id                  String          @id @default(uuid())
   fileHash            String          @unique
   status              EvidenceStatus  @default(CONFIRMED)
+  evidenceType        EvidenceType    @default(DOCUMENT)
   evidenceRole        String          @default("Incriminating")
   category            String
   targetEntity        String

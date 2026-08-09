@@ -1,9 +1,35 @@
 import axios from 'axios';
+import { createHash } from 'crypto';
 import { JSDOM } from 'jsdom';
 import { Readability } from '@mozilla/readability';
 import { diffLines } from 'diff';
 import { ForensicAgent, type DiffItem, type RelatedEvidenceContext } from './ForensicAgent';
+import { VectorStoreService } from './VectorStoreService';
+import { Web3Service } from './Web3Service';
 import { prisma } from '../lib/prisma';
+
+// ---------------------------------------------------------------------------
+// Lazy singletons — non-fatal if unavailable
+// ---------------------------------------------------------------------------
+
+let _vectorStore: VectorStoreService | null = null;
+async function getVectorStore(): Promise<VectorStoreService> {
+  if (!_vectorStore) _vectorStore = await VectorStoreService.create();
+  return _vectorStore;
+}
+
+let _web3Service: Web3Service | null = null;
+let _web3Attempted = false;
+function getWeb3Service(): Web3Service | null {
+  if (_web3Attempted) return _web3Service;
+  _web3Attempted = true;
+  try {
+    _web3Service = new Web3Service();
+  } catch {
+    // env vars not set — on-chain registration disabled
+  }
+  return _web3Service;
+}
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -161,6 +187,122 @@ function normaliseText(text: string): string {
     .replace(/\n /g, '\n')   // strip leading spaces after newlines
     .replace(/\n{3,}/g, '\n\n')
     .trim();
+}
+
+/** SHA-256 hex digest of a string. */
+function sha256(text: string): string {
+  return createHash('sha256').update(text, 'utf8').digest('hex');
+}
+
+/**
+ * Upsert a UrlSnapshot row for a given scraped page text.
+ * Idempotent — safe to call again on resume (update: {} is a no-op).
+ */
+async function upsertSnapshot(
+  trackedUrlId: string,
+  timestamp: string,
+  url: string,
+  fullText: string,
+): Promise<string> {
+  const snapshotDate = timestampToDate(timestamp);
+  const snapshotUrl = `https://web.archive.org/web/${timestamp}/${url}`;
+  const contentHash = sha256(fullText);
+  const snap = await prisma.urlSnapshot.upsert({
+    where: { trackedUrlId_waybackTimestamp: { trackedUrlId, waybackTimestamp: timestamp } },
+    update: {},
+    create: { trackedUrlId, waybackTimestamp: timestamp, snapshotDate, snapshotUrl, fullText, contentHash },
+    select: { id: true, onChainTxHash: true },
+  });
+  // Register on-chain only for newly created snapshots (no existing txHash)
+  if (!snap.onChainTxHash) {
+    registerSnapshotOnChain(snap.id, contentHash).catch(() => {});
+  }
+  return snap.id;
+}
+
+/**
+ * Auto-promote a legally significant UrlVersionDiff to an Evidence record and
+ * upsert its embedding into the vector store.
+ *
+ * Idempotent — upserts by fileHash so re-runs are safe.
+ * Non-fatal — logs warnings and continues on any failure.
+ */
+async function autoPromoteToEvidence(
+  diff: { id: string; afterDate: string; snapshotUrl: string; aiSignificance: string },
+  trackedUrl: { url: string },
+): Promise<void> {
+  // Use the same content formula as the manual /promote endpoint for fileHash consistency
+  const content = [trackedUrl.url, diff.afterDate, diff.id].join('\n');
+  const fileHash = '0x' + sha256(content);
+
+  let targetEntity = 'Unknown';
+  try { targetEntity = new URL(trackedUrl.url).hostname; } catch { /* keep default */ }
+
+  const summary = diff.aiSignificance ||
+    `שינוי שקט זוהה בדף ${targetEntity} בתאריך ${diff.afterDate}.`;
+
+  try {
+    await prisma.evidence.upsert({
+      where: { fileHash },
+      update: {},
+      create: {
+        fileHash,
+        evidenceType: 'FORENSIC_DIFF',
+        status: 'CONFIRMED',
+        evidenceRole: 'Incriminating',
+        category: 'Forensic Diff',
+        targetEntity,
+        evidenceTier: 'Tier 2: Material',
+        tierReasoning: 'שינוי שקט בדף ממשלתי רשמי — ראיה ישירה לכוונת הטעיה.',
+        summary,
+        evidenceDate: diff.afterDate,
+        medicalConditions: '[]',
+        statisticalClaims: '[]',
+        regulatoryMentions: '[]',
+        euaOmissionStatus: 'Not Applicable',
+        sourceUrl: diff.snapshotUrl,
+        urlVersionDiffId: diff.id,
+      },
+    });
+  } catch (err) {
+    console.warn(
+      '[WaybackScraper] Auto-promote evidence create failed for diff', diff.id,
+      ':', err instanceof Error ? err.message : err,
+    );
+    return;
+  }
+
+  try {
+    const vs = await getVectorStore();
+    await vs.upsertEvidence(summary, fileHash);
+  } catch (err) {
+    console.warn(
+      '[WaybackScraper] Vector upsert failed for auto-promoted diff', diff.id,
+      ':', err instanceof Error ? err.message : err,
+    );
+  }
+}
+
+/**
+ * Register a UrlSnapshot's contentHash on-chain and persist the tx hash.
+ * Fire-and-forget — non-fatal. Skips silently if Web3Service is unavailable.
+ */
+async function registerSnapshotOnChain(snapshotId: string, contentHash: string): Promise<void> {
+  const web3 = getWeb3Service();
+  if (!web3) return;
+
+  try {
+    const txHash = await web3.registerEvidenceHash(contentHash, '0x0000000000000000000000000000000000000000', 'Wayback Snapshot');
+    await prisma.urlSnapshot.update({
+      where: { id: snapshotId },
+      data: { onChainTxHash: txHash },
+    });
+  } catch (err) {
+    console.warn(
+      '[WaybackScraper] On-chain snapshot registration failed for', snapshotId,
+      ':', err instanceof Error ? err.message : err,
+    );
+  }
 }
 
 /**
@@ -430,9 +572,16 @@ export class WaybackScraper {
     }
 
     const texts: string[] = [];
+    const snapshotIds: (string | null)[] = [];
     for (const snap of snapshots) {
       try {
-        texts.push(await this.scrapeSnapshot(url, snap.timestamp));
+        const text = await this.scrapeSnapshot(url, snap.timestamp);
+        texts.push(text);
+        try {
+          snapshotIds.push(await upsertSnapshot(trackedUrl.id, snap.timestamp, url, text));
+        } catch {
+          snapshotIds.push(null);
+        }
       } catch (err) {
         console.warn(
           `[WaybackScraper] Skipping ${snap.timestamp}: ${
@@ -440,6 +589,7 @@ export class WaybackScraper {
           }`,
         );
         texts.push('');
+        snapshotIds.push(null);
       }
       await sleep(FETCH_DELAY_MS);
     }
@@ -465,6 +615,8 @@ export class WaybackScraper {
       const beforeDate = timestampToDate(prevSnap.timestamp);
       const afterDate = timestampToDate(snap.timestamp);
       const snapshotUrl = `https://web.archive.org/web/${snap.timestamp}/${url}`;
+      const beforeSnapshotId = snapshotIds[i - 1] ?? undefined;
+      const afterSnapshotId = snapshotIds[i] ?? undefined;
 
       // Truly identical after normalisation — record pair but skip AI
       if (deletions.length === 0 && additions.length === 0) {
@@ -478,6 +630,8 @@ export class WaybackScraper {
             addedText: '[]',
             aiSignificance: '',
             isLegallySignificant: false,
+            beforeSnapshotId,
+            afterSnapshotId,
           },
         });
         continue;
@@ -497,6 +651,8 @@ export class WaybackScraper {
             rawAddedText: JSON.stringify(additions),
             aiSignificance: '',
             isLegallySignificant: false,
+            beforeSnapshotId,
+            afterSnapshotId,
           },
         });
         continue;
@@ -533,6 +689,8 @@ export class WaybackScraper {
             rawAddedText: JSON.stringify(additions),
             aiSignificance: analysis.legalSignificance,
             isLegallySignificant: analysis.isLegallySignificant,
+            beforeSnapshotId,
+            afterSnapshotId,
           },
         });
 
@@ -547,6 +705,12 @@ export class WaybackScraper {
             addedItems: analysis.addedItems,
             legalSignificance: analysis.legalSignificance,
           });
+          autoPromoteToEvidence(
+            { id: diffRecord.id, afterDate, snapshotUrl, aiSignificance: analysis.legalSignificance },
+            trackedUrl,
+          ).catch((err) =>
+            console.warn('[WaybackScraper] autoPromoteToEvidence failed:', err instanceof Error ? err.message : err),
+          );
         }
       } catch (err) {
         console.error(
@@ -565,6 +729,8 @@ export class WaybackScraper {
             rawAddedText: JSON.stringify(additions),
             aiSignificance: '',
             isLegallySignificant: false,
+            beforeSnapshotId,
+            afterSnapshotId,
           },
         });
       }
@@ -663,6 +829,7 @@ export class WaybackScraper {
     const trackedUrlId = job.trackedUrlId;
 
     let previousText = '';
+    let previousSnapshotId: string | null = null;
     let processedCount = snapshotsList.filter((s) => s.status === 'DONE').length;
 
     for (let i = 0; i < snapshotsList.length; i++) {
@@ -679,15 +846,18 @@ export class WaybackScraper {
       if (entry.status === 'DONE') {
         try {
           previousText = await this.scrapeSnapshot(job.url, entry.timestamp);
+          previousSnapshotId = await upsertSnapshot(trackedUrlId, entry.timestamp, job.url, previousText);
         } catch {
-          // Keep last good text if re-fetch fails during resume
+          // Keep last good values if re-fetch fails during resume
         }
         continue;
       }
 
       let currentText = '';
+      let currentSnapshotId: string | null = null;
       try {
         currentText = await this.scrapeSnapshot(job.url, entry.timestamp);
+        currentSnapshotId = await upsertSnapshot(trackedUrlId, entry.timestamp, job.url, currentText);
       } catch (err) {
         console.warn(
           `[WaybackScraper] Job ${jobId} — snapshot ${entry.timestamp} fetch failed:`,
@@ -718,6 +888,8 @@ export class WaybackScraper {
         const beforeDate = i > 0 ? timestampToDate(snapshotsList[i - 1].timestamp) : 'Unknown';
         const afterDate = timestampToDate(entry.timestamp);
         const snapshotUrl = `https://web.archive.org/web/${entry.timestamp}/${job.url}`;
+        const beforeSnapshotId = previousSnapshotId ?? undefined;
+        const afterSnapshotId = currentSnapshotId ?? undefined;
 
         if (deletions.length === 0 && additions.length === 0) {
           // Truly identical after normalisation — skip AI
@@ -731,6 +903,8 @@ export class WaybackScraper {
               addedText: '[]',
               aiSignificance: '',
               isLegallySignificant: false,
+              beforeSnapshotId,
+              afterSnapshotId,
             },
           });
         } else if (deletionsForAI.length === 0 && additionsForAI.length === 0) {
@@ -747,6 +921,8 @@ export class WaybackScraper {
               rawAddedText: JSON.stringify(additions),
               aiSignificance: '',
               isLegallySignificant: false,
+              beforeSnapshotId,
+              afterSnapshotId,
             },
           });
         } else {
@@ -766,7 +942,7 @@ export class WaybackScraper {
               relatedEvidence,
             );
 
-            await prisma.urlVersionDiff.create({
+            const diffRecord = await prisma.urlVersionDiff.create({
               data: {
                 trackedUrlId,
                 beforeDate,
@@ -778,8 +954,22 @@ export class WaybackScraper {
                 rawAddedText: JSON.stringify(additions),
                 aiSignificance: analysis.legalSignificance,
                 isLegallySignificant: analysis.isLegallySignificant,
+                beforeSnapshotId,
+                afterSnapshotId,
               },
             });
+
+            if (analysis.isLegallySignificant) {
+              const trackedUrl = await prisma.trackedUrl.findUnique({ where: { id: trackedUrlId } });
+              if (trackedUrl) {
+                autoPromoteToEvidence(
+                  { id: diffRecord.id, afterDate, snapshotUrl, aiSignificance: analysis.legalSignificance },
+                  trackedUrl,
+                ).catch((err) =>
+                  console.warn('[WaybackScraper] autoPromoteToEvidence failed:', err instanceof Error ? err.message : err),
+                );
+              }
+            }
           } catch (err) {
             console.error(
               `[WaybackScraper] Job ${jobId} — ForensicAgent failed for ${entry.timestamp}:`,
@@ -797,6 +987,8 @@ export class WaybackScraper {
                 rawAddedText: JSON.stringify(additions),
                 aiSignificance: '',
                 isLegallySignificant: false,
+                beforeSnapshotId,
+                afterSnapshotId,
               },
             });
           }
@@ -804,6 +996,7 @@ export class WaybackScraper {
       }
 
       previousText = currentText;
+      previousSnapshotId = currentSnapshotId;
       entry.status = 'DONE';
       processedCount++;
 
