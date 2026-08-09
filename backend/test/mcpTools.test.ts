@@ -410,6 +410,7 @@ describe('getThesisContextHandler', () => {
     userContent: { type: 'doc', content: [] },
     aiAnalysis: { counterArguments: [], overallStrengthAssessment: 'STRONG' },
     mentions: mentionFixture,
+    gapResolutions: [],
   };
 
   const thesisFixture = {
@@ -432,6 +433,7 @@ describe('getThesisContextHandler', () => {
         sourceUrl: 'https://gov.il/evidence',
       },
     ]);
+    mockResearchSession.findFirst.mockResolvedValue(null);
   });
 
   it('returns thesis with head version content and critique', async () => {
