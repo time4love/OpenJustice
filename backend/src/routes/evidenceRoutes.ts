@@ -681,4 +681,8 @@ router.get('/key-figures', async (req: Request, res: Response): Promise<void> =>
   }
 });
 
+// ---------------------------------------------------------------------------
+// POST /api/evidence/backfill-pinecone — one-shot admin: index all CONFIRMED
+// ---------------------------------------------------------------------------
+
 export { router as evidenceRouter };

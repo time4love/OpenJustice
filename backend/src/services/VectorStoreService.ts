@@ -1,7 +1,5 @@
-import { Pinecone } from '@pinecone-database/pinecone';
 import { GoogleGenerativeAIEmbeddings } from '@langchain/google-genai';
-import { PineconeStore } from '@langchain/pinecone';
-import { Document } from '@langchain/core/documents';
+import { prisma } from '../lib/prisma';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -15,73 +13,58 @@ export interface VectorSearchResult {
 }
 
 // ---------------------------------------------------------------------------
-// VectorStoreService
+// VectorStoreService — backed by Supabase pgvector via Prisma raw queries
 // ---------------------------------------------------------------------------
 
 export class VectorStoreService {
-  private constructor(private readonly store: PineconeStore) {}
+  private constructor(private readonly embeddings: GoogleGenerativeAIEmbeddings) {}
 
   /**
-   * Async factory — initialises the Pinecone client and connects to the
-   * existing index. Call once and reuse the instance.
+   * Async factory — initialises the embedding model.
+   * Uses the existing Prisma connection for all DB access (no extra credentials needed).
    */
   static async create(): Promise<VectorStoreService> {
-    const apiKey = process.env['PINECONE_API_KEY'];
-    const indexName = process.env['PINECONE_INDEX'];
-
-    if (!apiKey) throw new Error('PINECONE_API_KEY environment variable is not set.');
-    if (!indexName) throw new Error('PINECONE_INDEX environment variable is not set.');
-
-    const pinecone = new Pinecone({ apiKey });
-    const pineconeIndex = pinecone.Index(indexName);
-
     const embeddings = new GoogleGenerativeAIEmbeddings({
       model: process.env['GOOGLE_EMBEDDING_MODEL'] ?? 'gemini-embedding-001',
       apiKey: process.env['GEMINI_API_KEY'],
     });
-
-    const store = await PineconeStore.fromExistingIndex(embeddings, { pineconeIndex });
-
-    return new VectorStoreService(store);
+    return new VectorStoreService(embeddings);
   }
 
   /**
-   * Embed the evidence summary and upsert it into Pinecone.
-   * Stores ONLY the fileHash in metadata — all structured fields live in Prisma.
-   * Uses `fileHash` as the vector ID for idempotent upserts.
-   *
-   * @param text      Summary text to embed.
-   * @param fileHash  SHA-256 hex hash — used as both vector ID and the only metadata field.
+   * Embed the text and upsert into evidence_embeddings.
+   * Idempotent — uses fileHash as primary key.
    */
   async upsertEvidence(text: string, fileHash: string): Promise<void> {
-    const doc = new Document({
-      pageContent: text,
-      metadata: { fileHash },
-    });
+    const [vector] = await this.embeddings.embedDocuments([text]);
+    const vectorLiteral = `[${vector.join(',')}]`;
 
-    await this.store.addDocuments([doc], { ids: [fileHash] });
+    await prisma.$executeRaw`
+      INSERT INTO evidence_embeddings (id, content, embedding)
+      VALUES (${fileHash}, ${text}, ${vectorLiteral}::vector)
+      ON CONFLICT (id) DO UPDATE
+        SET content   = EXCLUDED.content,
+            embedding = EXCLUDED.embedding
+    `;
 
     console.log(`[VectorStoreService] Upserted embedding | hash: ${fileHash}`);
   }
 
   /**
-   * Embed the query and retrieve the most semantically similar evidence records.
-   * Returns only fileHash + content — callers must enrich from Prisma for full metadata.
-   *
-   * @param query  Natural language search query.
-   * @param limit  Maximum number of results to return (default: 5).
+   * Embed the query and return the most semantically similar evidence records.
+   * Returns only fileHash + content — callers enrich from Prisma for full metadata.
    */
-  async searchSimilarEvidence(
-    query: string,
-    limit: number = 5,
-  ): Promise<VectorSearchResult[]> {
+  async searchSimilarEvidence(query: string, limit = 5): Promise<VectorSearchResult[]> {
     try {
-      const results = await this.store.similaritySearchWithScore(query, limit);
-      return results.map(([doc, score]) => ({
-        fileHash: (doc.metadata as { fileHash: string }).fileHash,
-        content: doc.pageContent,
-        score,
-      }));
+      const [vector] = await this.embeddings.embedDocuments([query]);
+      const vectorLiteral = `[${vector.join(',')}]`;
+
+      const rows = await prisma.$queryRaw<Array<{ id: string; content: string; similarity: number }>>`
+        SELECT id, content, similarity
+        FROM match_evidence(${vectorLiteral}::vector, ${limit}::int)
+      `;
+
+      return rows.map((r) => ({ fileHash: r.id, content: r.content, score: r.similarity }));
     } catch (err) {
       console.error('[VectorStoreService] searchSimilarEvidence error:', err instanceof Error ? err.message : err);
       return [];
