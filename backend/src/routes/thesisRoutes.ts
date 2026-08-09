@@ -1,12 +1,12 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
-import { createHash } from 'crypto';
 import type { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { parseMentions } from '../utils/parseMentions';
-import { DevilsAdvocateAgent, type ReferencedEvidence, DevilsAdvocateOutputSchema } from '../services/DevilsAdvocateAgent';
+import { DevilsAdvocateOutputSchema } from '../services/DevilsAdvocateAgent';
 import { RevisionAgent } from '../services/RevisionAgent';
 import { buildTipTapDoc } from '../utils/tipTapUtils';
+import { sha256, extractText, extractPreview, triggerAIAnalysis } from '../services/thesisAnalysis';
 
 const router = Router();
 
@@ -14,13 +14,7 @@ const router = Router();
 // Lazy singleton
 // ---------------------------------------------------------------------------
 
-let _agent: DevilsAdvocateAgent | null = null;
 let _revisionAgent: RevisionAgent | null = null;
-
-function getAgent(): DevilsAdvocateAgent {
-  if (!_agent) _agent = new DevilsAdvocateAgent();
-  return _agent;
-}
 
 function getRevisionAgent(): RevisionAgent {
   if (!_revisionAgent) _revisionAgent = new RevisionAgent();
@@ -28,75 +22,8 @@ function getRevisionAgent(): RevisionAgent {
 }
 
 // ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function sha256(value: unknown): string {
-  return createHash('sha256').update(JSON.stringify(value)).digest('hex');
-}
-
-/**
- * Walk a TipTap document JSON and extract plain text, resolving mention nodes
- * to human-readable tokens (e.g. @Netanyahu, #ev_abc123).
- */
-function extractText(doc: unknown): string {
-  function walk(node: Record<string, unknown>): string {
-    if (node.type === 'text') return String(node.text ?? '');
-    const attrs = node.attrs as Record<string, unknown> | undefined;
-    if (node.type === 'keyFigureMention') return `@${String(attrs?.['id'] ?? '')}`;
-    if (node.type === 'evidenceMention') return `#ev_${String(attrs?.['id'] ?? '')}`;
-    if (node.type === 'trackedUrlMention') return `#url_${String(attrs?.['id'] ?? '')}`;
-    const content = node.content;
-    if (!Array.isArray(content)) return '';
-    return (content as unknown[]).map((c) => walk(c as Record<string, unknown>)).join(' ');
-  }
-  return walk(doc as Record<string, unknown>)
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-function extractPreview(doc: unknown): string {
-  return extractText(doc).slice(0, 120);
-}
-
-// ---------------------------------------------------------------------------
 // Async AI trigger — fire-and-forget from POST routes
 // ---------------------------------------------------------------------------
-
-async function triggerAIAnalysis(versionId: string, userContent: unknown): Promise<void> {
-  try {
-    const version = await prisma.thesisVersion.findUnique({
-      where: { id: versionId },
-      include: { mentions: { where: { type: 'EVIDENCE' } } },
-    });
-    if (!version) return;
-
-    const evidenceRecords = await prisma.evidence.findMany({
-      where: { fileHash: { in: version.mentions.map((m) => m.refId) } },
-      select: {
-        fileHash: true,
-        category: true,
-        targetEntity: true,
-        evidenceTier: true,
-        evidenceRole: true,
-        evidenceDate: true,
-        summary: true,
-      },
-    });
-
-    const referenced: ReferencedEvidence[] = evidenceRecords;
-    const thesisText = extractText(userContent);
-    const aiAnalysis = await getAgent().analyze(thesisText, referenced);
-    const contentHash = sha256({ userContent, aiAnalysis });
-
-    await prisma.thesisVersion.update({
-      where: { id: versionId },
-      data: { aiAnalysis, contentHash, status: 'COMPLETE' },
-    });
-  } catch (err) {
-    console.error('[thesis] AI analysis failed for version', versionId, err);
-  }
-}
 
 // ---------------------------------------------------------------------------
 // Request schemas
@@ -580,6 +507,72 @@ router.get('/:id/versions', async (req: Request, res: Response): Promise<void> =
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     res.status(500).json({ error: 'Failed to fetch version history', message });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/thesis/:id/versions/:versionId
+//
+// Returns a single historical version with full userContent, aiAnalysis, and
+// mentions — same shape as GET /api/thesis/:id so the frontend can render it
+// identically. Also returns versionNumber (1-based) and isHead flag.
+// ---------------------------------------------------------------------------
+
+router.get('/:id/versions/:versionId', async (req: Request, res: Response): Promise<void> => {
+  const thesisId = String(req.params['id'] ?? '');
+  const versionId = String(req.params['versionId'] ?? '');
+  if (!thesisId || !versionId) {
+    res.status(400).json({ error: 'Missing thesis id or version id' });
+    return;
+  }
+
+  try {
+    const [thesis, version] = await Promise.all([
+      prisma.thesis.findUnique({ where: { id: thesisId } }),
+      prisma.thesisVersion.findUnique({
+        where: { id: versionId },
+        include: { mentions: true },
+      }),
+    ]);
+
+    if (!thesis || !version || version.thesisId !== thesisId) {
+      res.status(404).json({ error: 'Version not found' });
+      return;
+    }
+
+    const olderCount = await prisma.thesisVersion.count({
+      where: { thesisId, createdAt: { lt: version.createdAt } },
+    });
+
+    const evidenceRefIds = version.mentions
+      .filter((m) => m.type === 'EVIDENCE')
+      .map((m) => m.refId);
+
+    const evidenceRecords = evidenceRefIds.length > 0
+      ? await prisma.evidence.findMany({
+          where: { fileHash: { in: evidenceRefIds } },
+          select: { fileHash: true, summary: true, category: true, evidenceTier: true },
+        })
+      : [];
+
+    const evidenceMap = Object.fromEntries(
+      evidenceRecords.map((e) => [e.fileHash, { summary: e.summary, category: e.category, evidenceTier: e.evidenceTier }]),
+    );
+
+    res.status(200).json({
+      thesis: {
+        id: thesis.id,
+        headVersionId: thesis.headVersionId,
+        createdAt: thesis.createdAt,
+        headVersion: version,
+      },
+      evidenceMap,
+      versionNumber: olderCount + 1,
+      isHead: thesis.headVersionId === versionId,
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ error: 'Failed to fetch version', message });
   }
 });
 

@@ -9,6 +9,7 @@ import { createEvidenceFromTextSchema, createEvidenceFromTextHandler } from './t
 import { startForensicScanSchema, startForensicScanHandler } from './tools/startForensicScan';
 import { createThesisDraftSchema, createThesisDraftHandler } from './tools/createThesisDraft';
 import { addThesisVersionSchema, addThesisVersionHandler } from './tools/addThesisVersion';
+import { runAiAnalysisSchema, runAiAnalysisHandler } from './tools/runAiAnalysis';
 
 // ---------------------------------------------------------------------------
 // Factory — creates a fresh McpServer per request.
@@ -144,10 +145,29 @@ export function createMcpServer(): McpServer {
     'add_thesis_version',
     'Append a new version (wiki edit) to an existing thesis. The previous head becomes the ' +
       'parent; the new version immediately becomes the head. Saved as PENDING_AI — ' +
-      'no Devil\'s Advocate analysis is triggered automatically. Open in the UI to review.',
+      'call run_ai_analysis immediately after to get Devil\'s Advocate critique. ' +
+      'Body supports Markdown (# headings, **bold**, - bullets).',
     addThesisVersionSchema,
     async (input) => ({
       content: [{ type: 'text' as const, text: await addThesisVersionHandler(input) }],
+    }),
+  );
+
+  // -------------------------------------------------------------------------
+  // Tool: run_ai_analysis  [WRITE — requires auth]
+  // Synchronously runs Devil's Advocate AI analysis on the head version of a
+  // thesis and returns the full critique. Unlike POST /analyze (202 async),
+  // this tool awaits completion so the LLM can continue the research loop.
+  // -------------------------------------------------------------------------
+  server.tool(
+    'run_ai_analysis',
+    'Run Devil\'s Advocate AI analysis on the current head version of a thesis. ' +
+      'Waits for analysis to complete and returns the full critique including strength ' +
+      'assessment, counter-arguments, and evidence gaps. If already analysed, returns ' +
+      'the cached result. Use after add_thesis_version to close the research loop.',
+    runAiAnalysisSchema,
+    async (input) => ({
+      content: [{ type: 'text' as const, text: await runAiAnalysisHandler(input) }],
     }),
   );
 

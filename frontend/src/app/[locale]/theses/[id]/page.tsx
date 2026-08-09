@@ -1,12 +1,11 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
-import { use } from 'react';
+import { useState, useEffect, useRef, Suspense, use } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { useTranslations, useLocale } from 'next-intl';
 import { Link } from '@/i18n/navigation';
 import { apiUrl } from '@/lib/api';
-
-type EvidenceInfo = { summary: string; category: string; evidenceTier?: string };
+import { TipTapRenderer, type EvidenceInfo } from '@/components/TipTapRenderer';
 
 // ---------------------------------------------------------------------------
 // Types matching the versioned thesis API
@@ -55,90 +54,6 @@ interface Thesis {
   headVersion: HeadVersion | null;
 }
 
-// ---------------------------------------------------------------------------
-// TipTap JSON → JSX renderer
-// ---------------------------------------------------------------------------
-
-type TipTapNodeObj = Record<string, unknown>;
-
-function makeRenderer(evidenceMap: Record<string, EvidenceInfo>) {
-  function renderInline(node: TipTapNodeObj, index: number): JSX.Element | null {
-    if (node.type === 'text') {
-      const text = String(node.text ?? '');
-      const marks = node.marks as Array<{ type: string }> | undefined;
-      let el: JSX.Element | string = text;
-      if (marks?.some(m => m.type === 'italic')) el = <em key={`i${index}`}>{el}</em>;
-      if (marks?.some(m => m.type === 'bold')) el = <strong key={`b${index}`}>{el}</strong>;
-      return <span key={index}>{el}</span>;
-    }
-    if (node.type === 'evidenceMention') {
-      const attrs = node.attrs as TipTapNodeObj | undefined;
-      const id = String(attrs?.['id'] ?? '');
-      // Use DB summary if available, else fall back to label (strip # prefix for legacy records)
-      const rawLabel = String(attrs?.['label'] ?? '');
-      const storedLabel = rawLabel.startsWith('#') ? rawLabel.slice(1) : rawLabel;
-      const info = evidenceMap[id];
-      const displayLabel = (info?.summary?.slice(0, 35) ?? storedLabel) || id.slice(0, 12);
-      return (
-        <Link
-          key={index}
-          href={`/timeline?hash=${encodeURIComponent(id)}`}
-          className="inline-block bg-amber-100 hover:bg-amber-200 text-amber-700 text-xs font-medium px-2 py-0.5 rounded-full mx-0.5 transition-colors"
-        >
-          #{displayLabel}
-        </Link>
-      );
-    }
-    if (node.type === 'keyFigureMention') {
-      const attrs = node.attrs as TipTapNodeObj | undefined;
-      const raw = String(attrs?.['label'] ?? attrs?.['id'] ?? '');
-      const label = raw.startsWith('@') ? raw.slice(1) : raw;
-      return (
-        <Link
-          key={index}
-          href={`/timeline?entity=${encodeURIComponent(label)}`}
-          className="inline-block bg-violet-100 hover:bg-violet-200 text-violet-700 text-xs font-medium px-2 py-0.5 rounded-full mx-0.5 transition-colors"
-        >
-          @{label}
-        </Link>
-      );
-    }
-    return null;
-  }
-
-  function renderTipTapNode(node: TipTapNodeObj, index: number): JSX.Element | null {
-    const content = node.content as TipTapNodeObj[] | undefined;
-    switch (node.type) {
-      case 'paragraph': {
-        if (!content?.length) return <div key={index} className="h-3" />;
-        return <p key={index} className="text-slate-700 text-sm leading-relaxed mb-3">{content.map((c, i) => renderInline(c, i))}</p>;
-      }
-      case 'heading': {
-        const level = Number((node.attrs as TipTapNodeObj | undefined)?.['level'] ?? 1);
-        const children = (content ?? []).map((c, i) => renderInline(c, i));
-        if (level === 1) return <h1 key={index} className="text-xl font-bold text-slate-900 mb-3 mt-6 first:mt-0">{children}</h1>;
-        if (level === 2) return <h2 key={index} className="text-base font-semibold text-slate-800 mb-2 mt-4">{children}</h2>;
-        return <h3 key={index} className="text-sm font-semibold text-slate-700 mb-2 mt-3">{children}</h3>;
-      }
-      case 'bulletList':
-        return <ul key={index} className="list-disc list-inside space-y-1 mb-3 ms-2">{(content ?? []).map((c, i) => renderTipTapNode(c, i))}</ul>;
-      case 'orderedList':
-        return <ol key={index} className="list-decimal list-inside space-y-1 mb-3 ms-2">{(content ?? []).map((c, i) => renderTipTapNode(c, i))}</ol>;
-      case 'listItem': {
-        const para = content?.[0] as TipTapNodeObj | undefined;
-        const inlines = (para?.content as TipTapNodeObj[] | undefined) ?? [];
-        return <li key={index} className="text-slate-700 text-sm">{inlines.map((c, i) => renderInline(c, i))}</li>;
-      }
-      default:
-        return null;
-    }
-  }
-
-  return function renderDoc(doc: Record<string, unknown>): JSX.Element {
-    const content = doc.content as TipTapNodeObj[] | undefined;
-    return <div>{(content ?? []).map((child, i) => renderTipTapNode(child, i))}</div>;
-  };
-}
 
 // ---------------------------------------------------------------------------
 // GapSearchPanel — inline vault search + Add to Thesis action
@@ -284,11 +199,13 @@ const STRENGTH_STYLES: Record<string, string> = {
 // Page
 // ---------------------------------------------------------------------------
 
-export default function ThesisPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = use(params);
+function ThesisPageInner({ id }: { id: string }) {
   const t = useTranslations('theses');
   const tc = useTranslations('common');
   const locale = useLocale();
+  const searchParams = useSearchParams();
+  const historicalVersionId = searchParams.get('v');
+  const isHistorical = !!historicalVersionId;
 
   const [thesis, setThesis] = useState<Thesis | null>(null);
   const [evidenceMap, setEvidenceMap] = useState<Record<string, EvidenceInfo>>({});
@@ -310,7 +227,10 @@ export default function ThesisPage({ params }: { params: Promise<{ id: string }>
   }, []);
 
   async function loadThesis() {
-    const res = await fetch(apiUrl(`/api/thesis/${id}`));
+    const url = historicalVersionId
+      ? apiUrl(`/api/thesis/${id}/versions/${historicalVersionId}`)
+      : apiUrl(`/api/thesis/${id}`);
+    const res = await fetch(url);
     if (!res.ok) throw new Error();
     const data = (await res.json()) as { thesis: Thesis; evidenceMap: Record<string, EvidenceInfo> };
     setThesis(data.thesis);
@@ -323,7 +243,7 @@ export default function ThesisPage({ params }: { params: Promise<{ id: string }>
       .catch(() => setError(true))
       .finally(() => setLoading(false));
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id]);
+  }, [id, historicalVersionId]);
 
   async function runRevision() {
     setRevision('loading');
@@ -401,7 +321,6 @@ export default function ThesisPage({ params }: { params: Promise<{ id: string }>
   const hv = thesis.headVersion;
   const analysis = hv?.aiAnalysis ?? null;
   const keyFigureMentions = hv?.mentions.filter(m => m.type === 'KEY_FIGURE') ?? [];
-  const renderDoc = makeRenderer(evidenceMap);
   const evidenceMentions = hv?.mentions.filter(m => m.type === 'EVIDENCE') ?? [];
 
   return (
@@ -415,23 +334,45 @@ export default function ThesisPage({ params }: { params: Promise<{ id: string }>
           <span className="text-slate-300">·</span>
           <span className="text-slate-500 text-xs">{tc('appName')}</span>
           <div className="ms-auto flex items-center gap-2">
-            <Link
-              href={`/theses/${id}/edit`}
-              className="px-3 py-1.5 bg-violet-700 hover:bg-violet-600 rounded-lg text-xs font-medium text-white transition-colors"
-            >
-              {t('editBtn')}
-            </Link>
-            <Link
-              href={`/theses/${id}/history`}
-              className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 rounded-lg text-xs font-medium text-slate-700 transition-colors"
-            >
-              {t('historyBtn')}
-            </Link>
+            {isHistorical ? (
+              <Link
+                href={`/theses/${id}/history`}
+                className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 rounded-lg text-xs font-medium text-slate-700 transition-colors"
+              >
+                {t('historyBtn')}
+              </Link>
+            ) : (
+              <>
+                <Link
+                  href={`/theses/${id}/edit`}
+                  className="px-3 py-1.5 bg-violet-700 hover:bg-violet-600 rounded-lg text-xs font-medium text-white transition-colors"
+                >
+                  {t('editBtn')}
+                </Link>
+                <Link
+                  href={`/theses/${id}/history`}
+                  className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 rounded-lg text-xs font-medium text-slate-700 transition-colors"
+                >
+                  {t('historyBtn')}
+                </Link>
+              </>
+            )}
           </div>
         </div>
       </header>
 
       <main className="max-w-4xl mx-auto px-4 sm:px-6 py-10 space-y-8">
+        {/* Historical version banner */}
+        {isHistorical && (
+          <div className="flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm text-amber-800">
+            <span>📋</span>
+            <span>{locale === 'he' ? 'צפייה בגרסה היסטורית — לקריאה בלבד' : 'Viewing historical version — read only'}</span>
+            <Link href={`/theses/${id}`} className="ms-auto font-medium text-amber-900 hover:underline shrink-0">
+              {locale === 'he' ? 'לגרסה הנוכחית ←' : 'Current version →'}
+            </Link>
+          </div>
+        )}
+
         {/* Status + date */}
         <div className="flex items-center gap-3 text-xs text-slate-500">
           <span
@@ -450,7 +391,7 @@ export default function ThesisPage({ params }: { params: Promise<{ id: string }>
 
         {/* Thesis body */}
         <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
-          {hv ? renderDoc(hv.userContent) : null}
+          {hv ? <TipTapRenderer doc={hv.userContent} evidenceMap={evidenceMap} /> : null}
         </div>
 
         {/* Mentioned key figures */}
@@ -547,13 +488,24 @@ export default function ThesisPage({ params }: { params: Promise<{ id: string }>
                   {t('evidenceGapsLabel')}
                 </h3>
                 {analysis.evidenceGaps.map((gap, i) => (
-                  <GapSearchPanel
-                    key={i}
-                    gap={gap}
-                    thesisId={id}
-                    thesisContent={hv.userContent}
-                    onVersionAdded={() => { void loadThesis(); }}
-                  />
+                  isHistorical
+                    ? (
+                      <div key={i} className="bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-1">
+                        <p className="text-sm text-slate-800 font-medium">{gap.description}</p>
+                        {gap.suggestedSearch && (
+                          <p className="text-xs text-slate-500 font-mono">{gap.suggestedSearch}</p>
+                        )}
+                      </div>
+                    )
+                    : (
+                      <GapSearchPanel
+                        key={i}
+                        gap={gap}
+                        thesisId={id}
+                        thesisContent={hv?.userContent ?? {}}
+                        onVersionAdded={() => { void loadThesis(); }}
+                      />
+                    )
                 ))}
               </div>
             )}
@@ -575,8 +527,8 @@ export default function ThesisPage({ params }: { params: Promise<{ id: string }>
               </div>
             )}
 
-            {/* Suggest Revision button */}
-            {revision === null && (
+            {/* Suggest Revision button — hidden for historical versions */}
+            {!isHistorical && revision === null && (
               <div className="pt-2">
                 <button
                   onClick={() => void runRevision()}
@@ -611,7 +563,7 @@ export default function ThesisPage({ params }: { params: Promise<{ id: string }>
                 </div>
 
                 <div className="bg-white border-t border-violet-100 px-5 py-4">
-                  {renderDoc(revision.suggestedContent)}
+                  <TipTapRenderer doc={revision.suggestedContent} evidenceMap={evidenceMap} />
                 </div>
 
                 <div className="bg-slate-50 border-t border-violet-200 px-5 py-3 flex gap-3">
@@ -635,8 +587,8 @@ export default function ThesisPage({ params }: { params: Promise<{ id: string }>
           </section>
         )}
 
-        {/* Pending AI notice + trigger button */}
-        {hv?.status === 'PENDING_AI' && !analyzing && (
+        {/* Pending AI notice + trigger button — hidden for historical versions */}
+        {!isHistorical && hv?.status === 'PENDING_AI' && !analyzing && (
           <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex items-center justify-between gap-4">
             <p className="text-amber-700 text-sm">{t('pendingAiNotice')}</p>
             <button
@@ -655,5 +607,14 @@ export default function ThesisPage({ params }: { params: Promise<{ id: string }>
         )}
       </main>
     </div>
+  );
+}
+
+export default function ThesisPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = use(params);
+  return (
+    <Suspense>
+      <ThesisPageInner id={id} />
+    </Suspense>
   );
 }

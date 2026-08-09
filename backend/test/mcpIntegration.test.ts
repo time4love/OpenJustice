@@ -229,6 +229,7 @@ describe('write tool auth enforcement', () => {
     { name: 'start_forensic_scan', args: { url: 'https://corona.health.gov.il/' } },
     { name: 'create_thesis_draft', args: { body: 'Test thesis.' } },
     { name: 'add_thesis_version', args: { thesisId: 'thesis-int-1', body: 'Updated.' } },
+    { name: 'run_ai_analysis', args: { thesisId: 'thesis-int-1' } },
   ];
 
   for (const { name, args } of writeTools) {

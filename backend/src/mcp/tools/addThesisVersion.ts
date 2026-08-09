@@ -1,68 +1,24 @@
-import { createHash } from 'crypto';
 import { z } from 'zod';
 import type { Prisma } from '@prisma/client';
 import { prisma } from '../../lib/prisma';
 import { parseMentions } from '../../utils/parseMentions';
-
-interface TipTapNode {
-  type: string;
-  attrs?: Record<string, unknown>;
-  content?: TipTapNode[];
-  text?: string;
-}
-
-function buildTipTapDoc(body: string, hashes: string[], figures: string[]): TipTapNode {
-  const paragraphs: TipTapNode[] = [];
-
-  if (body.trim()) {
-    paragraphs.push({
-      type: 'paragraph',
-      content: [{ type: 'text', text: body.trim() }],
-    });
-  }
-
-  if (hashes.length > 0) {
-    paragraphs.push({
-      type: 'paragraph',
-      content: hashes.map((hash) => ({
-        type: 'evidenceMention',
-        attrs: { id: hash, label: `#ev_${hash.slice(0, 10)}` },
-      })),
-    });
-  }
-
-  if (figures.length > 0) {
-    paragraphs.push({
-      type: 'paragraph',
-      content: figures.map((name) => ({
-        type: 'keyFigureMention',
-        attrs: { id: name, label: `@${name}` },
-      })),
-    });
-  }
-
-  if (paragraphs.length === 0) {
-    paragraphs.push({ type: 'paragraph', content: [] });
-  }
-
-  return { type: 'doc', content: paragraphs };
-}
-
-function sha256(value: unknown): string {
-  return createHash('sha256').update(JSON.stringify(value)).digest('hex');
-}
+import { buildTipTapDoc, type TipTapNode } from '../../utils/tipTapUtils';
+import { sha256 } from '../../services/thesisAnalysis';
 
 export const addThesisVersionSchema = {
   thesisId: z.string().min(1).describe('ID of the existing thesis to append a version to'),
-  body: z.string().min(1).describe('Updated plain-text thesis narrative'),
+  body: z.string().min(1).describe(
+    'Updated thesis narrative. Supports Markdown formatting: # H1, ## H2, **bold**, *italic*, ' +
+    '- bullet lists. Evidence and key-figure mentions are appended as chips via evidenceHashes / keyFigures.',
+  ),
   evidenceHashes: z
     .array(z.string())
     .optional()
-    .describe('Evidence file hashes (0x…) to link as evidence mentions in this version'),
+    .describe('Evidence file hashes (0x…) to link as evidence mention chips'),
   keyFigures: z
     .array(z.string())
     .optional()
-    .describe('Key figure names to link as mentions in this version'),
+    .describe('Key figure names to link as mention chips'),
 };
 
 export async function addThesisVersionHandler(input: {
@@ -79,7 +35,11 @@ export async function addThesisVersionHandler(input: {
   const hashes = input.evidenceHashes ?? [];
   const figures = input.keyFigures ?? [];
 
-  const userContent = buildTipTapDoc(input.body, hashes, figures);
+  const evidenceLabelMap = new Map<string, string>(
+    hashes.map((h) => [h, `#ev_${h.slice(0, 10)}`]),
+  );
+
+  const userContent: TipTapNode = buildTipTapDoc(input.body, hashes, figures, evidenceLabelMap);
   const mentions = parseMentions(userContent);
   const contentHash = sha256(userContent);
   const parentVersionId = thesis.headVersionId;
@@ -117,6 +77,6 @@ export async function addThesisVersionHandler(input: {
     evidenceLinked: hashes.length,
     keyFiguresLinked: figures.length,
     message:
-      'New version saved as PENDING_AI. Open it in the UI to trigger Devil\'s Advocate AI analysis.',
+      "New version saved as PENDING_AI. Call run_ai_analysis to trigger Devil's Advocate critique.",
   });
 }

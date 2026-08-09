@@ -179,19 +179,18 @@ export default function ThesisHistoryPage({ params }: { params: Promise<{ id: st
                     {v.isHead && <span className="h-2 w-2 rounded-full bg-white" />}
                   </div>
 
-                  {/* Card */}
-                  <div
-                    className={`flex-1 rounded-2xl border p-4 shadow-sm ${
+                  {/* Card — fully tappable, navigates to formatted version view */}
+                  <Link
+                    href={v.isHead ? `/theses/${id}` : `/theses/${id}?v=${v.id}`}
+                    className={`flex-1 block rounded-2xl border p-4 shadow-sm active:scale-[0.99] transition-transform ${
                       v.isHead
-                        ? 'border-violet-300 bg-violet-50'
-                        : 'border-slate-200 bg-white'
+                        ? 'border-violet-300 bg-violet-50 hover:border-violet-400'
+                        : 'border-slate-200 bg-white hover:border-slate-300'
                     }`}
                   >
                     {/* Version header */}
                     <div className="flex items-center gap-2 flex-wrap mb-2">
-                      <span className="text-xs font-mono text-slate-400">
-                        v{index + 1}
-                      </span>
+                      <span className="text-xs font-mono text-slate-400">v{index + 1}</span>
                       {v.isHead && (
                         <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-violet-100 text-violet-700 border border-violet-300">
                           {t('currentVersion')}
@@ -220,40 +219,37 @@ export default function ThesisHistoryPage({ params }: { params: Promise<{ id: st
                     </p>
 
                     {/* Footer */}
-                    <div className="flex items-center gap-4 mt-3 text-xs text-slate-400">
+                    <div className="flex items-center gap-3 mt-3 text-xs text-slate-400">
                       <span>{v.mentionCount} {t('mentions')}</span>
-                      <span className="font-mono truncate max-w-[120px]">{v.contentHash.slice(0, 12)}…</span>
-                      {index > 0 && (
-                        <button
-                          onClick={() => setExpandedDiff(expandedDiff === v.id ? null : v.id)}
-                          className="text-slate-500 hover:text-slate-800 font-medium transition-colors"
-                        >
-                          {expandedDiff === v.id ? 'Hide diff' : 'View diff'}
-                        </button>
-                      )}
-                      {v.isHead && (
-                        <Link
-                          href={`/theses/${id}/edit`}
-                          className="ms-auto text-violet-600 hover:text-violet-700 font-medium transition-colors"
-                        >
-                          {t('editBtn')} →
-                        </Link>
+                      <span className="font-mono truncate max-w-[100px]">{v.contentHash.slice(0, 12)}…</span>
+                      <span className="ms-auto text-slate-400">
+                        {locale === 'he' ? 'לצפייה ←' : 'View →'}
+                      </span>
+                    </div>
+                  </Link>
+
+                  {/* Diff toggle — separate from the card link */}
+                  {index > 0 && (
+                    <div className="mt-2 ms-0">
+                      <button
+                        onClick={() => setExpandedDiff(expandedDiff === v.id ? null : v.id)}
+                        className="text-xs text-slate-400 hover:text-slate-700 font-medium transition-colors px-1"
+                      >
+                        {expandedDiff === v.id ? 'Hide diff' : `Diff v${index}→v${index + 1}`}
+                      </button>
+                      {expandedDiff === v.id && (
+                        <div className="mt-2 rounded-xl border border-slate-200 bg-white p-3 space-y-1">
+                          <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">
+                            Changes v{index} → v{index + 1}
+                          </p>
+                          <VersionDiff
+                            before={data.versions[index - 1].userContent}
+                            after={v.userContent}
+                          />
+                        </div>
                       )}
                     </div>
-
-                    {/* Diff panel */}
-                    {expandedDiff === v.id && index > 0 && (
-                      <div className="mt-3 pt-3 border-t border-slate-200 space-y-1">
-                        <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">
-                          Changes from v{index} → v{index + 1}
-                        </p>
-                        <VersionDiff
-                          before={data.versions[index - 1].userContent}
-                          after={v.userContent}
-                        />
-                      </div>
-                    )}
-                  </div>
+                  )}
                 </li>
               ))}
             </ol>

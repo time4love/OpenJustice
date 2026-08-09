@@ -109,7 +109,7 @@ RULES:
 - Alternative interpretations must be genuinely plausible — do not construct strawmen.
 - If the thesis is well-supported by the evidence cited, say so. A COMPELLING rating is valid and honest.
 
-LANGUAGE: summaryHe must be in highly professional Hebrew. All other fields in English.`;
+LANGUAGE: All text fields must be written in professional Hebrew — this includes counterArguments (claim, rebuttal), evidenceGaps (description, suggestedSearch), and alternativeInterpretations. The thesis is in Hebrew; your analysis must match. summaryHe is also in Hebrew.`;
 
 export class DevilsAdvocateAgent {
   private readonly chain: { invoke(input: unknown): Promise<unknown> };

@@ -63,6 +63,7 @@ import { startForensicScanHandler } from '../src/mcp/tools/startForensicScan';
 import { createThesisDraftHandler } from '../src/mcp/tools/createThesisDraft';
 import { addThesisVersionHandler } from '../src/mcp/tools/addThesisVersion';
 import { getResearchAgendaHandler } from '../src/mcp/tools/getResearchAgenda';
+import { runAiAnalysisHandler } from '../src/mcp/tools/runAiAnalysis';
 
 // ---------------------------------------------------------------------------
 // Typed mock helpers
@@ -1063,12 +1064,66 @@ describe('addThesisVersionHandler', () => {
     ).resolves.toBeDefined();
   });
 
-  it('message instructs user to open in UI before AI analysis', async () => {
+  it('message instructs caller to run_ai_analysis after saving', async () => {
     const raw = await addThesisVersionHandler({ thesisId: 'thesis-1', body: 'Body.' });
     const result = JSON.parse(raw);
 
     expect(result.message).toContain('PENDING_AI');
-    expect(result.message).toContain('UI');
+    expect(result.message).toContain('run_ai_analysis');
+  });
+});
+
+// ===========================================================================
+// run_ai_analysis
+// ===========================================================================
+
+describe('runAiAnalysisHandler', () => {
+  const mockAnalysis = {
+    summaryHe: 'ניתוח מחדש.',
+    overallStrengthAssessment: 'MODERATE',
+    counterArguments: [],
+    evidenceGaps: [],
+    alternativeInterpretations: [],
+  };
+
+  it('returns cached result when version is already COMPLETE', async () => {
+    (prisma.thesis.findUnique as jest.Mock).mockResolvedValueOnce({
+      id: 'thesis-1',
+      headVersion: {
+        id: 'version-1',
+        status: 'COMPLETE',
+        aiAnalysis: mockAnalysis,
+        userContent: { type: 'doc', content: [] },
+      },
+    });
+
+    const raw = await runAiAnalysisHandler({ thesisId: 'thesis-1' });
+    const result = JSON.parse(raw);
+
+    expect(result.cached).toBe(true);
+    expect(result.status).toBe('COMPLETE');
+    expect(result.aiAnalysis).toEqual(mockAnalysis);
+  });
+
+  it('returns error when thesis not found', async () => {
+    (prisma.thesis.findUnique as jest.Mock).mockResolvedValueOnce(null);
+
+    const raw = await runAiAnalysisHandler({ thesisId: 'missing-thesis' });
+    const result = JSON.parse(raw);
+
+    expect(result.error).toContain('missing-thesis');
+  });
+
+  it('returns error when head version is missing', async () => {
+    (prisma.thesis.findUnique as jest.Mock).mockResolvedValueOnce({
+      id: 'thesis-1',
+      headVersion: null,
+    });
+
+    const raw = await runAiAnalysisHandler({ thesisId: 'thesis-1' });
+    const result = JSON.parse(raw);
+
+    expect(result.error).toContain('thesis-1');
   });
 });
 
