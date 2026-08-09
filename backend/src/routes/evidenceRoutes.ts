@@ -682,6 +682,78 @@ router.get('/key-figures', async (req: Request, res: Response): Promise<void> =>
 });
 
 // ---------------------------------------------------------------------------
+// GET /api/evidence/:id — full record by UUID
+// ---------------------------------------------------------------------------
+
+router.get('/:id', async (req: Request, res: Response): Promise<void> => {
+  const id = String(req.params['id']);
+  try {
+    const [record, mentions] = await Promise.all([
+      prisma.evidence.findUnique({
+        where: { id },
+        include: {
+          figures: { select: { id: true, name: true } },
+          urlVersionDiff: { select: { trackedUrlId: true } },
+        },
+      }),
+      // ThesisMention uses refId = fileHash — resolved after we have the record
+      prisma.evidence.findUnique({ where: { id }, select: { fileHash: true } }).then(async (e) => {
+        if (!e) return [];
+        return prisma.thesisMention.findMany({
+          where: { type: 'EVIDENCE', refId: e.fileHash },
+          select: { thesisVersion: { select: { thesis: { select: { id: true, title: true } } } } },
+          distinct: ['thesisVersionId'],
+        });
+      }),
+    ]);
+
+    if (!record) {
+      res.status(404).json({ error: 'Evidence not found', id });
+      return;
+    }
+
+    // Deduplicate theses (same thesis may have multiple versions cited)
+    const seenThesisIds = new Set<string>();
+    const citingTheses: { id: string; title: string | null }[] = [];
+    for (const m of mentions) {
+      const thesis = m.thesisVersion.thesis;
+      if (!seenThesisIds.has(thesis.id)) {
+        seenThesisIds.add(thesis.id);
+        citingTheses.push(thesis);
+      }
+    }
+
+    res.status(200).json({
+      evidenceId: record.id,
+      fileHash: record.fileHash,
+      status: record.status,
+      evidenceType: record.evidenceType,
+      evidenceRole: record.evidenceRole,
+      category: record.category,
+      evidenceTier: record.evidenceTier,
+      evidencePerspective: record.evidencePerspective,
+      tierReasoning: record.tierReasoning,
+      summary: record.summary,
+      targetEntity: record.targetEntity,
+      evidenceDate: record.evidenceDate,
+      figures: record.figures,
+      medicalConditions: JSON.parse(record.medicalConditions ?? '[]') as string[],
+      statisticalClaims: JSON.parse(record.statisticalClaims ?? '[]') as string[],
+      regulatoryMentions: JSON.parse(record.regulatoryMentions ?? '[]') as string[],
+      euaOmissionStatus: record.euaOmissionStatus,
+      sourceUrl: record.sourceUrl,
+      fileUrl: record.fileUrl,
+      trackedUrlId: record.urlVersionDiff?.trackedUrlId ?? null,
+      citingTheses,
+      createdAt: record.createdAt,
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ error: 'Failed to fetch evidence', message });
+  }
+});
+
+// ---------------------------------------------------------------------------
 // POST /api/evidence/backfill-pinecone — one-shot admin: index all CONFIRMED
 // ---------------------------------------------------------------------------
 

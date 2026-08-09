@@ -157,6 +157,36 @@
     "promoting": "Registering...",
     "promoteSuccess": "✓ Registered"
   },
+  "evidence": {
+    "backLink": "← Evidence Vault",
+    "notFound": "Evidence not found.",
+    "errorTitle": "Failed to load evidence.",
+    "fileHash": "File Hash",
+    "onChain": "Registered on-chain",
+    "pendingReview": "Pending Review",
+    "pendingReviewNote": "Not yet registered on-chain.",
+    "category": "Category",
+    "tier": "Tier",
+    "tierReasoning": "Tier Reasoning",
+    "date": "Evidence Date",
+    "target": "Target Entity",
+    "role": "Role",
+    "roleIncriminating": "Incriminating",
+    "roleContextAnchor": "Factual Anchor",
+    "perspective": "Perspective",
+    "keyFigures": "Key Figures",
+    "medicalContext": "Medical Context",
+    "statisticalClaims": "Statistical Claims",
+    "regulatoryMentions": "Regulatory Mentions",
+    "euaOmitted": "EUA Omitted — Emergency Use Not Disclosed",
+    "euaMentioned": "Mentions EUA (Emergency Use)",
+    "viewSource": "View Source",
+    "viewDiffHistory": "View Forensic History",
+    "forensicDiff": "Forensic Diff",
+    "citingTheses": "Cited in Theses",
+    "noCitingTheses": "Not yet cited in any thesis.",
+    "summary": "Summary"
+  },
   "figures": {
     "tagline": "Entity Graph · Key Figures & Evidence Network",
     "backLink": "← Timeline",
@@ -281,7 +311,8 @@
     "historyBatchSnapshots": "{processed}/{total} snapshots",
     "historyJobsLoading": "Loading batches…",
     "historyJobsError": "Failed to load batches.",
-    "downloadPdf": "Download PDF Report"
+    "downloadPdf": "Download PDF Report",
+    "inVaultBadge": "In Evidence Vault"
   },
   "theses": {
     "pageTitle": "Legal Thesis Builder",
@@ -334,7 +365,20 @@
     "cancelBtn": "Cancel",
     "historyHeading": "Version History",
     "historyEmpty": "No versions found.",
-    "currentVersion": "Current"
+    "currentVersion": "Current",
+    "generateBtn": "Generate from Evidence",
+    "generateModalTitle": "Generate Thesis from Evidence Vault",
+    "generateTopicLabel": "Research Topic",
+    "generateTopicPlaceholder": "e.g. suppression of adverse event data during vaccine rollout",
+    "generateSubmitBtn": "Find Evidence & Propose Thesis",
+    "generateSearchingBtn": "Searching vault…",
+    "generateConfidenceLabel": "Confidence",
+    "generateSupportingLabel": "Supporting evidence",
+    "generateMissingLabel": "Missing evidence",
+    "generateCreateDraftBtn": "Create Draft",
+    "generateCreatingBtn": "Creating…",
+    "generateError": "Could not generate a thesis. Try a more specific topic.",
+    "generateCancelBtn": "Cancel"
   },
   "chat": {
     "greeting": "Hello, I am the Glass Fortress Trust Agent. How can I help you understand our system's security?",

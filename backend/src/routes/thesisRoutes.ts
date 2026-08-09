@@ -8,6 +8,8 @@ import { RevisionAgent } from '../services/RevisionAgent';
 import { buildTipTapDoc } from '../utils/tipTapUtils';
 import { sha256, extractText, extractPreview, triggerAIAnalysis } from '../services/thesisAnalysis';
 import { logSessionEvent } from '../services/sessionService';
+import { suggestThesisHandler } from '../mcp/tools/suggestThesis';
+import { createThesisDraftHandler } from '../mcp/tools/createThesisDraft';
 
 const router = Router();
 
@@ -209,12 +211,30 @@ router.get('/:id', async (req: Request, res: Response): Promise<void> => {
     const evidenceRecords = evidenceRefIds.length > 0
       ? await prisma.evidence.findMany({
           where: { fileHash: { in: evidenceRefIds } },
-          select: { fileHash: true, summary: true, category: true, evidenceTier: true },
+          select: {
+            id: true,
+            fileHash: true,
+            summary: true,
+            category: true,
+            evidenceTier: true,
+            evidenceType: true,
+            urlVersionDiff: { select: { trackedUrlId: true } },
+          },
         })
       : [];
 
     const evidenceMap = Object.fromEntries(
-      evidenceRecords.map((e) => [e.fileHash, { summary: e.summary, category: e.category, evidenceTier: e.evidenceTier }]),
+      evidenceRecords.map((e) => [
+        e.fileHash,
+        {
+          evidenceId: e.id,
+          summary: e.summary,
+          category: e.category,
+          evidenceTier: e.evidenceTier,
+          evidenceType: e.evidenceType,
+          trackedUrlId: e.urlVersionDiff?.trackedUrlId ?? null,
+        },
+      ]),
     );
 
     const gapResolutions = (thesis.headVersion?.gapResolutions ?? []).map((r) => ({
@@ -568,12 +588,30 @@ router.get('/:id/versions/:versionId', async (req: Request, res: Response): Prom
     const evidenceRecords = evidenceRefIds.length > 0
       ? await prisma.evidence.findMany({
           where: { fileHash: { in: evidenceRefIds } },
-          select: { fileHash: true, summary: true, category: true, evidenceTier: true },
+          select: {
+            id: true,
+            fileHash: true,
+            summary: true,
+            category: true,
+            evidenceTier: true,
+            evidenceType: true,
+            urlVersionDiff: { select: { trackedUrlId: true } },
+          },
         })
       : [];
 
     const evidenceMap = Object.fromEntries(
-      evidenceRecords.map((e) => [e.fileHash, { summary: e.summary, category: e.category, evidenceTier: e.evidenceTier }]),
+      evidenceRecords.map((e) => [
+        e.fileHash,
+        {
+          evidenceId: e.id,
+          summary: e.summary,
+          category: e.category,
+          evidenceTier: e.evidenceTier,
+          evidenceType: e.evidenceType,
+          trackedUrlId: e.urlVersionDiff?.trackedUrlId ?? null,
+        },
+      ]),
     );
 
     res.status(200).json({
@@ -677,6 +715,71 @@ router.delete('/:id/gaps/:gapIndex/resolve', async (req: Request, res: Response)
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     res.status(500).json({ error: 'Failed to unresolve gap', message });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/thesis/suggest
+//
+// REST wrapper around the suggest_thesis MCP tool — searches the evidence vault
+// semantically and proposes the strongest defensible thesis the corpus supports.
+// Returns a readyForDraft payload that can be passed directly to POST /draft.
+// ---------------------------------------------------------------------------
+
+const SuggestThesisSchema = z.object({
+  topic: z.string().min(1),
+  maxEvidence: z.number().int().min(1).max(20).optional(),
+});
+
+router.post('/suggest', async (req: Request, res: Response): Promise<void> => {
+  const parsed = SuggestThesisSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Invalid request', details: parsed.error.flatten() });
+    return;
+  }
+
+  try {
+    const json = await suggestThesisHandler(parsed.data);
+    const result = JSON.parse(json) as Record<string, unknown>;
+    if (result['error']) {
+      res.status(400).json(result);
+      return;
+    }
+    res.status(200).json(result);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ error: 'Failed to generate thesis suggestion', message });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/thesis/draft
+//
+// REST wrapper around the create_thesis_draft MCP tool — accepts a structured
+// thesis payload and saves it as PENDING_AI. Returns { thesisId, headVersionId }.
+// ---------------------------------------------------------------------------
+
+const DraftThesisSchema = z.object({
+  title: z.string().min(1),
+  body: z.string().min(1),
+  evidenceHashes: z.array(z.string()).optional(),
+  keyFigures: z.array(z.string()).optional(),
+});
+
+router.post('/draft', async (req: Request, res: Response): Promise<void> => {
+  const parsed = DraftThesisSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Invalid request', details: parsed.error.flatten() });
+    return;
+  }
+
+  try {
+    const json = await createThesisDraftHandler(parsed.data);
+    const result = JSON.parse(json) as Record<string, unknown>;
+    res.status(201).json(result);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ error: 'Failed to create thesis draft', message });
   }
 });
 

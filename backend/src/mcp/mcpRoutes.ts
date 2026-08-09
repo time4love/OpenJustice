@@ -20,6 +20,7 @@ const WRITE_TOOLS = new Set([
   'add_session_note',
   'close_research_session',
   'enrich_evidence_with_history',
+  'promote_evidence',
 ]);
 
 // ---------------------------------------------------------------------------

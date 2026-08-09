@@ -16,6 +16,7 @@ import { closeResearchSessionSchema, closeResearchSessionHandler } from './tools
 import { getSessionSummarySchema, getSessionSummaryHandler } from './tools/getSessionSummary';
 import { suggestThesisSchema, suggestThesisHandler } from './tools/suggestThesis';
 import { enrichEvidenceWithHistorySchema, enrichEvidenceWithHistoryHandler } from './tools/enrichEvidenceWithHistory';
+import { promoteEvidenceSchema, promoteEvidenceHandler } from './tools/promoteEvidence';
 
 // ---------------------------------------------------------------------------
 // Factory — creates a fresh McpServer per request.
@@ -291,6 +292,25 @@ export function createMcpServer(): McpServer {
     enrichEvidenceWithHistorySchema,
     async (input) => ({
       content: [{ type: 'text' as const, text: await enrichEvidenceWithHistoryHandler(input) }],
+    }),
+  );
+
+  // -------------------------------------------------------------------------
+  // Tool: promote_evidence  [WRITE — SYNCHRONOUS]
+  // Promotes a PENDING_REVIEW evidence record to CONFIRMED:
+  //   1. Registers the fileHash on-chain (Web3Service)
+  //   2. Upserts the summary embedding to the vector store
+  //   3. Sets status = CONFIRMED in Prisma
+  // Idempotent — safe to call on already-CONFIRMED records.
+  // -------------------------------------------------------------------------
+  server.tool(
+    'promote_evidence',
+    'Promote a PENDING_REVIEW evidence record to CONFIRMED. Registers the file hash on the ' +
+      'blockchain, upserts the embedding into the vector store, and marks the record as CONFIRMED ' +
+      'in the database. Idempotent — safe to call if already confirmed. Requires evidenceId (UUID).',
+    promoteEvidenceSchema,
+    async (input) => ({
+      content: [{ type: 'text' as const, text: await promoteEvidenceHandler(input) }],
     }),
   );
 

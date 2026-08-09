@@ -157,6 +157,36 @@
     "promoting": "רושם...",
     "promoteSuccess": "✓ נרשם בהצלחה"
   },
+  "evidence": {
+    "backLink": "→ כספת הראיות",
+    "notFound": "ראיה לא נמצאה.",
+    "errorTitle": "שגיאה בטעינת הראיה.",
+    "fileHash": "גיבוב קובץ",
+    "onChain": "רשום על השרשרת",
+    "pendingReview": "ממתין לבדיקה",
+    "pendingReviewNote": "טרם נרשם על הבלוקצ'יין.",
+    "category": "קטגוריה",
+    "tier": "דרג",
+    "tierReasoning": "נימוק הדרג",
+    "date": "תאריך הראיה",
+    "target": "גורם מטרה",
+    "role": "תפקיד",
+    "roleIncriminating": "מפלילה",
+    "roleContextAnchor": "עוגן עובדתי",
+    "perspective": "פרספקטיבה",
+    "keyFigures": "דמויות מפתח",
+    "medicalContext": "הקשר רפואי",
+    "statisticalClaims": "טענות סטטיסטיות",
+    "regulatoryMentions": "אזכורים רגולטוריים",
+    "euaOmitted": "אישור חירום לא נחשף",
+    "euaMentioned": "מוזכר אישור חירום",
+    "viewSource": "מקור הראיה",
+    "viewDiffHistory": "היסטוריית שינויים פורנזית",
+    "forensicDiff": "דיף פורנזי",
+    "citingTheses": "תזות המצטטות ראיה זו",
+    "noCitingTheses": "ראיה זו טרם צוטטה בתזה כלשהי.",
+    "summary": "תקציר"
+  },
   "figures": {
     "tagline": "גרף ישויות · דמויות מפתח ורשת הקשרים",
     "backLink": "→ ציר זמן",
@@ -281,7 +311,8 @@
     "historyBatchSnapshots": "{processed}/{total} תמונות",
     "historyJobsLoading": "טוען אצוות…",
     "historyJobsError": "טעינת האצוות נכשלה.",
-    "downloadPdf": "הורד דוח PDF"
+    "downloadPdf": "הורד דוח PDF",
+    "inVaultBadge": "נמצא בכספת הראיות"
   },
   "theses": {
     "pageTitle": "בונה תזות משפטיות",
@@ -334,7 +365,20 @@
     "cancelBtn": "בטל",
     "historyHeading": "היסטוריית גרסאות",
     "historyEmpty": "לא נמצאו גרסאות.",
-    "currentVersion": "נוכחית"
+    "currentVersion": "נוכחית",
+    "generateBtn": "הפק תזה מהכספת",
+    "generateModalTitle": "הפקת תזה מכספת הראיות",
+    "generateTopicLabel": "נושא המחקר",
+    "generateTopicPlaceholder": "לדוגמה: הסתרת נתוני תופעות לוואי בזמן חיסון",
+    "generateSubmitBtn": "חפש ראיות והצע תזה",
+    "generateSearchingBtn": "מחפש בכספת…",
+    "generateConfidenceLabel": "רמת ביטחון",
+    "generateSupportingLabel": "ראיות תומכות",
+    "generateMissingLabel": "ראיות חסרות",
+    "generateCreateDraftBtn": "צור טיוטה",
+    "generateCreatingBtn": "יוצר…",
+    "generateError": "לא ניתן להפיק תזה. נסה נושא ספציפי יותר.",
+    "generateCancelBtn": "בטל"
   },
   "chat": {
     "greeting": "שלום, אני נציג האמון של פרויקט מבצר הזכוכית. כיצד אוכל לעזור לך להבין את אבטחת המערכת שלנו?",

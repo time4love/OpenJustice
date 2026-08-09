@@ -3,7 +3,14 @@
 import React from 'react';
 import { Link } from '@/i18n/navigation';
 
-export type EvidenceInfo = { summary?: string; category?: string; evidenceTier?: string };
+export type EvidenceInfo = {
+  evidenceId?: string;     // UUID — used for /evidence/:id links
+  summary?: string;
+  category?: string;
+  evidenceTier?: string;
+  evidenceType?: string;   // 'DOCUMENT' | 'FORENSIC_DIFF'
+  trackedUrlId?: string | null; // populated for FORENSIC_DIFF evidence
+};
 type TipTapNodeObj = Record<string, unknown>;
 
 interface Props {
@@ -31,12 +38,23 @@ function renderInline(
     const storedLabel = rawLabel.startsWith('#') ? rawLabel.slice(1) : rawLabel;
     const info = evidenceMap[id];
     const displayLabel = (info?.summary?.slice(0, 35) ?? storedLabel) || id.slice(0, 12);
+    const isForensic = info?.evidenceType === 'FORENSIC_DIFF';
+    const href = info?.evidenceId
+      ? `/evidence/${info.evidenceId}`
+      : isForensic && info?.trackedUrlId
+        ? `/forensics/${info.trackedUrlId}`
+        : `/timeline?hash=${encodeURIComponent(id)}`;
     return (
       <Link
         key={index}
-        href={`/timeline?hash=${encodeURIComponent(id)}`}
-        className="inline-block bg-amber-100 hover:bg-amber-200 text-amber-700 text-xs font-medium px-2 py-0.5 rounded-full mx-0.5 transition-colors"
+        href={href}
+        className={`inline-flex items-center gap-0.5 text-xs font-medium px-2 py-0.5 rounded-full mx-0.5 transition-colors ${
+          isForensic
+            ? 'bg-red-100 hover:bg-red-200 text-red-700'
+            : 'bg-amber-100 hover:bg-amber-200 text-amber-700'
+        }`}
       >
+        {isForensic && <span className="opacity-70">&#x1F50D;</span>}
         #{displayLabel}
       </Link>
     );

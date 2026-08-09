@@ -362,6 +362,12 @@ function TimelineNode({
 
           {/* Footer row */}
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 pt-1 border-t border-slate-100/80">
+            <Link
+              href={`/evidence/${metadata.evidenceId}`}
+              className="flex items-center gap-1 text-xs font-semibold text-slate-700 hover:text-slate-900 underline underline-offset-2 transition-colors"
+            >
+              {metadata.evidenceId.slice(0, 8)}…
+            </Link>
             <span className="text-xs text-slate-500">{metadata.targetEntity}</span>
             <span className="font-mono text-xs text-emerald-600" title={metadata.fileHash}>
               {formatHash(metadata.fileHash)}
