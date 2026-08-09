@@ -521,7 +521,10 @@ export default function TrackedUrlPage() {
       }
       // Functional update — sets meta only on the first page; safe against stale closures
       setMeta((prev) => prev ?? { url: json.url, title: json.title, createdAt: json.createdAt, totalCount: json.totalCount });
-      setDiffs((prev) => [...prev, ...json.diffs]);
+      setDiffs((prev) => {
+        const seen = new Set(prev.map((d) => d.id));
+        return [...prev, ...json.diffs.filter((d) => !seen.has(d.id))];
+      });
       setNextCursor(json.nextCursor);
       setHasMore(json.hasMore);
     } catch {

@@ -1,10 +1,15 @@
 import { Router, Request, Response } from 'express';
+import multer from 'multer';
 import { z } from 'zod';
 import type { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { parseMentions } from '../utils/parseMentions';
 import { DevilsAdvocateOutputSchema } from '../services/DevilsAdvocateAgent';
+import { FoiaLetterAgent } from '../services/FoiaLetterAgent';
+import { IntakeAgent } from '../services/IntakeAgent';
 import { RevisionAgent } from '../services/RevisionAgent';
+import { StorageService } from '../services/StorageService';
+import { Web3Service } from '../services/Web3Service';
 import { buildTipTapDoc } from '../utils/tipTapUtils';
 import { sha256, extractText, extractPreview, triggerAIAnalysis } from '../services/thesisAnalysis';
 import { logSessionEvent } from '../services/sessionService';
@@ -18,11 +23,47 @@ const router = Router();
 // ---------------------------------------------------------------------------
 
 let _revisionAgent: RevisionAgent | null = null;
+let _foiaAgent: FoiaLetterAgent | null = null;
+let _intakeAgent: IntakeAgent | null = null;
+let _storageService: StorageService | null = null;
 
 function getRevisionAgent(): RevisionAgent {
   if (!_revisionAgent) _revisionAgent = new RevisionAgent();
   return _revisionAgent;
 }
+
+function getFoiaAgent(): FoiaLetterAgent {
+  if (!_foiaAgent) _foiaAgent = new FoiaLetterAgent();
+  return _foiaAgent;
+}
+
+function getIntakeAgentForTips(): IntakeAgent {
+  if (!_intakeAgent) _intakeAgent = new IntakeAgent();
+  return _intakeAgent;
+}
+
+function getStorageServiceForTips(): StorageService {
+  if (!_storageService) _storageService = new StorageService();
+  return _storageService;
+}
+
+// ---------------------------------------------------------------------------
+// Multer — whistleblower file uploads (in-memory, JPEG/PNG/PDF, ≤10 files, ≤10 MB each)
+// ---------------------------------------------------------------------------
+
+const WHISTLEBLOWER_MIME_TYPES = ['image/jpeg', 'image/png', 'application/pdf'];
+
+const whistleblowerUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024, files: 10 },
+  fileFilter: (_req, file, cb) => {
+    if (WHISTLEBLOWER_MIME_TYPES.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(null, false); // silently reject unsupported types
+    }
+  },
+});
 
 // ---------------------------------------------------------------------------
 // Async AI trigger — fire-and-forget from POST routes
@@ -140,6 +181,7 @@ router.get('/', async (req: Request, res: Response): Promise<void> => {
             status: true,
             contentHash: true,
             userContent: true,
+            aiAnalysis: true,
             createdAt: true,
             _count: { select: { mentions: true } },
           },
@@ -148,20 +190,29 @@ router.get('/', async (req: Request, res: Response): Promise<void> => {
     });
 
     res.status(200).json({
-      theses: theses.map((t) => ({
-        id: t.id,
-        createdAt: t.createdAt,
-        headVersion: t.headVersion
-          ? {
-              id: t.headVersion.id,
-              status: t.headVersion.status,
-              contentHash: t.headVersion.contentHash,
-              preview: extractPreview(t.headVersion.userContent),
-              mentionCount: t.headVersion._count.mentions,
-              createdAt: t.headVersion.createdAt,
-            }
-          : null,
-      })),
+      theses: theses.map((t) => {
+        const analysis = t.headVersion?.aiAnalysis as {
+          evidenceGaps?: unknown[];
+          overallStrengthAssessment?: string;
+        } | null;
+        return {
+          id: t.id,
+          title: t.title ?? null,
+          createdAt: t.createdAt,
+          openGapCount: analysis?.evidenceGaps?.length ?? 0,
+          headVersion: t.headVersion
+            ? {
+                id: t.headVersion.id,
+                status: t.headVersion.status,
+                contentHash: t.headVersion.contentHash,
+                preview: extractPreview(t.headVersion.userContent),
+                mentionCount: t.headVersion._count.mentions,
+                strength: analysis?.overallStrengthAssessment ?? null,
+                createdAt: t.headVersion.createdAt,
+              }
+            : null,
+        };
+      }),
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -782,5 +833,231 @@ router.post('/draft', async (req: Request, res: Response): Promise<void> => {
     res.status(500).json({ error: 'Failed to create thesis draft', message });
   }
 });
+
+// ---------------------------------------------------------------------------
+// POST /api/thesis/:id/foia-request
+//
+// Generates an Israeli Freedom of Information request letter for the gap at
+// gapIndex in the thesis's head version AI analysis. The LLM infers the
+// target ministry and drafts a formal Hebrew letter with numbered requests.
+// Requires the head version to have a completed Devil's Advocate analysis.
+// ---------------------------------------------------------------------------
+
+const FoiaRequestSchema = z.object({
+  gapIndex: z.number().int().min(0),
+});
+
+router.post('/:id/foia-request', async (req: Request, res: Response): Promise<void> => {
+  const id = String(req.params['id'] ?? '');
+  if (!id) {
+    res.status(400).json({ error: 'Missing thesis id' });
+    return;
+  }
+
+  const parsed = FoiaRequestSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Invalid request', details: parsed.error.flatten() });
+    return;
+  }
+
+  const { gapIndex } = parsed.data;
+
+  try {
+    const thesis = await prisma.thesis.findUnique({
+      where: { id },
+      include: { headVersion: true },
+    });
+
+    if (!thesis?.headVersion) {
+      res.status(404).json({ error: 'Thesis not found' });
+      return;
+    }
+
+    const hv = thesis.headVersion;
+
+    if (hv.status !== 'COMPLETE' || hv.aiAnalysis === null) {
+      res.status(400).json({
+        error:
+          'Thesis must have a completed AI analysis before generating a FOIA request. ' +
+          'Run POST /:id/analyze first.',
+      });
+      return;
+    }
+
+    const critique = DevilsAdvocateOutputSchema.safeParse(hv.aiAnalysis);
+    if (!critique.success) {
+      res.status(500).json({ error: 'AI analysis could not be parsed — schema mismatch.' });
+      return;
+    }
+
+    const { evidenceGaps } = critique.data;
+
+    if (gapIndex < 0 || gapIndex >= evidenceGaps.length) {
+      res.status(400).json({
+        error: `gapIndex ${gapIndex} is out of range — thesis has ${evidenceGaps.length} gap(s).`,
+      });
+      return;
+    }
+
+    const gap = evidenceGaps[gapIndex];
+    if (!gap) {
+      res.status(400).json({ error: `Gap at index ${gapIndex} not found.` });
+      return;
+    }
+
+    const thesisTitle =
+      thesis.title?.trim() ||
+      extractText(hv.userContent).split('\n').find((l) => l.trim().length > 0) ||
+      `Thesis ${id.slice(0, 8)}`;
+
+    const letter = await getFoiaAgent().generate({
+      thesisTitle,
+      gapDescription: gap.description,
+      suggestedSearch: gap.suggestedSearch,
+    });
+
+    res.status(200).json({
+      letterText: letter.letterText,
+      targetMinistry: letter.targetMinistry,
+      legalBasis: letter.legalBasis,
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ error: 'Failed to generate FOIA request', message });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/thesis/:id/gaps/:gapIndex/whistleblower
+//
+// Anonymous document submission scoped to a specific evidence gap.
+// Accepts 1–10 files (JPEG, PNG, PDF) as multipart/form-data field "files".
+// Each file is run through IntakeAgent vision analysis, SHA-256 hashed,
+// uploaded to Supabase Storage (non-fatal), and saved as PENDING_REVIEW.
+// Nothing is registered on-chain or indexed until a human reviewer promotes
+// the records. No identity is stored anywhere.
+// ---------------------------------------------------------------------------
+
+router.post(
+  '/:id/gaps/:gapIndex/whistleblower',
+  whistleblowerUpload.array('files', 10),
+  async (req: Request, res: Response): Promise<void> => {
+    const thesisId = String(req.params['id'] ?? '');
+    const gapIndex = parseInt(String(req.params['gapIndex'] ?? ''), 10);
+    if (!thesisId || isNaN(gapIndex) || gapIndex < 0) {
+      res.status(400).json({ error: 'Missing or invalid thesis id / gapIndex' });
+      return;
+    }
+
+    const files = req.files as Express.Multer.File[] | undefined;
+    if (!files || files.length === 0) {
+      res.status(400).json({ error: 'At least one file (JPEG, PNG, or PDF) is required.' });
+      return;
+    }
+
+    try {
+      const thesis = await prisma.thesis.findUnique({ where: { id: thesisId } });
+      if (!thesis) {
+        res.status(404).json({ error: 'Thesis not found' });
+        return;
+      }
+
+      const provenanceBase =
+        `https://glass-fortress.internal/whistleblower/thesis/${thesisId}/gap/${gapIndex}`;
+
+      // Process all files — each through IntakeAgent vision → hash → storage → DB
+      const submissions = await Promise.all(
+        files.map(async (file, fileIndex) => {
+          // 1. AI analysis (vision)
+          const analysis = await getIntakeAgentForTips().analyzeEvidence(
+            file.buffer,
+            file.mimetype,
+          );
+
+          // 2. Hash the raw buffer for on-chain provenance
+          const fileHash = Web3Service.hashFile(file.buffer);
+
+          // 3. Upload to Supabase Storage — non-fatal so one bad upload doesn't
+          //    block the whole submission batch
+          let fileUrl: string | null = null;
+          try {
+            fileUrl = await getStorageServiceForTips().uploadEvidenceFile(
+              file.buffer,
+              file.originalname,
+              file.mimetype,
+            );
+          } catch (err) {
+            console.warn(
+              '[whistleblower] storage upload failed (non-fatal):',
+              err instanceof Error ? err.message : err,
+            );
+          }
+
+          // 4. Upsert KeyFigure records
+          if (analysis.keyFigures.length > 0) {
+            await prisma.keyFigure.createMany({
+              data: analysis.keyFigures.map((name) => ({ name })),
+              skipDuplicates: true,
+            });
+          }
+
+          // 5. Duplicate guard
+          const existing = await prisma.evidence.findUnique({ where: { fileHash } });
+          if (existing) {
+            return {
+              evidenceId: existing.id,
+              fileHash,
+              filename: file.originalname,
+              summary: existing.summary,
+              duplicate: true,
+            };
+          }
+
+          // 6. Persist as PENDING_REVIEW — no on-chain, no vector index yet
+          const record = await prisma.evidence.create({
+            data: {
+              fileHash,
+              status: 'PENDING_REVIEW',
+              evidenceRole: analysis.evidenceRole,
+              category: analysis.category,
+              targetEntity: analysis.targetEntity,
+              evidenceTier: analysis.evidenceTier,
+              evidencePerspective: analysis.evidencePerspective ?? null,
+              tierReasoning: analysis.tierReasoning ?? null,
+              summary: analysis.summary,
+              evidenceDate: analysis.evidenceDate,
+              figures: { connect: analysis.keyFigures.map((name) => ({ name })) },
+              medicalConditions: JSON.stringify(analysis.medicalConditions),
+              statisticalClaims: JSON.stringify(analysis.statisticalClaims),
+              regulatoryMentions: JSON.stringify(analysis.regulatoryMentions),
+              euaOmissionStatus: analysis.euaOmissionStatus,
+              sourceUrl: `${provenanceBase}/file/${fileIndex}`,
+              fileUrl,
+            },
+          });
+
+          return {
+            evidenceId: record.id,
+            fileHash: record.fileHash,
+            filename: file.originalname,
+            summary: record.summary,
+            duplicate: false,
+          };
+        }),
+      );
+
+      res.status(201).json({
+        submissions,
+        count: submissions.length,
+        message:
+          `${submissions.length} document(s) received as PENDING_REVIEW. ` +
+          'They will not appear publicly or be registered on-chain until a human reviewer promotes them.',
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: 'Failed to process whistleblower submission', message });
+    }
+  },
+);
 
 export { router as thesisRouter };

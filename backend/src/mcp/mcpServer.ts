@@ -17,6 +17,7 @@ import { getSessionSummarySchema, getSessionSummaryHandler } from './tools/getSe
 import { suggestThesisSchema, suggestThesisHandler } from './tools/suggestThesis';
 import { enrichEvidenceWithHistorySchema, enrichEvidenceWithHistoryHandler } from './tools/enrichEvidenceWithHistory';
 import { promoteEvidenceSchema, promoteEvidenceHandler } from './tools/promoteEvidence';
+import { generateFoiaRequestSchema, generateFoiaRequestHandler } from './tools/generateFoiaRequest';
 
 // ---------------------------------------------------------------------------
 // Factory — creates a fresh McpServer per request.
@@ -311,6 +312,24 @@ export function createMcpServer(): McpServer {
     promoteEvidenceSchema,
     async (input) => ({
       content: [{ type: 'text' as const, text: await promoteEvidenceHandler(input) }],
+    }),
+  );
+
+  // -------------------------------------------------------------------------
+  // Tool: generate_foia_request  [WRITE — synchronous LLM call]
+  // Given a thesis ID and gap index, generates a formal Hebrew FOIA request
+  // letter targeting the Israeli ministry most likely to hold the missing
+  // evidence. Requires the thesis to have a completed Devil's Advocate analysis.
+  // -------------------------------------------------------------------------
+  server.tool(
+    'generate_foia_request',
+    'Generate a formal Hebrew Freedom of Information (חוק חופש המידע) request letter for a ' +
+      'specific evidence gap in a thesis. The LLM identifies the target Israeli ministry and ' +
+      'drafts numbered, specific requests derived from the gap description. ' +
+      'Requires a completed Devil\'s Advocate analysis on the thesis head version.',
+    generateFoiaRequestSchema,
+    async (input) => ({
+      content: [{ type: 'text' as const, text: await generateFoiaRequestHandler(input) }],
     }),
   );
 

@@ -3,22 +3,33 @@
 import { useLocale, useTranslations } from 'next-intl';
 import { Link, useRouter, usePathname } from '@/i18n/navigation';
 
-export type NavPage = 'vault' | 'timeline' | 'forensics' | 'figures' | 'theses' | 'about';
+export type NavPage =
+  | 'home'
+  | 'vault'
+  | 'timeline'
+  | 'forensics'
+  | 'figures'
+  | 'theses'
+  | 'about'
+  | 'researchers'
+  | 'call';
 
 type NavLabel =
+  | 'nav.home'
   | 'nav.evidenceVault'
   | 'nav.timeline'
   | 'nav.forensics'
-  | 'nav.figures'
   | 'nav.theses'
+  | 'nav.calls'
   | 'nav.about';
 
 const NAV_ITEMS: { key: NavPage; href: string; label: NavLabel }[] = [
-  { key: 'vault', href: '/', label: 'nav.evidenceVault' },
+  { key: 'home', href: '/', label: 'nav.home' },
+  { key: 'theses', href: '/theses', label: 'nav.theses' },
+  { key: 'call', href: '/call', label: 'nav.calls' },
+  { key: 'vault', href: '/vault', label: 'nav.evidenceVault' },
   { key: 'timeline', href: '/timeline', label: 'nav.timeline' },
   { key: 'forensics', href: '/forensics', label: 'nav.forensics' },
-  { key: 'figures', href: '/figures', label: 'nav.figures' },
-  { key: 'theses', href: '/theses', label: 'nav.theses' },
   { key: 'about', href: '/about', label: 'nav.about' },
 ];
 
@@ -47,7 +58,7 @@ export function TopNav({ current }: { current: NavPage }) {
             >
               {tc(label as Parameters<typeof tc>[0])}
             </Link>
-          )
+          ),
         )}
       </nav>
       <div className="flex items-center gap-1 text-xs font-mono">

@@ -63,6 +63,8 @@ export async function getThesisContextHandler(input: { thesisId: string }): Prom
             evidenceDate: true,
             targetEntity: true,
             sourceUrl: true,
+            evidenceType: true,
+            urlVersionDiff: { select: { trackedUrlId: true } },
           },
         })
       : [];
@@ -130,7 +132,18 @@ export async function getThesisContextHandler(input: { thesisId: string }): Prom
       resolved: resolvedGaps,
     },
     keyFiguresMentioned: figureNames,
-    evidenceCited: evidenceRecords,
+    evidenceCited: evidenceRecords.map((e) => ({
+      fileHash: e.fileHash,
+      summary: e.summary,
+      evidenceTier: e.evidenceTier,
+      evidenceDate: e.evidenceDate,
+      targetEntity: e.targetEntity,
+      sourceUrl: e.sourceUrl,
+      evidenceType: e.evidenceType,
+      forensicTimelineUrl: e.urlVersionDiff?.trackedUrlId
+        ? `/forensics/${e.urlVersionDiff.trackedUrlId}`
+        : null,
+    })),
     versionCount: thesis.versions.length,
     versions: thesis.versions.map((v) => ({
       id: v.id,

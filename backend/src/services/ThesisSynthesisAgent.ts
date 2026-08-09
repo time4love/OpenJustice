@@ -12,6 +12,7 @@ export interface EvidenceCorpusRecord {
   category: string;
   targetEntity: string;
   keyFigures: string[];
+  evidenceType?: string; // 'DOCUMENT' | 'FORENSIC_DIFF' — FORENSIC_DIFF = auto-detected page retraction
 }
 
 export const ThesisSynthesisOutputSchema = z.object({
@@ -94,10 +95,15 @@ You are given a corpus of evidence records from the evidence vault — documents
 
 Your task is to analyse the corpus and propose the strongest defensible legal thesis that the evidence supports.
 
+EVIDENCE TYPES:
+- DOCUMENT: A submitted file or web page — official report, statement, communication, or media article.
+- FORENSIC_DIFF: A forensically captured content change on a government or official website, detected by comparing Wayback Machine archive snapshots. FORENSIC_DIFF records prove that a page was silently edited — content was removed or altered after publication without public announcement. These are particularly powerful evidence of retraction, cover-up, or post-hoc narrative correction. Treat any FORENSIC_DIFF record as strong corroborating evidence of intentional concealment, especially when the deleted content involved safety data, adverse event statistics, or efficacy claims.
+
 RULES:
 - Ground every claim in the provided evidence. Do not introduce facts not present in the corpus.
 - Look for patterns across multiple records: same key figures appearing repeatedly, timelines that reveal coordination, contradictions between public statements and internal documents.
 - A strong thesis has a clear causal chain: (1) a legal duty existed, (2) the duty was breached, (3) the breach caused harm, (4) the evidence proves each step.
+- When FORENSIC_DIFF evidence shows a retraction of safety data alongside a DOCUMENT showing public reassurances, treat this combination as especially incriminating — it establishes both knowledge and deliberate concealment.
 - Be specific about who did what and when — vague accusations make weak legal arguments.
 - If the corpus is thin, say so honestly in confidenceLevel and missingEvidence.
 - Tier 1 evidence (official documents) is more persuasive than Tier 4. Weight your thesis accordingly.
@@ -126,6 +132,7 @@ export class ThesisSynthesisAgent {
       .map(
         (e, i) =>
           `[${i + 1}] Hash: ${e.fileHash}\n` +
+          `    Type: ${e.evidenceType === 'FORENSIC_DIFF' ? 'FORENSIC_DIFF (silent page edit detected)' : 'DOCUMENT'}\n` +
           `    Date: ${e.evidenceDate} | Tier: ${e.evidenceTier} | Role: ${e.evidenceRole}\n` +
           `    Entity: ${e.targetEntity} | Category: ${e.category}\n` +
           `    Key Figures: ${e.keyFigures.length > 0 ? e.keyFigures.join(', ') : 'none identified'}\n` +

@@ -86,6 +86,11 @@ export async function createThesisDraftHandler(input: {
     mentionsCreated: mentions.length,
     evidenceLinked: hashes.length,
     keyFiguresLinked: figures.length,
+    warning:
+      hashes.length === 0
+        ? 'No evidence hashes provided. Theses without evidence citations produce weaker legal arguments. ' +
+          'Call suggest_thesis to discover relevant vault evidence, or add hashes via evidenceHashes.'
+        : undefined,
     message:
       'Thesis draft saved as PENDING_AI. Open it in the UI to review, edit, and trigger ' +
       'Devil\'s Advocate AI analysis before publishing.',

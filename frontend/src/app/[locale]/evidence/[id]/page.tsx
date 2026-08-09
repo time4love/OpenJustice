@@ -106,7 +106,7 @@ export default function EvidencePage() {
       <TopNav />
       <main className="max-w-3xl mx-auto px-4 py-8 space-y-5">
         {/* Back */}
-        <Link href="/" className="text-xs text-slate-500 hover:text-slate-700 transition-colors">
+        <Link href="/vault" className="text-xs text-slate-500 hover:text-slate-700 transition-colors">
           {t('backLink')}
         </Link>
 

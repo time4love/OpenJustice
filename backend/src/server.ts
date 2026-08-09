@@ -23,6 +23,7 @@ import { figuresRouter } from './routes/figuresRoutes';
 import { mentionRouter } from './routes/mentionRoutes';
 import { thesisRouter } from './routes/thesisRoutes';
 import { mcpRouter } from './mcp/mcpRoutes';
+import { prisma } from './lib/prisma';
 
 const app = express();
 const PORT = process.env['PORT'] ?? 3000;
@@ -58,6 +59,24 @@ app.use(express.json());
 
 app.get('/health', (_req: Request, res: Response) => {
   res.json({ status: 'Glass Fortress Backend is Alive' });
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/stats — platform-wide aggregate counts for the home page mission board
+// ---------------------------------------------------------------------------
+
+app.get('/api/stats', async (_req: Request, res: Response) => {
+  try {
+    const [evidenceCount, thesisCount, forensicDiffCount] = await Promise.all([
+      prisma.evidence.count({ where: { status: 'CONFIRMED' } }),
+      prisma.thesis.count(),
+      prisma.urlVersionDiff.count({ where: { isLegallySignificant: true } }),
+    ]);
+    res.json({ evidenceCount, thesisCount, forensicDiffCount });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ error: 'Failed to load stats', message });
+  }
 });
 
 app.use('/api/evidence', evidenceRouter);

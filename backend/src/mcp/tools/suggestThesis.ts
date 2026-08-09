@@ -106,6 +106,7 @@ export async function suggestThesisHandler(input: {
     evidenceDate: e.evidenceDate,
     category: e.category,
     targetEntity: e.targetEntity,
+    evidenceType: e.evidenceType,
     keyFigures: e.figures.map((f) => f.name),
   }));
 

@@ -94,7 +94,7 @@ export default function AboutPage() {
               {t('hero.ctaSubmit')}
             </Link>
             <Link
-              href="/"
+              href="/vault"
               className="px-6 py-3 rounded-lg text-sm font-semibold bg-white text-slate-700 border border-slate-300 hover:bg-slate-50 shadow-sm transition-colors"
             >
               {t('hero.ctaVault')}
@@ -207,7 +207,7 @@ export default function AboutPage() {
             Glass Fortress © 2024 · Open Source · MIT License
           </span>
           <div className="flex items-center gap-4 text-xs text-slate-400">
-            <Link href="/" className="hover:text-slate-600 transition-colors">
+            <Link href="/vault" className="hover:text-slate-600 transition-colors">
               {tc('nav.evidenceVault')}
             </Link>
             <Link href="/timeline" className="hover:text-slate-600 transition-colors">

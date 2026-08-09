@@ -44,6 +44,7 @@ interface SnapshotDiff {
   rawDeletedChunks: string[];
   rawAddedChunks: string[];
   legalSignificance: string;
+  promotedEvidence: { id: string; fileHash: string } | null;
 }
 
 interface TrackedUrlResult {
@@ -254,6 +255,7 @@ function DiffNode({
     additionsLabel: string;
     forensicLabel: string;
     viewSnapshot: string;
+    inVaultBadge: string;
   };
 }) {
   return (
@@ -272,6 +274,12 @@ function DiffNode({
           <span className="shrink-0 text-xs font-bold px-2 py-0.5 rounded-full border bg-red-100 text-red-700 border-red-300 uppercase tracking-wide">
             Silent Edit Detected
           </span>
+          {diff.promotedEvidence && (
+            <span className="shrink-0 inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 border border-emerald-200">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+              {labels.inVaultBadge}
+            </span>
+          )}
           <span className="ms-auto text-xs text-slate-300 font-mono shrink-0">#{index + 1}</span>
         </div>
 
@@ -784,6 +792,7 @@ export default function ForensicsPage() {
     additionsLabel: t('additionsLabel'),
     forensicLabel: t('forensicLabel'),
     viewSnapshot: t('viewSnapshot'),
+    inVaultBadge: t('inVaultBadge'),
   };
 
   return (

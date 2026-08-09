@@ -6,7 +6,31 @@
 
 > The world's first open-source, AI-driven, decentralized legal evidence gathering platform.
 
-Our goal is to crowdsource and structure a class-action lawsuit against state authorities regarding Covid-19 policy failures — withholding side-effect data, regulatory misleading, and coercion — using AI to validate evidence and Web3 to create an immutable, tamper-proof audit trail.
+---
+
+## Mission
+
+We are building an evidence-based legal case against the Israeli government and Ministry of Health for concealing critical safety information and conducting a mass medical intervention without proper informed consent during the Covid-19 crisis.
+
+## Legal Strategy
+
+A single monolithic argument is easy to attack and easy to bury. Our strategy is different: **many focused, independent theses — each attacking from a different angle.** Each thesis targets a specific actor, a specific act of concealment, a specific regulatory failure. Together they form an interlocking case that cannot be dismissed wholesale.
+
+Each thesis is:
+- Grounded exclusively in documented evidence (no speculation)
+- Stress-tested by an AI devil's advocate before publication
+- Linked to on-chain immutable evidence records
+- A standalone "call for evidence" — publicly shareable to recruit whistleblowers
+
+## The Three Audiences
+
+**Researchers** — investigators, lawyers, and technicians who build the case. They work primarily via AI + MCP tools; the UI reflects their work to the world. Write access is **invite-only** — contact us to join.
+
+**Whistleblowers** — insiders who hold the documents that can break the case open. Internal protocols, meeting recordings, suppressed data. Each thesis publishes a specific call for exactly what it needs. Submission is anonymous, no account required.
+
+**Public & Media** — following the case, verifying its integrity, amplifying the call. All evidence is on-chain and publicly auditable.
+
+---
 
 ---
 
