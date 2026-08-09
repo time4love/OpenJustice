@@ -14,6 +14,8 @@ jest.mock('../src/lib/prisma', () => ({
     trackedUrl: { upsert: jest.fn() },
     thesis: { create: jest.fn(), update: jest.fn(), findUnique: jest.fn() },
     thesisVersion: { create: jest.fn() },
+    researchSession: { findFirst: jest.fn().mockResolvedValue(null) },
+    researchSessionEvent: { create: jest.fn() },
     $transaction: jest.fn(),
   },
 }));

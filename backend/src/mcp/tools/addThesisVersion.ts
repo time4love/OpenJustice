@@ -3,7 +3,8 @@ import type { Prisma } from '@prisma/client';
 import { prisma } from '../../lib/prisma';
 import { parseMentions } from '../../utils/parseMentions';
 import { buildTipTapDoc, type TipTapNode } from '../../utils/tipTapUtils';
-import { sha256 } from '../../services/thesisAnalysis';
+import { sha256, extractPreview } from '../../services/thesisAnalysis';
+import { logSessionEvent } from '../../services/sessionService';
 
 export const addThesisVersionSchema = {
   thesisId: z.string().min(1).describe('ID of the existing thesis to append a version to'),
@@ -67,6 +68,13 @@ export async function addThesisVersionHandler(input: {
 
     return { version, updatedThesis };
   });
+
+  void logSessionEvent(
+    input.thesisId,
+    'VERSION_CREATED',
+    `New version created: ${extractPreview(userContent)}`,
+    version.id,
+  );
 
   return JSON.stringify({
     thesisId: updatedThesis.id,
