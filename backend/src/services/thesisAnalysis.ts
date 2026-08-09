@@ -10,6 +10,7 @@ import { prisma } from '../lib/prisma';
 import {
   DevilsAdvocateAgent,
   type ReferencedEvidence,
+  type ResolvedGapContext,
 } from './DevilsAdvocateAgent';
 
 let _agent: DevilsAdvocateAgent | null = null;
@@ -76,9 +77,37 @@ export async function triggerAIAnalysis(
       },
     });
 
+    // Fetch gap resolutions from the parent version, if any, to pass as context
+    let resolvedGaps: ResolvedGapContext[] = [];
+    if (version.parentVersionId) {
+      const parentResolutions = await prisma.thesisGapResolution.findMany({
+        where: { thesisVersionId: version.parentVersionId },
+        include: { evidence: { select: { summary: true } } },
+        orderBy: { gapIndex: 'asc' },
+      });
+      if (parentResolutions.length > 0) {
+        // Fetch gap descriptions from the parent version's aiAnalysis
+        const parentVersion = await prisma.thesisVersion.findUnique({
+          where: { id: version.parentVersionId },
+          select: { aiAnalysis: true },
+        });
+        const parentGaps = (
+          (parentVersion?.aiAnalysis as Record<string, unknown> | null)?.['evidenceGaps'] as
+            | { description: string }[]
+            | undefined
+        ) ?? [];
+
+        resolvedGaps = parentResolutions.map((r) => ({
+          gapIndex: r.gapIndex,
+          description: parentGaps[r.gapIndex]?.description ?? `Gap #${r.gapIndex + 1}`,
+          evidenceSummary: r.evidence.summary,
+        }));
+      }
+    }
+
     const referenced: ReferencedEvidence[] = evidenceRecords;
     const thesisText = extractText(userContent);
-    const aiAnalysis = await getAgent().analyze(thesisText, referenced);
+    const aiAnalysis = await getAgent().analyze(thesisText, referenced, resolvedGaps);
     const contentHash = sha256({ userContent, aiAnalysis });
 
     await prisma.thesisVersion.update({

@@ -12,6 +12,11 @@ jest.mock('../src/lib/prisma', () => ({
     },
     evidence: {
       findMany: jest.fn(),
+      findUnique: jest.fn(),
+    },
+    thesisGapResolution: {
+      upsert: jest.fn(),
+      deleteMany: jest.fn(),
     },
   },
 }));
@@ -36,6 +41,9 @@ const mockThesisFindMany = prisma.thesis.findMany as jest.Mock;
 const mockThesisFindUnique = prisma.thesis.findUnique as jest.Mock;
 const mockVersionFindMany = prisma.thesisVersion.findMany as jest.Mock;
 const mockTransaction = prisma.$transaction as jest.Mock;
+const mockEvidenceFindUnique = (prisma.evidence as unknown as { findUnique: jest.Mock }).findUnique as jest.Mock;
+const mockGapResolutionUpsert = (prisma as unknown as { thesisGapResolution: { upsert: jest.Mock } }).thesisGapResolution.upsert as jest.Mock;
+const mockGapResolutionDeleteMany = (prisma as unknown as { thesisGapResolution: { deleteMany: jest.Mock } }).thesisGapResolution.deleteMany as jest.Mock;
 
 // ---------------------------------------------------------------------------
 // Test helpers
@@ -49,7 +57,7 @@ type RouterStack = Array<{
   };
 }>;
 
-function getHandler(path: string, method: 'post' | 'get') {
+function getHandler(path: string, method: 'post' | 'get' | 'delete') {
   const layer = (thesisRouter as unknown as { stack: RouterStack }).stack.find(
     (l) => l.route?.path === path && l.route.methods[method],
   );
@@ -398,5 +406,84 @@ describe('GET /:id/versions', () => {
     const { res, getStatus } = mockRes();
     await handle(mockReq({ id: 'thesis-1' }), res);
     expect(getStatus()).toBe(500);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// POST /:id/gaps/:gapIndex/resolve
+// ---------------------------------------------------------------------------
+
+describe('POST /:id/gaps/:gapIndex/resolve', () => {
+  const handle = getHandler('/:id/gaps/:gapIndex/resolve', 'post');
+
+  it('returns 400 when gapIndex is not a number', async () => {
+    const { res, getStatus } = mockRes();
+    await handle(mockReq({ id: 'thesis-1', gapIndex: 'abc' }, { evidenceId: 'hash-001' }), res);
+    expect(getStatus()).toBe(400);
+  });
+
+  it('returns 400 when evidenceId is missing', async () => {
+    const { res, getStatus } = mockRes();
+    await handle(mockReq({ id: 'thesis-1', gapIndex: '0' }, {}), res);
+    expect(getStatus()).toBe(400);
+  });
+
+  it('returns 404 when thesis does not exist', async () => {
+    mockThesisFindUnique.mockResolvedValueOnce(null);
+    const { res, getStatus } = mockRes();
+    await handle(mockReq({ id: 'thesis-x', gapIndex: '0' }, { evidenceId: 'hash-001' }), res);
+    expect(getStatus()).toBe(404);
+  });
+
+  it('returns 404 when evidence does not exist', async () => {
+    mockThesisFindUnique.mockResolvedValueOnce(THESIS_FIXTURE);
+    mockEvidenceFindUnique.mockResolvedValueOnce(null);
+    const { res, getStatus } = mockRes();
+    await handle(mockReq({ id: 'thesis-1', gapIndex: '0' }, { evidenceId: 'no-such-hash' }), res);
+    expect(getStatus()).toBe(404);
+  });
+
+  it('returns 200 and upserts the resolution', async () => {
+    mockThesisFindUnique.mockResolvedValueOnce(THESIS_FIXTURE);
+    mockEvidenceFindUnique.mockResolvedValueOnce({ fileHash: 'hash-001', summary: 'Test evidence' });
+    mockGapResolutionUpsert.mockResolvedValueOnce({
+      id: 'res-1', thesisVersionId: 'version-1', gapIndex: 0, evidenceId: 'hash-001', createdAt: new Date(),
+    });
+    const { res, getStatus, json } = mockRes();
+    await handle(mockReq({ id: 'thesis-1', gapIndex: '0' }, { evidenceId: 'hash-001' }), res);
+    expect(getStatus()).toBe(200);
+    expect((json.mock.calls[0] as [{ resolution: { gapIndex: number } }])[0].resolution.gapIndex).toBe(0);
+    expect(mockGapResolutionUpsert).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { thesisVersionId_gapIndex: { thesisVersionId: 'version-1', gapIndex: 0 } } }),
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// DELETE /:id/gaps/:gapIndex/resolve
+// ---------------------------------------------------------------------------
+
+describe('DELETE /:id/gaps/:gapIndex/resolve', () => {
+  const handle = getHandler('/:id/gaps/:gapIndex/resolve', 'delete');
+
+  it('returns 404 when thesis does not exist', async () => {
+    mockThesisFindUnique.mockResolvedValueOnce(null);
+    const { res, getStatus } = mockRes();
+    await handle(mockReq({ id: 'thesis-x', gapIndex: '0' }), res);
+    expect(getStatus()).toBe(404);
+  });
+
+  it('returns 204 and deletes the resolution', async () => {
+    mockThesisFindUnique.mockResolvedValueOnce(THESIS_FIXTURE);
+    mockGapResolutionDeleteMany.mockResolvedValueOnce({ count: 1 });
+    const endMock = jest.fn();
+    const statusMock = jest.fn().mockReturnValue({ end: endMock });
+    const res = { status: statusMock } as unknown as Response;
+    await handle(mockReq({ id: 'thesis-1', gapIndex: '0' }), res);
+    expect(statusMock).toHaveBeenCalledWith(204);
+    expect(endMock).toHaveBeenCalled();
+    expect(mockGapResolutionDeleteMany).toHaveBeenCalledWith({
+      where: { thesisVersionId: 'version-1', gapIndex: 0 },
+    });
   });
 });

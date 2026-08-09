@@ -132,6 +132,7 @@ model Evidence {
   fileUrl             String?
   urlVersionDiffId    String?
   urlVersionDiff      UrlVersionDiff? @relation(fields: [urlVersionDiffId], references: [id])
+  gapResolutions      ThesisGapResolution[]
   createdAt           DateTime        @default(now())
 }
 
@@ -171,8 +172,24 @@ model ThesisVersion {
   contentHash     String              // SHA-256 of userContent + aiAnalysis
   status          ThesisVersionStatus @default(PENDING_AI)
   mentions        ThesisMention[]
+  gapResolutions  ThesisGapResolution[]
   isHead          Thesis?             @relation("ThesisHead")
   createdAt       DateTime            @default(now())
+}
+
+// Records which AI-identified evidence gap has been addressed by a specific evidence record.
+// Linked to a specific ThesisVersion so resolutions are version-scoped.
+// On next AI analysis, resolutions are passed as context so DevilsAdvocate can assess whether the gap is truly closed.
+model ThesisGapResolution {
+  id              String        @id @default(cuid())
+  thesisVersionId String
+  thesisVersion   ThesisVersion @relation(fields: [thesisVersionId], references: [id], onDelete: Cascade)
+  gapIndex        Int           // index into aiAnalysis.evidenceGaps[]
+  evidenceId      String        // Evidence.fileHash
+  evidence        Evidence      @relation(fields: [evidenceId], references: [fileHash])
+  createdAt       DateTime      @default(now())
+
+  @@unique([thesisVersionId, gapIndex])
 }
 
 // Extracted first-class references from ThesisVersion.userContent nodes.

@@ -54,6 +54,13 @@ interface Thesis {
   headVersion: HeadVersion | null;
 }
 
+interface GapResolution {
+  gapIndex: number;
+  evidenceId: string;
+  evidence: { summary: string; category: string; evidenceTier: string };
+  createdAt: string;
+}
+
 
 // ---------------------------------------------------------------------------
 // GapSearchPanel — inline vault search + Add to Thesis action
@@ -90,18 +97,23 @@ function appendEvidenceMention(
 }
 
 function GapSearchPanel({
-  gap, thesisId, thesisContent, onVersionAdded,
+  gap, gapIndex, thesisId, thesisContent, resolution, onVersionAdded, onResolved,
 }: {
   gap: EvidenceGap;
+  gapIndex: number;
   thesisId: string;
   thesisContent: Record<string, unknown>;
+  resolution: GapResolution | null;
   onVersionAdded: () => void;
+  onResolved: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [hits, setHits] = useState<VaultHit[]>([]);
   const [added, setAdded] = useState<Set<string>>(new Set());
   const [adding, setAdding] = useState<Set<string>>(new Set());
+  const [resolving, setResolving] = useState<string | null>(null); // fileHash being resolved
+  const [unresolving, setUnresolving] = useState(false);
 
   async function search() {
     if (open) { setOpen(false); return; }
@@ -137,16 +149,67 @@ function GapSearchPanel({
     }
   }
 
+  async function markResolved(hit: VaultHit) {
+    setResolving(hit.fileHash);
+    try {
+      const res = await fetch(apiUrl(`/api/thesis/${thesisId}/gaps/${gapIndex}/resolve`), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ evidenceId: hit.fileHash }),
+      });
+      if (!res.ok) throw new Error();
+      onResolved();
+    } finally {
+      setResolving(null);
+    }
+  }
+
+  async function unresolve() {
+    setUnresolving(true);
+    try {
+      await fetch(apiUrl(`/api/thesis/${thesisId}/gaps/${gapIndex}/resolve`), { method: 'DELETE' });
+      onResolved();
+    } finally {
+      setUnresolving(false);
+    }
+  }
+
+  const isResolved = !!resolution;
+  const headerBg = isResolved ? 'bg-emerald-50 border-emerald-200' : 'bg-amber-50 border-amber-200';
+  const headerText = isResolved ? 'text-emerald-800' : 'text-amber-800';
+
   return (
-    <div className="border border-amber-200 rounded-xl overflow-hidden">
-      <div className="bg-amber-50 p-4 flex items-start justify-between gap-4">
-        <p className="text-sm text-amber-800 flex-1">{gap.description}</p>
-        <button
-          onClick={search}
-          className="shrink-0 text-xs font-semibold px-3 py-1.5 bg-amber-100 hover:bg-amber-200 text-amber-700 rounded-lg transition-colors"
-        >
-          {open ? 'Hide' : 'Search Vault'}
-        </button>
+    <div className={`border rounded-xl overflow-hidden ${isResolved ? 'border-emerald-200' : 'border-amber-200'}`}>
+      <div className={`${headerBg} p-4 flex items-start justify-between gap-4`}>
+        <div className="flex-1 space-y-1 min-w-0">
+          <p className={`text-sm ${headerText}`}>{gap.description}</p>
+          {isResolved && (
+            <p className="text-xs text-emerald-600 font-medium truncate">
+              ✓ {resolution.evidence.summary.slice(0, 80)}
+            </p>
+          )}
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          {isResolved && (
+            <button
+              onClick={() => void unresolve()}
+              disabled={unresolving}
+              className="text-xs font-semibold px-3 py-1.5 bg-emerald-100 hover:bg-red-100 text-emerald-700 hover:text-red-600 rounded-lg transition-colors"
+            >
+              {unresolving ? '…' : 'Unresolve'}
+            </button>
+          )}
+          <button
+            onClick={search}
+            className={`text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors ${
+              isResolved
+                ? 'bg-emerald-100 hover:bg-emerald-200 text-emerald-700'
+                : 'bg-amber-100 hover:bg-amber-200 text-amber-700'
+            }`}
+          >
+            {open ? 'Hide' : 'Search Vault'}
+          </button>
+        </div>
       </div>
 
       {open && (
@@ -167,19 +230,34 @@ function GapSearchPanel({
                 <p className="text-xs font-medium text-slate-700 leading-snug">{hit.summary.slice(0, 120)}</p>
                 <p className="text-xs text-slate-400 mt-0.5">{hit.category} · {hit.evidenceDate}</p>
               </div>
-              <button
-                disabled={added.has(hit.fileHash) || adding.has(hit.fileHash)}
-                onClick={() => void addToThesis(hit)}
-                className={`shrink-0 text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors ${
-                  added.has(hit.fileHash)
-                    ? 'bg-emerald-100 text-emerald-700 cursor-default'
-                    : adding.has(hit.fileHash)
-                    ? 'bg-slate-100 text-slate-400 cursor-wait'
-                    : 'bg-violet-100 hover:bg-violet-200 text-violet-700'
-                }`}
-              >
-                {added.has(hit.fileHash) ? 'Added ✓' : adding.has(hit.fileHash) ? '…' : 'Add to Thesis'}
-              </button>
+              <div className="flex flex-col gap-1.5 shrink-0">
+                <button
+                  disabled={added.has(hit.fileHash) || adding.has(hit.fileHash)}
+                  onClick={() => void addToThesis(hit)}
+                  className={`text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors ${
+                    added.has(hit.fileHash)
+                      ? 'bg-emerald-100 text-emerald-700 cursor-default'
+                      : adding.has(hit.fileHash)
+                      ? 'bg-slate-100 text-slate-400 cursor-wait'
+                      : 'bg-violet-100 hover:bg-violet-200 text-violet-700'
+                  }`}
+                >
+                  {added.has(hit.fileHash) ? 'Added ✓' : adding.has(hit.fileHash) ? '…' : 'Add to Thesis'}
+                </button>
+                <button
+                  disabled={resolving === hit.fileHash || resolution?.evidenceId === hit.fileHash}
+                  onClick={() => void markResolved(hit)}
+                  className={`text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors ${
+                    resolution?.evidenceId === hit.fileHash
+                      ? 'bg-emerald-100 text-emerald-700 cursor-default'
+                      : resolving === hit.fileHash
+                      ? 'bg-slate-100 text-slate-400 cursor-wait'
+                      : 'bg-amber-100 hover:bg-amber-200 text-amber-700'
+                  }`}
+                >
+                  {resolution?.evidenceId === hit.fileHash ? 'Resolved ✓' : resolving === hit.fileHash ? '…' : 'Mark Resolved'}
+                </button>
+              </div>
             </div>
           ))}
         </div>
@@ -209,6 +287,7 @@ function ThesisPageInner({ id }: { id: string }) {
 
   const [thesis, setThesis] = useState<Thesis | null>(null);
   const [evidenceMap, setEvidenceMap] = useState<Record<string, EvidenceInfo>>({});
+  const [gapResolutions, setGapResolutions] = useState<GapResolution[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
@@ -232,9 +311,14 @@ function ThesisPageInner({ id }: { id: string }) {
       : apiUrl(`/api/thesis/${id}`);
     const res = await fetch(url);
     if (!res.ok) throw new Error();
-    const data = (await res.json()) as { thesis: Thesis; evidenceMap: Record<string, EvidenceInfo> };
+    const data = (await res.json()) as {
+      thesis: Thesis;
+      evidenceMap: Record<string, EvidenceInfo>;
+      gapResolutions?: GapResolution[];
+    };
     setThesis(data.thesis);
     setEvidenceMap(data.evidenceMap ?? {});
+    setGapResolutions(data.gapResolutions ?? []);
     return data.thesis;
   }
 
@@ -487,8 +571,9 @@ function ThesisPageInner({ id }: { id: string }) {
                 <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
                   {t('evidenceGapsLabel')}
                 </h3>
-                {analysis.evidenceGaps.map((gap, i) => (
-                  isHistorical
+                {analysis.evidenceGaps.map((gap, i) => {
+                  const resolution = gapResolutions.find(r => r.gapIndex === i) ?? null;
+                  return isHistorical
                     ? (
                       <div key={i} className="bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-1">
                         <p className="text-sm text-slate-800 font-medium">{gap.description}</p>
@@ -501,12 +586,15 @@ function ThesisPageInner({ id }: { id: string }) {
                       <GapSearchPanel
                         key={i}
                         gap={gap}
+                        gapIndex={i}
                         thesisId={id}
                         thesisContent={hv?.userContent ?? {}}
+                        resolution={resolution}
                         onVersionAdded={() => { void loadThesis(); }}
+                        onResolved={() => { void loadThesis(); }}
                       />
-                    )
-                ))}
+                    );
+                })}
               </div>
             )}
 

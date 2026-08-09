@@ -2,6 +2,13 @@ import { z } from 'zod';
 import { toJsonSchema } from '@langchain/core/utils/json_schema';
 import { LLMFactory } from '../factories/LLMFactory';
 
+// A resolved gap passed in as context — tells the agent that a gap was addressed
+export interface ResolvedGapContext {
+  gapIndex: number;
+  description: string;
+  evidenceSummary: string;
+}
+
 // Evidence record passed in from Prisma — only the fields the agent needs
 export interface ReferencedEvidence {
   fileHash: string;
@@ -124,6 +131,7 @@ export class DevilsAdvocateAgent {
   async analyze(
     thesisText: string,
     referencedEvidence: ReferencedEvidence[],
+    resolvedGaps: ResolvedGapContext[] = [],
   ): Promise<DevilsAdvocateOutput> {
     const evidenceBlock =
       referencedEvidence.length > 0
@@ -138,6 +146,18 @@ export class DevilsAdvocateAgent {
             .join('\n\n')
         : '(no evidence records were cited in this thesis)';
 
+    const resolvedBlock = resolvedGaps.length > 0
+      ? '\n\nPREVIOUSLY RESOLVED GAPS (the user marked these as addressed):\n' +
+        resolvedGaps
+          .map(
+            (r) =>
+              `Gap #${r.gapIndex + 1}: "${r.description}"\n` +
+              `  → Resolved by: ${r.evidenceSummary.slice(0, 300)}`,
+          )
+          .join('\n\n') +
+        '\n\nWhen evaluating evidenceGaps, assess whether the resolution evidence truly closes each gap or only partially addresses it. If a gap was resolved with strong evidence, you may omit it or downgrade its severity.'
+      : '';
+
     const messages = [
       { role: 'system' as const, content: SYSTEM_PROMPT },
       {
@@ -145,7 +165,8 @@ export class DevilsAdvocateAgent {
         content:
           `THESIS TEXT:\n${thesisText}\n\n` +
           `REFERENCED EVIDENCE (${referencedEvidence.length} record${referencedEvidence.length !== 1 ? 's' : ''}):\n` +
-          `${evidenceBlock}\n\n` +
+          `${evidenceBlock}` +
+          `${resolvedBlock}\n\n` +
           `Provide your devil's advocate analysis of this thesis.`,
       },
     ];

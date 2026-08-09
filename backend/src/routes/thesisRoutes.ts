@@ -37,6 +37,10 @@ const ListThesesSchema = z.object({
   evidence: z.string().optional(),
 });
 
+const ResolveGapSchema = z.object({
+  evidenceId: z.string().min(1),
+});
+
 // ---------------------------------------------------------------------------
 // POST /api/thesis
 //
@@ -182,6 +186,10 @@ router.get('/:id', async (req: Request, res: Response): Promise<void> => {
         headVersion: {
           include: {
             mentions: true,
+            gapResolutions: {
+              include: { evidence: { select: { summary: true, category: true, evidenceTier: true } } },
+              orderBy: { gapIndex: 'asc' },
+            },
           },
         },
       },
@@ -208,7 +216,14 @@ router.get('/:id', async (req: Request, res: Response): Promise<void> => {
       evidenceRecords.map((e) => [e.fileHash, { summary: e.summary, category: e.category, evidenceTier: e.evidenceTier }]),
     );
 
-    res.status(200).json({ thesis, evidenceMap });
+    const gapResolutions = (thesis.headVersion?.gapResolutions ?? []).map((r) => ({
+      gapIndex: r.gapIndex,
+      evidenceId: r.evidenceId,
+      evidence: r.evidence,
+      createdAt: r.createdAt,
+    }));
+
+    res.status(200).json({ thesis, evidenceMap, gapResolutions });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     res.status(500).json({ error: 'Failed to fetch thesis', message });
@@ -573,6 +588,87 @@ router.get('/:id/versions/:versionId', async (req: Request, res: Response): Prom
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     res.status(500).json({ error: 'Failed to fetch version', message });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/thesis/:id/gaps/:gapIndex/resolve
+//
+// Marks an AI-identified evidence gap as resolved by a specific evidence record.
+// Uses upsert — calling again with a different evidenceId replaces the resolution.
+// ---------------------------------------------------------------------------
+
+router.post('/:id/gaps/:gapIndex/resolve', async (req: Request, res: Response): Promise<void> => {
+  const thesisId = String(req.params['id'] ?? '');
+  const gapIndex = parseInt(String(req.params['gapIndex'] ?? ''), 10);
+  if (!thesisId || isNaN(gapIndex) || gapIndex < 0) {
+    res.status(400).json({ error: 'Missing or invalid thesis id / gapIndex' });
+    return;
+  }
+
+  const parsed = ResolveGapSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Invalid request', details: parsed.error.flatten() });
+    return;
+  }
+
+  const { evidenceId } = parsed.data;
+
+  try {
+    const thesis = await prisma.thesis.findUnique({ where: { id: thesisId } });
+    if (!thesis?.headVersionId) {
+      res.status(404).json({ error: 'Thesis not found' });
+      return;
+    }
+
+    const evidence = await prisma.evidence.findUnique({ where: { fileHash: evidenceId } });
+    if (!evidence) {
+      res.status(404).json({ error: 'Evidence not found' });
+      return;
+    }
+
+    const resolution = await prisma.thesisGapResolution.upsert({
+      where: { thesisVersionId_gapIndex: { thesisVersionId: thesis.headVersionId, gapIndex } },
+      create: { thesisVersionId: thesis.headVersionId, gapIndex, evidenceId },
+      update: { evidenceId },
+    });
+
+    res.status(200).json({ resolution });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ error: 'Failed to resolve gap', message });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// DELETE /api/thesis/:id/gaps/:gapIndex/resolve
+//
+// Removes a gap resolution, marking the gap as unresolved again.
+// ---------------------------------------------------------------------------
+
+router.delete('/:id/gaps/:gapIndex/resolve', async (req: Request, res: Response): Promise<void> => {
+  const thesisId = String(req.params['id'] ?? '');
+  const gapIndex = parseInt(String(req.params['gapIndex'] ?? ''), 10);
+  if (!thesisId || isNaN(gapIndex) || gapIndex < 0) {
+    res.status(400).json({ error: 'Missing or invalid thesis id / gapIndex' });
+    return;
+  }
+
+  try {
+    const thesis = await prisma.thesis.findUnique({ where: { id: thesisId } });
+    if (!thesis?.headVersionId) {
+      res.status(404).json({ error: 'Thesis not found' });
+      return;
+    }
+
+    await prisma.thesisGapResolution.deleteMany({
+      where: { thesisVersionId: thesis.headVersionId, gapIndex },
+    });
+
+    res.status(204).end();
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ error: 'Failed to unresolve gap', message });
   }
 });
 
