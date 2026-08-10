@@ -1,5 +1,5 @@
 import request from 'supertest';
-import { CooperationLevel } from '../../src/generated/prisma';
+import { CooperationLevel, PoliceCaseStatus, NzakutOrderType } from '../../src/generated/prisma';
 
 const mockGetUser = jest.fn();
 const mockVaultService = {
@@ -13,6 +13,12 @@ const mockConsentService = {
   grantConsent: jest.fn(),
   revokeConsent: jest.fn(),
 };
+const mockIntakeService = {
+  addCriminalComplaint: jest.fn(),
+  listCriminalComplaints: jest.fn(),
+  addNzakutOrder: jest.fn(),
+  listNzakutOrders: jest.fn(),
+};
 
 jest.mock('../../src/lib/supabase', () => ({
   supabaseAdmin: { auth: { getUser: mockGetUser } },
@@ -24,6 +30,10 @@ jest.mock('../../src/services/CaseVaultService', () => ({
 
 jest.mock('../../src/services/ConsentService', () => ({
   ConsentService: jest.fn().mockImplementation(() => mockConsentService),
+}));
+
+jest.mock('../../src/services/StructuredIntakeService', () => ({
+  StructuredIntakeService: jest.fn().mockImplementation(() => mockIntakeService),
 }));
 
 jest.mock('../../src/lib/web3', () => ({ getWeb3Service: jest.fn().mockReturnValue(null) }));
@@ -221,5 +231,138 @@ describe('DELETE /api/cases/me/consent/:tier', () => {
       .delete('/api/cases/me/consent/INVALID_TIER')
       .set(authHeaders());
     expect(res.status).toBe(400);
+  });
+});
+
+describe('POST /api/cases/me/complaints', () => {
+  beforeEach(() => {
+    validUser();
+    mockVaultService.getCaseByMember.mockResolvedValue({ id: CASE_ID });
+  });
+
+  const validBody = {
+    policeStatus: PoliceCaseStatus.CLOSED_CLEARED,
+    closureConsideredByCourt: false,
+    custodyChangedAfterClosure: 'worsened',
+  };
+
+  it('creates a complaint and returns 201', async () => {
+    const created = { id: 'cmp-1', caseId: CASE_ID, ...validBody };
+    mockIntakeService.addCriminalComplaint.mockResolvedValue(created);
+
+    const res = await request(app)
+      .post('/api/cases/me/complaints')
+      .set(authHeaders())
+      .send(validBody);
+
+    expect(res.status).toBe(201);
+    expect(res.body.id).toBe('cmp-1');
+    expect(mockIntakeService.addCriminalComplaint).toHaveBeenCalledWith(
+      CASE_ID,
+      expect.objectContaining({ policeStatus: PoliceCaseStatus.CLOSED_CLEARED }),
+    );
+  });
+
+  it('returns 400 for missing policeStatus', async () => {
+    const res = await request(app)
+      .post('/api/cases/me/complaints')
+      .set(authHeaders())
+      .send({ closureConsideredByCourt: true });
+
+    expect(res.status).toBe(400);
+  });
+
+  it('returns 400 for invalid custodyChangedAfterClosure value', async () => {
+    const res = await request(app)
+      .post('/api/cases/me/complaints')
+      .set(authHeaders())
+      .send({ policeStatus: PoliceCaseStatus.OPEN, custodyChangedAfterClosure: 'exploded' });
+
+    expect(res.status).toBe(400);
+  });
+});
+
+describe('GET /api/cases/me/complaints', () => {
+  beforeEach(() => {
+    validUser();
+    mockVaultService.getCaseByMember.mockResolvedValue({ id: CASE_ID });
+  });
+
+  it('returns complaints list', async () => {
+    const records = [{ id: 'cmp-1' }, { id: 'cmp-2' }];
+    mockIntakeService.listCriminalComplaints.mockResolvedValue(records);
+
+    const res = await request(app).get('/api/cases/me/complaints').set(authHeaders());
+
+    expect(res.status).toBe(200);
+    expect(res.body.complaints).toHaveLength(2);
+    expect(mockIntakeService.listCriminalComplaints).toHaveBeenCalledWith(CASE_ID);
+  });
+});
+
+describe('POST /api/cases/me/nzakut', () => {
+  beforeEach(() => {
+    validUser();
+    mockVaultService.getCaseByMember.mockResolvedValue({ id: CASE_ID });
+  });
+
+  const validBody = {
+    orderType: NzakutOrderType.EMERGENCY,
+    evidentiaryHearingHeld: false,
+    daysWithoutMeritsHearing: 420,
+    childrenLocation: 'other_parent',
+  };
+
+  it('creates a nzakut order and returns 201', async () => {
+    const created = { id: 'nz-1', caseId: CASE_ID, ...validBody };
+    mockIntakeService.addNzakutOrder.mockResolvedValue(created);
+
+    const res = await request(app)
+      .post('/api/cases/me/nzakut')
+      .set(authHeaders())
+      .send(validBody);
+
+    expect(res.status).toBe(201);
+    expect(res.body.id).toBe('nz-1');
+    expect(mockIntakeService.addNzakutOrder).toHaveBeenCalledWith(
+      CASE_ID,
+      expect.objectContaining({ orderType: NzakutOrderType.EMERGENCY, evidentiaryHearingHeld: false }),
+    );
+  });
+
+  it('returns 400 when evidentiaryHearingHeld is missing', async () => {
+    const res = await request(app)
+      .post('/api/cases/me/nzakut')
+      .set(authHeaders())
+      .send({ orderType: NzakutOrderType.STANDARD });
+
+    expect(res.status).toBe(400);
+  });
+
+  it('returns 400 for invalid childrenLocation value', async () => {
+    const res = await request(app)
+      .post('/api/cases/me/nzakut')
+      .set(authHeaders())
+      .send({ orderType: NzakutOrderType.EMERGENCY, evidentiaryHearingHeld: false, childrenLocation: 'spaceship' });
+
+    expect(res.status).toBe(400);
+  });
+});
+
+describe('GET /api/cases/me/nzakut', () => {
+  beforeEach(() => {
+    validUser();
+    mockVaultService.getCaseByMember.mockResolvedValue({ id: CASE_ID });
+  });
+
+  it('returns nzakut orders list', async () => {
+    const records = [{ id: 'nz-1' }];
+    mockIntakeService.listNzakutOrders.mockResolvedValue(records);
+
+    const res = await request(app).get('/api/cases/me/nzakut').set(authHeaders());
+
+    expect(res.status).toBe(200);
+    expect(res.body.orders).toHaveLength(1);
+    expect(mockIntakeService.listNzakutOrders).toHaveBeenCalledWith(CASE_ID);
   });
 });

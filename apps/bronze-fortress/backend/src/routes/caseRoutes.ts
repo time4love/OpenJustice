@@ -3,8 +3,9 @@ import { z } from 'zod';
 import { caseAuth, AuthenticatedRequest } from '../middleware/caseAuth';
 import { CaseVaultService } from '../services/CaseVaultService';
 import { ConsentService } from '../services/ConsentService';
+import { StructuredIntakeService } from '../services/StructuredIntakeService';
 import { supabaseAdmin } from '../lib/supabase';
-import { CooperationLevel } from '../generated/prisma';
+import { CooperationLevel, PoliceCaseStatus, NzakutOrderType } from '../generated/prisma';
 
 type AsyncHandler = (req: Request, res: Response, next: NextFunction) => Promise<void>;
 const asyncHandler = (fn: AsyncHandler) => (req: Request, res: Response, next: NextFunction) =>
@@ -13,6 +14,7 @@ const asyncHandler = (fn: AsyncHandler) => (req: Request, res: Response, next: N
 const router = Router();
 const vaultService = new CaseVaultService();
 const consentService = new ConsentService();
+const intakeService = new StructuredIntakeService();
 
 const RegisterSchema = z.object({
   publicKeyHex: z.string().min(1),
@@ -24,6 +26,25 @@ const IntakeSchema = z.object({
 
 const ConsentSchema = z.object({
   tier: z.nativeEnum(CooperationLevel),
+});
+
+const ComplaintSchema = z.object({
+  policeStatus: z.nativeEnum(PoliceCaseStatus),
+  closureConsideredByCourt: z.boolean().optional(),
+  custodyChangedAfterClosure: z.enum(['worsened', 'unchanged', 'improved']).optional(),
+  welfareReportCitedAfterClose: z.boolean().optional(),
+  complaintDate: z.coerce.date().optional(),
+  closureDate: z.coerce.date().optional(),
+});
+
+const NzakutSchema = z.object({
+  orderType: z.nativeEnum(NzakutOrderType),
+  evidentiaryHearingHeld: z.boolean(),
+  daysToFullHearing: z.number().int().nonnegative().optional(),
+  childrenLocation: z.enum(['other_parent', 'foster', 'institution']).optional(),
+  daysWithoutMeritsHearing: z.number().int().nonnegative().optional(),
+  orderDate: z.coerce.date().optional(),
+  hearingDate: z.coerce.date().optional(),
 });
 
 // ---------------------------------------------------------------------------
@@ -150,6 +171,60 @@ router.delete('/me/consent/:tier', caseAuth, asyncHandler(async (req, res) => {
 
   await consentService.revokeConsent(caseId, tier);
   res.json({ message: `Consent for ${tier} revoked.` });
+}));
+
+// ---------------------------------------------------------------------------
+// POST /api/cases/me/complaints
+// Add a criminal complaint record (domain A — criminal-to-family interface).
+// ---------------------------------------------------------------------------
+router.post('/me/complaints', caseAuth, asyncHandler(async (req, res) => {
+  const { caseId } = req as AuthenticatedRequest;
+
+  const parse = ComplaintSchema.safeParse(req.body);
+  if (!parse.success) {
+    res.status(400).json({ error: 'Invalid complaint data', details: parse.error.flatten() });
+    return;
+  }
+
+  const complaint = await intakeService.addCriminalComplaint(caseId, parse.data);
+  res.status(201).json(complaint);
+}));
+
+// ---------------------------------------------------------------------------
+// GET /api/cases/me/complaints
+// List all criminal complaint records for the authenticated case.
+// ---------------------------------------------------------------------------
+router.get('/me/complaints', caseAuth, asyncHandler(async (req, res) => {
+  const { caseId } = req as AuthenticatedRequest;
+  const complaints = await intakeService.listCriminalComplaints(caseId);
+  res.json({ complaints });
+}));
+
+// ---------------------------------------------------------------------------
+// POST /api/cases/me/nzakut
+// Add a צו נזקקות record (domain B — חוק הנוער procedural violations).
+// ---------------------------------------------------------------------------
+router.post('/me/nzakut', caseAuth, asyncHandler(async (req, res) => {
+  const { caseId } = req as AuthenticatedRequest;
+
+  const parse = NzakutSchema.safeParse(req.body);
+  if (!parse.success) {
+    res.status(400).json({ error: 'Invalid nzakut order data', details: parse.error.flatten() });
+    return;
+  }
+
+  const order = await intakeService.addNzakutOrder(caseId, parse.data);
+  res.status(201).json(order);
+}));
+
+// ---------------------------------------------------------------------------
+// GET /api/cases/me/nzakut
+// List all צו נזקקות records for the authenticated case.
+// ---------------------------------------------------------------------------
+router.get('/me/nzakut', caseAuth, asyncHandler(async (req, res) => {
+  const { caseId } = req as AuthenticatedRequest;
+  const orders = await intakeService.listNzakutOrders(caseId);
+  res.json({ orders });
 }));
 
 export { router as caseRouter };
