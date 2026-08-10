@@ -1,21 +1,23 @@
-// Closed Doors — private family court pattern analysis platform
-// IMPORTANT: Separate database from Glass Fortress. Separate keys. Never shared.
-// Self-hosted PostgreSQL on EU VPS (Hetzner) — see DEPLOYMENT.md.
+// Bronze Fortress (מבצר הנחושת) — private family court pattern analysis platform
+// IMPORTANT: Separate Supabase project from Glass Fortress. Separate keys. Never shared.
+// Deployment: Railway (backend) + Supabase (separate project) + Vercel (frontend) — see DEPLOYMENT.md.
 
 generator client {
   provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 // ─── Enums ───────────────────────────────────────────────────────────────────
 
-enum FamilyMemberRole {
+enum CaseMemberRole {
   PRIMARY_CONTACT
-  CO_PARENT
+  CO_PETITIONER // second parent who is also a victim — NOT the opposing parent
   LAWYER
 }
 
@@ -29,7 +31,7 @@ enum KeyFigureType {
 }
 
 enum KeyFigureStatus {
-  PENDING // below activation threshold — invisible to all families
+  PENDING // below activation threshold — invisible to petitioners
   ACTIVE  // threshold met + legal review approved
 }
 
@@ -113,9 +115,14 @@ model Court {
   commitments Commitment[]
 }
 
-// ─── Family & Members ─────────────────────────────────────────────────────────
+// ─── Case & Members ───────────────────────────────────────────────────────────
+//
+// "Case" represents the petitioning parent's legal proceedings — NOT the family
+// unit. The opposing parent is a party in the proceedings, never a vault member.
+// CaseMembers are the petitioning parent, their lawyer, or a co-petitioner who
+// is also a victim of the same system conduct.
 
-model Family {
+model Case {
   id        String   @id @default(cuid())
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -123,30 +130,34 @@ model Family {
   // All content fields encrypted client-side before upload.
   // Server holds ciphertext only — admin cannot read case content.
   encryptedIntakeData String? // full questionnaire responses, encrypted JSON
-  publicKeyHex        String  // family's public key for E2E encryption
+  publicKeyHex        String  // petitioning parent's public key for E2E encryption
 
   cooperationLevel CooperationLevel @default(NONE)
 
-  members            FamilyMember[]
+  members            CaseMember[]
   consents           ConsentRecord[]
   commitments        Commitment[]
   criminalComplaints CriminalComplaint[]
   nzakutOrders       NzakutOrder[]
+
+  @@map("cases")
 }
 
-model FamilyMember {
-  id             String           @id @default(cuid())
-  family         Family           @relation(fields: [familyId], references: [id])
-  familyId       String
-  role           FamilyMemberRole
-  supabaseUserId String           @unique // auth handled separately per member
-  createdAt      DateTime         @default(now())
+model CaseMember {
+  id             String         @id @default(cuid())
+  legalCase      Case           @relation(fields: [caseId], references: [id])
+  caseId         String
+  role           CaseMemberRole
+  supabaseUserId String         @unique // auth handled separately per member
+  createdAt      DateTime       @default(now())
+
+  @@map("case_members")
 }
 
 model ConsentRecord {
   id        String           @id @default(cuid())
-  family    Family           @relation(fields: [familyId], references: [id])
-  familyId  String
+  legalCase Case             @relation(fields: [caseId], references: [id])
+  caseId    String
   tier      CooperationLevel
   grantedAt DateTime         @default(now())
   revokedAt DateTime?
@@ -158,9 +169,9 @@ model ConsentRecord {
 // Domain A: Criminal allegations filed by one parent against the other.
 // Tracks whether the criminal exoneration was acknowledged by the family court.
 model CriminalComplaint {
-  id       String @id @default(cuid())
-  family   Family @relation(fields: [familyId], references: [id])
-  familyId String
+  id        String @id @default(cuid())
+  legalCase Case   @relation(fields: [caseId], references: [id])
+  caseId    String
 
   policeStatus                 PoliceCaseStatus
   closureConsideredByCourt     Boolean?  // null = unknown
@@ -177,9 +188,9 @@ model CriminalComplaint {
 // Domain B: Tracks צו נזקקות issuance and whether evidentiary hearings occurred.
 // Maps to specific violations of חוק הנוער sections 3, 4, and 7.
 model NzakutOrder {
-  id       String @id @default(cuid())
-  family   Family @relation(fields: [familyId], references: [id])
-  familyId String
+  id        String @id @default(cuid())
+  legalCase Case   @relation(fields: [caseId], references: [id])
+  caseId    String
 
   orderType              NzakutOrderType
   evidentiaryHearingHeld Boolean
@@ -248,13 +259,13 @@ model KeyFigure {
 // The on-chain timestamp proves independence — the timestamp precedes cooperation.
 
 model Commitment {
-  id       String    @id @default(cuid())
-  family   Family    @relation(fields: [familyId], references: [id])
-  familyId String
-  figure   KeyFigure @relation(fields: [figureId], references: [id])
-  figureId String
-  court    Court     @relation(fields: [courtId], references: [id])
-  courtId  String
+  id        String    @id @default(cuid())
+  legalCase Case      @relation(fields: [caseId], references: [id])
+  caseId    String
+  figure    KeyFigure @relation(fields: [figureId], references: [id])
+  figureId  String
+  court     Court     @relation(fields: [courtId], references: [id])
+  courtId   String
 
   patternCategory PatternCategory
   commitmentHash  String          @unique
@@ -267,5 +278,5 @@ model Commitment {
   onChainTxHash String?
   createdAt     DateTime @default(now())
 
-  @@unique([familyId, figureId, patternCategory, courtId])
+  @@unique([caseId, figureId, patternCategory, courtId])
 }
