@@ -1,5 +1,6 @@
 // Closed Doors — private family court pattern analysis platform
-// IMPORTANT: Separate Supabase project from Glass Fortress. Separate keys. Never shared.
+// IMPORTANT: Separate database from Glass Fortress. Separate keys. Never shared.
+// Self-hosted PostgreSQL on EU VPS (Hetzner) — see DEPLOYMENT.md.
 
 generator client {
   provider = "prisma-client-js"
@@ -21,52 +22,115 @@ enum FamilyMemberRole {
 enum KeyFigureType {
   JUDGE
   SOCIAL_WORKER
-  EVALUATOR // מאבחן
+  EVALUATOR         // מאבחן — psychologist / psychiatrist
   GUARDIAN_AD_LITEM // אפוטרופוס לדין
+  YOUTH_PROBATION   // קצין מבחן לנוער
   OTHER
 }
 
 enum KeyFigureStatus {
-  PENDING   // below activation threshold — invisible to other families
-  ACTIVE    // threshold met + legal review approved
+  PENDING // below activation threshold — invisible to all families
+  ACTIVE  // threshold met + legal review approved
 }
 
 enum CooperationLevel {
-  NONE                    // Level 1: counted but no sharing
-  ANONYMOUS_TIMELINE      // Level 2: fuzzed timeline visible to matched families
-  ANONYMOUS_MESSAGING     // Level 3: platform-routed messages
-  MUTUAL_INTRODUCTION     // Level 4: real identity exchanged (both consented)
-  SHARED_EVIDENCE_ROOM    // Level 5: full encrypted workspace
+  NONE               // Level 1: counted, no sharing
+  ANONYMOUS_TIMELINE // Level 2: fuzzed timeline visible to matched families
+  ANONYMOUS_MESSAGING // Level 3: platform-routed messages, no identity
+  MUTUAL_INTRODUCTION // Level 4: real identity exchanged (both consented)
+  SHARED_EVIDENCE_ROOM // Level 5: full encrypted workspace
 }
 
-// ─── Core Models (Phase CD-1 stubs — encryption layer TBD) ───────────────────
+// Pattern categories — see CLOSED_DOORS.md for full taxonomy and Hebrew labels.
+// Organized by legal domain. Used in commitment hash + pattern thesis.
+enum PatternCategory {
+  // Domain A — Criminal-to-Family Interface
+  CRIMINAL_EXONERATION_IGNORED
+
+  // Domain B — חוק הנוער Procedural Violations
+  EMERGENCY_ORDER_NO_HEARING_30_DAYS
+  NZAKUT_NO_EVIDENTIARY_HEARING
+  CHILD_REMOVED_OVER_YEAR_NO_HEARING
+
+  // Domain C — Welfare Professional Violations
+  WELFARE_REFERRAL_AT_FIRST_HEARING
+  WELFARE_REPORT_ONE_SIDED_INTERVIEW
+  WELFARE_REPORT_NO_HOME_VISIT
+  WELFARE_REPORT_CITES_DROPPED_ALLEGATIONS
+  WELFARE_RECOMMENDATION_CHANGED_UNEXPLAINED
+
+  // Domain D — Evaluator Violations
+  EVALUATOR_SINGLE_SESSION_UNDER_90_MIN
+  EVALUATOR_SINGLE_PARENT_ONLY
+  EVALUATOR_NO_FEEDBACK_SESSION
+  JUDGE_RUBBER_STAMPS_EVALUATOR
+
+  // Domain E — Guardian Ad Litem
+  GUARDIAN_MINIMAL_CHILD_CONTACT
+  GUARDIAN_REPEATEDLY_BY_SAME_JUDGE
+  GUARDIAN_CONTRADICTS_CHILD_WISHES
+
+  // Domain F — Judicial Conduct
+  EX_PARTE_HEARING
+  RECUSAL_DENIED_CONFLICT
+  SYSTEMIC_HEARING_DELAYS
+  MULTIPLE_JUDGE_HANDOFFS
+}
+
+enum NzakutOrderType {
+  STANDARD  // requires full evidentiary hearing before issuance
+  EMERGENCY // 30-day strict limit (חוק הנוער section 4)
+}
+
+enum PoliceCaseStatus {
+  OPEN
+  CLOSED_LACK_OF_EVIDENCE
+  CLOSED_CLEARED           // actively cleared — strongest exoneration
+  CLOSED_OTHER
+  UNKNOWN
+}
+
+// ─── Reference Data ───────────────────────────────────────────────────────────
+
+// Israeli family courts — seeded from public court registry.
+model Court {
+  id       String @id @default(cuid())
+  name     String // e.g. "בית משפט לענייני משפחה תל אביב"
+  city     String
+  district String
+
+  keyFigures  KeyFigure[]
+  commitments Commitment[]
+}
+
+// ─── Family & Members ─────────────────────────────────────────────────────────
 
 model Family {
   id        String   @id @default(cuid())
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // All content fields will be encrypted client-side before storage.
-  // Server holds ciphertext only.
-  encryptedMetadata String? // JSON blob, encrypted
-  publicKeyHex      String  // family's public key for E2E encryption
-
-  members     FamilyMember[]
-  commitments Commitment[]
-  consents    ConsentRecord[]
+  // All content fields encrypted client-side before upload.
+  // Server holds ciphertext only — admin cannot read case content.
+  encryptedIntakeData String? // full questionnaire responses, encrypted JSON
+  publicKeyHex        String  // family's public key for E2E encryption
 
   cooperationLevel CooperationLevel @default(NONE)
+
+  members            FamilyMember[]
+  consents           ConsentRecord[]
+  commitments        Commitment[]
+  criminalComplaints CriminalComplaint[]
+  nzakutOrders       NzakutOrder[]
 }
 
 model FamilyMember {
-  id        String           @id @default(cuid())
-  family    Family           @relation(fields: [familyId], references: [id])
-  familyId  String
-  role      FamilyMemberRole
-  createdAt DateTime         @default(now())
-
-  // Supabase Auth user ID — auth handled separately per family member
-  supabaseUserId String @unique
+  id             String           @id @default(cuid())
+  family         Family           @relation(fields: [familyId], references: [id])
+  familyId       String
+  role           FamilyMemberRole
+  supabaseUserId String           @unique // auth handled separately per member
+  createdAt      DateTime         @default(now())
 }
 
 model ConsentRecord {
@@ -79,20 +143,64 @@ model ConsentRecord {
   isActive  Boolean          @default(true)
 }
 
+// ─── Structured Intake — Domain-Specific Models ───────────────────────────────
+
+// Domain A: Criminal allegations filed by one parent against the other.
+// Tracks whether the criminal exoneration was acknowledged by the family court.
+model CriminalComplaint {
+  id       String @id @default(cuid())
+  family   Family @relation(fields: [familyId], references: [id])
+  familyId String
+
+  policeStatus                 PoliceCaseStatus
+  closureConsideredByCourt     Boolean?  // null = unknown
+  custodyChangedAfterClosure   String?   // "worsened" | "unchanged" | "improved"
+  welfareReportCitedAfterClose Boolean?  // report cited allegation despite closure
+
+  // Real dates — will be encrypted in CD-1.3 implementation
+  complaintDate DateTime?
+  closureDate   DateTime?
+
+  createdAt DateTime @default(now())
+}
+
+// Domain B: Tracks צו נזקקות issuance and whether evidentiary hearings occurred.
+// Maps to specific violations of חוק הנוער sections 3, 4, and 7.
+model NzakutOrder {
+  id       String @id @default(cuid())
+  family   Family @relation(fields: [familyId], references: [id])
+  familyId String
+
+  orderType              NzakutOrderType
+  evidentiaryHearingHeld Boolean
+  daysToFullHearing      Int?    // null = hearing never held
+  childrenLocation       String? // "other_parent" | "foster" | "institution"
+
+  // Total days child separated without a merits hearing
+  daysWithoutMeritsHearing Int?
+
+  // Real dates — will be encrypted in CD-1.3 implementation
+  orderDate   DateTime?
+  hearingDate DateTime?
+
+  createdAt DateTime @default(now())
+}
+
 // ─── Key Figure Registry ──────────────────────────────────────────────────────
 
+// Families propose figures here. Invisible until activation threshold is met.
 model PendingKeyFigure {
   id           String        @id @default(cuid())
   name         String
   type         KeyFigureType
   organization String?
-  createdAt    DateTime      @default(now())
+  courtId      String?       // optional — social workers may cross courts
 
-  // Tracking toward activation threshold
-  nominatingFamilyIds String[] // cuid list — deduplicated per family
+  nominatingFamilyIds String[] // deduplicated family cuid list
   nominationCount     Int      @default(1)
 
-  // Once threshold met → promote to KeyFigure, delete this record
+  createdAt DateTime @default(now())
+  // On threshold → promote to KeyFigure, delete this record
 }
 
 model KeyFigure {
@@ -101,33 +209,53 @@ model KeyFigure {
   type         KeyFigureType
   organization String?
   status       KeyFigureStatus @default(PENDING)
-  createdAt    DateTime        @default(now())
-  activatedAt  DateTime?
 
-  // Cross-reference with public professional registries
+  court   Court?  @relation(fields: [courtId], references: [id])
+  courtId String?
+
+  // Cross-reference with public registries
   registryVerified Boolean @default(false)
   registrySource   String? // e.g. "פנקס הפסיכולוגים", "מרשם העובדים הסוציאליים"
+
+  createdAt   DateTime  @default(now())
+  activatedAt DateTime?
 
   commitments Commitment[]
 }
 
 // ─── Cryptographic Commitments (on-chain pattern proof) ──────────────────────
+//
+// Commitment hash: hash(keyFigureId + "|" + patternCategory + "|" + courtId)
+//
+// quarterYear is NOT in the hash. Including time fragments the count and hides
+// the magnitude of patterns that span years. Time is stored separately and used
+// in the pattern thesis as context (persistence over time), not as a filter.
+//
+// A single family intake produces multiple commitments — one per
+// key figure × pattern combination observed.
+//
+// Registered on-chain BEFORE any family is connected to another.
+// The on-chain timestamp proves independence — the timestamp precedes cooperation.
 
 model Commitment {
-  id        String   @id @default(cuid())
-  family    Family   @relation(fields: [familyId], references: [id])
-  familyId  String
-  figure    KeyFigure @relation(fields: [figureId], references: [id])
-  figureId  String
-  createdAt DateTime @default(now())
+  id       String    @id @default(cuid())
+  family   Family    @relation(fields: [familyId], references: [id])
+  familyId String
+  figure   KeyFigure @relation(fields: [figureId], references: [id])
+  figureId String
+  court    Court     @relation(fields: [courtId], references: [id])
+  courtId  String
 
-  // hash(judgeId/figureId + patternCategory + quarterYear)
-  // Registered on-chain BEFORE any family is connected to another.
-  commitmentHash String  @unique
-  patternCategory String // e.g. "welfare_referral_at_first_hearing"
-  quarterYear    String  // e.g. "Q1-2022" — deliberate fuzzing, not exact date
+  patternCategory PatternCategory
+  commitmentHash  String          @unique
 
-  onChainTxHash String? // set after blockchain registration
+  // Real event dates — stored here, will be encrypted in CD-1.3.
+  // Used for pattern thesis context ("documented 2019–2024"), not for hash.
+  eventStartDate DateTime?
+  eventEndDate   DateTime?
 
-  @@unique([familyId, figureId, patternCategory, quarterYear])
+  onChainTxHash String?
+  createdAt     DateTime @default(now())
+
+  @@unique([familyId, figureId, patternCategory, courtId])
 }
