@@ -12,6 +12,9 @@ const mockPatternThesisService = {
   listActiveFigures: jest.fn(),
   getDomainLabels: jest.fn().mockReturnValue({}),
 };
+const mockPatternDetectionService = {
+  suggestCommitments: jest.fn(),
+};
 
 jest.mock('../../src/services/CommitmentService', () => ({
   CommitmentService: jest.fn().mockImplementation(() => mockCommitmentService),
@@ -19,6 +22,10 @@ jest.mock('../../src/services/CommitmentService', () => ({
 
 jest.mock('../../src/services/PatternThesisService', () => ({
   PatternThesisService: jest.fn().mockImplementation(() => mockPatternThesisService),
+}));
+
+jest.mock('../../src/services/PatternDetectionService', () => ({
+  PatternDetectionService: jest.fn().mockImplementation(() => mockPatternDetectionService),
 }));
 
 jest.mock('../../src/lib/supabase', () => ({
@@ -322,5 +329,44 @@ describe('POST /api/mcp — register_on_chain (write, auth required)', () => {
     expect(content.succeeded).toBe(0);
     expect(content.failed).toBe(1);
     expect(content.results[0].error).toMatch(/RPC error/);
+  });
+});
+
+describe('POST /api/mcp — suggest_commitments (write, auth required)', () => {
+  it('rejects without token', async () => {
+    const res = await request(app)
+      .post('/api/mcp')
+      .set('Content-Type', 'application/json')
+      .set('Accept', 'application/json, text/event-stream')
+      .send(mcpCall('suggest_commitments', { caseId: 'case-1', figureId: 'fig-1', courtId: 'court-1' }));
+    expect(res.status).toBe(401);
+  });
+
+  it('returns suggestions with pending and already-registered counts', async () => {
+    mockPatternDetectionService.suggestCommitments.mockResolvedValue({
+      caseId: 'case-1',
+      figureId: 'fig-1',
+      courtId: 'court-1',
+      suggestions: [
+        { patternCategory: 'CRIMINAL_EXONERATION_IGNORED', evidence: 'test', alreadyRegistered: false },
+        { patternCategory: 'NZAKUT_NO_EVIDENTIARY_HEARING', evidence: 'test', alreadyRegistered: true },
+      ],
+      domainsAnalyzed: ['A', 'B'],
+      note: 'test note',
+    });
+
+    const res = await request(app)
+      .post('/api/mcp')
+      .set('Content-Type', 'application/json')
+      .set('Accept', 'application/json, text/event-stream')
+      .set('Authorization', `Bearer ${WRITE_TOKEN}`)
+      .send(mcpCall('suggest_commitments', { caseId: 'case-1', figureId: 'fig-1', courtId: 'court-1' }));
+
+    expect(res.status).toBe(200);
+    const result = parseMcpResult(res.text) as { content: { text: string }[] };
+    const content = JSON.parse(result.content[0].text);
+    expect(content.suggestions).toHaveLength(2);
+    expect(content.pendingCount).toBe(1);
+    expect(content.alreadyRegisteredCount).toBe(1);
   });
 });

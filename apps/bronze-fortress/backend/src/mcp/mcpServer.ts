@@ -9,6 +9,7 @@ import { proposeKeyFigureSchema, proposeKeyFigureHandler } from './tools/propose
 import { listPendingFiguresSchema, listPendingFiguresHandler } from './tools/listPendingFigures';
 import { activateFigureSchema, activateFigureHandler } from './tools/activateFigure';
 import { registerOnChainSchema, registerOnChainHandler } from './tools/registerOnChain';
+import { suggestCommitmentsSchema, suggestCommitmentsHandler } from './tools/suggestCommitments';
 
 // ---------------------------------------------------------------------------
 // Factory — creates a fresh McpServer per request.
@@ -126,6 +127,18 @@ export function createMcpServer(): McpServer {
     activateFigureSchema,
     async (input) => ({
       content: [{ type: 'text' as const, text: await activateFigureHandler(input) }],
+    }),
+  );
+
+  server.tool(
+    'suggest_commitments',
+    'Analyse a case\'s structured intake data (criminal complaints, nzakut orders) and return ' +
+      'which PatternCategory values are evidenced. Covers domains A and B. ' +
+      'Already-registered commitments for this case × figure × court are flagged so you can skip them. ' +
+      'Call register_commitment for each suggestion where alreadyRegistered=false.',
+    suggestCommitmentsSchema,
+    async (input) => ({
+      content: [{ type: 'text' as const, text: await suggestCommitmentsHandler(input) }],
     }),
   );
 

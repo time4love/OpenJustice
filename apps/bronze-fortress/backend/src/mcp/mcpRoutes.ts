@@ -14,6 +14,7 @@ const WRITE_TOOLS = new Set([
   'propose_key_figure',
   'activate_figure',
   'register_on_chain',
+  'suggest_commitments',
 ]);
 
 function isWriteToolCall(body: unknown): boolean {
@@ -86,7 +87,7 @@ router.get('/', (_req: Request, res: Response) => {
     version: '1.0.0',
     transport: 'streamable-http',
     readTools: ['query_pattern', 'get_key_figure_profile', 'list_commitments', 'list_pending_figures', 'build_pattern_thesis', 'list_active_figures'],
-    writeTools: ['register_commitment', 'propose_key_figure', 'activate_figure', 'register_on_chain'],
+    writeTools: ['register_commitment', 'propose_key_figure', 'activate_figure', 'register_on_chain', 'suggest_commitments'],
     auth: 'Write tools require Authorization: Bearer <MCP_WRITE_TOKEN>',
     privacy: 'All read tools return aggregate data only. No family content or identifiers are exposed.',
   });
