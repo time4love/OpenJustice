@@ -545,12 +545,8 @@ That is a legal argument, not a complaint.
 ### Reidentification
 Even well-redacted case timelines can reidentify families in small communities. "Family with 2 kids, divorce filed March 2021, referral to Givataim welfare office" may be unique. Requires deliberate timeline fuzzing or differential privacy before any public release.
 
-### Adversarial Threat Model
-Assume the welfare ministry or a judge's legal team will eventually attempt subpoena or breach. Infrastructure implications:
-- Closed Doors must NOT run on the same server as Glass Fortress
-- Separate Supabase project, separate keys, separate domain
-- Consider self-hosted PostgreSQL — cloud providers can receive government data requests
-- No single person holds decryption keys for all families
+### Infrastructure Isolation
+Closed Doors must be completely separate from Glass Fortress — different Railway service, different Supabase project, different keys, different domain. No shared infrastructure at any layer. No single person holds decryption keys for all families.
 
 ### Legal Boundary
 Each parent holds documents about their own case — they are a party to the proceeding. In Israeli law, a party's right to their own case file differs from publishing it publicly. Family court confidentiality (סעיף 68 לחוק בתי המשפט) covers *content*, not necessarily *patterns*. Legal review required before any public launch.

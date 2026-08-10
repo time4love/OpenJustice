@@ -23,7 +23,7 @@ The platform currently powers two independent applications, each targeting a dif
 | **What gets published** | Evidence + legal theses + calls for whistleblowers | Pattern analysis only — no individual case content |
 | **Proof surface** | The document + on-chain hash | Cryptographic commitments + statistical patterns |
 | **Core question** | *"What can we prove publicly?"* | *"What can we prove without exposing anything?"* |
-| **Deployment** | Vercel (frontend) + Railway (backend) | Vercel (frontend) + self-hosted EU VPS (backend) |
+| **Deployment** | Vercel (frontend) + Railway (backend) | Vercel (frontend) + Railway (backend) |
 
 These are **not** the same codebase. The privacy model is foundational and cannot be retrofitted. See [DEPLOYMENT.md](./DEPLOYMENT.md) for infrastructure decisions.
 

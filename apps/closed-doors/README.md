@@ -100,7 +100,7 @@ The privacy model is foundational — it cannot be retrofitted. Key constraints:
 - **Encryption-first storage** — client-side encryption, server holds ciphertext only
 - **Consent management** — explicit, per-tier, revocable; exit rights preserved
 - **Separate infrastructure** — completely separate from Glass Fortress (different server, different DB, different keys)
-- **Adversarial threat model** — assume state actors with subpoena tools
+- **Separate infrastructure** — separate Railway service, separate Supabase project, separate keys, separate domain
 
 ### Directory Structure
 
@@ -124,7 +124,7 @@ apps/closed-doors/
 |---|---|
 | Backend | Node.js, TypeScript (strict), Express, Prisma |
 | Encryption | libsodium-wrappers (client-side, to be implemented in CD-1.3) |
-| Database | Self-hosted PostgreSQL (NOT Supabase — see deployment) |
+| Database | Supabase PostgreSQL (separate project from Glass Fortress) |
 | Frontend | Next.js 16, TailwindCSS v4, next-intl (Hebrew default, RTL) |
 | Chain | Shared EvidenceRegistry.sol with Glass Fortress |
 
@@ -152,7 +152,8 @@ npm run dev            # :3003
 ## Deployment
 
 - **Frontend** → Vercel
-- **Backend + Database** → Self-hosted VPS in Germany (Hetzner) — EU jurisdiction, GDPR protection, political distance from Israeli government actors. Cloud providers (Railway, Render, AWS) are not acceptable — they can receive government data requests.
+- **Backend** → Railway (separate service from Glass Fortress)
+- **Database** → Supabase (separate project, separate keys)
 
 See [DEPLOYMENT.md](../../DEPLOYMENT.md) for full rationale and setup steps.
 

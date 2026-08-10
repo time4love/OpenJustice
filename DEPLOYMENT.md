@@ -40,8 +40,8 @@ and stream SSE responses. Serverless kills all three.
 ┌─────────────────────────────────────────────────────────┐
 │  Closed Doors                                           │
 │  frontend → Vercel (Next.js native)                     │
-│  backend  → self-hosted VPS (see below)                 │
-│  database → self-hosted PostgreSQL on same VPS          │
+│  backend  → Railway (separate service, same monorepo)   │
+│  database → Supabase (separate project from GF)         │
 │  chain    → same public L2 as Glass Fortress            │
 └─────────────────────────────────────────────────────────┘
 ```
@@ -65,30 +65,32 @@ and stream SSE responses. Serverless kills all three.
 
 ---
 
-## Closed Doors Backend — Self-Hosted VPS
+## Closed Doors Backend — Railway
 
-**Why self-hosted, not Railway/Render:**
-The families using Closed Doors face an adversarial government actor with legal subpoena tools.
-Cloud providers (Railway, Render, AWS, GCP) can receive and must comply with Israeli government
-data requests. A VPS in Germany is subject to GDPR and German data protection law — significantly
-stronger protection and political distance.
+**Why Railway (same as Glass Fortress):**
+- Persistent Node.js process — no serverless timeout constraints
+- Same platform as Glass Fortress — consolidated tooling, no new accounts
+- Deployed as a separate Railway service pointing to `apps/closed-doors/backend`
+- ~$5–7/month
 
-**Recommended provider:** Hetzner (Germany / Finland) — €4–6/month for a capable VPS.
-- Jurisdiction: EU (GDPR), not Israeli
-- No US CLOUD Act exposure (unlike AWS/GCP/Azure)
-- Affordable, reliable
+**Why not a self-hosted VPS:**
+The families using Closed Doors are not committing any crime. They are documenting their own
+cases using documents they legally own. All sensitive case content is encrypted client-side —
+the server holds ciphertext only. The remaining metadata (pattern counts, commitment hashes)
+is either non-identifying or, if visible to documented actors, acts as a deterrent.
+A VPS was considered for the threat model but the threat model did not survive scrutiny.
+Consolidated tooling (Railway) is the right tradeoff at this stage.
 
-**Database:** Self-hosted PostgreSQL on the same VPS.
-- Do NOT use Supabase for Closed Doors — it's a US company (subject to US subpoenas)
-- Backups encrypted, stored separately
+**Database:** Supabase — separate project from Glass Fortress.
+- Separate project URL, separate keys, separate anon key
+- No data shared with or visible from the Glass Fortress project
 
 **Deploy steps (when ready):**
-1. Provision Hetzner VPS (Ubuntu 22.04 LTS, minimum 2GB RAM)
-2. Install Node.js, PostgreSQL, nginx (reverse proxy)
-3. Set up systemd service for the Express app
-4. SSL via Let's Encrypt
-5. Separate domain from Glass Fortress — no shared infrastructure
-6. Firewall: only ports 80/443 public; DB port internal only
+1. Create a new Railway service, set root to `apps/closed-doors/backend`
+2. Create a new Supabase project for Closed Doors
+3. Set all env vars (DATABASE_URL from CD Supabase project, separate TOKEN_HMAC_SECRET, etc.)
+4. Railway runs `npm run build` then `npm start`
+5. Point `BACKEND_URL` in Closed Doors frontend env to the Railway service URL
 
 ---
 
@@ -149,15 +151,16 @@ CONTRACT_ADDRESS      # Deployed EvidenceRegistry address
 MCP_WRITE_TOKEN       # Legacy — replaced by per-user tokens (Phase 27)
 ```
 
-### Closed Doors Backend (self-hosted VPS)
+### Closed Doors Backend (Railway)
 ```
-DATABASE_URL          # Self-hosted PostgreSQL on same VPS
+DATABASE_URL          # Supabase PostgreSQL connection string (CD project)
 ANTHROPIC_API_KEY     # Claude API
 TOKEN_HMAC_SECRET     # Separate secret from Glass Fortress
+SUPABASE_URL          # Closed Doors Supabase project URL
+SUPABASE_ANON_KEY     # Closed Doors Supabase anon key
 RPC_URL               # Same blockchain RPC as Glass Fortress
 PRIVATE_KEY           # Separate REGISTRAR_ROLE wallet — not shared with GF
 CONTRACT_ADDRESS      # Same deployed EvidenceRegistry contract
-ENCRYPTION_MASTER_KEY # Future: server-side key for E2E encryption layer
 ```
 
 ---
