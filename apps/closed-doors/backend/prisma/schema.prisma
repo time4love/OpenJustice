@@ -75,6 +75,16 @@ enum PatternCategory {
   RECUSAL_DENIED_CONFLICT
   SYSTEMIC_HEARING_DELAYS
   MULTIPLE_JUDGE_HANDOFFS
+
+  // Domain G — ניכור הורי (Parental Alienation)
+  // Meta-pattern: weaponizes all other domains. Uses Domain A to create
+  // separation, Domain B to extend it, Domain D to ratify it, Domain F to enforce it.
+  // Early registration is critical — on-chain timestamp must predate the alienation campaign.
+  ALIENATION_CHILD_WISHES_AS_RULING_BASIS // court used child's expressed wishes without investigating alienation
+  ALIENATION_RAISED_IGNORED               // alienation raised in proceedings, not investigated
+  EVALUATOR_NO_ALIENATION_ASSESSMENT      // evaluator did not screen for alienation indicators
+  CONNECTED_PARENT_SYSTEM_TIES            // alienating parent has undisclosed ties to case professionals
+  SEPARATION_WINDOW_USED_FOR_ALIENATION   // court-ordered separation period used to conduct alienation campaign
 }
 
 enum NzakutOrderType {

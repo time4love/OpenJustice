@@ -406,6 +406,93 @@ These are the `patternCategory` values used in commitment hashes and pattern the
 | `systemic_hearing_delays` | דחיות דיונים שיטתיות | Multiple hearings delayed 30+ days without explanation |
 | `multiple_judge_handoffs` | העברת תיק בין שופטים מרובים | Case transferred between 3 or more judges |
 
+### Domain G — ניכור הורי (Parental Alienation)
+| ID | Hebrew | What it captures |
+|---|---|---|
+| `alienation_child_wishes_as_ruling_basis` | ניכור — רצון הילד כבסיס לפסיקה | Court relied on child's expressed wishes without investigating alienation |
+| `alienation_raised_ignored` | ניכור הורי שנטען והתעלמו ממנו | Alienation raised in proceedings, not investigated |
+| `evaluator_no_alienation_assessment` | מאבחן לא בדק ניכור הורי | Evaluator conducted assessment without screening for alienation indicators |
+| `connected_parent_system_ties` | קשר בין הורה מנכר לאנשי מקצוע | Alienating parent has undisclosed ties to professionals in the case |
+| `separation_window_used_for_alienation` | חלון הפרדה ששימש לניכור | Court-ordered separation period used to conduct alienation campaign |
+
+---
+
+## ניכור הורי — Parental Alienation as a System Pattern
+
+### The Mechanism
+
+ניכור הורי in the context of a corrupt system is not just one parent behaving badly. It is a structured, multi-stage operation that weaponizes the system's own processes:
+
+**Stage 1 — Create separation.** Often triggered by a false or exaggerated abuse allegation (Domain A). An emergency order, a welfare referral, removal. The alienating parent now has physical access to the children without the other parent present.
+
+**Stage 2 — Use the separation window.** During court-ordered separation — which can last months or years — the children are subjected to sustained psychological influence: coaching, framing the other parent as dangerous, rewarding rejection. This is where the alienation campaign happens.
+
+**Stage 3 — The child "chooses."** By the time the case reaches a meaningful hearing, the child appears to spontaneously reject the other parent. Statements sound adult, scripted. The child refuses contact. It looks like autonomous preference.
+
+**Stage 4 — The system ratifies it.** The court invokes "טובת הילד." The evaluator — who may have a prior undisclosed relationship with the alienating parent and conducts a single session under 90 minutes — confirms the child's wishes. The judge formally cuts contact. The isolation becomes court-ordered and legally enforced.
+
+**Stage 5 — The loop closes.** Court-enforced separation deepens the alienation. The child now genuinely does not know the other parent. Every petition to restore contact is met with "the child doesn't want it." The alienation is self-sustaining and court-protected.
+
+### Why "Connected to the System" Is the Key Variable
+
+This is what separates systematic corruption from ordinary parental conflict. The evaluator has a prior relationship with the alienating parent — undisclosed. The welfare worker is a regular collaborator in the same professional network. The guardian is repeatedly appointed by the same judge. The alienating parent knows how to frame their narrative in the language these professionals respond to.
+
+The connection may be explicit (they know each other personally) or structural (same professional community, same ideological framework, repeat appointments). Either way, the supposed neutral professionals are not neutral.
+
+### The Epistemic Trap
+
+A court sees: child refuses contact → child was probably harmed → court must protect child.
+
+What actually happened: separation created → window used for alienation → child now refuses contact → court uses refusal to justify continued separation.
+
+Cause and effect are reversed in the court's frame. Without longitudinal documentation — evidence of what the child said and felt *before* the alienation campaign began — the fabricated reality is the only reality visible to the court.
+
+**This is why early registration matters.** Families should register and begin documenting before proceedings reach crisis point. A timestamped record of a child's changing statements over time, on-chain before any court hearing, is far more powerful than a retrospective claim of manipulation. The timestamp precedes the alienation — that is the proof.
+
+### ניכור הורי as a Meta-Pattern
+
+ניכור הורי is not a separate domain — it is an **organizing strategy** that runs across and weaponizes all other domains. It uses Domain A (false allegations) to create the separation window, Domain B (emergency orders without hearings) to extend it, Domain D (biased evaluators) to ratify it, and Domain F (rubber-stamp judges) to enforce it.
+
+The platform's unique power: courts see one child's refusal. They cannot see that the same evaluator appeared in 34 cases — and in 29 of them failed to screen for alienation, and in 26 the connected parent "won." That pattern is only visible when independent commitments are aggregated across families.
+
+### Intake Questions for ניכור הורי (Section J)
+
+**About the other parent's connections:**
+- Does the other parent have professional or personal connections to welfare workers, evaluators, or court-appointed figures in your case? (yes / no / unknown)
+- Did any professional in your case have a prior relationship with the other parent that was not disclosed? (yes / no / unknown)
+
+**About the children's expressed wishes:**
+- Did the children's expressed attitude toward you change significantly after a period of separation? (yes / no)
+- Did the children's statements sound coached or use adult framing? (yes / no)
+- Did the court rely primarily on the children's expressed wishes to restrict your access? (yes / no)
+- When did significant change in children's attitude begin? (before any proceedings / after first hearing / after first separation order / gradually over time)
+
+**About whether alienation was raised:**
+- Did you or your lawyer raise parental alienation in the proceedings? (yes / no)
+- If yes — how was it addressed? (ignored / dismissed without investigation / investigated / accepted)
+- Was an alienation-specific evaluation ordered? (yes / no)
+- Did the evaluator screen for alienation indicators? (yes / no / unknown)
+
+### New Pattern Categories (Domain G — ניכור הורי)
+
+| ID | Hebrew | What it captures |
+|---|---|---|
+| `alienation_child_wishes_as_ruling_basis` | ניכור — רצון הילד כבסיס לפסיקה | Court relied primarily on child's expressed wishes without investigating alienation |
+| `alienation_raised_ignored` | ניכור הורי שנטען והתעלמו ממנו | Alienation raised in proceedings, court did not investigate |
+| `evaluator_no_alienation_assessment` | מאבחן לא בדק ניכור הורי | Evaluator conducted assessment without screening for alienation indicators |
+| `connected_parent_system_ties` | קשר בין הורה מנכר לאנשי מקצוע | Alienating parent has undisclosed ties to professionals in the case |
+| `separation_window_used_for_alienation` | חלון הפרדה ששימש לניכור | Court-ordered separation period was used to conduct the alienation campaign |
+
+### What the Platform Can and Cannot Claim
+
+The platform documents process signatures, not diagnoses.
+
+**Can claim:** "In N independently registered cases involving evaluator X, families documented: single session under 90 minutes, no alienation screening, child's stated wishes used as primary basis for ruling."
+
+**Cannot claim:** "Evaluator X enables parental alienation." That is a conclusion requiring expert testimony.
+
+The pattern data creates the grounds for a proper legal investigation. The platform is the discovery mechanism, not the verdict.
+
 ---
 
 ## Revised Commitment Hash Design
