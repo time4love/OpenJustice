@@ -1,6 +1,6 @@
 # Deployment Architecture
 
-> Decision log and platform recommendations for Glass Fortress and Closed Doors.
+> Decision log and platform recommendations for Glass Fortress and Bronze Fortress.
 > Read before touching any deployment config.
 
 ---
@@ -38,7 +38,7 @@ and stream SSE responses. Serverless kills all three.
 └─────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────┐
-│  Closed Doors                                           │
+│  Bronze Fortress                                           │
 │  frontend → Vercel (Next.js native)                     │
 │  backend  → Railway (separate service, same monorepo)   │
 │  database → Supabase (separate project from GF)         │
@@ -65,16 +65,16 @@ and stream SSE responses. Serverless kills all three.
 
 ---
 
-## Closed Doors Backend — Railway
+## Bronze Fortress Backend — Railway
 
 **Why Railway (same as Glass Fortress):**
 - Persistent Node.js process — no serverless timeout constraints
 - Same platform as Glass Fortress — consolidated tooling, no new accounts
-- Deployed as a separate Railway service pointing to `apps/closed-doors/backend`
+- Deployed as a separate Railway service pointing to `apps/bronze-fortress/backend`
 - ~$5–7/month
 
 **Why not a self-hosted VPS:**
-The families using Closed Doors are not committing any crime. They are documenting their own
+The families using Bronze Fortress are not committing any crime. They are documenting their own
 cases using documents they legally own. All sensitive case content is encrypted client-side —
 the server holds ciphertext only. The remaining metadata (pattern counts, commitment hashes)
 is either non-identifying or, if visible to documented actors, acts as a deterrent.
@@ -86,11 +86,11 @@ Consolidated tooling (Railway) is the right tradeoff at this stage.
 - No data shared with or visible from the Glass Fortress project
 
 **Deploy steps (when ready):**
-1. Create a new Railway service, set root to `apps/closed-doors/backend`
-2. Create a new Supabase project for Closed Doors
+1. Create a new Railway service, set root to `apps/bronze-fortress/backend`
+2. Create a new Supabase project for Bronze Fortress
 3. Set all env vars (DATABASE_URL from CD Supabase project, separate TOKEN_HMAC_SECRET, etc.)
 4. Railway runs `npm run build` then `npm start`
-5. Point `BACKEND_URL` in Closed Doors frontend env to the Railway service URL
+5. Point `BACKEND_URL` in Bronze Fortress frontend env to the Railway service URL
 
 ---
 
@@ -126,7 +126,7 @@ Redis can be Railway's Redis add-on (~$3/month) or a self-hosted Redis on the sa
 - **Polygon** — battle-tested, low fees, widely supported
 - Avoid mainnet Ethereum — gas fees make per-evidence registration impractical
 
-Both platforms (Glass Fortress + Closed Doors) should use the **same deployed contract**.
+Both platforms (Glass Fortress + Bronze Fortress) should use the **same deployed contract**.
 Cross-platform hash corroboration ("this document appears in both investigations") is only
 possible if they share a chain and contract address.
 
@@ -151,13 +151,13 @@ CONTRACT_ADDRESS      # Deployed EvidenceRegistry address
 MCP_WRITE_TOKEN       # Legacy — replaced by per-user tokens (Phase 27)
 ```
 
-### Closed Doors Backend (Railway)
+### Bronze Fortress Backend (Railway)
 ```
 DATABASE_URL          # Supabase PostgreSQL connection string (CD project)
 ANTHROPIC_API_KEY     # Claude API
 TOKEN_HMAC_SECRET     # Separate secret from Glass Fortress
-SUPABASE_URL          # Closed Doors Supabase project URL
-SUPABASE_ANON_KEY     # Closed Doors Supabase anon key
+SUPABASE_URL          # Bronze Fortress Supabase project URL
+SUPABASE_ANON_KEY     # Bronze Fortress Supabase anon key
 RPC_URL               # Same blockchain RPC as Glass Fortress
 PRIVATE_KEY           # Separate REGISTRAR_ROLE wallet — not shared with GF
 CONTRACT_ADDRESS      # Same deployed EvidenceRegistry contract

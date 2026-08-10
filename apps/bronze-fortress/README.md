@@ -1,10 +1,10 @@
-# Closed Doors — בדלתיים סגורות
+# Bronze Fortress — מבצר הנחושת
 
 > Private pattern analysis platform for family court and welfare system corruption.
 
 Part of the [OpenJustice](../../README.md) platform.
 
-**Status: In development.** Foundation phase (encryption architecture, family vault model, key figure registry). See [CLOSED_DOORS.md](../../CLOSED_DOORS.md) for full strategy.
+**Status: In development.** Foundation phase (encryption architecture, family vault model, key figure registry). See [BRONZE_FORTRESS.md](../../BRONZE_FORTRESS.md) for full strategy.
 
 ---
 

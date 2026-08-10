@@ -14,7 +14,7 @@ The platform currently powers two independent applications, each targeting a dif
 
 ## The Two Applications
 
-| | [Glass Fortress](./apps/glass-fortress/) | [Closed Doors](./apps/closed-doors/) |
+| | [Glass Fortress](./apps/glass-fortress/) | [Bronze Fortress](./apps/bronze-fortress/) |
 |---|---|---|
 | **Domain** | Covid-19 policy failures, Israeli MOH | Family court & welfare system corruption |
 | **Legal target** | Institutional cover-up of public safety data | Systemic misconduct in sealed proceedings |
@@ -37,7 +37,7 @@ openjustice/
     glass-fortress/     — public evidence platform (Covid/MOH)
       backend/          — Node.js + Express + Prisma + LangChain
       frontend/         — Next.js, Hebrew-first, RTL
-    closed-doors/       — private pattern platform (family courts)
+    bronze-fortress/       — private pattern platform (family courts)
       backend/          — Node.js + Express + Prisma (separate DB)
       frontend/         — Next.js, Hebrew-first, RTL, dark theme
   contracts/            — Shared Solidity: EvidenceRegistry.sol
@@ -73,19 +73,19 @@ cd contracts && forge build && forge test
 cd apps/glass-fortress/backend && npm run dev   # :3001
 cd apps/glass-fortress/frontend && npm run dev  # :3000
 
-# Closed Doors
-cd apps/closed-doors/backend && npm run dev     # :3002
-cd apps/closed-doors/frontend && npm run dev    # :3003
+# Bronze Fortress
+cd apps/bronze-fortress/backend && npm run dev     # :3002
+cd apps/bronze-fortress/frontend && npm run dev    # :3003
 ```
 
 Or from the root with workspace scripts:
 ```bash
 npm run gf:backend    # Glass Fortress backend
 npm run gf:frontend   # Glass Fortress frontend
-npm run cd:backend    # Closed Doors backend
-npm run cd:frontend   # Closed Doors frontend
+npm run cd:backend    # Bronze Fortress backend
+npm run cd:frontend   # Bronze Fortress frontend
 npm run test:gf       # Glass Fortress tests
-npm run test:cd       # Closed Doors tests
+npm run test:cd       # Bronze Fortress tests
 ```
 
 ---
@@ -95,8 +95,8 @@ npm run test:cd       # Closed Doors tests
 | Document | Purpose |
 |---|---|
 | [apps/glass-fortress/README.md](./apps/glass-fortress/README.md) | Glass Fortress mission, architecture, and dev guide |
-| [apps/closed-doors/README.md](./apps/closed-doors/README.md) | Closed Doors mission, privacy architecture, and dev guide |
-| [CLOSED_DOORS.md](./CLOSED_DOORS.md) | Full Closed Doors strategy — read before building |
+| [apps/bronze-fortress/README.md](./apps/bronze-fortress/README.md) | Bronze Fortress mission, privacy architecture, and dev guide |
+| [CLOSED_DOORS.md](./CLOSED_DOORS.md) | Full Bronze Fortress strategy — read before building |
 | [DEPLOYMENT.md](./DEPLOYMENT.md) | Platform decisions, why Vercel ≠ backend, hosting guide |
 | [COMPLIANCE.md](./COMPLIANCE.md) | Defamation risk rules, legal framing, pre-launch checklist |
 | [CLAUDE.md](./CLAUDE.md) | AI assistant instructions and code conventions |

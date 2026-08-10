@@ -6,11 +6,11 @@ const PORT = process.env.PORT ?? 3002;
 app.use(express.json());
 
 app.get('/health', (_req, res) => {
-  res.json({ status: 'ok', app: 'closed-doors-backend' });
+  res.json({ status: 'ok', app: 'bronze-fortress-backend' });
 });
 
 app.listen(PORT, () => {
-  console.log(`Closed Doors backend running on port ${PORT}`);
+  console.log(`Bronze Fortress backend running on port ${PORT}`);
 });
 
 export { app };

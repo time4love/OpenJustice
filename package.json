@@ -5,16 +5,16 @@
   "workspaces": [
     "apps/glass-fortress/backend",
     "apps/glass-fortress/frontend",
-    "apps/closed-doors/backend",
-    "apps/closed-doors/frontend",
+    "apps/bronze-fortress/backend",
+    "apps/bronze-fortress/frontend",
     "packages/*"
   ],
   "scripts": {
     "gf:backend": "npm run dev --workspace=apps/glass-fortress/backend",
     "gf:frontend": "npm run dev --workspace=apps/glass-fortress/frontend",
-    "cd:backend": "npm run dev --workspace=apps/closed-doors/backend",
-    "cd:frontend": "npm run dev --workspace=apps/closed-doors/frontend",
+    "bf:backend": "npm run dev --workspace=apps/bronze-fortress/backend",
+    "bf:frontend": "npm run dev --workspace=apps/bronze-fortress/frontend",
     "test:gf": "npm run test --workspace=apps/glass-fortress/backend",
-    "test:cd": "npm run test --workspace=apps/closed-doors/backend"
+    "test:bf": "npm run test --workspace=apps/bronze-fortress/backend"
   }
 }

@@ -1,6 +1,6 @@
-# Project "Closed Doors" — Platform Strategy
+# Project "Bronze Fortress" — מבצר הנחושת — Platform Strategy
 
-> "בדלתיים סגורות" — a companion platform to Glass Fortress, for a fundamentally different problem.
+> A companion platform to Glass Fortress, for a fundamentally different problem.
 
 ---
 
@@ -16,7 +16,7 @@ A platform for parents abused by the Israeli family court and welfare system (מ
 
 ## Why This Is Not Glass Fortress
 
-| Aspect | Glass Fortress | Closed Doors |
+| Aspect | Glass Fortress | Bronze Fortress |
 |---|---|---|
 | Default visibility | Public | Private (encrypted) |
 | Who contributes | Whistleblowers (institutional leaks) | Victims (their own sealed docs) |
@@ -42,13 +42,13 @@ openjustice/                    ← monorepo root
     ui/                         ← Hebrew RTL components, design system
   apps/
     glass-fortress/             ← current platform, unchanged
-    closed-doors/               ← this platform
+    bronze-fortress/               ← this platform
   contracts/                    ← shared: EvidenceRegistry.sol
 ```
 
 Separate deployments. Separate databases. Separate encryption keys. Monorepo only for code sharing.
 
-### What Glass Fortress Gives Us (~40% of Closed Doors)
+### What Glass Fortress Gives Us (~40% of Bronze Fortress)
 
 - **Thesis engine** — thesis → gap → AI critique → revision loop (pattern theses work identically)
 - **MCP tool framework** — auth middleware, tool registration, researcher workflow
@@ -57,7 +57,7 @@ Separate deployments. Separate databases. Separate encryption keys. Monorepo onl
 - **Evidence intake pipeline** — IntakeAgent + Zod validation
 - **i18n / RTL** — Hebrew-first Next.js patterns
 
-### What Closed Doors Builds Fresh (the other 60%)
+### What Bronze Fortress Builds Fresh (the other 60%)
 
 These must be built first. They cannot be retrofitted.
 
@@ -76,7 +76,7 @@ Each family controls exactly what they share and at what tier. Consent is explic
 ### 3. The Pattern Thesis (New Concept)
 
 In Glass Fortress, a thesis is supported by evidence content.
-In Closed Doors, a thesis is supported by **cryptographic commitments** from independent families:
+In Bronze Fortress, a thesis is supported by **cryptographic commitments** from independent families:
 
 ```
 Family A registers: hash(caseId + judgeId + "welfare_referral_delay" + date)
@@ -546,7 +546,7 @@ That is a legal argument, not a complaint.
 Even well-redacted case timelines can reidentify families in small communities. "Family with 2 kids, divorce filed March 2021, referral to Givataim welfare office" may be unique. Requires deliberate timeline fuzzing or differential privacy before any public release.
 
 ### Infrastructure Isolation
-Closed Doors must be completely separate from Glass Fortress — different Railway service, different Supabase project, different keys, different domain. No shared infrastructure at any layer. No single person holds decryption keys for all families.
+Bronze Fortress must be completely separate from Glass Fortress — different Railway service, different Supabase project, different keys, different domain. No shared infrastructure at any layer. No single person holds decryption keys for all families.
 
 ### Legal Boundary
 Each parent holds documents about their own case — they are a party to the proceeding. In Israeli law, a party's right to their own case file differs from publishing it publicly. Family court confidentiality (סעיף 68 לחוק בתי המשפט) covers *content*, not necessarily *patterns*. Legal review required before any public launch.
@@ -558,7 +558,7 @@ Each parent holds documents about their own case — they are a party to the pro
 **Phase 0 — Extract `packages/core` from Glass Fortress**
 Refactor only. Glass Fortress imports from it, nothing breaks. This creates the shared foundation.
 
-**Phase 1 — Closed Doors foundation**
+**Phase 1 — Bronze Fortress foundation**
 Encryption architecture + consent management + family vault model. Build these before any feature work.
 
 **Phase 2 — Pattern layer**
@@ -573,7 +573,7 @@ Thesis engine, MCP tools, FOIA generation, agent integrations. Fast to build bec
 
 What this platform represents is a **class action discovery platform for sealed proceedings** — something that doesn't exist anywhere. The reason systemic corruption in family courts persists is precisely because the sealing prevents pattern recognition.
 
-Glass Fortress and Closed Doors are complementary arguments for the same thesis:
+Glass Fortress and Bronze Fortress are complementary arguments for the same thesis:
 
 > **Closed systems enable abuse. The remedy is structured, privacy-preserving transparency.**
 

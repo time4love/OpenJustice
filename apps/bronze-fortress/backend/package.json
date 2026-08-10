@@ -1,7 +1,7 @@
 {
-  "name": "closed-doors-backend",
+  "name": "bronze-fortress-backend",
   "version": "0.1.0",
-  "description": "Closed Doors — private family court pattern analysis platform",
+  "description": "Bronze Fortress (מבצר הנחושת) — private family court pattern analysis platform",
   "main": "dist/server.js",
   "scripts": {
     "dev": "prisma generate && ts-node-dev --respawn --transpile-only --ignore-watch node_modules --ignore-watch dist --ignore-watch prisma src/server.ts",
