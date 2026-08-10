@@ -2,6 +2,7 @@ import { NextIntlClientProvider, hasLocale } from 'next-intl';
 import { getMessages } from 'next-intl/server';
 import { notFound } from 'next/navigation';
 import { routing } from '@/i18n/routing';
+import { NavBar } from '@/components/NavBar';
 import './globals.css';
 
 export default async function LocaleLayout({
@@ -21,7 +22,8 @@ export default async function LocaleLayout({
     <html lang={locale} dir={isRtl ? 'rtl' : 'ltr'}>
       <body>
         <NextIntlClientProvider messages={messages}>
-          {children}
+          <NavBar />
+          <main>{children}</main>
         </NextIntlClientProvider>
       </body>
     </html>
