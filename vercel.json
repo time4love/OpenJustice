@@ -1,33 +1,22 @@
 {
-    "functions": {
-        "**/*": {
-            "maxDuration": 60
-        }
-    },
-    "services": {
-        "frontend": {
-            "root": "frontend",
-            "framework": "nextjs"
-        },
-        "backend": {
-            "root": "backend",
-            "entrypoint": "dist/server.js"
-        }
-    },
-    "rewrites": [
-        {
-            "source": "/api/backend(/.*)?",
-            "destination": {
-                "type": "service",
-                "service": "backend"
-            }
-        },
-        {
-            "source": "/(.*)",
-            "destination": {
-                "type": "service",
-                "service": "frontend"
-            }
-        }
-    ]
+  "functions": {
+    "**/*": {
+      "maxDuration": 60
+    }
+  },
+  "services": {
+    "frontend": {
+      "root": "apps/glass-fortress/frontend",
+      "framework": "nextjs"
+    }
+  },
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": {
+        "type": "service",
+        "service": "frontend"
+      }
+    }
+  ]
 }

@@ -1,0 +1,11 @@
+{
+  "common": {
+    "appName": "Closed Doors",
+    "tagline": "Together, the pattern is visible"
+  },
+  "home": {
+    "headline": "You Are Not Alone",
+    "subheadline": "Many families face the same key figures, the same patterns — each in isolation. This platform makes the pattern visible without exposing any individual case.",
+    "registerCta": "Register your case"
+  }
+}

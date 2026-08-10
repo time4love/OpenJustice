@@ -1,0 +1,29 @@
+import { NextIntlClientProvider, hasLocale } from 'next-intl';
+import { getMessages } from 'next-intl/server';
+import { notFound } from 'next/navigation';
+import { routing } from '@/i18n/routing';
+import './globals.css';
+
+export default async function LocaleLayout({
+  children,
+  params,
+}: {
+  children: React.ReactNode;
+  params: Promise<{ locale: string }>;
+}) {
+  const { locale } = await params;
+  if (!hasLocale(routing.locales, locale)) notFound();
+
+  const messages = await getMessages();
+  const isRtl = locale === 'he';
+
+  return (
+    <html lang={locale} dir={isRtl ? 'rtl' : 'ltr'}>
+      <body>
+        <NextIntlClientProvider messages={messages}>
+          {children}
+        </NextIntlClientProvider>
+      </body>
+    </html>
+  );
+}

@@ -1,0 +1,20 @@
+{
+  "name": "openjustice",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "apps/glass-fortress/backend",
+    "apps/glass-fortress/frontend",
+    "apps/closed-doors/backend",
+    "apps/closed-doors/frontend",
+    "packages/*"
+  ],
+  "scripts": {
+    "gf:backend": "npm run dev --workspace=apps/glass-fortress/backend",
+    "gf:frontend": "npm run dev --workspace=apps/glass-fortress/frontend",
+    "cd:backend": "npm run dev --workspace=apps/closed-doors/backend",
+    "cd:frontend": "npm run dev --workspace=apps/closed-doors/frontend",
+    "test:gf": "npm run test --workspace=apps/glass-fortress/backend",
+    "test:cd": "npm run test --workspace=apps/closed-doors/backend"
+  }
+}

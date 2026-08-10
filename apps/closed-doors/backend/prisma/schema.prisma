@@ -1,0 +1,133 @@
+// Closed Doors — private family court pattern analysis platform
+// IMPORTANT: Separate Supabase project from Glass Fortress. Separate keys. Never shared.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Enums ───────────────────────────────────────────────────────────────────
+
+enum FamilyMemberRole {
+  PRIMARY_CONTACT
+  CO_PARENT
+  LAWYER
+}
+
+enum KeyFigureType {
+  JUDGE
+  SOCIAL_WORKER
+  EVALUATOR // מאבחן
+  GUARDIAN_AD_LITEM // אפוטרופוס לדין
+  OTHER
+}
+
+enum KeyFigureStatus {
+  PENDING   // below activation threshold — invisible to other families
+  ACTIVE    // threshold met + legal review approved
+}
+
+enum CooperationLevel {
+  NONE                    // Level 1: counted but no sharing
+  ANONYMOUS_TIMELINE      // Level 2: fuzzed timeline visible to matched families
+  ANONYMOUS_MESSAGING     // Level 3: platform-routed messages
+  MUTUAL_INTRODUCTION     // Level 4: real identity exchanged (both consented)
+  SHARED_EVIDENCE_ROOM    // Level 5: full encrypted workspace
+}
+
+// ─── Core Models (Phase CD-1 stubs — encryption layer TBD) ───────────────────
+
+model Family {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // All content fields will be encrypted client-side before storage.
+  // Server holds ciphertext only.
+  encryptedMetadata String? // JSON blob, encrypted
+  publicKeyHex      String  // family's public key for E2E encryption
+
+  members     FamilyMember[]
+  commitments Commitment[]
+  consents    ConsentRecord[]
+
+  cooperationLevel CooperationLevel @default(NONE)
+}
+
+model FamilyMember {
+  id        String           @id @default(cuid())
+  family    Family           @relation(fields: [familyId], references: [id])
+  familyId  String
+  role      FamilyMemberRole
+  createdAt DateTime         @default(now())
+
+  // Supabase Auth user ID — auth handled separately per family member
+  supabaseUserId String @unique
+}
+
+model ConsentRecord {
+  id        String           @id @default(cuid())
+  family    Family           @relation(fields: [familyId], references: [id])
+  familyId  String
+  tier      CooperationLevel
+  grantedAt DateTime         @default(now())
+  revokedAt DateTime?
+  isActive  Boolean          @default(true)
+}
+
+// ─── Key Figure Registry ──────────────────────────────────────────────────────
+
+model PendingKeyFigure {
+  id           String        @id @default(cuid())
+  name         String
+  type         KeyFigureType
+  organization String?
+  createdAt    DateTime      @default(now())
+
+  // Tracking toward activation threshold
+  nominatingFamilyIds String[] // cuid list — deduplicated per family
+  nominationCount     Int      @default(1)
+
+  // Once threshold met → promote to KeyFigure, delete this record
+}
+
+model KeyFigure {
+  id           String          @id @default(cuid())
+  name         String
+  type         KeyFigureType
+  organization String?
+  status       KeyFigureStatus @default(PENDING)
+  createdAt    DateTime        @default(now())
+  activatedAt  DateTime?
+
+  // Cross-reference with public professional registries
+  registryVerified Boolean @default(false)
+  registrySource   String? // e.g. "פנקס הפסיכולוגים", "מרשם העובדים הסוציאליים"
+
+  commitments Commitment[]
+}
+
+// ─── Cryptographic Commitments (on-chain pattern proof) ──────────────────────
+
+model Commitment {
+  id        String   @id @default(cuid())
+  family    Family   @relation(fields: [familyId], references: [id])
+  familyId  String
+  figure    KeyFigure @relation(fields: [figureId], references: [id])
+  figureId  String
+  createdAt DateTime @default(now())
+
+  // hash(judgeId/figureId + patternCategory + quarterYear)
+  // Registered on-chain BEFORE any family is connected to another.
+  commitmentHash String  @unique
+  patternCategory String // e.g. "welfare_referral_at_first_hearing"
+  quarterYear    String  // e.g. "Q1-2022" — deliberate fuzzing, not exact date
+
+  onChainTxHash String? // set after blockchain registration
+
+  @@unique([familyId, figureId, patternCategory, quarterYear])
+}
