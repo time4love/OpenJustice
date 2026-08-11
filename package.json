@@ -16,6 +16,7 @@
     "packages/*"
   ],
   "scripts": {
+    "prepare": "git config core.hooksPath .githooks || true",
     "gf:backend": "npm run dev --workspace=apps/glass-fortress/backend",
     "gf:frontend": "npm run dev --workspace=apps/glass-fortress/frontend",
     "bf:backend": "npm run dev --workspace=apps/bronze-fortress/backend",

@@ -1,0 +1,7 @@
+#!/bin/sh
+# Replace Wix corporate registry URLs in the lockfile with registry.npmjs.org
+# so Railway builds (which can't reach npm.dev.wixpress.com) always succeed.
+if [ -f package-lock.json ]; then
+  sed -i '' 's|https://npm.dev.wixpress.com/api/npm/npm-repos/|https://registry.npmjs.org/|g' package-lock.json
+  git add package-lock.json
+fi
