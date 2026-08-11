@@ -16,7 +16,7 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: 'Glass Fortress — Evidence Vault',
   description:
-    'AI-powered legal evidence discovery platform for the Covid-19 class-action lawsuit.',
+    'AI-powered legal evidence discovery & accountability platform for the Covid-19 class-action lawsuit.',
 };
 
 export default async function RootLayout({
