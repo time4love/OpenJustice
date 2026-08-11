@@ -2,6 +2,12 @@
   "name": "openjustice",
   "version": "0.1.0",
   "private": true,
+  "overrides": {
+    "zod": "^4.4.3"
+  },
+  "dependencies": {
+    "zod": "^4.4.3"
+  },
   "workspaces": [
     "apps/glass-fortress/backend",
     "apps/glass-fortress/frontend",
