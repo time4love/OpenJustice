@@ -122,6 +122,7 @@ app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
 
 app.listen(PORT, () => {
   console.log(`Glass Fortress backend running on http://localhost:${PORT}`);
+  console.log(`[startup] Build: ${new Date().toISOString()} | Node: ${process.version}`);
 });
 
 export { app };
