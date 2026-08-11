@@ -31,7 +31,7 @@ export async function buildPatternThesisHandler(input: { figureId: string }): Pr
         caseCount: p.caseCount,
         dateRange: p.dateRange,
         courts: p.courts,
-        commitmentHashes: p.commitmentHashes,
+        allegationHashes: p.allegationHashes,
         onChainRegistered: p.onChainTxHashes.length,
         onChainTxHashes: p.onChainTxHashes,
       })),
@@ -47,7 +47,7 @@ export async function buildPatternThesisHandler(input: { figureId: string }): Pr
       activatedAt: thesis.activatedAt,
       summary: {
         totalCases: thesis.totalCases,
-        totalCommitments: thesis.totalCommitments,
+        totalAllegations: thesis.totalAllegations,
         onChainRegistered: thesis.onChainCount,
         domainsAffected: Object.keys(thesis.byDomain).length,
         patternsDocumented: Object.values(thesis.byDomain).flat().length,

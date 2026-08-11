@@ -6,7 +6,7 @@ export interface PatternEvidence {
   patternCategory: PatternCategory;
   label: PatternLabel;
   caseCount: number;
-  commitmentHashes: string[];
+  allegationHashes: string[];
   onChainTxHashes: string[]; // registered hashes only
   dateRange: {
     earliest: string | null; // ISO date
@@ -22,9 +22,9 @@ export interface PatternThesis {
   organization: string | null;
   court: string | null;
   activatedAt: Date | null;
-  totalCases: number;       // distinct cases with ANY commitment for this figure
-  totalCommitments: number; // total commitment records
-  onChainCount: number;     // commitments with on-chain tx hash
+  totalCases: number;       // distinct cases with ANY allegation for this figure
+  totalAllegations: number; // total allegation records
+  onChainCount: number;     // allegations with on-chain tx hash
   byDomain: Record<string, PatternEvidence[]>; // domain → patterns
   legalNote: string;
   generatedAt: Date;
@@ -41,12 +41,12 @@ export class PatternThesisService {
 
     if (!figure || figure.status !== 'ACTIVE') return null;
 
-    const commitments = await prisma.commitment.findMany({
+    const allegations = await prisma.allegation.findMany({
       where: { figureId },
       select: {
         caseId: true,
         patternCategory: true,
-        commitmentHash: true,
+        allegationHash: true,
         onChainTxHash: true,
         eventStartDate: true,
         eventEndDate: true,
@@ -56,15 +56,15 @@ export class PatternThesisService {
     });
 
     // Group by patternCategory
-    const grouped = new Map<PatternCategory, typeof commitments>();
-    for (const c of commitments) {
-      const existing = grouped.get(c.patternCategory) ?? [];
-      existing.push(c);
-      grouped.set(c.patternCategory, existing);
+    const grouped = new Map<PatternCategory, typeof allegations>();
+    for (const a of allegations) {
+      const existing = grouped.get(a.patternCategory) ?? [];
+      existing.push(a);
+      grouped.set(a.patternCategory, existing);
     }
 
-    const distinctCases = new Set(commitments.map((c) => c.caseId)).size;
-    const onChainCount = commitments.filter((c) => c.onChainTxHash !== null).length;
+    const distinctCases = new Set(allegations.map((a) => a.caseId)).size;
+    const onChainCount = allegations.filter((a) => a.onChainTxHash !== null).length;
 
     // Build per-pattern evidence records, grouped by domain
     const byDomain: Record<string, PatternEvidence[]> = {};
@@ -81,7 +81,7 @@ export class PatternThesisService {
         patternCategory: category,
         label,
         caseCount: new Set(records.map((r) => r.caseId)).size,
-        commitmentHashes: records.map((r) => r.commitmentHash),
+        allegationHashes: records.map((r) => r.allegationHash),
         onChainTxHashes: records
           .map((r) => r.onChainTxHash)
           .filter((h): h is string => h !== null),
@@ -108,12 +108,12 @@ export class PatternThesisService {
       court: figure.court?.name ?? null,
       activatedAt: figure.activatedAt,
       totalCases: distinctCases,
-      totalCommitments: commitments.length,
+      totalAllegations: allegations.length,
       onChainCount,
       byDomain,
       legalNote:
-        'Each commitment was independently registered by a separate petitioner before any inter-case connection was established. ' +
-        'The on-chain timestamp of each commitment hash precedes any cooperation between cases. ' +
+        'Each allegation was independently registered by a separate petitioner before any inter-case connection was established. ' +
+        'The on-chain timestamp of each allegation hash precedes any cooperation between cases. ' +
         'No case content, identifiers, or personal information is included in this thesis.',
       generatedAt: new Date(),
     };
@@ -127,7 +127,7 @@ export class PatternThesisService {
       where: { status: 'ACTIVE' },
       include: {
         court: { select: { name: true } },
-        _count: { select: { commitments: true } },
+        _count: { select: { allegations: true } },
       },
       orderBy: { activatedAt: 'desc' },
     });
@@ -135,7 +135,7 @@ export class PatternThesisService {
     // For each figure, get distinct case count
     const results = await Promise.all(
       figures.map(async (f) => {
-        const distinct = await prisma.commitment.findMany({
+        const distinct = await prisma.allegation.findMany({
           where: { figureId: f.id },
           distinct: ['caseId'],
           select: { caseId: true },

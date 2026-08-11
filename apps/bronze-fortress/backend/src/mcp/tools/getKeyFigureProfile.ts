@@ -1,12 +1,12 @@
 import { z } from 'zod';
 import { prisma } from '../../lib/prisma';
-import { CommitmentService } from '../../services/CommitmentService';
+import { AllegationService } from '../../services/AllegationService';
 
 export const getKeyFigureProfileSchema = {
   figureId: z.string().describe('KeyFigure ID'),
 };
 
-const commitmentService = new CommitmentService();
+const allegationService = new AllegationService();
 
 export async function getKeyFigureProfileHandler(input: { figureId: string }): Promise<string> {
   const figure = await prisma.keyFigure.findUnique({
@@ -18,7 +18,7 @@ export async function getKeyFigureProfileHandler(input: { figureId: string }): P
     return JSON.stringify({ error: `KeyFigure ${input.figureId} not found` });
   }
 
-  const patternSummary = await commitmentService.getFigurePatternSummary(input.figureId);
+  const patternSummary = await allegationService.getFigurePatternSummary(input.figureId);
 
   return JSON.stringify({
     id: figure.id,
@@ -32,8 +32,8 @@ export async function getKeyFigureProfileHandler(input: { figureId: string }): P
     activatedAt: figure.activatedAt,
     patternSummary,
     legalNote:
-      'Pattern counts reflect independently registered commitments from families who never met each other. ' +
-      'Each commitment was timestamped on-chain before any inter-family connection. ' +
+      'Pattern counts reflect independently registered allegations from cases that had no prior connection. ' +
+      'Each allegation was timestamped on-chain before any inter-case connection was established. ' +
       'No individual case content is exposed here.',
   }, null, 2);
 }

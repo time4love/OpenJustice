@@ -16,16 +16,10 @@ export default async function LocaleLayout({
   if (!hasLocale(routing.locales, locale)) notFound();
 
   const messages = await getMessages();
-  const isRtl = locale === 'he';
-
   return (
-    <html lang={locale} dir={isRtl ? 'rtl' : 'ltr'}>
-      <body>
-        <NextIntlClientProvider messages={messages}>
-          <NavBar />
-          <main>{children}</main>
-        </NextIntlClientProvider>
-      </body>
-    </html>
+    <NextIntlClientProvider messages={messages}>
+      <NavBar />
+      <main>{children}</main>
+    </NextIntlClientProvider>
   );
 }

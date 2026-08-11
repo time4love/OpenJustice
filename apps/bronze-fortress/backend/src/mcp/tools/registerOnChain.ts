@@ -6,12 +6,12 @@ export const registerOnChainSchema = {
   figureId: z
     .string()
     .optional()
-    .describe('Optional: only register commitments for this key figure. Omit to process all pending.'),
+    .describe('Optional: only register allegations for this key figure. Omit to process all pending.'),
 };
 
 interface OnChainResult {
-  commitmentId: string;
-  commitmentHash: string;
+  allegationId: string;
+  allegationHash: string;
   txHash?: string;
   error?: string;
 }
@@ -24,12 +24,12 @@ export async function registerOnChainHandler(input: { figureId?: string }): Prom
     });
   }
 
-  const pending = await prisma.commitment.findMany({
+  const pending = await prisma.allegation.findMany({
     where: {
       onChainTxHash: null,
       ...(input.figureId ? { figureId: input.figureId } : {}),
     },
-    select: { id: true, commitmentHash: true },
+    select: { id: true, allegationHash: true },
   });
 
   if (pending.length === 0) {
@@ -37,7 +37,7 @@ export async function registerOnChainHandler(input: { figureId?: string }): Prom
       attempted: 0,
       succeeded: 0,
       failed: 0,
-      message: 'No pending commitments found.',
+      message: 'No pending allegations found.',
     });
   }
 
@@ -45,20 +45,20 @@ export async function registerOnChainHandler(input: { figureId?: string }): Prom
   let failed = 0;
   const results: OnChainResult[] = [];
 
-  for (const c of pending) {
+  for (const a of pending) {
     try {
-      const txHash = await web3.registerCommitmentHash(c.commitmentHash);
-      await prisma.commitment.update({
-        where: { id: c.id },
+      const txHash = await web3.registerCommitmentHash(a.allegationHash);
+      await prisma.allegation.update({
+        where: { id: a.id },
         data: { onChainTxHash: txHash },
       });
       succeeded++;
-      results.push({ commitmentId: c.id, commitmentHash: c.commitmentHash, txHash });
+      results.push({ allegationId: a.id, allegationHash: a.allegationHash, txHash });
     } catch (err) {
       failed++;
       results.push({
-        commitmentId: c.id,
-        commitmentHash: c.commitmentHash,
+        allegationId: a.id,
+        allegationHash: a.allegationHash,
         error: err instanceof Error ? err.message : String(err),
       });
     }

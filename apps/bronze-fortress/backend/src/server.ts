@@ -1,6 +1,7 @@
 import express, { Request, Response, NextFunction } from 'express';
 import { mcpRouter } from './mcp/mcpRoutes';
 import { caseRouter } from './routes/caseRoutes';
+import { figureRouter } from './routes/figureRoutes';
 
 const app = express();
 const PORT = process.env.PORT ?? 3002;
@@ -13,6 +14,7 @@ app.get('/health', (_req, res) => {
 
 app.use('/api/mcp', mcpRouter);
 app.use('/api/cases', caseRouter);
+app.use('/api/figures', figureRouter);
 
 // Global error handler — must be last. Catches errors forwarded via next(err).
 app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {

@@ -11,10 +11,10 @@ export async function activateFigureHandler(input: { keyFigureId: string }): Pro
   const figure = await service.activateFigure(input.keyFigureId);
   return JSON.stringify({
     id: figure.id,
-    name: figure.name,
     type: figure.type,
     status: figure.status,
+    publicSequence: figure.publicSequence,
     activatedAt: figure.activatedAt,
-    message: 'Figure is now ACTIVE — visible to registered families and queryable in pattern theses.',
+    message: `Figure is now ACTIVE — public identifier assigned: ${figure.type} ${figure.publicSequence}.`,
   }, null, 2);
 }

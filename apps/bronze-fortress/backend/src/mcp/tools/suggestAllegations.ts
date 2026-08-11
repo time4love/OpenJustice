@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { PatternDetectionService } from '../../services/PatternDetectionService';
 
-export const suggestCommitmentsSchema = {
+export const suggestAllegationsSchema = {
   caseId: z.string().describe('The case ID to analyse'),
   figureId: z.string().describe('Key figure to attribute the patterns to'),
   courtId: z.string().describe('Court where the proceedings occurred'),
@@ -9,12 +9,12 @@ export const suggestCommitmentsSchema = {
 
 const service = new PatternDetectionService();
 
-export async function suggestCommitmentsHandler(input: {
+export async function suggestAllegationsHandler(input: {
   caseId: string;
   figureId: string;
   courtId: string;
 }): Promise<string> {
-  const result = await service.suggestCommitments(input.caseId, input.figureId, input.courtId);
+  const result = await service.suggestAllegations(input.caseId, input.figureId, input.courtId);
 
   const pending = result.suggestions.filter((s) => !s.alreadyRegistered);
   const already = result.suggestions.filter((s) => s.alreadyRegistered);
@@ -26,7 +26,7 @@ export async function suggestCommitmentsHandler(input: {
       alreadyRegisteredCount: already.length,
       nextStep:
         pending.length > 0
-          ? 'Call register_commitment for each suggestion where alreadyRegistered=false.'
+          ? 'Call register_allegation for each suggestion where alreadyRegistered=false.'
           : 'All detected patterns are already registered for this figure.',
     },
     null,

@@ -1,12 +1,17 @@
 import request from 'supertest';
-import { CooperationLevel, PoliceCaseStatus, NzakutOrderType } from '../../src/generated/prisma';
+import { CooperationLevel, PatternCategory, PoliceCaseStatus, NzakutOrderType } from '../../src/generated/prisma';
 
 const mockGetUser = jest.fn();
+const mockAllegationFindMany = jest.fn();
+const mockAllegationService = {
+  getPatternCountsByFigure: jest.fn(),
+};
 const mockVaultService = {
   getCaseByMember: jest.fn(),
   getCase: jest.fn(),
   createCase: jest.fn(),
   storeEncryptedIntake: jest.fn(),
+  setCourt: jest.fn(),
 };
 const mockConsentService = {
   getActiveConsents: jest.fn(),
@@ -18,10 +23,33 @@ const mockIntakeService = {
   listCriminalComplaints: jest.fn(),
   addNzakutOrder: jest.fn(),
   listNzakutOrders: jest.fn(),
+  countCriminalComplaints: jest.fn(),
+  countNzakutOrders: jest.fn(),
+  addWelfareReport: jest.fn(),
+  listWelfareReports: jest.fn(),
+  countWelfareReports: jest.fn(),
+  addEvaluatorSession: jest.fn(),
+  listEvaluatorSessions: jest.fn(),
+  countEvaluatorSessions: jest.fn(),
+  addGuardianContact: jest.fn(),
+  listGuardianContacts: jest.fn(),
+  countGuardianContacts: jest.fn(),
 };
 
 jest.mock('../../src/lib/supabase', () => ({
   supabaseAdmin: { auth: { getUser: mockGetUser } },
+}));
+
+jest.mock('../../src/lib/prisma', () => ({
+  prisma: {
+    allegation: { findMany: mockAllegationFindMany },
+    court: { findUnique: jest.fn() },
+    case: { findUnique: jest.fn() },
+  },
+}));
+
+jest.mock('../../src/services/AllegationService', () => ({
+  AllegationService: jest.fn().mockImplementation(() => mockAllegationService),
 }));
 
 jest.mock('../../src/services/CaseVaultService', () => ({
@@ -125,11 +153,15 @@ describe('GET /api/cases/me', () => {
       id: CASE_ID,
       cooperationLevel: CooperationLevel.ANONYMOUS_TIMELINE,
       publicKeyHex: '0xabc',
-      encryptedIntakeData: 'ciphertext',
     });
     mockConsentService.getActiveConsents.mockResolvedValue([
       { tier: CooperationLevel.ANONYMOUS_TIMELINE, grantedAt: new Date('2026-01-01') },
     ]);
+    mockIntakeService.countCriminalComplaints.mockResolvedValue(1);
+    mockIntakeService.countNzakutOrders.mockResolvedValue(0);
+    mockIntakeService.countWelfareReports.mockResolvedValue(0);
+    mockIntakeService.countEvaluatorSessions.mockResolvedValue(0);
+    mockIntakeService.countGuardianContacts.mockResolvedValue(0);
 
     const res = await request(app).get('/api/cases/me').set(authHeaders());
 
@@ -137,6 +169,25 @@ describe('GET /api/cases/me', () => {
     expect(res.body.caseId).toBe(CASE_ID);
     expect(res.body.hasIntakeData).toBe(true);
     expect(res.body.activeConsents).toHaveLength(1);
+  });
+
+  it('returns hasIntakeData=false when no intake records exist', async () => {
+    mockVaultService.getCase.mockResolvedValue({
+      id: CASE_ID,
+      cooperationLevel: CooperationLevel.NONE,
+      publicKeyHex: '0xabc',
+    });
+    mockConsentService.getActiveConsents.mockResolvedValue([]);
+    mockIntakeService.countCriminalComplaints.mockResolvedValue(0);
+    mockIntakeService.countNzakutOrders.mockResolvedValue(0);
+    mockIntakeService.countWelfareReports.mockResolvedValue(0);
+    mockIntakeService.countEvaluatorSessions.mockResolvedValue(0);
+    mockIntakeService.countGuardianContacts.mockResolvedValue(0);
+
+    const res = await request(app).get('/api/cases/me').set(authHeaders());
+
+    expect(res.status).toBe(200);
+    expect(res.body.hasIntakeData).toBe(false);
   });
 
   it('returns 403 when user has no case vault', async () => {
@@ -364,5 +415,86 @@ describe('GET /api/cases/me/nzakut', () => {
     expect(res.status).toBe(200);
     expect(res.body.orders).toHaveLength(1);
     expect(mockIntakeService.listNzakutOrders).toHaveBeenCalledWith(CASE_ID);
+  });
+});
+
+describe('GET /api/cases/me/allegations', () => {
+  const FIGURE_ID = 'fig-1';
+  const COURT_NAME = 'בית המשפט לענייני משפחה בירושלים';
+
+  const allegation = {
+    figureId: FIGURE_ID,
+    patternCategory: PatternCategory.EX_PARTE_HEARING,
+    onChainTxHash: null,
+    createdAt: new Date('2024-01-01'),
+    figure: { id: FIGURE_ID, name: 'שופטת בדיקה', type: 'JUDGE' },
+    court: { name: COURT_NAME, city: 'ירושלים' },
+  };
+
+  beforeEach(() => {
+    validUser();
+    mockVaultService.getCaseByMember.mockResolvedValue({ id: CASE_ID });
+  });
+
+  it('returns figures grouped with patterns and otherCasesCount', async () => {
+    mockAllegationFindMany.mockResolvedValue([allegation]);
+    mockAllegationService.getPatternCountsByFigure.mockResolvedValue(
+      new Map([[`${FIGURE_ID}:${PatternCategory.EX_PARTE_HEARING}`, 4]]),
+    );
+
+    const res = await request(app).get('/api/cases/me/allegations').set(authHeaders());
+
+    expect(res.status).toBe(200);
+    expect(res.body.figures).toHaveLength(1);
+    const fig = res.body.figures[0];
+    expect(fig.figureId).toBe(FIGURE_ID);
+    expect(fig.figureName).toBe('שופטת בדיקה');
+    expect(fig.patterns).toHaveLength(1);
+    expect(fig.patterns[0].patternCategory).toBe(PatternCategory.EX_PARTE_HEARING);
+    expect(fig.patterns[0].otherCasesCount).toBe(3);
+  });
+
+  it('returns otherCasesCount of 0 when this case is the only one', async () => {
+    mockAllegationFindMany.mockResolvedValue([allegation]);
+    mockAllegationService.getPatternCountsByFigure.mockResolvedValue(
+      new Map([[`${FIGURE_ID}:${PatternCategory.EX_PARTE_HEARING}`, 1]]),
+    );
+
+    const res = await request(app).get('/api/cases/me/allegations').set(authHeaders());
+
+    expect(res.status).toBe(200);
+    expect(res.body.figures[0].patterns[0].otherCasesCount).toBe(0);
+  });
+
+  it('returns empty figures array when no allegations exist', async () => {
+    mockAllegationFindMany.mockResolvedValue([]);
+    mockAllegationService.getPatternCountsByFigure.mockResolvedValue(new Map());
+
+    const res = await request(app).get('/api/cases/me/allegations').set(authHeaders());
+
+    expect(res.status).toBe(200);
+    expect(res.body.figures).toHaveLength(0);
+  });
+
+  it('groups multiple patterns under the same figure', async () => {
+    const allegation2 = {
+      ...allegation,
+      patternCategory: PatternCategory.SYSTEMIC_HEARING_DELAYS,
+    };
+    mockAllegationFindMany.mockResolvedValue([allegation, allegation2]);
+    mockAllegationService.getPatternCountsByFigure.mockResolvedValue(
+      new Map([
+        [`${FIGURE_ID}:${PatternCategory.EX_PARTE_HEARING}`, 2],
+        [`${FIGURE_ID}:${PatternCategory.SYSTEMIC_HEARING_DELAYS}`, 7],
+      ]),
+    );
+
+    const res = await request(app).get('/api/cases/me/allegations').set(authHeaders());
+
+    expect(res.status).toBe(200);
+    expect(res.body.figures).toHaveLength(1);
+    expect(res.body.figures[0].patterns).toHaveLength(2);
+    const patterns = res.body.figures[0].patterns;
+    expect(patterns.find((p: { patternCategory: string; otherCasesCount: number }) => p.patternCategory === PatternCategory.SYSTEMIC_HEARING_DELAYS).otherCasesCount).toBe(6);
   });
 });

@@ -112,7 +112,8 @@ model Court {
   district String
 
   keyFigures  KeyFigure[]
-  commitments Commitment[]
+  allegations Allegation[]
+  legalCases  Case[]
 }
 
 // ─── Case & Members ───────────────────────────────────────────────────────────
@@ -134,11 +135,20 @@ model Case {
 
   cooperationLevel CooperationLevel @default(NONE)
 
+  // The family court where these proceedings are taking place.
+  // Set once by the petitioner; inherited by all pattern commitments.
+  court   Court?  @relation(fields: [courtId], references: [id])
+  courtId String?
+
   members            CaseMember[]
   consents           ConsentRecord[]
-  commitments        Commitment[]
+  allegations        Allegation[]
+  evidenceRecords    Evidence[]
   criminalComplaints CriminalComplaint[]
   nzakutOrders       NzakutOrder[]
+  welfareReports     WelfareReport[]
+  evaluatorSessions  EvaluatorSession[]
+  guardianContacts   GuardianContact[]
 
   @@map("cases")
 }
@@ -183,6 +193,8 @@ model CriminalComplaint {
   closureDate   DateTime?
 
   createdAt DateTime @default(now())
+
+  evidence Evidence?
 }
 
 // Domain B: Tracks צו נזקקות issuance and whether evidentiary hearings occurred.
@@ -205,31 +217,90 @@ model NzakutOrder {
   hearingDate DateTime?
 
   createdAt DateTime @default(now())
+
+  evidence Evidence?
+}
+
+// Domain C: Welfare professional conduct — tracks whether the social worker
+// followed required procedures in report preparation and hearings.
+model WelfareReport {
+  id        String @id @default(cuid())
+  legalCase Case   @relation(fields: [caseId], references: [id])
+  caseId    String
+
+  welfareReferralAtFirstHearing Boolean  // referral made at opening hearing, before evidence
+  interviewOneSided             Boolean? // report based on interview with only one party
+  homeVisitConducted            Boolean? // social worker visited requesting parent's home
+  citedDroppedAllegations       Boolean? // report relies on closed/unproven allegations
+  recommendationChanged         Boolean? // recommendation reversed between reports without explanation
+
+  reportDate DateTime?
+  createdAt  DateTime @default(now())
+
+  evidence Evidence?
+
+  @@map("welfare_reports")
+}
+
+// Domain D: Evaluator (מאבחן) conduct — tracks session adequacy and procedural compliance.
+model EvaluatorSession {
+  id        String @id @default(cuid())
+  legalCase Case   @relation(fields: [caseId], references: [id])
+  caseId    String
+
+  sessionCount              Int     // total number of sessions conducted
+  totalDurationMinutes      Int?    // total evaluation time across all sessions
+  bothParentsInterviewed    Boolean // were both parents assessed separately?
+  feedbackSessionHeld       Boolean // was a feedback session held before submitting opinion?
+  judgeAdoptedWithoutReview Boolean? // did judge adopt recommendation without independent scrutiny?
+
+  evaluationDate DateTime?
+  createdAt      DateTime @default(now())
+
+  evidence Evidence?
+
+  @@map("evaluator_sessions")
+}
+
+// Domain E: Guardian ad litem (אפוטרופוס לדין) conduct — tracks child contact and independence.
+// appointingJudgeId is stored to detect GUARDIAN_REPEATEDLY_BY_SAME_JUDGE across cases.
+model GuardianContact {
+  id        String @id @default(cuid())
+  legalCase Case   @relation(fields: [caseId], references: [id])
+  caseId    String
+
+  childMeetingCount        Int      // number of times guardian met the child
+  positionContradictsChild Boolean? // guardian advocated against child's expressed wishes
+
+  // KeyFigure id of the appointing judge — enables cross-case detection of
+  // GUARDIAN_REPEATEDLY_BY_SAME_JUDGE without storing any family content.
+  appointingJudgeFigureId String?
+
+  appointmentDate DateTime?
+  createdAt       DateTime @default(now())
+
+  evidence Evidence?
+
+  @@map("guardian_contacts")
 }
 
 // ─── Key Figure Registry ──────────────────────────────────────────────────────
 
 // Families propose figures here. Invisible until activation threshold is met.
-model PendingKeyFigure {
-  id           String        @id @default(cuid())
-  name         String
-  type         KeyFigureType
-  organization String?
-  courtId      String?       // optional — social workers may cross courts
-
-  nominatingFamilyIds String[] // deduplicated family cuid list
-  nominationCount     Int      @default(1)
-
-  createdAt DateTime @default(now())
-  // On threshold → promote to KeyFigure, delete this record
-}
-
 model KeyFigure {
   id           String          @id @default(cuid())
   name         String
   type         KeyFigureType
   organization String?
   status       KeyFigureStatus @default(PENDING)
+
+  // Stable anonymous public identifier — set at activation, never changes.
+  // Rendered as "{localizedRoleLabel} {publicSequence}" (e.g. "עובד סוציאלי 1").
+  // Real name is never exposed publicly.
+  publicSequence Int?
+
+  // Cases that have nominated this figure (deduplicated case cuid list).
+  nominatingCaseIds String[]
 
   court   Court?  @relation(fields: [courtId], references: [id])
   courtId String?
@@ -241,24 +312,62 @@ model KeyFigure {
   createdAt   DateTime  @default(now())
   activatedAt DateTime?
 
-  commitments Commitment[]
+  allegations Allegation[]
+
+  @@unique([type, publicSequence])
 }
 
-// ─── Cryptographic Commitments (on-chain pattern proof) ──────────────────────
+// ─── Evidence Parent Table ────────────────────────────────────────────────────
 //
-// Commitment hash: hash(keyFigureId + "|" + patternCategory + "|" + courtId)
+// Thin pointer from a structured intake record to the allegations it generated.
+// Closes the provenance gap: an Allegation can trace back to the exact intake
+// document that evidenced it, without coupling Allegations to specific intake types.
 //
-// quarterYear is NOT in the hash. Including time fragments the count and hides
-// the magnitude of patterns that span years. Time is stored separately and used
-// in the pattern thesis as context (persistence over time), not as a filter.
+// Exactly one FK will be set — discriminated union. The @unique constraints
+// ensure each intake record maps to at most one Evidence row.
 //
-// A single family intake produces multiple commitments — one per
+// Wiring (creating Evidence rows on intake + linking Allegations) is a future task.
+// The table is schema-ready so existing allegations remain valid with evidenceId = null.
+
+model Evidence {
+  id        String @id @default(cuid())
+  legalCase Case   @relation(fields: [caseId], references: [id])
+  caseId    String
+
+  criminalComplaintId String?          @unique
+  nzakutOrderId       String?          @unique
+  welfareReportId     String?          @unique
+  evaluatorSessionId  String?          @unique
+  guardianContactId   String?          @unique
+
+  criminalComplaint CriminalComplaint? @relation(fields: [criminalComplaintId], references: [id])
+  nzakutOrder       NzakutOrder?       @relation(fields: [nzakutOrderId], references: [id])
+  welfareReport     WelfareReport?     @relation(fields: [welfareReportId], references: [id])
+  evaluatorSession  EvaluatorSession?  @relation(fields: [evaluatorSessionId], references: [id])
+  guardianContact   GuardianContact?   @relation(fields: [guardianContactId], references: [id])
+
+  allegations Allegation[]
+
+  createdAt DateTime @default(now())
+
+  @@map("evidence")
+}
+
+// ─── Allegations (on-chain pattern proof) ────────────────────────────────────
+//
+// Allegation hash: hash(caseId + "|" + keyFigureId + "|" + patternCategory + "|" + courtId)
+//
+// caseId IS included — each case registers its own independent on-chain allegation,
+// so the timestamp belongs to that case. Legal argument: "N independent timestamps
+// before any connection." Quarter/year excluded — time fragments the count.
+//
+// A single case intake produces multiple allegations — one per
 // key figure × pattern combination observed.
 //
-// Registered on-chain BEFORE any family is connected to another.
+// Registered on-chain BEFORE any case is connected to another.
 // The on-chain timestamp proves independence — the timestamp precedes cooperation.
 
-model Commitment {
+model Allegation {
   id        String    @id @default(cuid())
   legalCase Case      @relation(fields: [caseId], references: [id])
   caseId    String
@@ -268,7 +377,12 @@ model Commitment {
   courtId   String
 
   patternCategory PatternCategory
-  commitmentHash  String          @unique
+  allegationHash  String          @unique
+
+  // Optional provenance link — which intake document evidenced this allegation.
+  // Null for allegations created before Evidence wiring was implemented.
+  evidence   Evidence? @relation(fields: [evidenceId], references: [id])
+  evidenceId String?
 
   // Real event dates — stored here, will be encrypted in CD-1.3.
   // Used for pattern thesis context ("documented 2019–2024"), not for hash.
@@ -279,4 +393,5 @@ model Commitment {
   createdAt     DateTime @default(now())
 
   @@unique([caseId, figureId, patternCategory, courtId])
+  @@map("allegations")
 }

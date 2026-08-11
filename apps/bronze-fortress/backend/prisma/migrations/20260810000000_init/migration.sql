@@ -1,47 +1,37 @@
--- Bronze Fortress — Initial Schema
--- BF-1.1: Family vault, key figure registry, cryptographic commitments
+-- Bronze Fortress (מבצר הנחושת) — Initial Schema
+-- Domains A–E structured intake + cryptographic commitment proof layer.
 
--- CreateEnum
-CREATE TYPE "FamilyMemberRole" AS ENUM ('PRIMARY_CONTACT', 'CO_PARENT', 'LAWYER');
+-- ─── Enums ───────────────────────────────────────────────────────────────────
 
--- CreateEnum
+CREATE TYPE "CaseMemberRole" AS ENUM ('PRIMARY_CONTACT', 'CO_PETITIONER', 'LAWYER');
+
 CREATE TYPE "KeyFigureType" AS ENUM ('JUDGE', 'SOCIAL_WORKER', 'EVALUATOR', 'GUARDIAN_AD_LITEM', 'YOUTH_PROBATION', 'OTHER');
 
--- CreateEnum
 CREATE TYPE "KeyFigureStatus" AS ENUM ('PENDING', 'ACTIVE');
 
--- CreateEnum
 CREATE TYPE "CooperationLevel" AS ENUM ('NONE', 'ANONYMOUS_TIMELINE', 'ANONYMOUS_MESSAGING', 'MUTUAL_INTRODUCTION', 'SHARED_EVIDENCE_ROOM');
 
--- CreateEnum
 CREATE TYPE "PatternCategory" AS ENUM (
-  -- Domain A: Criminal-to-Family Interface
   'CRIMINAL_EXONERATION_IGNORED',
-  -- Domain B: חוק הנוער Procedural Violations
   'EMERGENCY_ORDER_NO_HEARING_30_DAYS',
   'NZAKUT_NO_EVIDENTIARY_HEARING',
   'CHILD_REMOVED_OVER_YEAR_NO_HEARING',
-  -- Domain C: Welfare Professional Violations
   'WELFARE_REFERRAL_AT_FIRST_HEARING',
   'WELFARE_REPORT_ONE_SIDED_INTERVIEW',
   'WELFARE_REPORT_NO_HOME_VISIT',
   'WELFARE_REPORT_CITES_DROPPED_ALLEGATIONS',
   'WELFARE_RECOMMENDATION_CHANGED_UNEXPLAINED',
-  -- Domain D: Evaluator Violations
   'EVALUATOR_SINGLE_SESSION_UNDER_90_MIN',
   'EVALUATOR_SINGLE_PARENT_ONLY',
   'EVALUATOR_NO_FEEDBACK_SESSION',
   'JUDGE_RUBBER_STAMPS_EVALUATOR',
-  -- Domain E: Guardian Ad Litem
   'GUARDIAN_MINIMAL_CHILD_CONTACT',
   'GUARDIAN_REPEATEDLY_BY_SAME_JUDGE',
   'GUARDIAN_CONTRADICTS_CHILD_WISHES',
-  -- Domain F: Judicial Conduct
   'EX_PARTE_HEARING',
   'RECUSAL_DENIED_CONFLICT',
   'SYSTEMIC_HEARING_DELAYS',
   'MULTIPLE_JUDGE_HANDOFFS',
-  -- Domain G: ניכור הורי (Parental Alienation)
   'ALIENATION_CHILD_WISHES_AS_RULING_BASIS',
   'ALIENATION_RAISED_IGNORED',
   'EVALUATOR_NO_ALIENATION_ASSESSMENT',
@@ -49,61 +39,64 @@ CREATE TYPE "PatternCategory" AS ENUM (
   'SEPARATION_WINDOW_USED_FOR_ALIENATION'
 );
 
--- CreateEnum
 CREATE TYPE "NzakutOrderType" AS ENUM ('STANDARD', 'EMERGENCY');
 
--- CreateEnum
 CREATE TYPE "PoliceCaseStatus" AS ENUM ('OPEN', 'CLOSED_LACK_OF_EVIDENCE', 'CLOSED_CLEARED', 'CLOSED_OTHER', 'UNKNOWN');
 
--- CreateTable: Israeli family courts (reference data, seeded separately)
+-- ─── Reference Data ───────────────────────────────────────────────────────────
+
 CREATE TABLE "Court" (
     "id" TEXT NOT NULL,
     "name" TEXT NOT NULL,
     "city" TEXT NOT NULL,
     "district" TEXT NOT NULL,
-
     CONSTRAINT "Court_pkey" PRIMARY KEY ("id")
 );
 
--- CreateTable: Family vault — encrypted content, public key for E2E
-CREATE TABLE "Family" (
+-- ─── Case & Members ───────────────────────────────────────────────────────────
+
+CREATE TABLE "cases" (
     "id" TEXT NOT NULL,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
-    "encryptedIntakeData" TEXT,        -- questionnaire responses, encrypted client-side
-    "publicKeyHex" TEXT NOT NULL,      -- family's public key; server cannot decrypt content
+    "encryptedIntakeData" TEXT,
+    "publicKeyHex" TEXT NOT NULL,
     "cooperationLevel" "CooperationLevel" NOT NULL DEFAULT 'NONE',
-
-    CONSTRAINT "Family_pkey" PRIMARY KEY ("id")
+    CONSTRAINT "cases_pkey" PRIMARY KEY ("id")
 );
 
--- CreateTable: Family members (each has their own Supabase auth identity)
-CREATE TABLE "FamilyMember" (
+CREATE TABLE "case_members" (
     "id" TEXT NOT NULL,
-    "familyId" TEXT NOT NULL,
-    "role" "FamilyMemberRole" NOT NULL,
+    "caseId" TEXT NOT NULL,
+    "role" "CaseMemberRole" NOT NULL,
     "supabaseUserId" TEXT NOT NULL,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-    CONSTRAINT "FamilyMember_pkey" PRIMARY KEY ("id")
+    CONSTRAINT "case_members_pkey" PRIMARY KEY ("id")
 );
 
--- CreateTable: Explicit, per-tier, revocable consent
+CREATE UNIQUE INDEX "case_members_supabaseUserId_key" ON "case_members"("supabaseUserId");
+
+ALTER TABLE "case_members" ADD CONSTRAINT "case_members_caseId_fkey"
+    FOREIGN KEY ("caseId") REFERENCES "cases"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
 CREATE TABLE "ConsentRecord" (
     "id" TEXT NOT NULL,
-    "familyId" TEXT NOT NULL,
+    "caseId" TEXT NOT NULL,
     "tier" "CooperationLevel" NOT NULL,
     "grantedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "revokedAt" TIMESTAMP(3),
     "isActive" BOOLEAN NOT NULL DEFAULT true,
-
     CONSTRAINT "ConsentRecord_pkey" PRIMARY KEY ("id")
 );
 
--- CreateTable: Domain A — Criminal complaints against a parent
+ALTER TABLE "ConsentRecord" ADD CONSTRAINT "ConsentRecord_caseId_fkey"
+    FOREIGN KEY ("caseId") REFERENCES "cases"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- ─── Structured Intake — Domain A ────────────────────────────────────────────
+
 CREATE TABLE "CriminalComplaint" (
     "id" TEXT NOT NULL,
-    "familyId" TEXT NOT NULL,
+    "caseId" TEXT NOT NULL,
     "policeStatus" "PoliceCaseStatus" NOT NULL,
     "closureConsideredByCourt" BOOLEAN,
     "custodyChangedAfterClosure" TEXT,
@@ -111,14 +104,17 @@ CREATE TABLE "CriminalComplaint" (
     "complaintDate" TIMESTAMP(3),
     "closureDate" TIMESTAMP(3),
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
     CONSTRAINT "CriminalComplaint_pkey" PRIMARY KEY ("id")
 );
 
--- CreateTable: Domain B — צו נזקקות issuance and hearing compliance
+ALTER TABLE "CriminalComplaint" ADD CONSTRAINT "CriminalComplaint_caseId_fkey"
+    FOREIGN KEY ("caseId") REFERENCES "cases"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- ─── Structured Intake — Domain B ────────────────────────────────────────────
+
 CREATE TABLE "NzakutOrder" (
     "id" TEXT NOT NULL,
-    "familyId" TEXT NOT NULL,
+    "caseId" TEXT NOT NULL,
     "orderType" "NzakutOrderType" NOT NULL,
     "evidentiaryHearingHeld" BOOLEAN NOT NULL,
     "daysToFullHearing" INTEGER,
@@ -127,47 +123,92 @@ CREATE TABLE "NzakutOrder" (
     "orderDate" TIMESTAMP(3),
     "hearingDate" TIMESTAMP(3),
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
     CONSTRAINT "NzakutOrder_pkey" PRIMARY KEY ("id")
 );
 
--- CreateTable: Proposed key figures — invisible until activation threshold met
-CREATE TABLE "PendingKeyFigure" (
-    "id" TEXT NOT NULL,
-    "name" TEXT NOT NULL,
-    "type" "KeyFigureType" NOT NULL,
-    "organization" TEXT,
-    "courtId" TEXT,
-    "nominatingFamilyIds" TEXT[],
-    "nominationCount" INTEGER NOT NULL DEFAULT 1,
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ALTER TABLE "NzakutOrder" ADD CONSTRAINT "NzakutOrder_caseId_fkey"
+    FOREIGN KEY ("caseId") REFERENCES "cases"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
-    CONSTRAINT "PendingKeyFigure_pkey" PRIMARY KEY ("id")
+-- ─── Structured Intake — Domain C ────────────────────────────────────────────
+
+CREATE TABLE "welfare_reports" (
+    "id" TEXT NOT NULL,
+    "caseId" TEXT NOT NULL,
+    "welfareReferralAtFirstHearing" BOOLEAN NOT NULL,
+    "interviewOneSided" BOOLEAN,
+    "homeVisitConducted" BOOLEAN,
+    "citedDroppedAllegations" BOOLEAN,
+    "recommendationChanged" BOOLEAN,
+    "reportDate" TIMESTAMP(3),
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "welfare_reports_pkey" PRIMARY KEY ("id")
 );
 
--- CreateTable: Active key figures (threshold met + legal review approved)
+ALTER TABLE "welfare_reports" ADD CONSTRAINT "welfare_reports_caseId_fkey"
+    FOREIGN KEY ("caseId") REFERENCES "cases"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- ─── Structured Intake — Domain D ────────────────────────────────────────────
+
+CREATE TABLE "evaluator_sessions" (
+    "id" TEXT NOT NULL,
+    "caseId" TEXT NOT NULL,
+    "sessionCount" INTEGER NOT NULL,
+    "totalDurationMinutes" INTEGER,
+    "bothParentsInterviewed" BOOLEAN NOT NULL,
+    "feedbackSessionHeld" BOOLEAN NOT NULL,
+    "judgeAdoptedWithoutReview" BOOLEAN,
+    "evaluationDate" TIMESTAMP(3),
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "evaluator_sessions_pkey" PRIMARY KEY ("id")
+);
+
+ALTER TABLE "evaluator_sessions" ADD CONSTRAINT "evaluator_sessions_caseId_fkey"
+    FOREIGN KEY ("caseId") REFERENCES "cases"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- ─── Structured Intake — Domain E ────────────────────────────────────────────
+
+CREATE TABLE "guardian_contacts" (
+    "id" TEXT NOT NULL,
+    "caseId" TEXT NOT NULL,
+    "childMeetingCount" INTEGER NOT NULL,
+    "positionContradictsChild" BOOLEAN,
+    "appointingJudgeFigureId" TEXT,
+    "appointmentDate" TIMESTAMP(3),
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "guardian_contacts_pkey" PRIMARY KEY ("id")
+);
+
+ALTER TABLE "guardian_contacts" ADD CONSTRAINT "guardian_contacts_caseId_fkey"
+    FOREIGN KEY ("caseId") REFERENCES "cases"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- ─── Key Figure Registry ──────────────────────────────────────────────────────
+
 CREATE TABLE "KeyFigure" (
     "id" TEXT NOT NULL,
     "name" TEXT NOT NULL,
     "type" "KeyFigureType" NOT NULL,
     "organization" TEXT,
     "status" "KeyFigureStatus" NOT NULL DEFAULT 'PENDING',
+    "publicSequence" INTEGER,
+    "nominatingCaseIds" TEXT[] DEFAULT ARRAY[]::TEXT[],
     "courtId" TEXT,
     "registryVerified" BOOLEAN NOT NULL DEFAULT false,
     "registrySource" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "activatedAt" TIMESTAMP(3),
-
     CONSTRAINT "KeyFigure_pkey" PRIMARY KEY ("id")
 );
 
--- CreateTable: Cryptographic commitments — the core pattern proof
--- hash(keyFigureId + "|" + patternCategory + "|" + courtId)
--- Registered on-chain BEFORE families are connected to each other.
--- The timestamp proves independence — it precedes any cooperation.
+CREATE UNIQUE INDEX "KeyFigure_type_publicSequence_key" ON "KeyFigure"("type", "publicSequence");
+
+ALTER TABLE "KeyFigure" ADD CONSTRAINT "KeyFigure_courtId_fkey"
+    FOREIGN KEY ("courtId") REFERENCES "Court"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- ─── Cryptographic Commitments ────────────────────────────────────────────────
+
 CREATE TABLE "Commitment" (
     "id" TEXT NOT NULL,
-    "familyId" TEXT NOT NULL,
+    "caseId" TEXT NOT NULL,
     "figureId" TEXT NOT NULL,
     "courtId" TEXT NOT NULL,
     "patternCategory" "PatternCategory" NOT NULL,
@@ -176,39 +217,18 @@ CREATE TABLE "Commitment" (
     "eventEndDate" TIMESTAMP(3),
     "onChainTxHash" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
     CONSTRAINT "Commitment_pkey" PRIMARY KEY ("id")
 );
 
--- CreateIndex
-CREATE UNIQUE INDEX "FamilyMember_supabaseUserId_key" ON "FamilyMember"("supabaseUserId");
-
--- CreateIndex
 CREATE UNIQUE INDEX "Commitment_commitmentHash_key" ON "Commitment"("commitmentHash");
+CREATE UNIQUE INDEX "Commitment_caseId_figureId_patternCategory_courtId_key"
+    ON "Commitment"("caseId", "figureId", "patternCategory", "courtId");
 
--- CreateIndex: Prevents double-counting: one commitment per family × figure × pattern × court
-CREATE UNIQUE INDEX "Commitment_familyId_figureId_patternCategory_courtId_key" ON "Commitment"("familyId", "figureId", "patternCategory", "courtId");
+ALTER TABLE "Commitment" ADD CONSTRAINT "Commitment_caseId_fkey"
+    FOREIGN KEY ("caseId") REFERENCES "cases"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
--- AddForeignKey
-ALTER TABLE "FamilyMember" ADD CONSTRAINT "FamilyMember_familyId_fkey" FOREIGN KEY ("familyId") REFERENCES "Family"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "Commitment" ADD CONSTRAINT "Commitment_figureId_fkey"
+    FOREIGN KEY ("figureId") REFERENCES "KeyFigure"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
--- AddForeignKey
-ALTER TABLE "ConsentRecord" ADD CONSTRAINT "ConsentRecord_familyId_fkey" FOREIGN KEY ("familyId") REFERENCES "Family"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "CriminalComplaint" ADD CONSTRAINT "CriminalComplaint_familyId_fkey" FOREIGN KEY ("familyId") REFERENCES "Family"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "NzakutOrder" ADD CONSTRAINT "NzakutOrder_familyId_fkey" FOREIGN KEY ("familyId") REFERENCES "Family"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "KeyFigure" ADD CONSTRAINT "KeyFigure_courtId_fkey" FOREIGN KEY ("courtId") REFERENCES "Court"("id") ON DELETE SET NULL ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "Commitment" ADD CONSTRAINT "Commitment_familyId_fkey" FOREIGN KEY ("familyId") REFERENCES "Family"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "Commitment" ADD CONSTRAINT "Commitment_figureId_fkey" FOREIGN KEY ("figureId") REFERENCES "KeyFigure"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "Commitment" ADD CONSTRAINT "Commitment_courtId_fkey" FOREIGN KEY ("courtId") REFERENCES "Court"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "Commitment" ADD CONSTRAINT "Commitment_courtId_fkey"
+    FOREIGN KEY ("courtId") REFERENCES "Court"("id") ON DELETE RESTRICT ON UPDATE CASCADE;

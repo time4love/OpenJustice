@@ -6,7 +6,10 @@ jest.mock('../../src/lib/prisma', () => ({
   prisma: {
     criminalComplaint: { findMany: jest.fn() },
     nzakutOrder: { findMany: jest.fn() },
-    commitment: { findMany: jest.fn() },
+    welfareReport: { findMany: jest.fn() },
+    evaluatorSession: { findMany: jest.fn() },
+    guardianContact: { findMany: jest.fn(), count: jest.fn() },
+    allegation: { findMany: jest.fn() },
   },
 }));
 
@@ -17,15 +20,25 @@ const BASE = { caseId: 'case-1', figureId: 'fig-1', courtId: 'court-1' };
 function setup({
   complaints = [],
   orders = [],
+  welfareReports = [],
+  evaluatorSessions = [],
+  guardianContacts = [],
   existing = [],
 }: {
   complaints?: object[];
   orders?: object[];
+  welfareReports?: object[];
+  evaluatorSessions?: object[];
+  guardianContacts?: object[];
   existing?: { patternCategory: PatternCategory }[];
 }) {
   (mockPrisma.criminalComplaint.findMany as jest.Mock).mockResolvedValue(complaints);
   (mockPrisma.nzakutOrder.findMany as jest.Mock).mockResolvedValue(orders);
-  (mockPrisma.commitment.findMany as jest.Mock).mockResolvedValue(existing);
+  (mockPrisma.welfareReport.findMany as jest.Mock).mockResolvedValue(welfareReports);
+  (mockPrisma.evaluatorSession.findMany as jest.Mock).mockResolvedValue(evaluatorSessions);
+  (mockPrisma.guardianContact.findMany as jest.Mock).mockResolvedValue(guardianContacts);
+  (mockPrisma.guardianContact.count as jest.Mock).mockResolvedValue(0);
+  (mockPrisma.allegation.findMany as jest.Mock).mockResolvedValue(existing);
 }
 
 describe('PatternDetectionService', () => {
@@ -38,7 +51,7 @@ describe('PatternDetectionService', () => {
 
   it('returns empty suggestions when no intake data exists', async () => {
     setup({});
-    const result = await service.suggestCommitments(BASE.caseId, BASE.figureId, BASE.courtId);
+    const result = await service.suggestAllegations(BASE.caseId, BASE.figureId, BASE.courtId);
     expect(result.suggestions).toHaveLength(0);
   });
 
@@ -50,7 +63,7 @@ describe('PatternDetectionService', () => {
         complaints: [{ policeStatus: PoliceCaseStatus.CLOSED_CLEARED, closureConsideredByCourt: false }],
       });
 
-      const result = await service.suggestCommitments(BASE.caseId, BASE.figureId, BASE.courtId);
+      const result = await service.suggestAllegations(BASE.caseId, BASE.figureId, BASE.courtId);
 
       expect(result.suggestions).toHaveLength(1);
       expect(result.suggestions[0]?.patternCategory).toBe(PatternCategory.CRIMINAL_EXONERATION_IGNORED);
@@ -61,7 +74,7 @@ describe('PatternDetectionService', () => {
       setup({
         complaints: [{ policeStatus: PoliceCaseStatus.CLOSED_CLEARED, closureConsideredByCourt: true }],
       });
-      const result = await service.suggestCommitments(BASE.caseId, BASE.figureId, BASE.courtId);
+      const result = await service.suggestAllegations(BASE.caseId, BASE.figureId, BASE.courtId);
       expect(result.suggestions).toHaveLength(0);
     });
 
@@ -69,7 +82,7 @@ describe('PatternDetectionService', () => {
       setup({
         complaints: [{ policeStatus: PoliceCaseStatus.OPEN, closureConsideredByCourt: false }],
       });
-      const result = await service.suggestCommitments(BASE.caseId, BASE.figureId, BASE.courtId);
+      const result = await service.suggestAllegations(BASE.caseId, BASE.figureId, BASE.courtId);
       expect(result.suggestions).toHaveLength(0);
     });
 
@@ -80,7 +93,7 @@ describe('PatternDetectionService', () => {
           { policeStatus: PoliceCaseStatus.CLOSED_LACK_OF_EVIDENCE, closureConsideredByCourt: false },
         ],
       });
-      const result = await service.suggestCommitments(BASE.caseId, BASE.figureId, BASE.courtId);
+      const result = await service.suggestAllegations(BASE.caseId, BASE.figureId, BASE.courtId);
       expect(result.suggestions).toHaveLength(1);
     });
   });
@@ -92,7 +105,7 @@ describe('PatternDetectionService', () => {
       setup({
         orders: [{ orderType: NzakutOrderType.EMERGENCY, evidentiaryHearingHeld: false }],
       });
-      const result = await service.suggestCommitments(BASE.caseId, BASE.figureId, BASE.courtId);
+      const result = await service.suggestAllegations(BASE.caseId, BASE.figureId, BASE.courtId);
       const cats = result.suggestions.map((s) => s.patternCategory);
       expect(cats).toContain(PatternCategory.EMERGENCY_ORDER_NO_HEARING_30_DAYS);
     });
@@ -101,7 +114,7 @@ describe('PatternDetectionService', () => {
       setup({
         orders: [{ orderType: NzakutOrderType.STANDARD, evidentiaryHearingHeld: false }],
       });
-      const result = await service.suggestCommitments(BASE.caseId, BASE.figureId, BASE.courtId);
+      const result = await service.suggestAllegations(BASE.caseId, BASE.figureId, BASE.courtId);
       const cats = result.suggestions.map((s) => s.patternCategory);
       expect(cats).not.toContain(PatternCategory.EMERGENCY_ORDER_NO_HEARING_30_DAYS);
       expect(cats).toContain(PatternCategory.NZAKUT_NO_EVIDENTIARY_HEARING);
@@ -113,7 +126,7 @@ describe('PatternDetectionService', () => {
       setup({
         orders: [{ orderType: NzakutOrderType.STANDARD, evidentiaryHearingHeld: false }],
       });
-      const result = await service.suggestCommitments(BASE.caseId, BASE.figureId, BASE.courtId);
+      const result = await service.suggestAllegations(BASE.caseId, BASE.figureId, BASE.courtId);
       const cats = result.suggestions.map((s) => s.patternCategory);
       expect(cats).toContain(PatternCategory.NZAKUT_NO_EVIDENTIARY_HEARING);
     });
@@ -122,7 +135,7 @@ describe('PatternDetectionService', () => {
       setup({
         orders: [{ orderType: NzakutOrderType.STANDARD, evidentiaryHearingHeld: true, daysWithoutMeritsHearing: 100 }],
       });
-      const result = await service.suggestCommitments(BASE.caseId, BASE.figureId, BASE.courtId);
+      const result = await service.suggestAllegations(BASE.caseId, BASE.figureId, BASE.courtId);
       const cats = result.suggestions.map((s) => s.patternCategory);
       expect(cats).not.toContain(PatternCategory.NZAKUT_NO_EVIDENTIARY_HEARING);
     });
@@ -133,7 +146,7 @@ describe('PatternDetectionService', () => {
       setup({
         orders: [{ orderType: NzakutOrderType.EMERGENCY, evidentiaryHearingHeld: false, daysWithoutMeritsHearing: 420 }],
       });
-      const result = await service.suggestCommitments(BASE.caseId, BASE.figureId, BASE.courtId);
+      const result = await service.suggestAllegations(BASE.caseId, BASE.figureId, BASE.courtId);
       const cats = result.suggestions.map((s) => s.patternCategory);
       expect(cats).toContain(PatternCategory.CHILD_REMOVED_OVER_YEAR_NO_HEARING);
     });
@@ -142,7 +155,7 @@ describe('PatternDetectionService', () => {
       setup({
         orders: [{ orderType: NzakutOrderType.EMERGENCY, evidentiaryHearingHeld: false, daysWithoutMeritsHearing: 200 }],
       });
-      const result = await service.suggestCommitments(BASE.caseId, BASE.figureId, BASE.courtId);
+      const result = await service.suggestAllegations(BASE.caseId, BASE.figureId, BASE.courtId);
       const cats = result.suggestions.map((s) => s.patternCategory);
       expect(cats).not.toContain(PatternCategory.CHILD_REMOVED_OVER_YEAR_NO_HEARING);
     });
@@ -151,7 +164,7 @@ describe('PatternDetectionService', () => {
       setup({
         orders: [{ orderType: NzakutOrderType.EMERGENCY, evidentiaryHearingHeld: false, daysWithoutMeritsHearing: null }],
       });
-      const result = await service.suggestCommitments(BASE.caseId, BASE.figureId, BASE.courtId);
+      const result = await service.suggestAllegations(BASE.caseId, BASE.figureId, BASE.courtId);
       const cats = result.suggestions.map((s) => s.patternCategory);
       expect(cats).not.toContain(PatternCategory.CHILD_REMOVED_OVER_YEAR_NO_HEARING);
     });
@@ -166,7 +179,7 @@ describe('PatternDetectionService', () => {
         existing: [{ patternCategory: PatternCategory.CRIMINAL_EXONERATION_IGNORED }],
       });
 
-      const result = await service.suggestCommitments(BASE.caseId, BASE.figureId, BASE.courtId);
+      const result = await service.suggestAllegations(BASE.caseId, BASE.figureId, BASE.courtId);
 
       expect(result.suggestions[0]?.alreadyRegistered).toBe(true);
     });
@@ -177,7 +190,7 @@ describe('PatternDetectionService', () => {
         existing: [],
       });
 
-      const result = await service.suggestCommitments(BASE.caseId, BASE.figureId, BASE.courtId);
+      const result = await service.suggestAllegations(BASE.caseId, BASE.figureId, BASE.courtId);
 
       expect(result.suggestions[0]?.alreadyRegistered).toBe(false);
     });
@@ -191,7 +204,7 @@ describe('PatternDetectionService', () => {
       orders: [{ orderType: NzakutOrderType.EMERGENCY, evidentiaryHearingHeld: false, daysWithoutMeritsHearing: 500 }],
     });
 
-    const result = await service.suggestCommitments(BASE.caseId, BASE.figureId, BASE.courtId);
+    const result = await service.suggestAllegations(BASE.caseId, BASE.figureId, BASE.courtId);
     const cats = result.suggestions.map((s) => s.patternCategory);
 
     expect(cats).toContain(PatternCategory.CRIMINAL_EXONERATION_IGNORED);

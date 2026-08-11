@@ -5,6 +5,7 @@
     "signOut": "Sign out",
     "dashboard": "Dashboard",
     "intake": "Add facts",
+    "patterns": "Patterns",
     "loading": "Loading...",
     "save": "Save",
     "cancel": "Cancel",
@@ -13,20 +14,26 @@
   },
   "home": {
     "headline": "You Are Not Alone",
-    "subheadline": "Many families face the same key figures and the same procedural patterns — each in isolation. This platform proves the pattern without exposing any individual case.",
+    "subheadline": "Many cases face the same key figures and the same procedural patterns — each in isolation. This platform proves the pattern without exposing any individual case.",
     "registerCta": "Register your case",
     "loginCta": "Sign in to existing case",
+    "addFactsCta": "Add facts",
+    "dashboardCta": "My case",
     "howTitle": "How it works",
     "step1Title": "Register facts",
     "step1Body": "Add structured facts — complaints, nzakut orders, documents. All encrypted client-side. The server never sees content.",
     "step2Title": "Cryptographic commitment",
-    "step2Body": "The system creates a digital signature for each pattern you identified and registers it on the blockchain before any connection between families is made.",
+    "step2Body": "The system creates a digital signature for each pattern you identified and registers it on the blockchain before any connection between cases is made.",
     "step3Title": "The pattern is revealed",
-    "step3Body": "When enough families register the same figure + pattern combination, the count becomes visible. No names. No content. Just a count.",
+    "step3Body": "When enough cases register the same figure + pattern combination, the count becomes visible. No names. No content. Just a count.",
     "privacyTitle": "Full privacy protection",
     "privacyBody": "Cryptographic commitments are timestamped on-chain before you are ever connected to anyone. The timestamp proves independence.",
     "legalTitle": "A legal argument, not a complaint",
-    "legalBody": "24 families who never met registered the same procedural pattern against the same figure. Each timestamped on-chain before any connection. That is the argument."
+    "legalBody": "24 independent cases registered the same procedural pattern against the same figure. Each timestamped on-chain before any connection. That is the argument.",
+    "patternsTitle": "Registered patterns",
+    "patternsSubtitle": "Each count is independent cases that registered the same pattern — each before any connection between cases was established.",
+    "cases": "cases",
+    "viewAllPatterns": "View all registered patterns"
   },
   "auth": {
     "emailLabel": "Email",
@@ -45,14 +52,44 @@
   },
   "dashboard": {
     "title": "My Case",
-    "caseId": "Case ID",
-    "cooperationLevel": "Cooperation level",
-    "hasIntake": "Intake data",
-    "hasIntakeYes": "Submitted",
-    "hasIntakeNo": "Not yet submitted",
-    "consents": "Active consents",
-    "noConsents": "No active consents",
     "addFacts": "Add facts",
+    "factsTitle": "Facts you've documented",
+    "noFacts": "No facts added yet — click 'Add facts' to get started.",
+    "patternsTitle": "Registered procedural patterns",
+    "noPatterns": "No patterns identified yet — add key actors after documenting your facts.",
+    "noVault": "Your account isn't fully set up yet.",
+    "noVaultAction": "Complete setup",
+    "settingUp": "Setting up your vault...",
+    "court": "Court",
+    "noCourt": "No court set yet",
+    "setCourt": "Set court",
+    "courtSaved": "Court saved",
+    "domains": {
+      "complaints": "Criminal complaints",
+      "nzakut": "Nzakut orders",
+      "welfare": "Welfare reports",
+      "evaluator": "Evaluations",
+      "guardian": "Guardian ad litem"
+    },
+    "patternLabel": {
+      "CRIMINAL_EXONERATION_IGNORED": "Criminal case closure disregarded",
+      "EMERGENCY_ORDER_NO_HEARING_30_DAYS": "Emergency order — no hearing within 30 days",
+      "NZAKUT_NO_EVIDENTIARY_HEARING": "Nzakut order without evidentiary hearing",
+      "CHILD_REMOVED_OVER_YEAR_NO_HEARING": "Child removed over a year — no merits hearing",
+      "WELFARE_REFERRAL_AT_FIRST_HEARING": "Welfare referral at first hearing",
+      "WELFARE_REPORT_ONE_SIDED_INTERVIEW": "Welfare report — one-sided interview",
+      "WELFARE_REPORT_NO_HOME_VISIT": "Welfare report — no home visit",
+      "WELFARE_REPORT_CITES_DROPPED_ALLEGATIONS": "Welfare report cites dropped allegations",
+      "WELFARE_RECOMMENDATION_CHANGED_UNEXPLAINED": "Welfare recommendation changed without explanation",
+      "EVALUATOR_SINGLE_SESSION_UNDER_90_MIN": "Evaluation in single session only",
+      "EVALUATOR_SINGLE_PARENT_ONLY": "Evaluation of one parent only",
+      "EVALUATOR_NO_FEEDBACK_SESSION": "No feedback session after evaluation",
+      "JUDGE_RUBBER_STAMPS_EVALUATOR": "Judge adopted evaluator recommendation without scrutiny",
+      "GUARDIAN_MINIMAL_CHILD_CONTACT": "Guardian ad litem — minimal child contact",
+      "GUARDIAN_REPEATEDLY_BY_SAME_JUDGE": "Guardian ad litem — repeatedly by same judge",
+      "GUARDIAN_CONTRADICTS_CHILD_WISHES": "Guardian ad litem — contradicts child's wishes"
+    },
+    "notAlone": "{count, plural, one {1 other case} other {# other cases}} share this pattern",
     "cooperationNone": "No sharing",
     "cooperationTimeline": "Anonymous timeline",
     "cooperationMessaging": "Anonymous messaging",
@@ -96,6 +133,141 @@
     "statusClosedOther": "Closed — other",
     "statusUnknown": "Unknown",
     "typeStandard": "Standard",
-    "typeEmergency": "Emergency"
+    "typeEmergency": "Emergency",
+    "save": "Save",
+    "cancel": "Cancel",
+    "loading": "Loading...",
+    "allegationTab": "Case actors",
+    "allegationExplainer": "Name who was involved in your case — judge, social worker, evaluator, etc. The system checks whether the same actors appear in other cases with the same procedural patterns, and issues a digital timestamp on the blockchain before any connection is made between cases.",
+    "figureName": "Full name",
+    "figureType": "Role",
+    "court": "Court",
+    "figureTypePlaceholder": "Select role...",
+    "courtLabelJudge": "Court",
+    "courtLabelAppeared": "Court where they appeared",
+    "courtLabelAppointed": "Appointing court",
+    "orgLabelWelfare": "Welfare office (optional)",
+    "orgLabelEvaluator": "Institute / private practice (optional)",
+    "orgLabelOther": "Organization (optional)",
+    "figureOrg": "Employing organization",
+    "optional": "Optional",
+    "submitAllegation": "Add actor",
+    "allegationRegistered": "Actor registered successfully",
+    "allegationsCreated": "{count} procedural patterns registered on the blockchain",
+    "allegationsAlreadyRegistered": "All detected patterns are already registered",
+    "detectedPatterns": "Detected procedural patterns",
+    "alreadyRegistered": "Already registered",
+    "noPatterns": "No patterns detected — add criminal complaint or nzakut order data first",
+    "patterns": {
+      "CRIMINAL_EXONERATION_IGNORED": {
+        "label": "Criminal case closure disregarded",
+        "desc": "The court made custody decisions without considering the closure of the criminal case in the parent's favour."
+      },
+      "EMERGENCY_ORDER_NO_HEARING_30_DAYS": {
+        "label": "Emergency nzakut order — no hearing within 30 days",
+        "desc": "An emergency order was issued without scheduling an evidentiary hearing within the 30-day statutory limit (Youth Law section 4)."
+      },
+      "NZAKUT_NO_EVIDENTIARY_HEARING": {
+        "label": "Nzakut order without evidentiary hearing",
+        "desc": "The order was issued or extended without a full evidentiary hearing as required by Youth Law section 7."
+      },
+      "CHILD_REMOVED_OVER_YEAR_NO_HEARING": {
+        "label": "Child removed for over a year without merits hearing",
+        "desc": "The child was separated from a parent for more than one year without a substantive hearing on the merits."
+      },
+      "WELFARE_REFERRAL_AT_FIRST_HEARING": {
+        "label": "Welfare referral at first hearing",
+        "desc": "Welfare services were referred to the case at the opening hearing, before any evidence was examined."
+      },
+      "WELFARE_REPORT_ONE_SIDED_INTERVIEW": {
+        "label": "Welfare report based on one-sided interview",
+        "desc": "The welfare report was written based on interviews with only one side."
+      },
+      "WELFARE_REPORT_NO_HOME_VISIT": {
+        "label": "Welfare report without home visit",
+        "desc": "The welfare worker did not visit the requesting parent's home before writing the report."
+      },
+      "WELFARE_REPORT_CITES_DROPPED_ALLEGATIONS": {
+        "label": "Welfare report cites dropped allegations",
+        "desc": "The welfare report relies on allegations that were closed or unproven."
+      },
+      "WELFARE_RECOMMENDATION_CHANGED_UNEXPLAINED": {
+        "label": "Unexplained change in welfare recommendation",
+        "desc": "The welfare position reversed between reports without a substantiated reason."
+      },
+      "EVALUATOR_SINGLE_SESSION_UNDER_90_MIN": {
+        "label": "Evaluation in a single session under 90 minutes",
+        "desc": "The evaluator conducted only one session, shorter than required for a proper evaluation."
+      },
+      "EVALUATOR_SINGLE_PARENT_ONLY": {
+        "label": "Evaluation of one parent only",
+        "desc": "The evaluator interviewed only the parent who appointed them, without examining both parents."
+      },
+      "EVALUATOR_NO_FEEDBACK_SESSION": {
+        "label": "No feedback session after evaluation",
+        "desc": "The evaluator did not hold a feedback session as required before submitting the opinion to the court."
+      },
+      "JUDGE_RUBBER_STAMPS_EVALUATOR": {
+        "label": "Judge adopted evaluator's recommendation without scrutiny",
+        "desc": "The court adopted the evaluator's opinion in full without independent critical review."
+      },
+      "GUARDIAN_MINIMAL_CHILD_CONTACT": {
+        "label": "Guardian ad litem — minimal contact with child",
+        "desc": "The guardian ad litem met the child only once or not at all."
+      },
+      "GUARDIAN_REPEATEDLY_BY_SAME_JUDGE": {
+        "label": "Guardian ad litem — repeatedly appointed by same judge",
+        "desc": "The same guardian ad litem was repeatedly appointed by the same judge across multiple cases."
+      },
+      "GUARDIAN_CONTRADICTS_CHILD_WISHES": {
+        "label": "Guardian ad litem — position contradicts child's wishes",
+        "desc": "The guardian ad litem advocated a position contrary to the child's expressed wishes."
+      }
+    },
+    "welfareTab": "Welfare report",
+    "evaluatorTab": "Evaluator",
+    "guardianTab": "Guardian ad litem",
+    "addWelfare": "Add report",
+    "addEvaluator": "Add evaluator",
+    "addGuardian": "Add guardian",
+    "noWelfare": "No welfare report recorded",
+    "noEvaluator": "No evaluator session recorded",
+    "noGuardian": "No guardian ad litem recorded",
+    "welfareReferralAtFirstHearing": "Welfare referral at first hearing?",
+    "interviewOneSided": "One-sided interview?",
+    "homeVisitConducted": "Home visit conducted?",
+    "citedDroppedAllegations": "Report cited dropped allegations?",
+    "recommendationChanged": "Recommendation changed between reports?",
+    "sessionCount": "Number of sessions",
+    "totalDurationMinutes": "Total duration (minutes, optional)",
+    "bothParentsInterviewed": "Both parents interviewed?",
+    "feedbackSessionHeld": "Feedback session held?",
+    "judgeAdoptedWithoutReview": "Judge adopted recommendation without scrutiny?",
+    "childMeetingCount": "Meetings with child",
+    "positionContradictsChild": "Position contradicts child's expressed wishes?",
+    "nominateAnother": "Add another actor",
+    "figureJudge": "Judge",
+    "figureSocialWorker": "Social worker",
+    "figureEvaluator": "Evaluator",
+    "figureGuardian": "Guardian ad litem",
+    "figureProbation": "Youth probation officer",
+    "figureOther": "Other",
+    "errorGeneric": "An error occurred, please try again"
+  },
+  "patterns": {
+    "title": "Registered Procedural Patterns",
+    "subtitle": "Each count is the number of independent cases that registered the same pattern against the same figure — each before any connection between cases was established.",
+    "privacyNote": "No case content or identifiers are shown. Only pattern counts and figure roles.",
+    "legalNote": "Each allegation was cryptographically timestamped on the blockchain before any inter-case connection was made. The timestamp proves independence — not coordination.",
+    "cases": "{count} cases",
+    "empty": "No patterns have been publicly registered yet.",
+    "figureType": {
+      "JUDGE": "Judge",
+      "SOCIAL_WORKER": "Social worker",
+      "EVALUATOR": "Evaluator",
+      "GUARDIAN_AD_LITEM": "Guardian ad litem",
+      "YOUTH_PROBATION": "Youth probation officer",
+      "OTHER": "Other"
+    }
   }
 }

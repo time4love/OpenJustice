@@ -1,4 +1,4 @@
-import { CooperationLevel, Case } from '../generated/prisma';
+import { CooperationLevel, Case, Court } from '../generated/prisma';
 import { prisma } from '../lib/prisma';
 
 export interface CreateCaseInput {
@@ -10,6 +10,8 @@ export interface UpdateEncryptedIntakeInput {
   caseId: string;
   encryptedIntakeData: string; // JSON questionnaire responses, encrypted client-side before upload
 }
+
+export type CaseWithCourt = Case & { court: Court | null };
 
 export class CaseVaultService {
   async createCase(input: CreateCaseInput): Promise<Case> {
@@ -34,9 +36,10 @@ export class CaseVaultService {
     });
   }
 
-  async getCase(caseId: string): Promise<Case | null> {
+  async getCase(caseId: string): Promise<CaseWithCourt | null> {
     return prisma.case.findUnique({
       where: { id: caseId },
+      include: { court: true },
     });
   }
 
@@ -46,5 +49,12 @@ export class CaseVaultService {
       include: { legalCase: true },
     });
     return member?.legalCase ?? null;
+  }
+
+  async setCourt(caseId: string, courtId: string): Promise<void> {
+    await prisma.case.update({
+      where: { id: caseId },
+      data: { courtId },
+    });
   }
 }

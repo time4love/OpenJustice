@@ -5,6 +5,7 @@
     "signOut": "יציאה",
     "dashboard": "לוח בקרה",
     "intake": "הוספת עובדות",
+    "patterns": "דפוסים",
     "loading": "טוען...",
     "save": "שמור",
     "cancel": "ביטול",
@@ -13,20 +14,26 @@
   },
   "home": {
     "headline": "אינך לבד",
-    "subheadline": "משפחות רבות עומדות מול אותן דמויות מפתח, אותם דפוסים פרוצדורליים — כל אחת בנפרד. הפלטפורמה הזו מוכיחה את הדפוס מבלי לחשוף אף תיק.",
+    "subheadline": "תיקים רבים עומדים מול אותן דמויות מפתח, אותם דפוסים פרוצדורליים — כל אחד בנפרד. הפלטפורמה הזו מוכיחה את הדפוס מבלי לחשוף אף תיק.",
     "registerCta": "רשום את התיק שלך",
     "loginCta": "כניסה לתיק קיים",
+    "addFactsCta": "הוסף עובדות",
+    "dashboardCta": "התיק שלי",
     "howTitle": "איך זה עובד",
     "step1Title": "רשום עובדות",
     "step1Body": "הוסף עובדות מובנות — תלונות, צווי נזקקות, מסמכים. הכל מוצפן בצד הלקוח. השרת לא רואה תוכן.",
     "step2Title": "התחייבות קריפטוגרפית",
-    "step2Body": "המערכת יוצרת חתימה דיגיטלית לכל דפוס שזיהית ורושמת אותה על הבלוקצ'יין לפני שאף קשר נוצר בין משפחות.",
+    "step2Body": "המערכת יוצרת חתימה דיגיטלית לכל דפוס שזיהית ורושמת אותה על הבלוקצ'יין לפני שאף קשר נוצר בין תיקים.",
     "step3Title": "הדפוס מתגלה",
-    "step3Body": "כשמשפחות מספיקות רושמות את אותו שילוב של דמות ודפוס, ניתן לראות את המספר. לא שמות. לא תוכן. רק ספירה.",
+    "step3Body": "כשתיקים מספיקים רושמים את אותו שילוב של גורם ודפוס, ניתן לראות את המספר. לא שמות. לא תוכן. רק ספירה.",
     "privacyTitle": "הגנת פרטיות מלאה",
     "privacyBody": "התחייבות קריפטוגרפית מוחתמת על הבלוקצ'יין לפני שאי פעם תתחבר לאחרים. הטיימסטמפ מוכיח עצמאות.",
     "legalTitle": "טיעון משפטי, לא תלונה",
-    "legalBody": "24 משפחות שמעולם לא נפגשו רשמו את אותו דפוס פרוצדורלי על אותה דמות. כל אחת מוחתמת על הבלוקצ'יין לפני כל קשר. זה הטיעון."
+    "legalBody": "24 תיקים בלתי תלויים רשמו את אותו דפוס פרוצדורלי על אותו גורם. כל אחד מוחתם על הבלוקצ'יין לפני כל קשר. זה הטיעון.",
+    "patternsTitle": "דפוסים רשומים",
+    "patternsSubtitle": "כל ספירה היא מספר תיקים בלתי תלויים שרשמו את אותו דפוס — כל אחד לפני שנוצר קשר בין התיקים.",
+    "cases": "תיקים",
+    "viewAllPatterns": "לכל הדפוסים הרשומים"
   },
   "auth": {
     "emailLabel": "דואר אלקטרוני",
@@ -45,14 +52,44 @@
   },
   "dashboard": {
     "title": "התיק שלי",
-    "caseId": "מזהה תיק",
-    "cooperationLevel": "רמת שיתוף",
-    "hasIntake": "נתוני אינטייק",
-    "hasIntakeYes": "הוזנו",
-    "hasIntakeNo": "טרם הוזנו",
-    "consents": "הסכמות פעילות",
-    "noConsents": "אין הסכמות פעילות",
     "addFacts": "הוסף עובדות",
+    "factsTitle": "עובדות שתיעדת",
+    "noFacts": "עדיין לא הוספת עובדות — לחץ על 'הוסף עובדות' כדי להתחיל.",
+    "patternsTitle": "דפוסים הליכיים שנרשמו",
+    "noPatterns": "עדיין לא זוהו דפוסים — הוסף שחקנים מפתח לאחר הזנת העובדות.",
+    "noVault": "החשבון שלך עדיין לא הוגדר במלואו.",
+    "noVaultAction": "השלם הגדרה",
+    "settingUp": "מגדיר כספת...",
+    "court": "בית משפט",
+    "noCourt": "בית משפט עדיין לא הוגדר",
+    "setCourt": "הגדר בית משפט",
+    "courtSaved": "בית משפט נשמר",
+    "domains": {
+      "complaints": "תלונות פליליות",
+      "nzakut": "צווי נזקקות",
+      "welfare": "דוחות רווחה",
+      "evaluator": "אבחונים",
+      "guardian": "אפוטרופוס לדין"
+    },
+    "patternLabel": {
+      "CRIMINAL_EXONERATION_IGNORED": "סגירת תיק פלילי לא נלקחה בחשבון",
+      "EMERGENCY_ORDER_NO_HEARING_30_DAYS": "צו נזקקות דחוף ללא דיון תוך 30 יום",
+      "NZAKUT_NO_EVIDENTIARY_HEARING": "צו נזקקות ללא דיון הוכחות",
+      "CHILD_REMOVED_OVER_YEAR_NO_HEARING": "הרחקת ילד מעל שנה ללא דיון לגוף העניין",
+      "WELFARE_REFERRAL_AT_FIRST_HEARING": "הפניה לרווחה בדיון הראשון",
+      "WELFARE_REPORT_ONE_SIDED_INTERVIEW": "תסקיר מבוסס ראיון חד-צדדי",
+      "WELFARE_REPORT_NO_HOME_VISIT": "תסקיר ללא ביקור בית",
+      "WELFARE_REPORT_CITES_DROPPED_ALLEGATIONS": "תסקיר מציין אישומים שנסגרו",
+      "WELFARE_RECOMMENDATION_CHANGED_UNEXPLAINED": "המלצת רווחה השתנתה ללא הסבר",
+      "EVALUATOR_SINGLE_SESSION_UNDER_90_MIN": "אבחון בפגישה אחת בלבד",
+      "EVALUATOR_SINGLE_PARENT_ONLY": "אבחון של הורה אחד בלבד",
+      "EVALUATOR_NO_FEEDBACK_SESSION": "אין פגישת משוב לאחר האבחון",
+      "JUDGE_RUBBER_STAMPS_EVALUATOR": "שופט/ת אימץ/ה המלצת מאבחן ללא בחינה",
+      "GUARDIAN_MINIMAL_CHILD_CONTACT": "אפוטרופוס לדין — קשר מינימלי עם הילד",
+      "GUARDIAN_REPEATEDLY_BY_SAME_JUDGE": "אפוטרופוס לדין — מינוי חוזר על ידי אותו שופט",
+      "GUARDIAN_CONTRADICTS_CHILD_WISHES": "אפוטרופוס לדין — עמדה מנוגדת לרצון הילד"
+    },
+    "notAlone": "{count, plural, one {תיק נוסף אחד} other {# תיקים נוספים}} עם דפוס זה",
     "cooperationNone": "ללא שיתוף",
     "cooperationTimeline": "ציר זמן אנונימי",
     "cooperationMessaging": "הודעות אנונימיות",
@@ -96,6 +133,141 @@
     "statusClosedOther": "נסגר — אחר",
     "statusUnknown": "לא ידוע",
     "typeStandard": "רגיל",
-    "typeEmergency": "דחוף"
+    "typeEmergency": "דחוף",
+    "save": "שמור",
+    "cancel": "ביטול",
+    "loading": "טוען...",
+    "allegationTab": "גורמים בתיק",
+    "allegationExplainer": "ציין מי טיפל בתיקך — שופט, עובד סוציאלי, מאבחן וכו'. המערכת תבדוק אם אותם גורמים מופיעים בתיקים נוספים עם אותן תבניות הליכיות, ותוציא חתימה דיגיטלית מוחתמת על הבלוקצ'יין לפני שנוצר כל קשר בין תיקים.",
+    "figureName": "שם מלא",
+    "figureType": "תפקיד",
+    "court": "בית משפט",
+    "figureTypePlaceholder": "בחר תפקיד...",
+    "courtLabelJudge": "בית המשפט",
+    "courtLabelAppeared": "בית המשפט בו פעל/ה",
+    "courtLabelAppointed": "בית המשפט שמינה",
+    "orgLabelWelfare": "לשכת רווחה (אופציונלי)",
+    "orgLabelEvaluator": "מוסד / פרקטיקה פרטית (אופציונלי)",
+    "orgLabelOther": "ארגון (אופציונלי)",
+    "figureOrg": "ארגון מעסיק",
+    "optional": "אופציונלי",
+    "submitAllegation": "הוסף גורם",
+    "allegationRegistered": "הגורם נרשם בהצלחה",
+    "allegationsCreated": "{count} תבניות הליכיות נרשמו על הבלוקצ'יין",
+    "allegationsAlreadyRegistered": "כל התבניות שזוהו כבר רשומות",
+    "detectedPatterns": "תבניות הליכיות שזוהו",
+    "alreadyRegistered": "כבר נרשם",
+    "noPatterns": "לא זוהו תבניות — הוסף נתוני תלונה פלילית או צו נזקקות תחילה",
+    "patterns": {
+      "CRIMINAL_EXONERATION_IGNORED": {
+        "label": "סגירת תיק פלילי לא נלקחה בחשבון",
+        "desc": "בית המשפט קבע קביעות משמורת מבלי להתחשב בסגירת התיק הפלילי לטובת ההורה."
+      },
+      "EMERGENCY_ORDER_NO_HEARING_30_DAYS": {
+        "label": "צו נזקקות דחוף ללא דיון תוך 30 יום",
+        "desc": "הוצא צו דחוף מבלי שנקבע דיון הוכחות בתוך 30 הימים שקובע חוק הנוער (סעיף 4)."
+      },
+      "NZAKUT_NO_EVIDENTIARY_HEARING": {
+        "label": "צו נזקקות ללא דיון הוכחות",
+        "desc": "הצו ניתן או הוארך ללא קיום דיון הוכחות כנדרש בחוק הנוער (סעיף 7)."
+      },
+      "CHILD_REMOVED_OVER_YEAR_NO_HEARING": {
+        "label": "הרחקת ילד מעל שנה ללא דיון לגוף העניין",
+        "desc": "הילד הורחק מהורה במשך יותר משנה מבלי שנערך דיון מהותי בתיק."
+      },
+      "WELFARE_REFERRAL_AT_FIRST_HEARING": {
+        "label": "הפניה לרווחה בדיון הראשון",
+        "desc": "שירותי הרווחה הופנו לתיק כבר בדיון הפתיחה, לפני בחינת הראיות."
+      },
+      "WELFARE_REPORT_ONE_SIDED_INTERVIEW": {
+        "label": "תסקיר מבוסס ראיון חד-צדדי",
+        "desc": "התסקיר נכתב על סמך ראיון עם צד אחד בלבד."
+      },
+      "WELFARE_REPORT_NO_HOME_VISIT": {
+        "label": "תסקיר ללא ביקור בית",
+        "desc": "עובד הרווחה לא ביקר בבית ההורה המבקש לפני כתיבת התסקיר."
+      },
+      "WELFARE_REPORT_CITES_DROPPED_ALLEGATIONS": {
+        "label": "תסקיר מציין אישומים שנסגרו",
+        "desc": "התסקיר מסתמך על אישומים שנסגרו או לא הוכחו."
+      },
+      "WELFARE_RECOMMENDATION_CHANGED_UNEXPLAINED": {
+        "label": "המלצת רווחה השתנתה ללא הסבר",
+        "desc": "עמדת הרווחה התהפכה בין תסקירים מבלי שניתנה סיבה מבוססת."
+      },
+      "EVALUATOR_SINGLE_SESSION_UNDER_90_MIN": {
+        "label": "אבחון בפגישה אחת בלבד (פחות מ-90 דקות)",
+        "desc": "המאבחן ערך פגישה אחת בלבד, קצרה מהנדרש לאבחון תקין."
+      },
+      "EVALUATOR_SINGLE_PARENT_ONLY": {
+        "label": "אבחון של הורה אחד בלבד",
+        "desc": "המאבחן ראיין רק את ההורה שמינה אותו, ולא בחן את שני ההורים."
+      },
+      "EVALUATOR_NO_FEEDBACK_SESSION": {
+        "label": "אין פגישת משוב לאחר האבחון",
+        "desc": "המאבחן לא קיים פגישת משוב כנדרש לפני הגשת חוות הדעת לבית המשפט."
+      },
+      "JUDGE_RUBBER_STAMPS_EVALUATOR": {
+        "label": "שופט/ת אימץ/ה המלצת מאבחן ללא בחינה",
+        "desc": "בית המשפט אימץ את חוות דעת המאבחן במלואה ללא ביקורת עצמאית."
+      },
+      "GUARDIAN_MINIMAL_CHILD_CONTACT": {
+        "label": "אפוטרופוס לדין — קשר מינימלי עם הילד",
+        "desc": "האפוטרופוס לדין פגש את הילד פגישה אחת בלבד או לא פגש כלל."
+      },
+      "GUARDIAN_REPEATEDLY_BY_SAME_JUDGE": {
+        "label": "אפוטרופוס לדין — מינוי חוזר על ידי אותו שופט",
+        "desc": "אותו אפוטרופוס לדין מונה שוב על ידי אותו שופט/ת בתיקים מרובים."
+      },
+      "GUARDIAN_CONTRADICTS_CHILD_WISHES": {
+        "label": "אפוטרופוס לדין — עמדה מנוגדת לרצון הילד",
+        "desc": "האפוטרופוס לדין תמך בעמדה המנוגדת לרצון הילד המובע."
+      }
+    },
+    "welfareTab": "תסקיר רווחה",
+    "evaluatorTab": "מאבחן",
+    "guardianTab": "אפוטרופוס לדין",
+    "addWelfare": "הוסף תסקיר",
+    "addEvaluator": "הוסף מאבחן",
+    "addGuardian": "הוסף אפוטרופוס",
+    "noWelfare": "אין תסקיר רווחה רשום",
+    "noEvaluator": "אין מאבחן רשום",
+    "noGuardian": "אין אפוטרופוס לדין רשום",
+    "welfareReferralAtFirstHearing": "הופנה לרווחה בדיון הראשון?",
+    "interviewOneSided": "הראיון היה חד-צדדי?",
+    "homeVisitConducted": "בוצע ביקור בית?",
+    "citedDroppedAllegations": "התסקיר ציין אישומים שנסגרו?",
+    "recommendationChanged": "ההמלצה השתנתה בין תסקירים?",
+    "sessionCount": "מספר פגישות",
+    "totalDurationMinutes": "סך הזמן (דקות, אופציונלי)",
+    "bothParentsInterviewed": "שני ההורים רואיינו?",
+    "feedbackSessionHeld": "פגישת משוב נערכה?",
+    "judgeAdoptedWithoutReview": "השופט אימץ ההמלצה ללא בחינה?",
+    "childMeetingCount": "פגישות עם הילד",
+    "positionContradictsChild": "עמדה מנוגדת לרצון הילד?",
+    "nominateAnother": "הוסף גורם נוסף",
+    "figureJudge": "שופט/ת",
+    "figureSocialWorker": "עובד/ת סוציאלי/ת",
+    "figureEvaluator": "מאבחן/ת",
+    "figureGuardian": "אפוטרופוס לדין",
+    "figureProbation": "קצין/ת מבחן לנוער",
+    "figureOther": "אחר",
+    "errorGeneric": "אירעה שגיאה, נסה שוב"
+  },
+  "patterns": {
+    "title": "דפוסים הליכיים רשומים",
+    "subtitle": "כל ספירה היא מספר תיקים בלתי תלויים שרשמו את אותו דפוס על אותו גורם — כל אחד לפני שנוצר קשר בין התיקים.",
+    "privacyNote": "לא מוצג מידע מזהה או תוכן מהתיק. רק ספירות דפוסים ותפקידי הגורמים.",
+    "legalNote": "הדפוסים שמתגלים מסך כל התיקים.",
+    "cases": "{count} תיקים",
+    "empty": "אין עדיין דפוסים רשומים בפומבי.",
+    "figureType": {
+      "JUDGE": "שופט/ת",
+      "SOCIAL_WORKER": "עובד/ת סוציאלי/ת",
+      "EVALUATOR": "מאבחן/ת",
+      "GUARDIAN_AD_LITEM": "אפוטרופוס לדין",
+      "YOUTH_PROBATION": "קצין/ת מבחן לנוער",
+      "OTHER": "אחר"
+    }
   }
 }

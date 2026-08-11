@@ -5,7 +5,7 @@ import { prisma } from '../../src/lib/prisma';
 jest.mock('../../src/lib/prisma', () => ({
   prisma: {
     keyFigure: { findUnique: jest.fn(), findMany: jest.fn() },
-    commitment: { findMany: jest.fn() },
+    allegation: { findMany: jest.fn() },
   },
 }));
 
@@ -55,11 +55,11 @@ describe('PatternThesisService', () => {
 
     it('builds a thesis with correct aggregate counts', async () => {
       (mockPrisma.keyFigure.findUnique as jest.Mock).mockResolvedValue(FIGURE);
-      (mockPrisma.commitment.findMany as jest.Mock).mockResolvedValue([
+      (mockPrisma.allegation.findMany as jest.Mock).mockResolvedValue([
         {
           caseId: 'case-1',
           patternCategory: PatternCategory.EX_PARTE_HEARING,
-          commitmentHash: 'hash-a',
+          allegationHash: 'hash-a',
           onChainTxHash: '0xabc',
           eventStartDate: new Date('2022-03-01'),
           eventEndDate: new Date('2022-06-01'),
@@ -68,7 +68,7 @@ describe('PatternThesisService', () => {
         {
           caseId: 'case-2',
           patternCategory: PatternCategory.EX_PARTE_HEARING,
-          commitmentHash: 'hash-b',
+          allegationHash: 'hash-b',
           onChainTxHash: null,
           eventStartDate: new Date('2023-01-15'),
           eventEndDate: null,
@@ -77,7 +77,7 @@ describe('PatternThesisService', () => {
         {
           caseId: 'case-3',
           patternCategory: PatternCategory.EVALUATOR_SINGLE_PARENT_ONLY,
-          commitmentHash: 'hash-c',
+          allegationHash: 'hash-c',
           onChainTxHash: '0xdef',
           eventStartDate: null,
           eventEndDate: null,
@@ -90,17 +90,17 @@ describe('PatternThesisService', () => {
       expect(thesis).not.toBeNull();
       expect(thesis!.figureName).toBe('ד"ר יוסי כהן');
       expect(thesis!.totalCases).toBe(3);
-      expect(thesis!.totalCommitments).toBe(3);
+      expect(thesis!.totalAllegations).toBe(3);
       expect(thesis!.onChainCount).toBe(2);
     });
 
     it('groups patterns correctly by domain', async () => {
       (mockPrisma.keyFigure.findUnique as jest.Mock).mockResolvedValue(FIGURE);
-      (mockPrisma.commitment.findMany as jest.Mock).mockResolvedValue([
+      (mockPrisma.allegation.findMany as jest.Mock).mockResolvedValue([
         {
           caseId: 'case-1',
           patternCategory: PatternCategory.EX_PARTE_HEARING, // domain F
-          commitmentHash: 'hash-a',
+          allegationHash: 'hash-a',
           onChainTxHash: null,
           eventStartDate: null,
           eventEndDate: null,
@@ -109,7 +109,7 @@ describe('PatternThesisService', () => {
         {
           caseId: 'case-2',
           patternCategory: PatternCategory.EVALUATOR_SINGLE_PARENT_ONLY, // domain D
-          commitmentHash: 'hash-b',
+          allegationHash: 'hash-b',
           onChainTxHash: null,
           eventStartDate: null,
           eventEndDate: null,
@@ -128,11 +128,11 @@ describe('PatternThesisService', () => {
     it('correctly counts distinct cases per pattern', async () => {
       (mockPrisma.keyFigure.findUnique as jest.Mock).mockResolvedValue(FIGURE);
       // Same pattern, two different cases
-      (mockPrisma.commitment.findMany as jest.Mock).mockResolvedValue([
+      (mockPrisma.allegation.findMany as jest.Mock).mockResolvedValue([
         {
           caseId: 'case-1',
           patternCategory: PatternCategory.EX_PARTE_HEARING,
-          commitmentHash: 'hash-a',
+          allegationHash: 'hash-a',
           onChainTxHash: null,
           eventStartDate: null,
           eventEndDate: null,
@@ -141,7 +141,7 @@ describe('PatternThesisService', () => {
         {
           caseId: 'case-2',
           patternCategory: PatternCategory.EX_PARTE_HEARING,
-          commitmentHash: 'hash-b',
+          allegationHash: 'hash-b',
           onChainTxHash: null,
           eventStartDate: null,
           eventEndDate: null,
@@ -159,11 +159,11 @@ describe('PatternThesisService', () => {
 
     it('computes date range from eventStartDate and eventEndDate', async () => {
       (mockPrisma.keyFigure.findUnique as jest.Mock).mockResolvedValue(FIGURE);
-      (mockPrisma.commitment.findMany as jest.Mock).mockResolvedValue([
+      (mockPrisma.allegation.findMany as jest.Mock).mockResolvedValue([
         {
           caseId: 'case-1',
           patternCategory: PatternCategory.EX_PARTE_HEARING,
-          commitmentHash: 'hash-a',
+          allegationHash: 'hash-a',
           onChainTxHash: null,
           eventStartDate: new Date('2020-05-01'),
           eventEndDate: new Date('2021-01-01'),
@@ -172,7 +172,7 @@ describe('PatternThesisService', () => {
         {
           caseId: 'case-2',
           patternCategory: PatternCategory.EX_PARTE_HEARING,
-          commitmentHash: 'hash-b',
+          allegationHash: 'hash-b',
           onChainTxHash: null,
           eventStartDate: new Date('2023-08-01'),
           eventEndDate: null,
@@ -189,11 +189,11 @@ describe('PatternThesisService', () => {
 
     it('returns null date range when no dates are available', async () => {
       (mockPrisma.keyFigure.findUnique as jest.Mock).mockResolvedValue(FIGURE);
-      (mockPrisma.commitment.findMany as jest.Mock).mockResolvedValue([
+      (mockPrisma.allegation.findMany as jest.Mock).mockResolvedValue([
         {
           caseId: 'case-1',
           patternCategory: PatternCategory.EX_PARTE_HEARING,
-          commitmentHash: 'hash-a',
+          allegationHash: 'hash-a',
           onChainTxHash: null,
           eventStartDate: null,
           eventEndDate: null,
@@ -208,9 +208,9 @@ describe('PatternThesisService', () => {
       expect(pattern.dateRange.latest).toBeNull();
     });
 
-    it('returns empty thesis for an active figure with no commitments', async () => {
+    it('returns empty thesis for an active figure with no allegations', async () => {
       (mockPrisma.keyFigure.findUnique as jest.Mock).mockResolvedValue(FIGURE);
-      (mockPrisma.commitment.findMany as jest.Mock).mockResolvedValue([]);
+      (mockPrisma.allegation.findMany as jest.Mock).mockResolvedValue([]);
 
       const thesis = await service.buildThesis('fig-1');
 

@@ -22,18 +22,15 @@ export async function proposeKeyFigureHandler(input: {
   const result = await service.proposeKeyFigure(input);
 
   const messages: Record<string, string> = {
-    created: `Proposal recorded. ${result.nominationCount}/${result.threshold} families needed for threshold.`,
-    incremented: `Nomination count updated: ${result.nominationCount}/${result.threshold} families.`,
-    promoted: `Threshold reached (${result.nominationCount} families). Figure promoted — awaiting legal review before activation.`,
-    already_nominated: 'This family has already nominated this figure. No change.',
+    created: 'Figure registered as PENDING — awaiting legal review before activation.',
+    incremented: `Nomination recorded. This figure has now been named by ${result.nominationCount} independent cases.`,
+    already_nominated: 'This case has already nominated this figure. No change.',
   };
 
   return JSON.stringify({
     status: result.status,
     message: messages[result.status],
+    keyFigureId: result.keyFigure.id,
     nominationCount: result.nominationCount,
-    threshold: result.threshold,
-    keyFigureId: result.keyFigure?.id,
-    pendingFigureId: result.pendingFigure?.id,
   }, null, 2);
 }

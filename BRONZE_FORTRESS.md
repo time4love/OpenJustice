@@ -200,19 +200,17 @@ However: **every family already has their name** — in their own sealed case fi
 
 ### Community-Built Registry With Verification Gates
 
-**Phase 1 — Family proposes a key figure**
-During intake, if no matching figure exists, a family proposes:
+**Phase 1 — Case proposes a key figure**
+During intake, if no matching figure exists, a case proposes:
 - Name as it appears in their official case documents
 - Role: social worker / מאבחן / guardian ad litem (אפוטרופוס לדין) / etc.
 - Organization or employer
 - Optionally: a redacted excerpt from their own file showing the name in official context
 
-The proposal enters a pending queue — invisible, uncounted, not yet a key figure.
+The proposal enters a pending queue — invisible, not yet a key figure.
 
-**Phase 2 — Activation threshold**
-A figure only becomes active when **N independent families (minimum 3)** name the same person in the same official role. Before that threshold: nothing shown, nothing committed on-chain, nothing queryable.
-
-This is the primary defamation guard. One angry family naming someone is noise. Three independent families naming the same person in the same official capacity is a signal that cannot be dismissed as malicious.
+**Phase 2 — Legal review gate (replaces count threshold)**
+A figure becomes active when a legal reviewer approves — based on quality of documented facts and correct official-capacity framing, not on how many cases named them. One well-documented case is sufficient. The defamation guard is the human review gate, not a case count.
 
 **Phase 3 — Cross-reference with public professional registries**
 Israel has partial registries:
@@ -222,29 +220,42 @@ Israel has partial registries:
 
 A registry match adds a "verified licensed professional" flag. No match doesn't block activation — it's noted as "unlisted."
 
-**Phase 4 — Legal review gate**
-Before a figure becomes fully active (visible in key figure profile, included in pattern counts), a legal reviewer approves. Same human gate as Glass Fortress call page review.
-
-**Phase 5 — FOIA as a seeding tool**
-Generate FOIA requests to family courts requesting official lists of approved מאבחנים and appointed social workers for a given period. Names received via FOIA enter the registry officially — sourced from the institution itself, not from families. The cleanest possible sourcing.
+**Phase 4 — FOIA as a seeding tool**
+Generate FOIA requests to family courts requesting official lists of approved מאבחנים and appointed social workers for a given period. Names received via FOIA enter the registry officially — sourced from the institution itself, not from cases. The cleanest possible sourcing.
 
 ### Distinguishing Types of מאבחנים
 
-| Type | Status | Registry threshold |
-|---|---|---|
-| Court-appointed from approved list (ממונה על ידי בית המשפט) | Officer of the court | Standard (3 families) |
-| Ministry employee conducting evaluations | Public employee | Standard (3 families) |
-| Private professional hired by one party | Private contractor | Higher threshold (5 families) + mandatory legal review |
+| Type | Status |
+|---|---|
+| Court-appointed from approved list (ממונה על ידי בית המשפט) | Officer of the court |
+| Ministry employee conducting evaluations | Public employee |
+| Private professional hired by one party | Private contractor — mandatory legal review |
 
 Only court-appointed and ministry-employed מאבחנים belong in the registry by default.
 
+### Visibility Model — Facts Without Names
+
+The platform's public face never exposes real names of key figures. Each activated `KeyFigure` receives a **stable anonymous public ID** at activation (e.g. `SW-0042`, `EVAL-0007`, `GAL-0003` — role prefix + sequential). This ID is permanent and consistent across time.
+
+**Three visibility tiers:**
+
+| Audience | Sees |
+|---|---|
+| Petitioner (own case) | Their own facts + "you are not alone — SW-0042 appears in N other cases with pattern X" |
+| Legal / MCP researchers | Full figure profile: real name, org, all linked cases, pattern aggregates |
+| Public board | Anonymous ID + role + district + pattern counts per figure — no real names |
+
+**Critical rule:** pattern counts are kept **per figure**, never aggregated across multiple figures to hide identity. "SW-0042 appears in 14 cases" is informative. "Social workers appeared in 47 cases collectively" destroys the signal of concentration. Each anonymous figure retains its own distinct pattern record.
+
+If the case goes to court, the mapping `SW-0042 → real name` exists in the sealed record and can be disclosed through proper legal channels.
+
 ### What the Platform Says About Them
 
-Acting in official capacity — not as private individuals — the platform can name them carefully:
+Acting in official capacity — not as private individuals — the platform frames figures carefully:
 
-> "Social worker at Givataim District Welfare Office, named in official documents in 17 independently registered cases."
+> "SW-0042 (Social Worker, Givataim District Welfare Office) — documented in 17 independently registered cases showing WELFARE_INTERVIEW_ONE_SIDED."
 
-Never: "social worker who abused families." The count is the statement. The pattern categories are the statement. Official capacity is the key that unlocks naming — same legal frame Glass Fortress uses for ministry officials.
+Never: "social worker who abused families." The count is the statement. The pattern categories are the statement. Official capacity is the key — same legal frame Glass Fortress uses for ministry officials.
 
 ### The Most Powerful Pattern Thesis This Unlocks
 
@@ -550,6 +561,25 @@ Bronze Fortress must be completely separate from Glass Fortress — different Ra
 
 ### Legal Boundary
 Each parent holds documents about their own case — they are a party to the proceeding. In Israeli law, a party's right to their own case file differs from publishing it publicly. Family court confidentiality (סעיף 68 לחוק בתי המשפט) covers *content*, not necessarily *patterns*. Legal review required before any public launch.
+
+---
+
+## Domain Model Decisions (2026-08-11)
+
+### Commitment → Allegation
+The `Commitment` entity is being renamed `Allegation` in BF-8.
+
+`Commitment` is a cryptographic mechanism term — it describes what the system does (hash + on-chain registration), not what the petitioner is doing. `Allegation` is the correct legal term: a formal claim that a specific pattern was perpetrated by a specific figure. It is also legally protective — "allegation" signals an unproven claim by the petitioner, which is the correct framing for defamation posture.
+
+Ripple effects: `commitmentHash` → `allegationHash`; MCP tools `list_commitments` and `nominate_and_commit` renamed in BF-8.
+
+### Evidence Layer
+BF already has an evidence layer — the persisted intake records (`CriminalComplaint`, `NzakutOrder`, `WelfareReport`, `EvaluatorSession`, `GuardianContact`). These are the structured evidence records of what the petitioner experienced. `Allegation` is derived from them via PatternDetectionService.
+
+Current gap: `Allegation` has no FK back to the source intake record (provenance is implicit by timing). BF-8 option: introduce an `Evidence` parent table that intake records reference, and add `evidenceId` to `Allegation`. This closes the provenance chain: Evidence → Pattern detection → Allegation → On-chain registration.
+
+### Shared Code Extraction
+Both BF and GF duplicate: `EvidenceRegistry` ABI (byte-identical), Web3 ethers contract interaction, MCP router boilerplate, JWT verification core. Extraction into `packages/` is planned for BF-8. See memory/bronze-fortress-platform.md for priority table.
 
 ---
 

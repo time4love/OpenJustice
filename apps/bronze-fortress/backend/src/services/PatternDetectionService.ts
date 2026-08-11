@@ -22,7 +22,7 @@ export interface PatternSuggestion {
   alreadyRegistered: boolean;
 }
 
-export interface SuggestCommitmentsResult {
+export interface SuggestAllegationsResult {
   caseId: string;
   figureId: string;
   courtId: string;
@@ -38,21 +38,25 @@ const CLOSED_STATUSES: PoliceCaseStatus[] = [
 ];
 
 export class PatternDetectionService {
-  async suggestCommitments(
+  async suggestAllegations(
     caseId: string,
     figureId: string,
     courtId: string,
-  ): Promise<SuggestCommitmentsResult> {
-    const [complaints, orders, existingCommitments] = await Promise.all([
-      prisma.criminalComplaint.findMany({ where: { caseId } }),
-      prisma.nzakutOrder.findMany({ where: { caseId } }),
-      prisma.commitment.findMany({
-        where: { caseId, figureId, courtId },
-        select: { patternCategory: true },
-      }),
-    ]);
+  ): Promise<SuggestAllegationsResult> {
+    const [complaints, orders, welfareReports, evaluatorSessions, guardianContacts, existingAllegations] =
+      await Promise.all([
+        prisma.criminalComplaint.findMany({ where: { caseId } }),
+        prisma.nzakutOrder.findMany({ where: { caseId } }),
+        prisma.welfareReport.findMany({ where: { caseId } }),
+        prisma.evaluatorSession.findMany({ where: { caseId } }),
+        prisma.guardianContact.findMany({ where: { caseId } }),
+        prisma.allegation.findMany({
+          where: { caseId, figureId, courtId },
+          select: { patternCategory: true },
+        }),
+      ]);
 
-    const registered = new Set(existingCommitments.map((c) => c.patternCategory));
+    const registered = new Set(existingAllegations.map((a) => a.patternCategory));
 
     // Accumulate suggestions, deduplicating by patternCategory.
     // Multiple intake records can evidence the same pattern — record the first
@@ -103,13 +107,113 @@ export class PatternDetectionService {
       }
     }
 
+    // ── Domain C: Welfare Professional Violations ────────────────────────────
+    for (const w of welfareReports) {
+      if (w.welfareReferralAtFirstHearing) {
+        suggest(
+          PatternCategory.WELFARE_REFERRAL_AT_FIRST_HEARING,
+          'Welfare services were referred to the case at the opening hearing, before any evidence was examined.',
+        );
+      }
+      if (w.interviewOneSided === true) {
+        suggest(
+          PatternCategory.WELFARE_REPORT_ONE_SIDED_INTERVIEW,
+          'The welfare report was written based on interviews with only one party.',
+        );
+      }
+      if (w.homeVisitConducted === false) {
+        suggest(
+          PatternCategory.WELFARE_REPORT_NO_HOME_VISIT,
+          'The welfare worker did not visit the requesting parent\'s home before writing the report.',
+        );
+      }
+      if (w.citedDroppedAllegations === true) {
+        suggest(
+          PatternCategory.WELFARE_REPORT_CITES_DROPPED_ALLEGATIONS,
+          'The welfare report relies on allegations that were closed or unproven.',
+        );
+      }
+      if (w.recommendationChanged === true) {
+        suggest(
+          PatternCategory.WELFARE_RECOMMENDATION_CHANGED_UNEXPLAINED,
+          'The welfare position reversed between reports without a substantiated reason.',
+        );
+      }
+    }
+
+    // ── Domain D: Evaluator Violations ──────────────────────────────────────
+    for (const e of evaluatorSessions) {
+      if (e.sessionCount === 1 && e.totalDurationMinutes !== null && e.totalDurationMinutes < 90) {
+        suggest(
+          PatternCategory.EVALUATOR_SINGLE_SESSION_UNDER_90_MIN,
+          `The evaluator conducted only one session of ${e.totalDurationMinutes} minutes — shorter than the minimum required for a proper evaluation.`,
+        );
+      }
+      if (!e.bothParentsInterviewed) {
+        suggest(
+          PatternCategory.EVALUATOR_SINGLE_PARENT_ONLY,
+          'The evaluator interviewed only one parent without assessing both sides independently.',
+        );
+      }
+      if (!e.feedbackSessionHeld) {
+        suggest(
+          PatternCategory.EVALUATOR_NO_FEEDBACK_SESSION,
+          'The evaluator did not hold a feedback session before submitting the opinion to the court.',
+        );
+      }
+      if (e.judgeAdoptedWithoutReview === true) {
+        suggest(
+          PatternCategory.JUDGE_RUBBER_STAMPS_EVALUATOR,
+          'The court adopted the evaluator\'s opinion in full without independent critical review.',
+        );
+      }
+    }
+
+    // ── Domain E: Guardian Ad Litem ──────────────────────────────────────────
+    for (const g of guardianContacts) {
+      if (g.childMeetingCount <= 1) {
+        suggest(
+          PatternCategory.GUARDIAN_MINIMAL_CHILD_CONTACT,
+          `The guardian ad litem met the child ${g.childMeetingCount === 0 ? 'zero times' : 'only once'}.`,
+        );
+      }
+      if (g.positionContradictsChild === true) {
+        suggest(
+          PatternCategory.GUARDIAN_CONTRADICTS_CHILD_WISHES,
+          "The guardian ad litem advocated a position contrary to the child's expressed wishes.",
+        );
+      }
+      // Cross-case: detect if this guardian was appointed by the same judge in other cases
+      if (g.appointingJudgeFigureId) {
+        const repeatCount = await prisma.guardianContact.count({
+          where: {
+            appointingJudgeFigureId: g.appointingJudgeFigureId,
+            caseId: { not: caseId },
+            legalCase: { allegations: { some: { figureId } } },
+          },
+        });
+        if (repeatCount >= 1) {
+          suggest(
+            PatternCategory.GUARDIAN_REPEATEDLY_BY_SAME_JUDGE,
+            'This guardian ad litem was appointed by the same judge in at least one other case.',
+          );
+        }
+      }
+    }
+
     return {
       caseId,
       figureId,
       courtId,
       suggestions: Array.from(seen.values()),
-      domainsAnalyzed: ['A (criminal-to-family interface)', 'B (חוק הנוער procedural violations)'],
-      note: 'Domains C–G (welfare, evaluator, guardian, judicial conduct, parental alienation) require additional structured intake data not yet collected.',
+      domainsAnalyzed: [
+        'A (criminal-to-family interface)',
+        'B (חוק הנוער procedural violations)',
+        'C (welfare professional violations)',
+        'D (evaluator violations)',
+        'E (guardian ad litem)',
+      ],
+      note: 'Domains F (judicial conduct) and G (parental alienation) require additional structured intake data not yet collected.',
     };
   }
 }

@@ -36,13 +36,13 @@ export function NavBar() {
         </Link>
 
         <div className="flex items-center gap-6 text-sm">
+          <Link href="/patterns" className="text-slate-300 hover:text-white transition-colors">
+            {t('patterns')}
+          </Link>
           {user ? (
             <>
               <Link href="/dashboard" className="text-slate-300 hover:text-white transition-colors">
                 {t('dashboard')}
-              </Link>
-              <Link href="/intake" className="text-slate-300 hover:text-white transition-colors">
-                {t('intake')}
               </Link>
               <button
                 onClick={handleSignOut}

@@ -2,10 +2,10 @@ import { ethers } from 'ethers';
 import { EVIDENCE_REGISTRY_ABI } from '../abi/EvidenceRegistry';
 
 // ---------------------------------------------------------------------------
-// BronzeWeb3Service — registers commitment hashes on-chain.
+// BronzeWeb3Service — registers allegation hashes on-chain.
 //
 // Uses the same shared EvidenceRegistry contract as Glass Fortress, but with
-// a separate BF wallet and contract deployment. Category is always 'COMMITMENT'
+// a separate BF wallet and contract deployment. Category is always 'ALLEGATION'
 // so on-chain records are distinguishable from GF evidence records.
 //
 // Environment variables (all required to enable on-chain registration):
@@ -14,7 +14,7 @@ import { EVIDENCE_REGISTRY_ABI } from '../abi/EvidenceRegistry';
 //   BF_EVIDENCE_REGISTRY_ADDRESS — deployed EvidenceRegistry contract address
 // ---------------------------------------------------------------------------
 
-const CATEGORY = 'COMMITMENT';
+const CATEGORY = 'ALLEGATION';
 
 export class BronzeWeb3Service {
   private readonly provider: ethers.JsonRpcProvider;
@@ -28,17 +28,17 @@ export class BronzeWeb3Service {
   }
 
   /**
-   * Register a commitment hash on-chain.
+   * Register an allegation hash on-chain.
    *
-   * @param commitmentHash  64-char hex SHA-256 string (without 0x prefix).
+   * @param allegationHash  64-char hex SHA-256 string (without 0x prefix).
    * @returns               Transaction hash of the confirmed submission.
    *
    * If the hash is already registered (duplicate), returns the sentinel
    * string 'already-registered' — the caller should still persist this so
    * the record is not re-attempted on the next backfill run.
    */
-  async registerCommitmentHash(commitmentHash: string): Promise<string> {
-    const hex = commitmentHash.startsWith('0x') ? commitmentHash : `0x${commitmentHash}`;
+  async registerCommitmentHash(allegationHash: string): Promise<string> {
+    const hex = allegationHash.startsWith('0x') ? allegationHash : `0x${allegationHash}`;
     const bytes32Hash = ethers.zeroPadValue(hex, 32);
 
     try {
@@ -50,7 +50,7 @@ export class BronzeWeb3Service {
       )(bytes32Hash, CATEGORY);
 
       await tx.wait(1);
-      console.log(`[BF Web3] Commitment registered on-chain: ${tx.hash}`);
+      console.log(`[BF Web3] Allegation registered on-chain: ${tx.hash}`);
       return tx.hash;
     } catch (err: unknown) {
       if (ethers.isError(err, 'CALL_EXCEPTION')) {
@@ -59,7 +59,7 @@ export class BronzeWeb3Service {
           err.revert?.name === 'DuplicateEvidence' ||
           (typeof err.data === 'string' && err.data.slice(0, 10) === DUPLICATE_SELECTOR);
         if (isDuplicate) {
-          console.warn(`[BF Web3] Commitment already registered on-chain: ${commitmentHash}`);
+          console.warn(`[BF Web3] Allegation already registered on-chain: ${allegationHash}`);
           return 'already-registered';
         }
       }

@@ -72,7 +72,7 @@ describe('CaseVaultService', () => {
 
       const result = await service.getCase('case-1');
 
-      expect(mockPrisma.case.findUnique).toHaveBeenCalledWith({ where: { id: 'case-1' } });
+      expect(mockPrisma.case.findUnique).toHaveBeenCalledWith({ where: { id: 'case-1' }, include: { court: true } });
       expect(result).toEqual(legalCase);
     });
 

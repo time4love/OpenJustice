@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { PatternCategory } from '../../generated/prisma';
-import { CommitmentService } from '../../services/CommitmentService';
+import { AllegationService } from '../../services/AllegationService';
 
 export const queryPatternSchema = {
   figureId: z.string().describe('KeyFigure ID to query'),
@@ -10,7 +10,7 @@ export const queryPatternSchema = {
     .describe('Optional: filter to a specific pattern category'),
 };
 
-const service = new CommitmentService();
+const service = new AllegationService();
 
 export async function queryPatternHandler(input: {
   figureId: string;
@@ -21,8 +21,8 @@ export async function queryPatternHandler(input: {
     return JSON.stringify({
       figureId: input.figureId,
       patternCategory: input.patternCategory,
-      familyCount: count,
-      note: 'Count reflects independently registered commitments. Each family registered on-chain before any inter-family connection was made.',
+      caseCount: count,
+      note: 'Count reflects independently registered allegations. Each case registered on-chain before any connection between cases was made.',
     }, null, 2);
   }
 

@@ -6,5 +6,11 @@ export const metadata: Metadata = {
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
-  return children;
+  // lang/dir default to Hebrew (RTL). The [locale]/layout handles locale validation;
+  // html attributes are overridden per-locale by the browser once JS hydrates.
+  return (
+    <html lang="he" dir="rtl">
+      <body>{children}</body>
+    </html>
+  );
 }

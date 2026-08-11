@@ -6,15 +6,16 @@ const router = Router();
 
 // ---------------------------------------------------------------------------
 // Write tool names — any tools/call for one of these requires a valid bearer token.
-// Read tools (query_pattern, get_key_figure_profile, list_commitments) are unauthenticated.
+// Read tools (query_pattern, get_key_figure_profile, list_allegations) are unauthenticated.
 // ---------------------------------------------------------------------------
 
 const WRITE_TOOLS = new Set([
-  'register_commitment',
+  'register_allegation',
   'propose_key_figure',
   'activate_figure',
   'register_on_chain',
-  'suggest_commitments',
+  'suggest_allegations',
+  'nominate_and_commit',
 ]);
 
 function isWriteToolCall(body: unknown): boolean {
@@ -86,10 +87,10 @@ router.get('/', (_req: Request, res: Response) => {
     name: 'Bronze Fortress MCP',
     version: '1.0.0',
     transport: 'streamable-http',
-    readTools: ['query_pattern', 'get_key_figure_profile', 'list_commitments', 'list_pending_figures', 'build_pattern_thesis', 'list_active_figures'],
-    writeTools: ['register_commitment', 'propose_key_figure', 'activate_figure', 'register_on_chain', 'suggest_commitments'],
+    readTools: ['query_pattern', 'get_key_figure_profile', 'list_allegations', 'list_figures_pending_review', 'build_pattern_thesis', 'list_active_figures', 'list_courts'],
+    writeTools: ['nominate_and_commit', 'register_allegation', 'suggest_allegations', 'propose_key_figure', 'activate_figure', 'register_on_chain'],
     auth: 'Write tools require Authorization: Bearer <MCP_WRITE_TOKEN>',
-    privacy: 'All read tools return aggregate data only. No family content or identifiers are exposed.',
+    privacy: 'All read tools return aggregate data only. No case content or identifiers are exposed.',
   });
 });
 

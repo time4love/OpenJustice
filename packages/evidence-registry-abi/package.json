@@ -1,0 +1,8 @@
+{
+  "name": "@openjustice/evidence-registry-abi",
+  "version": "1.0.0",
+  "private": true,
+  "description": "EvidenceRegistry contract ABI — shared between Glass Fortress and Bronze Fortress backends",
+  "main": "index.ts",
+  "types": "index.ts"
+}
