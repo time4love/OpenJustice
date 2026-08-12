@@ -9,9 +9,9 @@ import { EVIDENCE_REGISTRY_ABI } from '../abi/EvidenceRegistry';
 // so on-chain records are distinguishable from GF evidence records.
 //
 // Environment variables (all required to enable on-chain registration):
-//   BF_RPC_URL                  — JSON-RPC endpoint (Alchemy / Infura / etc.)
-//   BF_REGISTRAR_PRIVATE_KEY    — hex private key of the BF registrar wallet
-//   BF_EVIDENCE_REGISTRY_ADDRESS — deployed EvidenceRegistry contract address
+//   RPC_URL         — JSON-RPC endpoint (Alchemy / Infura / etc.)
+//   PRIVATE_KEY     — hex private key of the BF registrar wallet
+//   CONTRACT_ADDRESS — deployed EvidenceRegistry contract address
 // ---------------------------------------------------------------------------
 
 const CATEGORY = 'ALLEGATION';
@@ -78,17 +78,17 @@ let _initialized = false;
 export function getWeb3Service(): BronzeWeb3Service | null {
   if (!_initialized) {
     _initialized = true;
-    const rpcUrl = process.env['BF_RPC_URL'];
-    const privateKey = process.env['BF_REGISTRAR_PRIVATE_KEY'];
-    const contractAddress = process.env['BF_EVIDENCE_REGISTRY_ADDRESS'];
+    const rpcUrl = process.env['RPC_URL'];
+    const privateKey = process.env['PRIVATE_KEY'];
+    const contractAddress = process.env['CONTRACT_ADDRESS'];
 
     if (rpcUrl && privateKey && contractAddress) {
       _instance = new BronzeWeb3Service(rpcUrl, privateKey, contractAddress);
       console.log('[BF Web3] On-chain registration enabled.');
     } else {
       console.warn(
-        '[BF Web3] On-chain registration disabled — set BF_RPC_URL, BF_REGISTRAR_PRIVATE_KEY, ' +
-          'BF_EVIDENCE_REGISTRY_ADDRESS to enable.',
+        '[BF Web3] On-chain registration disabled — set RPC_URL, PRIVATE_KEY, ' +
+          'CONTRACT_ADDRESS to enable.',
       );
     }
   }
