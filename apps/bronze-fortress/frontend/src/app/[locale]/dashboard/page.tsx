@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { useTranslations } from 'next-intl';
-import { Link } from '@/i18n/navigation';
+import { Link, useRouter } from '@/i18n/navigation';
 import { createClient } from '@/lib/supabase/client';
 
 interface Court {
@@ -53,6 +53,7 @@ function generatePublicKeyHex(): string {
 export default function DashboardPage() {
   const t = useTranslations('dashboard');
   const tc = useTranslations('common');
+  const router = useRouter();
   const [state, setState] = useState<PageState>('loading');
   const [profile, setProfile] = useState<CaseProfile | null>(null);
   const [figures, setFigures] = useState<CommittedFigure[]>([]);
@@ -65,7 +66,7 @@ export default function DashboardPage() {
   const loadDashboard = useCallback(async () => {
     const supabase = createClient();
     const { data: { session } } = await supabase.auth.getSession();
-    if (!session) return;
+    if (!session) { router.replace('/login'); return; }
 
     const headers = { Authorization: `Bearer ${session.access_token}` };
     const [profileRes, allegationsRes] = await Promise.all([

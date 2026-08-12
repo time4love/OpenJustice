@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { useTranslations } from 'next-intl';
+import { useRouter } from '@/i18n/navigation';
 import { createClient } from '@/lib/supabase/client';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -324,6 +325,7 @@ type SheetType = 'complaint' | 'nzakut' | 'welfare' | 'evaluator' | 'guardian' |
 
 export default function IntakePage() {
   const t = useTranslations('intake');
+  const router = useRouter();
 
   // Data
   const [complaints, setComplaints] = useState<CriminalComplaint[]>([]);
@@ -339,6 +341,10 @@ export default function IntakePage() {
 
   useEffect(() => {
     void (async () => {
+      const supabase = createClient();
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) { router.replace('/login'); return; }
+
       const [c, n, w, e, g] = await Promise.all([
         apiFetch('/api/cases/me/complaints').then((r) => r.json() as Promise<{ complaints?: CriminalComplaint[] }>).catch(() => ({})),
         apiFetch('/api/cases/me/nzakut').then((r) => r.json() as Promise<{ orders?: NzakutOrder[] }>).catch(() => ({})),
