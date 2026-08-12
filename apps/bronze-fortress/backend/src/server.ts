@@ -3,6 +3,27 @@ import { mcpRouter } from './mcp/mcpRoutes';
 import { caseRouter } from './routes/caseRoutes';
 import { figureRouter } from './routes/figureRoutes';
 
+process.on('uncaughtException', (err: Error) => {
+  console.error('[Fatal] uncaughtException — stack follows:');
+  console.error(err.stack ?? err.message);
+  process.exit(1);
+});
+
+process.on('unhandledRejection', (reason: unknown) => {
+  console.error('[Fatal] unhandledRejection — reason follows:');
+  if (reason instanceof Error) {
+    console.error(reason.stack ?? reason.message);
+  } else {
+    console.error(reason);
+  }
+  process.exit(1);
+});
+
+process.on('SIGTERM', () => {
+  console.error('[Shutdown] SIGTERM received — process terminating');
+  process.exit(0);
+});
+
 const app = express();
 const PORT = process.env.PORT ?? 3002;
 
@@ -18,7 +39,7 @@ app.use('/api/figures', figureRouter);
 
 // Global error handler — must be last. Catches errors forwarded via next(err).
 app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
-  console.error('[Server] Unhandled error:', err.message);
+  console.error('[Server] Unhandled error:', err.stack ?? err.message);
   if (!res.headersSent) {
     res.status(500).json({ error: 'Internal server error' });
   }
