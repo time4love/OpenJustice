@@ -216,10 +216,10 @@ export default function FiguresPage() {
       </header>
 
       <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8">
-        <div className="flex gap-6 items-start">
+        <div className="flex flex-col sm:flex-row gap-6 items-start">
 
           {/* Left panel — figure list */}
-          <div className="w-64 shrink-0 sticky top-20">
+          <div className="w-full sm:w-64 sm:shrink-0 sm:sticky sm:top-20">
             {figuresLoading && (
               <div className="animate-pulse space-y-2">
                 {[1,2,3,4,5].map((i) => (

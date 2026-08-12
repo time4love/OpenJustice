@@ -285,14 +285,14 @@ export default function VaultPage() {
             </div>
           </div>
           <div className="flex items-center gap-4">
-            <span className="flex items-center gap-1.5 text-xs text-slate-500">
+            <span className="hidden sm:flex items-center gap-1.5 text-xs text-slate-500">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
               {tc('operational')}
             </span>
             <TopNav current="vault" />
             <Link
               href="/submit"
-              className="px-3 py-1.5 rounded text-xs font-medium bg-blue-600 text-white border border-blue-700 hover:bg-blue-700 transition-colors"
+              className="hidden sm:flex px-3 py-1.5 rounded text-xs font-medium bg-blue-600 text-white border border-blue-700 hover:bg-blue-700 transition-colors"
             >
               {tc('nav.submitEvidence')}
             </Link>
