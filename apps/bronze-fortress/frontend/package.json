@@ -16,10 +16,6 @@
     "react": "19.2.4",
     "react-dom": "19.2.4"
   },
-  "optionalDependencies": {
-    "@next/swc-linux-x64-gnu": "16.2.11",
-    "@next/swc-linux-x64-musl": "16.2.11"
-  },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
