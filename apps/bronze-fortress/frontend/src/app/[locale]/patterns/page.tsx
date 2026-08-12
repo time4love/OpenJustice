@@ -27,8 +27,8 @@ async function fetchPatterns(): Promise<PublicPatternRow[]> {
       next: { revalidate: 60 },
     });
     if (!res.ok) return [];
-    const data = await res.json() as { patterns: PublicPatternRow[] };
-    return data.patterns;
+    const data = await res.json() as { patterns?: PublicPatternRow[] };
+    return data.patterns ?? [];
   } catch {
     return [];
   }

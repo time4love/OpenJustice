@@ -38,8 +38,8 @@ async function LivePatterns() {
       next: { revalidate: 60 },
     });
     if (res.ok) {
-      const data = await res.json() as { patterns: PublicPatternRow[] };
-      patterns = data.patterns;
+      const data = await res.json() as { patterns?: PublicPatternRow[] };
+      patterns = data.patterns ?? [];
     }
   } catch {
     return null;
