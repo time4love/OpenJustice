@@ -210,18 +210,18 @@
     "badge": "Open Source Project · Full Transparency",
     "hero": {
       "title": "The Glass Fortress Manifesto",
-      "subtitle": "A decentralised, blockchain-protected legal evidence platform for building a class-action lawsuit against COVID-19 health policy failures.",
+      "subtitle": "A decentralised, blockchain-protected legal evidence platform — documenting the suppression of safety data, experimentation without informed consent, and violations of the Nuremberg Code during the Covid-19 crisis.",
       "ctaSubmit": "Submit Evidence Now",
       "ctaVault": "View Evidence Vault"
     },
     "pillarsHeading": "The Three Pillars",
     "mission": {
       "title": "The Mission",
-      "p1": "We are building a multi-dimensional legal case against public health authorities who concealed, misled, and coerced — during the COVID-19 crisis.",
+      "p1": "We are building a multi-dimensional legal case against public health authorities who suppressed safety data, conducted medical experimentation without informed consent, and misled regulators and the public — during the COVID-19 crisis. The claim is not mere negligence: some of these acts carry potential criminal liability.",
       "p2": "Our platform lets citizens, doctors, and whistleblowers submit evidence with full anonymity. The AI classifies, summarises, and tiers each submission.",
-      "item1": "Concealment of side-effect data",
-      "item2": "Misleading regulatory bodies",
-      "item3": "Coercion and threats against refusers"
+      "item1": "Suppression of safety data — adverse events not disclosed to the public",
+      "item2": "Misleading regulators and the public",
+      "item3": "Medical experimentation without informed consent — violation of the Nuremberg Code"
     },
     "blockchain": {
       "title": "The Blockchain Guarantee",
@@ -464,8 +464,8 @@
   },
   "home": {
     "heroTag": "Public Interest Litigation",
-    "heroTitle": "The Case Against Covid Policy Failures",
-    "heroSubtitle": "We are building a multi-front legal case — many narrow, independent investigations, each targeting a specific act of concealment or regulatory failure. Every piece of evidence submitted brings us closer to court.",
+    "heroTitle": "Concealment, Coercion, and the Question of Criminal Liability — The Covid Case",
+    "heroSubtitle": "We are building an evidence-based legal case documenting the suppression of safety data, experimentation on citizens without informed consent, and violations of foundational bioethics principles. Every piece of evidence submitted brings us closer to the question of criminal accountability.",
     "statEvidence": "Pieces of Evidence",
     "statTheses": "Active Investigations",
     "statForensicDiffs": "Silent Edits Detected",
