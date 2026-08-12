@@ -31,7 +31,11 @@
       "tier4Sub": "Tier 4 — Low weight"
     },
     "categories": {
-      "title": "Evidence by Legal Category"
+      "title": "Evidence by Legal Category",
+      "sideEffectWithholding": "Side Effect Withholding",
+      "regulatoryMisleading": "Regulatory Misleading",
+      "coercion": "Coercion",
+      "other": "Other"
     },
     "ledger": {
       "title": "Evidence Ledger",

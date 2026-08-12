@@ -224,6 +224,13 @@ export default function VaultPage() {
   const t = useTranslations('dashboard');
   const tc = useTranslations('common');
 
+  const categoryLabels: Record<Category, string> = {
+    'Side Effect Withholding': t('categories.sideEffectWithholding'),
+    'Regulatory Misleading': t('categories.regulatoryMisleading'),
+    'Coercion': t('categories.coercion'),
+    'Other': t('categories.other'),
+  };
+
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
@@ -350,7 +357,7 @@ export default function VaultPage() {
               (cat) => (
                 <CategoryBar
                   key={cat}
-                  label={cat}
+                  label={categoryLabels[cat]}
                   value={statsLoading ? 0 : (stats.byCategory[cat] ?? 0)}
                   max={categoryMax}
                 />

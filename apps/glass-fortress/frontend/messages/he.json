@@ -31,7 +31,11 @@
       "tier4Sub": "דרגה 4 — משקל נמוך"
     },
     "categories": {
-      "title": "ראיות לפי קטגוריה משפטית"
+      "title": "ראיות לפי קטגוריה משפטית",
+      "sideEffectWithholding": "הסתרת תופעות לוואי",
+      "regulatoryMisleading": "הטעיה רגולטורית",
+      "coercion": "כפייה",
+      "other": "אחר"
     },
     "ledger": {
       "title": "פנקס הראיות",
