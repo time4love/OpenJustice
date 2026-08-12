@@ -199,23 +199,6 @@ export default function AboutPage() {
         </Link>
         <p className="mt-5 text-xs text-slate-400">{t('cta.hint')}</p>
       </section>
-
-      {/* Footer */}
-      <footer className="border-t border-slate-200 bg-white">
-        <div className="max-w-5xl mx-auto px-6 py-6 flex flex-wrap items-center justify-between gap-4">
-          <span className="text-xs text-slate-400 font-mono">
-            Glass Fortress © 2024 · Open Source · MIT License
-          </span>
-          <div className="flex items-center gap-4 text-xs text-slate-400">
-            <Link href="/vault" className="hover:text-slate-600 transition-colors">
-              {tc('nav.evidenceVault')}
-            </Link>
-            <Link href="/timeline" className="hover:text-slate-600 transition-colors">
-              {tc('nav.timeline')}
-            </Link>
-          </div>
-        </div>
-      </footer>
     </main>
   );
 }

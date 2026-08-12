@@ -4,6 +4,7 @@ import { notFound } from 'next/navigation';
 import { routing } from '@/i18n/routing';
 import FloatingChatWidget from '@/components/FloatingChatWidget';
 import { ClientProviders } from '@/components/ClientProviders';
+import { SiteFooter } from '@/components/SiteFooter';
 
 export default async function LocaleLayout({
   children,
@@ -21,6 +22,7 @@ export default async function LocaleLayout({
     <NextIntlClientProvider messages={messages}>
       <ClientProviders>
         {children}
+        <SiteFooter />
         <FloatingChatWidget />
       </ClientProviders>
     </NextIntlClientProvider>
