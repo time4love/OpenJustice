@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useTranslations } from 'next-intl';
 import { Link, useRouter } from '@/i18n/navigation';
-import { createClient } from '@/lib/supabase/client';
+import { getSession } from '@/lib/auth';
 
 interface Court {
   id: string;
@@ -64,8 +64,7 @@ export default function DashboardPage() {
   const [courtSaved, setCourtSaved] = useState(false);
 
   const loadDashboard = useCallback(async () => {
-    const supabase = createClient();
-    const { data: { session } } = await supabase.auth.getSession();
+    const session = getSession();
     if (!session) { router.replace('/login'); return; }
 
     const headers = { Authorization: `Bearer ${session.access_token}` };
@@ -104,8 +103,7 @@ export default function DashboardPage() {
 
   async function setupVault() {
     setState('setting-up');
-    const supabase = createClient();
-    const { data: { session } } = await supabase.auth.getSession();
+    const session = getSession();
     if (!session) { setState('error'); return; }
 
     const res = await fetch('/api/cases', {
@@ -125,8 +123,7 @@ export default function DashboardPage() {
     e.preventDefault();
     if (!selectedCourtId) return;
     setCourtSaving(true);
-    const supabase = createClient();
-    const { data: { session } } = await supabase.auth.getSession();
+    const session = getSession();
     if (!session) { setCourtSaving(false); return; }
 
     const res = await fetch('/api/cases/me/court', {

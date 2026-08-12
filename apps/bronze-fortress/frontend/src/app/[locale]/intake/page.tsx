@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useTranslations } from 'next-intl';
 import { useRouter } from '@/i18n/navigation';
-import { createClient } from '@/lib/supabase/client';
+import { getSession } from '@/lib/auth';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -58,14 +58,12 @@ interface PatternResultData {
 
 // ── API helpers ───────────────────────────────────────────────────────────────
 
-async function getToken(): Promise<string> {
-  const supabase = createClient();
-  const { data: { session } } = await supabase.auth.getSession();
-  return session?.access_token ?? '';
+function getToken(): string {
+  return getSession()?.access_token ?? '';
 }
 
 async function apiFetch(path: string, options?: RequestInit) {
-  const token = await getToken();
+  const token = getToken();
   return fetch(path, {
     ...options,
     headers: {
@@ -341,8 +339,7 @@ export default function IntakePage() {
 
   useEffect(() => {
     void (async () => {
-      const supabase = createClient();
-      const { data: { session } } = await supabase.auth.getSession();
+      const session = getSession();
       if (!session) { router.replace('/login'); return; }
 
       const [c, n, w, e, g] = await Promise.all([

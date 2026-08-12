@@ -3,17 +3,14 @@
 import { useEffect, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Link } from '@/i18n/navigation';
-import { createClient } from '@/lib/supabase/client';
+import { getSession } from '@/lib/auth';
 
 export function HomeCta() {
   const t = useTranslations('home');
   const [loggedIn, setLoggedIn] = useState<boolean | null>(null);
 
   useEffect(() => {
-    const supabase = createClient();
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setLoggedIn(!!session);
-    });
+    setLoggedIn(!!getSession());
   }, []);
 
   // Don't flash buttons before we know auth state

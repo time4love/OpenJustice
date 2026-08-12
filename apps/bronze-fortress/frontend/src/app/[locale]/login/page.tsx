@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Link, useRouter } from '@/i18n/navigation';
-import { createClient } from '@/lib/supabase/client';
+import { signIn } from '@/lib/auth';
 
 export default function LoginPage() {
   const t = useTranslations('auth');
@@ -18,11 +18,10 @@ export default function LoginPage() {
     setError(null);
     setLoading(true);
 
-    const supabase = createClient();
-    const { error: authError } = await supabase.auth.signInWithPassword({ email, password });
+    const { error: authError } = await signIn(email, password);
 
     if (authError) {
-      setError(authError.message);
+      setError(authError);
       setLoading(false);
       return;
     }

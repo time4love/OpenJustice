@@ -4,8 +4,7 @@ import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslations } from 'next-intl';
 import { Link, useRouter } from '@/i18n/navigation';
-import { createClient } from '@/lib/supabase/client';
-import type { User } from '@supabase/supabase-js';
+import { getSession, signOut, type BFSession } from '@/lib/auth';
 
 function HamburgerIcon() {
   return (
@@ -29,21 +28,19 @@ function CloseIcon() {
 export function NavBar() {
   const t = useTranslations('common');
   const router = useRouter();
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<BFSession['user'] | null>(null);
   const [open, setOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => { setMounted(true); }, []);
 
   useEffect(() => {
-    const supabase = createClient();
-    supabase.auth.getUser().then(({ data }) => setUser(data.user));
-
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
-    });
-
-    return () => listener.subscription.unsubscribe();
+    setUser(getSession()?.user ?? null);
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === 'bf_session') setUser(getSession()?.user ?? null);
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
   }, []);
 
   useEffect(() => {
@@ -58,8 +55,8 @@ export function NavBar() {
   }, [open]);
 
   async function handleSignOut() {
-    const supabase = createClient();
-    await supabase.auth.signOut();
+    await signOut();
+    setUser(null);
     setOpen(false);
     router.push('/');
   }
@@ -114,25 +111,21 @@ export function NavBar() {
             {t('patterns')}
           </Link>
           {user ? (
-            <>
-              <Link
-                href="/dashboard"
-                onClick={() => setOpen(false)}
-                className="flex items-center mx-3 px-4 py-3.5 rounded-xl text-sm font-medium text-slate-200 hover:bg-slate-800 hover:text-white transition-colors mb-1"
-              >
-                {t('dashboard')}
-              </Link>
-            </>
+            <Link
+              href="/dashboard"
+              onClick={() => setOpen(false)}
+              className="flex items-center mx-3 px-4 py-3.5 rounded-xl text-sm font-medium text-slate-200 hover:bg-slate-800 hover:text-white transition-colors mb-1"
+            >
+              {t('dashboard')}
+            </Link>
           ) : (
-            <>
-              <Link
-                href="/login"
-                onClick={() => setOpen(false)}
-                className="flex items-center mx-3 px-4 py-3.5 rounded-xl text-sm font-medium text-slate-200 hover:bg-slate-800 hover:text-white transition-colors mb-1"
-              >
-                כניסה
-              </Link>
-            </>
+            <Link
+              href="/login"
+              onClick={() => setOpen(false)}
+              className="flex items-center mx-3 px-4 py-3.5 rounded-xl text-sm font-medium text-slate-200 hover:bg-slate-800 hover:text-white transition-colors mb-1"
+            >
+              כניסה
+            </Link>
           )}
         </nav>
 
@@ -183,7 +176,7 @@ export function NavBar() {
             {t('appName')}
           </Link>
 
-          {/* Desktop nav (md+) — unchanged */}
+          {/* Desktop nav (md+) */}
           <div className="hidden md:flex items-center gap-6 text-sm">
             <Link href="/patterns" className="text-slate-300 hover:text-white transition-colors">
               {t('patterns')}

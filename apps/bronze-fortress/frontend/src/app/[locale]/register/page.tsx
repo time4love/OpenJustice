@@ -3,11 +3,9 @@
 import { useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Link, useRouter } from '@/i18n/navigation';
-import { createClient } from '@/lib/supabase/client';
+import { signUp, getSession } from '@/lib/auth';
 
 function generatePublicKeyHex(): string {
-  // Placeholder: random 32-byte hex. In production this would be a real
-  // asymmetric public key generated client-side for E2E encryption.
   const bytes = new Uint8Array(32);
   crypto.getRandomValues(bytes);
   return Array.from(bytes)
@@ -31,24 +29,28 @@ export default function RegisterPage() {
     setError(null);
     setLoading(true);
 
-    const supabase = createClient();
-    const { data, error: authError } = await supabase.auth.signUp({ email, password });
+    const { hasSession, error: authError } = await signUp(email, password);
 
     if (authError) {
-      setError(authError.message);
+      setError(authError);
       setLoading(false);
       return;
     }
 
-    // If email confirmation is required, session will be null
-    if (!data.session) {
+    if (!hasSession) {
       setStep('check-email');
       setLoading(false);
       return;
     }
 
-    // Confirmed immediately (email confirmation disabled) — create case vault
-    await createCaseVault(data.session.access_token);
+    const session = getSession();
+    if (!session) {
+      setError('Session error — please sign in manually');
+      setLoading(false);
+      return;
+    }
+
+    await createCaseVault(session.access_token);
   }
 
   async function createCaseVault(accessToken: string) {
