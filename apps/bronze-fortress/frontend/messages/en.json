@@ -1,7 +1,7 @@
 {
   "common": {
     "appName": "Bronze Fortress",
-    "tagline": "Uniting parents. Exposing the crimes. Demanding justice.",
+    "tagline": "Uniting parents. Exposing the patterns. Demanding justice.",
     "signOut": "Sign out",
     "dashboard": "Dashboard",
     "intake": "Add facts",
@@ -28,7 +28,7 @@
     "step3Body": "When enough cases register the same figure and pattern combination, the count speaks: an anonymous tally of patterns — factual evidence that cannot be denied.",
     "privacyTitle": "Full privacy protection",
     "privacyBody": "Your personal information belongs only to you — no one can read it, including us, because it is encrypted.",
-    "legalTitle": "Exposing the crimes",
+    "legalTitle": "Exposing the patterns",
     "legalBody": "The accumulated evidence serves litigation, regulatory complaints, and media.",
     "patternsTitle": "Registered patterns",
     "patternsSubtitle": "Each count is the number of cases that registered the same pattern independently.",
