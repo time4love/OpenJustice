@@ -1,8 +1,10 @@
 'use client';
 
 import Image from 'next/image';
-import bronzeLogo from '../../public/bronze_fortress.png';
+import hebLogo from '../../public/bronze_fortress_heb.png';
+import engLogo from '../../public/bronze_fortress_eng.png';
 import { useEffect, useRef } from 'react';
+import { useLocale } from 'next-intl';
 import { HomeCta } from './HomeCta';
 
 interface Props {
@@ -12,6 +14,9 @@ interface Props {
 }
 
 export function HeroSection({ tagline, headline, subheadline }: Props) {
+  const locale = useLocale();
+  const logo = locale === 'he' ? hebLogo : engLogo;
+
   const logoRef = useRef<HTMLDivElement>(null);
   const taglineRef = useRef<HTMLParagraphElement>(null);
   const headlineGroupRef = useRef<HTMLDivElement>(null);
@@ -49,14 +54,21 @@ export function HeroSection({ tagline, headline, subheadline }: Props) {
   }, []);
 
   return (
-    <div className="relative flex flex-col items-center justify-center text-center px-6 pt-16 pb-24 min-h-[92svh]">
+    <div className="relative flex flex-col items-center justify-center text-center px-6 pt-8 pb-24 min-h-[92svh]">
       {/* Logo — scales down toward top as user scrolls */}
       <div
         ref={logoRef}
-        className="mb-6"
+        className="mb-4"
         style={{ transformOrigin: 'top center', willChange: 'transform' }}
       >
-        <Image src={bronzeLogo} alt="מבצר הנחושת" width={160} height={160} priority />
+        <Image
+          src={logo}
+          alt={locale === 'he' ? 'מבצר הנחושת' : 'Bronze Fortress'}
+          width={logo.width}
+          height={logo.height}
+          style={{ width: 'min(300px, 85vw)', height: 'auto' }}
+          priority
+        />
       </div>
 
       {/* Tagline — fades out */}
