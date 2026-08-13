@@ -1,6 +1,6 @@
 {
   "common": {
-    "appName": "Glass Fortress",
+    "appName": "Justice for the People — The Covid Case",
     "operational": "Operational",
     "nav": {
       "home": "Home",
@@ -209,7 +209,7 @@
   "about": {
     "badge": "Open Source Project · Full Transparency",
     "hero": {
-      "title": "The Glass Fortress Manifesto",
+      "title": "The Justice for the People — The Covid Case Manifesto",
       "subtitle": "A decentralised, blockchain-protected legal evidence platform — documenting the suppression of safety data, experimentation without informed consent, and violations of the Nuremberg Code during the Covid-19 crisis.",
       "ctaSubmit": "Submit Evidence Now",
       "ctaVault": "View Evidence Vault"
@@ -463,7 +463,7 @@
     "indexAllCases": "{count} {count, plural, one {investigation} other {investigations}}"
   },
   "home": {
-    "heroTag": "Investigating the Covid Vaccines",
+    "heroTag": "Concealment, Coercion, and the Question of Criminal Liability — The Covid Case",
     "heroTitle": "Justice for the People",
     "heroSubtitle": "We are building an evidence-based legal case documenting the suppression of safety data, experimentation on citizens without informed consent, and violations of foundational bioethics principles. Every piece of evidence submitted brings us closer to the question of criminal accountability.",
     "statEvidence": "Pieces of Evidence",
@@ -501,11 +501,11 @@
     "publicNote": "All evidence, theses, and forensic scans are permanently public and verifiable. Only write operations require an MCP write token."
   },
   "chat": {
-    "greeting": "Hello, I am the Glass Fortress Trust Agent. How can I help you understand our system's security?",
+    "greeting": "Hello, I am the Justice for the People Trust Agent. How can I help you understand our system's security?",
     "placeholder": "Ask a question…",
     "sendBtn": "Send",
     "agentName": "Trust Agent",
-    "agentStatus": "Glass Fortress · Online",
+    "agentStatus": "Justice for the People · Online",
     "closeLabel": "Close chat",
     "openLabel": "Open chat assistant",
     "errorFallback": "An error occurred. Please try again."
