@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./glass_fortress.png" alt="OpenJustice" width="180" />
+  <img src="./open_justice.png" alt="OpenJustice" width="180" />
 </p>
 
 # OpenJustice

@@ -1,5 +1,11 @@
+<p align="center">
+  <img src="../../bronze_fortress.png" alt="Bronze Fortress" width="160" />
+</p>
+
 # Bronze Fortress — מבצר הנחושת
 
+> מאחדים הורים נפגעים, חושפים שיטה, דורשים דין צדק.
+>
 > Private pattern analysis platform for family court and welfare system corruption.
 
 Part of the [OpenJustice](../../README.md) platform.

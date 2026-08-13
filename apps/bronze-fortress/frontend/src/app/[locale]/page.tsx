@@ -1,3 +1,5 @@
+import Image from 'next/image';
+import bronzeLogo from '../../../public/bronze_fortress.png';
 import { useTranslations } from 'next-intl';
 import { getTranslations } from 'next-intl/server';
 import { Link } from '@/i18n/navigation';
@@ -100,12 +102,17 @@ async function LivePatterns() {
 
 export default function HomePage() {
   const t = useTranslations('home');
+  const tc = useTranslations('common');
 
   return (
     <div className="max-w-2xl mx-auto px-6 py-16">
 
       {/* Hero */}
       <div className="text-center mb-16">
+        <div className="flex justify-center mb-5">
+          <Image src={bronzeLogo} alt="מבצר הנחושת" width={120} height={120} priority />
+        </div>
+        <p className="text-sm text-amber-400/80 mb-8 leading-relaxed">{tc('tagline')}</p>
         <h1 className="text-5xl font-bold mb-5 leading-tight">{t('headline')}</h1>
         <p className="text-lg text-slate-300 leading-relaxed mb-8">{t('subheadline')}</p>
         <HomeCta />
