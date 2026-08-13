@@ -1,7 +1,7 @@
 'use client';
 
 import Image from 'next/image';
-import glassFortressLogo from '../../../public/glass_fortress.png';
+import tederDoveLogo from '../../../public/teder-dove.png';
 import { useState, useEffect } from 'react';
 import { useTranslations } from 'next-intl';
 import { Link } from '@/i18n/navigation';
@@ -146,15 +146,15 @@ export default function HomePage() {
       <section className="bg-slate-900 text-white">
         <div className="max-w-4xl mx-auto px-6 py-20 sm:py-28 text-center space-y-6">
           <div className="flex justify-center">
-            <Image src={glassFortressLogo} alt="מבצר הזכוכית" width={110} height={110} priority />
+            <Image src={tederDoveLogo} alt="תדר ישראל" width={260} height={260} priority />
           </div>
-          <p className="text-xs font-mono tracking-[0.2em] text-slate-400 uppercase">
-            {t('heroTag')}
-          </p>
-          <h1 className="text-4xl sm:text-5xl font-bold leading-tight tracking-tight">
+          <h1 className="text-6xl sm:text-7xl font-bold leading-tight tracking-tight">
             {t('heroTitle')}
           </h1>
-          <p className="text-base sm:text-lg text-slate-300 max-w-2xl mx-auto leading-relaxed">
+          <p className="text-xl sm:text-2xl text-slate-300 font-medium">
+            {t('heroTag')}
+          </p>
+          <p className="text-base sm:text-lg text-slate-400 max-w-2xl mx-auto leading-relaxed">
             {t('heroSubtitle')}
           </p>
         </div>
