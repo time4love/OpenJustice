@@ -148,11 +148,16 @@ export default function HomePage() {
           <div className="flex justify-center">
             <Image src={tederDoveLogo} alt="תדר ישראל" width={260} height={260} priority />
           </div>
-          <h1 className="text-6xl sm:text-7xl font-bold leading-tight tracking-tight">
-            {t('heroTitle')}
-          </h1>
-          <p className="text-xl sm:text-2xl text-slate-300 font-medium">
-            {t('heroTag')}
+          <div className="space-y-2">
+            <h1 className="text-6xl sm:text-7xl font-bold leading-tight tracking-tight">
+              {t('heroTitle')}
+            </h1>
+            <p className="text-xl sm:text-2xl text-slate-300 font-medium">
+              {t('heroTag')}
+            </p>
+          </div>
+          <p className="text-lg sm:text-xl text-slate-200 font-semibold">
+            {t('heroClaim')}
           </p>
           <p className="text-base sm:text-lg text-slate-400 max-w-2xl mx-auto leading-relaxed">
             {t('heroSubtitle')}
