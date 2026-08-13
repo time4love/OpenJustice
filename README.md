@@ -16,8 +16,8 @@ The platform currently powers two independent applications, each targeting a dif
 
 | | [Glass Fortress](./apps/glass-fortress/) | [Bronze Fortress](./apps/bronze-fortress/) |
 |---|---|---|
-| **Domain** | Covid-19 policy failures, Israeli MOH | Family court & welfare system corruption |
-| **Legal target** | Institutional cover-up of public safety data | Systemic misconduct in sealed proceedings |
+| **Domain** | Suppression of safety data, coerced experimentation & Nuremberg Code violations — Israeli MOH | Family court & welfare system corruption |
+| **Legal target** | Criminal concealment of adverse events and medical experimentation without informed consent | Systemic misconduct in sealed proceedings |
 | **Who contributes** | Whistleblowers leaking institutional documents | Victims contributing their own sealed case files |
 | **Default visibility** | Public — evidence and theses are broadcast | Private — families hold encrypted vaults |
 | **What gets published** | Evidence + legal theses + calls for whistleblowers | Pattern analysis only — no individual case content |

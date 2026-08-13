@@ -1,6 +1,6 @@
 # Glass Fortress
 
-> Public evidence platform for the Covid-19 policy failures investigation.
+> Public evidence platform documenting concealment, coercion, and criminal liability in Israel's Covid-19 response.
 
 Part of the [OpenJustice](../../README.md) platform.
 
