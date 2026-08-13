@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'מבצר הנחושת',
+  title: 'צדק לעם - תיק דיני משפחה',
   description: 'יחד הדפוס מתגלה',
 };
 

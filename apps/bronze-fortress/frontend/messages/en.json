@@ -1,7 +1,7 @@
 {
   "common": {
-    "appName": "Bronze Fortress",
-    "tagline": "Uniting parents. Exposing the patterns. Demanding justice.",
+    "appName": "Justice for the People — Family Law Case",
+    "tagline": "Family Law Case",
     "signOut": "Sign out",
     "dashboard": "Dashboard",
     "intake": "Add facts",
@@ -13,7 +13,7 @@
     "success": "Success"
   },
   "home": {
-    "headline": "You Are Not Alone",
+    "headline": "Justice for the People",
     "subheadline": "Many parents face the same figures, the same patterns — each alone, behind closed doors. The platform exposes the patterns — without violating any publication ban — and connects those affected.",
     "registerCta": "Register your case",
     "loginCta": "Sign in to existing case",
