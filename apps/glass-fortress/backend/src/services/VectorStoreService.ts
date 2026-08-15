@@ -12,6 +12,13 @@ export interface VectorSearchResult {
   score?: number;
 }
 
+/** Outcome of the startup self-check — see VectorStoreService.healthCheck. */
+export interface VectorStoreHealth {
+  ok: boolean;
+  /** Database objects this service needs but could not find. Empty when ok. */
+  missing: string[];
+}
+
 // ---------------------------------------------------------------------------
 // VectorStoreService — backed by Supabase pgvector via Prisma raw queries
 // ---------------------------------------------------------------------------
@@ -29,6 +36,38 @@ export class VectorStoreService {
       apiKey: process.env['GEMINI_API_KEY'],
     });
     return new VectorStoreService(embeddings);
+  }
+
+  /**
+   * Verifies that the database objects this service depends on actually exist.
+   *
+   * `evidence_embeddings` and `match_evidence` are reachable only from raw SQL —
+   * neither is a Prisma model, so a database created with `prisma db push` will
+   * not have them. searchSimilarEvidence swallows the resulting error and returns
+   * an empty array, which is indistinguishable from "no similar evidence found".
+   * That is how semantic search stayed broken in production unnoticed. This check
+   * makes the failure loud at startup instead of silent forever.
+   *
+   * Static — deliberately needs no embedding model, so it costs no API call and
+   * runs even when GEMINI_API_KEY is absent.
+   */
+  static async healthCheck(): Promise<VectorStoreHealth> {
+    try {
+      const [row] = await prisma.$queryRaw<Array<{ table_ok: boolean; function_ok: boolean }>>`
+        SELECT
+          to_regclass('evidence_embeddings') IS NOT NULL AS table_ok,
+          EXISTS (SELECT 1 FROM pg_proc WHERE proname = 'match_evidence') AS function_ok
+      `;
+
+      const missing: string[] = [];
+      if (!row?.table_ok) missing.push('table evidence_embeddings');
+      if (!row?.function_ok) missing.push('function match_evidence');
+
+      return { ok: missing.length === 0, missing };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return { ok: false, missing: [`health query failed: ${message}`] };
+    }
   }
 
   /**
