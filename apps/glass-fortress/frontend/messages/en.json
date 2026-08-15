@@ -679,5 +679,19 @@
     "SAFETY_CLAIM_ALTERATION": "Altered safety claims",
     "STATISTICAL_MANIPULATION": "Altered statistics",
     "ACCOUNTABILITY_EROSION": "Eroded accountability"
+  },
+  "unlock": {
+    "title": "Staging environment — password required",
+    "subtitle": "This is the staging site for Justice for the People — The Covid Case. Everything here is test data and is not part of the evidence record.",
+    "passwordLabel": "Access password",
+    "submit": "Enter",
+    "submitting": "Checking…",
+    "errorMissing": "Enter a password.",
+    "errorIncorrect": "Incorrect password.",
+    "errorUnconfigured": "Access for this environment is not configured. Contact the administrator.",
+    "note": "This password is shared with everyone given staging access. Do not enter personal information here."
+  },
+  "stagingBanner": {
+    "label": "Staging"
   }
 }

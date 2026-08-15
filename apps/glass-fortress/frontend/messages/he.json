@@ -679,5 +679,19 @@
     "SAFETY_CLAIM_ALTERATION": "שינוי טענות בטיחות",
     "STATISTICAL_MANIPULATION": "שינוי נתונים",
     "ACCOUNTABILITY_EROSION": "טשטוש אחריות"
+  },
+  "unlock": {
+    "title": "סביבת בדיקות — נדרשת סיסמה",
+    "subtitle": "זו סביבת ה־Staging של צדק לעם. התוכן כאן הוא נתוני בדיקה בלבד ואינו חלק מתיק הראיות.",
+    "passwordLabel": "סיסמת גישה",
+    "submit": "כניסה",
+    "submitting": "בודק…",
+    "errorMissing": "יש להזין סיסמה.",
+    "errorIncorrect": "סיסמה שגויה.",
+    "errorUnconfigured": "הגישה לסביבה זו אינה מוגדרת. פנו למנהל המערכת.",
+    "note": "הסיסמה משותפת לכל מי שקיבל גישה לסביבת הבדיקות. אין להזין כאן פרטים אישיים."
+  },
+  "stagingBanner": {
+    "label": "סביבת בדיקות"
   }
 }
