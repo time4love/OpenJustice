@@ -121,6 +121,41 @@ Every factual claim must be traceable to a specific cited evidence hash.
 
 ---
 
+## Additional Legal Exposure Areas (Non-Defamation)
+
+Identified 2026-08-15. These apply to the platform operator, not only to content.
+
+### State Secrets Risk (חוק העונשין §114)
+
+If a whistleblower uploads a classified government document and the platform publishes AI-derived metadata from it (dates, actors, categories), the operator may be exposed even without publishing the document itself. The Whistleblower Submission Terms declaration (see below) partially mitigates this by shifting responsibility to the submitter — but it is not a complete shield.
+
+**Mitigation pending:** Legal counsel guidance on whether editorial review of AI-extracted metadata is required before publication to a thesis.
+
+### Privacy Law (חוק הגנת הפרטיות תשמ"א-1981)
+
+The platform processes personal data on named individuals (government officials). Operating a database of personal information may require registration with the Privacy Protection Authority (רשם מאגרי המידע). A published privacy policy is required.
+
+**Mitigation pending:** Privacy policy document + assessment of whether registration threshold is met.
+
+### Absence of Press Status
+
+Journalistic organisations in Israel have specific source-protection rights not available to general platforms. The platform currently has no formal press standing. This means that in response to a court order, the operator has no statutory source-protection defence that a newspaper would have.
+
+**Mitigation to consider:** Formal association with a recognised journalistic body, or obtaining legal opinion on whether the platform's investigative mission qualifies for equivalent treatment under Israeli law.
+
+---
+
+## Open Compliance Tasks
+
+Tasks identified but not yet implemented. Must be resolved before broad public launch.
+
+- [ ] **Whistleblower submission declaration UI** — A checkbox/acknowledgement must appear in the upload modal before the user can submit. Hebrew and English text is specified under "Required UI Elements" below. Currently absent from the upload flow.
+- [ ] **Privacy policy** — A published, linked privacy policy page is required under חוק הגנת הפרטיות. Must cover: what data is collected, retention periods, third-party processors (Supabase, Pinata, Railway), and subject rights.
+- [ ] **Terms of service** — Establishes permitted use, user declarations (legally obtained documents), and platform liability limits. Required before any public-facing upload feature is live.
+- [ ] **Legal counsel review** — An Israeli lawyer specialising in media/communications law must review: (a) the safety page, (b) the call page copy, (c) the submission terms, and (d) the privacy policy before broad launch.
+
+---
+
 ## Pre-Launch Checklist for Public-Facing Features
 
 Before any feature that names individuals or makes allegations goes live:
@@ -153,5 +188,6 @@ Violation of these rules may result in access revocation and, if content causes 
 | Date | Change |
 |------|--------|
 | 2026-08-09 | Initial version — defamation risk analysis, framing rules, UI requirements |
+| 2026-08-15 | Added: state secrets risk, privacy law exposure, press status gap, open tasks section. Safety page copy reviewed and neutralised (court-defiance framing removed, key-storage claim corrected). |
 
 *This document must be updated whenever new public-facing features are added that reference named individuals or make factual allegations.*
