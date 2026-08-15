@@ -52,6 +52,53 @@ Then report exactly what was written and where, and name anything deliberately n
 significant decision, bug found and deferred — **without being asked**, so `CHECKPOINT` usually finds
 little left to do.
 
+## Branching & Deployment Protocol
+
+**Branches**
+| Branch | Role | Deploys to |
+|---|---|---|
+| `master` | production | Railway `production` — GF + BF, 4 services |
+| `staging` | integration + testing | Railway `staging` — GF only, 2 services |
+| feature branches | all work starts here | nothing |
+
+**The flow is: feature branch → PR → `staging` → (explicit approval) → `master`.**
+
+1. **Never commit directly to `master` or `staging`.** Create a feature branch.
+2. Open a **pull request against `staging`**. Merge it there once green.
+3. Test on the staging environment — it runs against the **staging** Supabase project, not
+   production. Project refs and connection details live in `.env.staging` (gitignored), never here:
+   this repo is public.
+4. **Merging `staging` → `master` requires specific, explicit approval from the user, every time.**
+   It is a production deployment. Never merge to `master` on your own initiative, and never treat
+   general permission to commit or push as permission to deploy. Ask, and wait for a clear yes.
+
+Local `.env` points at the **staging** database. Production credentials are preserved in
+`.env.production.local` (gitignored) — restore them only for a deliberate production query.
+
+### Git keywords — Claude executes all git commands
+
+The user does not run git. These uppercase keywords are commands; act on them without asking what
+they mean or what to include.
+
+| Keyword | Action |
+|---|---|
+| `COMMIT` | Stage the relevant changes, write the message, commit, push. **If on `master` or `staging`, create a feature branch first** — the protocol must not be violated by accident. |
+| `PR` | Push and open a pull request against `staging`, or update the existing one. |
+| `LAND` | Merge the open PR into `staging`, delete the branch, confirm the staging deploy is green. |
+| `SHIP` | Merge `staging` → `master`. **This is a production deploy and the keyword is the approval** — do not ask again, but do print what is about to deploy. |
+| `SYNC` | Fetch, bring `staging` up to date with `master`, update the current branch. |
+
+**Refuse to execute, and say why, when:**
+- `COMMIT` — nothing staged-worthy, or the diff contains anything secret-shaped (keys, tokens,
+  connection strings, project refs). This repo is **public**.
+- `PR` / `LAND` — tests are failing, or the PR is not mergeable.
+- `SHIP` — tests not green, uncommitted changes present, staging's latest deploy is not `SUCCESS`,
+  `staging` is not ahead of `master`, or anything secret-shaped is in the diff.
+
+Report what was actually done — branch names, commit SHAs, PR numbers, deploy status — never just
+"done". If a git command fails, say so plainly; never let a shell chain report success for a failed
+push.
+
 ## Workflow
 - Do not commit unless explicitly asked.
 - Do not push unless explicitly asked.

@@ -1,8 +1,20 @@
 # Staging Environment — Dev Plan
 
-**Status:** Phase 0 + 0b complete (on branch `feat/investigative-classification`, not merged).
-Phase 1 blocked on the staging Supabase project being created.
-**Last updated:** 2026-08-15 — 477/477 backend tests, frontend builds clean.
+**Status:** Phases 0, 0b, 1, 2, 3 and 4 COMPLETE — **staging is live, password-gated and `noindex`**.
+Phase 5 (demo prep) remains.
+**Last updated:** 2026-08-15 — 495/495 backend tests, frontend builds clean.
+
+| | |
+|---|---|
+| Staging frontend | https://glass-fortress-frontend-staging.up.railway.app |
+| Staging backend | https://glass-fortress-backend-staging.up.railway.app |
+| Staging Supabase | project `glass-fortress-staging`, eu-central-1, **paid** ($10/mo, Pro org) — no idle pause |
+| Credentials | `apps/glass-fortress/backend/.env.staging` (gitignored) |
+| Local `.env` | points at **staging**; production preserved in `.env.production.local` |
+
+🔒 **Staging is password-gated and `noindex`** as of Phase 3. The shared password lives in Railway as
+`STAGING_ACCESS_SECRET` on `glass-fortress-frontend` (staging environment only) — never in git.
+`DEMO_MODE=true` hides the staging chip during a demo without weakening the gate.
 **Created:** 2026-08-15
 **Scope:** Glass Fortress only (backend + frontend). Bronze Fortress is out of scope.
 
@@ -214,6 +226,10 @@ Not originally part of this plan; added because auto-promotion was creating evid
 
 **Exit:** staging database is schema-identical to production and empty.
 
+**✅ Done 2026-08-15.** All four migrations applied. `pgvector`, `evidence_embeddings` and
+`match_evidence` verified end to end (round-trip returned `similarity: 1`, probe row removed). Public
+`evidence` storage bucket created via the Storage REST API.
+
 ### Phase 2 — Branch and Railway environment
 
 **[CLAUDE]**
@@ -229,6 +245,24 @@ Not originally part of this plan; added because auto-promotion was creating evid
 6. Trigger a deploy and confirm both services come up.
 
 **Exit:** two Railway URLs serving the `staging` branch against the staging database.
+
+**✅ Done 2026-08-15.** Environment duplicated, both Bronze Fortress services deleted **from staging
+only**, GF services pointed at the `staging` branch, all variables overwritten, both services deployed
+`SUCCESS` and tested by the user.
+
+⚠️ **Railway service IDs are shared across environments** — `bronze-fortress-backend` has the same ID
+in both. `railway service delete` is environment-scoped via `-e`, but always pass it explicitly and
+verify the other environment before and after each delete.
+
+⚠️ **Duplicating an environment copies production credentials.** Staging came up pointing at the
+production `DATABASE_URL`; a deploy before the overwrite would have written to the live vault.
+Overwrite variables *before* the first deploy. `PINATA_JWT`, `REGISTRAR_PRIVATE_KEY`,
+`EVIDENCE_REGISTRY_ADDRESS` and `RPC_URL` were deleted outright — a wallet private key has no place
+in staging. `MCP_WRITE_TOKEN`, `TOKEN_HMAC_SECRET` and `PII_SECRET_KEY` are staging-only values.
+
+**Railway cost:** measured $0.64 over 5 days for 4 services ≈ **$1/service/month**; staging adds ~$2.
+Usage limits could **not** be set — they require an active subscription and the project is still on
+the free trial. Upgrade to Hobby before it lapses, then set a soft limit.
 
 ### Phase 3 — Access control and environment awareness
 
@@ -251,6 +285,45 @@ Not originally part of this plan; added because auto-promotion was creating evid
 
 **Exit:** staging is unreachable without the password and invisible to search engines.
 
+**✅ Done 2026-08-15.** All seven items shipped; item 6 had already been done in Phase 0. Verified
+locally against a dev server in both modes before deploying: gated (`/`, `/he`, `/he/vault`,
+`/en/theses` all → `/unlock`), unlocked, wrong password rejected, cookie invisible to
+`document.cookie`, `DEMO_MODE` toggling the chip, and `APP_ENV=production` restoring today's exact
+behaviour (site serves, `/unlock` 404s, `robots.txt` allows, no `noindex`, no chip). 495/495 tests.
+
+Three corrections to the plan as written:
+
+- **The file is `src/proxy.ts`, not `src/middleware.ts`.** Next.js 16 renamed the convention;
+  `middleware.ts` is deprecated. See `node_modules/next/dist/docs/01-app/03-api-reference/03-file-conventions/proxy.md`.
+- **The app *does* have one, and always did** — `src/proxy.ts` runs `next-intl`'s middleware and is
+  what produces the `/` → `/he` redirect. The gate composes in front of it rather than replacing it.
+- **`APP_ENV` is unset on the production Railway services**, so unset has to mean production. A
+  missing variable must never be able to put the public site behind a password. An unrecognised
+  value throws instead of falling back, so a typo fails loudly rather than un-gating staging.
+
+Design notes worth keeping:
+
+- The cookie holds a **SHA-256 of the secret, not the secret**, compared with `timingSafeEqual`. A
+  leaked cookie jar does not hand over a password someone may have reused.
+- `APP_ENV != production` with no `STAGING_ACCESS_SECRET` set returns **503, not the site**. Failing
+  open would recreate exactly the state this phase exists to end.
+- **The backend guard compares database *identity*, not hostname.** The plan assumed staging and
+  production have different DB hosts. They do not — both are
+  `aws-0-eu-central-1.pooler.supabase.com`, and the project ref lives in the connection *username*
+  (`postgres.<ref>`). So the guard: (a) always requires `DATABASE_URL`, `DIRECT_URL` and
+  `SUPABASE_URL` to name one project — this catches a half-overwritten environment; and (b) enforces
+  `EXPECTED_SUPABASE_PROJECT_REF` when set — the only thing that catches credentials copied
+  wholesale, which is what the Railway environment duplication actually did. Refs are never
+  hardcoded and are masked in every log line, because this repo is public.
+
+Fixed in passing: the intl matcher was rewriting `/icon.png` to `/he/icon.png`, so the **deployed
+favicon 404'd**. Metadata routes and `public/` assets are now excluded from the matcher.
+
+⚠️ **Still open — the backend API is not gated.** The gate covers the frontend only, as this phase
+specified. `glass-fortress-backend-staging.up.railway.app` remains open, and the frontend's
+`/api/*` path is excluded from the matcher by necessity. Nothing is exposed today because staging
+holds no data — but this must be closed **before Phase 5 seeds real MOH findings**. See §9.
+
 ### Phase 4 — Local development repoint
 
 **[CLAUDE]**
@@ -260,6 +333,10 @@ Not originally part of this plan; added because auto-promotion was creating evid
 3. Confirm `npm run gf:backend` now writes to staging.
 
 **Exit:** local development can no longer touch production data by accident.
+
+**✅ Done 2026-08-15.** `.env` repointed at staging; production preserved in `.env.production.local`.
+Both DB URLs, all three Supabase values and both secrets swapped. 477/477 tests still pass and
+production verified still empty.
 
 ### Phase 5 — Demo preparation
 
@@ -341,12 +418,38 @@ Production is never modified except by Phase 0 step 5 (additive table) and step 
 
 ## 9. Open tasks arising (as of 2026-08-15)
 
-### Blocking the staging work
-1. **Create the staging Supabase project** — `glass-fortress-staging`, **eu-central-1** (production's
+### Next up
+1. **Gate the backend API before Phase 5 seeds real data.** Phase 3 gated the frontend only, as
+   specified. The staging backend is still open to anyone with the URL, and the frontend's `/api/*`
+   path is necessarily excluded from the proxy matcher — so the gate protects pages, not data.
+   Harmless today (staging is empty) and enough on its own to stop search indexing, but it must be
+   closed before real MOH findings go in. Shape: the same shared secret as an Express middleware
+   active when `APP_ENV != production`, accepting `Authorization: Bearer` or the cookie. Note the
+   browser calls the backend **cross-origin** (`NEXT_PUBLIC_API_URL` is set on staging), so the
+   cookie will not travel by itself — this needs a deliberate decision about credentialed CORS or a
+   token, not a copy of the frontend gate.
+2. **Set `EXPECTED_SUPABASE_PROJECT_REF` on the production Railway services before the next `SHIP`.**
+   The guard is set on staging; on production it is unset, where it logs a loud warning at boot and
+   enforces nothing. The internal-consistency half of the check is always active either way, so a
+   missing pin never blocks a deploy — it just leaves the strongest check switched off. Setting it
+   triggers a production redeploy, which is why it was not done from the staging branch.
+3. **Phase 5 — demo prep.** Seed staging by running the real intake and forensics flows (do not copy
+   production rows). Run 6–10 candidate MOH URLs, record findings and wall-clock time, pick the 2–3
+   strongest, rehearse.
+4. **Upgrade Railway to Hobby** before the free trial lapses, then set a usage soft limit.
+5. **No rate limit on the unlock form.** Acceptable against a long shared secret over HTTPS, and
+   the deployment is a single instance so an in-memory throttle would work if it stops being
+   acceptable. Revisit if the password is ever shortened for demo convenience.
+6. **"Glass Fortress" is still user-facing** in the browser tab title (`src/app/layout.tsx`) and on
+   the login page (`← Glass Fortress`), against the rule that it is backend terminology only. Not
+   touched here — it is production-visible branding, outside this phase.
+
+### Done
+~~**Create the staging Supabase project** — `glass-fortress-staging`, **eu-central-1** (production's
    region). Try a **new free organization** first ($0); the existing Pro org bills $10/mo for a third
    project. Free-plan projects pause after ~7 days idle — add a weekly ping and always warm it up the
    day before a demo. Then send: pooler URI (6543), direct URI (5432), project URL, anon key,
-   service-role key. **Everything from Phase 1 onward is blocked on this.**
+   service-role key.~~ **✅ Done — project created on the paid Pro org ($10/mo).**
 
 ### Arising from the classification work
 2. **Thesis-support relation — not built.** *Does this evidence support thesis X, and which gap does
