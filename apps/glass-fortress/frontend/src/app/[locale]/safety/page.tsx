@@ -1,8 +1,9 @@
 'use client';
 
-import { useTranslations } from 'next-intl';
+import { useTranslations, useLocale } from 'next-intl';
 import { Link } from '@/i18n/navigation';
 import { TopNav } from '@/components/TopNav';
+import { useState, useCallback } from 'react';
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
@@ -79,24 +80,50 @@ function StorageRow({
   );
 }
 
-function OpsecCard({
-  icon,
+function CopyUrlButton({ label, copiedLabel, path }: { label: string; copiedLabel: string; path: string }) {
+  const [copied, setCopied] = useState(false);
+  const handleCopy = useCallback(() => {
+    const url = window.location.origin + path;
+    void navigator.clipboard.writeText(url).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }, [path]);
+  return (
+    <button
+      onClick={handleCopy}
+      className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200 transition-colors"
+    >
+      {copied ? copiedLabel : label}
+    </button>
+  );
+}
+
+function StepItem({
+  num,
   title,
   body,
-  extra,
+  children,
+  isLast = false,
 }: {
-  icon: string;
+  num: string;
   title: string;
   body: string;
-  extra?: React.ReactNode;
+  children?: React.ReactNode;
+  isLast?: boolean;
 }) {
   return (
-    <div className="flex gap-4 bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
-      <div className="text-2xl shrink-0 mt-0.5" role="img" aria-hidden>{icon}</div>
-      <div className="space-y-1.5 min-w-0">
-        <h4 className="text-sm font-semibold text-slate-900">{title}</h4>
+    <div className="flex gap-5">
+      <div className="flex flex-col items-center shrink-0">
+        <div className="w-10 h-10 rounded-full bg-emerald-500 text-white flex items-center justify-center text-base font-bold">
+          {num}
+        </div>
+        {!isLast && <div className="w-0.5 bg-slate-200 flex-1 mt-2" style={{ minHeight: '3rem' }} />}
+      </div>
+      <div className={`min-w-0 flex-1 ${isLast ? '' : 'pb-8'}`}>
+        <h3 className="text-base font-bold text-slate-900 mb-1.5">{title}</h3>
         <p className="text-sm text-slate-500 leading-relaxed">{body}</p>
-        {extra}
+        {children && <div className="mt-3">{children}</div>}
       </div>
     </div>
   );
@@ -116,6 +143,7 @@ function FaqItem({ q, a }: { q: string; a: string }) {
 export default function SafetyPage() {
   const t = useTranslations('safety');
   const tc = useTranslations('common');
+  const locale = useLocale();
 
   return (
     <main className="min-h-screen bg-slate-50">
@@ -240,45 +268,46 @@ export default function SafetyPage() {
         </div>
       </section>
 
-      {/* ── Operational Security ───────────────────────────────────────── */}
-      <section className="max-w-5xl mx-auto px-6 py-14">
-        <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-widest text-center mb-8">
-          {t('opsecHeading')}
-        </h2>
-
-        <div className="grid sm:grid-cols-2 gap-4">
-          <OpsecCard
-            icon="🧅"
-            title={t('opsec.tor.title')}
-            body={t('opsec.tor.body')}
-            extra={
-              <a
-                href="https://www.torproject.org/download/"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5 text-xs font-medium text-violet-600 hover:text-violet-800 transition-colors mt-1"
-              >
-                {t('opsec.tor.link')}
-                <span aria-hidden>↗</span>
-              </a>
-            }
-          />
-          <OpsecCard
-            icon="💻"
-            title={t('opsec.device.title')}
-            body={t('opsec.device.body')}
-          />
-          <OpsecCard
-            icon="👤"
-            title={t('opsec.account.title')}
-            body={t('opsec.account.body')}
-          />
-          <OpsecCard
-            icon="🤫"
-            title={t('opsec.silence.title')}
-            body={t('opsec.silence.body')}
-          />
+      {/* ── Step-by-step guide ─────────────────────────────────────────── */}
+      <section className="max-w-2xl mx-auto px-6 py-16">
+        <div className="text-center mb-10">
+          <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-3">
+            {t('stepsHeading')}
+          </h2>
+          <p className="text-slate-500 text-sm leading-relaxed">{t('stepsSubheading')}</p>
         </div>
+
+        <div className="bg-white border border-slate-200 rounded-2xl shadow-sm px-8 pt-8 pb-6">
+          <StepItem num="1" title={t('steps.s1.title')} body={t('steps.s1.body')}>
+            <a
+              href="https://www.torproject.org/download/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold bg-violet-600 text-white hover:bg-violet-700 transition-colors shadow-sm"
+            >
+              {t('steps.s1.cta')} ↗
+            </a>
+          </StepItem>
+
+          <StepItem num="2" title={t('steps.s2.title')} body={t('steps.s2.body')} />
+
+          <StepItem num="3" title={t('steps.s3.title')} body={t('steps.s3.body')}>
+            <CopyUrlButton label={t('steps.s3.cta')} copiedLabel={t('steps.s3.copied')} path={`/${locale}/submit`} />
+          </StepItem>
+
+          <StepItem num="4" title={t('steps.s4.title')} body={t('steps.s4.body')} isLast>
+            <Link
+              href="/submit"
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold bg-emerald-500 text-white hover:bg-emerald-400 transition-colors shadow-sm"
+            >
+              {t('steps.s4.cta')}
+            </Link>
+          </StepItem>
+        </div>
+
+        <p className="text-xs text-slate-400 text-center mt-5 leading-relaxed">
+          {t('stepsNote')}
+        </p>
       </section>
 
       {/* ── FAQ ────────────────────────────────────────────────────────── */}

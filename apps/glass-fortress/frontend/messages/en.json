@@ -623,26 +623,31 @@
       "r4c2": "Blockchain — public",
       "r4c3": "Everyone (no content)"
     },
-    "opsecHeading": "Operational security — what you should do",
-    "opsec": {
-      "tor": {
-        "title": "Use Tor Browser",
-        "body": "Tor hides your IP address from the network and from our server. Download it from the official Tor Project site only.",
-        "link": "Download Tor Browser"
+    "stepsHeading": "How to protect yourself",
+    "stepsSubheading": "If you're worried someone is monitoring you — follow these 4 steps before submitting",
+    "steps": {
+      "s1": {
+        "title": "Download Tor Browser",
+        "body": "Go to the official Tor Project site and click the big download button for your operating system (Windows / Mac / Linux).",
+        "cta": "Tor Project official site"
       },
-      "device": {
-        "title": "Use a personal device",
-        "body": "Not your work computer, not your work network. Both are typically monitored by your employer and could expose you."
+      "s2": {
+        "title": "Open it and click Connect",
+        "body": "Double-click the downloaded file, click Connect — the browser will connect to the Tor network in seconds."
       },
-      "account": {
-        "title": "No account required",
-        "body": "Anonymous uploads require no registration. We issue a one-hour temporary session token — no name, no email address."
+      "s3": {
+        "title": "Return to our site inside Tor Browser",
+        "body": "In the new Tor Browser window — paste our address into the address bar and press Enter.",
+        "cta": "Copy our URL",
+        "copied": "Copied ✓"
       },
-      "silence": {
-        "title": "Tell no one",
-        "body": "The strongest secret is one that doesn't exist. Even close friends — no."
+      "s4": {
+        "title": "Upload your document",
+        "body": "Encryption happens automatically in your browser — we see nothing.",
+        "cta": "Submit evidence"
       }
     },
+    "stepsNote": "Even without Tor — your document is encrypted before it's sent and we never see it. Tor adds identity protection on top of that.",
     "faqHeading": "Frequently asked questions",
     "faq": {
       "q1": "Can a court compel you to reveal who uploaded a document?",
