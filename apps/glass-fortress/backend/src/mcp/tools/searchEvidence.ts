@@ -54,7 +54,7 @@ export async function searchEvidenceHandler(input: {
     summary: e.summary,
     evidenceTier: e.evidenceTier,
     evidenceRole: e.evidenceRole,
-    category: e.category,
+    investigativeCategories: e.investigativeCategories,
     targetEntity: e.targetEntity,
     keyFigures: e.figures.map((f) => f.name),
     sourceUrl: e.sourceUrl ?? null,

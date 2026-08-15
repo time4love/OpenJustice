@@ -25,6 +25,7 @@ import { thesisRouter } from './routes/thesisRoutes';
 import { mcpRouter } from './mcp/mcpRoutes';
 import { authRouter } from './routes/authRoutes';
 import { prisma } from './lib/prisma';
+import { VectorStoreService } from './services/VectorStoreService';
 
 const app = express();
 const PORT = process.env['PORT'] ?? 3000;
@@ -123,6 +124,19 @@ app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
 app.listen(PORT, () => {
   console.log(`Glass Fortress backend running on http://localhost:${PORT}`);
   console.log(`[startup] Build: ${new Date().toISOString()} | Node: ${process.version}`);
+
+  // Semantic search degrades silently when its tables are missing — surface it here.
+  void VectorStoreService.healthCheck().then((health) => {
+    if (health.ok) {
+      console.log('[startup] Vector store: OK');
+      return;
+    }
+    console.error(
+      `[startup] VECTOR STORE UNAVAILABLE — semantic search will return no results ` +
+        `without erroring. Missing: ${health.missing.join(', ')}. ` +
+        `Fix with: npx prisma migrate deploy`,
+    );
+  });
 });
 
 export { app };

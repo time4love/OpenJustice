@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { LegalMasterAgent } from '../services/LegalMasterAgent';
 import { VectorStoreService } from '../services/VectorStoreService';
+import { INVESTIGATIVE_CATEGORIES } from '../lib/investigativeCategories';
 
 const router = Router();
 
@@ -10,7 +11,7 @@ const router = Router();
 // ---------------------------------------------------------------------------
 
 const GenerateBodySchema = z.object({
-  category: z.enum(['Side Effect Withholding', 'Regulatory Misleading', 'Coercion', 'Other']),
+  concern: z.enum(INVESTIGATIVE_CATEGORIES),
   targetEntity: z.string().min(1, 'targetEntity must not be empty'),
 });
 
@@ -38,11 +39,11 @@ router.post('/generate', async (req: Request, res: Response): Promise<void> => {
     return;
   }
 
-  const { category, targetEntity } = parsed.data;
+  const { concern, targetEntity } = parsed.data;
 
   try {
     const agent = await getAgent();
-    const argument = await agent.generateArgument(category, targetEntity);
+    const argument = await agent.generateArgument(concern, targetEntity);
     res.status(200).json(argument);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

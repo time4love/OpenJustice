@@ -15,6 +15,7 @@ import Mention from '@tiptap/extension-mention';
 import { PluginKey } from '@tiptap/pm/state';
 import type { SuggestionProps, SuggestionKeyDownProps } from '@tiptap/suggestion';
 import { apiUrl } from '@/lib/api';
+import { CategoryBadges } from '@/components/CategoryBadges';
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -30,7 +31,7 @@ export interface ThesisEditorHandle {
 // ---------------------------------------------------------------------------
 
 type FigureItem = { id: string; name: string };
-type EvidenceItem = { fileHash: string; summary: string; category: string; tier?: string };
+type EvidenceItem = { fileHash: string; summary: string; investigativeCategories: string[]; tier?: string };
 type AnyItem = FigureItem | EvidenceItem;
 
 const TIER_DOT: Record<string, string> = {
@@ -190,7 +191,7 @@ const MentionList = forwardRef<MentionListHandle, { items: AnyItem[]; char: stri
               <div>
                 <div className="flex items-center gap-1.5">
                   <span className={`shrink-0 w-2 h-2 rounded-full ${tierDotClass((item as EvidenceItem).tier)}`} />
-                  <span className="text-amber-600 font-medium text-xs">{(item as EvidenceItem).category}</span>
+                  <CategoryBadges categories={(item as EvidenceItem).investigativeCategories} max={2} />
                 </div>
                 <div className="text-slate-500 text-xs mt-0.5 truncate ps-3.5">{(item as EvidenceItem).summary?.slice(0, 70)}</div>
               </div>

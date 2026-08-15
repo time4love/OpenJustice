@@ -6,6 +6,7 @@ import { useTranslations } from 'next-intl';
 import { Link } from '@/i18n/navigation';
 import { TopNav } from '@/components/TopNav';
 import { apiUrl } from '@/lib/api';
+import { CategoryBadges } from '@/components/CategoryBadges';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -17,7 +18,7 @@ interface EvidenceDetail {
   status: string;
   evidenceType: string;
   evidenceRole: string;
-  category: string;
+  investigativeCategories: string[];
   evidenceTier: string;
   evidencePerspective?: string | null;
   tierReasoning?: string | null;
@@ -165,7 +166,7 @@ export default function EvidencePage() {
                 </div>
                 <div>
                   <p className="text-xs text-slate-400 mb-0.5">{t('category')}</p>
-                  <p className="text-sm font-medium text-slate-700">{evidence.category}</p>
+                  <CategoryBadges categories={evidence.investigativeCategories} />
                 </div>
                 {evidence.evidencePerspective && (
                   <div>

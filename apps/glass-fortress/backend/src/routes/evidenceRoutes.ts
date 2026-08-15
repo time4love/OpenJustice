@@ -9,6 +9,11 @@ import { encryptContact } from '../lib/encrypt';
 import { prisma } from '../lib/prisma';
 import { scrapeUrl } from '../utils/webScraper';
 import { StorageService } from '../services/StorageService';
+import {
+  INVESTIGATIVE_CATEGORIES,
+  investigativeCategoriesField,
+  onChainCategoryLabel,
+} from '../lib/investigativeCategories';
 
 // ---------------------------------------------------------------------------
 // Response types
@@ -19,7 +24,7 @@ interface EvidenceRecord {
   fileHash: string;
   status: string;
   evidenceRole: string;
-  category: string;
+  investigativeCategories: string[];
   tier: string;
   evidencePerspective?: string | null;
   tierReasoning?: string | null;
@@ -275,7 +280,11 @@ router.post(
       // Register on-chain anonymously — backend wallet pays gas, ZeroAddress preserves whistleblower privacy
       let txHash: string;
       try {
-        txHash = await getWeb3Service().registerEvidenceHash(fileHash, ethers.ZeroAddress, analysis.category);
+        txHash = await getWeb3Service().registerEvidenceHash(
+          fileHash,
+          ethers.ZeroAddress,
+          onChainCategoryLabel(analysis.investigativeCategories, analysis.evidenceRole),
+        );
       } catch (err) {
         if (err instanceof DuplicateEvidenceError) {
           res.status(409).json({
@@ -304,10 +313,10 @@ router.post(
         where: { fileHash },
         update: {
           evidenceRole: analysis.evidenceRole,
-          category: analysis.category,
           targetEntity: analysis.targetEntity,
           evidenceTier: analysis.evidenceTier,
           evidencePerspective: analysis.evidencePerspective ?? null,
+          investigativeCategories: analysis.investigativeCategories,
           tierReasoning: analysis.tierReasoning ?? null,
           summary: analysis.summary,
           evidenceDate: analysis.evidenceDate,
@@ -323,10 +332,10 @@ router.post(
         create: {
           fileHash,
           evidenceRole: analysis.evidenceRole,
-          category: analysis.category,
           targetEntity: analysis.targetEntity,
           evidenceTier: analysis.evidenceTier,
           evidencePerspective: analysis.evidencePerspective ?? null,
+          investigativeCategories: analysis.investigativeCategories,
           tierReasoning: analysis.tierReasoning ?? null,
           summary: analysis.summary,
           evidenceDate: analysis.evidenceDate,
@@ -439,7 +448,7 @@ router.get('/timeline', async (req: Request, res: Response): Promise<void> => {
         fileHash: r.fileHash,
         status: r.status,
         evidenceRole: r.evidenceRole,
-        category: r.category,
+        investigativeCategories: r.investigativeCategories,
         tier: r.evidenceTier,
         evidencePerspective: r.evidencePerspective,
         tierReasoning: r.tierReasoning,
@@ -505,7 +514,10 @@ router.post('/promote', async (req: Request, res: Response): Promise<void> => {
       txHash = await getWeb3Service().registerEvidenceHash(
         fileHash,
         ethers.ZeroAddress,
-        record.category,
+        onChainCategoryLabel(
+          investigativeCategoriesField.parse(record.investigativeCategories),
+          record.evidenceRole,
+        ),
       );
     } catch (err) {
       if (err instanceof DuplicateEvidenceError) {
@@ -550,17 +562,26 @@ router.post('/promote', async (req: Request, res: Response): Promise<void> => {
 
 router.get('/stats', async (_req: Request, res: Response): Promise<void> => {
   try {
-    const [total, tierGroups, categoryGroups] = await Promise.all([
+    const [total, tierGroups, classified] = await Promise.all([
       prisma.evidence.count(),
       prisma.evidence.groupBy({ by: ['evidenceTier'], _count: { evidenceTier: true } }),
-      prisma.evidence.groupBy({ by: ['category'], _count: { category: true } }),
+      prisma.evidence.findMany({ select: { investigativeCategories: true } }),
     ]);
 
     const byTier: Record<string, number> = {};
     for (const g of tierGroups) byTier[g.evidenceTier] = g._count.evidenceTier;
 
+    // investigativeCategories is multi-valued, so counts overlap by design: one
+    // record advancing two concerns is counted under both, and the totals here
+    // will exceed `total`. groupBy cannot express this — Postgres cannot group
+    // by an array column element-wise.
     const byCategory: Record<string, number> = {};
-    for (const g of categoryGroups) byCategory[g.category] = g._count.category;
+    for (const category of INVESTIGATIVE_CATEGORIES) byCategory[category] = 0;
+    for (const row of classified) {
+      for (const category of row.investigativeCategories) {
+        byCategory[category] = (byCategory[category] ?? 0) + 1;
+      }
+    }
 
     res.status(200).json({ total, byTier, byCategory });
   } catch (err) {
@@ -607,7 +628,7 @@ router.get('/search', async (req: Request, res: Response): Promise<void> => {
             fileHash: row.fileHash,
             status: row.status,
             evidenceRole: row.evidenceRole,
-            category: row.category,
+            investigativeCategories: row.investigativeCategories,
             tier: row.evidenceTier,
             evidencePerspective: row.evidencePerspective,
             tierReasoning: row.tierReasoning,
@@ -730,7 +751,7 @@ router.get('/:id', async (req: Request, res: Response): Promise<void> => {
       status: record.status,
       evidenceType: record.evidenceType,
       evidenceRole: record.evidenceRole,
-      category: record.category,
+      investigativeCategories: record.investigativeCategories,
       evidenceTier: record.evidenceTier,
       evidencePerspective: record.evidencePerspective,
       tierReasoning: record.tierReasoning,

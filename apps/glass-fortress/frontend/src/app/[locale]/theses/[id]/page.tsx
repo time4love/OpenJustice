@@ -9,6 +9,7 @@ import { TipTapRenderer, type EvidenceInfo } from '@/components/TipTapRenderer';
 import { LegalDisclaimer } from '@/components/LegalDisclaimer';
 import type { EvidenceGap, CounterArgument, AIAnalysis } from '@/types/thesis';
 import { stripMetadata, encryptFile, uint8ToBase64 } from '@/lib/documentVault';
+import { CategoryBadges } from '@/components/CategoryBadges';
 
 // ---------------------------------------------------------------------------
 // Types matching the versioned thesis API
@@ -41,7 +42,7 @@ interface Thesis {
 interface GapResolution {
   gapIndex: number;
   evidenceId: string;
-  evidence: { summary: string; category: string; evidenceTier: string };
+  evidence: { summary: string; investigativeCategories: string[]; evidenceTier: string };
   createdAt: string;
 }
 
@@ -53,7 +54,7 @@ interface GapResolution {
 interface VaultHit {
   fileHash: string;
   summary: string;
-  category: string;
+  investigativeCategories: string[];
   tier: string;
   evidenceDate: string;
   targetEntity: string;
@@ -228,7 +229,10 @@ function GapSearchPanel({
               <span className={`mt-1 shrink-0 w-2 h-2 rounded-full ${gapTierDot(hit.tier)}`} />
               <div className="flex-1 min-w-0">
                 <p className="text-xs font-medium text-slate-700 leading-snug">{hit.summary.slice(0, 120)}</p>
-                <p className="text-xs text-slate-400 mt-0.5">{hit.category} · {hit.evidenceDate}</p>
+                <p className="text-xs text-slate-400 mt-0.5 flex items-center gap-1.5">
+                  <CategoryBadges categories={hit.investigativeCategories} max={2} />
+                  <span>{hit.evidenceDate}</span>
+                </p>
               </div>
               <div className="flex flex-col gap-1.5 shrink-0">
                 <button

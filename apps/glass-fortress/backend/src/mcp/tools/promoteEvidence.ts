@@ -3,6 +3,10 @@ import { z } from 'zod';
 import { prisma } from '../../lib/prisma';
 import { Web3Service, DuplicateEvidenceError } from '../../services/Web3Service';
 import { VectorStoreService } from '../../services/VectorStoreService';
+import {
+  investigativeCategoriesField,
+  onChainCategoryLabel,
+} from '../../lib/investigativeCategories';
 
 let _web3: Web3Service | null = null;
 let _vectorStorePromise: Promise<VectorStoreService> | null = null;
@@ -60,7 +64,10 @@ export async function promoteEvidenceHandler(input: { evidenceId: string }): Pro
     txHash = await getWeb3().registerEvidenceHash(
       record.fileHash,
       ethers.ZeroAddress,
-      record.category,
+      onChainCategoryLabel(
+        investigativeCategoriesField.parse(record.investigativeCategories),
+        record.evidenceRole,
+      ),
     );
   } catch (err) {
     if (err instanceof DuplicateEvidenceError) {

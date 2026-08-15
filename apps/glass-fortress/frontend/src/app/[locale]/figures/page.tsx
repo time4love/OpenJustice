@@ -6,6 +6,7 @@ import { useTranslations } from 'next-intl';
 import { TopNav } from '@/components/TopNav';
 import { Link, useRouter, usePathname } from '@/i18n/navigation';
 import { apiUrl } from '@/lib/api';
+import { CategoryBadges } from '@/components/CategoryBadges';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -22,7 +23,7 @@ type EvidencePerspective = 'Internal Knowledge' | 'Public Statement' | 'Citizen 
 interface EvidenceMetadata {
   fileHash: string;
   evidenceRole?: string;
-  category: string;
+  investigativeCategories: string[];
   tier: string;
   evidencePerspective?: EvidencePerspective;
   summary: string;
@@ -88,9 +89,7 @@ function EvidenceCard({ record, index }: { record: EvidenceRecord; index: number
               מפלילה
             </span>
           )}
-          {metadata.category && metadata.category !== 'Factual Baseline' && (
-            <span className="text-xs text-slate-400 truncate">{metadata.category}</span>
-          )}
+          <CategoryBadges categories={metadata.investigativeCategories} max={2} />
           <span className="ms-auto text-xs text-slate-300 font-mono shrink-0">#{index + 1}</span>
         </div>
 

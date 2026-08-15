@@ -4,8 +4,12 @@ import { ethers } from 'ethers';
 import { WaybackScraper } from '../services/WaybackScraper';
 import { prisma } from '../lib/prisma';
 import { Web3Service } from '../services/Web3Service';
-import { IntakeOutputSchema } from '../services/IntakeAgent';
 import { type DiffItem } from '../services/ForensicAgent';
+import { buildForensicEvidence } from '../services/forensicEvidence';
+import {
+  investigativeCategoriesField,
+  onChainCategoryLabel,
+} from '../lib/investigativeCategories';
 
 // Parses the deletedText/addedText JSON column, handling the legacy string[] format
 // produced before the coupled {summary, exactQuote} schema was introduced.
@@ -487,36 +491,25 @@ router.post('/promote', async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    const deletedItems = parseDiffItems(diff.deletedText);
-    const addedItems = parseDiffItems(diff.addedText);
-    const targetEntity = (() => {
-      try { return new URL(diff.trackedUrl.url).hostname; } catch { return 'Unknown'; }
-    })();
+    // Classification carried over from the ForensicAgent run that produced the
+    // diff. Validated rather than cast — the column is String[] in Prisma, and a
+    // value that is not in the taxonomy means the row predates it or was written
+    // by hand, which should fail loudly rather than reach the evidence corpus.
+    const investigativeCategories = investigativeCategoriesField.parse(
+      diff.investigativeCategories,
+    );
 
-    const content = [
-      diff.trackedUrl.url,
-      diff.afterDate,
-      diff.deletedText,
-      diff.addedText,
-    ].join('\n');
-    const fileHash = Web3Service.hashFile(Buffer.from(content, 'utf8'));
-
-    const analysis = IntakeOutputSchema.parse({
-      evidenceRole: 'Incriminating',
-      isRelevant: true,
-      category: 'Regulatory Misleading',
-      summary: diff.aiSignificance || `שינוי שקט זוהה בדף ${targetEntity} בתאריך ${diff.afterDate}.`,
-      missingInformation: [],
-      targetEntity,
-      evidencePerspective: 'Public Statement',
-      tierReasoning: 'מסמך זה מסווג כדרגה 2 — שינוי שקט שנעשה בדף ממשלתי רשמי המהווה ראיה ישירה לכוונת הטעיה.',
-      evidenceTier: 'Tier 2: Material',
-      keyFigures: [],
-      medicalConditions: [],
-      statisticalClaims: [...deletedItems, ...addedItems].map((item) => item.summary),
-      regulatoryMentions: [],
-      euaOmissionStatus: 'Not Applicable',
-      evidenceDate: diff.afterDate,
+    const { fileHash, data } = buildForensicEvidence({
+      diffId: diff.id,
+      url: diff.trackedUrl.url,
+      afterDate: diff.afterDate,
+      snapshotUrl: diff.snapshotUrl,
+      aiSignificance: diff.aiSignificance,
+      investigativeCategories,
+      deletedText: diff.deletedText,
+      addedText: diff.addedText,
+      deletedItems: parseDiffItems(diff.deletedText),
+      addedItems: parseDiffItems(diff.addedText),
     });
 
     let txHash: string;
@@ -524,7 +517,7 @@ router.post('/promote', async (req: Request, res: Response): Promise<void> => {
       txHash = await getWeb3Service().registerEvidenceHash(
         fileHash,
         ethers.ZeroAddress,
-        analysis.category,
+        onChainCategoryLabel(data.investigativeCategories, data.evidenceRole),
       );
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -533,25 +526,7 @@ router.post('/promote', async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    await prisma.evidence.create({
-      data: {
-        fileHash,
-        evidenceRole: analysis.evidenceRole,
-        category: analysis.category,
-        targetEntity: analysis.targetEntity,
-        evidenceTier: analysis.evidenceTier,
-        evidencePerspective: analysis.evidencePerspective ?? null,
-        tierReasoning: analysis.tierReasoning ?? null,
-        summary: analysis.summary,
-        evidenceDate: analysis.evidenceDate,
-        medicalConditions: JSON.stringify(analysis.medicalConditions),
-        statisticalClaims: JSON.stringify(analysis.statisticalClaims),
-        regulatoryMentions: JSON.stringify(analysis.regulatoryMentions),
-        euaOmissionStatus: analysis.euaOmissionStatus,
-        sourceUrl: diff.trackedUrl.url,
-        urlVersionDiffId,
-      },
-    });
+    await prisma.evidence.create({ data });
 
     res.status(201).json({ promoted: true, fileHash, txHash });
   } catch (err) {

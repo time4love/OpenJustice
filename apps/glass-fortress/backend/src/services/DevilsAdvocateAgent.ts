@@ -12,7 +12,7 @@ export interface ResolvedGapContext {
 // Evidence record passed in from Prisma — only the fields the agent needs
 export interface ReferencedEvidence {
   fileHash: string;
-  category: string;
+  investigativeCategories: string[];
   targetEntity: string;
   evidenceTier: string;
   evidenceRole: string;
@@ -140,7 +140,7 @@ export class DevilsAdvocateAgent {
               (e, i) =>
                 `[${i + 1}] Hash: ${e.fileHash}\n` +
                 `    Date: ${e.evidenceDate} | Tier: ${e.evidenceTier} | Role: ${e.evidenceRole}\n` +
-                `    Entity: ${e.targetEntity} | Category: ${e.category}\n` +
+                `    Entity: ${e.targetEntity} | Concerns: ${e.investigativeCategories.join(", ") || "none"}\n` +
                 `    Summary: ${e.summary.slice(0, 400)}`,
             )
             .join('\n\n')

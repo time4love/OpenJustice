@@ -4,12 +4,13 @@ import { useState, useRef, DragEvent, ChangeEvent } from 'react';
 import { useTranslations, useLocale } from 'next-intl';
 import { Link, useRouter, usePathname } from '@/i18n/navigation';
 import { apiUrl } from '@/lib/api';
+import { CategoryBadges } from '@/components/CategoryBadges';
+import { INVESTIGATIVE_CATEGORIES, type InvestigativeCategory } from '@/lib/investigativeCategories';
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
-type Category = 'Side Effect Withholding' | 'Regulatory Misleading' | 'Coercion' | 'Other' | 'Factual Baseline';
 type EvidenceRole = 'Incriminating' | 'ContextAnchor';
 
 type EvidenceTier =
@@ -17,14 +18,6 @@ type EvidenceTier =
   | 'Tier 2: Material'
   | 'Tier 3: Supporting'
   | 'Tier 4: Anecdotal';
-
-const CATEGORIES: Category[] = [
-  'Side Effect Withholding',
-  'Regulatory Misleading',
-  'Coercion',
-  'Other',
-  'Factual Baseline',
-];
 
 type Phase = 'upload' | 'analyzing' | 'scanning' | 'review' | 'confirming' | 'confirmed';
 type InputMode = 'file' | 'url';
@@ -34,7 +27,7 @@ type EvidencePerspective = 'Internal Knowledge' | 'Public Statement' | 'Citizen 
 interface DraftAnalysis {
   evidenceRole: EvidenceRole;
   isRelevant: boolean;
-  category: Category;
+  investigativeCategories: InvestigativeCategory[];
   summary: string;
   missingInformation: string[];
   targetEntity: string;
@@ -227,10 +220,10 @@ function AnalyzingSkeleton() {
 
 function ReviewPanel({
   draft,
-  category,
+  investigativeCategories,
   targetEntity,
   evidenceDate,
-  onCategoryChange,
+  onCategoriesChange,
   onEntityChange,
   onDateChange,
   onConfirm,
@@ -240,10 +233,10 @@ function ReviewPanel({
   t,
 }: {
   draft: DraftAnalysis;
-  category: Category;
+  investigativeCategories: InvestigativeCategory[];
   targetEntity: string;
   evidenceDate: string;
-  onCategoryChange: (v: Category) => void;
+  onCategoriesChange: (v: InvestigativeCategory[]) => void;
   onEntityChange: (v: string) => void;
   onDateChange: (v: string) => void;
   onConfirm: () => void;
@@ -252,6 +245,7 @@ function ReviewPanel({
   inputMode: InputMode;
   t: ReturnType<typeof useTranslations<'submit.review'>>;
 }) {
+  const tCat = useTranslations('categories');
   return (
     <div className="space-y-6">
       <button
@@ -383,13 +377,25 @@ function ReviewPanel({
 
         <div className="space-y-1.5">
           <label className="block text-xs font-medium text-slate-600 uppercase tracking-widest">{t('categoryLabel')}</label>
-          <select
-            value={category}
-            onChange={(e) => onCategoryChange(e.target.value as Category)}
-            className="w-full bg-white border border-slate-300 rounded px-3 py-2.5 text-sm text-slate-800 focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-300/50 appearance-none shadow-sm"
-          >
-            {CATEGORIES.map((cat) => <option key={cat} value={cat}>{cat}</option>)}
-          </select>
+          <div className="bg-white border border-slate-300 rounded p-3 space-y-2 shadow-sm">
+            {INVESTIGATIVE_CATEGORIES.map((cat) => (
+              <label key={cat} className="flex items-center gap-2 text-sm text-slate-800 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={investigativeCategories.includes(cat)}
+                  onChange={(e) =>
+                    onCategoriesChange(
+                      e.target.checked
+                        ? [...investigativeCategories, cat]
+                        : investigativeCategories.filter((c) => c !== cat),
+                    )
+                  }
+                  className="rounded border-slate-300 text-blue-600 focus:ring-blue-400"
+                />
+                <span>{tCat(cat)}</span>
+              </label>
+            ))}
+          </div>
         </div>
 
         <div className="space-y-1.5">
@@ -500,9 +506,7 @@ function ConfirmedView({
             <span className="px-2.5 py-1 rounded text-xs font-medium bg-cyan-50 text-cyan-700 border border-cyan-200">
               ⚖ {analysis.targetEntity}
             </span>
-            <span className="px-2.5 py-1 rounded text-xs font-medium bg-slate-100 text-slate-600 border border-slate-200">
-              {analysis.category}
-            </span>
+            <CategoryBadges categories={analysis.investigativeCategories} />
             {analysis.evidenceRole && (
               <span className={`px-2.5 py-1 rounded text-xs font-medium border ${
                 analysis.evidenceRole === 'Incriminating'
@@ -732,7 +736,7 @@ export default function SubmitPage() {
   const [submittedUrl, setSubmittedUrl] = useState('');
   const [draft, setDraft] = useState<DraftAnalysis | null>(null);
 
-  const [editCategory, setEditCategory] = useState<Category>('Side Effect Withholding');
+  const [editCategories, setEditCategories] = useState<InvestigativeCategory[]>([]);
   const [editEntity, setEditEntity] = useState('');
   const [editTier, setEditTier] = useState<EvidenceTier>('Tier 4: Anecdotal');
   const [editDate, setEditDate] = useState('');
@@ -759,7 +763,7 @@ export default function SubmitPage() {
 
   function applyAnalysis(analysis: DraftAnalysis) {
     setDraft(analysis);
-    setEditCategory(analysis.category);
+    setEditCategories(analysis.investigativeCategories);
     setEditEntity(analysis.targetEntity);
     setEditTier(analysis.evidenceTier);
     setEditDate(analysis.evidenceDate === 'Unknown' ? '' : analysis.evidenceDate);
@@ -833,7 +837,7 @@ export default function SubmitPage() {
 
     const approvedAnalysis: DraftAnalysis = {
       ...draft,
-      category: editCategory,
+      investigativeCategories: editCategories,
       targetEntity: editEntity,
       evidenceTier: editTier,
       evidenceDate: editDate,
@@ -1000,10 +1004,10 @@ export default function SubmitPage() {
 
             <ReviewPanel
               draft={draft}
-              category={editCategory}
+              investigativeCategories={editCategories}
               targetEntity={editEntity}
               evidenceDate={editDate}
-              onCategoryChange={setEditCategory}
+              onCategoriesChange={setEditCategories}
               onEntityChange={setEditEntity}
               onDateChange={setEditDate}
               onConfirm={handleConfirm}
