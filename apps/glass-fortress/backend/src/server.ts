@@ -25,7 +25,20 @@ import { thesisRouter } from './routes/thesisRoutes';
 import { mcpRouter } from './mcp/mcpRoutes';
 import { authRouter } from './routes/authRoutes';
 import { prisma } from './lib/prisma';
+import { verifyEnvironmentIdentityAtStartup } from './lib/appEnv';
 import { VectorStoreService } from './services/VectorStoreService';
+
+// ---------------------------------------------------------------------------
+// Refuse to run against the wrong database. Must happen before anything opens a
+// connection: the whole point is that a misconfigured process never writes.
+// ---------------------------------------------------------------------------
+
+try {
+  verifyEnvironmentIdentityAtStartup();
+} catch (err) {
+  console.error(`[startup] FATAL: ${err instanceof Error ? err.message : String(err)}`);
+  process.exit(1);
+}
 
 const app = express();
 const PORT = process.env['PORT'] ?? 3000;

@@ -1,8 +1,8 @@
 # Staging Environment — Dev Plan
 
-**Status:** Phases 0, 0b, 1, 2 and 4 COMPLETE — **staging is live and tested**.
-Phase 3 (password gate + `noindex`) and Phase 5 (demo prep) remain.
-**Last updated:** 2026-08-15 — 477/477 backend tests, frontend builds clean.
+**Status:** Phases 0, 0b, 1, 2, 3 and 4 COMPLETE — **staging is live, password-gated and `noindex`**.
+Phase 5 (demo prep) remains.
+**Last updated:** 2026-08-15 — 495/495 backend tests, frontend builds clean.
 
 | | |
 |---|---|
@@ -12,8 +12,9 @@ Phase 3 (password gate + `noindex`) and Phase 5 (demo prep) remain.
 | Credentials | `apps/glass-fortress/backend/.env.staging` (gitignored) |
 | Local `.env` | points at **staging**; production preserved in `.env.production.local` |
 
-⚠️ **Staging is currently PUBLIC** — no password gate, no `noindex`. Phase 3 closes this and should
-happen before real MOH scan results go in.
+🔒 **Staging is password-gated and `noindex`** as of Phase 3. The shared password lives in Railway as
+`STAGING_ACCESS_SECRET` on `glass-fortress-frontend` (staging environment only) — never in git.
+`DEMO_MODE=true` hides the staging chip during a demo without weakening the gate.
 **Created:** 2026-08-15
 **Scope:** Glass Fortress only (backend + frontend). Bronze Fortress is out of scope.
 
@@ -284,6 +285,45 @@ the free trial. Upgrade to Hobby before it lapses, then set a soft limit.
 
 **Exit:** staging is unreachable without the password and invisible to search engines.
 
+**✅ Done 2026-08-15.** All seven items shipped; item 6 had already been done in Phase 0. Verified
+locally against a dev server in both modes before deploying: gated (`/`, `/he`, `/he/vault`,
+`/en/theses` all → `/unlock`), unlocked, wrong password rejected, cookie invisible to
+`document.cookie`, `DEMO_MODE` toggling the chip, and `APP_ENV=production` restoring today's exact
+behaviour (site serves, `/unlock` 404s, `robots.txt` allows, no `noindex`, no chip). 495/495 tests.
+
+Three corrections to the plan as written:
+
+- **The file is `src/proxy.ts`, not `src/middleware.ts`.** Next.js 16 renamed the convention;
+  `middleware.ts` is deprecated. See `node_modules/next/dist/docs/01-app/03-api-reference/03-file-conventions/proxy.md`.
+- **The app *does* have one, and always did** — `src/proxy.ts` runs `next-intl`'s middleware and is
+  what produces the `/` → `/he` redirect. The gate composes in front of it rather than replacing it.
+- **`APP_ENV` is unset on the production Railway services**, so unset has to mean production. A
+  missing variable must never be able to put the public site behind a password. An unrecognised
+  value throws instead of falling back, so a typo fails loudly rather than un-gating staging.
+
+Design notes worth keeping:
+
+- The cookie holds a **SHA-256 of the secret, not the secret**, compared with `timingSafeEqual`. A
+  leaked cookie jar does not hand over a password someone may have reused.
+- `APP_ENV != production` with no `STAGING_ACCESS_SECRET` set returns **503, not the site**. Failing
+  open would recreate exactly the state this phase exists to end.
+- **The backend guard compares database *identity*, not hostname.** The plan assumed staging and
+  production have different DB hosts. They do not — both are
+  `aws-0-eu-central-1.pooler.supabase.com`, and the project ref lives in the connection *username*
+  (`postgres.<ref>`). So the guard: (a) always requires `DATABASE_URL`, `DIRECT_URL` and
+  `SUPABASE_URL` to name one project — this catches a half-overwritten environment; and (b) enforces
+  `EXPECTED_SUPABASE_PROJECT_REF` when set — the only thing that catches credentials copied
+  wholesale, which is what the Railway environment duplication actually did. Refs are never
+  hardcoded and are masked in every log line, because this repo is public.
+
+Fixed in passing: the intl matcher was rewriting `/icon.png` to `/he/icon.png`, so the **deployed
+favicon 404'd**. Metadata routes and `public/` assets are now excluded from the matcher.
+
+⚠️ **Still open — the backend API is not gated.** The gate covers the frontend only, as this phase
+specified. `glass-fortress-backend-staging.up.railway.app` remains open, and the frontend's
+`/api/*` path is excluded from the matcher by necessity. Nothing is exposed today because staging
+holds no data — but this must be closed **before Phase 5 seeds real MOH findings**. See §9.
+
 ### Phase 4 — Local development repoint
 
 **[CLAUDE]**
@@ -379,15 +419,30 @@ Production is never modified except by Phase 0 step 5 (additive table) and step 
 ## 9. Open tasks arising (as of 2026-08-15)
 
 ### Next up
-1. **Phase 3 — password gate + `noindex`.** Staging is publicly reachable right now. This repo is
-   public and the platform is about whistleblowers; an ungated staging site holding test allegations
-   is the open exposure. Needs `src/middleware.ts`, an unlock page, `robots.txt` + `noindex` metadata,
-   an `APP_ENV`-driven staging banner suppressed by `DEMO_MODE`, and a backend boot guard that
-   refuses to start if `APP_ENV` and the database host disagree.
-2. **Phase 5 — demo prep.** Seed staging by running the real intake and forensics flows (do not copy
+1. **Gate the backend API before Phase 5 seeds real data.** Phase 3 gated the frontend only, as
+   specified. The staging backend is still open to anyone with the URL, and the frontend's `/api/*`
+   path is necessarily excluded from the proxy matcher — so the gate protects pages, not data.
+   Harmless today (staging is empty) and enough on its own to stop search indexing, but it must be
+   closed before real MOH findings go in. Shape: the same shared secret as an Express middleware
+   active when `APP_ENV != production`, accepting `Authorization: Bearer` or the cookie. Note the
+   browser calls the backend **cross-origin** (`NEXT_PUBLIC_API_URL` is set on staging), so the
+   cookie will not travel by itself — this needs a deliberate decision about credentialed CORS or a
+   token, not a copy of the frontend gate.
+2. **Set `EXPECTED_SUPABASE_PROJECT_REF` on the production Railway services before the next `SHIP`.**
+   The guard is set on staging; on production it is unset, where it logs a loud warning at boot and
+   enforces nothing. The internal-consistency half of the check is always active either way, so a
+   missing pin never blocks a deploy — it just leaves the strongest check switched off. Setting it
+   triggers a production redeploy, which is why it was not done from the staging branch.
+3. **Phase 5 — demo prep.** Seed staging by running the real intake and forensics flows (do not copy
    production rows). Run 6–10 candidate MOH URLs, record findings and wall-clock time, pick the 2–3
    strongest, rehearse.
-3. **Upgrade Railway to Hobby** before the free trial lapses, then set a usage soft limit.
+4. **Upgrade Railway to Hobby** before the free trial lapses, then set a usage soft limit.
+5. **No rate limit on the unlock form.** Acceptable against a long shared secret over HTTPS, and
+   the deployment is a single instance so an in-memory throttle would work if it stops being
+   acceptable. Revisit if the password is ever shortened for demo convenience.
+6. **"Glass Fortress" is still user-facing** in the browser tab title (`src/app/layout.tsx`) and on
+   the login page (`← Glass Fortress`), against the rule that it is backend terminology only. Not
+   touched here — it is production-visible branding, outside this phase.
 
 ### Done
 ~~**Create the staging Supabase project** — `glass-fortress-staging`, **eu-central-1** (production's

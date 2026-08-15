@@ -5,6 +5,7 @@ import { routing } from '@/i18n/routing';
 import FloatingChatWidget from '@/components/FloatingChatWidget';
 import { ClientProviders } from '@/components/ClientProviders';
 import { SiteFooter } from '@/components/SiteFooter';
+import { StagingBanner } from '@/components/StagingBanner';
 
 export default async function LocaleLayout({
   children,
@@ -24,6 +25,7 @@ export default async function LocaleLayout({
         {children}
         <SiteFooter />
         <FloatingChatWidget />
+        <StagingBanner />
       </ClientProviders>
     </NextIntlClientProvider>
   );
