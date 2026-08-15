@@ -69,7 +69,7 @@ The network is decentralised — no single party can delete a record. The blockc
 
 === THE DARK VAULT (Privacy Protection) ===
 What gets recorded: only the hash. Not the file, not your name, not your IP address.
-What the AI knows: a legal summary, category, tier, and target entity. Zero personal information.
+What the AI knows: a legal summary, investigative classification, tier, and target entity. Zero personal information.
 Optional contact info: if you choose to leave it — encrypted with AES-256 in a database fully isolated from the AI and blockchain ("The Dark Vault"). Accessible only to the legal team, with your explicit consent.
 
 === FREQUENTLY ASKED QUESTIONS ===

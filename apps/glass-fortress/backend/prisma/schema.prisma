@@ -133,6 +133,11 @@ model UrlVersionDiff {
   rawAddedText         String       @default("[]") // JSON array of raw page text chunks that were added
   aiSignificance       String       @default("") // Hebrew forensic explanation
   isLegallySignificant Boolean      @default(false)
+  // ForensicAgent classification. Stored on the diff (not only on the promoted
+  // Evidence) because a researcher may promote a diff manually via
+  // /forensics/promote, and that path needs the classification without re-running
+  // the agent. isLegallySignificant is derived from this being non-empty.
+  investigativeCategories String[]  @default([])
   beforeSnapshotId     String?      // FK to the UrlSnapshot for the "before" state
   beforeSnapshot       UrlSnapshot? @relation("BeforeSnapshot", fields: [beforeSnapshotId], references: [id])
   afterSnapshotId      String?      // FK to the UrlSnapshot for the "after" state
@@ -178,7 +183,14 @@ model Evidence {
   status              EvidenceStatus  @default(CONFIRMED)
   evidenceType        EvidenceType    @default(DOCUMENT)
   evidenceRole        String          @default("Incriminating")
-  category            String
+  // The evidence's classification — see src/lib/investigativeCategories.ts.
+  // Intrinsic to the evidence and fixed at creation; deliberately NOT a link to
+  // Thesis, since evidence normally predates the theses that cite it and one
+  // record may support several.
+  //
+  // This is the ONLY classification axis. A coarser `category` field was removed:
+  // it restated this at lower resolution and could contradict it.
+  investigativeCategories String[]    @default([])
   targetEntity        String
   evidenceTier        String
   evidencePerspective String?

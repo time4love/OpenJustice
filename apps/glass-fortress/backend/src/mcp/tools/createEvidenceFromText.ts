@@ -20,7 +20,7 @@ export interface CreateEvidenceFromTextResult {
   summary: string;
   evidenceTier: string;
   evidenceRole: string;
-  category: string;
+  investigativeCategories: string[];
   targetEntity: string;
   evidenceDate: string;
   keyFigures: string[];
@@ -52,7 +52,7 @@ export async function createEvidenceFromTextHandler(input: {
       summary: existing.summary,
       evidenceTier: existing.evidenceTier,
       evidenceRole: existing.evidenceRole,
-      category: existing.category,
+      investigativeCategories: existing.investigativeCategories,
       targetEntity: existing.targetEntity,
       evidenceDate: existing.evidenceDate,
       keyFigures: [],
@@ -77,10 +77,10 @@ export async function createEvidenceFromTextHandler(input: {
       fileHash,
       status: 'PENDING_REVIEW',
       evidenceRole: analysis.evidenceRole,
-      category: analysis.category,
       targetEntity: analysis.targetEntity,
       evidenceTier: analysis.evidenceTier,
       evidencePerspective: analysis.evidencePerspective ?? null,
+      investigativeCategories: analysis.investigativeCategories,
       tierReasoning: analysis.tierReasoning ?? null,
       summary: analysis.summary,
       evidenceDate: analysis.evidenceDate,
@@ -102,7 +102,7 @@ export async function createEvidenceFromTextHandler(input: {
     summary: record.summary,
     evidenceTier: record.evidenceTier,
     evidenceRole: record.evidenceRole,
-    category: record.category,
+    investigativeCategories: record.investigativeCategories,
     targetEntity: record.targetEntity,
     evidenceDate: record.evidenceDate,
     keyFigures: record.figures.map((f) => f.name),

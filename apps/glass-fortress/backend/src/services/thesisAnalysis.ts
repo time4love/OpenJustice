@@ -69,7 +69,7 @@ export async function triggerAIAnalysis(
       where: { fileHash: { in: version.mentions.map((m) => m.refId) } },
       select: {
         fileHash: true,
-        category: true,
+        investigativeCategories: true,
         targetEntity: true,
         evidenceTier: true,
         evidenceRole: true,

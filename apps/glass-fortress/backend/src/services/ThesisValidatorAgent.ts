@@ -9,7 +9,7 @@ import { LLMFactory } from '../factories/LLMFactory';
 export interface EvidenceSummary {
   id: string;
   summary: string;
-  category: string;
+  investigativeCategories: string[];
   evidenceDate: string;
   targetEntity: string;
   evidenceRole: string;
@@ -135,7 +135,7 @@ export class ThesisValidatorAgent {
             .map(
               (e, i) =>
                 `[${i + 1}] ID: ${e.id}\n` +
-                `    Date: ${e.evidenceDate} | Category: ${e.category} | Entity: ${e.targetEntity} | Role: ${e.evidenceRole}\n` +
+                `    Date: ${e.evidenceDate} | Concerns: ${e.investigativeCategories.join(", ") || "none"} | Entity: ${e.targetEntity} | Role: ${e.evidenceRole}\n` +
                 `    Summary: ${e.summary}`,
             )
             .join('\n\n')

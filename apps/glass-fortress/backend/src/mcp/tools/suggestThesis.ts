@@ -104,7 +104,7 @@ export async function suggestThesisHandler(input: {
     evidenceTier: e.evidenceTier,
     evidenceRole: e.evidenceRole,
     evidenceDate: e.evidenceDate,
-    category: e.category,
+    investigativeCategories: e.investigativeCategories,
     targetEntity: e.targetEntity,
     evidenceType: e.evidenceType,
     keyFigures: e.figures.map((f) => f.name),

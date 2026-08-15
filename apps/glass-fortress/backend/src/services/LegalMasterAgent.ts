@@ -2,6 +2,10 @@ import { z } from 'zod';
 import { VectorStoreService } from './VectorStoreService';
 import { LLMFactory } from '../factories/LLMFactory';
 import { prisma } from '../lib/prisma';
+import {
+  INVESTIGATIVE_CATEGORY_LABELS,
+  type InvestigativeCategory,
+} from '../lib/investigativeCategories';
 
 // ---------------------------------------------------------------------------
 // Zod output schema
@@ -38,7 +42,7 @@ export type ArgumentOutput = z.infer<typeof ArgumentOutputSchema>;
 
 const SYSTEM_PROMPT = `You are a Senior Class-Action Litigator preparing a formal legal brief against state authorities and pharmaceutical entities regarding Covid-19 policy failures.
 
-You will be provided with a JSON array of evidence items. Each item has a role — either "Incriminating" or "ContextAnchor" — along with summary, tier, category, targetEntity, and fileHash.
+You will be provided with a JSON array of evidence items. Each item has a role — either "Incriminating" or "ContextAnchor" — along with summary, tier, investigativeCategories, targetEntity, and fileHash.
 
 Your task:
 1. Draft a compelling, formal legal argument section against the specified target entity.
@@ -77,38 +81,50 @@ export class LegalMasterAgent {
    * Retrieve evidence from the vector store and draft a formal legal argument.
    *
    * Strategy:
-   *   1. Query with a category+targetEntity metadata filter to get the most relevant evidence.
-   *   2. If the strict filter returns nothing, fall back to a category-only filter.
+   *   1. Query with a concern+targetEntity metadata filter to get the most relevant evidence.
+   *   2. If the strict filter returns nothing, fall back to a concern-only filter.
    *   3. Sort results to surface Tier 1 & 2 evidence first.
    *   4. Pass the evidence corpus to the LLM and return a validated ArgumentOutput.
    *
-   * @param category     The legal category (e.g. "Side Effect Withholding").
+   * @param concern      The investigative concern to argue (e.g. "WITHHOLDING_INFORMATION").
    * @param targetEntity The named entity being argued against (e.g. "FDA").
    */
-  async generateArgument(category: string, targetEntity: string): Promise<ArgumentOutput> {
-    const query = `${targetEntity} ${category} evidence`;
+  async generateArgument(
+    concern: InvestigativeCategory,
+    targetEntity: string,
+  ): Promise<ArgumentOutput> {
+    const query = `${targetEntity} ${INVESTIGATIVE_CATEGORY_LABELS[concern]} evidence`;
 
     // 1. Semantic search — retrieve candidate fileHashes from Pinecone
     const vectorResults = await this.vectorStore.searchSimilarEvidence(query, 20);
     const candidateHashes = vectorResults.map((r) => r.fileHash);
 
-    // 2. Enrich from Prisma — strict filter: Incriminating only, category AND targetEntity.
-    //    ContextAnchor evidence (Factual Baseline) is excluded here; it's used for timeline
-    //    context, not as direct offense evidence in argument building.
+    // 2. Enrich from Prisma — strict filter: Incriminating only, concern AND targetEntity.
+    //    ContextAnchor evidence is excluded here; it establishes timeline context rather
+    //    than direct offence evidence. `has` matches one element of the array column.
     let records = await prisma.evidence.findMany({
-      where: { fileHash: { in: candidateHashes }, evidenceRole: 'Incriminating', category, targetEntity },
+      where: {
+        fileHash: { in: candidateHashes },
+        evidenceRole: 'Incriminating',
+        investigativeCategories: { has: concern },
+        targetEntity,
+      },
     });
 
-    // 3. Fallback: Incriminating + category only
+    // 3. Fallback: Incriminating + concern only
     if (records.length === 0) {
       records = await prisma.evidence.findMany({
-        where: { fileHash: { in: candidateHashes }, evidenceRole: 'Incriminating', category },
+        where: {
+          fileHash: { in: candidateHashes },
+          evidenceRole: 'Incriminating',
+          investigativeCategories: { has: concern },
+        },
       });
     }
 
     if (records.length === 0) {
       throw new Error(
-        `No evidence found for category "${category}" and target entity "${targetEntity}".`,
+        `No evidence found for concern "${concern}" and target entity "${targetEntity}".`,
       );
     }
 
@@ -123,7 +139,7 @@ export class LegalMasterAgent {
         fileHash: e.fileHash,
         role: e.evidenceRole,
         tier: e.evidenceTier,
-        category: e.category,
+        investigativeCategories: e.investigativeCategories,
         targetEntity: e.targetEntity,
         summary: e.summary,
       })),
@@ -132,7 +148,7 @@ export class LegalMasterAgent {
     );
 
     const humanMessage =
-      `Draft a legal argument against "${targetEntity}" for the "${category}" legal theory.\n\n` +
+      `Draft a legal argument against "${targetEntity}" for the "${INVESTIGATIVE_CATEGORY_LABELS[concern]}" legal theory.\n\n` +
       `Evidence corpus:\n${evidenceJson}`;
 
     const messages = [

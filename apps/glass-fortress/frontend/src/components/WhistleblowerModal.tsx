@@ -5,6 +5,7 @@ import { useTranslations, useLocale } from 'next-intl';
 import { apiUrl } from '@/lib/api';
 import { stripMetadata, encryptFile, uint8ToBase64 } from '@/lib/documentVault';
 import type { EvidenceGap } from '@/types/thesis';
+import { CategoryBadges } from '@/components/CategoryBadges';
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -18,7 +19,7 @@ interface EncryptedFile {
 interface PreviewItem {
   filename: string;
   summary: string;
-  category: string;
+  investigativeCategories: string[];
   evidenceDate: string | null;
   keyFigures: string[];
   evidenceRole: string;
@@ -223,7 +224,7 @@ export function WhistleblowerModal({
                   )}
                   <div>
                     <span className="font-semibold text-slate-600">{t('tipModalCategoryLabel')}: </span>
-                    <span className="text-slate-700">{p.category}</span>
+                    <CategoryBadges categories={p.investigativeCategories} max={2} />
                   </div>
                   {p.keyFigures.length > 0 && (
                     <div>

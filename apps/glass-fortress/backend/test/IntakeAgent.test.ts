@@ -1,4 +1,5 @@
 import { IntakeAgent, IntakeOutputSchema, EVIDENCE_TIER } from '../src/services/IntakeAgent';
+import { INVESTIGATIVE_CATEGORIES } from '../src/lib/investigativeCategories';
 
 // ---------------------------------------------------------------------------
 // Mock LLMFactory so no real API calls are made.
@@ -33,7 +34,7 @@ function getMockInvoke(agent: IntakeAgent): jest.Mock {
 const SMOKING_GUN_RESPONSE = {
   evidenceRole: 'Incriminating' as const,
   isRelevant: true,
-  category: 'Side Effect Withholding' as const,
+  investigativeCategories: ['WITHHOLDING_INFORMATION'],
   summary:
     'מסמך פנימי של משרד הבריאות מנחה מנהלים אזוריים לעכב פרסום נתוני דלקת שריר לב לאחר חיסון. ' +
     'המסמך נושא תאריך ולוגו רשמי ומהווה הוכחה ישירה להסתרת מידע.',
@@ -52,9 +53,9 @@ const SMOKING_GUN_RESPONSE = {
 };
 
 const ANECDOTAL_RESPONSE = {
+  investigativeCategories: [],
   evidenceRole: 'Incriminating' as const,
   isRelevant: true,
-  category: 'Coercion' as const,
   summary: 'פוסט ברשת חברתית מתאר לחץ מצד מעסיק להתחסן. אין תיעוד נוסף או פרטים מזהים.',
   missingInformation: ['שם המעסיק חסר', 'אין תאריך', 'אין תיעוד כתוב'],
   targetEntity: 'Unknown',
@@ -71,9 +72,9 @@ const ANECDOTAL_RESPONSE = {
 };
 
 const MATERIAL_RESPONSE = {
+  investigativeCategories: ['COERCION_MANDATE'],
   evidenceRole: 'Incriminating' as const,
   isRelevant: true,
-  category: 'Regulatory Misleading' as const,
   summary:
     'הודעה רשמית לעיתונות מטעם רשות הבריאות כוללת טענות יעילות הסותרות נתוני ניסויים שפורסמו מאוחר יותר.',
   missingInformation: ['כתובת מקור המקורית חסרה'],
@@ -91,9 +92,9 @@ const MATERIAL_RESPONSE = {
 };
 
 const IRRELEVANT_RESPONSE = {
+  investigativeCategories: [],
   evidenceRole: 'Incriminating' as const,
   isRelevant: false,
-  category: 'Other' as const,
   summary: 'הטקסט שהוגש הוא ביקורת מסעדה ואינו רלוונטי לתביעה.',
   missingInformation: [],
   targetEntity: 'Unknown',
@@ -112,9 +113,9 @@ const IRRELEVANT_RESPONSE = {
 };
 
 const OPINION_PIECE_RESPONSE = {
+  investigativeCategories: [],
   evidenceRole: 'Incriminating' as const,
   isRelevant: false,
-  category: 'Other' as const,
   summary: 'מאמר דעה הקורא לאחריות ממשלתית ללא ראיות עובדתיות ספציפיות.',
   missingInformation: [],
   targetEntity: 'Unknown',
@@ -133,9 +134,9 @@ const OPINION_PIECE_RESPONSE = {
 };
 
 const CONTEXT_ANCHOR_RESPONSE = {
+  investigativeCategories: [],
   evidenceRole: 'ContextAnchor' as const,
   isRelevant: true,
-  category: 'Factual Baseline' as const,
   summary:
     'הודעת ה-FDA מיום 23.08.2021 מאשרת כי אישור ה-BLA המלא ניתן לחיסון רק במועד זה.',
   missingInformation: [],
@@ -186,11 +187,6 @@ describe('IntakeAgent', () => {
       ).toThrow();
     });
 
-    it('rejects an invalid category value', () => {
-      expect(() =>
-        IntakeOutputSchema.parse({ ...SMOKING_GUN_RESPONSE, category: 'Not A Category' }),
-      ).toThrow();
-    });
 
     it('rejects a non-boolean isRelevant', () => {
       expect(() =>
@@ -378,6 +374,52 @@ describe('IntakeAgent', () => {
       expect(result.euaOmissionStatus).toBe('Explicitly Mentions EUA');
     });
 
+    // investigativeCategories — shared with ForensicAgent so that documents,
+    // articles and whistleblower uploads land in the same filterable corpus as
+    // forensic page diffs. Before this existed, every non-diff record was written
+    // with an empty array and vanished from any filter by concern.
+    it('rejects a missing investigativeCategories field', () => {
+      const { investigativeCategories: _removed, ...invalid } = SMOKING_GUN_RESPONSE;
+      expect(() => IntakeOutputSchema.parse(invalid)).toThrow();
+    });
+
+    it('rejects a category outside the shared taxonomy', () => {
+      expect(() =>
+        IntakeOutputSchema.parse({
+          ...SMOKING_GUN_RESPONSE,
+          investigativeCategories: ['GENERALLY_SUSPICIOUS'],
+        }),
+      ).toThrow();
+    });
+
+    it('accepts every category in the shared taxonomy', () => {
+      expect(() =>
+        IntakeOutputSchema.parse({
+          ...SMOKING_GUN_RESPONSE,
+          investigativeCategories: [...INVESTIGATIVE_CATEGORIES],
+        }),
+      ).not.toThrow();
+    });
+
+    it('flows investigativeCategories through analyzeEvidence', async () => {
+      getMockInvoke(agent).mockResolvedValueOnce(MATERIAL_RESPONSE);
+      const result = await agent.analyzeEvidence(TEST_FILE_BUFFER, TEST_MIME_JPEG);
+      expect(result.investigativeCategories).toEqual(['COERCION_MANDATE']);
+    });
+
+    it('flows investigativeCategories through analyzeText', async () => {
+      getMockInvoke(agent).mockResolvedValueOnce(SMOKING_GUN_RESPONSE);
+      const result = await agent.analyzeText('leaked memo text', 'https://example.com');
+      expect(result.investigativeCategories).toEqual(['WITHHOLDING_INFORMATION']);
+    });
+
+    it('accepts an empty array — a ContextAnchor advances no concern by itself', async () => {
+      getMockInvoke(agent).mockResolvedValueOnce(CONTEXT_ANCHOR_RESPONSE);
+      const result = await agent.analyzeEvidence(TEST_FILE_BUFFER, TEST_MIME_JPEG);
+      expect(result.evidenceRole).toBe('ContextAnchor');
+      expect(result.investigativeCategories).toEqual([]);
+    });
+
     // tierReasoning
     it('accepts a valid tierReasoning string', () => {
       expect(() => IntakeOutputSchema.parse(SMOKING_GUN_RESPONSE)).not.toThrow();
@@ -428,7 +470,6 @@ describe('IntakeAgent', () => {
       getMockInvoke(agent).mockResolvedValueOnce(CONTEXT_ANCHOR_RESPONSE);
       const result = await agent.analyzeEvidence(TEST_FILE_BUFFER, TEST_MIME_JPEG);
       expect(result.evidenceRole).toBe('ContextAnchor');
-      expect(result.category).toBe('Factual Baseline');
       expect(result.isRelevant).toBe(true);
     });
 
@@ -487,7 +528,6 @@ describe('IntakeAgent', () => {
       const result = await agent.analyzeEvidence(TEST_FILE_BUFFER, TEST_MIME_JPEG);
 
       expect(result.isRelevant).toBe(true);
-      expect(result.category).toBe('Side Effect Withholding');
       expect(result.evidenceTier).toBe(EVIDENCE_TIER.SMOKING_GUN);
       expect(result.missingInformation).toHaveLength(0);
       expect(result.targetEntity).toBe('Ministry of Health');
@@ -519,7 +559,6 @@ describe('IntakeAgent', () => {
       const result = await agent.analyzeEvidence(TEST_FILE_BUFFER, TEST_MIME_JPEG);
 
       expect(result.evidenceTier).toBe(EVIDENCE_TIER.MATERIAL);
-      expect(result.category).toBe('Regulatory Misleading');
     });
 
     it('returns tierReasoning alongside evidenceTier for CoT transparency', async () => {
@@ -538,7 +577,6 @@ describe('IntakeAgent', () => {
       const result = await agent.analyzeEvidence(TEST_FILE_BUFFER, TEST_MIME_JPEG);
 
       expect(result.isRelevant).toBe(false);
-      expect(result.category).toBe('Other');
     });
 
     it('returns rejectionReason in Hebrew when the quality gate rejects unrelated content', async () => {

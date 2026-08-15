@@ -47,13 +47,12 @@ router.get('/evidence', async (req: Request, res: Response): Promise<void> => {
         ? {
             OR: [
               { summary: { contains: q, mode: 'insensitive' } },
-              { category: { contains: q, mode: 'insensitive' } },
             ],
           }
         : undefined,
       orderBy: { createdAt: 'desc' },
       take: MENTION_LIMIT,
-      select: { id: true, summary: true, category: true, evidenceDate: true },
+      select: { id: true, summary: true, investigativeCategories: true, evidenceDate: true },
     });
 
     res.status(200).json({ evidence });

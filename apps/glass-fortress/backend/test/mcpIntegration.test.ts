@@ -26,7 +26,7 @@ jest.mock('../src/services/IntakeAgent', () => ({
     analyzeText: jest.fn().mockResolvedValue({
       isRelevant: true,
       evidenceRole: 'Incriminating',
-      category: 'Side Effect Withholding',
+      investigativeCategories: ['WITHHOLDING_INFORMATION'],
       targetEntity: 'Ministry of Health',
       evidenceTier: 'Tier 1: Smoking Gun',
       evidencePerspective: 'Internal Knowledge',
@@ -43,7 +43,7 @@ jest.mock('../src/services/IntakeAgent', () => ({
     analyzeEvidence: jest.fn().mockResolvedValue({
       isRelevant: true,
       evidenceRole: 'Incriminating',
-      category: 'Side Effect Withholding',
+      investigativeCategories: ['WITHHOLDING_INFORMATION'],
       targetEntity: 'Ministry of Health',
       evidenceTier: 'Tier 1: Smoking Gun',
       evidencePerspective: 'Internal Knowledge',
@@ -187,7 +187,7 @@ beforeEach(() => {
     fileHash: '0xabc',
     status: 'PENDING_REVIEW',
     evidenceRole: 'Incriminating',
-    category: 'Side Effect Withholding',
+    investigativeCategories: ['WITHHOLDING_INFORMATION'],
     targetEntity: 'Ministry of Health',
     evidenceTier: 'Tier 1: Smoking Gun',
     summary: 'Ministry suppressed side effect findings.',

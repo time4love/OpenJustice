@@ -43,9 +43,9 @@ const UNCITED: UncitedEvidence[] = [
   {
     fileHash: '0xnew001',
     summary: 'MOH internal briefing document on vaccine communication strategy.',
-    category: 'Government Document',
     evidenceTier: 'Tier 1',
     evidenceRole: 'Incriminating',
+    investigativeCategories: ['WITHHOLDING_INFORMATION'],
     evidenceDate: '2020-11-15',
     targetEntity: 'משרד הבריאות',
   },

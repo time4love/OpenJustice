@@ -23,19 +23,19 @@ function getMockInvoke(agent: DevilsAdvocateAgent): jest.Mock {
 const EVIDENCE_FIXTURE: ReferencedEvidence[] = [
   {
     fileHash: 'hash-001',
-    category: 'Internal Communication',
     targetEntity: 'Ministry of Health',
     evidenceTier: 'Tier1',
     evidenceRole: 'Incriminating',
+    investigativeCategories: ['WITHHOLDING_INFORMATION'],
     evidenceDate: '2021-06-10',
     summary: 'Internal report from June 2021 showing officials were aware of cardiac adverse events post-vaccination.',
   },
   {
     fileHash: 'hash-002',
-    category: 'Public Statement',
     targetEntity: 'Dr. Sharon Alroy-Preis',
     evidenceTier: 'Tier2',
     evidenceRole: 'Incriminating',
+    investigativeCategories: ['WITHHOLDING_INFORMATION'],
     evidenceDate: '2021-07-15',
     summary: 'Public TV interview where the official stated there was no evidence of cardiac risks.',
   },
