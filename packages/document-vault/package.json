@@ -1,0 +1,21 @@
+{
+  "name": "@openjustice/document-vault",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Client-side encryption, IPFS pinning, and key envelopes — shared between Glass Fortress and Bronze Fortress",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "scripts": {
+    "test": "jest --config jest.config.ts"
+  },
+  "dependencies": {
+    "pdf-lib": "^1.17.1"
+  },
+  "devDependencies": {
+    "@types/jest": "^29.5.14",
+    "@types/node": "^20.0.0",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.3.0",
+    "typescript": "^5.8.3"
+  }
+}

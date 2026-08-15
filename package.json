@@ -22,6 +22,7 @@
     "bf:backend": "npm run dev --workspace=apps/bronze-fortress/backend",
     "bf:frontend": "npm run dev --workspace=apps/bronze-fortress/frontend",
     "test:gf": "npm run test --workspace=apps/glass-fortress/backend",
-    "test:bf": "npm run test --workspace=apps/bronze-fortress/backend"
+    "test:bf": "npm run test --workspace=apps/bronze-fortress/backend",
+    "test:vault": "npm run test --workspace=packages/document-vault"
   }
 }

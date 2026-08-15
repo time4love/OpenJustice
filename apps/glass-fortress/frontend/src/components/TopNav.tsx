@@ -15,7 +15,8 @@ export type NavPage =
   | 'theses'
   | 'about'
   | 'researchers'
-  | 'call';
+  | 'call'
+  | 'safety';
 
 type NavLabel =
   | 'nav.home'
@@ -24,7 +25,8 @@ type NavLabel =
   | 'nav.forensics'
   | 'nav.theses'
   | 'nav.calls'
-  | 'nav.about';
+  | 'nav.about'
+  | 'nav.safety';
 
 const ALL_NAV_ITEMS: { key: NavPage; href: string; label: NavLabel }[] = [
   { key: 'home', href: '/', label: 'nav.home' },
@@ -34,6 +36,7 @@ const ALL_NAV_ITEMS: { key: NavPage; href: string; label: NavLabel }[] = [
   { key: 'timeline', href: '/timeline', label: 'nav.timeline' },
   { key: 'forensics', href: '/forensics', label: 'nav.forensics' },
   { key: 'about', href: '/about', label: 'nav.about' },
+  { key: 'safety', href: '/safety', label: 'nav.safety' },
 ];
 
 // Desktop omits Home — the logo already links there.

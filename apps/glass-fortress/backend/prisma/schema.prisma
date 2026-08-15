@@ -192,6 +192,7 @@ model Evidence {
   euaOmissionStatus   String          @default("Not Applicable")
   sourceUrl           String?
   fileUrl             String?
+  ipfsCid             String?   // IPFS CID of the encrypted evidence blob (null if not yet anchored)
   urlVersionDiffId    String?
   urlVersionDiff      UrlVersionDiff? @relation(fields: [urlVersionDiffId], references: [id])
   gapResolutions      ThesisGapResolution[]

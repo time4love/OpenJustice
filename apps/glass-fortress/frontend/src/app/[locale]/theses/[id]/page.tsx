@@ -8,6 +8,7 @@ import { apiUrl } from '@/lib/api';
 import { TipTapRenderer, type EvidenceInfo } from '@/components/TipTapRenderer';
 import { LegalDisclaimer } from '@/components/LegalDisclaimer';
 import type { EvidenceGap, CounterArgument, AIAnalysis } from '@/types/thesis';
+import { stripMetadata, encryptFile, uint8ToBase64 } from '@/lib/documentVault';
 
 // ---------------------------------------------------------------------------
 // Types matching the versioned thesis API
@@ -562,7 +563,7 @@ function FoiaModal({
 }
 
 // ---------------------------------------------------------------------------
-// WhistleblowerModal — anonymous internal document submission scoped to a gap
+// WhistleblowerModal — anonymous encrypted document submission
 // ---------------------------------------------------------------------------
 
 interface WhistleblowerSubmission {
@@ -570,6 +571,61 @@ interface WhistleblowerSubmission {
   filename: string;
   summary: string;
   duplicate: boolean;
+  ipfsCid: string | null;
+}
+
+type FileStage = 'idle' | 'stripping' | 'encrypting' | 'submitting' | 'done' | 'error';
+
+interface ManagedFile {
+  file: File;
+  stage: FileStage;
+  warnings: string[];
+}
+
+function FileRow({
+  mf,
+  onRemove,
+}: {
+  mf: ManagedFile;
+  onRemove: () => void;
+}) {
+  const stageLabel: Record<FileStage, { text: string; color: string }> = {
+    idle:       { text: '',           color: '' },
+    stripping:  { text: 'Stripping…', color: 'text-amber-600' },
+    encrypting: { text: 'Encrypting…', color: 'text-blue-600' },
+    submitting: { text: 'Uploading…', color: 'text-violet-600' },
+    done:       { text: '✓ Sent',     color: 'text-emerald-600' },
+    error:      { text: '✗ Error',    color: 'text-red-600' },
+  };
+  const { text, color } = stageLabel[mf.stage];
+  const busy = mf.stage !== 'idle' && mf.stage !== 'done' && mf.stage !== 'error';
+
+  return (
+    <li className="flex items-start gap-2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2">
+      <span className="text-slate-400 shrink-0 text-sm mt-0.5">
+        {mf.file.type === 'application/pdf' ? '📄' : '🖼️'}
+      </span>
+      <div className="flex-1 min-w-0 space-y-0.5">
+        <p className="text-xs text-slate-700 truncate">{mf.file.name}</p>
+        {text && <p className={`text-xs font-medium ${color}`}>{text}</p>}
+        {mf.warnings.map((w, i) => (
+          <p key={i} className="text-xs text-amber-600 leading-snug">⚠ {w}</p>
+        ))}
+      </div>
+      <span className="text-xs text-slate-400 shrink-0 mt-0.5">
+        {(mf.file.size / 1024 / 1024).toFixed(1)}MB
+      </span>
+      {!busy && (
+        <button
+          onClick={onRemove}
+          className="p-1 text-slate-400 hover:text-red-500 transition-colors shrink-0"
+          aria-label={`Remove ${mf.file.name}`}
+        >
+          ✕
+        </button>
+      )}
+    </li>
+  );
 }
 
 function WhistleblowerModal({
@@ -586,63 +642,116 @@ function WhistleblowerModal({
   const t = useTranslations('theses');
   const locale = useLocale();
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [files, setFiles] = useState<File[]>([]);
+  const [managed, setManaged] = useState<ManagedFile[]>([]);
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState(false);
-  const [noFilesError, setNoFilesError] = useState(false);
+  const [globalError, setGlobalError] = useState<string | null>(null);
   const [submissions, setSubmissions] = useState<WhistleblowerSubmission[] | null>(null);
 
   function addFiles(incoming: FileList | null) {
     if (!incoming) return;
-    const next = [...files];
-    for (const f of Array.from(incoming)) {
-      if (next.length >= 10) break;
-      if (!next.some((existing) => existing.name === f.name && existing.size === f.size)) {
-        next.push(f);
+    setManaged((prev) => {
+      const next = [...prev];
+      for (const f of Array.from(incoming)) {
+        if (next.length >= 10) break;
+        if (!next.some((m) => m.file.name === f.name && m.file.size === f.size)) {
+          next.push({ file: f, stage: 'idle', warnings: [] });
+        }
       }
-    }
-    setFiles(next);
-    setNoFilesError(false);
+      return next;
+    });
   }
 
   function removeFile(index: number) {
-    setFiles((prev) => prev.filter((_, i) => i !== index));
+    setManaged((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  function setStage(index: number, stage: FileStage) {
+    setManaged((prev) => prev.map((m, i) => i === index ? { ...m, stage } : m));
+  }
+
+  function setWarnings(index: number, warnings: string[]) {
+    setManaged((prev) => prev.map((m, i) => i === index ? { ...m, warnings } : m));
   }
 
   async function submit() {
-    if (submitting) return;
-    if (files.length === 0) { setNoFilesError(true); return; }
+    if (submitting || managed.length === 0) return;
     setSubmitting(true);
-    setError(false);
-    setNoFilesError(false);
+    setGlobalError(null);
+
+    const results: WhistleblowerSubmission[] = [];
+
     try {
-      const formData = new FormData();
-      files.forEach((f) => formData.append('files', f));
-      const res = await fetch(
-        apiUrl(`/api/thesis/${thesisId}/gaps/${gapIndex}/whistleblower`),
-        { method: 'POST', body: formData },
-      );
-      if (!res.ok) throw new Error();
-      const data = (await res.json()) as { submissions: WhistleblowerSubmission[] };
-      setSubmissions(data.submissions);
-    } catch {
-      setError(true);
+      for (let i = 0; i < managed.length; i++) {
+        const { file } = managed[i]!;
+
+        // 1. Strip metadata
+        setStage(i, 'stripping');
+        const { file: stripped, warnings } = await stripMetadata(file);
+        setWarnings(i, warnings);
+
+        // 2. Encrypt
+        setStage(i, 'encrypting');
+        const { ciphertext, aesKeyJwk } = await encryptFile(stripped);
+
+        // 3. Submit to server (server decrypts ephemerally, stores CID/metadata only)
+        setStage(i, 'submitting');
+        const res = await fetch(
+          apiUrl(`/api/thesis/${thesisId}/gaps/${gapIndex}/whistleblower`),
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              files: [{
+                ciphertext: uint8ToBase64(ciphertext),
+                aesKey: aesKeyJwk,
+                filename: file.name,
+                mimeType: file.type || 'application/octet-stream',
+              }],
+            }),
+          },
+        );
+
+        if (!res.ok) {
+          setStage(i, 'error');
+          const data = await res.json().catch(() => ({})) as { error?: string };
+          throw new Error(data.error ?? `HTTP ${res.status}`);
+        }
+
+        const data = (await res.json()) as { submissions: WhistleblowerSubmission[] };
+        results.push(...data.submissions);
+        setStage(i, 'done');
+      }
+
+      setSubmissions(results);
+    } catch (err) {
+      setGlobalError(err instanceof Error ? err.message : 'Submission failed');
     } finally {
       setSubmitting(false);
     }
   }
 
+  const busy = submitting;
+  const canSubmit = managed.length > 0 && !busy;
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-3 sm:p-4"
-      onClick={(e) => { if (e.target === e.currentTarget && !submitting) onClose(); }}
+      onClick={(e) => { if (e.target === e.currentTarget && !busy) onClose(); }}
     >
-      <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full max-h-[90vh] flex flex-col overflow-hidden">
+      <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full max-h-[92vh] flex flex-col overflow-hidden">
+
+        {/* Header */}
         <div className="flex items-center justify-between px-5 sm:px-6 py-4 border-b border-slate-200 shrink-0">
-          <h2 className="text-base font-bold text-slate-900">🔒 {t('tipModalTitle')}</h2>
+          <div>
+            <h2 className="text-base font-bold text-slate-900">🔒 {t('tipModalTitle')}</h2>
+            <p className="text-xs text-emerald-600 font-medium mt-0.5">
+              {locale === 'he' ? 'הצפנה בדפדפן — השרת לא רואה את המסמך' : 'Encrypted in browser — server never sees your document'}
+            </p>
+          </div>
           <button
             onClick={onClose}
-            className="text-slate-400 hover:text-slate-700 text-xl leading-none transition-colors p-1"
+            disabled={busy}
+            className="text-slate-400 hover:text-slate-700 disabled:opacity-40 text-xl leading-none transition-colors p-1"
             aria-label="Close"
           >
             ✕
@@ -650,6 +759,7 @@ function WhistleblowerModal({
         </div>
 
         {submissions ? (
+          /* ── Success state ────────────────────────────────── */
           <div className="flex-1 overflow-y-auto px-5 sm:px-6 py-8 space-y-4 text-center">
             <div className="text-4xl">✓</div>
             <h3 className="text-sm font-bold text-emerald-700">{t('tipModalSuccessTitle')}</h3>
@@ -659,6 +769,9 @@ function WhistleblowerModal({
                 <li key={s.evidenceId} className="bg-slate-50 rounded-xl px-3 py-2 space-y-0.5">
                   <p className="text-xs font-semibold text-slate-700 truncate">{s.filename}</p>
                   <p className="text-xs text-slate-500 leading-snug line-clamp-2">{s.summary}</p>
+                  {s.ipfsCid && (
+                    <p className="text-xs font-mono text-emerald-600">IPFS: {s.ipfsCid.slice(0, 20)}…</p>
+                  )}
                   <p className="text-xs font-mono text-slate-400">{s.evidenceId.slice(0, 16)}…</p>
                 </li>
               ))}
@@ -671,7 +784,9 @@ function WhistleblowerModal({
             </button>
           </div>
         ) : (
+          /* ── Upload form ──────────────────────────────────── */
           <div className="flex-1 overflow-y-auto px-5 sm:px-6 py-5 space-y-4">
+
             {/* Gap context */}
             <div
               className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3"
@@ -681,11 +796,21 @@ function WhistleblowerModal({
               <p className="text-sm text-amber-800 leading-snug">{gap.description}</p>
             </div>
 
-            {/* Privacy notice */}
-            <p className="text-xs text-slate-400 flex items-center gap-1.5">
-              <span>🔒</span>
-              {t('tipModalPrivacyNote')}
-            </p>
+            {/* How it works */}
+            <div className="bg-slate-50 rounded-xl px-4 py-3 space-y-1.5">
+              <p className="text-xs font-semibold text-slate-600">
+                {locale === 'he' ? 'איך זה עובד' : 'How it works'}
+              </p>
+              <div className="flex flex-col gap-1">
+                {[
+                  locale === 'he' ? '① מחיקת מטא-דאטה מהקובץ (בדפדפן)' : '① Metadata stripped locally in your browser',
+                  locale === 'he' ? '② הצפנת הקובץ (AES-256, בדפדפן)' : '② File encrypted with AES-256 in your browser',
+                  locale === 'he' ? '③ ניתוח אנונימי — מסמך לא נשמר בשרת' : '③ Server analyzes ephemerally — plaintext never stored',
+                ].map((step, i) => (
+                  <p key={i} className="text-xs text-slate-500">{step}</p>
+                ))}
+              </div>
+            </div>
 
             {/* File picker */}
             <div className="space-y-2">
@@ -698,68 +823,54 @@ function WhistleblowerModal({
                 ref={fileInputRef}
                 type="file"
                 multiple
-                accept=".jpg,.jpeg,.png,.pdf"
+                accept=".jpg,.jpeg,.png,.pdf,.heic,.heif"
                 className="sr-only"
                 onChange={(e) => addFiles(e.target.files)}
+                disabled={busy}
               />
 
               <button
                 onClick={() => fileInputRef.current?.click()}
-                className="w-full border-2 border-dashed border-slate-200 hover:border-violet-300 active:border-violet-400 rounded-xl py-5 text-sm font-semibold text-slate-500 hover:text-violet-600 transition-colors"
+                disabled={busy || managed.length >= 10}
+                className="w-full border-2 border-dashed border-slate-200 hover:border-violet-300 active:border-violet-400 disabled:opacity-40 rounded-xl py-5 text-sm font-semibold text-slate-500 hover:text-violet-600 transition-colors"
               >
                 + {t('tipModalFilesBtn')}
               </button>
 
-              {/* File list */}
-              {files.length > 0 && (
+              {managed.length > 0 && (
                 <ul className="space-y-1.5">
-                  {files.map((f, i) => (
-                    <li
-                      key={i}
-                      className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2"
-                    >
-                      <span className="text-slate-400 shrink-0 text-sm">
-                        {f.type === 'application/pdf' ? '📄' : '🖼️'}
-                      </span>
-                      <span className="flex-1 text-xs text-slate-700 truncate min-w-0">{f.name}</span>
-                      <span className="text-xs text-slate-400 shrink-0">
-                        {(f.size / 1024 / 1024).toFixed(1)}MB
-                      </span>
-                      <button
-                        onClick={() => removeFile(i)}
-                        className="p-1.5 text-slate-400 hover:text-red-500 transition-colors shrink-0"
-                        aria-label={`Remove ${f.name}`}
-                      >
-                        ✕
-                      </button>
-                    </li>
+                  {managed.map((mf, i) => (
+                    <FileRow
+                      key={`${mf.file.name}-${mf.file.size}`}
+                      mf={mf}
+                      onRemove={() => removeFile(i)}
+                    />
                   ))}
                 </ul>
               )}
 
-              {files.length === 0 && (
+              {managed.length === 0 && (
                 <p className="text-xs text-slate-400 text-center">{t('tipModalFilesEmpty')}</p>
               )}
             </div>
 
-            {noFilesError && (
-              <p className="text-xs text-amber-600">{t('tipModalNoFilesError')}</p>
-            )}
-            {error && (
-              <p className="text-xs text-red-600">{t('tipModalError')}</p>
+            {globalError && (
+              <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                {globalError}
+              </p>
             )}
 
             <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 pt-1 pb-2">
               <button
                 onClick={() => void submit()}
-                disabled={submitting}
+                disabled={!canSubmit}
                 className="flex-1 sm:flex-none px-4 py-3 sm:py-2 bg-violet-700 hover:bg-violet-600 disabled:opacity-50 text-white text-sm font-semibold rounded-xl transition-colors active:scale-95"
               >
                 {submitting ? t('tipModalSubmittingBtn') : t('tipModalSubmitBtn')}
               </button>
               <button
                 onClick={onClose}
-                disabled={submitting}
+                disabled={busy}
                 className="flex-1 sm:flex-none px-4 py-3 sm:py-2 bg-slate-100 hover:bg-slate-200 disabled:opacity-50 rounded-xl text-sm font-semibold text-slate-700 transition-colors active:scale-95"
               >
                 {t('tipModalCloseBtn')}

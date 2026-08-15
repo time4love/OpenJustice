@@ -1,15 +1,13 @@
 import { Router, Request, Response } from 'express';
-import multer from 'multer';
 import { z } from 'zod';
 import type { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { parseMentions } from '../utils/parseMentions';
 import { DevilsAdvocateOutputSchema } from '../services/DevilsAdvocateAgent';
 import { FoiaLetterAgent } from '../services/FoiaLetterAgent';
-import { IntakeAgent } from '../services/IntakeAgent';
 import { RevisionAgent } from '../services/RevisionAgent';
-import { StorageService } from '../services/StorageService';
 import { Web3Service } from '../services/Web3Service';
+import { analyzeEphemeral } from '../services/EphemeralAnalysisService';
 import { buildTipTapDoc } from '../utils/tipTapUtils';
 import { sha256, extractText, extractPreview, triggerAIAnalysis } from '../services/thesisAnalysis';
 import { logSessionEvent } from '../services/sessionService';
@@ -24,9 +22,6 @@ const router = Router();
 
 let _revisionAgent: RevisionAgent | null = null;
 let _foiaAgent: FoiaLetterAgent | null = null;
-let _intakeAgent: IntakeAgent | null = null;
-let _storageService: StorageService | null = null;
-
 function getRevisionAgent(): RevisionAgent {
   if (!_revisionAgent) _revisionAgent = new RevisionAgent();
   return _revisionAgent;
@@ -37,33 +32,6 @@ function getFoiaAgent(): FoiaLetterAgent {
   return _foiaAgent;
 }
 
-function getIntakeAgentForTips(): IntakeAgent {
-  if (!_intakeAgent) _intakeAgent = new IntakeAgent();
-  return _intakeAgent;
-}
-
-function getStorageServiceForTips(): StorageService {
-  if (!_storageService) _storageService = new StorageService();
-  return _storageService;
-}
-
-// ---------------------------------------------------------------------------
-// Multer — whistleblower file uploads (in-memory, JPEG/PNG/PDF, ≤10 files, ≤10 MB each)
-// ---------------------------------------------------------------------------
-
-const WHISTLEBLOWER_MIME_TYPES = ['image/jpeg', 'image/png', 'application/pdf'];
-
-const whistleblowerUpload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 10 * 1024 * 1024, files: 10 },
-  fileFilter: (_req, file, cb) => {
-    if (WHISTLEBLOWER_MIME_TYPES.includes(file.mimetype)) {
-      cb(null, true);
-    } else {
-      cb(null, false); // silently reject unsupported types
-    }
-  },
-});
 
 // ---------------------------------------------------------------------------
 // Async AI trigger — fire-and-forget from POST routes
@@ -932,17 +900,31 @@ router.post('/:id/foia-request', async (req: Request, res: Response): Promise<vo
 // ---------------------------------------------------------------------------
 // POST /api/thesis/:id/gaps/:gapIndex/whistleblower
 //
-// Anonymous document submission scoped to a specific evidence gap.
-// Accepts 1–10 files (JPEG, PNG, PDF) as multipart/form-data field "files".
-// Each file is run through IntakeAgent vision analysis, SHA-256 hashed,
-// uploaded to Supabase Storage (non-fatal), and saved as PENDING_REVIEW.
-// Nothing is registered on-chain or indexed until a human reviewer promotes
-// the records. No identity is stored anywhere.
+// Anonymous encrypted document submission scoped to a specific evidence gap.
+// Accepts JSON: { files: [{ ciphertext, aesKey, filename, mimeType }] }
+// The ciphertext is AES-GCM-256 encrypted by the client; the aesKey is a
+// JWK exported by the client's Web Crypto API. Both are held only for the
+// duration of this request:
+//   1. Decrypt in RAM → ephemeral analysis (Claude vision)
+//   2. Zero the plaintext buffer
+//   3. Store the encrypted blob on IPFS (Pinata) or Supabase Storage fallback
+//   4. Save only the extracted metadata + CID — plaintext never persists
+// No identity is stored. No file ever reaches disk unencrypted.
 // ---------------------------------------------------------------------------
+
+const EphemeralFileSchema = z.object({
+  ciphertext: z.string().min(1),
+  aesKey: z.record(z.string(), z.unknown()),
+  filename: z.string().max(255),
+  mimeType: z.enum(['image/jpeg', 'image/png', 'application/pdf', 'image/heic', 'image/heif']),
+});
+
+const WhistleblowerBodySchema = z.object({
+  files: z.array(EphemeralFileSchema).min(1).max(10),
+});
 
 router.post(
   '/:id/gaps/:gapIndex/whistleblower',
-  whistleblowerUpload.array('files', 10),
   async (req: Request, res: Response): Promise<void> => {
     const thesisId = String(req.params['id'] ?? '');
     const gapIndex = parseInt(String(req.params['gapIndex'] ?? ''), 10);
@@ -951,9 +933,9 @@ router.post(
       return;
     }
 
-    const files = req.files as Express.Multer.File[] | undefined;
-    if (!files || files.length === 0) {
-      res.status(400).json({ error: 'At least one file (JPEG, PNG, or PDF) is required.' });
+    const parsed = WhistleblowerBodySchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: 'Invalid request body', details: parsed.error.flatten() });
       return;
     }
 
@@ -964,38 +946,17 @@ router.post(
         return;
       }
 
-      const provenanceBase =
-        `https://glass-fortress.internal/whistleblower/thesis/${thesisId}/gap/${gapIndex}`;
-
-      // Process all files — each through IntakeAgent vision → hash → storage → DB
       const submissions = await Promise.all(
-        files.map(async (file, fileIndex) => {
-          // 1. AI analysis (vision)
-          const analysis = await getIntakeAgentForTips().analyzeEvidence(
-            file.buffer,
-            file.mimetype,
-          );
+        parsed.data.files.map(async (file) => {
+          const { analysis, ipfsCid, fileUrl } = await analyzeEphemeral({
+            ciphertext: file.ciphertext,
+            aesKey: file.aesKey,
+            filename: file.filename,
+            mimeType: file.mimeType,
+          });
 
-          // 2. Hash the raw buffer for on-chain provenance
-          const fileHash = Web3Service.hashFile(file.buffer);
+          const fileHash = Web3Service.hashFile(Buffer.from(file.ciphertext, 'base64'));
 
-          // 3. Upload to Supabase Storage — non-fatal so one bad upload doesn't
-          //    block the whole submission batch
-          let fileUrl: string | null = null;
-          try {
-            fileUrl = await getStorageServiceForTips().uploadEvidenceFile(
-              file.buffer,
-              file.originalname,
-              file.mimetype,
-            );
-          } catch (err) {
-            console.warn(
-              '[whistleblower] storage upload failed (non-fatal):',
-              err instanceof Error ? err.message : err,
-            );
-          }
-
-          // 4. Upsert KeyFigure records
           if (analysis.keyFigures.length > 0) {
             await prisma.keyFigure.createMany({
               data: analysis.keyFigures.map((name) => ({ name })),
@@ -1003,19 +964,17 @@ router.post(
             });
           }
 
-          // 5. Duplicate guard
           const existing = await prisma.evidence.findUnique({ where: { fileHash } });
           if (existing) {
             return {
               evidenceId: existing.id,
-              fileHash,
-              filename: file.originalname,
+              filename: file.filename,
               summary: existing.summary,
               duplicate: true,
+              ipfsCid: existing.ipfsCid ?? null,
             };
           }
 
-          // 6. Persist as PENDING_REVIEW — no on-chain, no vector index yet
           const record = await prisma.evidence.create({
             data: {
               fileHash,
@@ -1033,17 +992,18 @@ router.post(
               statisticalClaims: JSON.stringify(analysis.statisticalClaims),
               regulatoryMentions: JSON.stringify(analysis.regulatoryMentions),
               euaOmissionStatus: analysis.euaOmissionStatus,
-              sourceUrl: `${provenanceBase}/file/${fileIndex}`,
-              fileUrl,
+              sourceUrl: `whistleblower/thesis/${thesisId}/gap/${gapIndex}`,
+              fileUrl: fileUrl ?? undefined,
+              ipfsCid: ipfsCid ?? undefined,
             },
           });
 
           return {
             evidenceId: record.id,
-            fileHash: record.fileHash,
-            filename: file.originalname,
+            filename: file.filename,
             summary: record.summary,
             duplicate: false,
+            ipfsCid: record.ipfsCid ?? null,
           };
         }),
       );
@@ -1052,8 +1012,9 @@ router.post(
         submissions,
         count: submissions.length,
         message:
-          `${submissions.length} document(s) received as PENDING_REVIEW. ` +
-          'They will not appear publicly or be registered on-chain until a human reviewer promotes them.',
+          `${submissions.length} encrypted document(s) received as PENDING_REVIEW. ` +
+          'Plaintext was analyzed ephemerally and discarded. ' +
+          'Records will not appear publicly until a human reviewer promotes them.',
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);

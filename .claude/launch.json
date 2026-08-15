@@ -1,0 +1,20 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "Glass Fortress Frontend",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": ["-c", "cd apps/glass-fortress/frontend && npm run dev -- --port 3011"],
+      "port": 3011,
+      "url": "http://localhost:3011",
+      "autoPort": true
+    },
+    {
+      "name": "Bronze Fortress Frontend",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": ["-c", "cd apps/bronze-fortress/frontend && npm run dev -- --port 3020"],
+      "port": 3020,
+      "url": "http://localhost:3020"
+    }
+  ]
+}
