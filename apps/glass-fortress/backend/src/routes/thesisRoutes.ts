@@ -7,7 +7,7 @@ import { DevilsAdvocateOutputSchema } from '../services/DevilsAdvocateAgent';
 import { FoiaLetterAgent } from '../services/FoiaLetterAgent';
 import { RevisionAgent } from '../services/RevisionAgent';
 import { Web3Service } from '../services/Web3Service';
-import { analyzeEphemeral } from '../services/EphemeralAnalysisService';
+import { analyzeEphemeral, storeEphemeral } from '../services/EphemeralAnalysisService';
 import { buildTipTapDoc } from '../utils/tipTapUtils';
 import { sha256, extractText, extractPreview, triggerAIAnalysis } from '../services/thesisAnalysis';
 import { logSessionEvent } from '../services/sessionService';
@@ -898,17 +898,12 @@ router.post('/:id/foia-request', async (req: Request, res: Response): Promise<vo
 });
 
 // ---------------------------------------------------------------------------
-// POST /api/thesis/:id/gaps/:gapIndex/whistleblower
+// POST /api/thesis/:id/gaps/:gapIndex/whistleblower/preview  (analyse only, no store)
+// POST /api/thesis/:id/gaps/:gapIndex/whistleblower          (store, using cached analysis)
 //
-// Anonymous encrypted document submission scoped to a specific evidence gap.
-// Accepts JSON: { files: [{ ciphertext, aesKey, filename, mimeType }] }
-// The ciphertext is AES-GCM-256 encrypted by the client; the aesKey is a
-// JWK exported by the client's Web Crypto API. Both are held only for the
-// duration of this request:
-//   1. Decrypt in RAM → ephemeral analysis (Claude vision)
-//   2. Zero the plaintext buffer
-//   3. Store the encrypted blob on IPFS (Pinata) or Supabase Storage fallback
-//   4. Save only the extracted metadata + CID — plaintext never persists
+// Two-phase WB flow:
+//   Preview: decrypt in RAM → Claude vision → return analysis + previewToken (10-min TTL)
+//   Confirm: re-send ciphertext → use cached analysis → upload to IPFS → save to DB
 // No identity is stored. No file ever reaches disk unencrypted.
 // ---------------------------------------------------------------------------
 
@@ -921,7 +916,79 @@ const EphemeralFileSchema = z.object({
 
 const WhistleblowerBodySchema = z.object({
   files: z.array(EphemeralFileSchema).min(1).max(10),
+  previewToken: z.string().uuid().optional(),
 });
+
+// In-memory cache: previewToken → per-filename analysis (10 min TTL)
+interface CachedPreview {
+  analyses: Map<string, Awaited<ReturnType<typeof analyzeEphemeral>>['analysis']>;
+  expiresAt: number;
+}
+const previewCache = new Map<string, CachedPreview>();
+
+function evictExpiredPreviews() {
+  const now = Date.now();
+  for (const [token, entry] of previewCache) {
+    if (entry.expiresAt < now) previewCache.delete(token);
+  }
+}
+
+router.post(
+  '/:id/gaps/:gapIndex/whistleblower/preview',
+  async (req: Request, res: Response): Promise<void> => {
+    const thesisId = String(req.params['id'] ?? '');
+    const gapIndex = parseInt(String(req.params['gapIndex'] ?? ''), 10);
+    if (!thesisId || isNaN(gapIndex) || gapIndex < 0) {
+      res.status(400).json({ error: 'Missing or invalid thesis id / gapIndex' });
+      return;
+    }
+
+    const parsed = WhistleblowerBodySchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: 'Invalid request body', details: parsed.error.flatten() });
+      return;
+    }
+
+    try {
+      const thesis = await prisma.thesis.findUnique({ where: { id: thesisId } });
+      if (!thesis) { res.status(404).json({ error: 'Thesis not found' }); return; }
+
+      const previews = await Promise.all(
+        parsed.data.files.map(async (file) => {
+          const { analysis } = await analyzeEphemeral({
+            ciphertext: file.ciphertext,
+            aesKey: file.aesKey,
+            filename: file.filename,
+            mimeType: file.mimeType,
+          });
+          return { filename: file.filename, analysis };
+        }),
+      );
+
+      evictExpiredPreviews();
+      const token = crypto.randomUUID();
+      const analysesMap = new Map(previews.map((p) => [p.filename, p.analysis]));
+      previewCache.set(token, { analyses: analysesMap, expiresAt: Date.now() + 10 * 60 * 1000 });
+
+      res.status(200).json({
+        previews: previews.map(({ filename, analysis }) => ({
+          filename,
+          summary: analysis.summary,
+          category: analysis.category,
+          evidenceDate: analysis.evidenceDate,
+          keyFigures: analysis.keyFigures,
+          evidenceTier: analysis.evidenceTier,
+          evidenceRole: analysis.evidenceRole,
+          isRelevant: analysis.isRelevant,
+        })),
+        previewToken: token,
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: 'Failed to analyse documents', message });
+    }
+  },
+);
 
 router.post(
   '/:id/gaps/:gapIndex/whistleblower',
@@ -946,14 +1013,27 @@ router.post(
         return;
       }
 
+      const cached = parsed.data.previewToken ? previewCache.get(parsed.data.previewToken) : undefined;
+      if (cached) previewCache.delete(parsed.data.previewToken!);
+
       const submissions = await Promise.all(
         parsed.data.files.map(async (file) => {
-          const { analysis, ipfsCid, fileUrl } = await analyzeEphemeral({
-            ciphertext: file.ciphertext,
-            aesKey: file.aesKey,
-            filename: file.filename,
-            mimeType: file.mimeType,
-          });
+          const cachedAnalysis = cached?.analyses.get(file.filename);
+          let analysis: Awaited<ReturnType<typeof analyzeEphemeral>>['analysis'];
+          let ipfsCid: string | null;
+          let fileUrl: string | null;
+
+          if (cachedAnalysis) {
+            analysis = cachedAnalysis;
+            ({ ipfsCid, fileUrl } = await storeEphemeral({ ciphertext: file.ciphertext, filename: file.filename }));
+          } else {
+            ({ analysis, ipfsCid, fileUrl } = await analyzeEphemeral({
+              ciphertext: file.ciphertext,
+              aesKey: file.aesKey,
+              filename: file.filename,
+              mimeType: file.mimeType,
+            }));
+          }
 
           const fileHash = Web3Service.hashFile(Buffer.from(file.ciphertext, 'base64'));
 

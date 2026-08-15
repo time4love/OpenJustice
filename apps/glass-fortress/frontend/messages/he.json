@@ -421,6 +421,17 @@
     "tipModalPrivacyNote": "ללא חשבון, ללא רישום IP, ללא מידע מזהה.",
     "tipModalCloseBtn": "סגור",
     "tipModalError": "ההגשה נכשלה. נסה שוב.",
+    "tipModalEncrypting": "מצפין את הקבצים...",
+    "tipModalAnalyzing": "מנתח את המסמכים...",
+    "tipModalPreviewTitle": "אשר לפני שמירה",
+    "tipModalPreviewSub": "בדוק שה-AI הבין נכון את המסמך. לאחר האישור יישמר הצופן — לא התוכן.",
+    "tipModalPreviewApprove": "אשר ושמור",
+    "tipModalPreviewBack": "חזור",
+    "tipModalSummaryLabel": "תקציר AI",
+    "tipModalDateLabel": "תאריך המסמך",
+    "tipModalCategoryLabel": "קטגוריה",
+    "tipModalFiguresLabel": "דמויות",
+    "tipModalNotRelevant": "ה-AI לא זיהה רלוונטיות לתיק. תוכל לאשר בכל זאת.",
     "callForWitnessesBtn": "קריאה לעדים"
   },
   "call": {

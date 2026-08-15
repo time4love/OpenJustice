@@ -421,6 +421,17 @@
     "tipModalPrivacyNote": "No account, no IP logging, no identity stored.",
     "tipModalCloseBtn": "Close",
     "tipModalError": "Submission failed. Please try again.",
+    "tipModalEncrypting": "Encrypting files...",
+    "tipModalAnalyzing": "Analysing documents...",
+    "tipModalPreviewTitle": "Confirm before saving",
+    "tipModalPreviewSub": "Check that the AI understood your document correctly. Only the encrypted blob is saved — not the content.",
+    "tipModalPreviewApprove": "Approve and save",
+    "tipModalPreviewBack": "Go back",
+    "tipModalSummaryLabel": "AI summary",
+    "tipModalDateLabel": "Document date",
+    "tipModalCategoryLabel": "Category",
+    "tipModalFiguresLabel": "Key figures",
+    "tipModalNotRelevant": "The AI did not detect relevance to this case. You can still approve.",
     "callForWitnessesBtn": "Call for Witnesses"
   },
   "call": {
