@@ -1,6 +1,8 @@
 # Staging Environment — Dev Plan
 
-**Status:** Phase 0 complete. Phase 1 blocked on the staging Supabase project being created.
+**Status:** Phase 0 + 0b complete (on branch `feat/investigative-classification`, not merged).
+Phase 1 blocked on the staging Supabase project being created.
+**Last updated:** 2026-08-15 — 477/477 backend tests, frontend builds clean.
 **Created:** 2026-08-15
 **Scope:** Glass Fortress only (backend + frontend). Bronze Fortress is out of scope.
 
@@ -358,16 +360,35 @@ Production is never modified except by Phase 0 step 5 (additive table) and step 
    promotion via `/forensics/promote` carries the classification instead of re-running the agent —
    that path also still carried the hardcoded intent assertion, now replaced by the shared
    `forensicTierReasoning()`. Migration `20260815020000_diff_investigative_categories` applied.
-   466/466 tests.
 4. **Re-tune verification.** The `ForensicAgent` prompt moved from recall-biased to
    precision-biased in one step, unmeasured. Once staging has real scans, check the hit rate against
    URLs you have manually reviewed — the risk now runs the other way, toward missing real changes.
 
+### Shipped on a branch, NOT merged
+5. **`feat/investigative-classification`** — 3 commits, pushed. `master` auto-deploys to Railway
+   production, so merging is a deliberate deployment decision.
+
+   **All four migrations are already applied to production**, so a merge ships code only. But the
+   branch contains **breaking API changes** that the deployed frontend does not yet expect, so
+   backend and frontend must go out together:
+   - Every evidence-returning endpoint and MCP tool now returns `investigativeCategories: string[]`
+     instead of `category: string` (`searchEvidence`, `suggestThesis`, `getFigureDossier`,
+     `getResearchAgenda`, `createEvidenceFromText`, `createEvidenceFromUrl`, plus the REST evidence,
+     figures, timeline and thesis routes).
+   - `POST /api/arguments/generate` takes `concern` (an investigative category) instead of
+     `category`, with entirely different accepted values.
+   - `GET /api/evidence/stats` → `byCategory` is keyed by the seven concerns, and **counts overlap**:
+     a record advancing two concerns is counted under both, so the sum exceeds `total`.
+   - `POST /api/evidence/confirm` accepts `investigativeCategories: string[]`.
+
+6. **Verify the deployed MCP clients.** Any external consumer reading `category` off a GF MCP tool
+   result breaks on merge. Unknown whether any exist outside this repo.
+
 ### Housekeeping
-5. **`apps/glass-fortress/backend/render.yaml` is dead config.** Superseded by Railway + `nixpacks.toml`.
+7. **`apps/glass-fortress/backend/render.yaml` is dead config.** Superseded by Railway + `nixpacks.toml`.
    Still references `PINECONE_API_KEY` / `PINECONE_INDEX` (nothing reads them) and an Arbitrum Sepolia
    RPC, though the target is now Base mainnet. Delete unless Render is still a fallback.
-6. **`prisma db push` is retired.** The schema now has migration history and a `migration_lock.toml`.
+8. **`prisma db push` is retired.** The schema now has migration history and a `migration_lock.toml`.
    Every future change goes through `prisma migrate dev` / `migrate deploy`, or prod and staging drift
    again.
 
