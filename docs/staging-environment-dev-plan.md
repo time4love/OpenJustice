@@ -1,7 +1,9 @@
 # Staging Environment — Dev Plan
 
 **Status:** Phases 0, 0b, 1, 2, 3 and 4 COMPLETE — **staging is live, password-gated and `noindex`**.
-Phase 5 (demo prep) remains.
+Phase 3 **shipped to production** 2026-08-15 (`ebbcc29`); production is unchanged except that the
+backend now logs its database identity at boot and `/icon.png` is served again. Phase 5 (demo prep)
+remains.
 **Last updated:** 2026-08-15 — 495/495 backend tests, frontend builds clean.
 
 | | |
@@ -428,11 +430,10 @@ Production is never modified except by Phase 0 step 5 (additive table) and step 
    browser calls the backend **cross-origin** (`NEXT_PUBLIC_API_URL` is set on staging), so the
    cookie will not travel by itself — this needs a deliberate decision about credentialed CORS or a
    token, not a copy of the frontend gate.
-2. **Set `EXPECTED_SUPABASE_PROJECT_REF` on the production Railway services before the next `SHIP`.**
-   The guard is set on staging; on production it is unset, where it logs a loud warning at boot and
-   enforces nothing. The internal-consistency half of the check is always active either way, so a
-   missing pin never blocks a deploy — it just leaves the strongest check switched off. Setting it
-   triggers a production redeploy, which is why it was not done from the staging branch.
+2. ~~**Set `EXPECTED_SUPABASE_PROJECT_REF` on the production Railway services.**~~ **✅ Done
+   2026-08-15**, immediately after Phase 3 shipped. Set with `--skip-deploys` and read from
+   production's own `SUPABASE_URL`, so it could not be wrong and cost no second redeploy; it takes
+   effect from the next deploy onward. Both environments are now pinned.
 3. **Phase 5 — demo prep.** Seed staging by running the real intake and forensics flows (do not copy
    production rows). Run 6–10 candidate MOH URLs, record findings and wall-clock time, pick the 2–3
    strongest, rehearse.
