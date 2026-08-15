@@ -52,6 +52,29 @@ Then report exactly what was written and where, and name anything deliberately n
 significant decision, bug found and deferred — **without being asked**, so `CHECKPOINT` usually finds
 little left to do.
 
+## Branching & Deployment Protocol
+
+**Branches**
+| Branch | Role | Deploys to |
+|---|---|---|
+| `master` | production | Railway `production` — GF + BF, 4 services |
+| `staging` | integration + testing | Railway `staging` — GF only, 2 services |
+| feature branches | all work starts here | nothing |
+
+**The flow is: feature branch → PR → `staging` → (explicit approval) → `master`.**
+
+1. **Never commit directly to `master` or `staging`.** Create a feature branch.
+2. Open a **pull request against `staging`**. Merge it there once green.
+3. Test on the staging environment — it runs against the **staging** Supabase project, not
+   production. Project refs and connection details live in `.env.staging` (gitignored), never here:
+   this repo is public.
+4. **Merging `staging` → `master` requires specific, explicit approval from the user, every time.**
+   It is a production deployment. Never merge to `master` on your own initiative, and never treat
+   general permission to commit or push as permission to deploy. Ask, and wait for a clear yes.
+
+Local `.env` points at the **staging** database. Production credentials are preserved in
+`.env.production.local` (gitignored) — restore them only for a deliberate production query.
+
 ## Workflow
 - Do not commit unless explicitly asked.
 - Do not push unless explicitly asked.
