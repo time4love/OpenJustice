@@ -9,7 +9,7 @@ export interface EvidenceCorpusRecord {
   evidenceTier: string;
   evidenceRole: string;
   evidenceDate: string;
-  category: string;
+  investigativeCategories: string[];
   targetEntity: string;
   keyFigures: string[];
   evidenceType?: string; // 'DOCUMENT' | 'FORENSIC_DIFF' — FORENSIC_DIFF = auto-detected page retraction
@@ -134,7 +134,7 @@ export class ThesisSynthesisAgent {
           `[${i + 1}] Hash: ${e.fileHash}\n` +
           `    Type: ${e.evidenceType === 'FORENSIC_DIFF' ? 'FORENSIC_DIFF (silent page edit detected)' : 'DOCUMENT'}\n` +
           `    Date: ${e.evidenceDate} | Tier: ${e.evidenceTier} | Role: ${e.evidenceRole}\n` +
-          `    Entity: ${e.targetEntity} | Category: ${e.category}\n` +
+          `    Entity: ${e.targetEntity} | Concerns: ${e.investigativeCategories.join(", ") || "none"}\n` +
           `    Key Figures: ${e.keyFigures.length > 0 ? e.keyFigures.join(', ') : 'none identified'}\n` +
           `    Summary: ${e.summary.slice(0, 500)}`,
       )

@@ -64,7 +64,7 @@ router.get('/:id', async (req: Request, res: Response): Promise<void> => {
       metadata: {
         fileHash: r.fileHash,
         evidenceRole: r.evidenceRole,
-        category: r.category,
+        investigativeCategories: r.investigativeCategories,
         tier: r.evidenceTier,
         evidencePerspective: r.evidencePerspective,
         tierReasoning: r.tierReasoning,

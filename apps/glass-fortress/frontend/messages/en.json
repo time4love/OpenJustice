@@ -31,13 +31,6 @@
       "tier4": "Anecdotal",
       "tier4Sub": "Tier 4 — Low weight"
     },
-    "categories": {
-      "title": "Evidence by Legal Category",
-      "sideEffectWithholding": "Side Effect Withholding",
-      "regulatoryMisleading": "Regulatory Misleading",
-      "coercion": "Coercion",
-      "other": "Other"
-    },
     "ledger": {
       "title": "Evidence Ledger",
       "records": "{count} records",
@@ -46,7 +39,8 @@
       "searchingBtn": "Searching…",
       "emptyTitle": "No evidence records found.",
       "emptySub": "Submit evidence, or broaden your search query."
-    }
+    },
+    "categoriesTitle": "Breakdown by investigative concern"
   },
   "submit": {
     "backLink": "← Vault",
@@ -676,5 +670,14 @@
       "btn": "Submit evidence now",
       "hint": "No account · No name · Encrypted in your browser"
     }
+  },
+  "categories": {
+    "WITHHOLDING_INFORMATION": "Withholding information",
+    "INFORMED_CONSENT": "Informed consent",
+    "COERCION_MANDATE": "Coercion & mandates",
+    "EXPERIMENTAL_STATUS_CONCEALMENT": "Concealed experimental status",
+    "SAFETY_CLAIM_ALTERATION": "Altered safety claims",
+    "STATISTICAL_MANIPULATION": "Altered statistics",
+    "ACCOUNTABILITY_EROSION": "Eroded accountability"
   }
 }

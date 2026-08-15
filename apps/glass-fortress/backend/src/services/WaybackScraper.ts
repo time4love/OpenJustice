@@ -7,6 +7,10 @@ import { ForensicAgent, type DiffItem, type RelatedEvidenceContext } from './For
 import { VectorStoreService } from './VectorStoreService';
 import { Web3Service } from './Web3Service';
 import { prisma } from '../lib/prisma';
+import {
+  buildForensicEvidence,
+  type ForensicEvidenceSource,
+} from './forensicEvidence';
 
 // ---------------------------------------------------------------------------
 // Lazy singletons — non-fatal if unavailable
@@ -221,52 +225,39 @@ async function upsertSnapshot(
 }
 
 /**
- * Auto-promote a legally significant UrlVersionDiff to an Evidence record and
- * upsert its embedding into the vector store.
+ * Auto-promote a classified UrlVersionDiff to an Evidence record and upsert its
+ * embedding into the vector store.
+ *
+ * Only diffs that advance at least one standing investigative concern become
+ * evidence — a change can be unusual, or even legally interesting, and still not
+ * be evidence for THIS investigation. Callers gate on isLegallySignificant, which
+ * derives from the same classification; the guard below makes the invariant
+ * explicit at the boundary rather than relying on every caller to hold it.
  *
  * Idempotent — upserts by fileHash so re-runs are safe.
  * Non-fatal — logs warnings and continues on any failure.
  */
-async function autoPromoteToEvidence(
-  diff: { id: string; afterDate: string; snapshotUrl: string; aiSignificance: string },
-  trackedUrl: { url: string },
-): Promise<void> {
-  // Use the same content formula as the manual /promote endpoint for fileHash consistency
-  const content = [trackedUrl.url, diff.afterDate, diff.id].join('\n');
-  const fileHash = '0x' + sha256(content);
+async function autoPromoteToEvidence(source: ForensicEvidenceSource): Promise<void> {
+  // The automatic path only. Manual promotion via /forensics/promote is a
+  // researcher's deliberate override and is intentionally not gated on this.
+  if (source.investigativeCategories.length === 0) {
+    console.warn(
+      `[WaybackScraper] Refusing to promote diff ${source.diffId} — no investigative category matched.`,
+    );
+    return;
+  }
 
-  let targetEntity = 'Unknown';
-  try { targetEntity = new URL(trackedUrl.url).hostname; } catch { /* keep default */ }
-
-  const summary = diff.aiSignificance ||
-    `שינוי שקט זוהה בדף ${targetEntity} בתאריך ${diff.afterDate}.`;
+  const { fileHash, data } = buildForensicEvidence(source);
 
   try {
     await prisma.evidence.upsert({
       where: { fileHash },
       update: {},
-      create: {
-        fileHash,
-        evidenceType: 'FORENSIC_DIFF',
-        status: 'CONFIRMED',
-        evidenceRole: 'Incriminating',
-        category: 'Forensic Diff',
-        targetEntity,
-        evidenceTier: 'Tier 2: Material',
-        tierReasoning: 'שינוי שקט בדף ממשלתי רשמי — ראיה ישירה לכוונת הטעיה.',
-        summary,
-        evidenceDate: diff.afterDate,
-        medicalConditions: '[]',
-        statisticalClaims: '[]',
-        regulatoryMentions: '[]',
-        euaOmissionStatus: 'Not Applicable',
-        sourceUrl: diff.snapshotUrl,
-        urlVersionDiffId: diff.id,
-      },
+      create: data,
     });
   } catch (err) {
     console.warn(
-      '[WaybackScraper] Auto-promote evidence create failed for diff', diff.id,
+      '[WaybackScraper] Auto-promote evidence create failed for diff', source.diffId,
       ':', err instanceof Error ? err.message : err,
     );
     return;
@@ -274,10 +265,10 @@ async function autoPromoteToEvidence(
 
   try {
     const vs = await getVectorStore();
-    await vs.upsertEvidence(summary, fileHash);
+    await vs.upsertEvidence(data.summary, fileHash);
   } catch (err) {
     console.warn(
-      '[WaybackScraper] Vector upsert failed for auto-promoted diff', diff.id,
+      '[WaybackScraper] Vector upsert failed for auto-promoted diff', source.diffId,
       ':', err instanceof Error ? err.message : err,
     );
   }
@@ -548,7 +539,7 @@ export class WaybackScraper {
     return rows.map((r) => ({
       date: r.evidenceDate,
       summary: r.summary,
-      category: r.category,
+      investigativeCategories: r.investigativeCategories,
       targetEntity: r.targetEntity,
       evidenceRole: r.evidenceRole,
     }));
@@ -689,6 +680,7 @@ export class WaybackScraper {
             rawAddedText: JSON.stringify(additions),
             aiSignificance: analysis.legalSignificance,
             isLegallySignificant: analysis.isLegallySignificant,
+            investigativeCategories: analysis.investigativeCategories,
             beforeSnapshotId,
             afterSnapshotId,
           },
@@ -705,10 +697,18 @@ export class WaybackScraper {
             addedItems: analysis.addedItems,
             legalSignificance: analysis.legalSignificance,
           });
-          autoPromoteToEvidence(
-            { id: diffRecord.id, afterDate, snapshotUrl, aiSignificance: analysis.legalSignificance },
-            trackedUrl,
-          ).catch((err) =>
+          autoPromoteToEvidence({
+            diffId: diffRecord.id,
+            url: trackedUrl.url,
+            afterDate,
+            snapshotUrl,
+            aiSignificance: analysis.legalSignificance,
+            investigativeCategories: analysis.investigativeCategories,
+            deletedText: JSON.stringify(analysis.deletedItems),
+            addedText: JSON.stringify(analysis.addedItems),
+            deletedItems: analysis.deletedItems,
+            addedItems: analysis.addedItems,
+          }).catch((err) =>
             console.warn('[WaybackScraper] autoPromoteToEvidence failed:', err instanceof Error ? err.message : err),
           );
         }
@@ -954,6 +954,7 @@ export class WaybackScraper {
                 rawAddedText: JSON.stringify(additions),
                 aiSignificance: analysis.legalSignificance,
                 isLegallySignificant: analysis.isLegallySignificant,
+                investigativeCategories: analysis.investigativeCategories,
                 beforeSnapshotId,
                 afterSnapshotId,
               },
@@ -962,10 +963,18 @@ export class WaybackScraper {
             if (analysis.isLegallySignificant) {
               const trackedUrl = await prisma.trackedUrl.findUnique({ where: { id: trackedUrlId } });
               if (trackedUrl) {
-                autoPromoteToEvidence(
-                  { id: diffRecord.id, afterDate, snapshotUrl, aiSignificance: analysis.legalSignificance },
-                  trackedUrl,
-                ).catch((err) =>
+                autoPromoteToEvidence({
+                  diffId: diffRecord.id,
+                  url: trackedUrl.url,
+                  afterDate,
+                  snapshotUrl,
+                  aiSignificance: analysis.legalSignificance,
+                  investigativeCategories: analysis.investigativeCategories,
+                  deletedText: JSON.stringify(analysis.deletedItems),
+                  addedText: JSON.stringify(analysis.addedItems),
+                  deletedItems: analysis.deletedItems,
+                  addedItems: analysis.addedItems,
+                }).catch((err) =>
                   console.warn('[WaybackScraper] autoPromoteToEvidence failed:', err instanceof Error ? err.message : err),
                 );
               }

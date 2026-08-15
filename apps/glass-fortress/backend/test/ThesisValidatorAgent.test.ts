@@ -31,18 +31,18 @@ const EVIDENCE_FIXTURE: EvidenceSummary[] = [
   {
     id: 'ev-1',
     summary: 'דו"ח זום פנימי מיוני 2021 שנחשף: בכירים ידעו על אירועי לב חריגים לאחר חיסון.',
-    category: 'Internal Communication',
     evidenceDate: '2021-06-10',
     targetEntity: 'Ministry of Health',
     evidenceRole: 'Incriminating',
+    investigativeCategories: ['WITHHOLDING_INFORMATION'],
   },
   {
     id: 'ev-2',
     summary: 'ראיון טלוויזיה מיולי 2021: הבכירה אמרה בפומבי שאין ראיות לסיכונים קרדיולוגיים.',
-    category: 'Public Statement',
     evidenceDate: '2021-07-15',
     targetEntity: 'Dr. Sharon Alroy-Preis',
     evidenceRole: 'Incriminating',
+    investigativeCategories: ['WITHHOLDING_INFORMATION'],
   },
 ];
 

@@ -31,13 +31,6 @@
       "tier4": "ראיות אנקדוטיות",
       "tier4Sub": "דרגה 4 — משקל נמוך"
     },
-    "categories": {
-      "title": "ראיות לפי קטגוריה משפטית",
-      "sideEffectWithholding": "הסתרת תופעות לוואי",
-      "regulatoryMisleading": "הטעיה רגולטורית",
-      "coercion": "כפייה",
-      "other": "אחר"
-    },
     "ledger": {
       "title": "פנקס הראיות",
       "records": "{count} רשומות",
@@ -46,7 +39,8 @@
       "searchingBtn": "מחפש…",
       "emptyTitle": "לא נמצאו רשומות ראיות.",
       "emptySub": "הגש ראיה, או הרחב את שאילתת החיפוש."
-    }
+    },
+    "categoriesTitle": "פילוח לפי תחומי חקירה"
   },
   "submit": {
     "backLink": "→ כספת",
@@ -676,5 +670,14 @@
       "btn": "הגש ראיה עכשיו",
       "hint": "ללא חשבון · ללא שם · מוצפן בדפדפן שלך"
     }
+  },
+  "categories": {
+    "WITHHOLDING_INFORMATION": "הסתרת מידע",
+    "INFORMED_CONSENT": "הסכמה מדעת",
+    "COERCION_MANDATE": "כפייה והתניה",
+    "EXPERIMENTAL_STATUS_CONCEALMENT": "הסתרת מעמד ניסויי",
+    "SAFETY_CLAIM_ALTERATION": "שינוי טענות בטיחות",
+    "STATISTICAL_MANIPULATION": "שינוי נתונים",
+    "ACCOUNTABILITY_EROSION": "טשטוש אחריות"
   }
 }

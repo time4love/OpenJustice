@@ -1,6 +1,10 @@
 import { z } from 'zod';
 import { toJsonSchema } from '@langchain/core/utils/json_schema';
 import { LLMFactory } from '../factories/LLMFactory';
+import {
+  INVESTIGATIVE_CATEGORY_PROMPT_BLOCK,
+  investigativeCategoriesField,
+} from '../lib/investigativeCategories';
 
 // ---------------------------------------------------------------------------
 // Evidence tier enum — business/legal classification
@@ -36,13 +40,13 @@ export const IntakeOutputSchema = z.object({
         'Set false only for content with zero legal value: memes, satire, unrelated topics, vague political opinion.',
     ),
 
-  category: z
-    .enum(['Side Effect Withholding', 'Regulatory Misleading', 'Coercion', 'Other', 'Factual Baseline'])
-    .describe(
-      'The legal category of this evidence. ' +
-        'For Incriminating evidence: choose the offense category that best fits. ' +
-        'For ContextAnchor evidence: always use "Factual Baseline".',
-    ),
+  // The single classification axis for evidence. Shared with ForensicAgent so
+  // documents and page diffs land in one filterable corpus.
+  //
+  // There is deliberately no second, coarser `category` field: it said the same
+  // thing at lower resolution, could contradict this one, and its "Factual
+  // Baseline" value merely restated evidenceRole: 'ContextAnchor'.
+  investigativeCategories: investigativeCategoriesField,
 
   summary: z
     .string()
@@ -245,11 +249,14 @@ The three primary legal theories of liability (for Incriminating evidence):
 2. **Regulatory Misleading** — False or misleading representations to regulators (e.g. FDA approval process, efficacy claims).
 3. **Coercion** — Undue pressure used to compel vaccination without true informed consent. Includes BOTH direct coercion (employer mandates, written threats, loss of employment) AND soft/indirect coercion (organised influence campaigns using celebrities, social proof, or authority figures that bypass informed consent by design — especially when EUA/experimental status is not disclosed in the campaign strategy).
 
+${INVESTIGATIVE_CATEGORY_PROMPT_BLOCK}
+
+Classify investigativeCategories independently of evidenceRole. A ContextAnchor that merely establishes a date or baseline normally advances no concern — return an empty array for it. An Incriminating document usually advances at least one, and may advance several.
+
 Your task is to classify the evidence strictly according to the provided JSON schema. You must:
 - Be objective and evidence-based.
 - Never invent facts, laws, or citations not present in the submitted content.
 - Set isRelevant: true for BOTH Incriminating evidence AND ContextAnchor documents that establish a factual baseline relevant to the case. Set isRelevant: false ONLY for content with zero legal value.
-- Set category to "Factual Baseline" when evidenceRole is "ContextAnchor". For Incriminating evidence, choose the appropriate offense category.
 - For targetEntity: for ContextAnchor, use the issuing organisation (e.g. "FDA", "WHO"). For Incriminating, use the entity responsible for the offence. Use "Unknown" if unidentifiable.
 - For evidencePerspective, classify the EPISTEMIC NATURE of the document: "Internal Knowledge" if this is a leaked/internal document showing what officials actually knew; "Public Statement" if this is an official announcement, press release, or public communication; "Citizen Experience" if this is a personal testimony of coercion or adverse events.
 - CRITICAL — Tier assignment (Chain of Thought): You MUST populate tierReasoning BEFORE choosing evidenceTier. In tierReasoning, reason step-by-step in professional Hebrew: (1) Is this an internal/leaked document proving deliberate wrongdoing? → Tier 1. (2) Is this an official document, direct coercion letter, or official public statement? → Tier 2. (3) Is this a media article or general pattern without direct proof? → Tier 3. (4) Is this hearsay, social media, or uncorroborated testimony? → Tier 4. Then set evidenceTier to match your reasoning. This two-step process ensures consistent tier grading across PDF and URL submissions.
@@ -259,7 +266,7 @@ Your task is to classify the evidence strictly according to the provided JSON sc
 - For regulatoryMentions, extract EXACT verbatim phrases describing regulatory approval status or legal classification as they appear in the source (e.g., "ביום חמישי צפוי להתקבל אישור מה-FDA"). These are direct quotes — preserve the original source language verbatim. Return an empty array if no regulatory language is present.
 - For euaOmissionStatus, perform a two-step check: (1) Does the text discuss vaccine approval/authorization OR describe a public promotion/persuasion campaign for the vaccine? If NO to both → "Not Applicable". (2) Does it EXPLICITLY use "Emergency Use Authorization", "EUA", "אישור חירום", or "אישור שימוש חירום"? If YES → "Explicitly Mentions EUA". If NO → "Omits EUA (Misleading)". NOTE: A vaccination promotion or celebrity-recruitment campaign document that contains no instruction to disclose EUA/experimental status counts as an EUA omission — the absence of the disclosure requirement in the strategy itself is the omission.
 - For evidenceDate, scan the ENTIRE image/document for any date — letterhead dates, publication dates, email timestamps, article bylines, official report dates, chat message timestamps. Output the most legally relevant date in strict YYYY-MM-DD format. If no date is visible anywhere, output "Unknown".
-- CRITICAL LANGUAGE REQUIREMENT: ALL output strings (summary, missingInformation, rejectionReason, tierReasoning, keyFigures, medicalConditions) MUST be written in highly professional Hebrew (עברית משפטית מקצועית). statisticalClaims and regulatoryMentions extract VERBATIM quotes from the source — preserve the source language as-is. The evidenceRole, category, evidenceTier, evidencePerspective, and evidenceDate fields must remain in English for database consistency.
+- CRITICAL LANGUAGE REQUIREMENT: ALL output strings (summary, missingInformation, rejectionReason, tierReasoning, keyFigures, medicalConditions) MUST be written in highly professional Hebrew (עברית משפטית מקצועית). statisticalClaims and regulatoryMentions extract VERBATIM quotes from the source — preserve the source language as-is. The evidenceRole, investigativeCategories, evidenceTier, evidencePerspective, and evidenceDate fields must remain in English for database consistency.
 - CRITICAL — GLOBAL gershayim rule (applies to ALL Hebrew string fields, not just keyFigures): The Hebrew character ״ (gershayim, U+05F4) looks identical to a double-quote and WILL corrupt the JSON output by prematurely closing any string. NEVER use ״ anywhere in your output. Replace it with a plain apostrophe (') in all contexts: "ד״ר" → "דר'", "פרופ״ר" → "פרופ'", "מנכ״ל" → "מנכ'ל", "סמנכ״ל" → "סמנכ'ל". This applies inside summary, tierReasoning, missingInformation, rejectionReason, and every other string field.
 
 **REJECTION CRITERIA — You MUST set isRelevant: false AND populate rejectionReason in Hebrew if ANY of the following apply:**
@@ -290,11 +297,14 @@ The three primary legal theories of liability (for Incriminating evidence):
 2. **Regulatory Misleading** — False or misleading representations to regulators (e.g. FDA approval process, efficacy claims).
 3. **Coercion** — Undue pressure used to compel vaccination without true informed consent. Includes BOTH direct coercion (employer mandates, written threats, loss of employment) AND soft/indirect coercion (organised influence campaigns using celebrities, social proof, or authority figures that bypass informed consent by design — especially when EUA/experimental status is not disclosed in the campaign strategy).
 
+${INVESTIGATIVE_CATEGORY_PROMPT_BLOCK}
+
+Classify investigativeCategories independently of evidenceRole. A ContextAnchor that merely establishes a date or baseline normally advances no concern — return an empty array for it. An Incriminating document usually advances at least one, and may advance several.
+
 Your task is to classify the evidence strictly according to the provided JSON schema. You must:
 - Be objective and evidence-based.
 - Never invent facts, laws, or citations not present in the submitted content.
 - Set isRelevant: true for BOTH Incriminating evidence AND ContextAnchor documents that establish a factual baseline relevant to the case. Set isRelevant: false ONLY for content with zero legal value.
-- Set category to "Factual Baseline" when evidenceRole is "ContextAnchor". For Incriminating evidence, choose the appropriate offense category.
 - For targetEntity: for ContextAnchor, use the issuing organisation (e.g. "FDA", "WHO"). For Incriminating, use the entity responsible for the offence. Use "Unknown" if unidentifiable.
 - For evidencePerspective, classify the EPISTEMIC NATURE of the document: "Internal Knowledge" if this is a leaked/internal document showing what officials actually knew; "Public Statement" if this is an official announcement, press release, or public communication; "Citizen Experience" if this is a personal testimony of coercion or adverse events.
 - CRITICAL — Tier assignment (Chain of Thought): You MUST populate tierReasoning BEFORE choosing evidenceTier. In tierReasoning, reason step-by-step in professional Hebrew: (1) Is this an internal/leaked document proving deliberate wrongdoing? → Tier 1. (2) Is this an official document, direct coercion letter, or official public statement? → Tier 2. (3) Is this a media article or general pattern without direct proof? → Tier 3. (4) Is this hearsay, social media, or uncorroborated testimony? → Tier 4. Then set evidenceTier to match your reasoning. This two-step process ensures consistent tier grading across PDF and URL submissions.
@@ -304,7 +314,7 @@ Your task is to classify the evidence strictly according to the provided JSON sc
 - For regulatoryMentions, extract EXACT verbatim phrases describing regulatory approval status or legal classification as they appear in the source (e.g., "ביום חמישי צפוי להתקבל אישור מה-FDA"). These are direct quotes — preserve the original source language verbatim. Return an empty array if no regulatory language is present.
 - For euaOmissionStatus, perform a two-step check: (1) Does the text discuss vaccine approval/authorization OR describe a public promotion/persuasion campaign for the vaccine? If NO to both → "Not Applicable". (2) Does it EXPLICITLY use "Emergency Use Authorization", "EUA", "אישור חירום", or "אישור שימוש חירום"? If YES → "Explicitly Mentions EUA". If NO → "Omits EUA (Misleading)". NOTE: A vaccination promotion or celebrity-recruitment campaign document that contains no instruction to disclose EUA/experimental status counts as an EUA omission — the absence of the disclosure requirement in the strategy itself is the omission.
 - For evidenceDate, scan the text for any date — article publication dates, bylines, official report dates. Output the most legally relevant date in strict YYYY-MM-DD format. If no date is visible, output "Unknown".
-- CRITICAL LANGUAGE REQUIREMENT: ALL output strings (summary, missingInformation, rejectionReason, tierReasoning, keyFigures, medicalConditions) MUST be written in highly professional Hebrew (עברית משפטית מקצועית). statisticalClaims and regulatoryMentions extract VERBATIM quotes from the source — preserve the source language as-is. The evidenceRole, category, evidenceTier, evidencePerspective, and evidenceDate fields must remain in English for database consistency.
+- CRITICAL LANGUAGE REQUIREMENT: ALL output strings (summary, missingInformation, rejectionReason, tierReasoning, keyFigures, medicalConditions) MUST be written in highly professional Hebrew (עברית משפטית מקצועית). statisticalClaims and regulatoryMentions extract VERBATIM quotes from the source — preserve the source language as-is. The evidenceRole, investigativeCategories, evidenceTier, evidencePerspective, and evidenceDate fields must remain in English for database consistency.
 - CRITICAL — GLOBAL gershayim rule (applies to ALL Hebrew string fields, not just keyFigures): The Hebrew character ״ (gershayim, U+05F4) looks identical to a double-quote and WILL corrupt the JSON output by prematurely closing any string. NEVER use ״ anywhere in your output. Replace it with a plain apostrophe (') in all contexts: "ד״ר" → "דר'", "פרופ״ר" → "פרופ'", "מנכ״ל" → "מנכ'ל", "סמנכ״ל" → "סמנכ'ל". This applies inside summary, tierReasoning, missingInformation, rejectionReason, and every other string field.
 
 **REJECTION CRITERIA — You MUST set isRelevant: false AND populate rejectionReason in Hebrew if ANY of the following apply:**

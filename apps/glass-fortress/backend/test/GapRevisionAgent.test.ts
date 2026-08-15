@@ -25,8 +25,8 @@ const VAULT_HIT: VaultHitRecord = {
   summary: 'מסמך פנימי ממשרד הבריאות המתאר ידיעה על אירועי לב לאחר חיסון mRNA.',
   evidenceTier: 'Tier1',
   evidenceRole: 'Incriminating',
+  investigativeCategories: ['WITHHOLDING_INFORMATION'],
   evidenceDate: '2021-06-10',
-  category: 'Internal Report',
   targetEntity: 'Ministry of Health',
 };
 

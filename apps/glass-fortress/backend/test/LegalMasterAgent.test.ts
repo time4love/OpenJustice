@@ -64,7 +64,7 @@ const TIER3_VECTOR: VectorSearchResult = {
 const TIER1_ROW = {
   fileHash: '0xabc123def456aaa',
   evidenceTier: 'Tier 1: Smoking Gun',
-  category: 'Side Effect Withholding',
+  investigativeCategories: ['WITHHOLDING_INFORMATION'],
   targetEntity: 'Ministry of Health',
   summary: 'Internal memo explicitly instructing staff to suppress myocarditis reporting.',
   evidenceDate: '2021-03-10',
@@ -72,7 +72,7 @@ const TIER1_ROW = {
 const TIER2_ROW = {
   fileHash: '0xdef456abc789bbb',
   evidenceTier: 'Tier 2: Material',
-  category: 'Side Effect Withholding',
+  investigativeCategories: ['WITHHOLDING_INFORMATION'],
   targetEntity: 'Ministry of Health',
   summary: 'Official document directly contradicting later-released trial data.',
   evidenceDate: '2021-08-23',
@@ -80,7 +80,7 @@ const TIER2_ROW = {
 const TIER3_ROW = {
   fileHash: '0xfff999ccc111ddd',
   evidenceTier: 'Tier 3: Supporting',
-  category: 'Side Effect Withholding',
+  investigativeCategories: ['WITHHOLDING_INFORMATION'],
   targetEntity: 'Unknown',
   summary: 'Media report on patterns of unreported adverse events.',
   evidenceDate: 'Unknown',
@@ -147,7 +147,7 @@ describe('LegalMasterAgent', () => {
       const agent = new LegalMasterAgent(vs);
       getMockInvoke(agent).mockResolvedValueOnce(MOCK_ARGUMENT);
 
-      const result = await agent.generateArgument('Side Effect Withholding', 'Ministry of Health');
+      const result = await agent.generateArgument('WITHHOLDING_INFORMATION', 'Ministry of Health');
 
       expect(result.title).toBe(MOCK_ARGUMENT.title);
       expect(result.legalTheory).toBe(MOCK_ARGUMENT.legalTheory);
@@ -161,7 +161,7 @@ describe('LegalMasterAgent', () => {
       const agent = new LegalMasterAgent(vs);
       getMockInvoke(agent).mockResolvedValueOnce(MOCK_ARGUMENT);
 
-      await agent.generateArgument('Side Effect Withholding', 'Ministry of Health');
+      await agent.generateArgument('WITHHOLDING_INFORMATION', 'Ministry of Health');
 
       const callArgs = getMockInvoke(agent).mock.calls[0][0] as Array<{
         role: string;
@@ -171,7 +171,7 @@ describe('LegalMasterAgent', () => {
       expect(callArgs[0].role).toBe('system');
       expect(callArgs[1].role).toBe('human');
       expect(callArgs[1].content).toContain('Ministry of Health');
-      expect(callArgs[1].content).toContain('Side Effect Withholding');
+      expect(callArgs[1].content).toContain('הסתרת מידע על סיכונים או תופעות לוואי');
     });
 
     it('includes evidence fileHashes in the human message', async () => {
@@ -180,7 +180,7 @@ describe('LegalMasterAgent', () => {
       const agent = new LegalMasterAgent(vs);
       getMockInvoke(agent).mockResolvedValueOnce(MOCK_ARGUMENT);
 
-      await agent.generateArgument('Side Effect Withholding', 'Ministry of Health');
+      await agent.generateArgument('WITHHOLDING_INFORMATION', 'Ministry of Health');
 
       const humanContent = (getMockInvoke(agent).mock.calls[0][0] as Array<{ content: string }>)[1]
         .content;
@@ -195,7 +195,7 @@ describe('LegalMasterAgent', () => {
       const agent = new LegalMasterAgent(vs);
       getMockInvoke(agent).mockResolvedValueOnce(MOCK_ARGUMENT);
 
-      await agent.generateArgument('Side Effect Withholding', 'Ministry of Health');
+      await agent.generateArgument('WITHHOLDING_INFORMATION', 'Ministry of Health');
 
       const humanContent = (getMockInvoke(agent).mock.calls[0][0] as Array<{ content: string }>)[1]
         .content;
@@ -204,21 +204,21 @@ describe('LegalMasterAgent', () => {
       expect(tier1Pos).toBeLessThan(tier3Pos);
     });
 
-    it('queries Prisma with strict filter (category + targetEntity) first', async () => {
+    it('queries Prisma with strict filter (concern + targetEntity) first', async () => {
       const vs = makeVectorStore([TIER1_VECTOR]);
       mockFindMany.mockResolvedValueOnce([TIER1_ROW]);
       const agent = new LegalMasterAgent(vs);
       getMockInvoke(agent).mockResolvedValueOnce(MOCK_ARGUMENT);
 
-      await agent.generateArgument('Side Effect Withholding', 'Ministry of Health');
+      await agent.generateArgument('WITHHOLDING_INFORMATION', 'Ministry of Health');
 
       expect(mockFindMany).toHaveBeenCalledTimes(1);
       const firstCallWhere = mockFindMany.mock.calls[0][0].where as Record<string, unknown>;
-      expect(firstCallWhere).toHaveProperty('category', 'Side Effect Withholding');
+      expect(firstCallWhere).toHaveProperty('investigativeCategories', { has: 'WITHHOLDING_INFORMATION' });
       expect(firstCallWhere).toHaveProperty('targetEntity', 'Ministry of Health');
     });
 
-    it('falls back to category-only Prisma query when strict filter returns no results', async () => {
+    it('falls back to concern-only Prisma query when strict filter returns no results', async () => {
       const vs = makeVectorStore([TIER1_VECTOR]);
       mockFindMany
         .mockResolvedValueOnce([]) // strict filter — nothing
@@ -226,12 +226,12 @@ describe('LegalMasterAgent', () => {
       const agent = new LegalMasterAgent(vs);
       getMockInvoke(agent).mockResolvedValueOnce(MOCK_ARGUMENT);
 
-      const result = await agent.generateArgument('Side Effect Withholding', 'Unknown Entity');
+      const result = await agent.generateArgument('WITHHOLDING_INFORMATION', 'Unknown Entity');
 
       expect(result).toBeDefined();
       expect(mockFindMany).toHaveBeenCalledTimes(2);
       const fallbackWhere = mockFindMany.mock.calls[1][0].where as Record<string, unknown>;
-      expect(fallbackWhere).toHaveProperty('category', 'Side Effect Withholding');
+      expect(fallbackWhere).toHaveProperty('investigativeCategories', { has: 'WITHHOLDING_INFORMATION' });
       expect(fallbackWhere).not.toHaveProperty('targetEntity');
     });
 
@@ -241,7 +241,7 @@ describe('LegalMasterAgent', () => {
       const agent = new LegalMasterAgent(vs);
 
       await expect(
-        agent.generateArgument('Side Effect Withholding', 'Unknown Entity'),
+        agent.generateArgument('WITHHOLDING_INFORMATION', 'Unknown Entity'),
       ).rejects.toThrow('No evidence found');
     });
 
@@ -252,7 +252,7 @@ describe('LegalMasterAgent', () => {
       getMockInvoke(agent).mockRejectedValueOnce(new Error('LLM rate limit'));
 
       await expect(
-        agent.generateArgument('Side Effect Withholding', 'Ministry of Health'),
+        agent.generateArgument('WITHHOLDING_INFORMATION', 'Ministry of Health'),
       ).rejects.toThrow('LLM rate limit');
     });
 
@@ -263,7 +263,7 @@ describe('LegalMasterAgent', () => {
       getMockInvoke(agent).mockResolvedValueOnce({ title: 42, citedHashes: 'not-an-array' });
 
       await expect(
-        agent.generateArgument('Side Effect Withholding', 'Ministry of Health'),
+        agent.generateArgument('WITHHOLDING_INFORMATION', 'Ministry of Health'),
       ).rejects.toThrow();
     });
 
@@ -274,7 +274,7 @@ describe('LegalMasterAgent', () => {
       const agent = new LegalMasterAgent(failingVs);
 
       await expect(
-        agent.generateArgument('Side Effect Withholding', 'Ministry of Health'),
+        agent.generateArgument('WITHHOLDING_INFORMATION', 'Ministry of Health'),
       ).rejects.toThrow('Pinecone connection failed');
     });
   });

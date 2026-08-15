@@ -5,6 +5,7 @@ import { useTranslations } from 'next-intl';
 import { Link } from '@/i18n/navigation';
 import { TopNav } from '@/components/TopNav';
 import { apiUrl } from '@/lib/api';
+import { CategoryBadges } from '@/components/CategoryBadges';
 
 const PAGE_SIZE = 20;
 
@@ -21,7 +22,7 @@ interface EvidenceMetadata {
   fileHash: string;
   status?: string;
   evidenceRole?: EvidenceRole;
-  category: string;
+  investigativeCategories: string[];
   tier: string;
   tierReasoning?: string;
   evidencePerspective?: EvidencePerspective;
@@ -242,9 +243,7 @@ function TimelineNode({
           )}
 
           {/* Category */}
-          {metadata.category && metadata.category !== 'Factual Baseline' && (
-            <span className="text-xs text-slate-400 min-w-0 truncate">{metadata.category}</span>
-          )}
+          <CategoryBadges categories={metadata.investigativeCategories} max={2} />
 
           {/* Pending badge */}
           {isPending && (

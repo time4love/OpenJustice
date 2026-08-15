@@ -5,6 +5,11 @@ import { useTranslations } from 'next-intl';
 import { Link } from '@/i18n/navigation';
 import { TopNav } from '@/components/TopNav';
 import { apiUrl } from '@/lib/api';
+import { CategoryBadges } from '@/components/CategoryBadges';
+import {
+  INVESTIGATIVE_CATEGORIES,
+  type InvestigativeCategory,
+} from '@/lib/investigativeCategories';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -16,15 +21,9 @@ type EvidenceTier =
   | 'Tier 3: Supporting'
   | 'Tier 4: Anecdotal';
 
-type Category =
-  | 'Side Effect Withholding'
-  | 'Regulatory Misleading'
-  | 'Coercion'
-  | 'Other';
-
 interface EvidenceMetadata {
   fileHash: string;
-  category: Category;
+  investigativeCategories: string[];
   tier: EvidenceTier;
   summary: string;
   targetEntity: string;
@@ -51,7 +50,7 @@ interface SearchResponse {
 interface EvidenceStats {
   total: number;
   byTier: Partial<Record<EvidenceTier, number>>;
-  byCategory: Partial<Record<Category, number>>;
+  byCategory: Partial<Record<InvestigativeCategory, number>>;
 }
 
 // ---------------------------------------------------------------------------
@@ -75,19 +74,6 @@ function tierStyle(tier: EvidenceTier): { badge: string; dot: string } {
       return { badge: 'bg-amber-50 text-amber-700 border border-amber-200', dot: 'bg-amber-500' };
     case 'Tier 4: Anecdotal':
       return { badge: 'bg-slate-100 text-slate-600 border border-slate-200', dot: 'bg-slate-400' };
-  }
-}
-
-function categoryStyle(cat: Category): string {
-  switch (cat) {
-    case 'Side Effect Withholding':
-      return 'bg-purple-50 text-purple-700 border border-purple-200';
-    case 'Regulatory Misleading':
-      return 'bg-blue-50 text-blue-700 border border-blue-200';
-    case 'Coercion':
-      return 'bg-rose-50 text-rose-700 border border-rose-200';
-    case 'Other':
-      return 'bg-slate-100 text-slate-600 border border-slate-200';
   }
 }
 
@@ -153,14 +139,6 @@ function TierBadge({ tier }: { tier: EvidenceTier }) {
   );
 }
 
-function CategoryBadge({ category }: { category: Category }) {
-  return (
-    <span className={`px-2 py-0.5 rounded text-xs font-medium ${categoryStyle(category)}`}>
-      {category}
-    </span>
-  );
-}
-
 function EntityBadge({ entity }: { entity: string }) {
   return (
     <span className="px-2 py-0.5 rounded text-xs font-medium bg-cyan-50 text-cyan-700 border border-cyan-200">
@@ -181,7 +159,7 @@ function EvidenceCard({ result }: { result: SearchResult }) {
       <div className="flex flex-wrap items-center gap-2">
         <EntityBadge entity={metadata.targetEntity} />
         <TierBadge tier={metadata.tier} />
-        <CategoryBadge category={metadata.category} />
+        <CategoryBadges categories={metadata.investigativeCategories} />
         {score !== undefined && (
           <span className="ms-auto text-xs font-mono text-slate-400">
             relevance {(score * 100).toFixed(1)}%
@@ -223,13 +201,7 @@ const ZERO_STATS: EvidenceStats = {
 export default function VaultPage() {
   const t = useTranslations('dashboard');
   const tc = useTranslations('common');
-
-  const categoryLabels: Record<Category, string> = {
-    'Side Effect Withholding': t('categories.sideEffectWithholding'),
-    'Regulatory Misleading': t('categories.regulatoryMisleading'),
-    'Coercion': t('categories.coercion'),
-    'Other': t('categories.other'),
-  };
+  const tCat = useTranslations('categories');
 
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchResult[]>([]);
@@ -272,7 +244,11 @@ export default function VaultPage() {
     void search(query);
   }
 
-  const categoryValues = Object.values(stats.byCategory);
+  // A record may advance several concerns, so these counts overlap by design and
+  // their sum exceeds stats.total. The bars are scaled to the largest concern.
+  const categoryValues = Object.values(stats.byCategory).filter(
+    (v): v is number => typeof v === 'number',
+  );
   const categoryMax = categoryValues.length > 0 ? Math.max(...categoryValues) : 1;
 
   return (
@@ -350,19 +326,17 @@ export default function VaultPage() {
         {/* Analytics — Category Breakdown */}
         <section className="bg-white border border-slate-200 rounded-lg p-5 shadow-sm">
           <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-5">
-            {t('categories.title')}
+            {t('categoriesTitle')}
           </h2>
           <div className="space-y-3">
-            {(['Side Effect Withholding', 'Regulatory Misleading', 'Coercion', 'Other'] as Category[]).map(
-              (cat) => (
-                <CategoryBar
-                  key={cat}
-                  label={categoryLabels[cat]}
-                  value={statsLoading ? 0 : (stats.byCategory[cat] ?? 0)}
-                  max={categoryMax}
-                />
-              ),
-            )}
+            {INVESTIGATIVE_CATEGORIES.map((cat) => (
+              <CategoryBar
+                key={cat}
+                label={tCat(cat)}
+                value={statsLoading ? 0 : (stats.byCategory[cat] ?? 0)}
+                max={categoryMax}
+              />
+            ))}
           </div>
         </section>
 

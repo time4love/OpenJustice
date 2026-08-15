@@ -19,6 +19,10 @@ Above all else, code must be clean and written to the highest standards:
 - Eliminate systematic risks proactively: if a pattern could silently fail in production (e.g. schema fields being dropped, type unsafety, unhandled edge cases), add a guard or test for it, not just a fix for the immediate symptom.
 - No dead code, no commented-out blocks, no `any` escape hatches.
 - If a test was wrong (not the code), fix the test — never weaken assertions to make tests pass.
+- **Always choose the clean solution, never the easy one.** Do not keep a compromised design because
+  unwinding it is inconvenient. When the clean solution is expensive because live data would need
+  migrating, do not quietly pick the easy option and do not silently do the expensive one — state the
+  trade-off and discuss it first.
 
 ## Code Conventions
 - TypeScript: strict mode, no `any`, zod validation for all LLM outputs
@@ -26,8 +30,29 @@ Above all else, code must be clean and written to the highest standards:
 - Tests: Jest for TS, Forge for Solidity. Always run tests after changes.
 - Never skip hooks (`--no-verify`) — fix the underlying issue instead.
 
+## Memory & Continuity
+
+### `CHECKPOINT` — the save-everything code word
+When the user writes **`CHECKPOINT`**, they are about to close the session and want all session
+knowledge persisted. Treat it as a command, not a question — do not ask what to save. Sweep for:
+decisions and their reasoning, gaps/bugs found but not fixed, architectural rules established, user
+corrections and preferences, blocked items and what unblocks them, and the state of work in progress
+(branch, test counts, what is already applied to production).
+
+Write each to the right place:
+- **Memory files** — reasoning, preferences, decisions, blockers (one fact per file).
+- **`MEMORY.md`** — index pointer per memory + a current Next Session Priorities list.
+- **Repo docs in git** (`docs/*-dev-plan.md`, `docs/phases/`, `COMPLIANCE.md`) — anything a future
+  contributor would need. If it belongs to the project rather than to Claude's memory of it, it goes
+  in git.
+
+Then report exactly what was written and where, and name anything deliberately not saved.
+
+`CHECKPOINT` is a backstop, not the mechanism: persist at natural boundaries — phase complete,
+significant decision, bug found and deferred — **without being asked**, so `CHECKPOINT` usually finds
+little left to do.
+
 ## Workflow
-- After completing a phase/task, ask if the Task Tracker in MEMORY.md should be updated.
 - Do not commit unless explicitly asked.
 - Do not push unless explicitly asked.
 

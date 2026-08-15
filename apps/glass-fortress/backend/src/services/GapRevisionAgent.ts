@@ -8,7 +8,7 @@ export interface VaultHitRecord {
   evidenceTier: string;
   evidenceRole: string;
   evidenceDate: string;
-  category: string;
+  investigativeCategories: string[];
   targetEntity: string;
 }
 
@@ -81,7 +81,7 @@ export class GapRevisionAgent {
           `GAP TO ADDRESS:\n${gapDescription}\n\n` +
           `NEW EVIDENCE RECORD:\n` +
           `  Date: ${evidence.evidenceDate} | Tier: ${evidence.evidenceTier} | Role: ${evidence.evidenceRole}\n` +
-          `  Entity: ${evidence.targetEntity} | Category: ${evidence.category}\n` +
+          `  Entity: ${evidence.targetEntity} | Category: ${evidence.investigativeCategories.join(", ") || "none"}\n` +
           `  Summary: ${evidence.summary.slice(0, 600)}\n\n` +
           `Revise the thesis body to incorporate this evidence and address the gap.`,
       },

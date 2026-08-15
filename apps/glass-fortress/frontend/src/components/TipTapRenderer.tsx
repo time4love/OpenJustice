@@ -6,7 +6,7 @@ import { Link } from '@/i18n/navigation';
 export type EvidenceInfo = {
   evidenceId?: string;     // UUID — used for /evidence/:id links
   summary?: string;
-  category?: string;
+  investigativeCategories?: string[];
   evidenceTier?: string;
   evidenceType?: string;   // 'DOCUMENT' | 'FORENSIC_DIFF'
   trackedUrlId?: string | null; // populated for FORENSIC_DIFF evidence

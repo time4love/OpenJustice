@@ -10,7 +10,7 @@ import type { DevilsAdvocateOutput } from './DevilsAdvocateAgent';
 export interface UncitedEvidence {
   fileHash: string;
   summary: string;
-  category: string;
+  investigativeCategories: string[];
   evidenceTier: string;
   evidenceRole: string;
   evidenceDate: string;
@@ -133,7 +133,7 @@ export class RevisionAgent {
               (e, i) =>
                 `[${i + 1}] Hash: ${e.fileHash}\n` +
                 `    Date: ${e.evidenceDate} | Tier: ${e.evidenceTier} | Role: ${e.evidenceRole}\n` +
-                `    Entity: ${e.targetEntity} | Category: ${e.category}\n` +
+                `    Entity: ${e.targetEntity} | Category: ${e.investigativeCategories.join(", ") || "none"}\n` +
                 `    Summary: ${e.summary.slice(0, 400)}`,
             )
             .join('\n\n')

@@ -9,8 +9,10 @@ dist/
 # Environment & secrets — NEVER commit these
 # ============================================================
 .env
-.env.local
-.env.*.local
+# Any env variant (.env.staging, .env.production.local, ...) — example files stay committable
+.env.*
+!.env.example
+!.env.*.example
 
 # ============================================================
 # Foundry / Solidity

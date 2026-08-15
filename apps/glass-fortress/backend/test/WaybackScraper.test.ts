@@ -136,6 +136,7 @@ const MOCK_HTML_CHANGED = `
 
 const SIGNIFICANT_FORENSIC_OUTPUT = {
   isLegallySignificant: true,
+  investigativeCategories: ['WITHHOLDING_INFORMATION', 'EXPERIMENTAL_STATUS_CONCEALMENT'],
   deletedItems: [
     { summary: 'הובטח כי תופעות הלוואי קלות וזמניות בלבד', exactQuote: 'Side effects are mild and temporary.' },
   ],
@@ -145,9 +146,10 @@ const SIGNIFICANT_FORENSIC_OUTPUT = {
 
 const COSMETIC_FORENSIC_OUTPUT = {
   isLegallySignificant: false,
+  investigativeCategories: [],
   deletedItems: [],
   addedItems: [],
-  legalSignificance: '',
+  legalSignificance: 'עדכון קישורי ניווט בלבד ללא שינוי בתוכן הרפואי או הרגולטורי.',
 };
 
 // ---------------------------------------------------------------------------
@@ -311,7 +313,7 @@ describe('WaybackScraper.fetchCorrelatedEvidence', () => {
       {
         evidenceDate: '2021-05-15',
         summary: 'דו"ח פנימי',
-        category: 'Side Effect Withholding',
+        investigativeCategories: ['WITHHOLDING_INFORMATION'],
         targetEntity: 'Ministry of Health',
         evidenceRole: 'Incriminating',
       },
@@ -322,7 +324,7 @@ describe('WaybackScraper.fetchCorrelatedEvidence', () => {
     expect(result[0]).toMatchObject({
       date: '2021-05-15',
       summary: 'דו"ח פנימי',
-      category: 'Side Effect Withholding',
+      investigativeCategories: ['WITHHOLDING_INFORMATION'],
       targetEntity: 'Ministry of Health',
       evidenceRole: 'Incriminating',
     });

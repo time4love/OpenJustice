@@ -165,7 +165,7 @@ export async function getResearchAgendaHandler(input: {
               evidenceTier: e.evidenceTier,
               evidenceRole: e.evidenceRole,
               evidenceDate: e.evidenceDate,
-              category: e.category,
+              investigativeCategories: e.investigativeCategories,
               targetEntity: e.targetEntity,
               keyFigures: e.figures.map((f) => f.name),
               sourceUrl: e.sourceUrl ?? null,
@@ -186,7 +186,7 @@ export async function getResearchAgendaHandler(input: {
       if (includeSuggestions && !isResolved) {
         const topNewHit = (vaultHits as Array<{
           fileHash: string; summary: string; evidenceTier: string; evidenceRole: string;
-          evidenceDate: string; category: string; targetEntity: string; alreadyCited: boolean;
+          evidenceDate: string; investigativeCategories: string[]; targetEntity: string; alreadyCited: boolean;
         }>).find((h) => !h.alreadyCited);
 
         if (topNewHit) {
