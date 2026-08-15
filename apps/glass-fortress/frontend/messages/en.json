@@ -575,18 +575,18 @@
     "badge": "Whistleblower Protection",
     "hero": {
       "title": "Your documents are safe — even from us",
-      "subtitle": "Encryption happens in your browser before anything is sent. Our servers never see a document. We cannot hand over what we don't hold.",
+      "subtitle": "Encryption happens in your browser before anything is sent. Our servers never see a document and never hold one — what does not exist cannot be disclosed.",
       "ctaSubmit": "Submit Evidence",
       "ctaLearnMore": "How it works"
     },
-    "tagline": "Never held · Cannot produce · Cannot reveal",
+    "tagline": "Never stored · Does not exist · Cannot be disclosed",
     "principlesHeading": "Three protection principles",
     "p1": {
       "title": "We don't hold it — we can't produce it",
       "body1": "The legal principle is simple: you cannot compel anyone to produce what they don't possess. Our server never holds your document.",
       "body2": "When you upload, your browser encrypts the file before any data leaves your device. The encrypted blob is stored on IPFS — a decentralised network outside our servers. We hold only structured metadata and a cryptographic pointer.",
       "item1": "Encrypted blob: on IPFS, not our servers",
-      "item2": "Decryption key: in your browser only",
+      "item2": "Decryption key: never stored — deleted after analysis",
       "item3": "Plaintext: never stored anywhere"
     },
     "p2": {
