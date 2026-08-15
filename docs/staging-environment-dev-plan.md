@@ -1,8 +1,19 @@
 # Staging Environment — Dev Plan
 
-**Status:** Phase 0 + 0b complete (on branch `feat/investigative-classification`, not merged).
-Phase 1 blocked on the staging Supabase project being created.
+**Status:** Phases 0, 0b, 1, 2 and 4 COMPLETE — **staging is live and tested**.
+Phase 3 (password gate + `noindex`) and Phase 5 (demo prep) remain.
 **Last updated:** 2026-08-15 — 477/477 backend tests, frontend builds clean.
+
+| | |
+|---|---|
+| Staging frontend | https://glass-fortress-frontend-staging.up.railway.app |
+| Staging backend | https://glass-fortress-backend-staging.up.railway.app |
+| Staging Supabase | project `glass-fortress-staging`, eu-central-1, **paid** ($10/mo, Pro org) — no idle pause |
+| Credentials | `apps/glass-fortress/backend/.env.staging` (gitignored) |
+| Local `.env` | points at **staging**; production preserved in `.env.production.local` |
+
+⚠️ **Staging is currently PUBLIC** — no password gate, no `noindex`. Phase 3 closes this and should
+happen before real MOH scan results go in.
 **Created:** 2026-08-15
 **Scope:** Glass Fortress only (backend + frontend). Bronze Fortress is out of scope.
 
@@ -214,6 +225,10 @@ Not originally part of this plan; added because auto-promotion was creating evid
 
 **Exit:** staging database is schema-identical to production and empty.
 
+**✅ Done 2026-08-15.** All four migrations applied. `pgvector`, `evidence_embeddings` and
+`match_evidence` verified end to end (round-trip returned `similarity: 1`, probe row removed). Public
+`evidence` storage bucket created via the Storage REST API.
+
 ### Phase 2 — Branch and Railway environment
 
 **[CLAUDE]**
@@ -229,6 +244,24 @@ Not originally part of this plan; added because auto-promotion was creating evid
 6. Trigger a deploy and confirm both services come up.
 
 **Exit:** two Railway URLs serving the `staging` branch against the staging database.
+
+**✅ Done 2026-08-15.** Environment duplicated, both Bronze Fortress services deleted **from staging
+only**, GF services pointed at the `staging` branch, all variables overwritten, both services deployed
+`SUCCESS` and tested by the user.
+
+⚠️ **Railway service IDs are shared across environments** — `bronze-fortress-backend` has the same ID
+in both. `railway service delete` is environment-scoped via `-e`, but always pass it explicitly and
+verify the other environment before and after each delete.
+
+⚠️ **Duplicating an environment copies production credentials.** Staging came up pointing at the
+production `DATABASE_URL`; a deploy before the overwrite would have written to the live vault.
+Overwrite variables *before* the first deploy. `PINATA_JWT`, `REGISTRAR_PRIVATE_KEY`,
+`EVIDENCE_REGISTRY_ADDRESS` and `RPC_URL` were deleted outright — a wallet private key has no place
+in staging. `MCP_WRITE_TOKEN`, `TOKEN_HMAC_SECRET` and `PII_SECRET_KEY` are staging-only values.
+
+**Railway cost:** measured $0.64 over 5 days for 4 services ≈ **$1/service/month**; staging adds ~$2.
+Usage limits could **not** be set — they require an active subscription and the project is still on
+the free trial. Upgrade to Hobby before it lapses, then set a soft limit.
 
 ### Phase 3 — Access control and environment awareness
 
@@ -260,6 +293,10 @@ Not originally part of this plan; added because auto-promotion was creating evid
 3. Confirm `npm run gf:backend` now writes to staging.
 
 **Exit:** local development can no longer touch production data by accident.
+
+**✅ Done 2026-08-15.** `.env` repointed at staging; production preserved in `.env.production.local`.
+Both DB URLs, all three Supabase values and both secrets swapped. 477/477 tests still pass and
+production verified still empty.
 
 ### Phase 5 — Demo preparation
 
@@ -341,12 +378,23 @@ Production is never modified except by Phase 0 step 5 (additive table) and step 
 
 ## 9. Open tasks arising (as of 2026-08-15)
 
-### Blocking the staging work
-1. **Create the staging Supabase project** — `glass-fortress-staging`, **eu-central-1** (production's
+### Next up
+1. **Phase 3 — password gate + `noindex`.** Staging is publicly reachable right now. This repo is
+   public and the platform is about whistleblowers; an ungated staging site holding test allegations
+   is the open exposure. Needs `src/middleware.ts`, an unlock page, `robots.txt` + `noindex` metadata,
+   an `APP_ENV`-driven staging banner suppressed by `DEMO_MODE`, and a backend boot guard that
+   refuses to start if `APP_ENV` and the database host disagree.
+2. **Phase 5 — demo prep.** Seed staging by running the real intake and forensics flows (do not copy
+   production rows). Run 6–10 candidate MOH URLs, record findings and wall-clock time, pick the 2–3
+   strongest, rehearse.
+3. **Upgrade Railway to Hobby** before the free trial lapses, then set a usage soft limit.
+
+### Done
+~~**Create the staging Supabase project** — `glass-fortress-staging`, **eu-central-1** (production's
    region). Try a **new free organization** first ($0); the existing Pro org bills $10/mo for a third
    project. Free-plan projects pause after ~7 days idle — add a weekly ping and always warm it up the
    day before a demo. Then send: pooler URI (6543), direct URI (5432), project URL, anon key,
-   service-role key. **Everything from Phase 1 onward is blocked on this.**
+   service-role key.~~ **✅ Done — project created on the paid Pro org ($10/mo).**
 
 ### Arising from the classification work
 2. **Thesis-support relation — not built.** *Does this evidence support thesis X, and which gap does
