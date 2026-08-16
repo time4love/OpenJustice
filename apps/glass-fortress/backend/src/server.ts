@@ -26,6 +26,7 @@ import { mcpRouter } from './mcp/mcpRoutes';
 import { authRouter } from './routes/authRoutes';
 import { prisma } from './lib/prisma';
 import { verifyEnvironmentIdentityAtStartup } from './lib/appEnv';
+import { requireStagingAccess } from './middleware/stagingAccess';
 import { VectorStoreService } from './services/VectorStoreService';
 
 // ---------------------------------------------------------------------------
@@ -75,6 +76,11 @@ app.use(express.json({ limit: '20mb' }));
 app.get('/health', (_req: Request, res: Response) => {
   res.json({ status: 'Glass Fortress Backend is Alive' });
 });
+
+// Everything below requires the staging bearer token once APP_ENV=staging.
+// /health stays above this line so Railway's platform healthcheck, which
+// carries no auth header, keeps working.
+app.use(requireStagingAccess);
 
 // ---------------------------------------------------------------------------
 // GET /api/stats — platform-wide aggregate counts for the home page mission board
