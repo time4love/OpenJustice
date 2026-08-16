@@ -47,6 +47,9 @@ interface ConfirmedResult {
   fileHash: string;
   txHash: string;
   analysis: DraftAnalysis;
+  // Contact capture only makes sense for whistleblower-submitted files — a URL
+  // submission's source is already public, so there's no submitter to protect or reach.
+  isFromUrl: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -462,7 +465,7 @@ function ConfirmedView({
   tResult: ReturnType<typeof useTranslations<'submit.result'>>;
   tContact: ReturnType<typeof useTranslations<'submit.contact'>>;
 }) {
-  const { analysis, fileHash, txHash } = result;
+  const { analysis, fileHash, txHash, isFromUrl } = result;
 
   const [contactInfo, setContactInfo] = useState('');
   const [consentGiven, setConsentGiven] = useState(false);
@@ -621,8 +624,9 @@ function ConfirmedView({
         </div>
       </div>
 
-      {/* Optional contact form — shown unless saved or skipped */}
-      {!saved && !skipped && (
+      {/* Optional contact form — only for whistleblower file submissions. A URL
+          submission's source is already public, so there's no submitter to reach. */}
+      {!isFromUrl && !saved && !skipped && (
         <div className="bg-white border border-slate-200 rounded-lg p-5 space-y-4 shadow-sm">
           <div>
             <p className="text-sm font-semibold text-slate-800 mb-1">{tContact('heading')}</p>
@@ -900,6 +904,7 @@ export default function SubmitPage() {
       fileHash: data.fileHash!,
       txHash: data.txHash!,
       analysis: data.analysis!,
+      isFromUrl: inputMode === 'url',
     });
     setPhase('confirmed');
   }
