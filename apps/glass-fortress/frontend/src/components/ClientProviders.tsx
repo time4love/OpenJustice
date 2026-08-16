@@ -1,5 +1,6 @@
 'use client';
 
+import '@/lib/stagingApiAuth';
 import { AuthProvider } from '@/context/AuthContext';
 
 /** Client-side providers wrapping the locale layout. */
