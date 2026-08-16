@@ -560,6 +560,65 @@ router.post('/promote', async (req: Request, res: Response): Promise<void> => {
 // Returns aggregate counts by tier and category across all stored evidence.
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// GET /api/evidence/latest?limit=
+//
+// Most recently submitted CONFIRMED evidence, newest first — for the
+// homepage "Latest Evidence" highlight strip. Distinct from /timeline, which
+// sorts by evidenceDate (the real-world event date) for the investigation
+// view; this sorts by createdAt (submission recency), a freshness signal.
+// Response is deliberately trimmed to teaser fields, not the full
+// EvidenceRecord shape — full detail is one click away at /evidence/:id.
+// ---------------------------------------------------------------------------
+
+const LatestQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(24).default(6),
+});
+
+router.get('/latest', async (req: Request, res: Response): Promise<void> => {
+  const parsed = LatestQuerySchema.safeParse(req.query);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Invalid query', details: parsed.error.flatten() });
+    return;
+  }
+  const { limit } = parsed.data;
+
+  try {
+    const rows = await prisma.evidence.findMany({
+      where: { status: 'CONFIRMED' },
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+      select: {
+        id: true,
+        fileHash: true,
+        summary: true,
+        targetEntity: true,
+        evidenceTier: true,
+        investigativeCategories: true,
+        evidenceDate: true,
+        createdAt: true,
+      },
+    });
+
+    res.status(200).json({
+      results: rows.map((r) => ({
+        evidenceId: r.id,
+        fileHash: r.fileHash,
+        summary: r.summary,
+        targetEntity: r.targetEntity,
+        evidenceTier: r.evidenceTier,
+        investigativeCategories: r.investigativeCategories,
+        evidenceDate: r.evidenceDate,
+        createdAt: r.createdAt,
+      })),
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error('[latest] Prisma error:', err instanceof Error ? err.stack : err);
+    res.status(500).json({ error: 'Latest evidence fetch failed', message });
+  }
+});
+
 router.get('/stats', async (_req: Request, res: Response): Promise<void> => {
   try {
     const [total, tierGroups, classified] = await Promise.all([

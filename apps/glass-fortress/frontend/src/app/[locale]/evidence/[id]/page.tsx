@@ -7,6 +7,7 @@ import { Link } from '@/i18n/navigation';
 import { TopNav } from '@/components/TopNav';
 import { apiUrl } from '@/lib/api';
 import { CategoryBadges } from '@/components/CategoryBadges';
+import { TierBadge } from '@/components/TierBadge';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -36,26 +37,6 @@ interface EvidenceDetail {
   citingTheses: { id: string; title: string | null }[];
   createdAt: string;
   createdBy?: { handle: string } | null;
-}
-
-// ---------------------------------------------------------------------------
-// Tier badge colours
-// ---------------------------------------------------------------------------
-
-const TIER_COLOURS: Record<string, string> = {
-  'Tier 1: Smoking Gun': 'bg-red-100 text-red-700 border-red-200',
-  'Tier 2: Material': 'bg-orange-100 text-orange-700 border-orange-200',
-  'Tier 3: Supporting': 'bg-yellow-100 text-yellow-700 border-yellow-200',
-  'Tier 4: Background': 'bg-slate-100 text-slate-600 border-slate-200',
-};
-
-function TierBadge({ tier }: { tier: string }) {
-  const cls = TIER_COLOURS[tier] ?? 'bg-slate-100 text-slate-600 border-slate-200';
-  return (
-    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border ${cls}`}>
-      {tier}
-    </span>
-  );
 }
 
 // ---------------------------------------------------------------------------

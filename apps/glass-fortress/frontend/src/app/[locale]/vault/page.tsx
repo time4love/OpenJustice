@@ -6,6 +6,7 @@ import { Link } from '@/i18n/navigation';
 import { TopNav } from '@/components/TopNav';
 import { apiUrl } from '@/lib/api';
 import { CategoryBadges } from '@/components/CategoryBadges';
+import { TierBadge, tierAccentColor } from '@/components/TierBadge';
 import {
   INVESTIGATIVE_CATEGORIES,
   type InvestigativeCategory,
@@ -51,30 +52,6 @@ interface EvidenceStats {
   total: number;
   byTier: Partial<Record<EvidenceTier, number>>;
   byCategory: Partial<Record<InvestigativeCategory, number>>;
-}
-
-// ---------------------------------------------------------------------------
-// Tier accent colors (for the start-border on evidence cards)
-// ---------------------------------------------------------------------------
-
-const TIER_ACCENT: Record<EvidenceTier, string> = {
-  'Tier 1: Smoking Gun': 'var(--color-red-500)',
-  'Tier 2: Material': 'var(--color-orange-500)',
-  'Tier 3: Supporting': 'var(--color-amber-500)',
-  'Tier 4: Anecdotal': 'var(--color-slate-300)',
-};
-
-function tierStyle(tier: EvidenceTier): { badge: string; dot: string } {
-  switch (tier) {
-    case 'Tier 1: Smoking Gun':
-      return { badge: 'bg-red-50 text-red-700 border border-red-200', dot: 'bg-red-500' };
-    case 'Tier 2: Material':
-      return { badge: 'bg-orange-50 text-orange-700 border border-orange-200', dot: 'bg-orange-500' };
-    case 'Tier 3: Supporting':
-      return { badge: 'bg-amber-50 text-amber-700 border border-amber-200', dot: 'bg-amber-500' };
-    case 'Tier 4: Anecdotal':
-      return { badge: 'bg-slate-100 text-slate-600 border border-slate-200', dot: 'bg-slate-400' };
-  }
 }
 
 function formatHash(hash: string): string {
@@ -129,16 +106,6 @@ function CategoryBar({ label, value, max }: { label: string; value: number; max:
   );
 }
 
-function TierBadge({ tier }: { tier: EvidenceTier }) {
-  const s = tierStyle(tier);
-  return (
-    <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-medium ${s.badge}`}>
-      <span className={`w-1.5 h-1.5 rounded-full ${s.dot}`} />
-      {tier}
-    </span>
-  );
-}
-
 function EntityBadge({ entity }: { entity: string }) {
   return (
     <span className="px-2 py-0.5 rounded text-xs font-medium bg-cyan-50 text-cyan-700 border border-cyan-200">
@@ -152,7 +119,7 @@ function EvidenceCard({ result }: { result: SearchResult }) {
 
   return (
     <div
-      style={{ borderInlineStartColor: TIER_ACCENT[metadata.tier] }}
+      style={{ borderInlineStartColor: tierAccentColor(metadata.tier) }}
       className="bg-white border border-slate-200 border-s-4 rounded-lg p-5 space-y-3 shadow-sm"
     >
       {/* Header row */}
