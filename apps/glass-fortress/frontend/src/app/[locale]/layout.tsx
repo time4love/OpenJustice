@@ -6,6 +6,7 @@ import FloatingChatWidget from '@/components/FloatingChatWidget';
 import { ClientProviders } from '@/components/ClientProviders';
 import { SiteFooter } from '@/components/SiteFooter';
 import { StagingBanner } from '@/components/StagingBanner';
+import { StagingDebugConsole } from '@/components/StagingDebugConsole';
 
 export default async function LocaleLayout({
   children,
@@ -26,6 +27,7 @@ export default async function LocaleLayout({
         <SiteFooter />
         <FloatingChatWidget />
         <StagingBanner />
+        <StagingDebugConsole />
       </ClientProviders>
     </NextIntlClientProvider>
   );
