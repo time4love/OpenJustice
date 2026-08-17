@@ -57,6 +57,14 @@ enum WaybackJobStatus {
   FAILED
 }
 
+// Why a job ended FAILED — lets the frontend distinguish an outage on
+// archive.org's end (retry later, nothing wrong with our pipeline) from an
+// unexpected failure worth investigating.
+enum WaybackFailureReason {
+  WAYBACK_OFFLINE      // every fetch in this batch hit HTTP 503 from web.archive.org
+  ALL_FETCHES_FAILED    // every fetch in this batch failed, but not via 503
+}
+
 enum TrackedUrlStatus {
   IDLE      // created via legacy sync endpoint; no async status tracking
   SCANNING  // runFullScan is active (or was interrupted — resumable)
@@ -109,6 +117,8 @@ model WaybackScrapeJob {
   status              WaybackJobStatus @default(PENDING)
   totalSnapshots      Int              @default(0)
   processedSnapshots  Int              @default(0)
+  // Set only when status is FAILED — null for every other status.
+  failureReason       WaybackFailureReason?
   // JSON: Array<{ timestamp: string; digest: string; status: 'PENDING' | 'DONE' | 'FAILED' }>
   snapshotsList       String           @default("[]")
   trackedUrlId        String           @unique

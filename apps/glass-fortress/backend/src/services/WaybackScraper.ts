@@ -362,6 +362,29 @@ function computeNextFromDate(snapshotsListJson: string, totalSnapshots: number):
   }
 }
 
+/**
+ * Thrown when a Wayback Machine HTTP request fails after retries are exhausted.
+ * Carries enough detail to classify the failure — an archive.org outage
+ * (retry later, our pipeline is fine) vs. something else worth investigating.
+ */
+export class WaybackFetchError extends Error {
+  readonly offline: boolean;
+  constructor(message: string, offline: boolean) {
+    super(message);
+    this.name = 'WaybackFetchError';
+    this.offline = offline;
+  }
+}
+
+/**
+ * True when the archive responded 503 — the signature of the Internet Archive's
+ * own "Temporarily Offline" outage page, as opposed to a one-off or rate-limit
+ * style failure (404, timeout, etc).
+ */
+export function isWaybackOffline(err: unknown): boolean {
+  return axios.isAxiosError(err) && err.response?.status === 503;
+}
+
 /** Thrown when a scan is cancelled mid-flight so runFullScan exits cleanly. */
 class ScanCancelledError extends Error {
   constructor(trackedUrlId: string) {
@@ -494,8 +517,9 @@ export class WaybackScraper {
       html = response.data;
     } catch (err) {
       if (axios.isAxiosError(err)) {
-        throw new Error(
+        throw new WaybackFetchError(
           `Failed to fetch snapshot ${timestamp}: HTTP ${err.response?.status ?? 'unknown'}`,
+          isWaybackOffline(err),
         );
       }
       throw err;
@@ -764,6 +788,7 @@ export class WaybackScraper {
         snapshotsList: '[]',
         totalSnapshots: 0,
         processedSnapshots: 0,
+        failureReason: null,
       },
       create: {
         url,
@@ -805,7 +830,10 @@ export class WaybackScraper {
         console.error(`[WaybackScraper] Job ${jobId} — CDX fetch failed:`, message);
         return prisma.waybackScrapeJob.update({
           where: { id: jobId },
-          data: { status: 'FAILED' },
+          data: {
+            status: 'FAILED',
+            failureReason: isWaybackOffline(err) ? 'WAYBACK_OFFLINE' : 'ALL_FETCHES_FAILED',
+          },
         });
       }
       snapshotsList = rawSnapshots.map((s) => ({
@@ -831,6 +859,11 @@ export class WaybackScraper {
     let previousText = '';
     let previousSnapshotId: string | null = null;
     let processedCount = snapshotsList.filter((s) => s.status === 'DONE').length;
+    // Tallied across this call only — used solely to classify a total-failure
+    // outcome (see the end of this method). A prior run's failures aren't
+    // reflected here, but doneCount already accounts for any prior successes.
+    let offlineFailures = 0;
+    let otherFailures = 0;
 
     for (let i = 0; i < snapshotsList.length; i++) {
       const entry = snapshotsList[i];
@@ -863,6 +896,11 @@ export class WaybackScraper {
           `[WaybackScraper] Job ${jobId} — snapshot ${entry.timestamp} fetch failed:`,
           err instanceof Error ? err.message : err,
         );
+        if (err instanceof WaybackFetchError && err.offline) {
+          offlineFailures++;
+        } else {
+          otherFailures++;
+        }
         entry.status = 'FAILED';
         processedCount++;
         await prisma.waybackScrapeJob.update({
@@ -1020,9 +1058,24 @@ export class WaybackScraper {
       await sleep(FETCH_DELAY_MS);
     }
 
+    // Every entry failed and nothing was ever persisted for this job — including
+    // prior runs, since doneCount below reflects the full snapshotsList, not just
+    // this call. Report FAILED instead of a misleading COMPLETED/0-diffs result.
+    const doneCount = snapshotsList.filter((s) => s.status === 'DONE').length;
+    if (snapshotsList.length > 0 && doneCount === 0) {
+      return prisma.waybackScrapeJob.update({
+        where: { id: jobId },
+        data: {
+          status: 'FAILED',
+          processedSnapshots: processedCount,
+          failureReason: offlineFailures > 0 && otherFailures === 0 ? 'WAYBACK_OFFLINE' : 'ALL_FETCHES_FAILED',
+        },
+      });
+    }
+
     return prisma.waybackScrapeJob.update({
       where: { id: jobId },
-      data: { status: 'COMPLETED', processedSnapshots: processedCount },
+      data: { status: 'COMPLETED', processedSnapshots: processedCount, failureReason: null },
     });
   }
 

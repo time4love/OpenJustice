@@ -265,6 +265,8 @@
     "noSnapshotsTitle": "No archive snapshots found.",
     "noSnapshotsSub": "The Wayback Machine has no records for this URL.",
     "errorTitle": "Scan failed.",
+    "waybackOfflineError": "The Wayback Machine (archive.org) is currently unreachable — no snapshots could be fetched. This is an outage on their end, not a finding. Try again once it's back online.",
+    "scanFailedGeneric": "Scan job failed on the server.",
     "deletionsLabel": "DELETED",
     "additionsLabel": "ADDED",
     "forensicLabel": "Forensic Analysis",
