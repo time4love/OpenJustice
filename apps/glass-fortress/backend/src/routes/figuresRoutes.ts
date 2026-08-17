@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { prisma } from '../lib/prisma';
+import { mapEvidenceToRecord } from '../lib/evidenceRecord';
 
 const router = Router();
 
@@ -61,27 +62,7 @@ router.get('/:id', async (req: Request, res: Response): Promise<void> => {
 
     const evidence = figure.evidence.map((r) => ({
       content: r.summary,
-      metadata: {
-        fileHash: r.fileHash,
-        evidenceRole: r.evidenceRole,
-        investigativeCategories: r.investigativeCategories,
-        tier: r.evidenceTier,
-        evidencePerspective: r.evidencePerspective,
-        tierReasoning: r.tierReasoning,
-        summary: r.summary,
-        targetEntity: r.targetEntity,
-        evidenceDate: r.evidenceDate,
-        figures: r.figures,
-        medicalConditions: JSON.parse(r.medicalConditions) as string[],
-        statisticalClaims: JSON.parse(r.statisticalClaims) as string[],
-        regulatoryMentions: JSON.parse(r.regulatoryMentions) as string[],
-        euaOmissionStatus: r.euaOmissionStatus,
-        sourceUrl: r.sourceUrl,
-        fileUrl: r.fileUrl,
-        urlVersionDiffId: r.urlVersionDiffId,
-        trackedUrlId: r.urlVersionDiff?.trackedUrlId ?? null,
-        timestamp: r.createdAt.getTime(),
-      },
+      metadata: mapEvidenceToRecord(r, r.urlVersionDiff?.trackedUrlId ?? null),
     }));
 
     res.status(200).json({

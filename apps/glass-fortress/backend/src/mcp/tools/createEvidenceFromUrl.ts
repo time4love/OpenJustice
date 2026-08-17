@@ -1,8 +1,9 @@
-import crypto from 'crypto';
 import { z } from 'zod';
 import { prisma } from '../../lib/prisma';
 import { IntakeAgent } from '../../services/IntakeAgent';
 import { getResearcherId } from '../../context/researcherContext';
+import { Web3Service } from '../../services/Web3Service';
+import { buildEvidenceAnalysisData } from '../../lib/evidenceCreateData';
 
 // IntakeAgent is instantiated per-call — construction is cheap (no LLM work);
 // only .analyzeText() triggers network I/O.
@@ -56,7 +57,7 @@ export async function createEvidenceFromUrlHandler(input: {
       throw new Error(`Fetched PDF too small to analyse (${buffer.length} bytes). Is the URL publicly accessible?`);
     }
     analysis = await agent.analyzeEvidence(buffer, 'application/pdf');
-    fileHash = '0x' + crypto.createHash('sha256').update(buffer).digest('hex');
+    fileHash = Web3Service.hashFile(buffer);
   } else {
     // 2b. HTML/text path — strip markup and feed plain text to analyzeText.
     const html = await response.text();
@@ -71,8 +72,7 @@ export async function createEvidenceFromUrlHandler(input: {
       throw new Error(`Fetched content too short to analyse (${text.length} chars). Is the URL publicly accessible?`);
     }
     analysis = await agent.analyzeText(text, input.url);
-    fileHash =
-      '0x' + crypto.createHash('sha256').update(`${input.url}\n\n${text.slice(0, 40_000)}`, 'utf8').digest('hex');
+    fileHash = Web3Service.hashFile(Buffer.from(`${input.url}\n\n${text.slice(0, 40_000)}`, 'utf8'));
   }
 
   // 5. Check for duplicate
@@ -109,19 +109,8 @@ export async function createEvidenceFromUrlHandler(input: {
     data: {
       fileHash,
       status: 'PENDING_REVIEW',
-      evidenceRole: analysis.evidenceRole,
-      targetEntity: analysis.targetEntity,
-      evidenceTier: analysis.evidenceTier,
-      evidencePerspective: analysis.evidencePerspective ?? null,
-      investigativeCategories: analysis.investigativeCategories,
-      tierReasoning: analysis.tierReasoning ?? null,
-      summary: analysis.summary,
-      evidenceDate: analysis.evidenceDate,
+      ...buildEvidenceAnalysisData(analysis),
       figures: { connect: analysis.keyFigures.map((name) => ({ name })) },
-      medicalConditions: JSON.stringify(analysis.medicalConditions),
-      statisticalClaims: JSON.stringify(analysis.statisticalClaims),
-      regulatoryMentions: JSON.stringify(analysis.regulatoryMentions),
-      euaOmissionStatus: analysis.euaOmissionStatus,
       sourceUrl: input.url,
       ...(researcherId ? { createdById: researcherId } : {}),
     },

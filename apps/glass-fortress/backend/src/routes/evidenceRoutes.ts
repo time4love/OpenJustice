@@ -14,34 +14,8 @@ import {
   investigativeCategoriesField,
   onChainCategoryLabel,
 } from '../lib/investigativeCategories';
-
-// ---------------------------------------------------------------------------
-// Response types
-// ---------------------------------------------------------------------------
-
-interface EvidenceRecord {
-  evidenceId: string;
-  fileHash: string;
-  status: string;
-  evidenceRole: string;
-  investigativeCategories: string[];
-  tier: string;
-  evidencePerspective?: string | null;
-  tierReasoning?: string | null;
-  summary: string;
-  targetEntity: string;
-  evidenceDate: string;
-  figures: { id: string; name: string }[];
-  medicalConditions: string[];
-  statisticalClaims: string[];
-  regulatoryMentions: string[];
-  euaOmissionStatus: string;
-  sourceUrl?: string | null;
-  fileUrl?: string | null;
-  urlVersionDiffId?: string | null;
-  trackedUrlId?: string | null;
-  timestamp: number;
-}
+import { mapEvidenceToRecord } from '../lib/evidenceRecord';
+import { buildEvidenceAnalysisData } from '../lib/evidenceCreateData';
 
 const router = Router();
 
@@ -309,41 +283,20 @@ router.post(
       }
 
       // Write structured metadata to Prisma — this is the authoritative structured store.
+      const analysisData = buildEvidenceAnalysisData(analysis);
       await prisma.evidence.upsert({
         where: { fileHash },
         update: {
-          evidenceRole: analysis.evidenceRole,
-          targetEntity: analysis.targetEntity,
-          evidenceTier: analysis.evidenceTier,
-          evidencePerspective: analysis.evidencePerspective ?? null,
-          investigativeCategories: analysis.investigativeCategories,
-          tierReasoning: analysis.tierReasoning ?? null,
-          summary: analysis.summary,
-          evidenceDate: analysis.evidenceDate,
+          ...analysisData,
           figures: { set: figureNames.map((name) => ({ name })) },
-          medicalConditions: JSON.stringify(analysis.medicalConditions),
-          statisticalClaims: JSON.stringify(analysis.statisticalClaims),
-          regulatoryMentions: JSON.stringify(analysis.regulatoryMentions),
-          euaOmissionStatus: analysis.euaOmissionStatus,
           sourceUrl,
           fileUrl,
           urlVersionDiffId,
         },
         create: {
           fileHash,
-          evidenceRole: analysis.evidenceRole,
-          targetEntity: analysis.targetEntity,
-          evidenceTier: analysis.evidenceTier,
-          evidencePerspective: analysis.evidencePerspective ?? null,
-          investigativeCategories: analysis.investigativeCategories,
-          tierReasoning: analysis.tierReasoning ?? null,
-          summary: analysis.summary,
-          evidenceDate: analysis.evidenceDate,
+          ...analysisData,
           figures: { connect: figureNames.map((name) => ({ name })) },
-          medicalConditions: JSON.stringify(analysis.medicalConditions),
-          statisticalClaims: JSON.stringify(analysis.statisticalClaims),
-          regulatoryMentions: JSON.stringify(analysis.regulatoryMentions),
-          euaOmissionStatus: analysis.euaOmissionStatus,
           sourceUrl,
           fileUrl,
           urlVersionDiffId,
@@ -443,29 +396,7 @@ router.get('/timeline', async (req: Request, res: Response): Promise<void> => {
     // Wrap in { content, metadata } to match the TimelineRecord shape the frontend expects.
     const results = page.map((r) => ({
       content: r.summary,
-      metadata: {
-        evidenceId: r.id,
-        fileHash: r.fileHash,
-        status: r.status,
-        evidenceRole: r.evidenceRole,
-        investigativeCategories: r.investigativeCategories,
-        tier: r.evidenceTier,
-        evidencePerspective: r.evidencePerspective,
-        tierReasoning: r.tierReasoning,
-        summary: r.summary,
-        targetEntity: r.targetEntity,
-        evidenceDate: r.evidenceDate,
-        figures: r.figures,
-        medicalConditions: JSON.parse(r.medicalConditions) as string[],
-        statisticalClaims: JSON.parse(r.statisticalClaims) as string[],
-        regulatoryMentions: JSON.parse(r.regulatoryMentions) as string[],
-        euaOmissionStatus: r.euaOmissionStatus,
-        sourceUrl: r.sourceUrl,
-        fileUrl: r.fileUrl,
-        urlVersionDiffId: r.urlVersionDiffId,
-        trackedUrlId: r.urlVersionDiff?.trackedUrlId ?? null,
-        timestamp: r.createdAt.getTime(),
-      } satisfies EvidenceRecord,
+      metadata: mapEvidenceToRecord(r, r.urlVersionDiff?.trackedUrlId ?? null),
     }));
 
     res.status(200).json({ targetEntity: targetEntity ?? null, totalCount, results, nextCursor, hasMore });
@@ -682,28 +613,7 @@ router.get('/search', async (req: Request, res: Response): Promise<void> => {
         return {
           content: r.content,
           score: r.score,
-          metadata: {
-            evidenceId: row.id,
-            fileHash: row.fileHash,
-            status: row.status,
-            evidenceRole: row.evidenceRole,
-            investigativeCategories: row.investigativeCategories,
-            tier: row.evidenceTier,
-            evidencePerspective: row.evidencePerspective,
-            tierReasoning: row.tierReasoning,
-            summary: row.summary,
-            targetEntity: row.targetEntity,
-            evidenceDate: row.evidenceDate,
-            figures: row.figures,
-            medicalConditions: JSON.parse(row.medicalConditions) as string[],
-            statisticalClaims: JSON.parse(row.statisticalClaims) as string[],
-            regulatoryMentions: JSON.parse(row.regulatoryMentions) as string[],
-            euaOmissionStatus: row.euaOmissionStatus,
-            sourceUrl: row.sourceUrl,
-            fileUrl: row.fileUrl,
-            urlVersionDiffId: row.urlVersionDiffId,
-            timestamp: row.createdAt.getTime(),
-          } satisfies EvidenceRecord,
+          metadata: mapEvidenceToRecord(row),
         };
       });
 

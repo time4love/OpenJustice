@@ -1,8 +1,9 @@
-import crypto from 'crypto';
 import { z } from 'zod';
 import { prisma } from '../../lib/prisma';
 import { IntakeAgent } from '../../services/IntakeAgent';
 import { getResearcherId } from '../../context/researcherContext';
+import { Web3Service } from '../../services/Web3Service';
+import { buildEvidenceAnalysisData } from '../../lib/evidenceCreateData';
 
 function getAgent(): IntakeAgent {
   return new IntakeAgent();
@@ -39,8 +40,7 @@ export async function createEvidenceFromTextHandler(input: {
   const analysis = await agent.analyzeText(text, url);
 
   // Hash: url + text slice (identical to the HTML path in createEvidenceFromUrl)
-  const fileHash =
-    '0x' + crypto.createHash('sha256').update(`${url}\n\n${text.slice(0, 40_000)}`, 'utf8').digest('hex');
+  const fileHash = Web3Service.hashFile(Buffer.from(`${url}\n\n${text.slice(0, 40_000)}`, 'utf8'));
 
   // Duplicate guard
   const existing = await prisma.evidence.findUnique({ where: { fileHash } });
@@ -76,19 +76,8 @@ export async function createEvidenceFromTextHandler(input: {
     data: {
       fileHash,
       status: 'PENDING_REVIEW',
-      evidenceRole: analysis.evidenceRole,
-      targetEntity: analysis.targetEntity,
-      evidenceTier: analysis.evidenceTier,
-      evidencePerspective: analysis.evidencePerspective ?? null,
-      investigativeCategories: analysis.investigativeCategories,
-      tierReasoning: analysis.tierReasoning ?? null,
-      summary: analysis.summary,
-      evidenceDate: analysis.evidenceDate,
+      ...buildEvidenceAnalysisData(analysis),
       figures: { connect: analysis.keyFigures.map((name) => ({ name })) },
-      medicalConditions: JSON.stringify(analysis.medicalConditions),
-      statisticalClaims: JSON.stringify(analysis.statisticalClaims),
-      regulatoryMentions: JSON.stringify(analysis.regulatoryMentions),
-      euaOmissionStatus: analysis.euaOmissionStatus,
       sourceUrl: url,
       ...(researcherId ? { createdById: researcherId } : {}),
     },

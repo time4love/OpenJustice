@@ -1,14 +1,10 @@
-import { createHash } from 'crypto';
 import { z } from 'zod';
 import type { Prisma } from '@prisma/client';
 import { prisma } from '../../lib/prisma';
 import { parseMentions } from '../../utils/parseMentions';
 import { buildTipTapDoc } from '../../utils/tipTapUtils';
 import { getResearcherId } from '../../context/researcherContext';
-
-function sha256(value: unknown): string {
-  return createHash('sha256').update(JSON.stringify(value)).digest('hex');
-}
+import { sha256 } from '../../services/thesisAnalysis';
 
 // ---------------------------------------------------------------------------
 // Tool schema + handler
