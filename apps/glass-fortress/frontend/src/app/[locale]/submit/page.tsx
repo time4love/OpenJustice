@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, DragEvent, ChangeEvent } from 'react';
+import Image from 'next/image';
 import { useTranslations, useLocale } from 'next-intl';
 import { Link, useRouter, usePathname } from '@/i18n/navigation';
 import { apiUrl } from '@/lib/api';
@@ -506,8 +507,9 @@ function ConfirmedView({
         </div>
         <div className="p-5 space-y-5">
           <div className="flex flex-wrap gap-2 items-center">
-            <span className="px-2.5 py-1 rounded text-xs font-medium bg-cyan-50 text-cyan-700 border border-cyan-200">
-              ⚖ {analysis.targetEntity}
+            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded text-xs font-medium bg-cyan-50 text-cyan-700 border border-cyan-200">
+              <Image src="/icon_target_entity.png" alt="" width={14} height={14} className="w-3.5 h-3.5" />
+              {analysis.targetEntity}
             </span>
             <CategoryBadges categories={analysis.investigativeCategories} />
             {analysis.evidenceRole && (

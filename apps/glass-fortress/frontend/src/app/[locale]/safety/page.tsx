@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import { useTranslations, useLocale } from 'next-intl';
 import { Link } from '@/i18n/navigation';
 import { TopNav } from '@/components/TopNav';
@@ -30,7 +31,7 @@ function PrincipleCard({
         <span className="font-mono text-xs font-bold px-2 py-0.5 rounded" style={{ backgroundColor: accent + '20', color: accent }}>
           {number}
         </span>
-        <span className="text-xl" role="img" aria-hidden>{icon}</span>
+        <Image src={icon} alt="" width={24} height={24} className="w-6 h-6" />
         <h3 className="text-sm font-bold text-slate-900">{title}</h3>
       </div>
       <div className="px-6 py-5 space-y-3">
@@ -151,12 +152,12 @@ export default function SafetyPage() {
       {/* ── Header ─────────────────────────────────────────────────────── */}
       <header className="sticky top-0 z-20 bg-white/95 backdrop-blur border-b border-slate-200 shadow-sm">
         <div className="max-w-5xl mx-auto px-6 h-14 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <span className="text-slate-400 text-lg">⬡</span>
+          <Link href="/" className="flex items-center gap-3 hover:opacity-80 transition-opacity">
+            <Image src="/icon_dove.png" alt="" width={24} height={24} className="w-5 h-5" />
             <span className="font-mono text-sm font-semibold tracking-widest text-slate-900 uppercase">
               {tc('appName')}
             </span>
-          </div>
+          </Link>
           <TopNav current="safety" />
         </div>
       </header>
@@ -213,7 +214,7 @@ export default function SafetyPage() {
         <div className="grid md:grid-cols-3 gap-6">
           <PrincipleCard
             number="01"
-            icon="⚖️"
+            icon="/icon_case.png"
             title={t('p1.title')}
             body1={t('p1.body1')}
             body2={t('p1.body2')}
@@ -222,7 +223,7 @@ export default function SafetyPage() {
           />
           <PrincipleCard
             number="02"
-            icon="💾"
+            icon="/icon_ephemeral.png"
             title={t('p2.title')}
             body1={t('p2.body1')}
             body2={t('p2.body2')}
@@ -231,7 +232,7 @@ export default function SafetyPage() {
           />
           <PrincipleCard
             number="03"
-            icon="🔗"
+            icon="/icon_blockchain.png"
             title={t('p3.title')}
             body1={t('p3.body1')}
             body2={t('p3.body2')}
@@ -329,7 +330,7 @@ export default function SafetyPage() {
       <section className="bg-slate-900 text-white">
         <div className="max-w-5xl mx-auto px-6 py-16 text-center">
           <div className="w-12 h-12 rounded-2xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center mx-auto mb-6">
-            <span className="text-emerald-400 text-xl" role="img" aria-hidden>🔒</span>
+            <Image src="/icon_vault.png" alt="" width={28} height={28} className="w-7 h-7" />
           </div>
           <h2 className="text-2xl font-bold mb-3">{t('cta.title')}</h2>
           <p className="text-slate-300 text-sm mb-8 max-w-lg mx-auto leading-relaxed">{t('cta.body')}</p>

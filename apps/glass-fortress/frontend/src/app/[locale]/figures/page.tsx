@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import Image from 'next/image';
 import { useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { TopNav } from '@/components/TopNav';
@@ -199,15 +200,15 @@ export default function FiguresPage() {
       {/* Header */}
       <header className="sticky top-0 z-20 bg-white/95 backdrop-blur border-b border-slate-200 shadow-sm">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <span className="text-slate-400 text-lg">⬡</span>
+          <Link href="/" className="flex items-center gap-3 hover:opacity-80 transition-opacity">
+            <Image src="/icon_dove.png" alt="" width={24} height={24} className="w-5 h-5" />
             <span className="font-mono text-sm font-semibold tracking-widest text-slate-900 uppercase">
               {tc('appName')}
             </span>
             <span className="ms-2 text-xs text-slate-400 tracking-wide hidden sm:inline">
               {t('tagline')}
             </span>
-          </div>
+          </Link>
           <div className="flex items-center gap-4">
             <TopNav current="figures" />
           </div>

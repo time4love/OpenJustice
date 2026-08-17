@@ -6,11 +6,13 @@ import { useTranslations } from 'next-intl';
 import { Link } from '@/i18n/navigation';
 import { apiUrl } from '@/lib/api';
 import { ThesisEditor, type ThesisEditorHandle } from '@/components/ThesisEditor';
+import { useAuth } from '@/context/AuthContext';
 
 export default function EditThesisPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const t = useTranslations('theses');
   const router = useRouter();
+  const { researcher } = useAuth();
 
   const editorRef = useRef<ThesisEditorHandle>(null);
   const [initialContent, setInitialContent] = useState<Record<string, unknown> | undefined>();
@@ -55,6 +57,17 @@ export default function EditThesisPage({ params }: { params: Promise<{ id: strin
       setSubmitError(t('errorSave'));
       setSubmitting(false);
     }
+  }
+
+  if (!researcher?.approved) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center gap-3">
+        <p className="text-sm text-slate-500">{t('researcherOnlyNotice')}</p>
+        <Link href="/researchers" className="text-sm font-medium text-violet-700 hover:underline">
+          {t('researcherOnlyCta')} →
+        </Link>
+      </div>
+    );
   }
 
   if (loadError) {

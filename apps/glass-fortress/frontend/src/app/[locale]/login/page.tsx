@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, FormEvent, Suspense } from 'react';
+import Image from 'next/image';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useAuth } from '@/context/AuthContext';
@@ -113,7 +114,7 @@ function LoginStep() {
   if (sent) {
     return (
       <div className="text-center space-y-3">
-        <div className="text-2xl">📬</div>
+        <Image src="/icon_magic_link_sent.png" alt="" width={40} height={40} className="w-10 h-10 mx-auto" />
         <p className="text-sm font-medium text-slate-900">{t('magicLinkSent')}</p>
         <p className="text-sm text-slate-500">{t('magicLinkHint', { email })}</p>
         <button

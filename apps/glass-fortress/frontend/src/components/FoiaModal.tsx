@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Image from 'next/image';
 import { useTranslations } from 'next-intl';
 
 export type FoiaModalState =
@@ -133,7 +134,10 @@ export function FoiaModal({
 
         <div className="flex items-center justify-between px-5 sm:px-6 py-4 border-b border-slate-200 shrink-0">
           <div>
-            <h2 className="text-base font-bold text-slate-900">📄 {t('foiaModalTitle')}</h2>
+            <div className="flex items-center gap-2">
+              <Image src="/icon_foia.png" alt="" width={24} height={24} className="w-6 h-6 shrink-0" />
+              <h2 className="text-base font-bold text-slate-900">{t('foiaModalTitle')}</h2>
+            </div>
             {state.status === 'ready' && (
               <p className="text-xs text-slate-500 mt-0.5">{state.targetMinistry}</p>
             )}

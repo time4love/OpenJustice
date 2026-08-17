@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Image from 'next/image';
 import { useParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { Link } from '@/i18n/navigation';
@@ -113,7 +114,8 @@ export default function EvidencePage() {
                 <TierBadge tier={evidence.evidenceTier} />
                 {evidence.evidenceType === 'FORENSIC_DIFF' && (
                   <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold border bg-red-100 text-red-700 border-red-200">
-                    🔍 {t('forensicDiff')}
+                    <Image src="/icon_diff.png" alt="" width={14} height={14} className="w-3.5 h-3.5" />
+                    {t('forensicDiff')}
                   </span>
                 )}
                 {evidence.status === 'PENDING_REVIEW' ? (
