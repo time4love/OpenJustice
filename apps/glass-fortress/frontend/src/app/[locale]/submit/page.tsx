@@ -954,6 +954,12 @@ export default function SubmitPage() {
             <div className="bg-white border border-slate-200 rounded-lg p-5 shadow-sm">
               <h1 className="text-sm font-semibold text-slate-800 mb-2">{tUpload('heading')}</h1>
               <p className="text-sm text-slate-500 leading-relaxed">{tUpload('body')}</p>
+              <p className="text-xs text-slate-400 mt-3">
+                {tUpload('safetyNote')}{' '}
+                <Link href="/safety" className="text-blue-600 hover:underline">
+                  {tUpload('safetyLinkLabel')}
+                </Link>
+              </p>
             </div>
 
             <UploadZone
