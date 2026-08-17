@@ -325,7 +325,7 @@ export default function HomePage() {
       </ScrollReveal>
 
       {/* ── Get Involved ─────────────────────────────────────────────────── */}
-      <ScrollReveal className="py-16 border-t border-slate-200">
+      <ScrollReveal className="py-16 border-t border-slate-200 overflow-x-hidden">
         <div className="max-w-4xl mx-auto px-6">
           <h2 className="text-2xl font-bold text-slate-900 text-center mb-8">
             {t('getInvolvedHeading')}
