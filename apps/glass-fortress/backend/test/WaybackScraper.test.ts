@@ -1,4 +1,4 @@
-import { WaybackScraper } from '../src/services/WaybackScraper';
+import { WaybackScraper, WaybackFetchError, isWaybackOffline } from '../src/services/WaybackScraper';
 import { ForensicAgent } from '../src/services/ForensicAgent';
 
 // ---------------------------------------------------------------------------
@@ -57,6 +57,10 @@ jest.mock('../src/lib/prisma', () => ({
     urlSnapshot: {
       upsert: jest.fn().mockResolvedValue({ id: 'snapshot-id-abc', onChainTxHash: null }),
     },
+    waybackScrapeJob: {
+      findUnique: jest.fn(),
+      update: jest.fn().mockImplementation(({ data }) => Promise.resolve({ id: 'job-id-789', ...data })),
+    },
   },
 }));
 
@@ -65,6 +69,8 @@ import { prisma } from '../src/lib/prisma';
 
 const mockAxiosGet = axios.get as jest.Mock;
 const mockPrismaFindMany = prisma.evidence.findMany as jest.Mock;
+const mockJobFindUnique = prisma.waybackScrapeJob.findUnique as jest.Mock;
+const mockJobUpdate = prisma.waybackScrapeJob.update as jest.Mock;
 const MockForensicAgent = ForensicAgent as jest.MockedClass<typeof ForensicAgent>;
 
 // ---------------------------------------------------------------------------
@@ -281,6 +287,112 @@ describe('WaybackScraper.scrapeSnapshot', () => {
       scraper.scrapeSnapshot('https://health.gov.il/page', '20210101120000'),
     ).rejects.toThrow('HTTP 404');
   });
+
+  it('tags the thrown error as non-offline for a 404 (no retry involved)', async () => {
+    const axiosErr = Object.assign(new Error('Not Found'), {
+      isAxiosError: true,
+      response: { status: 404 },
+    });
+    (axios as unknown as Record<string, jest.Mock>)['isAxiosError'] = jest.fn().mockReturnValue(true);
+    mockAxiosGet.mockRejectedValueOnce(axiosErr);
+
+    const scraper = new WaybackScraper();
+    let caught: unknown;
+    try {
+      await scraper.scrapeSnapshot('https://health.gov.il/page', '20210101120000');
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toMatchObject({ offline: false });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Tests: isWaybackOffline — the 503-outage predicate, tested directly to
+// avoid exercising withRetry's real exponential backoff (503 triggers retries).
+// ---------------------------------------------------------------------------
+
+describe('isWaybackOffline', () => {
+  it('is true for a 503 (Internet Archive "Temporarily Offline")', () => {
+    (axios as unknown as Record<string, jest.Mock>)['isAxiosError'] = jest.fn().mockReturnValue(true);
+    const err = Object.assign(new Error('Service Unavailable'), { response: { status: 503 } });
+    expect(isWaybackOffline(err)).toBe(true);
+  });
+
+  it('is false for other HTTP statuses and non-axios errors', () => {
+    (axios as unknown as Record<string, jest.Mock>)['isAxiosError'] = jest.fn().mockReturnValue(true);
+    expect(isWaybackOffline(Object.assign(new Error('Not Found'), { response: { status: 404 } }))).toBe(false);
+
+    (axios as unknown as Record<string, jest.Mock>)['isAxiosError'] = jest.fn().mockReturnValue(false);
+    expect(isWaybackOffline(new Error('some other failure'))).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Tests: processJob — total-failure classification
+//
+// scrapeSnapshot is stubbed directly (rather than mocking axios + letting
+// withRetry run) so these tests aren't at the mercy of the real exponential
+// backoff a sustained 503 would trigger — that behavior is covered by the
+// isWaybackOffline and scrapeSnapshot suites above.
+// ---------------------------------------------------------------------------
+
+describe('WaybackScraper.processJob', () => {
+  const BASE_JOB = {
+    id: 'job-id-789',
+    status: 'PENDING',
+    url: 'https://health.gov.il/page',
+    fromDate: null,
+    snapshotsList: '[]',
+    totalSnapshots: 0,
+    processedSnapshots: 0,
+    trackedUrlId: 'tracked-url-id-123',
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockPrismaFindMany.mockResolvedValue([]);
+  });
+
+  it('marks the job FAILED with WAYBACK_OFFLINE when every snapshot fetch is an outage', async () => {
+    mockJobFindUnique.mockResolvedValueOnce(BASE_JOB);
+    mockAxiosGet.mockResolvedValueOnce(makeAxiosResponse(CDX_RESPONSE)); // 3 snapshots
+
+    const scraper = new WaybackScraper();
+    jest
+      .spyOn(scraper, 'scrapeSnapshot')
+      .mockRejectedValue(new WaybackFetchError('Failed to fetch snapshot: HTTP 503', true));
+
+    const result = await scraper.processJob('job-id-789');
+    expect(result).toMatchObject({ status: 'FAILED', failureReason: 'WAYBACK_OFFLINE' });
+  }, 15_000);
+
+  it('marks the job FAILED with ALL_FETCHES_FAILED when every fetch fails for a non-outage reason', async () => {
+    mockJobFindUnique.mockResolvedValueOnce(BASE_JOB);
+    mockAxiosGet.mockResolvedValueOnce(makeAxiosResponse(CDX_RESPONSE));
+
+    const scraper = new WaybackScraper();
+    jest
+      .spyOn(scraper, 'scrapeSnapshot')
+      .mockRejectedValue(new WaybackFetchError('Failed to fetch snapshot: HTTP 404', false));
+
+    const result = await scraper.processJob('job-id-789');
+    expect(result).toMatchObject({ status: 'FAILED', failureReason: 'ALL_FETCHES_FAILED' });
+  }, 15_000);
+
+  it('marks the job COMPLETED with no failureReason once at least one snapshot succeeds', async () => {
+    mockJobFindUnique.mockResolvedValueOnce(BASE_JOB);
+    mockAxiosGet.mockResolvedValueOnce(makeAxiosResponse(CDX_RESPONSE));
+
+    const scraper = new WaybackScraper();
+    jest
+      .spyOn(scraper, 'scrapeSnapshot')
+      .mockResolvedValueOnce('some page text')
+      .mockRejectedValue(new WaybackFetchError('Failed to fetch snapshot: HTTP 503', true));
+
+    const result = await scraper.processJob('job-id-789');
+    expect(result).toMatchObject({ status: 'COMPLETED', failureReason: null });
+  }, 15_000);
 });
 
 // ---------------------------------------------------------------------------

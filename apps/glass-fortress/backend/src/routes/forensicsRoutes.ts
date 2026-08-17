@@ -173,6 +173,7 @@ router.get('/tracked/:id/status', async (req: Request, res: Response): Promise<v
           totalSnapshots: true,
           processedSnapshots: true,
           updatedAt: true,
+          failureReason: true,
         },
       }),
       prisma.urlVersionDiff.findMany({
@@ -299,6 +300,7 @@ router.get('/tracked/:id/jobs', async (req: Request, res: Response): Promise<voi
         totalSnapshots: true,
         processedSnapshots: true,
         createdAt: true,
+        failureReason: true,
       },
     });
     res.status(200).json({ jobs });
