@@ -10,6 +10,7 @@ import { TipTapRenderer, type EvidenceInfo } from '@/components/TipTapRenderer';
 import { LegalDisclaimer } from '@/components/LegalDisclaimer';
 import type { EvidenceGap, CounterArgument, AIAnalysis } from '@/types/thesis';
 import { CategoryBadges } from '@/components/CategoryBadges';
+import { tierDotColor } from '@/components/TierBadge';
 import { useAuth } from '@/context/AuthContext';
 import { FoiaModal, type FoiaModalState } from '@/components/FoiaModal';
 import { WhistleblowerModal } from '@/components/WhistleblowerModal';
@@ -61,14 +62,6 @@ interface VaultHit {
   tier: string;
   evidenceDate: string;
   targetEntity: string;
-}
-
-const GAP_TIER_DOT: Record<string, string> = {
-  '1': 'bg-red-500', '2': 'bg-orange-500', '3': 'bg-yellow-500', '4': 'bg-slate-400',
-};
-function gapTierDot(tier: string) {
-  const num = tier?.match(/\d/)?.[0] ?? '';
-  return GAP_TIER_DOT[num] ?? 'bg-slate-300';
 }
 
 function appendEvidenceMention(
@@ -234,7 +227,7 @@ function GapSearchPanel({
           )}
           {!loading && hits.map(hit => (
             <div key={hit.fileHash} className="flex items-start gap-3 px-4 py-3 border-b border-slate-100 last:border-0">
-              <span className={`mt-1 shrink-0 w-2 h-2 rounded-full ${gapTierDot(hit.tier)}`} />
+              <span className={`mt-1 shrink-0 w-2 h-2 rounded-full ${tierDotColor(hit.tier)}`} />
               <div className="flex-1 min-w-0">
                 <p className="text-xs font-medium text-slate-700 leading-snug">{hit.summary.slice(0, 120)}</p>
                 <p className="text-xs text-slate-400 mt-0.5 flex items-center gap-1.5">
@@ -555,7 +548,7 @@ function ThesisPageInner({ id }: { id: string }) {
             <div className="flex flex-wrap gap-2">
               {evidenceMentions.map(m => {
                 const info = evidenceMap[m.refId];
-                const tierDotClass = gapTierDot(info?.evidenceTier ?? '');
+                const tierDotClass = tierDotColor(info?.evidenceTier ?? '');
                 const label = info?.summary?.slice(0, 35) || m.refId.slice(0, 8);
                 return (
                   <Link

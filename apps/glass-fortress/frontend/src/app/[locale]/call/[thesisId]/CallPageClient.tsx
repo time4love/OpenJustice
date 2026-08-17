@@ -7,6 +7,7 @@ import { apiUrl } from '@/lib/api';
 import { FoiaModal, type FoiaModalState } from '@/components/FoiaModal';
 import { WhistleblowerModal } from '@/components/WhistleblowerModal';
 import { LegalDisclaimer } from '@/components/LegalDisclaimer';
+import { strengthPillClass, strengthHeLabel } from '@/components/StrengthBadge';
 import type { EvidenceGap, CounterArgument, AIAnalysis } from '@/types/thesis';
 
 // ---------------------------------------------------------------------------
@@ -34,13 +35,6 @@ interface Thesis {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-const STRENGTH_STYLES: Record<string, { pill: string; label: string }> = {
-  WEAK:      { pill: 'bg-red-100 text-red-700 border-red-200',       label: 'חלש' },
-  MODERATE:  { pill: 'bg-amber-100 text-amber-700 border-amber-200', label: 'בינוני' },
-  STRONG:    { pill: 'bg-emerald-100 text-emerald-700 border-emerald-200', label: 'חזק' },
-  COMPELLING:{ pill: 'bg-violet-100 text-violet-700 border-violet-200', label: 'משכנע' },
-};
 
 const NEXT_STRENGTH: Record<string, string> = {
   WEAK: 'MODERATE', MODERATE: 'STRONG', STRONG: 'COMPELLING', COMPELLING: 'COMPELLING',
@@ -247,7 +241,6 @@ export function CallPageClient({ thesisId }: { thesisId: string }) {
   )];
   const evidenceCount = thesis.headVersion.mentions.filter((m) => m.type === 'EVIDENCE').length;
   const strength = analysis?.overallStrengthAssessment ?? 'MODERATE';
-  const strengthStyle = STRENGTH_STYLES[strength] ?? STRENGTH_STYLES['MODERATE']!;
   const nextStrength = NEXT_STRENGTH[strength] ?? 'COMPELLING';
   const thesisTitle = thesis.title ?? t('defaultTitle');
 
@@ -271,8 +264,8 @@ export function CallPageClient({ thesisId }: { thesisId: string }) {
 
           {/* Strength badge + upgrade arrow */}
           <div className="flex flex-wrap items-center gap-3">
-            <span className={`text-xs font-bold px-3 py-1.5 rounded-full border ${strengthStyle.pill}`}>
-              {t('strengthLabel')}: {strengthStyle.label}
+            <span className={`text-xs font-bold px-3 py-1.5 rounded-full border ${strengthPillClass(strength)}`}>
+              {t('strengthLabel')}: {strengthHeLabel(strength)}
             </span>
             {strength !== 'COMPELLING' && (
               <span className="text-xs text-slate-400">
