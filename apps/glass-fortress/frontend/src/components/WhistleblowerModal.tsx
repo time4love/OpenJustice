@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef } from 'react';
+import Image from 'next/image';
 import { useTranslations, useLocale } from 'next-intl';
 import { apiUrl } from '@/lib/api';
 import { stripMetadata, encryptFile, uint8ToBase64 } from '@/lib/documentVault';
@@ -160,7 +161,10 @@ export function WhistleblowerModal({
 
         {/* Header */}
         <div className="flex items-center justify-between px-5 sm:px-6 py-4 border-b border-slate-200 shrink-0">
-          <h2 className="text-base font-bold text-slate-900">🔒 {t('tipModalTitle')}</h2>
+          <div className="flex items-center gap-2">
+            <Image src="/icon_anon.png" alt="" width={24} height={24} className="w-6 h-6 shrink-0" />
+            <h2 className="text-base font-bold text-slate-900">{t('tipModalTitle')}</h2>
+          </div>
           <button
             onClick={onClose}
             disabled={busy}
@@ -202,7 +206,11 @@ export function WhistleblowerModal({
             {previews.map((p, i) => (
               <div key={i} className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3" dir={locale === 'he' ? 'rtl' : 'ltr'}>
                 <div className="flex items-center gap-2">
-                  <span className="text-slate-400 text-sm">{p.filename.endsWith('.pdf') ? '📄' : '🖼️'}</span>
+                  {p.filename.endsWith('.pdf') ? (
+                    <Image src="/icon_file_type.png" alt="" width={16} height={16} className="w-4 h-4 shrink-0" />
+                  ) : (
+                    <span className="text-slate-400 text-sm">🖼️</span>
+                  )}
                   <span className="text-xs font-semibold text-slate-700 truncate">{p.filename}</span>
                   {!p.isRelevant && (
                     <span className="ms-auto shrink-0 text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded px-2 py-0.5">
@@ -304,7 +312,11 @@ export function WhistleblowerModal({
                 <ul className="space-y-1.5">
                   {files.map((f, i) => (
                     <li key={i} className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2">
-                      <span className="text-slate-400 shrink-0 text-sm">{f.type === 'application/pdf' ? '📄' : '🖼️'}</span>
+                      {f.type === 'application/pdf' ? (
+                        <Image src="/icon_file_type.png" alt="" width={16} height={16} className="w-4 h-4 shrink-0" />
+                      ) : (
+                        <span className="text-slate-400 shrink-0 text-sm">🖼️</span>
+                      )}
                       <span className="flex-1 text-xs text-slate-700 truncate min-w-0">{f.name}</span>
                       <span className="text-xs text-slate-400 shrink-0">{(f.size / 1024 / 1024).toFixed(1)}MB</span>
                       <button

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, FormEvent } from 'react';
+import Image from 'next/image';
 import { useTranslations } from 'next-intl';
 import { Link } from '@/i18n/navigation';
 import { TopNav } from '@/components/TopNav';
@@ -108,8 +109,9 @@ function CategoryBar({ label, value, max }: { label: string; value: number; max:
 
 function EntityBadge({ entity }: { entity: string }) {
   return (
-    <span className="px-2 py-0.5 rounded text-xs font-medium bg-cyan-50 text-cyan-700 border border-cyan-200">
-      ⚖ {entity}
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-cyan-50 text-cyan-700 border border-cyan-200">
+      <Image src="/icon_target_entity.png" alt="" width={14} height={14} className="w-3.5 h-3.5" />
+      {entity}
     </span>
   );
 }
@@ -223,8 +225,8 @@ export default function VaultPage() {
       {/* Header */}
       <header className="sticky top-0 z-20 bg-white/95 backdrop-blur border-b border-slate-200 shadow-sm">
         <div className="max-w-7xl mx-auto px-6 h-14 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <span className="text-slate-400 text-lg">⬡</span>
+          <Link href="/" className="flex items-center gap-3 hover:opacity-80 transition-opacity">
+            <Image src="/icon_dove.png" alt="" width={24} height={24} className="w-5 h-5" />
             <div>
               <span className="font-mono text-sm font-semibold tracking-widest text-slate-900 uppercase">
                 {tc('appName')}
@@ -233,7 +235,7 @@ export default function VaultPage() {
                 {t('tagline')}
               </span>
             </div>
-          </div>
+          </Link>
           <div className="flex items-center gap-4">
             <span className="hidden sm:flex items-center gap-1.5 text-xs text-slate-500">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />

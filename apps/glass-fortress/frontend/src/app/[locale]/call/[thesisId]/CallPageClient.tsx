@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Image from 'next/image';
 import { useTranslations } from 'next-intl';
 import { apiUrl } from '@/lib/api';
 import { FoiaModal, type FoiaModalState } from '@/components/FoiaModal';
@@ -153,13 +154,15 @@ function GapCard({
             disabled={foiaModal?.status === 'loading'}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-sky-100 hover:bg-sky-200 text-sky-800 text-xs font-semibold rounded-lg transition-colors active:scale-95 disabled:opacity-50"
           >
-            📄 {foiaModal?.status === 'loading' ? t('foiaGenerating') : t('foiaBtn')}
+            <Image src="/icon_foia.png" alt="" width={16} height={16} className="w-4 h-4" />
+            {foiaModal?.status === 'loading' ? t('foiaGenerating') : t('foiaBtn')}
           </button>
           <button
             onClick={() => setTipOpen(true)}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-violet-100 hover:bg-violet-200 text-violet-800 text-xs font-semibold rounded-lg transition-colors active:scale-95"
           >
-            🔒 {t('tipBtn')}
+            <Image src="/icon_anon.png" alt="" width={16} height={16} className="w-4 h-4" />
+            {t('tipBtn')}
           </button>
         </div>
       </div>

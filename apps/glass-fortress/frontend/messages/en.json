@@ -323,6 +323,8 @@
     "pageTitle": "Legal Thesis Builder",
     "tagline": "Write · Tag Evidence · Stress-Test with AI",
     "newThesisHeading": "New Thesis",
+    "researcherOnlyNotice": "This tool is available to approved researchers only.",
+    "researcherOnlyCta": "Request Research Access",
     "titleLabel": "Thesis Title",
     "titlePlaceholder": "e.g. Concealment of Side-Effect Data by the Ministry of Health",
     "contentLabel": "Thesis Body",

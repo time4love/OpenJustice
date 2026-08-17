@@ -323,6 +323,8 @@
     "pageTitle": "בונה תזות משפטיות",
     "tagline": "כתיבה · תיוג ראיות · ביקורת פרקליט השטן",
     "newThesisHeading": "תזה חדשה",
+    "researcherOnlyNotice": "הכלי הזה זמין רק לחוקרים מאושרים.",
+    "researcherOnlyCta": "בקש גישת מחקר",
     "titleLabel": "כותרת התזה",
     "titlePlaceholder": "לדוגמה: הסתרת נתוני תופעות לוואי על ידי משרד הבריאות",
     "contentLabel": "גוף התזה",

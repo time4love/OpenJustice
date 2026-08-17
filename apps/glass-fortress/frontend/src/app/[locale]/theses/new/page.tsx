@@ -6,14 +6,27 @@ import { useTranslations } from 'next-intl';
 import { Link } from '@/i18n/navigation';
 import { apiUrl } from '@/lib/api';
 import { ThesisEditor, type ThesisEditorHandle } from '@/components/ThesisEditor';
+import { useAuth } from '@/context/AuthContext';
 
 export default function NewThesisPage() {
   const t = useTranslations('theses');
   const router = useRouter();
+  const { researcher } = useAuth();
 
   const editorRef = useRef<ThesisEditorHandle>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  if (!researcher?.approved) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center gap-3">
+        <p className="text-sm text-slate-500">{t('researcherOnlyNotice')}</p>
+        <Link href="/researchers" className="text-sm font-medium text-violet-700 hover:underline">
+          {t('researcherOnlyCta')} →
+        </Link>
+      </div>
+    );
+  }
 
   async function handleSubmit() {
     if (!editorRef.current || editorRef.current.isEmpty()) return;

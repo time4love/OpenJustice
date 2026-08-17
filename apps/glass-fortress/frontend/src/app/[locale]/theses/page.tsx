@@ -1,11 +1,13 @@
 'use client';
 
 import { useState, useEffect, FormEvent } from 'react';
+import Image from 'next/image';
 import { useSearchParams } from 'next/navigation';
 import { useTranslations, useLocale } from 'next-intl';
 import { Link, useRouter } from '@/i18n/navigation';
 import { apiUrl } from '@/lib/api';
 import { TopNav } from '@/components/TopNav';
+import { useAuth } from '@/context/AuthContext';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -255,6 +257,8 @@ export default function ThesesPage() {
   const tc = useTranslations('common');
   const locale = useLocale();
   const router = useRouter();
+  const { researcher } = useAuth();
+  const canEdit = researcher?.approved ?? false;
 
   const searchParams = useSearchParams();
   const evidenceFilter = searchParams.get('evidence');
@@ -292,15 +296,15 @@ export default function ThesesPage() {
       {/* Header */}
       <header className="sticky top-0 z-20 bg-white/95 backdrop-blur border-b border-slate-200 shadow-sm">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <span className="text-slate-400 text-lg">⬡</span>
+          <Link href="/" className="flex items-center gap-3 hover:opacity-80 transition-opacity">
+            <Image src="/icon_dove.png" alt="" width={24} height={24} className="w-5 h-5" />
             <span className="font-mono text-sm font-semibold tracking-widest text-slate-900 uppercase">
               {tc('appName')}
             </span>
             <span className="ms-3 text-xs text-slate-400 tracking-wide hidden sm:inline">
               {t('tagline')}
             </span>
-          </div>
+          </Link>
           <TopNav current="theses" />
         </div>
       </header>
@@ -312,20 +316,22 @@ export default function ThesesPage() {
             <h1 className="text-2xl font-bold text-slate-900">{t('pageTitle')}</h1>
             <p className="text-slate-500 text-sm mt-1">{t('tagline')}</p>
           </div>
-          <div className="flex items-center gap-2 shrink-0">
-            <button
-              onClick={() => setGenerateOpen(true)}
-              className="px-4 py-2 rounded-lg text-sm font-medium text-violet-700 border border-violet-300 hover:bg-violet-50 transition-colors"
-            >
-              &#x2728; {t('generateBtn')}
-            </button>
-            <Link
-              href="/theses/new"
-              className="px-4 py-2 bg-violet-700 hover:bg-violet-600 rounded-lg text-sm font-medium text-white transition-colors"
-            >
-              + {t('newThesisHeading')}
-            </Link>
-          </div>
+          {canEdit && (
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                onClick={() => setGenerateOpen(true)}
+                className="px-4 py-2 rounded-lg text-sm font-medium text-violet-700 border border-violet-300 hover:bg-violet-50 transition-colors"
+              >
+                &#x2728; {t('generateBtn')}
+              </button>
+              <Link
+                href="/theses/new"
+                className="px-4 py-2 bg-violet-700 hover:bg-violet-600 rounded-lg text-sm font-medium text-white transition-colors"
+              >
+                + {t('newThesisHeading')}
+              </Link>
+            </div>
+          )}
         </div>
 
         {/* Evidence filter banner */}
@@ -346,20 +352,22 @@ export default function ThesesPage() {
         {!loading && !error && theses.length === 0 && (
           <div className="text-center py-24 space-y-3">
             <p className="text-slate-500 text-lg">{t('emptyState')}</p>
-            <div className="flex items-center justify-center gap-3">
-              <button
-                onClick={() => setGenerateOpen(true)}
-                className="px-4 py-2 rounded-lg text-sm font-medium text-violet-700 border border-violet-300 hover:bg-violet-50 transition-colors"
-              >
-                &#x2728; {t('generateBtn')}
-              </button>
-              <Link
-                href="/theses/new"
-                className="inline-block px-4 py-2 bg-violet-700 hover:bg-violet-600 rounded-lg text-sm font-medium text-white transition-colors"
-              >
-                {t('newThesisHeading')}
-              </Link>
-            </div>
+            {canEdit && (
+              <div className="flex items-center justify-center gap-3">
+                <button
+                  onClick={() => setGenerateOpen(true)}
+                  className="px-4 py-2 rounded-lg text-sm font-medium text-violet-700 border border-violet-300 hover:bg-violet-50 transition-colors"
+                >
+                  &#x2728; {t('generateBtn')}
+                </button>
+                <Link
+                  href="/theses/new"
+                  className="inline-block px-4 py-2 bg-violet-700 hover:bg-violet-600 rounded-lg text-sm font-medium text-white transition-colors"
+                >
+                  {t('newThesisHeading')}
+                </Link>
+              </div>
+            )}
           </div>
         )}
 
