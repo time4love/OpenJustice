@@ -265,6 +265,8 @@
     "noSnapshotsTitle": "לא נמצאו צילומי ארכיון.",
     "noSnapshotsSub": "ל-Wayback Machine אין רשומות לכתובת זו.",
     "errorTitle": "הסריקה נכשלה.",
+    "waybackOfflineError": "שירות הארכיון Wayback Machine (archive.org) אינו זמין כרגע — לא ניתן היה לשלוף צילומי מסך. זוהי תקלה בצד השירות, לא ממצא. נסו שוב לאחר שהשירות יחזור לפעול.",
+    "scanFailedGeneric": "משימת הסריקה נכשלה בשרת.",
     "deletionsLabel": "נמחק",
     "additionsLabel": "נוסף",
     "forensicLabel": "ניתוח פורנזי",

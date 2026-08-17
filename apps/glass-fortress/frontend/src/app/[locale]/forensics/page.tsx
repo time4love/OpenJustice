@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useCallback, useEffect, FormEvent } from 'react';
+import { useState, useRef, useCallback, useEffect, Fragment, FormEvent } from 'react';
 import Image from 'next/image';
 import { useTranslations } from 'next-intl';
 import { Link } from '@/i18n/navigation';
@@ -14,12 +14,15 @@ import { ClaimBlock } from '@/components/ClaimBlock';
 
 type ScanStatus = 'IDLE' | 'SCANNING' | 'PAUSED' | 'COMPLETED' | 'FAILED';
 
+type WaybackFailureReason = 'WAYBACK_OFFLINE' | 'ALL_FETCHES_FAILED';
+
 interface ActiveJob {
   id: string;
   status: string;
   totalSnapshots: number;
   processedSnapshots: number;
   updatedAt: string;
+  failureReason: WaybackFailureReason | null;
 }
 
 interface TrackedUrlStatusResponse {
@@ -72,6 +75,7 @@ interface ScrapeJob {
   totalSnapshots: number;
   processedSnapshots: number;
   createdAt: string;
+  failureReason: WaybackFailureReason | null;
 }
 
 type Phase = 'idle' | 'creating' | 'polling' | 'paused' | 'fetching' | 'done' | 'error';
@@ -413,6 +417,8 @@ function HistoryEntry({
     jobsLoading: string;
     jobsError: string;
     resumeBtn: string;
+    waybackOfflineLabel: string;
+    allFetchesFailedLabel: string;
   };
   onDeleted: (id: string) => void;
   onResume: (item: TrackedUrlItem) => void;
@@ -534,22 +540,35 @@ function HistoryEntry({
             <table className="w-full text-xs border-collapse">
               <tbody className="divide-y divide-slate-100">
                 {jobs.map((job, i) => (
-                  <tr key={job.id} className="text-slate-600">
-                    <td className="py-1.5 pe-3 font-medium text-slate-500 whitespace-nowrap">
-                      {labels.batchLabel(i + 1)}
-                    </td>
-                    <td className="py-1.5 pe-3">
-                      <StatusBadge status={job.status} />
-                    </td>
-                    <td className="py-1.5 pe-3 font-mono text-slate-400 whitespace-nowrap">
-                      {job.fromDate
-                        ? labels.batchFrom(job.fromDate.slice(0, 8).replace(/(\d{4})(\d{2})(\d{2})/, '$1-$2-$3'))
-                        : labels.batchStart}
-                    </td>
-                    <td className="py-1.5 font-mono text-slate-400 whitespace-nowrap">
-                      {labels.batchSnapshots(job.processedSnapshots, job.totalSnapshots)}
-                    </td>
-                  </tr>
+                  <Fragment key={job.id}>
+                    <tr className="text-slate-600">
+                      <td className="py-1.5 pe-3 font-medium text-slate-500 whitespace-nowrap">
+                        {labels.batchLabel(i + 1)}
+                      </td>
+                      <td className="py-1.5 pe-3">
+                        <StatusBadge status={job.status} />
+                      </td>
+                      <td className="py-1.5 pe-3 font-mono text-slate-400 whitespace-nowrap">
+                        {job.fromDate
+                          ? labels.batchFrom(job.fromDate.slice(0, 8).replace(/(\d{4})(\d{2})(\d{2})/, '$1-$2-$3'))
+                          : labels.batchStart}
+                      </td>
+                      <td className="py-1.5 font-mono text-slate-400 whitespace-nowrap">
+                        {labels.batchSnapshots(job.processedSnapshots, job.totalSnapshots)}
+                      </td>
+                    </tr>
+                    {job.status === 'FAILED' && job.failureReason && (
+                      <tr>
+                        <td colSpan={4} className="pb-1.5 pt-0">
+                          <p className="text-xs text-red-600">
+                            {job.failureReason === 'WAYBACK_OFFLINE'
+                              ? labels.waybackOfflineLabel
+                              : labels.allFetchesFailedLabel}
+                          </p>
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
                 ))}
               </tbody>
             </table>
@@ -672,7 +691,11 @@ export default function ForensicsPage() {
           await fetchResults(id);
         } else if (data.status === 'FAILED') {
           stopPolling();
-          setError('Scan job failed on the server.');
+          setError(
+            data.activeJob?.failureReason === 'WAYBACK_OFFLINE'
+              ? t('waybackOfflineError')
+              : t('scanFailedGeneric'),
+          );
           setPhase('error');
         } else if (data.status === 'PAUSED') {
           stopPolling();
@@ -684,7 +707,7 @@ export default function ForensicsPage() {
         // Network blip — keep polling
       }
     },
-    [stopPolling, fetchResults],
+    [stopPolling, fetchResults, t],
   );
 
   useEffect(() => { pollStatusRef.current = pollStatus; }, [pollStatus]);
@@ -887,6 +910,8 @@ export default function ForensicsPage() {
                     jobsLoading: t('historyJobsLoading'),
                     jobsError: t('historyJobsError'),
                     resumeBtn: t('resumeBtn'),
+                    waybackOfflineLabel: t('waybackOfflineError'),
+                    allFetchesFailedLabel: t('scanFailedGeneric'),
                   }}
                   onDeleted={(id) => setHistory((prev) => prev.filter((h) => h.id !== id))}
                   onResume={(item) => { void handleResumeFromHistory(item); }}
