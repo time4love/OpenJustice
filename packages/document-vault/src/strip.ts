@@ -10,13 +10,18 @@ export interface StripResult {
  * - JPEG: removes APP1 (EXIF/XMP), APP13 (IPTC), and COM (comment) segments.
  * - PNG: removes tEXt, iTXt, zTXt, tIME, iCCP, pHYs, cHRM, gAMA, sBIT chunks.
  * - Office (.docx, .xlsx, etc.): returns original with a warning — export to PDF first.
+ * - HEIC/HEIF (iPhone photos): returns original with a warning — no in-browser strip; convert to JPEG/PNG.
  */
 export async function stripMetadata(file: File): Promise<StripResult> {
   const { type, name } = file;
+  // MIME type is normally reliable, but whistleblower uploads sometimes arrive
+  // with a generic/missing type (e.g. from a mobile share sheet) — fall back to
+  // the extension so metadata still gets stripped rather than silently skipped.
+  const lower = name.toLowerCase();
 
-  if (type === 'application/pdf') return stripPdf(file);
-  if (type === 'image/jpeg') return stripJpeg(file);
-  if (type === 'image/png') return stripPng(file);
+  if (type === 'application/pdf' || lower.endsWith('.pdf')) return stripPdf(file);
+  if (type === 'image/jpeg' || lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return stripJpeg(file);
+  if (type === 'image/png' || lower.endsWith('.png')) return stripPng(file);
 
   if (isOfficeDoc(type, name)) {
     return {
@@ -24,6 +29,15 @@ export async function stripMetadata(file: File): Promise<StripResult> {
       warnings: [
         'Office documents cannot have metadata stripped in the browser. ' +
           'Export to PDF ("Save As PDF") before uploading.',
+      ],
+    };
+  }
+
+  if (isHeic(type, name)) {
+    return {
+      file,
+      warnings: [
+        'HEIC images may contain EXIF location and device data. Convert to JPEG or PNG for maximum metadata removal.',
       ],
     };
   }
@@ -169,4 +183,13 @@ function isOfficeDoc(type: string, name: string): boolean {
   if (OFFICE_TYPES.has(type)) return true;
   const lower = name.toLowerCase();
   return OFFICE_EXTENSIONS.some((ext) => lower.endsWith(ext));
+}
+
+const HEIC_TYPES = new Set(['image/heic', 'image/heif']);
+const HEIC_EXTENSIONS = ['.heic', '.heif'];
+
+function isHeic(type: string, name: string): boolean {
+  if (HEIC_TYPES.has(type)) return true;
+  const lower = name.toLowerCase();
+  return HEIC_EXTENSIONS.some((ext) => lower.endsWith(ext));
 }
