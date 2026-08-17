@@ -47,6 +47,10 @@ export function tierAccentColor(tier: string): string {
   return styleFor(tier).accent;
 }
 
+export function tierDotColor(tier: string): string {
+  return styleFor(tier).dot;
+}
+
 export function TierBadge({ tier }: { tier: string }) {
   const s = styleFor(tier);
   return (

@@ -1,10 +1,14 @@
 // strength comes from ThesisVersion.aiAnalysis.overallStrengthAssessment —
-// WEAK | MODERATE | STRONG | COMPELLING.
-const STRENGTH_STYLES: Record<string, { badge: string; dot: string }> = {
-  WEAK:       { badge: 'bg-red-100 text-red-700 border-red-200',     dot: 'bg-red-400' },
-  MODERATE:   { badge: 'bg-amber-100 text-amber-700 border-amber-200', dot: 'bg-amber-400' },
-  STRONG:     { badge: 'bg-emerald-100 text-emerald-700 border-emerald-200', dot: 'bg-emerald-500' },
-  COMPELLING: { badge: 'bg-blue-100 text-blue-700 border-blue-200',  dot: 'bg-blue-500' },
+// WEAK | MODERATE | STRONG | COMPELLING. `pill`/`heLabel` back the larger
+// pill-style presentation used on the public /call/[thesisId] hero — kept as
+// their own fields (rather than reusing `badge`/`dot`) so consolidating this
+// single WEAK..COMPELLING source of truth didn't also silently change either
+// page's existing visual design.
+const STRENGTH_STYLES: Record<string, { badge: string; dot: string; pill: string; heLabel: string }> = {
+  WEAK:       { badge: 'bg-red-100 text-red-700 border-red-200',     dot: 'bg-red-400',    pill: 'bg-red-100 text-red-700 border-red-200',     heLabel: 'חלש' },
+  MODERATE:   { badge: 'bg-amber-100 text-amber-700 border-amber-200', dot: 'bg-amber-400', pill: 'bg-amber-100 text-amber-700 border-amber-200', heLabel: 'בינוני' },
+  STRONG:     { badge: 'bg-emerald-100 text-emerald-700 border-emerald-200', dot: 'bg-emerald-500', pill: 'bg-emerald-100 text-emerald-700 border-emerald-200', heLabel: 'חזק' },
+  COMPELLING: { badge: 'bg-blue-100 text-blue-700 border-blue-200',  dot: 'bg-blue-500',    pill: 'bg-violet-100 text-violet-700 border-violet-200', heLabel: 'משכנע' },
 };
 
 export const STRENGTH_RANK: Record<string, number> = {
@@ -14,8 +18,20 @@ export const STRENGTH_RANK: Record<string, number> = {
   WEAK: 0,
 };
 
+function styleFor(strength: string) {
+  return STRENGTH_STYLES[strength] ?? STRENGTH_STYLES.MODERATE;
+}
+
+export function strengthPillClass(strength: string): string {
+  return styleFor(strength).pill;
+}
+
+export function strengthHeLabel(strength: string): string {
+  return styleFor(strength).heLabel;
+}
+
 export function StrengthBadge({ strength }: { strength: string }) {
-  const s = STRENGTH_STYLES[strength] ?? STRENGTH_STYLES.MODERATE;
+  const s = styleFor(strength);
   return (
     <span className={`inline-flex items-center gap-1 shrink-0 px-2 py-0.5 rounded border text-xs font-medium ${s.badge}`}>
       <span className={`w-1.5 h-1.5 rounded-full ${s.dot}`} />
