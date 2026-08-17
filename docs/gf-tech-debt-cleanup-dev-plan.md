@@ -52,31 +52,47 @@ system prompt (and any large reusable prompt fragment) moves to a dedicated
 `apps/glass-fortress/backend/src/prompts/` directory, **one exported constant per file**, imported by
 whichever agent(s) use it. This applies retroactively as part of this cleanup (§2.1, §3.1) and is the
 standard for all new agent work after this plan lands:
-- One prompt, one file (e.g. `prompts/intakeAgentUpload.ts`, `prompts/intakeAgentUrl.ts`), named for
-  what it's for, not which file currently calls it.
-- Shared rules/fragments used by more than one prompt get their own file too
-  (e.g. `prompts/intakeAgentSharedRules.ts`) and are composed via template interpolation or string
-  concatenation into the path-specific prompts — never copy-pasted between them.
+- One prompt, one file, named for what it's for, not which file currently calls it.
+- **Before splitting a prompt into "shared block + N thin variants," check whether it should just be
+  one prompt.** §2.1 was originally planned as exactly that kind of split (shared rules file + two
+  path-specific wrapper files) until it turned out, on an actual line-by-line diff, that the two
+  "variants" differed in only two sentences that didn't correspond to any real reasoning-logic
+  difference — the classification task doesn't change based on how the evidence arrived, and the model
+  sees the real content either way regardless of how the prompt describes it. The fix that shipped was
+  a single unified prompt, not a split. A split is only justified when the underlying task *actually*
+  differs, not merely because the call sites differ.
+- When a prompt genuinely does need per-caller variants, shared rules/fragments get their own file
+  (e.g. `prompts/xSharedRules.ts`) and are composed via template interpolation into the variant
+  prompts — never copy-pasted between them.
 - A prompt file exporting a lone string constant is easy to grep for, easy to diff in review, and
   makes "this is now two copies" visually obvious the moment someone opens a second prompt file and
   pastes in matching content — the inline version made that invisible.
 
 ## 2. Phase 1 — Critical (confirmed drift, or legal/security consequence)
 
-### 2.1 ⚠️ CAUTION — `IntakeAgent.ts` duplicated classification system prompts
-**Files:** `apps/glass-fortress/backend/src/services/IntakeAgent.ts`
-`SYSTEM_PROMPT` (lines ~236-282, file-upload path) and `SYSTEM_PROMPT_TEXT` (lines ~284-330, URL/text
-path) are ~95% identical; lines ~261-270 are byte-for-byte identical to ~309-318 (tier assignment,
-EUA-omission detection, medical-condition tagging, JSON-corruption workaround). This is evidence
-classification feeding an actual legal case — a future edit to one copy could silently diverge
-classification standards between file-sourced and URL-sourced evidence.
-**Fix:** apply the §1.1 convention. Extract the shared rules block into
-`prompts/intakeAgentSharedRules.ts`, and the two path-specific prompts into
-`prompts/intakeAgentUpload.ts`/`prompts/intakeAgentUrl.ts`, each composing the shared block in. Do not
-just merge into one mega-prompt if the two paths have genuinely different context requirements —
-identify what's *actually* path-specific vs. what's copy-paste, and only that should remain separate.
-**Test:** re-run classification on a handful of already-registered evidence items (both paths) and
-diff the output against current production classifications before/after.
+### 2.1 ✅ DONE — `IntakeAgent.ts` duplicated classification system prompts
+**Files:** `apps/glass-fortress/backend/src/services/IntakeAgent.ts`,
+`apps/glass-fortress/backend/src/prompts/intakeAgentClassification.ts`
+`SYSTEM_PROMPT` (file-upload path) and `SYSTEM_PROMPT_TEXT` (URL/text path) were ~95% identical, and on
+close diff the *entire* classification logic (tier assignment, EUA-omission detection, category rules,
+gershayim handling, rejection criteria) was byte-identical — the only differences were the opening
+framing sentence and the `evidenceDate` source-scanning guidance. Neither difference reflected a real
+reasoning-logic change: the model receives the actual content (real image bytes vs. real text) as
+content blocks regardless of the system prompt's wording, so the prompt text doesn't gate what it can
+perceive. **Resolution: a single fully unified prompt, no parameters, no branching** — not the
+shared-block-plus-two-wrappers split originally planned here. (User pushback during implementation:
+"why not use the same prompt for both paths, since we're classifying evidence regardless of channel" —
+correct call; the two-file split would have kept duplication risk alive, just with less text.)
+**Verified, not just tested:** ran the real classification pipeline (`scrapeUrl` + `analyzeText`)
+against a real article (see memory `gf-intake-test-url`) with the OLD two-prompt code (via `git stash`)
+and the NEW unified prompt, and diffed the output. The fields the merge actually touched
+(`evidenceDate`) came out identical between old and new. Core legal fields (`evidenceRole`,
+`evidenceTier`, `tierReasoning`, `evidencePerspective`, `targetEntity`, `euaOmissionStatus`) matched
+exactly. List-extraction fields (categories, key figures, statistical claims) showed quantity
+variance — expected LLM sampling stochasticity on an open-ended extraction task with byte-identical
+instructions in both versions, not a regression from the merge. No image/document-path live test was
+run (no representative test file on hand) — if a document-sourced classification ever looks off after
+this lands, re-verify that path specifically before assuming the merge is the cause.
 
 ### 2.2 ⚠️ CAUTION — Evidence hash computed 6 independent ways
 **Files:**
