@@ -31,7 +31,7 @@ export function EvidenceHighlightCard({
   return (
     <Link
       href={`/evidence/${evidence.evidenceId}`}
-      className="group flex flex-col bg-white border border-slate-200 border-s-4 rounded-xl p-5 gap-3 hover:border-slate-400 hover:shadow-md transition-all"
+      className="group flex flex-col bg-white border border-slate-200 border-s-4 rounded-xl p-5 gap-3 hover:border-amber-300 hover:shadow-lg hover:shadow-slate-900/5 transition-all"
       style={{ borderInlineStartColor: tierAccentColor(evidence.evidenceTier) }}
     >
       <div className="flex items-start justify-between gap-2">
@@ -40,7 +40,7 @@ export function EvidenceHighlightCard({
       </div>
 
       <span className="px-2 py-0.5 self-start rounded text-xs font-medium bg-cyan-50 text-cyan-700 border border-cyan-200">
-        ⚖ {evidence.targetEntity}
+        {evidence.targetEntity}
       </span>
 
       <p className="text-xs text-slate-600 line-clamp-3 leading-relaxed flex-1">

@@ -31,10 +31,13 @@ export function ThesisHighlightCard({ thesis, featured = false, t }: ThesisHighl
       href={`/call/${thesis.id}`}
       className={
         featured
-          ? 'group flex flex-col bg-white border border-slate-200 rounded-2xl p-8 gap-4 hover:border-slate-400 hover:shadow-lg transition-all'
-          : 'group flex flex-col bg-white border border-slate-200 rounded-xl p-5 gap-3 hover:border-slate-400 hover:shadow-md transition-all'
+          ? 'group relative flex flex-col bg-white border border-slate-200 rounded-2xl p-8 gap-4 overflow-hidden hover:border-amber-300 hover:shadow-xl hover:shadow-amber-900/5 transition-all'
+          : 'group flex flex-col bg-white border border-slate-200 rounded-xl p-5 gap-3 hover:border-amber-300 hover:shadow-lg hover:shadow-slate-900/5 transition-all'
       }
     >
+      {featured && (
+        <span className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-amber-400 via-amber-500 to-red-400" />
+      )}
       {featured && (
         <span className="self-start px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-900 text-white uppercase tracking-widest">
           {t('topThesesFeaturedLabel')}
