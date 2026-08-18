@@ -8,8 +8,7 @@ import { useAuth } from '@/context/AuthContext';
 
 export type NavPage =
   | 'home'
-  | 'vault'
-  | 'timeline'
+  | 'evidence'
   | 'forensics'
   | 'figures'
   | 'theses'
@@ -20,27 +19,22 @@ export type NavPage =
 
 type NavLabel =
   | 'nav.home'
-  | 'nav.evidenceVault'
-  | 'nav.timeline'
+  | 'nav.evidence'
   | 'nav.forensics'
   | 'nav.theses'
   | 'nav.calls'
   | 'nav.about'
   | 'nav.safety';
 
-const ALL_NAV_ITEMS: { key: NavPage; href: string; label: NavLabel }[] = [
+const ALL_NAV_ITEMS: { key: NavPage; href: string; label: NavLabel; researcherOnly?: boolean }[] = [
   { key: 'home', href: '/', label: 'nav.home' },
-  { key: 'theses', href: '/theses', label: 'nav.theses' },
+  { key: 'theses', href: '/theses', label: 'nav.theses', researcherOnly: true },
   { key: 'call', href: '/call', label: 'nav.calls' },
-  { key: 'vault', href: '/vault', label: 'nav.evidenceVault' },
-  { key: 'timeline', href: '/timeline', label: 'nav.timeline' },
+  { key: 'evidence', href: '/evidence', label: 'nav.evidence' },
   { key: 'forensics', href: '/forensics', label: 'nav.forensics' },
   { key: 'about', href: '/about', label: 'nav.about' },
   { key: 'safety', href: '/safety', label: 'nav.safety' },
 ];
-
-// Desktop omits Home — the logo already links there.
-const DESKTOP_NAV_ITEMS = ALL_NAV_ITEMS.filter(({ key }) => key !== 'home');
 
 function HamburgerIcon() {
   return (
@@ -69,6 +63,14 @@ export function TopNav({ current }: { current: NavPage }) {
   const { researcher, loading } = useAuth();
   const [open, setOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
+
+  // Hide researcher-only entries (e.g. theses drafting workspace) from
+  // visitors who aren't registered researchers — avoids clutter for the
+  // general public, who already have a curated public view (`/call`).
+  const isResearcher = !loading && !!researcher;
+  const visibleNavItems = ALL_NAV_ITEMS.filter((item) => !item.researcherOnly || isResearcher);
+  // Desktop omits Home — the logo already links there.
+  const desktopNavItems = visibleNavItems.filter(({ key }) => key !== 'home');
 
   useEffect(() => { setMounted(true); }, []);
 
@@ -146,7 +148,7 @@ export function TopNav({ current }: { current: NavPage }) {
 
         {/* Nav items — all items including Home */}
         <nav className="flex-1 overflow-y-auto py-3">
-          {ALL_NAV_ITEMS.map(({ key, href, label }) => (
+          {visibleNavItems.map(({ key, href, label }) => (
             <Link
               key={key}
               href={href}
@@ -203,7 +205,7 @@ export function TopNav({ current }: { current: NavPage }) {
         <nav className="flex items-center gap-1">
           {/* Home excluded — logo already navigates there. All items render
               as <Link> (same element type) to prevent baseline alignment shifts. */}
-          {DESKTOP_NAV_ITEMS.map(({ key, href, label }) => (
+          {desktopNavItems.map(({ key, href, label }) => (
             <Link
               key={key}
               href={href}

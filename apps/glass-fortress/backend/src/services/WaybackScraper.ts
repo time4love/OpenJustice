@@ -11,6 +11,7 @@ import {
   buildForensicEvidence,
   type ForensicEvidenceSource,
 } from './forensicEvidence';
+import { registerEvidenceOnChain, type OnChainRegistration } from './evidenceOnChain';
 import { groupDiffChunks, chunksForAI } from '../lib/diffChunking';
 
 // ---------------------------------------------------------------------------
@@ -231,8 +232,16 @@ async function upsertSnapshot(
  *
  * Idempotent — upserts by fileHash so re-runs are safe.
  * Non-fatal — logs warnings and continues on any failure.
+ *
+ * On-chain registration is attempted first. `buildForensicEvidence` marks a
+ * record CONFIRMED, which the schema defines as "registered on-chain" — so a
+ * record must only ever be written CONFIRMED once registration has actually
+ * succeeded. If the chain is unreachable, unconfigured (e.g. staging), or the
+ * transaction fails, the row is still written so the diff isn't silently lost,
+ * but as PENDING_REVIEW — visible in the timeline with the existing manual
+ * "Promote to Evidence" flow (POST /api/evidence/promote) as the retry path.
  */
-async function autoPromoteToEvidence(source: ForensicEvidenceSource): Promise<void> {
+export async function autoPromoteToEvidence(source: ForensicEvidenceSource): Promise<void> {
   // The automatic path only. Manual promotion via /forensics/promote is a
   // researcher's deliberate override and is intentionally not gated on this.
   if (source.investigativeCategories.length === 0) {
@@ -244,11 +253,31 @@ async function autoPromoteToEvidence(source: ForensicEvidenceSource): Promise<vo
 
   const { fileHash, data } = buildForensicEvidence(source);
 
+  let registration: OnChainRegistration;
+  try {
+    registration = await registerEvidenceOnChain(
+      getWeb3Service(),
+      fileHash,
+      data.investigativeCategories,
+      data.evidenceRole,
+    );
+  } catch (err) {
+    console.warn(
+      '[WaybackScraper] On-chain registration failed for auto-promoted diff', source.diffId,
+      ':', err instanceof Error ? err.message : err,
+    );
+    registration = { confirmed: false, txHash: null };
+  }
+
   try {
     await prisma.evidence.upsert({
       where: { fileHash },
-      update: {},
-      create: data,
+      update: registration.confirmed ? { status: 'CONFIRMED', onChainTxHash: registration.txHash } : {},
+      create: {
+        ...data,
+        status: registration.confirmed ? 'CONFIRMED' : 'PENDING_REVIEW',
+        onChainTxHash: registration.txHash,
+      },
     });
   } catch (err) {
     console.warn(

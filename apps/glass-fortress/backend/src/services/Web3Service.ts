@@ -111,6 +111,32 @@ export class Web3Service {
   }
 
   /**
+   * Recovers the transaction hash that originally registered `fileHash`, for
+   * use after registerEvidenceHash() throws DuplicateEvidenceError. A reverted
+   * call never returns a transaction hash (there is nothing to return — the
+   * transaction failed), so this is the only way to attach a real, verifiable
+   * hash to a record whose content the contract confirms is already
+   * registered. Queries the EvidenceSubmitted event log, in which fileHash is
+   * an indexed parameter — the contract itself never stores a tx hash (it
+   * can't; a contract doesn't know its own transaction hash), so the event log
+   * is the sole source of truth for this.
+   *
+   * Returns null if no matching event is found — should not normally happen
+   * for a hash the contract just confirmed is registered; defensive only.
+   * Callers must treat null the same as "cannot be confirmed" and must never
+   * mark a record CONFIRMED without a real hash from this or a fresh
+   * registration.
+   */
+  async findRegisteringTxHash(fileHash: string): Promise<string | null> {
+    const bytes32Hash = ethers.zeroPadValue(fileHash, 32);
+    const filterFn = this.contract.filters.EvidenceSubmitted as (
+      fileHash: string,
+    ) => ethers.DeferredTopicFilter;
+    const logs = await this.contract.queryFilter(filterFn(bytes32Hash));
+    return logs[0]?.transactionHash ?? null;
+  }
+
+  /**
    * Check whether a hash is already registered without sending a transaction.
    */
   async isHashRegistered(fileHash: string): Promise<{ registered: boolean; evidenceId: bigint }> {

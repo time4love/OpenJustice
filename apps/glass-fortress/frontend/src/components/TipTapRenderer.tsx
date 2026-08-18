@@ -43,7 +43,7 @@ function renderInline(
       ? `/evidence/${info.evidenceId}`
       : isForensic && info?.trackedUrlId
         ? `/forensics/${info.trackedUrlId}`
-        : `/timeline?hash=${encodeURIComponent(id)}`;
+        : `/evidence?hash=${encodeURIComponent(id)}`;
     return (
       <Link
         key={index}
@@ -66,7 +66,7 @@ function renderInline(
     return (
       <Link
         key={index}
-        href={`/timeline?entity=${encodeURIComponent(label)}`}
+        href={`/evidence?entity=${encodeURIComponent(label)}`}
         className="inline-block bg-violet-100 hover:bg-violet-200 text-violet-700 text-xs font-medium px-2 py-0.5 rounded-full mx-0.5 transition-colors"
       >
         @{label}

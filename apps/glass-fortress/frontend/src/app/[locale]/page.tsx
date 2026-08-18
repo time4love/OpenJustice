@@ -271,7 +271,7 @@ export default function HomePage() {
               <h2 className="text-2xl font-bold text-slate-900">{t('latestEvidenceTitle')}</h2>
               <p className="text-sm text-slate-500 mt-1 max-w-xl">{t('latestEvidenceSubtitle')}</p>
             </div>
-            <Link href="/vault" className="shrink-0 text-xs font-medium text-amber-700 hover:underline">
+            <Link href="/evidence" className="shrink-0 text-xs font-medium text-amber-700 hover:underline">
               {t('seeAllEvidence')} →
             </Link>
           </div>

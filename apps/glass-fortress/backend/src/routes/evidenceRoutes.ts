@@ -284,11 +284,18 @@ router.post(
       }
 
       // Write structured metadata to Prisma — this is the authoritative structured store.
+      // status/onChainTxHash set explicitly here, not left to the schema default: this
+      // point is only reached after registerEvidenceHash() above already succeeded (or
+      // was a confirmed duplicate), so CONFIRMED is correct — but it must never be
+      // implicit, since Evidence.status defaults to PENDING_REVIEW precisely so a future
+      // create() that forgets this can't silently claim on-chain registration.
       const analysisData = buildEvidenceAnalysisData(analysis);
       await prisma.evidence.upsert({
         where: { fileHash },
         update: {
           ...analysisData,
+          status: 'CONFIRMED',
+          onChainTxHash: txHash,
           figures: { set: figureNames.map((name) => ({ name })) },
           sourceUrl,
           fileUrl,
@@ -297,6 +304,8 @@ router.post(
         create: {
           fileHash,
           ...analysisData,
+          status: 'CONFIRMED',
+          onChainTxHash: txHash,
           figures: { connect: figureNames.map((name) => ({ name })) },
           sourceUrl,
           fileUrl,
@@ -361,6 +370,7 @@ router.post('/contact', async (req: Request, res: Response): Promise<void> => {
 
 const TimelineQuerySchema = z.object({
   targetEntity: z.string().optional(),
+  fileHash: z.string().optional(),
   cursor: z.string().optional(),
   limit: z.coerce.number().int().min(1).max(100).default(20),
 });
@@ -372,8 +382,11 @@ router.get('/timeline', async (req: Request, res: Response): Promise<void> => {
     return;
   }
 
-  const { targetEntity, cursor, limit } = parsed.data;
-  const where = targetEntity ? { targetEntity } : undefined;
+  const { targetEntity, fileHash, cursor, limit } = parsed.data;
+  const where = {
+    ...(targetEntity ? { targetEntity } : {}),
+    ...(fileHash ? { fileHash } : {}),
+  };
 
   try {
     const [totalCount, rows] = await Promise.all([
@@ -400,7 +413,14 @@ router.get('/timeline', async (req: Request, res: Response): Promise<void> => {
       metadata: mapEvidenceToRecord(r, r.urlVersionDiff?.trackedUrlId ?? null),
     }));
 
-    res.status(200).json({ targetEntity: targetEntity ?? null, totalCount, results, nextCursor, hasMore });
+    res.status(200).json({
+      targetEntity: targetEntity ?? null,
+      fileHash: fileHash ?? null,
+      totalCount,
+      results,
+      nextCursor,
+      hasMore,
+    });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error('[timeline] Prisma error:', err instanceof Error ? err.stack : err);

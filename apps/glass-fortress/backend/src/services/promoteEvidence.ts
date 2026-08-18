@@ -1,9 +1,9 @@
-import { ethers } from 'ethers';
 import type { Evidence } from '@prisma/client';
 import { prisma } from '../lib/prisma';
-import { Web3Service, DuplicateEvidenceError } from './Web3Service';
+import { Web3Service } from './Web3Service';
 import { VectorStoreService } from './VectorStoreService';
-import { investigativeCategoriesField, onChainCategoryLabel } from '../lib/investigativeCategories';
+import { investigativeCategoriesField } from '../lib/investigativeCategories';
+import { registerEvidenceOnChain } from './evidenceOnChain';
 
 let _web3: Web3Service | null = null;
 let _vectorStorePromise: Promise<VectorStoreService> | null = null;
@@ -52,24 +52,31 @@ export async function promoteEvidence(record: Evidence): Promise<PromoteEvidence
   }
 
   // 1. Register on-chain — ZeroAddress preserves submitter anonymity
-  let txHash: string;
-  try {
-    txHash = await getWeb3().registerEvidenceHash(
-      record.fileHash,
-      ethers.ZeroAddress,
-      onChainCategoryLabel(
-        investigativeCategoriesField.parse(record.investigativeCategories),
-        record.evidenceRole,
-      ),
-    );
-  } catch (err) {
-    if (err instanceof DuplicateEvidenceError) {
-      // Already on-chain (e.g. promoted by another path) — continue to sync DB
-      txHash = 'already-on-chain';
-    } else {
-      throw err;
-    }
+  const registration = await registerEvidenceOnChain(
+    getWeb3(),
+    record.fileHash,
+    investigativeCategoriesField.parse(record.investigativeCategories),
+    record.evidenceRole,
+  );
+
+  // getWeb3() always returns a real instance or throws (never null), so the
+  // only way registration.confirmed is false here is an unrecoverable
+  // duplicate (registered on-chain, but its original transaction couldn't be
+  // found — see Web3Service.findRegisteringTxHash). Leave the record exactly
+  // as it was: never mark CONFIRMED without a real transaction hash to show
+  // for it.
+  if (!registration.confirmed) {
+    return {
+      promoted: false,
+      evidenceId: record.id,
+      fileHash: record.fileHash,
+      txHash: '',
+      message:
+        'This hash is already registered on-chain, but its original transaction could not be ' +
+        'located — left as PENDING_REVIEW rather than confirmed without proof. Try again shortly.',
+    };
   }
+  const txHash = registration.txHash;
 
   // 2. Upsert embedding to Pinecone — best-effort with 15s timeout.
   // Failure here does not block promotion; on-chain hash is the source of truth.
@@ -87,8 +94,11 @@ export async function promoteEvidence(record: Evidence): Promise<PromoteEvidence
     );
   }
 
-  // 3. Mark CONFIRMED in Prisma
-  await prisma.evidence.update({ where: { id: record.id }, data: { status: 'CONFIRMED' } });
+  // 3. Mark CONFIRMED in Prisma, with the real transaction hash that earned it.
+  await prisma.evidence.update({
+    where: { id: record.id },
+    data: { status: 'CONFIRMED', onChainTxHash: txHash },
+  });
 
   return {
     promoted: true,
