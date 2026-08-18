@@ -71,11 +71,17 @@ jest.mock('../src/services/VectorStoreService', () => ({
   VectorStoreService: { create: jest.fn() },
 }));
 
-jest.mock('../src/services/Web3Service', () => ({
-  Web3Service: jest.fn().mockImplementation(() => ({
+jest.mock('../src/services/Web3Service', () => {
+  const MockWeb3Service: jest.Mock & { hashFile?: jest.Mock } = jest.fn().mockImplementation(() => ({
     registerEvidenceHash: jest.fn(),
-  })),
-}));
+  }));
+  // hashFile is a static, side-effect-free helper (SHA-256 of a buffer) — safe
+  // to keep real-ish under the staging gate, which only forbids on-chain/
+  // Pinecone calls. Tests assert the *constructor* (on-chain registration) is
+  // never invoked; a static method call doesn't touch that mock's call count.
+  MockWeb3Service.hashFile = jest.fn().mockReturnValue('0xmockedfilehash');
+  return { Web3Service: MockWeb3Service };
+});
 
 jest.mock('../src/services/DevilsAdvocateAgent', () => ({
   DevilsAdvocateAgent: jest.fn().mockImplementation(() => ({

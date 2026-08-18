@@ -1,9 +1,9 @@
 'use client';
 
-import { useState, useRef, useCallback, useEffect, FormEvent } from 'react';
+import { useState, useRef, useCallback, useEffect, Fragment, FormEvent } from 'react';
 import { useTranslations } from 'next-intl';
-import { Link } from '@/i18n/navigation';
-import { TopNav } from '@/components/TopNav';
+import { Link, useRouter } from '@/i18n/navigation';
+import { SiteHeader } from '@/components/SiteHeader';
 import { apiUrl } from '@/lib/api';
 import { ClaimBlock } from '@/components/ClaimBlock';
 
@@ -13,12 +13,15 @@ import { ClaimBlock } from '@/components/ClaimBlock';
 
 type ScanStatus = 'IDLE' | 'SCANNING' | 'PAUSED' | 'COMPLETED' | 'FAILED';
 
+type WaybackFailureReason = 'WAYBACK_OFFLINE' | 'ALL_FETCHES_FAILED';
+
 interface ActiveJob {
   id: string;
   status: string;
   totalSnapshots: number;
   processedSnapshots: number;
   updatedAt: string;
+  failureReason: WaybackFailureReason | null;
 }
 
 interface TrackedUrlStatusResponse {
@@ -47,14 +50,6 @@ interface SnapshotDiff {
   promotedEvidence: { id: string; fileHash: string } | null;
 }
 
-interface TrackedUrlResult {
-  trackedUrlId: string;
-  url: string;
-  title: string | null;
-  count: number;
-  diffs: SnapshotDiff[];
-}
-
 interface TrackedUrlItem {
   id: string;
   url: string;
@@ -71,9 +66,10 @@ interface ScrapeJob {
   totalSnapshots: number;
   processedSnapshots: number;
   createdAt: string;
+  failureReason: WaybackFailureReason | null;
 }
 
-type Phase = 'idle' | 'creating' | 'polling' | 'paused' | 'fetching' | 'done' | 'error';
+type Phase = 'idle' | 'creating' | 'polling' | 'paused' | 'error';
 
 const POLL_INTERVAL_MS = 3_000;
 const STALL_THRESHOLD_MS = 35_000;
@@ -85,16 +81,6 @@ const STALL_THRESHOLD_MS = 35_000;
 // ---------------------------------------------------------------------------
 // Empty state
 // ---------------------------------------------------------------------------
-
-function EmptyState({ title, sub }: { title: string; sub: string }) {
-  return (
-    <div className="flex flex-col items-center justify-center text-center px-8 py-20 border border-dashed border-slate-200 rounded-xl bg-white shadow-sm">
-      <div className="text-3xl mb-4 text-slate-300">&#x26B2;</div>
-      <p className="text-sm font-medium text-slate-500 mb-1">{title}</p>
-      <p className="text-xs text-slate-400 max-w-xs leading-relaxed">{sub}</p>
-    </div>
-  );
-}
 
 // ---------------------------------------------------------------------------
 // Progress state — shown while TrackedUrl is SCANNING
@@ -241,6 +227,16 @@ function PausedState({
 
 // ---------------------------------------------------------------------------
 // Diff node — a single legally significant change
+//
+// Deliberately not shared with forensics/[trackedUrlId]/page.tsx's DiffCard:
+// this page only ever shows already-flagged changes from a fresh scan (hence
+// the fixed always-red styling and no significance flag in SnapshotDiff), and
+// has no expand/collapse or promote action. DiffCard evolved a richer,
+// interactive treatment for reviewing a URL's full history and operates on a
+// different underlying type (DiffRecord, not SnapshotDiff). A shared
+// component would need to accept both data shapes and make the extra
+// behavior optional, which is more surface area than the actual duplication
+// (a couple of shared Tailwind class strings) justifies.
 // ---------------------------------------------------------------------------
 
 function DiffNode({
@@ -256,6 +252,7 @@ function DiffNode({
     forensicLabel: string;
     viewSnapshot: string;
     inVaultBadge: string;
+    flaggedBadge: string;
   };
 }) {
   return (
@@ -272,7 +269,7 @@ function DiffNode({
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 px-4 py-2.5 border-b border-red-100 bg-red-50">
           <span className="font-mono text-xs text-slate-500 font-medium shrink-0">{diff.date}</span>
           <span className="shrink-0 text-xs font-bold px-2 py-0.5 rounded-full border bg-red-100 text-red-700 border-red-300 uppercase tracking-wide">
-            Silent Edit Detected
+            {labels.flaggedBadge}
           </span>
           {diff.promotedEvidence && (
             <span className="shrink-0 inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 border border-emerald-200">
@@ -412,6 +409,8 @@ function HistoryEntry({
     jobsLoading: string;
     jobsError: string;
     resumeBtn: string;
+    waybackOfflineLabel: string;
+    allFetchesFailedLabel: string;
   };
   onDeleted: (id: string) => void;
   onResume: (item: TrackedUrlItem) => void;
@@ -533,22 +532,35 @@ function HistoryEntry({
             <table className="w-full text-xs border-collapse">
               <tbody className="divide-y divide-slate-100">
                 {jobs.map((job, i) => (
-                  <tr key={job.id} className="text-slate-600">
-                    <td className="py-1.5 pe-3 font-medium text-slate-500 whitespace-nowrap">
-                      {labels.batchLabel(i + 1)}
-                    </td>
-                    <td className="py-1.5 pe-3">
-                      <StatusBadge status={job.status} />
-                    </td>
-                    <td className="py-1.5 pe-3 font-mono text-slate-400 whitespace-nowrap">
-                      {job.fromDate
-                        ? labels.batchFrom(job.fromDate.slice(0, 8).replace(/(\d{4})(\d{2})(\d{2})/, '$1-$2-$3'))
-                        : labels.batchStart}
-                    </td>
-                    <td className="py-1.5 font-mono text-slate-400 whitespace-nowrap">
-                      {labels.batchSnapshots(job.processedSnapshots, job.totalSnapshots)}
-                    </td>
-                  </tr>
+                  <Fragment key={job.id}>
+                    <tr className="text-slate-600">
+                      <td className="py-1.5 pe-3 font-medium text-slate-500 whitespace-nowrap">
+                        {labels.batchLabel(i + 1)}
+                      </td>
+                      <td className="py-1.5 pe-3">
+                        <StatusBadge status={job.status} />
+                      </td>
+                      <td className="py-1.5 pe-3 font-mono text-slate-400 whitespace-nowrap">
+                        {job.fromDate
+                          ? labels.batchFrom(job.fromDate.slice(0, 8).replace(/(\d{4})(\d{2})(\d{2})/, '$1-$2-$3'))
+                          : labels.batchStart}
+                      </td>
+                      <td className="py-1.5 font-mono text-slate-400 whitespace-nowrap">
+                        {labels.batchSnapshots(job.processedSnapshots, job.totalSnapshots)}
+                      </td>
+                    </tr>
+                    {job.status === 'FAILED' && job.failureReason && (
+                      <tr>
+                        <td colSpan={4} className="pb-1.5 pt-0">
+                          <p className="text-xs text-red-600">
+                            {job.failureReason === 'WAYBACK_OFFLINE'
+                              ? labels.waybackOfflineLabel
+                              : labels.allFetchesFailedLabel}
+                          </p>
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
                 ))}
               </tbody>
             </table>
@@ -565,14 +577,13 @@ function HistoryEntry({
 
 export default function ForensicsPage() {
   const t = useTranslations('forensics');
-  const tc = useTranslations('common');
+  const router = useRouter();
 
   const [url, setUrl] = useState('');
   const [phase, setPhase] = useState<Phase>('idle');
   const [trackedUrlId, setTrackedUrlId] = useState<string | null>(null);
   const [scanProgress, setScanProgress] = useState<{ total: number; processed: number } | null>(null);
   const [liveDiffs, setLiveDiffs] = useState<SnapshotDiff[]>([]);
-  const [result, setResult] = useState<TrackedUrlResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [stalled, setStalled] = useState(false);
   const [pausing, setPausing] = useState(false);
@@ -606,24 +617,6 @@ export default function ForensicsPage() {
   }, []);
 
   useEffect(() => () => stopPolling(), [stopPolling]);
-
-  const fetchResults = useCallback(
-    async (id: string) => {
-      setPhase('fetching');
-      try {
-        const res = await fetch(apiUrl(`/api/forensics/tracked/${id}`));
-        const data = (await res.json()) as TrackedUrlResult & { error?: string; message?: string };
-        if (!res.ok) throw new Error(data.message ?? data.error ?? `Error ${res.status}`);
-        setResult(data);
-        setPhase('done');
-        loadHistory();
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load results');
-        setPhase('error');
-      }
-    },
-    [loadHistory],
-  );
 
   const startPolling = useCallback(
     (id: string) => {
@@ -668,10 +661,18 @@ export default function ForensicsPage() {
 
         if (data.status === 'COMPLETED') {
           stopPolling();
-          await fetchResults(id);
+          // Hand off to the timeline page — the single canonical rendering of a
+          // TrackedUrl's diffs (pagination, before/after links, live rationale).
+          // Rendering a second, duplicate results view here is what drifted out
+          // of sync with it before.
+          router.push(`/forensics/${id}`);
         } else if (data.status === 'FAILED') {
           stopPolling();
-          setError('Scan job failed on the server.');
+          setError(
+            data.activeJob?.failureReason === 'WAYBACK_OFFLINE'
+              ? t('waybackOfflineError')
+              : t('scanFailedGeneric'),
+          );
           setPhase('error');
         } else if (data.status === 'PAUSED') {
           stopPolling();
@@ -683,7 +684,7 @@ export default function ForensicsPage() {
         // Network blip — keep polling
       }
     },
-    [stopPolling, fetchResults],
+    [stopPolling, router, t],
   );
 
   useEffect(() => { pollStatusRef.current = pollStatus; }, [pollStatus]);
@@ -699,7 +700,6 @@ export default function ForensicsPage() {
     stopPolling();
     setPhase('creating');
     setError(null);
-    setResult(null);
     setTrackedUrlId(null);
     trackedUrlIdRef.current = null;
     setScanProgress(null);
@@ -785,7 +785,7 @@ export default function ForensicsPage() {
     }
   }
 
-  const scanning = phase === 'creating' || phase === 'polling' || phase === 'fetching';
+  const scanning = phase === 'creating' || phase === 'polling';
 
   const diffLabels = {
     deletionsLabel: t('deletionsLabel'),
@@ -793,33 +793,13 @@ export default function ForensicsPage() {
     forensicLabel: t('forensicLabel'),
     viewSnapshot: t('viewSnapshot'),
     inVaultBadge: t('inVaultBadge'),
+    flaggedBadge: t('flaggedBadge'),
   };
 
   return (
     <main className="min-h-screen bg-slate-50">
       {/* Header */}
-      <header className="sticky top-0 z-20 bg-white/95 backdrop-blur border-b border-slate-200 shadow-sm">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <span className="text-slate-400 text-lg">&#x29C6;</span>
-            <div>
-              <span className="font-mono text-sm font-semibold tracking-widest text-slate-900 uppercase">
-                {tc('appName')}
-              </span>
-              <span className="ms-3 text-xs text-slate-400 tracking-wide hidden sm:inline">
-                {t('tagline')}
-              </span>
-            </div>
-          </div>
-          <div className="flex items-center gap-4">
-            <span className="flex items-center gap-1.5 text-xs text-slate-500 hidden sm:flex">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              {tc('operational')}
-            </span>
-            <TopNav current="forensics" />
-          </div>
-        </div>
-      </header>
+      <SiteHeader current="forensics" maxWidth="max-w-4xl" tagline={t('tagline')} showOperational />
 
       <div className="max-w-4xl mx-auto px-4 sm:px-6 py-8 space-y-6">
         {/* Scanner panel */}
@@ -886,6 +866,8 @@ export default function ForensicsPage() {
                     jobsLoading: t('historyJobsLoading'),
                     jobsError: t('historyJobsError'),
                     resumeBtn: t('resumeBtn'),
+                    waybackOfflineLabel: t('waybackOfflineError'),
+                    allFetchesFailedLabel: t('scanFailedGeneric'),
                   }}
                   onDeleted={(id) => setHistory((prev) => prev.filter((h) => h.id !== id))}
                   onResume={(item) => { void handleResumeFromHistory(item); }}
@@ -990,52 +972,6 @@ export default function ForensicsPage() {
           </>
         )}
 
-        {/* Fetching results */}
-        {phase === 'fetching' && (
-          <div className="flex flex-col items-center justify-center text-center px-8 py-20 border border-slate-200 rounded-xl bg-white shadow-sm">
-            <div className="relative w-10 h-10 mb-5">
-              <div className="absolute inset-0 rounded-full border-2 border-slate-200" />
-              <div className="absolute inset-0 rounded-full border-2 border-t-red-500 animate-spin" />
-            </div>
-            <p className="text-xs text-slate-500">{t('fetchingResults')}</p>
-          </div>
-        )}
-
-        {/* Results */}
-        {phase === 'done' && result !== null && (
-          <>
-            {result.count === 0 ? (
-              <EmptyState title={t('noChangesTitle')} sub={t('noChangesSub')} />
-            ) : (
-              <>
-                <div className="flex flex-wrap items-center gap-3">
-                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-red-100 text-red-700 border border-red-200">
-                    <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
-                    {t('resultsHeading', { count: result.count })}
-                  </span>
-                  <span
-                    className="text-xs text-slate-400 font-mono truncate max-w-xs"
-                    title={result.url}
-                  >
-                    {result.url}
-                  </span>
-                  <Link
-                    href={`/forensics/${result.trackedUrlId}`}
-                    className="ms-auto flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-800 hover:underline transition-colors"
-                  >
-                    {t('drillDownLink')}
-                    <span aria-hidden="true">&#x2192;</span>
-                  </Link>
-                </div>
-                <div>
-                  {result.diffs.map((diff, i) => (
-                    <DiffNode key={diff.id} diff={diff} index={i} labels={diffLabels} />
-                  ))}
-                </div>
-              </>
-            )}
-          </>
-        )}
       </div>
     </main>
   );

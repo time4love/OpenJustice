@@ -11,37 +11,12 @@ import { scrapeUrl } from '../utils/webScraper';
 import { StorageService } from '../services/StorageService';
 import {
   INVESTIGATIVE_CATEGORIES,
-  investigativeCategoriesField,
   onChainCategoryLabel,
 } from '../lib/investigativeCategories';
-
-// ---------------------------------------------------------------------------
-// Response types
-// ---------------------------------------------------------------------------
-
-interface EvidenceRecord {
-  evidenceId: string;
-  fileHash: string;
-  status: string;
-  evidenceRole: string;
-  investigativeCategories: string[];
-  tier: string;
-  evidencePerspective?: string | null;
-  tierReasoning?: string | null;
-  summary: string;
-  targetEntity: string;
-  evidenceDate: string;
-  figures: { id: string; name: string }[];
-  medicalConditions: string[];
-  statisticalClaims: string[];
-  regulatoryMentions: string[];
-  euaOmissionStatus: string;
-  sourceUrl?: string | null;
-  fileUrl?: string | null;
-  urlVersionDiffId?: string | null;
-  trackedUrlId?: string | null;
-  timestamp: number;
-}
+import { mapEvidenceToRecord } from '../lib/evidenceRecord';
+import { buildEvidenceAnalysisData } from '../lib/evidenceCreateData';
+import { promoteEvidence } from '../services/promoteEvidence';
+import { parseDiffItems } from '../lib/diffItems';
 
 const router = Router();
 
@@ -309,41 +284,20 @@ router.post(
       }
 
       // Write structured metadata to Prisma — this is the authoritative structured store.
+      const analysisData = buildEvidenceAnalysisData(analysis);
       await prisma.evidence.upsert({
         where: { fileHash },
         update: {
-          evidenceRole: analysis.evidenceRole,
-          targetEntity: analysis.targetEntity,
-          evidenceTier: analysis.evidenceTier,
-          evidencePerspective: analysis.evidencePerspective ?? null,
-          investigativeCategories: analysis.investigativeCategories,
-          tierReasoning: analysis.tierReasoning ?? null,
-          summary: analysis.summary,
-          evidenceDate: analysis.evidenceDate,
+          ...analysisData,
           figures: { set: figureNames.map((name) => ({ name })) },
-          medicalConditions: JSON.stringify(analysis.medicalConditions),
-          statisticalClaims: JSON.stringify(analysis.statisticalClaims),
-          regulatoryMentions: JSON.stringify(analysis.regulatoryMentions),
-          euaOmissionStatus: analysis.euaOmissionStatus,
           sourceUrl,
           fileUrl,
           urlVersionDiffId,
         },
         create: {
           fileHash,
-          evidenceRole: analysis.evidenceRole,
-          targetEntity: analysis.targetEntity,
-          evidenceTier: analysis.evidenceTier,
-          evidencePerspective: analysis.evidencePerspective ?? null,
-          investigativeCategories: analysis.investigativeCategories,
-          tierReasoning: analysis.tierReasoning ?? null,
-          summary: analysis.summary,
-          evidenceDate: analysis.evidenceDate,
+          ...analysisData,
           figures: { connect: figureNames.map((name) => ({ name })) },
-          medicalConditions: JSON.stringify(analysis.medicalConditions),
-          statisticalClaims: JSON.stringify(analysis.statisticalClaims),
-          regulatoryMentions: JSON.stringify(analysis.regulatoryMentions),
-          euaOmissionStatus: analysis.euaOmissionStatus,
           sourceUrl,
           fileUrl,
           urlVersionDiffId,
@@ -443,29 +397,7 @@ router.get('/timeline', async (req: Request, res: Response): Promise<void> => {
     // Wrap in { content, metadata } to match the TimelineRecord shape the frontend expects.
     const results = page.map((r) => ({
       content: r.summary,
-      metadata: {
-        evidenceId: r.id,
-        fileHash: r.fileHash,
-        status: r.status,
-        evidenceRole: r.evidenceRole,
-        investigativeCategories: r.investigativeCategories,
-        tier: r.evidenceTier,
-        evidencePerspective: r.evidencePerspective,
-        tierReasoning: r.tierReasoning,
-        summary: r.summary,
-        targetEntity: r.targetEntity,
-        evidenceDate: r.evidenceDate,
-        figures: r.figures,
-        medicalConditions: JSON.parse(r.medicalConditions) as string[],
-        statisticalClaims: JSON.parse(r.statisticalClaims) as string[],
-        regulatoryMentions: JSON.parse(r.regulatoryMentions) as string[],
-        euaOmissionStatus: r.euaOmissionStatus,
-        sourceUrl: r.sourceUrl,
-        fileUrl: r.fileUrl,
-        urlVersionDiffId: r.urlVersionDiffId,
-        trackedUrlId: r.urlVersionDiff?.trackedUrlId ?? null,
-        timestamp: r.createdAt.getTime(),
-      } satisfies EvidenceRecord,
+      metadata: mapEvidenceToRecord(r, r.urlVersionDiff?.trackedUrlId ?? null),
     }));
 
     res.status(200).json({ targetEntity: targetEntity ?? null, totalCount, results, nextCursor, hasMore });
@@ -503,51 +435,8 @@ router.post('/promote', async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    if (record.status === 'CONFIRMED') {
-      res.status(200).json({ alreadyConfirmed: true, fileHash, message: 'Already promoted.' });
-      return;
-    }
-
-    // Register on-chain — ZeroAddress preserves submitter anonymity
-    let txHash: string;
-    try {
-      txHash = await getWeb3Service().registerEvidenceHash(
-        fileHash,
-        ethers.ZeroAddress,
-        onChainCategoryLabel(
-          investigativeCategoriesField.parse(record.investigativeCategories),
-          record.evidenceRole,
-        ),
-      );
-    } catch (err) {
-      if (err instanceof DuplicateEvidenceError) {
-        // Already on-chain (e.g. promoted by another path) — continue to sync DB
-        txHash = 'already-on-chain';
-      } else {
-        throw err;
-      }
-    }
-
-    // Upsert embedding to Pinecone — best-effort with 15s timeout.
-    // Failure here does not block promotion; on-chain hash is the source of truth.
-    try {
-      await Promise.race([
-        getVectorStore().then((vs) => vs.upsertEvidence(record.summary, fileHash)),
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error('Pinecone upsert timed out')), 15_000),
-        ),
-      ]);
-    } catch (pineconeErr) {
-      console.warn(
-        '[promote] Pinecone upsert failed (non-fatal):',
-        pineconeErr instanceof Error ? pineconeErr.message : pineconeErr,
-      );
-    }
-
-    // Mark confirmed in Prisma
-    await prisma.evidence.update({ where: { fileHash }, data: { status: 'CONFIRMED' } });
-
-    res.status(200).json({ promoted: true, fileHash, txHash });
+    const result = await promoteEvidence(record);
+    res.status(200).json(result);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error('[promote] Error:', err instanceof Error ? err.stack : err);
@@ -559,6 +448,65 @@ router.post('/promote', async (req: Request, res: Response): Promise<void> => {
 // GET /api/evidence/stats
 // Returns aggregate counts by tier and category across all stored evidence.
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// GET /api/evidence/latest?limit=
+//
+// Most recently submitted CONFIRMED evidence, newest first — for the
+// homepage "Latest Evidence" highlight strip. Distinct from /timeline, which
+// sorts by evidenceDate (the real-world event date) for the investigation
+// view; this sorts by createdAt (submission recency), a freshness signal.
+// Response is deliberately trimmed to teaser fields, not the full
+// EvidenceRecord shape — full detail is one click away at /evidence/:id.
+// ---------------------------------------------------------------------------
+
+const LatestQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(24).default(6),
+});
+
+router.get('/latest', async (req: Request, res: Response): Promise<void> => {
+  const parsed = LatestQuerySchema.safeParse(req.query);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Invalid query', details: parsed.error.flatten() });
+    return;
+  }
+  const { limit } = parsed.data;
+
+  try {
+    const rows = await prisma.evidence.findMany({
+      where: { status: 'CONFIRMED' },
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+      select: {
+        id: true,
+        fileHash: true,
+        summary: true,
+        targetEntity: true,
+        evidenceTier: true,
+        investigativeCategories: true,
+        evidenceDate: true,
+        createdAt: true,
+      },
+    });
+
+    res.status(200).json({
+      results: rows.map((r) => ({
+        evidenceId: r.id,
+        fileHash: r.fileHash,
+        summary: r.summary,
+        targetEntity: r.targetEntity,
+        evidenceTier: r.evidenceTier,
+        investigativeCategories: r.investigativeCategories,
+        evidenceDate: r.evidenceDate,
+        createdAt: r.createdAt,
+      })),
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error('[latest] Prisma error:', err instanceof Error ? err.stack : err);
+    res.status(500).json({ error: 'Latest evidence fetch failed', message });
+  }
+});
 
 router.get('/stats', async (_req: Request, res: Response): Promise<void> => {
   try {
@@ -623,28 +571,7 @@ router.get('/search', async (req: Request, res: Response): Promise<void> => {
         return {
           content: r.content,
           score: r.score,
-          metadata: {
-            evidenceId: row.id,
-            fileHash: row.fileHash,
-            status: row.status,
-            evidenceRole: row.evidenceRole,
-            investigativeCategories: row.investigativeCategories,
-            tier: row.evidenceTier,
-            evidencePerspective: row.evidencePerspective,
-            tierReasoning: row.tierReasoning,
-            summary: row.summary,
-            targetEntity: row.targetEntity,
-            evidenceDate: row.evidenceDate,
-            figures: row.figures,
-            medicalConditions: JSON.parse(row.medicalConditions) as string[],
-            statisticalClaims: JSON.parse(row.statisticalClaims) as string[],
-            regulatoryMentions: JSON.parse(row.regulatoryMentions) as string[],
-            euaOmissionStatus: row.euaOmissionStatus,
-            sourceUrl: row.sourceUrl,
-            fileUrl: row.fileUrl,
-            urlVersionDiffId: row.urlVersionDiffId,
-            timestamp: row.createdAt.getTime(),
-          } satisfies EvidenceRecord,
+          metadata: mapEvidenceToRecord(row),
         };
       });
 
@@ -714,7 +641,21 @@ router.get('/:id', async (req: Request, res: Response): Promise<void> => {
         where: { id },
         include: {
           figures: { select: { id: true, name: true } },
-          urlVersionDiff: { select: { trackedUrlId: true } },
+          urlVersionDiff: {
+            select: {
+              trackedUrlId: true,
+              beforeDate: true,
+              afterDate: true,
+              snapshotUrl: true,
+              beforeSnapshot: { select: { snapshotUrl: true } },
+              deletedText: true,
+              addedText: true,
+              rawDeletedText: true,
+              rawAddedText: true,
+              aiSignificance: true,
+              isLegallySignificant: true,
+            },
+          },
           createdBy: { select: { handle: true } },
         },
       }),
@@ -745,6 +686,29 @@ router.get('/:id', async (req: Request, res: Response): Promise<void> => {
       }
     }
 
+    // For FORENSIC_DIFF evidence, surface the same diff shape the timeline page
+    // renders — deletions/additions, AI rationale, and both archive snapshot
+    // links — so a reader doesn't have to leave the evidence record to see what
+    // the evidence actually consists of.
+    const diffRecord = record.urlVersionDiff;
+    const diff = diffRecord
+      ? {
+          id: record.urlVersionDiffId,
+          beforeDate: diffRecord.beforeDate,
+          date: diffRecord.afterDate,
+          snapshotUrl: diffRecord.snapshotUrl,
+          beforeSnapshotUrl: diffRecord.beforeSnapshot?.snapshotUrl ?? null,
+          deletedItems: parseDiffItems(diffRecord.deletedText),
+          addedItems: parseDiffItems(diffRecord.addedText),
+          rawDeletedChunks: JSON.parse(diffRecord.rawDeletedText) as string[],
+          rawAddedChunks: JSON.parse(diffRecord.rawAddedText) as string[],
+          legalSignificance: diffRecord.aiSignificance,
+          isLegallySignificant: diffRecord.isLegallySignificant,
+          // This evidence record IS the promotion of this diff — always "already promoted".
+          promotedEvidence: { id: record.id, fileHash: record.fileHash },
+        }
+      : null;
+
     res.status(200).json({
       evidenceId: record.id,
       fileHash: record.fileHash,
@@ -766,6 +730,7 @@ router.get('/:id', async (req: Request, res: Response): Promise<void> => {
       sourceUrl: record.sourceUrl,
       fileUrl: record.fileUrl,
       trackedUrlId: record.urlVersionDiff?.trackedUrlId ?? null,
+      diff,
       citingTheses,
       createdAt: record.createdAt,
     });

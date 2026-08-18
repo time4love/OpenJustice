@@ -3,10 +3,13 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { TopNav } from '@/components/TopNav';
+import { SiteHeader } from '@/components/SiteHeader';
 import { Link, useRouter, usePathname } from '@/i18n/navigation';
 import { apiUrl } from '@/lib/api';
 import { CategoryBadges } from '@/components/CategoryBadges';
+import { formatHash } from '@/lib/format';
+import { perspectiveStyles } from '@/lib/evidencePerspective';
+import type { EvidenceMetadata } from '@/types/evidence';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -18,25 +21,6 @@ interface FigureItem {
   evidenceCount: number;
 }
 
-type EvidencePerspective = 'Internal Knowledge' | 'Public Statement' | 'Citizen Experience';
-
-interface EvidenceMetadata {
-  fileHash: string;
-  evidenceRole?: string;
-  investigativeCategories: string[];
-  tier: string;
-  evidencePerspective?: EvidencePerspective;
-  summary: string;
-  targetEntity: string;
-  evidenceDate: string;
-  figures?: { id: string; name: string }[];
-  euaOmissionStatus?: string;
-  sourceUrl?: string | null;
-  fileUrl?: string | null;
-  trackedUrlId?: string | null;
-  timestamp: number;
-}
-
 interface EvidenceRecord {
   content: string;
   metadata: EvidenceMetadata;
@@ -45,23 +29,6 @@ interface EvidenceRecord {
 // ---------------------------------------------------------------------------
 // Perspective styles
 // ---------------------------------------------------------------------------
-
-const PERSPECTIVE_STYLES: Record<EvidencePerspective, { dot: string; border: string; header: string }> = {
-  'Internal Knowledge': { dot: 'bg-red-500', border: 'border-red-200', header: 'bg-red-50 border-red-100' },
-  'Public Statement':   { dot: 'bg-blue-500', border: 'border-blue-200', header: 'bg-blue-50 border-blue-100' },
-  'Citizen Experience': { dot: 'bg-slate-400', border: 'border-slate-200', header: 'bg-slate-100 border-slate-200' },
-};
-
-const FALLBACK_STYLES = { dot: 'bg-slate-400', border: 'border-slate-200', header: 'bg-slate-100 border-slate-200' };
-
-function perspectiveStyles(p?: string) {
-  return PERSPECTIVE_STYLES[p as EvidencePerspective] ?? FALLBACK_STYLES;
-}
-
-function formatHash(hash: string): string {
-  if (hash.length <= 18) return hash;
-  return `${hash.slice(0, 10)}…${hash.slice(-8)}`;
-}
 
 // ---------------------------------------------------------------------------
 // Evidence card (compact, inline)
@@ -197,22 +164,7 @@ export default function FiguresPage() {
   return (
     <main className="min-h-screen bg-slate-50">
       {/* Header */}
-      <header className="sticky top-0 z-20 bg-white/95 backdrop-blur border-b border-slate-200 shadow-sm">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <span className="text-slate-400 text-lg">⬡</span>
-            <span className="font-mono text-sm font-semibold tracking-widest text-slate-900 uppercase">
-              {tc('appName')}
-            </span>
-            <span className="ms-2 text-xs text-slate-400 tracking-wide hidden sm:inline">
-              {t('tagline')}
-            </span>
-          </div>
-          <div className="flex items-center gap-4">
-            <TopNav current="figures" />
-          </div>
-        </div>
-      </header>
+      <SiteHeader current="figures" maxWidth="max-w-6xl" tagline={t('tagline')} />
 
       <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8">
         <div className="flex flex-col sm:flex-row gap-6 items-start">

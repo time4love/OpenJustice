@@ -1,35 +1,19 @@
 'use client';
 
 import { useState, useEffect, useCallback, FormEvent } from 'react';
+import Image from 'next/image';
 import { useTranslations } from 'next-intl';
 import { Link } from '@/i18n/navigation';
-import { TopNav } from '@/components/TopNav';
+import { SiteHeader } from '@/components/SiteHeader';
 import { apiUrl } from '@/lib/api';
 import { CategoryBadges } from '@/components/CategoryBadges';
+import { TierBadge, tierAccentColor, type EvidenceTier } from '@/components/TierBadge';
 import {
   INVESTIGATIVE_CATEGORIES,
   type InvestigativeCategory,
 } from '@/lib/investigativeCategories';
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-type EvidenceTier =
-  | 'Tier 1: Smoking Gun'
-  | 'Tier 2: Material'
-  | 'Tier 3: Supporting'
-  | 'Tier 4: Anecdotal';
-
-interface EvidenceMetadata {
-  fileHash: string;
-  investigativeCategories: string[];
-  tier: EvidenceTier;
-  summary: string;
-  targetEntity: string;
-  submitterAddress?: string;
-  timestamp: number;
-}
+import { formatHash } from '@/lib/format';
+import type { EvidenceMetadata } from '@/types/evidence';
 
 interface SearchResult {
   content: string;
@@ -51,35 +35,6 @@ interface EvidenceStats {
   total: number;
   byTier: Partial<Record<EvidenceTier, number>>;
   byCategory: Partial<Record<InvestigativeCategory, number>>;
-}
-
-// ---------------------------------------------------------------------------
-// Tier accent colors (for the start-border on evidence cards)
-// ---------------------------------------------------------------------------
-
-const TIER_ACCENT: Record<EvidenceTier, string> = {
-  'Tier 1: Smoking Gun': 'var(--color-red-500)',
-  'Tier 2: Material': 'var(--color-orange-500)',
-  'Tier 3: Supporting': 'var(--color-amber-500)',
-  'Tier 4: Anecdotal': 'var(--color-slate-300)',
-};
-
-function tierStyle(tier: EvidenceTier): { badge: string; dot: string } {
-  switch (tier) {
-    case 'Tier 1: Smoking Gun':
-      return { badge: 'bg-red-50 text-red-700 border border-red-200', dot: 'bg-red-500' };
-    case 'Tier 2: Material':
-      return { badge: 'bg-orange-50 text-orange-700 border border-orange-200', dot: 'bg-orange-500' };
-    case 'Tier 3: Supporting':
-      return { badge: 'bg-amber-50 text-amber-700 border border-amber-200', dot: 'bg-amber-500' };
-    case 'Tier 4: Anecdotal':
-      return { badge: 'bg-slate-100 text-slate-600 border border-slate-200', dot: 'bg-slate-400' };
-  }
-}
-
-function formatHash(hash: string): string {
-  if (hash.length <= 18) return hash;
-  return `${hash.slice(0, 10)}…${hash.slice(-8)}`;
 }
 
 function formatTimestamp(ts: number): string {
@@ -129,20 +84,11 @@ function CategoryBar({ label, value, max }: { label: string; value: number; max:
   );
 }
 
-function TierBadge({ tier }: { tier: EvidenceTier }) {
-  const s = tierStyle(tier);
-  return (
-    <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-medium ${s.badge}`}>
-      <span className={`w-1.5 h-1.5 rounded-full ${s.dot}`} />
-      {tier}
-    </span>
-  );
-}
-
 function EntityBadge({ entity }: { entity: string }) {
   return (
-    <span className="px-2 py-0.5 rounded text-xs font-medium bg-cyan-50 text-cyan-700 border border-cyan-200">
-      ⚖ {entity}
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-cyan-50 text-cyan-700 border border-cyan-200">
+      <Image src="/icon_target_entity.png" alt="" width={14} height={14} className="w-3.5 h-3.5" />
+      {entity}
     </span>
   );
 }
@@ -152,7 +98,7 @@ function EvidenceCard({ result }: { result: SearchResult }) {
 
   return (
     <div
-      style={{ borderInlineStartColor: TIER_ACCENT[metadata.tier] }}
+      style={{ borderInlineStartColor: tierAccentColor(metadata.tier) }}
       className="bg-white border border-slate-200 border-s-4 rounded-lg p-5 space-y-3 shadow-sm"
     >
       {/* Header row */}
@@ -254,34 +200,19 @@ export default function VaultPage() {
   return (
     <main className="min-h-screen bg-slate-50">
       {/* Header */}
-      <header className="sticky top-0 z-20 bg-white/95 backdrop-blur border-b border-slate-200 shadow-sm">
-        <div className="max-w-7xl mx-auto px-6 h-14 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <span className="text-slate-400 text-lg">⬡</span>
-            <div>
-              <span className="font-mono text-sm font-semibold tracking-widest text-slate-900 uppercase">
-                {tc('appName')}
-              </span>
-              <span className="ms-3 text-xs text-slate-400 tracking-wide hidden sm:inline">
-                {t('tagline')}
-              </span>
-            </div>
-          </div>
-          <div className="flex items-center gap-4">
-            <span className="hidden sm:flex items-center gap-1.5 text-xs text-slate-500">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              {tc('operational')}
-            </span>
-            <TopNav current="vault" />
-            <Link
-              href="/submit"
-              className="hidden sm:flex px-3 py-1.5 rounded text-xs font-medium bg-blue-600 text-white border border-blue-700 hover:bg-blue-700 transition-colors"
-            >
-              {tc('nav.submitEvidence')}
-            </Link>
-          </div>
-        </div>
-      </header>
+      <SiteHeader
+        current="vault"
+        tagline={t('tagline')}
+        showOperational
+        actions={
+          <Link
+            href="/submit"
+            className="hidden sm:flex px-3 py-1.5 rounded text-xs font-medium bg-blue-600 text-white border border-blue-700 hover:bg-blue-700 transition-colors"
+          >
+            {tc('nav.submitEvidence')}
+          </Link>
+        }
+      />
 
       <div className="max-w-7xl mx-auto px-6 py-8 space-y-8">
         {/* Analytics — Tier Stat Cards */}

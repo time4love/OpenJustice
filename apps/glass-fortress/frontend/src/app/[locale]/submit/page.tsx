@@ -1,28 +1,21 @@
 'use client';
 
 import { useState, useRef, DragEvent, ChangeEvent } from 'react';
+import Image from 'next/image';
 import { useTranslations, useLocale } from 'next-intl';
 import { Link, useRouter, usePathname } from '@/i18n/navigation';
 import { apiUrl } from '@/lib/api';
 import { CategoryBadges } from '@/components/CategoryBadges';
 import { INVESTIGATIVE_CATEGORIES, type InvestigativeCategory } from '@/lib/investigativeCategories';
+import type { EvidenceTier } from '@/components/TierBadge';
+import type { EvidenceRole, EvidencePerspective } from '@/types/evidence';
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
-type EvidenceRole = 'Incriminating' | 'ContextAnchor';
-
-type EvidenceTier =
-  | 'Tier 1: Smoking Gun'
-  | 'Tier 2: Material'
-  | 'Tier 3: Supporting'
-  | 'Tier 4: Anecdotal';
-
 type Phase = 'upload' | 'analyzing' | 'scanning' | 'review' | 'confirming' | 'confirmed';
 type InputMode = 'file' | 'url';
-
-type EvidencePerspective = 'Internal Knowledge' | 'Public Statement' | 'Citizen Experience';
 
 interface DraftAnalysis {
   evidenceRole: EvidenceRole;
@@ -506,8 +499,9 @@ function ConfirmedView({
         </div>
         <div className="p-5 space-y-5">
           <div className="flex flex-wrap gap-2 items-center">
-            <span className="px-2.5 py-1 rounded text-xs font-medium bg-cyan-50 text-cyan-700 border border-cyan-200">
-              ⚖ {analysis.targetEntity}
+            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded text-xs font-medium bg-cyan-50 text-cyan-700 border border-cyan-200">
+              <Image src="/icon_target_entity.png" alt="" width={14} height={14} className="w-3.5 h-3.5" />
+              {analysis.targetEntity}
             </span>
             <CategoryBadges categories={analysis.investigativeCategories} />
             {analysis.evidenceRole && (
@@ -954,6 +948,12 @@ export default function SubmitPage() {
             <div className="bg-white border border-slate-200 rounded-lg p-5 shadow-sm">
               <h1 className="text-sm font-semibold text-slate-800 mb-2">{tUpload('heading')}</h1>
               <p className="text-sm text-slate-500 leading-relaxed">{tUpload('body')}</p>
+              <p className="text-xs text-slate-400 mt-3">
+                {tUpload('safetyNote')}{' '}
+                <Link href="/safety" className="text-blue-600 hover:underline">
+                  {tUpload('safetyLinkLabel')}
+                </Link>
+              </p>
             </div>
 
             <UploadZone

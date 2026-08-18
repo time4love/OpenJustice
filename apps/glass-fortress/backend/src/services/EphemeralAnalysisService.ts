@@ -101,26 +101,7 @@ export async function analyzeEphemeral(file: EphemeralFile): Promise<EphemeralRe
   try {
     plaintext = await decryptBuffer(file.ciphertext, file.aesKey);
     const analysis = await getIntake().analyzeEvidence(plaintext, file.mimeType);
-
-    let ipfsCid: string | null = null;
-    let fileUrl: string | null = null;
-
-    if (process.env['PINATA_JWT']) {
-      try {
-        ipfsCid = await uploadToPinata(file.ciphertext, file.filename + '.enc');
-      } catch (err) {
-        console.warn('[ephemeral] Pinata upload failed (non-fatal):', err instanceof Error ? err.message : err);
-      }
-    }
-
-    if (!ipfsCid) {
-      try {
-        const rawBytes = Buffer.from(file.ciphertext, 'base64');
-        fileUrl = await getStorage().uploadEvidenceFile(rawBytes, file.filename + '.enc', 'application/octet-stream');
-      } catch (err) {
-        console.warn('[ephemeral] Storage fallback failed (non-fatal):', err instanceof Error ? err.message : err);
-      }
-    }
+    const { ipfsCid, fileUrl } = await storeEphemeral(file);
 
     return { analysis, ipfsCid, fileUrl };
   } finally {

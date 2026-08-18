@@ -17,6 +17,16 @@ body {
   color: var(--foreground);
 }
 
+/* Belt-and-suspenders: side-entrance reveal animations (framer-motion x
+   offsets) can transiently extend a section's scrollable box past the
+   viewport edge before they settle at x:0. Individual sections should clip
+   this themselves (overflow-x-hidden), but the page must never scroll
+   horizontally regardless of which section forgets to. */
+html, body {
+  overflow-x: hidden;
+  max-width: 100vw;
+}
+
 /* Scrollbar styling for the light theme */
 ::-webkit-scrollbar {
   width: 6px;

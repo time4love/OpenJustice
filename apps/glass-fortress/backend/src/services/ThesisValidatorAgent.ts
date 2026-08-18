@@ -1,19 +1,20 @@
 import { z } from 'zod';
-import { toJsonSchema } from '@langchain/core/utils/json_schema';
 import { LLMFactory } from '../factories/LLMFactory';
+import { assertSchemaCompatibility } from '../lib/assertSchemaCompatibility';
+import { THESIS_FALSIFICATION_PROMPT } from '../prompts/thesisFalsification';
+import type { Evidence } from '@prisma/client';
 
 // ---------------------------------------------------------------------------
 // Evidence context passed into the validator
 // ---------------------------------------------------------------------------
 
-export interface EvidenceSummary {
-  id: string;
-  summary: string;
-  investigativeCategories: string[];
-  evidenceDate: string;
-  targetEntity: string;
-  evidenceRole: string;
-}
+// Keyed by `id` rather than `fileHash` (unlike the other agents' evidence
+// context types) — kept as its own Pick off Evidence rather than forced
+// through the shared EvidenceContext in lib/evidenceContext.ts.
+export type EvidenceSummary = Pick<
+  Evidence,
+  'id' | 'summary' | 'investigativeCategories' | 'evidenceDate' | 'targetEntity' | 'evidenceRole'
+>;
 
 // ---------------------------------------------------------------------------
 // Output schema
@@ -70,46 +71,7 @@ export type FalsificationResult = z.infer<typeof FalsificationResultSchema>;
 // Schema integrity guard
 // ---------------------------------------------------------------------------
 
-function assertSchemaCompatibility(): void {
-  const jsonSchema = toJsonSchema(FalsificationResultSchema) as {
-    properties?: Record<string, unknown>;
-  };
-  const schemaFields = Object.keys(FalsificationResultSchema.shape);
-  const missing = schemaFields.filter(
-    (f) => !(f in (jsonSchema.properties ?? {})),
-  );
-  if (missing.length > 0) {
-    throw new Error(
-      `[ThesisValidatorAgent] Schema compatibility failure: fields dropped by toJsonSchema — [${missing.join(', ')}].`,
-    );
-  }
-}
-
-assertSchemaCompatibility();
-
-// ---------------------------------------------------------------------------
-// System prompt
-// ---------------------------------------------------------------------------
-
-const SYSTEM_PROMPT = `You are a hostile cross-examiner preparing the opposing counsel's case.
-
-A user has submitted a legal thesis connecting pieces of evidence to support a legal argument. You have been given both the thesis text AND the full metadata of every evidence record the user tagged.
-
-YOUR MANDATE: Try to falsify the thesis. Your job is not to validate it — it is to find every logical gap, every unsupported inference, every place where the evidence cited does not actually prove what the user claims.
-
-HOW TO FALSIFY:
-1. Read each claim in the thesis carefully.
-2. Check whether the tagged evidence directly supports that claim, or whether the author is making an inference the evidence does not warrant.
-3. Ask: what is the strongest argument a defense attorney would make against this claim? Would they say: "the document doesn't actually state that", "correlation is not causation", "there's a simpler innocent explanation", "there's no proof the defendant had knowledge at this time"?
-4. Identify what specific evidence is MISSING to close each logical gap.
-5. If a claim genuinely survives this scrutiny — acknowledge it honestly. The goal is precision, not blanket rejection.
-
-RULES:
-- Reference the actual evidence text in your criticism. Do not speak in generalities.
-- Be specific about logical gaps: "the evidence shows X happened on date D, but the thesis claims the defendant knew about it beforehand — there is no evidence of that knowledge."
-- Do not invent evidence or facts. Only use what is provided.
-- Output in Hebrew for survivingClaims, falsificationAttempts, weakestLink, and recommendedEvidence.
-- Be ruthless but accurate. A false negative (missing a real gap) is as bad as a false positive.`;
+assertSchemaCompatibility(FalsificationResultSchema, 'ThesisValidatorAgent');
 
 // ---------------------------------------------------------------------------
 // ThesisValidatorAgent
@@ -142,7 +104,7 @@ export class ThesisValidatorAgent {
         : '(no evidence was tagged — the thesis makes claims with no attached evidence)';
 
     const messages = [
-      { role: 'system' as const, content: SYSTEM_PROMPT },
+      { role: 'system' as const, content: THESIS_FALSIFICATION_PROMPT },
       {
         role: 'human' as const,
         content:

@@ -6,6 +6,7 @@ import {
   INVESTIGATIVE_CATEGORY_LABELS,
   type InvestigativeCategory,
 } from '../lib/investigativeCategories';
+import { EVIDENCE_TIER } from './IntakeAgent';
 
 // ---------------------------------------------------------------------------
 // Zod output schema
@@ -57,10 +58,10 @@ Your task:
 
 // Tier sort order — lower number = higher priority
 const TIER_PRIORITY: Record<string, number> = {
-  'Tier 1: Smoking Gun': 1,
-  'Tier 2: Material': 2,
-  'Tier 3: Supporting': 3,
-  'Tier 4: Anecdotal': 4,
+  [EVIDENCE_TIER.SMOKING_GUN]: 1,
+  [EVIDENCE_TIER.MATERIAL]: 2,
+  [EVIDENCE_TIER.SUPPORTING]: 3,
+  [EVIDENCE_TIER.ANECDOTAL]: 4,
 };
 
 // ---------------------------------------------------------------------------

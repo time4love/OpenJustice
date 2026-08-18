@@ -1,21 +1,15 @@
 import { z } from 'zod';
-import { toJsonSchema } from '@langchain/core/utils/json_schema';
 import { LLMFactory } from '../factories/LLMFactory';
 import type { DevilsAdvocateOutput } from './DevilsAdvocateAgent';
+import { assertSchemaCompatibility } from '../lib/assertSchemaCompatibility';
+import { THESIS_REVISION_PROMPT } from '../prompts/thesisRevision';
+import type { EvidenceContext } from '../lib/evidenceContext';
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
-export interface UncitedEvidence {
-  fileHash: string;
-  summary: string;
-  investigativeCategories: string[];
-  evidenceTier: string;
-  evidenceRole: string;
-  evidenceDate: string;
-  targetEntity: string;
-}
+export type UncitedEvidence = EvidenceContext;
 
 // ---------------------------------------------------------------------------
 // Output schema
@@ -51,43 +45,11 @@ export type RevisionOutput = z.infer<typeof RevisionOutputSchema>;
 // Schema guard
 // ---------------------------------------------------------------------------
 
-function assertSchemaCompatibility(): void {
-  const jsonSchema = toJsonSchema(RevisionOutputSchema) as { properties?: Record<string, unknown> };
-  const missing = Object.keys(RevisionOutputSchema.shape).filter(
-    (f) => !(f in (jsonSchema.properties ?? {})),
-  );
-  if (missing.length > 0) {
-    throw new Error(
-      `[RevisionAgent] Schema compatibility failure: fields dropped — [${missing.join(', ')}].`,
-    );
-  }
-}
-
-assertSchemaCompatibility();
+assertSchemaCompatibility(RevisionOutputSchema, 'RevisionAgent');
 
 // ---------------------------------------------------------------------------
 // System prompt
 // ---------------------------------------------------------------------------
-
-const SYSTEM_PROMPT = `You are a legal thesis revision specialist for a class-action lawsuit evidence platform.
-
-You are given:
-1. ORIGINAL THESIS — the current thesis text
-2. DEVIL'S ADVOCATE CRITIQUE — weaknesses, counter-arguments, and evidence gaps identified by an AI reviewer
-3. UNCITED EVIDENCE — new evidence records in the vault that are not yet cited in the thesis
-
-Your task: produce a REVISED VERSION that strengthens the thesis by:
-- Addressing the strongest counter-arguments (soften overreaching claims, add nuance where needed)
-- Replacing unsubstantiated coordination/intent claims with demonstrable parallel conduct where appropriate
-- Incorporating relevant uncited evidence records to close identified gaps
-- Maintaining the overall argument structure and the original language (Hebrew prose where used)
-
-RULES:
-- Do not invent facts not present in the provided evidence
-- Do not remove evidence citations already in the original — only add new ones
-- If a counter-argument is strong and cannot be addressed with available evidence, acknowledge the limitation explicitly in the revised text
-- Output revisedBody in the SAME LANGUAGE as the original thesis
-- evidenceHashesToInclude must only contain hashes from the provided UNCITED EVIDENCE list`;
 
 // ---------------------------------------------------------------------------
 // RevisionAgent
@@ -140,7 +102,7 @@ export class RevisionAgent {
         : '(no uncited evidence available — revise based on critique alone)';
 
     const messages = [
-      { role: 'system' as const, content: SYSTEM_PROMPT },
+      { role: 'system' as const, content: THESIS_REVISION_PROMPT },
       {
         role: 'human' as const,
         content:

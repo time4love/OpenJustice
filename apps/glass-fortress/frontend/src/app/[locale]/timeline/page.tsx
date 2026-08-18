@@ -3,9 +3,15 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useTranslations } from 'next-intl';
 import { Link } from '@/i18n/navigation';
-import { TopNav } from '@/components/TopNav';
+import { SiteHeader } from '@/components/SiteHeader';
 import { apiUrl } from '@/lib/api';
 import { CategoryBadges } from '@/components/CategoryBadges';
+import { formatHash } from '@/lib/format';
+import { EmptyState } from '@/components/EmptyState';
+import { SkeletonRows } from '@/components/SkeletonRows';
+import { perspectiveStyles } from '@/lib/evidencePerspective';
+import { usePromoteAction } from '@/hooks/usePromoteAction';
+import type { EvidenceMetadata as SharedEvidenceMetadata, EvidencePerspective } from '@/types/evidence';
 
 const PAGE_SIZE = 20;
 
@@ -13,33 +19,9 @@ const PAGE_SIZE = 20;
 // Types
 // ---------------------------------------------------------------------------
 
-type EvidencePerspective = 'Internal Knowledge' | 'Public Statement' | 'Citizen Experience';
-
-type EvidenceRole = 'Incriminating' | 'ContextAnchor';
-
-interface EvidenceMetadata {
-  evidenceId: string;
-  fileHash: string;
-  status?: string;
-  evidenceRole?: EvidenceRole;
-  investigativeCategories: string[];
-  tier: string;
-  tierReasoning?: string;
-  evidencePerspective?: EvidencePerspective;
-  summary: string;
-  targetEntity: string;
-  evidenceDate: string;
-  figures?: { id: string; name: string }[];
-  medicalConditions?: string[];
-  statisticalClaims?: string[];
-  regulatoryMentions?: string[];
-  euaOmissionStatus?: string;
-  sourceUrl?: string | null;
-  fileUrl?: string | null;
-  urlVersionDiffId?: string | null;
-  trackedUrlId?: string | null;
-  timestamp: number;
-}
+// evidenceId is optional on the shared type (figures/vault don't return it),
+// but the timeline feed always includes it and reads it unguarded below.
+type EvidenceMetadata = SharedEvidenceMetadata & { evidenceId: string };
 
 interface TimelineRecord {
   content: string;
@@ -50,50 +32,6 @@ interface TimelineRecord {
 // ---------------------------------------------------------------------------
 // Perspective styles
 // ---------------------------------------------------------------------------
-
-const PERSPECTIVE_STYLES: Record<
-  EvidencePerspective,
-  { dot: string; card: string; border: string; header: string; badge: string }
-> = {
-  'Internal Knowledge': {
-    dot: 'bg-red-500',
-    card: 'bg-red-50/50',
-    border: 'border-red-200',
-    header: 'bg-red-50 border-red-100',
-    badge: 'bg-red-100 text-red-700 border-red-200',
-  },
-  'Public Statement': {
-    dot: 'bg-blue-500',
-    card: 'bg-blue-50/50',
-    border: 'border-blue-200',
-    header: 'bg-blue-50 border-blue-100',
-    badge: 'bg-blue-100 text-blue-700 border-blue-200',
-  },
-  'Citizen Experience': {
-    dot: 'bg-slate-400',
-    card: 'bg-slate-50',
-    border: 'border-slate-200',
-    header: 'bg-slate-100 border-slate-200',
-    badge: 'bg-slate-100 text-slate-600 border-slate-200',
-  },
-};
-
-const FALLBACK_STYLES = {
-  dot: 'bg-slate-400',
-  card: 'bg-slate-50',
-  border: 'border-slate-200',
-  header: 'bg-slate-100 border-slate-200',
-  badge: 'bg-slate-100 text-slate-600 border-slate-200',
-};
-
-function perspectiveStyles(p?: string) {
-  return PERSPECTIVE_STYLES[p as EvidencePerspective] ?? FALLBACK_STYLES;
-}
-
-function formatHash(hash: string): string {
-  if (hash.length <= 18) return hash;
-  return `${hash.slice(0, 10)}…${hash.slice(-8)}`;
-}
 
 // ---------------------------------------------------------------------------
 // Locale switcher
@@ -122,6 +60,7 @@ interface NodeLabels {
   promoteToVault: string;
   promoting: string;
   promoteSuccess: string;
+  promoteError: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -137,26 +76,19 @@ function PromoteButton({
   labels: NodeLabels;
   onPromoted: () => void;
 }) {
-  const [state, setState] = useState<'idle' | 'loading' | 'done'>('idle');
-
-  async function handlePromote() {
-    setState('loading');
-    try {
-      const res = await fetch(apiUrl('/api/evidence/promote'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fileHash }),
-      });
-      if (res.ok) {
-        setState('done');
-        setTimeout(onPromoted, 1200);
-      } else {
-        setState('idle');
-      }
-    } catch {
-      setState('idle');
+  const { state, error, run } = usePromoteAction(async () => {
+    const res = await fetch(apiUrl('/api/evidence/promote'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fileHash }),
+    });
+    if (res.ok) {
+      setTimeout(onPromoted, 1200);
+      return { ok: true };
     }
-  }
+    const data = (await res.json().catch(() => null)) as { message?: string } | null;
+    return { ok: false, message: data?.message };
+  });
 
   if (state === 'done') {
     return (
@@ -165,13 +97,18 @@ function PromoteButton({
   }
 
   return (
-    <button
-      onClick={() => void handlePromote()}
-      disabled={state === 'loading'}
-      className="shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold bg-amber-500 hover:bg-amber-600 disabled:opacity-60 text-white transition-colors"
-    >
-      {state === 'loading' ? labels.promoting : labels.promoteToVault}
-    </button>
+    <div className="space-y-1">
+      <button
+        onClick={() => void run()}
+        disabled={state === 'loading'}
+        className="shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold bg-amber-500 hover:bg-amber-600 disabled:opacity-60 text-white transition-colors"
+      >
+        {state === 'loading' ? labels.promoting : labels.promoteToVault}
+      </button>
+      {state === 'error' && (
+        <p className="text-xs text-red-600">{error ?? labels.promoteError}</p>
+      )}
+    </div>
   );
 }
 
@@ -437,43 +374,17 @@ function UnifiedTimeline({
 // Empty state
 // ---------------------------------------------------------------------------
 
-function EmptyState({ title, sub }: { title: string; sub: string }) {
-  return (
-    <div className="flex flex-col items-center justify-center text-center px-8 py-24 border border-dashed border-slate-200 rounded-xl bg-white shadow-sm">
-      <div className="text-3xl mb-4 text-slate-300">⏱</div>
-      <p className="text-sm font-medium text-slate-500 mb-1">{title}</p>
-      <p className="text-xs text-slate-400 max-w-xs leading-relaxed">{sub}</p>
-    </div>
-  );
-}
-
 // ---------------------------------------------------------------------------
 // Loading skeleton
 // ---------------------------------------------------------------------------
 
 function TimelineSkeleton() {
   return (
-    <div className="animate-pulse space-y-5">
-      {[1, 2, 3, 4].map((i) => (
-        <div key={i} className="flex gap-4">
-          <div className="flex flex-col items-center shrink-0">
-            <div className="w-3 h-3 rounded-full bg-slate-200 mt-[1.125rem]" />
-            <div className="w-px flex-1 bg-slate-200 mt-1.5 min-h-24" />
-          </div>
-          <div className="flex-1 bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
-            <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-100 flex items-center gap-3">
-              <div className="h-2.5 bg-slate-200 rounded-full w-20" />
-              <div className="h-2.5 bg-slate-200 rounded-full w-28" />
-            </div>
-            <div className="px-4 py-3 space-y-2">
-              <div className="h-2 bg-slate-100 rounded" />
-              <div className="h-2 bg-slate-100 rounded w-5/6" />
-              <div className="h-2 bg-slate-100 rounded w-4/6" />
-            </div>
-          </div>
-        </div>
-      ))}
-    </div>
+    <SkeletonRows
+      rows={4}
+      headerBarWidths={['w-20', 'w-28']}
+      bodyLineWidths={['', 'w-5/6', 'w-4/6']}
+    />
   );
 }
 
@@ -483,7 +394,6 @@ function TimelineSkeleton() {
 
 export default function TimelinePage() {
   const t = useTranslations('timeline');
-  const tc = useTranslations('common');
 
   const [records, setRecords] = useState<TimelineRecord[]>([]);
   const [totalCount, setTotalCount] = useState<number | null>(null);
@@ -596,34 +506,14 @@ export default function TimelinePage() {
     promoteToVault: t('promoteToVault'),
     promoting: t('promoting'),
     promoteSuccess: t('promoteSuccess'),
+    promoteError: t('promoteError'),
     getPerspectiveLabel,
   };
 
   return (
     <main className="min-h-screen bg-slate-50">
       {/* Header */}
-      <header className="sticky top-0 z-20 bg-white/95 backdrop-blur border-b border-slate-200 shadow-sm">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <span className="text-slate-400 text-lg">⬡</span>
-            <div>
-              <span className="font-mono text-sm font-semibold tracking-widest text-slate-900 uppercase">
-                {tc('appName')}
-              </span>
-              <span className="ms-3 text-xs text-slate-400 tracking-wide hidden sm:inline">
-                {t('tagline')}
-              </span>
-            </div>
-          </div>
-          <div className="flex items-center gap-4">
-            <span className="flex items-center gap-1.5 text-xs text-slate-500 hidden sm:flex">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              {tc('operational')}
-            </span>
-            <TopNav current="timeline" />
-          </div>
-        </div>
-      </header>
+      <SiteHeader current="timeline" maxWidth="max-w-4xl" tagline={t('tagline')} showOperational />
 
       <div className="max-w-4xl mx-auto px-4 sm:px-6 py-8 space-y-6">
 
@@ -650,7 +540,7 @@ export default function TimelinePage() {
         {initialLoading && <TimelineSkeleton />}
 
         {!initialLoading && !error && records.length === 0 && (
-          <EmptyState title={t('emptyTitle')} sub={t('emptySub')} />
+          <EmptyState icon="⏱" title={t('emptyTitle')} sub={t('emptySub')} />
         )}
 
         {!initialLoading && !error && records.length > 0 && (
@@ -660,26 +550,12 @@ export default function TimelinePage() {
             {/* Sentinel + load-more indicator */}
             <div ref={sentinelRef} className="py-2">
               {loadingMore && (
-                <div className="animate-pulse space-y-5">
-                  {[1, 2].map((i) => (
-                    <div key={i} className="flex gap-4">
-                      <div className="flex flex-col items-center shrink-0">
-                        <div className="w-3 h-3 rounded-full bg-slate-200 mt-[1.125rem]" />
-                        <div className="w-px flex-1 bg-slate-200 mt-1.5 min-h-16" />
-                      </div>
-                      <div className="flex-1 bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
-                        <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-100 flex items-center gap-3">
-                          <div className="h-2.5 bg-slate-200 rounded-full w-20" />
-                          <div className="h-2.5 bg-slate-200 rounded-full w-28" />
-                        </div>
-                        <div className="px-4 py-3 space-y-2">
-                          <div className="h-2 bg-slate-100 rounded" />
-                          <div className="h-2 bg-slate-100 rounded w-5/6" />
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                <SkeletonRows
+                  rows={2}
+                  connectorHeight="min-h-16"
+                  headerBarWidths={['w-20', 'w-28']}
+                  bodyLineWidths={['', 'w-5/6']}
+                />
               )}
               {!hasMore && records.length > 0 && (
                 <p className="text-center text-xs text-slate-400 py-4">

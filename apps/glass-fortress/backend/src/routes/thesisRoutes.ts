@@ -13,6 +13,7 @@ import { sha256, extractText, extractPreview, triggerAIAnalysis } from '../servi
 import { logSessionEvent } from '../services/sessionService';
 import { suggestThesisHandler } from '../mcp/tools/suggestThesis';
 import { createThesisDraftHandler } from '../mcp/tools/createThesisDraft';
+import { buildEvidenceAnalysisData } from '../lib/evidenceCreateData';
 
 const router = Router();
 
@@ -30,6 +31,42 @@ function getRevisionAgent(): RevisionAgent {
 function getFoiaAgent(): FoiaLetterAgent {
   if (!_foiaAgent) _foiaAgent = new FoiaLetterAgent();
   return _foiaAgent;
+}
+
+// ---------------------------------------------------------------------------
+// Evidence-mention enrichment — fileHash -> readable summary, shared by the
+// full-thesis and single-version fetch routes below
+// ---------------------------------------------------------------------------
+
+async function buildEvidenceMap(evidenceRefIds: string[]) {
+  const evidenceRecords = evidenceRefIds.length > 0
+    ? await prisma.evidence.findMany({
+        where: { fileHash: { in: evidenceRefIds } },
+        select: {
+          id: true,
+          fileHash: true,
+          summary: true,
+          investigativeCategories: true,
+          evidenceTier: true,
+          evidenceType: true,
+          urlVersionDiff: { select: { trackedUrlId: true } },
+        },
+      })
+    : [];
+
+  return Object.fromEntries(
+    evidenceRecords.map((e) => [
+      e.fileHash,
+      {
+        evidenceId: e.id,
+        summary: e.summary,
+        investigativeCategories: e.investigativeCategories,
+        evidenceTier: e.evidenceTier,
+        evidenceType: e.evidenceType,
+        trackedUrlId: e.urlVersionDiff?.trackedUrlId ?? null,
+      },
+    ]),
+  );
 }
 
 
@@ -227,34 +264,7 @@ router.get('/:id', async (req: Request, res: Response): Promise<void> => {
       .filter((m) => m.type === 'EVIDENCE')
       .map((m) => m.refId);
 
-    const evidenceRecords = evidenceRefIds.length > 0
-      ? await prisma.evidence.findMany({
-          where: { fileHash: { in: evidenceRefIds } },
-          select: {
-            id: true,
-            fileHash: true,
-            summary: true,
-            investigativeCategories: true,
-            evidenceTier: true,
-            evidenceType: true,
-            urlVersionDiff: { select: { trackedUrlId: true } },
-          },
-        })
-      : [];
-
-    const evidenceMap = Object.fromEntries(
-      evidenceRecords.map((e) => [
-        e.fileHash,
-        {
-          evidenceId: e.id,
-          summary: e.summary,
-          investigativeCategories: e.investigativeCategories,
-          evidenceTier: e.evidenceTier,
-          evidenceType: e.evidenceType,
-          trackedUrlId: e.urlVersionDiff?.trackedUrlId ?? null,
-        },
-      ]),
-    );
+    const evidenceMap = await buildEvidenceMap(evidenceRefIds);
 
     const gapResolutions = (thesis.headVersion?.gapResolutions ?? []).map((r) => ({
       gapIndex: r.gapIndex,
@@ -606,34 +616,7 @@ router.get('/:id/versions/:versionId', async (req: Request, res: Response): Prom
       .filter((m) => m.type === 'EVIDENCE')
       .map((m) => m.refId);
 
-    const evidenceRecords = evidenceRefIds.length > 0
-      ? await prisma.evidence.findMany({
-          where: { fileHash: { in: evidenceRefIds } },
-          select: {
-            id: true,
-            fileHash: true,
-            summary: true,
-            investigativeCategories: true,
-            evidenceTier: true,
-            evidenceType: true,
-            urlVersionDiff: { select: { trackedUrlId: true } },
-          },
-        })
-      : [];
-
-    const evidenceMap = Object.fromEntries(
-      evidenceRecords.map((e) => [
-        e.fileHash,
-        {
-          evidenceId: e.id,
-          summary: e.summary,
-          investigativeCategories: e.investigativeCategories,
-          evidenceTier: e.evidenceTier,
-          evidenceType: e.evidenceType,
-          trackedUrlId: e.urlVersionDiff?.trackedUrlId ?? null,
-        },
-      ]),
-    );
+    const evidenceMap = await buildEvidenceMap(evidenceRefIds);
 
     res.status(200).json({
       thesis: {
@@ -1058,19 +1041,8 @@ router.post(
             data: {
               fileHash,
               status: 'PENDING_REVIEW',
-              evidenceRole: analysis.evidenceRole,
-                targetEntity: analysis.targetEntity,
-              evidenceTier: analysis.evidenceTier,
-              evidencePerspective: analysis.evidencePerspective ?? null,
-              investigativeCategories: analysis.investigativeCategories,
-              tierReasoning: analysis.tierReasoning ?? null,
-              summary: analysis.summary,
-              evidenceDate: analysis.evidenceDate,
+              ...buildEvidenceAnalysisData(analysis),
               figures: { connect: analysis.keyFigures.map((name) => ({ name })) },
-              medicalConditions: JSON.stringify(analysis.medicalConditions),
-              statisticalClaims: JSON.stringify(analysis.statisticalClaims),
-              regulatoryMentions: JSON.stringify(analysis.regulatoryMentions),
-              euaOmissionStatus: analysis.euaOmissionStatus,
               sourceUrl: `whistleblower/thesis/${thesisId}/gap/${gapIndex}`,
               fileUrl: fileUrl ?? undefined,
               ipfsCid: ipfsCid ?? undefined,

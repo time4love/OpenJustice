@@ -5,25 +5,17 @@ import { useSearchParams } from 'next/navigation';
 import { useTranslations, useLocale } from 'next-intl';
 import { Link, useRouter } from '@/i18n/navigation';
 import { apiUrl } from '@/lib/api';
-import { TopNav } from '@/components/TopNav';
+import { SiteHeader } from '@/components/SiteHeader';
+import { useAuth } from '@/context/AuthContext';
+import type { ThesisSummary as FullThesisSummary } from '@/types/thesis';
+import { strengthBadgeClass } from '@/components/StrengthBadge';
+import { fetchTheses } from '@/lib/thesisApi';
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
-interface HeadVersionSummary {
-  id: string;
-  status: string;
-  preview: string;
-  mentionCount: number;
-  createdAt: string;
-}
-
-interface ThesisSummary {
-  id: string;
-  createdAt: string;
-  headVersion: HeadVersionSummary | null;
-}
+type ThesisSummary = Pick<FullThesisSummary, 'id' | 'createdAt' | 'headVersion'>;
 
 interface ThesisSuggestion {
   proposedTitle: string;
@@ -61,12 +53,6 @@ function StatusBadge({ status }: { status: string }) {
 // ---------------------------------------------------------------------------
 // Generate from Evidence modal
 // ---------------------------------------------------------------------------
-
-const CONFIDENCE_STYLES: Record<string, string> = {
-  WEAK: 'bg-red-100 text-red-700 border-red-200',
-  MODERATE: 'bg-amber-100 text-amber-700 border-amber-200',
-  STRONG: 'bg-emerald-100 text-emerald-700 border-emerald-200',
-};
 
 function GenerateModal({
   onClose,
@@ -194,7 +180,7 @@ function GenerateModal({
                   {suggestion.proposedTitle}
                 </p>
                 <span
-                  className={`shrink-0 text-xs font-semibold px-2 py-0.5 rounded-full border ${CONFIDENCE_STYLES[suggestion.confidenceLevel] ?? 'bg-slate-100 text-slate-600 border-slate-200'}`}
+                  className={`shrink-0 text-xs font-semibold px-2 py-0.5 rounded-full border ${strengthBadgeClass(suggestion.confidenceLevel)}`}
                 >
                   {t('generateConfidenceLabel')}: {suggestion.confidenceLevel}
                 </span>
@@ -252,9 +238,10 @@ function GenerateModal({
 
 export default function ThesesPage() {
   const t = useTranslations('theses');
-  const tc = useTranslations('common');
   const locale = useLocale();
   const router = useRouter();
+  const { researcher } = useAuth();
+  const canEdit = researcher?.approved ?? false;
 
   const searchParams = useSearchParams();
   const evidenceFilter = searchParams.get('evidence');
@@ -267,13 +254,8 @@ export default function ThesesPage() {
   useEffect(() => {
     async function load() {
       try {
-        const url = evidenceFilter
-          ? apiUrl(`/api/thesis?evidence=${encodeURIComponent(evidenceFilter)}`)
-          : apiUrl('/api/thesis');
-        const res = await fetch(url);
-        if (!res.ok) throw new Error();
-        const data = (await res.json()) as { theses: ThesisSummary[] };
-        setTheses(data.theses);
+        const query = evidenceFilter ? `evidence=${encodeURIComponent(evidenceFilter)}` : undefined;
+        setTheses(await fetchTheses(query));
       } catch {
         setError(true);
       } finally {
@@ -290,20 +272,7 @@ export default function ThesesPage() {
   return (
     <div className="min-h-screen bg-slate-50">
       {/* Header */}
-      <header className="sticky top-0 z-20 bg-white/95 backdrop-blur border-b border-slate-200 shadow-sm">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <span className="text-slate-400 text-lg">⬡</span>
-            <span className="font-mono text-sm font-semibold tracking-widest text-slate-900 uppercase">
-              {tc('appName')}
-            </span>
-            <span className="ms-3 text-xs text-slate-400 tracking-wide hidden sm:inline">
-              {t('tagline')}
-            </span>
-          </div>
-          <TopNav current="theses" />
-        </div>
-      </header>
+      <SiteHeader current="theses" maxWidth="max-w-5xl" tagline={t('tagline')} />
 
       <main className="max-w-5xl mx-auto px-4 sm:px-6 py-10">
         {/* Title row */}
@@ -312,20 +281,22 @@ export default function ThesesPage() {
             <h1 className="text-2xl font-bold text-slate-900">{t('pageTitle')}</h1>
             <p className="text-slate-500 text-sm mt-1">{t('tagline')}</p>
           </div>
-          <div className="flex items-center gap-2 shrink-0">
-            <button
-              onClick={() => setGenerateOpen(true)}
-              className="px-4 py-2 rounded-lg text-sm font-medium text-violet-700 border border-violet-300 hover:bg-violet-50 transition-colors"
-            >
-              &#x2728; {t('generateBtn')}
-            </button>
-            <Link
-              href="/theses/new"
-              className="px-4 py-2 bg-violet-700 hover:bg-violet-600 rounded-lg text-sm font-medium text-white transition-colors"
-            >
-              + {t('newThesisHeading')}
-            </Link>
-          </div>
+          {canEdit && (
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                onClick={() => setGenerateOpen(true)}
+                className="px-4 py-2 rounded-lg text-sm font-medium text-violet-700 border border-violet-300 hover:bg-violet-50 transition-colors"
+              >
+                &#x2728; {t('generateBtn')}
+              </button>
+              <Link
+                href="/theses/new"
+                className="px-4 py-2 bg-violet-700 hover:bg-violet-600 rounded-lg text-sm font-medium text-white transition-colors"
+              >
+                + {t('newThesisHeading')}
+              </Link>
+            </div>
+          )}
         </div>
 
         {/* Evidence filter banner */}
@@ -346,20 +317,22 @@ export default function ThesesPage() {
         {!loading && !error && theses.length === 0 && (
           <div className="text-center py-24 space-y-3">
             <p className="text-slate-500 text-lg">{t('emptyState')}</p>
-            <div className="flex items-center justify-center gap-3">
-              <button
-                onClick={() => setGenerateOpen(true)}
-                className="px-4 py-2 rounded-lg text-sm font-medium text-violet-700 border border-violet-300 hover:bg-violet-50 transition-colors"
-              >
-                &#x2728; {t('generateBtn')}
-              </button>
-              <Link
-                href="/theses/new"
-                className="inline-block px-4 py-2 bg-violet-700 hover:bg-violet-600 rounded-lg text-sm font-medium text-white transition-colors"
-              >
-                {t('newThesisHeading')}
-              </Link>
-            </div>
+            {canEdit && (
+              <div className="flex items-center justify-center gap-3">
+                <button
+                  onClick={() => setGenerateOpen(true)}
+                  className="px-4 py-2 rounded-lg text-sm font-medium text-violet-700 border border-violet-300 hover:bg-violet-50 transition-colors"
+                >
+                  &#x2728; {t('generateBtn')}
+                </button>
+                <Link
+                  href="/theses/new"
+                  className="inline-block px-4 py-2 bg-violet-700 hover:bg-violet-600 rounded-lg text-sm font-medium text-white transition-colors"
+                >
+                  {t('newThesisHeading')}
+                </Link>
+              </div>
+            )}
           </div>
         )}
 

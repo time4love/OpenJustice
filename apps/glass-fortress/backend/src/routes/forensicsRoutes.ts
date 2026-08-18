@@ -6,21 +6,11 @@ import { prisma } from '../lib/prisma';
 import { Web3Service } from '../services/Web3Service';
 import { type DiffItem } from '../services/ForensicAgent';
 import { buildForensicEvidence } from '../services/forensicEvidence';
+import { parseDiffItems } from '../lib/diffItems';
 import {
   investigativeCategoriesField,
   onChainCategoryLabel,
 } from '../lib/investigativeCategories';
-
-// Parses the deletedText/addedText JSON column, handling the legacy string[] format
-// produced before the coupled {summary, exactQuote} schema was introduced.
-function parseDiffItems(json: string): DiffItem[] {
-  const parsed = JSON.parse(json) as unknown[];
-  if (parsed.length === 0) return [];
-  if (typeof parsed[0] === 'string') {
-    return (parsed as string[]).map((s) => ({ summary: s, exactQuote: '' }));
-  }
-  return parsed as DiffItem[];
-}
 
 const router = Router();
 
@@ -173,6 +163,7 @@ router.get('/tracked/:id/status', async (req: Request, res: Response): Promise<v
           totalSnapshots: true,
           processedSnapshots: true,
           updatedAt: true,
+          failureReason: true,
         },
       }),
       prisma.urlVersionDiff.findMany({
@@ -299,6 +290,7 @@ router.get('/tracked/:id/jobs', async (req: Request, res: Response): Promise<voi
         totalSnapshots: true,
         processedSnapshots: true,
         createdAt: true,
+        failureReason: true,
       },
     });
     res.status(200).json({ jobs });
@@ -346,6 +338,7 @@ router.get('/tracked/:id', async (req: Request, res: Response): Promise<void> =>
       orderBy: { afterDate: 'asc' },
       take: limit + 1,
       ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+      include: { beforeSnapshot: { select: { snapshotUrl: true } } },
     });
 
     const hasMore = rawDiffs.length > limit;
@@ -364,6 +357,7 @@ router.get('/tracked/:id', async (req: Request, res: Response): Promise<void> =>
       beforeDate: d.beforeDate,
       date: d.afterDate,
       snapshotUrl: d.snapshotUrl,
+      beforeSnapshotUrl: d.beforeSnapshot?.snapshotUrl ?? null,
       deletedItems: parseDiffItems(d.deletedText),
       addedItems: parseDiffItems(d.addedText),
       rawDeletedChunks: JSON.parse(d.rawDeletedText) as string[],
@@ -555,6 +549,7 @@ function buildReportHtml(
     beforeDate: string;
     date: string;
     snapshotUrl: string;
+    beforeSnapshotUrl: string | null;
     deletedItems: DiffItem[];
     addedItems: DiffItem[];
     legalSignificance: string;
@@ -600,10 +595,13 @@ function buildReportHtml(
             </div>`
           : '';
 
-      const analysisHtml =
-        sig && d.legalSignificance
-          ? `<div class="forensic-analysis" dir="auto">${escHtml(d.legalSignificance)}</div>`
-          : '';
+      const analysisHtml = d.legalSignificance
+        ? `<div class="forensic-analysis" dir="auto">${escHtml(d.legalSignificance)}</div>`
+        : '';
+
+      const beforeSnapshotHtml = d.beforeSnapshotUrl
+        ? `<div class="snapshot-link">Compared against (before): <a href="${escHtml(d.beforeSnapshotUrl)}">${escHtml(d.beforeSnapshotUrl)}</a></div>`
+        : '';
 
       return `<div class="diff-card ${sig ? 'sig' : 'audit'}">
         <div class="diff-header">
@@ -619,7 +617,8 @@ function buildReportHtml(
           ${analysisHtml}
           ${deletedHtml}
           ${addedHtml}
-          <div class="snapshot-link">Archive snapshot: <a href="${escHtml(d.snapshotUrl)}">${escHtml(d.snapshotUrl)}</a></div>
+          ${beforeSnapshotHtml}
+          <div class="snapshot-link">Archive snapshot (after): <a href="${escHtml(d.snapshotUrl)}">${escHtml(d.snapshotUrl)}</a></div>
         </div>
       </div>`;
     })
@@ -719,6 +718,7 @@ router.get('/tracked/:id/report', async (req: Request, res: Response): Promise<v
     const allDiffs = await prisma.urlVersionDiff.findMany({
       where: { trackedUrlId },
       orderBy: { afterDate: 'asc' },
+      include: { beforeSnapshot: { select: { snapshotUrl: true } } },
     });
 
     const diffs = allDiffs
@@ -726,6 +726,7 @@ router.get('/tracked/:id/report', async (req: Request, res: Response): Promise<v
         beforeDate: d.beforeDate,
         date: d.afterDate,
         snapshotUrl: d.snapshotUrl,
+        beforeSnapshotUrl: d.beforeSnapshot?.snapshotUrl ?? null,
         deletedItems: parseDiffItems(d.deletedText),
         addedItems: parseDiffItems(d.addedText),
         legalSignificance: d.aiSignificance,

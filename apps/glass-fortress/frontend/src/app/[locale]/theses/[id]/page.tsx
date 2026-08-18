@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, Suspense, use } from 'react';
+import Image from 'next/image';
 import { useSearchParams } from 'next/navigation';
 import { useTranslations, useLocale } from 'next-intl';
 import { Link } from '@/i18n/navigation';
@@ -8,8 +9,13 @@ import { apiUrl } from '@/lib/api';
 import { TipTapRenderer, type EvidenceInfo } from '@/components/TipTapRenderer';
 import { LegalDisclaimer } from '@/components/LegalDisclaimer';
 import type { EvidenceGap, CounterArgument, AIAnalysis } from '@/types/thesis';
-import { stripMetadata, encryptFile, uint8ToBase64 } from '@/lib/documentVault';
 import { CategoryBadges } from '@/components/CategoryBadges';
+import { tierDotColor } from '@/components/TierBadge';
+import { useAuth } from '@/context/AuthContext';
+import { FoiaModal, type FoiaModalState } from '@/components/FoiaModal';
+import { WhistleblowerModal } from '@/components/WhistleblowerModal';
+import { addEvidenceToThesis } from '@/lib/thesisDocument';
+import { generateFoiaRequest } from '@/lib/thesisApi';
 
 // ---------------------------------------------------------------------------
 // Types matching the versioned thesis API
@@ -60,29 +66,8 @@ interface VaultHit {
   targetEntity: string;
 }
 
-const GAP_TIER_DOT: Record<string, string> = {
-  '1': 'bg-red-500', '2': 'bg-orange-500', '3': 'bg-yellow-500', '4': 'bg-slate-400',
-};
-function gapTierDot(tier: string) {
-  const num = tier?.match(/\d/)?.[0] ?? '';
-  return GAP_TIER_DOT[num] ?? 'bg-slate-300';
-}
-
-function appendEvidenceMention(
-  doc: Record<string, unknown>,
-  fileHash: string,
-  label: string,
-): Record<string, unknown> {
-  const content = [...((doc.content as unknown[]) ?? [])];
-  content.push({
-    type: 'paragraph',
-    content: [{ type: 'evidenceMention', attrs: { id: fileHash, label: label.slice(0, 30) } }],
-  });
-  return { ...doc, content };
-}
-
 function GapSearchPanel({
-  gap, gapIndex, thesisId, thesisContent, resolution, onVersionAdded, onResolved, onGenerateFoia, onSubmitTip,
+  gap, gapIndex, thesisId, thesisContent, resolution, onVersionAdded, onResolved, onGenerateFoia, onSubmitTip, canEdit,
 }: {
   gap: EvidenceGap;
   gapIndex: number;
@@ -93,6 +78,7 @@ function GapSearchPanel({
   onResolved: () => void;
   onGenerateFoia: () => void;
   onSubmitTip: () => void;
+  canEdit: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -122,13 +108,7 @@ function GapSearchPanel({
   async function addToThesis(hit: VaultHit) {
     setAdding(prev => new Set(prev).add(hit.fileHash));
     try {
-      const newContent = appendEvidenceMention(thesisContent, hit.fileHash, hit.summary);
-      const res = await fetch(apiUrl(`/api/thesis/${thesisId}/version`), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userContent: newContent }),
-      });
-      if (!res.ok) throw new Error();
+      await addEvidenceToThesis(thesisId, hit.fileHash, hit.summary, thesisContent);
       setAdded(prev => new Set(prev).add(hit.fileHash));
       onVersionAdded();
     } finally {
@@ -178,42 +158,46 @@ function GapSearchPanel({
           <div className="flex gap-2">
             <button
               onClick={onGenerateFoia}
-              className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-sky-100 hover:bg-sky-200 active:bg-sky-300 text-sky-700 transition-colors"
+              className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg bg-sky-100 hover:bg-sky-200 active:bg-sky-300 text-sky-700 transition-colors"
             >
-              📄 FOIA
+              <Image src="/icon_foia.png" alt="" width={14} height={14} className="w-3.5 h-3.5" />
+              FOIA
             </button>
             <button
               onClick={onSubmitTip}
-              className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 active:bg-slate-300 text-slate-600 transition-colors"
+              className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 active:bg-slate-300 text-slate-600 transition-colors"
             >
-              🔒 Tip
+              <Image src="/icon_anon.png" alt="" width={14} height={14} className="w-3.5 h-3.5" />
+              Tip
             </button>
           </div>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
-          {isResolved && (
+        {canEdit && (
+          <div className="flex items-center gap-2 shrink-0">
+            {isResolved && (
+              <button
+                onClick={() => void unresolve()}
+                disabled={unresolving}
+                className="text-xs font-semibold px-3 py-1.5 bg-emerald-100 hover:bg-red-100 text-emerald-700 hover:text-red-600 rounded-lg transition-colors"
+              >
+                {unresolving ? '…' : 'Unresolve'}
+              </button>
+            )}
             <button
-              onClick={() => void unresolve()}
-              disabled={unresolving}
-              className="text-xs font-semibold px-3 py-1.5 bg-emerald-100 hover:bg-red-100 text-emerald-700 hover:text-red-600 rounded-lg transition-colors"
+              onClick={search}
+              className={`text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors ${
+                isResolved
+                  ? 'bg-emerald-100 hover:bg-emerald-200 text-emerald-700'
+                  : 'bg-amber-100 hover:bg-amber-200 text-amber-700'
+              }`}
             >
-              {unresolving ? '…' : 'Unresolve'}
+              {open ? 'Hide' : 'Search Vault'}
             </button>
-          )}
-          <button
-            onClick={search}
-            className={`text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors ${
-              isResolved
-                ? 'bg-emerald-100 hover:bg-emerald-200 text-emerald-700'
-                : 'bg-amber-100 hover:bg-amber-200 text-amber-700'
-            }`}
-          >
-            {open ? 'Hide' : 'Search Vault'}
-          </button>
-        </div>
+          </div>
+        )}
       </div>
 
-      {open && (
+      {open && canEdit && (
         <div className="bg-white border-t border-amber-200">
           {gap.suggestedSearch && (
             <p className="text-xs text-slate-400 px-4 pt-3 pb-1 font-mono">{gap.suggestedSearch}</p>
@@ -226,7 +210,7 @@ function GapSearchPanel({
           )}
           {!loading && hits.map(hit => (
             <div key={hit.fileHash} className="flex items-start gap-3 px-4 py-3 border-b border-slate-100 last:border-0">
-              <span className={`mt-1 shrink-0 w-2 h-2 rounded-full ${gapTierDot(hit.tier)}`} />
+              <span className={`mt-1 shrink-0 w-2 h-2 rounded-full ${tierDotColor(hit.tier)}`} />
               <div className="flex-1 min-w-0">
                 <p className="text-xs font-medium text-slate-700 leading-snug">{hit.summary.slice(0, 120)}</p>
                 <p className="text-xs text-slate-400 mt-0.5 flex items-center gap-1.5">
@@ -270,623 +254,6 @@ function GapSearchPanel({
   );
 }
 
-// FoiaModal + WhistleblowerModal are also exported from src/components/ for
-// use by the call page. The local definitions below remain the source of truth
-// for this page until a full extraction is done.
-
-type FoiaModalState =
-  | { status: 'loading'; gapIndex: number }
-  | {
-      status: 'ready';
-      gapIndex: number;
-      letterText: string;
-      targetMinistry: string;
-      legalBasis: string;
-      targetEmail?: string;
-      targetAddress?: string;
-    };
-
-function resolveLetter(raw: string, name: string): string {
-  const today = new Date().toLocaleDateString('he-IL', {
-    day: 'numeric', month: 'long', year: 'numeric',
-  });
-  return raw
-    .replace(/\{\{REQUESTER_NAME\}\}/g, name.trim() || '[שם מגיש/ת הבקשה]')
-    .replace(/\{\{DATE\}\}/g, today);
-}
-
-function FoiaModal({
-  state,
-  onClose,
-}: {
-  state: FoiaModalState;
-  onClose: () => void;
-}) {
-  const t = useTranslations('theses');
-  const [requesterName, setRequesterName] = useState('');
-  const [editMode, setEditMode] = useState(false);
-  const [manualText, setManualText] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
-
-  const rawLetter = state.status === 'ready' ? state.letterText : '';
-
-  // The text shown in preview and used for copy/download
-  const resolvedText = manualText ?? resolveLetter(rawLetter, requesterName);
-
-  // When entering edit mode, pre-fill textarea with the current resolved text
-  const [editBuffer, setEditBuffer] = useState('');
-  function enterEdit() {
-    setEditBuffer(resolvedText);
-    setEditMode(true);
-  }
-  function applyEdit() {
-    setManualText(editBuffer);
-    setEditMode(false);
-  }
-  function cancelEdit() {
-    setEditMode(false);
-  }
-
-  function copy() {
-    void navigator.clipboard.writeText(resolvedText);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  }
-
-  function downloadPdf() {
-    if (state.status !== 'ready') return;
-
-    // Split into paragraphs so each block can carry break-inside: avoid,
-    // preventing numbered request items from being torn across page boundaries.
-    const paragraphs = resolvedText
-      .split(/\n\n+/)
-      .map((para) => {
-        const esc = para
-          .replace(/&/g, '&amp;')
-          .replace(/</g, '&lt;')
-          .replace(/>/g, '&gt;')
-          .replace(/\n/g, '<br>');
-        return `<p>${esc}</p>`;
-      })
-      .join('\n');
-
-    const ministryEscaped = state.targetMinistry
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;');
-
-    const html = `<!DOCTYPE html>
-<html dir="rtl" lang="he">
-<head>
-<meta charset="UTF-8">
-<title>בקשת חופש מידע — ${ministryEscaped}</title>
-<style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body {
-    font-family: Arial, Helvetica, sans-serif;
-    direction: rtl;
-    text-align: right;
-    font-size: 12pt;
-    line-height: 1.9;
-    color: #111;
-  }
-  p {
-    margin-bottom: 0.75em;
-    break-inside: avoid;
-    orphans: 3;
-    widows: 3;
-  }
-  @page {
-    size: A4;
-    margin: 2.5cm;
-    /* Suppress the URL/about:blank in the bottom-left margin box. */
-    @bottom-left { content: ''; }
-    /* Explicit page numbers — more reliable than relying on browser injection. */
-    @bottom-right {
-      content: counter(page) ' / ' counter(pages);
-      font-family: Arial, Helvetica, sans-serif;
-      font-size: 9pt;
-      color: #666;
-    }
-  }
-</style>
-</head>
-<body>${paragraphs}</body>
-</html>`;
-
-    const win = window.open('', '_blank', 'width=860,height=1050');
-    if (!win) return;
-    win.document.write(html);
-    win.document.close();
-    win.focus();
-    setTimeout(() => win.print(), 300);
-  }
-
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-3 sm:p-4"
-      onClick={(e) => { if (e.target === e.currentTarget && !editMode) onClose(); }}
-    >
-      <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[92vh] flex flex-col overflow-hidden">
-
-        {/* Header */}
-        <div className="flex items-center justify-between px-5 sm:px-6 py-4 border-b border-slate-200 shrink-0">
-          <div>
-            <h2 className="text-base font-bold text-slate-900">📄 {t('foiaModalTitle')}</h2>
-            {state.status === 'ready' && (
-              <p className="text-xs text-slate-500 mt-0.5">{state.targetMinistry}</p>
-            )}
-          </div>
-          <button
-            onClick={onClose}
-            className="text-slate-400 hover:text-slate-700 text-xl leading-none transition-colors p-1"
-            aria-label="Close"
-          >
-            ✕
-          </button>
-        </div>
-
-        {state.status === 'loading' ? (
-          <div className="flex-1 flex items-center justify-center py-16">
-            <div className="text-center space-y-3">
-              <div className="animate-spin text-3xl">⏳</div>
-              <p className="text-slate-500 text-sm">{t('foiaGenerating')}</p>
-            </div>
-          </div>
-        ) : (
-          <>
-            {/* Body — scrollable */}
-            <div className="flex-1 overflow-y-auto">
-
-              {/* Name personalisation */}
-              <div className="px-5 sm:px-6 pt-5 pb-4 border-b border-slate-100 space-y-1">
-                <label className="text-xs font-semibold text-slate-600 block">
-                  {t('foiaNameLabel')}
-                </label>
-                <input
-                  type="text"
-                  value={requesterName}
-                  onChange={(e) => {
-                    setRequesterName(e.target.value);
-                    // If user has NOT manually edited the letter text, keep auto-resolve
-                    if (manualText !== null) setManualText(null);
-                  }}
-                  placeholder={t('foiaNamePlaceholder')}
-                  className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-300"
-                />
-                <p className="text-xs text-slate-400">{t('foiaNameHint')}</p>
-              </div>
-
-              {/* Letter */}
-              <div className="px-5 sm:px-6 pt-4 pb-3">
-                {editMode ? (
-                  <div className="space-y-2">
-                    <textarea
-                      value={editBuffer}
-                      onChange={(e) => setEditBuffer(e.target.value)}
-                      className="w-full border border-violet-300 rounded-xl p-4 text-sm font-mono leading-relaxed focus:outline-none focus:ring-2 focus:ring-violet-300 min-h-[360px] resize-y"
-                      dir="rtl"
-                      spellCheck={false}
-                    />
-                    <div className="flex gap-2">
-                      <button
-                        onClick={applyEdit}
-                        className="px-4 py-2 bg-violet-700 hover:bg-violet-600 text-white text-xs font-semibold rounded-lg transition-colors active:scale-95"
-                      >
-                        Apply Changes
-                      </button>
-                      <button
-                        onClick={cancelEdit}
-                        className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg transition-colors"
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    {/* Formatted letter preview — official document styling */}
-                    <div
-                      className="bg-white border border-slate-200 rounded-xl shadow-sm px-6 sm:px-8 py-7 text-sm text-slate-800 leading-[1.85] whitespace-pre-wrap"
-                      style={{ fontFamily: '"Arial", sans-serif' }}
-                      dir="rtl"
-                    >
-                      {resolvedText}
-                    </div>
-                    <button
-                      onClick={enterEdit}
-                      className="text-xs text-violet-600 hover:text-violet-800 font-semibold underline underline-offset-2 transition-colors"
-                    >
-                      ✏️ Edit letter text
-                    </button>
-                  </div>
-                )}
-              </div>
-
-              {/* Ministry contact strip */}
-              {(state.targetEmail || state.targetAddress) && (
-                <div className="mx-5 sm:mx-6 mb-4 bg-sky-50 border border-sky-200 rounded-xl px-4 py-3 space-y-1.5 text-xs">
-                  {state.targetEmail && (
-                    <div className="flex items-start gap-2">
-                      <span className="shrink-0">📧</span>
-                      <div className="min-w-0">
-                        <span className="font-semibold text-slate-700">{t('foiaEmailLabel')}: </span>
-                        <a
-                          href={`mailto:${state.targetEmail}`}
-                          className="text-sky-700 hover:text-sky-900 underline break-all"
-                        >
-                          {state.targetEmail}
-                        </a>
-                        <span className="text-amber-600 ms-2">⚠ {t('foiaEmailVerify')}</span>
-                      </div>
-                    </div>
-                  )}
-                  {state.targetAddress && (
-                    <div className="flex items-start gap-2">
-                      <span className="shrink-0">📮</span>
-                      <div>
-                        <span className="font-semibold text-slate-700">{t('foiaAddressLabel')}: </span>
-                        <span className="text-slate-600" dir="rtl">{state.targetAddress}</span>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-
-            {/* Footer */}
-            <div className="shrink-0 border-t border-slate-100 px-4 sm:px-6 py-4 flex flex-col sm:flex-row gap-2 sm:gap-3">
-              <button
-                onClick={downloadPdf}
-                className="flex-1 sm:flex-none px-4 py-3 sm:py-2 bg-violet-700 hover:bg-violet-600 text-white text-sm font-semibold rounded-xl transition-colors active:scale-95"
-              >
-                ⬇ {t('foiaDownloadBtn')}
-              </button>
-              <button
-                onClick={copy}
-                className={`flex-1 sm:flex-none px-4 py-3 sm:py-2 rounded-xl text-sm font-semibold transition-colors active:scale-95 ${
-                  copied
-                    ? 'bg-emerald-100 text-emerald-700'
-                    : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
-                }`}
-              >
-                {copied ? t('foiaCopiedBtn') : t('foiaCopyBtn')}
-              </button>
-              <button
-                onClick={onClose}
-                className="flex-1 sm:flex-none px-4 py-3 sm:py-2 bg-slate-50 hover:bg-slate-100 rounded-xl text-sm font-semibold text-slate-500 transition-colors active:scale-95"
-              >
-                {t('foiaCloseBtn')}
-              </button>
-            </div>
-          </>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// WhistleblowerModal — anonymous encrypted document submission
-// ---------------------------------------------------------------------------
-
-interface WhistleblowerSubmission {
-  evidenceId: string;
-  filename: string;
-  summary: string;
-  duplicate: boolean;
-  ipfsCid: string | null;
-}
-
-type FileStage = 'idle' | 'stripping' | 'encrypting' | 'submitting' | 'done' | 'error';
-
-interface ManagedFile {
-  file: File;
-  stage: FileStage;
-  warnings: string[];
-}
-
-function FileRow({
-  mf,
-  onRemove,
-}: {
-  mf: ManagedFile;
-  onRemove: () => void;
-}) {
-  const stageLabel: Record<FileStage, { text: string; color: string }> = {
-    idle:       { text: '',           color: '' },
-    stripping:  { text: 'Stripping…', color: 'text-amber-600' },
-    encrypting: { text: 'Encrypting…', color: 'text-blue-600' },
-    submitting: { text: 'Uploading…', color: 'text-violet-600' },
-    done:       { text: '✓ Sent',     color: 'text-emerald-600' },
-    error:      { text: '✗ Error',    color: 'text-red-600' },
-  };
-  const { text, color } = stageLabel[mf.stage];
-  const busy = mf.stage !== 'idle' && mf.stage !== 'done' && mf.stage !== 'error';
-
-  return (
-    <li className="flex items-start gap-2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2">
-      <span className="text-slate-400 shrink-0 text-sm mt-0.5">
-        {mf.file.type === 'application/pdf' ? '📄' : '🖼️'}
-      </span>
-      <div className="flex-1 min-w-0 space-y-0.5">
-        <p className="text-xs text-slate-700 truncate">{mf.file.name}</p>
-        {text && <p className={`text-xs font-medium ${color}`}>{text}</p>}
-        {mf.warnings.map((w, i) => (
-          <p key={i} className="text-xs text-amber-600 leading-snug">⚠ {w}</p>
-        ))}
-      </div>
-      <span className="text-xs text-slate-400 shrink-0 mt-0.5">
-        {(mf.file.size / 1024 / 1024).toFixed(1)}MB
-      </span>
-      {!busy && (
-        <button
-          onClick={onRemove}
-          className="p-1 text-slate-400 hover:text-red-500 transition-colors shrink-0"
-          aria-label={`Remove ${mf.file.name}`}
-        >
-          ✕
-        </button>
-      )}
-    </li>
-  );
-}
-
-function WhistleblowerModal({
-  gapIndex,
-  gap,
-  thesisId,
-  onClose,
-}: {
-  gapIndex: number;
-  gap: EvidenceGap;
-  thesisId: string;
-  onClose: () => void;
-}) {
-  const t = useTranslations('theses');
-  const locale = useLocale();
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [managed, setManaged] = useState<ManagedFile[]>([]);
-  const [submitting, setSubmitting] = useState(false);
-  const [globalError, setGlobalError] = useState<string | null>(null);
-  const [submissions, setSubmissions] = useState<WhistleblowerSubmission[] | null>(null);
-
-  function addFiles(incoming: FileList | null) {
-    if (!incoming) return;
-    setManaged((prev) => {
-      const next = [...prev];
-      for (const f of Array.from(incoming)) {
-        if (next.length >= 10) break;
-        if (!next.some((m) => m.file.name === f.name && m.file.size === f.size)) {
-          next.push({ file: f, stage: 'idle', warnings: [] });
-        }
-      }
-      return next;
-    });
-  }
-
-  function removeFile(index: number) {
-    setManaged((prev) => prev.filter((_, i) => i !== index));
-  }
-
-  function setStage(index: number, stage: FileStage) {
-    setManaged((prev) => prev.map((m, i) => i === index ? { ...m, stage } : m));
-  }
-
-  function setWarnings(index: number, warnings: string[]) {
-    setManaged((prev) => prev.map((m, i) => i === index ? { ...m, warnings } : m));
-  }
-
-  async function submit() {
-    if (submitting || managed.length === 0) return;
-    setSubmitting(true);
-    setGlobalError(null);
-
-    const results: WhistleblowerSubmission[] = [];
-
-    try {
-      for (let i = 0; i < managed.length; i++) {
-        const { file } = managed[i]!;
-
-        // 1. Strip metadata
-        setStage(i, 'stripping');
-        const { file: stripped, warnings } = await stripMetadata(file);
-        setWarnings(i, warnings);
-
-        // 2. Encrypt
-        setStage(i, 'encrypting');
-        const { ciphertext, aesKeyJwk } = await encryptFile(stripped);
-
-        // 3. Submit to server (server decrypts ephemerally, stores CID/metadata only)
-        setStage(i, 'submitting');
-        const res = await fetch(
-          apiUrl(`/api/thesis/${thesisId}/gaps/${gapIndex}/whistleblower`),
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              files: [{
-                ciphertext: uint8ToBase64(ciphertext),
-                aesKey: aesKeyJwk,
-                filename: file.name,
-                mimeType: file.type || 'application/octet-stream',
-              }],
-            }),
-          },
-        );
-
-        if (!res.ok) {
-          setStage(i, 'error');
-          const data = await res.json().catch(() => ({})) as { error?: string };
-          throw new Error(data.error ?? `HTTP ${res.status}`);
-        }
-
-        const data = (await res.json()) as { submissions: WhistleblowerSubmission[] };
-        results.push(...data.submissions);
-        setStage(i, 'done');
-      }
-
-      setSubmissions(results);
-    } catch (err) {
-      setGlobalError(err instanceof Error ? err.message : 'Submission failed');
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  const busy = submitting;
-  const canSubmit = managed.length > 0 && !busy;
-
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-3 sm:p-4"
-      onClick={(e) => { if (e.target === e.currentTarget && !busy) onClose(); }}
-    >
-      <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full max-h-[92vh] flex flex-col overflow-hidden">
-
-        {/* Header */}
-        <div className="flex items-center justify-between px-5 sm:px-6 py-4 border-b border-slate-200 shrink-0">
-          <div>
-            <h2 className="text-base font-bold text-slate-900">🔒 {t('tipModalTitle')}</h2>
-            <p className="text-xs text-emerald-600 font-medium mt-0.5">
-              {locale === 'he' ? 'הצפנה בדפדפן — השרת לא רואה את המסמך' : 'Encrypted in browser — server never sees your document'}
-            </p>
-          </div>
-          <button
-            onClick={onClose}
-            disabled={busy}
-            className="text-slate-400 hover:text-slate-700 disabled:opacity-40 text-xl leading-none transition-colors p-1"
-            aria-label="Close"
-          >
-            ✕
-          </button>
-        </div>
-
-        {submissions ? (
-          /* ── Success state ────────────────────────────────── */
-          <div className="flex-1 overflow-y-auto px-5 sm:px-6 py-8 space-y-4 text-center">
-            <div className="text-4xl">✓</div>
-            <h3 className="text-sm font-bold text-emerald-700">{t('tipModalSuccessTitle')}</h3>
-            <p className="text-xs text-slate-600">{t('tipModalSuccessSub')}</p>
-            <ul className="text-left space-y-2 mt-2">
-              {submissions.map((s) => (
-                <li key={s.evidenceId} className="bg-slate-50 rounded-xl px-3 py-2 space-y-0.5">
-                  <p className="text-xs font-semibold text-slate-700 truncate">{s.filename}</p>
-                  <p className="text-xs text-slate-500 leading-snug line-clamp-2">{s.summary}</p>
-                  {s.ipfsCid && (
-                    <p className="text-xs font-mono text-emerald-600">IPFS: {s.ipfsCid.slice(0, 20)}…</p>
-                  )}
-                  <p className="text-xs font-mono text-slate-400">{s.evidenceId.slice(0, 16)}…</p>
-                </li>
-              ))}
-            </ul>
-            <button
-              onClick={onClose}
-              className="w-full sm:w-auto px-6 py-2.5 bg-slate-100 hover:bg-slate-200 rounded-lg text-sm font-semibold text-slate-700 transition-colors active:scale-95"
-            >
-              {t('tipModalCloseBtn')}
-            </button>
-          </div>
-        ) : (
-          /* ── Upload form ──────────────────────────────────── */
-          <div className="flex-1 overflow-y-auto px-5 sm:px-6 py-5 space-y-4">
-
-            {/* Gap context */}
-            <div
-              className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3"
-              dir={locale === 'he' ? 'rtl' : 'ltr'}
-            >
-              <p className="text-xs font-semibold text-amber-700 mb-1">{t('tipModalContext')}</p>
-              <p className="text-sm text-amber-800 leading-snug">{gap.description}</p>
-            </div>
-
-            {/* How it works */}
-            <div className="bg-slate-50 rounded-xl px-4 py-3 space-y-1.5">
-              <p className="text-xs font-semibold text-slate-600">
-                {locale === 'he' ? 'איך זה עובד' : 'How it works'}
-              </p>
-              <div className="flex flex-col gap-1">
-                {[
-                  locale === 'he' ? '① מחיקת מטא-דאטה מהקובץ (בדפדפן)' : '① Metadata stripped locally in your browser',
-                  locale === 'he' ? '② הצפנת הקובץ (AES-256, בדפדפן)' : '② File encrypted with AES-256 in your browser',
-                  locale === 'he' ? '③ ניתוח אנונימי — מסמך לא נשמר בשרת' : '③ Server analyzes ephemerally — plaintext never stored',
-                ].map((step, i) => (
-                  <p key={i} className="text-xs text-slate-500">{step}</p>
-                ))}
-              </div>
-            </div>
-
-            {/* File picker */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <label className="text-xs font-semibold text-slate-600">{t('tipModalFilesLabel')}</label>
-                <span className="text-xs text-slate-400">{t('tipModalFilesHint')}</span>
-              </div>
-
-              <input
-                ref={fileInputRef}
-                type="file"
-                multiple
-                accept=".jpg,.jpeg,.png,.pdf,.heic,.heif"
-                className="sr-only"
-                onChange={(e) => addFiles(e.target.files)}
-                disabled={busy}
-              />
-
-              <button
-                onClick={() => fileInputRef.current?.click()}
-                disabled={busy || managed.length >= 10}
-                className="w-full border-2 border-dashed border-slate-200 hover:border-violet-300 active:border-violet-400 disabled:opacity-40 rounded-xl py-5 text-sm font-semibold text-slate-500 hover:text-violet-600 transition-colors"
-              >
-                + {t('tipModalFilesBtn')}
-              </button>
-
-              {managed.length > 0 && (
-                <ul className="space-y-1.5">
-                  {managed.map((mf, i) => (
-                    <FileRow
-                      key={`${mf.file.name}-${mf.file.size}`}
-                      mf={mf}
-                      onRemove={() => removeFile(i)}
-                    />
-                  ))}
-                </ul>
-              )}
-
-              {managed.length === 0 && (
-                <p className="text-xs text-slate-400 text-center">{t('tipModalFilesEmpty')}</p>
-              )}
-            </div>
-
-            {globalError && (
-              <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
-                {globalError}
-              </p>
-            )}
-
-            <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 pt-1 pb-2">
-              <button
-                onClick={() => void submit()}
-                disabled={!canSubmit}
-                className="flex-1 sm:flex-none px-4 py-3 sm:py-2 bg-violet-700 hover:bg-violet-600 disabled:opacity-50 text-white text-sm font-semibold rounded-xl transition-colors active:scale-95"
-              >
-                {submitting ? t('tipModalSubmittingBtn') : t('tipModalSubmitBtn')}
-              </button>
-              <button
-                onClick={onClose}
-                disabled={busy}
-                className="flex-1 sm:flex-none px-4 py-3 sm:py-2 bg-slate-100 hover:bg-slate-200 disabled:opacity-50 rounded-xl text-sm font-semibold text-slate-700 transition-colors active:scale-95"
-              >
-                {t('tipModalCloseBtn')}
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
 const STRENGTH_STYLES: Record<string, string> = {
   WEAK: 'bg-red-50 border-red-200 text-red-700',
   MODERATE: 'bg-amber-50 border-amber-200 text-amber-700',
@@ -905,6 +272,8 @@ function ThesisPageInner({ id }: { id: string }) {
   const searchParams = useSearchParams();
   const historicalVersionId = searchParams.get('v');
   const isHistorical = !!historicalVersionId;
+  const { researcher } = useAuth();
+  const canEdit = researcher?.approved ?? false;
 
   const [thesis, setThesis] = useState<Thesis | null>(null);
   const [evidenceMap, setEvidenceMap] = useState<Record<string, EvidenceInfo>>({});
@@ -1009,19 +378,7 @@ function ThesisPageInner({ id }: { id: string }) {
     setFoiaError(null);
     setFoiaModal({ status: 'loading', gapIndex });
     try {
-      const res = await fetch(apiUrl(`/api/thesis/${id}/foia-request`), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gapIndex }),
-      });
-      if (!res.ok) throw new Error();
-      const data = (await res.json()) as {
-        letterText: string;
-        targetMinistry: string;
-        legalBasis: string;
-        targetEmail?: string;
-        targetAddress?: string;
-      };
+      const data = await generateFoiaRequest(id, gapIndex);
       setFoiaModal({ status: 'ready', gapIndex, ...data });
     } catch {
       setFoiaError(gapIndex);
@@ -1075,12 +432,14 @@ function ThesisPageInner({ id }: { id: string }) {
               </Link>
             ) : (
               <>
-                <Link
-                  href={`/theses/${id}/edit`}
-                  className="px-3 py-1.5 bg-violet-700 hover:bg-violet-600 rounded-lg text-xs font-medium text-white transition-colors"
-                >
-                  {t('editBtn')}
-                </Link>
+                {canEdit && (
+                  <Link
+                    href={`/theses/${id}/edit`}
+                    className="px-3 py-1.5 bg-violet-700 hover:bg-violet-600 rounded-lg text-xs font-medium text-white transition-colors"
+                  >
+                    {t('editBtn')}
+                  </Link>
+                )}
                 <Link
                   href={`/theses/${id}/history`}
                   className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 rounded-lg text-xs font-medium text-slate-700 transition-colors"
@@ -1160,7 +519,7 @@ function ThesisPageInner({ id }: { id: string }) {
             <div className="flex flex-wrap gap-2">
               {evidenceMentions.map(m => {
                 const info = evidenceMap[m.refId];
-                const tierDotClass = gapTierDot(info?.evidenceTier ?? '');
+                const tierDotClass = tierDotColor(info?.evidenceTier ?? '');
                 const label = info?.summary?.slice(0, 35) || m.refId.slice(0, 8);
                 return (
                   <Link
@@ -1249,6 +608,7 @@ function ThesisPageInner({ id }: { id: string }) {
                         onResolved={() => { void loadThesis(); }}
                         onGenerateFoia={() => { void generateFoia(i); }}
                         onSubmitTip={() => { setTipModalGapIndex(i); }}
+                        canEdit={canEdit}
                       />
                     );
                 })}
@@ -1272,8 +632,8 @@ function ThesisPageInner({ id }: { id: string }) {
               </div>
             )}
 
-            {/* Suggest Revision button — hidden for historical versions */}
-            {!isHistorical && revision === null && (
+            {/* Suggest Revision button — hidden for historical versions, researcher-only */}
+            {canEdit && !isHistorical && revision === null && (
               <div className="pt-2">
                 <button
                   onClick={() => void runRevision()}
@@ -1332,8 +692,8 @@ function ThesisPageInner({ id }: { id: string }) {
           </section>
         )}
 
-        {/* Pending AI notice + trigger button — hidden for historical versions */}
-        {!isHistorical && hv?.status === 'PENDING_AI' && !analyzing && (
+        {/* Pending AI notice + trigger button — hidden for historical versions, researcher-only */}
+        {canEdit && !isHistorical && hv?.status === 'PENDING_AI' && !analyzing && (
           <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex items-center justify-between gap-4">
             <p className="text-amber-700 text-sm">{t('pendingAiNotice')}</p>
             <button

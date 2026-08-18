@@ -1,12 +1,15 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Image from 'next/image';
 import { useParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { Link } from '@/i18n/navigation';
 import { TopNav } from '@/components/TopNav';
 import { apiUrl } from '@/lib/api';
 import { CategoryBadges } from '@/components/CategoryBadges';
+import { TierBadge } from '@/components/TierBadge';
+import { DiffCard, type DiffRecord } from '@/components/DiffCard';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -33,29 +36,10 @@ interface EvidenceDetail {
   sourceUrl?: string | null;
   fileUrl?: string | null;
   trackedUrlId?: string | null;
+  diff: DiffRecord | null;
   citingTheses: { id: string; title: string | null }[];
   createdAt: string;
   createdBy?: { handle: string } | null;
-}
-
-// ---------------------------------------------------------------------------
-// Tier badge colours
-// ---------------------------------------------------------------------------
-
-const TIER_COLOURS: Record<string, string> = {
-  'Tier 1: Smoking Gun': 'bg-red-100 text-red-700 border-red-200',
-  'Tier 2: Material': 'bg-orange-100 text-orange-700 border-orange-200',
-  'Tier 3: Supporting': 'bg-yellow-100 text-yellow-700 border-yellow-200',
-  'Tier 4: Background': 'bg-slate-100 text-slate-600 border-slate-200',
-};
-
-function TierBadge({ tier }: { tier: string }) {
-  const cls = TIER_COLOURS[tier] ?? 'bg-slate-100 text-slate-600 border-slate-200';
-  return (
-    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border ${cls}`}>
-      {tier}
-    </span>
-  );
 }
 
 // ---------------------------------------------------------------------------
@@ -81,6 +65,7 @@ export default function EvidencePage() {
   const params = useParams();
   const id = typeof params.id === 'string' ? params.id : Array.isArray(params.id) ? params.id[0] : '';
   const t = useTranslations('evidence');
+  const tDiff = useTranslations('forensics');
 
   const [evidence, setEvidence] = useState<EvidenceDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -132,7 +117,8 @@ export default function EvidencePage() {
                 <TierBadge tier={evidence.evidenceTier} />
                 {evidence.evidenceType === 'FORENSIC_DIFF' && (
                   <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold border bg-red-100 text-red-700 border-red-200">
-                    🔍 {t('forensicDiff')}
+                    <Image src="/icon_diff.png" alt="" width={14} height={14} className="w-3.5 h-3.5" />
+                    {t('forensicDiff')}
                   </span>
                 )}
                 {evidence.status === 'PENDING_REVIEW' ? (
@@ -211,6 +197,41 @@ export default function EvidencePage() {
                 </Link>
               )}
             </div>
+
+            {/* Forensic diff — the actual page change this evidence consists of,
+                rendered exactly as it appears on the forensic timeline. */}
+            {evidence.diff && (
+              <DiffCard
+                diff={evidence.diff}
+                index={0}
+                labels={{
+                  deletionsLabel: tDiff('deletionsLabel'),
+                  additionsLabel: tDiff('additionsLabel'),
+                  forensicLabel: tDiff('forensicLabel'),
+                  viewSnapshot: tDiff('viewSnapshot'),
+                  viewBeforeSnapshot: tDiff('viewBeforeSnapshot'),
+                  promoteBtn: tDiff('promoteBtn'),
+                  promotingBtn: tDiff('promotingBtn'),
+                  alreadyPromoted: tDiff('alreadyPromoted'),
+                  promoteSuccess: tDiff('promoteSuccess'),
+                  promoteError: tDiff('promoteError'),
+                  flaggedBadge: tDiff('flaggedBadge'),
+                  auditBadge: tDiff('auditBadge'),
+                  showChanges: tDiff('showChanges'),
+                  hideChanges: tDiff('hideChanges'),
+                  addToThesis: {
+                    addBtn: tDiff('addToThesisBtn'),
+                    saving: tDiff('addToThesisSaving'),
+                    done: tDiff('addToThesisDone'),
+                    pick: tDiff('addToThesisPick'),
+                    loading: tDiff('addToThesisLoading'),
+                    empty: tDiff('addToThesisEmpty'),
+                    untitled: (untitledId: string) => tDiff('addToThesisUntitled', { id: untitledId }),
+                  },
+                }}
+                onPromoted={() => { /* already promoted — this page IS the promotion */ }}
+              />
+            )}
 
             {/* File hash */}
             <Section label={t('fileHash')}>

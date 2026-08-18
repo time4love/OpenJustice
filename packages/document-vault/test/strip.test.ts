@@ -188,6 +188,15 @@ describe('stripMetadata — JPEG', () => {
     const { warnings } = await stripMetadata(file);
     expect(warnings.length).toBeGreaterThan(0);
   });
+
+  it('strips by .jpg extension when the MIME type is generic (mobile share-sheet uploads)', async () => {
+    const file = makeFile(makeJpegWithExif(), 'photo.jpg', 'application/octet-stream');
+    const { file: stripped, warnings } = await stripMetadata(file);
+
+    expect(warnings).toHaveLength(0);
+    const outBytes = new Uint8Array(await stripped.arrayBuffer());
+    expect(containsMarker(outBytes, 0xe1)).toBe(false);
+  });
 });
 
 describe('stripMetadata — PNG', () => {
@@ -233,6 +242,24 @@ describe('stripMetadata — Office documents', () => {
 
   it('detects office docs by extension when MIME type is generic', async () => {
     const file = makeFile(new Uint8Array([0x50, 0x4b]), 'report.xlsx', 'application/octet-stream');
+    const { warnings } = await stripMetadata(file);
+    expect(warnings.length).toBeGreaterThan(0);
+  });
+});
+
+describe('stripMetadata — HEIC/HEIF', () => {
+  it('returns a warning for .heic files', async () => {
+    const file = makeFile(new Uint8Array([0x00, 0x00, 0x00, 0x18]), 'photo.heic', 'image/heic');
+    const { file: out, warnings } = await stripMetadata(file);
+
+    expect(warnings.length).toBeGreaterThan(0);
+    expect(warnings[0]).toMatch(/heic/i);
+    // Returns the original file unchanged — no in-browser HEIC stripping
+    expect(out).toBe(file);
+  });
+
+  it('detects HEIC by extension when MIME type is generic', async () => {
+    const file = makeFile(new Uint8Array([0x00, 0x00, 0x00, 0x18]), 'photo.heif', 'application/octet-stream');
     const { warnings } = await stripMetadata(file);
     expect(warnings.length).toBeGreaterThan(0);
   });

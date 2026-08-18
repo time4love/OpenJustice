@@ -11,6 +11,7 @@ import {
   buildForensicEvidence,
   type ForensicEvidenceSource,
 } from './forensicEvidence';
+import { groupDiffChunks, chunksForAI } from '../lib/diffChunking';
 
 // ---------------------------------------------------------------------------
 // Lazy singletons — non-fatal if unavailable
@@ -96,12 +97,6 @@ const CDX_MAX_RETRIES = 4;
 
 /** Base delay (ms) for exponential back-off on 503 retries. Doubles each attempt. */
 const CDX_RETRY_BASE_MS = 8_000;
-
-/** Minimum character length for a diff chunk to be considered substantive. */
-const MIN_CHUNK_LENGTH = 40;
-
-/** Maximum raw diff chunks per side sent to the AI. */
-const MAX_CHUNKS_PER_SIDE = 8;
 
 /** Days on each side of the snapshot date to search for correlated DB evidence. */
 const CONTEXT_WINDOW_DAYS = 60;
@@ -297,44 +292,6 @@ async function registerSnapshotOnChain(snapshotId: string, contentHash: string):
 }
 
 /**
- * Group consecutive diff changes of the same type into single string chunks.
- * Returns ALL non-empty chunks (no minimum length), largest first, capped at
- * MAX_CHUNKS_PER_SIDE. Use this for storage and display.
- */
-function groupDiffChunks(
-  raw: ReturnType<typeof diffLines>,
-  type: 'added' | 'removed',
-): string[] {
-  const chunks: string[] = [];
-  let current = '';
-
-  for (const part of raw) {
-    const isMatch = type === 'added' ? part.added : part.removed;
-    if (isMatch) {
-      current += part.value;
-    } else {
-      const trimmed = current.trim();
-      if (trimmed.length > 0) chunks.push(trimmed);
-      current = '';
-    }
-  }
-  const trimmed = current.trim();
-  if (trimmed.length > 0) chunks.push(trimmed);
-
-  return chunks
-    .sort((a, b) => b.length - a.length)
-    .slice(0, MAX_CHUNKS_PER_SIDE);
-}
-
-/**
- * Returns only chunks long enough to be meaningful AI input (≥ MIN_CHUNK_LENGTH).
- * Use this exclusively when deciding whether to invoke the ForensicAgent.
- */
-function chunksForAI(chunks: string[]): string[] {
-  return chunks.filter((c) => c.length >= MIN_CHUNK_LENGTH);
-}
-
-/**
  * Compute the date string for a point N days offset from a YYYY-MM-DD date.
  */
 function offsetDate(dateStr: string, days: number): string {
@@ -360,6 +317,29 @@ function computeNextFromDate(snapshotsListJson: string, totalSnapshots: number):
   } catch {
     return null;
   }
+}
+
+/**
+ * Thrown when a Wayback Machine HTTP request fails after retries are exhausted.
+ * Carries enough detail to classify the failure — an archive.org outage
+ * (retry later, our pipeline is fine) vs. something else worth investigating.
+ */
+export class WaybackFetchError extends Error {
+  readonly offline: boolean;
+  constructor(message: string, offline: boolean) {
+    super(message);
+    this.name = 'WaybackFetchError';
+    this.offline = offline;
+  }
+}
+
+/**
+ * True when the archive responded 503 — the signature of the Internet Archive's
+ * own "Temporarily Offline" outage page, as opposed to a one-off or rate-limit
+ * style failure (404, timeout, etc).
+ */
+export function isWaybackOffline(err: unknown): boolean {
+  return axios.isAxiosError(err) && err.response?.status === 503;
 }
 
 /** Thrown when a scan is cancelled mid-flight so runFullScan exits cleanly. */
@@ -466,6 +446,11 @@ export class WaybackScraper {
       snapshots.push({ timestamp, digest });
     }
 
+    // CDX defaults to ascending-by-timestamp order, but that's an assumption about a
+    // third-party API, not a guarantee — sort explicitly so beforeDate/afterDate in
+    // processJob() can never be derived from a reversed pair.
+    snapshots.sort((a, b) => (a.timestamp < b.timestamp ? -1 : a.timestamp > b.timestamp ? 1 : 0));
+
     return { snapshots: snapshots.slice(0, MAX_SNAPSHOTS), hasMore };
   }
 
@@ -494,8 +479,9 @@ export class WaybackScraper {
       html = response.data;
     } catch (err) {
       if (axios.isAxiosError(err)) {
-        throw new Error(
+        throw new WaybackFetchError(
           `Failed to fetch snapshot ${timestamp}: HTTP ${err.response?.status ?? 'unknown'}`,
+          isWaybackOffline(err),
         );
       }
       throw err;
@@ -764,6 +750,7 @@ export class WaybackScraper {
         snapshotsList: '[]',
         totalSnapshots: 0,
         processedSnapshots: 0,
+        failureReason: null,
       },
       create: {
         url,
@@ -805,7 +792,10 @@ export class WaybackScraper {
         console.error(`[WaybackScraper] Job ${jobId} — CDX fetch failed:`, message);
         return prisma.waybackScrapeJob.update({
           where: { id: jobId },
-          data: { status: 'FAILED' },
+          data: {
+            status: 'FAILED',
+            failureReason: isWaybackOffline(err) ? 'WAYBACK_OFFLINE' : 'ALL_FETCHES_FAILED',
+          },
         });
       }
       snapshotsList = rawSnapshots.map((s) => ({
@@ -831,6 +821,11 @@ export class WaybackScraper {
     let previousText = '';
     let previousSnapshotId: string | null = null;
     let processedCount = snapshotsList.filter((s) => s.status === 'DONE').length;
+    // Tallied across this call only — used solely to classify a total-failure
+    // outcome (see the end of this method). A prior run's failures aren't
+    // reflected here, but doneCount already accounts for any prior successes.
+    let offlineFailures = 0;
+    let otherFailures = 0;
 
     for (let i = 0; i < snapshotsList.length; i++) {
       const entry = snapshotsList[i];
@@ -863,6 +858,11 @@ export class WaybackScraper {
           `[WaybackScraper] Job ${jobId} — snapshot ${entry.timestamp} fetch failed:`,
           err instanceof Error ? err.message : err,
         );
+        if (err instanceof WaybackFetchError && err.offline) {
+          offlineFailures++;
+        } else {
+          otherFailures++;
+        }
         entry.status = 'FAILED';
         processedCount++;
         await prisma.waybackScrapeJob.update({
@@ -876,7 +876,17 @@ export class WaybackScraper {
         continue;
       }
 
-      if (previousText) {
+      // Belt-and-suspenders against a reversed pair: getSnapshotsList() sorts ascending
+      // before persisting, but a job resumed from a snapshotsList written before that
+      // sort existed could still carry an out-of-order pair. Skip rather than diff
+      // backwards and mislabel additions as deletions.
+      const prevEntry = i > 0 ? snapshotsList[i - 1] : null;
+      const isChronological = !prevEntry || prevEntry.timestamp < entry.timestamp;
+      if (previousText && !isChronological) {
+        console.error(
+          `[WaybackScraper] Job ${jobId} — snapshot order violation: ${prevEntry?.timestamp} is not before ${entry.timestamp}. Skipping diff for this pair.`,
+        );
+      } else if (previousText) {
         const rawDiff = diffLines(previousText, currentText, { ignoreWhitespace: true });
         // All changed chunks (any size) — for storage and display
         const deletions = groupDiffChunks(rawDiff, 'removed');
@@ -1020,9 +1030,24 @@ export class WaybackScraper {
       await sleep(FETCH_DELAY_MS);
     }
 
+    // Every entry failed and nothing was ever persisted for this job — including
+    // prior runs, since doneCount below reflects the full snapshotsList, not just
+    // this call. Report FAILED instead of a misleading COMPLETED/0-diffs result.
+    const doneCount = snapshotsList.filter((s) => s.status === 'DONE').length;
+    if (snapshotsList.length > 0 && doneCount === 0) {
+      return prisma.waybackScrapeJob.update({
+        where: { id: jobId },
+        data: {
+          status: 'FAILED',
+          processedSnapshots: processedCount,
+          failureReason: offlineFailures > 0 && otherFailures === 0 ? 'WAYBACK_OFFLINE' : 'ALL_FETCHES_FAILED',
+        },
+      });
+    }
+
     return prisma.waybackScrapeJob.update({
       where: { id: jobId },
-      data: { status: 'COMPLETED', processedSnapshots: processedCount },
+      data: { status: 'COMPLETED', processedSnapshots: processedCount, failureReason: null },
     });
   }
 

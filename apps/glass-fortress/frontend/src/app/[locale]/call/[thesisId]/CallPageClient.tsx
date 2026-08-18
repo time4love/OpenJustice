@@ -1,12 +1,15 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Image from 'next/image';
 import { useTranslations } from 'next-intl';
 import { apiUrl } from '@/lib/api';
 import { FoiaModal, type FoiaModalState } from '@/components/FoiaModal';
 import { WhistleblowerModal } from '@/components/WhistleblowerModal';
 import { LegalDisclaimer } from '@/components/LegalDisclaimer';
+import { strengthPillClass, strengthHeLabel } from '@/components/StrengthBadge';
 import type { EvidenceGap, CounterArgument, AIAnalysis } from '@/types/thesis';
+import { generateFoiaRequest } from '@/lib/thesisApi';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -33,13 +36,6 @@ interface Thesis {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-const STRENGTH_STYLES: Record<string, { pill: string; label: string }> = {
-  WEAK:      { pill: 'bg-red-100 text-red-700 border-red-200',       label: 'חלש' },
-  MODERATE:  { pill: 'bg-amber-100 text-amber-700 border-amber-200', label: 'בינוני' },
-  STRONG:    { pill: 'bg-emerald-100 text-emerald-700 border-emerald-200', label: 'חזק' },
-  COMPELLING:{ pill: 'bg-violet-100 text-violet-700 border-violet-200', label: 'משכנע' },
-};
 
 const NEXT_STRENGTH: Record<string, string> = {
   WEAK: 'MODERATE', MODERATE: 'STRONG', STRONG: 'COMPELLING', COMPELLING: 'COMPELLING',
@@ -115,19 +111,7 @@ function GapCard({
     setFoiaError(false);
     setFoiaModal({ status: 'loading', gapIndex });
     try {
-      const res = await fetch(apiUrl(`/api/thesis/${thesisId}/foia-request`), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gapIndex }),
-      });
-      if (!res.ok) throw new Error();
-      const data = (await res.json()) as {
-        letterText: string;
-        targetMinistry: string;
-        legalBasis: string;
-        targetEmail?: string;
-        targetAddress?: string;
-      };
+      const data = await generateFoiaRequest(thesisId, gapIndex);
       setFoiaModal({ status: 'ready', gapIndex, ...data });
     } catch {
       setFoiaError(true);
@@ -153,13 +137,15 @@ function GapCard({
             disabled={foiaModal?.status === 'loading'}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-sky-100 hover:bg-sky-200 text-sky-800 text-xs font-semibold rounded-lg transition-colors active:scale-95 disabled:opacity-50"
           >
-            📄 {foiaModal?.status === 'loading' ? t('foiaGenerating') : t('foiaBtn')}
+            <Image src="/icon_foia.png" alt="" width={16} height={16} className="w-4 h-4" />
+            {foiaModal?.status === 'loading' ? t('foiaGenerating') : t('foiaBtn')}
           </button>
           <button
             onClick={() => setTipOpen(true)}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-violet-100 hover:bg-violet-200 text-violet-800 text-xs font-semibold rounded-lg transition-colors active:scale-95"
           >
-            🔒 {t('tipBtn')}
+            <Image src="/icon_anon.png" alt="" width={16} height={16} className="w-4 h-4" />
+            {t('tipBtn')}
           </button>
         </div>
       </div>
@@ -244,7 +230,6 @@ export function CallPageClient({ thesisId }: { thesisId: string }) {
   )];
   const evidenceCount = thesis.headVersion.mentions.filter((m) => m.type === 'EVIDENCE').length;
   const strength = analysis?.overallStrengthAssessment ?? 'MODERATE';
-  const strengthStyle = STRENGTH_STYLES[strength] ?? STRENGTH_STYLES['MODERATE']!;
   const nextStrength = NEXT_STRENGTH[strength] ?? 'COMPELLING';
   const thesisTitle = thesis.title ?? t('defaultTitle');
 
@@ -268,8 +253,8 @@ export function CallPageClient({ thesisId }: { thesisId: string }) {
 
           {/* Strength badge + upgrade arrow */}
           <div className="flex flex-wrap items-center gap-3">
-            <span className={`text-xs font-bold px-3 py-1.5 rounded-full border ${strengthStyle.pill}`}>
-              {t('strengthLabel')}: {strengthStyle.label}
+            <span className={`text-xs font-bold px-3 py-1.5 rounded-full border ${strengthPillClass(strength)}`}>
+              {t('strengthLabel')}: {strengthHeLabel(strength)}
             </span>
             {strength !== 'COMPELLING' && (
               <span className="text-xs text-slate-400">
