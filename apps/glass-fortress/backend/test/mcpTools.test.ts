@@ -1151,6 +1151,55 @@ describe('addThesisVersionHandler', () => {
     expect(result.message).toContain('PENDING_AI');
     expect(result.message).toContain('run_ai_analysis');
   });
+
+  it('renders a [^n] marker as an inline evidence mention via citations, not a trailing chip', async () => {
+    const raw = await addThesisVersionHandler({
+      thesisId: 'thesis-1',
+      body: 'Revised claim[^1].',
+      citations: [{ id: 1, fileHashes: ['0xabc'] }],
+    });
+    const result = JSON.parse(raw);
+    const versionData = mockThesisVersionCreate.mock.calls[0][0].data;
+    const userContent = versionData.userContent;
+
+    const paragraph = userContent.content[0];
+    expect(paragraph.content).toContainEqual({
+      type: 'evidenceMention',
+      attrs: expect.objectContaining({ id: '0xabc' }),
+    });
+    expect(userContent.content.filter((n: { type: string }) => n.type === 'paragraph')).toHaveLength(1);
+    expect(result.evidenceLinked).toBe(1);
+  });
+
+  it('links a citation hash even when it is absent from evidenceHashes', async () => {
+    const raw = await addThesisVersionHandler({
+      thesisId: 'thesis-1',
+      body: 'Claim[^1].',
+      citations: [{ id: 1, fileHashes: ['0xonlyincitation'] }],
+    });
+    const result = JSON.parse(raw);
+
+    expect(result.evidenceLinked).toBe(1);
+
+    const mentionData = mockThesisVersionCreate.mock.calls[0][0].data.mentions.createMany
+      .data as Array<{ type: string; refId: string }>;
+    expect(mentionData).toContainEqual({ type: 'EVIDENCE', refId: '0xonlyincitation' });
+  });
+
+  it('omitting citations behaves exactly as before (backward compatibility)', async () => {
+    const raw = await addThesisVersionHandler({
+      thesisId: 'thesis-1',
+      body: 'Body with no markers.',
+      evidenceHashes: ['0xabc'],
+    });
+    const result = JSON.parse(raw);
+    const versionData = mockThesisVersionCreate.mock.calls[0][0].data;
+    const userContent = versionData.userContent;
+
+    const paragraphs = userContent.content.filter((n: { type: string }) => n.type === 'paragraph');
+    expect(paragraphs).toHaveLength(2);
+    expect(result.evidenceLinked).toBe(1);
+  });
 });
 
 // ===========================================================================
