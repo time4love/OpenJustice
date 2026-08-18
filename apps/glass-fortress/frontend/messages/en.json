@@ -272,6 +272,7 @@
     "additionsLabel": "ADDED",
     "forensicLabel": "Forensic Analysis",
     "viewSnapshot": "View in Archive",
+    "viewBeforeSnapshot": "View Previous Version",
     "drillDownLink": "View Full Document History",
     "drillDownTagline": "URL Change History · Forensic Diff Timeline",
     "drillDownBack": "← Back to Scanner",
