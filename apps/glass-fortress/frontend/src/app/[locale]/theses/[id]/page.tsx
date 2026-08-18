@@ -191,7 +191,7 @@ function GapSearchPanel({
                   : 'bg-amber-100 hover:bg-amber-200 text-amber-700'
               }`}
             >
-              {open ? 'Hide' : 'Search Vault'}
+              {open ? 'Hide' : 'Search Evidence'}
             </button>
           </div>
         )}
@@ -524,7 +524,7 @@ function ThesisPageInner({ id }: { id: string }) {
                 return (
                   <Link
                     key={m.id}
-                    href={`/timeline?hash=${m.refId}`}
+                    href={`/evidence?hash=${m.refId}`}
                     className="inline-flex items-center gap-1.5 bg-amber-100 hover:bg-amber-200 text-amber-700 text-xs px-3 py-1 rounded-full transition-colors"
                   >
                     <span className={`w-2 h-2 rounded-full shrink-0 ${tierDotClass}`} />

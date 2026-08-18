@@ -81,10 +81,10 @@ export default function AboutPage() {
               {t('hero.ctaSubmit')}
             </Link>
             <Link
-              href="/vault"
+              href="/evidence"
               className="px-6 py-3 rounded-lg text-sm font-semibold bg-white text-slate-700 border border-slate-300 hover:bg-slate-50 shadow-sm transition-colors"
             >
-              {t('hero.ctaVault')}
+              {t('hero.ctaEvidence')}
             </Link>
           </div>
         </div>
