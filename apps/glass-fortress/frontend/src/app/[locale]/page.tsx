@@ -5,7 +5,7 @@ import Image from 'next/image';
 import { HeroSection } from '@/components/HeroSection';
 import { useTranslations } from 'next-intl';
 import { Link } from '@/i18n/navigation';
-import { TopNav } from '@/components/TopNav';
+import { SiteHeader } from '@/components/SiteHeader';
 import { apiUrl } from '@/lib/api';
 import { animate, useInView } from 'framer-motion';
 import { ScrollReveal, StaggerContainer, StaggerItem, ParallaxLayer } from '@/components/ScrollReveal';
@@ -77,7 +77,6 @@ function CountUp({ value, ready }: { value: number; ready: boolean }) {
 
 export default function HomePage() {
   const t = useTranslations('home');
-  const tc = useTranslations('common');
 
   const [stats, setStats] = useState<PlatformStats>(ZERO_STATS);
   const [theses, setTheses] = useState<ThesisSummary[]>([]);
@@ -118,17 +117,7 @@ export default function HomePage() {
   return (
     <main className="min-h-screen bg-white">
       {/* Sticky nav header */}
-      <header className="sticky top-0 z-20 bg-white/95 backdrop-blur border-b border-slate-200 shadow-sm">
-        <div className="max-w-7xl mx-auto px-6 h-14 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
-            <Image src="/icon_dove.png" alt="" width={24} height={24} className="w-5 h-5" />
-            <span className="font-mono text-sm font-semibold tracking-widest text-slate-900 uppercase">
-              {tc('appName')}
-            </span>
-          </Link>
-          <TopNav current="home" />
-        </div>
-      </header>
+      <SiteHeader current="home" />
 
       {/* ── Hero ─────────────────────────────────────────────────────────── */}
       <HeroSection />

@@ -1,12 +1,11 @@
 'use client';
 
 import { useState, useEffect, FormEvent } from 'react';
-import Image from 'next/image';
 import { useSearchParams } from 'next/navigation';
 import { useTranslations, useLocale } from 'next-intl';
 import { Link, useRouter } from '@/i18n/navigation';
 import { apiUrl } from '@/lib/api';
-import { TopNav } from '@/components/TopNav';
+import { SiteHeader } from '@/components/SiteHeader';
 import { useAuth } from '@/context/AuthContext';
 
 // ---------------------------------------------------------------------------
@@ -254,7 +253,6 @@ function GenerateModal({
 
 export default function ThesesPage() {
   const t = useTranslations('theses');
-  const tc = useTranslations('common');
   const locale = useLocale();
   const router = useRouter();
   const { researcher } = useAuth();
@@ -294,20 +292,7 @@ export default function ThesesPage() {
   return (
     <div className="min-h-screen bg-slate-50">
       {/* Header */}
-      <header className="sticky top-0 z-20 bg-white/95 backdrop-blur border-b border-slate-200 shadow-sm">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-3 hover:opacity-80 transition-opacity">
-            <Image src="/icon_dove.png" alt="" width={24} height={24} className="w-5 h-5" />
-            <span className="font-mono text-sm font-semibold tracking-widest text-slate-900 uppercase">
-              {tc('appName')}
-            </span>
-            <span className="ms-3 text-xs text-slate-400 tracking-wide hidden sm:inline">
-              {t('tagline')}
-            </span>
-          </Link>
-          <TopNav current="theses" />
-        </div>
-      </header>
+      <SiteHeader current="theses" maxWidth="max-w-5xl" tagline={t('tagline')} />
 
       <main className="max-w-5xl mx-auto px-4 sm:px-6 py-10">
         {/* Title row */}

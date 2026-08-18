@@ -199,15 +199,25 @@ whether its prompt shares any rules text with another agent's prompt (the way `I
 copies did) — if so, that's a live duplication risk under the same rule and should be extracted as a
 shared `prompts/*SharedRules.ts` fragment, not just relocated as two separate files with matching text.
 
-### 3.2 Site header markup hand-copied into 10 frontend page files
+### 3.2 ✅ DONE — Site header markup hand-copied into 10 frontend page files
 `page.tsx` (home), `theses/page.tsx`, `about/page.tsx`, `forensics/page.tsx`, `safety/page.tsx`,
 `call/page.tsx`, `figures/page.tsx`, `timeline/page.tsx`, `vault/page.tsx`,
-`forensics/[trackedUrlId]/page.tsx`, `researchers/page.tsx` all independently render:
-`<header sticky...>` → dove logo `<Image>` → app-name span → `<TopNav current="...">`. A `SiteFooter`
-component already exists for the equivalent footer pattern — extract a matching `SiteHeader` (logo +
-appName + `TopNav`, optional tagline slot prop) and replace all 10 call sites.
-**Note:** this is exactly the header block touched in the 2026-08-17/18 icon-refresh session — worth
-doing soon since it's the freshest in anyone's memory and low-risk (pure markup extraction).
+`forensics/[trackedUrlId]/page.tsx`, `researchers/page.tsx` (11 files — the doc undercounted by one)
+all independently rendered: `<header sticky...>` → dove logo `<Image>` → app-name span →
+`<TopNav current="...">`. **Resolution:** extracted `src/components/SiteHeader.tsx` (matching the
+`SiteFooter` pattern) with props for the genuine per-page differences found on inspection —
+`maxWidth` (each page's header width matches its own content container, `max-w-4xl` through
+`max-w-7xl` — kept as a real per-page choice, not collapsed), `tagline` (optional slot, 6 of 11 pages
+use it), `showOperational` (the pulsing-dot "Operational" badge, 3 pages), and `actions` (ReactNode
+slot — only `vault/page.tsx`'s "+ Submit Evidence" button needed it). Two purely incidental drifts
+(`gap-2` vs `gap-3` on the logo/appName link, `px-6` vs `px-4 sm:px-6`) were normalized to the
+majority variant — cosmetic only, not page-specific intent. `submit/page.tsx` has a superficially
+similar `<header sticky...>` but is a genuinely different minimal wizard header (no logo, no
+`TopNav`, a back-link + page title + locale switcher) — correctly left out of scope.
+Verified: `tsc --noEmit` clean, production build succeeds, and a live visual diff against the
+pre-refactor code at matched viewports (home, about, vault, forensics) showed pixel-identical
+rendering — including a pre-existing appName/tagline wrapping quirk on `forensics` at ~1280px width,
+confirmed present in the original code too (not a regression).
 
 ### 3.3 Type definitions redeclared instead of imported (frontend)
 - **`ThesisSummary`**: canonical + exported in `src/components/ThesisHighlightCard.tsx:5-17`.

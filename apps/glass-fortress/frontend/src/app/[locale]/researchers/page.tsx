@@ -1,9 +1,7 @@
 'use client';
 
-import Image from 'next/image';
 import { useTranslations, useLocale } from 'next-intl';
-import { Link } from '@/i18n/navigation';
-import { TopNav } from '@/components/TopNav';
+import { SiteHeader } from '@/components/SiteHeader';
 
 // ---------------------------------------------------------------------------
 // MCP tool list — descriptions stored here since they need locale handling
@@ -25,23 +23,12 @@ const TOOLS = [
 
 export default function ResearchersPage() {
   const t = useTranslations('researchers');
-  const tc = useTranslations('common');
   const locale = useLocale();
 
   return (
     <main className="min-h-screen bg-white">
       {/* Header */}
-      <header className="sticky top-0 z-20 bg-white/95 backdrop-blur border-b border-slate-200 shadow-sm">
-        <div className="max-w-7xl mx-auto px-6 h-14 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
-            <Image src="/icon_dove.png" alt="" width={24} height={24} className="w-5 h-5" />
-            <span className="font-mono text-sm font-semibold tracking-widest text-slate-900 uppercase">
-              {tc('appName')}
-            </span>
-          </Link>
-          <TopNav current="researchers" />
-        </div>
-      </header>
+      <SiteHeader current="researchers" />
 
       {/* Hero */}
       <section className="bg-slate-900 text-white">
