@@ -6,21 +6,11 @@ import { prisma } from '../lib/prisma';
 import { Web3Service } from '../services/Web3Service';
 import { type DiffItem } from '../services/ForensicAgent';
 import { buildForensicEvidence } from '../services/forensicEvidence';
+import { parseDiffItems } from '../lib/diffItems';
 import {
   investigativeCategoriesField,
   onChainCategoryLabel,
 } from '../lib/investigativeCategories';
-
-// Parses the deletedText/addedText JSON column, handling the legacy string[] format
-// produced before the coupled {summary, exactQuote} schema was introduced.
-function parseDiffItems(json: string): DiffItem[] {
-  const parsed = JSON.parse(json) as unknown[];
-  if (parsed.length === 0) return [];
-  if (typeof parsed[0] === 'string') {
-    return (parsed as string[]).map((s) => ({ summary: s, exactQuote: '' }));
-  }
-  return parsed as DiffItem[];
-}
 
 const router = Router();
 

@@ -2,11 +2,10 @@
 
 import { useState, useRef, useCallback, useEffect, Fragment, FormEvent } from 'react';
 import { useTranslations } from 'next-intl';
-import { Link } from '@/i18n/navigation';
+import { Link, useRouter } from '@/i18n/navigation';
 import { SiteHeader } from '@/components/SiteHeader';
 import { apiUrl } from '@/lib/api';
 import { ClaimBlock } from '@/components/ClaimBlock';
-import { EmptyState } from '@/components/EmptyState';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -51,14 +50,6 @@ interface SnapshotDiff {
   promotedEvidence: { id: string; fileHash: string } | null;
 }
 
-interface TrackedUrlResult {
-  trackedUrlId: string;
-  url: string;
-  title: string | null;
-  count: number;
-  diffs: SnapshotDiff[];
-}
-
 interface TrackedUrlItem {
   id: string;
   url: string;
@@ -78,7 +69,7 @@ interface ScrapeJob {
   failureReason: WaybackFailureReason | null;
 }
 
-type Phase = 'idle' | 'creating' | 'polling' | 'paused' | 'fetching' | 'done' | 'error';
+type Phase = 'idle' | 'creating' | 'polling' | 'paused' | 'error';
 
 const POLL_INTERVAL_MS = 3_000;
 const STALL_THRESHOLD_MS = 35_000;
@@ -261,6 +252,7 @@ function DiffNode({
     forensicLabel: string;
     viewSnapshot: string;
     inVaultBadge: string;
+    flaggedBadge: string;
   };
 }) {
   return (
@@ -277,7 +269,7 @@ function DiffNode({
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 px-4 py-2.5 border-b border-red-100 bg-red-50">
           <span className="font-mono text-xs text-slate-500 font-medium shrink-0">{diff.date}</span>
           <span className="shrink-0 text-xs font-bold px-2 py-0.5 rounded-full border bg-red-100 text-red-700 border-red-300 uppercase tracking-wide">
-            Silent Edit Detected
+            {labels.flaggedBadge}
           </span>
           {diff.promotedEvidence && (
             <span className="shrink-0 inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 border border-emerald-200">
@@ -585,13 +577,13 @@ function HistoryEntry({
 
 export default function ForensicsPage() {
   const t = useTranslations('forensics');
+  const router = useRouter();
 
   const [url, setUrl] = useState('');
   const [phase, setPhase] = useState<Phase>('idle');
   const [trackedUrlId, setTrackedUrlId] = useState<string | null>(null);
   const [scanProgress, setScanProgress] = useState<{ total: number; processed: number } | null>(null);
   const [liveDiffs, setLiveDiffs] = useState<SnapshotDiff[]>([]);
-  const [result, setResult] = useState<TrackedUrlResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [stalled, setStalled] = useState(false);
   const [pausing, setPausing] = useState(false);
@@ -625,24 +617,6 @@ export default function ForensicsPage() {
   }, []);
 
   useEffect(() => () => stopPolling(), [stopPolling]);
-
-  const fetchResults = useCallback(
-    async (id: string) => {
-      setPhase('fetching');
-      try {
-        const res = await fetch(apiUrl(`/api/forensics/tracked/${id}`));
-        const data = (await res.json()) as TrackedUrlResult & { error?: string; message?: string };
-        if (!res.ok) throw new Error(data.message ?? data.error ?? `Error ${res.status}`);
-        setResult(data);
-        setPhase('done');
-        loadHistory();
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load results');
-        setPhase('error');
-      }
-    },
-    [loadHistory],
-  );
 
   const startPolling = useCallback(
     (id: string) => {
@@ -687,7 +661,11 @@ export default function ForensicsPage() {
 
         if (data.status === 'COMPLETED') {
           stopPolling();
-          await fetchResults(id);
+          // Hand off to the timeline page — the single canonical rendering of a
+          // TrackedUrl's diffs (pagination, before/after links, live rationale).
+          // Rendering a second, duplicate results view here is what drifted out
+          // of sync with it before.
+          router.push(`/forensics/${id}`);
         } else if (data.status === 'FAILED') {
           stopPolling();
           setError(
@@ -706,7 +684,7 @@ export default function ForensicsPage() {
         // Network blip — keep polling
       }
     },
-    [stopPolling, fetchResults, t],
+    [stopPolling, router, t],
   );
 
   useEffect(() => { pollStatusRef.current = pollStatus; }, [pollStatus]);
@@ -722,7 +700,6 @@ export default function ForensicsPage() {
     stopPolling();
     setPhase('creating');
     setError(null);
-    setResult(null);
     setTrackedUrlId(null);
     trackedUrlIdRef.current = null;
     setScanProgress(null);
@@ -808,7 +785,7 @@ export default function ForensicsPage() {
     }
   }
 
-  const scanning = phase === 'creating' || phase === 'polling' || phase === 'fetching';
+  const scanning = phase === 'creating' || phase === 'polling';
 
   const diffLabels = {
     deletionsLabel: t('deletionsLabel'),
@@ -816,6 +793,7 @@ export default function ForensicsPage() {
     forensicLabel: t('forensicLabel'),
     viewSnapshot: t('viewSnapshot'),
     inVaultBadge: t('inVaultBadge'),
+    flaggedBadge: t('flaggedBadge'),
   };
 
   return (
@@ -994,52 +972,6 @@ export default function ForensicsPage() {
           </>
         )}
 
-        {/* Fetching results */}
-        {phase === 'fetching' && (
-          <div className="flex flex-col items-center justify-center text-center px-8 py-20 border border-slate-200 rounded-xl bg-white shadow-sm">
-            <div className="relative w-10 h-10 mb-5">
-              <div className="absolute inset-0 rounded-full border-2 border-slate-200" />
-              <div className="absolute inset-0 rounded-full border-2 border-t-red-500 animate-spin" />
-            </div>
-            <p className="text-xs text-slate-500">{t('fetchingResults')}</p>
-          </div>
-        )}
-
-        {/* Results */}
-        {phase === 'done' && result !== null && (
-          <>
-            {result.count === 0 ? (
-              <EmptyState icon="⚲" title={t('noChangesTitle')} sub={t('noChangesSub')} />
-            ) : (
-              <>
-                <div className="flex flex-wrap items-center gap-3">
-                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-red-100 text-red-700 border border-red-200">
-                    <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
-                    {t('resultsHeading', { count: result.count })}
-                  </span>
-                  <span
-                    className="text-xs text-slate-400 font-mono truncate max-w-xs"
-                    title={result.url}
-                  >
-                    {result.url}
-                  </span>
-                  <Link
-                    href={`/forensics/${result.trackedUrlId}`}
-                    className="ms-auto flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-800 hover:underline transition-colors"
-                  >
-                    {t('drillDownLink')}
-                    <span aria-hidden="true">&#x2192;</span>
-                  </Link>
-                </div>
-                <div>
-                  {result.diffs.map((diff, i) => (
-                    <DiffNode key={diff.id} diff={diff} index={i} labels={diffLabels} />
-                  ))}
-                </div>
-              </>
-            )}
-          </>
-        )}
       </div>
     </main>
   );

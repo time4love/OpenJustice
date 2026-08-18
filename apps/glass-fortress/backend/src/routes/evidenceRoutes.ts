@@ -16,6 +16,7 @@ import {
 import { mapEvidenceToRecord } from '../lib/evidenceRecord';
 import { buildEvidenceAnalysisData } from '../lib/evidenceCreateData';
 import { promoteEvidence } from '../services/promoteEvidence';
+import { parseDiffItems } from '../lib/diffItems';
 
 const router = Router();
 
@@ -640,7 +641,21 @@ router.get('/:id', async (req: Request, res: Response): Promise<void> => {
         where: { id },
         include: {
           figures: { select: { id: true, name: true } },
-          urlVersionDiff: { select: { trackedUrlId: true } },
+          urlVersionDiff: {
+            select: {
+              trackedUrlId: true,
+              beforeDate: true,
+              afterDate: true,
+              snapshotUrl: true,
+              beforeSnapshot: { select: { snapshotUrl: true } },
+              deletedText: true,
+              addedText: true,
+              rawDeletedText: true,
+              rawAddedText: true,
+              aiSignificance: true,
+              isLegallySignificant: true,
+            },
+          },
           createdBy: { select: { handle: true } },
         },
       }),
@@ -671,6 +686,29 @@ router.get('/:id', async (req: Request, res: Response): Promise<void> => {
       }
     }
 
+    // For FORENSIC_DIFF evidence, surface the same diff shape the timeline page
+    // renders — deletions/additions, AI rationale, and both archive snapshot
+    // links — so a reader doesn't have to leave the evidence record to see what
+    // the evidence actually consists of.
+    const diffRecord = record.urlVersionDiff;
+    const diff = diffRecord
+      ? {
+          id: record.urlVersionDiffId,
+          beforeDate: diffRecord.beforeDate,
+          date: diffRecord.afterDate,
+          snapshotUrl: diffRecord.snapshotUrl,
+          beforeSnapshotUrl: diffRecord.beforeSnapshot?.snapshotUrl ?? null,
+          deletedItems: parseDiffItems(diffRecord.deletedText),
+          addedItems: parseDiffItems(diffRecord.addedText),
+          rawDeletedChunks: JSON.parse(diffRecord.rawDeletedText) as string[],
+          rawAddedChunks: JSON.parse(diffRecord.rawAddedText) as string[],
+          legalSignificance: diffRecord.aiSignificance,
+          isLegallySignificant: diffRecord.isLegallySignificant,
+          // This evidence record IS the promotion of this diff — always "already promoted".
+          promotedEvidence: { id: record.id, fileHash: record.fileHash },
+        }
+      : null;
+
     res.status(200).json({
       evidenceId: record.id,
       fileHash: record.fileHash,
@@ -692,6 +730,7 @@ router.get('/:id', async (req: Request, res: Response): Promise<void> => {
       sourceUrl: record.sourceUrl,
       fileUrl: record.fileUrl,
       trackedUrlId: record.urlVersionDiff?.trackedUrlId ?? null,
+      diff,
       citingTheses,
       createdAt: record.createdAt,
     });
