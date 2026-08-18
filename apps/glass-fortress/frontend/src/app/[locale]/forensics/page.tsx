@@ -1,10 +1,9 @@
 'use client';
 
 import { useState, useRef, useCallback, useEffect, Fragment, FormEvent } from 'react';
-import Image from 'next/image';
 import { useTranslations } from 'next-intl';
 import { Link } from '@/i18n/navigation';
-import { TopNav } from '@/components/TopNav';
+import { SiteHeader } from '@/components/SiteHeader';
 import { apiUrl } from '@/lib/api';
 import { ClaimBlock } from '@/components/ClaimBlock';
 
@@ -585,7 +584,6 @@ function HistoryEntry({
 
 export default function ForensicsPage() {
   const t = useTranslations('forensics');
-  const tc = useTranslations('common');
 
   const [url, setUrl] = useState('');
   const [phase, setPhase] = useState<Phase>('idle');
@@ -822,28 +820,7 @@ export default function ForensicsPage() {
   return (
     <main className="min-h-screen bg-slate-50">
       {/* Header */}
-      <header className="sticky top-0 z-20 bg-white/95 backdrop-blur border-b border-slate-200 shadow-sm">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-3 hover:opacity-80 transition-opacity">
-            <Image src="/icon_dove.png" alt="" width={24} height={24} className="w-5 h-5" />
-            <div>
-              <span className="font-mono text-sm font-semibold tracking-widest text-slate-900 uppercase">
-                {tc('appName')}
-              </span>
-              <span className="ms-3 text-xs text-slate-400 tracking-wide hidden sm:inline">
-                {t('tagline')}
-              </span>
-            </div>
-          </Link>
-          <div className="flex items-center gap-4">
-            <span className="flex items-center gap-1.5 text-xs text-slate-500 hidden sm:flex">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              {tc('operational')}
-            </span>
-            <TopNav current="forensics" />
-          </div>
-        </div>
-      </header>
+      <SiteHeader current="forensics" maxWidth="max-w-4xl" tagline={t('tagline')} showOperational />
 
       <div className="max-w-4xl mx-auto px-4 sm:px-6 py-8 space-y-6">
         {/* Scanner panel */}

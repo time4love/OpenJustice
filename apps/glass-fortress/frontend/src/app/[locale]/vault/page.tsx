@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, FormEvent } from 'react';
 import Image from 'next/image';
 import { useTranslations } from 'next-intl';
 import { Link } from '@/i18n/navigation';
-import { TopNav } from '@/components/TopNav';
+import { SiteHeader } from '@/components/SiteHeader';
 import { apiUrl } from '@/lib/api';
 import { CategoryBadges } from '@/components/CategoryBadges';
 import { TierBadge, tierAccentColor } from '@/components/TierBadge';
@@ -223,34 +223,19 @@ export default function VaultPage() {
   return (
     <main className="min-h-screen bg-slate-50">
       {/* Header */}
-      <header className="sticky top-0 z-20 bg-white/95 backdrop-blur border-b border-slate-200 shadow-sm">
-        <div className="max-w-7xl mx-auto px-6 h-14 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-3 hover:opacity-80 transition-opacity">
-            <Image src="/icon_dove.png" alt="" width={24} height={24} className="w-5 h-5" />
-            <div>
-              <span className="font-mono text-sm font-semibold tracking-widest text-slate-900 uppercase">
-                {tc('appName')}
-              </span>
-              <span className="ms-3 text-xs text-slate-400 tracking-wide hidden sm:inline">
-                {t('tagline')}
-              </span>
-            </div>
+      <SiteHeader
+        current="vault"
+        tagline={t('tagline')}
+        showOperational
+        actions={
+          <Link
+            href="/submit"
+            className="hidden sm:flex px-3 py-1.5 rounded text-xs font-medium bg-blue-600 text-white border border-blue-700 hover:bg-blue-700 transition-colors"
+          >
+            {tc('nav.submitEvidence')}
           </Link>
-          <div className="flex items-center gap-4">
-            <span className="hidden sm:flex items-center gap-1.5 text-xs text-slate-500">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              {tc('operational')}
-            </span>
-            <TopNav current="vault" />
-            <Link
-              href="/submit"
-              className="hidden sm:flex px-3 py-1.5 rounded text-xs font-medium bg-blue-600 text-white border border-blue-700 hover:bg-blue-700 transition-colors"
-            >
-              {tc('nav.submitEvidence')}
-            </Link>
-          </div>
-        </div>
-      </header>
+        }
+      />
 
       <div className="max-w-7xl mx-auto px-6 py-8 space-y-8">
         {/* Analytics — Tier Stat Cards */}

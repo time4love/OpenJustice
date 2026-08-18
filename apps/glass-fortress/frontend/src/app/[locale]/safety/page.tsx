@@ -3,7 +3,7 @@
 import Image from 'next/image';
 import { useTranslations, useLocale } from 'next-intl';
 import { Link } from '@/i18n/navigation';
-import { TopNav } from '@/components/TopNav';
+import { SiteHeader } from '@/components/SiteHeader';
 import { useState, useCallback } from 'react';
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
@@ -143,24 +143,13 @@ function FaqItem({ q, a }: { q: string; a: string }) {
 
 export default function SafetyPage() {
   const t = useTranslations('safety');
-  const tc = useTranslations('common');
   const locale = useLocale();
 
   return (
     <main className="min-h-screen bg-slate-50">
 
       {/* ── Header ─────────────────────────────────────────────────────── */}
-      <header className="sticky top-0 z-20 bg-white/95 backdrop-blur border-b border-slate-200 shadow-sm">
-        <div className="max-w-5xl mx-auto px-6 h-14 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-3 hover:opacity-80 transition-opacity">
-            <Image src="/icon_dove.png" alt="" width={24} height={24} className="w-5 h-5" />
-            <span className="font-mono text-sm font-semibold tracking-widest text-slate-900 uppercase">
-              {tc('appName')}
-            </span>
-          </Link>
-          <TopNav current="safety" />
-        </div>
-      </header>
+      <SiteHeader current="safety" maxWidth="max-w-5xl" />
 
       {/* ── Hero ───────────────────────────────────────────────────────── */}
       <section className="bg-slate-900 text-white">
