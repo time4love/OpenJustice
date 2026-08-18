@@ -2,60 +2,10 @@
 
 import { useState, useEffect } from 'react';
 import { useTranslations } from 'next-intl';
-import { Link } from '@/i18n/navigation';
 import { SiteHeader } from '@/components/SiteHeader';
 import { apiUrl } from '@/lib/api';
-import { StrengthBadge } from '@/components/StrengthBadge';
+import { ThesisHighlightCard } from '@/components/ThesisHighlightCard';
 import type { ThesisSummary } from '@/types/thesis';
-
-// ---------------------------------------------------------------------------
-// Call card
-// ---------------------------------------------------------------------------
-
-function CallCard({ thesis, t }: {
-  thesis: ThesisSummary;
-  t: ReturnType<typeof useTranslations<'call'>>;
-}) {
-  const strength = thesis.headVersion?.strength;
-  return (
-    <div className="bg-white border border-slate-200 rounded-xl p-6 flex flex-col gap-4 hover:border-slate-400 hover:shadow-md transition-all">
-      {/* Title + strength */}
-      <div className="flex items-start justify-between gap-3">
-        <h3 className="font-semibold text-slate-900 text-sm leading-snug">
-          {thesis.title ?? t('defaultTitle')}
-        </h3>
-        {strength && <StrengthBadge strength={strength} />}
-      </div>
-
-      {/* Preview */}
-      {thesis.headVersion?.preview && (
-        <p className="text-xs text-slate-500 line-clamp-3 leading-relaxed flex-1">
-          {thesis.headVersion.preview}
-        </p>
-      )}
-
-      {/* Meta row */}
-      <div className="flex items-center justify-between pt-3 border-t border-slate-100 mt-auto gap-3">
-        <div className="flex items-center gap-3">
-          {thesis.openGapCount > 0 && (
-            <span className="text-xs font-semibold text-red-600">
-              {t('indexGaps', { count: thesis.openGapCount })}
-            </span>
-          )}
-          <span className="text-xs text-slate-400">
-            {thesis.headVersion?.mentionCount ?? 0} {t('statEvidence')}
-          </span>
-        </div>
-        <Link
-          href={`/call/${thesis.id}`}
-          className="shrink-0 text-xs font-semibold text-blue-600 hover:underline"
-        >
-          {t('indexViewCase')}
-        </Link>
-      </div>
-    </div>
-  );
-}
 
 // ---------------------------------------------------------------------------
 // Page
@@ -122,7 +72,19 @@ export default function CallIndexPage() {
         {!loading && !error && theses.length > 0 && (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {theses.map((thesis) => (
-              <CallCard key={thesis.id} thesis={thesis} t={t} />
+              <ThesisHighlightCard
+                key={thesis.id}
+                thesis={thesis}
+                variant="compact"
+                labels={{
+                  noTitle: t('defaultTitle'),
+                  gapsLabel: thesis.openGapCount > 0
+                    ? t('indexGaps', { count: thesis.openGapCount })
+                    : undefined,
+                  mentionsLabel: t('statEvidence'),
+                  viewLabel: t('indexViewCase'),
+                }}
+              />
             ))}
           </div>
         )}

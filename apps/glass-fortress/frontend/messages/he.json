@@ -159,7 +159,8 @@
     "pendingReviewNote": "ראיה זו טרם נרשמה על הבלוקצ'יין. בדוק את ניתוח הבינה המלאכותית ולחץ קדם כדי לאשר.",
     "promoteToVault": "קדם לכספת",
     "promoting": "רושם...",
-    "promoteSuccess": "✓ נרשם בהצלחה"
+    "promoteSuccess": "✓ נרשם בהצלחה",
+    "promoteError": "הקידום נכשל."
   },
   "evidence": {
     "backLink": "→ כספת הראיות",
@@ -319,7 +320,14 @@
     "historyJobsLoading": "טוען אצוות…",
     "historyJobsError": "טעינת האצוות נכשלה.",
     "downloadPdf": "הורד דוח PDF",
-    "inVaultBadge": "נמצא בכספת הראיות"
+    "inVaultBadge": "נמצא בכספת הראיות",
+    "addToThesisBtn": "הוסף לתזה",
+    "addToThesisSaving": "שומר…",
+    "addToThesisDone": "✓ נוסף לתזה",
+    "addToThesisPick": "בחר תזה",
+    "addToThesisLoading": "טוען…",
+    "addToThesisEmpty": "לא נמצאו תזות",
+    "addToThesisUntitled": "תזה {id}"
   },
   "theses": {
     "pageTitle": "בונה תזות משפטיות",

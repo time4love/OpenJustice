@@ -30,6 +30,10 @@ export function strengthHeLabel(strength: string): string {
   return styleFor(strength).heLabel;
 }
 
+export function strengthBadgeClass(strength: string): string {
+  return styleFor(strength).badge;
+}
+
 export function StrengthBadge({ strength }: { strength: string }) {
   const s = styleFor(strength);
   return (

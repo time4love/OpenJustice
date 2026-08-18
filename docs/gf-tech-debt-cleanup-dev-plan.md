@@ -293,31 +293,52 @@ Verified: `tsc --noEmit` clean, 509/509 backend Jest tests pass.
   routes in this one file) and replaced both call sites. Verified: `tsc --noEmit` clean, 509/509
   backend Jest tests pass.
 
-### 3.6 Component/logic pairs with drift (frontend)
-- **`DiffNode`** (`forensics/page.tsx:251-345`) vs **`DiffCard`** (`forensics/[trackedUrlId]/page.tsx:286+`)
-  — same-intent diff renderer; the detail page gained a significance flag, expand/collapse, and a
-  promote button the list page never received. Consolidate or explicitly document the simplification.
-- **`PromoteButton`** reimplemented in `forensics/[trackedUrlId]/page.tsx:198-274` (4-state, has error
-  handling) and `timeline/page.tsx:132-176` (3-state, silently swallows errors). Extract a shared hook
-  or generic component; fix the swallowed-error gap while at it.
-- **`CallCard`** (`call/page.tsx:54-91`) duplicates `ThesisHighlightCard`'s non-featured layout — extend
-  the real component with a `variant` prop instead.
-- **`EmptyState`**: `forensics/page.tsx:94-102` and `timeline/page.tsx:441-449`, near-identical —
-  extract to `src/components/EmptyState.tsx`.
-- **Skeleton loaders**: `forensics/[trackedUrlId]/page.tsx:170-190` and `timeline/page.tsx:455-476`,
-  same "spine + card" pulse structure — extract with a `rows` prop.
-- **`AddToThesisButton`** (`forensics/[trackedUrlId]/page.tsx:78-166`) duplicates the
-  "append evidence + POST new version" logic already in `GapSearchPanel.addToThesis`
-  (`theses/[id]/page.tsx`) — extract a shared hook. Also has hardcoded English strings instead of
-  `next-intl` — fix while touching this code.
-- **Confidence/color palettes**: `theses/page.tsx:67-71`'s `CONFIDENCE_STYLES` overlaps
-  `StrengthBadge`'s style map (missing `COMPELLING`); `figures/page.tsx:50-61` vs `timeline/page.tsx:55-91`
-  perspective styles (`timeline` has grown `card`/`badge` keys `figures` never received) — move to
-  `src/lib/evidencePerspective.ts`.
-- **`formatHash`**: byte-identical in `figures/page.tsx:62-65`, `timeline/page.tsx:94-97`,
-  `vault/page.tsx:58-61` — move to `src/lib/format.ts`.
-- **`appendEvidenceMention`**: byte-identical in `theses/[id]/page.tsx:74-84` and
-  `forensics/[trackedUrlId]/page.tsx:59-69` — move to `src/lib/thesisDocument.ts`.
+### 3.6 ✅ DONE — Component/logic pairs with drift (frontend)
+- **`DiffNode`** vs **`DiffCard`**: **documented, not consolidated.** On inspection the divergence was
+  deeper than the plan assumed — different underlying Prisma-derived types (`SnapshotDiff` vs
+  `DiffRecord`), significance-driven conditional styling, expand/collapse state, and a promote action
+  that only exists on the detail page. A shared component would need to accept both data shapes and
+  make all the extra behavior optional — more surface area than the actual duplication (a couple of
+  shared Tailwind class strings) justifies. Added a code comment on each explaining the relationship,
+  per the plan's own "consolidate or explicitly document" option.
+- **`PromoteButton`**: extracted `usePromoteAction` hook (`src/hooks/usePromoteAction.ts`) — shared
+  idle/loading/done/error state machine. Both call sites keep their own styling and endpoint (`/api/forensics/promote`
+  vs `/api/evidence/promote` — genuinely different operations), but the swallowed-error gap in
+  `timeline/page.tsx` is fixed: failures now surface an error state instead of silently reverting to
+  idle (new `promoteError` i18n key added, en+he).
+- **`CallCard`**: deleted; `call/page.tsx` now renders `ThesisHighlightCard` with a new `variant="compact"`.
+  This also fixed the *actual* root cause of the duplication, not just its symptom — `ThesisHighlightCard`
+  was hard-coupled to the `'home'` next-intl namespace via a bound `t` prop, which is exactly why
+  `call/page.tsx` (a different namespace) couldn't reuse it before. Replaced the `t` prop with a
+  `labels` object of plain resolved strings; both `page.tsx` and `call/page.tsx` now build their own
+  `labels` from their own namespace.
+- **`EmptyState`**: extracted to `src/components/EmptyState.tsx` with an `icon` prop (the two pages used
+  different icons for different reasons — clock for timeline, a magnifying-glass-like glyph for
+  forensics — kept as real per-page intent via the prop, matching the SiteHeader precedent from §3.2).
+- **Skeleton loaders**: extracted `src/components/SkeletonRows.tsx` with `rows`, `connectorHeight`,
+  `headerBarWidths`, `bodyLineWidths` props. Found and folded in a *third* near-identical inline skeleton
+  in `timeline/page.tsx` (the `loadingMore` pagination indicator) the plan didn't call out — same
+  component, different prop values, not a separate abstraction.
+- **`AddToThesisButton`**: extracted `addEvidenceToThesis()` to `src/lib/thesisDocument.ts` (alongside
+  `appendEvidenceMention`, which it uses) — both `GapSearchPanel.addToThesis` and `AddToThesisButton`
+  now call the same function; the former already has the thesis content loaded and passes it in, the
+  latter (picking from a list) omits it and the function fetches it first. **i18n fixed**: added
+  `addToThesisBtn`/`Saving`/`Done`/`Pick`/`Loading`/`Empty`/`Untitled` keys (en+he) replacing the 7
+  hardcoded English strings, threaded through `DiffCard`'s existing `labels` prop.
+- **Confidence/color palettes**: `theses/page.tsx`'s `CONFIDENCE_STYLES` replaced with a new
+  `strengthBadgeClass()` export from `StrengthBadge.tsx` (reuses the same WEAK/MODERATE/STRONG/COMPELLING
+  map, so COMPELLING is now handled instead of falling back to a generic grey). Perspective styles
+  (`figures`/`timeline`) consolidated into new `src/lib/evidencePerspective.ts` using timeline's richer
+  5-field version (`figures` gets the extra `card`/`badge` fields it just doesn't use).
+- **`formatHash`**: moved to `src/lib/format.ts`, imported by `figures`/`timeline`/`vault`.
+- **`appendEvidenceMention`**: moved to `src/lib/thesisDocument.ts`, imported by `theses/[id]/page.tsx`
+  and `forensics/[trackedUrlId]/page.tsx`.
+Verified: `tsc --noEmit` clean, production build succeeds, `eslint` shows no new warnings (diffed
+against pre-change baseline to confirm every remaining warning/error pre-existed). Live-checked against
+the running dev server: vault, figures, timeline, forensics pages all render their shell/header/nav
+correctly with no React crashes (one transient Turbopack stale-cache compile error during editing,
+resolved by nudging the file; remaining console errors are pre-existing backend-connectivity 500s in
+that shared dev environment, unrelated to this change).
 
 ### 3.7 Data-fetching duplication (frontend)
 - Thesis-list fetch (`GET /api/thesis`) duplicated with different post-processing in `page.tsx:92-93`,
