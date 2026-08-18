@@ -1,6 +1,8 @@
 # GF Thesis Citation Footnotes — Dev Plan
 
-**Status:** In progress — design settled, test-first implementation underway.
+**Status:** ✅ Shipped to staging and validated live, including a full create → critique →
+revise → re-critique loop through the real MCP interfaces on a real thesis. Not yet on
+`master` (no SHIP).
 **Started:** 2026-08-18, during the first real end-to-end run of the evidence-first thesis
 workflow (`suggest_thesis` → discussion → `create_thesis_draft`) on staging.
 
@@ -177,4 +179,49 @@ change:
     field, not embedded in `narrativeBody` prose. Reasoning: it can be independently regenerated
     later via `get_research_agenda` as research progresses (gaps close, new ones open) without ever
     touching the published narrative text; embedding it in prose would go stale the moment someone
-    edits the body without also updating the embedded gap list.
+    edits the body without also updating the embedded gap list. **Note discovered later the same
+    session**: for an already-*created* thesis, the live structured gap list is actually
+    `DevilsAdvocateAgent`'s own `evidenceGaps` (populated by `run_ai_analysis`, surfaced via
+    `get_research_agenda`) — `suggest_thesis`'s `missingEvidence` field is never persisted to the DB
+    at all (`create_thesis_draft`'s schema doesn't accept it). So this decision was already
+    correct and already fully implemented; nothing further was needed.
+
+## 6. First real thesis — created, critiqued, revised, re-critiqued (2026-08-18)
+
+Created via `create_thesis_draft` on staging: `thesisId cmsyrk73800023f8cunfp4r4w`, topic being
+MOH concealment of internal vaccine side-effect research findings (the rtmag.co.il / Berkowitz
+report corpus, see `gf-intake-test-url` memory). Full loop run through the real MCP interfaces,
+no hacks, exactly as a researcher would:
+
+1. `create_thesis_draft` → `PENDING_AI`.
+2. `run_ai_analysis` → `COMPLETE`, `overallStrengthAssessment: MODERATE`. Found one **STRONG**
+   counter-argument: the thesis applied Prof. Berkowitz's adult/booster-recipient research
+   findings to the toddler vaccination campaign without evidence the research covered toddlers —
+   a real logical gap, not a phrasing nitpick.
+3. Content review with user (in Hebrew) caught the same population-conflation issue independently,
+   plus the causal-claim hedging gap that produced this session's other prompt fix (§5 above).
+4. `add_thesis_version` — revised `narrativeBody` to explicitly flag the population gap as open
+   rather than implying it's resolved, using the exact same `citations` unchanged. **Required
+   extending `add_thesis_version` with `citations` support first** — it hadn't been updated
+   alongside `create_thesis_draft` when the footnote feature landed, own PR (#43), test-first,
+   same pattern (union `evidenceHashes`/citation hashes, no REST-wrapper companion needed since no
+   REST route wraps this handler).
+5. `run_ai_analysis` again on the new head version → still `MODERATE`, and the critique now
+   explicitly acknowledges "the thesis itself admits" the population gap — consistent rather than
+   contradictory. A genuinely *new*, more actionable evidence gap surfaced this round too: official
+   AstraZeneca stock/registration records for May 2022, which could innocently explain its removal
+   as a treatment alternative (logistics, not concealment) — easier to verify than the internal
+   deliberation records the first critique asked for.
+
+**Routing gap found and fixed in the same session (PR #45)**: `/theses/[id]` (the page that
+actually renders `narrativeBody` with inline footnote chips, plus the full Devil's Advocate
+critique) was already publicly viewable — `canEdit` only gates edit *controls*, not the read view
+— but had **zero inbound links** from anywhere public. Both the homepage's highlight cards and the
+`/call` "all active investigations" index route through `ThesisHighlightCard`, which only links to
+`/call/[id]`; that page renders a summary + counter-arguments, never the narrative. Meant this
+whole feature had no public place to actually be seen until a single link was added. Verified
+end-to-end locally (backend + frontend dev servers against the real staging DB) before landing.
+
+**Not yet done**: the two other known "Glass Fortress" branding leaks (browser tab title in
+`layout.tsx`, login page) — raised, one fixed (`/call/[thesisId]`, PR #44), the other two
+explicitly deferred pending user decision, not forgotten.
