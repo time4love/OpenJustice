@@ -74,6 +74,35 @@ standard for all new agent work after this plan lands:
   makes "this is now two copies" visually obvious the moment someone opens a second prompt file and
   pastes in matching content — the inline version made that invisible.
 
+### 1.2 Methodology gap found after this plan shipped — audit trust-critical call sites as one unit
+
+This plan's own sweep (§5 below) checked `prisma/schema.prisma` for redundancy and called it clean.
+On 2026-08-18, a separate session (GF evidence on-chain integrity — `docs/gf-evidence-integrity-dev-plan.md`,
+started while investigating an unrelated low-evidence-count symptom) found two things this sweep
+missed in that exact area: `Evidence` had no `onChainTxHash` column at all (unlike `UrlSnapshot`, which
+has one), and the `registerEvidenceHash(...)` + duplicate-handling pattern was copy-pasted across four
+call sites in non-adjacent files (`evidenceRoutes.ts`, `forensicsRoutes.ts`, `promoteEvidence.ts`,
+`WaybackScraper.ts`) — one of which had already silently drifted, missing the duplicate-error handling
+its three siblings had.
+
+Neither gap was a failure of effort, it was a blind spot in the *method*: a duplication scanner or
+per-file review sees four locally-plausible blocks in four unrelated-looking files and has no reason to
+diff them against each other; a "does this table look redundant" schema pass has no way to notice a
+column that's *missing*. Both were only found by chasing a live symptom, not by a sweep designed to
+catch exactly this class of problem.
+
+**Standing rule, effective for this plan's own §5 checklist and every future sweep of this codebase:**
+any function that writes to the blockchain, mutates external/ledger state, or flips a record's status
+to a value asserting outside verification (`CONFIRMED`, "registered", "verified") gets **every one of
+its call sites diffed against each other directly, as its own explicit checklist step** — not folded
+into general per-file or per-directory review, and not assumed covered by a duplication scanner. In
+practice: `grep` every call site of the sensitive function first, read them side by side, *then* do the
+rest of the sweep. A field-level "is anything redundant" schema check is complementary, not a
+substitute — it catches a different failure shape (two things that shouldn't both exist) than this rule
+catches (one thing that should exist everywhere but doesn't, everywhere it needs to). Full incident
+write-up and the memory this produced: `docs/gf-evidence-integrity-dev-plan.md` §0, Claude memory
+`feedback-audit-trust-critical-callsites`.
+
 ## 2. Phase 1 — Critical (confirmed drift, or legal/security consequence)
 
 ### 2.1 ✅ DONE — `IntakeAgent.ts` duplicated classification system prompts
@@ -429,4 +458,4 @@ pass doesn't re-investigate these:
 - `backend/src/lib/appEnv.ts` — documents a past incident as rationale for an already-implemented guard.
 - `frontend/src/components/StagingDebugConsole.tsx` vs `StagingBanner.tsx` — parity enforced by shared `appEnv.ts` functions, not hand-copied logic.
 - `backend/src/lib/encrypt.ts`, `tokenHash.ts`, `investigativeCategories.ts` — properly centralized, single source of truth, used correctly everywhere.
-- `prisma/schema.prisma` — no field/table redundancy (a redundant `category` field was already removed previously for this exact reason).
+- `prisma/schema.prisma` — no field/table redundancy (a redundant `category` field was already removed previously for this exact reason). **Correction, 2026-08-18 (see §1.2):** true for the redundancy this checked, but the same pass didn't (and structurally couldn't) catch a *missing* column — `Evidence` had no `onChainTxHash` field at all. A "does this look redundant" check and "does everything that should exist actually exist" are different questions; this bullet only ever answered the first one.

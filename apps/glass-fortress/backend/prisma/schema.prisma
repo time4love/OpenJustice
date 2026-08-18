@@ -179,8 +179,10 @@ model Whistleblower {
 // Pinecone stores ONLY the embedding + fileHash; all queryable fields live here.
 // Linked to Whistleblower only by fileHash — never joined directly.
 enum EvidenceStatus {
-  PENDING_REVIEW // Created via MCP write tool — awaits human review before on-chain registration
-  CONFIRMED      // Registered on-chain and indexed in Pinecone
+  // Created via an MCP write tool, or auto-promoted while on-chain registration
+  // was unavailable/failed — awaits human review + registration (onChainTxHash is null).
+  PENDING_REVIEW
+  CONFIRMED      // Registered on-chain (onChainTxHash set) and indexed in Pinecone
 }
 
 enum EvidenceType {
@@ -191,7 +193,11 @@ enum EvidenceType {
 model Evidence {
   id                  String          @id @default(uuid())
   fileHash            String          @unique
-  status              EvidenceStatus  @default(CONFIRMED)
+  // Fails closed, not open: a create() that forgets to set this explicitly
+  // becomes PENDING_REVIEW, never a silent false claim of on-chain registration.
+  // See onChainTxHash — CONFIRMED must only ever be set alongside a real tx hash.
+  status              EvidenceStatus  @default(PENDING_REVIEW)
+  onChainTxHash       String?         // Blockchain tx hash once fileHash is registered on-chain — mirrors UrlSnapshot.onChainTxHash
   evidenceType        EvidenceType    @default(DOCUMENT)
   evidenceRole        String          @default("Incriminating")
   // The evidence's classification — see src/lib/investigativeCategories.ts.
@@ -216,7 +222,10 @@ model Evidence {
   sourceUrl           String?
   fileUrl             String?
   ipfsCid             String?   // IPFS CID of the encrypted evidence blob (null if not yet anchored)
-  urlVersionDiffId    String?
+  // @unique enforces the true 1:1 with UrlVersionDiff at the DB level — previously
+  // only an application-level check in POST /forensics/promote prevented a diff
+  // from being promoted to more than one Evidence row.
+  urlVersionDiffId    String?         @unique
   urlVersionDiff      UrlVersionDiff? @relation(fields: [urlVersionDiffId], references: [id])
   gapResolutions      ThesisGapResolution[]
   createdById         String?         // Researcher.id — null for legacy records
