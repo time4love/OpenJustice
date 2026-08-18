@@ -41,7 +41,7 @@ describe('requireStagingAccess', () => {
     expect(res.status).toBe(503);
   });
 
-  it('returns 401 on staging with no Authorization header', async () => {
+  it('returns 401 on staging with no X-Staging-Token header', async () => {
     process.env['APP_ENV'] = 'staging';
     process.env['STAGING_API_TOKEN'] = 'correct-token';
     const res = await request(buildApp()).get('/probe');
@@ -51,28 +51,32 @@ describe('requireStagingAccess', () => {
   it('returns 401 on staging with the wrong token', async () => {
     process.env['APP_ENV'] = 'staging';
     process.env['STAGING_API_TOKEN'] = 'correct-token';
-    const res = await request(buildApp()).get('/probe').set('Authorization', 'Bearer wrong-token');
+    const res = await request(buildApp()).get('/probe').set('X-Staging-Token', 'wrong-token');
     expect(res.status).toBe(401);
   });
 
   it('returns 401 on staging for a token of different length', async () => {
     process.env['APP_ENV'] = 'staging';
     process.env['STAGING_API_TOKEN'] = 'correct-token';
-    const res = await request(buildApp()).get('/probe').set('Authorization', 'Bearer short');
-    expect(res.status).toBe(401);
-  });
-
-  it('returns 401 on staging for a malformed Authorization header', async () => {
-    process.env['APP_ENV'] = 'staging';
-    process.env['STAGING_API_TOKEN'] = 'correct-token';
-    const res = await request(buildApp()).get('/probe').set('Authorization', 'correct-token');
+    const res = await request(buildApp()).get('/probe').set('X-Staging-Token', 'short');
     expect(res.status).toBe(401);
   });
 
   it('passes through on staging with the correct token', async () => {
     process.env['APP_ENV'] = 'staging';
     process.env['STAGING_API_TOKEN'] = 'correct-token';
-    const res = await request(buildApp()).get('/probe').set('Authorization', 'Bearer correct-token');
+    const res = await request(buildApp()).get('/probe').set('X-Staging-Token', 'correct-token');
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ ok: true });
+  });
+
+  it('does not collide with a caller-supplied Authorization header', async () => {
+    process.env['APP_ENV'] = 'staging';
+    process.env['STAGING_API_TOKEN'] = 'correct-token';
+    const res = await request(buildApp())
+      .get('/probe')
+      .set('X-Staging-Token', 'correct-token')
+      .set('Authorization', 'Bearer some-researcher-mcp-token');
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ ok: true });
   });

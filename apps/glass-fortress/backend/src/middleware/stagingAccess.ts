@@ -12,7 +12,12 @@
 import { timingSafeEqual } from 'node:crypto';
 import { NextFunction, Request, Response } from 'express';
 import { getAppEnv } from '../lib/appEnv';
-import { extractBearerToken } from '../lib/bearerToken';
+
+/** Header name for the staging gate token — deliberately not `Authorization`,
+ * which researcher/MCP auth (`resolveResearcher`) and Supabase auth
+ * (`requireSupabaseAuth`) also read on the same requests for a different
+ * secret. Sharing that header meant no request could satisfy both checks. */
+const STAGING_TOKEN_HEADER = 'x-staging-token';
 
 /** Constant-time comparison — the token is a bearer credential. */
 function isValidToken(candidate: string, secret: string): boolean {
@@ -23,10 +28,10 @@ function isValidToken(candidate: string, secret: string): boolean {
 }
 
 /**
- * Requires `Authorization: Bearer <STAGING_API_TOKEN>` on every request once
- * APP_ENV=staging. Fails closed: a staging deploy with no token configured
- * returns 503 rather than serving the API unauthenticated — the same failure
- * mode as the frontend's password gate, for the same reason.
+ * Requires an `X-Staging-Token: <STAGING_API_TOKEN>` header on every request
+ * once APP_ENV=staging. Fails closed: a staging deploy with no token
+ * configured returns 503 rather than serving the API unauthenticated — the
+ * same failure mode as the frontend's password gate, for the same reason.
  */
 export function requireStagingAccess(req: Request, res: Response, next: NextFunction): void {
   if (getAppEnv() === 'production') {
@@ -40,11 +45,11 @@ export function requireStagingAccess(req: Request, res: Response, next: NextFunc
     return;
   }
 
-  const token = extractBearerToken(req);
-  if (!token || !isValidToken(token, secret)) {
+  const token = req.headers[STAGING_TOKEN_HEADER];
+  if (!token || typeof token !== 'string' || !isValidToken(token, secret)) {
     res.status(401).json({
       error: 'Unauthorized',
-      message: 'Staging requires Authorization: Bearer <token>.',
+      message: `Staging requires ${STAGING_TOKEN_HEADER}: <token>.`,
     });
     return;
   }
