@@ -4,6 +4,7 @@ import { createMcpServer } from './mcpServer';
 import { prisma } from '../lib/prisma';
 import { hashToken } from '../lib/tokenHash';
 import { researcherContext } from '../context/researcherContext';
+import { extractBearerToken } from '../lib/bearerToken';
 
 const router = Router();
 
@@ -38,8 +39,7 @@ const WRITE_TOOLS = new Set([
 // ---------------------------------------------------------------------------
 
 async function resolveResearcher(req: Request, res: Response): Promise<{ researcherId: string } | null> {
-  const authHeader = req.headers['authorization'] ?? '';
-  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
+  const token = extractBearerToken(req);
 
   if (!token) {
     res.status(401).json({

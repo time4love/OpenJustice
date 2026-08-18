@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { prisma } from '../lib/prisma';
 import { requireSupabaseAuth } from '../middleware/supabaseAuth';
+import { requireAdmin } from '../middleware/requireAdmin';
 import { generateToken, hashToken } from '../lib/tokenHash';
 
 const router = Router();
@@ -133,13 +134,7 @@ router.post('/mcp-token', requireSupabaseAuth, async (req: Request, res: Respons
 // Never returns supabaseUserId or mcpTokenHash.
 // ---------------------------------------------------------------------------
 
-router.get('/researchers', requireSupabaseAuth, async (req: Request, res: Response): Promise<void> => {
-  const caller = await getResearcher(req.supabaseUserId!);
-  if (!caller || caller.role !== 'ADMIN') {
-    res.status(403).json({ error: 'Admin access required' });
-    return;
-  }
-
+router.get('/researchers', requireSupabaseAuth, requireAdmin, async (_req: Request, res: Response): Promise<void> => {
   const researchers = await prisma.researcher.findMany({
     select: { id: true, handle: true, role: true, approved: true, createdAt: true },
     orderBy: { createdAt: 'desc' },
@@ -155,13 +150,7 @@ router.get('/researchers', requireSupabaseAuth, async (req: Request, res: Respon
 // Body: { approved?: boolean; role?: 'RESEARCHER' | 'ADMIN' }
 // ---------------------------------------------------------------------------
 
-router.patch('/researchers/:id', requireSupabaseAuth, async (req: Request, res: Response): Promise<void> => {
-  const caller = await getResearcher(req.supabaseUserId!);
-  if (!caller || caller.role !== 'ADMIN') {
-    res.status(403).json({ error: 'Admin access required' });
-    return;
-  }
-
+router.patch('/researchers/:id', requireSupabaseAuth, requireAdmin, async (req: Request, res: Response): Promise<void> => {
   const id = String(req.params['id']);
   const { approved, role } = req.body as { approved?: boolean; role?: 'RESEARCHER' | 'ADMIN' };
 
