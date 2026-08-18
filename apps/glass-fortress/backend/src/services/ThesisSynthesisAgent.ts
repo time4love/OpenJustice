@@ -28,8 +28,8 @@ export const ThesisSynthesisOutputSchema = z.object({
   narrativeBody: z
     .string()
     .describe(
-      'Full thesis narrative in Markdown, written in Hebrew, following the LEGAL FRAMING and ' +
-        'CAUSES OF ACTION rules above. ' +
+      'Full thesis narrative in Markdown, written in Hebrew, following the LEGAL FRAMING, ' +
+        'CAUSES OF ACTION, and SCIENTIFIC/CAUSAL CLAIMS rules above. ' +
         'Use ## headings, bullet points, and bold for key terms. ' +
         'Cite every factual claim inline, immediately after the claim, using a Markdown footnote ' +
         'marker like [^1], [^2] — every marker used here must have exactly one matching entry in ' +

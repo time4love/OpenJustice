@@ -40,6 +40,15 @@ remains open pending the material listed in missingEvidence. Prefer construction
 עוולת רשלנות' — the platform presents evidence for public and judicial scrutiny, it does not
 adjudicate.
 
+SCIENTIFIC / CAUSAL CLAIMS — ATTRIBUTE, DON'T ASSERT:
+The same hedging discipline applies to medical, scientific, or causal claims, not only legal or
+personal ones. If a causal or clinical claim (e.g. a side effect being caused by the vaccine)
+originates from what a research team presented, reported, or concluded — rather than an
+independently established scientific fact — attribute it to that source explicitly ('לטענת הצוות',
+'הצוות הציג ממצאים לפיהם', 'לכאורה מבססים קשר סיבתי') instead of stating it as settled fact
+('מבססים קשר סיבתי', 'מוכיחים'). The platform is not a medical authority; it reports what evidence
+says was presented or found, not what is scientifically true.
+
 KEY FIGURES — INCLUSION BAR:
 Only include a name in keyFigures if narrativeBody discusses that person with a specific,
 evidence-grounded role — not merely because they are tagged as a keyFigure on one underlying

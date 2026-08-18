@@ -142,3 +142,39 @@ change:
   - Next: land to staging, re-run `suggest_thesis` live against the real evidence vault a third
     time to confirm inline footnotes actually render as expected end-to-end, then (finally) create
     the first real thesis.
+- 2026-08-18 — **Live re-test #3, after two more real bugs found and fixed along the way:**
+  (1) PR #39 was branched from a stale local `master` (predated PR #38), causing a silent
+  duplicate-insertion merge of the LEGAL FRAMING/CAUSES OF ACTION/KEY FIGURES blocks in
+  `thesisSynthesis.ts` — fixed in PR #40, with a new `thesisSynthesis.prompt.test.ts` regression
+  guard (no merge conflict fires for this bug class, so only a content-level check catches it).
+  (2) `citations[].id` used `z.number().int().positive()`, which `zodToJsonSchema` compiles to
+  `exclusiveMinimum` — a keyword Gemini's structured-output `response_schema` rejects outright
+  (`THESIS_SYNTHESIS_PROVIDER=gemini` on staging). Every live `suggest_thesis` call 400'd. Fixed in
+  PR #41: `.min(1)` instead (semantically identical, provider-safe), and `assertSchemaCompatibility`
+  now scans recursively for `exclusiveMinimum`/`exclusiveMaximum` across every agent using it —
+  this would have caught the bug in CI without a live network call.
+  - **Third live run succeeded end to end**: 6/6 footnote markers matched 6/6 citations, exact
+    dates from the corpus appeared throughout (validates the "cite the specific date" rule added
+    earlier), legal theories framed as potential, Bourla still correctly excluded, no personal
+    accusation attributed to the three officials who do appear (only their documented presence at
+    the internal briefing).
+  - **Content review with user surfaced one more real gap**: one sentence stated a clinical/causal
+    claim ("Re-challenge cases **establish** a causal link") as settled fact rather than attributing
+    it to the research team that presented it — the existing LEGAL FRAMING rule only covered legal
+    conclusions and personal accusations, not scientific/causal claims, which need the same hedging
+    discipline. Fixed with a new prompt rule, "SCIENTIFIC / CAUSAL CLAIMS — ATTRIBUTE, DON'T
+    ASSERT" (own PR, same session).
+  - **Deferred, not built**: user raised whether statute/section-number citations (e.g. "סעיפים
+    35–36 לפקודת הנזיקין") should be verified — LLM-cited section numbers aren't reliably correct
+    and a wrong one in a public thesis is a real credibility risk. Decided **not** to fold this into
+    the main synthesis prompt (concern: cramming a verification task into the same generation call
+    that's already juggling evidence-grounding, legal framing, and citation bookkeeping risks
+    diluting quality across all of them). If built, this should be a **separate, dedicated
+    legal-citation-QA pass** — verification, not generation, same principle as why footnote
+    citations aren't a post-hoc pass either (see §2). Not scoped, not started, own session if
+    picked up.
+  - **Missing-evidence UX decision, confirmed with user**: `missingEvidence` stays a structured
+    field, not embedded in `narrativeBody` prose. Reasoning: it can be independently regenerated
+    later via `get_research_agenda` as research progresses (gaps close, new ones open) without ever
+    touching the published narrative text; embedding it in prose would go stale the moment someone
+    edits the body without also updating the embedded gap list.
