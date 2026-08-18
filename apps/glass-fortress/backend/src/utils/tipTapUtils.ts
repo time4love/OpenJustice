@@ -9,9 +9,12 @@
 //   - bullet item
 //   1. ordered item
 //   blank line = paragraph break
+//   [^n]  footnote marker — spliced inline as an evidenceMention chip when a
+//         `citations` map is supplied (see buildTipTapDoc)
 //
-// After the body, appends an evidence-mentions paragraph and a key-figure-
-// mentions paragraph so citations are embedded as TipTap mention nodes.
+// Legacy path (no citations param): after the body, appends a trailing
+// evidence-mentions paragraph and a key-figure-mentions paragraph, exactly as
+// before footnote support existed — unchanged for backward compatibility.
 // ---------------------------------------------------------------------------
 
 export interface TipTapMark {
@@ -27,10 +30,32 @@ export interface TipTapNode {
   text?: string;
 }
 
-/** Parse inline Markdown spans (**bold**, *italic*) into TipTap text nodes with marks. */
-function parseInline(raw: string): TipTapNode[] {
+export interface Citation {
+  id: number;
+  fileHashes: string[];
+}
+
+function evidenceMentionNode(hash: string, evidenceLabelMap: Map<string, string>): TipTapNode {
+  return {
+    type: 'evidenceMention',
+    attrs: { id: hash, label: evidenceLabelMap.get(hash) ?? `ev_${hash.slice(0, 10)}` },
+  };
+}
+
+/**
+ * Parse inline Markdown spans (**bold**, *italic*, [^n] footnote markers) into
+ * TipTap nodes. Footnote markers only splice in evidenceMention nodes when
+ * citationsById is supplied — otherwise (legacy callers) a `[^n]`-shaped
+ * substring is left as ordinary literal text, unchanged from pre-footnote
+ * behavior.
+ */
+function parseInline(
+  raw: string,
+  citationsById?: Map<number, string[]>,
+  evidenceLabelMap?: Map<string, string>,
+): TipTapNode[] {
   const nodes: TipTapNode[] = [];
-  const pattern = /\*\*(.+?)\*\*|\*(.+?)\*|([^*]+)/g;
+  const pattern = /\*\*(.+?)\*\*|\*(.+?)\*|\[\^(\d+)\]|((?:(?!\[\^\d+\])[^*])+)/g;
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(raw)) !== null) {
     if (match[1] !== undefined) {
@@ -38,7 +63,16 @@ function parseInline(raw: string): TipTapNode[] {
     } else if (match[2] !== undefined) {
       nodes.push({ type: 'text', marks: [{ type: 'italic' }], text: match[2] });
     } else if (match[3] !== undefined) {
-      nodes.push({ type: 'text', text: match[3] });
+      const hashes = citationsById?.get(Number(match[3]));
+      if (hashes) {
+        for (const hash of hashes) nodes.push(evidenceMentionNode(hash, evidenceLabelMap ?? new Map()));
+      } else {
+        // No citations map at all (legacy caller), or this id has no entry — preserve the
+        // literal marker rather than silently dropping it.
+        nodes.push({ type: 'text', text: match[0] });
+      }
+    } else if (match[4] !== undefined) {
+      nodes.push({ type: 'text', text: match[4] });
     }
   }
   return nodes;
@@ -49,9 +83,12 @@ export function buildTipTapDoc(
   hashes: string[],
   figures: string[],
   evidenceLabelMap: Map<string, string>,
+  citations?: Citation[],
 ): TipTapNode {
   const nodes: TipTapNode[] = [];
   const lines = body.split('\n');
+  const citationsById = citations ? new Map(citations.map((c) => [c.id, c.fileHashes])) : undefined;
+  const inline = (raw: string): TipTapNode[] => parseInline(raw, citationsById, evidenceLabelMap);
 
   let i = 0;
   while (i < lines.length) {
@@ -63,7 +100,7 @@ export function buildTipTapDoc(
       nodes.push({
         type: 'heading',
         attrs: { level: headingMatch[1].length },
-        content: parseInline(headingMatch[2]),
+        content: inline(headingMatch[2]),
       });
       i++;
       continue;
@@ -75,7 +112,7 @@ export function buildTipTapDoc(
       while (i < lines.length && /^[-*]\s+/.test(lines[i])) {
         listItems.push({
           type: 'listItem',
-          content: [{ type: 'paragraph', content: parseInline(lines[i].replace(/^[-*]\s+/, '')) }],
+          content: [{ type: 'paragraph', content: inline(lines[i].replace(/^[-*]\s+/, '')) }],
         });
         i++;
       }
@@ -89,7 +126,7 @@ export function buildTipTapDoc(
       while (i < lines.length && /^\d+\.\s+/.test(lines[i])) {
         listItems.push({
           type: 'listItem',
-          content: [{ type: 'paragraph', content: parseInline(lines[i].replace(/^\d+\.\s+/, '')) }],
+          content: [{ type: 'paragraph', content: inline(lines[i].replace(/^\d+\.\s+/, '')) }],
         });
         i++;
       }
@@ -118,19 +155,20 @@ export function buildTipTapDoc(
     if (paraLines.length > 0) {
       nodes.push({
         type: 'paragraph',
-        content: parseInline(paraLines.join(' ')),
+        content: inline(paraLines.join(' ')),
       });
     }
   }
 
-  // Evidence mentions paragraph (one chip per hash)
-  if (hashes.length > 0) {
+  // Trailing evidence-chip paragraph — only for hashes NOT already rendered
+  // inline at a footnote marker. In the legacy path (no citations param),
+  // every hash lands here exactly as before footnote support existed.
+  const citedHashes = citationsById ? new Set([...citationsById.values()].flat()) : new Set<string>();
+  const uncitedHashes = hashes.filter((hash) => !citedHashes.has(hash));
+  if (uncitedHashes.length > 0) {
     nodes.push({
       type: 'paragraph',
-      content: hashes.map((hash) => ({
-        type: 'evidenceMention',
-        attrs: { id: hash, label: evidenceLabelMap.get(hash) ?? `ev_${hash.slice(0, 10)}` },
-      })),
+      content: uncitedHashes.map((hash) => evidenceMentionNode(hash, evidenceLabelMap)),
     });
   }
 

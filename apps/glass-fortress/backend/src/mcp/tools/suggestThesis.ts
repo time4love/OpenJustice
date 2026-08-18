@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { prisma } from '../../lib/prisma';
 import { VectorStoreService } from '../../services/VectorStoreService';
-import { ThesisSynthesisAgent } from '../../services/ThesisSynthesisAgent';
+import { ThesisSynthesisAgent, deriveSupportingHashes } from '../../services/ThesisSynthesisAgent';
 
 // ---------------------------------------------------------------------------
 // Lazy singletons
@@ -117,6 +117,10 @@ export async function suggestThesisHandler(input: {
   const agent = new ThesisSynthesisAgent();
   const proposal = await agent.synthesize(input.topic, corpus);
 
+  // supportingHashes is derived, not LLM-generated — see ThesisSynthesisAgent.ts for why
+  // (a second AI-generated field here could drift from what citations/narrativeBody actually say).
+  const supportingHashes = deriveSupportingHashes(proposal.narrativeBody, proposal.citations);
+
   // -------------------------------------------------------------------------
   // 4. Return proposal + ready-to-use create_thesis_draft arguments
   // -------------------------------------------------------------------------
@@ -129,18 +133,22 @@ export async function suggestThesisHandler(input: {
     confidenceLevel: proposal.confidenceLevel,
     summaryHe: proposal.summaryHe,
     keyFigures: proposal.keyFigures,
-    supportingHashes: proposal.supportingHashes,
+    supportingHashes,
+    citations: proposal.citations,
     missingEvidence: proposal.missingEvidence,
     narrativeBody: proposal.narrativeBody,
     readyForDraft: {
       title: proposal.proposedTitle,
       body: proposal.narrativeBody,
-      evidenceHashes: proposal.supportingHashes,
+      evidenceHashes: supportingHashes,
       keyFigures: proposal.keyFigures,
+      citations: proposal.citations,
     },
     instructions:
       'Review the proposal above. If it looks correct, call create_thesis_draft with the ' +
-      'readyForDraft object to save it. The evidence mentions and key figure chips will be ' +
-      'appended automatically. You can also edit narrativeBody before passing it to create_thesis_draft.',
+      'readyForDraft object to save it. Each [^n] marker in narrativeBody renders as an inline ' +
+      'evidence-mention chip via citations; key figure chips are appended automatically. You can ' +
+      'also edit narrativeBody before passing it to create_thesis_draft — if you add or remove a ' +
+      'claim, update citations to match.',
   });
 }

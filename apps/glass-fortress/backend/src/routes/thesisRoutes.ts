@@ -768,6 +768,9 @@ const DraftThesisSchema = z.object({
   body: z.string().min(1),
   evidenceHashes: z.array(z.string()).optional(),
   keyFigures: z.array(z.string()).optional(),
+  citations: z
+    .array(z.object({ id: z.number().int().positive(), fileHashes: z.array(z.string()).min(1) }))
+    .optional(),
 });
 
 router.post('/draft', async (req: Request, res: Response): Promise<void> => {
