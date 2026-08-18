@@ -9,6 +9,7 @@ import { SiteHeader } from '@/components/SiteHeader';
 import { useAuth } from '@/context/AuthContext';
 import type { ThesisSummary as FullThesisSummary } from '@/types/thesis';
 import { strengthBadgeClass } from '@/components/StrengthBadge';
+import { fetchTheses } from '@/lib/thesisApi';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -253,13 +254,8 @@ export default function ThesesPage() {
   useEffect(() => {
     async function load() {
       try {
-        const url = evidenceFilter
-          ? apiUrl(`/api/thesis?evidence=${encodeURIComponent(evidenceFilter)}`)
-          : apiUrl('/api/thesis');
-        const res = await fetch(url);
-        if (!res.ok) throw new Error();
-        const data = (await res.json()) as { theses: ThesisSummary[] };
-        setTheses(data.theses);
+        const query = evidenceFilter ? `evidence=${encodeURIComponent(evidenceFilter)}` : undefined;
+        setTheses(await fetchTheses(query));
       } catch {
         setError(true);
       } finally {

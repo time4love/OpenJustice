@@ -3,9 +3,9 @@
 import { useState, useEffect } from 'react';
 import { useTranslations } from 'next-intl';
 import { SiteHeader } from '@/components/SiteHeader';
-import { apiUrl } from '@/lib/api';
 import { ThesisHighlightCard } from '@/components/ThesisHighlightCard';
 import type { ThesisSummary } from '@/types/thesis';
+import { fetchTheses } from '@/lib/thesisApi';
 
 // ---------------------------------------------------------------------------
 // Page
@@ -19,10 +19,9 @@ export default function CallIndexPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch(apiUrl('/api/thesis'))
-      .then((r) => r.ok ? r.json() as Promise<{ theses: ThesisSummary[] }> : Promise.reject(r.status))
-      .then((data) => {
-        const sorted = data.theses
+    fetchTheses()
+      .then((theses) => {
+        const sorted = theses
           .filter((thesis) => thesis.headVersion?.status === 'COMPLETE')
           .sort((a, b) => b.openGapCount - a.openGapCount);
         setTheses(sorted);

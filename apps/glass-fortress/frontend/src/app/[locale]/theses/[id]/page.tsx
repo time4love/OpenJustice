@@ -15,6 +15,7 @@ import { useAuth } from '@/context/AuthContext';
 import { FoiaModal, type FoiaModalState } from '@/components/FoiaModal';
 import { WhistleblowerModal } from '@/components/WhistleblowerModal';
 import { addEvidenceToThesis } from '@/lib/thesisDocument';
+import { generateFoiaRequest } from '@/lib/thesisApi';
 
 // ---------------------------------------------------------------------------
 // Types matching the versioned thesis API
@@ -377,19 +378,7 @@ function ThesisPageInner({ id }: { id: string }) {
     setFoiaError(null);
     setFoiaModal({ status: 'loading', gapIndex });
     try {
-      const res = await fetch(apiUrl(`/api/thesis/${id}/foia-request`), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gapIndex }),
-      });
-      if (!res.ok) throw new Error();
-      const data = (await res.json()) as {
-        letterText: string;
-        targetMinistry: string;
-        legalBasis: string;
-        targetEmail?: string;
-        targetAddress?: string;
-      };
+      const data = await generateFoiaRequest(id, gapIndex);
       setFoiaModal({ status: 'ready', gapIndex, ...data });
     } catch {
       setFoiaError(gapIndex);
