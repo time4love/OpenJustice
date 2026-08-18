@@ -11,11 +11,11 @@ import { scrapeUrl } from '../utils/webScraper';
 import { StorageService } from '../services/StorageService';
 import {
   INVESTIGATIVE_CATEGORIES,
-  investigativeCategoriesField,
   onChainCategoryLabel,
 } from '../lib/investigativeCategories';
 import { mapEvidenceToRecord } from '../lib/evidenceRecord';
 import { buildEvidenceAnalysisData } from '../lib/evidenceCreateData';
+import { promoteEvidence } from '../services/promoteEvidence';
 
 const router = Router();
 
@@ -434,51 +434,8 @@ router.post('/promote', async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    if (record.status === 'CONFIRMED') {
-      res.status(200).json({ alreadyConfirmed: true, fileHash, message: 'Already promoted.' });
-      return;
-    }
-
-    // Register on-chain — ZeroAddress preserves submitter anonymity
-    let txHash: string;
-    try {
-      txHash = await getWeb3Service().registerEvidenceHash(
-        fileHash,
-        ethers.ZeroAddress,
-        onChainCategoryLabel(
-          investigativeCategoriesField.parse(record.investigativeCategories),
-          record.evidenceRole,
-        ),
-      );
-    } catch (err) {
-      if (err instanceof DuplicateEvidenceError) {
-        // Already on-chain (e.g. promoted by another path) — continue to sync DB
-        txHash = 'already-on-chain';
-      } else {
-        throw err;
-      }
-    }
-
-    // Upsert embedding to Pinecone — best-effort with 15s timeout.
-    // Failure here does not block promotion; on-chain hash is the source of truth.
-    try {
-      await Promise.race([
-        getVectorStore().then((vs) => vs.upsertEvidence(record.summary, fileHash)),
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error('Pinecone upsert timed out')), 15_000),
-        ),
-      ]);
-    } catch (pineconeErr) {
-      console.warn(
-        '[promote] Pinecone upsert failed (non-fatal):',
-        pineconeErr instanceof Error ? pineconeErr.message : pineconeErr,
-      );
-    }
-
-    // Mark confirmed in Prisma
-    await prisma.evidence.update({ where: { fileHash }, data: { status: 'CONFIRMED' } });
-
-    res.status(200).json({ promoted: true, fileHash, txHash });
+    const result = await promoteEvidence(record);
+    res.status(200).json(result);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error('[promote] Error:', err instanceof Error ? err.stack : err);
