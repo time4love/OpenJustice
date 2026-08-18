@@ -159,7 +159,8 @@
     "pendingReviewNote": "This evidence has not been registered on-chain yet. Review the AI analysis and click Promote to confirm.",
     "promoteToVault": "Promote to Vault",
     "promoting": "Registering...",
-    "promoteSuccess": "✓ Registered"
+    "promoteSuccess": "✓ Registered",
+    "promoteError": "Promotion failed."
   },
   "evidence": {
     "backLink": "← Evidence Vault",
@@ -319,7 +320,14 @@
     "historyJobsLoading": "Loading batches…",
     "historyJobsError": "Failed to load batches.",
     "downloadPdf": "Download PDF Report",
-    "inVaultBadge": "In Evidence Vault"
+    "inVaultBadge": "In Evidence Vault",
+    "addToThesisBtn": "Add to Thesis",
+    "addToThesisSaving": "Saving…",
+    "addToThesisDone": "✓ Added to thesis",
+    "addToThesisPick": "Pick a thesis",
+    "addToThesisLoading": "Loading…",
+    "addToThesisEmpty": "No theses found",
+    "addToThesisUntitled": "Thesis {id}"
   },
   "theses": {
     "pageTitle": "Legal Thesis Builder",

@@ -14,6 +14,7 @@ import { tierDotColor } from '@/components/TierBadge';
 import { useAuth } from '@/context/AuthContext';
 import { FoiaModal, type FoiaModalState } from '@/components/FoiaModal';
 import { WhistleblowerModal } from '@/components/WhistleblowerModal';
+import { addEvidenceToThesis } from '@/lib/thesisDocument';
 
 // ---------------------------------------------------------------------------
 // Types matching the versioned thesis API
@@ -64,19 +65,6 @@ interface VaultHit {
   targetEntity: string;
 }
 
-function appendEvidenceMention(
-  doc: Record<string, unknown>,
-  fileHash: string,
-  label: string,
-): Record<string, unknown> {
-  const content = [...((doc.content as unknown[]) ?? [])];
-  content.push({
-    type: 'paragraph',
-    content: [{ type: 'evidenceMention', attrs: { id: fileHash, label: label.slice(0, 30) } }],
-  });
-  return { ...doc, content };
-}
-
 function GapSearchPanel({
   gap, gapIndex, thesisId, thesisContent, resolution, onVersionAdded, onResolved, onGenerateFoia, onSubmitTip, canEdit,
 }: {
@@ -119,13 +107,7 @@ function GapSearchPanel({
   async function addToThesis(hit: VaultHit) {
     setAdding(prev => new Set(prev).add(hit.fileHash));
     try {
-      const newContent = appendEvidenceMention(thesisContent, hit.fileHash, hit.summary);
-      const res = await fetch(apiUrl(`/api/thesis/${thesisId}/version`), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userContent: newContent }),
-      });
-      if (!res.ok) throw new Error();
+      await addEvidenceToThesis(thesisId, hit.fileHash, hit.summary, thesisContent);
       setAdded(prev => new Set(prev).add(hit.fileHash));
       onVersionAdded();
     } finally {

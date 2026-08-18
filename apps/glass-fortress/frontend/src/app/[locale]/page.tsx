@@ -225,7 +225,18 @@ export default function HomePage() {
           {!loading && featuredThesis && (
             <StaggerContainer className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <StaggerItem variant="scale" className="sm:col-span-2" whileHover={{ y: -5 }}>
-                <ThesisHighlightCard thesis={featuredThesis} featured t={t} />
+                <ThesisHighlightCard
+                  thesis={featuredThesis}
+                  variant="featured"
+                  labels={{
+                    noTitle: t('noTitle'),
+                    featuredLabel: t('topThesesFeaturedLabel'),
+                    gapsLabel: featuredThesis.openGapCount > 0
+                      ? t('warBoardGaps', { count: featuredThesis.openGapCount })
+                      : undefined,
+                    viewLabel: t('warBoardView'),
+                  }}
+                />
               </StaggerItem>
               {secondaryTheses.map((thesis, i) => (
                 <StaggerItem
@@ -233,7 +244,16 @@ export default function HomePage() {
                   variant={i % 2 === 0 ? 'left' : 'right'}
                   whileHover={{ y: -5 }}
                 >
-                  <ThesisHighlightCard thesis={thesis} t={t} />
+                  <ThesisHighlightCard
+                    thesis={thesis}
+                    labels={{
+                      noTitle: t('noTitle'),
+                      gapsLabel: thesis.openGapCount > 0
+                        ? t('warBoardGaps', { count: thesis.openGapCount })
+                        : undefined,
+                      viewLabel: t('warBoardView'),
+                    }}
+                  />
                 </StaggerItem>
               ))}
             </StaggerContainer>

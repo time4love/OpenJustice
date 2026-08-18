@@ -6,6 +6,7 @@ import { Link } from '@/i18n/navigation';
 import { SiteHeader } from '@/components/SiteHeader';
 import { apiUrl } from '@/lib/api';
 import { ClaimBlock } from '@/components/ClaimBlock';
+import { EmptyState } from '@/components/EmptyState';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -89,16 +90,6 @@ const STALL_THRESHOLD_MS = 35_000;
 // ---------------------------------------------------------------------------
 // Empty state
 // ---------------------------------------------------------------------------
-
-function EmptyState({ title, sub }: { title: string; sub: string }) {
-  return (
-    <div className="flex flex-col items-center justify-center text-center px-8 py-20 border border-dashed border-slate-200 rounded-xl bg-white shadow-sm">
-      <div className="text-3xl mb-4 text-slate-300">&#x26B2;</div>
-      <p className="text-sm font-medium text-slate-500 mb-1">{title}</p>
-      <p className="text-xs text-slate-400 max-w-xs leading-relaxed">{sub}</p>
-    </div>
-  );
-}
 
 // ---------------------------------------------------------------------------
 // Progress state — shown while TrackedUrl is SCANNING
@@ -245,6 +236,16 @@ function PausedState({
 
 // ---------------------------------------------------------------------------
 // Diff node — a single legally significant change
+//
+// Deliberately not shared with forensics/[trackedUrlId]/page.tsx's DiffCard:
+// this page only ever shows already-flagged changes from a fresh scan (hence
+// the fixed always-red styling and no significance flag in SnapshotDiff), and
+// has no expand/collapse or promote action. DiffCard evolved a richer,
+// interactive treatment for reviewing a URL's full history and operates on a
+// different underlying type (DiffRecord, not SnapshotDiff). A shared
+// component would need to accept both data shapes and make the extra
+// behavior optional, which is more surface area than the actual duplication
+// (a couple of shared Tailwind class strings) justifies.
 // ---------------------------------------------------------------------------
 
 function DiffNode({
@@ -1008,7 +1009,7 @@ export default function ForensicsPage() {
         {phase === 'done' && result !== null && (
           <>
             {result.count === 0 ? (
-              <EmptyState title={t('noChangesTitle')} sub={t('noChangesSub')} />
+              <EmptyState icon="⚲" title={t('noChangesTitle')} sub={t('noChangesSub')} />
             ) : (
               <>
                 <div className="flex flex-wrap items-center gap-3">

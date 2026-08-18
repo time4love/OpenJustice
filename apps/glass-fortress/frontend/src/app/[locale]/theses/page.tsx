@@ -8,6 +8,7 @@ import { apiUrl } from '@/lib/api';
 import { SiteHeader } from '@/components/SiteHeader';
 import { useAuth } from '@/context/AuthContext';
 import type { ThesisSummary as FullThesisSummary } from '@/types/thesis';
+import { strengthBadgeClass } from '@/components/StrengthBadge';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -51,12 +52,6 @@ function StatusBadge({ status }: { status: string }) {
 // ---------------------------------------------------------------------------
 // Generate from Evidence modal
 // ---------------------------------------------------------------------------
-
-const CONFIDENCE_STYLES: Record<string, string> = {
-  WEAK: 'bg-red-100 text-red-700 border-red-200',
-  MODERATE: 'bg-amber-100 text-amber-700 border-amber-200',
-  STRONG: 'bg-emerald-100 text-emerald-700 border-emerald-200',
-};
 
 function GenerateModal({
   onClose,
@@ -184,7 +179,7 @@ function GenerateModal({
                   {suggestion.proposedTitle}
                 </p>
                 <span
-                  className={`shrink-0 text-xs font-semibold px-2 py-0.5 rounded-full border ${CONFIDENCE_STYLES[suggestion.confidenceLevel] ?? 'bg-slate-100 text-slate-600 border-slate-200'}`}
+                  className={`shrink-0 text-xs font-semibold px-2 py-0.5 rounded-full border ${strengthBadgeClass(suggestion.confidenceLevel)}`}
                 >
                   {t('generateConfidenceLabel')}: {suggestion.confidenceLevel}
                 </span>

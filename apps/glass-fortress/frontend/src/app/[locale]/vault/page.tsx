@@ -12,6 +12,7 @@ import {
   INVESTIGATIVE_CATEGORIES,
   type InvestigativeCategory,
 } from '@/lib/investigativeCategories';
+import { formatHash } from '@/lib/format';
 import type { EvidenceMetadata } from '@/types/evidence';
 
 interface SearchResult {
@@ -34,11 +35,6 @@ interface EvidenceStats {
   total: number;
   byTier: Partial<Record<EvidenceTier, number>>;
   byCategory: Partial<Record<InvestigativeCategory, number>>;
-}
-
-function formatHash(hash: string): string {
-  if (hash.length <= 18) return hash;
-  return `${hash.slice(0, 10)}…${hash.slice(-8)}`;
 }
 
 function formatTimestamp(ts: number): string {

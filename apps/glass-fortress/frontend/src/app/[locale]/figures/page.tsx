@@ -7,7 +7,9 @@ import { SiteHeader } from '@/components/SiteHeader';
 import { Link, useRouter, usePathname } from '@/i18n/navigation';
 import { apiUrl } from '@/lib/api';
 import { CategoryBadges } from '@/components/CategoryBadges';
-import type { EvidenceMetadata, EvidencePerspective } from '@/types/evidence';
+import { formatHash } from '@/lib/format';
+import { perspectiveStyles } from '@/lib/evidencePerspective';
+import type { EvidenceMetadata } from '@/types/evidence';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -27,23 +29,6 @@ interface EvidenceRecord {
 // ---------------------------------------------------------------------------
 // Perspective styles
 // ---------------------------------------------------------------------------
-
-const PERSPECTIVE_STYLES: Record<EvidencePerspective, { dot: string; border: string; header: string }> = {
-  'Internal Knowledge': { dot: 'bg-red-500', border: 'border-red-200', header: 'bg-red-50 border-red-100' },
-  'Public Statement':   { dot: 'bg-blue-500', border: 'border-blue-200', header: 'bg-blue-50 border-blue-100' },
-  'Citizen Experience': { dot: 'bg-slate-400', border: 'border-slate-200', header: 'bg-slate-100 border-slate-200' },
-};
-
-const FALLBACK_STYLES = { dot: 'bg-slate-400', border: 'border-slate-200', header: 'bg-slate-100 border-slate-200' };
-
-function perspectiveStyles(p?: string) {
-  return PERSPECTIVE_STYLES[p as EvidencePerspective] ?? FALLBACK_STYLES;
-}
-
-function formatHash(hash: string): string {
-  if (hash.length <= 18) return hash;
-  return `${hash.slice(0, 10)}…${hash.slice(-8)}`;
-}
 
 // ---------------------------------------------------------------------------
 // Evidence card (compact, inline)
