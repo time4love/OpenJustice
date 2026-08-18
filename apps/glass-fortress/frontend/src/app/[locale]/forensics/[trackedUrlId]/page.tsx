@@ -497,9 +497,10 @@ export default function TrackedUrlPage() {
   const [diffs, setDiffs] = useState<DiffRecord[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(false);
-  const [initialLoading, setInitialLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Derived rather than tracked separately: we haven't gotten a response yet.
+  const initialLoading = meta === null && error === null;
 
   // Sentinel ref for IntersectionObserver
   const sentinelRef = useRef<HTMLDivElement | null>(null);
@@ -537,7 +538,10 @@ export default function TrackedUrlPage() {
   // Initial load
   useEffect(() => {
     if (!trackedUrlId) return;
-    void fetchPage(null).finally(() => setInitialLoading(false));
+    async function load() {
+      await fetchPage(null);
+    }
+    void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [trackedUrlId]);
 

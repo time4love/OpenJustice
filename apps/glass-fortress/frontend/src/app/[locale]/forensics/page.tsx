@@ -569,7 +569,6 @@ export default function ForensicsPage() {
 
   const [url, setUrl] = useState('');
   const [phase, setPhase] = useState<Phase>('idle');
-  const [trackedUrlId, setTrackedUrlId] = useState<string | null>(null);
   const [scanProgress, setScanProgress] = useState<{ total: number; processed: number } | null>(null);
   const [liveDiffs, setLiveDiffs] = useState<SnapshotDiff[]>([]);
   const [result, setResult] = useState<TrackedUrlResult | null>(null);
@@ -683,7 +682,7 @@ export default function ForensicsPage() {
         // Network blip — keep polling
       }
     },
-    [stopPolling, fetchResults],
+    [stopPolling, fetchResults, loadHistory],
   );
 
   useEffect(() => { pollStatusRef.current = pollStatus; }, [pollStatus]);
@@ -700,7 +699,6 @@ export default function ForensicsPage() {
     setPhase('creating');
     setError(null);
     setResult(null);
-    setTrackedUrlId(null);
     trackedUrlIdRef.current = null;
     setScanProgress(null);
     setLiveDiffs([]);
@@ -721,7 +719,6 @@ export default function ForensicsPage() {
         return;
       }
 
-      setTrackedUrlId(data.trackedUrlId);
       trackedUrlIdRef.current = data.trackedUrlId;
       setPhase('polling');
       lastUpdateTimeRef.current = Date.now();
