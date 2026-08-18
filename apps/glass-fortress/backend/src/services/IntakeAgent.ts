@@ -1,8 +1,8 @@
 import { z } from 'zod';
-import { toJsonSchema } from '@langchain/core/utils/json_schema';
 import { LLMFactory } from '../factories/LLMFactory';
 import { investigativeCategoriesField } from '../lib/investigativeCategories';
 import { INTAKE_CLASSIFICATION_PROMPT } from '../prompts/intakeAgentClassification';
+import { assertSchemaCompatibility } from '../lib/assertSchemaCompatibility';
 
 // ---------------------------------------------------------------------------
 // Evidence tier enum — business/legal classification
@@ -209,23 +209,8 @@ export type IntakeOutput = z.infer<typeof IntakeOutputSchema>;
 // analyzeText instead of inside the schema definition.
 // ---------------------------------------------------------------------------
 
-function assertIntakeSchemaCompatibility(): void {
-  const jsonSchema = toJsonSchema(IntakeOutputSchema) as { properties?: Record<string, unknown> };
-  const schemaFields = Object.keys(IntakeOutputSchema.shape);
-  const missing = schemaFields.filter((f) => !(f in (jsonSchema.properties ?? {})));
-
-  if (missing.length > 0) {
-    throw new Error(
-      `[IntakeAgent] Schema compatibility failure: the following fields were dropped by ` +
-      `LangChain's zodToJsonSchema and will be absent from the function-calling schema — ` +
-      `[${missing.join(', ')}]. ` +
-      `Apply any transformations post-parse in analyzeEvidence/analyzeText instead.`,
-    );
-  }
-}
-
 // Executed once at module load — fails before any request is processed.
-assertIntakeSchemaCompatibility();
+assertSchemaCompatibility(IntakeOutputSchema, 'IntakeAgent');
 
 // ---------------------------------------------------------------------------
 // Helpers
