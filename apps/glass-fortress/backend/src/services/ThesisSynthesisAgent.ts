@@ -19,14 +19,17 @@ export const ThesisSynthesisOutputSchema = z.object({
   thesisStatement: z
     .string()
     .describe(
-      '2-3 sentences stating the core legal claim: what happened, who is responsible, ' +
-        'and what legal duty was breached. Written in Hebrew.',
+      '2-3 sentences stating the potential legal claim: what the evidence shows happened, who ' +
+        'may bear responsibility, and what legal duty may have been breached — framed as an ' +
+        'allegation under investigation and a potential cause of action, never as an adjudicated ' +
+        'conclusion. Written in Hebrew.',
     ),
 
   narrativeBody: z
     .string()
     .describe(
-      'Full thesis narrative in Markdown, written in Hebrew. ' +
+      'Full thesis narrative in Markdown, written in Hebrew, following the LEGAL FRAMING and ' +
+        'CAUSES OF ACTION rules above. ' +
         'Use ## headings, bullet points, and bold for key terms. ' +
         'Weave the evidence naturally into the argument — do NOT use citation placeholders like [1] or (hash). ' +
         'The caller will append evidence mention chips automatically.',
@@ -42,8 +45,9 @@ export const ThesisSynthesisOutputSchema = z.object({
   keyFigures: z
     .array(z.string())
     .describe(
-      'Names of public figures implicated across multiple evidence records. ' +
-        'Use exact names as they appear in the corpus.',
+      'Names of individuals discussed with a specific, evidence-grounded role in narrativeBody ' +
+        '— not everyone tagged as a keyFigure on the underlying evidence corpus. See the ' +
+        'KEY FIGURES — INCLUSION BAR rule above. Use exact names as they appear in the corpus.',
     ),
 
   confidenceLevel: z
