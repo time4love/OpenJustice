@@ -1,8 +1,13 @@
 # GF Tech-Debt Cleanup — Dev Plan
 
-**Status:** NOT STARTED — planning only. This plan documents findings from a full codebase sweep;
-**the actual cleanup executes in a future session.**
-**Created:** 2026-08-18
+**Status:** ✅ Phase 1 (§2.1–§2.8) and Phase 2 (§3.1–§3.9) both COMPLETE and landed on `staging` —
+17 PRs (#14–#27, plus this doc's own #14 planning PR), all merged. Phase 3 (§4, low-priority/optional
+items) not started — none are urgent, revisit opportunistically.
+**Created:** 2026-08-18. **Phase 2 completed:** 2026-08-18 (same day, autonomous session — see
+`gf-railway-branch-misconfig.md` in Claude's memory for an unrelated but important infra finding from
+this same session: Railway's staging/production branch bindings appear to be shared per-service, not
+independent per-environment — both environments currently deploy from `staging`, deliberately, with
+user sign-off, until that's resolved).
 **Scope:** Glass Fortress only (frontend + backend). Bronze Fortress not swept.
 
 ---
