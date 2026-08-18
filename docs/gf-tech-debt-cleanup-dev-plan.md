@@ -181,23 +181,29 @@ params. Do this together with §2.2 (hash consolidation) since they touch the sa
 
 Do these after Phase 1. Lower urgency but same "will drift eventually" risk profile.
 
-### 3.1 `assertSchemaCompatibility()` copy-pasted into 8 agent files
+### 3.1 ✅ DONE — `assertSchemaCompatibility()` copy-pasted into 8 agent files
 `IntakeAgent.ts`, `ForensicAgent.ts`, `DevilsAdvocateAgent.ts`, `GapRevisionAgent.ts`,
 `RevisionAgent.ts`, `ThesisSynthesisAgent.ts`, `ThesisValidatorAgent.ts`, `FoiaLetterAgent.ts` — only
-the schema variable name and log prefix differ between copies. Extract to one shared
-`assertSchemaCompatibility(schema, agentName)` utility (e.g. in `backend/src/lib/`).
+the schema variable name and log prefix differed between copies. **Resolution:** extracted
+`assertSchemaCompatibility(schema, agentName)` to `backend/src/lib/assertSchemaCompatibility.ts`;
+every agent now calls it inline (`assertSchemaCompatibility(XSchema, 'AgentName')`) instead of
+declaring a private wrapper function. Pure refactor — same fail-fast logic, same error wording
+pattern, no behavior change. `tsc --noEmit` clean, 509/509 backend Jest tests pass.
 
-### 3.1a Migrate all remaining inline agent prompts to `prompts/` (see §1.1)
-Same 8 files as §3.1 are the full set of GF LLM agents. `IntakeAgent.ts`'s prompts are handled in §2.1;
-audit the other 7 (`ForensicAgent.ts`, `DevilsAdvocateAgent.ts`, `GapRevisionAgent.ts`,
-`RevisionAgent.ts`, `ThesisSynthesisAgent.ts`, `ThesisValidatorAgent.ts`, `FoiaLetterAgent.ts`) for
-inline system-prompt string constants of meaningful size (roughly ≥ 500 chars, or any prompt that
-looks likely to be reused/adapted for a second path the way `IntakeAgent`'s was) and move each to its
-own file under `prompts/`, per the §1.1 convention. Do this pass together with §3.1 since it's the same
-8 files and the same review pass — no reason to open each file twice. While in each file, also check
-whether its prompt shares any rules text with another agent's prompt (the way `IntakeAgent`'s two
-copies did) — if so, that's a live duplication risk under the same rule and should be extracted as a
-shared `prompts/*SharedRules.ts` fragment, not just relocated as two separate files with matching text.
+### 3.1a ✅ DONE — Migrate all remaining inline agent prompts to `prompts/` (see §1.1)
+Same 8 files as §3.1 are the full set of GF LLM agents. `IntakeAgent.ts`'s prompts were handled in
+§2.1. Audited the other 7 — all had inline `SYSTEM_PROMPT` string constants well over the 500-char
+threshold (1.1k–2.6k chars each) — and moved each to its own file under `prompts/`, named for its task
+rather than its caller: `forensicDiffClassification.ts`, `devilsAdvocateCritique.ts`,
+`gapRevisionEditing.ts`, `thesisRevision.ts`, `thesisSynthesis.ts`, `thesisFalsification.ts`,
+`foiaLetterDrafting.ts`. `ForensicAgent`'s prompt kept its `${INVESTIGATIVE_CATEGORY_PROMPT_BLOCK}`
+interpolation (import moved into the new prompt file). **Shared-rules-fragment check (per the §1.1
+caution):** all 7 prompts genuinely differ — no repeated multi-sentence rules block. Four of them share
+one identical framing sentence ("...class-action lawsuit against government health authorities for
+Covid-19 policy failures") but that's flavor text, not reasoning logic — extracting one sentence into
+its own fragment file would be the over-engineering the plan's own guidance warns against, so it was
+left as-is. `investigativeCategoriesField`/`INVESTIGATIVE_CATEGORY_PROMPT_BLOCK` (already shared via
+`lib/investigativeCategories.ts`) remains the one genuine shared-fragment case, unchanged.
 
 ### 3.2 Site header markup hand-copied into 10 frontend page files
 `page.tsx` (home), `theses/page.tsx`, `about/page.tsx`, `forensics/page.tsx`, `safety/page.tsx`,
