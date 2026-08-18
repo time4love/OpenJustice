@@ -50,7 +50,7 @@ export async function generateMetadata({
 
   const pageTitle = title
     ? `קריאה לעדים: ${title}`
-    : 'קריאה לעדים — Glass Fortress';
+    : 'קריאה לעדים — צדק לעם';
 
   const description = summaryHe
     ? summaryHe.slice(0, 160)
