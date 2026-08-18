@@ -6,13 +6,16 @@ import { CallPageClient } from './CallPageClient';
 // Uses BACKEND_URL directly (server → backend, bypasses the Next.js proxy).
 // ---------------------------------------------------------------------------
 
-interface ThesisSummary {
+// Not the same shape as the canonical ThesisSummary in @/types/thesis — this
+// is the flattened title/summary/strength projection generateMetadata needs
+// for Open Graph tags, not a subset of the listing-card type.
+interface ThesisMetaSummary {
   title: string | null;
   summaryHe: string | null;
   strength: string | null;
 }
 
-async function fetchThesisSummary(thesisId: string): Promise<ThesisSummary> {
+async function fetchThesisSummary(thesisId: string): Promise<ThesisMetaSummary> {
   const backendUrl = process.env.BACKEND_URL ?? 'http://localhost:3001';
   try {
     const res = await fetch(`${backendUrl}/api/thesis/${thesisId}`, {
