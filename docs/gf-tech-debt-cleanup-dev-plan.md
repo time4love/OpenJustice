@@ -284,12 +284,14 @@ from one source. **Resolution:** new `backend/src/lib/evidenceContext.ts` export
 Verified: `tsc --noEmit` clean, 509/509 backend Jest tests pass.
 
 ### 3.5 Prisma query shape duplication
-- Same evidence-metadata mapping hand-built in `evidenceRoutes.ts` at 3 separate locations
-  (GET /timeline:444-469, GET /search:685-706, GET /:id:807-830) plus `figuresRoutes.ts:62-85` (see
-  §2.4 — do together). Confirmed drift: only GET /:id defends against null `medicalConditions` with
-  `?? '[]'`; the other three don't.
-- `thesisRoutes.ts` builds the identical `evidenceMap` query **twice in the same file** (lines
-  ~226-257 and ~605-636) — extract a local helper function.
+- ✅ Already done in Phase 1 (§2.4/§2.8) — `evidenceRoutes.ts`'s GET /timeline and GET /search both
+  use `mapEvidenceToRecord()` from `lib/evidenceRecord.ts`, as does `figuresRoutes.ts`. GET /:id keeps
+  its own inline mapping (different shape — full record, not the summary), which is fine.
+- ✅ DONE — `thesisRoutes.ts` built the identical `evidenceMap` query twice in the same file (the
+  full-thesis GET route and the single-version GET route). Extracted a local `buildEvidenceMap(
+  evidenceRefIds: string[])` helper (file-local, not promoted to `lib/` — it's only used by these two
+  routes in this one file) and replaced both call sites. Verified: `tsc --noEmit` clean, 509/509
+  backend Jest tests pass.
 
 ### 3.6 Component/logic pairs with drift (frontend)
 - **`DiffNode`** (`forensics/page.tsx:251-345`) vs **`DiffCard`** (`forensics/[trackedUrlId]/page.tsx:286+`)
