@@ -204,7 +204,7 @@ export default function ThesisHistoryPage({ params }: { params: Promise<{ id: st
                             : 'bg-amber-100 text-amber-700 border-amber-300'
                         }`}
                       >
-                        {v.status === 'COMPLETE' ? 'AI reviewed' : 'Pending AI'}
+                        {v.status === 'COMPLETE' ? t('aiReviewedStatus') : t('pendingAiStatus')}
                       </span>
                       <span className="ms-auto text-xs text-slate-400">
                         {new Date(v.createdAt).toLocaleString(locale === 'he' ? 'he-IL' : 'en-US', {

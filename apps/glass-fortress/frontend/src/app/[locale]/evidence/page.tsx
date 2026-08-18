@@ -8,11 +8,6 @@ import { SiteHeader } from '@/components/SiteHeader';
 import { apiUrl } from '@/lib/api';
 import { EmptyState } from '@/components/EmptyState';
 import { SkeletonRows } from '@/components/SkeletonRows';
-import type { EvidenceTier } from '@/components/TierBadge';
-import {
-  INVESTIGATIVE_CATEGORIES,
-  type InvestigativeCategory,
-} from '@/lib/investigativeCategories';
 import {
   UnifiedTimeline,
   TimelineSkeleton,
@@ -23,59 +18,6 @@ import type { EvidencePerspective } from '@/types/evidence';
 
 const PAGE_SIZE = 20;
 const SEARCH_LIMIT = 20;
-
-// ---------------------------------------------------------------------------
-// Stats type
-// ---------------------------------------------------------------------------
-
-interface EvidenceStats {
-  total: number;
-  byTier: Partial<Record<EvidenceTier, number>>;
-  byCategory: Partial<Record<InvestigativeCategory, number>>;
-}
-
-const ZERO_STATS: EvidenceStats = {
-  total: 0,
-  byTier: {},
-  byCategory: {},
-};
-
-// ---------------------------------------------------------------------------
-// Small dashboard components
-// ---------------------------------------------------------------------------
-
-function StatCard({
-  label,
-  value,
-  sub,
-  colorClass,
-}: {
-  label: string;
-  value: number;
-  sub?: string;
-  colorClass: string;
-}) {
-  return (
-    <div className="bg-white border border-slate-200 rounded-lg p-4 flex flex-col gap-1 shadow-sm">
-      <span className="text-xs text-slate-500 uppercase tracking-widest">{label}</span>
-      <span className={`text-3xl font-mono font-bold ${colorClass}`}>{value.toLocaleString()}</span>
-      {sub && <span className="text-xs text-slate-400">{sub}</span>}
-    </div>
-  );
-}
-
-function CategoryBar({ label, value, max }: { label: string; value: number; max: number }) {
-  const pct = Math.round((value / max) * 100);
-  return (
-    <div className="flex items-center gap-3">
-      <span className="text-xs text-slate-600 w-48 shrink-0">{label}</span>
-      <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden">
-        <div className="h-full bg-slate-400 rounded-full" style={{ width: `${pct}%` }} />
-      </div>
-      <span className="text-xs font-mono text-slate-500 w-8 text-end">{value}</span>
-    </div>
-  );
-}
 
 function FilterBanner({ children, clearLabel }: { children: React.ReactNode; clearLabel: string }) {
   return (
@@ -97,15 +39,11 @@ type Mode = 'timeline' | 'search';
 export default function EvidencePage() {
   const t = useTranslations('dashboard');
   const tc = useTranslations('common');
-  const tCat = useTranslations('categories');
   const tTimeline = useTranslations('timeline');
 
   const searchParams = useSearchParams();
   const entityParam = searchParams.get('entity');
   const hashParam = searchParams.get('hash');
-
-  const [stats, setStats] = useState<EvidenceStats>(ZERO_STATS);
-  const [statsLoading, setStatsLoading] = useState(true);
 
   const [query, setQuery] = useState('');
   const [mode, setMode] = useState<Mode>('timeline');
@@ -127,25 +65,6 @@ export default function EvidencePage() {
 
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   const fetchingRef = useRef(false);
-
-  // ---------------------------------------------------------------------
-  // Stats
-  // ---------------------------------------------------------------------
-
-  useEffect(() => {
-    fetch(apiUrl('/api/evidence/stats'))
-      .then((r) => r.ok ? r.json() as Promise<EvidenceStats> : Promise.reject(r.status))
-      .then((data) => setStats(data))
-      .catch(() => {/* silently keep zero stats on error */})
-      .finally(() => setStatsLoading(false));
-  }, []);
-
-  // A record may advance several concerns, so these counts overlap by design and
-  // their sum exceeds stats.total. The bars are scaled to the largest concern.
-  const categoryValues = Object.values(stats.byCategory).filter(
-    (v): v is number => typeof v === 'number',
-  );
-  const categoryMax = categoryValues.length > 0 ? Math.max(...categoryValues) : 1;
 
   // ---------------------------------------------------------------------
   // Timeline (chronological, cursor-paginated; optionally filtered by
@@ -290,6 +209,8 @@ export default function EvidencePage() {
     perspective: '',
     roleIncriminating: tTimeline('roleIncriminating'),
     roleContextAnchor: tTimeline('roleContextAnchor'),
+    targetEntityLabel: tTimeline('targetEntityLabel'),
+    viewEvidence: tTimeline('viewEvidence'),
     viewSource: tTimeline('viewSource'),
     viewDiffHistory: tTimeline('viewDiffHistory'),
     viewCitingTheses: tTimeline('viewCitingTheses'),
@@ -321,62 +242,6 @@ export default function EvidencePage() {
       />
 
       <div className="max-w-7xl mx-auto px-6 py-8 space-y-8">
-        {/* Analytics — Tier Stat Cards */}
-        <section>
-          <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-4">
-            {t('analytics.title')}
-          </h2>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-            <StatCard
-              label={t('analytics.total')}
-              value={statsLoading ? 0 : stats.total}
-              sub={t('analytics.totalSub')}
-              colorClass="text-slate-900"
-            />
-            <StatCard
-              label={t('analytics.tier1')}
-              value={statsLoading ? 0 : (stats.byTier['Tier 1: Smoking Gun'] ?? 0)}
-              sub={t('analytics.tier1Sub')}
-              colorClass="text-red-600"
-            />
-            <StatCard
-              label={t('analytics.tier2')}
-              value={statsLoading ? 0 : (stats.byTier['Tier 2: Material'] ?? 0)}
-              sub={t('analytics.tier2Sub')}
-              colorClass="text-orange-600"
-            />
-            <StatCard
-              label={t('analytics.tier3')}
-              value={statsLoading ? 0 : (stats.byTier['Tier 3: Supporting'] ?? 0)}
-              sub={t('analytics.tier3Sub')}
-              colorClass="text-amber-600"
-            />
-            <StatCard
-              label={t('analytics.tier4')}
-              value={statsLoading ? 0 : (stats.byTier['Tier 4: Anecdotal'] ?? 0)}
-              sub={t('analytics.tier4Sub')}
-              colorClass="text-slate-500"
-            />
-          </div>
-        </section>
-
-        {/* Analytics — Category Breakdown */}
-        <section className="bg-white border border-slate-200 rounded-lg p-5 shadow-sm">
-          <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-5">
-            {t('categoriesTitle')}
-          </h2>
-          <div className="space-y-3">
-            {INVESTIGATIVE_CATEGORIES.map((cat) => (
-              <CategoryBar
-                key={cat}
-                label={tCat(cat)}
-                value={statsLoading ? 0 : (stats.byCategory[cat] ?? 0)}
-                max={categoryMax}
-              />
-            ))}
-          </div>
-        </section>
-
         {/* Search */}
         <section>
           <form onSubmit={handleSearchSubmit} className="flex gap-2">

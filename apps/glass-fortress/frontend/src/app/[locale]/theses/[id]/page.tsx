@@ -1,16 +1,19 @@
 'use client';
 
-import { useState, useEffect, useRef, Suspense, use } from 'react';
+import { useState, useEffect, useMemo, useRef, Suspense, use } from 'react';
 import Image from 'next/image';
 import { useSearchParams } from 'next/navigation';
 import { useTranslations, useLocale } from 'next-intl';
 import { Link } from '@/i18n/navigation';
 import { apiUrl } from '@/lib/api';
+import { truncateLabel } from '@/lib/format';
+import { buildEvidenceCitationNumbers } from '@/lib/citations';
 import { TipTapRenderer, type EvidenceInfo } from '@/components/TipTapRenderer';
 import { LegalDisclaimer } from '@/components/LegalDisclaimer';
 import type { EvidenceGap, CounterArgument, AIAnalysis } from '@/types/thesis';
 import { CategoryBadges } from '@/components/CategoryBadges';
 import { tierDotColor } from '@/components/TierBadge';
+import { StrengthBadge, strengthLabel } from '@/components/StrengthBadge';
 import { useAuth } from '@/context/AuthContext';
 import { FoiaModal, type FoiaModalState } from '@/components/FoiaModal';
 import { WhistleblowerModal } from '@/components/WhistleblowerModal';
@@ -40,6 +43,7 @@ interface HeadVersion {
 
 interface Thesis {
   id: string;
+  title: string | null;
   headVersionId: string | null;
   createdAt: string;
   headVersion: HeadVersion | null;
@@ -158,16 +162,16 @@ function GapSearchPanel({
           <div className="flex gap-2">
             <button
               onClick={onGenerateFoia}
-              className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg bg-sky-100 hover:bg-sky-200 active:bg-sky-300 text-sky-700 transition-colors"
+              className="flex flex-col items-center gap-1 text-xs font-semibold px-4 py-2 rounded-lg bg-sky-100 hover:bg-sky-200 active:bg-sky-300 text-sky-700 transition-colors"
             >
-              <Image src="/icon_foia.png" alt="" width={14} height={14} className="w-3.5 h-3.5" />
+              <Image src="/icon_foia.png" alt="" width={28} height={28} className="w-7 h-7" />
               FOIA
             </button>
             <button
               onClick={onSubmitTip}
-              className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 active:bg-slate-300 text-slate-600 transition-colors"
+              className="flex flex-col items-center gap-1 text-xs font-semibold px-4 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 active:bg-slate-300 text-slate-600 transition-colors"
             >
-              <Image src="/icon_anon.png" alt="" width={14} height={14} className="w-3.5 h-3.5" />
+              <Image src="/icon_anon.png" alt="" width={28} height={28} className="w-7 h-7" />
               Tip
             </button>
           </div>
@@ -254,13 +258,6 @@ function GapSearchPanel({
   );
 }
 
-const STRENGTH_STYLES: Record<string, string> = {
-  WEAK: 'bg-red-50 border-red-200 text-red-700',
-  MODERATE: 'bg-amber-50 border-amber-200 text-amber-700',
-  STRONG: 'bg-emerald-50 border-emerald-200 text-emerald-700',
-  COMPELLING: 'bg-violet-50 border-violet-200 text-violet-700',
-};
-
 // ---------------------------------------------------------------------------
 // Page
 // ---------------------------------------------------------------------------
@@ -268,6 +265,7 @@ const STRENGTH_STYLES: Record<string, string> = {
 function ThesisPageInner({ id }: { id: string }) {
   const t = useTranslations('theses');
   const tc = useTranslations('common');
+  const tStrength = useTranslations('strengths');
   const locale = useLocale();
   const searchParams = useSearchParams();
   const historicalVersionId = searchParams.get('v');
@@ -293,6 +291,14 @@ function ThesisPageInner({ id }: { id: string }) {
   const [foiaModal, setFoiaModal] = useState<FoiaModalState | null>(null);
   const [tipModalGapIndex, setTipModalGapIndex] = useState<number | null>(null);
   const [foiaError, setFoiaError] = useState<number | null>(null); // gapIndex of failed FOIA gen
+
+  // Must run unconditionally (before the loading/error early returns below) per
+  // the rules of hooks — derives the same footnote numbers TipTapRenderer uses
+  // inline, so the "ראיות (N)" list below can show matching [n] markers.
+  const citationNumbers = useMemo(
+    () => (thesis?.headVersion?.userContent ? buildEvidenceCitationNumbers(thesis.headVersion.userContent) : new Map<string, number>()),
+    [thesis],
+  );
 
   useEffect(() => {
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
@@ -409,7 +415,6 @@ function ThesisPageInner({ id }: { id: string }) {
 
   const hv = thesis.headVersion;
   const analysis = hv?.aiAnalysis ?? null;
-  const keyFigureMentions = hv?.mentions.filter(m => m.type === 'KEY_FIGURE') ?? [];
   const evidenceMentions = hv?.mentions.filter(m => m.type === 'EVIDENCE') ?? [];
 
   return (
@@ -459,6 +464,11 @@ function ThesisPageInner({ id }: { id: string }) {
       </header>
 
       <main className="max-w-4xl mx-auto px-4 sm:px-6 py-10 space-y-8">
+        {/* Thesis title */}
+        {thesis.title && (
+          <h1 className="text-xl sm:text-2xl font-bold text-slate-900">{thesis.title}</h1>
+        )}
+
         {/* Historical version banner */}
         {isHistorical && (
           <div className="flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm text-amber-800">
@@ -470,45 +480,22 @@ function ThesisPageInner({ id }: { id: string }) {
           </div>
         )}
 
-        {/* Status + date */}
-        <div className="flex items-center gap-3 text-xs text-slate-500">
-          <span
-            className={`font-semibold px-3 py-1 rounded-full border ${
-              hv?.status === 'COMPLETE'
-                ? 'bg-emerald-100 text-emerald-700 border-emerald-300'
-                : 'bg-amber-100 text-amber-700 border-amber-300'
-            }`}
-          >
-            {hv?.status === 'COMPLETE' ? 'AI reviewed' : 'Pending AI'}
-          </span>
-          <span>
-            {new Date(thesis.createdAt).toLocaleDateString(locale === 'he' ? 'he-IL' : 'en-US')}
-          </span>
-        </div>
+        {/* AI-content disclaimer (status pill folded in, not gated on `analysis`
+            existing — the thesis body is already AI-assisted regardless of
+            whether critique has run) sits directly above the thesis body card,
+            deliberately outside the outer space-y-8 rhythm so the two read as
+            one attached unit instead of two separately-floating boxes. */}
+        <div className="space-y-2">
+          <LegalDisclaimer status={hv?.status} />
 
-        {/* Thesis body */}
-        <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
-          {hv ? <TipTapRenderer doc={hv.userContent} evidenceMap={evidenceMap} /> : null}
-        </div>
-
-        {/* Mentioned key figures */}
-        {keyFigureMentions.length > 0 && (
-          <div className="space-y-2">
-            <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
-              {t('keyFiguresLabel')}
-            </h3>
-            <div className="flex flex-wrap gap-2">
-              {keyFigureMentions.map(m => (
-                <span
-                  key={m.id}
-                  className="bg-violet-100 text-violet-700 text-xs px-3 py-1 rounded-full"
-                >
-                  @{m.refId}
-                </span>
-              ))}
+          {/* Thesis body — date sits top-left inside the card, letterhead-style */}
+          <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
+            <div className="text-xs text-slate-400" style={{ textAlign: 'left' }}>
+              {new Date(thesis.createdAt).toLocaleDateString(locale === 'he' ? 'he-IL' : 'en-US')}
             </div>
+            {hv ? <TipTapRenderer doc={hv.userContent} evidenceMap={evidenceMap} /> : null}
           </div>
-        )}
+        </div>
 
         {/* Mentioned evidence */}
         {evidenceMentions.length > 0 && (
@@ -520,15 +507,17 @@ function ThesisPageInner({ id }: { id: string }) {
               {evidenceMentions.map(m => {
                 const info = evidenceMap[m.refId];
                 const tierDotClass = tierDotColor(info?.evidenceTier ?? '');
-                const label = info?.summary?.slice(0, 35) || m.refId.slice(0, 8);
+                const label = (info?.summary ? truncateLabel(info.summary, 60) : undefined) || m.refId.slice(0, 8);
+                const number = citationNumbers.get(m.refId);
                 return (
                   <Link
                     key={m.id}
                     href={`/evidence?hash=${m.refId}`}
                     className="inline-flex items-center gap-1.5 bg-amber-100 hover:bg-amber-200 text-amber-700 text-xs px-3 py-1 rounded-full transition-colors"
                   >
+                    <span className="font-semibold">{number ? `[${number}]` : '#'}</span>
                     <span className={`w-2 h-2 rounded-full shrink-0 ${tierDotClass}`} />
-                    #{label}
+                    {label}
                   </Link>
                 );
               })}
@@ -539,16 +528,9 @@ function ThesisPageInner({ id }: { id: string }) {
         {/* AI analysis — DevilsAdvocate */}
         {analysis && (
           <section className="space-y-5 pt-4 border-t border-slate-200">
-            <LegalDisclaimer />
             <div className="flex items-center gap-3">
               <h2 className="text-lg font-bold text-slate-900">{t('aiAnalysisTitle')}</h2>
-              <span
-                className={`text-xs font-semibold px-3 py-1 rounded-full border ${
-                  STRENGTH_STYLES[analysis.overallStrengthAssessment] ?? ''
-                }`}
-              >
-                {analysis.overallStrengthAssessment}
-              </span>
+              <StrengthBadge strength={analysis.overallStrengthAssessment} />
             </div>
 
             {/* Hebrew summary */}
@@ -558,60 +540,70 @@ function ThesisPageInner({ id }: { id: string }) {
               </div>
             )}
 
-            {/* Counter-arguments */}
+            {/* Counter-arguments — horizontal, swipeable on mobile via native
+                scroll-snap rather than a vertical stack. */}
             {analysis.counterArguments.length > 0 && (
               <div className="space-y-3">
                 <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
                   {t('counterArgumentsLabel')}
                 </h3>
-                {analysis.counterArguments.map((ca, i) => (
-                  <div
-                    key={i}
-                    className="bg-white border border-slate-200 rounded-xl p-4 space-y-2 shadow-sm"
-                  >
-                    <p className="text-sm text-slate-900 font-medium">{ca.claim}</p>
-                    <p className="text-sm text-red-700">{ca.rebuttal}</p>
-                    <span className="inline-block text-xs text-slate-400 font-medium">
-                      {ca.strength}
-                    </span>
-                  </div>
-                ))}
+                <div className="flex gap-3 overflow-x-auto snap-x snap-mandatory pb-2 -mx-1 px-1">
+                  {analysis.counterArguments.map((ca, i) => (
+                    <div
+                      key={i}
+                      className="snap-start shrink-0 w-[85%] sm:w-[380px] bg-white border border-slate-200 rounded-xl p-4 space-y-2 shadow-sm"
+                    >
+                      <p className="text-sm text-slate-900 font-bold">{ca.claim}</p>
+                      <p className="text-sm text-slate-700">{ca.rebuttal}</p>
+                      <span className="inline-block text-xs text-slate-400 font-medium">
+                        {strengthLabel(tStrength, ca.strength)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
 
-            {/* Evidence gaps */}
+            {/* Evidence gaps — horizontal, same swipeable pattern as counter-arguments,
+                which also frees up width for larger icon-forward action buttons
+                inside GapSearchPanel. */}
             {analysis.evidenceGaps.length > 0 && (
               <div className="space-y-3">
                 <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
                   {t('evidenceGapsLabel')}
                 </h3>
-                {analysis.evidenceGaps.map((gap, i) => {
-                  const resolution = gapResolutions.find(r => r.gapIndex === i) ?? null;
-                  return isHistorical
-                    ? (
-                      <div key={i} className="bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-1">
-                        <p className="text-sm text-slate-800 font-medium">{gap.description}</p>
-                        {gap.suggestedSearch && (
-                          <p className="text-xs text-slate-500 font-mono">{gap.suggestedSearch}</p>
-                        )}
+                <div className="flex gap-3 overflow-x-auto snap-x snap-mandatory pb-2 -mx-1 px-1">
+                  {analysis.evidenceGaps.map((gap, i) => {
+                    const resolution = gapResolutions.find(r => r.gapIndex === i) ?? null;
+                    return (
+                      <div key={i} className="snap-start shrink-0 w-[85%] sm:w-[420px]">
+                        {isHistorical
+                          ? (
+                            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-1">
+                              <p className="text-sm text-slate-800 font-medium">{gap.description}</p>
+                              {gap.suggestedSearch && (
+                                <p className="text-xs text-slate-500 font-mono">{gap.suggestedSearch}</p>
+                              )}
+                            </div>
+                          )
+                          : (
+                            <GapSearchPanel
+                              gap={gap}
+                              gapIndex={i}
+                              thesisId={id}
+                              thesisContent={hv?.userContent ?? {}}
+                              resolution={resolution}
+                              onVersionAdded={() => { void loadThesis(); }}
+                              onResolved={() => { void loadThesis(); }}
+                              onGenerateFoia={() => { void generateFoia(i); }}
+                              onSubmitTip={() => { setTipModalGapIndex(i); }}
+                              canEdit={canEdit}
+                            />
+                          )}
                       </div>
-                    )
-                    : (
-                      <GapSearchPanel
-                        key={i}
-                        gap={gap}
-                        gapIndex={i}
-                        thesisId={id}
-                        thesisContent={hv?.userContent ?? {}}
-                        resolution={resolution}
-                        onVersionAdded={() => { void loadThesis(); }}
-                        onResolved={() => { void loadThesis(); }}
-                        onGenerateFoia={() => { void generateFoia(i); }}
-                        onSubmitTip={() => { setTipModalGapIndex(i); }}
-                        canEdit={canEdit}
-                      />
                     );
-                })}
+                  })}
+                </div>
               </div>
             )}
 

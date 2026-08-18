@@ -1,11 +1,11 @@
 'use client';
 
+import { useState } from 'react';
 import { Link } from '@/i18n/navigation';
 import { apiUrl } from '@/lib/api';
 import { CategoryBadges } from '@/components/CategoryBadges';
 import { SkeletonRows } from '@/components/SkeletonRows';
 import { TierBadge } from '@/components/TierBadge';
-import { formatHash } from '@/lib/format';
 import { perspectiveStyles } from '@/lib/evidencePerspective';
 import { usePromoteAction } from '@/hooks/usePromoteAction';
 import type { EvidenceMetadata as SharedEvidenceMetadata } from '@/types/evidence';
@@ -33,6 +33,8 @@ export interface NodeLabels {
   perspective: string;
   roleIncriminating: string;
   roleContextAnchor: string;
+  targetEntityLabel: string;
+  viewEvidence: string;
   viewSource: string;
   viewDiffHistory: string;
   viewCitingTheses: string;
@@ -98,6 +100,34 @@ function PromoteButton({
 // Timeline node card
 // ---------------------------------------------------------------------------
 
+function CollapsibleChipRow({
+  label,
+  count,
+  expanded,
+  onToggle,
+  children,
+}: {
+  label: string;
+  count: number;
+  expanded: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="space-y-1.5">
+      <button
+        type="button"
+        onClick={onToggle}
+        className="flex items-center gap-1 text-xs font-semibold text-slate-400 uppercase tracking-widest shrink-0 hover:text-slate-600 transition-colors"
+      >
+        <span>{label} ({count})</span>
+        <span className={`inline-block transition-transform ${expanded ? 'rotate-180' : ''}`}>▾</span>
+      </button>
+      {expanded && <div className="flex flex-wrap items-center gap-1.5">{children}</div>}
+    </div>
+  );
+}
+
 function TimelineNode({
   record,
   index,
@@ -113,6 +143,13 @@ function TimelineNode({
   const styles = perspectiveStyles(metadata.evidencePerspective);
   const isUnknown = metadata.evidenceDate === 'Unknown';
   const isPending = metadata.status === 'PENDING_REVIEW';
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
+  const toggleSection = (key: string) =>
+    setExpandedSections((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
 
   return (
     <div className="flex gap-3 sm:gap-4 mb-5 last:mb-0">
@@ -228,10 +265,12 @@ function TimelineNode({
             (metadata.regulatoryMentions?.length ?? 0) > 0) && (
             <div className="space-y-1.5">
               {(metadata.figures?.length ?? 0) > 0 && (
-                <div className="flex flex-wrap items-center gap-1.5">
-                  <span className="text-xs font-semibold text-slate-400 uppercase tracking-widest shrink-0">
-                    {labels.keyFigures}
-                  </span>
+                <CollapsibleChipRow
+                  label={labels.keyFigures}
+                  count={metadata.figures!.length}
+                  expanded={expandedSections.has('figures')}
+                  onToggle={() => toggleSection('figures')}
+                >
                   {metadata.figures!.map((f) => (
                     <Link
                       key={f.id}
@@ -241,13 +280,15 @@ function TimelineNode({
                       {f.name}
                     </Link>
                   ))}
-                </div>
+                </CollapsibleChipRow>
               )}
               {(metadata.medicalConditions?.length ?? 0) > 0 && (
-                <div className="flex flex-wrap items-center gap-1.5">
-                  <span className="text-xs font-semibold text-slate-400 uppercase tracking-widest shrink-0">
-                    {labels.medicalContext}
-                  </span>
+                <CollapsibleChipRow
+                  label={labels.medicalContext}
+                  count={metadata.medicalConditions!.length}
+                  expanded={expandedSections.has('medicalConditions')}
+                  onToggle={() => toggleSection('medicalConditions')}
+                >
                   {metadata.medicalConditions!.map((c, i) => (
                     <span
                       key={`${c}-${i}`}
@@ -256,13 +297,15 @@ function TimelineNode({
                       {c}
                     </span>
                   ))}
-                </div>
+                </CollapsibleChipRow>
               )}
               {(metadata.statisticalClaims?.length ?? 0) > 0 && (
-                <div className="flex flex-wrap items-center gap-1.5">
-                  <span className="text-xs font-semibold text-slate-400 uppercase tracking-widest shrink-0">
-                    {labels.statisticalClaims}
-                  </span>
+                <CollapsibleChipRow
+                  label={labels.statisticalClaims}
+                  count={metadata.statisticalClaims!.length}
+                  expanded={expandedSections.has('statisticalClaims')}
+                  onToggle={() => toggleSection('statisticalClaims')}
+                >
                   {metadata.statisticalClaims!.map((c, i) => (
                     <span
                       key={`${c}-${i}`}
@@ -271,13 +314,15 @@ function TimelineNode({
                       {c}
                     </span>
                   ))}
-                </div>
+                </CollapsibleChipRow>
               )}
               {(metadata.regulatoryMentions?.length ?? 0) > 0 && (
-                <div className="flex flex-wrap items-center gap-1.5">
-                  <span className="text-xs font-semibold text-slate-400 uppercase tracking-widest shrink-0">
-                    {labels.regulatoryMentions}
-                  </span>
+                <CollapsibleChipRow
+                  label={labels.regulatoryMentions}
+                  count={metadata.regulatoryMentions!.length}
+                  expanded={expandedSections.has('regulatoryMentions')}
+                  onToggle={() => toggleSection('regulatoryMentions')}
+                >
                   {metadata.regulatoryMentions!.map((m, i) => (
                     <span
                       key={`${m}-${i}`}
@@ -286,50 +331,57 @@ function TimelineNode({
                       {m}
                     </span>
                   ))}
-                </div>
+                </CollapsibleChipRow>
               )}
             </div>
           )}
 
-          {/* Footer row */}
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 pt-1 border-t border-slate-100/80">
-            <Link
-              href={`/evidence/${metadata.evidenceId}`}
-              className="flex items-center gap-1 text-xs font-semibold text-slate-700 hover:text-slate-900 underline underline-offset-2 transition-colors"
-            >
-              {metadata.evidenceId.slice(0, 8)}…
-            </Link>
-            <span className="text-xs text-slate-500">{metadata.targetEntity}</span>
-            <span className="font-mono text-xs text-emerald-600" title={metadata.fileHash}>
-              {formatHash(metadata.fileHash)}
+          {/* Footer row — plain context label on one side, every action link
+              grouped together and consistently styled on the other. The raw
+              fileHash/evidenceId hex is deliberately not displayed here — it's
+              an internal identifier, not something a reader needs to see; the
+              "View Evidence" link is the way in, same as everywhere else. */}
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 pt-2 border-t border-slate-100/80">
+            <span className="text-xs text-slate-500">
+              <span className="text-slate-400">{labels.targetEntityLabel}: </span>
+              {metadata.targetEntity}
             </span>
-            {(metadata.sourceUrl ?? metadata.fileUrl) && (
-              <a
-                href={metadata.sourceUrl ?? metadata.fileUrl ?? ''}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="ms-auto flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-800 hover:underline transition-colors"
-              >
-                {labels.viewSource}
-                <span aria-hidden="true">↗</span>
-              </a>
-            )}
-            {metadata.trackedUrlId && (
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 ms-auto">
               <Link
-                href={`/forensics/${metadata.trackedUrlId}`}
-                className="flex items-center gap-1 text-xs font-medium text-purple-600 hover:text-purple-800 hover:underline transition-colors"
+                href={`/evidence/${metadata.evidenceId}`}
+                className="flex items-center gap-1 text-xs font-medium text-slate-700 hover:text-slate-900 hover:underline transition-colors"
               >
-                {labels.viewDiffHistory}
+                {labels.viewEvidence}
                 <span aria-hidden="true">&#x2197;</span>
               </Link>
-            )}
-            <Link
-              href={`/theses?evidence=${encodeURIComponent(metadata.fileHash)}`}
-              className="flex items-center gap-1 text-xs font-medium text-violet-600 hover:text-violet-800 hover:underline transition-colors"
-            >
-              {labels.viewCitingTheses}
-              <span aria-hidden="true">&#x2197;</span>
-            </Link>
+              {(metadata.sourceUrl ?? metadata.fileUrl) && (
+                <a
+                  href={metadata.sourceUrl ?? metadata.fileUrl ?? ''}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-800 hover:underline transition-colors"
+                >
+                  {labels.viewSource}
+                  <span aria-hidden="true">↗</span>
+                </a>
+              )}
+              {metadata.trackedUrlId && (
+                <Link
+                  href={`/forensics/${metadata.trackedUrlId}`}
+                  className="flex items-center gap-1 text-xs font-medium text-purple-600 hover:text-purple-800 hover:underline transition-colors"
+                >
+                  {labels.viewDiffHistory}
+                  <span aria-hidden="true">&#x2197;</span>
+                </Link>
+              )}
+              <Link
+                href={`/theses?evidence=${encodeURIComponent(metadata.fileHash)}`}
+                className="flex items-center gap-1 text-xs font-medium text-violet-600 hover:text-violet-800 hover:underline transition-colors"
+              >
+                {labels.viewCitingTheses}
+                <span aria-hidden="true">&#x2197;</span>
+              </Link>
+            </div>
           </div>
         </div>
       </div>
