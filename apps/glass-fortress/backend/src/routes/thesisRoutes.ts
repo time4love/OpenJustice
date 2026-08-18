@@ -33,6 +33,42 @@ function getFoiaAgent(): FoiaLetterAgent {
   return _foiaAgent;
 }
 
+// ---------------------------------------------------------------------------
+// Evidence-mention enrichment — fileHash -> readable summary, shared by the
+// full-thesis and single-version fetch routes below
+// ---------------------------------------------------------------------------
+
+async function buildEvidenceMap(evidenceRefIds: string[]) {
+  const evidenceRecords = evidenceRefIds.length > 0
+    ? await prisma.evidence.findMany({
+        where: { fileHash: { in: evidenceRefIds } },
+        select: {
+          id: true,
+          fileHash: true,
+          summary: true,
+          investigativeCategories: true,
+          evidenceTier: true,
+          evidenceType: true,
+          urlVersionDiff: { select: { trackedUrlId: true } },
+        },
+      })
+    : [];
+
+  return Object.fromEntries(
+    evidenceRecords.map((e) => [
+      e.fileHash,
+      {
+        evidenceId: e.id,
+        summary: e.summary,
+        investigativeCategories: e.investigativeCategories,
+        evidenceTier: e.evidenceTier,
+        evidenceType: e.evidenceType,
+        trackedUrlId: e.urlVersionDiff?.trackedUrlId ?? null,
+      },
+    ]),
+  );
+}
+
 
 // ---------------------------------------------------------------------------
 // Async AI trigger — fire-and-forget from POST routes
@@ -228,34 +264,7 @@ router.get('/:id', async (req: Request, res: Response): Promise<void> => {
       .filter((m) => m.type === 'EVIDENCE')
       .map((m) => m.refId);
 
-    const evidenceRecords = evidenceRefIds.length > 0
-      ? await prisma.evidence.findMany({
-          where: { fileHash: { in: evidenceRefIds } },
-          select: {
-            id: true,
-            fileHash: true,
-            summary: true,
-            investigativeCategories: true,
-            evidenceTier: true,
-            evidenceType: true,
-            urlVersionDiff: { select: { trackedUrlId: true } },
-          },
-        })
-      : [];
-
-    const evidenceMap = Object.fromEntries(
-      evidenceRecords.map((e) => [
-        e.fileHash,
-        {
-          evidenceId: e.id,
-          summary: e.summary,
-          investigativeCategories: e.investigativeCategories,
-          evidenceTier: e.evidenceTier,
-          evidenceType: e.evidenceType,
-          trackedUrlId: e.urlVersionDiff?.trackedUrlId ?? null,
-        },
-      ]),
-    );
+    const evidenceMap = await buildEvidenceMap(evidenceRefIds);
 
     const gapResolutions = (thesis.headVersion?.gapResolutions ?? []).map((r) => ({
       gapIndex: r.gapIndex,
@@ -607,34 +616,7 @@ router.get('/:id/versions/:versionId', async (req: Request, res: Response): Prom
       .filter((m) => m.type === 'EVIDENCE')
       .map((m) => m.refId);
 
-    const evidenceRecords = evidenceRefIds.length > 0
-      ? await prisma.evidence.findMany({
-          where: { fileHash: { in: evidenceRefIds } },
-          select: {
-            id: true,
-            fileHash: true,
-            summary: true,
-            investigativeCategories: true,
-            evidenceTier: true,
-            evidenceType: true,
-            urlVersionDiff: { select: { trackedUrlId: true } },
-          },
-        })
-      : [];
-
-    const evidenceMap = Object.fromEntries(
-      evidenceRecords.map((e) => [
-        e.fileHash,
-        {
-          evidenceId: e.id,
-          summary: e.summary,
-          investigativeCategories: e.investigativeCategories,
-          evidenceTier: e.evidenceTier,
-          evidenceType: e.evidenceType,
-          trackedUrlId: e.urlVersionDiff?.trackedUrlId ?? null,
-        },
-      ]),
-    );
+    const evidenceMap = await buildEvidenceMap(evidenceRefIds);
 
     res.status(200).json({
       thesis: {
