@@ -1,47 +1,28 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { useTranslations } from 'next-intl';
 import { Link } from '@/i18n/navigation';
-import { SiteHeader } from '@/components/SiteHeader';
 import { apiUrl } from '@/lib/api';
 import { CategoryBadges } from '@/components/CategoryBadges';
-import { formatHash } from '@/lib/format';
-import { EmptyState } from '@/components/EmptyState';
 import { SkeletonRows } from '@/components/SkeletonRows';
+import { TierBadge } from '@/components/TierBadge';
+import { formatHash } from '@/lib/format';
 import { perspectiveStyles } from '@/lib/evidencePerspective';
 import { usePromoteAction } from '@/hooks/usePromoteAction';
-import type { EvidenceMetadata as SharedEvidenceMetadata, EvidencePerspective } from '@/types/evidence';
+import type { EvidenceMetadata as SharedEvidenceMetadata } from '@/types/evidence';
 
-const PAGE_SIZE = 20;
+// evidenceId is always populated by the backend's shared mapEvidenceToRecord
+// (used by both /timeline and /search), but stays optional on the shared
+// frontend type for other, older call sites — narrow it here since every
+// record rendered by this component does have it.
+export type EvidenceMetadata = SharedEvidenceMetadata & { evidenceId: string };
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-// evidenceId is optional on the shared type (figures/vault don't return it),
-// but the timeline feed always includes it and reads it unguarded below.
-type EvidenceMetadata = SharedEvidenceMetadata & { evidenceId: string };
-
-interface TimelineRecord {
+export interface TimelineRecord {
   content: string;
   metadata: EvidenceMetadata;
   score?: number;
 }
 
-// ---------------------------------------------------------------------------
-// Perspective styles
-// ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
-// Locale switcher
-// ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
-// Node labels — passed as a single object to avoid prop drilling
-// ---------------------------------------------------------------------------
-
-interface NodeLabels {
+export interface NodeLabels {
   unknownDate: string;
   keyFigures: string;
   medicalContext: string;
@@ -61,10 +42,11 @@ interface NodeLabels {
   promoting: string;
   promoteSuccess: string;
   promoteError: string;
+  relevanceLabel: (pct: number) => string;
 }
 
 // ---------------------------------------------------------------------------
-// Timeline node card
+// Promote button
 // ---------------------------------------------------------------------------
 
 function PromoteButton({
@@ -112,6 +94,10 @@ function PromoteButton({
   );
 }
 
+// ---------------------------------------------------------------------------
+// Timeline node card
+// ---------------------------------------------------------------------------
+
 function TimelineNode({
   record,
   index,
@@ -123,7 +109,7 @@ function TimelineNode({
   labels: NodeLabels;
   onPromoted: (fileHash: string) => void;
 }) {
-  const { metadata } = record;
+  const { metadata, score } = record;
   const styles = perspectiveStyles(metadata.evidencePerspective);
   const isUnknown = metadata.evidenceDate === 'Unknown';
   const isPending = metadata.status === 'PENDING_REVIEW';
@@ -154,6 +140,9 @@ function TimelineNode({
           >
             {isUnknown ? labels.unknownDate : metadata.evidenceDate}
           </span>
+
+          {/* Tier */}
+          <TierBadge tier={metadata.tier} />
 
           {/* Perspective badge */}
           {metadata.evidencePerspective && (
@@ -189,8 +178,14 @@ function TimelineNode({
             </span>
           )}
 
-          {/* Index */}
-          <span className="ms-auto text-xs text-slate-300 font-mono shrink-0">#{index + 1}</span>
+          {/* Relevance (search mode) or index (timeline mode) */}
+          {score !== undefined ? (
+            <span className="ms-auto text-xs font-mono text-slate-400 shrink-0">
+              {labels.relevanceLabel(Math.round(score * 100))}
+            </span>
+          ) : (
+            <span className="ms-auto text-xs text-slate-300 font-mono shrink-0">#{index + 1}</span>
+          )}
         </div>
 
         {/* Card body */}
@@ -343,10 +338,10 @@ function TimelineNode({
 }
 
 // ---------------------------------------------------------------------------
-// Unified vertical timeline
+// Unified vertical timeline / results list
 // ---------------------------------------------------------------------------
 
-function UnifiedTimeline({
+export function UnifiedTimeline({
   records,
   labels,
   onPromoted,
@@ -370,202 +365,12 @@ function UnifiedTimeline({
   );
 }
 
-// ---------------------------------------------------------------------------
-// Empty state
-// ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
-// Loading skeleton
-// ---------------------------------------------------------------------------
-
-function TimelineSkeleton() {
+export function TimelineSkeleton() {
   return (
     <SkeletonRows
       rows={4}
       headerBarWidths={['w-20', 'w-28']}
       bodyLineWidths={['', 'w-5/6', 'w-4/6']}
     />
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Page
-// ---------------------------------------------------------------------------
-
-export default function TimelinePage() {
-  const t = useTranslations('timeline');
-
-  const [records, setRecords] = useState<TimelineRecord[]>([]);
-  const [totalCount, setTotalCount] = useState<number | null>(null);
-  const [nextCursor, setNextCursor] = useState<string | null>(null);
-  const [hasMore, setHasMore] = useState(false);
-  const [initialLoading, setInitialLoading] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const sentinelRef = useRef<HTMLDivElement | null>(null);
-  const fetchingRef = useRef(false);
-
-  async function fetchPage(cursor: string | null) {
-    if (fetchingRef.current) return;
-    fetchingRef.current = true;
-    try {
-      const params = new URLSearchParams({ limit: String(PAGE_SIZE) });
-      if (cursor) params.set('cursor', cursor);
-      const res = await fetch(apiUrl(`/api/evidence/timeline?${params.toString()}`));
-      const data = (await res.json()) as {
-        results?: TimelineRecord[];
-        totalCount?: number;
-        nextCursor?: string | null;
-        hasMore?: boolean;
-        message?: string;
-      };
-      if (!res.ok) {
-        setError(data.message ?? `Error ${res.status}`);
-        return;
-      }
-      if (cursor === null) {
-        // First page — replace everything and set total
-        setRecords(data.results ?? []);
-        setTotalCount(data.totalCount ?? null);
-      } else {
-        setRecords((prev) => [...prev, ...(data.results ?? [])]);
-      }
-      setNextCursor(data.nextCursor ?? null);
-      setHasMore(data.hasMore ?? false);
-    } catch {
-      setError('Could not reach the backend. Is the server running?');
-    } finally {
-      fetchingRef.current = false;
-    }
-  }
-
-  // Initial load
-  useEffect(() => {
-    setInitialLoading(true);
-    setRecords([]);
-    setNextCursor(null);
-    setHasMore(false);
-    setError(null);
-    void fetchPage(null).finally(() => setInitialLoading(false));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // IntersectionObserver sentinel
-  const handleIntersect = useCallback(
-    (entries: IntersectionObserverEntry[]) => {
-      const entry = entries[0];
-      if (entry?.isIntersecting && hasMore && !loadingMore && !fetchingRef.current) {
-        setLoadingMore(true);
-        void fetchPage(nextCursor).finally(() => setLoadingMore(false));
-      }
-    },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [hasMore, loadingMore, nextCursor],
-  );
-
-  useEffect(() => {
-    const el = sentinelRef.current;
-    if (!el) return;
-    const observer = new IntersectionObserver(handleIntersect, { rootMargin: '200px' });
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [handleIntersect]);
-
-  function getPerspectiveLabel(p?: string): string {
-    if (!p) return '';
-    return t(`perspective.${p as EvidencePerspective}` as Parameters<typeof t>[0]);
-  }
-
-  function handlePromoted(fileHash: string) {
-    setRecords((prev) =>
-      prev.map((r) =>
-        r.metadata.fileHash === fileHash
-          ? { ...r, metadata: { ...r.metadata, status: 'CONFIRMED' } }
-          : r,
-      ),
-    );
-  }
-
-  const nodeLabels = {
-    unknownDate: t('unknownDate'),
-    keyFigures: t('keyFiguresLabel'),
-    medicalContext: t('medicalContextLabel'),
-    statisticalClaims: t('statisticalClaimsLabel'),
-    regulatoryMentions: t('regulatoryMentionsLabel'),
-    euaOmitted: t('euaOmitted'),
-    euaMentioned: t('euaMentioned'),
-    perspective: '',
-    roleIncriminating: t('roleIncriminating'),
-    roleContextAnchor: t('roleContextAnchor'),
-    viewSource: t('viewSource'),
-    viewDiffHistory: t('viewDiffHistory'),
-    viewCitingTheses: t('viewCitingTheses'),
-    pendingReviewBadge: t('pendingReviewBadge'),
-    pendingReviewNote: t('pendingReviewNote'),
-    promoteToVault: t('promoteToVault'),
-    promoting: t('promoting'),
-    promoteSuccess: t('promoteSuccess'),
-    promoteError: t('promoteError'),
-    getPerspectiveLabel,
-  };
-
-  return (
-    <main className="min-h-screen bg-slate-50">
-      {/* Header */}
-      <SiteHeader current="timeline" maxWidth="max-w-4xl" tagline={t('tagline')} showOperational />
-
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 py-8 space-y-6">
-
-        {/* Count badge */}
-        {totalCount !== null && (
-          <div className="flex items-center gap-2">
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-600 border border-slate-200">
-              {t('count', { count: totalCount })}
-            </span>
-          </div>
-        )}
-
-        {/* Error */}
-        {error && (
-          <div className="bg-red-50 border border-red-200 rounded-xl p-5 flex items-center gap-3">
-            <span className="w-2 h-2 rounded-full bg-red-500 shrink-0" />
-            <div>
-              <p className="text-sm font-medium text-red-700">{t('errorTitle')}</p>
-              <p className="text-xs text-red-600 mt-0.5">{error}</p>
-            </div>
-          </div>
-        )}
-
-        {initialLoading && <TimelineSkeleton />}
-
-        {!initialLoading && !error && records.length === 0 && (
-          <EmptyState icon="⏱" title={t('emptyTitle')} sub={t('emptySub')} />
-        )}
-
-        {!initialLoading && !error && records.length > 0 && (
-          <>
-            <UnifiedTimeline records={records} labels={nodeLabels} onPromoted={handlePromoted} />
-
-            {/* Sentinel + load-more indicator */}
-            <div ref={sentinelRef} className="py-2">
-              {loadingMore && (
-                <SkeletonRows
-                  rows={2}
-                  connectorHeight="min-h-16"
-                  headerBarWidths={['w-20', 'w-28']}
-                  bodyLineWidths={['', 'w-5/6']}
-                />
-              )}
-              {!hasMore && records.length > 0 && (
-                <p className="text-center text-xs text-slate-400 py-4">
-                  {t('allRecordsLoaded', { count: records.length })}
-                </p>
-              )}
-            </div>
-          </>
-        )}
-      </div>
-    </main>
   );
 }

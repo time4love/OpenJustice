@@ -1,16 +1,13 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
-import { ethers } from 'ethers';
 import { WaybackScraper } from '../services/WaybackScraper';
 import { prisma } from '../lib/prisma';
 import { Web3Service } from '../services/Web3Service';
 import { type DiffItem } from '../services/ForensicAgent';
 import { buildForensicEvidence } from '../services/forensicEvidence';
+import { registerEvidenceOnChain } from '../services/evidenceOnChain';
 import { parseDiffItems } from '../lib/diffItems';
-import {
-  investigativeCategoriesField,
-  onChainCategoryLabel,
-} from '../lib/investigativeCategories';
+import { investigativeCategoriesField } from '../lib/investigativeCategories';
 
 const router = Router();
 
@@ -506,12 +503,31 @@ router.post('/promote', async (req: Request, res: Response): Promise<void> => {
       addedItems: parseDiffItems(diff.addedText),
     });
 
-    let txHash: string;
+    // fileHash is content-addressed (url + afterDate + deletedText + addedText),
+    // so a DIFFERENT diff — e.g. a rescan re-detecting the same change on an
+    // overlapping date range — can compute this exact same hash. Evidence.fileHash
+    // is unique, so that content is already evidence under a different diffId;
+    // check for it explicitly rather than letting a blind create() below throw a
+    // raw unique-constraint error. No different in kind from re-submitting a file
+    // that was already uploaded — it's already in the vault, say so plainly.
+    const existingByHash = await prisma.evidence.findUnique({ where: { fileHash } });
+    if (existingByHash) {
+      res.status(409).json({
+        error: 'already_promoted',
+        message: 'This exact change is already evidence (matched by content, not this diff record — likely detected by an earlier or overlapping scan).',
+        fileHash: existingByHash.fileHash,
+        evidenceId: existingByHash.id,
+      });
+      return;
+    }
+
+    let registration;
     try {
-      txHash = await getWeb3Service().registerEvidenceHash(
+      registration = await registerEvidenceOnChain(
+        getWeb3Service(),
         fileHash,
-        ethers.ZeroAddress,
-        onChainCategoryLabel(data.investigativeCategories, data.evidenceRole),
+        data.investigativeCategories,
+        data.evidenceRole,
       );
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -520,9 +536,25 @@ router.post('/promote', async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    await prisma.evidence.create({ data });
+    // registration.confirmed can be false here despite no thrown error: the
+    // hash was a duplicate on-chain, but its original transaction couldn't be
+    // recovered (see Web3Service.findRegisteringTxHash). Never write CONFIRMED
+    // without a real txHash to show for it — land as PENDING_REVIEW instead,
+    // same as WaybackScraper's auto-promote fallback, with the existing manual
+    // "Promote to Evidence" flow as the retry path.
+    await prisma.evidence.create({
+      data: {
+        ...data,
+        status: registration.confirmed ? 'CONFIRMED' : 'PENDING_REVIEW',
+        onChainTxHash: registration.txHash,
+      },
+    });
 
-    res.status(201).json({ promoted: true, fileHash, txHash });
+    res.status(201).json({
+      promoted: registration.confirmed,
+      fileHash,
+      txHash: registration.confirmed ? registration.txHash : null,
+    });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error('[forensics/promote] Error:', err instanceof Error ? err.stack : err);
