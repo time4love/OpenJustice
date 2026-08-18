@@ -244,7 +244,7 @@ export function CallPageClient({ thesisId }: { thesisId: string }) {
         <div className="relative max-w-3xl mx-auto px-5 sm:px-8 py-16 sm:py-24 space-y-6" dir="rtl">
 
           <p className="text-xs font-semibold text-violet-400 uppercase tracking-widest">
-            Glass Fortress · {t('heroLabel')}
+            צדק לעם · {t('heroLabel')}
           </p>
 
           <h1 className="text-2xl sm:text-3xl font-bold text-white leading-snug">
