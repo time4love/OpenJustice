@@ -46,13 +46,14 @@ interface ThesisSuggestion {
 // ---------------------------------------------------------------------------
 
 function StatusBadge({ status }: { status: string }) {
+  const t = useTranslations('theses');
   const styles =
     status === 'COMPLETE'
       ? 'bg-emerald-100 text-emerald-700 border border-emerald-300'
       : 'bg-amber-100 text-amber-700 border border-amber-300';
   return (
     <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${styles}`}>
-      {status === 'COMPLETE' ? 'AI reviewed' : 'Pending AI'}
+      {status === 'COMPLETE' ? t('aiReviewedStatus') : t('pendingAiStatus')}
     </span>
   );
 }

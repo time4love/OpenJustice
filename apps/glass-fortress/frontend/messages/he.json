@@ -151,6 +151,8 @@
     },
     "roleContextAnchor": "עוגן עובדתי",
     "roleIncriminating": "ראיה מפלילה",
+    "targetEntityLabel": "גורם מטרה",
+    "viewEvidence": "צפה בראיה",
     "viewSource": "מקור הראיה",
     "viewDiffHistory": "צפה בהיסטוריית המסמך המלאה",
     "viewCitingTheses": "תזות המצטטות ראיה זו",
@@ -336,6 +338,8 @@
     "addToThesisUntitled": "תזה {id}"
   },
   "theses": {
+    "aiReviewedStatus": "נבדק על ידי AI",
+    "pendingAiStatus": "בהמתנה לבדיקת AI",
     "pageTitle": "בונה תזות משפטיות",
     "tagline": "כתיבה · תיוג ראיות · ביקורת פרקליט השטן",
     "newThesisHeading": "תזה חדשה",
@@ -722,6 +726,18 @@
     "SAFETY_CLAIM_ALTERATION": "שינוי טענות בטיחות",
     "STATISTICAL_MANIPULATION": "שינוי נתונים",
     "ACCOUNTABILITY_EROSION": "טשטוש אחריות"
+  },
+  "evidenceTiers": {
+    "Tier 1: Smoking Gun": "דרגה 1: ראיה מכרעת",
+    "Tier 2: Material": "דרגה 2: ראיה מהותית",
+    "Tier 3: Supporting": "דרגה 3: ראיה תומכת",
+    "Tier 4: Anecdotal": "דרגה 4: ראיה אנקדוטלית"
+  },
+  "strengths": {
+    "WEAK": "חלש",
+    "MODERATE": "בינוני",
+    "STRONG": "חזק",
+    "COMPELLING": "משכנע"
   },
   "unlock": {
     "title": "סביבת בדיקות — נדרשת סיסמה",

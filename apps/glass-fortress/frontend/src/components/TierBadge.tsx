@@ -1,3 +1,7 @@
+'use client';
+
+import { useTranslations } from 'next-intl';
+
 // Canonical evidence-tier labels — must match EVIDENCE_TIER in
 // apps/glass-fortress/backend/src/services/IntakeAgent.ts. Evidence.evidenceTier
 // is a plain string column (not a DB enum), so styleFor() falls back gracefully
@@ -52,11 +56,13 @@ export function tierDotColor(tier: string): string {
 }
 
 export function TierBadge({ tier }: { tier: string }) {
+  const t = useTranslations('evidenceTiers');
   const s = styleFor(tier);
+  const label = t.has(tier) ? t(tier) : tier;
   return (
     <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-medium ${s.badge}`}>
       <span className={`w-1.5 h-1.5 rounded-full ${s.dot}`} />
-      {tier}
+      {label}
     </span>
   );
 }

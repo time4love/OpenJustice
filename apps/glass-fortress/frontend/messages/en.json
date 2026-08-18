@@ -151,6 +151,8 @@
     },
     "roleContextAnchor": "Factual Anchor",
     "roleIncriminating": "Incriminating",
+    "targetEntityLabel": "Target Entity",
+    "viewEvidence": "View Evidence",
     "viewSource": "View Source",
     "viewDiffHistory": "View Document History",
     "viewCitingTheses": "Theses citing this",
@@ -336,6 +338,8 @@
     "addToThesisUntitled": "Thesis {id}"
   },
   "theses": {
+    "aiReviewedStatus": "AI reviewed",
+    "pendingAiStatus": "Pending AI",
     "pageTitle": "Legal Thesis Builder",
     "tagline": "Write · Tag Evidence · Stress-Test with AI",
     "newThesisHeading": "New Thesis",
@@ -722,6 +726,18 @@
     "SAFETY_CLAIM_ALTERATION": "Altered safety claims",
     "STATISTICAL_MANIPULATION": "Altered statistics",
     "ACCOUNTABILITY_EROSION": "Eroded accountability"
+  },
+  "evidenceTiers": {
+    "Tier 1: Smoking Gun": "Tier 1: Smoking Gun",
+    "Tier 2: Material": "Tier 2: Material",
+    "Tier 3: Supporting": "Tier 3: Supporting",
+    "Tier 4: Anecdotal": "Tier 4: Anecdotal"
+  },
+  "strengths": {
+    "WEAK": "Weak",
+    "MODERATE": "Moderate",
+    "STRONG": "Strong",
+    "COMPELLING": "Compelling"
   },
   "unlock": {
     "title": "Staging environment — password required",
