@@ -32,6 +32,7 @@ interface DiffRecord {
   beforeDate: string;
   date: string;
   snapshotUrl: string;
+  beforeSnapshotUrl: string | null;
   deletedItems: DiffItem[];
   addedItems: DiffItem[];
   rawDeletedChunks: string[];
@@ -270,6 +271,7 @@ function DiffCard({
     additionsLabel: string;
     forensicLabel: string;
     viewSnapshot: string;
+    viewBeforeSnapshot: string;
     promoteBtn: string;
     promotingBtn: string;
     alreadyPromoted: string;
@@ -341,14 +343,18 @@ function DiffCard({
 
         {/* Body */}
         <div className="px-4 py-3 space-y-4">
-          {/* AI Forensic Analysis — always visible for flagged diffs */}
-          {sig && diff.legalSignificance && (
+          {/* AI Forensic Analysis — the model's rationale, shown regardless of
+              significance so a "Version Change" badge always comes with the reasoning
+              behind it instead of a bare label. */}
+          {diff.legalSignificance && (
             <div className="space-y-1.5">
               <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">
                 {labels.forensicLabel}
               </span>
               <p
-                className="text-sm text-slate-700 leading-relaxed border-s-2 border-red-400 ps-3"
+                className={`text-sm text-slate-700 leading-relaxed border-s-2 ps-3 ${
+                  sig ? 'border-red-400' : 'border-slate-300'
+                }`}
                 dir="auto"
               >
                 {diff.legalSignificance}
@@ -451,15 +457,28 @@ function DiffCard({
                 />
               )}
             </div>
-            <a
-              href={diff.snapshotUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-800 hover:underline transition-colors"
-            >
-              {labels.viewSnapshot}
-              <span aria-hidden="true">&#x2197;</span>
-            </a>
+            <div className="flex flex-wrap items-center gap-3">
+              {diff.beforeSnapshotUrl && (
+                <a
+                  href={diff.beforeSnapshotUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1 text-xs font-medium text-slate-500 hover:text-slate-800 hover:underline transition-colors"
+                >
+                  {labels.viewBeforeSnapshot}
+                  <span aria-hidden="true">&#x2197;</span>
+                </a>
+              )}
+              <a
+                href={diff.snapshotUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-800 hover:underline transition-colors"
+              >
+                {labels.viewSnapshot}
+                <span aria-hidden="true">&#x2197;</span>
+              </a>
+            </div>
           </div>
         </div>
       </div>
@@ -558,6 +577,7 @@ export default function TrackedUrlPage() {
     additionsLabel: t('additionsLabel'),
     forensicLabel: t('forensicLabel'),
     viewSnapshot: t('viewSnapshot'),
+    viewBeforeSnapshot: t('viewBeforeSnapshot'),
     promoteBtn: t('promoteBtn'),
     promotingBtn: t('promotingBtn'),
     alreadyPromoted: t('alreadyPromoted'),

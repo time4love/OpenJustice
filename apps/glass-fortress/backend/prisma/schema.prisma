@@ -129,7 +129,8 @@ model WaybackScrapeJob {
 }
 
 // Records a single detected change between two consecutive archived snapshots of a TrackedUrl.
-// Only legally significant diffs (isLegallySignificant: true) are persisted to save space.
+// A row is created for every processed snapshot pair, not only legally significant ones —
+// isLegallySignificant just marks which are AI-flagged; see ForensicAgent.deriveSignificance.
 model UrlVersionDiff {
   id                   String       @id @default(uuid())
   trackedUrlId         String

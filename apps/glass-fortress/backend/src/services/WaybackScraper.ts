@@ -489,6 +489,11 @@ export class WaybackScraper {
       snapshots.push({ timestamp, digest });
     }
 
+    // CDX defaults to ascending-by-timestamp order, but that's an assumption about a
+    // third-party API, not a guarantee — sort explicitly so beforeDate/afterDate in
+    // processJob() can never be derived from a reversed pair.
+    snapshots.sort((a, b) => (a.timestamp < b.timestamp ? -1 : a.timestamp > b.timestamp ? 1 : 0));
+
     return { snapshots: snapshots.slice(0, MAX_SNAPSHOTS), hasMore };
   }
 
@@ -914,7 +919,17 @@ export class WaybackScraper {
         continue;
       }
 
-      if (previousText) {
+      // Belt-and-suspenders against a reversed pair: getSnapshotsList() sorts ascending
+      // before persisting, but a job resumed from a snapshotsList written before that
+      // sort existed could still carry an out-of-order pair. Skip rather than diff
+      // backwards and mislabel additions as deletions.
+      const prevEntry = i > 0 ? snapshotsList[i - 1] : null;
+      const isChronological = !prevEntry || prevEntry.timestamp < entry.timestamp;
+      if (previousText && !isChronological) {
+        console.error(
+          `[WaybackScraper] Job ${jobId} — snapshot order violation: ${prevEntry?.timestamp} is not before ${entry.timestamp}. Skipping diff for this pair.`,
+        );
+      } else if (previousText) {
         const rawDiff = diffLines(previousText, currentText, { ignoreWhitespace: true });
         // All changed chunks (any size) — for storage and display
         const deletions = groupDiffChunks(rawDiff, 'removed');
