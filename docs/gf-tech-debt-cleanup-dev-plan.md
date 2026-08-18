@@ -1,9 +1,10 @@
 # GF Tech-Debt Cleanup — Dev Plan
 
-**Status:** ✅ Phase 1 (§2.1–§2.8) and Phase 2 (§3.1–§3.9) both COMPLETE and landed on `staging` —
-17 PRs (#14–#27, plus this doc's own #14 planning PR), all merged. Phase 3 (§4, low-priority/optional
-items) not started — none are urgent, revisit opportunistically.
-**Created:** 2026-08-18. **Phase 2 completed:** 2026-08-18 (same day, autonomous session — see
+**Status:** ✅ ALL THREE PHASES COMPLETE and landed on `staging`. Phase 1 (§2.1–§2.8, legally-sensitive
+items) and Phase 2 (§3.1–§3.9, everything else) — 17 PRs (#14–#28), all merged. Phase 3 (§4,
+low-priority/optional) — 1 more PR, both items resolved (one fixed, one found to not actually be a
+duplication on inspection).
+**Created:** 2026-08-18. **Fully completed:** 2026-08-18 (same day, autonomous session — see
 `gf-railway-branch-misconfig.md` in Claude's memory for an unrelated but important infra finding from
 this same session: Railway's staging/production branch bindings appear to be shared per-service, not
 independent per-environment — both environments currently deploy from `staging`, deliberately, with
@@ -394,13 +395,25 @@ This closes out Phase 2 of the tech-debt cleanup plan (§3.1–§3.9), landed as
 
 ---
 
-## 4. Phase 3 — Low priority / optional
+## 4. Phase 3 — Low priority / optional ✅ COMPLETE (2026-08-18)
 
-- Duplicated "account not yet approved" user-facing string: `backend/src/routes/authRoutes.ts:107` and
-  `backend/src/mcp/mcpRoutes.ts:73` — cosmetic, extract to a shared constant if convenient.
-- `ResearcherProfile` (`context/AuthContext.tsx:10-17`) vs `ResearcherRow`
-  (`app/[locale]/admin/page.tsx:10-16`) — admin table just omits `hasMcpToken`; low risk, but prefer
-  `Pick<ResearcherProfile, ...>` over independent redeclaration if touching this file.
+- **"Account not yet approved" string — not actually duplicated, left as-is.** On inspection
+  `authRoutes.ts`'s `POST /mcp-token` (`error: 'Account not yet approved'`, message about generating a
+  token) and `mcpRoutes.ts`'s per-call gate (`error: 'Forbidden'`, message naming the handle and telling
+  the caller to contact an admin) are two different `error` labels and two different context-specific
+  messages for two different situations — not the same string appearing twice. Extracting a shared
+  constant would either flatten both down to one generic message (worse UX, loses the
+  endpoint-specific guidance) or need parameters to reconstruct two different shapes, which is more
+  machinery than two two-line inline object literals justify. Same category of correction as
+  the `ThesisSummary`/`DiffNode`-`DiffCard` cases from Phase 2 — the plan's quick-scan claim of
+  duplication didn't survive a close read of both call sites.
+- **`ResearcherRow` → `Pick<ResearcherProfile, ...>`**: done as planned. `app/[locale]/admin/page.tsx`
+  now imports `ResearcherProfile` from `context/AuthContext.tsx` and declares
+  `type ResearcherRow = Pick<ResearcherProfile, 'id' | 'handle' | 'role' | 'approved' | 'createdAt'>`
+  instead of an independent redeclaration.
+Verified: `tsc --noEmit` clean.
+
+This closes out the entire tech-debt cleanup plan — Phases 1, 2, and 3 all complete.
 
 ---
 
