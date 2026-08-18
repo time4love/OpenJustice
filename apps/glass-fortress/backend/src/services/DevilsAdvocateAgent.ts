@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { LLMFactory } from '../factories/LLMFactory';
 import { assertSchemaCompatibility } from '../lib/assertSchemaCompatibility';
 import { DEVILS_ADVOCATE_CRITIQUE_PROMPT } from '../prompts/devilsAdvocateCritique';
+import type { EvidenceContext } from '../lib/evidenceContext';
 
 // A resolved gap passed in as context — tells the agent that a gap was addressed
 export interface ResolvedGapContext {
@@ -11,15 +12,7 @@ export interface ResolvedGapContext {
 }
 
 // Evidence record passed in from Prisma — only the fields the agent needs
-export interface ReferencedEvidence {
-  fileHash: string;
-  investigativeCategories: string[];
-  targetEntity: string;
-  evidenceTier: string;
-  evidenceRole: string;
-  evidenceDate: string;
-  summary: string;
-}
+export type ReferencedEvidence = EvidenceContext;
 
 const CounterArgumentSchema = z.object({
   claim: z

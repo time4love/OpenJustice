@@ -2,16 +2,9 @@ import { z } from 'zod';
 import { LLMFactory } from '../factories/LLMFactory';
 import { assertSchemaCompatibility } from '../lib/assertSchemaCompatibility';
 import { GAP_REVISION_EDITING_PROMPT } from '../prompts/gapRevisionEditing';
+import type { EvidenceContext } from '../lib/evidenceContext';
 
-export interface VaultHitRecord {
-  fileHash: string;
-  summary: string;
-  evidenceTier: string;
-  evidenceRole: string;
-  evidenceDate: string;
-  investigativeCategories: string[];
-  targetEntity: string;
-}
+export type VaultHitRecord = EvidenceContext;
 
 export const GapRevisionOutputSchema = z.object({
   suggestedBody: z

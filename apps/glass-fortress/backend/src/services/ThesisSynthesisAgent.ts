@@ -2,19 +2,14 @@ import { z } from 'zod';
 import { LLMFactory } from '../factories/LLMFactory';
 import { assertSchemaCompatibility } from '../lib/assertSchemaCompatibility';
 import { THESIS_SYNTHESIS_PROMPT } from '../prompts/thesisSynthesis';
+import type { EvidenceContext } from '../lib/evidenceContext';
 
-// Evidence record passed in from Prisma — only the fields the agent needs
-export interface EvidenceCorpusRecord {
-  fileHash: string;
-  summary: string;
-  evidenceTier: string;
-  evidenceRole: string;
-  evidenceDate: string;
-  investigativeCategories: string[];
-  targetEntity: string;
+// Evidence record passed in from Prisma, plus fields derived from relations
+// (keyFigures) that aren't columns on Evidence itself.
+export type EvidenceCorpusRecord = EvidenceContext & {
   keyFigures: string[];
   evidenceType?: string; // 'DOCUMENT' | 'FORENSIC_DIFF' — FORENSIC_DIFF = auto-detected page retraction
-}
+};
 
 export const ThesisSynthesisOutputSchema = z.object({
   proposedTitle: z

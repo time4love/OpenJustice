@@ -2,19 +2,19 @@ import { z } from 'zod';
 import { LLMFactory } from '../factories/LLMFactory';
 import { assertSchemaCompatibility } from '../lib/assertSchemaCompatibility';
 import { THESIS_FALSIFICATION_PROMPT } from '../prompts/thesisFalsification';
+import type { Evidence } from '@prisma/client';
 
 // ---------------------------------------------------------------------------
 // Evidence context passed into the validator
 // ---------------------------------------------------------------------------
 
-export interface EvidenceSummary {
-  id: string;
-  summary: string;
-  investigativeCategories: string[];
-  evidenceDate: string;
-  targetEntity: string;
-  evidenceRole: string;
-}
+// Keyed by `id` rather than `fileHash` (unlike the other agents' evidence
+// context types) — kept as its own Pick off Evidence rather than forced
+// through the shared EvidenceContext in lib/evidenceContext.ts.
+export type EvidenceSummary = Pick<
+  Evidence,
+  'id' | 'summary' | 'investigativeCategories' | 'evidenceDate' | 'targetEntity' | 'evidenceRole'
+>;
 
 // ---------------------------------------------------------------------------
 // Output schema

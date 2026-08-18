@@ -255,16 +255,33 @@ confirmed present in the original code too (not a regression).
 Verified: `tsc --noEmit` clean, production build succeeds. Pure type-level refactor — no runtime/UI
 change, so no browser verification needed.
 
-### 3.4 Type definitions redeclared instead of imported (backend)
+### 3.4 ✅ DONE — Type definitions redeclared instead of imported (backend)
 Near-identical evidence-context interfaces declared independently in 6 agent files instead of derived
-from one source: `RelatedEvidenceContext` (`ForensicAgent.ts:14-20`), `ReferencedEvidence`
-(`DevilsAdvocateAgent.ts:13-21`), `VaultHitRecord` (`GapRevisionAgent.ts:5-13`), `UncitedEvidence`
-(`RevisionAgent.ts:10-18`, field-for-field identical to `VaultHitRecord`), `EvidenceCorpusRecord`
-(`ThesisSynthesisAgent.ts:6-16`), `EvidenceSummary` (`ThesisValidatorAgent.ts:9-16`). Also: tier labels
-hardcoded a 3rd time in `LegalMasterAgent.ts:59-64`'s `TIER_PRIORITY` instead of deriving from
-`IntakeAgent.ts`'s exported `EVIDENCE_TIER`. Consolidate into shared types (`Pick<Evidence, ...>` off
-the Prisma model where possible) — same principle as `investigativeCategories.ts`, which already does
-this correctly and is the pattern to copy.
+from one source. **Resolution:** new `backend/src/lib/evidenceContext.ts` exports
+`EvidenceContext = Pick<Evidence, 'fileHash' | 'summary' | 'evidenceTier' | 'evidenceRole' |
+'evidenceDate' | 'investigativeCategories' | 'targetEntity'>` off the Prisma model, following the
+`investigativeCategories.ts` pattern. Verified each interface's actual field-mapping call site
+(Prisma `select`/`findMany` shape) before consolidating, not just the type declarations:
+- `ReferencedEvidence` (DevilsAdvocateAgent), `VaultHitRecord` (GapRevisionAgent), `UncitedEvidence`
+  (RevisionAgent) are all now `= EvidenceContext` directly — confirmed identical at both the type and
+  the Prisma `select` clause that populates them.
+- `RelatedEvidenceContext` (ForensicAgent) is `Pick<EvidenceContext, 'summary' |
+  'investigativeCategories' | 'targetEntity' | 'evidenceRole'> & { date: string }` — its call site
+  (`WaybackScraper.fetchCorrelatedEvidence`) deliberately renames `evidenceDate` to `date` for the
+  prompt string it builds; kept as a local rename rather than forcing the field name to match, since
+  it's a real naming choice at that boundary, not drift.
+- `EvidenceCorpusRecord` (ThesisSynthesisAgent) is `EvidenceContext & { keyFigures: string[];
+  evidenceType?: string }` — `keyFigures` is derived from the `figures` relation, not a Prisma column,
+  so it's additive rather than picked.
+- `EvidenceSummary` (ThesisValidatorAgent) is keyed by `id` instead of `fileHash` — genuinely not a
+  subset of `EvidenceContext`, so it stays its own `Pick<Evidence, 'id' | 'summary' |
+  'investigativeCategories' | 'evidenceDate' | 'targetEntity' | 'evidenceRole'>` directly off the
+  Prisma model. **Found in passing:** `ThesisValidatorAgent` itself is dead code — not instantiated or
+  imported anywhere else in the codebase. Left in place (out of this item's scope; a separate call if
+  it should be wired up or removed).
+- `LegalMasterAgent.ts`'s `TIER_PRIORITY` now derives its keys from `IntakeAgent.ts`'s exported
+  `EVIDENCE_TIER` constants instead of hardcoding the tier label strings a third time.
+Verified: `tsc --noEmit` clean, 509/509 backend Jest tests pass.
 
 ### 3.5 Prisma query shape duplication
 - Same evidence-metadata mapping hand-built in `evidenceRoutes.ts` at 3 separate locations
