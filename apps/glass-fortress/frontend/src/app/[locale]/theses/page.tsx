@@ -8,24 +8,13 @@ import { Link, useRouter } from '@/i18n/navigation';
 import { apiUrl } from '@/lib/api';
 import { TopNav } from '@/components/TopNav';
 import { useAuth } from '@/context/AuthContext';
+import type { ThesisSummary as FullThesisSummary } from '@/types/thesis';
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
-interface HeadVersionSummary {
-  id: string;
-  status: string;
-  preview: string;
-  mentionCount: number;
-  createdAt: string;
-}
-
-interface ThesisSummary {
-  id: string;
-  createdAt: string;
-  headVersion: HeadVersionSummary | null;
-}
+type ThesisSummary = Pick<FullThesisSummary, 'id' | 'createdAt' | 'headVersion'>;
 
 interface ThesisSuggestion {
   proposedTitle: string;

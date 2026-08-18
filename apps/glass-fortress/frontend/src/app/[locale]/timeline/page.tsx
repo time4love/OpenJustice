@@ -7,6 +7,7 @@ import { Link } from '@/i18n/navigation';
 import { TopNav } from '@/components/TopNav';
 import { apiUrl } from '@/lib/api';
 import { CategoryBadges } from '@/components/CategoryBadges';
+import type { EvidenceMetadata as SharedEvidenceMetadata, EvidencePerspective } from '@/types/evidence';
 
 const PAGE_SIZE = 20;
 
@@ -14,33 +15,9 @@ const PAGE_SIZE = 20;
 // Types
 // ---------------------------------------------------------------------------
 
-type EvidencePerspective = 'Internal Knowledge' | 'Public Statement' | 'Citizen Experience';
-
-type EvidenceRole = 'Incriminating' | 'ContextAnchor';
-
-interface EvidenceMetadata {
-  evidenceId: string;
-  fileHash: string;
-  status?: string;
-  evidenceRole?: EvidenceRole;
-  investigativeCategories: string[];
-  tier: string;
-  tierReasoning?: string;
-  evidencePerspective?: EvidencePerspective;
-  summary: string;
-  targetEntity: string;
-  evidenceDate: string;
-  figures?: { id: string; name: string }[];
-  medicalConditions?: string[];
-  statisticalClaims?: string[];
-  regulatoryMentions?: string[];
-  euaOmissionStatus?: string;
-  sourceUrl?: string | null;
-  fileUrl?: string | null;
-  urlVersionDiffId?: string | null;
-  trackedUrlId?: string | null;
-  timestamp: number;
-}
+// evidenceId is optional on the shared type (figures/vault don't return it),
+// but the timeline feed always includes it and reads it unguarded below.
+type EvidenceMetadata = SharedEvidenceMetadata & { evidenceId: string };
 
 interface TimelineRecord {
   content: string;

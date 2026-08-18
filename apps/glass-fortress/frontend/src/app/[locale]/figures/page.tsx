@@ -8,6 +8,7 @@ import { TopNav } from '@/components/TopNav';
 import { Link, useRouter, usePathname } from '@/i18n/navigation';
 import { apiUrl } from '@/lib/api';
 import { CategoryBadges } from '@/components/CategoryBadges';
+import type { EvidenceMetadata, EvidencePerspective } from '@/types/evidence';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -17,25 +18,6 @@ interface FigureItem {
   id: string;
   name: string;
   evidenceCount: number;
-}
-
-type EvidencePerspective = 'Internal Knowledge' | 'Public Statement' | 'Citizen Experience';
-
-interface EvidenceMetadata {
-  fileHash: string;
-  evidenceRole?: string;
-  investigativeCategories: string[];
-  tier: string;
-  evidencePerspective?: EvidencePerspective;
-  summary: string;
-  targetEntity: string;
-  evidenceDate: string;
-  figures?: { id: string; name: string }[];
-  euaOmissionStatus?: string;
-  sourceUrl?: string | null;
-  fileUrl?: string | null;
-  trackedUrlId?: string | null;
-  timestamp: number;
 }
 
 interface EvidenceRecord {

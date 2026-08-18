@@ -8,6 +8,7 @@ import { Link } from '@/i18n/navigation';
 import { TopNav } from '@/components/TopNav';
 import { apiUrl } from '@/lib/api';
 import { ClaimBlock } from '@/components/ClaimBlock';
+import type { ThesisSummary as FullThesisSummary } from '@/types/thesis';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -73,7 +74,7 @@ function appendEvidenceMention(
 // AddToThesisButton — fetch thesis list, pick one, append evidence mention
 // ---------------------------------------------------------------------------
 
-interface ThesisSummary { id: string; createdAt: string; headVersion: { preview: string } | null; }
+type ThesisSummary = Pick<FullThesisSummary, 'id' | 'createdAt' | 'headVersion'>;
 
 function AddToThesisButton({ fileHash, evidenceSummary }: { fileHash: string; evidenceSummary: string }) {
   const [state, setState] = useState<'idle' | 'open' | 'saving' | 'done'>('idle');

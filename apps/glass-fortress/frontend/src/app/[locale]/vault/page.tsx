@@ -7,31 +7,12 @@ import { Link } from '@/i18n/navigation';
 import { TopNav } from '@/components/TopNav';
 import { apiUrl } from '@/lib/api';
 import { CategoryBadges } from '@/components/CategoryBadges';
-import { TierBadge, tierAccentColor } from '@/components/TierBadge';
+import { TierBadge, tierAccentColor, type EvidenceTier } from '@/components/TierBadge';
 import {
   INVESTIGATIVE_CATEGORIES,
   type InvestigativeCategory,
 } from '@/lib/investigativeCategories';
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-type EvidenceTier =
-  | 'Tier 1: Smoking Gun'
-  | 'Tier 2: Material'
-  | 'Tier 3: Supporting'
-  | 'Tier 4: Anecdotal';
-
-interface EvidenceMetadata {
-  fileHash: string;
-  investigativeCategories: string[];
-  tier: EvidenceTier;
-  summary: string;
-  targetEntity: string;
-  submitterAddress?: string;
-  timestamp: number;
-}
+import type { EvidenceMetadata } from '@/types/evidence';
 
 interface SearchResult {
   content: string;

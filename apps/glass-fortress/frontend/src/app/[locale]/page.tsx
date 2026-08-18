@@ -10,7 +10,8 @@ import { apiUrl } from '@/lib/api';
 import { animate, useInView } from 'framer-motion';
 import { ScrollReveal, StaggerContainer, StaggerItem, ParallaxLayer } from '@/components/ScrollReveal';
 import { STRENGTH_RANK } from '@/components/StrengthBadge';
-import { ThesisHighlightCard, type ThesisSummary } from '@/components/ThesisHighlightCard';
+import { ThesisHighlightCard } from '@/components/ThesisHighlightCard';
+import type { ThesisSummary } from '@/types/thesis';
 import { EvidenceHighlightCard, type EvidenceHighlight } from '@/components/EvidenceHighlightCard';
 
 // ---------------------------------------------------------------------------

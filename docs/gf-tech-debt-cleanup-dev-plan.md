@@ -209,19 +209,35 @@ appName + `TopNav`, optional tagline slot prop) and replace all 10 call sites.
 **Note:** this is exactly the header block touched in the 2026-08-17/18 icon-refresh session — worth
 doing soon since it's the freshest in anyone's memory and low-risk (pure markup extraction).
 
-### 3.3 Type definitions redeclared instead of imported (frontend)
-- **`ThesisSummary`**: canonical + exported in `src/components/ThesisHighlightCard.tsx:5-17`.
-  `src/app/[locale]/call/page.tsx:14-27` has an *exact* duplicate — just import it. `theses/page.tsx`,
-  `forensics/[trackedUrlId]/page.tsx`, and `call/[thesisId]/page.tsx` have legitimately different
-  subsets — convert those to `Pick<ThesisSummary, ...>` once the canonical type moves to
-  `src/types/thesis.ts`.
-- **`EvidenceTier`**: canonical in `src/components/TierBadge.tsx:5-9`, redeclared identically in
-  `submit/page.tsx:17-21` and `vault/page.tsx:20-24` — just import.
-- **`EvidencePerspective`**: identical union in `submit/page.tsx:26`, `figures/page.tsx:22`,
-  `timeline/page.tsx:17` — not centralized anywhere. Move to `src/types/`.
-- **`EvidenceRole`**: identical union in `submit/page.tsx:15`, `timeline/page.tsx:19` — same fix.
-- **`EvidenceMetadata`**: drifting field sets across `figures/page.tsx:24-38`, `timeline/page.tsx:21-40`
-  (most fields), `vault/page.tsx:26-33`. Centralize a base type, page-specific `Pick<>`/extend.
+### 3.3 ✅ DONE — Type definitions redeclared instead of imported (frontend)
+- **`ThesisSummary`**: moved from `src/components/ThesisHighlightCard.tsx` to `src/types/thesis.ts`
+  (which already existed, holding unrelated AI-analysis types — a natural home, not a new file).
+  `call/page.tsx`'s exact duplicate now imports it directly. `theses/page.tsx` and
+  `forensics/[trackedUrlId]/page.tsx` now use `Pick<ThesisSummary, 'id' | 'createdAt' | 'headVersion'>`
+  as planned. **Correction found on inspection:** `call/[thesisId]/page.tsx`'s `ThesisSummary` is a
+  name collision, not a real subset — its fields (`title`, `summaryHe`, `strength`) are a flattened
+  Open-Graph-metadata projection with no overlap with the canonical type's shape (`id`, `createdAt`,
+  `openGapCount`, nested `headVersion`). `Pick<>` cannot express this. Renamed it to
+  `ThesisMetaSummary` locally instead of force-unifying — same category of correction as §2.1's
+  "check whether the split/merge is actually justified" lesson, just inverted (here the plan assumed
+  one type where there were genuinely two).
+- **`EvidenceTier`**: `submit/page.tsx` and `vault/page.tsx` now import the canonical union from
+  `src/components/TierBadge.tsx` instead of redeclaring it.
+- **`EvidencePerspective`** and **`EvidenceRole`**: moved to new `src/types/evidence.ts`, imported by
+  `submit/page.tsx`, `figures/page.tsx`, `timeline/page.tsx`.
+- **`EvidenceMetadata`**: centralized in `src/types/evidence.ts` as a superset of the three pages'
+  fields, with a field required only where all three consumers required it (`fileHash`,
+  `investigativeCategories`, `tier`, `summary`, `targetEntity`, `timestamp`) — everything else
+  optional. **Caught by `tsc`, not by inspection:** `timeline/page.tsx` reads `metadata.evidenceId`
+  unguarded (`.slice(0, 8)`), so the shared type's optional `evidenceId` would have been a silent
+  narrowing-for-others, widening-into-a-bug-for-timeline change. Fixed with a local
+  `type EvidenceMetadata = SharedEvidenceMetadata & { evidenceId: string }` in `timeline/page.tsx`
+  rather than making the shared field required (which would have been wrong for `figures`/`vault`,
+  neither of which ever returns it). `vault/page.tsx`'s narrower `tier: EvidenceTier` was widened to
+  the shared type's `tier: string` — both `TierBadge` and `tierAccentColor` already accept `string`,
+  so nothing was lost.
+Verified: `tsc --noEmit` clean, production build succeeds. Pure type-level refactor — no runtime/UI
+change, so no browser verification needed.
 
 ### 3.4 Type definitions redeclared instead of imported (backend)
 Near-identical evidence-context interfaces declared independently in 6 agent files instead of derived

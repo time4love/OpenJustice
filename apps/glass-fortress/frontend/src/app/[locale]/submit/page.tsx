@@ -7,23 +7,15 @@ import { Link, useRouter, usePathname } from '@/i18n/navigation';
 import { apiUrl } from '@/lib/api';
 import { CategoryBadges } from '@/components/CategoryBadges';
 import { INVESTIGATIVE_CATEGORIES, type InvestigativeCategory } from '@/lib/investigativeCategories';
+import type { EvidenceTier } from '@/components/TierBadge';
+import type { EvidenceRole, EvidencePerspective } from '@/types/evidence';
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
-type EvidenceRole = 'Incriminating' | 'ContextAnchor';
-
-type EvidenceTier =
-  | 'Tier 1: Smoking Gun'
-  | 'Tier 2: Material'
-  | 'Tier 3: Supporting'
-  | 'Tier 4: Anecdotal';
-
 type Phase = 'upload' | 'analyzing' | 'scanning' | 'review' | 'confirming' | 'confirmed';
 type InputMode = 'file' | 'url';
-
-type EvidencePerspective = 'Internal Knowledge' | 'Public Statement' | 'Citizen Experience';
 
 interface DraftAnalysis {
   evidenceRole: EvidenceRole;

@@ -7,25 +7,7 @@ import { Link } from '@/i18n/navigation';
 import { TopNav } from '@/components/TopNav';
 import { apiUrl } from '@/lib/api';
 import { StrengthBadge } from '@/components/StrengthBadge';
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-interface ThesisSummary {
-  id: string;
-  title: string | null;
-  createdAt: string;
-  openGapCount: number;
-  headVersion: {
-    id: string;
-    status: string;
-    preview: string;
-    mentionCount: number;
-    strength: string | null;
-    createdAt: string;
-  } | null;
-}
+import type { ThesisSummary } from '@/types/thesis';
 
 // ---------------------------------------------------------------------------
 // Call card
