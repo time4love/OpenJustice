@@ -1,8 +1,12 @@
 /**
- * Attaches `Authorization: Bearer <token>` to every fetch aimed at the
- * backend API, without touching the ~50 call sites that call
- * `fetch(apiUrl(...))` directly across the app. Patches the global fetch
- * once, at module load, imported for its side effect from ClientProviders.
+ * Attaches `X-Staging-Token: <token>` to every fetch aimed at the backend
+ * API, without touching the ~50 call sites that call `fetch(apiUrl(...))`
+ * directly across the app. Patches the global fetch once, at module load,
+ * imported for its side effect from ClientProviders.
+ *
+ * Deliberately not the `Authorization` header — callers (e.g. the researcher
+ * profile page minting an MCP token) may already need `Authorization` for
+ * their own Supabase/MCP auth, and this patch must not clobber it.
  *
  * A no-op unless NEXT_PUBLIC_STAGING_API_TOKEN is configured — see
  * .env.example for why this value is public (ships in the JS bundle) rather
@@ -24,7 +28,7 @@ function installStagingApiAuth(): void {
     if (!isBackendCall) return originalFetch(input, init);
 
     const headers = new Headers(init?.headers);
-    headers.set('Authorization', `Bearer ${token}`);
+    headers.set('X-Staging-Token', token);
     return originalFetch(input, { ...init, headers });
   };
 }

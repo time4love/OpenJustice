@@ -121,6 +121,9 @@ export function isWriteToolCall(body: unknown): string | null {
 //       }
 //     }
 //   }
+//
+// Pointed at the staging deploy instead of localhost, also add
+// "X-Staging-Token": "<STAGING_API_TOKEN>" — see requireStagingAccess.
 // ---------------------------------------------------------------------------
 
 router.post('/', async (req: Request, res: Response) => {
