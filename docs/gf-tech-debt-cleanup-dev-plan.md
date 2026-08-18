@@ -373,12 +373,19 @@ already had separate singleton getters for other routes/uses in the same file th
 Verified: `tsc --noEmit` clean, 509/509 backend Jest tests pass. No dedicated test coverage existed for
 either the route or the MCP tool before or after this change.
 
-### 3.9 Backend auth logic duplication
-- Bearer-token extraction hand-written 3x: `middleware/supabaseAuth.ts:35-36`,
-  `middleware/stagingAccess.ts:42-43`, `mcp/mcpRoutes.ts:41-42`. Low risk, extract a shared helper if
-  touching any of these files anyway.
-- Admin-role check `caller.role !== 'ADMIN'` duplicated within `authRoutes.ts` (lines 138, 160) — no
-  shared `requireAdmin` middleware despite `requireSupabaseAuth` existing as the pattern to extend.
+### 3.9 ✅ DONE — Backend auth logic duplication
+- **Bearer-token extraction**: extracted `extractBearerToken(req)` to new `backend/src/lib/bearerToken.ts`.
+  `middleware/supabaseAuth.ts`, `middleware/stagingAccess.ts`, and `mcp/mcpRoutes.ts` all call it now
+  instead of hand-parsing the header. Pure extraction, identical behavior.
+- **Admin-role check**: extracted `requireAdmin` middleware to new `backend/src/middleware/requireAdmin.ts`,
+  chained after `requireSupabaseAuth` (which populates `req.supabaseUserId`) on both `authRoutes.ts`
+  routes that need it (`GET /researchers`, `PATCH /researchers/:id`). Same lookup, same 403 response,
+  now expressed as Express middleware instead of copy-pasted into each handler.
+Verified: `tsc --noEmit` clean, 509/509 backend Jest tests pass. No dedicated auth tests existed before
+or after this change (matches the plan's "low risk" assessment) — reviewed the diff line-by-line given
+this touches auth/security code; both changes are behavior-preserving extractions, no logic changed.
+
+This closes out Phase 2 of the tech-debt cleanup plan (§3.1–§3.9), landed as PRs #19–#27.
 
 ---
 

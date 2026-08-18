@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { Request, Response, NextFunction } from 'express';
+import { extractBearerToken } from '../lib/bearerToken';
 
 // ---------------------------------------------------------------------------
 // Supabase JWT verification middleware
@@ -32,8 +33,7 @@ export async function requireSupabaseAuth(
   res: Response,
   next: NextFunction,
 ): Promise<void> {
-  const authHeader = req.headers['authorization'] ?? '';
-  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
+  const token = extractBearerToken(req);
 
   if (!token) {
     res.status(401).json({ error: 'Unauthorized', message: 'Missing Authorization: Bearer <token>' });

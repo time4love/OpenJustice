@@ -12,6 +12,7 @@
 import { timingSafeEqual } from 'node:crypto';
 import { NextFunction, Request, Response } from 'express';
 import { getAppEnv } from '../lib/appEnv';
+import { extractBearerToken } from '../lib/bearerToken';
 
 /** Constant-time comparison — the token is a bearer credential. */
 function isValidToken(candidate: string, secret: string): boolean {
@@ -39,8 +40,7 @@ export function requireStagingAccess(req: Request, res: Response, next: NextFunc
     return;
   }
 
-  const header = req.headers['authorization'] ?? '';
-  const token = header.startsWith('Bearer ') ? header.slice(7) : '';
+  const token = extractBearerToken(req);
   if (!token || !isValidToken(token, secret)) {
     res.status(401).json({
       error: 'Unauthorized',
