@@ -44,7 +44,12 @@ export const ThesisSynthesisOutputSchema = z.object({
         id: z
           .number()
           .int()
-          .positive()
+          .min(1)
+          // NOT .positive() — Gemini's structured-output response_schema rejects the
+          // `exclusiveMinimum` JSON Schema keyword .positive() produces (confirmed live
+          // against staging: "Unknown name \"exclusiveMinimum\""). .min(1) is semantically
+          // identical for a footnote id (always ≥1) and compiles to plain `minimum`, which
+          // both providers accept.
           .describe('Footnote number as used inline in narrativeBody — id 1 corresponds to marker [^1].'),
         fileHashes: z
           .array(z.string())
