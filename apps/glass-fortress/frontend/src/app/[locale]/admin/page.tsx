@@ -2,18 +2,12 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { useTranslations } from 'next-intl';
-import { useAuth } from '@/context/AuthContext';
+import { useAuth, type ResearcherProfile } from '@/context/AuthContext';
 import { AuthGuard } from '@/components/AuthGuard';
 import { apiUrl } from '@/lib/api';
 import { Link } from '@/i18n/navigation';
 
-interface ResearcherRow {
-  id: string;
-  handle: string;
-  role: 'RESEARCHER' | 'ADMIN';
-  approved: boolean;
-  createdAt: string;
-}
+type ResearcherRow = Pick<ResearcherProfile, 'id' | 'handle' | 'role' | 'approved' | 'createdAt'>;
 
 function AdminContent() {
   const t = useTranslations('admin');
