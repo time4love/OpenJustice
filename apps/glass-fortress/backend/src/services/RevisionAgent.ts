@@ -3,20 +3,13 @@ import { LLMFactory } from '../factories/LLMFactory';
 import type { DevilsAdvocateOutput } from './DevilsAdvocateAgent';
 import { assertSchemaCompatibility } from '../lib/assertSchemaCompatibility';
 import { THESIS_REVISION_PROMPT } from '../prompts/thesisRevision';
+import type { EvidenceContext } from '../lib/evidenceContext';
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
-export interface UncitedEvidence {
-  fileHash: string;
-  summary: string;
-  investigativeCategories: string[];
-  evidenceTier: string;
-  evidenceRole: string;
-  evidenceDate: string;
-  targetEntity: string;
-}
+export type UncitedEvidence = EvidenceContext;
 
 // ---------------------------------------------------------------------------
 // Output schema

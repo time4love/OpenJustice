@@ -6,18 +6,16 @@ import {
 } from '../lib/investigativeCategories';
 import { assertSchemaCompatibility } from '../lib/assertSchemaCompatibility';
 import { FORENSIC_DIFF_CLASSIFICATION_PROMPT } from '../prompts/forensicDiffClassification';
+import type { EvidenceContext } from '../lib/evidenceContext';
 
 // ---------------------------------------------------------------------------
 // Related evidence context — summarised DB records passed to the agent
 // ---------------------------------------------------------------------------
 
-export interface RelatedEvidenceContext {
-  date: string;
-  summary: string;
-  investigativeCategories: string[];
-  targetEntity: string;
-  evidenceRole: string;
-}
+export type RelatedEvidenceContext = Pick<
+  EvidenceContext,
+  'summary' | 'investigativeCategories' | 'targetEntity' | 'evidenceRole'
+> & { date: string };
 
 // ---------------------------------------------------------------------------
 // Output schema
