@@ -357,11 +357,21 @@ that shared dev environment, unrelated to this change).
   boolean since it's already instantiated per-gap).
 Verified: `tsc --noEmit` clean, production build succeeds, `eslint` shows no new issues.
 
-### 3.8 Backend "promote evidence" logic duplicated with drifted response shape
-`evidenceRoutes.ts:490-556` (POST /promote, looks up by `fileHash`) vs
-`mcp/tools/promoteEvidence.ts:42-106` (looks up by `id`) — same on-chain-registration + dup-check +
-vector-store-upsert logic, different response shapes, no shared service function backing either
-(unlike `buildForensicEvidence` for the forensic path). Extract `promoteEvidence(record)`.
+### 3.8 ✅ DONE — Backend "promote evidence" logic duplicated with drifted response shape
+`evidenceRoutes.ts` (POST /promote, looks up by `fileHash`) vs `mcp/tools/promoteEvidence.ts` (looks
+up by `id`) had identical on-chain-registration + dup-check + vector-store-upsert logic with drifted
+response shapes. **Resolution:** extracted `promoteEvidence(record: Evidence)` to new
+`backend/src/services/promoteEvidence.ts`, following the `buildForensicEvidence` pattern (plain
+function, not a class). Both callers now just resolve their own `Evidence` record (by `fileHash` or
+`id` respectively) and hand it to the shared function. Standardized on the MCP tool's richer response
+shape (`{promoted, alreadyConfirmed?, evidenceId, fileHash, txHash, message}`) for both — the REST
+route's old response was a strict subset, and the frontend callers only check `res.ok` / read
+`.message`, so this is additive, not breaking. The shared function keeps its own lazy
+Web3Service/VectorStoreService singletons, matching the existing pattern of each module owning its own
+(pre-existing architecture, not part of this dedup — `evidenceRoutes.ts` and the old MCP tool file each
+already had separate singleton getters for other routes/uses in the same file that still need them).
+Verified: `tsc --noEmit` clean, 509/509 backend Jest tests pass. No dedicated test coverage existed for
+either the route or the MCP tool before or after this change.
 
 ### 3.9 Backend auth logic duplication
 - Bearer-token extraction hand-written 3x: `middleware/supabaseAuth.ts:35-36`,
