@@ -340,12 +340,22 @@ correctly with no React crashes (one transient Turbopack stale-cache compile err
 resolved by nudging the file; remaining console errors are pre-existing backend-connectivity 500s in
 that shared dev environment, unrelated to this change).
 
-### 3.7 Data-fetching duplication (frontend)
-- Thesis-list fetch (`GET /api/thesis`) duplicated with different post-processing in `page.tsx:92-93`,
-  `call/page.tsx:112`, `theses/page.tsx:276`, `forensics/[trackedUrlId]/page.tsx:89` — extract a
-  `useTheses()` hook, keep per-page filter/sort local.
-- `generateFoia` fetch + response parsing duplicated in `theses/[id]/page.tsx:401-421` and
-  `call/[thesisId]/CallPageClient.tsx:115-142` (inside `GapCard`) — extract `useFoiaRequest(thesisId)`.
+### 3.7 ✅ DONE — Data-fetching duplication (frontend)
+- **Thesis-list fetch**: extracted `fetchTheses(query?)` to new `src/lib/thesisApi.ts` — a plain async
+  function, not a `useTheses()` hook as originally planned. The 4 call sites turned out to have
+  genuinely different trigger patterns (`page.tsx`: one leg of a `Promise.all` with tolerant
+  `.catch(() => null)`; `call/page.tsx`/`theses/page.tsx`: solo `useEffect` fetch-on-mount;
+  `forensics/[trackedUrlId]/page.tsx`'s `AddToThesisButton`: lazy fetch-on-demand when the picker
+  opens) — a hook that owns its own loading state wouldn't fit all four without forcing a shape onto
+  call sites that don't need it. Each page keeps its own `useState`/`useEffect`/error handling, calling
+  the shared function instead of duplicating the `fetch` + `.json()` + shape-check boilerplate. Per-page
+  filter/sort stayed local as planned (e.g. `theses/page.tsx` shows all theses unsorted with an
+  `evidence` query param the other three don't have).
+- **`generateFoia`**: extracted `generateFoiaRequest(thesisId, gapIndex)` to the same `thesisApi.ts`
+  file (same rationale — a plain function, not a hook, since each caller's error-state shape differs:
+  `theses/[id]/page.tsx` tracks *which* gap failed by index, `CallPageClient`'s `GapCard` only needs a
+  boolean since it's already instantiated per-gap).
+Verified: `tsc --noEmit` clean, production build succeeds, `eslint` shows no new issues.
 
 ### 3.8 Backend "promote evidence" logic duplicated with drifted response shape
 `evidenceRoutes.ts:490-556` (POST /promote, looks up by `fileHash`) vs

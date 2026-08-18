@@ -12,6 +12,7 @@ import { ScrollReveal, StaggerContainer, StaggerItem, ParallaxLayer } from '@/co
 import { STRENGTH_RANK } from '@/components/StrengthBadge';
 import { ThesisHighlightCard } from '@/components/ThesisHighlightCard';
 import type { ThesisSummary } from '@/types/thesis';
+import { fetchTheses } from '@/lib/thesisApi';
 import { EvidenceHighlightCard, type EvidenceHighlight } from '@/components/EvidenceHighlightCard';
 
 // ---------------------------------------------------------------------------
@@ -89,16 +90,14 @@ export default function HomePage() {
       fetch(apiUrl('/api/stats'))
         .then((r) => r.ok ? r.json() as Promise<PlatformStats> : null)
         .catch(() => null),
-      fetch(apiUrl('/api/thesis'))
-        .then((r) => r.ok ? r.json() as Promise<{ theses: ThesisSummary[] }> : null)
-        .catch(() => null),
+      fetchTheses().catch(() => null),
       fetch(apiUrl('/api/evidence/latest?limit=6'))
         .then((r) => r.ok ? r.json() as Promise<{ results: EvidenceHighlight[] }> : null)
         .catch(() => null),
-    ]).then(([statsData, thesisData, evidenceData]) => {
+    ]).then(([statsData, theses, evidenceData]) => {
       if (statsData) setStats(statsData);
-      if (thesisData?.theses) {
-        const sorted = thesisData.theses
+      if (theses) {
+        const sorted = theses
           .filter((thesis) => thesis.headVersion?.status === 'COMPLETE')
           .sort((a, b) => {
             const rankA = STRENGTH_RANK[a.headVersion?.strength ?? ''] ?? -1;

@@ -11,6 +11,7 @@ import type { ThesisSummary as FullThesisSummary } from '@/types/thesis';
 import { addEvidenceToThesis } from '@/lib/thesisDocument';
 import { SkeletonRows } from '@/components/SkeletonRows';
 import { usePromoteAction } from '@/hooks/usePromoteAction';
+import { fetchTheses } from '@/lib/thesisApi';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -92,9 +93,7 @@ function AddToThesisButton({
     if (theses.length > 0) return;
     setLoadingList(true);
     try {
-      const res = await fetch(apiUrl('/api/thesis'));
-      const data = (await res.json()) as { theses: ThesisSummary[] };
-      setTheses(data.theses ?? []);
+      setTheses(await fetchTheses());
     } finally {
       setLoadingList(false);
     }

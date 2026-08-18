@@ -9,6 +9,7 @@ import { WhistleblowerModal } from '@/components/WhistleblowerModal';
 import { LegalDisclaimer } from '@/components/LegalDisclaimer';
 import { strengthPillClass, strengthHeLabel } from '@/components/StrengthBadge';
 import type { EvidenceGap, CounterArgument, AIAnalysis } from '@/types/thesis';
+import { generateFoiaRequest } from '@/lib/thesisApi';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -110,19 +111,7 @@ function GapCard({
     setFoiaError(false);
     setFoiaModal({ status: 'loading', gapIndex });
     try {
-      const res = await fetch(apiUrl(`/api/thesis/${thesisId}/foia-request`), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gapIndex }),
-      });
-      if (!res.ok) throw new Error();
-      const data = (await res.json()) as {
-        letterText: string;
-        targetMinistry: string;
-        legalBasis: string;
-        targetEmail?: string;
-        targetAddress?: string;
-      };
+      const data = await generateFoiaRequest(thesisId, gapIndex);
       setFoiaModal({ status: 'ready', gapIndex, ...data });
     } catch {
       setFoiaError(true);
