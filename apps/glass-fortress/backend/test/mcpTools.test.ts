@@ -58,6 +58,7 @@ jest.mock('../src/services/VectorStoreService', () => ({
 }));
 
 jest.mock('../src/services/ThesisSynthesisAgent', () => ({
+  ...jest.requireActual('../src/services/ThesisSynthesisAgent'),
   ThesisSynthesisAgent: jest.fn().mockImplementation(() => ({
     synthesize: jest.fn(),
   })),
@@ -965,6 +966,58 @@ describe('createThesisDraftHandler', () => {
     // (it's not mocked). The test passes because it isn't called.
     await expect(createThesisDraftHandler({ title: 'Draft', body: 'Draft.' })).resolves.toBeDefined();
   });
+
+  it('renders a [^n] marker as an inline evidence mention via citations, not a trailing chip', async () => {
+    const raw = await createThesisDraftHandler({
+      title: 'Cited Draft',
+      body: 'The ministry hid data[^1].',
+      citations: [{ id: 1, fileHashes: ['0xabc'] }],
+    });
+    const result = JSON.parse(raw);
+    const versionData = mockThesisVersionCreate.mock.calls[0][0].data;
+    const userContent = versionData.userContent;
+
+    const paragraph = userContent.content[0];
+    expect(paragraph.content).toContainEqual({
+      type: 'evidenceMention',
+      attrs: expect.objectContaining({ id: '0xabc' }),
+    });
+    // Exactly one paragraph — no separate trailing chip block duplicating the inline chip.
+    expect(userContent.content.filter((n: { type: string }) => n.type === 'paragraph')).toHaveLength(1);
+    expect(result.evidenceLinked).toBe(1);
+  });
+
+  it('links a citation hash even when it is absent from evidenceHashes', async () => {
+    const raw = await createThesisDraftHandler({
+      title: 'Citation Only',
+      body: 'Claim[^1].',
+      citations: [{ id: 1, fileHashes: ['0xonlyincitation'] }],
+    });
+    const result = JSON.parse(raw);
+
+    expect(result.evidenceLinked).toBe(1);
+    expect(result.warning).toBeUndefined();
+
+    const versionData = mockThesisVersionCreate.mock.calls[0][0].data;
+    const mentionData = versionData.mentions.createMany.data as Array<{ type: string; refId: string }>;
+    expect(mentionData).toContainEqual({ type: 'EVIDENCE', refId: '0xonlyincitation' });
+  });
+
+  it('omitting citations behaves exactly as before (backward compatibility)', async () => {
+    const raw = await createThesisDraftHandler({
+      title: 'Legacy',
+      body: 'Body with no markers.',
+      evidenceHashes: ['0xabc'],
+    });
+    const result = JSON.parse(raw);
+    const versionData = mockThesisVersionCreate.mock.calls[0][0].data;
+    const userContent = versionData.userContent;
+
+    // Trailing chip paragraph still present for the legacy flat-hashes path.
+    const paragraphs = userContent.content.filter((n: { type: string }) => n.type === 'paragraph');
+    expect(paragraphs).toHaveLength(2);
+    expect(result.evidenceLinked).toBe(1);
+  });
 });
 
 // ===========================================================================
@@ -1624,13 +1677,16 @@ import { ThesisSynthesisAgent } from '../src/services/ThesisSynthesisAgent';
 
 const SYNTHESIS_PROPOSAL = {
   proposedTitle: 'Suppression of Adverse Event Data',
-  thesisStatement: 'משרד הבריאות ידע והסתיר.',
-  narrativeBody: '## עיקרי הטענה\n\nהמשרד הסתיר נתונים.',
-  supportingHashes: ['hash-001', 'hash-002'],
+  thesisStatement: 'הראיות מצביעות על כך שמשרד הבריאות ידע ולכאורה הסתיר.',
+  narrativeBody: '## עיקרי הטענה\n\nהמשרד הסתיר לכאורה נתונים[^1], לפי ראיון פומבי[^2].',
+  citations: [
+    { id: 1, fileHashes: ['hash-001'] },
+    { id: 2, fileHashes: ['hash-002'] },
+  ],
   keyFigures: ['חזי לוי', 'שרון אלרוי-פריס'],
   confidenceLevel: 'MODERATE' as const,
   missingEvidence: ['תכתובות פנימיות'],
-  summaryHe: 'הראיות מצביעות על הסתרה מכוונת.',
+  summaryHe: 'הראיות מצביעות על הסתרה לכאורה.',
 };
 
 const EVIDENCE_RECORDS = [
@@ -1700,11 +1756,28 @@ describe('suggestThesisHandler', () => {
     expect(result.proposedTitle).toBe(SYNTHESIS_PROPOSAL.proposedTitle);
     expect(result.confidenceLevel).toBe('MODERATE');
     expect(result.supportingHashes).toEqual(['hash-001', 'hash-002']);
+    expect(result.citations).toEqual(SYNTHESIS_PROPOSAL.citations);
     expect(result.keyFigures).toHaveLength(2);
     expect(result.evidenceCorpusSize).toBe(2);
   });
 
-  it('includes readyForDraft with body, evidenceHashes, and keyFigures', async () => {
+  it('derives supportingHashes from citations in first-footnote-appearance order, not LLM-generated', async () => {
+    setupSynthesizeResponse({
+      ...SYNTHESIS_PROPOSAL,
+      narrativeBody: 'טענה ב[^2] קודמת לטענה א[^1] בטקסט.',
+    });
+    mockVectorStore.searchSimilarEvidence.mockResolvedValueOnce([
+      { fileHash: 'hash-001' },
+      { fileHash: 'hash-002' },
+    ]);
+    mockEvidence.findMany.mockResolvedValueOnce(EVIDENCE_RECORDS);
+
+    const result = JSON.parse(await suggestThesisHandler({ topic: 'test' }));
+    // [^2] appears first in the text, so hash-002 (citation id 2) should be first.
+    expect(result.supportingHashes).toEqual(['hash-002', 'hash-001']);
+  });
+
+  it('includes readyForDraft with body, evidenceHashes, keyFigures, and citations', async () => {
     setupSynthesizeResponse(SYNTHESIS_PROPOSAL);
     mockVectorStore.searchSimilarEvidence.mockResolvedValueOnce([{ fileHash: 'hash-001' }]);
     mockEvidence.findMany.mockResolvedValueOnce([EVIDENCE_RECORDS[0]]);
@@ -1713,8 +1786,9 @@ describe('suggestThesisHandler', () => {
 
     expect(result.readyForDraft).toBeDefined();
     expect(result.readyForDraft.body).toBe(SYNTHESIS_PROPOSAL.narrativeBody);
-    expect(result.readyForDraft.evidenceHashes).toEqual(SYNTHESIS_PROPOSAL.supportingHashes);
+    expect(result.readyForDraft.evidenceHashes).toEqual(['hash-001', 'hash-002']);
     expect(result.readyForDraft.keyFigures).toEqual(SYNTHESIS_PROPOSAL.keyFigures);
+    expect(result.readyForDraft.citations).toEqual(SYNTHESIS_PROPOSAL.citations);
   });
 
   it('returns an error when the vector search throws', async () => {

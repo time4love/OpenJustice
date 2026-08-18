@@ -1,6 +1,8 @@
 import {
   ThesisSynthesisAgent,
   ThesisSynthesisOutputSchema,
+  validateCitationConsistency,
+  deriveSupportingHashes,
   type EvidenceCorpusRecord,
   type ThesisSynthesisOutput,
 } from '../src/services/ThesisSynthesisAgent';
@@ -56,14 +58,17 @@ const CORPUS_FIXTURE: EvidenceCorpusRecord[] = [
 const VALID_RESPONSE: ThesisSynthesisOutput = {
   proposedTitle: 'Suppression of Adverse Event Data During COVID-19 Vaccine Rollout',
   thesisStatement:
-    'משרד הבריאות ידע על אירועי לב חמורים לאחר חיסוני mRNA והסתיר מידע זה מהציבור. ' +
-    'פקידים בכירים חתמו על קמפיינים ציבוריים שסיפקו מידע מטעה תוך הפרה של חוק זכויות החולה. ' +
-    'ההסתרה הכוונתית מהווה עוולה בנזיקין כלפי כלל מקבלי החיסון שלא קיבלו גילוי נאות.',
+    'הראיות מצביעות על כך שמשרד הבריאות ידע על אירועי לב חמורים לאחר חיסוני mRNA ולכאורה הסתיר ' +
+    'מידע זה מהציבור. ייתכן כי הדפוס העובדתי מקים עילה לכאורה בנזיקין כלפי מקבלי החיסון שלא ' +
+    'קיבלו גילוי נאות.',
   narrativeBody:
     '## עיקרי הטענה\n\n' +
-    'בין אפריל ליולי 2021 ידעו פקידי משרד הבריאות על אירועי דלקת שריר הלב בקרב גברים צעירים.\n\n' +
-    '## ראיות מרכזיות\n\n- דוח פנימי מיוני 2021 מתעד את הידיעה\n- ראיון ציבורי שסתר את הממצאים',
-  supportingHashes: ['hash-001', 'hash-002', 'hash-003'],
+    'בין אפריל ליולי 2021 ידעו לכאורה פקידי משרד הבריאות על אירועי דלקת שריר הלב בקרב גברים צעירים[^1].\n\n' +
+    '## ראיות מרכזיות\n\n- דוח פנימי מיוני 2021 מתעד את הידיעה[^1]\n- ראיון ציבורי שסתר את הממצאים[^2]',
+  citations: [
+    { id: 1, fileHashes: ['hash-001'] },
+    { id: 2, fileHashes: ['hash-002', 'hash-003'] },
+  ],
   keyFigures: ['חזי לוי', 'שרון אלרוי-פריס', 'נחמן אש'],
   confidenceLevel: 'MODERATE',
   missingEvidence: [
@@ -72,7 +77,7 @@ const VALID_RESPONSE: ThesisSynthesisOutput = {
   ],
   summaryHe:
     'הראיות מצביעות על דפוס של הסתרה מכוונת של נתוני בטיחות על ידי פקידי משרד הבריאות. ' +
-    'אחריות משפטית אפשרית בנזיקין ומשפט ציבורי.',
+    'אחריות משפטית אפשרית לכאורה בנזיקין ומשפט ציבורי.',
 };
 
 describe('ThesisSynthesisAgent', () => {
@@ -105,7 +110,23 @@ describe('ThesisSynthesisAgent', () => {
       const result = await agent.synthesize('vaccine adverse event suppression', CORPUS_FIXTURE);
       expect(result.proposedTitle).toBe(VALID_RESPONSE.proposedTitle);
       expect(result.confidenceLevel).toBe('MODERATE');
-      expect(result.supportingHashes).toEqual(['hash-001', 'hash-002', 'hash-003']);
+      expect(result.citations).toEqual(VALID_RESPONSE.citations);
+    });
+
+    it('rejects a response whose narrativeBody cites a footnote with no matching citations entry', async () => {
+      getMockInvoke(agent).mockResolvedValueOnce({
+        ...VALID_RESPONSE,
+        narrativeBody: VALID_RESPONSE.narrativeBody + ' עוד טענה[^3].',
+      });
+      await expect(agent.synthesize('test', CORPUS_FIXTURE)).rejects.toThrow(/\[3\]/);
+    });
+
+    it('rejects a response with a citations entry never referenced by a [^n] marker', async () => {
+      getMockInvoke(agent).mockResolvedValueOnce({
+        ...VALID_RESPONSE,
+        citations: [...VALID_RESPONSE.citations, { id: 9, fileHashes: ['hash-999'] }],
+      });
+      await expect(agent.synthesize('test', CORPUS_FIXTURE)).rejects.toThrow(/\[9\]/);
     });
 
     it('passes topic and corpus to the LLM', async () => {
@@ -189,14 +210,80 @@ describe('ThesisSynthesisAgent', () => {
       expect(result.success).toBe(false);
     });
 
-    it('accepts empty arrays for supportingHashes, keyFigures, missingEvidence', () => {
+    it('accepts empty arrays for citations, keyFigures, missingEvidence when narrativeBody has no markers', () => {
       const result = ThesisSynthesisOutputSchema.safeParse({
         ...VALID_RESPONSE,
-        supportingHashes: [],
+        narrativeBody: 'תקציר ללא ציטוטים.',
+        citations: [],
         keyFigures: [],
         missingEvidence: [],
       });
       expect(result.success).toBe(true);
+    });
+
+    it('rejects a citations entry with an empty fileHashes array', () => {
+      const result = ThesisSynthesisOutputSchema.safeParse({
+        ...VALID_RESPONSE,
+        citations: [{ id: 1, fileHashes: [] }],
+      });
+      expect(result.success).toBe(false);
+    });
+  });
+
+  describe('validateCitationConsistency', () => {
+    it('passes when every marker has a matching citation and vice versa', () => {
+      expect(() => validateCitationConsistency(VALID_RESPONSE)).not.toThrow();
+    });
+
+    it('throws when narrativeBody references a marker with no citations entry', () => {
+      expect(() =>
+        validateCitationConsistency({ ...VALID_RESPONSE, narrativeBody: 'טענה חדשה[^7].' }),
+      ).toThrow(/\[7\]/);
+    });
+
+    it('throws when a citations entry is never referenced by a marker', () => {
+      expect(() =>
+        validateCitationConsistency({
+          ...VALID_RESPONSE,
+          citations: [...VALID_RESPONSE.citations, { id: 42, fileHashes: ['hash-x'] }],
+        }),
+      ).toThrow(/\[42\]/);
+    });
+
+    it('passes with zero markers and zero citations', () => {
+      expect(() =>
+        validateCitationConsistency({ ...VALID_RESPONSE, narrativeBody: 'ללא ציטוטים.', citations: [] }),
+      ).not.toThrow();
+    });
+  });
+
+  describe('deriveSupportingHashes', () => {
+    it('orders hashes by first footnote appearance in narrativeBody, not citations array order', () => {
+      const body = 'טענה א[^2]. טענה ב[^1].';
+      const citations = [
+        { id: 1, fileHashes: ['hash-001'] },
+        { id: 2, fileHashes: ['hash-002'] },
+      ];
+      expect(deriveSupportingHashes(body, citations)).toEqual(['hash-002', 'hash-001']);
+    });
+
+    it('deduplicates a hash reused across multiple citation entries', () => {
+      const body = 'טענה א[^1]. טענה ב[^2].';
+      const citations = [
+        { id: 1, fileHashes: ['hash-001'] },
+        { id: 2, fileHashes: ['hash-001'] },
+      ];
+      expect(deriveSupportingHashes(body, citations)).toEqual(['hash-001']);
+    });
+
+    it('flattens multiple hashes within a single citation entry', () => {
+      const body = 'טענה משולבת[^1].';
+      const citations = [{ id: 1, fileHashes: ['hash-001', 'hash-002'] }];
+      expect(deriveSupportingHashes(body, citations)).toEqual(['hash-001', 'hash-002']);
+    });
+
+    it('returns an empty array when narrativeBody has no markers', () => {
+      expect(deriveSupportingHashes('אין ציטוטים.', [{ id: 1, fileHashes: ['hash-001'] }])).toEqual([]);
     });
   });
 });

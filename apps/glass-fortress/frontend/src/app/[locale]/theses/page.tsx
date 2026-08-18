@@ -17,6 +17,11 @@ import { fetchTheses } from '@/lib/thesisApi';
 
 type ThesisSummary = Pick<FullThesisSummary, 'id' | 'createdAt' | 'headVersion'>;
 
+interface ThesisCitation {
+  id: number;
+  fileHashes: string[];
+}
+
 interface ThesisSuggestion {
   proposedTitle: string;
   thesisStatement: string;
@@ -25,12 +30,14 @@ interface ThesisSuggestion {
   summaryHe: string;
   keyFigures: string[];
   supportingHashes: string[];
+  citations: ThesisCitation[];
   missingEvidence: string[];
   readyForDraft: {
     title: string;
     body: string;
     evidenceHashes: string[];
     keyFigures: string[];
+    citations: ThesisCitation[];
   };
 }
 

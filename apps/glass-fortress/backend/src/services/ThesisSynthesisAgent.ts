@@ -31,15 +31,34 @@ export const ThesisSynthesisOutputSchema = z.object({
       'Full thesis narrative in Markdown, written in Hebrew, following the LEGAL FRAMING and ' +
         'CAUSES OF ACTION rules above. ' +
         'Use ## headings, bullet points, and bold for key terms. ' +
-        'Weave the evidence naturally into the argument — do NOT use citation placeholders like [1] or (hash). ' +
-        'The caller will append evidence mention chips automatically.',
+        'Cite every factual claim inline, immediately after the claim, using a Markdown footnote ' +
+        'marker like [^1], [^2] — every marker used here must have exactly one matching entry in ' +
+        'citations. Do not make a claim you cannot cite. The caller renders each marker as an ' +
+        'inline evidence-mention chip automatically — do not also write out the hash or a ' +
+        'citation placeholder like (hash) yourself.',
     ),
 
-  supportingHashes: z
-    .array(z.string())
+  citations: z
+    .array(
+      z.object({
+        id: z
+          .number()
+          .int()
+          .positive()
+          .describe('Footnote number as used inline in narrativeBody — id 1 corresponds to marker [^1].'),
+        fileHashes: z
+          .array(z.string())
+          .min(1)
+          .describe(
+            'Evidence file hash(es) (0x…, exactly as provided in the corpus) supporting this ' +
+              'footnote — usually one, occasionally more when a single claim draws on multiple records.',
+          ),
+      }),
+    )
     .describe(
-      'fileHash values (exactly as provided in the corpus) of the evidence records ' +
-        'that directly support the proposed thesis. Ordered by relevance — strongest first.',
+      'One entry per footnote marker used in narrativeBody — every [^n] in the text needs a ' +
+        'matching entry here, and every entry here needs a matching [^n] in the text. The same ' +
+        'fileHash may appear in more than one entry when it supports more than one claim.',
     ),
 
   keyFigures: z
@@ -75,6 +94,71 @@ export const ThesisSynthesisOutputSchema = z.object({
 export type ThesisSynthesisOutput = z.infer<typeof ThesisSynthesisOutputSchema>;
 
 assertSchemaCompatibility(ThesisSynthesisOutputSchema, 'ThesisSynthesisAgent');
+
+const FOOTNOTE_MARKER_PATTERN = /\[\^(\d+)\]/g;
+
+function extractMarkerIds(narrativeBody: string): Set<number> {
+  const ids = new Set<number>();
+  for (const match of narrativeBody.matchAll(FOOTNOTE_MARKER_PATTERN)) {
+    ids.add(Number(match[1]));
+  }
+  return ids;
+}
+
+/**
+ * Cross-field check that can't live in the Zod schema itself — schemas passed to
+ * withStructuredOutput can't carry .refine()/.superRefine() without
+ * assertSchemaCompatibility failing the build (see that module's comment).
+ * Run this after ThesisSynthesisOutputSchema.parse() succeeds.
+ */
+export function validateCitationConsistency(output: Pick<ThesisSynthesisOutput, 'narrativeBody' | 'citations'>): void {
+  const markerIds = extractMarkerIds(output.narrativeBody);
+  const citationIds = new Set(output.citations.map((c) => c.id));
+
+  const uncited = [...markerIds].filter((id) => !citationIds.has(id));
+  if (uncited.length > 0) {
+    throw new Error(
+      `ThesisSynthesisAgent: narrativeBody cites footnote marker(s) [${uncited.join(', ')}] with no matching citations entry.`,
+    );
+  }
+
+  const unused = [...citationIds].filter((id) => !markerIds.has(id));
+  if (unused.length > 0) {
+    throw new Error(
+      `ThesisSynthesisAgent: citations entry id(s) [${unused.join(', ')}] are not referenced by any [^n] marker in narrativeBody.`,
+    );
+  }
+}
+
+/**
+ * Flattens citations into a deduplicated evidence hash list, ordered by each
+ * hash's first footnote appearance in narrativeBody (not citations array order,
+ * which the model has no reason to keep in text order). First-cited reads as
+ * most load-bearing in a well-argued narrative, so this preserves the
+ * "strongest first" intent the old LLM-generated supportingHashes field tried
+ * to capture by judgment — without a second field that could drift out of
+ * sync with what the text actually cites.
+ */
+export function deriveSupportingHashes(
+  narrativeBody: string,
+  citations: Pick<ThesisSynthesisOutput['citations'][number], 'id' | 'fileHashes'>[],
+): string[] {
+  const hashesById = new Map(citations.map((c) => [c.id, c.fileHashes]));
+  const seen = new Set<string>();
+  const ordered: string[] = [];
+
+  for (const match of narrativeBody.matchAll(FOOTNOTE_MARKER_PATTERN)) {
+    const hashes = hashesById.get(Number(match[1])) ?? [];
+    for (const hash of hashes) {
+      if (!seen.has(hash)) {
+        seen.add(hash);
+        ordered.push(hash);
+      }
+    }
+  }
+
+  return ordered;
+}
 
 export class ThesisSynthesisAgent {
   private readonly chain: { invoke(input: unknown): Promise<unknown> };
@@ -116,6 +200,8 @@ export class ThesisSynthesisAgent {
     ];
 
     const result = await this.chain.invoke(messages);
-    return ThesisSynthesisOutputSchema.parse(result);
+    const parsed = ThesisSynthesisOutputSchema.parse(result);
+    validateCitationConsistency(parsed);
+    return parsed;
   }
 }
