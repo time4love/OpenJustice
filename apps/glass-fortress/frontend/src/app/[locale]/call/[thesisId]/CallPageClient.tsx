@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Image from 'next/image';
+import { Link } from '@/i18n/navigation';
 import { useTranslations } from 'next-intl';
 import { apiUrl } from '@/lib/api';
 import { FoiaModal, type FoiaModalState } from '@/components/FoiaModal';
@@ -308,6 +309,13 @@ export function CallPageClient({ thesisId }: { thesisId: string }) {
                 ))}
               </div>
             )}
+
+            <Link
+              href={`/theses/${thesisId}`}
+              className="inline-flex items-center gap-1.5 text-sm font-medium text-violet-300 hover:text-violet-200 transition-colors"
+            >
+              {t('readFullThesis')} →
+            </Link>
           </section>
         )}
 
