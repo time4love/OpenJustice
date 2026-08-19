@@ -722,6 +722,34 @@ confirmed live, not assumed.
 
 ---
 
+## 7.1 Shipped to production — 2026-08-19
+
+Following the claude.ai verification above, the user gave explicit `SHIP` approval the same day.
+`staging` (`a901b1b`) was merged into `master` — 612/612 backend tests green, `staging` 24 commits ahead
+of `master` with 0 behind (clean fast-forward), and the full diff scanned for secret-shaped content
+before merging (comments/doc prose and known test fixtures only, nothing live). Both GF production
+Railway services (`glass-fortress-backend-production`, `glass-fortress-frontend-production`) redeployed
+and were health-checked directly, including the new `/.well-known/oauth-protected-resource` endpoint.
+
+Google OAuth was then enabled on **production's own Supabase project** (`fqmczumacfbunffgodlo`) —
+reusing the same Google Cloud OAuth client ("TederWebClient") already set up for staging, with an
+additional authorized redirect URI added for production's Supabase callback
+(`https://fqmczumacfbunffgodlo.supabase.co/auth/v1/callback`). Verified live by clicking "Continue with
+Google" on the production login page and confirming a clean redirect to Google's real consent screen
+naming `fqmczumacfbunffgodlo.supabase.co` — no `redirect_uri_mismatch`, no "provider disabled" error.
+This is mechanically isolated from staging's own Google config (separate Supabase project, separate
+provider settings; the shared OAuth client only gained an additional redirect URI, which doesn't affect
+the existing staging one) — confirmed by reasoning through the three independent systems involved
+(GF's own `oidc-provider` instance per environment, each environment's separate Supabase project, and
+the one shared-but-additively-modified Google Cloud client), not just assumed.
+
+Production now runs the identical OAuth build to staging. Remaining before this is "fully done":
+Claude Desktop, Claude Code, and ChatGPT (tier-restricted) still need their own live verification —
+requested but not yet run. Persisted JWKS/cookie keys are still ephemeral in both environments (risk
+explicitly accepted by the user).
+
+---
+
 ## 8. Phase 6 — Legacy token deprecation (per §2.3 decision)
 
 If the "service token" middle option from §2.3 is confirmed: rename/reframe `POST /api/auth/mcp-token`'s
