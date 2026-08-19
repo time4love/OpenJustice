@@ -42,14 +42,23 @@ export function ThesisHighlightCard({ thesis, labels, variant = 'default' }: The
         <div className="flex items-center justify-between pt-3 border-t border-slate-100 mt-auto gap-3">
           <div className="flex items-center gap-3">
             {labels.gapsLabel && (
-              <span className="text-xs font-semibold text-red-600">{labels.gapsLabel}</span>
+              // Links to the call-to-action page — where these specific gaps
+              // are listed with FOIA-request/tip CTAs to actually close them.
+              <Link
+                href={`/call/${thesis.id}`}
+                className="text-xs font-semibold text-red-600 hover:underline"
+              >
+                {labels.gapsLabel}
+              </Link>
             )}
             <span className="text-xs text-slate-400">
               {thesis.headVersion?.mentionCount ?? 0} {labels.mentionsLabel}
             </span>
           </div>
+          {/* The full thesis narrative, not the call-to-action page — those
+              are two different destinations now, not one link doing both. */}
           <Link
-            href={`/call/${thesis.id}`}
+            href={`/theses/${thesis.id}`}
             className="shrink-0 text-xs font-semibold text-blue-600 hover:underline"
           >
             {labels.viewLabel}

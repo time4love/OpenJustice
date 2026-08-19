@@ -1,14 +1,15 @@
 # GF Mobile UX Polish — Dev Plan
 
-**Status:** Phases 1–3, 5 ✅ SHIPPED TO STAGING 2026-08-18 — PR #47
-(`fix/gf-mobile-ux-polish` → `staging`), merged, branch deleted, both staging services
-(`glass-fortress-frontend`, `glass-fortress-backend`) redeployed and verified live/green. Phase 6
-✅ DONE 2026-08-19 on branch `fix/gf-evidence-page-header-consistency`, not yet
-committed/shipped. Neither is on `master` (no SHIP). Phase 4 (icon scale / chip-color design pass,
-now §7) not started. All findings below are confirmed against staging (mobile viewport,
-Hebrew/RTL locale) and cross-checked in source — file:line references verified 2026-08-18/19
-(Phases 1–3, 5–6's references updated post-implementation; §7 reflects the original investigation
-and may shift slightly once actually picked up).
+**Status:** Phases 1–3, 5–6 ✅ SHIPPED TO STAGING — PR #47 (`fix/gf-mobile-ux-polish` → `staging`,
+2026-08-18) and PR #49 (`fix/gf-evidence-page-header-consistency` → `staging`, 2026-08-19), both
+merged, both branches deleted, both staging services (`glass-fortress-frontend`,
+`glass-fortress-backend`) redeployed and verified live/green after each. **Phase 6 item 9**
+(`ThesisHighlightCard` link fix, §6) done 2026-08-19 on `staging` directly but **not yet
+committed** — awaiting a COMMIT. Neither PR is on `master` (no SHIP). Phase 4 (icon scale /
+chip-color design pass, now §8) not started. All findings below are confirmed against staging
+(mobile viewport, Hebrew/RTL locale) and cross-checked in source — file:line references verified
+2026-08-18/19 (Phases 1–3, 5–6's references updated post-implementation; §8 reflects the original
+investigation and may shift slightly once actually picked up).
 **Created:** 2026-08-18, from a staging UX review requested after the thesis/call-for-evidence
 work landed (PR #37–#45, see [gf-thesis-citation-footnotes-dev-plan.md](gf-thesis-citation-footnotes-dev-plan.md)).
 **Scope:** Primarily Glass Fortress frontend (`apps/glass-fortress/frontend`) — Phases 1–5 are
@@ -403,9 +404,35 @@ a wrong-audience back-link bug like the one just fixed. Worth a dedicated cleanu
 wants full consistency, not bundled into this session since it's a larger, lower-urgency change.
 Frontend: `tsc --noEmit` clean, lint diff against baseline shows zero new errors.
 
+9. **Same wrong-audience-link shape found a third time, on a different page: `ThesisHighlightCard`'s
+   `compact` variant** (`src/components/ThesisHighlightCard.tsx`, the only variant using this
+   component — used exclusively by `/call/page.tsx`, the public investigations list — the
+   `featured`/`default` variants are homepage-only and untouched). Its "צפה בתיק" (View Case) link
+   went to `/call/${thesis.id}` — the *same* call-to-action page the card already links its "n open
+   gaps" text's *sibling* text-only span toward conceptually, but wasn't actually a link at all,
+   just a plain `<span>`. Fixed both at once: "View Case" now links to `/theses/${thesis.id}` (the
+   full public thesis narrative — confirmed public per Phase 6 above), and the "N open gaps" text
+   became its own `<Link href="/call/${thesis.id}">` (verified that page really does show each open
+   gap with FOIA-request/tip CTAs, i.e. it's the correct destination for "go help close this gap").
+   Two genuinely different destinations, two genuinely different links, instead of one link
+   pointing at the wrong one and a second element that wasn't a link at all. Verified live: "View
+   Case" → `/theses/:id`, "N open gaps" → `/call/:id`. `tsc --noEmit` clean, no new lint errors.
+10. **Evidence-gap FOIA/Tip buttons on the thesis page (`GapSearchPanel`, same file) hardcoded
+    literal English `"FOIA"`/`"Tip"` text** — not a translation-value mismatch like the badge work
+    in Phase 2, but no `t()` call at all, ever. Confirmed the `theses` namespace's own
+    `foiaBtn`/`tipBtn` keys existed in `messages/*.json` but were dead — grepped every `.tsx` file,
+    nothing referenced them, so `GapSearchPanel` really was just hardcoding English literals instead
+    of using the untouched-but-present i18n keys. Fixed by: (1) wiring the component up to
+    `useTranslations('theses')` and `t('foiaBtn')`/`t('tipBtn')`; (2) updating those two message
+    values themselves to match `/call/[thesisId]`'s wording exactly, per the user's ask — Hebrew
+    "הפק מכתב חופש מידע"/"שלח מידע" → "בקשת חופש מידע"/"שלח מסמך"; English `tipBtn` "Submit Tip" →
+    "Submit Document" to match (English `foiaBtn` already read "Generate FOIA Letter" on both
+    sides, no change needed there). Verified live: both buttons read "בקשת חופש מידע"/"שלח מסמך" in
+    Hebrew, matching the call page exactly.
+
 ---
 
-## 7. Phase 4 — Icon scale & chip-color design pass
+## 8. Phase 4 — Icon scale & chip-color design pass
 
 **Confirmed scale mismatch:**
 - Homepage mission icons (`src/app/[locale]/page.tsx:31-33` data, rendered lines 171-177): `next/image`
@@ -445,7 +472,7 @@ picked up:
 
 ---
 
-## 6. Minor / lower-confidence — pick up opportunistically
+## 9. Minor / lower-confidence — pick up opportunistically
 
 - **`aria-label` language inconsistency:** `src/components/TopNav.tsx:245` hardcodes
   `aria-label="Open navigation menu"` (also line 143, `"Close navigation menu"`), never calling
@@ -465,7 +492,7 @@ picked up:
 
 ---
 
-## 7. Explicitly out of scope
+## 10. Explicitly out of scope
 
 - Any left/right, RTL-mirroring-specific claim not independently confirmed against `dir="rtl"` in
   two different contexts (see §0's caveat) — the review tool's RTL rendering doesn't reliably match

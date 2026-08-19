@@ -406,7 +406,7 @@
     "generateError": "Could not generate a thesis. Try a more specific topic.",
     "generateCancelBtn": "Cancel",
     "foiaBtn": "Generate FOIA Letter",
-    "tipBtn": "Submit Tip",
+    "tipBtn": "Submit Document",
     "foiaModalTitle": "Freedom of Information Request",
     "foiaModalMinistry": "Target Ministry",
     "foiaModalLegalBasis": "Legal Basis",
