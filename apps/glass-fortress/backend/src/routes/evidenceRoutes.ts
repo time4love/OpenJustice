@@ -664,6 +664,7 @@ router.get('/:id', async (req: Request, res: Response): Promise<void> => {
           urlVersionDiff: {
             select: {
               trackedUrlId: true,
+              trackedUrl: { select: { url: true } },
               beforeDate: true,
               afterDate: true,
               snapshotUrl: true,
@@ -750,6 +751,7 @@ router.get('/:id', async (req: Request, res: Response): Promise<void> => {
       sourceUrl: record.sourceUrl,
       fileUrl: record.fileUrl,
       trackedUrlId: record.urlVersionDiff?.trackedUrlId ?? null,
+      trackedUrl: record.urlVersionDiff?.trackedUrl?.url ?? null,
       diff,
       citingTheses,
       createdAt: record.createdAt,

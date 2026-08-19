@@ -152,10 +152,8 @@
     "roleContextAnchor": "עוגן עובדתי",
     "roleIncriminating": "ראיה מפלילה",
     "targetEntityLabel": "גורם מטרה",
-    "viewEvidence": "צפה בראיה",
     "viewSource": "מקור הראיה",
     "viewDiffHistory": "צפה בהיסטוריית המסמך המלאה",
-    "viewCitingTheses": "תזות המצטטות ראיה זו",
     "pendingReviewBadge": "ממתין לאישור",
     "pendingReviewNote": "ראיה זו טרם נרשמה על הבלוקצ'יין. בדוק את ניתוח הבינה המלאכותית ולחץ קדם כדי לאשר.",
     "promoteToVault": "קדם לראיות",
@@ -170,7 +168,8 @@
     "relevanceLabel": "התאמה {pct}%"
   },
   "evidence": {
-    "backLink": "→ ראיות",
+    "backGeneric": "→ חזרה",
+    "editChangeLabel": "שינוי עריכה מתאריך",
     "notFound": "ראיה לא נמצאה.",
     "errorTitle": "שגיאה בטעינת הראיה.",
     "fileHash": "גיבוב קובץ",
