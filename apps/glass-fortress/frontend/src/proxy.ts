@@ -52,6 +52,7 @@ export const config = {
   // Everything except the API proxy, Next.js internals, and any path that looks
   // like a file — metadata routes (`/icon.png`, `/robots.txt`) and anything
   // under `public/`. Without the file exclusion, locale routing rewrites them
-  // to `/he/icon.png` and they 404.
-  matcher: ['/((?!api|_next|.*\\..*).*)'],
+  // to `/he/icon.png` and they 404. `opengraph-image` is a generated metadata
+  // route with no extension in its URL, so it needs an explicit exclusion too.
+  matcher: ['/((?!api|_next|opengraph-image|.*\\..*).*)'],
 };
