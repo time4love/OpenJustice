@@ -27,6 +27,7 @@ import { authRouter } from './routes/authRoutes';
 import { prisma } from './lib/prisma';
 import { verifyEnvironmentIdentityAtStartup } from './lib/appEnv';
 import { requireStagingAccess } from './middleware/stagingAccess';
+import { generalLimiter } from './middleware/rateLimiting';
 import { VectorStoreService } from './services/VectorStoreService';
 
 // ---------------------------------------------------------------------------
@@ -43,6 +44,11 @@ try {
 
 const app = express();
 const PORT = process.env['PORT'] ?? 3000;
+
+// Railway sits in front of this process as a single reverse proxy — without
+// this, express-rate-limit (and anything else reading req.ip) sees every
+// request as coming from the proxy's IP, not the real client.
+app.set('trust proxy', 1);
 
 // ---------------------------------------------------------------------------
 // CORS — allow configured frontend origin(s) + localhost for dev
@@ -81,6 +87,10 @@ app.get('/health', (_req: Request, res: Response) => {
 // /health stays above this line so Railway's platform healthcheck, which
 // carries no auth header, keeps working.
 app.use(requireStagingAccess);
+
+// Applies to every /api/* route. LLM/on-chain-triggering routes stack a
+// tighter `aiCostLimiter` on top — see docs/gf-cost-exposure-dev-plan.md.
+app.use('/api', generalLimiter);
 
 // ---------------------------------------------------------------------------
 // GET /api/stats — platform-wide aggregate counts for the home page mission board

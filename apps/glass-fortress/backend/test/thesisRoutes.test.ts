@@ -68,7 +68,10 @@ function getHandler(path: string, method: 'post' | 'get' | 'delete') {
     (l) => l.route?.path === path && l.route.methods[method],
   );
   if (!layer?.route) throw new Error(`Route not found: ${method.toUpperCase()} ${path}`);
-  return layer.route.stack[0].handle as (req: Request, res: Response) => Promise<void>;
+  // The actual handler is always last in the chain — routes may have
+  // middleware (e.g. rate limiters) mounted ahead of it.
+  const { stack } = layer.route;
+  return stack[stack.length - 1].handle as (req: Request, res: Response) => Promise<void>;
 }
 
 function mockReq(params: Record<string, string> = {}, body: unknown = {}, query: Record<string, string> = {}): Request {

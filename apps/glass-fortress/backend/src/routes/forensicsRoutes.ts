@@ -8,6 +8,9 @@ import { buildForensicEvidence } from '../services/forensicEvidence';
 import { registerEvidenceOnChain } from '../services/evidenceOnChain';
 import { parseDiffItems } from '../lib/diffItems';
 import { investigativeCategoriesField } from '../lib/investigativeCategories';
+import { scanLimiter } from '../middleware/rateLimiting';
+import { ScanRelevanceAgent } from '../services/ScanRelevanceAgent';
+import { scrapeUrl } from '../utils/webScraper';
 
 const router = Router();
 
@@ -38,6 +41,7 @@ const DiffPageQuerySchema = z.object({
 
 let _waybackScraper: WaybackScraper | null = null;
 let _web3Service: Web3Service | null = null;
+let _scanRelevanceAgent: ScanRelevanceAgent | null = null;
 
 function getWaybackScraper(): WaybackScraper {
   if (!_waybackScraper) _waybackScraper = new WaybackScraper();
@@ -49,20 +53,56 @@ function getWeb3Service(): Web3Service {
   return _web3Service;
 }
 
+function getScanRelevanceAgent(): ScanRelevanceAgent {
+  if (!_scanRelevanceAgent) _scanRelevanceAgent = new ScanRelevanceAgent();
+  return _scanRelevanceAgent;
+}
+
+/**
+ * Content to screen a URL against before committing to a full scan. Tries the
+ * live page first (cheap, usually works); falls back to the earliest archived
+ * Wayback snapshot for pages that have since gone offline or been taken down —
+ * exactly the kind of page this tool exists to investigate, so a 404 on the
+ * live site must not by itself block the scan.
+ *
+ * Returns null only when neither source yields any content — nothing to
+ * classify, and nothing to scan either.
+ */
+async function fetchContentForRelevanceCheck(url: string): Promise<string | null> {
+  try {
+    const page = await scrapeUrl(url);
+    if (page.textContent.trim().length > 0) return page.textContent;
+  } catch {
+    // Live fetch failed — fall through to the archive.
+  }
+
+  try {
+    const { snapshots } = await getWaybackScraper().getSnapshotsList(url);
+    if (snapshots.length === 0) return null;
+    const text = await getWaybackScraper().scrapeSnapshot(url, snapshots[0].timestamp);
+    return text.trim().length > 0 ? text : null;
+  } catch {
+    return null;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // POST /api/forensics/scan
 //
 // Start (or resume) a forensic scan for a URL.
 //
-// - If a SCANNING TrackedUrl already exists for this URL, resumes it.
-// - Otherwise creates a new TrackedUrl (status=SCANNING) and starts fresh.
+// - If a TrackedUrl already exists for this URL, resumes it — already vetted
+//   the first time, so the relevance check below only runs once per URL.
+// - Otherwise: screens the URL with ScanRelevanceAgent (one cheap call) before
+//   creating a TrackedUrl (status=SCANNING) and starting the scan (which can
+//   run hundreds of LLM calls) — see docs/gf-cost-exposure-dev-plan.md.
 //
 // Returns immediately with { trackedUrlId }. Processing runs server-side via
 // runFullScan() (fire-and-forget). Poll GET /api/forensics/tracked/:id/status
 // to track progress.
 // ---------------------------------------------------------------------------
 
-router.post('/scan', async (req: Request, res: Response): Promise<void> => {
+router.post('/scan', scanLimiter, async (req: Request, res: Response): Promise<void> => {
   const parsed = ScanBodySchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: 'Invalid request', details: parsed.error.flatten() });
@@ -72,6 +112,26 @@ router.post('/scan', async (req: Request, res: Response): Promise<void> => {
   const { url } = parsed.data;
 
   try {
+    const existing = await prisma.trackedUrl.findUnique({ where: { url } });
+
+    if (!existing) {
+      const content = await fetchContentForRelevanceCheck(url);
+      if (content === null) {
+        res.status(502).json({
+          error:
+            'Could not retrieve any content for this URL — neither the live page nor any ' +
+            'archived Wayback snapshot. Nothing to scan.',
+        });
+        return;
+      }
+
+      const relevance = await getScanRelevanceAgent().checkRelevance(content, url);
+      if (!relevance.isRelevant) {
+        res.status(422).json({ error: 'URL not relevant to this investigation', reason: relevance.reason });
+        return;
+      }
+    }
+
     // One TrackedUrl per URL — upsert then set status to SCANNING
     const trackedUrl = await prisma.trackedUrl.upsert({
       where: { url },

@@ -14,6 +14,7 @@ import { logSessionEvent } from '../services/sessionService';
 import { suggestThesisHandler } from '../mcp/tools/suggestThesis';
 import { createThesisDraftHandler } from '../mcp/tools/createThesisDraft';
 import { buildEvidenceAnalysisData } from '../lib/evidenceCreateData';
+import { aiCostLimiter } from '../middleware/rateLimiting';
 
 const router = Router();
 
@@ -97,7 +98,7 @@ const ResolveGapSchema = z.object({
 // Mention extraction is synchronous; AI analysis fires in the background.
 // ---------------------------------------------------------------------------
 
-router.post('/', async (req: Request, res: Response): Promise<void> => {
+router.post('/', aiCostLimiter, async (req: Request, res: Response): Promise<void> => {
   const parsed = CreateThesisSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: 'Invalid request', details: parsed.error.flatten() });
@@ -289,7 +290,7 @@ router.get('/:id', async (req: Request, res: Response): Promise<void> => {
 // If the head version is already COMPLETE, returns 200 with no-op message.
 // ---------------------------------------------------------------------------
 
-router.post('/:id/analyze', async (req: Request, res: Response): Promise<void> => {
+router.post('/:id/analyze', aiCostLimiter, async (req: Request, res: Response): Promise<void> => {
   const id = String(req.params['id'] ?? '');
   if (!id) {
     res.status(400).json({ error: 'Missing thesis id' });
@@ -332,7 +333,7 @@ router.post('/:id/analyze', async (req: Request, res: Response): Promise<void> =
 //      — does NOT save; the client sends a POST /version to accept
 // ---------------------------------------------------------------------------
 
-router.post('/:id/suggest-revision', async (req: Request, res: Response): Promise<void> => {
+router.post('/:id/suggest-revision', aiCostLimiter, async (req: Request, res: Response): Promise<void> => {
   const id = String(req.params['id'] ?? '');
   if (!id) {
     res.status(400).json({ error: 'Missing thesis id' });
@@ -443,7 +444,7 @@ router.post('/:id/suggest-revision', async (req: Request, res: Response): Promis
 // Mention extraction is synchronous; AI analysis fires in the background.
 // ---------------------------------------------------------------------------
 
-router.post('/:id/version', async (req: Request, res: Response): Promise<void> => {
+router.post('/:id/version', aiCostLimiter, async (req: Request, res: Response): Promise<void> => {
   const thesisId = String(req.params['id'] ?? '');
   if (!thesisId) {
     res.status(400).json({ error: 'Missing thesis id' });
@@ -735,7 +736,7 @@ const SuggestThesisSchema = z.object({
   maxEvidence: z.number().int().min(1).max(20).optional(),
 });
 
-router.post('/suggest', async (req: Request, res: Response): Promise<void> => {
+router.post('/suggest', aiCostLimiter, async (req: Request, res: Response): Promise<void> => {
   const parsed = SuggestThesisSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: 'Invalid request', details: parsed.error.flatten() });
@@ -773,7 +774,7 @@ const DraftThesisSchema = z.object({
     .optional(),
 });
 
-router.post('/draft', async (req: Request, res: Response): Promise<void> => {
+router.post('/draft', aiCostLimiter, async (req: Request, res: Response): Promise<void> => {
   const parsed = DraftThesisSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: 'Invalid request', details: parsed.error.flatten() });
@@ -803,7 +804,7 @@ const FoiaRequestSchema = z.object({
   gapIndex: z.number().int().min(0),
 });
 
-router.post('/:id/foia-request', async (req: Request, res: Response): Promise<void> => {
+router.post('/:id/foia-request', aiCostLimiter, async (req: Request, res: Response): Promise<void> => {
   const id = String(req.params['id'] ?? '');
   if (!id) {
     res.status(400).json({ error: 'Missing thesis id' });
@@ -921,6 +922,7 @@ function evictExpiredPreviews() {
 
 router.post(
   '/:id/gaps/:gapIndex/whistleblower/preview',
+  aiCostLimiter,
   async (req: Request, res: Response): Promise<void> => {
     const thesisId = String(req.params['id'] ?? '');
     const gapIndex = parseInt(String(req.params['gapIndex'] ?? ''), 10);
@@ -977,6 +979,7 @@ router.post(
 
 router.post(
   '/:id/gaps/:gapIndex/whistleblower',
+  aiCostLimiter,
   async (req: Request, res: Response): Promise<void> => {
     const thesisId = String(req.params['id'] ?? '');
     const gapIndex = parseInt(String(req.params['gapIndex'] ?? ''), 10);

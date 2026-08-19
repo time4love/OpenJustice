@@ -1100,6 +1100,16 @@ export class WaybackScraper {
     if (this._runningScanIds.has(trackedUrlId)) return; // concurrent guard
     this._runningScanIds.add(trackedUrlId);
 
+    // Cost guard: each batch runs a ForensicAgent (LLM) call per snapshot pair
+    // (up to 50/batch), so an unbounded loop over a long-CDX-history URL can
+    // rack up hundreds of Claude calls from a single /api/forensics/scan
+    // request. Cap batches per invocation and pause — reuses the existing
+    // pause/resume flow, so a legitimate long scan just needs another /scan
+    // call (subject to its own rate limit) to continue. See
+    // docs/gf-cost-exposure-dev-plan.md.
+    const MAX_BATCHES_PER_INVOCATION = 5;
+    let batchesProcessedThisRun = 0;
+
     try {
       while (true) {
         // One job per TrackedUrl — find or create it
@@ -1138,7 +1148,20 @@ export class WaybackScraper {
           });
           return;
         }
-        // COMPLETED — loop back: next iteration checks whether another CDX batch exists
+        // COMPLETED — pause if this invocation has hit its batch cap, else loop
+        // back: next iteration checks whether another CDX batch exists.
+        batchesProcessedThisRun++;
+        if (batchesProcessedThisRun >= MAX_BATCHES_PER_INVOCATION) {
+          await prisma.trackedUrl
+            .update({ where: { id: trackedUrlId }, data: { status: 'PAUSED' } })
+            .catch(() => {});
+          console.log(
+            `[WaybackScraper] runFullScan for ${trackedUrlId} paused after ` +
+              `${String(batchesProcessedThisRun)} batches this invocation (cost guard) — ` +
+              `call /scan again to resume.`,
+          );
+          return;
+        }
       }
     } catch (err) {
       if (err instanceof ScanCancelledError) {
