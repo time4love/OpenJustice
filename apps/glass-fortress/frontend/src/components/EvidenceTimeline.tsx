@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Link } from '@/i18n/navigation';
+import { Link, useRouter } from '@/i18n/navigation';
 import { apiUrl } from '@/lib/api';
 import { CategoryBadges } from '@/components/CategoryBadges';
 import { SkeletonRows } from '@/components/SkeletonRows';
@@ -34,10 +34,8 @@ export interface NodeLabels {
   roleIncriminating: string;
   roleContextAnchor: string;
   targetEntityLabel: string;
-  viewEvidence: string;
   viewSource: string;
   viewDiffHistory: string;
-  viewCitingTheses: string;
   pendingReviewBadge: string;
   pendingReviewNote: string;
   promoteToVault: string;
@@ -150,6 +148,8 @@ function TimelineNode({
       if (next.has(key)) next.delete(key); else next.add(key);
       return next;
     });
+  const router = useRouter();
+  const goToEvidence = () => router.push(`/evidence/${metadata.evidenceId}`);
 
   return (
     <div className="flex gap-3 sm:gap-4 mb-5 last:mb-0">
@@ -161,9 +161,17 @@ function TimelineNode({
         <div className="w-px flex-1 bg-slate-200 mt-1.5 min-h-8" />
       </div>
 
-      {/* Card — full width on mobile */}
+      {/* Card — full width on mobile. The whole card navigates to the evidence
+          page (was a separate "View Evidence" link before) — every nested
+          interactive element (toggles, promote button, chip links, the
+          remaining footer links) stops propagation so it doesn't also
+          trigger this. */}
       <div
-        className={`flex-1 min-w-0 rounded-xl border shadow-sm overflow-hidden ${styles.card} ${styles.border}`}
+        role="link"
+        tabIndex={0}
+        onClick={goToEvidence}
+        onKeyDown={(e) => { if (e.key === 'Enter') goToEvidence(); }}
+        className={`flex-1 min-w-0 rounded-xl border shadow-sm overflow-hidden cursor-pointer hover:shadow-md transition-shadow ${styles.card} ${styles.border}`}
       >
         {/* Card header */}
         <div
@@ -228,7 +236,10 @@ function TimelineNode({
         {/* Card body */}
         <div className="px-4 py-3 space-y-3">
           {isPending && (
-            <div className="flex items-start justify-between gap-3 px-3 py-2.5 rounded-lg bg-amber-50 border border-amber-300">
+            <div
+              onClick={(e) => e.stopPropagation()}
+              className="flex items-start justify-between gap-3 px-3 py-2.5 rounded-lg bg-amber-50 border border-amber-300"
+            >
               <div className="flex items-start gap-2 min-w-0">
                 <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0 mt-1" />
                 <span className="text-xs text-amber-800 leading-snug">{labels.pendingReviewNote}</span>
@@ -263,7 +274,7 @@ function TimelineNode({
             (metadata.medicalConditions?.length ?? 0) > 0 ||
             (metadata.statisticalClaims?.length ?? 0) > 0 ||
             (metadata.regulatoryMentions?.length ?? 0) > 0) && (
-            <div className="space-y-1.5">
+            <div className="space-y-1.5" onClick={(e) => e.stopPropagation()}>
               {(metadata.figures?.length ?? 0) > 0 && (
                 <CollapsibleChipRow
                   label={labels.keyFigures}
@@ -336,24 +347,22 @@ function TimelineNode({
             </div>
           )}
 
-          {/* Footer row — plain context label on one side, every action link
-              grouped together and consistently styled on the other. The raw
-              fileHash/evidenceId hex is deliberately not displayed here — it's
-              an internal identifier, not something a reader needs to see; the
-              "View Evidence" link is the way in, same as everywhere else. */}
+          {/* Footer row — plain context label on one side, remaining action
+              links grouped together on the other. The raw fileHash/evidenceId
+              hex is deliberately not displayed here — it's an internal
+              identifier, not something a reader needs to see. There's no
+              separate "View Evidence" link any more — the whole card is the
+              link now — so every link left here stops propagation to avoid
+              also triggering that card-level navigation. */}
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 pt-2 border-t border-slate-100/80">
             <span className="text-xs text-slate-500">
               <span className="text-slate-400">{labels.targetEntityLabel}: </span>
               {metadata.targetEntity}
             </span>
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 ms-auto">
-              <Link
-                href={`/evidence/${metadata.evidenceId}`}
-                className="flex items-center gap-1 text-xs font-medium text-slate-700 hover:text-slate-900 hover:underline transition-colors"
-              >
-                {labels.viewEvidence}
-                <span aria-hidden="true">&#x2197;</span>
-              </Link>
+            <div
+              className="flex flex-wrap items-center gap-x-4 gap-y-1.5 ms-auto"
+              onClick={(e) => e.stopPropagation()}
+            >
               {(metadata.sourceUrl ?? metadata.fileUrl) && (
                 <a
                   href={metadata.sourceUrl ?? metadata.fileUrl ?? ''}
@@ -374,13 +383,11 @@ function TimelineNode({
                   <span aria-hidden="true">&#x2197;</span>
                 </Link>
               )}
-              <Link
-                href={`/theses?evidence=${encodeURIComponent(metadata.fileHash)}`}
-                className="flex items-center gap-1 text-xs font-medium text-violet-600 hover:text-violet-800 hover:underline transition-colors"
-              >
-                {labels.viewCitingTheses}
-                <span aria-hidden="true">&#x2197;</span>
-              </Link>
+              {/* No "citing investigations" link here — there's no public
+                  destination for it today: /theses is the researcher-only
+                  builder, and /call (the public investigations list) doesn't
+                  support filtering by evidence. Removed rather than pointed
+                  at the wrong audience; revisit once that view exists. */}
             </div>
           </div>
         </div>

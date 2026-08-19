@@ -46,8 +46,12 @@ export function SiteHeader({
               {tc('operational')}
             </span>
           )}
-          <TopNav current={current} />
+          {/* actions before TopNav so the hamburger button always lands at the
+              true outer edge on mobile — with actions after it, a wide
+              actions block (e.g. multiple page buttons) stranded the
+              hamburger in the middle of the bar instead of the edge. */}
           {actions}
+          <TopNav current={current} />
         </div>
       </div>
     </header>

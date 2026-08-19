@@ -152,10 +152,8 @@
     "roleContextAnchor": "Factual Anchor",
     "roleIncriminating": "Incriminating",
     "targetEntityLabel": "Target Entity",
-    "viewEvidence": "View Evidence",
     "viewSource": "View Source",
     "viewDiffHistory": "View Document History",
-    "viewCitingTheses": "Theses citing this",
     "pendingReviewBadge": "Pending Review",
     "pendingReviewNote": "This evidence has not been registered on-chain yet. Review the AI analysis and click Promote to confirm.",
     "promoteToVault": "Promote to Evidence",
@@ -170,7 +168,8 @@
     "relevanceLabel": "{pct}% match"
   },
   "evidence": {
-    "backLink": "← Evidence",
+    "backGeneric": "← Back",
+    "editChangeLabel": "Edit change from",
     "notFound": "Evidence not found.",
     "errorTitle": "Failed to load evidence.",
     "fileHash": "File Hash",
