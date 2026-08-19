@@ -6,6 +6,7 @@ import { useTranslations } from 'next-intl';
 import { useAuth } from '@/context/AuthContext';
 import { apiUrl } from '@/lib/api';
 import { Link } from '@/i18n/navigation';
+import { routing } from '@/i18n/routing';
 
 // ---------------------------------------------------------------------------
 // MCP OAuth login/consent screen (docs/gf-mcp-oauth-dev-plan.md, Phase 3).
@@ -30,6 +31,20 @@ interface InteractionDetails {
 }
 
 const HUMAN_SCOPES = ['mcp:read', 'mcp:write'] as const;
+
+// Mirrors proxy.ts's withoutLocale() — window.location.pathname here is
+// already locale-prefixed (next-intl resolved it before this client component
+// ran), but returnTo threads through /login -> Google -> auth/callback's
+// locale-aware router.push(returnTo), which prefixes the locale again. Kept
+// locale-agnostic here so it's prefixed exactly once, at the very end.
+function stripLocale(pathname: string): string {
+  for (const locale of routing.locales) {
+    const prefix = `/${locale}`;
+    if (pathname === prefix) return '/';
+    if (pathname.startsWith(`${prefix}/`)) return pathname.slice(prefix.length);
+  }
+  return pathname;
+}
 
 function scopeLabels(t: ReturnType<typeof useTranslations>, scopes: string[]): string[] {
   return HUMAN_SCOPES.filter((s) => scopes.includes(s)).map((s) =>
@@ -56,7 +71,7 @@ export function OAuthInteractionClient({ uid }: { uid: string }) {
   // sure there's no session — not while auth is still loading.
   useEffect(() => {
     if (authLoading || accessToken) return;
-    const returnTo = window.location.pathname;
+    const returnTo = stripLocale(window.location.pathname);
     window.location.href = `/login?returnTo=${encodeURIComponent(returnTo)}`;
   }, [authLoading, accessToken]);
 
