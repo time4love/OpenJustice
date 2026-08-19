@@ -448,6 +448,28 @@ Full suite: 604/604 passing (599 + 5 new), `tsc --noEmit` clean both before and 
 
 ## 7. Phase 5 — Client compatibility verification (staging, before production)
 
+### 7.0 Prep — ✅ DONE 2026-08-19: `/api/mcp` exempted from the staging access gate
+
+Found while updating `docs/gf-chatgpt-mcp-connector-guide.md` for Phase 5, before any real client
+testing started: `/api/mcp` was still mounted **after** `requireStagingAccess`, unlike `/oauth/*`. A
+client could complete the entire OAuth dance successfully and still get `401 "Staging requires
+x-staging-token"` on the actual tool call — ChatGPT in particular has no way to attach that header.
+Same reasoning as §4.4's original `/oauth/*` exemption applies identically here (a coarse pre-shared
+secret doesn't compose with a route designed for arbitrary self-service external clients; real security
+is `resolveResearcher()`'s own OAuth/legacy-token + approved-researcher check, unaffected by this).
+Fixed by moving the `app.use('/api/mcp', mcpRouter)` mount above `requireStagingAccess` in `server.ts`
+(removing the old, now-duplicate, mount further down) — read tools are already unauthenticated on
+production today, so this changes nothing about their exposure *class*, only which environment enforces
+the pre-shared secret around them.
+
+Verified locally before Phase 5 testing began, not just typechecked: `GET`/`POST /api/mcp` reachable
+with zero staging header (both read and write paths); a write tool call with **no credential at all**
+still correctly 401s with the MCP-level message (proving the staging gate, not `resolveResearcher()`,
+was removed); a full OAuth-authenticated write call (same mint-a-real-token-via-a-separate-script
+method as Phase 4's own verification) succeeded end-to-end with zero staging header; every *other*
+`/api/*` route (spot-checked `/api/evidence`) is still correctly gated, confirming the exemption is
+scoped to exactly this one route.
+
 Manually verify the full connect flow, on staging, for:
 - **Claude Desktop** — config-driven, but Claude Desktop is expected to support MCP OAuth directly
   (discover metadata → DCR → browser popup → PKCE exchange) rather than the static-header config used
