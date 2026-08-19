@@ -548,6 +548,34 @@ Verified live (local server, both bare and path-inserted well-known URLs return 
 an unauthenticated write-tool call carries the exact `WWW-Authenticate` header a client needs), plus new
 test coverage (`test/wellKnownRoutes.test.ts`, header assertions added to `test/mcpRoutes.test.ts`,
 `resolveOrigin` unit tests in `test/oidcProvider.test.ts`) — 608/608 passing, `tsc --noEmit` clean.
+Shipped and confirmed live ([PR #60](https://github.com/time4love/OpenJustice/pull/60)) — a real
+claude.ai connector retry got one step further (protected-resource discovery now works) but still
+failed, see §7.0d.
+
+### 7.0d Prep — ✅ DONE 2026-08-19: RFC 8414 path-insertion for AS metadata, one layer deeper
+
+Same connector, retried immediately after §7.0c shipped — got further, still failed. Raw HTTP logs this
+time showed `GET /.well-known/oauth-authorization-server/oauth` and `GET /.well-known/openid-
+configuration/oauth`, both 401 (staging-gate fallthrough again, same class as before). This is RFC 8414
+§3.1's *actual* path-insertion rule, more precisely than §7.0c's fix accounted for: for an issuer with a
+path component (ours is `<origin>/oauth`), metadata lives at `<origin>/.well-known/<doc>/<issuer-path>`
+— the well-known segment first, the issuer path appended *after*. oidc-provider instead serves its
+metadata OIDC-Discovery-style, `.well-known` appended directly onto the issuer
+(`/oauth/.well-known/<doc>`) — also spec-legal, just a different convention than the one this client
+actually uses.
+
+Fixed with two redirects in `wellKnownRoutes.ts` (`/.well-known/oauth-authorization-server/oauth` and
+`/.well-known/openid-configuration/oauth`, both 302 to oidc-provider's real document) rather than
+re-serving the content — oidc-provider's own endpoint stays the single source of truth. Verified live
+(local server, redirect resolves to the identical document oidc-provider serves natively) plus 2 new
+tests in `test/wellKnownRoutes.test.ts` — 610/610 passing.
+
+**Pattern worth naming**: two real client-compatibility bugs in a row were each "the metadata exists,
+but not at the exact convention this specific client tries." Given how many well-known path conventions
+exist across RFC 8414 vs OIDC Discovery vs MCP's own spec examples, a third one showing up for a
+*different* real client (Claude Desktop, Claude Code, ChatGPT) during the rest of Phase 5 would not be
+surprising — worth checking raw HTTP logs immediately if any of them also report a generic auth failure,
+rather than assuming the fix is already complete.
 
 Manually verify the full connect flow, on staging, for:
 - **Claude Desktop** — config-driven, but Claude Desktop is expected to support MCP OAuth directly
