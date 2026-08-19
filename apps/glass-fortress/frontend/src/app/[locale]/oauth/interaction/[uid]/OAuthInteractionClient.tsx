@@ -79,7 +79,7 @@ export function OAuthInteractionClient({ uid }: { uid: string }) {
   useEffect(() => {
     if (!accessToken || !researcher?.approved || loginError) return;
     let cancelled = false;
-    fetch(apiUrl(`/oauth/interaction/${uid}`))
+    fetch(apiUrl(`/oauth/interaction/${uid}`), { credentials: 'include' })
       .then((res) => {
         if (!res.ok) throw new Error('expired');
         return res.json() as Promise<InteractionDetails>;
