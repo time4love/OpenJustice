@@ -85,6 +85,7 @@ function GapSearchPanel({
   onSubmitTip: () => void;
   canEdit: boolean;
 }) {
+  const t = useTranslations('theses');
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [hits, setHits] = useState<VaultHit[]>([]);
@@ -166,14 +167,14 @@ function GapSearchPanel({
               className="flex flex-col items-center gap-1 text-xs font-semibold px-4 py-2 rounded-lg bg-sky-100 hover:bg-sky-200 active:bg-sky-300 text-sky-700 transition-colors"
             >
               <Image src="/icon_foia.png" alt="" width={28} height={28} className="w-7 h-7" />
-              FOIA
+              {t('foiaBtn')}
             </button>
             <button
               onClick={onSubmitTip}
               className="flex flex-col items-center gap-1 text-xs font-semibold px-4 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 active:bg-slate-300 text-slate-600 transition-colors"
             >
               <Image src="/icon_anon.png" alt="" width={28} height={28} className="w-7 h-7" />
-              Tip
+              {t('tipBtn')}
             </button>
           </div>
         </div>
