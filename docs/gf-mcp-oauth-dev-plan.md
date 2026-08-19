@@ -1,7 +1,8 @@
 # GF MCP OAuth 2.1 Upgrade — Dev Plan
 
-**Status:** Phase 0 decisions ✅ LOCKED 2026-08-19 (see §2 — all four picked the recommended option).
-Phase 1 (data model) starting next. Created 2026-08-19, following the ChatGPT MCP compatibility check
+**Status:** Phase 0 ✅ LOCKED, Phase 1 ✅ DONE ([PR #55](https://github.com/time4love/OpenJustice/pull/55),
+merged to `staging`), Phase 2 ✅ DONE 2026-08-19 (this session, not yet PR'd — see §4). Phase 3
+(login/consent bridge) is next. Created 2026-08-19, following the ChatGPT MCP compatibility check
 (`docs/gf-chatgpt-mcp-connector-guide.md`) and a user question about whether the current Claude MCP
 auth model is good enough on its own merits.
 **Scope:** Glass Fortress backend + frontend (`apps/glass-fortress/{backend,frontend}`). Bronze Fortress
@@ -137,21 +138,107 @@ researcher's active grants without querying into the opaque `payload` JSON.
 
 ---
 
-## 4. Phase 2 — Authorization server
+## 4. Phase 2 — Authorization server — ✅ DONE 2026-08-19
 
-- Mount `node-oidc-provider` under `/oauth` in the GF backend Express app.
-- Configure: `features.dPoP` off (not needed for this use case), `features.devInteractions` off
-  (must build the real interaction UI, see Phase 3 — never ship the library's default debug login
-  screen), `features.registration` on with `initialAccessToken: false` (open DCR — any MCP client can
-  self-register, matching how Claude Desktop/ChatGPT expect to connect without a pre-shared secret),
-  PKCE required for all clients (`pkce.required: () => true`), no client secrets issued (public clients
-  only — DCR + PKCE is the whole point of not needing one).
-- Serve `/.well-known/oauth-authorization-server` (and/or `/.well-known/oauth-protected-resource`
-  pointing back at the same origin, per the MCP Authorization spec) so clients can auto-discover the AS
-  from the existing `/api/mcp` resource URL — no separate config field for users to fill in beyond the
-  MCP server URL they already use today.
-- `redirect_uri` validation: exact-match against what the client registered via DCR — no wildcard/prefix
-  matching, this is the primary open-redirect defense.
+**Package name correction:** the actual npm package is `oidc-provider` (by panva), confirmed installed
+at `^9.11.2`, with `@types/oidc-provider@^9.11.0` as a devDependency (the package ships no types of its
+own). Implementation grounded directly in the installed package's real `Adapter`/`Configuration` types
+and, for the trickier parts, its actual source (`node_modules/oidc-provider/lib/**`) — not assumed from
+memory, since getting an OAuth AS subtly wrong is exactly the risk this plan exists to avoid.
+
+### 4.1 Files
+- `src/oauth/prismaOidcAdapter.ts` — `PrismaOidcAdapter implements Adapter`, backing every oidc-provider
+  model kind through the Phase 1 `OidcModel` table. `find`/`findByUserCode`/`findByUid` filter out
+  expired rows and surface a prior `consume()` as a `consumed` unix-seconds field, matching what
+  oidc-provider expects back. `destroy` uses `deleteMany` (not `delete`) so destroying an already-gone
+  row is a no-op, not a throw. `revokeByGrantId` deliberately does **not** scope by `modelName` — a
+  grant's tokens/codes span multiple model kinds and must all die together.
+- `src/oauth/oidcProvider.ts` — configuration + the `Provider` instance. `resolveIssuer()` and
+  `findAccount()` are exported standalone (not inlined into the config object) specifically so they're
+  unit-testable without constructing a real `Provider`.
+- `test/prismaOidcAdapter.test.ts` (12 tests), `test/oidcProvider.test.ts` (6 tests) — mocked Prisma,
+  matching the codebase's existing convention (`test/mcpRoutes.test.ts`).
+- `server.ts`: `app.use('/oauth', oidcProvider.callback())`, mounted **before** `requireStagingAccess`
+  — see §4.4.
+
+### 4.2 Configuration decisions
+- `clients: []` — no static clients, every client arrives via DCR.
+- `clientAuthMethods: ['none']` + `pkce.required: () => true` — every client is public (no secret),
+  PKCE is the entire security model, matching §2.1's decision.
+- `features.registration = { enabled: true, initialAccessToken: false }` — open DCR.
+- `features.devInteractions = { enabled: false }` — never the library's own debug login screen.
+- `ttl.AccessToken = 3600`, `ttl.RefreshToken = 30 days`, `rotateRefreshToken: true` — per §2.4.
+- `scopes: ['mcp:read', 'mcp:write', 'offline_access']` — **`offline_access` was not in the original
+  Phase 0 sketch and its absence was a real bug**, not a hypothetical: oidc-provider only ever adds
+  `refresh_token` to a deployment's globally-allowed grant types when the `offline_access` scope exists
+  (`collectGrantTypes()` in the library's own `configuration.js`). Without it, the 30-day rotating
+  refresh token from §2.4 would have been silently unreachable — every client's `grant_types` request
+  including `refresh_token` would 400. Found by actually registering a test client against a running
+  server and reading the rejection (§4.3), not by re-reading the docs.
+- `findAccount` re-verifies `Researcher.approved` on every call, not just at grant-creation time — a
+  revoked researcher's existing tokens stop resolving to an account on their very next use.
+- `interactions.url` points at `${FRONTEND_URL}/oauth/interaction/:uid` — the Phase 3 frontend route.
+  Confirmed via a live `/oauth/auth` request that the redirect actually uses this (not some oidc-provider
+  default), landing on `${FRONTEND_URL}/oauth/interaction/<uid>` exactly as configured.
+
+### 4.3 Verified for real, not just typechecked
+Every claim below was checked against a running local server (`ts-node-dev`, real `.env` → staging
+Postgres) — not just `tsc`/unit tests, given how easy it is for OAuth configuration to be "correct on
+paper, broken in practice":
+- Server boots clean (only the two expected warnings, see §4.5).
+- `GET /oauth/.well-known/openid-configuration` returns a real, correct discovery document —
+  `registration_endpoint`, `token_endpoint_auth_methods_supported: ["none"]`, `scopes_supported`
+  including `mcp:read`/`mcp:write`/`offline_access`/`openid`.
+- `POST /oauth/reg` (DCR) — full round trip: registered a real client, got back a `client_id` and
+  `registration_access_token`, no `client_secret`; `GET /oauth/reg/:id` with the registration access
+  token retrieved it back correctly. This exercised `PrismaOidcAdapter.upsert`/`find` against real
+  staging Postgres, for two different model kinds (`Client`, `RegistrationAccessToken`) in one round trip.
+- `GET /oauth/auth?...&code_challenge=...&code_challenge_method=S256` — 303 redirect to the configured
+  interaction URL, `Interaction` row persisted (third model kind exercised for real).
+- `GET /api/mcp` still returns the staging-gate 401 exactly as before — confirms the new `/oauth` mount
+  didn't disturb the existing route/middleware ordering.
+- All test artifacts created during this manual verification (the `Client`, `RegistrationAccessToken`,
+  and `Interaction` rows) were deleted from the staging `OidcModel` table afterward.
+- Full backend suite: 586/586 passing (568 + 18 new), `tsc --noEmit` clean.
+
+### 4.4 `/oauth/*` mounted ahead of the staging access gate — deliberate, not an oversight
+`requireStagingAccess` (`server.ts`) requires an `X-Staging-Token` header on staging for everything
+mounted after it — `/health` is the one existing exception, for Railway's own healthcheck. `/oauth` is
+now a second exception, mounted before that middleware, for a different but equally load-bearing reason:
+DCR and OAuth discovery must be reachable by an arbitrary external client (ChatGPT, Claude) carrying no
+pre-shared secret at all — that's the entire point of DCR. Gating it behind the staging token would make
+this whole subsystem untestable by any real MCP client on staging, permanently (ChatGPT in particular has
+no mechanism to send a custom header at all, which is the original problem this whole plan exists to
+fix). This does not weaken real security: registering a client or starting `/oauth/auth` grants nothing
+by itself — every subsequent step still requires an approved `Researcher` to complete the (Phase 3,
+not yet built) login/consent step, exactly as before.
+
+### 4.5 Known Phase 2 limitations — tracked, not yet closed
+- **`jwks` and `cookies.keys` are unset**, so oidc-provider falls back to its own ephemeral,
+  regenerated-on-every-restart defaults (with a startup warning). Not a problem yet — nothing depends on
+  either surviving a restart, since Phase 3's login/consent UI is the only thing that drives a real
+  `/auth` round trip and doesn't exist yet. **Must be replaced with a persisted, env-provided key set
+  before Phase 3 ships** (same pattern as `TOKEN_HMAC_SECRET`: generate once, set in Railway, never in
+  git — this repo is public).
+- **No resource-indicator (RFC 8707) audience restriction configured.** Deferred to Phase 5 alongside
+  real-client verification, once it's known what Claude/ChatGPT actually send — adding it speculatively
+  now risks configuring it for a shape no real client uses.
+- **`GET /oauth/auth` redirects to a Phase-3 frontend route that doesn't exist yet** (`/oauth/interaction/
+  :uid` on `FRONTEND_URL`) — confirmed the redirect itself is correct (§4.3); the destination 404s today.
+  Expected at this phase, not a bug.
+- **Node runtime:** `oidc-provider@9.11.2` requires Node `^22 || ^24 || >=26` and prints a startup
+  warning on anything older (confirmed harmless in practice on local Node 20.19.5 — loads and runs, just
+  warns). **Not a production risk** — Railway already deploys this service on Node 24 (`railpack default
+  lts`, confirmed via `railway logs --build`), well above the floor. Documented via
+  `"engines": {"node": ">=22"}` added to `apps/glass-fortress/backend/package.json` so this doesn't
+  silently bit-rot for a future contributor on an older local Node.
+- **Pre-existing repo-wide lint drift, not introduced here:** `npm run lint` already fails with 267
+  errors on `staging` before this branch (confirmed by running it against unmodified `server.ts`). The
+  new `src/oauth/` files add 3 instances of the same already-broken `@typescript-eslint/dot-notation`
+  rule (flagging `process.env['X']` bracket access, which is the codebase's own established convention
+  elsewhere — e.g. `tokenHash.ts`, `stagingAccess.ts` — and conflicts with this rule too). Left as
+  bracket notation to match the deliberate existing convention rather than being the one file that
+  deviates from it; not a regression, since the rule was already broken project-wide.
 
 ---
 
