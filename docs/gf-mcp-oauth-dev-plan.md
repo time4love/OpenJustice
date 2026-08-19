@@ -470,6 +470,85 @@ method as Phase 4's own verification) succeeded end-to-end with zero staging hea
 `/api/*` route (spot-checked `/api/evidence`) is still correctly gated, confirming the exemption is
 scoped to exactly this one route.
 
+### 7.0b Prep — ✅ DONE 2026-08-19: frontend staging password gate also blocked the whole login chain
+
+Found live, mid-Phase-5, the first time a real external browser (via a claude.ai custom connector)
+actually walked the flow: the *frontend's* own staging password wall (`proxy.ts` — Next.js 16 renamed
+`middleware.ts` to this) gates every page except `/unlock` itself. It had no exemption for
+`/oauth/interaction/[uid]`, and that page's own "not logged in" redirect goes to `/login`, which was
+*also* gated, which after Google login lands on `/auth/callback`, *also* gated. A cold external
+visitor — exactly what every real MCP client's OAuth browser tab is — hit the staging password screen
+before ever reaching the actual Google login, at every single hop in the chain. This is the frontend
+half of the same class of bug §7.0 fixed on the backend; missed originally because all of §5's Phase 3
+verification happened via an already-unlocked browser session (mine), which never exercises this gate.
+
+Fixed: `proxy.ts` gained `isPublicOnStaging()`, exempting `/unlock`, `/login`, `/auth/callback`, and
+any `/oauth/interaction/*` path (locale-prefixed or not — next-intl's `localePrefix: 'always'` means
+these appear both as bare paths, from our own `window.location.href` redirects, and locale-prefixed,
+on a hard reload) from the staging password gate. Same reasoning as §7.0 and §4.4: the pre-shared
+staging secret was never the real gate for this flow; `Researcher.approved` is, and it's unaffected.
+
+Verified locally with a real running production build (`next build` + `next start`), not just
+typechecked: `/oauth/interaction/:uid`, `/login`, and `/auth/callback` all reachable end-to-end (through
+their locale-redirect hop) with zero staging cookie; an unrelated page (`/profile`) still correctly
+redirects to `/unlock`, confirming the exemption is scoped to exactly these paths.
+
+**Separately discovered, not a code bug — and corrected after an initial wrong assumption**: staging's
+Supabase project returns `"Unsupported provider: provider is not enabled"` from `/auth/v1/authorize?
+provider=google`. Assumed at first that production's Supabase project had Google configured and only
+staging didn't (an inference from the code existing, never actually checked) — **wrong**, caught by the
+user pushing back. Verified directly (browser-clicked "Continue with Google" on the real production
+site): **production returns the identical error.** Google Sign-In has never been configured on either
+GF Supabase project (confirmed distinct projects — `fqmczumacfbunffgodlo` = production,
+`elwsznbcfmbmkldpntae` = staging, verified from Railway env vars directly, not assumed). There is no
+existing OAuth Client ID/Secret to reuse. Setting this up for real means a Google Cloud OAuth consent
+screen + domain verification for `tederyesharel.co.il` — separate, non-blocking work.
+
+**Unblocks Phase 5 testing without waiting on that**: the MCP OAuth flow doesn't care which login
+method backs the researcher's session — magic-link email login already works and needs no Google Cloud
+setup at all. Use that instead for connector testing until/unless real Google Sign-In work happens.
+(In practice the user set up real Google Sign-In anyway, same session — see git history; not detailed
+further here since it's an external Google Cloud / Supabase Dashboard process, not code.)
+
+### 7.0c Prep — ✅ DONE 2026-08-19: RFC 9728 Protected Resource Metadata was missing entirely
+
+Found live, mid-Phase-5, the first time a real claude.ai custom connector actually attempted the full
+flow (Google login working, researcher approved, consent screen reachable — and it still failed with
+"Authentication failed"). Root cause pinned down from raw HTTP logs (`railway logs --http`), not
+guessed: claude.ai requested `/.well-known/oauth-protected-resource[/api/mcp]`, `/.well-known/oauth-
+authorization-server`, and `POST /register` — all at the **bare origin**, all before ever calling
+`/api/mcp` itself. Fetched the actual MCP Authorization spec text to ground the fix precisely (`https://
+modelcontextprotocol.io/specification/2025-06-18/basic/authorization`) rather than reason from memory:
+
+> "MCP servers **MUST** implement OAuth 2.0 Protected Resource Metadata (RFC 9728)... MCP servers
+> **MUST** use the HTTP header `WWW-Authenticate` when returning a 401 Unauthorized to indicate the
+> location of the resource server metadata URL."
+
+We had neither. Our AS is correctly nested under `/oauth/*` (`/oauth/.well-known/openid-configuration`,
+`/oauth/reg`, ...) — entirely correct in isolation — but nothing told a client that layout exists, so a
+spec-compliant client falls back to guessing standard bare-root paths, which don't exist here and (before
+§7.0/§7.0b's fixes) fell through to a misleading 401 from the staging gate instead of a plain 404.
+
+Built:
+- `src/oauth/resourceMetadata.ts` — `protectedResourceMetadata()` returns `{ resource: "<origin>/api/mcp",
+  authorization_servers: ["<origin>/oauth"] }` per RFC 9728; `resourceMetadataUrl()` for the header.
+- `src/routes/wellKnownRoutes.ts` — serves that document at **both** the bare path (what the spec's own
+  sequence diagram shows) and the RFC 8414 §3.1 path-inserted variant (what claude.ai actually requested
+  first, live) — cheap to serve both rather than bet on one client convention.
+- `mcpRoutes.ts` — every 401 `resolveResearcher()` sends now carries `WWW-Authenticate: Bearer
+  resource_metadata="<url>"`, via a `sendUnauthorized()` helper so it can't be forgotten at a call site.
+- `server.ts` — `/.well-known` mounted ahead of `requireStagingAccess`, same exemption reasoning as
+  `/oauth` and `/api/mcp`: a client that hasn't authenticated yet cannot present the staging secret to
+  find out where to authenticate.
+- `oidcProvider.ts` refactored: `resolveOrigin()` extracted as its own exported function (`resolveIssuer`
+  now just appends `/oauth` to it) so `resourceMetadata.ts` can reuse the exact same origin-resolution
+  logic rather than duplicating it.
+
+Verified live (local server, both bare and path-inserted well-known URLs return the correct document;
+an unauthenticated write-tool call carries the exact `WWW-Authenticate` header a client needs), plus new
+test coverage (`test/wellKnownRoutes.test.ts`, header assertions added to `test/mcpRoutes.test.ts`,
+`resolveOrigin` unit tests in `test/oidcProvider.test.ts`) — 608/608 passing, `tsc --noEmit` clean.
+
 Manually verify the full connect flow, on staging, for:
 - **Claude Desktop** — config-driven, but Claude Desktop is expected to support MCP OAuth directly
   (discover metadata → DCR → browser popup → PKCE exchange) rather than the static-header config used

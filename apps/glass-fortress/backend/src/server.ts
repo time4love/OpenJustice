@@ -29,6 +29,7 @@ import { verifyEnvironmentIdentityAtStartup } from './lib/appEnv';
 import { requireStagingAccess } from './middleware/stagingAccess';
 import { oidcProvider } from './oauth/oidcProvider';
 import { oauthInteractionRouter } from './routes/oauthInteractionRoutes';
+import { wellKnownRouter } from './routes/wellKnownRoutes';
 import { VectorStoreService } from './services/VectorStoreService';
 
 // ---------------------------------------------------------------------------
@@ -109,6 +110,14 @@ app.use('/oauth', oidcProvider.callback());
 // layer that doesn't compose with a subsystem designed for arbitrary
 // self-service external clients.
 app.use('/api/mcp', mcpRouter);
+
+// /.well-known/oauth-protected-resource[/api/mcp] — RFC 9728, mandated by the
+// MCP Authorization spec for authorization-server discovery. Same exemption
+// reasoning as /oauth and /api/mcp above: a client that hasn't authenticated
+// yet, by definition, cannot present the staging secret to find out where to
+// authenticate. Confirmed live this was actually blocking a real claude.ai
+// connection attempt — see docs/gf-mcp-oauth-dev-plan.md §7.0c.
+app.use('/.well-known', wellKnownRouter);
 
 // Everything below requires the staging bearer token once APP_ENV=staging.
 // /health stays above this line so Railway's platform healthcheck, which

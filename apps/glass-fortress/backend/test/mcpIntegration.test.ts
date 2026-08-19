@@ -30,6 +30,7 @@ jest.mock('../src/oauth/oidcProvider', () => ({
     issuer: 'https://backend.test/oauth',
     AccessToken: { find: jest.fn().mockResolvedValue(undefined) },
   },
+  resolveOrigin: jest.fn().mockReturnValue('https://backend.test'),
 }));
 
 jest.mock('../src/services/IntakeAgent', () => ({
