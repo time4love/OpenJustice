@@ -606,6 +606,25 @@
     "rotateWarning": "חידוש הטוקן מבטל את הטוקן הקודם מיידית.",
     "tokenGenFailed": "יצירת הטוקן נכשלה. נסו שוב."
   },
+  "oauthInteraction": {
+    "loading": "טוען…",
+    "connecting": "מתחבר…",
+    "redirectingToLogin": "מעביר להתחברות…",
+    "clientWantsAccess": "{client} מבקש גישה לחשבון החוקר שלך",
+    "scopeReadLabel": "קריאה מכספת הראיות",
+    "scopeWriteLabel": "יצירה ועריכה של ראיות וטיעונים",
+    "approve": "אשר גישה",
+    "deny": "בטל",
+    "denying": "מבטל…",
+    "expiredTitle": "הבקשה פגה",
+    "expiredHint": "חזרו לאפליקציה שביקשה את החיבור ונסו שוב.",
+    "loginErrorTitle": "ההתחברות נכשלה",
+    "loginError_invalid_token": "פג תוקף החיבור. נסו להתחבר שוב.",
+    "loginError_no_account": "לא נמצא חשבון חוקר. יש להירשם דרך עמוד הכניסה.",
+    "loginError_not_approved": "החשבון עדיין לא אושר על ידי מנהל.",
+    "loginError_missing_token": "אירעה שגיאה. נסו שוב.",
+    "backToLogin": "חזרה להתחברות"
+  },
   "admin": {
     "title": "ניהול חוקרים",
     "subtitle": "אשרו או בטלו גישת חוקרים. מנהלים יכולים לייצר טוקני MCP.",

@@ -606,6 +606,25 @@
     "rotateWarning": "Rotating invalidates the previous token immediately.",
     "tokenGenFailed": "Token generation failed. Try again."
   },
+  "oauthInteraction": {
+    "loading": "Loading…",
+    "connecting": "Connecting…",
+    "redirectingToLogin": "Redirecting to login…",
+    "clientWantsAccess": "{client} wants access to your researcher account",
+    "scopeReadLabel": "Read from the evidence vault",
+    "scopeWriteLabel": "Create and edit evidence and theses",
+    "approve": "Approve access",
+    "deny": "Cancel",
+    "denying": "Cancelling…",
+    "expiredTitle": "This request has expired",
+    "expiredHint": "Go back to the app that requested the connection and try again.",
+    "loginErrorTitle": "Sign-in failed",
+    "loginError_invalid_token": "Your session expired. Try signing in again.",
+    "loginError_no_account": "No researcher account found. Register via the login page first.",
+    "loginError_not_approved": "Your account has not been approved by an admin yet.",
+    "loginError_missing_token": "Something went wrong. Try again.",
+    "backToLogin": "Back to login"
+  },
   "admin": {
     "title": "Researcher Management",
     "subtitle": "Approve or revoke researcher access. Admins can generate MCP tokens.",

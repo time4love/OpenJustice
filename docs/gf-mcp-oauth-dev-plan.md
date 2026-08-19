@@ -1,10 +1,12 @@
 # GF MCP OAuth 2.1 Upgrade — Dev Plan
 
-**Status:** Phase 0 ✅ LOCKED, Phase 1 ✅ DONE ([PR #55](https://github.com/time4love/OpenJustice/pull/55),
-merged to `staging`), Phase 2 ✅ DONE 2026-08-19 (this session, not yet PR'd — see §4). Phase 3
-(login/consent bridge) is next. Created 2026-08-19, following the ChatGPT MCP compatibility check
-(`docs/gf-chatgpt-mcp-connector-guide.md`) and a user question about whether the current Claude MCP
-auth model is good enough on its own merits.
+**Status:** Phase 0 ✅ LOCKED. Phase 1 ✅ DONE, merged
+([PR #55](https://github.com/time4love/OpenJustice/pull/55)). Phase 2 ✅ DONE, merged
+([PR #56](https://github.com/time4love/OpenJustice/pull/56)) — a live-staging proxy-scheme bug found
+right after merging is fixed in the same branch as Phase 3, see §4.6. Phase 3 ✅ DONE 2026-08-19 (this
+session, not yet PR'd — see §5). Phase 4 (resource-server integration) is next. Created 2026-08-19,
+following the ChatGPT MCP compatibility check (`docs/gf-chatgpt-mcp-connector-guide.md`) and a user
+question about whether the current Claude MCP auth model is good enough on its own merits.
 **Scope:** Glass Fortress backend + frontend (`apps/glass-fortress/{backend,frontend}`). Bronze Fortress
 has a structurally different write-auth model (single shared `MCP_WRITE_TOKEN`, no per-researcher
 identity in its MCP layer) and is explicitly out of scope — see §9.
@@ -214,18 +216,18 @@ by itself — every subsequent step still requires an approved `Researcher` to c
 not yet built) login/consent step, exactly as before.
 
 ### 4.5 Known Phase 2 limitations — tracked, not yet closed
-- **`jwks` and `cookies.keys` are unset**, so oidc-provider falls back to its own ephemeral,
-  regenerated-on-every-restart defaults (with a startup warning). Not a problem yet — nothing depends on
-  either surviving a restart, since Phase 3's login/consent UI is the only thing that drives a real
-  `/auth` round trip and doesn't exist yet. **Must be replaced with a persisted, env-provided key set
-  before Phase 3 ships** (same pattern as `TOKEN_HMAC_SECRET`: generate once, set in Railway, never in
-  git — this repo is public).
+- **`jwks` and `cookies.keys` are still unset.** This is now a real, live concern rather than a
+  forward-looking one: Phase 3's login/consent flow is built and merging it means every Railway deploy
+  (which restarts the process) invalidates any in-flight login/consent session — a researcher mid-consent
+  during a deploy would have to restart. Low real-world likelihood on staging today (infrequent deploys,
+  few users), but this is exactly the kind of thing that should be an explicit decision, not a silent
+  gap — flagged to the user before merging Phase 3 rather than fixed unilaterally, since it requires
+  generating a real key set and setting it as a Railway env var (same pattern as `TOKEN_HMAC_SECRET`).
 - **No resource-indicator (RFC 8707) audience restriction configured.** Deferred to Phase 5 alongside
   real-client verification, once it's known what Claude/ChatGPT actually send — adding it speculatively
   now risks configuring it for a shape no real client uses.
-- **`GET /oauth/auth` redirects to a Phase-3 frontend route that doesn't exist yet** (`/oauth/interaction/
-  :uid` on `FRONTEND_URL`) — confirmed the redirect itself is correct (§4.3); the destination 404s today.
-  Expected at this phase, not a bug.
+- ~~`GET /oauth/auth` redirects to a Phase-3 frontend route that doesn't exist yet~~ — **built in Phase 3
+  (§5).**
 - **Node runtime:** `oidc-provider@9.11.2` requires Node `^22 || ^24 || >=26` and prints a startup
   warning on anything older (confirmed harmless in practice on local Node 20.19.5 — loads and runs, just
   warns). **Not a production risk** — Railway already deploys this service on Node 24 (`railpack default
@@ -240,24 +242,147 @@ not yet built) login/consent step, exactly as before.
   bracket notation to match the deliberate existing convention rather than being the one file that
   deviates from it; not a regression, since the rule was already broken project-wide.
 
+### 4.6 Post-merge bug found on live staging — ✅ FIXED 2026-08-19
+
+Immediately after PR #56 merged and staging redeployed, `GET /oauth/.well-known/openid-configuration`
+was checked live (not just locally) — `issuer` correctly read `https://…`, but `authorization_endpoint`
+and `jwks_uri` resolved to `http://…`. Root cause: Railway terminates TLS at its edge and forwards plain
+HTTP to the container; oidc-provider (a Koa app under the hood) builds those per-request URLs from the
+actual incoming request's scheme, not from the static `issuer` string, and without explicit proxy trust
+it believes every request arrived over plain HTTP. Fixed with one line,
+`oidcProvider.proxy = true` (standard Koa `app.proxy`, makes it trust `X-Forwarded-*`), in
+`src/oauth/oidcProvider.ts`. Verified locally both ways — without a spoofed `X-Forwarded-Proto` header
+the local discovery doc correctly stays `http://localhost:...`; with `X-Forwarded-Proto: https` it
+correctly flips every endpoint URL to `https://`, matching Railway's real behavior. Left uncommitted
+under this same branch/PR rather than shipped standalone — see §5 for why.
+
 ---
 
-## 5. Phase 3 — Login/consent bridge (new frontend surface)
+## 5. Phase 3 — Login/consent bridge — ✅ DONE 2026-08-19
 
-`node-oidc-provider`'s `/authorize` step delegates to an "interaction" the application must render.
-New route, e.g. `frontend/src/app/[locale]/oauth/interaction/[uid]/page.tsx`:
+Built on `fix/gf-mcp-oauth-proxy-trust` (originally cut just for §4.6's fix; kept working on it rather
+than branching again, since Phase 3 depends on that fix being correct) — **not yet PR'd**, see the
+open questions at the end of this section before merging.
 
-1. If no active Supabase session → reuse the existing login flow as-is
-   (`getGoogleOAuthUrl` / magic link, `login/page.tsx`) rather than building a second login UI.
-2. Once authenticated, look up (or create, matching existing `POST /api/auth/register` flow) the
-   `Researcher` row. If `approved !== true`, stop here with the same "not yet approved, contact an
-   admin" messaging `authRoutes.ts` already uses elsewhere — do **not** let an OAuth grant complete for
-   an unapproved researcher just because they have a valid Google login.
-3. Consent screen: "`<client name>` wants to read/write your Glass Fortress researcher account" with the
-   requested scopes shown plainly, before finishing the `node-oidc-provider` interaction.
-4. New "connected apps" list on the existing profile page (`frontend/src/app/[locale]/profile/page.tsx`)
-   showing active grants with a revoke button per grant — this is the concrete fix for "no way to revoke
-   one client without breaking all of them."
+### 5.1 Backend: `src/routes/oauthInteractionRoutes.ts`, mounted at `/oauth/interaction`
+
+Ground-truthed against oidc-provider's own canonical reference implementation
+(`example/routes/express.js` from the library's GitHub repo — fetched and read directly rather than
+recalled, since getting `interactionFinished`'s result shapes or the `Grant` construction/`mergeWith-
+LastSubmission` flags wrong would be a silent, hard-to-notice correctness bug in exactly the kind of
+code this whole plan exists to get right).
+
+- **`GET /:uid`** — read-only, unauthenticated (nothing sensitive: which client, which scopes, which
+  prompt). Fetched normally via `fetch()`.
+- **`POST /:uid/login`** — resolves the `login` prompt. No password step — identity comes entirely from
+  the caller's existing GF session. **Must be a real `<form method="POST">` submit, never `fetch()`**:
+  `interactionFinished` responds with a redirect that resumes the OAuth dance and can end at the
+  *external* MCP client's own `redirect_uri` (e.g. Claude Desktop's loopback listener) — a `fetch()`
+  would just follow that redirect internally and swallow it instead of the browser actually navigating
+  there. Because it's a real form submit, no `Authorization` header is possible, so the Supabase access
+  token travels as a hidden form field instead — verified via a new exported `verifySupabaseUserId()`
+  (extracted from `requireSupabaseAuth`, `middleware/supabaseAuth.ts`, so both share one code path).
+  If the researcher isn't approved, this deliberately does **not** call `interactionFinished` with an
+  error (that would abort the whole grant and force the external client to restart from scratch) — it
+  just redirects back to our own frontend with a flag; the interaction sits until its own TTL expires or
+  the researcher retries once approved.
+- **`POST /:uid/confirm`** — resolves the `consent` prompt. **Re-verifies the researcher from scratch**
+  (never trusts that `/login` already checked it — approval can be revoked in between, and this step is
+  the one that actually grants access). `decision=deny` properly aborts via `interactionFinished`'s
+  `access_denied` error result, matching what a real client expects, rather than leaving it hanging.
+  `decision=allow` builds or reuses a `Grant`, adds `details.missingOIDCScope`/`missingResourceScopes`,
+  saves it, and finishes with `{ consent: { grantId } }` — only passing `grantId` when it's a **new**
+  grant, matching the canonical example exactly (an existing grant is looked up by its id, not re-passed).
+- Mounted **before** `oidcProvider.callback()`'s catch-all so Express matches these specific paths first,
+  and — like `/oauth` itself — **before** `requireStagingAccess`, for the identical reason: these are
+  real browser navigations from an already-in-progress OAuth flow, not something that can carry a custom
+  staging header. This does not weaken security: the actual identity/approval check happens inside these
+  routes regardless of the staging gate.
+- Needs its own `express.urlencoded()` parser — `server.ts` only registers `express.json()` globally, and
+  real form submits send `application/x-www-form-urlencoded`.
+
+**Two bugs found live-testing against a real running server + real staging Postgres, not caught by
+`tsc`/unit tests:**
+1. An unexpected `verifySupabaseUserId` failure (reproduced concretely: `@supabase/supabase-js`'s
+   Realtime client throws on Node < 22 without a `ws` polyfill — harmless on Railway's Node 24, but a
+   real gap in *this* code's own error handling) propagated to Express's generic handler as a raw 500
+   with an internal error message leaked into the response. Fixed: `findApprovedResearcher()` now
+   catches any verification failure and treats it identically to an invalid token.
+2. A POST with no body/no `Content-Type` leaves `req.body` as `undefined` (not `{}}`) — destructuring
+   without a fallback threw a `TypeError`, another raw 500. Fixed: `(req.body ?? {})`.
+
+Both are covered by new tests (13 total in `test/oauthInteractionRoutes.test.ts`, Prisma/oidc-provider
+mocked matching `mcpRoutes.test.ts`'s existing pattern) and re-verified live afterward.
+
+### 5.2 Frontend: `returnTo` threading through the existing login flow
+
+The interaction page needs to send an unauthenticated visitor through GF's *existing* login UI and land
+them back on the interaction — no second login form. This required a small, backward-compatible
+extension to code that already shipped:
+
+- `getGoogleOAuthUrl(redirectTo)` already took a `redirectTo` — just needed a smarter caller.
+- `sendMagicLink(email, redirectTo?)` gained an optional second param. **Ground-truthed against
+  GoTrue's actual Go source** (`internal/api/magic_link.go`, `internal/utilities/request.go`'s
+  `getRedirectTo()`) rather than assumed: `redirect_to` must be a **query parameter on the request URL**
+  (or an HTTP header) — never a JSON body field, because Go's `ParseForm()` never parses a JSON body,
+  only the URL's query string. An initial attempt that nested it under a JSON `options.email_redirect_to`
+  field (copying the *JS SDK's* camelCase shape, which is not what hits the wire) would have silently
+  done nothing.
+- `login/page.tsx`: `LoginStep`/`HandleSetupStep` take a `returnTo` prop (read from the URL by
+  `LoginPageContent`), threaded into both the Google and magic-link paths and into where
+  `HandleSetupStep` navigates after first-time registration.
+- `auth/callback/page.tsx`: reads `returnTo` from `window.location.search` (deliberately not
+  `useSearchParams()`, to avoid needing a new Suspense boundary — matches how the file already parses
+  the access token from the hash manually) and carries it through both the "needs handle setup" and
+  "already registered" branches.
+
+### 5.3 Frontend: `oauth/interaction/[uid]` page
+
+`frontend/src/app/[locale]/oauth/interaction/[uid]/page.tsx` (server shell, Suspense-wrapped for
+`OAuthInteractionClient`'s `useSearchParams()`) + `OAuthInteractionClient.tsx`:
+
+- No session → redirects to `/login?returnTo=<this page>`.
+- Session but not approved → reuses the existing `auth.pendingApproval`/`pendingApprovalHint` copy
+  rather than inventing new strings for the same state.
+- Approved → fetches interaction details; `login` prompt auto-submits the hidden login form (no user
+  action needed, matching §5.1); `consent` prompt renders client name + human-readable scope labels
+  (`mcp:read`/`mcp:write` only — `offline_access`/`openid` are protocol plumbing, not shown) with
+  Approve/Deny buttons, each a real form submit for the same reason as §5.1.
+- New `oauthInteraction` message namespace added to both `messages/he.json` and `messages/en.json`.
+
+**A real bug found only by trying to load the page in an actual browser**, not by `tsc`/build alone:
+`apiUrl()` returns a bare relative path when `NEXT_PUBLIC_API_URL` is unset (true for local dev and
+possibly previews) — the existing `next.config.ts` only rewrites `/api/:path*` to the backend, not
+`/oauth/:path*`, so every fetch/form action in this page would have silently hit the *frontend's own*
+server (404/wrong app) instead of the backend. Fixed by adding a matching `/oauth/:path*` rewrite. No
+collision with this page's own route: next-intl's default `localePrefix` is `'always'`, so the page only
+ever lives under `/he/oauth/...` or `/en/oauth/...`, never bare `/oauth/...` — which is exactly the
+unprefixed path the rewrite (and this page's own fetch/form calls) target.
+
+### 5.4 Verified
+
+- Backend: `tsc --noEmit` clean, full suite 599/599 (586 + 13 new).
+- Frontend: `tsc --noEmit` clean, `npx eslint` clean on every touched file (pre-existing repo lint drift
+  aside, see §4.5's last bullet — same situation, not worsened here), **real `next build` succeeded**
+  (catches Suspense-boundary and other build-time issues `tsc` alone doesn't).
+- Live in an actual browser (production build, `next start`, real staging Postgres + a real DCR'd test
+  client): an unauthenticated visit to the interaction page correctly redirects to `/login` with the
+  right `returnTo`, and the Google/magic-link paths correctly carry it through — screenshot-verified.
+  **Not verified visually**: the approved-researcher consent screen itself, and the not-approved state —
+  both require a real Google/Supabase-authenticated session, which this environment has no credentials
+  for. Covered instead by the unit tests, full typecheck, and successful production build; flagging this
+  gap explicitly rather than claiming full visual coverage.
+- Test client + `OidcModel` rows created during manual verification were deleted from staging afterward
+  each time.
+
+### 5.5 Open questions before merging (not decided unilaterally)
+
+- **JWKS/cookie keys are still ephemeral** (§4.5) — merging Phase 3 makes this a live operational risk
+  (a deploy mid-login-flow) for the first time, not just a forward-looking note. Worth a decision before
+  merge: accept the (low, staging-only) risk now, or generate and set real keys first.
+- **This PR bundles §4.6's fix with all of Phase 3** rather than shipping the fix standalone first —
+  a judgment call (they're both "making the already-merged AS actually correct," and splitting now would
+  mean re-basing) rather than something decided without flagging it.
 
 ---
 
