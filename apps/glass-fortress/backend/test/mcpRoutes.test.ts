@@ -25,7 +25,17 @@ jest.mock('../src/mcp/mcpServer', () => ({
 
 jest.mock('../src/lib/prisma', () => ({
   prisma: {
-    researcher: { findFirst: jest.fn() },
+    researcher: { findFirst: jest.fn(), findUnique: jest.fn() },
+  },
+}));
+
+// oidc-provider is pure ESM — see test/oauthInteractionRoutes.test.ts for why
+// this needs mocking under Jest's CJS test transform even though the real
+// runtime (ts-node-dev / dist) loads it fine.
+jest.mock('../src/oauth/oidcProvider', () => ({
+  oidcProvider: {
+    issuer: 'https://backend.test/oauth',
+    AccessToken: { find: jest.fn() },
   },
 }));
 
@@ -33,6 +43,7 @@ import request from 'supertest';
 import express from 'express';
 import { prisma } from '../src/lib/prisma';
 import { hashToken } from '../src/lib/tokenHash';
+import { oidcProvider } from '../src/oauth/oidcProvider';
 import { isWriteToolCall } from '../src/mcp/mcpRoutes';
 
 // Late import after mocks are in place
@@ -46,6 +57,8 @@ app.use('/api/mcp', mcpRouter);
 const VALID_TOKEN = 'test-secret-token';
 const MOCK_RESEARCHER = { id: 'r-1', handle: 'tester', role: 'RESEARCHER', approved: true };
 const mockResearcherFindFirst = prisma.researcher.findFirst as jest.Mock;
+const mockResearcherFindUnique = prisma.researcher.findUnique as jest.Mock;
+const mockAccessTokenFind = oidcProvider.AccessToken.find as jest.Mock;
 
 beforeEach(() => {
   process.env['TOKEN_HMAC_SECRET'] = 'jest-hmac-secret';
@@ -56,6 +69,10 @@ beforeEach(() => {
       return args.where.mcpTokenHash === validHash ? MOCK_RESEARCHER : null;
     },
   );
+  // No token is a recognized OAuth token unless a test says otherwise —
+  // every legacy-token test below implicitly exercises the not_oauth
+  // fall-through path this way.
+  mockAccessTokenFind.mockResolvedValue(undefined);
 });
 
 afterEach(() => {
@@ -181,6 +198,79 @@ describe('POST /api/mcp — write tool auth', () => {
 });
 
 // ===========================================================================
+// POST /api/mcp — OAuth access token path (docs/gf-mcp-oauth-dev-plan.md, Phase 4)
+// ===========================================================================
+
+describe('POST /api/mcp — OAuth access token auth', () => {
+  const writeCallBody = {
+    jsonrpc: '2.0',
+    id: 1,
+    method: 'tools/call',
+    params: { name: 'create_evidence_from_url', arguments: { url: 'https://example.com' } },
+  };
+
+  it('accepts a valid OAuth token with mcp:write scope, never touching the legacy lookup', async () => {
+    mockAccessTokenFind.mockResolvedValueOnce({
+      accountId: 'r-oauth-1',
+      scopes: new Set(['mcp:write', 'offline_access']),
+    });
+    mockResearcherFindUnique.mockResolvedValueOnce({ id: 'r-oauth-1', approved: true });
+
+    const res = await request(app)
+      .post('/api/mcp')
+      .set('Authorization', 'Bearer oauth-token')
+      .send(writeCallBody);
+
+    expect(res.status).not.toBe(401);
+    expect(res.status).not.toBe(403);
+    expect(mockResearcherFindFirst).not.toHaveBeenCalled();
+  });
+
+  it('rejects an OAuth token missing the mcp:write scope with 403, not falling through to legacy', async () => {
+    mockAccessTokenFind.mockResolvedValueOnce({
+      accountId: 'r-oauth-1',
+      scopes: new Set(['mcp:read']),
+    });
+
+    const res = await request(app)
+      .post('/api/mcp')
+      .set('Authorization', 'Bearer read-only-oauth-token')
+      .send(writeCallBody);
+
+    expect(res.status).toBe(403);
+    expect(mockResearcherFindFirst).not.toHaveBeenCalled();
+  });
+
+  it('rejects an OAuth token for a researcher who is no longer approved', async () => {
+    mockAccessTokenFind.mockResolvedValueOnce({
+      accountId: 'r-oauth-1',
+      scopes: new Set(['mcp:write']),
+    });
+    mockResearcherFindUnique.mockResolvedValueOnce({ id: 'r-oauth-1', approved: false });
+
+    const res = await request(app)
+      .post('/api/mcp')
+      .set('Authorization', 'Bearer revoked-approval-token')
+      .send(writeCallBody);
+
+    expect(res.status).toBe(403);
+  });
+
+  it('falls through to the legacy static-token path when the token is not a recognized OAuth token', async () => {
+    mockAccessTokenFind.mockResolvedValueOnce(undefined);
+
+    const res = await request(app)
+      .post('/api/mcp')
+      .set('Authorization', `Bearer ${VALID_TOKEN}`)
+      .send(writeCallBody);
+
+    expect(res.status).not.toBe(401);
+    expect(res.status).not.toBe(403);
+    expect(mockResearcherFindFirst).toHaveBeenCalled();
+  });
+});
+
+// ===========================================================================
 // GET /api/mcp — health check
 // ===========================================================================
 
@@ -195,5 +285,13 @@ describe('GET /api/mcp', () => {
   it('documents that write tools require auth', async () => {
     const res = await request(app).get('/api/mcp');
     expect(res.body.auth).toContain('mcp-token');
+  });
+
+  it('advertises the OAuth authorization server and scopes', async () => {
+    const res = await request(app).get('/api/mcp');
+    expect(res.body.oauth).toEqual({
+      authorizationServer: 'https://backend.test/oauth',
+      scopes: ['mcp:read', 'mcp:write'],
+    });
   });
 });

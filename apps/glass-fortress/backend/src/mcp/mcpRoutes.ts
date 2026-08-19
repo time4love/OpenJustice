@@ -5,6 +5,7 @@ import { prisma } from '../lib/prisma';
 import { hashToken } from '../lib/tokenHash';
 import { researcherContext } from '../context/researcherContext';
 import { extractBearerToken } from '../lib/bearerToken';
+import { oidcProvider } from '../oauth/oidcProvider';
 
 const router = Router();
 
@@ -30,13 +31,63 @@ const WRITE_TOOLS = new Set([
 ]);
 
 // ---------------------------------------------------------------------------
-// resolveResearcher
+// resolveResearcher (docs/gf-mcp-oauth-dev-plan.md, Phase 4)
 //
-// Hashes the incoming bearer token, looks it up in the Researcher table, and
-// checks that the account is approved.
+// Two accepted credential shapes, tried in order:
+//   1. An MCP OAuth access token (docs/gf-mcp-oauth-dev-plan.md Phases 1-3) —
+//      resolved in-process via oidcProvider.AccessToken.find(), the same
+//      lookup oidc-provider's own userinfo/introspection actions use
+//      internally (validate_access_token.js) — never a network round trip,
+//      since the resource server and authorization server are the same
+//      process. Requires the mcp:write scope.
+//   2. The legacy per-user static service token (§2.3's decision — kept for
+//      non-interactive/scripted use, hashed lookup in Researcher.mcpTokenHash).
 //
 // Returns { researcherId } on success, or sends a 401/403 and returns null.
 // ---------------------------------------------------------------------------
+
+type OAuthResolution =
+  | { kind: 'not_oauth' }
+  | { kind: 'ok'; researcherId: string }
+  | { kind: 'rejected'; status: number; error: string; message: string };
+
+async function resolveViaOAuth(token: string): Promise<OAuthResolution> {
+  const accessToken = await oidcProvider.AccessToken.find(token);
+  if (!accessToken) return { kind: 'not_oauth' };
+
+  if (!accessToken.scopes.has('mcp:write')) {
+    return {
+      kind: 'rejected',
+      status: 403,
+      error: 'Forbidden',
+      message: 'This OAuth token was not granted the mcp:write scope.',
+    };
+  }
+
+  if (!accessToken.accountId) {
+    return {
+      kind: 'rejected',
+      status: 401,
+      error: 'Unauthorized',
+      message: 'OAuth token has no associated account.',
+    };
+  }
+
+  // Re-checked here, not just at grant time — approval can be revoked after
+  // an access token was already issued; every use must re-verify, matching
+  // findAccount()'s own re-check (src/oauth/oidcProvider.ts).
+  const researcher = await prisma.researcher.findUnique({ where: { id: accessToken.accountId } });
+  if (!researcher?.approved) {
+    return {
+      kind: 'rejected',
+      status: 403,
+      error: 'Forbidden',
+      message: 'The researcher account behind this OAuth grant is not approved (or no longer exists).',
+    };
+  }
+
+  return { kind: 'ok', researcherId: researcher.id };
+}
 
 async function resolveResearcher(req: Request, res: Response): Promise<{ researcherId: string } | null> {
   const token = extractBearerToken(req);
@@ -44,10 +95,21 @@ async function resolveResearcher(req: Request, res: Response): Promise<{ researc
   if (!token) {
     res.status(401).json({
       error: 'Unauthorized',
-      message: 'Write tools require Authorization: Bearer <your-mcp-token>. Generate one via POST /api/auth/mcp-token.',
+      message:
+        'Write tools require Authorization: Bearer <token> — an MCP OAuth access token ' +
+        '(see GET /api/mcp for the authorization server) or a legacy service token (POST /api/auth/mcp-token).',
     });
     return null;
   }
+
+  const oauth = await resolveViaOAuth(token);
+  if (oauth.kind === 'ok') return { researcherId: oauth.researcherId };
+  if (oauth.kind === 'rejected') {
+    res.status(oauth.status).json({ error: oauth.error, message: oauth.message });
+    return null;
+  }
+  // oauth.kind === 'not_oauth' — not a token oidc-provider recognizes at all,
+  // fall through and try it as a legacy static token instead.
 
   let tokenHash: string;
   try {
@@ -62,7 +124,7 @@ async function resolveResearcher(req: Request, res: Response): Promise<{ researc
   if (!researcher) {
     res.status(401).json({
       error: 'Unauthorized',
-      message: 'Invalid MCP token. Generate a new one via POST /api/auth/mcp-token.',
+      message: 'Invalid MCP token. Generate a new one via POST /api/auth/mcp-token, or connect via OAuth (GET /api/mcp).',
     });
     return null;
   }
@@ -177,7 +239,14 @@ router.get('/', (_req: Request, res: Response) => {
     transport: 'streamable-http',
     readTools: ['search_evidence', 'get_forensic_timeline', 'get_figure_dossier', 'get_thesis_context', 'get_research_agenda', 'get_session_summary'],
     writeTools: ['create_evidence_from_url', 'create_evidence_from_text', 'start_forensic_scan', 'create_thesis_draft', 'add_thesis_version', 'run_ai_analysis', 'create_research_session', 'add_session_note', 'close_research_session', 'enrich_evidence_with_history', 'promote_evidence', 'generate_foia_request'],
-    auth: 'Write tools require Authorization: Bearer <per-user-mcp-token>. Generate via POST /api/auth/mcp-token.',
+    auth:
+      'Write tools accept either an MCP OAuth access token (see the "oauth" field below — this is what ' +
+      'ChatGPT/Claude Desktop custom connectors should use) or a legacy per-user service token ' +
+      '(Authorization: Bearer <token>, POST /api/auth/mcp-token — for non-interactive/scripted use).',
+    oauth: {
+      authorizationServer: oidcProvider.issuer,
+      scopes: ['mcp:read', 'mcp:write'],
+    },
   });
 });
 
