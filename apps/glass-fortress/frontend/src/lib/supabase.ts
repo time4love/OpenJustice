@@ -24,10 +24,22 @@ export interface SupabaseUser {
   email?: string;
 }
 
-/** Send a magic-link email. Resolves on success, throws on error. */
-export async function sendMagicLink(email: string): Promise<void> {
+/**
+ * Send a magic-link email. Resolves on success, throws on error.
+ *
+ * redirectTo, when given, MUST be a query param on the request URL, not a
+ * JSON body field — GoTrue's redirect resolution (getRedirectTo in its own
+ * source) reads it via r.Header.Get("redirect_to") or r.Form.Get("redirect_to"),
+ * and Go's ParseForm() never parses a JSON body, only the URL's query string
+ * (or an actual x-www-form-urlencoded body, which this isn't). Matches how
+ * getGoogleOAuthUrl below already passes redirect_to, for the same reason.
+ */
+export async function sendMagicLink(email: string, redirectTo?: string): Promise<void> {
   const { url, key } = getConfig();
-  const res = await fetch(`${url}/auth/v1/otp`, {
+  const endpoint = redirectTo
+    ? `${url}/auth/v1/otp?${new URLSearchParams({ redirect_to: redirectTo }).toString()}`
+    : `${url}/auth/v1/otp`;
+  const res = await fetch(endpoint, {
     method: 'POST',
     headers: authHeaders(key),
     body: JSON.stringify({ email, type: 'magiclink' }),

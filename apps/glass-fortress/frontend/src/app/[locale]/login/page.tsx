@@ -13,7 +13,7 @@ import { Link } from '@/i18n/navigation';
 // Handle setup step — shown after first login when no Researcher record exists
 // ---------------------------------------------------------------------------
 
-function HandleSetupStep() {
+function HandleSetupStep({ returnTo }: { returnTo: string | null }) {
   const t = useTranslations('auth');
   const { accessToken, login } = useAuth();
   const router = useRouter();
@@ -40,9 +40,10 @@ function HandleSetupStep() {
         setError((body as { error?: string }).error ?? t('registerFailed'));
         return;
       }
-      // Refresh profile in context then go to profile page
+      // Refresh profile in context then go to profile page (or back to
+      // whatever flow — e.g. an OAuth consent screen — sent us here)
       await login(accessToken);
-      router.push('/profile');
+      router.push(returnTo ?? '/profile');
     } catch {
       setError(t('registerFailed'));
     } finally {
@@ -85,19 +86,24 @@ function HandleSetupStep() {
 // Magic link + Google login step
 // ---------------------------------------------------------------------------
 
-function LoginStep() {
+function LoginStep({ returnTo }: { returnTo: string | null }) {
   const t = useTranslations('auth');
   const [email, setEmail] = useState('');
   const [sent, setSent] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
+  function callbackUrl(): string {
+    const base = `${window.location.origin}/auth/callback`;
+    return returnTo ? `${base}?returnTo=${encodeURIComponent(returnTo)}` : base;
+  }
+
   async function handleMagicLink(e: FormEvent) {
     e.preventDefault();
     setLoading(true);
     setError('');
     try {
-      await sendMagicLink(email.trim());
+      await sendMagicLink(email.trim(), callbackUrl());
       setSent(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : t('sendFailed'));
@@ -107,8 +113,7 @@ function LoginStep() {
   }
 
   function handleGoogle() {
-    const redirectTo = `${window.location.origin}/auth/callback`;
-    window.location.href = getGoogleOAuthUrl(redirectTo);
+    window.location.href = getGoogleOAuthUrl(callbackUrl());
   }
 
   if (sent) {
@@ -184,6 +189,7 @@ function LoginPageContent() {
   const t = useTranslations('auth');
   const searchParams = useSearchParams();
   const step = searchParams.get('step');
+  const returnTo = searchParams.get('returnTo');
 
   return (
     <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
@@ -198,7 +204,7 @@ function LoginPageContent() {
           )}
         </div>
 
-        {step === 'handle' ? <HandleSetupStep /> : <LoginStep />}
+        {step === 'handle' ? <HandleSetupStep returnTo={returnTo} /> : <LoginStep returnTo={returnTo} />}
       </div>
     </div>
   );

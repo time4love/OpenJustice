@@ -105,3 +105,12 @@ const configuration: Configuration = {
 };
 
 export const oidcProvider = new Provider(resolveIssuer(), configuration);
+
+// Railway (like most PaaS) terminates TLS at its edge and forwards plain HTTP
+// to the container — without this, oidc-provider (a Koa app) builds every
+// per-request absolute URL (authorization_endpoint, jwks_uri, ...) as http://
+// even though `issuer` itself is https://, because it reads the scheme off
+// the actual incoming request rather than the static issuer string. Confirmed
+// live on staging before this line existed: discovery correctly reported
+// issuer as https, but authorization_endpoint/jwks_uri were http.
+oidcProvider.proxy = true;

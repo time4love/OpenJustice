@@ -15,9 +15,15 @@ import { apiUrl } from '@/lib/api';
 // Flow:
 //   1. Parse access_token from window.location.hash
 //   2. Call login() to store token + fetch profile
-//   3. If Researcher exists → /profile
-//   4. If no Researcher (404) → /login?step=handle (first-time login)
+//   3. If Researcher exists → returnTo (if present, e.g. an OAuth consent
+//      screen — see oauth/interaction/[uid]) or /profile
+//   4. If no Researcher (404) → /login?step=handle, carrying returnTo along
 //   5. On error → /login with error message
+//
+// returnTo is read from window.location.search, not useSearchParams() — a
+// plain query param survives the redirect from LoginStep's callbackUrl()
+// fine, and reading it this way (matching how the hash is already parsed
+// below) avoids needing a Suspense boundary around this page.
 // ---------------------------------------------------------------------------
 
 export default function AuthCallbackPage() {
@@ -32,6 +38,7 @@ export default function AuthCallbackPage() {
       const params = new URLSearchParams(hash);
       const accessToken = params.get('access_token');
       const errorDescription = params.get('error_description');
+      const returnTo = new URLSearchParams(window.location.search).get('returnTo');
 
       if (errorDescription) {
         setErrorMsg(errorDescription);
@@ -53,14 +60,15 @@ export default function AuthCallbackPage() {
       // Store token and load profile into context
       await login(accessToken);
 
+      const returnToSuffix = returnTo ? `&returnTo=${encodeURIComponent(returnTo)}` : '';
       if (meRes.status === 404) {
         // First login — send to handle setup
-        router.push('/login?step=handle');
-      } else if (meRes.ok) {
-        router.push('/profile');
+        router.push(`/login?step=handle${returnToSuffix}`);
       } else {
-        // Unexpected error — still logged in, go to profile which will show approval state
-        router.push('/profile');
+        // Either confirmed OK, or an unexpected /me error — either way the
+        // user is logged in at this point, so proceed the same either way;
+        // /profile (or the caller's returnTo) will show approval state.
+        router.push(returnTo ?? '/profile');
       }
     }
 

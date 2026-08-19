@@ -28,6 +28,7 @@ import { prisma } from './lib/prisma';
 import { verifyEnvironmentIdentityAtStartup } from './lib/appEnv';
 import { requireStagingAccess } from './middleware/stagingAccess';
 import { oidcProvider } from './oauth/oidcProvider';
+import { oauthInteractionRouter } from './routes/oauthInteractionRoutes';
 import { VectorStoreService } from './services/VectorStoreService';
 
 // ---------------------------------------------------------------------------
@@ -86,7 +87,13 @@ app.get('/health', (_req: Request, res: Response) => {
 // would make it untestable by any real MCP client, on staging, ever. This does
 // not weaken real security — registering a client or starting `/oauth/auth`
 // grants nothing by itself; every subsequent step still requires an approved
-// Researcher to complete the (not yet built, see Phase 3) login/consent step.
+// Researcher to complete the login/consent step (oauthInteractionRouter,
+// below) — which is exactly what re-verifies approval for real.
+//
+// oauthInteractionRouter is registered BEFORE the oidcProvider.callback()
+// catch-all so Express matches its more specific /oauth/interaction/* paths
+// first; oidc-provider itself serves no routes under that path.
+app.use('/oauth/interaction', oauthInteractionRouter);
 app.use('/oauth', oidcProvider.callback());
 
 // Everything below requires the staging bearer token once APP_ENV=staging.
