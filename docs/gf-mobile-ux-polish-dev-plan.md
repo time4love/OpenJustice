@@ -1,15 +1,16 @@
 # GF Mobile UX Polish — Dev Plan
 
-**Status:** Phases 1–3, 5–6 ✅ SHIPPED TO STAGING — PR #47 (`fix/gf-mobile-ux-polish` → `staging`,
-2026-08-18) and PR #49 (`fix/gf-evidence-page-header-consistency` → `staging`, 2026-08-19), both
-merged, both branches deleted, both staging services (`glass-fortress-frontend`,
-`glass-fortress-backend`) redeployed and verified live/green after each. **Phase 6 item 9**
-(`ThesisHighlightCard` link fix, §6) done 2026-08-19 on `staging` directly but **not yet
-committed** — awaiting a COMMIT. Neither PR is on `master` (no SHIP). Phase 4 (icon scale /
-chip-color design pass, now §8) not started. All findings below are confirmed against staging
-(mobile viewport, Hebrew/RTL locale) and cross-checked in source — file:line references verified
-2026-08-18/19 (Phases 1–3, 5–6's references updated post-implementation; §8 reflects the original
-investigation and may shift slightly once actually picked up).
+**Status:** Phases 1–3, 5–6 items 1–10 ✅ SHIPPED TO STAGING — PR #47 (`fix/gf-mobile-ux-polish` →
+`staging`, 2026-08-18), PR #49 (`fix/gf-evidence-page-header-consistency` → `staging`, 2026-08-19),
+and PR #50 (`fix/gf-call-thesis-card-links` → `staging`, 2026-08-19, Phase 6 items 9–10), all
+merged, all branches deleted, both staging services (`glass-fortress-frontend`,
+`glass-fortress-backend`) redeployed and verified live/green after each. None of the three are on
+`master` (no SHIP). **Phase 6 items 11–12 (`ThesisHighlightCard` unification, PDF-report-button
+fix) are implemented and verified locally but not yet committed/shipped.** Phase 4
+(icon scale / chip-color design pass, now §8) not started. All findings below are confirmed against
+staging (mobile viewport, Hebrew/RTL locale) and cross-checked in source — file:line references
+verified 2026-08-18/19 (Phases 1–3, 5–6's references updated post-implementation; §8 reflects the
+original investigation and may shift slightly once actually picked up).
 **Created:** 2026-08-18, from a staging UX review requested after the thesis/call-for-evidence
 work landed (PR #37–#45, see [gf-thesis-citation-footnotes-dev-plan.md](gf-thesis-citation-footnotes-dev-plan.md)).
 **Scope:** Primarily Glass Fortress frontend (`apps/glass-fortress/frontend`) — Phases 1–5 are
@@ -429,6 +430,35 @@ Frontend: `tsc --noEmit` clean, lint diff against baseline shows zero new errors
     "Submit Document" to match (English `foiaBtn` already read "Generate FOIA Letter" on both
     sides, no change needed there). Verified live: both buttons read "בקשת חופש מידע"/"שלח מסמך" in
     Hebrew, matching the call page exactly.
+11. **`ThesisHighlightCard`'s three near-identical variants collapsed into one**, per direct user
+    feedback ("נראה שיש כאן שכפול קוד לשני כרטיסים שנראים ממש זהים") after seeing item 9's fix
+    applied only to the `compact` variant and not showing up on the homepage — the homepage's
+    `featured`/`default` variants were a separate, undiffed code path. Rather than re-patch two more
+    copies of the same link bug, removed the `variant` prop entirely: one card design (the
+    `/call`-page look, per the user's explicit preference — "עדיף להשתמש במראה הכרטיסייה בדף
+    החקירות כפי שהוא גם בדף הבית"), one set of links. The homepage's `featuredLabel`
+    ("התיק המוביל") pill was dropped along with the `featured` variant; both homepage call sites
+    (featured + secondary card grids) now pass the same `labels` shape as `/call/page.tsx`, adding
+    the previously-`compact`-only `mentionsLabel`. `home.topThesesFeaturedLabel` removed from
+    `messages/*.json` (dead), `home.mentionsLabel` added. Verified: `tsc --noEmit` clean, lint
+    clean, live on staging-connected local dev — homepage investigation cards now link "View Case" →
+    `/theses/:id` and "N open gaps" → `/call/:id`, matching `/call` exactly, no visual regression on
+    either grid.
+12. **"Download PDF Report" button on the forensic drill-down page (`/forensics/[trackedUrlId]`)
+    was 401ing on staging** — a pre-existing bug, not a regression from this session's other
+    changes. Root cause: the button was a plain `<a href={apiUrl(...)} target="_blank">`, and
+    staging's API auth (`x-staging-token` header) is attached by patching `window.fetch`
+    (`src/lib/stagingApiAuth.ts`) — a raw `<a href>` navigation never goes through `fetch()` at all,
+    so it always hit the backend's staging gate unauthenticated. Confirmed via direct `curl`: no
+    token → 401, with `x-staging-token` → passes auth (404 only because the test ID doesn't exist).
+    Fixed by replacing the `<a>` with a button that does a real `fetch()` (carrying the patched
+    auth header) → reads the response as a blob → `URL.createObjectURL()` → `window.open()`,
+    preserving the same "opens in a new tab, browser print-dialog saves as PDF" UX
+    (`forensics/[trackedUrlId]/page.tsx`, new `openReport()` + `reportLoading` state). Verified live:
+    request to `/api/forensics/tracked/:id/report` now returns 200 (was 401 before the fix).
+    **Flagged, not yet audited:** other `<a href={apiUrl(...)}>`-style direct-download links
+    elsewhere in the codebase may share this same staging-auth gap — worth a dedicated sweep, not
+    done this session since only this one instance was reported.
 
 ---
 

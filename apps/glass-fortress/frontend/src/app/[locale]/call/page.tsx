@@ -74,7 +74,6 @@ export default function CallIndexPage() {
               <ThesisHighlightCard
                 key={thesis.id}
                 thesis={thesis}
-                variant="compact"
                 labels={{
                   noTitle: t('defaultTitle'),
                   gapsLabel: thesis.openGapCount > 0
