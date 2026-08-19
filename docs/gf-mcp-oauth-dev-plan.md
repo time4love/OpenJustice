@@ -703,6 +703,23 @@ like they share a domain is misleading — check the actual Public Suffix List b
 subdomains are same-site for cookie purposes. Any future feature that leans on a cookie between these two
 specific hosts needs `sameSite: 'none'` from the start, not as an afterthought.
 
+### ✅ claude.ai connector — FULLY VERIFIED END-TO-END 2026-08-19
+
+After §7.0–§7.0g, a real claude.ai custom connector completed the entire chain for the first time:
+DCR → PKCE authorization request (with `resource` param) → Google login via GF's own session →
+consent screen → resource-bound access token → an actual write tool call
+(`create_research_session`) reaching the real handler and succeeding. Verified live, not just by the
+tool call itself: it correctly reported "no previous session was open, so nothing got auto-closed" —
+proof the call reached real application logic and real staging data (thesis `cmsyrk73800023f8cunfp4r4w`
+from an earlier session, not a stub), and that a subsequent test with a nonexistent thesis ID
+(`test-123`) correctly 404'd with real validation rather than any kind of auth failure. This closes out
+the original motivating goal of this entire plan for the claude.ai client.
+
+Remaining Phase 5 targets (Claude Desktop, Claude Code, ChatGPT) are unaffected by this success and
+still need their own live verification — none of §7.0–§7.0g's fixes were claude.ai-specific, so there
+is no strong reason to expect the same bugs recur, but per this plan's own repeated lesson, that must be
+confirmed live, not assumed.
+
 ---
 
 ## 8. Phase 6 — Legacy token deprecation (per §2.3 decision)
