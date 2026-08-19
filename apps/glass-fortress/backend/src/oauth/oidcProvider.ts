@@ -1,4 +1,4 @@
-import { Provider } from 'oidc-provider';
+import { Provider, errors } from 'oidc-provider';
 import type { Account, Configuration, KoaContextWithOIDC } from 'oidc-provider';
 import { prisma } from '../lib/prisma';
 import { PrismaOidcAdapter } from './prismaOidcAdapter';
@@ -21,12 +21,14 @@ import { PrismaOidcAdapter } from './prismaOidcAdapter';
 // - `interactions.url` points at a frontend route
 //   (`/oauth/interaction/:uid`) that Phase 3 has not built yet — visiting
 //   `/oauth/auth` today redirects to a 404. That's expected at this phase.
-// - No resource-indicator (RFC 8707) audience restriction configured yet —
-//   deferred to Phase 5 alongside real-client verification, once we know
-//   what Claude/ChatGPT actually send. (RFC 9728 protected-resource
-//   metadata itself — a related but distinct requirement, discovery rather
-//   than audience binding — is now implemented: resourceMetadata.ts,
-//   wellKnownRoutes.ts.)
+// - Resource-indicator (RFC 8707) support: implemented (features.resourceIndicators
+//   below), after a real claude.ai connector attempt proved this wasn't optional —
+//   the MCP spec MUST-requires clients to send a `resource` param, and without
+//   this feature enabled oidc-provider rejects any request that includes one with
+//   `invalid_target`. That rejection happens at /oauth/auth itself, before any
+//   redirect to our interaction page — which is why every earlier attempt looked
+//   like "the browser briefly opens then fails" with zero traffic ever reaching
+//   the frontend. Caught from a real browser's Network tab, not guessed.
 // ---------------------------------------------------------------------------
 
 // Exported standalone (rather than inlined into `configuration`) so both can be
@@ -57,6 +59,22 @@ export async function findAccount(
     accountId: researcher.id,
     claims: () => ({ sub: researcher.id }),
   };
+}
+
+// We only ever have exactly one resource in this whole system — reject
+// anything else outright rather than silently accepting an unrecognized
+// `resource` value. Because a token can only be minted for a resource that
+// passed this check, a successfully-issued token is inherently already
+// bound to our resource — the audience-validation guarantee the MCP spec
+// asks for, satisfied by construction rather than a separate check.
+export function getResourceServerInfo(
+  resourceIndicator: string,
+  env: NodeJS.ProcessEnv = process.env,
+): { scope: string } {
+  if (resourceIndicator !== `${resolveOrigin(env)}/api/mcp`) {
+    throw new errors.InvalidTarget();
+  }
+  return { scope: 'mcp:read mcp:write' };
 }
 
 const configuration: Configuration = {
@@ -92,6 +110,12 @@ const configuration: Configuration = {
     },
     revocation: { enabled: true },
     introspection: { enabled: true },
+
+    resourceIndicators: {
+      enabled: true,
+      defaultResource: () => `${resolveOrigin()}/api/mcp`,
+      getResourceServerInfo: (_ctx, resourceIndicator) => getResourceServerInfo(resourceIndicator),
+    },
   },
 
   ttl: {
