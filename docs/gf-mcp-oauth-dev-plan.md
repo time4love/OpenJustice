@@ -638,6 +638,28 @@ Do not treat spec compliance as sufficient evidence — each client's actual OAu
 historically had quirks (fixed redirect ports, specific `response_type`/`code_challenge_method`
 expectations) that only surface by actually connecting.
 
+### 7.0f — ✅ DONE 2026-08-19: doubled locale prefix on `returnTo` (`/he/he/oauth/interaction/...` 404)
+
+First real end-to-end sign of life: the user's actual Google login via claude.ai's popup completed
+successfully (§7.0e's fix held) and landed on
+`https://glass-fortress-frontend-staging.up.railway.app/he/he/oauth/interaction/<uid>` — 404, doubled
+locale segment.
+
+Root cause: `OAuthInteractionClient.tsx` captured `returnTo` from `window.location.pathname` when
+redirecting an unauthenticated visitor to `/login` — but at that point next-intl's own routing had
+already resolved the URL to its locale-prefixed form (`/he/oauth/interaction/<uid>`), so `returnTo`
+was already locale-prefixed. That value threads unchanged through `/login` → Google → `/auth/callback`,
+where `auth/callback/page.tsx` calls `router.push(returnTo)` using the locale-aware router from
+`@/i18n/navigation` — which prepends the current locale a second time, since it has no way to know the
+path it was given was already prefixed.
+
+Fixed by adding `stripLocale()` to `OAuthInteractionClient.tsx` (mirrors `proxy.ts`'s existing
+`withoutLocale()`, using `routing.locales` from `@/i18n/routing`) and applying it to
+`window.location.pathname` before it's used as `returnTo` — matching how `/login?step=handle` and
+`/profile` are already passed as bare, locale-agnostic paths elsewhere in this same chain. `returnTo`
+now stays locale-agnostic through the whole `/login` → Google → `/auth/callback` round trip, so the
+locale-aware `router.push()` at the end adds it exactly once. `tsc --noEmit` clean.
+
 ---
 
 ## 8. Phase 6 — Legacy token deprecation (per §2.3 decision)
