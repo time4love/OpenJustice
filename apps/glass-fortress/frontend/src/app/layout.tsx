@@ -14,6 +14,17 @@ const geistMono = Geist_Mono({
   subsets: ['latin'],
 });
 
+// Without an explicit base, Next.js resolves relative metadata URLs (like the
+// og:image the opengraph-image.tsx route convention emits) against the
+// container's own address rather than the site's real one — link previews
+// (WhatsApp, social shares) then try to fetch an unreachable
+// `http://localhost:8080/...` and silently show no image. Railway injects
+// `RAILWAY_PUBLIC_DOMAIN` per-service, so this is correct on both staging and
+// production without hardcoding either domain.
+const metadataBase = process.env.RAILWAY_PUBLIC_DOMAIN
+  ? new URL(`https://${process.env.RAILWAY_PUBLIC_DOMAIN}`)
+  : new URL('http://localhost:3011');
+
 // A function rather than a static object so `APP_ENV` is read at request time:
 // the same build must be able to serve production and staging.
 export async function generateMetadata(): Promise<Metadata> {
@@ -24,6 +35,7 @@ export async function generateMetadata(): Promise<Metadata> {
     'AI-powered legal evidence discovery & accountability platform for the Covid-19 class-action lawsuit.';
 
   return {
+    metadataBase,
     title,
     description,
     openGraph: {
