@@ -352,6 +352,7 @@
     "authorPlaceholder": "0x…",
     "saveDraftBtn": "Save Draft",
     "savingBtn": "Saving…",
+    "loading": "Loading…",
     "draftSaved": "Draft saved",
     "evaluateBtn": "Run Falsification Check",
     "evaluatingBtn": "Checking…",

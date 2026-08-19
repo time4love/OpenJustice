@@ -17,10 +17,27 @@ const geistMono = Geist_Mono({
 // A function rather than a static object so `APP_ENV` is read at request time:
 // the same build must be able to serve production and staging.
 export async function generateMetadata(): Promise<Metadata> {
+  // "Glass Fortress" is internal/backend naming only — never user-facing,
+  // including in link previews (WhatsApp, social shares).
+  const title = 'צדק לעם - תיק הקורונה';
+  const description =
+    'AI-powered legal evidence discovery & accountability platform for the Covid-19 class-action lawsuit.';
+
   return {
-    title: 'Glass Fortress — Evidence Vault',
-    description:
-      'AI-powered legal evidence discovery & accountability platform for the Covid-19 class-action lawsuit.',
+    title,
+    description,
+    openGraph: {
+      title,
+      description,
+      siteName: title,
+      locale: 'he_IL',
+      type: 'website',
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title,
+      description,
+    },
     // Non-production deployments hold unreviewed test data and must never be
     // indexed, even if the access gate is somehow bypassed.
     ...(isProduction() ? {} : { robots: { index: false, follow: false } }),

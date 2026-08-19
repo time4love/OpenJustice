@@ -396,7 +396,7 @@ function ThesisPageInner({ id }: { id: string }) {
   if (loading) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-        <p className="text-slate-500 text-sm">{t('savingBtn')}</p>
+        <p className="text-slate-500 text-sm">{t('loading')}</p>
       </div>
     );
   }
