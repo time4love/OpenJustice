@@ -96,6 +96,20 @@ app.get('/health', (_req: Request, res: Response) => {
 app.use('/oauth/interaction', oauthInteractionRouter);
 app.use('/oauth', oidcProvider.callback());
 
+// /api/mcp also stays above the staging gate, for the same reason /oauth
+// does: an external MCP client (ChatGPT in particular) that completes the
+// full OAuth dance above still has no way to attach a custom X-Staging-Token
+// header to its actual tool calls — gating this route would make write
+// tools untestable by any real MCP client on staging, permanently. This
+// does not weaken security: read tools are already unauthenticated on
+// production (same exposure, not a new one), and write tools are still
+// fully gated by resolveResearcher()'s own OAuth/legacy-token + approved-
+// researcher check inside mcpRouter — the staging pre-shared secret was
+// never that check, just a coarser "keep the whole unfinished site private"
+// layer that doesn't compose with a subsystem designed for arbitrary
+// self-service external clients.
+app.use('/api/mcp', mcpRouter);
+
 // Everything below requires the staging bearer token once APP_ENV=staging.
 // /health stays above this line so Railway's platform healthcheck, which
 // carries no auth header, keeps working.
@@ -126,7 +140,6 @@ app.use('/api/forensics', forensicsRouter);
 app.use('/api/figures', figuresRouter);
 app.use('/api/mentions', mentionRouter);
 app.use('/api/thesis', thesisRouter);
-app.use('/api/mcp', mcpRouter);
 app.use('/api/auth', authRouter);
 
 // ---------------------------------------------------------------------------
