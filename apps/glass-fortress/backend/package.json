@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "description": "",
   "main": "dist/server.js",
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "dev": "prisma generate && ts-node-dev --respawn --transpile-only --ignore-watch node_modules --ignore-watch dist --ignore-watch prisma src/server.ts",
     "build": "prisma generate && tsc --project tsconfig.json",
@@ -33,6 +36,7 @@
     "express": "^5.2.1",
     "jsdom": "^29.1.1",
     "multer": "^2.2.0",
+    "oidc-provider": "^9.11.2",
     "zod": "^4.4.3"
   },
   "devDependencies": {
@@ -43,6 +47,7 @@
     "@types/jsdom": "^28.0.3",
     "@types/multer": "^2.2.0",
     "@types/node": "^26.1.1",
+    "@types/oidc-provider": "^9.11.0",
     "@types/supertest": "^7.2.1",
     "eslint": "^10.7.0",
     "eslint-config-prettier": "^10.1.8",

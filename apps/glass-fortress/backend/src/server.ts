@@ -27,6 +27,7 @@ import { authRouter } from './routes/authRoutes';
 import { prisma } from './lib/prisma';
 import { verifyEnvironmentIdentityAtStartup } from './lib/appEnv';
 import { requireStagingAccess } from './middleware/stagingAccess';
+import { oidcProvider } from './oauth/oidcProvider';
 import { VectorStoreService } from './services/VectorStoreService';
 
 // ---------------------------------------------------------------------------
@@ -76,6 +77,17 @@ app.use(express.json({ limit: '20mb' }));
 app.get('/health', (_req: Request, res: Response) => {
   res.json({ status: 'Glass Fortress Backend is Alive' });
 });
+
+// /oauth/* (docs/gf-mcp-oauth-dev-plan.md, Phase 2) also stays above the staging
+// gate, for the same reason /health does — but a different actual requirement:
+// Dynamic Client Registration and OAuth discovery metadata must be reachable by
+// an arbitrary external client (Claude, ChatGPT) with no pre-shared secret at
+// all, which is the entire point of DCR. Gating it behind the staging token
+// would make it untestable by any real MCP client, on staging, ever. This does
+// not weaken real security — registering a client or starting `/oauth/auth`
+// grants nothing by itself; every subsequent step still requires an approved
+// Researcher to complete the (not yet built, see Phase 3) login/consent step.
+app.use('/oauth', oidcProvider.callback());
 
 // Everything below requires the staging bearer token once APP_ENV=staging.
 // /health stays above this line so Railway's platform healthcheck, which
