@@ -1,10 +1,23 @@
 # Staging Environment — Dev Plan
 
-**Status:** Phases 0, 0b, 1, 2, 3 and 4 COMPLETE — **staging is live, password-gated and `noindex`**.
-Phase 3 **shipped to production** 2026-08-15 (`ebbcc29`); production is unchanged except that the
-backend now logs its database identity at boot and `/icon.png` is served again. Phase 5 (demo prep)
-remains.
-**Last updated:** 2026-08-15 — 495/495 backend tests, frontend builds clean.
+**Status:** Phases 0, 0b, 1, 2, 3 and 4 COMPLETE — **staging is live, password-gated and `noindex`**,
+and the backend API is now gated too (§9). Phase 3 **shipped to production** 2026-08-15 (`ebbcc29`);
+production is unchanged except that the backend now logs its database identity at boot and
+`/icon.png` is served again. **Phase 5 (demo prep) is unblocked and ready to run** — both blockers
+(backend API gate, on-chain registration) closed 2026-08-16. Homepage redesign + hero animation +
+staging debug console landed 2026-08-16/17 (§9).
+**Last updated:** 2026-08-17 — frontend typechecks clean, production build succeeds.
+
+✅ **Railway branch binding: RESOLVED 2026-08-18.** After breaking three times (see §9 history below),
+the real root cause was found: the CLI's `railway service source connect` calls a service-level
+mutation with no per-environment scoping, so it always overwrote every environment's binding at once.
+The actual per-environment setting is a separate `DeploymentTrigger` object per (service, environment)
+pair, reachable only via `railway api ... deploymentTriggerUpdate`. Production is now durably on
+`master`, staging durably on `staging`, confirmed independent. **Standing rule: `LAND` and `SHIP` must
+never call the Railway API or CLI to trigger a deploy — only push/merge on GitHub, then read Railway's
+status.** Deployment happens purely because the branch push matches that environment's
+`DeploymentTrigger.branch`; nudging it manually is reserved for a deliberate, explicitly-requested
+infra fix, never a routine step. Full story: `gf-railway-branch-misconfig` in Claude's memory.
 
 | | |
 |---|---|
@@ -379,11 +392,14 @@ unrehearsed URL.
 | `NEXT_PUBLIC_API_URL` | prod backend | staging backend | |
 | `TOKEN_HMAC_SECRET` | prod secret | **new** secret | never share across envs |
 | `PII_SECRET_KEY` | prod secret | **new** secret | never share across envs |
-| `STAGING_ACCESS_SECRET` | — | new | password gate |
+| `STAGING_ACCESS_SECRET` | — | new | frontend password gate |
+| `STAGING_API_TOKEN` | — | new | backend bearer-token gate (2026-08-16) — **`Web3Service`-style: fails closed (503) if unset while `APP_ENV=staging`, does not disable gracefully** |
+| `NEXT_PUBLIC_STAGING_API_TOKEN` | — | new, same value | frontend — patches the global `fetch` |
 | `DEMO_MODE` | — | unset / `true` | suppresses the staging banner |
 | `PINATA_JWT` | set when live | **unset** | avoid permanently pinning test files to IPFS |
-| `EVIDENCE_REGISTRY_ADDRESS` | set after deploy | **unset** | `Web3Service` disables gracefully |
-| `RPC_URL` | Base mainnet | unset | |
+| `EVIDENCE_REGISTRY_ADDRESS` | set after mainnet deploy | Base Sepolia **testnet** contract (2026-08-16) | own contract, own wallet — separate from production's |
+| `RPC_URL` | Base mainnet | `https://sepolia.base.org` (2026-08-16) | |
+| `REGISTRAR_PRIVATE_KEY` | production wallet | throwaway testnet wallet (2026-08-16) | **never share this value across envs** — see `gf-staging-testnet-chain` in Claude's memory |
 | `ANTHROPIC_API_KEY` | shared | shared | token cost only |
 | `GEMINI_API_KEY` | shared | shared | token cost only |
 | `*_PROVIDER` | same | same | |
@@ -421,27 +437,17 @@ Production is never modified except by Phase 0 step 5 (additive table) and step 
 ## 9. Open tasks arising (as of 2026-08-15)
 
 ### Next up
-1. **Gate the backend API before Phase 5 seeds real data.** Phase 3 gated the frontend only, as
-   specified. The staging backend is still open to anyone with the URL, and the frontend's `/api/*`
-   path is necessarily excluded from the proxy matcher — so the gate protects pages, not data.
-   Harmless today (staging is empty) and enough on its own to stop search indexing, but it must be
-   closed before real MOH findings go in. Shape: the same shared secret as an Express middleware
-   active when `APP_ENV != production`, accepting `Authorization: Bearer` or the cookie. Note the
-   browser calls the backend **cross-origin** (`NEXT_PUBLIC_API_URL` is set on staging), so the
-   cookie will not travel by itself — this needs a deliberate decision about credentialed CORS or a
-   token, not a copy of the frontend gate.
-2. ~~**Set `EXPECTED_SUPABASE_PROJECT_REF` on the production Railway services.**~~ **✅ Done
-   2026-08-15**, immediately after Phase 3 shipped. Set with `--skip-deploys` and read from
-   production's own `SUPABASE_URL`, so it could not be wrong and cost no second redeploy; it takes
-   effect from the next deploy onward. Both environments are now pinned.
-3. **Phase 5 — demo prep.** Seed staging by running the real intake and forensics flows (do not copy
-   production rows). Run 6–10 candidate MOH URLs, record findings and wall-clock time, pick the 2–3
-   strongest, rehearse.
-4. **Upgrade Railway to Hobby** before the free trial lapses, then set a usage soft limit.
-5. **No rate limit on the unlock form.** Acceptable against a long shared secret over HTTPS, and
+1. **Phase 5 — demo prep.** Both prior blockers are now resolved (see Done below): the backend API
+   is gated, and evidence confirm/promote works end-to-end against a dedicated Base Sepolia testnet
+   deploy. Verified with a real scan (the rtmag.co.il MOH vaccine-side-effects article) reaching
+   `CONFIRMED` status with an on-chain testnet tx. Seed staging by running the real intake and
+   forensics flows (do not copy production rows — `Whistleblower` holds encrypted PII). Run 6–10
+   candidate MOH URLs, record findings and wall-clock time, pick the 2–3 strongest, rehearse.
+2. **Upgrade Railway to Hobby** before the free trial lapses, then set a usage soft limit.
+3. **No rate limit on the unlock form.** Acceptable against a long shared secret over HTTPS, and
    the deployment is a single instance so an in-memory throttle would work if it stops being
    acceptable. Revisit if the password is ever shortened for demo convenience.
-6. **"Glass Fortress" is still user-facing** in the browser tab title (`src/app/layout.tsx`) and on
+4. **"Glass Fortress" is still user-facing** in the browser tab title (`src/app/layout.tsx`) and on
    the login page (`← Glass Fortress`), against the rule that it is backend terminology only. Not
    touched here — it is production-visible branding, outside this phase.
 
@@ -451,6 +457,77 @@ Production is never modified except by Phase 0 step 5 (additive table) and step 
    project. Free-plan projects pause after ~7 days idle — add a weekly ping and always warm it up the
    day before a demo. Then send: pooler URI (6543), direct URI (5432), project URL, anon key,
    service-role key.~~ **✅ Done — project created on the paid Pro org ($10/mo).**
+
+~~**Set `EXPECTED_SUPABASE_PROJECT_REF` on the production Railway services.**~~ **✅ Done 2026-08-15**,
+immediately after Phase 3 shipped. Set with `--skip-deploys` and read from production's own
+`SUPABASE_URL`, so it could not be wrong and cost no second redeploy. Both environments are pinned.
+
+~~**Gate the backend API before Phase 5 seeds real data.**~~ **✅ Done 2026-08-16.**
+`requireStagingAccess` Express middleware, active only when `APP_ENV=staging`: fails closed (503) if
+`STAGING_API_TOKEN` isn't set, 401s on a missing/wrong `X-Staging-Token` header, no-ops in
+production. Frontend attaches the token via a one-time global `fetch` patch
+(`src/lib/stagingApiAuth.ts`), since the browser calls the backend cross-origin on staging and none
+of the ~50 call sites shared a wrapper. `STAGING_API_TOKEN` / `NEXT_PUBLIC_STAGING_API_TOKEN` are set
+on staging Railway. Verified live: 401 without the token, 200 with it.
+
+**2026-08-18 fix:** the gate originally used `Authorization: Bearer <token>` — the same header
+researcher/MCP write-tool auth (`resolveResearcher`) and Supabase auth (`requireSupabaseAuth`) read
+on the same requests for a *different* secret, so no request could satisfy both. Moved the gate to a
+dedicated `X-Staging-Token` header so `Authorization` is free for researcher/Supabase credentials.
+
+~~**On-chain registration was hard-broken on staging.**~~ **✅ Done 2026-08-16.** Every
+evidence-confirming endpoint (`/evidence/confirm`, `/evidence/promote`, `/forensics/promote`)
+unconditionally requires `Web3Service` (`RPC_URL`, `REGISTRAR_PRIVATE_KEY`,
+`EVIDENCE_REGISTRY_ADDRESS`), which staging had deliberately never set — so evidence could reach
+"draft" via `/evidence/intake` but never actually confirm. Fixed with a dedicated `EvidenceRegistry`
+deploy to Base Sepolia **testnet**, own throwaway wallet — deliberately separate from the pending
+mainnet deploy. Verified end-to-end: a real scan reached `CONFIRMED` with an on-chain testnet
+`txHash`. Full story in Claude's memory (`gf-staging-testnet-chain`) if this needs revisiting.
+
+~~**Production Railway services were deploying from the wrong branch.**~~ **✅ Fixed 2026-08-16,
+recurred on staging 2026-08-17, fixed again.** `glass-fortress-frontend` and `glass-fortress-backend`
+in the `production` Railway environment were configured to track the `staging` branch, not `master` —
+meaning every merge to `staging` (LAND) had been silently deploying straight to production, bypassing
+the explicit SHIP approval step, for an unknown prior period. Repointed both to `master` via `railway
+service source connect --branch master --environment production`, redeployed `--from-source`,
+verified live.
+
+The next day, the **staging** services stopped auto-deploying entirely — a LAND produced no new
+deployment for 20+ minutes, and manually running `redeploy --from-source` still deployed the *old*
+commit while reporting `SUCCESS`, proving the source binding wasn't actually tracking `staging`'s live
+tip. Re-running `service source connect --branch staging` (same fix, same command, different branch)
+resolved it immediately — but the next day's tech-debt cleanup session flipped production back to
+`staging` again, proving each "fix" was just undoing the previous one.
+
+**✅ Root-caused and fixed for real, 2026-08-18.** `railway service source connect` calls the
+`serviceConnect` GraphQL mutation, which takes a `serviceId` but **no `environmentId`** — it can't
+help but touch every environment at once. The actual data model already supports independent
+per-environment branches: each `(service, environment)` pair has its own `DeploymentTrigger` record
+(`branch`, `serviceId`, `environmentId`, own `id`), reachable via `railway api`'s GraphQL access
+(`deploymentTriggers(projectId, environmentId, serviceId)` to find the id, `deploymentTriggerUpdate(id,
+input:{branch})` to set it) — never through the CLI's `source connect` subcommand. Repointed
+production's two `DeploymentTrigger` records to `master`, confirmed staging's separate records were
+never touched (different ids, never referenced), redeployed, verified live. **This is what makes the
+binding durable going forward — no architectural split into 4 services was needed.** Full story:
+`gf-railway-branch-misconfig` in Claude's memory.
+
+~~**GF homepage was a bare stats-strip-and-list.**~~ **✅ Redesigned 2026-08-16/17**, three PRs,
+all LANDed: (1) magazine-style highlights homepage — animated stats, mission teaser, top theses
+re-ranked by strength (was raw open-gap count), a new `GET /api/evidence/latest` endpoint powering a
+latest-evidence grid, a whistleblower CTA, framer-motion scroll reveals; (2) hero background redesign
+— particles converge into randomized light masses instead of floating independently, each absorption
+at the top spawns a gold ray sized to the mass; (3) a staging-only floating debug console (🐞 button,
+gated identically to the staging banner) that surfaces console output, uncaught errors, and every
+fetch call with status/timing — built because staging showed 0 evidence on a mobile device with
+nothing on screen to explain why, most likely a silently-swallowed fetch failure rather than an actual
+DB problem. Full decisions (WB CTA button routing, "Smoking Gun" terminology flagged as legally-loaded
+but deferred, not fixed) and lessons (merge `staging` into a long-lived parallel branch before opening
+its PR, or the diff reverts everything already landed) in Claude's memory:
+`gf-homepage-magazine-redesign`.
+
+**Not yet done:** the original mobile "0 evidence" report was never actually diagnosed — the debug
+console was built to make the *next* occurrence visible, but nobody has looked at it on the mobile
+device that showed the problem yet. Do that next if it recurs.
 
 ### Arising from the classification work
 2. **Thesis-support relation — not built.** *Does this evidence support thesis X, and which gap does
