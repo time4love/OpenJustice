@@ -16,8 +16,19 @@ jest.mock('../src/lib/prisma', () => ({
     thesisVersion: { create: jest.fn() },
     researchSession: { findFirst: jest.fn().mockResolvedValue(null) },
     researchSessionEvent: { create: jest.fn() },
-    researcher: { findFirst: jest.fn() },
+    researcher: { findFirst: jest.fn(), findUnique: jest.fn() },
     $transaction: jest.fn(),
+  },
+}));
+
+// oidc-provider is pure ESM — see test/oauthInteractionRoutes.test.ts for why
+// this needs mocking under Jest even though the real runtime loads it fine.
+// This suite exercises the legacy static-token path only, so AccessToken.find
+// resolving undefined (not a recognized OAuth token) is all it needs.
+jest.mock('../src/oauth/oidcProvider', () => ({
+  oidcProvider: {
+    issuer: 'https://backend.test/oauth',
+    AccessToken: { find: jest.fn().mockResolvedValue(undefined) },
   },
 }));
 

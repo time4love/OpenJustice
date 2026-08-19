@@ -3,10 +3,12 @@
 **Status:** Phase 0 ✅ LOCKED. Phase 1 ✅ DONE, merged
 ([PR #55](https://github.com/time4love/OpenJustice/pull/55)). Phase 2 ✅ DONE, merged
 ([PR #56](https://github.com/time4love/OpenJustice/pull/56)) — a live-staging proxy-scheme bug found
-right after merging is fixed in the same branch as Phase 3, see §4.6. Phase 3 ✅ DONE 2026-08-19 (this
-session, not yet PR'd — see §5). Phase 4 (resource-server integration) is next. Created 2026-08-19,
-following the ChatGPT MCP compatibility check (`docs/gf-chatgpt-mcp-connector-guide.md`) and a user
-question about whether the current Claude MCP auth model is good enough on its own merits.
+right after merging is fixed in the same branch as Phase 3, see §4.6. Phase 3 ✅ DONE, merged
+([PR #57](https://github.com/time4love/OpenJustice/pull/57)) — JWKS/cookie keys still ephemeral, risk
+explicitly accepted by the user (§4.5/§5.5). Phase 4 ✅ DONE 2026-08-19 (this session, not yet PR'd — see
+§6). Phase 5 (real-client verification) is next. Created 2026-08-19, following the ChatGPT MCP
+compatibility check (`docs/gf-chatgpt-mcp-connector-guide.md`) and a user question about whether the
+current Claude MCP auth model is good enough on its own merits.
 **Scope:** Glass Fortress backend + frontend (`apps/glass-fortress/{backend,frontend}`). Bronze Fortress
 has a structurally different write-auth model (single shared `MCP_WRITE_TOKEN`, no per-researcher
 identity in its MCP layer) and is explicitly out of scope — see §9.
@@ -386,17 +388,61 @@ unprefixed path the rewrite (and this page's own fetch/form calls) target.
 
 ---
 
-## 6. Phase 4 — Resource-server integration (`mcpRoutes.ts`)
+## 6. Phase 4 — Resource-server integration — ✅ DONE 2026-08-19
 
-- `resolveResearcher()` (`mcpRoutes.ts:41-79`) gains an OAuth path: if the bearer token validates as an
-  active `node-oidc-provider` access token (introspection against the adapter, not a network round
-  trip — same process), resolve `researcherId` from the token's linked grant and check the `mcp:write`
-  scope; otherwise fall back to the existing `mcpTokenHash` lookup per §2.3's decision.
-- Both paths converge on the same `researcherContext.run({ researcherId }, ...)` call already in place —
-  no change needed to any individual tool handler.
-- Update the `GET /api/mcp` health/discovery response (`mcpRoutes.ts:173-182`) to advertise OAuth
-  support so clients that inspect it (and the `docs/gf-chatgpt-mcp-connector-guide.md` guide) reflect
-  reality once this ships.
+Built on `feature/gf-mcp-oauth-phase4-resource-server`, not yet PR'd.
+
+### 6.1 `resolveResearcher()` gains an OAuth path
+
+`mcpRoutes.ts` tries the presented bearer token as an OAuth access token first, via
+`oidcProvider.AccessToken.find(token)` — the exact same in-process lookup oidc-provider's own
+`userinfo`/`introspection` actions use internally (`lib/shared/access_token.js`, read directly rather
+than assumed, same rigor as Phase 3). No network round trip: resource server and authorization server
+are the same process, sharing the same Prisma-backed adapter.
+
+Three outcomes, modeled as a small discriminated union (`OAuthResolution`) rather than a chain of
+booleans, specifically so "not an OAuth token, try legacy" can't be confused with "was an OAuth token,
+but rejected":
+- **Not found** → falls through to the existing `mcpTokenHash` legacy lookup, unchanged (§2.3).
+- **Found, missing `mcp:write` scope** → `403`, does **not** fall through to legacy (a scoped-down token
+  should never accidentally succeed via a different path).
+- **Found, correct scope, but the linked `Researcher` isn't approved** (or no longer exists) → `403`.
+  Re-checked here independently of `findAccount`'s own re-check in `oidcProvider.ts` — approval can be
+  revoked between when a grant was issued and any individual tool call, and every call must reflect that,
+  not just login.
+- **Found, correct scope, approved** → `{ researcherId }`, flowing into the same
+  `researcherContext.run(...)` call every other path already used — no tool handler changed.
+
+`GET /api/mcp`'s discovery response gained an `oauth: { authorizationServer, scopes }` field (using
+`oidcProvider.issuer` directly) and an updated `auth` string describing both accepted credential shapes —
+this is what `docs/gf-mcp-oauth-dev-plan.md`'s own `gf-chatgpt-mcp-connector-guide.md` and any client
+inspecting the endpoint will see once Phase 5 revisits that guide.
+
+### 6.2 Verified for real, not just typechecked or mocked
+
+Unit tests (5 new in `mcpRoutes.test.ts`, mocking `oidcProvider.AccessToken.find`) cover all four
+outcomes above, including that a wrong-scope or not-approved token never falls through to the legacy
+`researcher.findFirst` lookup. Existing `test/mcpIntegration.test.ts` needed the same `oidc-provider`
+ESM-under-Jest mock every other test file touching `mcpRoutes.ts` already needs (see Phase 3's
+`oauthInteractionRoutes.test.ts`) — not a Phase 4 bug, just a new file that now transitively imports it.
+
+Then verified against a **second, independent process** — not just the same running server that issued
+the token, since that would only prove self-consistency, not that the storage/lookup is genuinely
+process-independent (i.e., actually durable in Postgres, not an in-memory cache accident): a throwaway
+script minted real `Grant`/`AccessToken` records through oidc-provider's own class API (`new
+oidcProvider.Grant(...)`, `.addOIDCScope('mcp:write')`, `new oidcProvider.AccessToken(...)`, `.save()`)
+against staging Postgres, and the raw token was used against the **separately running** dev server:
+- Valid `mcp:write` token → request reached the real tool handler (`close_research_session`), which
+  returned its own business-logic error ("No active session for thesis...") — proof the auth layer
+  accepted it and handed off correctly, not a mocked stand-in.
+- `mcp:read`-only token → `403`, correct message, confirmed it never touched the legacy Researcher lookup.
+- Garbage token → correctly fell through to the legacy path and was rejected there (`401`), with the
+  updated message mentioning both credential shapes.
+- Unauthenticated read tool call (`search_evidence`) → unaffected, `200`, same as before this phase.
+- `GET /api/mcp` → `oauth.authorizationServer` correctly reflects the real `https://…/oauth` issuer.
+- All test `Researcher`/`OidcModel` rows deleted from staging afterward.
+
+Full suite: 604/604 passing (599 + 5 new), `tsc --noEmit` clean both before and after.
 
 ---
 
