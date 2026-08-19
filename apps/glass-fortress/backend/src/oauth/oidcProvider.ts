@@ -124,6 +124,25 @@ const configuration: Configuration = {
   },
   rotateRefreshToken: true,
 
+  // `up.railway.app` is itself on the Public Suffix List (Railway registers
+  // it there, like other PaaS wildcard domains, precisely so different
+  // tenants' subdomains aren't treated as one site) — confirmed directly
+  // against the real PSL, not assumed. That makes our frontend and backend
+  // subdomains genuinely cross-site, not just cross-origin, so the default
+  // `sameSite: 'lax'` on oidc-provider's _interaction/_session cookies (short
+  // TTL / long TTL respectively) is silently dropped by the browser on every
+  // request that reaches this backend from the frontend's own JS or a form
+  // submit — reproduced live as `interactionDetails()` failing to find a
+  // session at all. `none` is safe here specifically because there is no
+  // browsable content on either domain these cookies could be replayed
+  // against outside this exact OAuth handoff. Requires `Secure`, which Koa's
+  // cookies module infers from `ctx.secure` (true here thanks to
+  // `oidcProvider.proxy = true` below).
+  cookies: {
+    long: { sameSite: 'none' },
+    short: { sameSite: 'none' },
+  },
+
   interactions: {
     url: (_ctx, interaction) => {
       const base = process.env['FRONTEND_URL'] ?? 'http://localhost:3001';

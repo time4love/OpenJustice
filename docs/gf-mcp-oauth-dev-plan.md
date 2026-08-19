@@ -660,6 +660,49 @@ Fixed by adding `stripLocale()` to `OAuthInteractionClient.tsx` (mirrors `proxy.
 now stays locale-agnostic through the whole `/login` → Google → `/auth/callback` round trip, so the
 locale-aware `router.push()` at the end adds it exactly once. `tsc --noEmit` clean.
 
+### 7.0g — ✅ DONE 2026-08-19: `_interaction` cookie silently dropped — frontend and backend are cross-*site*, not just cross-origin
+
+Next symptom after §7.0f: the URL now had a single locale segment, but landing on
+`/he/oauth/interaction/<uid>` (after a real Google login completed) showed the "expired" screen
+(`t('expiredTitle')`) — `GET /oauth/interaction/:uid` was failing every time.
+
+Root cause: confirmed directly against the real Public Suffix List (`publicsuffix.org/list/public_suffix_list.dat`
+lists `up.railway.app` explicitly, submitted by Railway itself) that our frontend
+(`glass-fortress-frontend-staging.up.railway.app`) and backend
+(`glass-fortress-backend-staging.up.railway.app`) are genuinely **cross-site**, not merely
+cross-origin — `up.railway.app` is its own public suffix, so the two subdomains share no registrable
+domain. Two compounding bugs followed from that:
+
+1. The frontend's `GET /oauth/interaction/:uid` fetch (`OAuthInteractionClient.tsx`) never passed
+   `credentials: 'include'` — fetch's default credentials mode (`same-origin`) never sends cookies
+   cross-origin at all, regardless of any cookie attribute.
+2. Even with that fixed, oidc-provider's `_interaction`/`_session` cookies (the ones
+   `interactionDetails()` in `oauthInteractionRoutes.ts` depends on to find the pending OAuth session)
+   default to `sameSite: 'lax'` (confirmed in `oidc-provider`'s own `lib/helpers/defaults.js`) — Lax
+   cookies are withheld by the browser on cross-*site* subresource requests (our `fetch`) entirely, and
+   on cross-site POST navigations (our `/login` and `/confirm` `<form>` submits) too. `lax` was
+   guaranteed to fail this entire flow on every request past the first hop, not just this one GET.
+
+Fixed: `oidcProvider.ts` now sets `cookies.long.sameSite: 'none'` and `cookies.short.sameSite: 'none'`
+(covers `_session` and `_interaction`/`_interaction_resume` respectively — verified against
+`oidc-provider`'s own source, `actions/authorization/interactions.js` and `models/session.js`, for which
+bucket each cookie actually uses); `Secure` still applies automatically via `ctx.secure`, which
+`oidcProvider.proxy = true` (already set) makes correct behind Railway's TLS-terminating proxy.
+`OAuthInteractionClient.tsx`'s GET fetch now passes `credentials: 'include'` explicitly. `none` is safe
+specifically because neither domain serves any content these cookies could be replayed against outside
+this one OAuth handoff.
+
+Verified before shipping: constructed a real `Provider` (not the Jest mock) with this exact config via a
+throwaway `ts-node` script — confirms `oidc-provider` itself accepts the partial `cookies` override
+without throwing, not just that our own TypeScript compiles. `tsc --noEmit` clean on both apps, backend
+Jest 612/612 (unaffected — no existing test constructs a real `Provider`, all mock it; this class of
+bug is only observable against real cross-site cookies, i.e. Phase 5 live testing, exactly like §7.0e).
+
+**Lesson for the rest of Phase 5**: `frontend...up.railway.app` and `backend...up.railway.app` looking
+like they share a domain is misleading — check the actual Public Suffix List before assuming two Railway
+subdomains are same-site for cookie purposes. Any future feature that leans on a cookie between these two
+specific hosts needs `sameSite: 'none'` from the start, not as an afterthought.
+
 ---
 
 ## 8. Phase 6 — Legacy token deprecation (per §2.3 decision)
