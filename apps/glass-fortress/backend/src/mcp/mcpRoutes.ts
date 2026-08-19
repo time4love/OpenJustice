@@ -6,6 +6,7 @@ import { hashToken } from '../lib/tokenHash';
 import { researcherContext } from '../context/researcherContext';
 import { extractBearerToken } from '../lib/bearerToken';
 import { oidcProvider } from '../oauth/oidcProvider';
+import { resourceMetadataUrl } from '../oauth/resourceMetadata';
 
 const router = Router();
 
@@ -89,23 +90,35 @@ async function resolveViaOAuth(token: string): Promise<OAuthResolution> {
   return { kind: 'ok', researcherId: researcher.id };
 }
 
+// RFC 9728 §5.1 — MCP servers MUST send this on every 401 so a client can
+// find the authorization server without guessing. Missing this is what sent
+// a real claude.ai connection attempt off guessing bare-root well-known
+// paths that don't exist here (docs/gf-mcp-oauth-dev-plan.md §7.0c).
+function sendUnauthorized(res: Response, message: string): void {
+  res.set('WWW-Authenticate', `Bearer resource_metadata="${resourceMetadataUrl()}"`);
+  res.status(401).json({ error: 'Unauthorized', message });
+}
+
 async function resolveResearcher(req: Request, res: Response): Promise<{ researcherId: string } | null> {
   const token = extractBearerToken(req);
 
   if (!token) {
-    res.status(401).json({
-      error: 'Unauthorized',
-      message:
-        'Write tools require Authorization: Bearer <token> — an MCP OAuth access token ' +
+    sendUnauthorized(
+      res,
+      'Write tools require Authorization: Bearer <token> — an MCP OAuth access token ' +
         '(see GET /api/mcp for the authorization server) or a legacy service token (POST /api/auth/mcp-token).',
-    });
+    );
     return null;
   }
 
   const oauth = await resolveViaOAuth(token);
   if (oauth.kind === 'ok') return { researcherId: oauth.researcherId };
   if (oauth.kind === 'rejected') {
-    res.status(oauth.status).json({ error: oauth.error, message: oauth.message });
+    if (oauth.status === 401) {
+      sendUnauthorized(res, oauth.message);
+    } else {
+      res.status(oauth.status).json({ error: oauth.error, message: oauth.message });
+    }
     return null;
   }
   // oauth.kind === 'not_oauth' — not a token oidc-provider recognizes at all,
@@ -122,10 +135,10 @@ async function resolveResearcher(req: Request, res: Response): Promise<{ researc
   const researcher = await prisma.researcher.findFirst({ where: { mcpTokenHash: tokenHash } });
 
   if (!researcher) {
-    res.status(401).json({
-      error: 'Unauthorized',
-      message: 'Invalid MCP token. Generate a new one via POST /api/auth/mcp-token, or connect via OAuth (GET /api/mcp).',
-    });
+    sendUnauthorized(
+      res,
+      'Invalid MCP token. Generate a new one via POST /api/auth/mcp-token, or connect via OAuth (GET /api/mcp).',
+    );
     return null;
   }
 

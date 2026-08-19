@@ -37,6 +37,7 @@ jest.mock('../src/oauth/oidcProvider', () => ({
     issuer: 'https://backend.test/oauth',
     AccessToken: { find: jest.fn() },
   },
+  resolveOrigin: jest.fn().mockReturnValue('https://backend.test'),
 }));
 
 import request from 'supertest';
@@ -152,12 +153,24 @@ describe('POST /api/mcp — write tool auth', () => {
     expect(res.body.error).toBe('Unauthorized');
   });
 
+  it('sets WWW-Authenticate pointing at the resource metadata on every 401 (RFC 9728 §5.1)', async () => {
+    // The actual bug: without this header, a spec-compliant client (a real
+    // claude.ai connector, observed live) has no authoritative way to find
+    // the authorization server and falls back to guessing paths that don't
+    // exist — docs/gf-mcp-oauth-dev-plan.md §7.0c.
+    const res = await request(app).post('/api/mcp').send(writeCallBody);
+    expect(res.headers['www-authenticate']).toBe(
+      'Bearer resource_metadata="https://backend.test/.well-known/oauth-protected-resource"',
+    );
+  });
+
   it('returns 401 for write tool call with wrong token', async () => {
     const res = await request(app)
       .post('/api/mcp')
       .set('Authorization', 'Bearer wrong-token')
       .send(writeCallBody);
     expect(res.status).toBe(401);
+    expect(res.headers['www-authenticate']).toContain('resource_metadata=');
   });
 
   it('passes through write tool call with correct bearer token', async () => {

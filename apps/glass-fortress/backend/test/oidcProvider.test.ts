@@ -16,7 +16,7 @@ jest.mock('../src/lib/prisma', () => ({
 }));
 
 import { prisma } from '../src/lib/prisma';
-import { resolveIssuer, findAccount } from '../src/oauth/oidcProvider';
+import { resolveIssuer, resolveOrigin, findAccount } from '../src/oauth/oidcProvider';
 
 // ---------------------------------------------------------------------------
 // The two pure-ish pieces of oidc-provider's configuration that are worth
@@ -40,6 +40,13 @@ describe('resolveIssuer', () => {
 
   it('defaults the port to 3000 when neither is set', () => {
     expect(resolveIssuer({})).toBe('http://localhost:3000/oauth');
+  });
+});
+
+describe('resolveOrigin', () => {
+  it('matches resolveIssuer minus the /oauth suffix', () => {
+    const env = { RAILWAY_PUBLIC_DOMAIN: 'glass-fortress-backend-staging.up.railway.app' };
+    expect(`${resolveOrigin(env)}/oauth`).toBe(resolveIssuer(env));
   });
 });
 

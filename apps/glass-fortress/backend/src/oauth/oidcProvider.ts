@@ -23,17 +23,23 @@ import { PrismaOidcAdapter } from './prismaOidcAdapter';
 //   `/oauth/auth` today redirects to a 404. That's expected at this phase.
 // - No resource-indicator (RFC 8707) audience restriction configured yet —
 //   deferred to Phase 5 alongside real-client verification, once we know
-//   what Claude/ChatGPT actually send.
+//   what Claude/ChatGPT actually send. (RFC 9728 protected-resource
+//   metadata itself — a related but distinct requirement, discovery rather
+//   than audience binding — is now implemented: resourceMetadata.ts,
+//   wellKnownRoutes.ts.)
 // ---------------------------------------------------------------------------
 
 // Exported standalone (rather than inlined into `configuration`) so both can be
 // unit-tested without constructing a real Provider — see test/oidcProvider.test.ts.
 
-export function resolveIssuer(env: NodeJS.ProcessEnv = process.env): string {
+export function resolveOrigin(env: NodeJS.ProcessEnv = process.env): string {
   const domain = env['RAILWAY_PUBLIC_DOMAIN'];
   const port = String(env['PORT'] ?? 3000);
-  const origin = domain ? `https://${domain}` : `http://localhost:${port}`;
-  return `${origin}/oauth`;
+  return domain ? `https://${domain}` : `http://localhost:${port}`;
+}
+
+export function resolveIssuer(env: NodeJS.ProcessEnv = process.env): string {
+  return `${resolveOrigin(env)}/oauth`;
 }
 
 // Resolves an oidc-provider accountId (== Researcher.id) back to a real,
