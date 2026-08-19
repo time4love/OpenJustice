@@ -226,10 +226,9 @@ export default function HomePage() {
               <StaggerItem variant="scale" className="sm:col-span-2" whileHover={{ y: -5 }}>
                 <ThesisHighlightCard
                   thesis={featuredThesis}
-                  variant="featured"
                   labels={{
                     noTitle: t('noTitle'),
-                    featuredLabel: t('topThesesFeaturedLabel'),
+                    mentionsLabel: t('mentionsLabel'),
                     gapsLabel: featuredThesis.openGapCount > 0
                       ? t('warBoardGaps', { count: featuredThesis.openGapCount })
                       : undefined,
@@ -247,6 +246,7 @@ export default function HomePage() {
                     thesis={thesis}
                     labels={{
                       noTitle: t('noTitle'),
+                      mentionsLabel: t('mentionsLabel'),
                       gapsLabel: thesis.openGapCount > 0
                         ? t('warBoardGaps', { count: thesis.openGapCount })
                         : undefined,
