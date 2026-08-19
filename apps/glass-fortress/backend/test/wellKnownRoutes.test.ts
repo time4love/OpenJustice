@@ -51,3 +51,21 @@ describe('GET /.well-known/oauth-protected-resource/api/mcp', () => {
     expect(res.body).toEqual(EXPECTED_BODY);
   });
 });
+
+describe('RFC 8414 path-inserted AS metadata aliases', () => {
+  // A real claude.ai connector requested exactly these, live, one step past
+  // the protected-resource-metadata fix — oidc-provider only serves the
+  // OIDC-Discovery-style /oauth/.well-known/<doc>, never the RFC 8414 form
+  // with .well-known inserted before the issuer path.
+  it('redirects /.well-known/oauth-authorization-server/oauth to the real document', async () => {
+    const res = await request(app).get('/.well-known/oauth-authorization-server/oauth');
+    expect(res.status).toBe(302);
+    expect(res.headers.location).toBe('/oauth/.well-known/oauth-authorization-server');
+  });
+
+  it('redirects /.well-known/openid-configuration/oauth to the real document', async () => {
+    const res = await request(app).get('/.well-known/openid-configuration/oauth');
+    expect(res.status).toBe(302);
+    expect(res.headers.location).toBe('/oauth/.well-known/openid-configuration');
+  });
+});
