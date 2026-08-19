@@ -7,6 +7,9 @@
 // library is exercised here.
 jest.mock('oidc-provider', () => ({
   Provider: jest.fn().mockImplementation(() => ({ callback: jest.fn() })),
+  errors: {
+    InvalidTarget: class InvalidTarget extends Error {},
+  },
 }));
 
 jest.mock('../src/lib/prisma', () => ({
@@ -16,7 +19,7 @@ jest.mock('../src/lib/prisma', () => ({
 }));
 
 import { prisma } from '../src/lib/prisma';
-import { resolveIssuer, resolveOrigin, findAccount } from '../src/oauth/oidcProvider';
+import { resolveIssuer, resolveOrigin, findAccount, getResourceServerInfo } from '../src/oauth/oidcProvider';
 
 // ---------------------------------------------------------------------------
 // The two pure-ish pieces of oidc-provider's configuration that are worth
@@ -47,6 +50,25 @@ describe('resolveOrigin', () => {
   it('matches resolveIssuer minus the /oauth suffix', () => {
     const env = { RAILWAY_PUBLIC_DOMAIN: 'glass-fortress-backend-staging.up.railway.app' };
     expect(`${resolveOrigin(env)}/oauth`).toBe(resolveIssuer(env));
+  });
+});
+
+describe('getResourceServerInfo', () => {
+  // The actual bug this exists to fix: a real claude.ai connector always
+  // sends a `resource` param (MCP spec MUST-requirement), and without this
+  // being recognized, oidc-provider rejected /oauth/auth outright with
+  // invalid_target before ever redirecting to our interaction page — see
+  // docs/gf-mcp-oauth-dev-plan.md for the full trail.
+  const env = { RAILWAY_PUBLIC_DOMAIN: 'glass-fortress-backend-staging.up.railway.app' };
+
+  it('accepts our real canonical resource URI and grants both MCP scopes', () => {
+    expect(
+      getResourceServerInfo('https://glass-fortress-backend-staging.up.railway.app/api/mcp', env),
+    ).toEqual({ scope: 'mcp:read mcp:write' });
+  });
+
+  it('rejects any other resource indicator', () => {
+    expect(() => getResourceServerInfo('https://some-other-service.example.com', env)).toThrow();
   });
 });
 

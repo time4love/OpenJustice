@@ -577,6 +577,54 @@ exist across RFC 8414 vs OIDC Discovery vs MCP's own spec examples, a third one 
 surprising — worth checking raw HTTP logs immediately if any of them also report a generic auth failure,
 rather than assuming the fix is already complete.
 
+### 7.0e Prep — ✅ DONE 2026-08-19: RFC 8707 Resource Indicators — the actual root cause of every prior attempt
+
+§7.0c/§7.0d fixed real bugs, but neither was the thing actually blocking the connector — this was. After
+every discovery-layer fix landed, the connector still failed on every single attempt ("browser briefly
+opens then fails," a claude.ai-side error toast, no server-side clue beyond a plain `303`) until the user
+captured the popup's own Network tab directly — something server-side logs alone couldn't show, since the
+popup is a separate window/process from the one the logs' user-agent string comes from. That capture
+showed the real response: `/oauth/auth` redirected straight to `claude.ai/api/mcp/auth_callback?
+error=invalid_target&error_description=resource+indicator+is+missing%2C+or+unknown` — an immediate OAuth
+*error* redirect, not a redirect toward our interaction page at all. Every earlier attempt had actually
+been failing at this exact step, on the very first hop; §7.0c and §7.0d's fixes were real and necessary
+for discovery to work at all, but the flow never survived past `/oauth/auth` itself even once they landed.
+
+Root cause: claude.ai's authorization request includes `resource=https://glass-fortress-backend-
+staging.up.railway.app/api/mcp` — the MCP spec's own MUST-requirement (RFC 8707 Resource Indicators,
+§"Resource Parameter Implementation": *"MCP clients MUST implement Resource Indicators... MUST be
+included in both authorization requests and token requests"*). This is exactly the item Phase 2 §4.5
+originally deferred: *"No resource-indicator (RFC 8707) audience restriction configured yet — deferred
+to Phase 5... once we know what Claude/ChatGPT actually send."* oidc-provider rejects any `resource`
+parameter outright with `invalid_target` unless `features.resourceIndicators` is explicitly configured
+with a resource server it recognizes — we had never turned this on, so *every* client that correctly
+follows the MCP spec (which requires sending this parameter) was guaranteed to fail here, always, on the
+very first `/oauth/auth` request, regardless of anything else being correct.
+
+Fixed in `oidcProvider.ts`: `features.resourceIndicators.getResourceServerInfo()` (extracted as a
+standalone exported function, same pattern as `findAccount`/`resolveOrigin`, for direct unit testing)
+accepts exactly our one real canonical resource URI (`<origin>/api/mcp`) and grants both `mcp:read
+mcp:write` scopes for it; anything else throws `errors.InvalidTarget`, matching oidc-provider's own
+built-in rejection for a genuinely unrecognized resource. Because a token can only ever be minted for a
+resource that passes this check, every successfully-issued token is now inherently audience-bound to our
+resource by construction — satisfying the MCP spec's separate audience-validation requirement without
+needing an additional check anywhere else (`mcpRoutes.ts` unchanged).
+
+Verified live before shipping: replayed claude.ai's exact `/oauth/auth` request shape (including its
+`resource` parameter) against a local server — before the fix, immediate `invalid_target`; after,
+correct redirect to the interaction page. Also confirmed a genuinely bogus resource is still correctly
+rejected (the negative case matters here — this must reject anything that isn't our resource, not just
+stop rejecting everything). New tests in `test/oidcProvider.test.ts`. 612/612 passing, `tsc --noEmit`
+clean.
+
+**Lesson for the rest of Phase 5**: this failure mode (an immediate `error=` redirect back to the
+client's own callback, not a redirect toward our interaction page) is invisible in server-side request
+logs alone — a `303` with a `Location` header looks identical whether it's routing correctly or erroring
+out, unless you actually decode the query string. The breakthrough here came from inspecting the OAuth
+*client's* own browser-devtools Network tab (the popup, not the main tab), not from anything visible in
+`railway logs`. Worth doing that early for Claude Desktop/Code if either shows a similarly generic
+failure, rather than re-deriving this same lesson from scratch.
+
 Manually verify the full connect flow, on staging, for:
 - **Claude Desktop** — config-driven, but Claude Desktop is expected to support MCP OAuth directly
   (discover metadata → DCR → browser popup → PKCE exchange) rather than the static-header config used
