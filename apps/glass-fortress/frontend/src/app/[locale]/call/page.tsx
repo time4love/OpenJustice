@@ -2,8 +2,10 @@
 
 import { useState, useEffect } from 'react';
 import { useTranslations } from 'next-intl';
+import Image from 'next/image';
 import { SiteHeader } from '@/components/SiteHeader';
 import { ThesisHighlightCard } from '@/components/ThesisHighlightCard';
+import { Link } from '@/i18n/navigation';
 import type { ThesisSummary } from '@/types/thesis';
 import { fetchTheses } from '@/lib/thesisApi';
 
@@ -13,6 +15,7 @@ import { fetchTheses } from '@/lib/thesisApi';
 
 export default function CallIndexPage() {
   const t = useTranslations('call');
+  const tHome = useTranslations('home');
 
   const [theses, setTheses] = useState<ThesisSummary[]>([]);
   const [loading, setLoading] = useState(true);
@@ -84,6 +87,25 @@ export default function CallIndexPage() {
                 }}
               />
             ))}
+
+            {/* Researcher access CTA — same card as the homepage's "Get Involved" section */}
+            <div className="h-full bg-white border-2 border-slate-200 rounded-2xl p-8 flex flex-col gap-4">
+              <Image
+                src="/icon_research.png"
+                alt=""
+                width={64}
+                height={64}
+                className="w-14 h-14 drop-shadow-[0_6px_10px_rgba(15,23,42,0.15)]"
+              />
+              <h3 className="text-xl font-bold text-slate-900">{tHome('door2Title')}</h3>
+              <p className="text-slate-500 text-sm leading-relaxed flex-1">{tHome('door2Body')}</p>
+              <Link
+                href="/researchers"
+                className="self-start px-5 py-2.5 rounded-lg bg-slate-900 text-white text-sm font-semibold hover:bg-slate-800 transition-colors"
+              >
+                {tHome('door2Btn')}
+              </Link>
+            </div>
           </div>
         )}
       </div>
