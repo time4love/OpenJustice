@@ -43,14 +43,19 @@ const medicalBaseSchema = z.object({
   seriousness: z.enum(MedicalSeriousness).default('NONE'),
 
   // Required only when symptomCategory = ONCOLOGIC (enforced below).
-  // cancerType is required-when-set because CancerType has a designed-for
-  // "don't know yet" member (NOT_YET_TYPED) — a reporter should explicitly
-  // choose it, not have the system silently default to it. cancerCourse and
-  // cancerPresentationType have no such member (no CancerCourse.UNKNOWN
-  // exists), so they stay optional even when ONCOLOGIC: forcing a choice
-  // with no honest "I don't know" option would push reporters toward
-  // guessing. Flagged as a real gap worth a follow-up migration
-  // (CancerCourse.UNKNOWN), not silently decided — see chat.
+  // cancerType and cancerCourse are required-when-ONCOLOGIC because each has
+  // a designed-for "don't know" member (NOT_YET_TYPED / UNKNOWN) — a reporter
+  // should explicitly choose it, not have the system silently default to it.
+  // cancerCourse only joined them once CancerCourse.UNKNOWN was added
+  // (migration 20260820090000); before that, requiring it would have forced a
+  // guess between "typical pace" and "unusually rapid" with no honest third
+  // option, which is worse than a null.
+  //
+  // cancerPresentationType still has no such member (NEW_DIAGNOSIS /
+  // RECURRENCE_OR_PROGRESSION / OTHER — "other" is an escape hatch, not an
+  // admission of not knowing), so it stays optional even when ONCOLOGIC, for
+  // exactly the reason cancerCourse used to. Closing that one needs its own
+  // decision about whether OTHER is doing that job already.
   cancerPresentationType: z.enum(CancerPresentationType).optional(),
   cancerCourse: z.enum(CancerCourse).optional(),
   cancerAtypicalFeatures: z.boolean().optional(),
@@ -96,6 +101,14 @@ export const medicalAdverseEventReportSchema = medicalBaseSchema.superRefine((da
       code: 'custom',
       path: ['cancerType'],
       message: 'cancerType is required when symptomCategory is ONCOLOGIC (use NOT_YET_TYPED if unknown)',
+    });
+  }
+
+  if (isOncologic && data.cancerCourse === undefined) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['cancerCourse'],
+      message: 'cancerCourse is required when symptomCategory is ONCOLOGIC (use UNKNOWN if not known)',
     });
   }
 

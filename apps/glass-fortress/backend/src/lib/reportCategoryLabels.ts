@@ -66,6 +66,7 @@ export const CANCER_PRESENTATION_TYPE_LABELS: Record<CancerPresentationType, str
 export const CANCER_COURSE_LABELS: Record<CancerCourse, string> = {
   TYPICAL_PACE: 'קצב אופייני',
   UNUSUALLY_RAPID_PROGRESSION: 'התקדמות מהירה באופן חריג (היפרפרוגרסיה)',
+  UNKNOWN: 'לא ידוע',
 };
 
 export const CANCER_TYPE_LABELS: Record<CancerType, string> = {

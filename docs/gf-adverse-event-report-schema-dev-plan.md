@@ -23,8 +23,12 @@ fixed, both with tests. Needs one Supabase config change (Auth redirect allow-li
 a deployed environment.
 
 Ten staging migrations applied and independently verified this session (query-verified, not just
-trusted from `migrate deploy`'s own output). Full suite 721/721 plus 64 new label-parity assertions,
-`tsc` clean on both backend and frontend, `next build` clean. Also fixed, via
+trusted from `migrate deploy`'s own output). Full suite 786/786 (including 64 label-parity assertions),
+`tsc` clean on both backend and frontend, `next build` clean.
+**One migration is written but NOT yet applied anywhere** — `20260820090000_cancer_course_unknown`
+(§5 Phase 2), generated offline and read, but this machine could not reach the staging Supabase pooler
+to apply or verify it. Every other migration in this feature was query-verified against staging; this
+one has not been, and must be before the branch is treated as deployed. Also fixed, via
 cherry-pick not reinvention, an unrelated schema-drift gotcha (`evidence_embeddings`) a generated
 migration almost silently proposed to drop. On branch `schema/gf-adverse-effect-reports`, pushed
 through `4e754a8`; this round (Phase 6) not yet committed. See §5 for the full phase-by-phase detail
@@ -515,11 +519,18 @@ flag (same evidentiary standard as `feedback-evidentiary-proof-standard.md`).
   solve). `freeTextElaboration` got a 5000-char cap at the validation boundary at the time — not in the
   Prisma column (unbounded `text`) or discussed when the schema was designed, added here as a standard
   public-input abuse guard. **The field itself was removed entirely later the same day — see §2.10.**
-- **Gap surfaced, not fixed**: `CancerCourse` has no `UNKNOWN` member, so a reporter who doesn't know
-  whether progression was "unusually rapid" has no honest answer — `cancerCourse`/`cancerPresentationType`
-  stay optional even when `ONCOLOGIC` rather than forcing a guess. Unlike the `symptomPersistence`/
-  `outcomeStatus` gaps closed earlier in this plan, this one wasn't closed immediately — flagged for a
-  decision (add `CancerCourse.UNKNOWN`, another small additive migration) rather than assumed away.
+- **Gap surfaced, then closed 2026-08-20** (migration `20260820090000_cancer_course_unknown`):
+  `CancerCourse` had no `UNKNOWN` member, so a reporter who didn't know whether progression was
+  "unusually rapid" had no honest answer, and the field was left optional-even-when-`ONCOLOGIC` rather
+  than forcing a guess. That worked but cost real signal: "declined to answer" and "actively does not
+  know" both landed as `NULL` and could not be told apart in aggregation. `UNKNOWN` added (purely
+  additive, one `ALTER TYPE`, existing `NULL`s deliberately left as `NULL` rather than rebranded), and
+  `cancerCourse` consequently became **required-when-`ONCOLOGIC`**, matching `cancerType`/`NOT_YET_TYPED`
+  exactly — the original reason for its optionality was the absence of an honest "don't know", and that
+  reason is gone. **`cancerPresentationType` remains optional** for precisely the reason `cancerCourse`
+  used to be: `NEW_DIAGNOSIS`/`RECURRENCE_OR_PROGRESSION`/`OTHER` has no "don't know" member (`OTHER` is
+  an escape hatch, not an admission of not knowing). Closing that one needs its own decision about
+  whether `OTHER` is already doing that job — not assumed away here either.
 - **Verified**: 16 new Jest tests (`test/reporterFingerprint.test.ts`, `test/reportIntakeSchemas.test.ts`)
   plus the full existing suite (692/692) pass; `tsc --noEmit` clean.
 
@@ -754,8 +765,7 @@ anyway. The submit path was exercised as far as the network allowed. Note `tsc` 
 must be run via the app's own `node_modules/.bin/tsc` (6.0.3); `npx` resolves the repo root's 5.9.3,
 which rejects this `tsconfig.json` outright and typechecks nothing.
 
-**Still open, deliberately**: `CancerCourse.UNKNOWN` (the Phase 2 gap — a reporter who doesn't know the
-progression rate still has no honest option, so the field stays optional); the epistemic-tier
+**Still open, deliberately**: the epistemic-tier
 distinction (§2.5) is currently carried in the methodology *prose* only — Phase 9 still owes it real
 visual weight. Lint: this page adds one instance of `react-hooks/set-state-in-effect` for reading the
 URL fragment on mount; the rule already fires in 8 files on `master` (19 errors there, 20 here) and is
@@ -797,5 +807,10 @@ homepage".
 
 Phase 5 (automated abuse defense) remains deliberately deferred until real submission volume shows
 whether it is needed at all. Phase 7 (thesis citation wiring) is still an open design question, not
-started. `CancerCourse.UNKNOWN` (§5 Phase 2) is still an unclosed, deliberately-flagged gap needing one
-small additive migration.
+started.
+
+**Before anything else on this branch: apply and verify `20260820090000_cancer_course_unknown` against
+staging.** It is the only migration in this feature that has not been query-verified against a real
+database, purely because the machine that wrote it could not reach the pooler. Verify it the same way
+every other one here was — a direct query that genuinely errors if the value is absent, not
+`migrate deploy`'s own success message.

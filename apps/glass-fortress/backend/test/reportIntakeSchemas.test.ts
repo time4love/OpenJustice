@@ -27,10 +27,25 @@ describe('medicalAdverseEventReportSchema', () => {
     }
   });
 
-  it('accepts ONCOLOGIC with cancerType set to NOT_YET_TYPED (explicit unknown)', () => {
+  it('requires cancerCourse when symptomCategory is ONCOLOGIC', () => {
     const result = medicalAdverseEventReportSchema.safeParse({
       symptomCategory: 'ONCOLOGIC',
       cancerType: 'NOT_YET_TYPED',
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues.some((i) => i.path.join('.') === 'cancerCourse')).toBe(true);
+    }
+  });
+
+  it('accepts ONCOLOGIC with both unknowns stated explicitly (NOT_YET_TYPED / UNKNOWN)', () => {
+    // The whole point of CancerCourse.UNKNOWN (migration 20260820090000): a
+    // reporter who does not know the progression rate can now say so, instead
+    // of the field being left optional so as not to force a guess.
+    const result = medicalAdverseEventReportSchema.safeParse({
+      symptomCategory: 'ONCOLOGIC',
+      cancerType: 'NOT_YET_TYPED',
+      cancerCourse: 'UNKNOWN',
     });
     expect(result.success).toBe(true);
   });
@@ -72,6 +87,7 @@ describe('medicalAdverseEventReportSchema', () => {
     const result = medicalAdverseEventReportSchema.safeParse({
       symptomCategory: 'ONCOLOGIC',
       cancerType: 'NOT_YET_TYPED',
+      cancerCourse: 'UNKNOWN',
       postExertionalMalaise: true,
     });
     expect(result.success).toBe(false);

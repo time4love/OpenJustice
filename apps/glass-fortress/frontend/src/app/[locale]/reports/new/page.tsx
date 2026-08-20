@@ -165,8 +165,10 @@ function medicalPayload(a: MedicalAnswers): Record<string, unknown> {
 }
 
 /**
- * The conditional fields the intake schema requires — cancerType when the
- * category is ONCOLOGIC, cognitiveSymptomType when it is NEUROCOGNITIVE_PVS.
+ * The conditional fields the intake schema requires — cancerType and
+ * cancerCourse when the category is ONCOLOGIC, cognitiveSymptomType when it is
+ * NEUROCOGNITIVE_PVS. Each has a real "don't know" option, so requiring an
+ * answer never forces a guess.
  *
  * Mirrors reportIntakeSchemas.ts's superRefine deliberately: the server is
  * still the authority, but a reporter should find out they missed a required
@@ -174,7 +176,9 @@ function medicalPayload(a: MedicalAnswers): Record<string, unknown> {
  * have moved on two steps.
  */
 function missingRequiredDetail(a: MedicalAnswers): boolean {
-  if (a.symptomCategory === ONCOLOGIC) return a.cancerType === undefined;
+  if (a.symptomCategory === ONCOLOGIC) {
+    return a.cancerType === undefined || a.cancerCourse === undefined;
+  }
   if (a.symptomCategory === NEUROCOGNITIVE_PVS) return a.cognitiveSymptomType === undefined;
   return false;
 }

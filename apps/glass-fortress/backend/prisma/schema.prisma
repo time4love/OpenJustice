@@ -615,6 +615,13 @@ enum CancerPresentationType {
 enum CancerCourse {
   TYPICAL_PACE
   UNUSUALLY_RAPID_PROGRESSION
+  // Closes the gap flagged in the dev plan (§5 Phase 2): a reporter who does
+  // not know how fast the disease progressed previously had no honest answer,
+  // because unlike CancerType (NOT_YET_TYPED) this enum had no "don't know"
+  // member. Leaving the field null was the only option, which made "declined
+  // to answer" and "actively does not know" indistinguishable in aggregation.
+  // Last, so schema order stays UI display order (see reportLabelParity.test.ts).
+  UNKNOWN
 }
 
 enum CancerType {

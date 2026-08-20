@@ -1,0 +1,25 @@
+-- Adds CancerCourse.UNKNOWN.
+--
+-- Closes the gap flagged in docs/gf-adverse-event-report-schema-dev-plan.md
+-- §5 Phase 2: CancerCourse had only TYPICAL_PACE and UNUSUALLY_RAPID_PROGRESSION,
+-- so a reporter who genuinely did not know how fast the disease progressed had
+-- no honest answer available. The field was left optional-even-when-ONCOLOGIC to
+-- avoid forcing a guess, which meant "declined to answer" and "actively does not
+-- know" both landed as NULL and could not be told apart in aggregation.
+--
+-- Purely additive: one ALTER TYPE, no table touched, no existing row changed or
+-- invalidated. Existing NULL cancerCourse values stay NULL — they are genuinely
+-- unanswered and are not silently rebranded as UNKNOWN.
+--
+-- Safe inside Prisma's per-migration transaction on PostgreSQL 12+ (Supabase is
+-- 15+): ALTER TYPE ... ADD VALUE may only not be *used* in the same transaction
+-- that adds it, and nothing here uses it.
+--
+-- Generated offline via `prisma migrate diff --from-schema-datamodel
+-- <git HEAD schema> --to-schema-datamodel <schema> --script` — no database
+-- connection, pure schema comparison — then read before being kept, per the
+-- standing rule in §2.9 (a diff tool computing "the truth" from an incomplete
+-- model will confidently propose something false).
+
+-- AlterEnum
+ALTER TYPE "CancerCourse" ADD VALUE 'UNKNOWN';

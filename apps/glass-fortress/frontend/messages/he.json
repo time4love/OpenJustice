@@ -779,7 +779,8 @@
   },
   "cancerCourses": {
     "TYPICAL_PACE": "קצב אופייני",
-    "UNUSUALLY_RAPID_PROGRESSION": "התקדמות מהירה באופן חריג (היפרפרוגרסיה)"
+    "UNUSUALLY_RAPID_PROGRESSION": "התקדמות מהירה באופן חריג (היפרפרוגרסיה)",
+    "UNKNOWN": "לא ידוע"
   },
   "cancerTypes": {
     "LYMPHOMA_LEUKEMIA": "לימפומה / לוקמיה",
