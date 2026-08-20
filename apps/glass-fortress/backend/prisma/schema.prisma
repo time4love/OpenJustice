@@ -750,6 +750,58 @@ enum ConsequenceSeverity {
 // reinstates servicemembers discharged for vaccine refusal with back pay —
 // a MILITARY_DISCHARGE report where that happened is a materially different
 // claim from one where it didn't, and the schema must be able to say which.
+enum EmploymentSector {
+  HEALTHCARE
+  EDUCATION
+  PUBLIC_SECTOR
+  PRIVATE_SECTOR
+  SECURITY_SERVICES
+  OTHER
+  UNKNOWN
+}
+
+// An escalation ladder, ordered by how far the reporter took it. Ordinal, not a
+// set of booleans, so "regulator complaint" cannot coexist with "took no action".
+enum RemedyPursued {
+  NONE
+  INTERNAL_APPEAL
+  REGULATOR_COMPLAINT
+  LITIGATION
+  UNKNOWN
+}
+
+enum RelationshipAffected {
+  SPOUSE_PARTNER
+  PARENT
+  CHILD
+  SIBLING
+  EXTENDED_FAMILY
+  FRIENDS_COMMUNITY
+  MULTIPLE
+  UNKNOWN
+}
+
+enum VaccinationStatus {
+  RECEIVED
+  NOT_RECEIVED
+  PARTIALLY_RECEIVED
+  // "Prefer not to say" — an honest option, not a data gap to be minimised.
+  // Last, so schema order stays UI display order.
+  UNDISCLOSED
+}
+
+// Calendar periods rather than an interval, split where the mandate waves
+// actually fell: Israel's Green Pass (Feb 2021) in H1, the large US federal
+// and employer mandates (Sep 2021 onward) in H2.
+enum ReportCalendarPeriod {
+  YEAR_2020_OR_EARLIER
+  YEAR_2021_H1
+  YEAR_2021_H2
+  YEAR_2022
+  YEAR_2023_OR_LATER
+  UNKNOWN
+}
+
 enum SocialOutcomeStatus {
   ONGOING // consequence still in effect
   RESOLVED_REVERSED // reinstated / rehired / accommodation granted on appeal
@@ -770,7 +822,58 @@ model SocialEconomicImpactReport {
   // above — direct analog, not a coincidence.
   documentationAvailable Boolean? // null = unknown
 
-  timingRelativeToEvent ReportTimingWindow @default(UNKNOWN)
+  // The causal antecedent of this entire domain, and the reason a row here is
+  // interpretable at all. Medical reports imply vaccination — a post-vaccination
+  // adverse event cannot be reported by someone who never took it. Social and
+  // economic consequences are the opposite case: the documented mass events are
+  // consequences of REFUSAL (EEOC religious-accommodation denials, DoD
+  // discharges — see the dev plan §2.5), while the reverse also genuinely
+  // occurs (estrangement over having been vaccinated). Without this field the
+  // two collapse into one indistinguishable count, and an aggregate that merges
+  // them is not weak evidence, it is uninterpretable — which defeats the point
+  // of a model built for aggregate signal rather than individual proof (§0).
+  // UNDISCLOSED is offered deliberately rather than forcing an answer; those
+  // rows must be excluded from any directional claim, never counted as either.
+  vaccinationStatus VaccinationStatus @default(UNDISCLOSED)
+
+  // Conditional follow-ups, same discipline as the medical domain's
+  // oncology/cognitive blocks: set only for the categories they apply to, null
+  // otherwise, enforced at the intake boundary because the DB cannot express it.
+  //
+  // Two sub-fields were considered and deliberately NOT added, per §2.9's rule
+  // that a field duplicating another is a defect rather than extra detail:
+  //   - "what access was denied" — ACCESS_DENIAL_SERVICES / _HEALTHCARE /
+  //     EDUCATION_ACCESS_DENIAL already carry exactly that, and a second field
+  //     saying it again could disagree with the category.
+  //   - a military discharge characterisation — the real published taxonomies
+  //     are US DoD's (Honorable / General / Other-Than-Honorable), which do not
+  //     describe IDF service and would be inventing authority for a Hebrew-first
+  //     audience. Escalation is captured by remedyPursued below, and
+  //     reinstatement by outcomeStatus.RESOLVED_REVERSED, so nothing is lost.
+
+  // Employment-consequence categories only (termination, demotion, denied hire).
+  // Sector is the axis the EEOC's own COVID-era charge data is stratified by,
+  // and healthcare workers were the most heavily mandated group of all.
+  employmentSector EmploymentSector?
+
+  // Employment categories plus MILITARY_DISCHARGE — the ones with a formal
+  // process to escalate through. One ordinal field rather than a "did you
+  // complain?" boolean beside a "what happened?" enum, so the impossible
+  // combination (an outcome with no complaint) cannot be expressed at all —
+  // the same fix applied to medicalCareEngagement in §2.9.
+  remedyPursued RemedyPursued?
+
+  // Relational categories only (family rupture, social ostracization). This is
+  // the least systematically studied cluster in the schema (§2.5); capturing
+  // which bond broke is what would make it studiable rather than anecdotal.
+  relationshipAffected RelationshipAffected?
+
+  // Replaces the shared ReportTimingWindow, which measured an interval "after
+  // vaccination" — incoherent for the archetypal reporter here, who never was
+  // vaccinated. A calendar period has no such anchor to be wrong about, and is
+  // the more useful axis regardless: mandates arrived in dated waves, so when a
+  // consequence landed is what ties it to a specific policy.
+  occurredDuring ReportCalendarPeriod @default(UNKNOWN)
 
   // No free-text field — see MedicalAdverseEventReport's own comment; same
   // reasoning applies here.

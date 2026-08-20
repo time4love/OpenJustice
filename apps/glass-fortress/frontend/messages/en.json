@@ -951,7 +951,9 @@
       "requiredMissing": "Please answer this question to continue.",
       "categoryHeading": "First, the category",
       "detailsHeading": "A few more details",
-      "why": "Why we ask"
+      "why": "Why we ask",
+      "employmentSection": "Because this happened at work",
+      "relationalSection": "Because this affected a relationship"
     },
     "medical": {
       "symptomCategory": {
@@ -1032,9 +1034,25 @@
         "label": "Do you have documentation?",
         "help": "Whether you have a paper trail — a termination letter, a discharge order, a complaint filed with an agency. Like the medical form's provider-confirmation question, this doesn't gate acceptance, but it affects confidence."
       },
-      "timingRelativeToEvent": {
-        "label": "How long after vaccination did it happen?",
-        "help": "How long after vaccination this happened. As with the medical form, we ask for a time range rather than an exact date to protect your privacy."
+      "vaccinationStatus": {
+        "label": "Were you vaccinated?",
+        "help": "This is the single most important question on this form. The best-documented consequences here — employment termination, military discharge — happened to people who declined vaccination, while family rupture and ostracization genuinely happen in both directions. Without your answer, a report of either kind is indistinguishable from the other and cannot be counted honestly. \"Prefer not to say\" is a real option; those reports are simply left out of any claim about direction."
+      },
+      "occurredDuring": {
+        "label": "When did this happen?",
+        "help": "Roughly when the consequence occurred. We ask for a period rather than a date, both to protect your privacy and because vaccination requirements arrived in dated waves — the period is what connects what happened to you to a specific policy."
+      },
+      "employmentSector": {
+        "label": "Which sector did you work in?",
+        "help": "Vaccination requirements fell very unevenly across sectors — healthcare workers were the most heavily mandated group anywhere. Sector is the axis the EEOC's own COVID-era discrimination data is broken down by, which is why we ask it the same way."
+      },
+      "remedyPursued": {
+        "label": "Did you challenge the decision?",
+        "help": "How far you took it, if at all — an internal appeal, a complaint to a regulator, or legal proceedings. Not a requirement, and not a judgement: many people had no realistic route to challenge. It matters because a decision that survived a formal challenge is a different fact from one never tested."
+      },
+      "relationshipAffected": {
+        "label": "Which relationship was affected?",
+        "help": "Which bond broke or came under strain. This is the least systematically studied part of this form, and we say so plainly — recording which relationships are actually involved is what could turn it from anecdote into something researchable."
       }
     },
     "about": {
@@ -1050,11 +1068,13 @@
       "medicalTitle": "Medical effect",
       "socialTitle": "Social or economic consequence",
       "consentHeading": "Consent",
-      "consentLabel": "I consent to this information — including health data, or religious belief where I indicated it — being stored and published as part of aggregate statistics.",
+      "consentLabel": "I consent to this information — including health data — being stored and published as part of aggregate statistics.",
       "consentDetail": "Reports are only ever published as counts, never individually. Any group smaller than 10 is not shown at all.",
       "submit": "Submit report",
       "submitting": "Submitting…",
-      "edit": "Go back and change an answer"
+      "edit": "Go back and change an answer",
+      "omitted": "Questions you left unanswered are not listed — nothing is recorded for them.",
+      "consentLabelWithReligion": "I consent to this information — including health data, and the religious belief implied by the accommodation request I described — being stored and published as part of aggregate statistics."
     },
     "done": {
       "heading": "Your report was recorded",
@@ -1082,5 +1102,45 @@
       "socialFamilyHeading": "Family and social impact",
       "socialFamily": "We include family estrangement and social ostracization because real people have reported them, and qualitative research on healthcare workers documents real distress. We're honest that this is less systematically studied than the employment/military categories above — your report still matters, but we won't overstate what the evidence shows."
     }
+  },
+  "vaccinationStatuses": {
+    "RECEIVED": "I was vaccinated",
+    "NOT_RECEIVED": "I was not vaccinated",
+    "PARTIALLY_RECEIVED": "I was partially vaccinated",
+    "UNDISCLOSED": "Prefer not to say"
+  },
+  "reportCalendarPeriods": {
+    "YEAR_2020_OR_EARLIER": "2020 or earlier",
+    "YEAR_2021_H1": "First half of 2021",
+    "YEAR_2021_H2": "Second half of 2021",
+    "YEAR_2022": "2022",
+    "YEAR_2023_OR_LATER": "2023 or later",
+    "UNKNOWN": "Unknown"
+  },
+  "employmentSectors": {
+    "HEALTHCARE": "Healthcare",
+    "EDUCATION": "Education",
+    "PUBLIC_SECTOR": "Public sector",
+    "PRIVATE_SECTOR": "Private sector",
+    "SECURITY_SERVICES": "Security services",
+    "OTHER": "Other",
+    "UNKNOWN": "Unknown"
+  },
+  "remediesPursued": {
+    "NONE": "No action taken",
+    "INTERNAL_APPEAL": "Internal appeal at the workplace",
+    "REGULATOR_COMPLAINT": "Complaint to a regulator",
+    "LITIGATION": "Legal proceedings",
+    "UNKNOWN": "Unknown"
+  },
+  "relationshipsAffected": {
+    "SPOUSE_PARTNER": "Spouse or partner",
+    "PARENT": "Parent",
+    "CHILD": "Child",
+    "SIBLING": "Sibling",
+    "EXTENDED_FAMILY": "Extended family",
+    "FRIENDS_COMMUNITY": "Friends or community",
+    "MULTIPLE": "More than one",
+    "UNKNOWN": "Unknown"
   }
 }

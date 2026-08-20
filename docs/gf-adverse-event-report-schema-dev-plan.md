@@ -751,11 +751,14 @@ wildcard; the stale localhost entries removed. Re-probed and confirmed: `/auth/c
 locale-prefixed callbacks, and `/{he,en}/reports/new` all resolve verbatim, with the bogus control
 still correctly rewritten.
 
-**Still unverified**, and required before production login can be called healthy: (1) a real magic-link
-round trip on production — allow-list resolution is not the same as an end-to-end login; (2) the
-production backend's `FRONTEND_URL` on Railway, whose local copy in `.env.production.local` is stale
-`http://localhost:3000`. If Railway's is stale too, CORS rejects the real frontend regardless of the
-Supabase fix.
+**Both follow-ups since closed.** Railway's production `FRONTEND_URL` was already correct — only the
+local `.env.production.local` copy was stale — and a CORS preflight from the real frontend origin
+returns 204 with the origin echoed, while a bogus origin is refused. The production allow-list fix was
+re-probed across every path including the `?returnTo=` OAuth-bridge shape. A real end-to-end magic-link
+round trip on *production* remains the one thing unproven; the equivalent on **staging succeeded**, and
+was verified at the database: the reporter's Supabase account was genuinely deleted (`auth.users` holds
+only the researcher's own row), the stored `Report` carries no identity-derived field, conditional
+fields are correctly null, and the aggregate endpoint suppressed counts below the threshold of 10.
 
 **Two real defects found and fixed while building, both surfaced only by the frontend needing them:**
 
@@ -812,6 +815,82 @@ URL fragment on mount; the rule already fires in 8 files on `master` (19 errors 
 not an enforced gate. The alternatives (`useSyncExternalStore` with a cached snapshot, or a lazy
 `useState` initializer) either need a module-level mutable cache or produce a hydration mismatch, both
 worse than the effect.
+
+### Phase 8b — Social domain: vaccination status, 2026-08-20 (fix, post-landing)
+
+Found by the user immediately after Phase 8 landed, by reading the first real social report on
+staging. **The social/economic domain recorded consequences tied to vaccination status while recording
+nothing about what that status was.** The documented mass events here are consequences of *refusal*
+(§2.5's EEOC and DoD grounding); the reverse — estrangement over having *been* vaccinated — is real
+too. Both produced byte-identical rows.
+
+This is a sharper failure than incompleteness. An aggregate merging the two directions is not weak
+evidence, it is meaningless, and it would be *published* as "N reports of X connected to vaccination"
+— the overstated-claim shape `defamation-risk.md` Rule 2 exists to stop. It also defeats §0's founding
+premise, since the aggregate is the only thing this model ever produces.
+
+Worth recording how it was missed: the domain-selection copy was written correctly ("connected to
+vaccination **status**"), and the field label then silently assumed vaccination had occurred. The two
+were never read against each other. A neutral name — `timingRelativeToEvent` — hid it further, since
+"the event" was undefined and therefore never obviously wrong.
+
+**Fixed**: `vaccinationStatus` (`RECEIVED` / `NOT_RECEIVED` / `PARTIALLY_RECEIVED` / `UNDISCLOSED`),
+required at the zod boundary and deliberately *not* defaulted — a silent `UNDISCLOSED` would be
+indistinguishable from a reporter who chose not to say. `UNDISCLOSED` is a real option; those rows must
+be excluded from any directional claim, never counted as either, which is a **Phase 9 obligation**
+alongside the epistemic-tier weighting. Exposed as an aggregate dimension, because adding the column
+without being able to `GROUP BY` it would leave every aggregate as ambiguous as before.
+
+`timingRelativeToEvent` was **dropped, not renamed**: it measured an interval after an event that never
+happened for this population, so no reinterpretation could rescue its values. `occurredDuring` replaces
+it with a calendar period — no anchor to be wrong about, and the better axis regardless, since mandates
+arrived in dated waves. Migration `20260820100000_social_report_vaccination_status`, destructive and
+safe only because the table was confirmed empty first (the one ambiguous staging row was deleted
+deliberately). Applied and query-verified.
+
+**Per-category conditional follow-ups — done in a second pass, same session.** The social domain had
+none while medical had two, so a firing, a discharge and a broken family bond were all described by the
+same six generic fields. Added, with the same "set only when applicable, null otherwise" rule enforced
+at the intake boundary: `employmentSector` (the axis EEOC charge data is stratified by; healthcare
+workers were the most-mandated group anywhere), `remedyPursued` (an ordinal escalation ladder —
+`NONE` < `INTERNAL_APPEAL` < `REGULATOR_COMPLAINT` < `LITIGATION` — deliberately ordinal so "complaint
+upheld, never complained" is not representable, the `medicalCareEngagement` fix from §2.9 applied
+again), and `relationshipAffected`.
+
+**Two candidates were rejected rather than added**, which matters as much as what went in:
+- *"What access was denied"* — `ACCESS_DENIAL_SERVICES` / `_HEALTHCARE` / `EDUCATION_ACCESS_DENIAL`
+  already say exactly that. A second field restating the category is the redundancy §2.9 removed from
+  `MedicalSymptomCategory.DEATH`, and it could disagree with the category.
+- *A military discharge characterisation* — the real published taxonomies are US DoD's
+  (Honorable / General / Other-Than-Honorable), which do not describe IDF service. Inventing one for a
+  Hebrew-first audience would manufacture authority this schema's standard forbids. `remedyPursued`
+  covers escalation and `outcomeStatus.RESOLVED_REVERSED` covers reinstatement, so nothing is lost.
+
+Migration `20260820110000_social_report_conditional_followups`, purely additive, applied and verified.
+
+### Review step shows only what was answered — 2026-08-20
+
+User-reported: the confirmation step listed every field including ones never answered, cluttering the
+record with paths not taken. It now hides a row when the value is `undefined` (a follow-up this
+category never asked, or a blank yes/no) or still sits at the value the field started from.
+
+That threshold is **per field, not a blanket `UNKNOWN`**, because the same member means opposite things
+in different places: `consequenceSeverity` starts at `NONE`, so a `NONE` there is an untouched default
+carrying no information — while `remedyPursued` has no default and is required when asked, so its
+`NONE` is a reporter actively saying "I took no action" and must stay visible. A single global rule
+would either hide the second or show the first; both were checked in a browser. A short note tells the
+reporter omissions mean nothing was recorded, so a shorter list does not read as lost answers.
+
+### Consent text names only the special categories actually present — 2026-08-20
+
+User-reported, and a real defect: the consent read "including health data, or religious belief where I
+indicated it" on **every** report, including medical ones where no question can reveal religious belief
+at all. `formalBasisAsserted` exists only on the social form, and only one of its four values
+(`RELIGIOUS_ACCOMMODATION_DENIED`) discloses religion.
+
+Art. 9(2)(a) consent must be *specific*, so blanket wording was not merely noise, it was the wrong
+legal shape: asking consent to process a special category the reporter never supplied. The label now
+names health data always, and religious belief only when that one answer is actually selected.
 
 ### Phase 9 — Frontend public aggregate/pattern display
 Public-facing view of report counts by category. Must implement the confidence-tiering distinction

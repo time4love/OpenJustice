@@ -134,23 +134,48 @@ describe('POST /api/reports/social-economic', () => {
 
     const res = await request(app)
       .post('/api/reports/social-economic')
-      .send({ consentGiven: true, report: { impactCategory: 'MILITARY_DISCHARGE' } });
+      .send({
+        consentGiven: true,
+        report: {
+          impactCategory: 'MILITARY_DISCHARGE',
+          vaccinationStatus: 'NOT_RECEIVED',
+          remedyPursued: 'NONE',
+        },
+      });
 
     expect(res.status).toBe(201);
     expect(mockReportCreate).toHaveBeenCalledWith({
       data: expect.objectContaining({
         domain: 'SOCIAL_ECONOMIC',
         socialEconomicReport: {
-          create: expect.objectContaining({ impactCategory: 'MILITARY_DISCHARGE' }),
+          create: expect.objectContaining({
+            impactCategory: 'MILITARY_DISCHARGE',
+            // Must reach the database, not merely pass validation — this is
+            // the field the whole row's interpretation depends on.
+            vaccinationStatus: 'NOT_RECEIVED',
+          }),
         },
       }),
     });
   });
 
+  it('rejects a social report with no vaccinationStatus, without consuming verification', async () => {
+    // Refusal-side and vaccination-side harm are opposite claims that produce
+    // identical rows without this field, so the route must refuse rather than
+    // store an ambiguous report. And it must refuse at validation time, before
+    // the one-shot magic link is spent.
+    const res = await request(app)
+      .post('/api/reports/social-economic')
+      .send({ consentGiven: true, report: { impactCategory: 'FAMILY_RELATIONSHIP_RUPTURE' } });
+    expect(res.status).toBe(400);
+    expect(mockVerifyReporter).not.toHaveBeenCalled();
+    expect(mockReportCreate).not.toHaveBeenCalled();
+  });
+
   it('rejects a submission without consentGiven', async () => {
     const res = await request(app)
       .post('/api/reports/social-economic')
-      .send({ report: { impactCategory: 'MILITARY_DISCHARGE' } });
+      .send({ report: { impactCategory: 'MILITARY_DISCHARGE', vaccinationStatus: 'NOT_RECEIVED' } });
     expect(res.status).toBe(400);
     expect(mockReportCreate).not.toHaveBeenCalled();
   });

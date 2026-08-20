@@ -3,6 +3,11 @@ import {
   FormalBasisAsserted,
   ConsequenceSeverity,
   SocialOutcomeStatus,
+  VaccinationStatus,
+  ReportCalendarPeriod,
+  EmploymentSector,
+  RemedyPursued,
+  RelationshipAffected,
 } from '@prisma/client';
 
 // ---------------------------------------------------------------------------
@@ -57,5 +62,61 @@ export const SOCIAL_OUTCOME_STATUS_LABELS: Record<SocialOutcomeStatus, string> =
   ONGOING: 'מתמשך',
   RESOLVED_REVERSED: 'בוטל / שוקם',
   RESOLVED_UNCHANGED: 'נותר ללא שינוי',
+  UNKNOWN: 'לא ידוע',
+};
+
+// Vaccination status — the field that tells a refusal-side consequence apart
+// from a vaccination-side one. "לא נמסר" rather than "לא ידוע": the reporter
+// knows perfectly well, they have chosen not to say, and the label should not
+// misdescribe that as ignorance.
+export const VACCINATION_STATUS_LABELS: Record<VaccinationStatus, string> = {
+  RECEIVED: 'התחסנתי',
+  NOT_RECEIVED: 'לא התחסנתי',
+  PARTIALLY_RECEIVED: 'התחסנתי חלקית',
+  UNDISCLOSED: 'לא נמסר',
+};
+
+// Calendar periods, split where the mandate waves fell — Israel's Green Pass
+// (Feb 2021) in H1, the large US federal/employer mandates (Sep 2021 on) in H2.
+export const REPORT_CALENDAR_PERIOD_LABELS: Record<ReportCalendarPeriod, string> = {
+  YEAR_2020_OR_EARLIER: '2020 או קודם',
+  YEAR_2021_H1: 'המחצית הראשונה של 2021',
+  YEAR_2021_H2: 'המחצית השנייה של 2021',
+  YEAR_2022: '2022',
+  YEAR_2023_OR_LATER: '2023 ואילך',
+  UNKNOWN: 'לא ידוע',
+};
+
+// Employment sector. "כוחות הביטחון" covers military/police/prison service as
+// one bucket rather than splitting a distinction this dataset cannot support.
+export const EMPLOYMENT_SECTOR_LABELS: Record<EmploymentSector, string> = {
+  HEALTHCARE: 'מערכת הבריאות',
+  EDUCATION: 'מערכת החינוך',
+  PUBLIC_SECTOR: 'המגזר הציבורי',
+  PRIVATE_SECTOR: 'המגזר הפרטי',
+  SECURITY_SERVICES: 'כוחות הביטחון',
+  OTHER: 'אחר',
+  UNKNOWN: 'לא ידוע',
+};
+
+// Escalation ladder, in Israeli terms rather than translated EEOC ones — the
+// regulator is נציבות שוויון הזדמנויות בעבודה and the forum is בית הדין לעבודה,
+// following this file's existing practice of using the real local institutions.
+export const REMEDY_PURSUED_LABELS: Record<RemedyPursued, string> = {
+  NONE: 'לא ננקטה פעולה',
+  INTERNAL_APPEAL: 'ערעור או בירור פנימי במקום העבודה',
+  REGULATOR_COMPLAINT: 'תלונה לגורם רגולטורי (כגון נציבות שוויון הזדמנויות בעבודה)',
+  LITIGATION: 'הליך משפטי (כגון בית הדין לעבודה)',
+  UNKNOWN: 'לא ידוע',
+};
+
+export const RELATIONSHIP_AFFECTED_LABELS: Record<RelationshipAffected, string> = {
+  SPOUSE_PARTNER: 'בן/בת זוג',
+  PARENT: 'הורה',
+  CHILD: 'בן/בת',
+  SIBLING: 'אח/אחות',
+  EXTENDED_FAMILY: 'משפחה מורחבת',
+  FRIENDS_COMMUNITY: 'חברים או קהילה',
+  MULTIPLE: 'יותר מקשר אחד',
   UNKNOWN: 'לא ידוע',
 };

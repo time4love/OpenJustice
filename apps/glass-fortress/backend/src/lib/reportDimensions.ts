@@ -14,9 +14,14 @@
  * how severe, demographics), matching real pharmacovigilance practice
  * (VAERS/EudraVigilance stratify by category/severity/timing/age/sex).
  * Oncology/cognitive sub-fields (only meaningful conditioned on a specific
- * symptomCategory), doseNumber, documentationAvailable, and
- * timingRelativeToEvent were deliberately deferred, not forgotten — extend
+ * symptomCategory), doseNumber, documentationAvailable, and the social
+ * domain's occurredDuring were deliberately deferred, not forgotten — extend
  * this file when a real need for them shows up.
+ *
+ * The social domain's vaccinationStatus is NOT in that deferred set and never
+ * should be: it is what separates a consequence of refusing from a consequence
+ * of having been vaccinated. An aggregate that cannot split on it merges two
+ * opposite claims into one count.
  */
 
 export type MedicalDimension =
@@ -32,6 +37,7 @@ export type SocialEconomicDimension =
   | 'formalBasisAsserted'
   | 'consequenceSeverity'
   | 'outcomeStatus'
+  | 'vaccinationStatus'
   | 'reporterAgeRange'
   | 'reporterGender';
 
@@ -57,6 +63,9 @@ export const SOCIAL_ECONOMIC_DIMENSIONS: Record<SocialEconomicDimension, Dimensi
   formalBasisAsserted: { sqlColumn: 's."formalBasisAsserted"' },
   consequenceSeverity: { sqlColumn: 's."consequenceSeverity"' },
   outcomeStatus: { sqlColumn: 's."outcomeStatus"' },
+  // Exposed as a dimension deliberately: adding the column without being able
+  // to GROUP BY it would leave every aggregate exactly as ambiguous as before.
+  vaccinationStatus: { sqlColumn: 's."vaccinationStatus"' },
   reporterAgeRange: { sqlColumn: 'r."reporterAgeRange"' },
   reporterGender: { sqlColumn: 'r."reporterGender"' },
 };
