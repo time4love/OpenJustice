@@ -4,9 +4,10 @@ import { useState, useEffect } from 'react';
 import Image from 'next/image';
 import { useParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { Link } from '@/i18n/navigation';
-import { TopNav } from '@/components/TopNav';
+import { Link, useRouter } from '@/i18n/navigation';
+import { SiteHeader } from '@/components/SiteHeader';
 import { apiUrl } from '@/lib/api';
+import { displayUrl } from '@/lib/format';
 import { CategoryBadges } from '@/components/CategoryBadges';
 import { TierBadge } from '@/components/TierBadge';
 import { DiffCard, type DiffRecord } from '@/components/DiffCard';
@@ -36,6 +37,7 @@ interface EvidenceDetail {
   sourceUrl?: string | null;
   fileUrl?: string | null;
   trackedUrlId?: string | null;
+  trackedUrl?: string | null;
   diff: DiffRecord | null;
   citingTheses: { id: string; title: string | null }[];
   createdAt: string;
@@ -66,6 +68,7 @@ export default function EvidencePage() {
   const id = typeof params.id === 'string' ? params.id : Array.isArray(params.id) ? params.id[0] : '';
   const t = useTranslations('evidence');
   const tDiff = useTranslations('forensics');
+  const router = useRouter();
 
   const [evidence, setEvidence] = useState<EvidenceDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -90,12 +93,43 @@ export default function EvidencePage() {
 
   return (
     <div className="min-h-screen bg-slate-50" dir="rtl">
-      <TopNav current="evidence" />
+      <SiteHeader current="evidence" maxWidth="max-w-3xl" />
       <main className="max-w-3xl mx-auto px-4 py-8 space-y-5">
-        {/* Back */}
-        <Link href="/evidence" className="text-xs text-slate-500 hover:text-slate-700 transition-colors">
-          {t('backLink')}
-        </Link>
+        {/* Back — real browser back, not a fixed destination: this page can be
+            reached from the timeline, a thesis citation, a search result, etc.,
+            and "→ Evidence" always sending you to the full list regardless of
+            where you actually came from was itself the bug. */}
+        <button
+          type="button"
+          onClick={() => router.back()}
+          className="text-xs text-slate-500 hover:text-slate-700 transition-colors"
+        >
+          {t('backGeneric')}
+        </button>
+
+        {/* Title. For FORENSIC_DIFF, a compact caption row (icon + "edit
+            change from {date}") identifies the record type and folds in the
+            date that used to sit on its own line below; the heading itself
+            is just the cleaned tracked URL (no protocol, no query string) so
+            it reads as a page name, not a raw address. Non-diff evidence gets
+            a single icon+targetEntity heading — no second record-type line
+            needed since there's nothing else to fold into it. */}
+        {evidence && evidence.evidenceType === 'FORENSIC_DIFF' && (
+          <div className="flex items-center gap-1.5 text-xs font-semibold text-red-600">
+            <Image src="/icon_diff.png" alt="" width={18} height={18} className="w-4 h-4 shrink-0" />
+            <span>{t('editChangeLabel')} {evidence.evidenceDate}</span>
+          </div>
+        )}
+        {evidence && (
+          <h1 className="text-xl sm:text-2xl font-bold text-slate-900 flex items-center gap-2 flex-wrap break-all">
+            {evidence.evidenceType !== 'FORENSIC_DIFF' && (
+              <Image src="/icon_target_entity.png" alt="" width={22} height={22} className="w-5 h-5 shrink-0" />
+            )}
+            {evidence.evidenceType === 'FORENSIC_DIFF' && evidence.trackedUrl
+              ? displayUrl(evidence.trackedUrl)
+              : evidence.targetEntity}
+          </h1>
+        )}
 
         {loading && (
           <div className="flex items-center justify-center py-24">
@@ -168,7 +202,13 @@ export default function EvidencePage() {
                 )}
               </div>
 
-              {evidence.tierReasoning && (
+              {/* For FORENSIC_DIFF evidence, tierReasoning is always just a
+                  generated "documented change on {url} on {date}" sentence —
+                  the same URL/date now shown as the page's own heading above,
+                  so showing it again here would be pure repetition. Genuine
+                  tier-assignment reasoning (why Tier 1 vs Tier 2, etc.) only
+                  exists for non-diff evidence classified by IntakeAgent. */}
+              {evidence.tierReasoning && evidence.evidenceType !== 'FORENSIC_DIFF' && (
                 <div className="pt-1 border-t border-slate-100">
                   <p className="text-xs text-slate-400 mb-1">{t('tierReasoning')}</p>
                   <p className="text-xs text-slate-600 leading-relaxed">{evidence.tierReasoning}</p>

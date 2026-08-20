@@ -59,11 +59,34 @@ export default function TrackedUrlPage() {
   const [initialLoading, setInitialLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [reportLoading, setReportLoading] = useState(false);
 
   // Sentinel ref for IntersectionObserver
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   // Guard against duplicate fetches
   const fetchingRef = useRef(false);
+
+  // A plain <a href={apiUrl(...)}> navigation doesn't go through the patched
+  // fetch() that attaches the staging access-gate header (stagingApiAuth.ts
+  // only wraps `window.fetch`), so on staging this always 401'd. Fetching the
+  // report HTML through the real fetch() and opening it as a blob URL keeps
+  // the same "opens in a new tab, browser print-dialog saves as PDF" UX while
+  // actually carrying the auth header.
+  async function openReport() {
+    setReportLoading(true);
+    try {
+      const res = await fetch(apiUrl(`/api/forensics/tracked/${trackedUrlId}/report`));
+      if (!res.ok) throw new Error();
+      const html = await res.text();
+      const blob = new Blob([html], { type: 'text/html' });
+      window.open(URL.createObjectURL(blob), '_blank');
+    } catch {
+      // The report is a convenience export, not core page functionality —
+      // fail silently rather than block the rest of the page on it.
+    } finally {
+      setReportLoading(false);
+    }
+  }
 
   async function fetchPage(cursor: string | null) {
     if (fetchingRef.current) return;
@@ -218,17 +241,17 @@ export default function TrackedUrlPage() {
                       {t('resultsHeading', { count: flaggedCount })}
                     </span>
                   )}
-                  <a
-                    href={apiUrl(`/api/forensics/tracked/${trackedUrlId}/report`)}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="ms-auto inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-slate-900 text-white hover:bg-slate-700 transition-colors"
+                  <button
+                    type="button"
+                    onClick={() => void openReport()}
+                    disabled={reportLoading}
+                    className="ms-auto inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-slate-900 text-white hover:bg-slate-700 disabled:opacity-50 transition-colors"
                   >
                     <svg className="w-3 h-3 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3M3 17V7a2 2 0 012-2h6l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
                     </svg>
                     {t('downloadPdf')}
-                  </a>
+                  </button>
                 </div>
 
                 {/* Diff timeline */}

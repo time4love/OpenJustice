@@ -1,15 +1,21 @@
 # GF Mobile UX Polish — Dev Plan
 
-**Status:** Phases 1–3 ✅ DONE 2026-08-18, on branch `fix/gf-mobile-ux-polish`, not yet committed.
-Phase 4 (icon scale / chip-color design pass) not started. All findings below are confirmed
-against staging (mobile viewport, Hebrew/RTL locale) and cross-checked in source — file:line
-references verified 2026-08-18 (Phases 1–3's references updated post-implementation; §5 reflects
-the original investigation and may shift slightly once actually picked up).
+**Status:** Phases 1–3, 5–6 items 1–10 ✅ SHIPPED TO STAGING — PR #47 (`fix/gf-mobile-ux-polish` →
+`staging`, 2026-08-18), PR #49 (`fix/gf-evidence-page-header-consistency` → `staging`, 2026-08-19),
+and PR #50 (`fix/gf-call-thesis-card-links` → `staging`, 2026-08-19, Phase 6 items 9–10), all
+merged, all branches deleted, both staging services (`glass-fortress-frontend`,
+`glass-fortress-backend`) redeployed and verified live/green after each. None of the three are on
+`master` (no SHIP). **Phase 6 items 11–12 (`ThesisHighlightCard` unification, PDF-report-button
+fix) are implemented and verified locally but not yet committed/shipped.** Phase 4
+(icon scale / chip-color design pass, now §8) not started. All findings below are confirmed against
+staging (mobile viewport, Hebrew/RTL locale) and cross-checked in source — file:line references
+verified 2026-08-18/19 (Phases 1–3, 5–6's references updated post-implementation; §8 reflects the
+original investigation and may shift slightly once actually picked up).
 **Created:** 2026-08-18, from a staging UX review requested after the thesis/call-for-evidence
 work landed (PR #37–#45, see [gf-thesis-citation-footnotes-dev-plan.md](gf-thesis-citation-footnotes-dev-plan.md)).
-**Scope:** Glass Fortress frontend only (`apps/glass-fortress/frontend`). No backend changes
-identified as necessary — every finding below is frontend rendering/i18n, confirmed by source
-inspection (§0.3 in particular: the truncation is client-side, not a backend data problem).
+**Scope:** Primarily Glass Fortress frontend (`apps/glass-fortress/frontend`) — Phases 1–5 are
+frontend-only (rendering/i18n). Phase 6 added one small, targeted backend change (a missing field
+on `GET /api/evidence/:id`) once a fix genuinely required data the API didn't expose.
 
 ---
 
@@ -282,7 +288,181 @@ work).
 
 ---
 
-## 6. Phase 4 — Icon scale & chip-color design pass
+## 6. Phase 6 — ✅ DONE 2026-08-19 — Evidence detail page: header consistency + real title
+
+Raised by the user as "before we continue" fixes needed across screens, from directly using the
+evidence detail page (`apps/glass-fortress/frontend/src/app/[locale]/evidence/[id]/page.tsx`)
+after Phase 5 landed. Four items, one required a small backend change:
+
+1. **Page had no title at all**, unlike the thesis page (Phase 5 item 1). Fixed as part of item 2
+   below — the heading now always renders something, forensic-diff or not.
+2. **For `FORENSIC_DIFF` evidence, the scanned page's URL + snapshot date + a change icon needed to
+   be the page's actual heading — not buried lower in a `tierReasoning` block.** Investigated what
+   `tierReasoning` actually contains for this evidence type: `forensicTierReasoning(url, afterDate,
+   categories)` in the backend (`src/lib/investigativeCategories.ts:102-115`) generates nothing but
+   `"שינוי מתועד בדף ממשלתי רשמי ({url}) בתאריך {afterDate}..."` — literally just the URL and date
+   restated as a sentence, confirming the user's read that this section is redundant once elevated
+   to the heading. (For non-diff `DOCUMENT` evidence, `tierReasoning` is genuine per-record
+   chain-of-thought from `IntakeAgent`'s classification prompt — real content, kept as-is.)
+   **Backend:** the live tracked-page URL wasn't returned by `GET /api/evidence/:id` at all (only
+   embedded inside the `tierReasoning` prose) — added `trackedUrl: { select: { url: true } }` to the
+   `urlVersionDiff` include and a new `trackedUrl` field on the response (`evidenceRoutes.ts`).
+   **Frontend, first pass:** an `<h1>` rendering `icon_diff.png` + `evidence.trackedUrl` for
+   `FORENSIC_DIFF`, or (per a same-session follow-up ask, "the heading is a good place to show the
+   diff or evidence icon") `icon_target_entity.png` + `evidence.targetEntity` otherwise, with the
+   snapshot date on its own line below. **Refined the same session after the user flagged the
+   heading as "very wasteful" of space and the URL as noisy:** split into two elements for
+   `FORENSIC_DIFF` — a small caption row above the heading (`icon_diff.png` + new `editChangeLabel`
+   i18n key, "שינוי עריכה מתאריך {date}" / "Edit change from {date}") that folds in what was the
+   separate date line, and the `<h1>` itself now shows only the tracked URL run through a new
+   `displayUrl()` helper (`src/lib/format.ts`) that strips the `https://`/`http://` protocol and any
+   `?query` string — reads as a page name, not a raw address. Non-diff evidence keeps the original
+   single-line icon+targetEntity heading (nothing to fold in, so no caption row needed there). The
+   `tierReasoning` block still only renders when `evidenceType !== 'FORENSIC_DIFF'`.
+3. **Page was missing the site header entirely on mobile — confirmed root cause.** The page rendered
+   bare `<TopNav current="evidence" />` instead of `<SiteHeader current="evidence" />`. `TopNav` is
+   *only* the nav-links/hamburger-button — no logo, no app name, no bordered header bar; `SiteHeader`
+   is the actual header chrome that wraps `TopNav` inside it. Grepped every page for this same
+   bare-`TopNav`-without-`SiteHeader` pattern — this was the **only** page with the bug; every other
+   page already used `SiteHeader` correctly. Fixed by swapping to `<SiteHeader current="evidence"
+   maxWidth="max-w-3xl" />` (matching this page's own content width).
+4. **Back link always pointed at `/evidence`** (`t('backLink')`, "→ Evidence"), regardless of
+   whether the user actually arrived from the timeline, a thesis citation, search, etc. Replaced with
+   a `<button onClick={() => router.back()}>` using a new generic `backGeneric` i18n key ("→ חזרה" /
+   "← Back") instead of naming a fixed destination that's no longer accurate. The old `evidence.
+   backLink` key was unused anywhere else in the codebase after this change — deleted from both
+   `messages/*.json` rather than left as dead config.
+
+5. **Same header-consistency question extended to the thesis detail page** (`theses/[id]/page.tsx`)
+   after the user asked directly: is there shared header code, or does every page roll its own?
+   Answer, checked precisely: `SiteHeader`/`TopNav` is the shared implementation and most pages use
+   it, but **5 pages hand-roll their own separate `<header>`** instead —
+   `submit`, `theses/new`, `theses/[id]`, `theses/[id]/edit`, `theses/[id]/history`. Of those, only
+   `theses/[id]` had an actual bug (not just duplication): its header linked back to `/theses`, the
+   researcher-gated thesis builder — but the thesis *detail* page itself is public, reachable via
+   citations/share links/`/call`, so most visitors landing on that back-link couldn't use its
+   destination. The other four back-links point to same-audience pages (edit→detail, history→
+   detail, etc.) — duplicated code, but not the same wrong-audience bug, so left alone this round.
+   Fixed `theses/[id]/page.tsx` by replacing its bespoke header with `<SiteHeader current="theses"
+   maxWidth="max-w-4xl" actions={...} />`, passing the page's existing History/Edit/Call-for-
+   Witnesses buttons through `SiteHeader`'s `actions` prop (which already existed for exactly this)
+   — the back-link is simply gone, not replaced with anything, since `SiteHeader`'s own logo-links-
+   home and hamburger nav already cover general navigation. Removed the now-unused `tc =
+   useTranslations('common')` from the file.
+6. **That change surfaced a real bug in `SiteHeader` itself**, caught live by the user: with a wide
+   `actions` block (3 buttons), the mobile hamburger button rendered *between* the actions and the
+   logo instead of at the true screen edge — `SiteHeader.tsx` rendered `<TopNav>` (hamburger) before
+   `{actions}` in the JSX, and in a `flex` row that inner ordering reads right-to-left in RTL, so
+   actions pushed the hamburger inward from the edge. Fixed at the component level (reordered to
+   `{actions}` then `<TopNav>`) rather than worked around per-page, since every other `SiteHeader`
+   caller with any `actions` content had the same latent bug, just less visible with narrower
+   content (e.g. `evidence/page.tsx`'s single "Submit Evidence" button). Verified no regression on
+   that page post-fix.
+7. **Evidence-card "View Evidence" link replaced with a fully clickable card** — the whole
+   `EvidenceTimeline.tsx` `TimelineNode` card now navigates to `/evidence/:id` on click
+   (`role="link"`, `tabIndex`, `Enter`-key support, `router.push()` from `@/i18n/navigation`),
+   instead of requiring a separate small link at the bottom. Since the card contains real nested
+   interactive elements (`CollapsibleChipRow` toggle buttons, figure chip links, the promote button,
+   and the remaining footer links), each of those regions got `onClick={(e) =>
+   e.stopPropagation()}` on its wrapper rather than wrapping the whole card in an `<a>`/`<Link>`
+   (which would be invalid HTML with buttons/links nested inside it, and would double-fire
+   navigation). Verified: clicking the summary text navigates to the evidence page; clicking a
+   collapsible-section toggle only toggles, no navigation; clicking a remaining footer link (e.g.
+   "Investigations citing this") goes to *its own* destination, not the card's. The now-orphaned
+   `viewEvidence` label was removed from `NodeLabels`, its construction site in `evidence/page.tsx`,
+   and the `timeline` i18n namespace in both `messages/*.json` — dead code, not left behind.
+8. **"תזות המצטטות ראיה זו" (Theses citing this) → relabeled, then removed entirely once the real
+   bug surfaced.** First pass: renamed to "חקירות המצטטות ראיה זו" (Investigations citing this) —
+   "תזה" is the internal/researcher term (matches "Glass Fortress"/"Bronze Fortress" being
+   backend-only naming), "חקירה" is the established public-facing term (`nav.calls` is labeled
+   "חקירות" / "Investigations"). **The user then tested the actual link and caught a real bug the
+   label change alone didn't fix**: its destination, `/theses?evidence=...`, is the researcher-only
+   Thesis Builder (`t('pageTitle')` literally renders "בונה תזות משפטיות", tagline framed around
+   drafting/tagging/critique) — the exact same wrong-audience-link shape as items 3/4/5 above, just
+   not caught until actually followed. Checked for a legitimate public alternative first: `/call`
+   (the public investigations list) exists but has no evidence-filtering support today. Given the
+   choice of (a) remove the link, (b) point at `/call` unfiltered, or (c) leave the researcher-only
+   destination and flag it, **the user chose (a)** — removed the link entirely rather than send
+   visitors to a wrong-audience page or a less-useful unfiltered one. `viewCitingTheses` removed
+   from `NodeLabels`, its construction site, and both `messages/*.json` (dead code, not left
+   behind). The sibling `evidence.citingTheses` key on the single evidence detail page (which lists
+   *actual* citing theses by ID/title, fetched by that page's own API — not a raw link into the
+   builder) is a genuinely different, correctly-scoped feature and wasn't touched.
+
+**Verified live**, both evidence types, reached via a direct URL and via a real in-app thesis
+citation link: `FORENSIC_DIFF` shows the diff icon + full scanned URL + date as the heading, no
+tier-reasoning block; `DOCUMENT` shows the target-entity icon + entity name as the heading, *with*
+its genuine tier-reasoning block intact further down; the full header bar (logo, nav, hamburger) now
+renders; the back button correctly returned to the thesis page it was reached from, not `/evidence`;
+the thesis detail page's header now matches the rest of the site with the hamburger correctly at the
+edge. Backend: full Jest suite 568/568 passing (no existing coverage targeted this route
+specifically). Frontend: `tsc --noEmit` clean throughout, zero new lint errors.
+
+**Not done, explicitly flagged rather than silently left:** `submit`, `theses/new`,
+`theses/[id]/edit`, and `theses/[id]/history` still hand-roll their own header markup instead of
+`SiteHeader` — duplicated code, four more near-identical implementations, but none currently have
+a wrong-audience back-link bug like the one just fixed. Worth a dedicated cleanup pass if the user
+wants full consistency, not bundled into this session since it's a larger, lower-urgency change.
+Frontend: `tsc --noEmit` clean, lint diff against baseline shows zero new errors.
+
+9. **Same wrong-audience-link shape found a third time, on a different page: `ThesisHighlightCard`'s
+   `compact` variant** (`src/components/ThesisHighlightCard.tsx`, the only variant using this
+   component — used exclusively by `/call/page.tsx`, the public investigations list — the
+   `featured`/`default` variants are homepage-only and untouched). Its "צפה בתיק" (View Case) link
+   went to `/call/${thesis.id}` — the *same* call-to-action page the card already links its "n open
+   gaps" text's *sibling* text-only span toward conceptually, but wasn't actually a link at all,
+   just a plain `<span>`. Fixed both at once: "View Case" now links to `/theses/${thesis.id}` (the
+   full public thesis narrative — confirmed public per Phase 6 above), and the "N open gaps" text
+   became its own `<Link href="/call/${thesis.id}">` (verified that page really does show each open
+   gap with FOIA-request/tip CTAs, i.e. it's the correct destination for "go help close this gap").
+   Two genuinely different destinations, two genuinely different links, instead of one link
+   pointing at the wrong one and a second element that wasn't a link at all. Verified live: "View
+   Case" → `/theses/:id`, "N open gaps" → `/call/:id`. `tsc --noEmit` clean, no new lint errors.
+10. **Evidence-gap FOIA/Tip buttons on the thesis page (`GapSearchPanel`, same file) hardcoded
+    literal English `"FOIA"`/`"Tip"` text** — not a translation-value mismatch like the badge work
+    in Phase 2, but no `t()` call at all, ever. Confirmed the `theses` namespace's own
+    `foiaBtn`/`tipBtn` keys existed in `messages/*.json` but were dead — grepped every `.tsx` file,
+    nothing referenced them, so `GapSearchPanel` really was just hardcoding English literals instead
+    of using the untouched-but-present i18n keys. Fixed by: (1) wiring the component up to
+    `useTranslations('theses')` and `t('foiaBtn')`/`t('tipBtn')`; (2) updating those two message
+    values themselves to match `/call/[thesisId]`'s wording exactly, per the user's ask — Hebrew
+    "הפק מכתב חופש מידע"/"שלח מידע" → "בקשת חופש מידע"/"שלח מסמך"; English `tipBtn` "Submit Tip" →
+    "Submit Document" to match (English `foiaBtn` already read "Generate FOIA Letter" on both
+    sides, no change needed there). Verified live: both buttons read "בקשת חופש מידע"/"שלח מסמך" in
+    Hebrew, matching the call page exactly.
+11. **`ThesisHighlightCard`'s three near-identical variants collapsed into one**, per direct user
+    feedback ("נראה שיש כאן שכפול קוד לשני כרטיסים שנראים ממש זהים") after seeing item 9's fix
+    applied only to the `compact` variant and not showing up on the homepage — the homepage's
+    `featured`/`default` variants were a separate, undiffed code path. Rather than re-patch two more
+    copies of the same link bug, removed the `variant` prop entirely: one card design (the
+    `/call`-page look, per the user's explicit preference — "עדיף להשתמש במראה הכרטיסייה בדף
+    החקירות כפי שהוא גם בדף הבית"), one set of links. The homepage's `featuredLabel`
+    ("התיק המוביל") pill was dropped along with the `featured` variant; both homepage call sites
+    (featured + secondary card grids) now pass the same `labels` shape as `/call/page.tsx`, adding
+    the previously-`compact`-only `mentionsLabel`. `home.topThesesFeaturedLabel` removed from
+    `messages/*.json` (dead), `home.mentionsLabel` added. Verified: `tsc --noEmit` clean, lint
+    clean, live on staging-connected local dev — homepage investigation cards now link "View Case" →
+    `/theses/:id` and "N open gaps" → `/call/:id`, matching `/call` exactly, no visual regression on
+    either grid.
+12. **"Download PDF Report" button on the forensic drill-down page (`/forensics/[trackedUrlId]`)
+    was 401ing on staging** — a pre-existing bug, not a regression from this session's other
+    changes. Root cause: the button was a plain `<a href={apiUrl(...)} target="_blank">`, and
+    staging's API auth (`x-staging-token` header) is attached by patching `window.fetch`
+    (`src/lib/stagingApiAuth.ts`) — a raw `<a href>` navigation never goes through `fetch()` at all,
+    so it always hit the backend's staging gate unauthenticated. Confirmed via direct `curl`: no
+    token → 401, with `x-staging-token` → passes auth (404 only because the test ID doesn't exist).
+    Fixed by replacing the `<a>` with a button that does a real `fetch()` (carrying the patched
+    auth header) → reads the response as a blob → `URL.createObjectURL()` → `window.open()`,
+    preserving the same "opens in a new tab, browser print-dialog saves as PDF" UX
+    (`forensics/[trackedUrlId]/page.tsx`, new `openReport()` + `reportLoading` state). Verified live:
+    request to `/api/forensics/tracked/:id/report` now returns 200 (was 401 before the fix).
+    **Flagged, not yet audited:** other `<a href={apiUrl(...)}>`-style direct-download links
+    elsewhere in the codebase may share this same staging-auth gap — worth a dedicated sweep, not
+    done this session since only this one instance was reported.
+
+---
+
+## 8. Phase 4 — Icon scale & chip-color design pass
 
 **Confirmed scale mismatch:**
 - Homepage mission icons (`src/app/[locale]/page.tsx:31-33` data, rendered lines 171-177): `next/image`
@@ -322,7 +502,7 @@ picked up:
 
 ---
 
-## 6. Minor / lower-confidence — pick up opportunistically
+## 9. Minor / lower-confidence — pick up opportunistically
 
 - **`aria-label` language inconsistency:** `src/components/TopNav.tsx:245` hardcodes
   `aria-label="Open navigation menu"` (also line 143, `"Close navigation menu"`), never calling
@@ -342,7 +522,7 @@ picked up:
 
 ---
 
-## 7. Explicitly out of scope
+## 10. Explicitly out of scope
 
 - Any left/right, RTL-mirroring-specific claim not independently confirmed against `dir="rtl"` in
   two different contexts (see §0's caveat) — the review tool's RTL rendering doesn't reliably match

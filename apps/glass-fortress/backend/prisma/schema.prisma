@@ -346,3 +346,37 @@ model ResearchSessionEvent {
   refId       String?                  // ThesisVersion.id | Evidence.fileHash | ThesisGapResolution.id
   createdAt   DateTime                 @default(now())
 }
+
+// ---------------------------------------------------------------------------
+// MCP OAuth 2.1 storage (docs/gf-mcp-oauth-dev-plan.md, Phase 1).
+//
+// Generic key-value store for the `oidc-provider` library's Adapter interface —
+// oidc-provider itself defines the "model kinds" (Client, Grant, AuthorizationCode,
+// AccessToken, RefreshToken, Session, Interaction, ...) and expects one uniform
+// upsert/find/consume/destroy interface across all of them, not a bespoke table per
+// kind. One table, keyed by (modelName, id), is the correct shape for that adapter —
+// see PrismaOidcAdapter (src/oauth/prismaOidcAdapter.ts) for how each field is used.
+//
+// accountId carries our Researcher.id for every model kind that represents a grant of
+// access (Grant, AccessToken, RefreshToken, Session) — indexed so the profile page's
+// "connected apps" revoke UI (Phase 3) can list a researcher's active grants without
+// querying into the opaque `payload` JSON.
+// ---------------------------------------------------------------------------
+
+model OidcModel {
+  modelName  String // oidc-provider's model kind, e.g. "Client", "Grant", "AccessToken"
+  id         String // oidc-provider-generated id, unique only within its modelName
+  payload    Json // the full model payload, as oidc-provider hands it to Adapter#upsert
+  grantId    String? // set when this model kind is tied to a Grant (tokens, codes)
+  userCode   String? // device-flow user code — unused today, kept for adapter-interface completeness
+  uid        String? // Session/Interaction lookup key — distinct from `id`
+  accountId  String? // Researcher.id — set for Grant/AccessToken/RefreshToken/Session rows
+  expiresAt  DateTime?
+  consumedAt DateTime?
+
+  @@id([modelName, id])
+  @@unique([modelName, userCode])
+  @@unique([modelName, uid])
+  @@index([modelName, grantId])
+  @@index([modelName, accountId])
+}

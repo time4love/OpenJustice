@@ -28,6 +28,9 @@ import { prisma } from './lib/prisma';
 import { verifyEnvironmentIdentityAtStartup } from './lib/appEnv';
 import { requireStagingAccess } from './middleware/stagingAccess';
 import { generalLimiter } from './middleware/rateLimiting';
+import { oidcProvider } from './oauth/oidcProvider';
+import { oauthInteractionRouter } from './routes/oauthInteractionRoutes';
+import { wellKnownRouter } from './routes/wellKnownRoutes';
 import { VectorStoreService } from './services/VectorStoreService';
 
 // ---------------------------------------------------------------------------
@@ -83,6 +86,45 @@ app.get('/health', (_req: Request, res: Response) => {
   res.json({ status: 'Glass Fortress Backend is Alive' });
 });
 
+// /oauth/* (docs/gf-mcp-oauth-dev-plan.md, Phase 2) also stays above the staging
+// gate, for the same reason /health does — but a different actual requirement:
+// Dynamic Client Registration and OAuth discovery metadata must be reachable by
+// an arbitrary external client (Claude, ChatGPT) with no pre-shared secret at
+// all, which is the entire point of DCR. Gating it behind the staging token
+// would make it untestable by any real MCP client, on staging, ever. This does
+// not weaken real security — registering a client or starting `/oauth/auth`
+// grants nothing by itself; every subsequent step still requires an approved
+// Researcher to complete the login/consent step (oauthInteractionRouter,
+// below) — which is exactly what re-verifies approval for real.
+//
+// oauthInteractionRouter is registered BEFORE the oidcProvider.callback()
+// catch-all so Express matches its more specific /oauth/interaction/* paths
+// first; oidc-provider itself serves no routes under that path.
+app.use('/oauth/interaction', oauthInteractionRouter);
+app.use('/oauth', oidcProvider.callback());
+
+// /api/mcp also stays above the staging gate, for the same reason /oauth
+// does: an external MCP client (ChatGPT in particular) that completes the
+// full OAuth dance above still has no way to attach a custom X-Staging-Token
+// header to its actual tool calls — gating this route would make write
+// tools untestable by any real MCP client on staging, permanently. This
+// does not weaken security: read tools are already unauthenticated on
+// production (same exposure, not a new one), and write tools are still
+// fully gated by resolveResearcher()'s own OAuth/legacy-token + approved-
+// researcher check inside mcpRouter — the staging pre-shared secret was
+// never that check, just a coarser "keep the whole unfinished site private"
+// layer that doesn't compose with a subsystem designed for arbitrary
+// self-service external clients.
+app.use('/api/mcp', mcpRouter);
+
+// /.well-known/oauth-protected-resource[/api/mcp] — RFC 9728, mandated by the
+// MCP Authorization spec for authorization-server discovery. Same exemption
+// reasoning as /oauth and /api/mcp above: a client that hasn't authenticated
+// yet, by definition, cannot present the staging secret to find out where to
+// authenticate. Confirmed live this was actually blocking a real claude.ai
+// connection attempt — see docs/gf-mcp-oauth-dev-plan.md §7.0c.
+app.use('/.well-known', wellKnownRouter);
+
 // Everything below requires the staging bearer token once APP_ENV=staging.
 // /health stays above this line so Railway's platform healthcheck, which
 // carries no auth header, keeps working.
@@ -117,7 +159,6 @@ app.use('/api/forensics', forensicsRouter);
 app.use('/api/figures', figuresRouter);
 app.use('/api/mentions', mentionRouter);
 app.use('/api/thesis', thesisRouter);
-app.use('/api/mcp', mcpRouter);
 app.use('/api/auth', authRouter);
 
 // ---------------------------------------------------------------------------

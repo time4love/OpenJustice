@@ -14,3 +14,12 @@ export function truncateLabel(text: string, maxLen = 35): string {
   const trimmed = lastSpace > 0 ? cut.slice(0, lastSpace) : cut;
   return `${trimmed}…`;
 }
+
+/**
+ * A tracked page's URL, cleaned up for display: no protocol, no query string.
+ * The full URL is still the underlying value used for links — this is purely
+ * cosmetic, for headings where "https://" and tracking params are just noise.
+ */
+export function displayUrl(url: string): string {
+  return url.replace(/^https?:\/\//, '').split('?')[0] ?? url;
+}

@@ -1,5 +1,21 @@
-import rateLimit from 'express-rate-limit';
+import rateLimit, { type Options as RateLimitOptions } from 'express-rate-limit';
+import type { RequestHandler } from 'express';
 import { getAppEnv } from '../lib/appEnv';
+
+// ---------------------------------------------------------------------------
+// This is an npm workspaces monorepo; `express-rate-limit` hoists to the
+// root node_modules, where an unrelated older `express` (v4) lives, while
+// this backend depends on its own local `express` (v5). Its .d.ts therefore
+// type-checks against a structurally different (duplicate) `Request`/
+// `Response` than the rest of this codebase, which TypeScript treats as
+// nominally incompatible even though both are the real Express types at
+// runtime — a monorepo hoisting artifact, not a real type-safety gap. Cast
+// once, here, so every exported limiter below is a plain backend-local
+// `RequestHandler` and no call site needs to know about this.
+// ---------------------------------------------------------------------------
+function makeLimiter(options: Partial<RateLimitOptions>): RequestHandler {
+  return rateLimit(options) as unknown as RequestHandler;
+}
 
 // ---------------------------------------------------------------------------
 // Cost-exposure guardrails. No route in this backend was previously rate
@@ -28,7 +44,7 @@ import { getAppEnv } from '../lib/appEnv';
 
 const skipOutsideProduction = (): boolean => getAppEnv() !== 'production';
 
-export const generalLimiter = rateLimit({
+export const generalLimiter = makeLimiter({
   windowMs: 15 * 60 * 1000,
   limit: 300,
   standardHeaders: true,
@@ -37,7 +53,7 @@ export const generalLimiter = rateLimit({
   message: { error: 'Too many requests. Please slow down and try again shortly.' },
 });
 
-export const aiCostLimiter = rateLimit({
+export const aiCostLimiter = makeLimiter({
   windowMs: 15 * 60 * 1000,
   limit: 10,
   standardHeaders: true,
@@ -53,7 +69,7 @@ export const aiCostLimiter = rateLimit({
  * `aiCostLimiter`'s 10/15min in one sitting. Looser cap, still an LLM call
  * per request so still bounded rather than left uncapped.
  */
-export const chatLimiter = rateLimit({
+export const chatLimiter = makeLimiter({
   windowMs: 15 * 60 * 1000,
   limit: 40,
   standardHeaders: true,
@@ -68,7 +84,7 @@ export const chatLimiter = rateLimit({
  * entire CDX history). `aiCostLimiter`'s 10/15min is far too loose here —
  * even a handful of requests compounds fast. Tighter window, tighter count.
  */
-export const scanLimiter = rateLimit({
+export const scanLimiter = makeLimiter({
   windowMs: 60 * 60 * 1000,
   limit: 3,
   standardHeaders: true,

@@ -5,6 +5,7 @@ import Image from 'next/image';
 import { useSearchParams } from 'next/navigation';
 import { useTranslations, useLocale } from 'next-intl';
 import { Link } from '@/i18n/navigation';
+import { SiteHeader } from '@/components/SiteHeader';
 import { apiUrl } from '@/lib/api';
 import { truncateLabel } from '@/lib/format';
 import { buildEvidenceCitationNumbers } from '@/lib/citations';
@@ -84,6 +85,7 @@ function GapSearchPanel({
   onSubmitTip: () => void;
   canEdit: boolean;
 }) {
+  const t = useTranslations('theses');
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [hits, setHits] = useState<VaultHit[]>([]);
@@ -165,14 +167,14 @@ function GapSearchPanel({
               className="flex flex-col items-center gap-1 text-xs font-semibold px-4 py-2 rounded-lg bg-sky-100 hover:bg-sky-200 active:bg-sky-300 text-sky-700 transition-colors"
             >
               <Image src="/icon_foia.png" alt="" width={28} height={28} className="w-7 h-7" />
-              FOIA
+              {t('foiaBtn')}
             </button>
             <button
               onClick={onSubmitTip}
               className="flex flex-col items-center gap-1 text-xs font-semibold px-4 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 active:bg-slate-300 text-slate-600 transition-colors"
             >
               <Image src="/icon_anon.png" alt="" width={28} height={28} className="w-7 h-7" />
-              Tip
+              {t('tipBtn')}
             </button>
           </div>
         </div>
@@ -264,7 +266,6 @@ function GapSearchPanel({
 
 function ThesisPageInner({ id }: { id: string }) {
   const t = useTranslations('theses');
-  const tc = useTranslations('common');
   const tStrength = useTranslations('strengths');
   const locale = useLocale();
   const searchParams = useSearchParams();
@@ -395,7 +396,7 @@ function ThesisPageInner({ id }: { id: string }) {
   if (loading) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-        <p className="text-slate-500 text-sm">{t('savingBtn')}</p>
+        <p className="text-slate-500 text-sm">{t('loading')}</p>
       </div>
     );
   }
@@ -419,15 +420,15 @@ function ThesisPageInner({ id }: { id: string }) {
 
   return (
     <div className="min-h-screen bg-slate-50">
-      {/* Header */}
-      <header className="border-b border-slate-200 bg-white/95 backdrop-blur sticky top-0 z-10 shadow-sm">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 h-14 flex items-center gap-4">
-          <Link href="/theses" className="text-slate-600 hover:text-slate-900 text-sm transition-colors">
-            ← {t('pageTitle')}
-          </Link>
-          <span className="text-slate-300">·</span>
-          <span className="text-slate-500 text-xs">{tc('appName')}</span>
-          <div className="ms-auto flex items-center gap-2">
+      {/* Header — the shared site header, not a bespoke one. This page is
+          public (reached via citations, share links, /call), so it must not
+          carry a back-link to /theses (the researcher-gated thesis builder)
+          the way it used to — most visitors here can't use that page. */}
+      <SiteHeader
+        current="theses"
+        maxWidth="max-w-4xl"
+        actions={
+          <div className="flex items-center gap-2">
             {isHistorical ? (
               <Link
                 href={`/theses/${id}/history`}
@@ -460,8 +461,8 @@ function ThesisPageInner({ id }: { id: string }) {
               {t('callForWitnessesBtn')}
             </Link>
           </div>
-        </div>
-      </header>
+        }
+      />
 
       <main className="max-w-4xl mx-auto px-4 sm:px-6 py-10 space-y-8">
         {/* Thesis title */}
