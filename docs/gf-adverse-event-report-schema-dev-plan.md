@@ -1,9 +1,11 @@
 # GF Public Adverse-Outcome Self-Reports — Dev Plan
 
-**Status:** Design phase. Prisma schema drafted and validated on branch `schema/gf-adverse-effect-reports`
-(worktree `.claude/worktrees/gf-adverse-effect-reports`) — **not yet committed, no migration generated,
-no backend/frontend code written.** This document is the canonical reference for the taxonomy's
-rationale; keep it in sync with `schema.prisma` as the design evolves.
+**Status:** Phase 0 (schema draft) ✅ DONE — committed `4f99c9e` on branch
+`schema/gf-adverse-effect-reports` (pushed, no PR yet). **Phase 1 (migration) ✅ DONE and applied to
+staging 2026-08-20** — see §5. Phase 2's verification-mechanism decision made (Supabase magic-link
+email); zod validation schemas not yet written. No backend routes/MCP tools/frontend code yet. See §5-6
+for the full phase breakdown and current recommended next step. This document is the canonical
+reference for the taxonomy's rationale; keep it in sync with `schema.prisma` as the design evolves.
 **Created:** 2026-08-20.
 **Scope:** Glass Fortress only. New models: `Report`, `MedicalAdverseEventReport`,
 `SocialEconomicImpactReport`, plus supporting enums.
@@ -205,17 +207,98 @@ doesn't have to be re-derived when the frontend is built. English only; needs He
 
 ---
 
-## 5. Not built yet
+## 5. Implementation phases
 
-- No Prisma migration generated or applied (schema draft only).
-- No backend routes, MCP tools, or frontend intake form.
-- `ReportPlausibilityService` (rule-based dedup/spam/implausibility flagging, referenced in
-  `ReportStatus.FLAGGED_IMPLAUSIBLE`'s comment) — not built.
-- The aggregation/pattern-detection layer that turns rows into a citable thesis reference (the actual
-  point of this whole model, per §0) — not built. Likely mirrors BF's `AllegationService.groupBy`
-  pattern (`getPatternCountsByFigure` etc.) keyed on category/timing-bucket columns instead of
-  figure/case.
-- Hebrew translation of §4's copy.
-- Decision on whether `SocialEconomicImpactReport`'s weaker-evidence categories (§2.5) get a visibly
-  different confidence treatment in whatever UI eventually renders aggregate reports — flagged as a
-  requirement, not yet designed.
+Ordered by dependency, not by importance — §5.6 (aggregation) is the actual point of this feature per
+§0, but it can't be built before something exists to aggregate. Each phase lists what it produces, what
+it depends on, and any open design question it must resolve before code gets written (this project's
+own standard: no "for now" scoping — close it now or record explicitly why it's out of scope).
+
+### Phase 1 — Migration ✅ DONE 2026-08-20
+Generated offline via `prisma migrate diff --from-schema-datamodel ... --to-schema-datamodel ...
+--script` (no database connection needed for generation — pure schema comparison), written to
+`prisma/migrations/20260820010000_adverse_event_reports/migration.sql`. Purely additive — 16
+`CREATE TYPE`, 3 `CREATE TABLE`, 3 indexes, 2 FKs, zero `ALTER`s to any existing table. **Applied to
+staging** via `prisma migrate deploy` (user-approved); `prisma migrate status` confirmed "up to date"
+immediately after. Independently re-verified beyond the CLI's own status message: direct
+`SELECT 1 FROM "<table>" LIMIT 1` against all three new tables succeeded with no error — a query
+against a nonexistent Postgres table always errors, so silent success is real proof, not a trusted
+flag (same evidentiary standard as `feedback-evidentiary-proof-standard.md`).
+
+### Phase 2 — Reporter identity & intake validation (design-heavy, blocks Phase 3)
+- **Verification mechanism for `reporterFingerprintHash`: DECIDED 2026-08-20 — Supabase magic-link
+  email**, reusing GF's existing Supabase auth infra (already used for `Researcher` login). Zero new
+  vendor cost, no SMS/OTP billing. Still to design: the actual fingerprint formula (hash of verified
+  email + what device/session signal, if any), and whether the email itself is retained post-verification
+  or discarded (see Phase 10's open privacy question — related but not identical, since that's about
+  storage of the *reporter's* contact, this is about the *hash's* inputs).
+- **zod schemas for both domain payloads**, encoding the conditional-field rules the DB can't enforce
+  (`cancer*` fields only when `symptomCategory = ONCOLOGIC`, `cognitive*`/`postExertionalMalaise` only
+  when `NEUROCOGNITIVE_PVS`) — matches the project's standing rule (zod validation at every external
+  input boundary) and the schema's own "validated at the intake boundary" comments.
+
+### Phase 3 — Public intake API
+`POST /api/reports/medical`, `POST /api/reports/social-economic` (no researcher gate — mirrors the
+already-shipped blocked-URL evidence recovery pattern: open submission, always `PENDING_REVIEW`).
+Each request: verify contact (Phase 2) → compute fingerprint → zod-validate → create the domain row +
+`Report` envelope in one transaction. Depends on Phase 1 (migration must exist) and Phase 2 (verification
++ validation must be decided).
+
+### Phase 4 — `ReportPlausibilityService`
+Rule-based, deterministic — not LLM-driven, matching BF's `PatternDetectionService` precedent rather
+than trusting a model's judgment on fraud signals. Two responsibilities: velocity/dedup checks against
+`reporterFingerprintHash`, and internal-consistency rules (e.g. `seriousness = DEATH` with
+`medicalAttentionSought = false` is a plausibility flag, not an auto-reject). Sets
+`ReportStatus.FLAGGED_IMPLAUSIBLE` vs. leaving `PENDING_REVIEW`. Depends on Phase 3 existing to flag
+against.
+
+### Phase 5 — Researcher moderation
+A review queue (REST route, or an MCP tool mirroring `promote_evidence`) for a `Researcher` to move
+`PENDING_REVIEW` → `PUBLISHED` / `REJECTED_DUPLICATE` / `REJECTED_SPAM`. Reuses the existing `Researcher`
+role gate — no new auth system. Depends on Phase 4 (queue is more useful pre-filtered by plausibility,
+though not strictly blocking).
+
+### Phase 6 — Aggregation / pattern-detection layer
+The actual point of this model (§0): a `ReportPatternService` with `groupBy` queries over `PUBLISHED`
+rows only, keyed on `(domain, category, timingWindow/persistence)` — the direct analog of BF's
+`AllegationService.getPatternCountsByFigure`. Must exclude non-`PUBLISHED` rows by construction, not by
+caller discipline, mirroring the `CONFIRMED`-must-be-real-proof standard already enforced for `Evidence`.
+
+### Phase 7 — Thesis citation wiring (open design question, not yet decided)
+How does a thesis actually cite a report aggregate? `ThesisMention.type` today is a closed enum
+(`KEY_FIGURE` / `EVIDENCE` / `TRACKED_URL`), each pointing at a real row by ID. A report aggregate isn't
+a row — it's a computed query result ("347 reports of X in window Y"). Needs its own design pass before
+implementation: likely a new `MentionType.REPORT_PATTERN` whose `refId` encodes a query descriptor
+rather than a database ID, but that's a proposal, not a decision — flag for discussion when this phase
+starts.
+
+### Phase 8 — Frontend public intake form
+Multi-step questionnaire (domain → category → conditional sub-fields → contact verification → submit),
+Hebrew-first RTL per the app's existing convention. Wires in §4's methodology copy — **requires Hebrew
+translation first** (§4 is English-only today).
+
+### Phase 9 — Frontend public aggregate/pattern display
+Public-facing view of report counts by category. Must implement the confidence-tiering distinction
+flagged in §2.5 and §2.3: `MILITARY_DISCHARGE`/`EMPLOYMENT_TERMINATION` (EEOC/DoD-backed) and
+`ONCOLOGIC`/`NEUROCOGNITIVE_PVS` (peer-reviewed signal, explicitly hypothesis-generating) cannot render
+with the same visual weight as `FAMILY_RELATIONSHIP_RUPTURE`/`SOCIAL_OSTRACIZATION` (qualitatively real,
+not systematically quantified) — this is a `defamation-risk.md` Rule 2 requirement, not a nice-to-have.
+Depends on Phase 6.
+
+### Phase 10 — Legal/compliance pass
+`defamation-risk.md`-style review of the Phase 9 display copy once real; reporter consent/terms language
+(a report is a public-facing assertion, not a private submission — needs its own declaration, distinct
+from `Whistleblower`'s existing "legally obtained material" consent text); privacy review of how
+verified contact info is stored (encrypted-at-rest, matching `Whistleblower.encryptedContact`, or
+discarded post-verification — undecided, needs its own call).
+
+---
+
+## 6. Recommended next step
+
+Phase 1 is done and verified on staging (§5). **Phase 2 is next**: the verification-mechanism decision
+is made (Supabase magic-link email), so what remains is (a) defining the exact
+`reporterFingerprintHash` formula and (b) writing the zod schemas for both domain payloads, including
+the conditional-field rules (`cancer*` fields gated on `ONCOLOGIC`, `cognitive*` fields gated on
+`NEUROCOGNITIVE_PVS`) that the database can't enforce on its own. That unblocks Phase 3, the first
+actual backend endpoint.
