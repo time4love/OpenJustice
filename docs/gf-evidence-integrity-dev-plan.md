@@ -12,7 +12,21 @@ existing "Evidence survives its diff's deletion" guarantee) — not implemented,
 investigation surfaced a real, much bigger question deliberately deferred to its own session: Evidence
 versioning across rescans, given theses may already cite existing evidence (§8). **Phase 5 (process-doc
 update) ✅ DONE 2026-08-18 (§7).** Phase 4 (optional backfill audit) not started, low priority.
-Everything uncommitted to git.
+
+**🚀 SHIPPED TO PRODUCTION 2026-08-18.** PR #35 (feature branch → `staging`) merged and deployed;
+PR #36 (`staging` → `master`) merged and deployed. The schema migration was applied to **both**
+databases as a required precondition of each deploy — staging via local `prisma migrate deploy`
+before PR #35, **production via `railway run --environment production -- npx prisma migrate deploy`**
+before PR #36 (Railway's build script has no auto-migrate step; deploying the code first would have
+broken every Evidence query against the old schema). Production's pre-migration duplicate check found
+0 rows (production's `Evidence` table was empty — pre-launch, no real data at risk). Both migrations
+independently verified post-apply (`prisma migrate status` → "up to date", plus direct column/index/
+default checks), both deploys confirmed green (Railway status + live HTTP checks, including
+`/api/evidence/stats` responding correctly against the new schema on production). One operational
+note for next time: applying the actual migration (write/DDL) via `railway run` was blocked by the
+auto-mode permission classifier even though read-only checks (`migrate status`, `$queryRawUnsafe`
+SELECTs) through the same mechanism were allowed — the user ran the production `migrate deploy`
+command directly in their own terminal instead.
 **Created:** 2026-08-18.
 **Scope:** Glass Fortress backend only (`apps/glass-fortress/backend`). No Bronze Fortress impact —
 BF has its own separate evidence/allegation model.
