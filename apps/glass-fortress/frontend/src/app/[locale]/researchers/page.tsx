@@ -7,6 +7,8 @@ import { SiteHeader } from '@/components/SiteHeader';
 // MCP tool list — descriptions stored here since they need locale handling
 // ---------------------------------------------------------------------------
 
+const MCP_SERVER_URL = 'https://glass-fortress-backend-production.up.railway.app/api/mcp';
+
 const TOOLS = [
   { name: 'suggest_thesis',               en: 'Propose a legal thesis from evidence',                                he: 'הצע תזה משפטית מהראיות' },
   { name: 'create_thesis_draft',          en: 'Save a structured thesis with evidence mentions',                     he: 'שמור תזה מובנית עם אזכורי ראיות' },
@@ -66,6 +68,58 @@ export default function ResearchersPage() {
               </div>
             ))}
           </div>
+        </section>
+
+        {/* Connect via MCP (OAuth) */}
+        <section>
+          <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-6">
+            {t('connectTitle')}
+          </h2>
+          <p className="text-sm text-slate-600 leading-relaxed mb-6">{t('connectIntro')}</p>
+
+          <div className="mb-8">
+            <p className="text-xs text-slate-400 uppercase tracking-wide mb-1.5">{t('connectServerLabel')}</p>
+            <code
+              dir="ltr"
+              className="block bg-slate-900 text-emerald-400 text-xs font-mono rounded-lg px-3 py-2.5 overflow-x-auto text-left"
+            >
+              {MCP_SERVER_URL}
+            </code>
+          </div>
+
+          <div className="space-y-6">
+            {(
+              [
+                { title: t('connectStep1Title'), body: t('connectStep1Body') },
+                { title: t('connectStep2Title'), body: t('connectStep2Body') },
+                { title: t('connectStep3Title'), body: t('connectStep3Body') },
+                { title: t('connectStep4Title'), body: t('connectStep4Body') },
+              ] as const
+            ).map((step, i) => (
+              <div key={i} className="flex gap-5">
+                <div className="flex-none w-8 h-8 rounded-full bg-slate-100 border border-slate-200 text-slate-700 text-xs font-bold flex items-center justify-center mt-0.5">
+                  {i + 1}
+                </div>
+                <div>
+                  <h3 className="font-semibold text-slate-900 mb-1">{step.title}</h3>
+                  <p className="text-sm text-slate-600 leading-relaxed">{step.body}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <p className="text-xs text-slate-400 leading-relaxed mt-6 italic">{t('connectVerifiedNote')}</p>
+
+          {/* Note for AI agents */}
+          <aside className="flex gap-3 bg-slate-900 border border-slate-700 rounded-lg p-4 text-sm text-slate-200 mt-6">
+            <span className="shrink-0 mt-0.5 text-emerald-400 font-mono text-xs">{'</>'}</span>
+            <div>
+              <p className="text-xs font-semibold text-emerald-400 uppercase tracking-wide mb-1.5">
+                {t('connectAgentNoteTitle')}
+              </p>
+              <p className="text-slate-300 leading-relaxed">{t('connectAgentNote')}</p>
+            </div>
+          </aside>
         </section>
 
         {/* MCP Tools */}

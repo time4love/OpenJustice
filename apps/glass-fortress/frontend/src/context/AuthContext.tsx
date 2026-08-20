@@ -12,7 +12,6 @@ export interface ResearcherProfile {
   handle: string;
   role: 'RESEARCHER' | 'ADMIN';
   approved: boolean;
-  hasMcpToken: boolean;
   createdAt: string;
 }
 
@@ -27,8 +26,6 @@ interface AuthContextValue extends AuthState {
   login: (accessToken: string) => Promise<void>;
   /** Clear session from memory and localStorage. */
   logout: () => void;
-  /** Refresh the researcher profile from the backend (e.g. after token generation). */
-  refreshProfile: () => Promise<void>;
 }
 
 // ---------------------------------------------------------------------------
@@ -91,15 +88,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setState({ accessToken: null, researcher: null, loading: false });
   }, []);
 
-  const refreshProfile = useCallback(async () => {
-    const token = state.accessToken;
-    if (!token) return;
-    const researcher = await fetchProfile(token);
-    setState((s) => ({ ...s, researcher }));
-  }, [state.accessToken, fetchProfile]);
-
   return (
-    <AuthContext.Provider value={{ ...state, login, logout, refreshProfile }}>
+    <AuthContext.Provider value={{ ...state, login, logout }}>
       {children}
     </AuthContext.Provider>
   );
