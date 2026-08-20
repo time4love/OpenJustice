@@ -98,7 +98,7 @@ export default function ResearchersPage() {
           <h2 className="text-2xl font-bold text-slate-900">{t('contactTitle')}</h2>
           <p className="text-slate-500 text-sm max-w-md mx-auto leading-relaxed">{t('contactBody')}</p>
           <a
-            href="mailto:research@glass-fortress.org"
+            href="mailto:tederyesharel@gmail.com"
             className="inline-block px-6 py-3 rounded-lg bg-slate-900 text-white text-sm font-semibold hover:bg-slate-800 transition-colors"
           >
             {t('contactBtn')}
