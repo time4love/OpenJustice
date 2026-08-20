@@ -221,6 +221,13 @@ model Evidence {
   euaOmissionStatus   String          @default("Not Applicable")
   sourceUrl           String?
   fileUrl             String?
+  // Screenshot 2..N when this evidence was recovered from a page that needed
+  // multiple captures (e.g. a blocked/unfetchable URL too long for one
+  // screenshot). fileUrl always holds the first/primary capture; this array
+  // holds the rest, in the same reading order they were submitted in — the
+  // combined set is treated as one document, analyzed together, not as
+  // separate pieces of evidence. Empty for every ordinary single-file record.
+  additionalScreenshotUrls String[] @default([])
   ipfsCid             String?   // IPFS CID of the encrypted evidence blob (null if not yet anchored)
   // @unique enforces the true 1:1 with UrlVersionDiff at the DB level — previously
   // only an application-level check in POST /forensics/promote prevented a diff
