@@ -387,3 +387,293 @@ model OidcModel {
   @@index([modelName, grantId])
   @@index([modelName, accountId])
 }
+
+// ---------------------------------------------------------------------------
+// Public adverse-outcome self-reports.
+//
+// Deliberately NOT a form of Evidence. Evidence is low-volume, individually
+// citable, and traceable to a checkable artifact (see investigativeCategories
+// and Evidence.status above). Reports are the opposite shape: high-volume,
+// individually unverifiable, and valuable only as an aggregate pattern — a
+// thesis may cite "347 reports of X within window Y," never a single Report
+// row. Keeping them a separate model makes that distinction structural, not
+// a status flag someone can forget to check.
+//
+// Mirrors Bronze Fortress's Evidence/structured-intake split: Report is the
+// thin envelope (moderation state, dedup, reporter contact); the two domain
+// tables below hold the actual structured answers. A Report points DOWN to
+// exactly one of them — never the reverse — so the intake tables stay free
+// of report-envelope concerns.
+// ---------------------------------------------------------------------------
+
+enum ReportDomain {
+  MEDICAL // adverse health outcome
+  SOCIAL_ECONOMIC // employment, access, or relationship consequence
+}
+
+// Fails closed, not open — mirrors EvidenceStatus: a create() that forgets
+// to set this explicitly becomes PENDING_REVIEW, never a silent publish.
+enum ReportStatus {
+  PENDING_REVIEW // default — not yet in any public aggregate
+  PUBLISHED // cleared for aggregate/pattern queries
+  FLAGGED_IMPLAUSIBLE // failed a rule-based plausibility check — see ReportPlausibilityService (not yet built)
+  REJECTED_DUPLICATE
+  REJECTED_SPAM
+}
+
+// Shared by both domain tables so a bucket boundary is defined once — same
+// reason investigativeCategories.ts is one file shared by two agents.
+// Real timestamps are never public; only the bucket is. Mirrors BF's
+// date-fuzzing principle (real dates private, quarter/year public).
+enum ReportTimingWindow {
+  WITHIN_24H
+  WITHIN_1_WEEK
+  WITHIN_1_MONTH
+  WITHIN_6_MONTHS
+  OVER_6_MONTHS
+  UNKNOWN
+}
+
+model Report {
+  id     String       @id @default(cuid())
+  domain ReportDomain // denormalized off the two FKs below — lets filters/counts skip a join
+  status ReportStatus @default(PENDING_REVIEW)
+
+  // Discriminated union — exactly one of these two is set, enforced at the
+  // application layer (Prisma has no CHECK-constraint escape hatch here).
+  medicalReportId String?                    @unique
+  medicalReport   MedicalAdverseEventReport? @relation(fields: [medicalReportId], references: [id])
+
+  socialEconomicReportId String?                     @unique
+  socialEconomicReport   SocialEconomicImpactReport? @relation(fields: [socialEconomicReportId], references: [id])
+
+  // One-way hash of verified contact (email/phone) + a device/session signal.
+  // Indexed, not @@unique — app-level velocity checks decide what counts as
+  // a duplicate; a hard DB constraint would risk blocking a reporter's second,
+  // genuinely distinct report (different symptom, later dose).
+  reporterFingerprintHash String
+  // Deliberately no onChainTxHash here — individual reports are not
+  // on-chain-anchored (discussed: volume + privacy + no individual
+  // evidentiary claim). If aggregate integrity ever needs a tamper-evident
+  // anchor, that anchors the aggregate dataset hash, not this row.
+  createdAt               DateTime @default(now())
+
+  @@index([reporterFingerprintHash])
+}
+
+// ---------------------------------------------------------------------------
+// Medical adverse event — category taxonomy grounded in MedDRA's System
+// Organ Class structure (VAERS/EudraVigilance convention) but trimmed to
+// what's actually been reported for COVID vaccines, not the full ~26 SOCs.
+// Oncology fields follow the classification used in the 2026 Oncotarget
+// signal review (de novo / recurrence / hyperprogression / atypical site).
+// ---------------------------------------------------------------------------
+
+enum MedicalSymptomCategory {
+  CARDIOVASCULAR // myocarditis, pericarditis, clotting
+  NEUROLOGICAL // acute/structural events only — Guillain-Barré, neuropathy, seizure, stroke
+  NEUROCOGNITIVE_PVS // brain fog, memory/concentration impairment — emerging "Post-Vaccination
+  // Syndrome" cluster; see cognitive*/postExertionalMalaise fields below.
+  // Split out from NEUROLOGICAL: VAERS analyses show cognitive-impairment
+  // reports at PRR 118 vs. influenza vaccine, and a 2026 Japanese 14-clinic
+  // registry found brain fog/dizziness dominating 22.3% of reported events —
+  // this is the single largest reported cluster, not a rare tail event, and
+  // bundling it with Guillain-Barré-type events would blur exactly the signal
+  // a thesis would want to cite.
+  AUTOIMMUNE_IMMUNE
+  HEMATOLOGIC
+  ONCOLOGIC // see cancer* fields below — only meaningful when this is set
+  REPRODUCTIVE_MENSTRUAL
+  MUSCULOSKELETAL // incl. SIRVA-type injection-site injury
+  DERMATOLOGIC
+  GENERAL_SYSTEMIC // fatigue, fever — the single most common VAERS bucket
+  DEATH
+  OTHER
+}
+
+enum CognitiveSymptomType {
+  BRAIN_FOG
+  MEMORY_IMPAIRMENT
+  CONCENTRATION_DIFFICULTY
+  MULTIPLE
+  OTHER
+}
+
+// Whether the reported symptom resolved or is still ongoing. Schema-wide —
+// not scoped to any one category. Motivated by NEUROCOGNITIVE_PVS (PVS is
+// clinically defined by persistence, commonly a 3-month long-COVID-style
+// threshold, not mere presence) but the same distinction is evidentiary for
+// every category: an ongoing cardiac symptom, an unresolved autoimmune
+// flare, and a resolved rash are not the same claim. Applies uniformly
+// rather than per-category so a later real category doesn't silently lack
+// it — see feedback-audit-trust-critical-callsites.md on not leaving this
+// kind of gap for a future pass.
+enum SymptomPersistence {
+  RESOLVED
+  ONGOING_PERSISTENT
+  UNKNOWN
+}
+
+// VAERS/FDA's own legal "serious AE" criteria — not an invented scale.
+enum MedicalSeriousness {
+  HOSPITALIZATION
+  LIFE_THREATENING
+  PERMANENT_DISABILITY
+  DEATH
+  CONGENITAL_ANOMALY
+  NONE
+}
+
+enum CancerPresentationType {
+  NEW_DIAGNOSIS
+  RECURRENCE_OR_PROGRESSION
+  OTHER
+}
+
+// UNUSUALLY_RAPID_PROGRESSION is the literature's own term ("hyperprogression")
+// for what's colloquially called "turbo cancer" — same claim, defensible framing.
+// See defamation-risk.md Rule 2: never assert beyond what's documented.
+enum CancerCourse {
+  TYPICAL_PACE
+  UNUSUALLY_RAPID_PROGRESSION
+}
+
+enum CancerType {
+  LYMPHOMA_LEUKEMIA
+  BREAST
+  LUNG
+  MELANOMA_SKIN
+  PANCREATIC
+  BRAIN_CNS
+  OTHER_SOLID
+  OTHER_BLOOD
+  NOT_YET_TYPED
+}
+
+enum VaccineManufacturer {
+  PFIZER
+  MODERNA
+  ASTRAZENECA
+  JOHNSON_JOHNSON
+  OTHER
+  UNKNOWN
+}
+
+model MedicalAdverseEventReport {
+  id String @id @default(cuid())
+
+  symptomCategory MedicalSymptomCategory
+  seriousness     MedicalSeriousness     @default(NONE)
+
+  // Set only when symptomCategory = ONCOLOGIC; null otherwise. Not enforced
+  // at the DB level — validated at the intake boundary alongside the enum.
+  cancerPresentationType CancerPresentationType?
+  cancerCourse           CancerCourse?
+  cancerAtypicalFeatures Boolean? // injection-site or regional lymph node involvement
+  cancerType             CancerType?
+
+  // Set only when symptomCategory = NEUROCOGNITIVE_PVS; null otherwise. Same
+  // validated-at-intake-boundary discipline as the cancer* fields above.
+  // postExertionalMalaise co-occurrence matters because PVS is clinically
+  // defined as a cluster (fatigue + PEM + dysautonomia + cognitive
+  // impairment), not isolated brain fog — capturing it lets aggregation
+  // distinguish "full PVS-cluster" reports from a standalone symptom.
+  cognitiveSymptomType  CognitiveSymptomType?
+  postExertionalMalaise Boolean? // null = unknown
+
+  // Applies to every category, not just NEUROCOGNITIVE_PVS — see
+  // SymptomPersistence's own comment for why this is schema-wide.
+  symptomPersistence SymptomPersistence @default(UNKNOWN)
+
+  vaccineManufacturer VaccineManufacturer @default(UNKNOWN)
+  doseNumber          Int?
+
+  onsetWindow                  ReportTimingWindow @default(UNKNOWN)
+  medicalAttentionSought       Boolean? // null = unknown
+  diagnosisConfirmedByProvider Boolean? // null = unknown — trust-tier signal, same role as BF's evidenceId link
+  preExistingCondition         Boolean? // null = unknown
+
+  // Optional elaboration. Never read by any aggregation query — kept for
+  // human review and as color quotes only, same discipline as BF's
+  // structured-intake tables (free text is reidentifying and unqueryable).
+  freeTextElaboration String?
+
+  report Report?
+
+  createdAt DateTime @default(now())
+}
+
+// ---------------------------------------------------------------------------
+// Social/economic impact — impactCategory grounded in EEOC charge data
+// (9,800 of ~10,000 COVID-era charges were Title VII religious-accommodation
+// denials) and DoD's own acknowledged military-discharge reinstatement
+// program. FAMILY_RELATIONSHIP_RUPTURE / SOCIAL_OSTRACIZATION carry weaker
+// evidentiary backing (qualitatively documented, not systematically
+// quantified) — same epistemic tier as CancerCourse.UNUSUALLY_RAPID_PROGRESSION,
+// and the display layer must not flatten that distinction (see prior discussion).
+// ---------------------------------------------------------------------------
+
+enum SocialEconomicImpactCategory {
+  EMPLOYMENT_TERMINATION
+  MILITARY_DISCHARGE
+  DEMOTION_REASSIGNMENT
+  DENIED_HIRE
+  ACCESS_DENIAL_SERVICES // venues, travel, "vaccine passport" schemes
+  ACCESS_DENIAL_HEALTHCARE // denied non-emergency care/elective procedure
+  EDUCATION_ACCESS_DENIAL
+  FAMILY_RELATIONSHIP_RUPTURE // estrangement, divorce, custody impact
+  SOCIAL_OSTRACIZATION
+  OTHER
+}
+
+enum FormalBasisAsserted {
+  RELIGIOUS_ACCOMMODATION_DENIED
+  MEDICAL_DISABILITY_ACCOMMODATION_DENIED
+  NO_FORMAL_BASIS_STATED
+  UNKNOWN
+}
+
+enum ConsequenceSeverity {
+  INCOME_LOSS
+  BENEFITS_LOSS
+  CAREER_TRAJECTORY_IMPACT
+  RELATIONSHIP_LOSS
+  HOUSING_FINANCIAL_HARDSHIP
+  NONE
+}
+
+// The social/economic analog of SymptomPersistence above — same underlying
+// gap (nothing captured whether a reported consequence is still in effect),
+// same reason it's schema-wide rather than scoped to one category. Grounded
+// in a documented real mechanism, not a hypothetical: DoD's own program
+// reinstates servicemembers discharged for vaccine refusal with back pay —
+// a MILITARY_DISCHARGE report where that happened is a materially different
+// claim from one where it didn't, and the schema must be able to say which.
+enum SocialOutcomeStatus {
+  ONGOING // consequence still in effect
+  RESOLVED_REVERSED // reinstated / rehired / accommodation granted on appeal
+  RESOLVED_UNCHANGED // consequence stands, no further action pending
+  UNKNOWN
+}
+
+model SocialEconomicImpactReport {
+  id String @id @default(cuid())
+
+  impactCategory      SocialEconomicImpactCategory
+  formalBasisAsserted FormalBasisAsserted          @default(UNKNOWN)
+  consequenceSeverity ConsequenceSeverity          @default(NONE)
+  outcomeStatus       SocialOutcomeStatus          @default(UNKNOWN)
+
+  // Is there a checkable paper trail (termination letter, discharge order,
+  // EEOC charge number)? Same trust-tier role as diagnosisConfirmedByProvider
+  // above — direct analog, not a coincidence.
+  documentationAvailable Boolean? // null = unknown
+
+  timingRelativeToEvent ReportTimingWindow @default(UNKNOWN)
+
+  freeTextElaboration String?
+
+  report Report?
+
+  createdAt DateTime @default(now())
+}
