@@ -157,6 +157,27 @@ model UrlVersionDiff {
   evidence             Evidence[]
 }
 
+// Mirrors the pgvector table created via raw SQL in the baseline migration
+// (20260815000000) — see VectorStoreService, which is the only code that
+// touches it, always through raw SQL, never Prisma Client. `embedding` uses
+// Unsupported() because Prisma has no native vector type.
+//
+// This model exists ONLY so `prisma migrate diff`/`migrate dev` stop seeing
+// this table as unmodeled drift and proposing to drop it — every migration
+// before this one had to work around that by hand (see
+// 20260818000000_evidence_onchain_integrity, 20260819000000_mcp_oauth_storage,
+// 20260820000000_evidence_additional_screenshot_urls). Do not add relations
+// to this model or query it via Prisma Client — `embedding`'s Unsupported()
+// type cannot be selected, and the `match_evidence()` SQL function it backs
+// is not representable here at all.
+model EvidenceEmbedding {
+  id        String @id
+  content   String
+  embedding Unsupported("vector(3072)")
+
+  @@map("evidence_embeddings")
+}
+
 // A named public figure (official, politician, senior doctor, journalist) extracted
 // from evidence by the AI. Normalized here so every mention of the same person
 // across all evidence records links to a single canonical entity.
