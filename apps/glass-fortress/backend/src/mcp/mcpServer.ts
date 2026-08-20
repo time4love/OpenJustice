@@ -17,6 +17,7 @@ import { getSessionSummarySchema, getSessionSummaryHandler } from './tools/getSe
 import { suggestThesisSchema, suggestThesisHandler } from './tools/suggestThesis';
 import { enrichEvidenceWithHistorySchema, enrichEvidenceWithHistoryHandler } from './tools/enrichEvidenceWithHistory';
 import { promoteEvidenceSchema, promoteEvidenceHandler } from './tools/promoteEvidence';
+import { deleteEvidenceSchema, deleteEvidenceHandler } from './tools/deleteEvidence';
 import { generateFoiaRequestSchema, generateFoiaRequestHandler } from './tools/generateFoiaRequest';
 import { recoverEvidenceFromScreenshotSchema, recoverEvidenceFromScreenshotHandler } from './tools/recoverEvidenceFromScreenshot';
 
@@ -313,6 +314,26 @@ export function createMcpServer(): McpServer {
     promoteEvidenceSchema,
     async (input) => ({
       content: [{ type: 'text' as const, text: await promoteEvidenceHandler(input) }],
+    }),
+  );
+
+  // -------------------------------------------------------------------------
+  // Tool: delete_evidence  [WRITE — SYNCHRONOUS, DESTRUCTIVE]
+  // Permanently deletes a PENDING_REVIEW evidence record and its Storage
+  // file(s). Refuses CONFIRMED records (immutable once on-chain), records
+  // still cited by a thesis, and records with a Pinata IPFS pin (no verified
+  // unpin implementation yet — see deleteEvidence.ts).
+  // -------------------------------------------------------------------------
+  server.tool(
+    'delete_evidence',
+    'Permanently delete a PENDING_REVIEW evidence record — removes its file(s) from Storage and ' +
+      'the database row. Refuses to delete CONFIRMED records (already registered on-chain, meant to ' +
+      'be immutable), records still cited by a thesis, or records with an IPFS pin from the ' +
+      'whistleblower attachment path. Requires evidenceId (UUID). Irreversible — use for cleaning up ' +
+      'test, rejected, or mistakenly-submitted PENDING_REVIEW records, not as a general moderation tool.',
+    deleteEvidenceSchema,
+    async (input) => ({
+      content: [{ type: 'text' as const, text: await deleteEvidenceHandler(input) }],
     }),
   );
 

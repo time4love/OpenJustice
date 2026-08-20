@@ -36,6 +36,10 @@ interface EvidenceDetail {
   euaOmissionStatus: string;
   sourceUrl?: string | null;
   fileUrl?: string | null;
+  // Screenshot 2..N when this evidence was recovered from a page that needed
+  // multiple captures. fileUrl always holds the first/primary capture. Empty
+  // for every ordinary record.
+  additionalScreenshotUrls?: string[];
   trackedUrlId?: string | null;
   trackedUrl?: string | null;
   diff: DiffRecord | null;
@@ -237,6 +241,36 @@ export default function EvidencePage() {
                 </Link>
               )}
             </div>
+
+            {/* Screenshots — blocked-URL recovery evidence (docs/gf-blocked-url-recovery-dev-plan.md
+                Phase 5). "View Source" above only links to the first/primary capture (fileUrl);
+                a PENDING_REVIEW reviewer can't judge a multi-capture submission without seeing
+                captures 2..N too, so render the full ordered set here whenever it's non-empty. */}
+            {evidence.additionalScreenshotUrls && evidence.additionalScreenshotUrls.length > 0 && (
+              <Section label={t('screenshots')}>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  {[evidence.fileUrl, ...evidence.additionalScreenshotUrls]
+                    .filter((url): url is string => Boolean(url))
+                    .map((url, i) => (
+                      <a
+                        key={url}
+                        href={url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="relative block aspect-[3/4] rounded-lg overflow-hidden border border-slate-200 hover:border-slate-400 transition-colors"
+                      >
+                        <Image
+                          src={url}
+                          alt={`${t('screenshotAlt')} ${i + 1}`}
+                          fill
+                          sizes="(max-width: 640px) 50vw, 33vw"
+                          className="object-cover"
+                        />
+                      </a>
+                    ))}
+                </div>
+              </Section>
+            )}
 
             {/* Forensic diff — the actual page change this evidence consists of,
                 rendered exactly as it appears on the forensic timeline. */}

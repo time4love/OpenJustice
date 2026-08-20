@@ -3,11 +3,13 @@
 **Status:** Phase 1 ✅ DONE 2026-08-20, committed on `refactor/gf-evidence-shared-helpers`
 (`c13baba`), pushed, PR not yet opened. Phase 2 ✅ DONE 2026-08-20, committed on
 `schema/gf-evidence-additional-screenshot-urls` (`a3496fe`), pushed, PR not yet opened, migration
-**applied to the staging DB** — see §5. Phase 3 ✅ DONE 2026-08-20 and Phase 4 ✅ DONE 2026-08-20, both on
-`feat/gf-evidence-recovery-phase3` (branched from `schema/gf-evidence-additional-screenshot-urls`, merged
-with `refactor/gf-evidence-shared-helpers` so both Phase 1 and Phase 2 are ancestors — those two branches
-never shared a common base, both forked independently from `master`). Phase 5 (frontend) not started.
-Supersedes the first draft (same date): the permission model and multi-screenshot handling were
+**applied to the staging DB** — see §5. Phases 3, 4, 5, and 5.1 (`delete_evidence`, unplanned — see §5)
+all ✅ DONE 2026-08-20, all on `feat/gf-evidence-recovery-phase3` (branched from
+`schema/gf-evidence-additional-screenshot-urls`, merged with `refactor/gf-evidence-shared-helpers` so
+both Phase 1 and Phase 2 are ancestors — those two branches never shared a common base, both forked
+independently from `master`). **This feature is now fully implemented and live-verified end-to-end**;
+only PR review/merge remains. Supersedes the first draft (same date): the permission model and
+multi-screenshot handling were
 reconsidered and locked in below before any implementation began, per explicit user request to agree on
 the solution first.
 
@@ -326,14 +328,76 @@ together cleanly).
   Neither bug is specific to this feature — both are latent traps for any future test file that mocks a
   cached-singleton dependency or shares an Once-queued mock across a `beforeEach`.
 
-### Phase 5 — Frontend: render `additionalScreenshotUrls` on the evidence detail page
-`apps/glass-fortress/frontend` — the evidence detail page/component that currently renders `fileUrl`
-needs to also render the array, so a reviewer can see every captured screenshot before promoting a
-`PENDING_REVIEW` record. Minimal scope: no new UI for *submitting* the multi-screenshot recovery form
-itself is included in this plan (that's a separate, larger frontend feature) — this phase only covers
-making already-created recovery evidence reviewable. `GET /api/evidence/:id`
-([evidenceRoutes.ts:736-761](../apps/glass-fortress/backend/src/routes/evidenceRoutes.ts#L736-L761))
-needs `additionalScreenshotUrls: record.additionalScreenshotUrls` added to its response payload first.
+### Phase 5 — ✅ DONE 2026-08-20 — Frontend: render `additionalScreenshotUrls` on the evidence detail page
+Implemented as designed, on branch `feat/gf-evidence-recovery-phase3`.
+
+- Backend: `additionalScreenshotUrls: record.additionalScreenshotUrls` added to `GET /api/evidence/:id`'s
+  response payload ([evidenceRoutes.ts](../apps/glass-fortress/backend/src/routes/evidenceRoutes.ts)).
+- Frontend: a new "צילומי מסך"/"Screenshots" `Section` on the evidence detail page
+  ([page.tsx](../apps/glass-fortress/frontend/src/app/[locale]/evidence/[id]/page.tsx)), rendered only
+  when `additionalScreenshotUrls` is non-empty — ordinary evidence's existing "View Source" link is
+  untouched. Shows `[fileUrl, ...additionalScreenshotUrls]` as a clickable thumbnail grid (`next/image`,
+  order preserved) so a reviewer can see every capture, not just the first, before promoting a
+  `PENDING_REVIEW` record. `additionalScreenshotUrls` added to the shared
+  [evidence.ts](../apps/glass-fortress/frontend/src/types/evidence.ts) type. New translation keys
+  (`screenshots`, `screenshotAlt`) added to both `messages/en.json` and `messages/he.json`.
+- `next.config.ts`: added `images.remotePatterns` for `**.supabase.co/storage/v1/object/public/evidence/**`
+  — previously unset, since no existing code path rendered `fileUrl` as an image (only as a link).
+- Minimal scope honored as designed: no submission-form UI included.
+- **Verified live**, not just code-reviewed: ran the full pipeline end-to-end against real staging
+  infrastructure — two real test screenshots through `recover-intake` → real Gemini vision call
+  (correctly returned `isRelevant: false` for blank test images) → `recover-confirm` → a real
+  `PENDING_REVIEW` row with real Supabase Storage URLs → loaded in the frontend, both images rendered
+  correctly via `next/image`'s optimizer. The throwaway record and its two files were deleted after
+  (see `delete_evidence` below — this test is exactly why it exists). Surfaced and fixed one real
+  environment issue along the way: this local sandbox defaults to Node 20, but `@supabase/supabase-js`'s
+  Realtime client needs Node ≥22's native WebSocket support (package.json already declares
+  `"node": ">=22"`, and real deployments run it) — re-ran the backend dev server under Node 22 (`fnm`) to
+  match; not a code bug, purely a local-environment mismatch.
+- Typecheck and `eslint` clean on all touched frontend files (zero findings, not even pre-existing-pattern
+  ones). Backend: full suite green, **40/40 suites, 670/670 tests** (one unrelated file,
+  `oauthInteractionRoutes.test.ts`, failed on a single full-suite run from cross-file test-order pollution
+  pre-existing to this codebase, not touched by this feature — passed clean both in isolation and on
+  re-run).
+
+### Phase 5.1 — ✅ DONE 2026-08-20 — `delete_evidence` MCP tool (unplanned, added mid-Phase-5)
+Surfaced directly by Phase 5's live verification: cleaning up the throwaway test record required a raw
+Prisma script, since **no delete capability existed anywhere** — not in the MCP tool set, not as a REST
+route. Added `delete_evidence` (MCP-only, bearer-gated via `WRITE_TOOLS` — deliberately no REST route,
+since this is an admin/researcher cleanup action the public site has no reason to expose):
+- `src/services/deleteEvidence.ts` — shared service, mirrors `promoteEvidence.ts`'s
+  "resolve the record, hand it a shared function" shape. Refuses three cases, each returning a `deleted:
+  false` result with an explanatory message rather than throwing:
+  1. **Status ≠ `PENDING_REVIEW`** — once `CONFIRMED` (on-chain), a record is meant to be immutable;
+     deleting the DB row would create a permanent, unrecoverable mismatch with the blockchain
+     ([[feedback-evidentiary-proof-standard]]). User-confirmed scope decision, not assumed.
+  2. **Non-null `ipfsCid`** — that field is only ever set by the separate whistleblower/thesis-attachment
+     path (`EphemeralAnalysisService.ts`'s Pinata upload), never by this feature or any other
+     Evidence-creation call site (confirmed: `persistScreenshotEvidence` and every other creation path
+     write to Supabase Storage only, never Pinata — screenshot-recovery evidence is public-page capture,
+     not sensitive whistleblower material, so it doesn't need IPFS's decentralized-resilience property).
+     No verified Pinata delete/unpin implementation exists yet, and IPFS unpinning wouldn't guarantee the
+     content is unreachable if another node has it cached — refusing outright beats silently leaving an
+     orphaned pin. User-confirmed scope decision: research Pinata's real v3 delete API as a separate,
+     dedicated task rather than guessing at it here.
+  3. **Cited by a thesis** (`ThesisMention.refId` matches the fileHash) — that field is a plain string
+     reference, not a real foreign key, so deleting Evidence underneath an existing citation would
+     silently leave it dangling.
+  Otherwise: `StorageService.deleteEvidenceFiles()` (new method, extracts the storage path from each
+  public URL, batches into one `remove()` call) for `[fileUrl, ...additionalScreenshotUrls]`, then
+  `prisma.evidence.delete()`.
+- `src/mcp/tools/deleteEvidence.ts` — thin MCP wrapper, same shape as `promoteEvidence.ts`'s tool file.
+  Registered in `mcpServer.ts`, added to both `WRITE_TOOLS` and the `GET /api/mcp` health-check tool list
+  in `mcpRoutes.ts`.
+- New tests: `deleteEvidence.test.ts` (7 cases — happy path with/without files, all three refusal cases,
+  citation-check scoping, storage-failure propagation), `storageServiceDelete.test.ts` (4 cases — empty-
+  array no-op, URL→path extraction across multiple files in one call, unrecognised-URL rejection, Supabase
+  error propagation), `deleteEvidenceTool.test.ts` (3 cases — not-found, delegation, refusal pass-through).
+  Full suite green: **40/40 suites, 670/670 tests**. Typecheck clean; lint shows only the same
+  pre-existing repo-wide patterns (deprecated `z.string().uuid()`, `process.env[...]` dot-notation,
+  number-in-template-literal) confirmed throughout Phases 3-4.
+- Used for real immediately: deleted the Phase 5 QA test record it was built to clean up
+  (`eacf2147-5a8f-4819-88ef-9c8156fd7fbc`) — confirmed gone via a 404 on re-fetch.
 
 ---
 

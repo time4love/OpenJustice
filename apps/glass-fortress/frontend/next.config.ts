@@ -4,6 +4,18 @@ import createNextIntlPlugin from 'next-intl/plugin';
 const withNextIntl = createNextIntlPlugin('./src/i18n/request.ts');
 
 const nextConfig: NextConfig = {
+  images: {
+    // Evidence screenshots (blocked-URL recovery, docs/gf-blocked-url-recovery-dev-plan.md
+    // Phase 5) are hosted in Supabase Storage's public "evidence" bucket — wildcard
+    // hostname since staging and production are separate Supabase projects.
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: '**.supabase.co',
+        pathname: '/storage/v1/object/public/evidence/**',
+      },
+    ],
+  },
   async rewrites() {
     const backendUrl = process.env.BACKEND_URL ?? 'http://localhost:3000';
     return [

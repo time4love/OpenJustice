@@ -197,7 +197,9 @@
     "citingTheses": "Cited in Theses",
     "noCitingTheses": "Not yet cited in any thesis.",
     "summary": "Summary",
-    "submittedBy": "Submitted by"
+    "submittedBy": "Submitted by",
+    "screenshots": "Screenshots",
+    "screenshotAlt": "Screenshot"
   },
   "figures": {
     "tagline": "Entity Graph · Key Figures & Evidence Network",

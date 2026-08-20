@@ -894,6 +894,7 @@ router.get('/:id', async (req: Request, res: Response): Promise<void> => {
       euaOmissionStatus: record.euaOmissionStatus,
       sourceUrl: record.sourceUrl,
       fileUrl: record.fileUrl,
+      additionalScreenshotUrls: record.additionalScreenshotUrls,
       trackedUrlId: record.urlVersionDiff?.trackedUrlId ?? null,
       trackedUrl: record.urlVersionDiff?.trackedUrl?.url ?? null,
       diff,
