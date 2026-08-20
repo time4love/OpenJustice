@@ -10,10 +10,12 @@ removed entirely (was pseudonymization, not anonymization; `reporterFingerprint.
 code), `consentGiven` added (explicit special-category consent, GDPR Art. 9(2)(a)), bucketed
 `reporterAgeRange`/`reporterGender` added (real pharmacovigilance value, deliberately coarse against
 quasi-identifier risk). Three staging migrations applied and independently verified this session
-(`...adverse_event_reports`, `...anonymize_and_consent`, `...reporter_demographics`). On branch
-`schema/gf-adverse-effect-reports` (pushed, no PR yet). No backend routes/MCP tools/frontend code yet —
-Phase 3 (public intake API) is next, and must implement post-verification Supabase-account deletion as
-a real requirement, not an optional nicety (§2.8). See §5-6 for the full phase breakdown. This document
+(`...adverse_event_reports`, `...anonymize_and_consent`, `...reporter_demographics`). **Phase 3
+(public intake API) ✅ DONE 2026-08-20** — `POST /api/reports/medical`/`social-economic`, the
+`requireVerifiedReporterEmail` middleware (verifies + deletes the Supabase account in the same
+request, fails closed on deletion error), nested-write creation, 24 new tests, full suite 706/706,
+`tsc` clean. On branch `schema/gf-adverse-effect-reports` (pushed, no PR yet). Phase 4
+(`ReportPlausibilityService`) is next. See §5-6 for the full phase breakdown. This document
 is the canonical reference for the taxonomy's rationale; keep it in sync with `schema.prisma` as the
 design evolves.
 **Created:** 2026-08-20.
@@ -399,20 +401,49 @@ flag (same evidentiary standard as `feedback-evidentiary-proof-standard.md`).
 - **Verified**: 16 new Jest tests (`test/reporterFingerprint.test.ts`, `test/reportIntakeSchemas.test.ts`)
   plus the full existing suite (692/692) pass; `tsc --noEmit` clean.
 
-### Phase 3 — Public intake API
-`POST /api/reports/medical`, `POST /api/reports/social-economic` (no researcher gate — mirrors the
-already-shipped blocked-URL evidence recovery pattern: open submission, always `PENDING_REVIEW`).
-Each request: verify contact (Phase 2) → compute fingerprint → zod-validate → create the domain row +
-`Report` envelope in one transaction. Depends on Phase 1 (migration must exist) and Phase 2 (verification
-+ validation must be decided).
+### Phase 3 — Public intake API ✅ DONE 2026-08-20
+`POST /api/reports/medical`, `POST /api/reports/social-economic` (`src/routes/reportRoutes.ts`) — no
+researcher gate, open submission, always `PENDING_REVIEW` (the Prisma default; nothing in the service
+sets status explicitly, so it fails closed the same way `Evidence.status` does).
+
+**Auth**: `requireVerifiedReporterEmail` (`src/middleware/supabaseAuth.ts`) — a new middleware alongside
+`requireSupabaseAuth`, sharing a refactored-out `getSupabaseUser` helper so `verifySupabaseUserId`'s
+existing behavior for `Researcher` auth is unchanged (688 pre-existing tests plus new coverage confirm
+this). Verifies the Supabase magic-link token, then **immediately deletes the Supabase Auth account**
+via the Admin API (`SUPABASE_SERVICE_ROLE_KEY`, same env var `StorageService` already uses for a
+different purpose) before calling `next()` — fails closed (500, no `next()`) if deletion errors or
+throws, since a report that was supposed to leave nothing behind must not proceed if that guarantee
+can't be met. Sets `req.reporterVerified = true` only; the email itself never leaves the middleware's
+scope, matching §2.8's design exactly.
+
+**Request shape**: `{ consentGiven: true, reporterAgeRange?, reporterGender?, report: {...domain fields} }`.
+`consentGiven` is `z.literal(true, {...})` — the exact pattern already shipped in
+`evidenceRoutes.ts`'s `ContactBodySchema` for `Whistleblower.consentGiven` — so `false` or missing both
+400, not just missing. Demographics default to `UNKNOWN` via zod, matching the Prisma column defaults.
+
+**Creation**: `src/services/reportIntake.ts` — a single nested Prisma `create` (`Report` with
+`medicalReport: { create: payload }` / `socialEconomicReport: { create: payload }`), which Prisma runs
+as one implicit transaction — no manual `$transaction` needed, and it structurally can't produce a
+`Report` without its domain row or vice versa.
+
+**Verified**: 24 new tests (`test/supabaseAuth.test.ts` covers the middleware directly — success path,
+missing/invalid token, and both delete-failure modes fail closed; `test/reportRoutes.test.ts` covers
+validation and creation with the middleware mocked as a pass-through), full suite 706/706, `tsc` clean.
+Fixed two zod APIs that were deprecated in this project's zod v4 with zero existing precedent to match
+(`z.nativeEnum` → `z.enum`, `z.ZodIssueCode.custom` → `'custom'`) — left `.flatten()` and env-var
+bracket-notation alone, since those exactly match this codebase's own already-shipped dominant
+convention (`evidenceRoutes.ts`, `tokenHash.ts`, etc.) and diverging in one new file would create
+inconsistency, not cleanliness.
 
 ### Phase 4 — `ReportPlausibilityService`
 Rule-based, deterministic — not LLM-driven, matching BF's `PatternDetectionService` precedent rather
-than trusting a model's judgment on fraud signals. Two responsibilities: velocity/dedup checks against
-`reporterFingerprintHash`, and internal-consistency rules (e.g. `seriousness = DEATH` with
-`medicalAttentionSought = false` is a plausibility flag, not an auto-reject). Sets
-`ReportStatus.FLAGGED_IMPLAUSIBLE` vs. leaving `PENDING_REVIEW`. Depends on Phase 3 existing to flag
-against.
+than trusting a model's judgment on fraud signals. **Revised post-§2.8**: no `reporterFingerprintHash`
+exists anymore, so there is no cross-submission velocity/dedup signal to check against — that
+capability was deliberately traded away for genuine anonymity (§2.8). What remains: ordinary IP-based
+rate limiting (`generalLimiter`, already applied to all of `/api`) and internal-consistency rules
+within a single submission (e.g. `seriousness = DEATH` with `medicalAttentionSought = false` is a
+plausibility flag, not an auto-reject). Sets `ReportStatus.FLAGGED_IMPLAUSIBLE` vs. leaving
+`PENDING_REVIEW`. Depends on Phase 3 (done) existing to flag against.
 
 ### Phase 5 — Researcher moderation
 A review queue (REST route, or an MCP tool mirroring `promote_evidence`) for a `Researcher` to move
@@ -458,10 +489,11 @@ discarded post-verification — undecided, needs its own call).
 
 ## 6. Recommended next step
 
-Phases 1 and 2 are done (§5). **Phase 3 is next**: the public intake API
-(`POST /api/reports/medical`, `POST /api/reports/social-economic`), composing Phase 2's
-`hashReporterEmail` + the two zod schemas with an actual Supabase magic-link verification check and a
-transactional create of the domain row + `Report` envelope. Before writing it, worth a decision: does
-verification happen as its own endpoint (`POST /api/reports/verify-email` issuing a short-lived token
-the submit call requires) or inline in the same request (submit triggers the magic link, a second call
-completes it)? Not yet designed — flag when Phase 3 starts.
+Phases 1-3 are done (§5). **Phase 4 (`ReportPlausibilityService`) is next**: rule-based, deterministic
+dedup/spam/implausibility flagging — deliberately not LLM-driven, matching BF's
+`PatternDetectionService` precedent. Note that Phase 3's anonymity redesign (§2.8) removes the one
+signal the original Phase 4 sketch assumed would exist (`reporterFingerprintHash`-based velocity
+checks) — Phase 4 needs a fresh design pass against what's actually available now: ordinary IP-based
+rate limiting (`generalLimiter`, already applied) and internal-consistency rules within a single
+submission, not cross-submission identity linkage. Worth deciding at the start of that phase, not
+assumed.

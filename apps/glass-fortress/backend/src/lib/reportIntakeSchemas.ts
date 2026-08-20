@@ -6,7 +6,7 @@
  * envelope (reporter email, domain discriminator) is composed on top of
  * these by the intake endpoint, not part of this file.
  *
- * Enums are z.nativeEnum(...) against the generated Prisma client rather
+ * Enums are z.enum(...) against the generated Prisma client rather
  * than hand-copied string tuples (the convention elsewhere in this codebase,
  * e.g. investigativeCategoriesField). That convention exists because
  * investigativeCategories is deliberately NOT a Prisma enum, so there is
@@ -43,8 +43,8 @@ const FREE_TEXT_MAX = 5000;
 // ---------------------------------------------------------------------------
 
 const medicalBaseSchema = z.object({
-  symptomCategory: z.nativeEnum(MedicalSymptomCategory),
-  seriousness: z.nativeEnum(MedicalSeriousness).default('NONE'),
+  symptomCategory: z.enum(MedicalSymptomCategory),
+  seriousness: z.enum(MedicalSeriousness).default('NONE'),
 
   // Required only when symptomCategory = ONCOLOGIC (enforced below).
   // cancerType is required-when-set because CancerType has a designed-for
@@ -55,23 +55,23 @@ const medicalBaseSchema = z.object({
   // with no honest "I don't know" option would push reporters toward
   // guessing. Flagged as a real gap worth a follow-up migration
   // (CancerCourse.UNKNOWN), not silently decided — see chat.
-  cancerPresentationType: z.nativeEnum(CancerPresentationType).optional(),
-  cancerCourse: z.nativeEnum(CancerCourse).optional(),
+  cancerPresentationType: z.enum(CancerPresentationType).optional(),
+  cancerCourse: z.enum(CancerCourse).optional(),
   cancerAtypicalFeatures: z.boolean().optional(),
-  cancerType: z.nativeEnum(CancerType).optional(),
+  cancerType: z.enum(CancerType).optional(),
 
   // Required only when symptomCategory = NEUROCOGNITIVE_PVS (enforced below).
-  cognitiveSymptomType: z.nativeEnum(CognitiveSymptomType).optional(),
+  cognitiveSymptomType: z.enum(CognitiveSymptomType).optional(),
   postExertionalMalaise: z.boolean().optional(),
 
   // Schema-wide, not category-scoped — see SymptomPersistence's own comment
   // in schema.prisma for why.
-  symptomPersistence: z.nativeEnum(SymptomPersistence).default('UNKNOWN'),
+  symptomPersistence: z.enum(SymptomPersistence).default('UNKNOWN'),
 
-  vaccineManufacturer: z.nativeEnum(VaccineManufacturer).default('UNKNOWN'),
+  vaccineManufacturer: z.enum(VaccineManufacturer).default('UNKNOWN'),
   doseNumber: z.number().int().positive().optional(),
 
-  onsetWindow: z.nativeEnum(ReportTimingWindow).default('UNKNOWN'),
+  onsetWindow: z.enum(ReportTimingWindow).default('UNKNOWN'),
   medicalAttentionSought: z.boolean().optional(),
   diagnosisConfirmedByProvider: z.boolean().optional(),
   preExistingCondition: z.boolean().optional(),
@@ -100,7 +100,7 @@ export const medicalAdverseEventReportSchema = medicalBaseSchema.superRefine((da
 
   if (isOncologic && data.cancerType === undefined) {
     ctx.addIssue({
-      code: z.ZodIssueCode.custom,
+      code: 'custom',
       path: ['cancerType'],
       message: 'cancerType is required when symptomCategory is ONCOLOGIC (use NOT_YET_TYPED if unknown)',
     });
@@ -110,7 +110,7 @@ export const medicalAdverseEventReportSchema = medicalBaseSchema.superRefine((da
     for (const field of CANCER_FIELDS) {
       if (data[field] !== undefined) {
         ctx.addIssue({
-          code: z.ZodIssueCode.custom,
+          code: 'custom',
           path: [field],
           message: `${field} may only be set when symptomCategory is ONCOLOGIC`,
         });
@@ -120,7 +120,7 @@ export const medicalAdverseEventReportSchema = medicalBaseSchema.superRefine((da
 
   if (isNeurocognitive && data.cognitiveSymptomType === undefined) {
     ctx.addIssue({
-      code: z.ZodIssueCode.custom,
+      code: 'custom',
       path: ['cognitiveSymptomType'],
       message: 'cognitiveSymptomType is required when symptomCategory is NEUROCOGNITIVE_PVS',
     });
@@ -130,7 +130,7 @@ export const medicalAdverseEventReportSchema = medicalBaseSchema.superRefine((da
     for (const field of COGNITIVE_FIELDS) {
       if (data[field] !== undefined) {
         ctx.addIssue({
-          code: z.ZodIssueCode.custom,
+          code: 'custom',
           path: [field],
           message: `${field} may only be set when symptomCategory is NEUROCOGNITIVE_PVS`,
         });
@@ -148,12 +148,12 @@ export type MedicalAdverseEventReportInput = z.infer<typeof medicalAdverseEventR
 // No conditional fields — every field applies to every impactCategory, so a
 // plain object schema is sufficient (no superRefine needed).
 export const socialEconomicImpactReportSchema = z.object({
-  impactCategory: z.nativeEnum(SocialEconomicImpactCategory),
-  formalBasisAsserted: z.nativeEnum(FormalBasisAsserted).default('UNKNOWN'),
-  consequenceSeverity: z.nativeEnum(ConsequenceSeverity).default('NONE'),
-  outcomeStatus: z.nativeEnum(SocialOutcomeStatus).default('UNKNOWN'),
+  impactCategory: z.enum(SocialEconomicImpactCategory),
+  formalBasisAsserted: z.enum(FormalBasisAsserted).default('UNKNOWN'),
+  consequenceSeverity: z.enum(ConsequenceSeverity).default('NONE'),
+  outcomeStatus: z.enum(SocialOutcomeStatus).default('UNKNOWN'),
   documentationAvailable: z.boolean().optional(),
-  timingRelativeToEvent: z.nativeEnum(ReportTimingWindow).default('UNKNOWN'),
+  timingRelativeToEvent: z.enum(ReportTimingWindow).default('UNKNOWN'),
   freeTextElaboration: z.string().max(FREE_TEXT_MAX).optional(),
 });
 
