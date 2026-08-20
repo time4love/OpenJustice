@@ -11,9 +11,20 @@ moderation queue (reports count automatically, no per-report human gate), no `fr
 `reportPatternService.ts` (Postgres native `GROUP BY CUBE`, not hand-rolled) + two public aggregate
 endpoints, chosen deliberately over Metabase/Superset/Cube.dev to avoid new infrastructure this team's
 profile doesn't need. Frontend charting is Phase 9, not started.
+**Phase 8 (public intake form) ✅ DONE 2026-08-20** (§5) — `/[locale]/reports/new`, Hebrew-first RTL,
+plus the homepage CTA that makes it discoverable at all. The callback design was settled first, as the
+handoff note required: **verify first, then answer, with the form page as its own magic-link callback**
+— which is what makes it possible to persist *nothing*, rather than writing a health-data draft to
+browser storage while the reporter is off checking their inbox. Building it surfaced two real defects
+neither the schema nor the API work could have shown: verification was being consumed *before* body
+validation (a 400 silently burned the reporter's one-shot magic link), and nothing enforced that the
+frontend's label catalogs still matched the Prisma enums they now supply the form's options from. Both
+fixed, both with tests. Needs one Supabase config change (Auth redirect allow-list) before it works on
+a deployed environment.
 
 Ten staging migrations applied and independently verified this session (query-verified, not just
-trusted from `migrate deploy`'s own output). Full suite 719/719, `tsc` clean. Also fixed, via
+trusted from `migrate deploy`'s own output). Full suite 721/721 plus 64 new label-parity assertions,
+`tsc` clean on both backend and frontend, `next build` clean. Also fixed, via
 cherry-pick not reinvention, an unrelated schema-drift gotcha (`evidence_embeddings`) a generated
 migration almost silently proposed to drop. On branch `schema/gf-adverse-effect-reports`, pushed
 through `4e754a8`; this round (Phase 6) not yet committed. See §5 for the full phase-by-phase detail
@@ -336,10 +347,11 @@ decision, not an unflagged gap.
 
 ## 4. Public-facing copy — draft for the intake UI
 
-**Not yet wired to any UI** (no intake frontend exists yet — see §5). Drafted now so the rationale
-doesn't have to be re-derived when the frontend is built. English only; needs Hebrew translation into
-`apps/glass-fortress/frontend/messages/he.json` at implementation time, following the existing
-`messages/en.json`/`he.json` namespace pattern used elsewhere in the app.
+**Wired into the intake UI as of Phase 8** (`reports.methodology` / `reports.{medical,social}` in
+`messages/{he,en}.json`) — §4.1/§4.2 as a collapsible "About this data" panel, §4.3 as a per-field
+"Why we ask" toggle. The English-only gap noted here originally is closed: §4.1/§4.2 were translated
+to Hebrew during Phase 8, reusing §2.7's and `socialEconomicCategoryLabels.ts`'s already-verified
+terminology rather than re-translating loosely.
 
 **Note — this is the explanatory prose only, not the category labels.** The enum *value* labels (e.g.
 "NEUROCOGNITIVE_PVS" → "קוגניטיבי (תסמונת שלאחר חיסון)") are a separate, already-completed piece of
@@ -454,8 +466,9 @@ long enough to explain the *why*, short enough to actually get read.
 | `documentationAvailable` | Whether you have a paper trail — a termination letter, a discharge order, a complaint filed with an agency. Like the medical form's provider-confirmation question, this doesn't gate acceptance, but it affects confidence. | האם יש בידך תיעוד — מכתב פיטורים, צו שחרור, תלונה שהוגשה לרשות. בדומה לשאלת אישור הרופא בטופס הרפואי, הדבר אינו תנאי לקבלת הדיווח, אך הוא משפיע על רמת הביטחון. |
 | `timingRelativeToEvent` | How long after vaccination this happened. As with the medical form, we ask for a time range rather than an exact date to protect your privacy. | כמה זמן לאחר החיסון זה קרה. כמו בטופס הרפואי, אנו מבקשים טווח זמן ולא תאריך מדויק כדי להגן על פרטיותך. |
 
-Not yet added to `messages/he.json`/`en.json` — these are prose, best wired in as part of Phase 8 (the
-actual intake form), not added as bare namespace entries the way §2.7's category labels were.
+Added to `messages/{he,en}.json` under `reports.medical.*.help` / `reports.social.*.help` during
+Phase 8, as intended — as inline "Why we ask" toggles beside each field, not as bare namespace entries
+the way §2.7's category labels were.
 
 ---
 
@@ -634,42 +647,121 @@ implementation: likely a new `MentionType.REPORT_PATTERN` whose `refId` encodes 
 rather than a database ID, but that's a proposal, not a decision — flag for discussion when this phase
 starts.
 
-### Phase 8 — Frontend public intake form — started, exploration done, no code yet, 2026-08-20
-Multi-step questionnaire (domain → category → conditional sub-fields → contact verification → submit),
-Hebrew-first RTL per the app's existing convention. Wires in §4's methodology copy — **requires Hebrew
-translation first** (§4 is English-only today). Also in scope: a homepage CTA linking to the new intake
-flow — nothing currently points at it, so it isn't discoverable.
+### Phase 8 — Frontend public intake form ✅ DONE 2026-08-20
+Multi-step questionnaire at `src/app/[locale]/reports/new/page.tsx`, Hebrew-first RTL, plus a homepage
+CTA (a third "Get Involved" door beside the whistleblower and researcher ones — nothing else on the
+site points at `/reports/new`, so that card is the entire discovery path). §4's methodology and
+per-question copy is now wired in and fully bilingual: §4.3's help text already had verified Hebrew,
+§4.1/§4.2's prose was English-only and was translated this phase. New `reports` namespace in
+`messages/{he,en}.json` (116 keys, key-for-key identical across locales).
 
-**Frontend conventions confirmed** (Explore agent pass, not yet acted on):
-- **Route**: `src/app/[locale]/reports/new/page.tsx`, matching `theses/new/page.tsx`'s pattern.
-  `[locale]`-prefixed App Router via next-intl; RTL comes from `dir` set on `<html>` in the root
-  `layout.tsx` off `getLocale()`.
-- **i18n**: `useTranslations('namespace')` (next-intl, client components) — e.g.
-  `CategoryBadges.tsx:28` reading the `categories` namespace. All the enum-label namespaces added this
-  session (§2.7) are ready to consume this way.
-- **Supabase client — reuse, don't rebuild**: `src/lib/supabase.ts` is a raw-fetch client (no SDK) —
-  `sendMagicLink(email, redirectTo?)` (line 37, POSTs `/auth/v1/otp`) is the exact call to trigger
-  reporter email verification. Real usage precedent: `TopNav.tsx`'s `LoginStep` (lines 101-113).
-- **No form library** — plain `useState` state machines throughout (`WhistleblowerModal.tsx`'s
-  `Stage` type; `submit/page.tsx`'s `Phase` type is the closest existing analog to a multi-step wizard).
-  No shared `Button`/`Input` components exist — every input is raw HTML + inline Tailwind. Tailwind v4,
-  tokens in `src/app/globals.css` under `@theme inline`, no `tailwind.config.js`.
-- **Real design gap, not yet resolved**: the existing `/auth/callback` page
-  (`src/app/[locale]/auth/callback/page.tsx`) is built for *Researcher* login — it extracts the
-  access token and calls `AuthContext.login(accessToken)`, establishing a persistent session. The
-  reporter flow needs something structurally different: a **one-shot** flow where the token completes
-  a single `POST /api/reports/{medical,social-economic}` call and is then burned server-side
-  (`requireVerifiedReporterEmail` deletes the Supabase account in the same request — see §2.8/§3). Reusing
-  `/auth/callback` as-is would be wrong; a separate callback route is needed. Since a full page
-  navigation to the magic-link email and back loses in-memory React state, the filled-in form payload
-  needs to survive the round trip — the obvious mechanism is `sessionStorage` (save on "send
-  verification link", read + submit + clear on the callback page), not yet decided against alternatives.
-- **Two domains, roughly symmetric effort** — Medical has more fields/conditional logic (proves the
-  harder case); Social/Economic is simpler. Build one complete vertical slice first if scope needs
-  splitting across sessions, not partial work on both.
+**The verification-callback design — decided first, as the previous session's note required.**
 
-**Next session should**: read this section, then design and build the callback-completion approach
-first (it's the one piece with no existing precedent to copy), before the form UI itself.
+The flow is **verify first, then answer**, and the form page is **its own magic-link callback**. Both
+follow from one constraint that no amount of UI work removes: `verifyAndConsumeReporterEmail` deletes
+the reporter's Supabase account the instant it verifies the token (§2.8), so verification is one-shot
+and destructive, and a magic link is a full page navigation, so anything answered *before* clicking it
+must survive that round trip somewhere.
+
+Alternatives weighed and rejected, so this doesn't get re-litigated:
+
+- **Answer first, stash the draft in `sessionStorage`/`localStorage`, restore and auto-submit on the
+  callback page** (the previous session's provisional guess). Rejected: `sessionStorage` is empty in
+  the new tab an email client opens, so it would have had to be `localStorage` — which means writing
+  **health data (GDPR Art. 9)** to disk, unencrypted, with no submission yet justifying it, at exactly
+  the moment the reporter has walked away to their inbox and might never come back. It also adds
+  stale-draft expiry and restore-failure handling. Verifying first means there is nothing to persist:
+  the only thing crossing the round trip is the token, and it arrives in the URL by construction.
+- **Encode the answers in the `redirect_to` URL.** Rejected outright — that puts health data in an
+  email body, in server logs, and in browser history.
+- **Cross-tab handoff** (callback tab posts the token to the still-open form tab via `BroadcastChannel`
+  or a `localStorage` event). Genuinely avoids persisting health data and keeps verify-last, but fails
+  whenever the original tab was closed or evicted — and its only robust fallback is a persisted draft,
+  i.e. the option already rejected.
+- **Six-digit OTP instead of a link** (`{{ .Token }}` in the Supabase email template + `POST
+  /auth/v1/verify`), which would need no navigation at all and would be the cleanest flow on paper.
+  Rejected as undeliverable here, not as wrong: it requires editing the auth email template in the
+  Supabase dashboard for two projects, which is config this session could neither make nor verify.
+  **If reporter drop-off at the email step ever turns out to be a real measured problem, this is the
+  option to reach for** — it removes the round trip entirely rather than working around it.
+- **Reusing `/auth/callback`.** Rejected as the previous session predicted, and for a sharper reason
+  than "it's built for Researcher login": it calls `AuthContext.login()`, which would establish a
+  persistent session and **clobber a signed-in researcher's own session** if they ever filed a report.
+  This flow never touches `AuthContext` at all — the token lives in component state, is used once, and
+  dies with the page.
+
+The cost of verify-first is honest friction at the door, which for this feature is arguably where it
+belongs: the reporter is told what happens to their email (nothing is stored, the account is deleted,
+and *therefore* we can never find their report again) **before** they type anything sensitive, rather
+than after.
+
+Mechanically: the page reads `access_token` from the URL fragment on mount and strips it via
+`history.replaceState` before anything else runs, so a live token is never left in the address bar,
+history, or anything the reporter might copy. Token expiry mid-flow (Supabase default 1h) surfaces as
+a 401 on submit and is shown honestly — re-verify, and the answers must be entered again, because
+nothing was saved anywhere. Steps: verify → domain → category → details → about → review+consent.
+
+**Requires a Supabase config change before this works on any deployed environment**: the project's
+Auth redirect allow-list must include `/{he,en}/reports/new` (or a wildcard). GoTrue silently falls
+back to `SITE_URL` for a `redirect_to` it doesn't recognise, so a missing entry fails as "the link
+works but lands on the homepage", not as an error. Not verifiable from this session.
+
+**Two real defects found and fixed while building, both surfaced only by the frontend needing them:**
+
+1. **Validation ran *after* the verification was consumed** (`requireVerifiedReporterEmail` was Express
+   middleware, so it could only run before the handler). A submission the schema then rejected with a
+   400 silently burned the reporter's single magic-link, forcing a whole new email round trip to fix
+   one field. Fixed by turning the middleware into an awaited call —
+   `verifyAndConsumeReporterEmail(req)` — that the route makes *after* `safeParse` succeeds. The
+   middleware form is gone rather than left beside it, along with the now-purposeless
+   `req.reporterVerified` flag; the ordering is asserted by a test that fails if verification is ever
+   called on an invalid body. Same class of finding as §2.9: the fix belonged to the shape of the
+   thing, not to a check bolted on afterwards.
+2. **Nothing verified the frontend label catalogs against the real Prisma enums.** §2.7 checked parity
+   once, by hand, which was enough while the JSON was only a lookup table. Phase 8 made the intake
+   form derive its **option lists — the actual set and order of choices a reporter can pick** — from
+   those same namespaces, so an enum member added to `schema.prisma` and forgotten in the JSON is now
+   an outcome that silently cannot be reported. `backend/test/reportLabelParity.test.ts` (64 assertions)
+   now enforces same-members/same-order/no-empty-or-untranslated across both locales. Schema
+   declaration order is therefore the UI display order; reordering the form is a `schema.prisma` edit.
+
+**Frontend conventions followed** (confirmed by the previous session's Explore pass, now acted on):
+`[locale]`-prefixed App Router + next-intl, `useTranslations`, plain `useState` state machine (no form
+library exists in this app), raw HTML + inline Tailwind (no shared `Button`/`Input` components exist),
+`sendMagicLink` from `src/lib/supabase.ts` reused rather than rebuilt.
+
+**`src/lib/reportEnums.ts` is the frontend's taxonomy source.** Types come from `import type` of
+`en.json` (erased at build — the ~46KB catalog is never duplicated into a chunk); runtime option lists
+come from the active locale's loaded messages. So the enums are never hand-copied across the
+Express/Next.js boundary, and the parity test above is what makes reading them out of JSON safe rather
+than merely convenient.
+
+**Client-side mirror of the conditional-required rule**: `cancerType` when `ONCOLOGIC`,
+`cognitiveSymptomType` when `NEUROCOGNITIVE_PVS`. The server remains the authority, but a reporter
+should learn they skipped a required answer while it is still in front of them. Relatedly, the payload
+is *derived from the selected category at send time* rather than by clearing state on every category
+change — so a reporter who fills the cancer questions and then switches category cannot produce the
+body the schema rejects. Same "make the invalid state unrepresentable" move as §2.9, one layer out.
+
+**Verified**: backend 721/721 + 64 new parity assertions, `tsc` clean on both apps, `next build` clean
+(the route appears in the manifest). Driven in a real browser against a running dev server: the
+homepage CTA renders and links to `/he/reports/new`; the callback consumes a token from the fragment,
+strips the URL, and advances the wizard; the ONCOLOGIC branch shows its conditional block; the review
+step renders every answer with correct Hebrew labels. **Not verified end-to-end**: a real magic-link
+send and a successful write — this machine could not reach the staging Supabase pooler or Auth
+(`Can't reach database server`), and writing real rows to staging was out of scope for this session
+anyway. The submit path was exercised as far as the network allowed. Note `tsc` in a fresh worktree
+must be run via the app's own `node_modules/.bin/tsc` (6.0.3); `npx` resolves the repo root's 5.9.3,
+which rejects this `tsconfig.json` outright and typechecks nothing.
+
+**Still open, deliberately**: `CancerCourse.UNKNOWN` (the Phase 2 gap — a reporter who doesn't know the
+progression rate still has no honest option, so the field stays optional); the epistemic-tier
+distinction (§2.5) is currently carried in the methodology *prose* only — Phase 9 still owes it real
+visual weight. Lint: this page adds one instance of `react-hooks/set-state-in-effect` for reading the
+URL fragment on mount; the rule already fires in 8 files on `master` (19 errors there, 20 here) and is
+not an enforced gate. The alternatives (`useSyncExternalStore` with a cached snapshot, or a lazy
+`useState` initializer) either need a module-level mutable cache or produce a hydration mismatch, both
+worse than the effect.
 
 ### Phase 9 — Frontend public aggregate/pattern display
 Public-facing view of report counts by category. Must implement the confidence-tiering distinction
@@ -690,12 +782,20 @@ discarded post-verification — undecided, needs its own call).
 
 ## 6. Recommended next step
 
-Phase 6's backend is done (§5) — `POST /api/reports/{medical,social-economic}/aggregate` are live,
-tested, suppression-enforced. **Phase 9 (frontend rendering) is the natural next build**: pick a
-charting library (load the `dataviz` skill first, per its own trigger conditions — not yet done),
-build the actual dashboard against the two aggregate endpoints. Phase 8 (the public intake form itself)
-is still unbuilt too and has no code dependency on Phase 9 — either could go first; Phase 8 is arguably
-more urgent since without it nothing can generate real report data to visualize. Phase 5 (automated
-abuse defense) remains deliberately deferred until real submission volume shows whether it's needed at
-all. Phase 7 (thesis citation wiring) is still an open design question, not started. Commit this
-session's work first — Phase 6 changes since `4e754a8` are still uncommitted.
+**Phase 9 (frontend aggregate display) is now the only substantial piece left in the main line.** Phase
+8 shipped this session, so real report data can finally be generated; Phase 6's endpoints
+(`POST /api/reports/{medical,social-economic}/aggregate`) are live, tested and suppression-enforced and
+have been waiting for a renderer. Load the `dataviz` skill first, per its own trigger conditions — not
+yet done — and pick a charting library. Phase 9 also carries the one requirement Phase 8 could only
+half-discharge: the epistemic-tier distinction (§2.5, §2.3) is currently expressed in intake prose
+only, and `defamation-risk.md` Rule 2 requires it to have real visual weight in any public display.
+
+Before Phase 8 can actually work on staging or production, someone with Supabase dashboard access must
+**add `/{he,en}/reports/new` to each project's Auth redirect allow-list** (or a wildcard). This is the
+one blocking external dependency; a missing entry fails silently as "the magic link lands on the
+homepage".
+
+Phase 5 (automated abuse defense) remains deliberately deferred until real submission volume shows
+whether it is needed at all. Phase 7 (thesis citation wiring) is still an open design question, not
+started. `CancerCourse.UNKNOWN` (§5 Phase 2) is still an unclosed, deliberately-flagged gap needing one
+small additive migration.

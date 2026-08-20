@@ -10,7 +10,7 @@ import { extractBearerToken } from '../lib/bearerToken';
 //   - requireSupabaseAuth: Researcher auth-management endpoints (POST
 //     /register, POST /mcp-token, etc.) — attaches supabaseUserId, account
 //     is meant to persist.
-//   - requireVerifiedReporterEmail: public adverse-event report intake — a
+//   - verifyAndConsumeReporterEmail: public adverse-event report intake — a
 //     one-time proof of a controllable email, nothing more. Deletes the
 //     Supabase Auth account immediately after verifying it (Admin API,
 //     service-role key) — see
@@ -18,9 +18,16 @@ import { extractBearerToken } from '../lib/bearerToken';
 //     no identity-derived field at all, so leaving the account behind would
 //     be the one standing, easy-to-breach directory of who reported. This
 //     is required behavior, not a nicety — do not make it conditional or
-//     best-effort. Does NOT attach the email to `req` — nothing downstream
+//     best-effort. Never returns or attaches the email — nothing downstream
 //     needs it once verification has happened, and holding it past this
 //     point would undermine the whole point of the deletion.
+//     Deliberately NOT an Express middleware: consuming the verification is
+//     destructive and one-shot, so it must happen *after* the request body
+//     has been validated, never before. A middleware can only run before the
+//     handler, which would burn a reporter's single verification on a
+//     schema-rejected (400) submission and force a whole new email round
+//     trip to retry. A plain awaited call is what lets the caller order it
+//     correctly — see reportRoutes.ts.
 //
 // Note: MCP bearer tokens use a separate path (mcpRoutes DB lookup).
 // ---------------------------------------------------------------------------
@@ -30,7 +37,6 @@ declare global {
   namespace Express {
     interface Request {
       supabaseUserId?: string;
-      reporterVerified?: boolean;
     }
   }
 }
@@ -103,32 +109,42 @@ export async function requireSupabaseAuth(
 }
 
 // ---------------------------------------------------------------------------
-// requireVerifiedReporterEmail
+// verifyAndConsumeReporterEmail
 //
 // Public report intake's auth gate. Verifies the bearer token proves a real,
 // controllable email (Supabase magic-link/OTP session), then immediately
-// deletes that Supabase Auth account before calling next() — see the file
-// header for why this is required, not optional. Sets req.reporterVerified
-// = true only; the email itself never leaves this function's scope.
+// deletes that Supabase Auth account — see the file header for why the
+// deletion is required rather than optional, and why this is an awaited
+// call the route makes at the right moment instead of a middleware.
+//
+// "Consume" is literal: the account is gone when this resolves ok, so the
+// token it was issued for is spent. Call it exactly once per request, only
+// after everything that could still reject the request has passed.
 // ---------------------------------------------------------------------------
 
-export async function requireVerifiedReporterEmail(
-  req: Request,
-  res: Response,
-  next: NextFunction,
-): Promise<void> {
+export type ReporterVerification =
+  | { ok: true }
+  | { ok: false; status: number; body: { error: string; message: string } };
+
+export async function verifyAndConsumeReporterEmail(req: Request): Promise<ReporterVerification> {
   const token = extractBearerToken(req);
 
   if (!token) {
-    res.status(401).json({ error: 'Unauthorized', message: 'Missing Authorization: Bearer <token>' });
-    return;
+    return {
+      ok: false,
+      status: 401,
+      body: { error: 'Unauthorized', message: 'Missing Authorization: Bearer <token>' },
+    };
   }
 
   try {
     const user = await getSupabaseUser(token);
     if (!user) {
-      res.status(401).json({ error: 'Unauthorized', message: 'Invalid or expired verification token' });
-      return;
+      return {
+        ok: false,
+        status: 401,
+        body: { error: 'Unauthorized', message: 'Invalid or expired verification token' },
+      };
     }
 
     try {
@@ -137,20 +153,25 @@ export async function requireVerifiedReporterEmail(
       if (deleteError) {
         // Fail closed: if we can't guarantee the account is deleted, do not
         // proceed with a report that was supposed to leave nothing behind.
-        console.error('[requireVerifiedReporterEmail] Failed to delete verified reporter account:', deleteError);
-        res.status(500).json({ error: 'Verification cleanup failed', message: 'Please try again.' });
-        return;
+        console.error('[verifyAndConsumeReporterEmail] Failed to delete verified reporter account:', deleteError);
+        return {
+          ok: false,
+          status: 500,
+          body: { error: 'Verification cleanup failed', message: 'Please try again.' },
+        };
       }
     } catch (deleteErr) {
-      console.error('[requireVerifiedReporterEmail] Failed to delete verified reporter account:', deleteErr);
-      res.status(500).json({ error: 'Verification cleanup failed', message: 'Please try again.' });
-      return;
+      console.error('[verifyAndConsumeReporterEmail] Failed to delete verified reporter account:', deleteErr);
+      return {
+        ok: false,
+        status: 500,
+        body: { error: 'Verification cleanup failed', message: 'Please try again.' },
+      };
     }
 
-    req.reporterVerified = true;
-    next();
+    return { ok: true };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    res.status(500).json({ error: 'Auth check failed', message });
+    return { ok: false, status: 500, body: { error: 'Auth check failed', message } };
   }
 }

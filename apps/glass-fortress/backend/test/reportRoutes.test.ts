@@ -1,17 +1,16 @@
 // ---------------------------------------------------------------------------
 // Public report intake route tests.
-// requireVerifiedReporterEmail itself is covered in supabaseAuth.test.ts —
-// here it's mocked as a pass-through so these tests exercise validation and
-// the Report/domain-row creation, not Supabase auth.
+// verifyAndConsumeReporterEmail itself is covered in supabaseAuth.test.ts —
+// here it's mocked so these tests exercise validation and the Report/
+// domain-row creation, not Supabase auth. The mock is a jest.fn (not a bare
+// stub) specifically so the ordering guarantee can be asserted: verification
+// is destructive and one-shot, so an invalid body must be rejected without
+// it ever being called.
 // ---------------------------------------------------------------------------
 
-import { Request, Response, NextFunction } from 'express';
-
+const mockVerifyReporter = jest.fn();
 jest.mock('../src/middleware/supabaseAuth', () => ({
-  requireVerifiedReporterEmail: (req: Request, _res: Response, next: NextFunction) => {
-    req.reporterVerified = true;
-    next();
-  },
+  verifyAndConsumeReporterEmail: (...args: unknown[]) => mockVerifyReporter(...args),
 }));
 
 const mockReportCreate = jest.fn();
@@ -33,6 +32,7 @@ app.use('/api/reports', reportRouter);
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockVerifyReporter.mockResolvedValue({ ok: true });
 });
 
 describe('POST /api/reports/medical', () => {
@@ -96,6 +96,31 @@ describe('POST /api/reports/medical', () => {
     });
   });
 
+  it('rejects an invalid body WITHOUT consuming the reporter verification', async () => {
+    // Order is load-bearing, not incidental: verifyAndConsumeReporterEmail
+    // deletes the reporter's Supabase account, so calling it before the body
+    // is known-good would spend their single magic-link on a submission the
+    // schema then rejects — leaving them to redo the whole email round trip
+    // to fix one field. See reportRoutes.ts's header comment.
+    const res = await request(app)
+      .post('/api/reports/medical')
+      .send({ consentGiven: true, report: { symptomCategory: 'NOT_A_REAL_CATEGORY' } });
+    expect(res.status).toBe(400);
+    expect(mockVerifyReporter).not.toHaveBeenCalled();
+    expect(mockReportCreate).not.toHaveBeenCalled();
+  });
+
+  it('propagates a failed verification and creates nothing', async () => {
+    mockVerifyReporter.mockResolvedValue({
+      ok: false,
+      status: 401,
+      body: { error: 'Unauthorized', message: 'Invalid or expired verification token' },
+    });
+    const res = await request(app).post('/api/reports/medical').send(validBody);
+    expect(res.status).toBe(401);
+    expect(mockReportCreate).not.toHaveBeenCalled();
+  });
+
   it('500s if report creation fails', async () => {
     mockReportCreate.mockRejectedValue(new Error('db error'));
     const res = await request(app).post('/api/reports/medical').send(validBody);
@@ -140,7 +165,7 @@ describe('POST /api/reports/social-economic', () => {
 });
 
 describe('POST /api/reports/medical/aggregate', () => {
-  it('is public — no requireVerifiedReporterEmail gate', async () => {
+  it('is public — no reporter-verification gate', async () => {
     mockQueryRaw.mockResolvedValue([]);
     const res = await request(app)
       .post('/api/reports/medical/aggregate')

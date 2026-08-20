@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { ReporterAgeRange, ReporterGender } from '@prisma/client';
-import { requireVerifiedReporterEmail } from '../middleware/supabaseAuth';
+import { verifyAndConsumeReporterEmail } from '../middleware/supabaseAuth';
 import {
   medicalAdverseEventReportSchema,
   socialEconomicImpactReportSchema,
@@ -26,11 +26,18 @@ const router = Router();
 // docs/gf-adverse-event-report-schema-dev-plan.md §2.10 for why no blanket
 // per-report human review exists at all, and why Report has no status
 // field to represent one. The only auth requirement is
-// requireVerifiedReporterEmail: a Supabase magic-link/OTP session proving a
-// real, controllable email, which the middleware itself deletes
-// immediately after verifying — see supabaseAuth.ts and §2.8. Report
-// retains no identity-derived field, so nothing here ever sees or stores
-// the email.
+// verifyAndConsumeReporterEmail: a Supabase magic-link/OTP session proving
+// a real, controllable email, whose account is deleted the moment it is
+// verified — see supabaseAuth.ts and §2.8. Report retains no
+// identity-derived field, so nothing here ever sees or stores the email.
+//
+// Order matters and is load-bearing: validate the body FIRST, verify
+// SECOND. The verification is one-shot and destructive (it deletes the
+// reporter's Supabase account), so verifying before validating would spend
+// a reporter's single magic-link on a submission the schema then rejects,
+// leaving them to redo the whole email round trip to fix a typo'd field.
+// That is why this is an awaited call inside the handler rather than a
+// middleware in the router chain — a middleware cannot run second.
 // ---------------------------------------------------------------------------
 
 const ReporterEnvelopeSchema = z.object({
@@ -53,11 +60,16 @@ const SocialEconomicReportRequestSchema = ReporterEnvelopeSchema.extend({
 
 router.post(
   '/medical',
-  requireVerifiedReporterEmail,
   async (req: Request, res: Response): Promise<void> => {
     const parsed = MedicalReportRequestSchema.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({ error: 'Invalid request', details: parsed.error.flatten() });
+      return;
+    }
+
+    const verification = await verifyAndConsumeReporterEmail(req);
+    if (!verification.ok) {
+      res.status(verification.status).json(verification.body);
       return;
     }
 
@@ -82,11 +94,16 @@ router.post(
 
 router.post(
   '/social-economic',
-  requireVerifiedReporterEmail,
   async (req: Request, res: Response): Promise<void> => {
     const parsed = SocialEconomicReportRequestSchema.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({ error: 'Invalid request', details: parsed.error.flatten() });
+      return;
+    }
+
+    const verification = await verifyAndConsumeReporterEmail(req);
+    if (!verification.ok) {
+      res.status(verification.status).json(verification.body);
       return;
     }
 

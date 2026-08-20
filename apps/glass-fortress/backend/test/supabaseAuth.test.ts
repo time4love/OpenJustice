@@ -14,7 +14,7 @@ jest.mock('@supabase/supabase-js', () => ({
 
 import {
   requireSupabaseAuth,
-  requireVerifiedReporterEmail,
+  verifyAndConsumeReporterEmail,
   verifySupabaseUserId,
 } from '../src/middleware/supabaseAuth';
 
@@ -64,67 +64,64 @@ describe('requireSupabaseAuth', () => {
   });
 });
 
-describe('requireVerifiedReporterEmail', () => {
-  it('401s with no Authorization header, without touching Supabase', async () => {
-    const { req, res, next } = mockReqRes();
-    await requireVerifiedReporterEmail(req, res, next);
-    expect(res.status).toHaveBeenCalledWith(401);
+describe('verifyAndConsumeReporterEmail', () => {
+  it('rejects with 401 and no Supabase call when the Authorization header is missing', async () => {
+    const { req } = mockReqRes();
+    const result = await verifyAndConsumeReporterEmail(req);
+    expect(result).toEqual({ ok: false, status: 401, body: expect.objectContaining({ error: 'Unauthorized' }) });
     expect(mockGetUser).not.toHaveBeenCalled();
-    expect(next).not.toHaveBeenCalled();
   });
 
-  it('401s on an invalid/expired token, without attempting deletion', async () => {
+  it('rejects with 401 on an invalid/expired token, without attempting deletion', async () => {
     mockGetUser.mockResolvedValue({ data: { user: null }, error: { message: 'invalid' } });
-    const { req, res, next } = mockReqRes('Bearer bad-tok');
-    await requireVerifiedReporterEmail(req, res, next);
-    expect(res.status).toHaveBeenCalledWith(401);
+    const { req } = mockReqRes('Bearer bad-tok');
+    const result = await verifyAndConsumeReporterEmail(req);
+    expect(result.ok).toBe(false);
     expect(mockDeleteUser).not.toHaveBeenCalled();
-    expect(next).not.toHaveBeenCalled();
   });
 
-  it('deletes the Supabase account, sets reporterVerified, and calls next on success', async () => {
+  it('deletes the Supabase account and resolves ok on success, exposing nothing about the reporter', async () => {
     mockGetUser.mockResolvedValue({
       data: { user: { id: 'reporter-1', email: 'reporter@example.com' } },
       error: null,
     });
     mockDeleteUser.mockResolvedValue({ error: null });
 
-    const { req, res, next } = mockReqRes('Bearer good-tok');
-    await requireVerifiedReporterEmail(req, res, next);
+    const { req } = mockReqRes('Bearer good-tok');
+    const result = await verifyAndConsumeReporterEmail(req);
 
     expect(mockDeleteUser).toHaveBeenCalledWith('reporter-1');
-    expect(req.reporterVerified).toBe(true);
-    // The email must never be attached to the request — nothing downstream
-    // should be able to see it once verification has happened.
+    // The success result carries no reporter data at all — not the email,
+    // not the Supabase user id. Nothing downstream should be able to see
+    // who reported once verification has happened.
+    expect(result).toEqual({ ok: true });
+    // ...and nothing was smuggled onto the request either.
     expect((req as unknown as { reporterEmail?: string }).reporterEmail).toBeUndefined();
-    expect(next).toHaveBeenCalled();
   });
 
-  it('fails closed (500, does not call next) if account deletion errors', async () => {
+  it('fails closed (500) if account deletion errors', async () => {
     mockGetUser.mockResolvedValue({
       data: { user: { id: 'reporter-1', email: 'reporter@example.com' } },
       error: null,
     });
     mockDeleteUser.mockResolvedValue({ error: { message: 'delete failed' } });
 
-    const { req, res, next } = mockReqRes('Bearer good-tok');
-    await requireVerifiedReporterEmail(req, res, next);
+    const { req } = mockReqRes('Bearer good-tok');
+    const result = await verifyAndConsumeReporterEmail(req);
 
-    expect(res.status).toHaveBeenCalledWith(500);
-    expect(next).not.toHaveBeenCalled();
+    expect(result).toEqual({ ok: false, status: 500, body: expect.anything() });
   });
 
-  it('fails closed (500, does not call next) if account deletion throws', async () => {
+  it('fails closed (500) if account deletion throws', async () => {
     mockGetUser.mockResolvedValue({
       data: { user: { id: 'reporter-1', email: 'reporter@example.com' } },
       error: null,
     });
     mockDeleteUser.mockRejectedValue(new Error('network error'));
 
-    const { req, res, next } = mockReqRes('Bearer good-tok');
-    await requireVerifiedReporterEmail(req, res, next);
+    const { req } = mockReqRes('Bearer good-tok');
+    const result = await verifyAndConsumeReporterEmail(req);
 
-    expect(res.status).toHaveBeenCalledWith(500);
-    expect(next).not.toHaveBeenCalled();
+    expect(result).toEqual({ ok: false, status: 500, body: expect.anything() });
   });
 });

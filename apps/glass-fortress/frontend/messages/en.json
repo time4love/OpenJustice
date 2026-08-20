@@ -537,7 +537,10 @@
     "door1Btn": "See All Open Cases",
     "door2Title": "Want to Research?",
     "door2Body": "Our research team works via MCP + Claude. Access is invite-only to maintain the quality and integrity of the case. Apply to join.",
-    "door2Btn": "Request Research Access"
+    "door2Btn": "Request Research Access",
+    "door3Title": "Report what happened to you",
+    "door3Body": "Harmed after vaccination — medically, or through a job lost, a discharge, a relationship broken? A structured, anonymous report. No name kept, no email kept, no free text.",
+    "door3Btn": "Submit a report"
   },
   "researchers": {
     "badge": "Invite Only",
@@ -895,5 +898,188 @@
   },
   "stagingBanner": {
     "label": "Staging"
+  },
+  "reports": {
+    "pageTitle": "Report an adverse outcome",
+    "pageSubtitle": "A structured, anonymous report. No name, no free text, nothing that links it back to you.",
+    "stepOf": "Step {current} of {total}",
+    "backStep": "Back",
+    "continue": "Continue",
+    "steps": {
+      "verify": "Verify",
+      "domain": "Type",
+      "category": "Category",
+      "details": "Details",
+      "about": "About you",
+      "review": "Review"
+    },
+    "verify": {
+      "heading": "First, verify your email",
+      "body": "We send a one-time link, to make sure each report comes from a real person. Confirming you can receive mail at an address is the only thing it is used for.",
+      "point1": "Your email is never stored alongside your report. The two are never linked, not even internally.",
+      "point2": "The verification account itself is deleted the moment you submit — that is part of the submission, not a promise to clean up later.",
+      "point3": "Because nothing connects you to your report, we cannot find it again afterwards — not even to delete it at your request.",
+      "whyFirst": "We ask now rather than at the end so that nothing you tell us has to sit saved in your browser while you go and open your inbox.",
+      "emailLabel": "Email address",
+      "emailPlaceholder": "you@example.com",
+      "send": "Send verification link",
+      "sending": "Sending…",
+      "sendFailed": "Could not send the verification link. Please try again.",
+      "sentHeading": "Check your inbox",
+      "sentBody": "We sent a link to {email}. Open it in this browser — the questions start there.",
+      "sentHint": "Nothing is saved anywhere until you press submit at the end.",
+      "tryAgain": "Use a different address",
+      "linkInvalid": "That verification link is no longer valid. Request a new one below."
+    },
+    "domain": {
+      "heading": "What are you reporting?",
+      "body": "One report covers one thing. If both happened to you, send a second report afterwards.",
+      "medicalTitle": "A medical effect",
+      "medicalBody": "A symptom, diagnosis, or medical condition that appeared, returned, or worsened after vaccination.",
+      "socialTitle": "A social or economic consequence",
+      "socialBody": "A job lost, a discharge, access denied, or a relationship broken, connected to vaccination status."
+    },
+    "questions": {
+      "hint": "Answer what you know. \"Unknown\" is a real answer here — an honest \"I don't know\" is more useful to us than a guess.",
+      "cancerSection": "Because you selected cancer",
+      "cognitiveSection": "Because you selected cognitive symptoms",
+      "yes": "Yes",
+      "no": "No",
+      "unanswered": "Not answered",
+      "dosePlaceholder": "e.g. 2",
+      "requiredMissing": "Please answer this question to continue.",
+      "categoryHeading": "First, the category",
+      "detailsHeading": "A few more details",
+      "why": "Why we ask"
+    },
+    "medical": {
+      "symptomCategory": {
+        "label": "Which body system was affected?",
+        "help": "Which body system or type of effect best describes what happened. We ask this first because it determines which follow-up questions apply."
+      },
+      "seriousness": {
+        "label": "Did the outcome meet the official \"serious\" criteria?",
+        "help": "Whether the outcome met the official \"serious adverse event\" criteria used by vaccine safety systems like VAERS — hospitalization, life-threatening, permanent disability, death, or a birth defect. Not a subjective severity rating; it's the same legal definition regulators use."
+      },
+      "cancerPresentationType": {
+        "label": "New diagnosis, or a change in an existing cancer?",
+        "help": "Whether this is a brand-new diagnosis or a recurrence/progression of cancer you already had. Published research treats these as distinct signals."
+      },
+      "cancerCourse": {
+        "label": "How fast did the disease progress?",
+        "help": "Whether the disease progressed at a typical pace or unusually quickly. We use the same words the published research uses, not the more dramatic terms sometimes used online — see the methodology note above."
+      },
+      "cancerAtypicalFeatures": {
+        "label": "Did it appear at or near the injection site?",
+        "help": "Whether the cancer showed up at or near the injection site, or in nearby lymph nodes — a specific pattern noted in several published case reports."
+      },
+      "cancerType": {
+        "label": "Type of cancer",
+        "help": "The type of cancer involved. If you don't know yet, choose \"Not yet typed\" rather than guessing — an honest \"don't know\" is more useful to us than a wrong guess."
+      },
+      "cognitiveSymptomType": {
+        "label": "Which cognitive symptom?",
+        "help": "Which cognitive symptom best describes what you experienced. Brain fog, memory problems, and concentration difficulty are tracked separately because they're the most-reported symptom cluster in current research — not a rare or minor complaint."
+      },
+      "postExertionalMalaise": {
+        "label": "Does exertion make it worse afterwards?",
+        "help": "Whether physical or mental exertion noticeably worsens your symptoms afterward. A specific, recognized feature of post-vaccination syndrome — not a general \"do you get tired\" question."
+      },
+      "symptomPersistence": {
+        "label": "Has it resolved, or is it ongoing?",
+        "help": "Whether the symptom has resolved or is still ongoing. Often the single most important fact in a medical report — the difference between something that happened once and something that hasn't stopped."
+      },
+      "vaccineManufacturer": {
+        "label": "Vaccine manufacturer",
+        "help": "Which vaccine manufacturer. Vaccine safety databases always track this, since reaction patterns can differ between products."
+      },
+      "doseNumber": {
+        "label": "Which dose came before it?",
+        "help": "Which dose in the series (first, second, booster, etc.) preceded the symptom. Reaction patterns are often dose-specific."
+      },
+      "onsetWindow": {
+        "label": "How long after vaccination did it start?",
+        "help": "How long after vaccination the symptom began. We ask for a time range, not an exact date, to protect your privacy — only the range is ever shown publicly."
+      },
+      "medicalCareEngagement": {
+        "label": "Did you seek medical care?",
+        "help": "Whether you sought medical attention, and whether a provider formally confirmed the diagnosis. Not a requirement to report — many real reactions never reach a doctor — but it affects the confidence level assigned to your report in any aggregate analysis."
+      },
+      "preExistingCondition": {
+        "label": "Did you have this condition before vaccination?",
+        "help": "Whether you had this condition, or a related one, before vaccination. Matters for telling a new event apart from a known one."
+      }
+    },
+    "social": {
+      "impactCategory": {
+        "label": "What kind of consequence?",
+        "help": "Which kind of consequence you experienced. Employment and military categories have the strongest documentation behind them (see the methodology note); family and social categories are real but less formally studied — we're upfront about that difference."
+      },
+      "formalBasisAsserted": {
+        "label": "What formal grounds were given?",
+        "help": "What formal grounds, if any, were given for the decision — a denied religious accommodation, a denied medical/disability accommodation, or none stated. The single best-documented data point in this whole form."
+      },
+      "consequenceSeverity": {
+        "label": "What harm followed?",
+        "help": "The kind of harm that followed — lost income, lost benefits, a derailed career, a broken relationship, or financial/housing hardship."
+      },
+      "outcomeStatus": {
+        "label": "Is it still in effect?",
+        "help": "Whether the consequence is still in effect, was reversed (e.g. reinstated), or stands unchanged. Matters as much as the original event — a servicemember reinstated with back pay is materially different from one still discharged."
+      },
+      "documentationAvailable": {
+        "label": "Do you have documentation?",
+        "help": "Whether you have a paper trail — a termination letter, a discharge order, a complaint filed with an agency. Like the medical form's provider-confirmation question, this doesn't gate acceptance, but it affects confidence."
+      },
+      "timingRelativeToEvent": {
+        "label": "How long after vaccination did it happen?",
+        "help": "How long after vaccination this happened. As with the medical form, we ask for a time range rather than an exact date to protect your privacy."
+      }
+    },
+    "about": {
+      "heading": "About you",
+      "body": "Two questions, in broad ranges only. Age and sex genuinely matter in vaccine safety analysis — the myocarditis signal was found precisely because reports recorded that it was concentrated in young males. We keep ranges rather than exact values so that a small group can never be narrowed down to a person.",
+      "ageLabel": "Age range",
+      "genderLabel": "Sex",
+      "skipHint": "Leaving both unanswered is fine — it costs the analysis some resolution, nothing more."
+    },
+    "review": {
+      "heading": "Review and submit",
+      "body": "This is the whole of what gets recorded. There is no name, no email, no free-text field behind it.",
+      "medicalTitle": "Medical effect",
+      "socialTitle": "Social or economic consequence",
+      "consentHeading": "Consent",
+      "consentLabel": "I consent to this information — including health data, or religious belief where I indicated it — being stored and published as part of aggregate statistics.",
+      "consentDetail": "Reports are only ever published as counts, never individually. Any group smaller than 10 is not shown at all.",
+      "submit": "Submit report",
+      "submitting": "Submitting…",
+      "edit": "Go back and change an answer"
+    },
+    "done": {
+      "heading": "Your report was recorded",
+      "body": "It counts toward the aggregate immediately — there is no queue and no approval step. Your verification account has been deleted, and nothing connects this report to you, which also means we cannot retrieve it later, even if you ask us to.",
+      "backHome": "Back to the home page",
+      "another": "Submit another report"
+    },
+    "errors": {
+      "expired": "Your verification expired before the report reached us. You can verify again, but the answers will have to be entered a second time — nothing was saved.",
+      "verifyAgain": "Verify again",
+      "submitFailed": "The report could not be submitted.",
+      "retry": "Try again"
+    },
+    "methodology": {
+      "toggle": "About this data",
+      "intro": "This form's categories aren't arbitrary. Each one is grounded in published research, official government data, or established adverse-event reporting standards — not in what sounds compelling. Where the evidence is strong (e.g. employment/military consequences, tracked directly by the EEOC and the Department of Defense), we say so. Where it's weaker — real, but not yet systematically studied (e.g. family estrangement) — we say that too. A single report here is not proof of anything; it becomes meaningful only in aggregate, alongside many others, the same way official vaccine safety surveillance systems work.",
+      "medicalCategoryHeading": "Symptom categories",
+      "medicalCategory": "Our categories follow the same organ-system structure used in official vaccine safety databases (VAERS in the US, EudraVigilance in Europe), adapted to conditions people have actually reported after COVID-19 vaccination. Cognitive symptoms — brain fog, memory or concentration difficulty — have their own category, separate from severe acute neurological events, because they are the single most-reported symptom cluster in existing research, not a rare exception.",
+      "medicalCancerHeading": "The cancer questions",
+      "medicalCancer": "If you're reporting a cancer diagnosis or a change in an existing cancer, we ask a few extra questions — whether it's a new diagnosis or a recurrence, and whether the course was unusually rapid. A 2026 review of published medical case reports found a real, documented pattern of these questions mattering; the same review is explicit that this is a hypothesis worth investigating, not proof of cause and effect. We ask the same way the researchers did.",
+      "medicalPersistenceHeading": "Ongoing vs. resolved",
+      "medicalPersistence": "Whether a symptom went away or is still affecting you matters — a lot. We ask this for every category, not just some, because the difference between \"it happened once\" and \"it hasn't stopped\" is often the most important fact in the report.",
+      "socialEmploymentHeading": "Employment and military",
+      "socialEmployment": "Of the roughly 10,000 COVID-era discrimination charges filed with the U.S. EEOC, 9,800 alleged religious-accommodation denial — this is the best-documented consequence in this entire form. Over 8,000 servicemembers were discharged for vaccine refusal; the Department of Defense now runs an official reinstatement program. If either happened to you, telling us whether it was resolved (e.g. reinstatement) or still stands is as important as the original event.",
+      "socialFamilyHeading": "Family and social impact",
+      "socialFamily": "We include family estrangement and social ostracization because real people have reported them, and qualitative research on healthcare workers documents real distress. We're honest that this is less systematically studied than the employment/military categories above — your report still matters, but we won't overstate what the evidence shows."
+    }
   }
 }
