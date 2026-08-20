@@ -25,6 +25,10 @@ export interface EvidenceMetadata {
   euaOmissionStatus?: string;
   sourceUrl?: string | null;
   fileUrl?: string | null;
+  // Screenshot 2..N when this evidence was recovered from a page that needed
+  // multiple captures. fileUrl always holds the first/primary capture; this
+  // array holds the rest, in reading order. Empty for every ordinary record.
+  additionalScreenshotUrls?: string[];
   urlVersionDiffId?: string | null;
   trackedUrlId?: string | null;
   timestamp: number;

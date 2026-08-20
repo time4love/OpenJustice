@@ -793,6 +793,108 @@ describe('IntakeAgent', () => {
     });
   });
 
+  // ---- analyzeMultiImageEvidence — screenshot-recovery path ---------------
+
+  describe('analyzeMultiImageEvidence', () => {
+    const IMG_A = { buffer: Buffer.from('page-part-1'), mimeType: TEST_MIME_JPEG };
+    const IMG_B = { buffer: Buffer.from('page-part-2'), mimeType: TEST_MIME_PNG };
+
+    it('throws if called with zero images', async () => {
+      await expect(agent.analyzeMultiImageEvidence([])).rejects.toThrow(
+        'requires at least one image',
+      );
+    });
+
+    it('returns one synthesized IntakeOutput for multiple images, not one per image', async () => {
+      getMockInvoke(agent).mockResolvedValueOnce(SMOKING_GUN_RESPONSE);
+
+      const result = await agent.analyzeMultiImageEvidence([IMG_A, IMG_B]);
+
+      expect(getMockInvoke(agent)).toHaveBeenCalledTimes(1);
+      expect(result.evidenceTier).toBe(EVIDENCE_TIER.SMOKING_GUN);
+    });
+
+    it('encodes every image as its own content block, in order', async () => {
+      getMockInvoke(agent).mockResolvedValueOnce(SMOKING_GUN_RESPONSE);
+
+      await agent.analyzeMultiImageEvidence([IMG_A, IMG_B]);
+
+      const humanContent = (
+        getMockInvoke(agent).mock.calls[0][0] as Array<{
+          role: string;
+          content: Array<{ type: string; image_url?: { url: string } }>;
+        }>
+      )[1].content;
+      const imageBlocks = humanContent.filter((b) => b.type === 'image_url');
+      expect(imageBlocks).toHaveLength(2);
+      expect(imageBlocks[0].image_url?.url).toMatch(/^data:image\/jpeg;base64,/);
+      expect(imageBlocks[0].image_url?.url).toContain(IMG_A.buffer.toString('base64'));
+      expect(imageBlocks[1].image_url?.url).toMatch(/^data:image\/png;base64,/);
+      expect(imageBlocks[1].image_url?.url).toContain(IMG_B.buffer.toString('base64'));
+    });
+
+    it('includes a multi-image synthesis instruction when more than one image is submitted', async () => {
+      getMockInvoke(agent).mockResolvedValueOnce(SMOKING_GUN_RESPONSE);
+
+      await agent.analyzeMultiImageEvidence([IMG_A, IMG_B]);
+
+      const humanContent = (
+        getMockInvoke(agent).mock.calls[0][0] as Array<{
+          role: string;
+          content: Array<{ type: string; text?: string }>;
+        }>
+      )[1].content;
+      const instructionBlock = humanContent.find(
+        (b) => b.type === 'text' && b.text?.includes('one synthesized analysis'),
+      );
+      expect(instructionBlock).toBeDefined();
+    });
+
+    it('reaches the mocked LLM call with the contextNote as a leading text block', async () => {
+      getMockInvoke(agent).mockResolvedValueOnce(SMOKING_GUN_RESPONSE);
+      const contextNote = 'Source URL: https://example.gov/blocked (HTTP 403)';
+
+      await agent.analyzeMultiImageEvidence([IMG_A], contextNote);
+
+      const humanContent = (
+        getMockInvoke(agent).mock.calls[0][0] as Array<{
+          role: string;
+          content: Array<{ type: string; text?: string; image_url?: unknown }>;
+        }>
+      )[1].content;
+      expect(humanContent[0]).toEqual({ type: 'text', text: contextNote });
+      expect(humanContent[1].image_url).toBeDefined();
+    });
+
+    it('omits the leading text block entirely when no contextNote is given', async () => {
+      getMockInvoke(agent).mockResolvedValueOnce(SMOKING_GUN_RESPONSE);
+
+      await agent.analyzeMultiImageEvidence([IMG_A]);
+
+      const humanContent = (
+        getMockInvoke(agent).mock.calls[0][0] as Array<{
+          role: string;
+          content: Array<{ type: string; image_url?: unknown }>;
+        }>
+      )[1].content;
+      expect(humanContent[0].image_url).toBeDefined();
+    });
+
+    it('filters gershayim-corrupted single-char keyFigures artifacts, same as analyzeEvidence', async () => {
+      getMockInvoke(agent).mockResolvedValueOnce({ ...SMOKING_GUN_RESPONSE, keyFigures: ['ד', 'אלברט בורלה'] });
+
+      const result = await agent.analyzeMultiImageEvidence([IMG_A]);
+
+      expect(result.keyFigures).toEqual(['אלברט בורלה']);
+    });
+
+    it('propagates errors thrown by the chain', async () => {
+      getMockInvoke(agent).mockRejectedValueOnce(new Error('API timeout'));
+
+      await expect(agent.analyzeMultiImageEvidence([IMG_A])).rejects.toThrow('API timeout');
+    });
+  });
+
   // ---- EVIDENCE_TIER enum sanity ------------------------------------------
 
   describe('EVIDENCE_TIER constant', () => {

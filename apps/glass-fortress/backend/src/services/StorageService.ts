@@ -59,4 +59,29 @@ export class StorageService {
     const { data } = this.client.storage.from(BUCKET).getPublicUrl(filename);
     return data.publicUrl;
   }
+
+  /**
+   * Deletes one or more evidence files from the "evidence" bucket, given
+   * their public URLs (as returned by uploadEvidenceFile). Extracts each
+   * URL's storage path rather than requiring the caller to track filenames
+   * separately. Silently no-ops on an empty array — Supabase's remove()
+   * would otherwise reject a zero-length path list.
+   */
+  async deleteEvidenceFiles(fileUrls: string[]): Promise<void> {
+    if (fileUrls.length === 0) return;
+
+    const marker = `/storage/v1/object/public/${BUCKET}/`;
+    const paths = fileUrls.map((url) => {
+      const idx = url.indexOf(marker);
+      if (idx === -1) {
+        throw new Error(`Not a recognised "${BUCKET}" bucket public URL: ${url}`);
+      }
+      return url.slice(idx + marker.length);
+    });
+
+    const { error } = await this.client.storage.from(BUCKET).remove(paths);
+    if (error) {
+      throw new Error(`Supabase Storage delete failed: ${error.message}`);
+    }
+  }
 }

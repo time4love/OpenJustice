@@ -29,6 +29,8 @@ const WRITE_TOOLS = new Set([
   'enrich_evidence_with_history',
   'promote_evidence',
   'generate_foia_request',
+  'recover_evidence_from_screenshot',
+  'delete_evidence',
 ]);
 
 // ---------------------------------------------------------------------------
@@ -251,7 +253,7 @@ router.get('/', (_req: Request, res: Response) => {
     version: '1.0.0',
     transport: 'streamable-http',
     readTools: ['search_evidence', 'get_forensic_timeline', 'get_figure_dossier', 'get_thesis_context', 'get_research_agenda', 'get_session_summary'],
-    writeTools: ['create_evidence_from_url', 'create_evidence_from_text', 'start_forensic_scan', 'create_thesis_draft', 'add_thesis_version', 'run_ai_analysis', 'create_research_session', 'add_session_note', 'close_research_session', 'enrich_evidence_with_history', 'promote_evidence', 'generate_foia_request'],
+    writeTools: ['create_evidence_from_url', 'create_evidence_from_text', 'start_forensic_scan', 'create_thesis_draft', 'add_thesis_version', 'run_ai_analysis', 'create_research_session', 'add_session_note', 'close_research_session', 'enrich_evidence_with_history', 'promote_evidence', 'generate_foia_request', 'recover_evidence_from_screenshot', 'delete_evidence'],
     auth:
       'Write tools accept either an MCP OAuth access token (see the "oauth" field below — this is what ' +
       'ChatGPT/Claude Desktop custom connectors should use) or a legacy per-user service token ' +

@@ -197,7 +197,9 @@
     "citingTheses": "תזות המצטטות ראיה זו",
     "noCitingTheses": "ראיה זו טרם צוטטה בתזה כלשהי.",
     "summary": "תקציר",
-    "submittedBy": "הוגש על ידי"
+    "submittedBy": "הוגש על ידי",
+    "screenshots": "צילומי מסך",
+    "screenshotAlt": "צילום מסך"
   },
   "figures": {
     "tagline": "גרף ישויות · דמויות מפתח ורשת הקשרים",

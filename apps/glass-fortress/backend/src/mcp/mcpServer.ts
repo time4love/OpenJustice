@@ -17,7 +17,9 @@ import { getSessionSummarySchema, getSessionSummaryHandler } from './tools/getSe
 import { suggestThesisSchema, suggestThesisHandler } from './tools/suggestThesis';
 import { enrichEvidenceWithHistorySchema, enrichEvidenceWithHistoryHandler } from './tools/enrichEvidenceWithHistory';
 import { promoteEvidenceSchema, promoteEvidenceHandler } from './tools/promoteEvidence';
+import { deleteEvidenceSchema, deleteEvidenceHandler } from './tools/deleteEvidence';
 import { generateFoiaRequestSchema, generateFoiaRequestHandler } from './tools/generateFoiaRequest';
+import { recoverEvidenceFromScreenshotSchema, recoverEvidenceFromScreenshotHandler } from './tools/recoverEvidenceFromScreenshot';
 
 // ---------------------------------------------------------------------------
 // Factory — creates a fresh McpServer per request.
@@ -316,6 +318,26 @@ export function createMcpServer(): McpServer {
   );
 
   // -------------------------------------------------------------------------
+  // Tool: delete_evidence  [WRITE — SYNCHRONOUS, DESTRUCTIVE]
+  // Permanently deletes a PENDING_REVIEW evidence record and its Storage
+  // file(s). Refuses CONFIRMED records (immutable once on-chain), records
+  // still cited by a thesis, and records with a Pinata IPFS pin (no verified
+  // unpin implementation yet — see deleteEvidence.ts).
+  // -------------------------------------------------------------------------
+  server.tool(
+    'delete_evidence',
+    'Permanently delete a PENDING_REVIEW evidence record — removes its file(s) from Storage and ' +
+      'the database row. Refuses to delete CONFIRMED records (already registered on-chain, meant to ' +
+      'be immutable), records still cited by a thesis, or records with an IPFS pin from the ' +
+      'whistleblower attachment path. Requires evidenceId (UUID). Irreversible — use for cleaning up ' +
+      'test, rejected, or mistakenly-submitted PENDING_REVIEW records, not as a general moderation tool.',
+    deleteEvidenceSchema,
+    async (input) => ({
+      content: [{ type: 'text' as const, text: await deleteEvidenceHandler(input) }],
+    }),
+  );
+
+  // -------------------------------------------------------------------------
   // Tool: generate_foia_request  [WRITE — synchronous LLM call]
   // Given a thesis ID and gap index, generates a formal Hebrew FOIA request
   // letter targeting the Israeli ministry most likely to hold the missing
@@ -330,6 +352,26 @@ export function createMcpServer(): McpServer {
     generateFoiaRequestSchema,
     async (input) => ({
       content: [{ type: 'text' as const, text: await generateFoiaRequestHandler(input) }],
+    }),
+  );
+
+  // -------------------------------------------------------------------------
+  // Tool: recover_evidence_from_screenshot  [WRITE — STAGING GATE]
+  // For when a source URL is blocked or unarchived: accepts one or more
+  // screenshots (in reading order) in place of a direct fetch. Synthesizes
+  // them into a single analysis and saves as PENDING_REVIEW — same rule as
+  // create_evidence_from_text, since the paired URL is asserted, not fetched.
+  // -------------------------------------------------------------------------
+  server.tool(
+    'recover_evidence_from_screenshot',
+    'Submit one or more screenshots of a page that could not be fetched directly (blocked, not in ' +
+      'the Wayback Machine). Screenshots are treated as sequential parts of one document and ' +
+      'synthesized into a single AI analysis. Saved as PENDING_REVIEW — the paired source URL is ' +
+      'asserted, not verified by a server fetch, same rule that governs create_evidence_from_text. ' +
+      'Not registered on-chain or indexed for search until a human reviewer promotes it via the UI.',
+    recoverEvidenceFromScreenshotSchema,
+    async (input) => ({
+      content: [{ type: 'text' as const, text: await recoverEvidenceFromScreenshotHandler(input) }],
     }),
   );
 

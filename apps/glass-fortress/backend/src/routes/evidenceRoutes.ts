@@ -15,9 +15,12 @@ import {
 } from '../lib/investigativeCategories';
 import { mapEvidenceToRecord } from '../lib/evidenceRecord';
 import { buildEvidenceAnalysisData } from '../lib/evidenceCreateData';
+import { upsertKeyFigures } from '../lib/upsertKeyFigures';
 import { promoteEvidence } from '../services/promoteEvidence';
 import { parseDiffItems } from '../lib/diffItems';
 import { aiCostLimiter } from '../middleware/rateLimiting';
+import { ALLOWED_EVIDENCE_MIME_TYPES, MAX_EVIDENCE_FILE_BYTES } from '../lib/evidenceFileConstraints';
+import { persistScreenshotEvidence } from '../lib/persistScreenshotEvidence';
 
 const router = Router();
 
@@ -25,16 +28,28 @@ const router = Router();
 // Multer — in-memory storage, images and PDFs only, max 10 MB
 // ---------------------------------------------------------------------------
 
-const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'application/pdf'];
-
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 10 * 1024 * 1024 },
+  limits: { fileSize: MAX_EVIDENCE_FILE_BYTES },
   fileFilter: (_req, file, cb) => {
-    if (ALLOWED_MIME_TYPES.includes(file.mimetype)) {
+    if ((ALLOWED_EVIDENCE_MIME_TYPES as readonly string[]).includes(file.mimetype)) {
       cb(null, true);
     } else {
       cb(new Error(`Unsupported file type: ${file.mimetype}. Allowed: JPEG, PNG, PDF.`));
+    }
+  },
+});
+
+// Screenshot-recovery — images only (no PDF; a screenshot is always a raster
+// capture), up to 10 files per submission via .array('screenshots', 10) below.
+const uploadScreenshots = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_EVIDENCE_FILE_BYTES },
+  fileFilter: (_req, file, cb) => {
+    if (file.mimetype === 'image/jpeg' || file.mimetype === 'image/png') {
+      cb(null, true);
+    } else {
+      cb(new Error(`Unsupported file type: ${file.mimetype}. Screenshots must be JPEG or PNG.`));
     }
   },
 });
@@ -62,6 +77,16 @@ const UrlConfirmBodySchema = z.object({
   scrapedText: z.string().min(1, 'scrapedText is required'),
   analysis: z.string().min(1, 'analysis JSON is required'),
   urlVersionDiffId: z.string().optional(),
+});
+
+const RecoverIntakeBodySchema = z.object({
+  sourceUrl: z.string().url('A valid sourceUrl is required'),
+  failureReason: z.string().optional(),
+});
+
+const RecoverConfirmBodySchema = z.object({
+  sourceUrl: z.string().url(),
+  analysis: z.string().min(1, 'analysis JSON is required'),
 });
 
 const ContactBodySchema = z.object({
@@ -277,14 +302,9 @@ router.post(
         return;
       }
 
-      // Ensure all KeyFigure records exist before linking (createMany is idempotent via skipDuplicates)
+      // Ensure all KeyFigure records exist before linking (idempotent via skipDuplicates)
       const figureNames = analysis.keyFigures;
-      if (figureNames.length > 0) {
-        await prisma.keyFigure.createMany({
-          data: figureNames.map((name) => ({ name })),
-          skipDuplicates: true,
-        });
-      }
+      await upsertKeyFigures(figureNames);
 
       // Write structured metadata to Prisma — this is the authoritative structured store.
       // status/onChainTxHash set explicitly here, not left to the schema default: this
@@ -328,6 +348,127 @@ router.post(
         txHash,
         analysis,
       });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// ---------------------------------------------------------------------------
+// POST /api/evidence/recover-intake
+// Blocked-URL screenshot recovery, draft step. Multipart "screenshots"
+// (1-10 files) + { sourceUrl, failureReason? }. Runs multi-image AI
+// classification and returns the draft analysis — no persistence, mirrors
+// /intake's role. No auth: a screenshot doesn't need a vetted submitter,
+// same reasoning as the plain file-upload path.
+// ---------------------------------------------------------------------------
+
+router.post(
+  '/recover-intake',
+  aiCostLimiter,
+  uploadScreenshots.array('screenshots', 10),
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const files = (req.files as Express.Multer.File[] | undefined) ?? [];
+      if (files.length === 0) {
+        res.status(400).json({
+          error: 'Invalid request',
+          message: 'At least one "screenshots" file is required.',
+        });
+        return;
+      }
+
+      const bodyParsed = RecoverIntakeBodySchema.safeParse(req.body);
+      if (!bodyParsed.success) {
+        res.status(400).json({ error: 'Invalid request', details: bodyParsed.error.flatten() });
+        return;
+      }
+      const { sourceUrl, failureReason } = bodyParsed.data;
+
+      const images = files.map((f) => ({ buffer: f.buffer, mimeType: f.mimetype }));
+      const contextNote =
+        `Source URL (blocked — not fetched directly): ${sourceUrl}` +
+        (failureReason ? `\nFailure reason: ${failureReason}` : '');
+
+      let analysis;
+      try {
+        analysis = await getIntakeAgent().analyzeMultiImageEvidence(images, contextNote);
+      } catch (err) {
+        console.error('[recover-intake] IntakeAgent error:', err);
+        res.status(500).json({ error: 'AI analysis failed', message: String(err) });
+        return;
+      }
+
+      res.status(200).json({ analysis, sourceUrl });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// ---------------------------------------------------------------------------
+// POST /api/evidence/recover-confirm
+// Blocked-URL screenshot recovery, persist step. Same multipart shape as
+// /recover-intake plus the already-computed "analysis" JSON (round-tripped
+// after the user reviews the draft, same pattern as /confirm). Always saves
+// PENDING_REVIEW — the paired sourceUrl is asserted, never fetched — no
+// on-chain registration, no vector-store upsert. createdById is always null:
+// no researcher context exists on this public route.
+// ---------------------------------------------------------------------------
+
+router.post(
+  '/recover-confirm',
+  aiCostLimiter,
+  uploadScreenshots.array('screenshots', 10),
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const files = (req.files as Express.Multer.File[] | undefined) ?? [];
+      if (files.length === 0) {
+        res.status(400).json({
+          error: 'Invalid request',
+          message: 'At least one "screenshots" file is required.',
+        });
+        return;
+      }
+
+      const bodyParsed = RecoverConfirmBodySchema.safeParse(req.body);
+      if (!bodyParsed.success) {
+        res.status(400).json({ error: 'Invalid request', details: bodyParsed.error.flatten() });
+        return;
+      }
+      const { sourceUrl, analysis: analysisStr } = bodyParsed.data;
+
+      let analysisRaw: unknown;
+      try {
+        analysisRaw = JSON.parse(analysisStr);
+      } catch {
+        res.status(400).json({ error: 'Invalid JSON', message: 'The "analysis" field must be valid JSON.' });
+        return;
+      }
+
+      const analysisParsed = IntakeOutputSchema.safeParse(analysisRaw);
+      if (!analysisParsed.success) {
+        res.status(400).json({ error: 'Invalid analysis', details: analysisParsed.error.flatten() });
+        return;
+      }
+
+      const images = files.map((f) => ({ buffer: f.buffer, mimeType: f.mimetype }));
+
+      let result;
+      try {
+        result = await persistScreenshotEvidence({
+          images,
+          analysis: analysisParsed.data,
+          sourceUrl,
+          createdById: null,
+        });
+      } catch (err) {
+        console.error('[recover-confirm] persistScreenshotEvidence error:', err);
+        res.status(500).json({ error: 'Evidence recovery failed', message: String(err) });
+        return;
+      }
+
+      res.status(201).json(result);
     } catch (err) {
       next(err);
     }
@@ -753,6 +894,7 @@ router.get('/:id', async (req: Request, res: Response): Promise<void> => {
       euaOmissionStatus: record.euaOmissionStatus,
       sourceUrl: record.sourceUrl,
       fileUrl: record.fileUrl,
+      additionalScreenshotUrls: record.additionalScreenshotUrls,
       trackedUrlId: record.urlVersionDiff?.trackedUrlId ?? null,
       trackedUrl: record.urlVersionDiff?.trackedUrl?.url ?? null,
       diff,
