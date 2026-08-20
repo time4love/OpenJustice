@@ -757,6 +757,34 @@ UI copy and docs to make clear it's for non-interactive/service use, not the def
 update `docs/gf-chatgpt-mcp-connector-guide.md` and any Claude Desktop setup docs to recommend OAuth as
 the default going forward.
 
+### 8.1 UI portion — ✅ DONE 2026-08-20
+
+User explicitly confirmed the §2.3 split when asked directly: remove the profile page's token-generation
+UI (a researcher never needs it now that OAuth login gates write access automatically), but keep the
+backend `POST /api/auth/mcp-token` route, `Researcher.mcpTokenHash`, and the `mcpRoutes.ts` fallback path
+exactly as-is for non-interactive/CI use — not a reversal of §2.3, just executing the UI-reframing it
+already called for, taken to "remove" rather than "reframe" for the human-facing surface specifically.
+
+Removed: the "MCP Token section" of `frontend/src/app/[locale]/profile/page.tsx` (generate/rotate button,
+revealed-token display, Claude Desktop config snippet), the now-dead `hasMcpToken` field on
+`ResearcherProfile` and the now-unused `refreshProfile()` context method (both only existed to support
+that UI), and the associated `auth.*` translation keys in both `en.json`/`he.json`. Updated the stale
+`pendingApprovalHint`/`admin.subtitle` copy that referenced "generate an MCP token" to describe OAuth
+instead. Backend untouched — `POST /api/auth/mcp-token` remains live and tested as the CI/scripted-use
+path.
+
+Also added: a "Connect via MCP (OAuth)" section on the public `/researchers` page — concrete numbered
+steps (point client at the production server URL, client auto-discovers OAuth via the `oauth` field on
+`GET /api/mcp`, sign in with Google, approve scopes, done), plus a dedicated callout addressed to AI
+agents reading the page (cites RFC 9728/8414/8707 and the DCR+PKCE flow directly, so an agentic client
+can self-configure without a human walking it through UI). Notes accurately that only the claude.ai path
+is verified end-to-end (§7 above); Claude Desktop/Code presented as "should work, not yet verified."
+
+**Not done, still stale:** `docs/gf-chatgpt-mcp-connector-guide.md` still describes write tools as
+production-unavailable and only staging as having OAuth — both now false since §7.1's production ship.
+Out of scope for this pass (only the profile-page UI and `/researchers` docs were requested); needs its
+own update before it's handed to a user again.
+
 ---
 
 ## 9. Explicitly out of scope

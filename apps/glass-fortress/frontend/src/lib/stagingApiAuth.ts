@@ -4,9 +4,9 @@
  * directly across the app. Patches the global fetch once, at module load,
  * imported for its side effect from ClientProviders.
  *
- * Deliberately not the `Authorization` header — callers (e.g. the researcher
- * profile page minting an MCP token) may already need `Authorization` for
- * their own Supabase/MCP auth, and this patch must not clobber it.
+ * Deliberately not the `Authorization` header — callers (e.g. researcher
+ * login/admin pages sending a Supabase access token) may already need
+ * `Authorization` for their own auth, and this patch must not clobber it.
  *
  * A no-op unless NEXT_PUBLIC_STAGING_API_TOKEN is configured — see
  * .env.example for why this value is public (ships in the JS bundle) rather
