@@ -748,6 +748,108 @@
     "STATISTICAL_MANIPULATION": "שינוי נתונים",
     "ACCOUNTABILITY_EROSION": "טשטוש אחריות"
   },
+  "medicalSymptomCategories": {
+    "CARDIOVASCULAR": "לב וכלי דם",
+    "NEUROLOGICAL": "נוירולוגי",
+    "NEUROCOGNITIVE_PVS": "קוגניטיבי (תסמונת שלאחר חיסון)",
+    "AUTOIMMUNE_IMMUNE": "אוטואימוני / מערכת החיסון",
+    "HEMATOLOGIC": "המטולוגי (דם וקרישה)",
+    "ONCOLOGIC": "אונקולוגי (סרטן)",
+    "REPRODUCTIVE_MENSTRUAL": "רבייה ומחזור חודשי",
+    "MUSCULOSKELETAL": "שרירים ושלד",
+    "DERMATOLOGIC": "עור",
+    "GENERAL_SYSTEMIC": "כללי-מערכתי (עייפות, חום)",
+    "DEATH": "פטירה",
+    "OTHER": "אחר"
+  },
+  "medicalSeriousness": {
+    "HOSPITALIZATION": "אשפוז",
+    "LIFE_THREATENING": "מסכן חיים",
+    "PERMANENT_DISABILITY": "נכות קבועה",
+    "DEATH": "פטירה",
+    "CONGENITAL_ANOMALY": "מום מולד",
+    "NONE": "ללא"
+  },
+  "cancerPresentationTypes": {
+    "NEW_DIAGNOSIS": "אבחנה חדשה",
+    "RECURRENCE_OR_PROGRESSION": "הישנות או התקדמות המחלה",
+    "OTHER": "אחר"
+  },
+  "cancerCourses": {
+    "TYPICAL_PACE": "קצב אופייני",
+    "UNUSUALLY_RAPID_PROGRESSION": "התקדמות מהירה באופן חריג (היפרפרוגרסיה)"
+  },
+  "cancerTypes": {
+    "LYMPHOMA_LEUKEMIA": "לימפומה / לוקמיה",
+    "BREAST": "שד",
+    "LUNG": "ריאה",
+    "MELANOMA_SKIN": "מלנומה / עור",
+    "PANCREATIC": "לבלב",
+    "BRAIN_CNS": "מוח / מערכת עצבים מרכזית",
+    "OTHER_SOLID": "גידול מוצק אחר",
+    "OTHER_BLOOD": "סרטן דם אחר",
+    "NOT_YET_TYPED": "טרם סווג"
+  },
+  "cognitiveSymptomTypes": {
+    "BRAIN_FOG": "ערפל מוחי",
+    "MEMORY_IMPAIRMENT": "פגיעה בזיכרון",
+    "CONCENTRATION_DIFFICULTY": "קושי בריכוז",
+    "MULTIPLE": "מספר תסמינים קוגניטיביים",
+    "OTHER": "אחר"
+  },
+  "symptomPersistence": {
+    "RESOLVED": "חלף",
+    "ONGOING_PERSISTENT": "מתמשך",
+    "UNKNOWN": "לא ידוע"
+  },
+  "vaccineManufacturers": {
+    "PFIZER": "פייזר",
+    "MODERNA": "מודרנה",
+    "ASTRAZENECA": "אסטרהזניקה",
+    "JOHNSON_JOHNSON": "ג'ונסון אנד ג'ונסון",
+    "OTHER": "אחר",
+    "UNKNOWN": "לא ידוע"
+  },
+  "reportTimingWindows": {
+    "WITHIN_24H": "תוך 24 שעות",
+    "WITHIN_1_WEEK": "תוך שבוע",
+    "WITHIN_1_MONTH": "תוך חודש",
+    "WITHIN_6_MONTHS": "תוך חצי שנה",
+    "OVER_6_MONTHS": "מעל חצי שנה",
+    "UNKNOWN": "לא ידוע"
+  },
+  "socialEconomicImpactCategories": {
+    "EMPLOYMENT_TERMINATION": "פיטורים מהעבודה",
+    "MILITARY_DISCHARGE": "שחרור כפוי מהצבא",
+    "DEMOTION_REASSIGNMENT": "הורדה בדרגה / העברה בתפקיד",
+    "DENIED_HIRE": "סירוב לקבלה לעבודה",
+    "ACCESS_DENIAL_SERVICES": "מניעת גישה לשירותים",
+    "ACCESS_DENIAL_HEALTHCARE": "מניעת גישה לטיפול רפואי",
+    "EDUCATION_ACCESS_DENIAL": "מניעת גישה לחינוך",
+    "FAMILY_RELATIONSHIP_RUPTURE": "קרע משפחתי",
+    "SOCIAL_OSTRACIZATION": "נידוי חברתי",
+    "OTHER": "אחר"
+  },
+  "formalBasisAsserted": {
+    "RELIGIOUS_ACCOMMODATION_DENIED": "סירוב בקשת התאמה דתית",
+    "MEDICAL_DISABILITY_ACCOMMODATION_DENIED": "סירוב בקשת התאמה רפואית / נכות",
+    "NO_FORMAL_BASIS_STATED": "לא צוינה עילה רשמית",
+    "UNKNOWN": "לא ידוע"
+  },
+  "consequenceSeverity": {
+    "INCOME_LOSS": "אובדן הכנסה",
+    "BENEFITS_LOSS": "אובדן זכויות והטבות",
+    "CAREER_TRAJECTORY_IMPACT": "פגיעה במסלול הקריירה",
+    "RELATIONSHIP_LOSS": "אובדן קשר משפחתי או חברתי",
+    "HOUSING_FINANCIAL_HARDSHIP": "מצוקה כלכלית או דיור",
+    "NONE": "ללא"
+  },
+  "socialOutcomeStatus": {
+    "ONGOING": "מתמשך",
+    "RESOLVED_REVERSED": "בוטל / שוקם",
+    "RESOLVED_UNCHANGED": "נותר ללא שינוי",
+    "UNKNOWN": "לא ידוע"
+  },
   "evidenceTiers": {
     "Tier 1: Smoking Gun": "דרגה 1: ראיה מכרעת",
     "Tier 2: Material": "דרגה 2: ראיה מהותית",

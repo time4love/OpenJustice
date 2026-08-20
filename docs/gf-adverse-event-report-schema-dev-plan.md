@@ -1,11 +1,15 @@
 # GF Public Adverse-Outcome Self-Reports — Dev Plan
 
-**Status:** Phase 0 (schema draft) ✅ DONE — committed `4f99c9e` on branch
-`schema/gf-adverse-effect-reports` (pushed, no PR yet). **Phase 1 (migration) ✅ DONE and applied to
-staging 2026-08-20** — see §5. Phase 2's verification-mechanism decision made (Supabase magic-link
-email); zod validation schemas not yet written. No backend routes/MCP tools/frontend code yet. See §5-6
-for the full phase breakdown and current recommended next step. This document is the canonical
-reference for the taxonomy's rationale; keep it in sync with `schema.prisma` as the design evolves.
+**Status:** Phase 0 (schema draft) ✅ DONE — committed `4f99c9e`. **Phase 1 (migration) ✅ DONE**,
+applied to staging. **Phase 2 (reporter fingerprint + zod intake validation) ✅ DONE 2026-08-20** —
+`src/lib/reporterFingerprint.ts`, `src/lib/reportIntakeSchemas.ts`, 16 new tests, full suite green
+(692/692). **Hebrew/English category labels ✅ DONE for both domains** (§2.7) — Medical
+(`reportCategoryLabels.ts`) and Social/Economic (`socialEconomicCategoryLabels.ts`), verified against
+the real Prisma enum values, not eyeballed. **Per-question bilingual help text drafted** (§4.3) — not
+yet wired to `messages/*.json`, deferred to Phase 8. On branch `schema/gf-adverse-effect-reports`
+(pushed, no PR yet). No backend routes/MCP tools/frontend code yet — Phase 3 (public intake API) is
+next. See §5-6 for the full phase breakdown. This document is the canonical reference for the
+taxonomy's rationale; keep it in sync with `schema.prisma` as the design evolves.
 **Created:** 2026-08-20.
 **Scope:** Glass Fortress only. New models: `Report`, `MedicalAdverseEventReport`,
 `SocialEconomicImpactReport`, plus supporting enums.
@@ -161,6 +165,35 @@ doesn't have to be re-derived when the frontend is built. English only; needs He
 `apps/glass-fortress/frontend/messages/he.json` at implementation time, following the existing
 `messages/en.json`/`he.json` namespace pattern used elsewhere in the app.
 
+**Note — this is the explanatory prose only, not the category labels.** The enum *value* labels (e.g.
+"NEUROCOGNITIVE_PVS" → "קוגניטיבי (תסמונת שלאחר חיסון)") are a separate, already-completed piece of
+work — see §2.7 below. §4's "why we ask this" paragraphs are still English-only.
+
+### 2.7 Hebrew/English category labels ✅ DONE 2026-08-20
+
+Every Medical-domain enum (`MedicalSymptomCategory`, `MedicalSeriousness`, `CancerPresentationType`,
+`CancerCourse`, `CancerType`, `CognitiveSymptomType`, `SymptomPersistence`, `VaccineManufacturer`) plus
+the shared `ReportTimingWindow` now has real Hebrew and English UI labels, not translated casually:
+`src/lib/reportCategoryLabels.ts` (backend source of truth, `Record<PrismaEnum, string>` per enum — the
+type itself forces every enum member to be covered, catching any gap at compile time) mirrored into
+`messages/he.json`/`messages/en.json` under matching namespaces (`medicalSymptomCategories`,
+`cancerTypes`, etc.), the same duplication `investigativeCategoriesField`'s labels already require
+across the Express/Next.js boundary.
+
+Two terms have no settled Hebrew medical equivalent (confirmed by search, not assumed) and use a
+transliteration + plain-Hebrew gloss instead of inventing false authority: `NEUROCOGNITIVE_PVS` →
+"קוגניטיבי (תסמונת שלאחר חיסון)" ("post-vaccination syndrome" is itself emerging English terminology)
+and `CancerCourse.UNUSUALLY_RAPID_PROGRESSION` → "התקדמות מהירה באופן חריג (היפרפרוגרסיה)"
+("hyperprogression" has no established Hebrew translation in the literature searched). Verified two
+ways: `tsc` (the `Record` type catches any missed/misspelled enum member) and a direct programmatic
+diff of the JSON files' keys against the real `@prisma/client` enum values — both came back clean, not
+just eyeballed.
+
+**Not yet done**: `SocialEconomicImpactReport`'s enums (`SocialEconomicImpactCategory`,
+`FormalBasisAsserted`, `ConsequenceSeverity`, `SocialOutcomeStatus`) have no Hebrew/English labels yet —
+different terminology domain (legal/HR register, not medical), flagged for its own pass rather than
+guessed here.
+
 ### 4.1 Why we ask what we ask (methodology blurb — intended for a collapsible "About this data" section on the report form)
 
 > This form's categories aren't arbitrary. Each one is grounded in published research, official
@@ -205,6 +238,50 @@ doesn't have to be re-derived when the frontend is built. English only; needs He
 > systematically studied than the employment/military categories above — your report still matters, but
 > we won't overstate what the evidence shows.
 
+### 4.3 Per-question help text
+
+Bilingual (English/Hebrew) from the start, unlike §4.1-4.2 — written after the Hebrew terminology work
+in §2.7/socialEconomicCategoryLabels.ts, so these reuse the exact verified terms rather than
+re-translating loosely. Intended as inline help text/tooltips beside each form field, not the
+collapsible section §4.1 describes. One to three sentences each, per the "short paragraph" brief —
+long enough to explain the *why*, short enough to actually get read.
+
+**Medical form**
+
+| Field | EN | HE |
+|---|---|---|
+| `symptomCategory` | Which body system or type of effect best describes what happened. We ask this first because it determines which follow-up questions apply. | לאיזו מערכת בגוף או סוג תופעה הכי מתאים מה שקרה. אנו שואלים זאת ראשית כי היא קובעת אילו שאלות המשך יופיעו. |
+| `seriousness` | Whether the outcome met the official "serious adverse event" criteria used by vaccine safety systems like VAERS — hospitalization, life-threatening, permanent disability, death, or a birth defect. Not a subjective severity rating; it's the same legal definition regulators use. | האם התוצאה עמדה בקריטריונים הרשמיים ל"תופעת לוואי חמורה" כפי שמוגדרים במערכות בטיחות חיסונים כמו VAERS — אשפוז, סכנת חיים, נכות קבועה, פטירה או מום מולד. זו אינה הערכת חומרה סובייקטיבית, אלא אותה הגדרה משפטית שבה משתמשים הרגולטורים. |
+| `cancerPresentationType` *(if Oncologic)* | Whether this is a brand-new diagnosis or a recurrence/progression of cancer you already had. Published research treats these as distinct signals. | האם מדובר באבחנה חדשה לגמרי או בהישנות/התקדמות של סרטן שכבר היה קיים. מחקרים שפורסמו מתייחסים לאלה כאותות נפרדים. |
+| `cancerCourse` *(if Oncologic)* | Whether the disease progressed at a typical pace or unusually quickly. We use the same words the published research uses, not the more dramatic terms sometimes used online — see the methodology note above. | האם המחלה התקדמה בקצב אופייני או במהירות חריגה. אנו משתמשים באותה לשון שבה משתמש המחקר שפורסם, לא במונחים הדרמטיים יותר הנפוצים לעיתים ברשת — ראו הערת המתודולוגיה למעלה. |
+| `cancerAtypicalFeatures` | Whether the cancer showed up at or near the injection site, or in nearby lymph nodes — a specific pattern noted in several published case reports. | האם הסרטן הופיע באזור מקום ההזרקה או בסמוך אליו, או בבלוטות לימפה סמוכות — דפוס ספציפי שתועד במספר דוחות מקרה שפורסמו. |
+| `cancerType` | The type of cancer involved. If you don't know yet, choose "Not yet typed" rather than guessing — an honest "don't know" is more useful to us than a wrong guess. | סוג הסרטן. אם עדיין אינך יודע/ת, בחר/י "טרם סווג" במקום לנחש — "לא יודע/ת" מועיל לנו יותר מניחוש שגוי. |
+| `cognitiveSymptomType` *(if Neurocognitive)* | Which cognitive symptom best describes what you experienced. Brain fog, memory problems, and concentration difficulty are tracked separately because they're the most-reported symptom cluster in current research — not a rare or minor complaint. | איזה תסמין קוגניטיבי הכי מתאר את מה שחווית. ערפל מוחי, בעיות זיכרון וקושי בריכוז נעקבים בנפרד כי הם אשכול התסמינים המדווח ביותר במחקר הנוכחי — לא תלונה נדירה או שולית. |
+| `postExertionalMalaise` | Whether physical or mental exertion noticeably worsens your symptoms afterward. A specific, recognized feature of post-vaccination syndrome — not a general "do you get tired" question. | האם מאמץ גופני או נפשי מחמיר בבירור את התסמינים לאחר מכן. זהו מאפיין ספציפי ומוכר של תסמונת שלאחר חיסון, לא שאלה כללית של "האם את/ה מתעייף/ת". |
+| `symptomPersistence` | Whether the symptom has resolved or is still ongoing. Often the single most important fact in a medical report — the difference between something that happened once and something that hasn't stopped. | האם התסמין חלף או שהוא עדיין נמשך. זו לעיתים קרובות העובדה החשובה ביותר בדיווח הרפואי — ההבדל בין משהו שקרה פעם אחת למשהו שלא נפסק. |
+| `vaccineManufacturer` | Which vaccine manufacturer. Vaccine safety databases always track this, since reaction patterns can differ between products. | מהו יצרן החיסון. מאגרי בטיחות חיסונים תמיד עוקבים אחר נתון זה, מכיוון שדפוסי תגובה עשויים להשתנות בין המוצרים השונים. |
+| `doseNumber` | Which dose in the series (first, second, booster, etc.) preceded the symptom. Reaction patterns are often dose-specific. | איזו מנה בסדרה (ראשונה, שנייה, מנת דחף וכו') קדמה לתסמין. דפוסי תגובה הם לעיתים קרובות ספציפיים למנה. |
+| `onsetWindow` | How long after vaccination the symptom began. We ask for a time range, not an exact date, to protect your privacy — only the range is ever shown publicly. | כמה זמן לאחר החיסון החל התסמין. אנו מבקשים טווח זמן, לא תאריך מדויק, כדי להגן על פרטיותך — רק הטווח מוצג אי פעם באופן פומבי. |
+| `medicalAttentionSought` | Whether you sought medical attention for this. Not a requirement to report — many real reactions never reach a doctor — but it helps us understand the pattern. | האם פנית לטיפול רפואי בעקבות זאת. אין חובה לדווח על כך — תגובות אמיתיות רבות לעולם אינן מגיעות לרופא — אך זה עוזר לנו להבין את הדפוס. |
+| `diagnosisConfirmedByProvider` | Whether a healthcare provider formally confirmed the diagnosis. Doesn't gate whether your report is accepted, but it affects the confidence level assigned to it in any aggregate analysis. | האם איש מקצוע רפואי אישר את האבחנה באופן פורמלי. הדבר אינו קובע האם הדיווח יתקבל, אך הוא כן משפיע על רמת הביטחון שתיוחס לו בכל ניתוח מצטבר. |
+| `preExistingCondition` | Whether you had this condition, or a related one, before vaccination. Matters for telling a new event apart from a known one. | האם היה לך מצב זה, או מצב קשור, לפני החיסון. הדבר חשוב כדי להבחין בין אירוע חדש לבין מצב ידוע מראש. |
+| `freeTextElaboration` | Optional space to describe what happened in your own words. Helps our reviewers understand context, but isn't used in any statistical count — only the structured answers above are. | מקום רשות לתיאור מה שקרה במילים שלך. הדבר עוזר לצוות הבודק להבין את ההקשר, אך אינו נכלל בשום ספירה סטטיסטית — רק התשובות המובנות שלמעלה נכללות. |
+
+**Social/economic form**
+
+| Field | EN | HE |
+|---|---|---|
+| `impactCategory` | Which kind of consequence you experienced. Employment and military categories have the strongest documentation behind them (see the methodology note); family and social categories are real but less formally studied — we're upfront about that difference. | איזה סוג של השלכה חווית. קטגוריות התעסוקה והצבא הן בעלות התיעוד החזק ביותר (ראו הערת המתודולוגיה); קטגוריות המשפחה והחברה אמיתיות אך פחות מתועדות באופן שיטתי — אנו גלויים לגבי ההבדל הזה. |
+| `formalBasisAsserted` | What formal grounds, if any, were given for the decision — a denied religious accommodation, a denied medical/disability accommodation, or none stated. The single best-documented data point in this whole form. | אילו נימוקים רשמיים, אם בכלל, ניתנו להחלטה — סירוב בקשת התאמה דתית, סירוב בקשת התאמה רפואית/נכות, או שלא צוינה עילה. זהו נקודת הנתון המתועדת ביותר בטופס כולו. |
+| `consequenceSeverity` | The kind of harm that followed — lost income, lost benefits, a derailed career, a broken relationship, or financial/housing hardship. | סוג הפגיעה שנגרמה — אובדן הכנסה, אובדן זכויות, פגיעה בקריירה, קרע בקשר, או מצוקה כלכלית/דיור. |
+| `outcomeStatus` | Whether the consequence is still in effect, was reversed (e.g. reinstated), or stands unchanged. Matters as much as the original event — a servicemember reinstated with back pay is materially different from one still discharged. | האם ההשלכה עדיין בתוקף, בוטלה (למשל שיקום בתפקיד), או נותרה ללא שינוי. הדבר חשוב לא פחות מהאירוע המקורי — חייל/ת ששוקם/ה עם שכר רטרואקטיבי נמצא/ת במצב שונה מהותית ממי שעדיין מפוטר/ת. |
+| `documentationAvailable` | Whether you have a paper trail — a termination letter, a discharge order, a complaint filed with an agency. Like the medical form's provider-confirmation question, this doesn't gate acceptance, but it affects confidence. | האם יש בידך תיעוד — מכתב פיטורים, צו שחרור, תלונה שהוגשה לרשות. בדומה לשאלת אישור הרופא בטופס הרפואי, הדבר אינו תנאי לקבלת הדיווח, אך הוא משפיע על רמת הביטחון. |
+| `timingRelativeToEvent` | How long after vaccination this happened. As with the medical form, we ask for a time range rather than an exact date to protect your privacy. | כמה זמן לאחר החיסון זה קרה. כמו בטופס הרפואי, אנו מבקשים טווח זמן ולא תאריך מדויק כדי להגן על פרטיותך. |
+| `freeTextElaboration` | Optional space to describe what happened in your own words — for reviewer context, not included in any statistical count. | מקום רשות לתיאור מה שקרה במילים שלך — להקשר עבור הצוות הבודק, ואינו נכלל בשום ספירה סטטיסטית. |
+
+Not yet added to `messages/he.json`/`en.json` — these are prose, best wired in as part of Phase 8 (the
+actual intake form), not added as bare namespace entries the way §2.7's category labels were.
+
 ---
 
 ## 5. Implementation phases
@@ -225,17 +302,38 @@ immediately after. Independently re-verified beyond the CLI's own status message
 against a nonexistent Postgres table always errors, so silent success is real proof, not a trusted
 flag (same evidentiary standard as `feedback-evidentiary-proof-standard.md`).
 
-### Phase 2 — Reporter identity & intake validation (design-heavy, blocks Phase 3)
-- **Verification mechanism for `reporterFingerprintHash`: DECIDED 2026-08-20 — Supabase magic-link
-  email**, reusing GF's existing Supabase auth infra (already used for `Researcher` login). Zero new
-  vendor cost, no SMS/OTP billing. Still to design: the actual fingerprint formula (hash of verified
-  email + what device/session signal, if any), and whether the email itself is retained post-verification
-  or discarded (see Phase 10's open privacy question — related but not identical, since that's about
-  storage of the *reporter's* contact, this is about the *hash's* inputs).
-- **zod schemas for both domain payloads**, encoding the conditional-field rules the DB can't enforce
-  (`cancer*` fields only when `symptomCategory = ONCOLOGIC`, `cognitive*`/`postExertionalMalaise` only
-  when `NEUROCOGNITIVE_PVS`) — matches the project's standing rule (zod validation at every external
-  input boundary) and the schema's own "validated at the intake boundary" comments.
+### Phase 2 — Reporter identity & intake validation ✅ DONE 2026-08-20
+- **Verification mechanism: Supabase magic-link email** (decided earlier this phase), reusing GF's
+  existing Supabase auth infra. Zero new vendor cost, no SMS/OTP billing.
+- **`reporterFingerprintHash` formula, implemented**: `src/lib/reporterFingerprint.ts` —
+  `scrypt(normalizeEmail(email), REPORTER_FINGERPRINT_SALT, 64)`. Revised from the original schema
+  comment's "email + a device/session signal" down to email alone — the device signal was speculative
+  when the comment was written and adds privacy surface (storing IP/user-agent) without a clear benefit
+  once email is the verified identity anchor. Uses `scrypt`, not `tokenHash.ts`'s HMAC-SHA256, because
+  that file's own header comment explicitly says HMAC-SHA256 is only safe for high-entropy random
+  tokens and calls out low-entropy inputs (passwords, and by the same logic, emails) as unsafe for
+  it — this is that documented exception applied correctly. Static salt (not per-record random),
+  required so dedup lookups stay deterministic. Whether the plaintext email itself is retained
+  post-verification or discarded remains open — Phase 10.
+- **zod schemas for both domain payloads**: `src/lib/reportIntakeSchemas.ts`, enforcing the
+  "cancer-prefixed fields only when `ONCOLOGIC`, cognitive-prefixed fields only when
+  `NEUROCOGNITIVE_PVS`" rule via `superRefine` — the DB can't enforce it, so this is where
+  `schema.prisma`'s own "validated at the intake boundary" comments actually get kept. Enums use
+  `z.nativeEnum(...)` against the generated `@prisma/client` types rather than hand-copied string
+  tuples (a deliberate deviation from `investigativeCategoriesField`'s convention, documented in the
+  file header — that convention exists because `investigativeCategories` was deliberately kept out of
+  Prisma entirely, so there was nothing to import; these 13 enums *are* real Prisma enums, and
+  hand-copying that many literal unions would be a drift risk the existing convention never had to
+  solve). `freeTextElaboration` got a 5000-char cap at the validation boundary — not in the Prisma
+  column (unbounded `text`) or discussed when the schema was designed, added here as a standard public-
+  input abuse guard.
+- **Gap surfaced, not fixed**: `CancerCourse` has no `UNKNOWN` member, so a reporter who doesn't know
+  whether progression was "unusually rapid" has no honest answer — `cancerCourse`/`cancerPresentationType`
+  stay optional even when `ONCOLOGIC` rather than forcing a guess. Unlike the `symptomPersistence`/
+  `outcomeStatus` gaps closed earlier in this plan, this one wasn't closed immediately — flagged for a
+  decision (add `CancerCourse.UNKNOWN`, another small additive migration) rather than assumed away.
+- **Verified**: 16 new Jest tests (`test/reporterFingerprint.test.ts`, `test/reportIntakeSchemas.test.ts`)
+  plus the full existing suite (692/692) pass; `tsc --noEmit` clean.
 
 ### Phase 3 — Public intake API
 `POST /api/reports/medical`, `POST /api/reports/social-economic` (no researcher gate — mirrors the
@@ -296,9 +394,10 @@ discarded post-verification — undecided, needs its own call).
 
 ## 6. Recommended next step
 
-Phase 1 is done and verified on staging (§5). **Phase 2 is next**: the verification-mechanism decision
-is made (Supabase magic-link email), so what remains is (a) defining the exact
-`reporterFingerprintHash` formula and (b) writing the zod schemas for both domain payloads, including
-the conditional-field rules (`cancer*` fields gated on `ONCOLOGIC`, `cognitive*` fields gated on
-`NEUROCOGNITIVE_PVS`) that the database can't enforce on its own. That unblocks Phase 3, the first
-actual backend endpoint.
+Phases 1 and 2 are done (§5). **Phase 3 is next**: the public intake API
+(`POST /api/reports/medical`, `POST /api/reports/social-economic`), composing Phase 2's
+`hashReporterEmail` + the two zod schemas with an actual Supabase magic-link verification check and a
+transactional create of the domain row + `Report` envelope. Before writing it, worth a decision: does
+verification happen as its own endpoint (`POST /api/reports/verify-email` issuing a short-lived token
+the submit call requires) or inline in the same request (submit triggers the magic link, a second call
+completes it)? Not yet designed — flag when Phase 3 starts.

@@ -748,6 +748,108 @@
     "STATISTICAL_MANIPULATION": "Altered statistics",
     "ACCOUNTABILITY_EROSION": "Eroded accountability"
   },
+  "medicalSymptomCategories": {
+    "CARDIOVASCULAR": "Cardiovascular",
+    "NEUROLOGICAL": "Neurological",
+    "NEUROCOGNITIVE_PVS": "Cognitive (post-vaccination syndrome)",
+    "AUTOIMMUNE_IMMUNE": "Autoimmune / immune system",
+    "HEMATOLOGIC": "Hematologic (blood & clotting)",
+    "ONCOLOGIC": "Oncologic (cancer)",
+    "REPRODUCTIVE_MENSTRUAL": "Reproductive & menstrual",
+    "MUSCULOSKELETAL": "Musculoskeletal",
+    "DERMATOLOGIC": "Dermatologic (skin)",
+    "GENERAL_SYSTEMIC": "General/systemic (fatigue, fever)",
+    "DEATH": "Death",
+    "OTHER": "Other"
+  },
+  "medicalSeriousness": {
+    "HOSPITALIZATION": "Hospitalization",
+    "LIFE_THREATENING": "Life-threatening",
+    "PERMANENT_DISABILITY": "Permanent disability",
+    "DEATH": "Death",
+    "CONGENITAL_ANOMALY": "Congenital anomaly",
+    "NONE": "None"
+  },
+  "cancerPresentationTypes": {
+    "NEW_DIAGNOSIS": "New diagnosis",
+    "RECURRENCE_OR_PROGRESSION": "Recurrence or progression",
+    "OTHER": "Other"
+  },
+  "cancerCourses": {
+    "TYPICAL_PACE": "Typical pace",
+    "UNUSUALLY_RAPID_PROGRESSION": "Unusually rapid progression (hyperprogression)"
+  },
+  "cancerTypes": {
+    "LYMPHOMA_LEUKEMIA": "Lymphoma / leukemia",
+    "BREAST": "Breast",
+    "LUNG": "Lung",
+    "MELANOMA_SKIN": "Melanoma / skin",
+    "PANCREATIC": "Pancreatic",
+    "BRAIN_CNS": "Brain / central nervous system",
+    "OTHER_SOLID": "Other solid tumor",
+    "OTHER_BLOOD": "Other blood cancer",
+    "NOT_YET_TYPED": "Not yet typed"
+  },
+  "cognitiveSymptomTypes": {
+    "BRAIN_FOG": "Brain fog",
+    "MEMORY_IMPAIRMENT": "Memory impairment",
+    "CONCENTRATION_DIFFICULTY": "Concentration difficulty",
+    "MULTIPLE": "Multiple cognitive symptoms",
+    "OTHER": "Other"
+  },
+  "symptomPersistence": {
+    "RESOLVED": "Resolved",
+    "ONGOING_PERSISTENT": "Ongoing / persistent",
+    "UNKNOWN": "Unknown"
+  },
+  "vaccineManufacturers": {
+    "PFIZER": "Pfizer",
+    "MODERNA": "Moderna",
+    "ASTRAZENECA": "AstraZeneca",
+    "JOHNSON_JOHNSON": "Johnson & Johnson",
+    "OTHER": "Other",
+    "UNKNOWN": "Unknown"
+  },
+  "reportTimingWindows": {
+    "WITHIN_24H": "Within 24 hours",
+    "WITHIN_1_WEEK": "Within a week",
+    "WITHIN_1_MONTH": "Within a month",
+    "WITHIN_6_MONTHS": "Within 6 months",
+    "OVER_6_MONTHS": "Over 6 months",
+    "UNKNOWN": "Unknown"
+  },
+  "socialEconomicImpactCategories": {
+    "EMPLOYMENT_TERMINATION": "Employment termination",
+    "MILITARY_DISCHARGE": "Involuntary military discharge",
+    "DEMOTION_REASSIGNMENT": "Demotion / reassignment",
+    "DENIED_HIRE": "Denied hire",
+    "ACCESS_DENIAL_SERVICES": "Denied access to services",
+    "ACCESS_DENIAL_HEALTHCARE": "Denied access to healthcare",
+    "EDUCATION_ACCESS_DENIAL": "Denied access to education",
+    "FAMILY_RELATIONSHIP_RUPTURE": "Family relationship rupture",
+    "SOCIAL_OSTRACIZATION": "Social ostracization",
+    "OTHER": "Other"
+  },
+  "formalBasisAsserted": {
+    "RELIGIOUS_ACCOMMODATION_DENIED": "Religious accommodation denied",
+    "MEDICAL_DISABILITY_ACCOMMODATION_DENIED": "Medical/disability accommodation denied",
+    "NO_FORMAL_BASIS_STATED": "No formal basis stated",
+    "UNKNOWN": "Unknown"
+  },
+  "consequenceSeverity": {
+    "INCOME_LOSS": "Income loss",
+    "BENEFITS_LOSS": "Benefits loss",
+    "CAREER_TRAJECTORY_IMPACT": "Career trajectory impact",
+    "RELATIONSHIP_LOSS": "Relationship loss",
+    "HOUSING_FINANCIAL_HARDSHIP": "Housing/financial hardship",
+    "NONE": "None"
+  },
+  "socialOutcomeStatus": {
+    "ONGOING": "Ongoing",
+    "RESOLVED_REVERSED": "Resolved (reversed)",
+    "RESOLVED_UNCHANGED": "Resolved (unchanged)",
+    "UNKNOWN": "Unknown"
+  },
   "evidenceTiers": {
     "Tier 1: Smoking Gun": "Tier 1: Smoking Gun",
     "Tier 2: Material": "Tier 2: Material",
