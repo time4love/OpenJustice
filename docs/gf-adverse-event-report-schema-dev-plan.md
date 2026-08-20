@@ -9,15 +9,21 @@ Phase 8. **GDPR-driven `Report` redesign ✅ DONE 2026-08-20 (§2.8)** — `repo
 removed entirely (was pseudonymization, not anonymization; `reporterFingerprint.ts` deleted as dead
 code), `consentGiven` added (explicit special-category consent, GDPR Art. 9(2)(a)), bucketed
 `reporterAgeRange`/`reporterGender` added (real pharmacovigilance value, deliberately coarse against
-quasi-identifier risk). Three staging migrations applied and independently verified this session
-(`...adverse_event_reports`, `...anonymize_and_consent`, `...reporter_demographics`). **Phase 3
-(public intake API) ✅ DONE 2026-08-20** — `POST /api/reports/medical`/`social-economic`, the
-`requireVerifiedReporterEmail` middleware (verifies + deletes the Supabase account in the same
-request, fails closed on deletion error), nested-write creation, 24 new tests, full suite 706/706,
-`tsc` clean. On branch `schema/gf-adverse-effect-reports` (pushed, no PR yet). Phase 4
-(`ReportPlausibilityService`) is next. See §5-6 for the full phase breakdown. This document
-is the canonical reference for the taxonomy's rationale; keep it in sync with `schema.prisma` as the
-design evolves.
+quasi-identifier risk). **Phase 3 (public intake API) ✅ DONE 2026-08-20** — `POST /api/reports/medical`/
+`social-economic`, the `requireVerifiedReporterEmail` middleware (verifies + deletes the Supabase
+account in the same request, fails closed on deletion error), nested-write creation. **Phase 4
+(`ReportPlausibilityService`) attempted then designed away, 2026-08-20 (§2.9)** — both candidate
+plausibility rules turned out to be modeling smells (a redundant `MedicalSymptomCategory.DEATH` value;
+an unenforced implication between two booleans, now `medicalCareEngagement`) or an outright bug (a rule
+checking a signal the schema doesn't actually track); fixed at the schema level instead, leaving
+nothing for the service to check — it, `ReportStatus.FLAGGED_IMPLAUSIBLE`, and `Report.flagReasons`
+were all deleted in the same session they were added. Also caught and fixed, via cherry-pick not
+reinvention, a real unrelated schema-drift gotcha (`evidence_embeddings`) that a generated migration
+almost silently proposed to drop. Seven staging migrations applied and independently verified this
+session in total. Full suite 706/706, `tsc` clean throughout. On branch `schema/gf-adverse-effect-reports`
+(pushed through `2ff9ed9`; this round of changes not yet committed). Phase 5 (researcher moderation) is
+next. See §5-6 for the full phase breakdown. This document is the canonical reference for the
+taxonomy's rationale; keep it in sync with `schema.prisma` as the design evolves.
 **Created:** 2026-08-20.
 **Scope:** Glass Fortress only. New models: `Report`, `MedicalAdverseEventReport`,
 `SocialEconomicImpactReport`, plus supporting enums.
@@ -211,6 +217,65 @@ added immediately (`src/lib/reporterDemographicLabels.ts`, `messages/{he,en}.jso
 are exactly the kind of field that makes a small aggregate cell re-identifying. That requirement now
 covers demographic fields specifically, not only the taxonomy categories.
 
+### 2.9 Two modeling smells found via Phase 4, both designed away — 2026-08-20
+
+Building `ReportPlausibilityService` (Phase 4, §5) surfaced a pattern worth naming as a standing
+principle for the rest of this schema, not just a one-off fix: **when a plausibility rule exists to
+catch two fields contradicting each other, the fix is usually to the fields, not the rule.** A rule
+that detects a contradiction after the fact is a symptom; the schema allowing the contradiction to be
+expressed at all is the disease.
+
+**`MedicalSymptomCategory.DEATH` removed.** User's own catch, mid-build: `symptomCategory=DEATH` and
+`MedicalSeriousness.DEATH` could independently assert the same underlying fact (a fatal outcome) and
+disagree. `MedicalSeriousness.DEATH` is the well-grounded one — it's literally one of FDA's own six
+"serious AE" criteria. `symptomCategory=DEATH` was the error: death isn't a physiological system the
+way `CARDIOVASCULAR`/`NEUROLOGICAL` are, it's an outcome, which `seriousness` already covers correctly.
+Removed the redundant value entirely rather than adding a rule to catch the mismatch — a fatal outcome
+with no known underlying system now uses `OTHER` + `seriousness=DEATH`, losing nothing. Migration
+`20260820050000_remove_redundant_death_category` (Postgres enum-value removal via the standard
+create-new-type/swap/drop-old-type dance, since `ALTER TYPE ... DROP VALUE` doesn't exist).
+
+**`medicalAttentionSought` + `diagnosisConfirmedByProvider` collapsed into `medicalCareEngagement`.**
+Subtler version of the same smell: not full duplication, but an *implication* — `diagnosisConfirmedByProvider
+= true` should always imply `medicalAttentionSought = true` (a provider can't confirm a diagnosis for
+someone who never sought care), but nothing enforced that, so the two booleans could independently
+assert the impossible combination. Same fix, ordinal version: `MedicalCareEngagement` (`NOT_SOUGHT` /
+`SOUGHT_UNCONFIRMED` / `SOUGHT_CONFIRMED` / `UNKNOWN`) carries identical information to the two
+booleans with the invalid state structurally unrepresentable. User-initiated design review — asked
+directly whether the *other* plausibility rules also indicated a modeling smell, which is what found
+this one and the next.
+
+**`IMPLAUSIBLE_CANCER_DIAGNOSIS_TIMING` removed outright — not a smell, a bug.** This rule (`onsetWindow
+= WITHIN_24H` + `cancerPresentationType = NEW_DIAGNOSIS`) assumed `onsetWindow` measured time-to-diagnosis
+for oncology reports. It doesn't — the field measures time to first noticeable symptom, for every
+category uniformly. A lump can plausibly be noticed within 24 hours of vaccination; the diagnostic
+workup (which does take weeks) isn't what this field tracks at all. The rule was checking a signal that
+doesn't exist in the schema, so no reframing could fix it — it was deleted, not redesigned.
+
+**Net effect on Phase 4**: once both contradictions were fixed at the field level, there was nothing
+left for a `ReportPlausibilityService` to check — see Phase 4 (§5) for the full removal (the service,
+its migration, `ReportStatus.FLAGGED_IMPLAUSIBLE`, `Report.flagReasons`, `PlausibilityFlagReason`, all
+deleted in the same session they were added, not left as speculative infrastructure for a mechanism
+whose premise didn't survive scrutiny).
+
+Three migrations this pass, in order: `20260820040000_report_plausibility_flag_reasons` (added the
+now-removed plausibility infrastructure), `20260820050000_remove_redundant_death_category`,
+`20260820060000_remove_plausibility_service_collapse_care_engagement` (removed the plausibility
+infrastructure again + the `medicalCareEngagement` collapse). All applied to staging, each
+independently verified via direct query (a query against a removed column/enum value genuinely errors;
+a query against an added one genuinely succeeds — not just trusting `migrate deploy`'s own output).
+
+Also worth recording precisely because it was easy to miss: generating this pass's migration diff
+initially proposed `DROP TABLE evidence_embeddings` — a real, non-empty, unrelated table, caught before
+it went anywhere near staging. Root cause: this branch's base predates
+`fix/gf-evidence-embeddings-schema-drift` (`2de874b`), a real fix for a known standing gotcha (a raw-SQL
+pgvector table with no Prisma model, which every naive `migrate diff` proposes to drop) that's merged
+elsewhere in the repo but hadn't reached this branch yet. Applied that exact fix manually (a real
+cherry-pick was blocked by uncommitted local changes) rather than reinventing it or, worse, letting the
+drop through unnoticed. Standing lesson, not specific to this feature: **always read what a generated
+migration actually says before applying it** — a diff tool computing "the truth" from an incomplete
+model will confidently propose something false.
+
 ---
 
 ## 3. Known limitation this document does not resolve
@@ -328,8 +393,7 @@ long enough to explain the *why*, short enough to actually get read.
 | `vaccineManufacturer` | Which vaccine manufacturer. Vaccine safety databases always track this, since reaction patterns can differ between products. | מהו יצרן החיסון. מאגרי בטיחות חיסונים תמיד עוקבים אחר נתון זה, מכיוון שדפוסי תגובה עשויים להשתנות בין המוצרים השונים. |
 | `doseNumber` | Which dose in the series (first, second, booster, etc.) preceded the symptom. Reaction patterns are often dose-specific. | איזו מנה בסדרה (ראשונה, שנייה, מנת דחף וכו') קדמה לתסמין. דפוסי תגובה הם לעיתים קרובות ספציפיים למנה. |
 | `onsetWindow` | How long after vaccination the symptom began. We ask for a time range, not an exact date, to protect your privacy — only the range is ever shown publicly. | כמה זמן לאחר החיסון החל התסמין. אנו מבקשים טווח זמן, לא תאריך מדויק, כדי להגן על פרטיותך — רק הטווח מוצג אי פעם באופן פומבי. |
-| `medicalAttentionSought` | Whether you sought medical attention for this. Not a requirement to report — many real reactions never reach a doctor — but it helps us understand the pattern. | האם פנית לטיפול רפואי בעקבות זאת. אין חובה לדווח על כך — תגובות אמיתיות רבות לעולם אינן מגיעות לרופא — אך זה עוזר לנו להבין את הדפוס. |
-| `diagnosisConfirmedByProvider` | Whether a healthcare provider formally confirmed the diagnosis. Doesn't gate whether your report is accepted, but it affects the confidence level assigned to it in any aggregate analysis. | האם איש מקצוע רפואי אישר את האבחנה באופן פורמלי. הדבר אינו קובע האם הדיווח יתקבל, אך הוא כן משפיע על רמת הביטחון שתיוחס לו בכל ניתוח מצטבר. |
+| `medicalCareEngagement` | Whether you sought medical attention, and whether a provider formally confirmed the diagnosis. Not a requirement to report — many real reactions never reach a doctor — but it affects the confidence level assigned to your report in any aggregate analysis. (This used to be two separate yes/no questions; they were merged into one so an impossible answer — "confirmed by a doctor" with "never saw a doctor" — can't be given at all.) | האם פנית לטיפול רפואי, והאם איש מקצוע רפואי אישר את האבחנה באופן פורמלי. אין חובה לדווח על כך — תגובות אמיתיות רבות לעולם אינן מגיעות לרופא — אך זה משפיע על רמת הביטחון שתיוחס לדיווח שלך בכל ניתוח מצטבר. (זו הייתה בעבר שתי שאלות כן/לא נפרדות; הן אוחדו לשאלה אחת כדי שלא ניתן יהיה לתת תשובה בלתי אפשרית — "אושר על ידי רופא" יחד עם "מעולם לא פניתי לרופא".) |
 | `preExistingCondition` | Whether you had this condition, or a related one, before vaccination. Matters for telling a new event apart from a known one. | האם היה לך מצב זה, או מצב קשור, לפני החיסון. הדבר חשוב כדי להבחין בין אירוע חדש לבין מצב ידוע מראש. |
 | `freeTextElaboration` | Optional space to describe what happened in your own words. Helps our reviewers understand context, but isn't used in any statistical count — only the structured answers above are. | מקום רשות לתיאור מה שקרה במילים שלך. הדבר עוזר לצוות הבודק להבין את ההקשר, אך אינו נכלל בשום ספירה סטטיסטית — רק התשובות המובנות שלמעלה נכללות. |
 
@@ -435,15 +499,26 @@ bracket-notation alone, since those exactly match this codebase's own already-sh
 convention (`evidenceRoutes.ts`, `tokenHash.ts`, etc.) and diverging in one new file would create
 inconsistency, not cleanliness.
 
-### Phase 4 — `ReportPlausibilityService`
-Rule-based, deterministic — not LLM-driven, matching BF's `PatternDetectionService` precedent rather
-than trusting a model's judgment on fraud signals. **Revised post-§2.8**: no `reporterFingerprintHash`
-exists anymore, so there is no cross-submission velocity/dedup signal to check against — that
-capability was deliberately traded away for genuine anonymity (§2.8). What remains: ordinary IP-based
-rate limiting (`generalLimiter`, already applied to all of `/api`) and internal-consistency rules
-within a single submission (e.g. `seriousness = DEATH` with `medicalAttentionSought = false` is a
-plausibility flag, not an auto-reject). Sets `ReportStatus.FLAGGED_IMPLAUSIBLE` vs. leaving
-`PENDING_REVIEW`. Depends on Phase 3 (done) existing to flag against.
+### Phase 4 — `ReportPlausibilityService` — attempted, then designed away, 2026-08-20
+Originally planned as rule-based, deterministic contradiction-detection (not LLM-driven, matching BF's
+`PatternDetectionService` precedent) — building it, then having it questioned, is what surfaced §2.9.
+Built with two rules (`Report.flagReasons: PlausibilityFlagReason[]`, `ReportStatus.FLAGGED_IMPLAUSIBLE`,
+`src/services/reportPlausibility.ts`, its own migration), then **removed in full within the same
+session** once both rules turned out to be modeling smells rather than real signals — see §2.9 for the
+complete reasoning. Net result: **no `ReportPlausibilityService` exists.** `reportIntake.ts` is back to
+exactly its Phase 3 shape (always `PENDING_REVIEW`, no flagging step). What plausibility signal remains
+is ordinary IP-based rate limiting (`generalLimiter`, already applied to all of `/api`) — not a
+field-contradiction detector, because the two contradictions considered were fixed at the schema level
+instead (§2.9). Phase 4 is complete as "there was nothing left to build here," not skipped.
+
+While generating this phase's migrations, also hit and fixed (by cherry-picking, not reinventing) a
+known standing gotcha unrelated to this feature: `evidence_embeddings` (a raw-SQL pgvector table with
+no Prisma model) was about to get silently proposed for deletion by `migrate diff`, because this
+branch's base predates `fix/gf-evidence-embeddings-schema-drift` (`2de874b`, merged elsewhere, not yet
+on `master`). Applied that fix's `EvidenceEmbedding` model manually (cherry-pick itself was blocked by
+uncommitted local changes) rather than letting the diff through — see the migration's own commit
+message and `feedback-audit-trust-critical-callsites.md`-style diligence: always read what a generated
+migration actually says before applying it, never trust "the tool said so."
 
 ### Phase 5 — Researcher moderation
 A review queue (REST route, or an MCP tool mirroring `promote_evidence`) for a `Researcher` to move
@@ -489,11 +564,9 @@ discarded post-verification — undecided, needs its own call).
 
 ## 6. Recommended next step
 
-Phases 1-3 are done (§5). **Phase 4 (`ReportPlausibilityService`) is next**: rule-based, deterministic
-dedup/spam/implausibility flagging — deliberately not LLM-driven, matching BF's
-`PatternDetectionService` precedent. Note that Phase 3's anonymity redesign (§2.8) removes the one
-signal the original Phase 4 sketch assumed would exist (`reporterFingerprintHash`-based velocity
-checks) — Phase 4 needs a fresh design pass against what's actually available now: ordinary IP-based
-rate limiting (`generalLimiter`, already applied) and internal-consistency rules within a single
-submission, not cross-submission identity linkage. Worth deciding at the start of that phase, not
-assumed.
+Phases 1-4 are done (§5) — Phase 4 concluded that no `ReportPlausibilityService` was needed once its
+two candidate rules were fixed at the schema level instead (§2.9). **Phase 5 (researcher moderation) is
+next**: a review queue (REST route or MCP tool mirroring `promote_evidence`) letting a `Researcher`
+move `PENDING_REVIEW` → `PUBLISHED`/`REJECTED_DUPLICATE`/`REJECTED_SPAM`, reusing the existing
+`Researcher` role gate. Commit this session's work first (schema/label/doc changes since `2ff9ed9` are
+still uncommitted) before starting.

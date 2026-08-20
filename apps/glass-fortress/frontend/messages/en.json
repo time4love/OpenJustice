@@ -759,7 +759,6 @@
     "MUSCULOSKELETAL": "Musculoskeletal",
     "DERMATOLOGIC": "Dermatologic (skin)",
     "GENERAL_SYSTEMIC": "General/systemic (fatigue, fever)",
-    "DEATH": "Death",
     "OTHER": "Other"
   },
   "medicalSeriousness": {
@@ -800,6 +799,12 @@
   "symptomPersistence": {
     "RESOLVED": "Resolved",
     "ONGOING_PERSISTENT": "Ongoing / persistent",
+    "UNKNOWN": "Unknown"
+  },
+  "medicalCareEngagement": {
+    "NOT_SOUGHT": "Did not seek medical attention",
+    "SOUGHT_UNCONFIRMED": "Sought care, diagnosis not yet confirmed",
+    "SOUGHT_CONFIRMED": "Sought care, diagnosis confirmed",
     "UNKNOWN": "Unknown"
   },
   "vaccineManufacturers": {

@@ -10,7 +10,7 @@
  * than hand-copied string tuples (the convention elsewhere in this codebase,
  * e.g. investigativeCategoriesField). That convention exists because
  * investigativeCategories is deliberately NOT a Prisma enum, so there is
- * nothing to import — these fields are real Prisma enums (13 of them), and
+ * nothing to import — these fields are real Prisma enums (14 of them), and
  * hand-copying that many literal unions would create a drift risk the
  * existing convention never had to solve. Importing the generated enum
  * eliminates it by construction.
@@ -25,6 +25,7 @@ import {
   CancerType,
   CognitiveSymptomType,
   SymptomPersistence,
+  MedicalCareEngagement,
   VaccineManufacturer,
   ReportTimingWindow,
   SocialEconomicImpactCategory,
@@ -72,8 +73,7 @@ const medicalBaseSchema = z.object({
   doseNumber: z.number().int().positive().optional(),
 
   onsetWindow: z.enum(ReportTimingWindow).default('UNKNOWN'),
-  medicalAttentionSought: z.boolean().optional(),
-  diagnosisConfirmedByProvider: z.boolean().optional(),
+  medicalCareEngagement: z.enum(MedicalCareEngagement).default('UNKNOWN'),
   preExistingCondition: z.boolean().optional(),
 
   freeTextElaboration: z.string().max(FREE_TEXT_MAX).optional(),

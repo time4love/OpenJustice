@@ -11,6 +11,10 @@ import { MedicalAdverseEventReportInput, SocialEconomicImpactReportInput } from 
 // Always PENDING_REVIEW (the Prisma default) — this is public, unauthenticated
 // intake, same open-submission pattern already shipped for blocked-URL
 // evidence recovery. Nothing here sets status explicitly; it fails closed.
+//
+// No plausibility-flagging step here — see ReportStatus's own comment on
+// why a rule-based ReportPlausibilityService was designed away rather than
+// built (docs/gf-adverse-event-report-schema-dev-plan.md Phase 4).
 // ---------------------------------------------------------------------------
 
 interface ReportEnvelope {

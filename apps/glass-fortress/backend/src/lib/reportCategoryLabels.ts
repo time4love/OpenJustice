@@ -6,6 +6,7 @@ import {
   CancerType,
   CognitiveSymptomType,
   SymptomPersistence,
+  MedicalCareEngagement,
   VaccineManufacturer,
   ReportTimingWindow,
 } from '@prisma/client';
@@ -44,7 +45,6 @@ export const MEDICAL_SYMPTOM_CATEGORY_LABELS: Record<MedicalSymptomCategory, str
   MUSCULOSKELETAL: 'שרירים ושלד',
   DERMATOLOGIC: 'עור',
   GENERAL_SYSTEMIC: 'כללי-מערכתי (עייפות, חום)',
-  DEATH: 'פטירה',
   OTHER: 'אחר',
 };
 
@@ -91,6 +91,13 @@ export const COGNITIVE_SYMPTOM_TYPE_LABELS: Record<CognitiveSymptomType, string>
 export const SYMPTOM_PERSISTENCE_LABELS: Record<SymptomPersistence, string> = {
   RESOLVED: 'חלף',
   ONGOING_PERSISTENT: 'מתמשך',
+  UNKNOWN: 'לא ידוע',
+};
+
+export const MEDICAL_CARE_ENGAGEMENT_LABELS: Record<MedicalCareEngagement, string> = {
+  NOT_SOUGHT: 'לא פנה/תה לטיפול רפואי',
+  SOUGHT_UNCONFIRMED: 'פנה/תה לטיפול, האבחנה טרם אושרה',
+  SOUGHT_CONFIRMED: 'פנה/תה לטיפול והאבחנה אושרה',
   UNKNOWN: 'לא ידוע',
 };
 

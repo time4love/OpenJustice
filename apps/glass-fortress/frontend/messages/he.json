@@ -759,7 +759,6 @@
     "MUSCULOSKELETAL": "שרירים ושלד",
     "DERMATOLOGIC": "עור",
     "GENERAL_SYSTEMIC": "כללי-מערכתי (עייפות, חום)",
-    "DEATH": "פטירה",
     "OTHER": "אחר"
   },
   "medicalSeriousness": {
@@ -800,6 +799,12 @@
   "symptomPersistence": {
     "RESOLVED": "חלף",
     "ONGOING_PERSISTENT": "מתמשך",
+    "UNKNOWN": "לא ידוע"
+  },
+  "medicalCareEngagement": {
+    "NOT_SOUGHT": "לא פנה/תה לטיפול רפואי",
+    "SOUGHT_UNCONFIRMED": "פנה/תה לטיפול, האבחנה טרם אושרה",
+    "SOUGHT_CONFIRMED": "פנה/תה לטיפול והאבחנה אושרה",
     "UNKNOWN": "לא ידוע"
   },
   "vaccineManufacturers": {
