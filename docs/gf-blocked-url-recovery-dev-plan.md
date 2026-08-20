@@ -3,10 +3,12 @@
 **Status:** Phase 1 ✅ DONE 2026-08-20, committed on `refactor/gf-evidence-shared-helpers`
 (`c13baba`), pushed, PR not yet opened. Phase 2 ✅ DONE 2026-08-20, committed on
 `schema/gf-evidence-additional-screenshot-urls` (`a3496fe`), pushed, PR not yet opened, migration
-**applied to the staging DB** — see §5. Phase 3 in progress on `feat/gf-evidence-recovery-phase3`.
-Supersedes the first draft (same date): the permission model and multi-screenshot handling were
-reconsidered and locked in below before any implementation began, per explicit user request to agree on
-the solution first.
+**applied to the staging DB** — see §5. Phase 3 ✅ DONE 2026-08-20 on `feat/gf-evidence-recovery-phase3`
+(branched from `schema/gf-evidence-additional-screenshot-urls`, merged with `refactor/gf-evidence-shared-helpers`
+so both Phase 1 and Phase 2 are ancestors — those two branches never shared a common base, both forked
+independently from `master`). Phases 4-5 not started. Supersedes the first draft (same date): the
+permission model and multi-screenshot handling were reconsidered and locked in below before any
+implementation began, per explicit user request to agree on the solution first.
 
 Phase 2's migration surfaced a pre-existing, unrelated schema/DB drift risk (Prisma's auto-diff
 proposing to drop the raw-SQL `evidence_embeddings` table) — fixed separately on
@@ -228,11 +230,47 @@ deferred** to just before the eventual `staging` → `master` ship, per the proj
 deploy sequencing (see `docs/gf-evidence-integrity-dev-plan.md` §3.7 for the precedent) — not run this
 session.
 
-### Phase 3 — `IntakeAgent.analyzeMultiImageEvidence` + `persistScreenshotEvidence`
-§3.1 and §3.2 above. New unit tests: multi-image analysis produces one synthesized `IntakeOutput` (not
-per-image), `contextNote` reaches the mocked LLM call, hash is order-dependent (swapping image order
-changes the hash), duplicate-hash short-circuit, `StorageService` failure on any image aborts the whole
-persist (must not create an `Evidence` row with a partially-uploaded image set).
+### Phase 3 — ✅ DONE 2026-08-20 — `IntakeAgent.analyzeMultiImageEvidence` + `persistScreenshotEvidence`
+Implemented as designed in §3.1 and §3.2, both on branch `feat/gf-evidence-recovery-phase3`.
+
+- `IntakeAgent.analyzeMultiImageEvidence(images, contextNote?)` — new method
+  ([IntakeAgent.ts](../apps/glass-fortress/backend/src/services/IntakeAgent.ts)), `analyzeEvidence` and
+  `analyzeText` untouched. Builds one content block per image via the existing `buildFileContentBlock`,
+  an optional leading `contextNote` text block, and — when more than one image is submitted — an explicit
+  synthesis instruction telling the model to treat the images as one document. Shares the same
+  gershayim-artifact `keyFigures` filter as the other two methods.
+- `persistScreenshotEvidence()` — new
+  ([persistScreenshotEvidence.ts](../apps/glass-fortress/backend/src/lib/persistScreenshotEvidence.ts)).
+  `Web3Service.hashFile(Buffer.concat(...))` on the images in submitted order → duplicate check → returns
+  early with the existing record's fields for a duplicate hash (no upload, no create, no KeyFigure upsert)
+  → `upsertKeyFigures` → uploads every image via `StorageService.uploadEvidenceFile` in parallel
+  (`Promise.all`, order preserved by array index — first becomes `fileUrl`, the rest
+  `additionalScreenshotUrls`) → `prisma.evidence.create` with `status: 'PENDING_REVIEW'`, no on-chain
+  registration, no vector-store upsert (mirrors `createEvidenceFromUrl`/`createEvidenceFromText`, not the
+  public `/confirm` route). Because every upload happens before `create()`, a mid-upload `StorageService`
+  failure throws before any `Evidence` row is written — no row with a partially-uploaded image set is
+  possible.
+- New unit tests: [IntakeAgent.test.ts](../apps/glass-fortress/backend/test/IntakeAgent.test.ts) (8 new
+  cases — zero-image guard, single synthesized output for multiple images, per-image content-block
+  encoding and order, the multi-image synthesis instruction, contextNote as a leading block, its absence
+  when omitted, the keyFigures filter, error propagation) and
+  [persistScreenshotEvidence.test.ts](../apps/glass-fortress/backend/test/persistScreenshotEvidence.test.ts)
+  (7 new cases — zero-image guard, hash order-dependence via a forward/reverse comparison, duplicate
+  short-circuit, upload-failure abort, `fileUrl`/`additionalScreenshotUrls` ordering, `createdById`
+  stamped-vs-omitted, KeyFigure upsert call). Typecheck clean, full suite green: **35/35 suites, 632/632
+  tests** (`npx prisma generate` was required first — the checked-out `@prisma/client` predated Phase 2's
+  schema field). `npx eslint` on both new/changed files surfaces only the same
+  `restrict-template-expressions` (number in a template literal) and `dot-notation` findings that already
+  exist throughout the codebase (e.g. `createEvidenceFromUrl.ts`, `ThesisSynthesisAgent.ts`) — pre-existing
+  repo-wide lint debt, not a regression introduced here.
+
+**Branch topology note:** Phase 1 (`refactor/gf-evidence-shared-helpers`) and Phase 2
+(`schema/gf-evidence-additional-screenshot-urls`) were each branched independently from `master` and never
+merged into each other, so `feat/gf-evidence-recovery-phase3` had to merge both to get `upsertKeyFigures`/
+`evidenceFileConstraints` (Phase 1) and the `additionalScreenshotUrls` column (Phase 2) together. One
+conflict, in this doc's own status/Phase-2 sections (both branches had edited them); resolved in favor of
+the more current content. Worth resolving before Phase 4: get PR #71 and #72 merged to `staging` so future
+branches fork from a single base instead of repeating this merge.
 
 ### Phase 4 — Public REST routes + MCP tool
 §3.3 and §3.4. New tests mirroring the existing route/tool test files: happy path (1 screenshot), happy

@@ -225,6 +225,8 @@ assertSchemaCompatibility(IntakeOutputSchema, 'IntakeAgent');
  * Anthropic fallback: PDFs require Anthropic's native document block; images
  * still use image_url.
  */
+type FileContentBlock = ReturnType<typeof buildFileContentBlock>;
+
 function buildFileContentBlock(base64: string, mimeType: string) {
   const provider = (process.env['INTAKE_PROVIDER'] ?? 'gemini').toLowerCase().trim();
 
@@ -315,6 +317,55 @@ export class IntakeAgent {
           { type: 'text' as const, text: 'Analyze this evidence document.' },
         ],
       },
+    ];
+
+    const result = await this.chain.invoke(messages);
+    const parsed = IntakeOutputSchema.parse(result);
+    parsed.keyFigures = parsed.keyFigures.filter((n) => n.trim().length > 3);
+    return parsed;
+  }
+
+  /**
+   * Analyse one or more screenshots as a single piece of evidence.
+   *
+   * Used by the blocked-URL screenshot-recovery flow: when a source page
+   * cannot be fetched directly, a researcher (or visitor) submits screenshots
+   * of it instead. Multiple images are treated as sequential parts of one
+   * document — synthesized into a single IntakeOutput, not scored per image.
+   *
+   * @param images       One or more screenshots, in reading order.
+   * @param contextNote  Optional provenance text (e.g. the failed URL and why
+   *                     it couldn't be fetched), prepended as a leading text
+   *                     block so the model's own summary documents that this
+   *                     is a recovery of an unfetched source.
+   */
+  async analyzeMultiImageEvidence(
+    images: { buffer: Buffer; mimeType: string }[],
+    contextNote?: string,
+  ): Promise<IntakeOutput> {
+    if (images.length === 0) {
+      throw new Error('analyzeMultiImageEvidence requires at least one image.');
+    }
+
+    const imageBlocks: FileContentBlock[] = images.map(({ buffer, mimeType }) =>
+      buildFileContentBlock(buffer.toString('base64'), mimeType),
+    );
+
+    const instruction =
+      images.length > 1
+        ? `These ${images.length} images are sequential screenshots of a single page, in reading order. Treat them as one document and produce one synthesized analysis, not a separate analysis per image.`
+        : 'Analyze this evidence document.';
+
+    const content: (FileContentBlock | { type: 'text'; text: string })[] = [];
+    if (contextNote) {
+      content.push({ type: 'text' as const, text: contextNote });
+    }
+    content.push(...imageBlocks);
+    content.push({ type: 'text' as const, text: instruction });
+
+    const messages = [
+      { role: 'system' as const, content: INTAKE_CLASSIFICATION_PROMPT },
+      { role: 'human' as const, content },
     ];
 
     const result = await this.chain.invoke(messages);
