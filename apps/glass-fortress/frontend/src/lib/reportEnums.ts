@@ -43,7 +43,10 @@ export type EnumNamespace =
   | 'reporterAgeRanges'
   | 'reporterGenders'
   | 'vaccinationStatuses'
-  | 'reportCalendarPeriods';
+  | 'reportCalendarPeriods'
+  | 'employmentSectors'
+  | 'remediesPursued'
+  | 'relationshipsAffected';
 
 /** The union of valid values for one taxonomy enum, e.g. 'ONCOLOGIC' | … */
 export type EnumValue<N extends EnumNamespace> = keyof Messages[N] & string;
@@ -66,6 +69,9 @@ export type ReporterAgeRange = EnumValue<'reporterAgeRanges'>;
 export type ReporterGender = EnumValue<'reporterGenders'>;
 export type VaccinationStatus = EnumValue<'vaccinationStatuses'>;
 export type ReportCalendarPeriod = EnumValue<'reportCalendarPeriods'>;
+export type EmploymentSector = EnumValue<'employmentSectors'>;
+export type RemedyPursued = EnumValue<'remediesPursued'>;
+export type RelationshipAffected = EnumValue<'relationshipsAffected'>;
 
 /**
  * The two categories the medical form branches on. Named constants rather
@@ -73,8 +79,41 @@ export type ReportCalendarPeriod = EnumValue<'reportCalendarPeriods'>;
  * against the derived union — a typo here fails `tsc` instead of silently
  * never matching and dropping a whole section of the questionnaire.
  */
+/**
+ * The single answer anywhere in this form that reveals a GDPR Art. 9(1)
+ * special category other than health: asking for a religious accommodation
+ * discloses religious belief. Named so the consent text can mention it only
+ * when the reporter actually selected it.
+ */
+export const RELIGIOUS_ACCOMMODATION_DENIED: FormalBasisAsserted = 'RELIGIOUS_ACCOMMODATION_DENIED';
+
 export const ONCOLOGIC: MedicalSymptomCategory = 'ONCOLOGIC';
 export const NEUROCOGNITIVE_PVS: MedicalSymptomCategory = 'NEUROCOGNITIVE_PVS';
+
+/**
+ * Which social/economic categories each conditional follow-up applies to.
+ *
+ * These MUST stay identical to reportIntakeSchemas.ts's exported lists on the
+ * backend: the form asking a question the schema then rejects — or omitting one
+ * it requires — is a 400 the reporter cannot act on. The two cannot share a
+ * module across the Express/Next.js boundary, so they are kept in step by hand,
+ * the same standing duplication as the enum labels.
+ */
+export const EMPLOYMENT_CATEGORIES: readonly SocialEconomicImpactCategory[] = [
+  'EMPLOYMENT_TERMINATION',
+  'DEMOTION_REASSIGNMENT',
+  'DENIED_HIRE',
+];
+
+export const FORMAL_PROCESS_CATEGORIES: readonly SocialEconomicImpactCategory[] = [
+  ...EMPLOYMENT_CATEGORIES,
+  'MILITARY_DISCHARGE',
+];
+
+export const RELATIONAL_CATEGORIES: readonly SocialEconomicImpactCategory[] = [
+  'FAMILY_RELATIONSHIP_RUPTURE',
+  'SOCIAL_OSTRACIZATION',
+];
 
 /**
  * The values of one taxonomy enum, in schema order, read from the loaded

@@ -848,11 +848,49 @@ arrived in dated waves. Migration `20260820100000_social_report_vaccination_stat
 safe only because the table was confirmed empty first (the one ambiguous staging row was deleted
 deliberately). Applied and query-verified.
 
-**Still open, deliberately out of this fix's scope**: per-category conditional follow-ups. The social
-domain has none, while medical has two (`ONCOLOGIC`, `NEUROCOGNITIVE_PVS`). Employment warrants sector
-and whether a regulator complaint was filed; military, discharge characterisation; family rupture,
-relationship type; access denial, what was denied. That is enrichment, not correctness, and belongs in
-its own pass.
+**Per-category conditional follow-ups — done in a second pass, same session.** The social domain had
+none while medical had two, so a firing, a discharge and a broken family bond were all described by the
+same six generic fields. Added, with the same "set only when applicable, null otherwise" rule enforced
+at the intake boundary: `employmentSector` (the axis EEOC charge data is stratified by; healthcare
+workers were the most-mandated group anywhere), `remedyPursued` (an ordinal escalation ladder —
+`NONE` < `INTERNAL_APPEAL` < `REGULATOR_COMPLAINT` < `LITIGATION` — deliberately ordinal so "complaint
+upheld, never complained" is not representable, the `medicalCareEngagement` fix from §2.9 applied
+again), and `relationshipAffected`.
+
+**Two candidates were rejected rather than added**, which matters as much as what went in:
+- *"What access was denied"* — `ACCESS_DENIAL_SERVICES` / `_HEALTHCARE` / `EDUCATION_ACCESS_DENIAL`
+  already say exactly that. A second field restating the category is the redundancy §2.9 removed from
+  `MedicalSymptomCategory.DEATH`, and it could disagree with the category.
+- *A military discharge characterisation* — the real published taxonomies are US DoD's
+  (Honorable / General / Other-Than-Honorable), which do not describe IDF service. Inventing one for a
+  Hebrew-first audience would manufacture authority this schema's standard forbids. `remedyPursued`
+  covers escalation and `outcomeStatus.RESOLVED_REVERSED` covers reinstatement, so nothing is lost.
+
+Migration `20260820110000_social_report_conditional_followups`, purely additive, applied and verified.
+
+### Review step shows only what was answered — 2026-08-20
+
+User-reported: the confirmation step listed every field including ones never answered, cluttering the
+record with paths not taken. It now hides a row when the value is `undefined` (a follow-up this
+category never asked, or a blank yes/no) or still sits at the value the field started from.
+
+That threshold is **per field, not a blanket `UNKNOWN`**, because the same member means opposite things
+in different places: `consequenceSeverity` starts at `NONE`, so a `NONE` there is an untouched default
+carrying no information — while `remedyPursued` has no default and is required when asked, so its
+`NONE` is a reporter actively saying "I took no action" and must stay visible. A single global rule
+would either hide the second or show the first; both were checked in a browser. A short note tells the
+reporter omissions mean nothing was recorded, so a shorter list does not read as lost answers.
+
+### Consent text names only the special categories actually present — 2026-08-20
+
+User-reported, and a real defect: the consent read "including health data, or religious belief where I
+indicated it" on **every** report, including medical ones where no question can reveal religious belief
+at all. `formalBasisAsserted` exists only on the social form, and only one of its four values
+(`RELIGIOUS_ACCOMMODATION_DENIED`) discloses religion.
+
+Art. 9(2)(a) consent must be *specific*, so blanket wording was not merely noise, it was the wrong
+legal shape: asking consent to process a special category the reporter never supplied. The label now
+names health data always, and religious belief only when that one answer is actually selected.
 
 ### Phase 9 — Frontend public aggregate/pattern display
 Public-facing view of report counts by category. Must implement the confidence-tiering distinction

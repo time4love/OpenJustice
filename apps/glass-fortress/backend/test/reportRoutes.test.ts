@@ -136,7 +136,11 @@ describe('POST /api/reports/social-economic', () => {
       .post('/api/reports/social-economic')
       .send({
         consentGiven: true,
-        report: { impactCategory: 'MILITARY_DISCHARGE', vaccinationStatus: 'NOT_RECEIVED' },
+        report: {
+          impactCategory: 'MILITARY_DISCHARGE',
+          vaccinationStatus: 'NOT_RECEIVED',
+          remedyPursued: 'NONE',
+        },
       });
 
     expect(res.status).toBe(201);

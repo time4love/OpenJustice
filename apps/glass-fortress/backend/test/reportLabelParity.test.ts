@@ -41,6 +41,9 @@ import {
   ReporterGender,
   VaccinationStatus,
   ReportCalendarPeriod,
+  EmploymentSector,
+  RemedyPursued,
+  RelationshipAffected,
 } from '@prisma/client';
 
 import en from '../../frontend/messages/en.json';
@@ -73,6 +76,9 @@ const NAMESPACE_TO_ENUM: Record<string, Record<string, string>> = {
   reporterGenders: ReporterGender,
   vaccinationStatuses: VaccinationStatus,
   reportCalendarPeriods: ReportCalendarPeriod,
+  employmentSectors: EmploymentSector,
+  remediesPursued: RemedyPursued,
+  relationshipsAffected: RelationshipAffected,
 };
 
 describe('report taxonomy labels mirror the Prisma enums', () => {

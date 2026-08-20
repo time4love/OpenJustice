@@ -34,6 +34,9 @@ import {
   SocialOutcomeStatus,
   VaccinationStatus,
   ReportCalendarPeriod,
+  EmploymentSector,
+  RemedyPursued,
+  RelationshipAffected,
 } from '@prisma/client';
 
 // ---------------------------------------------------------------------------
@@ -153,9 +156,27 @@ export type MedicalAdverseEventReportInput = z.infer<typeof medicalAdverseEventR
 // Social/economic
 // ---------------------------------------------------------------------------
 
-// No conditional fields — every field applies to every impactCategory, so a
-// plain object schema is sufficient (no superRefine needed).
-export const socialEconomicImpactReportSchema = z.object({
+// Which categories each conditional follow-up belongs to. Exported so the
+// frontend rule and this one cannot drift apart silently — the form asks
+// exactly the questions the schema will accept.
+export const EMPLOYMENT_CATEGORIES = [
+  'EMPLOYMENT_TERMINATION',
+  'DEMOTION_REASSIGNMENT',
+  'DENIED_HIRE',
+] as const satisfies readonly SocialEconomicImpactCategory[];
+
+/** Employment categories plus military — the ones with a process to escalate. */
+export const FORMAL_PROCESS_CATEGORIES = [
+  ...EMPLOYMENT_CATEGORIES,
+  'MILITARY_DISCHARGE',
+] as const satisfies readonly SocialEconomicImpactCategory[];
+
+export const RELATIONAL_CATEGORIES = [
+  'FAMILY_RELATIONSHIP_RUPTURE',
+  'SOCIAL_OSTRACIZATION',
+] as const satisfies readonly SocialEconomicImpactCategory[];
+
+const socialBaseSchema = z.object({
   impactCategory: z.enum(SocialEconomicImpactCategory),
   formalBasisAsserted: z.enum(FormalBasisAsserted).default('UNKNOWN'),
   consequenceSeverity: z.enum(ConsequenceSeverity).default('NONE'),
@@ -174,6 +195,67 @@ export const socialEconomicImpactReportSchema = z.object({
   // "how long after vaccination" — an anchor that does not exist for a
   // reporter who never was vaccinated.
   occurredDuring: z.enum(ReportCalendarPeriod).default('UNKNOWN'),
+
+  // Conditional — required for their own categories, forbidden for the rest.
+  // Enforced below, mirroring the medical domain's cancer/cognitive rule.
+  employmentSector: z.enum(EmploymentSector).optional(),
+  remedyPursued: z.enum(RemedyPursued).optional(),
+  relationshipAffected: z.enum(RelationshipAffected).optional(),
+});
+
+/**
+ * Applies the same rule the medical schema applies to its oncology and
+ * cognitive blocks: a follow-up is required when its category is chosen, and
+ * rejected when it is not. Each of these enums has a real UNKNOWN member, so
+ * requiring an answer never forces a guess — the reason cancerCourse could not
+ * be required until CancerCourse.UNKNOWN existed.
+ */
+function requireOnlyFor(
+  ctx: z.RefinementCtx,
+  applies: boolean,
+  field: 'employmentSector' | 'remedyPursued' | 'relationshipAffected',
+  value: string | undefined,
+  categories: readonly string[],
+): void {
+  if (applies && value === undefined) {
+    ctx.addIssue({
+      code: 'custom',
+      path: [field],
+      message: `${field} is required when impactCategory is one of: ${categories.join(', ')}`,
+    });
+  }
+  if (!applies && value !== undefined) {
+    ctx.addIssue({
+      code: 'custom',
+      path: [field],
+      message: `${field} may only be set when impactCategory is one of: ${categories.join(', ')}`,
+    });
+  }
+}
+
+export const socialEconomicImpactReportSchema = socialBaseSchema.superRefine((data, ctx) => {
+  const category = data.impactCategory;
+  requireOnlyFor(
+    ctx,
+    (EMPLOYMENT_CATEGORIES as readonly string[]).includes(category),
+    'employmentSector',
+    data.employmentSector,
+    EMPLOYMENT_CATEGORIES,
+  );
+  requireOnlyFor(
+    ctx,
+    (FORMAL_PROCESS_CATEGORIES as readonly string[]).includes(category),
+    'remedyPursued',
+    data.remedyPursued,
+    FORMAL_PROCESS_CATEGORIES,
+  );
+  requireOnlyFor(
+    ctx,
+    (RELATIONAL_CATEGORIES as readonly string[]).includes(category),
+    'relationshipAffected',
+    data.relationshipAffected,
+    RELATIONAL_CATEGORIES,
+  );
 });
 
 export type SocialEconomicImpactReportInput = z.infer<typeof socialEconomicImpactReportSchema>;

@@ -31,6 +31,13 @@ import {
   type ReporterGender,
   type VaccinationStatus,
   type ReportCalendarPeriod,
+  type EmploymentSector,
+  type RemedyPursued,
+  type RelationshipAffected,
+  EMPLOYMENT_CATEGORIES,
+  FORMAL_PROCESS_CATEGORIES,
+  RELATIONAL_CATEGORIES,
+  RELIGIOUS_ACCOMMODATION_DENIED,
 } from '@/lib/reportEnums';
 
 // ---------------------------------------------------------------------------
@@ -112,6 +119,10 @@ interface SocialAnswers {
   // would read as a deliberate "prefer not to say".
   vaccinationStatus?: VaccinationStatus;
   occurredDuring: ReportCalendarPeriod;
+  // Conditional — required for their own categories, rejected for the rest.
+  employmentSector?: EmploymentSector;
+  remedyPursued?: RemedyPursued;
+  relationshipAffected?: RelationshipAffected;
 }
 
 // Defaults mirror the Prisma column defaults and the intake zod schema's
@@ -142,6 +153,35 @@ const EMPTY_SOCIAL: SocialAnswers = {
  * from the category at send time makes that state unrepresentable rather
  * than relying on remembering to clear it on every category change.
  */
+/**
+ * Same structural guarantee medicalPayload provides: a follow-up is included
+ * only when its category applies. A reporter who answers the employment
+ * questions and then switches to "family rupture" would otherwise submit a
+ * body the schema refuses — and clearing state on every category change is the
+ * kind of thing that works until someone adds a fourth cluster.
+ */
+function socialPayload(a: SocialAnswers): Record<string, unknown> {
+  const category = a.impactCategory;
+  return {
+    impactCategory: category,
+    formalBasisAsserted: a.formalBasisAsserted,
+    consequenceSeverity: a.consequenceSeverity,
+    outcomeStatus: a.outcomeStatus,
+    documentationAvailable: a.documentationAvailable,
+    vaccinationStatus: a.vaccinationStatus,
+    occurredDuring: a.occurredDuring,
+    ...(category && EMPLOYMENT_CATEGORIES.includes(category)
+      ? { employmentSector: a.employmentSector }
+      : {}),
+    ...(category && FORMAL_PROCESS_CATEGORIES.includes(category)
+      ? { remedyPursued: a.remedyPursued }
+      : {}),
+    ...(category && RELATIONAL_CATEGORIES.includes(category)
+      ? { relationshipAffected: a.relationshipAffected }
+      : {}),
+  };
+}
+
 function medicalPayload(a: MedicalAnswers): Record<string, unknown> {
   const base = {
     symptomCategory: a.symptomCategory,
@@ -185,11 +225,19 @@ function medicalPayload(a: MedicalAnswers): Record<string, unknown> {
  * have moved on two steps.
  */
 function missingRequiredSocialDetail(a: SocialAnswers): boolean {
-  // vaccinationStatus is the one field the social intake schema requires and
-  // does not default. It is also the field that decides whether the row can be
-  // read as refusal-side or vaccination-side harm at all, so an unanswered
-  // form must stop here rather than reach the server and 400.
-  return a.vaccinationStatus === undefined;
+  // vaccinationStatus decides whether the row reads as refusal-side or
+  // vaccination-side harm, and the schema requires it without a default.
+  if (a.vaccinationStatus === undefined) return true;
+
+  // Each conditional follow-up is required for its own categories. Mirrors
+  // socialEconomicImpactReportSchema's superRefine so the reporter is stopped
+  // while the question is still in front of them, not by a 400 two steps later.
+  const category = a.impactCategory;
+  if (!category) return true;
+  if (EMPLOYMENT_CATEGORIES.includes(category) && a.employmentSector === undefined) return true;
+  if (FORMAL_PROCESS_CATEGORIES.includes(category) && a.remedyPursued === undefined) return true;
+  if (RELATIONAL_CATEGORIES.includes(category) && a.relationshipAffected === undefined) return true;
+  return false;
 }
 
 function missingRequiredDetail(a: MedicalAnswers): boolean {
@@ -783,7 +831,12 @@ function SocialDetails({
   answers: SocialAnswers;
   setAnswers: (fn: (a: SocialAnswers) => SocialAnswers) => void;
 }) {
+  const t = useTranslations('reports.questions');
   const ts = useTranslations('reports.social');
+  const category = answers.impactCategory;
+  const isEmployment = !!category && EMPLOYMENT_CATEGORIES.includes(category);
+  const isFormalProcess = !!category && FORMAL_PROCESS_CATEGORIES.includes(category);
+  const isRelational = !!category && RELATIONAL_CATEGORIES.includes(category);
 
   return (
     <>
@@ -800,6 +853,50 @@ function SocialDetails({
           placeholder="—"
         />
       </div>
+      {(isEmployment || isFormalProcess) && (
+        <section className="space-y-4 rounded-xl border border-slate-200 bg-slate-50/60 p-4">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            {t('employmentSection')}
+          </h2>
+          {isEmployment && (
+            <EnumSelect
+              namespace="employmentSectors"
+              label={ts('employmentSector.label')}
+              help={ts('employmentSector.help')}
+              value={answers.employmentSector}
+              onChange={(v) => setAnswers((a) => ({ ...a, employmentSector: v }))}
+              placeholder="—"
+            />
+          )}
+          {isFormalProcess && (
+            <EnumSelect
+              namespace="remediesPursued"
+              label={ts('remedyPursued.label')}
+              help={ts('remedyPursued.help')}
+              value={answers.remedyPursued}
+              onChange={(v) => setAnswers((a) => ({ ...a, remedyPursued: v }))}
+              placeholder="—"
+            />
+          )}
+        </section>
+      )}
+
+      {isRelational && (
+        <section className="space-y-4 rounded-xl border border-slate-200 bg-slate-50/60 p-4">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            {t('relationalSection')}
+          </h2>
+          <EnumSelect
+            namespace="relationshipsAffected"
+            label={ts('relationshipAffected.label')}
+            help={ts('relationshipAffected.help')}
+            value={answers.relationshipAffected}
+            onChange={(v) => setAnswers((a) => ({ ...a, relationshipAffected: v }))}
+            placeholder="—"
+          />
+        </section>
+      )}
+
       <EnumSelect
         namespace="formalBasisAsserted"
         label={ts('formalBasisAsserted.label')}
@@ -877,9 +974,40 @@ function AboutStep({
   );
 }
 
-/** One answered field, as it will actually be recorded. */
-function ReviewRow<N extends EnumNamespace>({ label, namespace, value }: { label: string; namespace: N; value: EnumValue<N> }) {
+/**
+ * One recorded field — or nothing at all.
+ *
+ * The review step lists what will actually be stored, so a question the
+ * reporter never answered has no place on it. Two values mean "no information"
+ * and are dropped here rather than at each call site:
+ *
+ *   undefined   a follow-up this category never asked, or a yes/no left blank
+ *   hideWhen    the value the field starts at, i.e. one the reporter never moved
+ *
+ * hideWhen is per-field rather than a blanket 'UNKNOWN' because the same member
+ * means opposite things on different fields. consequenceSeverity starts at
+ * 'NONE', so a NONE there is an untouched default and carries no information —
+ * while remedyPursued has no default and is required when asked, so its 'NONE'
+ * is a reporter actively saying "I took no action", which must stay visible.
+ * A single global rule would either hide the second or show the first.
+ *
+ * Deliberately never dropped: 'UNDISCLOSED' on vaccinationStatus. It is
+ * required, so it can only appear by explicit choice, and "prefer not to say"
+ * is exactly the kind of answer a reporter deserves to see recorded.
+ */
+function ReviewRow<N extends EnumNamespace>({
+  label,
+  namespace,
+  value,
+  hideWhen = 'UNKNOWN',
+}: {
+  label: string;
+  namespace: N;
+  value: EnumValue<N> | undefined;
+  hideWhen?: string;
+}) {
   const valueLabel = useEnumLabel(namespace);
+  if (value === undefined || value === hideWhen) return null;
   return (
     <div className="flex justify-between gap-4 py-1.5 border-b border-slate-100 last:border-0">
       <span className="text-xs text-slate-500">{label}</span>
@@ -890,12 +1018,22 @@ function ReviewRow<N extends EnumNamespace>({ label, namespace, value }: { label
 
 function ReviewBooleanRow({ label, value }: { label: string; value: boolean | undefined }) {
   const t = useTranslations('reports.questions');
+  if (value === undefined) return null;
   return (
     <div className="flex justify-between gap-4 py-1.5 border-b border-slate-100 last:border-0">
       <span className="text-xs text-slate-500">{label}</span>
-      <span className="text-xs font-medium text-slate-900 text-end">
-        {value === undefined ? t('unanswered') : value ? t('yes') : t('no')}
-      </span>
+      <span className="text-xs font-medium text-slate-900 text-end">{value ? t('yes') : t('no')}</span>
+    </div>
+  );
+}
+
+/** A plain non-enum row, hidden when there is nothing to show. */
+function ReviewValueRow({ label, value }: { label: string; value: string | number | undefined }) {
+  if (value === undefined) return null;
+  return (
+    <div className="flex justify-between gap-4 py-1.5 border-b border-slate-100 last:border-0">
+      <span className="text-xs text-slate-500">{label}</span>
+      <span className="text-xs font-medium text-slate-900 text-end">{value}</span>
     </div>
   );
 }
@@ -943,27 +1081,24 @@ function ReviewStep({
             <ReviewRow label={tm('symptomCategory.label')} namespace="medicalSymptomCategories" value={medical.symptomCategory} />
             {medical.symptomCategory === ONCOLOGIC && (
               <>
-                {medical.cancerType && <ReviewRow label={tm('cancerType.label')} namespace="cancerTypes" value={medical.cancerType} />}
-                {medical.cancerPresentationType && <ReviewRow label={tm('cancerPresentationType.label')} namespace="cancerPresentationTypes" value={medical.cancerPresentationType} />}
-                {medical.cancerCourse && <ReviewRow label={tm('cancerCourse.label')} namespace="cancerCourses" value={medical.cancerCourse} />}
+                <ReviewRow label={tm('cancerType.label')} namespace="cancerTypes" value={medical.cancerType} />
+                <ReviewRow label={tm('cancerPresentationType.label')} namespace="cancerPresentationTypes" value={medical.cancerPresentationType} />
+                <ReviewRow label={tm('cancerCourse.label')} namespace="cancerCourses" value={medical.cancerCourse} />
                 <ReviewBooleanRow label={tm('cancerAtypicalFeatures.label')} value={medical.cancerAtypicalFeatures} />
               </>
             )}
             {medical.symptomCategory === NEUROCOGNITIVE_PVS && (
               <>
-                {medical.cognitiveSymptomType && <ReviewRow label={tm('cognitiveSymptomType.label')} namespace="cognitiveSymptomTypes" value={medical.cognitiveSymptomType} />}
+                <ReviewRow label={tm('cognitiveSymptomType.label')} namespace="cognitiveSymptomTypes" value={medical.cognitiveSymptomType} />
                 <ReviewBooleanRow label={tm('postExertionalMalaise.label')} value={medical.postExertionalMalaise} />
               </>
             )}
             <ReviewRow label={tm('symptomPersistence.label')} namespace="symptomPersistence" value={medical.symptomPersistence} />
-            <ReviewRow label={tm('seriousness.label')} namespace="medicalSeriousness" value={medical.seriousness} />
+            <ReviewRow label={tm('seriousness.label')} namespace="medicalSeriousness" value={medical.seriousness} hideWhen="NONE" />
             <ReviewRow label={tm('onsetWindow.label')} namespace="reportTimingWindows" value={medical.onsetWindow} />
             <ReviewRow label={tm('medicalCareEngagement.label')} namespace="medicalCareEngagement" value={medical.medicalCareEngagement} />
             <ReviewRow label={tm('vaccineManufacturer.label')} namespace="vaccineManufacturers" value={medical.vaccineManufacturer} />
-            <div className="flex justify-between gap-4 py-1.5 border-b border-slate-100">
-              <span className="text-xs text-slate-500">{tm('doseNumber.label')}</span>
-              <span className="text-xs font-medium text-slate-900">{medical.doseNumber ?? '—'}</span>
-            </div>
+            <ReviewValueRow label={tm('doseNumber.label')} value={medical.doseNumber} />
             <ReviewBooleanRow label={tm('preExistingCondition.label')} value={medical.preExistingCondition} />
           </>
         )}
@@ -971,11 +1106,12 @@ function ReviewStep({
         {!isMedical && social.impactCategory && (
           <>
             <ReviewRow label={ts('impactCategory.label')} namespace="socialEconomicImpactCategories" value={social.impactCategory} />
-            {social.vaccinationStatus && (
-              <ReviewRow label={ts('vaccinationStatus.label')} namespace="vaccinationStatuses" value={social.vaccinationStatus} />
-            )}
+            <ReviewRow label={ts('vaccinationStatus.label')} namespace="vaccinationStatuses" value={social.vaccinationStatus} />
+            <ReviewRow label={ts('employmentSector.label')} namespace="employmentSectors" value={social.employmentSector} />
+            <ReviewRow label={ts('remedyPursued.label')} namespace="remediesPursued" value={social.remedyPursued} />
+            <ReviewRow label={ts('relationshipAffected.label')} namespace="relationshipsAffected" value={social.relationshipAffected} />
             <ReviewRow label={ts('formalBasisAsserted.label')} namespace="formalBasisAsserted" value={social.formalBasisAsserted} />
-            <ReviewRow label={ts('consequenceSeverity.label')} namespace="consequenceSeverity" value={social.consequenceSeverity} />
+            <ReviewRow label={ts('consequenceSeverity.label')} namespace="consequenceSeverity" value={social.consequenceSeverity} hideWhen="NONE" />
             <ReviewRow label={ts('outcomeStatus.label')} namespace="socialOutcomeStatus" value={social.outcomeStatus} />
             <ReviewRow label={ts('occurredDuring.label')} namespace="reportCalendarPeriods" value={social.occurredDuring} />
             <ReviewBooleanRow label={ts('documentationAvailable.label')} value={social.documentationAvailable} />
@@ -986,6 +1122,10 @@ function ReviewStep({
         <ReviewRow label={ta('genderLabel')} namespace="reporterGenders" value={gender} />
       </div>
 
+      {/* Says plainly why the list may be shorter than the form was, so a
+          reporter does not read the omissions as answers having been lost. */}
+      <p className="text-xs text-slate-400 leading-relaxed">{t('omitted')}</p>
+
       <div className="rounded-xl border border-slate-300 bg-slate-50 p-4 space-y-2">
         <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-500">{t('consentHeading')}</h2>
         <label className="flex gap-3 items-start cursor-pointer">
@@ -995,7 +1135,18 @@ function ReviewStep({
             onChange={(e) => setConsent(e.target.checked)}
             className="mt-0.5 w-4 h-4 shrink-0 accent-slate-900"
           />
-          <span className="text-sm text-slate-700 leading-relaxed">{t('consentLabel')}</span>
+          {/* Art. 9(2)(a) consent has to be specific, so it names only the
+              special categories this particular report actually contains.
+              Religious belief is revealed by exactly one answer — a denied
+              religious accommodation, which only the social form can even
+              ask — so naming it on a medical report, or on a social one
+              where it was not selected, would be asking consent for data
+              the reporter never gave. */}
+          <span className="text-sm text-slate-700 leading-relaxed">
+            {!isMedical && social.formalBasisAsserted === RELIGIOUS_ACCOMMODATION_DENIED
+              ? t('consentLabelWithReligion')
+              : t('consentLabel')}
+          </span>
         </label>
         <p className="text-xs text-slate-500 leading-relaxed">{t('consentDetail')}</p>
       </div>
@@ -1117,7 +1268,7 @@ export default function NewReportPage() {
     setSubmitError(null);
 
     const path = domain === 'MEDICAL' ? '/api/reports/medical' : '/api/reports/social-economic';
-    const report = domain === 'MEDICAL' ? medicalPayload(medical) : { ...social };
+    const report = domain === 'MEDICAL' ? medicalPayload(medical) : socialPayload(social);
 
     try {
       const res = await fetch(apiUrl(path), {

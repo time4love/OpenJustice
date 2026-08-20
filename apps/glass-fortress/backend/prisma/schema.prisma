@@ -20,7 +20,7 @@ datasource db {
 
 enum ResearcherRole {
   RESEARCHER // full write access including promote_evidence
-  ADMIN // RESEARCHER + approve/revoke other researchers
+  ADMIN      // RESEARCHER + approve/revoke other researchers
 }
 
 // A vetted contributor with write access to the evidence vault.
@@ -32,7 +32,7 @@ model Researcher {
   supabaseUserId String         @unique // opaque UUID from Supabase auth — never expose in UI
   handle         String         @unique // self-chosen pseudonym — public display name
   role           ResearcherRole @default(RESEARCHER)
-  mcpTokenHash   String? // bcrypt hash of bearer token; null until first token generation
+  mcpTokenHash   String?        // bcrypt hash of bearer token; null until first token generation
   approved       Boolean        @default(false)
   createdAt      DateTime       @default(now())
 
@@ -61,27 +61,27 @@ enum WaybackJobStatus {
 // archive.org's end (retry later, nothing wrong with our pipeline) from an
 // unexpected failure worth investigating.
 enum WaybackFailureReason {
-  WAYBACK_OFFLINE // every fetch in this batch hit HTTP 503 from web.archive.org
-  ALL_FETCHES_FAILED // every fetch in this batch failed, but not via 503
+  WAYBACK_OFFLINE      // every fetch in this batch hit HTTP 503 from web.archive.org
+  ALL_FETCHES_FAILED    // every fetch in this batch failed, but not via 503
 }
 
 enum TrackedUrlStatus {
-  IDLE // created via legacy sync endpoint; no async status tracking
-  SCANNING // runFullScan is active (or was interrupted — resumable)
-  PAUSED // user paused mid-scan; resumable via POST /scan
+  IDLE      // created via legacy sync endpoint; no async status tracking
+  SCANNING  // runFullScan is active (or was interrupted — resumable)
+  PAUSED    // user paused mid-scan; resumable via POST /scan
   COMPLETED // all CDX batches processed
-  FAILED // unrecoverable error during processing
+  FAILED    // unrecoverable error during processing
 }
 
 // Tracks a government/health URL submitted for Wayback Machine forensic analysis.
 // Primary entity — navigate directly to this for version history and status.
 // url is unique: one TrackedUrl per URL, reused across re-scans.
 model TrackedUrl {
-  id        String            @id @default(uuid())
-  url       String            @unique
+  id        String           @id @default(uuid())
+  url       String           @unique
   title     String?
-  status    TrackedUrlStatus  @default(IDLE)
-  createdAt DateTime          @default(now())
+  status    TrackedUrlStatus @default(IDLE)
+  createdAt DateTime         @default(now())
   diffs     UrlVersionDiff[]
   snapshots UrlSnapshot[]
   job       WaybackScrapeJob?
@@ -95,12 +95,12 @@ model UrlSnapshot {
   id               String     @id @default(cuid())
   trackedUrlId     String
   trackedUrl       TrackedUrl @relation(fields: [trackedUrlId], references: [id], onDelete: Cascade)
-  waybackTimestamp String // YYYYMMDDHHMMSS — unique Wayback archive identifier
-  snapshotDate     String // YYYY-MM-DD — human-readable date
-  snapshotUrl      String // Wayback canonical URL (for reference/audit)
-  fullText         String // Full scraped page text at this date
-  contentHash      String // SHA-256(fullText) — chain of custody
-  onChainTxHash    String? // Blockchain tx hash once contentHash is registered on-chain
+  waybackTimestamp String     // YYYYMMDDHHMMSS — unique Wayback archive identifier
+  snapshotDate     String     // YYYY-MM-DD — human-readable date
+  snapshotUrl      String     // Wayback canonical URL (for reference/audit)
+  fullText         String     // Full scraped page text at this date
+  contentHash      String     // SHA-256(fullText) — chain of custody
+  onChainTxHash    String?    // Blockchain tx hash once contentHash is registered on-chain
   createdAt        DateTime   @default(now())
 
   beforeDiffs UrlVersionDiff[] @relation("BeforeSnapshot")
@@ -112,49 +112,49 @@ model UrlSnapshot {
 // Internal scan-state record. One per TrackedUrl — updated in-place across
 // CDX batch iterations rather than creating new records per batch.
 model WaybackScrapeJob {
-  id                 String                @id @default(uuid())
-  url                String
-  status             WaybackJobStatus      @default(PENDING)
-  totalSnapshots     Int                   @default(0)
-  processedSnapshots Int                   @default(0)
+  id                  String           @id @default(uuid())
+  url                 String
+  status              WaybackJobStatus @default(PENDING)
+  totalSnapshots      Int              @default(0)
+  processedSnapshots  Int              @default(0)
   // Set only when status is FAILED — null for every other status.
-  failureReason      WaybackFailureReason?
+  failureReason       WaybackFailureReason?
   // JSON: Array<{ timestamp: string; digest: string; status: 'PENDING' | 'DONE' | 'FAILED' }>
-  snapshotsList      String                @default("[]")
-  trackedUrlId       String                @unique
-  trackedUrl         TrackedUrl            @relation(fields: [trackedUrlId], references: [id], onDelete: Cascade)
-  fromDate           String? // YYYYMMDD — CDX query start date for the current batch
-  createdAt          DateTime              @default(now())
-  updatedAt          DateTime              @updatedAt
+  snapshotsList       String           @default("[]")
+  trackedUrlId        String           @unique
+  trackedUrl          TrackedUrl       @relation(fields: [trackedUrlId], references: [id], onDelete: Cascade)
+  fromDate            String?          // YYYYMMDD — CDX query start date for the current batch
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
 }
 
 // Records a single detected change between two consecutive archived snapshots of a TrackedUrl.
 // A row is created for every processed snapshot pair, not only legally significant ones —
 // isLegallySignificant just marks which are AI-flagged; see ForensicAgent.deriveSignificance.
 model UrlVersionDiff {
-  id                      String       @id @default(uuid())
-  trackedUrlId            String
-  trackedUrl              TrackedUrl   @relation(fields: [trackedUrlId], references: [id])
-  beforeDate              String
-  afterDate               String
-  snapshotUrl             String
-  deletedText             String       @default("[]") // JSON array of AI-extracted claim strings (Hebrew summaries)
-  addedText               String       @default("[]") // JSON array of AI-extracted claim strings (Hebrew summaries)
-  rawDeletedText          String       @default("[]") // JSON array of raw page text chunks that were removed
-  rawAddedText            String       @default("[]") // JSON array of raw page text chunks that were added
-  aiSignificance          String       @default("") // Hebrew forensic explanation
-  isLegallySignificant    Boolean      @default(false)
+  id                   String       @id @default(uuid())
+  trackedUrlId         String
+  trackedUrl           TrackedUrl   @relation(fields: [trackedUrlId], references: [id])
+  beforeDate           String
+  afterDate            String
+  snapshotUrl          String
+  deletedText          String       @default("[]") // JSON array of AI-extracted claim strings (Hebrew summaries)
+  addedText            String       @default("[]") // JSON array of AI-extracted claim strings (Hebrew summaries)
+  rawDeletedText       String       @default("[]") // JSON array of raw page text chunks that were removed
+  rawAddedText         String       @default("[]") // JSON array of raw page text chunks that were added
+  aiSignificance       String       @default("") // Hebrew forensic explanation
+  isLegallySignificant Boolean      @default(false)
   // ForensicAgent classification. Stored on the diff (not only on the promoted
   // Evidence) because a researcher may promote a diff manually via
   // /forensics/promote, and that path needs the classification without re-running
   // the agent. isLegallySignificant is derived from this being non-empty.
-  investigativeCategories String[]     @default([])
-  beforeSnapshotId        String? // FK to the UrlSnapshot for the "before" state
-  beforeSnapshot          UrlSnapshot? @relation("BeforeSnapshot", fields: [beforeSnapshotId], references: [id])
-  afterSnapshotId         String? // FK to the UrlSnapshot for the "after" state
-  afterSnapshot           UrlSnapshot? @relation("AfterSnapshot", fields: [afterSnapshotId], references: [id])
-  createdAt               DateTime     @default(now())
-  evidence                Evidence[]
+  investigativeCategories String[]  @default([])
+  beforeSnapshotId     String?      // FK to the UrlSnapshot for the "before" state
+  beforeSnapshot       UrlSnapshot? @relation("BeforeSnapshot", fields: [beforeSnapshotId], references: [id])
+  afterSnapshotId      String?      // FK to the UrlSnapshot for the "after" state
+  afterSnapshot        UrlSnapshot? @relation("AfterSnapshot", fields: [afterSnapshotId], references: [id])
+  createdAt            DateTime     @default(now())
+  evidence             Evidence[]
 }
 
 // Mirrors the pgvector table created via raw SQL in the baseline migration
@@ -171,7 +171,7 @@ model UrlVersionDiff {
 // Client — `embedding`'s Unsupported() type cannot be selected, and the
 // `match_evidence()` SQL function it backs is not representable here at all.
 model EvidenceEmbedding {
-  id        String                      @id
+  id        String @id
   content   String
   embedding Unsupported("vector(3072)")
 
@@ -203,24 +203,24 @@ enum EvidenceStatus {
   // Created via an MCP write tool, or auto-promoted while on-chain registration
   // was unavailable/failed — awaits human review + registration (onChainTxHash is null).
   PENDING_REVIEW
-  CONFIRMED // Registered on-chain (onChainTxHash set) and indexed in Pinecone
+  CONFIRMED      // Registered on-chain (onChainTxHash set) and indexed in Pinecone
 }
 
 enum EvidenceType {
-  DOCUMENT // File upload or URL submission
+  DOCUMENT      // File upload or URL submission
   FORENSIC_DIFF // Auto-promoted from UrlVersionDiff (isLegallySignificant=true)
 }
 
 model Evidence {
-  id                       String                @id @default(uuid())
-  fileHash                 String                @unique
+  id                  String          @id @default(uuid())
+  fileHash            String          @unique
   // Fails closed, not open: a create() that forgets to set this explicitly
   // becomes PENDING_REVIEW, never a silent false claim of on-chain registration.
   // See onChainTxHash — CONFIRMED must only ever be set alongside a real tx hash.
-  status                   EvidenceStatus        @default(PENDING_REVIEW)
-  onChainTxHash            String? // Blockchain tx hash once fileHash is registered on-chain — mirrors UrlSnapshot.onChainTxHash
-  evidenceType             EvidenceType          @default(DOCUMENT)
-  evidenceRole             String                @default("Incriminating")
+  status              EvidenceStatus  @default(PENDING_REVIEW)
+  onChainTxHash       String?         // Blockchain tx hash once fileHash is registered on-chain — mirrors UrlSnapshot.onChainTxHash
+  evidenceType        EvidenceType    @default(DOCUMENT)
+  evidenceRole        String          @default("Incriminating")
   // The evidence's classification — see src/lib/investigativeCategories.ts.
   // Intrinsic to the evidence and fixed at creation; deliberately NOT a link to
   // Thesis, since evidence normally predates the theses that cite it and one
@@ -228,47 +228,47 @@ model Evidence {
   //
   // This is the ONLY classification axis. A coarser `category` field was removed:
   // it restated this at lower resolution and could contradict it.
-  investigativeCategories  String[]              @default([])
-  targetEntity             String
-  evidenceTier             String
-  evidencePerspective      String?
-  tierReasoning            String?
-  summary                  String
-  evidenceDate             String
-  figures                  KeyFigure[]
-  medicalConditions        String
-  statisticalClaims        String                @default("[]")
-  regulatoryMentions       String                @default("[]")
-  euaOmissionStatus        String                @default("Not Applicable")
-  sourceUrl                String?
-  fileUrl                  String?
+  investigativeCategories String[]    @default([])
+  targetEntity        String
+  evidenceTier        String
+  evidencePerspective String?
+  tierReasoning       String?
+  summary             String
+  evidenceDate        String
+  figures             KeyFigure[]
+  medicalConditions   String
+  statisticalClaims   String          @default("[]")
+  regulatoryMentions  String          @default("[]")
+  euaOmissionStatus   String          @default("Not Applicable")
+  sourceUrl           String?
+  fileUrl             String?
   // Screenshot 2..N when this evidence was recovered from a page that needed
   // multiple captures (e.g. a blocked/unfetchable URL too long for one
   // screenshot). fileUrl always holds the first/primary capture; this array
   // holds the rest, in the same reading order they were submitted in — the
   // combined set is treated as one document, analyzed together, not as
   // separate pieces of evidence. Empty for every ordinary single-file record.
-  additionalScreenshotUrls String[]              @default([])
-  ipfsCid                  String? // IPFS CID of the encrypted evidence blob (null if not yet anchored)
+  additionalScreenshotUrls String[] @default([])
+  ipfsCid             String?   // IPFS CID of the encrypted evidence blob (null if not yet anchored)
   // @unique enforces the true 1:1 with UrlVersionDiff at the DB level — previously
   // only an application-level check in POST /forensics/promote prevented a diff
   // from being promoted to more than one Evidence row.
-  urlVersionDiffId         String?               @unique
-  urlVersionDiff           UrlVersionDiff?       @relation(fields: [urlVersionDiffId], references: [id])
-  gapResolutions           ThesisGapResolution[]
-  createdById              String? // Researcher.id — null for legacy records
-  createdBy                Researcher?           @relation(fields: [createdById], references: [id])
-  createdAt                DateTime              @default(now())
+  urlVersionDiffId    String?         @unique
+  urlVersionDiff      UrlVersionDiff? @relation(fields: [urlVersionDiffId], references: [id])
+  gapResolutions      ThesisGapResolution[]
+  createdById         String?         // Researcher.id — null for legacy records
+  createdBy           Researcher?     @relation(fields: [createdById], references: [id])
+  createdAt           DateTime        @default(now())
 }
 
 enum ThesisVersionStatus {
   PENDING_AI // AI devil's advocate analysis not yet complete
-  COMPLETE // aiAnalysis populated, ready to display
+  COMPLETE   // aiAnalysis populated, ready to display
 }
 
 enum MentionType {
-  KEY_FIGURE // @name — references a KeyFigure.name
-  EVIDENCE // #ev_ — references an Evidence.fileHash
+  KEY_FIGURE  // @name — references a KeyFigure.name
+  EVIDENCE    // #ev_ — references an Evidence.fileHash
   TRACKED_URL // #url_ — references a TrackedUrl.id
 }
 
@@ -282,7 +282,7 @@ model Thesis {
   headVersion   ThesisVersion?    @relation("ThesisHead", fields: [headVersionId], references: [id])
   versions      ThesisVersion[]   @relation("ThesisVersions")
   sessions      ResearchSession[]
-  createdById   String? // Researcher.id — null for legacy records
+  createdById   String?           // Researcher.id — null for legacy records
   createdBy     Researcher?       @relation(fields: [createdById], references: [id])
   createdAt     DateTime          @default(now())
 }
@@ -290,22 +290,22 @@ model Thesis {
 // One row per edit. userContent is TipTap JSON; aiAnalysis is devil's advocate output.
 // contentHash = SHA-256(userContent + aiAnalysis) for tamper evidence.
 model ThesisVersion {
-  id              String                @id @default(cuid())
+  id              String              @id @default(cuid())
   thesisId        String
-  thesis          Thesis                @relation("ThesisVersions", fields: [thesisId], references: [id], onDelete: Cascade)
+  thesis          Thesis              @relation("ThesisVersions", fields: [thesisId], references: [id], onDelete: Cascade)
   parentVersionId String?
-  parentVersion   ThesisVersion?        @relation("VersionTree", fields: [parentVersionId], references: [id])
-  childVersions   ThesisVersion[]       @relation("VersionTree")
-  userContent     Json // TipTap document JSON
-  aiAnalysis      Json? // DevilsAdvocateAgent output, null until COMPLETE
-  contentHash     String // SHA-256 of userContent + aiAnalysis
-  status          ThesisVersionStatus   @default(PENDING_AI)
+  parentVersion   ThesisVersion?      @relation("VersionTree", fields: [parentVersionId], references: [id])
+  childVersions   ThesisVersion[]     @relation("VersionTree")
+  userContent     Json                // TipTap document JSON
+  aiAnalysis      Json?               // DevilsAdvocateAgent output, null until COMPLETE
+  contentHash     String              // SHA-256 of userContent + aiAnalysis
+  status          ThesisVersionStatus @default(PENDING_AI)
   mentions        ThesisMention[]
   gapResolutions  ThesisGapResolution[]
-  isHead          Thesis?               @relation("ThesisHead")
-  createdById     String? // Researcher.id — null for legacy records
-  createdBy       Researcher?           @relation(fields: [createdById], references: [id])
-  createdAt       DateTime              @default(now())
+  isHead          Thesis?             @relation("ThesisHead")
+  createdById     String?             // Researcher.id — null for legacy records
+  createdBy       Researcher?         @relation(fields: [createdById], references: [id])
+  createdAt       DateTime            @default(now())
 }
 
 // Records which AI-identified evidence gap has been addressed by a specific evidence record.
@@ -315,8 +315,8 @@ model ThesisGapResolution {
   id              String        @id @default(cuid())
   thesisVersionId String
   thesisVersion   ThesisVersion @relation(fields: [thesisVersionId], references: [id], onDelete: Cascade)
-  gapIndex        Int // index into aiAnalysis.evidenceGaps[]
-  evidenceId      String // Evidence.fileHash
+  gapIndex        Int           // index into aiAnalysis.evidenceGaps[]
+  evidenceId      String        // Evidence.fileHash
   evidence        Evidence      @relation(fields: [evidenceId], references: [fileHash])
   createdAt       DateTime      @default(now())
 
@@ -326,11 +326,11 @@ model ThesisGapResolution {
 // Extracted first-class references from ThesisVersion.userContent nodes.
 // Queryable index — avoids parsing JSON at query time.
 model ThesisMention {
-  id              String        @id @default(cuid())
-  thesisVersionId String
-  thesisVersion   ThesisVersion @relation(fields: [thesisVersionId], references: [id], onDelete: Cascade)
-  type            MentionType
-  refId           String // KeyFigure.name | Evidence.fileHash | TrackedUrl.id
+  id               String        @id @default(cuid())
+  thesisVersionId  String
+  thesisVersion    ThesisVersion @relation(fields: [thesisVersionId], references: [id], onDelete: Cascade)
+  type             MentionType
+  refId            String        // KeyFigure.name | Evidence.fileHash | TrackedUrl.id
 }
 
 // ---------------------------------------------------------------------------
@@ -343,24 +343,24 @@ enum ResearchSessionStatus {
 }
 
 enum ResearchSessionEventType {
-  SESSION_STARTED // logged automatically on session creation
-  VERSION_CREATED // logged automatically when a thesis version is created
-  GAP_RESOLVED // logged automatically when a gap resolution is saved
-  AI_ANALYSIS_RUN // logged automatically when AI analysis completes
-  NOTE // logged manually via add_session_note MCP tool
-  SESSION_CLOSED // logged automatically on session close
+  SESSION_STARTED  // logged automatically on session creation
+  VERSION_CREATED  // logged automatically when a thesis version is created
+  GAP_RESOLVED     // logged automatically when a gap resolution is saved
+  AI_ANALYSIS_RUN  // logged automatically when AI analysis completes
+  NOTE             // logged manually via add_session_note MCP tool
+  SESSION_CLOSED   // logged automatically on session close
 }
 
 // A named Claude+human research sprint on a thesis.
 // Only one ACTIVE session per thesis at a time; creating a new one auto-closes the previous.
 model ResearchSession {
-  id        String                 @id @default(cuid())
+  id        String                @id @default(cuid())
   thesisId  String
-  thesis    Thesis                 @relation(fields: [thesisId], references: [id], onDelete: Cascade)
+  thesis    Thesis                @relation(fields: [thesisId], references: [id], onDelete: Cascade)
   name      String
-  status    ResearchSessionStatus  @default(ACTIVE)
+  status    ResearchSessionStatus @default(ACTIVE)
   events    ResearchSessionEvent[]
-  createdAt DateTime               @default(now())
+  createdAt DateTime              @default(now())
   closedAt  DateTime?
 }
 
@@ -371,7 +371,7 @@ model ResearchSessionEvent {
   session     ResearchSession          @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   type        ResearchSessionEventType
   description String
-  refId       String? // ThesisVersion.id | Evidence.fileHash | ThesisGapResolution.id
+  refId       String?                  // ThesisVersion.id | Evidence.fileHash | ThesisGapResolution.id
   createdAt   DateTime                 @default(now())
 }
 
@@ -750,6 +750,37 @@ enum ConsequenceSeverity {
 // reinstates servicemembers discharged for vaccine refusal with back pay —
 // a MILITARY_DISCHARGE report where that happened is a materially different
 // claim from one where it didn't, and the schema must be able to say which.
+enum EmploymentSector {
+  HEALTHCARE
+  EDUCATION
+  PUBLIC_SECTOR
+  PRIVATE_SECTOR
+  SECURITY_SERVICES
+  OTHER
+  UNKNOWN
+}
+
+// An escalation ladder, ordered by how far the reporter took it. Ordinal, not a
+// set of booleans, so "regulator complaint" cannot coexist with "took no action".
+enum RemedyPursued {
+  NONE
+  INTERNAL_APPEAL
+  REGULATOR_COMPLAINT
+  LITIGATION
+  UNKNOWN
+}
+
+enum RelationshipAffected {
+  SPOUSE_PARTNER
+  PARENT
+  CHILD
+  SIBLING
+  EXTENDED_FAMILY
+  FRIENDS_COMMUNITY
+  MULTIPLE
+  UNKNOWN
+}
+
 enum VaccinationStatus {
   RECEIVED
   NOT_RECEIVED
@@ -804,6 +835,38 @@ model SocialEconomicImpactReport {
   // UNDISCLOSED is offered deliberately rather than forcing an answer; those
   // rows must be excluded from any directional claim, never counted as either.
   vaccinationStatus VaccinationStatus @default(UNDISCLOSED)
+
+  // Conditional follow-ups, same discipline as the medical domain's
+  // oncology/cognitive blocks: set only for the categories they apply to, null
+  // otherwise, enforced at the intake boundary because the DB cannot express it.
+  //
+  // Two sub-fields were considered and deliberately NOT added, per §2.9's rule
+  // that a field duplicating another is a defect rather than extra detail:
+  //   - "what access was denied" — ACCESS_DENIAL_SERVICES / _HEALTHCARE /
+  //     EDUCATION_ACCESS_DENIAL already carry exactly that, and a second field
+  //     saying it again could disagree with the category.
+  //   - a military discharge characterisation — the real published taxonomies
+  //     are US DoD's (Honorable / General / Other-Than-Honorable), which do not
+  //     describe IDF service and would be inventing authority for a Hebrew-first
+  //     audience. Escalation is captured by remedyPursued below, and
+  //     reinstatement by outcomeStatus.RESOLVED_REVERSED, so nothing is lost.
+
+  // Employment-consequence categories only (termination, demotion, denied hire).
+  // Sector is the axis the EEOC's own COVID-era charge data is stratified by,
+  // and healthcare workers were the most heavily mandated group of all.
+  employmentSector EmploymentSector?
+
+  // Employment categories plus MILITARY_DISCHARGE — the ones with a formal
+  // process to escalate through. One ordinal field rather than a "did you
+  // complain?" boolean beside a "what happened?" enum, so the impossible
+  // combination (an outcome with no complaint) cannot be expressed at all —
+  // the same fix applied to medicalCareEngagement in §2.9.
+  remedyPursued RemedyPursued?
+
+  // Relational categories only (family rupture, social ostracization). This is
+  // the least systematically studied cluster in the schema (§2.5); capturing
+  // which bond broke is what would make it studiable rather than anecdotal.
+  relationshipAffected RelationshipAffected?
 
   // Replaces the shared ReportTimingWindow, which measured an interval "after
   // vaccination" — incoherent for the archetypal reporter here, who never was
