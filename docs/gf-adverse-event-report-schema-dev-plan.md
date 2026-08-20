@@ -19,11 +19,23 @@ checking a signal the schema doesn't actually track); fixed at the schema level 
 nothing for the service to check — it, `ReportStatus.FLAGGED_IMPLAUSIBLE`, and `Report.flagReasons`
 were all deleted in the same session they were added. Also caught and fixed, via cherry-pick not
 reinvention, a real unrelated schema-drift gotcha (`evidence_embeddings`) that a generated migration
-almost silently proposed to drop. Seven staging migrations applied and independently verified this
-session in total. Full suite 706/706, `tsc` clean throughout. On branch `schema/gf-adverse-effect-reports`
-(pushed through `2ff9ed9`; this round of changes not yet committed). Phase 5 (researcher moderation) is
-next. See §5-6 for the full phase breakdown. This document is the canonical reference for the
-taxonomy's rationale; keep it in sync with `schema.prisma` as the design evolves.
+almost silently proposed to drop (pushed through `670f661`). **Phase 5 redesigned, no free text,
+2026-08-20 (§2.10)** — user questioned why a moderation queue exists at all given verified-email
+gating and expected volume; the original "review every report" plan copied `Evidence`'s pattern without
+checking it transfers, which it doesn't (§2.10). No blanket per-report human gate — reports count
+automatically once they clear submission-time checks. `freeTextElaboration` removed entirely from both
+domain tables as a direct consequence (it was the only reason any human review was ever going to be
+needed, never grounded in real research the way every other field is, and the one field most likely to
+re-identify a reporter). **`Report.status`/`ReportStatus` removed entirely, same session** — the direct
+conclusion of the same thread: with no moderation queue, there's no state machine left for a status
+field to represent; a report counts the moment it's created. `reportRoutes.ts`'s create response is now
+just `{ id }`. Duplicate-report prevention via a persistent Supabase account was floated and explicitly
+declined afterward, in favor of keeping the current immediate-deletion design — see the note appended
+to §2.8. Nine staging migrations applied and independently verified this session in total. Full suite
+705/705, `tsc` clean throughout. On branch `schema/gf-adverse-effect-reports` (pushed through `670f661`;
+this round of changes not yet committed). Phase 5 is next, redefined per §5 — mostly automated abuse
+defense, not a moderation queue. See §5-6 for the full phase breakdown. This document is the canonical
+reference for the taxonomy's rationale; keep it in sync with `schema.prisma` as the design evolves.
 **Created:** 2026-08-20.
 **Scope:** Glass Fortress only. New models: `Report`, `MedicalAdverseEventReport`,
 `SocialEconomicImpactReport`, plus supporting enums.
@@ -58,10 +70,10 @@ explanation of both.
   (`apps/bronze-fortress/backend/prisma/schema.prisma`), which does the same thing for its five
   structured-intake tables.
 - **`MedicalAdverseEventReport`** / **`SocialEconomicImpactReport`** — the structured questionnaire
-  answers. Closed enums do the aggregatable work; a `freeTextElaboration` field exists for human review
-  only and is never read by any aggregation query, per BF's own stated principle: *"Free text is
-  reidentifying and unqueryable. Structured answers are aggregatable and privacy-preserving."*
-  (`BRONZE_FORTRESS.md`).
+  answers. Closed enums do the aggregatable work — no free-text field exists at all, taking BF's own
+  stated principle (*"Free text is reidentifying and unqueryable. Structured answers are aggregatable
+  and privacy-preserving."*, `BRONZE_FORTRESS.md`) all the way rather than adding one back in for
+  "human review" that no design ever actually needed — see §2.10.
 - **Aggregation, not citation.** A thesis will eventually cite a computed pattern ("347 reports of X
   within window Y"), never a single `Report` row — the query layer that computes that pattern is not
   yet built (see §5).
@@ -200,6 +212,20 @@ applies — the account should still be deleted post-verification as defense-in-
 *easy, standing* directory of who reported), even though it isn't what makes the design anonymous;
 Phase 3 must implement that deletion, not treat it as optional.
 
+**Revisited once, deliberately declined — keep this reasoning next time someone proposes bringing the
+account back.** After Phase 3 shipped the deletion, the dedup trade-off got re-litigated directly:
+*not* deleting the Supabase account would let a duplicate-submission check ride entirely on Supabase's
+own unique-email constraint on `auth.users` — no hash, no field on `Report` at all, genuinely simple.
+Correct mechanism, but the framing "no problem since `Report` has no hash" was wrong: the persistent
+account is its own exposure independent of whatever `Report` does or doesn't store — a permanent list
+of every real email that's ever used the feature, even with zero linkage to what any of them reported.
+Smaller than the original `reporterFingerprintHash` exposure (no content linkage), but not "no
+problem." A bounded-retention middle path was floated (delete after N days — enough to deter
+spam/duplicate bursts, not indefinite) and explicitly declined in favor of the existing immediate-
+deletion design, to avoid adding complexity without a demonstrated need. If duplicate/spam submissions
+become a real, measured problem later, the bounded-retention option is the one to reach for — not
+reverting straight to indefinite retention or a fingerprint hash.
+
 **Reporter demographics — added the same session, same rigor.** User wanted age/gender: real
 pharmacovigilance value (the myocarditis-post-mRNA-vaccine signal was first detected specifically as
 elevated in young males — an age+sex-stratified finding a flat aggregate would have missed), pushed
@@ -275,6 +301,44 @@ cherry-pick was blocked by uncommitted local changes) rather than reinventing it
 drop through unnoticed. Standing lesson, not specific to this feature: **always read what a generated
 migration actually says before applying it** — a diff tool computing "the truth" from an incomplete
 model will confidently propose something false.
+
+### 2.10 No moderation queue, no free text — 2026-08-20
+
+User-initiated, mid-Phase-5-planning question: why does a moderation queue exist at all, given the
+model expects thousands of reports and already gates legitimacy via live email verification, and
+researchers should be spending their time on research, not per-report triage?
+
+**The original Phase 5 plan copied `Evidence`'s review pattern without checking whether the reasoning
+transfers, which it doesn't.** `Evidence` needs individual human review because each row is
+individually cited — in a thesis, in court, on-chain. `Report` was deliberately designed as the
+opposite (§0, session one): "347 reports of X within window Y," never a single row cited on its own.
+Requiring a human to approve every report before it counts contradicts the reason the model exists in
+this shape — and at real volume, a blanket queue either becomes a bottleneck nobody clears or gets
+rubber-stamped, which is worse than no gate at all: it manufactures the appearance of verification
+without the substance. Same category of mistake as §2.9, one layer up: a mechanism built to catch a
+problem the front door (verified email, consent, schema validation, rate limiting) should already be
+handling.
+
+**Decided**: reports count toward the aggregate automatically once they clear the checks that already
+exist at submission time. No blanket per-report human gate. Phase 5 is redefined below from "build a
+moderation queue" to "there mostly isn't one" — see the rewritten Phase 5 in §5.
+
+**Free text removed as a direct consequence, not a separate cleanup.** The only reason any per-report
+human review was ever going to be needed at all was `freeTextElaboration` — specifically, the
+possibility it named a real individual before ever being surfaced as an illustrative quote somewhere
+public (real defamation exposure, per `defamation-risk.md`). Once the moderation queue was reframed
+away, `freeTextElaboration` had no purpose left to serve: it was never grounded in real research the
+way every other field in this schema was (unlike, say, `medicalCareEngagement`'s VAERS-provenance
+grounding), it directly contradicted the design principle this whole feature borrowed from Bronze
+Fortress (*"Free text is reidentifying and unqueryable"*, `BRONZE_FORTRESS.md`), and it was the single
+field most likely to re-identify a reporter on its own. Removed entirely from both domain tables —
+`FREE_TEXT_MAX`, the zod fields, and their test coverage all removed with it, not left as unused dead
+weight. Migration `20260820070000_remove_free_text_elaboration`, applied to staging, independently
+verified (both columns now genuinely error on `SELECT`, not just absent from a listing).
+
+Net effect: no moderation queue, no free text, no per-report human touchpoint at all in the steady
+state. Spam/abuse defense is now entirely automated (verified email + `generalLimiter`'s existing rate
+limiting) — see Phase 5 (§5) for what actually remains for a researcher to do.
 
 ---
 
@@ -395,7 +459,6 @@ long enough to explain the *why*, short enough to actually get read.
 | `onsetWindow` | How long after vaccination the symptom began. We ask for a time range, not an exact date, to protect your privacy — only the range is ever shown publicly. | כמה זמן לאחר החיסון החל התסמין. אנו מבקשים טווח זמן, לא תאריך מדויק, כדי להגן על פרטיותך — רק הטווח מוצג אי פעם באופן פומבי. |
 | `medicalCareEngagement` | Whether you sought medical attention, and whether a provider formally confirmed the diagnosis. Not a requirement to report — many real reactions never reach a doctor — but it affects the confidence level assigned to your report in any aggregate analysis. (This used to be two separate yes/no questions; they were merged into one so an impossible answer — "confirmed by a doctor" with "never saw a doctor" — can't be given at all.) | האם פנית לטיפול רפואי, והאם איש מקצוע רפואי אישר את האבחנה באופן פורמלי. אין חובה לדווח על כך — תגובות אמיתיות רבות לעולם אינן מגיעות לרופא — אך זה משפיע על רמת הביטחון שתיוחס לדיווח שלך בכל ניתוח מצטבר. (זו הייתה בעבר שתי שאלות כן/לא נפרדות; הן אוחדו לשאלה אחת כדי שלא ניתן יהיה לתת תשובה בלתי אפשרית — "אושר על ידי רופא" יחד עם "מעולם לא פניתי לרופא".) |
 | `preExistingCondition` | Whether you had this condition, or a related one, before vaccination. Matters for telling a new event apart from a known one. | האם היה לך מצב זה, או מצב קשור, לפני החיסון. הדבר חשוב כדי להבחין בין אירוע חדש לבין מצב ידוע מראש. |
-| `freeTextElaboration` | Optional space to describe what happened in your own words. Helps our reviewers understand context, but isn't used in any statistical count — only the structured answers above are. | מקום רשות לתיאור מה שקרה במילים שלך. הדבר עוזר לצוות הבודק להבין את ההקשר, אך אינו נכלל בשום ספירה סטטיסטית — רק התשובות המובנות שלמעלה נכללות. |
 
 **Social/economic form**
 
@@ -407,7 +470,6 @@ long enough to explain the *why*, short enough to actually get read.
 | `outcomeStatus` | Whether the consequence is still in effect, was reversed (e.g. reinstated), or stands unchanged. Matters as much as the original event — a servicemember reinstated with back pay is materially different from one still discharged. | האם ההשלכה עדיין בתוקף, בוטלה (למשל שיקום בתפקיד), או נותרה ללא שינוי. הדבר חשוב לא פחות מהאירוע המקורי — חייל/ת ששוקם/ה עם שכר רטרואקטיבי נמצא/ת במצב שונה מהותית ממי שעדיין מפוטר/ת. |
 | `documentationAvailable` | Whether you have a paper trail — a termination letter, a discharge order, a complaint filed with an agency. Like the medical form's provider-confirmation question, this doesn't gate acceptance, but it affects confidence. | האם יש בידך תיעוד — מכתב פיטורים, צו שחרור, תלונה שהוגשה לרשות. בדומה לשאלת אישור הרופא בטופס הרפואי, הדבר אינו תנאי לקבלת הדיווח, אך הוא משפיע על רמת הביטחון. |
 | `timingRelativeToEvent` | How long after vaccination this happened. As with the medical form, we ask for a time range rather than an exact date to protect your privacy. | כמה זמן לאחר החיסון זה קרה. כמו בטופס הרפואי, אנו מבקשים טווח זמן ולא תאריך מדויק כדי להגן על פרטיותך. |
-| `freeTextElaboration` | Optional space to describe what happened in your own words — for reviewer context, not included in any statistical count. | מקום רשות לתיאור מה שקרה במילים שלך — להקשר עבור הצוות הבודק, ואינו נכלל בשום ספירה סטטיסטית. |
 
 Not yet added to `messages/he.json`/`en.json` — these are prose, best wired in as part of Phase 8 (the
 actual intake form), not added as bare namespace entries the way §2.7's category labels were.
@@ -454,9 +516,9 @@ flag (same evidentiary standard as `feedback-evidentiary-proof-standard.md`).
   file header — that convention exists because `investigativeCategories` was deliberately kept out of
   Prisma entirely, so there was nothing to import; these 13 enums *are* real Prisma enums, and
   hand-copying that many literal unions would be a drift risk the existing convention never had to
-  solve). `freeTextElaboration` got a 5000-char cap at the validation boundary — not in the Prisma
-  column (unbounded `text`) or discussed when the schema was designed, added here as a standard public-
-  input abuse guard.
+  solve). `freeTextElaboration` got a 5000-char cap at the validation boundary at the time — not in the
+  Prisma column (unbounded `text`) or discussed when the schema was designed, added here as a standard
+  public-input abuse guard. **The field itself was removed entirely later the same day — see §2.10.**
 - **Gap surfaced, not fixed**: `CancerCourse` has no `UNKNOWN` member, so a reporter who doesn't know
   whether progression was "unusually rapid" has no honest answer — `cancerCourse`/`cancerPresentationType`
   stay optional even when `ONCOLOGIC` rather than forcing a guess. Unlike the `symptomPersistence`/
@@ -520,17 +582,30 @@ uncommitted local changes) rather than letting the diff through — see the migr
 message and `feedback-audit-trust-critical-callsites.md`-style diligence: always read what a generated
 migration actually says before applying it, never trust "the tool said so."
 
-### Phase 5 — Researcher moderation
-A review queue (REST route, or an MCP tool mirroring `promote_evidence`) for a `Researcher` to move
-`PENDING_REVIEW` → `PUBLISHED` / `REJECTED_DUPLICATE` / `REJECTED_SPAM`. Reuses the existing `Researcher`
-role gate — no new auth system. Depends on Phase 4 (queue is more useful pre-filtered by plausibility,
-though not strictly blocking).
+### Phase 5 — Researcher moderation — redesigned, no queue, no status, 2026-08-20
+Was "a review queue for a Researcher to move every report from PENDING_REVIEW to PUBLISHED" — see §2.10
+for why that's the wrong shape given this model's own founding premise (volume as signal, not
+individual verification) and doesn't scale to the thousands of reports this feature expects. No human
+touches the vast majority of individual reports before they count toward the aggregate — and, per the
+direct conclusion of that same review, `Report` no longer has a `status` field at all (§2.9/§2.10's
+final state): a report counts the moment it's created, full stop.
+
+What Phase 5 actually needs to build, once started:
+- **Automated abuse defense** — already partially in place (verified email, `generalLimiter`); whether
+  anything beyond ordinary rate limiting is needed (submission-pattern anomaly detection, say) is an
+  open question for this phase, not assumed.
+- **An exception path for confirmed spam/fraud — deletion, not a status transition.** With no `status`
+  field, there's no `REJECTED_*` state to move a report into; a report confirmed spam/fraudulent gets
+  deleted outright, the same real-removal principle already used for `delete_evidence`. What triggers
+  a delete (an automated flag? a researcher's own judgment call on something surfaced some other way?)
+  is this phase's actual design question — not yet decided.
 
 ### Phase 6 — Aggregation / pattern-detection layer
-The actual point of this model (§0): a `ReportPatternService` with `groupBy` queries over `PUBLISHED`
-rows only, keyed on `(domain, category, timingWindow/persistence)` — the direct analog of BF's
-`AllegationService.getPatternCountsByFigure`. Must exclude non-`PUBLISHED` rows by construction, not by
-caller discipline, mirroring the `CONFIRMED`-must-be-real-proof standard already enforced for `Evidence`.
+The actual point of this model (§0): a `ReportPatternService` with `groupBy` queries over every `Report`
+row, keyed on `(domain, category, timingWindow/persistence)` — the direct analog of BF's
+`AllegationService.getPatternCountsByFigure`. No status filter needed — with no per-report gate (§2.10),
+every row that exists is meant to count; a row a researcher has deleted for confirmed spam/fraud is
+simply gone, not filtered out at query time.
 
 ### Phase 7 — Thesis citation wiring (open design question, not yet decided)
 How does a thesis actually cite a report aggregate? `ThesisMention.type` today is a closed enum
@@ -564,9 +639,12 @@ discarded post-verification — undecided, needs its own call).
 
 ## 6. Recommended next step
 
-Phases 1-4 are done (§5) — Phase 4 concluded that no `ReportPlausibilityService` was needed once its
-two candidate rules were fixed at the schema level instead (§2.9). **Phase 5 (researcher moderation) is
-next**: a review queue (REST route or MCP tool mirroring `promote_evidence`) letting a `Researcher`
-move `PENDING_REVIEW` → `PUBLISHED`/`REJECTED_DUPLICATE`/`REJECTED_SPAM`, reusing the existing
-`Researcher` role gate. Commit this session's work first (schema/label/doc changes since `2ff9ed9` are
-still uncommitted) before starting.
+Phases 1-4 are done (§5). Phase 5 has been redesigned twice more since (§2.10): no blanket moderation
+queue, and — the direct conclusion of that same review — `Report.status`/`ReportStatus` removed
+entirely, so there's no queue and no state machine left to build. A report counts toward the aggregate
+the instant it's created. **Phase 6 (aggregation/pattern-detection layer, §5) is the actual next
+build** — it no longer depends on Phase 5 finishing first, since there's no status to filter on.
+Phase 5 itself is now a smaller, deliberately-deferred question (automated abuse defense + a
+delete-on-confirmed-spam path), worth returning to once real submission volume shows whether it's
+needed at all, not before. Commit this session's work first — schema/label/doc changes since `670f661`
+are still uncommitted.

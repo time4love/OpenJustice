@@ -13,13 +13,17 @@ const router = Router();
 // ---------------------------------------------------------------------------
 // Public adverse-outcome self-report intake.
 //
-// No researcher gate — mirrors the already-shipped blocked-URL evidence
-// recovery pattern (open submission, always PENDING_REVIEW). The only auth
-// requirement is requireVerifiedReporterEmail: a Supabase magic-link/OTP
-// session proving a real, controllable email, which the middleware itself
-// deletes immediately after verifying — see supabaseAuth.ts and
-// docs/gf-adverse-event-report-schema-dev-plan.md §2.8. Report retains no
-// identity-derived field, so nothing here ever sees or stores the email.
+// No researcher gate, no moderation queue — a report counts toward the
+// aggregate the moment it's created, having cleared every check that
+// matters (verified email, explicit consent, schema validation). See
+// docs/gf-adverse-event-report-schema-dev-plan.md §2.10 for why no blanket
+// per-report human review exists at all, and why Report has no status
+// field to represent one. The only auth requirement is
+// requireVerifiedReporterEmail: a Supabase magic-link/OTP session proving a
+// real, controllable email, which the middleware itself deletes
+// immediately after verifying — see supabaseAuth.ts and §2.8. Report
+// retains no identity-derived field, so nothing here ever sees or stores
+// the email.
 // ---------------------------------------------------------------------------
 
 const ReporterEnvelopeSchema = z.object({
@@ -54,7 +58,7 @@ router.post(
 
     try {
       const created = await createMedicalReport(envelope, report);
-      res.status(201).json({ id: created.id, status: created.status });
+      res.status(201).json({ id: created.id });
     } catch (err) {
       console.error('[reports/medical] Failed to create report:', err instanceof Error ? err.stack : err);
       res.status(500).json({
@@ -83,7 +87,7 @@ router.post(
 
     try {
       const created = await createSocialEconomicReport(envelope, report);
-      res.status(201).json({ id: created.id, status: created.status });
+      res.status(201).json({ id: created.id });
     } catch (err) {
       console.error(
         '[reports/social-economic] Failed to create report:',

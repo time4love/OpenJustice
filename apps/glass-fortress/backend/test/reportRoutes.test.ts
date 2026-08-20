@@ -62,12 +62,12 @@ describe('POST /api/reports/medical', () => {
   });
 
   it('creates a report with default UNKNOWN demographics when not provided', async () => {
-    mockReportCreate.mockResolvedValue({ id: 'report-1', status: 'PENDING_REVIEW' });
+    mockReportCreate.mockResolvedValue({ id: 'report-1' });
 
     const res = await request(app).post('/api/reports/medical').send(validBody);
 
     expect(res.status).toBe(201);
-    expect(res.body).toEqual({ id: 'report-1', status: 'PENDING_REVIEW' });
+    expect(res.body).toEqual({ id: 'report-1' });
     expect(mockReportCreate).toHaveBeenCalledWith({
       data: expect.objectContaining({
         domain: 'MEDICAL',
@@ -80,7 +80,7 @@ describe('POST /api/reports/medical', () => {
   });
 
   it('passes through explicit demographics when provided', async () => {
-    mockReportCreate.mockResolvedValue({ id: 'report-2', status: 'PENDING_REVIEW' });
+    mockReportCreate.mockResolvedValue({ id: 'report-2' });
 
     const res = await request(app)
       .post('/api/reports/medical')
@@ -101,7 +101,7 @@ describe('POST /api/reports/medical', () => {
 
 describe('POST /api/reports/social-economic', () => {
   it('creates a report on a valid submission', async () => {
-    mockReportCreate.mockResolvedValue({ id: 'report-3', status: 'PENDING_REVIEW' });
+    mockReportCreate.mockResolvedValue({ id: 'report-3' });
 
     const res = await request(app)
       .post('/api/reports/social-economic')

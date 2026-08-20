@@ -8,13 +8,10 @@ import { MedicalAdverseEventReportInput, SocialEconomicImpactReportInput } from 
 // point to it, matching Report's discriminated-union design in schema.prisma:
 // a Report never exists without exactly one domain row, and vice versa.
 //
-// Always PENDING_REVIEW (the Prisma default) — this is public, unauthenticated
-// intake, same open-submission pattern already shipped for blocked-URL
-// evidence recovery. Nothing here sets status explicitly; it fails closed.
-//
-// No plausibility-flagging step here — see ReportStatus's own comment on
-// why a rule-based ReportPlausibilityService was designed away rather than
-// built (docs/gf-adverse-event-report-schema-dev-plan.md Phase 4).
+// No status, no moderation step — a created Report counts toward the
+// aggregate immediately, having cleared every check that matters upstream
+// (verified email, explicit consent, schema validation). See
+// docs/gf-adverse-event-report-schema-dev-plan.md §2.10.
 // ---------------------------------------------------------------------------
 
 interface ReportEnvelope {

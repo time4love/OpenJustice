@@ -421,38 +421,28 @@ model OidcModel {
 // a status flag someone can forget to check.
 //
 // Mirrors Bronze Fortress's Evidence/structured-intake split: Report is the
-// thin envelope (moderation state, dedup, reporter contact); the two domain
-// tables below hold the actual structured answers. A Report points DOWN to
-// exactly one of them — never the reverse — so the intake tables stay free
-// of report-envelope concerns.
+// thin envelope (dedup, reporter contact); the two domain tables below hold
+// the actual structured answers. A Report points DOWN to exactly one of
+// them — never the reverse — so the intake tables stay free of
+// report-envelope concerns.
+//
+// No status field, deliberately — see
+// docs/gf-adverse-event-report-schema-dev-plan.md §2.10. There is no
+// per-report human gate a status would represent: a report counts toward
+// the aggregate the moment it's created, having already cleared every check
+// that matters (verified email, explicit consent, schema validation). A
+// report later confirmed to be spam/fraudulent is deleted, not marked —
+// there's no reason to keep a row around whose only purpose was to be
+// excluded from every query that reads this table. User-driven design
+// review, 2026-08-20 — followed directly from questioning why a moderation
+// queue (and, before that, PlausibilityFlagReason/FLAGGED_IMPLAUSIBLE, see
+// MedicalSymptomCategory's and MedicalCareEngagement's own comments)
+// existed at all.
 // ---------------------------------------------------------------------------
 
 enum ReportDomain {
   MEDICAL // adverse health outcome
   SOCIAL_ECONOMIC // employment, access, or relationship consequence
-}
-
-// Fails closed, not open — mirrors EvidenceStatus: a create() that forgets
-// to set this explicitly becomes PENDING_REVIEW, never a silent publish.
-//
-// No FLAGGED_IMPLAUSIBLE value, deliberately — Phase 4 originally planned a
-// rule-based ReportPlausibilityService to set one, but every candidate rule
-// (a symptomCategory/seriousness DEATH mismatch; a
-// diagnosisConfirmedByProvider/medicalAttentionSought mismatch) turned out
-// to be a modeling smell: two fields able to independently assert
-// contradictory things about one fact. The fix was making those states
-// unrepresentable (see MedicalSymptomCategory's and MedicalCareEngagement's
-// own comments), which leaves nothing for a detection service to check —
-// keeping the status value and service as speculative infrastructure for a
-// mechanism whose premise didn't survive scrutiny would be the same mistake
-// one level up. If content-level implausibility (not a field contradiction)
-// ever needs flagging, that's Phase 5's researcher moderation judgment, not
-// an automated status. User-driven design review, 2026-08-20.
-enum ReportStatus {
-  PENDING_REVIEW // default — not yet in any public aggregate
-  PUBLISHED // cleared for aggregate/pattern queries
-  REJECTED_DUPLICATE
-  REJECTED_SPAM
 }
 
 // Shared by both domain tables so a bucket boundary is defined once — same
@@ -491,7 +481,6 @@ enum ReporterGender {
 model Report {
   id     String       @id @default(cuid())
   domain ReportDomain // denormalized off the two FKs below — lets filters/counts skip a join
-  status ReportStatus @default(PENDING_REVIEW)
 
   // Discriminated union — exactly one of these two is set, enforced at the
   // application layer (Prisma has no CHECK-constraint escape hatch here).
@@ -697,10 +686,11 @@ model MedicalAdverseEventReport {
   medicalCareEngagement MedicalCareEngagement @default(UNKNOWN)
   preExistingCondition  Boolean? // null = unknown
 
-  // Optional elaboration. Never read by any aggregation query — kept for
-  // human review and as color quotes only, same discipline as BF's
-  // structured-intake tables (free text is reidentifying and unqueryable).
-  freeTextElaboration String?
+  // No free-text field, deliberately — see
+  // docs/gf-adverse-event-report-schema-dev-plan.md §2.10. It never served
+  // the aggregation this model exists for, it was the one field that could
+  // re-identify a reporter on its own, and it was the only reason any
+  // per-report human review was ever going to be needed at all.
 
   report Report?
 
@@ -775,7 +765,8 @@ model SocialEconomicImpactReport {
 
   timingRelativeToEvent ReportTimingWindow @default(UNKNOWN)
 
-  freeTextElaboration String?
+  // No free-text field — see MedicalAdverseEventReport's own comment; same
+  // reasoning applies here.
 
   report Report?
 

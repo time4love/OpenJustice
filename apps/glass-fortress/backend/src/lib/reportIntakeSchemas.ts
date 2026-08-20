@@ -34,11 +34,6 @@ import {
   SocialOutcomeStatus,
 } from '@prisma/client';
 
-// Defensive cap on public free-text input — not present in the Prisma column
-// (unbounded text) or discussed when the schema was designed; added here at
-// the intake boundary as a standard abuse guard, not a data-model decision.
-const FREE_TEXT_MAX = 5000;
-
 // ---------------------------------------------------------------------------
 // Medical
 // ---------------------------------------------------------------------------
@@ -75,8 +70,6 @@ const medicalBaseSchema = z.object({
   onsetWindow: z.enum(ReportTimingWindow).default('UNKNOWN'),
   medicalCareEngagement: z.enum(MedicalCareEngagement).default('UNKNOWN'),
   preExistingCondition: z.boolean().optional(),
-
-  freeTextElaboration: z.string().max(FREE_TEXT_MAX).optional(),
 });
 
 const CANCER_FIELDS = [
@@ -154,7 +147,6 @@ export const socialEconomicImpactReportSchema = z.object({
   outcomeStatus: z.enum(SocialOutcomeStatus).default('UNKNOWN'),
   documentationAvailable: z.boolean().optional(),
   timingRelativeToEvent: z.enum(ReportTimingWindow).default('UNKNOWN'),
-  freeTextElaboration: z.string().max(FREE_TEXT_MAX).optional(),
 });
 
 export type SocialEconomicImpactReportInput = z.infer<typeof socialEconomicImpactReportSchema>;

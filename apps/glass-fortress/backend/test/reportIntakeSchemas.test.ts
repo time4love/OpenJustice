@@ -112,7 +112,6 @@ describe('socialEconomicImpactReportSchema', () => {
       outcomeStatus: 'RESOLVED_REVERSED',
       documentationAvailable: true,
       timingRelativeToEvent: 'WITHIN_1_MONTH',
-      freeTextElaboration: 'Reinstated with back pay after appeal.',
     });
     expect(result.success).toBe(true);
   });
@@ -120,14 +119,6 @@ describe('socialEconomicImpactReportSchema', () => {
   it('rejects an unknown impactCategory value', () => {
     const result = socialEconomicImpactReportSchema.safeParse({
       impactCategory: 'NOT_A_REAL_CATEGORY',
-    });
-    expect(result.success).toBe(false);
-  });
-
-  it('rejects freeTextElaboration beyond the length cap', () => {
-    const result = socialEconomicImpactReportSchema.safeParse({
-      impactCategory: 'EMPLOYMENT_TERMINATION',
-      freeTextElaboration: 'x'.repeat(5001),
     });
     expect(result.success).toBe(false);
   });
