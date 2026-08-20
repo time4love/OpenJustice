@@ -19,7 +19,14 @@ jest.mock('../src/lib/prisma', () => ({
 }));
 
 import { prisma } from '../src/lib/prisma';
-import { resolveIssuer, resolveOrigin, findAccount, getResourceServerInfo } from '../src/oauth/oidcProvider';
+import {
+  resolveIssuer,
+  resolveOrigin,
+  findAccount,
+  getResourceServerInfo,
+  loadJwks,
+  loadCookieKeys,
+} from '../src/oauth/oidcProvider';
 
 // ---------------------------------------------------------------------------
 // The two pure-ish pieces of oidc-provider's configuration that are worth
@@ -69,6 +76,39 @@ describe('getResourceServerInfo', () => {
 
   it('rejects any other resource indicator', () => {
     expect(() => getResourceServerInfo('https://some-other-service.example.com', env)).toThrow();
+  });
+});
+
+describe('loadJwks', () => {
+  it('throws when OAUTH_JWKS is unset', () => {
+    expect(() => loadJwks({})).toThrow(/OAUTH_JWKS env var is not set/);
+  });
+
+  it('throws when OAUTH_JWKS is not valid JSON', () => {
+    expect(() => loadJwks({ OAUTH_JWKS: 'not-json' })).toThrow(/not valid JSON/);
+  });
+
+  it('parses a valid JWKS JSON string', () => {
+    const jwks = { keys: [{ kty: 'EC', crv: 'P-256', x: 'x', y: 'y', d: 'd' }] };
+    expect(loadJwks({ OAUTH_JWKS: JSON.stringify(jwks) })).toEqual(jwks);
+  });
+});
+
+describe('loadCookieKeys', () => {
+  it('throws when OAUTH_COOKIE_KEYS is unset', () => {
+    expect(() => loadCookieKeys({})).toThrow(/OAUTH_COOKIE_KEYS env var is not set/);
+  });
+
+  it('returns a single-element array for one key', () => {
+    expect(loadCookieKeys({ OAUTH_COOKIE_KEYS: 'abc123' })).toEqual(['abc123']);
+  });
+
+  it('splits comma-separated keys and trims whitespace', () => {
+    expect(loadCookieKeys({ OAUTH_COOKIE_KEYS: 'abc123, def456 ,ghi789' })).toEqual([
+      'abc123',
+      'def456',
+      'ghi789',
+    ]);
   });
 });
 

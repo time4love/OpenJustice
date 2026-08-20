@@ -218,13 +218,12 @@ by itself — every subsequent step still requires an approved `Researcher` to c
 not yet built) login/consent step, exactly as before.
 
 ### 4.5 Known Phase 2 limitations — tracked, not yet closed
-- **`jwks` and `cookies.keys` are still unset.** This is now a real, live concern rather than a
-  forward-looking one: Phase 3's login/consent flow is built and merging it means every Railway deploy
-  (which restarts the process) invalidates any in-flight login/consent session — a researcher mid-consent
-  during a deploy would have to restart. Low real-world likelihood on staging today (infrequent deploys,
-  few users), but this is exactly the kind of thing that should be an explicit decision, not a silent
-  gap — flagged to the user before merging Phase 3 rather than fixed unilaterally, since it requires
-  generating a real key set and setting it as a Railway env var (same pattern as `TOKEN_HMAC_SECRET`).
+- ~~**`jwks` and `cookies.keys` are still unset.**~~ — **✅ FIXED 2026-08-20, see §10.** Worth noting
+  what this actually was once inspected: not "ephemeral, regenerated on restart" as originally assumed
+  here, but oidc-provider's own hardcoded `DEV_KEYSTORE` (`lib/consts/dev_keystore.js`, kid
+  `keystore-CHANGE-ME`) — the *same* static RSA private key shipped inside every install of the library,
+  publicly readable on npm, not app-specific and not regenerated at all. Worse than the risk this section
+  originally described.
 - **No resource-indicator (RFC 8707) audience restriction configured.** Deferred to Phase 5 alongside
   real-client verification, once it's known what Claude/ChatGPT actually send — adding it speculatively
   now risks configuring it for a shape no real client uses.
@@ -798,3 +797,47 @@ own update before it's handed to a user again.
   (§2.4) but nothing in this plan proposes actually gating reads behind it.
 - **Rewriting Supabase Auth itself.** This plan wraps the existing Google/magic-link login, it does not
   touch how researchers authenticate to the website today.
+
+---
+
+## 10. JWKS/cookie key persistence — ✅ DONE 2026-08-20 (code), Railway rollout pending
+
+Closes the risk accepted at §4.5/§5.5/§7.1. Prompted by a "when are we ready for a quiet launch"
+discussion: with real researchers about to rely on a persistent MCP connection, every redeploy silently
+invalidating their session (or, as discovered below, running on a publicly-known private key) stopped
+being an acceptable accepted risk.
+
+**What was actually wrong, once inspected (not what §4.5 originally assumed):** `jwks` unset doesn't
+mean "ephemeral, regenerated per restart" — oidc-provider falls back to a *hardcoded* keystore baked
+into the library itself (`lib/consts/dev_keystore.js`, kid `keystore-CHANGE-ME`), the same static RSA
+private key in every install of `oidc-provider` worldwide, publicly readable on npm. `cookies.keys`
+unset is more benign than assumed — Koa's `app.keys` is simply never set, so the session/interaction
+cookies (which carry only a random-uid reference into the DB, not user-controlled claims) are set
+unsigned rather than with some ephemeral key; real integrity boundary was always the DB lookup, not the
+cookie. Both traced by reading `initialize_keystore.js` and `provider.js` directly, not assumed from the
+old comment.
+
+**Fix:** `src/oauth/oidcProvider.ts` gained `loadJwks()`/`loadCookieKeys()` — fail-closed at module load
+(the `Provider` is constructed synchronously at import time, so a misconfigured deployment now fails at
+startup, matching the existing `TOKEN_HMAC_SECRET`/`PII_SECRET_KEY` fail-closed convention). `OAUTH_JWKS`
+holds a JSON-encoded JWKS with one EC P-256 private key (chosen over RSA for size/simplicity — nothing
+here needs RSA-specific compatibility, no `openid` scope/ID tokens are issued, and `jwkSignatureAlgorithms`
+in the library maps P-256 to `ES256` automatically); `OAUTH_COOKIE_KEYS` holds one or more comma-separated
+secrets for Koa's Keygrip cookie signing. Each of local/staging/production got its own freshly generated,
+never-shared key pair, matching the existing convention that secrets don't cross environments.
+
+**Verified live, not just typechecked:** booted the backend locally against the new local `.env` values —
+`GET /oauth/jwks` served the real generated EC key (matching kid/x/y, not `keystore-CHANGE-ME`), and the
+old `oidc-provider WARNING: quick start development-only signing keys are used` startup warning is gone
+from the boot log. 623/623 backend tests pass, including 6 new ones covering `loadJwks`/`loadCookieKeys`
+directly (missing env var, invalid JSON, valid parse, single vs. comma-separated cookie keys). A new
+Jest `setupFiles` entry (`test/setupEnv.ts`) was required — the eager module-load-time check means the
+existing per-test `process.env[...] = ...` pattern (used for `TOKEN_HMAC_SECRET`) is too late, since
+Jest's ES-module import hoisting runs before any test-body code; `setupFiles` runs before a test file's
+own imports are evaluated, which per-test `beforeAll` blocks do not.
+
+**Pending:** the actual Railway `staging`/`production` env vars have not been set yet — generated but not
+applied, since pushing new secrets to live shared infrastructure needs the user's explicit go-ahead
+(distinct from the go-ahead to write the code). Once applied, every existing OAuth session on that
+environment (i.e., the one verified claude.ai connection from §7) will need to reconnect once — expected
+and one-time, better to absorb now than after real researchers are connected.

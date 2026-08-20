@@ -12,12 +12,6 @@ import { PrismaOidcAdapter } from './prismaOidcAdapter';
 // provider; nothing calls it yet outside server.ts's mount.
 //
 // KNOWN PHASE 2 LIMITATIONS (tracked, not yet closed):
-// - `jwks` and `cookies.keys` are left unset, so oidc-provider falls back to
-//   its own ephemeral, regenerated-on-restart defaults (with a startup
-//   warning). Fine for now — nothing depends on either surviving a restart
-//   yet, since Phase 3's login/consent UI (the only thing that actually
-//   drives an `/auth` round trip) doesn't exist. Must be replaced with a
-//   persisted key set (env-provided, generated once) before Phase 3 ships.
 // - `interactions.url` points at a frontend route
 //   (`/oauth/interaction/:uid`) that Phase 3 has not built yet — visiting
 //   `/oauth/auth` today redirects to a 404. That's expected at this phase.
@@ -42,6 +36,41 @@ export function resolveOrigin(env: NodeJS.ProcessEnv = process.env): string {
 
 export function resolveIssuer(env: NodeJS.ProcessEnv = process.env): string {
   return `${resolveOrigin(env)}/oauth`;
+}
+
+// Persisted signing/cookie keys — required, fail-closed if missing. Without
+// these, oidc-provider falls back to a *static* RSA private key shipped
+// inside the library itself (lib/consts/dev_keystore.js, kid
+// "keystore-CHANGE-ME") for JWKS, and to no cookie signing at all (empty
+// `app.keys`, so the session/interaction cookies carry no integrity check).
+// The dev keystore isn't "ephemeral" as earlier notes here assumed — it's
+// the exact same public private key in every install of this library
+// worldwide, publicly readable on npm. Both are read eagerly at module load
+// (the Provider below is constructed synchronously at import time), so a
+// misconfigured deployment fails at startup, not on a researcher's first
+// OAuth attempt.
+export function loadJwks(env: NodeJS.ProcessEnv = process.env): Configuration['jwks'] {
+  const raw = env['OAUTH_JWKS'];
+  if (!raw) {
+    throw new Error(
+      'OAUTH_JWKS env var is not set. Generate a fresh key with: node -e "console.log(JSON.stringify({keys:[require(\'crypto\')' +
+        '.generateKeyPairSync(\'ec\',{namedCurve:\'P-256\'}).privateKey.export({format:\'jwk\'})]}))" — see .env.example.',
+    );
+  }
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    return parsed as Configuration['jwks'];
+  } catch (cause) {
+    throw new Error('OAUTH_JWKS env var is not valid JSON', { cause });
+  }
+}
+
+export function loadCookieKeys(env: NodeJS.ProcessEnv = process.env): string[] {
+  const raw = env['OAUTH_COOKIE_KEYS'];
+  if (!raw) {
+    throw new Error('OAUTH_COOKIE_KEYS env var is not set. Generate with: openssl rand -hex 32 — see .env.example.');
+  }
+  return raw.split(',').map((key) => key.trim()).filter(Boolean);
 }
 
 // Resolves an oidc-provider accountId (== Researcher.id) back to a real,
@@ -139,9 +168,12 @@ const configuration: Configuration = {
   // cookies module infers from `ctx.secure` (true here thanks to
   // `oidcProvider.proxy = true` below).
   cookies: {
+    keys: loadCookieKeys(),
     long: { sameSite: 'none' },
     short: { sameSite: 'none' },
   },
+
+  jwks: loadJwks(),
 
   interactions: {
     url: (_ctx, interaction) => {
