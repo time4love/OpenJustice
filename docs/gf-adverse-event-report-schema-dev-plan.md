@@ -634,10 +634,42 @@ implementation: likely a new `MentionType.REPORT_PATTERN` whose `refId` encodes 
 rather than a database ID, but that's a proposal, not a decision — flag for discussion when this phase
 starts.
 
-### Phase 8 — Frontend public intake form
+### Phase 8 — Frontend public intake form — started, exploration done, no code yet, 2026-08-20
 Multi-step questionnaire (domain → category → conditional sub-fields → contact verification → submit),
 Hebrew-first RTL per the app's existing convention. Wires in §4's methodology copy — **requires Hebrew
-translation first** (§4 is English-only today).
+translation first** (§4 is English-only today). Also in scope: a homepage CTA linking to the new intake
+flow — nothing currently points at it, so it isn't discoverable.
+
+**Frontend conventions confirmed** (Explore agent pass, not yet acted on):
+- **Route**: `src/app/[locale]/reports/new/page.tsx`, matching `theses/new/page.tsx`'s pattern.
+  `[locale]`-prefixed App Router via next-intl; RTL comes from `dir` set on `<html>` in the root
+  `layout.tsx` off `getLocale()`.
+- **i18n**: `useTranslations('namespace')` (next-intl, client components) — e.g.
+  `CategoryBadges.tsx:28` reading the `categories` namespace. All the enum-label namespaces added this
+  session (§2.7) are ready to consume this way.
+- **Supabase client — reuse, don't rebuild**: `src/lib/supabase.ts` is a raw-fetch client (no SDK) —
+  `sendMagicLink(email, redirectTo?)` (line 37, POSTs `/auth/v1/otp`) is the exact call to trigger
+  reporter email verification. Real usage precedent: `TopNav.tsx`'s `LoginStep` (lines 101-113).
+- **No form library** — plain `useState` state machines throughout (`WhistleblowerModal.tsx`'s
+  `Stage` type; `submit/page.tsx`'s `Phase` type is the closest existing analog to a multi-step wizard).
+  No shared `Button`/`Input` components exist — every input is raw HTML + inline Tailwind. Tailwind v4,
+  tokens in `src/app/globals.css` under `@theme inline`, no `tailwind.config.js`.
+- **Real design gap, not yet resolved**: the existing `/auth/callback` page
+  (`src/app/[locale]/auth/callback/page.tsx`) is built for *Researcher* login — it extracts the
+  access token and calls `AuthContext.login(accessToken)`, establishing a persistent session. The
+  reporter flow needs something structurally different: a **one-shot** flow where the token completes
+  a single `POST /api/reports/{medical,social-economic}` call and is then burned server-side
+  (`requireVerifiedReporterEmail` deletes the Supabase account in the same request — see §2.8/§3). Reusing
+  `/auth/callback` as-is would be wrong; a separate callback route is needed. Since a full page
+  navigation to the magic-link email and back loses in-memory React state, the filled-in form payload
+  needs to survive the round trip — the obvious mechanism is `sessionStorage` (save on "send
+  verification link", read + submit + clear on the callback page), not yet decided against alternatives.
+- **Two domains, roughly symmetric effort** — Medical has more fields/conditional logic (proves the
+  harder case); Social/Economic is simpler. Build one complete vertical slice first if scope needs
+  splitting across sessions, not partial work on both.
+
+**Next session should**: read this section, then design and build the callback-completion approach
+first (it's the one piece with no existing precedent to copy), before the form UI itself.
 
 ### Phase 9 — Frontend public aggregate/pattern display
 Public-facing view of report counts by category. Must implement the confidence-tiering distinction
