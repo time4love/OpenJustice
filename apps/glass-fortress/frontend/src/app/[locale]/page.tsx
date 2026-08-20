@@ -339,7 +339,7 @@ export default function HomePage() {
           <h2 className="text-2xl font-bold text-slate-900 text-center mb-8">
             {t('getInvolvedHeading')}
           </h2>
-          <StaggerContainer className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+          <StaggerContainer className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
             {/* Whistleblower door */}
             <StaggerItem variant="left" whileHover={{ y: -5 }}>
               <div className="h-full bg-slate-900 rounded-2xl p-8 text-white flex flex-col gap-4">
@@ -378,6 +378,29 @@ export default function HomePage() {
                   className="self-start px-5 py-2.5 rounded-lg bg-slate-900 text-white text-sm font-semibold hover:bg-slate-800 transition-colors"
                 >
                   {t('door2Btn')}
+                </Link>
+              </div>
+            </StaggerItem>
+
+            {/* Affected-person door — the public adverse-outcome self-report
+                intake. Nothing else on the site points at /reports/new, so
+                this card is the entire discovery path for it. */}
+            <StaggerItem variant="scale" className="sm:col-span-2 lg:col-span-1" whileHover={{ y: -5 }}>
+              <div className="h-full bg-white border-2 border-amber-200 rounded-2xl p-8 flex flex-col gap-4">
+                <Image
+                  src="/icon_anon.png"
+                  alt=""
+                  width={64}
+                  height={64}
+                  className="w-14 h-14 drop-shadow-[0_6px_10px_rgba(15,23,42,0.15)]"
+                />
+                <h3 className="text-xl font-bold text-slate-900">{t('door3Title')}</h3>
+                <p className="text-slate-500 text-sm leading-relaxed flex-1">{t('door3Body')}</p>
+                <Link
+                  href="/reports/new"
+                  className="self-start px-5 py-2.5 rounded-lg bg-amber-700 text-white text-sm font-semibold hover:bg-amber-800 transition-colors"
+                >
+                  {t('door3Btn')}
                 </Link>
               </div>
             </StaggerItem>

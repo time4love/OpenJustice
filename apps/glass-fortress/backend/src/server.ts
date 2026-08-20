@@ -24,6 +24,7 @@ import { mentionRouter } from './routes/mentionRoutes';
 import { thesisRouter } from './routes/thesisRoutes';
 import { mcpRouter } from './mcp/mcpRoutes';
 import { authRouter } from './routes/authRoutes';
+import { reportRouter } from './routes/reportRoutes';
 import { prisma } from './lib/prisma';
 import { verifyEnvironmentIdentityAtStartup } from './lib/appEnv';
 import { requireStagingAccess } from './middleware/stagingAccess';
@@ -160,6 +161,7 @@ app.use('/api/figures', figuresRouter);
 app.use('/api/mentions', mentionRouter);
 app.use('/api/thesis', thesisRouter);
 app.use('/api/auth', authRouter);
+app.use('/api/reports', reportRouter);
 
 // ---------------------------------------------------------------------------
 // Global error handler — must be registered AFTER all routes.
