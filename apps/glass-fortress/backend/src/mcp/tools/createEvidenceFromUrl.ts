@@ -4,6 +4,7 @@ import { IntakeAgent } from '../../services/IntakeAgent';
 import { getResearcherId } from '../../context/researcherContext';
 import { Web3Service } from '../../services/Web3Service';
 import { buildEvidenceAnalysisData } from '../../lib/evidenceCreateData';
+import { upsertKeyFigures } from '../../lib/upsertKeyFigures';
 
 // IntakeAgent is instantiated per-call — construction is cheap (no LLM work);
 // only .analyzeText() triggers network I/O.
@@ -96,12 +97,7 @@ export async function createEvidenceFromUrlHandler(input: {
   }
 
   // 6. Upsert KeyFigure records (idempotent)
-  if (analysis.keyFigures.length > 0) {
-    await prisma.keyFigure.createMany({
-      data: analysis.keyFigures.map((name) => ({ name })),
-      skipDuplicates: true,
-    });
-  }
+  await upsertKeyFigures(analysis.keyFigures);
 
   // 7. Persist as PENDING_REVIEW — NO on-chain hash, NO Pinecone upsert
   const researcherId = getResearcherId();

@@ -3,9 +3,10 @@
 **Status:** Phase 1 ✅ DONE 2026-08-20, committed on `refactor/gf-evidence-shared-helpers`
 (`c13baba`), pushed, PR not yet opened. Phase 2 ✅ DONE 2026-08-20, committed on
 `schema/gf-evidence-additional-screenshot-urls` (`a3496fe`), pushed, PR not yet opened, migration
-**applied to the staging DB** — see §5. Phases 3-5 not started. Supersedes the first draft (same date):
-the permission model and multi-screenshot handling were reconsidered and locked in below before any
-implementation began, per explicit user request to agree on the solution first.
+**applied to the staging DB** — see §5. Phase 3 in progress on `feat/gf-evidence-recovery-phase3`.
+Supersedes the first draft (same date): the permission model and multi-screenshot handling were
+reconsidered and locked in below before any implementation began, per explicit user request to agree on
+the solution first.
 
 Phase 2's migration surfaced a pre-existing, unrelated schema/DB drift risk (Prisma's auto-diff
 proposing to drop the raw-SQL `evidence_embeddings` table) — fixed separately on

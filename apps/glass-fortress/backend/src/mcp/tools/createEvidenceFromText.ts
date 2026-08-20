@@ -4,6 +4,7 @@ import { IntakeAgent } from '../../services/IntakeAgent';
 import { getResearcherId } from '../../context/researcherContext';
 import { Web3Service } from '../../services/Web3Service';
 import { buildEvidenceAnalysisData } from '../../lib/evidenceCreateData';
+import { upsertKeyFigures } from '../../lib/upsertKeyFigures';
 
 function getAgent(): IntakeAgent {
   return new IntakeAgent();
@@ -63,12 +64,7 @@ export async function createEvidenceFromTextHandler(input: {
   }
 
   // Upsert KeyFigure records
-  if (analysis.keyFigures.length > 0) {
-    await prisma.keyFigure.createMany({
-      data: analysis.keyFigures.map((name) => ({ name })),
-      skipDuplicates: true,
-    });
-  }
+  await upsertKeyFigures(analysis.keyFigures);
 
   // Persist as PENDING_REVIEW
   const researcherId = getResearcherId();
