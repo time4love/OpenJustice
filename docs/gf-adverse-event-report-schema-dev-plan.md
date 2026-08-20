@@ -892,6 +892,41 @@ Art. 9(2)(a) consent must be *specific*, so blanket wording was not merely noise
 legal shape: asking consent to process a special category the reporter never supplied. The label now
 names health data always, and religious belief only when that one answer is actually selected.
 
+### Phase 6b — Disclosure control: the threshold was necessary and not sufficient, 2026-08-20
+
+Found while starting Phase 9, by reading the suppression code before rendering it. Phase 6 nulled any
+count below `SUPPRESSION_THRESHOLD` and stopped there. Two leaks survived that, and **both hand back
+the exact number the threshold withheld.**
+
+**1. Existence.** A cell returned as `{"dimensions":{"symptomCategory":"ONCOLOGIC"},"count":null}` still
+says a report with that combination exists. With `reporterAgeRange` and `reporterGender` among the
+available dimensions, "a man aged 18-29 reported a cancer diagnosis" is disclosed with no count at all
+— exactly the quasi-identifier re-identification §2.8 cites Sweeney for, and it was reproducible
+against live staging. Suppressed cells are now **dropped, not blanked**; `PatternCell.count` is no
+longer nullable, so "present but withheld" is not a state the type can express.
+
+**2. Recovery by subtraction.** `CUBE` returns every rollup level, so a coarser cell is the sum of the
+finer cells beneath it: `total 100 − 40 − 30 − 25 = 5` republishes the suppressed value exactly. This
+is why official practice pairs primary with **complementary** suppression; Phase 6 implemented only the
+first, despite `SUPPRESSION_THRESHOLD = 10` being taken from the NCHS standard that requires both.
+
+**The complementary step removes the suppressed cell's ANCESTORS, not a sibling** — and the first
+implementation here got that wrong, which is worth recording because the wrong version looks correct.
+Sacrificing the smallest surviving sibling does close the equation, but it is worse twice over: it
+destroys a legitimate count (25 real reports, in the worked example), *and* the surviving total still
+bounds the two hidden values to a 10-wide range. Dropping the total instead publishes three real
+numbers rather than two and leaves the hidden cell bounded only by the threshold itself. Ancestors are
+removed transitively, so a cell suppressed at the finest level takes out its parent and then the grand
+total, and no chain of subtractions reaches it. Unrelated branches are untouched — control is not a
+blanket wipe.
+
+Verified the way this project's standard requires: the four new tests were run against the **old**
+implementation and all four fail there, so they demonstrably have teeth rather than merely passing.
+
+**Consequence for Phase 9**: at low volume the honest response is `[]` — no cells at all. The display's
+default state is therefore "nothing publishable yet", which must read as deliberate rather than broken,
+and is the state production will be in on day one.
+
 ### Phase 9 — Frontend public aggregate/pattern display
 Public-facing view of report counts by category. Must implement the confidence-tiering distinction
 flagged in §2.5 and §2.3: `MILITARY_DISCHARGE`/`EMPLOYMENT_TERMINATION` (EEOC/DoD-backed) and
