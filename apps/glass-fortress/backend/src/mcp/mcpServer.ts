@@ -18,6 +18,7 @@ import { suggestThesisSchema, suggestThesisHandler } from './tools/suggestThesis
 import { enrichEvidenceWithHistorySchema, enrichEvidenceWithHistoryHandler } from './tools/enrichEvidenceWithHistory';
 import { promoteEvidenceSchema, promoteEvidenceHandler } from './tools/promoteEvidence';
 import { generateFoiaRequestSchema, generateFoiaRequestHandler } from './tools/generateFoiaRequest';
+import { recoverEvidenceFromScreenshotSchema, recoverEvidenceFromScreenshotHandler } from './tools/recoverEvidenceFromScreenshot';
 
 // ---------------------------------------------------------------------------
 // Factory — creates a fresh McpServer per request.
@@ -330,6 +331,26 @@ export function createMcpServer(): McpServer {
     generateFoiaRequestSchema,
     async (input) => ({
       content: [{ type: 'text' as const, text: await generateFoiaRequestHandler(input) }],
+    }),
+  );
+
+  // -------------------------------------------------------------------------
+  // Tool: recover_evidence_from_screenshot  [WRITE — STAGING GATE]
+  // For when a source URL is blocked or unarchived: accepts one or more
+  // screenshots (in reading order) in place of a direct fetch. Synthesizes
+  // them into a single analysis and saves as PENDING_REVIEW — same rule as
+  // create_evidence_from_text, since the paired URL is asserted, not fetched.
+  // -------------------------------------------------------------------------
+  server.tool(
+    'recover_evidence_from_screenshot',
+    'Submit one or more screenshots of a page that could not be fetched directly (blocked, not in ' +
+      'the Wayback Machine). Screenshots are treated as sequential parts of one document and ' +
+      'synthesized into a single AI analysis. Saved as PENDING_REVIEW — the paired source URL is ' +
+      'asserted, not verified by a server fetch, same rule that governs create_evidence_from_text. ' +
+      'Not registered on-chain or indexed for search until a human reviewer promotes it via the UI.',
+    recoverEvidenceFromScreenshotSchema,
+    async (input) => ({
+      content: [{ type: 'text' as const, text: await recoverEvidenceFromScreenshotHandler(input) }],
     }),
   );
 

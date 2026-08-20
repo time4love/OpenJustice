@@ -3,12 +3,13 @@
 **Status:** Phase 1 ✅ DONE 2026-08-20, committed on `refactor/gf-evidence-shared-helpers`
 (`c13baba`), pushed, PR not yet opened. Phase 2 ✅ DONE 2026-08-20, committed on
 `schema/gf-evidence-additional-screenshot-urls` (`a3496fe`), pushed, PR not yet opened, migration
-**applied to the staging DB** — see §5. Phase 3 ✅ DONE 2026-08-20 on `feat/gf-evidence-recovery-phase3`
-(branched from `schema/gf-evidence-additional-screenshot-urls`, merged with `refactor/gf-evidence-shared-helpers`
-so both Phase 1 and Phase 2 are ancestors — those two branches never shared a common base, both forked
-independently from `master`). Phases 4-5 not started. Supersedes the first draft (same date): the
-permission model and multi-screenshot handling were reconsidered and locked in below before any
-implementation began, per explicit user request to agree on the solution first.
+**applied to the staging DB** — see §5. Phase 3 ✅ DONE 2026-08-20 and Phase 4 ✅ DONE 2026-08-20, both on
+`feat/gf-evidence-recovery-phase3` (branched from `schema/gf-evidence-additional-screenshot-urls`, merged
+with `refactor/gf-evidence-shared-helpers` so both Phase 1 and Phase 2 are ancestors — those two branches
+never shared a common base, both forked independently from `master`). Phase 5 (frontend) not started.
+Supersedes the first draft (same date): the permission model and multi-screenshot handling were
+reconsidered and locked in below before any implementation began, per explicit user request to agree on
+the solution first.
 
 Phase 2's migration surfaced a pre-existing, unrelated schema/DB drift risk (Prisma's auto-diff
 proposing to drop the raw-SQL `evidence_embeddings` table) — fixed separately on
@@ -272,12 +273,58 @@ conflict, in this doc's own status/Phase-2 sections (both branches had edited th
 the more current content. Worth resolving before Phase 4: get PR #71 and #72 merged to `staging` so future
 branches fork from a single base instead of repeating this merge.
 
-### Phase 4 — Public REST routes + MCP tool
-§3.3 and §3.4. New tests mirroring the existing route/tool test files: happy path (1 screenshot), happy
-path (multiple screenshots → `additionalScreenshotUrls` populated in order), oversized/over-count
-rejected, anonymous `createdById: null` on the REST path vs. stamped on the MCP path. Full suite must
-stay green end to end (confirm current count before merging — recorded at 612/612 as of the last MCP
-OAuth ship, but other work may have moved it since).
+### Phase 4 — ✅ DONE 2026-08-20 — Public REST routes + MCP tool
+Implemented as designed in §3.3 and §3.4, on branch `feat/gf-evidence-recovery-phase3` (same branch as
+Phase 3 — not split into its own branch as originally suggested in §6, since both are small and land
+together cleanly).
+
+- `POST /api/evidence/recover-intake` and `POST /api/evidence/recover-confirm`
+  ([evidenceRoutes.ts](../apps/glass-fortress/backend/src/routes/evidenceRoutes.ts)) — a new
+  `uploadScreenshots` multer config (JPEG/PNG only, no PDF; `.array('screenshots', 10)`), both behind
+  `aiCostLimiter` like every other AI/chain-triggering route. `/recover-intake` calls
+  `analyzeMultiImageEvidence` and returns the draft analysis, no persistence (mirrors `/intake`).
+  `/recover-confirm` validates the round-tripped `analysis` JSON against `IntakeOutputSchema`, then calls
+  `persistScreenshotEvidence` with `createdById: null` — always anonymous, since this route has no
+  researcher context. Both reuse `MAX_EVIDENCE_FILE_BYTES` from the Phase 1 shared constants.
+- `recover_evidence_from_screenshot`
+  ([recoverEvidenceFromScreenshot.ts](../apps/glass-fortress/backend/src/mcp/tools/recoverEvidenceFromScreenshot.ts))
+  — schema exactly as designed in §3.4. Decodes each screenshot's base64, rejects any over
+  `MAX_EVIDENCE_FILE_BYTES` before calling the LLM, builds a `contextNote` from `failedUrl`/
+  `failureReason`, calls `analyzeMultiImageEvidence` then `persistScreenshotEvidence` with
+  `createdById: getResearcherId()`. Registered in
+  [mcpServer.ts](../apps/glass-fortress/backend/src/mcp/mcpServer.ts) and added to both `WRITE_TOOLS`
+  (the actual auth gate) and the `GET /api/mcp` health-check tool list in
+  [mcpRoutes.ts](../apps/glass-fortress/backend/src/mcp/mcpRoutes.ts) — bearer-gated, same as the other
+  two `create_evidence_from_*` tools.
+- New tests: [recoverEvidenceFromScreenshot.test.ts](../apps/glass-fortress/backend/test/recoverEvidenceFromScreenshot.test.ts)
+  (9 cases — synthesized-analysis happy path, image order/decoding, contextNote construction with/without
+  `failureReason`, oversized-screenshot rejection before the LLM call, `createdById` stamped inside a
+  `researcherContext.run()` vs. unset outside one, duplicate short-circuit, error propagation) and
+  [evidenceRecoverRoutes.test.ts](../apps/glass-fortress/backend/test/evidenceRecoverRoutes.test.ts) (16
+  cases over real HTTP via `supertest` — happy path for both routes, multi-screenshot ordering, no-file/
+  missing-body/bad-JSON/schema-invalid 400s, non-image and >10-file multer rejections, duplicate
+  short-circuit, and an upload-failure abort). Full suite green: **37/37 suites, 656/656 tests**.
+  Typecheck clean; `eslint` on all four touched/new files surfaces only the same pre-existing repo-wide
+  findings confirmed in Phase 3 (deprecated `z.string().url()`/`.flatten()`/`server.tool()`, number-in-
+  template-literal) — every one already present on unrelated pre-existing lines in the same files, not
+  something these changes introduced.
+- **Two real bugs found and fixed while writing the route/tool tests, not during design** — worth keeping
+  as testing lessons for this codebase specifically:
+  1. `evidenceRoutes.ts`'s `getIntakeAgent()` (and `getStorageService()`) are **module-level singletons**
+     — constructed once and reused for the process's lifetime. A test file that reassigns
+     `MockIntakeAgent.mockImplementation(...)` fresh inside `beforeEach` (the pattern
+     `mcpTools.test.ts` uses safely, because its MCP-tool `getAgent()` calls are un-cached, `new
+     IntakeAgent()` per request) silently breaks against these two routes: the singleton is captured on
+     whichever test runs first, and every later test's assertions read an unused mock while the real
+     calls go to the first test's stale one. Fix: declare the mock function reference once at module
+     scope and reconfigure *it* (`.mockReset().mockResolvedValue(...)`) per test, never reassign
+     `mockImplementation` itself after the first construction.
+  2. `mockResolvedValueOnce`/`mockRejectedValueOnce` queues are **not** cleared by `clearMocks: true` /
+     `jest.clearAllMocks()` (those only clear call history, not queued implementations). A test that
+     queues N "Once" values but only consumes M < N leaks the remainder into the next test's first calls.
+     Fix: `.mockReset()` immediately before re-queuing Once values in a shared `beforeEach`.
+  Neither bug is specific to this feature — both are latent traps for any future test file that mocks a
+  cached-singleton dependency or shares an Once-queued mock across a `beforeEach`.
 
 ### Phase 5 — Frontend: render `additionalScreenshotUrls` on the evidence detail page
 `apps/glass-fortress/frontend` — the evidence detail page/component that currently renders `fileUrl`
