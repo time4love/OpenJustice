@@ -1032,9 +1032,13 @@
         "label": "Do you have documentation?",
         "help": "Whether you have a paper trail — a termination letter, a discharge order, a complaint filed with an agency. Like the medical form's provider-confirmation question, this doesn't gate acceptance, but it affects confidence."
       },
-      "timingRelativeToEvent": {
-        "label": "How long after vaccination did it happen?",
-        "help": "How long after vaccination this happened. As with the medical form, we ask for a time range rather than an exact date to protect your privacy."
+      "vaccinationStatus": {
+        "label": "Were you vaccinated?",
+        "help": "This is the single most important question on this form. The best-documented consequences here — employment termination, military discharge — happened to people who declined vaccination, while family rupture and ostracization genuinely happen in both directions. Without your answer, a report of either kind is indistinguishable from the other and cannot be counted honestly. \"Prefer not to say\" is a real option; those reports are simply left out of any claim about direction."
+      },
+      "occurredDuring": {
+        "label": "When did this happen?",
+        "help": "Roughly when the consequence occurred. We ask for a period rather than a date, both to protect your privacy and because vaccination requirements arrived in dated waves — the period is what connects what happened to you to a specific policy."
       }
     },
     "about": {
@@ -1082,5 +1086,19 @@
       "socialFamilyHeading": "Family and social impact",
       "socialFamily": "We include family estrangement and social ostracization because real people have reported them, and qualitative research on healthcare workers documents real distress. We're honest that this is less systematically studied than the employment/military categories above — your report still matters, but we won't overstate what the evidence shows."
     }
+  },
+  "vaccinationStatuses": {
+    "RECEIVED": "I was vaccinated",
+    "NOT_RECEIVED": "I was not vaccinated",
+    "PARTIALLY_RECEIVED": "I was partially vaccinated",
+    "UNDISCLOSED": "Prefer not to say"
+  },
+  "reportCalendarPeriods": {
+    "YEAR_2020_OR_EARLIER": "2020 or earlier",
+    "YEAR_2021_H1": "First half of 2021",
+    "YEAR_2021_H2": "Second half of 2021",
+    "YEAR_2022": "2022",
+    "YEAR_2023_OR_LATER": "2023 or later",
+    "UNKNOWN": "Unknown"
   }
 }

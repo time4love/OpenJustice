@@ -110,13 +110,14 @@ describe('socialEconomicImpactReportSchema', () => {
   it('accepts a minimal report and applies defaults', () => {
     const result = socialEconomicImpactReportSchema.safeParse({
       impactCategory: 'MILITARY_DISCHARGE',
+      vaccinationStatus: 'NOT_RECEIVED',
     });
     expect(result.success).toBe(true);
     if (result.success) {
       expect(result.data.formalBasisAsserted).toBe('UNKNOWN');
       expect(result.data.consequenceSeverity).toBe('NONE');
       expect(result.data.outcomeStatus).toBe('UNKNOWN');
-      expect(result.data.timingRelativeToEvent).toBe('UNKNOWN');
+      expect(result.data.occurredDuring).toBe('UNKNOWN');
     }
   });
 
@@ -127,7 +128,8 @@ describe('socialEconomicImpactReportSchema', () => {
       consequenceSeverity: 'CAREER_TRAJECTORY_IMPACT',
       outcomeStatus: 'RESOLVED_REVERSED',
       documentationAvailable: true,
-      timingRelativeToEvent: 'WITHIN_1_MONTH',
+      vaccinationStatus: 'NOT_RECEIVED',
+      occurredDuring: 'YEAR_2021_H2',
     });
     expect(result.success).toBe(true);
   });
@@ -135,7 +137,61 @@ describe('socialEconomicImpactReportSchema', () => {
   it('rejects an unknown impactCategory value', () => {
     const result = socialEconomicImpactReportSchema.safeParse({
       impactCategory: 'NOT_A_REAL_CATEGORY',
+      vaccinationStatus: 'NOT_RECEIVED',
     });
     expect(result.success).toBe(false);
+  });
+
+  // vaccinationStatus is what tells a refusal-side consequence apart from a
+  // vaccination-side one. Every other optional field here defaults; this one
+  // deliberately must not, because a silent UNDISCLOSED would be indistinguishable
+  // from a reporter who genuinely chose not to say.
+  it('REQUIRES vaccinationStatus — it does not quietly default', () => {
+    const result = socialEconomicImpactReportSchema.safeParse({
+      impactCategory: 'FAMILY_RELATIONSHIP_RUPTURE',
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues.some((i) => i.path.includes('vaccinationStatus'))).toBe(true);
+    }
+  });
+
+  it('accepts UNDISCLOSED as a real, explicitly chosen answer', () => {
+    const result = socialEconomicImpactReportSchema.safeParse({
+      impactCategory: 'FAMILY_RELATIONSHIP_RUPTURE',
+      vaccinationStatus: 'UNDISCLOSED',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('records both directions of harm distinctly', () => {
+    // The whole point of the field: these two reports describe opposite
+    // situations and previously produced identical rows.
+    const refused = socialEconomicImpactReportSchema.safeParse({
+      impactCategory: 'FAMILY_RELATIONSHIP_RUPTURE',
+      vaccinationStatus: 'NOT_RECEIVED',
+    });
+    const vaccinated = socialEconomicImpactReportSchema.safeParse({
+      impactCategory: 'FAMILY_RELATIONSHIP_RUPTURE',
+      vaccinationStatus: 'RECEIVED',
+    });
+    expect(refused.success && vaccinated.success).toBe(true);
+    if (refused.success && vaccinated.success) {
+      expect(refused.data.vaccinationStatus).not.toBe(vaccinated.data.vaccinationStatus);
+    }
+  });
+
+  it('no longer accepts the mis-anchored timingRelativeToEvent field', () => {
+    // It asked "how long after vaccination" of reporters who were never
+    // vaccinated. Dropped, not renamed — see the migration header.
+    const result = socialEconomicImpactReportSchema.safeParse({
+      impactCategory: 'MILITARY_DISCHARGE',
+      vaccinationStatus: 'NOT_RECEIVED',
+      timingRelativeToEvent: 'WITHIN_1_MONTH',
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data).not.toHaveProperty('timingRelativeToEvent');
+    }
   });
 });

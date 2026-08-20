@@ -41,7 +41,9 @@ export type EnumNamespace =
   | 'consequenceSeverity'
   | 'socialOutcomeStatus'
   | 'reporterAgeRanges'
-  | 'reporterGenders';
+  | 'reporterGenders'
+  | 'vaccinationStatuses'
+  | 'reportCalendarPeriods';
 
 /** The union of valid values for one taxonomy enum, e.g. 'ONCOLOGIC' | … */
 export type EnumValue<N extends EnumNamespace> = keyof Messages[N] & string;
@@ -62,6 +64,8 @@ export type ConsequenceSeverity = EnumValue<'consequenceSeverity'>;
 export type SocialOutcomeStatus = EnumValue<'socialOutcomeStatus'>;
 export type ReporterAgeRange = EnumValue<'reporterAgeRanges'>;
 export type ReporterGender = EnumValue<'reporterGenders'>;
+export type VaccinationStatus = EnumValue<'vaccinationStatuses'>;
+export type ReportCalendarPeriod = EnumValue<'reportCalendarPeriods'>;
 
 /**
  * The two categories the medical form branches on. Named constants rather

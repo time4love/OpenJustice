@@ -29,6 +29,8 @@ import {
   type SocialOutcomeStatus,
   type ReporterAgeRange,
   type ReporterGender,
+  type VaccinationStatus,
+  type ReportCalendarPeriod,
 } from '@/lib/reportEnums';
 
 // ---------------------------------------------------------------------------
@@ -105,7 +107,11 @@ interface SocialAnswers {
   consequenceSeverity: ConsequenceSeverity;
   outcomeStatus: SocialOutcomeStatus;
   documentationAvailable?: boolean;
-  timingRelativeToEvent: ReportTimingWindow;
+  // Undefined until answered on purpose: the intake schema requires this one,
+  // so an unanswered form must fail the step rather than send a default that
+  // would read as a deliberate "prefer not to say".
+  vaccinationStatus?: VaccinationStatus;
+  occurredDuring: ReportCalendarPeriod;
 }
 
 // Defaults mirror the Prisma column defaults and the intake zod schema's
@@ -122,7 +128,7 @@ const EMPTY_SOCIAL: SocialAnswers = {
   formalBasisAsserted: 'UNKNOWN',
   consequenceSeverity: 'NONE',
   outcomeStatus: 'UNKNOWN',
-  timingRelativeToEvent: 'UNKNOWN',
+  occurredDuring: 'UNKNOWN',
 };
 
 /**
@@ -178,6 +184,14 @@ function medicalPayload(a: MedicalAnswers): Record<string, unknown> {
  * answer while the answer is in front of them, not from a 400 after they
  * have moved on two steps.
  */
+function missingRequiredSocialDetail(a: SocialAnswers): boolean {
+  // vaccinationStatus is the one field the social intake schema requires and
+  // does not default. It is also the field that decides whether the row can be
+  // read as refusal-side or vaccination-side harm at all, so an unanswered
+  // form must stop here rather than reach the server and 400.
+  return a.vaccinationStatus === undefined;
+}
+
 function missingRequiredDetail(a: MedicalAnswers): boolean {
   if (a.symptomCategory === ONCOLOGIC) {
     return a.cancerType === undefined || a.cancerCourse === undefined;
@@ -773,6 +787,19 @@ function SocialDetails({
 
   return (
     <>
+      {/* First, and visually set apart: every answer below is read through it.
+          A consequence of refusing and a consequence of having been vaccinated
+          are opposite claims that otherwise produce identical rows. */}
+      <div className="rounded-xl border border-amber-200 bg-amber-50/50 p-4">
+        <EnumSelect
+          namespace="vaccinationStatuses"
+          label={ts('vaccinationStatus.label')}
+          help={ts('vaccinationStatus.help')}
+          value={answers.vaccinationStatus}
+          onChange={(v) => setAnswers((a) => ({ ...a, vaccinationStatus: v }))}
+          placeholder="—"
+        />
+      </div>
       <EnumSelect
         namespace="formalBasisAsserted"
         label={ts('formalBasisAsserted.label')}
@@ -795,11 +822,11 @@ function SocialDetails({
         onChange={(v) => setAnswers((a) => ({ ...a, outcomeStatus: v }))}
       />
       <EnumSelect
-        namespace="reportTimingWindows"
-        label={ts('timingRelativeToEvent.label')}
-        help={ts('timingRelativeToEvent.help')}
-        value={answers.timingRelativeToEvent}
-        onChange={(v) => setAnswers((a) => ({ ...a, timingRelativeToEvent: v }))}
+        namespace="reportCalendarPeriods"
+        label={ts('occurredDuring.label')}
+        help={ts('occurredDuring.help')}
+        value={answers.occurredDuring}
+        onChange={(v) => setAnswers((a) => ({ ...a, occurredDuring: v }))}
       />
       <BooleanChoice
         label={ts('documentationAvailable.label')}
@@ -944,10 +971,13 @@ function ReviewStep({
         {!isMedical && social.impactCategory && (
           <>
             <ReviewRow label={ts('impactCategory.label')} namespace="socialEconomicImpactCategories" value={social.impactCategory} />
+            {social.vaccinationStatus && (
+              <ReviewRow label={ts('vaccinationStatus.label')} namespace="vaccinationStatuses" value={social.vaccinationStatus} />
+            )}
             <ReviewRow label={ts('formalBasisAsserted.label')} namespace="formalBasisAsserted" value={social.formalBasisAsserted} />
             <ReviewRow label={ts('consequenceSeverity.label')} namespace="consequenceSeverity" value={social.consequenceSeverity} />
             <ReviewRow label={ts('outcomeStatus.label')} namespace="socialOutcomeStatus" value={social.outcomeStatus} />
-            <ReviewRow label={ts('timingRelativeToEvent.label')} namespace="reportTimingWindows" value={social.timingRelativeToEvent} />
+            <ReviewRow label={ts('occurredDuring.label')} namespace="reportCalendarPeriods" value={social.occurredDuring} />
             <ReviewBooleanRow label={ts('documentationAvailable.label')} value={social.documentationAvailable} />
           </>
         )}
@@ -1176,14 +1206,14 @@ export default function NewReportPage() {
                 <SocialDetails answers={social} setAnswers={setSocial} />
               )}
             </div>
-            {domain === 'MEDICAL' && missingRequiredDetail(medical) && (
+            {(domain === 'MEDICAL' ? missingRequiredDetail(medical) : missingRequiredSocialDetail(social)) && (
               <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
                 {t('questions.requiredMissing')}
               </p>
             )}
             <PrimaryButton
               onClick={() => setStep('about')}
-              disabled={domain === 'MEDICAL' && missingRequiredDetail(medical)}
+              disabled={domain === 'MEDICAL' ? missingRequiredDetail(medical) : missingRequiredSocialDetail(social)}
             >
               {t('continue')}
             </PrimaryButton>

@@ -32,6 +32,8 @@ import {
   FormalBasisAsserted,
   ConsequenceSeverity,
   SocialOutcomeStatus,
+  VaccinationStatus,
+  ReportCalendarPeriod,
 } from '@prisma/client';
 
 // ---------------------------------------------------------------------------
@@ -159,7 +161,19 @@ export const socialEconomicImpactReportSchema = z.object({
   consequenceSeverity: z.enum(ConsequenceSeverity).default('NONE'),
   outcomeStatus: z.enum(SocialOutcomeStatus).default('UNKNOWN'),
   documentationAvailable: z.boolean().optional(),
-  timingRelativeToEvent: z.enum(ReportTimingWindow).default('UNKNOWN'),
+
+  // Deliberately NOT .default(...) — the only required field here besides
+  // impactCategory. It is the causal antecedent that makes a row in this
+  // domain interpretable at all (see schema.prisma's own comment), so a
+  // caller that omits it must get a 400 rather than a silent UNDISCLOSED
+  // that looks like a deliberate answer. The Prisma column keeps a default
+  // so the write is safe regardless; this is where the promise is kept.
+  vaccinationStatus: z.enum(VaccinationStatus),
+
+  // Calendar period, not an interval. The old timingRelativeToEvent asked
+  // "how long after vaccination" — an anchor that does not exist for a
+  // reporter who never was vaccinated.
+  occurredDuring: z.enum(ReportCalendarPeriod).default('UNKNOWN'),
 });
 
 export type SocialEconomicImpactReportInput = z.infer<typeof socialEconomicImpactReportSchema>;
