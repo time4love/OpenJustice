@@ -1,11 +1,18 @@
 # GF Blocked-URL Evidence Recovery — Dev Plan
 
 **Status:** Phase 1 ✅ DONE 2026-08-20, committed on `refactor/gf-evidence-shared-helpers`
-(`c13baba`), pushed, PR not yet opened. Phase 2 ✅ DONE 2026-08-20, on branch
-`schema/gf-evidence-additional-screenshot-urls`, migration **applied to the staging DB** — see §5.
-Phases 3-5 not started. Supersedes the first draft (same date): the permission model and
-multi-screenshot handling were reconsidered and locked in below before any implementation began, per
-explicit user request to agree on the solution first.
+(`c13baba`), pushed, PR not yet opened. Phase 2 ✅ DONE 2026-08-20, committed on
+`schema/gf-evidence-additional-screenshot-urls` (`a3496fe`), pushed, PR not yet opened, migration
+**applied to the staging DB** — see §5. Phases 3-5 not started. Supersedes the first draft (same date):
+the permission model and multi-screenshot handling were reconsidered and locked in below before any
+implementation began, per explicit user request to agree on the solution first.
+
+Phase 2's migration surfaced a pre-existing, unrelated schema/DB drift risk (Prisma's auto-diff
+proposing to drop the raw-SQL `evidence_embeddings` table) — fixed separately on
+`fix/gf-evidence-embeddings-schema-drift` (`2de874b`), not folded into this feature's branches since it's
+orthogonal. See [gf-prisma-migrate-dev-gotcha.md](/Users/jonathand/.claude/projects/-Users-jonathand-OpenJustice/memory/gf-prisma-migrate-dev-gotcha.md)
+for the root cause and the prevention mechanism now in place (`npm run db:check-drift`, documented in the
+root `CLAUDE.md`).
 **Created:** 2026-08-20. **Revised:** 2026-08-20 (permission tier + multi-screenshot resolved).
 **Scope:** Glass Fortress backend (`apps/glass-fortress/backend`) + a small, necessary frontend addition
 (`apps/glass-fortress/frontend`) so reviewers can actually see multi-screenshot evidence. No Bronze
