@@ -6,6 +6,7 @@ const config: Config = {
   rootDir: '.',
   testMatch: ['**/test/**/*.test.ts'],
   moduleFileExtensions: ['ts', 'js', 'json'],
+  setupFiles: ['<rootDir>/test/setupEnv.ts'],
   clearMocks: true,
   forceExit: true,
   transform: {
