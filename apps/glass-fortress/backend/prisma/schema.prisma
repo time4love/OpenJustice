@@ -434,6 +434,26 @@ enum ReportTimingWindow {
   UNKNOWN
 }
 
+// ~15-year bands past 18 — coarse enough to function as real k-anonymity
+// protection in a small aggregate cell, fine enough to preserve an
+// age-skewed signal (see the comment on Report.reporterAgeRange).
+enum ReporterAgeRange {
+  UNDER_18
+  AGE_18_29
+  AGE_30_44
+  AGE_45_59
+  AGE_60_74
+  AGE_75_PLUS
+  UNKNOWN
+}
+
+enum ReporterGender {
+  FEMALE
+  MALE
+  OTHER
+  UNKNOWN
+}
+
 model Report {
   id     String       @id @default(cuid())
   domain ReportDomain // denormalized off the two FKs below — lets filters/counts skip a join
@@ -447,18 +467,48 @@ model Report {
   socialEconomicReportId String?                     @unique
   socialEconomicReport   SocialEconomicImpactReport? @relation(fields: [socialEconomicReportId], references: [id])
 
-  // One-way hash of verified contact (email/phone) + a device/session signal.
-  // Indexed, not @@unique — app-level velocity checks decide what counts as
-  // a duplicate; a hard DB constraint would risk blocking a reporter's second,
-  // genuinely distinct report (different symptom, later dose).
-  reporterFingerprintHash String
-  // Deliberately no onChainTxHash here — individual reports are not
+  // Explicit, specific consent to processing special-category data (health;
+  // for SocialEconomic reports, potentially religious-belief data via
+  // FormalBasisAsserted) — GDPR Art. 9(2)(a) requires this to be explicit,
+  // not inferred from clicking submit. Mirrors Whistleblower.consentGiven.
+  // The intake endpoint must reject any submission where this is not true —
+  // never default it, never infer it.
+  consentGiven Boolean
+
+  // Bucketed demographic context — standard pharmacovigilance stratification
+  // variables (VAERS/EudraVigilance both track age band and sex; the
+  // myocarditis-post-mRNA-vaccine signal was first detected specifically as
+  // elevated in young males, an age+sex-stratified finding a flat aggregate
+  // would have missed). Bucketed, not exact age/DOB, for the same reason
+  // ReportTimingWindow buckets timing instead of storing a precise
+  // timestamp — a quasi-identifier alone, but one that narrows the
+  // anonymity set when combined with a rare category or a small aggregate
+  // cell, so Phase 9's minimum-count suppression threshold (not yet built)
+  // applies to these fields specifically, not just to the fingerprint
+  // question these fields have nothing to do with.
+  reporterAgeRange ReporterAgeRange @default(UNKNOWN)
+  reporterGender   ReporterGender   @default(UNKNOWN)
+
+  // Deliberately NO field derived from the reporter's email or identity —
+  // not a hash, not a fingerprint, nothing. This was reconsidered mid-design
+  // (see docs/gf-adverse-event-report-schema-dev-plan.md §2.8): a
+  // deterministic hash of a verified email is pseudonymization, not
+  // anonymization, under GDPR — the controller holding the salt can always
+  // test a candidate email against it later. A hash designed to be
+  // untestable is functionally identical to storing nothing, just with
+  // extra bytes, so the honest design is to store nothing. This sacrifices
+  // cross-report dedup by design — judged an acceptable trade-off given
+  // per-submission live email verification is already a real barrier to
+  // trivial spam, and ordinary rate limiting (generalLimiter in server.ts)
+  // still applies. The corollary: a reporter can never prove a specific
+  // report is theirs later (e.g. to request its deletion) — true anonymity
+  // and self-service retraction of one report are mutually exclusive here.
+  //
+  // Deliberately no onChainTxHash either — individual reports are not
   // on-chain-anchored (discussed: volume + privacy + no individual
   // evidentiary claim). If aggregate integrity ever needs a tamper-evident
   // anchor, that anchors the aggregate dataset hash, not this row.
-  createdAt               DateTime @default(now())
-
-  @@index([reporterFingerprintHash])
+  createdAt DateTime @default(now())
 }
 
 // ---------------------------------------------------------------------------

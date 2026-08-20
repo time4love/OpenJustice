@@ -850,6 +850,21 @@
     "RESOLVED_UNCHANGED": "Resolved (unchanged)",
     "UNKNOWN": "Unknown"
   },
+  "reporterAgeRanges": {
+    "UNDER_18": "Under 18",
+    "AGE_18_29": "18–29",
+    "AGE_30_44": "30–44",
+    "AGE_45_59": "45–59",
+    "AGE_60_74": "60–74",
+    "AGE_75_PLUS": "75+",
+    "UNKNOWN": "Unknown"
+  },
+  "reporterGenders": {
+    "FEMALE": "Female",
+    "MALE": "Male",
+    "OTHER": "Other",
+    "UNKNOWN": "Prefer not to say"
+  },
   "evidenceTiers": {
     "Tier 1: Smoking Gun": "Tier 1: Smoking Gun",
     "Tier 2: Material": "Tier 2: Material",

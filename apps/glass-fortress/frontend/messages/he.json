@@ -850,6 +850,21 @@
     "RESOLVED_UNCHANGED": "נותר ללא שינוי",
     "UNKNOWN": "לא ידוע"
   },
+  "reporterAgeRanges": {
+    "UNDER_18": "מתחת לגיל 18",
+    "AGE_18_29": "18–29",
+    "AGE_30_44": "30–44",
+    "AGE_45_59": "45–59",
+    "AGE_60_74": "60–74",
+    "AGE_75_PLUS": "75 ומעלה",
+    "UNKNOWN": "לא ידוע"
+  },
+  "reporterGenders": {
+    "FEMALE": "נקבה",
+    "MALE": "זכר",
+    "OTHER": "אחר",
+    "UNKNOWN": "לא צוין"
+  },
   "evidenceTiers": {
     "Tier 1: Smoking Gun": "דרגה 1: ראיה מכרעת",
     "Tier 2: Material": "דרגה 2: ראיה מהותית",

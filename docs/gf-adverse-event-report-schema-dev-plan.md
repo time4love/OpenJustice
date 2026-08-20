@@ -1,15 +1,21 @@
 # GF Public Adverse-Outcome Self-Reports — Dev Plan
 
 **Status:** Phase 0 (schema draft) ✅ DONE — committed `4f99c9e`. **Phase 1 (migration) ✅ DONE**,
-applied to staging. **Phase 2 (reporter fingerprint + zod intake validation) ✅ DONE 2026-08-20** —
-`src/lib/reporterFingerprint.ts`, `src/lib/reportIntakeSchemas.ts`, 16 new tests, full suite green
-(692/692). **Hebrew/English category labels ✅ DONE for both domains** (§2.7) — Medical
-(`reportCategoryLabels.ts`) and Social/Economic (`socialEconomicCategoryLabels.ts`), verified against
-the real Prisma enum values, not eyeballed. **Per-question bilingual help text drafted** (§4.3) — not
-yet wired to `messages/*.json`, deferred to Phase 8. On branch `schema/gf-adverse-effect-reports`
-(pushed, no PR yet). No backend routes/MCP tools/frontend code yet — Phase 3 (public intake API) is
-next. See §5-6 for the full phase breakdown. This document is the canonical reference for the
-taxonomy's rationale; keep it in sync with `schema.prisma` as the design evolves.
+applied to staging. **Phase 2 (zod intake validation) ✅ DONE 2026-08-20** — `src/lib/reportIntakeSchemas.ts`.
+**Hebrew/English category labels ✅ DONE for all domains** (§2.7) — Medical, Social/Economic, and
+Report's own demographic fields, each verified against the real Prisma enum values, not eyeballed.
+**Per-question bilingual help text drafted** (§4.3) — not yet wired to `messages/*.json`, deferred to
+Phase 8. **GDPR-driven `Report` redesign ✅ DONE 2026-08-20 (§2.8)** — `reporterFingerprintHash`
+removed entirely (was pseudonymization, not anonymization; `reporterFingerprint.ts` deleted as dead
+code), `consentGiven` added (explicit special-category consent, GDPR Art. 9(2)(a)), bucketed
+`reporterAgeRange`/`reporterGender` added (real pharmacovigilance value, deliberately coarse against
+quasi-identifier risk). Three staging migrations applied and independently verified this session
+(`...adverse_event_reports`, `...anonymize_and_consent`, `...reporter_demographics`). On branch
+`schema/gf-adverse-effect-reports` (pushed, no PR yet). No backend routes/MCP tools/frontend code yet —
+Phase 3 (public intake API) is next, and must implement post-verification Supabase-account deletion as
+a real requirement, not an optional nicety (§2.8). See §5-6 for the full phase breakdown. This document
+is the canonical reference for the taxonomy's rationale; keep it in sync with `schema.prisma` as the
+design evolves.
 **Created:** 2026-08-20.
 **Scope:** Glass Fortress only. New models: `Report`, `MedicalAdverseEventReport`,
 `SocialEconomicImpactReport`, plus supporting enums.
@@ -147,6 +153,62 @@ Grounded in a documented real mechanism, not a hypothetical: DoD's reinstatement
 `MILITARY_DISCHARGE` report where that happened is a materially different claim from one where it
 didn't — the schema must be able to say which.
 
+### 2.8 Reporter anonymity, consent, and demographics — GDPR-driven redesign, 2026-08-20
+
+Prompted by the user asking, mid-Phase-3-design, whether this feature introduces a new PII/GDPR
+concern. It did, and working through it changed `Report`'s shape twice in one session.
+
+**Special-category data.** `MedicalAdverseEventReport` is health data (GDPR Art. 9(1)) outright.
+`FormalBasisAsserted.RELIGIOUS_ACCOMMODATION_DENIED` reveals religious belief — also Art. 9(1). Both
+need a stronger legal basis than ordinary personal data — explicit, specific consent (Art. 9(2)(a)),
+not an inferred "you clicked submit." **Fixed**: `Report.consentGiven: Boolean`, no default, mirroring
+`Whistleblower.consentGiven` — the intake endpoint must reject any submission where this isn't
+explicitly true.
+
+**The original `reporterFingerprintHash` design (§ old Phase 2) was pseudonymization, not
+anonymization — and that distinction has teeth.** A deterministic hash of a verified email, even a
+slow one-way one (`scrypt`), doesn't anonymize under GDPR (Recital 26; WP29 Opinion 05/2014 on
+Anonymisation Techniques): the controller holds the salt, so given *any* candidate email later — a
+subpoena, a breach, plain curiosity — they can hash it and test for a match. That candidate-matching
+capability is the whole test. A hash engineered to be untestable (e.g. a random salt discarded
+immediately) is functionally identical to storing nothing, just with extra bytes — so **the honest
+design is to store nothing.**
+
+**Decided**: `Report` retains *no* field derived from the reporter's identity — no hash, no
+fingerprint. This sacrifices cross-report dedup by design (the whole point of the original field). User
+judgment on the trade-off: duplicate-report risk is lower priority than the GDPR exposure, and
+per-submission live email verification is already a real barrier to trivial spam — reinforced by
+`generalLimiter`'s existing ordinary rate limiting (`server.ts`) still applying regardless. Corollary,
+named explicitly rather than discovered later: a reporter can never prove a specific report is theirs
+after the fact (e.g. to request its deletion) — true anonymity and self-service retraction of one
+report are mutually exclusive with this design, not an oversight.
+
+**What changed mechanically**: `reporterFingerprintHash` (and its index) dropped from `Report`;
+`src/lib/reporterFingerprint.ts` and its test deleted outright as dead code, not left unused.
+Migration `20260820020000_report_anonymize_and_consent` (offline schema-diff generated, applied to
+staging, independently verified — the column now genuinely errors on `SELECT`, not just absent from a
+list). The Supabase-Auth-account question from the verification-mechanism decision (§6, old) still
+applies — the account should still be deleted post-verification as defense-in-depth (removes the one
+*easy, standing* directory of who reported), even though it isn't what makes the design anonymous;
+Phase 3 must implement that deletion, not treat it as optional.
+
+**Reporter demographics — added the same session, same rigor.** User wanted age/gender: real
+pharmacovigilance value (the myocarditis-post-mRNA-vaccine signal was first detected specifically as
+elevated in young males — an age+sex-stratified finding a flat aggregate would have missed), pushed
+back on "not identifying anyone" as the premise (age+gender are classic *quasi-identifiers* —
+Sweeney's ZIP+birthdate+gender re-identification result is the canonical example — harmless alone,
+narrowing in combination with a rare category or small aggregate cell), landed on: collect it, but
+bucketed, the same date-fuzzing logic already applied to timing. `Report.reporterAgeRange`
+(`ReporterAgeRange`, ~15-year bands past 18) and `Report.reporterGender` (`ReporterGender`: FEMALE /
+MALE / OTHER / UNKNOWN, the last doubling as "prefer not to say"), both `@default(UNKNOWN)`. Migration
+`20260820030000_report_reporter_demographics`, applied to staging, verified. Hebrew/English labels
+added immediately (`src/lib/reporterDemographicLabels.ts`, `messages/{he,en}.json` under
+`reporterAgeRanges`/`reporterGenders`), same diff-against-real-Prisma-enum verification as §2.7.
+
+**This reinforces, not just parallels, Phase 9's suppression-threshold requirement** (§5) — age/gender
+are exactly the kind of field that makes a small aggregate cell re-identifying. That requirement now
+covers demographic fields specifically, not only the taxonomy categories.
+
 ---
 
 ## 3. Known limitation this document does not resolve
@@ -189,10 +251,12 @@ ways: `tsc` (the `Record` type catches any missed/misspelled enum member) and a 
 diff of the JSON files' keys against the real `@prisma/client` enum values — both came back clean, not
 just eyeballed.
 
-**Not yet done**: `SocialEconomicImpactReport`'s enums (`SocialEconomicImpactCategory`,
-`FormalBasisAsserted`, `ConsequenceSeverity`, `SocialOutcomeStatus`) have no Hebrew/English labels yet —
-different terminology domain (legal/HR register, not medical), flagged for its own pass rather than
-guessed here.
+**Update — done, not deferred**: `SocialEconomicImpactReport`'s enums got their own labeling pass the
+same day (`src/lib/socialEconomicCategoryLabels.ts`), using real Israeli employment/disability-law
+terms ("התאמה דתית"/"התאמה סבירה", confirmed via search against nevo.co.il/kolzchut.org.il) rather than
+literal translations of the American EEOC terminology the categories were originally grounded in — see
+that file's header comment. `Report`'s own new demographic fields (§2.8) are labeled too
+(`reporterDemographicLabels.ts`).
 
 ### 4.1 Why we ask what we ask (methodology blurb — intended for a collapsible "About this data" section on the report form)
 
