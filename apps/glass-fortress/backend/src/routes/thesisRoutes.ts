@@ -14,6 +14,7 @@ import { logSessionEvent } from '../services/sessionService';
 import { suggestThesisHandler } from '../mcp/tools/suggestThesis';
 import { createThesisDraftHandler } from '../mcp/tools/createThesisDraft';
 import { buildEvidenceAnalysisData } from '../lib/evidenceCreateData';
+import { upsertKeyFigures } from '../lib/upsertKeyFigures';
 import { aiCostLimiter } from '../middleware/rateLimiting';
 
 const router = Router();
@@ -1025,12 +1026,7 @@ router.post(
 
           const fileHash = Web3Service.hashFile(Buffer.from(file.ciphertext, 'base64'));
 
-          if (analysis.keyFigures.length > 0) {
-            await prisma.keyFigure.createMany({
-              data: analysis.keyFigures.map((name) => ({ name })),
-              skipDuplicates: true,
-            });
-          }
+          await upsertKeyFigures(analysis.keyFigures);
 
           const existing = await prisma.evidence.findUnique({ where: { fileHash } });
           if (existing) {

@@ -15,9 +15,11 @@ import {
 } from '../lib/investigativeCategories';
 import { mapEvidenceToRecord } from '../lib/evidenceRecord';
 import { buildEvidenceAnalysisData } from '../lib/evidenceCreateData';
+import { upsertKeyFigures } from '../lib/upsertKeyFigures';
 import { promoteEvidence } from '../services/promoteEvidence';
 import { parseDiffItems } from '../lib/diffItems';
 import { aiCostLimiter } from '../middleware/rateLimiting';
+import { ALLOWED_EVIDENCE_MIME_TYPES, MAX_EVIDENCE_FILE_BYTES } from '../lib/evidenceFileConstraints';
 
 const router = Router();
 
@@ -25,13 +27,11 @@ const router = Router();
 // Multer — in-memory storage, images and PDFs only, max 10 MB
 // ---------------------------------------------------------------------------
 
-const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'application/pdf'];
-
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 10 * 1024 * 1024 },
+  limits: { fileSize: MAX_EVIDENCE_FILE_BYTES },
   fileFilter: (_req, file, cb) => {
-    if (ALLOWED_MIME_TYPES.includes(file.mimetype)) {
+    if ((ALLOWED_EVIDENCE_MIME_TYPES as readonly string[]).includes(file.mimetype)) {
       cb(null, true);
     } else {
       cb(new Error(`Unsupported file type: ${file.mimetype}. Allowed: JPEG, PNG, PDF.`));
@@ -277,14 +277,9 @@ router.post(
         return;
       }
 
-      // Ensure all KeyFigure records exist before linking (createMany is idempotent via skipDuplicates)
+      // Ensure all KeyFigure records exist before linking (idempotent via skipDuplicates)
       const figureNames = analysis.keyFigures;
-      if (figureNames.length > 0) {
-        await prisma.keyFigure.createMany({
-          data: figureNames.map((name) => ({ name })),
-          skipDuplicates: true,
-        });
-      }
+      await upsertKeyFigures(figureNames);
 
       // Write structured metadata to Prisma — this is the authoritative structured store.
       // status/onChainTxHash set explicitly here, not left to the schema default: this
