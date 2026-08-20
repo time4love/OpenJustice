@@ -129,9 +129,12 @@ router.post(
 // Aggregate pattern endpoints — Phase 6 (§0, §5 of the dev plan).
 //
 // Public, no auth — same precedent as GET /api/stats (server.ts): this
-// returns only suppressed aggregate counts (SUPPRESSION_THRESHOLD, applied
+// returns only aggregate counts that survived disclosure control (applied
 // inside reportPatternService.ts, never left to the caller), never anything
-// about an individual report. dimensions/filters are validated against
+// about an individual report. Cells below SUPPRESSION_THRESHOLD are not
+// returned at all — their existence alone can identify someone — and any
+// rollup total that would let a withheld cell be recovered by subtraction is
+// withheld with it. dimensions/filters are validated against
 // reportDimensions.ts's allowlist before ever reaching raw SQL — that file
 // is the actual security boundary, not this validation, but this is where
 // an invalid dimension name gets a clean 400 instead of a raw-SQL error.

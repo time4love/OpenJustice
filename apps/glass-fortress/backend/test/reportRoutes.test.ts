@@ -222,15 +222,32 @@ describe('POST /api/reports/medical/aggregate', () => {
     expect(mockQueryRaw).not.toHaveBeenCalled();
   });
 
-  it('returns suppressed cells from the service as-is', async () => {
-    mockQueryRaw.mockResolvedValue([{ d0: 'ONCOLOGIC', count: 3, g0: 0 }]);
+  it('never emits a suppressed cell through the route', async () => {
+    // End-to-end through the real service: raw CUBE rows in, only publishable
+    // cells out. ONCOLOGIC is below the threshold and the grand total would
+    // give it away by subtraction, so neither may appear in the response.
+    mockQueryRaw.mockResolvedValue([
+      { d0: null, count: 100, g0: 1 },
+      { d0: 'CARDIOVASCULAR', count: 40, g0: 0 },
+      { d0: 'NEUROLOGICAL', count: 30, g0: 0 },
+      { d0: 'AUTOIMMUNE_IMMUNE', count: 25, g0: 0 },
+      { d0: 'ONCOLOGIC', count: 5, g0: 0 },
+    ]);
+
     const res = await request(app)
       .post('/api/reports/medical/aggregate')
       .send({ dimensions: ['symptomCategory'] });
+
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({
-      cells: [{ dimensions: { symptomCategory: 'ONCOLOGIC' }, count: null }],
-    });
+    const body = res.body as { cells: { dimensions: Record<string, string>; count: number }[] };
+    expect(body.cells.map((c) => c.dimensions.symptomCategory).sort()).toEqual([
+      'AUTOIMMUNE_IMMUNE',
+      'CARDIOVASCULAR',
+      'NEUROLOGICAL',
+    ]);
+    // No blanked cell, and no grand total to subtract from.
+    expect(JSON.stringify(res.body)).not.toContain('null');
+    expect(body.cells.some((c) => Object.keys(c.dimensions).length === 0)).toBe(false);
   });
 });
 
