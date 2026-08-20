@@ -1142,5 +1142,51 @@
     "FRIENDS_COMMUNITY": "Friends or community",
     "MULTIPLE": "More than one",
     "UNKNOWN": "Unknown"
+  },
+  "reportPatterns": {
+    "title": "Report patterns",
+    "subtitle": "Aggregate counts from public self-reports. Never individual reports.",
+    "domainMedical": "Medical effects",
+    "domainSocial": "Social & economic consequences",
+    "breakdownBy": "Break down by",
+    "loading": "Loading…",
+    "loadFailed": "Could not load the aggregate.",
+    "retry": "Try again",
+    "chartTitle": "Reports by {dimension}",
+    "unit": "reports",
+    "empty": {
+      "heading": "Nothing publishable yet",
+      "body": "No group has reached {threshold} reports, so nothing here can be shown without risking the identification of individual reporters. This is the expected state early on — it is not an error, and no data has been lost.",
+      "why": "Why a threshold at all?",
+      "whyBody": "A count small enough to point at a person is not a statistic. We follow the same rule national health-statistics agencies use: any group under {threshold} is withheld, along with any total that would let the withheld number be worked out by subtraction."
+    },
+    "tiers": {
+      "legend": "Strength of evidence behind each category",
+      "DOCUMENTED": "Officially tracked",
+      "DOCUMENTED_note": "Counted and published by a government body — EEOC discrimination charges, DoD discharge and reinstatement figures.",
+      "PEER_REVIEWED": "Published research",
+      "PEER_REVIEWED_note": "A real signal in peer-reviewed literature, which states explicitly that it is hypothesis-generating and not proof of cause.",
+      "QUALITATIVE": "Described, not quantified",
+      "QUALITATIVE_note": "Real and documented in qualitative research, but never systematically counted. Shown, and shown as weaker."
+    },
+    "caveat": "A single report is not evidence of anything. These counts show what people have reported, not what has been proven — the same standard official vaccine-safety surveillance applies to its own data.",
+    "tableView": "View as a table",
+    "chartView": "View as a chart",
+    "category": "Category",
+    "count": "Reports",
+    "tier": "Evidence",
+    "dimensions": {
+      "symptomCategory": "Body system",
+      "seriousness": "Seriousness",
+      "symptomPersistence": "Ongoing or resolved",
+      "vaccineManufacturer": "Manufacturer",
+      "reporterAgeRange": "Age range",
+      "reporterGender": "Sex",
+      "impactCategory": "Type of consequence",
+      "vaccinationStatus": "Vaccination status",
+      "formalBasisAsserted": "Formal grounds given",
+      "consequenceSeverity": "Harm that followed",
+      "outcomeStatus": "Still in effect"
+    }
   }
 }

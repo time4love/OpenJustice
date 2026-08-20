@@ -927,7 +927,61 @@ implementation and all four fail there, so they demonstrably have teeth rather t
 default state is therefore "nothing publishable yet", which must read as deliberate rather than broken,
 and is the state production will be in on day one.
 
-### Phase 9 — Frontend public aggregate/pattern display
+### Phase 9 — Aggregate/pattern display ✅ BUILT 2026-08-20 (researcher-gated)
+
+`/{he,en}/reports/patterns`. Domain first (medical or social), then a dimension to break down by,
+matching the intake form's mental model rather than showing two taxonomies side by side.
+
+**Researcher-gated for now** (`AuthGuard`, the same component `/admin` and `/profile` use), even
+though the endpoints themselves are public. A page rendering "N reports of X" is what turns aggregate
+data into a *published claim*, which is what `defamation-risk.md` Rule 2 governs. Gating first is
+reversible in the direction that matters; ungating later is a one-line change once Phase 10's review
+has happened.
+
+**Evidence tiering — the Rule 2 requirement, in `src/lib/reportEvidenceTiers.ts`.** Three tiers taken
+from §2.3/§2.5 rather than invented: `DOCUMENTED` (EEOC charge data, DoD discharge and reinstatement
+figures), `PEER_REVIEWED` (a real published signal that says of itself it is hypothesis-generating —
+this also covers the VAERS/MedDRA organ-system categories, where the taxonomy is established but the
+causal claim is not), and `QUALITATIVE` (real, described, never systematically counted). Unclassified
+values fall to the **lowest** tier by construction: understating evidence costs a muted bar, while
+overstating it is the claim Rule 2 forbids. `Record<Category, EvidenceTier>` makes a missed category a
+compile error, the same guard the label files use.
+
+**Colour never carries the tier alone**: every bar is labelled with its tier in words, the legend
+names all three, the weakest tier is additionally hatched, and the table view carries the tier as text
+with no colour at all.
+
+**The ramp was measured, not chosen by eye.** Tier is *ordinal* (the `dataviz` skill's own
+classification — "position in a sequence… tier"), so it takes one hue in monotone lightness steps
+rather than categorical hues; that skill also notes the categorical validator FAILS a correct ramp by
+design, so the right check is `validateOrdinal`. The first candidate (amber 800/600/400) **failed** it
+— light end 1.67:1 against the white card, under the 2:1 floor. `#78350f / #b45309 / #f59e0b` passes
+all four checks (monotone, adjacent ΔL ≥ 0.06, single hue at 24° spread, light end 2.15:1).
+
+**Inline SVG, no charting library** — nothing to install (npm here needs VPN) and it matches how the
+rest of this app is built. The bars carry **no viewBox**: sized in real pixels with percentage widths,
+because a viewBox with `preserveAspectRatio="none"` stretches the x axis and turns the rounded corner
+into an ellipse. Text stays in HTML beside the SVG so it remains selectable, screen-reader-navigable,
+correctly wrapped in RTL, and wearing text tokens rather than the series colour.
+
+**Two defects found by rendering it and looking, which no test would have caught**: the dimension
+dropdown showed raw codes (`symptomCategory`) in a Hebrew-first UI, and the bars anchored to the left
+edge — SVG's `x="0"` is the left edge whatever the document direction, so in Hebrew a short bar floated
+away from the labels it belonged to instead of growing out from them. Both fixed.
+
+**The empty state is the default state, not an edge case.** After Phase 6b's disclosure control the
+honest answer at low volume is no cells at all, so "nothing publishable yet" is what staging shows
+today and what production shows on day one. It names the threshold, explains why it exists, and is
+built to read as deliberate rather than as a failed request.
+
+**No dark mode**, deliberately: this app defines a single light surface in `globals.css`, so one
+dark-aware chart would be the inconsistency.
+
+**Still open**: ungating for the public, which belongs with Phase 10's review of this copy; and
+excluding `UNDISCLOSED` vaccination-status rows from any directional claim (§ Phase 8b) — not yet
+relevant because no aggregate can clear the threshold, but it must land before the page goes public.
+
+### Phase 9 — original scope note
 Public-facing view of report counts by category. Must implement the confidence-tiering distinction
 flagged in §2.5 and §2.3: `MILITARY_DISCHARGE`/`EMPLOYMENT_TERMINATION` (EEOC/DoD-backed) and
 `ONCOLOGIC`/`NEUROCOGNITIVE_PVS` (peer-reviewed signal, explicitly hypothesis-generating) cannot render
