@@ -1,41 +1,24 @@
 # GF Public Adverse-Outcome Self-Reports — Dev Plan
 
-**Status:** Phase 0 (schema draft) ✅ DONE — committed `4f99c9e`. **Phase 1 (migration) ✅ DONE**,
-applied to staging. **Phase 2 (zod intake validation) ✅ DONE 2026-08-20** — `src/lib/reportIntakeSchemas.ts`.
-**Hebrew/English category labels ✅ DONE for all domains** (§2.7) — Medical, Social/Economic, and
-Report's own demographic fields, each verified against the real Prisma enum values, not eyeballed.
-**Per-question bilingual help text drafted** (§4.3) — not yet wired to `messages/*.json`, deferred to
-Phase 8. **GDPR-driven `Report` redesign ✅ DONE 2026-08-20 (§2.8)** — `reporterFingerprintHash`
-removed entirely (was pseudonymization, not anonymization; `reporterFingerprint.ts` deleted as dead
-code), `consentGiven` added (explicit special-category consent, GDPR Art. 9(2)(a)), bucketed
-`reporterAgeRange`/`reporterGender` added (real pharmacovigilance value, deliberately coarse against
-quasi-identifier risk). **Phase 3 (public intake API) ✅ DONE 2026-08-20** — `POST /api/reports/medical`/
-`social-economic`, the `requireVerifiedReporterEmail` middleware (verifies + deletes the Supabase
-account in the same request, fails closed on deletion error), nested-write creation. **Phase 4
-(`ReportPlausibilityService`) attempted then designed away, 2026-08-20 (§2.9)** — both candidate
-plausibility rules turned out to be modeling smells (a redundant `MedicalSymptomCategory.DEATH` value;
-an unenforced implication between two booleans, now `medicalCareEngagement`) or an outright bug (a rule
-checking a signal the schema doesn't actually track); fixed at the schema level instead, leaving
-nothing for the service to check — it, `ReportStatus.FLAGGED_IMPLAUSIBLE`, and `Report.flagReasons`
-were all deleted in the same session they were added. Also caught and fixed, via cherry-pick not
-reinvention, a real unrelated schema-drift gotcha (`evidence_embeddings`) that a generated migration
-almost silently proposed to drop (pushed through `670f661`). **Phase 5 redesigned, no free text,
-2026-08-20 (§2.10)** — user questioned why a moderation queue exists at all given verified-email
-gating and expected volume; the original "review every report" plan copied `Evidence`'s pattern without
-checking it transfers, which it doesn't (§2.10). No blanket per-report human gate — reports count
-automatically once they clear submission-time checks. `freeTextElaboration` removed entirely from both
-domain tables as a direct consequence (it was the only reason any human review was ever going to be
-needed, never grounded in real research the way every other field is, and the one field most likely to
-re-identify a reporter). **`Report.status`/`ReportStatus` removed entirely, same session** — the direct
-conclusion of the same thread: with no moderation queue, there's no state machine left for a status
-field to represent; a report counts the moment it's created. `reportRoutes.ts`'s create response is now
-just `{ id }`. Duplicate-report prevention via a persistent Supabase account was floated and explicitly
-declined afterward, in favor of keeping the current immediate-deletion design — see the note appended
-to §2.8. Nine staging migrations applied and independently verified this session in total. Full suite
-705/705, `tsc` clean throughout. On branch `schema/gf-adverse-effect-reports` (pushed through `670f661`;
-this round of changes not yet committed). Phase 5 is next, redefined per §5 — mostly automated abuse
-defense, not a moderation queue. See §5-6 for the full phase breakdown. This document is the canonical
-reference for the taxonomy's rationale; keep it in sync with `schema.prisma` as the design evolves.
+**Status:** Phases 0-4 ✅ DONE (schema, migration, zod validation, bilingual labels for all domains
+verified against real Prisma enums, public intake API with `requireVerifiedReporterEmail`). Phase 4
+(`ReportPlausibilityService`) was built then fully designed away same-day (§2.9) — both candidate rules
+were modeling smells, fixed at the schema level instead (redundant `MedicalSymptomCategory.DEATH`
+removed; two booleans collapsed into `medicalCareEngagement`). Phase 5 redesigned twice (§2.10): no
+moderation queue (reports count automatically, no per-report human gate), no `freeTextElaboration`, no
+`Report.status`/`ReportStatus` at all — there's no state machine left once nothing gates entry.
+**Phase 6 (aggregation layer) ✅ DONE for the backend, 2026-08-20** (§5) — `reportDimensions.ts` +
+`reportPatternService.ts` (Postgres native `GROUP BY CUBE`, not hand-rolled) + two public aggregate
+endpoints, chosen deliberately over Metabase/Superset/Cube.dev to avoid new infrastructure this team's
+profile doesn't need. Frontend charting is Phase 9, not started.
+
+Ten staging migrations applied and independently verified this session (query-verified, not just
+trusted from `migrate deploy`'s own output). Full suite 719/719, `tsc` clean. Also fixed, via
+cherry-pick not reinvention, an unrelated schema-drift gotcha (`evidence_embeddings`) a generated
+migration almost silently proposed to drop. On branch `schema/gf-adverse-effect-reports`, pushed
+through `4e754a8`; this round (Phase 6) not yet committed. See §5 for the full phase-by-phase detail
+and §2.x for the reasoning behind each reversed decision — this document is the canonical reference for
+the taxonomy's rationale; keep it in sync with `schema.prisma` as the design evolves.
 **Created:** 2026-08-20.
 **Scope:** Glass Fortress only. New models: `Report`, `MedicalAdverseEventReport`,
 `SocialEconomicImpactReport`, plus supporting enums.
@@ -600,12 +583,48 @@ What Phase 5 actually needs to build, once started:
   a delete (an automated flag? a researcher's own judgment call on something surfaced some other way?)
   is this phase's actual design question — not yet decided.
 
-### Phase 6 — Aggregation / pattern-detection layer
-The actual point of this model (§0): a `ReportPatternService` with `groupBy` queries over every `Report`
-row, keyed on `(domain, category, timingWindow/persistence)` — the direct analog of BF's
-`AllegationService.getPatternCountsByFigure`. No status filter needed — with no per-report gate (§2.10),
-every row that exists is meant to count; a row a researcher has deleted for confirmed spam/fraud is
-simply gone, not filtered out at query time.
+### Phase 6 — Aggregation / pattern-detection layer ✅ DONE (backend) 2026-08-20
+The actual point of this model (§0). User raised, before any code: this is a textbook BI/OLAP problem
+("dimensions, filters, can a user play with it") and the risk of reinventing tooling that already
+exists needed checking before building anything.
+
+**Tooling decided**: no new BI service (Metabase/Superset ruled out — new infra/ops/staging-gate
+burden, and self-hosted theming can't match GF's Hebrew-RTL design system without real work) and no
+headless semantic layer (Cube.dev ruled out — still a new service to deploy/connect, unjustified given
+this team's demonstrated pattern all session of not adding infrastructure without a proven need, e.g.
+the reporter-verification-email vendor question in §2.8). Minimal custom, staying inside the stack
+everything else in GF already lives in.
+
+**Built**:
+- **`src/lib/reportDimensions.ts`** — the actual security boundary. `$queryRaw`'s tagged-template
+  parameterization is safe for values but can't parameterize identifiers (column names in `GROUP BY`),
+  so every dynamic identifier in the service comes only from this file's fixed string literals, never
+  from a request body. Deliberately a curated subset per domain (6 dimensions each — category,
+  severity/basis-type fields, timing, demographics), not every column — oncology/cognitive sub-fields,
+  `doseNumber`, `documentationAvailable`, `timingRelativeToEvent` deferred, not forgotten. Also holds
+  `SUPPRESSION_THRESHOLD = 10`, NCHS/CDC WONDER's own public-health-statistics standard (adopted 2011,
+  replacing an earlier 1-4 rule found insufficient) — not an invented number.
+- **`src/services/reportPatternService.ts`** — `getMedicalPattern`/`getSocialEconomicPattern`, using
+  Postgres's native `GROUP BY CUBE(...)` (not a plain `GROUP BY`) — CUBE returns every rollup level in
+  one query (totals by each dimension alone and by their combination), which is what actually enables
+  "play with it" drill-down without a network round-trip per view; using a lesser primitive here would
+  have quietly reintroduced the "reinvent it by hand" problem one layer down. `GROUPING()` distinguishes
+  a rolled-up dimension from a genuinely-null data value — tested explicitly, since conflating the two
+  would silently corrupt results. Suppression is enforced here, server-side, before any row leaves the
+  function — never left to the frontend.
+- **`POST /api/reports/medical/aggregate`, `POST /api/reports/social-economic/aggregate`**
+  (`reportRoutes.ts`) — public, no auth, same precedent as `GET /api/stats`: only ever returns
+  suppressed aggregate counts, nothing about an individual report. Body: `{ dimensions: string[] (1-3),
+  filters?: Record<dimension, string[]> }` — zod-validated against each domain's allowlist before ever
+  reaching raw SQL (defense in depth; `reportDimensions.ts` is the real boundary, this is what turns an
+  invalid dimension name into a clean 400 instead of a raw-SQL error).
+- **30 new tests** across both files — the pattern-service tests inspect the actual generated SQL text
+  (via `Prisma.sql`'s own `.text`/`.values`) rather than trusting it blindly, confirming filter values
+  are genuinely parameterized (`$1`, `$2`) and not string-concatenated. Full suite 719/719, `tsc` clean.
+- No migration — this phase only reads existing tables.
+
+**Not done**: frontend rendering (charting library not chosen — load the `dataviz` skill when building
+actual chart components, per its own trigger conditions; this is Phase 9's job, not Phase 6's).
 
 ### Phase 7 — Thesis citation wiring (open design question, not yet decided)
 How does a thesis actually cite a report aggregate? `ThesisMention.type` today is a closed enum
@@ -639,12 +658,12 @@ discarded post-verification — undecided, needs its own call).
 
 ## 6. Recommended next step
 
-Phases 1-4 are done (§5). Phase 5 has been redesigned twice more since (§2.10): no blanket moderation
-queue, and — the direct conclusion of that same review — `Report.status`/`ReportStatus` removed
-entirely, so there's no queue and no state machine left to build. A report counts toward the aggregate
-the instant it's created. **Phase 6 (aggregation/pattern-detection layer, §5) is the actual next
-build** — it no longer depends on Phase 5 finishing first, since there's no status to filter on.
-Phase 5 itself is now a smaller, deliberately-deferred question (automated abuse defense + a
-delete-on-confirmed-spam path), worth returning to once real submission volume shows whether it's
-needed at all, not before. Commit this session's work first — schema/label/doc changes since `670f661`
-are still uncommitted.
+Phase 6's backend is done (§5) — `POST /api/reports/{medical,social-economic}/aggregate` are live,
+tested, suppression-enforced. **Phase 9 (frontend rendering) is the natural next build**: pick a
+charting library (load the `dataviz` skill first, per its own trigger conditions — not yet done),
+build the actual dashboard against the two aggregate endpoints. Phase 8 (the public intake form itself)
+is still unbuilt too and has no code dependency on Phase 9 — either could go first; Phase 8 is arguably
+more urgent since without it nothing can generate real report data to visualize. Phase 5 (automated
+abuse defense) remains deliberately deferred until real submission volume shows whether it's needed at
+all. Phase 7 (thesis citation wiring) is still an open design question, not started. Commit this
+session's work first — Phase 6 changes since `4e754a8` are still uncommitted.

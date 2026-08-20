@@ -15,8 +15,12 @@ jest.mock('../src/middleware/supabaseAuth', () => ({
 }));
 
 const mockReportCreate = jest.fn();
+const mockQueryRaw = jest.fn();
 jest.mock('../src/lib/prisma', () => ({
-  prisma: { report: { create: (...args: unknown[]) => mockReportCreate(...args) } },
+  prisma: {
+    report: { create: (...args: unknown[]) => mockReportCreate(...args) },
+    $queryRaw: (...args: unknown[]) => mockQueryRaw(...args),
+  },
 }));
 
 import request from 'supertest';
@@ -132,5 +136,68 @@ describe('POST /api/reports/social-economic', () => {
       .send({ consentGiven: true, report: { impactCategory: 'NOT_REAL' } });
     expect(res.status).toBe(400);
     expect(mockReportCreate).not.toHaveBeenCalled();
+  });
+});
+
+describe('POST /api/reports/medical/aggregate', () => {
+  it('is public — no requireVerifiedReporterEmail gate', async () => {
+    mockQueryRaw.mockResolvedValue([]);
+    const res = await request(app)
+      .post('/api/reports/medical/aggregate')
+      .send({ dimensions: ['symptomCategory'] });
+    expect(res.status).toBe(200);
+  });
+
+  it('rejects an empty dimensions array', async () => {
+    const res = await request(app).post('/api/reports/medical/aggregate').send({ dimensions: [] });
+    expect(res.status).toBe(400);
+    expect(mockQueryRaw).not.toHaveBeenCalled();
+  });
+
+  it('rejects more than 3 dimensions', async () => {
+    const res = await request(app)
+      .post('/api/reports/medical/aggregate')
+      .send({
+        dimensions: ['symptomCategory', 'seriousness', 'onsetWindow', 'vaccineManufacturer'],
+      });
+    expect(res.status).toBe(400);
+    expect(mockQueryRaw).not.toHaveBeenCalled();
+  });
+
+  it('rejects a dimension name not in the Medical allowlist', async () => {
+    const res = await request(app)
+      .post('/api/reports/medical/aggregate')
+      .send({ dimensions: ['impactCategory'] }); // a SocialEconomic-only dimension
+    expect(res.status).toBe(400);
+    expect(mockQueryRaw).not.toHaveBeenCalled();
+  });
+
+  it('returns suppressed cells from the service as-is', async () => {
+    mockQueryRaw.mockResolvedValue([{ d0: 'ONCOLOGIC', count: 3, g0: 0 }]);
+    const res = await request(app)
+      .post('/api/reports/medical/aggregate')
+      .send({ dimensions: ['symptomCategory'] });
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      cells: [{ dimensions: { symptomCategory: 'ONCOLOGIC' }, count: null }],
+    });
+  });
+});
+
+describe('POST /api/reports/social-economic/aggregate', () => {
+  it('is public and accepts SocialEconomic-only dimensions', async () => {
+    mockQueryRaw.mockResolvedValue([]);
+    const res = await request(app)
+      .post('/api/reports/social-economic/aggregate')
+      .send({ dimensions: ['impactCategory', 'formalBasisAsserted'] });
+    expect(res.status).toBe(200);
+  });
+
+  it('rejects a Medical-only dimension', async () => {
+    const res = await request(app)
+      .post('/api/reports/social-economic/aggregate')
+      .send({ dimensions: ['symptomCategory'] });
+    expect(res.status).toBe(400);
+    expect(mockQueryRaw).not.toHaveBeenCalled();
   });
 });

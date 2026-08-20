@@ -7,6 +7,13 @@ import {
   socialEconomicImpactReportSchema,
 } from '../lib/reportIntakeSchemas';
 import { createMedicalReport, createSocialEconomicReport } from '../services/reportIntake';
+import { getMedicalPattern, getSocialEconomicPattern } from '../services/reportPatternService';
+import {
+  MEDICAL_DIMENSION_NAMES,
+  SOCIAL_ECONOMIC_DIMENSION_NAMES,
+  MedicalDimension,
+  SocialEconomicDimension,
+} from '../lib/reportDimensions';
 
 const router = Router();
 
@@ -100,5 +107,73 @@ router.post(
     }
   },
 );
+
+// ---------------------------------------------------------------------------
+// Aggregate pattern endpoints — Phase 6 (§0, §5 of the dev plan).
+//
+// Public, no auth — same precedent as GET /api/stats (server.ts): this
+// returns only suppressed aggregate counts (SUPPRESSION_THRESHOLD, applied
+// inside reportPatternService.ts, never left to the caller), never anything
+// about an individual report. dimensions/filters are validated against
+// reportDimensions.ts's allowlist before ever reaching raw SQL — that file
+// is the actual security boundary, not this validation, but this is where
+// an invalid dimension name gets a clean 400 instead of a raw-SQL error.
+// ---------------------------------------------------------------------------
+
+const PatternRequestSchema = (validDimensions: readonly string[]) =>
+  z.object({
+    dimensions: z
+      .array(z.enum(validDimensions as [string, ...string[]]))
+      .min(1, 'At least one dimension is required')
+      .max(3, 'At most 3 dimensions at a time'),
+    filters: z.record(z.enum(validDimensions as [string, ...string[]]), z.array(z.string())).optional(),
+  });
+
+const MedicalPatternRequestSchema = PatternRequestSchema(MEDICAL_DIMENSION_NAMES);
+const SocialEconomicPatternRequestSchema = PatternRequestSchema(SOCIAL_ECONOMIC_DIMENSION_NAMES);
+
+router.post('/medical/aggregate', async (req: Request, res: Response): Promise<void> => {
+  const parsed = MedicalPatternRequestSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Invalid request', details: parsed.error.flatten() });
+    return;
+  }
+
+  try {
+    const cells = await getMedicalPattern(parsed.data.dimensions as MedicalDimension[], parsed.data.filters);
+    res.status(200).json({ cells });
+  } catch (err) {
+    console.error('[reports/medical/aggregate] Query failed:', err instanceof Error ? err.stack : err);
+    res.status(500).json({
+      error: 'Failed to compute pattern',
+      message: err instanceof Error ? err.message : String(err),
+    });
+  }
+});
+
+router.post('/social-economic/aggregate', async (req: Request, res: Response): Promise<void> => {
+  const parsed = SocialEconomicPatternRequestSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Invalid request', details: parsed.error.flatten() });
+    return;
+  }
+
+  try {
+    const cells = await getSocialEconomicPattern(
+      parsed.data.dimensions as SocialEconomicDimension[],
+      parsed.data.filters,
+    );
+    res.status(200).json({ cells });
+  } catch (err) {
+    console.error(
+      '[reports/social-economic/aggregate] Query failed:',
+      err instanceof Error ? err.stack : err,
+    );
+    res.status(500).json({
+      error: 'Failed to compute pattern',
+      message: err instanceof Error ? err.message : String(err),
+    });
+  }
+});
 
 export { router as reportRouter };
