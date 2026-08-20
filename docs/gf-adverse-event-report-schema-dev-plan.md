@@ -731,15 +731,31 @@ proves nothing.
 verbatim; the bogus control was rewritten to `SITE_URL`, so the check does discriminate. Nothing to do
 — almost certainly a path wildcard on the origin, which is why no per-route entry was ever needed.
 
-**Production result: a pre-existing problem wider than this feature.** On `fqmczumacfbunffgodlo`, no
-real deployed origin is allow-listed at all — `glass-fortress-frontend-production.up.railway.app`,
-`tederyesharel.co.il` and `glass-fortress.vercel.app` are all rewritten — and only `http://localhost:*`
-survives, with `SITE_URL` itself still `http://localhost:3000`. That breaks the existing
-`/auth/callback` (Researcher login, and the MCP OAuth login bridge) exactly as much as it would break
-this form, so it is **not a Phase 8 dependency** and must not be tracked as one. Note it would not have
-been caught by the Aug 19 production login check recorded in `gf-mcp-oauth-dev-plan.md` §7: reaching
-Google's consent screen only validates Supabase's *own* callback URI against Google, while `redirect_to`
-back to the app is validated later, by GoTrue.
+**Production result: a real pre-existing breakage, found here and since FIXED.** On
+`fqmczumacfbunffgodlo`, no real deployed origin was allow-listed at all — every candidate was rewritten
+and only `http://localhost:*` survived, with `SITE_URL` itself still `http://localhost:3000`. **This
+broke production Researcher login and the MCP OAuth login bridge**, not just this form: their
+`/auth/callback` returns were being sent to a dead local address. Not a Phase 8 dependency; Phase 8 is
+simply what prompted anyone to look.
+
+It would not have been caught by the Aug 19 production login check recorded in
+`gf-mcp-oauth-dev-plan.md` §7 — reaching Google's consent screen only validates Supabase's *own*
+callback URI against Google, while `redirect_to` back to the app is validated later, by GoTrue. Worth
+remembering as a general trap: an OAuth flow can look correct right up to the consent screen and still
+have an unusable return leg.
+
+**Fixed 2026-08-20** (user, via dashboard): `SITE_URL` set to
+`https://glass-fortress-frontend-production.up.railway.app` and that origin added as a `/**` recursive
+wildcard; the stale localhost entries removed. Re-probed and confirmed: `/auth/callback`,
+`/auth/callback?returnTo=…` (the OAuth-bridge shape, the case most likely to slip a wildcard), both
+locale-prefixed callbacks, and `/{he,en}/reports/new` all resolve verbatim, with the bogus control
+still correctly rewritten.
+
+**Still unverified**, and required before production login can be called healthy: (1) a real magic-link
+round trip on production — allow-list resolution is not the same as an end-to-end login; (2) the
+production backend's `FRONTEND_URL` on Railway, whose local copy in `.env.production.local` is stale
+`http://localhost:3000`. If Railway's is stale too, CORS rejects the real frontend regardless of the
+Supabase fix.
 
 **Two real defects found and fixed while building, both surfaced only by the frontend needing them:**
 
