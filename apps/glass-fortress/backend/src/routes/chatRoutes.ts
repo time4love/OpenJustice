@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { TrustAgent, ChatMessage } from '../services/TrustAgent';
+import { chatLimiter } from '../middleware/rateLimiting';
 
 const router = Router();
 
@@ -36,7 +37,7 @@ function getTrustAgent(): TrustAgent {
 // in the requested language.
 // ---------------------------------------------------------------------------
 
-router.post('/', async (req: Request, res: Response): Promise<void> => {
+router.post('/', chatLimiter, async (req: Request, res: Response): Promise<void> => {
   const parsed = ChatBodySchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: 'Invalid request', details: parsed.error.flatten() });

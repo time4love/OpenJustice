@@ -17,6 +17,7 @@ import { mapEvidenceToRecord } from '../lib/evidenceRecord';
 import { buildEvidenceAnalysisData } from '../lib/evidenceCreateData';
 import { promoteEvidence } from '../services/promoteEvidence';
 import { parseDiffItems } from '../lib/diffItems';
+import { aiCostLimiter } from '../middleware/rateLimiting';
 
 const router = Router();
 
@@ -115,6 +116,7 @@ function getStorageService(): StorageService {
 
 router.post(
   '/intake',
+  aiCostLimiter,
   upload.single('file'),
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
@@ -182,6 +184,7 @@ router.post(
 
 router.post(
   '/confirm',
+  aiCostLimiter,
   upload.single('file'),
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {

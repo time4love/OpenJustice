@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { LegalMasterAgent } from '../services/LegalMasterAgent';
 import { VectorStoreService } from '../services/VectorStoreService';
 import { INVESTIGATIVE_CATEGORIES } from '../lib/investigativeCategories';
+import { aiCostLimiter } from '../middleware/rateLimiting';
 
 const router = Router();
 
@@ -32,7 +33,7 @@ function getAgent(): Promise<LegalMasterAgent> {
 // POST /api/arguments/generate
 // ---------------------------------------------------------------------------
 
-router.post('/generate', async (req: Request, res: Response): Promise<void> => {
+router.post('/generate', aiCostLimiter, async (req: Request, res: Response): Promise<void> => {
   const parsed = GenerateBodySchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: 'Invalid request', details: parsed.error.flatten() });
