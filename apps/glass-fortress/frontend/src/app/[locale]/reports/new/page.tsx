@@ -56,9 +56,12 @@ import {
 //     AuthContext: the token lives in component state, is used once, and
 //     dies with the page.
 //
-// Requires the Supabase project's redirect allow-list to include this page's
-// URL (both locale prefixes, or a wildcard) — GoTrue silently falls back to
-// SITE_URL for a redirect_to it does not recognise.
+// The magic link's redirect_to must be in the Supabase project's Auth
+// redirect allow-list; GoTrue silently falls back to SITE_URL for one it
+// does not recognise, so a missing entry looks like "the link works but
+// lands on the homepage" rather than an error. Verified already satisfied
+// on staging (both locale prefixes) — see the dev plan §5 Phase 8 for the
+// read-only probe that checks this without sending an email.
 // ---------------------------------------------------------------------------
 
 type Domain = 'MEDICAL' | 'SOCIAL_ECONOMIC';

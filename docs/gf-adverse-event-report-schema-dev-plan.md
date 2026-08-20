@@ -19,8 +19,9 @@ browser storage while the reporter is off checking their inbox. Building it surf
 neither the schema nor the API work could have shown: verification was being consumed *before* body
 validation (a 400 silently burned the reporter's one-shot magic link), and nothing enforced that the
 frontend's label catalogs still matched the Prisma enums they now supply the form's options from. Both
-fixed, both with tests. Needs one Supabase config change (Auth redirect allow-list) before it works on
-a deployed environment.
+fixed, both with tests. The Auth redirect allow-list was assumed to be a blocking config change and
+**turned out already satisfied on staging** when actually probed (§5 Phase 8) — production is a
+separate, pre-existing problem that is not this feature's to fix.
 
 Ten staging migrations applied and independently verified this session (query-verified, not just
 trusted from `migrate deploy`'s own output). Full suite 786/786 (including 64 label-parity assertions),
@@ -712,10 +713,33 @@ history, or anything the reporter might copy. Token expiry mid-flow (Supabase de
 a 401 on submit and is shown honestly — re-verify, and the answers must be entered again, because
 nothing was saved anywhere. Steps: verify → domain → category → details → about → review+consent.
 
-**Requires a Supabase config change before this works on any deployed environment**: the project's
-Auth redirect allow-list must include `/{he,en}/reports/new` (or a wildcard). GoTrue silently falls
-back to `SITE_URL` for a `redirect_to` it doesn't recognise, so a missing entry fails as "the link
-works but lands on the homepage", not as an error. Not verifiable from this session.
+**Auth redirect allow-list — assumed blocking, then measured, and it is not.** GoTrue silently falls
+back to `SITE_URL` for a `redirect_to` it does not recognise, so a missing entry fails as "the magic
+link works but lands on the homepage" rather than as an error. That failure mode is real, which is why
+this was written up as a blocking dependency — but the assumption that the entry was missing was never
+checked. It is checkable without sending any email, and read-only:
+
+```
+GET {SUPABASE_URL}/auth/v1/verify?token=x&type=magiclink&redirect_to={target}&apikey={anon}
+```
+
+The `Location` header comes back as `{target}` when the URL is allow-listed and as `SITE_URL` when it
+is not. Run it against a deliberately bogus origin first — if that one is *not* rewritten, the probe
+proves nothing.
+
+**Staging result: already allow-listed.** `/he/reports/new` and `/en/reports/new` both returned
+verbatim; the bogus control was rewritten to `SITE_URL`, so the check does discriminate. Nothing to do
+— almost certainly a path wildcard on the origin, which is why no per-route entry was ever needed.
+
+**Production result: a pre-existing problem wider than this feature.** On `fqmczumacfbunffgodlo`, no
+real deployed origin is allow-listed at all — `glass-fortress-frontend-production.up.railway.app`,
+`tederyesharel.co.il` and `glass-fortress.vercel.app` are all rewritten — and only `http://localhost:*`
+survives, with `SITE_URL` itself still `http://localhost:3000`. That breaks the existing
+`/auth/callback` (Researcher login, and the MCP OAuth login bridge) exactly as much as it would break
+this form, so it is **not a Phase 8 dependency** and must not be tracked as one. Note it would not have
+been caught by the Aug 19 production login check recorded in `gf-mcp-oauth-dev-plan.md` §7: reaching
+Google's consent screen only validates Supabase's *own* callback URI against Google, while `redirect_to`
+back to the app is validated later, by GoTrue.
 
 **Two real defects found and fixed while building, both surfaced only by the frontend needing them:**
 
@@ -800,10 +824,11 @@ yet done — and pick a charting library. Phase 9 also carries the one requireme
 half-discharge: the epistemic-tier distinction (§2.5, §2.3) is currently expressed in intake prose
 only, and `defamation-risk.md` Rule 2 requires it to have real visual weight in any public display.
 
-Before Phase 8 can actually work on staging or production, someone with Supabase dashboard access must
-**add `/{he,en}/reports/new` to each project's Auth redirect allow-list** (or a wildcard). This is the
-one blocking external dependency; a missing entry fails silently as "the magic link lands on the
-homepage".
+Phase 8 has **no blocking external dependency on staging** — the Auth redirect allow-list was probed
+directly (see Phase 8 above) and already covers `/{he,en}/reports/new`. What the probe did surface is a
+separate, pre-existing production issue: that project's allow-list still contains only localhost, and
+its `SITE_URL` is `http://localhost:3000`, which breaks Researcher login on production independently of
+this feature. Tracked as its own problem, not as Phase 8 work.
 
 Phase 5 (automated abuse defense) remains deliberately deferred until real submission volume shows
 whether it is needed at all. Phase 7 (thesis citation wiring) is still an open design question, not
