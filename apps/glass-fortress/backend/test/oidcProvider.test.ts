@@ -18,6 +18,7 @@ jest.mock('../src/lib/prisma', () => ({
   },
 }));
 
+import { execSync } from 'node:child_process';
 import { prisma } from '../src/lib/prisma';
 import {
   resolveIssuer,
@@ -26,7 +27,12 @@ import {
   getResourceServerInfo,
   loadJwks,
   loadCookieKeys,
+  GENERATE_JWKS_COMMAND,
 } from '../src/oauth/oidcProvider';
+
+// The `node -e` payload from GENERATE_JWKS_COMMAND, minus the shell wrapper.
+const GENERATE_JWKS_COMMAND_BODY =
+  GENERATE_JWKS_COMMAND.replace(/^node -e "/, '').replace(/"$/, '').replace(/\\'/g, "'");
 
 // ---------------------------------------------------------------------------
 // The two pure-ish pieces of oidc-provider's configuration that are worth
@@ -79,6 +85,29 @@ describe('getResourceServerInfo', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// loadJwks — must be able to sign RS256.
+//
+// This guards a real outage. Until 2026-08-20 there was no OAUTH_JWKS and
+// oidc-provider used its shipped dev keystore, an RSA key, so RS256 worked and
+// real MCP clients registered. fa54af4 correctly stopped using that keystore
+// (a private key published on npm, identical in every install) but documented a
+// command producing an EC key ALONE. The provider could then sign only ES256
+// while oidc-provider's client default stayed RS256, so every Dynamic Client
+// Registration that did not explicitly request ES256 was rejected with
+// invalid_client_metadata, before reaching a login screen.
+//
+// Nothing failed at startup and the deploy went green — the only symptom was
+// "Authentication failed" in the client. Hence fail-closed at load.
+//
+// NOTE: the 'parses a valid JWKS JSON string' case here previously used an
+// EC-only JWKS and asserted it was accepted. That test encoded the bug, so it
+// was corrected rather than the guard being loosened to keep it passing.
+// ---------------------------------------------------------------------------
+
+const RSA_JWK = { kty: 'RSA', n: 'n', e: 'AQAB', d: 'd' };
+const EC_JWK = { kty: 'EC', crv: 'P-256', x: 'x', y: 'y', d: 'd' };
+
 describe('loadJwks', () => {
   it('throws when OAUTH_JWKS is unset', () => {
     expect(() => loadJwks({})).toThrow(/OAUTH_JWKS env var is not set/);
@@ -89,8 +118,70 @@ describe('loadJwks', () => {
   });
 
   it('parses a valid JWKS JSON string', () => {
-    const jwks = { keys: [{ kty: 'EC', crv: 'P-256', x: 'x', y: 'y', d: 'd' }] };
+    const jwks = { keys: [RSA_JWK, EC_JWK] };
     expect(loadJwks({ OAUTH_JWKS: JSON.stringify(jwks) })).toEqual(jwks);
+  });
+
+  it('accepts an RSA-only JWKS', () => {
+    // RS256 is what registration needs; ES256 is a bonus. Asserted so the guard
+    // is not later tightened into demanding both.
+    expect(() => loadJwks({ OAUTH_JWKS: JSON.stringify({ keys: [RSA_JWK] }) })).not.toThrow();
+  });
+
+  it('REJECTS an EC-only JWKS — the exact configuration that caused the outage', () => {
+    expect(() => loadJwks({ OAUTH_JWKS: JSON.stringify({ keys: [EC_JWK] }) })).toThrow(
+      /no RSA key/i,
+    );
+  });
+
+  it('names the key types it did find, so the error is actionable', () => {
+    expect(() => loadJwks({ OAUTH_JWKS: JSON.stringify({ keys: [EC_JWK] }) })).toThrow(/EC/);
+  });
+
+  it('quotes the generation command rather than describing it', () => {
+    expect(() => loadJwks({ OAUTH_JWKS: JSON.stringify({ keys: [EC_JWK] }) })).toThrow(
+      /modulusLength/,
+    );
+  });
+
+  it('rejects a JWKS with no keys array', () => {
+    expect(() => loadJwks({ OAUTH_JWKS: '{}' })).toThrow(/non-empty "keys" array/i);
+  });
+
+  it('rejects an empty keys array', () => {
+    expect(() => loadJwks({ OAUTH_JWKS: JSON.stringify({ keys: [] }) })).toThrow(
+      /non-empty "keys" array/i,
+    );
+  });
+
+  it('survives entries that are not objects', () => {
+    // A hand-edited env var is the likely source, and the guard must produce
+    // its own error rather than a TypeError.
+    expect(() =>
+      loadJwks({ OAUTH_JWKS: JSON.stringify({ keys: [null, 'nonsense', 42] }) }),
+    ).toThrow(/no RSA key/i);
+  });
+});
+
+describe('GENERATE_JWKS_COMMAND', () => {
+  it('generates a JWKS that loadJwks accepts', () => {
+    // The command only ever appears inside an error message, so nothing else
+    // would run it. Executing it here stops the advice rotting — which is
+    // exactly how the previous command survived: documented, correct-looking,
+    // and producing a key that broke registration.
+    const generated = execSync(`node -e ${JSON.stringify(GENERATE_JWKS_COMMAND_BODY)}`, {
+      encoding: 'utf8',
+    }).trim();
+
+    expect(() => loadJwks({ OAUTH_JWKS: generated })).not.toThrow();
+    expect(
+      (JSON.parse(generated) as { keys: { kty: string }[] }).keys.map((k) => k.kty).sort(),
+    ).toEqual(['EC', 'RSA']);
+  });
+
+  it('is what the error messages actually quote', () => {
+    expect(GENERATE_JWKS_COMMAND).toContain('modulusLength');
+    expect(GENERATE_JWKS_COMMAND).toContain('P-256');
   });
 });
 

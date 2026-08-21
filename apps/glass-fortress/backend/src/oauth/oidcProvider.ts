@@ -49,20 +49,91 @@ export function resolveIssuer(env: NodeJS.ProcessEnv = process.env): string {
 // (the Provider below is constructed synchronously at import time), so a
 // misconfigured deployment fails at startup, not on a researcher's first
 // OAuth attempt.
+/**
+ * The command that produces a correct OAUTH_JWKS — an RSA key AND an EC key.
+ *
+ * Kept in one constant because it appears in two separate error messages, and
+ * a drifted copy would reintroduce exactly the outage that loadJwks below now
+ * guards against. The previous command was itself the cause: documented,
+ * correct-looking, and generating a key that broke every client registration.
+ */
+export const GENERATE_JWKS_COMMAND =
+  'node -e "const c=require(\'crypto\');const jwk=(t,o)=>c.generateKeyPairSync(t,o).privateKey.export({format:\'jwk\'});' +
+  "console.log(JSON.stringify({keys:[jwk('rsa',{modulusLength:2048}),jwk('ec',{namedCurve:'P-256'})]}))\"";
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+/**
+ * The `kty` of one JWKS entry, or 'unknown'. Tolerates entries that are not
+ * objects at all: OAUTH_JWKS is a hand-edited environment variable, and this
+ * runs during the error path, where throwing a TypeError instead of the
+ * intended message would hide the actual problem.
+ */
+function keyKind(key: unknown): string {
+  if (!isRecord(key)) return 'unknown';
+  const kty = key.kty;
+  return typeof kty === 'string' ? kty : 'unknown';
+}
+
+/**
+ * Reads OAUTH_JWKS and refuses anything that cannot sign RS256.
+ *
+ * The RS256 check is not defensive coding — it is a fix for a real outage.
+ * Before 2026-08-20 this server had no OAUTH_JWKS and fell back to
+ * oidc-provider's shipped dev keystore, which is an **RSA** key; RS256 worked,
+ * and real MCP clients registered fine. Commit fa54af4 correctly stopped using
+ * that keystore (it is a private key published on npm, identical in every
+ * install) — but the generation command it documented produced an EC key
+ * ALONE. The provider could then sign only ES256, while oidc-provider's own
+ * client default remained RS256, so every Dynamic Client Registration that did
+ * not explicitly ask for ES256 was rejected with `invalid_client_metadata`.
+ * Nothing failed at startup, the deploy went green, and the only symptom was
+ * "Authentication failed" in a client that never reached the login screen.
+ *
+ * RS256 is also not optional: OpenID Connect Discovery 1.0 §3 requires
+ * `id_token_signing_alg_values_supported` to include RS256. It matters more
+ * than usual here because registration is OPEN — arbitrary third-party clients
+ * self-register, so the server cannot assume anything about which algorithms
+ * they request.
+ *
+ * Failing closed at load is deliberate: the Provider is constructed
+ * synchronously at import time, so a JWKS that would break registration takes
+ * the deploy down instead of silently serving an authorization server that
+ * cannot register anyone.
+ */
 export function loadJwks(env: NodeJS.ProcessEnv = process.env): Configuration['jwks'] {
   const raw = env['OAUTH_JWKS'];
   if (!raw) {
-    throw new Error(
-      'OAUTH_JWKS env var is not set. Generate a fresh key with: node -e "console.log(JSON.stringify({keys:[require(\'crypto\')' +
-        '.generateKeyPairSync(\'ec\',{namedCurve:\'P-256\'}).privateKey.export({format:\'jwk\'})]}))" — see .env.example.',
-    );
+    throw new Error(`OAUTH_JWKS env var is not set. Generate one with: ${GENERATE_JWKS_COMMAND} — see .env.example.`);
   }
+
+  let parsed: unknown;
   try {
-    const parsed: unknown = JSON.parse(raw);
-    return parsed as Configuration['jwks'];
+    parsed = JSON.parse(raw);
   } catch (cause) {
     throw new Error('OAUTH_JWKS env var is not valid JSON', { cause });
   }
+
+  const keys = isRecord(parsed) ? parsed.keys : undefined;
+  if (!Array.isArray(keys) || keys.length === 0) {
+    throw new Error('OAUTH_JWKS must be a JWKS object with a non-empty "keys" array.');
+  }
+
+  const kinds = keys.map(keyKind);
+  if (!kinds.includes('RSA')) {
+    throw new Error(
+      'OAUTH_JWKS contains no RSA key, so this authorization server cannot sign RS256 — ' +
+        `it currently offers: ${kinds.join(', ')}. Open Dynamic Client Registration means ` +
+        'third-party MCP clients self-register, and a client that does not explicitly request ' +
+        'ES256 defaults to RS256 and is rejected with invalid_client_metadata before it ever ' +
+        'reaches login (this broke every client between 2026-08-20 and 2026-08-21). RS256 is ' +
+        `also mandatory per OpenID Connect Discovery 1.0 §3. Regenerate with: ${GENERATE_JWKS_COMMAND}`,
+    );
+  }
+
+  return parsed as Configuration['jwks'];
 }
 
 export function loadCookieKeys(env: NodeJS.ProcessEnv = process.env): string[] {
