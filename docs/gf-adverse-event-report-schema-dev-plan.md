@@ -1,40 +1,30 @@
 # GF Public Adverse-Outcome Self-Reports — Dev Plan
 
-**Status:** Phases 0-4 ✅ DONE (schema, migration, zod validation, bilingual labels for all domains
-verified against real Prisma enums, public intake API with `requireVerifiedReporterEmail`). Phase 4
-(`ReportPlausibilityService`) was built then fully designed away same-day (§2.9) — both candidate rules
-were modeling smells, fixed at the schema level instead (redundant `MedicalSymptomCategory.DEATH`
-removed; two booleans collapsed into `medicalCareEngagement`). Phase 5 redesigned twice (§2.10): no
-moderation queue (reports count automatically, no per-report human gate), no `freeTextElaboration`, no
-`Report.status`/`ReportStatus` at all — there's no state machine left once nothing gates entry.
-**Phase 6 (aggregation layer) ✅ DONE for the backend, 2026-08-20** (§5) — `reportDimensions.ts` +
-`reportPatternService.ts` (Postgres native `GROUP BY CUBE`, not hand-rolled) + two public aggregate
-endpoints, chosen deliberately over Metabase/Superset/Cube.dev to avoid new infrastructure this team's
-profile doesn't need. Frontend charting is Phase 9, not started.
-**Phase 8 (public intake form) ✅ DONE 2026-08-20** (§5) — `/[locale]/reports/new`, Hebrew-first RTL,
-plus the homepage CTA that makes it discoverable at all. The callback design was settled first, as the
-handoff note required: **verify first, then answer, with the form page as its own magic-link callback**
-— which is what makes it possible to persist *nothing*, rather than writing a health-data draft to
-browser storage while the reporter is off checking their inbox. Building it surfaced two real defects
-neither the schema nor the API work could have shown: verification was being consumed *before* body
-validation (a 400 silently burned the reporter's one-shot magic link), and nothing enforced that the
-frontend's label catalogs still matched the Prisma enums they now supply the form's options from. Both
-fixed, both with tests. The Auth redirect allow-list was assumed to be a blocking config change and
-**turned out already satisfied on staging** when actually probed (§5 Phase 8) — production is a
-separate, pre-existing problem that is not this feature's to fix.
+**Status: 🚀 PHASES 1-10 SHIPPED TO PRODUCTION, 2026-08-21.** `master` == `staging`; all four Railway
+services online; production's 11 pending migrations were applied automatically by the new pre-deploy
+step, in order, before the container started (verified against the live database: ledger 8 → 19, all
+five newest social columns present, the mis-anchored `timingRelativeToEvent` correctly absent).
+Production holds **0 reports**.
 
-Ten staging migrations applied and independently verified this session (query-verified, not just
-trusted from `migrate deploy`'s own output). Full suite 786/786 (including 64 label-parity assertions),
-`tsc` clean on both backend and frontend, `next build` clean.
-**One migration is written but NOT yet applied anywhere** — `20260820090000_cancer_course_unknown`
-(§5 Phase 2), generated offline and read, but this machine could not reach the staging Supabase pooler
-to apply or verify it. Every other migration in this feature was query-verified against staging; this
-one has not been, and must be before the branch is treated as deployed. Also fixed, via
-cherry-pick not reinvention, an unrelated schema-drift gotcha (`evidence_embeddings`) a generated
-migration almost silently proposed to drop. On branch `schema/gf-adverse-effect-reports`, pushed
-through `4e754a8`; this round (Phase 6) not yet committed. See §5 for the full phase-by-phase detail
-and §2.x for the reasoning behind each reversed decision — this document is the canonical reference for
-the taxonomy's rationale; keep it in sync with `schema.prisma` as the design evolves.
+What is live: the public intake form (`/{he,en}/reports/new`), the researcher-gated aggregate display
+(`/{he,en}/reports/patterns`), the two public aggregate endpoints with disclosure control enforced
+server-side, and a homepage CTA. 820/820 backend tests.
+
+**Phase-by-phase**: 1-8 schema → API → intake form (§5). **8b** added `vaccinationStatus`, without
+which social rows were uninterpretable — refusal-side and vaccination-side harm produced identical
+rows. **6b** fixed disclosure control: the suppression threshold alone leaked twice over. **9** built
+the display with evidence tiering. **10** is a first legal pass (`docs/gf-reporter-legal-pass.md`).
+
+**Not done, and gating the rest:**
+- **External legal review** of the public-facing copy — `defamation-risk.md` requires an Israeli
+  media/defamation lawyer and marks it "not a code task". This blocks ungating `/reports/patterns`.
+- Excluding `UNDISCLOSED` vaccination-status rows from any directional claim (§ Phase 8b).
+- **Phase 7** (thesis citation wiring) is still an open design question; **Phase 5** (abuse defense)
+  remains deferred until real volume shows whether it is needed.
+
+Read §2.x for the reasoning behind every reversed decision — this document is the canonical reference
+for the taxonomy's rationale; keep it in sync with `schema.prisma`.
+
 **Created:** 2026-08-20.
 **Scope:** Glass Fortress only. New models: `Report`, `MedicalAdverseEventReport`,
 `SocialEconomicImpactReport`, plus supporting enums.
