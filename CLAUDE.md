@@ -99,6 +99,34 @@ Report what was actually done — branch names, commit SHAs, PR numbers, deploy 
 "done". If a git command fails, say so plainly; never let a shell chain report success for a failed
 push.
 
+## Database Migrations (Glass Fortress backend)
+
+`apps/glass-fortress/backend`'s `schema.prisma` and the live DB can drift silently — this has already
+happened once (`evidence_embeddings`, a pgvector table reachable only via raw SQL, went unmodeled for
+months until a 2026-08-20 fix added it as an `Unsupported()` model). Prevent a repeat:
+
+- **Never run `prisma migrate dev`** (interactive or `--create-only`) against this project. Its auto-diff
+  compares the live DB against `schema.prisma` and will propose dropping anything real that isn't
+  modeled — including tables created intentionally via raw SQL for types Prisma can't express natively
+  (e.g. pgvector's `vector` type). It has no way to know a raw-SQL object is deliberate.
+- **Before writing any new migration**, run `npm run db:check-drift` (in
+  `apps/glass-fortress/backend`). It must report "No difference detected." If it reports *anything* —
+  even something that looks unrelated to what you're about to change — stop and investigate before
+  writing migration SQL; do not assume it's fine to proceed alongside pre-existing drift.
+- **To apply a migration**, hand-write the SQL under `prisma/migrations/<timestamp>_<name>/migration.sql`
+  scoped to only the intended change, then apply with `prisma migrate deploy` (applies pending migration
+  files directly — no auto-diff, so no drop risk). Verify post-apply via `information_schema.columns` or
+  an equivalent read-only check.
+- **Any object created via raw SQL** (a type Prisma can't model, a DB function, an extension) must also
+  get a corresponding `Unsupported("...")` model (with `@@map` to the real table name) in `schema.prisma`
+  in the same change, even though Prisma Client can never query it. Skipping this is exactly how
+  `evidence_embeddings` went unmodeled in the first place.
+- **Read what a generated migration actually says before applying it.** A diff tool computing "the
+  truth" from an incomplete model will confidently propose something false — that is how the
+  `evidence_embeddings` drop nearly went through. Generating offline
+  (`prisma migrate diff --from-schema-datamodel <old> --to-schema-datamodel <new> --script`) needs no
+  database connection and is the safe way to produce one.
+
 ## Workflow
 - Do not commit unless explicitly asked.
 - Do not push unless explicitly asked.
