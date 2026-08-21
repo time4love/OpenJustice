@@ -27,6 +27,18 @@ export class ContractRevertError extends Error {
 // ---------------------------------------------------------------------------
 
 export class Web3Service {
+  /**
+   * Half-width, in blocks, of the window scanned for a registering event.
+   *
+   * Every log query MUST be bounded: public RPC endpoints cap `eth_getLogs`
+   * block ranges, and an unbounded query is rejected outright rather than
+   * truncated. Base's public Sepolia endpoint — which GF staging uses —
+   * accepts a span of ~10k blocks and fails beyond it, so a ±128 window sits
+   * two orders of magnitude inside the limit while still absorbing any skew
+   * between the recorded timestamp and its block.
+   */
+  private static readonly LOG_WINDOW_BLOCKS = 128;
+
   private readonly provider: ethers.JsonRpcProvider;
   private readonly wallet: ethers.Wallet;
   private readonly contract: ethers.Contract;
@@ -126,14 +138,106 @@ export class Web3Service {
    * Callers must treat null the same as "cannot be confirmed" and must never
    * mark a record CONFIRMED without a real hash from this or a fresh
    * registration.
+   *
+   * The event is located via a BOUNDED block range. Querying the full chain in
+   * one call is not a slower version of this — it is rejected outright by
+   * public RPC endpoints (verified against Base Sepolia, GF staging's own
+   * chain, where a genesis-to-head query throws), which would turn every
+   * duplicate into a failed promotion.
    */
   async findRegisteringTxHash(fileHash: string): Promise<string | null> {
+    const { registered, evidenceId } = await this.isHashRegistered(fileHash);
+    if (!registered) return null;
+
+    // The contract stores the block timestamp of the registering transaction,
+    // which is the only pointer back to its block — so locate that block by
+    // timestamp, then query a narrow window around it.
+    const record = await this.getEvidenceRecord(evidenceId);
+    const anchorBlock = await this.findBlockAtTimestamp(Number(record.timestamp));
+
     const bytes32Hash = ethers.zeroPadValue(fileHash, 32);
     const filterFn = this.contract.filters.EvidenceSubmitted as (
       fileHash: string,
     ) => ethers.DeferredTopicFilter;
-    const logs = await this.contract.queryFilter(filterFn(bytes32Hash));
+    const logs = await this.contract.queryFilter(
+      filterFn(bytes32Hash),
+      Math.max(0, anchorBlock - Web3Service.LOG_WINDOW_BLOCKS),
+      anchorBlock + Web3Service.LOG_WINDOW_BLOCKS,
+    );
     return logs[0]?.transactionHash ?? null;
+  }
+
+  /**
+   * Finds the earliest block whose timestamp is >= `targetTimestamp`, by
+   * binary search over block headers.
+   *
+   * Deliberately derived from the chain rather than from a configured
+   * deployment block: a `*_DEPLOY_BLOCK` environment variable would be one
+   * more per-environment chain constant to keep in sync, and this codebase has
+   * already been burnt once by a stale one (see the note above
+   * EVIDENCE_REGISTRY_ADDRESS in .env — a leftover local-Anvil placeholder
+   * pointing at no real contract).
+   *
+   * The bracket is seeded by interpolating against the chain's mean block time
+   * before binary searching, because every header read is a sequential network
+   * round trip: over Base Sepolia's ~45.7M blocks a cold binary search costs
+   * ~26 of them (measured: 15-21s), which is long enough to risk a proxy
+   * timeout inside the HTTP promote routes that call this — turning the
+   * recovery back into the failed promotion it exists to prevent. Interpolation
+   * lands within a few thousand blocks on any chain with regular block times,
+   * and the search stays exact regardless: a bad estimate only widens the
+   * bracket, it can never move the answer.
+   */
+  private async findBlockAtTimestamp(targetTimestamp: number): Promise<number> {
+    const head = await this.provider.getBlockNumber();
+    const headBlock = await this.provider.getBlock(head);
+    if (!headBlock || headBlock.timestamp <= targetTimestamp) return head;
+
+    const genesis = await this.provider.getBlock(0);
+    let low = 0;
+    let high = head;
+
+    if (genesis && headBlock.timestamp > genesis.timestamp) {
+      const meanBlockTime = (headBlock.timestamp - genesis.timestamp) / head;
+      const estimate = Math.round((targetTimestamp - genesis.timestamp) / meanBlockTime);
+      // Expand geometrically until the bracket provably contains the target,
+      // then let the binary search below finish the job exactly.
+      for (let margin = Web3Service.LOG_WINDOW_BLOCKS; margin <= head; margin *= 8) {
+        const lo = Math.max(0, estimate - margin);
+        const hi = Math.min(head, estimate + margin);
+        const [loBlock, hiBlock] = await Promise.all([
+          this.provider.getBlock(lo),
+          this.provider.getBlock(hi),
+        ]);
+        if (loBlock && hiBlock && loBlock.timestamp < targetTimestamp && hiBlock.timestamp >= targetTimestamp) {
+          low = lo;
+          high = hi;
+          break;
+        }
+      }
+    }
+
+    while (low < high) {
+      const mid = Math.floor((low + high) / 2);
+      const block = await this.provider.getBlock(mid);
+      // A header the node will not serve tells us nothing about the target;
+      // stepping past it keeps the search converging rather than stalling.
+      if (!block) {
+        low = mid + 1;
+        continue;
+      }
+      if (block.timestamp < targetTimestamp) low = mid + 1;
+      else high = mid;
+    }
+
+    return low;
+  }
+
+  /** Reads a single on-chain evidence record by its sequential id. */
+  private async getEvidenceRecord(evidenceId: bigint): Promise<{ timestamp: bigint }> {
+    return await (
+      this.contract.getEvidence as (id: bigint) => Promise<{ timestamp: bigint }>
+    )(evidenceId);
   }
 
   /**
