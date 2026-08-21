@@ -17,7 +17,8 @@
     "test": "jest --config jest.config.ts",
     "db:check-drift": "prisma migrate diff --from-schema-datasource prisma/schema.prisma --to-schema-datamodel prisma/schema.prisma --exit-code",
     "db:simulate": "ts-node --transpile-only scripts/dbSimulate.ts",
-    "db:deploy": "prisma migrate deploy"
+    "db:deploy": "prisma migrate deploy",
+    "researcher:bootstrap": "ts-node --transpile-only scripts/bootstrapResearcher.ts"
   },
   "keywords": [],
   "author": "",
