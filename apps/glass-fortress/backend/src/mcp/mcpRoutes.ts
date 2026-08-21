@@ -11,12 +11,28 @@ import { resourceMetadataUrl } from '../oauth/resourceMetadata';
 const router = Router();
 
 // ---------------------------------------------------------------------------
-// Write tool names — any tools/call for one of these requires a valid per-user
+// Gated tool names — any tools/call for one of these requires a valid per-user
 // bearer token (looked up in the Researcher table).
 // Read tools (search_evidence, get_forensic_timeline, etc.) are unauthenticated.
+//
+// "Write" is the common case but not the criterion. What is actually gated is
+// anything that COSTS: a tool that spends money or does unbounded work belongs
+// here whether or not it persists a row. Two tools were mis-classified on that
+// basis and are listed separately below — the audit in
+// docs/gf-cost-exposure-dev-plan.md missed them because it enumerated REST
+// routes, and /api/mcp is mounted above the rate limiter where it was not
+// looking. Before adding a tool here, ask what it spends, not what it writes.
 // ---------------------------------------------------------------------------
 
-const WRITE_TOOLS = new Set([
+export const READ_TOOLS = new Set([
+  'search_evidence',
+  'get_forensic_timeline',
+  'get_figure_dossier',
+  'get_thesis_context',
+  'get_session_summary',
+]);
+
+export const WRITE_TOOLS = new Set([
   'create_evidence_from_url',
   'create_evidence_from_text',
   'start_forensic_scan',
@@ -31,6 +47,24 @@ const WRITE_TOOLS = new Set([
   'generate_foia_request',
   'recover_evidence_from_screenshot',
   'delete_evidence',
+
+  // Persist nothing, and were therefore unauthenticated until 2026-08-21 — but
+  // both spend real money on every call, with no account and (until the
+  // limiter below) no cap:
+  //
+  //   suggest_thesis      — embeds the topic, then runs ThesisSynthesisAgent.
+  //                         One long-context LLM call per request.
+  //   get_research_agenda — embeds each gap, and with includeSuggestions:true
+  //                         runs GapRevisionAgent once PER OPEN GAP, so the
+  //                         cost of a single call scales with thesis state
+  //                         rather than being fixed.
+  //
+  // search_evidence stays open deliberately: it embeds a query and nothing
+  // more (cents), it is the core public read, and it is what the anonymous
+  // ChatGPT integration depends on. Gating it would break a working consumer
+  // to solve a problem it is not causing.
+  'suggest_thesis',
+  'get_research_agenda',
 ]);
 
 // ---------------------------------------------------------------------------
@@ -252,8 +286,15 @@ router.get('/', (_req: Request, res: Response) => {
     name: 'Glass Fortress MCP',
     version: '1.0.0',
     transport: 'streamable-http',
-    readTools: ['search_evidence', 'get_forensic_timeline', 'get_figure_dossier', 'get_thesis_context', 'get_research_agenda', 'get_session_summary'],
-    writeTools: ['create_evidence_from_url', 'create_evidence_from_text', 'start_forensic_scan', 'create_thesis_draft', 'add_thesis_version', 'run_ai_analysis', 'create_research_session', 'add_session_note', 'close_research_session', 'enrich_evidence_with_history', 'promote_evidence', 'generate_foia_request', 'recover_evidence_from_screenshot', 'delete_evidence'],
+    // Derived from the sets the gate itself reads, never re-typed. These were
+    // previously two hardcoded literals maintained by hand, and they had
+    // already drifted: suggest_thesis appeared in NEITHER, so the endpoint
+    // advertised 20 of its 21 tools and silently omitted the most expensive
+    // anonymous one. mcpToolClassification.test.ts now asserts the two sets are
+    // exhaustive and disjoint against the server's real registry, so a new tool
+    // cannot be added without being classified.
+    readTools: [...READ_TOOLS],
+    writeTools: [...WRITE_TOOLS],
     auth:
       'Write tools accept either an MCP OAuth access token (see the "oauth" field below — this is what ' +
       'ChatGPT/Claude Desktop custom connectors should use) or a legacy per-user service token ' +
