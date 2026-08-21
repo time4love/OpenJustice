@@ -15,7 +15,8 @@
     "format": "prettier --write src/",
     "format:check": "prettier --check src/",
     "test": "jest --config jest.config.ts",
-    "db:check-drift": "prisma migrate diff --from-schema-datasource prisma/schema.prisma --to-schema-datamodel prisma/schema.prisma --exit-code"
+    "db:check-drift": "prisma migrate diff --from-schema-datasource prisma/schema.prisma --to-schema-datamodel prisma/schema.prisma --exit-code",
+    "db:simulate": "ts-node --transpile-only scripts/dbSimulate.ts"
   },
   "keywords": [],
   "author": "",

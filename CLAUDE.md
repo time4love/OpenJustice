@@ -99,6 +99,81 @@ Report what was actually done — branch names, commit SHAs, PR numbers, deploy 
 "done". If a git command fails, say so plainly; never let a shell chain report success for a failed
 push.
 
+## Data Loss — Absolute Rules
+
+**Data is never lost unintentionally. Not on staging, and NEVER on production.** This is not a
+best-effort aspiration; it is the constraint every other convenience yields to. Staging data is real
+work — scans, theses, evidence, real submissions — and re-creating it costs hours nobody planned to
+spend. See `docs/gf-staging-data-loss-postmortem-2026-08-21.md` for what it cost once.
+
+### Deleting data requires its own session
+
+**Never clean a database mid-work.** Not "while we're in here", not "quickly before the next step".
+A destructive database operation gets a **new, dedicated session** whose *sole stated purpose* is that
+cleanup, because the failure mode being prevented is inattention, and attention is exactly what a
+half-finished feature takes away.
+
+That session must:
+
+1. **State its purpose in its opening message** — this session exists to clean data, and nothing else.
+2. **Name the environment explicitly** — STAGING or PRODUCTION, by project ref, not by assumption.
+3. **Write the exact intended scope** to `.claude/DB_CLEANUP_SESSION` — which tables, which rows, which
+   date range. This file is the gate key AND the written record of what was authorised.
+4. **Make the user aware of the risk before anything runs**, in plain terms: what disappears, whether
+   it is recoverable, and what it costs to rebuild.
+5. **Do the cleanup and stop.** No feature work in a cleanup session, no cleanup in a feature session.
+
+### Simulate before every destructive statement — no exceptions
+
+```bash
+cd apps/glass-fortress/backend
+npm run db:simulate -- '<the exact statement>'
+```
+
+It runs the statement **for real** inside a transaction, measures what it destroys, and rolls back.
+PostgreSQL has transactional DDL, so this works for `DROP` and `TRUNCATE` as well as `DELETE` — the
+damage reported is **measured, not guessed**.
+
+Then **announce the predicted outcome before executing**, in exactly these terms:
+
+- **`⚠️ HIGH RISK OF DATA LOSS`** — N rows across these tables would be permanently lost. State N.
+  Do not run it until the user confirms **that number** is what they intended.
+- **`✅ LOW RISK`** — the statement ran in full and removed nothing.
+
+The simulator exits `2` on high risk and `0` on low, so it can gate a script as well as a human.
+
+A statement that has not been simulated does not get executed. If it cannot be simulated, that is
+itself the finding — say so rather than proceeding on judgement.
+
+### Commands that are blocked outright
+
+`.claude/hooks/guard-destructive-db.sh` (a `PreToolUse` hook) **denies** these unless
+`.claude/DB_CLEANUP_SESSION` exists, and downgrades them to an explicit confirmation prompt when it
+does:
+
+`DROP SCHEMA` · `DROP DATABASE` · `DROP TABLE` · `TRUNCATE` · `DELETE FROM` · `deleteMany` ·
+`prisma db push` · `prisma migrate reset` · `prisma migrate dev` · `--force-reset` ·
+`--accept-data-loss`
+
+**`prisma db push` is on that list for a specific reason**: with `--force-reset` it issues
+`DROP SCHEMA "public" CASCADE` and rebuilds from `schema.prisma`, destroying every row *and* the
+migration ledger, while reporting nothing alarming. It is what caused the 2026-08-21 wipe. It must
+never run against staging or production, with or without flags — it bypasses the migration history
+that makes an environment reproducible.
+
+The guard **fails open** on internal error, by design: a broken hook must not wedge the session. It is
+a net under the rules above, never a substitute for them.
+
+### Why a rule alone was not enough
+
+The migration rules below landed *hours before* the 2026-08-21 wipe and did not prevent it. They named
+`migrate dev`; the wipe came via `DROP SCHEMA`/`db push`. And `db:check-drift` reported **"No difference
+detected"** on a database that had just lost everything — it compares *structure*, not *contents*.
+
+Hence: a gate that blocks, a simulator that measures, and a session protocol that keeps destructive
+work away from distracted attention. Structure being fine and data being fine are **different
+questions** — never let one answer stand in for the other.
+
 ## Database Migrations (Glass Fortress backend)
 
 `apps/glass-fortress/backend`'s `schema.prisma` and the live DB can drift silently — this has already

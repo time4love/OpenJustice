@@ -156,16 +156,28 @@ not have prevented it. Worth being honest about why:
   everything. It compares *structure*, not *contents*, so a wipe-and-rebuild is invisible to it. It is
   working exactly as designed and is still worth having — it simply does not answer this question.
 
-**Recommended additions**, none of which are in place today:
+**Implemented in response** (same day, see CLAUDE.md "Data Loss — Absolute Rules"):
 
-1. Extend the CLAUDE.md rule to name `prisma db push` explicitly — `--force-reset` on any shared
-   database, and `db push` at all against staging or production, since it bypasses the migration
-   history that makes the environment reproducible.
-2. A row-count check to sit beside the drift check, so "the schema is fine" and "the data is fine" stop
-   being the same question.
-3. Consider revoking or rotating broad `postgres` credentials for day-to-day use, so routine work
-   cannot issue a `DROP SCHEMA` at all. This is the only change here that would have actually stopped
-   it.
+1. **A gate, not a rule.** `.claude/hooks/guard-destructive-db.sh` is a `PreToolUse` hook that **denies**
+   `DROP SCHEMA` / `DROP DATABASE` / `DROP TABLE` / `TRUNCATE` / `DELETE FROM` / `deleteMany` /
+   `prisma db push` / `migrate reset` / `migrate dev` / `--force-reset` / `--accept-data-loss` unless
+   `.claude/DB_CLEANUP_SESSION` exists — and downgrades them to an explicit confirmation carrying the
+   declared scope when it does. `db push` is named specifically, since that is what this incident came
+   through. Verified against the exact incident command. Fails **open** on internal error: a broken
+   guard must not wedge the session.
+2. **A simulator that measures instead of guessing.** `npm run db:simulate -- '<statement>'` executes
+   the statement for real inside a transaction, counts every table before and after, and rolls back —
+   PostgreSQL's transactional DDL means this covers `DROP` and `TRUNCATE`, not just `DELETE`. Verified
+   on `DROP SCHEMA "public" CASCADE` itself: it reported all 20 tables as would-be-dropped, exited `2`,
+   and the schema was confirmed intact afterwards.
+3. **A session protocol.** Destructive work now requires its own dedicated session that states its
+   purpose, names the environment by project ref, writes its exact scope to the gate file, and makes
+   the user aware of the cost before anything runs. No cleanup during feature work, ever.
+
+**Still recommended, not done:** revoking or rotating the broad `postgres` credential for day-to-day
+use, so routine work cannot issue a `DROP SCHEMA` at all. That is the only change that would have made
+this incident *impossible* rather than merely guarded — the items above raise the bar, they do not
+remove the capability.
 
 ---
 
