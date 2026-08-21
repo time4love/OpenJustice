@@ -56,9 +56,14 @@ export default function TrackedUrlPage() {
   const [diffs, setDiffs] = useState<DiffRecord[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(false);
-  const [initialLoading, setInitialLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Derived, not tracked: every terminal outcome of the first fetch sets one of
+  // these — meta on success, error on either failure path — so a separate
+  // boolean could only ever restate them, and setting it from inside the effect
+  // was a cascading render for no information gained.
+  const initialLoading = meta === null && error === null;
   const [reportLoading, setReportLoading] = useState(false);
 
   // Sentinel ref for IntersectionObserver
@@ -119,7 +124,7 @@ export default function TrackedUrlPage() {
   // Initial load
   useEffect(() => {
     if (!trackedUrlId) return;
-    void fetchPage(null).finally(() => setInitialLoading(false));
+    void fetchPage(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [trackedUrlId]);
 
