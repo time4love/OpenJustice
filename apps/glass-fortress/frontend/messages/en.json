@@ -1074,7 +1074,11 @@
       "submitting": "Submitting…",
       "edit": "Go back and change an answer",
       "omitted": "Questions you left unanswered are not listed — nothing is recorded for them.",
-      "consentLabelWithReligion": "I consent to this information — including health data, and the religious belief implied by the accommodation request I described — being stored and published as part of aggregate statistics."
+      "consentLabelWithReligion": "I consent to this information — including health data, and the religious belief implied by the accommodation request I described — being stored and published as part of aggregate statistics.",
+      "declarationHeading": "Your declaration",
+      "declarationLabel": "I declare that this report describes what happened to me, to the best of my knowledge — not something I read about, invented, or am submitting on behalf of someone else.",
+      "declarationDetail": "Reports become a public claim in aggregate. That claim is only worth as much as the honesty of the people making it, which is why we ask you to say this explicitly rather than assume it.",
+      "consentIrrevocable": "I understand that once submitted, this report cannot be found, corrected, or deleted — because nothing links it to me. That is the trade for anonymity, and it cannot be undone afterwards."
     },
     "done": {
       "heading": "Your report was recorded",
@@ -1187,6 +1191,13 @@
       "formalBasisAsserted": "Formal grounds given",
       "consequenceSeverity": "Harm that followed",
       "outcomeStatus": "Still in effect"
+    },
+    "legal": {
+      "anchor": "Why this exists",
+      "anchorBody": "Vaccine safety is a matter of public health, and public-health decisions are made on data that someone has to collect. This page exists so that outcomes people report can be examined in the open rather than only asserted or only dismissed.",
+      "notCausal": "These are counts of what people have reported. A report records that someone experienced something after vaccination — not that vaccination caused it. Nothing here has been medically verified, and a temporal association is not evidence of cause.",
+      "manufacturerHeading": "About the manufacturer breakdown",
+      "manufacturerBody": "A count shown beside a manufacturer's name means reports naming that product — not harm attributed to that company, and not a finding against it. Official surveillance systems publish manufacturer-stratified counts the same way and with the same caveat, because reaction patterns can differ between products. Reports here are self-submitted and unverified, so they cannot support any claim about a named company."
     }
   }
 }

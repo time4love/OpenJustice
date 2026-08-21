@@ -989,7 +989,41 @@ with the same visual weight as `FAMILY_RELATIONSHIP_RUPTURE`/`SOCIAL_OSTRACIZATI
 not systematically quantified) — this is a `defamation-risk.md` Rule 2 requirement, not a nice-to-have.
 Depends on Phase 6.
 
-### Phase 10 — Legal/compliance pass
+### Phase 10 — Legal/compliance pass ✅ FIRST PASS DONE 2026-08-21
+
+Full audit: **`docs/gf-reporter-legal-pass.md`** (canonical for this phase). Summary:
+
+This feature's legal profile is unlike the rest of GF, which is why it needed its own pass rather than
+reuse of the existing components. Every other public surface makes claims about **named individuals**,
+which is what `defamation-risk.md` is written for. This one names no individual at all — no free text,
+no names, by design (§2.10) — so the classic exposure is absent. What it has instead is
+special-category collection from the public plus **aggregate claims**: a GDPR problem and a
+*corporate*-defamation problem.
+
+Findings and fixes:
+- **HIGH — a named manufacturer beside a harm count.** `/reports/patterns` can render "פייזר — 412
+  דיווחים". Corporations can sue under חוק איסור לשון הרע and the truth-defence burden falls on us,
+  which unverified self-reports cannot discharge. Not removed (manufacturer stratification is standard
+  pharmacovigilance and the feature's whole method is to follow official practice) but **framed**: a
+  count beside a manufacturer means *reports naming that product*, not harm attributed to that company
+  — shown only when that breakdown is selected, so it appears where the risk does.
+- **HIGH — consent rested on an unstated assumption.** Nothing asked the reporter to declare the report
+  was their own genuine experience. Added as a **separate** checkbox, not appended text: Art. 9(2)(a)
+  consent must be specific and unbundled, and folding a factual declaration into it would weaken the
+  thing that makes processing lawful. Mirrors the Whistleblower flow's separate declaration.
+- **MEDIUM — irrevocability disclosed after the fact.** Moved to the point of consent.
+- **MEDIUM — no Rule 5 public-interest anchor** on the pattern display. Added.
+- **MEDIUM — the shared `LegalDisclaimer` would have been the wrong label.** It is headed "ניתוח AI";
+  nothing here is AI-generated, so reusing it would mislabel this content and dilute a label other
+  pages rely on. A separate `LegalFrame` instead.
+- **RESOLVED earlier** — the contact-info storage question this phase inherited is moot: nothing is
+  stored, verified against the live database.
+
+**Explicitly still external**: `defamation-risk.md`'s own checklist requires an Israeli
+media/defamation lawyer for public-facing copy and marks it "not a code task". That covers this
+feature. The audit names the two questions to put in front of them.
+
+### Phase 10 — original scope note
 `defamation-risk.md`-style review of the Phase 9 display copy once real; reporter consent/terms language
 (a report is a public-facing assertion, not a private submission — needs its own declaration, distinct
 from `Whistleblower`'s existing "legally obtained material" consent text); privacy review of how

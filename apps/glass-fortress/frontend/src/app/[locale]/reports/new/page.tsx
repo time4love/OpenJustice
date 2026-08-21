@@ -1046,6 +1046,8 @@ function ReviewStep({
   gender,
   consent,
   setConsent,
+  declaration,
+  setDeclaration,
   submitting,
   submitError,
   onSubmit,
@@ -1058,6 +1060,8 @@ function ReviewStep({
   gender: ReporterGender;
   consent: boolean;
   setConsent: (v: boolean) => void;
+  declaration: boolean;
+  setDeclaration: (v: boolean) => void;
   submitting: boolean;
   submitError: string | null;
   onSubmit: () => void;
@@ -1149,13 +1153,40 @@ function ReviewStep({
           </span>
         </label>
         <p className="text-xs text-slate-500 leading-relaxed">{t('consentDetail')}</p>
+        {/* Irrevocability belongs at the point of consent, not only on the
+            thank-you screen: agreeing to something that cannot be undone
+            requires knowing it beforehand. */}
+        <p className="text-xs text-slate-500 leading-relaxed">{t('consentIrrevocable')}</p>
+      </div>
+
+      {/* A SEPARATE checkbox, deliberately. Art. 9(2)(a) consent must be
+          specific and unbundled — folding a truthfulness declaration into it
+          would weaken the very thing that makes processing health data lawful.
+          They are also different acts: one grants permission, the other
+          asserts a fact, and only the second is what an aggregate claim rests
+          on. Mirrors the Whistleblower flow's separate "legally obtained
+          material" declaration. */}
+      <div className="rounded-xl border border-slate-300 bg-slate-50 p-4 space-y-2">
+        <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+          {t('declarationHeading')}
+        </h2>
+        <label className="flex gap-3 items-start cursor-pointer">
+          <input
+            type="checkbox"
+            checked={declaration}
+            onChange={(e) => setDeclaration(e.target.checked)}
+            className="mt-0.5 w-4 h-4 shrink-0 accent-slate-900"
+          />
+          <span className="text-sm text-slate-700 leading-relaxed">{t('declarationLabel')}</span>
+        </label>
+        <p className="text-xs text-slate-500 leading-relaxed">{t('declarationDetail')}</p>
       </div>
 
       {submitError && (
         <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{submitError}</p>
       )}
 
-      <PrimaryButton onClick={onSubmit} disabled={!consent || submitting}>
+      <PrimaryButton onClick={onSubmit} disabled={!consent || !declaration || submitting}>
         {submitting ? t('submitting') : t('submit')}
       </PrimaryButton>
     </StepShell>
@@ -1216,6 +1247,7 @@ export default function NewReportPage() {
   const [ageRange, setAgeRange] = useState<ReporterAgeRange>('UNKNOWN');
   const [gender, setGender] = useState<ReporterGender>('UNKNOWN');
   const [consent, setConsent] = useState(false);
+  const [declaration, setDeclaration] = useState(false);
 
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -1259,6 +1291,7 @@ export default function NewReportPage() {
     setAgeRange('UNKNOWN');
     setGender('UNKNOWN');
     setConsent(false);
+    setDeclaration(false);
     setSubmitError(null);
   }
 
@@ -1392,6 +1425,8 @@ export default function NewReportPage() {
             gender={gender}
             consent={consent}
             setConsent={setConsent}
+            declaration={declaration}
+            setDeclaration={setDeclaration}
             submitting={submitting}
             submitError={submitError}
             onSubmit={submit}

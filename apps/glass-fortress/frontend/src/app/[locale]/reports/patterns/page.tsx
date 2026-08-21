@@ -217,6 +217,44 @@ function TierLegend({ t }: { t: ReturnType<typeof useTranslations> }) {
   );
 }
 
+/**
+ * The legal frame this page is published under.
+ *
+ * Not the shared `LegalDisclaimer` component: that one is headed "ניתוח AI"
+ * and exists to mark AI-generated analysis. Nothing here is AI-generated — it
+ * is arithmetic over self-reports — so reusing it would mislabel the content
+ * and dilute the meaning of a label other pages depend on.
+ *
+ * Covers two `defamation-risk.md` requirements that apply once counts are
+ * published: Rule 5's public-interest anchor, which is what activates the
+ * s.15 defence under חוק איסור לשון הרע, and Rule 1's allegations-not-
+ * conclusions framing, here as the distinction between what was reported and
+ * what has been shown.
+ */
+function LegalFrame({ t, showManufacturerNote }: { t: ReturnType<typeof useTranslations>; showManufacturerNote: boolean }) {
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
+      <div>
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">{t('legal.anchor')}</h3>
+        <p className="mt-1 text-xs text-slate-500 leading-relaxed">{t('legal.anchorBody')}</p>
+      </div>
+      <p className="text-xs text-slate-600 leading-relaxed">{t('legal.notCausal')}</p>
+      {/* Shown only when a manufacturer is actually on screen. A named
+          commercial entity beside a harm count is the single highest-exposure
+          thing this page can render — corporations can sue under חוק איסור
+          לשון הרע and the truth defence's burden falls on us — so the caveat
+          appears exactly when the risk does, rather than as boilerplate
+          readers learn to skip. */}
+      {showManufacturerNote && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50/60 p-3">
+          <h4 className="text-xs font-semibold text-amber-900">{t('legal.manufacturerHeading')}</h4>
+          <p className="mt-1 text-xs text-amber-900/80 leading-relaxed">{t('legal.manufacturerBody')}</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function EmptyState({ t }: { t: ReturnType<typeof useTranslations> }) {
   const [open, setOpen] = useState(false);
   return (
@@ -366,6 +404,8 @@ function PatternsContent() {
             {!loading && !error && cells && cells.length > 0 && (
               <Results cells={cells} dimension={dimension} domain={domain} asTable={asTable} t={t} />
             )}
+
+            <LegalFrame t={t} showManufacturerNote={dimension.key === 'vaccineManufacturer'} />
 
             <p className="text-xs text-slate-400 leading-relaxed">{t('caveat')}</p>
           </>
