@@ -99,6 +99,38 @@ Report what was actually done — branch names, commit SHAs, PR numbers, deploy 
 "done". If a git command fails, say so plainly; never let a shell chain report success for a failed
 push.
 
+## Schema Migrations Deploy Themselves
+
+Migration SQL lives in git — `apps/glass-fortress/backend/prisma/migrations/<timestamp>_<name>/migration.sql`,
+one folder per migration, reviewed in the PR alongside the code that needs it. **Never apply a migration
+by hand.**
+
+`railway.json` declares a **pre-deploy step** (`npm run db:deploy` → `prisma migrate deploy`) that runs
+after the build and *before* the new version starts serving. So the order is guaranteed by the platform
+rather than by remembering:
+
+```
+push → build → migrate deploy → new version goes live
+```
+
+Two properties make this safe, and both matter:
+
+- **`migrate deploy` only applies committed migration files.** It never auto-diffs the live database
+  against `schema.prisma`, so it cannot propose dropping something that exists but isn't modelled —
+  the failure mode that nearly destroyed `evidence_embeddings` and that `migrate dev` invites.
+- **If the migration fails, the deploy aborts and the previous version keeps serving.** A broken
+  migration becomes a failed deploy, not a live site talking to a half-migrated database.
+
+It also removes the reason anyone needed production database credentials on a laptop. That manual step
+was the real weakness: it is why production drifted 11 migrations behind, and it is the same class of
+access that wiped staging. **Prefer changing the deploy pipeline over acquiring the credential.**
+
+The `prisma` CLI is therefore a **dependency, not a devDependency** — a pre-deploy step cannot rely on
+packages that may be pruned from the deploy container. Do not move it back.
+
+Manual `migrate deploy` remains correct in exactly one situation: an environment whose ledger is
+damaged, or a one-off repair, done under the cleanup-session protocol below.
+
 ## Data Loss — Absolute Rules
 
 **Data is never lost unintentionally. Not on staging, and NEVER on production.** This is not a
