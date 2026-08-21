@@ -22,13 +22,7 @@
  */
 
 import { PrismaClient } from '@prisma/client';
-
-// Project refs, so the report can name the environment rather than leave the
-// reader to decode a connection string under pressure.
-const KNOWN_ENVIRONMENTS: Record<string, string> = {
-  fqmczumacfbunffgodlo: 'PRODUCTION',
-  elwsznbcfmbmkldpntae: 'staging',
-};
+import { identifyEnvironment } from '../src/lib/dbEnvironment';
 
 /** Thrown to force the transaction to roll back. Never escapes this file. */
 class Rollback extends Error {}
@@ -36,14 +30,6 @@ class Rollback extends Error {}
 interface TableCount {
   table: string;
   rows: number;
-}
-
-function identifyEnvironment(): { label: string; isProduction: boolean; ref: string } {
-  const url = process.env['DATABASE_URL'] ?? '';
-  const match = /postgres(?:ql)?:\/\/[^@]*?\.?([a-z]{20})[.:@]/.exec(url) ?? /postgres\.([a-z]{20})/.exec(url);
-  const ref = match?.[1] ?? 'unknown';
-  const label = KNOWN_ENVIRONMENTS[ref] ?? `UNRECOGNISED (${ref})`;
-  return { label, isProduction: label === 'PRODUCTION', ref };
 }
 
 /**
