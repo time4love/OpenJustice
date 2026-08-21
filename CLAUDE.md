@@ -105,8 +105,15 @@ Migration SQL lives in git — `apps/glass-fortress/backend/prisma/migrations/<t
 one folder per migration, reviewed in the PR alongside the code that needs it. **Never apply a migration
 by hand.**
 
-`railway.json` declares a **pre-deploy step** (`npm run db:deploy` → `prisma migrate deploy`) that runs
-after the build and *before* the new version starts serving. So the order is guaranteed by the platform
+`apps/glass-fortress/backend/railway.json` declares a **pre-deploy step**
+(`npm run db:deploy --workspace=glass-fortress-backend` → `prisma migrate deploy`) that runs after the
+build and *before* the new version starts serving.
+
+**It only takes effect if the service's "Railway Config File" path points at that file.** These
+services have **no Root Directory set** — they build from the repo root with `--workspace` commands —
+so Railway does not find a config file on its own, and a repo-root `railway.json` would wrongly apply
+GF's migration step to Bronze Fortress and the frontends too. The path must be set per service, per
+environment, in the dashboard. So the order is guaranteed by the platform
 rather than by remembering:
 
 ```
