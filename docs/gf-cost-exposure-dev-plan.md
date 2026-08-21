@@ -1,7 +1,9 @@
 # GF Cost-Exposure Hardening — Dev Plan
 
-**Status:** Phase 1 (rate limiting) ✅ DONE 2026-08-19, on branch `feat/gf-cost-exposure-guardrails`,
-not yet committed/pushed/merged. Registrar wallet checked live: **0.001 ETH (~$2-3) balance** — the
+**Status:** Phase 1 (rate limiting) ✅ DONE 2026-08-19 — **and merged**: `src/middleware/rateLimiting.ts`
+is on `origin/master`. (This line previously read "not yet committed/pushed/merged"; corrected
+2026-08-21 after checking the actual ref.) Phase 1b ✅ DONE 2026-08-21 — see #9 below, the MCP surface
+this audit missed entirely. Registrar wallet checked live: **0.001 ETH (~$2-3) balance** — the
 on-chain drain path (#1 below) is currently self-limiting by funding, not by design; don't top the
 wallet up beyond operational need until Phase 2 lands. Phases 2-5 not started.
 **Created:** 2026-08-19.
@@ -34,6 +36,18 @@ Audited the GF backend for anywhere an anonymous internet user could run up a la
 | 6 | `POST /api/chat`, `POST /api/arguments/generate` | `chatRoutes.ts`, `argumentRoutes.ts` | No auth, public LLM calls. Chat has a 2000-char input cap; arguments/generate doesn't. |
 | 7 | `POST /api/thesis/suggest`, `POST /api/thesis/draft` | `thesisRoutes.ts:738,776` | Call the same handler MCP's `create_thesis_draft` requires an approved-researcher bearer token for (`mcpRoutes.ts` `WRITE_TOOLS`) — the REST wrapper skips that gate entirely. Auth-bypass, not just missing auth. |
 | 8 | Pinata IPFS pinning | `EphemeralAnalysisService.ts:30-53` | No file-count/size cap beyond the global 20MB body limit; reachable via #3/#4. |
+| 9 | `POST /api/mcp` → `suggest_thesis`, `get_research_agenda` | `mcp/mcpRoutes.ts` | **Found 2026-08-21, fixed same day.** Both were absent from `WRITE_TOOLS`, so they ran with no account at all. `suggest_thesis` embeds its topic then runs one long-context `ThesisSynthesisAgent` call; `get_research_agenda` with `includeSuggestions:true` runs `GapRevisionAgent` **once per open gap**, so a single request's cost scales with thesis state. Worse, `app.use('/api/mcp', mcpRouter)` is mounted *above* `app.use('/api', generalLimiter)`, so Express returned before the limiter ever ran — MCP was the only completely uncapped surface in the backend. |
+
+### 0.1b Why this audit missed the MCP surface (#9)
+
+Worth recording, because the same blind spot would recur. This audit enumerated **REST routes**, and
+`/api/mcp` is a single route that multiplexes 21 tools behind a JSON-RPC body — so it appears once in a
+route listing and looks like one endpoint, not twenty-one. Two of those tools spent money anonymously.
+
+It compounded with a second habit: "write tool" was read as "tool that persists something". Neither
+`suggest_thesis` nor `get_research_agenda` writes a row, so both looked like reads. **The criterion
+that matters is what a call SPENDS, not what it stores.** `mcpRoutes.ts` now says so at the definition
+site, and `test/mcpToolClassification.test.ts` fails if any registered tool is left unclassified.
 
 ### 0.2 One thing ruled out during this audit
 

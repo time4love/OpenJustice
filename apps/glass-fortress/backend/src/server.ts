@@ -116,7 +116,26 @@ app.use('/oauth', oidcProvider.callback());
 // never that check, just a coarser "keep the whole unfinished site private"
 // layer that doesn't compose with a subsystem designed for arbitrary
 // self-service external clients.
-app.use('/api/mcp', mcpRouter);
+//
+// Because this mount sits ABOVE `app.use('/api', generalLimiter)` below,
+// Express matched /api/mcp here and returned before the limiter ever ran —
+// leaving the MCP endpoint as the only completely uncapped surface on the
+// backend. That was an accident of mount order, not a decision, so the limiter
+// is attached directly rather than by moving the mount (which would re-gate the
+// route behind requireStagingAccess and break external clients, per above).
+//
+// generalLimiter, not aiCostLimiter: a single MCP session spends requests on
+// protocol chatter — initialize, tools/list — before any tool call, so a
+// 10-per-15-minute cap would exhaust itself on handshakes. The paid tools are
+// gated by resolveResearcher() instead; this bounds the anonymous read surface,
+// where search_evidence still embeds a query on every call.
+//
+// Note the keying: express-rate-limit counts per IP, and every claude.ai
+// request arrives from Anthropic's shared egress, so this is effectively
+// per-provider rather than per-user. Fine at GF's scale, and still far better
+// than uncapped — but it is not a per-tenant quota and should not be mistaken
+// for one.
+app.use('/api/mcp', generalLimiter, mcpRouter);
 
 // /.well-known/oauth-protected-resource[/api/mcp] — RFC 9728, mandated by the
 // MCP Authorization spec for authorization-server discovery. Same exemption
