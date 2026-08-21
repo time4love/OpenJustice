@@ -1,7 +1,11 @@
 # GF Production Readiness — Prerequisites Discovered While Rebuilding Staging
 
-**Status:** open. Items 1, 4, 5, 8 fixed on `staging`; **none on `master`**. Items 2, 3, 6, 7, 9, 10
-outstanding. **Item 5 blocks everything** — its PR must not merge before the key is rotated.
+**Status:** Items 1, 4, 5 and 8 are **fixed and live in production** (PRs #86-#90, shipped
+2026-08-21, `master` == `staging` == `78afe9e`). `OAUTH_JWKS` has been rotated on staging *and*
+production, each with its own freshly generated RSA+EC pair. Items 2, 3, 6, 7, 9, 10 remain open.
+
+**Production's MCP write path is still dead** despite OAuth now working — it has zero researchers
+(item 1's tooling exists but has not been run there, and item 2 is why that is awkward).
 **Created:** 2026-08-21, during an attempt to rebuild staging evidence via MCP.
 **Scope:** Glass Fortress. Every item below blocked, or would have blocked, a production replay.
 
@@ -29,7 +33,7 @@ approaches:
 
 ---
 
-## 1. An empty environment cannot bootstrap its first researcher ✅ FIXED (PR #87, staging only)
+## 1. An empty environment cannot bootstrap its first researcher ✅ FIXED, IN PRODUCTION (PR #87)
 
 MCP write access is gated on `Researcher.approved`. The only supported way to set it is
 `PATCH /api/auth/researchers/:id`, which is **ADMIN only**. An environment with zero researchers has
@@ -42,7 +46,8 @@ fails, presenting as a confusing connector error rather than "you need approval"
 already exists, which is what makes it a bootstrap tool rather than a privilege-escalation tool.
 `--revoke` (PR #88) corrects a bootstrap sent to the wrong identity.
 
-**Production is still in this state — zero researchers, so its MCP write path is dead.**
+**Production is still in this state — zero researchers, so its MCP write path is dead.** The
+tooling is now deployed there; it just has not been run.
 
 ## 2. Bootstrapping production needs production database credentials ⏳ OPEN
 
@@ -67,7 +72,7 @@ nothing here because it failed immediately; in a longer run it leaves a rebuild 
 **Action:** playbook step 0 is a cheap authenticated **write** that proves the session is live before
 any real record is created. See §10 for why it must be a write.
 
-## 4. Deleted evidence leaves permanent on-chain orphans ✅ RECOVERY FIXED (PR #86, staging only)
+## 4. Deleted evidence leaves permanent on-chain orphans ✅ RECOVERY FIXED, IN PRODUCTION (PR #86)
 
 The chain is append-only; the database is not. Staging carries 2 orphaned anchors from the 2026-08-21
 wipe (`totalEvidence() == 2`, no matching rows). On Base **mainnet** the same sequence means paid,
@@ -77,9 +82,10 @@ duplicate-recovery path.
 That recovery path was itself broken — `findRegisteringTxHash` issued an unbounded `eth_getLogs`,
 which public RPCs reject — so a duplicate promotion *failed* rather than recovering. Fixed in PR #86.
 
-**Production still runs the broken version**, where the failure costs real money to discover.
+Fixed in production as of 2026-08-21. Base **mainnet** is where that failure would have cost real
+money to discover, so this one mattered more than its size suggests.
 
-## 5. `OAUTH_JWKS` is EC-only, so no MCP client can register 🔴 BLOCKER (PR #90, not merged)
+## 5. `OAUTH_JWKS` was EC-only, so no MCP client could register ✅ FIXED IN PRODUCTION (PR #90)
 
 Every MCP client has failed since 2026-08-20. Full analysis in `docs/gf-mcp-oauth-dev-plan.md` §7.1.
 
@@ -88,12 +94,16 @@ published on npm) but documented a generation command producing an **EC key alon
 then sign only ES256 while oidc-provider's client default stays RS256, so every Dynamic Client
 Registration is rejected with `invalid_client_metadata` before login is attempted.
 
-**Production runs the same code and is broken identically** — unnoticed only because nothing has
-connected to it.
+Production ran the same code and was broken identically — unnoticed only because nothing had ever
+connected to it. Confirmed by probing production directly before the fix: `['ES256']` and a `400`.
 
-**PR #90 must not merge until `OAUTH_JWKS` is rotated** on the target environment: its guard rejects
-the currently-deployed key, so merging first means the build fails to boot. Generate with the command
-in `.env.example`; it produces both an RSA and an EC key.
+**Resolved 2026-08-21.** Both environments were rotated before PR #90 reached them, each with its own
+freshly generated RSA+EC pair — never shared, so a staging compromise cannot mint production tokens.
+Verified after the production deploy: metadata advertises `['PS256','RS256','ES256']` and a DCR with
+the default algorithm returns `201` where it previously returned `400`.
+
+**The ordering remains binding for any future environment:** rotate `OAUTH_JWKS` *before* the guard
+reaches it, or the build will not boot. Generate with the command in `.env.example`.
 
 ## 6. Project refs are committed in a public repo ⏳ OPEN (decision, not a bug)
 
@@ -161,9 +171,10 @@ authentication."
 
 ## 11. Housekeeping left behind
 
-- A throwaway OAuth client `diagnostic-probe-es256` was registered on staging while diagnosing §5. It
-  is inert and unused, but it is a real `OidcModel` row. Remove it under the destructive-work
-  protocol, not casually.
+- **Three throwaway OAuth clients** were registered while diagnosing §5:
+  `diagnostic-probe-es256` and `post-rotation-check` on staging, `prod-postship-check` on
+  **production**. All inert and unused, but they are real `OidcModel` rows. Remove them under the
+  destructive-work protocol, not casually.
 - `.claude/settings.local.json` holds a **Base mainnet deployer private key** and a Bronze Fortress
   production database password in plaintext. **Never committed** — verified across all refs — and
   ignored via the user's *global* `~/.config/git/ignore`, not this repo's `.gitignore`. That
