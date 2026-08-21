@@ -24,15 +24,21 @@
 
 import { PrismaClient } from '@prisma/client';
 import { identifyEnvironment } from '../src/lib/dbEnvironment';
-import { bootstrapResearcher } from '../src/services/bootstrapResearcher';
+import { bootstrapResearcher, revokeResearcher } from '../src/services/bootstrapResearcher';
 
-function parseHandle(argv: string[]): string | null {
-  const index = argv.indexOf('--handle');
+function parseFlag(argv: string[], flag: string): string | null {
+  const index = argv.indexOf(flag);
   if (index === -1) return null;
   const value = argv[index + 1];
   if (value === undefined || value.startsWith('--') || value.trim() === '') return null;
   return value.trim();
 }
+
+const USAGE = [
+  'Usage:',
+  '  npm run researcher:bootstrap -- --handle "<handle>"   approve the first researcher',
+  '  npm run researcher:bootstrap -- --revoke "<handle>"   withdraw an approval',
+].join('\n');
 
 function banner(text: string): void {
   console.log('\n' + '='.repeat(72));
@@ -40,10 +46,42 @@ function banner(text: string): void {
   console.log('='.repeat(72));
 }
 
+async function runRevoke(prisma: PrismaClient, handle: string): Promise<number> {
+  const outcome = await revokeResearcher(prisma, handle);
+
+  switch (outcome.kind) {
+    case 'revoked':
+      console.log(`✅ Withdrew approval from "${outcome.handle}" (${outcome.researcherId}).`);
+      console.log('   The account still exists and can still log in to the frontend —');
+      console.log('   it simply no longer holds write access.');
+      return 0;
+
+    case 'not_approved':
+      console.log(`✅ "${outcome.handle}" was not approved. Nothing to do.`);
+      return 0;
+
+    case 'no_such_handle':
+      console.log(`⛔ No researcher with handle "${outcome.handle}".`);
+      if (outcome.availableHandles.length > 0) {
+        console.log('   Registered handles:');
+        outcome.availableHandles.forEach((h) => console.log(`     • ${h}`));
+      }
+      return 1;
+  }
+}
+
 async function main(): Promise<number> {
-  const handle = parseHandle(process.argv.slice(2));
-  if (handle === null) {
-    console.error('Usage: npm run researcher:bootstrap -- --handle "<handle>"');
+  const argv = process.argv.slice(2);
+  const handle = parseFlag(argv, '--handle');
+  const revoke = parseFlag(argv, '--revoke');
+
+  if (handle !== null && revoke !== null) {
+    console.error('Pass either --handle or --revoke, not both.\n' + USAGE);
+    return 1;
+  }
+  const subject = handle ?? revoke;
+  if (subject === null) {
+    console.error(USAGE);
     return 1;
   }
 
@@ -59,11 +97,14 @@ async function main(): Promise<number> {
   if (env.isProduction) {
     console.log('  ⚠️  This is PRODUCTION.');
   }
-  console.log(`  handle requested: ${handle}\n`);
+  console.log(`  action           : ${revoke !== null ? 'revoke approval' : 'approve'}`);
+  console.log(`  handle requested : ${subject}\n`);
 
   const prisma = new PrismaClient();
   try {
-    const outcome = await bootstrapResearcher(prisma, handle);
+    if (revoke !== null) return await runRevoke(prisma, revoke);
+
+    const outcome = await bootstrapResearcher(prisma, subject);
 
     switch (outcome.kind) {
       case 'approved':

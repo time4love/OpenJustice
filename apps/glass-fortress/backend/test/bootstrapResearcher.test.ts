@@ -1,4 +1,8 @@
-import { bootstrapResearcher, type ResearcherStore } from '../src/services/bootstrapResearcher';
+import {
+  bootstrapResearcher,
+  revokeResearcher,
+  type ResearcherStore,
+} from '../src/services/bootstrapResearcher';
 import { identifyEnvironment } from '../src/lib/dbEnvironment';
 
 // ---------------------------------------------------------------------------
@@ -22,12 +26,14 @@ interface Row {
 }
 
 function buildStore(rows: Row[]): { store: ResearcherStore; update: jest.Mock } {
-  const update = jest.fn(async ({ where }: { where: { id: string } }) => {
-    const row = rows.find((r) => r.id === where.id);
-    if (!row) throw new Error(`no row ${where.id}`);
-    row.approved = true;
-    return { id: row.id, handle: row.handle, approved: true };
-  });
+  const update = jest.fn(
+    async ({ where, data }: { where: { id: string }; data: { approved: boolean } }) => {
+      const row = rows.find((r) => r.id === where.id);
+      if (!row) throw new Error(`no row ${where.id}`);
+      row.approved = data.approved;
+      return { id: row.id, handle: row.handle, approved: row.approved };
+    },
+  );
 
   const store: ResearcherStore = {
     researcher: {
@@ -145,6 +151,74 @@ describe('bootstrapResearcher', () => {
     const outcome = await bootstrapResearcher(store, 'שם בדיקה');
 
     expect(outcome).toEqual({ kind: 'approved', handle: 'שם בדיקה', researcherId: 'r1' });
+  });
+});
+
+describe('revokeResearcher', () => {
+  it('withdraws approval from an approved researcher', async () => {
+    const { store, update } = buildStore([{ id: 'r1', handle: 'wrong-identity', approved: true }]);
+
+    const outcome = await revokeResearcher(store, 'wrong-identity');
+
+    expect(outcome).toEqual({ kind: 'revoked', handle: 'wrong-identity', researcherId: 'r1' });
+    const [args] = update.mock.calls[0] as [{ data: Record<string, unknown> }];
+    expect(args.data).toEqual({ approved: false });
+  });
+
+  it('is NOT blocked by other approved researchers', async () => {
+    // The freshness guard exists because GRANTING privilege in a populated
+    // environment is the dangerous direction. Revocation only removes it, so
+    // applying the same guard here would block the exact repair it exists for.
+    const { store } = buildStore([
+      { id: 'r1', handle: 'incumbent', approved: true },
+      { id: 'r2', handle: 'wrong-identity', approved: true },
+    ]);
+
+    const outcome = await revokeResearcher(store, 'wrong-identity');
+
+    expect(outcome.kind).toBe('revoked');
+  });
+
+  it('is a no-op on an already-unapproved researcher', async () => {
+    const { store, update } = buildStore([{ id: 'r1', handle: 'pending', approved: false }]);
+
+    const outcome = await revokeResearcher(store, 'pending');
+
+    expect(outcome).toEqual({ kind: 'not_approved', handle: 'pending', researcherId: 'r1' });
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it('reports a handle that does not exist', async () => {
+    const { store, update } = buildStore([{ id: 'r1', handle: 'alpha', approved: true }]);
+
+    const outcome = await revokeResearcher(store, 'ghost');
+
+    expect(outcome).toEqual({
+      kind: 'no_such_handle',
+      handle: 'ghost',
+      availableHandles: ['alpha'],
+    });
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it('re-opens the environment for a corrected bootstrap', async () => {
+    // The scenario this whole pairing exists for: the first bootstrap went to an
+    // identity the MCP client cannot authenticate as, so approval has to move.
+    const { store } = buildStore([
+      { id: 'r1', handle: 'wrong-identity', approved: true },
+      { id: 'r2', handle: 'right-identity', approved: false },
+    ]);
+
+    expect((await bootstrapResearcher(store, 'right-identity')).kind).toBe('refused_not_fresh');
+
+    await revokeResearcher(store, 'wrong-identity');
+    const corrected = await bootstrapResearcher(store, 'right-identity');
+
+    expect(corrected).toEqual({
+      kind: 'approved',
+      handle: 'right-identity',
+      researcherId: 'r2',
+    });
   });
 });
 

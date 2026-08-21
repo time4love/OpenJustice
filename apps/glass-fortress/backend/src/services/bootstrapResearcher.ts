@@ -52,10 +52,66 @@ export interface ResearcherStore {
     }) => Promise<{ id: string; handle: string; approved: boolean } | null>;
     update: (args: {
       where: { id: string };
-      data: { approved: true };
+      data: { approved: boolean };
       select: { id: true; handle: true; approved: true };
     }) => Promise<{ id: string; handle: string; approved: boolean }>;
   };
+}
+
+export type RevokeOutcome =
+  /** Approval withdrawn. */
+  | { kind: 'revoked'; handle: string; researcherId: string }
+  /** Was not approved to begin with. Re-running changed nothing. */
+  | { kind: 'not_approved'; handle: string; researcherId: string }
+  /** No researcher with that handle. */
+  | { kind: 'no_such_handle'; handle: string; availableHandles: string[] };
+
+/**
+ * Withdraws approval from a researcher.
+ *
+ * The inverse of bootstrapResearcher, and it exists for one specific failure:
+ * bootstrapping the WRONG identity. That is easy to do and hard to see, because
+ * the researcher must be registered under the same identity the MCP client
+ * authenticates as — not merely an account the operator controls. Approving the
+ * wrong one of your own Google accounts produces a working-looking environment
+ * whose connector can never authenticate, and the only other way back is a
+ * hand-typed UPDATE, which is what this whole script exists to avoid.
+ *
+ * Deliberately NOT guarded the way bootstrapping is. The freshness check on
+ * approval exists because granting privilege in a populated environment is the
+ * dangerous direction; revocation only ever removes privilege, so no arrangement
+ * of arguments can turn it into an escalation. The worst case is locking
+ * yourself out of an environment you can then re-bootstrap.
+ */
+export async function revokeResearcher(
+  store: ResearcherStore,
+  handle: string,
+): Promise<RevokeOutcome> {
+  const target = await store.researcher.findUnique({
+    where: { handle },
+    select: { id: true, handle: true, approved: true },
+  });
+
+  if (!target) {
+    const all = await store.researcher.findMany({ select: { handle: true } });
+    return {
+      kind: 'no_such_handle',
+      handle,
+      availableHandles: all.map((r) => r.handle ?? '(unknown)'),
+    };
+  }
+
+  if (!target.approved) {
+    return { kind: 'not_approved', handle: target.handle, researcherId: target.id };
+  }
+
+  const updated = await store.researcher.update({
+    where: { id: target.id },
+    data: { approved: false },
+    select: { id: true, handle: true, approved: true },
+  });
+
+  return { kind: 'revoked', handle: updated.handle, researcherId: updated.id };
 }
 
 /**
