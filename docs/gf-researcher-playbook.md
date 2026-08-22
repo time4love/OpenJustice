@@ -995,6 +995,102 @@ and an independent `eth_call` against the contract that does not go through this
 
 ---
 
+---
+
+# Part II — The thesis phase
+
+Steps 0-11 built a vault: eight anchored records, 81 classified diffs, 15 claim
+trajectories. None of that is an argument. This part walks the half of the workflow
+that turns a corpus into a legal thesis, has it attacked, and publishes what it still
+needs — synthesis, Devil's Advocate, FOIA, and the call for whistleblowers.
+
+Started **cold**, in a new session, with only the MCP tools and this document. That was
+deliberate: if the playbook cannot carry a session that has never seen the work, that is
+the finding it exists to produce.
+
+## Step 12 — Reopening: environment first, then the write path
+
+Step 0 wrote first and identified the environment afterwards, which FINDING 1 records as
+the defect. Reopening against a vault that already holds records allows the correct order:
+identify the database from a read, before anything mutates.
+
+### Call 1 — `search_evidence`
+
+Open, anonymous, writes nothing.
+
+```
+search_evidence
+  query: "משרד הבריאות חיסונים"
+  limit: 20
+```
+
+`total: 8` — the article anchored in Step 3 plus the seven forensic findings of Step 11,
+every one `Tier 2: Material` / `Incriminating`. The vault survived the session boundary
+intact.
+
+### Call 2 — the environment discriminator (out-of-band, read-only)
+
+Same method as FINDING 1: ask **production** whether it holds the hashes the connector
+just returned.
+
+```sql
+SELECT (SELECT count(*) FROM "Evidence")        AS evidence_total,
+       (SELECT count(*) FROM "Evidence" WHERE "fileHash" IN (…3 hashes…)) AS matching,
+       (SELECT count(*) FROM "UrlVersionDiff")  AS diffs_total,
+       (SELECT count(*) FROM "Thesis")          AS thesis_total;
+```
+
+| Column | Value |
+|---|---|
+| `evidence_total` | 0 |
+| `matching` | 0 |
+| `diffs_total` | 0 |
+| `thesis_total` | 0 |
+
+Not production. Also, separately worth stating: **the production vault is empty.** Every
+record this playbook describes exists only on staging.
+
+### FINDING 21 — the environment check got weaker, not stronger
+
+The Step 0 discriminator is *"query production for the returned hash; `0` means staging"*.
+That inference holds only while production holds **different** data. Against an empty
+production database, `0 matching` is equally consistent with a wrong schema, a wrong table
+name, or a query that failed and returned nothing.
+
+It was salvaged here by also reading `evidence_total` — `0`, so the database is genuinely
+empty rather than the hashes being absent — but that control was improvised, not part of
+the procedure. FINDING 1 is unresolved and its workaround now degrades as production fills
+or empties. **A negative result is only evidence when you also know what a positive one
+would have looked like.**
+
+### Call 3 — the gated path
+
+Reads prove nothing about authentication; GF serves them anonymously. The cheapest proof
+that the authorized path works is a **gated** tool that costs nothing and writes nothing.
+
+```
+check_on_chain_status
+  fileHash: "0x0654…c262"
+```
+
+| Field | Value |
+|---|---|
+| `verdict` | `CONSISTENT` |
+| `consistent` | `true` |
+| `safeToPromote` | `false` — already anchored |
+| `database.status` | `CONFIRMED` |
+| `database.onChainTxHash` | recorded |
+| `chain.registered` | `true` |
+| `chain.registryEvidenceId` | `2` |
+
+Three things at once: the connector is authorized, staging's RPC is healthy (FINDING 6's
+fix is holding), and the vault's first record still agrees with the contract across a
+session boundary.
+
+**Do this before the first substantive call, not after.** FINDING 4's rule — exercise the
+gated tools early — costs one free call here and saves discovering an expired
+authorization mid-promotion.
+
 ## Where this leaves the vault
 
 | | |
