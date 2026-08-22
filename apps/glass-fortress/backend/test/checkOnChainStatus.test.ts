@@ -38,7 +38,12 @@ interface Verdict {
   safeToPromote: boolean;
   consistent: boolean;
   database: { inVault: boolean; status: string | null; onChainTxHash: string | null };
-  chain: { registered: boolean; registryEvidenceId: string | null; recoveredTxHash?: string | null };
+  chain: {
+    registered: boolean;
+    registryEvidenceId: string | null;
+    recoveredTxHash?: string | null;
+    recoveryError?: string;
+  };
   explanation: string;
   error?: string;
 }
@@ -127,6 +132,43 @@ describe('check_on_chain_status', () => {
     await run({ id: 'e8', status: 'CONFIRMED', onChainTxHash: TX }, true, { recoverTxHash: true });
 
     expect(mockFindRegisteringTxHash).not.toHaveBeenCalled();
+  });
+
+  // -------------------------------------------------------------------------
+  // Regression: a CONFIGURED but unreachable chain.
+  //
+  // The first real call against a real endpoint returned an ethers
+  // CALL_EXCEPTION ("missing revert data") because the public RPC answered
+  // "no backend is currently healthy". The constructor succeeded, so the
+  // original constructor-only guard did not catch it and the raw exception
+  // escaped from a tool that promises a verdict.
+  // -------------------------------------------------------------------------
+  it('a reachable-but-failing contract call is CHAIN_UNAVAILABLE, not a verdict', async () => {
+    findUnique.mockResolvedValue({ id: 'e10', status: 'PENDING_REVIEW', onChainTxHash: null });
+    mockIsHashRegistered.mockRejectedValue(
+      new Error('missing revert data (action="call", code=CALL_EXCEPTION)'),
+    );
+
+    const r = JSON.parse(await checkOnChainStatusHandler({ fileHash: HASH })) as Verdict;
+
+    expect(r.error).toBe('CHAIN_UNAVAILABLE');
+    expect(r.verdict).toBeUndefined();
+    // The trap: this row IS pending and unregistered in the database, so a
+    // naive implementation would happily call it safe to promote on no
+    // evidence at all.
+    expect(r.safeToPromote).toBeUndefined();
+  });
+
+  it('a failed tx-hash recovery is annotated, never reported as "none found"', async () => {
+    mockFindRegisteringTxHash.mockRejectedValue(new Error('eth_getLogs range rejected'));
+    const r = await run({ id: 'e11', status: 'CONFIRMED', onChainTxHash: null }, true, {
+      recoverTxHash: true,
+    });
+
+    // The verdict stands — only the convenience lookup failed.
+    expect(r.verdict).toBe('MISSING_TX_HASH');
+    expect(r.chain.recoveredTxHash).toBeNull();
+    expect(r.chain.recoveryError).toContain('eth_getLogs');
   });
 
   it('an unreachable chain is an error, never a "not registered" verdict', async () => {
