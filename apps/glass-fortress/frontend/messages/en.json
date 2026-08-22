@@ -336,7 +336,21 @@
     "addToThesisPick": "Pick a thesis",
     "addToThesisLoading": "Loading…",
     "addToThesisEmpty": "No theses found",
-    "addToThesisUntitled": "Thesis {id}"
+    "addToThesisUntitled": "Thesis {id}",
+    "trajectoryHeading": "Claim trajectories — what no single comparison shows",
+    "trajectoryExplainer": "A comparison shows two archived snapshots. A trajectory follows one assertion across the page's entire archived history, so it is the only view that can show a claim removed, restored and removed again. Detection is a string search over the archived page text itself — no AI involved.",
+    "trajectoryEmpty": "No claim on this page appeared and disappeared more than once.",
+    "trajectoryMovedTogether": "{count} claims moved as one unit",
+    "trajectoryFlips": "{count} flips",
+    "trajectoryPresent": "present",
+    "trajectoryRemoved": "removed",
+    "trajectoryFinalRemoved": "removed, never returned",
+    "trajectoryFinalPresent": "still present",
+    "trajectoryOpenSnapshot": "Open the archived snapshot",
+    "trajectoryShowClaims": "Show the {count} claims",
+    "trajectoryHideClaims": "Hide claims",
+    "trajectoryVerifyHint": "Every point on the timeline links to the archived capture itself. Open it and search for the claim text — verifying this requires no trust in this platform.",
+    "trajectoryNotComputed": "Claim trajectories for this page have not been detected yet. They are computed when a scan completes; re-scanning will populate them."
   },
   "theses": {
     "aiReviewedStatus": "AI reviewed",

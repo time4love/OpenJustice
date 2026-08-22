@@ -16,14 +16,19 @@ jest.mock('../src/lib/prisma', () => ({
     trackedUrl: { findUnique: jest.fn() },
     urlSnapshot: { findMany: jest.fn() },
     urlVersionDiff: { findMany: jest.fn() },
-    claimTrajectory: { upsert: jest.fn() },
+    claimTrajectory: { createMany: jest.fn() },
+    claimTrajectoryComputation: { findUnique: jest.fn(), create: jest.fn() },
+    $transaction: jest.fn(),
   },
 }));
 
 import { prisma } from '../src/lib/prisma';
 import {
   buildTrajectory,
-  computeClaimTrajectories,
+  getClaimTrajectories,
+  getStoredClaimTrajectories,
+  computeSourceStateHash,
+  DETECTION_VERSION,
   normaliseClaim,
   claimHash,
 } from '../src/services/claimTrajectory';
@@ -97,10 +102,76 @@ describe('buildTrajectory', () => {
   });
 });
 
-describe('computeClaimTrajectories', () => {
+// ---------------------------------------------------------------------------
+// The state hash is the cache key AND the citation version key, so what it does
+// and does not cover decides both whether a stale answer can be served and
+// whether a cited trajectory can change underneath the thesis citing it.
+// ---------------------------------------------------------------------------
+describe('computeSourceStateHash', () => {
+  const base = {
+    waybackTimestamps: ['20220525000000', '20220529000000'],
+    candidateHashes: ['aaa', 'bbb'],
+    detectionVersion: DETECTION_VERSION,
+  };
+
+  it('is stable for identical state', () => {
+    expect(computeSourceStateHash(base)).toBe(computeSourceStateHash({ ...base }));
+  });
+
+  it('ignores candidate discovery ORDER', () => {
+    // Order is an artifact of which diff happened to be iterated first, not part
+    // of the state. Two passes finding the same claims must hash alike, or the
+    // cache misses forever and every call pays the full recompute.
+    expect(computeSourceStateHash({ ...base, candidateHashes: ['bbb', 'aaa'] })).toBe(
+      computeSourceStateHash(base),
+    );
+  });
+
+  it('changes when a scan adds a snapshot', () => {
+    expect(
+      computeSourceStateHash({ ...base, waybackTimestamps: [...base.waybackTimestamps, '20220530000000'] }),
+    ).not.toBe(computeSourceStateHash(base));
+  });
+
+  it('changes when reclassification changes the candidates, with no new snapshot', () => {
+    // THE case a scan-keyed cache gets wrong. `forensics:reclassify` rewrites
+    // diff extraction without touching the archive, so the snapshot set is
+    // identical while the claims worth following are not. Keyed on "has this URL
+    // been scanned", a stale answer would be served indefinitely.
+    expect(computeSourceStateHash({ ...base, candidateHashes: ['aaa', 'ccc'] })).not.toBe(
+      computeSourceStateHash(base),
+    );
+  });
+
+  it('changes when the normaliser changes', () => {
+    // normaliseClaim and MIN_CLAIM_LENGTH decide what a claim IS, so a deploy
+    // that changes either makes stored rows answer a different question.
+    expect(computeSourceStateHash({ ...base, detectionVersion: 'v2-something-else' })).not.toBe(
+      computeSourceStateHash(base),
+    );
+  });
+
+  it('does not collide when a snapshot moves between the two lists', () => {
+    // Guards the delimiter: concatenating the fields without separators would let
+    // ('ab','c') and ('a','bc') hash alike.
+    expect(
+      computeSourceStateHash({ ...base, waybackTimestamps: ['20220525000000'], candidateHashes: ['20220529000000', 'aaa', 'bbb'] }),
+    ).not.toBe(computeSourceStateHash(base));
+  });
+});
+
+describe('getClaimTrajectories', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     (prisma.trackedUrl.findUnique as jest.Mock).mockResolvedValue({ id: 't-1' });
+    // Default: nothing stored yet, so every test below exercises a cache MISS
+    // unless it says otherwise.
+    (prisma.claimTrajectoryComputation.findUnique as jest.Mock).mockResolvedValue(null);
+    (prisma.claimTrajectoryComputation.create as jest.Mock).mockResolvedValue({
+      id: 'comp-1',
+      computedAt: new Date('2026-08-22T00:00:00.000Z'),
+    });
+    (prisma.$transaction as jest.Mock).mockImplementation(async (fn: (tx: unknown) => unknown) => fn(prisma));
   });
 
   function withSnapshots(dates: [string, boolean][]): void {
@@ -132,7 +203,7 @@ describe('computeClaimTrajectories', () => {
     ]);
     withCandidates([CLAIM]);
 
-    const r = await computeClaimTrajectories('https://health.gov.il/x');
+    const r = await getClaimTrajectories('https://health.gov.il/x');
 
     expect(r.trajectories).toHaveLength(1);
     expect(r.trajectories[0].transitions).toBe(3);
@@ -146,7 +217,7 @@ describe('computeClaimTrajectories', () => {
     ]);
     withCandidates([CLAIM]);
 
-    const r = await computeClaimTrajectories('https://health.gov.il/x');
+    const r = await getClaimTrajectories('https://health.gov.il/x');
 
     expect(r.trajectories).toHaveLength(0);
     expect(r.candidatesConsidered).toBe(1);
@@ -156,7 +227,7 @@ describe('computeClaimTrajectories', () => {
     withSnapshots([['2022-05-25', true]]);
     withCandidates(['החיסון בטוח']);
 
-    const r = await computeClaimTrajectories('https://health.gov.il/x');
+    const r = await getClaimTrajectories('https://health.gov.il/x');
 
     expect(r.candidatesConsidered).toBe(0);
   });
@@ -168,7 +239,7 @@ describe('computeClaimTrajectories', () => {
     ]);
     withCandidates(['a quote long enough to pass the length gate but never on the page']);
 
-    const r = await computeClaimTrajectories('https://health.gov.il/x');
+    const r = await getClaimTrajectories('https://health.gov.il/x');
 
     expect(r.candidatesUnmatched).toBe(1);
     expect(r.trajectories).toHaveLength(0);
@@ -181,21 +252,20 @@ describe('computeClaimTrajectories', () => {
       { deletedText: JSON.stringify([{ summary: 's', exactQuote: `  ${CLAIM}  ` }]), addedText: '[]' },
     ]);
 
-    const r = await computeClaimTrajectories('https://health.gov.il/x');
+    const r = await getClaimTrajectories('https://health.gov.il/x');
 
     expect(r.candidatesConsidered).toBe(1);
   });
 
   // -------------------------------------------------------------------------
-  // Detection reads; it never writes.
+  // Detection is stored, versioned state — not a per-call recomputation.
   //
-  // The result is deterministic and cheap to recompute, so storing it would only
-  // create a second copy able to fall behind the snapshots it describes — and a
-  // write path with no reader invites building on rows from an older detection
-  // pass. ClaimTrajectory stays in the schema for when citation needs a stable
-  // identity to point at.
+  // It used to recompute on every call: ~2 MB of archived text out of Postgres
+  // and thousands of substring searches, 3-5 seconds, to produce a byte-identical
+  // answer, on an endpoint that answers anonymously. It is a pure function of
+  // state that moves only on a scan or a reclassification.
   // -------------------------------------------------------------------------
-  it('never writes — the result is recomputed, not stored', async () => {
+  it('persists the computation and its trajectories on a miss', async () => {
     withSnapshots([
       ['2022-05-25', true],
       ['2022-05-29', false],
@@ -203,9 +273,116 @@ describe('computeClaimTrajectories', () => {
     ]);
     withCandidates([CLAIM]);
 
-    await computeClaimTrajectories('https://health.gov.il/x');
+    await getClaimTrajectories('https://health.gov.il/x');
 
-    expect(prisma.claimTrajectory.upsert).not.toHaveBeenCalled();
+    expect(prisma.claimTrajectoryComputation.create).toHaveBeenCalledTimes(1);
+    const written = (prisma.claimTrajectory.createMany as jest.Mock).mock.calls[0][0].data;
+    expect(written).toHaveLength(1);
+    expect(written[0].computationId).toBe('comp-1');
+    expect(JSON.parse(written[0].observations)).toHaveLength(3);
+  });
+
+  it('stores sub-threshold trajectories too, so minTransitions stays a READ filter', async () => {
+    // Storing only what the current threshold returns would make the cache
+    // depend on the query: a later call with minTransitions: 1 would be served a
+    // silently incomplete answer from rows that never contained the others.
+    withSnapshots([
+      ['2022-05-25', true],
+      ['2022-11-29', false],
+    ]);
+    withCandidates([CLAIM]);
+
+    const r = await getClaimTrajectories('https://health.gov.il/x');
+
+    expect(r.trajectories).toHaveLength(0); // filtered out of the ANSWER
+    const written = (prisma.claimTrajectory.createMany as jest.Mock).mock.calls[0][0].data;
+    expect(written).toHaveLength(1); // but kept in the STATE
+    expect(written[0].transitions).toBe(1);
+  });
+
+  it('serves stored state without reading snapshot text', async () => {
+    withSnapshots([
+      ['2022-05-25', true],
+      ['2022-05-29', false],
+      ['2022-05-30', true],
+    ]);
+    withCandidates([CLAIM]);
+    (prisma.claimTrajectoryComputation.findUnique as jest.Mock).mockResolvedValue({
+      sourceStateHash: 'stored-hash',
+      detectionVersion: DETECTION_VERSION,
+      computedAt: new Date('2026-08-22T00:00:00.000Z'),
+      snapshotsExamined: 3,
+      candidatesConsidered: 1,
+      candidatesUnmatched: 0,
+      trajectories: [
+        {
+          claimHash: claimHash(CLAIM),
+          claimText: CLAIM,
+          observations: JSON.stringify([
+            { snapshotDate: '2022-05-25', waybackTimestamp: '1', snapshotUrl: 'u', present: true },
+            { snapshotDate: '2022-05-29', waybackTimestamp: '2', snapshotUrl: 'u', present: false },
+            { snapshotDate: '2022-05-30', waybackTimestamp: '3', snapshotUrl: 'u', present: true },
+          ]),
+          transitions: 2,
+          firstSeen: '2022-05-25',
+          lastSeen: '2022-05-30',
+          finalState: 'REMOVED',
+        },
+      ],
+    });
+
+    const r = await getClaimTrajectories('https://health.gov.il/x');
+
+    expect(r.provenance.fromCache).toBe(true);
+    expect(r.trajectories).toHaveLength(1);
+    expect(prisma.claimTrajectoryComputation.create).not.toHaveBeenCalled();
+    // One findMany for snapshot METADATA (needed to compute the state hash),
+    // never a second for fullText. That second read is the expensive one.
+    expect((prisma.urlSnapshot.findMany as jest.Mock).mock.calls).toHaveLength(1);
+  });
+
+  it('falls back to the stored rows when two concurrent misses race', async () => {
+    withSnapshots([
+      ['2022-05-25', true],
+      ['2022-05-29', false],
+      ['2022-05-30', true],
+    ]);
+    withCandidates([CLAIM]);
+    (prisma.$transaction as jest.Mock).mockRejectedValue({ code: 'P2002' });
+    (prisma.claimTrajectoryComputation.findUnique as jest.Mock)
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({
+        sourceStateHash: 'winner',
+        detectionVersion: DETECTION_VERSION,
+        computedAt: new Date('2026-08-22T00:00:00.000Z'),
+        snapshotsExamined: 3,
+        candidatesConsidered: 1,
+        candidatesUnmatched: 0,
+        trajectories: [],
+      });
+
+    const r = await getClaimTrajectories('https://health.gov.il/x');
+
+    // The loser reads the winner's rows rather than failing: both computed
+    // against the same sourceStateHash, so the answer is identical anyway.
+    expect(r.provenance.fromCache).toBe(true);
+  });
+
+  it('getStoredClaimTrajectories never computes and never writes', async () => {
+    // The security-relevant half. get_claim_trajectories was classified as a READ
+    // tool while detection recomputed per call; once a miss inserts rows, an
+    // unauthenticated caller could write to the database. The public REST route
+    // uses this path so a miss is reported, never filled.
+    withSnapshots([['2022-05-25', true], ['2022-05-29', false], ['2022-05-30', true]]);
+    withCandidates([CLAIM]);
+
+    const r = await getStoredClaimTrajectories('https://health.gov.il/x');
+
+    expect(r).toBeNull();
+    expect(prisma.claimTrajectoryComputation.create).not.toHaveBeenCalled();
+    expect(prisma.claimTrajectory.createMany).not.toHaveBeenCalled();
+    // Never reads snapshot fullText either — only the metadata for the state hash.
+    expect((prisma.urlSnapshot.findMany as jest.Mock).mock.calls).toHaveLength(1);
   });
 
   it('gives identical text the same hash every run, so results are stable to cite', () => {

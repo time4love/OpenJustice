@@ -99,6 +99,26 @@ describe('MCP tool classification', () => {
     }
   });
 
+  it('gates the tools that persist rows on an otherwise read-shaped call', () => {
+    // get_claim_trajectories reads like a read: deterministic string search over
+    // already-stored snapshot text, no LLM, no RPC, no chain. It sat in
+    // READ_TOOLS on exactly that reasoning, and was correct until detection
+    // became stored state — after which a cache MISS inserts a
+    // ClaimTrajectoryComputation and its ClaimTrajectory rows. An unauthenticated
+    // caller could write to the database.
+    //
+    // The suites above could not catch it. They assert every tool is classified
+    // exactly once and never in both sets; none of them asks whether a
+    // classification still describes what the tool DOES. The behaviour changed
+    // under a classification that did not, which is the drift this file exists
+    // to prevent, arriving in a shape it does not inspect.
+    //
+    // This assertion is the narrow fix: the general one is a review question, not
+    // a test. Ask what a tool spends AND what it writes, every time either changes.
+    expect(WRITE_TOOLS.has('get_claim_trajectories')).toBe(true);
+    expect(READ_TOOLS.has('get_claim_trajectories')).toBe(false);
+  });
+
   it('keeps search_evidence open', () => {
     // Deliberate: it embeds a query and nothing more, it is the core public
     // read, and the anonymous ChatGPT integration depends on it. Asserted so

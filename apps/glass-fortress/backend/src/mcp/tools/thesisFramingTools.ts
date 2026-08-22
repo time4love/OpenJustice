@@ -61,6 +61,7 @@ export async function assessThesisFramingHandler(input: {
     question: result.question,
     rounds: result.rounds,
     evidenceConsidered: result.evidenceConsidered,
+    trajectoriesConsidered: result.trajectoriesConsidered,
     // Surfaced first and counted, because it is the reason this tool exists.
     contradictionCount: assessment.contradictions.length,
     contradictions: assessment.contradictions,

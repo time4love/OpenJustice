@@ -12,6 +12,7 @@ import {
 } from './forensicEvidence';
 import { groupDiffChunks, chunksForAI } from '../lib/diffChunking';
 import { CLASSIFIER_VERSION, classifierPromptHash } from '../lib/classifierVersion';
+import { getClaimTrajectories } from './claimTrajectory';
 
 // ---------------------------------------------------------------------------
 // Lazy singletons — non-fatal if unavailable
@@ -1151,10 +1152,37 @@ export class WaybackScraper {
       });
     }
 
-    return prisma.waybackScrapeJob.update({
+    const completed = await prisma.waybackScrapeJob.update({
       where: { id: jobId },
       data: { status: 'COMPLETED', processedSnapshots: processedCount, failureReason: null },
     });
+
+    // Detect trajectories now that the snapshot set is final.
+    //
+    // A trajectory is state computed after a scan completes, and this is the
+    // only writer that runs without a human asking for it. Doing it here is what
+    // lets the public read path stay read-only: an unauthenticated route must
+    // never compute, because a miss inserts rows.
+    //
+    // Deliberately after the job is marked COMPLETED, and deliberately swallowed.
+    // Detection is derived data that can always be recomputed; a scan that fetched
+    // and stored every snapshot has succeeded, and reporting it FAILED because a
+    // derived view could not be built would strand the archived text — the
+    // expensive, irreplaceable half — behind a cheap, repeatable failure.
+    try {
+      const tracked = await prisma.trackedUrl.findUnique({
+        where: { id: trackedUrlId },
+        select: { url: true },
+      });
+      if (tracked) await getClaimTrajectories(tracked.url);
+    } catch (err) {
+      console.warn(
+        `[WaybackScraper] trajectory detection failed for tracked URL ${trackedUrlId}:`,
+        err instanceof Error ? err.message : err,
+      );
+    }
+
+    return completed;
   }
 
   // ---------------------------------------------------------------------------

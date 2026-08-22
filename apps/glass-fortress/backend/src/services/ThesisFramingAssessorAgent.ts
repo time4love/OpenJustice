@@ -3,6 +3,7 @@ import { LLMFactory } from '../factories/LLMFactory';
 import { assertSchemaCompatibility } from '../lib/assertSchemaCompatibility';
 import { THESIS_FRAMING_ASSESSMENT_PROMPT } from '../prompts/thesisFramingAssessment';
 import type { EvidenceContext } from '../lib/evidenceContext';
+import { formatTrajectoryContext, type TrajectoryBundle } from '../lib/trajectoryContext';
 
 // ---------------------------------------------------------------------------
 // Assesses how a thesis should be FRAMED, before one exists.
@@ -82,6 +83,12 @@ export interface FramingAssessmentInput {
   evidence: EvidenceContext[];
   /** Prior turns in this framing session, oldest first. Empty on the first. */
   priorTurns?: string[];
+  /**
+   * Deterministic claim trajectories for the tracked pages this evidence came
+   * from. Supplied because an assessor reading only model-written summaries
+   * contradicted a researcher who had read the archive — and was wrong.
+   */
+  trajectories?: TrajectoryBundle;
 }
 
 export class ThesisFramingAssessorAgent {
@@ -105,6 +112,8 @@ export class ThesisFramingAssessorAgent {
       )
       .join('\n\n');
 
+    const trajectoryText = formatTrajectoryContext(input.trajectories ?? { trajectories: [], coverage: [], omittedGroups: 0 });
+
     const raw = await this.chain.invoke([
       { role: 'system', content: THESIS_FRAMING_ASSESSMENT_PROMPT },
       {
@@ -115,6 +124,7 @@ export class ThesisFramingAssessorAgent {
             : '') +
           `שאלת החוקר: ${input.question}\n\n` +
           `--- ראיות מאומתות מן המאגר ---\n${evidenceText || '  (לא נמצאו ראיות)'}\n\n` +
+          `${trajectoryText ? `${trajectoryText}\n\n` : ''}` +
           `--- המסגור שהחוקר מציע ---\n${input.proposedFraming}`,
       },
     ]);

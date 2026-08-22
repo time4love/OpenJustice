@@ -336,7 +336,21 @@
     "addToThesisPick": "בחר תזה",
     "addToThesisLoading": "טוען…",
     "addToThesisEmpty": "לא נמצאו תזות",
-    "addToThesisUntitled": "תזה {id}"
+    "addToThesisUntitled": "תזה {id}",
+    "trajectoryHeading": "מסלולי טענות — מה שאף השוואה בודדת אינה מראה",
+    "trajectoryExplainer": "השוואה בודדת מציגה שני תצלומי ארכיון. מסלול עוקב אחר טענה אחת לאורך כל ההיסטוריה הארכיונית של הדף, ולכן הוא היחיד שמסוגל להראות טענה שהוסרה, הוחזרה והוסרה שוב. הזיהוי נעשה בחיפוש מחרוזת על טקסט הדף הארכיוני עצמו — ללא בינה מלאכותית.",
+    "trajectoryEmpty": "לא נמצאה טענה שהופיעה ונעלמה יותר מפעם אחת.",
+    "trajectoryMovedTogether": "{count} טענות שנעו כיחידה אחת",
+    "trajectoryFlips": "{count} היפוכים",
+    "trajectoryPresent": "קיים",
+    "trajectoryRemoved": "הוסר",
+    "trajectoryFinalRemoved": "הוסר ולא חזר",
+    "trajectoryFinalPresent": "קיים כיום",
+    "trajectoryOpenSnapshot": "פתיחת תצלום הארכיון",
+    "trajectoryShowClaims": "הצגת {count} הטענות",
+    "trajectoryHideClaims": "הסתרת הטענות",
+    "trajectoryVerifyHint": "כל נקודה בציר היא קישור לתצלום הארכיון עצמו. אפשר לפתוח אותו ולחפש את נוסח הטענה — האימות אינו דורש אמון בפלטפורמה הזו.",
+    "trajectoryNotComputed": "מסלולי הטענות עבור הדף הזה טרם חושבו. הם מחושבים בתום סריקה — סריקה חוזרת תמלא אותם."
   },
   "theses": {
     "aiReviewedStatus": "נבדק על ידי AI",

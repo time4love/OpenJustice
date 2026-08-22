@@ -1876,7 +1876,7 @@ describe('suggestThesisHandler', () => {
 
     await suggestThesisHandler({ topic: 'EUA suppression' });
 
-    expect(getLastSynthesize()).toHaveBeenCalledWith('EUA suppression', expect.any(Array));
+    expect(getLastSynthesize()).toHaveBeenCalledWith('EUA suppression', expect.any(Array), expect.any(Object));
   });
 
   it('maps Prisma figures into keyFigures array for the corpus', async () => {

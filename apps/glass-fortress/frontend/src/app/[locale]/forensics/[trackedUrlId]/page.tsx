@@ -8,6 +8,7 @@ import { SiteHeader } from '@/components/SiteHeader';
 import { apiUrl } from '@/lib/api';
 import { SkeletonRows } from '@/components/SkeletonRows';
 import { DiffCard, type DiffRecord, type PromotedEvidence } from '@/components/DiffCard';
+import { TrajectoryPanel } from '@/components/TrajectoryPanel';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -280,6 +281,31 @@ export default function TrackedUrlPage() {
                     {t('downloadPdf')}
                   </button>
                 </div>
+
+                {/* Claim trajectories.
+                    Above the diff timeline on purpose: a diff is one step, a
+                    trajectory is the shape those steps make, and a reader who
+                    scrolls the steps first has already formed a view of them
+                    individually. */}
+                <TrajectoryPanel
+                  trackedUrlId={trackedUrlId}
+                  labels={{
+                    heading: t('trajectoryHeading'),
+                    explainer: t('trajectoryExplainer'),
+                    empty: t('trajectoryEmpty'),
+                    notComputed: t('trajectoryNotComputed'),
+                    movedTogether: (count: number) => t('trajectoryMovedTogether', { count }),
+                    flips: (count: number) => t('trajectoryFlips', { count }),
+                    present: t('trajectoryPresent'),
+                    removed: t('trajectoryRemoved'),
+                    finalRemoved: t('trajectoryFinalRemoved'),
+                    finalPresent: t('trajectoryFinalPresent'),
+                    openSnapshot: t('trajectoryOpenSnapshot'),
+                    showClaims: (count: number) => t('trajectoryShowClaims', { count }),
+                    hideClaims: t('trajectoryHideClaims'),
+                    verifyHint: t('trajectoryVerifyHint'),
+                  }}
+                />
 
                 {/* Diff timeline */}
                 <div>

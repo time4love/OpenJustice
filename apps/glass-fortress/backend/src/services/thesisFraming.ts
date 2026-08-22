@@ -4,6 +4,7 @@ import {
   ThesisFramingAssessorAgent,
   type ThesisFramingAssessment,
 } from './ThesisFramingAssessorAgent';
+import { loadTrajectoryContext } from '../lib/trajectoryContext';
 
 // ---------------------------------------------------------------------------
 // Deciding what a thesis should argue, before one exists.
@@ -46,6 +47,15 @@ export interface FramingState {
   status: string;
   rounds: number;
   evidenceConsidered: number;
+  /**
+   * How many deterministic claim trajectories the assessor was shown.
+   *
+   * Reported for the same reason the diff timeline reports significantCount from
+   * the server: an assessor blind to trajectories does not say so, it produces a
+   * confident, citation-backed contradiction. A visible zero beside a corpus of
+   * forensic evidence is the signal that the strongest layer went unread.
+   */
+  trajectoriesConsidered: number;
   latestAssessment: ThesisFramingAssessment | null;
   thesisId: string | null;
 }
@@ -75,6 +85,7 @@ export async function openThesisFraming(question: string, name?: string): Promis
     status: session.status,
     rounds: 0,
     evidenceConsidered: 0,
+    trajectoriesConsidered: 0,
     latestAssessment: null,
     thesisId: null,
   };
@@ -139,6 +150,10 @@ export async function assessThesisFraming(
     };
   }
 
+  // Loaded BEFORE the turn is recorded, so a failure here cannot leave a
+  // FRAMING_PROPOSED event with no assessment beside it.
+  const trajectories = await loadTrajectoryContext(evidence);
+
   const turns = await priorTurns(sessionId);
 
   await prisma.researchSessionEvent.create({
@@ -150,6 +165,7 @@ export async function assessThesisFraming(
     proposedFraming,
     evidence,
     priorTurns: turns,
+    trajectories,
   });
 
   await prisma.researchSessionEvent.create({
@@ -164,6 +180,7 @@ export async function assessThesisFraming(
     status: session.status,
     rounds,
     evidenceConsidered: evidence.length,
+    trajectoriesConsidered: trajectories.trajectories.length,
     latestAssessment: assessment,
     thesisId: null,
     assessment,
@@ -214,6 +231,7 @@ export async function getThesisFraming(
     status: session.status,
     rounds: assessments.length,
     evidenceConsidered: 0,
+    trajectoriesConsidered: 0,
     latestAssessment: latest ? (JSON.parse(latest.description) as ThesisFramingAssessment) : null,
     thesisId: session.thesisId,
     events: session.events.map((e) => ({
