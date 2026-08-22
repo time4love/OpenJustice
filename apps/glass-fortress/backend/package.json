@@ -21,6 +21,7 @@
     "researcher:bootstrap": "ts-node --transpile-only scripts/bootstrapResearcher.ts",
     "forensics:reclassify": "ts-node --transpile-only scripts/reclassifyDiffs.ts",
     "forensics:resummarize": "ts-node --transpile-only scripts/resummarizeDiffs.ts",
+    "forensics:anchor-snapshots": "ts-node --transpile-only scripts/anchorSnapshots.ts",
     "forensics:trajectories": "ts-node --transpile-only scripts/claimTrajectories.ts"
   },
   "keywords": [],

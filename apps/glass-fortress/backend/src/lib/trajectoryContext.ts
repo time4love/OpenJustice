@@ -178,7 +178,14 @@ export async function loadTrajectoryContext(
     let result;
     try {
       result = await getClaimTrajectories(url);
-    } catch {
+    } catch (err) {
+      // Deliberate: one unscanned page must not break an assessment drawn from
+      // several. Logged, because "this page contributed nothing" and "detection
+      // is broken" look identical in the output otherwise.
+      console.warn(
+        `[trajectoryContext] trajectories unavailable for ${url}:`,
+        err instanceof Error ? err.message : err,
+      );
       continue;
     }
 

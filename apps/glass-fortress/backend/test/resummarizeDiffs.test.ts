@@ -14,7 +14,7 @@
 
 jest.mock('../src/lib/prisma', () => ({
   prisma: {
-    urlVersionDiff: { findMany: jest.fn(), update: jest.fn() },
+    urlVersionDiff: { findMany: jest.fn(), update: jest.fn(), findUniqueOrThrow: jest.fn() },
     evidence: { update: jest.fn() },
     summaryCorrection: { create: jest.fn() },
     $transaction: jest.fn(),
@@ -54,6 +54,12 @@ function setup(rows: ReturnType<typeof diff>[]) {
   (prisma.urlVersionDiff.findMany as jest.Mock).mockResolvedValue(rows);
   (prisma.$transaction as jest.Mock).mockResolvedValue([]);
   (forensicEvidenceFileHash as jest.Mock).mockReturnValue(HASH);
+  (prisma.urlVersionDiff.findUniqueOrThrow as jest.Mock).mockResolvedValue({
+    afterDate: '2022-09-06',
+    deletedText: '[]',
+    addedText: '[]',
+    trackedUrl: { url: 'https://corona.health.gov.il/vaccine-for-covid/' },
+  });
   (VectorStoreService.create as jest.Mock).mockResolvedValue({ upsertEvidence: jest.fn() });
   mockRewrite.mockResolvedValue(CLEAN);
 }
@@ -73,15 +79,18 @@ describe('resummarizeDiffs', () => {
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
-  it('leaves rows that already carry a self-contained summary alone', async () => {
-    // Enforced in the query, so re-running is safe and never churns prose that
-    // is already right.
+  it('selects rows whose summaryVersion is NULL — the entire target set', async () => {
+    // `NOT: { summaryVersion: X }` compiles to `NOT (summaryVersion = X)`, which
+    // is NULL on a NULL column and matches nothing. Every row needing this repair
+    // has summaryVersion NULL, so the first version of this filter excluded
+    // exactly the rows it exists to find — and reported "examined: 0, failed: 0"
+    // with exit code 0. Found by running it, not by reading it.
     setup([]);
 
     await resummarizeDiffs({ dryRun: false });
 
     expect((prisma.urlVersionDiff.findMany as jest.Mock).mock.calls[0][0].where).toMatchObject({
-      NOT: { summaryVersion: SUMMARY_VERSION },
+      OR: [{ summaryVersion: null }, { summaryVersion: { not: SUMMARY_VERSION } }],
     });
   });
 
@@ -109,18 +118,35 @@ describe('resummarizeDiffs', () => {
     );
   });
 
-  it('refuses a row whose recomputed hash does not match the registered evidence', async () => {
-    // The post-condition that protects the anchors. If a future change ever
-    // re-extracts here, this catches it BEFORE the write rather than after seven
-    // anchors stop matching anything.
+  it('processes a row whose registered hash no longer derives from the diff, and reports it', async () => {
+    // Pre-existing, and unrelated to this operation: forensics:reclassify rewrites
+    // deletedText/addedText after the evidence was created and anchored, so those
+    // rows stop verifying. An earlier guard refused them — conflating "did I
+    // change this?" with "was it already correct?" and blocking an operation that
+    // touches nothing hashed. It is surfaced instead.
     setup([diff()]);
     (forensicEvidenceFileHash as jest.Mock).mockReturnValue('0xdifferent');
 
     const r = await resummarizeDiffs({ dryRun: false });
 
+    expect(r.registeredHashUnverifiable).toBe(1);
+    expect(r.rows[0].registeredHashUnverifiable).toBe(true);
+    expect(r.rewritten).toBe(1);
+    expect(r.hashDrift).toBe(0);
+  });
+
+  it('detects it if its OWN write moves a hashed field', async () => {
+    // The invariant this operation actually owns, asserted against what was
+    // PERSISTED rather than against what we believe we wrote — so a future change
+    // that re-extracts is caught on the row that did it.
+    setup([diff()]);
+    (forensicEvidenceFileHash as jest.Mock)
+      .mockReturnValueOnce(HASH) // before
+      .mockReturnValueOnce('0xmoved'); // after the write
+
+    const r = await resummarizeDiffs({ dryRun: false });
+
     expect(r.hashDrift).toBe(1);
-    expect(r.rewritten).toBe(0);
-    expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
   it('updates the evidence row only when the diff was promoted', async () => {

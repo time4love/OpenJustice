@@ -43,6 +43,12 @@ export interface ResummarizeRow {
   newText: string;
   /** Present when this diff was promoted to evidence. */
   fileHash: string | null;
+  /**
+   * The registered evidence hash does not derive from this diff's CURRENT
+   * fields. Pre-existing and unrelated to this operation — reported, never a
+   * reason to skip.
+   */
+  registeredHashUnverifiable: boolean;
   evidenceUpdated: boolean;
   reindexed: boolean;
 }
@@ -52,8 +58,26 @@ export interface ResummarizeReport {
   rewritten: number;
   alreadySelfContained: number;
   failed: number;
-  /** Must be 0. A non-zero value means a rewrite moved a hashed field. */
+  /** Why each failure happened, so a non-zero count is diagnosable. */
+  failures: { diffId: string; reason: string }[];
+  /**
+   * Rows where THIS operation moved a field feeding the evidence fileHash.
+   * Must be 0 — resummarize writes neither deletedText nor addedText.
+   */
   hashDrift: number;
+  /**
+   * Rows whose registered evidence hash cannot be recomputed from the diff as it
+   * stands. A pre-existing condition: `forensics:reclassify` rewrites
+   * deletedText/addedText, two of the four inputs to forensicEvidenceFileHash,
+   * so any Evidence row created BEFORE a reclassification no longer verifies.
+   *
+   * Reported and not skipped. An earlier guard here compared against the
+   * registered hash and refused those rows, which conflated two different
+   * questions — "did I change this?" and "was it already correct?" — and blocked
+   * an operation that touches nothing hashed. It is surfaced instead, because a
+   * count nobody sees is how this went unnoticed in the first place.
+   */
+  registeredHashUnverifiable: number;
   dryRun: boolean;
   rows: ResummarizeRow[];
 }
@@ -67,7 +91,15 @@ export async function resummarizeDiffs(opts: {
     where: {
       // Rows already carrying a self-contained summary are left exactly alone —
       // re-running must be safe and must not churn prose that is already right.
-      NOT: { summaryVersion: SUMMARY_VERSION },
+      //
+      // The null branch is not defensive padding, it is the whole target set.
+      // `NOT: { summaryVersion: X }` compiles to `NOT (summaryVersion = X)`,
+      // which evaluates to NULL — and therefore matches nothing — on a NULL
+      // column. Every row needing this repair has summaryVersion NULL, so that
+      // filter selected precisely the rows it exists to find, and reported
+      // "examined: 0, failed: 0" with exit code 0. A pass that silently does
+      // nothing must not look like a pass that found nothing to do.
+      OR: [{ summaryVersion: null }, { summaryVersion: { not: SUMMARY_VERSION } }],
       ...(opts.url ? { trackedUrl: { url: opts.url } } : {}),
     },
     select: {
@@ -88,7 +120,9 @@ export async function resummarizeDiffs(opts: {
     rewritten: 0,
     alreadySelfContained: 0,
     failed: 0,
+    failures: [],
     hashDrift: 0,
+    registeredHashUnverifiable: 0,
     dryRun: opts.dryRun,
     rows: [],
   };
@@ -108,23 +142,28 @@ export async function resummarizeDiffs(opts: {
         deletedItems: parseDiffItems(diff.deletedText),
         addedItems: parseDiffItems(diff.addedText),
       });
-    } catch {
-      // One bad row must not abort a corpus pass. Counted, never silent.
+    } catch (err) {
+      // One bad row must not abort a corpus pass — counted WITH its reason. A
+      // count says something is wrong; only the message says what.
       report.failed++;
+      report.failures.push({
+        diffId: diff.id,
+        reason: err instanceof Error ? err.message : String(err),
+      });
       continue;
     }
 
-    // Post-condition, not decoration. The items are supposed to be untouched, so
-    // the hash they produce must equal the hash the evidence row was registered
-    // under. If a future change ever re-extracts here, this catches it BEFORE the
-    // write rather than after seven anchors stop matching anything.
-    if (evidence) {
-      const expected = forensicEvidenceFileHash(url, diff.afterDate, diff.deletedText, diff.addedText);
-      if (expected !== evidence.fileHash) {
-        report.hashDrift++;
-        continue;
-      }
-    }
+    // The hash these fields produce right now. The post-condition below asserts
+    // OUR write leaves it exactly here — which is the only thing this operation
+    // is responsible for.
+    const hashBefore = forensicEvidenceFileHash(url, diff.afterDate, diff.deletedText, diff.addedText);
+
+    // Separately: does the registered evidence hash still derive from this diff?
+    // Often it does not, because reclassification rewrites the extracted items
+    // after the evidence was created and anchored. Nothing to do with this
+    // operation, so it is counted and carried, never a reason to skip.
+    const registeredHashUnverifiable = Boolean(evidence) && hashBefore !== evidence?.fileHash;
+    if (registeredHashUnverifiable) report.registeredHashUnverifiable++;
 
     const row: ResummarizeRow = {
       diffId: diff.id,
@@ -133,6 +172,7 @@ export async function resummarizeDiffs(opts: {
       previousText: diff.aiSignificance,
       newText,
       fileHash: evidence?.fileHash ?? null,
+      registeredHashUnverifiable,
       evidenceUpdated: false,
       reindexed: false,
     };
@@ -169,6 +209,21 @@ export async function resummarizeDiffs(opts: {
         : []),
     ]);
 
+    // The real post-condition, checked against what was actually persisted rather
+    // than against what we believe we wrote. If a future change ever re-extracts
+    // here, this catches it on the row that did it.
+    const after = await prisma.urlVersionDiff.findUniqueOrThrow({
+      where: { id: diff.id },
+      select: { afterDate: true, deletedText: true, addedText: true, trackedUrl: { select: { url: true } } },
+    });
+    const hashAfter = forensicEvidenceFileHash(
+      after.trackedUrl.url,
+      after.afterDate,
+      after.deletedText,
+      after.addedText,
+    );
+    if (hashAfter !== hashBefore) report.hashDrift++;
+
     row.evidenceUpdated = Boolean(evidence);
 
     // A CONFIRMED record is in the vector index keyed on its summary. Leaving the
@@ -179,8 +234,12 @@ export async function resummarizeDiffs(opts: {
         const store = await VectorStoreService.create();
         await store.upsertEvidence(newText, evidence.fileHash);
         row.reindexed = true;
-      } catch {
+      } catch (err) {
         row.reindexed = false;
+        console.warn(
+          `[resummarize] vector re-index failed for ${evidence.fileHash}:`,
+          err instanceof Error ? err.message : err,
+        );
       }
     }
 

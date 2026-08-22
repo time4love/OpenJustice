@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { createHash } from 'crypto';
+import { toBytes32 } from '../lib/bytes32';
 import { JSDOM } from 'jsdom';
 import { Readability } from '@mozilla/readability';
 import { diffLines } from 'diff';
@@ -247,10 +248,11 @@ function normaliseText(text: string): string {
     .trim();
 }
 
-/** SHA-256 hex digest of a string. */
+/** SHA-256 hex digest of a string. Bare hex — see toBytes32 before any chain call. */
 function sha256(text: string): string {
   return createHash('sha256').update(text, 'utf8').digest('hex');
 }
+
 
 /**
  * Upsert a UrlSnapshot row for a given scraped page text.
@@ -273,7 +275,18 @@ async function upsertSnapshot(
   });
   // Register on-chain only for newly created snapshots (no existing txHash)
   if (!snap.onChainTxHash) {
-    registerSnapshotOnChain(snap.id, contentHash).catch(() => {});
+    // Fire-and-forget on purpose: a chain hiccup must not fail a scan that has
+    // already fetched and stored archived text, which is the irreplaceable half.
+    // But the rejection is LOGGED, never discarded — an empty catch here hid a
+    // permanent bug behind what looked like a transient one for 83 snapshots.
+    // Whether it actually worked is answered by counting unanchored snapshots
+    // from state, not by trusting this call. See countUnanchoredSnapshots.
+    registerSnapshotOnChain(snap.id, contentHash).catch((err: unknown) => {
+      console.warn(
+        '[WaybackScraper] snapshot anchoring rejected for', snap.id, ':',
+        err instanceof Error ? err.message : err,
+      );
+    });
   }
   return snap.id;
 }
@@ -348,12 +361,35 @@ export async function recordScanFinding(source: ForensicEvidenceSource): Promise
  * Register a UrlSnapshot's contentHash on-chain and persist the tx hash.
  * Fire-and-forget — non-fatal. Skips silently if Web3Service is unavailable.
  */
+/**
+ * Record a scan's terminal status, tolerating a row that has since been deleted.
+ *
+ * These updates race a TrackedUrl deletion, which is why they were written to
+ * swallow. Swallowing is still the behaviour — the scan is already over and there
+ * is nothing to retry — but the reason is now stated and the rejection is logged,
+ * so a failure that is NOT a benign race is visible instead of silent.
+ */
+async function setScanStatus(trackedUrlId: string, status: 'PAUSED' | 'FAILED'): Promise<void> {
+  try {
+    await prisma.trackedUrl.update({ where: { id: trackedUrlId }, data: { status } });
+  } catch (err) {
+    console.warn(
+      `[WaybackScraper] could not record ${status} for ${trackedUrlId} (row deleted mid-scan?):`,
+      err instanceof Error ? err.message : err,
+    );
+  }
+}
+
 async function registerSnapshotOnChain(snapshotId: string, contentHash: string): Promise<void> {
   const web3 = getWeb3Service();
   if (!web3) return;
 
   try {
-    const txHash = await web3.registerEvidenceHash(contentHash, '0x0000000000000000000000000000000000000000', 'Wayback Snapshot');
+    const txHash = await web3.registerEvidenceHash(
+      toBytes32(contentHash),
+      '0x0000000000000000000000000000000000000000',
+      'Wayback Snapshot',
+    );
     await prisma.urlSnapshot.update({
       where: { id: snapshotId },
       data: { onChainTxHash: txHash },
@@ -1281,9 +1317,7 @@ export class WaybackScraper {
         // back: next iteration checks whether another CDX batch exists.
         batchesProcessedThisRun++;
         if (batchesProcessedThisRun >= MAX_BATCHES_PER_INVOCATION) {
-          await prisma.trackedUrl
-            .update({ where: { id: trackedUrlId }, data: { status: 'PAUSED' } })
-            .catch(() => {});
+          await setScanStatus(trackedUrlId, 'PAUSED');
           console.log(
             `[WaybackScraper] runFullScan for ${trackedUrlId} paused after ` +
               `${String(batchesProcessedThisRun)} batches this invocation (cost guard) — ` +
@@ -1299,17 +1333,13 @@ export class WaybackScraper {
       } else if (err instanceof ScanPausedError) {
         // Clean exit — user paused; persist PAUSED status so frontend can show resume button
         console.log(`[WaybackScraper] runFullScan for ${trackedUrlId} paused by user.`);
-        await prisma.trackedUrl
-          .update({ where: { id: trackedUrlId }, data: { status: 'PAUSED' } })
-          .catch(() => {});
+        await setScanStatus(trackedUrlId, 'PAUSED');
       } else {
         console.error(
           `[WaybackScraper] runFullScan error for ${trackedUrlId}:`,
           err instanceof Error ? err.stack : err,
         );
-        await prisma.trackedUrl
-          .update({ where: { id: trackedUrlId }, data: { status: 'FAILED' } })
-          .catch(() => {});
+        await setScanStatus(trackedUrlId, 'FAILED');
       }
     } finally {
       this._runningScanIds.delete(trackedUrlId);
