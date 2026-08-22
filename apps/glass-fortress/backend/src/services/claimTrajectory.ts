@@ -33,7 +33,7 @@ import { parseDiffItems } from '../lib/diffItems';
  * withdrawn. The threshold buys precision at the cost of missing terse claims —
  * a trade worth revisiting once there are real trajectories to look at.
  */
-const MIN_CLAIM_LENGTH = 40;
+export const MIN_CLAIM_LENGTH = 40;
 
 /**
  * Transitions required before a trajectory is stored.
@@ -52,6 +52,52 @@ export function normaliseClaim(text: string): string {
 
 export function claimHash(normalised: string): string {
   return createHash('sha256').update(normalised, 'utf8').digest('hex');
+}
+
+/**
+ * Bump this on ANY change to how detection works.
+ *
+ * Deliberately NOT a list of named parameters. The first version of this
+ * enumerated `normaliseClaim` and `MIN_CLAIM_LENGTH` — and missed the presence
+ * test itself (`normalisedText.includes(normalisedClaim)`), which is detection
+ * logic just as much as they are: swap it for fuzzy or positional matching and
+ * every stored trajectory changes while an enumerating hash stays identical.
+ *
+ * Enumerating knobs is exactly the drift `classifierPromptHash` exists to
+ * prevent one layer down, so this takes the same shape: one version covering the
+ * whole detection procedure, bumped by whoever changes any part of it.
+ *
+ * Covers: normaliseClaim · MIN_CLAIM_LENGTH · the presence test · candidate
+ * eligibility · anything else that decides what a trajectory IS.
+ */
+export const DETECTION_VERSION = 'v1-collapse-ws-min40-substring-presence';
+
+/**
+ * The identity of the state a detection pass ran against.
+ *
+ * Three inputs, each of which can change without the others:
+ *   - the ordered snapshot set   (a scan)
+ *   - the candidate claim set    (a scan OR a reclassification)
+ *   - the normaliser             (a deploy)
+ *
+ * Keying only on "has this URL been scanned" would serve stale trajectories
+ * straight through a reclassification, which rewrites diff extraction without
+ * touching the archive — the same class of error as deriving from a transition
+ * rather than from state.
+ */
+export function computeSourceStateHash(input: {
+  waybackTimestamps: readonly string[];
+  candidateHashes: readonly string[];
+  detectionVersion: string;
+}): string {
+  const payload = [
+    `detection=${input.detectionVersion}`,
+    `snapshots=${input.waybackTimestamps.join(',')}`,
+    // Sorted: candidate discovery order is an artifact of diff iteration, not
+    // part of the state. Two passes finding the same claims must hash alike.
+    `candidates=${[...input.candidateHashes].sort().join(',')}`,
+  ].join('\n');
+  return createHash('sha256').update(payload, 'utf8').digest('hex');
 }
 
 export interface Observation {
@@ -133,6 +179,16 @@ export interface TrajectoryGroup {
   claims: { claimHash: string; claimText: string }[];
 }
 
+export interface TrajectoryProvenance {
+  /** Identity of the snapshot/candidate/normaliser state this was computed against. */
+  sourceStateHash: string;
+  detectionVersion: string;
+  /** When the underlying detection pass ran — NOT when this call was served. */
+  computedAt: string;
+  /** False only on the pass that actually did the string searching. */
+  fromCache: boolean;
+}
+
 export interface ComputeResult {
   url: string;
   snapshotsExamined: number;
@@ -142,44 +198,29 @@ export interface ComputeResult {
   trajectories: Trajectory[];
   /** The same trajectories, collapsed by shared movement. This is the finding count. */
   groups: TrajectoryGroup[];
+  provenance: TrajectoryProvenance;
 }
 
 /**
- * Deliberately computes and returns without persisting.
+ * Everything needed to identify the state, WITHOUT touching snapshot fullText.
  *
- * Detection is a deterministic string search over already-stored snapshot text:
- * fast, free, and giving the same answer every time. Storing the result would
- * only create a second copy that can fall behind the snapshots it describes, and
- * a write path with no reader invites someone to build on rows produced by an
- * older detection pass. The one argument for persistence was a stable identity
- * for theses to cite — and citation is deliberately still open, so that
- * justification does not yet exist. ClaimTrajectory is in the schema, ready for
- * when it does.
+ * Deliberately cheap: the whole point of the cache is that the ~2 MB of archived
+ * page text and the thousands of substring searches over it are skipped when the
+ * state has not moved. Loading fullText here to decide whether we need fullText
+ * would defeat it.
  */
-export async function computeClaimTrajectories(
-  url: string,
-  opts: { minTransitions?: number } = {},
-): Promise<ComputeResult> {
-  const minTransitions = opts.minTransitions ?? MIN_TRANSITIONS;
-
+async function loadDetectionInputs(url: string) {
   const tracked = await prisma.trackedUrl.findUnique({
     where: { url },
     select: { id: true },
   });
   if (!tracked) throw new Error(`No tracked URL found for: ${url}`);
 
-  const snapshotRows = await prisma.urlSnapshot.findMany({
+  const snapshotMeta = await prisma.urlSnapshot.findMany({
     where: { trackedUrlId: tracked.id },
     orderBy: { snapshotDate: 'asc' },
-    select: { snapshotDate: true, waybackTimestamp: true, snapshotUrl: true, fullText: true },
+    select: { snapshotDate: true, waybackTimestamp: true, snapshotUrl: true },
   });
-
-  const snapshots = snapshotRows.map((s) => ({
-    snapshotDate: s.snapshotDate,
-    waybackTimestamp: s.waybackTimestamp,
-    snapshotUrl: s.snapshotUrl,
-    normalisedText: normaliseClaim(s.fullText),
-  }));
 
   // Candidate discovery: every verbatim quote the classifier extracted, deduped
   // by content. This is the only place extraction is trusted, and only to decide
@@ -200,31 +241,228 @@ export async function computeClaimTrajectories(
     }
   }
 
+  const sourceStateHash = computeSourceStateHash({
+    waybackTimestamps: snapshotMeta.map((s) => s.waybackTimestamp),
+    candidateHashes: [...candidates.keys()],
+    detectionVersion: DETECTION_VERSION,
+  });
+
+  return { trackedUrlId: tracked.id, snapshotMeta, candidates, sourceStateHash };
+}
+
+type DetectionInputs = Awaited<ReturnType<typeof loadDetectionInputs>>;
+
+/** The expensive half: pull archived text and search it. Only ever runs on a miss. */
+async function detect(inputs: DetectionInputs) {
+  const rows = await prisma.urlSnapshot.findMany({
+    where: { trackedUrlId: inputs.trackedUrlId },
+    orderBy: { snapshotDate: 'asc' },
+    select: { snapshotDate: true, waybackTimestamp: true, snapshotUrl: true, fullText: true },
+  });
+
+  const snapshots = rows.map((r) => ({
+    snapshotDate: r.snapshotDate,
+    waybackTimestamp: r.waybackTimestamp,
+    snapshotUrl: r.snapshotUrl,
+    normalisedText: normaliseClaim(r.fullText),
+  }));
+
   const trajectories: Trajectory[] = [];
   let unmatched = 0;
 
-  for (const normalised of candidates.values()) {
+  for (const normalised of inputs.candidates.values()) {
     const trajectory = buildTrajectory(normalised, snapshots);
+    // A claim matching no snapshot is not a trajectory — usually the extracted
+    // quote was paraphrased rather than verbatim. Counted, never stored.
     if (!trajectory) {
       unmatched++;
       continue;
     }
-    if (trajectory.transitions < minTransitions) continue;
+    // EVERY detected trajectory is kept, including 0- and 1-transition ones.
+    // minTransitions is a read filter; storing only what the current threshold
+    // returns would make the cache depend on the query, so lowering the
+    // threshold later would serve a silently incomplete answer from cache.
     trajectories.push(trajectory);
   }
 
-  trajectories.sort((a, b) => b.transitions - a.transitions);
+  return { trajectories, unmatched, snapshotsExamined: snapshots.length };
+}
 
-  const groups = groupByMovement(trajectories);
+function shape(
+  url: string,
+  all: readonly Trajectory[],
+  counts: { snapshotsExamined: number; candidatesConsidered: number; candidatesUnmatched: number },
+  provenance: TrajectoryProvenance,
+  minTransitions: number,
+): ComputeResult {
+  const trajectories = all
+    .filter((t) => t.transitions >= minTransitions)
+    .sort((a, b) => b.transitions - a.transitions);
+
+  return { url, ...counts, trajectories, groups: groupByMovement(trajectories), provenance };
+}
+
+/**
+ * Trajectories for a tracked URL from STORED STATE ONLY. Never computes, never
+ * writes. Returns null when this state has not been detected yet.
+ *
+ * Exists as a separate function rather than a boolean option because the
+ * distinction is the whole security question: a cache miss on the writing path
+ * inserts rows, so a caller that must not write needs a name that says so. The
+ * first version of this change shipped one function that wrote on a miss and
+ * left `get_claim_trajectories` classified as a read tool — an unauthenticated
+ * caller could write to the database, and the classification guard could not
+ * see it because it checks that every tool is classified exactly once, never
+ * that a classification still matches what the tool does.
+ */
+export async function getStoredClaimTrajectories(
+  url: string,
+  opts: { minTransitions?: number } = {},
+): Promise<ComputeResult | null> {
+  const minTransitions = opts.minTransitions ?? MIN_TRANSITIONS;
+  const inputs = await loadDetectionInputs(url);
+  const cached = await readComputation(inputs);
+  if (!cached) return null;
+  return shape(url, cached.all, cached.counts, cached.provenance, minTransitions);
+}
+
+/**
+ * Trajectories for a tracked URL — served from stored state, computed on a miss.
+ *
+ * WRITES on a miss. Callers must be authorised to do so; see
+ * getStoredClaimTrajectories for the read-only path.
+ *
+ * Detection used to run on every call: ~2 MB of archived text out of Postgres and
+ * thousands of substring searches, taking 3-5 seconds to produce a byte-identical
+ * answer, on an endpoint that answers anonymously. It is a pure function of state
+ * that only changes on a scan or a reclassification, so it is computed once per
+ * state and read thereafter.
+ *
+ * A computation is NEVER updated in place. New state means a new row, so a
+ * trajectory that has been cited still resolves to what was cited — see the
+ * schema note on ClaimTrajectoryComputation.
+ */
+export async function getClaimTrajectories(
+  url: string,
+  opts: { minTransitions?: number; forceRecompute?: boolean } = {},
+): Promise<ComputeResult> {
+  const minTransitions = opts.minTransitions ?? MIN_TRANSITIONS;
+  const inputs = await loadDetectionInputs(url);
+
+  if (!opts.forceRecompute) {
+    const cached = await readComputation(inputs);
+    if (cached) return shape(url, cached.all, cached.counts, cached.provenance, minTransitions);
+  }
+
+  const detected = await detect(inputs);
+  const counts = {
+    snapshotsExamined: detected.snapshotsExamined,
+    candidatesConsidered: inputs.candidates.size,
+    candidatesUnmatched: detected.unmatched,
+  };
+
+  let computedAt: string;
+  try {
+    computedAt = await persistComputation(inputs, detected.trajectories, counts);
+  } catch (err) {
+    // Two concurrent misses race to write the same state. The loser reads the
+    // winner's rows rather than failing: the answer is identical by
+    // construction, since both computed against the same sourceStateHash.
+    if (!isUniqueViolation(err)) throw err;
+    const cached = await readComputation(inputs);
+    if (!cached) throw err;
+    return shape(url, cached.all, cached.counts, cached.provenance, minTransitions);
+  }
+
+  return shape(
+    url,
+    detected.trajectories,
+    counts,
+    {
+      sourceStateHash: inputs.sourceStateHash,
+      detectionVersion: DETECTION_VERSION,
+      computedAt,
+      fromCache: false,
+    },
+    minTransitions,
+  );
+}
+
+function isUniqueViolation(err: unknown): boolean {
+  return typeof err === 'object' && err !== null && (err as { code?: string }).code === 'P2002';
+}
+
+async function readComputation(inputs: DetectionInputs) {
+  const computation = await prisma.claimTrajectoryComputation.findUnique({
+    where: {
+      trackedUrlId_sourceStateHash: {
+        trackedUrlId: inputs.trackedUrlId,
+        sourceStateHash: inputs.sourceStateHash,
+      },
+    },
+    include: { trajectories: true },
+  });
+  if (!computation) return null;
+
+  const all: Trajectory[] = computation.trajectories.map((row) => ({
+    claimHash: row.claimHash,
+    claimText: row.claimText,
+    observations: JSON.parse(row.observations) as Observation[],
+    transitions: row.transitions,
+    firstSeen: row.firstSeen,
+    lastSeen: row.lastSeen,
+    finalState: row.finalState,
+  }));
 
   return {
-    url,
-    snapshotsExamined: snapshots.length,
-    candidatesConsidered: candidates.size,
-    candidatesUnmatched: unmatched,
-    trajectories,
-    groups,
+    all,
+    counts: {
+      snapshotsExamined: computation.snapshotsExamined,
+      candidatesConsidered: computation.candidatesConsidered,
+      candidatesUnmatched: computation.candidatesUnmatched,
+    },
+    provenance: {
+      sourceStateHash: computation.sourceStateHash,
+      detectionVersion: computation.detectionVersion,
+      computedAt: computation.computedAt.toISOString(),
+      fromCache: true,
+    } satisfies TrajectoryProvenance,
   };
+}
+
+async function persistComputation(
+  inputs: DetectionInputs,
+  trajectories: readonly Trajectory[],
+  counts: { snapshotsExamined: number; candidatesConsidered: number; candidatesUnmatched: number },
+): Promise<string> {
+  return prisma.$transaction(async (tx) => {
+    const computation = await tx.claimTrajectoryComputation.create({
+      data: {
+        trackedUrlId: inputs.trackedUrlId,
+        sourceStateHash: inputs.sourceStateHash,
+        detectionVersion: DETECTION_VERSION,
+        ...counts,
+      },
+    });
+
+    if (trajectories.length > 0) {
+      await tx.claimTrajectory.createMany({
+        data: trajectories.map((t) => ({
+          computationId: computation.id,
+          trackedUrlId: inputs.trackedUrlId,
+          claimHash: t.claimHash,
+          claimText: t.claimText,
+          observations: JSON.stringify(t.observations),
+          transitions: t.transitions,
+          firstSeen: t.firstSeen,
+          lastSeen: t.lastSeen,
+          finalState: t.finalState,
+        })),
+      });
+    }
+
+    return computation.computedAt.toISOString();
+  });
 }
 
 /** The flips only — the unchanged stretches between them are where nothing happened. */

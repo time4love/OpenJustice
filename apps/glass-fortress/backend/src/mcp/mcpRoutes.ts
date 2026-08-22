@@ -34,10 +34,6 @@ export const READ_TOOLS = new Set([
   // Reads recorded scan output — no LLM, no RPC. The scan that produced it was
   // already gated; listing what it found for review is not the expensive part.
   'get_scan_findings',
-  // Deterministic string search over already-stored snapshot text. No LLM, no
-  // RPC, no chain — and its whole value is that anyone can re-run the check
-  // themselves, which a gate would sit awkwardly against.
-  'get_claim_trajectories',
   'get_thesis_framing',
   'get_diff_debate',
   'get_figure_dossier',
@@ -46,6 +42,20 @@ export const READ_TOOLS = new Set([
 ]);
 
 export const WRITE_TOOLS = new Set([
+  // Gated despite the name. It was in READ_TOOLS while detection recomputed on
+  // every call: no LLM, no RPC, and its whole value is that anyone can re-run
+  // the check themselves. Detection is now stored state, so a cache MISS
+  // inserts rows — an anonymous caller could write to the database.
+  //
+  // mcpToolClassification.test.ts could not catch this. It asserts every tool is
+  // classified exactly once, never that a classification still describes what
+  // the tool does. "Does this tool's classification still match its behaviour?"
+  // is a review question the guard cannot answer, and behaviour changed under a
+  // classification that did not.
+  //
+  // The public read-only path is getStoredClaimTrajectories, served by
+  // GET /api/forensics/tracked/:id/trajectories, which never computes.
+  'get_claim_trajectories',
   'create_evidence_from_url',
   'create_evidence_from_text',
   'start_forensic_scan',

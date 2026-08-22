@@ -1,3 +1,4 @@
+import { formatTrajectoryContext, type TrajectoryBundle } from '../lib/trajectoryContext';
 import { z } from 'zod';
 import { LLMFactory } from '../factories/LLMFactory';
 import { assertSchemaCompatibility } from '../lib/assertSchemaCompatibility';
@@ -178,6 +179,8 @@ export class ThesisSynthesisAgent {
   async synthesize(
     topic: string,
     corpus: EvidenceCorpusRecord[],
+    /** Required, not defaulted — see DevilsAdvocateAgent.analyze. */
+    trajectories: TrajectoryBundle,
   ): Promise<ThesisSynthesisOutput> {
     const corpusBlock = corpus
       .map(
@@ -191,6 +194,8 @@ export class ThesisSynthesisAgent {
       )
       .join('\n\n');
 
+    const trajectoryBlock = formatTrajectoryContext(trajectories, 'en');
+
     const messages = [
       { role: 'system' as const, content: THESIS_SYNTHESIS_PROMPT },
       {
@@ -199,6 +204,7 @@ export class ThesisSynthesisAgent {
           `RESEARCH TOPIC: ${topic}\n\n` +
           `EVIDENCE CORPUS (${corpus.length} record${corpus.length !== 1 ? 's' : ''}):\n\n` +
           `${corpusBlock}\n\n` +
+          `${trajectoryBlock ? `${trajectoryBlock}\n\n` : ''}` +
           `Based on this evidence corpus, propose the strongest defensible legal thesis. ` +
           `Identify the key figures implicated, the causal chain of misconduct, and what additional evidence would strengthen the case.`,
       },

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { computeClaimTrajectories } from '../../services/claimTrajectory';
+import { getClaimTrajectories, type ComputeResult } from '../../services/claimTrajectory';
 
 // ---------------------------------------------------------------------------
 // get_claim_trajectories
@@ -52,9 +52,9 @@ export async function getClaimTrajectoriesHandler(input: {
   url: string;
   minTransitions?: number;
 }): Promise<string> {
-  let result;
+  let result: ComputeResult;
   try {
-    result = await computeClaimTrajectories(input.url, {
+    result = await getClaimTrajectories(input.url, {
       ...(input.minTransitions ? { minTransitions: input.minTransitions } : {}),
     });
   } catch (err) {
@@ -85,6 +85,11 @@ export async function getClaimTrajectoriesHandler(input: {
           'Verify any of it by opening the snapshot URLs and searching for the claim text: this is ' +
           'computed by string search over the archived pages, with no AI judgment involved.'
         : 'No claim on this page appeared and disappeared more than once. Pass minTransitions: 1 to see single removals.',
+    // The state this was detected against, and when. A trajectory is stored
+    // per-state rather than recomputed per-call, so a caller can tell a fresh
+    // detection pass from a served one — and can tell whether two answers
+    // separated in time describe the same archive or different archives.
+    provenance: result.provenance,
     findings: result.groups.map((g) => ({
       patternHash: g.patternHash,
       transitions: g.transitions,

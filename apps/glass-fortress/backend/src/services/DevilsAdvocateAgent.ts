@@ -1,3 +1,4 @@
+import { formatTrajectoryContext, type TrajectoryBundle } from '../lib/trajectoryContext';
 import { z } from 'zod';
 import { LLMFactory } from '../factories/LLMFactory';
 import { assertSchemaCompatibility } from '../lib/assertSchemaCompatibility';
@@ -95,7 +96,14 @@ export class DevilsAdvocateAgent {
   async analyze(
     thesisText: string,
     referencedEvidence: ReferencedEvidence[],
-    resolvedGaps: ResolvedGapContext[] = [],
+    resolvedGaps: ResolvedGapContext[],
+    /**
+     * Required, deliberately not defaulted. A default of [] is precisely how an
+     * agent silently reasons without the strongest layer in the vault — the
+     * defect this parameter exists to close. Pass [] explicitly when a thesis
+     * genuinely cites no forensic evidence.
+     */
+    trajectories: TrajectoryBundle,
   ): Promise<DevilsAdvocateOutput> {
     const evidenceBlock =
       referencedEvidence.length > 0
@@ -122,6 +130,8 @@ export class DevilsAdvocateAgent {
         '\n\nWhen evaluating evidenceGaps, assess whether the resolution evidence truly closes each gap or only partially addresses it. If a gap was resolved with strong evidence, you may omit it or downgrade its severity.'
       : '';
 
+    const trajectoryBlock = formatTrajectoryContext(trajectories, 'en');
+
     const messages = [
       { role: 'system' as const, content: DEVILS_ADVOCATE_CRITIQUE_PROMPT },
       {
@@ -131,6 +141,7 @@ export class DevilsAdvocateAgent {
           `REFERENCED EVIDENCE (${referencedEvidence.length} record${referencedEvidence.length !== 1 ? 's' : ''}):\n` +
           `${evidenceBlock}` +
           `${resolvedBlock}\n\n` +
+          `${trajectoryBlock ? `${trajectoryBlock}\n\n` : ''}` +
           `Provide your devil's advocate analysis of this thesis.`,
       },
     ];

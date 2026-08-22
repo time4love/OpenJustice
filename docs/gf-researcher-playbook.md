@@ -1291,6 +1291,515 @@ and several sessions.
 
 **Tests: 983 passing, 1 new.**
 
+
+### The framing session
+
+```
+open_thesis_framing
+  question: "Whether Israel's Ministry of Health revised its public safety
+             representations on corona.health.gov.il/vaccine-for-covid in step with
+             what it knew internally, around the publication of the Berkovitch
+             recordings on 2022-08-21."
+```
+
+Returns `sessionId`, `status: ACTIVE`, `rounds: 0`, `thesisId: null`. The question is
+stored verbatim: it is the artifact, and paraphrasing it would defeat the record.
+
+The researcher's framing was written by the researcher. That constraint is not politeness
+— a framing session in which the model proposes the framing and then assesses it is a
+model arguing with itself, which is exactly the failure the diff debate was built to
+prevent in Step 7. Round 1, in the researcher's own words, proposed a link between the
+recorded internal presentation of the adverse-event analysis (including a re-challenge
+finding) and quiet edits to the ministry's vaccine page — characterised as **removal of a
+safety commitment and its restoration**, while officials already held the internal
+information.
+
+### Response — structure
+
+| Field | Shape |
+|---|---|
+| `rounds` | 1 |
+| `evidenceConsidered` | **8** |
+| `contradictionCount` | 1 |
+| `contradictions[]` | `researcherClaim`, `whatEvidenceShows`, `fileHash` |
+| `unverifiedAssumptions[]` | `assumption`, `howToVerify` |
+| `candidateFramings[]` | `framing`, `scope` (`NARROW`/`MODERATE`), `backedByFileHashes[]`, `strength`, `weakness` |
+| `recommendedTopicString` | string |
+
+The tool did the thing it exists for: it contradicted the researcher, citing a specific
+anchored record. One of its unverified assumptions was independently valuable — that the
+recorded discussion itself may date from June/July, with only its *publication* falling on
+2022-08-21, a distinction the framing rested on without stating.
+
+Its contradiction was that the evidence shows **no restoration** — escalation and deletion
+only, with no return of removed wording.
+
+### FINDING 24 — the assessor cannot see the layer that proves the researcher right
+
+The contradiction was checked rather than accepted, against the archive itself. Both
+captures were fetched directly from the Internet Archive and confirmed by
+`memento-datetime` to be the exact captures requested — not a redirect to a nearest
+neighbour, which would have made every comparison meaningless.
+
+| String tested | 2022-08-05 | 2022-09-06 |
+|---|---|---|
+| The categorical no-illness-from-the-vaccine assurance | absent | **present** |
+| The side-effect onset sentence | absent | **present** |
+| Two dosing-schedule claims | absent | **present** |
+| The fourth-dose numeric efficacy figures | absent | **present** |
+| The infant no-unusual-safety-signals assurance | present | **absent** |
+
+**In one edit the page removed all eight infant-campaign claims and restored five claims it
+had removed a month earlier.** Removal and restoration is exactly what the researcher said,
+it brackets the publication date, and the assessor denied it.
+
+The cause is structural, not a bad model call. `evidenceConsidered: 8` — the assessor reads
+**confirmed `Evidence` records and their AI-written summaries**. It cannot see
+`UrlSnapshot` presence, so it cannot see a trajectory. The deterministic, outsider-verifiable
+layer — the one artifact in this system that requires trusting no model — is invisible to the
+tool that told the researcher their evidence disagreed with them.
+
+This is the parked *trajectory citation* question arriving with consequences. It was deferred
+as a citation-plumbing problem: `ThesisMention` knows `KEY_FIGURE | EVIDENCE | TRACKED_URL`
+and a trajectory is none of them. It is not a plumbing problem. **A trajectory is evidence
+that the thesis pipeline cannot reason over**, and the first tool to reason over the corpus
+reached the wrong conclusion because of it.
+
+Worth stating in general form, because it will recur: **when a system holds evidence at
+several strengths, a tool that reads only the weakest layer will contradict a researcher who
+read the strongest one — and will do it with citations.**
+
+### FINDING 25 — a wrong summary on an anchored record propagated into a downstream tool
+
+Reading the archive also settled what the 2022-09-06 edit did to the side-effect text, and
+the anchored record has it wrong.
+
+| | |
+|---|---|
+| The anchored summary says | side effects were presented as *passing within* a day or two |
+| The archived page says | the common side effects *appear* a day or two *after* vaccination |
+| Occurrences of the root *חולפ* ("passing") in that capture | **zero** |
+
+Onset was read as duration. The summary then built an allegation on the inversion — the
+concealment of findings about prolonged harm — and that summary is on an on-chain record.
+The framing assessor then repeated it, describing as a *minimisation* a passage the archive
+shows was **restored**, having been present since May and removed on 5 August.
+
+Three properties of this are worth separating:
+
+1. **The mechanism is right and the summary is wrong** — the playbook's recurring defect,
+   for the sixth time, now inside an anchored record rather than a UI counter.
+2. **It propagated.** Every previous instance was a wrong number a human read. This one was
+   consumed by a tool, which produced a citation-backed contradiction of a correct
+   researcher claim. Summaries are no longer only what people read; they are now inputs.
+3. **It is fixable without touching the chain.** The evidence hash is computed over
+   `url + date + deleted + added` — the change itself, deliberately not the prose. The
+   summary is not in the hash, so correcting it costs nothing and invalidates nothing. That
+   this is safe is a consequence of the content-addressing decision recorded in the forensic
+   data model, made for unrelated reasons.
+
+What has no mechanism yet is **detection**. Nothing compares a stored summary against the
+diff text it describes, and nothing would have caught this except a researcher reading an
+archived page and disagreeing with a machine — which is the same thing that produced
+FINDING 15 and FINDING 18.
+
+
+## Step 15 — Fixing the basis before building on it
+
+The session's next step was synthesis. It was stopped instead, on the researcher's
+instruction: *"in the previous session we fixed every issue immediately because there is no
+point building on top of an incomplete basis."* A thesis built on a corpus the reasoning
+tools could only half see would have been a well-argued document resting on the weaker half.
+
+### What was already decided, and was right
+
+Reading the schema before proposing anything mattered, because two of the three decisions had
+already been made deliberately and documented:
+
+> *"Deliberately NOT an Evidence row. Evidence is point-in-time by construction: one
+> evidenceDate, one urlVersionDiffId (@unique), one fileHash over one document. A trajectory
+> is an interval with internal structure."*
+
+> *"Deliberately NOT anchored on-chain either… it is DERIVABLE from snapshots that are already
+> anchored individually. An anchor would add nothing but the appearance of authority."*
+
+The first instinct — promote trajectories into `Evidence` so every existing tool picks them
+up for free — would have forced an interval into a point-in-time shape and, worse, handed a
+deterministic finding to an LLM to summarise. Given FINDING 25, that is a machine for
+producing the exact defect being fixed.
+
+### FINDING 26 — the parked question was not the question
+
+The schema note left **citation** open and treated it as the remaining work. But the assessor
+in Step 14 never tried to cite a trajectory. It never saw one. Two different surfaces:
+
+| Surface | Question | State |
+|---|---|---|
+| **Corpus visibility** | can a reasoning tool *see* a trajectory | **broken — FINDING 24** |
+| **Citation** | can a thesis *point at* one in a footnote | open, and not what failed |
+
+A thesis could have cited a trajectory in prose and been perfectly checkable. What no tool
+could do was reason about one. Naming the open question as "citation" made the larger gap
+invisible for as long as nobody walked the thesis phase.
+
+### FINDING 27 — the persisted state existed, was correct, and was never used
+
+`prisma.claimTrajectory` had **zero call sites**. No write, no read. The table was in the
+schema, the migration was applied to staging, and `get_claim_trajectories` recomputed
+everything from raw snapshot text on every call.
+
+That was deliberate too, and documented — *"storing the result would only create a second copy
+that can fall behind the snapshots it describes"* — and the objection was correct. What made
+it obsolete was measurement:
+
+| | |
+|---|---|
+| Rows ever written | 0 |
+| Recompute per call | **3.4 – 5.0 s** — ~2 MB of archived text out of Postgres, ~4,800 substring searches |
+| Output across two calls | byte-identical, 46,938 bytes |
+| Authentication | **none** — the tool answers anonymously |
+
+An unauthenticated caller can trigger a multi-second full-text scan in a loop. The earlier
+cost-exposure sweep looked for anonymous **LLM** calls and would not have caught an unbounded
+database read.
+
+### The researcher's correction to the design
+
+The proposed cache key was "state computed after a scan, stable until the next scan". Nearly
+right, and the exception decides the design. Candidates are not discovered from snapshots —
+they come from `UrlVersionDiff` extraction, which `forensics:reclassify` **rewrites without
+touching the archive**. A scan-keyed cache serves stale trajectories straight through a
+reclassification, silently.
+
+So a trajectory is a function of three inputs, each able to move alone:
+
+| Input | Changes on |
+|---|---|
+| the ordered snapshot set | a scan |
+| the candidate claim set | a scan **or a reclassification** |
+| `normaliseClaim` / `MIN_CLAIM_LENGTH` | a deploy |
+
+`sourceStateHash` covers all three — the same organ as `classifierVersion` +
+`classifierPromptHash`, added in Step 9 for the same reason.
+
+### The convergence
+
+The stamp answers two questions that looked separate:
+
+- **As a cache key** it makes detection a read instead of a rescan.
+- **As a version key** it makes a computed trajectory *immutable*. New state writes a NEW
+  computation rather than mutating the old one, so a thesis that cited a trajectory still
+  resolves to what it cited.
+
+That second property was the open problem: `computedAt @updatedAt` with
+`@@unique([trackedUrlId, claimHash])` meant a row was upserted in place, so a rescan could
+change the meaning of a citation after publication. Everything else citable here is immutable
+by construction — a snapshot is fixed text, a diff has fixed endpoints, an Evidence hash covers
+fixed content. A trajectory would have been the only exception, on a platform whose entire
+claim is that assertions trace to checkable proof.
+
+The key became `@@unique([computationId, claimHash])`. **The table held zero rows, so this cost
+nothing** — and there would never have been a cheaper moment to get it right.
+
+### What shipped
+
+| | |
+|---|---|
+| `ClaimTrajectoryComputation` | new parent row: `sourceStateHash`, `normaliserVersion`, and the counts |
+| `ClaimTrajectory` | versioned per computation, never updated in place |
+| Storage threshold | **every** detected trajectory, including 0- and 1-transition ones — `minTransitions` stays a READ filter, so lowering it later cannot serve a silently incomplete cached answer |
+| Concurrency | two racing misses resolve by the loser reading the winner's rows; identical `sourceStateHash` means an identical answer |
+| `loadTrajectoryContext` | trajectories for every tracked page the corpus came from |
+| Precedence rule | shipped **with the data**, not in a system prompt |
+| Overlap marking | computed by **claim hash at the item level** — see FINDING 29 |
+| Wired into | `assess_thesis_framing`, `suggest_thesis`, Devil's Advocate |
+| `trajectoriesConsidered` | reported beside `evidenceConsidered` |
+| UI | a trajectory panel on the forensic page, above the diff timeline |
+
+Two decisions inside that are worth stating on their own.
+
+**The precedence rule travels with the data.** Handed a trajectory and a model-written summary
+as two blocks of text, a model weighs them equally — which is the whole error. The rendering
+says, in the prompt itself: these were computed by string search over archived text with no
+model, the summaries were written by one, and *where they conflict the trajectory governs*.
+Putting that in a system prompt would have described a section that is sometimes absent, and a
+rule about an absent section quietly stops applying.
+
+**The parameter is required, not defaulted.** `trajectories: TrajectoryContext[] = []` would
+let any call site silently reason without the strongest layer in the vault — the exact defect
+being closed. Making it required turned the compiler into the thing that finds the call sites,
+and it found both immediately. Same reasoning that made `maxRetries` required in Step 5: a
+default is how the wrong value gets inherited by forgetting.
+
+### FINDING 29 — the overlap fix repeated the defect it was guarding against
+
+Overlap between a trajectory and an evidence record was first computed by matching **dates**:
+an `Evidence` row whose `evidenceDate` fell on one of a trajectory's transition dates was
+flagged, whole, as *not independent corroboration*.
+
+The researcher rejected it, and was right:
+
+> *"a trajectory describes only the evidence info that was added/removed, while evidence could
+> have other information… we may have a diff in evidence that is important but is not present
+> in a trajectory."*
+
+**A diff-based evidence record is not one assertion.** Since categories moved to the item in
+Step 8, a single diff holds many items, each with its own classification. A record covering
+fourteen changed items might share eight with a trajectory — and the other six can include a
+claim that is significant entirely on its own: removed once and never restored, so never a
+trajectory; or under `MIN_CLAIM_LENGTH`, so never a candidate at all.
+
+Flagging the record as a unit tells a downstream model to discount all fourteen. That is
+**FINDING 17 exactly** — *a claim can be lost in a crowd* — committed while building the guard
+against a different instance of it. The original was a classifier judging the diff as a whole;
+this was an overlap marker judging the evidence as a whole. Same shape, one layer up.
+
+The defence offered for it was that over-inclusion is the safe direction, because understating
+corroboration is conservative for a strength claim. That defence is wrong, and the reason is
+worth keeping: on this platform **losing a finding is the more serious error than understating
+one**, and a flag that suppresses an uncovered significant item loses it.
+
+Rewritten to match on **claim hash at the item level**, which is exact rather than a proxy:
+
+- a trajectory lists which evidence records contain its claims, and **how many items** each
+  shares — not a boolean over the record;
+- coverage is reported per record as *"8 of 14 items are a trajectory's claims; 6 classified
+  items are covered by no trajectory and are independent evidence"*;
+- coverage is computed against **every** trajectory found, not one group at a time, or an item
+  covered by group B would be reported independent merely because group A missed it;
+- items below the length threshold count as items and can count as significant, since they can
+  never be trajectories and their classification is entirely their own.
+
+The date heuristic is gone, and with it a second over-inclusion nobody had noticed:
+`changesOnly` always emits the first observation even when it is not a flip, so every group's
+baseline date was in the match set.
+
+**The rendered prompt now states both halves.** A model that reads "8 shared items" and is not
+told what the other six are will discount them — so the section that names the overlap is the
+same section that names what the overlap does not reach.
+
+### FINDING 28 — `trajectoriesConsidered`, and why a count is the fix
+
+FINDING 24 was not visible as a failure. The assessor did not report that it could not see the
+archive; it produced a confident, citation-backed contradiction. The only tell in the entire
+response was `evidenceConsidered: 8`, and only to someone who already knew what was missing.
+
+So the framing response now reports `trajectoriesConsidered` beside it. **A visible zero next
+to a corpus of forensic evidence is the signal that the strongest layer went unread** — the
+same fix as returning `significantCount` from the server in FINDING 13, and for the same
+reason: the mechanism is usually right and the summary is what nobody verifies.
+
+### Verification
+
+- **983 → 1004 tests.** The new ones assert the state hash ignores candidate ORDER but changes
+  on a reclassification, that sub-threshold trajectories are stored, that a cache hit never
+  reads snapshot text, that a racing write falls back to a read, that overlapping evidence is
+  flagged non-independent, and that the precedence rule is present in **both** rendered
+  languages.
+- The two tests that broke were asserting the OLD contract (`never writes`, and an agent
+  signature). Rewritten to the new one, not weakened.
+- `db:check-drift` was run **before** writing the migration — "No difference detected" — and
+  again after, where it reported exactly the intended change and nothing else. A drift check
+  that cannot be seen to detect anything is not evidence that nothing drifted.
+- `ClaimTrajectory` was measured empty (**0**, against `trackedUrl: 1` and `urlSnapshot: 83` in
+  the same query) before writing a migration whose `ADD COLUMN … NOT NULL` and `DROP COLUMN`
+  are safe only on an empty table. FINDING 21's rule, applied to our own check.
+
+
+### FINDING 30 — a classification guard that cannot see behaviour change
+
+The change above was reviewed by the session that had designed `ClaimTrajectory`. Its first
+finding was the one that would have shipped:
+
+> **`get_claim_trajectories` is a write tool classified as a read.**
+
+It sat in `READ_TOOLS` on reasoning that was correct when written — deterministic string search
+over already-stored snapshot text, no LLM, no RPC, no chain, and *"its whole value is that
+anyone can re-run the check themselves, which a gate would sit awkwardly against."* Once
+detection became stored state, a cache **miss inserts rows**. An unauthenticated caller could
+write to the database.
+
+`mcpToolClassification.test.ts` exists precisely to prevent classification drift, and could not
+catch this. It asserts every registered tool is classified exactly once and never in both sets.
+**It never asks whether a classification still describes what the tool does.** The drift arrived
+in a shape the guard does not inspect: not a tool added without a classification, but a tool
+whose behaviour changed underneath a classification that did not.
+
+The file's own header had already stated the right test — *"Before adding a tool here, ask what
+it spends, not what it writes"* — and the answer had changed without anyone re-asking.
+
+Three fixes, in increasing order of value:
+
+1. `get_claim_trajectories` moved to `WRITE_TOOLS`, with an assertion pinning it and the reason.
+2. **The read path was given its own name.** `getStoredClaimTrajectories` never computes and never
+   writes; `getClaimTrajectories` does both. The public REST route uses the first, so a miss is
+   *reported* rather than filled, and a caller that must not write has a function name that says
+   so. A boolean option would have left the security-relevant distinction invisible at the call
+   site.
+3. The general form is a **review question, not a test**: when a tool's behaviour changes, re-ask
+   what it spends *and* what it writes. No guard here can answer that.
+
+Detection now also runs when a scan completes — deliberately after the job is marked `COMPLETED`
+and deliberately swallowed on failure, because a scan that fetched and stored every snapshot has
+succeeded, and failing it over a derived view would strand the archived text (the expensive,
+irreplaceable half) behind a cheap, repeatable failure.
+
+### What else the review corrected
+
+**The state hash enumerated knobs.** It listed `normaliseClaim` and `MIN_CLAIM_LENGTH` and
+missed the presence test itself — swap `includes()` for fuzzy or positional matching and every
+trajectory changes while the hash does not. Enumerating named parameters is the exact drift
+`classifierPromptHash` exists to prevent, so it now takes the same shape: one
+`DETECTION_VERSION` covering the whole procedure, bumped by whoever changes any part of it.
+
+**The precedence rule was too strong.** A trajectory is authoritative on *"this exact string was
+in the page text at this capture"* — and nothing else. It knows nothing about position,
+prominence, or whether a claim was being made to the reader; text in a nav menu reads as
+"present" like any other. A conflict means the summary's assertion **about presence** is wrong;
+it does not follow that its interpretation is. The motivating failure was a pure presence
+question, so the narrower rule covers it completely.
+
+**"One observation" over-reached, one notch smaller.** An evidence record also carries
+classification, tier reasoning, correlation to dated external events, and key figures — none of
+which a trajectory duplicates. Told two things are "one observation", a model may reasonably
+discount the interpretation too. Now scoped: one observation **of page state**, and the record's
+classification is explicitly not discounted by it.
+
+**Nesting was already in the corpus.** Exact-hash overlap matching was flagged as a possible hole;
+the reviewer produced two claims from the real 10-claim group where one contains the other
+verbatim. And the error ran the **unsafe** way: an unmatched nested item is counted independent
+while being partly covered, which *overstates* corroboration. Containment matching was added
+within the trajectory claim set — exact hash for identity, containment for coverage, since
+`a.includes(b)` is exact about a real relation and not fuzziness. Guarded by the length
+threshold: a short string is a substring of unrelated claims by accident, and a false match
+discounts a classified item, which is the direction that loses a finding.
+
+**Two of the seven questions were answered "you corrected an oversight, not a decision."** The
+upsert-in-place key was reflex on a table whose only writer had just been removed; mutation
+semantics for a citable artifact were never reasoned about. And the *"reserved for citation"*
+framing was thinner than it read — what citation needs is an immutable target, which is what the
+new key provides and the old one did not.
+
+One answer was better than the question deserved: a **0-transition, always-present** trajectory
+is the *"survived everything"* case — a categorical safety assurance present continuously through
+four years and every revision around it. Storing sub-threshold rows was argued for on cache
+correctness; it also preserves a finding a threshold would have hidden.
+
+### FINDING 31 — the two things that actually worked here
+
+Worth stating on its own, because it is the pattern this project keeps rediscovering and it is
+easy to lose among the mechanics:
+
+**A deterministic layer proved a researcher right against an AI-written summary.** Not a better
+model, not a longer prompt, not a more careful reviewer — a string search over archived text,
+reproducible by anyone, contradicting an anchored record's prose and winning.
+
+**The fix for the bundling repeat came from the researcher, not the model.** The over-broad
+overlap flag was defended here as *"over-inclusive in the safe direction"*. That defence was
+wrong, and the researcher said so: a trajectory describes only what moved, while an evidence
+record carries more, so a diff item can be important and absent from every trajectory. On this
+platform **losing a finding is a more serious error than understating one** — and the machine
+argued the other way until a person corrected it.
+
+Both belong beside the twenty-nine findings before them for the same reason those exist: they
+came from running the thing and watching what broke, not from reading it.
+
+### FINDING 32 — the review request format is what caught the write tool
+
+The trajectory work was handed back to the session that designed `ClaimTrajectory` as a written
+review request rather than a pull request. That format is the reason a defect nothing else could
+see was found before merge.
+
+`get_claim_trajectories` sat in `READ_TOOLS` on reasoning that was correct when written — no LLM
+call, no RPC, no chain. Detection becoming stored state made a cache miss insert rows, so an
+unauthenticated caller could write to the database. **No guard could catch it.**
+`mcpToolClassification.test.ts` asserts every tool is classified exactly once; it never asks
+whether a classification still describes what a tool *does*. The tests passed. The types passed.
+The classification drifted underneath both.
+
+What made the format work, in the order it mattered:
+
+1. **It stated what the original author had decided, and why.** Three decisions — not evidence,
+   not anchored, not persisted — each with its reasoning. The reviewer read them and *changed
+   their first plan*: promoting trajectories into `Evidence` would have forced an interval into a
+   point shape and handed a deterministic finding to an LLM to summarise.
+2. **It named what was kept and what was overturned, separately.** Two kept, one overturned with
+   argued reasons and measurements. A reviewer can only attack a decision that has been stated as
+   one.
+3. **It asked the questions the reviewer could not answer alone.** Six of seven turned on context
+   that existed only in the original author's head — whether immutability had been *considered and
+   rejected* or simply not considered, whether a threshold was chosen or inherited. The honest
+   answer to one was "not considered", which is a correction of an oversight rather than the
+   overturning of a decision, and only the author could say which.
+4. **It recorded a correction already made and asked whether it went far enough.** Not "here is
+   the fix" but "here is what I changed after being corrected — check whether it is now right or
+   merely less wrong." It was less wrong: *one observation* over-reached one notch smaller.
+5. **It listed what was NOT fixed.** Citation, the inverted anchored summary, anonymous access,
+   structural independence. Naming them stops a PR body reading as a completion certificate.
+
+**This is the diff debate's structure applied to engineering.** Substance is a hard gate — you
+must state what you decided and why before the exchange can happen at all. Merit is where the
+disagreement lives, and the disagreement is the product. Generating a description of a change is
+the easy half.
+
+It also has a precondition worth naming, because it is the expensive part: **the format is only
+possible when the original decisions were written down with their reasoning.** The reviewer had
+nothing but what was in the schema comments, the service header and the earlier PR body — and
+that was enough. A change described as "adds caching for trajectories" gives a reviewer nothing
+to disagree with, and would have shipped the write tool.
+
+
+### FINDING 33 — the guard against bundling contained two bundling errors
+
+The second review pass — the same session, now reading the code rather than the description —
+returned three findings. Two are the **same defect the change exists to prevent**, committed
+inside the prevention.
+
+The bug being guarded against is *a set that looks complete and is not, feeding a claim about
+independence.* Both leaks are exactly that.
+
+**Coverage leaked across tracked URLs.** The claim set accumulated across the loop over pages,
+while every evidence record belongs to exactly one page. An item on page A could be marked
+covered by a claim belonging to page B. Two government pages sharing 40+ characters of
+boilerplate is entirely plausible, and one page's text oscillating says nothing about the other.
+
+Direction: over-matching → fewer items reported independent → **understates independent
+evidence**, which is the side the researcher's own correction had just named as the more serious
+error. What makes it an oversight rather than a choice is that the per-group computation forty
+lines earlier scopes correctly. *The file gets it right once and then does not carry it down.*
+
+**Coverage was computed against a silently truncated set.** Groups are capped at 8 per URL for
+rendering, and only the capped set fed the coverage claim list. The corona page already produces
+**15**, so seven were excluded. An item covered by group 9-15 was reported independent.
+
+Direction: under-matching → **overstates corroboration**, the side this change was written to
+prevent. And it was silent: no count, no marker. That is the unrecorded-cap lesson again — a
+truncated set makes a partial answer look complete.
+
+Both fixed by the same rule, which is worth stating because it is not obvious from either site:
+**truncation applies to what is rendered, never to what is reasoned over.** Coverage now draws
+from every group, scoped to the page the evidence is actually on, and `omittedGroups` is
+reported and rendered — including the fact that the omission is display-only, since a reader
+told "7 not shown" would otherwise discount the coverage counts too.
+
+**The third finding was `prisma format` churn**, at three times the size of the instance caught
+and reverted in PR #99: 304 of 377 changed schema lines were reformatting of unrelated models.
+On a repository where migrations deploy themselves, an unreviewable schema diff is how a bad
+migration gets waved through — and this change's migration contains a `DROP COLUMN` and a
+`NOT NULL` add. Reverted and the schema edited by hand: 217/158 lines became 78/18, every one of
+them inside the two models being changed.
+
+The reviewer's summary of the first two is the part to keep:
+
+> Building a guard against bundling while leaving two narrower bundling errors in the guard
+> itself is not carelessness; it is how hard this class is to see.
+
+Which is also the argument for FINDING 32's format. Neither leak is reachable today — there is
+one tracked URL, and the display cap only bites past eight groups. Tests passed, types passed,
+and the first review pass, reading the *description*, did not catch them: **the description was
+accurate.** They were only visible to a second reader, of the code, holding the intent the
+description had established.
+
 ## Where this leaves the vault
 
 | | |

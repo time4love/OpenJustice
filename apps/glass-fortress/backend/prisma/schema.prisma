@@ -86,6 +86,7 @@ model TrackedUrl {
   snapshots    UrlSnapshot[]
   job          WaybackScrapeJob?
   trajectories ClaimTrajectory[]
+  trajectoryComputations ClaimTrajectoryComputation[]
 }
 
 // One record per unique archived snapshot of a TrackedUrl.
@@ -1078,27 +1079,86 @@ enum ClaimFinalState {
   REMOVED // it was there and is not any more
 }
 
+// One completed detection pass over a tracked URL, and the state it ran against.
+//
+// A trajectory is a function of three inputs, and every one can change without
+// the others:
+//
+//   1. the ordered snapshot set   — changes when the URL is scanned
+//   2. the candidate claim set    — changes on a scan OR a reclassification,
+//                                   since candidates come from UrlVersionDiff
+//                                   extraction, which `forensics:reclassify`
+//                                   rewrites without touching the archive
+//   3. the detection procedure    — changes on a code deploy
+//
+// sourceStateHash covers all three, with detectionVersion standing for the WHOLE
+// procedure rather than a list of named knobs: the presence test is detection
+// logic just as much as the normaliser is, and an enumerating hash would miss a
+// change to it. Same organ as UrlVersionDiff's classifierVersion +
+// classifierPromptHash, for the same reason — a stored derived value with no
+// provenance silently means different things on different rows.
+//
+// It does double duty. As a CACHE KEY it makes detection a read instead of a
+// ~4-second full-text rescan on every call. As a VERSION KEY it makes a
+// trajectory immutable once computed: a later scan writes a NEW computation
+// rather than mutating this one, so a thesis that cited a trajectory still
+// resolves to exactly what it cited. Everything else citable here is immutable
+// by construction (a snapshot is fixed text, a diff has fixed endpoints, an
+// Evidence hash covers fixed content); without this, a trajectory would have been
+// the only citable artifact able to change meaning after the fact.
+model ClaimTrajectoryComputation {
+  id                   String     @id @default(cuid())
+  trackedUrlId         String
+  trackedUrl           TrackedUrl @relation(fields: [trackedUrlId], references: [id], onDelete: Cascade)
+  // SHA-256 over (ordered snapshot timestamps, sorted candidate claim hashes,
+  // detection version). Recomputing against identical state yields this row.
+  sourceStateHash      String
+  detectionVersion     String
+  snapshotsExamined    Int
+  candidatesConsidered Int
+  // Candidate quotes matching no snapshot — usually a paraphrased extraction.
+  // Kept because a high count means candidate discovery is degrading, which is
+  // invisible if only the successes are stored.
+  candidatesUnmatched  Int
+  computedAt           DateTime   @default(now())
+  trajectories         ClaimTrajectory[]
+
+  @@unique([trackedUrlId, sourceStateHash])
+  @@index([trackedUrlId, computedAt])
+}
+
 model ClaimTrajectory {
-  id           String     @id @default(cuid())
-  trackedUrlId String
-  trackedUrl   TrackedUrl @relation(fields: [trackedUrlId], references: [id], onDelete: Cascade)
-  // SHA-256 of the whitespace-normalised claim text. A deterministic identity:
-  // recomputing always yields the same row, so this upserts idempotently on
-  // every scan and can be referred to stably without a "which run made this".
-  claimHash    String
-  claimText    String
+  id            String                     @id @default(cuid())
+  // The pass that produced this row. Rows are never updated in place: a new
+  // sourceStateHash means a new computation and a new set of rows.
+  computationId String
+  computation   ClaimTrajectoryComputation @relation(fields: [computationId], references: [id], onDelete: Cascade)
+  trackedUrlId  String
+  trackedUrl    TrackedUrl                 @relation(fields: [trackedUrlId], references: [id], onDelete: Cascade)
+  // SHA-256 of the whitespace-normalised claim text — stable across every
+  // computation, so the same assertion can be followed between passes.
+  claimHash     String
+  claimText     String
   // JSON: Array<{ snapshotDate, waybackTimestamp, snapshotUrl, present: boolean }>
   // Every snapshot examined, in date order — including the ones where the claim
   // was absent. The absences are half the finding.
-  observations String
+  observations  String
   // How many times presence flipped. 1 is an ordinary removal, already visible
-  // as a diff. 2 or more is the pattern a diff cannot show.
-  transitions  Int
-  firstSeen    String // YYYY-MM-DD of the earliest snapshot containing the claim
-  lastSeen     String // YYYY-MM-DD of the latest snapshot containing it
-  finalState   ClaimFinalState
-  computedAt   DateTime @updatedAt
-  createdAt    DateTime @default(now())
+  // as a diff. 2 or more is the pattern no single diff can show.
+  //
+  // Every detected trajectory is stored, including 0- and 1-transition ones, so
+  // that minTransitions stays a READ filter. Storing only what the current
+  // threshold returns would make the cache depend on the query, and lowering the
+  // threshold would silently serve an incomplete answer from cache. A
+  // 0-transition row is also evidentially interesting in its own right: it is the
+  // claim that survived every revision around it.
+  transitions   Int
+  firstSeen     String // YYYY-MM-DD of the earliest snapshot containing the claim
+  lastSeen      String // YYYY-MM-DD of the latest snapshot containing it
+  finalState    ClaimFinalState
+  createdAt     DateTime                   @default(now())
 
-  @@unique([trackedUrlId, claimHash])
+  @@unique([computationId, claimHash])
+  @@index([trackedUrlId, claimHash])
 }
+
