@@ -366,14 +366,36 @@ enum ResearchSessionEventType {
   AI_ANALYSIS_RUN  // logged automatically when AI analysis completes
   NOTE             // logged manually via add_session_note MCP tool
   SESSION_CLOSED   // logged automatically on session close
+  // Deciding WHAT the thesis should argue, before one exists.
+  FRAMING_PROPOSED // a researcher's proposed framing of the question
+  FRAMING_ASSESSED // the adversarial response to it
+  THESIS_ATTACHED  // the framing produced a thesis; refId is the Thesis id
 }
 
 // A named Claude+human research sprint on a thesis.
 // Only one ACTIVE session per thesis at a time; creating a new one auto-closes the previous.
 model ResearchSession {
-  id        String                @id @default(cuid())
-  thesisId  String
-  thesis    Thesis                @relation(fields: [thesisId], references: [id], onDelete: Cascade)
+  id String @id @default(cuid())
+
+  // Nullable so a session can open on a QUESTION before any thesis exists.
+  //
+  // Deciding what a thesis should argue is the most consequential step in the
+  // workflow — the topic string determines which evidence is pulled semantically
+  // and what the Devil's Advocate attacks, and a wrong framing produces a
+  // well-argued thesis about the wrong thing that no later iteration rescues.
+  // Until 2026-08-22 that decision happened entirely outside the system:
+  // suggest_thesis interpolated its `topic` into a prompt and discarded it, and
+  // a session could not exist without a thesisId, so the conversation that chose
+  // the framing left no trace anywhere.
+  //
+  // Deliberately NOT a third session type. ResearchSession and DiffDebateSession
+  // already exist; a third would be a smell. A framing session IS a research
+  // session — it just starts before its subject does, and the thesis attaches to
+  // it when created.
+  thesisId  String?
+  thesis    Thesis?               @relation(fields: [thesisId], references: [id], onDelete: Cascade)
+  // The question the session opened on, when it opened before a thesis.
+  question  String?
   name      String
   status    ResearchSessionStatus @default(ACTIVE)
   events    ResearchSessionEvent[]

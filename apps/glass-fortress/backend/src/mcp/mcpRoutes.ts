@@ -38,6 +38,7 @@ export const READ_TOOLS = new Set([
   // RPC, no chain — and its whole value is that anyone can re-run the check
   // themselves, which a gate would sit awkwardly against.
   'get_claim_trajectories',
+  'get_thesis_framing',
   'get_diff_debate',
   'get_figure_dossier',
   'get_thesis_context',
@@ -90,6 +91,9 @@ export const WRITE_TOOLS = new Set([
 
   // The diff debate. open/respond each run an LLM assessment; promote registers
   // on-chain. All gated — get_diff_debate is a plain read and sits above.
+  // Embeds the question and runs a long-context assessment — real money per call.
+  'open_thesis_framing',
+  'assess_thesis_framing',
   'open_diff_debate',
   'respond_in_diff_debate',
   'promote_from_diff_debate',

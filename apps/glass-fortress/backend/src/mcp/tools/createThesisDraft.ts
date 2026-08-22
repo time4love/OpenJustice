@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { Prisma } from '@prisma/client';
+import { attachThesisToFraming } from '../../services/thesisFraming';
 import { prisma } from '../../lib/prisma';
 import { parseMentions } from '../../utils/parseMentions';
 import { buildTipTapDoc } from '../../utils/tipTapUtils';
@@ -11,6 +12,14 @@ import { sha256 } from '../../services/thesisAnalysis';
 // ---------------------------------------------------------------------------
 
 export const createThesisDraftSchema = {
+  framingSessionId: z
+    .string()
+    .optional()
+    .describe(
+      'The framing session this thesis came out of, from open_thesis_framing. Attaches the debate ' +
+        'about WHAT to argue to the thesis it produced — without it, the reasoning that chose this ' +
+        'framing is as lost as it was before framing sessions existed.',
+    ),
   title: z
     .string()
     .min(1)
@@ -47,6 +56,7 @@ export const createThesisDraftSchema = {
 };
 
 export async function createThesisDraftHandler(input: {
+  framingSessionId?: string;
   title: string;
   body: string;
   evidenceHashes?: string[];
@@ -107,8 +117,15 @@ export async function createThesisDraftHandler(input: {
     return { thesis: updatedThesis, version };
   });
 
+  // Attach the framing that produced this thesis. Non-fatal by design: a thesis
+  // must never fail to save because its provenance record could not be updated.
+  if (input.framingSessionId) {
+    await attachThesisToFraming(input.framingSessionId, thesis.id);
+  }
+
   return JSON.stringify({
     thesisId: thesis.id,
+    framingSessionId: input.framingSessionId ?? null,
     headVersionId: version.id,
     status: version.status,
     mentionsCreated: mentions.length,
