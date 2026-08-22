@@ -19,7 +19,8 @@
     "db:simulate": "ts-node --transpile-only scripts/dbSimulate.ts",
     "db:deploy": "prisma migrate deploy",
     "researcher:bootstrap": "ts-node --transpile-only scripts/bootstrapResearcher.ts",
-    "forensics:reclassify": "ts-node --transpile-only scripts/reclassifyDiffs.ts"
+    "forensics:reclassify": "ts-node --transpile-only scripts/reclassifyDiffs.ts",
+    "forensics:trajectories": "ts-node --transpile-only scripts/claimTrajectories.ts"
   },
   "keywords": [],
   "author": "",
