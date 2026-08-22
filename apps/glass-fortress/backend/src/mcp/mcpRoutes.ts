@@ -42,6 +42,7 @@ export const READ_TOOLS = new Set([
 ]);
 
 export const WRITE_TOOLS = new Set([
+  // Rewrites the prose on an evidence record and its source diff.
   // Gated despite the name. It was in READ_TOOLS while detection recomputed on
   // every call: no LLM, no RPC, and its whole value is that anyone can re-run
   // the check themselves. Detection is now stored state, so a cache MISS

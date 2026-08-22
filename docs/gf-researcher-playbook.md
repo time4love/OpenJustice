@@ -1800,6 +1800,292 @@ and the first review pass, reading the *description*, did not catch them: **the 
 accurate.** They were only visible to a second reader, of the code, holding the intent the
 description had established.
 
+
+## Step 16 — The control re-run
+
+The fix was tested against the failure that motivated it, as a real before/after.
+
+**Not as round 2 of the original session.** The assessor receives `priorTurns`, so a second round
+would have shown it both the earlier exchange *and* the trajectories — two variables, one
+experiment, and an invalid control of exactly the kind FINDING 18 records. A fresh framing
+session was opened on the identical question, and the researcher's framing submitted
+character-for-character unchanged as its round 1. The only difference from the recorded wrong
+answer is the trajectory layer.
+
+### Result
+
+| | Round 1, recorded | Control, trajectory-aware |
+|---|---|---|
+| `evidenceConsidered` | 8 | 8 |
+| `trajectoriesConsidered` | — | 8 |
+| On restoration | denied it happened | **affirmed, citing trajectory T6** |
+| Advice to the researcher | drop the restoration claim | strongest candidate framing **built on** it |
+
+**FINDING 24 is closed.** The assessor moved from telling a researcher to abandon a correct claim
+to anchoring its recommended framing on that claim, naming the deterministic trajectory as the
+reason it holds. Its remaining contradiction is about direction and sequencing rather than
+existence — a refinement instead of a false denial, which is what the tool is for.
+
+### FINDING 34 — a true layer did not neutralise a wrong summary. It laundered it.
+
+The same response says T6 restored the reassuring claim that side effects *"חולפות תוך
+יום-יומיים"* — **pass within** a day or two.
+
+T6's claim text, handed to the assessor verbatim, says they *"מופיעות לרוב יום או יומיים אחרי
+קבלת החיסון"* — they **appear** a day or two **after**. Onset, not duration. The root *חולפ*
+occurs nowhere in that capture; this was checked directly against the archive.
+
+So the assessor took **presence** from the trajectory and got it right, and took **content** from
+the anchored record's summary and got it wrong — the inversion recorded as FINDING 25, passing
+straight through, and now cited alongside a correctly identified, deterministically anchored
+finding.
+
+This is the precedence rule working exactly as specified, and exactly as limited. It was scoped
+to presence on review, correctly: a trajectory is authoritative on what string was on the page,
+never on what it meant. Presence was fixed. Meaning was never in scope.
+
+The consequence is the finding, and it is not what anyone expected:
+
+> **Adding a strong, true, deterministic layer beside a wrong summary did not dilute the wrong
+> summary. It made it more persuasive** — the false characterisation now arrives attached to a
+> verifiable finding, and inherits its authority.
+
+Both the `recommendedTopicString` and the strongest candidate framing rest on it. **The best
+framing the tool recommends is built on a claim the archive does not support.**
+
+Two things follow:
+
+1. **Correcting the record fixes one row.** The evidence hash covers `url + date + deleted +
+   added`, not the prose, so the summary can be corrected without touching the chain.
+2. **The detector is the actual work**, and this is the proof: a summary asserting something
+   about a claim's text can be checked against `UrlSnapshot.fullText` deterministically, the same
+   way presence is. Nothing else would have caught this one, and nothing will catch the next.
+
+A smaller reporting gap in the same response: `trajectoriesConsidered: 8` while 15 exist. It is
+accurate to its documented meaning — how many the assessor was *shown* — and the rendered prompt
+carried the "7 further, display only" note, so the model knew. The researcher's summary field
+does not say it. The count that reaches a person still describes the display rather than the
+detection.
+
+
+### FINDING 35 — evidence summaries were arguing, not describing
+
+The inversion in FINDING 34 was a symptom. The researcher named the defect:
+
+> *"other evidence leaking into the evidence summary smells like thesis leaking into evidence."*
+
+Each layer here makes a different kind of claim, and each is checkable against something
+specific: a snapshot against itself, a diff against two snapshots, an **Evidence record against
+its own source**, a thesis against the whole corpus. Rule 4 of the classification prompt broke
+that:
+
+> *"If correlated DB evidence exists… **EXPLICITLY cross-reference it** in your legalSignificance
+> explanation. The correlation is the most powerful forensic finding — 'they silently deleted the
+> mRNA safety claim 3 weeks after this internal report surfaced.'"*
+
+The example the prompt offers as its model output is not a description of a page change. **It is
+an argument** — a causal-temporal inference across sources, which is exactly what the thesis
+stage exists to make and what the Devil's Advocate exists to rate. And `legalSignificance`
+becomes `Evidence.summary` verbatim, so that argument became the record's public text.
+
+**The harm is a closed loop.** A thesis argues X; it cites a record whose summary already asserts
+X, because the classifier read a *different* record at intake; the Devil's Advocate sees the
+argument supported by evidence and rates it strong. The thesis is corroborated by its own
+premise. That is not hypothetical — it happened in Step 16, where the assessor's recommended
+framing rested on prose that exists only because the classifier was contrasting this page against
+the article's *"ממושכות"*.
+
+It also silently defeats the independence marking built the same day. Overlap between a
+trajectory and a record is now computed and labelled; if record X's *summary contains record Y's
+content*, X and Y are not independent either, and nothing computes that edge.
+
+**Why Step 9's fix did not reach it.** Step 9 found this once and read it as a *self*-reference
+bug — a page citing its own earlier diffs as corroboration — and added `excludeTrackedUrlId`.
+Correct, and insufficient: it stops a page inflating itself and leaves every cross-source path
+open. The article is a different source, so it sails through. The diagnosis then was
+*"correlation must come from a different source than the page being classified"*; the premise was
+wrong. The problem is not **which** source, it is that a description imports any source but its own.
+
+### The distinction that resolves it
+
+Two uses of correlation, and only one is a violation:
+
+| Use | Verdict |
+|---|---|
+| A reason to **look harder** at this page | legitimate — Step 6 measured it working |
+| **Content** in the record's description | illegitimate — it puts the conclusion inside the exhibit |
+
+Correlation may decide **whether** an item is flagged. It must never determine **what the record
+says happened.**
+
+The prompt already stated this principle one level down, in the very next line: *"CLASSIFY ITEMS
+INDEPENDENTLY. Judge each item on its own content, never on the overall character of the diff it
+arrived in."* Rule 4 exempted the aggregate from that discipline and additionally invited it to
+import other records. The fix extends a rule the file already contained.
+
+### FINDING 36 — do not code a detector for something that should be impossible
+
+A `CROSS_SOURCE_CONTENT` verdict was designed — deterministic, precise, naming the record a term
+leaked from. The researcher rejected it, and the reasoning is the more valuable output:
+
+> *"this should never have happened and we are not coding bug fixes into the heart of the
+> codebase."*
+
+A detector for cross-source leakage is only necessary while leakage is possible. Shipping one
+encodes the defect as a permanent feature of the system, commits someone to maintaining it
+forever, and — worst — gives the next person a reason **not** to fix the prompt: *we catch that.*
+
+The same argument then retired the grounding detector that had just been written and tested.
+It was built to catch the FINDING 34 inversion, and both failures share one cause: **the pipeline
+holds a verbatim layer and a paraphrase layer, and publishes the paraphrase.** `exactQuote` is
+verbatim and provably correct — trajectories built from it match the archive exactly.
+`legalSignificance` is free prose. `buildForensicEvidence` copies the prose and discards the
+quotes at exactly that step. Rule 4 let *other records* into that prose; free generation let *the
+page's own meaning* drift inside it.
+
+What survived the cut, and why the line falls there:
+
+| Kept | Why it is not the same anti-pattern |
+|---|---|
+| `correct_evidence_summary` + `SummaryCorrection` | a human will find prose wrong for reasons no check anticipates; corrections are permanent capability, and one with no record is the "trust us" this platform exists not to be |
+| `loadSummaryCaveat` | **provenance surfacing**, not detection. `classifierVersion` already records which prompt wrote a row; this states what that prompt permitted, at the moment the row reaches something that will reason over it. It is expected to become dead code — when no row predates the fix it returns null and nothing renders |
+
+A **one-off audit is not a feature**, and that distinction is what let the measurement happen
+anyway: the sweep below ran as a throwaway script and was deleted after reporting.
+
+### What the audit actually found
+
+All seven forensic records are at `v2-item-level` — every one written under rule 4. That is
+derivable from `classifierPromptHash`, not assumed, which is the whole reason Step 9's provenance
+work matters.
+
+Reading the summaries rather than the counts, **four of seven carry an explicit reference to
+another record**, and they split into two kinds:
+
+| Kind | Records | What the summary says |
+|---|---|---|
+| **Cross-source import** | `0x43de…`, `0x9871…` | both narrate the publication of the leaked recordings — an event on a *different* source, with its date — inside a description of a page diff |
+| **Self-correlation** | `0x6f75…`, `0x5c56…` | both cite *this same page's* earlier diffs as internal corroboration (*"בהצלבה עם ממצאי התיעוד הפנימי מ-25 במאי"*) |
+
+The second kind is the defect Step 9 fixed **in code and never cleaned in data** — the same shape
+as FINDING 23, where two findings were recorded and neither remediated. A prompt fix does not
+reach rows already written.
+
+The audit's raw counts (24-42 ungrounded terms per record, 10-25 "traceable to another record")
+**overstate the problem and should not be quoted**: analytic vocabulary like *מהווה* or *הציבור*
+appears in every summary, so it is trivially "traceable" to another record. The crude metric
+located the records worth reading; reading them produced the finding. That is the honest division
+of labour between a measurement and a conclusion.
+
+`0x9871…`'s leaked terms include **ממושכות** — the exact word the article uses for prolonged
+effects, and the contrast that required the page to be claiming short duration. FINDING 34's
+inversion and FINDING 35's leakage are the same event seen twice.
+
+### What shipped
+
+- **Rule 4 replaced.** Correlated evidence may still decide *whether* an item is flagged; it may
+  no longer be described, quoted or referred to in `legalSignificance`, which must be checkable
+  against this diff's own text and nothing else.
+- **`CLASSIFIER_VERSION` → `v3-self-contained-summary`**, so no new row is born contaminated and
+  every old one is identifiable.
+- **Provenance caveat at the point of consumption**, threaded into all three reasoning agents as a
+  *required* parameter. It names the affected records and says both necessary things: treat
+  cross-source claims as unverified, **and** do not count such a claim as independent support —
+  because "may be unverified" alone still lets a model count the record as a second source
+  agreeing with the first.
+- **Tests stopped hardcoding the version string.** Two asserted `'v2-item-level'` as a literal, so
+  every legitimate bump would break them — an incentive not to bump, on the one field whose whole
+  purpose is to be bumped.
+
+### FINDING 37 — a rule applied outside its scope, and nothing could have caught it
+
+The correction path was first built as an MCP tool, `correct_evidence_summary`: any approved
+researcher could rewrite the public prose of a `CONFIRMED`, on-chain-anchored record in one call,
+with the new text re-indexed into public search immediately. It had a rationale, tests, and a
+write-up. The researcher stopped it with one question — *"what is the rationale for having such
+tool exposed to every researcher?"*
+
+Beside this platform's own rules it is plainly backwards:
+
+| Act | Review required |
+|---|---|
+| Create evidence | `PENDING_REVIEW`, human promotion |
+| A scan finds something | `PENDING_REVIEW`, never self-promotes (FINDING 9) |
+| Promote a diff by hand | a **debate**, substance a hard gate (Step 7) |
+| **Rewrite a CONFIRMED record's public prose** | **nothing** |
+
+It published allegation text naming living officials with *less* review than creating a new
+pending row, and the new text would inherit the record's `CONFIRMED` status, its on-chain
+provenance and its existing citations — authority earned by different words. Step 7 had already
+rejected this exact shape: *"a bare override is the mirror image of the auto-promotion just
+removed."*
+
+**How it happened is the useful part.** The session protocol says *"all mutation goes through MCP
+— a missing tool is a finding, and gets built."* That rule exists to prove **the researcher's
+path** works. Corpus maintenance is not the researcher's path. The rule was applied where the work
+was happening rather than where the rule lives — FINDING 23's shape inverted, and the correct rule
+(operator work goes through committed npm tooling) was one established in an earlier session, with
+its precedent, `forensics:reclassify`, sitting in the same directory.
+
+**Nothing in the repository could have caught it.** It typechecked, six tests passed, and the
+classification guard was satisfied because the tool *was* correctly gated — as a write tool
+available to every researcher, which is what it asked. Every test written for it assumed building
+it was right, and that assumption was the defect:
+
+> **Tests verify that a thing works. Nothing verifies that it should exist.**
+
+That is the third time in this session that an internally coherent rationale was scoped wrong, and
+all three were caught by a person asking *why* — never by a check. It is the same argument as
+FINDING 32: the review format works because it forces the reasoning to be stated, and the
+reasoning is the part that fails.
+
+The rule, stated so it does not have to be re-derived:
+
+> **Before building any tool, ask whether it is a research act or a maintenance act. Research →
+> MCP. Maintenance → a committed npm script. "A missing tool gets built" does not say WHERE.**
+
+### FINDING 38 — the repair had to be narrower than "run it again"
+
+The obvious remedy was to re-run classification over the corpus under v3. It would have destroyed
+the vault.
+
+`forensicEvidenceFileHash(url, afterDate, deletedText, addedText)` covers the **extracted items**.
+Re-running classification re-extracts them, and the classifier is non-deterministic — measured in
+Step 6 at 10 findings on one run and 5 on another from identical input. Different items mean a
+different hash, and the seven anchors at registry ids 3-9 would match nothing: seven deliberate
+`ORPHANED_ANCHOR` records, the exact state `check_on_chain_status` exists to detect and the 2026-08-20
+audit treated as a defect.
+
+What saved it is that **the contamination is confined to one field, and that field is not hashed.**
+So `npm run forensics:resummarize` rewrites `aiSignificance` alone, from items already extracted at
+scan time:
+
+- it never re-extracts and never re-fetches the archive;
+- it **asserts the recomputed fileHash still equals the registered one** before writing, and skips
+  the row and exits non-zero if not — an operation that *cannot* orphan an anchor, enforced rather
+  than intended;
+- it records the previous prose for **every** row it touches, not only ones that change
+  meaningfully — which closes the playbook's standing before-state gap by construction rather than
+  as a separate job;
+- it is **dry-run by default**; `--apply` is required to write.
+
+It also cannot leak by construction rather than by instruction: the rewriter is a separate chain
+with a separate prompt that **is never shown correlated evidence at all**. A rule the model is told
+to follow can be misread; input it never receives cannot be quoted.
+
+And it stamps a new field. `summaryVersion` is separate from `classifierVersion` because the two
+move independently — rewriting the prose leaves the items judged by the older classifier, so a
+single version string would have to lie about one of them. The provenance caveat therefore keys on
+`summaryVersion`: keyed on `classifierVersion` it would warn about rows already fixed and stay
+silent about rows that were not.
+
+**Not done, deliberately: no bulk reclassification.** Rewriting 81 reviewed summaries to fix a
+contamination measured at four records is the same shape as auto-promotion — a machine changing
+reviewed text with nobody seeing it — and the playbook's own open item stands in the way: the
+reclassification run report captures prose only for rows that flip, while rewriting every row it
+touches. That gap closes before any bulk pass. The four records get corrected by hand, in the
+researcher's words, through `correct_evidence_summary`, which records each one.
+
 ## Where this leaves the vault
 
 | | |

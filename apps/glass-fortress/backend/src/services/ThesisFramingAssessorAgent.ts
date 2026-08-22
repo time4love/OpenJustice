@@ -4,6 +4,7 @@ import { assertSchemaCompatibility } from '../lib/assertSchemaCompatibility';
 import { THESIS_FRAMING_ASSESSMENT_PROMPT } from '../prompts/thesisFramingAssessment';
 import type { EvidenceContext } from '../lib/evidenceContext';
 import { formatTrajectoryContext, type TrajectoryBundle } from '../lib/trajectoryContext';
+import { formatSummaryCaveat, type SummaryCaveat } from '../lib/summaryProvenance';
 
 // ---------------------------------------------------------------------------
 // Assesses how a thesis should be FRAMED, before one exists.
@@ -89,6 +90,12 @@ export interface FramingAssessmentInput {
    * contradicted a researcher who had read the archive — and was wrong.
    */
   trajectories?: TrajectoryBundle;
+  /**
+   * Which supplied summaries predate the self-contained-summary rule.
+   * Required, not optional: a corpus silently missing this warning is exactly how
+   * a thesis gets corroborated by its own premise.
+   */
+  summaryCaveat: SummaryCaveat | null;
 }
 
 export class ThesisFramingAssessorAgent {
@@ -113,6 +120,7 @@ export class ThesisFramingAssessorAgent {
       .join('\n\n');
 
     const trajectoryText = formatTrajectoryContext(input.trajectories ?? { trajectories: [], coverage: [], omittedGroups: 0 });
+    const caveatText = formatSummaryCaveat(input.summaryCaveat, 'he');
 
     const raw = await this.chain.invoke([
       { role: 'system', content: THESIS_FRAMING_ASSESSMENT_PROMPT },
@@ -124,6 +132,7 @@ export class ThesisFramingAssessorAgent {
             : '') +
           `שאלת החוקר: ${input.question}\n\n` +
           `--- ראיות מאומתות מן המאגר ---\n${evidenceText || '  (לא נמצאו ראיות)'}\n\n` +
+          `${caveatText ? `${caveatText}\n\n` : ''}` +
           `${trajectoryText ? `${trajectoryText}\n\n` : ''}` +
           `--- המסגור שהחוקר מציע ---\n${input.proposedFraming}`,
       },
