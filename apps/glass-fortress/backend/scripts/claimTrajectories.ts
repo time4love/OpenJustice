@@ -3,7 +3,6 @@
  * Follow individual claims across a tracked page's whole archived history.
  *
  *   npm run forensics:trajectories -- --url https://corona.health.gov.il/vaccine-for-covid/
- *   npm run forensics:trajectories -- --url <url> --persist
  *   npm run forensics:trajectories -- --url <url> --min-transitions 1
  *
  * Deterministic: presence is a string search against the archived snapshot text,
@@ -21,14 +20,13 @@ function arg(name: string): string | undefined {
 async function main(): Promise<void> {
   const url = arg('url');
   if (!url) {
-    console.error('Usage: npm run forensics:trajectories -- --url <tracked url> [--persist]');
+    console.error('Usage: npm run forensics:trajectories -- --url <tracked url> [--min-transitions N]');
     process.exitCode = 1;
     return;
   }
 
   const minTransitions = arg('min-transitions');
   const result = await computeClaimTrajectories(url, {
-    persist: process.argv.includes('--persist'),
     ...(minTransitions ? { minTransitions: parseInt(minTransitions, 10) } : {}),
   });
 

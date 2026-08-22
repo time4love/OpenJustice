@@ -116,9 +116,21 @@ export interface ComputeResult {
   trajectories: Trajectory[];
 }
 
+/**
+ * Deliberately computes and returns without persisting.
+ *
+ * Detection is a deterministic string search over already-stored snapshot text:
+ * fast, free, and giving the same answer every time. Storing the result would
+ * only create a second copy that can fall behind the snapshots it describes, and
+ * a write path with no reader invites someone to build on rows produced by an
+ * older detection pass. The one argument for persistence was a stable identity
+ * for theses to cite — and citation is deliberately still open, so that
+ * justification does not yet exist. ClaimTrajectory is in the schema, ready for
+ * when it does.
+ */
 export async function computeClaimTrajectories(
   url: string,
-  opts: { persist?: boolean; minTransitions?: number } = {},
+  opts: { minTransitions?: number } = {},
 ): Promise<ComputeResult> {
   const minTransitions = opts.minTransitions ?? MIN_TRANSITIONS;
 
@@ -174,34 +186,6 @@ export async function computeClaimTrajectories(
   }
 
   trajectories.sort((a, b) => b.transitions - a.transitions);
-
-  if (opts.persist) {
-    for (const t of trajectories) {
-      // Identity is (trackedUrlId, claimHash) and both are content-derived, so
-      // recomputation updates in place rather than accumulating duplicates.
-      await prisma.claimTrajectory.upsert({
-        where: { trackedUrlId_claimHash: { trackedUrlId: tracked.id, claimHash: t.claimHash } },
-        update: {
-          claimText: t.claimText,
-          observations: JSON.stringify(t.observations),
-          transitions: t.transitions,
-          firstSeen: t.firstSeen,
-          lastSeen: t.lastSeen,
-          finalState: t.finalState,
-        },
-        create: {
-          trackedUrlId: tracked.id,
-          claimHash: t.claimHash,
-          claimText: t.claimText,
-          observations: JSON.stringify(t.observations),
-          transitions: t.transitions,
-          firstSeen: t.firstSeen,
-          lastSeen: t.lastSeen,
-          finalState: t.finalState,
-        },
-      });
-    }
-  }
 
   return {
     url,

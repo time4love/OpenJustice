@@ -34,6 +34,10 @@ export const READ_TOOLS = new Set([
   // Reads recorded scan output — no LLM, no RPC. The scan that produced it was
   // already gated; listing what it found for review is not the expensive part.
   'get_scan_findings',
+  // Deterministic string search over already-stored snapshot text. No LLM, no
+  // RPC, no chain — and its whole value is that anyone can re-run the check
+  // themselves, which a gate would sit awkwardly against.
+  'get_claim_trajectories',
   'get_diff_debate',
   'get_figure_dossier',
   'get_thesis_context',
