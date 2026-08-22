@@ -2123,6 +2123,172 @@ count that describes something other than what the reader assumes it describes, 
 verifying the difference. Here the count was honest about what it examined and silent about the
 fact that it examined nothing.
 
+
+## Step 17 — The dry run, and what its guard actually found
+
+81 diffs examined, **76 rewrites proposed**, 0 failures — and **5 skipped by the hash guard**,
+exit code 2.
+
+The guard exists to stop `resummarize` from moving a field that feeds the evidence `fileHash`.
+It has never done that; it does not touch those fields. What it found instead is that the hashes
+had already stopped matching.
+
+### FINDING 40 — five anchored records cannot be recomputed from the database
+
+Verified independently of the script, with the real hash function against live staging:
+
+| Evidence date | Recomputed vs stored | Evidence row created |
+|---|---|---|
+| 2022-05-25 | **MISMATCH** | 10:43 |
+| 2022-05-29 | **MISMATCH** | 10:43 |
+| 2022-05-30 | **MISMATCH** | 10:44 |
+| 2022-08-05 | **MISMATCH** | 10:45 |
+| 2022-09-06 | **MISMATCH** | 10:46 |
+| 2022-11-29 | MATCH | 14:40 |
+| 2025-06-01 | MATCH | 14:40 |
+
+The timestamps split the table exactly. The five that fail were written **during the scan**; the
+two that pass are the **adopted orphans of FINDING 20**, created after reclassification. And that
+is the whole explanation:
+
+> **`forensics:reclassify` rewrites `deletedText` and `addedText`. Those are two of the four inputs
+> to `forensicEvidenceFileHash`. Five Evidence rows had already been created — and anchored — from
+> the earlier items.**
+
+The two adopted later were hashed from the items that are still in the database, so they verify.
+
+**What this does and does not mean.** The evidence is not fake, the rows are real, and the anchors
+are real transactions — this is not the 2026-08-20 situation of `CONFIRMED` with nothing on-chain.
+The underlying facts are intact too, because `UrlSnapshot.contentHash` is anchored separately and
+reclassification never touches archived text.
+
+What is lost is the property the design exists for. The schema note is explicit that the hash is
+content-addressed *"deliberately not the UrlVersionDiff UUID: that is a random database key and
+hashing it would attest to nothing."* For these five, nobody can take the stored diff and rederive
+the hash — so the hash now attests to a document that no longer exists anywhere, and functionally
+it **is** a random database key. Content-addressing without recomputability is just an id.
+
+**Nobody asked the question.** Reclassification was built carefully — UPDATE-only, never deleting,
+reading persisted diff text so the archive is never re-fetched, stamping `classifierVersion` and
+`classifierPromptHash` for provenance. All correct. It simply mutates the inputs to an identity
+that had already been published and anchored, and no step in that work asked what happens to a
+hash computed from a field it rewrites.
+
+### The guard asserted the wrong thing, which is how this surfaced
+
+The post-condition was *"recomputed hash must equal the registered evidence hash"*. That is not
+the invariant `resummarize` needs. What it must guarantee is that **its own write does not move a
+hashed field** — which is `hash(fields as loaded) == hash(fields as written)`, trivially true
+since it writes neither.
+
+Comparing against the *registered* hash conflates two different questions: *did I change this?*
+and *was it already correct?* So the run refused five rows for a condition that has nothing to do
+with the operation being performed.
+
+Asserting something adjacent to what was meant is the same error shape as several earlier findings
+in this document. Here it was productive by accident: a correct guard would have rewritten all
+seven summaries and said nothing, and the five broken identities would still be undiscovered.
+
+**Neither the tests nor the code could have found this.** Nine tests pass, including one that
+exercises the hash guard — against a mock returning a hash that matches by construction. The
+condition exists only in real data, produced by two correct operations run in the wrong order,
+months apart in wall-clock terms and hours apart in this project's.
+
+### The guard, rescoped
+
+`resummarize` is responsible for exactly one thing: **its own write must not move a hashed
+field.** That is now asserted against the **persisted** row rather than against what the code
+believes it wrote — recompute after the transaction, compare to the hash computed before it — so a
+future change that re-extracts is caught on the row that did it.
+
+The registered-hash condition is reported separately, per row and in the summary, and never blocks:
+it is pre-existing, it belongs to reclassification rather than to this operation, and refusing rows
+for it prevented a repair that touches nothing hashed.
+
+Both numbers appear in every run. `hashDrift` must be zero and exits non-zero if not.
+`registered hash unverifiable` is expected to be five until that is remediated — and a count nobody
+prints is how it stayed invisible through a scan, a reclassification, seven promotions and an
+integrity audit.
+
+**The rewrites are held.** 76 are ready and none have been applied: if the five records are
+re-anchored or re-derived, their summaries should settle once rather than twice.
+
+
+### FINDING 41 — the chain of custody the whole model rests on was never written
+
+```
+snapshots: 83 | with contentHash: 83 | anchored on-chain: 0
+```
+
+**Zero of eighty-three.** This document's own data-model table says otherwise:
+
+| Layer | Hash | The claim it makes | Anchored? |
+|---|---|---|---|
+| `UrlSnapshot` | `SHA-256(fullText)` | "this page held exactly this text on this date" | **✅ automatic** |
+
+That row is the foundation the rest of the model is argued from. FINDING 9 justified removing
+auto-promotion partly on it — *"nothing evidential is lost by waiting, because the snapshot anchor
+already froze the underlying fact at scan time."* **The snapshot anchor did not exist.** The
+argument was sound and its premise was false.
+
+It fails silently by construction, at three layers:
+
+```ts
+registerSnapshotOnChain(snap.id, contentHash).catch(() => {});   // call site: swallowed
+const web3 = getWeb3Service();
+if (!web3) return;                                               // unconfigured: silent no-op
+} catch (err) { console.warn(...) }                              // failure: a warning, in a log
+```
+
+Fire-and-forget was the right instinct — a chain hiccup must not fail a scan that successfully
+fetched and stored archived text, since the text is the irreplaceable part. What was missing is
+that **nothing ever asked afterwards whether it worked.**
+
+**The cause was not what this finding first said it was.** It was written attributing the failure
+to timing — the scan ran while staging's `RPC_URL` was answering *"no backend is currently healthy"*
+(FINDING 6), so the anchor attempts plausibly hit a dead endpoint. That was a guess, it was
+recorded as "probable", and running the repair disproved it in two transactions:
+
+```
+invalid BytesLike value (argument="value", value="0a68d7663a8d…", code=INVALID_ARGUMENT)
+```
+
+No `0x`. `UrlSnapshot.contentHash` is stored **bare** — `createHash('sha256').digest('hex')` —
+while `Evidence.fileHash` is produced by `ethers.sha256()` and carries the prefix. The two layers
+store hashes in different formats, and the registry's `bytes32` argument rejects the bare one.
+
+**Snapshot anchoring never worked. Not once, in any environment, from the first scan onward.** It
+would have failed against a perfectly healthy chain. The RPC outage was real and irrelevant.
+
+That distinction matters more than the fix. A transient failure means "retry when the endpoint
+recovers" — repair, and move on. A permanent one means the code path has never executed
+successfully, was never tested against a real contract, and every unit test around it mocks
+`Web3Service`, so the argument format was never validated by anything. `.catch(() => {})` did not
+merely hide 83 failures; it hid a defect that had no failing state anyone would ever see.
+
+This is the 2026-08-20 audit's defect class with the polarity reversed. There, database rows
+claimed `CONFIRMED` with nothing on-chain — a false claim in the data. Here the data claims
+nothing at all; **the documentation makes the claim.** A record that overstates itself can be
+caught by auditing records. A document that overstates the system cannot, and this one was written
+in this session, by the same author, without checking.
+
+The first repair reproduced the defect it was repairing. `anchorSnapshots` counted failures and
+discarded the reason — `catch { report.failed++ }` — so the first real run reported `failed: 5` and
+could say nothing about why. **A count tells you something is wrong; only the message tells you
+what.** Adding the reason turned an unexplained failure into a one-line diagnosis on the next
+attempt.
+
+The instrument that would have caught the original is the one this session keeps rediscovering:
+**a count, surfaced where someone reads it.** `significantCount`, `unrecorded`, `trajectoriesConsidered`,
+`omittedGroups` — every one exists because a silent zero looked like a healthy zero. There was no
+`unanchoredSnapshots`.
+
+It also has a direct design consequence. The proposed replacement for the evidence `fileHash` —
+computed from the two snapshots' `contentHash` values rather than from model-written items — was
+going to be justified as *anchored by composition*, inheriting chain of custody from inputs already
+on-chain. That property is real and it is currently unearned. Anchoring the snapshots comes first;
+the identity built on top of them comes second.
+
 ## Where this leaves the vault
 
 | | |

@@ -18,6 +18,9 @@ jest.mock('../src/lib/prisma', () => ({
       findFirst: jest.fn(),
       upsert: jest.fn(),
     },
+    urlSnapshot: {
+      count: jest.fn(),
+    },
     thesis: {
       findUnique: jest.fn(),
       create: jest.fn(),
@@ -289,6 +292,32 @@ describe('getForensicTimelineHandler', () => {
     expect(result.totalDiffs).toBe(2);
     expect(result.significantDiffs).toBe(1);
     expect(result.timeline).toHaveLength(2);
+  });
+
+  it('reports unanchored snapshots, with a warning when any exist', async () => {
+    // Snapshot anchoring is fire-and-forget with a swallowed rejection, so a scan
+    // that ran while the RPC was down stored 83 snapshots, anchored none, and
+    // reported success. Nothing asked afterwards. This is the asking.
+    mockTrackedUrlFindFirst.mockResolvedValue(trackedUrlFixture);
+    (prisma.urlSnapshot.count as jest.Mock).mockResolvedValueOnce(83).mockResolvedValueOnce(83);
+
+    const result = JSON.parse(await getForensicTimelineHandler({ url: 'https://health.gov.il/corona' }));
+
+    expect(result.snapshotsStored).toBe(83);
+    expect(result.unanchoredSnapshots).toBe(83);
+    expect(result.anchoringWarning).toMatch(/not registered on-chain/);
+    expect(result.anchoringWarning).toMatch(/forensics:anchor-snapshots/);
+  });
+
+  it('omits the anchoring warning when every snapshot is anchored', async () => {
+    // A field that is always present stops being read. Absence is the signal.
+    mockTrackedUrlFindFirst.mockResolvedValue(trackedUrlFixture);
+    (prisma.urlSnapshot.count as jest.Mock).mockResolvedValueOnce(83).mockResolvedValueOnce(0);
+
+    const result = JSON.parse(await getForensicTimelineHandler({ url: 'https://health.gov.il/corona' }));
+
+    expect(result.unanchoredSnapshots).toBe(0);
+    expect(result.anchoringWarning).toBeUndefined();
   });
 
   it('parses deletedItems and addedItems from JSON strings', async () => {

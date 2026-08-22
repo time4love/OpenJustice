@@ -13,10 +13,15 @@
  * source, unverifiable against their own.
  *
  * Rewrites the SUMMARY ONLY, from items already extracted at scan time. Never
- * re-extracts, never re-fetches the archive, and asserts the evidence fileHash is
- * unmoved before writing — because the hash covers the items, and moving it would
- * orphan the on-chain anchors. Records the previous prose for every row it
- * touches.
+ * re-extracts and never re-fetches the archive, and asserts against the PERSISTED
+ * row that its own write left the evidence fileHash exactly where it was.
+ *
+ * Separately reports rows whose registered evidence hash no longer derives from
+ * the diff at all — a pre-existing condition caused by reclassification rewriting
+ * the extracted items after the evidence was created and anchored. Those rows are
+ * processed normally: nothing here touches a hashed field.
+ *
+ * Records the previous prose for every row it touches.
  *
  * DRY RUN IS THE DEFAULT. --apply is required to write.
  */
@@ -54,6 +59,9 @@ async function main(): Promise<void> {
     console.log(`${row.afterDate}  ${row.diffId}${row.fileHash ? `  → evidence ${row.fileHash.slice(0, 10)}…` : '  (not promoted)'}`);
     console.log(`  BEFORE: ${row.previousText.slice(0, 220)}`);
     console.log(`  AFTER : ${row.newText.slice(0, 220)}`);
+    if (row.registeredHashUnverifiable) {
+      console.log('  ⚠️  registered evidence hash does not derive from this diff (pre-existing — see below)');
+    }
     if (!dryRun) console.log(`  evidence updated: ${row.evidenceUpdated}   reindexed: ${row.reindexed}`);
     console.log('');
   }
@@ -62,15 +70,33 @@ async function main(): Promise<void> {
   console.log(`examined:  ${report.examined}`);
   console.log(`rewritten: ${report.rewritten}${dryRun ? ' (dry run — none written)' : ''}`);
   console.log(`failed:    ${report.failed}`);
+  if (report.failures.length > 0) {
+    console.error('\nfailures:');
+    const byReason = new Map<string, number>();
+    for (const f of report.failures) byReason.set(f.reason, (byReason.get(f.reason) ?? 0) + 1);
+    for (const [reason, count] of byReason) console.error(`  ${count} ×  ${reason}`);
+  }
   console.log(`hashDrift: ${report.hashDrift}`);
+  console.log(`registered hash unverifiable: ${report.registeredHashUnverifiable}`);
 
-  // A non-zero drift means a rewrite moved a field that feeds the evidence
-  // fileHash. Those rows were skipped, and the exit code makes it impossible to
-  // miss in a script or a log.
+  if (report.registeredHashUnverifiable > 0) {
+    console.warn(
+      `\n⚠️  ${report.registeredHashUnverifiable} evidence record(s) carry a fileHash that cannot be ` +
+        'recomputed from the diff as it now stands.\n' +
+        '    Cause: forensics:reclassify rewrites deletedText/addedText, two of the four inputs to\n' +
+        '    forensicEvidenceFileHash, so any Evidence row created before a reclassification stops\n' +
+        '    verifying. The anchors are real; what is lost is the ability to rederive them.\n' +
+        '    NOT caused by this operation, which writes no hashed field. Needs its own remediation.',
+    );
+  }
+
+  // Non-zero means THIS operation moved a field feeding the evidence fileHash,
+  // which it must never do. Loud, and non-zero exit so a script or a log cannot
+  // miss it.
   if (report.hashDrift > 0) {
     console.error(
-      `\n⚠️  ${report.hashDrift} diff(s) skipped: recomputed fileHash did not match the registered ` +
-        'evidence hash. Extracted items must not change here — investigate before re-running.',
+      `\n⚠️  ${report.hashDrift} diff(s) had their evidence fileHash MOVED by this run. ` +
+        'resummarize must never write a hashed field — stop and investigate.',
     );
     process.exit(2);
   }
