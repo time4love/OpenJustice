@@ -22,6 +22,8 @@ import { generateFoiaRequestSchema, generateFoiaRequestHandler } from './tools/g
 import { recoverEvidenceFromScreenshotSchema, recoverEvidenceFromScreenshotHandler } from './tools/recoverEvidenceFromScreenshot';
 import { checkOnChainStatusSchema, checkOnChainStatusHandler } from './tools/checkOnChainStatus';
 import { getWhistleblowerCallSchema, getWhistleblowerCallHandler } from './tools/getWhistleblowerCall';
+import { getScanFindingsSchema, getScanFindingsHandler } from './tools/getScanFindings';
+import { promoteScanFindingsSchema, promoteScanFindingsHandler } from './tools/promoteScanFindings';
 
 // ---------------------------------------------------------------------------
 // Factory — creates a fresh McpServer per request.
@@ -102,6 +104,39 @@ export function createMcpServer(): McpServer {
     getWhistleblowerCallSchema,
     async (input) => ({
       content: [{ type: 'text' as const, text: await getWhistleblowerCallHandler(input) }],
+    }),
+  );
+
+  // -------------------------------------------------------------------------
+  // Tool: get_scan_findings
+  // What a page's forensic scans found and nobody has reviewed yet.
+  // -------------------------------------------------------------------------
+  server.tool(
+    'get_scan_findings',
+    'List every finding from a tracked page\'s forensic scans that is still awaiting human review. ' +
+      'Forensic scans do NOT promote their own findings: they classify page changes and record the ' +
+      'significant ones as PENDING_REVIEW, with nothing on-chain and nothing publicly searchable ' +
+      'until a person confirms them. Returns the classifier\'s reasoning with each finding so the ' +
+      'decisions can be reviewed, not just the rows. Confirm them with promote_scan_findings.',
+    getScanFindingsSchema,
+    async (input) => ({
+      content: [{ type: 'text' as const, text: await getScanFindingsHandler(input) }],
+    }),
+  );
+
+  // -------------------------------------------------------------------------
+  // Tool: promote_scan_findings
+  // The human decision a scan deliberately does not make for itself.
+  // -------------------------------------------------------------------------
+  server.tool(
+    'promote_scan_findings',
+    'Confirm every pending finding from a tracked page\'s forensic scans — registering each on-chain, ' +
+      'indexing it for search, and marking it CONFIRMED. Promotes exactly what the classifier flagged ' +
+      'as legally significant. Irreversible: on-chain registration cannot be undone. Call ' +
+      'get_scan_findings first and review what it returns.',
+    promoteScanFindingsSchema,
+    async (input) => ({
+      content: [{ type: 'text' as const, text: await promoteScanFindingsHandler(input) }],
     }),
   );
 

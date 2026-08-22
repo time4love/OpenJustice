@@ -58,6 +58,12 @@ export function forensicEvidenceFileHash(
  * Returned as plain data rather than written here so each caller keeps its own
  * concerns: the scraper upserts and tolerates failure, the route registers
  * on-chain first and reports HTTP status.
+ *
+ * Deliberately carries NO `status`. Status is a claim about whether this record
+ * is anchored on-chain, and only the caller that did (or did not) anchor it can
+ * make that claim. It used to default to CONFIRMED here and be overridden by
+ * both callers — dead in practice, and precisely the wrong value for a future
+ * caller to inherit by forgetting.
  */
 export function buildForensicEvidence(source: ForensicEvidenceSource) {
   const fileHash = forensicEvidenceFileHash(
@@ -83,7 +89,6 @@ export function buildForensicEvidence(source: ForensicEvidenceSource) {
     data: {
       fileHash,
       evidenceType: 'FORENSIC_DIFF' as const,
-      status: 'CONFIRMED' as const,
       evidenceRole: 'Incriminating',
       investigativeCategories: source.investigativeCategories,
       targetEntity,

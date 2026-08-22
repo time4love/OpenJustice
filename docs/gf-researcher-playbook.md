@@ -309,3 +309,250 @@ costs real money rather than testnet gas, and it may well carry the same configu
 Reading its variables was blocked by a permission gate. Recorded here, not chased.
 
 **Tests: 880 passing, 2 new.**
+
+### Step 2, re-asked through the fixed tool
+
+Deploy `6228d41` reported `SUCCESS`, and the check was re-run so the canonical record comes
+from the shipped code rather than the superseded build.
+
+#### Request
+
+```
+check_on_chain_status
+  fileHash: "0x0654…c262"
+```
+
+#### Response — structure
+
+| Field | Value |
+|---|---|
+| `verdict` | `PENDING_UNREGISTERED` |
+| `safeToPromote` | `true` |
+| `consistent` | `true` |
+| `database.inVault` | `true` |
+| `database.status` | `PENDING_REVIEW` |
+| `database.onChainTxHash` | `null` |
+| `chain.registered` | `false` |
+| `chain.registryEvidenceId` | `null` |
+
+Identical to the pre-fix build, and identical to the manual `eth_call` used during
+diagnosis — as expected, since the guard changes behaviour only when the chain *fails*.
+Three independent routes to the same answer is the point: the tool now earns the trust the
+workflow places in it.
+
+The open question from the rebuild plan is resolved. The hash is not anchored and does not
+collide with either orphaned anchor from the 2026-08-20 audit, so promotion will not revert
+as a duplicate.
+
+**This is the first time the loop closed with no side channel** — question asked by the
+workflow's own tool, over MCP, answered by a healthy endpoint.
+
+### The gate before the irreversible step
+
+`promote_evidence` is the only call in this workflow that cannot be undone. It registers the
+hash on the Base Sepolia EvidenceRegistry — a real, permanent transaction — then sets
+`CONFIRMED`, records `onChainTxHash`, and indexes the record for public search.
+
+The database row stays editable afterwards. **The on-chain anchor does not.** Nobody can
+remove it, including the people who wrote it.
+
+So the procedure is: check, show the verdict, and stop for a human decision. Not because the
+verdict is doubted, but because `CONFIRMED` is an assertion made to the public, and a machine
+should not be the thing that decides to make it.
+
+---
+
+## Step 3 — Promotion, and the round-trip that closes it
+
+### Request
+
+```
+promote_evidence
+  evidenceId: "1fba0dcb-…"
+```
+
+### Response — structure
+
+| Field | Value / shape |
+|---|---|
+| `promoted` | `true` |
+| `evidenceId` | uuid, echoes the request |
+| `fileHash` | `0x` + 64 hex |
+| `txHash` | `0x` + 64 hex — the anchoring transaction |
+| `message` | states CONFIRMED, on-chain, and now searchable |
+
+### Immediately re-checked
+
+A promotion that reports success is not the same as an anchor that exists. That gap is
+precisely where the 5 fake-`CONFIRMED` rows came from, so the verification is part of the
+step rather than a separate habit:
+
+```
+check_on_chain_status
+  fileHash: "0x0654…c262"
+```
+
+| Field | Value |
+|---|---|
+| `verdict` | `CONSISTENT` |
+| `consistent` | `true` |
+| `safeToPromote` | `false` — already anchored |
+| `database.status` | `CONFIRMED` |
+| `database.onChainTxHash` | recorded |
+| `chain.registered` | `true` |
+| `chain.registryEvidenceId` | `2` |
+
+### Confirmed a third time, independently
+
+Neither the promotion nor the check is taken on trust. The transaction receipt was pulled
+straight from Base Sepolia, bypassing the application entirely:
+
+| Receipt field | Value |
+|---|---|
+| status | `SUCCESS` |
+| block | 45,812,065 |
+| to | the EvidenceRegistry address |
+| logs | 1 |
+
+**The first evidence record in the rebuilt staging vault is genuinely anchored**, and its
+`CONFIRMED` status is backed by a transaction anyone can verify without asking this
+platform anything. That is the standard the whole vault is supposed to meet, and until
+today nothing in the workflow could demonstrate it.
+
+### Why this is the shape of the procedure
+
+Check → decide → act → **check again**. The final step is the one that is usually skipped,
+and skipping it is invisible: a record that was never anchored looks exactly like one that
+was, right up until someone tries to rely on it in front of a court.
+
+---
+
+## Step 4 — The Wayback scan, and the design it broke open
+
+### Request
+
+```
+start_forensic_scan
+  url: "https://corona.health.gov.il/vaccine-for-covid/"
+```
+
+Returned `trackedUrlId` and `status: SCANNING`. The scan runs server-side; the tool's
+message says to poll a REST status endpoint.
+
+### FINDING 7 — the scan told the researcher to poll an endpoint they cannot reach
+
+`GET /api/forensics/tracked/:id/status` sits behind the staging access gate and answers
+`401 Unauthorized` without a staging token. A researcher working through MCP has no way to
+use it. `get_forensic_timeline` reports scan status over MCP and is the right answer; the
+tool's own guidance points away from the workflow it belongs to.
+
+Asked properly, the answer was `status: FAILED`, `totalDiffs: 0`.
+
+### FINDING 8 — the retry logic was dead code for the failure that happens
+
+The backend log gave the cause in one line:
+
+```
+[WaybackScraper] CDX fetch failed: timeout of 30000ms exceeded
+```
+
+The contract was never in question — the diagnosis showed the archive holds the page, with
+snapshots from 2021-12-23 onward. A direct CDX query for the same URL returned **in 48
+seconds**, against a 30s ceiling.
+
+But the timeout was the smaller half. `withRetry` retries four times with exponential
+back-off, and inspected `err.response.status` to decide whether a failure was transient:
+
+```ts
+const status = axios.isAxiosError(err) ? err.response?.status : undefined;
+if (status === 503 && attempt < CDX_MAX_RETRIES) { /* retry */ }
+```
+
+**A timeout has no response at all.** So `status` read `undefined`, matched nothing, and the
+error was rethrown on the first attempt. The Internet Archive's dominant failure mode is
+slowness, not 503 — so the retry machinery had been dead code for precisely the case it was
+written to handle, and a real scan died having made exactly one attempt.
+
+Fixed by classifying transience properly: no response (timeout, reset, DNS) is transient,
+as are 429 and 5xx; 4xx is not, because a 404 means the archive does not hold the URL and
+retrying only costs time to reach the same answer. CDX timeout raised to 60s.
+
+One existing test had used a **504** to mean "a failure that is not retried" — an accident
+of the old predicate, since 504 is a gateway timeout and unambiguously transient. Corrected
+to 404, which genuinely is not.
+
+---
+
+## The forensic data model
+
+Understanding the next change requires the three layers, because the fix falls out of the
+model rather than being imposed on it.
+
+| Layer | What it is | Hash | The claim it makes | Anchored? |
+|---|---|---|---|---|
+| `TrackedUrl` | A page we watch | — | identity only | — |
+| `UrlSnapshot` | One archived capture at one moment | `SHA-256(fullText)` | "this page held exactly this text on this date" | ✅ automatic |
+| `UrlVersionDiff` | The change between two consecutive snapshots | none | "between these snapshots, this changed" | ❌ correctly |
+| `Evidence` | The legal artifact | `SHA-256(url+date+deleted+added)` | "this change is evidence in this investigation" | ✅ on promotion |
+
+**Snapshots store `fullText` locally**, so the record survives the Internet Archive losing
+or removing the capture. Their anchor is chain of custody for raw material: it proves the
+archived text was not fabricated or later edited, because its hash was published to a public
+chain at a known block time. Factual, independently checkable, requiring no interpretation.
+
+**Diffs need no anchor because they are derivable** — given two anchored snapshots, anyone
+can recompute the diff. Anchoring it would attest to nothing new. A diff row is written for
+*every* processed pair, not only significant ones, so "we looked here and found nothing
+notable" is preserved too.
+
+**Evidence is content-addressed over the change itself**, deliberately not over the diff's
+UUID: hashing a random database key would attest to nothing, and this hash goes on-chain.
+
+### FINDING 9 — auto-promotion automated a legal conclusion
+
+A scan used to promote its own findings: register on-chain, write `CONFIRMED`, index for
+public search — all on the strength of an LLM classification, with no human ever seeing it.
+
+The model shows exactly why that was wrong. Anchoring a **snapshot** automatically is
+correct, because it asserts a fact. Anchoring **Evidence** automatically asserts a legal
+characterization — the thing a machine should not conclude alone. Auto-promotion applied the
+automation appropriate to the first layer to a claim belonging to the second.
+
+Nothing evidential is lost by waiting: the snapshot anchor already froze the underlying fact
+at scan time.
+
+`autoPromoteToEvidence` is now `recordScanFinding` — it writes `PENDING_REVIEW` and stops.
+No chain, no index, no status claim. Two MCP tools carry the review:
+
+- `get_scan_findings(url)` — every pending finding for a page, **with the classifier's
+  reasoning**, because the value of review is noticing that the classifier flagged three
+  cosmetic edits and missed a real one, which is invisible if the tool returns rows to tick.
+- `promote_scan_findings(url)` — confirms them, through the same `promoteEvidence()` service
+  every other path uses, so a finding confirmed here is indistinguishable from one confirmed
+  individually.
+
+Keyed by **URL, not by scan run**. Re-scanning appends to the same pool, so "everything still
+awaiting review for this page" is always the right question — where run-scoped batches would
+strand the findings of any run nobody reviewed.
+
+The builder no longer carries a default `status` either. It had defaulted to `CONFIRMED` and
+been overridden by both callers: dead in practice, and the worst possible value for a future
+caller to inherit by forgetting.
+
+### FINDING 10 — a researcher cannot demote a finding
+
+`promote_scan_findings` confirms exactly what the classifier flagged, with no per-item
+opt-out. An exclusion list was considered and rejected, because it would have encoded "the
+researcher disagrees with finding #3" as a parameter on someone else's call while the
+capability actually missing stayed missing.
+
+**There is no way to demote a diff the classifier marked significant.** A researcher who
+disagrees has only `delete_evidence`, which destroys the record instead of reclassifying it —
+and destroying the evidence that a classifier erred is exactly backwards, since that record is
+the training signal.
+
+Recorded as absent rather than papered over.
+
+**Tests: 898 passing.** The two `WaybackScraperAutoPromote` suites were replaced by
+`recordScanFinding.test.ts`; no coverage was lost, since every registration semantic they
+exercised is covered directly in `evidenceOnChain.test.ts` against the service that performs it.

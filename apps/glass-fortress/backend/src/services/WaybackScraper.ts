@@ -4,25 +4,17 @@ import { JSDOM } from 'jsdom';
 import { Readability } from '@mozilla/readability';
 import { diffLines } from 'diff';
 import { ForensicAgent, type DiffItem, type RelatedEvidenceContext } from './ForensicAgent';
-import { VectorStoreService } from './VectorStoreService';
 import { Web3Service } from './Web3Service';
 import { prisma } from '../lib/prisma';
 import {
   buildForensicEvidence,
   type ForensicEvidenceSource,
 } from './forensicEvidence';
-import { registerEvidenceOnChain, type OnChainRegistration } from './evidenceOnChain';
 import { groupDiffChunks, chunksForAI } from '../lib/diffChunking';
 
 // ---------------------------------------------------------------------------
 // Lazy singletons — non-fatal if unavailable
 // ---------------------------------------------------------------------------
-
-let _vectorStore: VectorStoreService | null = null;
-async function getVectorStore(): Promise<VectorStoreService> {
-  if (!_vectorStore) _vectorStore = await VectorStoreService.create();
-  return _vectorStore;
-}
 
 let _web3Service: Web3Service | null = null;
 let _web3Attempted = false;
@@ -93,8 +85,22 @@ const MAX_SNAPSHOTS = 50;
 /** Milliseconds to wait between Wayback Machine HTTP requests — respects rate limits. */
 const FETCH_DELAY_MS = 1_500;
 
-/** Retry attempts for transient CDX / snapshot 503s before giving up. */
+/** Retry attempts for transient CDX / snapshot failures before giving up. */
 const CDX_MAX_RETRIES = 4;
+
+/**
+ * Timeout for the CDX index query.
+ *
+ * The Internet Archive's CDX API is slow rather than unavailable: a measured
+ * query for a government page with years of snapshots took 48s on 2026-08-22,
+ * against a previous 30s ceiling that failed the whole scan. Generous here is
+ * cheap — the alternative is a scan that reports FAILED on a URL the archive
+ * holds perfectly well.
+ */
+const CDX_TIMEOUT_MS = 60_000;
+
+/** Timeout for fetching one archived snapshot. Plain page loads — far quicker than CDX. */
+const SNAPSHOT_TIMEOUT_MS = 25_000;
 
 /** Base delay (ms) for exponential back-off on 503 retries. Doubles each attempt. */
 const CDX_RETRY_BASE_MS = 8_000;
@@ -114,9 +120,29 @@ function sleep(ms: number): Promise<void> {
 }
 
 /**
+ * True for Wayback failures worth retrying.
+ *
+ * The Internet Archive fails in two distinct ways and only one of them carries
+ * an HTTP status. A timeout, connection reset, or DNS failure produces an axios
+ * error with NO response, so a status-only check reads `undefined` and gives up
+ * immediately — which is what happened to the retry logic here until
+ * 2026-08-22: four retries with exponential back-off, dead code for the
+ * archive's most common failure mode.
+ *
+ * Deliberately does not retry 4xx other than 429. A 404 means the archive does
+ * not hold the URL, and retrying it just costs time to reach the same answer.
+ */
+export function isTransientWaybackError(err: unknown): boolean {
+  if (!axios.isAxiosError(err)) return false;
+  if (!err.response) return true; // timeout / reset / DNS — no status to inspect
+  const status = err.response.status;
+  return status === 429 || status >= 500;
+}
+
+/**
  * Thin retry wrapper for Wayback Machine HTTP requests.
- * Retries up to CDX_MAX_RETRIES times on 503 responses, with exponential back-off.
- * All other errors are rethrown immediately.
+ * Retries up to CDX_MAX_RETRIES times on transient failures, with exponential
+ * back-off. Non-transient errors are rethrown immediately.
  */
 async function withRetry<T>(fn: () => Promise<T>): Promise<T> {
   let lastErr: unknown;
@@ -124,11 +150,13 @@ async function withRetry<T>(fn: () => Promise<T>): Promise<T> {
     try {
       return await fn();
     } catch (err) {
-      const status = axios.isAxiosError(err) ? err.response?.status : undefined;
-      if (status === 503 && attempt < CDX_MAX_RETRIES) {
+      if (isTransientWaybackError(err) && attempt < CDX_MAX_RETRIES) {
         const delay = CDX_RETRY_BASE_MS * Math.pow(2, attempt);
+        const reason = axios.isAxiosError(err)
+          ? (err.response?.status ?? err.code ?? 'no response')
+          : 'unknown';
         console.warn(
-          `[WaybackScraper] 503 received — retrying in ${delay}ms (attempt ${attempt + 1}/${CDX_MAX_RETRIES})`,
+          `[WaybackScraper] transient failure (${reason}) — retrying in ${delay}ms (attempt ${attempt + 1}/${CDX_MAX_RETRIES})`,
         );
         await sleep(delay);
         lastErr = err;
@@ -221,81 +249,69 @@ async function upsertSnapshot(
 }
 
 /**
- * Auto-promote a classified UrlVersionDiff to an Evidence record and upsert its
- * embedding into the vector store.
+ * Record a classified UrlVersionDiff as a PENDING_REVIEW Evidence record.
  *
- * Only diffs that advance at least one standing investigative concern become
- * evidence — a change can be unusual, or even legally interesting, and still not
- * be evidence for THIS investigation. Callers gate on isLegallySignificant, which
- * derives from the same classification; the guard below makes the invariant
- * explicit at the boundary rather than relying on every caller to hold it.
+ * This deliberately does NOT promote. Until 2026-08-22 it registered the hash
+ * on-chain, wrote CONFIRMED, and indexed the record for public search — all on
+ * the strength of an LLM classification, with no human ever seeing it.
  *
- * Idempotent — upserts by fileHash so re-runs are safe.
- * Non-fatal — logs warnings and continues on any failure.
+ * The reason that was wrong is visible in the data model. A UrlSnapshot's
+ * contentHash is anchored automatically and correctly: it claims "this page
+ * held exactly this text on this date", a factual observation anyone can
+ * re-verify, and its value depends on being anchored promptly. An Evidence
+ * record claims "this change is evidence in this investigation" — a legal
+ * characterization. Automating the first is chain of custody; automating the
+ * second is asserting a legal conclusion nobody reviewed.
  *
- * On-chain registration is attempted first. `buildForensicEvidence` marks a
- * record CONFIRMED, which the schema defines as "registered on-chain" — so a
- * record must only ever be written CONFIRMED once registration has actually
- * succeeded. If the chain is unreachable, unconfigured (e.g. staging), or the
- * transaction fails, the row is still written so the diff isn't silently lost,
- * but as PENDING_REVIEW — visible in the timeline with the existing manual
- * "Promote to Evidence" flow (POST /api/evidence/promote) as the retry path.
+ * Nothing evidential is lost by waiting, because the snapshot anchor already
+ * froze the underlying fact at scan time. What is gained is that CONFIRMED
+ * keeps meaning what it says.
+ *
+ * Findings are reviewed and promoted per tracked URL — see the get_scan_findings
+ * and promote_scan_findings MCP tools.
+ *
+ * Only diffs that advance at least one standing investigative concern are
+ * recorded at all: a change can be unusual, or even legally interesting, and
+ * still not be evidence for THIS investigation. Callers gate on
+ * isLegallySignificant, which derives from the same classification; the guard
+ * below makes the invariant explicit at the boundary rather than relying on
+ * every caller to hold it.
+ *
+ * Idempotent — upserts by fileHash so re-runs are safe. Non-fatal — logs and
+ * continues on failure, so one bad diff cannot abort a scan.
  */
-export async function autoPromoteToEvidence(source: ForensicEvidenceSource): Promise<void> {
+export async function recordScanFinding(source: ForensicEvidenceSource): Promise<void> {
   // The automatic path only. Manual promotion via /forensics/promote is a
   // researcher's deliberate override and is intentionally not gated on this.
   if (source.investigativeCategories.length === 0) {
     console.warn(
-      `[WaybackScraper] Refusing to promote diff ${source.diffId} — no investigative category matched.`,
+      `[WaybackScraper] Refusing to record diff ${source.diffId} — no investigative category matched.`,
     );
     return;
   }
 
   const { fileHash, data } = buildForensicEvidence(source);
 
-  let registration: OnChainRegistration;
-  try {
-    registration = await registerEvidenceOnChain(
-      getWeb3Service(),
-      fileHash,
-      data.investigativeCategories,
-      data.evidenceRole,
-    );
-  } catch (err) {
-    console.warn(
-      '[WaybackScraper] On-chain registration failed for auto-promoted diff', source.diffId,
-      ':', err instanceof Error ? err.message : err,
-    );
-    registration = { confirmed: false, txHash: null };
-  }
-
   try {
     await prisma.evidence.upsert({
       where: { fileHash },
-      update: registration.confirmed ? { status: 'CONFIRMED', onChainTxHash: registration.txHash } : {},
-      create: {
-        ...data,
-        status: registration.confirmed ? 'CONFIRMED' : 'PENDING_REVIEW',
-        onChainTxHash: registration.txHash,
-      },
+      // An existing row is left exactly as it is. If it was already reviewed and
+      // confirmed, a re-scan must not quietly reopen it; if it is still pending,
+      // there is nothing new to write.
+      update: {},
+      create: { ...data, status: 'PENDING_REVIEW' },
     });
   } catch (err) {
     console.warn(
-      '[WaybackScraper] Auto-promote evidence create failed for diff', source.diffId,
+      '[WaybackScraper] Recording scan finding failed for diff', source.diffId,
       ':', err instanceof Error ? err.message : err,
     );
     return;
   }
 
-  try {
-    const vs = await getVectorStore();
-    await vs.upsertEvidence(data.summary, fileHash);
-  } catch (err) {
-    console.warn(
-      '[WaybackScraper] Vector upsert failed for auto-promoted diff', source.diffId,
-      ':', err instanceof Error ? err.message : err,
-    );
-  }
+  console.info(
+    `[WaybackScraper] Recorded scan finding ${fileHash} as PENDING_REVIEW — awaiting review.`,
+  );
 }
 
 /**
@@ -446,7 +462,7 @@ export class WaybackScraper {
 
     const response = await withRetry(() =>
       axios.get<unknown[][]>(cdxUrl, {
-        timeout: 30_000,
+        timeout: CDX_TIMEOUT_MS,
         headers: { 'User-Agent': 'GlassFortress-ForensicScanner/1.0 (legal research)' },
       }),
     );
@@ -494,7 +510,7 @@ export class WaybackScraper {
     try {
       const response = await withRetry(() =>
         axios.get<string>(archiveUrl, {
-          timeout: 25_000,
+          timeout: SNAPSHOT_TIMEOUT_MS,
           headers: {
             'User-Agent':
               'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
@@ -712,7 +728,7 @@ export class WaybackScraper {
             addedItems: analysis.addedItems,
             legalSignificance: analysis.legalSignificance,
           });
-          autoPromoteToEvidence({
+          recordScanFinding({
             diffId: diffRecord.id,
             url: trackedUrl.url,
             afterDate,
@@ -724,7 +740,7 @@ export class WaybackScraper {
             deletedItems: analysis.deletedItems,
             addedItems: analysis.addedItems,
           }).catch((err) =>
-            console.warn('[WaybackScraper] autoPromoteToEvidence failed:', err instanceof Error ? err.message : err),
+            console.warn('[WaybackScraper] recordScanFinding failed:', err instanceof Error ? err.message : err),
           );
         }
       } catch (err) {
@@ -1002,7 +1018,7 @@ export class WaybackScraper {
             if (analysis.isLegallySignificant) {
               const trackedUrl = await prisma.trackedUrl.findUnique({ where: { id: trackedUrlId } });
               if (trackedUrl) {
-                autoPromoteToEvidence({
+                recordScanFinding({
                   diffId: diffRecord.id,
                   url: trackedUrl.url,
                   afterDate,
@@ -1014,7 +1030,7 @@ export class WaybackScraper {
                   deletedItems: analysis.deletedItems,
                   addedItems: analysis.addedItems,
                 }).catch((err) =>
-                  console.warn('[WaybackScraper] autoPromoteToEvidence failed:', err instanceof Error ? err.message : err),
+                  console.warn('[WaybackScraper] recordScanFinding failed:', err instanceof Error ? err.message : err),
                 );
               }
             }
