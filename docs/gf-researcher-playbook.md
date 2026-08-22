@@ -619,3 +619,101 @@ every verdict string and only checked `consistent` on four of them. The two it s
 two that mattered.
 
 **Tests: 908 passing.**
+
+---
+
+## Step 6 — Comparing against a pre-wipe scan, and what it exposed
+
+A PDF backup of a scan run on **2026-08-08** — before staging was wiped — recorded
+**80 version changes, 10 AI-flagged as significant**. The rebuilt scan completed with
+**81 version changes, 5 flagged**, covering 2021-12-23 → 2026-03-05.
+
+Coverage was not the problem. All ten historic windows exist in the new scan as diff rows,
+with identical date boundaries and full extracted content.
+
+### FINDING 12 — the forensic classifier is not deterministic, and errs both ways
+
+| Historic | Window | Now |
+|---|---|---|
+| #1 | 2021-12-23 → 2022-01-05 | downgraded |
+| #5 | 2022-01-20 → 2022-01-27 | downgraded |
+| #6 | 2022-01-27 → 2022-03-06 | downgraded |
+| #30 | 2022-05-24 → 2022-05-25 | **retained** |
+| #33 | 2022-05-26 → 2022-05-29 | **retained** |
+| #34 | 2022-05-29 → 2022-05-30 | **retained** |
+| #48 | 2022-07-24 → 2022-08-05 | **retained** |
+| #57 | 2022-09-05 → 2022-09-06 | **retained** |
+| #59 | 2022-09-21 → 2022-11-29 | downgraded |
+| #76 | 2025-04-25 → 2025-06-01 | downgraded |
+
+Same page, same diffs, same boundaries — **opposite verdicts on five of ten**.
+
+The five retained are the ones that carry the case, and they matched exactly: the
+mRNA-and-spike-protein safety claim deleted, restored, and deleted again within six days
+in May 2022; the infant-vaccination campaign launch that added sweeping safety assurances
+while removing the side-effect reporting link; and the wholesale deletion of those infant
+claims two weeks after the leaked recordings surfaced. The classifier cross-referenced the
+anchored article by date in three of them — the correlated-evidence mechanism worked on
+real data.
+
+Not every downgrade is a loss. The 2025 one the earlier run flagged was a **future-to-present
+tense change**; dismissing it is the better call. That is the important half of this finding:
+the classifier is not merely *less* sensitive now, it is unreliable in both directions, so
+neither run is authoritative.
+
+### FINDING 13 — the UI under-reported its own findings
+
+The timeline UI showed **3 significant changes** where the database held 5. Both numbers came
+from the same data.
+
+```ts
+const flaggedCount = diffs.filter((d) => d.isLegallySignificant).length;
+```
+
+`diffs` holds only the pages loaded so far (20 at a time). The count described the reader's
+scroll position and was rendered as a statement about the scan. With two pages loaded it
+said "3 legally significant changes were identified" for a page that had 5, and the number
+grew silently as the reader scrolled. Significant diffs sat at positions 30, 33, 34, 48, 57
+— the first three visible at 40 loaded, the rest not.
+
+Fixed by returning `significantCount` from the server alongside the existing `totalCount`,
+computed over the whole timeline.
+
+**This is the same defect class as review findings 1–3: mechanism correct, summary wrong.**
+Correct verdict, wrong boolean. Correct outcomes array, wrong count. Correct diffs, wrong
+flagged count. Summaries are what people read and act on, and they keep being the part
+nothing verifies.
+
+### The debate: promoting a change the classifier passed over
+
+Finding 12 makes a manual override necessary. But a bare override is the mirror image of the
+auto-promotion just removed — one lets a machine assert `CONFIRMED` with no human, the other
+lets a human assert it with no check. On a platform whose claim is that every status traces to
+checkable proof, "a researcher clicked it" is not proof.
+
+So promotion by hand is a **debate**, modelled as a session with events, exactly as a
+`ResearchSession` models work on a thesis: a goal (decide this diff), a lifecycle, and a
+turn-by-turn record that *is* the justification. It survives a restart, which the in-memory
+token first considered would not have.
+
+Two standards apply, and the split is the design:
+
+| | Standard | Authority |
+|---|---|---|
+| **Substance** | Did the researcher make specific, falsifiable claims about the changed content? | **Hard gate** — no argument, no promotion |
+| **Merit** | Is the researcher right? | **Advisory** — proceed permitted, dissent recorded forever |
+
+Judging only *whether someone argued* keeps a demonstrably fallible classifier from being the
+final authority on significance. Judging *whether they are right* would restore exactly the
+problem. An override that is permitted but permanently visible deters better than a refusal,
+and unlike a refusal it cannot be defeated by rephrasing until the model yields.
+
+Tools: `open_diff_debate`, `respond_in_diff_debate`, `promote_from_diff_debate`, `get_diff_debate`.
+
+### FINDING 14 — the gate is one click wide
+
+The UI's "קדם לראיה ראשית" button still promotes a diff with no argument at all. The MCP path
+requires a debate; the button bypasses it entirely. Closing this means the button must collect
+a rationale and run the same flow. Recorded, not silently accepted.
+
+**Tests: 917 passing.**

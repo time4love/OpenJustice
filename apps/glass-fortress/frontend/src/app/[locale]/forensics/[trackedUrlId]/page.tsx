@@ -19,6 +19,7 @@ interface DiffPage {
   title: string | null;
   createdAt: string;
   totalCount: number;
+  significantCount: number;
   diffs: DiffRecord[];
   nextCursor: string | null;
   hasMore: boolean;
@@ -51,8 +52,13 @@ export default function TrackedUrlPage() {
   const params = useParams<{ trackedUrlId: string }>();
   const trackedUrlId = params?.trackedUrlId ?? '';
 
-  // Meta (url, title, totalCount) from the first page response
-  const [meta, setMeta] = useState<Pick<DiffPage, 'url' | 'title' | 'createdAt' | 'totalCount'> | null>(null);
+  // Meta (url, title, totals) from the first page response. Both counts are
+  // server-computed over the whole timeline — see below for why neither may be
+  // derived from `diffs`.
+  const [meta, setMeta] = useState<Pick<
+    DiffPage,
+    'url' | 'title' | 'createdAt' | 'totalCount' | 'significantCount'
+  > | null>(null);
   const [diffs, setDiffs] = useState<DiffRecord[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(false);
@@ -107,7 +113,15 @@ export default function TrackedUrlPage() {
         return;
       }
       // Functional update — sets meta only on the first page; safe against stale closures
-      setMeta((prev) => prev ?? { url: json.url, title: json.title, createdAt: json.createdAt, totalCount: json.totalCount });
+      setMeta((prev) =>
+        prev ?? {
+          url: json.url,
+          title: json.title,
+          createdAt: json.createdAt,
+          totalCount: json.totalCount,
+          significantCount: json.significantCount,
+        },
+      );
       setDiffs((prev) => {
         const seen = new Set(prev.map((d) => d.id));
         return [...prev, ...json.diffs.filter((d) => !seen.has(d.id))];
@@ -182,7 +196,15 @@ export default function TrackedUrlPage() {
     },
   };
 
-  const flaggedCount = diffs.filter((d) => d.isLegallySignificant).length;
+  // Server-computed over the whole timeline, NOT counted from `diffs`.
+  //
+  // `diffs` holds only the pages loaded so far (PAGE_SIZE at a time), so
+  // counting it produced a number that described the reader's scroll position
+  // rather than the scan. With two pages loaded this badge said "3 legally
+  // significant changes were identified" for a page that had 5 — and the
+  // number grew silently as more loaded. On an evidence platform, a summary
+  // that under-reports findings is a correctness bug.
+  const flaggedCount = meta?.significantCount ?? 0;
 
   const visibleDiffs = diffs.filter(
     (d) =>

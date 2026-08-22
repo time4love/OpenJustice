@@ -149,6 +149,7 @@ model UrlVersionDiff {
   // /forensics/promote, and that path needs the classification without re-running
   // the agent. isLegallySignificant is derived from this being non-empty.
   investigativeCategories String[]  @default([])
+  debates              DiffDebateSession[]
   beforeSnapshotId     String?      // FK to the UrlSnapshot for the "before" state
   beforeSnapshot       UrlSnapshot? @relation("BeforeSnapshot", fields: [beforeSnapshotId], references: [id])
   afterSnapshotId      String?      // FK to the UrlSnapshot for the "after" state
@@ -255,6 +256,9 @@ model Evidence {
   // from being promoted to more than one Evidence row.
   urlVersionDiffId    String?         @unique
   urlVersionDiff      UrlVersionDiff? @relation(fields: [urlVersionDiffId], references: [id])
+  // Present only for evidence a researcher argued into existence over the
+  // forensic classifier's judgment — the full debate that justified it.
+  debateSession       DiffDebateSession?
   gapResolutions      ThesisGapResolution[]
   createdById         String?         // Researcher.id — null for legacy records
   createdBy           Researcher?     @relation(fields: [createdById], references: [id])
@@ -881,4 +885,90 @@ model SocialEconomicImpactReport {
   report Report?
 
   createdAt DateTime @default(now())
+}
+
+// ---------------------------------------------------------------------------
+// A debate about whether one page change should become evidence.
+//
+// The forensic classifier is not deterministic: re-scanning a single government
+// page on 2026-08-22 flagged 5 changes where an earlier run of the same page
+// flagged 10 — identical diffs, opposite verdicts on five of them. It errs in
+// BOTH directions (it also once flagged a future-to-present tense change), so a
+// researcher must be able to promote a change it passed over.
+//
+// But "a researcher clicked it" is not proof, and this platform's whole claim is
+// that every status traces to something checkable. So promotion by hand requires
+// an argument — and the argument is what gets kept.
+//
+// Modelled as a session rather than a rationale column, for the same reason
+// ResearchSession exists for a thesis: it has a goal (decide this diff), a
+// lifecycle, and a sequence of events that IS the record. A court reading it
+// should see what was claimed, what was objected to, and how that was answered —
+// not one summary field written at the end. It also survives a restart, which an
+// in-memory token would not.
+//
+// Two standards apply, and the split is the whole design:
+//
+//   SUBSTANCE is a hard gate. The assessor decides whether the researcher made
+//   specific, falsifiable claims about the changed content. That judges only
+//   whether they argued, never whether they are right — so a fallible classifier
+//   is never the final authority on significance.
+//
+//   MERIT is advisory. The assessor may disagree, the researcher may proceed,
+//   and promotedOverObjection records that they did. Mirrors DevilsAdvocateAgent,
+//   which critiques a thesis without blocking it. An override that is permitted
+//   but permanently visible deters better than a refusal — and unlike a refusal,
+//   it cannot be defeated by rephrasing until the model yields.
+// ---------------------------------------------------------------------------
+
+enum PromotionAssessmentVerdict {
+  SUPPORTS // the argument is grounded in the diff and supports significance
+  DISPUTES // the researcher argued properly, but the assessor disagrees on the merits
+}
+
+enum DiffDebateStatus {
+  OPEN      // under argument — no evidence exists yet
+  PROMOTED  // ended in promotion; evidenceId is set
+  ABANDONED // the researcher withdrew the argument
+}
+
+enum DiffDebateEventType {
+  DEBATE_OPENED       // logged automatically when the session is created
+  RATIONALE_SUBMITTED // a researcher argument — the opening one or a revision
+  ASSESSMENT_RETURNED // the assessor's response to that argument
+  RESPONSE_SUBMITTED  // the researcher answering a sustained objection
+  PROMOTED            // ended in evidence; refId is the Evidence id
+  ABANDONED           // ended without promotion
+}
+
+// One debate per diff at a time — mirroring one ACTIVE ResearchSession per thesis.
+model DiffDebateSession {
+  id                    String                      @id @default(cuid())
+  urlVersionDiffId      String
+  urlVersionDiff        UrlVersionDiff              @relation(fields: [urlVersionDiffId], references: [id], onDelete: Cascade)
+  status                DiffDebateStatus            @default(OPEN)
+  // The assessor's standing verdict on the most recent argument. Null until the
+  // first assessment returns.
+  verdict               PromotionAssessmentVerdict?
+  // Whether the most recent argument cleared the substance gate. Promotion is
+  // impossible while this is false.
+  hasSubstance          Boolean                     @default(false)
+  // Set only when the debate ends in promotion.
+  evidenceId            String?                     @unique
+  evidence              Evidence?                   @relation(fields: [evidenceId], references: [id])
+  promotedOverObjection Boolean                     @default(false)
+  events                DiffDebateEvent[]
+  createdAt             DateTime                    @default(now())
+  closedAt              DateTime?
+}
+
+// One row per turn. Content is stored verbatim — this is the record, not a log.
+model DiffDebateEvent {
+  id        String              @id @default(cuid())
+  sessionId String
+  session   DiffDebateSession   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  type      DiffDebateEventType
+  content   String
+  refId     String? // Evidence.id on PROMOTED
+  createdAt DateTime            @default(now())
 }

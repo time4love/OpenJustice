@@ -2,12 +2,9 @@ import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { WaybackScraper } from '../services/WaybackScraper';
 import { prisma } from '../lib/prisma';
-import { Web3Service } from '../services/Web3Service';
 import { type DiffItem } from '../services/ForensicAgent';
-import { buildForensicEvidence } from '../services/forensicEvidence';
-import { registerEvidenceOnChain } from '../services/evidenceOnChain';
+import { promoteForensicDiff } from '../services/promoteForensicDiff';
 import { parseDiffItems } from '../lib/diffItems';
-import { investigativeCategoriesField } from '../lib/investigativeCategories';
 import { scanLimiter } from '../middleware/rateLimiting';
 import { ScanRelevanceAgent } from '../services/ScanRelevanceAgent';
 import { scrapeUrl } from '../utils/webScraper';
@@ -40,17 +37,11 @@ const DiffPageQuerySchema = z.object({
 // ---------------------------------------------------------------------------
 
 let _waybackScraper: WaybackScraper | null = null;
-let _web3Service: Web3Service | null = null;
 let _scanRelevanceAgent: ScanRelevanceAgent | null = null;
 
 function getWaybackScraper(): WaybackScraper {
   if (!_waybackScraper) _waybackScraper = new WaybackScraper();
   return _waybackScraper;
-}
-
-function getWeb3Service(): Web3Service {
-  if (!_web3Service) _web3Service = new Web3Service();
-  return _web3Service;
 }
 
 function getScanRelevanceAgent(): ScanRelevanceAgent {
@@ -386,8 +377,18 @@ router.get('/tracked/:id', async (req: Request, res: Response): Promise<void> =>
       return;
     }
 
-    // Total count (unfiltered) for the summary bar
-    const totalCount = await prisma.urlVersionDiff.count({ where: { trackedUrlId } });
+    // Totals for the summary bar. Both are computed over the WHOLE timeline,
+    // never over the page — the client cannot derive either from a paginated
+    // response, and until 2026-08-22 it tried: the UI counted
+    // isLegallySignificant across the diffs it had loaded so far and rendered
+    // the result as "N legally significant changes were identified". With two
+    // of five pages loaded it reported 3 of the 5 that existed, and the number
+    // grew silently as the reader scrolled. Under-reporting findings on an
+    // evidence platform is a correctness bug, not a cosmetic one.
+    const [totalCount, significantCount] = await Promise.all([
+      prisma.urlVersionDiff.count({ where: { trackedUrlId } }),
+      prisma.urlVersionDiff.count({ where: { trackedUrlId, isLegallySignificant: true } }),
+    ]);
 
     // Fetch one extra record to determine if there is a next page
     const rawDiffs = await prisma.urlVersionDiff.findMany({
@@ -430,6 +431,7 @@ router.get('/tracked/:id', async (req: Request, res: Response): Promise<void> =>
       title: trackedUrl.title,
       createdAt: trackedUrl.createdAt,
       totalCount,
+      significantCount,
       diffs,
       nextCursor,
       hasMore,
@@ -519,102 +521,41 @@ router.post('/promote', async (req: Request, res: Response): Promise<void> => {
     return;
   }
 
-  const { urlVersionDiffId } = parsed.data;
-
   try {
-    const diff = await prisma.urlVersionDiff.findUnique({
-      where: { id: urlVersionDiffId },
-      include: { trackedUrl: true },
-    });
+    // Shared with the promote_forensic_diff MCP tool. Two paths that "promote a
+    // diff" must not be able to disagree about what that produces.
+    const result = await promoteForensicDiff(parsed.data.urlVersionDiffId);
 
-    if (!diff) {
-      res.status(404).json({ error: 'UrlVersionDiff not found' });
-      return;
+    switch (result.outcome) {
+      case 'diff_not_found':
+        res.status(404).json({ error: 'UrlVersionDiff not found' });
+        return;
+
+      case 'already_promoted':
+        res.status(409).json({
+          error: 'already_promoted',
+          message:
+            result.matchedBy === 'content'
+              ? 'This exact change is already evidence (matched by content, not this diff record — likely detected by an earlier or overlapping scan).'
+              : 'This diff has already been promoted to main evidence.',
+          fileHash: result.fileHash,
+          evidenceId: result.evidenceId,
+        });
+        return;
+
+      case 'chain_error':
+        console.error('[forensics/promote] Web3 error:', result.message);
+        res.status(500).json({ error: 'Blockchain registration failed', message: result.message });
+        return;
+
+      case 'promoted':
+        res.status(201).json({
+          promoted: result.confirmed,
+          fileHash: result.fileHash,
+          txHash: result.confirmed ? result.txHash : null,
+        });
+        return;
     }
-
-    const existing = await prisma.evidence.findFirst({ where: { urlVersionDiffId } });
-    if (existing) {
-      res.status(409).json({
-        error: 'already_promoted',
-        message: 'This diff has already been promoted to main evidence.',
-        fileHash: existing.fileHash,
-      });
-      return;
-    }
-
-    // Classification carried over from the ForensicAgent run that produced the
-    // diff. Validated rather than cast — the column is String[] in Prisma, and a
-    // value that is not in the taxonomy means the row predates it or was written
-    // by hand, which should fail loudly rather than reach the evidence corpus.
-    const investigativeCategories = investigativeCategoriesField.parse(
-      diff.investigativeCategories,
-    );
-
-    const { fileHash, data } = buildForensicEvidence({
-      diffId: diff.id,
-      url: diff.trackedUrl.url,
-      afterDate: diff.afterDate,
-      snapshotUrl: diff.snapshotUrl,
-      aiSignificance: diff.aiSignificance,
-      investigativeCategories,
-      deletedText: diff.deletedText,
-      addedText: diff.addedText,
-      deletedItems: parseDiffItems(diff.deletedText),
-      addedItems: parseDiffItems(diff.addedText),
-    });
-
-    // fileHash is content-addressed (url + afterDate + deletedText + addedText),
-    // so a DIFFERENT diff — e.g. a rescan re-detecting the same change on an
-    // overlapping date range — can compute this exact same hash. Evidence.fileHash
-    // is unique, so that content is already evidence under a different diffId;
-    // check for it explicitly rather than letting a blind create() below throw a
-    // raw unique-constraint error. No different in kind from re-submitting a file
-    // that was already uploaded — it's already in the vault, say so plainly.
-    const existingByHash = await prisma.evidence.findUnique({ where: { fileHash } });
-    if (existingByHash) {
-      res.status(409).json({
-        error: 'already_promoted',
-        message: 'This exact change is already evidence (matched by content, not this diff record — likely detected by an earlier or overlapping scan).',
-        fileHash: existingByHash.fileHash,
-        evidenceId: existingByHash.id,
-      });
-      return;
-    }
-
-    let registration;
-    try {
-      registration = await registerEvidenceOnChain(
-        getWeb3Service(),
-        fileHash,
-        data.investigativeCategories,
-        data.evidenceRole,
-      );
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      console.error('[forensics/promote] Web3 error:', err);
-      res.status(500).json({ error: 'Blockchain registration failed', message });
-      return;
-    }
-
-    // registration.confirmed can be false here despite no thrown error: the
-    // hash was a duplicate on-chain, but its original transaction couldn't be
-    // recovered (see Web3Service.findRegisteringTxHash). Never write CONFIRMED
-    // without a real txHash to show for it — land as PENDING_REVIEW instead,
-    // same as WaybackScraper's auto-promote fallback, with the existing manual
-    // "Promote to Evidence" flow as the retry path.
-    await prisma.evidence.create({
-      data: {
-        ...data,
-        status: registration.confirmed ? 'CONFIRMED' : 'PENDING_REVIEW',
-        onChainTxHash: registration.txHash,
-      },
-    });
-
-    res.status(201).json({
-      promoted: registration.confirmed,
-      fileHash,
-      txHash: registration.confirmed ? registration.txHash : null,
-    });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error('[forensics/promote] Error:', err instanceof Error ? err.stack : err);
