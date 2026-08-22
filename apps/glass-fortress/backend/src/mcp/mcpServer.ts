@@ -20,6 +20,8 @@ import { promoteEvidenceSchema, promoteEvidenceHandler } from './tools/promoteEv
 import { deleteEvidenceSchema, deleteEvidenceHandler } from './tools/deleteEvidence';
 import { generateFoiaRequestSchema, generateFoiaRequestHandler } from './tools/generateFoiaRequest';
 import { recoverEvidenceFromScreenshotSchema, recoverEvidenceFromScreenshotHandler } from './tools/recoverEvidenceFromScreenshot';
+import { checkOnChainStatusSchema, checkOnChainStatusHandler } from './tools/checkOnChainStatus';
+import { getWhistleblowerCallSchema, getWhistleblowerCallHandler } from './tools/getWhistleblowerCall';
 
 // ---------------------------------------------------------------------------
 // Factory — creates a fresh McpServer per request.
@@ -64,6 +66,42 @@ export function createMcpServer(): McpServer {
     getForensicTimelineSchema,
     async (input) => ({
       content: [{ type: 'text' as const, text: await getForensicTimelineHandler(input) }],
+    }),
+  );
+
+  // -------------------------------------------------------------------------
+  // Tool: check_on_chain_status
+  // Compares the vault's claim about a record against the registry contract.
+  // Read-only against both — it never registers anything.
+  // -------------------------------------------------------------------------
+  server.tool(
+    'check_on_chain_status',
+    'Verify an evidence record against the blockchain registry. Compares what the database claims ' +
+      '(PENDING_REVIEW / CONFIRMED, recorded tx hash) against what the EvidenceRegistry contract ' +
+      'actually holds, and returns a verdict naming any discrepancy. Call it BEFORE promote_evidence ' +
+      'to confirm the hash is not already anchored, and AFTER to confirm the anchor landed. ' +
+      'Read-only — it never registers anything.',
+    checkOnChainStatusSchema,
+    async (input) => ({
+      content: [{ type: 'text' as const, text: await checkOnChainStatusHandler(input) }],
+    }),
+  );
+
+  // -------------------------------------------------------------------------
+  // Tool: get_whistleblower_call
+  // The public Call for Whistleblowers is derived from the head version's
+  // evidence gaps — there is no stored record, so this is a read.
+  // -------------------------------------------------------------------------
+  server.tool(
+    'get_whistleblower_call',
+    'Return the public Call for Whistleblowers for a thesis — its shareable URL, whether it is live, ' +
+      'and every evidence gap it publishes as an appeal. The call is derived from the head version\'s ' +
+      'Devil\'s Advocate analysis rather than stored, so it becomes live as soon as an analysis ' +
+      'completes with at least one gap. Each gapIndex returned can also be passed to ' +
+      'generate_foia_request.',
+    getWhistleblowerCallSchema,
+    async (input) => ({
+      content: [{ type: 'text' as const, text: await getWhistleblowerCallHandler(input) }],
     }),
   );
 
