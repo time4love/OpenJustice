@@ -31,6 +31,9 @@ export const READ_TOOLS = new Set([
   // with no LLM call and no RPC call. Gating it would hide a page that is
   // deliberately public from the tool that describes it.
   'get_whistleblower_call',
+  // Reads recorded scan output — no LLM, no RPC. The scan that produced it was
+  // already gated; listing what it found for review is not the expensive part.
+  'get_scan_findings',
   'get_figure_dossier',
   'get_thesis_context',
   'get_session_summary',
@@ -75,6 +78,10 @@ export const WRITE_TOOLS = new Set([
   // An anonymous caller could drain the project's RPC quota through it, which
   // is the same exposure that gated the two tools above.
   'check_on_chain_status',
+
+  // Registers every pending finding for a page on-chain. Irreversible, spends
+  // gas, and asserts CONFIRMED — the most consequential write in the toolset.
+  'promote_scan_findings',
 ]);
 
 // ---------------------------------------------------------------------------
