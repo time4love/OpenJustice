@@ -8,10 +8,12 @@
 
 const mockAnalyzeChange = jest.fn();
 const mockFetchCorrelated = jest.fn().mockResolvedValue([]);
+const mockRecordScanFinding = jest.fn();
 jest.mock('../src/services/WaybackScraper', () => ({
   WaybackScraper: jest.fn().mockImplementation(() => ({
     fetchCorrelatedEvidence: (...a: unknown[]) => mockFetchCorrelated(...a),
   })),
+  recordScanFinding: (...a: unknown[]) => mockRecordScanFinding(...a),
 }));
 jest.mock('../src/services/ForensicAgent', () => {
   const actual = jest.requireActual('../src/services/ForensicAgent');
@@ -26,6 +28,9 @@ const db = {
   updates: [] as Record<string, unknown>[],
   runs: [] as Record<string, unknown>[],
   evidence: [] as Record<string, unknown>[],
+  // Successive return values for evidence.count — adoption checks before/after
+  // because recordScanFinding refuses silently rather than throwing.
+  evidenceCount: [] as number[],
 };
 
 jest.mock('../src/lib/prisma', () => ({
@@ -38,7 +43,10 @@ jest.mock('../src/lib/prisma', () => ({
         return {};
       }),
     },
-    evidence: { findMany: jest.fn(async () => db.evidence) },
+    evidence: {
+      findMany: jest.fn(async () => db.evidence),
+      count: jest.fn(async () => db.evidenceCount.shift() ?? 0),
+    },
     reclassificationRun: {
       create: jest.fn(async ({ data }: { data: Record<string, unknown> }) => {
         const r = { id: `run-${db.runs.length + 1}`, ...data };
@@ -54,12 +62,17 @@ jest.mock('../src/lib/prisma', () => ({
 }));
 
 import { prisma } from '../src/lib/prisma';
-import { reclassifyDiffs, findOutOfSyncEvidence } from '../src/services/reclassifyDiffs';
+import {
+  reclassifyDiffs,
+  findOutOfSyncEvidence,
+  adoptOrphanedFindings,
+} from '../src/services/reclassifyDiffs';
 
 function diff(over: Record<string, unknown> = {}): Record<string, unknown> {
   return {
     id: 'd-1',
     trackedUrlId: 't-1',
+    snapshotUrl: 'https://web.archive.org/web/20221129/x',
     beforeDate: '2022-09-21',
     afterDate: '2022-11-29',
     rawDeletedText: '["chunk a"]',
@@ -78,6 +91,7 @@ beforeEach(() => {
   db.updates = [];
   db.runs = [];
   db.evidence = [];
+  db.evidenceCount = [];
 });
 
 describe('reclassifyDiffs', () => {
@@ -259,5 +273,188 @@ describe('findOutOfSyncEvidence', () => {
     ];
 
     expect(await findOutOfSyncEvidence()).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// A reclassified diff is not yet a finding.
+//
+// recordScanFinding runs during a SCAN. Reclassification only rewrites the
+// diff's columns, so without this step a diff reports as significant while no
+// Evidence row exists — and promote_scan_findings silently promotes a subset.
+//
+// The first real run produced exactly that: 7 significant diffs, 5 findings,
+// 2 unrecorded.
+// ---------------------------------------------------------------------------
+describe('recording findings for diffs that become significant', () => {
+  beforeEach(() => mockRecordScanFinding.mockClear());
+
+  // -------------------------------------------------------------------------
+  // Self-healing: the condition is "significant with no evidence", not "just
+  // flipped". Keying on the transition would only help rows that had not
+  // already hit the bug — the two orphans this was written for are already
+  // significant and would never flip again.
+  // -------------------------------------------------------------------------
+  it('adopts an orphan: significant already, but never recorded', async () => {
+    db.diffs = [diff({ investigativeCategories: ['STATISTICAL_MANIPULATION'], isLegallySignificant: true, evidence: [] })];
+    mockAnalyzeChange.mockResolvedValue({
+      investigativeCategories: ['STATISTICAL_MANIPULATION'],
+      deletedItems: [], addedItems: [], legalSignificance: 'נימוק', isLegallySignificant: true,
+    });
+
+    const r = await reclassifyDiffs({ force: true });
+
+    // No flip — it was significant before and after — yet the finding is created.
+    expect(r.flips).toHaveLength(0);
+    expect(r.findingsRecorded).toBe(1);
+  });
+
+  it('records a finding when a diff flips to significant', async () => {
+    db.diffs = [diff()];
+    mockAnalyzeChange.mockResolvedValue({
+      investigativeCategories: ['STATISTICAL_MANIPULATION'],
+      deletedItems: [{ summary: 's', exactQuote: 'q', investigativeCategories: ['STATISTICAL_MANIPULATION'], relocated: false }],
+      addedItems: [],
+      legalSignificance: 'נימוק',
+      isLegallySignificant: true,
+    });
+
+    const r = await reclassifyDiffs({});
+
+    expect(r.findingsRecorded).toBe(1);
+    // The same function a scan calls, so a finding recovered by
+    // reclassification is indistinguishable from one a scan found.
+    const [source] = mockRecordScanFinding.mock.calls[0] as [Record<string, unknown>];
+    expect(source['diffId']).toBe('d-1');
+    expect(source['investigativeCategories']).toEqual(['STATISTICAL_MANIPULATION']);
+    expect(source['aiSignificance']).toBe('נימוק');
+  });
+
+  it('does not record when the diff already has evidence', async () => {
+    db.diffs = [diff({ evidence: [{ id: 'ev-1' }] })];
+    mockAnalyzeChange.mockResolvedValue({
+      investigativeCategories: ['WITHHOLDING_INFORMATION'],
+      deletedItems: [], addedItems: [], legalSignificance: '', isLegallySignificant: true,
+    });
+
+    const r = await reclassifyDiffs({});
+
+    expect(r.findingsRecorded).toBe(0);
+    expect(mockRecordScanFinding).not.toHaveBeenCalled();
+  });
+
+  it('leaves evidence alone when a diff flips the other way', async () => {
+    // The Evidence row carries the categories it was promoted with, and only a
+    // human can decide whether that claim should stand — findOutOfSyncEvidence
+    // reports the divergence rather than resolving it.
+    db.diffs = [diff({ investigativeCategories: ['INFORMED_CONSENT'], isLegallySignificant: true, evidence: [{ id: 'ev-1' }] })];
+    mockAnalyzeChange.mockResolvedValue({
+      investigativeCategories: [], deletedItems: [], addedItems: [], legalSignificance: '', isLegallySignificant: false,
+    });
+
+    const r = await reclassifyDiffs({});
+
+    expect(r.findingsRecorded).toBe(0);
+    expect(mockRecordScanFinding).not.toHaveBeenCalled();
+    expect(r.flipsToRoutine).toBe(1);
+  });
+
+  it('records nothing in a dry run', async () => {
+    db.diffs = [diff()];
+    mockAnalyzeChange.mockResolvedValue({
+      investigativeCategories: ['STATISTICAL_MANIPULATION'],
+      deletedItems: [], addedItems: [], legalSignificance: '', isLegallySignificant: true,
+    });
+
+    const r = await reclassifyDiffs({ dryRun: true });
+
+    expect(r.findingsRecorded).toBe(0);
+    expect(mockRecordScanFinding).not.toHaveBeenCalled();
+    expect(r.flipsToSignificant).toBe(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Adopting orphans without reclassifying.
+//
+// An orphan already carries its classification, so nothing needs re-deciding.
+// Recovering two orphans through --force cost 81 LLM calls and rewrote the
+// prose of 79 unrelated rows; this costs none and touches nothing else.
+// ---------------------------------------------------------------------------
+describe('adoptOrphanedFindings', () => {
+  beforeEach(() => {
+    mockRecordScanFinding.mockClear();
+    mockAnalyzeChange.mockClear();
+  });
+
+  function orphan(over: Record<string, unknown> = {}): Record<string, unknown> {
+    return {
+      id: 'd-orphan',
+      beforeDate: '2022-09-21',
+      afterDate: '2022-11-29',
+      snapshotUrl: 'https://web.archive.org/web/20221129/x',
+      aiSignificance: 'נימוק שמור',
+      investigativeCategories: ['STATISTICAL_MANIPULATION'],
+      isLegallySignificant: true,
+      deletedText: JSON.stringify([{ summary: 's', exactQuote: 'q' }]),
+      addedText: '[]',
+      trackedUrl: { url: 'https://health.gov.il/x' },
+      ...over,
+    };
+  }
+
+  it('never calls the classifier — the verdict is already on the row', async () => {
+    db.diffs = [orphan()];
+    db.evidenceCount = [0, 1];
+
+    const r = await adoptOrphanedFindings({});
+
+    expect(mockAnalyzeChange).not.toHaveBeenCalled();
+    expect(r.adopted).toBe(1);
+  });
+
+  it('records the STORED classification unchanged', async () => {
+    db.diffs = [orphan()];
+    db.evidenceCount = [0, 1];
+
+    await adoptOrphanedFindings({});
+
+    const [source] = mockRecordScanFinding.mock.calls[0] as [Record<string, unknown>];
+    expect(source['aiSignificance']).toBe('נימוק שמור');
+    expect(source['investigativeCategories']).toEqual(['STATISTICAL_MANIPULATION']);
+  });
+
+  it('queries only significant diffs that have no evidence', async () => {
+    db.diffs = [];
+
+    await adoptOrphanedFindings({});
+
+    const [args] = (prisma.urlVersionDiff.findMany as jest.Mock).mock.calls[0] as [
+      { where: Record<string, unknown> },
+    ];
+    expect(args.where.isLegallySignificant).toBe(true);
+    expect(args.where.evidence).toEqual({ none: {} });
+  });
+
+  it('counts a refusal rather than assuming success', async () => {
+    // recordScanFinding declines silently when no category matched, so adoption
+    // confirms the row appeared instead of trusting the call.
+    db.diffs = [orphan({ investigativeCategories: [] })];
+    db.evidenceCount = [0, 0];
+
+    const r = await adoptOrphanedFindings({});
+
+    expect(r.adopted).toBe(0);
+    expect(r.refused).toBe(1);
+  });
+
+  it('lists orphans without recording them in a dry run', async () => {
+    db.diffs = [orphan()];
+
+    const r = await adoptOrphanedFindings({ dryRun: true });
+
+    expect(r.examined).toBe(1);
+    expect(r.adopted).toBe(0);
+    expect(mockRecordScanFinding).not.toHaveBeenCalled();
   });
 });
