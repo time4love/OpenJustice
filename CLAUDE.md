@@ -99,6 +99,65 @@ Report what was actually done — branch names, commit SHAs, PR numbers, deploy 
 "done". If a git command fails, say so plainly; never let a shell chain report success for a failed
 push.
 
+## `REVIEW` — one adversarial review cycle
+
+A command like `CHECKPOINT`, not a question. **One `REVIEW` runs exactly one cycle.** The user
+decides whether there is another; Claude never decides that a change is done being reviewed.
+
+That division exists because the obvious alternative is broken. A loop that runs "until a review
+comes back clean" terminates on the first *shallow* review, and a review finding nothing is
+ambiguous between good code and a reviewer that did not look. On 2026-08-22 a review of the
+trajectory change verified five claims from the author's description and reported that all held;
+a second pass over the same change read the diff and found three real defects, one of them a
+coverage set leaking across tracked URLs. The first pass would have ended an automatic loop.
+
+### What a cycle does
+
+1. **Write the review request** in the format that works (playbook FINDING 32): every decision
+   stated with its reasoning, what was kept separated from what was overturned, and an explicit
+   list of what is **not** fixed so it cannot read as a completion certificate.
+
+   The reviewer has *less* context than the author, not more — the reverse of the exchange that
+   produced this format. So decisions must be stated as **defensible claims to attack**, never as
+   questions about intent. "I decided X because Y — attack Y."
+
+2. **Spawn the reviewer in an isolated worktree.** Never a shared checkout: two sessions in one
+   working tree nearly saw one commit the other's uncommitted draft, and a reviewer running tests
+   in a dirty tree gets results that are not about the change.
+
+3. **Give it the request, the full diff, and this instruction**: *verify the description against
+   the code and report where they disagree.* Without that sentence the reviewer reviews the
+   description, which is how the shallow pass above happened.
+
+   Give it the failure lenses this repo actually keeps hitting: mechanism right / summary wrong;
+   keyed to a transition instead of to current state; a set that looks complete and is truncated;
+   a classification that no longer matches what the tool does.
+
+4. **Require stated coverage.** The reviewer reports what it examined *and what it could not
+   verify*. A review that reports findings without stating scope is not a clean review, and must
+   be reported as inconclusive rather than as passing.
+
+5. **Report back interactively, then stop.** State: what was examined, what was not, each finding
+   with Claude's own assessment, and which findings were **rejected and why**. Then say plainly
+   that the cycle is complete and ask whether to run another. Recording rejections matters as much
+   as recording fixes — without them a later cycle cannot tell a settled question from an
+   unexamined one, the same reason a diff debate stores dissent instead of treating a sustained
+   objection as a refusal.
+
+### When it is worth invoking
+
+Not "complex or sensitive" — too vague to act on. Invoke it when **a defect in this change would
+be silent**: no test catches it, no type catches it, and it surfaces only when someone relies on
+the wrong answer. Every defect this project has found by review rather than by running was of that
+kind.
+
+### Refuse to run, and say why, when
+
+- there is nothing to review — clean tree and no branch diff;
+- **another session's uncommitted work is in the tree** — authorship cannot be separated and the
+  reviewer would be handed someone else's change;
+- tests are currently failing — that reviews the breakage, not the change.
+
 ## Schema Migrations Deploy Themselves
 
 Migration SQL lives in git — `apps/glass-fortress/backend/prisma/migrations/<timestamp>_<name>/migration.sql`,
