@@ -64,6 +64,15 @@ export interface PromotionAssessmentInput {
   addedItems: string[];
   /** The researcher's argument, verbatim. */
   rationale: string;
+  /**
+   * The debate so far, oldest first — earlier researcher turns and the
+   * objections they answered. Empty on the opening argument.
+   *
+   * Without this, every reply is read as a fresh opening argument, and a
+   * researcher defending an inference loses credit for the specific claims they
+   * already made.
+   */
+  priorTurns?: string[];
 }
 
 export class ForensicPromotionAssessorAgent {
@@ -87,12 +96,17 @@ export class ForensicPromotionAssessorAgent {
       {
         role: 'user',
         content:
+          (input.priorTurns && input.priorTurns.length > 0
+            ? `--- מהלך הדיון עד כה ---\n${input.priorTurns.join('\n\n')}\n\n--- סוף הדיון עד כה ---\n\n`
+            : '') +
           `דף: ${input.url}\n` +
           `חלון השינוי: ${input.beforeDate} → ${input.afterDate}\n\n` +
           `${changed}\n\n` +
           `נימוק המסווג האוטומטי לאי-סימון: ${input.classifierReasoning || '(לא ניתן נימוק)'}\n` +
           `עילות שזוהו על ידי המסווג: ${input.classifierCategories.join(', ') || '(אין)'}\n\n` +
-          `--- טיעון החוקר ---\n${input.rationale}`,
+          (input.priorTurns && input.priorTurns.length > 0
+            ? `--- תגובת החוקר הנוכחית (העריכו את הטיעון המצטבר, לא את התגובה לבדה) ---\n${input.rationale}`
+            : `--- טיעון החוקר ---\n${input.rationale}`),
       },
     ]);
 

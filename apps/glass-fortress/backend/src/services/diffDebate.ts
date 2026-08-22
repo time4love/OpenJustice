@@ -59,7 +59,16 @@ export interface DiffDebateState {
   rounds: number;
 }
 
-/** Assess one argument, log both turns, and update the session's standing state. */
+/**
+ * Assess a turn, log it with the assessor's reply, and update the session state.
+ *
+ * The assessor is given the WHOLE debate so far, not just this turn. Judging a
+ * turn in isolation reads every reply as if it were an opening argument, which
+ * punishes exactly the right behaviour: answering an objection about an
+ * inference does not require re-quoting the changed text, yet doing so cost the
+ * researcher a substance gate they had already cleared. Found on the first real
+ * human argument put through this, 2026-08-22, two rounds in.
+ */
 async function assessAndRecord(
   sessionId: string,
   argument: string,
@@ -79,6 +88,8 @@ async function assessAndRecord(
     data: { sessionId, type: argumentType, content: argument },
   });
 
+  const priorTurns = await priorArgument(sessionId);
+
   const assessment = await getAssessor().assess({
     url: diff.url,
     beforeDate: diff.beforeDate,
@@ -88,6 +99,7 @@ async function assessAndRecord(
     deletedItems: itemSummaries(diff.deletedText),
     addedItems: itemSummaries(diff.addedText),
     rationale: argument,
+    priorTurns,
   });
 
   await prisma.diffDebateEvent.create({
@@ -98,12 +110,53 @@ async function assessAndRecord(
     },
   });
 
+  // hasSubstance LATCHES. Substance is a property of the argument as a whole,
+  // not of the most recent sentence — once a researcher has made reviewable
+  // claims, a later turn cannot un-make them. Without this the gate ratchets
+  // backwards and a debate gets harder to win the longer it is argued in good
+  // faith. Merit (verdict) is not latched: the assessor is entitled to change
+  // its mind about whether the argument persuades, in either direction.
+  const session = await prisma.diffDebateSession.findUniqueOrThrow({
+    where: { id: sessionId },
+    select: { hasSubstance: true },
+  });
+
   await prisma.diffDebateSession.update({
     where: { id: sessionId },
-    data: { hasSubstance: assessment.hasSubstance, verdict: assessment.verdict },
+    data: {
+      hasSubstance: session.hasSubstance || assessment.hasSubstance,
+      verdict: assessment.verdict,
+    },
   });
 
   return assessment;
+}
+
+/**
+ * The debate so far, rendered for the assessor: every researcher turn and the
+ * objection it was answering, oldest first. Excludes the turn being assessed —
+ * the caller has already written it and passes it separately as `rationale`.
+ */
+async function priorArgument(sessionId: string): Promise<string[]> {
+  const events = await prisma.diffDebateEvent.findMany({
+    where: { sessionId, type: { in: ['RATIONALE_SUBMITTED', 'RESPONSE_SUBMITTED', 'ASSESSMENT_RETURNED'] } },
+    orderBy: { createdAt: 'asc' },
+  });
+
+  // Drop the turn just written by the caller.
+  const history = events.slice(0, -1);
+
+  return history.map((e) => {
+    if (e.type === 'ASSESSMENT_RETURNED') {
+      try {
+        const parsed = JSON.parse(e.content) as { objection?: string; assessment?: string };
+        return `הערכה קודמת: ${parsed.assessment ?? ''}${parsed.objection ? `\nהתנגדות: ${parsed.objection}` : ''}`;
+      } catch {
+        return `הערכה קודמת: ${e.content}`;
+      }
+    }
+    return `טיעון החוקר: ${e.content}`;
+  });
 }
 
 async function buildState(sessionId: string): Promise<DiffDebateState> {
