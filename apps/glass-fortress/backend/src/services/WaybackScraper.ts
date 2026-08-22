@@ -11,6 +11,7 @@ import {
   type ForensicEvidenceSource,
 } from './forensicEvidence';
 import { groupDiffChunks, chunksForAI } from '../lib/diffChunking';
+import { CLASSIFIER_VERSION, classifierPromptHash } from '../lib/classifierVersion';
 
 // ---------------------------------------------------------------------------
 // Lazy singletons — non-fatal if unavailable
@@ -582,8 +583,29 @@ export class WaybackScraper {
   /**
    * Query the evidence database for records whose `evidenceDate` falls within
    * ±CONTEXT_WINDOW_DAYS of the given snapshot date.
+   *
+   * `excludeTrackedUrlId` keeps a page from corroborating itself.
+   *
+   * Correlation is only worth anything when it comes from a DIFFERENT source
+   * than the page being classified. Evidence derived from this same tracked URL
+   * is not independent support — it is the same page, one snapshot earlier.
+   *
+   * This is not hypothetical. Because recordScanFinding writes evidence as the
+   * scan walks forward, later diffs find earlier ones already in their ±60-day
+   * window, and the 2022-05-29 classification of corona.health.gov.il cited
+   * "הראיות הפנימיות שנרשמו בימים 25 ו-29 במאי" — its own page's prior diffs,
+   * described as internal corroborating evidence. A page could inflate the
+   * significance of every one of its changes on the strength of its neighbours.
+   *
+   * The oscillation such neighbours reveal is a genuine finding — deleted,
+   * restored, deleted again within six days. It belongs at the thesis level,
+   * where a researcher cites several records and the pattern reads as a pattern,
+   * not inside a per-diff verdict dressed as outside support.
    */
-  async fetchCorrelatedEvidence(snapshotDate: string): Promise<RelatedEvidenceContext[]> {
+  async fetchCorrelatedEvidence(
+    snapshotDate: string,
+    excludeTrackedUrlId?: string,
+  ): Promise<RelatedEvidenceContext[]> {
     const windowStart = offsetDate(snapshotDate, -CONTEXT_WINDOW_DAYS);
     const windowEnd = offsetDate(snapshotDate, +CONTEXT_WINDOW_DAYS);
 
@@ -593,6 +615,9 @@ export class WaybackScraper {
           { evidenceDate: { gte: windowStart } },
           { evidenceDate: { lte: windowEnd } },
           { NOT: { evidenceDate: 'Unknown' } },
+          ...(excludeTrackedUrlId
+            ? [{ NOT: { urlVersionDiff: { trackedUrlId: excludeTrackedUrlId } } }]
+            : []),
         ],
       },
       orderBy: { evidenceDate: 'asc' },
@@ -714,7 +739,7 @@ export class WaybackScraper {
 
       let relatedEvidence: RelatedEvidenceContext[] = [];
       try {
-        relatedEvidence = await this.fetchCorrelatedEvidence(afterDate);
+        relatedEvidence = await this.fetchCorrelatedEvidence(afterDate, trackedUrl.id);
       } catch (err) {
         console.warn(
           `[WaybackScraper] DB context fetch failed for ${afterDate}:`,
@@ -743,6 +768,8 @@ export class WaybackScraper {
             rawAddedText: JSON.stringify(additions),
             aiSignificance: analysis.legalSignificance,
             isLegallySignificant: analysis.isLegallySignificant,
+            classifierVersion: CLASSIFIER_VERSION,
+            classifierPromptHash: classifierPromptHash(),
             investigativeCategories: analysis.investigativeCategories,
             beforeSnapshotId,
             afterSnapshotId,
@@ -1015,7 +1042,7 @@ export class WaybackScraper {
         } else {
           let relatedEvidence: RelatedEvidenceContext[] = [];
           try {
-            relatedEvidence = await this.fetchCorrelatedEvidence(afterDate);
+            relatedEvidence = await this.fetchCorrelatedEvidence(afterDate, trackedUrlId);
           } catch {
             // Non-fatal — proceed without context
           }
@@ -1041,6 +1068,8 @@ export class WaybackScraper {
                 rawAddedText: JSON.stringify(additions),
                 aiSignificance: analysis.legalSignificance,
                 isLegallySignificant: analysis.isLegallySignificant,
+                classifierVersion: CLASSIFIER_VERSION,
+                classifierPromptHash: classifierPromptHash(),
                 investigativeCategories: analysis.investigativeCategories,
                 beforeSnapshotId,
                 afterSnapshotId,

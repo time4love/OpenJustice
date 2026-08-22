@@ -5,10 +5,20 @@ import {
 } from '../src/services/forensicEvidence';
 
 const DELETED_ITEMS = [
-  { summary: 'הובטח כי תופעות הלוואי קלות וזמניות', exactQuote: 'Side effects are mild.' },
+  {
+    summary: 'הובטח כי תופעות הלוואי קלות וזמניות',
+    exactQuote: 'Side effects are mild.',
+    investigativeCategories: ['SAFETY_CLAIM_ALTERATION' as const],
+    relocated: false,
+  },
 ];
 const ADDED_ITEMS = [
-  { summary: 'נוספה חובת חיסון לעובדים', exactQuote: 'All employees must be vaccinated.' },
+  {
+    summary: 'נוספה חובת חיסון לעובדים',
+    exactQuote: 'All employees must be vaccinated.',
+    investigativeCategories: ['COERCION_MANDATE' as const],
+    relocated: false,
+  },
 ];
 
 function source(overrides: Partial<ForensicEvidenceSource> = {}): ForensicEvidenceSource {

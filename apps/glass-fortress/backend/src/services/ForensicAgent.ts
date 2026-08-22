@@ -33,6 +33,18 @@ const DiffItemSchema = z.object({
       'The EXACT verbatim text from the diff input that this summary describes. ' +
         'Copy it character-for-character — do not paraphrase, shorten, or reconstruct.',
     ),
+  investigativeCategories: investigativeCategoriesField.describe(
+    'Every standing concern THIS ITEM materially supports, judged on its own merits. ' +
+      'Empty array when it supports none — which is the common and correct answer.',
+  ),
+  relocated: z
+    .boolean()
+    .describe(
+      'True when this text was MOVED rather than genuinely removed or introduced — i.e. the same ' +
+        'content appears on the other side of this same diff, just in a different position on the ' +
+        'page. A relocated item changes nothing a reader would notice and must not be treated as ' +
+        'a deletion or addition of the claim it contains.',
+    ),
 });
 
 export type DiffItem = z.infer<typeof DiffItemSchema>;
@@ -46,10 +58,22 @@ export type DiffItem = z.infer<typeof DiffItemSchema>;
  * investigating" — and that hedge is exactly what filled the evidence table with
  * changes nobody could act on. Classification is a concrete task; a bare
  * significance boolean is not.
+ *
+ * Note also the absence of a diff-level `investigativeCategories`. Categories are
+ * asked for PER ITEM and the diff-level set is derived as their union.
+ *
+ * Judging the diff as a whole let a consequential change be masked by the company
+ * it kept. On 2026-08-22 the deletion of the 4th-dose efficacy figures — the same
+ * text classified significant in five other diffs of the same scan — was rated
+ * immaterial in the one diff where it arrived bundled with six routine
+ * administrative removals and six additions announcing a new campaign. The
+ * aggregate read as a campaign transition, so the item vanished into it.
+ *
+ * That is a structural property, not bad luck: it means the reliable way to
+ * remove a consequential claim unnoticed is to remove it alongside housekeeping.
+ * A forensic classifier must not have that property regardless of anyone's intent.
  */
 const ForensicLlmOutputSchema = z.object({
-  investigativeCategories: investigativeCategoriesField,
-
   deletedItems: z
     .array(DiffItemSchema)
     .describe(
@@ -90,12 +114,35 @@ const ForensicLlmOutputSchema = z.object({
  * the forensics routes and MCP tools.
  */
 export const ForensicOutputSchema = ForensicLlmOutputSchema.extend({
+  investigativeCategories: investigativeCategoriesField.describe(
+    'Derived: the union of the items\' categories, excluding relocations.',
+  ),
   isLegallySignificant: z
     .boolean()
     .describe('Derived: true when investigativeCategories is non-empty.'),
 });
 
 export type ForensicOutput = z.infer<typeof ForensicOutputSchema>;
+
+/**
+ * The diff's categories: the union of what its items carry, ignoring relocations.
+ *
+ * Relocated items are excluded deliberately. Text moved from one part of a page
+ * to another appears in this diff as both a deletion and an addition, and reading
+ * the deletion on its own would report the removal of a claim that is still on
+ * the page. The aggregate judgment used to absorb that; per-item classification
+ * would not, so the model is asked to mark it and the derivation drops it.
+ */
+export function deriveDiffCategories(
+  items: readonly { investigativeCategories: readonly InvestigativeCategory[]; relocated: boolean }[],
+): InvestigativeCategory[] {
+  const union = new Set<InvestigativeCategory>();
+  for (const item of items) {
+    if (item.relocated) continue;
+    for (const c of item.investigativeCategories) union.add(c);
+  }
+  return [...union];
+}
 
 /**
  * Significance is category membership — a change matters to this investigation
@@ -168,9 +215,15 @@ export class ForensicAgent {
     const result = await this.chain.invoke(messages);
     const analysis = ForensicLlmOutputSchema.parse(result);
 
+    const investigativeCategories = deriveDiffCategories([
+      ...analysis.deletedItems,
+      ...analysis.addedItems,
+    ]);
+
     return {
       ...analysis,
-      isLegallySignificant: deriveSignificance(analysis.investigativeCategories),
+      investigativeCategories,
+      isLegallySignificant: deriveSignificance(investigativeCategories),
     };
   }
 }
