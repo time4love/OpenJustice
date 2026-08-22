@@ -469,8 +469,9 @@ export function createMcpServer(): McpServer {
   server.tool(
     'start_forensic_scan',
     'Start (or resume) a Wayback Machine forensic diff scan for a URL. Returns immediately ' +
-      'with a trackedUrlId — the scan runs asynchronously server-side. Poll ' +
-      'GET /api/forensics/tracked/:id/status for progress. Calling this again for the same ' +
+      'with a trackedUrlId — the scan runs asynchronously server-side. Call ' +
+      'get_forensic_timeline for progress; the REST status endpoint sits behind the staging ' +
+      'access gate and is not reachable from MCP. Calling this again for the same ' +
       'URL while it is already scanning is safe — the concurrent-run guard prevents double-runs.',
     startForensicScanSchema,
     async (input) => ({
@@ -487,8 +488,10 @@ export function createMcpServer(): McpServer {
     'enrich_evidence_with_history',
     'Trigger a Wayback Machine forensic scan for the sourceUrl of an existing evidence record. ' +
       'Given a fileHash, looks up the evidence sourceUrl, upserts a TrackedUrl, and starts ' +
-      'runFullScan() asynchronously. Legally significant page edits found during the scan are ' +
-      'auto-promoted to the evidence vault. Returns a trackedUrlId for status polling.',
+      'runFullScan() asynchronously. Legally significant page edits are recorded as ' +
+      'PENDING_REVIEW evidence — never promoted, never registered on-chain; review them with ' +
+      'get_scan_findings and confirm with promote_scan_findings. Returns a trackedUrlId; call ' +
+      'get_forensic_timeline for progress.',
     enrichEvidenceWithHistorySchema,
     async (input) => ({
       content: [{ type: 'text' as const, text: await enrichEvidenceWithHistoryHandler(input) }],

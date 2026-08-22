@@ -805,11 +805,15 @@ describe('startForensicScanHandler', () => {
     expect(mockRunFullScan).toHaveBeenCalledWith('tu-uuid-1', testUrl);
   });
 
-  it('includes trackedUrlId in the poll-status message', async () => {
+  it('returns the trackedUrlId and points at a tool the caller can actually reach', async () => {
     const raw = await startForensicScanHandler({ url: testUrl });
     const result = JSON.parse(raw);
 
-    expect(result.message).toContain('tu-uuid-1');
+    expect(result.trackedUrlId).toBe('tu-uuid-1');
+    // FINDING 7: the REST status endpoint sits behind the staging access gate, so a
+    // researcher working through MCP cannot reach it. Guidance must name the MCP tool.
+    expect(result.message).toContain('get_forensic_timeline');
+    expect(result.message).not.toContain('/api/forensics/');
   });
 
   it('returns without throwing even when runFullScan rejects', async () => {
@@ -1984,8 +1988,23 @@ describe('enrichEvidenceWithHistoryHandler', () => {
     await expect(enrichEvidenceWithHistoryHandler({ fileHash })).resolves.toBeDefined();
   });
 
-  it('message includes trackedUrlId for polling', async () => {
+  it('returns the trackedUrlId and points at a tool the caller can actually reach', async () => {
     const result = JSON.parse(await enrichEvidenceWithHistoryHandler({ fileHash }));
-    expect(result.message).toContain('tu-enrich-1');
+
+    expect(result.trackedUrlId).toBe('tu-enrich-1');
+    // FINDING 7 — see startForensicScanHandler above.
+    expect(result.message).toContain('get_forensic_timeline');
+    expect(result.message).not.toContain('/api/forensics/');
+  });
+
+  it('does not claim scan findings are auto-promoted', async () => {
+    const result = JSON.parse(await enrichEvidenceWithHistoryHandler({ fileHash }));
+
+    // FINDING 9 removed auto-promotion: recordScanFinding writes PENDING_REVIEW and
+    // stops. A message promising promotion overstates what the call writes, and the
+    // session protocol requires announcing that accurately before every call.
+    expect(result.message).toMatch(/PENDING_REVIEW/);
+    expect(result.message).not.toMatch(/auto-promot/i);
+    expect(result.message).toContain('promote_scan_findings');
   });
 });

@@ -50,7 +50,8 @@ export async function enrichEvidenceWithHistoryHandler(input: { fileHash: string
     status: 'SCANNING',
     message:
       `Wayback scan started for ${url}. ` +
-      `Poll GET /api/forensics/tracked/${trackedUrl.id}/status for progress. ` +
-      'Legally significant page edits will be auto-promoted to the evidence vault once processed.',
+      'Call get_forensic_timeline for this URL to follow progress. Legally significant page ' +
+      'edits are recorded as PENDING_REVIEW evidence — not promoted and not registered ' +
+      'on-chain. Review them with get_scan_findings and confirm with promote_scan_findings.',
   });
 }

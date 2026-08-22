@@ -82,16 +82,55 @@ staging and a production connector cannot tell from the response which one they 
 wrote to.
 
 Verified out-of-band instead, read-only, by querying production for the returned
-`fileHash`:
-
-```sql
-SELECT count(*) FROM "Evidence" WHERE "fileHash" = '0x0654…c262';
-```
-
-`0` — so the row landed in staging, as intended.
+`fileHash`. **The naive form of that query is unsound**, and the sound form is the
+procedure — see the correction below.
 
 That this required a database query at all is the finding. The environment should be
 legible from the tool response.
+
+#### The correction — a negative is only evidence if you know what a positive looks like
+
+The check as first written was:
+
+```sql
+SELECT count(*) FROM "Evidence" WHERE "fileHash" = '0x0654…c262';   -- 0 ⇒ staging
+```
+
+`0` was read as "the row is not in production, therefore it landed in staging." That
+inference holds only while production holds **different** data. It fails silently against
+a production database that is empty, or a wrong schema, or a table name that no longer
+exists, or a query that errored and returned nothing — every one of which also answers
+`0`. Re-running the check in a later session found exactly that: production's `Evidence`
+table held **zero rows of any kind**, so the discriminator was returning the right answer
+for no reason.
+
+The sound form reads a **control column in the same query** — something that must be
+non-zero if the connection is real and the query is well-formed:
+
+```sql
+SELECT (SELECT count(*) FROM "Evidence")                              AS evidence_total,
+       (SELECT count(*) FROM "Evidence" WHERE "fileHash" IN (…hashes…)) AS matching,
+       (SELECT count(*) FROM "UrlVersionDiff")                        AS diffs_total,
+       (SELECT count(*) FROM "Thesis")                                AS thesis_total;
+```
+
+Now the two failure modes separate:
+
+| `evidence_total` | `matching` | Reading |
+|---|---|---|
+| > 0 | 0 | Production is populated and does not hold these hashes — **staging confirmed** |
+| 0 | 0 | Production is empty; the check proves the schema resolves but discriminates nothing on its own |
+| > 0 | > 0 | **Stop.** The connector may be pointed at production |
+| *error* | — | The check did not run; do not read it as a negative |
+
+Pass **more than one hash**, so a single mistyped literal cannot manufacture a false
+negative. And record which reading you got, not just the verdict: "0 of 3, against 0 total"
+is a materially weaker statement than "0 of 3, against 412 total", and only the second one
+identifies the environment by itself.
+
+This correction is FINDING 21, found by re-running Step 0 cold in a later session. It is
+written back here because the defective query was the *procedure*, and a procedure is
+where a fix belongs.
 
 ---
 
@@ -1063,6 +1102,12 @@ the procedure. FINDING 1 is unresolved and its workaround now degrades as produc
 or empties. **A negative result is only evidence when you also know what a positive one
 would have looked like.**
 
+**Fixed in the procedure, not only recorded here.** The control column is now part of
+Step 0's discriminator, with the reading table that separates "production is populated and
+lacks these hashes" from "production is empty and this check discriminates nothing" — see
+*FINDING 1 → The correction*. A defective check belongs fixed where a future researcher
+will actually read it, which is the step, not the appendix.
+
 ### Call 3 — the gated path
 
 Reads prove nothing about authentication; GF serves them anonymously. The cheapest proof
@@ -1090,6 +1135,161 @@ session boundary.
 **Do this before the first substantive call, not after.** FINDING 4's rule — exercise the
 gated tools early — costs one free call here and saves discovering an expired
 authorization mid-promotion.
+
+
+---
+
+## Step 13 — What there is to argue from
+
+Before asking a model to synthesize anything, look at the strongest artifact in the vault
+directly. The trajectories are the only thing here that requires trusting no model at all,
+so they should anchor the argument rather than decorate it.
+
+### Request
+
+```
+get_claim_trajectories
+  url: "https://corona.health.gov.il/vaccine-for-covid/"
+  minTransitions: 2
+```
+
+### Response — structure
+
+| Field | Value |
+|---|---|
+| `snapshotsExamined` | 83 |
+| `candidatesConsidered` | 58 |
+| `candidatesNotFoundInArchive` | 0 |
+| `findingCount` | 15 |
+| `claimsTracked` | 47 |
+| `findings[].patternHash` | sha-256, one per co-movement group |
+| `findings[].changes[]` | `snapshotDate`, `waybackTimestamp`, `snapshotUrl`, `present` |
+
+`candidatesNotFoundInArchive: 0` is the field to read first. It is the tool reporting that
+every claim it set out to follow was actually findable in the archived text — without it, a
+low `findingCount` would be indistinguishable from a broken search.
+
+Three of the fifteen carry weight:
+
+| | Claims | Window | Final | What moved as a unit |
+|---|---|---|---|---|
+| **T-1** | 10 | 2022-05-25 → 2022-09-21, 6 flips | REMOVED | The fourth-dose block, including the numeric efficacy figures |
+| **T-2** | 8 | 2022-08-05 → 2022-09-05, 2 flips | REMOVED | The infant campaign: a PIMS reduction figure, a hospitalisation-efficacy figure, an explicit no-unusual-safety-signals assurance, the six-month-old recommendation, a *Pediatrics* citation |
+| **T-3** | 6 | 2021-12-23 → 2022-05-29, 3 flips | REMOVED | The biology claims, plus the stated alternative product for cardiac patients |
+
+T-2 is where the deterministic method earns its keep: eight claims present in one snapshot,
+all eight absent in the next, no partial state between. Its two boundary dates are the exact
+dates of two anchored `Evidence` records, and the leaked recordings were published inside
+the window.
+
+---
+
+## Step 14 — Deciding what the thesis should argue
+
+Choosing the framing had been an ad-hoc question put to the researcher in prose. That is the
+wrong shape for the same reason a bare promotion was the wrong shape in Step 7: the decision
+that determines everything downstream left no record, and nothing checked it against the
+evidence actually held.
+
+Three tools now carry it — `open_thesis_framing`, `assess_thesis_framing`,
+`get_thesis_framing` — and `create_thesis_draft` gained an optional `framingSessionId`, so a
+thesis points back at the reasoning that chose its question.
+
+**The output that earns the tool is contradictions**, not candidates. Generating plausible
+framings is the easy half and a model will do it whether or not the evidence supports one.
+Naming where the researcher's own corpus points the other way is the half that cannot be
+faked and the half a researcher cannot do for themselves.
+
+### FINDING 22 — FINDING 4 is not a scheduling rule, it is a hard boundary
+
+FINDING 4 said: *deploy tooling before opening the research session, never during it.* This
+step tried to obey it. The tools were merged and deployed **before the work began** — and
+were still unreachable, because the client had negotiated its tool list at **connect**, which
+happened earlier still.
+
+The evidence was unambiguous, and worth recording as a method:
+
+| Check | Result |
+|---|---|
+| Tool rediscovery by exact name | 3 of 4 absent |
+| `create_thesis_draft` schema as seen by the session | **no `framingSessionId`** — a stale inventory, not a missing feature |
+| `git merge-base --is-ancestor <branch> origin/staging` | ancestor — merged |
+| `POST /api/mcp` `tools/list`, unauthenticated | **33 tools**, all three present |
+| Tools visible to the session | **30** |
+
+Two independent sources agreeing that the server has 33 and the client sees 30 is what turns
+"the tool did not work" into "the tool is not reachable from here" — different problems with
+different fixes. The stale `create_thesis_draft` schema is the sharper signal of the two: a
+tool that is *present but shaped wrong* cannot be explained by a failed deploy.
+
+**A reconnect was then attempted mid-session, and measured rather than assumed.** After it:
+
+| | Before | After reconnect |
+|---|---|---|
+| Tools advertised by the server | 33 | 33 |
+| Tools visible to the session | 30 | **30** |
+| Framing tools reachable | no | **no** |
+
+So the rule is not "reconnect and retry" either. It is:
+
+> **A connector's tool list is fixed when the client connects. Deploying, merging, a green
+> deploy, and reconnecting a live session all leave it unchanged. There is no in-session
+> remedy — not a retry, not a rediscovery, not a wait. The session must be reopened.**
+
+And the consequence that matters for anyone planning this work: **a session cannot build the
+tool it discovers it needs and then use it.** It can build it, deploy it, and hand it to the
+next session. Every tool in Steps 1-11 was reached that way, which is why the pattern went
+unnoticed as a constraint rather than an inconvenience.
+
+
+### FINDING 23 — two tools were still describing a workflow that had been removed
+
+Blocked from the framing step, the tool inventory got read properly rather than skimmed.
+Two tools were describing writes they no longer perform, and pointing at an endpoint the
+researcher cannot reach.
+
+| Claim in the tool's own description | Reality | Recorded in |
+|---|---|---|
+| *"Legally significant page edits found during the scan are auto-promoted to the evidence vault"* | `recordScanFinding` writes `PENDING_REVIEW` and stops — no chain, no index, no status claim | FINDING 9 |
+| *"Poll `GET /api/forensics/tracked/:id/status` for progress"* | That endpoint is behind the staging access gate and answers `401` to an MCP caller | FINDING 7 |
+
+Both findings were recorded when they were discovered. **Neither was ever remediated**, and
+FINDING 7's guidance was wrong in *three* places while the finding describes one — the
+sibling tool `enrich_evidence_with_history` was never looked at, because the bug was noticed
+on `start_forensic_scan`.
+
+This is the same shape as *derive from state, not from a transition*: the fix went where the
+defect was **noticed** rather than everywhere it **lives**. Recording a finding is not fixing
+it, and a document full of accurate findings can sit beside code that still has every one of
+them.
+
+**Why a wrong description is not a documentation nit here.** The session protocol requires
+announcing *what a call writes* before making it — so the tool description is load-bearing,
+and these two got it wrong in the direction that matters most: they promised the **stronger,
+irreversible** outcome (promoted, on-chain, public) where the truth is the weaker reversible
+one. A careful researcher refuses a call that was actually safe; a careless one waits for an
+anchor that never lands. And the researcher has no way to check, because the description is
+the only account of the write they are given.
+
+Fixed at all four call sites — two tool descriptions and two runtime messages — with
+`get_forensic_timeline` named as the reachable route, and the `PENDING_REVIEW` →
+`get_scan_findings` → `promote_scan_findings` path stated explicitly.
+
+The two tests that broke were asserting the `trackedUrlId` appeared **inside the poll-status
+message**, which is only true while there is a URL to embed it in; the id is a top-level
+response field and always was. They were rewritten to assert what actually matters, which
+makes them stronger than before rather than weaker:
+
+- the response carries the `trackedUrlId`,
+- the message names `get_forensic_timeline`, and **does not** contain `/api/forensics/`,
+- the message says `PENDING_REVIEW`, names `promote_scan_findings`, and **does not** say
+  `auto-promot`.
+
+Those negative assertions are the point. Nothing previously failed when a tool started
+describing a workflow that no longer existed, which is exactly how it survived two findings
+and several sessions.
+
+**Tests: 983 passing, 1 new.**
 
 ## Where this leaves the vault
 

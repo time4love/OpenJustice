@@ -38,8 +38,7 @@ export async function startForensicScanHandler(input: { url: string }): Promise<
     url: input.url,
     status: 'SCANNING',
     message:
-      'Forensic scan started. Poll GET /api/forensics/tracked/' +
-      trackedUrl.id +
-      '/status for progress. Results will appear in the forensic timeline once snapshots are processed.',
+      'Forensic scan started. Call get_forensic_timeline for this URL to follow progress and ' +
+      'read results once snapshots are processed.',
   });
 }
