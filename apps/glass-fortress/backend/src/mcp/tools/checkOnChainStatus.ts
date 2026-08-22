@@ -43,16 +43,31 @@ export const ON_CHAIN_VERDICTS = {
    * Promoting will revert as a duplicate — investigate before promoting.
    */
   PENDING_BUT_ANCHORED: 'PENDING_BUT_ANCHORED',
-  /** No Evidence row for this hash. The chain answer is still reported. */
+  /** No Evidence row and no registration. Nothing anywhere — nothing to reconcile. */
   NOT_IN_VAULT: 'NOT_IN_VAULT',
+  /**
+   * Registered on-chain with no Evidence row behind it. An anchor asserting a
+   * record nobody can produce — the condition the 2026-08-20 audit found twice
+   * and the reason this tool exists. Never report it as consistent.
+   */
+  ORPHANED_ANCHOR: 'ORPHANED_ANCHOR',
 } as const;
 
 export type OnChainVerdict = (typeof ON_CHAIN_VERDICTS)[keyof typeof ON_CHAIN_VERDICTS];
 
-/** Verdicts that mean "do not promote, and do not cite this as anchored". */
-const BLOCKING_VERDICTS: ReadonlySet<OnChainVerdict> = new Set([
-  ON_CHAIN_VERDICTS.UNANCHORED_CONFIRMED,
-  ON_CHAIN_VERDICTS.PENDING_BUT_ANCHORED,
+/**
+ * Verdicts in which the database and the contract actually agree.
+ *
+ * Deliberately a positive list. This was written as a negative filter — every
+ * verdict except a few named ones counted as consistent — and NOT_IN_VAULT
+ * therefore reported `consistent: true` even when the chain held the hash,
+ * which is precisely an orphaned anchor. A positive list fails the safe way:
+ * a verdict added later is inconsistent until someone says otherwise.
+ */
+const CONSISTENT_VERDICTS: ReadonlySet<OnChainVerdict> = new Set([
+  ON_CHAIN_VERDICTS.CONSISTENT,
+  ON_CHAIN_VERDICTS.PENDING_UNREGISTERED,
+  ON_CHAIN_VERDICTS.NOT_IN_VAULT,
 ]);
 
 export const checkOnChainStatusSchema = {
@@ -103,7 +118,9 @@ const EXPLANATIONS: Record<OnChainVerdict, string> = {
   PENDING_BUT_ANCHORED:
     'The contract already holds this hash while the row is still PENDING_REVIEW. Promotion would revert as a duplicate. Investigate the existing anchor before promoting.',
   NOT_IN_VAULT:
-    'No evidence record exists for this hash. The chain result is reported so an orphaned anchor can still be identified.',
+    'No evidence record exists for this hash, and the registry does not hold it either. There is nothing to reconcile.',
+  ORPHANED_ANCHOR:
+    'The registry holds this hash but no evidence record exists for it. Something anchored a record that cannot now be produced — investigate before registering anything else against this hash.',
 };
 
 function decideVerdict(
@@ -112,7 +129,9 @@ function decideVerdict(
   txHash: string | null,
   registered: boolean,
 ): OnChainVerdict {
-  if (!inVault) return ON_CHAIN_VERDICTS.NOT_IN_VAULT;
+  if (!inVault) {
+    return registered ? ON_CHAIN_VERDICTS.ORPHANED_ANCHOR : ON_CHAIN_VERDICTS.NOT_IN_VAULT;
+  }
 
   if (status === 'CONFIRMED') {
     if (!registered) return ON_CHAIN_VERDICTS.UNANCHORED_CONFIRMED;
@@ -179,7 +198,7 @@ export async function checkOnChainStatusHandler(input: {
     fileHash: input.fileHash,
     verdict,
     safeToPromote: verdict === ON_CHAIN_VERDICTS.PENDING_UNREGISTERED,
-    consistent: !BLOCKING_VERDICTS.has(verdict) && verdict !== ON_CHAIN_VERDICTS.MISSING_TX_HASH,
+    consistent: CONSISTENT_VERDICTS.has(verdict),
     database: {
       inVault: Boolean(record),
       evidenceId: record?.id ?? null,

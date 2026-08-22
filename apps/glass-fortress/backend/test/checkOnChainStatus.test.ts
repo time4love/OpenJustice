@@ -110,12 +110,50 @@ describe('check_on_chain_status', () => {
     expect(r.consistent).toBe(false);
   });
 
-  it('NOT_IN_VAULT — reports the chain answer for an orphaned anchor', async () => {
-    const r = await run(null, true);
+  it('NOT_IN_VAULT — no record and no registration, nothing to reconcile', async () => {
+    const r = await run(null, false);
 
     expect(r.verdict).toBe('NOT_IN_VAULT');
     expect(r.database.inVault).toBe(false);
+    expect(r.consistent).toBe(true);
+  });
+
+  // ---------------------------------------------------------------------------
+  // Regression: an anchor with no record behind it is NOT consistent.
+  //
+  // `consistent` was derived by excluding a few named verdicts, so
+  // NOT_IN_VAULT fell through as consistent:true even when the contract held
+  // the hash — an orphaned anchor, exactly the condition the 2026-08-20 audit
+  // found twice and this tool exists to surface. The verdict string was right;
+  // the boolean summarising it, which is what a caller actually gates on, said
+  // the opposite.
+  // ---------------------------------------------------------------------------
+  it('ORPHANED_ANCHOR — registered with no record behind it, never consistent', async () => {
+    const r = await run(null, true);
+
+    expect(r.verdict).toBe('ORPHANED_ANCHOR');
+    expect(r.database.inVault).toBe(false);
     expect(r.chain.registered).toBe(true);
+    expect(r.consistent).toBe(false);
+    expect(r.safeToPromote).toBe(false);
+  });
+
+  it('reports consistency correctly for every verdict, not just the detailed fields', async () => {
+    const cases: [string, Parameters<typeof run>[0], boolean, boolean][] = [
+      ['CONSISTENT', { id: 'a', status: 'CONFIRMED', onChainTxHash: TX }, true, true],
+      ['UNANCHORED_CONFIRMED', { id: 'b', status: 'CONFIRMED', onChainTxHash: TX }, false, false],
+      ['MISSING_TX_HASH', { id: 'c', status: 'CONFIRMED', onChainTxHash: null }, true, false],
+      ['PENDING_UNREGISTERED', { id: 'd', status: 'PENDING_REVIEW', onChainTxHash: null }, false, true],
+      ['PENDING_BUT_ANCHORED', { id: 'e', status: 'PENDING_REVIEW', onChainTxHash: null }, true, false],
+      ['NOT_IN_VAULT', null, false, true],
+      ['ORPHANED_ANCHOR', null, true, false],
+    ];
+
+    for (const [expectedVerdict, record, registered, expectedConsistent] of cases) {
+      const r = await run(record, registered);
+      expect(r.verdict).toBe(expectedVerdict);
+      expect(r.consistent).toBe(expectedConsistent);
+    }
   });
 
   it('recovers the tx hash only when asked, and only when one is missing', async () => {
