@@ -110,26 +110,51 @@ async function assessAndRecord(
     },
   });
 
-  // hasSubstance LATCHES. Substance is a property of the argument as a whole,
-  // not of the most recent sentence — once a researcher has made reviewable
-  // claims, a later turn cannot un-make them. Without this the gate ratchets
-  // backwards and a debate gets harder to win the longer it is argued in good
-  // faith. Merit (verdict) is not latched: the assessor is entitled to change
-  // its mind about whether the argument persuades, in either direction.
-  const session = await prisma.diffDebateSession.findUniqueOrThrow({
-    where: { id: sessionId },
-    select: { hasSubstance: true },
-  });
-
+  // The column is a cache; the events are the record. Recomputed from them on
+  // every turn rather than latched off its own previous value — a latch cannot
+  // recover a value that was already written wrongly, and this one had been:
+  // a session that cleared substance in round one held `false` after round two
+  // overwrote it, and no subsequent turn could restore it.
   await prisma.diffDebateSession.update({
     where: { id: sessionId },
     data: {
-      hasSubstance: session.hasSubstance || assessment.hasSubstance,
+      hasSubstance: await substanceEverMet(sessionId),
       verdict: assessment.verdict,
     },
   });
 
   return assessment;
+}
+
+/**
+ * Whether any assessment in this debate has ever found the argument reviewable.
+ *
+ * Derived from the event log, which is the record — never from the session's
+ * own column, which is a cache of this. Substance is a property of the argument
+ * as a whole, not of the most recent sentence: once a researcher has made
+ * reviewable claims, a later turn cannot un-make them. Without this the gate
+ * ratchets backwards and a debate becomes harder to win the longer it is argued
+ * in good faith.
+ *
+ * Merit is deliberately NOT derived this way. The assessor must stay free to
+ * change its mind about whether an argument persuades, in either direction, or
+ * there is no point arguing with it.
+ */
+async function substanceEverMet(sessionId: string): Promise<boolean> {
+  const assessments = await prisma.diffDebateEvent.findMany({
+    where: { sessionId, type: 'ASSESSMENT_RETURNED' },
+    select: { content: true },
+  });
+
+  return assessments.some((e) => {
+    try {
+      return (JSON.parse(e.content) as { hasSubstance?: boolean }).hasSubstance === true;
+    } catch {
+      // An unparseable assessment cannot testify either way. Ignoring it is the
+      // safe direction: it can only withhold a gate, never grant one.
+      return false;
+    }
+  });
 }
 
 /**
@@ -172,10 +197,13 @@ async function buildState(sessionId: string): Promise<DiffDebateState> {
     : null;
 
   const respondedToObjection = session.events.some((e) => e.type === 'RESPONSE_SUBMITTED');
+  // Derived, not read from the column — so a session whose flag was corrupted
+  // before this shipped reads correctly without a data migration.
+  const hasSubstance = await substanceEverMet(sessionId);
 
   let blockedBy: string | null = null;
   if (session.status !== 'OPEN') blockedBy = `The debate is ${session.status}.`;
-  else if (!session.hasSubstance) {
+  else if (!hasSubstance) {
     blockedBy =
       'The argument has not cleared the substance gate: it must make specific, falsifiable claims about the changed content. See substanceGaps and respond with respond_in_diff_debate.';
   } else if (session.verdict === 'DISPUTES' && !respondedToObjection) {
@@ -187,7 +215,7 @@ async function buildState(sessionId: string): Promise<DiffDebateState> {
     sessionId: session.id,
     urlVersionDiffId: session.urlVersionDiffId,
     status: session.status,
-    hasSubstance: session.hasSubstance,
+    hasSubstance,
     verdict: session.verdict,
     canPromote: blockedBy === null,
     blockedBy,

@@ -76,10 +76,13 @@ jest.mock('../src/lib/prisma', () => ({
       }),
     },
     diffDebateEvent: {
-      findMany: jest.fn(async ({ where }: { where: { sessionId: string; type: { in: string[] } } }) =>
-        db.events.filter(
-          (e) => e['sessionId'] === where.sessionId && where.type.in.includes(e['type'] as string),
-        ),
+      findMany: jest.fn(
+        async ({ where }: { where: { sessionId: string; type: { in: string[] } | string } }) =>
+          db.events.filter((e) => {
+            if (e['sessionId'] !== where.sessionId) return false;
+            const t = e['type'] as string;
+            return typeof where.type === 'string' ? where.type === t : where.type.in.includes(t);
+          }),
       ),
       create: jest.fn(async ({ data }: { data: Record<string, unknown> }) => {
         const e = { refId: null, ...data, createdAt: new Date(++seq) };
@@ -288,5 +291,51 @@ describe('multi-round debate', () => {
 
     expect((after as { verdict: string }).verdict).toBe('SUPPORTS');
     expect((after as { canPromote: boolean }).canPromote).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Substance is derived from the record, not latched off a column.
+//
+// The first fix latched `session.hasSubstance || assessment.hasSubstance`,
+// which cannot recover a value already written wrongly — and one had been. A
+// live session that cleared substance in round one held `false` after round
+// two overwrote it, and no later turn could restore it. The events are the
+// record; the column is a cache of them.
+// ---------------------------------------------------------------------------
+describe('substance derived from the event log', () => {
+  it('reads true from the record even when the stored column says false', async () => {
+    mockAssess.mockResolvedValueOnce(assessment({ verdict: 'DISPUTES', objection: 'הסבר חלופי' }));
+    const opened = await openDiffDebate(DIFF_ID, 'טיעון קונקרטי על הטקסט שנמחק');
+    const sessionId = (opened as { sessionId: string }).sessionId;
+
+    // Simulate the corruption the old latch could not undo.
+    (db.sessions.get(sessionId) as Record<string, unknown>)['hasSubstance'] = false;
+
+    mockAssess.mockResolvedValueOnce(assessment({ hasSubstance: false, substanceGaps: ['x'], verdict: 'DISPUTES' }));
+    const after = await respondInDiffDebate(sessionId, 'טיעון מופשט על ארכיטקטורת ההוכחה');
+
+    expect((after as { hasSubstance: boolean }).hasSubstance).toBe(true);
+    expect((after as { canPromote: boolean }).canPromote).toBe(true);
+  });
+
+  it('stays false when no assessment has ever found substance', async () => {
+    mockAssess.mockResolvedValue(assessment({ hasSubstance: false, substanceGaps: ['חסר'], verdict: 'DISPUTES' }));
+    const opened = await openDiffDebate(DIFF_ID, 'זה חשוב');
+
+    expect((opened as { hasSubstance: boolean }).hasSubstance).toBe(false);
+    expect((opened as { canPromote: boolean }).canPromote).toBe(false);
+  });
+
+  it('ignores an unparseable assessment rather than treating it as substance', async () => {
+    mockAssess.mockResolvedValueOnce(assessment({ hasSubstance: false, substanceGaps: ['חסר'], verdict: 'DISPUTES' }));
+    const opened = await openDiffDebate(DIFF_ID, 'טיעון');
+    const sessionId = (opened as { sessionId: string }).sessionId;
+    db.events.push({ sessionId, type: 'ASSESSMENT_RETURNED', content: 'not json', refId: null, createdAt: new Date(++seq) });
+
+    mockAssess.mockResolvedValueOnce(assessment({ hasSubstance: false, substanceGaps: ['חסר'], verdict: 'DISPUTES' }));
+    const after = await respondInDiffDebate(sessionId, 'עוד טיעון');
+
+    expect((after as { hasSubstance: boolean }).hasSubstance).toBe(false);
   });
 });
