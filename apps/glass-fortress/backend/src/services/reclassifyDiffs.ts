@@ -2,6 +2,8 @@ import { prisma } from '../lib/prisma';
 import { ForensicAgent } from './ForensicAgent';
 import { WaybackScraper, recordScanFinding } from './WaybackScraper';
 import { CLASSIFIER_VERSION, classifierPromptHash } from '../lib/classifierVersion';
+import { parseDiffItems } from '../lib/diffItems';
+import { investigativeCategoriesField } from '../lib/investigativeCategories';
 import { deriveSignificance } from './ForensicAgent';
 
 // ---------------------------------------------------------------------------
@@ -257,6 +259,95 @@ export async function reclassifyDiffs(opts: ReclassifyOptions = {}): Promise<Rec
     flipsWithEvidence,
     findingsRecorded,
     flips,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Adopting orphans: significant diffs that never became findings.
+//
+// An orphan already carries its classification — investigativeCategories,
+// aiSignificance, and the extracted items are all on the row. Nothing needs
+// re-deciding, so this makes NO LLM call at all. Reclassifying to adopt them
+// would spend a call per diff to reproduce a verdict already held, and would
+// rewrite the prose of every other row as a side effect.
+//
+// That distinction matters at scale: recovering two orphans on this page cost
+// 81 LLM calls through --force, and nothing about that ratio improves on a
+// corpus of thousands.
+// ---------------------------------------------------------------------------
+
+export interface AdoptOrphansResult {
+  examined: number;
+  adopted: number;
+  /** Orphans that recordScanFinding refused — no investigative category matched. */
+  refused: number;
+  orphans: { diffId: string; beforeDate: string; afterDate: string; categories: string[] }[];
+}
+
+export async function adoptOrphanedFindings(
+  opts: { url?: string; dryRun?: boolean } = {},
+): Promise<AdoptOrphansResult> {
+  let trackedUrlId: string | undefined;
+  if (opts.url) {
+    const tracked = await prisma.trackedUrl.findUnique({
+      where: { url: opts.url },
+      select: { id: true },
+    });
+    if (!tracked) throw new Error(`No tracked URL found for: ${opts.url}`);
+    trackedUrlId = tracked.id;
+  }
+
+  const orphans = await prisma.urlVersionDiff.findMany({
+    where: {
+      ...(trackedUrlId ? { trackedUrlId } : {}),
+      isLegallySignificant: true,
+      // The definition of an orphan: classified significant, never recorded.
+      evidence: { none: {} },
+    },
+    orderBy: { afterDate: 'asc' },
+    include: { trackedUrl: { select: { url: true } } },
+  });
+
+  let adopted = 0;
+  let refused = 0;
+
+  for (const diff of orphans) {
+    if (opts.dryRun) continue;
+
+    const before = await prisma.evidence.count({ where: { urlVersionDiffId: diff.id } });
+
+    await recordScanFinding({
+      diffId: diff.id,
+      url: diff.trackedUrl.url,
+      afterDate: diff.afterDate,
+      snapshotUrl: diff.snapshotUrl,
+      // The stored classification, unchanged. Adoption records what the diff
+      // already asserts; it never re-decides it.
+      aiSignificance: diff.aiSignificance,
+      investigativeCategories: investigativeCategoriesField.parse(diff.investigativeCategories),
+      deletedText: diff.deletedText,
+      addedText: diff.addedText,
+      deletedItems: parseDiffItems(diff.deletedText),
+      addedItems: parseDiffItems(diff.addedText),
+    });
+
+    // recordScanFinding is non-fatal and refuses silently when no category
+    // matched, so success is confirmed rather than assumed.
+    const after = await prisma.evidence.count({ where: { urlVersionDiffId: diff.id } });
+    if (after > before) adopted++;
+    else refused++;
+  }
+
+  return {
+    examined: orphans.length,
+    adopted,
+    refused,
+    orphans: orphans.map((d) => ({
+      diffId: d.id,
+      beforeDate: d.beforeDate,
+      afterDate: d.afterDate,
+      categories: [...d.investigativeCategories],
+    })),
   };
 }
 

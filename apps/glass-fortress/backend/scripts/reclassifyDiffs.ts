@@ -4,6 +4,7 @@
  *
  *   npm run forensics:reclassify -- --dry-run
  *   npm run forensics:reclassify -- --url https://corona.health.gov.il/vaccine-for-covid/
+ *   npm run forensics:reclassify -- --adopt-orphans
  *   npm run forensics:reclassify -- --out-of-sync
  *
  * Reads the raw diff text persisted at scan time, so nothing is re-fetched from
@@ -11,7 +12,11 @@
  * deletes. Costs one LLM call per diff, so --dry-run first is usually right.
  */
 import 'dotenv/config';
-import { reclassifyDiffs, findOutOfSyncEvidence } from '../src/services/reclassifyDiffs';
+import {
+  reclassifyDiffs,
+  findOutOfSyncEvidence,
+  adoptOrphanedFindings,
+} from '../src/services/reclassifyDiffs';
 import { CLASSIFIER_VERSION, classifierPromptHash } from '../src/lib/classifierVersion';
 
 function arg(name: string): string | undefined {
@@ -39,6 +44,31 @@ async function main(): Promise<void> {
         (r.diffStillSignificant ? '' : '  ← diff is no longer significant at all'));
     }
     process.exitCode = 2;
+    return;
+  }
+
+  if (flag('adopt-orphans')) {
+    // No LLM call: an orphan already carries its classification, so adoption
+    // records what the row asserts rather than re-deciding it.
+    const result = await adoptOrphanedFindings({ url: arg('url'), dryRun: flag('dry-run') });
+
+    console.log(`\nOrphans found: ${result.examined}  (significant diffs with no evidence record)`);
+    for (const o of result.orphans) {
+      console.log(`  ${o.beforeDate} → ${o.afterDate}  ${o.categories.join(', ') || '(no categories)'}`);
+    }
+    if (flag('dry-run')) {
+      console.log('\nDRY RUN — nothing was recorded.');
+      return;
+    }
+    console.log(`\nAdopted: ${result.adopted}`);
+    if (result.refused > 0) {
+      console.log(
+        `Refused: ${result.refused} — recordScanFinding declined these, which means the diff is ` +
+          'flagged significant while carrying no investigative category. That is a contradiction ' +
+          'worth investigating rather than a failure to record.',
+      );
+      process.exitCode = 2;
+    }
     return;
   }
 
