@@ -27,6 +27,7 @@ import {
   normaliseClaim,
   claimHash,
 } from '../src/services/claimTrajectory';
+import { groupByMovement } from '../src/services/claimTrajectory';
 import { getClaimTrajectoriesHandler } from '../src/mcp/tools/getClaimTrajectories';
 
 const CLAIM =
@@ -245,11 +246,11 @@ describe('get_claim_trajectories', () => {
 
     const r = JSON.parse(
       await getClaimTrajectoriesHandler({ url: 'https://health.gov.il/x' }),
-    ) as { trajectories: { changes: { snapshotUrl: string; present: boolean }[] }[] };
+    ) as { findings: { changes: { snapshotUrl: string; present: boolean }[] }[] };
 
     // First observation plus each flip — not all four snapshots.
-    expect(r.trajectories[0].changes.map((c) => c.present)).toEqual([true, false, true]);
-    expect(r.trajectories[0].changes[0].snapshotUrl).toContain('web.archive.org');
+    expect(r.findings[0].changes.map((c) => c.present)).toEqual([true, false, true]);
+    expect(r.findings[0].changes[0].snapshotUrl).toContain('web.archive.org');
   });
 
   it('reports candidates the archive never contained rather than hiding them', async () => {
@@ -276,5 +277,112 @@ describe('get_claim_trajectories', () => {
 
     expect(r.error).toBe('NOT_TRACKED');
     expect(r.explanation).toContain('start_forensic_scan');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Grouping by shared movement.
+//
+// Pages are edited in blocks, so a section added and later removed produces one
+// trajectory per paragraph inside it. The first real run on
+// corona.health.gov.il reported 47 trajectories that were only 15 events — ten
+// of them sharing a single pattern — and a reader had no way to tell one block
+// edit from ten independent findings.
+//
+// The grouping is also the stronger evidentiary claim: eight assertions about
+// infant vaccination safety appearing together and vanishing together is much
+// harder to explain as routine editing than eight unrelated removals.
+// ---------------------------------------------------------------------------
+describe('groupByMovement', () => {
+  function traj(text: string, presence: boolean[]): Parameters<typeof groupByMovement>[0][number] {
+    const observations = presence.map((present, i) => ({
+      snapshotDate: `2022-0${i + 1}-01`,
+      waybackTimestamp: `20220${i + 1}01000000`,
+      snapshotUrl: `https://web.archive.org/web/20220${i + 1}01/x`,
+      present,
+    }));
+    const shown = observations.filter((o) => o.present);
+    return {
+      claimHash: claimHash(text),
+      claimText: text,
+      observations,
+      transitions: observations.filter((o, i) => i > 0 && o.present !== observations[i - 1].present).length,
+      firstSeen: shown[0]?.snapshotDate ?? '',
+      lastSeen: shown[shown.length - 1]?.snapshotDate ?? '',
+      finalState: observations[observations.length - 1].present ? 'PRESENT' : 'REMOVED',
+    };
+  }
+
+  it('collapses claims that moved as one block', () => {
+    const groups = groupByMovement([
+      traj('a', [false, true, false]),
+      traj('b', [false, true, false]),
+      traj('c', [false, true, false]),
+    ]);
+
+    expect(groups).toHaveLength(1);
+    expect(groups[0].claims).toHaveLength(3);
+  });
+
+  it('keeps claims apart when they flip on the same dates but differ in between', () => {
+    // Same first and last state, same flip dates — but one was absent in the
+    // middle. Merging them would assert a co-movement that did not happen.
+    const groups = groupByMovement([
+      traj('a', [true, true, true, false]),
+      traj('b', [true, false, true, false]),
+    ]);
+
+    expect(groups).toHaveLength(2);
+  });
+
+  it('reports the largest block first — a section moving as a unit is the stronger finding', () => {
+    const groups = groupByMovement([
+      traj('lonely', [true, false, true, false]),
+      traj('a', [false, true, false, false]),
+      traj('b', [false, true, false, false]),
+      traj('c', [false, true, false, false]),
+    ]);
+
+    expect(groups[0].claims).toHaveLength(3);
+    expect(groups[1].claims).toHaveLength(1);
+  });
+
+  it('carries the shared shape as flips only, not every snapshot', () => {
+    const groups = groupByMovement([traj('a', [false, false, true, true, false])]);
+
+    expect(groups[0].changes.map((c) => c.present)).toEqual([false, true, false]);
+  });
+});
+
+describe('get_claim_trajectories grouping', () => {
+  it('reports findings as groups, with claims nested and counted', async () => {
+    (prisma.trackedUrl.findUnique as jest.Mock).mockResolvedValue({ id: 't-1' });
+    const OTHER = `${CLAIM} וגם משפט נוסף שנע יחד עם הראשון בדיוק באותם צילומים`;
+    (prisma.urlSnapshot.findMany as jest.Mock).mockResolvedValue(
+      [true, false, true].map((c, i) => ({
+        snapshotDate: `2022-0${i + 1}-01`,
+        waybackTimestamp: `20220${i + 1}01000000`,
+        snapshotUrl: `https://web.archive.org/web/20220${i + 1}01/x`,
+        fullText: c ? `prefix ${OTHER} suffix` : 'prefix suffix',
+      })),
+    );
+    (prisma.urlVersionDiff.findMany as jest.Mock).mockResolvedValue([
+      {
+        deletedText: JSON.stringify([
+          { summary: 's', exactQuote: CLAIM },
+          { summary: 's', exactQuote: OTHER },
+        ]),
+        addedText: '[]',
+      },
+    ]);
+
+    const r = JSON.parse(
+      await getClaimTrajectoriesHandler({ url: 'https://health.gov.il/x' }),
+    ) as { findingCount: number; claimsTracked: number; findings: { claimCount: number }[] };
+
+    // Both claims move identically, so they are one finding covering two claims.
+    expect(r.findingCount).toBe(1);
+    expect(r.claimsTracked).toBe(2);
+    expect(r.findings[0].claimCount).toBe(2);
   });
 });

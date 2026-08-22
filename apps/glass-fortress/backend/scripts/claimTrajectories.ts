@@ -30,30 +30,34 @@ async function main(): Promise<void> {
     ...(minTransitions ? { minTransitions: parseInt(minTransitions, 10) } : {}),
   });
 
-  console.log(`\nPage:        ${result.url}`);
-  console.log(`Snapshots:   ${result.snapshotsExamined}`);
-  console.log(`Candidates:  ${result.candidatesConsidered}` +
+  console.log(`\nPage:       ${result.url}`);
+  console.log(`Snapshots:  ${result.snapshotsExamined}`);
+  console.log(`Candidates: ${result.candidatesConsidered}` +
     (result.candidatesUnmatched > 0
       ? `  (${result.candidatesUnmatched} never found in any snapshot — likely paraphrased extractions)`
       : ''));
-  console.log(`Trajectories: ${result.trajectories.length}\n`);
+  // Findings, not trajectories. Pages are edited in blocks, so one event
+  // produces a trajectory per paragraph inside it.
+  console.log(`Findings:   ${result.groups.length}  (${result.trajectories.length} claims)\n`);
 
-  for (const t of result.trajectories) {
+  for (const g of result.groups) {
     console.log('─'.repeat(78));
-    console.log(`${t.transitions} transitions · ${t.firstSeen} → ${t.lastSeen} · final: ${t.finalState}`);
-    console.log(`\n  "${t.claimText.slice(0, 220)}${t.claimText.length > 220 ? '…' : ''}"\n`);
-    // Only the flips are printed: the unchanged stretches between them are
-    // where nothing happened, and listing every snapshot would bury the shape.
-    for (let i = 0; i < t.observations.length; i++) {
-      const o = t.observations[i];
-      const prev = i > 0 ? t.observations[i - 1] : undefined;
-      if (prev && prev.present === o.present) continue;
+    console.log(
+      `${g.claims.length} claim(s) moved together · ${g.transitions} transitions · ` +
+        `${g.firstSeen} → ${g.lastSeen} · final: ${g.finalState}`,
+    );
+    console.log();
+    for (const o of g.changes) {
       console.log(`    ${o.snapshotDate}  ${o.present ? 'PRESENT' : 'ABSENT '}  ${o.snapshotUrl}`);
+    }
+    console.log();
+    for (const c of g.claims) {
+      console.log(`    · ${c.claimText.slice(0, 150)}${c.claimText.length > 150 ? '…' : ''}`);
     }
     console.log();
   }
 
-  if (result.trajectories.length > 0) {
+  if (result.groups.length > 0) {
     console.log('Verify any of these by opening the snapshot URLs and searching for the claim text.');
   }
 }

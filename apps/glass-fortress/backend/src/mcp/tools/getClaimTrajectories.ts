@@ -11,6 +11,17 @@ import { computeClaimTrajectories } from '../../services/claimTrajectory';
 // that was removed, restored and removed again reads as a pattern rather than
 // as three unrelated edits.
 //
+// Results are grouped by shared movement. Page edits happen in blocks, so a
+// section added and later removed yields one trajectory per paragraph inside it:
+// the first real run on corona.health.gov.il reported 47 trajectories that were
+// only 15 events, ten of them sharing a single pattern. Reporting them
+// separately would let a reader mistake one block edit for ten findings.
+//
+// The grouping is also the stronger claim. "Eight assertions about infant
+// vaccination safety appeared together on 5 August and vanished together on
+// 6 September" is much harder to explain as routine editing than eight
+// unrelated paragraph removals.
+//
 // Computed on demand rather than read from storage. Detection is a string search
 // against archived page text — deterministic, fast, and free — so precomputing
 // would only create a second copy that could fall behind the snapshots it
@@ -62,23 +73,27 @@ export async function getClaimTrajectoriesHandler(input: {
     // usually paraphrased extractions, and silently dropping them would make a
     // thin result look thorough.
     candidatesNotFoundInArchive: result.candidatesUnmatched,
-    trajectoryCount: result.trajectories.length,
+    // The finding count is the number of GROUPS. claimsTracked is how many
+    // individual assertions those groups contain, and is much larger because
+    // pages are edited in blocks.
+    findingCount: result.groups.length,
+    claimsTracked: result.trajectories.length,
     explanation:
-      result.trajectories.length > 0
-        ? 'Each trajectory lists every archived snapshot examined and whether the claim was present. ' +
-          'Verify any of them by opening the snapshot URLs and searching for the claim text — this is ' +
-          'computed by string search, with no AI judgment involved.'
+      result.groups.length > 0
+        ? 'Each finding is a set of claims that moved as a unit — identical presence across every ' +
+          'archived snapshot. Only the flips are listed; the stretches between them are unchanged. ' +
+          'Verify any of it by opening the snapshot URLs and searching for the claim text: this is ' +
+          'computed by string search over the archived pages, with no AI judgment involved.'
         : 'No claim on this page appeared and disappeared more than once. Pass minTransitions: 1 to see single removals.',
-    trajectories: result.trajectories.map((t) => ({
-      claimHash: t.claimHash,
-      claimText: t.claimText,
-      transitions: t.transitions,
-      firstSeen: t.firstSeen,
-      lastSeen: t.lastSeen,
-      finalState: t.finalState,
-      // Only the flips. The unchanged stretches between them are where nothing
-      // happened, and listing all 80-odd snapshots per claim would bury the shape.
-      changes: t.observations.filter((o, i) => i === 0 || o.present !== t.observations[i - 1].present),
+    findings: result.groups.map((g) => ({
+      patternHash: g.patternHash,
+      transitions: g.transitions,
+      firstSeen: g.firstSeen,
+      lastSeen: g.lastSeen,
+      finalState: g.finalState,
+      claimCount: g.claims.length,
+      changes: g.changes,
+      claims: g.claims,
     })),
   });
 }
