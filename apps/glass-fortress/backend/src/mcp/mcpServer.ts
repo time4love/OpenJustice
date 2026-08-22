@@ -23,6 +23,14 @@ import { recoverEvidenceFromScreenshotSchema, recoverEvidenceFromScreenshotHandl
 import { checkOnChainStatusSchema, checkOnChainStatusHandler } from './tools/checkOnChainStatus';
 import { getWhistleblowerCallSchema, getWhistleblowerCallHandler } from './tools/getWhistleblowerCall';
 import { getScanFindingsSchema, getScanFindingsHandler } from './tools/getScanFindings';
+import {
+  openThesisFramingSchema,
+  openThesisFramingHandler,
+  assessThesisFramingSchema,
+  assessThesisFramingHandler,
+  getThesisFramingSchema,
+  getThesisFramingHandler,
+} from './tools/thesisFramingTools';
 import { getClaimTrajectoriesSchema, getClaimTrajectoriesHandler } from './tools/getClaimTrajectories';
 import { promoteScanFindingsSchema, promoteScanFindingsHandler } from './tools/promoteScanFindings';
 import {
@@ -215,6 +223,44 @@ export function createMcpServer(): McpServer {
     getClaimTrajectoriesSchema,
     async (input) => ({
       content: [{ type: 'text' as const, text: await getClaimTrajectoriesHandler(input) }],
+    }),
+  );
+
+  // -------------------------------------------------------------------------
+  // Tools: thesis framing — deciding what to argue, before writing it.
+  // -------------------------------------------------------------------------
+  server.tool(
+    'open_thesis_framing',
+    'Open a session to decide what a thesis should argue, BEFORE writing one. The topic string a ' +
+      'thesis is built from determines which evidence gets pulled and what the Devil\'s Advocate ' +
+      'attacks, so a wrong framing produces a well-argued thesis about the wrong thing. This session ' +
+      'has no thesis attached; the thesis attaches to it when created.',
+    openThesisFramingSchema,
+    async (input) => ({
+      content: [{ type: 'text' as const, text: await openThesisFramingHandler(input) }],
+    }),
+  );
+
+  server.tool(
+    'assess_thesis_framing',
+    'Check a proposed thesis framing against confirmed evidence. Returns candidate framings anchored ' +
+      'in specific records, assumptions that need verifying — and, most importantly, CONTRADICTIONS: ' +
+      'where your own evidence points the other way. Finding that now is far cheaper than hearing it ' +
+      'from the Devil\'s Advocate after a thesis is written, or from the opposing side. The whole ' +
+      'exchange is recorded and attaches to the thesis.',
+    assessThesisFramingSchema,
+    async (input) => ({
+      content: [{ type: 'text' as const, text: await assessThesisFramingHandler(input) }],
+    }),
+  );
+
+  server.tool(
+    'get_thesis_framing',
+    'Read a thesis framing session — its full turn-by-turn record of proposed framings and the ' +
+      'assessments of them, and the thesis it produced if any.',
+    getThesisFramingSchema,
+    async (input) => ({
+      content: [{ type: 'text' as const, text: await getThesisFramingHandler(input) }],
     }),
   );
 
