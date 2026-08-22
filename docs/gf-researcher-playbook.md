@@ -2086,6 +2086,43 @@ reclassification run report captures prose only for rows that flip, while rewrit
 touches. That gap closes before any bulk pass. The four records get corrected by hand, in the
 researcher's words, through `correct_evidence_summary`, which records each one.
 
+
+### FINDING 39 — a dry run that selected nothing and reported success
+
+The first real invocation of `forensics:resummarize` returned:
+
+```
+examined:  0
+rewritten: 0 (dry run — none written)
+failed:    0
+hashDrift: 0
+```
+
+Exit code 0. Indistinguishable from *"checked everything, nothing needed repair."*
+
+The target filter was `NOT: { summaryVersion: SUMMARY_VERSION }`, which compiles to
+`NOT (summaryVersion = '…')`. Under SQL's three-valued logic that evaluates to NULL on a NULL
+column, and NULL is not true, so the row is excluded. **Every row needing this repair has
+`summaryVersion` NULL** — the filter excluded precisely the set it existed to find, and did it
+silently.
+
+**Nine tests passed.** They could not have caught it: they mock `findMany` and assert the *shape*
+of the `where` clause, so the clause is never evaluated against data. The tests confirmed the
+filter was the one intended. Being the intended filter was the problem.
+
+> **Mocking the query layer means the query is never tested. A test can tell you the clause is the
+> one you wrote; only a database can tell you it selects anything.**
+
+Caught by running a two-row validation pass before committing 81 LLM calls to the full one. That
+habit cost one wasted call and bought the difference between a corpus repair and a repair that
+reports success while touching nothing — which, given the report's exit code, would have been
+recorded as "all seven records already clean."
+
+It belongs beside FINDING 20 and FINDING 13. Same defect class, third instance in this document: a
+count that describes something other than what the reader assumes it describes, with nothing
+verifying the difference. Here the count was honest about what it examined and silent about the
+fact that it examined nothing.
+
 ## Where this leaves the vault
 
 | | |

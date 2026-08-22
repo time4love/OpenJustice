@@ -67,7 +67,15 @@ export async function resummarizeDiffs(opts: {
     where: {
       // Rows already carrying a self-contained summary are left exactly alone —
       // re-running must be safe and must not churn prose that is already right.
-      NOT: { summaryVersion: SUMMARY_VERSION },
+      //
+      // The null branch is not defensive padding, it is the whole target set.
+      // `NOT: { summaryVersion: X }` compiles to `NOT (summaryVersion = X)`,
+      // which evaluates to NULL — and therefore matches nothing — on a NULL
+      // column. Every row needing this repair has summaryVersion NULL, so that
+      // filter selected precisely the rows it exists to find, and reported
+      // "examined: 0, failed: 0" with exit code 0. A pass that silently does
+      // nothing must not look like a pass that found nothing to do.
+      OR: [{ summaryVersion: null }, { summaryVersion: { not: SUMMARY_VERSION } }],
       ...(opts.url ? { trackedUrl: { url: opts.url } } : {}),
     },
     select: {

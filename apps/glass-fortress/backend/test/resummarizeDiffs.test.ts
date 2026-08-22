@@ -73,15 +73,18 @@ describe('resummarizeDiffs', () => {
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
-  it('leaves rows that already carry a self-contained summary alone', async () => {
-    // Enforced in the query, so re-running is safe and never churns prose that
-    // is already right.
+  it('selects rows whose summaryVersion is NULL — the entire target set', async () => {
+    // `NOT: { summaryVersion: X }` compiles to `NOT (summaryVersion = X)`, which
+    // is NULL on a NULL column and matches nothing. Every row needing this repair
+    // has summaryVersion NULL, so the first version of this filter excluded
+    // exactly the rows it exists to find — and reported "examined: 0, failed: 0"
+    // with exit code 0. Found by running it, not by reading it.
     setup([]);
 
     await resummarizeDiffs({ dryRun: false });
 
     expect((prisma.urlVersionDiff.findMany as jest.Mock).mock.calls[0][0].where).toMatchObject({
-      NOT: { summaryVersion: SUMMARY_VERSION },
+      OR: [{ summaryVersion: null }, { summaryVersion: { not: SUMMARY_VERSION } }],
     });
   });
 
