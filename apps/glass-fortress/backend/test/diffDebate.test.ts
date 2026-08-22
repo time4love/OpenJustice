@@ -76,6 +76,11 @@ jest.mock('../src/lib/prisma', () => ({
       }),
     },
     diffDebateEvent: {
+      findMany: jest.fn(async ({ where }: { where: { sessionId: string; type: { in: string[] } } }) =>
+        db.events.filter(
+          (e) => e['sessionId'] === where.sessionId && where.type.in.includes(e['type'] as string),
+        ),
+      ),
       create: jest.fn(async ({ data }: { data: Record<string, unknown> }) => {
         const e = { refId: null, ...data, createdAt: new Date(++seq) };
         db.events.push(e);
@@ -227,5 +232,61 @@ describe('the session as a record', () => {
     db.diff = null;
 
     expect(await openDiffDebate('nope', 'טיעון')).toMatchObject({ error: 'DIFF_NOT_FOUND' });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Multi-round regressions.
+//
+// Every test above submits a SINGLE argument, which is why none of them caught
+// this: the first real human debate lost its substance gate on round two. The
+// researcher had made specific claims about the deleted text in round one, then
+// answered an objection about the INFERENCE — an abstract reply, correctly so,
+// since answering an inference does not require re-quoting the text. The
+// assessor saw only that reply, read it as a fresh opening argument, and
+// returned hasSubstance: false. The gate ratcheted backwards.
+// ---------------------------------------------------------------------------
+describe('multi-round debate', () => {
+  it('gives the assessor the whole debate, not just the latest turn', async () => {
+    mockAssess.mockResolvedValue(assessment({ verdict: 'DISPUTES', objection: 'הסבר חלופי' }));
+    const opened = await openDiffDebate(DIFF_ID, 'הוסרה טענת היעילות המספרית');
+    const sessionId = (opened as { sessionId: string }).sessionId;
+
+    await respondInDiffDebate(sessionId, 'ההסבר החלופי אינו מאיין את ערך הראיה');
+
+    const secondCall = mockAssess.mock.calls[1][0] as { priorTurns: string[] };
+    expect(secondCall.priorTurns.length).toBeGreaterThan(0);
+    expect(secondCall.priorTurns.join('\n')).toContain('הוסרה טענת היעילות המספרית');
+    // The turn under assessment is passed separately, not duplicated into history.
+    expect(secondCall.priorTurns.join('\n')).not.toContain('ההסבר החלופי אינו מאיין');
+  });
+
+  it('never un-clears a substance gate that was already met', async () => {
+    mockAssess.mockResolvedValueOnce(assessment({ verdict: 'DISPUTES', objection: 'הסבר חלופי' }));
+    const opened = await openDiffDebate(DIFF_ID, 'טיעון קונקרטי על הטקסט שנמחק');
+    const sessionId = (opened as { sessionId: string }).sessionId;
+    expect((opened as { hasSubstance: boolean }).hasSubstance).toBe(true);
+
+    // An abstract reply about the inference — the exact shape that regressed.
+    mockAssess.mockResolvedValueOnce(
+      assessment({ hasSubstance: false, substanceGaps: ['חסר ביסוס'], verdict: 'DISPUTES' }),
+    );
+    const after = await respondInDiffDebate(sessionId, 'טיעון על ארכיטקטורת ההוכחה');
+
+    expect((after as { hasSubstance: boolean }).hasSubstance).toBe(true);
+  });
+
+  it('still lets merit change in either direction across rounds', async () => {
+    // Substance latches; the verdict must not, or the assessor could never be
+    // persuaded — which is the point of arguing at all.
+    mockAssess.mockResolvedValueOnce(assessment({ verdict: 'DISPUTES', objection: 'הסבר חלופי' }));
+    const opened = await openDiffDebate(DIFF_ID, 'טיעון קונקרטי');
+    const sessionId = (opened as { sessionId: string }).sessionId;
+
+    mockAssess.mockResolvedValueOnce(assessment({ verdict: 'SUPPORTS' }));
+    const after = await respondInDiffDebate(sessionId, 'מענה משכנע');
+
+    expect((after as { verdict: string }).verdict).toBe('SUPPORTS');
+    expect((after as { canPromote: boolean }).canPromote).toBe(true);
   });
 });
