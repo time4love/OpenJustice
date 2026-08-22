@@ -77,7 +77,20 @@ export async function reclassifyDiffs(opts: ReclassifyOptions = {}): Promise<Rec
       ...(trackedUrlId ? { trackedUrlId } : {}),
       // Rows already at the current version are skipped: re-running them costs
       // an LLM call to reproduce a verdict we already hold.
-      ...(opts.force ? {} : { NOT: { classifierVersion: CLASSIFIER_VERSION } }),
+      //
+      // The null branch is not defensive padding. `NOT: { classifierVersion: X }`
+      // becomes `classifierVersion != X`, and in SQL `NULL != 'x'` is NULL, not
+      // TRUE — so rows never classified by ANY version were silently excluded.
+      // Those are the rows most in need of reclassification, and the first real
+      // run examined zero of 81 because of it.
+      ...(opts.force
+        ? {}
+        : {
+            OR: [
+              { classifierVersion: null },
+              { NOT: { classifierVersion: CLASSIFIER_VERSION } },
+            ],
+          }),
     },
     orderBy: { afterDate: 'asc' },
     include: {

@@ -82,9 +82,10 @@ model TrackedUrl {
   title     String?
   status    TrackedUrlStatus @default(IDLE)
   createdAt DateTime         @default(now())
-  diffs     UrlVersionDiff[]
-  snapshots UrlSnapshot[]
-  job       WaybackScrapeJob?
+  diffs        UrlVersionDiff[]
+  snapshots    UrlSnapshot[]
+  job          WaybackScrapeJob?
+  trajectories ClaimTrajectory[]
 }
 
 // One record per unique archived snapshot of a TrackedUrl.
@@ -1016,4 +1017,66 @@ model ReclassificationRun {
   flips             String   @default("[]")
   startedAt         DateTime @default(now())
   finishedAt        DateTime?
+}
+
+// ---------------------------------------------------------------------------
+// How one claim moved across a page's whole archived history.
+//
+// The finding no individual diff can see. A diff compares two snapshots; a
+// trajectory follows one assertion across all of them — "present, removed,
+// restored, removed, restored, removed, and never returned" over six months.
+// On corona.health.gov.il the 4th-dose efficacy figures did exactly that six
+// times, and every diff that contained them saw only its own single step.
+//
+// Deliberately NOT an Evidence row. Evidence is point-in-time by construction:
+// one evidenceDate, one urlVersionDiffId (@unique), one fileHash over one
+// document. A trajectory is an interval with internal structure, and forcing it
+// into that shape would make it assert something the schema cannot hold.
+//
+// Deliberately NOT anchored on-chain either, for the same reason a
+// UrlVersionDiff is not: it is DERIVABLE from snapshots that are already
+// anchored individually. Anyone can take the archived snapshots, search them
+// for the claim text, and recompute this exactly. An anchor would add nothing
+// but the appearance of authority.
+//
+// That verifiability is why presence is computed against UrlSnapshot.fullText
+// rather than against the AI-extracted diff items. Extracted items would make a
+// trajectory depend on extraction quality and drift when the prompt changes;
+// raw text makes it a string search anyone can repeat against web.archive.org.
+// Extraction is used only to DISCOVER which claims are worth following.
+//
+// Citation is deliberately left open. A thesis cites by fileHash and
+// ThesisMention knows KEY_FIGURE | EVIDENCE | TRACKED_URL; a trajectory is none
+// of those. That decision is better made against real trajectories than against
+// an imagined use.
+// ---------------------------------------------------------------------------
+
+enum ClaimFinalState {
+  PRESENT // the claim is on the page as of the most recent snapshot
+  REMOVED // it was there and is not any more
+}
+
+model ClaimTrajectory {
+  id           String     @id @default(cuid())
+  trackedUrlId String
+  trackedUrl   TrackedUrl @relation(fields: [trackedUrlId], references: [id], onDelete: Cascade)
+  // SHA-256 of the whitespace-normalised claim text. A deterministic identity:
+  // recomputing always yields the same row, so this upserts idempotently on
+  // every scan and can be referred to stably without a "which run made this".
+  claimHash    String
+  claimText    String
+  // JSON: Array<{ snapshotDate, waybackTimestamp, snapshotUrl, present: boolean }>
+  // Every snapshot examined, in date order — including the ones where the claim
+  // was absent. The absences are half the finding.
+  observations String
+  // How many times presence flipped. 1 is an ordinary removal, already visible
+  // as a diff. 2 or more is the pattern a diff cannot show.
+  transitions  Int
+  firstSeen    String // YYYY-MM-DD of the earliest snapshot containing the claim
+  lastSeen     String // YYYY-MM-DD of the latest snapshot containing it
+  finalState   ClaimFinalState
+  computedAt   DateTime @updatedAt
+  createdAt    DateTime @default(now())
+
+  @@unique([trackedUrlId, claimHash])
 }

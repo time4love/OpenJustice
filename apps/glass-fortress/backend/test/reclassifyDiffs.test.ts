@@ -53,6 +53,7 @@ jest.mock('../src/lib/prisma', () => ({
   },
 }));
 
+import { prisma } from '../src/lib/prisma';
 import { reclassifyDiffs, findOutOfSyncEvidence } from '../src/services/reclassifyDiffs';
 
 function diff(over: Record<string, unknown> = {}): Record<string, unknown> {
@@ -198,6 +199,37 @@ describe('reclassifyDiffs', () => {
     // The mocked client exposes no delete method at all; this asserts the code
     // never reaches for one.
     expect(db.updates.length).toBeGreaterThan(0);
+  });
+});
+
+describe('version targeting', () => {
+  // -------------------------------------------------------------------------
+  // Rows never classified by any version carry classifierVersion NULL, and
+  // `NOT: { classifierVersion: X }` compiles to `!= X`, which is NULL — not
+  // TRUE — for those rows. The first real run examined 0 of 81 diffs because
+  // the filter excluded exactly the rows it existed to find.
+  // -------------------------------------------------------------------------
+  it('selects rows whose classifierVersion is null', async () => {
+    db.diffs = [];
+    await reclassifyDiffs({});
+
+    const call = (prisma.urlVersionDiff.findMany as jest.Mock).mock.calls[0][0] as {
+      where: { OR?: unknown[] };
+    };
+    expect(call.where.OR).toEqual([
+      { classifierVersion: null },
+      { NOT: { classifierVersion: 'v2-item-level' } },
+    ]);
+  });
+
+  it('drops the version filter entirely under --force', async () => {
+    db.diffs = [];
+    await reclassifyDiffs({ force: true });
+
+    const call = (prisma.urlVersionDiff.findMany as jest.Mock).mock.calls[0][0] as {
+      where: Record<string, unknown>;
+    };
+    expect(call.where.OR).toBeUndefined();
   });
 });
 
