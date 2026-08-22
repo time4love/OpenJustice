@@ -24,6 +24,16 @@ import { checkOnChainStatusSchema, checkOnChainStatusHandler } from './tools/che
 import { getWhistleblowerCallSchema, getWhistleblowerCallHandler } from './tools/getWhistleblowerCall';
 import { getScanFindingsSchema, getScanFindingsHandler } from './tools/getScanFindings';
 import { promoteScanFindingsSchema, promoteScanFindingsHandler } from './tools/promoteScanFindings';
+import {
+  openDiffDebateSchema,
+  openDiffDebateHandler,
+  respondInDiffDebateSchema,
+  respondInDiffDebateHandler,
+  promoteFromDiffDebateSchema,
+  promoteFromDiffDebateHandler,
+  getDiffDebateSchema,
+  getDiffDebateHandler,
+} from './tools/diffDebateTools';
 
 // ---------------------------------------------------------------------------
 // Factory — creates a fresh McpServer per request.
@@ -137,6 +147,56 @@ export function createMcpServer(): McpServer {
     promoteScanFindingsSchema,
     async (input) => ({
       content: [{ type: 'text' as const, text: await promoteScanFindingsHandler(input) }],
+    }),
+  );
+
+  // -------------------------------------------------------------------------
+  // Tools: the diff debate — arguing a passed-over change into evidence.
+  // -------------------------------------------------------------------------
+  server.tool(
+    'open_diff_debate',
+    'Open a debate arguing that a page change the forensic classifier passed over should become ' +
+      'evidence. Requires a rationale making specific, falsifiable claims about the changed content — ' +
+      'bare assertion is refused. Returns the assessor\'s response and a session id. Promotion is a ' +
+      'separate call: this one never writes evidence and never touches the chain. Use this when you ' +
+      'disagree with the classifier; promote_scan_findings confirms what it DID flag.',
+    openDiffDebateSchema,
+    async (input) => ({
+      content: [{ type: 'text' as const, text: await openDiffDebateHandler(input) }],
+    }),
+  );
+
+  server.tool(
+    'respond_in_diff_debate',
+    'Reply within an open diff debate — answering the assessor\'s objection, or supplying the ' +
+      'specificity its substanceGaps asked for. Re-assessed and recorded as another round. The ' +
+      'assessor cannot veto: once your argument has substance you may promote even over a sustained ' +
+      'objection, and the objection is then carried on the evidence permanently.',
+    respondInDiffDebateSchema,
+    async (input) => ({
+      content: [{ type: 'text' as const, text: await respondInDiffDebateHandler(input) }],
+    }),
+  );
+
+  server.tool(
+    'promote_from_diff_debate',
+    'Promote the debated change to evidence, registering it on-chain. Requires that the argument ' +
+      'cleared the substance gate and, if the assessor disputes it, that you answered the objection. ' +
+      'Irreversible. If the assessor still disagrees, the promotion is recorded as made over its ' +
+      'objection and that stays attached to the evidence.',
+    promoteFromDiffDebateSchema,
+    async (input) => ({
+      content: [{ type: 'text' as const, text: await promoteFromDiffDebateHandler(input) }],
+    }),
+  );
+
+  server.tool(
+    'get_diff_debate',
+    'Read a diff debate — its full turn-by-turn record of arguments, assessments and responses, ' +
+      'whether it can be promoted yet, and what is blocking it if not.',
+    getDiffDebateSchema,
+    async (input) => ({
+      content: [{ type: 'text' as const, text: await getDiffDebateHandler(input) }],
     }),
   );
 

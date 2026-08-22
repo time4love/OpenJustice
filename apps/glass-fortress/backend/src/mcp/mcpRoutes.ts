@@ -34,6 +34,7 @@ export const READ_TOOLS = new Set([
   // Reads recorded scan output — no LLM, no RPC. The scan that produced it was
   // already gated; listing what it found for review is not the expensive part.
   'get_scan_findings',
+  'get_diff_debate',
   'get_figure_dossier',
   'get_thesis_context',
   'get_session_summary',
@@ -82,6 +83,12 @@ export const WRITE_TOOLS = new Set([
   // Registers every pending finding for a page on-chain. Irreversible, spends
   // gas, and asserts CONFIRMED — the most consequential write in the toolset.
   'promote_scan_findings',
+
+  // The diff debate. open/respond each run an LLM assessment; promote registers
+  // on-chain. All gated — get_diff_debate is a plain read and sits above.
+  'open_diff_debate',
+  'respond_in_diff_debate',
+  'promote_from_diff_debate',
 ]);
 
 // ---------------------------------------------------------------------------
