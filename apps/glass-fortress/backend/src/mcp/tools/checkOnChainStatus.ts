@@ -85,6 +85,8 @@ interface OnChainStatusResult {
     /** The registry's own sequential id. Stringified — it is a uint256. */
     registryEvidenceId: string | null;
     recoveredTxHash?: string | null;
+    /** Set when a tx-hash recovery scan failed, so `null` is not read as "none found". */
+    recoveryError?: string;
   };
   explanation: string;
 }
@@ -122,6 +124,23 @@ function decideVerdict(
     : ON_CHAIN_VERDICTS.PENDING_UNREGISTERED;
 }
 
+/**
+ * The only honest answer when the registry cannot be questioned.
+ *
+ * Never collapse a chain failure into `registered: false`. Absence of an answer
+ * and a definitive negative license opposite decisions about an irreversible
+ * write, and the caller cannot tell them apart once the distinction is lost.
+ */
+function chainUnavailable(fileHash: string, err: unknown): string {
+  return JSON.stringify({
+    fileHash,
+    error: 'CHAIN_UNAVAILABLE',
+    message: err instanceof Error ? err.message : String(err),
+    explanation:
+      'The on-chain registry could not be reached, so no verdict is possible. This is not evidence that the hash is unregistered.',
+  });
+}
+
 export async function checkOnChainStatusHandler(input: {
   fileHash: string;
   recoverTxHash?: boolean;
@@ -135,19 +154,22 @@ export async function checkOnChainStatusHandler(input: {
   try {
     web3 = new Web3Service();
   } catch (err) {
-    // A misconfigured chain connection must never be reported as "not
-    // registered" — that reads as a definitive negative and would license a
-    // duplicate promotion.
-    return JSON.stringify({
-      fileHash: input.fileHash,
-      error: 'CHAIN_UNAVAILABLE',
-      message: err instanceof Error ? err.message : String(err),
-      explanation:
-        'The on-chain registry could not be reached, so no verdict is possible. This is not evidence that the hash is unregistered.',
-    });
+    // Misconfiguration — RPC_URL, key, or contract address absent.
+    return chainUnavailable(input.fileHash, err);
   }
 
-  const { registered, evidenceId: registryEvidenceId } = await web3.isHashRegistered(input.fileHash);
+  // A CONFIGURED chain can still be unreachable, and that is the common case:
+  // a public RPC returning "no backend is currently healthy" surfaces here as
+  // an ethers CALL_EXCEPTION, not as a constructor failure. Left unguarded it
+  // escaped as a raw exception where this tool promises a verdict — found on
+  // the first real call against a real endpoint, 2026-08-22.
+  let registered: boolean;
+  let registryEvidenceId: bigint;
+  try {
+    ({ registered, evidenceId: registryEvidenceId } = await web3.isHashRegistered(input.fileHash));
+  } catch (err) {
+    return chainUnavailable(input.fileHash, err);
+  }
 
   const status = record?.status ?? null;
   const txHash = record?.onChainTxHash ?? null;
@@ -172,7 +194,15 @@ export async function checkOnChainStatusHandler(input: {
   };
 
   if (input.recoverTxHash && registered && !txHash) {
-    result.chain.recoveredTxHash = await web3.findRegisteringTxHash(input.fileHash);
+    try {
+      result.chain.recoveredTxHash = await web3.findRegisteringTxHash(input.fileHash);
+    } catch (err) {
+      // The verdict above is already established and stays valid — only the
+      // convenience lookup failed. But an unannotated null would read as "no
+      // registering transaction exists", which is a different claim entirely.
+      result.chain.recoveredTxHash = null;
+      result.chain.recoveryError = err instanceof Error ? err.message : String(err);
+    }
   }
 
   return JSON.stringify(result);

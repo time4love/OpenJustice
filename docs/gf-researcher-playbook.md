@@ -170,3 +170,142 @@ tool is in neither set or in both.
 
 **Tests:** 878 passing, including 18 new — every verdict branch above, and the
 derivation conditions for the call.
+
+### Deploy verification
+
+The staging deploy of both tools reported `SUCCESS`, and the public MCP inventory
+confirms the classification landed as intended — 6 read tools, 17 write tools, with
+`get_whistleblower_call` open and `check_on_chain_status` gated.
+
+Confirmed live end-to-end by calling the open tool anonymously over the MCP endpoint
+with a thesis id that does not exist:
+
+```json
+{"error": "No thesis found with id: \"probe-nonexistent\""}
+```
+
+A correct answer to a wrong question — the tool is deployed, routed, and executing.
+
+### FINDING 4 — a tool deployed mid-session is invisible to the session that built it
+
+MCP negotiates its tool list when the client connects. A tool deployed afterwards does
+not appear in an existing session, however healthy the deploy: the server advertises it,
+and the connected client never asks again.
+
+The consequence is procedural, and it belongs at the top of any researcher's checklist:
+
+> **Deploy tooling before opening the research session, never during it.**
+
+A researcher who discovers a missing tool mid-investigation cannot build it and keep
+working. They must build it, deploy it, and reconnect — and reconnecting means
+re-authorizing, since each client holds its own token.
+
+This is also why the workflow's gated tools should be exercised *early*. An expired
+authorization surfaces at the first gated call. Discovering that at
+`check_on_chain_status`, one step before promotion, is recoverable; discovering it
+mid-promotion is not.
+
+---
+
+## Step 2 — The pre-promotion check, and what it caught
+
+### Request
+
+```
+check_on_chain_status
+  fileHash: "0x0654…c262"
+```
+
+### Response
+
+Not a verdict. A raw ethers exception:
+
+```
+missing revert data (action="call", ..., code=CALL_EXCEPTION)
+```
+
+The gated tool authenticated and executed — so the OAuth path is confirmed working for a
+write-classified tool. Everything after that failed, and the failure was worth more than
+the verdict would have been.
+
+### FINDING 5 — the tool leaked an unstructured error where it promised a verdict
+
+`check_on_chain_status` guards its *constructor* against a missing RPC configuration and
+returns `CHAIN_UNAVAILABLE`. It does not guard the contract **call**. So a chain that is
+configured but unreachable escapes as a raw ethers exception instead of the structured
+answer the tool exists to give.
+
+This is the same defect the tool's own design note warns about, one layer down. A caller
+seeing `CALL_EXCEPTION` has no way to tell "the hash is absent" from "the question was
+never asked" — and those license opposite decisions about an irreversible write.
+
+Shipped by the session that built the tool, found by the first real call against real
+infrastructure. Reading the code would not have surfaced it; only a flaky endpoint did.
+
+### FINDING 6 — staging anchors evidence through an unauthenticated public RPC
+
+Diagnosing Finding 5 meant asking whether the contract was even there. It is:
+
+| Check | Result |
+|---|---|
+| `eth_getCode` at the registry address | 2,799 bytes — deployed |
+| `isRegistered` selector `0x27258b22` in bytecode | present |
+| `sepolia.base.org` (staging's configured `RPC_URL`) | `no backend is currently healthy to serve traffic` |
+| `base-sepolia-rpc.publicnode.com` | responded correctly |
+
+The contract and the ABI were never the problem. Staging's `RPC_URL` is
+`https://sepolia.base.org` — an unauthenticated public endpoint with no availability
+guarantee, and every on-chain operation depends on it, including `promote_evidence`.
+
+**This blocks promotion, and the reason is not "it might fail".** A read that fails is
+harmless — you retry. `promote_evidence` sends a transaction. If it fails *after*
+broadcast, the anchor may exist on-chain while the database records no transaction hash:
+the `MISSING_TX_HASH` state, reached by accident, on the exact record this session is
+building as a reference example. Anchoring evidence through an endpoint that answers
+"no backend is currently healthy" is how integrity gaps get created rather than caught.
+
+### The substantive answer
+
+Asked through a healthy endpoint, the contract's answer is unambiguous:
+
+```
+registered: false | registryEvidenceId: 0
+```
+
+The hash is not anchored, and does not collide with the two orphaned anchors from the
+2026-08-20 audit. The record is genuinely `PENDING_UNREGISTERED` and safe to promote —
+once it can be promoted through an endpoint that stays up.
+
+That answer is recorded here as **diagnostic, not as the workflow's output**. It came
+from a manual `eth_call`, which is exactly the side channel this session exists to prove
+unnecessary. It gets re-asked through the tool once the tool can answer.
+
+### The fix
+
+**Finding 5 — the tool.** The contract call is now wrapped, and so is the optional
+tx-hash recovery scan. Both funnel into one `chainUnavailable()` response, so there is a
+single place where "the registry could not be questioned" is expressed and no path can
+express it as `registered: false`.
+
+The recovery scan is guarded separately and on purpose: if it fails, the verdict above it
+is already established and stays valid — only the convenience lookup failed. But a bare
+`null` would read as *"no registering transaction exists"*, a different claim entirely, so
+a failed scan is annotated with `recoveryError` instead.
+
+Two regression tests, both written from the real failure:
+
+- A configured-but-failing contract call returns `CHAIN_UNAVAILABLE` with no verdict —
+  asserted on a row that genuinely *is* pending and unregistered, so a naive
+  implementation would call it safe to promote on no evidence at all.
+- A failed recovery scan keeps its `MISSING_TX_HASH` verdict and annotates the null.
+
+**Finding 6 — the environment.** Staging's `RPC_URL` now points at
+`base-sepolia-rpc.publicnode.com`. Still an unauthenticated public endpoint, so this buys
+availability rather than a guarantee; a keyed provider remains the real answer, and is
+deferred because the key is another secret to keep out of a public repository.
+
+**Production was not checked.** It anchors to Base **mainnet**, where this failure mode
+costs real money rather than testnet gas, and it may well carry the same configuration.
+Reading its variables was blocked by a permission gate. Recorded here, not chased.
+
+**Tests: 880 passing, 2 new.**
