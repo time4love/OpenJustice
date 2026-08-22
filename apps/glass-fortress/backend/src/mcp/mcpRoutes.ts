@@ -27,6 +27,18 @@ const router = Router();
 export const READ_TOOLS = new Set([
   'search_evidence',
   'get_forensic_timeline',
+  // Derived entirely from data GET /api/thesis/:id already serves anonymously,
+  // with no LLM call and no RPC call. Gating it would hide a page that is
+  // deliberately public from the tool that describes it.
+  'get_whistleblower_call',
+  // Reads recorded scan output — no LLM, no RPC. The scan that produced it was
+  // already gated; listing what it found for review is not the expensive part.
+  'get_scan_findings',
+  // Deterministic string search over already-stored snapshot text. No LLM, no
+  // RPC, no chain — and its whole value is that anyone can re-run the check
+  // themselves, which a gate would sit awkwardly against.
+  'get_claim_trajectories',
+  'get_diff_debate',
   'get_figure_dossier',
   'get_thesis_context',
   'get_session_summary',
@@ -65,6 +77,22 @@ export const WRITE_TOOLS = new Set([
   // to solve a problem it is not causing.
   'suggest_thesis',
   'get_research_agenda',
+
+  // Persists nothing either, and is semantically a read — but every call hits
+  // the chain RPC, and recoverTxHash:true issues a bounded eth_getLogs scan.
+  // An anonymous caller could drain the project's RPC quota through it, which
+  // is the same exposure that gated the two tools above.
+  'check_on_chain_status',
+
+  // Registers every pending finding for a page on-chain. Irreversible, spends
+  // gas, and asserts CONFIRMED — the most consequential write in the toolset.
+  'promote_scan_findings',
+
+  // The diff debate. open/respond each run an LLM assessment; promote registers
+  // on-chain. All gated — get_diff_debate is a plain read and sits above.
+  'open_diff_debate',
+  'respond_in_diff_debate',
+  'promote_from_diff_debate',
 ]);
 
 // ---------------------------------------------------------------------------

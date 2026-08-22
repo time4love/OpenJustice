@@ -1,4 +1,10 @@
-import { WaybackScraper, WaybackFetchError, isWaybackOffline } from '../src/services/WaybackScraper';
+import {
+  WaybackScraper,
+  WaybackFetchError,
+  isWaybackOffline,
+  isTransientWaybackError,
+  withRetry,
+} from '../src/services/WaybackScraper';
 import { ForensicAgent } from '../src/services/ForensicAgent';
 
 // ---------------------------------------------------------------------------
@@ -497,7 +503,7 @@ describe('WaybackScraper.analyzePageHistory', () => {
   it('skips a snapshot pair when text extraction fails for one', async () => {
     mockAxiosGet
       .mockResolvedValueOnce(makeAxiosResponse(CDX_RESPONSE))
-      .mockRejectedValueOnce(Object.assign(new Error('timeout'), { isAxiosError: true, response: { status: 504 } }))
+      .mockRejectedValueOnce(Object.assign(new Error('not archived'), { isAxiosError: true, response: { status: 404 } }))
       .mockResolvedValueOnce(makeAxiosResponse(MOCK_HTML_CHANGED))
       .mockResolvedValueOnce(makeAxiosResponse(MOCK_HTML_CHANGED));
 
@@ -525,4 +531,125 @@ describe('WaybackScraper.analyzePageHistory', () => {
     expect(diffs[0].snapshotUrl).toMatch(/web\.archive\.org\/web\/20210601/);
     expect(diffs[0].snapshotUrl).toContain('health.gov.il');
   }, TEST_TIMEOUT);
+});
+
+// ---------------------------------------------------------------------------
+// Transient-failure classification.
+//
+// The retry loop was never the problem — it retried four times with
+// exponential back-off and always had. The PREDICATE was: it inspected
+// err.response.status and compared it to 503, so a timeout (which carries no
+// response at all) read as `undefined`, matched nothing, and was rethrown on
+// the first attempt.
+//
+// The Internet Archive's dominant failure mode is slowness, not 503. So the
+// retry machinery was dead code for exactly the case it existed to handle, and
+// a real scan of a government page died on a 30s CDX timeout on 2026-08-22
+// having made precisely one attempt.
+// ---------------------------------------------------------------------------
+describe('isTransientWaybackError', () => {
+  const axiosErr = (extra: Record<string, unknown>): unknown =>
+    Object.assign(new Error('boom'), { isAxiosError: true, ...extra });
+
+  beforeEach(() => {
+    (axios as unknown as Record<string, jest.Mock>)['isAxiosError'] = jest
+      .fn()
+      .mockImplementation((e: unknown) => Boolean((e as { isAxiosError?: boolean })?.isAxiosError));
+  });
+
+  it('retries a timeout — no response, no status, the case that was missed', () => {
+    expect(isTransientWaybackError(axiosErr({ code: 'ECONNABORTED' }))).toBe(true);
+  });
+
+  it('retries a connection reset and a DNS failure', () => {
+    expect(isTransientWaybackError(axiosErr({ code: 'ECONNRESET' }))).toBe(true);
+    expect(isTransientWaybackError(axiosErr({ code: 'ENOTFOUND' }))).toBe(true);
+  });
+
+  it('retries 503, as it always did', () => {
+    expect(isTransientWaybackError(axiosErr({ response: { status: 503 } }))).toBe(true);
+  });
+
+  it('retries other 5xx and 429', () => {
+    expect(isTransientWaybackError(axiosErr({ response: { status: 500 } }))).toBe(true);
+    expect(isTransientWaybackError(axiosErr({ response: { status: 504 } }))).toBe(true);
+    expect(isTransientWaybackError(axiosErr({ response: { status: 429 } }))).toBe(true);
+  });
+
+  it('does NOT retry a 404 — the archive does not hold the URL, and waiting will not change that', () => {
+    expect(isTransientWaybackError(axiosErr({ response: { status: 404 } }))).toBe(false);
+  });
+
+  it('does NOT retry other 4xx', () => {
+    expect(isTransientWaybackError(axiosErr({ response: { status: 400 } }))).toBe(false);
+    expect(isTransientWaybackError(axiosErr({ response: { status: 403 } }))).toBe(false);
+  });
+
+  it('does NOT retry a non-axios error', () => {
+    expect(isTransientWaybackError(new Error('programmer error'))).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Retry budgets — the two call sites have different economics.
+//
+// withRetry is shared by the CDX index query and the per-snapshot fetch, and
+// they had one budget between them. That was tolerable while only a 503 was
+// treated as transient. Once timeouts were included — the archive's actual
+// common failure — every timing-out snapshot inherited CDX's four retries and
+// burned 8+16+32+64 = 120s of back-off. A batch fetches up to MAX_SNAPSHOTS
+// (50) of them, so a slow archive could leave one job sleeping for well over an
+// hour while reporting SCANNING and showing no progress.
+//
+// CDX runs once per batch and its failure kills the scan, so it keeps the large
+// budget. A single snapshot is already skipped gracefully on failure.
+// ---------------------------------------------------------------------------
+describe('withRetry budgets', () => {
+  const timeout = (): unknown =>
+    Object.assign(new Error('timeout of 25000ms exceeded'), {
+      isAxiosError: true,
+      code: 'ECONNABORTED',
+    });
+
+  beforeEach(() => {
+    (axios as unknown as Record<string, jest.Mock>)['isAxiosError'] = jest
+      .fn()
+      .mockImplementation((e: unknown) => Boolean((e as { isAxiosError?: boolean })?.isAxiosError));
+  });
+
+  it('makes maxRetries + 1 attempts before giving up', async () => {
+    const fn = jest.fn().mockRejectedValue(timeout());
+
+    await expect(withRetry(fn, { maxRetries: 1, baseDelayMs: 0 })).rejects.toBeDefined();
+
+    expect(fn).toHaveBeenCalledTimes(2);
+  });
+
+  it('gives CDX a far larger budget than a single snapshot', async () => {
+    const cdx = jest.fn().mockRejectedValue(timeout());
+    const snapshot = jest.fn().mockRejectedValue(timeout());
+
+    await expect(withRetry(cdx, { maxRetries: 4, baseDelayMs: 0 })).rejects.toBeDefined();
+    await expect(withRetry(snapshot, { maxRetries: 1, baseDelayMs: 0 })).rejects.toBeDefined();
+
+    expect(cdx.mock.calls.length).toBeGreaterThan(snapshot.mock.calls.length);
+  });
+
+  it('stops immediately on a non-transient failure regardless of budget', async () => {
+    const fn = jest
+      .fn()
+      .mockRejectedValue(Object.assign(new Error('gone'), { isAxiosError: true, response: { status: 404 } }));
+
+    await expect(withRetry(fn, { maxRetries: 4, baseDelayMs: 0 })).rejects.toBeDefined();
+
+    expect(fn).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns the value as soon as an attempt succeeds', async () => {
+    const fn = jest.fn().mockRejectedValueOnce(timeout()).mockResolvedValueOnce('ok');
+
+    await expect(withRetry(fn, { maxRetries: 4, baseDelayMs: 0 })).resolves.toBe('ok');
+
+    expect(fn).toHaveBeenCalledTimes(2);
+  });
 });

@@ -5,10 +5,20 @@ import {
 } from '../src/services/forensicEvidence';
 
 const DELETED_ITEMS = [
-  { summary: 'הובטח כי תופעות הלוואי קלות וזמניות', exactQuote: 'Side effects are mild.' },
+  {
+    summary: 'הובטח כי תופעות הלוואי קלות וזמניות',
+    exactQuote: 'Side effects are mild.',
+    investigativeCategories: ['SAFETY_CLAIM_ALTERATION' as const],
+    relocated: false,
+  },
 ];
 const ADDED_ITEMS = [
-  { summary: 'נוספה חובת חיסון לעובדים', exactQuote: 'All employees must be vaccinated.' },
+  {
+    summary: 'נוספה חובת חיסון לעובדים',
+    exactQuote: 'All employees must be vaccinated.',
+    investigativeCategories: ['COERCION_MANDATE' as const],
+    relocated: false,
+  },
 ];
 
 function source(overrides: Partial<ForensicEvidenceSource> = {}): ForensicEvidenceSource {
@@ -69,11 +79,19 @@ describe('forensic evidence construction', () => {
       expect(buildForensicEvidence(source()).data).toEqual(buildForensicEvidence(source()).data);
     });
 
-    it('marks the record as a confirmed forensic diff', () => {
+    it('marks the record as a forensic diff and links it to its source diff', () => {
       const { data } = buildForensicEvidence(source());
       expect(data.evidenceType).toBe('FORENSIC_DIFF');
-      expect(data.status).toBe('CONFIRMED');
       expect(data.urlVersionDiffId).toBe('diff-uuid-1');
+    });
+
+    it('asserts no status of its own', () => {
+      // Status claims the record is anchored on-chain, and only the caller that
+      // did (or did not) anchor it can make that claim. This used to default to
+      // CONFIRMED and be overridden by both callers — dead in practice, and the
+      // worst possible value for a future caller to inherit by forgetting.
+      const { data } = buildForensicEvidence(source());
+      expect('status' in data).toBe(false);
     });
 
     it('cites the archived snapshot, not the live page', () => {

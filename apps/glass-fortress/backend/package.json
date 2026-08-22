@@ -18,7 +18,9 @@
     "db:check-drift": "prisma migrate diff --from-schema-datasource prisma/schema.prisma --to-schema-datamodel prisma/schema.prisma --exit-code",
     "db:simulate": "ts-node --transpile-only scripts/dbSimulate.ts",
     "db:deploy": "prisma migrate deploy",
-    "researcher:bootstrap": "ts-node --transpile-only scripts/bootstrapResearcher.ts"
+    "researcher:bootstrap": "ts-node --transpile-only scripts/bootstrapResearcher.ts",
+    "forensics:reclassify": "ts-node --transpile-only scripts/reclassifyDiffs.ts",
+    "forensics:trajectories": "ts-node --transpile-only scripts/claimTrajectories.ts"
   },
   "keywords": [],
   "author": "",

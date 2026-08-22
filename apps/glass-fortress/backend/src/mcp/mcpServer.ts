@@ -20,6 +20,21 @@ import { promoteEvidenceSchema, promoteEvidenceHandler } from './tools/promoteEv
 import { deleteEvidenceSchema, deleteEvidenceHandler } from './tools/deleteEvidence';
 import { generateFoiaRequestSchema, generateFoiaRequestHandler } from './tools/generateFoiaRequest';
 import { recoverEvidenceFromScreenshotSchema, recoverEvidenceFromScreenshotHandler } from './tools/recoverEvidenceFromScreenshot';
+import { checkOnChainStatusSchema, checkOnChainStatusHandler } from './tools/checkOnChainStatus';
+import { getWhistleblowerCallSchema, getWhistleblowerCallHandler } from './tools/getWhistleblowerCall';
+import { getScanFindingsSchema, getScanFindingsHandler } from './tools/getScanFindings';
+import { getClaimTrajectoriesSchema, getClaimTrajectoriesHandler } from './tools/getClaimTrajectories';
+import { promoteScanFindingsSchema, promoteScanFindingsHandler } from './tools/promoteScanFindings';
+import {
+  openDiffDebateSchema,
+  openDiffDebateHandler,
+  respondInDiffDebateSchema,
+  respondInDiffDebateHandler,
+  promoteFromDiffDebateSchema,
+  promoteFromDiffDebateHandler,
+  getDiffDebateSchema,
+  getDiffDebateHandler,
+} from './tools/diffDebateTools';
 
 // ---------------------------------------------------------------------------
 // Factory — creates a fresh McpServer per request.
@@ -64,6 +79,142 @@ export function createMcpServer(): McpServer {
     getForensicTimelineSchema,
     async (input) => ({
       content: [{ type: 'text' as const, text: await getForensicTimelineHandler(input) }],
+    }),
+  );
+
+  // -------------------------------------------------------------------------
+  // Tool: check_on_chain_status
+  // Compares the vault's claim about a record against the registry contract.
+  // Read-only against both — it never registers anything.
+  // -------------------------------------------------------------------------
+  server.tool(
+    'check_on_chain_status',
+    'Verify an evidence record against the blockchain registry. Compares what the database claims ' +
+      '(PENDING_REVIEW / CONFIRMED, recorded tx hash) against what the EvidenceRegistry contract ' +
+      'actually holds, and returns a verdict naming any discrepancy. Call it BEFORE promote_evidence ' +
+      'to confirm the hash is not already anchored, and AFTER to confirm the anchor landed. ' +
+      'Read-only — it never registers anything.',
+    checkOnChainStatusSchema,
+    async (input) => ({
+      content: [{ type: 'text' as const, text: await checkOnChainStatusHandler(input) }],
+    }),
+  );
+
+  // -------------------------------------------------------------------------
+  // Tool: get_whistleblower_call
+  // The public Call for Whistleblowers is derived from the head version's
+  // evidence gaps — there is no stored record, so this is a read.
+  // -------------------------------------------------------------------------
+  server.tool(
+    'get_whistleblower_call',
+    'Return the public Call for Whistleblowers for a thesis — its shareable URL, whether it is live, ' +
+      'and every evidence gap it publishes as an appeal. The call is derived from the head version\'s ' +
+      'Devil\'s Advocate analysis rather than stored, so it becomes live as soon as an analysis ' +
+      'completes with at least one gap. Each gapIndex returned can also be passed to ' +
+      'generate_foia_request.',
+    getWhistleblowerCallSchema,
+    async (input) => ({
+      content: [{ type: 'text' as const, text: await getWhistleblowerCallHandler(input) }],
+    }),
+  );
+
+  // -------------------------------------------------------------------------
+  // Tool: get_scan_findings
+  // What a page's forensic scans found and nobody has reviewed yet.
+  // -------------------------------------------------------------------------
+  server.tool(
+    'get_scan_findings',
+    'List every finding from a tracked page\'s forensic scans that is still awaiting human review. ' +
+      'Forensic scans do NOT promote their own findings: they classify page changes and record the ' +
+      'significant ones as PENDING_REVIEW, with nothing on-chain and nothing publicly searchable ' +
+      'until a person confirms them. Returns the classifier\'s reasoning with each finding so the ' +
+      'decisions can be reviewed, not just the rows. Confirm them with promote_scan_findings.',
+    getScanFindingsSchema,
+    async (input) => ({
+      content: [{ type: 'text' as const, text: await getScanFindingsHandler(input) }],
+    }),
+  );
+
+  // -------------------------------------------------------------------------
+  // Tool: promote_scan_findings
+  // The human decision a scan deliberately does not make for itself.
+  // -------------------------------------------------------------------------
+  server.tool(
+    'promote_scan_findings',
+    'Confirm every pending finding from a tracked page\'s forensic scans — registering each on-chain, ' +
+      'indexing it for search, and marking it CONFIRMED. Promotes exactly what the classifier flagged ' +
+      'as legally significant. Irreversible: on-chain registration cannot be undone. Call ' +
+      'get_scan_findings first and review what it returns.',
+    promoteScanFindingsSchema,
+    async (input) => ({
+      content: [{ type: 'text' as const, text: await promoteScanFindingsHandler(input) }],
+    }),
+  );
+
+  // -------------------------------------------------------------------------
+  // Tools: the diff debate — arguing a passed-over change into evidence.
+  // -------------------------------------------------------------------------
+  server.tool(
+    'open_diff_debate',
+    'Open a debate arguing that a page change the forensic classifier passed over should become ' +
+      'evidence. Requires a rationale making specific, falsifiable claims about the changed content — ' +
+      'bare assertion is refused. Returns the assessor\'s response and a session id. Promotion is a ' +
+      'separate call: this one never writes evidence and never touches the chain. Use this when you ' +
+      'disagree with the classifier; promote_scan_findings confirms what it DID flag.',
+    openDiffDebateSchema,
+    async (input) => ({
+      content: [{ type: 'text' as const, text: await openDiffDebateHandler(input) }],
+    }),
+  );
+
+  server.tool(
+    'respond_in_diff_debate',
+    'Reply within an open diff debate — answering the assessor\'s objection, or supplying the ' +
+      'specificity its substanceGaps asked for. Re-assessed and recorded as another round. The ' +
+      'assessor cannot veto: once your argument has substance you may promote even over a sustained ' +
+      'objection, and the objection is then carried on the evidence permanently.',
+    respondInDiffDebateSchema,
+    async (input) => ({
+      content: [{ type: 'text' as const, text: await respondInDiffDebateHandler(input) }],
+    }),
+  );
+
+  server.tool(
+    'promote_from_diff_debate',
+    'Promote the debated change to evidence, registering it on-chain. Requires that the argument ' +
+      'cleared the substance gate and, if the assessor disputes it, that you answered the objection. ' +
+      'Irreversible. If the assessor still disagrees, the promotion is recorded as made over its ' +
+      'objection and that stays attached to the evidence.',
+    promoteFromDiffDebateSchema,
+    async (input) => ({
+      content: [{ type: 'text' as const, text: await promoteFromDiffDebateHandler(input) }],
+    }),
+  );
+
+  server.tool(
+    'get_diff_debate',
+    'Read a diff debate — its full turn-by-turn record of arguments, assessments and responses, ' +
+      'whether it can be promoted yet, and what is blocking it if not.',
+    getDiffDebateSchema,
+    async (input) => ({
+      content: [{ type: 'text' as const, text: await getDiffDebateHandler(input) }],
+    }),
+  );
+
+  // -------------------------------------------------------------------------
+  // Tool: get_claim_trajectories
+  // What a single claim did across a page's whole archived history.
+  // -------------------------------------------------------------------------
+  server.tool(
+    'get_claim_trajectories',
+    'Follow individual claims across a tracked page\'s entire archived history — every assertion ' +
+      'that was added and removed more than once. This is the pattern no single diff can show: a diff ' +
+      'compares two snapshots, while a trajectory shows that a claim was removed, restored and removed ' +
+      'again. Computed by string search against the archived page text with no AI judgment, so every ' +
+      'result is verifiable by opening the snapshot URLs it returns.',
+    getClaimTrajectoriesSchema,
+    async (input) => ({
+      content: [{ type: 'text' as const, text: await getClaimTrajectoriesHandler(input) }],
     }),
   );
 
