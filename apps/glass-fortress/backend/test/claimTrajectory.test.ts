@@ -27,6 +27,7 @@ import {
   normaliseClaim,
   claimHash,
 } from '../src/services/claimTrajectory';
+import { getClaimTrajectoriesHandler } from '../src/mcp/tools/getClaimTrajectories';
 
 const CLAIM =
   'הממצאים מראים כי מי שחוסנו בחיסון רביעי מוגנים מפני הדבקה פי 2 יותר ממי שחוסנו בשלושה חיסונים';
@@ -184,7 +185,16 @@ describe('computeClaimTrajectories', () => {
     expect(r.candidatesConsidered).toBe(1);
   });
 
-  it('writes nothing unless asked to persist', async () => {
+  // -------------------------------------------------------------------------
+  // Detection reads; it never writes.
+  //
+  // The result is deterministic and cheap to recompute, so storing it would only
+  // create a second copy able to fall behind the snapshots it describes — and a
+  // write path with no reader invites building on rows from an older detection
+  // pass. ClaimTrajectory stays in the schema for when citation needs a stable
+  // identity to point at.
+  // -------------------------------------------------------------------------
+  it('never writes — the result is recomputed, not stored', async () => {
     withSnapshots([
       ['2022-05-25', true],
       ['2022-05-29', false],
@@ -197,20 +207,74 @@ describe('computeClaimTrajectories', () => {
     expect(prisma.claimTrajectory.upsert).not.toHaveBeenCalled();
   });
 
-  it('upserts on content-derived identity, so recomputation cannot duplicate', async () => {
-    withSnapshots([
-      ['2022-05-25', true],
-      ['2022-05-29', false],
-      ['2022-05-30', true],
+  it('gives identical text the same hash every run, so results are stable to cite', () => {
+    expect(claimHash(normaliseClaim(CLAIM))).toBe(claimHash(normaliseClaim(`  ${CLAIM}  `)));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// get_claim_trajectories — the researcher-facing surface.
+//
+// Without it the detection service was deployed dead code and the only way to
+// see a trajectory was running a script on a developer's laptop. That is the
+// same defect as the whistleblower call: a real capability, unreachable from the
+// workflow the platform is built around.
+// ---------------------------------------------------------------------------
+describe('get_claim_trajectories', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (prisma.trackedUrl.findUnique as jest.Mock).mockResolvedValue({ id: 't-1' });
+  });
+
+  function setup(present: boolean[]): void {
+    (prisma.urlSnapshot.findMany as jest.Mock).mockResolvedValue(
+      present.map((c, i) => ({
+        snapshotDate: `2022-0${i + 1}-01`,
+        waybackTimestamp: `20220${i + 1}01000000`,
+        snapshotUrl: `https://web.archive.org/web/20220${i + 1}01/x`,
+        fullText: c ? `prefix ${CLAIM} suffix` : 'prefix suffix',
+      })),
+    );
+    (prisma.urlVersionDiff.findMany as jest.Mock).mockResolvedValue([
+      { deletedText: JSON.stringify([{ summary: 's', exactQuote: CLAIM }]), addedText: '[]' },
     ]);
-    withCandidates([CLAIM]);
+  }
 
-    await computeClaimTrajectories('https://health.gov.il/x', { persist: true });
+  it('returns only the flips, each with a verifiable snapshot URL', async () => {
+    setup([true, true, false, true]);
 
-    const call = (prisma.claimTrajectory.upsert as jest.Mock).mock.calls[0][0] as {
-      where: { trackedUrlId_claimHash: { trackedUrlId: string; claimHash: string } };
-    };
-    expect(call.where.trackedUrlId_claimHash.trackedUrlId).toBe('t-1');
-    expect(call.where.trackedUrlId_claimHash.claimHash).toBe(claimHash(CLAIM));
+    const r = JSON.parse(
+      await getClaimTrajectoriesHandler({ url: 'https://health.gov.il/x' }),
+    ) as { trajectories: { changes: { snapshotUrl: string; present: boolean }[] }[] };
+
+    // First observation plus each flip — not all four snapshots.
+    expect(r.trajectories[0].changes.map((c) => c.present)).toEqual([true, false, true]);
+    expect(r.trajectories[0].changes[0].snapshotUrl).toContain('web.archive.org');
+  });
+
+  it('reports candidates the archive never contained rather than hiding them', async () => {
+    (prisma.urlSnapshot.findMany as jest.Mock).mockResolvedValue([
+      { snapshotDate: '2022-01-01', waybackTimestamp: 'x', snapshotUrl: 'u', fullText: 'nothing here' },
+    ]);
+    (prisma.urlVersionDiff.findMany as jest.Mock).mockResolvedValue([
+      { deletedText: JSON.stringify([{ summary: 's', exactQuote: CLAIM }]), addedText: '[]' },
+    ]);
+
+    const r = JSON.parse(
+      await getClaimTrajectoriesHandler({ url: 'https://health.gov.il/x' }),
+    ) as { candidatesNotFoundInArchive: number };
+
+    expect(r.candidatesNotFoundInArchive).toBe(1);
+  });
+
+  it('tells an unscanned page apart from one with no oscillations', async () => {
+    (prisma.trackedUrl.findUnique as jest.Mock).mockResolvedValue(null);
+
+    const r = JSON.parse(
+      await getClaimTrajectoriesHandler({ url: 'https://health.gov.il/never-scanned' }),
+    ) as { error: string; explanation: string };
+
+    expect(r.error).toBe('NOT_TRACKED');
+    expect(r.explanation).toContain('start_forensic_scan');
   });
 });

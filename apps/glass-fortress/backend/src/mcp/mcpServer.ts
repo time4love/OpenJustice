@@ -23,6 +23,7 @@ import { recoverEvidenceFromScreenshotSchema, recoverEvidenceFromScreenshotHandl
 import { checkOnChainStatusSchema, checkOnChainStatusHandler } from './tools/checkOnChainStatus';
 import { getWhistleblowerCallSchema, getWhistleblowerCallHandler } from './tools/getWhistleblowerCall';
 import { getScanFindingsSchema, getScanFindingsHandler } from './tools/getScanFindings';
+import { getClaimTrajectoriesSchema, getClaimTrajectoriesHandler } from './tools/getClaimTrajectories';
 import { promoteScanFindingsSchema, promoteScanFindingsHandler } from './tools/promoteScanFindings';
 import {
   openDiffDebateSchema,
@@ -197,6 +198,23 @@ export function createMcpServer(): McpServer {
     getDiffDebateSchema,
     async (input) => ({
       content: [{ type: 'text' as const, text: await getDiffDebateHandler(input) }],
+    }),
+  );
+
+  // -------------------------------------------------------------------------
+  // Tool: get_claim_trajectories
+  // What a single claim did across a page's whole archived history.
+  // -------------------------------------------------------------------------
+  server.tool(
+    'get_claim_trajectories',
+    'Follow individual claims across a tracked page\'s entire archived history — every assertion ' +
+      'that was added and removed more than once. This is the pattern no single diff can show: a diff ' +
+      'compares two snapshots, while a trajectory shows that a claim was removed, restored and removed ' +
+      'again. Computed by string search against the archived page text with no AI judgment, so every ' +
+      'result is verifiable by opening the snapshot URLs it returns.',
+    getClaimTrajectoriesSchema,
+    async (input) => ({
+      content: [{ type: 'text' as const, text: await getClaimTrajectoriesHandler(input) }],
     }),
   );
 
