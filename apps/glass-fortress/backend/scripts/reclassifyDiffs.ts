@@ -66,6 +66,12 @@ async function main(): Promise<void> {
   console.log(`Flipped:       ${result.flips.length}`);
   console.log(`  → significant: ${result.flipsToSignificant}`);
   console.log(`  → routine:     ${result.flipsToRoutine}`);
+  // A diff that became significant is not yet a finding: without a
+  // PENDING_REVIEW record, promote_scan_findings silently skips it.
+  console.log(`Findings recorded: ${result.findingsRecorded}` +
+    (result.flipsToSignificant !== result.findingsRecorded && !dryRun
+      ? `  ⚠️ ${result.flipsToSignificant - result.findingsRecorded} flip(s) produced no finding — check the logs`
+      : ''));
 
   if (result.flips.length > 0) {
     console.log('\nFlips:');

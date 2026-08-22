@@ -1,6 +1,6 @@
 import { prisma } from '../lib/prisma';
 import { ForensicAgent } from './ForensicAgent';
-import { WaybackScraper } from './WaybackScraper';
+import { WaybackScraper, recordScanFinding } from './WaybackScraper';
 import { CLASSIFIER_VERSION, classifierPromptHash } from '../lib/classifierVersion';
 import { deriveSignificance } from './ForensicAgent';
 
@@ -39,6 +39,13 @@ export interface ReclassifyResult {
   flipsToSignificant: number;
   flipsToRoutine: number;
   flipsWithEvidence: number;
+  /**
+   * Significant diffs that had no evidence and were given a PENDING_REVIEW
+   * record. Counts diffs that just flipped AND diffs that were already
+   * significant but never recorded — without the latter, orphans created before
+   * this existed would stay orphaned forever.
+   */
+  findingsRecorded: number;
   flips: FlipRecord[];
 }
 
@@ -54,7 +61,14 @@ function parseRawChunks(raw: string): string[] {
 export interface ReclassifyOptions {
   /** Limit to one tracked URL. Omit to cover every one. */
   url?: string;
-  /** Re-run rows already at the current version too. Off by default — pointless and costly. */
+  /**
+   * Re-run rows already at the current version.
+   *
+   * Off by default: re-running them costs an LLM call to reproduce a verdict
+   * already held. It is how an ORPHAN gets adopted, though — a diff that is
+   * significant with no Evidence row is skipped by the version filter, so
+   * without this the self-healing branch can never see it.
+   */
   force?: boolean;
   /** Report what would change without writing. */
   dryRun?: boolean;
@@ -108,6 +122,7 @@ export async function reclassifyDiffs(opts: ReclassifyOptions = {}): Promise<Rec
   const promptHash = classifierPromptHash();
   const flips: FlipRecord[] = [];
   let reclassified = 0;
+  let findingsRecorded = 0;
 
   for (const [i, diff] of diffs.entries()) {
     opts.onProgress?.(i + 1, diffs.length);
@@ -174,6 +189,45 @@ export async function reclassifyDiffs(opts: ReclassifyOptions = {}): Promise<Rec
         },
       });
       reclassified++;
+
+      // A significant diff is not yet a FINDING. recordScanFinding runs during a
+      // scan; reclassification only rewrote the diff's columns, so without this
+      // the diff reports as significant while no Evidence row exists — and
+      // promote_scan_findings silently promotes a subset. The first real run
+      // produced exactly that: 7 significant diffs, 5 findings, 2 unrecorded.
+      //
+      // The condition is "significant AND has no evidence", NOT "just flipped".
+      // Keying on the flip would only help rows that had not already hit the bug
+      // — the two orphans it was written for would stay orphaned, since they are
+      // already significant and so would never flip again. Deriving the action
+      // from the CURRENT state rather than from the transition makes the pass
+      // self-healing, the same reason hasSubstance is derived from the debate's
+      // event log rather than latched off its own previous value.
+      //
+      // Deliberately the same function a scan calls, so a finding recovered by
+      // reclassification is indistinguishable from one a scan found: same
+      // content-addressed fileHash, same PENDING_REVIEW status, same refusal
+      // when no category matched.
+      //
+      // A flip to routine leaves existing evidence untouched. The Evidence row
+      // carries the categories it was promoted with and only a human can decide
+      // whether the claim should stand — see findOutOfSyncEvidence, which
+      // reports that divergence rather than resolving it.
+      if (isSignificant && diff.evidence.length === 0) {
+        await recordScanFinding({
+          diffId: diff.id,
+          url: diff.trackedUrl.url,
+          afterDate: diff.afterDate,
+          snapshotUrl: diff.snapshotUrl,
+          aiSignificance: analysis.legalSignificance,
+          investigativeCategories: [...after],
+          deletedText: JSON.stringify(analysis.deletedItems),
+          addedText: JSON.stringify(analysis.addedItems),
+          deletedItems: analysis.deletedItems,
+          addedItems: analysis.addedItems,
+        });
+        findingsRecorded++;
+      }
     }
   }
 
@@ -201,6 +255,7 @@ export async function reclassifyDiffs(opts: ReclassifyOptions = {}): Promise<Rec
     flipsToSignificant,
     flipsToRoutine,
     flipsWithEvidence,
+    findingsRecorded,
     flips,
   };
 }
