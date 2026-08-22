@@ -717,3 +717,320 @@ requires a debate; the button bypasses it entirely. Closing this means the butto
 a rationale and run the same flow. Recorded, not silently accepted.
 
 **Tests: 917 passing.**
+
+---
+
+## Step 7 — Arguing a change into evidence
+
+The classifier passed over a change the researcher believed mattered:
+`2022-09-21 → 2022-11-29`, in which the numeric efficacy figures for the fourth dose
+were deleted for the last time.
+
+`promote_scan_findings` cannot help here — it confirms only what the classifier flagged.
+Nor can a bare override: that is the mirror image of the auto-promotion just removed, one
+letting a machine assert `CONFIRMED` with no human, the other letting a human assert it
+with no check at all. On a platform whose claim is that every status traces to checkable
+proof, "a researcher clicked it" is not proof.
+
+So promotion by hand is a **debate**, modelled as a session with events — the same shape as
+`ResearchSession` on a thesis, and for the same reason: a goal, a lifecycle, and a
+turn-by-turn record that IS the justification.
+
+**Two standards apply, and the split is the design:**
+
+| | Standard | Authority |
+|---|---|---|
+| **Substance** | Did the researcher make specific, falsifiable claims about the changed content? | **Hard gate** — no argument, no promotion |
+| **Merit** | Is the researcher right? | **Advisory** — may proceed; dissent recorded permanently |
+
+Judging only *whether someone argued* keeps a demonstrably fallible classifier from being
+the final authority on significance. Judging *whether they are right* would restore exactly
+the problem the debate exists to solve.
+
+### Round 1
+
+The researcher pointed to the deleted figures, tied them to the leaked recordings of
+2022-08-21, and argued that removing efficacy claims is significant regardless — and more
+so once the ministry had been shown internal safety findings.
+
+`hasSubstance: true`. Verdict `DISPUTES`, with a real objection: the removal coincided with
+the switch to the Omicron-adapted formulation, so obsolescence is an innocent explanation.
+
+### FINDING 15 — the gate ratcheted backwards on a good-faith reply
+
+The researcher answered the objection by arguing about the platform's architecture: evidence
+admission and thesis strength are separate stages, so a contestable item still belongs in the
+bank, and the Devil's Advocate is what rates strength.
+
+`hasSubstance` went **true → false**.
+
+Two defects, both shipped hours earlier:
+
+- **The assessor saw only the turn under assessment.** With no history it read every reply as
+  a fresh opening argument. Answering an objection about an *inference* does not require
+  re-quoting the text — the researcher had already done that — so the correct behaviour was
+  penalised.
+- **`hasSubstance` was overwritten rather than latched.** A cleared gate could silently
+  un-clear, making a debate *harder to win the longer it was argued in good faith.*
+
+A third, subtler one: the substance gate was demanding *"קשירה עובדתית ומשפטית"* — proof —
+where it was only ever meant to ask whether a reviewable claim had been made. A
+thesis-strength standard applied at an intake stage.
+
+**Why the tests missed all three: every one submitted a SINGLE argument.** None modelled a
+conversation, so the whole class of multi-round state bugs was invisible — a gate whose entire
+purpose is to be argued with, tested only with one-shot inputs.
+
+### FINDING 16 — the fix could not repair what it was written for
+
+The first repair latched `session.hasSubstance || assessment.hasSubstance`. That latches off
+the session's **own previous value**, which had already been corrupted to `false`. It fixed
+behaviour going forward and left the live debate permanently stuck.
+
+**The events are the record; the column is a cache of them.** `hasSubstance` is now computed
+from the event log — *has any assessment ever found the argument reviewable* — so a session
+corrupted before the fix shipped heals on read, with no data migration and without forcing
+the researcher to re-argue a point already in the record.
+
+The same shape recurs later in this document, and is worth naming once: **derive from state,
+never from a transition.** A fix keyed to a transition only ever helps rows that had not
+already hit the bug.
+
+### Round 3, against a working gate
+
+The researcher asked the assessor to reconsider the argument as a whole. It did:
+
+> בבחינת הטיעון המצטבר, החוקר עומד ברף הממשות הפרוצדורלי… החוקר רשאי לקדם את הראיה למאגר
+> חרף ההתנגדות.
+
+Substance granted on the cumulative argument, a real objection returned, and the researcher's
+right to proceed acknowledged outright.
+
+Its objection also named exactly what would settle the matter: *"ללא אינדיקציה נוספת המצביעה
+על הנחיה מכוונת להעלמת מידע"* — internal correspondence instructing removal. **That is the
+whistleblower ask, produced by the adversary.** An objection that specifies the missing
+evidence is a research lead, which is why disputes are recorded rather than treated as
+refusals.
+
+---
+
+## Step 8 — Why the classifier missed it
+
+### FINDING 17 — a claim can be lost in a crowd
+
+The same text — `מוגנים מפני הדבקה פי 2… פי 3 עד 5` — appears in **six diffs of one scan**:
+
+| Date | Direction | Flagged significant |
+|---|---|---|
+| 2022-05-25 | added | yes |
+| 2022-05-29 | deleted | yes |
+| 2022-05-30 | added | yes |
+| 2022-08-05 | deleted | yes |
+| 2022-09-06 | added | yes |
+| **2022-11-29** | **deleted — never returns** | **no** |
+
+The one it dropped is the final removal. There the deletion arrived bundled with six routine
+administrative removals and six additions announcing a new campaign, and the aggregate read as
+a campaign transition.
+
+The classifier judged the **diff as a whole**, so the item vanished into its neighbours. That
+is structural, not bad luck, and its practical meaning is unacceptable for a forensic tool:
+
+> **The reliable way to remove a consequential claim unnoticed is to remove it alongside
+> enough paperwork.**
+
+The prompt's own instruction made it worse — *"a corpus full of weak claims cannot be
+repaired"* — a documented bias toward under-inclusion whose premise assumes admission is
+expensive. It is not, when strength is assessed downstream.
+
+### The fix, and what it is not
+
+Categories moved to the **item**; the diff-level set is derived as their union. Same single
+LLM call, no extra cost — the model already segmented the diff into items with verbatim
+quotes, and that segmentation was being discarded at the moment of classification.
+
+**Relocation** is asked for explicitly, because it is the one case where surrounding context
+legitimately changes the reading: text moved elsewhere on the page appears as both a deletion
+and an addition, and reporting the deletion alone would claim the removal of something still
+present.
+
+What it is **not** is a loosened threshold. Raising the floor everywhere would have bought the
+corpus-quality cost the original prompt was written to avoid, without reliably surfacing a
+masked item.
+
+---
+
+## Step 9 — Provenance, and bringing a corpus forward
+
+Stored LLM-derived columns drift the moment a prompt changes. Without provenance,
+`isLegallySignificant` silently means different things on different rows and nothing
+distinguishes a stale row from a fresh one.
+
+- **`classifierVersion`** — human-readable, and what reclassification targets.
+- **`classifierPromptHash`** — the proof. A version string is a promise; edit the prompt
+  without bumping it and every row claims a version that no longer describes what judged it,
+  which is the same defect as `CONFIRMED` without an anchor.
+
+The prompt text is deliberately **not** stored per row: it lives in git, and the hash recovers
+it exactly.
+
+`npm run forensics:reclassify` brings older rows forward **without re-scanning** — it reads
+the raw diff text persisted at scan time, so the Internet Archive is never touched and a page
+that has since changed cannot alter a past classification. It **updates, never deletes**.
+
+### Two correlation defects found while building it
+
+Reclassification first **withheld correlated evidence**, ostensibly for reproducibility. But
+the classifier is already non-deterministic at temperature 0 — 10 findings on one run, 5 on
+another — so there was no stability to protect, while three of this corpus's five findings
+turn on a correlation. Optimising for a property we had already measured ourselves not to have.
+
+And `fetchCorrelatedEvidence` had **no source exclusion**. Because findings are written as a
+scan walks forward, later diffs found earlier ones in their ±60-day window: the 2022-05-29
+classification cited *"הראיות הפנימיות שנרשמו בימים 25 ו-29 במאי"* — its own page's prior
+diffs, described as internal corroborating evidence. **A page could inflate the significance
+of every change on the strength of its neighbours.** Correlation must come from a different
+source than the page being classified.
+
+### The measurement
+
+81 diffs re-examined. **2 flipped, both routine → significant, 0 the other way**, 79 unchanged.
+No noise explosion.
+
+### FINDING 18 — the control case was invalid, and the error was mine
+
+`2025-04-25 → 2025-06-01` had been proposed as the downward control — the "does this
+over-approve?" test — on the belief it was a harmless tense change.
+
+Reading the items rather than the classifier's summary shows the page moved from
+**צפוי לתת הגנה רחבה יותר** ("is expected to give") to **נותן הגנה רחבה יותר** ("gives"): a
+hedged prediction converted into an asserted fact, with no new evidence cited. The adjacent
+hedge was left in place, which is hard to read as incidental copy-editing.
+
+The aggregate summary called it *"עדכון תפעולי ולשוני שגרתי"* — true of the tense shift,
+silent about the dropped hedge — and that summary was repeated without reading the underlying
+items.
+
+**That is the same bias item-level classification was built to remove, committed while
+assessing its output.** Trusting a summary is not a machine failing; it is what summaries
+invite.
+
+---
+
+## Step 10 — Following a claim across the whole history
+
+A diff compares two snapshots. A **trajectory** follows one assertion across all of them.
+
+Detection is **deterministic** and that is the entire point. Presence is a string search
+against `UrlSnapshot.fullText` — the archived page text — with no model involved:
+
+- **Reproducible**, unlike everything else in this pipeline.
+- **Complete** — it sees the whole timeline, where a per-diff prompt sees one vantage point
+  and would produce six inconsistent partial accounts of one phenomenon.
+- **Free.**
+- **Verifiable by an outsider.** *"Open these archived snapshots and search for this string"*
+  is a check anyone can run **without trusting this platform at all.** Every other artifact
+  here asks you to trust a model's judgment. This one does not.
+
+Presence is tested against raw archived text, never against extracted items — that would make
+a trajectory depend on extraction quality and drift whenever that prompt changed. Extraction
+is used only to *discover* which claims are worth following.
+
+### FINDING 19 — one event can look like ten findings
+
+The first run reported **47 trajectories**. Grouping by presence vector showed **15 events**:
+ten claims shared a single pattern, because pages are edited in blocks and a section added and
+later removed yields one trajectory per paragraph inside it.
+
+Grouping is not merely noise reduction — it is the **stronger evidentiary claim**:
+
+> **8 claims moved together · 2022-08-05 → 2022-09-05 · REMOVED**
+>
+> PIMS reduction, hospitalisation efficacy, *"לא התגלו בעיות בטיחות חריגות"*, the
+> recommendation for six-month-olds, and a *Pediatrics* citation — appearing together and
+> vanishing together. **The leaked recordings were published on 21 August, between those two
+> snapshots.**
+
+As eight separate paragraph removals that is unremarkable churn. As one block, it is a
+different kind of claim.
+
+Claims that flip on the same dates but differ anywhere in between are kept **apart** — merging
+them would assert a co-movement that did not happen.
+
+---
+
+## Step 11 — Recording, and anchoring seven
+
+### FINDING 20 — a significant diff is not yet a finding
+
+After reclassification, `get_scan_findings` reported:
+
+```
+significantDiffs: 7
+pendingReview:    5
+unrecorded:       2
+```
+
+`recordScanFinding` runs during a **scan**. Reclassification only rewrote the diff's columns,
+so two diffs were flagged significant with no `Evidence` row. `promote_scan_findings` would
+have promoted five of seven **and reported success.**
+
+Nothing else would have surfaced this: `significantDiffs` said 7 and the forensic timeline
+said 7. It was caught by `unrecorded`, a counter added on the principle that a silently
+dropped finding must not look like no finding.
+
+The fix keys on **`significant AND has no evidence`**, not on a flip — see FINDING 16.
+Adoption itself needs **no model call**: an orphan already carries its classification, so
+recovery records what the row asserts rather than re-deciding it. Through a full
+reclassification the same recovery would have cost 81 LLM calls and rewritten the prose of 79
+unrelated rows.
+
+### The promotion
+
+All seven registered on-chain, sequentially, through the same `promoteEvidence` path as a
+single record. Registry ids **3–9**, following id 2 (the article anchored in Step 3).
+
+Verified three ways: the tool's own report, `check_on_chain_status` returning `CONSISTENT`,
+and an independent `eth_call` against the contract that does not go through this platform.
+
+---
+
+## Where this leaves the vault
+
+| | |
+|---|---|
+| Anchored evidence | **8** — one article, seven forensic findings |
+| Diffs | 81, all at `classifierVersion: v2-item-level` with a prompt hash |
+| Trajectories | 15 events across 47 claims, computed on demand |
+| Debates | 1, open, on `2022-09-21 → 2022-11-29` |
+| Failed promotions | 0 · unrecorded findings: 0 |
+
+## Deliberately open
+
+- **Trajectory citation.** A thesis cites by `fileHash` and `ThesisMention` knows
+  `KEY_FIGURE | EVIDENCE | TRACKED_URL`; a trajectory is none of those. Deferred until there
+  were real trajectories to design against — there are now 15.
+- **The assessor prompt** — written, untested, preserved on `fix/gf-assessor-platform-context`
+  with its control design. See `gf-assessor-prompt-open-question.md`.
+- **The run report's before-state gap.** Reclassification captures prose only for rows that
+  flip, while rewriting every row it touches.
+- **The UI promote button** still promotes a diff with no argument, bypassing the debate
+  entirely. The gate is one click wide (FINDING 14).
+- **The thesis phase** — synthesis, Devil's Advocate, FOIA, and the public call — is not yet
+  walked. It belongs in its own session, starting cold with only these tools and this
+  document, because that is the only honest test of whether either is sufficient.
+
+## What the whole exercise actually demonstrated
+
+Twenty findings. **Almost none came from reading code.**
+
+They came from a scan that failed twice for different reasons, a fix that could not reach its
+own code path, a gate that punished a good-faith argument, a PDF backup of a deleted database,
+a counter that noticed two missing rows, and a researcher who disagreed with a machine and
+said so in writing.
+
+The recurring shape is worth stating plainly for whoever works here next: **the mechanism is
+usually right and the summary of it is usually wrong.** Correct verdict, wrong boolean.
+Correct outcomes array, wrong count. Correct diffs, wrong flagged count. Correct classification,
+misleading prose. Summaries are what people read and act on, and they are the part nothing
+verifies.
