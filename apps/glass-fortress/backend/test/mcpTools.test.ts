@@ -1876,7 +1876,16 @@ describe('suggestThesisHandler', () => {
 
     await suggestThesisHandler({ topic: 'EUA suppression' });
 
-    expect(getLastSynthesize()).toHaveBeenCalledWith('EUA suppression', expect.any(Array), expect.any(Object));
+    // The fourth argument is the provenance caveat. This fixture's diff carries no
+    // summaryVersion, so it predates the self-contained-summary rule and MUST
+    // reach the agent — a corpus that silently drops this warning is how a thesis
+    // gets corroborated by its own premise.
+    expect(getLastSynthesize()).toHaveBeenCalledWith(
+      'EUA suppression',
+      expect.any(Array),
+      expect.any(Object),
+      expect.objectContaining({ affected: ['0xcited'], versions: ['pre-self-contained'] }),
+    );
   });
 
   it('maps Prisma figures into keyFigures array for the corpus', async () => {

@@ -39,6 +39,7 @@ model Researcher {
   evidence       Evidence[]
   thesisVersions ThesisVersion[]
   theses         Thesis[]
+  summaryCorrections SummaryCorrection[]
 }
 
 // ---------------------------------------------------------------------------
@@ -157,6 +158,16 @@ model UrlVersionDiff {
   // the prompt at that version does not hash to this value, something else
   // judged this row. Null on rows classified before provenance was recorded.
   classifierVersion    String?
+  // Provenance for the SUMMARY alone, which moves independently of the
+  // classification. `forensics:resummarize` rewrites aiSignificance from the
+  // already-extracted items and does NOT re-extract, so the items stay at
+  // whatever classifierVersion produced them while the prose becomes
+  // self-contained. Stamping classifierVersion in that case would claim the
+  // items had been re-judged, which they have not.
+  //
+  // null means the summary predates the self-contained rule — written under a
+  // prompt that instructed cross-referencing other evidence records inside it.
+  summaryVersion       String?
   classifierPromptHash String?
   // ForensicAgent classification. Stored on the diff (not only on the promoted
   // Evidence) because a researcher may promote a diff manually via
@@ -170,6 +181,7 @@ model UrlVersionDiff {
   afterSnapshot        UrlSnapshot? @relation("AfterSnapshot", fields: [afterSnapshotId], references: [id])
   createdAt            DateTime     @default(now())
   evidence             Evidence[]
+  summaryCorrections    SummaryCorrection[]
 }
 
 // Mirrors the pgvector table created via raw SQL in the baseline migration
@@ -1106,6 +1118,42 @@ enum ClaimFinalState {
 // by construction (a snapshot is fixed text, a diff has fixed endpoints, an
 // Evidence hash covers fixed content); without this, a trajectory would have been
 // the only citable artifact able to change meaning after the fact.
+// A correction to an evidence summary, and the text it replaced.
+//
+// Evidence.summary for a forensic finding is UrlVersionDiff.aiSignificance copied
+// verbatim — the classifier's DIFF-LEVEL prose, free-form by design while the
+// per-item exactQuote beside it is verbatim. The pipeline promotes the paraphrase
+// layer to be the record's public prose, and nothing compared it to the quotes it
+// summarises. One anchored record described the page as presenting side effects as
+// passing within a day or two; the archived text says they APPEAR a day or two
+// after. Onset paraphrased into duration, and a downstream assessor repeated it.
+//
+// Correcting such a summary is safe for the anchor and must be recorded anyway.
+// Safe because the evidence fileHash covers url + date + deletedText + addedText —
+// the change itself, deliberately not the prose — so the on-chain claim is
+// untouched. Recorded because a record whose public text can be edited with no
+// trace is exactly the "trust us" this platform exists not to be.
+//
+// Append-only. A later correction writes another row; nothing here is updated.
+model SummaryCorrection {
+  id             String         @id @default(cuid())
+  urlVersionDiffId String
+  urlVersionDiff UrlVersionDiff @relation(fields: [urlVersionDiffId], references: [id], onDelete: Cascade)
+  // Denormalised so a correction stays legible if the diff is ever detached.
+  fileHash       String
+  previousText   String
+  correctedText  String
+  // Why, in the corrector's own words. A correction with no stated reason is
+  // indistinguishable from a quiet rewrite.
+  reason         String
+  correctedById  String?
+  correctedBy    Researcher?    @relation(fields: [correctedById], references: [id])
+  createdAt      DateTime       @default(now())
+
+  @@index([urlVersionDiffId, createdAt])
+  @@index([fileHash])
+}
+
 model ClaimTrajectoryComputation {
   id                   String     @id @default(cuid())
   trackedUrlId         String

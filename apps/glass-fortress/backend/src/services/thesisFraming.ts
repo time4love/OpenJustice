@@ -5,6 +5,7 @@ import {
   type ThesisFramingAssessment,
 } from './ThesisFramingAssessorAgent';
 import { loadTrajectoryContext } from '../lib/trajectoryContext';
+import { loadSummaryCaveat } from '../lib/summaryProvenance';
 
 // ---------------------------------------------------------------------------
 // Deciding what a thesis should argue, before one exists.
@@ -153,6 +154,7 @@ export async function assessThesisFraming(
   // Loaded BEFORE the turn is recorded, so a failure here cannot leave a
   // FRAMING_PROPOSED event with no assessment beside it.
   const trajectories = await loadTrajectoryContext(evidence);
+  const summaryCaveat = await loadSummaryCaveat(evidence);
 
   const turns = await priorTurns(sessionId);
 
@@ -166,6 +168,7 @@ export async function assessThesisFraming(
     evidence,
     priorTurns: turns,
     trajectories,
+    summaryCaveat,
   });
 
   await prisma.researchSessionEvent.create({

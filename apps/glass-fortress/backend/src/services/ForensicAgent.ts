@@ -7,6 +7,7 @@ import {
 import { assertSchemaCompatibility } from '../lib/assertSchemaCompatibility';
 import { FORENSIC_DIFF_CLASSIFICATION_PROMPT } from '../prompts/forensicDiffClassification';
 import type { EvidenceContext } from '../lib/evidenceContext';
+import { FORENSIC_SUMMARY_REWRITE_PROMPT } from '../prompts/forensicSummaryRewrite';
 
 // ---------------------------------------------------------------------------
 // Related evidence context — summarised DB records passed to the agent
@@ -162,6 +163,64 @@ assertSchemaCompatibility(ForensicLlmOutputSchema, 'ForensicAgent');
 // ---------------------------------------------------------------------------
 // ForensicAgent
 // ---------------------------------------------------------------------------
+
+/**
+ * Rewrites one diff's legalSignificance from its ALREADY-EXTRACTED items.
+ *
+ * Deliberately a separate chain with a separate prompt, and deliberately given no
+ * correlated evidence at all. The defect it exists to repair was an instruction to
+ * cross-reference other records inside this field; withholding those records from
+ * the input makes leakage structurally impossible rather than merely forbidden.
+ *
+ * It never re-extracts. The items are the input, not the output — which is what
+ * keeps the evidence fileHash (url + date + deletedText + addedText) stable, and
+ * therefore keeps seven on-chain anchors pointing at something.
+ */
+export class ForensicSummaryRewriter {
+  private readonly chain: { invoke(input: unknown): Promise<unknown> };
+
+  constructor() {
+    const model = LLMFactory.getChatModel('FORENSIC', { temperature: 0 });
+    this.chain = model.withStructuredOutput(
+      z.object({ legalSignificance: z.string().min(1) }),
+      { name: 'forensic_summary_rewrite' },
+    ) as { invoke(input: unknown): Promise<unknown> };
+  }
+
+  async rewrite(input: {
+    url: string;
+    date: string;
+    deletedItems: DiffItem[];
+    addedItems: DiffItem[];
+  }): Promise<string> {
+    const render = (items: DiffItem[], mark: string) =>
+      items.length > 0
+        ? items
+            .map(
+              (i) =>
+                `  ${mark} "${i.exactQuote}"\n` +
+                `     סיווג: ${i.investigativeCategories.join(', ') || 'ללא'}` +
+                (i.relocated ? ' | הועבר למקום אחר באותו דף' : ''),
+            )
+            .join('\n')
+        : '  (אין)';
+
+    const raw = await this.chain.invoke([
+      { role: 'system' as const, content: FORENSIC_SUMMARY_REWRITE_PROMPT },
+      {
+        role: 'human' as const,
+        content:
+          `דף: ${input.url}\n` +
+          `תאריך התצלום שבו זוהה השינוי: ${input.date}\n\n` +
+          `פריטים שנמחקו:\n${render(input.deletedItems, '-')}\n\n` +
+          `פריטים שנוספו:\n${render(input.addedItems, '+')}\n\n` +
+          `כתוב את legalSignificance עבור שינוי זה.`,
+      },
+    ]);
+
+    return z.object({ legalSignificance: z.string().min(1) }).parse(raw).legalSignificance;
+  }
+}
 
 export class ForensicAgent {
   private readonly chain: { invoke(input: unknown): Promise<unknown> };

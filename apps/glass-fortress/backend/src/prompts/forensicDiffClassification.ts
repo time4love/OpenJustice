@@ -10,7 +10,7 @@ YOUR TASK:
 1. Break the diff into individual items — one per substantive deletion and one per substantive addition.
 2. Classify EACH ITEM SEPARATELY against the standing investigative concerns listed below. Return every concern that ITEM materially supports, and an EMPTY ARRAY if it supports none.
 3. Mark an item relocated: true when the same content appears on the other side of this same diff — text moved to a different position on the page rather than genuinely removed or introduced.
-4. If correlated DB evidence exists (same entity, overlapping timeframe, related subject matter), EXPLICITLY cross-reference it in your legalSignificance explanation. The correlation is the most powerful forensic finding — "they silently deleted the mRNA safety claim 3 weeks after this internal report surfaced."
+4. Correlated DB evidence may be shown to you. Use it ONLY to decide whether a change is worth flagging — a coincidence in dates is a reason to look harder at THIS page. NEVER describe it, quote it, or refer to it in legalSignificance. That explanation must be checkable against this diff's own text and nothing else: a reader holding only this page's archived snapshots must be able to verify every word of it. Correlating separate sources is the thesis stage's job, where it is argued and rated; asserting it here puts a conclusion inside an exhibit, and makes an evidence record impossible to check on its own.
 
 CLASSIFY ITEMS INDEPENDENTLY. Judge each item on its own content, never on the overall character of the diff it arrived in.
 
@@ -30,7 +30,7 @@ Populate deletedItems and addedItems with the actual text changes in ALL cases, 
 
 LANGUAGE RULES:
 - deletedItems[].summary and addedItems[].summary: concise 1-sentence factual statements in highly professional Hebrew
-- legalSignificance stays at the DIFF level: it is where a combination is explained — for instance efficacy figures removed while eligibility widened in the same update. Per-item categories record what each change is; this records what they amount to together
+- legalSignificance stays at the DIFF level: it is where a combination is explained — for instance efficacy figures removed while eligibility widened in the same update. Per-item categories record what each change is; this records what they amount to together. It is bound by the same discipline as the items: describe only what THIS diff's text shows. Do not import facts, dates, names or events from any other record
 - deletedItems[].exactQuote and addedItems[].exactQuote: verbatim copy of the diff text — no Hebrew, no paraphrasing
 - legalSignificance: 2-4 sharp, forensic sentences in highly professional Hebrew. When investigativeCategories is empty, one sentence stating why the change is immaterial.
 

@@ -62,6 +62,7 @@ jest.mock('../src/lib/prisma', () => ({
 }));
 
 import { prisma } from '../src/lib/prisma';
+import { CLASSIFIER_VERSION } from '../src/lib/classifierVersion';
 import {
   reclassifyDiffs,
   findOutOfSyncEvidence,
@@ -198,7 +199,7 @@ describe('reclassifyDiffs', () => {
     await reclassifyDiffs({});
 
     const data = db.updates[0]['data'] as Record<string, unknown>;
-    expect(data['classifierVersion']).toBe('v2-item-level');
+    expect(data['classifierVersion']).toBe(CLASSIFIER_VERSION);
     expect(data['classifierPromptHash']).toMatch(/^[0-9a-f]{64}$/);
   });
 
@@ -232,7 +233,7 @@ describe('version targeting', () => {
     };
     expect(call.where.OR).toEqual([
       { classifierVersion: null },
-      { NOT: { classifierVersion: 'v2-item-level' } },
+      { NOT: { classifierVersion: CLASSIFIER_VERSION } },
     ]);
   });
 

@@ -4,6 +4,7 @@ import { LLMFactory } from '../factories/LLMFactory';
 import { assertSchemaCompatibility } from '../lib/assertSchemaCompatibility';
 import { DEVILS_ADVOCATE_CRITIQUE_PROMPT } from '../prompts/devilsAdvocateCritique';
 import type { EvidenceContext } from '../lib/evidenceContext';
+import { formatSummaryCaveat, type SummaryCaveat } from '../lib/summaryProvenance';
 
 // A resolved gap passed in as context — tells the agent that a gap was addressed
 export interface ResolvedGapContext {
@@ -104,6 +105,8 @@ export class DevilsAdvocateAgent {
      * genuinely cites no forensic evidence.
      */
     trajectories: TrajectoryBundle,
+    /** Summaries predating the self-contained rule. Required — see the assessor. */
+    summaryCaveat: SummaryCaveat | null,
   ): Promise<DevilsAdvocateOutput> {
     const evidenceBlock =
       referencedEvidence.length > 0
@@ -131,6 +134,7 @@ export class DevilsAdvocateAgent {
       : '';
 
     const trajectoryBlock = formatTrajectoryContext(trajectories, 'en');
+    const caveatBlock = formatSummaryCaveat(summaryCaveat, 'en');
 
     const messages = [
       { role: 'system' as const, content: DEVILS_ADVOCATE_CRITIQUE_PROMPT },
@@ -142,6 +146,7 @@ export class DevilsAdvocateAgent {
           `${evidenceBlock}` +
           `${resolvedBlock}\n\n` +
           `${trajectoryBlock ? `${trajectoryBlock}\n\n` : ''}` +
+          `${caveatBlock ? `${caveatBlock}\n\n` : ''}` +
           `Provide your devil's advocate analysis of this thesis.`,
       },
     ];
