@@ -144,6 +144,18 @@ model UrlVersionDiff {
   rawAddedText         String       @default("[]") // JSON array of raw page text chunks that were added
   aiSignificance       String       @default("") // Hebrew forensic explanation
   isLegallySignificant Boolean      @default(false)
+  // Which classifier produced the classification on this row.
+  //
+  // Stored LLM-derived columns drift the moment the prompt changes: without
+  // provenance, isLegallySignificant silently means different things on
+  // different rows depending on when they were scanned, and nothing can tell a
+  // stale row from a fresh one. classifierVersion is the human-readable
+  // targeting key ("reclassify everything below v2"); classifierPromptHash is
+  // the proof, since a version string is a promise and a hash is checkable — if
+  // the prompt at that version does not hash to this value, something else
+  // judged this row. Null on rows classified before provenance was recorded.
+  classifierVersion    String?
+  classifierPromptHash String?
   // ForensicAgent classification. Stored on the diff (not only on the promoted
   // Evidence) because a researcher may promote a diff manually via
   // /forensics/promote, and that path needs the classification without re-running
@@ -971,4 +983,37 @@ model DiffDebateEvent {
   content   String
   refId     String? // Evidence.id on PROMOTED
   createdAt DateTime            @default(now())
+}
+
+// ---------------------------------------------------------------------------
+// One record per reclassification run.
+//
+// Reclassification overwrites LLM-derived columns, so the run report is the only
+// place the previous verdict survives. Kept per RUN rather than per diff: the
+// per-diff "before" that matters most is already preserved elsewhere — Evidence
+// copies its categories at promotion time, so a promoted row carries its own
+// snapshot — and full per-diff history would store badly what this stores well.
+//
+// It is also the measurement. When classification changes, this is what answers
+// "did it help?" — which diffs flipped, in which direction, and how many of them
+// already had evidence built on the old verdict.
+// ---------------------------------------------------------------------------
+model ReclassificationRun {
+  id                String   @id @default(cuid())
+  trackedUrlId      String?  // null when the run covered every tracked URL
+  classifierVersion String   // the version rows were brought UP TO
+  diffsExamined     Int      @default(0)
+  diffsReclassified Int      @default(0)
+  // Diffs whose isLegallySignificant changed, either direction.
+  flipsToSignificant Int     @default(0)
+  flipsToRoutine     Int     @default(0)
+  // Flips on a diff that had already produced Evidence. These need a human:
+  // the Evidence row still carries the categories it was promoted with, so it
+  // and its source diff now disagree.
+  flipsWithEvidence  Int     @default(0)
+  // JSON: Array<{ diffId, beforeDate, afterDate, before: string[], after: string[], hadEvidence: boolean }>
+  // Only for diffs that flipped — an unchanged verdict needs no record.
+  flips             String   @default("[]")
+  startedAt         DateTime @default(now())
+  finishedAt        DateTime?
 }
