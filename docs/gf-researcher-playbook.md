@@ -556,3 +556,66 @@ Recorded as absent rather than papered over.
 **Tests: 898 passing.** The two `WaybackScraperAutoPromote` suites were replaced by
 `recordScanFinding.test.ts`; no coverage was lost, since every registration semantic they
 exercised is covered directly in `evidenceOnChain.test.ts` against the service that performs it.
+
+---
+
+## Step 5 — A scan that could never be retried, and a review of the tools built to fix it
+
+### FINDING 11 — one transient failure bricked the page permanently
+
+The re-run of the scan failed again, in under a second, with **no log output at all**. That
+silence was the clue: nothing had been attempted.
+
+`runFullScan` handled an existing job in three branches — no job, `COMPLETED`, and `FAILED`.
+The `FAILED` branch marked the tracked URL failed and returned, without a single fetch. And
+because there is exactly one `WaybackScrapeJob` row per tracked URL, updated in place, that
+state was permanent: every later scan request short-circuited on it.
+
+So a 30-second CDX timeout against an archive that was merely slow made a government page
+**permanently unscannable**, and the retry fix shipped an hour earlier could never take
+effect on it — the code that would have used it was unreachable.
+
+`createJob` already knew how to reset a failed job (`status: 'PENDING'`, `failureReason: null`).
+It was simply never called for one. Reaching that branch means someone explicitly asked to
+scan a URL whose last attempt failed, and the only sane reading of that request is "try
+again". `fromDate` is preserved, so a failure partway through a long history resumes at the
+batch that failed rather than restarting.
+
+### Reviewing the session's own output
+
+Four findings, three of them in code written earlier the same day.
+
+**The consistency boolean contradicted its own verdict.** `check_on_chain_status` derived
+`consistent` by excluding a few named verdicts, so `NOT_IN_VAULT` fell through as
+`consistent: true` **even when the contract held the hash** — an orphaned anchor, the exact
+condition the 2026-08-20 audit found twice and the tool was built to surface. The verdict
+string was right; the boolean a caller actually gates on said the opposite.
+
+Fixed by letting the verdict name the condition: `ORPHANED_ANCHOR` is now distinct from
+`NOT_IN_VAULT`, and `consistent` derives from a **positive** list of verdicts. That direction
+matters — a verdict added later is now inconsistent until someone says otherwise, rather than
+consistent by omission, which is how this happened.
+
+**The retry fix had a regression inside it.** `withRetry` is shared by the CDX query and the
+per-snapshot fetch, and they had one budget between them. Sharing was tolerable while only a
+503 counted as transient. Once timeouts were included — the archive's actual common failure —
+every timing-out snapshot inherited CDX's four retries and 120s of back-off. At 50 snapshots
+per batch that is over an hour of a job sleeping while reporting `SCANNING`.
+
+The two call sites have genuinely different economics: CDX runs once per batch and its failure
+kills the scan, so it keeps the large budget; a single snapshot is already skipped gracefully,
+so it gets one retry. `maxRetries` is now a required parameter rather than a default, because a
+default is how they came to share a budget in the first place.
+
+### What the review pattern was
+
+Three of the four findings were the same mistake: **the mechanism was right and the summary of
+it was wrong.** Correct verdict, wrong boolean. Correct outcomes array, wrong count. Correct
+transience classification, wrong budget for one of two callers.
+
+Summaries are what callers read. They were the part the tests under-covered, because asserting
+detailed structure felt like the more rigorous thing to do — the six-verdict test suite checked
+every verdict string and only checked `consistent` on four of them. The two it skipped were the
+two that mattered.
+
+**Tests: 908 passing.**

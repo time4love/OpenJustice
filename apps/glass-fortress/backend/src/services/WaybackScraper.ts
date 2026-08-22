@@ -85,8 +85,26 @@ const MAX_SNAPSHOTS = 50;
 /** Milliseconds to wait between Wayback Machine HTTP requests — respects rate limits. */
 const FETCH_DELAY_MS = 1_500;
 
-/** Retry attempts for transient CDX / snapshot failures before giving up. */
+/**
+ * Retry attempts for the CDX index query.
+ *
+ * Generous, because CDX runs ONCE per batch and its failure kills the whole
+ * scan — there is nothing to skip past.
+ */
 const CDX_MAX_RETRIES = 4;
+
+/**
+ * Retry attempts for one archived snapshot fetch.
+ *
+ * Deliberately far smaller than CDX's. A batch fetches up to MAX_SNAPSHOTS
+ * snapshots and an individual failure is already handled gracefully — the pair
+ * is skipped and the scan continues. Sharing CDX's budget meant each timing-out
+ * snapshot burned 8+16+32+64 = 120s of back-off, so a slow archive could leave
+ * one job sleeping for well over an hour while reporting SCANNING and showing
+ * no progress. One retry absorbs a blip; anything more pays a large cost for a
+ * skippable item.
+ */
+const SNAPSHOT_MAX_RETRIES = 1;
 
 /**
  * Timeout for the CDX index query.
@@ -141,22 +159,32 @@ export function isTransientWaybackError(err: unknown): boolean {
 
 /**
  * Thin retry wrapper for Wayback Machine HTTP requests.
- * Retries up to CDX_MAX_RETRIES times on transient failures, with exponential
- * back-off. Non-transient errors are rethrown immediately.
+ *
+ * Retries on transient failures with exponential back-off. Non-transient errors
+ * are rethrown immediately.
+ *
+ * `maxRetries` is required rather than defaulted: the two call sites have
+ * genuinely different economics (see CDX_MAX_RETRIES and SNAPSHOT_MAX_RETRIES),
+ * and a default is how they came to share one budget in the first place.
+ *
+ * `baseDelayMs` exists so tests can exercise the budget without sleeping.
  */
-async function withRetry<T>(fn: () => Promise<T>): Promise<T> {
+export async function withRetry<T>(
+  fn: () => Promise<T>,
+  { maxRetries, baseDelayMs = CDX_RETRY_BASE_MS }: { maxRetries: number; baseDelayMs?: number },
+): Promise<T> {
   let lastErr: unknown;
-  for (let attempt = 0; attempt <= CDX_MAX_RETRIES; attempt++) {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
       return await fn();
     } catch (err) {
-      if (isTransientWaybackError(err) && attempt < CDX_MAX_RETRIES) {
-        const delay = CDX_RETRY_BASE_MS * Math.pow(2, attempt);
+      if (isTransientWaybackError(err) && attempt < maxRetries) {
+        const delay = baseDelayMs * Math.pow(2, attempt);
         const reason = axios.isAxiosError(err)
           ? (err.response?.status ?? err.code ?? 'no response')
           : 'unknown';
         console.warn(
-          `[WaybackScraper] transient failure (${reason}) — retrying in ${delay}ms (attempt ${attempt + 1}/${CDX_MAX_RETRIES})`,
+          `[WaybackScraper] transient failure (${reason}) — retrying in ${delay}ms (attempt ${attempt + 1}/${maxRetries})`,
         );
         await sleep(delay);
         lastErr = err;
@@ -460,11 +488,13 @@ export class WaybackScraper {
       `&limit=${MAX_SNAPSHOTS + 1}` + // request one extra row to detect "more exist"
       (fromDate ? `&from=${fromDate}` : '');
 
-    const response = await withRetry(() =>
-      axios.get<unknown[][]>(cdxUrl, {
-        timeout: CDX_TIMEOUT_MS,
-        headers: { 'User-Agent': 'GlassFortress-ForensicScanner/1.0 (legal research)' },
-      }),
+    const response = await withRetry(
+      () =>
+        axios.get<unknown[][]>(cdxUrl, {
+          timeout: CDX_TIMEOUT_MS,
+          headers: { 'User-Agent': 'GlassFortress-ForensicScanner/1.0 (legal research)' },
+        }),
+      { maxRetries: CDX_MAX_RETRIES },
     );
 
     const rows = response.data;
@@ -508,18 +538,20 @@ export class WaybackScraper {
 
     let html: string;
     try {
-      const response = await withRetry(() =>
-        axios.get<string>(archiveUrl, {
-          timeout: SNAPSHOT_TIMEOUT_MS,
-          headers: {
-            'User-Agent':
-              'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
-              '(KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-          },
-          responseType: 'text',
-          maxContentLength: 5 * 1024 * 1024,
-        }),
+      const response = await withRetry(
+        () =>
+          axios.get<string>(archiveUrl, {
+            timeout: SNAPSHOT_TIMEOUT_MS,
+            headers: {
+              'User-Agent':
+                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
+                '(KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+              'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            },
+            responseType: 'text',
+            maxContentLength: 5 * 1024 * 1024,
+          }),
+        { maxRetries: SNAPSHOT_MAX_RETRIES },
       );
       html = response.data;
     } catch (err) {
@@ -1109,6 +1141,9 @@ export class WaybackScraper {
    * Idempotent for SCANNING TrackedUrls — safe to call again to resume after
    * a server crash (in-memory guard prevents concurrent runs for the same id).
    *
+   * A previously FAILED job is reset and retried: scan failures are transient
+   * by construction, and refusing to retry left URLs permanently unscannable.
+   *
    * @param trackedUrlId  The TrackedUrl to scan (must already exist with status SCANNING).
    * @param url           The original URL (needed to create jobs).
    */
@@ -1147,11 +1182,32 @@ export class WaybackScraper {
           // Reset the same job record for the next batch
           job = await this.createJob(url, trackedUrlId, nextFromDate);
         } else if (job.status === 'FAILED') {
-          await prisma.trackedUrl.update({
-            where: { id: trackedUrlId },
-            data: { status: 'FAILED' },
-          });
-          return;
+          // A previous attempt failed. Retry it rather than refusing forever.
+          //
+          // This branch used to mark the TrackedUrl FAILED and return, without
+          // attempting a single fetch. Because there is exactly one job row per
+          // TrackedUrl, updated in place, the first transient failure made the
+          // URL permanently unscannable: every later scan request short-
+          // circuited here, produced no logs, and reported FAILED. A 30s CDX
+          // timeout against an archive that is merely slow was enough to brick
+          // a page for good — and it did, on 2026-08-22.
+          //
+          // Reaching this branch means someone explicitly asked to scan a URL
+          // whose last attempt failed, and the only sane reading of that
+          // request is "try again". Failure here is transient by construction:
+          // the job is marked FAILED only when fetches fail, never when the
+          // archive simply holds nothing (that path completes with no
+          // snapshots). The concurrent-run guard above already prevents a
+          // retry from racing a live scan.
+          //
+          // fromDate is preserved so a failure partway through a long history
+          // resumes at the batch that failed instead of restarting from the
+          // beginning.
+          console.log(
+            `[WaybackScraper] Retrying previously FAILED job for ${trackedUrlId}` +
+              (job.failureReason ? ` (was: ${job.failureReason})` : ''),
+          );
+          job = await this.createJob(url, trackedUrlId, job.fromDate ?? undefined);
         }
         // PENDING or IN_PROGRESS — process (or resume) it
 
