@@ -107,6 +107,32 @@ export function buildTrajectory(
   };
 }
 
+/**
+ * Claims that moved as a unit — identical presence across every snapshot.
+ *
+ * Page edits happen in blocks, not paragraph by paragraph, so a section that is
+ * added and later removed produces one trajectory per paragraph inside it. The
+ * first real run reported 47 trajectories that were only 15 events: ten claims
+ * shared a single pattern, and a reader had no way to tell that from ten
+ * independent findings.
+ *
+ * Grouping is not merely noise reduction. "Eight assertions about infant
+ * vaccination safety appeared together on 5 August and vanished together on
+ * 6 September" is a materially harder thing to explain as routine editing than
+ * eight separate paragraph removals — the co-movement IS the finding.
+ */
+export interface TrajectoryGroup {
+  /** SHA-256 of the presence vector. Identical movement gives an identical id. */
+  patternHash: string;
+  /** The shared shape, as the flips only. */
+  changes: Observation[];
+  transitions: number;
+  firstSeen: string;
+  lastSeen: string;
+  finalState: 'PRESENT' | 'REMOVED';
+  claims: { claimHash: string; claimText: string }[];
+}
+
 export interface ComputeResult {
   url: string;
   snapshotsExamined: number;
@@ -114,6 +140,8 @@ export interface ComputeResult {
   /** Candidate quotes that appear in no snapshot — usually paraphrased extractions. */
   candidatesUnmatched: number;
   trajectories: Trajectory[];
+  /** The same trajectories, collapsed by shared movement. This is the finding count. */
+  groups: TrajectoryGroup[];
 }
 
 /**
@@ -187,11 +215,52 @@ export async function computeClaimTrajectories(
 
   trajectories.sort((a, b) => b.transitions - a.transitions);
 
+  const groups = groupByMovement(trajectories);
+
   return {
     url,
     snapshotsExamined: snapshots.length,
     candidatesConsidered: candidates.size,
     candidatesUnmatched: unmatched,
     trajectories,
+    groups,
   };
+}
+
+/** The flips only — the unchanged stretches between them are where nothing happened. */
+export function changesOnly(observations: readonly Observation[]): Observation[] {
+  return observations.filter((o, i) => i === 0 || o.present !== observations[i - 1].present);
+}
+
+/**
+ * Collapse trajectories that share an identical presence vector.
+ *
+ * The vector is every snapshot's presence, not just the flips: two claims that
+ * flip on the same dates but differ anywhere in between did NOT move together,
+ * and merging them would assert a co-movement that did not happen.
+ */
+export function groupByMovement(trajectories: readonly Trajectory[]): TrajectoryGroup[] {
+  const byPattern = new Map<string, Trajectory[]>();
+
+  for (const t of trajectories) {
+    const vector = t.observations.map((o) => (o.present ? '1' : '0')).join('');
+    const pattern = claimHash(vector);
+    const bucket = byPattern.get(pattern);
+    if (bucket) bucket.push(t);
+    else byPattern.set(pattern, [t]);
+  }
+
+  const groups: TrajectoryGroup[] = [...byPattern.entries()].map(([patternHash, members]) => ({
+    patternHash,
+    changes: changesOnly(members[0].observations),
+    transitions: members[0].transitions,
+    firstSeen: members[0].firstSeen,
+    lastSeen: members[0].lastSeen,
+    finalState: members[0].finalState,
+    claims: members.map((m) => ({ claimHash: m.claimHash, claimText: m.claimText })),
+  }));
+
+  // Largest blocks first: a section that moved as a unit is the stronger finding.
+  groups.sort((a, b) => b.claims.length - a.claims.length || b.transitions - a.transitions);
+  return groups;
 }
