@@ -2392,3 +2392,636 @@ usually right and the summary of it is usually wrong.** Correct verdict, wrong b
 Correct outcomes array, wrong count. Correct diffs, wrong flagged count. Correct classification,
 misleading prose. Summaries are what people read and act on, and they are the part nothing
 verifies.
+
+---
+
+# Part III — The thesis phase
+
+Opened cold on 2026-08-23, against the vault Part II left: 83 snapshots all anchored, 81 diffs
+at `v3-self-contained-summary`, 8 anchored evidence records (7/7 forensic reproducible from
+snapshots), 15 claim trajectories, 3 known key figures, **0 theses**. Only the MCP tools and
+this document. Build nothing; a missing tool is a finding.
+
+Two predictions to test, stated before any call so they cannot be fitted afterwards:
+
+- **(a)** Trajectory citation is the first hard stop, at `create_thesis_draft`. `ThesisMention`
+  knows `KEY_FIGURE | EVIDENCE | TRACKED_URL`; a trajectory is none of those, and T-2's
+  eight-claim co-movement is the strongest thing in the vault.
+- **(b)** A strongly-rated thesis may produce no evidence gaps; the whistleblower call is
+  derived from gaps, and a live call is a HARD publication check. A thesis could be too
+  "complete" to publish. That would be a design finding, not a bug to route around.
+
+## Step 19 — Reopening, third time
+
+Same order as Step 12: read, then gated no-write, then the production discriminator.
+
+### Call 1 — `search_evidence`
+
+```
+search_evidence
+  query: "משרד הבריאות חיסונים"
+  limit: 20
+```
+
+`total: 8`. Server up; proves nothing else.
+
+### Call 2 — `check_on_chain_status` — and the authorization was dead
+
+```
+check_on_chain_status
+  fileHash: "0x0654…c262"
+```
+
+First attempt: `This connector requires authentication. The user needs to connect it before
+this tool can be used.` The read in call 1 had succeeded seconds earlier.
+
+### FINDING 43 — an anonymous-read design hides a dead connector
+
+The authorization had expired across the session boundary, exactly the case FINDING 4's rule
+exists for — and call 1 gave no hint. Because every read tool is served anonymously, a
+connector can be half-dead for an entire planning conversation and nothing will say so until
+the first gated call. Recorded, not built: the rule "gated no-write call before anything
+substantive" is the mitigation, and it worked here at a cost of one call. No workaround was
+attempted; the researcher's path is MCP-only, so a dead connector is a stop, not a detour.
+
+Re-authorized by the researcher out-of-band; second attempt:
+
+| Field | Value |
+|---|---|
+| `verdict` | `CONSISTENT` |
+| `safeToPromote` | `false` — already anchored |
+| `database.status` | `CONFIRMED` |
+| `database.onChainTxHash` | recorded |
+| `chain.registered` | `true` |
+| `chain.registryEvidenceId` | `2` |
+
+### Call 3 — the discriminator, read-only, against production
+
+The Supabase connector is bound to a single project with no ref parameter, so the project
+was identified first (`get_project_url` → the production ref), then the FINDING 1 corrected
+form was run with three hashes and four control columns.
+
+| Column | Value |
+|---|---|
+| `evidence_total` | 0 |
+| `matching` | 0 of 3 |
+| `diffs_total` | 0 |
+| `thesis_total` | 0 |
+| `sessions_total` | 0 |
+
+That is the weak row of the FINDING 1 table — production is empty, so a bare `0 matching`
+discriminates nothing. The positive contrast does: the connector returned 8 evidence records
+and the researcher reports 2 `ACTIVE` research sessions, while production holds 0 of each.
+A connector that sees rows production lacks is not production. **Staging confirmed.**
+Production remains empty — nothing from Part I or II is on `master`.
+
+## Step 20 — Closing the ownerless sessions, and the consent branch nobody had tested
+
+Two framing sessions were `ACTIVE` with `researcherId: null` — legacy rows from before
+single-active and ownership were enforced. Which consent branch an ownerless session hits
+was untested. Ordered so that the probe could not leave junk: close the known one, probe
+with the real question while the other is still active, then close it.
+
+### Call 1 — `close_research_session`
+
+```
+close_research_session
+  sessionId: "cmt4uv9c7001q116spl54e6hg"      # the control re-run
+```
+
+`status: CLOSED`, `durationMinutes: 608`, summary all zeros, 3 events
+(`SESSION_STARTED`, `FRAMING_PROPOSED`, `FRAMING_ASSESSED`).
+
+### FINDING 44 — the close response replays every turn in full
+
+The close summary echoes the `FRAMING_ASSESSED` event verbatim — the full assessment JSON,
+naming officials. A researcher closing a session to tidy up receives the whole record back
+whether or not they wanted it, and anything that logs tool responses now holds it. Recorded,
+not built.
+
+### Call 2 — `open_thesis_framing`, no consent, while the other is active
+
+```
+open_thesis_framing
+  question: "Whether Israel's Ministry of Health revised its public safety representations on corona.health.gov.il/vaccine-for-covid in step with what it knew internally, around the publication of the Berkovitch recordings on 2022-08-21."
+```
+
+| Field | Value |
+|---|---|
+| `error` | `SESSION_ACTIVE_SAME_RESEARCHER` |
+| `activeSession.id` | `cmt4ptxnt000174gc1fdaaxvz` — **named** |
+| `activeSession.ownerHandle` | `null` |
+| `activeSession.ownedByCaller` | `true` |
+| `activeSession.ageMinutes` / `events` | 749 / 3 |
+| `howToProceed` | close it, or pass `closeActiveSession: true` |
+
+### FINDING 45 — an ownerless session is everyone's own
+
+`null` owner resolves to the **same-researcher** branch: the cheaper consent suffices, and
+the other-researcher path — the one that records a `closeReason` on the closed session — is
+never reached. Any authenticated researcher can close any legacy session without leaving a
+trace of why. New sessions always carry an owner, so this is confined to legacy rows; still,
+the permissive reading was chosen by default, not by decision. Recorded.
+
+The refusal does name the id, with enough context (name, question, age) to decide whether it
+is yours. A researcher who arrived without the id would not be stuck — which matters, because
+there is no MCP tool that lists sessions.
+
+### Call 3 — `close_research_session`
+
+```
+close_research_session
+  sessionId: "cmt4ptxnt000174gc1fdaaxvz"      # the original framing session
+```
+
+`status: CLOSED`, `durationMinutes: 750`, same shape as call 1, same full replay.
+
+## Step 21 — Framing, third run, clean corpus
+
+The control: identical question, identical framing text, third assessor run. Run 1 was on
+the contaminated corpus (arguing summaries), run 2 on the trajectory-aware assessor with the
+same corpus, run 3 here on `v3-self-contained-summary`. Editing the input would destroy the
+comparison, so the framing was submitted byte-for-byte.
+
+### Call 1 — `open_thesis_framing`
+
+Same question. `sessionId: cmt5gm7lr0005f52m6v5fiy3r`, `status: ACTIVE`, `rounds: 0`,
+`thesisId: null`.
+
+### Call 2 — `assess_thesis_framing`
+
+```
+assess_thesis_framing
+  sessionId: "cmt5gm7lr0005f52m6v5fiy3r"
+  proposedFraming: <the researcher's framing, verbatim — recorded on the session>
+```
+
+| Field | Value |
+|---|---|
+| `rounds` | 1 |
+| `evidenceConsidered` | 8 |
+| `trajectoriesConsidered` | 8 (of 15 — which eight is not reported) |
+| `contradictionCount` | 1 — `fileHash` `0x7517…2ac9` (the 2022-09-06 record) |
+| `unverifiedAssumptions` | 2 — the internal meeting's actual date; a directive link between the room and the site editors |
+| `candidateFramings` | 2 — `NARROW` (2 hashes), `MODERATE` (4 hashes) |
+| `recommendedTopicString` | present; no longer contains the phantom "חולפות" representation |
+
+### Call 3 — `get_claim_trajectories`, to check the contradiction before believing it
+
+Read-only, deterministic, `snapshotsExamined: 83`, `findingCount: 15`, `claimsTracked: 47`,
+`fromCache: true`, `sourceStateHash: e2d6…a376`.
+
+The assessor's two factual statements about 2022-09-06 both hold against the archive:
+"נמצאו יעילים ובטוחים לשימוש" is **newly added** that day (pattern `0e1991…`: absent before,
+present 09-06, gone 11-29), and the mild-side-effects paragraph is **restored** (pattern
+`ae8508…`: present 05-25, absent 05-29, present 05-30, absent 08-05, present 09-06).
+
+The researcher's clause "הסרה של התחייבות לבטיחות, והחזרתה" also holds: five patterns are
+absent on 2022-08-05 and present again on 2022-09-06 (`ae8508`, `9d2c75`, `7cbfc7`, `98020c`,
+`3313cb`), including "אין סיכוי לחלות בקורונה בגלל החיסון".
+
+### FINDING 46 — the contradiction is a straw man
+
+The assessor's `researcherClaim` is not the researcher's sentence. It dropped "והחזרתה" and
+inserted "בעקבות החשיפה", then contradicted the edited claim with evidence — the 09-06
+restoration — that *supports* the unedited one. Facts right, paraphrase wrong, verdict wrong.
+
+Across the three runs the phantom representation decays but does not vanish:
+
+| Run | Corpus | Claim about 2022-09-06 | Archive |
+|---|---|---|---|
+| 1 | contaminated | no return documented | false |
+| 2 | contaminated, trajectory-aware | returned "חולפות תוך יום-יומיים" | text never on the page |
+| 3 | clean | added "יעילים ובטוחים"; restored mild list | true |
+
+Residue in run 3: the `NARROW` candidate still says "קלות **וחולפות** בלבד" and the assessment
+quotes "שכיחות וקלות **בלבד**" as page text; neither word is in any archived version. The page
+says the common side effects *appear* a day or two after the dose.
+
+The evidence-facing half of the assessor is now sound. The researcher-facing half — quoting
+the claim it is about to contradict — is not, and nothing verifies it. Same shape as
+[Part II's recurring finding](#what-the-whole-exercise-actually-demonstrated).
+
+Both unverified assumptions coincide exactly with the two FOIA requests the adversary had
+already drafted: the real date of the recorded meeting (2022-08-21 is the publication date),
+and any correspondence or CMS record linking the editors to the people in the room.
+
+### Round 2 — the transport dropped mid-call
+
+```
+assess_thesis_framing
+  sessionId: "cmt5gm7lr0005f52m6v5fiy3r"
+  proposedFraming: <round 2, verbatim — recorded on the session>
+```
+
+Response: `Anthropic proxy: MCP server connection lost`. Not retried blind; the session was
+read first.
+
+`get_thesis_framing` showed a second `FRAMING_PROPOSED` event carrying the full round-2 text,
+**no** `FRAMING_ASSESSED` after it, `rounds: 1`.
+
+### FINDING 47 — a framing turn is not atomic, and cannot be resumed
+
+The proposal is persisted before the model is invoked, so a dropped connection leaves an
+orphaned proposal on a record that will attach to the thesis. No tool assesses a pending
+proposal; the only path forward is to call `assess_thesis_framing` again, which writes a
+duplicate `FRAMING_PROPOSED`. Either the turn should be written once, after assessment, or
+a retry should be idempotent on the proposal text. Recorded, not built.
+
+### FINDING 48 — the read path reports counts the write path computed
+
+The assess response said `evidenceConsidered: 8`, `trajectoriesConsidered: 8`. Reading the
+same session back: `0` and `0`. The summary fields are filled in by the call that did the work
+and not derived from stored state — so a researcher resuming a session sees a framing that
+considered nothing. Derive from state, not from a transition, again.
+
+### FINDING 49 — `trajectoriesConsidered` under-describes, now hit independently
+
+8 of 15 trajectories were "considered" and the response does not say which. Flagged as
+under-describing in a previous session on a different run; this is a second, independent hit
+on the count itself. A reader cannot tell whether the strongest trajectory (T-2, eight-claim
+co-movement) was among the eight.
+
+### Round 2 — retried on the same session, verbatim
+
+The researcher chose to retry rather than open a fourth session: the duplicate
+`FRAMING_PROPOSED` stays visible on the record as evidence of FINDING 47, and the round-1
+history the three-run comparison depends on is preserved.
+
+| Field | Value |
+|---|---|
+| `rounds` | **3** — the orphaned proposal is counted as a round; the session now reports one more round than assessments it holds |
+| `evidenceConsidered` / `trajectoriesConsidered` | 8 / 8 |
+| `contradictionCount` | **0** |
+| `unverifiedAssumptions` | 2 — a directive link between the room and the editors of both the 05.08 and 06.09 changes; when the findings first reached the ministry relative to 05.08 |
+| `candidateFramings` | `NARROW` (3 hashes: 08-05, the article, 09-06) · `MODERATE` (2 hashes) |
+| `recommendedTopicString` | removal 05.08.2022 → restoration 06.09.2022 plus the newly added "נמצאו יעילים ובטוחים לשימוש", in proximity to the 21.08.2022 publication |
+| `explanation` | no contradiction; pass `recommendedTopicString` to `suggest_thesis` |
+
+Checked against the trajectories: every date and quoted phrase in the topic string is
+archived; "חולפות" and "בלבד" are gone; the meeting date is asserted nowhere. **The first of
+the three control runs to produce a topic string the archive supports** — and it took the
+researcher correcting the assessor's quotation of the researcher, on the record, to get it.
+Which eight trajectories it saw is still not reported (FINDING 49).
+
+**Disclosure, material to what this control measures.** Round 2 was not written by the
+researcher unaided. It was drafted with assistance — the archive check in call 3 and the
+straw-man analysis above were produced by the assistant, and the researcher's round-2 text
+was composed from them after independently re-running the same trajectory patterns. Runs 1
+and 2 of the control had no round 2 at all. So the comparison across the three runs is valid
+only for round 1 (identical input, three assessors); the round-2 outcome measures the
+assessor's response to a corrected, archive-checked rebuttal, not to a researcher working
+alone. Checked after the fact: neither "חולפות" nor "בלבד" appears anywhere in the round-2
+output. The `MODERATE` candidate still states as fact that the findings "were brought to the
+attention of senior ministry officials", while the same response lists *when* as unverified.
+
+### The topic string the researcher chose — one edit, and why
+
+The recommended string said "הסרת טענות בטיחות ב-05.08.2022". Snapshots are discrete: the
+archive locates a change to an **interval between captures**, never to a date. Pattern
+`2bc8f6a8` has `lastSeen: 2022-07-24`, so a capture exists on 24 July that still held the
+claim, and the restored patterns record no flip between then and 05.08. The change is
+located to 24.07 → 05.08. Stating the interval is *stronger* than stating a date: it is
+exactly what the evidence carries, and it puts the 21.08 publication inside the restoration
+window rather than beside an unprovable removal date. Topic string passed forward:
+
+> שינויי המצגים בדף חיסוני הקורונה (corona.health.gov.il/vaccine-for-covid) באוגוסט-ספטמבר
+> 2022: טענות בטיחות שנעדרו מן התצלום מ-05.08.2022 לאחר שהופיעו בתצלום מ-24.07.2022,
+> והושבו בתצלום מ-06.09.2022 בתוספת הקביעה "יעילים ובטוחים לשימוש", בסמיכות לחשיפת ממצאי
+> צוות ברקוביץ ב-21.08.2022.
+
+**Expectation stated before the call:** with 8 confirmed records and a `maxEvidence` of 10,
+all 8 will be pulled whatever the string says. The topic string is directive, not retrieval.
+
+## Step 22 — `suggest_thesis`
+
+```
+suggest_thesis
+  topic: <the researcher's topic string above, verbatim>
+```
+
+Writes nothing. One semantic search, one synthesis call.
+
+| Field | Value |
+|---|---|
+| `evidenceCorpusSize` | **8** — every confirmed record, as predicted |
+| `supportingHashes` | 7 — the 2025-06-01 record was pulled but not cited |
+| `confidenceLevel` | `MODERATE` |
+| `keyFigures` | 3, all from the article |
+| `citations` | 8 footnotes over 7 hashes; `[^7]` cites two |
+| `missingEvidence` | 4 — internal correspondence / CMS directives for Aug–Sep 2022; the full report and original recordings; committee protocols; monitoring-system report data |
+| `narrativeBody` | three sections: factual background · the 21.08 publication and its proximity to the edits · legal causes |
+| `readyForDraft` | title, body, `evidenceHashes`, `keyFigures`, `citations` — ready to pass to `create_thesis_draft` |
+
+What held: 21.08 is stated as the publication date; the meeting date is asserted nowhere;
+officials are introduced as "reported"; the 09-06 restoration of the 4th-dose guidance
+matches T1.
+
+### FINDING 50 — the framing debate is not an input to synthesis
+
+`suggest_thesis` has no `framingSessionId`. The researcher's round-2 correction — that
+"חולפות"/"בלבד" are not on the archived page — lives on the session; the synthesis was
+generated blind to it and re-derived the same phantom: the body describes the 09-06 page as
+listing side effects that are "קלות וקצרות-טווח בלבד", and the legal section repeats
+"קלות בלבד". The framing session attaches only afterwards, at `create_thesis_draft`, as
+provenance — not as a constraint. **The mechanism built to stop a wrong framing becoming a
+well-argued thesis about the wrong thing cannot reach the step that writes the thesis.**
+
+### FINDING 51 — the interval collapsed back to a date
+
+The topic string located the removal to the 24.07 → 05.08 interval. The body says
+"ב-5 באוגוסט 2022 עודכן העמוד", while phrasing 06.09 correctly as "בתצלום מ-6 בספטמבר".
+The 24.07 capture appears nowhere: no evidence record corresponds to it, the interval is
+carried only by a trajectory, and the thesis can cite only evidence records. Prediction (a)
+is visible one call early — the most exact statement in the topic string has nothing
+citable to hang on.
+
+### FINDING 52 — an enum leaks into the public body
+
+"ניתוח השינויים הממוחשבים (FORENSIC_DIFF)" — an internal `EvidenceType` value in prose
+intended for publication.
+
+`readyForDraft` was **not** passed forward unchanged. The tool's own instructions permit
+editing the body before `create_thesis_draft`; the edits are the researcher's.
+
+### FINDING 53 — the phantom is re-derived, not leaked
+
+Checked by the researcher before editing: the corpus is clean (no "חולפ" in any of the
+seven cited summaries), and the synthesis prompt already forbids asserting beyond the cited
+evidence and requires every claim be traceable to a cited hash. The phantom returned anyway.
+The article truthfully says the ministry concealed findings about *prolonged* effects; the
+model infers what the page must therefore have claimed — *short-term* — and attributes it.
+A true premise about source A becomes a false claim about source B. This is the same
+contrast-seeking inference that produced the original inversion in Part II, surviving a
+corpus cleanup and an explicit stay-within-the-evidence instruction. A `framingSessionId` on
+`suggest_thesis` (FINDING 50) would not stop it: the correction would be one more instruction
+competing with an inference the model finds compelling. Distinct finding from the tool gap.
+
+### Why edit rather than "let the Devil's Advocate find it"
+
+Two reasons. The phantom misstates what the ministry told the public — that is the
+defamation surface itself, not a strength question, and is not shipped as an experiment.
+And the publication gate would not catch it: its citation check requires that the thesis
+cite at least one record, not that every factual claim be cited. An uncited assertion passes
+all thirteen checks.
+
+### The edit — strike the attribution, keep the omission
+
+| Claim | Status |
+|---|---|
+| the page listed the common effects and did not mention prolonged ones | **true, checkable** — an omission claim |
+| the page said effects were short-term / transient | **invented** — an attribution the text does not carry |
+
+"בלבד" is fine as an omission; the duration attribution is not. "קלות" is also a step
+beyond — the page lists the effects without characterising them. Four substitutions,
+applied mechanically with a uniqueness assertion on each, diffed, footnotes `[^1]`–`[^8]`
+unchanged: the two duration attributions → "the common effects and when they appear, with
+no mention of prolonged ones"; "on 5 August the page was updated" → "between the 24 July and
+5 August captures"; the enum deleted. Two word-order seams the mechanical pass produced
+(a doubled verb; a parenthetical stranded after the new clause) were returned to the
+researcher rather than repaired silently.
+
+### Prediction (a), stated before `create_thesis_draft`
+
+The 24.07 → 05.08 interval is the most exact statement in the topic string and has no
+citable evidence record; it exists only as a trajectory, and a thesis cites by `fileHash`.
+The choice at the next call is: assert it uncited, soften it, or build trajectory citation.
+The gate permits the first — which is itself the finding: **the strongest, most verifiable
+claim in the thesis is the one the citation system cannot express, while weaker claims cite
+cleanly.** Recorded before deciding, because it is an argument for `MentionType.CLAIM_TRAJECTORY`
+rather than a reason to weaken the sentence.
+
+### Call — `get_forensic_timeline`, to resolve a disagreement before asserting it
+
+The researcher fetched Wayback's 2022-09-05 capture directly and found "נמצאו יעילים
+ובטוחים לשימוש" **already present**, while the trajectory flips imply it first appears on
+09-06. Checked against the platform's own stored record rather than either party's memory.
+
+```
+get_forensic_timeline
+  url: "https://corona.health.gov.il/vaccine-for-covid/"
+```
+
+`status: COMPLETED`, `totalDiffs: 81`, `significantDiffs: 7`, `snapshotsStored: 83`,
+`unanchoredSnapshots: 0`. Response 88,951 characters — over the tool-result limit; read from
+the spilled file. Captures in the window: 07-24, 08-05 (×2), 08-07, 08-10, 08-13, 08-15,
+08-16 (×2), 09-05, 09-06. Every diff between 08-05 and 09-05 is +0/−0: the removal held
+across seven captures over six weeks. The stored 09-05 capture is `20220905111109`.
+
+The 09-05 → 09-06 diff (+8/−8, significant) carries "יעילים ובטוחים" in an ADDED item's
+`exactQuote`, alongside "אין סיכוי לחלות" and "פי 2". **Trajectory and diff layer agree
+with each other; the researcher's direct fetch disagrees with both.** Reconcilable only if
+the researcher's capture is a later 09-05 timestamp than 11:11 — in which case the platform's
+one-capture-per-day selection hid an intra-day edit, and the body's sentence coupling the
+FDA line to the restoration must be split. Unresolved at the time of writing; the body is
+not finalised until it is.
+
+### FINDING 54 — a stored snapshot's text is not readable through MCP
+
+No tool returns a snapshot's `fullText`, and the timeline reports dates rather than
+timestamps — the stored capture's timestamp is recoverable only from the `snapshotUrl` of
+the diff *into* it. A researcher who needs to check the platform's copy of a page against
+the archive cannot do so from the researcher's path. The disagreement above could not be
+settled from here.
+
+### FINDING 55 — all three significant diffs in the window are exactly +8/−8
+
+07-24 → 08-05, 09-05 → 09-06 and 09-21 → 11-29 each report precisely eight added and eight
+deleted items. Three distinct edits producing an identical count is an item cap, not a
+coincidence. Whatever the ninth item was on each of those days is not in the record.
+
+### FINDING 56 — the corpus is not clean at the item level, and FINDING 53 is contested
+
+The researcher's cleanliness check covered the seven cited *evidence* summaries. The *diff
+item* summaries beneath them, at `v3-self-contained-summary`, still carry the phantom
+verbatim — the 09-05 → 09-06 ADDED item describing the restored side-effects paragraph
+says it presents side effects as "קלות וקצרות מועד בלבד תוך שלילת סיכונים אחרים" — and a
+second item in the same diff argues rather than describes ("מצג שגוי"). Whether synthesis
+reads item summaries is not known from the researcher's path. FINDING 53's "re-derived, not
+leaked" therefore has a second candidate cause that must be ruled out before it stands as
+stated: the phantom has a surviving textual source one layer down.
+
+### FINDING 57 — `fullText` is a Readability extraction, and the model says it is the page
+
+Resolved by the researcher running the platform's own extractor (JSDOM + Readability) over
+the exact stored capture, `20220905111109`:
+
+| Phrase | raw HTML | readability |
+|---|---|---|
+| נמצאו יעילים ובטוחים לשימוש | present | absent |
+| אין סיכוי לחלות בקורונה בגלל החיסון | absent | absent |
+| לא התגלו בעיות בטיחות חריגות | present | present |
+
+Readable text 4,322 chars against 7,442 raw — about 42% of the page discarded. The stored
+text is not wrong; it is not the page. `UrlSnapshot.fullText` is a Readability extraction,
+and the data model documents it as page text. Trajectories, diffs, evidence identity and the
+on-chain `contentHash` all inherit it. Two consequences:
+
+- A change inside a dropped region is **invisible** — the FDA line was on the page on 09-05
+  and the platform cannot see it.
+- Readability's boundaries depend on page structure, so the same text can fall inside the
+  article in one capture and outside it in the next. A trajectory can therefore show a
+  **phantom flip** that is a layout change, not a content change.
+
+This supersedes the "platform text is wrong" branch and is larger than the discrepancy that
+surfaced it. It does **not** invalidate the anchors: they faithfully anchor what was stored.
+What was stored is an extraction, and the model claims it is the page. Recorded, not built.
+
+For the body: the restoration (05.09 → 06.09) and the six-week persistence hold in raw HTML
+independently of Readability, so they are asserted. The FDA line is decoupled — present in the
+09-06 capture, no "added" verb, because when it appeared cannot be answered from platform data.
+
+### Paragraph 4 — rewritten, and a number caught on the way in
+
+Paragraph 4 now carries the argument's temporal precision: the claims present in the 24.07
+capture and absent from 05.08 stay absent across seven further captures to 05.09 — about
+six weeks from the last capture that held them; the restoration is located to the one-day
+05.09 → 06.09 interval, fifteen to sixteen days after publication; the FDA line is stated
+as *present* in the 06.09 capture, with no "added" verb.
+
+### FINDING 58 — a restated number travelled into a draft before anyone recomputed it
+
+The researcher supplied "six weeks" in review for the persistence span. Anchored at 05.08,
+as the first draft sentence was, the span is 31 days — about four and a half weeks. Six
+weeks is 24.07 → 05.09, measured from the last capture that held the claims. The number was
+right for one anchor and was restated against another; it reached a draft paragraph of a
+public legal document before being re-derived. Same shape as Part II's summaries — a
+number restated rather than recomputed — caught cheaply here because the paragraph was
+printed verbatim before approval. Fixed by anchoring the sentence at 24.07, which is also
+the stronger claim and the interval the topic string already establishes. "Fifteen days"
+was likewise a round number for a 05.09 → 06.09 interval; it is now "fifteen to sixteen".
+
+### The title — changed before the call
+
+Proposed title stated concealment as fact ("הסתרת מידע בטיחותי") and carried a date range
+(Aug–Sep) the body had already outgrown. Replaced with a descriptive title, no accusation,
+no range: *שינויי מצגי הבטיחות בדף חיסוני הקורונה של משרד הבריאות, 2022*. The argument
+belongs in the body, where it is hedged and cited.
+
+### FINDING 59 — the most-quoted line in a thesis is checked by no route
+
+Recorded against the publication gate (`docs/gf-thesis-publication-gate-dev-plan.md`), not
+against this thesis. The gate's hedging check (check 7) runs over `head.userContent` only, so
+`Thesis.title` is never examined. And check 7 fires only on sentences naming a key figure, so
+an unhedged assertion about an *institution* would pass even if the title were included. The
+title is what gets quoted, listed, and rendered on the whistleblower call page, and it is
+covered by neither route. The researcher specced the gate and records the gap.
+
+## Step 23 — `create_thesis_draft`
+
+```
+create_thesis_draft
+  title: "שינויי מצגי הבטיחות בדף חיסוני הקורונה של משרד הבריאות, 2022"
+  body: <the edited body — recorded on the thesis head version>
+  citations: <8 entries from readyForDraft, unchanged>
+  evidenceHashes: <7 hashes>
+  keyFigures: <3 names>
+  framingSessionId: "cmt5gm7lr0005f52m6v5fiy3r"
+```
+
+| Field | Value |
+|---|---|
+| `thesisId` | `cmt5jffqy000lf52mn6t56f3l` — **the first thesis on this environment** |
+| `headVersionId` | `cmt5jffz6000nf52mpw4uyqvk` |
+| `status` | `PENDING_AI` |
+| `mentionsCreated` | 10 — 7 `EVIDENCE`, 3 `KEY_FIGURE` |
+
+Not reversible through MCP: there is no `delete_thesis`.
+
+### Prediction (a) — confirmed in substance, wrong in form
+
+Predicted: a hard stop at `create_thesis_draft` because a trajectory cannot be cited.
+Observed: **no stop.** The call accepted every argument and succeeded. The two most exact
+claims in the body — the 24.07 → 05.08 removal interval and the seven-capture, six-week
+persistence — are in the thesis uncited, because no field in the contract can carry a
+trajectory, and nothing objected to their absence. A stop would have forced the decision;
+silence let it pass. The citation system expresses the weaker claims cleanly and cannot
+express the strongest one (see *Prediction (a), stated before create_thesis_draft*). This
+is the argument for `MentionType.CLAIM_TRAJECTORY`, recorded and not built.
+
+## Step 24 — The gate as a progress meter, then the Devil's Advocate
+
+### Call 1 — `check_publication_readiness`, baseline
+
+```
+check_publication_readiness
+  thesisId: "cmt5jffqy000lf52mn6t56f3l"
+```
+
+Writes nothing. 13 checks: **6 hard failures** — `ANALYSIS_COMPLETE`, `ANALYSIS_WELL_FORMED`,
+`FIGURES_HEDGED`, `PUBLIC_INTEREST_STATEMENT`, `CALL_LIVE` (reason `ANALYSIS_INCOMPLETE`),
+`RATIONALE_SUBSTANCE`; 2 advisory not assessed (`OFFICIAL_CAPACITY`, `GAP_ACTIONABILITY`);
+check 6 `EVIDENCE_TIER` passes and declares itself `binding: false` because every record in
+the vault is at or above Tier 2; check 13 `FRAMING_ATTACHED` passes with the session id and
+question. `publishable: false`.
+
+### FINDING 60 — the hedge vocabulary does not know attribution
+
+Check 7 flags one sentence as naming three figures with no hedge marker. The sentence
+attributes the names to the published report — "בהם **לפי הדיווח** …" — which is a hedge in
+substance: it asserts that a report named them, not that they were there. The gate's
+vocabulary evidently holds modal hedges ("לכאורה", "ייתכן") and not attribution phrases.
+Recorded against the gate, beside FINDING 59. The sentence will carry "לכאורה" as well in
+the next version, because the gate is what runs at publish time; but the fix is to the
+vocabulary, not the sentence.
+
+### Call 2 — `run_ai_analysis`
+
+```
+run_ai_analysis
+  thesisId: "cmt5jffqy000lf52mn6t56f3l"
+```
+
+`status: COMPLETE`, `cached: false`, on `versionId: cmt5jffz6…`.
+
+| Field | Value |
+|---|---|
+| `overallStrengthAssessment` | `MODERATE` |
+| `evidenceGaps` | 2 — the full report behind the recordings; internal directives linking the room to the editors |
+| `counterArguments` | 3 — post-hoc (`STRONG`); relocation to subpages is not concealment, citing T3/T6 (`MODERATE`); an FDA-approval statement is not a misrepresentation because an internal discussion existed (`STRONG`) |
+| `alternativeInterpretations` | 2 — campaign-driven page focus; routine content churn |
+
+### Prediction (b) — not triggered, and not yet tested
+
+Two gaps, both actionable, both identical to the FOIA requests the adversary had already
+drafted. The call has material to derive from. A `MODERATE` thesis says nothing about
+whether a strong one would produce zero gaps; the prediction stays open.
+
+### FINDING 61 — the Devil's Advocate answered a looser thesis than the one written
+
+It saw the trajectories (it cites them by name) — Part II's work holds downstream. But its
+`STRONG` post-hoc rebuttal argues that the texts "were removed and restored repeatedly
+throughout 2022", which is true of T6 in May, while the body's actual claim is six weeks of
+persistence followed by a one-day restoration fifteen to sixteen days after publication. That
+claim is never engaged. Whether because those two sentences are the uncited ones — the
+residue of prediction (a) — or because the critic argues by pattern, cannot be told from
+the researcher's path. Its third counter-argument also restates a hedged body claim
+("ככל שיתבסס…") as a flat assertion before rebutting it: the straw-man shape of FINDING 46,
+on the other side of the argument.
+
+## Step 25 — `get_research_agenda`
+
+```
+get_research_agenda
+  thesisId: "cmt5jffqy000lf52mn6t56f3l"      # includeSuggestions left false: no model call, no suggested body
+```
+
+Writes nothing. Both gaps `resolved: false`, **`newHits: 0`** on each — every vault hit is
+`alreadyCited`. Gap 0 ("the report behind the article") is offered the article. Gap 1
+("internal directives to the editors") is offered the three May mechanism diffs — nearest
+semantic neighbours in an eight-record vault, not evidence about directives.
+
+### FINDING 62 — the agenda cannot say "the vault cannot close this"
+
+Its instructions offer two moves: cite an uncited hit, or submit new evidence. Neither
+applies: both gaps need documents that exist only inside the ministry. The tool has no
+third state for a gap that is *external by nature* — which is precisely the gap a FOIA
+request exists for, and the agenda does not point there.
+
+### FINDING 63 — the article's intake summary still argues
+
+The v3 self-contained pass ran over diffs. The article record's summary is an *intake*
+summary and was never reclassified: it asserts concealment and manipulation as fact and is
+the one summary in the corpus that speaks of *prolonged* effects. It is the most likely
+textual seed of the contrast the synthesis keeps drawing (FINDING 53) — a third candidate
+cause beside re-derivation and the item-level summaries (FINDING 56).
