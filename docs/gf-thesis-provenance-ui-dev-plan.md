@@ -96,6 +96,50 @@ do not duplicate it.
 
 > The timeline is what has happened. The checks are what remains.
 
+### 4.4 Two fixes that belong with this, not after it
+
+Both are small, both are backend, and both determine whether the timeline in §4.2 has anything
+to show.
+
+**(a) `create_thesis_draft` must DERIVE the framing session, not accept it optionally.**
+
+`framingSessionId` is `.optional()`, attached only at creation, and `attachThesisToFraming` has
+exactly **one** caller. Omit the parameter and both rows still exist, a human can see the
+relationship in the timestamps, and **nothing in the system can ever record it.** Provenance lost
+by a missing argument, with no repair path. The tool's own description says as much and then
+leaves it to the caller.
+
+One ACTIVE session is now enforced system-wide, which removes the ambiguity that justified the
+parameter: if a thesis is being created and exactly one framing session is active, there is no
+question which one it came from.
+
+- Derive the link from the single active session.
+- Warn loudly when there is none — do not fail silently.
+- Keep the parameter as a manual override for the unusual case.
+- Add a repair path so a thesis created without a link can be attached afterwards.
+  `attachThesisToFraming` already refuses when `session.thesisId` is set; keep that, so a repair
+  can never overwrite an existing link.
+
+Why this matters more than it looks: **the provenance page's value is that it cannot be curated.**
+A researcher who could quietly create a thesis without its framing session — the one holding an
+adversary's objections and a correction they were asked to make — could publish a narrative whose
+reasoning trail is simply absent, and it would look identical to a thesis that never had one.
+Deriving the link removes the choice.
+
+**(b) The theses list empty state asserts a fact about the world instead of describing what this
+viewer can see.**
+
+`theses/page.tsx` renders one string for everyone: *"אין תזות עדיין. היה/י הראשון/ה לכתוב."*
+Correct while zero theses exist. Once drafts exist, a **public** visitor is told there are none
+while theses exist and are simply unpublished. Not a leak — the inverse: a false statement made to
+avoid one.
+
+- PUBLIC, nothing published → *"no theses have been published yet"*
+- RESEARCHER, nothing exists → *"no theses yet — be the first to write one"*
+
+Do not reveal counts or titles to the public. The fix is honesty about the **scope of the answer**,
+not disclosure of what is hidden.
+
 ## 5. Constraints
 
 - **Researcher-only, all of it.** Route behind `requireResearcher`; the page 404s to the public
@@ -123,6 +167,13 @@ do not duplicate it.
 - A thesis with no session renders the empty state rather than an empty list.
 - A publication carrying a `DISPUTES` verdict shows the objection.
 - An event whose session has no `researcherId` renders as unknown, not blank.
+- A thesis created while one framing session is ACTIVE is linked to it **without** the parameter
+  being passed.
+- Creating a thesis with **no** active session warns rather than silently producing an orphan.
+- The repair path attaches a framing session to a thesis that has none, and **refuses** when the
+  session is already bound to a different thesis.
+- With ≥1 draft and 0 published, the public list renders the "none published" message and the
+  researcher list renders the drafts.
 
 ## 7. Non-goals
 
