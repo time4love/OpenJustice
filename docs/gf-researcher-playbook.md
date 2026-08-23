@@ -1036,16 +1036,29 @@ and an independent `eth_call` against the contract that does not go through this
 
 ---
 
-# Part II — The thesis phase
+# Part II — Making the evidence verifiable
 
-Steps 0-11 built a vault: eight anchored records, 81 classified diffs, 15 claim
-trajectories. None of that is an argument. This part walks the half of the workflow
-that turns a corpus into a legal thesis, has it attacked, and publishes what it still
-needs — synthesis, Devil's Advocate, FOIA, and the call for whistleblowers.
+This part was meant to be the thesis phase. It opened cold, in a new session, with only the
+MCP tools and this document — deliberately, because if the playbook cannot carry a session that
+has never seen the work, that is the finding it exists to produce.
 
-Started **cold**, in a new session, with only the MCP tools and this document. That was
-deliberate: if the playbook cannot carry a session that has never seen the work, that is
-the finding it exists to produce.
+**It never reached a thesis.** The first substantive call — a framing assessor, asked to check a
+researcher's proposed framing against the evidence — contradicted the researcher, citing an
+anchored record. The researcher was right and the record was wrong, and everything from Step 13 to
+Step 18 followed from pulling that thread:
+
+| What was believed | What was true |
+|---|---|
+| Trajectories informed the reasoning tools | They were invisible to every one of them |
+| Evidence identity was content-addressed | It hashed model prose; 5 of 7 could not be recomputed |
+| Snapshots were anchored automatically | **Zero of 83** had ever been anchored |
+| Summaries described their own source | The prompt told them to cross-reference other records |
+
+Ten findings, 33-42. **Almost none came from reading code** — they came from a written review
+handed to another session, a researcher's objections, a dry run that selected nothing and reported
+success, a guard asserting the wrong thing, and five failed transactions.
+
+The thesis phase opens as Part III, on a corpus that can now be checked.
 
 ## Step 12 — Reopening: environment first, then the write path
 
@@ -2288,6 +2301,57 @@ computed from the two snapshots' `contentHash` values rather than from model-wri
 going to be justified as *anchored by composition*, inheriting chain of custody from inputs already
 on-chain. That property is real and it is currently unearned. Anchoring the snapshots comes first;
 the identity built on top of them comes second.
+
+
+## Step 18 — The vault becomes verifiable
+
+Three operations, in an order that mattered.
+
+**83 snapshots anchored.** The factual layer — *"this page held exactly this text on this date"* —
+had zero anchors and the data model claimed it was automatic. 82 landed on the first pass; one
+failed on the RPC and landed on a re-run, which is what "idempotent and resumable" was for.
+
+**Evidence identity moved onto those anchors.** Seven records rehashed, each verified three ways:
+
+| Check | Result |
+|---|---|
+| Recompute the hash from the database | **7 of 7 reproducible** |
+| Superseded identity recorded on the row | 7 of 7 — `previousFileHash` + `previousOnChainTxHash` |
+| `check_on_chain_status` | `CONSISTENT`, registered, transaction recorded |
+
+The middle row is the whole point. Before today, five of seven could not be recomputed at all, and
+the two that could were verifying a formula built from model output. Now every one of them can be
+rederived by anyone holding the archived captures — and the captures' own hashes are on-chain, so
+that derivation is checkable without trusting this platform at any step.
+
+Registry ids 22 onward, not a reuse of 3-9. The old anchors remain on-chain matching nothing
+derivable, deliberately, with the cause recorded on each row.
+
+### What the ordering bought
+
+Each step was worthless without the one before it:
+
+- Anchoring evidence to snapshot hashes that were not themselves anchored would have been
+  *anchored by assertion* — the property claimed for it, unearned.
+- Rehashing before the new formula deployed would have left the server computing the old one on
+  any new promotion: two identity schemes in one vault, worse than either.
+- And re-running classification "from scratch", the obvious repair, would have re-extracted the
+  items, moved every hash, and orphaned seven anchors — destroying exactly what was being fixed.
+
+### FINDING 42 — the vector store has no delete, and nothing noticed
+
+Re-indexing writes the new key; nothing removes the old. After seven rehashes the store may hold
+seven orphaned vectors.
+
+They cannot surface: `searchSimilarEvidence` returns file hashes which are then looked up in
+`Evidence`, and the old hashes are no longer there, so the join drops them — confirmed by a live
+search returning exactly 8 results, all on current identities. So this is hygiene rather than
+correctness.
+
+It is recorded because the reason it is harmless is *incidental*. Nothing was designed to protect
+against orphaned vectors; a join happens to filter them. A future path that trusted the vector
+store's own output instead of re-reading `Evidence` would surface records that no longer exist —
+and would look, to a researcher, exactly like evidence.
 
 ## Where this leaves the vault
 
