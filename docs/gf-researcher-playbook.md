@@ -2852,7 +2852,11 @@ the exact stored capture, `20220905111109`:
 | אין סיכוי לחלות בקורונה בגלל החיסון | absent | absent |
 | לא התגלו בעיות בטיחות חריגות | present | present |
 
-Readable text 4,322 chars against 7,442 raw — about 42% of the page discarded. The stored
+Readable text 4,330 chars against 6,266 of raw page text — **31% discarded**. (This first read
+42%, against a 7,442-character denominator that still counted `<script>` and `<style>` bodies as
+page text; re-measured on the same capture with those stripped. Treat the ratio as context, not as
+the finding — it mixes boilerplate Readability is *supposed* to drop with the FDA line it must not.
+**The dropped sentence is the finding.**) The stored
 text is not wrong; it is not the page. `UrlSnapshot.fullText` is a Readability extraction,
 and the data model documents it as page text. Trajectories, diffs, evidence identity and the
 on-chain `contentHash` all inherit it. Two consequences:

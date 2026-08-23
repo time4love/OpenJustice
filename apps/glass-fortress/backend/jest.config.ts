@@ -1,17 +1,56 @@
 import type { Config } from 'jest';
 
-const config: Config = {
+// ---------------------------------------------------------------------------
+// Two projects, one suite.
+//
+// `unit` is everything as it has always been: node_modules untransformed, which
+// is fast and is why every test touching the scraper mocks jsdom and
+// @mozilla/readability away — jsdom's dependency chain is ESM-only and ts-jest
+// cannot parse it untransformed.
+//
+// That mock is fine for testing the scraper's control flow and useless for
+// testing the EXTRACTOR. EXTRACTION_DIVERGENCE — the finding the verification
+// tools exist to surface — is a claim about what Readability really drops from
+// a real archived page, so a test running against a stubbed Readability would
+// assert the stub and prove nothing. The `extraction` project transforms
+// node_modules so those tests can run the genuine article against frozen real
+// captures. It costs a few seconds and applies to nothing else.
+// ---------------------------------------------------------------------------
+
+const shared = {
   preset: 'ts-jest',
   testEnvironment: 'node',
   rootDir: '.',
-  testMatch: ['**/test/**/*.test.ts'],
   moduleFileExtensions: ['ts', 'js', 'json'],
   setupFiles: ['<rootDir>/test/setupEnv.ts'],
   clearMocks: true,
-  forceExit: true,
   transform: {
     '^.+\\.tsx?$': ['ts-jest', { tsconfig: 'tsconfig.test.json' }],
   },
+} as const;
+
+const config: Config = {
+  forceExit: true,
+  projects: [
+    {
+      ...shared,
+      displayName: 'unit',
+      testMatch: ['<rootDir>/test/**/*.test.ts'],
+      testPathIgnorePatterns: ['<rootDir>/test/extraction/'],
+    },
+    {
+      ...shared,
+      displayName: 'extraction',
+      testMatch: ['<rootDir>/test/extraction/**/*.test.ts'],
+      transform: {
+        '^.+\\.tsx?$': ['ts-jest', { tsconfig: 'tsconfig.test.json' }],
+        // diagnostics off: these are third-party .js files being made loadable,
+        // not project code being type-checked.
+        '^.+\\.m?js$': ['ts-jest', { tsconfig: 'tsconfig.test.json', diagnostics: false }],
+      },
+      transformIgnorePatterns: [],
+    },
+  ],
 };
 
 export default config;

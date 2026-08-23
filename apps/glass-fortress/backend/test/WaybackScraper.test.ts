@@ -1,10 +1,10 @@
+import { WaybackScraper } from '../src/services/WaybackScraper';
 import {
-  WaybackScraper,
   WaybackFetchError,
   isWaybackOffline,
   isTransientWaybackError,
   withRetry,
-} from '../src/services/WaybackScraper';
+} from '../src/lib/archiveHttp';
 import { ForensicAgent } from '../src/services/ForensicAgent';
 
 // ---------------------------------------------------------------------------

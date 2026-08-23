@@ -109,6 +109,16 @@ export const WRITE_TOOLS = new Set([
   'respond_in_diff_debate',
   'promote_from_diff_debate',
 
+  // The verification tools (docs/gf-verification-tools-dev-plan.md). All three
+  // write nothing — and all three are gated anyway, because "write" is not the
+  // criterion here: each issues one or more requests to the Internet Archive,
+  // which is unbounded per-call work against a free third-party service. An
+  // anonymous caller could walk a decade of captures through them, which is the
+  // same exposure that gated suggest_thesis and check_on_chain_status.
+  'list_captures',
+  'verify_claim_text',
+  'audit_thesis_claims',
+
   // The publication gate. publish/unpublish move what the public sees and
   // write to the session log; check_publication_readiness writes nothing but
   // runs the assessor, which is an LLM call. All three gated — the thesis is the
