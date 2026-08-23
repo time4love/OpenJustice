@@ -81,6 +81,9 @@ function diff(over: Record<string, unknown> = {}): Record<string, unknown> {
     investigativeCategories: [],
     isLegallySignificant: false,
     trackedUrl: { url: 'https://health.gov.il/x' },
+    beforeSnapshot: { waybackTimestamp: '20220501000000', contentHash: 'b1' },
+    afterSnapshot: { waybackTimestamp: '20220601000000', contentHash: 'a1' },
+
     evidence: [],
     ...over,
   };
@@ -400,6 +403,9 @@ describe('adoptOrphanedFindings', () => {
       deletedText: JSON.stringify([{ summary: 's', exactQuote: 'q' }]),
       addedText: '[]',
       trackedUrl: { url: 'https://health.gov.il/x' },
+      beforeSnapshot: { waybackTimestamp: '20220501000000', contentHash: 'b1' },
+      afterSnapshot: { waybackTimestamp: '20220601000000', contentHash: 'a1' },
+
       ...over,
     };
   }

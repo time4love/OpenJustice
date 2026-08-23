@@ -1,6 +1,6 @@
 import { prisma } from '../lib/prisma';
 import { Web3Service } from './Web3Service';
-import { buildForensicEvidence } from './forensicEvidence';
+import { buildForensicEvidence, requireSnapshotIdentity } from './forensicEvidence';
 import { registerEvidenceOnChain } from './evidenceOnChain';
 import { investigativeCategoriesField } from '../lib/investigativeCategories';
 import type { DiffItem } from './ForensicAgent';
@@ -68,7 +68,11 @@ export async function promoteForensicDiff(
 ): Promise<PromoteForensicDiffResult> {
   const diff = await prisma.urlVersionDiff.findUnique({
     where: { id: urlVersionDiffId },
-    include: { trackedUrl: true },
+    include: {
+      trackedUrl: true,
+      beforeSnapshot: { select: { waybackTimestamp: true, contentHash: true } },
+      afterSnapshot: { select: { waybackTimestamp: true, contentHash: true } },
+    },
   });
 
   if (!diff) return { outcome: 'diff_not_found', urlVersionDiffId };
@@ -94,6 +98,8 @@ export async function promoteForensicDiff(
     url: diff.trackedUrl.url,
     afterDate: diff.afterDate,
     snapshotUrl: diff.snapshotUrl,
+    beforeSnapshot: requireSnapshotIdentity(diff.beforeSnapshot, 'before'),
+    afterSnapshot: requireSnapshotIdentity(diff.afterSnapshot, 'after'),
     aiSignificance: diff.aiSignificance,
     investigativeCategories,
     deletedText: diff.deletedText,

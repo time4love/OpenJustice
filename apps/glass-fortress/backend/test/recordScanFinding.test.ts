@@ -51,6 +51,8 @@ function source(overrides: Partial<ForensicEvidenceSource> = {}): ForensicEviden
     diffId: 'diff-1',
     url: 'https://www.health.gov.il/vaccines',
     afterDate: '2021-06-01',
+    beforeSnapshot: { waybackTimestamp: '20210501000000', contentHash: '0xbefore' },
+    afterSnapshot: { waybackTimestamp: '20210601000000', contentHash: '0xafter' },
     snapshotUrl: 'https://web.archive.org/web/20210601000000/https://www.health.gov.il/vaccines',
     aiSignificance: 'האזהרה בדבר תופעות לוואי נמחקה.',
     investigativeCategories: ['WITHHOLDING_INFORMATION'],

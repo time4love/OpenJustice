@@ -24,7 +24,12 @@ const mockRewrite = jest.fn();
 jest.mock('../src/services/ForensicAgent', () => ({
   ForensicSummaryRewriter: jest.fn().mockImplementation(() => ({ rewrite: mockRewrite })),
 }));
-jest.mock('../src/services/forensicEvidence', () => ({ forensicEvidenceFileHash: jest.fn() }));
+jest.mock('../src/services/forensicEvidence', () => ({
+  forensicEvidenceFileHash: jest.fn(),
+  // Not mocked away: a missing snapshot link must still throw, because the
+  // identity cannot be computed without it and this value goes on-chain.
+  requireSnapshotIdentity: jest.requireActual('../src/services/forensicEvidence').requireSnapshotIdentity,
+}));
 jest.mock('../src/services/VectorStoreService', () => ({ VectorStoreService: { create: jest.fn() } }));
 
 import { prisma } from '../src/lib/prisma';
@@ -45,6 +50,8 @@ function diff(over: Record<string, unknown> = {}) {
     deletedText: '[]',
     addedText: '[]',
     trackedUrl: { url: 'https://corona.health.gov.il/vaccine-for-covid/' },
+    beforeSnapshot: { waybackTimestamp: '20220805093544', contentHash: 'bbb' },
+    afterSnapshot: { waybackTimestamp: '20220906232435', contentHash: 'aaa' },
     evidence: [{ fileHash: HASH, status: 'CONFIRMED' }],
     ...over,
   };
@@ -55,10 +62,9 @@ function setup(rows: ReturnType<typeof diff>[]) {
   (prisma.$transaction as jest.Mock).mockResolvedValue([]);
   (forensicEvidenceFileHash as jest.Mock).mockReturnValue(HASH);
   (prisma.urlVersionDiff.findUniqueOrThrow as jest.Mock).mockResolvedValue({
-    afterDate: '2022-09-06',
-    deletedText: '[]',
-    addedText: '[]',
     trackedUrl: { url: 'https://corona.health.gov.il/vaccine-for-covid/' },
+    beforeSnapshot: { waybackTimestamp: '20220805093544', contentHash: 'bbb' },
+    afterSnapshot: { waybackTimestamp: '20220906232435', contentHash: 'aaa' },
   });
   (VectorStoreService.create as jest.Mock).mockResolvedValue({ upsertEvidence: jest.fn() });
   mockRewrite.mockResolvedValue(CLEAN);
@@ -136,9 +142,11 @@ describe('resummarizeDiffs', () => {
   });
 
   it('detects it if its OWN write moves a hashed field', async () => {
-    // The invariant this operation actually owns, asserted against what was
-    // PERSISTED rather than against what we believe we wrote — so a future change
-    // that re-extracts is caught on the row that did it.
+    // The invariant this operation owns, asserted against what was PERSISTED.
+    // Since the identity moved to snapshot timestamps and content hashes this is
+    // structurally guaranteed — a summary rewrite cannot touch a snapshot — but a
+    // guarantee nobody checks is how the previous identity quietly stopped
+    // holding.
     setup([diff()]);
     (forensicEvidenceFileHash as jest.Mock)
       .mockReturnValueOnce(HASH) // before
