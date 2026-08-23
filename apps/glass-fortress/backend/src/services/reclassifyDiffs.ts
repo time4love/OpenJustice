@@ -5,6 +5,7 @@ import { CLASSIFIER_VERSION, classifierPromptHash } from '../lib/classifierVersi
 import { parseDiffItems } from '../lib/diffItems';
 import { investigativeCategoriesField } from '../lib/investigativeCategories';
 import { deriveSignificance } from './ForensicAgent';
+import { requireSnapshotIdentity } from './forensicEvidence';
 
 // ---------------------------------------------------------------------------
 // Re-running the classifier over diffs that were judged by an older one.
@@ -112,6 +113,8 @@ export async function reclassifyDiffs(opts: ReclassifyOptions = {}): Promise<Rec
     include: {
       trackedUrl: { select: { url: true } },
       evidence: { select: { id: true } },
+      beforeSnapshot: { select: { waybackTimestamp: true, contentHash: true } },
+      afterSnapshot: { select: { waybackTimestamp: true, contentHash: true } },
     },
   });
 
@@ -221,6 +224,8 @@ export async function reclassifyDiffs(opts: ReclassifyOptions = {}): Promise<Rec
           url: diff.trackedUrl.url,
           afterDate: diff.afterDate,
           snapshotUrl: diff.snapshotUrl,
+          beforeSnapshot: requireSnapshotIdentity(diff.beforeSnapshot, 'before'),
+          afterSnapshot: requireSnapshotIdentity(diff.afterSnapshot, 'after'),
           aiSignificance: analysis.legalSignificance,
           investigativeCategories: [...after],
           deletedText: JSON.stringify(analysis.deletedItems),
@@ -305,7 +310,11 @@ export async function adoptOrphanedFindings(
       evidence: { none: {} },
     },
     orderBy: { afterDate: 'asc' },
-    include: { trackedUrl: { select: { url: true } } },
+    include: {
+      trackedUrl: { select: { url: true } },
+      beforeSnapshot: { select: { waybackTimestamp: true, contentHash: true } },
+      afterSnapshot: { select: { waybackTimestamp: true, contentHash: true } },
+    },
   });
 
   let adopted = 0;
@@ -321,6 +330,8 @@ export async function adoptOrphanedFindings(
       url: diff.trackedUrl.url,
       afterDate: diff.afterDate,
       snapshotUrl: diff.snapshotUrl,
+      beforeSnapshot: requireSnapshotIdentity(diff.beforeSnapshot, 'before'),
+      afterSnapshot: requireSnapshotIdentity(diff.afterSnapshot, 'after'),
       // The stored classification, unchanged. Adoption records what the diff
       // already asserts; it never re-decides it.
       aiSignificance: diff.aiSignificance,

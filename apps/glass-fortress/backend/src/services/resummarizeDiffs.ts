@@ -1,7 +1,7 @@
 import { prisma } from '../lib/prisma';
 import { parseDiffItems } from '../lib/diffItems';
 import { ForensicSummaryRewriter } from './ForensicAgent';
-import { forensicEvidenceFileHash } from './forensicEvidence';
+import { forensicEvidenceFileHash, requireSnapshotIdentity } from './forensicEvidence';
 import { SUMMARY_VERSION } from '../lib/classifierVersion';
 import { VectorStoreService } from './VectorStoreService';
 
@@ -109,6 +109,8 @@ export async function resummarizeDiffs(opts: {
       deletedText: true,
       addedText: true,
       trackedUrl: { select: { url: true } },
+      beforeSnapshot: { select: { waybackTimestamp: true, contentHash: true } },
+      afterSnapshot: { select: { waybackTimestamp: true, contentHash: true } },
       evidence: { select: { fileHash: true, status: true } },
     },
     orderBy: { afterDate: 'asc' },
@@ -153,10 +155,18 @@ export async function resummarizeDiffs(opts: {
       continue;
     }
 
-    // The hash these fields produce right now. The post-condition below asserts
-    // OUR write leaves it exactly here — which is the only thing this operation
-    // is responsible for.
-    const hashBefore = forensicEvidenceFileHash(url, diff.afterDate, diff.deletedText, diff.addedText);
+    // The hash these snapshots produce. The post-condition below asserts OUR
+    // write leaves it exactly here.
+    //
+    // Since the identity moved to snapshot timestamps and content hashes, this is
+    // now structurally guaranteed rather than merely observed: a summary rewrite
+    // cannot touch a snapshot. The assertion stays because a guarantee nobody
+    // checks is how the previous identity quietly stopped holding.
+    const hashBefore = forensicEvidenceFileHash(
+      url,
+      requireSnapshotIdentity(diff.beforeSnapshot, 'before'),
+      requireSnapshotIdentity(diff.afterSnapshot, 'after'),
+    );
 
     // Separately: does the registered evidence hash still derive from this diff?
     // Often it does not, because reclassification rewrites the extracted items
@@ -214,13 +224,16 @@ export async function resummarizeDiffs(opts: {
     // here, this catches it on the row that did it.
     const after = await prisma.urlVersionDiff.findUniqueOrThrow({
       where: { id: diff.id },
-      select: { afterDate: true, deletedText: true, addedText: true, trackedUrl: { select: { url: true } } },
+      select: {
+        trackedUrl: { select: { url: true } },
+        beforeSnapshot: { select: { waybackTimestamp: true, contentHash: true } },
+        afterSnapshot: { select: { waybackTimestamp: true, contentHash: true } },
+      },
     });
     const hashAfter = forensicEvidenceFileHash(
       after.trackedUrl.url,
-      after.afterDate,
-      after.deletedText,
-      after.addedText,
+      requireSnapshotIdentity(after.beforeSnapshot, 'before'),
+      requireSnapshotIdentity(after.afterSnapshot, 'after'),
     );
     if (hashAfter !== hashBefore) report.hashDrift++;
 

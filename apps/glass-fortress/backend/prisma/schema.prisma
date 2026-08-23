@@ -246,6 +246,19 @@ model Evidence {
   // See onChainTxHash — CONFIRMED must only ever be set alongside a real tx hash.
   status              EvidenceStatus  @default(PENDING_REVIEW)
   onChainTxHash       String?         // Blockchain tx hash once fileHash is registered on-chain — mirrors UrlSnapshot.onChainTxHash
+  // The identity this record carried before the evidence hash moved to being
+  // derived from its two archived snapshots, and the anchor registered under it.
+  //
+  // Kept rather than discarded because that anchor is a real, permanent
+  // transaction that now matches nothing derivable — precisely the
+  // ORPHANED_ANCHOR condition check_on_chain_status exists to flag. Recording it
+  // here says the orphan was created deliberately, by a known migration, instead
+  // of leaving a future audit to find an unexplained one and reasonably conclude
+  // the vault had been tampered with.
+  //
+  // Null on every record created after the change, which is the normal state.
+  previousFileHash    String?
+  previousOnChainTxHash String?
   evidenceType        EvidenceType    @default(DOCUMENT)
   evidenceRole        String          @default("Incriminating")
   // The evidence's classification — see src/lib/investigativeCategories.ts.

@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { createHash } from 'crypto';
 import { toBytes32 } from '../lib/bytes32';
+import { requireSnapshotIdentity } from './forensicEvidence';
 import { JSDOM } from 'jsdom';
 import { Readability } from '@mozilla/readability';
 import { diffLines } from 'diff';
@@ -263,7 +264,7 @@ async function upsertSnapshot(
   timestamp: string,
   url: string,
   fullText: string,
-): Promise<string> {
+): Promise<{ id: string; waybackTimestamp: string; contentHash: string }> {
   const snapshotDate = timestampToDate(timestamp);
   const snapshotUrl = `https://web.archive.org/web/${timestamp}/${url}`;
   const contentHash = sha256(fullText);
@@ -288,7 +289,10 @@ async function upsertSnapshot(
       );
     });
   }
-  return snap.id;
+  // The identity, not just the key. Evidence derived from a change between two
+  // captures is hashed from their timestamps and content hashes, so every caller
+  // that creates a snapshot needs those to hand rather than a second query.
+  return { id: snap.id, waybackTimestamp: timestamp, contentHash };
 }
 
 /**
@@ -688,15 +692,17 @@ export class WaybackScraper {
     }
 
     const texts: string[] = [];
-    const snapshotIds: (string | null)[] = [];
+    // Full identities, not just keys: evidence derived from a change between two
+    // captures is hashed from their timestamps and content hashes.
+    const snaps: ({ id: string; waybackTimestamp: string; contentHash: string } | null)[] = [];
     for (const snap of snapshots) {
       try {
         const text = await this.scrapeSnapshot(url, snap.timestamp);
         texts.push(text);
         try {
-          snapshotIds.push(await upsertSnapshot(trackedUrl.id, snap.timestamp, url, text));
+          snaps.push(await upsertSnapshot(trackedUrl.id, snap.timestamp, url, text));
         } catch {
-          snapshotIds.push(null);
+          snaps.push(null);
         }
       } catch (err) {
         console.warn(
@@ -705,7 +711,7 @@ export class WaybackScraper {
           }`,
         );
         texts.push('');
-        snapshotIds.push(null);
+        snaps.push(null);
       }
       await sleep(FETCH_DELAY_MS);
     }
@@ -731,8 +737,8 @@ export class WaybackScraper {
       const beforeDate = timestampToDate(prevSnap.timestamp);
       const afterDate = timestampToDate(snap.timestamp);
       const snapshotUrl = `https://web.archive.org/web/${snap.timestamp}/${url}`;
-      const beforeSnapshotId = snapshotIds[i - 1] ?? undefined;
-      const afterSnapshotId = snapshotIds[i] ?? undefined;
+      const beforeSnapshotId = snaps[i - 1]?.id ?? undefined;
+      const afterSnapshotId = snaps[i]?.id ?? undefined;
 
       // Truly identical after normalisation — record pair but skip AI
       if (deletions.length === 0 && additions.length === 0) {
@@ -829,6 +835,8 @@ export class WaybackScraper {
             url: trackedUrl.url,
             afterDate,
             snapshotUrl,
+            beforeSnapshot: requireSnapshotIdentity(snaps[i - 1], 'before'),
+            afterSnapshot: requireSnapshotIdentity(snaps[i], 'after'),
             aiSignificance: analysis.legalSignificance,
             investigativeCategories: analysis.investigativeCategories,
             deletedText: JSON.stringify(analysis.deletedItems),
@@ -960,7 +968,7 @@ export class WaybackScraper {
     const trackedUrlId = job.trackedUrlId;
 
     let previousText = '';
-    let previousSnapshotId: string | null = null;
+    let previousSnapshot: { id: string; waybackTimestamp: string; contentHash: string } | null = null;
     let processedCount = snapshotsList.filter((s) => s.status === 'DONE').length;
     // Tallied across this call only — used solely to classify a total-failure
     // outcome (see the end of this method). A prior run's failures aren't
@@ -982,7 +990,7 @@ export class WaybackScraper {
       if (entry.status === 'DONE') {
         try {
           previousText = await this.scrapeSnapshot(job.url, entry.timestamp);
-          previousSnapshotId = await upsertSnapshot(trackedUrlId, entry.timestamp, job.url, previousText);
+          previousSnapshot = await upsertSnapshot(trackedUrlId, entry.timestamp, job.url, previousText);
         } catch {
           // Keep last good values if re-fetch fails during resume
         }
@@ -990,10 +998,10 @@ export class WaybackScraper {
       }
 
       let currentText = '';
-      let currentSnapshotId: string | null = null;
+      let currentSnapshot: { id: string; waybackTimestamp: string; contentHash: string } | null = null;
       try {
         currentText = await this.scrapeSnapshot(job.url, entry.timestamp);
-        currentSnapshotId = await upsertSnapshot(trackedUrlId, entry.timestamp, job.url, currentText);
+        currentSnapshot = await upsertSnapshot(trackedUrlId, entry.timestamp, job.url, currentText);
       } catch (err) {
         console.warn(
           `[WaybackScraper] Job ${jobId} — snapshot ${entry.timestamp} fetch failed:`,
@@ -1039,8 +1047,8 @@ export class WaybackScraper {
         const beforeDate = i > 0 ? timestampToDate(snapshotsList[i - 1].timestamp) : 'Unknown';
         const afterDate = timestampToDate(entry.timestamp);
         const snapshotUrl = `https://web.archive.org/web/${entry.timestamp}/${job.url}`;
-        const beforeSnapshotId = previousSnapshotId ?? undefined;
-        const afterSnapshotId = currentSnapshotId ?? undefined;
+        const beforeSnapshotId = previousSnapshot?.id ?? undefined;
+        const afterSnapshotId = currentSnapshot?.id ?? undefined;
 
         if (deletions.length === 0 && additions.length === 0) {
           // Truly identical after normalisation — skip AI
@@ -1117,6 +1125,8 @@ export class WaybackScraper {
               const trackedUrl = await prisma.trackedUrl.findUnique({ where: { id: trackedUrlId } });
               if (trackedUrl) {
                 recordScanFinding({
+                  beforeSnapshot: requireSnapshotIdentity(previousSnapshot, 'before'),
+                  afterSnapshot: requireSnapshotIdentity(currentSnapshot, 'after'),
                   diffId: diffRecord.id,
                   url: trackedUrl.url,
                   afterDate,
@@ -1158,7 +1168,7 @@ export class WaybackScraper {
       }
 
       previousText = currentText;
-      previousSnapshotId = currentSnapshotId;
+      previousSnapshot = currentSnapshot;
       entry.status = 'DONE';
       processedCount++;
 
