@@ -67,8 +67,10 @@ Nothing unstable is persisted, and the stronger evidentiary claim — co-movemen
 ### 3.3 The honesty requirement — non-negotiable
 
 Trajectories are computed over `UrlSnapshot.fullText`, which is a **Readability extraction that
-discards roughly 42% of the page** (measured: 4,322 characters of 7,442 on capture
-`20220905111109`). A change in a dropped region is invisible, and because Readability's boundaries
+discards 31% of the page** (measured: 4,330 characters of 6,266 on capture `20220905111109`).
+The ratio is context, not the finding — it mixes boilerplate Readability is meant to drop with
+substantive sentences it is not. The finding is that a specific FDA safety-and-efficacy claim was
+dropped. A change in a dropped region is invisible, and because Readability's boundaries
 follow page structure, a trajectory can show a flip that is a **layout change rather than a content
 change**.
 

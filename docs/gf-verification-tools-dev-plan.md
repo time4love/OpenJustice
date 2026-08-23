@@ -1,6 +1,8 @@
 # Glass Fortress — Verification Tools
 
-**Status:** designed, not built. Canonical spec — implement from this document.
+**Status:** BUILT 2026-08-23. All three tools live as gated MCP tools; §8 records what the build
+found. This document remains canonical — §1-§7 are the design as specified, §8 is what implementing
+it changed.
 **Designed:** 2026-08-23 with the researcher, from what a live thesis walk actually required.
 Written for a session with **no prior context**.
 
@@ -42,8 +44,8 @@ evidence. No tool in this set judges whether an inference is sound. That is the 
 saying so is part of the design rather than an apology for it.
 
 **Go to the RAW archived HTML, never to `UrlSnapshot.fullText`.** `fullText` is a Readability
-extraction that discards roughly 42% of the page (measured on capture `20220905111109`: 4,322
-characters kept of 7,442). A verification tool built on it inherits exactly the blindness it exists
+extraction that discards 31% of the page (measured on capture `20220905111109`: 4,330 characters
+kept of 6,266 — see §8.4). A verification tool built on it inherits exactly the blindness it exists
 to detect — and would have confirmed the false claim it was checking.
 
 **"Could not check" is never "checked and found nothing."** The recurring defect in this codebase.
@@ -157,3 +159,104 @@ Building the argument half again would put the model where it is weakest. Buildi
 half puts a tool where it does not depend on trusting the model at all — which, on a platform whose
 whole claim is that every assertion traces to checkable proof, is the only half that can be a
 product.
+
+---
+
+## 8. What the build found — 2026-08-23
+
+Implemented as specified. Five things the design did not anticipate, each recorded because the
+reasoning matters more than the code.
+
+### 8.1 The extractor had to be shared, not re-implemented
+
+`verify_claim_text` compares the raw archived page against *the platform's extraction*. If that
+comparison ran against a second copy of the extractor, it would eventually stop measuring the
+extractor that actually runs — and a divergence check that has quietly stopped measuring anything is
+worse than no check.
+
+So `htmlToText`, `normaliseText` and the Readability path moved out of `WaybackScraper` into
+`src/lib/archiveText.ts`, and the scanner now calls the same `extractArticleText()` the verification
+tools call. Likewise the Internet Archive HTTP layer (retry policy, transient classification, the
+`id_` capture URL) moved to `src/lib/archiveHttp.ts`: two modules hitting the same flaky third-party
+service must not diverge on what "transient" means, or the first symptom is a verification tool
+reporting "phrase absent" for a page the archive merely failed to return.
+
+`archiveText.htmlToText` also gained one behaviour change: `<script>`, `<style>`, `<noscript>` and
+`<template>` bodies are stripped. Harmless in Readability's output, which never contains them — but
+the raw read is the whole document, and an inline script would otherwise contribute its source to
+the text and make a phrase look present on a page that never displayed it.
+
+### 8.2 A researcher-facing call cannot use a scanner's retry budget
+
+The scanner retries CDX four times with 8s exponential back-off — up to two minutes — because nobody
+is waiting on it. These tools are called synchronously by a researcher mid-sentence, and they are
+*built* to report an unreachable archive honestly. `INTERACTIVE_RETRY` (one retry, 1s base) is
+therefore a separate policy: failing fast and saying "the archive did not answer" is a better answer
+than the same words after two minutes of silence.
+
+### 8.3 The "could not check" defect reappeared inside the new tool
+
+`audit_thesis_claims` flags a dated act when no capture exists on that date. With **every** page's
+capture index unfetchable, "no capture on that date" and "we never looked" are the same absence —
+and the first implementation flagged both, turning an archive outage into a finding against the
+researcher. The exact defect the whole toolset exists to prevent, reproduced inside it within an
+hour of writing the rule down.
+
+Fixed: a flag now requires at least one page to have been consulted. Two regression tests cover it
+(`does NOT flag a dated act when the archive could not be reached at all`, and the interval
+equivalent, which was otherwise reporting "this is the tightest interval the archive supports"
+having consulted nothing).
+
+### 8.4 The 42% figure was measured against a different denominator
+
+The design cites "4,322 characters kept of 7,442". Running `verify_claim_text` against the live
+archive on 2026-08-23 measures **4,330 of 6,266 — 31% discarded**, because the raw read now strips
+script and style bodies (§8.1), which the original hand-measurement counted as page text. The
+finding is unchanged and the sentence is still dropped; only the ratio moves. The code and this
+document now carry the measured number rather than the remembered one.
+
+### 8.5 Testing the extractor required its own jest project
+
+Every test in this suite mocks `jsdom` and `@mozilla/readability` away, because jsdom's dependency
+chain is ESM-only and ts-jest cannot parse it. That mock is fine for the scanner's control flow and
+useless here: `EXTRACTION_DIVERGENCE` is a claim about what the **real** Readability drops from a
+**real** page, and a test against a stub would assert the stub.
+
+`jest.config.ts` now declares two projects. `unit` is unchanged. `extraction` transforms
+`node_modules` so `test/extraction/` can run the genuine extractor against
+`test/fixtures/wayback-vaccine-20220905111109-raw.html` — the verbatim raw capture, frozen to disk.
+Both run under `npm test`.
+
+### 8.6 Live results
+
+Against the real archive and the real staging thesis
+(`cmt5jffqy000lf52mn6t56f3l`, 133 captures):
+
+- `verify_claim_text` on capture `20220905111109` for `נמצאו יעילים ובטוחים לשימוש` —
+  `presentInRawArchive: true`, `presentInPlatformExtraction: false`, `presentInStoredSnapshot: false`,
+  `extractionDivergence: true`. The stored column every diff, trajectory and on-chain `contentHash`
+  for this page derives from is blind to a sentence the page carried.
+- `audit_thesis_claims` found 9 dates and flagged one: the body asserts an edit (`נערך`) on
+  2022-08-21, a day with no capture — the archive supports only *somewhere between 2022-08-16 and
+  2022-09-05*.
+
+### 8.7 Where the code lives
+
+| Piece | File |
+|---|---|
+| Archive HTTP: retry policy, `id_` URLs, capture fetch | `src/lib/archiveHttp.ts` |
+| The two readings of a captured page | `src/lib/archiveText.ts` |
+| Deterministic assertion extraction + `UNCHECKABLE_CLASSES` | `src/lib/thesisAssertions.ts` |
+| `listCaptures` · `verifyClaimText` · `checkPhraseAtCaptures` | `src/services/archiveVerification.ts` |
+| `auditThesisClaims` | `src/services/thesisClaimAudit.ts` |
+| MCP tools | `src/mcp/tools/{listCaptures,verifyClaimText,auditThesisClaims}.ts` |
+| Gating (all three in `WRITE_TOOLS`) | `src/mcp/mcpRoutes.ts` |
+| Tests | `test/{archiveVerification,thesisAssertions,thesisClaimAudit}.test.ts`, `test/extraction/` |
+
+### 8.8 Deliberately still not done
+
+- **Not wired into the publication gate**, per §4. The gate blocks; these inform.
+- **No REST route and no UI.** These are research acts performed while writing, and the researcher
+  drives them over MCP. A public read-only view of a capture list is a separate question.
+- **`audit_thesis_claims` audits the HEAD version only.** Auditing a *published* pin is a real use
+  and is not built; the result names the `versionId` it read so there is no ambiguity about which.

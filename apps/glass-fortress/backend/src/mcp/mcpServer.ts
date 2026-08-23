@@ -43,6 +43,9 @@ import {
   getDiffDebateSchema,
   getDiffDebateHandler,
 } from './tools/diffDebateTools';
+import { listCapturesSchema, listCapturesHandler } from './tools/listCaptures';
+import { verifyClaimTextSchema, verifyClaimTextHandler } from './tools/verifyClaimText';
+import { auditThesisClaimsSchema, auditThesisClaimsHandler } from './tools/auditThesisClaims';
 import {
   checkPublicationReadinessSchema,
   checkPublicationReadinessHandler,
@@ -627,6 +630,60 @@ export function createMcpServer(): McpServer {
     unpublishThesisSchema,
     async (input) => ({
       content: [{ type: 'text' as const, text: await unpublishThesisHandler(input) }],
+    }),
+  );
+
+  // -------------------------------------------------------------------------
+  // Verification tools (docs/gf-verification-tools-dev-plan.md)
+  //
+  // The platform institutionalised ARGUMENT — framing session, diff debate,
+  // publication rationale — and left VERIFICATION as improvisation. Every
+  // factual error caught in the first real thesis walk was caught by
+  // re-deriving a number from primary data through an ad-hoc shell; these three
+  // tools are that shell, available to anyone.
+  //
+  // Deterministic, dry (they write nothing), and reporting rather than
+  // blocking: the publication gate is where blocking lives, and wiring these
+  // into it would turn "could not reach the archive" into "cannot publish".
+  //
+  // Gated because each hits the Internet Archive — unbounded per-call work,
+  // which is what WRITE_TOOLS actually means here.
+  // -------------------------------------------------------------------------
+  server.tool(
+    'list_captures',
+    'List every capture the Internet Archive holds for a tracked page, optionally within a date ' +
+      'range, marking which ones this platform has stored. Answers "is there a capture between ' +
+      'these two dates?" — which the forensic timeline (diffs) and claim trajectories (a count) ' +
+      'cannot. Writes nothing.',
+    listCapturesSchema,
+    async (input) => ({
+      content: [{ type: 'text' as const, text: await listCapturesHandler(input) }],
+    }),
+  );
+
+  server.tool(
+    'verify_claim_text',
+    'Check whether an exact phrase was on a tracked page at a given capture. Searches the RAW ' +
+      'archived document, not this platform\'s stored extraction, and reports both plus an ' +
+      'EXTRACTION_DIVERGENCE flag when they disagree — the condition that let a false claim survive ' +
+      'into a real thesis. Distinguishes "not in the archive" and "fetch failed" from "phrase ' +
+      'absent". Writes nothing.',
+    verifyClaimTextSchema,
+    async (input) => ({
+      content: [{ type: 'text' as const, text: await verifyClaimTextHandler(input) }],
+    }),
+  );
+
+  server.tool(
+    'audit_thesis_claims',
+    'Check every mechanically checkable assertion in a thesis\'s head version against the archive: ' +
+      'dates (does a capture exist, and does the sentence assert an act on a day nobody captured?), ' +
+      'quotations (is the quoted text really in those captures?), and intervals (are the endpoints ' +
+      'adjacent captures?). No model is involved. Reports what it could NOT check, including Hebrew ' +
+      'number-word spans and counts. Reports only — it never blocks publication.',
+    auditThesisClaimsSchema,
+    async (input) => ({
+      content: [{ type: 'text' as const, text: await auditThesisClaimsHandler(input) }],
     }),
   );
 
