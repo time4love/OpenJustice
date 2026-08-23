@@ -10,12 +10,13 @@ import { useAuth } from '@/context/AuthContext';
 import type { ThesisSummary as FullThesisSummary } from '@/types/thesis';
 import { strengthBadgeClass } from '@/components/StrengthBadge';
 import { fetchTheses } from '@/lib/thesisApi';
+import { PublicationBadge } from '@/components/PublicationBadge';
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
-type ThesisSummary = Pick<FullThesisSummary, 'id' | 'createdAt' | 'headVersion'>;
+type ThesisSummary = Pick<FullThesisSummary, 'id' | 'createdAt' | 'version' | 'publication'>;
 
 interface ThesisCitation {
   id: number;
@@ -354,11 +355,14 @@ export default function ThesesPage() {
               >
                 <div className="flex items-start justify-between gap-3">
                   <p className="text-slate-700 text-sm leading-relaxed line-clamp-2 flex-1">
-                    {thesis.headVersion?.preview ?? '—'}
+                    {thesis.version?.preview ?? '—'}
                   </p>
-                  {thesis.headVersion && (
-                    <StatusBadge status={thesis.headVersion.status} />
-                  )}
+                  <div className="flex items-center gap-2 shrink-0">
+                    <PublicationBadge publication={thesis.publication} />
+                    {thesis.version && (
+                      <StatusBadge status={thesis.version.status} />
+                    )}
+                  </div>
                 </div>
 
                 <div className="flex flex-wrap items-center gap-3 mt-3 text-xs text-slate-500">
@@ -367,10 +371,10 @@ export default function ThesesPage() {
                       locale === 'he' ? 'he-IL' : 'en-US'
                     )}
                   </span>
-                  {thesis.headVersion && (
+                  {thesis.version && (
                     <>
                       <span className="text-slate-300">·</span>
-                      <span>{thesis.headVersion.mentionCount} {t('mentions')}</span>
+                      <span>{thesis.version.mentionCount} {t('mentions')}</span>
                     </>
                   )}
                 </div>

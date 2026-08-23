@@ -3,7 +3,7 @@
 import { use, useEffect, useState } from 'react';
 import { useTranslations, useLocale } from 'next-intl';
 import { Link } from '@/i18n/navigation';
-import { apiUrl } from '@/lib/api';
+import { apiUrl, authHeaders } from '@/lib/api';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -18,6 +18,7 @@ interface VersionSummary {
   preview: string;
   mentionCount: number;
   isHead: boolean;
+  isPublished: boolean;
   createdAt: string;
   createdByHandle: string | null;
 }
@@ -117,7 +118,7 @@ export default function ThesisHistoryPage({ params }: { params: Promise<{ id: st
   useEffect(() => {
     async function load() {
       try {
-        const res = await fetch(apiUrl(`/api/thesis/${id}/versions`));
+        const res = await fetch(apiUrl(`/api/thesis/${id}/versions`), { headers: authHeaders() });
         if (!res.ok) throw new Error();
         setData((await res.json()) as HistoryResponse);
       } catch {
@@ -195,6 +196,11 @@ export default function ThesisHistoryPage({ params }: { params: Promise<{ id: st
                       {v.isHead && (
                         <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-violet-100 text-violet-700 border border-violet-300">
                           {t('currentVersion')}
+                        </span>
+                      )}
+                      {v.isPublished && (
+                        <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-sky-100 text-sky-800 border border-sky-300">
+                          {t('publication.publishedBadge')}
                         </span>
                       )}
                       <span

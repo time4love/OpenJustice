@@ -39,9 +39,17 @@ jest.mock('../src/services/DevilsAdvocateAgent', () => ({
   })),
 }));
 
+jest.mock('../src/services/thesisPublication', () => ({
+  assessPublication: jest.fn(),
+  publishThesis: jest.fn(),
+  unpublishThesis: jest.fn(),
+}));
+
 import { prisma } from '../src/lib/prisma';
 import { Request, Response } from 'express';
 import { thesisRouter } from '../src/routes/thesisRoutes';
+import { requireResearcher } from '../src/middleware/researcherIdentity';
+import { assessPublication, publishThesis, unpublishThesis } from '../src/services/thesisPublication';
 
 const mockThesisFindMany = prisma.thesis.findMany as jest.Mock;
 const mockThesisFindUnique = prisma.thesis.findUnique as jest.Mock;
@@ -74,8 +82,21 @@ function getHandler(path: string, method: 'post' | 'get' | 'delete') {
   return stack[stack.length - 1].handle as (req: Request, res: Response) => Promise<void>;
 }
 
-function mockReq(params: Record<string, string> = {}, body: unknown = {}, query: Record<string, string> = {}): Request {
-  return { params, body, query } as unknown as Request;
+function middlewareOf(path: string, method: 'post' | 'get' | 'delete'): unknown[] {
+  const layer = (thesisRouter as unknown as { stack: RouterStack }).stack.find(
+    (l) => l.route?.path === path && l.route.methods[method],
+  );
+  if (!layer?.route) throw new Error(`Route not found: ${method.toUpperCase()} ${path}`);
+  return layer.route.stack.map((l) => l.handle);
+}
+
+function mockReq(
+  params: Record<string, string> = {},
+  body: unknown = {},
+  query: Record<string, string> = {},
+  researcherId?: string,
+): Request {
+  return { params, body, query, researcherId } as unknown as Request;
 }
 
 function mockRes() {
@@ -118,7 +139,17 @@ const TIPTAP_DOC_WITH_MENTIONS = {
 
 const NOW = new Date('2026-01-15T00:00:00.000Z');
 
-const THESIS_FIXTURE = { id: 'thesis-1', headVersionId: 'version-1', createdAt: NOW };
+const THESIS_FIXTURE = {
+  id: 'thesis-1',
+  title: null,
+  headVersionId: 'version-1',
+  publishedVersionId: null,
+  publishedAt: null,
+  publishedBy: null,
+  publicInterestStatement: null,
+  createdAt: NOW,
+  versions: [{ id: 'version-1', createdAt: NOW }],
+};
 
 const VERSION_FIXTURE = {
   id: 'version-1',
@@ -225,6 +256,7 @@ describe('POST /', () => {
 
 describe('GET /', () => {
   const handle = getHandler('/', 'get');
+  const listed = { ...VERSION_FIXTURE, status: 'COMPLETE', _count: { mentions: 3 } };
 
   it('returns 200 with an empty list', async () => {
     mockThesisFindMany.mockResolvedValueOnce([]);
@@ -234,47 +266,64 @@ describe('GET /', () => {
     expect((json.mock.calls[0] as [{ theses: unknown[] }])[0].theses).toEqual([]);
   });
 
-  it('returns theses with headVersion preview and mentionCount', async () => {
+  it('lists the public only PUBLISHED theses, previewed from the published version', async () => {
     mockThesisFindMany.mockResolvedValueOnce([
-      { ...THESIS_FIXTURE, headVersion: { ...VERSION_FIXTURE, _count: { mentions: 3 } } },
+      { ...THESIS_FIXTURE, publishedVersionId: 'version-1', headVersion: { ...listed, id: 'version-2' }, publishedVersion: listed },
     ]);
     const { res, getStatus, json } = mockRes();
     await handle(mockReq(), res);
     expect(getStatus()).toBe(200);
-    const theses = (json.mock.calls[0] as [{ theses: Record<string, unknown>[] }])[0].theses;
-    expect(theses).toHaveLength(1);
-    const hv = theses[0].headVersion as Record<string, unknown>;
-    expect(hv.mentionCount).toBe(3);
-    expect((hv.preview as string)).toContain('Officials knew');
+    expect(mockThesisFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { publishedVersionId: { not: null } } }),
+    );
+    const body = (json.mock.calls[0] as [{ viewer: string; theses: Record<string, unknown>[] }])[0];
+    expect(body.viewer).toBe('PUBLIC');
+    const v = body.theses[0].version as Record<string, unknown>;
+    expect(v.id).toBe('version-1');
+    expect(v.mentionCount).toBe(3);
+    expect(v.preview as string).toContain('Officials knew');
   });
 
-  it('returns null headVersion for a thesis with no versions yet', async () => {
+  it('lists a researcher every thesis, previewed from the head, with publication state', async () => {
     mockThesisFindMany.mockResolvedValueOnce([
-      { id: 'thesis-empty', headVersionId: null, createdAt: NOW, headVersion: null },
+      { ...THESIS_FIXTURE, headVersion: listed, publishedVersion: null },
     ]);
     const { res, json } = mockRes();
-    await handle(mockReq(), res);
-    const theses = (json.mock.calls[0] as [{ theses: { headVersion: null }[] }])[0].theses;
-    expect(theses[0].headVersion).toBeNull();
+    await handle(mockReq({}, {}, {}, 'r1'), res);
+    expect(mockThesisFindMany).toHaveBeenCalledWith(expect.objectContaining({ where: {} }));
+    const body = (json.mock.calls[0] as [{ viewer: string; theses: Record<string, unknown>[] }])[0];
+    expect(body.viewer).toBe('RESEARCHER');
+    expect((body.theses[0].version as Record<string, unknown>).id).toBe('version-1');
+    expect(body.theses[0].publication).toMatchObject({ isPublished: false, headIsPublished: false });
   });
 
-  it('passes evidence filter to Prisma as a nested mention where clause', async () => {
-    mockThesisFindMany.mockResolvedValueOnce([]);
+  it('returns null version for a thesis with no versions yet', async () => {
+    mockThesisFindMany.mockResolvedValueOnce([
+      { ...THESIS_FIXTURE, id: 'thesis-empty', headVersionId: null, versions: [], headVersion: null, publishedVersion: null },
+    ]);
+    const { res, json } = mockRes();
+    await handle(mockReq({}, {}, {}, 'r1'), res);
+    const theses = (json.mock.calls[0] as [{ theses: { version: null }[] }])[0].theses;
+    expect(theses[0].version).toBeNull();
+  });
+
+  it('applies the evidence filter to the version the viewer is served', async () => {
+    mockThesisFindMany.mockResolvedValue([]);
     const { res } = mockRes();
-    await handle(mockReq({}, {}, { evidence: 'abc123' }), res);
+    await handle(mockReq({}, {}, { evidence: 'abc123' }, 'r1'), res);
     expect(mockThesisFindMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { headVersion: { mentions: { some: { type: 'EVIDENCE', refId: 'abc123' } } } },
       }),
     );
-  });
-
-  it('passes no where clause when evidence param is absent', async () => {
-    mockThesisFindMany.mockResolvedValueOnce([]);
-    const { res } = mockRes();
-    await handle(mockReq(), res);
-    expect(mockThesisFindMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: undefined }),
+    await handle(mockReq({}, {}, { evidence: 'abc123' }), res);
+    expect(mockThesisFindMany).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        where: {
+          publishedVersionId: { not: null },
+          publishedVersion: { mentions: { some: { type: 'EVIDENCE', refId: 'abc123' } } },
+        },
+      }),
     );
   });
 
@@ -292,6 +341,8 @@ describe('GET /', () => {
 
 describe('GET /:id', () => {
   const handle = getHandler('/:id', 'get');
+  const mockVersionFindUnique = prisma.thesisVersion.findUnique as jest.Mock;
+  const full = { ...VERSION_FIXTURE, mentions: [{ id: 'm1', type: 'KEY_FIGURE', refId: 'Fauci' }], gapResolutions: [] };
 
   it('returns 404 when thesis does not exist', async () => {
     mockThesisFindUnique.mockResolvedValueOnce(null);
@@ -300,19 +351,46 @@ describe('GET /:id', () => {
     expect(getStatus()).toBe(404);
   });
 
-  it('returns 200 with full thesis + headVersion + mentions', async () => {
+  it('returns 404 to the public while the thesis is unpublished — a draft does not exist publicly', async () => {
+    mockThesisFindUnique.mockResolvedValueOnce(THESIS_FIXTURE);
+    const { res, getStatus } = mockRes();
+    await handle(mockReq({ id: 'thesis-1' }), res);
+    expect(getStatus()).toBe(404);
+    expect(mockVersionFindUnique).not.toHaveBeenCalled();
+  });
+
+  it('serves the public the PUBLISHED version, not the head', async () => {
     mockThesisFindUnique.mockResolvedValueOnce({
       ...THESIS_FIXTURE,
-      headVersion: {
-        ...VERSION_FIXTURE,
-        mentions: [{ id: 'm1', type: 'KEY_FIGURE', refId: 'Fauci' }],
-      },
+      headVersionId: 'version-2',
+      publishedVersionId: 'version-1',
+      versions: [{ id: 'version-1', createdAt: NOW }, { id: 'version-2', createdAt: new Date('2026-02-01') }],
     });
+    mockVersionFindUnique.mockResolvedValueOnce(full);
     const { res, getStatus, json } = mockRes();
     await handle(mockReq({ id: 'thesis-1' }), res);
     expect(getStatus()).toBe(200);
-    const thesis = (json.mock.calls[0] as [{ thesis: { id: string } }])[0].thesis;
-    expect(thesis.id).toBe('thesis-1');
+    expect(mockVersionFindUnique).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'version-1' } }));
+    const thesis = (json.mock.calls[0] as [{ thesis: { viewer: string; version: { id: string } } }])[0].thesis;
+    expect(thesis.viewer).toBe('PUBLIC');
+    expect(thesis.version.id).toBe('version-1');
+  });
+
+  it('serves a researcher the head, with publication state', async () => {
+    mockThesisFindUnique.mockResolvedValueOnce({
+      ...THESIS_FIXTURE,
+      headVersionId: 'version-2',
+      publishedVersionId: 'version-1',
+      versions: [{ id: 'version-1', createdAt: NOW }, { id: 'version-2', createdAt: new Date('2026-02-01') }],
+    });
+    mockVersionFindUnique.mockResolvedValueOnce({ ...full, id: 'version-2' });
+    const { res, getStatus, json } = mockRes();
+    await handle(mockReq({ id: 'thesis-1' }, {}, {}, 'r1'), res);
+    expect(getStatus()).toBe(200);
+    expect(mockVersionFindUnique).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'version-2' } }));
+    const thesis = (json.mock.calls[0] as [{ thesis: Record<string, unknown> }])[0].thesis;
+    expect(thesis.viewer).toBe('RESEARCHER');
+    expect(thesis.publication).toMatchObject({ isPublished: true, headIsPublished: false, versionsAhead: 1 });
   });
 
   it('returns 500 when Prisma throws', async () => {
@@ -379,6 +457,30 @@ describe('GET /:id/versions', () => {
     const { res, getStatus } = mockRes();
     await handle(mockReq({ id: 'thesis-x' }), res);
     expect(getStatus()).toBe(404);
+  });
+
+  it('GET /:id/versions/:versionId reports the REAL publication state — never a defaulted zero', async () => {
+    const handle = getHandler('/:id/versions/:versionId', 'get');
+    mockThesisFindUnique.mockResolvedValueOnce({
+      ...THESIS_FIXTURE,
+      headVersionId: 'version-3',
+      publishedVersionId: 'version-1',
+      publishedBy: { handle: 'dana' },
+      versions: [
+        { id: 'version-1', createdAt: NOW },
+        { id: 'version-2', createdAt: new Date('2026-02-01') },
+        { id: 'version-3', createdAt: new Date('2026-03-01') },
+      ],
+    });
+    (prisma.thesisVersion.findUnique as jest.Mock).mockResolvedValueOnce({ ...VERSION_FIXTURE, id: 'version-2', createdAt: new Date('2026-02-01') });
+    (prisma.thesisVersion as unknown as { count: jest.Mock }).count = jest.fn().mockResolvedValue(1);
+    (prisma.evidence.findMany as jest.Mock).mockResolvedValueOnce([]);
+    const { res, getStatus, json } = mockRes();
+    await handle(mockReq({ id: 'thesis-1', versionId: 'version-2' }, {}, {}, 'r1'), res);
+    expect(getStatus()).toBe(200);
+    const body = (json.mock.calls[0] as [{ thesis: { publication: Record<string, unknown> }; isPublished: boolean }])[0];
+    expect(body.thesis.publication).toMatchObject({ isPublished: true, versionsAhead: 2, publishedBy: 'dana', headIsPublished: false });
+    expect(body.isPublished).toBe(false);
   });
 
   it('returns 200 with versions list and correct isHead flags', async () => {
@@ -494,5 +596,88 @@ describe('DELETE /:id/gaps/:gapIndex/resolve', () => {
     expect(mockGapResolutionDeleteMany).toHaveBeenCalledWith({
       where: { thesisVersionId: 'version-1', gapIndex: 0 },
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Publication endpoints — the web half of the gate. The checks themselves are
+// tested in thesisPublication.test.ts; here: the gate is MOUNTED, and the
+// service's answer maps to the right status.
+// ---------------------------------------------------------------------------
+
+describe('publication endpoints', () => {
+  it('mounts requireResearcher on every publication and version-history route', () => {
+    for (const [path, method] of [
+      ['/:id/publication-readiness', 'post'],
+      ['/:id/publish', 'post'],
+      ['/:id/unpublish', 'post'],
+      ['/:id/versions', 'get'],
+      ['/:id/versions/:versionId', 'get'],
+    ] as const) {
+      expect(middlewareOf(path, method)).toContain(requireResearcher);
+    }
+  });
+
+  it('POST /:id/publish — 400 without a rationale, 422 when refused, 200 when published', async () => {
+    const handle = getHandler('/:id/publish', 'post');
+
+    let r = mockRes();
+    await handle(mockReq({ id: 'thesis-1' }, {}, {}, 'r1'), r.res);
+    expect(r.getStatus()).toBe(400);
+    expect(publishThesis).not.toHaveBeenCalled();
+
+    (publishThesis as jest.Mock).mockResolvedValueOnce({ published: false, refusedBy: ['CALL_LIVE'], sessionId: 's', report: {} });
+    r = mockRes();
+    await handle(mockReq({ id: 'thesis-1' }, { rationale: 'argued' }, {}, 'r1'), r.res);
+    expect(r.getStatus()).toBe(422);
+
+    (publishThesis as jest.Mock).mockResolvedValueOnce({ published: true, publishedVersionId: 'v1' });
+    r = mockRes();
+    await handle(mockReq({ id: 'thesis-1' }, { rationale: 'argued', publicInterestStatement: 'why' }, {}, 'r1'), r.res);
+    expect(r.getStatus()).toBe(200);
+    expect(publishThesis).toHaveBeenLastCalledWith('thesis-1', 'r1', 'argued', 'why');
+  });
+
+  it('POST /:id/publish — 409 when no session is active, 404 for an unknown thesis', async () => {
+    const handle = getHandler('/:id/publish', 'post');
+
+    (publishThesis as jest.Mock).mockResolvedValueOnce({ published: false, error: 'NO_ACTIVE_SESSION', explanation: 'open one' });
+    let r = mockRes();
+    await handle(mockReq({ id: 'thesis-1' }, { rationale: 'argued' }, {}, 'r1'), r.res);
+    expect(r.getStatus()).toBe(409);
+
+    (publishThesis as jest.Mock).mockResolvedValueOnce({ error: 'THESIS_NOT_FOUND', thesisId: 'x' });
+    r = mockRes();
+    await handle(mockReq({ id: 'x' }, { rationale: 'argued' }, {}, 'r1'), r.res);
+    expect(r.getStatus()).toBe(404);
+  });
+
+  it('POST /:id/unpublish — requires a reason; 409 when not published', async () => {
+    const handle = getHandler('/:id/unpublish', 'post');
+
+    let r = mockRes();
+    await handle(mockReq({ id: 'thesis-1' }, {}, {}, 'r1'), r.res);
+    expect(r.getStatus()).toBe(400);
+
+    (unpublishThesis as jest.Mock).mockResolvedValueOnce({ unpublished: false, error: 'NOT_PUBLISHED', thesisId: 'thesis-1' });
+    r = mockRes();
+    await handle(mockReq({ id: 'thesis-1' }, { reason: 'retract' }, {}, 'r1'), r.res);
+    expect(r.getStatus()).toBe(409);
+
+    (unpublishThesis as jest.Mock).mockResolvedValueOnce({ unpublished: true });
+    r = mockRes();
+    await handle(mockReq({ id: 'thesis-1' }, { reason: 'retract' }, {}, 'r1'), r.res);
+    expect(r.getStatus()).toBe(200);
+    expect(unpublishThesis).toHaveBeenLastCalledWith('thesis-1', 'r1', 'retract');
+  });
+
+  it('POST /:id/publication-readiness — passes an optional rationale and statement through, writes nothing', async () => {
+    const handle = getHandler('/:id/publication-readiness', 'post');
+    (assessPublication as jest.Mock).mockResolvedValueOnce({ publishable: false, checks: [] });
+    const r = mockRes();
+    await handle(mockReq({ id: 'thesis-1' }, { publicInterestStatement: 'why' }, {}, 'r1'), r.res);
+    expect(r.getStatus()).toBe(200);
+    expect(assessPublication).toHaveBeenCalledWith('thesis-1', null, 'why');
+    expect(publishThesis).not.toHaveBeenCalled();
   });
 });

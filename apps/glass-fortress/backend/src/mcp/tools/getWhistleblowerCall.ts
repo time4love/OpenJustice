@@ -1,7 +1,9 @@
 import { z } from 'zod';
 import { prisma } from '../../lib/prisma';
 import { routing } from '../../lib/publicRoutes';
-import { DevilsAdvocateOutputSchema } from '../../services/DevilsAdvocateAgent';
+import { getResearcherId } from '../../context/researcherContext';
+import { publicationState, versionIdForViewer, type Viewer } from '../../lib/thesisView';
+import { deriveCallState } from '../../services/whistleblowerCall';
 
 // ---------------------------------------------------------------------------
 // get_whistleblower_call
@@ -9,10 +11,10 @@ import { DevilsAdvocateOutputSchema } from '../../services/DevilsAdvocateAgent';
 // Returns the public Call for Whistleblowers derived from a thesis.
 //
 // The call is NOT a stored record — there is nothing to create. The public page
-// renders one appeal per entry in the head version's Devil's Advocate
-// `evidenceGaps[]`, so the call comes into existence the moment an analysis
-// completes with at least one gap, and changes whenever a new version is
-// analysed.
+// renders one appeal per entry in a version's Devil's Advocate `evidenceGaps[]`,
+// so the call comes into existence when an analysis completes with at least one
+// gap. Which version: the PUBLISHED one for the public, the head for a
+// researcher — who is also told when the public call is behind the head.
 //
 // That derivation is why this tool is a read. What a researcher working through
 // MCP lacked was not a way to publish the call but any way to SEE it: whether
@@ -26,29 +28,19 @@ export const getWhistleblowerCallSchema = {
     .describe('ID of the thesis whose public Call for Whistleblowers should be returned'),
 };
 
-interface CallGap {
-  gapIndex: number;
-  description: string;
-  suggestedSearch: string;
-  /** True once a whistleblower submission or vault hit has been linked to this gap. */
-  resolved: boolean;
-  resolvedByFileHash: string | null;
-}
-
 export async function getWhistleblowerCallHandler(input: { thesisId: string }): Promise<string> {
+  const viewer: Viewer = getResearcherId() ? 'RESEARCHER' : 'PUBLIC';
+
   const thesis = await prisma.thesis.findUnique({
     where: { id: input.thesisId },
     select: {
       id: true,
       title: true,
-      headVersion: {
-        select: {
-          id: true,
-          status: true,
-          aiAnalysis: true,
-          gapResolutions: { select: { gapIndex: true, evidenceId: true } },
-        },
-      },
+      headVersionId: true,
+      publishedVersionId: true,
+      publishedAt: true,
+      publishedBy: { select: { handle: true } },
+      versions: { select: { id: true, createdAt: true } },
     },
   });
 
@@ -57,75 +49,90 @@ export async function getWhistleblowerCallHandler(input: { thesisId: string }): 
   }
 
   const urls = routing.callUrls(thesis.id);
-  const head = thesis.headVersion;
+  const publication = publicationState(thesis, thesis.versions);
+  const versionId = versionIdForViewer(thesis, viewer);
+  const base = { thesisId: thesis.id, title: thesis.title, viewer, urls };
 
-  if (!head) {
+  if (viewer === 'PUBLIC' && versionId === null) {
     return JSON.stringify({
-      thesisId: thesis.id,
-      title: thesis.title,
+      ...base,
       isLive: false,
-      reason: 'NO_HEAD_VERSION',
-      explanation: 'The thesis has no version yet, so there is nothing for the public page to render.',
-      urls,
+      reason: 'UNPUBLISHED',
+      explanation: 'The thesis is not published, so the public page renders no call.',
     });
   }
 
-  if (head.status !== 'COMPLETE' || head.aiAnalysis === null) {
-    return JSON.stringify({
-      thesisId: thesis.id,
-      title: thesis.title,
-      headVersionId: head.id,
-      isLive: false,
-      reason: 'ANALYSIS_INCOMPLETE',
-      explanation:
-        'The head version has no completed Devil\'s Advocate analysis, and the call is derived entirely from it. Run run_ai_analysis first.',
-      urls,
-    });
+  const version = versionId
+    ? await prisma.thesisVersion.findUnique({
+        where: { id: versionId },
+        select: {
+          id: true,
+          status: true,
+          aiAnalysis: true,
+          gapResolutions: { select: { gapIndex: true, evidenceId: true } },
+        },
+      })
+    : null;
+
+  const call = deriveCallState(version);
+  const researcherFields =
+    viewer === 'RESEARCHER'
+      ? {
+          publication,
+          publicCallNote: !publication.isPublished
+            ? 'DRAFT — the public page renders no call until the thesis is published.'
+            : publication.headIsPublished
+              ? 'The public call is derived from this head version.'
+              : `The public call is derived from ${String(publication.publishedVersionId)}, ${String(publication.versionsAhead)} version(s) behind this head.`,
+        }
+      : {};
+
+  switch (call.reason) {
+    case 'NO_HEAD_VERSION':
+      return JSON.stringify({
+        ...base,
+        ...researcherFields,
+        isLive: false,
+        reason: call.reason,
+        explanation: 'The thesis has no version yet, so there is nothing for the public page to render.',
+      });
+    case 'ANALYSIS_INCOMPLETE':
+      return JSON.stringify({
+        ...base,
+        ...researcherFields,
+        versionId: call.versionId,
+        isLive: false,
+        reason: call.reason,
+        explanation:
+          "This version has no completed Devil's Advocate analysis, and the call is derived entirely from it. Run run_ai_analysis first.",
+      });
+    case 'ANALYSIS_SHAPE_INVALID':
+      return JSON.stringify({
+        ...base,
+        ...researcherFields,
+        versionId: call.versionId,
+        error: call.reason,
+        explanation:
+          'The stored analysis does not match DevilsAdvocateOutputSchema, so the gaps it publishes cannot be trusted. This is a data defect, not an empty call.',
+        details: call.details,
+      });
+    case 'NO_GAPS':
+    case 'LIVE': {
+      const openGaps = call.gaps.filter((g) => !g.resolved).length;
+      return JSON.stringify({
+        ...base,
+        ...researcherFields,
+        versionId: call.versionId,
+        isLive: call.isLive,
+        reason: call.reason,
+        explanation: call.isLive
+          ? 'The call is live. Each gap below is published as a public appeal, and each can also be turned into a Freedom of Information request via generate_foia_request with the same gapIndex.'
+          : 'The analysis found no evidence gaps, so the page renders no appeals. A thesis with nothing missing has nothing to ask the public for.',
+        currentStrength: call.currentStrength,
+        totalGaps: call.gaps.length,
+        openGaps,
+        gaps: call.gaps,
+      });
+    }
   }
-
-  // The analysis is LLM output read back out of a Json column, so it is
-  // validated rather than cast — a shape change would otherwise surface as a
-  // silently empty call rather than an error.
-  const parsed = DevilsAdvocateOutputSchema.safeParse(head.aiAnalysis);
-  if (!parsed.success) {
-    return JSON.stringify({
-      thesisId: thesis.id,
-      headVersionId: head.id,
-      error: 'ANALYSIS_SHAPE_INVALID',
-      explanation:
-        'The stored analysis does not match DevilsAdvocateOutputSchema, so the gaps it publishes cannot be trusted. This is a data defect, not an empty call.',
-      details: parsed.error.flatten(),
-      urls,
-    });
-  }
-
-  const analysis = parsed.data;
-  const resolutions = new Map(head.gapResolutions.map((r) => [r.gapIndex, r.evidenceId]));
-
-  const gaps: CallGap[] = analysis.evidenceGaps.map((gap, gapIndex) => ({
-    gapIndex,
-    description: gap.description,
-    suggestedSearch: gap.suggestedSearch,
-    resolved: resolutions.has(gapIndex),
-    resolvedByFileHash: resolutions.get(gapIndex) ?? null,
-  }));
-
-  const openGaps = gaps.filter((g) => !g.resolved).length;
-
-  return JSON.stringify({
-    thesisId: thesis.id,
-    title: thesis.title,
-    headVersionId: head.id,
-    isLive: gaps.length > 0,
-    reason: gaps.length > 0 ? 'LIVE' : 'NO_GAPS',
-    explanation:
-      gaps.length > 0
-        ? 'The call is live. Each gap below is published as a public appeal, and each can also be turned into a Freedom of Information request via generate_foia_request with the same gapIndex.'
-        : 'The analysis found no evidence gaps, so the page renders no appeals. A thesis with nothing missing has nothing to ask the public for.',
-    urls,
-    currentStrength: analysis.overallStrengthAssessment,
-    totalGaps: gaps.length,
-    openGaps,
-    gaps,
-  });
 }

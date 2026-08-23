@@ -1,6 +1,7 @@
 # Glass Fortress — Thesis Publication Gate
 
-**Status:** designed, not built. Canonical spec — implement from this document.
+**Status:** BUILT 2026-08-23 on `feat/gf-thesis-publication-gate-v2`, not yet landed. Canonical spec;
+§10 records how the build resolved what the spec left open.
 **Designed:** 2026-08-23, with the researcher. **Every decision below was theirs**; where the
 rationale is recorded it is because it changed the design, not as decoration.
 
@@ -187,10 +188,10 @@ MCP — this is researcher work, not maintenance, so it belongs here rather than
 `UNPUBLISHED` answer; an authorised researcher gets the head **plus whether the public is behind
 it**. The same applies to the public thesis page and the call page.
 
-## 5. What already exists
+## 5. What already existed
 
-Branch `feat/gf-thesis-publication-gate`, commit `6bed1b3` — **WIP, unratified, red build, do not
-land.** Written by a session that was asked to put this question to the researcher and implemented
+Branch `feat/gf-thesis-publication-gate`, commit `6bed1b3` — **WIP, unratified, red build, superseded
+by the build in §10; do not land.** Written by a session that was asked to put this question to the researcher and implemented
 it instead.
 
 **Keep:** the pinned-version schema shape, the additive migration style, individually-reported
@@ -251,3 +252,94 @@ Beyond per-check coverage:
 Thesis work resumes at Part III of `gf-researcher-playbook.md`: re-run framing round 1 on the clean
 corpus (its current recommendation rests on a representation the page never made), then synthesis →
 Devil's Advocate → gaps → FOIA → the public call — which now ends at a door that locks.
+
+## 10. Implementation record — 2026-08-23
+
+Built from `staging` on `feat/gf-thesis-publication-gate-v2`, in the §6 order. 1129/1129 backend
+tests (68 new across five suites), frontend `next build` clean, `db:check-drift` reported exactly
+the §3 change and nothing else. The migration could not be applied locally — the pipeline applies
+it on deploy, and that rule was kept — so the live walk-through of the gate is the first thing to do
+once staging is green.
+
+**Where the code lives.** `services/thesisPublication.ts` (all thirteen checks, publish, unpublish) ·
+`services/researchSessions.ts` (one active session, consent, trace) · `lib/publicationLanguage.ts`
+(checks 7 and 8, pure) · `services/ThesisPublicationAssessorAgent.ts` + `prompts/thesisPublicationAssessment.ts`
+(checks 10-12) · `services/whistleblowerCall.ts` (the call derivation, now shared by the tool and
+check 9) · `lib/thesisView.ts` (the one rule for which version a viewer sees) ·
+`mcp/tools/thesisPublicationTools.ts` · `middleware/researcherIdentity.ts` (REST identity, optional
+and required) · frontend `ThesisPublicationPanel.tsx`, `PublicationBadge.tsx`.
+
+**Decisions the spec left open, and how they were taken.** Each is reversible; none was taken
+silently.
+
+1. **Publishing requires the active session to be the caller's own AND on this thesis.** An active
+   session on another thesis, or an unattached framing session, refuses with
+   `ACTIVE_SESSION_ON_OTHER_THESIS`. Otherwise the rationale would land in the wrong thesis's log, or
+   nobody's — the thing §2.2 exists to prevent.
+2. **Unpublishing requires NO session.** Retraction is the safe direction and must never wait on
+   bookkeeping. The reason is still recorded: on the caller's active session on this thesis if there is
+   one, otherwise on the session that published (found via the `THESIS_PUBLISHED` event). It is never
+   lost.
+3. **The rationale is single-shot, not a debate.** `publish_thesis(thesisId, rationale)` either refuses
+   or pins, as §4 specifies. A `DISPUTES` verdict therefore does not demand a reply first the way the
+   diff debate does — it publishes over the objection and records the dissent permanently
+   (`THESIS_PUBLISHED` says so; the `PUBLICATION_ASSESSED` event carries the objection). If a reply
+   round is wanted, it is a small addition on top of the same events. **Flagged for the researcher.**
+4. **`publicInterestStatement` is set through `publish_thesis` / `check_publication_readiness`**
+   (optional parameter) and the web panel — no separate tool. On `publish_thesis` it is saved on the
+   thesis even when the attempt is refused, so the next attempt need not repeat it. On the readiness
+   check it is evaluated in place without saving. Floor: 40 characters after trimming.
+5. **Check 2 rests on the version row, not on re-hashing.** Each version carries its own analysis and
+   is created `PENDING_AI` with `aiAnalysis: null`, so `COMPLETE` on the head means the adversary spoke
+   on that exact text. Re-verifying `contentHash` was considered and rejected: the columns are `jsonb`,
+   which does not preserve key order, so a recomputed hash would fail on legitimate data.
+6. **Check 7 ignores a block that is only key-figure chips.** `buildTipTapDoc` appends a trailing
+   paragraph of bare figure mentions; that is an index, not a sentence naming anyone. A sentence counts
+   when it carries prose beyond the names. Figures are detected both as mention chips and as plain
+   text. The hedge list is the seven markers in §2.3, verbatim. `COMPLIANCE.md` Rule 1 also lists
+   `אנו חוקרים האם`; it was **not** added, because adding a marker loosens the check and the spec says
+   the list is the researcher's. **Flagged.**
+7. **Viewer-dependent reads went further than the three named in §4**, because the gate is only as
+   real as its weakest read: `GET /api/thesis` (the list behind the public homepage and `/call` index)
+   now lists the public only published theses, previewed from the published version; `GET /api/thesis/:id`
+   returns **404** to the public for a draft — a draft does not exist publicly; `/versions` and
+   `/versions/:versionId` are **researcher-only**, so the drafts around a published version never leak
+   through history. The wire key `headVersion` became `version` everywhere, since for the public it is
+   not the head.
+8. **MCP read tools identify the viewer when a token is present and never refuse.** A valid
+   `mcp:read` OAuth token is enough to view the head (write scope is not required to look); an invalid or
+   lapsed token means anonymous, and the output says `viewer: PUBLIC` so a researcher cannot mistake
+   the public view for the head.
+9. **Check 13 derives from the `THESIS_ATTACHED` event** on a session for this thesis.
+10. **Check 6's binding flag is measured, not assumed**: it counts CONFIRMED records in the vault below
+    Tier 2. Zero ⇒ `binding: false` and the summary says `NON-BINDING` in so many words.
+11. `close_research_session` accepts `sessionId`, because a framing session has no `thesisId` until a
+    thesis attaches and was otherwise unclosable — and with one active session system-wide, unclosable
+    is blocking.
+12. `EVIDENCE_TIER` moved from `IntakeAgent.ts` to `lib/evidenceTier.ts` (re-exported), so comparing
+    tiers does not pull an LLM client into the module graph. Found when a suite that mocks `IntakeAgent`
+    lost the constant.
+
+**Found along the way.** `npm run db:simulate` reports "every table dropped" for a multi-statement
+DDL script (the after-count comes back empty) — a false positive on a purely additive migration,
+verified untouched by a read-only recount. Spun off as its own task; do not trust the simulator on
+multi-statement input until it is fixed.
+
+**Code review, same day — four findings, three fixed here, one redirected.**
+- Check 7 only knew the figures the thesis had tagged, so an unhedged allegation written by simply
+  typing a known official's name passed. Names now come from **every `KeyFigure` row**, and the
+  check's output states how many names it checked and that a never-recorded name is not detected.
+- The version-history payload computed `publicationState` from an empty version list, asserting
+  "0 versions behind" where it was not known — mechanism right, summary wrong. It now passes the real
+  versions and publisher.
+- An unpunctuated run was one "sentence", so a single hedge covered it — the per-document weakness
+  returning by the back door. A figure-naming unit over 300 characters now **fails closed** with the
+  reason; the author's fix is punctuation.
+- `db:simulate`'s root cause is `Number(r.rows ?? 0)` — a NULL count reads as zero, so the tool can
+  under-report destruction as well as over-report it. Passed to the separate task with that priority.
+- Ratified by the reviewer: single-shot publish (the diff debate's reply round overturns a machine
+  verdict; nobody is overruled here), the seven-marker hedge list, and the wider viewer-dependent reads.
+
+**Not done, deliberately.** No second-researcher approval, no strength gate, no cooling-off (§8). The
+thesis write routes other than publication (`POST /:id/version`, `/analyze`, gap resolution) remain
+unauthenticated on REST as they were — outside this gate's scope, and worth their own pass.

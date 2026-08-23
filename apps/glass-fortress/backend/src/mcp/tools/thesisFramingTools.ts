@@ -4,6 +4,8 @@ import {
   assessThesisFraming,
   getThesisFraming,
 } from '../../services/thesisFraming';
+import { getResearcherId } from '../../context/researcherContext';
+import { sessionConsentSchema } from './createResearchSession';
 
 // ---------------------------------------------------------------------------
 // Deciding what a thesis should argue, before writing one.
@@ -24,13 +26,22 @@ export const openThesisFramingSchema = {
     .min(1)
     .describe('The investigative question to frame a thesis around, before deciding what it should claim.'),
   name: z.string().optional().describe('Optional session name. Defaults to the question.'),
+  ...sessionConsentSchema,
 };
 
 export async function openThesisFramingHandler(input: {
   question: string;
   name?: string;
+  closeActiveSession?: boolean;
+  closeOtherResearchersSession?: boolean;
+  closeReason?: string;
 }): Promise<string> {
-  const state = await openThesisFraming(input.question, input.name);
+  const state = await openThesisFraming(input.question, input.name, getResearcherId(), {
+    closeActiveSession: input.closeActiveSession,
+    closeOtherResearchersSession: input.closeOtherResearchersSession,
+    closeReason: input.closeReason,
+  });
+  if ('error' in state) return JSON.stringify(state);
   return JSON.stringify({
     ...state,
     explanation:

@@ -43,6 +43,14 @@ import {
   getDiffDebateSchema,
   getDiffDebateHandler,
 } from './tools/diffDebateTools';
+import {
+  checkPublicationReadinessSchema,
+  checkPublicationReadinessHandler,
+  publishThesisSchema,
+  publishThesisHandler,
+  unpublishThesisSchema,
+  unpublishThesisHandler,
+} from './tools/thesisPublicationTools';
 
 // ---------------------------------------------------------------------------
 // Factory — creates a fresh McpServer per request.
@@ -115,11 +123,12 @@ export function createMcpServer(): McpServer {
   // -------------------------------------------------------------------------
   server.tool(
     'get_whistleblower_call',
-    'Return the public Call for Whistleblowers for a thesis — its shareable URL, whether it is live, ' +
-      'and every evidence gap it publishes as an appeal. The call is derived from the head version\'s ' +
-      'Devil\'s Advocate analysis rather than stored, so it becomes live as soon as an analysis ' +
-      'completes with at least one gap. Each gapIndex returned can also be passed to ' +
-      'generate_foia_request.',
+    'Return the Call for Whistleblowers for a thesis — its shareable URL, whether it is live, ' +
+      'and every evidence gap it publishes as an appeal. The call is derived from a version\'s ' +
+      'Devil\'s Advocate analysis rather than stored. Anonymous callers see the call the public ' +
+      'sees (derived from the PUBLISHED version, or UNPUBLISHED); an authenticated researcher sees ' +
+      'the call the head version would produce, and whether the public is behind it. Each gapIndex ' +
+      'returned can also be passed to generate_foia_request.',
     getWhistleblowerCallSchema,
     async (input) => ({
       content: [{ type: 'text' as const, text: await getWhistleblowerCallHandler(input) }],
@@ -284,8 +293,10 @@ export function createMcpServer(): McpServer {
   // -------------------------------------------------------------------------
   server.tool(
     'get_thesis_context',
-    'Retrieve a legal thesis by ID — returns the current version body, all cited evidence ' +
-      'summaries, key figures mentioned, and the Devil\'s Advocate AI critique.',
+    'Retrieve a legal thesis by ID — the version body, all cited evidence summaries, key figures ' +
+      'mentioned, and the Devil\'s Advocate AI critique. Anonymous callers receive the PUBLISHED ' +
+      'version only (or viewer: PUBLIC with status UNPUBLISHED); an authenticated researcher ' +
+      'receives the head version plus publication state and how far the public is behind it.',
     getThesisContextSchema,
     async (input) => ({
       content: [{ type: 'text' as const, text: await getThesisContextHandler(input) }],
@@ -404,9 +415,11 @@ export function createMcpServer(): McpServer {
   // -------------------------------------------------------------------------
   server.tool(
     'create_research_session',
-    'Start a new named research session on a thesis. Only one session can be active per thesis — ' +
-      'creating a new one auto-closes the previous. Events (versions created, gaps resolved, ' +
-      'AI analyses run) are logged automatically. Name defaults to current date/time if omitted.',
+    'Start a new named research session on a thesis. Only ONE session may be active at a time ' +
+      'across the system: if one is open, this refuses and names it. Pass closeActiveSession: true ' +
+      'to close your own; closing another researcher\'s requires closeOtherResearchersSession: true ' +
+      'and a closeReason, recorded on their session. Publishing a thesis must happen inside an active ' +
+      'session on that thesis. Events are logged automatically. Name defaults to the current date/time.',
     createResearchSessionSchema,
     async (input) => ({
       content: [{ type: 'text' as const, text: await createResearchSessionHandler(input) }],
@@ -425,8 +438,9 @@ export function createMcpServer(): McpServer {
 
   server.tool(
     'close_research_session',
-    'Close the active research session for a thesis and return a full summary of what was ' +
-      'accomplished: versions created, gaps resolved, AI analyses run, and the event timeline.',
+    'Close the active research session — by thesisId, or by sessionId for a framing session that ' +
+      'has no thesis yet — and return a full summary of what was accomplished: versions created, ' +
+      'gaps resolved, AI analyses run, and the event timeline.',
     closeResearchSessionSchema,
     async (input) => ({
       content: [{ type: 'text' as const, text: await closeResearchSessionHandler(input) }],
@@ -572,6 +586,47 @@ export function createMcpServer(): McpServer {
     recoverEvidenceFromScreenshotSchema,
     async (input) => ({
       content: [{ type: 'text' as const, text: await recoverEvidenceFromScreenshotHandler(input) }],
+    }),
+  );
+
+  // -------------------------------------------------------------------------
+  // Thesis publication (docs/gf-thesis-publication-gate-dev-plan.md)
+  // Publication is a pinned version behind thirteen individually-reported
+  // checks. All three tools are gated.
+  // -------------------------------------------------------------------------
+  server.tool(
+    'check_publication_readiness',
+    'Run every publication check on a thesis\'s head version and report each one, pass or fail, ' +
+      'WITHOUT publishing. Hard checks block publication; advisory checks are recorded with it. ' +
+      'Use before publish_thesis to see exactly what is missing. Pass a rationale to have it ' +
+      'assessed in advance. Writes nothing.',
+    checkPublicationReadinessSchema,
+    async (input) => ({
+      content: [{ type: 'text' as const, text: await checkPublicationReadinessHandler(input) }],
+    }),
+  );
+
+  server.tool(
+    'publish_thesis',
+    'Publish the HEAD version of a thesis: pins that exact version as what the public sees until ' +
+      'publish_thesis is called again — later edits and re-analyses change nothing public. Requires ' +
+      'an active research session on this thesis, an argued rationale (substance is a hard gate, ' +
+      'merit is advisory and recorded), and every hard check to pass; refuses with the full list ' +
+      'otherwise. The rationale and assessment are recorded on the session either way.',
+    publishThesisSchema,
+    async (input) => ({
+      content: [{ type: 'text' as const, text: await publishThesisHandler(input) }],
+    }),
+  );
+
+  server.tool(
+    'unpublish_thesis',
+    'Withdraw a thesis from public view: sets the published pin to null and deletes nothing. ' +
+      'Requires no session — retraction must never wait on one. The reason is recorded on the ' +
+      'active session on this thesis if there is one, otherwise on the session that published.',
+    unpublishThesisSchema,
+    async (input) => ({
+      content: [{ type: 'text' as const, text: await unpublishThesisHandler(input) }],
     }),
   );
 

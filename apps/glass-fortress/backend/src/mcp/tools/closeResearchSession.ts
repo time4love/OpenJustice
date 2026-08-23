@@ -2,14 +2,29 @@ import { z } from 'zod';
 import { prisma } from '../../lib/prisma';
 
 export const closeResearchSessionSchema = {
-  thesisId: z.string().min(1).describe('ID of the thesis whose active session to close'),
+  thesisId: z.string().min(1).optional().describe('ID of the thesis whose active session to close'),
+  sessionId: z
+    .string()
+    .min(1)
+    .optional()
+    .describe('ID of the active session to close — the only way to close a framing session that has no thesis yet'),
 };
 
-type Input = { thesisId: string };
+interface Input {
+  thesisId?: string;
+  sessionId?: string;
+}
 
 export async function closeResearchSessionHandler(input: Input): Promise<string> {
+  if (!input.thesisId && !input.sessionId) {
+    return JSON.stringify({ error: 'Provide thesisId or sessionId.' });
+  }
+
   const session = await prisma.researchSession.findFirst({
-    where: { thesisId: input.thesisId, status: 'ACTIVE' },
+    where: {
+      status: 'ACTIVE',
+      ...(input.sessionId ? { id: input.sessionId } : { thesisId: input.thesisId }),
+    },
     include: {
       events: { orderBy: { createdAt: 'asc' } },
     },
@@ -17,7 +32,9 @@ export async function closeResearchSessionHandler(input: Input): Promise<string>
 
   if (!session) {
     return JSON.stringify({
-      error: `No active session for thesis ${input.thesisId}.`,
+      error: input.sessionId
+        ? `No active session with id ${input.sessionId}.`
+        : `No active session for thesis ${input.thesisId ?? ''}.`,
     });
   }
 
@@ -30,7 +47,7 @@ export async function closeResearchSessionHandler(input: Input): Promise<string>
     data: { status: 'CLOSED', closedAt: new Date() },
   });
 
-  const durationMs = closed.closedAt!.getTime() - session.createdAt.getTime();
+  const durationMs = (closed.closedAt ?? new Date()).getTime() - session.createdAt.getTime();
   const durationMinutes = Math.round(durationMs / 60000);
 
   const summary = {

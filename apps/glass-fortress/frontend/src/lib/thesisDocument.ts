@@ -1,4 +1,4 @@
-import { apiUrl } from '@/lib/api';
+import { apiUrl, authHeaders } from '@/lib/api';
 
 export function appendEvidenceMention(
   doc: Record<string, unknown>,
@@ -29,12 +29,12 @@ export async function addEvidenceToThesis(
 ): Promise<void> {
   let content = currentContent;
   if (!content) {
-    const res = await fetch(apiUrl(`/api/thesis/${thesisId}`));
+    const res = await fetch(apiUrl(`/api/thesis/${thesisId}`), { headers: authHeaders() });
     if (!res.ok) throw new Error(`Failed to load thesis (${res.status})`);
     const data = (await res.json()) as {
-      thesis: { headVersion: { userContent: Record<string, unknown> } | null };
+      thesis: { version: { userContent: Record<string, unknown> } | null };
     };
-    content = data.thesis.headVersion?.userContent ?? { type: 'doc', content: [] };
+    content = data.thesis.version?.userContent ?? { type: 'doc', content: [] };
   }
 
   const newContent = appendEvidenceMention(content, fileHash, label);

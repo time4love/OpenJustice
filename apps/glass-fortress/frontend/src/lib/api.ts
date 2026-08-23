@@ -17,3 +17,16 @@ export function apiUrl(path: string): string {
   // Avoid double-slashes when base has a trailing slash
   return base.replace(/\/$/, '') + path;
 }
+
+/**
+ * Authorization header for the signed-in researcher, if any. The token is the
+ * Supabase session AuthContext stores; thesis reads are viewer-dependent on the
+ * backend (the public gets the published version, a researcher the head), so
+ * every thesis fetch sends it when present. Empty on the server and when
+ * signed out.
+ */
+export function authHeaders(): Record<string, string> {
+  if (typeof window === 'undefined') return {};
+  const token = window.localStorage.getItem('gf_access_token');
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}

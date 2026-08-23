@@ -34,6 +34,12 @@ let seq = 0;
 jest.mock('../src/lib/prisma', () => ({
   prisma: {
     researchSession: {
+      // The one-active rule: openThesisFraming now refuses while any session is
+      // ACTIVE. Each test here opens at most one, after a cleared db.
+      findFirst: jest.fn(async ({ where }: { where: { status?: string } }) => {
+        const s = [...db.sessions.values()].find((x) => !where.status || x['status'] === where.status);
+        return s ? { createdAt: new Date(), ...s, researcher: null, _count: { events: 0 } } : null;
+      }),
       create: jest.fn(async ({ data }: { data: Record<string, unknown> }) => {
         const id = `fs-${++seq}`;
         const s: Record<string, unknown> = { id, ...data };
@@ -70,11 +76,18 @@ jest.mock('../src/lib/prisma', () => ({
 }));
 
 import {
-  openThesisFraming,
+  openThesisFraming as openThesisFramingRaw,
   assessThesisFraming,
   attachThesisToFraming,
   getThesisFraming,
 } from '../src/services/thesisFraming';
+
+/** Open a framing session, asserting it was not refused. */
+async function openThesisFraming(question: string) {
+  const state = await openThesisFramingRaw(question);
+  if ('error' in state) throw new Error(`framing refused: ${state.error}`);
+  return state;
+}
 
 function assessment(over: Record<string, unknown> = {}): Record<string, unknown> {
   return {
@@ -121,6 +134,19 @@ describe('openThesisFraming', () => {
     expect(s.thesisId).toBeNull();
     expect(db.sessions.get(s.sessionId)?.['thesisId']).toBeNull();
     expect(db.sessions.get(s.sessionId)?.['question']).toBe('did the ministry revise safety claims?');
+  });
+});
+
+describe('openThesisFraming — one active session', () => {
+  it('refuses while another session is active and names it — framing sessions no longer escape the rule', async () => {
+    const first = await openThesisFraming('first question');
+    const second = await openThesisFramingRaw('second question');
+
+    expect('error' in second).toBe(true);
+    if (!('error' in second)) return;
+    expect(second.error).toBe('SESSION_ACTIVE_SAME_RESEARCHER');
+    expect(second.activeSession.id).toBe(first.sessionId);
+    expect(db.sessions.size).toBe(1);
   });
 });
 
