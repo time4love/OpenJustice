@@ -98,12 +98,12 @@ export default function HomePage() {
       if (statsData) setStats(statsData);
       if (theses) {
         const sorted = theses
-          .filter((thesis) => thesis.headVersion?.status === 'COMPLETE')
+          .filter((thesis) => thesis.version?.status === 'COMPLETE')
           .sort((a, b) => {
-            const rankA = STRENGTH_RANK[a.headVersion?.strength ?? ''] ?? -1;
-            const rankB = STRENGTH_RANK[b.headVersion?.strength ?? ''] ?? -1;
+            const rankA = STRENGTH_RANK[a.version?.strength ?? ''] ?? -1;
+            const rankB = STRENGTH_RANK[b.version?.strength ?? ''] ?? -1;
             if (rankB !== rankA) return rankB - rankA;
-            return (b.headVersion?.mentionCount ?? 0) - (a.headVersion?.mentionCount ?? 0);
+            return (b.version?.mentionCount ?? 0) - (a.version?.mentionCount ?? 0);
           });
         setTheses(sorted);
       }

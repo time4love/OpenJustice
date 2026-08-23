@@ -1,12 +1,41 @@
 import { z } from 'zod';
 import { prisma } from '../../lib/prisma';
+import { getResearcherId } from '../../context/researcherContext';
+import { openExclusiveSession } from '../../services/researchSessions';
+
+export const sessionConsentSchema = {
+  closeActiveSession: z
+    .boolean()
+    .optional()
+    .describe(
+      'Consent to close YOUR OWN currently active session. Without it, opening refuses while one is active.',
+    ),
+  closeOtherResearchersSession: z
+    .boolean()
+    .optional()
+    .describe(
+      "Distinct consent to close ANOTHER researcher's active session. Requires closeReason. The closure is " +
+        'recorded on their session, naming you and the reason.',
+    ),
+  closeReason: z
+    .string()
+    .optional()
+    .describe("Why you are closing another researcher's session. Required with closeOtherResearchersSession."),
+};
 
 export const createResearchSessionSchema = {
   thesisId: z.string().min(1).describe('ID of the thesis to start a session on'),
   name: z.string().optional().describe('Optional session name. Defaults to current date/time.'),
+  ...sessionConsentSchema,
 };
 
-type Input = { thesisId: string; name?: string };
+interface Input {
+  thesisId: string;
+  name?: string;
+  closeActiveSession?: boolean;
+  closeOtherResearchersSession?: boolean;
+  closeReason?: string;
+}
 
 export async function createResearchSessionHandler(input: Input): Promise<string> {
   const thesis = await prisma.thesis.findUnique({ where: { id: input.thesisId } });
@@ -24,40 +53,26 @@ export async function createResearchSessionHandler(input: Input): Promise<string
       minute: '2-digit',
     })}`;
 
-  // Close any existing active session for this thesis
-  const existing = await prisma.researchSession.findFirst({
-    where: { thesisId: input.thesisId, status: 'ACTIVE' },
-    include: { _count: { select: { events: true } } },
-  });
+  const result = await openExclusiveSession(
+    getResearcherId(),
+    { thesisId: input.thesisId, question: null, name: sessionName },
+    {
+      closeActiveSession: input.closeActiveSession,
+      closeOtherResearchersSession: input.closeOtherResearchersSession,
+      closeReason: input.closeReason,
+    },
+  );
 
-  if (existing) {
-    await prisma.researchSessionEvent.create({
-      data: {
-        sessionId: existing.id,
-        type: 'SESSION_CLOSED',
-        description: `Session auto-closed — new session "${sessionName}" started`,
-      },
-    });
-    await prisma.researchSession.update({
-      where: { id: existing.id },
-      data: { status: 'CLOSED', closedAt: new Date() },
-    });
+  if (!result.opened) {
+    return JSON.stringify({ error: result.error, activeSession: result.activeSession, howToProceed: result.howToProceed });
   }
 
-  const session = await prisma.researchSession.create({
-    data: { thesisId: input.thesisId, name: sessionName, status: 'ACTIVE' },
-  });
-
-  await prisma.researchSessionEvent.create({
-    data: { sessionId: session.id, type: 'SESSION_STARTED', description: `Session "${sessionName}" started` },
-  });
-
   return JSON.stringify({
-    sessionId: session.id,
-    name: session.name,
+    sessionId: result.session.id,
+    name: result.session.name,
     thesisId: input.thesisId,
     status: 'ACTIVE',
-    previousSessionClosed: existing ? existing.id : null,
+    previousSessionClosed: result.closed,
     message: `Session started. Events will be logged automatically as you work. Use add_session_note to add context, close_research_session when done.`,
   });
 }

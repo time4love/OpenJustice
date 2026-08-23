@@ -4,7 +4,7 @@ import { use, useEffect, useRef, useState } from 'react';
 import { useRouter } from '@/i18n/navigation';
 import { useTranslations } from 'next-intl';
 import { Link } from '@/i18n/navigation';
-import { apiUrl } from '@/lib/api';
+import { apiUrl, authHeaders } from '@/lib/api';
 import { ThesisEditor, type ThesisEditorHandle } from '@/components/ThesisEditor';
 import { useAuth } from '@/context/AuthContext';
 
@@ -25,12 +25,12 @@ export default function EditThesisPage({ params }: { params: Promise<{ id: strin
   useEffect(() => {
     async function load() {
       try {
-        const res = await fetch(apiUrl(`/api/thesis/${id}`));
+        const res = await fetch(apiUrl(`/api/thesis/${id}`), { headers: authHeaders() });
         if (!res.ok) throw new Error();
         const data = (await res.json()) as {
-          thesis: { headVersion: { userContent: Record<string, unknown> } | null };
+          thesis: { version: { userContent: Record<string, unknown> } | null };
         };
-        setInitialContent(data.thesis.headVersion?.userContent ?? undefined);
+        setInitialContent(data.thesis.version?.userContent ?? undefined);
       } catch {
         setLoadError(true);
       } finally {

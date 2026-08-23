@@ -6,6 +6,7 @@ import {
 } from './ThesisFramingAssessorAgent';
 import { loadTrajectoryContext } from '../lib/trajectoryContext';
 import { loadSummaryCaveat } from '../lib/summaryProvenance';
+import { openExclusiveSession, type OpenSessionConsent, type OpenSessionRefusal } from './researchSessions';
 
 // ---------------------------------------------------------------------------
 // Deciding what a thesis should argue, before one exists.
@@ -61,24 +62,26 @@ export interface FramingState {
   thesisId: string | null;
 }
 
-export async function openThesisFraming(question: string, name?: string): Promise<FramingState> {
+export async function openThesisFraming(
+  question: string,
+  name?: string,
+  researcherId: string | null = null,
+  consent: OpenSessionConsent = {},
+): Promise<FramingState | OpenSessionRefusal> {
   const sessionName = name ?? `Framing: ${question.slice(0, 60)}`;
 
-  const session = await prisma.researchSession.create({
-    data: {
-      // No thesis yet — that is the point of a framing session.
-      thesisId: null,
-      question,
-      name: sessionName,
-      status: 'ACTIVE',
-      events: {
-        create: {
-          type: 'SESSION_STARTED',
-          description: `Framing session opened on: ${question}`,
-        },
-      },
-    },
-  });
+  // No thesis yet — that is the point of a framing session. It is still THE
+  // active session: it used to escape the one-active rule because that rule
+  // was scoped by thesisId, and a null thesisId matched nothing.
+  const opened = await openExclusiveSession(
+    researcherId,
+    { thesisId: null, question, name: sessionName },
+    consent,
+  );
+  if (!opened.opened) {
+    return { error: opened.error, activeSession: opened.activeSession, howToProceed: opened.howToProceed };
+  }
+  const { session } = opened;
 
   return {
     sessionId: session.id,

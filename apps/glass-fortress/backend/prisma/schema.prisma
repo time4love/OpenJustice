@@ -38,7 +38,9 @@ model Researcher {
 
   evidence       Evidence[]
   thesisVersions ThesisVersion[]
-  theses         Thesis[]
+  theses         Thesis[]        @relation("ThesisAuthor")
+  publishedTheses Thesis[]       @relation("ThesisPublisher")
+  researchSessions ResearchSession[]
   summaryCorrections SummaryCorrection[]
 }
 
@@ -326,8 +328,27 @@ model Thesis {
   versions      ThesisVersion[]   @relation("ThesisVersions")
   sessions      ResearchSession[]
   createdById   String?           // Researcher.id — null for legacy records
-  createdBy     Researcher?       @relation(fields: [createdById], references: [id])
+  createdBy     Researcher?       @relation("ThesisAuthor", fields: [createdById], references: [id])
   createdAt     DateTime          @default(now())
+
+  // Publication is a PINNED VERSION, not a flag and not a consequence of analysis.
+  //
+  // null ⇒ DRAFT: visible to approved researchers only. Set ⇒ the public sees
+  // exactly this version, and ONLY this version, until a researcher publishes
+  // again. Editing the head and re-running the Devil's Advocate changes nothing
+  // public. With a boolean flag the public would silently follow every later
+  // edit, so a researcher publishes one text and the public reads another.
+  // Unpublishing sets the pin back to null and deletes nothing.
+  // Preconditions: services/thesisPublication.ts.
+  publishedVersionId String?        @unique
+  publishedVersion   ThesisVersion? @relation("ThesisPublished", fields: [publishedVersionId], references: [id])
+  publishedAt        DateTime?
+  publishedById      String?        // Researcher.id of whoever published
+  publishedBy        Researcher?    @relation("ThesisPublisher", fields: [publishedById], references: [id])
+  // The public-interest anchor (COMPLIANCE.md Rule 5) as a dedicated field rather
+  // than free text in the body: structurally guaranteed to exist on a published
+  // thesis and rendered consistently on every thesis and call page.
+  publicInterestStatement String?
 }
 
 // One row per edit. userContent is TipTap JSON; aiAnalysis is devil's advocate output.
@@ -346,6 +367,7 @@ model ThesisVersion {
   mentions        ThesisMention[]
   gapResolutions  ThesisGapResolution[]
   isHead          Thesis?             @relation("ThesisHead")
+  isPublished     Thesis?             @relation("ThesisPublished")
   createdById     String?             // Researcher.id — null for legacy records
   createdBy       Researcher?         @relation(fields: [createdById], references: [id])
   createdAt       DateTime            @default(now())
@@ -396,6 +418,15 @@ enum ResearchSessionEventType {
   FRAMING_PROPOSED // a researcher's proposed framing of the question
   FRAMING_ASSESSED // the adversarial response to it
   THESIS_ATTACHED  // the framing produced a thesis; refId is the Thesis id
+  // Publication is a deliberate, gated act and belongs in the record of the
+  // session that did it. refId is the ThesisVersion id that was pinned/unpinned.
+  PUBLICATION_RATIONALE // the researcher's argued case for publishing
+  PUBLICATION_ASSESSED  // the assessor's response to it; description is the assessment JSON
+  THESIS_PUBLISHED
+  THESIS_UNPUBLISHED
+  // Written onto a session that ANOTHER researcher closed to open their own,
+  // naming who closed it and why, so its owner returns to a record rather than a guess.
+  SESSION_CLOSED_BY_OTHER
 }
 
 // A named Claude+human research sprint on a thesis.
@@ -424,6 +455,12 @@ model ResearchSession {
   question  String?
   name      String
   status    ResearchSessionStatus @default(ACTIVE)
+  // Who opened it. Nullable: sessions that predate ownership read as legacy,
+  // the same pattern as Evidence.createdById. Only ONE session may be ACTIVE
+  // at a time across the whole system — a publication attaches to the session
+  // that did it, and an untethered publish is an act with no context.
+  researcherId String?
+  researcher   Researcher?          @relation(fields: [researcherId], references: [id])
   events    ResearchSessionEvent[]
   createdAt DateTime              @default(now())
   closedAt  DateTime?

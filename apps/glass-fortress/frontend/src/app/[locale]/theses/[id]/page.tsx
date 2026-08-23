@@ -6,12 +6,14 @@ import { useSearchParams } from 'next/navigation';
 import { useTranslations, useLocale } from 'next-intl';
 import { Link } from '@/i18n/navigation';
 import { SiteHeader } from '@/components/SiteHeader';
-import { apiUrl } from '@/lib/api';
+import { apiUrl, authHeaders } from '@/lib/api';
 import { truncateLabel } from '@/lib/format';
 import { buildEvidenceCitationNumbers } from '@/lib/citations';
 import { TipTapRenderer, type EvidenceInfo } from '@/components/TipTapRenderer';
 import { LegalDisclaimer } from '@/components/LegalDisclaimer';
-import type { EvidenceGap, CounterArgument, AIAnalysis } from '@/types/thesis';
+import type { EvidenceGap, CounterArgument, AIAnalysis, PublicationState, ThesisViewer } from '@/types/thesis';
+import { ThesisPublicationPanel } from '@/components/ThesisPublicationPanel';
+import { PublicationBadge } from '@/components/PublicationBadge';
 import { CategoryBadges } from '@/components/CategoryBadges';
 import { tierDotColor } from '@/components/TierBadge';
 import { StrengthBadge, strengthLabel } from '@/components/StrengthBadge';
@@ -32,7 +34,7 @@ interface ThesisMention {
 }
 
 
-interface HeadVersion {
+interface ThesisVersion {
   id: string;
   status: 'PENDING_AI' | 'COMPLETE';
   contentHash: string;
@@ -42,12 +44,16 @@ interface HeadVersion {
   createdAt: string;
 }
 
+// The version served depends on the viewer: the published one for the public,
+// the head for an approved researcher (backend lib/thesisView.ts).
 interface Thesis {
   id: string;
   title: string | null;
-  headVersionId: string | null;
   createdAt: string;
-  headVersion: HeadVersion | null;
+  viewer: ThesisViewer;
+  publication: PublicationState;
+  publicInterestStatement: string | null;
+  version: ThesisVersion | null;
 }
 
 interface GapResolution {
@@ -297,7 +303,7 @@ function ThesisPageInner({ id }: { id: string }) {
   // the rules of hooks — derives the same footnote numbers TipTapRenderer uses
   // inline, so the "ראיות (N)" list below can show matching [n] markers.
   const citationNumbers = useMemo(
-    () => (thesis?.headVersion?.userContent ? buildEvidenceCitationNumbers(thesis.headVersion.userContent) : new Map<string, number>()),
+    () => (thesis?.version?.userContent ? buildEvidenceCitationNumbers(thesis.version.userContent) : new Map<string, number>()),
     [thesis],
   );
 
@@ -309,7 +315,7 @@ function ThesisPageInner({ id }: { id: string }) {
     const url = historicalVersionId
       ? apiUrl(`/api/thesis/${id}/versions/${historicalVersionId}`)
       : apiUrl(`/api/thesis/${id}`);
-    const res = await fetch(url);
+    const res = await fetch(url, { headers: authHeaders() });
     if (!res.ok) throw new Error();
     const data = (await res.json()) as {
       thesis: Thesis;
@@ -369,7 +375,7 @@ function ThesisPageInner({ id }: { id: string }) {
       pollRef.current = setInterval(async () => {
         try {
           const thesis = await loadThesis();
-          if (thesis.headVersion?.status === 'COMPLETE') {
+          if (thesis.version?.status === 'COMPLETE') {
             clearInterval(pollRef.current!);
             pollRef.current = null;
             setAnalyzing(false);
@@ -414,7 +420,8 @@ function ThesisPageInner({ id }: { id: string }) {
     );
   }
 
-  const hv = thesis.headVersion;
+  const hv = thesis.version;
+  const isDraft = !thesis.publication.isPublished;
   const analysis = hv?.aiAnalysis ?? null;
   const evidenceMentions = hv?.mentions.filter(m => m.type === 'EVIDENCE') ?? [];
 
@@ -429,30 +436,23 @@ function ThesisPageInner({ id }: { id: string }) {
         maxWidth="max-w-4xl"
         actions={
           <div className="flex items-center gap-2">
-            {isHistorical ? (
+            {/* Version history is researcher-only: the public sees the
+                published version and only that, never the drafts around it. */}
+            {!isHistorical && canEdit && (
+              <Link
+                href={`/theses/${id}/edit`}
+                className="px-3 py-1.5 bg-violet-700 hover:bg-violet-600 rounded-lg text-xs font-medium text-white transition-colors"
+              >
+                {t('editBtn')}
+              </Link>
+            )}
+            {canEdit && (
               <Link
                 href={`/theses/${id}/history`}
                 className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 rounded-lg text-xs font-medium text-slate-700 transition-colors"
               >
                 {t('historyBtn')}
               </Link>
-            ) : (
-              <>
-                {canEdit && (
-                  <Link
-                    href={`/theses/${id}/edit`}
-                    className="px-3 py-1.5 bg-violet-700 hover:bg-violet-600 rounded-lg text-xs font-medium text-white transition-colors"
-                  >
-                    {t('editBtn')}
-                  </Link>
-                )}
-                <Link
-                  href={`/theses/${id}/history`}
-                  className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 rounded-lg text-xs font-medium text-slate-700 transition-colors"
-                >
-                  {t('historyBtn')}
-                </Link>
-              </>
             )}
             <Link
               href={`/call/${id}`}
@@ -468,6 +468,41 @@ function ThesisPageInner({ id }: { id: string }) {
         {/* Thesis title */}
         {thesis.title && (
           <h1 className="text-xl sm:text-2xl font-bold text-slate-900">{thesis.title}</h1>
+        )}
+
+        {/* Researcher view: publication state + the publish control. A draft
+            is invisible to the public; a published thesis may be behind the
+            head, and only a deliberate re-publish moves it. */}
+        {thesis.viewer === 'RESEARCHER' && !isHistorical && (
+          <>
+            {isDraft && (
+              <div className="flex items-center gap-3 bg-slate-100 border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-700">
+                <PublicationBadge publication={thesis.publication} />
+                <span>{t('publication.draftNotice')}</span>
+              </div>
+            )}
+            {!isDraft && !thesis.publication.headIsPublished && (
+              <div className="flex items-center gap-3 bg-orange-50 border border-orange-200 rounded-xl px-4 py-3 text-sm text-orange-900">
+                <PublicationBadge publication={thesis.publication} />
+                <span>{t('publication.publicBehind', { count: thesis.publication.versionsAhead })}</span>
+              </div>
+            )}
+            <ThesisPublicationPanel
+              thesisId={id}
+              publication={thesis.publication}
+              publicInterestStatement={thesis.publicInterestStatement}
+              onChanged={loadThesis}
+            />
+          </>
+        )}
+
+        {/* Rule 5 — the public-interest anchor, rendered on every published
+            thesis as a dedicated field rather than hunted for in the body. */}
+        {thesis.publicInterestStatement && (
+          <div className="bg-sky-50 border border-sky-200 rounded-xl px-4 py-3 text-sm text-sky-900 space-y-1" dir="auto">
+            <div className="text-xs font-semibold uppercase tracking-wide text-sky-700">{t('publication.statementHeading')}</div>
+            <p className="leading-relaxed">{thesis.publicInterestStatement}</p>
+          </div>
         )}
 
         {/* Historical version banner */}

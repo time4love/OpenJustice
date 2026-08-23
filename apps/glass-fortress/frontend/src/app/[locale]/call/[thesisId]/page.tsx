@@ -23,9 +23,10 @@ async function fetchThesisSummary(thesisId: string): Promise<ThesisMetaSummary> 
     });
     if (!res.ok) return { title: null, summaryHe: null, strength: null };
     const data = (await res.json()) as {
-      thesis: { title?: string | null; headVersion?: { aiAnalysis?: { summaryHe?: string; overallStrengthAssessment?: string } | null } | null };
+      thesis: { title?: string | null; version?: { aiAnalysis?: { summaryHe?: string; overallStrengthAssessment?: string } | null } | null };
     };
-    const hv = data.thesis?.headVersion;
+    // Anonymous server-side fetch: the published version, or a 404 for a draft.
+    const hv = data.thesis?.version;
     return {
       title: data.thesis?.title ?? null,
       summaryHe: hv?.aiAnalysis?.summaryHe ?? null,

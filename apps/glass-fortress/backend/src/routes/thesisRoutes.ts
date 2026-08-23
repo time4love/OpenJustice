@@ -16,6 +16,9 @@ import { createThesisDraftHandler } from '../mcp/tools/createThesisDraft';
 import { buildEvidenceAnalysisData } from '../lib/evidenceCreateData';
 import { upsertKeyFigures } from '../lib/upsertKeyFigures';
 import { aiCostLimiter } from '../middleware/rateLimiting';
+import { identifyResearcher, requireResearcher } from '../middleware/researcherIdentity';
+import { publicationState, versionIdForViewer, type Viewer } from '../lib/thesisView';
+import { assessPublication, publishThesis, unpublishThesis } from '../services/thesisPublication';
 
 const router = Router();
 
@@ -170,35 +173,48 @@ router.post('/', aiCostLimiter, async (req: Request, res: Response): Promise<voi
 // Lists all theses with a preview of the head version.
 // ---------------------------------------------------------------------------
 
-router.get('/', async (req: Request, res: Response): Promise<void> => {
+router.get('/', identifyResearcher, async (req: Request, res: Response): Promise<void> => {
   const { evidence } = ListThesesSchema.parse(req.query ?? {});
+  const viewer: Viewer = req.researcherId ? 'RESEARCHER' : 'PUBLIC';
 
-  const where = evidence
-    ? { headVersion: { mentions: { some: { type: 'EVIDENCE' as const, refId: evidence } } } }
-    : undefined;
+  // Viewer-dependent (lib/thesisView.ts): the public is listed only PUBLISHED
+  // theses, previewed from the published version; a researcher gets every
+  // thesis, previewed from the head, with its publication state.
+  const versionFilter = evidence ? { mentions: { some: { type: 'EVIDENCE' as const, refId: evidence } } } : undefined;
+  const where: Prisma.ThesisWhereInput =
+    viewer === 'PUBLIC'
+      ? { publishedVersionId: { not: null }, ...(versionFilter ? { publishedVersion: versionFilter } : {}) }
+      : versionFilter
+        ? { headVersion: versionFilter }
+        : {};
+
+  const versionSelect = {
+    id: true,
+    status: true,
+    contentHash: true,
+    userContent: true,
+    aiAnalysis: true,
+    createdAt: true,
+    _count: { select: { mentions: true } },
+  } satisfies Prisma.ThesisVersionSelect;
 
   try {
     const theses = await prisma.thesis.findMany({
       where,
       orderBy: { createdAt: 'desc' },
       include: {
-        headVersion: {
-          select: {
-            id: true,
-            status: true,
-            contentHash: true,
-            userContent: true,
-            aiAnalysis: true,
-            createdAt: true,
-            _count: { select: { mentions: true } },
-          },
-        },
+        headVersion: { select: versionSelect },
+        publishedVersion: { select: versionSelect },
+        publishedBy: { select: { handle: true } },
+        versions: { select: { id: true, createdAt: true } },
       },
     });
 
     res.status(200).json({
+      viewer,
       theses: theses.map((t) => {
-        const analysis = t.headVersion?.aiAnalysis as {
+        const served = viewer === 'RESEARCHER' ? t.headVersion : t.publishedVersion;
+        const analysis = served?.aiAnalysis as {
           evidenceGaps?: unknown[];
           overallStrengthAssessment?: string;
         } | null;
@@ -207,15 +223,16 @@ router.get('/', async (req: Request, res: Response): Promise<void> => {
           title: t.title ?? null,
           createdAt: t.createdAt,
           openGapCount: analysis?.evidenceGaps?.length ?? 0,
-          headVersion: t.headVersion
+          publication: publicationState(t, t.versions),
+          version: served
             ? {
-                id: t.headVersion.id,
-                status: t.headVersion.status,
-                contentHash: t.headVersion.contentHash,
-                preview: extractPreview(t.headVersion.userContent),
-                mentionCount: t.headVersion._count.mentions,
+                id: served.id,
+                status: served.status,
+                contentHash: served.contentHash,
+                preview: extractPreview(served.userContent),
+                mentionCount: served._count.mentions,
                 strength: analysis?.overallStrengthAssessment ?? null,
-                createdAt: t.headVersion.createdAt,
+                createdAt: served.createdAt,
               }
             : null,
         };
@@ -230,21 +247,39 @@ router.get('/', async (req: Request, res: Response): Promise<void> => {
 // ---------------------------------------------------------------------------
 // GET /api/thesis/:id
 //
-// Returns a single thesis with its full head version content and AI analysis.
+// Returns a single thesis with the version this VIEWER is served, in full:
+// the published version for the public (404 while unpublished — a draft does
+// not exist as far as the public is concerned), the head for a researcher,
+// with the publication state alongside. Backs the thesis page and the call
+// page.
 // ---------------------------------------------------------------------------
 
-router.get('/:id', async (req: Request, res: Response): Promise<void> => {
+router.get('/:id', identifyResearcher, async (req: Request, res: Response): Promise<void> => {
   const id = String(req.params['id'] ?? '');
   if (!id) {
     res.status(400).json({ error: 'Missing thesis id' });
     return;
   }
+  const viewer: Viewer = req.researcherId ? 'RESEARCHER' : 'PUBLIC';
 
   try {
     const thesis = await prisma.thesis.findUnique({
       where: { id },
       include: {
-        headVersion: {
+        publishedBy: { select: { handle: true } },
+        versions: { select: { id: true, createdAt: true } },
+      },
+    });
+
+    const versionId = thesis ? versionIdForViewer(thesis, viewer) : null;
+    if (!thesis || (viewer === 'PUBLIC' && versionId === null)) {
+      res.status(404).json({ error: 'Thesis not found' });
+      return;
+    }
+
+    const version = versionId
+      ? await prisma.thesisVersion.findUnique({
+          where: { id: versionId },
           include: {
             mentions: true,
             gapResolutions: {
@@ -252,33 +287,107 @@ router.get('/:id', async (req: Request, res: Response): Promise<void> => {
               orderBy: { gapIndex: 'asc' },
             },
           },
-        },
-      },
-    });
-
-    if (!thesis) {
-      res.status(404).json({ error: 'Thesis not found' });
-      return;
-    }
+        })
+      : null;
 
     // Enrich with evidence summaries so the UI can show readable labels on mention chips
-    const evidenceRefIds = (thesis.headVersion?.mentions ?? [])
-      .filter((m) => m.type === 'EVIDENCE')
-      .map((m) => m.refId);
-
+    const evidenceRefIds = (version?.mentions ?? []).filter((m) => m.type === 'EVIDENCE').map((m) => m.refId);
     const evidenceMap = await buildEvidenceMap(evidenceRefIds);
 
-    const gapResolutions = (thesis.headVersion?.gapResolutions ?? []).map((r) => ({
+    const gapResolutions = (version?.gapResolutions ?? []).map((r) => ({
       gapIndex: r.gapIndex,
       evidenceId: r.evidenceId,
       evidence: r.evidence,
       createdAt: r.createdAt,
     }));
 
-    res.status(200).json({ thesis, evidenceMap, gapResolutions });
+    res.status(200).json({
+      thesis: {
+        id: thesis.id,
+        title: thesis.title,
+        createdAt: thesis.createdAt,
+        viewer,
+        publication: publicationState(thesis, thesis.versions),
+        publicInterestStatement: thesis.publicInterestStatement,
+        version: version ? { ...version, gapResolutions: undefined } : null,
+      },
+      evidenceMap,
+      gapResolutions,
+    });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     res.status(500).json({ error: 'Failed to fetch thesis', message });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Publication — the gate (docs/gf-thesis-publication-gate-dev-plan.md).
+// Researcher-only. The same service the MCP tools call, so the web control
+// and the tools cannot disagree about what is publishable.
+// ---------------------------------------------------------------------------
+
+const PublishSchema = z.object({
+  rationale: z.string().min(1),
+  publicInterestStatement: z.string().optional(),
+});
+
+router.post('/:id/publication-readiness', requireResearcher, aiCostLimiter, async (req: Request, res: Response): Promise<void> => {
+  const id = String(req.params['id'] ?? '');
+  const body = PublishSchema.partial().safeParse(req.body ?? {});
+  if (!id || !body.success) {
+    res.status(400).json({ error: 'Invalid request' });
+    return;
+  }
+  try {
+    const report = await assessPublication(id, body.data.rationale ?? null, body.data.publicInterestStatement);
+    if ('error' in report) {
+      res.status(404).json(report);
+      return;
+    }
+    res.status(200).json(report);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ error: 'Failed to assess publication readiness', message });
+  }
+});
+
+router.post('/:id/publish', requireResearcher, aiCostLimiter, async (req: Request, res: Response): Promise<void> => {
+  const id = String(req.params['id'] ?? '');
+  const body = PublishSchema.safeParse(req.body ?? {});
+  if (!id || !body.success || !req.researcherId) {
+    res.status(400).json({ error: 'Invalid request: rationale is required' });
+    return;
+  }
+  try {
+    const result = await publishThesis(id, req.researcherId, body.data.rationale, body.data.publicInterestStatement);
+    if ('error' in result) {
+      res.status(result.error === 'THESIS_NOT_FOUND' ? 404 : 409).json(result);
+      return;
+    }
+    res.status(result.published ? 200 : 422).json(result);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ error: 'Failed to publish thesis', message });
+  }
+});
+
+router.post('/:id/unpublish', requireResearcher, async (req: Request, res: Response): Promise<void> => {
+  const id = String(req.params['id'] ?? '');
+  const body = z.object({ reason: z.string().min(1) }).safeParse(req.body ?? {});
+  if (!id || !body.success || !req.researcherId) {
+    res.status(400).json({ error: 'Invalid request: reason is required' });
+    return;
+  }
+  try {
+    const result = await unpublishThesis(id, req.researcherId, body.data.reason);
+    if ('error' in result) {
+      res.status(result.error === 'THESIS_NOT_FOUND' ? 404 : 409).json(result);
+      return;
+    }
+    res.status(200).json(result);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ error: 'Failed to unpublish thesis', message });
   }
 });
 
@@ -525,11 +634,13 @@ router.post('/:id/version', aiCostLimiter, async (req: Request, res: Response): 
 // ---------------------------------------------------------------------------
 // GET /api/thesis/:id/versions
 //
-// Returns all versions for a thesis, ordered oldest-first, with the head
-// version flagged. Does not include full userContent — use GET /:id for that.
+// Returns all versions for a thesis, ordered oldest-first, with the head and
+// published versions flagged. Does not include full userContent — use GET /:id
+// for that. Researcher-only: the public sees the published version and only
+// that, never the drafts around it.
 // ---------------------------------------------------------------------------
 
-router.get('/:id/versions', async (req: Request, res: Response): Promise<void> => {
+router.get('/:id/versions', requireResearcher, async (req: Request, res: Response): Promise<void> => {
   const thesisId = String(req.params['id'] ?? '');
   if (!thesisId) {
     res.status(400).json({ error: 'Missing thesis id' });
@@ -561,6 +672,7 @@ router.get('/:id/versions', async (req: Request, res: Response): Promise<void> =
     res.status(200).json({
       thesisId,
       headVersionId: thesis.headVersionId,
+      publishedVersionId: thesis.publishedVersionId,
       versions: versions.map((v) => ({
         id: v.id,
         parentVersionId: v.parentVersionId,
@@ -570,6 +682,7 @@ router.get('/:id/versions', async (req: Request, res: Response): Promise<void> =
         preview: extractPreview(v.userContent),
         mentionCount: v._count.mentions,
         isHead: v.id === thesis.headVersionId,
+        isPublished: v.id === thesis.publishedVersionId,
         createdAt: v.createdAt,
         createdByHandle: v.createdBy?.handle ?? null,
       })),
@@ -586,9 +699,10 @@ router.get('/:id/versions', async (req: Request, res: Response): Promise<void> =
 // Returns a single historical version with full userContent, aiAnalysis, and
 // mentions — same shape as GET /api/thesis/:id so the frontend can render it
 // identically. Also returns versionNumber (1-based) and isHead flag.
+// Researcher-only, as /versions is.
 // ---------------------------------------------------------------------------
 
-router.get('/:id/versions/:versionId', async (req: Request, res: Response): Promise<void> => {
+router.get('/:id/versions/:versionId', requireResearcher, async (req: Request, res: Response): Promise<void> => {
   const thesisId = String(req.params['id'] ?? '');
   const versionId = String(req.params['versionId'] ?? '');
   if (!thesisId || !versionId) {
@@ -598,7 +712,10 @@ router.get('/:id/versions/:versionId', async (req: Request, res: Response): Prom
 
   try {
     const [thesis, version] = await Promise.all([
-      prisma.thesis.findUnique({ where: { id: thesisId } }),
+      prisma.thesis.findUnique({
+        where: { id: thesisId },
+        include: { publishedBy: { select: { handle: true } }, versions: { select: { id: true, createdAt: true } } },
+      }),
       prisma.thesisVersion.findUnique({
         where: { id: versionId },
         include: { mentions: true },
@@ -623,13 +740,17 @@ router.get('/:id/versions/:versionId', async (req: Request, res: Response): Prom
     res.status(200).json({
       thesis: {
         id: thesis.id,
-        headVersionId: thesis.headVersionId,
+        title: thesis.title,
         createdAt: thesis.createdAt,
-        headVersion: version,
+        viewer: 'RESEARCHER' satisfies Viewer,
+        publication: publicationState(thesis, thesis.versions),
+        publicInterestStatement: thesis.publicInterestStatement,
+        version,
       },
       evidenceMap,
       versionNumber: olderCount + 1,
       isHead: thesis.headVersionId === versionId,
+      isPublished: thesis.publishedVersionId === versionId,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
