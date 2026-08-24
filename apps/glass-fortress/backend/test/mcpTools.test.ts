@@ -18,6 +18,9 @@ jest.mock('../src/lib/prisma', () => ({
       findFirst: jest.fn(),
       upsert: jest.fn(),
     },
+    urlSnapshot: {
+      count: jest.fn(),
+    },
     thesis: {
       findUnique: jest.fn(),
       create: jest.fn(),
@@ -79,7 +82,6 @@ import { WaybackScraper } from '../src/services/WaybackScraper';
 import { searchEvidenceHandler } from '../src/mcp/tools/searchEvidence';
 import { getForensicTimelineHandler } from '../src/mcp/tools/getForensicTimeline';
 import { getFigureDossierHandler } from '../src/mcp/tools/getFigureDossier';
-import { getThesisContextHandler } from '../src/mcp/tools/getThesisContext';
 import { createEvidenceFromUrlHandler } from '../src/mcp/tools/createEvidenceFromUrl';
 import { startForensicScanHandler } from '../src/mcp/tools/startForensicScan';
 import { enrichEvidenceWithHistoryHandler } from '../src/mcp/tools/enrichEvidenceWithHistory';
@@ -291,6 +293,32 @@ describe('getForensicTimelineHandler', () => {
     expect(result.timeline).toHaveLength(2);
   });
 
+  it('reports unanchored snapshots, with a warning when any exist', async () => {
+    // Snapshot anchoring is fire-and-forget with a swallowed rejection, so a scan
+    // that ran while the RPC was down stored 83 snapshots, anchored none, and
+    // reported success. Nothing asked afterwards. This is the asking.
+    mockTrackedUrlFindFirst.mockResolvedValue(trackedUrlFixture);
+    (prisma.urlSnapshot.count as jest.Mock).mockResolvedValueOnce(83).mockResolvedValueOnce(83);
+
+    const result = JSON.parse(await getForensicTimelineHandler({ url: 'https://health.gov.il/corona' }));
+
+    expect(result.snapshotsStored).toBe(83);
+    expect(result.unanchoredSnapshots).toBe(83);
+    expect(result.anchoringWarning).toMatch(/not registered on-chain/);
+    expect(result.anchoringWarning).toMatch(/forensics:anchor-snapshots/);
+  });
+
+  it('omits the anchoring warning when every snapshot is anchored', async () => {
+    // A field that is always present stops being read. Absence is the signal.
+    mockTrackedUrlFindFirst.mockResolvedValue(trackedUrlFixture);
+    (prisma.urlSnapshot.count as jest.Mock).mockResolvedValueOnce(83).mockResolvedValueOnce(0);
+
+    const result = JSON.parse(await getForensicTimelineHandler({ url: 'https://health.gov.il/corona' }));
+
+    expect(result.unanchoredSnapshots).toBe(0);
+    expect(result.anchoringWarning).toBeUndefined();
+  });
+
   it('parses deletedItems and addedItems from JSON strings', async () => {
     mockTrackedUrlFindFirst.mockResolvedValue(trackedUrlFixture);
 
@@ -404,133 +432,6 @@ describe('getFigureDossierHandler', () => {
     const result = JSON.parse(raw);
 
     expect(result.evidence[0].sourceUrl).toBeNull();
-  });
-});
-
-// ===========================================================================
-// get_thesis_context
-// ===========================================================================
-
-describe('getThesisContextHandler', () => {
-  const mentionFixture = [
-    { id: 'm1', type: 'EVIDENCE', refId: 'abc123', thesisVersionId: 'v1' },
-    { id: 'm2', type: 'KEY_FIGURE', refId: 'שרון אלרועי-פרייס', thesisVersionId: 'v1' },
-    { id: 'm3', type: 'TRACKED_URL', refId: 'url-uuid-1', thesisVersionId: 'v1' },
-  ];
-
-  const headVersionFixture = {
-    id: 'v1',
-    status: 'COMPLETE',
-    userContent: { type: 'doc', content: [] },
-    aiAnalysis: { counterArguments: [], overallStrengthAssessment: 'STRONG' },
-    mentions: mentionFixture,
-    gapResolutions: [],
-  };
-
-  const thesisFixture = {
-    id: 'thesis-1',
-    headVersionId: 'v1',
-    headVersion: headVersionFixture,
-    versions: [
-      { id: 'v1', status: 'COMPLETE', createdAt: new Date('2023-01-01'), aiAnalysis: {} },
-    ],
-  };
-
-  beforeEach(() => {
-    mockEvidenceFindMany.mockResolvedValue([
-      {
-        fileHash: 'abc123',
-        summary: 'Key evidence',
-        evidenceTier: 'Tier 1',
-        evidenceDate: '2022-06-01',
-        targetEntity: 'משרד הבריאות',
-        sourceUrl: 'https://gov.il/evidence',
-      },
-    ]);
-    mockResearchSession.findFirst.mockResolvedValue(null);
-  });
-
-  it('returns thesis with head version content and critique', async () => {
-    mockThesisFindUnique.mockResolvedValue(thesisFixture);
-
-    const raw = await getThesisContextHandler({ thesisId: 'thesis-1' });
-    const result = JSON.parse(raw);
-
-    expect(result.thesisId).toBe('thesis-1');
-    expect(result.headVersionId).toBe('v1');
-    expect(result.status).toBe('COMPLETE');
-    expect(result.content).toEqual({ type: 'doc', content: [] });
-    expect(result.devilsAdvocateCritique).toEqual({ counterArguments: [], overallStrengthAssessment: 'STRONG' });
-  });
-
-  it('returns cited evidence summaries enriched from Prisma', async () => {
-    mockThesisFindUnique.mockResolvedValue(thesisFixture);
-
-    const raw = await getThesisContextHandler({ thesisId: 'thesis-1' });
-    const result = JSON.parse(raw);
-
-    expect(result.evidenceCited).toHaveLength(1);
-    expect(result.evidenceCited[0].fileHash).toBe('abc123');
-    expect(result.evidenceCited[0].summary).toBe('Key evidence');
-  });
-
-  it('extracts only KEY_FIGURE mentions into keyFiguresMentioned', async () => {
-    mockThesisFindUnique.mockResolvedValue(thesisFixture);
-
-    const raw = await getThesisContextHandler({ thesisId: 'thesis-1' });
-    const result = JSON.parse(raw);
-
-    expect(result.keyFiguresMentioned).toEqual(['שרון אלרועי-פרייס']);
-  });
-
-  it('returns version history summary', async () => {
-    mockThesisFindUnique.mockResolvedValue(thesisFixture);
-
-    const raw = await getThesisContextHandler({ thesisId: 'thesis-1' });
-    const result = JSON.parse(raw);
-
-    expect(result.versionCount).toBe(1);
-    expect(result.versions[0]).toMatchObject({ id: 'v1', status: 'COMPLETE', hasCritique: true });
-  });
-
-  it('returns null devilsAdvocateCritique when aiAnalysis is null', async () => {
-    const pendingHead = { ...headVersionFixture, aiAnalysis: null };
-    mockThesisFindUnique.mockResolvedValue({ ...thesisFixture, headVersion: pendingHead });
-
-    const raw = await getThesisContextHandler({ thesisId: 'thesis-1' });
-    const result = JSON.parse(raw);
-
-    expect(result.devilsAdvocateCritique).toBeNull();
-  });
-
-  it('returns error for unknown thesis ID', async () => {
-    mockThesisFindUnique.mockResolvedValue(null);
-
-    const raw = await getThesisContextHandler({ thesisId: 'nonexistent' });
-    const result = JSON.parse(raw);
-
-    expect(result.error).toContain('nonexistent');
-  });
-
-  it('returns error when thesis has no head version', async () => {
-    mockThesisFindUnique.mockResolvedValue({ ...thesisFixture, headVersion: null });
-
-    const raw = await getThesisContextHandler({ thesisId: 'thesis-1' });
-    const result = JSON.parse(raw);
-
-    expect(result.error).toContain('no published version');
-  });
-
-  it('skips Prisma evidence query when thesis has no EVIDENCE mentions', async () => {
-    const noEvidenceMentions = mentionFixture.filter((m) => m.type !== 'EVIDENCE');
-    const headNoEvidence = { ...headVersionFixture, mentions: noEvidenceMentions };
-    mockThesisFindUnique.mockResolvedValue({ ...thesisFixture, headVersion: headNoEvidence });
-
-    const raw = await getThesisContextHandler({ thesisId: 'thesis-1' });
-    const result = JSON.parse(raw);
-
-    expect(result.evidenceCited).toEqual([]);
-    expect(mockEvidenceFindMany).not.toHaveBeenCalled();
   });
 });
 
@@ -805,11 +706,15 @@ describe('startForensicScanHandler', () => {
     expect(mockRunFullScan).toHaveBeenCalledWith('tu-uuid-1', testUrl);
   });
 
-  it('includes trackedUrlId in the poll-status message', async () => {
+  it('returns the trackedUrlId and points at a tool the caller can actually reach', async () => {
     const raw = await startForensicScanHandler({ url: testUrl });
     const result = JSON.parse(raw);
 
-    expect(result.message).toContain('tu-uuid-1');
+    expect(result.trackedUrlId).toBe('tu-uuid-1');
+    // FINDING 7: the REST status endpoint sits behind the staging access gate, so a
+    // researcher working through MCP cannot reach it. Guidance must name the MCP tool.
+    expect(result.message).toContain('get_forensic_timeline');
+    expect(result.message).not.toContain('/api/forensics/');
   });
 
   it('returns without throwing even when runFullScan rejects', async () => {
@@ -1600,44 +1505,55 @@ const mockResearchSessionEvent = (prisma as unknown as {
   researchSessionEvent: { create: jest.Mock };
 }).researchSessionEvent;
 
+jest.mock('../src/services/researchSessions', () => ({
+  openExclusiveSession: jest.fn(),
+}));
+import { openExclusiveSession } from '../src/services/researchSessions';
+const mockOpenExclusiveSession = openExclusiveSession as jest.Mock;
+
 describe('createResearchSessionHandler', () => {
+  // The one-active-session rule itself is tested in researchSessions.test.ts;
+  // here only the handler's translation of the service's answer.
   beforeEach(() => {
     (prisma.thesis.findUnique as jest.Mock).mockResolvedValue({ id: 'thesis-1', headVersionId: 'v1' });
-    mockResearchSession.findFirst.mockResolvedValue(null);
-    mockResearchSession.create.mockResolvedValue({
-      id: 'session-1', thesisId: 'thesis-1', name: 'Test Session', status: 'ACTIVE', createdAt: new Date(),
+    mockOpenExclusiveSession.mockResolvedValue({
+      opened: true,
+      session: { id: 'session-1', name: 'My Session', status: 'ACTIVE', createdAt: new Date() },
+      closed: null,
     });
-    mockResearchSessionEvent.create.mockResolvedValue({ id: 'evt-1' });
   });
 
   it('returns error when thesis not found', async () => {
     (prisma.thesis.findUnique as jest.Mock).mockResolvedValueOnce(null);
     const result = JSON.parse(await createResearchSessionHandler({ thesisId: 'bad-id' }));
     expect(result.error).toMatch(/not found/);
+    expect(mockOpenExclusiveSession).not.toHaveBeenCalled();
   });
 
-  it('creates a new session and logs SESSION_STARTED', async () => {
-    const result = JSON.parse(await createResearchSessionHandler({ thesisId: 'thesis-1', name: 'My Session' }));
+  it('opens the session on the thesis and passes consent through', async () => {
+    const result = JSON.parse(
+      await createResearchSessionHandler({ thesisId: 'thesis-1', name: 'My Session', closeActiveSession: true }),
+    );
     expect(result.sessionId).toBe('session-1');
     expect(result.status).toBe('ACTIVE');
-    expect(mockResearchSession.create).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ thesisId: 'thesis-1', name: 'My Session' }) }),
-    );
-    expect(mockResearchSessionEvent.create).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ type: 'SESSION_STARTED' }) }),
+    expect(mockOpenExclusiveSession).toHaveBeenCalledWith(
+      null,
+      { thesisId: 'thesis-1', question: null, name: 'My Session' },
+      { closeActiveSession: true, closeOtherResearchersSession: undefined, closeReason: undefined },
     );
   });
 
-  it('auto-closes existing active session before creating new one', async () => {
-    mockResearchSession.findFirst.mockResolvedValueOnce({
-      id: 'old-session', _count: { events: 3 },
+  it('surfaces a refusal verbatim so the caller sees whose session is open', async () => {
+    mockOpenExclusiveSession.mockResolvedValueOnce({
+      opened: false,
+      error: 'SESSION_ACTIVE_OTHER_RESEARCHER',
+      activeSession: { id: 'old', ownerHandle: 'dana' },
+      howToProceed: 'pass closeOtherResearchersSession',
     });
-    mockResearchSession.update.mockResolvedValue({});
     const result = JSON.parse(await createResearchSessionHandler({ thesisId: 'thesis-1' }));
-    expect(result.previousSessionClosed).toBe('old-session');
-    expect(mockResearchSession.update).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { id: 'old-session' }, data: expect.objectContaining({ status: 'CLOSED' }) }),
-    );
+    expect(result.error).toBe('SESSION_ACTIVE_OTHER_RESEARCHER');
+    expect(result.activeSession.ownerHandle).toBe('dana');
+    expect(result.sessionId).toBeUndefined();
   });
 });
 
@@ -1872,7 +1788,16 @@ describe('suggestThesisHandler', () => {
 
     await suggestThesisHandler({ topic: 'EUA suppression' });
 
-    expect(getLastSynthesize()).toHaveBeenCalledWith('EUA suppression', expect.any(Array));
+    // The fourth argument is the provenance caveat. This fixture's diff carries no
+    // summaryVersion, so it predates the self-contained-summary rule and MUST
+    // reach the agent — a corpus that silently drops this warning is how a thesis
+    // gets corroborated by its own premise.
+    expect(getLastSynthesize()).toHaveBeenCalledWith(
+      'EUA suppression',
+      expect.any(Array),
+      expect.any(Object),
+      expect.objectContaining({ affected: ['0xcited'], versions: ['pre-self-contained'] }),
+    );
   });
 
   it('maps Prisma figures into keyFigures array for the corpus', async () => {
@@ -1984,8 +1909,23 @@ describe('enrichEvidenceWithHistoryHandler', () => {
     await expect(enrichEvidenceWithHistoryHandler({ fileHash })).resolves.toBeDefined();
   });
 
-  it('message includes trackedUrlId for polling', async () => {
+  it('returns the trackedUrlId and points at a tool the caller can actually reach', async () => {
     const result = JSON.parse(await enrichEvidenceWithHistoryHandler({ fileHash }));
-    expect(result.message).toContain('tu-enrich-1');
+
+    expect(result.trackedUrlId).toBe('tu-enrich-1');
+    // FINDING 7 — see startForensicScanHandler above.
+    expect(result.message).toContain('get_forensic_timeline');
+    expect(result.message).not.toContain('/api/forensics/');
+  });
+
+  it('does not claim scan findings are auto-promoted', async () => {
+    const result = JSON.parse(await enrichEvidenceWithHistoryHandler({ fileHash }));
+
+    // FINDING 9 removed auto-promotion: recordScanFinding writes PENDING_REVIEW and
+    // stops. A message promising promotion overstates what the call writes, and the
+    // session protocol requires announcing that accurately before every call.
+    expect(result.message).toMatch(/PENDING_REVIEW/);
+    expect(result.message).not.toMatch(/auto-promot/i);
+    expect(result.message).toContain('promote_scan_findings');
   });
 });

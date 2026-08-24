@@ -26,6 +26,10 @@ export interface ForensicEvidenceSource {
   /** ForensicAgent's Hebrew explanation */
   aiSignificance: string;
   investigativeCategories: InvestigativeCategory[];
+  /** The archived capture before the change — identity input. */
+  beforeSnapshot: SnapshotIdentity;
+  /** The archived capture after it — identity input. */
+  afterSnapshot: SnapshotIdentity;
   /** Exactly the JSON persisted in UrlVersionDiff.deletedText */
   deletedText: string;
   /** Exactly the JSON persisted in UrlVersionDiff.addedText */
@@ -34,44 +38,86 @@ export interface ForensicEvidenceSource {
   addedItems: DiffItem[];
 }
 
-/**
- * Content-addressed identity for evidence derived from a page change.
- *
- * Hashes what the change WAS — the page, the date, and the extracted text on both
- * sides. Deliberately not the UrlVersionDiff UUID: that is a random database key
- * and hashing it would attest to nothing. This hash is registered on-chain and
- * keys the vector store, so it has to mean something.
- */
-export function forensicEvidenceFileHash(
-  url: string,
-  afterDate: string,
-  deletedText: string,
-  addedText: string,
-): string {
-  const content = [url, afterDate, deletedText, addedText].join('\n');
-  return ethers.sha256(Buffer.from(content, 'utf8'));
+/** One archived capture, as the identity function needs it. */
+export interface SnapshotIdentity {
+  /** YYYYMMDDHHMMSS — the capture's unique Wayback identifier. */
+  waybackTimestamp: string;
+  /** SHA-256 of the archived page text, anchored on-chain in its own right. */
+  contentHash: string;
 }
 
 /**
- * The Evidence row for a forensic diff — one definition, both promotion paths.
+ * The identity inputs for one side, or a loud failure.
  *
- * Returned as plain data rather than written here so each caller keeps its own
- * concerns: the scraper upserts and tolerates failure, the route registers
- * on-chain first and reports HTTP status.
- *
- * Deliberately carries NO `status`. Status is a claim about whether this record
- * is anchored on-chain, and only the caller that did (or did not) anchor it can
- * make that claim. It used to default to CONFIRMED here and be overridden by
- * both callers — dead in practice, and precisely the wrong value for a future
- * caller to inherit by forgetting.
+ * A missing snapshot link means the identity cannot be computed. Throwing is the
+ * only honest response: a fallback would produce a hash from partial data that
+ * looks exactly like a real one, and this value gets registered on-chain.
  */
+export function requireSnapshotIdentity(
+  snapshot: { waybackTimestamp: string; contentHash: string } | null | undefined,
+  side: 'before' | 'after',
+): SnapshotIdentity {
+  if (!snapshot) {
+    throw new Error(
+      `Cannot compute evidence identity: the ${side} snapshot is not linked to this diff.`,
+    );
+  }
+  return { waybackTimestamp: snapshot.waybackTimestamp, contentHash: snapshot.contentHash };
+}
+
+/**
+ * Content-addressed identity for evidence derived from a page change.
+ *
+ * Computed from the two archived captures the change sits between, and nothing
+ * else. An outsider can reproduce it end to end:
+ *
+ *   1. open https://web.archive.org/web/{waybackTimestamp}/{url} for each side
+ *   2. hash the page text — that must equal contentHash, which is itself
+ *      registered on-chain, so step 2 is independently checkable
+ *   3. hash the five fields below in order
+ *
+ * No model is involved at any step, which is the whole point.
+ *
+ * WHAT THIS REPLACED, AND WHY
+ *
+ * The previous identity hashed url + afterDate + deletedText + addedText, where
+ * the latter two are JSON of the classifier's EXTRACTED ITEMS. Three of the four
+ * fields in each item are model output, and reclassification rewrites all of it.
+ * Measured on one record: 8,515 characters hashed, of which 2,853 were verbatim
+ * quotes — the rest was model prose, categories and punctuation.
+ *
+ * So the identity was never reproducible. Item-level classification (which added
+ * two keys to every item) changed the serialisation deterministically, and the
+ * classifier's non-determinism would have changed it anyway. Five of seven
+ * anchored records could no longer be rederived from the database; their hashes
+ * attested to documents that exist nowhere, which is what a random database key
+ * does — the exact thing content-addressing was chosen to avoid.
+ *
+ * Snapshots cannot drift: UrlSnapshot rows are upserted with `update: {}` and
+ * their text is never rewritten. Reclassify as often as you like; this does not
+ * move.
+ *
+ * The timestamp is included alongside the content hash on purpose. A page that
+ * reverts exactly — and this corpus contains claims that oscillate — would
+ * otherwise give two distinct changes the same identity.
+ */
+export function forensicEvidenceFileHash(
+  url: string,
+  before: SnapshotIdentity,
+  after: SnapshotIdentity,
+): string {
+  const content = [
+    url,
+    before.waybackTimestamp,
+    before.contentHash,
+    after.waybackTimestamp,
+    after.contentHash,
+  ].join('\n');
+  return ethers.sha256(Buffer.from(content, 'utf8'));
+}
+
 export function buildForensicEvidence(source: ForensicEvidenceSource) {
-  const fileHash = forensicEvidenceFileHash(
-    source.url,
-    source.afterDate,
-    source.deletedText,
-    source.addedText,
-  );
+  const fileHash = forensicEvidenceFileHash(source.url, source.beforeSnapshot, source.afterSnapshot);
 
   let targetEntity = 'Unknown';
   try {

@@ -4,12 +4,12 @@ import { useState, useEffect } from 'react';
 import Image from 'next/image';
 import { Link } from '@/i18n/navigation';
 import { useTranslations } from 'next-intl';
-import { apiUrl } from '@/lib/api';
+import { apiUrl, authHeaders } from '@/lib/api';
 import { FoiaModal, type FoiaModalState } from '@/components/FoiaModal';
 import { WhistleblowerModal } from '@/components/WhistleblowerModal';
 import { LegalDisclaimer } from '@/components/LegalDisclaimer';
 import { strengthPillClass, strengthHeLabel } from '@/components/StrengthBadge';
-import type { EvidenceGap, CounterArgument, AIAnalysis } from '@/types/thesis';
+import type { EvidenceGap, CounterArgument, AIAnalysis, PublicationState, ThesisViewer } from '@/types/thesis';
 import { generateFoiaRequest } from '@/lib/thesisApi';
 
 // ---------------------------------------------------------------------------
@@ -21,17 +21,22 @@ interface ThesisMention {
   refId: string;
 }
 
-interface HeadVersion {
+interface ThesisVersion {
   id: string;
   status: 'PENDING_AI' | 'COMPLETE';
   aiAnalysis: AIAnalysis | null;
   mentions: ThesisMention[];
 }
 
+// The call is derived from the version the viewer is served: the PUBLISHED
+// one for the public (404 while unpublished), the head for a researcher.
 interface Thesis {
   id: string;
   title: string | null;
-  headVersion: HeadVersion | null;
+  viewer: ThesisViewer;
+  publication: PublicationState;
+  publicInterestStatement: string | null;
+  version: ThesisVersion | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -197,13 +202,13 @@ export function CallPageClient({ thesisId }: { thesisId: string }) {
   const t = useTranslations('call');
   const [thesis, setThesis] = useState<Thesis | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
+  const [error, setError] = useState<'load' | 'unpublished' | null>(null);
 
   useEffect(() => {
-    fetch(apiUrl(`/api/thesis/${thesisId}`))
-      .then((r) => r.ok ? r.json() : Promise.reject())
+    fetch(apiUrl(`/api/thesis/${thesisId}`), { headers: authHeaders() })
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
       .then((data: { thesis: Thesis }) => setThesis(data.thesis))
-      .catch(() => setError(true))
+      .catch((err: unknown) => setError(err instanceof Error && err.message === '404' ? 'unpublished' : 'load'))
       .finally(() => setLoading(false));
   }, [thesisId]);
 
@@ -215,21 +220,21 @@ export function CallPageClient({ thesisId }: { thesisId: string }) {
     );
   }
 
-  if (error || !thesis?.headVersion) {
+  if (error || !thesis?.version) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <p className="text-slate-500 text-sm">{t('loadError')}</p>
+        <p className="text-slate-500 text-sm">{error === 'unpublished' ? t('notPublished') : t('loadError')}</p>
       </div>
     );
   }
 
-  const analysis = thesis.headVersion.aiAnalysis;
+  const analysis = thesis.version.aiAnalysis;
   const keyFigures = [...new Set(
-    thesis.headVersion.mentions
+    thesis.version.mentions
       .filter((m) => m.type === 'KEY_FIGURE')
       .map((m) => m.refId)
   )];
-  const evidenceCount = thesis.headVersion.mentions.filter((m) => m.type === 'EVIDENCE').length;
+  const evidenceCount = thesis.version.mentions.filter((m) => m.type === 'EVIDENCE').length;
   const strength = analysis?.overallStrengthAssessment ?? 'MODERATE';
   const nextStrength = NEXT_STRENGTH[strength] ?? 'COMPELLING';
   const thesisTitle = thesis.title ?? t('defaultTitle');
@@ -277,9 +282,25 @@ export function CallPageClient({ thesisId }: { thesisId: string }) {
             )}
           </div>
 
+          {/* A researcher previewing an unpublished or stale call is told so —
+              what they see here is not what the public sees. */}
+          {thesis.viewer === 'RESEARCHER' && !thesis.publication.headIsPublished && (
+            <p className="text-xs font-semibold text-orange-300 bg-orange-950/60 border border-orange-800 rounded-lg px-3 py-2">
+              {thesis.publication.isPublished
+                ? t('researcherPreviewBehind', { count: thesis.publication.versionsAhead })
+                : t('researcherPreviewDraft')}
+            </p>
+          )}
+
           <p className="text-base text-slate-300 leading-relaxed max-w-2xl">
             {t('heroSubtitle')}
           </p>
+
+          {thesis.publicInterestStatement && (
+            <p className="text-sm text-sky-200 leading-relaxed max-w-2xl border-s-2 border-sky-500 ps-3">
+              {thesis.publicInterestStatement}
+            </p>
+          )}
 
           <ShareBar thesisTitle={thesisTitle} />
         </div>

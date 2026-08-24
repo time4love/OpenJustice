@@ -46,6 +46,8 @@ import { prisma } from '../src/lib/prisma';
 import { hashToken } from '../src/lib/tokenHash';
 import { oidcProvider } from '../src/oauth/oidcProvider';
 import { isWriteToolCall } from '../src/mcp/mcpRoutes';
+import { createMcpServer } from '../src/mcp/mcpServer';
+import { getResearcherId } from '../src/context/researcherContext';
 
 // Late import after mocks are in place
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -286,6 +288,71 @@ describe('POST /api/mcp — OAuth access token auth', () => {
 // ===========================================================================
 // GET /api/mcp — health check
 // ===========================================================================
+
+// ===========================================================================
+// Read tools are open but VIEWER-DEPENDENT: a valid token identifies the
+// caller for get_thesis_context / get_whistleblower_call; an absent or bad
+// token means anonymous — never a refusal.
+// ===========================================================================
+
+describe('POST /api/mcp — read tool viewer identification', () => {
+  const readCallBody = {
+    jsonrpc: '2.0',
+    id: 1,
+    method: 'tools/call',
+    params: { name: 'get_thesis_context', arguments: { thesisId: 't1' } },
+  };
+
+  /** The researcher id visible to the tool handler at the moment the server is created. */
+  function seenResearcherId(): string | null | undefined {
+    const calls = (createMcpServer as jest.Mock).mock.calls.length;
+    return calls === 0 ? undefined : seen[calls - 1];
+  }
+  const seen: (string | null)[] = [];
+  beforeEach(() => {
+    seen.length = 0;
+    (createMcpServer as jest.Mock).mockImplementation(() => {
+      seen.push(getResearcherId());
+      return { connect: jest.fn().mockResolvedValue(undefined), close: jest.fn() };
+    });
+  });
+
+  it('runs anonymously with no token', async () => {
+    const res = await request(app).post('/api/mcp').send(readCallBody);
+    expect(res.status).toBe(200);
+    expect(seenResearcherId()).toBeNull();
+  });
+
+  it('identifies the viewer from a valid legacy token', async () => {
+    const res = await request(app).post('/api/mcp').set('Authorization', `Bearer ${VALID_TOKEN}`).send(readCallBody);
+    expect(res.status).toBe(200);
+    expect(seenResearcherId()).toBe('r-1');
+  });
+
+  it('accepts an mcp:read OAuth token for a read — write scope is not required to view', async () => {
+    mockAccessTokenFind.mockResolvedValueOnce({ accountId: 'r-oauth-1', scopes: new Set(['mcp:read']) });
+    mockResearcherFindUnique.mockResolvedValueOnce({ ...MOCK_RESEARCHER, id: 'r-oauth-1' });
+
+    const res = await request(app).post('/api/mcp').set('Authorization', 'Bearer read-oauth').send(readCallBody);
+    expect(res.status).toBe(200);
+    expect(seenResearcherId()).toBe('r-oauth-1');
+  });
+
+  it('treats an invalid token as anonymous on a read — never 401', async () => {
+    const res = await request(app).post('/api/mcp').set('Authorization', 'Bearer wrong').send(readCallBody);
+    expect(res.status).toBe(200);
+    expect(seenResearcherId()).toBeNull();
+  });
+
+  it('treats an unapproved researcher as anonymous on a read', async () => {
+    mockAccessTokenFind.mockResolvedValueOnce({ accountId: 'r-oauth-2', scopes: new Set(['mcp:write']) });
+    mockResearcherFindUnique.mockResolvedValueOnce({ ...MOCK_RESEARCHER, id: 'r-oauth-2', approved: false });
+
+    const res = await request(app).post('/api/mcp').set('Authorization', 'Bearer revoked').send(readCallBody);
+    expect(res.status).toBe(200);
+    expect(seenResearcherId()).toBeNull();
+  });
+});
 
 describe('GET /api/mcp', () => {
   it('lists read and write tools separately', async () => {

@@ -101,6 +101,19 @@ jest.mock('../src/services/DevilsAdvocateAgent', () => ({
   })),
 }));
 
+// The verification tools reach the archived-page extractor, which loads jsdom —
+// ESM-only in its dependency chain and unparseable by ts-jest, the same reason
+// every scraper test stubs it. Nothing here exercises extraction; what the real
+// extractor does is measured in test/extraction/ against a frozen capture.
+jest.mock('jsdom', () => ({
+  JSDOM: jest.fn().mockImplementation(() => ({
+    window: { document: { body: { innerHTML: '' } } },
+  })),
+}));
+jest.mock('@mozilla/readability', () => ({
+  Readability: jest.fn().mockImplementation(() => ({ parse: () => null })),
+}));
+
 import request from 'supertest';
 import express from 'express';
 import { prisma } from '../src/lib/prisma';

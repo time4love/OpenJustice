@@ -78,7 +78,7 @@ function extractWaybackTime(url: string): string | null {
 // AddToThesisButton — fetch thesis list, pick one, append evidence mention
 // ---------------------------------------------------------------------------
 
-type ThesisSummary = Pick<FullThesisSummary, 'id' | 'createdAt' | 'headVersion'>;
+type ThesisSummary = Pick<FullThesisSummary, 'id' | 'createdAt' | 'version'>;
 
 function AddToThesisButton({
   fileHash,
@@ -149,7 +149,7 @@ function AddToThesisButton({
               className="w-full text-start px-3 py-2.5 hover:bg-violet-50 border-b border-slate-100 last:border-0 transition-colors"
             >
               <p className="text-xs font-medium text-slate-700 truncate">
-                {th.headVersion?.preview?.slice(0, 50) || labels.untitled(th.id.slice(0, 8))}
+                {th.version?.preview?.slice(0, 50) || labels.untitled(th.id.slice(0, 8))}
               </p>
               <p className="text-xs text-slate-400 mt-0.5">
                 {new Date(th.createdAt).toLocaleDateString()}

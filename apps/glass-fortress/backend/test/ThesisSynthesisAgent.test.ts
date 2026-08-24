@@ -107,7 +107,7 @@ describe('ThesisSynthesisAgent', () => {
   describe('synthesize()', () => {
     it('returns a valid ThesisSynthesisOutput when the LLM responds correctly', async () => {
       getMockInvoke(agent).mockResolvedValueOnce(VALID_RESPONSE);
-      const result = await agent.synthesize('vaccine adverse event suppression', CORPUS_FIXTURE);
+      const result = await agent.synthesize('vaccine adverse event suppression', CORPUS_FIXTURE, { trajectories: [], coverage: [], omittedGroups: 0 }, null);
       expect(result.proposedTitle).toBe(VALID_RESPONSE.proposedTitle);
       expect(result.confidenceLevel).toBe('MODERATE');
       expect(result.citations).toEqual(VALID_RESPONSE.citations);
@@ -118,7 +118,7 @@ describe('ThesisSynthesisAgent', () => {
         ...VALID_RESPONSE,
         narrativeBody: VALID_RESPONSE.narrativeBody + ' עוד טענה[^3].',
       });
-      await expect(agent.synthesize('test', CORPUS_FIXTURE)).rejects.toThrow(/\[3\]/);
+      await expect(agent.synthesize('test', CORPUS_FIXTURE, { trajectories: [], coverage: [], omittedGroups: 0 }, null)).rejects.toThrow(/\[3\]/);
     });
 
     it('rejects a response with a citations entry never referenced by a [^n] marker', async () => {
@@ -126,13 +126,13 @@ describe('ThesisSynthesisAgent', () => {
         ...VALID_RESPONSE,
         citations: [...VALID_RESPONSE.citations, { id: 9, fileHashes: ['hash-999'] }],
       });
-      await expect(agent.synthesize('test', CORPUS_FIXTURE)).rejects.toThrow(/\[9\]/);
+      await expect(agent.synthesize('test', CORPUS_FIXTURE, { trajectories: [], coverage: [], omittedGroups: 0 }, null)).rejects.toThrow(/\[9\]/);
     });
 
     it('passes topic and corpus to the LLM', async () => {
       getMockInvoke(agent).mockResolvedValueOnce(VALID_RESPONSE);
       const topic = 'EUA suppression in vaccine campaigns';
-      await agent.synthesize(topic, CORPUS_FIXTURE);
+      await agent.synthesize(topic, CORPUS_FIXTURE, { trajectories: [], coverage: [], omittedGroups: 0 }, null);
 
       const callArgs = getMockInvoke(agent).mock.calls[0][0] as Array<{ role: string; content: string }>;
       const humanMessage = callArgs.find((m) => m.role === 'human');
@@ -144,7 +144,7 @@ describe('ThesisSynthesisAgent', () => {
 
     it('includes key figures in the corpus block sent to the LLM', async () => {
       getMockInvoke(agent).mockResolvedValueOnce(VALID_RESPONSE);
-      await agent.synthesize('test', CORPUS_FIXTURE);
+      await agent.synthesize('test', CORPUS_FIXTURE, { trajectories: [], coverage: [], omittedGroups: 0 }, null);
 
       const callArgs = getMockInvoke(agent).mock.calls[0][0] as Array<{ role: string; content: string }>;
       const humanMessage = callArgs.find((m) => m.role === 'human');
@@ -156,7 +156,7 @@ describe('ThesisSynthesisAgent', () => {
       getMockInvoke(agent).mockResolvedValueOnce(VALID_RESPONSE);
       const longSummary = 'א'.repeat(600);
       const corpusWithLong: EvidenceCorpusRecord[] = [{ ...CORPUS_FIXTURE[0], summary: longSummary }];
-      await agent.synthesize('test', corpusWithLong);
+      await agent.synthesize('test', corpusWithLong, { trajectories: [], coverage: [], omittedGroups: 0 }, null);
 
       const callArgs = getMockInvoke(agent).mock.calls[0][0] as Array<{ role: string; content: string }>;
       const humanMessage = callArgs.find((m) => m.role === 'human');
@@ -168,7 +168,7 @@ describe('ThesisSynthesisAgent', () => {
     it('handles a corpus with no key figures gracefully', async () => {
       getMockInvoke(agent).mockResolvedValueOnce(VALID_RESPONSE);
       const noFigures: EvidenceCorpusRecord[] = [{ ...CORPUS_FIXTURE[0], keyFigures: [] }];
-      await agent.synthesize('test', noFigures);
+      await agent.synthesize('test', noFigures, { trajectories: [], coverage: [], omittedGroups: 0 }, null);
 
       const callArgs = getMockInvoke(agent).mock.calls[0][0] as Array<{ role: string; content: string }>;
       const humanMessage = callArgs.find((m) => m.role === 'human');
@@ -177,7 +177,7 @@ describe('ThesisSynthesisAgent', () => {
 
     it('includes a system prompt', async () => {
       getMockInvoke(agent).mockResolvedValueOnce(VALID_RESPONSE);
-      await agent.synthesize('test', CORPUS_FIXTURE);
+      await agent.synthesize('test', CORPUS_FIXTURE, { trajectories: [], coverage: [], omittedGroups: 0 }, null);
 
       const callArgs = getMockInvoke(agent).mock.calls[0][0] as Array<{ role: string; content: string }>;
       const systemMessage = callArgs.find((m) => m.role === 'system');
@@ -187,12 +187,12 @@ describe('ThesisSynthesisAgent', () => {
 
     it('throws if the LLM returns a schema-invalid response', async () => {
       getMockInvoke(agent).mockResolvedValueOnce({ invalid: 'response' });
-      await expect(agent.synthesize('test', CORPUS_FIXTURE)).rejects.toThrow();
+      await expect(agent.synthesize('test', CORPUS_FIXTURE, { trajectories: [], coverage: [], omittedGroups: 0 }, null)).rejects.toThrow();
     });
 
     it('validates confidenceLevel enum strictly', async () => {
       getMockInvoke(agent).mockResolvedValueOnce({ ...VALID_RESPONSE, confidenceLevel: 'VERY_HIGH' });
-      await expect(agent.synthesize('test', CORPUS_FIXTURE)).rejects.toThrow();
+      await expect(agent.synthesize('test', CORPUS_FIXTURE, { trajectories: [], coverage: [], omittedGroups: 0 }, null)).rejects.toThrow();
     });
   });
 

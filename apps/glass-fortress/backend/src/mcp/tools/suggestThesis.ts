@@ -2,6 +2,8 @@ import { z } from 'zod';
 import { prisma } from '../../lib/prisma';
 import { VectorStoreService } from '../../services/VectorStoreService';
 import { ThesisSynthesisAgent, deriveSupportingHashes } from '../../services/ThesisSynthesisAgent';
+import { loadTrajectoryContext } from '../../lib/trajectoryContext';
+import { loadSummaryCaveat } from '../../lib/summaryProvenance';
 
 // ---------------------------------------------------------------------------
 // Lazy singletons
@@ -114,8 +116,14 @@ export async function suggestThesisHandler(input: {
   // 3. Run ThesisSynthesisAgent
   // -------------------------------------------------------------------------
 
+  // The strongest layer in the vault, for the pages this corpus came from.
+  // Synthesis without it produces a thesis that asserts what model-written
+  // summaries say, on pages whose archived text can say otherwise.
+  const trajectories = await loadTrajectoryContext(corpus);
+  const summaryCaveat = await loadSummaryCaveat(corpus);
+
   const agent = new ThesisSynthesisAgent();
-  const proposal = await agent.synthesize(input.topic, corpus);
+  const proposal = await agent.synthesize(input.topic, corpus, trajectories, summaryCaveat);
 
   // supportingHashes is derived, not LLM-generated — see ThesisSynthesisAgent.ts for why
   // (a second AI-generated field here could drift from what citations/narrativeBody actually say).

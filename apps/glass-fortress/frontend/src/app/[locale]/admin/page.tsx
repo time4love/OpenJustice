@@ -1,10 +1,11 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useMemo, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { useAuth, type ResearcherProfile } from '@/context/AuthContext';
 import { AuthGuard } from '@/components/AuthGuard';
-import { apiUrl } from '@/lib/api';
+import { apiUrl, fetchJson } from '@/lib/api';
+import { useAsyncData, type AsyncFetcher } from '@/hooks/useAsyncData';
 import { Link } from '@/i18n/navigation';
 
 type ResearcherRow = Pick<ResearcherProfile, 'id' | 'handle' | 'role' | 'approved' | 'createdAt'>;
@@ -12,30 +13,31 @@ type ResearcherRow = Pick<ResearcherProfile, 'id' | 'handle' | 'role' | 'approve
 function AdminContent() {
   const t = useTranslations('admin');
   const { accessToken, researcher } = useAuth();
-  const [rows, setRows] = useState<ResearcherRow[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
   const [updating, setUpdating] = useState<string | null>(null);
 
-  const fetchResearchers = useCallback(async () => {
-    if (!accessToken) return;
-    try {
-      const res = await fetch(apiUrl('/api/auth/researchers'), {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      });
-      if (!res.ok) {
-        setError(t('loadFailed'));
-        return;
-      }
-      setRows(await res.json() as ResearcherRow[]);
-    } catch {
-      setError(t('loadFailed'));
-    } finally {
-      setLoading(false);
-    }
-  }, [accessToken, t]);
+  // The dependency is the resolved *string*, never `t` itself: the fetcher's
+  // identity is the cache key, and a `t` that is not referentially stable would
+  // make it a new key on every render — an endless refetch loop.
+  const offlineMessage = t('loadFailed');
+  const fetchResearchers = useMemo<AsyncFetcher<ResearcherRow[]> | null>(
+    () =>
+      accessToken
+        ? (signal) =>
+            fetchJson<ResearcherRow[]>('/api/auth/researchers', {
+              headers: { Authorization: `Bearer ${accessToken}` },
+              signal,
+              offline: offlineMessage,
+            })
+        : null,
+    [accessToken, offlineMessage],
+  );
+  const { state, reload } = useAsyncData(fetchResearchers);
 
-  useEffect(() => { fetchResearchers(); }, [fetchResearchers]);
+  const rows = state.status === 'ok' ? state.data : [];
+  // `idle` means the token has not arrived yet, which the reader experiences as
+  // still loading — but it is not an empty researcher list, and must not render
+  // as one.
+  const loading = state.status === 'loading' || state.status === 'idle';
 
   async function patch(id: string, updates: Partial<{ approved: boolean; role: 'RESEARCHER' | 'ADMIN' }>) {
     if (!accessToken) return;
@@ -49,10 +51,9 @@ function AdminContent() {
         },
         body: JSON.stringify(updates),
       });
-      if (res.ok) {
-        const updated = await res.json() as ResearcherRow;
-        setRows((prev) => prev.map((r) => (r.id === id ? updated : r)));
-      }
+      // Re-read rather than patching the row in place: the server decides what
+      // the row now is, and `reload` leaves the table on screen while it lands.
+      if (res.ok) await reload();
     } finally {
       setUpdating(null);
     }
@@ -78,14 +79,14 @@ function AdminContent() {
             <p className="text-sm text-slate-500 mt-0.5">{t('subtitle')}</p>
           </div>
           <button
-            onClick={fetchResearchers}
+            onClick={() => { void reload(); }}
             className="text-xs text-slate-400 hover:text-slate-700 underline"
           >
             {t('refresh')}
           </button>
         </div>
 
-        {error && <p className="text-sm text-red-600">{error}</p>}
+        {state.status === 'error' && <p className="text-sm text-red-600">{state.error.message}</p>}
 
         {loading ? (
           <div className="flex justify-center py-12">

@@ -34,11 +34,39 @@ import { FORENSIC_DIFF_CLASSIFICATION_PROMPT } from '../prompts/forensicDiffClas
 /**
  * Bump on any change that alters what the classifier would decide.
  *
+ * v3-self-contained-summary: legalSignificance may no longer describe, quote or
+ * refer to any other evidence record. Correlated evidence still reaches the
+ * classifier and may still decide WHETHER an item is flagged, but it can no
+ * longer enter the prose.
+ *
+ * The prior instruction told the model to "EXPLICITLY cross-reference" correlated
+ * evidence in legalSignificance, and offered as its model output "they silently
+ * deleted the mRNA safety claim 3 weeks after this internal report surfaced" —
+ * which is an argument, not a description of a page change. That prose becomes
+ * Evidence.summary verbatim, so an evidence record's public text asserted things
+ * unverifiable against its own source, and every thesis-stage agent read it as an
+ * independent observation. A thesis could then be corroborated by its own
+ * premise, reflected back through a forensic record.
+ *
+ * Every row at v2-item-level or earlier was produced under that instruction. That
+ * is a fact recoverable from classifierPromptHash, not an assumption.
+ *
  * v2-item-level: categories moved from the diff to the individual item, with
  * relocations excluded from the derived set. Judging diffs as a whole let a
  * consequential change be masked by routine ones bundled with it.
  */
-export const CLASSIFIER_VERSION = 'v2-item-level';
+export const CLASSIFIER_VERSION = 'v3-self-contained-summary';
+
+/**
+ * Provenance for the summary alone.
+ *
+ * Separate from CLASSIFIER_VERSION because the two move independently:
+ * `forensics:resummarize` rewrites aiSignificance from already-extracted items
+ * without re-judging them, so a row can hold a self-contained summary over
+ * v2-extracted items. One version string covering both would have to lie about
+ * one of them.
+ */
+export const SUMMARY_VERSION = 'v3-self-contained-summary';
 
 /**
  * SHA-256 of the composed prompt actually sent to the model.

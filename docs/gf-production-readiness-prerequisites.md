@@ -49,6 +49,38 @@ already exists, which is what makes it a bootstrap tool rather than a privilege-
 **Production is still in this state — zero researchers, so its MCP write path is dead.** The
 tooling is now deployed there; it just has not been run.
 
+## 1b. …and a bootstrapped environment cannot create its first ADMIN ✅ FIXED ON STAGING (PR #123)
+
+The same hole as #1, one level up, and #1's fix is what exposes it. `researcher:bootstrap` says so
+outright — *"Role is deliberately left untouched"* — which is the right call for approval and leaves
+**role itself rootless**: `PATCH /api/auth/researchers/:id` is also the only supported way to set
+`role`, and it is also ADMIN only. So an environment bootstrapped by #1 can write evidence and theses
+but can never approve its **second** researcher, because nobody in it can reach `/admin`.
+
+Found on staging on 2026-08-24, sitting in exactly that state: one approved `RESEARCHER`, one pending
+registration, and no way to action it.
+
+**Fix:** `npm run researcher:bootstrap -- --make-admin "<handle>"`, with the same guard that makes #1
+a bootstrap rather than an escalation tool — it **refuses once any ADMIN exists**. Two further
+refusals matter as much as that one:
+
+- **An unapproved researcher cannot be promoted.** ADMIN implies approval, so allowing it would let
+  this tool bypass the approval gate #1 exists to protect.
+- **The freshness check runs before the handle lookup**, so a populated environment refuses
+  identically for a real handle and an invented one. Otherwise "that handle exists but I won't
+  promote it" is an account-enumeration oracle.
+
+`--revoke-admin` is deliberately **unguarded**, for the same reason `--revoke` is: removing privilege
+can never become an escalation, and the resulting no-admin environment is precisely what
+`--make-admin` recovers from.
+
+Reasoning lives in `src/services/bootstrapAdmin.ts`; 12 tests assert the refusals from several
+directions, including that no write is attempted on any of them.
+
+**Production has zero researchers, so it needs #1 before this is even reachable.** Note that
+`--make-admin` promotes a *working* research identity to hold both roles; a dedicated admin account
+is the cleaner shape when one is actually wanted, and `--revoke-admin` makes the split reversible.
+
 ## 2. Bootstrapping production needs production database credentials ⏳ OPEN
 
 Running `researcher:bootstrap` against production requires production `DATABASE_URL` on a laptop —

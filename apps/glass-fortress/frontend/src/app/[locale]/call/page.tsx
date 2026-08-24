@@ -25,7 +25,7 @@ export default function CallIndexPage() {
     fetchTheses()
       .then((theses) => {
         const sorted = theses
-          .filter((thesis) => thesis.headVersion?.status === 'COMPLETE')
+          .filter((thesis) => thesis.version?.status === 'COMPLETE')
           .sort((a, b) => b.openGapCount - a.openGapCount);
         setTheses(sorted);
       })

@@ -170,6 +170,9 @@ npm run db:simulate -- '<the exact statement>'
 ```
 
 It runs the statement **for real** inside a transaction, measures what it destroys, and rolls back.
+**One statement per run** — Prisma sends raw SQL as a single prepared statement, and the simulator
+reports a multi-command input as `NOT SIMULATED` (exit 1), never as a measurement. Migration files
+are not its input; they apply through `prisma migrate deploy` in the pipeline.
 PostgreSQL has transactional DDL, so this works for `DROP` and `TRUNCATE` as well as `DELETE` — the
 damage reported is **measured, not guessed**.
 

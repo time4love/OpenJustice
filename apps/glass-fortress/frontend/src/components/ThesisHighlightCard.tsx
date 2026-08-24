@@ -25,7 +25,7 @@ interface ThesisHighlightCardProps {
 // real visual difference was a "leading case" badge on the homepage's top
 // card, dropped rather than kept as a reason to fork the component.
 export function ThesisHighlightCard({ thesis, labels }: ThesisHighlightCardProps) {
-  const strength = thesis.headVersion?.strength;
+  const strength = thesis.version?.strength;
 
   return (
     <div className="bg-white border border-slate-200 rounded-xl p-6 flex flex-col gap-4 hover:border-slate-400 hover:shadow-md transition-all">
@@ -36,9 +36,9 @@ export function ThesisHighlightCard({ thesis, labels }: ThesisHighlightCardProps
         {strength && <StrengthBadge strength={strength} />}
       </div>
 
-      {thesis.headVersion?.preview && (
+      {thesis.version?.preview && (
         <p className="text-xs text-slate-500 line-clamp-3 leading-relaxed flex-1">
-          {thesis.headVersion.preview}
+          {thesis.version.preview}
         </p>
       )}
 
@@ -55,7 +55,7 @@ export function ThesisHighlightCard({ thesis, labels }: ThesisHighlightCardProps
             </Link>
           )}
           <span className="text-xs text-slate-400">
-            {thesis.headVersion?.mentionCount ?? 0} {labels.mentionsLabel}
+            {thesis.version?.mentionCount ?? 0} {labels.mentionsLabel}
           </span>
         </div>
         {/* The full thesis narrative, not the call-to-action page — those are

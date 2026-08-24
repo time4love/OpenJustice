@@ -6,12 +6,16 @@ import { useSearchParams } from 'next/navigation';
 import { useTranslations, useLocale } from 'next-intl';
 import { Link } from '@/i18n/navigation';
 import { SiteHeader } from '@/components/SiteHeader';
-import { apiUrl } from '@/lib/api';
+import { apiUrl, authHeaders, fetchJson } from '@/lib/api';
+import { useAsyncData, type AsyncFetcher } from '@/hooks/useAsyncData';
 import { truncateLabel } from '@/lib/format';
 import { buildEvidenceCitationNumbers } from '@/lib/citations';
 import { TipTapRenderer, type EvidenceInfo } from '@/components/TipTapRenderer';
 import { LegalDisclaimer } from '@/components/LegalDisclaimer';
-import type { EvidenceGap, CounterArgument, AIAnalysis } from '@/types/thesis';
+import type { EvidenceGap, AIAnalysis, PublicationState, ThesisViewer } from '@/types/thesis';
+import { ThesisPublicationPanel } from '@/components/ThesisPublicationPanel';
+import { ThesisProvenancePanel } from '@/components/ThesisProvenancePanel';
+import { PublicationBadge } from '@/components/PublicationBadge';
 import { CategoryBadges } from '@/components/CategoryBadges';
 import { tierDotColor } from '@/components/TierBadge';
 import { StrengthBadge, strengthLabel } from '@/components/StrengthBadge';
@@ -32,7 +36,7 @@ interface ThesisMention {
 }
 
 
-interface HeadVersion {
+interface ThesisVersion {
   id: string;
   status: 'PENDING_AI' | 'COMPLETE';
   contentHash: string;
@@ -42,12 +46,16 @@ interface HeadVersion {
   createdAt: string;
 }
 
+// The version served depends on the viewer: the published one for the public,
+// the head for an approved researcher (backend lib/thesisView.ts).
 interface Thesis {
   id: string;
   title: string | null;
-  headVersionId: string | null;
   createdAt: string;
-  headVersion: HeadVersion | null;
+  viewer: ThesisViewer;
+  publication: PublicationState;
+  publicInterestStatement: string | null;
+  version: ThesisVersion | null;
 }
 
 interface GapResolution {
@@ -264,6 +272,17 @@ function GapSearchPanel({
 // Page
 // ---------------------------------------------------------------------------
 
+interface ThesisLoad {
+  thesis: Thesis;
+  evidenceMap: Record<string, EvidenceInfo>;
+  gapResolutions?: GapResolution[];
+}
+
+// Stable identities for the "not loaded yet" case, so a render that has no
+// thesis does not hand children a fresh object each time.
+const EMPTY_EVIDENCE_MAP: Record<string, EvidenceInfo> = {};
+const EMPTY_GAPS: GapResolution[] = [];
+
 function ThesisPageInner({ id }: { id: string }) {
   const t = useTranslations('theses');
   const tStrength = useTranslations('strengths');
@@ -274,11 +293,6 @@ function ThesisPageInner({ id }: { id: string }) {
   const { researcher } = useAuth();
   const canEdit = researcher?.approved ?? false;
 
-  const [thesis, setThesis] = useState<Thesis | null>(null);
-  const [evidenceMap, setEvidenceMap] = useState<Record<string, EvidenceInfo>>({});
-  const [gapResolutions, setGapResolutions] = useState<GapResolution[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -293,41 +307,39 @@ function ThesisPageInner({ id }: { id: string }) {
   const [tipModalGapIndex, setTipModalGapIndex] = useState<number | null>(null);
   const [foiaError, setFoiaError] = useState<number | null>(null); // gapIndex of failed FOIA gen
 
-  // Must run unconditionally (before the loading/error early returns below) per
-  // the rules of hooks — derives the same footnote numbers TipTapRenderer uses
-  // inline, so the "ראיות (N)" list below can show matching [n] markers.
-  const citationNumbers = useMemo(
-    () => (thesis?.headVersion?.userContent ? buildEvidenceCitationNumbers(thesis.headVersion.userContent) : new Map<string, number>()),
-    [thesis],
-  );
-
   useEffect(() => {
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
   }, []);
 
-  async function loadThesis() {
-    const url = historicalVersionId
-      ? apiUrl(`/api/thesis/${id}/versions/${historicalVersionId}`)
-      : apiUrl(`/api/thesis/${id}`);
-    const res = await fetch(url);
-    if (!res.ok) throw new Error();
-    const data = (await res.json()) as {
-      thesis: Thesis;
-      evidenceMap: Record<string, EvidenceInfo>;
-      gapResolutions?: GapResolution[];
-    };
-    setThesis(data.thesis);
-    setEvidenceMap(data.evidenceMap ?? {});
-    setGapResolutions(data.gapResolutions ?? []);
-    return data.thesis;
-  }
+  // The dependency is the resolved *string*, never `t` itself: the fetcher's
+  // identity is the cache key, and a `t` that is not referentially stable would
+  // make it a new key on every render — an endless refetch loop.
+  const offlineMessage = t('errorEvaluate');
+  const fetchThesis = useMemo<AsyncFetcher<ThesisLoad> | null>(
+    () => (signal) =>
+      fetchJson<ThesisLoad>(
+        historicalVersionId
+          ? `/api/thesis/${id}/versions/${historicalVersionId}`
+          : `/api/thesis/${id}`,
+        { headers: authHeaders(), signal, offline: offlineMessage },
+      ),
+    [id, historicalVersionId, offlineMessage],
+  );
+  const { state, reload } = useAsyncData(fetchThesis);
 
-  useEffect(() => {
-    loadThesis()
-      .catch(() => setError(true))
-      .finally(() => setLoading(false));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, historicalVersionId]);
+  const thesis = state.status === 'ok' ? state.data.thesis : null;
+  const evidenceMap = state.status === 'ok' ? state.data.evidenceMap : EMPTY_EVIDENCE_MAP;
+  const gapResolutions = state.status === 'ok' ? state.data.gapResolutions ?? EMPTY_GAPS : EMPTY_GAPS;
+  const loading = state.status === 'loading';
+  const error = state.status === 'error';
+
+  // Must run unconditionally (before the loading/error early returns below) per
+  // the rules of hooks — derives the same footnote numbers TipTapRenderer uses
+  // inline, so the "ראיות (N)" list below can show matching [n] markers.
+  const citationNumbers = useMemo(
+    () => (thesis?.version?.userContent ? buildEvidenceCitationNumbers(thesis.version.userContent) : new Map<string, number>()),
+    [thesis],
+  );
 
   async function runRevision() {
     setRevision('loading');
@@ -356,7 +368,7 @@ function ThesisPageInner({ id }: { id: string }) {
       });
       if (!res.ok) throw new Error();
       setRevision(null);
-      await loadThesis();
+      await reload();
     } finally {
       setSavingRevision(false);
     }
@@ -366,15 +378,16 @@ function ThesisPageInner({ id }: { id: string }) {
     setAnalyzing(true);
     try {
       await fetch(apiUrl(`/api/thesis/${id}/analyze`), { method: 'POST' });
-      pollRef.current = setInterval(async () => {
-        try {
-          const thesis = await loadThesis();
-          if (thesis.headVersion?.status === 'COMPLETE') {
+      pollRef.current = setInterval(() => {
+        void reload().then((settled) => {
+          // A failed poll is not an answer — keep polling. Only COMPLETE stops.
+          if (settled.status !== 'ok') return;
+          if (settled.data.thesis.version?.status === 'COMPLETE') {
             clearInterval(pollRef.current!);
             pollRef.current = null;
             setAnalyzing(false);
           }
-        } catch { /* keep polling */ }
+        });
       }, 3000);
     } catch {
       setAnalyzing(false);
@@ -414,7 +427,8 @@ function ThesisPageInner({ id }: { id: string }) {
     );
   }
 
-  const hv = thesis.headVersion;
+  const hv = thesis.version;
+  const isDraft = !thesis.publication.isPublished;
   const analysis = hv?.aiAnalysis ?? null;
   const evidenceMentions = hv?.mentions.filter(m => m.type === 'EVIDENCE') ?? [];
 
@@ -429,30 +443,23 @@ function ThesisPageInner({ id }: { id: string }) {
         maxWidth="max-w-4xl"
         actions={
           <div className="flex items-center gap-2">
-            {isHistorical ? (
+            {/* Version history is researcher-only: the public sees the
+                published version and only that, never the drafts around it. */}
+            {!isHistorical && canEdit && (
+              <Link
+                href={`/theses/${id}/edit`}
+                className="px-3 py-1.5 bg-violet-700 hover:bg-violet-600 rounded-lg text-xs font-medium text-white transition-colors"
+              >
+                {t('editBtn')}
+              </Link>
+            )}
+            {canEdit && (
               <Link
                 href={`/theses/${id}/history`}
                 className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 rounded-lg text-xs font-medium text-slate-700 transition-colors"
               >
                 {t('historyBtn')}
               </Link>
-            ) : (
-              <>
-                {canEdit && (
-                  <Link
-                    href={`/theses/${id}/edit`}
-                    className="px-3 py-1.5 bg-violet-700 hover:bg-violet-600 rounded-lg text-xs font-medium text-white transition-colors"
-                  >
-                    {t('editBtn')}
-                  </Link>
-                )}
-                <Link
-                  href={`/theses/${id}/history`}
-                  className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 rounded-lg text-xs font-medium text-slate-700 transition-colors"
-                >
-                  {t('historyBtn')}
-                </Link>
-              </>
             )}
             <Link
               href={`/call/${id}`}
@@ -468,6 +475,46 @@ function ThesisPageInner({ id }: { id: string }) {
         {/* Thesis title */}
         {thesis.title && (
           <h1 className="text-xl sm:text-2xl font-bold text-slate-900">{thesis.title}</h1>
+        )}
+
+        {/* Researcher view: publication state + the publish control. A draft
+            is invisible to the public; a published thesis may be behind the
+            head, and only a deliberate re-publish moves it. */}
+        {thesis.viewer === 'RESEARCHER' && !isHistorical && (
+          <>
+            {isDraft && (
+              <div className="flex items-center gap-3 bg-slate-100 border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-700">
+                <PublicationBadge publication={thesis.publication} />
+                <span>{t('publication.draftNotice')}</span>
+              </div>
+            )}
+            {!isDraft && !thesis.publication.headIsPublished && (
+              <div className="flex items-center gap-3 bg-orange-50 border border-orange-200 rounded-xl px-4 py-3 text-sm text-orange-900">
+                <PublicationBadge publication={thesis.publication} />
+                <span>{t('publication.publicBehind', { count: thesis.publication.versionsAhead })}</span>
+              </div>
+            )}
+            <ThesisPublicationPanel
+              thesisId={id}
+              publication={thesis.publication}
+              publicInterestStatement={thesis.publicInterestStatement}
+              onChanged={reload}
+            />
+            {/* The record beside the checks: the timeline is what has happened,
+                the checks above are what remains. Researcher-only on both sides
+                — the backend route refuses anyone else, and this whole block is
+                already gated on viewer === 'RESEARCHER'. */}
+            <ThesisProvenancePanel thesisId={id} locale={locale} />
+          </>
+        )}
+
+        {/* Rule 5 — the public-interest anchor, rendered on every published
+            thesis as a dedicated field rather than hunted for in the body. */}
+        {thesis.publicInterestStatement && (
+          <div className="bg-sky-50 border border-sky-200 rounded-xl px-4 py-3 text-sm text-sky-900 space-y-1" dir="auto">
+            <div className="text-xs font-semibold uppercase tracking-wide text-sky-700">{t('publication.statementHeading')}</div>
+            <p className="leading-relaxed">{thesis.publicInterestStatement}</p>
+          </div>
         )}
 
         {/* Historical version banner */}
@@ -594,8 +641,8 @@ function ThesisPageInner({ id }: { id: string }) {
                               thesisId={id}
                               thesisContent={hv?.userContent ?? {}}
                               resolution={resolution}
-                              onVersionAdded={() => { void loadThesis(); }}
-                              onResolved={() => { void loadThesis(); }}
+                              onVersionAdded={() => { void reload(); }}
+                              onResolved={() => { void reload(); }}
                               onGenerateFoia={() => { void generateFoia(i); }}
                               onSubmitTip={() => { setTipModalGapIndex(i); }}
                               canEdit={canEdit}

@@ -62,6 +62,7 @@ jest.mock('../src/lib/prisma', () => ({
 }));
 
 import { prisma } from '../src/lib/prisma';
+import { CLASSIFIER_VERSION } from '../src/lib/classifierVersion';
 import {
   reclassifyDiffs,
   findOutOfSyncEvidence,
@@ -80,6 +81,9 @@ function diff(over: Record<string, unknown> = {}): Record<string, unknown> {
     investigativeCategories: [],
     isLegallySignificant: false,
     trackedUrl: { url: 'https://health.gov.il/x' },
+    beforeSnapshot: { waybackTimestamp: '20220501000000', contentHash: 'b1' },
+    afterSnapshot: { waybackTimestamp: '20220601000000', contentHash: 'a1' },
+
     evidence: [],
     ...over,
   };
@@ -198,7 +202,7 @@ describe('reclassifyDiffs', () => {
     await reclassifyDiffs({});
 
     const data = db.updates[0]['data'] as Record<string, unknown>;
-    expect(data['classifierVersion']).toBe('v2-item-level');
+    expect(data['classifierVersion']).toBe(CLASSIFIER_VERSION);
     expect(data['classifierPromptHash']).toMatch(/^[0-9a-f]{64}$/);
   });
 
@@ -232,7 +236,7 @@ describe('version targeting', () => {
     };
     expect(call.where.OR).toEqual([
       { classifierVersion: null },
-      { NOT: { classifierVersion: 'v2-item-level' } },
+      { NOT: { classifierVersion: CLASSIFIER_VERSION } },
     ]);
   });
 
@@ -399,6 +403,9 @@ describe('adoptOrphanedFindings', () => {
       deletedText: JSON.stringify([{ summary: 's', exactQuote: 'q' }]),
       addedText: '[]',
       trackedUrl: { url: 'https://health.gov.il/x' },
+      beforeSnapshot: { waybackTimestamp: '20220501000000', contentHash: 'b1' },
+      afterSnapshot: { waybackTimestamp: '20220601000000', contentHash: 'a1' },
+
       ...over,
     };
   }

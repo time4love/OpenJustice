@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter } from '@/i18n/navigation';
+import { Link, useRouter } from '@/i18n/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { apiUrl } from '@/lib/api';
 
@@ -84,7 +84,7 @@ export default function AuthCallbackPage() {
         <div className="w-full max-w-sm bg-white rounded-xl border border-red-200 p-8 text-center space-y-4">
           <p className="text-red-600 font-medium">Login failed</p>
           <p className="text-sm text-slate-500">{errorMsg}</p>
-          <a href="/login" className="text-sm text-slate-600 underline">Try again</a>
+          <Link href="/login" className="text-sm text-slate-600 underline">Try again</Link>
         </div>
       </div>
     );

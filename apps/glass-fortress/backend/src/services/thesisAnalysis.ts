@@ -13,6 +13,8 @@ import {
   type ResolvedGapContext,
 } from './DevilsAdvocateAgent';
 import { logSessionEvent } from './sessionService';
+import { loadTrajectoryContext } from '../lib/trajectoryContext';
+import { loadSummaryCaveat } from '../lib/summaryProvenance';
 
 let _agent: DevilsAdvocateAgent | null = null;
 
@@ -108,7 +110,11 @@ export async function triggerAIAnalysis(
 
     const referenced: ReferencedEvidence[] = evidenceRecords;
     const thesisText = extractText(userContent);
-    const aiAnalysis = await getAgent().analyze(thesisText, referenced, resolvedGaps);
+    // Devil's Advocate rates thesis STRENGTH, so it is the last place a
+    // model-written summary should be the only account of a forensic change.
+    const trajectories = await loadTrajectoryContext(referenced);
+    const summaryCaveat = await loadSummaryCaveat(referenced);
+    const aiAnalysis = await getAgent().analyze(thesisText, referenced, resolvedGaps, trajectories, summaryCaveat);
     const contentHash = sha256({ userContent, aiAnalysis });
 
     await prisma.thesisVersion.update({

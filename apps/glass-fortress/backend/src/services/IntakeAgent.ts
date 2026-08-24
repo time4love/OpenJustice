@@ -8,14 +8,7 @@ import { assertSchemaCompatibility } from '../lib/assertSchemaCompatibility';
 // Evidence tier enum — business/legal classification
 // ---------------------------------------------------------------------------
 
-export const EVIDENCE_TIER = {
-  ANECDOTAL: 'Tier 4: Anecdotal',
-  SUPPORTING: 'Tier 3: Supporting',
-  MATERIAL: 'Tier 2: Material',
-  SMOKING_GUN: 'Tier 1: Smoking Gun',
-} as const;
-
-export type EvidenceTier = (typeof EVIDENCE_TIER)[keyof typeof EVIDENCE_TIER];
+export { EVIDENCE_TIER, type EvidenceTier } from '../lib/evidenceTier';
 
 // ---------------------------------------------------------------------------
 // Zod output schema

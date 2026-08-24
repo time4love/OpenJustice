@@ -23,6 +23,14 @@ import { recoverEvidenceFromScreenshotSchema, recoverEvidenceFromScreenshotHandl
 import { checkOnChainStatusSchema, checkOnChainStatusHandler } from './tools/checkOnChainStatus';
 import { getWhistleblowerCallSchema, getWhistleblowerCallHandler } from './tools/getWhistleblowerCall';
 import { getScanFindingsSchema, getScanFindingsHandler } from './tools/getScanFindings';
+import {
+  openThesisFramingSchema,
+  openThesisFramingHandler,
+  assessThesisFramingSchema,
+  assessThesisFramingHandler,
+  getThesisFramingSchema,
+  getThesisFramingHandler,
+} from './tools/thesisFramingTools';
 import { getClaimTrajectoriesSchema, getClaimTrajectoriesHandler } from './tools/getClaimTrajectories';
 import { promoteScanFindingsSchema, promoteScanFindingsHandler } from './tools/promoteScanFindings';
 import {
@@ -35,6 +43,17 @@ import {
   getDiffDebateSchema,
   getDiffDebateHandler,
 } from './tools/diffDebateTools';
+import { listCapturesSchema, listCapturesHandler } from './tools/listCaptures';
+import { verifyClaimTextSchema, verifyClaimTextHandler } from './tools/verifyClaimText';
+import { auditThesisClaimsSchema, auditThesisClaimsHandler } from './tools/auditThesisClaims';
+import {
+  checkPublicationReadinessSchema,
+  checkPublicationReadinessHandler,
+  publishThesisSchema,
+  publishThesisHandler,
+  unpublishThesisSchema,
+  unpublishThesisHandler,
+} from './tools/thesisPublicationTools';
 
 // ---------------------------------------------------------------------------
 // Factory — creates a fresh McpServer per request.
@@ -107,11 +126,12 @@ export function createMcpServer(): McpServer {
   // -------------------------------------------------------------------------
   server.tool(
     'get_whistleblower_call',
-    'Return the public Call for Whistleblowers for a thesis — its shareable URL, whether it is live, ' +
-      'and every evidence gap it publishes as an appeal. The call is derived from the head version\'s ' +
-      'Devil\'s Advocate analysis rather than stored, so it becomes live as soon as an analysis ' +
-      'completes with at least one gap. Each gapIndex returned can also be passed to ' +
-      'generate_foia_request.',
+    'Return the Call for Whistleblowers for a thesis — its shareable URL, whether it is live, ' +
+      'and every evidence gap it publishes as an appeal. The call is derived from a version\'s ' +
+      'Devil\'s Advocate analysis rather than stored. Anonymous callers see the call the public ' +
+      'sees (derived from the PUBLISHED version, or UNPUBLISHED); an authenticated researcher sees ' +
+      'the call the head version would produce, and whether the public is behind it. Each gapIndex ' +
+      'returned can also be passed to generate_foia_request.',
     getWhistleblowerCallSchema,
     async (input) => ({
       content: [{ type: 'text' as const, text: await getWhistleblowerCallHandler(input) }],
@@ -219,6 +239,44 @@ export function createMcpServer(): McpServer {
   );
 
   // -------------------------------------------------------------------------
+  // Tools: thesis framing — deciding what to argue, before writing it.
+  // -------------------------------------------------------------------------
+  server.tool(
+    'open_thesis_framing',
+    'Open a session to decide what a thesis should argue, BEFORE writing one. The topic string a ' +
+      'thesis is built from determines which evidence gets pulled and what the Devil\'s Advocate ' +
+      'attacks, so a wrong framing produces a well-argued thesis about the wrong thing. This session ' +
+      'has no thesis attached; the thesis attaches to it when created.',
+    openThesisFramingSchema,
+    async (input) => ({
+      content: [{ type: 'text' as const, text: await openThesisFramingHandler(input) }],
+    }),
+  );
+
+  server.tool(
+    'assess_thesis_framing',
+    'Check a proposed thesis framing against confirmed evidence. Returns candidate framings anchored ' +
+      'in specific records, assumptions that need verifying — and, most importantly, CONTRADICTIONS: ' +
+      'where your own evidence points the other way. Finding that now is far cheaper than hearing it ' +
+      'from the Devil\'s Advocate after a thesis is written, or from the opposing side. The whole ' +
+      'exchange is recorded and attaches to the thesis.',
+    assessThesisFramingSchema,
+    async (input) => ({
+      content: [{ type: 'text' as const, text: await assessThesisFramingHandler(input) }],
+    }),
+  );
+
+  server.tool(
+    'get_thesis_framing',
+    'Read a thesis framing session — its full turn-by-turn record of proposed framings and the ' +
+      'assessments of them, and the thesis it produced if any.',
+    getThesisFramingSchema,
+    async (input) => ({
+      content: [{ type: 'text' as const, text: await getThesisFramingHandler(input) }],
+    }),
+  );
+
+  // -------------------------------------------------------------------------
   // Tool: get_figure_dossier
   // Returns all evidence linked to a named key figure.
   // -------------------------------------------------------------------------
@@ -238,8 +296,10 @@ export function createMcpServer(): McpServer {
   // -------------------------------------------------------------------------
   server.tool(
     'get_thesis_context',
-    'Retrieve a legal thesis by ID — returns the current version body, all cited evidence ' +
-      'summaries, key figures mentioned, and the Devil\'s Advocate AI critique.',
+    'Retrieve a legal thesis by ID — the version body, all cited evidence summaries, key figures ' +
+      'mentioned, and the Devil\'s Advocate AI critique. Anonymous callers receive the PUBLISHED ' +
+      'version only (or viewer: PUBLIC with status UNPUBLISHED); an authenticated researcher ' +
+      'receives the head version plus publication state and how far the public is behind it.',
     getThesisContextSchema,
     async (input) => ({
       content: [{ type: 'text' as const, text: await getThesisContextHandler(input) }],
@@ -358,9 +418,11 @@ export function createMcpServer(): McpServer {
   // -------------------------------------------------------------------------
   server.tool(
     'create_research_session',
-    'Start a new named research session on a thesis. Only one session can be active per thesis — ' +
-      'creating a new one auto-closes the previous. Events (versions created, gaps resolved, ' +
-      'AI analyses run) are logged automatically. Name defaults to current date/time if omitted.',
+    'Start a new named research session on a thesis. Only ONE session may be active at a time ' +
+      'across the system: if one is open, this refuses and names it. Pass closeActiveSession: true ' +
+      'to close your own; closing another researcher\'s requires closeOtherResearchersSession: true ' +
+      'and a closeReason, recorded on their session. Publishing a thesis must happen inside an active ' +
+      'session on that thesis. Events are logged automatically. Name defaults to the current date/time.',
     createResearchSessionSchema,
     async (input) => ({
       content: [{ type: 'text' as const, text: await createResearchSessionHandler(input) }],
@@ -379,8 +441,9 @@ export function createMcpServer(): McpServer {
 
   server.tool(
     'close_research_session',
-    'Close the active research session for a thesis and return a full summary of what was ' +
-      'accomplished: versions created, gaps resolved, AI analyses run, and the event timeline.',
+    'Close the active research session — by thesisId, or by sessionId for a framing session that ' +
+      'has no thesis yet — and return a full summary of what was accomplished: versions created, ' +
+      'gaps resolved, AI analyses run, and the event timeline.',
     closeResearchSessionSchema,
     async (input) => ({
       content: [{ type: 'text' as const, text: await closeResearchSessionHandler(input) }],
@@ -423,8 +486,9 @@ export function createMcpServer(): McpServer {
   server.tool(
     'start_forensic_scan',
     'Start (or resume) a Wayback Machine forensic diff scan for a URL. Returns immediately ' +
-      'with a trackedUrlId — the scan runs asynchronously server-side. Poll ' +
-      'GET /api/forensics/tracked/:id/status for progress. Calling this again for the same ' +
+      'with a trackedUrlId — the scan runs asynchronously server-side. Call ' +
+      'get_forensic_timeline for progress; the REST status endpoint sits behind the staging ' +
+      'access gate and is not reachable from MCP. Calling this again for the same ' +
       'URL while it is already scanning is safe — the concurrent-run guard prevents double-runs.',
     startForensicScanSchema,
     async (input) => ({
@@ -441,8 +505,10 @@ export function createMcpServer(): McpServer {
     'enrich_evidence_with_history',
     'Trigger a Wayback Machine forensic scan for the sourceUrl of an existing evidence record. ' +
       'Given a fileHash, looks up the evidence sourceUrl, upserts a TrackedUrl, and starts ' +
-      'runFullScan() asynchronously. Legally significant page edits found during the scan are ' +
-      'auto-promoted to the evidence vault. Returns a trackedUrlId for status polling.',
+      'runFullScan() asynchronously. Legally significant page edits are recorded as ' +
+      'PENDING_REVIEW evidence — never promoted, never registered on-chain; review them with ' +
+      'get_scan_findings and confirm with promote_scan_findings. Returns a trackedUrlId; call ' +
+      'get_forensic_timeline for progress.',
     enrichEvidenceWithHistorySchema,
     async (input) => ({
       content: [{ type: 'text' as const, text: await enrichEvidenceWithHistoryHandler(input) }],
@@ -523,6 +589,101 @@ export function createMcpServer(): McpServer {
     recoverEvidenceFromScreenshotSchema,
     async (input) => ({
       content: [{ type: 'text' as const, text: await recoverEvidenceFromScreenshotHandler(input) }],
+    }),
+  );
+
+  // -------------------------------------------------------------------------
+  // Thesis publication (docs/gf-thesis-publication-gate-dev-plan.md)
+  // Publication is a pinned version behind thirteen individually-reported
+  // checks. All three tools are gated.
+  // -------------------------------------------------------------------------
+  server.tool(
+    'check_publication_readiness',
+    'Run every publication check on a thesis\'s head version and report each one, pass or fail, ' +
+      'WITHOUT publishing. Hard checks block publication; advisory checks are recorded with it. ' +
+      'Use before publish_thesis to see exactly what is missing. Pass a rationale to have it ' +
+      'assessed in advance. Writes nothing.',
+    checkPublicationReadinessSchema,
+    async (input) => ({
+      content: [{ type: 'text' as const, text: await checkPublicationReadinessHandler(input) }],
+    }),
+  );
+
+  server.tool(
+    'publish_thesis',
+    'Publish the HEAD version of a thesis: pins that exact version as what the public sees until ' +
+      'publish_thesis is called again — later edits and re-analyses change nothing public. Requires ' +
+      'an active research session on this thesis, an argued rationale (substance is a hard gate, ' +
+      'merit is advisory and recorded), and every hard check to pass; refuses with the full list ' +
+      'otherwise. The rationale and assessment are recorded on the session either way.',
+    publishThesisSchema,
+    async (input) => ({
+      content: [{ type: 'text' as const, text: await publishThesisHandler(input) }],
+    }),
+  );
+
+  server.tool(
+    'unpublish_thesis',
+    'Withdraw a thesis from public view: sets the published pin to null and deletes nothing. ' +
+      'Requires no session — retraction must never wait on one. The reason is recorded on the ' +
+      'active session on this thesis if there is one, otherwise on the session that published.',
+    unpublishThesisSchema,
+    async (input) => ({
+      content: [{ type: 'text' as const, text: await unpublishThesisHandler(input) }],
+    }),
+  );
+
+  // -------------------------------------------------------------------------
+  // Verification tools (docs/gf-verification-tools-dev-plan.md)
+  //
+  // The platform institutionalised ARGUMENT — framing session, diff debate,
+  // publication rationale — and left VERIFICATION as improvisation. Every
+  // factual error caught in the first real thesis walk was caught by
+  // re-deriving a number from primary data through an ad-hoc shell; these three
+  // tools are that shell, available to anyone.
+  //
+  // Deterministic, dry (they write nothing), and reporting rather than
+  // blocking: the publication gate is where blocking lives, and wiring these
+  // into it would turn "could not reach the archive" into "cannot publish".
+  //
+  // Gated because each hits the Internet Archive — unbounded per-call work,
+  // which is what WRITE_TOOLS actually means here.
+  // -------------------------------------------------------------------------
+  server.tool(
+    'list_captures',
+    'List every capture the Internet Archive holds for a tracked page, optionally within a date ' +
+      'range, marking which ones this platform has stored. Answers "is there a capture between ' +
+      'these two dates?" — which the forensic timeline (diffs) and claim trajectories (a count) ' +
+      'cannot. Writes nothing.',
+    listCapturesSchema,
+    async (input) => ({
+      content: [{ type: 'text' as const, text: await listCapturesHandler(input) }],
+    }),
+  );
+
+  server.tool(
+    'verify_claim_text',
+    'Check whether an exact phrase was on a tracked page at a given capture. Searches the RAW ' +
+      'archived document, not this platform\'s stored extraction, and reports both plus an ' +
+      'EXTRACTION_DIVERGENCE flag when they disagree — the condition that let a false claim survive ' +
+      'into a real thesis. Distinguishes "not in the archive" and "fetch failed" from "phrase ' +
+      'absent". Writes nothing.',
+    verifyClaimTextSchema,
+    async (input) => ({
+      content: [{ type: 'text' as const, text: await verifyClaimTextHandler(input) }],
+    }),
+  );
+
+  server.tool(
+    'audit_thesis_claims',
+    'Check every mechanically checkable assertion in a thesis\'s head version against the archive: ' +
+      'dates (does a capture exist, and does the sentence assert an act on a day nobody captured?), ' +
+      'quotations (is the quoted text really in those captures?), and intervals (are the endpoints ' +
+      'adjacent captures?). No model is involved. Reports what it could NOT check, including Hebrew ' +
+      'number-word spans and counts. Reports only — it never blocks publication.',
+    auditThesisClaimsSchema,
+    async (input) => ({
+      content: [{ type: 'text' as const, text: await auditThesisClaimsHandler(input) }],
     }),
   );
 

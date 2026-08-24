@@ -18,45 +18,89 @@
  * Usage:
  *   npm run db:simulate -- 'DELETE FROM "Report" WHERE "createdAt" < now() - interval ''30 days'''
  *
+ * One statement per run. Prisma issues raw SQL as a single prepared statement,
+ * and PostgreSQL refuses more than one command in one — the simulator reports
+ * that as "not simulated" rather than guessing. Migration files are not input
+ * for this tool; they apply through `prisma migrate deploy` in the pipeline.
+ *
  * Exit codes: 0 = no data would be lost. 2 = data WOULD be lost (HIGH RISK).
+ *             1 = nothing was measured (statement failed, more than one
+ *                 statement, or a table's row count could not be taken).
  */
 
 import { PrismaClient } from '@prisma/client';
 import { identifyEnvironment } from '../src/lib/dbEnvironment';
-
-/** Thrown to force the transaction to roll back. Never escapes this file. */
-class Rollback extends Error {}
-
-interface TableCount {
-  table: string;
-  rows: number;
-}
-
-/**
- * Row counts for every table in `public`, in one round trip. query_to_xml is
- * the standard trick for counting dynamically-named tables without issuing a
- * statement per table — it matters here because this runs twice inside the
- * transaction and must not itself become the slow part.
- */
-async function countAllTables(tx: {
-  $queryRawUnsafe: (sql: string) => Promise<unknown>;
-}): Promise<TableCount[]> {
-  const rows = (await tx.$queryRawUnsafe(`
-    SELECT table_name AS table,
-           (xpath('/row/c/text()',
-                  query_to_xml(format('SELECT count(*) AS c FROM %I.%I', 'public', table_name),
-                               false, true, '')))[1]::text::int AS rows
-    FROM information_schema.tables
-    WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
-    ORDER BY table_name
-  `)) as TableCount[];
-  return rows.map((r) => ({ table: r.table, rows: Number(r.rows ?? 0) }));
-}
+import { simulateStatement, type SimulationOutcome } from '../src/services/dbSimulation';
 
 function banner(text: string): void {
   console.log('\n' + '='.repeat(72));
   console.log(text);
   console.log('='.repeat(72));
+}
+
+/** Exit code for each outcome: 0 = nothing lost, 2 = data WOULD be lost, 1 = nothing measured. */
+function report(outcome: SimulationOutcome): number {
+  if (outcome.kind === 'failed') {
+    banner('STATEMENT FAILED — nothing was changed');
+    console.log(`  ${outcome.reason}`);
+    console.log('\n  The statement did not execute, so no impact could be measured.');
+    return 1;
+  }
+
+  if (outcome.kind === 'multi-statement') {
+    banner('NOT SIMULATED — more than one statement');
+    console.log('  PostgreSQL rejected the input as multiple commands, so NOTHING ran and');
+    console.log('  nothing was measured. The simulator can only execute one statement at a');
+    console.log('  time (Prisma sends raw SQL as a single prepared statement).');
+    console.log('\n  Simulate each statement separately. If this is a migration file, it does');
+    console.log('  not belong here at all: migrations apply through `prisma migrate deploy`');
+    console.log('  in the deploy pipeline, and are reviewed as SQL in the pull request.');
+    return 1;
+  }
+
+  if (outcome.kind === 'uncountable') {
+    banner('NOT MEASURED — a row count could not be taken');
+    if (outcome.before.length > 0) {
+      console.log(`  uncountable BEFORE the statement : ${outcome.before.join(', ')}`);
+    }
+    if (outcome.after.length > 0) {
+      console.log(`  uncountable AFTER the statement  : ${outcome.after.join(', ')}`);
+    }
+    console.log('\n  This is NOT a LOW RISK result. Without a count on both sides of the');
+    console.log('  statement, a loss in these tables could not be seen — so no verdict is');
+    console.log('  given. Find out why the count failed before acting on anything.');
+    return 1;
+  }
+
+  const { affected, losses, totalLost, droppedTables } = outcome;
+  const destructive = totalLost > 0 || droppedTables.length > 0;
+
+  banner(destructive ? 'HIGH RISK — THIS WOULD DESTROY DATA' : 'LOW RISK — no rows would be lost');
+
+  console.log(`  rows reported affected by the statement : ${affected}`);
+  console.log(`  rows that would be PERMANENTLY LOST     : ${totalLost}`);
+  if (droppedTables.length > 0) {
+    console.log(`  TABLES THAT WOULD CEASE TO EXIST        : ${droppedTables.join(', ')}`);
+  }
+
+  if (losses.length > 0) {
+    console.log('\n  per table:');
+    for (const r of losses) {
+      const shape = r.dropped ? 'TABLE DROPPED' : `${r.before} -> ${r.after}`;
+      console.log(`    ${r.table.padEnd(34)} ${String(r.lost).padStart(7)} lost   (${shape})`);
+    }
+  }
+
+  if (destructive) {
+    console.log('\n  This was rolled back. Nothing has been destroyed yet.');
+    console.log('  Do not run this for real until the number above is the number you intended,');
+    console.log('  in a session whose stated purpose is exactly this cleanup.');
+    return 2;
+  }
+
+  console.log('\n  Safe to proceed on the evidence of this simulation alone: the statement ran');
+  console.log('  in full and removed nothing.');
+  return 0;
 }
 
 async function main(): Promise<void> {
@@ -81,73 +125,14 @@ async function main(): Promise<void> {
     console.log('      before acting on anything below. ***');
   }
 
-  let before: TableCount[] = [];
-  let after: TableCount[] = [];
-  let affected = 0;
-  let failure: string | null = null;
-
+  let outcome: SimulationOutcome;
   try {
-    await prisma.$transaction(async (tx) => {
-      before = await countAllTables(tx);
-      affected = await tx.$executeRawUnsafe(sql);
-      after = await countAllTables(tx);
-      // Everything above really ran. This is what un-runs it.
-      throw new Rollback();
-    });
-  } catch (err) {
-    if (!(err instanceof Rollback)) {
-      failure = err instanceof Error ? err.message.split('\n')[0] : String(err);
-    }
+    outcome = await simulateStatement(prisma, sql);
   } finally {
     await prisma.$disconnect();
   }
 
-  if (failure) {
-    banner('STATEMENT FAILED — nothing was changed');
-    console.log(`  ${failure}`);
-    console.log('\n  The statement did not execute, so no impact could be measured.');
-    process.exit(1);
-  }
-
-  const afterByTable = new Map(after.map((t) => [t.table, t.rows]));
-  const losses = before
-    .map((b) => ({ table: b.table, before: b.rows, after: afterByTable.get(b.table), }))
-    .map((r) => ({
-      ...r,
-      // A table absent afterwards was dropped — every row is gone, not zero rows changed.
-      dropped: r.after === undefined,
-      lost: r.after === undefined ? r.before : Math.max(0, r.before - r.after),
-    }))
-    .filter((r) => r.lost > 0 || r.dropped);
-
-  const totalLost = losses.reduce((sum, r) => sum + r.lost, 0);
-  const droppedTables = losses.filter((r) => r.dropped).map((r) => r.table);
-
-  banner(totalLost > 0 || droppedTables.length > 0 ? 'HIGH RISK — THIS WOULD DESTROY DATA' : 'LOW RISK — no rows would be lost');
-
-  console.log(`  rows reported affected by the statement : ${affected}`);
-  console.log(`  rows that would be PERMANENTLY LOST     : ${totalLost}`);
-  if (droppedTables.length > 0) {
-    console.log(`  TABLES THAT WOULD CEASE TO EXIST        : ${droppedTables.join(', ')}`);
-  }
-
-  if (losses.length > 0) {
-    console.log('\n  per table:');
-    for (const r of losses) {
-      const shape = r.dropped ? 'TABLE DROPPED' : `${r.before} -> ${r.after}`;
-      console.log(`    ${r.table.padEnd(34)} ${String(r.lost).padStart(7)} lost   (${shape})`);
-    }
-  }
-
-  if (totalLost > 0 || droppedTables.length > 0) {
-    console.log('\n  This was rolled back. Nothing has been destroyed yet.');
-    console.log('  Do not run this for real until the number above is the number you intended,');
-    console.log('  in a session whose stated purpose is exactly this cleanup.');
-    process.exit(2);
-  }
-
-  console.log('\n  Safe to proceed on the evidence of this simulation alone: the statement ran');
-  console.log('  in full and removed nothing.');
+  process.exit(report(outcome));
 }
 
 main().catch((err) => {

@@ -1,5 +1,5 @@
-import { apiUrl } from '@/lib/api';
-import type { ThesisSummary } from '@/types/thesis';
+import { apiUrl, authHeaders } from '@/lib/api';
+import type { PublicationReport, PublishOutcome, ThesisProvenance, ThesisSummary } from '@/types/thesis';
 
 /**
  * Fetch the thesis list. Callers differ in trigger pattern (on-mount, on-demand,
@@ -8,7 +8,7 @@ import type { ThesisSummary } from '@/types/thesis';
  */
 export async function fetchTheses(query?: string): Promise<ThesisSummary[]> {
   const url = query ? apiUrl(`/api/thesis?${query}`) : apiUrl('/api/thesis');
-  const res = await fetch(url);
+  const res = await fetch(url, { headers: authHeaders() });
   if (!res.ok) throw new Error(`Failed to fetch theses (${res.status})`);
   const data = (await res.json()) as { theses: ThesisSummary[] };
   return data.theses ?? [];
@@ -30,4 +30,72 @@ export async function generateFoiaRequest(thesisId: string, gapIndex: number): P
   });
   if (!res.ok) throw new Error(`Failed to generate FOIA request (${res.status})`);
   return (await res.json()) as FoiaLetterResult;
+}
+
+// ---------------------------------------------------------------------------
+// Publication — the web half of the gate. Researcher-only on the backend.
+// ---------------------------------------------------------------------------
+
+async function postJson<T>(path: string, body: unknown): Promise<{ status: number; data: T }> {
+  const res = await fetch(apiUrl(path), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify(body),
+  });
+  return { status: res.status, data: (await res.json()) as T };
+}
+
+export async function checkPublicationReadiness(
+  thesisId: string,
+  input: { rationale?: string; publicInterestStatement?: string },
+): Promise<PublicationReport> {
+  const { status, data } = await postJson<PublicationReport | { error: string }>(
+    `/api/thesis/${thesisId}/publication-readiness`,
+    input,
+  );
+  if (status !== 200 || 'error' in data) throw new Error(`Readiness check failed (${status})`);
+  return data;
+}
+
+export async function publishThesis(
+  thesisId: string,
+  input: { rationale: string; publicInterestStatement?: string },
+): Promise<PublishOutcome> {
+  const { status, data } = await postJson<PublishOutcome | { error: string; message?: string }>(
+    `/api/thesis/${thesisId}/publish`,
+    input,
+  );
+  if (status === 200 || status === 422 || status === 409) return data as PublishOutcome;
+  throw new Error(`Publish failed (${status})`);
+}
+
+export async function unpublishThesis(thesisId: string, reason: string): Promise<void> {
+  const { status } = await postJson<unknown>(`/api/thesis/${thesisId}/unpublish`, { reason });
+  if (status !== 200) throw new Error(`Unpublish failed (${status})`);
+}
+
+// ---------------------------------------------------------------------------
+// Provenance — researcher-only on the backend, which returns 401/403 to
+// anyone else. The page treats that as "not available to you", never as
+// "this thesis has no provenance": those are different facts.
+// ---------------------------------------------------------------------------
+
+export type ProvenanceFetch =
+  | { state: 'ok'; provenance: ThesisProvenance }
+  | { state: 'forbidden' }
+  | { state: 'error'; message: string };
+
+export async function fetchThesisProvenance(
+  thesisId: string,
+  signal?: AbortSignal,
+): Promise<ProvenanceFetch> {
+  let res: Response;
+  try {
+    res = await fetch(apiUrl(`/api/thesis/${thesisId}/provenance`), { headers: authHeaders(), signal });
+  } catch (err) {
+    return { state: 'error', message: err instanceof Error ? err.message : String(err) };
+  }
+  if (res.status === 401 || res.status === 403) return { state: 'forbidden' };
+  if (!res.ok) return { state: 'error', message: `HTTP ${String(res.status)}` };
+  return { state: 'ok', provenance: (await res.json()) as ThesisProvenance };
 }

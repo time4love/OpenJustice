@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { Prisma } from '@prisma/client';
+import { linkThesisToFraming } from '../../services/thesisFraming';
 import { prisma } from '../../lib/prisma';
 import { parseMentions } from '../../utils/parseMentions';
 import { buildTipTapDoc } from '../../utils/tipTapUtils';
@@ -11,6 +12,16 @@ import { sha256 } from '../../services/thesisAnalysis';
 // ---------------------------------------------------------------------------
 
 export const createThesisDraftSchema = {
+  framingSessionId: z
+    .string()
+    .optional()
+    .describe(
+      'OVERRIDE ONLY — normally omit this. The framing session is DERIVED from the single ACTIVE ' +
+        'session that has no thesis yet, so the debate about WHAT to argue is attached to the thesis ' +
+        'it produced whether or not the caller remembers to say so. Pass an id only to link a ' +
+        'different session than the active one. The result always reports which session was linked, ' +
+        'or why none was.',
+    ),
   title: z
     .string()
     .min(1)
@@ -47,6 +58,7 @@ export const createThesisDraftSchema = {
 };
 
 export async function createThesisDraftHandler(input: {
+  framingSessionId?: string;
   title: string;
   body: string;
   evidenceHashes?: string[];
@@ -107,8 +119,29 @@ export async function createThesisDraftHandler(input: {
     return { thesis: updatedThesis, version };
   });
 
+  // Attach the framing that produced this thesis. DERIVED, not requested: the
+  // parameter was optional and had one caller, so omitting it lost the link
+  // permanently with no way to recover it. Non-fatal by design either way — a
+  // thesis must never fail to save because its provenance record could not be
+  // updated — but a failure is now REPORTED rather than silent, because an
+  // orphan the caller was warned about can be repaired.
+  const framingLink = await linkThesisToFraming(thesis.id, input.framingSessionId);
+
   return JSON.stringify({
     thesisId: thesis.id,
+    framingSessionId: framingLink.linked ? framingLink.sessionId : null,
+    framingLink,
+    ...(framingLink.linked
+      ? {}
+      : {
+          provenanceWarning:
+            framingLink.reason === 'NO_ACTIVE_SESSION'
+              ? 'No ACTIVE framing session without a thesis was found, so this thesis has NO recorded ' +
+                'framing: the reasoning that chose what it argues is not attached to it. Open one with ' +
+                'open_thesis_framing before creating a draft, or repair this afterwards.'
+              : `The framing session could not be linked (${framingLink.reason}). This thesis has no ` +
+                'recorded framing until that is repaired.',
+        }),
     headVersionId: version.id,
     status: version.status,
     mentionsCreated: mentions.length,

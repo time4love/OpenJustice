@@ -38,7 +38,10 @@ model Researcher {
 
   evidence       Evidence[]
   thesisVersions ThesisVersion[]
-  theses         Thesis[]
+  theses         Thesis[]        @relation("ThesisAuthor")
+  publishedTheses Thesis[]       @relation("ThesisPublisher")
+  researchSessions ResearchSession[]
+  summaryCorrections SummaryCorrection[]
 }
 
 // ---------------------------------------------------------------------------
@@ -86,6 +89,7 @@ model TrackedUrl {
   snapshots    UrlSnapshot[]
   job          WaybackScrapeJob?
   trajectories ClaimTrajectory[]
+  trajectoryComputations ClaimTrajectoryComputation[]
 }
 
 // One record per unique archived snapshot of a TrackedUrl.
@@ -156,6 +160,16 @@ model UrlVersionDiff {
   // the prompt at that version does not hash to this value, something else
   // judged this row. Null on rows classified before provenance was recorded.
   classifierVersion    String?
+  // Provenance for the SUMMARY alone, which moves independently of the
+  // classification. `forensics:resummarize` rewrites aiSignificance from the
+  // already-extracted items and does NOT re-extract, so the items stay at
+  // whatever classifierVersion produced them while the prose becomes
+  // self-contained. Stamping classifierVersion in that case would claim the
+  // items had been re-judged, which they have not.
+  //
+  // null means the summary predates the self-contained rule — written under a
+  // prompt that instructed cross-referencing other evidence records inside it.
+  summaryVersion       String?
   classifierPromptHash String?
   // ForensicAgent classification. Stored on the diff (not only on the promoted
   // Evidence) because a researcher may promote a diff manually via
@@ -169,6 +183,7 @@ model UrlVersionDiff {
   afterSnapshot        UrlSnapshot? @relation("AfterSnapshot", fields: [afterSnapshotId], references: [id])
   createdAt            DateTime     @default(now())
   evidence             Evidence[]
+  summaryCorrections    SummaryCorrection[]
 }
 
 // Mirrors the pgvector table created via raw SQL in the baseline migration
@@ -233,6 +248,19 @@ model Evidence {
   // See onChainTxHash — CONFIRMED must only ever be set alongside a real tx hash.
   status              EvidenceStatus  @default(PENDING_REVIEW)
   onChainTxHash       String?         // Blockchain tx hash once fileHash is registered on-chain — mirrors UrlSnapshot.onChainTxHash
+  // The identity this record carried before the evidence hash moved to being
+  // derived from its two archived snapshots, and the anchor registered under it.
+  //
+  // Kept rather than discarded because that anchor is a real, permanent
+  // transaction that now matches nothing derivable — precisely the
+  // ORPHANED_ANCHOR condition check_on_chain_status exists to flag. Recording it
+  // here says the orphan was created deliberately, by a known migration, instead
+  // of leaving a future audit to find an unexplained one and reasonably conclude
+  // the vault had been tampered with.
+  //
+  // Null on every record created after the change, which is the normal state.
+  previousFileHash    String?
+  previousOnChainTxHash String?
   evidenceType        EvidenceType    @default(DOCUMENT)
   evidenceRole        String          @default("Incriminating")
   // The evidence's classification — see src/lib/investigativeCategories.ts.
@@ -300,8 +328,27 @@ model Thesis {
   versions      ThesisVersion[]   @relation("ThesisVersions")
   sessions      ResearchSession[]
   createdById   String?           // Researcher.id — null for legacy records
-  createdBy     Researcher?       @relation(fields: [createdById], references: [id])
+  createdBy     Researcher?       @relation("ThesisAuthor", fields: [createdById], references: [id])
   createdAt     DateTime          @default(now())
+
+  // Publication is a PINNED VERSION, not a flag and not a consequence of analysis.
+  //
+  // null ⇒ DRAFT: visible to approved researchers only. Set ⇒ the public sees
+  // exactly this version, and ONLY this version, until a researcher publishes
+  // again. Editing the head and re-running the Devil's Advocate changes nothing
+  // public. With a boolean flag the public would silently follow every later
+  // edit, so a researcher publishes one text and the public reads another.
+  // Unpublishing sets the pin back to null and deletes nothing.
+  // Preconditions: services/thesisPublication.ts.
+  publishedVersionId String?        @unique
+  publishedVersion   ThesisVersion? @relation("ThesisPublished", fields: [publishedVersionId], references: [id])
+  publishedAt        DateTime?
+  publishedById      String?        // Researcher.id of whoever published
+  publishedBy        Researcher?    @relation("ThesisPublisher", fields: [publishedById], references: [id])
+  // The public-interest anchor (COMPLIANCE.md Rule 5) as a dedicated field rather
+  // than free text in the body: structurally guaranteed to exist on a published
+  // thesis and rendered consistently on every thesis and call page.
+  publicInterestStatement String?
 }
 
 // One row per edit. userContent is TipTap JSON; aiAnalysis is devil's advocate output.
@@ -320,6 +367,7 @@ model ThesisVersion {
   mentions        ThesisMention[]
   gapResolutions  ThesisGapResolution[]
   isHead          Thesis?             @relation("ThesisHead")
+  isPublished     Thesis?             @relation("ThesisPublished")
   createdById     String?             // Researcher.id — null for legacy records
   createdBy       Researcher?         @relation(fields: [createdById], references: [id])
   createdAt       DateTime            @default(now())
@@ -366,16 +414,53 @@ enum ResearchSessionEventType {
   AI_ANALYSIS_RUN  // logged automatically when AI analysis completes
   NOTE             // logged manually via add_session_note MCP tool
   SESSION_CLOSED   // logged automatically on session close
+  // Deciding WHAT the thesis should argue, before one exists.
+  FRAMING_PROPOSED // a researcher's proposed framing of the question
+  FRAMING_ASSESSED // the adversarial response to it
+  THESIS_ATTACHED  // the framing produced a thesis; refId is the Thesis id
+  // Publication is a deliberate, gated act and belongs in the record of the
+  // session that did it. refId is the ThesisVersion id that was pinned/unpinned.
+  PUBLICATION_RATIONALE // the researcher's argued case for publishing
+  PUBLICATION_ASSESSED  // the assessor's response to it; description is the assessment JSON
+  THESIS_PUBLISHED
+  THESIS_UNPUBLISHED
+  // Written onto a session that ANOTHER researcher closed to open their own,
+  // naming who closed it and why, so its owner returns to a record rather than a guess.
+  SESSION_CLOSED_BY_OTHER
 }
 
 // A named Claude+human research sprint on a thesis.
 // Only one ACTIVE session per thesis at a time; creating a new one auto-closes the previous.
 model ResearchSession {
-  id        String                @id @default(cuid())
-  thesisId  String
-  thesis    Thesis                @relation(fields: [thesisId], references: [id], onDelete: Cascade)
+  id String @id @default(cuid())
+
+  // Nullable so a session can open on a QUESTION before any thesis exists.
+  //
+  // Deciding what a thesis should argue is the most consequential step in the
+  // workflow — the topic string determines which evidence is pulled semantically
+  // and what the Devil's Advocate attacks, and a wrong framing produces a
+  // well-argued thesis about the wrong thing that no later iteration rescues.
+  // Until 2026-08-22 that decision happened entirely outside the system:
+  // suggest_thesis interpolated its `topic` into a prompt and discarded it, and
+  // a session could not exist without a thesisId, so the conversation that chose
+  // the framing left no trace anywhere.
+  //
+  // Deliberately NOT a third session type. ResearchSession and DiffDebateSession
+  // already exist; a third would be a smell. A framing session IS a research
+  // session — it just starts before its subject does, and the thesis attaches to
+  // it when created.
+  thesisId  String?
+  thesis    Thesis?               @relation(fields: [thesisId], references: [id], onDelete: Cascade)
+  // The question the session opened on, when it opened before a thesis.
+  question  String?
   name      String
   status    ResearchSessionStatus @default(ACTIVE)
+  // Who opened it. Nullable: sessions that predate ownership read as legacy,
+  // the same pattern as Evidence.createdById. Only ONE session may be ACTIVE
+  // at a time across the whole system — a publication attaches to the session
+  // that did it, and an untethered publish is an act with no context.
+  researcherId String?
+  researcher   Researcher?          @relation(fields: [researcherId], references: [id])
   events    ResearchSessionEvent[]
   createdAt DateTime              @default(now())
   closedAt  DateTime?
@@ -1056,27 +1141,122 @@ enum ClaimFinalState {
   REMOVED // it was there and is not any more
 }
 
+// One completed detection pass over a tracked URL, and the state it ran against.
+//
+// A trajectory is a function of three inputs, and every one can change without
+// the others:
+//
+//   1. the ordered snapshot set   — changes when the URL is scanned
+//   2. the candidate claim set    — changes on a scan OR a reclassification,
+//                                   since candidates come from UrlVersionDiff
+//                                   extraction, which `forensics:reclassify`
+//                                   rewrites without touching the archive
+//   3. the detection procedure    — changes on a code deploy
+//
+// sourceStateHash covers all three, with detectionVersion standing for the WHOLE
+// procedure rather than a list of named knobs: the presence test is detection
+// logic just as much as the normaliser is, and an enumerating hash would miss a
+// change to it. Same organ as UrlVersionDiff's classifierVersion +
+// classifierPromptHash, for the same reason — a stored derived value with no
+// provenance silently means different things on different rows.
+//
+// It does double duty. As a CACHE KEY it makes detection a read instead of a
+// ~4-second full-text rescan on every call. As a VERSION KEY it makes a
+// trajectory immutable once computed: a later scan writes a NEW computation
+// rather than mutating this one, so a thesis that cited a trajectory still
+// resolves to exactly what it cited. Everything else citable here is immutable
+// by construction (a snapshot is fixed text, a diff has fixed endpoints, an
+// Evidence hash covers fixed content); without this, a trajectory would have been
+// the only citable artifact able to change meaning after the fact.
+// A correction to an evidence summary, and the text it replaced.
+//
+// Evidence.summary for a forensic finding is UrlVersionDiff.aiSignificance copied
+// verbatim — the classifier's DIFF-LEVEL prose, free-form by design while the
+// per-item exactQuote beside it is verbatim. The pipeline promotes the paraphrase
+// layer to be the record's public prose, and nothing compared it to the quotes it
+// summarises. One anchored record described the page as presenting side effects as
+// passing within a day or two; the archived text says they APPEAR a day or two
+// after. Onset paraphrased into duration, and a downstream assessor repeated it.
+//
+// Correcting such a summary is safe for the anchor and must be recorded anyway.
+// Safe because the evidence fileHash covers url + date + deletedText + addedText —
+// the change itself, deliberately not the prose — so the on-chain claim is
+// untouched. Recorded because a record whose public text can be edited with no
+// trace is exactly the "trust us" this platform exists not to be.
+//
+// Append-only. A later correction writes another row; nothing here is updated.
+model SummaryCorrection {
+  id             String         @id @default(cuid())
+  urlVersionDiffId String
+  urlVersionDiff UrlVersionDiff @relation(fields: [urlVersionDiffId], references: [id], onDelete: Cascade)
+  // Denormalised so a correction stays legible if the diff is ever detached.
+  fileHash       String
+  previousText   String
+  correctedText  String
+  // Why, in the corrector's own words. A correction with no stated reason is
+  // indistinguishable from a quiet rewrite.
+  reason         String
+  correctedById  String?
+  correctedBy    Researcher?    @relation(fields: [correctedById], references: [id])
+  createdAt      DateTime       @default(now())
+
+  @@index([urlVersionDiffId, createdAt])
+  @@index([fileHash])
+}
+
+model ClaimTrajectoryComputation {
+  id                   String     @id @default(cuid())
+  trackedUrlId         String
+  trackedUrl           TrackedUrl @relation(fields: [trackedUrlId], references: [id], onDelete: Cascade)
+  // SHA-256 over (ordered snapshot timestamps, sorted candidate claim hashes,
+  // detection version). Recomputing against identical state yields this row.
+  sourceStateHash      String
+  detectionVersion     String
+  snapshotsExamined    Int
+  candidatesConsidered Int
+  // Candidate quotes matching no snapshot — usually a paraphrased extraction.
+  // Kept because a high count means candidate discovery is degrading, which is
+  // invisible if only the successes are stored.
+  candidatesUnmatched  Int
+  computedAt           DateTime   @default(now())
+  trajectories         ClaimTrajectory[]
+
+  @@unique([trackedUrlId, sourceStateHash])
+  @@index([trackedUrlId, computedAt])
+}
+
 model ClaimTrajectory {
-  id           String     @id @default(cuid())
-  trackedUrlId String
-  trackedUrl   TrackedUrl @relation(fields: [trackedUrlId], references: [id], onDelete: Cascade)
-  // SHA-256 of the whitespace-normalised claim text. A deterministic identity:
-  // recomputing always yields the same row, so this upserts idempotently on
-  // every scan and can be referred to stably without a "which run made this".
-  claimHash    String
-  claimText    String
+  id            String                     @id @default(cuid())
+  // The pass that produced this row. Rows are never updated in place: a new
+  // sourceStateHash means a new computation and a new set of rows.
+  computationId String
+  computation   ClaimTrajectoryComputation @relation(fields: [computationId], references: [id], onDelete: Cascade)
+  trackedUrlId  String
+  trackedUrl    TrackedUrl                 @relation(fields: [trackedUrlId], references: [id], onDelete: Cascade)
+  // SHA-256 of the whitespace-normalised claim text — stable across every
+  // computation, so the same assertion can be followed between passes.
+  claimHash     String
+  claimText     String
   // JSON: Array<{ snapshotDate, waybackTimestamp, snapshotUrl, present: boolean }>
   // Every snapshot examined, in date order — including the ones where the claim
   // was absent. The absences are half the finding.
-  observations String
+  observations  String
   // How many times presence flipped. 1 is an ordinary removal, already visible
-  // as a diff. 2 or more is the pattern a diff cannot show.
-  transitions  Int
-  firstSeen    String // YYYY-MM-DD of the earliest snapshot containing the claim
-  lastSeen     String // YYYY-MM-DD of the latest snapshot containing it
-  finalState   ClaimFinalState
-  computedAt   DateTime @updatedAt
-  createdAt    DateTime @default(now())
+  // as a diff. 2 or more is the pattern no single diff can show.
+  //
+  // Every detected trajectory is stored, including 0- and 1-transition ones, so
+  // that minTransitions stays a READ filter. Storing only what the current
+  // threshold returns would make the cache depend on the query, and lowering the
+  // threshold would silently serve an incomplete answer from cache. A
+  // 0-transition row is also evidentially interesting in its own right: it is the
+  // claim that survived every revision around it.
+  transitions   Int
+  firstSeen     String // YYYY-MM-DD of the earliest snapshot containing the claim
+  lastSeen      String // YYYY-MM-DD of the latest snapshot containing it
+  finalState    ClaimFinalState
+  createdAt     DateTime                   @default(now())
 
-  @@unique([trackedUrlId, claimHash])
+  @@unique([computationId, claimHash])
+  @@index([trackedUrlId, claimHash])
 }
+

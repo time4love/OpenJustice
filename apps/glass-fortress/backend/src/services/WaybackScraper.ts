@@ -1,7 +1,20 @@
 import axios from 'axios';
 import { createHash } from 'crypto';
-import { JSDOM } from 'jsdom';
-import { Readability } from '@mozilla/readability';
+import { toBytes32 } from '../lib/bytes32';
+import { extractArticleText, timestampToDate } from '../lib/archiveText';
+import {
+  CDX_MAX_RETRIES,
+  CDX_TIMEOUT_MS,
+  CDX_USER_AGENT,
+  fetchCaptureHtml,
+  isWaybackOffline,
+  rawCaptureUrl,
+  sleep,
+  viewerCaptureUrl,
+  WaybackFetchError,
+  withRetry,
+} from '../lib/archiveHttp';
+import { requireSnapshotIdentity } from './forensicEvidence';
 import { diffLines } from 'diff';
 import { ForensicAgent, type DiffItem, type RelatedEvidenceContext } from './ForensicAgent';
 import { Web3Service } from './Web3Service';
@@ -12,6 +25,7 @@ import {
 } from './forensicEvidence';
 import { groupDiffChunks, chunksForAI } from '../lib/diffChunking';
 import { CLASSIFIER_VERSION, classifierPromptHash } from '../lib/classifierVersion';
+import { getClaimTrajectories } from './claimTrajectory';
 
 // ---------------------------------------------------------------------------
 // Lazy singletons — non-fatal if unavailable
@@ -86,44 +100,6 @@ const MAX_SNAPSHOTS = 50;
 /** Milliseconds to wait between Wayback Machine HTTP requests — respects rate limits. */
 const FETCH_DELAY_MS = 1_500;
 
-/**
- * Retry attempts for the CDX index query.
- *
- * Generous, because CDX runs ONCE per batch and its failure kills the whole
- * scan — there is nothing to skip past.
- */
-const CDX_MAX_RETRIES = 4;
-
-/**
- * Retry attempts for one archived snapshot fetch.
- *
- * Deliberately far smaller than CDX's. A batch fetches up to MAX_SNAPSHOTS
- * snapshots and an individual failure is already handled gracefully — the pair
- * is skipped and the scan continues. Sharing CDX's budget meant each timing-out
- * snapshot burned 8+16+32+64 = 120s of back-off, so a slow archive could leave
- * one job sleeping for well over an hour while reporting SCANNING and showing
- * no progress. One retry absorbs a blip; anything more pays a large cost for a
- * skippable item.
- */
-const SNAPSHOT_MAX_RETRIES = 1;
-
-/**
- * Timeout for the CDX index query.
- *
- * The Internet Archive's CDX API is slow rather than unavailable: a measured
- * query for a government page with years of snapshots took 48s on 2026-08-22,
- * against a previous 30s ceiling that failed the whole scan. Generous here is
- * cheap — the alternative is a scan that reports FAILED on a URL the archive
- * holds perfectly well.
- */
-const CDX_TIMEOUT_MS = 60_000;
-
-/** Timeout for fetching one archived snapshot. Plain page loads — far quicker than CDX. */
-const SNAPSHOT_TIMEOUT_MS = 25_000;
-
-/** Base delay (ms) for exponential back-off on 503 retries. Doubles each attempt. */
-const CDX_RETRY_BASE_MS = 8_000;
-
 /** Days on each side of the snapshot date to search for correlated DB evidence. */
 const CONTEXT_WINDOW_DAYS = 60;
 
@@ -134,122 +110,11 @@ const MAX_CONTEXT_RECORDS = 5;
 // Helpers
 // ---------------------------------------------------------------------------
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-/**
- * True for Wayback failures worth retrying.
- *
- * The Internet Archive fails in two distinct ways and only one of them carries
- * an HTTP status. A timeout, connection reset, or DNS failure produces an axios
- * error with NO response, so a status-only check reads `undefined` and gives up
- * immediately — which is what happened to the retry logic here until
- * 2026-08-22: four retries with exponential back-off, dead code for the
- * archive's most common failure mode.
- *
- * Deliberately does not retry 4xx other than 429. A 404 means the archive does
- * not hold the URL, and retrying it just costs time to reach the same answer.
- */
-export function isTransientWaybackError(err: unknown): boolean {
-  if (!axios.isAxiosError(err)) return false;
-  if (!err.response) return true; // timeout / reset / DNS — no status to inspect
-  const status = err.response.status;
-  return status === 429 || status >= 500;
-}
-
-/**
- * Thin retry wrapper for Wayback Machine HTTP requests.
- *
- * Retries on transient failures with exponential back-off. Non-transient errors
- * are rethrown immediately.
- *
- * `maxRetries` is required rather than defaulted: the two call sites have
- * genuinely different economics (see CDX_MAX_RETRIES and SNAPSHOT_MAX_RETRIES),
- * and a default is how they came to share one budget in the first place.
- *
- * `baseDelayMs` exists so tests can exercise the budget without sleeping.
- */
-export async function withRetry<T>(
-  fn: () => Promise<T>,
-  { maxRetries, baseDelayMs = CDX_RETRY_BASE_MS }: { maxRetries: number; baseDelayMs?: number },
-): Promise<T> {
-  let lastErr: unknown;
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    try {
-      return await fn();
-    } catch (err) {
-      if (isTransientWaybackError(err) && attempt < maxRetries) {
-        const delay = baseDelayMs * Math.pow(2, attempt);
-        const reason = axios.isAxiosError(err)
-          ? (err.response?.status ?? err.code ?? 'no response')
-          : 'unknown';
-        console.warn(
-          `[WaybackScraper] transient failure (${reason}) — retrying in ${delay}ms (attempt ${attempt + 1}/${maxRetries})`,
-        );
-        await sleep(delay);
-        lastErr = err;
-        continue;
-      }
-      throw err;
-    }
-  }
-  throw lastErr;
-}
-
-/** Convert a raw Wayback timestamp (YYYYMMDDHHMMSS) to YYYY-MM-DD. */
-function timestampToDate(ts: string): string {
-  return `${ts.slice(0, 4)}-${ts.slice(4, 6)}-${ts.slice(6, 8)}`;
-}
-
-/**
- * Convert an HTML string to plain text with structural line breaks preserved.
- *
- * Readability's .content is clean article HTML. Using .textContent instead
- * smashes adjacent words together when they are separated only by tags
- * (e.g. <p>word.</p><p>Word</p> → "word.Word"). This function inserts
- * newlines at block boundaries so diffLines produces surgical, line-level
- * diffs rather than one massive changed block per page.
- */
-function htmlToText(html: string): string {
-  return html
-    // Block-level endings → paragraph break
-    .replace(/<\/(?:p|h[1-6]|blockquote|pre|table|tr|ul|ol|dl)>/gi, '\n\n')
-    // Inline block endings / single-line elements → line break
-    .replace(/<\/(?:div|li|td|th|dt|dd|section|article|header|footer|nav|main|figure|figcaption)>/gi, '\n')
-    .replace(/<br\s*\/?>/gi, '\n')
-    // List items get a bullet prefix
-    .replace(/<li[^>]*>/gi, '• ')
-    // Strip all remaining tags
-    .replace(/<[^>]*>/g, '')
-    // Decode common HTML entities
-    .replace(/&nbsp;/gi, ' ')
-    .replace(/&amp;/gi, '&')
-    .replace(/&lt;/gi, '<')
-    .replace(/&gt;/gi, '>')
-    .replace(/&quot;/gi, '"')
-    .replace(/&#(?:x27|39);/gi, "'")
-    .replace(/&#x2019;/gi, '\u2019')
-    .replace(/&#x201[89];/gi, '\u201c');
-}
-
-/**
- * Normalise extracted text so trivial whitespace differences don't pollute the
- * diff with meaningless changes.
- */
-function normaliseText(text: string): string {
-  return text
-    .replace(/\r\n/g, '\n')
-    .replace(/[ \t]+/g, ' ')
-    .replace(/\n /g, '\n')   // strip leading spaces after newlines
-    .replace(/\n{3,}/g, '\n\n')
-    .trim();
-}
-
-/** SHA-256 hex digest of a string. */
+/** SHA-256 hex digest of a string. Bare hex — see toBytes32 before any chain call. */
 function sha256(text: string): string {
   return createHash('sha256').update(text, 'utf8').digest('hex');
 }
+
 
 /**
  * Upsert a UrlSnapshot row for a given scraped page text.
@@ -260,9 +125,9 @@ async function upsertSnapshot(
   timestamp: string,
   url: string,
   fullText: string,
-): Promise<string> {
+): Promise<{ id: string; waybackTimestamp: string; contentHash: string }> {
   const snapshotDate = timestampToDate(timestamp);
-  const snapshotUrl = `https://web.archive.org/web/${timestamp}/${url}`;
+  const snapshotUrl = viewerCaptureUrl(timestamp, url);
   const contentHash = sha256(fullText);
   const snap = await prisma.urlSnapshot.upsert({
     where: { trackedUrlId_waybackTimestamp: { trackedUrlId, waybackTimestamp: timestamp } },
@@ -272,9 +137,23 @@ async function upsertSnapshot(
   });
   // Register on-chain only for newly created snapshots (no existing txHash)
   if (!snap.onChainTxHash) {
-    registerSnapshotOnChain(snap.id, contentHash).catch(() => {});
+    // Fire-and-forget on purpose: a chain hiccup must not fail a scan that has
+    // already fetched and stored archived text, which is the irreplaceable half.
+    // But the rejection is LOGGED, never discarded — an empty catch here hid a
+    // permanent bug behind what looked like a transient one for 83 snapshots.
+    // Whether it actually worked is answered by counting unanchored snapshots
+    // from state, not by trusting this call. See countUnanchoredSnapshots.
+    registerSnapshotOnChain(snap.id, contentHash).catch((err: unknown) => {
+      console.warn(
+        '[WaybackScraper] snapshot anchoring rejected for', snap.id, ':',
+        err instanceof Error ? err.message : err,
+      );
+    });
   }
-  return snap.id;
+  // The identity, not just the key. Evidence derived from a change between two
+  // captures is hashed from their timestamps and content hashes, so every caller
+  // that creates a snapshot needs those to hand rather than a second query.
+  return { id: snap.id, waybackTimestamp: timestamp, contentHash };
 }
 
 /**
@@ -347,12 +226,35 @@ export async function recordScanFinding(source: ForensicEvidenceSource): Promise
  * Register a UrlSnapshot's contentHash on-chain and persist the tx hash.
  * Fire-and-forget — non-fatal. Skips silently if Web3Service is unavailable.
  */
+/**
+ * Record a scan's terminal status, tolerating a row that has since been deleted.
+ *
+ * These updates race a TrackedUrl deletion, which is why they were written to
+ * swallow. Swallowing is still the behaviour — the scan is already over and there
+ * is nothing to retry — but the reason is now stated and the rejection is logged,
+ * so a failure that is NOT a benign race is visible instead of silent.
+ */
+async function setScanStatus(trackedUrlId: string, status: 'PAUSED' | 'FAILED'): Promise<void> {
+  try {
+    await prisma.trackedUrl.update({ where: { id: trackedUrlId }, data: { status } });
+  } catch (err) {
+    console.warn(
+      `[WaybackScraper] could not record ${status} for ${trackedUrlId} (row deleted mid-scan?):`,
+      err instanceof Error ? err.message : err,
+    );
+  }
+}
+
 async function registerSnapshotOnChain(snapshotId: string, contentHash: string): Promise<void> {
   const web3 = getWeb3Service();
   if (!web3) return;
 
   try {
-    const txHash = await web3.registerEvidenceHash(contentHash, '0x0000000000000000000000000000000000000000', 'Wayback Snapshot');
+    const txHash = await web3.registerEvidenceHash(
+      toBytes32(contentHash),
+      '0x0000000000000000000000000000000000000000',
+      'Wayback Snapshot',
+    );
     await prisma.urlSnapshot.update({
       where: { id: snapshotId },
       data: { onChainTxHash: txHash },
@@ -391,29 +293,6 @@ function computeNextFromDate(snapshotsListJson: string, totalSnapshots: number):
   } catch {
     return null;
   }
-}
-
-/**
- * Thrown when a Wayback Machine HTTP request fails after retries are exhausted.
- * Carries enough detail to classify the failure — an archive.org outage
- * (retry later, our pipeline is fine) vs. something else worth investigating.
- */
-export class WaybackFetchError extends Error {
-  readonly offline: boolean;
-  constructor(message: string, offline: boolean) {
-    super(message);
-    this.name = 'WaybackFetchError';
-    this.offline = offline;
-  }
-}
-
-/**
- * True when the archive responded 503 — the signature of the Internet Archive's
- * own "Temporarily Offline" outage page, as opposed to a one-off or rate-limit
- * style failure (404, timeout, etc).
- */
-export function isWaybackOffline(err: unknown): boolean {
-  return axios.isAxiosError(err) && err.response?.status === 503;
 }
 
 /** Thrown when a scan is cancelled mid-flight so runFullScan exits cleanly. */
@@ -493,7 +372,7 @@ export class WaybackScraper {
       () =>
         axios.get<unknown[][]>(cdxUrl, {
           timeout: CDX_TIMEOUT_MS,
-          headers: { 'User-Agent': 'GlassFortress-ForensicScanner/1.0 (legal research)' },
+          headers: { 'User-Agent': CDX_USER_AGENT },
         }),
       { maxRetries: CDX_MAX_RETRIES },
     );
@@ -535,49 +414,8 @@ export class WaybackScraper {
    * Uses the `id_` modifier to suppress the Wayback Machine toolbar.
    */
   async scrapeSnapshot(url: string, timestamp: string): Promise<string> {
-    const archiveUrl = `http://web.archive.org/web/${timestamp}id_/${url}`;
-
-    let html: string;
-    try {
-      const response = await withRetry(
-        () =>
-          axios.get<string>(archiveUrl, {
-            timeout: SNAPSHOT_TIMEOUT_MS,
-            headers: {
-              'User-Agent':
-                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
-                '(KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
-              'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-            },
-            responseType: 'text',
-            maxContentLength: 5 * 1024 * 1024,
-          }),
-        { maxRetries: SNAPSHOT_MAX_RETRIES },
-      );
-      html = response.data;
-    } catch (err) {
-      if (axios.isAxiosError(err)) {
-        throw new WaybackFetchError(
-          `Failed to fetch snapshot ${timestamp}: HTTP ${err.response?.status ?? 'unknown'}`,
-          isWaybackOffline(err),
-        );
-      }
-      throw err;
-    }
-
-    const dom = new JSDOM(html, { url: archiveUrl });
-    const reader = new Readability(dom.window.document);
-    const article = reader.parse();
-
-    // Prefer article.content (clean HTML from Readability) so htmlToText can
-    // insert proper line breaks. article.textContent smashes words together.
-    if (article?.content?.trim()) {
-      return normaliseText(htmlToText(article.content));
-    }
-
-    // Fallback: convert full body HTML if Readability found nothing
-    const bodyHtml = dom.window.document.body?.innerHTML ?? '';
-    return normaliseText(htmlToText(bodyHtml));
+    const html = await fetchCaptureHtml(url, timestamp);
+    return extractArticleText(html, rawCaptureUrl(timestamp, url));
   }
 
   /**
@@ -651,15 +489,17 @@ export class WaybackScraper {
     }
 
     const texts: string[] = [];
-    const snapshotIds: (string | null)[] = [];
+    // Full identities, not just keys: evidence derived from a change between two
+    // captures is hashed from their timestamps and content hashes.
+    const snaps: ({ id: string; waybackTimestamp: string; contentHash: string } | null)[] = [];
     for (const snap of snapshots) {
       try {
         const text = await this.scrapeSnapshot(url, snap.timestamp);
         texts.push(text);
         try {
-          snapshotIds.push(await upsertSnapshot(trackedUrl.id, snap.timestamp, url, text));
+          snaps.push(await upsertSnapshot(trackedUrl.id, snap.timestamp, url, text));
         } catch {
-          snapshotIds.push(null);
+          snaps.push(null);
         }
       } catch (err) {
         console.warn(
@@ -668,7 +508,7 @@ export class WaybackScraper {
           }`,
         );
         texts.push('');
-        snapshotIds.push(null);
+        snaps.push(null);
       }
       await sleep(FETCH_DELAY_MS);
     }
@@ -693,9 +533,9 @@ export class WaybackScraper {
 
       const beforeDate = timestampToDate(prevSnap.timestamp);
       const afterDate = timestampToDate(snap.timestamp);
-      const snapshotUrl = `https://web.archive.org/web/${snap.timestamp}/${url}`;
-      const beforeSnapshotId = snapshotIds[i - 1] ?? undefined;
-      const afterSnapshotId = snapshotIds[i] ?? undefined;
+      const snapshotUrl = viewerCaptureUrl(snap.timestamp, url);
+      const beforeSnapshotId = snaps[i - 1]?.id ?? undefined;
+      const afterSnapshotId = snaps[i]?.id ?? undefined;
 
       // Truly identical after normalisation — record pair but skip AI
       if (deletions.length === 0 && additions.length === 0) {
@@ -792,6 +632,8 @@ export class WaybackScraper {
             url: trackedUrl.url,
             afterDate,
             snapshotUrl,
+            beforeSnapshot: requireSnapshotIdentity(snaps[i - 1], 'before'),
+            afterSnapshot: requireSnapshotIdentity(snaps[i], 'after'),
             aiSignificance: analysis.legalSignificance,
             investigativeCategories: analysis.investigativeCategories,
             deletedText: JSON.stringify(analysis.deletedItems),
@@ -923,7 +765,7 @@ export class WaybackScraper {
     const trackedUrlId = job.trackedUrlId;
 
     let previousText = '';
-    let previousSnapshotId: string | null = null;
+    let previousSnapshot: { id: string; waybackTimestamp: string; contentHash: string } | null = null;
     let processedCount = snapshotsList.filter((s) => s.status === 'DONE').length;
     // Tallied across this call only — used solely to classify a total-failure
     // outcome (see the end of this method). A prior run's failures aren't
@@ -945,7 +787,7 @@ export class WaybackScraper {
       if (entry.status === 'DONE') {
         try {
           previousText = await this.scrapeSnapshot(job.url, entry.timestamp);
-          previousSnapshotId = await upsertSnapshot(trackedUrlId, entry.timestamp, job.url, previousText);
+          previousSnapshot = await upsertSnapshot(trackedUrlId, entry.timestamp, job.url, previousText);
         } catch {
           // Keep last good values if re-fetch fails during resume
         }
@@ -953,10 +795,10 @@ export class WaybackScraper {
       }
 
       let currentText = '';
-      let currentSnapshotId: string | null = null;
+      let currentSnapshot: { id: string; waybackTimestamp: string; contentHash: string } | null = null;
       try {
         currentText = await this.scrapeSnapshot(job.url, entry.timestamp);
-        currentSnapshotId = await upsertSnapshot(trackedUrlId, entry.timestamp, job.url, currentText);
+        currentSnapshot = await upsertSnapshot(trackedUrlId, entry.timestamp, job.url, currentText);
       } catch (err) {
         console.warn(
           `[WaybackScraper] Job ${jobId} — snapshot ${entry.timestamp} fetch failed:`,
@@ -1001,9 +843,9 @@ export class WaybackScraper {
 
         const beforeDate = i > 0 ? timestampToDate(snapshotsList[i - 1].timestamp) : 'Unknown';
         const afterDate = timestampToDate(entry.timestamp);
-        const snapshotUrl = `https://web.archive.org/web/${entry.timestamp}/${job.url}`;
-        const beforeSnapshotId = previousSnapshotId ?? undefined;
-        const afterSnapshotId = currentSnapshotId ?? undefined;
+        const snapshotUrl = viewerCaptureUrl(entry.timestamp, job.url);
+        const beforeSnapshotId = previousSnapshot?.id ?? undefined;
+        const afterSnapshotId = currentSnapshot?.id ?? undefined;
 
         if (deletions.length === 0 && additions.length === 0) {
           // Truly identical after normalisation — skip AI
@@ -1080,6 +922,8 @@ export class WaybackScraper {
               const trackedUrl = await prisma.trackedUrl.findUnique({ where: { id: trackedUrlId } });
               if (trackedUrl) {
                 recordScanFinding({
+                  beforeSnapshot: requireSnapshotIdentity(previousSnapshot, 'before'),
+                  afterSnapshot: requireSnapshotIdentity(currentSnapshot, 'after'),
                   diffId: diffRecord.id,
                   url: trackedUrl.url,
                   afterDate,
@@ -1121,7 +965,7 @@ export class WaybackScraper {
       }
 
       previousText = currentText;
-      previousSnapshotId = currentSnapshotId;
+      previousSnapshot = currentSnapshot;
       entry.status = 'DONE';
       processedCount++;
 
@@ -1151,10 +995,37 @@ export class WaybackScraper {
       });
     }
 
-    return prisma.waybackScrapeJob.update({
+    const completed = await prisma.waybackScrapeJob.update({
       where: { id: jobId },
       data: { status: 'COMPLETED', processedSnapshots: processedCount, failureReason: null },
     });
+
+    // Detect trajectories now that the snapshot set is final.
+    //
+    // A trajectory is state computed after a scan completes, and this is the
+    // only writer that runs without a human asking for it. Doing it here is what
+    // lets the public read path stay read-only: an unauthenticated route must
+    // never compute, because a miss inserts rows.
+    //
+    // Deliberately after the job is marked COMPLETED, and deliberately swallowed.
+    // Detection is derived data that can always be recomputed; a scan that fetched
+    // and stored every snapshot has succeeded, and reporting it FAILED because a
+    // derived view could not be built would strand the archived text — the
+    // expensive, irreplaceable half — behind a cheap, repeatable failure.
+    try {
+      const tracked = await prisma.trackedUrl.findUnique({
+        where: { id: trackedUrlId },
+        select: { url: true },
+      });
+      if (tracked) await getClaimTrajectories(tracked.url);
+    } catch (err) {
+      console.warn(
+        `[WaybackScraper] trajectory detection failed for tracked URL ${trackedUrlId}:`,
+        err instanceof Error ? err.message : err,
+      );
+    }
+
+    return completed;
   }
 
   // ---------------------------------------------------------------------------
@@ -1253,9 +1124,7 @@ export class WaybackScraper {
         // back: next iteration checks whether another CDX batch exists.
         batchesProcessedThisRun++;
         if (batchesProcessedThisRun >= MAX_BATCHES_PER_INVOCATION) {
-          await prisma.trackedUrl
-            .update({ where: { id: trackedUrlId }, data: { status: 'PAUSED' } })
-            .catch(() => {});
+          await setScanStatus(trackedUrlId, 'PAUSED');
           console.log(
             `[WaybackScraper] runFullScan for ${trackedUrlId} paused after ` +
               `${String(batchesProcessedThisRun)} batches this invocation (cost guard) — ` +
@@ -1271,17 +1140,13 @@ export class WaybackScraper {
       } else if (err instanceof ScanPausedError) {
         // Clean exit — user paused; persist PAUSED status so frontend can show resume button
         console.log(`[WaybackScraper] runFullScan for ${trackedUrlId} paused by user.`);
-        await prisma.trackedUrl
-          .update({ where: { id: trackedUrlId }, data: { status: 'PAUSED' } })
-          .catch(() => {});
+        await setScanStatus(trackedUrlId, 'PAUSED');
       } else {
         console.error(
           `[WaybackScraper] runFullScan error for ${trackedUrlId}:`,
           err instanceof Error ? err.stack : err,
         );
-        await prisma.trackedUrl
-          .update({ where: { id: trackedUrlId }, data: { status: 'FAILED' } })
-          .catch(() => {});
+        await setScanStatus(trackedUrlId, 'FAILED');
       }
     } finally {
       this._runningScanIds.delete(trackedUrlId);

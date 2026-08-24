@@ -26,6 +26,8 @@ function source(overrides: Partial<ForensicEvidenceSource> = {}): ForensicEviden
     diffId: 'diff-uuid-1',
     url: 'https://www.health.gov.il/vaccines',
     afterDate: '2021-06-01',
+    beforeSnapshot: { waybackTimestamp: '20210501000000', contentHash: '0xbefore' },
+    afterSnapshot: { waybackTimestamp: '20210601000000', contentHash: '0xafter' },
     snapshotUrl: 'https://web.archive.org/web/20210601000000/https://www.health.gov.il/vaccines',
     aiSignificance: 'האזהרה בדבר תופעות לוואי נמחקה.',
     investigativeCategories: ['WITHHOLDING_INFORMATION'],
@@ -46,19 +48,48 @@ describe('forensic evidence construction', () => {
   // change had two different on-chain identities depending on how it was found.
   // -------------------------------------------------------------------------
   describe('fileHash', () => {
-    it('is stable for identical content', () => {
-      expect(forensicEvidenceFileHash('https://x.gov.il', '2021-06-01', '[]', '[]')).toBe(
-        forensicEvidenceFileHash('https://x.gov.il', '2021-06-01', '[]', '[]'),
+    const B = { waybackTimestamp: '20210501000000', contentHash: '0xbefore' };
+    const A = { waybackTimestamp: '20210601000000', contentHash: '0xafter' };
+
+    it('is stable for identical captures', () => {
+      expect(forensicEvidenceFileHash('https://x.gov.il', B, A)).toBe(
+        forensicEvidenceFileHash('https://x.gov.il', B, A),
       );
     });
 
-    it('is content-addressed — changing any part changes the hash', () => {
-      const base = forensicEvidenceFileHash('https://x.gov.il', '2021-06-01', '["a"]', '["b"]');
+    it('changes when any capture identity changes', () => {
+      const base = forensicEvidenceFileHash('https://x.gov.il', B, A);
 
-      expect(forensicEvidenceFileHash('https://y.gov.il', '2021-06-01', '["a"]', '["b"]')).not.toBe(base);
-      expect(forensicEvidenceFileHash('https://x.gov.il', '2021-06-02', '["a"]', '["b"]')).not.toBe(base);
-      expect(forensicEvidenceFileHash('https://x.gov.il', '2021-06-01', '["z"]', '["b"]')).not.toBe(base);
-      expect(forensicEvidenceFileHash('https://x.gov.il', '2021-06-01', '["a"]', '["z"]')).not.toBe(base);
+      expect(forensicEvidenceFileHash('https://y.gov.il', B, A)).not.toBe(base);
+      expect(forensicEvidenceFileHash('https://x.gov.il', { ...B, contentHash: '0xz' }, A)).not.toBe(base);
+      expect(forensicEvidenceFileHash('https://x.gov.il', B, { ...A, contentHash: '0xz' })).not.toBe(base);
+    });
+
+    it('distinguishes an exact page revert by timestamp', () => {
+      // This corpus contains claims that oscillate, so a page CAN return to a
+      // previous state. Two distinct changes between identical texts would
+      // otherwise share one identity.
+      const later = { ...A, waybackTimestamp: '20211201000000' };
+      expect(forensicEvidenceFileHash('https://x.gov.il', B, later)).not.toBe(
+        forensicEvidenceFileHash('https://x.gov.il', B, A),
+      );
+    });
+
+    it('does NOT change when the extracted items are rewritten', () => {
+      // The property the whole design exists for, and the one the previous
+      // identity lacked. It hashed url + afterDate + deletedText + addedText,
+      // where the latter two are JSON of the classifier's items — mostly model
+      // prose. Reclassification rewrote them, and five anchored records stopped
+      // being recomputable from the database.
+      //
+      // Snapshots cannot drift: UrlSnapshot rows are upserted with `update: {}`
+      // and their text is never rewritten.
+      const withItems = buildForensicEvidence(source({ deletedText: '["original"]' }));
+      const reclassified = buildForensicEvidence(
+        source({ deletedText: '["completely different extraction"]', aiSignificance: 'ניסוח אחר לגמרי' }),
+      );
+
+      expect(reclassified.fileHash).toBe(withItems.fileHash);
     });
 
     it('does not depend on the diff UUID — a database key attests to nothing', () => {

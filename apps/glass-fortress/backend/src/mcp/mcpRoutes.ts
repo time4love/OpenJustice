@@ -34,10 +34,7 @@ export const READ_TOOLS = new Set([
   // Reads recorded scan output — no LLM, no RPC. The scan that produced it was
   // already gated; listing what it found for review is not the expensive part.
   'get_scan_findings',
-  // Deterministic string search over already-stored snapshot text. No LLM, no
-  // RPC, no chain — and its whole value is that anyone can re-run the check
-  // themselves, which a gate would sit awkwardly against.
-  'get_claim_trajectories',
+  'get_thesis_framing',
   'get_diff_debate',
   'get_figure_dossier',
   'get_thesis_context',
@@ -45,6 +42,21 @@ export const READ_TOOLS = new Set([
 ]);
 
 export const WRITE_TOOLS = new Set([
+  // Rewrites the prose on an evidence record and its source diff.
+  // Gated despite the name. It was in READ_TOOLS while detection recomputed on
+  // every call: no LLM, no RPC, and its whole value is that anyone can re-run
+  // the check themselves. Detection is now stored state, so a cache MISS
+  // inserts rows — an anonymous caller could write to the database.
+  //
+  // mcpToolClassification.test.ts could not catch this. It asserts every tool is
+  // classified exactly once, never that a classification still describes what
+  // the tool does. "Does this tool's classification still match its behaviour?"
+  // is a review question the guard cannot answer, and behaviour changed under a
+  // classification that did not.
+  //
+  // The public read-only path is getStoredClaimTrajectories, served by
+  // GET /api/forensics/tracked/:id/trajectories, which never computes.
+  'get_claim_trajectories',
   'create_evidence_from_url',
   'create_evidence_from_text',
   'start_forensic_scan',
@@ -90,9 +102,30 @@ export const WRITE_TOOLS = new Set([
 
   // The diff debate. open/respond each run an LLM assessment; promote registers
   // on-chain. All gated — get_diff_debate is a plain read and sits above.
+  // Embeds the question and runs a long-context assessment — real money per call.
+  'open_thesis_framing',
+  'assess_thesis_framing',
   'open_diff_debate',
   'respond_in_diff_debate',
   'promote_from_diff_debate',
+
+  // The verification tools (docs/gf-verification-tools-dev-plan.md). All three
+  // write nothing — and all three are gated anyway, because "write" is not the
+  // criterion here: each issues one or more requests to the Internet Archive,
+  // which is unbounded per-call work against a free third-party service. An
+  // anonymous caller could walk a decade of captures through them, which is the
+  // same exposure that gated suggest_thesis and check_on_chain_status.
+  'list_captures',
+  'verify_claim_text',
+  'audit_thesis_claims',
+
+  // The publication gate. publish/unpublish move what the public sees and
+  // write to the session log; check_publication_readiness writes nothing but
+  // runs the assessor, which is an LLM call. All three gated — the thesis is the
+  // one artifact that assembles a narrative naming living officials.
+  'check_publication_readiness',
+  'publish_thesis',
+  'unpublish_thesis',
 ]);
 
 // ---------------------------------------------------------------------------
@@ -116,16 +149,18 @@ type OAuthResolution =
   | { kind: 'ok'; researcherId: string }
   | { kind: 'rejected'; status: number; error: string; message: string };
 
-async function resolveViaOAuth(token: string): Promise<OAuthResolution> {
+async function resolveViaOAuth(token: string, requiredScope: 'mcp:read' | 'mcp:write'): Promise<OAuthResolution> {
   const accessToken = await oidcProvider.AccessToken.find(token);
   if (!accessToken) return { kind: 'not_oauth' };
 
-  if (!accessToken.scopes.has('mcp:write')) {
+  // mcp:write implies mcp:read — a token that may write may certainly view.
+  const hasScope = accessToken.scopes.has('mcp:write') || (requiredScope === 'mcp:read' && accessToken.scopes.has('mcp:read'));
+  if (!hasScope) {
     return {
       kind: 'rejected',
       status: 403,
       error: 'Forbidden',
-      message: 'This OAuth token was not granted the mcp:write scope.',
+      message: `This OAuth token was not granted the ${requiredScope} scope.`,
     };
   }
 
@@ -163,6 +198,50 @@ function sendUnauthorized(res: Response, message: string): void {
   res.status(401).json({ error: 'Unauthorized', message });
 }
 
+type Identification =
+  | { kind: 'ok'; researcherId: string }
+  | { kind: 'rejected'; status: number; error: string; message: string };
+
+/**
+ * Who presented this token — an approved researcher, or a reason they are not.
+ * Sends nothing: the caller decides whether a rejection is fatal (a write) or
+ * merely means "anonymous" (a viewer-dependent read).
+ */
+async function identifyResearcher(token: string, requiredScope: 'mcp:read' | 'mcp:write'): Promise<Identification> {
+  const oauth = await resolveViaOAuth(token, requiredScope);
+  if (oauth.kind !== 'not_oauth') return oauth;
+  // Not a token oidc-provider recognizes at all — try it as a legacy static token instead.
+
+  let tokenHash: string;
+  try {
+    tokenHash = hashToken(token);
+  } catch {
+    return { kind: 'rejected', status: 500, error: 'Server misconfiguration', message: 'TOKEN_HMAC_SECRET is not set' };
+  }
+
+  const researcher = await prisma.researcher.findFirst({ where: { mcpTokenHash: tokenHash } });
+
+  if (!researcher) {
+    return {
+      kind: 'rejected',
+      status: 401,
+      error: 'Unauthorized',
+      message: 'Invalid MCP token. Generate a new one via POST /api/auth/mcp-token, or connect via OAuth (GET /api/mcp).',
+    };
+  }
+
+  if (!researcher.approved) {
+    return {
+      kind: 'rejected',
+      status: 403,
+      error: 'Forbidden',
+      message: `Account '${researcher.handle}' is not yet approved. Contact an admin.`,
+    };
+  }
+
+  return { kind: 'ok', researcherId: researcher.id };
+}
+
 async function resolveResearcher(req: Request, res: Response): Promise<{ researcherId: string } | null> {
   const token = extractBearerToken(req);
 
@@ -175,46 +254,34 @@ async function resolveResearcher(req: Request, res: Response): Promise<{ researc
     return null;
   }
 
-  const oauth = await resolveViaOAuth(token);
-  if (oauth.kind === 'ok') return { researcherId: oauth.researcherId };
-  if (oauth.kind === 'rejected') {
-    if (oauth.status === 401) {
-      sendUnauthorized(res, oauth.message);
-    } else {
-      res.status(oauth.status).json({ error: oauth.error, message: oauth.message });
-    }
-    return null;
+  const identity = await identifyResearcher(token, 'mcp:write');
+  if (identity.kind === 'ok') return { researcherId: identity.researcherId };
+
+  if (identity.status === 401) {
+    sendUnauthorized(res, identity.message);
+  } else {
+    res.status(identity.status).json({ error: identity.error, message: identity.message });
   }
-  // oauth.kind === 'not_oauth' — not a token oidc-provider recognizes at all,
-  // fall through and try it as a legacy static token instead.
+  return null;
+}
 
-  let tokenHash: string;
-  try {
-    tokenHash = hashToken(token);
-  } catch {
-    res.status(500).json({ error: 'Server misconfiguration: TOKEN_HMAC_SECRET is not set' });
-    return null;
-  }
+// ---------------------------------------------------------------------------
+// identifyViewer
+//
+// Read tools stay open, but some are VIEWER-DEPENDENT: get_thesis_context and
+// get_whistleblower_call show an anonymous caller the published version and an
+// approved researcher the head. So a read call that carries a bearer token is
+// identified if it can be, and treated as anonymous if it cannot — never
+// refused. The tool output names the viewer it answered for, so a researcher
+// whose token has lapsed sees `viewer: PUBLIC` rather than mistaking the
+// public view for the head.
+// ---------------------------------------------------------------------------
 
-  const researcher = await prisma.researcher.findFirst({ where: { mcpTokenHash: tokenHash } });
-
-  if (!researcher) {
-    sendUnauthorized(
-      res,
-      'Invalid MCP token. Generate a new one via POST /api/auth/mcp-token, or connect via OAuth (GET /api/mcp).',
-    );
-    return null;
-  }
-
-  if (!researcher.approved) {
-    res.status(403).json({
-      error: 'Forbidden',
-      message: `Account '${researcher.handle}' is not yet approved. Contact an admin.`,
-    });
-    return null;
-  }
-
-  return { researcherId: researcher.id };
+async function identifyViewer(req: Request): Promise<string | undefined> {
+  const token = extractBearerToken(req);
+  if (!token) return undefined;
+  const identity = await identifyResearcher(token, 'mcp:read');
+  return identity.kind === 'ok' ? identity.researcherId : undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -248,7 +315,7 @@ export function isWriteToolCall(body: unknown): string | null {
 // Stateless StreamableHTTP transport — each request gets a fresh McpServer
 // and transport instance. The server is closed after the response finishes.
 //
-// Read tools: no auth required.
+// Read tools: no auth required; a valid token, if present, identifies the viewer.
 // Write tools: require Authorization: Bearer <MCP_WRITE_TOKEN>
 //
 // Claude Desktop config (~/Library/Application Support/Claude/claude_desktop_config.json):
@@ -273,6 +340,8 @@ router.post('/', async (req: Request, res: Response) => {
     const resolved = await resolveResearcher(req, res);
     if (resolved === null) return; // response already sent
     researcherId = resolved.researcherId;
+  } else {
+    researcherId = await identifyViewer(req);
   }
 
   const handleRequest = async () => {
@@ -297,7 +366,8 @@ router.post('/', async (req: Request, res: Response) => {
     }
   };
 
-  // Run write tool requests inside researcherContext so handlers can stamp createdById.
+  // Run identified requests inside researcherContext so handlers can stamp
+  // createdById and answer viewer-dependent reads for the right viewer.
   if (researcherId !== undefined) {
     await researcherContext.run({ researcherId }, handleRequest);
   } else {
