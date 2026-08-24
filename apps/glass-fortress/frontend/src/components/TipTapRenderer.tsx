@@ -3,7 +3,7 @@
 import React, { useMemo } from 'react';
 import { Link } from '@/i18n/navigation';
 import { truncateLabel } from '@/lib/format';
-import { buildCitationNumbers } from '@/lib/citations';
+import { buildCitationNumbers, collapseCoMovementRuns } from '@/lib/citations';
 
 export type EvidenceInfo = {
   evidenceId?: string;     // UUID — used for /evidence/:id links
@@ -31,6 +31,8 @@ export type TrajectoryInfo = {
   finalState: 'PRESENT' | 'REMOVED';
   changes: { snapshotDate: string; present: boolean; snapshotUrl: string }[];
   observations: { snapshotDate: string; present: boolean; snapshotUrl: string }[];
+  /** Identity of the movement — members of one co-movement share it. */
+  coMovementKey: string;
   coMovementCount: number;
   coMovementCitedCount: number;
   computedAt: string;
@@ -125,6 +127,17 @@ function renderInline(
   return null;
 }
 
+function renderInlineChildren(
+  content: TipTapNodeObj[] | undefined,
+  evidenceMap: Record<string, EvidenceInfo>,
+  trajectoryMap: Record<string, TrajectoryInfo>,
+  citationNumbers: Map<string, number>,
+): (React.ReactElement | null)[] {
+  return collapseCoMovementRuns(content ?? [], (id) => trajectoryMap[id]?.coMovementKey || id).map((c, i) =>
+    renderInline(c, i, evidenceMap, trajectoryMap, citationNumbers),
+  );
+}
+
 function renderNode(
   node: TipTapNodeObj,
   index: number,
@@ -138,13 +151,13 @@ function renderNode(
       if (!content?.length) return <div key={index} className="h-3" />;
       return (
         <p key={index} className="text-slate-700 text-sm leading-relaxed mb-3">
-          {content.map((c, i) => renderInline(c, i, evidenceMap, trajectoryMap, citationNumbers))}
+          {renderInlineChildren(content, evidenceMap, trajectoryMap, citationNumbers)}
         </p>
       );
     }
     case 'heading': {
       const level = Number((node.attrs as TipTapNodeObj | undefined)?.['level'] ?? 1);
-      const children = (content ?? []).map((c, i) => renderInline(c, i, evidenceMap, trajectoryMap, citationNumbers));
+      const children = renderInlineChildren(content, evidenceMap, trajectoryMap, citationNumbers);
       if (level === 1)
         return <h1 key={index} className="text-xl font-bold text-slate-900 mb-3 mt-6 first:mt-0">{children}</h1>;
       if (level === 2)
@@ -168,7 +181,7 @@ function renderNode(
       const inlines = (para?.content as TipTapNodeObj[] | undefined) ?? [];
       return (
         <li key={index} className="text-slate-700 text-sm">
-          {inlines.map((c, i) => renderInline(c, i, evidenceMap, trajectoryMap, citationNumbers))}
+          {renderInlineChildren(inlines, evidenceMap, trajectoryMap, citationNumbers)}
         </li>
       );
     }
@@ -180,7 +193,12 @@ function renderNode(
 const NO_TRAJECTORIES: Record<string, TrajectoryInfo> = {};
 
 export function TipTapRenderer({ doc, evidenceMap = {}, trajectoryMap = NO_TRAJECTORIES }: Props) {
-  const citationNumbers = useMemo(() => buildCitationNumbers(doc), [doc]);
+  // Members of one co-movement share a footnote number, and only the first of a
+  // run renders a marker — eight cited rows are one finding.
+  const citationNumbers = useMemo(
+    () => buildCitationNumbers(doc, (id) => trajectoryMap[id]?.coMovementKey || id),
+    [doc, trajectoryMap],
+  );
   const content = doc.content as TipTapNodeObj[] | undefined;
   return (
     <div>

@@ -308,3 +308,84 @@ keeping in the wording.
 
 Gates: backend **1330/1330** (+22), `eslint src/` 361 — one above the 360 after §8, and that one is
 the pre-existing `server.tool` deprecation every one of the 40 registered tools already carries.
+
+
+---
+
+## 10. The first real trajectory citation — applied 2026-08-24
+
+Thesis `cmt5jffqy000lf52mn6t56f3l` on staging now cites the deterministic layer. New head
+`cmt728lod0002g8uulash6lw9`, parent `cmt5jffz6000nf52mpw4uyqvk`, `PENDING_AI`.
+
+### 10.1 The citation set was recomputed, not taken from the prose
+
+§9.4 of this document said the citation was "group `3313cbaa` — 10 claims". **That was too narrow,
+and recomputing found it.** The sentence being cited is a UNIVERSAL:
+
+> הטענות שהופיעו בתצלום מ-24 ביולי 2022 ונעדרו מן התצלום מ-5 באוגוסט 2022 נותרו נעדרות לאורך שבעה
+> תצלומים נוספים, עד התצלום מ-5 בספטמבר 2022 — כשישה שבועות מן התצלום האחרון שבו הופיעו.
+
+So the question is not "does some group fit that shape" but "does **any** claim with that transition
+come back before 2022-09-05" — one counter-example makes the sentence false. Computed against
+computation `cmt5b3gji0005jdk4p4wi2lu8` (83 snapshots, 58 rows):
+
+| | |
+|---|---|
+| present 2022-07-24 **and** absent in the first 2022-08-05 capture | **21** |
+| of those, stayed absent through 2022-09-05 | **21** |
+| of those, came back before 2022-09-05 | **0** |
+| captures strictly after 2022-08-05 up to 2022-09-05 | **7** — 08-07, 08-10, 08-13, 08-15, 08-16, 08-16, 09-05 |
+
+The sentence is true as written, "seven" is exact, and 07-24 → 09-05 is 43 days ≈ six weeks. The
+citation is therefore **all 21 rows**, spanning **8 co-movement groups** (10 + 4 + 2 + five
+singletons) that share the 2022-08-05 removal and differ in what happened before and after it.
+
+Two captures share 2022-08-05 and two share 2022-08-16, so "seven further captures" is exact under
+"captures after 5 Aug up to and including 5 Sept" — worth keeping in the wording if the sentence is
+ever revised.
+
+### 10.2 Verified after writing, independently of the tool's own report
+
+- prose **byte-identical**, 2,559 characters, compared with `concatText` over both versions;
+- `contentHash` changed (a new version, as publication pinning requires);
+- mentions `EVIDENCE=7 CLAIM_TRAJECTORY=21 KEY_FIGURE=3` — the seven original citations survived;
+- all 21 resolve, 0 missing, all `PINNED_IS_LATEST`, all pinned to one computation;
+- **0 partly-cited co-movement groups** — every group is cited whole.
+
+The anchor was **sliced out of the stored prose**, never retyped: transcription is the risk this
+whole tool exists to remove, and it would have been silly to reintroduce it in the one call that
+proves the point.
+
+### 10.3 Found by doing it: the render did not collapse a co-movement — FIXED
+
+§3.2 says the renderer regroups cited members and displays *"N claims moved as one unit."* The
+implementation shipped in §8 rendered **one marker and one panel card per mention**, so this citation
+rendered as **21 superscript markers and 21 cards**, ten of which said "10 claims moved as one unit"
+separately. The data was right and the reading was wrong — one finding reported as twenty-one.
+
+Only citing a real co-movement exposed it. Every test written for §8 cited one trajectory at a time,
+which is the shape the bug is invisible in.
+
+Fixed in three parts:
+
+- `buildTrajectoryMap` carries `coMovementKey` (the pattern hash) to the client;
+- `buildCitationNumbers(doc, groupKeyOf)` assigns **one footnote number per group**, so the members
+  of a co-movement share a marker;
+- `collapseCoMovementRuns` drops the repeats inside a **consecutive run** of trajectory mentions
+  citing the same movement. Scoped to a run on purpose: citing the same movement again elsewhere in
+  the thesis is a second citation and still gets its marker.
+
+Both functions live in `lib/citations.ts` rather than in the component — dependency-free, so they can
+be exercised against a real stored document without mounting React. The frontend has no test runner,
+so that is exactly how this was verified: the real functions, run over the real head version and its
+real trajectory map.
+
+| | |
+|---|---|
+| trajectory mention nodes in the document | 21 |
+| distinct co-movement groups cited | 8 |
+| **markers actually rendered** | **8** |
+| their footnote numbers | 6–13, with evidence keeping 1–5 and 14–15 |
+
+The panel renders one card per group, listing that group's cited claim texts above the shared flips,
+final state and captures — the fields members of a co-movement share by definition.

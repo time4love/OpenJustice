@@ -438,6 +438,23 @@ function ThesisPageInner({ id }: { id: string }) {
   const evidenceMentions = hv?.mentions.filter(m => m.type === 'EVIDENCE') ?? [];
   const trajectoryMentions = hv?.mentions.filter(m => m.type === 'CLAIM_TRAJECTORY') ?? [];
 
+  // Collapsed by co-movement. A thesis citing an eight-claim block cites eight
+  // rows — the group has no citable id of its own — so rendering a card per row
+  // would report one finding as eight. Members of a group share every field
+  // below except their claim text: that is what "moved as one unit" means.
+  const trajectoryGroups = (() => {
+    const byKey = new Map<string, { info: TrajectoryInfo; claims: string[]; firstRefId: string }>();
+    for (const m of trajectoryMentions) {
+      const info = trajectoryMap[m.refId];
+      if (!info) continue;
+      const key = info.coMovementKey || m.refId;
+      const existing = byKey.get(key);
+      if (existing) existing.claims.push(info.claimText);
+      else byKey.set(key, { info, claims: [info.claimText], firstRefId: m.refId });
+    }
+    return [...byKey.values()];
+  })();
+
   return (
     <div className="min-h-screen bg-slate-50">
       {/* Header — the shared site header, not a bespoke one. This page is
@@ -583,24 +600,26 @@ function ThesisPageInner({ id }: { id: string }) {
             Deliberately verbose where the evidence chips are terse: this is the
             first place a reader meets a trajectory, and what it does and does
             not prove has to be stated where it is read, not in a doc. */}
-        {trajectoryMentions.length > 0 && (
+        {trajectoryGroups.length > 0 && (
           <div className="space-y-2">
             <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
-              {t('trajectoriesTitle')} ({trajectoryMentions.length})
+              {t('trajectoriesTitle')} ({trajectoryGroups.length})
             </h3>
             <p className="text-xs text-slate-500 leading-relaxed">{t('trajectoryCaveat')}</p>
             <div className="space-y-3">
-              {trajectoryMentions.map(m => {
-                const info = trajectoryMap[m.refId];
-                if (!info) return null;
-                const number = citationNumbers.get(m.refId);
+              {trajectoryGroups.map(({ info, claims, firstRefId }) => {
+                const number = citationNumbers.get(firstRefId);
                 return (
-                  <div key={m.id} className="bg-teal-50/60 border border-teal-200 rounded-xl p-4 space-y-2">
+                  <div key={firstRefId} className="bg-teal-50/60 border border-teal-200 rounded-xl p-4 space-y-2">
                     <div className="flex items-start gap-2">
                       <span className="text-teal-700 text-xs font-semibold shrink-0">
                         {number ? `[${number}]` : '#'}
                       </span>
-                      <p className="text-sm text-slate-700 leading-relaxed">{info.claimText}</p>
+                      <div className="space-y-1">
+                        {claims.map((claim, i) => (
+                          <p key={i} className="text-sm text-slate-700 leading-relaxed">{claim}</p>
+                        ))}
+                      </div>
                     </div>
 
                     {info.coMovementCount > 1 && (
