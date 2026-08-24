@@ -17,7 +17,7 @@
 // ---------------------------------------------------------------------------
 
 jest.mock('../src/lib/prisma', () => ({
-  prisma: { evidence: { findMany: jest.fn() } },
+  prisma: { evidence: { findMany: jest.fn() }, claimTrajectory: { findMany: jest.fn() } },
 }));
 jest.mock('../src/services/claimTrajectory', () => {
   const actual = jest.requireActual('../src/services/claimTrajectory');
@@ -26,7 +26,11 @@ jest.mock('../src/services/claimTrajectory', () => {
 
 import { prisma } from '../src/lib/prisma';
 import { getClaimTrajectories, claimHash, normaliseClaim } from '../src/services/claimTrajectory';
-import { loadTrajectoryContext, formatTrajectoryContext } from '../src/lib/trajectoryContext';
+import {
+  loadTrajectoryContext,
+  formatTrajectoryContext,
+  emptyTrajectoryBundle,
+} from '../src/lib/trajectoryContext';
 
 const URL = 'https://corona.health.gov.il/vaccine-for-covid/';
 
@@ -75,7 +79,7 @@ describe('loadTrajectoryContext', () => {
   });
 
   it('returns nothing for an empty corpus without querying', async () => {
-    expect(await loadTrajectoryContext([])).toEqual({ trajectories: [], coverage: [], omittedGroups: 0 });
+    expect(await loadTrajectoryContext([], [])).toEqual(emptyTrajectoryBundle());
     expect(prisma.evidence.findMany).not.toHaveBeenCalled();
   });
 
@@ -84,7 +88,7 @@ describe('loadTrajectoryContext', () => {
       evidenceRow('0xaaa', [item(FOLLOWED, true)]),
     ]);
 
-    const { trajectories } = await loadTrajectoryContext([{ fileHash: '0xaaa' }]);
+    const { trajectories } = await loadTrajectoryContext([{ fileHash: '0xaaa' }], []);
 
     expect(trajectories).toHaveLength(1);
     expect(trajectories[0].url).toBe(URL);
@@ -100,7 +104,7 @@ describe('loadTrajectoryContext', () => {
     const { trajectories } = await loadTrajectoryContext([
       { fileHash: '0xshares' },
       { fileHash: '0xshares-nothing' },
-    ]);
+    ], []);
 
     // Both records sit on the same page and the same transition dates. Only the
     // one that actually contains the claim overlaps.
@@ -121,7 +125,7 @@ describe('loadTrajectoryContext', () => {
       ]),
     ]);
 
-    const { coverage } = await loadTrajectoryContext([{ fileHash: '0xmixed' }]);
+    const { coverage } = await loadTrajectoryContext([{ fileHash: '0xmixed' }], []);
 
     expect(coverage).toEqual([
       {
@@ -151,7 +155,7 @@ describe('loadTrajectoryContext', () => {
       evidenceRow('0xnested', [item(LONG_FORM, true)]),
     ]);
 
-    const { coverage } = await loadTrajectoryContext([{ fileHash: '0xnested' }]);
+    const { coverage } = await loadTrajectoryContext([{ fileHash: '0xnested' }], []);
 
     expect(coverage[0].itemsInTrajectories).toBe(1);
     expect(coverage[0].independentSignificantItems).toBe(0);
@@ -163,7 +167,7 @@ describe('loadTrajectoryContext', () => {
       evidenceRow('0xshorter', [item(SHORT_FORM, true)]),
     ]);
 
-    const { coverage } = await loadTrajectoryContext([{ fileHash: '0xshorter' }]);
+    const { coverage } = await loadTrajectoryContext([{ fileHash: '0xshorter' }], []);
 
     expect(coverage[0].independentSignificantItems).toBe(0);
   });
@@ -177,7 +181,7 @@ describe('loadTrajectoryContext', () => {
       evidenceRow('0xshort', [item('החיסון הרביעי', true)]),
     ]);
 
-    const { coverage } = await loadTrajectoryContext([{ fileHash: '0xshort' }]);
+    const { coverage } = await loadTrajectoryContext([{ fileHash: '0xshort' }], []);
 
     expect(coverage[0].independentSignificantItems).toBe(1);
   });
@@ -192,7 +196,7 @@ describe('loadTrajectoryContext', () => {
       evidenceRow('0xboth', [item(FOLLOWED, true), item(UNFOLLOWED, true)]),
     ]);
 
-    const { coverage } = await loadTrajectoryContext([{ fileHash: '0xboth' }]);
+    const { coverage } = await loadTrajectoryContext([{ fileHash: '0xboth' }], []);
 
     expect(coverage[0].itemsInTrajectories).toBe(2);
     expect(coverage[0].independentSignificantItems).toBe(0);
@@ -214,7 +218,7 @@ describe('loadTrajectoryContext', () => {
       evidenceRow('0xpageB', [item(FOLLOWED, true)], OTHER),
     ]);
 
-    const { coverage } = await loadTrajectoryContext([{ fileHash: '0xpageA' }, { fileHash: '0xpageB' }]);
+    const { coverage } = await loadTrajectoryContext([{ fileHash: '0xpageA' }, { fileHash: '0xpageB' }], []);
 
     const pageA = coverage.find((c) => c.fileHash === '0xpageA');
     const pageB = coverage.find((c) => c.fileHash === '0xpageB');
@@ -239,7 +243,7 @@ describe('loadTrajectoryContext', () => {
       ]),
     ]);
 
-    const { trajectories, coverage, omittedGroups } = await loadTrajectoryContext([{ fileHash: '0xlate' }]);
+    const { trajectories, coverage, omittedGroups } = await loadTrajectoryContext([{ fileHash: '0xlate' }], []);
 
     expect(trajectories).toHaveLength(8); // display cap honoured
     expect(omittedGroups).toBe(4); // and reported, never silent
@@ -250,11 +254,7 @@ describe('loadTrajectoryContext', () => {
   it('contributes nothing for evidence that was never archived over time', async () => {
     (prisma.evidence.findMany as jest.Mock).mockResolvedValue([]);
 
-    expect(await loadTrajectoryContext([{ fileHash: '0xarticle' }])).toEqual({
-      trajectories: [],
-      coverage: [],
-      omittedGroups: 0,
-    });
+    expect(await loadTrajectoryContext([{ fileHash: '0xarticle' }], [])).toEqual(emptyTrajectoryBundle());
     expect(getClaimTrajectories).not.toHaveBeenCalled();
   });
 
@@ -264,7 +264,7 @@ describe('loadTrajectoryContext', () => {
     ]);
     (getClaimTrajectories as jest.Mock).mockRejectedValue(new Error('No tracked URL found'));
 
-    const bundle = await loadTrajectoryContext([{ fileHash: '0xaaa' }]);
+    const bundle = await loadTrajectoryContext([{ fileHash: '0xaaa' }], []);
     expect(bundle.trajectories).toEqual([]);
   });
 });
@@ -284,12 +284,14 @@ describe('formatTrajectoryContext', () => {
         ],
         claims: [FOLLOWED],
         overlappingEvidence: [{ fileHash: '0xmixed', sharedItems: 8 }],
+        citedIds: [],
       },
     ],
     coverage: [
       { fileHash: '0xmixed', totalItems: 14, itemsInTrajectories: 8, independentSignificantItems: 6 },
     ],
     omittedGroups: 0,
+    citedNotResolved: [],
   };
 
   it.each(['en', 'he'] as const)('marks omitted groups rather than dropping them silently in %s', (lang) => {
@@ -301,7 +303,7 @@ describe('formatTrajectoryContext', () => {
   });
 
   it('renders nothing when there are no trajectories', () => {
-    const empty = { trajectories: [], coverage: [], omittedGroups: 0 };
+    const empty = emptyTrajectoryBundle();
     expect(formatTrajectoryContext(empty, 'en')).toBe('');
     expect(formatTrajectoryContext(empty, 'he')).toBe('');
   });
@@ -346,6 +348,7 @@ describe('formatTrajectoryContext', () => {
       trajectories: bundle.trajectories,
       coverage: [{ fileHash: '0xall', totalItems: 8, itemsInTrajectories: 8, independentSignificantItems: 0 }],
       omittedGroups: 0,
+      citedNotResolved: [],
     };
     expect(formatTrajectoryContext(covered, 'en')).not.toMatch(/DO NOT COVER/);
   });
@@ -360,5 +363,262 @@ describe('formatTrajectoryContext', () => {
 
   it('shows the co-movement count, not just the claim', () => {
     expect(formatTrajectoryContext(bundle, 'en')).toContain('8 claims that moved as one unit');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Citations: what the DOCUMENT argues from, as opposed to what merely shares a
+// page with its evidence.
+//
+// Measured on the real thesis before this existed: 21 cited trajectories across
+// 8 co-movement groups, of which only 3 reached the critic. The cap kept the
+// largest groups, and the citation had been widened — correctly — with five
+// singletons, because the sentence it supports is a universal and one
+// counter-example falsifies it. Size-ranked truncation dropped exactly the
+// correction that made the citation honest.
+// ---------------------------------------------------------------------------
+describe('loadTrajectoryContext with citations', () => {
+  /** A distinct group per index, smallest last, mirroring the real sort order. */
+  function groups(count: number) {
+    return Array.from({ length: count }, (_, i) => ({
+      patternHash: `pattern-${i}`,
+      transitions: 2,
+      firstSeen: '2022-08-05',
+      lastSeen: '2022-09-05',
+      finalState: 'REMOVED' as const,
+      changes: [
+        { snapshotDate: '2022-08-05', waybackTimestamp: '1', snapshotUrl: `${URL}#a`, present: true },
+        { snapshotDate: '2022-09-06', waybackTimestamp: '2', snapshotUrl: `${URL}#b`, present: false },
+      ],
+      claims: Array.from({ length: count - i }, (_, n) => {
+        const text = `${FOLLOWED} — variant ${i}.${n}`;
+        return { id: `live-${i}-${n}`, claimHash: claimHash(normaliseClaim(text)), claimText: text };
+      }),
+    }));
+  }
+
+  const hashOf = (i: number, n: number) => claimHash(normaliseClaim(`${FOLLOWED} — variant ${i}.${n}`));
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (prisma.evidence.findMany as jest.Mock).mockResolvedValue([
+      evidenceRow('0xaaa', [item(FOLLOWED, true)]),
+    ]);
+    (getClaimTrajectories as jest.Mock).mockResolvedValue({ groups: groups(10) });
+    (prisma.claimTrajectory.findMany as jest.Mock).mockResolvedValue([]);
+  });
+
+  it('caps at eight and reports the rest when nothing is cited', async () => {
+    const bundle = await loadTrajectoryContext([{ fileHash: '0xaaa' }], []);
+    expect(bundle.trajectories).toHaveLength(8);
+    expect(bundle.omittedGroups).toBe(2);
+    expect(bundle.citedNotResolved).toEqual([]);
+    expect(prisma.claimTrajectory.findMany).not.toHaveBeenCalled();
+  });
+
+  it('never drops a cited group, however small, and however far down the order', async () => {
+    // Group 9 is the single-claim group the size-ranked cap used to discard.
+    (prisma.claimTrajectory.findMany as jest.Mock).mockResolvedValue([
+      { id: 'cited-a', claimHash: hashOf(9, 0), trackedUrl: { url: URL } },
+    ]);
+
+    const bundle = await loadTrajectoryContext([{ fileHash: '0xaaa' }], ['cited-a']);
+
+    const shown = bundle.trajectories.map((t) => t.patternHash);
+    expect(shown).toContain('pattern-9');
+    expect(bundle.trajectories).toHaveLength(8);
+    expect(bundle.omittedGroups).toBe(2);
+    expect(bundle.trajectories.find((t) => t.patternHash === 'pattern-9')?.citedIds).toEqual(['cited-a']);
+    expect(bundle.citedNotResolved).toEqual([]);
+  });
+
+  it('spends the whole cap on citations when there are more than eight', async () => {
+    // Uncited groups on the same page are context; cited ones are what the
+    // document argues from. A bounded prompt spends its room on the latter.
+    (prisma.claimTrajectory.findMany as jest.Mock).mockResolvedValue(
+      Array.from({ length: 9 }, (_, i) => ({ id: `cited-${i}`, claimHash: hashOf(i, 0), trackedUrl: { url: URL } })),
+    );
+
+    const bundle = await loadTrajectoryContext(
+      [{ fileHash: '0xaaa' }],
+      Array.from({ length: 9 }, (_, i) => `cited-${i}`),
+    );
+
+    expect(bundle.trajectories).toHaveLength(9);
+    expect(bundle.trajectories.every((t) => t.citedIds.length > 0)).toBe(true);
+    expect(bundle.omittedGroups).toBe(1);
+  });
+
+  it('resolves a citation pinned to an earlier detection pass, by claim hash', async () => {
+    // The cited row belongs to a pass whose ids no longer exist. patternHash
+    // hashes the presence vector and changes whenever a snapshot is added, so
+    // neither the row id nor the pattern survives a new pass — the claim hash is
+    // the only join that does.
+    (prisma.claimTrajectory.findMany as jest.Mock).mockResolvedValue([
+      { id: 'from-an-old-pass', claimHash: hashOf(0, 0), trackedUrl: { url: URL } },
+    ]);
+
+    const bundle = await loadTrajectoryContext([{ fileHash: '0xaaa' }], ['from-an-old-pass']);
+
+    expect(bundle.trajectories[0].citedIds).toEqual(['from-an-old-pass']);
+    expect(bundle.citedNotResolved).toEqual([]);
+  });
+
+  it('reports a citation that no current group contains rather than dropping it', async () => {
+    (prisma.claimTrajectory.findMany as jest.Mock).mockResolvedValue([
+      { id: 'no-longer-followed', claimHash: claimHash(normaliseClaim(UNFOLLOWED)), trackedUrl: { url: URL } },
+    ]);
+
+    const bundle = await loadTrajectoryContext([{ fileHash: '0xaaa' }], ['no-longer-followed']);
+
+    expect(bundle.citedNotResolved).toEqual(['no-longer-followed']);
+    expect(bundle.trajectories.every((t) => t.citedIds.length === 0)).toBe(true);
+  });
+
+  it('reports every citation as unresolved when the corpus has no archived page', async () => {
+    (prisma.evidence.findMany as jest.Mock).mockResolvedValue([]);
+
+    (prisma.claimTrajectory.findMany as jest.Mock).mockResolvedValue([]);
+
+    const bundle = await loadTrajectoryContext([{ fileHash: '0xarticle' }], ['gone']);
+
+    expect(bundle.citedNotResolved).toEqual(['gone']);
+    expect(getClaimTrajectories).not.toHaveBeenCalled();
+  });
+
+  it('keeps a cited group that a single flip would otherwise exclude', async () => {
+    // A one-flip claim is an ordinary removal and is not worth prompt room as
+    // context. Cited, it is the argument. On the real thesis this is the
+    // FDA-approval sentence — the exact claim the critique argued about while the
+    // trajectory proving its removal was filtered out of the critique's input.
+    const oneFlip = {
+      ...groups(1)[0],
+      patternHash: 'pattern-single-flip',
+      transitions: 1,
+      claims: [{ id: 'live-x', claimHash: hashOf(0, 0), claimText: `${FOLLOWED} — variant 0.0` }],
+    };
+    (getClaimTrajectories as jest.Mock).mockResolvedValue({ groups: [oneFlip, ...groups(3)] });
+    (prisma.claimTrajectory.findMany as jest.Mock).mockResolvedValue([
+      { id: 'cited-flip', claimHash: hashOf(0, 0), trackedUrl: { url: URL } },
+    ]);
+
+    const bundle = await loadTrajectoryContext([{ fileHash: '0xaaa' }], ['cited-flip']);
+
+    expect(bundle.trajectories.map((t) => t.patternHash)).toContain('pattern-single-flip');
+    expect(bundle.citedNotResolved).toEqual([]);
+    // Uncited single-flip groups stay excluded, and are not reported as truncated:
+    // they were never candidates, and counting a deliberate exclusion as an
+    // omission would make the note meaningless.
+    expect(bundle.omittedGroups).toBe(0);
+  });
+
+  it('still excludes an uncited single-flip group', async () => {
+    const oneFlip = {
+      ...groups(1)[0],
+      patternHash: 'pattern-single-flip',
+      transitions: 1,
+      claims: [{ id: 'live-y', claimHash: claimHash(normaliseClaim(UNFOLLOWED)), claimText: UNFOLLOWED }],
+    };
+    (getClaimTrajectories as jest.Mock).mockResolvedValue({ groups: [oneFlip, ...groups(3)] });
+    (prisma.claimTrajectory.findMany as jest.Mock).mockResolvedValue([
+      { id: 'cited-a', claimHash: hashOf(0, 0), trackedUrl: { url: URL } },
+    ]);
+
+    const bundle = await loadTrajectoryContext([{ fileHash: '0xaaa' }], ['cited-a']);
+
+    expect(bundle.trajectories.map((t) => t.patternHash)).not.toContain('pattern-single-flip');
+  });
+
+  it('looks on the pages the CITATIONS are on, not only the pages the evidence came from', async () => {
+    // Nothing requires a thesis to cite a trajectory on a page its evidence was
+    // promoted from — the publication gate requires evidence, not evidence from the
+    // same URL. Deriving the page list from evidence alone made such a citation
+    // report itself as "no longer followed": a page never looked at, described as a
+    // claim that stopped being true.
+    const OTHER = 'https://corona.health.gov.il/vaccine-for-kids/';
+    (prisma.evidence.findMany as jest.Mock).mockResolvedValue([
+      evidenceRow('0xaaa', [item(FOLLOWED, true)]),
+    ]);
+    (prisma.claimTrajectory.findMany as jest.Mock).mockResolvedValue([
+      { id: 'cited-elsewhere', claimHash: hashOf(0, 0), trackedUrl: { url: OTHER } },
+    ]);
+    (getClaimTrajectories as jest.Mock).mockImplementation((url: string) =>
+      Promise.resolve({ groups: url === OTHER ? groups(1) : [] }),
+    );
+
+    const bundle = await loadTrajectoryContext([{ fileHash: '0xaaa' }], ['cited-elsewhere']);
+
+    expect(getClaimTrajectories).toHaveBeenCalledWith(OTHER, expect.anything());
+    expect(bundle.trajectories.map((t) => t.url)).toEqual([OTHER]);
+    expect(bundle.citedNotResolved).toEqual([]);
+  });
+
+  it('resolves a citation even when the thesis cites no diff-based evidence at all', async () => {
+    const OTHER = 'https://corona.health.gov.il/vaccine-for-kids/';
+    (prisma.evidence.findMany as jest.Mock).mockResolvedValue([]);
+    (prisma.claimTrajectory.findMany as jest.Mock).mockResolvedValue([
+      { id: 'cited-elsewhere', claimHash: hashOf(0, 0), trackedUrl: { url: OTHER } },
+    ]);
+    (getClaimTrajectories as jest.Mock).mockResolvedValue({ groups: groups(1) });
+
+    const bundle = await loadTrajectoryContext([{ fileHash: '0xarticle' }], ['cited-elsewhere']);
+
+    expect(bundle.trajectories).toHaveLength(1);
+    expect(bundle.citedNotResolved).toEqual([]);
+  });
+
+  it('quotes the cited members of a group before the uncited ones', async () => {
+    // The excerpt is capped at four. Quoting four arbitrary members of a
+    // ten-claim group can quote none of the ones the thesis rests on.
+    (prisma.claimTrajectory.findMany as jest.Mock).mockResolvedValue([
+      { id: 'cited-last', claimHash: hashOf(0, 9), trackedUrl: { url: URL } },
+    ]);
+
+    const bundle = await loadTrajectoryContext([{ fileHash: '0xaaa' }], ['cited-last']);
+
+    expect(bundle.trajectories[0].claims[0]).toContain('variant 0.9');
+  });
+});
+
+describe('formatTrajectoryContext with citations', () => {
+  const cited = {
+    ...emptyTrajectoryBundle(),
+    trajectories: [
+      {
+        url: URL, patternHash: 'p1', claimCount: 4, transitions: 2, finalState: 'REMOVED' as const,
+        changes: [{ snapshotDate: '2022-08-05', present: false, snapshotUrl: `${URL}#a` }],
+        claims: [FOLLOWED], overlappingEvidence: [], citedIds: ['a', 'b'],
+      },
+      {
+        url: URL, patternHash: 'p2', claimCount: 3, transitions: 1, finalState: 'PRESENT' as const,
+        changes: [{ snapshotDate: '2022-09-06', present: true, snapshotUrl: `${URL}#b` }],
+        claims: [UNFOLLOWED], overlappingEvidence: [], citedIds: [],
+      },
+    ],
+  };
+
+  it.each(['en', 'he'] as const)('separates what the thesis cites from what it does not in %s', (lang) => {
+    const out = formatTrajectoryContext(cited, lang);
+    const marker = lang === 'en' ? 'CITED BY THIS THESIS' : 'מצוטט בתזה';
+    const negative = lang === 'en' ? 'not cited by this thesis' : 'אינו מצוטט בתזה';
+    expect(out).toContain(marker);
+    expect(out).toContain(negative);
+    // The count is the thing FINDING 61 turned on: a sentence resting on many
+    // claims read as resting on the one or two the critic happened to be shown.
+    expect(out).toContain(lang === 'en' ? '2 claims across 1 trajectory' : '2 טענות במסלול אחד');
+  });
+
+  it('says nothing about citation when nothing cites — framing precedes the document', () => {
+    const uncited = {
+      ...cited,
+      trajectories: cited.trajectories.map((t) => ({ ...t, citedIds: [] })),
+    };
+    const out = formatTrajectoryContext(uncited, 'en');
+    expect(out).not.toMatch(/CITED|not cited/);
+  });
+
+  it('marks citations that resolved to no group', () => {
+    const out = formatTrajectoryContext({ ...cited, citedNotResolved: ['x', 'y'] }, 'en');
+    expect(out).toContain('2 citations match no trajectory in the latest detection pass');
   });
 });

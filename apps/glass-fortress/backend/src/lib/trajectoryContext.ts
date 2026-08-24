@@ -4,6 +4,7 @@ import {
   claimHash,
   normaliseClaim,
   MIN_CLAIM_LENGTH,
+  MIN_TRANSITIONS,
 } from '../services/claimTrajectory';
 import { parseDiffItems } from './diffItems';
 
@@ -54,6 +55,19 @@ export interface TrajectoryContext {
    * being a trajectory's claims says nothing about the other six.
    */
   overlappingEvidence: { fileHash: string; sharedItems: number }[];
+  /**
+   * The ClaimTrajectory ids THIS THESIS cites that land in this group.
+   *
+   * Matched by claim hash, never by id or patternHash. A citation is pinned to
+   * the detection pass it was made against; `patternHash` hashes the presence
+   * vector and so changes the moment a snapshot is added, and the row ids change
+   * with it. The claim hash is the only identity that survives a new pass, which
+   * is the whole point of citing a claim rather than a pattern.
+   *
+   * Empty means the thesis does not cite this group — it is here because it is
+   * on a page the cited evidence came from, which is context, not support.
+   */
+  citedIds: string[];
 }
 
 /**
@@ -86,6 +100,16 @@ export interface TrajectoryBundle {
    * no way to know the difference.
    */
   omittedGroups: number;
+  /**
+   * Cited ClaimTrajectory ids that no group on any of these pages contains.
+   *
+   * Reported rather than dropped, for the same reason as `omittedGroups`: an
+   * agent told a thesis cites eight movements, and shown six, has no way to know
+   * the difference. A citation lands here when the claim is no longer followed by
+   * the latest pass, or when it belongs to a page none of the cited evidence
+   * came from.
+   */
+  citedNotResolved: string[];
 }
 
 /**
@@ -144,6 +168,117 @@ function coveredBy(item: DiffItemRef, claimHashes: ReadonlySet<string>, claimTex
 }
 
 /**
+ * A bundle carrying nothing.
+ *
+ * Named rather than written inline at each call site: every field added to
+ * `TrajectoryBundle` since it was introduced has broken a dozen literals, and a
+ * caller repairing one by hand is a caller deciding what a new field means.
+ */
+export function emptyTrajectoryBundle(): TrajectoryBundle {
+  return { trajectories: [], coverage: [], omittedGroups: 0, citedNotResolved: [] };
+}
+
+interface CitedClaims {
+  /** Cited row ids, keyed by claim hash. */
+  byClaimHash: ReadonlyMap<string, string[]>;
+  /** Every tracked page the cited claims live on. */
+  urls: string[];
+}
+
+/**
+ * Cited trajectory rows, keyed by CLAIM HASH rather than by row id.
+ *
+ * A citation pins the detection pass it was made against, so its row ids belong
+ * to that pass. Rows are never updated in place — a new pass writes new rows —
+ * and `patternHash` changes whenever a snapshot is added. The claim hash is the
+ * only identity that survives, so it is the only safe join between what a thesis
+ * cited and what the latest pass detected.
+ */
+async function loadCitedClaims(ids: readonly string[]): Promise<CitedClaims> {
+  const byClaimHash = new Map<string, string[]>();
+  if (ids.length === 0) return { byClaimHash, urls: [] };
+
+  const rows = await prisma.claimTrajectory.findMany({
+    where: { id: { in: [...ids] } },
+    select: { id: true, claimHash: true, trackedUrl: { select: { url: true } } },
+  });
+  for (const row of rows) {
+    const bucket = byClaimHash.get(row.claimHash);
+    if (bucket) bucket.push(row.id);
+    else byClaimHash.set(row.claimHash, [row.id]);
+  }
+  // The pages the CITATIONS are on, which is not the same set as the pages the
+  // evidence came from. Nothing requires a thesis to cite a trajectory on a page
+  // its evidence was promoted from: the publication gate requires evidence, not
+  // evidence from the same URL. Deriving the page list from evidence alone made a
+  // citation elsewhere resolve to nothing and report itself as "no longer
+  // followed" — a page that was never looked at, described as a claim that
+  // stopped being true.
+  return { byClaimHash, urls: [...new Set(rows.map((r) => r.trackedUrl.url))] };
+}
+
+/** The cited ids landing in one group, deduplicated, in the group's claim order. */
+function citedIdsIn(
+  group: { claims: readonly { claimHash: string }[] },
+  citedByClaimHash: ReadonlyMap<string, string[]>,
+): string[] {
+  const ids = new Set<string>();
+  for (const claim of group.claims) {
+    for (const id of citedByClaimHash.get(claim.claimHash) ?? []) ids.add(id);
+  }
+  return [...ids];
+}
+
+/**
+ * Which groups on one page are rendered — cited ones first, and never truncated.
+ *
+ * The cap exists to bound the prompt, and it used to keep the LARGEST groups. On
+ * a real thesis that was exactly the wrong key: the citation set had been widened
+ * from one ten-claim group to twenty-one claims across eight groups, five of them
+ * singletons, because the sentence being supported is a UNIVERSAL and one
+ * counter-example falsifies it. Size-ranked truncation dropped every singleton —
+ * the narrow set that would have UNDER-supported a true sentence stayed visible
+ * and the correction did not.
+ *
+ * So a cited group is never dropped. Where citations alone reach the cap, no
+ * uncited group is shown: uncited groups on the same page are context, cited ones
+ * are what the document argues from, and a bounded prompt should spend its room
+ * on the latter. Everything dropped is still counted in `omittedGroups`.
+ */
+function selectGroups<T extends { transitions: number; claims: readonly { claimHash: string }[] }>(
+  groups: readonly T[],
+  citedByClaimHash: ReadonlyMap<string, string[]>,
+): { selected: T[]; omitted: number } {
+  const isCited = (g: T): boolean => g.claims.some((c) => citedByClaimHash.has(c.claimHash));
+
+  // A single flip is an ordinary removal, already fully visible in the forensic
+  // timeline, so it is not worth prompt room as context — UNLESS the thesis cites
+  // it, in which case it is part of the argument and the threshold has no say.
+  //
+  // This is not hypothetical. The one cited claim on the real thesis with a single
+  // flip is the FDA-approval sentence, removed on 2022-08-05 and never restored —
+  // and it is the exact claim the previous critique built a STRONG counter-argument
+  // about, while the trajectory proving the removal was filtered out of its input.
+  const candidates = groups.filter((g) => isCited(g) || g.transitions >= MIN_TRANSITIONS);
+  const cited = candidates.filter(isCited);
+  const room = Math.max(0, MAX_GROUPS_PER_URL - cited.length);
+
+  const keep = new Set<T>(cited);
+  for (const g of candidates) {
+    if (keep.size >= cited.length + room) break;
+    if (!isCited(g)) keep.add(g);
+  }
+  return {
+    // Original order: the render numbers groups positionally, and a stable order
+    // keeps those numbers meaningful across a re-read of the same bundle.
+    selected: candidates.filter((g) => keep.has(g)),
+    // Groups below the threshold that nothing cites were never candidates, and
+    // counting them here would report a deliberate exclusion as truncation.
+    omitted: candidates.length - keep.size,
+  };
+}
+
+/**
  * Trajectories for every tracked page the supplied evidence came from, plus how
  * much of each evidence record those trajectories actually account for.
  *
@@ -153,23 +288,53 @@ function coveredBy(item: DiffItemRef, claimHashes: ReadonlySet<string>, claimTex
  */
 export async function loadTrajectoryContext(
   evidence: readonly { fileHash: string }[],
+  /**
+   * ClaimTrajectory ids the thesis under discussion cites.
+   *
+   * Required, deliberately not defaulted, for the same reason the agent's
+   * `trajectories` parameter is: a default of `[]` is precisely how a caller
+   * silently reasons over a document's citations without them. Pass `[]`
+   * explicitly where there is no document yet — framing and synthesis both
+   * precede one.
+   */
+  citedTrajectoryIds: readonly string[],
 ): Promise<TrajectoryBundle> {
-  if (evidence.length === 0) return { trajectories: [], coverage: [], omittedGroups: 0 };
+  const { byClaimHash: citedByClaimHash, urls: citedUrls } = await loadCitedClaims(citedTrajectoryIds);
 
-  const rows = await prisma.evidence.findMany({
-    where: { fileHash: { in: evidence.map((e) => e.fileHash) }, NOT: { urlVersionDiffId: null } },
-    select: {
-      fileHash: true,
-      urlVersionDiff: {
-        select: { deletedText: true, addedText: true, trackedUrl: { select: { url: true } } },
-      },
-    },
-  });
+  const rows =
+    evidence.length > 0
+      ? await prisma.evidence.findMany({
+          where: { fileHash: { in: evidence.map((e) => e.fileHash) }, NOT: { urlVersionDiffId: null } },
+          select: {
+            fileHash: true,
+            urlVersionDiff: {
+              select: { deletedText: true, addedText: true, trackedUrl: { select: { url: true } } },
+            },
+          },
+        })
+      : [];
 
-  const urls = [...new Set(rows.map((r) => r.urlVersionDiff?.trackedUrl.url).filter((u): u is string => !!u))];
+  // Both sources. Evidence reaches a page through the diff it was promoted from;
+  // a citation reaches one directly, and may reach a page no evidence touches.
+  const urls = [
+    ...new Set([
+      ...rows.map((r) => r.urlVersionDiff?.trackedUrl.url).filter((u): u is string => !!u),
+      ...citedUrls,
+    ]),
+  ];
+
+  if (urls.length === 0) {
+    return {
+      trajectories: [],
+      coverage: [],
+      omittedGroups: 0,
+      citedNotResolved: [...citedTrajectoryIds],
+    };
+  }
   const trajectories: TrajectoryContext[] = [];
   const coverage: EvidenceCoverage[] = [];
   let omittedGroups = 0;
+  const resolvedCited = new Set<string>();
 
   for (const url of urls) {
     // One page's trajectories must never break the assessment of a corpus drawn
@@ -177,7 +342,13 @@ export async function loadTrajectoryContext(
     // nothing rather than failing the caller.
     let result;
     try {
-      result = await getClaimTrajectories(url);
+      // With citations in play the threshold is applied per group in selectGroups,
+      // because a cited single-flip claim must survive it. Without them the
+      // detector's own default is the filter, exactly as before.
+      result = await getClaimTrajectories(
+        url,
+        citedByClaimHash.size > 0 ? { minTransitions: 1 } : {},
+      );
     } catch (err) {
       // Deliberate: one unscanned page must not break an assessment drawn from
       // several. Logged, because "this page contributed nothing" and "detection
@@ -215,11 +386,14 @@ export async function loadTrajectoryContext(
       }
     }
 
-    omittedGroups += Math.max(0, result.groups.length - MAX_GROUPS_PER_URL);
+    const { selected, omitted } = selectGroups(result.groups, citedByClaimHash);
+    omittedGroups += omitted;
 
-    for (const group of result.groups.slice(0, MAX_GROUPS_PER_URL)) {
+    for (const group of selected) {
       const groupHashes = new Set(group.claims.map((c) => c.claimHash));
       const groupTexts = group.claims.map((c) => normaliseClaim(c.claimText));
+      const citedIds = citedIdsIn(group, citedByClaimHash);
+      for (const id of citedIds) resolvedCited.add(id);
 
       const overlapping = onThisUrl
         .map((r) => ({
@@ -242,10 +416,15 @@ export async function loadTrajectoryContext(
           present: c.present,
           snapshotUrl: c.snapshotUrl,
         })),
-        claims: group.claims
+        // Cited members first. The excerpt is capped, and quoting four arbitrary
+        // members of a ten-claim group can quote none of the three the thesis
+        // actually rests on — which is the one thing this block exists to show.
+        claims: [...group.claims]
+          .sort((a, b) => Number(citedByClaimHash.has(b.claimHash)) - Number(citedByClaimHash.has(a.claimHash)))
           .slice(0, MAX_CLAIMS_PER_GROUP)
           .map((c) => (c.claimText.length > CLAIM_EXCERPT ? `${c.claimText.slice(0, CLAIM_EXCERPT)}…` : c.claimText)),
         overlappingEvidence: overlapping,
+        citedIds,
       });
     }
 
@@ -262,7 +441,12 @@ export async function loadTrajectoryContext(
     }
   }
 
-  return { trajectories, coverage, omittedGroups };
+  return {
+    trajectories,
+    coverage,
+    omittedGroups,
+    citedNotResolved: citedTrajectoryIds.filter((id) => !resolvedCited.has(id)),
+  };
 }
 
 /**
@@ -277,10 +461,17 @@ export function formatTrajectoryContext(
   bundle: TrajectoryBundle,
   lang: 'he' | 'en' = 'he',
 ): string {
-  const { trajectories, coverage, omittedGroups } = bundle;
+  const { trajectories, coverage, omittedGroups, citedNotResolved } = bundle;
   if (trajectories.length === 0) return '';
 
   const t = STRINGS[lang];
+
+  // Only annotate citation when there is a document doing the citing. Framing and
+  // synthesis run before one exists, and labelling every group "not cited" there
+  // would report an absence of citations as a property of the trajectories.
+  const citedClaims = trajectories.reduce((n, c) => n + c.citedIds.length, 0);
+  const citedGroups = trajectories.filter((c) => c.citedIds.length > 0).length;
+  const anyCitations = citedClaims > 0 || citedNotResolved.length > 0;
 
   const blocks = trajectories.map((c, i) => {
     const timeline = c.changes
@@ -292,8 +483,13 @@ export function formatTrajectoryContext(
           c.overlappingEvidence.map((o) => `${o.fileHash} (${t.sharedItems(o.sharedItems)})`).join(', ')
         : '';
     const quotes = c.claims.map((q) => `        · "${q}"`).join('\n');
+    const cited = !anyCitations
+      ? ''
+      : c.citedIds.length > 0
+        ? ` · ${t.citedBlock(c.citedIds.length, c.claimCount)}`
+        : ` · ${t.notCitedBlock}`;
     return (
-      `  [T${i + 1}] ${c.claimCount} ${t.movedAsUnit} · ${c.transitions} ${t.flips} · ${t.finalState}: ${c.finalState}\n` +
+      `  [T${i + 1}] ${c.claimCount} ${t.movedAsUnit} · ${c.transitions} ${t.flips} · ${t.finalState}: ${c.finalState}${cited}\n` +
       `      ${t.page}: ${c.url}\n` +
       `      ${t.timeline}: ${timeline}\n` +
       `      ${t.snapshots}: ${c.changes.map((ch) => ch.snapshotUrl).join(' , ')}${overlap}\n` +
@@ -316,7 +512,13 @@ export function formatTrajectoryContext(
   // Never let a capped list read as the whole list.
   const truncationNote = omittedGroups > 0 ? `\n\n${t.omitted(omittedGroups)}` : '';
 
-  return `${t.header}\n${t.rule}\n\n${blocks.join('\n\n')}${coverageBlock}${truncationNote}`;
+  // What the document argues FROM, separated from what merely shares its pages.
+  const citationBlock = anyCitations
+    ? `\n${t.citationRule(citedClaims, citedGroups)}` +
+      (citedNotResolved.length > 0 ? `\n${t.citedUnresolved(citedNotResolved.length)}` : '')
+    : '';
+
+  return `${t.header}\n${t.rule}${citationBlock}\n\n${blocks.join('\n\n')}${coverageBlock}${truncationNote}`;
 }
 
 const STRINGS = {
@@ -333,6 +535,18 @@ const STRINGS = {
       'מסלול אינו יודע דבר על מיקום הטקסט בעמוד, על בולטותו, או על השאלה אם הטענה\n' +
       'הוצגה לקורא — טקסט בתפריט ניווט או בכותרת תחתונה ייקרא "קיים" כמו כל טקסט אחר.\n' +
       'אל תתאר טענה כ"לא הוחזרה" אם מסלול מראה שהוחזרה.',
+    citationRule: (claims: number, groups: number) =>
+      `\nהמסמך מצטט ${String(claims)} טענות ${groups === 1 ? 'במסלול אחד' : `ב-${String(groups)} מסלולים`}. מסלול המסומן "מצוטט" הוא מה\n` +
+      'שהתזה נשענת עליו בפועל; מסלול שאינו מצוטט מופיע כאן משום שהוא באותו דף, והוא\n' +
+      'הקשר בלבד. בגוף התזה מופיע הסימון ‎#traj_T<n>‎ בסוף המשפט המצטט — כך ניתן\n' +
+      'לדעת על אילו מסלולים בדיוק נשען כל משפט. אל תשיב לטענה מתוך מסלול שאינו מצוטט\n' +
+      'כאילו הוא הבסיס של המשפט.',
+    citedBlock: (cited: number, total: number) =>
+      cited === total ? 'מצוטט בתזה (כל הטענות)' : `מצוטט בתזה (${String(cited)} מתוך ${String(total)} טענות)`,
+    notCitedBlock: 'אינו מצוטט בתזה',
+    citedUnresolved: (n: number) =>
+      `(${String(n)} ציטוטים אינם תואמים אף מסלול בזיהוי העדכני — הטענה אינה נעקבת עוד, או שהיא בדף ` +
+      'שאף ראיה מצוטטת אינה מגיעה ממנו. הם אינם מוצגים למטה.)',
     movedAsUnit: 'טענות שנעו כיחידה אחת',
     flips: 'היפוכים',
     finalState: 'מצב סופי',
@@ -372,6 +586,19 @@ const STRINGS = {
       'the reader: text in a nav menu or a footer reads as "present" like any other text.\n' +
       'Never state that a claim was "never restored" or "permanently deleted" when a trajectory\n' +
       'shows otherwise.',
+    citationRule: (claims: number, groups: number) =>
+      `\nTHIS DOCUMENT CITES ${String(claims)} claims across ${String(groups)} trajector${groups === 1 ? 'y' : 'ies'}.\n` +
+      'A trajectory marked CITED is what the thesis actually argues from; an uncited one is\n' +
+      'here because it is on the same page, and is context only. In the thesis text, the\n' +
+      'marker #traj_T<n> follows the sentence that cites trajectory [Tn], so which claims a\n' +
+      'given sentence rests on is readable rather than inferred. Do not answer a sentence\n' +
+      'using an uncited trajectory as though it were that sentence\'s basis.',
+    citedBlock: (cited: number, total: number) =>
+      cited === total ? 'CITED BY THIS THESIS (all claims)' : `CITED BY THIS THESIS (${String(cited)} of ${String(total)} claims)`,
+    notCitedBlock: 'not cited by this thesis',
+    citedUnresolved: (n: number) =>
+      `(${String(n)} citation${n === 1 ? '' : 's'} match no trajectory in the latest detection pass — the claim is ` +
+      'no longer followed, or it is on a page none of the cited evidence came from. They are not shown below.)',
     movedAsUnit: 'claims that moved as one unit',
     flips: 'flips',
     finalState: 'final state',
