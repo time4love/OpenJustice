@@ -426,15 +426,18 @@ describe('loadTrajectoryContext with citations', () => {
 
     const shown = bundle.trajectories.map((t) => t.patternHash);
     expect(shown).toContain('pattern-9');
-    expect(bundle.trajectories).toHaveLength(8);
-    expect(bundle.omittedGroups).toBe(2);
+    // The cited singleton, plus a full context budget of 8 uncited groups.
+    expect(bundle.trajectories).toHaveLength(9);
+    expect(bundle.omittedGroups).toBe(1);
     expect(bundle.trajectories.find((t) => t.patternHash === 'pattern-9')?.citedIds).toEqual(['cited-a']);
     expect(bundle.citedNotResolved).toEqual([]);
   });
 
-  it('spends the whole cap on citations when there are more than eight', async () => {
-    // Uncited groups on the same page are context; cited ones are what the
-    // document argues from. A bounded prompt spends its room on the latter.
+  it('does not let citations consume the context budget', async () => {
+    // Support and context are different in kind and must not compete. While they
+    // shared one allowance, a thesis citing eight movements paid for its own
+    // honesty by starving the critique of page context — which is exactly what
+    // happened on the real thesis, and cost it one of three counter-arguments.
     (prisma.claimTrajectory.findMany as jest.Mock).mockResolvedValue(
       Array.from({ length: 9 }, (_, i) => ({ id: `cited-${i}`, claimHash: hashOf(i, 0), trackedUrl: { url: URL } })),
     );
@@ -444,9 +447,11 @@ describe('loadTrajectoryContext with citations', () => {
       Array.from({ length: 9 }, (_, i) => `cited-${i}`),
     );
 
-    expect(bundle.trajectories).toHaveLength(9);
-    expect(bundle.trajectories.every((t) => t.citedIds.length > 0)).toBe(true);
-    expect(bundle.omittedGroups).toBe(1);
+    // All 9 cited, PLUS the one remaining uncited group as context.
+    expect(bundle.trajectories).toHaveLength(10);
+    expect(bundle.trajectories.filter((t) => t.citedIds.length > 0)).toHaveLength(9);
+    expect(bundle.trajectories.filter((t) => t.citedIds.length === 0)).toHaveLength(1);
+    expect(bundle.omittedGroups).toBe(0);
   });
 
   it('resolves a citation pinned to an earlier detection pass, by claim hash', async () => {
@@ -620,5 +625,46 @@ describe('formatTrajectoryContext with citations', () => {
   it('marks citations that resolved to no group', () => {
     const out = formatTrajectoryContext({ ...cited, citedNotResolved: ['x', 'y'] }, 'en');
     expect(out).toContain('2 citations match no trajectory in the latest detection pass');
+  });
+});
+
+describe('formatTrajectoryContext context rendering', () => {
+  function block(i: number, cited: boolean) {
+    return {
+      url: URL, patternHash: `p${i}`, claimCount: 2, transitions: 3, finalState: 'REMOVED' as const,
+      changes: [{ snapshotDate: '2022-08-05', present: false, snapshotUrl: `${URL}#${i}` }],
+      claims: [FOLLOWED], overlappingEvidence: [{ fileHash: '0xmixed', sharedItems: 2 }],
+      citedIds: cited ? [`c${i}`] : [],
+    };
+  }
+
+  it('renders cited movements in full and uncited ones in short form', () => {
+    const mixed = {
+      ...emptyTrajectoryBundle(),
+      trajectories: [block(0, true), block(1, false), block(2, false)],
+    };
+    const out = formatTrajectoryContext(mixed, 'en');
+
+    // Every movement is listed; only one carries quotes and snapshot links.
+    expect(out.match(/\[T\d+\]/g)).toHaveLength(3);
+    expect(out.match(/Archived snapshots/g)).toHaveLength(1);
+    // Overlap survives the shortening: it is the strongest signal that an uncited
+    // movement is relevant at all, and it costs one line.
+    expect(out.match(/0xmixed/g)).toHaveLength(3);
+    expect(out).toContain('2 uncited trajectories are shown in short form');
+    expect(out).toContain('say so explicitly rather than relying on wording you were not shown');
+  });
+
+  it('shortens nothing when no document is citing', () => {
+    // Framing and synthesis precede a document. Shortening there would degrade a
+    // caller that has no citations to protect, for a saving nothing asked for.
+    const uncited = {
+      ...emptyTrajectoryBundle(),
+      trajectories: [block(0, false), block(1, false)],
+    };
+    const out = formatTrajectoryContext(uncited, 'en');
+
+    expect(out.match(/Archived snapshots/g)).toHaveLength(2);
+    expect(out).not.toMatch(/short form/);
   });
 });

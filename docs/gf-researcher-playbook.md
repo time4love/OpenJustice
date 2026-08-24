@@ -3348,3 +3348,155 @@ against the label a human reads, and here the label said production while the co
 Corrected to name staging, with a line pointing at `.env.production.local` for the deliberate case.
 (Refs deliberately not reproduced here — this repository is public. `.env` is gitignored, so the fix
 is local and does not travel with this branch.)
+
+## Step 27 — The critique, re-run against a backend that can see the citations
+
+PR #136 landed on `staging` (`4eada89`), staging redeployed SUCCESS, and `run_ai_analysis` ran once
+on head `cmt728lod0002g8uulash6lw9`. `status: COMPLETE`, `cached: false`.
+
+| Field | Before (Step 24) | After |
+|---|---|---|
+| `overallStrengthAssessment` | `MODERATE` | `MODERATE` |
+| `counterArguments` | 3 | 3 |
+| `evidenceGaps` | 2 | 2 — **both rewritten** |
+| `alternativeInterpretations` | 2 | 2 |
+
+Predictions scored honestly: **P3 and P5 confirmed** (count and strength unmoved). **P4 wrong on
+content** — the gap count held but both gaps changed. **P2 wrong.** **P1 half wrong.** **P6
+confirmed, against the change.**
+
+### FINDING 69 — the critique now argues by trajectory label, and is therefore checkable itself
+
+The STRONG counter-argument reads *"ניתוח המסלולים (Trajectories T1, T3, T4)"* and names the months
+those movements flip in. The labels travelled: block `[Tn]`, prose marker `#traj_Tn`, and the critic's
+own citation are the same trajectory by construction.
+
+This is a capability the critique did not have. A rebuttal that names T1 can be audited against the
+archive by anyone — the labels were recomputed from the pinned computation, independently of the
+model's output, to check exactly that below. **The adversary is now subject to the same standard as
+the thesis.**
+
+### FINDING 70 — the boilerplate in the cited set became the adversary's strongest weapon
+
+The open editorial question was whether citing a vaccination-site map line and a "more information"
+link — both of which genuinely share the 2022-08-05 removal — dilutes the strong claims. It is now
+answered by measurement rather than taste.
+
+Recomputing the label assignment from the pinned computation, in the order the bundle renders:
+
+| Label | Claims | Flips | What it is |
+|---|---|---|---|
+| T1 | 10 | 6 | the fourth-dose / risk-group block |
+| T3 | 2 | 5 | side-effects sentence **+ a "more information" link** |
+| T4 | 1 | 6 | **the vaccination-site map line** |
+
+**T1, T3 and T4 are precisely the three the critic used**, and two of them are the boilerplate. The
+argument it builds is that these texts came and went repeatedly through May, August, September and
+November — which is *true of all three*, and most obviously true of a daily-updated clinic map, whose
+oscillation says nothing whatever about safety messaging.
+
+So the cost of citing boilerplate is not dilution in the abstract. It is a specific `STRONG`
+counter-argument, correctly reasoned from correctly cited data, that the researcher handed to the
+other side. Narrowing the citation is now a decision with a measured consequence attached — still the
+researcher's to make, and it requires a new version, since `cite_trajectories` refuses duplicates.
+
+### FINDING 71 — a claim can be made visible and still not be reasoned about
+
+The whole of FINDING 66 was about one claim: the FDA-approval sentence, single-flip, excluded by the
+`minTransitions: 2` read filter, and the subject of the previous critique's third `STRONG`
+counter-argument. It is now in the prompt as **T8**, marked cited, with its timeline.
+
+The critique does not mention it. Instead it invokes FDA approval in the *opposite* direction — as a
+reason the ministry's public representation was reasonable — without noting that the sentence asserting
+that approval is itself one of the claims removed on 2022-08-05 and never restored.
+
+Getting a claim into the context is necessary and is not sufficient. That distinction was invisible
+while the claim was being filtered out, and it is the next thing worth attacking.
+
+### FINDING 72 — the change cost the critique an argument, and this is the honest ledger
+
+Spending the whole per-page cap on citations removed 5 uncited groups (23 claims) from the prompt. The
+previous critique's second counter-argument — relocation to subpages is not concealment — leaned on two
+of them, and it is gone.
+
+What replaced it is not nothing: the new second and third counter-arguments reason from the evidence
+records instead, one citing an evidence hash directly to argue that quantitative figures were dropped
+in November 2022 because a reformulated vaccine had arrived. Whether trading uncited page context for
+complete citation coverage is net-positive is genuinely arguable. It is recorded rather than settled,
+and `omittedGroups` reports the 13 groups now withheld so the loss is visible in the prompt itself.
+
+### The gaps changed, and toward the thing FINDING 62 said was missing
+
+Both `evidenceGaps` were rewritten. The first still asks for the full Berkovitch report and the
+official discussion protocols. The second is new and is no longer a documents request at all: it names
+the **absence of evidence of reliance and specific damage** — vaccinees who relied on the page at the
+point of informed consent.
+
+FINDING 62 recorded that the agenda has no third state for a gap the vault cannot close. This gap is
+worse than that and more useful: it cannot be closed by any document, only by claimants. It is the
+first output of this workflow that points outside the archive entirely.
+
+## Step 28 — Support and context stop competing
+
+### What this staging exercise is actually for
+
+Stated by the user while deciding this change, and worth recording because it settles a class of
+trade-off that keeps recurring: **the purpose of running a real thesis on staging is to uncover and
+model how a thesis evolves through debate between a human and an AI critique.** Prompt economy is not
+the thing being optimised. Adversarial coverage is. A regression that costs the critique an argument
+is therefore expensive even when it costs no tokens — which is why FINDING 72 was worth acting on with
+n=1 rather than waiting for a second example.
+
+### FINDING 73 — one budget was serving two different kinds, and only citations made it visible
+
+`MAX_GROUPS_PER_URL = 8` was a single per-page allowance. Exempting citations from it (PR #136) made
+them draw from it, so eight cited movements left `room = 0` and every context group was squeezed out.
+
+The defect was not the exemption. It was that **support and context had always shared one budget**:
+
+- a **cited** movement is SUPPORT — completeness is the point, since a partial citation set is a
+  dishonest one, and that is exactly why this citation was widened from one group to eight;
+- an **uncited** movement on the same page is CONTEXT — a sample was always sufficient, and nothing
+  ever needed all 21 groups the page produces.
+
+While they shared an allowance, a thesis paid for its own honesty by starving its critic of context.
+That conflation predates citations entirely; it was simply invisible while nothing was cited.
+
+**The fix introduces no new constant.** Citations draw from no budget at all. The existing 8 —
+already the justified answer to "how much page context is enough" — becomes exactly that and nothing
+else, renamed `MAX_CONTEXT_GROUPS_PER_URL`.
+
+Context is rendered SHORT once a document is citing: shape, timeline and evidence overlap, but no
+quotes and no snapshot links. The distinction is of **kind, not of count** — support must be checkable
+word by word because a critique rests on the exact string, while context only has to be recognisable
+as a pattern. (An earlier attempt shortened *cited* blocks past an arbitrary count and was reverted;
+see FINDING 68. This one is a rule about what a thing is FOR.) Overlap survives the shortening,
+because "this uncited movement contains claims that appear in your evidence" is the strongest signal
+that a context group is relevant at all, and it costs one line. Nothing is shortened until something
+is citing, so framing and synthesis read exactly as before.
+
+The note that accompanies it tells the critic what it is looking at and what to do about it: *if one
+of these is load-bearing for your answer, say so explicitly rather than relying on wording you were
+not shown.*
+
+### Measured on the real thesis, recomputed against the pinned computation
+
+| | Blocks | Cited movements | Cited claims | Context groups | Eligible groups withheld |
+|---|---|---|---|---|---|
+| before #136 — shared budget, size-ranked | 8 | 3 of 8 | 16 of 21 | 5 | 8 |
+| after #136 — shared budget, cited exempt | 8 | 8 of 8 | 21 of 21 | **0** | 8 |
+| **with the split** | 16 | 8 of 8 | 21 of 21 | **8** | **0** |
+
+FINDING 72 is closed, and the result is not a restoration: context coverage goes from five groups to
+eight, and **nothing eligible is withheld from the critique at all** for the first time in this
+exercise.
+
+### Left open on purpose
+
+Uncited groups are still sampled **by size**, which is a rougher key than it looks. The context an
+adversary actually wants is what else moved ON THE SAME CAPTURES as the cited claims — a co-movement
+sharing 2022-08-05 is what makes "routine churn" arguable or not, and a large group that moved on
+unrelated dates is nearly useless for that. No example has yet shown size-ranking picking the wrong
+context, so no heuristic was invented for it. Recorded, not built.
+
+Backend 1356/1356, `tsc` clean, `eslint src/` unchanged at its pre-change count.

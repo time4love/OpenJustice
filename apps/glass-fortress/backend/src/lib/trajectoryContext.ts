@@ -29,8 +29,23 @@ import { parseDiffItems } from './diffItems';
 // which is the whole error. Where they conflict, the trajectory governs.
 // ---------------------------------------------------------------------------
 
-/** Groups per URL. Enough to carry the pattern; not enough to swamp the prompt. */
-const MAX_GROUPS_PER_URL = 8;
+/**
+ * UNCITED groups shown per URL. Enough to carry the pattern; not enough to swamp
+ * the prompt.
+ *
+ * This is a budget for CONTEXT, and for nothing else. Citations draw from no
+ * budget at all — every cited movement is always rendered.
+ *
+ * The two are different in kind and must not compete. A cited movement is
+ * SUPPORT: completeness is the whole point, because a partial citation set is a
+ * dishonest one. An uncited movement on the same page is CONTEXT: a sample has
+ * always been sufficient, and nobody ever needed all 21 groups a page can produce.
+ * While they shared one allowance, a thesis citing eight movements silently paid
+ * for its own honesty by starving the critique of page context — measured on the
+ * real thesis, which lost all five context groups and, with them, one of the
+ * critique's three counter-arguments.
+ */
+const MAX_CONTEXT_GROUPS_PER_URL = 8;
 /** Claim texts are quoted for verification, not read in full. */
 const CLAIM_EXCERPT = 220;
 const MAX_CLAIMS_PER_GROUP = 4;
@@ -230,20 +245,22 @@ function citedIdsIn(
 }
 
 /**
- * Which groups on one page are rendered — cited ones first, and never truncated.
+ * Which groups on one page are rendered: every cited one, plus a sample of the rest.
  *
- * The cap exists to bound the prompt, and it used to keep the LARGEST groups. On
- * a real thesis that was exactly the wrong key: the citation set had been widened
- * from one ten-claim group to twenty-one claims across eight groups, five of them
- * singletons, because the sentence being supported is a UNIVERSAL and one
- * counter-example falsifies it. Size-ranked truncation dropped every singleton —
- * the narrow set that would have UNDER-supported a true sentence stayed visible
- * and the correction did not.
+ * The cap used to keep the LARGEST groups, and on a real thesis that was exactly
+ * the wrong key: the citation set had been widened from one ten-claim group to
+ * twenty-one claims across eight groups, five of them singletons, because the
+ * sentence being supported is a UNIVERSAL and one counter-example falsifies it.
+ * Size-ranked truncation dropped every singleton — the narrow set that would have
+ * UNDER-supported a true sentence stayed visible, and the correction did not.
  *
- * So a cited group is never dropped. Where citations alone reach the cap, no
- * uncited group is shown: uncited groups on the same page are context, cited ones
- * are what the document argues from, and a bounded prompt should spend its room
- * on the latter. Everything dropped is still counted in `omittedGroups`.
+ * So a cited group is never dropped, and it does not consume the context budget
+ * either. Uncited groups are still sampled by size, which is a rougher key than it
+ * looks: the context an adversary actually wants is what else moved ON THE SAME
+ * CAPTURES as the cited claims. That is an open question, deliberately not
+ * answered by a heuristic invented ahead of an example that needs it.
+ *
+ * Everything dropped is still counted in `omittedGroups`.
  */
 function selectGroups<T extends { transitions: number; claims: readonly { claimHash: string }[] }>(
   groups: readonly T[],
@@ -260,14 +277,8 @@ function selectGroups<T extends { transitions: number; claims: readonly { claimH
   // and it is the exact claim the previous critique built a STRONG counter-argument
   // about, while the trajectory proving the removal was filtered out of its input.
   const candidates = groups.filter((g) => isCited(g) || g.transitions >= MIN_TRANSITIONS);
-  const cited = candidates.filter(isCited);
-  const room = Math.max(0, MAX_GROUPS_PER_URL - cited.length);
-
-  const keep = new Set<T>(cited);
-  for (const g of candidates) {
-    if (keep.size >= cited.length + room) break;
-    if (!isCited(g)) keep.add(g);
-  }
+  const context = candidates.filter((g) => !isCited(g)).slice(0, MAX_CONTEXT_GROUPS_PER_URL);
+  const keep = new Set<T>([...candidates.filter(isCited), ...context]);
   return {
     // Original order: the render numbers groups positionally, and a stable order
     // keeps those numbers meaningful across a re-read of the same bundle.
@@ -488,10 +499,21 @@ export function formatTrajectoryContext(
       : c.citedIds.length > 0
         ? ` · ${t.citedBlock(c.citedIds.length, c.claimCount)}`
         : ` · ${t.notCitedBlock}`;
-    return (
+    const header =
       `  [T${i + 1}] ${c.claimCount} ${t.movedAsUnit} · ${c.transitions} ${t.flips} · ${t.finalState}: ${c.finalState}${cited}\n` +
       `      ${t.page}: ${c.url}\n` +
-      `      ${t.timeline}: ${timeline}\n` +
+      `      ${t.timeline}: ${timeline}`;
+
+    // Context is rendered short: shape, timeline, and which evidence shares its
+    // claims — but no quotes and no snapshot links. The distinction is of KIND,
+    // not of count. Support must be checkable word by word, because a critique
+    // rests on the exact string; context only has to be recognisable as a pattern.
+    // Nothing is shortened until a document is actually citing, so framing and
+    // synthesis — which precede one — read exactly as they did before.
+    if (anyCitations && c.citedIds.length === 0) return `${header}${overlap}`;
+
+    return (
+      `${header}\n` +
       `      ${t.snapshots}: ${c.changes.map((ch) => ch.snapshotUrl).join(' , ')}${overlap}\n` +
       `      ${t.claims}:\n${quotes}`
     );
@@ -509,8 +531,13 @@ export function formatTrajectoryContext(
           .join('\n')
       : '';
 
-  // Never let a capped list read as the whole list.
+  // Never let a capped list read as the whole list, and never let a shortened
+  // entry read as a complete account of what is known about that movement.
   const truncationNote = omittedGroups > 0 ? `\n\n${t.omitted(omittedGroups)}` : '';
+  const shortenedContext = anyCitations
+    ? trajectories.filter((c) => c.citedIds.length === 0).length
+    : 0;
+  const contextNote = shortenedContext > 0 ? `\n\n${t.contextShort(shortenedContext)}` : '';
 
   // What the document argues FROM, separated from what merely shares its pages.
   const citationBlock = anyCitations
@@ -518,7 +545,7 @@ export function formatTrajectoryContext(
       (citedNotResolved.length > 0 ? `\n${t.citedUnresolved(citedNotResolved.length)}` : '')
     : '';
 
-  return `${t.header}\n${t.rule}${citationBlock}\n\n${blocks.join('\n\n')}${coverageBlock}${truncationNote}`;
+  return `${t.header}\n${t.rule}${citationBlock}\n\n${blocks.join('\n\n')}${coverageBlock}${contextNote}${truncationNote}`;
 }
 
 const STRINGS = {
@@ -547,6 +574,10 @@ const STRINGS = {
     citedUnresolved: (n: number) =>
       `(${String(n)} ציטוטים אינם תואמים אף מסלול בזיהוי העדכני — הטענה אינה נעקבת עוד, או שהיא בדף ` +
       'שאף ראיה מצוטטת אינה מגיעה ממנו. הם אינם מוצגים למטה.)',
+    contextShort: (n: number) =>
+      `(${String(n)} המסלולים שאינם מצוטטים מוצגים בקצרה — צורה, ציר וחפיפה לראיות, ללא ציטוטים ` +
+      'וללא קישורי ארכיון. הם הקשר, לא בסיס הטיעון. אם אחד מהם נחוץ לתשובה, אמור זאת במפורש ' +
+      'במקום להסתמך על נוסח שלא הוצג לך.',
     movedAsUnit: 'טענות שנעו כיחידה אחת',
     flips: 'היפוכים',
     finalState: 'מצב סופי',
@@ -599,6 +630,11 @@ const STRINGS = {
     citedUnresolved: (n: number) =>
       `(${String(n)} citation${n === 1 ? '' : 's'} match no trajectory in the latest detection pass — the claim is ` +
       'no longer followed, or it is on a page none of the cited evidence came from. They are not shown below.)',
+    contextShort: (n: number) =>
+      `(${String(n)} uncited trajector${n === 1 ? 'y is' : 'ies are'} shown in short form — shape, timeline ` +
+      'and evidence overlap, without quotes or snapshot links. They are context, not the basis of the ' +
+      'argument. If one of them is load-bearing for your answer, say so explicitly rather than relying ' +
+      'on wording you were not shown.)',
     movedAsUnit: 'claims that moved as one unit',
     flips: 'flips',
     finalState: 'final state',
