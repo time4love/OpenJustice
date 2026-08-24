@@ -3653,3 +3653,30 @@ T8 in run 3 is a context group reading *"four vaccine types are approved in Isra
 single-flip claim reading *"three vaccine types are approved in Israel"*. The page changed its own
 count. Both were in front of the critic, which engaged neither — the same silence as FINDING 71, now
 with the two halves of a contradiction sitting eight labels apart.
+
+## Step 31 — The gate was still passing a stale critique
+
+Found on the way to publishing, which is where it would have mattered.
+
+### FINDING 76 — the fingerprint closed the serving path and not the gate
+
+FINDING 74 said, in its own words, that *"a thesis could publish carrying a critique argued against
+facts that had since changed, with every hard gate green."* The fix made `run_ai_analysis` re-run
+instead of serving a stale answer. **Check 2 was never touched.** It still asks
+`status === 'COMPLETE' && aiAnalysis !== null` — whether an analysis EXISTS — and nothing asked
+whether it still answers anything.
+
+So the sentence that motivated the fix remained true after it. Nobody had to do anything wrong: the
+label change one commit earlier altered the rendered trajectory block, which is part of the critic's
+input, so the stored critique was stale by the fingerprint's own definition while the gate would still
+have published it.
+
+**Check 16 `ANALYSIS_CURRENT`, hard.** Check 2 asks whether an analysis exists; check 16 asks whether
+it still answers the facts. Two questions, two checks, two different remedies — *run it* versus
+*re-run it* — and conflating them is exactly how the first one came to be read as the second.
+
+The assembly of the critic's input is now extracted (`buildCritiqueInput`), so the gate and the runner
+cannot disagree about what that input is. They already had disagreed in spirit, which is the whole
+finding.
+
+Backend 1367/1367, `tsc` clean, `eslint src/` still one below where the session started.
