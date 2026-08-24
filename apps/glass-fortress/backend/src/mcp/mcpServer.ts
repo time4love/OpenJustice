@@ -9,6 +9,7 @@ import { createEvidenceFromTextSchema, createEvidenceFromTextHandler } from './t
 import { startForensicScanSchema, startForensicScanHandler } from './tools/startForensicScan';
 import { createThesisDraftSchema, createThesisDraftHandler } from './tools/createThesisDraft';
 import { addThesisVersionSchema, addThesisVersionHandler } from './tools/addThesisVersion';
+import { citeTrajectoriesSchema, citeTrajectoriesHandler } from './tools/citeTrajectories';
 import { runAiAnalysisSchema, runAiAnalysisHandler } from './tools/runAiAnalysis';
 import { createResearchSessionSchema, createResearchSessionHandler } from './tools/createResearchSession';
 import { addSessionNoteSchema, addSessionNoteHandler } from './tools/addSessionNote';
@@ -389,6 +390,26 @@ export function createMcpServer(): McpServer {
     addThesisVersionSchema,
     async (input) => ({
       content: [{ type: 'text' as const, text: await addThesisVersionHandler(input) }],
+    }),
+  );
+
+  // -------------------------------------------------------------------------
+  // Tool: cite_trajectories  [WRITE — STAGING GATE]
+  // Attaches claim trajectories to claims already written, WITHOUT re-authoring
+  // the thesis. add_thesis_version takes the body as Markdown, and nothing hands
+  // the stored document back in that form, so adding one citation through it
+  // means retyping the whole thesis by hand past every working citation in it.
+  // -------------------------------------------------------------------------
+  server.tool(
+    'cite_trajectories',
+    'Attach claim trajectories to sentences already written, without touching the prose. Anchors ' +
+      'on an exact substring of the existing text and splices the citation in after it; the prose is ' +
+      'asserted byte-identical afterwards, and an anchor matching zero times or more than once is ' +
+      'refused rather than guessed. Writes a new PENDING_AI version — use this instead of ' +
+      'add_thesis_version when only the CITATIONS change, never to edit what the thesis says.',
+    citeTrajectoriesSchema,
+    async (input) => ({
+      content: [{ type: 'text' as const, text: await citeTrajectoriesHandler(input) }],
     }),
   );
 

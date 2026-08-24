@@ -62,6 +62,10 @@ export const WRITE_TOOLS = new Set([
   'start_forensic_scan',
   'create_thesis_draft',
   'add_thesis_version',
+  // Writes a new ThesisVersion. Cheaper and narrower than add_thesis_version —
+  // it cannot change the prose — but it is still a write on the one artifact
+  // that names living officials.
+  'cite_trajectories',
   'run_ai_analysis',
   'create_research_session',
   'add_session_note',
