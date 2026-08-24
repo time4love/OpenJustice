@@ -34,6 +34,18 @@ interface Computation {
 
 const db = { rows: [] as Row[], computations: [] as Computation[] };
 
+/**
+ * Computation ids are unique per test.
+ *
+ * The resolver memoises a computation's rows, which is sound because a
+ * computation is never updated in place — new state means a new computation. A
+ * fixture that reused one id with different rows would be asserting against a
+ * state the system cannot reach, and would read as a caching bug when the
+ * second test got the first test's rows.
+ */
+let testRun = 0;
+const cid = (name: string): string => `${String(testRun)}-${name}`;
+
 jest.mock('../src/lib/prisma', () => ({
   prisma: {
     claimTrajectory: {
@@ -126,6 +138,7 @@ const CLAIM = 'במהלך הניסויים הקליניים של חיסוני ה
 beforeEach(() => {
   db.rows = [];
   db.computations = [];
+  testRun++;
 });
 
 // ---------------------------------------------------------------------------
@@ -171,27 +184,27 @@ describe('trajectoriesAgree — the flip-sequence comparison', () => {
 
 describe('resolving a citation', () => {
   it('resolves to the PINNED pass after a later scan writes a new one', async () => {
-    addComputation('comp-1', '2026-08-23T10:00:00Z', 4);
-    const cited = addRow('traj-1', 'comp-1', CLAIM, CAPTURES, [true, false, false, false]);
+    addComputation(cid('comp-1'), '2026-08-23T10:00:00Z', 4);
+    const cited = addRow('traj-1', cid('comp-1'), CLAIM, CAPTURES, [true, false, false, false]);
 
     // A later scan, one capture longer, in which the claim came back.
-    addComputation('comp-2', '2026-08-24T10:00:00Z', 5);
-    addRow('traj-9', 'comp-2', CLAIM, [...CAPTURES, '2022-10-01'], [true, false, false, false, true]);
+    addComputation(cid('comp-2'), '2026-08-24T10:00:00Z', 5);
+    addRow('traj-9', cid('comp-2'), CLAIM, [...CAPTURES, '2022-10-01'], [true, false, false, false, true]);
 
     const { resolved } = await resolveTrajectoryCitations([cited.id]);
 
     expect(resolved).toHaveLength(1);
-    expect(resolved[0].computation.id).toBe('comp-1');
+    expect(resolved[0].computation.id).toBe(cid('comp-1'));
     // The cited reading, not the current one: four captures, ending REMOVED.
     expect(resolved[0].observations).toHaveLength(4);
     expect(resolved[0].finalState).toBe('REMOVED');
   });
 
   it('reports RECOMPUTED_DISAGREES when a newer pass contradicts the cited one', async () => {
-    addComputation('comp-1', '2026-08-23T10:00:00Z', 4);
-    const cited = addRow('traj-1', 'comp-1', CLAIM, CAPTURES, [true, false, false, false]);
-    addComputation('comp-2', '2026-08-24T10:00:00Z', 5);
-    addRow('traj-9', 'comp-2', CLAIM, [...CAPTURES, '2022-10-01'], [true, false, false, false, true]);
+    addComputation(cid('comp-1'), '2026-08-23T10:00:00Z', 4);
+    const cited = addRow('traj-1', cid('comp-1'), CLAIM, CAPTURES, [true, false, false, false]);
+    addComputation(cid('comp-2'), '2026-08-24T10:00:00Z', 5);
+    addRow('traj-9', cid('comp-2'), CLAIM, [...CAPTURES, '2022-10-01'], [true, false, false, false, true]);
 
     const { resolved } = await resolveTrajectoryCitations([cited.id]);
 
@@ -202,10 +215,10 @@ describe('resolving a citation', () => {
   });
 
   it('reports RECOMPUTED_AGREES when the newer pass tells the same story', async () => {
-    addComputation('comp-1', '2026-08-23T10:00:00Z', 4);
-    const cited = addRow('traj-1', 'comp-1', CLAIM, CAPTURES, [true, false, false, false]);
-    addComputation('comp-2', '2026-08-24T10:00:00Z', 5);
-    addRow('traj-9', 'comp-2', CLAIM, [...CAPTURES, '2022-10-01'], [true, false, false, false, false]);
+    addComputation(cid('comp-1'), '2026-08-23T10:00:00Z', 4);
+    const cited = addRow('traj-1', cid('comp-1'), CLAIM, CAPTURES, [true, false, false, false]);
+    addComputation(cid('comp-2'), '2026-08-24T10:00:00Z', 5);
+    addRow('traj-9', cid('comp-2'), CLAIM, [...CAPTURES, '2022-10-01'], [true, false, false, false, false]);
 
     const { resolved } = await resolveTrajectoryCitations([cited.id]);
 
@@ -213,8 +226,8 @@ describe('resolving a citation', () => {
   });
 
   it('reports PINNED_IS_LATEST when nothing has been recomputed since', async () => {
-    addComputation('comp-1', '2026-08-23T10:00:00Z', 4);
-    const cited = addRow('traj-1', 'comp-1', CLAIM, CAPTURES, [true, false, false, false]);
+    addComputation(cid('comp-1'), '2026-08-23T10:00:00Z', 4);
+    const cited = addRow('traj-1', cid('comp-1'), CLAIM, CAPTURES, [true, false, false, false]);
 
     const { resolved } = await resolveTrajectoryCitations([cited.id]);
 
@@ -224,10 +237,10 @@ describe('resolving a citation', () => {
   it('calls it silence, not disagreement, when the newest pass no longer follows the claim', async () => {
     // A reclassification can stop surfacing a candidate. The newer pass then
     // makes no statement about it, and silence must not read as a contradiction.
-    addComputation('comp-1', '2026-08-23T10:00:00Z', 4);
-    const cited = addRow('traj-1', 'comp-1', CLAIM, CAPTURES, [true, false, false, false]);
-    addComputation('comp-2', '2026-08-24T10:00:00Z', 4);
-    addRow('traj-9', 'comp-2', 'a completely different claim that is long enough to be followed', CAPTURES, [
+    addComputation(cid('comp-1'), '2026-08-23T10:00:00Z', 4);
+    const cited = addRow('traj-1', cid('comp-1'), CLAIM, CAPTURES, [true, false, false, false]);
+    addComputation(cid('comp-2'), '2026-08-24T10:00:00Z', 4);
+    addRow('traj-9', cid('comp-2'), 'a completely different claim that is long enough to be followed', CAPTURES, [
       true,
       false,
       true,
@@ -240,8 +253,8 @@ describe('resolving a citation', () => {
   });
 
   it('reports ids that no longer resolve rather than dropping them', async () => {
-    addComputation('comp-1', '2026-08-23T10:00:00Z', 4);
-    const cited = addRow('traj-1', 'comp-1', CLAIM, CAPTURES, [true, false, false, false]);
+    addComputation(cid('comp-1'), '2026-08-23T10:00:00Z', 4);
+    const cited = addRow('traj-1', cid('comp-1'), CLAIM, CAPTURES, [true, false, false, false]);
 
     const { resolved, missing } = await resolveTrajectoryCitations([cited.id, 'traj-deleted']);
 
@@ -256,9 +269,9 @@ describe('co-movement', () => {
     // vanishing together is much harder to explain as routine editing than
     // eight unrelated removals. The group has no citable id of its own, so a
     // thesis cites all eight and the renderer regroups them.
-    addComputation('comp-1', '2026-08-23T10:00:00Z', 4);
+    addComputation(cid('comp-1'), '2026-08-23T10:00:00Z', 4);
     const ids = Array.from({ length: 8 }, (_, i) =>
-      addRow(`traj-${String(i + 1)}`, 'comp-1', `${CLAIM} — variant number ${String(i + 1)}`, CAPTURES, [
+      addRow(`traj-${String(i + 1)}`, cid('comp-1'), `${CLAIM} — variant number ${String(i + 1)}`, CAPTURES, [
         false,
         true,
         true,
@@ -266,7 +279,7 @@ describe('co-movement', () => {
       ]).id,
     );
     // One claim on the same page that moved differently — must not be swept in.
-    addRow('traj-other', 'comp-1', `${CLAIM} — moved alone and stayed`, CAPTURES, [true, true, true, true]);
+    addRow('traj-other', cid('comp-1'), `${CLAIM} — moved alone and stayed`, CAPTURES, [true, true, true, true]);
 
     const { resolved } = await resolveTrajectoryCitations(ids);
 
@@ -279,9 +292,9 @@ describe('co-movement', () => {
   });
 
   it('marks group members that the thesis did NOT cite', async () => {
-    addComputation('comp-1', '2026-08-23T10:00:00Z', 4);
-    const a = addRow('traj-1', 'comp-1', `${CLAIM} — one`, CAPTURES, [false, true, true, false]);
-    addRow('traj-2', 'comp-1', `${CLAIM} — two`, CAPTURES, [false, true, true, false]);
+    addComputation(cid('comp-1'), '2026-08-23T10:00:00Z', 4);
+    const a = addRow('traj-1', cid('comp-1'), `${CLAIM} — one`, CAPTURES, [false, true, true, false]);
+    addRow('traj-2', cid('comp-1'), `${CLAIM} — two`, CAPTURES, [false, true, true, false]);
 
     const { resolved } = await resolveTrajectoryCitations([a.id]);
 
@@ -316,8 +329,8 @@ describe('what a trajectory citation is allowed to claim', () => {
   });
 
   it('travels with every resolved citation, not with the docs', async () => {
-    addComputation('comp-1', '2026-08-23T10:00:00Z', 4);
-    const cited = addRow('traj-1', 'comp-1', CLAIM, CAPTURES, [true, false, false, false]);
+    addComputation(cid('comp-1'), '2026-08-23T10:00:00Z', 4);
+    const cited = addRow('traj-1', cid('comp-1'), CLAIM, CAPTURES, [true, false, false, false]);
 
     const { resolved } = await resolveTrajectoryCitations([cited.id]);
 
@@ -331,8 +344,8 @@ describe('what a trajectory citation is allowed to claim', () => {
 
 describe('loadTrajectoryCitationLabels', () => {
   it('names the ids that do not exist, so a typo is caught before anything is written', async () => {
-    addComputation('comp-1', '2026-08-23T10:00:00Z', 4);
-    addRow('traj-1', 'comp-1', CLAIM, CAPTURES, [true, false, false, false]);
+    addComputation(cid('comp-1'), '2026-08-23T10:00:00Z', 4);
+    addRow('traj-1', cid('comp-1'), CLAIM, CAPTURES, [true, false, false, false]);
 
     const { labels, unknown } = await loadTrajectoryCitationLabels(['traj-1', 'traj-typo']);
 
