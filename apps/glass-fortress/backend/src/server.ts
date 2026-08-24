@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import path from 'path';
 import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 
@@ -144,6 +145,15 @@ app.use('/api/mcp', generalLimiter, mcpRouter);
 // authenticate. Confirmed live this was actually blocking a real claude.ai
 // connection attempt — see docs/gf-mcp-oauth-dev-plan.md §7.0c.
 app.use('/.well-known', wellKnownRouter);
+
+// The connector's icon, and the favicon a client falls back to when a server
+// declares none. ABOVE the staging gate on purpose: Claude fetches these while
+// unauthenticated — with the gate in front, /favicon.ico answered 401 and the
+// connector list showed the hosting platform's logo instead of ours.
+app.use('/icon.png', express.static(path.join(__dirname, '..', 'public', 'icon.png')));
+app.get('/favicon.ico', (_req, res) => {
+  res.sendFile(path.join(__dirname, '..', 'public', 'icon.png'));
+});
 
 // Everything below requires the staging bearer token once APP_ENV=staging.
 // /health stays above this line so Railway's platform healthcheck, which
