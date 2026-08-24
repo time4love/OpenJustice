@@ -3029,3 +3029,322 @@ summary and was never reclassified: it asserts concealment and manipulation as f
 the one summary in the corpus that speaks of *prolonged* effects. It is the most likely
 textual seed of the contrast the synthesis keeps drawing (FINDING 53) — a third candidate
 cause beside re-derivation and the item-level summaries (FINDING 56).
+
+## Step 26 — The Devil's Advocate over a thesis that cites the deterministic layer
+
+The thesis now carries 21 trajectory citations across 8 co-movement groups, prose
+byte-identical (`docs/gf-trajectory-citation-dev-plan.md` §10). Head
+`cmt728lod0002g8uulash6lw9`, `PENDING_AI`; the previously-critiqued parent is
+`cmt5jffz6000nf52mpw4uyqvk`, `COMPLETE`.
+
+FINDING 61 said the last Devil's Advocate answered a looser thesis than the one written, and
+left the cause open: *"whether because those two sentences are the uncited ones … or because
+the critic argues by pattern, cannot be told from the researcher's path."* Re-running it now
+is the direct test.
+
+### The prediction was measurable without the call, so it was measured
+
+Stating a prediction is the method; guessing at one when the input is readable is not. What
+`run_ai_analysis` hands the agent is `triggerAIAnalysis` in `src/services/thesisAnalysis.ts`,
+and it is four values: the thesis text, the referenced evidence, the resolved gaps, and a
+trajectory bundle. All four were computed for **both versions**, read-only, against staging.
+
+| | HEAD (cites 21 trajectories) | PARENT (previously critiqued) |
+|---|---|---|
+| mentions | EVIDENCE 7 · CLAIM_TRAJECTORY 21 · other 3 | EVIDENCE 7 · CLAIM_TRAJECTORY 0 · other 3 |
+| `extractText` | 3,905 chars · sha `4fcc9330…` | 3,905 chars · sha `4fcc9330…` |
+| referenced evidence rows | 7 | 7 |
+| trajectory block | 14,173 chars · sha `51b205e8…` | 14,173 chars · sha `51b205e8…` |
+| groups shown / omitted | 8 / 7 | 8 / 7 |
+| resolved gaps on parent | 0 | 0 |
+
+### FINDING 64 — the citation does not reach the critic, so re-running it cannot test anything
+
+**Every input is byte-identical.** Two independent mechanisms, both in the same function:
+
+1. `extractText` resolves `keyFigureMention`, `evidenceMention` and `trackedUrlMention` to
+   tokens and has **no case for `trajectoryMention`** (`src/utils/parseMentions.ts:33`). An
+   unknown node with no array `content` returns `''`, so 21 citation nodes contribute nothing
+   and the whitespace collapse absorbs the seams. The sha is the proof, not the reading.
+2. `triggerAIAnalysis` fetches `mentions: { where: { type: 'EVIDENCE' } }` and then derives
+   trajectories from **that evidence** via `loadTrajectoryContext(referenced)`. The
+   CLAIM_TRAJECTORY mentions are never read.
+
+`src/services/thesisAnalysis.ts:66` is the only mention consumer in the thesis path that
+does not know the type exists — `getThesisContext`, `citeTrajectories`,
+`getThesisTrajectoryCitations`, `thesisRoutes` and `thesisPublication` all filter on it.
+This is the third instance of one blind spot: the revision path dropped trajectory citations
+while preserving evidence ones, the renderer reported one co-movement as 21 findings, and now
+the critique reads a thesis in which the citations are not there. Every path written before
+`CLAIM_TRAJECTORY` existed still behaves as if it does not.
+
+### FINDING 65 — the critic's trajectories are chosen by a cap, not by what the thesis cites
+
+The bundle is evidence-derived and capped at `MAX_GROUPS_PER_URL = 8`; the page yields 15.
+Against the 8 groups the thesis actually cites:
+
+| | |
+|---|---|
+| cited groups **also** in the critic's context | **3 of 8** |
+| cited but invisible | `bcb02872` `7cbfc789` `98020c19` `5d96c652` `2bc8f6a8` |
+| shown but never cited | `444b89f0` `158ff2c8` `064b6938` `96613c20` `0e199121` |
+
+So `T1`, `T5`, `T6` are cited; `T2`, `T3`, `T4`, `T7`, `T8` are not. The previous critique's
+`MODERATE` relocation counter-argument cites **T3** — a trajectory the thesis does not invoke
+at all. The critic argues from the vault's neighbourhood of the cited evidence, and the
+document's own citations select nothing.
+
+### FINDING 66 — the cap drops exactly the correction that made the citation honest
+
+§10.1 of the citation plan recorded that the first citation set was **too narrow** — one
+10-claim group — and that recomputing widened it to 21 claims across 8 groups, five of them
+singletons. `MAX_GROUPS_PER_URL` keeps the largest 8 groups on the page (10, 8, 6, 5, 4, 2, 2,
+2 claims), so **every singleton falls off**. The narrow set that would have under-supported a
+true universal is fully visible to the critic; the eleven claims that make it true are not.
+Truncation by group size is truncation by exactly the wrong key when the sentence being
+defended is a universal — one small group is one potential counter-example.
+
+### FINDING 61, diagnosed — the rebuttal was grounded in what the critic was shown
+
+Recomputed timelines of the two cited groups with `finalState: PRESENT`:
+
+```
+[T5] 9d2c750b  4 claims  3 flips   2021-12-23 removed → 2022-01-05 present → 2022-08-05 removed → 2022-09-06 present
+[T6] ae850859  2 claims  5 flips   2021-12-23 removed → 2022-05-25 present → 2022-05-29 removed → 2022-05-30 present → 2022-08-05 removed → 2022-09-06 present
+[T1] 3313cbaa 10 claims            2021-12-23 removed → 2022-05-25 present → 2022-05-29 removed → 2022-05-30 present → 2022-08-05 removed → 2022-09-06 present → 2022-11-29 removed
+```
+
+"Removed and restored repeatedly throughout 2022" is a fair reading of T6 as presented, and
+every visible cited group restores on **2022-09-06** — one day after the window the sentence
+closes on. What the critic never received is the count: 21 claims share the 2022-08-05
+removal and **0** return across the seven captures up to 2022-09-05. The context carries
+per-group timelines and no aggregate over any window, and no marker of which groups a given
+sentence rests on. Neither branch of FINDING 61's open question was right: not "the sentences
+are uncited" (the critic cannot see citations either way) and not "the critic argues by
+pattern" (it argues from the timelines it was handed) — the answer is that the question the
+sentence asks was never put to it.
+
+### Prediction (d), stated before the call
+
+Input identical, `temperature: 0`, a fresh version so nothing is served from cache:
+
+- the critique returns `MODERATE`, 3 counter-arguments, 2 evidence gaps, 2 alternative
+  interpretations — the same shape as Step 24;
+- the `STRONG` post-hoc rebuttal reappears, still resting on restoration rather than on the
+  six-week persistence claim, so **FINDING 61 reproduces**;
+- the straw-man shape of FINDING 46 reappears, nothing having changed in the prompt;
+- any difference at all measures the **temperature-0 variance floor** of this agent and says
+  nothing whatever about the citations.
+
+That last point is why the call is still worth making: it is no longer a test of whether
+citations change the argument — that is answered, and the answer is that they cannot — but a
+controlled measurement of how much a critique moves when its input does not.
+
+### Not run — the connector is unauthorized
+
+`run_ai_analysis` was not called. The `gf-staging` MCP server needs reauthorizing in claude.ai
+connector settings, and this session cannot run the OAuth flow. The prediction above is on the
+record before the call, which is the only ordering that makes it worth anything.
+
+Everything above was measured read-only against staging, outside MCP, because it is a
+measurement of the platform rather than a step in the researcher's path. Nothing was written.
+The pinned computation `cmt5b3gji0005jdk4p4wi2lu8` (2026-08-23, 83 snapshots) is still the
+latest, so the trajectory block reproduced today is the one the earlier critique received.
+
+### Open, and the user's to decide — the cited set includes boilerplate
+
+Of the 21 cited claims, at least two are page furniture that happens to share the 2022-08-05
+removal: a vaccination-site map line and a "more info" link. They are legitimately part of the
+universal — the sentence is about what disappeared and stayed gone, and they did — but standing
+beside the efficacy and safety claims they dilute the finding for a reader who scans the panel.
+
+Narrowing the set is **not a silent edit**: `cite_trajectories` refuses duplicate citations, so
+a narrower set means a new version, a new `contentHash`, and re-running the gate. The three
+options are to keep it whole (defensible: the universal is what was proven), to split the
+sentence so the strong claims and the boilerplate are cited separately, or to narrow and accept
+that the sentence's support no longer matches its scope. That is an editorial call, not a fix.
+
+## Step 26 — Re-running the Devil's Advocate, and why it was not run yet
+
+The plan was one call: `run_ai_analysis` over the thesis now that it cites 21 trajectories, as
+the direct test of FINDING 61 — whether a critique changes when the document it critiques gains
+citations to the deterministic layer.
+
+**Prediction, stated before anything was read:** the critique would engage the six-week persistence
+claim it previously ignored, because that sentence now carries eight footnote markers and is the most
+heavily cited sentence in the document; the post-hoc counter-argument would survive but lose its
+"removed and restored repeatedly throughout 2022" basis; the strength assessment would stay
+`MODERATE`; the two gaps would stand, since no citation says anything about internal ministry
+documents.
+
+**Every part of that prediction was untestable, for a reason the prediction did not consider.** The
+critique's input does not contain the citations at all.
+
+### FINDING 64 — the critic could not see a single citation, by two independent mechanisms
+
+Read before calling, because the prediction was about what the model would do with an input that had
+to be checked first:
+
+- `extractText` in `services/thesisAnalysis.ts` resolves `keyFigureMention`, `evidenceMention` and
+  `trackedUrlMention` to tokens and has **no case for `trajectoryMention`**. An unknown node with no
+  array `content` returns `''`, so 21 spliced mention nodes contributed nothing. The thesis text
+  handed to the critic is the same string before and after the citation — which is also exactly what
+  `cite_trajectories` promises about the PROSE, and the promise was quietly extended to the citations
+  themselves.
+- `triggerAIAnalysis` loads `mentions: { where: { type: 'EVIDENCE' } }` and derives trajectories from
+  **that evidence**, via `loadTrajectoryContext(referenced)`. The `CLAIM_TRAJECTORY` mentions are
+  never read. Which trajectories the critic sees is a function of which pages the cited evidence came
+  from — unrelated to what the thesis cites.
+
+Every other consumer of `MentionType` knows about `CLAIM_TRAJECTORY`: `get_thesis_context`,
+`get_thesis_trajectory_citations`, `cite_trajectories`, the publication gate, both thesis routes.
+`thesisAnalysis.ts` is the single one that does not, and it is the one feeding the adversary.
+
+### FINDING 65 — measured: 3 of the 8 cited movements reached the critic, not 8
+
+Not reasoned about — recomputed read-only against computation `cmt5b3gji0005jdk4p4wi2lu8`, the pass
+the citations are pinned to, by replaying `loadTrajectoryContext`'s own selection rules over its 58
+rows.
+
+| | |
+|---|---|
+| groups on the page | 21 |
+| passing the flip threshold (`minTransitions: 2`) | 15 |
+| shown to the critic (`MAX_GROUPS_PER_URL`) | 8 |
+| **cited movements reaching the critic** | **3 of 8** |
+| **cited claims reaching the critic** | **16 of 21** |
+| dropped by the flip threshold | 1 movement |
+| dropped by the cap | 4 movements |
+| of the 8 groups shown, how many the thesis does not cite | **5** (23 claims of context) |
+
+The cap keeps the LARGEST groups. The citation set had been widened, correctly, from one ten-claim
+group to 21 claims across eight movements — five of them singletons — because the sentence it supports
+is a UNIVERSAL and one counter-example falsifies it (§10.1 of the trajectory-citation plan). Size-
+ranked truncation dropped exactly the singletons the correction added. **The narrow set that would
+have under-supported a true sentence survived; the correction that made it honest did not.**
+
+### FINDING 66 — the one cited claim with a single flip is the one the critique argued about
+
+`loadTrajectoryContext` calls `getClaimTrajectories(url)` with no options, so `MIN_TRANSITIONS = 2`
+applies: a claim that was removed once and never restored is filtered out before the cap is even
+reached. The threshold is right in general — one flip is an ordinary removal, already fully visible in
+the forensic timeline.
+
+Of the 21 cited claims exactly one has `transitions: 1`. It is the FDA-approval sentence, present
+2021-12-23, absent from 2022-08-05, never restored. **It is the subject of the previous critique's
+third counter-argument, rated `STRONG`** (Step 24). The critic argued about a removal while the
+deterministic record of that removal was excluded from its input by a threshold that had no idea the
+thesis was citing it.
+
+This is the mechanism behind part of FINDING 61, and it is not a model failure. The critic argued by
+pattern because the pattern was all it was given.
+
+### The fix
+
+Applied on `feat/gf-critic-sees-cited-trajectories`. Backend 1352/1352, `tsc` clean, `eslint src/`
+back to its exact pre-change count (362 problems — the new code adds none).
+
+- `loadTrajectoryContext(evidence, citedTrajectoryIds)` — second argument **required**, not defaulted,
+  on the same reasoning as the agent's `trajectories` parameter: a default of `[]` is precisely how a
+  caller silently reasons without them. Framing and synthesis pass `[]` explicitly, and both are
+  honest — they run before a document exists.
+- Citations match live groups **by claim hash**, never by row id or `patternHash`. Both belong to the
+  pass they were computed in; the claim hash is the only identity that survives a new one.
+- A cited group is **never dropped**, by the cap or by the flip threshold. Uncited groups keep the
+  threshold. Where citations alone fill the cap, no uncited group is shown: uncited groups on the same
+  page are context, cited ones are what the document argues from.
+- Citations that resolve to no current group are reported as `citedNotResolved` rather than dropped —
+  the same rule `omittedGroups` already followed.
+- The excerpt quotes a group's **cited** members first. Four arbitrary members of a ten-claim group
+  can quote none of the three a thesis rests on.
+- `extractText(doc, trajectoryLabels?)` renders `#traj_T<n>` **only when labels are passed**, and the
+  critique is the only caller that passes them. The gate's hedge and figure checks, `audit_thesis_claims`
+  and every stored preview depend on `cite_trajectories` leaving the prose byte-identical; injecting a
+  token for them would make citing a claim silently change the text being verified.
+- A run of markers citing the same movement collapses to one. Emitting ten identical markers for a
+  ten-claim co-movement is the renderer's old defect — one finding reported as ten (§10.3) — moved
+  into the prompt, where nothing downstream would ever collapse it.
+- The trajectory block now states what is cited and what is not, and says so in both languages, with
+  the totals: *"THIS DOCUMENT CITES 21 claims across 8 trajectories."*
+
+Nine tests, all written from the measurement above rather than from the shape of the code: a cited
+singleton survives a full cap; a cited single-flip group survives the threshold while an uncited one
+does not; a citation pinned to an earlier pass still resolves; an unresolvable citation is reported;
+`extractText` without labels is byte-identical to the same document with no citations at all.
+
+### FINDING 67 — the first version of the fix was shaped by the one thesis it was tested on
+
+Asked directly whether the change captures the domain problem or merely fits this example, an audit of
+it found two places where it only worked because of what this thesis happens to look like. Both were
+fixed; both are worth recording, because the question found them and reading the code had not.
+
+- **The pages searched came from the EVIDENCE, never from the citations.** `loadTrajectoryContext`
+  derived its URL list from the diffs the cited evidence was promoted from. All 21 citations here are
+  on the same corona page that the evidence came from, so it worked — by coincidence. Nothing requires
+  that: the publication gate requires evidence, not evidence from the same page. A citation on any
+  other page resolved to nothing and was then reported as `citedNotResolved`, whose stated meaning is
+  *"the claim is no longer followed"* — a page that was never looked at, described as a claim that
+  stopped being true. The URL set is now the union of both sources, and a thesis citing trajectories
+  with no diff-based evidence at all resolves them correctly.
+- **Exempting citations from the cap removed the only bound on the block.** With 8 cited movements
+  against a cap of 8 that is invisible; with 25 it would be an unbounded prompt. A detail budget was
+  written for it — every cited movement still listed, quotes and snapshot links dropped past the
+  eighth — and then **reverted**. See FINDING 68.
+
+What survived the audit unchanged, and why it is not example-shaped: matching by claim hash is forced
+by the data model (rows are never updated in place, `patternHash` changes on every new capture);
+"cited is never silently dropped" is an invariant, not a threshold; reporting rather than dropping
+already had a precedent in `omittedGroups`; and the opt-in prose markers protect the byte-identical
+prose guarantee that exists independently of any thesis.
+
+### FINDING 68 — the second version of the fix started legislating for a scale the domain does not produce
+
+Two bounds were written on top of the fix and both were removed before they landed: a detail budget for
+a trajectory block with more than eight cited movements, and `MAX_EVIDENCE_PER_THESIS = 12` enforced on
+every version-creating path plus a hard gate check.
+
+**Neither came from an example.** The twelve was extrapolated from two RETRIEVAL caps that already
+exist — framing assembles at most 12 records, `suggest_thesis` defaults to 10 — and dressed up as a
+domain rule. The real thesis cites 7. Nothing in the corpus has approached either bound.
+
+The domain reason they were unnecessary is the more interesting half, and it is a design position this
+document had not stated: **a thesis is meant to rest on a contained set of evidence.** Breadth is not
+supposed to be absorbed by one thesis growing; it is meant to be handled by COMPOSITION — a thesis
+built on other theses that already survived their own gate, each carrying its own contained basis
+(whistleblower-document-backed ones being the obvious first class). That layer does not exist and has
+not been designed. Writing a numeric ceiling now would have hard-coded an answer to a question that
+belongs to that design, and would have done it inside the write path, where it is hardest to revisit.
+
+The distinction that decided what stayed: a fix for a **wrong answer** any thesis can produce today
+stays; **policy for a scale the domain does not generate** goes. By that rule the citation-page fix
+above stayed — the mislabelling is reachable now, at any size — and both bounds went.
+
+**Open design question, recorded not answered:** how a thesis builds on other theses. Until it exists,
+a researcher whose argument genuinely needs a wide basis has no path except a wide thesis, and there is
+no limit stopping them. That is the honest state, and it is better than a number nobody measured.
+
+### Not done, and deliberately
+
+**`run_ai_analysis` has not been re-run.** The fix is local; staging is serving the unfixed build, so
+calling it now would produce a critique from the old path, overwrite the head version's analysis, and
+prove only what has already been measured more precisely by recomputation. The call is worth making
+once — against a staging backend that has the fix.
+
+### Still the researcher's decision, not the tooling's
+
+The measurement confirms the editorial question rather than settling it. Two of the eight cited
+movements are boilerplate that genuinely shares the 2022-08-05 removal: the vaccination-site map
+sentence (its own movement, 6 flips) and a "more information" link, which travels in a two-claim
+movement together with the side-effects sentence. They are correctly cited and they dilute the strong
+claims. Narrowing the set requires a NEW version — `cite_trajectories` refuses duplicate citations —
+and that is a judgement about the argument, not a defect to be fixed underneath it.
+
+### Environment note
+
+`backend/.env` labelled its database block with the **production** project ref, above a
+`DATABASE_URL`, `DIRECT_URL` and `SUPABASE_URL` that all point at **staging**. The values were right
+and the label was wrong, which is the more dangerous direction: a destructive statement is reviewed
+against the label a human reads, and here the label said production while the connection was staging.
+Corrected to name staging, with a line pointing at `.env.production.local` for the deliberate case.
+(Refs deliberately not reproduced here — this repository is public. `.env` is gitignored, so the fix
+is local and does not travel with this branch.)

@@ -43,7 +43,7 @@ export const MIN_CLAIM_LENGTH = 40;
  * the claim came back, or went and returned and went again, which is the
  * pattern no single diff can express.
  */
-const MIN_TRANSITIONS = 2;
+export const MIN_TRANSITIONS = 2;
 
 /** Collapses whitespace so re-indented or re-wrapped text still matches itself. */
 export function normaliseClaim(text: string): string {

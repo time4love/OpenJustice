@@ -3,7 +3,11 @@ import { LLMFactory } from '../factories/LLMFactory';
 import { assertSchemaCompatibility } from '../lib/assertSchemaCompatibility';
 import { THESIS_FRAMING_ASSESSMENT_PROMPT } from '../prompts/thesisFramingAssessment';
 import type { EvidenceContext } from '../lib/evidenceContext';
-import { formatTrajectoryContext, type TrajectoryBundle } from '../lib/trajectoryContext';
+import {
+  formatTrajectoryContext,
+  emptyTrajectoryBundle,
+  type TrajectoryBundle,
+} from '../lib/trajectoryContext';
 import { formatSummaryCaveat, type SummaryCaveat } from '../lib/summaryProvenance';
 
 // ---------------------------------------------------------------------------
@@ -119,7 +123,7 @@ export class ThesisFramingAssessorAgent {
       )
       .join('\n\n');
 
-    const trajectoryText = formatTrajectoryContext(input.trajectories ?? { trajectories: [], coverage: [], omittedGroups: 0 });
+    const trajectoryText = formatTrajectoryContext(input.trajectories ?? emptyTrajectoryBundle());
     const caveatText = formatSummaryCaveat(input.summaryCaveat, 'he');
 
     const raw = await this.chain.invoke([
