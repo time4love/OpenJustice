@@ -3717,3 +3717,78 @@ markers pass: a flat, unattributed naming still fails. Widening a gate is only s
 demonstrate what it still refuses.
 
 Backend 1376/1376, `tsc` clean, `eslint src/` unchanged.
+
+## Step 33 — Published
+
+`publish_thesis` returned `published: true`, version `cmt728lod0002g8uulash6lw9` pinned at
+2026-08-24T23:53:26Z, verdict **SUPPORTS**, `overObjection: false`, no hard failures. The first
+thesis this platform has published.
+
+What it took, in order, and what each step actually fixed:
+
+| Blocking check | Cleared by |
+|---|---|
+| 7 `FIGURES_HEDGED` | the hedge VOCABULARY, not the sentence (Step 32) |
+| 16 `ANALYSIS_CURRENT` | `run_ai_analysis`, re-running because the label change altered the block |
+| 2, 3, 9 | the same call |
+| 8 `PUBLIC_INTEREST_STATEMENT` | written |
+| 10 `RATIONALE_SUBSTANCE` | written — and rewritten once, see below |
+
+### The rationale that passed was the second one, and the first was wrong on the facts
+
+The first draft conceded the Devil's Advocate's `STRONG` post-hoc rebuttal as "recorded and
+unanswered". The researcher rejected the posture: *we are not ignoring the critic — we have a call for
+witnesses and a FOIA path, and if the thesis is right, inside information settles it.*
+
+Checking the archive before rewriting showed the posture was not merely apologetic but **too
+generous**. Measured over the cited movements' own observations:
+
+| | May 2022 | August 2022 |
+|---|---|---|
+| captures absent | **1** | **9** |
+| days absent | **4** | **44** |
+
+and two of the eight cited movements — including the FDA/three-vaccines claim — **never returned at
+all** (34 captures, to the end of the archive).
+
+The critique's rebuttal works by treating a four-day, single-capture blip and a forty-four-day,
+nine-capture absence as the same phenomenon. **That objection is answerable from the archive the
+thesis already cites**, with no new evidence. The rewritten rationale says so, states the two things
+that remain genuinely external, and names the call and the FOIA requests as what is pointed at them.
+
+The assessor flipped `DISPUTES` → `SUPPORTS`: the rationale *"sets a clear boundary defining the
+causal link as a question for investigation rather than a settled fact."*
+
+### FINDING 77 — the block renders flip DATES and expects the model to do the arithmetic
+
+Four consecutive critiques treated May and August as one phenomenon. None computed the durations,
+because the trajectory block gives `date=present → date=removed` across up to 83 captures and leaves
+subtraction to the reader. The distinction that refutes the strongest counter-argument in the corpus
+was one line of arithmetic away, in data already in the prompt, and no agent ever did it — nor did the
+thesis, until a researcher's objection to a draft forced the check.
+
+Render each absence as **"absent for N captures / D days"** and the distinction is in front of every
+agent that reads it. Not built: it would change the critique, and publishing came first.
+
+### FINDING 78 — making the label stable made it unquotable
+
+Runs 2 and 3 argued by name: *"ניתוח המסלולים (Trajectories T1, T3, T4)"*. That was the basis for
+FINDING 69's claim that the critique had become auditable — and for FINDING 75, which replaced
+positional labels with claim-hash identities precisely so those references would keep resolving.
+
+**Run 4, the first with identity labels, quoted no label at all.** It reasoned about the trajectories
+and referred to them only as a group. One run is not a finding about model behaviour, but the
+mechanism is plausible: `T1` is trivially quotable and `T6a505dc8` is not, and auditability that
+depends on a model choosing to type nine hex characters is thinner than it looked.
+
+The likely repair keeps both properties — `[T1·6a505dc8]`, an ordinal to quote and an identity to
+resolve. A later reader ignores the ordinal and resolves the hash, which is exactly what the
+positional scheme could not offer.
+
+### Recorded with the publication
+
+`GAP_ACTIONABILITY` failed advisory: run 4's second gap names a document but no holder, and the
+assessor asked for a concrete custodian — HMO adverse-event registries, or complaints filed with the
+ministry — rather than generic reliance by vaccinees. It PASSED on run 3's gaps. Two runs of the same
+critique differ on whether their own gaps are actionable, which is worth knowing before treating any
+single critique's agenda as the research plan.
