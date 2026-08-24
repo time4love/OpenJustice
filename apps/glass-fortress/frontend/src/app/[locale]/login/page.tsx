@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, FormEvent, Suspense } from 'react';
+import { AuthShell } from '@/components/AuthShell';
 import Image from 'next/image';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
@@ -187,15 +188,18 @@ function LoginStep({ returnTo }: { returnTo: string | null }) {
 
 function LoginPageContent() {
   const t = useTranslations('auth');
+  const tCommon = useTranslations('common');
   const searchParams = useSearchParams();
   const step = searchParams.get('step');
   const returnTo = searchParams.get('returnTo');
 
   return (
-    <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+    <AuthShell>
       <div className="w-full max-w-sm bg-white rounded-xl border border-slate-200 shadow-sm p-8 space-y-6">
         <div>
-          <Link href="/" className="text-xs text-slate-400 hover:text-slate-600">← Glass Fortress</Link>
+          {/* "Glass Fortress" is internal terminology and was showing here, on
+              a page reached from a magic link with no other context. */}
+          <Link href="/" className="text-xs text-slate-400 hover:text-slate-600">← {tCommon('appName')}</Link>
           <h1 className="text-xl font-semibold text-slate-900 mt-3">
             {step === 'handle' ? t('setupTitle') : t('loginTitle')}
           </h1>
@@ -206,7 +210,7 @@ function LoginPageContent() {
 
         {step === 'handle' ? <HandleSetupStep returnTo={returnTo} /> : <LoginStep returnTo={returnTo} />}
       </div>
-    </div>
+    </AuthShell>
   );
 }
 

@@ -741,7 +741,11 @@
     "handle": "Handle",
     "pendingApproval": "Awaiting admin approval",
     "pendingApprovalHint": "An admin needs to approve your account before MCP clients can get write access.",
-    "approved": "Account approved — write access granted"
+    "approved": "Account approved — write access granted",
+    "callbackFailedTitle": "Login failed",
+    "callbackNoToken": "No access token found in the callback URL.",
+    "callbackSigningIn": "Signing you in…",
+    "callbackBackToLogin": "Back to sign-in"
   },
   "oauthInteraction": {
     "loading": "Loading…",
