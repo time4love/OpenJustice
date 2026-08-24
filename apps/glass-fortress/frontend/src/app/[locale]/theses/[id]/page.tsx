@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo, useRef, Suspense, use } from 'react';
 import Image from 'next/image';
 import { useSearchParams } from 'next/navigation';
 import { useTranslations, useLocale } from 'next-intl';
-import { Link } from '@/i18n/navigation';
+import { Link, useRouter } from '@/i18n/navigation';
 import { SiteHeader } from '@/components/SiteHeader';
 import { apiUrl, authHeaders, fetchJson } from '@/lib/api';
 import { useAsyncData, type AsyncFetcher } from '@/hooks/useAsyncData';
@@ -58,6 +58,21 @@ interface Thesis {
   publicInterestStatement: string | null;
   version: ThesisVersion | null;
 }
+
+/**
+ * The two halves of this page: the argument, and the record of how it was made.
+ *
+ * Split because the page had become one scroll holding a legal document, its
+ * citations, an adversarial critique, a publication gate and an append-only
+ * provenance timeline. Two rather than four: on a narrow RTL screen a
+ * four-item tab bar truncates, and the real boundary here is binary — what the
+ * thesis argues, versus everything the platform did to get there.
+ *
+ * Citations stay with the ARGUMENT, never behind a tab. A reader following [7]
+ * must land on the source; putting the evidence and trajectory lists in another
+ * view would break the one link the whole citation layer exists to provide.
+ */
+type ThesisView = 'thesis' | 'process';
 
 interface GapResolution {
   gapIndex: number;
@@ -291,7 +306,12 @@ function ThesisPageInner({ id }: { id: string }) {
   const tStrength = useTranslations('strengths');
   const locale = useLocale();
   const searchParams = useSearchParams();
+  const router = useRouter();
   const historicalVersionId = searchParams.get('v');
+  // Which view is showing, read from the URL rather than held in state: a link
+  // to a thesis's provenance has to be a link, and a refresh must not silently
+  // move the reader somewhere else.
+  const view: ThesisView = searchParams.get('view') === 'process' ? 'process' : 'thesis';
   const isHistorical = !!historicalVersionId;
   const { researcher } = useAuth();
   const canEdit = researcher?.approved ?? false;
@@ -434,6 +454,23 @@ function ThesisPageInner({ id }: { id: string }) {
 
   const hv = thesis.version;
   const isDraft = !thesis.publication.isPublished;
+  // The process view exists for researchers only. The public page keeps
+  // everything in one scroll, critique included: the Devil's Advocate answer to
+  // a thesis is part of how it is presented honestly, and a tab is a place
+  // things go unread.
+  const hasProcessView = thesis.viewer === 'RESEARCHER';
+  const showThesis = !hasProcessView || view === 'thesis';
+  const showProcess = !hasProcessView || view === 'process';
+
+  function switchView(next: ThesisView): void {
+    const params = new URLSearchParams(searchParams.toString());
+    if (next === 'thesis') params.delete('view');
+    else params.set('view', next);
+    const query = params.toString();
+    // replace, not push: a two-way toggle should not fill the history stack,
+    // while the URL still carries the view for a refresh or a shared link.
+    router.replace(`/theses/${id}${query ? `?${query}` : ''}`);
+  }
   const analysis = hv?.aiAnalysis ?? null;
   const evidenceMentions = hv?.mentions.filter(m => m.type === 'EVIDENCE') ?? [];
   const trajectoryMentions = hv?.mentions.filter(m => m.type === 'CLAIM_TRAJECTORY') ?? [];
@@ -530,6 +567,50 @@ function ThesisPageInner({ id }: { id: string }) {
           </div>
         )}
 
+        {/* The two views. Below the publication banners on purpose: those state
+            what is true of the thesis as a whole, so they belong to both. */}
+        {hasProcessView && (
+          <div
+            role="tablist"
+            aria-label={t('viewsLabel')}
+            className="flex gap-1 bg-slate-100 border border-slate-200 rounded-xl p-1 print:hidden"
+          >
+            {(['thesis', 'process'] as const).map((v) => (
+              <button
+                key={v}
+                id={`thesis-tab-${v}`}
+                role="tab"
+                type="button"
+                aria-selected={view === v}
+                aria-controls={`thesis-panel-${v}`}
+                onKeyDown={(e) => {
+                  if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+                    e.preventDefault();
+                    switchView(v === 'thesis' ? 'process' : 'thesis');
+                  }
+                }}
+                onClick={() => { switchView(v); }}
+                className={`flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  view === v
+                    ? 'bg-white text-slate-900 shadow-sm'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                {t(v === 'thesis' ? 'viewThesis' : 'viewProcess')}
+              </button>
+            ))}
+          </div>
+        )}
+
+        <div
+          id="thesis-panel-thesis"
+          role={hasProcessView ? 'tabpanel' : undefined}
+          aria-labelledby={hasProcessView ? 'thesis-tab-thesis' : undefined}
+          // print:block — a thesis is a legal document and someone will print it.
+          // Tabs hide content from print, so the argument and its citations are
+          // always in the printed output whichever view is on screen.
+          className={showThesis ? 'space-y-8' : 'hidden print:block space-y-8'}
+        >
         {/* Rule 5 — the public-interest anchor, rendered on every published
             thesis as a dedicated field rather than hunted for in the body. */}
         {thesis.publicInterestStatement && (
@@ -695,6 +776,14 @@ function ThesisPageInner({ id }: { id: string }) {
           </div>
         )}
 
+        </div>
+
+        <div
+          id="thesis-panel-process"
+          role={hasProcessView ? 'tabpanel' : undefined}
+          aria-labelledby={hasProcessView ? 'thesis-tab-process' : undefined}
+          className={showProcess ? 'space-y-8' : 'hidden'}
+        >
         {/* The apparatus of publication, BELOW the thesis it judges. It used to
             open the page: a reader arriving at a legal argument met the gate
             checks and the provenance timeline before meeting a sentence of it.
@@ -892,6 +981,7 @@ function ThesisPageInner({ id }: { id: string }) {
             <span>Running Devil&apos;s Advocate analysis… this takes ~30 seconds</span>
           </div>
         )}
+        </div>
       </main>
 
       {/* FOIA Modal */}
