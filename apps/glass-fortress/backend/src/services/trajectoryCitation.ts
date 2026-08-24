@@ -1,10 +1,5 @@
 import { prisma } from '../lib/prisma';
-import {
-  changesOnly,
-  groupByMovement,
-  type Observation,
-  type Trajectory,
-} from './claimTrajectory';
+import { changesOnly, type Observation, type Trajectory } from './claimTrajectory';
 
 // ---------------------------------------------------------------------------
 // Resolving a cited claim trajectory (docs/gf-trajectory-citation-dev-plan.md).
@@ -218,8 +213,22 @@ interface LatestComputation {
   snapshotsExamined: number;
 }
 
+/** A sibling as the co-movement needs it: who it is, and how it moved. */
+interface SiblingRow {
+  id: string;
+  claimText: string;
+  patternHash: string;
+}
+
 /**
- * Siblings of one computation, memoised.
+ * The members of one computation, memoised.
+ *
+ * Deliberately WITHOUT observations. Grouping used to recompute each row's
+ * presence vector hash at read time, which meant loading every sibling's
+ * eighty-three entry blob — 58 rows on the first real thesis — to answer "how
+ * many claims moved as one unit". patternHash is now written once at detection
+ * time by the same function grouping used, so the answer is a projection of
+ * three short columns.
  *
  * Safe to cache without invalidation for the reason the schema note gives: a
  * computation is never updated in place, so its rows are fixed the moment it
@@ -228,24 +237,23 @@ interface LatestComputation {
  * map grow without limit.
  */
 const SIBLING_CACHE_LIMIT = 8;
-const siblingCache = new Map<string, Trajectory[]>();
+const siblingCache = new Map<string, SiblingRow[]>();
 
-async function loadSiblings(computationId: string): Promise<Trajectory[]> {
+async function loadSiblings(computationId: string): Promise<SiblingRow[]> {
   const cached = siblingCache.get(computationId);
   if (cached) return cached;
 
   const siblings = await prisma.claimTrajectory.findMany({
     where: { computationId },
-    select: TRAJECTORY_ROW,
+    select: { id: true, claimText: true, patternHash: true },
   });
-  const loaded = siblings.map(toTrajectory);
 
   if (siblingCache.size >= SIBLING_CACHE_LIMIT) {
     const oldest = siblingCache.keys().next().value;
     if (oldest !== undefined) siblingCache.delete(oldest);
   }
-  siblingCache.set(computationId, loaded);
-  return loaded;
+  siblingCache.set(computationId, siblings);
+  return siblings;
 }
 
 const TRAJECTORY_ROW = {
@@ -270,15 +278,13 @@ export async function resolveTrajectoryCitations(ids: readonly string[]): Promis
   const unique = [...new Set(ids)];
   if (unique.length === 0) return { resolved: [], missing: [] };
 
-  // Deliberately does NOT select observations or claimText: every cited row also
-  // appears in its computation's sibling set, which is loaded (and memoised)
-  // below, so asking for the eighty-three entry blob here fetched the same text
-  // twice on every page load.
+  // The cited rows, with their observations: these are the ones actually
+  // rendered, and they are the only blobs this path still reads.
   const rows = await prisma.claimTrajectory.findMany({
     where: { id: { in: unique } },
     select: {
-      id: true,
-      claimHash: true,
+      ...TRAJECTORY_ROW,
+      patternHash: true,
       trackedUrlId: true,
       computation: {
         select: {
@@ -301,7 +307,7 @@ export async function resolveTrajectoryCitations(ids: readonly string[]): Promis
   // because a computation is immutable by construction — new state means a new
   // computation, never an edited one — so the grouping derived from it can
   // never go stale.
-  const siblingsByComputation = new Map<string, Trajectory[]>();
+  const siblingsByComputation = new Map<string, SiblingRow[]>();
   for (const computationId of new Set(rows.map((r) => r.computation.id))) {
     siblingsByComputation.set(computationId, await loadSiblings(computationId));
   }
@@ -346,26 +352,25 @@ export async function resolveTrajectoryCitations(ids: readonly string[]): Promis
 
   const citedIds = new Set(unique);
 
-  const resolved = rows.flatMap((row): ResolvedTrajectoryCitation[] => {
+  const resolved = rows.map((row): ResolvedTrajectoryCitation => {
+    const self = toTrajectory(row);
     const siblings = siblingsByComputation.get(row.computation.id) ?? [];
-    const self = siblings.find((t) => t.id === row.id);
-    // A row that its own computation does not contain is a data defect, not a
-    // stale citation: reported as missing rather than rendered from a guess.
-    if (!self) return [];
-    const group = groupByMovement(siblings).find((g) => g.claims.some((c) => c.id === row.id));
+    // The co-movement is every row of this pass sharing this row's movement —
+    // read from the stored hash rather than recomputed from everyone's blobs.
+    const members = siblings.filter((sibling) => sibling.patternHash === row.patternHash);
 
-    return [{
+    return {
       id: row.id,
       claimHash: row.claimHash,
-      claimText: self.claimText,
+      claimText: row.claimText,
       url: row.trackedUrl.url,
       trackedUrlId: row.trackedUrlId,
       observations: self.observations,
       changes: changesOnly(self.observations),
-      transitions: self.transitions,
-      firstSeen: self.firstSeen,
-      lastSeen: self.lastSeen,
-      finalState: self.finalState,
+      transitions: row.transitions,
+      firstSeen: row.firstSeen,
+      lastSeen: row.lastSeen,
+      finalState: row.finalState,
       computation: {
         id: row.computation.id,
         sourceStateHash: row.computation.sourceStateHash,
@@ -374,12 +379,12 @@ export async function resolveTrajectoryCitations(ids: readonly string[]): Promis
         snapshotsExamined: row.computation.snapshotsExamined,
       },
       coMovement: {
-        patternHash: group?.patternHash ?? '',
-        claimCount: group?.claims.length ?? 1,
-        members: (group?.claims ?? [{ id: self.id, claimText: self.claimText }]).map((c) => ({
-          id: c.id,
-          claimText: c.claimText,
-          cited: citedIds.has(c.id),
+        patternHash: row.patternHash,
+        claimCount: members.length || 1,
+        members: (members.length > 0 ? members : [{ id: row.id, claimText: row.claimText }]).map((m) => ({
+          id: m.id,
+          claimText: m.claimText,
+          cited: citedIds.has(m.id),
         })),
       },
       currency: currencyOf(
@@ -389,11 +394,10 @@ export async function resolveTrajectoryCitations(ids: readonly string[]): Promis
         counterpartsByComputation,
       ),
       caveat: TRAJECTORY_EXTRACTION_CAVEAT,
-    }];
+    };
   });
 
-  const unresolved = rows.filter((r) => !resolved.some((x) => x.id === r.id)).map((r) => r.id);
-  return { resolved, missing: [...missing, ...unresolved] };
+  return { resolved, missing };
 }
 
 function currencyOf(

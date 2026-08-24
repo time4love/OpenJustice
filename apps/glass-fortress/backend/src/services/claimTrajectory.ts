@@ -491,6 +491,7 @@ async function persistComputation(
               claimHash: t.claimHash,
               claimText: t.claimText,
               observations: JSON.stringify(t.observations),
+              patternHash: presencePatternHash(t.observations),
               transitions: t.transitions,
               firstSeen: t.firstSeen,
               lastSeen: t.lastSeen,
@@ -526,12 +527,28 @@ export function changesOnly(observations: readonly Observation[]): Observation[]
  * flip on the same dates but differ anywhere in between did NOT move together,
  * and merging them would assert a co-movement that did not happen.
  */
+/**
+ * The identity of a MOVEMENT: SHA-256 of the presence vector.
+ *
+ * Exported and used by both the grouping below and the write path, so the value
+ * stored on a row cannot drift from the value grouping computes. Two functions
+ * producing "the same" hash independently is how a stored derived column
+ * silently stops meaning what its name says.
+ *
+ * Unstable ACROSS computations by construction — adding a capture lengthens the
+ * vector — which is why a group has no citable identity and a thesis cites every
+ * member instead (docs/gf-trajectory-citation-dev-plan.md §3.2). Within one
+ * computation it is fixed, and that is what makes it storable.
+ */
+export function presencePatternHash(observations: readonly Observation[]): string {
+  return claimHash(observations.map((o) => (o.present ? '1' : '0')).join(''));
+}
+
 export function groupByMovement(trajectories: readonly Trajectory[]): TrajectoryGroup[] {
   const byPattern = new Map<string, Trajectory[]>();
 
   for (const t of trajectories) {
-    const vector = t.observations.map((o) => (o.present ? '1' : '0')).join('');
-    const pattern = claimHash(vector);
+    const pattern = presencePatternHash(t.observations);
     const bucket = byPattern.get(pattern);
     if (bucket) bucket.push(t);
     else byPattern.set(pattern, [t]);

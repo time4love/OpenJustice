@@ -1259,9 +1259,23 @@ model ClaimTrajectory {
   firstSeen     String // YYYY-MM-DD of the earliest snapshot containing the claim
   lastSeen      String // YYYY-MM-DD of the latest snapshot containing it
   finalState    ClaimFinalState
+  // SHA-256 of the presence vector — the identity of the MOVEMENT, shared by
+  // every claim that came and went on the same captures.
+  //
+  // Derived from observations and stored anyway, because reading it is the whole
+  // point: answering "how many claims moved as one unit" used to mean loading
+  // every sibling row's observations blob on every thesis page load. Written by
+  // presencePatternHash(), the same function grouping uses, so the two cannot
+  // drift.
+  //
+  // Storable only because it is fixed WITHIN a computation. Across computations
+  // it changes whenever a capture is added, which is why a group still has no
+  // citable identity and a thesis cites every member instead.
+  patternHash   String
   createdAt     DateTime                   @default(now())
 
   @@unique([computationId, claimHash])
   @@index([trackedUrlId, claimHash])
+  @@index([computationId, patternHash])
 }
 
