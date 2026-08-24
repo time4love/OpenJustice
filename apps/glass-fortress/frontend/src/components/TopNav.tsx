@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom';
 import { useLocale, useTranslations } from 'next-intl';
 import { Link, useRouter, usePathname } from '@/i18n/navigation';
 import { useAuth } from '@/context/AuthContext';
+import { useIsHydrated } from '@/hooks/useIsHydrated';
 
 export type NavPage =
   | 'home'
@@ -62,7 +63,7 @@ export function TopNav({ current }: { current: NavPage }) {
   const pathname = usePathname();
   const { researcher, loading } = useAuth();
   const [open, setOpen] = useState(false);
-  const [mounted, setMounted] = useState(false);
+  const mounted = useIsHydrated();
 
   // Hide researcher-only entries (e.g. theses drafting workspace) from
   // visitors who aren't registered researchers — avoids clutter for the
@@ -71,8 +72,6 @@ export function TopNav({ current }: { current: NavPage }) {
   const visibleNavItems = ALL_NAV_ITEMS.filter((item) => !item.researcherOnly || isResearcher);
   // Desktop omits Home — the logo already links there.
   const desktopNavItems = visibleNavItems.filter(({ key }) => key !== 'home');
-
-  useEffect(() => { setMounted(true); }, []);
 
   useEffect(() => {
     if (!open) return;

@@ -1,10 +1,11 @@
 'use client';
 
-import { useState, useEffect, useCallback, useId } from 'react';
+import { useState, useMemo, useId } from 'react';
 import { useTranslations, useLocale } from 'next-intl';
 import { SiteHeader } from '@/components/SiteHeader';
 import { AuthGuard } from '@/components/AuthGuard';
-import { apiUrl } from '@/lib/api';
+import { fetchJson } from '@/lib/api';
+import { useAsyncData, type AsyncFetcher } from '@/hooks/useAsyncData';
 import { useEnumLabel, type EnumNamespace } from '@/lib/reportEnums';
 import {
   evidenceTierFor,
@@ -288,42 +289,44 @@ function PatternsContent() {
   const t = useTranslations('reportPatterns');
   const [domain, setDomain] = useState<Domain | null>(null);
   const [dimension, setDimension] = useState<DimensionOption | null>(null);
-  const [cells, setCells] = useState<PatternCell[] | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(false);
   const [asTable, setAsTable] = useState(false);
 
   const dimensions = domain === 'MEDICAL' ? MEDICAL_DIMENSIONS : SOCIAL_DIMENSIONS;
 
-  const load = useCallback(async (d: Domain, dim: DimensionOption) => {
-    setLoading(true);
-    setError(false);
-    try {
-      const path = d === 'MEDICAL' ? '/api/reports/medical/aggregate' : '/api/reports/social-economic/aggregate';
-      const res = await fetch(apiUrl(path), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ dimensions: [dim.key] }),
-      });
-      if (!res.ok) throw new Error('request failed');
-      const body = (await res.json()) as { cells: PatternCell[] };
-      setCells(body.cells);
-    } catch {
-      setError(true);
-      setCells(null);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  // The dependency is the resolved *string*, never `t` itself: the fetcher's
+  // identity is the cache key, and a `t` that is not referentially stable would
+  // make it a new key on every render — an endless refetch loop.
+  const offlineMessage = t('loadFailed');
+  const fetchCells = useMemo<AsyncFetcher<{ cells: PatternCell[] }> | null>(
+    () =>
+      domain && dimension
+        ? (signal) =>
+            fetchJson(
+              domain === 'MEDICAL'
+                ? '/api/reports/medical/aggregate'
+                : '/api/reports/social-economic/aggregate',
+              {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ dimensions: [dimension.key] }),
+                signal,
+                offline: offlineMessage,
+              },
+            )
+        : null,
+    [domain, dimension, offlineMessage],
+  );
+  const { state, reload } = useAsyncData(fetchCells);
 
-  useEffect(() => {
-    if (domain && dimension) void load(domain, dimension);
-  }, [domain, dimension, load]);
+  // Picking a new domain or dimension changes the fetcher, which makes the old
+  // answer stale in the same render — no clearing step to forget.
+  const cells = state.status === 'ok' ? state.data.cells : null;
+  const loading = state.status === 'loading';
+  const error = state.status === 'error';
 
   function pickDomain(d: Domain) {
     setDomain(d);
     setDimension((d === 'MEDICAL' ? MEDICAL_DIMENSIONS : SOCIAL_DIMENSIONS)[0]);
-    setCells(null);
   }
 
   return (
@@ -391,7 +394,7 @@ function PatternsContent() {
                 <p className="text-sm text-red-700">{t('loadFailed')}</p>
                 <button
                   type="button"
-                  onClick={() => void load(domain, dimension)}
+                  onClick={() => { void reload(); }}
                   className="mt-2 text-xs text-red-700 underline"
                 >
                   {t('retry')}

@@ -5,6 +5,7 @@ import { useTranslations, useLocale } from 'next-intl';
 import { Link } from '@/i18n/navigation';
 import { SiteHeader } from '@/components/SiteHeader';
 import { apiUrl } from '@/lib/api';
+import { useMagicLinkFragment } from '@/hooks/useMagicLinkFragment';
 import { sendMagicLink } from '@/lib/supabase';
 import {
   useEnumValues,
@@ -1235,10 +1236,23 @@ export default function NewReportPage() {
   const tErrors = useTranslations('reports.errors');
   const tVerify = useTranslations('reports.verify');
 
-  const [step, setStep] = useState<Step>('verify');
-  const [accessToken, setAccessToken] = useState<string | null>(null);
+  // This page is its own magic-link callback: the token arrives in the URL
+  // fragment, which only the client can read. Everything below is *derived* from
+  // it, with an explicit override for anything the reporter then does — so the
+  // arriving link seeds the flow without a mount-time effect writing three
+  // pieces of state back.
+  const magicLink = useMagicLinkFragment();
+
+  const [manualStep, setStep] = useState<Step | null>(null);
+  const step = manualStep ?? (magicLink.accessToken ? 'domain' : 'verify');
+
+  const [manualToken, setAccessToken] = useState<string | null | undefined>(undefined);
+  const accessToken = manualToken === undefined ? magicLink.accessToken : manualToken;
+
+  const [linkErrorDismissed, setLinkErrorDismissed] = useState(false);
+  const linkError = linkErrorDismissed ? null : magicLink.errorDescription;
+
   const [expired, setExpired] = useState(false);
-  const [linkError, setLinkError] = useState<string | null>(null);
   const [sentTo, setSentTo] = useState('');
 
   const [domain, setDomain] = useState<Domain | null>(null);
@@ -1252,35 +1266,20 @@ export default function NewReportPage() {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
-  // This page is its own magic-link callback. Supabase returns the access
-  // token in the URL fragment (never a query param), so only the client can
-  // read it — and it is stripped from the address bar immediately, before
-  // anything else runs, so a live token is not left sitting in the URL bar,
-  // in history, or in whatever the reporter might copy or share.
+  // The fragment has already been read during render (above); this strips it
+  // from the address bar immediately afterwards, so a live token is not left
+  // sitting in the URL bar, in history, or in whatever the reporter might copy
+  // or share.
   useEffect(() => {
-    const hash = window.location.hash.slice(1);
-    if (!hash) return;
-
-    const params = new URLSearchParams(hash);
-    const token = params.get('access_token');
-    const errorDescription = params.get('error_description');
+    if (!window.location.hash) return;
     window.history.replaceState(null, '', window.location.pathname + window.location.search);
-
-    if (errorDescription) {
-      setLinkError(errorDescription);
-      return;
-    }
-    if (token) {
-      setAccessToken(token);
-      setStep('domain');
-    }
   }, []);
 
   function restartVerification() {
     setAccessToken(null);
     setExpired(false);
     setSubmitError(null);
-    setLinkError(null);
+    setLinkErrorDismissed(true);
     setStep('verify');
   }
 

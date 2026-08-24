@@ -2,11 +2,13 @@ import { prisma } from '../lib/prisma';
 import { VectorStoreService } from './VectorStoreService';
 import {
   ThesisFramingAssessorAgent,
+  ThesisFramingAssessmentSchema,
   type ThesisFramingAssessment,
 } from './ThesisFramingAssessorAgent';
 import { loadTrajectoryContext } from '../lib/trajectoryContext';
 import { loadSummaryCaveat } from '../lib/summaryProvenance';
 import { openExclusiveSession, type OpenSessionConsent, type OpenSessionRefusal } from './researchSessions';
+import { parseAssessment, type ParsedAssessment } from './thesisProvenance';
 
 // ---------------------------------------------------------------------------
 // Deciding what a thesis should argue, before one exists.
@@ -199,6 +201,9 @@ export async function assessThesisFraming(
  * Called by create_thesis_draft. Without this the framing record and the thesis
  * it justified are two unconnected rows, and the reasoning is as lost as it was
  * before the session existed.
+ *
+ * Refuses to move a session already bound to a thesis — so the repair path
+ * below can never overwrite an existing link, only fill an absent one.
  */
 export async function attachThesisToFraming(sessionId: string, thesisId: string): Promise<void> {
   const session = await prisma.researchSession.findUnique({ where: { id: sessionId } });
@@ -219,9 +224,127 @@ export async function attachThesisToFraming(sessionId: string, thesisId: string)
   ]);
 }
 
+/** What linking a new thesis to its framing session actually did, and why. */
+export type FramingLink =
+  | { linked: true; sessionId: string; derived: boolean }
+  | { linked: false; reason: 'NO_ACTIVE_SESSION' | 'SESSION_ALREADY_HAS_THESIS' | 'SESSION_NOT_FOUND'; sessionId?: string };
+
+/**
+ * Link a newly created thesis to the framing session it came out of, DERIVING
+ * that session rather than waiting to be told which one it was.
+ *
+ * `framingSessionId` used to be an optional argument with exactly one caller.
+ * Omit it and both rows still existed, a human could see the relationship in
+ * the timestamps, and nothing in the system could ever record it — provenance
+ * lost by a missing argument, with no repair path.
+ *
+ * The ambiguity that justified the parameter is gone: exactly one session may
+ * be ACTIVE system-wide (services/researchSessions.ts), so if a thesis is being
+ * created while one framing session is active, there is no question which one
+ * it came from.
+ *
+ * This matters more than it looks. **The provenance record's value is that it
+ * cannot be curated.** A researcher able to quietly create a thesis without the
+ * framing session holding an adversary's objections — and a correction they
+ * were asked to make — could publish a narrative whose reasoning trail is
+ * simply absent, and it would look identical to a thesis that never had one.
+ * Deriving the link removes the choice.
+ *
+ * `explicitSessionId` remains as a manual override for the unusual case, and
+ * failure is always REPORTED, never silent: an orphan the caller was warned
+ * about can be repaired, an orphan nobody noticed cannot.
+ */
+export async function linkThesisToFraming(
+  thesisId: string,
+  explicitSessionId?: string,
+): Promise<FramingLink> {
+  if (explicitSessionId) {
+    const session = await prisma.researchSession.findUnique({
+      where: { id: explicitSessionId },
+      select: { id: true, thesisId: true },
+    });
+    if (!session) return { linked: false, reason: 'SESSION_NOT_FOUND', sessionId: explicitSessionId };
+    if (session.thesisId) {
+      return { linked: false, reason: 'SESSION_ALREADY_HAS_THESIS', sessionId: explicitSessionId };
+    }
+    await attachThesisToFraming(explicitSessionId, thesisId);
+    return { linked: true, sessionId: explicitSessionId, derived: false };
+  }
+
+  // Derived from state, not from an argument. Only a session with no thesis yet
+  // is a candidate: an ACTIVE session already bound to a thesis is that thesis's
+  // working session, not this one's framing.
+  const active = await prisma.researchSession.findFirst({
+    where: { status: 'ACTIVE', thesisId: null },
+    orderBy: { createdAt: 'desc' },
+    select: { id: true },
+  });
+  if (!active) return { linked: false, reason: 'NO_ACTIVE_SESSION' };
+
+  await attachThesisToFraming(active.id, thesisId);
+  return { linked: true, sessionId: active.id, derived: true };
+}
+
+export type RepairFramingLinkResult =
+  | { repaired: true; sessionId: string; thesisId: string }
+  | {
+      repaired: false;
+      reason: 'SESSION_NOT_FOUND' | 'THESIS_NOT_FOUND' | 'SESSION_ALREADY_HAS_THESIS' | 'THESIS_ALREADY_LINKED';
+      /** The thesis the session is already bound to, when that is the obstacle. */
+      boundThesisId?: string;
+    };
+
+/**
+ * Attach a framing session to a thesis created without one.
+ *
+ * The repair path. Deriving the link at creation closes the hole going forward;
+ * this is for the theses already on the wrong side of it — the same reasoning
+ * as deriving state rather than reacting to a transition, which this codebase
+ * has been bitten by three times.
+ *
+ * Refuses when the session is already bound to a DIFFERENT thesis. A repair
+ * that can overwrite an existing link is not a repair, it is a way to rewrite
+ * provenance — exactly what this record exists to make impossible.
+ */
+export async function repairFramingLink(
+  sessionId: string,
+  thesisId: string,
+): Promise<RepairFramingLinkResult> {
+  const [session, thesis, existing] = await Promise.all([
+    prisma.researchSession.findUnique({ where: { id: sessionId }, select: { id: true, thesisId: true } }),
+    prisma.thesis.findUnique({ where: { id: thesisId }, select: { id: true } }),
+    prisma.researchSession.findFirst({ where: { thesisId }, select: { id: true } }),
+  ]);
+
+  if (!session) return { repaired: false, reason: 'SESSION_NOT_FOUND' };
+  if (!thesis) return { repaired: false, reason: 'THESIS_NOT_FOUND' };
+  if (session.thesisId) {
+    return { repaired: false, reason: 'SESSION_ALREADY_HAS_THESIS', boundThesisId: session.thesisId };
+  }
+  if (existing) return { repaired: false, reason: 'THESIS_ALREADY_LINKED' };
+
+  await attachThesisToFraming(sessionId, thesisId);
+  return { repaired: true, sessionId, thesisId };
+}
+
 export async function getThesisFraming(
   sessionId: string,
-): Promise<(FramingState & { events: { type: string; description: string; createdAt: Date }[] }) | FramingError> {
+): Promise<
+  | (FramingState & {
+      events: { type: string; description: string; createdAt: Date }[];
+      /**
+       * Set only when the newest stored assessment could not be read.
+       *
+       * This used to be a bare `JSON.parse`, so a malformed row did not read as
+       * malformed — it THREW, and took the whole tool down with it. Reporting it
+       * beside `latestAssessment: null` keeps the two facts apart: "no assessment
+       * has been made" and "the stored assessment is broken" are opposite, and a
+       * silent null would have said the first while the second was true.
+       */
+      latestAssessmentMalformed?: { reason: string };
+    })
+  | FramingError
+> {
   const session = await prisma.researchSession.findUnique({
     where: { id: sessionId },
     include: { events: { orderBy: { createdAt: 'asc' } } },
@@ -229,7 +352,13 @@ export async function getThesisFraming(
   if (!session) return { error: 'SESSION_NOT_FOUND', sessionId };
 
   const assessments = session.events.filter((e) => e.type === 'FRAMING_ASSESSED');
-  const latest = assessments[assessments.length - 1];
+  // .at() rather than [length - 1]: the index form is typed as always present,
+  // so the guard below reads to the compiler as dead code on an empty session.
+  const latest = assessments.at(-1);
+  const parsed: ParsedAssessment<ThesisFramingAssessment> =
+    latest === undefined
+      ? { state: 'absent' }
+      : parseAssessment<ThesisFramingAssessment>(latest.description, ThesisFramingAssessmentSchema);
 
   return {
     sessionId: session.id,
@@ -238,7 +367,8 @@ export async function getThesisFraming(
     rounds: assessments.length,
     evidenceConsidered: 0,
     trajectoriesConsidered: 0,
-    latestAssessment: latest ? (JSON.parse(latest.description) as ThesisFramingAssessment) : null,
+    latestAssessment: parsed.state === 'ok' ? parsed.value : null,
+    ...(parsed.state === 'malformed' ? { latestAssessmentMalformed: { reason: parsed.reason } } : {}),
     thesisId: session.thesisId,
     events: session.events.map((e) => ({
       type: e.type,

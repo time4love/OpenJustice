@@ -1,5 +1,5 @@
 import { apiUrl, authHeaders } from '@/lib/api';
-import type { PublicationReport, PublishOutcome, ThesisSummary } from '@/types/thesis';
+import type { PublicationReport, PublishOutcome, ThesisProvenance, ThesisSummary } from '@/types/thesis';
 
 /**
  * Fetch the thesis list. Callers differ in trigger pattern (on-mount, on-demand,
@@ -72,4 +72,30 @@ export async function publishThesis(
 export async function unpublishThesis(thesisId: string, reason: string): Promise<void> {
   const { status } = await postJson<unknown>(`/api/thesis/${thesisId}/unpublish`, { reason });
   if (status !== 200) throw new Error(`Unpublish failed (${status})`);
+}
+
+// ---------------------------------------------------------------------------
+// Provenance — researcher-only on the backend, which returns 401/403 to
+// anyone else. The page treats that as "not available to you", never as
+// "this thesis has no provenance": those are different facts.
+// ---------------------------------------------------------------------------
+
+export type ProvenanceFetch =
+  | { state: 'ok'; provenance: ThesisProvenance }
+  | { state: 'forbidden' }
+  | { state: 'error'; message: string };
+
+export async function fetchThesisProvenance(
+  thesisId: string,
+  signal?: AbortSignal,
+): Promise<ProvenanceFetch> {
+  let res: Response;
+  try {
+    res = await fetch(apiUrl(`/api/thesis/${thesisId}/provenance`), { headers: authHeaders(), signal });
+  } catch (err) {
+    return { state: 'error', message: err instanceof Error ? err.message : String(err) };
+  }
+  if (res.status === 401 || res.status === 403) return { state: 'forbidden' };
+  if (!res.ok) return { state: 'error', message: `HTTP ${String(res.status)}` };
+  return { state: 'ok', provenance: (await res.json()) as ThesisProvenance };
 }

@@ -13,7 +13,11 @@
 // ---------------------------------------------------------------------------
 
 const mockAssess = jest.fn();
+// Only the AGENT is stubbed. ThesisFramingAssessmentSchema is kept real, because
+// getThesisFraming now validates the stored assessment against it — a stubbed
+// schema would make the malformed-record tests below assert the stub.
 jest.mock('../src/services/ThesisFramingAssessorAgent', () => ({
+  ...jest.requireActual('../src/services/ThesisFramingAssessorAgent'),
   ThesisFramingAssessorAgent: jest.fn().mockImplementation(() => ({ assess: mockAssess })),
 }));
 
@@ -28,6 +32,7 @@ const db = {
   sessions: new Map<string, Record<string, unknown>>(),
   events: [] as Record<string, unknown>[],
   evidence: [] as Record<string, unknown>[],
+  theses: new Set<string>(),
 };
 let seq = 0;
 
@@ -36,8 +41,17 @@ jest.mock('../src/lib/prisma', () => ({
     researchSession: {
       // The one-active rule: openThesisFraming now refuses while any session is
       // ACTIVE. Each test here opens at most one, after a cleared db.
-      findFirst: jest.fn(async ({ where }: { where: { status?: string } }) => {
-        const s = [...db.sessions.values()].find((x) => !where.status || x['status'] === where.status);
+      // Honours `thesisId` as well as `status`, because linkThesisToFraming
+      // derives the framing session from "ACTIVE **and not yet bound to a
+      // thesis**" — a mock ignoring the second half would make the derivation
+      // pass a test it does not pass in reality.
+      findFirst: jest.fn(async ({ where }: { where: { status?: string; thesisId?: string | null } }) => {
+        const s = [...db.sessions.values()].find(
+          (x) =>
+            (!where.status || x['status'] === where.status) &&
+            (!('thesisId' in where) ||
+              (where.thesisId === null ? !x['thesisId'] : x['thesisId'] === where.thesisId)),
+        );
         return s ? { createdAt: new Date(), ...s, researcher: null, _count: { events: 0 } } : null;
       }),
       create: jest.fn(async ({ data }: { data: Record<string, unknown> }) => {
@@ -71,6 +85,11 @@ jest.mock('../src/lib/prisma', () => ({
       }),
     },
     evidence: { findMany: jest.fn(async () => db.evidence) },
+    thesis: {
+      findUnique: jest.fn(async ({ where }: { where: { id: string } }) =>
+        db.theses.has(where.id) ? { id: where.id } : null,
+      ),
+    },
     $transaction: jest.fn(async (ops: unknown) => (Array.isArray(ops) ? Promise.all(ops) : ops)),
   },
 }));
@@ -79,6 +98,8 @@ import {
   openThesisFraming as openThesisFramingRaw,
   assessThesisFraming,
   attachThesisToFraming,
+  linkThesisToFraming,
+  repairFramingLink,
   getThesisFraming,
 } from '../src/services/thesisFraming';
 
@@ -112,6 +133,9 @@ beforeEach(() => {
   jest.clearAllMocks();
   db.sessions.clear();
   db.events.length = 0;
+  db.theses.clear();
+  db.theses.add('thesis-1');
+  db.theses.add('thesis-2');
   seq = 0;
   db.evidence = [
     {
@@ -248,7 +272,153 @@ describe('attachThesisToFraming', () => {
   });
 });
 
+describe('linkThesisToFraming — deriving the framing session', () => {
+  it('links the single ACTIVE session WITHOUT being passed its id', async () => {
+    // The whole point of fix (a): the parameter was optional with one caller, so
+    // omitting it lost the link permanently and no repair path existed.
+    const s = await openThesisFraming('the question');
+
+    const link = await linkThesisToFraming('thesis-1');
+
+    expect(link).toEqual({ linked: true, sessionId: s.sessionId, derived: true });
+    expect(db.sessions.get(s.sessionId)?.['thesisId']).toBe('thesis-1');
+    expect(db.events.find((e) => e['type'] === 'THESIS_ATTACHED')?.['refId']).toBe('thesis-1');
+  });
+
+  it('reports NO_ACTIVE_SESSION rather than silently producing an orphan', async () => {
+    const link = await linkThesisToFraming('thesis-1');
+
+    expect(link).toEqual({ linked: false, reason: 'NO_ACTIVE_SESSION' });
+  });
+
+  it('does not derive a session that is already bound to another thesis', async () => {
+    // An ACTIVE session with a thesis is THAT thesis's working session, not this
+    // one's framing. Deriving it would attribute one thesis's reasoning to another.
+    const s = await openThesisFraming('the question');
+    await attachThesisToFraming(s.sessionId, 'thesis-1');
+
+    const link = await linkThesisToFraming('thesis-2');
+
+    expect(link).toEqual({ linked: false, reason: 'NO_ACTIVE_SESSION' });
+    expect(db.sessions.get(s.sessionId)?.['thesisId']).toBe('thesis-1');
+  });
+
+  it('honours an explicit session id as an override', async () => {
+    const s = await openThesisFraming('the question');
+
+    const link = await linkThesisToFraming('thesis-1', s.sessionId);
+
+    expect(link).toEqual({ linked: true, sessionId: s.sessionId, derived: false });
+  });
+
+  it('refuses an explicit session that already has a thesis', async () => {
+    const s = await openThesisFraming('the question');
+    await attachThesisToFraming(s.sessionId, 'thesis-1');
+
+    const link = await linkThesisToFraming('thesis-2', s.sessionId);
+
+    expect(link).toMatchObject({ linked: false, reason: 'SESSION_ALREADY_HAS_THESIS' });
+  });
+
+  it('reports an unknown explicit session instead of falling back to derivation', async () => {
+    // Falling back would silently attach a DIFFERENT session than the caller
+    // named — provenance quietly reassigned by a typo.
+    await openThesisFraming('the question');
+
+    const link = await linkThesisToFraming('thesis-1', 'no-such-session');
+
+    expect(link).toMatchObject({ linked: false, reason: 'SESSION_NOT_FOUND' });
+  });
+});
+
+describe('repairFramingLink', () => {
+  it('attaches a framing session to a thesis that has none', async () => {
+    const s = await openThesisFraming('the question');
+
+    const result = await repairFramingLink(s.sessionId, 'thesis-1');
+
+    expect(result).toEqual({ repaired: true, sessionId: s.sessionId, thesisId: 'thesis-1' });
+    expect(db.sessions.get(s.sessionId)?.['thesisId']).toBe('thesis-1');
+  });
+
+  it('refuses when the session is already bound to a DIFFERENT thesis', async () => {
+    // A repair able to overwrite an existing link is not a repair — it is a way
+    // to rewrite provenance, which is the one thing this record exists to prevent.
+    const s = await openThesisFraming('the question');
+    await attachThesisToFraming(s.sessionId, 'thesis-1');
+
+    const result = await repairFramingLink(s.sessionId, 'thesis-2');
+
+    expect(result).toMatchObject({ repaired: false, reason: 'SESSION_ALREADY_HAS_THESIS', boundThesisId: 'thesis-1' });
+    expect(db.sessions.get(s.sessionId)?.['thesisId']).toBe('thesis-1');
+  });
+
+  it('refuses when the thesis already has a framing session', async () => {
+    const first = await openThesisFraming('the question');
+    await attachThesisToFraming(first.sessionId, 'thesis-1');
+    db.sessions.set('fs-other', { id: 'fs-other', name: 'another', status: 'ACTIVE', thesisId: null });
+
+    const result = await repairFramingLink('fs-other', 'thesis-1');
+
+    expect(result).toMatchObject({ repaired: false, reason: 'THESIS_ALREADY_LINKED' });
+  });
+
+  it('reports an unknown session and an unknown thesis distinctly', async () => {
+    const s = await openThesisFraming('the question');
+
+    expect(await repairFramingLink('nope', 'thesis-1')).toMatchObject({ reason: 'SESSION_NOT_FOUND' });
+    expect(await repairFramingLink(s.sessionId, 'no-such-thesis')).toMatchObject({ reason: 'THESIS_NOT_FOUND' });
+  });
+});
+
 describe('getThesisFraming', () => {
+  it('reports a malformed stored assessment instead of throwing', async () => {
+    // This was a bare JSON.parse. A malformed row did not read as malformed —
+    // it threw, and took the whole get_thesis_framing tool down with it.
+    const s = await openThesisFraming('the question');
+    db.events.push({
+      sessionId: s.sessionId,
+      type: 'FRAMING_ASSESSED',
+      description: '{not json',
+      createdAt: new Date(++seq),
+    });
+
+    const r = await getThesisFraming(s.sessionId);
+
+    expect('error' in r).toBe(false);
+    if ('error' in r) throw new Error('unreachable');
+    // Null assessment AND a stated reason — "none was made" and "the stored one
+    // is broken" are opposite facts and must not share a representation.
+    expect(r.latestAssessment).toBeNull();
+    expect(r.latestAssessmentMalformed?.reason).toContain('not valid JSON');
+  });
+
+  it('reports valid JSON of the wrong shape as malformed too', async () => {
+    const s = await openThesisFraming('the question');
+    db.events.push({
+      sessionId: s.sessionId,
+      type: 'FRAMING_ASSESSED',
+      description: '{"unexpected":true}',
+      createdAt: new Date(++seq),
+    });
+
+    const r = await getThesisFraming(s.sessionId);
+
+    if ('error' in r) throw new Error('unreachable');
+    expect(r.latestAssessment).toBeNull();
+    expect(r.latestAssessmentMalformed?.reason).toContain('does not match the expected shape');
+  });
+
+  it('says nothing about malformation when no assessment exists at all', async () => {
+    const s = await openThesisFraming('the question');
+
+    const r = await getThesisFraming(s.sessionId);
+
+    if ('error' in r) throw new Error('unreachable');
+    expect(r.latestAssessment).toBeNull();
+    expect(r.latestAssessmentMalformed).toBeUndefined();
+  });
+
   it('returns the full exchange with the latest assessment', async () => {
     const s = await openThesisFraming('the question');
     mockAssess.mockResolvedValue(assessment({ recommendedTopicString: 'the recommended string' }));

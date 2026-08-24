@@ -323,9 +323,13 @@ export default function ThesesPage() {
 
         {error && <div className="text-red-600 text-sm">{t('errorSave')}</div>}
 
+        {/* The empty state describes what THIS VIEWER can see, never a fact about
+            the world. One string for everyone told a public visitor there are no
+            theses while unpublished drafts existed — not a leak, the inverse: a
+            false statement made to avoid one. It still reveals no count or title. */}
         {!loading && !error && theses.length === 0 && (
           <div className="text-center py-24 space-y-3">
-            <p className="text-slate-500 text-lg">{t('emptyState')}</p>
+            <p className="text-slate-500 text-lg">{canEdit ? t('emptyState') : t('emptyStatePublic')}</p>
             {canEdit && (
               <div className="flex items-center justify-center gap-3">
                 <button

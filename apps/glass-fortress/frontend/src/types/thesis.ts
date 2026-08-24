@@ -92,3 +92,104 @@ export interface AIAnalysis {
   overallStrengthAssessment: 'WEAK' | 'MODERATE' | 'STRONG' | 'COMPELLING';
   summaryHe: string;
 }
+
+// ---------------------------------------------------------------------------
+// Provenance — how a thesis came to say what it says.
+//
+// docs/gf-thesis-provenance-ui-dev-plan.md. Mirrors the backend's
+// services/thesisProvenance.ts, which parses the stored assessment JSON so
+// nothing here ever parses prose: a client that parses prose is a client that
+// breaks when the prose changes.
+// ---------------------------------------------------------------------------
+
+export type ProvenanceEventType =
+  | 'SESSION_STARTED'
+  | 'VERSION_CREATED'
+  | 'GAP_RESOLVED'
+  | 'AI_ANALYSIS_RUN'
+  | 'NOTE'
+  | 'SESSION_CLOSED'
+  | 'FRAMING_PROPOSED'
+  | 'FRAMING_ASSESSED'
+  | 'THESIS_ATTACHED'
+  | 'PUBLICATION_RATIONALE'
+  | 'PUBLICATION_ASSESSED'
+  | 'THESIS_PUBLISHED'
+  | 'THESIS_UNPUBLISHED'
+  | 'SESSION_CLOSED_BY_OTHER';
+
+/**
+ * Three states, deliberately — not two.
+ *
+ * `absent` is an event carrying no assessment. `malformed` is a record that
+ * exists and cannot be read. Rendering the second as an empty section would say
+ * "no contradictions were found", which is the opposite of what is true.
+ */
+export type ParsedAssessment<T> =
+  | { state: 'ok'; value: T }
+  | { state: 'malformed'; reason: string; raw: string }
+  | { state: 'absent' };
+
+export interface FramingContradiction {
+  researcherClaim: string;
+  whatEvidenceShows: string;
+  fileHash: string;
+}
+
+export interface FramingAssessment {
+  candidateFramings: {
+    framing: string;
+    scope: 'NARROW' | 'MODERATE' | 'BROAD';
+    backedByFileHashes: string[];
+    strength: string;
+    weakness: string;
+  }[];
+  contradictions: FramingContradiction[];
+  unverifiedAssumptions: { assumption: string; howToVerify: string }[];
+  recommendedTopicString: string;
+  assessment: string;
+}
+
+export interface PublicationAssessment {
+  rationaleHasSubstance: boolean;
+  substanceGaps: string[];
+  verdict: 'SUPPORTS' | 'DISPUTES';
+  objection: string;
+  officialCapacityOk: boolean;
+  characterClaims: string[];
+  gapActionability: { gapIndex: number; namesDocument: boolean; namesHolder: boolean; note: string }[];
+  assessment: string;
+}
+
+export interface ProvenanceEvent {
+  id: string;
+  type: ProvenanceEventType;
+  createdAt: string;
+  refId: string | null;
+  /** Null for the two assessment types — their content is in the parsed fields. */
+  description: string | null;
+  framingAssessment?: ParsedAssessment<FramingAssessment>;
+  publicationAssessment?: ParsedAssessment<PublicationAssessment>;
+}
+
+export interface ProvenanceSession {
+  id: string;
+  name: string;
+  question: string | null;
+  status: string;
+  createdAt: string;
+  closedAt: string | null;
+  /** Null on sessions predating ownership — render as unknown, never as blank. */
+  researcherId: string | null;
+  researcherHandle: string | null;
+  events: ProvenanceEvent[];
+}
+
+export interface ThesisProvenance {
+  thesisId: string;
+  sessions: ProvenanceSession[];
+  counts: { sessions: number; events: number; malformedAssessments: number };
+  /** True when no session was ever attached — a state, not a blank. */
+  empty: boolean;
+  recordedDissent: { sessionId: string; eventId: string; createdAt: string; objection: string }[];
+}
