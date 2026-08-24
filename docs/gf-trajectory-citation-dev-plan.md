@@ -227,3 +227,84 @@ future edit is most likely to "improve" into a stronger, false claim.
   evidence only. Out of scope here; worth doing when the assessor is next revisited.
 - **No live run against staging yet.** Everything above is unit-level. The finding-per-finding record
   of this platform is that live use against real data finds what tests cannot.
+
+
+---
+
+## 9. `cite_trajectories` — citing a claim already written (2026-08-24)
+
+§4 built the ability to cite a trajectory *while writing*. It did not make an already-written thesis
+citable, and that turned out to be the whole of the repair problem for the first real thesis.
+
+### 9.1 The gap, measured on the real document
+
+`add_thesis_version` takes `body` as Markdown. The stored head of
+`cmt5jffqy000lf52mn6t56f3l` is TipTap JSON: **3,905 characters, 3 headings, 9 paragraphs, a bullet
+list, 18 inline `evidenceMention` nodes across 7 distinct hashes, 3 key figures.** Nothing returns
+that as Markdown:
+
+- `get_thesis_context` returns `content` as raw TipTap JSON;
+- `extractText` — the only serializer that exists — collapses `\s+ → ' '` and renders mentions as
+  literal `#ev_0x…` text.
+
+So adding one citation through `add_thesis_version` meant retyping the whole thesis by hand, in
+Hebrew, past seven working citations, with a serializer that would flatten it. Retyping a document to
+add a footnote is how the four factual errors caught on 2026-08-23 got there.
+
+### 9.2 The design: anchor, splice, and assert the prose did not move
+
+`cite_trajectories({thesisId, placements: [{anchorText, trajectoryIds}]})`.
+
+- `anchorText` is an **exact substring of the existing prose**. It must occur **exactly once** in the
+  document. Zero matches or several is a **refusal**, never a guess — "probably that sentence" is not
+  a property a citation may have.
+- The splice inserts mention nodes after the anchor, splitting the text run and **carrying its marks**
+  so bold prose stays bold.
+- Afterwards the concatenated prose is compared to the original and the write is **abandoned if a
+  single character moved**. That is a runtime guard in `spliceTrajectoryMentions`, not only a test.
+- **All-or-nothing.** One bad anchor refuses the whole call: a partly-applied citation edit leaves a
+  version nobody asked for.
+- An anchor unique in the prose but **split across formatting runs** (a `**bold**` span cuts the
+  sentence into three) is reported `NOT_FOUND` rather than silently skipped — otherwise the tool would
+  report success on a version with no citation in it.
+
+Also refused, each writing nothing: an unknown thesis, a thesis with no version, an id matching no
+row, and an id **already cited** by the head version (a second marker for one finding reads as two
+findings).
+
+**It still writes a new version.** A version's `contentHash` is what publication pins, so a citation
+set that changed under a fixed version id would make the pin meaningless. The new version is
+`PENDING_AI`: the Devil's Advocate critique names what the thesis cites, and the citations just
+changed.
+
+**Co-movement completeness is reported, never enforced.** Citing 1 of 10 claims that moved as one unit
+is a weaker claim than the archive supports — but which members belong in a given sentence is the
+researcher's judgement, not the tool's.
+
+### 9.3 Still missing, deliberately
+
+A faithful **TipTap → Markdown serializer** (the inverse of `buildTipTapDoc`, with a round-trip
+property test) exposed as an `editableSource` on `get_thesis_context`. That is what any *prose* edit
+over MCP needs, and it becomes required if thesis editing moves out of the UI
+([[gf-ui-vs-mcp-boundary]]). It is deliberately not a prerequisite for citing: putting a
+document-rewriting serializer between a researcher and a footnote is the risk this tool removes.
+
+### 9.4 The staging repair this unblocks
+
+Thesis `cmt5jffqy000lf52mn6t56f3l` — DRAFT, one version, 7 evidence + 3 figure mentions, **0
+trajectory mentions**. Both uncited claims were re-verified against the archive rather than taken from
+the prose (computation `cmt5b3gji0005jdk4p4wi2lu8`, 83 snapshots):
+
+| The thesis says | The archive |
+|---|---|
+| present 24 Jul, gone by 5 Aug | `2022-07-24 PRESENT` → `2022-08-05 absent` ✔ |
+| absent across **seven further captures**, until 5 Sept | 08-07, 08-10, 08-13, 08-15, 08-16, 08-16, 09-05 — seven, all absent ✔ |
+| changed again between 5 and 6 Sept | `2022-09-06 PRESENT` ✔ |
+
+Both sentences are correct as written. The citation is group `3313cbaa` — **10 claims moving as one
+unit** (`cmt5b3gsl000ijdk4k0z9s3fa` and nine siblings). Note two captures share 2022-08-05 and two
+share 2022-08-16, so "seven" is exact under "captures after 5 Aug up to and including 5 Sept" — worth
+keeping in the wording.
+
+Gates: backend **1330/1330** (+22), `eslint src/` 361 — one above the 360 after §8, and that one is
+the pre-existing `server.tool` deprecation every one of the 40 registered tools already carries.
