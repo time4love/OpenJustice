@@ -16,6 +16,7 @@ import type { EvidenceGap, AIAnalysis, PublicationState, ThesisViewer } from '@/
 import { ThesisPublicationPanel } from '@/components/ThesisPublicationPanel';
 import { ThesisProvenancePanel } from '@/components/ThesisProvenancePanel';
 import { CitationSheet, type CitationTarget } from '@/components/CitationSheet';
+import { ThesisVersionHistory } from '@/components/ThesisVersionHistory';
 import { PublicationBadge } from '@/components/PublicationBadge';
 import { CategoryBadges } from '@/components/CategoryBadges';
 import { tierDotColor } from '@/components/TierBadge';
@@ -73,7 +74,16 @@ interface Thesis {
  * must land on the source; putting the evidence and trajectory lists in another
  * view would break the one link the whole citation layer exists to provide.
  */
-type ThesisView = 'thesis' | 'process';
+type ThesisView = 'thesis' | 'process' | 'history';
+
+/** The switcher's options, in reading order. */
+const THESIS_VIEWS: readonly ThesisView[] = ['thesis', 'process', 'history'];
+
+const VIEW_LABEL: Record<ThesisView, 'viewThesis' | 'viewProcess' | 'historyBtn'> = {
+  thesis: 'viewThesis',
+  process: 'viewProcess',
+  history: 'historyBtn',
+};
 
 interface GapResolution {
   gapIndex: number;
@@ -315,7 +325,9 @@ function ThesisPageInner({ id }: { id: string }) {
   // every toggle fetched this route's RSC payload from the server, remounted the
   // tree, and re-ran the fetches under it — a toggle that should cost nothing
   // cost a round trip, felt stuck, and re-requested data already on screen.
-  const initialView: ThesisView = searchParams.get('view') === 'process' ? 'process' : 'thesis';
+  const viewParam = searchParams.get('view');
+  const initialView: ThesisView =
+    viewParam === 'process' || viewParam === 'history' ? viewParam : 'thesis';
   const isHistorical = !!historicalVersionId;
   const { researcher } = useAuth();
   const canEdit = researcher?.approved ?? false;
@@ -339,6 +351,7 @@ function ThesisPageInner({ id }: { id: string }) {
   // re-fetch the same record every time the reader looked twice — and mounting
   // it eagerly would fetch it for every reader who never opens it.
   const [processMounted, setProcessMounted] = useState(initialView === 'process');
+  const [historyMounted, setHistoryMounted] = useState(initialView === 'history');
   // Which citation is open. One id, resolved to its source at render — holding
   // the resolved object instead would go stale the moment the thesis reloads.
   const [openCitationId, setOpenCitationId] = useState<string | null>(null);
@@ -474,6 +487,7 @@ function ThesisPageInner({ id }: { id: string }) {
   const hasProcessView = thesis.viewer === 'RESEARCHER';
   const showThesis = !hasProcessView || view === 'thesis';
   const showProcess = !hasProcessView || view === 'process';
+  const showHistory = hasProcessView && view === 'history';
 
   function switchView(next: ThesisView): void {
     // State first, so the switch is immediate. Nothing here waits on the
@@ -481,6 +495,7 @@ function ThesisPageInner({ id }: { id: string }) {
     // time the process panel is opened.
     setView(next);
     if (next === 'process') setProcessMounted(true);
+    if (next === 'history') setHistoryMounted(true);
 
     // The URL still carries the view, so a refresh or a shared link lands in
     // the right place — written with the History API rather than router.replace,
@@ -624,7 +639,7 @@ function ThesisPageInner({ id }: { id: string }) {
               aria-label={t('viewsLabel')}
               className="flex flex-1 gap-1 bg-slate-100 border border-slate-200 rounded-xl p-1"
             >
-              {(['thesis', 'process'] as const).map((v) => (
+              {THESIS_VIEWS.map((v) => (
                 <button
                   key={v}
                   id={`thesis-tab-${v}`}
@@ -633,35 +648,26 @@ function ThesisPageInner({ id }: { id: string }) {
                   aria-selected={view === v}
                   aria-controls={`thesis-panel-${v}`}
                   onKeyDown={(e) => {
-                    if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
-                      e.preventDefault();
-                      switchView(v === 'thesis' ? 'process' : 'thesis');
-                    }
+                    if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+                    e.preventDefault();
+                    // Logical next/previous: in RTL the right arrow moves toward
+                    // the start of the list, which is what the reader means.
+                    const step = (e.key === 'ArrowLeft' ? 1 : -1) * (locale === 'he' ? -1 : 1);
+                    const at = THESIS_VIEWS.indexOf(view);
+                    const nextView = THESIS_VIEWS[(at + step + THESIS_VIEWS.length) % THESIS_VIEWS.length];
+                    switchView(nextView);
                   }}
                   onClick={() => { switchView(v); }}
-                  className={`flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
                     view === v
                       ? 'bg-white text-slate-900 shadow-sm'
                       : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
-                  {t(v === 'thesis' ? 'viewThesis' : 'viewProcess')}
+                  {t(VIEW_LABEL[v])}
                 </button>
               ))}
             </div>
-
-            {/* Version history sits with the views rather than in the site
-                header: it is another way of looking at this thesis, not a
-                site-wide destination. A link, not a tab — it navigates to its
-                own page, and role="tab" would promise a panel that is not here. */}
-            {canEdit && (
-              <Link
-                href={`/theses/${id}/history`}
-                className="shrink-0 px-3 py-2 rounded-lg text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors"
-              >
-                {t('historyBtn')}
-              </Link>
-            )}
           </div>
         )}
 
@@ -778,6 +784,17 @@ function ThesisPageInner({ id }: { id: string }) {
             <p className="text-xs text-slate-500 leading-relaxed">{t('trajectoryCaveat')}</p>
           </div>
         )}        </div>
+
+        {hasProcessView && historyMounted && (
+          <div
+            id="thesis-panel-history"
+            role="tabpanel"
+            aria-labelledby="thesis-tab-history"
+            className={showHistory ? '' : 'hidden'}
+          >
+            <ThesisVersionHistory id={id} />
+          </div>
+        )}
 
         {(!hasProcessView || processMounted) && (
         <div

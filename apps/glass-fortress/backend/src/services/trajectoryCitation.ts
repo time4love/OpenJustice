@@ -212,6 +212,42 @@ function toTrajectory(row: {
   };
 }
 
+interface LatestComputation {
+  id: string;
+  computedAt: Date;
+  snapshotsExamined: number;
+}
+
+/**
+ * Siblings of one computation, memoised.
+ *
+ * Safe to cache without invalidation for the reason the schema note gives: a
+ * computation is never updated in place, so its rows are fixed the moment it
+ * exists. Bounded because a thesis cites a handful of passes and a process is
+ * restarted on every deploy; the oldest entry is dropped rather than letting the
+ * map grow without limit.
+ */
+const SIBLING_CACHE_LIMIT = 8;
+const siblingCache = new Map<string, Trajectory[]>();
+
+async function loadSiblings(computationId: string): Promise<Trajectory[]> {
+  const cached = siblingCache.get(computationId);
+  if (cached) return cached;
+
+  const siblings = await prisma.claimTrajectory.findMany({
+    where: { computationId },
+    select: TRAJECTORY_ROW,
+  });
+  const loaded = siblings.map(toTrajectory);
+
+  if (siblingCache.size >= SIBLING_CACHE_LIMIT) {
+    const oldest = siblingCache.keys().next().value;
+    if (oldest !== undefined) siblingCache.delete(oldest);
+  }
+  siblingCache.set(computationId, loaded);
+  return loaded;
+}
+
 const TRAJECTORY_ROW = {
   id: true,
   claimHash: true,
@@ -234,10 +270,15 @@ export async function resolveTrajectoryCitations(ids: readonly string[]): Promis
   const unique = [...new Set(ids)];
   if (unique.length === 0) return { resolved: [], missing: [] };
 
+  // Deliberately does NOT select observations or claimText: every cited row also
+  // appears in its computation's sibling set, which is loaded (and memoised)
+  // below, so asking for the eighty-three entry blob here fetched the same text
+  // twice on every page load.
   const rows = await prisma.claimTrajectory.findMany({
     where: { id: { in: unique } },
     select: {
-      ...TRAJECTORY_ROW,
+      id: true,
+      claimHash: true,
       trackedUrlId: true,
       computation: {
         select: {
@@ -256,57 +297,75 @@ export async function resolveTrajectoryCitations(ids: readonly string[]): Promis
   const missing = unique.filter((id) => !found.has(id));
 
   // One read per cited computation, not per cited claim: a thesis citing an
-  // eight-claim co-movement cites eight rows of the same pass.
+  // eight-claim co-movement cites eight rows of the same pass. Memoised,
+  // because a computation is immutable by construction — new state means a new
+  // computation, never an edited one — so the grouping derived from it can
+  // never go stale.
   const siblingsByComputation = new Map<string, Trajectory[]>();
   for (const computationId of new Set(rows.map((r) => r.computation.id))) {
-    const siblings = await prisma.claimTrajectory.findMany({
-      where: { computationId },
-      select: TRAJECTORY_ROW,
-    });
-    siblingsByComputation.set(computationId, siblings.map(toTrajectory));
+    siblingsByComputation.set(computationId, await loadSiblings(computationId));
   }
 
-  // The newest pass per page — the thing the citation is compared against.
-  const latestByTrackedUrl = new Map<
-    string,
-    { id: string; computedAt: Date; snapshotsExamined: number; trajectories: Trajectory[] } | null
-  >();
+  // The newest pass per page, as METADATA ONLY.
+  //
+  // This used to pull every trajectory of the latest computation along with it —
+  // fifty-eight rows, each carrying an eighty-three entry observations blob —
+  // before discovering that the latest pass is usually the one being cited and
+  // none of it was needed. Measured at 2.7s of the 8.5s a single thesis page
+  // spent here. The rows are now fetched only when the passes actually differ,
+  // and only for the claims the thesis cites.
+  const latestByTrackedUrl = new Map<string, LatestComputation | null>();
   for (const trackedUrlId of new Set(rows.map((r) => r.trackedUrlId))) {
     const latest = await prisma.claimTrajectoryComputation.findFirst({
       where: { trackedUrlId },
       orderBy: { computedAt: 'desc' },
-      select: {
-        id: true,
-        computedAt: true,
-        snapshotsExamined: true,
-        trajectories: { select: TRAJECTORY_ROW },
-      },
+      select: { id: true, computedAt: true, snapshotsExamined: true },
     });
-    latestByTrackedUrl.set(
-      trackedUrlId,
-      latest ? { ...latest, trajectories: latest.trajectories.map(toTrajectory) } : null,
+    latestByTrackedUrl.set(trackedUrlId, latest);
+  }
+
+  // Counterparts, only where the cited pass is not the newest one.
+  const citedComputationIds = new Set(rows.map((r) => r.computation.id));
+  const staleTrackedUrlIds = [...latestByTrackedUrl.entries()]
+    .filter(([, latest]) => latest !== null && !citedComputationIds.has(latest.id))
+    .map(([trackedUrlId]) => trackedUrlId);
+  const counterpartsByComputation = new Map<string, Map<string, Trajectory>>();
+  for (const trackedUrlId of staleTrackedUrlIds) {
+    const latest = latestByTrackedUrl.get(trackedUrlId);
+    if (!latest) continue;
+    const citedHashes = rows.filter((r) => r.trackedUrlId === trackedUrlId).map((r) => r.claimHash);
+    const counterparts = await prisma.claimTrajectory.findMany({
+      where: { computationId: latest.id, claimHash: { in: citedHashes } },
+      select: TRAJECTORY_ROW,
+    });
+    counterpartsByComputation.set(
+      latest.id,
+      new Map(counterparts.map((c) => [c.claimHash, toTrajectory(c)])),
     );
   }
 
   const citedIds = new Set(unique);
 
-  const resolved = rows.map((row): ResolvedTrajectoryCitation => {
-    const self = toTrajectory(row);
-    const siblings = siblingsByComputation.get(row.computation.id) ?? [self];
+  const resolved = rows.flatMap((row): ResolvedTrajectoryCitation[] => {
+    const siblings = siblingsByComputation.get(row.computation.id) ?? [];
+    const self = siblings.find((t) => t.id === row.id);
+    // A row that its own computation does not contain is a data defect, not a
+    // stale citation: reported as missing rather than rendered from a guess.
+    if (!self) return [];
     const group = groupByMovement(siblings).find((g) => g.claims.some((c) => c.id === row.id));
 
-    return {
+    return [{
       id: row.id,
       claimHash: row.claimHash,
-      claimText: row.claimText,
+      claimText: self.claimText,
       url: row.trackedUrl.url,
       trackedUrlId: row.trackedUrlId,
       observations: self.observations,
       changes: changesOnly(self.observations),
-      transitions: row.transitions,
-      firstSeen: row.firstSeen,
-      lastSeen: row.lastSeen,
-      finalState: row.finalState,
+      transitions: self.transitions,
+      firstSeen: self.firstSeen,
+      lastSeen: self.lastSeen,
+      finalState: self.finalState,
       computation: {
         id: row.computation.id,
         sourceStateHash: row.computation.sourceStateHash,
@@ -327,18 +386,21 @@ export async function resolveTrajectoryCitations(ids: readonly string[]): Promis
         self,
         { id: row.computation.id, computedAt: row.computation.computedAt.toISOString() },
         latestByTrackedUrl.get(row.trackedUrlId) ?? null,
+        counterpartsByComputation,
       ),
       caveat: TRAJECTORY_EXTRACTION_CAVEAT,
-    };
+    }];
   });
 
-  return { resolved, missing };
+  const unresolved = rows.filter((r) => !resolved.some((x) => x.id === r.id)).map((r) => r.id);
+  return { resolved, missing: [...missing, ...unresolved] };
 }
 
 function currencyOf(
   cited: Trajectory,
   citedComputation: { id: string; computedAt: string },
-  latest: { id: string; computedAt: Date; snapshotsExamined: number; trajectories: Trajectory[] } | null,
+  latest: LatestComputation | null,
+  counterpartsByComputation: ReadonlyMap<string, ReadonlyMap<string, Trajectory>>,
 ): TrajectoryCurrency {
   // `latest` is null only if the cited row's own computation vanished between
   // the two reads. The cited pass is then the only pass we have, and its own
@@ -348,7 +410,7 @@ function currencyOf(
   }
 
   const latestComputedAt = latest.computedAt.toISOString();
-  const counterpart = latest.trajectories.find((t) => t.claimHash === cited.claimHash);
+  const counterpart = counterpartsByComputation.get(latest.id)?.get(cited.claimHash);
   if (!counterpart) {
     return { state: 'NOT_FOLLOWED_BY_LATEST', latestComputationId: latest.id, latestComputedAt };
   }
