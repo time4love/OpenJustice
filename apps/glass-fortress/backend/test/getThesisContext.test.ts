@@ -42,14 +42,27 @@ interface ContextResult {
   devilsAdvocateCritique?: unknown;
   keyFiguresMentioned?: string[];
   trajectoriesCited?: {
-    trajectoryId: string;
-    claimText: string;
-    observations: { snapshotDate: string; present: boolean; snapshotUrl: string }[];
-    coMovement: { claimCount: number; citedCount: number; members: { trajectoryId: string; cited: boolean }[] };
-    pinnedTo: { id: string };
-    currency: { state: string };
-    caveat: string;
-  }[];
+    detailLevel: 'FULL' | 'SUMMARY';
+    citedMovements: number;
+    citedTrajectories: number;
+    supersededMovements: number;
+    movements: {
+      trajectoryIds: string[];
+      claimCount: number;
+      citedCount: number;
+      transitions: number;
+      finalState: string;
+      // FULL only.
+      claims?: string[];
+      changes?: { snapshotDate: string; present: boolean; snapshotUrl: string }[];
+      currency?: unknown;
+      observations?: unknown;
+      // SUMMARY only.
+      claimPreview?: string;
+    }[];
+    caveat?: string;
+    reduced?: { why: string; omitted: string; callInstead: string; warning: string };
+  };
   trajectoryCitationsMissing?: string[];
   trajectoryCitationWarning?: string;
   evidenceCited?: { fileHash: string }[];
@@ -249,30 +262,79 @@ it('reports an unknown thesis', async () => {
 // text EXTRACTION, not a page — and an opaque id is rendered as an opaque id.
 // ---------------------------------------------------------------------------
 describe('cited claim trajectories', () => {
-  it('resolves the mention into observations, the group, the pinned pass and the caveat', async () => {
+  it('returns the citations IN FULL when they fit — claims, flips and the caveat', async () => {
     thesis([version('v1', 'text')], null);
     const r = await asResearcher();
 
     expect(mockResolveTrajectories).toHaveBeenCalledWith(['traj-1']);
-    const cited = r.trajectoriesCited?.[0];
-    expect(cited?.trajectoryId).toBe('traj-1');
-    // Every capture examined, including the one where the claim was absent.
-    expect(cited?.observations).toHaveLength(2);
-    expect(cited?.observations.map((o) => o.present)).toEqual([true, false]);
-    // The co-movement, and how much of it this thesis actually cited.
-    expect(cited?.coMovement).toMatchObject({ claimCount: 8, citedCount: 1 });
-    expect(cited?.coMovement.members).toHaveLength(8);
-    // Pinned to the pass that was cited, not to whatever is newest.
-    expect(cited?.pinnedTo.id).toBe('comp-1');
-    expect(cited?.currency.state).toBe('PINNED_IS_LATEST');
-    expect(cited?.caveat).toContain('extraction');
+    expect(r.trajectoriesCited).toMatchObject({
+      detailLevel: 'FULL',
+      citedMovements: 1,
+      citedTrajectories: 1,
+      supersededMovements: 0,
+    });
+
+    const movement = r.trajectoriesCited?.movements[0];
+    expect(movement?.trajectoryIds).toEqual(['traj-1']);
+    expect(movement?.claimCount).toBe(8);
+    expect(movement?.citedCount).toBe(1);
+    expect(movement?.finalState).toBe('REMOVED');
+    // The material a model reasons from: the claim itself, and the captures it
+    // moved on. Dates are the finding — a thesis argues about specific captures.
+    expect(movement?.claims).toEqual(['טענה שנעקבה על פני כל ההעתקים']);
+    expect(movement?.changes?.map((c) => c.snapshotDate)).toEqual(['2022-07-24', '2022-08-05']);
+    expect(r.trajectoriesCited?.caveat).toContain('extraction');
+  });
+
+  // -------------------------------------------------------------------------
+  // The size of this answer is part of its contract.
+  //
+  // One entry per cited row, each carrying every capture, made this response
+  // 375 KB on the first real thesis and put it over the MCP tool-result limit —
+  // the tool a researcher uses to READ a thesis could no longer return one.
+  // Over HTTP that payload compresses away, which is why nothing caught it
+  // until a model tried to read it.
+  //
+  // Summarising unconditionally would have fixed the size and introduced a
+  // quieter fault: a model reasoning about a thesis from claim previews while
+  // believing it held the citations. So the block is full when it fits, reduced
+  // only when it must be, and when it is reduced it SAYS SO.
+  // -------------------------------------------------------------------------
+  it('falls back to a summary when the citations are too large, and says what it dropped', async () => {
+    // Enough distinct movements, with long enough claims, to pass the budget.
+    const many = Array.from({ length: 60 }, (_, i) => ({
+      ...RESOLVED_TRAJECTORY,
+      id: `traj-${String(i + 1)}`,
+      claimText: `טענה ארוכה מספר ${String(i + 1)} `.repeat(40),
+      coMovement: { ...RESOLVED_TRAJECTORY.coMovement, patternHash: `pattern-${String(i + 1)}` },
+    }));
+    mockResolveTrajectories.mockResolvedValue({ resolved: many, missing: [] });
+    thesis([version('v1', 'text')], null);
+
+    const r = await asResearcher();
+
+    expect(r.trajectoriesCited?.detailLevel).toBe('SUMMARY');
+    expect(r.trajectoriesCited?.citedMovements).toBe(60);
+    expect(r.trajectoriesCited?.citedTrajectories).toBe(60);
+
+    // None of the bulk.
+    const movement = r.trajectoriesCited?.movements[0];
+    expect(movement?.claims).toBeUndefined();
+    expect(movement?.changes).toBeUndefined();
+    expect(movement?.observations).toBeUndefined();
+    expect(movement?.claimPreview).toBeDefined();
+
+    // And the caller is told, rather than left to infer it from what is absent.
+    expect(r.trajectoriesCited?.reduced?.callInstead).toBe('get_thesis_trajectory_citations');
+    expect(r.trajectoriesCited?.reduced?.omitted).toContain('capture');
+    expect(r.trajectoriesCited?.reduced?.warning).toContain('NOT fully represented');
   });
 
   it('reaches the public too — a published thesis cites the same way', async () => {
     thesis([version('v1', 'published text')], 'v1');
     const r = await asPublic();
 
-    expect(r.trajectoriesCited?.[0].trajectoryId).toBe('traj-1');
+    expect(r.trajectoriesCited?.movements[0].trajectoryIds).toEqual(['traj-1']);
   });
 
   it('names citations that no longer resolve instead of quietly showing fewer', async () => {
@@ -280,7 +342,7 @@ describe('cited claim trajectories', () => {
     thesis([version('v1', 'text')], null);
     const r = await asResearcher();
 
-    expect(r.trajectoriesCited).toEqual([]);
+    expect(r.trajectoriesCited?.movements).toEqual([]);
     expect(r.trajectoryCitationsMissing).toEqual(['traj-1']);
     expect(r.trajectoryCitationWarning).toContain('nothing behind them');
   });

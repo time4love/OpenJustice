@@ -38,6 +38,9 @@ export const READ_TOOLS = new Set([
   'get_diff_debate',
   'get_figure_dossier',
   'get_thesis_context',
+  // Reads stored trajectories and resolves them; writes nothing, invokes no
+  // model. Unlike get_claim_trajectories, it can never trigger a detection pass.
+  'get_thesis_trajectory_citations',
   'get_session_summary',
 ]);
 

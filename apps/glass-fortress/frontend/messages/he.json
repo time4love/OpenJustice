@@ -764,7 +764,8 @@
     "loginError_no_account": "לא נמצא חשבון חוקר. יש להירשם דרך עמוד הכניסה.",
     "loginError_not_approved": "החשבון עדיין לא אושר על ידי מנהל.",
     "loginError_missing_token": "אירעה שגיאה. נסו שוב.",
-    "backToLogin": "חזרה להתחברות"
+    "backToLogin": "חזרה להתחברות",
+    "approving": "מאשר…"
   },
   "admin": {
     "title": "ניהול חוקרים",
