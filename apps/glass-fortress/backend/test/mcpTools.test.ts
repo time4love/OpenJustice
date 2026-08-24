@@ -3,6 +3,11 @@
 // All handlers are tested directly (no HTTP/transport layer).
 // ---------------------------------------------------------------------------
 
+jest.mock('../src/services/thesisAnalysis', () => {
+  const actual = jest.requireActual('../src/services/thesisAnalysis');
+  return { ...actual, triggerAIAnalysis: jest.fn() };
+});
+
 jest.mock('../src/lib/prisma', () => ({
   prisma: {
     evidence: {
@@ -28,6 +33,7 @@ jest.mock('../src/lib/prisma', () => ({
     },
     thesisVersion: {
       create: jest.fn(),
+      findUniqueOrThrow: jest.fn(),
     },
     claimTrajectory: {
       findMany: jest.fn(),
@@ -77,6 +83,7 @@ jest.mock('../src/services/GapRevisionAgent', () => ({
 }));
 
 import { prisma } from '../src/lib/prisma';
+import { triggerAIAnalysis } from '../src/services/thesisAnalysis';
 import { VectorStoreService } from '../src/services/VectorStoreService';
 import { IntakeAgent } from '../src/services/IntakeAgent';
 import { WaybackScraper } from '../src/services/WaybackScraper';
@@ -1188,7 +1195,13 @@ describe('runAiAnalysisHandler', () => {
     alternativeInterpretations: [],
   };
 
-  it('returns cached result when version is already COMPLETE', async () => {
+  // Whether a stored critique is still current is decided by comparing the
+  // fingerprint of the critic's input, in triggerAIAnalysis — see
+  // thesisAnalysisCitations.test.ts. This handler only reports that decision.
+  // It used to make the call itself, with `status === COMPLETE`, which is a
+  // property of the VERSION and cannot see whether the analysis is still an
+  // answer to the facts.
+  function headVersion() {
     (prisma.thesis.findUnique as jest.Mock).mockResolvedValueOnce({
       id: 'thesis-1',
       headVersion: {
@@ -1198,13 +1211,33 @@ describe('runAiAnalysisHandler', () => {
         userContent: { type: 'doc', content: [] },
       },
     });
+    (prisma.thesisVersion.findUniqueOrThrow as jest.Mock).mockResolvedValueOnce({
+      id: 'version-1',
+      status: 'COMPLETE',
+      aiAnalysis: mockAnalysis,
+    });
+  }
 
-    const raw = await runAiAnalysisHandler({ thesisId: 'thesis-1' });
-    const result = JSON.parse(raw);
+  it('reports cached when the service found the stored analysis still current', async () => {
+    headVersion();
+    (triggerAIAnalysis as jest.Mock).mockResolvedValueOnce({ ran: false });
+
+    const result = JSON.parse(await runAiAnalysisHandler({ thesisId: 'thesis-1' }));
 
     expect(result.cached).toBe(true);
     expect(result.status).toBe('COMPLETE');
     expect(result.aiAnalysis).toEqual(mockAnalysis);
+  });
+
+  it('reports NOT cached when the service re-ran a stale analysis', async () => {
+    // The case the old contract could not express: a version that is COMPLETE and
+    // has an analysis, whose analysis no longer answers the current input.
+    headVersion();
+    (triggerAIAnalysis as jest.Mock).mockResolvedValueOnce({ ran: true });
+
+    const result = JSON.parse(await runAiAnalysisHandler({ thesisId: 'thesis-1' }));
+
+    expect(result.cached).toBe(false);
   });
 
   it('returns error when thesis not found', async () => {

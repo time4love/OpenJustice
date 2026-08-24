@@ -3500,3 +3500,72 @@ unrelated dates is nearly useless for that. No example has yet shown size-rankin
 context, so no heuristic was invented for it. Recorded, not built.
 
 Backend 1356/1356, `tsc` clean, `eslint src/` unchanged at its pre-change count.
+
+## Step 29 — The critique cannot be re-run, and nothing knows it is stale
+
+Staging redeployed SUCCESS at `f4b7fb8` (deployment `e30d425d`), and `run_ai_analysis` was called on
+the same head version to test whether restoring context brought back the argument FINDING 72 lost.
+
+It returned **`cached: true`**, byte-identical to the Step 27 output. No model call was made.
+
+### FINDING 74 — staleness is inferred from a transition, so a critique outlives the facts it was computed from
+
+`run_ai_analysis` serves the stored analysis whenever `status === 'COMPLETE' && aiAnalysis !== null`.
+The cache key is *"does this version have an analysis"* — never *"is this analysis still an answer to
+the input that would be produced now"*.
+
+And `PENDING_AI` is set in exactly five places, all of them **version creation**
+(`create_thesis_draft`, `add_thesis_version`, `cite_trajectories`, and the two REST paths). Nothing
+else invalidates a critique. So a stored analysis survives every change that is not a new version:
+
+- the evidence summaries being corrected — a feature this platform HAS (`summary_correction`);
+- a new detection pass changing what the trajectories say;
+- a change to what the critic is given, which happened **twice today**, and is the entire subject of
+  Steps 26–28.
+
+This is the transition-versus-state failure again, in a third place: the system flips a flag when it
+observes an event, instead of deriving the answer from what is true now. A version created before the
+fix keeps its pre-fix critique, forever, and check 2 `ANALYSIS_COMPLETE` passes on it. **A thesis can
+therefore publish carrying a critique computed against facts that have since changed**, with every
+hard gate green.
+
+The measurement this blocked is the smaller loss. The integrity gap is the finding.
+
+### The fix, built
+
+Store a fingerprint of the critic's ACTUAL INPUT beside the analysis: thesis text as serialised for
+the critique, the rendered trajectory block, the evidence summaries, the summary caveat. Serve the
+cache only when the fingerprint matches; otherwise re-run. Staleness then comes from comparing state,
+and would have invalidated automatically today — twice — with nobody having to notice.
+
+`contentHash` already exists but is the wrong instrument: it hashes `{ userContent, aiAnalysis }` —
+output, for publication pinning — and cannot see the inputs at all.
+
+A `force: true` parameter would unblock the experiment in ten minutes and fix nothing: it makes
+correctness depend on a human remembering, which is the property that produced this finding.
+
+**Built as `ThesisVersion.analysisInputHash`**, migration `20260824230000_thesis_analysis_input_hash`
+— one nullable `ADD COLUMN`, additive, applied by the pre-deploy step. `db:check-drift` reported
+"No difference detected" BEFORE the migration was written, and the SQL was generated offline from the
+schema rather than diffed against a database.
+
+Three decisions worth keeping:
+
+- **The hash covers the exact message array**, produced by a newly exported pure
+  `buildCritiqueMessages()`. Hashing anything adjacent to the model's input — the document, the
+  bundle, a list of ids — leaves a gap between what changed and what was checked. The SYSTEM PROMPT
+  is inside it deliberately: rewriting how the critic is instructed changes the critique, and a
+  reworded prompt with a stale answer beside it is this same finding again.
+- **The cache decision moved into `triggerAIAnalysis`.** `run_ai_analysis` used to make it itself, and
+  a rule with a copy in each caller is the defect class this entire sequence has been about — it is
+  how the critique came to be blind to citations in the first place.
+- **NULL is "unknown", never "current".** Every version analysed before the column re-runs on next
+  call, which is what makes the staging thesis testable again rather than permanently frozen.
+
+Tests are written from the three real causes of staleness rather than from the code's shape: a
+corrected evidence summary, a new detection pass, and a version predating fingerprints. The existing
+test asserting `COMPLETE ⇒ cached` encoded the defect, so it was rewritten to the new contract — and
+gained the case the old one could not express: COMPLETE, holding an analysis, and still stale.
+
+Backend 1362/1362, `tsc` clean, `eslint src/` unchanged. The only pending schema difference is this
+migration itself.
