@@ -1,4 +1,5 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { resolveOrigin } from '../oauth/oidcProvider';
 import { searchEvidenceSchema, searchEvidenceHandler } from './tools/searchEvidence';
 import { getForensicTimelineSchema, getForensicTimelineHandler } from './tools/getForensicTimeline';
 import { getFigureDossierSchema, getFigureDossierHandler } from './tools/getFigureDossier';
@@ -73,8 +74,30 @@ import {
 
 export function createMcpServer(): McpServer {
   const server = new McpServer({
-    name: 'Glass Fortress MCP',
+    // name is the programmatic identifier and title is what a client shows —
+    // Implementation extends BaseMetadata, so putting the display name in
+    // `name` would hand clients a Hebrew string to key on.
+    //
+    // Both change: "Glass Fortress" is this codebase's internal term for the
+    // Covid case and has never been a name the project shows anyone, and a
+    // connector's serverInfo is shown to whoever attaches it.
+    name: 'tzedek-laam-covid',
+    title: 'צדק לעם — תיק הקורונה',
     version: '1.0.0',
+    websiteUrl: resolveOrigin(process.env),
+    description:
+      'Forensic evidence vault for the Covid-19 Ministry of Health case: archived page histories, ' +
+      'deterministic claim trajectories, and the theses built on them.',
+    // Declared per the MCP spec so a client does not have to fall back to
+    // guessing a favicon at the origin. Served above the staging gate, because
+    // this is fetched unauthenticated.
+    icons: [
+      {
+        src: `${resolveOrigin(process.env)}/icon.png`,
+        mimeType: 'image/png',
+        sizes: ['480x480'],
+      },
+    ],
   });
 
   // -------------------------------------------------------------------------
