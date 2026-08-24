@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
-import type { Prisma } from '@prisma/client';
+import type { MentionType, Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { parseMentions } from '../utils/parseMentions';
 import { DevilsAdvocateOutputSchema } from '../services/DevilsAdvocateAgent';
@@ -18,6 +18,7 @@ import { upsertKeyFigures } from '../lib/upsertKeyFigures';
 import { aiCostLimiter } from '../middleware/rateLimiting';
 import { identifyResearcher, requireResearcher } from '../middleware/researcherIdentity';
 import { publicationState, versionIdForViewer, type Viewer } from '../lib/thesisView';
+import { loadTrajectoryCitationLabels, resolveTrajectoryCitations } from '../services/trajectoryCitation';
 import { assessPublication, publishThesis, unpublishThesis } from '../services/thesisPublication';
 import { getThesisProvenance } from '../services/thesisProvenance';
 import { repairFramingLink } from '../services/thesisFraming';
@@ -44,6 +45,48 @@ function getFoiaAgent(): FoiaLetterAgent {
 // Evidence-mention enrichment — fileHash -> readable summary, shared by the
 // full-thesis and single-version fetch routes below
 // ---------------------------------------------------------------------------
+
+/**
+ * Trajectory-mention enrichment — ClaimTrajectory.id -> everything the chip
+ * needs, resolved server-side.
+ *
+ * The client never receives a bare id to look up. A trajectory says what an
+ * archived TEXT EXTRACTION contained, not what a page contained, and that
+ * distinction only survives if whatever renders it is handed the observations,
+ * the capture links and the caveat together.
+ */
+async function buildTrajectoryMap(mentions: readonly { type: MentionType; refId: string }[]) {
+  const ids = mentions.filter((m) => m.type === 'CLAIM_TRAJECTORY').map((m) => m.refId);
+  const { resolved } = await resolveTrajectoryCitations(ids);
+
+  return Object.fromEntries(
+    resolved.map((t) => [
+      t.id,
+      {
+        claimText: t.claimText,
+        url: t.url,
+        trackedUrlId: t.trackedUrlId,
+        transitions: t.transitions,
+        firstSeen: t.firstSeen,
+        lastSeen: t.lastSeen,
+        finalState: t.finalState,
+        // The flips, and every capture examined — the absences are half the
+        // finding, and each carries the archived URL a reader can open.
+        changes: t.changes.map((o) => ({ snapshotDate: o.snapshotDate, present: o.present, snapshotUrl: o.snapshotUrl })),
+        observations: t.observations.map((o) => ({
+          snapshotDate: o.snapshotDate,
+          present: o.present,
+          snapshotUrl: o.snapshotUrl,
+        })),
+        coMovementCount: t.coMovement.claimCount,
+        coMovementCitedCount: t.coMovement.members.filter((m) => m.cited).length,
+        computedAt: t.computation.computedAt,
+        sourceStateHash: t.computation.sourceStateHash,
+        currency: t.currency,
+      },
+    ]),
+  );
+}
 
 async function buildEvidenceMap(evidenceRefIds: string[]) {
   const evidenceRecords = evidenceRefIds.length > 0
@@ -295,6 +338,7 @@ router.get('/:id', identifyResearcher, async (req: Request, res: Response): Prom
     // Enrich with evidence summaries so the UI can show readable labels on mention chips
     const evidenceRefIds = (version?.mentions ?? []).filter((m) => m.type === 'EVIDENCE').map((m) => m.refId);
     const evidenceMap = await buildEvidenceMap(evidenceRefIds);
+    const trajectoryMap = await buildTrajectoryMap(version?.mentions ?? []);
 
     const gapResolutions = (version?.gapResolutions ?? []).map((r) => ({
       gapIndex: r.gapIndex,
@@ -314,6 +358,7 @@ router.get('/:id', identifyResearcher, async (req: Request, res: Response): Prom
         version: version ? { ...version, gapResolutions: undefined } : null,
       },
       evidenceMap,
+      trajectoryMap,
       gapResolutions,
     });
   } catch (err) {
@@ -591,6 +636,15 @@ router.post('/:id/suggest-revision', aiCostLimiter, async (req: Request, res: Re
       .filter((m) => m.type === 'KEY_FIGURE')
       .map((m) => m.refId);
 
+    // And the cited trajectories. The revision agent rewrites prose and returns
+    // evidence hashes; it says nothing about trajectories, so anything not
+    // carried across here would be silently dropped by accepting a revision —
+    // and the trajectory citations are the deterministic ones.
+    const currentTrajectoryIds = hv.mentions
+      .filter((m) => m.type === 'CLAIM_TRAJECTORY')
+      .map((m) => m.refId);
+    const trajectoryLabels = await loadTrajectoryCitationLabels(currentTrajectoryIds);
+
     // All evidence to include: original cited + newly added
     const allHashes = [...Array.from(citedHashes), ...revision.evidenceHashesToInclude];
 
@@ -610,6 +664,8 @@ router.post('/:id/suggest-revision', aiCostLimiter, async (req: Request, res: Re
       allHashes,
       currentFigures,
       evidenceLabelMap,
+      undefined,
+      { ids: currentTrajectoryIds, labels: trajectoryLabels.labels },
     );
 
     res.status(200).json({
@@ -813,6 +869,7 @@ router.get('/:id/versions/:versionId', requireResearcher, async (req: Request, r
       .map((m) => m.refId);
 
     const evidenceMap = await buildEvidenceMap(evidenceRefIds);
+    const trajectoryMap = await buildTrajectoryMap(version.mentions);
 
     res.status(200).json({
       thesis: {
@@ -825,6 +882,7 @@ router.get('/:id/versions/:versionId', requireResearcher, async (req: Request, r
         version,
       },
       evidenceMap,
+      trajectoryMap,
       versionNumber: olderCount + 1,
       isHead: thesis.headVersionId === versionId,
       isPublished: thesis.publishedVersionId === versionId,

@@ -13,6 +13,13 @@
 // ---------------------------------------------------------------------------
 
 const mockAssess = jest.fn();
+// The resolver has its own suite (trajectoryCitation.test.ts). Here it is a
+// stub, so these tests stay about the GATE: does an unanchored trajectory block
+// publication, and does a citation that no longer resolves.
+const mockResolveTrajectories = jest.fn();
+jest.mock('../src/services/trajectoryCitation', () => ({
+  resolveTrajectoryCitations: (ids: readonly string[]) => mockResolveTrajectories(ids) as unknown,
+}));
 jest.mock('../src/services/ThesisPublicationAssessorAgent', () => ({
   ThesisPublicationAssessorAgent: jest.fn().mockImplementation(() => ({ assess: mockAssess })),
 }));
@@ -211,7 +218,41 @@ beforeEach(() => {
   db.keyFigures = [];
   addVersion('v1');
   mockAssess.mockResolvedValue(goodAssessment());
+  mockResolveTrajectories.mockResolvedValue({ resolved: [], missing: [] });
 });
+
+/** A resolved trajectory citation, as the resolver would hand it to the gate. */
+function citedTrajectory(over: Record<string, unknown> = {}) {
+  return {
+    id: 'traj-1',
+    claimHash: 'abc',
+    claimText: 'טענה שנעקבה על פני כל ההעתקים בארכיון',
+    url: 'https://corona.health.gov.il/x',
+    trackedUrlId: 'tracked-1',
+    observations: [],
+    changes: [],
+    transitions: 2,
+    firstSeen: '2022-07-24',
+    lastSeen: '2022-09-05',
+    finalState: 'REMOVED',
+    computation: {
+      id: 'comp-1',
+      sourceStateHash: 'state-1',
+      detectionVersion: 'v1',
+      computedAt: '2026-08-23T10:00:00.000Z',
+      snapshotsExamined: 4,
+    },
+    coMovement: { patternHash: 'p', claimCount: 1, members: [] },
+    currency: { state: 'PINNED_IS_LATEST', computedAt: '2026-08-23T10:00:00.000Z' },
+    caveat: 'computed over the archived text extraction',
+    ...over,
+  };
+}
+
+/** Head version citing one trajectory alongside the usual evidence. */
+function citeTrajectory(refId = 'traj-1'): void {
+  db.versions[0].mentions.push({ type: 'CLAIM_TRAJECTORY', refId });
+}
 
 async function report(rationale: string | null = RATIONALE) {
   const r = await assessPublication('t1', rationale);
@@ -249,7 +290,7 @@ describe('publishing pins a version', () => {
     expect(eventsOfType('PUBLICATION_RATIONALE')[0]['description']).toBe(RATIONALE);
     expect(eventsOfType('THESIS_PUBLISHED')[0]['refId']).toBe('v1');
     const assessed = JSON.parse(String(eventsOfType('PUBLICATION_ASSESSED')[0]['description'])) as { checks: unknown[] };
-    expect(assessed.checks).toHaveLength(13);
+    expect(assessed.checks).toHaveLength(15);
   });
 
   it('saves the public-interest statement on the thesis even when the attempt is refused', async () => {
@@ -292,7 +333,7 @@ describe('each hard check blocks alone, and the refusal names it', () => {
     const r = await report();
     expect(r.hardFailures).toEqual([]);
     expect(r.publishable).toBe(true);
-    expect(r.checks.map((c) => c.number)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]);
+    expect(r.checks.map((c) => c.number)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
   });
 
   it('1 — no head version', async () => {
@@ -506,5 +547,94 @@ describe('unpublish', () => {
   it('reports an unpublished thesis rather than pretending', async () => {
     const r = await unpublishThesis('t1', 'r1', 'reason');
     expect(r).toMatchObject({ unpublished: false, error: 'NOT_PUBLISHED' });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 14 + 15 — cited trajectories.
+//
+// Trajectories are deliberately NOT anchored on-chain: they are derived from
+// snapshots that are anchored individually, and anchoring a derivable thing
+// adds nothing but the appearance of authority. So the anchoring check must not
+// reach them — applying check 5 unchanged would make every trajectory-citing
+// thesis unpublishable, which is the failure this pair of tests exists to catch.
+// ---------------------------------------------------------------------------
+describe('cited trajectories', () => {
+  beforeEach(() => openSession('r1'));
+
+  it('does NOT fail a thesis for citing an unanchored trajectory', async () => {
+    citeTrajectory();
+    mockResolveTrajectories.mockResolvedValue({ resolved: [citedTrajectory()], missing: [] });
+
+    const r = await report();
+
+    expect(r.hardFailures).toEqual([]);
+    expect(r.publishable).toBe(true);
+    expect(r.checks.find((c) => c.id === 'TRAJECTORIES_RESOLVE')).toMatchObject({ kind: 'hard', passed: true });
+  });
+
+  it('DOES fail a thesis citing a trajectory id that no longer exists', async () => {
+    citeTrajectory('traj-deleted');
+    mockResolveTrajectories.mockResolvedValue({ resolved: [], missing: ['traj-deleted'] });
+
+    const r = await report();
+
+    expect(r.hardFailures).toEqual(['TRAJECTORIES_RESOLVE']);
+    expect(r.publishable).toBe(false);
+    expect(r.checks.find((c) => c.id === 'TRAJECTORIES_RESOLVE')?.details).toEqual({ missing: ['traj-deleted'] });
+  });
+
+  it('records a superseded trajectory as ADVISORY — the archive changed, the thesis did not break', async () => {
+    citeTrajectory();
+    mockResolveTrajectories.mockResolvedValue({
+      resolved: [
+        citedTrajectory({
+          currency: {
+            state: 'RECOMPUTED_DISAGREES',
+            latestComputationId: 'comp-2',
+            latestComputedAt: '2026-08-24T10:00:00.000Z',
+            latestSnapshotsExamined: 5,
+            difference: 'The claim was REMOVED when cited and is PRESENT in the latest pass.',
+            latestFinalState: 'PRESENT',
+            latestFlips: [],
+          },
+        }),
+      ],
+      missing: [],
+    });
+
+    const r = await report();
+
+    expect(r.hardFailures).toEqual([]);
+    expect(r.publishable).toBe(true);
+    expect(r.advisoryFailures).toContain('TRAJECTORIES_CURRENT');
+  });
+
+  it('treats a claim the latest pass no longer follows as silence, not disagreement', async () => {
+    citeTrajectory();
+    mockResolveTrajectories.mockResolvedValue({
+      resolved: [
+        citedTrajectory({
+          currency: {
+            state: 'NOT_FOLLOWED_BY_LATEST',
+            latestComputationId: 'comp-2',
+            latestComputedAt: '2026-08-24T10:00:00.000Z',
+          },
+        }),
+      ],
+      missing: [],
+    });
+
+    const r = await report();
+
+    expect(r.advisoryFailures).not.toContain('TRAJECTORIES_CURRENT');
+    expect(r.checks.find((c) => c.id === 'TRAJECTORIES_CURRENT')?.summary).toContain('no longer followed');
+  });
+
+  it('passes both checks with nothing cited, and says so rather than implying a check ran', async () => {
+    const r = await report();
+
+    expect(r.checks.find((c) => c.id === 'TRAJECTORIES_RESOLVE')?.summary).toBe('No trajectory cited.');
+    expect(r.checks.find((c) => c.id === 'TRAJECTORIES_CURRENT')?.summary).toBe('No trajectory cited.');
   });
 });

@@ -28,6 +28,9 @@ const MENTION_NODE_TYPES: Record<string, MentionType> = {
   keyFigureMention: 'KEY_FIGURE',
   evidenceMention: 'EVIDENCE',
   trackedUrlMention: 'TRACKED_URL',
+  // refId is a ClaimTrajectory.id, which pins the detection pass that produced
+  // it — see docs/gf-trajectory-citation-dev-plan.md §3.1.
+  trajectoryMention: 'CLAIM_TRAJECTORY',
 };
 
 function walkNodes(nodes: TipTapNode[], acc: Map<string, ParsedMention>): void {
@@ -51,7 +54,7 @@ function walkNodes(nodes: TipTapNode[], acc: Map<string, ParsedMention>): void {
 }
 
 /**
- * Extract all @keyFigure / #evidence / #trackedUrl mentions from a TipTap
+ * Extract all @keyFigure / #evidence / #trackedUrl / trajectory mentions from a TipTap
  * document JSON. Returns deduplicated ParsedMention[] ready to be written
  * to ThesisMention rows (without id/thesisVersionId — caller fills those in).
  *

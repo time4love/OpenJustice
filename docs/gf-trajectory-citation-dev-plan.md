@@ -1,6 +1,7 @@
 # Glass Fortress — Citing a Claim Trajectory
 
-**Status:** designed, not built. Canonical spec — implement from this document.
+**Status:** BUILT 2026-08-24 on `feat/gf-trajectory-citation`. §8 records what was built and what
+the build found. Canonical.
 **Designed:** 2026-08-23 with the researcher. Written for a session with **no prior context**.
 
 ---
@@ -144,3 +145,85 @@ So:
   one.
 - **Citing an abandoned or recomputed-away trajectory.** If the claim no longer resolves, the
   citation is stale and the gate says so.
+
+
+---
+
+## 8. Built — 2026-08-24
+
+Backend 1308/1308 (was 1270; +38). Backend `eslint src/` 364 → 360. Frontend `tsc` clean, `lint` 0.
+`db:check-drift` reports exactly one delta — the enum value the new migration adds — and nothing else.
+
+### 8.1 Two decisions taken before writing code
+
+**Check 4 stays as-is.** `CITES_EVIDENCE` is hard and reads EVIDENCE mentions only, so a thesis
+citing *only* trajectories is still unpublishable. That is now a decision rather than an accident: a
+thesis resting purely on extraction-derived trajectories, with no anchored record behind it, is
+exactly what §3.3 warns about, and requiring at least one CONFIRMED anchored record is a cheap guard.
+`create_thesis_draft` says so in its no-evidence warning.
+
+**"Disagrees" is a flip-sequence comparison, and the obvious version of it was wrong.** `patternHash`
+changes whenever a capture is added, so comparing hashes would report "recomputed since cited" on
+every scan — including the ordinary case where a new capture continues an unchanged history. An
+advisory that fires every time is an advisory nobody reads. The rule implemented is:
+
+> Agreement = the cited flip sequence is a **prefix** of the later one, **and** the final states match.
+
+- a capture appended with nothing changed adds no flip → **agrees**;
+- the claim comes back → an extra flip and a changed final state → **disagrees**;
+- a capture backfilled mid-history, or a re-fetch that changes an old presence → the prefix breaks →
+  **disagrees**, which is right: the history itself was rewritten.
+
+A fourth state was needed and is not disagreement: `NOT_FOLLOWED_BY_LATEST`, where the newest pass
+does not follow the claim at all (a reclassification can stop surfacing a candidate). The newer pass
+makes no statement, so silence must not read as contradiction. Check 15 passes and says so.
+
+### 8.2 What was built
+
+| | |
+|---|---|
+| `MentionType.CLAIM_TRAJECTORY` | `20260824100000_mention_claim_trajectory` — one enum value, additive, no backfill possible |
+| `Trajectory` split | `DetectedTrajectory` (no id) vs `Trajectory` (stored, has id) — an id-less result is now unshapeable |
+| `persistComputation` | `createManyAndReturn`, keyed back by `claimHash` rather than by row order |
+| `get_claim_trajectories` | `trajectoryId` per claim, `sourceStateHash` per finding |
+| `services/trajectoryCitation.ts` | `resolveTrajectoryCitations` · `trajectoriesAgree` · `flipSequence` · `loadTrajectoryCitationLabels` · `TRAJECTORY_EXTRACTION_CAVEAT` |
+| `mcp/tools/citationInput.ts` | the citation schema, defined ONCE (see 8.3) |
+| draft tools | `trajectoryIds[]` flat and per-footnote; unknown ids refused before anything is written |
+| `get_thesis_context` | `trajectoriesCited[]` structured — observations, co-movement, pinned pass, currency, caveat |
+| gate | 14 `TRAJECTORIES_RESOLVE` (hard) · 15 `TRAJECTORIES_CURRENT` (advisory) |
+| frontend | teal footnote marker + a per-trajectory panel: co-movement count, flips, final state, every capture, the caveat, and a "superseded" note |
+
+### 8.3 What the build found
+
+**The revision path would have silently dropped every trajectory citation.**
+`POST /:id/suggest-revision` rebuilds the document from the agent's prose plus evidence hashes plus
+key figures. Trajectory mentions were in neither list, so accepting a revision would have deleted the
+citations behind the *deterministic* claims while preserving the model-written ones — the same
+inversion §1 exists to correct. Fixed by carrying `CLAIM_TRAJECTORY` mentions across explicitly.
+
+**Check 5 never needed changing.** §5 feared it would make trajectory-citing theses unpublishable;
+it filters `m.type === 'EVIDENCE'` and always did, so the exemption held by construction. What it
+lacked was a *reason on the record*: the header comment and check 5 now say why they read evidence
+only, and a test asserts an unanchored trajectory does not block publication — so a future edit
+cannot "fix" the scoping without a failure.
+
+**The fresh-compute path could not produce a citable id at all.** `createMany` returns a count, so
+until this change a trajectory was citable only on a *cache hit* — the same finding citable or not
+depending on whether anyone had asked for it before. The test mock now returns ids, so a regression
+there fails rather than silently reappearing.
+
+**The citation schema had already drifted between the two tools** that alternate to write one thesis:
+`positive()` in one, `min(1)` in the other. Now defined once in `citationInput.ts`.
+
+**The frontend has no test runner**, so the §6 wording test reaches into
+`frontend/messages/{he,en}.json` from a backend suite (`test/trajectoryRenderWording.test.ts`) and
+asserts the absence of page-asserting phrasing in both locales, plus locale parity. Reaching across
+packages is deliberate: that is where the human-facing wording lives, and §3.3 is the one thing a
+future edit is most likely to "improve" into a stronger, false claim.
+
+### 8.4 Not done
+
+- **Trajectories are not in the publication assessor's input** (checks 10-12). The model still sees
+  evidence only. Out of scope here; worth doing when the assessor is next revisited.
+- **No live run against staging yet.** Everything above is unit-level. The finding-per-finding record
+  of this platform is that live use against real data finds what tests cannot.

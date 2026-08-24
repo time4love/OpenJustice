@@ -312,9 +312,14 @@ enum ThesisVersionStatus {
 }
 
 enum MentionType {
-  KEY_FIGURE  // @name — references a KeyFigure.name
-  EVIDENCE    // #ev_ — references an Evidence.fileHash
-  TRACKED_URL // #url_ — references a TrackedUrl.id
+  KEY_FIGURE       // @name — references a KeyFigure.name
+  EVIDENCE         // #ev_ — references an Evidence.fileHash
+  TRACKED_URL      // #url_ — references a TrackedUrl.id
+  // A ClaimTrajectory.id, NOT a claimHash. The id pins the detection pass, so a
+  // cited trajectory keeps resolving to what was cited; claimHash follows the
+  // claim across recomputations and would let "removed and never restored"
+  // become silently false when a later scan finds the claim back.
+  CLAIM_TRAJECTORY
 }
 
 // A crowdsourced legal thesis — wiki-style versioned narrative that anchors
@@ -395,7 +400,7 @@ model ThesisMention {
   thesisVersionId  String
   thesisVersion    ThesisVersion @relation(fields: [thesisVersionId], references: [id], onDelete: Cascade)
   type             MentionType
-  refId            String        // KeyFigure.name | Evidence.fileHash | TrackedUrl.id
+  refId            String        // KeyFigure.name | Evidence.fileHash | TrackedUrl.id | ClaimTrajectory.id
 }
 
 // ---------------------------------------------------------------------------

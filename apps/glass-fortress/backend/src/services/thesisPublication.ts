@@ -5,6 +5,7 @@ import { extractText } from './thesisAnalysis';
 import { deriveCallState, type CallGap } from './whistleblowerCall';
 import { checkFiguresHedged, checkPublicInterestStatement, MAX_SENTENCE_LENGTH } from '../lib/publicationLanguage';
 import { requireActiveSessionFor, type ActiveSessionForThesis } from './researchSessions';
+import { resolveTrajectoryCitations } from './trajectoryCitation';
 import {
   ThesisPublicationAssessorAgent,
   type ThesisPublicationAssessment,
@@ -17,7 +18,7 @@ import {
 // the public sees, until someone publishes again. Editing the head and
 // re-running the Devil's Advocate changes nothing public.
 //
-// Thirteen checks, reported individually so a refusal names what is missing.
+// Fifteen checks, reported individually so a refusal names what is missing.
 // Hard checks block. Advisory checks never block: they are recorded with the
 // publication and a researcher may publish over them, and the dissent stands
 // on the record — the same posture as the diff debate.
@@ -28,6 +29,12 @@ import {
 //     ask for the evidence you do not have; the bar is actionability, not
 //     completeness. This is not a strength gate.
 //   - The hedging check (7) is per SENTENCE and deterministic. Not a model.
+//   - Checks 5 and 6 read EVIDENCE mentions only, and 14/15 cover trajectory
+//     mentions instead. Trajectories are deliberately NOT anchored on-chain:
+//     they are derivable from snapshots that are anchored individually, and
+//     anchoring a derivable thing adds nothing but the appearance of authority.
+//     Requiring an anchor from them would make every trajectory-citing thesis
+//     unpublishable — so do not "fix" check 5 by widening what it reads.
 // ---------------------------------------------------------------------------
 
 export type PublicationCheckId =
@@ -43,7 +50,9 @@ export type PublicationCheckId =
   | 'RATIONALE_SUBSTANCE'
   | 'OFFICIAL_CAPACITY'
   | 'GAP_ACTIONABILITY'
-  | 'FRAMING_ATTACHED';
+  | 'FRAMING_ATTACHED'
+  | 'TRAJECTORIES_RESOLVE'
+  | 'TRAJECTORIES_CURRENT';
 
 export interface PublicationCheck {
   number: number;
@@ -181,7 +190,9 @@ export async function assessPublication(
     ),
   );
 
-  // 5 — every cited record is in the vault, CONFIRMED and anchored on-chain
+  // 5 — every cited EVIDENCE record is in the vault, CONFIRMED and anchored
+  // on-chain. Scoped to citedHashes, which is EVIDENCE mentions only: cited
+  // trajectories are checked by 14/15 and are not anchored by design.
   const cited =
     citedHashes.length > 0
       ? await prisma.evidence.findMany({
@@ -391,6 +402,61 @@ export async function assessPublication(
         ? `Framing session ${framing.id} is attached.`
         : 'No framing session is attached — the reasoning that chose this framing is not on record.',
       framing ?? undefined,
+    ),
+  );
+
+  // 14 + 15 — cited trajectories. A trajectory citation names a
+  // ClaimTrajectory.id, which pins the detection pass, so the two questions are
+  // separate: does the cited pass still EXIST (hard), and does the newest pass
+  // still AGREE with it (advisory)?
+  const citedTrajectoryIds = head
+    ? head.mentions.filter((m) => m.type === 'CLAIM_TRAJECTORY').map((m) => m.refId)
+    : [];
+  const trajectories = await resolveTrajectoryCitations(citedTrajectoryIds);
+
+  checks.push(
+    check(
+      14,
+      'TRAJECTORIES_RESOLVE',
+      'hard',
+      trajectories.missing.length === 0,
+      citedTrajectoryIds.length === 0
+        ? 'No trajectory cited.'
+        : trajectories.missing.length === 0
+          ? `All ${String(citedTrajectoryIds.length)} cited trajectory citation(s) resolve to a stored detection pass. ` +
+            'Trajectories are not anchored on-chain by design — they are derived from snapshots that are ' +
+            'anchored individually.'
+          : `${String(trajectories.missing.length)} cited trajectory id(s) no longer resolve. The claims resting ` +
+            'on them have nothing behind them.',
+      trajectories.missing.length > 0 ? { missing: trajectories.missing } : undefined,
+    ),
+  );
+
+  const superseded = trajectories.resolved.flatMap((t) =>
+    t.currency.state === 'RECOMPUTED_DISAGREES'
+      ? [{ trajectoryId: t.id, claimText: t.claimText.slice(0, 120), difference: t.currency.difference }]
+      : [],
+  );
+  const notFollowed = trajectories.resolved.filter((t) => t.currency.state === 'NOT_FOLLOWED_BY_LATEST').length;
+  checks.push(
+    check(
+      15,
+      'TRAJECTORIES_CURRENT',
+      'advisory',
+      superseded.length === 0,
+      citedTrajectoryIds.length === 0
+        ? 'No trajectory cited.'
+        : superseded.length > 0
+          ? `${String(superseded.length)} cited trajectory(ies) are contradicted by a newer detection pass. ` +
+            'Advisory: a superseded trajectory is a fact about the archive changing, not a defect in the ' +
+            'thesis. The citation still resolves to the pass that was cited; re-cite only if the newer ' +
+            'reading is the one the argument needs.'
+          : 'Every cited trajectory still agrees with the newest detection pass.' +
+            (notFollowed > 0
+              ? ` ${String(notFollowed)} is no longer followed by the newest pass at all — candidate discovery ` +
+                'stopped surfacing the claim, which is silence rather than disagreement.'
+              : ''),
+      superseded.length > 0 ? superseded : undefined,
     ),
   );
 

@@ -7,6 +7,14 @@
 // public still reads v1.
 // ---------------------------------------------------------------------------
 
+// The resolver has its own suite. Here the question is narrower and specific:
+// does the caller receive a trajectory citation STRUCTURED, or a bare id it
+// would then have to render as a bare id?
+const mockResolveTrajectories = jest.fn();
+jest.mock('../src/services/trajectoryCitation', () => ({
+  resolveTrajectoryCitations: (ids: readonly string[]) => mockResolveTrajectories(ids) as unknown,
+}));
+
 jest.mock('../src/lib/prisma', () => ({
   prisma: {
     thesis: { findUnique: jest.fn() },
@@ -33,6 +41,17 @@ interface ContextResult {
   content?: unknown;
   devilsAdvocateCritique?: unknown;
   keyFiguresMentioned?: string[];
+  trajectoriesCited?: {
+    trajectoryId: string;
+    claimText: string;
+    observations: { snapshotDate: string; present: boolean; snapshotUrl: string }[];
+    coMovement: { claimCount: number; citedCount: number; members: { trajectoryId: string; cited: boolean }[] };
+    pinnedTo: { id: string };
+    currency: { state: string };
+    caveat: string;
+  }[];
+  trajectoryCitationsMissing?: string[];
+  trajectoryCitationWarning?: string;
   evidenceCited?: { fileHash: string }[];
   publicInterestStatement?: string | null;
   publication?: { isPublished: boolean; headIsPublished: boolean; versionsAhead: number; publishedBy?: string | null };
@@ -46,7 +65,45 @@ const mentions = [
   { id: 'm1', type: 'EVIDENCE', refId: 'abc123' },
   { id: 'm2', type: 'KEY_FIGURE', refId: 'שרון אלרועי-פרייס' },
   { id: 'm3', type: 'TRACKED_URL', refId: 'url-1' },
+  { id: 'm4', type: 'CLAIM_TRAJECTORY', refId: 'traj-1' },
 ];
+
+const RESOLVED_TRAJECTORY = {
+  id: 'traj-1',
+  claimHash: 'c1',
+  claimText: 'טענה שנעקבה על פני כל ההעתקים',
+  url: 'https://corona.health.gov.il/x',
+  trackedUrlId: 'tracked-1',
+  observations: [
+    { snapshotDate: '2022-07-24', waybackTimestamp: '20220724000000', snapshotUrl: 'https://web.archive.org/a', present: true },
+    { snapshotDate: '2022-08-05', waybackTimestamp: '20220805000000', snapshotUrl: 'https://web.archive.org/b', present: false },
+  ],
+  changes: [
+    { snapshotDate: '2022-07-24', waybackTimestamp: '20220724000000', snapshotUrl: 'https://web.archive.org/a', present: true },
+    { snapshotDate: '2022-08-05', waybackTimestamp: '20220805000000', snapshotUrl: 'https://web.archive.org/b', present: false },
+  ],
+  transitions: 1,
+  firstSeen: '2022-07-24',
+  lastSeen: '2022-07-24',
+  finalState: 'REMOVED' as const,
+  computation: {
+    id: 'comp-1',
+    sourceStateHash: 'state-1',
+    detectionVersion: 'v1',
+    computedAt: '2026-08-23T10:00:00.000Z',
+    snapshotsExamined: 2,
+  },
+  coMovement: {
+    patternHash: 'p1',
+    claimCount: 8,
+    members: [
+      { id: 'traj-1', claimText: 'טענה שנעקבה על פני כל ההעתקים', cited: true },
+      ...Array.from({ length: 7 }, (_, i) => ({ id: `traj-${String(i + 2)}`, claimText: 'x', cited: false })),
+    ],
+  },
+  currency: { state: 'PINNED_IS_LATEST' as const, computedAt: '2026-08-23T10:00:00.000Z' },
+  caveat: 'computed over the archived text extraction of each capture',
+};
 
 function version(id: string, text: string) {
   return {
@@ -93,6 +150,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   findEvidence.mockResolvedValue([{ fileHash: 'abc123', summary: 'Key evidence', evidenceTier: 'Tier 2: Material' }]);
   findSession.mockResolvedValue(null);
+  mockResolveTrajectories.mockResolvedValue({ resolved: [RESOLVED_TRAJECTORY], missing: [] });
 });
 
 describe('get_thesis_context — the public', () => {
@@ -183,3 +241,48 @@ it('reports an unknown thesis', async () => {
   const r = await asPublic();
   expect(r.error).toContain('thesis-1');
 });
+
+// ---------------------------------------------------------------------------
+// Trajectory citations reach the caller as data, not as an id to look up.
+//
+// The wording around a trajectory is load-bearing — it describes an archived
+// text EXTRACTION, not a page — and an opaque id is rendered as an opaque id.
+// ---------------------------------------------------------------------------
+describe('cited claim trajectories', () => {
+  it('resolves the mention into observations, the group, the pinned pass and the caveat', async () => {
+    thesis([version('v1', 'text')], null);
+    const r = await asResearcher();
+
+    expect(mockResolveTrajectories).toHaveBeenCalledWith(['traj-1']);
+    const cited = r.trajectoriesCited?.[0];
+    expect(cited?.trajectoryId).toBe('traj-1');
+    // Every capture examined, including the one where the claim was absent.
+    expect(cited?.observations).toHaveLength(2);
+    expect(cited?.observations.map((o) => o.present)).toEqual([true, false]);
+    // The co-movement, and how much of it this thesis actually cited.
+    expect(cited?.coMovement).toMatchObject({ claimCount: 8, citedCount: 1 });
+    expect(cited?.coMovement.members).toHaveLength(8);
+    // Pinned to the pass that was cited, not to whatever is newest.
+    expect(cited?.pinnedTo.id).toBe('comp-1');
+    expect(cited?.currency.state).toBe('PINNED_IS_LATEST');
+    expect(cited?.caveat).toContain('extraction');
+  });
+
+  it('reaches the public too — a published thesis cites the same way', async () => {
+    thesis([version('v1', 'published text')], 'v1');
+    const r = await asPublic();
+
+    expect(r.trajectoriesCited?.[0].trajectoryId).toBe('traj-1');
+  });
+
+  it('names citations that no longer resolve instead of quietly showing fewer', async () => {
+    mockResolveTrajectories.mockResolvedValue({ resolved: [], missing: ['traj-1'] });
+    thesis([version('v1', 'text')], null);
+    const r = await asResearcher();
+
+    expect(r.trajectoriesCited).toEqual([]);
+    expect(r.trajectoryCitationsMissing).toEqual(['traj-1']);
+    expect(r.trajectoryCitationWarning).toContain('nothing behind them');
+  });
+});
+

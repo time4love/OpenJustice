@@ -83,7 +83,9 @@ export async function getClaimTrajectoriesHandler(input: {
         ? 'Each finding is a set of claims that moved as a unit — identical presence across every ' +
           'archived snapshot. Only the flips are listed; the stretches between them are unchanged. ' +
           'Verify any of it by opening the snapshot URLs and searching for the claim text: this is ' +
-          'computed by string search over the archived pages, with no AI judgment involved.'
+          'computed by string search over the archived pages, with no AI judgment involved. ' +
+          'To cite a finding in a thesis, pass every claim\'s trajectoryId — citing the whole group ' +
+          'is what preserves the co-movement.'
         : 'No claim on this page appeared and disappeared more than once. Pass minTransitions: 1 to see single removals.',
     // The state this was detected against, and when. A trajectory is stored
     // per-state rather than recomputed per-call, so a caller can tell a fresh
@@ -92,13 +94,25 @@ export async function getClaimTrajectoriesHandler(input: {
     provenance: result.provenance,
     findings: result.groups.map((g) => ({
       patternHash: g.patternHash,
+      // The state this group was detected against, repeated on every finding.
+      // A finding gets copied into a thesis on its own, away from the envelope
+      // that carried it, and "which archive was this?" has to travel with it.
+      sourceStateHash: result.provenance.sourceStateHash,
       transitions: g.transitions,
       firstSeen: g.firstSeen,
       lastSeen: g.lastSeen,
       finalState: g.finalState,
       claimCount: g.claims.length,
       changes: g.changes,
-      claims: g.claims,
+      // trajectoryId is the citable identity — pass it to create_thesis_draft or
+      // add_thesis_version as trajectoryIds[]. Cite EVERY member of a group you
+      // are citing: the co-movement is the finding, and a group has no id of its
+      // own because patternHash changes whenever a snapshot is added.
+      claims: g.claims.map((c) => ({
+        trajectoryId: c.id,
+        claimHash: c.claimHash,
+        claimText: c.claimText,
+      })),
     })),
   });
 }

@@ -9,8 +9,8 @@ import { SiteHeader } from '@/components/SiteHeader';
 import { apiUrl, authHeaders, fetchJson } from '@/lib/api';
 import { useAsyncData, type AsyncFetcher } from '@/hooks/useAsyncData';
 import { truncateLabel } from '@/lib/format';
-import { buildEvidenceCitationNumbers } from '@/lib/citations';
-import { TipTapRenderer, type EvidenceInfo } from '@/components/TipTapRenderer';
+import { buildCitationNumbers } from '@/lib/citations';
+import { TipTapRenderer, type EvidenceInfo, type TrajectoryInfo } from '@/components/TipTapRenderer';
 import { LegalDisclaimer } from '@/components/LegalDisclaimer';
 import type { EvidenceGap, AIAnalysis, PublicationState, ThesisViewer } from '@/types/thesis';
 import { ThesisPublicationPanel } from '@/components/ThesisPublicationPanel';
@@ -31,7 +31,8 @@ import { generateFoiaRequest } from '@/lib/thesisApi';
 
 interface ThesisMention {
   id: string;
-  type: 'KEY_FIGURE' | 'EVIDENCE' | 'TRACKED_URL';
+  type: 'KEY_FIGURE' | 'EVIDENCE' | 'TRACKED_URL' | 'CLAIM_TRAJECTORY';
+  /** For CLAIM_TRAJECTORY this is a ClaimTrajectory.id — one detection pass. */
   refId: string;
 }
 
@@ -275,12 +276,14 @@ function GapSearchPanel({
 interface ThesisLoad {
   thesis: Thesis;
   evidenceMap: Record<string, EvidenceInfo>;
+  trajectoryMap?: Record<string, TrajectoryInfo>;
   gapResolutions?: GapResolution[];
 }
 
 // Stable identities for the "not loaded yet" case, so a render that has no
 // thesis does not hand children a fresh object each time.
 const EMPTY_EVIDENCE_MAP: Record<string, EvidenceInfo> = {};
+const EMPTY_TRAJECTORY_MAP: Record<string, TrajectoryInfo> = {};
 const EMPTY_GAPS: GapResolution[] = [];
 
 function ThesisPageInner({ id }: { id: string }) {
@@ -329,6 +332,8 @@ function ThesisPageInner({ id }: { id: string }) {
 
   const thesis = state.status === 'ok' ? state.data.thesis : null;
   const evidenceMap = state.status === 'ok' ? state.data.evidenceMap : EMPTY_EVIDENCE_MAP;
+  const trajectoryMap =
+    state.status === 'ok' ? state.data.trajectoryMap ?? EMPTY_TRAJECTORY_MAP : EMPTY_TRAJECTORY_MAP;
   const gapResolutions = state.status === 'ok' ? state.data.gapResolutions ?? EMPTY_GAPS : EMPTY_GAPS;
   const loading = state.status === 'loading';
   const error = state.status === 'error';
@@ -337,7 +342,7 @@ function ThesisPageInner({ id }: { id: string }) {
   // the rules of hooks — derives the same footnote numbers TipTapRenderer uses
   // inline, so the "ראיות (N)" list below can show matching [n] markers.
   const citationNumbers = useMemo(
-    () => (thesis?.version?.userContent ? buildEvidenceCitationNumbers(thesis.version.userContent) : new Map<string, number>()),
+    () => (thesis?.version?.userContent ? buildCitationNumbers(thesis.version.userContent) : new Map<string, number>()),
     [thesis],
   );
 
@@ -431,6 +436,7 @@ function ThesisPageInner({ id }: { id: string }) {
   const isDraft = !thesis.publication.isPublished;
   const analysis = hv?.aiAnalysis ?? null;
   const evidenceMentions = hv?.mentions.filter(m => m.type === 'EVIDENCE') ?? [];
+  const trajectoryMentions = hv?.mentions.filter(m => m.type === 'CLAIM_TRAJECTORY') ?? [];
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -541,7 +547,7 @@ function ThesisPageInner({ id }: { id: string }) {
             <div className="text-xs text-slate-400" style={{ textAlign: 'left' }}>
               {new Date(thesis.createdAt).toLocaleDateString(locale === 'he' ? 'he-IL' : 'en-US')}
             </div>
-            {hv ? <TipTapRenderer doc={hv.userContent} evidenceMap={evidenceMap} /> : null}
+            {hv ? <TipTapRenderer doc={hv.userContent} evidenceMap={evidenceMap} trajectoryMap={trajectoryMap} /> : null}
           </div>
         </div>
 
@@ -567,6 +573,115 @@ function ThesisPageInner({ id }: { id: string }) {
                     <span className={`w-2 h-2 rounded-full shrink-0 ${tierDotClass}`} />
                     {label}
                   </Link>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Cited claim trajectories.
+            Deliberately verbose where the evidence chips are terse: this is the
+            first place a reader meets a trajectory, and what it does and does
+            not prove has to be stated where it is read, not in a doc. */}
+        {trajectoryMentions.length > 0 && (
+          <div className="space-y-2">
+            <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+              {t('trajectoriesTitle')} ({trajectoryMentions.length})
+            </h3>
+            <p className="text-xs text-slate-500 leading-relaxed">{t('trajectoryCaveat')}</p>
+            <div className="space-y-3">
+              {trajectoryMentions.map(m => {
+                const info = trajectoryMap[m.refId];
+                if (!info) return null;
+                const number = citationNumbers.get(m.refId);
+                return (
+                  <div key={m.id} className="bg-teal-50/60 border border-teal-200 rounded-xl p-4 space-y-2">
+                    <div className="flex items-start gap-2">
+                      <span className="text-teal-700 text-xs font-semibold shrink-0">
+                        {number ? `[${number}]` : '#'}
+                      </span>
+                      <p className="text-sm text-slate-700 leading-relaxed">{info.claimText}</p>
+                    </div>
+
+                    {info.coMovementCount > 1 && (
+                      <p className="text-xs font-medium text-teal-800">
+                        {t('trajectoryCoMovement', { count: info.coMovementCount })}
+                        {' · '}
+                        {t('trajectoryCoMovementCited', { cited: info.coMovementCitedCount })}
+                      </p>
+                    )}
+
+                    {/* The flips, each linked to the capture it was measured in. */}
+                    <ul className="space-y-1">
+                      {info.changes.map(c => (
+                        <li key={c.snapshotDate} className="text-xs text-slate-600">
+                          <span className="font-mono">{c.snapshotDate}</span>
+                          {' — '}
+                          <span className={c.present ? 'text-emerald-700' : 'text-red-700'}>
+                            {c.present ? t('trajectoryAppeared') : t('trajectoryDisappeared')}
+                          </span>
+                          {' · '}
+                          <a
+                            href={c.snapshotUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-teal-700 hover:underline"
+                          >
+                            {t('trajectoryViewCapture')}
+                          </a>
+                        </li>
+                      ))}
+                    </ul>
+
+                    <p className="text-xs text-slate-600">
+                      {info.finalState === 'PRESENT' ? t('trajectoryFinalPresent') : t('trajectoryFinalRemoved')}
+                    </p>
+
+                    {/* Every capture examined, not only the flips: a claim absent
+                        across nine consecutive captures is a different finding
+                        from one absent across two, and the absences are what
+                        show it. */}
+                    <details className="text-xs text-slate-500">
+                      <summary className="cursor-pointer hover:text-slate-700">
+                        {t('trajectoryAllCaptures', { count: info.observations.length })}
+                      </summary>
+                      <ul className="mt-2 space-y-1 ms-3">
+                        {info.observations.map(o => (
+                          <li key={o.snapshotDate}>
+                            <a
+                              href={o.snapshotUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="font-mono text-teal-700 hover:underline"
+                            >
+                              {o.snapshotDate}
+                            </a>
+                            {' — '}
+                            {o.present ? t('trajectoryAppeared') : t('trajectoryDisappeared')}
+                          </li>
+                        ))}
+                      </ul>
+                    </details>
+
+                    <p className="text-[11px] text-slate-400">
+                      {t('trajectoryPinned', {
+                        date: new Date(info.computedAt).toLocaleDateString(locale === 'he' ? 'he-IL' : 'en-US'),
+                      })}
+                    </p>
+
+                    {/* Pinned for integrity, current for honesty — both, and
+                        labelled. A superseded trajectory is a fact about the
+                        archive changing, not a defect in the thesis. */}
+                    {info.currency.state === 'RECOMPUTED_DISAGREES' && (
+                      <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-2">
+                        {t('trajectoryRecomputed')}
+                        {info.currency.difference ? ` ${info.currency.difference}` : ''}
+                      </p>
+                    )}
+                    {info.currency.state === 'NOT_FOLLOWED_BY_LATEST' && (
+                      <p className="text-xs text-slate-500">{t('trajectoryNotFollowed')}</p>
+                    )}
+                  </div>
                 );
               })}
             </div>
@@ -708,7 +823,7 @@ function ThesisPageInner({ id }: { id: string }) {
                 </div>
 
                 <div className="bg-white border-t border-violet-100 px-5 py-4">
-                  <TipTapRenderer doc={revision.suggestedContent} evidenceMap={evidenceMap} />
+                  <TipTapRenderer doc={revision.suggestedContent} evidenceMap={evidenceMap} trajectoryMap={trajectoryMap} />
                 </div>
 
                 <div className="bg-slate-50 border-t border-violet-200 px-5 py-3 flex gap-3">

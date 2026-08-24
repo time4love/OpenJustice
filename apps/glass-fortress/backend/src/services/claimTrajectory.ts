@@ -107,7 +107,17 @@ export interface Observation {
   present: boolean;
 }
 
-export interface Trajectory {
+/**
+ * A trajectory as DETECTED — before it has been written, so before it has an id.
+ *
+ * Separate from `Trajectory` on purpose. A citation names a `ClaimTrajectory.id`
+ * (docs/gf-trajectory-citation-dev-plan.md §3.1), so anything that leaves this
+ * module must carry one; splitting the types makes an id-less result impossible
+ * to shape rather than merely unlikely. The fresh-compute path used to return
+ * exactly that, which is why `get_claim_trajectories` could not offer a citable
+ * identifier at all.
+ */
+export interface DetectedTrajectory {
   claimHash: string;
   claimText: string;
   observations: Observation[];
@@ -115,6 +125,16 @@ export interface Trajectory {
   firstSeen: string;
   lastSeen: string;
   finalState: 'PRESENT' | 'REMOVED';
+}
+
+/** A detected trajectory that has been stored, and can therefore be cited. */
+export interface Trajectory extends DetectedTrajectory {
+  /**
+   * ClaimTrajectory.id — the citable identity, belonging to exactly one
+   * detection pass. NOT claimHash, which is stable across passes and would let
+   * a citation silently change meaning when the archive grows.
+   */
+  id: string;
 }
 
 /** Counts how many times presence flips across the ordered observations. */
@@ -129,7 +149,7 @@ function countTransitions(observations: readonly Observation[]): number {
 export function buildTrajectory(
   normalisedClaim: string,
   snapshots: readonly { snapshotDate: string; waybackTimestamp: string; snapshotUrl: string; normalisedText: string }[],
-): Trajectory | null {
+): DetectedTrajectory | null {
   const observations: Observation[] = snapshots.map((s) => ({
     snapshotDate: s.snapshotDate,
     waybackTimestamp: s.waybackTimestamp,
@@ -176,7 +196,14 @@ export interface TrajectoryGroup {
   firstSeen: string;
   lastSeen: string;
   finalState: 'PRESENT' | 'REMOVED';
-  claims: { claimHash: string; claimText: string }[];
+  /**
+   * Every member of the group, each with its citable id.
+   *
+   * A thesis citing this co-movement cites ALL of these ids: the group itself
+   * has no stable identity to cite, because patternHash is a hash of the
+   * presence vector and changes the moment a snapshot is added.
+   */
+  claims: { id: string; claimHash: string; claimText: string }[];
 }
 
 export interface TrajectoryProvenance {
@@ -267,7 +294,7 @@ async function detect(inputs: DetectionInputs) {
     normalisedText: normaliseClaim(r.fullText),
   }));
 
-  const trajectories: Trajectory[] = [];
+  const trajectories: DetectedTrajectory[] = [];
   let unmatched = 0;
 
   for (const normalised of inputs.candidates.values()) {
@@ -361,9 +388,9 @@ export async function getClaimTrajectories(
     candidatesUnmatched: detected.unmatched,
   };
 
-  let computedAt: string;
+  let persisted: { computedAt: string; stored: Trajectory[] };
   try {
-    computedAt = await persistComputation(inputs, detected.trajectories, counts);
+    persisted = await persistComputation(inputs, detected.trajectories, counts);
   } catch (err) {
     // Two concurrent misses race to write the same state. The loser reads the
     // winner's rows rather than failing: the answer is identical by
@@ -376,12 +403,12 @@ export async function getClaimTrajectories(
 
   return shape(
     url,
-    detected.trajectories,
+    persisted.stored,
     counts,
     {
       sourceStateHash: inputs.sourceStateHash,
       detectionVersion: DETECTION_VERSION,
-      computedAt,
+      computedAt: persisted.computedAt,
       fromCache: false,
     },
     minTransitions,
@@ -405,6 +432,7 @@ async function readComputation(inputs: DetectionInputs) {
   if (!computation) return null;
 
   const all: Trajectory[] = computation.trajectories.map((row) => ({
+    id: row.id,
     claimHash: row.claimHash,
     claimText: row.claimText,
     observations: JSON.parse(row.observations) as Observation[],
@@ -430,11 +458,20 @@ async function readComputation(inputs: DetectionInputs) {
   };
 }
 
+/**
+ * Write the pass and its rows, and return the rows WITH their ids.
+ *
+ * createManyAndReturn rather than createMany: the ids are the point. A citation
+ * names a ClaimTrajectory.id, so a fresh detection pass that returned only a
+ * count would leave the caller holding an uncitable answer until something
+ * happened to re-read it from cache — the same finding presented as citable or
+ * not depending on whether it had been asked for before.
+ */
 async function persistComputation(
   inputs: DetectionInputs,
-  trajectories: readonly Trajectory[],
+  trajectories: readonly DetectedTrajectory[],
   counts: { snapshotsExamined: number; candidatesConsidered: number; candidatesUnmatched: number },
-): Promise<string> {
+): Promise<{ computedAt: string; stored: Trajectory[] }> {
   return prisma.$transaction(async (tx) => {
     const computation = await tx.claimTrajectoryComputation.create({
       data: {
@@ -445,23 +482,35 @@ async function persistComputation(
       },
     });
 
-    if (trajectories.length > 0) {
-      await tx.claimTrajectory.createMany({
-        data: trajectories.map((t) => ({
-          computationId: computation.id,
-          trackedUrlId: inputs.trackedUrlId,
-          claimHash: t.claimHash,
-          claimText: t.claimText,
-          observations: JSON.stringify(t.observations),
-          transitions: t.transitions,
-          firstSeen: t.firstSeen,
-          lastSeen: t.lastSeen,
-          finalState: t.finalState,
-        })),
-      });
-    }
+    const rows =
+      trajectories.length > 0
+        ? await tx.claimTrajectory.createManyAndReturn({
+            data: trajectories.map((t) => ({
+              computationId: computation.id,
+              trackedUrlId: inputs.trackedUrlId,
+              claimHash: t.claimHash,
+              claimText: t.claimText,
+              observations: JSON.stringify(t.observations),
+              transitions: t.transitions,
+              firstSeen: t.firstSeen,
+              lastSeen: t.lastSeen,
+              finalState: t.finalState,
+            })),
+            select: { id: true, claimHash: true },
+          })
+        : [];
 
-    return computation.computedAt.toISOString();
+    // Keyed by claimHash rather than by position: unique per computation
+    // (@@unique([computationId, claimHash])), so it cannot collide, and it does
+    // not assume the driver returns rows in insertion order.
+    const idByClaimHash = new Map(rows.map((r) => [r.claimHash, r.id]));
+    const stored = trajectories.map((t) => {
+      const id = idByClaimHash.get(t.claimHash);
+      if (!id) throw new Error(`Stored trajectory for claim ${t.claimHash} came back without an id.`);
+      return { ...t, id };
+    });
+
+    return { computedAt: computation.computedAt.toISOString(), stored };
   });
 }
 
@@ -495,7 +544,7 @@ export function groupByMovement(trajectories: readonly Trajectory[]): Trajectory
     firstSeen: members[0].firstSeen,
     lastSeen: members[0].lastSeen,
     finalState: members[0].finalState,
-    claims: members.map((m) => ({ claimHash: m.claimHash, claimText: m.claimText })),
+    claims: members.map((m) => ({ id: m.id, claimHash: m.claimHash, claimText: m.claimText })),
   }));
 
   // Largest blocks first: a section that moved as a unit is the stronger finding.
