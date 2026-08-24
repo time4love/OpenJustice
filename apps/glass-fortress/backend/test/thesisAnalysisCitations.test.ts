@@ -137,7 +137,7 @@ describe('triggerAIAnalysis passes the document\'s citations', () => {
       ...emptyTrajectoryBundle(),
       trajectories: [
         { url: 'u', patternHash: 'p1', claimCount: 2, transitions: 2, finalState: 'REMOVED',
-          changes: [], claims: [], overlappingEvidence: [], citedIds: ['t1', 't2'] },
+          changes: [], claims: [], overlappingEvidence: [], citedIds: ['t1', 't2'], label: 'Tc0ffee01' },
       ],
     });
     analyze.mockResolvedValue({
@@ -170,7 +170,7 @@ describe('triggerAIAnalysis passes the document\'s citations', () => {
     );
   });
 
-  it('labels the markers in the thesis text with the block position of their group', async () => {
+  it('marks the sentence with the group\'s identity label, not its position', async () => {
     version([
       { type: 'EVIDENCE', refId: '0xaaa' },
       { type: 'CLAIM_TRAJECTORY', refId: 't1' },
@@ -180,9 +180,11 @@ describe('triggerAIAnalysis passes the document\'s citations', () => {
     await triggerAIAnalysis('v1', docCiting(['t1', 't2']));
 
     const thesisText = analyze.mock.calls[0][0] as string;
-    // Both ids belong to the first rendered group, so the sentence carries ONE
-    // marker naming [T1] — the label the block itself uses.
-    expect(thesisText).toContain('#traj_T1');
+    // Both ids belong to one co-movement, so the sentence carries ONE marker —
+    // and it names the group by the label the block itself shows, which is
+    // derived from the group's claim identity. A positional label would have
+    // meant something different as soon as the bundle changed shape.
+    expect(thesisText).toContain('#traj_Tc0ffee01');
     expect(thesisText.match(/#traj_/g)).toHaveLength(1);
   });
 
@@ -302,7 +304,7 @@ describe('a stored analysis is served only while it answers the same input', () 
       ...emptyTrajectoryBundle(),
       trajectories: [{
         url: 'u', patternHash: 'p1', claimCount: 2, transitions: 2, finalState: 'REMOVED',
-        changes: [], claims: ['a claim'], overlappingEvidence: [], citedIds: ['t1'],
+        changes: [], claims: ['a claim'], overlappingEvidence: [], citedIds: ['t1'], label: 'Tc0ffee01',
       }],
     });
     storedVersion({ status: 'COMPLETE', aiAnalysis: ANALYSIS, analysisInputHash: hash });

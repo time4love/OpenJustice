@@ -285,6 +285,7 @@ describe('formatTrajectoryContext', () => {
         claims: [FOLLOWED],
         overlappingEvidence: [{ fileHash: '0xmixed', sharedItems: 8 }],
         citedIds: [],
+        label: 'Ta1b2c3d4',
       },
     ],
     coverage: [
@@ -592,12 +593,12 @@ describe('formatTrajectoryContext with citations', () => {
       {
         url: URL, patternHash: 'p1', claimCount: 4, transitions: 2, finalState: 'REMOVED' as const,
         changes: [{ snapshotDate: '2022-08-05', present: false, snapshotUrl: `${URL}#a` }],
-        claims: [FOLLOWED], overlappingEvidence: [], citedIds: ['a', 'b'],
+        claims: [FOLLOWED], overlappingEvidence: [], citedIds: ['a', 'b'], label: 'Taaaa1111',
       },
       {
         url: URL, patternHash: 'p2', claimCount: 3, transitions: 1, finalState: 'PRESENT' as const,
         changes: [{ snapshotDate: '2022-09-06', present: true, snapshotUrl: `${URL}#b` }],
-        claims: [UNFOLLOWED], overlappingEvidence: [], citedIds: [],
+        claims: [UNFOLLOWED], overlappingEvidence: [], citedIds: [], label: 'Tbbbb2222',
       },
     ],
   };
@@ -634,7 +635,7 @@ describe('formatTrajectoryContext context rendering', () => {
       url: URL, patternHash: `p${i}`, claimCount: 2, transitions: 3, finalState: 'REMOVED' as const,
       changes: [{ snapshotDate: '2022-08-05', present: false, snapshotUrl: `${URL}#${i}` }],
       claims: [FOLLOWED], overlappingEvidence: [{ fileHash: '0xmixed', sharedItems: 2 }],
-      citedIds: cited ? [`c${i}`] : [],
+      citedIds: cited ? [`c${i}`] : [], label: `Tlabel${i}`,
     };
   }
 
@@ -646,7 +647,7 @@ describe('formatTrajectoryContext context rendering', () => {
     const out = formatTrajectoryContext(mixed, 'en');
 
     // Every movement is listed; only one carries quotes and snapshot links.
-    expect(out.match(/\[T\d+\]/g)).toHaveLength(3);
+    expect(out.match(/\[T\w+\]/g)).toHaveLength(3);
     expect(out.match(/Archived snapshots/g)).toHaveLength(1);
     // Overlap survives the shortening: it is the strongest signal that an uncited
     // movement is relevant at all, and it costs one line.
@@ -666,5 +667,90 @@ describe('formatTrajectoryContext context rendering', () => {
 
     expect(out.match(/Archived snapshots/g)).toHaveLength(2);
     expect(out).not.toMatch(/short form/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// A label must name the movement, not its slot.
+//
+// FINDING 75: labels were POSITIONAL. Giving context its own budget added groups
+// interleaved by size, so every label after the first moved between two runs of
+// the same thesis — and a stored critique reading "the trajectories (T1, T3, T4)
+// show…" came to name groups the thesis had never cited, with nothing in the
+// record saying so. A reader could not tell a correct citation from one that had
+// silently changed meaning.
+// ---------------------------------------------------------------------------
+describe('trajectory labels are identities, not positions', () => {
+  const hashOfClaim = (t: string) => claimHash(normaliseClaim(t));
+
+  function group(patternHash: string, claims: string[], transitions = 3) {
+    return {
+      patternHash, transitions, firstSeen: '2022-01-05', lastSeen: '2022-09-05',
+      finalState: 'REMOVED' as const,
+      changes: [{ snapshotDate: '2022-08-05', waybackTimestamp: '1', snapshotUrl: `${URL}#a`, present: false }],
+      claims: claims.map((c, n) => ({ id: `live-${patternHash}-${n}`, claimHash: hashOfClaim(c), claimText: c })),
+    };
+  }
+
+  const A = `${FOLLOWED} — alpha`;
+  const B = `${FOLLOWED} — beta`;
+  const C = `${FOLLOWED} — gamma`;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (prisma.evidence.findMany as jest.Mock).mockResolvedValue([
+      evidenceRow('0xaaa', [item(FOLLOWED, true)]),
+    ]);
+    (prisma.claimTrajectory.findMany as jest.Mock).mockResolvedValue([]);
+  });
+
+  it('derives the label from the group\'s lowest claim hash', async () => {
+    (getClaimTrajectories as jest.Mock).mockResolvedValue({ groups: [group('p1', [A, B])] });
+
+    const bundle = await loadTrajectoryContext([{ fileHash: '0xaaa' }], []);
+
+    const expected = [hashOfClaim(A), hashOfClaim(B)].sort()[0].slice(0, 8);
+    expect(bundle.trajectories[0].label).toBe(`T${expected}`);
+  });
+
+  it('gives a group the SAME label when other groups appear beside it', async () => {
+    // This is the whole finding. The group did not change; the bundle did.
+    (getClaimTrajectories as jest.Mock).mockResolvedValue({ groups: [group('p1', [A])] });
+    const alone = await loadTrajectoryContext([{ fileHash: '0xaaa' }], []);
+
+    (getClaimTrajectories as jest.Mock).mockResolvedValue({
+      groups: [group('p0', [B, C]), group('p1', [A])],
+    });
+    const crowded = await loadTrajectoryContext([{ fileHash: '0xaaa' }], []);
+
+    const target = crowded.trajectories.find((t) => t.patternHash === 'p1');
+    expect(target?.label).toBe(alone.trajectories[0].label);
+    // ...and it is no longer first in the list, which is exactly the case a
+    // positional label got wrong.
+    expect(crowded.trajectories[0].patternHash).toBe('p0');
+  });
+
+  it('the label names a claim that can be looked up by claimHash', async () => {
+    // The point of the identity: a reader of an archived critique resolves the
+    // label against ClaimTrajectory.claimHash, not against a list they no longer
+    // have. So the label must be a real hash prefix, not a synthetic id.
+    (getClaimTrajectories as jest.Mock).mockResolvedValue({ groups: [group('p1', [A, B])] });
+
+    const bundle = await loadTrajectoryContext([{ fileHash: '0xaaa' }], []);
+    const label = bundle.trajectories[0].label.slice(1);
+
+    expect([hashOfClaim(A), hashOfClaim(B)].some((h) => h.startsWith(label))).toBe(true);
+  });
+
+  it('widens every label together when a prefix would collide', async () => {
+    // Uniqueness is a property of the SET, so it is checked rather than assumed.
+    (getClaimTrajectories as jest.Mock).mockResolvedValue({
+      groups: [group('p1', [A]), group('p2', [B])],
+    });
+    const bundle = await loadTrajectoryContext([{ fileHash: '0xaaa' }], []);
+
+    const labels = bundle.trajectories.map((t) => t.label);
+    expect(new Set(labels).size).toBe(labels.length);
+    expect(new Set(labels.map((l) => l.length)).size).toBe(1);
   });
 });

@@ -164,13 +164,17 @@ export async function triggerAIAnalysis(
     // Devil's Advocate rates thesis STRENGTH, so it is the last place a
     // model-written summary should be the only account of a forensic change.
     const trajectories = await loadTrajectoryContext(referenced, citedTrajectoryIds);
-    // Labels come from the bundle's own order, which is the order the block
-    // renders in, so #traj_T3 in the prose and [T3] in the block are the same
-    // trajectory by construction rather than by a second lookup that could drift.
+    // The label travels WITH the group, so the marker in the prose and the block
+    // header are the same trajectory by construction rather than by a second
+    // lookup that could drift — and because a label is derived from the group's
+    // own claim identity, a critique quoting one stays readable after the bundle
+    // changes shape. A positional label did not: adding context groups moved
+    // every label after the first, and a stored critique came to name movements
+    // the thesis never cited.
     const trajectoryLabels = new Map<string, string>();
-    trajectories.trajectories.forEach((group, i) => {
-      for (const id of group.citedIds) trajectoryLabels.set(id, `T${String(i + 1)}`);
-    });
+    for (const group of trajectories.trajectories) {
+      for (const id of group.citedIds) trajectoryLabels.set(id, group.label);
+    }
     const thesisText = extractText(userContent, trajectoryLabels);
     const summaryCaveat = await loadSummaryCaveat(referenced);
     // The cache decision lives HERE, not in each caller. It used to be the MCP
