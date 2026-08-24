@@ -3619,10 +3619,25 @@ rendered block, so the critique re-runs rather than being served with labels tha
 What it cannot protect is the ARCHIVE: every superseded version keeps its analysis, and those labels
 refer to a bundle nobody stored.
 
-The fix is to label by something that does not move — the cited trajectory's own identity rather than
-its position in a list — or to store the label map beside the analysis. Recorded, not built: this is
-the second time in one day that a positional or transitional key has been used where an identity was
-needed, and it deserves deciding rather than patching.
+**Fixed.** A movement is now named by its **lowest member claim hash**, prefixed `T` and shortened to
+eight hex characters — `T3f2a1b7c` rather than `T3`.
+
+A claim hash is the hash of the normalised claim text, so it is stable across every detection pass by
+construction. The label therefore points at a **real row anyone can look up by `claimHash`**, and it
+either matches or it does not — it cannot quietly come to mean something else, which is the only
+property that makes a critique auditable after the fact. That is also why this beats storing the label
+map beside each analysis: a self-resolving label needs no side table to survive.
+
+Uniqueness is a property of the SET, so it is checked rather than assumed: on a collision every label
+in the render widens together, keeping them comparable with each other.
+
+The four tests are written from the finding rather than the code — the label is derived from the
+lowest member hash; **the same group keeps the same label when other groups appear beside it** (the
+finding itself, expressed directly); the label resolves against a real claim hash; and colliding
+prefixes widen together.
+
+Backend 1366/1366, `tsc` clean, and `eslint src/` came down by one — the positional index it needed is
+gone.
 
 ### FINDING 70 survives the re-run, and narrows
 
