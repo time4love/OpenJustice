@@ -19,7 +19,9 @@ export type ReferencedEvidence = EvidenceContext;
 const CounterArgumentSchema = z.object({
   claim: z
     .string()
-    .describe('The specific claim from the thesis being challenged, quoted or closely paraphrased.'),
+    .describe(
+      'The specific claim from the thesis being challenged, quoted or closely paraphrased.',
+    ),
   rebuttal: z
     .string()
     .describe(
@@ -36,7 +38,9 @@ const CounterArgumentSchema = z.object({
 const EvidenceGapSchema = z.object({
   description: z
     .string()
-    .describe('What critical evidence is absent from this thesis that would be needed to prove it.'),
+    .describe(
+      'What critical evidence is absent from this thesis that would be needed to prove it.',
+    ),
   suggestedSearch: z
     .string()
     .describe('A concrete search query or evidence request that would address this gap.'),
@@ -75,7 +79,7 @@ export const DevilsAdvocateOutputSchema = z.object({
   summaryHe: z
     .string()
     .describe(
-      'A 2-4 sentence summary of this devil\'s advocate analysis in highly professional Hebrew. ' +
+      "A 2-4 sentence summary of this devil's advocate analysis in highly professional Hebrew. " +
         'Be direct about the weaknesses found.',
     ),
 });
@@ -108,20 +112,54 @@ export class DevilsAdvocateAgent {
     /** Summaries predating the self-contained rule. Required — see the assessor. */
     summaryCaveat: SummaryCaveat | null,
   ): Promise<DevilsAdvocateOutput> {
-    const evidenceBlock =
-      referencedEvidence.length > 0
-        ? referencedEvidence
-            .map(
-              (e, i) =>
-                `[${i + 1}] Hash: ${e.fileHash}\n` +
-                `    Date: ${e.evidenceDate} | Tier: ${e.evidenceTier} | Role: ${e.evidenceRole}\n` +
-                `    Entity: ${e.targetEntity} | Concerns: ${e.investigativeCategories.join(", ") || "none"}\n` +
-                `    Summary: ${e.summary.slice(0, 400)}`,
-            )
-            .join('\n\n')
-        : '(no evidence records were cited in this thesis)';
+    const messages = buildCritiqueMessages(
+      thesisText,
+      referencedEvidence,
+      resolvedGaps,
+      trajectories,
+      summaryCaveat,
+    );
 
-    const resolvedBlock = resolvedGaps.length > 0
+    const result = await this.chain.invoke(messages);
+    return DevilsAdvocateOutputSchema.parse(result);
+  }
+}
+
+/**
+ * The EXACT message array the critic receives.
+ *
+ * Exported and pure so it can be fingerprinted. A stored critique is only still
+ * an answer to the facts if the input that produced it is the input that would be
+ * produced now, and the only honest way to know that is to hash what the model
+ * actually reads — not the document, not the analysis, and not a status flag that
+ * is set once at version creation and never again.
+ *
+ * The system prompt is part of it deliberately: changing how the critic is
+ * instructed changes the critique, and a rewritten prompt with a stale cached
+ * answer beside it is exactly the failure this exists to catch.
+ */
+export function buildCritiqueMessages(
+  thesisText: string,
+  referencedEvidence: readonly ReferencedEvidence[],
+  resolvedGaps: readonly ResolvedGapContext[],
+  trajectories: TrajectoryBundle,
+  summaryCaveat: SummaryCaveat | null,
+): { role: 'system' | 'human'; content: string }[] {
+  const evidenceBlock =
+    referencedEvidence.length > 0
+      ? referencedEvidence
+          .map(
+            (e, i) =>
+              `[${i + 1}] Hash: ${e.fileHash}\n` +
+              `    Date: ${e.evidenceDate} | Tier: ${e.evidenceTier} | Role: ${e.evidenceRole}\n` +
+              `    Entity: ${e.targetEntity} | Concerns: ${e.investigativeCategories.join(', ') || 'none'}\n` +
+              `    Summary: ${e.summary.slice(0, 400)}`,
+          )
+          .join('\n\n')
+      : '(no evidence records were cited in this thesis)';
+
+  const resolvedBlock =
+    resolvedGaps.length > 0
       ? '\n\nPREVIOUSLY RESOLVED GAPS (the user marked these as addressed):\n' +
         resolvedGaps
           .map(
@@ -133,25 +171,22 @@ export class DevilsAdvocateAgent {
         '\n\nWhen evaluating evidenceGaps, assess whether the resolution evidence truly closes each gap or only partially addresses it. If a gap was resolved with strong evidence, you may omit it or downgrade its severity.'
       : '';
 
-    const trajectoryBlock = formatTrajectoryContext(trajectories, 'en');
-    const caveatBlock = formatSummaryCaveat(summaryCaveat, 'en');
+  const trajectoryBlock = formatTrajectoryContext(trajectories, 'en');
+  const caveatBlock = formatSummaryCaveat(summaryCaveat, 'en');
 
-    const messages = [
-      { role: 'system' as const, content: DEVILS_ADVOCATE_CRITIQUE_PROMPT },
-      {
-        role: 'human' as const,
-        content:
-          `THESIS TEXT:\n${thesisText}\n\n` +
-          `REFERENCED EVIDENCE (${referencedEvidence.length} record${referencedEvidence.length !== 1 ? 's' : ''}):\n` +
-          `${evidenceBlock}` +
-          `${resolvedBlock}\n\n` +
-          `${trajectoryBlock ? `${trajectoryBlock}\n\n` : ''}` +
-          `${caveatBlock ? `${caveatBlock}\n\n` : ''}` +
-          `Provide your devil's advocate analysis of this thesis.`,
-      },
-    ];
-
-    const result = await this.chain.invoke(messages);
-    return DevilsAdvocateOutputSchema.parse(result);
-  }
+  const messages = [
+    { role: 'system' as const, content: DEVILS_ADVOCATE_CRITIQUE_PROMPT },
+    {
+      role: 'human' as const,
+      content:
+        `THESIS TEXT:\n${thesisText}\n\n` +
+        `REFERENCED EVIDENCE (${referencedEvidence.length} record${referencedEvidence.length !== 1 ? 's' : ''}):\n` +
+        `${evidenceBlock}` +
+        `${resolvedBlock}\n\n` +
+        `${trajectoryBlock ? `${trajectoryBlock}\n\n` : ''}` +
+        `${caveatBlock ? `${caveatBlock}\n\n` : ''}` +
+        `Provide your devil's advocate analysis of this thesis.`,
+    },
+  ];
+  return messages;
 }

@@ -562,7 +562,26 @@
         "SESSION_CLOSED_BY_OTHER": "Session closed by another researcher"
       }
     },
-    "emptyStatePublic": "No theses have been published yet."
+    "emptyStatePublic": "No theses have been published yet.",
+    "trajectoriesTitle": "Claim trajectories in the archive",
+    "trajectoryCaveat": "Computed by string search over the archived TEXT EXTRACTION of each capture, not over the page itself. The extraction discards part of every page, so a claim can be absent from it while still present on the page, and a change can reflect page structure rather than an edit. Open the linked capture and check for yourself.",
+    "trajectoryCoMovement": "{count} claims moved as one unit",
+    "trajectoryCoMovementCited": "{cited} of them cited here",
+    "trajectoryAppeared": "appeared in the extraction",
+    "trajectoryDisappeared": "absent from the extraction",
+    "trajectoryFinalPresent": "In the latest capture: present in the extraction",
+    "trajectoryFinalRemoved": "In the latest capture: absent from the extraction",
+    "trajectoryAllCaptures": "All {count} captures examined",
+    "trajectoryPinned": "Pinned to the detection pass of {date}",
+    "trajectoryRecomputed": "A later scan contradicts the trajectory that was cited. The citation still resolves to the pass that was cited.",
+    "trajectoryNotFollowed": "The latest scan no longer follows this claim.",
+    "trajectoryViewCapture": "view capture",
+    "viewThesis": "The thesis",
+    "viewProcess": "Behind the scenes",
+    "viewsLabel": "Thesis views",
+    "close": "Close",
+    "openEvidence": "Open the record",
+    "sourcesTitle": "Sources"
   },
   "call": {
     "heroLabel": "Call for Witnesses",
@@ -722,7 +741,11 @@
     "handle": "Handle",
     "pendingApproval": "Awaiting admin approval",
     "pendingApprovalHint": "An admin needs to approve your account before MCP clients can get write access.",
-    "approved": "Account approved — write access granted"
+    "approved": "Account approved — write access granted",
+    "callbackFailedTitle": "Login failed",
+    "callbackNoToken": "No access token found in the callback URL.",
+    "callbackSigningIn": "Signing you in…",
+    "callbackBackToLogin": "Back to sign-in"
   },
   "oauthInteraction": {
     "loading": "Loading…",
@@ -741,7 +764,8 @@
     "loginError_no_account": "No researcher account found. Register via the login page first.",
     "loginError_not_approved": "Your account has not been approved by an admin yet.",
     "loginError_missing_token": "Something went wrong. Try again.",
-    "backToLogin": "Back to login"
+    "backToLogin": "Back to login",
+    "approving": "Approving…"
   },
   "admin": {
     "title": "Researcher Management",

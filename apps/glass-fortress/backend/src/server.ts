@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import path from 'path';
 import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 
@@ -55,6 +56,26 @@ const PORT = process.env['PORT'] ?? 3000;
 app.set('trust proxy', 1);
 
 // ---------------------------------------------------------------------------
+// Public assets — the connector's icon, and the favicon a client falls back to
+// when a server declares none.
+//
+// Mounted ABOVE both the CORS allow-list and the staging gate, because both
+// refuse the caller that matters here. The gate answered /favicon.ico with 401,
+// and CORS answered a claude.ai-origin fetch with 500 — so Claude could not
+// read the icon by either route and the connector list showed the hosting
+// platform's logo instead of ours.
+//
+// Any origin may read these: they are public images, served without
+// credentials, and carry nothing the allow-list exists to protect.
+// ---------------------------------------------------------------------------
+
+const ICON_PATH = path.join(__dirname, '..', 'public', 'icon.png');
+
+app.get(['/icon.png', '/favicon.ico'], cors({ origin: '*' }), (_req, res) => {
+  res.type('image/png').sendFile(ICON_PATH);
+});
+
+// ---------------------------------------------------------------------------
 // CORS — allow configured frontend origin(s) + localhost for dev
 // ---------------------------------------------------------------------------
 
@@ -71,7 +92,11 @@ app.use(
       // Allow server-to-server requests (no Origin header) and Next.js SSR rewrites
       if (!origin) return callback(null, true);
       if (allowedOrigins.includes(origin)) return callback(null, true);
-      callback(new Error(`CORS: origin '${origin}' is not allowed`));
+      // Not an Error: throwing here becomes an unhandled 500, which reports a
+      // server fault for what is a browser-side policy decision — and buries
+      // real failures in the log. Omitting the header is what the browser
+      // actually acts on.
+      callback(null, false);
     },
     credentials: true,
   }),

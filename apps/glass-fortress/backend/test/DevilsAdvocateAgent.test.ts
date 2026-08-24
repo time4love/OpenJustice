@@ -4,6 +4,7 @@ import {
   type ReferencedEvidence,
   type DevilsAdvocateOutput,
 } from '../src/services/DevilsAdvocateAgent';
+import { emptyTrajectoryBundle } from '../src/lib/trajectoryContext';
 
 jest.mock('../src/factories/LLMFactory', () => ({
   LLMFactory: {
@@ -96,7 +97,7 @@ describe('DevilsAdvocateAgent', () => {
       const agent = new DevilsAdvocateAgent();
       getMockInvoke(agent).mockResolvedValueOnce(VALID_RESPONSE);
 
-      const result = await agent.analyze(THESIS_TEXT, EVIDENCE_FIXTURE, [], { trajectories: [], coverage: [], omittedGroups: 0 }, null);
+      const result = await agent.analyze(THESIS_TEXT, EVIDENCE_FIXTURE, [], emptyTrajectoryBundle(), null);
 
       expect(result.counterArguments).toHaveLength(1);
       expect(result.counterArguments[0]).toMatchObject({
@@ -114,7 +115,7 @@ describe('DevilsAdvocateAgent', () => {
       const agent = new DevilsAdvocateAgent();
       getMockInvoke(agent).mockResolvedValueOnce(NO_EVIDENCE_RESPONSE);
 
-      const result = await agent.analyze('A thesis with no evidence', [], [], { trajectories: [], coverage: [], omittedGroups: 0 }, null);
+      const result = await agent.analyze('A thesis with no evidence', [], [], emptyTrajectoryBundle(), null);
 
       expect(result.overallStrengthAssessment).toBe('WEAK');
       expect(result.counterArguments.length).toBeGreaterThan(0);
@@ -131,7 +132,7 @@ describe('DevilsAdvocateAgent', () => {
       };
       getMockInvoke(agent).mockResolvedValueOnce(compellingResponse);
 
-      const result = await agent.analyze(THESIS_TEXT, EVIDENCE_FIXTURE, [], { trajectories: [], coverage: [], omittedGroups: 0 }, null);
+      const result = await agent.analyze(THESIS_TEXT, EVIDENCE_FIXTURE, [], emptyTrajectoryBundle(), null);
 
       expect(result.counterArguments).toEqual([]);
       expect(result.evidenceGaps).toEqual([]);
@@ -144,7 +145,7 @@ describe('DevilsAdvocateAgent', () => {
       const agent = new DevilsAdvocateAgent();
       getMockInvoke(agent).mockResolvedValueOnce(VALID_RESPONSE);
 
-      await agent.analyze(THESIS_TEXT, EVIDENCE_FIXTURE, [], { trajectories: [], coverage: [], omittedGroups: 0 }, null);
+      await agent.analyze(THESIS_TEXT, EVIDENCE_FIXTURE, [], emptyTrajectoryBundle(), null);
 
       const messages = getMockInvoke(agent).mock.calls[0][0] as { role: string; content: string }[];
       const human = messages.find((m) => m.role === 'human')?.content ?? '';
@@ -155,7 +156,7 @@ describe('DevilsAdvocateAgent', () => {
       const agent = new DevilsAdvocateAgent();
       getMockInvoke(agent).mockResolvedValueOnce(VALID_RESPONSE);
 
-      await agent.analyze(THESIS_TEXT, EVIDENCE_FIXTURE, [], { trajectories: [], coverage: [], omittedGroups: 0 }, null);
+      await agent.analyze(THESIS_TEXT, EVIDENCE_FIXTURE, [], emptyTrajectoryBundle(), null);
 
       const messages = getMockInvoke(agent).mock.calls[0][0] as { role: string; content: string }[];
       const human = messages.find((m) => m.role === 'human')?.content ?? '';
@@ -170,7 +171,7 @@ describe('DevilsAdvocateAgent', () => {
       const agent = new DevilsAdvocateAgent();
       getMockInvoke(agent).mockResolvedValueOnce(NO_EVIDENCE_RESPONSE);
 
-      await agent.analyze('thesis without evidence', [], [], { trajectories: [], coverage: [], omittedGroups: 0 }, null);
+      await agent.analyze('thesis without evidence', [], [], emptyTrajectoryBundle(), null);
 
       const messages = getMockInvoke(agent).mock.calls[0][0] as { role: string; content: string }[];
       const human = messages.find((m) => m.role === 'human')?.content ?? '';
@@ -181,7 +182,7 @@ describe('DevilsAdvocateAgent', () => {
       const agent = new DevilsAdvocateAgent();
       getMockInvoke(agent).mockResolvedValueOnce(VALID_RESPONSE);
 
-      await agent.analyze(THESIS_TEXT, EVIDENCE_FIXTURE, [], { trajectories: [], coverage: [], omittedGroups: 0 }, null);
+      await agent.analyze(THESIS_TEXT, EVIDENCE_FIXTURE, [], emptyTrajectoryBundle(), null);
 
       const messages = getMockInvoke(agent).mock.calls[0][0] as { role: string; content: string }[];
       const system = messages.find((m) => m.role === 'system');
@@ -193,7 +194,7 @@ describe('DevilsAdvocateAgent', () => {
       const agent = new DevilsAdvocateAgent();
       getMockInvoke(agent).mockResolvedValueOnce(VALID_RESPONSE);
 
-      await agent.analyze(THESIS_TEXT, EVIDENCE_FIXTURE, [], { trajectories: [], coverage: [], omittedGroups: 0 }, null);
+      await agent.analyze(THESIS_TEXT, EVIDENCE_FIXTURE, [], emptyTrajectoryBundle(), null);
 
       const messages = getMockInvoke(agent).mock.calls[0][0] as { role: string; content: string }[];
       const human = messages.find((m) => m.role === 'human')?.content ?? '';
@@ -204,7 +205,7 @@ describe('DevilsAdvocateAgent', () => {
       const agent = new DevilsAdvocateAgent();
       getMockInvoke(agent).mockResolvedValueOnce(VALID_RESPONSE);
 
-      await agent.analyze(THESIS_TEXT, [EVIDENCE_FIXTURE[0]], [], { trajectories: [], coverage: [], omittedGroups: 0 }, null);
+      await agent.analyze(THESIS_TEXT, [EVIDENCE_FIXTURE[0]], [], emptyTrajectoryBundle(), null);
 
       const messages = getMockInvoke(agent).mock.calls[0][0] as { role: string; content: string }[];
       const human = messages.find((m) => m.role === 'human')?.content ?? '';
@@ -217,7 +218,7 @@ describe('DevilsAdvocateAgent', () => {
       getMockInvoke(agent).mockResolvedValueOnce(VALID_RESPONSE);
 
       const longSummary = 'x'.repeat(600);
-      await agent.analyze(THESIS_TEXT, [{ ...EVIDENCE_FIXTURE[0], summary: longSummary }], [], { trajectories: [], coverage: [], omittedGroups: 0 }, null);
+      await agent.analyze(THESIS_TEXT, [{ ...EVIDENCE_FIXTURE[0], summary: longSummary }], [], emptyTrajectoryBundle(), null);
 
       const messages = getMockInvoke(agent).mock.calls[0][0] as { role: string; content: string }[];
       const human = messages.find((m) => m.role === 'human')?.content ?? '';
@@ -262,7 +263,7 @@ describe('DevilsAdvocateAgent', () => {
         summaryHe: 'summary',
       });
 
-      await expect(agent.analyze(THESIS_TEXT, EVIDENCE_FIXTURE, [], { trajectories: [], coverage: [], omittedGroups: 0 }, null)).rejects.toThrow();
+      await expect(agent.analyze(THESIS_TEXT, EVIDENCE_FIXTURE, [], emptyTrajectoryBundle(), null)).rejects.toThrow();
     });
 
     it('throws when overallStrengthAssessment is an invalid enum value', async () => {
@@ -272,7 +273,7 @@ describe('DevilsAdvocateAgent', () => {
         overallStrengthAssessment: 'EXCELLENT', // not in enum
       });
 
-      await expect(agent.analyze(THESIS_TEXT, EVIDENCE_FIXTURE, [], { trajectories: [], coverage: [], omittedGroups: 0 }, null)).rejects.toThrow();
+      await expect(agent.analyze(THESIS_TEXT, EVIDENCE_FIXTURE, [], emptyTrajectoryBundle(), null)).rejects.toThrow();
     });
 
     it('throws when a counterArgument is missing the strength field', async () => {
@@ -282,7 +283,7 @@ describe('DevilsAdvocateAgent', () => {
         counterArguments: [{ claim: 'x', rebuttal: 'y' }], // missing strength
       });
 
-      await expect(agent.analyze(THESIS_TEXT, EVIDENCE_FIXTURE, [], { trajectories: [], coverage: [], omittedGroups: 0 }, null)).rejects.toThrow();
+      await expect(agent.analyze(THESIS_TEXT, EVIDENCE_FIXTURE, [], emptyTrajectoryBundle(), null)).rejects.toThrow();
     });
 
     it('throws when summaryHe is missing', async () => {
@@ -290,7 +291,7 @@ describe('DevilsAdvocateAgent', () => {
       const { summaryHe: _, ...withoutSummary } = VALID_RESPONSE;
       getMockInvoke(agent).mockResolvedValueOnce(withoutSummary);
 
-      await expect(agent.analyze(THESIS_TEXT, EVIDENCE_FIXTURE, [], { trajectories: [], coverage: [], omittedGroups: 0 }, null)).rejects.toThrow();
+      await expect(agent.analyze(THESIS_TEXT, EVIDENCE_FIXTURE, [], emptyTrajectoryBundle(), null)).rejects.toThrow();
     });
   });
 });

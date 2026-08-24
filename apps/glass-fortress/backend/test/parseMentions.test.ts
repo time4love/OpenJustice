@@ -178,5 +178,14 @@ describe('parseMentions', () => {
     it('throws a ZodError when type field is missing', () => {
       expect(() => parseMentions({ content: [] })).toThrow();
     });
+
+    it('maps a trajectoryMention to CLAIM_TRAJECTORY, keeping the ClaimTrajectory id', () => {
+      // The refId is a row id, not a claimHash: it pins the detection pass, so
+      // the citation resolves permanently to what was cited.
+      const result = parseMentions(
+        doc(paragraph({ type: 'trajectoryMention', attrs: { id: 'ckm-traj-1', label: 'Claim text' } })),
+      );
+      expect(result).toEqual([{ type: 'CLAIM_TRAJECTORY', refId: 'ckm-traj-1' }]);
+    });
   });
 });

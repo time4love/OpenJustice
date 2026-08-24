@@ -7,6 +7,7 @@ import { useAuth } from '@/context/AuthContext';
 import { apiUrl } from '@/lib/api';
 import { Link } from '@/i18n/navigation';
 import { routing } from '@/i18n/routing';
+import { AuthCard, AuthMessage } from '@/components/AuthShell';
 
 // ---------------------------------------------------------------------------
 // MCP OAuth login/consent screen (docs/gf-mcp-oauth-dev-plan.md, Phase 3).
@@ -61,7 +62,12 @@ export function OAuthInteractionClient({ uid }: { uid: string }) {
 
   const [details, setDetails] = useState<InteractionDetails | null>(null);
   const [detailsError, setDetailsError] = useState(false);
-  const [denying, setDenying] = useState(false);
+  // Deny had a pending state and approve did not, so approve looked inert on
+  // click — a form POST gives no feedback of its own. A researcher clicked it
+  // twice; the first submit consumed the interaction and the second met a
+  // resolved one, which surfaced as a raw {"error":"invalid_request"} page at
+  // the end of the connector flow.
+  const [submitting, setSubmitting] = useState<'allow' | 'deny' | null>(null);
 
   const loginFormRef = useRef<HTMLFormElement>(null);
   const confirmFormRef = useRef<HTMLFormElement>(null);
@@ -103,11 +109,11 @@ export function OAuthInteractionClient({ uid }: { uid: string }) {
   }, [details]);
 
   if (authLoading || (accessToken && researcher === null)) {
-    return <CenteredMessage text={t('loading')} spinner />;
+    return <AuthMessage text={t('loading')} spinner />;
   }
 
   if (!accessToken) {
-    return <CenteredMessage text={t('redirectingToLogin')} spinner />;
+    return <AuthMessage text={t('redirectingToLogin')} spinner />;
   }
 
   if (loginError) {
@@ -115,35 +121,38 @@ export function OAuthInteractionClient({ uid }: { uid: string }) {
       ? loginError
       : 'missing_token';
     return (
-      <CenteredCard title={t('loginErrorTitle')}>
+      <AuthCard title={t('loginErrorTitle')}>
         <p className="text-sm text-slate-500">{t(`loginError_${key}`)}</p>
         <Link href="/login" className="text-sm text-slate-600 underline">
           {t('backToLogin')}
         </Link>
-      </CenteredCard>
+      </AuthCard>
     );
   }
 
   if (!researcher?.approved) {
     return (
-      <CenteredCard title={tAuth('pendingApproval')}>
+      <AuthCard title={tAuth('pendingApproval')}>
         <p className="text-sm text-slate-500">{tAuth('pendingApprovalHint')}</p>
-      </CenteredCard>
+      </AuthCard>
     );
   }
 
-  if (detailsError) {
+  // The server sends the reader back here with ?expired=1 when an interaction
+  // is already resolved, rather than letting oidc-provider's error envelope
+  // become the page.
+  if (detailsError || searchParams.get('expired')) {
     return (
-      <CenteredCard title={t('expiredTitle')}>
+      <AuthCard title={t('expiredTitle')}>
         <p className="text-sm text-slate-500">{t('expiredHint')}</p>
-      </CenteredCard>
+      </AuthCard>
     );
   }
 
   if (!details || details.promptName === 'login') {
     return (
       <>
-        <CenteredMessage text={t('connecting')} spinner />
+        <AuthMessage text={t('connecting')} spinner />
         <form ref={loginFormRef} method="POST" action={apiUrl(`/oauth/interaction/${uid}/login`)} hidden>
           <input type="hidden" name="accessToken" value={accessToken} />
         </form>
@@ -155,7 +164,7 @@ export function OAuthInteractionClient({ uid }: { uid: string }) {
   const clientName = details.client?.clientName ?? details.client?.clientId ?? '';
 
   return (
-    <CenteredCard title="">
+    <AuthCard>
       <p className="text-base font-medium text-slate-900">{t('clientWantsAccess', { client: clientName })}</p>
       <ul className="text-sm text-slate-600 list-disc ps-5 space-y-1">
         {labels.map((label) => (
@@ -164,59 +173,39 @@ export function OAuthInteractionClient({ uid }: { uid: string }) {
       </ul>
 
       <div className="flex gap-3 pt-2">
-        <form ref={confirmFormRef} method="POST" action={apiUrl(`/oauth/interaction/${uid}/confirm`)}>
+        <form
+          ref={confirmFormRef}
+          method="POST"
+          action={apiUrl(`/oauth/interaction/${uid}/confirm`)}
+          onSubmit={() => setSubmitting('allow')}
+        >
           <input type="hidden" name="accessToken" value={accessToken} />
           <input type="hidden" name="decision" value="allow" />
           <button
             type="submit"
-            className="py-2 px-4 bg-slate-900 text-white text-sm font-medium rounded hover:bg-slate-700 transition-colors"
+            disabled={submitting !== null}
+            className="py-2 px-4 bg-slate-900 text-white text-sm font-medium rounded hover:bg-slate-700 disabled:opacity-50 transition-colors"
           >
-            {t('approve')}
+            {submitting === 'allow' ? t('approving') : t('approve')}
           </button>
         </form>
         <form
           ref={denyFormRef}
           method="POST"
           action={apiUrl(`/oauth/interaction/${uid}/confirm`)}
-          onSubmit={() => setDenying(true)}
+          onSubmit={() => setSubmitting('deny')}
         >
           <input type="hidden" name="accessToken" value={accessToken} />
           <input type="hidden" name="decision" value="deny" />
           <button
             type="submit"
-            disabled={denying}
+            disabled={submitting !== null}
             className="py-2 px-4 border border-slate-300 text-slate-700 text-sm font-medium rounded hover:bg-slate-50 disabled:opacity-50 transition-colors"
           >
-            {denying ? t('denying') : t('deny')}
+            {submitting === 'deny' ? t('denying') : t('deny')}
           </button>
         </form>
       </div>
-    </CenteredCard>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Shared layout bits — matching login/page.tsx's card styling
-// ---------------------------------------------------------------------------
-
-function CenteredCard({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
-      <div className="w-full max-w-sm bg-white rounded-xl border border-slate-200 shadow-sm p-8 space-y-4">
-        {title && <h1 className="text-xl font-semibold text-slate-900">{title}</h1>}
-        {children}
-      </div>
-    </div>
-  );
-}
-
-function CenteredMessage({ text, spinner }: { text: string; spinner?: boolean }) {
-  return (
-    <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-      <div className="flex flex-col items-center gap-3">
-        {spinner && <div className="w-6 h-6 border-2 border-slate-300 border-t-slate-600 rounded-full animate-spin" />}
-        <p className="text-sm text-slate-500">{text}</p>
-      </div>
-    </div>
+    </AuthCard>
   );
 }

@@ -1,0 +1,15 @@
+-- A critique must be able to prove it still answers the facts it was computed from.
+--
+-- run_ai_analysis served its cache on `status = COMPLETE AND aiAnalysis IS NOT NULL`,
+-- and PENDING_AI is set only when a VERSION IS CREATED. So a stored critique survived
+-- every change that was not a new version: evidence summaries being corrected, a new
+-- detection pass, and changes to what the critic is given. Check 2 (ANALYSIS_COMPLETE)
+-- passed on all of them, so a thesis could publish carrying a critique argued against
+-- facts that had since changed.
+--
+-- This column holds SHA-256 of the EXACT message array sent to the model. Cache is
+-- served only when it matches what would be sent now. NULL means "analysed before this
+-- existed" — not proven current, so it re-runs.
+--
+-- Nullable and additive: no existing row is rewritten, and no value is lost.
+ALTER TABLE "ThesisVersion" ADD COLUMN "analysisInputHash" TEXT;

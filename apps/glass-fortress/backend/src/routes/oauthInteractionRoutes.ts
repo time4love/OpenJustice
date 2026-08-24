@@ -40,10 +40,33 @@ function scopeList(scope: unknown): string[] {
 // capture groups) even though a plain ':uid' segment is always a single
 // string at runtime — normalize once so the redirect URLs below don't have
 // to.
-function loginErrorRedirect(req: Request, res: Response, code: string): void {
+/** Back to the consent page, which knows how to explain each of these states. */
+function interactionPageRedirect(req: Request, res: Response, query: string): void {
   const frontendBase = process.env['FRONTEND_URL'] ?? 'http://localhost:3001';
   const uid = String(req.params['uid']);
-  res.redirect(303, `${frontendBase}/oauth/interaction/${uid}?loginError=${code}`);
+  res.redirect(303, `${frontendBase}/oauth/interaction/${uid}?${query}`);
+}
+
+function loginErrorRedirect(req: Request, res: Response, code: string): void {
+  interactionPageRedirect(req, res, `loginError=${code}`);
+}
+
+/**
+ * oidc-provider throws SessionNotFound when an interaction is gone — expired,
+ * or already consumed by an earlier submit.
+ *
+ * The GET above already degrades to a 410 the consent page renders as "this
+ * link has expired". The POSTs did not, and they are FORM SUBMITS: the browser
+ * navigates, so an escaping error is not a failed fetch, it is the page. A
+ * researcher connecting a connector saw `{"error":"invalid_request"}` as the
+ * last screen of the flow.
+ */
+function isInteractionGone(err: unknown): boolean {
+  return err instanceof Error && err.name === 'SessionNotFound';
+}
+
+function interactionGoneRedirect(req: Request, res: Response): void {
+  interactionPageRedirect(req, res, 'expired=1');
 }
 
 async function findApprovedResearcher(accessToken: string) {
@@ -126,12 +149,17 @@ router.post('/:uid/login', async (req: Request, res: Response): Promise<void> =>
     return;
   }
 
-  await oidcProvider.interactionFinished(
-    req,
-    res,
-    { login: { accountId: researcher.id } },
-    { mergeWithLastSubmission: false },
-  );
+  try {
+    await oidcProvider.interactionFinished(
+      req,
+      res,
+      { login: { accountId: researcher.id } },
+      { mergeWithLastSubmission: false },
+    );
+  } catch (err) {
+    if (!isInteractionGone(err)) throw err;
+    interactionGoneRedirect(req, res);
+  }
 });
 
 // ---------------------------------------------------------------------------
@@ -158,55 +186,64 @@ router.post('/:uid/confirm', async (req: Request, res: Response): Promise<void> 
     return;
   }
 
-  if (decision !== 'allow') {
-    await oidcProvider.interactionFinished(
-      req,
-      res,
-      { error: 'access_denied', error_description: 'End-User denied access' },
-      { mergeWithLastSubmission: false },
-    );
-    return;
-  }
-
-  const interaction = await oidcProvider.interactionDetails(req, res);
-  const { params, grantId: existingGrantId } = interaction;
-  const details = interaction.prompt.details as {
-    missingOIDCScope?: string[];
-    missingResourceScopes?: Record<string, string[]>;
-  };
-
-  const grant = existingGrantId
-    ? await oidcProvider.Grant.find(existingGrantId)
-    : new oidcProvider.Grant({
-        accountId: researcher.id,
-        clientId: typeof params['client_id'] === 'string' ? params['client_id'] : undefined,
-      });
-
-  if (!grant) {
-    await oidcProvider.interactionFinished(
-      req,
-      res,
-      { error: 'access_denied', error_description: 'Grant could not be resolved' },
-      { mergeWithLastSubmission: false },
-    );
-    return;
-  }
-
-  if (details.missingOIDCScope) grant.addOIDCScope(details.missingOIDCScope.join(' '));
-  if (details.missingResourceScopes) {
-    for (const [indicator, scopes] of Object.entries(details.missingResourceScopes)) {
-      grant.addResourceScope(indicator, scopes.join(' '));
+  // Every oidc-provider call below can throw SessionNotFound if this consent
+  // was already resolved — which is exactly what a second click on Approve
+  // produces. The first submit consumes the interaction; the second arrives to
+  // find it gone.
+  try {
+    if (decision !== 'allow') {
+      await oidcProvider.interactionFinished(
+        req,
+        res,
+        { error: 'access_denied', error_description: 'End-User denied access' },
+        { mergeWithLastSubmission: false },
+      );
+      return;
     }
+
+    const interaction = await oidcProvider.interactionDetails(req, res);
+    const { params, grantId: existingGrantId } = interaction;
+    const details = interaction.prompt.details as {
+      missingOIDCScope?: string[];
+      missingResourceScopes?: Record<string, string[]>;
+    };
+
+    const grant = existingGrantId
+      ? await oidcProvider.Grant.find(existingGrantId)
+      : new oidcProvider.Grant({
+          accountId: researcher.id,
+          clientId: typeof params['client_id'] === 'string' ? params['client_id'] : undefined,
+        });
+
+    if (!grant) {
+      await oidcProvider.interactionFinished(
+        req,
+        res,
+        { error: 'access_denied', error_description: 'Grant could not be resolved' },
+        { mergeWithLastSubmission: false },
+      );
+      return;
+    }
+
+    if (details.missingOIDCScope) grant.addOIDCScope(details.missingOIDCScope.join(' '));
+    if (details.missingResourceScopes) {
+      for (const [indicator, scopes] of Object.entries(details.missingResourceScopes)) {
+        grant.addResourceScope(indicator, scopes.join(' '));
+      }
+    }
+
+    const grantId = await grant.save();
+
+    await oidcProvider.interactionFinished(
+      req,
+      res,
+      { consent: existingGrantId ? {} : { grantId } },
+      { mergeWithLastSubmission: true },
+    );
+  } catch (err) {
+    if (!isInteractionGone(err)) throw err;
+    interactionGoneRedirect(req, res);
   }
-
-  const grantId = await grant.save();
-
-  await oidcProvider.interactionFinished(
-    req,
-    res,
-    { consent: existingGrantId ? {} : { grantId } },
-    { mergeWithLastSubmission: true },
-  );
 });
 
 export { router as oauthInteractionRouter };

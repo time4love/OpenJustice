@@ -562,7 +562,26 @@
         "SESSION_CLOSED_BY_OTHER": "הסשן נסגר על ידי חוקר אחר"
       }
     },
-    "emptyStatePublic": "עדיין לא פורסמו תזות."
+    "emptyStatePublic": "עדיין לא פורסמו תזות.",
+    "trajectoriesTitle": "מסלולי טענות בארכיון",
+    "trajectoryCaveat": "מחושב בחיפוש מחרוזת על חילוץ הטקסט של כל העתק ארכיוני, ולא על העמוד עצמו. החילוץ משמיט חלק מכל עמוד, ולכן טענה יכולה להיעדר ממנו ובכל זאת להופיע בעמוד, ושינוי יכול לנבוע ממבנה העמוד ולא מעריכה. פתחו את ההעתק המקושר ובדקו בעצמכם.",
+    "trajectoryCoMovement": "{count} טענות נעו כיחידה אחת",
+    "trajectoryCoMovementCited": "{cited} מהן מצוטטות כאן",
+    "trajectoryAppeared": "הופיעה בחילוץ",
+    "trajectoryDisappeared": "נעדרה מהחילוץ",
+    "trajectoryFinalPresent": "בהעתק האחרון: מופיעה בחילוץ",
+    "trajectoryFinalRemoved": "בהעתק האחרון: נעדרת מהחילוץ",
+    "trajectoryAllCaptures": "כל {count} ההעתקים שנבדקו",
+    "trajectoryPinned": "מוצמד לחישוב מתאריך {date}",
+    "trajectoryRecomputed": "סריקה מאוחרת יותר סותרת את המסלול שצוטט. הציטוט ממשיך להפנות לחישוב שצוטט.",
+    "trajectoryNotFollowed": "הסריקה האחרונה אינה עוקבת עוד אחרי הטענה הזו.",
+    "trajectoryViewCapture": "צפה בהעתק",
+    "viewThesis": "התזה",
+    "viewProcess": "מאחורי הקלעים",
+    "viewsLabel": "תצוגות התזה",
+    "close": "סגירה",
+    "openEvidence": "פתיחת הראיה",
+    "sourcesTitle": "מקורות"
   },
   "call": {
     "heroLabel": "קריאה לעדים פנימיים",
@@ -722,7 +741,11 @@
     "handle": "שם עט",
     "pendingApproval": "ממתין לאישור מנהל",
     "pendingApprovalHint": "מנהל צריך לאשר את חשבונכם לפני שללקוחות MCP תהיה גישת כתיבה.",
-    "approved": "חשבון מאושר — גישת כתיבה הוענקה"
+    "approved": "חשבון מאושר — גישת כתיבה הוענקה",
+    "callbackFailedTitle": "הכניסה נכשלה",
+    "callbackNoToken": "לא נמצא אסימון גישה בכתובת החזרה.",
+    "callbackSigningIn": "מכניסים אותך…",
+    "callbackBackToLogin": "חזרה לכניסה"
   },
   "oauthInteraction": {
     "loading": "טוען…",
@@ -741,7 +764,8 @@
     "loginError_no_account": "לא נמצא חשבון חוקר. יש להירשם דרך עמוד הכניסה.",
     "loginError_not_approved": "החשבון עדיין לא אושר על ידי מנהל.",
     "loginError_missing_token": "אירעה שגיאה. נסו שוב.",
-    "backToLogin": "חזרה להתחברות"
+    "backToLogin": "חזרה להתחברות",
+    "approving": "מאשר…"
   },
   "admin": {
     "title": "ניהול חוקרים",

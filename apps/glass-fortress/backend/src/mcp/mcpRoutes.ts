@@ -38,6 +38,9 @@ export const READ_TOOLS = new Set([
   'get_diff_debate',
   'get_figure_dossier',
   'get_thesis_context',
+  // Reads stored trajectories and resolves them; writes nothing, invokes no
+  // model. Unlike get_claim_trajectories, it can never trigger a detection pass.
+  'get_thesis_trajectory_citations',
   'get_session_summary',
 ]);
 
@@ -62,6 +65,10 @@ export const WRITE_TOOLS = new Set([
   'start_forensic_scan',
   'create_thesis_draft',
   'add_thesis_version',
+  // Writes a new ThesisVersion. Cheaper and narrower than add_thesis_version —
+  // it cannot change the prose — but it is still a write on the one artifact
+  // that names living officials.
+  'cite_trajectories',
   'run_ai_analysis',
   'create_research_session',
   'add_session_note',

@@ -119,7 +119,8 @@ export async function suggestThesisHandler(input: {
   // The strongest layer in the vault, for the pages this corpus came from.
   // Synthesis without it produces a thesis that asserts what model-written
   // summaries say, on pages whose archived text can say otherwise.
-  const trajectories = await loadTrajectoryContext(corpus);
+  // No citations: there is no document yet — this call is what proposes one.
+  const trajectories = await loadTrajectoryContext(corpus, []);
   const summaryCaveat = await loadSummaryCaveat(corpus);
 
   const agent = new ThesisSynthesisAgent();

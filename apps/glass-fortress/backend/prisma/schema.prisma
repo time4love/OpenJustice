@@ -20,7 +20,7 @@ datasource db {
 
 enum ResearcherRole {
   RESEARCHER // full write access including promote_evidence
-  ADMIN      // RESEARCHER + approve/revoke other researchers
+  ADMIN // RESEARCHER + approve/revoke other researchers
 }
 
 // A vetted contributor with write access to the evidence vault.
@@ -32,15 +32,15 @@ model Researcher {
   supabaseUserId String         @unique // opaque UUID from Supabase auth — never expose in UI
   handle         String         @unique // self-chosen pseudonym — public display name
   role           ResearcherRole @default(RESEARCHER)
-  mcpTokenHash   String?        // bcrypt hash of bearer token; null until first token generation
+  mcpTokenHash   String? // bcrypt hash of bearer token; null until first token generation
   approved       Boolean        @default(false)
   createdAt      DateTime       @default(now())
 
-  evidence       Evidence[]
-  thesisVersions ThesisVersion[]
-  theses         Thesis[]        @relation("ThesisAuthor")
-  publishedTheses Thesis[]       @relation("ThesisPublisher")
-  researchSessions ResearchSession[]
+  evidence           Evidence[]
+  thesisVersions     ThesisVersion[]
+  theses             Thesis[]            @relation("ThesisAuthor")
+  publishedTheses    Thesis[]            @relation("ThesisPublisher")
+  researchSessions   ResearchSession[]
   summaryCorrections SummaryCorrection[]
 }
 
@@ -64,31 +64,31 @@ enum WaybackJobStatus {
 // archive.org's end (retry later, nothing wrong with our pipeline) from an
 // unexpected failure worth investigating.
 enum WaybackFailureReason {
-  WAYBACK_OFFLINE      // every fetch in this batch hit HTTP 503 from web.archive.org
-  ALL_FETCHES_FAILED    // every fetch in this batch failed, but not via 503
+  WAYBACK_OFFLINE // every fetch in this batch hit HTTP 503 from web.archive.org
+  ALL_FETCHES_FAILED // every fetch in this batch failed, but not via 503
 }
 
 enum TrackedUrlStatus {
-  IDLE      // created via legacy sync endpoint; no async status tracking
-  SCANNING  // runFullScan is active (or was interrupted — resumable)
-  PAUSED    // user paused mid-scan; resumable via POST /scan
+  IDLE // created via legacy sync endpoint; no async status tracking
+  SCANNING // runFullScan is active (or was interrupted — resumable)
+  PAUSED // user paused mid-scan; resumable via POST /scan
   COMPLETED // all CDX batches processed
-  FAILED    // unrecoverable error during processing
+  FAILED // unrecoverable error during processing
 }
 
 // Tracks a government/health URL submitted for Wayback Machine forensic analysis.
 // Primary entity — navigate directly to this for version history and status.
 // url is unique: one TrackedUrl per URL, reused across re-scans.
 model TrackedUrl {
-  id        String           @id @default(uuid())
-  url       String           @unique
-  title     String?
-  status    TrackedUrlStatus @default(IDLE)
-  createdAt DateTime         @default(now())
-  diffs        UrlVersionDiff[]
-  snapshots    UrlSnapshot[]
-  job          WaybackScrapeJob?
-  trajectories ClaimTrajectory[]
+  id                     String                       @id @default(uuid())
+  url                    String                       @unique
+  title                  String?
+  status                 TrackedUrlStatus             @default(IDLE)
+  createdAt              DateTime                     @default(now())
+  diffs                  UrlVersionDiff[]
+  snapshots              UrlSnapshot[]
+  job                    WaybackScrapeJob?
+  trajectories           ClaimTrajectory[]
   trajectoryComputations ClaimTrajectoryComputation[]
 }
 
@@ -100,12 +100,12 @@ model UrlSnapshot {
   id               String     @id @default(cuid())
   trackedUrlId     String
   trackedUrl       TrackedUrl @relation(fields: [trackedUrlId], references: [id], onDelete: Cascade)
-  waybackTimestamp String     // YYYYMMDDHHMMSS — unique Wayback archive identifier
-  snapshotDate     String     // YYYY-MM-DD — human-readable date
-  snapshotUrl      String     // Wayback canonical URL (for reference/audit)
-  fullText         String     // Full scraped page text at this date
-  contentHash      String     // SHA-256(fullText) — chain of custody
-  onChainTxHash    String?    // Blockchain tx hash once contentHash is registered on-chain
+  waybackTimestamp String // YYYYMMDDHHMMSS — unique Wayback archive identifier
+  snapshotDate     String // YYYY-MM-DD — human-readable date
+  snapshotUrl      String // Wayback canonical URL (for reference/audit)
+  fullText         String // Full scraped page text at this date
+  contentHash      String // SHA-256(fullText) — chain of custody
+  onChainTxHash    String? // Blockchain tx hash once contentHash is registered on-chain
   createdAt        DateTime   @default(now())
 
   beforeDiffs UrlVersionDiff[] @relation("BeforeSnapshot")
@@ -117,38 +117,38 @@ model UrlSnapshot {
 // Internal scan-state record. One per TrackedUrl — updated in-place across
 // CDX batch iterations rather than creating new records per batch.
 model WaybackScrapeJob {
-  id                  String           @id @default(uuid())
-  url                 String
-  status              WaybackJobStatus @default(PENDING)
-  totalSnapshots      Int              @default(0)
-  processedSnapshots  Int              @default(0)
+  id                 String                @id @default(uuid())
+  url                String
+  status             WaybackJobStatus      @default(PENDING)
+  totalSnapshots     Int                   @default(0)
+  processedSnapshots Int                   @default(0)
   // Set only when status is FAILED — null for every other status.
-  failureReason       WaybackFailureReason?
+  failureReason      WaybackFailureReason?
   // JSON: Array<{ timestamp: string; digest: string; status: 'PENDING' | 'DONE' | 'FAILED' }>
-  snapshotsList       String           @default("[]")
-  trackedUrlId        String           @unique
-  trackedUrl          TrackedUrl       @relation(fields: [trackedUrlId], references: [id], onDelete: Cascade)
-  fromDate            String?          // YYYYMMDD — CDX query start date for the current batch
-  createdAt           DateTime         @default(now())
-  updatedAt           DateTime         @updatedAt
+  snapshotsList      String                @default("[]")
+  trackedUrlId       String                @unique
+  trackedUrl         TrackedUrl            @relation(fields: [trackedUrlId], references: [id], onDelete: Cascade)
+  fromDate           String? // YYYYMMDD — CDX query start date for the current batch
+  createdAt          DateTime              @default(now())
+  updatedAt          DateTime              @updatedAt
 }
 
 // Records a single detected change between two consecutive archived snapshots of a TrackedUrl.
 // A row is created for every processed snapshot pair, not only legally significant ones —
 // isLegallySignificant just marks which are AI-flagged; see ForensicAgent.deriveSignificance.
 model UrlVersionDiff {
-  id                   String       @id @default(uuid())
-  trackedUrlId         String
-  trackedUrl           TrackedUrl   @relation(fields: [trackedUrlId], references: [id])
-  beforeDate           String
-  afterDate            String
-  snapshotUrl          String
-  deletedText          String       @default("[]") // JSON array of AI-extracted claim strings (Hebrew summaries)
-  addedText            String       @default("[]") // JSON array of AI-extracted claim strings (Hebrew summaries)
-  rawDeletedText       String       @default("[]") // JSON array of raw page text chunks that were removed
-  rawAddedText         String       @default("[]") // JSON array of raw page text chunks that were added
-  aiSignificance       String       @default("") // Hebrew forensic explanation
-  isLegallySignificant Boolean      @default(false)
+  id                      String              @id @default(uuid())
+  trackedUrlId            String
+  trackedUrl              TrackedUrl          @relation(fields: [trackedUrlId], references: [id])
+  beforeDate              String
+  afterDate               String
+  snapshotUrl             String
+  deletedText             String              @default("[]") // JSON array of AI-extracted claim strings (Hebrew summaries)
+  addedText               String              @default("[]") // JSON array of AI-extracted claim strings (Hebrew summaries)
+  rawDeletedText          String              @default("[]") // JSON array of raw page text chunks that were removed
+  rawAddedText            String              @default("[]") // JSON array of raw page text chunks that were added
+  aiSignificance          String              @default("") // Hebrew forensic explanation
+  isLegallySignificant    Boolean             @default(false)
   // Which classifier produced the classification on this row.
   //
   // Stored LLM-derived columns drift the moment the prompt changes: without
@@ -159,7 +159,7 @@ model UrlVersionDiff {
   // the proof, since a version string is a promise and a hash is checkable — if
   // the prompt at that version does not hash to this value, something else
   // judged this row. Null on rows classified before provenance was recorded.
-  classifierVersion    String?
+  classifierVersion       String?
   // Provenance for the SUMMARY alone, which moves independently of the
   // classification. `forensics:resummarize` rewrites aiSignificance from the
   // already-extracted items and does NOT re-extract, so the items stay at
@@ -169,21 +169,21 @@ model UrlVersionDiff {
   //
   // null means the summary predates the self-contained rule — written under a
   // prompt that instructed cross-referencing other evidence records inside it.
-  summaryVersion       String?
-  classifierPromptHash String?
+  summaryVersion          String?
+  classifierPromptHash    String?
   // ForensicAgent classification. Stored on the diff (not only on the promoted
   // Evidence) because a researcher may promote a diff manually via
   // /forensics/promote, and that path needs the classification without re-running
   // the agent. isLegallySignificant is derived from this being non-empty.
-  investigativeCategories String[]  @default([])
-  debates              DiffDebateSession[]
-  beforeSnapshotId     String?      // FK to the UrlSnapshot for the "before" state
-  beforeSnapshot       UrlSnapshot? @relation("BeforeSnapshot", fields: [beforeSnapshotId], references: [id])
-  afterSnapshotId      String?      // FK to the UrlSnapshot for the "after" state
-  afterSnapshot        UrlSnapshot? @relation("AfterSnapshot", fields: [afterSnapshotId], references: [id])
-  createdAt            DateTime     @default(now())
-  evidence             Evidence[]
-  summaryCorrections    SummaryCorrection[]
+  investigativeCategories String[]            @default([])
+  debates                 DiffDebateSession[]
+  beforeSnapshotId        String? // FK to the UrlSnapshot for the "before" state
+  beforeSnapshot          UrlSnapshot?        @relation("BeforeSnapshot", fields: [beforeSnapshotId], references: [id])
+  afterSnapshotId         String? // FK to the UrlSnapshot for the "after" state
+  afterSnapshot           UrlSnapshot?        @relation("AfterSnapshot", fields: [afterSnapshotId], references: [id])
+  createdAt               DateTime            @default(now())
+  evidence                Evidence[]
+  summaryCorrections      SummaryCorrection[]
 }
 
 // Mirrors the pgvector table created via raw SQL in the baseline migration
@@ -200,7 +200,7 @@ model UrlVersionDiff {
 // Client — `embedding`'s Unsupported() type cannot be selected, and the
 // `match_evidence()` SQL function it backs is not representable here at all.
 model EvidenceEmbedding {
-  id        String @id
+  id        String                      @id
   content   String
   embedding Unsupported("vector(3072)")
 
@@ -232,22 +232,22 @@ enum EvidenceStatus {
   // Created via an MCP write tool, or auto-promoted while on-chain registration
   // was unavailable/failed — awaits human review + registration (onChainTxHash is null).
   PENDING_REVIEW
-  CONFIRMED      // Registered on-chain (onChainTxHash set) and indexed in Pinecone
+  CONFIRMED // Registered on-chain (onChainTxHash set) and indexed in Pinecone
 }
 
 enum EvidenceType {
-  DOCUMENT      // File upload or URL submission
+  DOCUMENT // File upload or URL submission
   FORENSIC_DIFF // Auto-promoted from UrlVersionDiff (isLegallySignificant=true)
 }
 
 model Evidence {
-  id                  String          @id @default(uuid())
-  fileHash            String          @unique
+  id                       String                @id @default(uuid())
+  fileHash                 String                @unique
   // Fails closed, not open: a create() that forgets to set this explicitly
   // becomes PENDING_REVIEW, never a silent false claim of on-chain registration.
   // See onChainTxHash — CONFIRMED must only ever be set alongside a real tx hash.
-  status              EvidenceStatus  @default(PENDING_REVIEW)
-  onChainTxHash       String?         // Blockchain tx hash once fileHash is registered on-chain — mirrors UrlSnapshot.onChainTxHash
+  status                   EvidenceStatus        @default(PENDING_REVIEW)
+  onChainTxHash            String? // Blockchain tx hash once fileHash is registered on-chain — mirrors UrlSnapshot.onChainTxHash
   // The identity this record carried before the evidence hash moved to being
   // derived from its two archived snapshots, and the anchor registered under it.
   //
@@ -259,10 +259,10 @@ model Evidence {
   // the vault had been tampered with.
   //
   // Null on every record created after the change, which is the normal state.
-  previousFileHash    String?
-  previousOnChainTxHash String?
-  evidenceType        EvidenceType    @default(DOCUMENT)
-  evidenceRole        String          @default("Incriminating")
+  previousFileHash         String?
+  previousOnChainTxHash    String?
+  evidenceType             EvidenceType          @default(DOCUMENT)
+  evidenceRole             String                @default("Incriminating")
   // The evidence's classification — see src/lib/investigativeCategories.ts.
   // Intrinsic to the evidence and fixed at creation; deliberately NOT a link to
   // Thesis, since evidence normally predates the theses that cite it and one
@@ -270,51 +270,56 @@ model Evidence {
   //
   // This is the ONLY classification axis. A coarser `category` field was removed:
   // it restated this at lower resolution and could contradict it.
-  investigativeCategories String[]    @default([])
-  targetEntity        String
-  evidenceTier        String
-  evidencePerspective String?
-  tierReasoning       String?
-  summary             String
-  evidenceDate        String
-  figures             KeyFigure[]
-  medicalConditions   String
-  statisticalClaims   String          @default("[]")
-  regulatoryMentions  String          @default("[]")
-  euaOmissionStatus   String          @default("Not Applicable")
-  sourceUrl           String?
-  fileUrl             String?
+  investigativeCategories  String[]              @default([])
+  targetEntity             String
+  evidenceTier             String
+  evidencePerspective      String?
+  tierReasoning            String?
+  summary                  String
+  evidenceDate             String
+  figures                  KeyFigure[]
+  medicalConditions        String
+  statisticalClaims        String                @default("[]")
+  regulatoryMentions       String                @default("[]")
+  euaOmissionStatus        String                @default("Not Applicable")
+  sourceUrl                String?
+  fileUrl                  String?
   // Screenshot 2..N when this evidence was recovered from a page that needed
   // multiple captures (e.g. a blocked/unfetchable URL too long for one
   // screenshot). fileUrl always holds the first/primary capture; this array
   // holds the rest, in the same reading order they were submitted in — the
   // combined set is treated as one document, analyzed together, not as
   // separate pieces of evidence. Empty for every ordinary single-file record.
-  additionalScreenshotUrls String[] @default([])
-  ipfsCid             String?   // IPFS CID of the encrypted evidence blob (null if not yet anchored)
+  additionalScreenshotUrls String[]              @default([])
+  ipfsCid                  String? // IPFS CID of the encrypted evidence blob (null if not yet anchored)
   // @unique enforces the true 1:1 with UrlVersionDiff at the DB level — previously
   // only an application-level check in POST /forensics/promote prevented a diff
   // from being promoted to more than one Evidence row.
-  urlVersionDiffId    String?         @unique
-  urlVersionDiff      UrlVersionDiff? @relation(fields: [urlVersionDiffId], references: [id])
+  urlVersionDiffId         String?               @unique
+  urlVersionDiff           UrlVersionDiff?       @relation(fields: [urlVersionDiffId], references: [id])
   // Present only for evidence a researcher argued into existence over the
   // forensic classifier's judgment — the full debate that justified it.
-  debateSession       DiffDebateSession?
-  gapResolutions      ThesisGapResolution[]
-  createdById         String?         // Researcher.id — null for legacy records
-  createdBy           Researcher?     @relation(fields: [createdById], references: [id])
-  createdAt           DateTime        @default(now())
+  debateSession            DiffDebateSession?
+  gapResolutions           ThesisGapResolution[]
+  createdById              String? // Researcher.id — null for legacy records
+  createdBy                Researcher?           @relation(fields: [createdById], references: [id])
+  createdAt                DateTime              @default(now())
 }
 
 enum ThesisVersionStatus {
   PENDING_AI // AI devil's advocate analysis not yet complete
-  COMPLETE   // aiAnalysis populated, ready to display
+  COMPLETE // aiAnalysis populated, ready to display
 }
 
 enum MentionType {
-  KEY_FIGURE  // @name — references a KeyFigure.name
-  EVIDENCE    // #ev_ — references an Evidence.fileHash
+  KEY_FIGURE // @name — references a KeyFigure.name
+  EVIDENCE // #ev_ — references an Evidence.fileHash
   TRACKED_URL // #url_ — references a TrackedUrl.id
+  // A ClaimTrajectory.id, NOT a claimHash. The id pins the detection pass, so a
+  // cited trajectory keeps resolving to what was cited; claimHash follows the
+  // claim across recomputations and would let "removed and never restored"
+  // become silently false when a later scan finds the claim back.
+  CLAIM_TRAJECTORY
 }
 
 // A crowdsourced legal thesis — wiki-style versioned narrative that anchors
@@ -327,7 +332,7 @@ model Thesis {
   headVersion   ThesisVersion?    @relation("ThesisHead", fields: [headVersionId], references: [id])
   versions      ThesisVersion[]   @relation("ThesisVersions")
   sessions      ResearchSession[]
-  createdById   String?           // Researcher.id — null for legacy records
+  createdById   String? // Researcher.id — null for legacy records
   createdBy     Researcher?       @relation("ThesisAuthor", fields: [createdById], references: [id])
   createdAt     DateTime          @default(now())
 
@@ -340,11 +345,11 @@ model Thesis {
   // edit, so a researcher publishes one text and the public reads another.
   // Unpublishing sets the pin back to null and deletes nothing.
   // Preconditions: services/thesisPublication.ts.
-  publishedVersionId String?        @unique
-  publishedVersion   ThesisVersion? @relation("ThesisPublished", fields: [publishedVersionId], references: [id])
-  publishedAt        DateTime?
-  publishedById      String?        // Researcher.id of whoever published
-  publishedBy        Researcher?    @relation("ThesisPublisher", fields: [publishedById], references: [id])
+  publishedVersionId      String?        @unique
+  publishedVersion        ThesisVersion? @relation("ThesisPublished", fields: [publishedVersionId], references: [id])
+  publishedAt             DateTime?
+  publishedById           String? // Researcher.id of whoever published
+  publishedBy             Researcher?    @relation("ThesisPublisher", fields: [publishedById], references: [id])
   // The public-interest anchor (COMPLIANCE.md Rule 5) as a dedicated field rather
   // than free text in the body: structurally guaranteed to exist on a published
   // thesis and rendered consistently on every thesis and call page.
@@ -354,23 +359,34 @@ model Thesis {
 // One row per edit. userContent is TipTap JSON; aiAnalysis is devil's advocate output.
 // contentHash = SHA-256(userContent + aiAnalysis) for tamper evidence.
 model ThesisVersion {
-  id              String              @id @default(cuid())
-  thesisId        String
-  thesis          Thesis              @relation("ThesisVersions", fields: [thesisId], references: [id], onDelete: Cascade)
-  parentVersionId String?
-  parentVersion   ThesisVersion?      @relation("VersionTree", fields: [parentVersionId], references: [id])
-  childVersions   ThesisVersion[]     @relation("VersionTree")
-  userContent     Json                // TipTap document JSON
-  aiAnalysis      Json?               // DevilsAdvocateAgent output, null until COMPLETE
-  contentHash     String              // SHA-256 of userContent + aiAnalysis
-  status          ThesisVersionStatus @default(PENDING_AI)
-  mentions        ThesisMention[]
-  gapResolutions  ThesisGapResolution[]
-  isHead          Thesis?             @relation("ThesisHead")
-  isPublished     Thesis?             @relation("ThesisPublished")
-  createdById     String?             // Researcher.id — null for legacy records
-  createdBy       Researcher?         @relation(fields: [createdById], references: [id])
-  createdAt       DateTime            @default(now())
+  id                String                @id @default(cuid())
+  thesisId          String
+  thesis            Thesis                @relation("ThesisVersions", fields: [thesisId], references: [id], onDelete: Cascade)
+  parentVersionId   String?
+  parentVersion     ThesisVersion?        @relation("VersionTree", fields: [parentVersionId], references: [id])
+  childVersions     ThesisVersion[]       @relation("VersionTree")
+  userContent       Json // TipTap document JSON
+  aiAnalysis        Json? // DevilsAdvocateAgent output, null until COMPLETE
+  // SHA-256 of the EXACT message array sent to the critic — thesis text as it was
+  // serialised, evidence block, resolved gaps, rendered trajectory block, summary
+  // caveat and the system prompt. Null on every version analysed before this
+  // existed, which reads as "unknown, so not proven current" and re-runs.
+  //
+  // contentHash below hashes the OUTPUT, for publication pinning, and can say
+  // nothing about whether the analysis still answers the facts. Status could not
+  // either: PENDING_AI is set only when a version is CREATED, so a critique
+  // survived its evidence summaries being corrected, a new detection pass, and
+  // two changes to what the critic is given — while check 2 kept passing.
+  analysisInputHash String?
+  contentHash       String // SHA-256 of userContent + aiAnalysis
+  status            ThesisVersionStatus   @default(PENDING_AI)
+  mentions          ThesisMention[]
+  gapResolutions    ThesisGapResolution[]
+  isHead            Thesis?               @relation("ThesisHead")
+  isPublished       Thesis?               @relation("ThesisPublished")
+  createdById       String? // Researcher.id — null for legacy records
+  createdBy         Researcher?           @relation(fields: [createdById], references: [id])
+  createdAt         DateTime              @default(now())
 }
 
 // Records which AI-identified evidence gap has been addressed by a specific evidence record.
@@ -380,8 +396,8 @@ model ThesisGapResolution {
   id              String        @id @default(cuid())
   thesisVersionId String
   thesisVersion   ThesisVersion @relation(fields: [thesisVersionId], references: [id], onDelete: Cascade)
-  gapIndex        Int           // index into aiAnalysis.evidenceGaps[]
-  evidenceId      String        // Evidence.fileHash
+  gapIndex        Int // index into aiAnalysis.evidenceGaps[]
+  evidenceId      String // Evidence.fileHash
   evidence        Evidence      @relation(fields: [evidenceId], references: [fileHash])
   createdAt       DateTime      @default(now())
 
@@ -391,11 +407,11 @@ model ThesisGapResolution {
 // Extracted first-class references from ThesisVersion.userContent nodes.
 // Queryable index — avoids parsing JSON at query time.
 model ThesisMention {
-  id               String        @id @default(cuid())
-  thesisVersionId  String
-  thesisVersion    ThesisVersion @relation(fields: [thesisVersionId], references: [id], onDelete: Cascade)
-  type             MentionType
-  refId            String        // KeyFigure.name | Evidence.fileHash | TrackedUrl.id
+  id              String        @id @default(cuid())
+  thesisVersionId String
+  thesisVersion   ThesisVersion @relation(fields: [thesisVersionId], references: [id], onDelete: Cascade)
+  type            MentionType
+  refId           String // KeyFigure.name | Evidence.fileHash | TrackedUrl.id | ClaimTrajectory.id
 }
 
 // ---------------------------------------------------------------------------
@@ -408,20 +424,20 @@ enum ResearchSessionStatus {
 }
 
 enum ResearchSessionEventType {
-  SESSION_STARTED  // logged automatically on session creation
-  VERSION_CREATED  // logged automatically when a thesis version is created
-  GAP_RESOLVED     // logged automatically when a gap resolution is saved
-  AI_ANALYSIS_RUN  // logged automatically when AI analysis completes
-  NOTE             // logged manually via add_session_note MCP tool
-  SESSION_CLOSED   // logged automatically on session close
+  SESSION_STARTED // logged automatically on session creation
+  VERSION_CREATED // logged automatically when a thesis version is created
+  GAP_RESOLVED // logged automatically when a gap resolution is saved
+  AI_ANALYSIS_RUN // logged automatically when AI analysis completes
+  NOTE // logged manually via add_session_note MCP tool
+  SESSION_CLOSED // logged automatically on session close
   // Deciding WHAT the thesis should argue, before one exists.
   FRAMING_PROPOSED // a researcher's proposed framing of the question
   FRAMING_ASSESSED // the adversarial response to it
-  THESIS_ATTACHED  // the framing produced a thesis; refId is the Thesis id
+  THESIS_ATTACHED // the framing produced a thesis; refId is the Thesis id
   // Publication is a deliberate, gated act and belongs in the record of the
   // session that did it. refId is the ThesisVersion id that was pinned/unpinned.
   PUBLICATION_RATIONALE // the researcher's argued case for publishing
-  PUBLICATION_ASSESSED  // the assessor's response to it; description is the assessment JSON
+  PUBLICATION_ASSESSED // the assessor's response to it; description is the assessment JSON
   THESIS_PUBLISHED
   THESIS_UNPUBLISHED
   // Written onto a session that ANOTHER researcher closed to open their own,
@@ -449,21 +465,21 @@ model ResearchSession {
   // already exist; a third would be a smell. A framing session IS a research
   // session — it just starts before its subject does, and the thesis attaches to
   // it when created.
-  thesisId  String?
-  thesis    Thesis?               @relation(fields: [thesisId], references: [id], onDelete: Cascade)
+  thesisId     String?
+  thesis       Thesis?                @relation(fields: [thesisId], references: [id], onDelete: Cascade)
   // The question the session opened on, when it opened before a thesis.
-  question  String?
-  name      String
-  status    ResearchSessionStatus @default(ACTIVE)
+  question     String?
+  name         String
+  status       ResearchSessionStatus  @default(ACTIVE)
   // Who opened it. Nullable: sessions that predate ownership read as legacy,
   // the same pattern as Evidence.createdById. Only ONE session may be ACTIVE
   // at a time across the whole system — a publication attaches to the session
   // that did it, and an untethered publish is an act with no context.
   researcherId String?
-  researcher   Researcher?          @relation(fields: [researcherId], references: [id])
-  events    ResearchSessionEvent[]
-  createdAt DateTime              @default(now())
-  closedAt  DateTime?
+  researcher   Researcher?            @relation(fields: [researcherId], references: [id])
+  events       ResearchSessionEvent[]
+  createdAt    DateTime               @default(now())
+  closedAt     DateTime?
 }
 
 // One event per significant action that occurred during a session.
@@ -473,7 +489,7 @@ model ResearchSessionEvent {
   session     ResearchSession          @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   type        ResearchSessionEventType
   description String
-  refId       String?                  // ThesisVersion.id | Evidence.fileHash | ThesisGapResolution.id
+  refId       String? // ThesisVersion.id | Evidence.fileHash | ThesisGapResolution.id
   createdAt   DateTime                 @default(now())
 }
 
@@ -1025,18 +1041,18 @@ enum PromotionAssessmentVerdict {
 }
 
 enum DiffDebateStatus {
-  OPEN      // under argument — no evidence exists yet
-  PROMOTED  // ended in promotion; evidenceId is set
+  OPEN // under argument — no evidence exists yet
+  PROMOTED // ended in promotion; evidenceId is set
   ABANDONED // the researcher withdrew the argument
 }
 
 enum DiffDebateEventType {
-  DEBATE_OPENED       // logged automatically when the session is created
+  DEBATE_OPENED // logged automatically when the session is created
   RATIONALE_SUBMITTED // a researcher argument — the opening one or a revision
   ASSESSMENT_RETURNED // the assessor's response to that argument
-  RESPONSE_SUBMITTED  // the researcher answering a sustained objection
-  PROMOTED            // ended in evidence; refId is the Evidence id
-  ABANDONED           // ended without promotion
+  RESPONSE_SUBMITTED // the researcher answering a sustained objection
+  PROMOTED // ended in evidence; refId is the Evidence id
+  ABANDONED // ended without promotion
 }
 
 // One debate per diff at a time — mirroring one ACTIVE ResearchSession per thesis.
@@ -1085,23 +1101,23 @@ model DiffDebateEvent {
 // already had evidence built on the old verdict.
 // ---------------------------------------------------------------------------
 model ReclassificationRun {
-  id                String   @id @default(cuid())
-  trackedUrlId      String?  // null when the run covered every tracked URL
-  classifierVersion String   // the version rows were brought UP TO
-  diffsExamined     Int      @default(0)
-  diffsReclassified Int      @default(0)
+  id                 String    @id @default(cuid())
+  trackedUrlId       String? // null when the run covered every tracked URL
+  classifierVersion  String // the version rows were brought UP TO
+  diffsExamined      Int       @default(0)
+  diffsReclassified  Int       @default(0)
   // Diffs whose isLegallySignificant changed, either direction.
-  flipsToSignificant Int     @default(0)
-  flipsToRoutine     Int     @default(0)
+  flipsToSignificant Int       @default(0)
+  flipsToRoutine     Int       @default(0)
   // Flips on a diff that had already produced Evidence. These need a human:
   // the Evidence row still carries the categories it was promoted with, so it
   // and its source diff now disagree.
-  flipsWithEvidence  Int     @default(0)
+  flipsWithEvidence  Int       @default(0)
   // JSON: Array<{ diffId, beforeDate, afterDate, before: string[], after: string[], hadEvidence: boolean }>
   // Only for diffs that flipped — an unchanged verdict needs no record.
-  flips             String   @default("[]")
-  startedAt         DateTime @default(now())
-  finishedAt        DateTime?
+  flips              String    @default("[]")
+  startedAt          DateTime  @default(now())
+  finishedAt         DateTime?
 }
 
 // ---------------------------------------------------------------------------
@@ -1186,28 +1202,28 @@ enum ClaimFinalState {
 //
 // Append-only. A later correction writes another row; nothing here is updated.
 model SummaryCorrection {
-  id             String         @id @default(cuid())
+  id               String         @id @default(cuid())
   urlVersionDiffId String
-  urlVersionDiff UrlVersionDiff @relation(fields: [urlVersionDiffId], references: [id], onDelete: Cascade)
+  urlVersionDiff   UrlVersionDiff @relation(fields: [urlVersionDiffId], references: [id], onDelete: Cascade)
   // Denormalised so a correction stays legible if the diff is ever detached.
-  fileHash       String
-  previousText   String
-  correctedText  String
+  fileHash         String
+  previousText     String
+  correctedText    String
   // Why, in the corrector's own words. A correction with no stated reason is
   // indistinguishable from a quiet rewrite.
-  reason         String
-  correctedById  String?
-  correctedBy    Researcher?    @relation(fields: [correctedById], references: [id])
-  createdAt      DateTime       @default(now())
+  reason           String
+  correctedById    String?
+  correctedBy      Researcher?    @relation(fields: [correctedById], references: [id])
+  createdAt        DateTime       @default(now())
 
   @@index([urlVersionDiffId, createdAt])
   @@index([fileHash])
 }
 
 model ClaimTrajectoryComputation {
-  id                   String     @id @default(cuid())
+  id                   String            @id @default(cuid())
   trackedUrlId         String
-  trackedUrl           TrackedUrl @relation(fields: [trackedUrlId], references: [id], onDelete: Cascade)
+  trackedUrl           TrackedUrl        @relation(fields: [trackedUrlId], references: [id], onDelete: Cascade)
   // SHA-256 over (ordered snapshot timestamps, sorted candidate claim hashes,
   // detection version). Recomputing against identical state yields this row.
   sourceStateHash      String
@@ -1218,7 +1234,7 @@ model ClaimTrajectoryComputation {
   // Kept because a high count means candidate discovery is degrading, which is
   // invisible if only the successes are stored.
   candidatesUnmatched  Int
-  computedAt           DateTime   @default(now())
+  computedAt           DateTime          @default(now())
   trajectories         ClaimTrajectory[]
 
   @@unique([trackedUrlId, sourceStateHash])
@@ -1254,9 +1270,22 @@ model ClaimTrajectory {
   firstSeen     String // YYYY-MM-DD of the earliest snapshot containing the claim
   lastSeen      String // YYYY-MM-DD of the latest snapshot containing it
   finalState    ClaimFinalState
+  // SHA-256 of the presence vector — the identity of the MOVEMENT, shared by
+  // every claim that came and went on the same captures.
+  //
+  // Derived from observations and stored anyway, because reading it is the whole
+  // point: answering "how many claims moved as one unit" used to mean loading
+  // every sibling row's observations blob on every thesis page load. Written by
+  // presencePatternHash(), the same function grouping uses, so the two cannot
+  // drift.
+  //
+  // Storable only because it is fixed WITHIN a computation. Across computations
+  // it changes whenever a capture is added, which is why a group still has no
+  // citable identity and a thesis cites every member instead.
+  patternHash   String
   createdAt     DateTime                   @default(now())
 
   @@unique([computationId, claimHash])
   @@index([trackedUrlId, claimHash])
+  @@index([computationId, patternHash])
 }
-

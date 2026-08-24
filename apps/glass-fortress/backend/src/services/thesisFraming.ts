@@ -158,7 +158,8 @@ export async function assessThesisFraming(
 
   // Loaded BEFORE the turn is recorded, so a failure here cannot leave a
   // FRAMING_PROPOSED event with no assessment beside it.
-  const trajectories = await loadTrajectoryContext(evidence);
+  // No citations: framing precedes the document, so nothing cites anything yet.
+  const trajectories = await loadTrajectoryContext(evidence, []);
   const summaryCaveat = await loadSummaryCaveat(evidence);
 
   const turns = await priorTurns(sessionId);

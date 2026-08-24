@@ -6,7 +6,8 @@
 // endpoint (which fires-and-forgets returning 202), this tool awaits completion
 // so the calling LLM can immediately continue the research loop.
 //
-// If the head version is already COMPLETE, returns the existing analysis.
+// The stored analysis is returned only when it is still an answer to the same
+// input — see analysisInputHash in triggerAIAnalysis.
 // ---------------------------------------------------------------------------
 
 import { z } from 'zod';
@@ -29,18 +30,11 @@ export async function runAiAnalysisHandler(input: { thesisId: string }): Promise
 
   const hv = thesis.headVersion;
 
-  if (hv.status === 'COMPLETE' && hv.aiAnalysis !== null) {
-    return JSON.stringify({
-      thesisId: input.thesisId,
-      versionId: hv.id,
-      status: 'COMPLETE',
-      cached: true,
-      aiAnalysis: hv.aiAnalysis,
-    });
-  }
-
-  // Await synchronously so the MCP caller gets the result immediately
-  await triggerAIAnalysis(hv.id, hv.userContent);
+  // Whether the stored critique still answers the facts is decided in one place,
+  // by comparing the fingerprint of the critic's actual input. This tool used to
+  // make that call itself with `status === COMPLETE`, which is a property of the
+  // VERSION and says nothing about whether the analysis is still current.
+  const { ran } = await triggerAIAnalysis(hv.id, hv.userContent);
 
   const updated = await prisma.thesisVersion.findUniqueOrThrow({ where: { id: hv.id } });
 
@@ -48,7 +42,7 @@ export async function runAiAnalysisHandler(input: { thesisId: string }): Promise
     thesisId: input.thesisId,
     versionId: updated.id,
     status: updated.status,
-    cached: false,
+    cached: !ran,
     aiAnalysis: updated.aiAnalysis,
   });
 }

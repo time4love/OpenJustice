@@ -1,6 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useTranslations } from 'next-intl';
+import { AuthMessage, AuthShell } from '@/components/AuthShell';
 import { Link, useRouter } from '@/i18n/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { apiUrl } from '@/lib/api';
@@ -27,6 +29,10 @@ import { apiUrl } from '@/lib/api';
 // ---------------------------------------------------------------------------
 
 export default function AuthCallbackPage() {
+  // This page was the last English text in a Hebrew-first flow: "Login failed",
+  // "Try again", "Signing you in…" — reached from a magic link, so often the
+  // very first page a researcher saw.
+  const t = useTranslations('auth');
   const { login } = useAuth();
   const router = useRouter();
   const [status, setStatus] = useState<'processing' | 'error'>('processing');
@@ -47,7 +53,7 @@ export default function AuthCallbackPage() {
       }
 
       if (!accessToken) {
-        setErrorMsg('No access token found in callback URL.');
+        setErrorMsg(t('callbackNoToken'));
         setStatus('error');
         return;
       }
@@ -80,22 +86,15 @@ export default function AuthCallbackPage() {
 
   if (status === 'error') {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+      <AuthShell>
         <div className="w-full max-w-sm bg-white rounded-xl border border-red-200 p-8 text-center space-y-4">
-          <p className="text-red-600 font-medium">Login failed</p>
+          <p className="text-red-600 font-medium">{t('callbackFailedTitle')}</p>
           <p className="text-sm text-slate-500">{errorMsg}</p>
-          <Link href="/login" className="text-sm text-slate-600 underline">Try again</Link>
+          <Link href="/login" className="text-sm text-slate-600 underline">{t('callbackBackToLogin')}</Link>
         </div>
-      </div>
+      </AuthShell>
     );
   }
 
-  return (
-    <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-      <div className="flex flex-col items-center gap-3">
-        <div className="w-6 h-6 border-2 border-slate-300 border-t-slate-600 rounded-full animate-spin" />
-        <p className="text-sm text-slate-500">Signing you in…</p>
-      </div>
-    </div>
-  );
+  return <AuthMessage text={t('callbackSigningIn')} spinner />;
 }

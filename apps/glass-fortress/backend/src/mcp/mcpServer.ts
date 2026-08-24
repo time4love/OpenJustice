@@ -1,4 +1,5 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { resolveOrigin } from '../oauth/oidcProvider';
 import { searchEvidenceSchema, searchEvidenceHandler } from './tools/searchEvidence';
 import { getForensicTimelineSchema, getForensicTimelineHandler } from './tools/getForensicTimeline';
 import { getFigureDossierSchema, getFigureDossierHandler } from './tools/getFigureDossier';
@@ -9,6 +10,11 @@ import { createEvidenceFromTextSchema, createEvidenceFromTextHandler } from './t
 import { startForensicScanSchema, startForensicScanHandler } from './tools/startForensicScan';
 import { createThesisDraftSchema, createThesisDraftHandler } from './tools/createThesisDraft';
 import { addThesisVersionSchema, addThesisVersionHandler } from './tools/addThesisVersion';
+import { citeTrajectoriesSchema, citeTrajectoriesHandler } from './tools/citeTrajectories';
+import {
+  getThesisTrajectoryCitationsSchema,
+  getThesisTrajectoryCitationsHandler,
+} from './tools/getThesisTrajectoryCitations';
 import { runAiAnalysisSchema, runAiAnalysisHandler } from './tools/runAiAnalysis';
 import { createResearchSessionSchema, createResearchSessionHandler } from './tools/createResearchSession';
 import { addSessionNoteSchema, addSessionNoteHandler } from './tools/addSessionNote';
@@ -68,8 +74,30 @@ import {
 
 export function createMcpServer(): McpServer {
   const server = new McpServer({
-    name: 'Glass Fortress MCP',
+    // name is the programmatic identifier and title is what a client shows —
+    // Implementation extends BaseMetadata, so putting the display name in
+    // `name` would hand clients a Hebrew string to key on.
+    //
+    // Both change: "Glass Fortress" is this codebase's internal term for the
+    // Covid case and has never been a name the project shows anyone, and a
+    // connector's serverInfo is shown to whoever attaches it.
+    name: 'tzedek-laam-covid',
+    title: 'צדק לעם — תיק הקורונה',
     version: '1.0.0',
+    websiteUrl: resolveOrigin(process.env),
+    description:
+      'Forensic evidence vault for the Covid-19 Ministry of Health case: archived page histories, ' +
+      'deterministic claim trajectories, and the theses built on them.',
+    // Declared per the MCP spec so a client does not have to fall back to
+    // guessing a favicon at the origin. Served above the staging gate, because
+    // this is fetched unauthenticated.
+    icons: [
+      {
+        src: `${resolveOrigin(process.env)}/icon.png`,
+        mimeType: 'image/png',
+        sizes: ['480x480'],
+      },
+    ],
   });
 
   // -------------------------------------------------------------------------
@@ -389,6 +417,43 @@ export function createMcpServer(): McpServer {
     addThesisVersionSchema,
     async (input) => ({
       content: [{ type: 'text' as const, text: await addThesisVersionHandler(input) }],
+    }),
+  );
+
+  // -------------------------------------------------------------------------
+  // Tool: get_thesis_trajectory_citations  [READ]
+  // The deterministic citations behind a thesis, resolved in full. Separate
+  // from get_thesis_context because this answer grows with how thoroughly a
+  // thesis is cited, and the context tool has to stay bounded.
+  // -------------------------------------------------------------------------
+  server.tool(
+    'get_thesis_trajectory_citations',
+    'Resolve the claim trajectories a thesis cites: which claims, which archived captures each one ' +
+      'appeared and vanished on, how much of each co-movement was cited, and whether a later ' +
+      'detection pass still agrees. get_thesis_context summarises these; this returns them in full.',
+    getThesisTrajectoryCitationsSchema,
+    async (input) => ({
+      content: [{ type: 'text' as const, text: await getThesisTrajectoryCitationsHandler(input) }],
+    }),
+  );
+
+  // -------------------------------------------------------------------------
+  // Tool: cite_trajectories  [WRITE — STAGING GATE]
+  // Attaches claim trajectories to claims already written, WITHOUT re-authoring
+  // the thesis. add_thesis_version takes the body as Markdown, and nothing hands
+  // the stored document back in that form, so adding one citation through it
+  // means retyping the whole thesis by hand past every working citation in it.
+  // -------------------------------------------------------------------------
+  server.tool(
+    'cite_trajectories',
+    'Attach claim trajectories to sentences already written, without touching the prose. Anchors ' +
+      'on an exact substring of the existing text and splices the citation in after it; the prose is ' +
+      'asserted byte-identical afterwards, and an anchor matching zero times or more than once is ' +
+      'refused rather than guessed. Writes a new PENDING_AI version — use this instead of ' +
+      'add_thesis_version when only the CITATIONS change, never to edit what the thesis says.',
+    citeTrajectoriesSchema,
+    async (input) => ({
+      content: [{ type: 'text' as const, text: await citeTrajectoriesHandler(input) }],
     }),
   );
 

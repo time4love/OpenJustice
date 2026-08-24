@@ -3,6 +3,11 @@
 // All handlers are tested directly (no HTTP/transport layer).
 // ---------------------------------------------------------------------------
 
+jest.mock('../src/services/thesisAnalysis', () => {
+  const actual = jest.requireActual('../src/services/thesisAnalysis');
+  return { ...actual, triggerAIAnalysis: jest.fn() };
+});
+
 jest.mock('../src/lib/prisma', () => ({
   prisma: {
     evidence: {
@@ -28,6 +33,10 @@ jest.mock('../src/lib/prisma', () => ({
     },
     thesisVersion: {
       create: jest.fn(),
+      findUniqueOrThrow: jest.fn(),
+    },
+    claimTrajectory: {
+      findMany: jest.fn(),
     },
     researchSession: {
       findFirst: jest.fn(),
@@ -74,6 +83,7 @@ jest.mock('../src/services/GapRevisionAgent', () => ({
 }));
 
 import { prisma } from '../src/lib/prisma';
+import { triggerAIAnalysis } from '../src/services/thesisAnalysis';
 import { VectorStoreService } from '../src/services/VectorStoreService';
 import { IntakeAgent } from '../src/services/IntakeAgent';
 import { WaybackScraper } from '../src/services/WaybackScraper';
@@ -872,6 +882,71 @@ describe('createThesisDraftHandler', () => {
     await expect(createThesisDraftHandler({ title: 'Draft', body: 'Draft.' })).resolves.toBeDefined();
   });
 
+  // -------------------------------------------------------------------------
+  // Citing a claim trajectory (docs/gf-trajectory-citation-dev-plan.md).
+  //
+  // A trajectory is a deterministic string search across every archived capture
+  // of a page. Before this it could not be cited at all, so the two most
+  // rigorously verified claims in the first real thesis were the two with no
+  // citation behind them, while every model-written summary cited cleanly.
+  // -------------------------------------------------------------------------
+  it('resolves ONE footnote citing an evidence hash and a trajectory into both mention types', async () => {
+    (prisma.claimTrajectory.findMany as jest.Mock).mockResolvedValue([
+      { id: 'traj-1', claimText: 'טענה שהוסרה ולא הוחזרה' },
+    ]);
+
+    const raw = await createThesisDraftHandler({
+      title: 'Mixed citation',
+      body: 'The claim was removed and stayed absent[^1].',
+      citations: [{ id: 1, fileHashes: ['0xabc'], trajectoryIds: ['traj-1'] }],
+    });
+
+    const versionData = mockThesisVersionCreate.mock.calls[0][0].data;
+    const mentionData = versionData.mentions.createMany.data as Array<{ type: string; refId: string }>;
+    expect(mentionData).toContainEqual({ type: 'EVIDENCE', refId: '0xabc' });
+    expect(mentionData).toContainEqual({ type: 'CLAIM_TRAJECTORY', refId: 'traj-1' });
+    expect(JSON.parse(raw).trajectoriesLinked).toBe(1);
+  });
+
+  it('links trajectories passed flat, outside any footnote', async () => {
+    (prisma.claimTrajectory.findMany as jest.Mock).mockResolvedValue([
+      { id: 'traj-1', claimText: 'טענה אחת' },
+      { id: 'traj-2', claimText: 'טענה שנייה' },
+    ]);
+
+    await createThesisDraftHandler({
+      title: 'Flat trajectories',
+      body: 'Eight claims moved as one unit.',
+      trajectoryIds: ['traj-1', 'traj-2'],
+    });
+
+    const versionData = mockThesisVersionCreate.mock.calls[0][0].data;
+    const mentionData = versionData.mentions.createMany.data as Array<{ type: string; refId: string }>;
+    expect(mentionData.filter((m) => m.type === 'CLAIM_TRAJECTORY').map((m) => m.refId)).toEqual([
+      'traj-1',
+      'traj-2',
+    ]);
+  });
+
+  it('refuses an id that matches no row, and writes NOTHING', async () => {
+    // Caught here rather than at the publication gate: a citation naming a row
+    // that was never there is a typo, and finding it at publication time means
+    // finding it long after the paragraph that made it was written.
+    (prisma.claimTrajectory.findMany as jest.Mock).mockResolvedValue([]);
+
+    const raw = await createThesisDraftHandler({
+      title: 'Typo',
+      body: 'A claim[^1].',
+      citations: [{ id: 1, trajectoryIds: ['claimhash-not-an-id'] }],
+    });
+    const result = JSON.parse(raw);
+
+    expect(result.error).toBe('UNKNOWN_TRAJECTORY_ID');
+    expect(result.unknownIds).toEqual(['claimhash-not-an-id']);
+    expect(mockThesisCreate).not.toHaveBeenCalled();
+    expect(mockThesisVersionCreate).not.toHaveBeenCalled();
+  });
+
   it('renders a [^n] marker as an inline evidence mention via citations, not a trailing chip', async () => {
     const raw = await createThesisDraftHandler({
       title: 'Cited Draft',
@@ -1120,7 +1195,13 @@ describe('runAiAnalysisHandler', () => {
     alternativeInterpretations: [],
   };
 
-  it('returns cached result when version is already COMPLETE', async () => {
+  // Whether a stored critique is still current is decided by comparing the
+  // fingerprint of the critic's input, in triggerAIAnalysis — see
+  // thesisAnalysisCitations.test.ts. This handler only reports that decision.
+  // It used to make the call itself, with `status === COMPLETE`, which is a
+  // property of the VERSION and cannot see whether the analysis is still an
+  // answer to the facts.
+  function headVersion() {
     (prisma.thesis.findUnique as jest.Mock).mockResolvedValueOnce({
       id: 'thesis-1',
       headVersion: {
@@ -1130,13 +1211,33 @@ describe('runAiAnalysisHandler', () => {
         userContent: { type: 'doc', content: [] },
       },
     });
+    (prisma.thesisVersion.findUniqueOrThrow as jest.Mock).mockResolvedValueOnce({
+      id: 'version-1',
+      status: 'COMPLETE',
+      aiAnalysis: mockAnalysis,
+    });
+  }
 
-    const raw = await runAiAnalysisHandler({ thesisId: 'thesis-1' });
-    const result = JSON.parse(raw);
+  it('reports cached when the service found the stored analysis still current', async () => {
+    headVersion();
+    (triggerAIAnalysis as jest.Mock).mockResolvedValueOnce({ ran: false });
+
+    const result = JSON.parse(await runAiAnalysisHandler({ thesisId: 'thesis-1' }));
 
     expect(result.cached).toBe(true);
     expect(result.status).toBe('COMPLETE');
     expect(result.aiAnalysis).toEqual(mockAnalysis);
+  });
+
+  it('reports NOT cached when the service re-ran a stale analysis', async () => {
+    // The case the old contract could not express: a version that is COMPLETE and
+    // has an analysis, whose analysis no longer answers the current input.
+    headVersion();
+    (triggerAIAnalysis as jest.Mock).mockResolvedValueOnce({ ran: true });
+
+    const result = JSON.parse(await runAiAnalysisHandler({ thesisId: 'thesis-1' }));
+
+    expect(result.cached).toBe(false);
   });
 
   it('returns error when thesis not found', async () => {
