@@ -19,6 +19,8 @@ import { aiCostLimiter } from '../middleware/rateLimiting';
 import { identifyResearcher, requireResearcher } from '../middleware/researcherIdentity';
 import { publicationState, versionIdForViewer, type Viewer } from '../lib/thesisView';
 import { assessPublication, publishThesis, unpublishThesis } from '../services/thesisPublication';
+import { getThesisProvenance } from '../services/thesisProvenance';
+import { repairFramingLink } from '../services/thesisFraming';
 
 const router = Router();
 
@@ -388,6 +390,81 @@ router.post('/:id/unpublish', requireResearcher, async (req: Request, res: Respo
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     res.status(500).json({ error: 'Failed to unpublish thesis', message });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/thesis/:id/provenance  [RESEARCHER ONLY]
+//
+// How this thesis came to say what it says: every session attached to it, with
+// its events in order — the framing question, each proposed framing and the
+// adversary's reply, the moment a thesis was attached, the versions and
+// analyses, the publication rationale and its assessment.
+//
+// Researcher-only, and not merely by convention. This view concentrates
+// rejected framings, recorded dissent, and an adversary's objections about
+// named living officials — deliberation the platform deliberately does not
+// publish. COMPLIANCE.md and docs/defamation-risk.md rank AI-generated text
+// about named individuals as the top risk surface, and this is a feed of
+// exactly that. It is also the most interesting page on the site, which is
+// precisely why someone will eventually argue for opening it.
+//
+// 404 rather than 403 for an unknown thesis, matching the rest of this router.
+// ---------------------------------------------------------------------------
+router.get('/:id/provenance', requireResearcher, async (req: Request, res: Response): Promise<void> => {
+  const id = String(req.params['id'] ?? '');
+  if (!id) {
+    res.status(400).json({ error: 'Invalid request' });
+    return;
+  }
+  try {
+    const provenance = await getThesisProvenance(id);
+    if ('error' in provenance) {
+      res.status(404).json(provenance);
+      return;
+    }
+    res.status(200).json(provenance);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ error: 'Failed to load thesis provenance', message });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/thesis/:id/provenance/repair  [RESEARCHER ONLY]
+//
+// Attach a framing session to a thesis created without one.
+//
+// The repair path for theses already on the wrong side of the fix: deriving the
+// link at creation (services/thesisFraming.ts, linkThesisToFraming) closes the
+// hole going forward and reaches nothing already created — the flip-keyed-fix
+// mistake this codebase has been bitten by three times.
+//
+// Deliberately NOT an MCP tool: the provenance page is where a missing link is
+// noticed, so the repair belongs on the same surface. It refuses to move a
+// session already bound to a different thesis, and refuses a thesis that
+// already has one — a repair able to overwrite an existing link is not a
+// repair, it is a way to rewrite provenance.
+// ---------------------------------------------------------------------------
+router.post('/:id/provenance/repair', requireResearcher, async (req: Request, res: Response): Promise<void> => {
+  const id = String(req.params['id'] ?? '');
+  const body = z.object({ sessionId: z.string().min(1) }).safeParse(req.body ?? {});
+  if (!id || !body.success) {
+    res.status(400).json({ error: 'Invalid request: sessionId is required' });
+    return;
+  }
+  try {
+    const result = await repairFramingLink(body.data.sessionId, id);
+    if (!result.repaired) {
+      const status =
+        result.reason === 'SESSION_NOT_FOUND' || result.reason === 'THESIS_NOT_FOUND' ? 404 : 409;
+      res.status(status).json(result);
+      return;
+    }
+    res.status(200).json(result);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ error: 'Failed to repair framing link', message });
   }
 });
 

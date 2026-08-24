@@ -1,11 +1,12 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useMemo } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { SiteHeader } from '@/components/SiteHeader';
 import { Link, useRouter, usePathname } from '@/i18n/navigation';
-import { apiUrl } from '@/lib/api';
+import { fetchJson } from '@/lib/api';
+import { useAsyncData, type AsyncFetcher } from '@/hooks/useAsyncData';
 import { CategoryBadges } from '@/components/CategoryBadges';
 import { formatHash } from '@/lib/format';
 import { perspectiveStyles } from '@/lib/evidencePerspective';
@@ -108,51 +109,32 @@ export default function FiguresPage() {
   const router = useRouter();
   const pathname = usePathname();
 
-  const [figures, setFigures] = useState<FigureItem[]>([]);
-  const [figuresLoading, setFiguresLoading] = useState(true);
-  const [figuresError, setFiguresError] = useState<string | null>(null);
-
   const [selectedId, setSelectedId] = useState<string | null>(searchParams.get('id'));
-  const [evidence, setEvidence] = useState<EvidenceRecord[]>([]);
-  const [evidenceLoading, setEvidenceLoading] = useState(false);
-  const [evidenceError, setEvidenceError] = useState<string | null>(null);
 
-  // Load figure list on mount
-  useEffect(() => {
-    void (async () => {
-      try {
-        const res = await fetch(apiUrl('/api/figures'));
-        const data = (await res.json()) as { figures?: FigureItem[]; message?: string };
-        if (!res.ok) { setFiguresError(data.message ?? `Error ${res.status}`); return; }
-        setFigures(data.figures ?? []);
-      } catch {
-        setFiguresError('Could not reach the backend.');
-      } finally {
-        setFiguresLoading(false);
-      }
-    })();
-  }, []);
+  const fetchFigures = useMemo<AsyncFetcher<{ figures?: FigureItem[] }> | null>(
+    () => (signal) => fetchJson('/api/figures', { signal, offline: 'Could not reach the backend.' }),
+    [],
+  );
+  const figuresLoad = useAsyncData(fetchFigures);
 
-  // Load evidence when selectedId changes
-  const loadEvidence = useCallback(async (id: string) => {
-    setEvidenceLoading(true);
-    setEvidenceError(null);
-    setEvidence([]);
-    try {
-      const res = await fetch(apiUrl(`/api/figures/${id}`));
-      const data = (await res.json()) as { evidence?: EvidenceRecord[]; message?: string };
-      if (!res.ok) { setEvidenceError(data.message ?? `Error ${res.status}`); return; }
-      setEvidence(data.evidence ?? []);
-    } catch {
-      setEvidenceError('Could not load evidence.');
-    } finally {
-      setEvidenceLoading(false);
-    }
-  }, []);
+  // Null until a figure is picked — the right-hand panel's "select a figure"
+  // state is `idle`, which is a different thing from an empty evidence list.
+  const fetchEvidence = useMemo<AsyncFetcher<{ evidence?: EvidenceRecord[] }> | null>(
+    () =>
+      selectedId
+        ? (signal) => fetchJson(`/api/figures/${selectedId}`, { signal, offline: 'Could not load evidence.' })
+        : null,
+    [selectedId],
+  );
+  const evidenceLoad = useAsyncData(fetchEvidence);
 
-  useEffect(() => {
-    if (selectedId) void loadEvidence(selectedId);
-  }, [selectedId, loadEvidence]);
+  const figures = figuresLoad.state.status === 'ok' ? figuresLoad.state.data.figures ?? [] : [];
+  const figuresLoading = figuresLoad.state.status === 'loading';
+  const figuresError = figuresLoad.state.status === 'error' ? figuresLoad.state.error.message : null;
+
+  const evidence = evidenceLoad.state.status === 'ok' ? evidenceLoad.state.data.evidence ?? [] : [];
+  const evidenceLoading = evidenceLoad.state.status === 'loading';
+  const evidenceError = evidenceLoad.state.status === 'error' ? evidenceLoad.state.error.message : null;
 
   function selectFigure(id: string) {
     setSelectedId(id);

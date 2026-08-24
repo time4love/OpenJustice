@@ -1,11 +1,12 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback, FormEvent } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback, FormEvent } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { Link } from '@/i18n/navigation';
 import { SiteHeader } from '@/components/SiteHeader';
-import { apiUrl } from '@/lib/api';
+import { apiUrl, fetchJson } from '@/lib/api';
+import { useAsyncData, type AsyncFetcher } from '@/hooks/useAsyncData';
 import { EmptyState } from '@/components/EmptyState';
 import { SkeletonRows } from '@/components/SkeletonRows';
 import {
@@ -18,6 +19,43 @@ import type { EvidencePerspective } from '@/types/evidence';
 
 const PAGE_SIZE = 20;
 const SEARCH_LIMIT = 20;
+const BACKEND_UNREACHABLE = 'Could not reach the backend. Is the server running?';
+
+interface TimelinePage {
+  results?: TimelineRecord[];
+  totalCount?: number;
+  nextCursor?: string | null;
+  hasMore?: boolean;
+}
+
+/**
+ * Pages fetched after the first, tagged with the first page they were appended
+ * to. The tag is what makes the reset derivable: a new first page (the filter
+ * changed) makes the whole tail stale in the same render, with no clearing step
+ * that a future edit could forget.
+ */
+interface AppendedPages {
+  of: TimelinePage;
+  pages: TimelinePage[];
+  error: string | null;
+}
+
+const NO_PAGES: TimelinePage[] = [];
+
+/**
+ * Promoting a record confirms it on-chain; the server knows, and the next fetch
+ * would say so. Rather than editing the fetched list in place — which the next
+ * page load would undo — the confirmations are held beside it and applied on
+ * the way out, so they survive every refetch.
+ */
+function applyPromotions(records: TimelineRecord[], promoted: ReadonlySet<string>): TimelineRecord[] {
+  if (promoted.size === 0) return records;
+  return records.map((r) =>
+    promoted.has(r.metadata.fileHash)
+      ? { ...r, metadata: { ...r.metadata, status: 'CONFIRMED' } }
+      : r,
+  );
+}
 
 function FilterBanner({ children, clearLabel }: { children: React.ReactNode; clearLabel: string }) {
   return (
@@ -55,13 +93,9 @@ export default function EvidencePage() {
   const [searchError, setSearchError] = useState<string | null>(null);
 
   // Timeline-mode state
-  const [records, setRecords] = useState<TimelineRecord[]>([]);
-  const [totalCount, setTotalCount] = useState<number | null>(null);
-  const [nextCursor, setNextCursor] = useState<string | null>(null);
-  const [hasMore, setHasMore] = useState(false);
-  const [initialLoading, setInitialLoading] = useState(true);
+  const [appended, setAppended] = useState<AppendedPages | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [timelineError, setTimelineError] = useState<string | null>(null);
+  const [promoted, setPromoted] = useState<ReadonlySet<string>>(() => new Set());
 
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   const fetchingRef = useRef(false);
@@ -71,61 +105,75 @@ export default function EvidencePage() {
   // ?entity= or ?hash= — the deep links thesis/citation mentions use)
   // ---------------------------------------------------------------------
 
-  async function fetchTimelinePage(cursor: string | null) {
-    if (fetchingRef.current) return;
-    fetchingRef.current = true;
-    try {
+  const fetchPage = useCallback(
+    (cursor: string | null, signal?: AbortSignal): Promise<TimelinePage> => {
       const params = new URLSearchParams({ limit: String(PAGE_SIZE) });
       if (cursor) params.set('cursor', cursor);
       if (hashParam) params.set('fileHash', hashParam);
       else if (entityParam) params.set('targetEntity', entityParam);
-      const res = await fetch(apiUrl(`/api/evidence/timeline?${params.toString()}`));
-      const data = (await res.json()) as {
-        results?: TimelineRecord[];
-        totalCount?: number;
-        nextCursor?: string | null;
-        hasMore?: boolean;
-        message?: string;
-      };
-      if (!res.ok) {
-        setTimelineError(data.message ?? `Error ${res.status}`);
-        return;
-      }
-      if (cursor === null) {
-        setRecords(data.results ?? []);
-        setTotalCount(data.totalCount ?? null);
-      } else {
-        setRecords((prev) => [...prev, ...(data.results ?? [])]);
-      }
-      setNextCursor(data.nextCursor ?? null);
-      setHasMore(data.hasMore ?? false);
-    } catch {
-      setTimelineError('Could not reach the backend. Is the server running?');
+      return fetchJson<TimelinePage>(`/api/evidence/timeline?${params.toString()}`, {
+        signal,
+        offline: BACKEND_UNREACHABLE,
+      });
+    },
+    [entityParam, hashParam],
+  );
+
+  const fetchFirstPage = useMemo<AsyncFetcher<TimelinePage> | null>(
+    () => (signal) => fetchPage(null, signal),
+    [fetchPage],
+  );
+  const { state } = useAsyncData(fetchFirstPage);
+
+  const firstPage = state.status === 'ok' ? state.data : null;
+  const tail = appended && appended.of === firstPage ? appended : null;
+  const extraPages = tail?.pages ?? NO_PAGES;
+  const lastPage = extraPages.length > 0 ? extraPages[extraPages.length - 1] : firstPage;
+
+  const records = useMemo(
+    () =>
+      applyPromotions(
+        firstPage ? [firstPage, ...extraPages].flatMap((page) => page.results ?? []) : [],
+        promoted,
+      ),
+    [firstPage, extraPages, promoted],
+  );
+  const totalCount = firstPage?.totalCount ?? null;
+  const nextCursor = lastPage?.nextCursor ?? null;
+  const hasMore = lastPage?.hasMore ?? false;
+  const initialLoading = state.status === 'loading';
+  const timelineError = state.status === 'error' ? state.error.message : tail?.error ?? null;
+
+  const loadMore = useCallback(async () => {
+    // `loadingMore` is state and lands a render later; the sentinel can fire
+    // twice before then, so the mutex has to be a ref.
+    if (!firstPage || !nextCursor || fetchingRef.current) return;
+    fetchingRef.current = true;
+    setLoadingMore(true);
+    try {
+      const page = await fetchPage(nextCursor);
+      setAppended((prev) => ({
+        of: firstPage,
+        pages: [...(prev && prev.of === firstPage ? prev.pages : []), page],
+        error: null,
+      }));
+    } catch (err) {
+      setAppended((prev) => ({
+        of: firstPage,
+        pages: prev && prev.of === firstPage ? prev.pages : [],
+        error: err instanceof Error ? err.message : String(err),
+      }));
     } finally {
       fetchingRef.current = false;
+      setLoadingMore(false);
     }
-  }
-
-  useEffect(() => {
-    setInitialLoading(true);
-    setRecords([]);
-    setNextCursor(null);
-    setHasMore(false);
-    setTimelineError(null);
-    void fetchTimelinePage(null).finally(() => setInitialLoading(false));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [entityParam, hashParam]);
+  }, [firstPage, nextCursor, fetchPage]);
 
   const handleIntersect = useCallback(
     (entries: IntersectionObserverEntry[]) => {
-      const entry = entries[0];
-      if (entry?.isIntersecting && hasMore && !loadingMore && !fetchingRef.current) {
-        setLoadingMore(true);
-        void fetchTimelinePage(nextCursor).finally(() => setLoadingMore(false));
-      }
+      if (entries[0]?.isIntersecting && hasMore) void loadMore();
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [hasMore, loadingMore, nextCursor],
+    [hasMore, loadMore],
   );
 
   useEffect(() => {
@@ -188,15 +236,15 @@ export default function EvidencePage() {
   }
 
   function handlePromoted(fileHash: string) {
-    const patch = (list: TimelineRecord[]) =>
-      list.map((r) =>
-        r.metadata.fileHash === fileHash
-          ? { ...r, metadata: { ...r.metadata, status: 'CONFIRMED' } }
-          : r,
-      );
-    setRecords(patch);
-    setSearchResults(patch);
+    setPromoted((prev) => new Set(prev).add(fileHash));
   }
+
+  // Search results are a second view of the same records, so a promotion made
+  // in either mode has to show in both.
+  const shownSearchResults = useMemo(
+    () => applyPromotions(searchResults, promoted),
+    [searchResults, promoted],
+  );
 
   const nodeLabels: NodeLabels & { getPerspectiveLabel: (p?: string) => string } = {
     unknownDate: tTimeline('unknownDate'),
@@ -271,7 +319,7 @@ export default function EvidencePage() {
                 </h2>
                 {searchResults.length > 0 && (
                   <span className="text-xs text-slate-400 font-mono">
-                    {t('ledger.records', { count: searchResults.length })}
+                    {t('ledger.records', { count: shownSearchResults.length })}
                   </span>
                 )}
               </div>
@@ -302,7 +350,7 @@ export default function EvidencePage() {
               )}
 
               {!searchLoading && !searchError && searchResults.length > 0 && (
-                <UnifiedTimeline records={searchResults} labels={nodeLabels} onPromoted={handlePromoted} />
+                <UnifiedTimeline records={shownSearchResults} labels={nodeLabels} onPromoted={handlePromoted} />
               )}
             </>
           ) : (

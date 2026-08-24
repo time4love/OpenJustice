@@ -1,6 +1,7 @@
 # Glass Fortress — Thesis Provenance UI
 
-**Status:** designed, not built. Canonical spec — implement from this document.
+**Status:** BUILT 2026-08-24. §9 records what implementing it found. This document remains
+canonical — §1-§8 are the design as specified, §9 is what the build changed.
 **Designed:** 2026-08-23 with the researcher. Written for a session with **no prior context**.
 
 ---
@@ -188,3 +189,155 @@ not disclosure of what is hidden.
 thesis walk (Part III of `gf-researcher-playbook.md`) is producing the first one. Either wait for
 it, or build against fixtures and verify live afterwards — but do not conclude the route works
 because it returned an empty list against an empty database.
+
+---
+
+## 9. What the build found — 2026-08-24
+
+Implemented as specified, including both fixes in §4.4. Five things worth recording.
+
+### 9.1 §8 was stale, in our favour
+
+The plan said staging held **0** theses and to build against fixtures. It now holds **one** —
+`cmt5jffqy000lf52mn6t56f3l` — with an ACTIVE session carrying 9 events. The service was therefore
+verified against real data, not only fixtures:
+
+```
+counts: { sessions: 1, events: 9, malformedAssessments: 0 }   empty: false   dissent: 0
+  SESSION cmt5gm7lr0005f52m6v5fiy3r  status=ACTIVE  actor=יהונתן
+    SESSION_STARTED · FRAMING_PROPOSED · FRAMING_ASSESSED (1 contradiction, 2 candidates)
+    FRAMING_PROPOSED · FRAMING_ASSESSED (0 contradictions) ×2
+    THESIS_ATTACHED · AI_ANALYSIS_RUN
+  SESSIONS WITH NO THESIS: 2 (both CLOSED) — absent from the output above, as required
+```
+
+All three stored `FRAMING_ASSESSED` rows parsed and **validated** against the real
+`ThesisFramingAssessmentSchema`. That is the check that mattered: had the schema been wrong, every
+one would have read as `malformed` and the page would have shouted about a defect that was mine.
+
+### 9.2 Two of the harder test cases had live data, not fixtures
+
+Both CLOSED sessions carry `thesisId: null` — the abandoned framings §3 puts out of scope — and both
+carry `researcherId: null`, the legacy actor that must render as *unknown* rather than blank. Neither
+needed to be invented.
+
+### 9.3 The publication half of the timeline has no live data at all
+
+Staging holds `SESSION_STARTED`, `FRAMING_PROPOSED`, `FRAMING_ASSESSED`, `THESIS_ATTACHED` and
+`AI_ANALYSIS_RUN` — and **zero** `PUBLICATION_RATIONALE`, `PUBLICATION_ASSESSED` or
+`THESIS_PUBLISHED`, because the thesis is still a draft. So the `DISPUTES` requirement in §6 and the
+publication tail of the timeline are covered by **fixtures only** until the walk publishes. Stated
+here rather than left to be discovered, because an empty section reading as a passing one is the
+failure this page exists to prevent.
+
+### 9.4 A malformed assessment did not merely render badly — it threw
+
+`getThesisFraming` parsed the newest stored assessment with a bare `JSON.parse`. A malformed row did
+not read as malformed: it **threw**, taking the whole `get_thesis_framing` tool down with it. Found
+while clearing a lint error two functions away from the new code.
+
+It now shares the provenance parser and reports `latestAssessmentMalformed: { reason }` beside
+`latestAssessment: null`, so "no assessment has been made" and "the stored assessment is broken" stay
+apart. Three tests cover it. The parser validates against the zod schema rather than merely parsing
+JSON, because `{}` parses fine and would render as an assessment that found no contradictions —
+indistinguishable from a real one that found none.
+
+### 9.5 The repair path is a REST route, not an MCP tool
+
+§7 rules out new MCP surface, and the provenance page is where a missing link is noticed, so
+`POST /api/thesis/:id/provenance/repair` sits beside the read. It refuses a session already bound to
+a different thesis and a thesis that already has one — a repair able to overwrite an existing link is
+not a repair, it is a way to rewrite provenance.
+
+This dovetails with something already built: publication **check 13, `FRAMING_ATTACHED`** (advisory)
+already reports *"No framing session is attached — the reasoning that chose this framing is not on
+record."* The gate names the defect, the provenance page shows it, and the repair route fixes it.
+
+### 9.6 What is verified, and what is not
+
+| Verified | How |
+|---|---|
+| The service against real staging data | Run directly against the staging DB (§9.1) |
+| The route refuses an anonymous caller | Live `401 Missing Authorization: Bearer <token>` against a local backend |
+| Both provenance routes mount `requireResearcher` | `thesisRoutes.test.ts`, asserted on the router stack |
+| Assessment parsing, malformed handling, dissent, actors, scope | `thesisProvenance.test.ts` (15) |
+| Derivation and repair | `thesisFraming.test.ts` (25) |
+| Every event type has a label in both locales | `provenanceLabelParity.test.ts` |
+| The frontend compiles with the panel mounted | `next build` |
+
+**Not verified: the researcher view rendered in a browser.** It requires signing in as an approved
+researcher, which is the maintainer's own account. The public branch of the §4.4b empty state is
+likewise unverified visually; both locale strings are asserted present and distinct by test. Someone
+with a researcher login should open a thesis page and confirm the timeline renders RTL in both
+locales before this reaches production.
+
+### 9.7 Where the code lives
+
+| Piece | File |
+|---|---|
+| Provenance assembly + assessment parsing | `backend/src/services/thesisProvenance.ts` |
+| Derive + repair the framing link | `backend/src/services/thesisFraming.ts` |
+| `GET /:id/provenance`, `POST /:id/provenance/repair` | `backend/src/routes/thesisRoutes.ts` |
+| Derivation wired into the tool | `backend/src/mcp/tools/createThesisDraft.ts` |
+| The timeline | `frontend/src/components/ThesisProvenancePanel.tsx` |
+| Types + fetch | `frontend/src/types/thesis.ts`, `frontend/src/lib/thesisApi.ts` |
+| Viewer-dependent empty state | `frontend/src/app/[locale]/theses/page.tsx`, `messages/{he,en}.json` |
+
+### 9.8 Deferred here, then done — the repo-wide fetch refactor
+
+`ThesisProvenancePanel` originally added one `react-hooks/set-state-in-effect` lint error — the
+ordinary fetch-on-mount shape, which this frontend already used in eight other places including
+`AuthContext`, `theses/[id]/page.tsx` and `evidence/page.tsx`. Contorting one component to dodge a
+rule the app violated everywhere would have made it inconsistent with every sibling for no runtime
+gain, so it was deferred to its own task. That task has now run, and the panel uses the shared hook
+like everything else.
+
+**`src/hooks/useAsyncData.ts` is the one fetch-on-mount shape in this app.** Hand it a memoised
+fetcher — `useMemo` returning the fetcher, or `null` when there is nothing to fetch yet — and it
+reports exactly one of `idle | loading | ok | error`.
+
+The design point worth keeping: **the hook never writes `loading`.** It caches a settled result
+tagged with the fetcher that produced it, and derives the state during render:
+
+```ts
+const state = cache && cache.key === fetcher ? cache.settled : fetcher ? LOADING : IDLE;
+```
+
+Change the fetcher and the previous answer is stale in the *same* render pass. Nothing has to write
+`loading` back from inside an effect, which is what the lint rule objects to — and every call site
+that used to clear its own state by hand before refetching (`setEvidence([])`, `setRecords([])`,
+`setCells(null)`) lost that step, along with the chance of forgetting it.
+
+Three rules the call sites depend on:
+
+- **The fetcher's identity IS the cache key.** It must be memoised, and its deps must be values, not
+  functions — three sites originally had next-intl's `t` in the dep array, which would have been a new
+  key on every render and an endless refetch loop if `t` is ever not referentially stable. They depend
+  on the resolved *string* instead, which is stable by value regardless.
+- **`idle` is not `loading`, and neither is an empty `ok`.** "You have not selected a figure",
+  "we are fetching", and "there is nothing" are three different statements and the UI says all three.
+- **`reload()` never rejects.** It returns the settled result, so `void reload()` is safe in an
+  `onClick` and a poller reads the same value the UI renders. It does not blank the view: a refresh
+  after a mutation leaves the previous result on screen until the new one lands.
+
+Fetchers take an `AbortSignal`, so a slow first request can no longer overwrite a faster second one,
+and `lib/api.ts`'s `fetchJson` keeps transport failure, status failure and abort as three separate
+outcomes rather than collapsing them.
+
+Three sites are *not* fetch-on-mount and would have been wrong to force through the hook. They get
+the matching React primitive instead, and the reason is the same in each case — a client-only value
+that React itself can switch, rather than state an effect has to write:
+
+| Site | Was | Now |
+|---|---|---|
+| `TopNav` portal flag | `useState(false)` + effect setting `true` | `hooks/useIsHydrated.ts` (`useSyncExternalStore`) |
+| `reports/new` magic link | mount effect reading `window.location.hash` and seeding three states | `hooks/useMagicLinkFragment.ts`, derived + explicit override |
+| `ThesisEditor` mention list | effect resetting the index on list change | selection tagged with the list length it was made in |
+
+`ThesisEditor` also lost two refs that wrapped a `useState` setter and a ref object "so the closure is
+never stale" — neither value can go stale, and the wrapper meant writing refs during render. Two
+`react-hooks/refs` disables remain there, both commented: the rule cannot see that
+`buildMentionExtension` *stores* its callback for TipTap rather than calling it during render.
+
+`npm run lint` went from 24 problems to 0. The frontend still has no test framework, so the guard is
+`npm run lint` + `npx tsc --noEmit` + `npm run build`, plus a live pass over every affected page.

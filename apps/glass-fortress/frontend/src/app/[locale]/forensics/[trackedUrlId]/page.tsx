@@ -1,11 +1,12 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { Link } from '@/i18n/navigation';
 import { SiteHeader } from '@/components/SiteHeader';
-import { apiUrl } from '@/lib/api';
+import { apiUrl, fetchJson } from '@/lib/api';
+import { useAsyncData, type AsyncFetcher } from '@/hooks/useAsyncData';
 import { SkeletonRows } from '@/components/SkeletonRows';
 import { DiffCard, type DiffRecord, type PromotedEvidence } from '@/components/DiffCard';
 import { TrajectoryPanel } from '@/components/TrajectoryPanel';
@@ -29,6 +30,21 @@ interface DiffPage {
 }
 
 const PAGE_SIZE = 20;
+const BACKEND_UNREACHABLE = 'Could not reach the backend.';
+
+/**
+ * Pages fetched after the first, tagged with the first page they belong to, so
+ * that a new first page makes the whole tail stale in the same render rather
+ * than through a clearing step someone has to remember.
+ */
+interface AppendedPages {
+  of: DiffPage;
+  pages: DiffPage[];
+  error: string | null;
+}
+
+const NO_PAGES: DiffPage[] = [];
+const NO_DIFFS: DiffRecord[] = [];
 
 // ---------------------------------------------------------------------------
 // Skeleton
@@ -53,24 +69,9 @@ export default function TrackedUrlPage() {
   const params = useParams<{ trackedUrlId: string }>();
   const trackedUrlId = params?.trackedUrlId ?? '';
 
-  // Meta (url, title, totals) from the first page response. Both counts are
-  // server-computed over the whole timeline — see below for why neither may be
-  // derived from `diffs`.
-  const [meta, setMeta] = useState<Pick<
-    DiffPage,
-    'url' | 'title' | 'createdAt' | 'totalCount' | 'significantCount'
-  > | null>(null);
-  const [diffs, setDiffs] = useState<DiffRecord[]>([]);
-  const [nextCursor, setNextCursor] = useState<string | null>(null);
-  const [hasMore, setHasMore] = useState(false);
+  const [appended, setAppended] = useState<AppendedPages | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  // Derived, not tracked: every terminal outcome of the first fetch sets one of
-  // these — meta on success, error on either failure path — so a separate
-  // boolean could only ever restate them, and setting it from inside the effect
-  // was a cascading render for no information gained.
-  const initialLoading = meta === null && error === null;
+  const [promoted, setPromoted] = useState<ReadonlyMap<string, PromotedEvidence>>(() => new Map());
   const [reportLoading, setReportLoading] = useState(false);
 
   // Sentinel ref for IntersectionObserver
@@ -100,61 +101,86 @@ export default function TrackedUrlPage() {
     }
   }
 
-  async function fetchPage(cursor: string | null) {
-    if (fetchingRef.current) return;
-    fetchingRef.current = true;
-    try {
-      const url = cursor
-        ? apiUrl(`/api/forensics/tracked/${trackedUrlId}?cursor=${cursor}&limit=${PAGE_SIZE}`)
-        : apiUrl(`/api/forensics/tracked/${trackedUrlId}?limit=${PAGE_SIZE}`);
-      const res = await fetch(url);
-      const json = (await res.json()) as DiffPage;
-      if (!res.ok) {
-        setError(json.message ?? `Error ${res.status}`);
-        return;
+  const fetchPage = useCallback(
+    (cursor: string | null, signal?: AbortSignal): Promise<DiffPage> =>
+      fetchJson<DiffPage>(
+        cursor
+          ? `/api/forensics/tracked/${trackedUrlId}?cursor=${cursor}&limit=${PAGE_SIZE}`
+          : `/api/forensics/tracked/${trackedUrlId}?limit=${PAGE_SIZE}`,
+        { signal, offline: BACKEND_UNREACHABLE },
+      ),
+    [trackedUrlId],
+  );
+
+  // No id in the route means there is nothing to fetch — `idle`, which renders
+  // as neither a loading skeleton nor an error.
+  const fetchFirstPage = useMemo<AsyncFetcher<DiffPage> | null>(
+    () => (trackedUrlId ? (signal) => fetchPage(null, signal) : null),
+    [trackedUrlId, fetchPage],
+  );
+  const { state } = useAsyncData(fetchFirstPage);
+
+  const firstPage = state.status === 'ok' ? state.data : null;
+  const tail = appended && appended.of === firstPage ? appended : null;
+  const extraPages = tail?.pages ?? NO_PAGES;
+  const lastPage = extraPages.length > 0 ? extraPages[extraPages.length - 1] : firstPage;
+
+  // Meta (url, title, totals) comes from the FIRST page only. Both counts are
+  // server-computed over the whole timeline — see below for why neither may be
+  // derived from `diffs`.
+  const meta = firstPage;
+  const nextCursor = lastPage?.nextCursor ?? null;
+  const hasMore = lastPage?.hasMore ?? false;
+  const initialLoading = state.status === 'loading';
+  const error = state.status === 'error' ? state.error.message : tail?.error ?? null;
+
+  const diffs = useMemo(() => {
+    if (!firstPage) return NO_DIFFS;
+    // Cursor pages can overlap when new diffs land mid-scroll; de-duplicate by
+    // id so a record is never rendered twice.
+    const byId = new Map<string, DiffRecord>();
+    for (const d of [firstPage, ...extraPages].flatMap((page) => page.diffs)) {
+      if (!byId.has(d.id)) {
+        // A promotion made on this page is held beside the fetched diffs, not
+        // written into them, so a later page load cannot undo it.
+        const evidence = promoted.get(d.id);
+        byId.set(d.id, evidence ? { ...d, promotedEvidence: evidence } : d);
       }
-      // Functional update — sets meta only on the first page; safe against stale closures
-      setMeta((prev) =>
-        prev ?? {
-          url: json.url,
-          title: json.title,
-          createdAt: json.createdAt,
-          totalCount: json.totalCount,
-          significantCount: json.significantCount,
-        },
-      );
-      setDiffs((prev) => {
-        const seen = new Set(prev.map((d) => d.id));
-        return [...prev, ...json.diffs.filter((d) => !seen.has(d.id))];
-      });
-      setNextCursor(json.nextCursor);
-      setHasMore(json.hasMore);
-    } catch {
-      setError('Could not reach the backend.');
+    }
+    return [...byId.values()];
+  }, [firstPage, extraPages, promoted]);
+
+  const loadMore = useCallback(async () => {
+    // `loadingMore` is state and lands a render later; the sentinel can fire
+    // twice before then, so the mutex has to be a ref.
+    if (!firstPage || !nextCursor || fetchingRef.current) return;
+    fetchingRef.current = true;
+    setLoadingMore(true);
+    try {
+      const page = await fetchPage(nextCursor);
+      setAppended((prev) => ({
+        of: firstPage,
+        pages: [...(prev && prev.of === firstPage ? prev.pages : []), page],
+        error: null,
+      }));
+    } catch (err) {
+      setAppended((prev) => ({
+        of: firstPage,
+        pages: prev && prev.of === firstPage ? prev.pages : [],
+        error: err instanceof Error ? err.message : String(err),
+      }));
     } finally {
       fetchingRef.current = false;
+      setLoadingMore(false);
     }
-  }
-
-  // Initial load
-  useEffect(() => {
-    if (!trackedUrlId) return;
-    void fetchPage(null);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [trackedUrlId]);
+  }, [firstPage, nextCursor, fetchPage]);
 
   // IntersectionObserver — fires when the sentinel enters the viewport
   const handleIntersect = useCallback(
     (entries: IntersectionObserverEntry[]) => {
-      const entry = entries[0];
-      if (entry?.isIntersecting && hasMore && !loadingMore && !fetchingRef.current) {
-        setLoadingMore(true);
-        void fetchPage(nextCursor).finally(() => setLoadingMore(false));
-      }
+      if (entries[0]?.isIntersecting && hasMore) void loadMore();
     },
-    // nextCursor and hasMore must be deps so the callback sees current values
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [hasMore, loadingMore, nextCursor],
+    [hasMore, loadMore],
   );
 
   useEffect(() => {
@@ -168,7 +194,7 @@ export default function TrackedUrlPage() {
   }, [handleIntersect]);
 
   function handlePromoted(diffId: string, evidence: PromotedEvidence) {
-    setDiffs((prev) => prev.map((d) => (d.id === diffId ? { ...d, promotedEvidence: evidence } : d)));
+    setPromoted((prev) => new Map(prev).set(diffId, evidence));
   }
 
   const diffLabels = {

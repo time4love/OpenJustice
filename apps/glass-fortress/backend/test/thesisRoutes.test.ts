@@ -45,11 +45,21 @@ jest.mock('../src/services/thesisPublication', () => ({
   unpublishThesis: jest.fn(),
 }));
 
+jest.mock('../src/services/thesisProvenance', () => ({
+  getThesisProvenance: jest.fn(),
+}));
+
+jest.mock('../src/services/thesisFraming', () => ({
+  repairFramingLink: jest.fn(),
+}));
+
 import { prisma } from '../src/lib/prisma';
 import { Request, Response } from 'express';
 import { thesisRouter } from '../src/routes/thesisRoutes';
 import { requireResearcher } from '../src/middleware/researcherIdentity';
 import { assessPublication, publishThesis, unpublishThesis } from '../src/services/thesisPublication';
+import { getThesisProvenance } from '../src/services/thesisProvenance';
+import { repairFramingLink } from '../src/services/thesisFraming';
 
 const mockThesisFindMany = prisma.thesis.findMany as jest.Mock;
 const mockThesisFindUnique = prisma.thesis.findUnique as jest.Mock;
@@ -679,5 +689,87 @@ describe('publication endpoints', () => {
     expect(r.getStatus()).toBe(200);
     expect(assessPublication).toHaveBeenCalledWith('thesis-1', null, 'why');
     expect(publishThesis).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Provenance — how this thesis came to say what it says.
+//
+// docs/gf-thesis-provenance-ui-dev-plan.md. The record already existed as
+// ResearchSessionEvent rows and nothing outside MCP could read it. These tests
+// cover the WEB half: the gate is mounted, and the service's answer maps to a
+// status. The reasoning over the record is tested in thesisProvenance.test.ts.
+// ---------------------------------------------------------------------------
+
+describe('provenance endpoints', () => {
+  it('mounts requireResearcher on both provenance routes', () => {
+    // Not a convention: this view concentrates rejected framings, recorded
+    // dissent, and an adversary's objections about named living officials —
+    // deliberation the platform deliberately does not publish.
+    for (const [path, method] of [
+      ['/:id/provenance', 'get'],
+      ['/:id/provenance/repair', 'post'],
+    ] as const) {
+      expect(middlewareOf(path, method)).toContain(requireResearcher);
+    }
+  });
+
+  it('GET /:id/provenance — 404 for an unknown thesis, 200 with the record', async () => {
+    const handle = getHandler('/:id/provenance', 'get');
+
+    (getThesisProvenance as jest.Mock).mockResolvedValueOnce({
+      error: 'THESIS_NOT_FOUND',
+      thesisId: 'nope',
+    });
+    let r = mockRes();
+    await handle(mockReq({ id: 'nope' }, {}, {}, 'r1'), r.res);
+    expect(r.getStatus()).toBe(404);
+
+    (getThesisProvenance as jest.Mock).mockResolvedValueOnce({
+      thesisId: 'thesis-1',
+      sessions: [],
+      counts: { sessions: 0, events: 0, malformedAssessments: 0 },
+      empty: true,
+      recordedDissent: [],
+    });
+    r = mockRes();
+    await handle(mockReq({ id: 'thesis-1' }, {}, {}, 'r1'), r.res);
+    expect(r.getStatus()).toBe(200);
+    expect(getThesisProvenance).toHaveBeenLastCalledWith('thesis-1');
+  });
+
+  it('POST /:id/provenance/repair — 400 without a sessionId, 409 on refusal, 200 on repair', async () => {
+    const handle = getHandler('/:id/provenance/repair', 'post');
+
+    let r = mockRes();
+    await handle(mockReq({ id: 'thesis-1' }, {}, {}, 'r1'), r.res);
+    expect(r.getStatus()).toBe(400);
+    expect(repairFramingLink).not.toHaveBeenCalled();
+
+    // A session already bound to another thesis is a CONFLICT, not a missing
+    // resource: the record exists and refuses to be rewritten.
+    (repairFramingLink as jest.Mock).mockResolvedValueOnce({
+      repaired: false,
+      reason: 'SESSION_ALREADY_HAS_THESIS',
+      boundThesisId: 'thesis-2',
+    });
+    r = mockRes();
+    await handle(mockReq({ id: 'thesis-1' }, { sessionId: 's1' }, {}, 'r1'), r.res);
+    expect(r.getStatus()).toBe(409);
+
+    (repairFramingLink as jest.Mock).mockResolvedValueOnce({ repaired: false, reason: 'SESSION_NOT_FOUND' });
+    r = mockRes();
+    await handle(mockReq({ id: 'thesis-1' }, { sessionId: 's1' }, {}, 'r1'), r.res);
+    expect(r.getStatus()).toBe(404);
+
+    (repairFramingLink as jest.Mock).mockResolvedValueOnce({
+      repaired: true,
+      sessionId: 's1',
+      thesisId: 'thesis-1',
+    });
+    r = mockRes();
+    await handle(mockReq({ id: 'thesis-1' }, { sessionId: 's1' }, {}, 'r1'), r.res);
+    expect(r.getStatus()).toBe(200);
+    expect(repairFramingLink).toHaveBeenLastCalledWith('s1', 'thesis-1');
   });
 });

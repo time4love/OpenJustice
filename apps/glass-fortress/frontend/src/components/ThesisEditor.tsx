@@ -6,7 +6,7 @@ import {
   useState,
   useRef,
   useMemo,
-  useEffect,
+  useCallback,
 } from 'react';
 import { createPortal } from 'react-dom';
 import { useEditor, EditorContent } from '@tiptap/react';
@@ -89,9 +89,14 @@ interface MentionExtensionConfig {
   pillClass: string;
   fetchItems: (query: string, signal: AbortSignal) => Promise<AnyItem[]>;
   buildAttrs: (item: AnyItem) => { id: string; label: string };
-  // Injected via refs so the render closure is never stale
-  setActiveSuggestion: React.MutableRefObject<React.Dispatch<React.SetStateAction<ActiveSuggestion | null>>>;
-  mentionListRef: React.MutableRefObject<React.RefObject<MentionListHandle | null>>;
+  // Both are stable for the life of the component — a `useState` setter, and a
+  // callback that reads the dropdown's ref when a key is actually pressed — so
+  // the closures built once in `useMemo` below can hold them directly. They used
+  // to be wrapped in refs "so the closure is never stale", which a value that
+  // cannot go stale does not need, and which meant writing (and passing) refs
+  // during render.
+  setActiveSuggestion: React.Dispatch<React.SetStateAction<ActiveSuggestion | null>>;
+  onListKeyDown: (event: KeyboardEvent) => boolean;
 }
 
 function buildMentionExtension(cfg: MentionExtensionConfig) {
@@ -124,7 +129,7 @@ function buildMentionExtension(cfg: MentionExtensionConfig) {
         onStart(props: SuggestionProps<AnyItem>) {
           const rect = props.clientRect?.();
           if (!rect) return;
-          cfg.setActiveSuggestion.current({
+          cfg.setActiveSuggestion({
             char: cfg.char,
             items: Array.isArray(props.items) ? props.items : [],
             command: props.command as unknown as (item: AnyItem) => void,
@@ -133,7 +138,7 @@ function buildMentionExtension(cfg: MentionExtensionConfig) {
         },
         onUpdate(props: SuggestionProps<AnyItem>) {
           const rect = props.clientRect?.();
-          cfg.setActiveSuggestion.current(prev =>
+          cfg.setActiveSuggestion(prev =>
             !prev ? null : {
               ...prev,
               items: Array.isArray(props.items) ? props.items : [],
@@ -142,10 +147,10 @@ function buildMentionExtension(cfg: MentionExtensionConfig) {
             }
           );
         },
-        onExit() { cfg.setActiveSuggestion.current(null); },
+        onExit() { cfg.setActiveSuggestion(null); },
         onKeyDown({ event }: SuggestionKeyDownProps) {
-          if (event.key === 'Escape') { cfg.setActiveSuggestion.current(null); return true; }
-          return cfg.mentionListRef.current.current?.onKeyDown(event) ?? false;
+          if (event.key === 'Escape') { cfg.setActiveSuggestion(null); return true; }
+          return cfg.onListKeyDown(event);
         },
       }),
     },
@@ -159,9 +164,15 @@ function buildMentionExtension(cfg: MentionExtensionConfig) {
 const MentionList = forwardRef<MentionListHandle, { items: AnyItem[]; char: string; command: (item: AnyItem) => void }>(
   ({ items, char, command }, ref) => {
     const safeItems = Array.isArray(items) ? items : [];
-    const [selectedIndex, setSelectedIndex] = useState(0);
-
-    useEffect(() => setSelectedIndex(0), [safeItems.length]);
+    // The selection belongs to the list it was made in. Tagging it with that
+    // list's length makes "a new list starts at the top" a derivation rather
+    // than an effect that has to write 0 back after the wrong row has already
+    // rendered as selected for a frame.
+    const [selection, setSelection] = useState({ forLength: safeItems.length, index: 0 });
+    const selectedIndex = selection.forLength === safeItems.length ? selection.index : 0;
+    const setSelectedIndex = (next: (current: number) => number) => {
+      setSelection({ forLength: safeItems.length, index: next(selectedIndex) });
+    };
 
     useImperativeHandle(ref, () => ({
       onKeyDown(event: KeyboardEvent) {
@@ -233,16 +244,25 @@ function ToolbarBtn({ active, title, onClick, children }: {
 export const ThesisEditor = forwardRef<ThesisEditorHandle, { initialContent?: Record<string, unknown> }>(
   ({ initialContent }, ref) => {
     const [activeSuggestion, setActiveSuggestion] = useState<ActiveSuggestion | null>(null);
-    // Refs keep buildMentionExtension closures (created once in useMemo) non-stale
-    const setActiveSuggestionRef = useRef(setActiveSuggestion);
-    setActiveSuggestionRef.current = setActiveSuggestion;
     const mentionListRef = useRef<MentionListHandle>(null);
-    const mentionListRefRef = useRef(mentionListRef);
-    mentionListRefRef.current = mentionListRef;
 
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Reads the ref at keypress time, never during render — which is the whole
+    // point of a ref, and lets the extensions below hold a plain function.
+    const onListKeyDown = useCallback(
+      (event: KeyboardEvent) => mentionListRef.current?.onKeyDown(event) ?? false,
+      [],
+    );
+
+    // `react-hooks/refs` cannot see past `buildMentionExtension`: it warns that
+    // handing a ref-reading callback to a function during render might read the
+    // ref during render. It does not — the callback is *stored* in the ProseMirror
+    // suggestion plugin and invoked by TipTap on a real keypress. Reading the
+    // ref at that moment is precisely what a ref is for, and the alternative the
+    // rule wants (state) cannot work: the extensions are built once, and TipTap
+    // holds that object for the life of the editor.
     const extensions = useMemo(() => [
       StarterKit,
+      // eslint-disable-next-line react-hooks/refs
       buildMentionExtension({
         name: 'keyFigureMention',
         char: '@',
@@ -255,9 +275,10 @@ export const ThesisEditor = forwardRef<ThesisEditorHandle, { initialContent?: Re
           return data.keyFigures ?? [];
         },
         buildAttrs: (item) => ({ id: (item as FigureItem).id, label: (item as FigureItem).name }),
-        setActiveSuggestion: setActiveSuggestionRef,
-        mentionListRef: mentionListRefRef,
+        setActiveSuggestion,
+        onListKeyDown,
       }),
+      // eslint-disable-next-line react-hooks/refs
       buildMentionExtension({
         name: 'evidenceMention',
         char: '#',
@@ -273,10 +294,10 @@ export const ThesisEditor = forwardRef<ThesisEditorHandle, { initialContent?: Re
           const ev = item as EvidenceItem;
           return { id: ev.fileHash, label: ev.summary?.slice(0, 30) ?? ev.fileHash.slice(0, 8) };
         },
-        setActiveSuggestion: setActiveSuggestionRef,
-        mentionListRef: mentionListRefRef,
+        setActiveSuggestion,
+        onListKeyDown,
       }),
-    ], []);
+    ], [setActiveSuggestion, onListKeyDown]);
 
     const editor = useEditor({ immediatelyRender: false, extensions, editorProps: EDITOR_PROPS, content: initialContent });
 
