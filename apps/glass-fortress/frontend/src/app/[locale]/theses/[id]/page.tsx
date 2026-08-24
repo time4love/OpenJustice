@@ -339,7 +339,6 @@ function ThesisPageInner({ id }: { id: string }) {
   // re-fetch the same record every time the reader looked twice — and mounting
   // it eagerly would fetch it for every reader who never opens it.
   const [processMounted, setProcessMounted] = useState(initialView === 'process');
-  const tabsRef = useRef<HTMLDivElement | null>(null);
   // Which citation is open. One id, resolved to its source at render — holding
   // the resolved object instead would go stale the moment the thesis reloads.
   const [openCitationId, setOpenCitationId] = useState<string | null>(null);
@@ -492,10 +491,9 @@ function ThesisPageInner({ id }: { id: string }) {
     const query = params.toString();
     window.history.replaceState(null, '', `${window.location.pathname}${query ? `?${query}` : ''}`);
 
-    // The two panels are different lengths. Switching while scrolled deep into a
-    // long thesis would otherwise land the reader in whitespace below the
-    // shorter one, which reads as nothing having happened.
-    tabsRef.current?.scrollIntoView({ block: 'start' });
+    // Nothing scrolls. The switcher is pinned under the site header, so it
+    // never moves and never has to be brought back into view — and moving the
+    // page under the button that was just pressed is the jump this replaced.
   }
   const analysis = hv?.aiAnalysis ?? null;
   const evidenceMentions = hv?.mentions.filter(m => m.type === 'EVIDENCE') ?? [];
@@ -566,14 +564,6 @@ function ThesisPageInner({ id }: { id: string }) {
                 {t('editBtn')}
               </Link>
             )}
-            {canEdit && (
-              <Link
-                href={`/theses/${id}/history`}
-                className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 rounded-lg text-xs font-medium text-slate-700 transition-colors"
-              >
-                {t('historyBtn')}
-              </Link>
-            )}
             <Link
               href={`/call/${id}`}
               className="px-3 py-1.5 bg-amber-100 hover:bg-amber-200 rounded-lg text-xs font-semibold text-amber-800 transition-colors"
@@ -623,36 +613,55 @@ function ThesisPageInner({ id }: { id: string }) {
         {/* The two views. Below the publication banners on purpose: those state
             what is true of the thesis as a whole, so they belong to both. */}
         {hasProcessView && (
-          <div
-            ref={tabsRef}
-            role="tablist"
-            aria-label={t('viewsLabel')}
-            className="flex gap-1 bg-slate-100 border border-slate-200 rounded-xl p-1 print:hidden"
-          >
-            {(['thesis', 'process'] as const).map((v) => (
-              <button
-                key={v}
-                id={`thesis-tab-${v}`}
-                role="tab"
-                type="button"
-                aria-selected={view === v}
-                aria-controls={`thesis-panel-${v}`}
-                onKeyDown={(e) => {
-                  if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
-                    e.preventDefault();
-                    switchView(v === 'thesis' ? 'process' : 'thesis');
-                  }
-                }}
-                onClick={() => { switchView(v); }}
-                className={`flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  view === v
-                    ? 'bg-white text-slate-900 shadow-sm'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
+          /* Pinned under the site header. A switcher that scrolls away is one
+             the reader has to go find, and bringing it back into view on every
+             click moved the page under the button they had just pressed. The
+             band spans the container's padding so content scrolls under it
+             rather than beside it. */
+          <div className="sticky top-14 z-10 -mx-4 sm:-mx-6 px-4 sm:px-6 py-2 bg-slate-50/95 backdrop-blur print:hidden flex items-center gap-2">
+            <div
+              role="tablist"
+              aria-label={t('viewsLabel')}
+              className="flex flex-1 gap-1 bg-slate-100 border border-slate-200 rounded-xl p-1"
+            >
+              {(['thesis', 'process'] as const).map((v) => (
+                <button
+                  key={v}
+                  id={`thesis-tab-${v}`}
+                  role="tab"
+                  type="button"
+                  aria-selected={view === v}
+                  aria-controls={`thesis-panel-${v}`}
+                  onKeyDown={(e) => {
+                    if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+                      e.preventDefault();
+                      switchView(v === 'thesis' ? 'process' : 'thesis');
+                    }
+                  }}
+                  onClick={() => { switchView(v); }}
+                  className={`flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    view === v
+                      ? 'bg-white text-slate-900 shadow-sm'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  {t(v === 'thesis' ? 'viewThesis' : 'viewProcess')}
+                </button>
+              ))}
+            </div>
+
+            {/* Version history sits with the views rather than in the site
+                header: it is another way of looking at this thesis, not a
+                site-wide destination. A link, not a tab — it navigates to its
+                own page, and role="tab" would promise a panel that is not here. */}
+            {canEdit && (
+              <Link
+                href={`/theses/${id}/history`}
+                className="shrink-0 px-3 py-2 rounded-lg text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors"
               >
-                {t(v === 'thesis' ? 'viewThesis' : 'viewProcess')}
-              </button>
-            ))}
+                {t('historyBtn')}
+              </Link>
+            )}
           </div>
         )}
 
