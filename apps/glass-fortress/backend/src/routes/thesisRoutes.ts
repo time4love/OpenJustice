@@ -78,6 +78,11 @@ async function buildTrajectoryMap(mentions: readonly { type: MentionType; refId:
           present: o.present,
           snapshotUrl: o.snapshotUrl,
         })),
+        // The identity of the movement, so the renderer can collapse the
+        // members of one co-movement into ONE citation. A thesis citing an
+        // eight-claim block cites eight rows; showing eight markers and eight
+        // panels would report one finding as eight.
+        coMovementKey: t.coMovement.patternHash,
         coMovementCount: t.coMovement.claimCount,
         coMovementCitedCount: t.coMovement.members.filter((m) => m.cited).length,
         computedAt: t.computation.computedAt,
