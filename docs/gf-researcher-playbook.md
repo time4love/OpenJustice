@@ -3569,3 +3569,72 @@ gained the case the old one could not express: COMPLETE, holding an analysis, an
 
 Backend 1362/1362, `tsc` clean, `eslint src/` unchanged. The only pending schema difference is this
 migration itself.
+
+## Step 30 — The third run, and a retraction
+
+Staging redeployed SUCCESS at `ecfe08e` (deployment `4c8c58b4`), the migration applied through the
+pre-deploy step, and the column was verified read-only: `analysisInputHash`, nullable text, with **2
+COMPLETE versions holding no fingerprint** — exactly the state that makes them re-runnable.
+
+`run_ai_analysis` returned **`cached: false`**. FINDING 74's fix works end to end: a critique that
+could not be re-run at all four hours ago recomputed because its stored fingerprint was NULL.
+
+### Predictions, scored
+
+| | |
+|---|---|
+| **Q3 — `MODERATE` holds, post-hoc rebuttal survives as `STRONG`** | **confirmed**, third consecutive run |
+| **Q2 — the FDA claim stays unengaged** | **confirmed**, and more starkly: run 3 does not mention FDA at all |
+| **Q4 — the critic ignores the invitation to flag uncited wording** | **not tested** — it cited no context group, so the invitation never applied |
+| **Q1 — the relocation argument returns** | **partially, and not for the predicted reason** — see below |
+
+Counter-argument 2 is the relocation family in a new form: the page is a summary that points elsewhere
+for detail. But it is sourced from **cited** trajectories (T5, T6), not from the restored context. So
+the argument came back without using the thing whose restoration was supposed to bring it back.
+**PR #137 cannot be credited with it**, and one run cannot separate that from ordinary
+non-determinism.
+
+### FINDING 75 — the labels are positional, so a stored critique becomes unreadable. FINDING 69 is partly wrong.
+
+FINDING 69 claimed the critique had become auditable because it argues by trajectory label. That is
+true of a LIVE critique and false of a stored one, and the difference was invisible until a second run
+existed to compare against.
+
+`T{n}` is assigned by position in the bundle. PR #137 added eight context groups interleaved by size,
+so every label after the first moved:
+
+| Label | Run 2 (post-#136) | Run 3 (post-#137) |
+|---|---|---|
+| T1 | 10-claim cited | 10-claim cited |
+| T3 | side-effects + "more info" link, cited | 6-claim **context** group |
+| T4 | **the vaccination-site map**, cited | 5-claim **context** group |
+| T6 | — | side-effects + "more info" link, cited |
+
+Run 2's critique says its `STRONG` rebuttal rests on "T1, T3, T4". Read against run 3's bundle that
+sentence names two context groups the thesis never cited. **The stored critique from Step 27 is now
+unreadable**, and nothing in the record says so.
+
+The fingerprint from FINDING 74 protects the live case completely — a changed bundle changes the
+rendered block, so the critique re-runs rather than being served with labels that no longer resolve.
+What it cannot protect is the ARCHIVE: every superseded version keeps its analysis, and those labels
+refer to a bundle nobody stored.
+
+The fix is to label by something that does not move — the cited trajectory's own identity rather than
+its position in a list — or to store the label map beside the analysis. Recorded, not built: this is
+the second time in one day that a positional or transitional key has been used where an identity was
+needed, and it deserves deciding rather than patching.
+
+### FINDING 70 survives the re-run, and narrows
+
+The vaccination-site map dropped out of the `STRONG` rebuttal — in run 3 it is cited (T10) and unused.
+The **"more information" link did not**: it appears in both of run 3's first two counter-arguments,
+and counter-argument 2 quotes its text directly as evidence that the page deliberately refers readers
+elsewhere for detail. So of the two pieces of boilerplate, one was a run-specific accident and the
+other is doing adversarial work consistently, in a defence the thesis has no answer to yet.
+
+### An observation nobody asked the archive for
+
+T8 in run 3 is a context group reading *"four vaccine types are approved in Israel"*; T16 is the cited
+single-flip claim reading *"three vaccine types are approved in Israel"*. The page changed its own
+count. Both were in front of the critic, which engaged neither — the same silence as FINDING 71, now
+with the two halves of a contradiction sitting eight labels apart.
