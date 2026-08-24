@@ -29,13 +29,20 @@ jest.mock('../src/lib/trajectoryContext', () => {
   const actual = jest.requireActual('../src/lib/trajectoryContext');
   return { ...actual, loadTrajectoryContext: jest.fn() };
 });
-jest.mock('../src/lib/summaryProvenance', () => ({ loadSummaryCaveat: jest.fn() }));
+jest.mock('../src/lib/summaryProvenance', () => {
+  const actual = jest.requireActual('../src/lib/summaryProvenance');
+  return { ...actual, loadSummaryCaveat: jest.fn() };
+});
 jest.mock('../src/services/sessionService', () => ({ logSessionEvent: jest.fn() }));
 
 const analyze = jest.fn();
-jest.mock('../src/services/DevilsAdvocateAgent', () => ({
-  DevilsAdvocateAgent: jest.fn().mockImplementation(() => ({ analyze })),
-}));
+jest.mock('../src/services/DevilsAdvocateAgent', () => {
+  // Only the class is replaced. buildCritiqueMessages stays REAL, because it is
+  // what gets fingerprinted — hashing a mock would prove nothing about whether a
+  // stored critique still answers what the model actually reads.
+  const actual = jest.requireActual('../src/services/DevilsAdvocateAgent');
+  return { ...actual, DevilsAdvocateAgent: jest.fn().mockImplementation(() => ({ analyze })) };
+});
 
 import { prisma } from '../src/lib/prisma';
 import { loadTrajectoryContext, emptyTrajectoryBundle } from '../src/lib/trajectoryContext';
@@ -187,5 +194,128 @@ describe('triggerAIAnalysis passes the document\'s citations', () => {
 
     expect(loadTrajectoryContext).toHaveBeenCalledWith(expect.anything(), []);
     expect(analyze.mock.calls[0][0]).not.toContain('#traj');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// A critique must be able to prove it still answers the facts.
+//
+// run_ai_analysis served its cache on `status === COMPLETE && aiAnalysis !== null`,
+// and PENDING_AI is set ONLY when a version is created. So a stored critique
+// survived every change that was not a new version — corrected evidence summaries,
+// a new detection pass, and two changes to what the critic is given — while the
+// publication gate's ANALYSIS_COMPLETE check passed on all of them.
+// ---------------------------------------------------------------------------
+describe('a stored analysis is served only while it answers the same input', () => {
+  const ANALYSIS = {
+    counterArguments: [], evidenceGaps: [], alternativeInterpretations: [],
+    overallStrengthAssessment: 'MODERATE' as const, summaryHe: 'ס',
+  };
+  const EVIDENCE = {
+    fileHash: '0xaaa', investigativeCategories: [], targetEntity: 'MOH',
+    evidenceTier: 'TIER_1', evidenceRole: 'PRIMARY', evidenceDate: '2022-08-05', summary: 's',
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (prisma.thesisGapResolution.findMany as jest.Mock).mockResolvedValue([]);
+    (prisma.evidence.findMany as jest.Mock).mockResolvedValue([EVIDENCE]);
+    (prisma.thesisVersion.update as jest.Mock).mockResolvedValue({});
+    (loadSummaryCaveat as jest.Mock).mockResolvedValue(null);
+    (loadTrajectoryContext as jest.Mock).mockResolvedValue(emptyTrajectoryBundle());
+    analyze.mockResolvedValue(ANALYSIS);
+  });
+
+  function storedVersion(extra: Record<string, unknown>) {
+    (prisma.thesisVersion.findUnique as jest.Mock).mockResolvedValue({
+      id: 'v1', thesisId: 'th1', parentVersionId: null,
+      mentions: [{ type: 'EVIDENCE', refId: '0xaaa' }],
+      ...extra,
+    });
+  }
+
+  /** The fingerprint a run actually stored, read off the update it performed. */
+  function storedHash(): string {
+    return ((prisma.thesisVersion.update as jest.Mock).mock.calls[0][0] as {
+      data: { analysisInputHash: string };
+    }).data.analysisInputHash;
+  }
+
+  it('runs and records the fingerprint of the input it answered', async () => {
+    storedVersion({ status: 'PENDING_AI', aiAnalysis: null, analysisInputHash: null });
+
+    expect(await triggerAIAnalysis('v1', docCiting([]))).toEqual({ ran: true });
+    expect(analyze).toHaveBeenCalledTimes(1);
+    expect(storedHash()).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it('serves the stored analysis when the input is unchanged', async () => {
+    storedVersion({ status: 'PENDING_AI', aiAnalysis: null, analysisInputHash: null });
+    await triggerAIAnalysis('v1', docCiting([]));
+    const hash = storedHash();
+
+    jest.clearAllMocks();
+    (prisma.thesisGapResolution.findMany as jest.Mock).mockResolvedValue([]);
+    (prisma.evidence.findMany as jest.Mock).mockResolvedValue([EVIDENCE]);
+    (loadSummaryCaveat as jest.Mock).mockResolvedValue(null);
+    (loadTrajectoryContext as jest.Mock).mockResolvedValue(emptyTrajectoryBundle());
+    storedVersion({ status: 'COMPLETE', aiAnalysis: ANALYSIS, analysisInputHash: hash });
+
+    expect(await triggerAIAnalysis('v1', docCiting([]))).toEqual({ ran: false });
+    expect(analyze).not.toHaveBeenCalled();
+    expect(prisma.thesisVersion.update).not.toHaveBeenCalled();
+  });
+
+  it('re-runs when an evidence summary was corrected underneath it', async () => {
+    // The case that made this necessary. The document did not change, so nothing
+    // set PENDING_AI, and the old rule served a critique argued against a summary
+    // that no longer exists.
+    storedVersion({ status: 'PENDING_AI', aiAnalysis: null, analysisInputHash: null });
+    await triggerAIAnalysis('v1', docCiting([]));
+    const hash = storedHash();
+
+    jest.clearAllMocks();
+    (prisma.thesisGapResolution.findMany as jest.Mock).mockResolvedValue([]);
+    (prisma.evidence.findMany as jest.Mock).mockResolvedValue([{ ...EVIDENCE, summary: 'corrected' }]);
+    (prisma.thesisVersion.update as jest.Mock).mockResolvedValue({});
+    (loadSummaryCaveat as jest.Mock).mockResolvedValue(null);
+    (loadTrajectoryContext as jest.Mock).mockResolvedValue(emptyTrajectoryBundle());
+    analyze.mockResolvedValue(ANALYSIS);
+    storedVersion({ status: 'COMPLETE', aiAnalysis: ANALYSIS, analysisInputHash: hash });
+
+    expect(await triggerAIAnalysis('v1', docCiting([]))).toEqual({ ran: true });
+    expect(analyze).toHaveBeenCalledTimes(1);
+  });
+
+  it('re-runs when a new detection pass changed what the trajectories say', async () => {
+    storedVersion({ status: 'PENDING_AI', aiAnalysis: null, analysisInputHash: null });
+    await triggerAIAnalysis('v1', docCiting([]));
+    const hash = storedHash();
+
+    jest.clearAllMocks();
+    (prisma.thesisGapResolution.findMany as jest.Mock).mockResolvedValue([]);
+    (prisma.evidence.findMany as jest.Mock).mockResolvedValue([EVIDENCE]);
+    (prisma.thesisVersion.update as jest.Mock).mockResolvedValue({});
+    (loadSummaryCaveat as jest.Mock).mockResolvedValue(null);
+    analyze.mockResolvedValue(ANALYSIS);
+    (loadTrajectoryContext as jest.Mock).mockResolvedValue({
+      ...emptyTrajectoryBundle(),
+      trajectories: [{
+        url: 'u', patternHash: 'p1', claimCount: 2, transitions: 2, finalState: 'REMOVED',
+        changes: [], claims: ['a claim'], overlappingEvidence: [], citedIds: ['t1'],
+      }],
+    });
+    storedVersion({ status: 'COMPLETE', aiAnalysis: ANALYSIS, analysisInputHash: hash });
+
+    expect(await triggerAIAnalysis('v1', docCiting([]))).toEqual({ ran: true });
+  });
+
+  it('re-runs a version analysed before fingerprints existed', async () => {
+    // Null is not "current": it is "unknown", and unknown must not be served as
+    // proven. Every row predating this column reads that way, deliberately.
+    storedVersion({ status: 'COMPLETE', aiAnalysis: ANALYSIS, analysisInputHash: null });
+
+    expect(await triggerAIAnalysis('v1', docCiting([]))).toEqual({ ran: true });
+    expect(analyze).toHaveBeenCalledTimes(1);
   });
 });

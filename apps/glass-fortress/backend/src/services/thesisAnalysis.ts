@@ -9,6 +9,7 @@ import { createHash } from 'crypto';
 import { prisma } from '../lib/prisma';
 import {
   DevilsAdvocateAgent,
+  buildCritiqueMessages,
   type ReferencedEvidence,
   type ResolvedGapContext,
 } from './DevilsAdvocateAgent';
@@ -94,10 +95,15 @@ export function extractPreview(doc: unknown): string {
  * Safe to call fire-and-forget (errors are caught and logged) or awaited
  * for synchronous use (MCP tool).
  */
+export interface AnalysisRun {
+  /** False when the stored critique already answers exactly this input. */
+  ran: boolean;
+}
+
 export async function triggerAIAnalysis(
   versionId: string,
   userContent: unknown,
-): Promise<void> {
+): Promise<AnalysisRun> {
   try {
     const version = await prisma.thesisVersion.findUnique({
       where: { id: versionId },
@@ -106,7 +112,7 @@ export async function triggerAIAnalysis(
       // the version that cited none.
       include: { mentions: { where: { type: { in: ['EVIDENCE', 'CLAIM_TRAJECTORY'] } } } },
     });
-    if (!version) return;
+    if (!version) return { ran: false };
 
     const evidenceHashes = version.mentions.filter((m) => m.type === 'EVIDENCE').map((m) => m.refId);
     const citedTrajectoryIds = version.mentions
@@ -167,12 +173,29 @@ export async function triggerAIAnalysis(
     });
     const thesisText = extractText(userContent, trajectoryLabels);
     const summaryCaveat = await loadSummaryCaveat(referenced);
+    // The cache decision lives HERE, not in each caller. It used to be the MCP
+    // tool's own `status === COMPLETE` test, which is a property of the version
+    // rather than of the analysis — and status is set to PENDING_AI only when a
+    // version is CREATED. A critique therefore outlived corrected summaries, new
+    // detection passes, and two changes to what the critic is given, with check 2
+    // passing throughout.
+    const analysisInputHash = sha256(
+      buildCritiqueMessages(thesisText, referenced, resolvedGaps, trajectories, summaryCaveat),
+    );
+    if (
+      version.status === 'COMPLETE' &&
+      version.aiAnalysis !== null &&
+      version.analysisInputHash === analysisInputHash
+    ) {
+      return { ran: false };
+    }
+
     const aiAnalysis = await getAgent().analyze(thesisText, referenced, resolvedGaps, trajectories, summaryCaveat);
     const contentHash = sha256({ userContent, aiAnalysis });
 
     await prisma.thesisVersion.update({
       where: { id: versionId },
-      data: { aiAnalysis, contentHash, status: 'COMPLETE' },
+      data: { aiAnalysis, contentHash, analysisInputHash, status: 'COMPLETE' },
     });
 
     void logSessionEvent(
@@ -181,6 +204,7 @@ export async function triggerAIAnalysis(
       `AI analysis complete: ${aiAnalysis.overallStrengthAssessment} — ${aiAnalysis.evidenceGaps.length} gap(s), ${aiAnalysis.counterArguments.length} counter-argument(s)`,
       versionId,
     );
+    return { ran: true };
   } catch (err) {
     console.error('[thesis] AI analysis failed for version', versionId, err);
     throw err;
