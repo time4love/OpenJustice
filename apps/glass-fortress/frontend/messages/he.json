@@ -578,7 +578,10 @@
     "trajectoryViewCapture": "צפה בהעתק",
     "viewThesis": "התזה",
     "viewProcess": "מאחורי הקלעים",
-    "viewsLabel": "תצוגות התזה"
+    "viewsLabel": "תצוגות התזה",
+    "close": "סגירה",
+    "openEvidence": "פתיחת הראיה",
+    "sourcesTitle": "מקורות"
   },
   "call": {
     "heroLabel": "קריאה לעדים פנימיים",

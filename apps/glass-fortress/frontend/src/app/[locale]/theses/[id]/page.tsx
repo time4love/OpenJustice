@@ -15,6 +15,7 @@ import { LegalDisclaimer } from '@/components/LegalDisclaimer';
 import type { EvidenceGap, AIAnalysis, PublicationState, ThesisViewer } from '@/types/thesis';
 import { ThesisPublicationPanel } from '@/components/ThesisPublicationPanel';
 import { ThesisProvenancePanel } from '@/components/ThesisProvenancePanel';
+import { CitationSheet, type CitationTarget } from '@/components/CitationSheet';
 import { PublicationBadge } from '@/components/PublicationBadge';
 import { CategoryBadges } from '@/components/CategoryBadges';
 import { tierDotColor } from '@/components/TierBadge';
@@ -329,6 +330,9 @@ function ThesisPageInner({ id }: { id: string }) {
   const [foiaModal, setFoiaModal] = useState<FoiaModalState | null>(null);
   const [tipModalGapIndex, setTipModalGapIndex] = useState<number | null>(null);
   const [foiaError, setFoiaError] = useState<number | null>(null); // gapIndex of failed FOIA gen
+  // Which citation is open. One id, resolved to its source at render — holding
+  // the resolved object instead would go stale the moment the thesis reloads.
+  const [openCitationId, setOpenCitationId] = useState<string | null>(null);
 
   useEffect(() => {
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
@@ -492,6 +496,33 @@ function ThesisPageInner({ id }: { id: string }) {
     return [...byKey.values()];
   })();
 
+  // The open citation, resolved from its id at render. A trajectory id resolves
+  // to its whole co-movement, because that is what one marker stands for.
+  const openCitation: CitationTarget | null = (() => {
+    if (!openCitationId) return null;
+    const trajectory = trajectoryMap[openCitationId];
+    if (trajectory) {
+      const key = trajectory.coMovementKey || openCitationId;
+      const group = trajectoryGroups.find((g) => (g.info.coMovementKey || g.firstRefId) === key);
+      return {
+        kind: 'trajectory',
+        info: trajectory,
+        claims: group?.claims ?? [trajectory.claimText],
+        ...(citationNumbers.get(group?.firstRefId ?? openCitationId) !== undefined
+          ? { number: citationNumbers.get(group?.firstRefId ?? openCitationId) }
+          : {}),
+      };
+    }
+    return {
+      kind: 'evidence',
+      hash: openCitationId,
+      info: evidenceMap[openCitationId],
+      ...(citationNumbers.get(openCitationId) !== undefined
+        ? { number: citationNumbers.get(openCitationId) }
+        : {}),
+    };
+  })();
+
   return (
     <div className="min-h-screen bg-slate-50">
       {/* Header — the shared site header, not a bespoke one. This page is
@@ -633,7 +664,14 @@ function ThesisPageInner({ id }: { id: string }) {
             <div className="text-xs text-slate-400" style={{ textAlign: 'left' }}>
               {new Date(thesis.createdAt).toLocaleDateString(locale === 'he' ? 'he-IL' : 'en-US')}
             </div>
-            {hv ? <TipTapRenderer doc={hv.userContent} evidenceMap={evidenceMap} trajectoryMap={trajectoryMap} /> : null}
+            {hv ? (
+              <TipTapRenderer
+                doc={hv.userContent}
+                evidenceMap={evidenceMap}
+                trajectoryMap={trajectoryMap}
+                onCitationClick={setOpenCitationId}
+              />
+            ) : null}
           </div>
         </div>
 
@@ -650,133 +688,64 @@ function ThesisPageInner({ id }: { id: string }) {
                 const label = (info?.summary ? truncateLabel(info.summary, 60) : undefined) || m.refId.slice(0, 8);
                 const number = citationNumbers.get(m.refId);
                 return (
-                  <Link
+                  <button
                     key={m.id}
-                    href={`/evidence?hash=${m.refId}`}
+                    type="button"
+                    onClick={() => { setOpenCitationId(m.refId); }}
                     className="inline-flex items-center gap-1.5 bg-amber-100 hover:bg-amber-200 text-amber-700 text-xs px-3 py-1 rounded-full transition-colors"
                   >
                     <span className="font-semibold">{number ? `[${number}]` : '#'}</span>
                     <span className={`w-2 h-2 rounded-full shrink-0 ${tierDotClass}`} />
                     {label}
-                  </Link>
+                  </button>
                 );
               })}
             </div>
           </div>
         )}
 
-        {/* Cited claim trajectories.
-            Deliberately verbose where the evidence chips are terse: this is the
-            first place a reader meets a trajectory, and what it does and does
-            not prove has to be stated where it is read, not in a doc. */}
+        {/* Sources — one compact line each, opened from here or from the [n]
+            marker in the argument above. This block used to stand every source
+            open: seven evidence chips and, once a real co-movement was cited,
+            eight trajectory panels each carrying eighty-three archived captures.
+            A citation is consulted, not read through. */}
         {trajectoryGroups.length > 0 && (
           <div className="space-y-2">
             <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
               {t('trajectoriesTitle')} ({trajectoryGroups.length})
             </h3>
-            <p className="text-xs text-slate-500 leading-relaxed">{t('trajectoryCaveat')}</p>
-            <div className="space-y-3">
+            <ul className="space-y-1">
               {trajectoryGroups.map(({ info, claims, firstRefId }) => {
                 const number = citationNumbers.get(firstRefId);
                 return (
-                  <div key={firstRefId} className="bg-teal-50/60 border border-teal-200 rounded-xl p-4 space-y-2">
-                    <div className="flex items-start gap-2">
+                  <li key={firstRefId}>
+                    <button
+                      type="button"
+                      onClick={() => { setOpenCitationId(firstRefId); }}
+                      className="w-full text-start flex items-baseline gap-2 px-3 py-2 rounded-lg bg-teal-50/60 hover:bg-teal-100/70 border border-teal-200 transition-colors"
+                    >
                       <span className="text-teal-700 text-xs font-semibold shrink-0">
                         {number ? `[${number}]` : '#'}
                       </span>
-                      <div className="space-y-1">
-                        {claims.map((claim, i) => (
-                          <p key={i} className="text-sm text-slate-700 leading-relaxed">{claim}</p>
-                        ))}
-                      </div>
-                    </div>
-
-                    {info.coMovementCount > 1 && (
-                      <p className="text-xs font-medium text-teal-800">
-                        {t('trajectoryCoMovement', { count: info.coMovementCount })}
-                        {' · '}
-                        {t('trajectoryCoMovementCited', { cited: info.coMovementCitedCount })}
-                      </p>
-                    )}
-
-                    {/* The flips, each linked to the capture it was measured in. */}
-                    <ul className="space-y-1">
-                      {info.changes.map(c => (
-                        <li key={c.snapshotDate} className="text-xs text-slate-600">
-                          <span className="font-mono">{c.snapshotDate}</span>
-                          {' — '}
-                          <span className={c.present ? 'text-emerald-700' : 'text-red-700'}>
-                            {c.present ? t('trajectoryAppeared') : t('trajectoryDisappeared')}
-                          </span>
-                          {' · '}
-                          <a
-                            href={c.snapshotUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-teal-700 hover:underline"
-                          >
-                            {t('trajectoryViewCapture')}
-                          </a>
-                        </li>
-                      ))}
-                    </ul>
-
-                    <p className="text-xs text-slate-600">
-                      {info.finalState === 'PRESENT' ? t('trajectoryFinalPresent') : t('trajectoryFinalRemoved')}
-                    </p>
-
-                    {/* Every capture examined, not only the flips: a claim absent
-                        across nine consecutive captures is a different finding
-                        from one absent across two, and the absences are what
-                        show it. */}
-                    <details className="text-xs text-slate-500">
-                      <summary className="cursor-pointer hover:text-slate-700">
-                        {t('trajectoryAllCaptures', { count: info.observations.length })}
-                      </summary>
-                      <ul className="mt-2 space-y-1 ms-3">
-                        {info.observations.map(o => (
-                          <li key={o.snapshotDate}>
-                            <a
-                              href={o.snapshotUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="font-mono text-teal-700 hover:underline"
-                            >
-                              {o.snapshotDate}
-                            </a>
-                            {' — '}
-                            {o.present ? t('trajectoryAppeared') : t('trajectoryDisappeared')}
-                          </li>
-                        ))}
-                      </ul>
-                    </details>
-
-                    <p className="text-[11px] text-slate-400">
-                      {t('trajectoryPinned', {
-                        date: new Date(info.computedAt).toLocaleDateString(locale === 'he' ? 'he-IL' : 'en-US'),
-                      })}
-                    </p>
-
-                    {/* Pinned for integrity, current for honesty — both, and
-                        labelled. A superseded trajectory is a fact about the
-                        archive changing, not a defect in the thesis. */}
-                    {info.currency.state === 'RECOMPUTED_DISAGREES' && (
-                      <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-2">
-                        {t('trajectoryRecomputed')}
-                        {info.currency.difference ? ` ${info.currency.difference}` : ''}
-                      </p>
-                    )}
-                    {info.currency.state === 'NOT_FOLLOWED_BY_LATEST' && (
-                      <p className="text-xs text-slate-500">{t('trajectoryNotFollowed')}</p>
-                    )}
-                  </div>
+                      <span className="text-xs text-slate-700 leading-relaxed line-clamp-2" dir="auto">
+                        {claims[0]}
+                      </span>
+                      {info.coMovementCount > 1 && (
+                        <span className="ms-auto text-[11px] text-teal-800 font-medium shrink-0">
+                          {t('trajectoryCoMovement', { count: info.coMovementCount })}
+                        </span>
+                      )}
+                    </button>
+                  </li>
                 );
               })}
-            </div>
+            </ul>
+            {/* The limitation stays in the list as well as in the sheet: a
+                reader who never opens one still has to be told what a
+                trajectory is computed over. */}
+            <p className="text-xs text-slate-500 leading-relaxed">{t('trajectoryCaveat')}</p>
           </div>
-        )}
-
-        </div>
+        )}        </div>
 
         <div
           id="thesis-panel-process"
@@ -983,6 +952,11 @@ function ThesisPageInner({ id }: { id: string }) {
         )}
         </div>
       </main>
+
+      {/* The open citation */}
+      {openCitation && (
+        <CitationSheet target={openCitation} locale={locale} onClose={() => { setOpenCitationId(null); }} />
+      )}
 
       {/* FOIA Modal */}
       {foiaModal !== null && (
