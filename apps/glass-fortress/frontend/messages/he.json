@@ -741,7 +741,11 @@
     "handle": "שם עט",
     "pendingApproval": "ממתין לאישור מנהל",
     "pendingApprovalHint": "מנהל צריך לאשר את חשבונכם לפני שללקוחות MCP תהיה גישת כתיבה.",
-    "approved": "חשבון מאושר — גישת כתיבה הוענקה"
+    "approved": "חשבון מאושר — גישת כתיבה הוענקה",
+    "callbackFailedTitle": "הכניסה נכשלה",
+    "callbackNoToken": "לא נמצא אסימון גישה בכתובת החזרה.",
+    "callbackSigningIn": "מכניסים אותך…",
+    "callbackBackToLogin": "חזרה לכניסה"
   },
   "oauthInteraction": {
     "loading": "טוען…",

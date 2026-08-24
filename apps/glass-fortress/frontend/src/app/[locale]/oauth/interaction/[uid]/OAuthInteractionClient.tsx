@@ -7,6 +7,7 @@ import { useAuth } from '@/context/AuthContext';
 import { apiUrl } from '@/lib/api';
 import { Link } from '@/i18n/navigation';
 import { routing } from '@/i18n/routing';
+import { AuthCard, AuthMessage } from '@/components/AuthShell';
 
 // ---------------------------------------------------------------------------
 // MCP OAuth login/consent screen (docs/gf-mcp-oauth-dev-plan.md, Phase 3).
@@ -103,11 +104,11 @@ export function OAuthInteractionClient({ uid }: { uid: string }) {
   }, [details]);
 
   if (authLoading || (accessToken && researcher === null)) {
-    return <CenteredMessage text={t('loading')} spinner />;
+    return <AuthMessage text={t('loading')} spinner />;
   }
 
   if (!accessToken) {
-    return <CenteredMessage text={t('redirectingToLogin')} spinner />;
+    return <AuthMessage text={t('redirectingToLogin')} spinner />;
   }
 
   if (loginError) {
@@ -115,35 +116,35 @@ export function OAuthInteractionClient({ uid }: { uid: string }) {
       ? loginError
       : 'missing_token';
     return (
-      <CenteredCard title={t('loginErrorTitle')}>
+      <AuthCard title={t('loginErrorTitle')}>
         <p className="text-sm text-slate-500">{t(`loginError_${key}`)}</p>
         <Link href="/login" className="text-sm text-slate-600 underline">
           {t('backToLogin')}
         </Link>
-      </CenteredCard>
+      </AuthCard>
     );
   }
 
   if (!researcher?.approved) {
     return (
-      <CenteredCard title={tAuth('pendingApproval')}>
+      <AuthCard title={tAuth('pendingApproval')}>
         <p className="text-sm text-slate-500">{tAuth('pendingApprovalHint')}</p>
-      </CenteredCard>
+      </AuthCard>
     );
   }
 
   if (detailsError) {
     return (
-      <CenteredCard title={t('expiredTitle')}>
+      <AuthCard title={t('expiredTitle')}>
         <p className="text-sm text-slate-500">{t('expiredHint')}</p>
-      </CenteredCard>
+      </AuthCard>
     );
   }
 
   if (!details || details.promptName === 'login') {
     return (
       <>
-        <CenteredMessage text={t('connecting')} spinner />
+        <AuthMessage text={t('connecting')} spinner />
         <form ref={loginFormRef} method="POST" action={apiUrl(`/oauth/interaction/${uid}/login`)} hidden>
           <input type="hidden" name="accessToken" value={accessToken} />
         </form>
@@ -155,7 +156,7 @@ export function OAuthInteractionClient({ uid }: { uid: string }) {
   const clientName = details.client?.clientName ?? details.client?.clientId ?? '';
 
   return (
-    <CenteredCard title="">
+    <AuthCard>
       <p className="text-base font-medium text-slate-900">{t('clientWantsAccess', { client: clientName })}</p>
       <ul className="text-sm text-slate-600 list-disc ps-5 space-y-1">
         {labels.map((label) => (
@@ -191,32 +192,6 @@ export function OAuthInteractionClient({ uid }: { uid: string }) {
           </button>
         </form>
       </div>
-    </CenteredCard>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Shared layout bits — matching login/page.tsx's card styling
-// ---------------------------------------------------------------------------
-
-function CenteredCard({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
-      <div className="w-full max-w-sm bg-white rounded-xl border border-slate-200 shadow-sm p-8 space-y-4">
-        {title && <h1 className="text-xl font-semibold text-slate-900">{title}</h1>}
-        {children}
-      </div>
-    </div>
-  );
-}
-
-function CenteredMessage({ text, spinner }: { text: string; spinner?: boolean }) {
-  return (
-    <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-      <div className="flex flex-col items-center gap-3">
-        {spinner && <div className="w-6 h-6 border-2 border-slate-300 border-t-slate-600 rounded-full animate-spin" />}
-        <p className="text-sm text-slate-500">{text}</p>
-      </div>
-    </div>
+    </AuthCard>
   );
 }
