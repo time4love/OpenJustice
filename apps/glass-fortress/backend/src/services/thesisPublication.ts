@@ -1,7 +1,7 @@
 import type { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { EVIDENCE_TIER } from '../lib/evidenceTier';
-import { extractText } from './thesisAnalysis';
+import { extractText, analysisIsCurrent } from './thesisAnalysis';
 import { deriveCallState, type CallGap } from './whistleblowerCall';
 import { checkFiguresHedged, checkPublicInterestStatement, MAX_SENTENCE_LENGTH } from '../lib/publicationLanguage';
 import { requireActiveSessionFor, type ActiveSessionForThesis } from './researchSessions';
@@ -52,7 +52,8 @@ export type PublicationCheckId =
   | 'GAP_ACTIONABILITY'
   | 'FRAMING_ATTACHED'
   | 'TRAJECTORIES_RESOLVE'
-  | 'TRAJECTORIES_CURRENT';
+  | 'TRAJECTORIES_CURRENT'
+  | 'ANALYSIS_CURRENT';
 
 export interface PublicationCheck {
   number: number;
@@ -457,6 +458,36 @@ export async function assessPublication(
                 'stopped surfacing the claim, which is silence rather than disagreement.'
               : ''),
       superseded.length > 0 ? superseded : undefined,
+    ),
+  );
+
+  // 16 — the stored critique still answers the facts it argued against.
+  //
+  // Check 2 asks whether an analysis EXISTS. That is a different question, and
+  // treating it as the same one is how a critique came to outlive its inputs:
+  // status is set to PENDING_AI only when a version is CREATED, so an analysis
+  // survived corrected evidence summaries, new detection passes, and changes to
+  // what the critic is given, with check 2 passing throughout.
+  //
+  // Hard, because the failure it prevents is publishing a document whose
+  // adversarial review argued against something else — and the remedy is one
+  // call. Computed by comparing the fingerprint of the critic's actual input, so
+  // the gate and the runner cannot disagree about what that input is.
+  const analysisCurrent =
+    head === null ? false : ((await analysisIsCurrent(head.id, head.userContent)) ?? false);
+  checks.push(
+    check(
+      16,
+      'ANALYSIS_CURRENT',
+      'hard',
+      analysisCurrent,
+      !head
+        ? 'No head version to analyse.'
+        : analysisCurrent
+          ? 'The stored critique answers the evidence, trajectories and text as they are now.'
+          : 'The stored critique was argued against a different input — an evidence summary, a ' +
+            'detection pass or the cited text has changed since it ran, or it predates input ' +
+            'fingerprinting. Run run_ai_analysis to re-argue it against what is there now.',
     ),
   );
 

@@ -100,11 +100,32 @@ export interface AnalysisRun {
   ran: boolean;
 }
 
-export async function triggerAIAnalysis(
+/**
+ * Everything the critic is given, and the fingerprint of it.
+ *
+ * Extracted so the runner and the PUBLICATION GATE cannot disagree about what
+ * "the critic's input" is. They already did once in spirit: the fingerprint
+ * closed the serving path while check 2 went on asking only whether an analysis
+ * EXISTED, so a thesis could still publish carrying a critique argued against
+ * facts that had since changed — the exact thing the fingerprint was added to
+ * prevent. One assembly, one hash, two callers.
+ */
+export interface CritiqueInput {
+  thesisText: string;
+  referenced: ReferencedEvidence[];
+  resolvedGaps: ResolvedGapContext[];
+  trajectories: Awaited<ReturnType<typeof loadTrajectoryContext>>;
+  summaryCaveat: Awaited<ReturnType<typeof loadSummaryCaveat>>;
+  /** SHA-256 of the exact message array these produce. */
+  fingerprint: string;
+  version: { thesisId: string; status: string; aiAnalysis: unknown; analysisInputHash: string | null };
+}
+
+export async function buildCritiqueInput(
   versionId: string,
   userContent: unknown,
-): Promise<AnalysisRun> {
-  try {
+): Promise<CritiqueInput | null> {
+  {
     const version = await prisma.thesisVersion.findUnique({
       where: { id: versionId },
       // Both cited types. EVIDENCE alone was the defect: a thesis could cite
@@ -112,7 +133,7 @@ export async function triggerAIAnalysis(
       // the version that cited none.
       include: { mentions: { where: { type: { in: ['EVIDENCE', 'CLAIM_TRAJECTORY'] } } } },
     });
-    if (!version) return { ran: false };
+    if (!version) return null;
 
     const evidenceHashes = version.mentions.filter((m) => m.type === 'EVIDENCE').map((m) => m.refId);
     const citedTrajectoryIds = version.mentions
@@ -177,15 +198,54 @@ export async function triggerAIAnalysis(
     }
     const thesisText = extractText(userContent, trajectoryLabels);
     const summaryCaveat = await loadSummaryCaveat(referenced);
-    // The cache decision lives HERE, not in each caller. It used to be the MCP
-    // tool's own `status === COMPLETE` test, which is a property of the version
-    // rather than of the analysis — and status is set to PENDING_AI only when a
-    // version is CREATED. A critique therefore outlived corrected summaries, new
-    // detection passes, and two changes to what the critic is given, with check 2
-    // passing throughout.
-    const analysisInputHash = sha256(
-      buildCritiqueMessages(thesisText, referenced, resolvedGaps, trajectories, summaryCaveat),
-    );
+    return {
+      thesisText,
+      referenced,
+      resolvedGaps,
+      trajectories,
+      summaryCaveat,
+      fingerprint: sha256(
+        buildCritiqueMessages(thesisText, referenced, resolvedGaps, trajectories, summaryCaveat),
+      ),
+      version,
+    };
+  }
+}
+
+/**
+ * Whether the stored critique still answers the input that would be produced now.
+ *
+ * `null` when there is nothing to judge — no version at all. `false` covers both
+ * "never analysed" and "analysed against something else", which the caller
+ * distinguishes by looking at the version itself.
+ */
+export async function analysisIsCurrent(
+  versionId: string,
+  userContent: unknown,
+): Promise<boolean | null> {
+  const input = await buildCritiqueInput(versionId, userContent);
+  if (!input) return null;
+  return (
+    input.version.status === 'COMPLETE' &&
+    input.version.aiAnalysis !== null &&
+    input.version.analysisInputHash === input.fingerprint
+  );
+}
+
+export async function triggerAIAnalysis(
+  versionId: string,
+  userContent: unknown,
+): Promise<AnalysisRun> {
+  try {
+    const input = await buildCritiqueInput(versionId, userContent);
+    if (!input) return { ran: false };
+    const { thesisText, referenced, resolvedGaps, trajectories, summaryCaveat, version } = input;
+    const analysisInputHash = input.fingerprint;
+
+    // Serve the stored critique only while it answers this exact input. Status
+    // cannot decide it: PENDING_AI is set only when a version is CREATED, so a
+    // critique outlived corrected summaries, new detection passes, and changes to
+    // what the critic is given.
     if (
       version.status === 'COMPLETE' &&
       version.aiAnalysis !== null &&

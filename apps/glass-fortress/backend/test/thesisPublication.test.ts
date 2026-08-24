@@ -24,6 +24,18 @@ jest.mock('../src/services/ThesisPublicationAssessorAgent', () => ({
   ThesisPublicationAssessorAgent: jest.fn().mockImplementation(() => ({ assess: mockAssess })),
 }));
 
+// Check 16 asks whether the stored critique still answers the current input.
+// Deciding that means assembling the critic's whole input — evidence, gaps,
+// trajectories, prompt — which is a different service's job and is tested where
+// that rule lives (thesisAnalysisCitations.test.ts). Here it is a boundary: these
+// fixtures are about the GATE, and the currency answer is stubbed so each check
+// can still be failed one at a time.
+const mockAnalysisIsCurrent = jest.fn();
+jest.mock('../src/services/thesisAnalysis', () => {
+  const actual = jest.requireActual('../src/services/thesisAnalysis');
+  return { ...actual, analysisIsCurrent: (...a: unknown[]) => mockAnalysisIsCurrent(...a) as unknown };
+});
+
 interface Version {
   id: string;
   status: string;
@@ -202,6 +214,9 @@ function eventsOfType(type: string) {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  // The default is "current": these fixtures exercise the other checks, and a
+  // stale critique is failed deliberately in its own test below.
+  mockAnalysisIsCurrent.mockResolvedValue(true);
   seq = 0;
   db.thesis = {
     id: 't1',
@@ -290,7 +305,7 @@ describe('publishing pins a version', () => {
     expect(eventsOfType('PUBLICATION_RATIONALE')[0]['description']).toBe(RATIONALE);
     expect(eventsOfType('THESIS_PUBLISHED')[0]['refId']).toBe('v1');
     const assessed = JSON.parse(String(eventsOfType('PUBLICATION_ASSESSED')[0]['description'])) as { checks: unknown[] };
-    expect(assessed.checks).toHaveLength(15);
+    expect(assessed.checks).toHaveLength(16);
   });
 
   it('saves the public-interest statement on the thesis even when the attempt is refused', async () => {
@@ -329,11 +344,28 @@ describe('the session requirement', () => {
 describe('each hard check blocks alone, and the refusal names it', () => {
   beforeEach(() => openSession('r1'));
 
+  it('16 — the stored critique argued against a different input', async () => {
+    // The hole check 2 could not see. Status is set to PENDING_AI only when a
+    // version is CREATED, so a critique survives corrected evidence summaries, a
+    // new detection pass, and changes to what the critic is given — and check 2,
+    // which asks only whether an analysis EXISTS, keeps passing. A thesis could
+    // publish carrying adversarial review of something else.
+    mockAnalysisIsCurrent.mockResolvedValue(false);
+
+    const r = await report();
+
+    expect(r.hardFailures).toEqual(['ANALYSIS_CURRENT']);
+    expect(r.publishable).toBe(false);
+    expect(r.checks.find((c) => c.id === 'ANALYSIS_CURRENT')?.summary).toContain('run_ai_analysis');
+    // Check 2 still passes: an analysis does exist. Two questions, two checks.
+    expect(r.checks.find((c) => c.id === 'ANALYSIS_COMPLETE')?.passed).toBe(true);
+  });
+
   it('passes the good fixture with every hard check', async () => {
     const r = await report();
     expect(r.hardFailures).toEqual([]);
     expect(r.publishable).toBe(true);
-    expect(r.checks.map((c) => c.number)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
+    expect(r.checks.map((c) => c.number)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]);
   });
 
   it('1 — no head version', async () => {
