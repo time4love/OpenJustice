@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo, useRef, Suspense, use } from 'react';
 import Image from 'next/image';
 import { useSearchParams } from 'next/navigation';
 import { useTranslations, useLocale } from 'next-intl';
-import { Link, useRouter } from '@/i18n/navigation';
+import { Link } from '@/i18n/navigation';
 import { SiteHeader } from '@/components/SiteHeader';
 import { apiUrl, authHeaders, fetchJson } from '@/lib/api';
 import { useAsyncData, type AsyncFetcher } from '@/hooks/useAsyncData';
@@ -307,12 +307,15 @@ function ThesisPageInner({ id }: { id: string }) {
   const tStrength = useTranslations('strengths');
   const locale = useLocale();
   const searchParams = useSearchParams();
-  const router = useRouter();
   const historicalVersionId = searchParams.get('v');
-  // Which view is showing, read from the URL rather than held in state: a link
-  // to a thesis's provenance has to be a link, and a refresh must not silently
-  // move the reader somewhere else.
-  const view: ThesisView = searchParams.get('view') === 'process' ? 'process' : 'thesis';
+  // The URL seeds the view, and from then on state owns it.
+  //
+  // It used to be read from useSearchParams on every render, with router.replace
+  // doing the switching. The App Router treats router.replace as a NAVIGATION:
+  // every toggle fetched this route's RSC payload from the server, remounted the
+  // tree, and re-ran the fetches under it — a toggle that should cost nothing
+  // cost a round trip, felt stuck, and re-requested data already on screen.
+  const initialView: ThesisView = searchParams.get('view') === 'process' ? 'process' : 'thesis';
   const isHistorical = !!historicalVersionId;
   const { researcher } = useAuth();
   const canEdit = researcher?.approved ?? false;
@@ -330,6 +333,13 @@ function ThesisPageInner({ id }: { id: string }) {
   const [foiaModal, setFoiaModal] = useState<FoiaModalState | null>(null);
   const [tipModalGapIndex, setTipModalGapIndex] = useState<number | null>(null);
   const [foiaError, setFoiaError] = useState<number | null>(null); // gapIndex of failed FOIA gen
+  const [view, setView] = useState<ThesisView>(initialView);
+  // The process panel mounts on first use and then STAYS mounted, hidden with
+  // display. Its provenance timeline fetches on mount, so unmounting it would
+  // re-fetch the same record every time the reader looked twice — and mounting
+  // it eagerly would fetch it for every reader who never opens it.
+  const [processMounted, setProcessMounted] = useState(initialView === 'process');
+  const tabsRef = useRef<HTMLDivElement | null>(null);
   // Which citation is open. One id, resolved to its source at render — holding
   // the resolved object instead would go stale the moment the thesis reloads.
   const [openCitationId, setOpenCitationId] = useState<string | null>(null);
@@ -467,13 +477,25 @@ function ThesisPageInner({ id }: { id: string }) {
   const showProcess = !hasProcessView || view === 'process';
 
   function switchView(next: ThesisView): void {
-    const params = new URLSearchParams(searchParams.toString());
+    // State first, so the switch is immediate. Nothing here waits on the
+    // network: the only fetch is the provenance timeline, and only the first
+    // time the process panel is opened.
+    setView(next);
+    if (next === 'process') setProcessMounted(true);
+
+    // The URL still carries the view, so a refresh or a shared link lands in
+    // the right place — written with the History API rather than router.replace,
+    // which would make this a navigation again.
+    const params = new URLSearchParams(window.location.search);
     if (next === 'thesis') params.delete('view');
     else params.set('view', next);
     const query = params.toString();
-    // replace, not push: a two-way toggle should not fill the history stack,
-    // while the URL still carries the view for a refresh or a shared link.
-    router.replace(`/theses/${id}${query ? `?${query}` : ''}`);
+    window.history.replaceState(null, '', `${window.location.pathname}${query ? `?${query}` : ''}`);
+
+    // The two panels are different lengths. Switching while scrolled deep into a
+    // long thesis would otherwise land the reader in whitespace below the
+    // shorter one, which reads as nothing having happened.
+    tabsRef.current?.scrollIntoView({ block: 'start' });
   }
   const analysis = hv?.aiAnalysis ?? null;
   const evidenceMentions = hv?.mentions.filter(m => m.type === 'EVIDENCE') ?? [];
@@ -602,6 +624,7 @@ function ThesisPageInner({ id }: { id: string }) {
             what is true of the thesis as a whole, so they belong to both. */}
         {hasProcessView && (
           <div
+            ref={tabsRef}
             role="tablist"
             aria-label={t('viewsLabel')}
             className="flex gap-1 bg-slate-100 border border-slate-200 rounded-xl p-1 print:hidden"
@@ -747,6 +770,7 @@ function ThesisPageInner({ id }: { id: string }) {
           </div>
         )}        </div>
 
+        {(!hasProcessView || processMounted) && (
         <div
           id="thesis-panel-process"
           role={hasProcessView ? 'tabpanel' : undefined}
@@ -951,6 +975,7 @@ function ThesisPageInner({ id }: { id: string }) {
           </div>
         )}
         </div>
+        )}
       </main>
 
       {/* The open citation */}
