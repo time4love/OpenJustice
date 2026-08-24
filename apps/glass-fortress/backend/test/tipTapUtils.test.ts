@@ -154,4 +154,70 @@ describe('buildTipTapDoc — inline footnote citations', () => {
     expect(content[0]).toEqual({ type: 'text', marks: [{ type: 'bold' }], text: 'Dr. X' });
     expect(content).toContainEqual({ type: 'evidenceMention', attrs: { id: '0xabc', label: 'Label' } });
   });
+
+  // -------------------------------------------------------------------------
+  // Trajectory citations (docs/gf-trajectory-citation-dev-plan.md §3).
+  //
+  // A footnote may cite an anchored record AND the deterministic trajectory
+  // behind it. The strongest paragraphs do exactly that, so both have to land at
+  // the same marker, in order.
+  // -------------------------------------------------------------------------
+  it('resolves a footnote citing evidence and a trajectory together, evidence first', () => {
+    const doc = buildTipTapDoc(
+      'The claim was removed[^1].',
+      [],
+      [],
+      new Map([['0xabc', 'Label']]),
+      [{ id: 1, fileHashes: ['0xabc'], trajectoryIds: ['traj-1'] }],
+      { ids: [], labels: new Map([['traj-1', 'Claim text']]) },
+    );
+    const content = paragraphs(doc)[0].content!;
+    expect(content).toEqual([
+      { type: 'text', text: 'The claim was removed' },
+      { type: 'evidenceMention', attrs: { id: '0xabc', label: 'Label' } },
+      { type: 'trajectoryMention', attrs: { id: 'traj-1', label: 'Claim text' } },
+      { type: 'text', text: '.' },
+    ]);
+  });
+
+  it('accepts a footnote citing ONLY a trajectory', () => {
+    const doc = buildTipTapDoc(
+      'Absent across seven captures[^1].',
+      [],
+      [],
+      new Map(),
+      [{ id: 1, trajectoryIds: ['traj-1'] }],
+      { ids: [], labels: new Map([['traj-1', 'Claim text']]) },
+    );
+    expect(paragraphs(doc)[0].content).toContainEqual({
+      type: 'trajectoryMention',
+      attrs: { id: 'traj-1', label: 'Claim text' },
+    });
+  });
+
+  it('appends trajectories not tied to a footnote as a trailing chip paragraph', () => {
+    const doc = buildTipTapDoc('Body.', [], [], new Map(), undefined, {
+      ids: ['traj-1', 'traj-2'],
+      labels: new Map([['traj-1', 'One']]),
+    });
+    const paras = paragraphs(doc);
+    expect(paras[paras.length - 1].content).toEqual([
+      { type: 'trajectoryMention', attrs: { id: 'traj-1', label: 'One' } },
+      // No label loaded — an id-derived placeholder, never a silent drop.
+      { type: 'trajectoryMention', attrs: { id: 'traj-2', label: 'tr_traj-2' } },
+    ]);
+  });
+
+  it('does not repeat a trajectory in the trailing list when it was cited inline', () => {
+    const doc = buildTipTapDoc(
+      'Claim[^1].',
+      [],
+      [],
+      new Map(),
+      [{ id: 1, trajectoryIds: ['traj-1'] }],
+      { ids: ['traj-1'], labels: new Map([['traj-1', 'One']]) },
+    );
+    expect(paragraphs(doc)).toHaveLength(1);
+  });
 });
+

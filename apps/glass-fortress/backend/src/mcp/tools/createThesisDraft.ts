@@ -6,6 +6,14 @@ import { parseMentions } from '../../utils/parseMentions';
 import { buildTipTapDoc } from '../../utils/tipTapUtils';
 import { getResearcherId } from '../../context/researcherContext';
 import { sha256 } from '../../services/thesisAnalysis';
+import { loadTrajectoryCitationLabels } from '../../services/trajectoryCitation';
+import {
+  allCitedHashes,
+  allCitedTrajectoryIds,
+  citationsSchema,
+  trajectoryIdsSchema,
+  type CitationInput,
+} from './citationInput';
 
 // ---------------------------------------------------------------------------
 // Tool schema + handler
@@ -38,23 +46,12 @@ export const createThesisDraftSchema = {
         'a citations entry render inline instead of in a trailing chip list — pass any remaining ' +
         'supporting evidence not tied to a specific footnote here.',
     ),
+  trajectoryIds: trajectoryIdsSchema,
   keyFigures: z
     .array(z.string())
     .optional()
     .describe('Key figure names to pre-link as mentions (Hebrew or English)'),
-  citations: z
-    .array(
-      z.object({
-        id: z.number().int().positive().describe('Footnote number matching a [^id] marker in body.'),
-        fileHashes: z.array(z.string()).min(1).describe('Evidence file hash(es) (0x…) this footnote cites.'),
-      }),
-    )
-    .optional()
-    .describe(
-      'Per-claim citations for [^n] footnote markers in body — each renders as an inline ' +
-        'evidence-mention chip at that exact position instead of a trailing block. Omit for a ' +
-        'plain body with no inline citations.',
-    ),
+  citations: citationsSchema,
 };
 
 export async function createThesisDraftHandler(input: {
@@ -62,8 +59,9 @@ export async function createThesisDraftHandler(input: {
   title: string;
   body: string;
   evidenceHashes?: string[];
+  trajectoryIds?: string[];
   keyFigures?: string[];
-  citations?: { id: number; fileHashes: string[] }[];
+  citations?: CitationInput[];
 }): Promise<string> {
   const hashes = input.evidenceHashes ?? [];
   const figures = input.keyFigures ?? [];
@@ -72,8 +70,7 @@ export async function createThesisDraftHandler(input: {
   // Look up evidence summaries so mention chips show readable labels instead of raw hashes.
   // Union with citation hashes — a caller may cite a hash inline via citations without also
   // listing it in the flat evidenceHashes array.
-  const citationHashes = citations?.flatMap((c) => c.fileHashes) ?? [];
-  const allHashes = [...new Set([...hashes, ...citationHashes])];
+  const allHashes = allCitedHashes(input.evidenceHashes, citations);
   const evidenceRecords = allHashes.length > 0
     ? await prisma.evidence.findMany({
         where: { fileHash: { in: allHashes } },
@@ -82,7 +79,23 @@ export async function createThesisDraftHandler(input: {
     : [];
   const evidenceLabelMap = new Map(evidenceRecords.map((e) => [e.fileHash, e.summary.slice(0, 40)]));
 
-  const userContent = buildTipTapDoc(input.body, hashes, figures, evidenceLabelMap, citations);
+  const allTrajectoryIds = allCitedTrajectoryIds(input.trajectoryIds, citations);
+  const trajectoryLabels = await loadTrajectoryCitationLabels(allTrajectoryIds);
+  if (trajectoryLabels.unknown.length > 0) {
+    return JSON.stringify({
+      error: 'UNKNOWN_TRAJECTORY_ID',
+      unknownIds: trajectoryLabels.unknown,
+      explanation:
+        'These ids match no ClaimTrajectory row, so nothing was written. Pass the trajectoryId ' +
+        'field from get_claim_trajectories — a claimHash is not citable, because it does not name ' +
+        'the detection pass the citation must be pinned to.',
+    });
+  }
+
+  const userContent = buildTipTapDoc(input.body, hashes, figures, evidenceLabelMap, citations, {
+    ids: input.trajectoryIds ?? [],
+    labels: trajectoryLabels.labels,
+  });
   const mentions = parseMentions(userContent);
   const contentHash = sha256(userContent);
 
@@ -146,11 +159,14 @@ export async function createThesisDraftHandler(input: {
     status: version.status,
     mentionsCreated: mentions.length,
     evidenceLinked: allHashes.length,
+    trajectoriesLinked: allTrajectoryIds.length,
     keyFiguresLinked: figures.length,
     warning:
       allHashes.length === 0
         ? 'No evidence hashes provided. Theses without evidence citations produce weaker legal arguments. ' +
-          'Call suggest_thesis to discover relevant vault evidence, or add hashes via evidenceHashes or citations.'
+          'Call suggest_thesis to discover relevant vault evidence, or add hashes via evidenceHashes or citations. ' +
+          'A thesis cannot be published on trajectories alone: the gate requires at least one cited ' +
+          'record that is CONFIRMED and anchored on-chain.'
         : undefined,
     message:
       'Thesis draft saved as PENDING_AI. Open it in the UI to review, edit, and trigger ' +

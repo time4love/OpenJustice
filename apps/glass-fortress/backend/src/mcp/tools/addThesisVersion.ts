@@ -6,12 +6,21 @@ import { buildTipTapDoc, type TipTapNode } from '../../utils/tipTapUtils';
 import { sha256, extractPreview } from '../../services/thesisAnalysis';
 import { logSessionEvent } from '../../services/sessionService';
 import { getResearcherId } from '../../context/researcherContext';
+import { loadTrajectoryCitationLabels } from '../../services/trajectoryCitation';
+import {
+  allCitedHashes,
+  allCitedTrajectoryIds,
+  citationsSchema,
+  trajectoryIdsSchema,
+  type CitationInput,
+} from './citationInput';
 
 export const addThesisVersionSchema = {
   thesisId: z.string().min(1).describe('ID of the existing thesis to append a version to'),
   body: z.string().min(1).describe(
     'Updated thesis narrative. Supports Markdown formatting: # H1, ## H2, **bold**, *italic*, ' +
-    '- bullet lists. Evidence and key-figure mentions are appended as chips via evidenceHashes / keyFigures.',
+    '- bullet lists. Evidence, trajectory and key-figure mentions are appended as chips via ' +
+    'evidenceHashes / trajectoryIds / keyFigures, or inline at [^n] markers via citations.',
   ),
   evidenceHashes: z
     .array(z.string())
@@ -20,31 +29,21 @@ export const addThesisVersionSchema = {
       'Evidence file hashes (0x…) to link as evidence mention chips. Hashes already covered by ' +
         'a citations entry render inline instead of in a trailing chip list.',
     ),
+  trajectoryIds: trajectoryIdsSchema,
   keyFigures: z
     .array(z.string())
     .optional()
     .describe('Key figure names to link as mention chips'),
-  citations: z
-    .array(
-      z.object({
-        id: z.number().int().min(1).describe('Footnote number matching a [^id] marker in body.'),
-        fileHashes: z.array(z.string()).min(1).describe('Evidence file hash(es) (0x…) this footnote cites.'),
-      }),
-    )
-    .optional()
-    .describe(
-      'Per-claim citations for [^n] footnote markers in body — each renders as an inline ' +
-        'evidence-mention chip at that exact position instead of a trailing block. Omit for a ' +
-        'plain body with no inline citations.',
-    ),
+  citations: citationsSchema,
 };
 
 export async function addThesisVersionHandler(input: {
   thesisId: string;
   body: string;
   evidenceHashes?: string[];
+  trajectoryIds?: string[];
   keyFigures?: string[];
-  citations?: { id: number; fileHashes: string[] }[];
+  citations?: CitationInput[];
 }): Promise<string> {
   const thesis = await prisma.thesis.findUnique({ where: { id: input.thesisId } });
   if (!thesis) {
@@ -59,13 +58,35 @@ export async function addThesisVersionHandler(input: {
   // listing it in the flat evidenceHashes array. No Prisma lookup here (matches this tool's
   // existing pre-citations behavior) — labels are a short hash-derived placeholder, not the
   // real evidence summary.
-  const citationHashes = citations?.flatMap((c) => c.fileHashes) ?? [];
-  const allHashes = [...new Set([...hashes, ...citationHashes])];
+  const allHashes = allCitedHashes(input.evidenceHashes, citations);
   const evidenceLabelMap = new Map<string, string>(
     allHashes.map((h) => [h, `#ev_${h.slice(0, 10)}`]),
   );
 
-  const userContent: TipTapNode = buildTipTapDoc(input.body, hashes, figures, evidenceLabelMap, citations);
+  // Trajectory labels ARE looked up, unlike evidence labels above: a trajectory
+  // chip with no claim text is unreadable, and the same read tells us whether
+  // the cited ids exist at all.
+  const allTrajectoryIds = allCitedTrajectoryIds(input.trajectoryIds, citations);
+  const trajectoryLabels = await loadTrajectoryCitationLabels(allTrajectoryIds);
+  if (trajectoryLabels.unknown.length > 0) {
+    return JSON.stringify({
+      error: 'UNKNOWN_TRAJECTORY_ID',
+      unknownIds: trajectoryLabels.unknown,
+      explanation:
+        'These ids match no ClaimTrajectory row, so no version was written. Pass the trajectoryId ' +
+        'field from get_claim_trajectories — a claimHash is not citable, because it does not name ' +
+        'the detection pass the citation must be pinned to.',
+    });
+  }
+
+  const userContent: TipTapNode = buildTipTapDoc(
+    input.body,
+    hashes,
+    figures,
+    evidenceLabelMap,
+    citations,
+    { ids: input.trajectoryIds ?? [], labels: trajectoryLabels.labels },
+  );
   const mentions = parseMentions(userContent);
   const contentHash = sha256(userContent);
   const parentVersionId = thesis.headVersionId;
@@ -111,6 +132,7 @@ export async function addThesisVersionHandler(input: {
     status: version.status,
     mentionsCreated: mentions.length,
     evidenceLinked: allHashes.length,
+    trajectoriesLinked: allTrajectoryIds.length,
     keyFiguresLinked: figures.length,
     message:
       "New version saved as PENDING_AI. Call run_ai_analysis to trigger Devil's Advocate critique.",

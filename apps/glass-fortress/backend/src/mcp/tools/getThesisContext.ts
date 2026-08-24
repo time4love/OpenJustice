@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { prisma } from '../../lib/prisma';
 import { getResearcherId } from '../../context/researcherContext';
 import { publicationState, versionIdForViewer, type Viewer } from '../../lib/thesisView';
+import { resolveTrajectoryCitations } from '../../services/trajectoryCitation';
 
 export const getThesisContextSchema = {
   thesisId: z.string().describe('The Thesis cuid to retrieve'),
@@ -92,6 +93,13 @@ export async function getThesisContextHandler(input: { thesisId: string }): Prom
 
   const figureNames = version.mentions.filter((m) => m.type === 'KEY_FIGURE').map((m) => m.refId);
 
+  // Trajectory citations arrive STRUCTURED, never as ids for the caller to
+  // resolve. An opaque id is rendered as an opaque id, and the wording around a
+  // trajectory is the part that has to be right: it describes what an archived
+  // TEXT EXTRACTION contained, not what the page contained.
+  const trajectoryIds = version.mentions.filter((m) => m.type === 'CLAIM_TRAJECTORY').map((m) => m.refId);
+  const trajectories = await resolveTrajectoryCitations(trajectoryIds);
+
   // Cross-reference gap resolutions with this version's AI analysis gaps
   const aiGaps =
     ((version.aiAnalysis as Record<string, unknown> | null)?.['evidenceGaps'] as
@@ -126,6 +134,37 @@ export async function getThesisContextHandler(input: { thesisId: string }): Prom
       resolved: resolvedGaps,
     },
     keyFiguresMentioned: figureNames,
+    trajectoriesCited: trajectories.resolved.map((t) => ({
+      trajectoryId: t.id,
+      claimText: t.claimText,
+      url: t.url,
+      // Every snapshot examined, in order — the absences are half the finding.
+      observations: t.observations.map((o) => ({
+        snapshotDate: o.snapshotDate,
+        present: o.present,
+        snapshotUrl: o.snapshotUrl,
+      })),
+      transitions: t.transitions,
+      firstSeen: t.firstSeen,
+      lastSeen: t.lastSeen,
+      finalState: t.finalState,
+      coMovement: {
+        claimCount: t.coMovement.claimCount,
+        citedCount: t.coMovement.members.filter((m) => m.cited).length,
+        members: t.coMovement.members.map((m) => ({ trajectoryId: m.id, claimText: m.claimText, cited: m.cited })),
+      },
+      pinnedTo: t.computation,
+      currency: t.currency,
+      caveat: t.caveat,
+    })),
+    ...(trajectories.missing.length > 0
+      ? {
+          trajectoryCitationsMissing: trajectories.missing,
+          trajectoryCitationWarning:
+            'These cited trajectory ids no longer resolve to any row, so the claims resting on them ' +
+            'have nothing behind them. The publication gate refuses a thesis in this state.',
+        }
+      : {}),
     evidenceCited: evidenceRecords.map((e) => ({
       fileHash: e.fileHash,
       summary: e.summary,

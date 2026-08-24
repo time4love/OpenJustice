@@ -29,6 +29,9 @@ jest.mock('../src/lib/prisma', () => ({
     thesisVersion: {
       create: jest.fn(),
     },
+    claimTrajectory: {
+      findMany: jest.fn(),
+    },
     researchSession: {
       findFirst: jest.fn(),
       create: jest.fn(),
@@ -870,6 +873,71 @@ describe('createThesisDraftHandler', () => {
     // No DevilsAdvocateAgent mock needed — if it were called it would throw
     // (it's not mocked). The test passes because it isn't called.
     await expect(createThesisDraftHandler({ title: 'Draft', body: 'Draft.' })).resolves.toBeDefined();
+  });
+
+  // -------------------------------------------------------------------------
+  // Citing a claim trajectory (docs/gf-trajectory-citation-dev-plan.md).
+  //
+  // A trajectory is a deterministic string search across every archived capture
+  // of a page. Before this it could not be cited at all, so the two most
+  // rigorously verified claims in the first real thesis were the two with no
+  // citation behind them, while every model-written summary cited cleanly.
+  // -------------------------------------------------------------------------
+  it('resolves ONE footnote citing an evidence hash and a trajectory into both mention types', async () => {
+    (prisma.claimTrajectory.findMany as jest.Mock).mockResolvedValue([
+      { id: 'traj-1', claimText: 'טענה שהוסרה ולא הוחזרה' },
+    ]);
+
+    const raw = await createThesisDraftHandler({
+      title: 'Mixed citation',
+      body: 'The claim was removed and stayed absent[^1].',
+      citations: [{ id: 1, fileHashes: ['0xabc'], trajectoryIds: ['traj-1'] }],
+    });
+
+    const versionData = mockThesisVersionCreate.mock.calls[0][0].data;
+    const mentionData = versionData.mentions.createMany.data as Array<{ type: string; refId: string }>;
+    expect(mentionData).toContainEqual({ type: 'EVIDENCE', refId: '0xabc' });
+    expect(mentionData).toContainEqual({ type: 'CLAIM_TRAJECTORY', refId: 'traj-1' });
+    expect(JSON.parse(raw).trajectoriesLinked).toBe(1);
+  });
+
+  it('links trajectories passed flat, outside any footnote', async () => {
+    (prisma.claimTrajectory.findMany as jest.Mock).mockResolvedValue([
+      { id: 'traj-1', claimText: 'טענה אחת' },
+      { id: 'traj-2', claimText: 'טענה שנייה' },
+    ]);
+
+    await createThesisDraftHandler({
+      title: 'Flat trajectories',
+      body: 'Eight claims moved as one unit.',
+      trajectoryIds: ['traj-1', 'traj-2'],
+    });
+
+    const versionData = mockThesisVersionCreate.mock.calls[0][0].data;
+    const mentionData = versionData.mentions.createMany.data as Array<{ type: string; refId: string }>;
+    expect(mentionData.filter((m) => m.type === 'CLAIM_TRAJECTORY').map((m) => m.refId)).toEqual([
+      'traj-1',
+      'traj-2',
+    ]);
+  });
+
+  it('refuses an id that matches no row, and writes NOTHING', async () => {
+    // Caught here rather than at the publication gate: a citation naming a row
+    // that was never there is a typo, and finding it at publication time means
+    // finding it long after the paragraph that made it was written.
+    (prisma.claimTrajectory.findMany as jest.Mock).mockResolvedValue([]);
+
+    const raw = await createThesisDraftHandler({
+      title: 'Typo',
+      body: 'A claim[^1].',
+      citations: [{ id: 1, trajectoryIds: ['claimhash-not-an-id'] }],
+    });
+    const result = JSON.parse(raw);
+
+    expect(result.error).toBe('UNKNOWN_TRAJECTORY_ID');
+    expect(result.unknownIds).toEqual(['claimhash-not-an-id']);
+    expect(mockThesisCreate).not.toHaveBeenCalled();
+    expect(mockThesisVersionCreate).not.toHaveBeenCalled();
   });
 
   it('renders a [^n] marker as an inline evidence mention via citations, not a trailing chip', async () => {
