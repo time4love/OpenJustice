@@ -3680,3 +3680,40 @@ cannot disagree about what that input is. They already had disagreed in spirit, 
 finding.
 
 Backend 1367/1367, `tsc` clean, `eslint src/` still one below where the session started.
+
+## Step 32 — Closing FINDING 60, by fixing the vocabulary rather than the sentence
+
+The gate refused the thesis over one sentence naming three officials:
+
+> …בהם **לפי הדיווח** דר' שרון אלרואי-פרייס ודר' אמיליה אניס
+
+Two ways to clear it, and they are not equivalent. Adding **לכאורה** clears the gate today, at the
+cost of hedging a sentence that was already accurate and weakening a true attribution — the report
+did name them. Fixing the vocabulary is the correct fix, because the vocabulary is what runs at
+publish time on every future thesis. **The researcher chose the vocabulary**, having been told
+plainly that it means changing the gate to admit their own document — which is the shape of thing
+that should be decided out loud.
+
+### FINDING 60 closed — there are two kinds of hedge and only one was written down
+
+A **modal** hedge softens the assertion: לכאורה, ייתכן כי. An **attributive** hedge says who is
+asserting it. "According to the documents, X" does not claim X; it claims the documents say X — a
+different and **checkable** proposition. That is COMPLIANCE.md Rule 1 satisfied more precisely than a
+modal, not less.
+
+The list already held attribution — to **documents** (על פי המסמכים, המסמכים מצביעים, על פי ראיה).
+It simply had no phrase for attributing to a published **report**. So the check refused a sentence
+whose entire purpose it exists to serve, and the defect was a missing member of a category the record
+had already established, not a missing category.
+
+Six phrases added as one category (לפי הדיווח, על פי הדיווח, לפי הפרסום, על פי הפרסום, לפי התחקיר,
+על פי התחקיר), and the rule for extending it written down beside them: **a phrase qualifies only if
+it attributes the assertion to an identified external source, or marks it as unproven — softening
+TONE does not qualify.** The defamation-risk record was amended in the same change, because the code
+defers to it and a vocabulary extended in code alone is a rule nobody agreed to.
+
+**The floor did not move**, and there is a test asserting that beside the ones asserting the new
+markers pass: a flat, unattributed naming still fails. Widening a gate is only safe if you can
+demonstrate what it still refuses.
+
+Backend 1376/1376, `tsc` clean, `eslint src/` unchanged.

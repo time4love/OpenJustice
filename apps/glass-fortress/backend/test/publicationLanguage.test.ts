@@ -152,3 +152,56 @@ describe('checkPublicInterestStatement (check 8)', () => {
     expect(r.reason).toBeNull();
   });
 });
+
+// ---------------------------------------------------------------------------
+// FINDING 60: the gate refused a real thesis over a sentence whose entire
+// purpose it satisfied.
+//
+// "…among them, ACCORDING TO THE REPORT, Dr Alroy-Preis and Dr Anis" does not
+// assert that those officials were present. It asserts that a published report
+// named them — a different, checkable proposition, and Rule 1 satisfied more
+// precisely than a modal hedge, not less. The vocabulary already accepted
+// attribution to DOCUMENTS; it simply had no phrase for a published REPORT.
+// ---------------------------------------------------------------------------
+describe('attribution is a hedge', () => {
+  const FIGURES = ["דר' שרון אלרואי-פרייס", "דר' אמיליה אניס"];
+
+  function doc(text: string) {
+    return { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text }] }] };
+  }
+
+  it('accepts the real sentence the gate refused', () => {
+    const sentence =
+      "ב-21 באוגוסט 2022 נחשפו הקלטות מדיון פנימי, בהם לפי הדיווח דר' שרון אלרואי-פרייס ודר' אמיליה אניס.";
+
+    const result = checkFiguresHedged(doc(sentence), FIGURES);
+
+    expect(result.passed).toBe(true);
+    expect(result.unhedged).toHaveLength(0);
+  });
+
+  it.each(['לפי הדיווח', 'על פי הדיווח', 'לפי הפרסום', 'על פי הפרסום', 'לפי התחקיר', 'על פי התחקיר'])(
+    'treats %s as attributing rather than asserting',
+    (marker) => {
+      const result = checkFiguresHedged(doc(`${marker} דר' אמיליה אניס השתתפה בדיון.`), FIGURES);
+      expect(result.passed).toBe(true);
+    },
+  );
+
+  it('still fails a flat assertion naming a figure', () => {
+    // The floor did not move. Widening the vocabulary must not turn the check
+    // into one that anything passes — an unattributed, unqualified naming is the
+    // thing Rule 1 exists to stop.
+    const result = checkFiguresHedged(doc("דר' אמיליה אניס השתתפה בדיון והסתירה את הממצאים."), FIGURES);
+
+    expect(result.passed).toBe(false);
+    expect(result.unhedged).toHaveLength(1);
+  });
+
+  it('every marker is a hedge on its own, including the new ones', () => {
+    for (const marker of HEDGE_MARKERS) {
+      const result = checkFiguresHedged(doc(`${marker} דר' אמיליה אניס.`), FIGURES);
+      expect(result.passed).toBe(true);
+    }
+  });
+});
