@@ -83,6 +83,23 @@ export interface TrajectoryContext {
    * on a page the cited evidence came from, which is context, not support.
    */
   citedIds: string[];
+  /**
+   * How this movement is named in the rendered block and in the prose markers.
+   *
+   * Derived from the group's LOWEST member claim hash, never from its position.
+   * A positional `T3` is not a name: adding context groups to the bundle moved
+   * every label after the first, so a stored critique saying "the trajectories
+   * (T1, T3, T4) show…" came to name groups the thesis had never cited, with
+   * nothing in the record indicating it. A reader of an archived critique could
+   * not tell a correct citation from one that had silently changed meaning.
+   *
+   * A claim hash is stable across every detection pass by construction — it is
+   * the hash of the normalised claim text — so this label points at a real row
+   * anyone can look up by `claimHash`, and it either matches or does not. It
+   * cannot quietly come to mean something else, which is the only property that
+   * makes a critique auditable after the fact.
+   */
+  label: string;
 }
 
 /**
@@ -180,6 +197,28 @@ function coveredBy(item: DiffItemRef, claimHashes: ReadonlySet<string>, claimTex
   if (!item.text) return false;
   if (claimHashes.has(item.hash)) return true;
   return claimTexts.some((c) => item.text.includes(c) || c.includes(item.text));
+}
+
+/** Shortest prefix length at which every label stays distinct. */
+const LABEL_PREFIX = 8;
+
+/**
+ * Names every rendered movement by identity, shortening only as far as stays unique.
+ *
+ * The full claim hash is 64 characters and would swamp a prompt that carries one
+ * marker per cited movement; eight is short enough to read and wide enough that a
+ * collision inside one page's groups is not a practical concern. It is still
+ * CHECKED rather than assumed: on a collision every label widens together, so
+ * labels remain comparable with each other within one render.
+ */
+function assignLabels(trajectories: TrajectoryContext[]): void {
+  let width = LABEL_PREFIX;
+  while (width < 64) {
+    const seen = new Set(trajectories.map((t) => t.label.slice(0, width)));
+    if (seen.size === trajectories.length) break;
+    width += 8;
+  }
+  for (const t of trajectories) t.label = `T${t.label.slice(0, width)}`;
 }
 
 /**
@@ -436,6 +475,9 @@ export async function loadTrajectoryContext(
           .map((c) => (c.claimText.length > CLAIM_EXCERPT ? `${c.claimText.slice(0, CLAIM_EXCERPT)}…` : c.claimText)),
         overlappingEvidence: overlapping,
         citedIds,
+        // The raw identity for now; assignLabels shortens it once every group in
+        // the bundle is known, because uniqueness is a property of the SET.
+        label: [...group.claims].map((c) => c.claimHash).sort()[0] ?? '',
       });
     }
 
@@ -451,6 +493,8 @@ export async function loadTrajectoryContext(
       });
     }
   }
+
+  assignLabels(trajectories);
 
   return {
     trajectories,
@@ -484,7 +528,7 @@ export function formatTrajectoryContext(
   const citedGroups = trajectories.filter((c) => c.citedIds.length > 0).length;
   const anyCitations = citedClaims > 0 || citedNotResolved.length > 0;
 
-  const blocks = trajectories.map((c, i) => {
+  const blocks = trajectories.map((c) => {
     const timeline = c.changes
       .map((ch) => `${ch.snapshotDate}=${ch.present ? t.present : t.removed}`)
       .join(' → ');
@@ -500,7 +544,7 @@ export function formatTrajectoryContext(
         ? ` · ${t.citedBlock(c.citedIds.length, c.claimCount)}`
         : ` · ${t.notCitedBlock}`;
     const header =
-      `  [T${i + 1}] ${c.claimCount} ${t.movedAsUnit} · ${c.transitions} ${t.flips} · ${t.finalState}: ${c.finalState}${cited}\n` +
+      `  [${c.label}] ${c.claimCount} ${t.movedAsUnit} · ${c.transitions} ${t.flips} · ${t.finalState}: ${c.finalState}${cited}\n` +
       `      ${t.page}: ${c.url}\n` +
       `      ${t.timeline}: ${timeline}`;
 
@@ -565,8 +609,9 @@ const STRINGS = {
     citationRule: (claims: number, groups: number) =>
       `\nהמסמך מצטט ${String(claims)} טענות ${groups === 1 ? 'במסלול אחד' : `ב-${String(groups)} מסלולים`}. מסלול המסומן "מצוטט" הוא מה\n` +
       'שהתזה נשענת עליו בפועל; מסלול שאינו מצוטט מופיע כאן משום שהוא באותו דף, והוא\n' +
-      'הקשר בלבד. בגוף התזה מופיע הסימון ‎#traj_T<n>‎ בסוף המשפט המצטט — כך ניתן\n' +
-      'לדעת על אילו מסלולים בדיוק נשען כל משפט. אל תשיב לטענה מתוך מסלול שאינו מצוטט\n' +
+      'הקשר בלבד. בגוף התזה מופיע הסימון ‎#traj_<תווית>‎ בסוף המשפט המצטט, עם התווית\n' +
+      'המופיעה בסוגריים המרובעים כאן — כך ניתן לדעת על אילו מסלולים בדיוק נשען כל\n' +
+      'משפט. אל תשיב לטענה מתוך מסלול שאינו מצוטט\n' +
       'כאילו הוא הבסיס של המשפט.',
     citedBlock: (cited: number, total: number) =>
       cited === total ? 'מצוטט בתזה (כל הטענות)' : `מצוטט בתזה (${String(cited)} מתוך ${String(total)} טענות)`,
@@ -621,8 +666,11 @@ const STRINGS = {
       `\nTHIS DOCUMENT CITES ${String(claims)} claims across ${String(groups)} trajector${groups === 1 ? 'y' : 'ies'}.\n` +
       'A trajectory marked CITED is what the thesis actually argues from; an uncited one is\n' +
       'here because it is on the same page, and is context only. In the thesis text, the\n' +
-      'marker #traj_T<n> follows the sentence that cites trajectory [Tn], so which claims a\n' +
-      'given sentence rests on is readable rather than inferred. Do not answer a sentence\n' +
+      'marker #traj_<label> follows the sentence that cites it, carrying the same label shown\n' +
+      'in square brackets here, so which claims a given sentence rests on is readable rather\n' +
+      'than inferred. A label is derived from the claim itself and never from its position in\n' +
+      'this list, so quoting one in your answer stays meaningful to a later reader. Do not\n' +
+      'answer a sentence\n' +
       'using an uncited trajectory as though it were that sentence\'s basis.',
     citedBlock: (cited: number, total: number) =>
       cited === total ? 'CITED BY THIS THESIS (all claims)' : `CITED BY THIS THESIS (${String(cited)} of ${String(total)} claims)`,

@@ -335,13 +335,6 @@ function ThesisPageInner({ id }: { id: string }) {
   const [analyzing, setAnalyzing] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  type RevisionState =
-    | null
-    | 'loading'
-    | { suggestedContent: Record<string, unknown>; revisionsExplained: string; newEvidenceCount: number };
-
-  const [revision, setRevision] = useState<RevisionState>(null);
-  const [savingRevision, setSavingRevision] = useState(false);
   const [foiaModal, setFoiaModal] = useState<FoiaModalState | null>(null);
   const [tipModalGapIndex, setTipModalGapIndex] = useState<number | null>(null);
   const [foiaError, setFoiaError] = useState<number | null>(null); // gapIndex of failed FOIA gen
@@ -391,39 +384,6 @@ function ThesisPageInner({ id }: { id: string }) {
     () => (thesis?.version?.userContent ? buildCitationNumbers(thesis.version.userContent) : new Map<string, number>()),
     [thesis],
   );
-
-  async function runRevision() {
-    setRevision('loading');
-    try {
-      const res = await fetch(apiUrl(`/api/thesis/${id}/suggest-revision`), { method: 'POST' });
-      if (!res.ok) throw new Error();
-      const data = (await res.json()) as {
-        suggestedContent: Record<string, unknown>;
-        revisionsExplained: string;
-        newEvidenceCount: number;
-      };
-      setRevision(data);
-    } catch {
-      setRevision(null);
-    }
-  }
-
-  async function acceptRevision() {
-    if (!revision || revision === 'loading') return;
-    setSavingRevision(true);
-    try {
-      const res = await fetch(apiUrl(`/api/thesis/${id}/version`), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userContent: revision.suggestedContent }),
-      });
-      if (!res.ok) throw new Error();
-      setRevision(null);
-      await reload();
-    } finally {
-      setSavingRevision(false);
-    }
-  }
 
   async function runAnalysis() {
     setAnalyzing(true);
@@ -567,26 +527,10 @@ function ThesisPageInner({ id }: { id: string }) {
       <SiteHeader
         current="theses"
         maxWidth="max-w-4xl"
-        actions={
-          <div className="flex items-center gap-2">
-            {/* Version history is researcher-only: the public sees the
-                published version and only that, never the drafts around it. */}
-            {!isHistorical && canEdit && (
-              <Link
-                href={`/theses/${id}/edit`}
-                className="px-3 py-1.5 bg-violet-700 hover:bg-violet-600 rounded-lg text-xs font-medium text-white transition-colors"
-              >
-                {t('editBtn')}
-              </Link>
-            )}
-            <Link
-              href={`/call/${id}`}
-              className="px-3 py-1.5 bg-amber-100 hover:bg-amber-200 rounded-lg text-xs font-semibold text-amber-800 transition-colors"
-            >
-              {t('callForWitnessesBtn')}
-            </Link>
-          </div>
-        }
+        // No actions. The header is for navigation, and both things that used to
+        // live here were something else: editing is an authoring act reached from
+        // the researcher's own surfaces, and the call for witnesses is an ASK,
+        // which now sits beneath the evidence gaps that motivate it.
       />
 
       <main className="max-w-4xl mx-auto px-4 sm:px-6 py-10 space-y-8">
@@ -783,47 +727,13 @@ function ThesisPageInner({ id }: { id: string }) {
                 trajectory is computed over. */}
             <p className="text-xs text-slate-500 leading-relaxed">{t('trajectoryCaveat')}</p>
           </div>
-        )}        </div>
-
-        {hasProcessView && historyMounted && (
-          <div
-            id="thesis-panel-history"
-            role="tabpanel"
-            aria-labelledby="thesis-tab-history"
-            className={showHistory ? '' : 'hidden'}
-          >
-            <ThesisVersionHistory id={id} />
-          </div>
         )}
 
-        {(!hasProcessView || processMounted) && (
-        <div
-          id="thesis-panel-process"
-          role={hasProcessView ? 'tabpanel' : undefined}
-          aria-labelledby={hasProcessView ? 'thesis-tab-process' : undefined}
-          className={showProcess ? 'space-y-8' : 'hidden'}
-        >
-        {/* The apparatus of publication, BELOW the thesis it judges. It used to
-            open the page: a reader arriving at a legal argument met the gate
-            checks and the provenance timeline before meeting a sentence of it.
-            The artifact comes first; the record of how it was made follows. */}
-        {thesis.viewer === 'RESEARCHER' && !isHistorical && (
-          <>
-            <ThesisPublicationPanel
-              thesisId={id}
-              publication={thesis.publication}
-              publicInterestStatement={thesis.publicInterestStatement}
-              onChanged={reload}
-            />
-            {/* The record beside the checks: the timeline is what has happened,
-                the checks above are what remains. Researcher-only on both sides
-                — the backend route refuses anyone else, and this whole block is
-                already gated on viewer === 'RESEARCHER'. */}
-            <ThesisProvenancePanel thesisId={id} locale={locale} />
-          </>
-        )}
-
-        {/* AI analysis — DevilsAdvocate */}
+        {/* The Devil's Advocate critique, in the MAIN view rather than behind the
+            researcher-only process tab. A thesis that publishes the strongest case
+            against itself is read differently from one that publishes only its own
+            argument — and it is the difference the publication gate assumes. This
+            is served to the public already; only its placement was researcher-only. */}
         {analysis && (
           <section className="space-y-5 pt-4 border-t border-slate-200">
             <div className="flex items-center gap-3">
@@ -922,65 +832,61 @@ function ThesisPageInner({ id }: { id: string }) {
               </div>
             )}
 
-            {/* Suggest Revision button — hidden for historical versions, researcher-only */}
-            {canEdit && !isHistorical && revision === null && (
-              <div className="pt-2">
-                <button
-                  onClick={() => void runRevision()}
-                  className="px-4 py-2 bg-violet-700 hover:bg-violet-600 text-white text-sm font-semibold rounded-lg transition-colors"
-                >
-                  Suggest Revision
-                </button>
-              </div>
-            )}
-
-            {/* Revision loading */}
-            {revision === 'loading' && (
-              <div className="bg-violet-50 border border-violet-200 rounded-xl px-4 py-3 flex items-center gap-3 text-violet-700 text-sm">
-                <span className="animate-spin">⏳</span>
-                <span>Drafting revision… this takes ~30 seconds</span>
-              </div>
-            )}
-
-            {/* Revision preview */}
-            {revision !== null && revision !== 'loading' && (
-              <div className="space-y-4 border border-violet-200 rounded-2xl overflow-hidden">
-                <div className="bg-violet-50 px-5 py-4 space-y-1">
-                  <div className="flex items-center justify-between gap-4">
-                    <h3 className="text-sm font-bold text-violet-900">Suggested Revision</h3>
-                    {revision.newEvidenceCount > 0 && (
-                      <span className="text-xs bg-violet-200 text-violet-800 px-2 py-0.5 rounded-full font-semibold">
-                        +{revision.newEvidenceCount} evidence
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-sm text-violet-800 leading-relaxed">{revision.revisionsExplained}</p>
-                </div>
-
-                <div className="bg-white border-t border-violet-100 px-5 py-4">
-                  <TipTapRenderer doc={revision.suggestedContent} evidenceMap={evidenceMap} trajectoryMap={trajectoryMap} />
-                </div>
-
-                <div className="bg-slate-50 border-t border-violet-200 px-5 py-3 flex gap-3">
-                  <button
-                    disabled={savingRevision}
-                    onClick={() => void acceptRevision()}
-                    className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-xs font-semibold rounded-lg transition-colors"
-                  >
-                    {savingRevision ? 'Saving…' : 'Accept & Save'}
-                  </button>
-                  <button
-                    disabled={savingRevision}
-                    onClick={() => setRevision(null)}
-                    className="px-4 py-1.5 bg-slate-200 hover:bg-slate-300 disabled:opacity-50 text-slate-700 text-xs font-semibold rounded-lg transition-colors"
-                  >
-                    Discard
-                  </button>
-                </div>
-              </div>
-            )}
-          </section>
+                      </section>
         )}
+
+        {/* The call for witnesses, directly beneath the evidence gaps it answers.
+            It used to sit in the top menu, where it read as navigation. A gap the
+            archive cannot close is exactly what a witness closes, so the ask
+            belongs where a reader has just been told what is missing — and where
+            the public can see it, which the header placement also allowed but
+            without the reason beside it. */}
+        <Link
+          href={`/call/${id}`}
+          className="block bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-xl px-5 py-4 transition-colors"
+        >
+          <span className="text-sm font-semibold text-amber-900">{t('callForWitnessesBtn')}</span>
+        </Link>
+        </div>
+
+        {hasProcessView && historyMounted && (
+          <div
+            id="thesis-panel-history"
+            role="tabpanel"
+            aria-labelledby="thesis-tab-history"
+            className={showHistory ? '' : 'hidden'}
+          >
+            <ThesisVersionHistory id={id} />
+          </div>
+        )}
+
+        {(!hasProcessView || processMounted) && (
+        <div
+          id="thesis-panel-process"
+          role={hasProcessView ? 'tabpanel' : undefined}
+          aria-labelledby={hasProcessView ? 'thesis-tab-process' : undefined}
+          className={showProcess ? 'space-y-8' : 'hidden'}
+        >
+        {/* The apparatus of publication, BELOW the thesis it judges. It used to
+            open the page: a reader arriving at a legal argument met the gate
+            checks and the provenance timeline before meeting a sentence of it.
+            The artifact comes first; the record of how it was made follows. */}
+        {thesis.viewer === 'RESEARCHER' && !isHistorical && (
+          <>
+            <ThesisPublicationPanel
+              thesisId={id}
+              publication={thesis.publication}
+              publicInterestStatement={thesis.publicInterestStatement}
+              onChanged={reload}
+            />
+            {/* The record beside the checks: the timeline is what has happened,
+                the checks above are what remains. Researcher-only on both sides
+                — the backend route refuses anyone else, and this whole block is
+                already gated on viewer === 'RESEARCHER'. */}
+            <ThesisProvenancePanel thesisId={id} locale={locale} />
+          </>
+        )}
+
 
         {/* Pending AI notice + trigger button — hidden for historical versions, researcher-only */}
         {canEdit && !isHistorical && hv?.status === 'PENDING_AI' && !analyzing && (

@@ -3619,10 +3619,25 @@ rendered block, so the critique re-runs rather than being served with labels tha
 What it cannot protect is the ARCHIVE: every superseded version keeps its analysis, and those labels
 refer to a bundle nobody stored.
 
-The fix is to label by something that does not move — the cited trajectory's own identity rather than
-its position in a list — or to store the label map beside the analysis. Recorded, not built: this is
-the second time in one day that a positional or transitional key has been used where an identity was
-needed, and it deserves deciding rather than patching.
+**Fixed.** A movement is now named by its **lowest member claim hash**, prefixed `T` and shortened to
+eight hex characters — `T3f2a1b7c` rather than `T3`.
+
+A claim hash is the hash of the normalised claim text, so it is stable across every detection pass by
+construction. The label therefore points at a **real row anyone can look up by `claimHash`**, and it
+either matches or it does not — it cannot quietly come to mean something else, which is the only
+property that makes a critique auditable after the fact. That is also why this beats storing the label
+map beside each analysis: a self-resolving label needs no side table to survive.
+
+Uniqueness is a property of the SET, so it is checked rather than assumed: on a collision every label
+in the render widens together, keeping them comparable with each other.
+
+The four tests are written from the finding rather than the code — the label is derived from the
+lowest member hash; **the same group keeps the same label when other groups appear beside it** (the
+finding itself, expressed directly); the label resolves against a real claim hash; and colliding
+prefixes widen together.
+
+Backend 1366/1366, `tsc` clean, and `eslint src/` came down by one — the positional index it needed is
+gone.
 
 ### FINDING 70 survives the re-run, and narrows
 
@@ -3638,3 +3653,142 @@ T8 in run 3 is a context group reading *"four vaccine types are approved in Isra
 single-flip claim reading *"three vaccine types are approved in Israel"*. The page changed its own
 count. Both were in front of the critic, which engaged neither — the same silence as FINDING 71, now
 with the two halves of a contradiction sitting eight labels apart.
+
+## Step 31 — The gate was still passing a stale critique
+
+Found on the way to publishing, which is where it would have mattered.
+
+### FINDING 76 — the fingerprint closed the serving path and not the gate
+
+FINDING 74 said, in its own words, that *"a thesis could publish carrying a critique argued against
+facts that had since changed, with every hard gate green."* The fix made `run_ai_analysis` re-run
+instead of serving a stale answer. **Check 2 was never touched.** It still asks
+`status === 'COMPLETE' && aiAnalysis !== null` — whether an analysis EXISTS — and nothing asked
+whether it still answers anything.
+
+So the sentence that motivated the fix remained true after it. Nobody had to do anything wrong: the
+label change one commit earlier altered the rendered trajectory block, which is part of the critic's
+input, so the stored critique was stale by the fingerprint's own definition while the gate would still
+have published it.
+
+**Check 16 `ANALYSIS_CURRENT`, hard.** Check 2 asks whether an analysis exists; check 16 asks whether
+it still answers the facts. Two questions, two checks, two different remedies — *run it* versus
+*re-run it* — and conflating them is exactly how the first one came to be read as the second.
+
+The assembly of the critic's input is now extracted (`buildCritiqueInput`), so the gate and the runner
+cannot disagree about what that input is. They already had disagreed in spirit, which is the whole
+finding.
+
+Backend 1367/1367, `tsc` clean, `eslint src/` still one below where the session started.
+
+## Step 32 — Closing FINDING 60, by fixing the vocabulary rather than the sentence
+
+The gate refused the thesis over one sentence naming three officials:
+
+> …בהם **לפי הדיווח** דר' שרון אלרואי-פרייס ודר' אמיליה אניס
+
+Two ways to clear it, and they are not equivalent. Adding **לכאורה** clears the gate today, at the
+cost of hedging a sentence that was already accurate and weakening a true attribution — the report
+did name them. Fixing the vocabulary is the correct fix, because the vocabulary is what runs at
+publish time on every future thesis. **The researcher chose the vocabulary**, having been told
+plainly that it means changing the gate to admit their own document — which is the shape of thing
+that should be decided out loud.
+
+### FINDING 60 closed — there are two kinds of hedge and only one was written down
+
+A **modal** hedge softens the assertion: לכאורה, ייתכן כי. An **attributive** hedge says who is
+asserting it. "According to the documents, X" does not claim X; it claims the documents say X — a
+different and **checkable** proposition. That is COMPLIANCE.md Rule 1 satisfied more precisely than a
+modal, not less.
+
+The list already held attribution — to **documents** (על פי המסמכים, המסמכים מצביעים, על פי ראיה).
+It simply had no phrase for attributing to a published **report**. So the check refused a sentence
+whose entire purpose it exists to serve, and the defect was a missing member of a category the record
+had already established, not a missing category.
+
+Six phrases added as one category (לפי הדיווח, על פי הדיווח, לפי הפרסום, על פי הפרסום, לפי התחקיר,
+על פי התחקיר), and the rule for extending it written down beside them: **a phrase qualifies only if
+it attributes the assertion to an identified external source, or marks it as unproven — softening
+TONE does not qualify.** The defamation-risk record was amended in the same change, because the code
+defers to it and a vocabulary extended in code alone is a rule nobody agreed to.
+
+**The floor did not move**, and there is a test asserting that beside the ones asserting the new
+markers pass: a flat, unattributed naming still fails. Widening a gate is only safe if you can
+demonstrate what it still refuses.
+
+Backend 1376/1376, `tsc` clean, `eslint src/` unchanged.
+
+## Step 33 — Published
+
+`publish_thesis` returned `published: true`, version `cmt728lod0002g8uulash6lw9` pinned at
+2026-08-24T23:53:26Z, verdict **SUPPORTS**, `overObjection: false`, no hard failures. The first
+thesis this platform has published.
+
+What it took, in order, and what each step actually fixed:
+
+| Blocking check | Cleared by |
+|---|---|
+| 7 `FIGURES_HEDGED` | the hedge VOCABULARY, not the sentence (Step 32) |
+| 16 `ANALYSIS_CURRENT` | `run_ai_analysis`, re-running because the label change altered the block |
+| 2, 3, 9 | the same call |
+| 8 `PUBLIC_INTEREST_STATEMENT` | written |
+| 10 `RATIONALE_SUBSTANCE` | written — and rewritten once, see below |
+
+### The rationale that passed was the second one, and the first was wrong on the facts
+
+The first draft conceded the Devil's Advocate's `STRONG` post-hoc rebuttal as "recorded and
+unanswered". The researcher rejected the posture: *we are not ignoring the critic — we have a call for
+witnesses and a FOIA path, and if the thesis is right, inside information settles it.*
+
+Checking the archive before rewriting showed the posture was not merely apologetic but **too
+generous**. Measured over the cited movements' own observations:
+
+| | May 2022 | August 2022 |
+|---|---|---|
+| captures absent | **1** | **9** |
+| days absent | **4** | **44** |
+
+and two of the eight cited movements — including the FDA/three-vaccines claim — **never returned at
+all** (34 captures, to the end of the archive).
+
+The critique's rebuttal works by treating a four-day, single-capture blip and a forty-four-day,
+nine-capture absence as the same phenomenon. **That objection is answerable from the archive the
+thesis already cites**, with no new evidence. The rewritten rationale says so, states the two things
+that remain genuinely external, and names the call and the FOIA requests as what is pointed at them.
+
+The assessor flipped `DISPUTES` → `SUPPORTS`: the rationale *"sets a clear boundary defining the
+causal link as a question for investigation rather than a settled fact."*
+
+### FINDING 77 — the block renders flip DATES and expects the model to do the arithmetic
+
+Four consecutive critiques treated May and August as one phenomenon. None computed the durations,
+because the trajectory block gives `date=present → date=removed` across up to 83 captures and leaves
+subtraction to the reader. The distinction that refutes the strongest counter-argument in the corpus
+was one line of arithmetic away, in data already in the prompt, and no agent ever did it — nor did the
+thesis, until a researcher's objection to a draft forced the check.
+
+Render each absence as **"absent for N captures / D days"** and the distinction is in front of every
+agent that reads it. Not built: it would change the critique, and publishing came first.
+
+### FINDING 78 — making the label stable made it unquotable
+
+Runs 2 and 3 argued by name: *"ניתוח המסלולים (Trajectories T1, T3, T4)"*. That was the basis for
+FINDING 69's claim that the critique had become auditable — and for FINDING 75, which replaced
+positional labels with claim-hash identities precisely so those references would keep resolving.
+
+**Run 4, the first with identity labels, quoted no label at all.** It reasoned about the trajectories
+and referred to them only as a group. One run is not a finding about model behaviour, but the
+mechanism is plausible: `T1` is trivially quotable and `T6a505dc8` is not, and auditability that
+depends on a model choosing to type nine hex characters is thinner than it looked.
+
+The likely repair keeps both properties — `[T1·6a505dc8]`, an ordinal to quote and an identity to
+resolve. A later reader ignores the ordinal and resolves the hash, which is exactly what the
+positional scheme could not offer.
+
+### Recorded with the publication
+
+`GAP_ACTIONABILITY` failed advisory: run 4's second gap names a document but no holder, and the
+assessor asked for a concrete custodian — HMO adverse-event registries, or complaints filed with the
+ministry — rather than generic reliance by vaccinees. It PASSED on run 3's gaps. Two runs of the same
+critique differ on whether their own gaps are actionable, which is worth knowing before treating any
+single critique's agenda as the research plan.
