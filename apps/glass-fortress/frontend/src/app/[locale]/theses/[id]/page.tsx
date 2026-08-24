@@ -500,9 +500,9 @@ function ThesisPageInner({ id }: { id: string }) {
           <h1 className="text-xl sm:text-2xl font-bold text-slate-900">{thesis.title}</h1>
         )}
 
-        {/* Researcher view: publication state + the publish control. A draft
-            is invisible to the public; a published thesis may be behind the
-            head, and only a deliberate re-publish moves it. */}
+        {/* Publication state. Global to the thesis, so it stays above
+            everything else: a draft is invisible to the public, and a published
+            thesis may be sitting behind its head version. */}
         {thesis.viewer === 'RESEARCHER' && !isHistorical && (
           <>
             {isDraft && (
@@ -517,29 +517,8 @@ function ThesisPageInner({ id }: { id: string }) {
                 <span>{t('publication.publicBehind', { count: thesis.publication.versionsAhead })}</span>
               </div>
             )}
-            <ThesisPublicationPanel
-              thesisId={id}
-              publication={thesis.publication}
-              publicInterestStatement={thesis.publicInterestStatement}
-              onChanged={reload}
-            />
-            {/* The record beside the checks: the timeline is what has happened,
-                the checks above are what remains. Researcher-only on both sides
-                — the backend route refuses anyone else, and this whole block is
-                already gated on viewer === 'RESEARCHER'. */}
-            <ThesisProvenancePanel thesisId={id} locale={locale} />
           </>
         )}
-
-        {/* Rule 5 — the public-interest anchor, rendered on every published
-            thesis as a dedicated field rather than hunted for in the body. */}
-        {thesis.publicInterestStatement && (
-          <div className="bg-sky-50 border border-sky-200 rounded-xl px-4 py-3 text-sm text-sky-900 space-y-1" dir="auto">
-            <div className="text-xs font-semibold uppercase tracking-wide text-sky-700">{t('publication.statementHeading')}</div>
-            <p className="leading-relaxed">{thesis.publicInterestStatement}</p>
-          </div>
-        )}
-
         {/* Historical version banner */}
         {isHistorical && (
           <div className="flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm text-amber-800">
@@ -548,6 +527,15 @@ function ThesisPageInner({ id }: { id: string }) {
             <Link href={`/theses/${id}`} className="ms-auto font-medium text-amber-900 hover:underline shrink-0">
               {locale === 'he' ? 'לגרסה הנוכחית ←' : 'Current version →'}
             </Link>
+          </div>
+        )}
+
+        {/* Rule 5 — the public-interest anchor, rendered on every published
+            thesis as a dedicated field rather than hunted for in the body. */}
+        {thesis.publicInterestStatement && (
+          <div className="bg-sky-50 border border-sky-200 rounded-xl px-4 py-3 text-sm text-sky-900 space-y-1" dir="auto">
+            <div className="text-xs font-semibold uppercase tracking-wide text-sky-700">{t('publication.statementHeading')}</div>
+            <p className="leading-relaxed">{thesis.publicInterestStatement}</p>
           </div>
         )}
 
@@ -705,6 +693,26 @@ function ThesisPageInner({ id }: { id: string }) {
               })}
             </div>
           </div>
+        )}
+
+        {/* The apparatus of publication, BELOW the thesis it judges. It used to
+            open the page: a reader arriving at a legal argument met the gate
+            checks and the provenance timeline before meeting a sentence of it.
+            The artifact comes first; the record of how it was made follows. */}
+        {thesis.viewer === 'RESEARCHER' && !isHistorical && (
+          <>
+            <ThesisPublicationPanel
+              thesisId={id}
+              publication={thesis.publication}
+              publicInterestStatement={thesis.publicInterestStatement}
+              onChanged={reload}
+            />
+            {/* The record beside the checks: the timeline is what has happened,
+                the checks above are what remains. Researcher-only on both sides
+                — the backend route refuses anyone else, and this whole block is
+                already gated on viewer === 'RESEARCHER'. */}
+            <ThesisProvenancePanel thesisId={id} locale={locale} />
+          </>
         )}
 
         {/* AI analysis — DevilsAdvocate */}
