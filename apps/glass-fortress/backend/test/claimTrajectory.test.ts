@@ -32,7 +32,7 @@ import {
   normaliseClaim,
   claimHash,
 } from '../src/services/claimTrajectory';
-import { groupByMovement } from '../src/services/claimTrajectory';
+import { groupByMovement, presencePatternHash, type Observation } from '../src/services/claimTrajectory';
 import { getClaimTrajectoriesHandler } from '../src/mcp/tools/getClaimTrajectories';
 
 const CLAIM =
@@ -602,5 +602,70 @@ describe('get_claim_trajectories grouping', () => {
     // Repeated on the finding: a finding gets copied into a thesis away from the
     // envelope that carried it, and which archive it describes has to travel.
     expect(r.findings[0].sourceStateHash).toBe(r.provenance.sourceStateHash);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The stored movement identity.
+//
+// patternHash is written once at detection time so that answering "how many
+// claims moved as one unit" does not mean re-reading every sibling's
+// observations. A stored derived column is only worth anything while it still
+// equals what the derivation would produce — two code paths computing "the same"
+// hash independently is exactly how one quietly stops meaning what its name
+// says. Both go through presencePatternHash, and this asserts it.
+// ---------------------------------------------------------------------------
+describe('stored patternHash', () => {
+  it('writes the same value grouping computes, and shares it across a co-movement', async () => {
+    (prisma.trackedUrl.findUnique as jest.Mock).mockResolvedValue({ id: 't-1' });
+    // Two claims that move together, one that never moves at all.
+    const TOGETHER = `${CLAIM} וגם משפט נוסף שנע יחד עם הראשון בדיוק באותם צילומים`;
+    const ALONE = 'משפט שלישי שנשאר בדף לאורך כל הצילומים ולא נע יחד עם האחרים כלל';
+    (prisma.urlSnapshot.findMany as jest.Mock).mockResolvedValue(
+      [true, false, true].map((present, i) => ({
+        snapshotDate: `2022-0${i + 1}-01`,
+        waybackTimestamp: `20220${i + 1}01000000`,
+        snapshotUrl: `https://web.archive.org/web/20220${i + 1}01/x`,
+        fullText: `${present ? `prefix ${TOGETHER} suffix` : 'prefix suffix'} ${ALONE}`,
+      })),
+    );
+    (prisma.urlVersionDiff.findMany as jest.Mock).mockResolvedValue([
+      {
+        deletedText: JSON.stringify([
+          { summary: 's', exactQuote: CLAIM },
+          { summary: 's', exactQuote: TOGETHER },
+          { summary: 's', exactQuote: ALONE },
+        ]),
+        addedText: '[]',
+      },
+    ]);
+
+    const result = await getClaimTrajectories('https://health.gov.il/x', { minTransitions: 0 });
+    const written = (prisma.claimTrajectory.createManyAndReturn as jest.Mock).mock.calls[0][0].data as {
+      claimText: string;
+      observations: string;
+      patternHash: string;
+    }[];
+
+    // Every stored value is the one the grouping function derives.
+    for (const row of written) {
+      const observations = JSON.parse(row.observations) as Observation[];
+      expect(row.patternHash).toBe(presencePatternHash(observations));
+    }
+
+    // And it is the value groupByMovement keys its groups on.
+    for (const group of groupByMovement(result.trajectories)) {
+      const stored = new Set(
+        group.claims.map((c) => written.find((w) => w.claimText === c.claimText)?.patternHash),
+      );
+      expect(stored.size).toBe(1);
+      expect([...stored][0]).toBe(group.patternHash);
+    }
+
+    // The claim that never moved does not share the movers' hash.
+    const movers = written.filter((w) => w.claimText !== ALONE).map((w) => w.patternHash);
+    const alone = written.find((w) => w.claimText === ALONE)?.patternHash;
+    expect(new Set(movers).size).toBe(1);
+    expect(alone).not.toBe(movers[0]);
   });
 });

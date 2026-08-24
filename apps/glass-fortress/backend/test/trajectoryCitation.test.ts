@@ -18,6 +18,8 @@ interface Row {
   claimHash: string;
   claimText: string;
   observations: string;
+  /** Written at detection time by the real write path; the fixture does the same. */
+  patternHash: string;
   transitions: number;
   firstSeen: string;
   lastSeen: string;
@@ -74,7 +76,7 @@ jest.mock('../src/lib/prisma', () => ({
   },
 }));
 
-import { claimHash, normaliseClaim } from '../src/services/claimTrajectory';
+import { claimHash, normaliseClaim, presencePatternHash } from '../src/services/claimTrajectory';
 import {
   loadTrajectoryCitationLabels,
   resolveTrajectoryCitations,
@@ -124,6 +126,7 @@ function addRow(
     claimHash: claimHash(normaliseClaim(text)),
     claimText: text,
     observations: JSON.stringify(obs),
+    patternHash: presencePatternHash(obs),
     transitions: obs.filter((o, i) => i > 0 && o.present !== obs[i - 1].present).length,
     firstSeen: shown[0]?.snapshotDate ?? '',
     lastSeen: shown.at(-1)?.snapshotDate ?? '',
