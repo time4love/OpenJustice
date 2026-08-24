@@ -15,6 +15,10 @@
  * Usage:
  *   npm run researcher:bootstrap -- --handle "<the handle chosen at signup>"
  *
+ * The same script also creates the FIRST ADMIN, which is rootless for the same
+ * reason approval is — see src/services/bootstrapAdmin.ts. It carries its own
+ * guard: it refuses once any ADMIN exists.
+ *
  * The handle is passed at runtime, never hardcoded: it identifies a person, and
  * this repository is public.
  *
@@ -25,6 +29,7 @@
 import { PrismaClient } from '@prisma/client';
 import { identifyEnvironment } from '../src/lib/dbEnvironment';
 import { bootstrapResearcher, revokeResearcher } from '../src/services/bootstrapResearcher';
+import { bootstrapAdmin, demoteAdmin } from '../src/services/bootstrapAdmin';
 
 function parseFlag(argv: string[], flag: string): string | null {
   const index = argv.indexOf(flag);
@@ -36,8 +41,10 @@ function parseFlag(argv: string[], flag: string): string | null {
 
 const USAGE = [
   'Usage:',
-  '  npm run researcher:bootstrap -- --handle "<handle>"   approve the first researcher',
-  '  npm run researcher:bootstrap -- --revoke "<handle>"   withdraw an approval',
+  '  npm run researcher:bootstrap -- --handle "<handle>"        approve the first researcher',
+  '  npm run researcher:bootstrap -- --revoke "<handle>"        withdraw an approval',
+  '  npm run researcher:bootstrap -- --make-admin "<handle>"    grant the first ADMIN',
+  '  npm run researcher:bootstrap -- --revoke-admin "<handle>"  withdraw ADMIN',
 ].join('\n');
 
 function banner(text: string): void {
@@ -70,20 +77,95 @@ async function runRevoke(prisma: PrismaClient, handle: string): Promise<number> 
   }
 }
 
+async function runMakeAdmin(prisma: PrismaClient, handle: string): Promise<number> {
+  const outcome = await bootstrapAdmin(prisma, handle);
+
+  switch (outcome.kind) {
+    case 'promoted':
+      console.log(`✅ Granted ADMIN to "${outcome.handle}" (${outcome.researcherId}).`);
+      console.log('   They can now reach /admin and approve other researchers.');
+      console.log('   Approval was already held and is unchanged.');
+      return 0;
+
+    case 'already_admin':
+      console.log(`✅ "${outcome.handle}" (${outcome.researcherId}) is already ADMIN.`);
+      console.log('   Nothing to do — this command is safe to re-run.');
+      return 0;
+
+    case 'refused_admin_exists':
+      console.log('⛔ REFUSED — this environment already has an ADMIN:');
+      outcome.adminHandles.forEach((h) => console.log(`     • ${h}`));
+      console.log('\n   This tool only ever creates the FIRST admin. Granting the role to');
+      console.log('   further accounts is an ADMIN action through');
+      console.log('   PATCH /api/auth/researchers/:id, where it is audited and reversible.');
+      console.log('   To hand the root over instead, --revoke-admin the incumbent first.');
+      return 1;
+
+    case 'refused_not_approved':
+      console.log(`⛔ REFUSED — "${outcome.handle}" (${outcome.researcherId}) is not approved.`);
+      console.log('   ADMIN implies approval, so the weaker privilege has to come first:');
+      console.log('     npm run researcher:bootstrap -- --handle "<handle>"');
+      return 1;
+
+    case 'no_such_handle':
+      console.log(`⛔ No researcher with handle "${outcome.handle}".`);
+      if (outcome.availableHandles.length === 0) {
+        console.log('   This environment has no researchers at all — register through');
+        console.log('   the frontend first (/login), then re-run this.');
+      } else {
+        console.log('   Registered handles:');
+        outcome.availableHandles.forEach((h) => console.log(`     • ${h}`));
+      }
+      return 1;
+  }
+}
+
+async function runRevokeAdmin(prisma: PrismaClient, handle: string): Promise<number> {
+  const outcome = await demoteAdmin(prisma, handle);
+
+  switch (outcome.kind) {
+    case 'demoted':
+      console.log(`✅ Withdrew ADMIN from "${outcome.handle}" (${outcome.researcherId}).`);
+      console.log('   The account keeps its approval and its ordinary write access —');
+      console.log('   it simply can no longer approve anyone else.');
+      return 0;
+
+    case 'not_admin':
+      console.log(`✅ "${outcome.handle}" (${outcome.researcherId}) is not an ADMIN. Nothing to do.`);
+      return 0;
+
+    case 'no_such_handle':
+      console.log(`⛔ No researcher with handle "${outcome.handle}".`);
+      if (outcome.availableHandles.length > 0) {
+        console.log('   Registered handles:');
+        outcome.availableHandles.forEach((h) => console.log(`     • ${h}`));
+      }
+      return 1;
+  }
+}
+
 async function main(): Promise<number> {
   const argv = process.argv.slice(2);
-  const handle = parseFlag(argv, '--handle');
-  const revoke = parseFlag(argv, '--revoke');
+  const actions = [
+    { flag: '--handle', label: 'approve', value: parseFlag(argv, '--handle') },
+    { flag: '--revoke', label: 'revoke approval', value: parseFlag(argv, '--revoke') },
+    { flag: '--make-admin', label: 'grant ADMIN', value: parseFlag(argv, '--make-admin') },
+    { flag: '--revoke-admin', label: 'withdraw ADMIN', value: parseFlag(argv, '--revoke-admin') },
+  ].filter((a) => a.value !== null);
 
-  if (handle !== null && revoke !== null) {
-    console.error('Pass either --handle or --revoke, not both.\n' + USAGE);
+  if (actions.length > 1) {
+    console.error(
+      `Pass exactly one action, not ${String(actions.length)} (${actions.map((a) => a.flag).join(', ')}).\n` +
+        USAGE,
+    );
     return 1;
   }
-  const subject = handle ?? revoke;
-  if (subject === null) {
+  const action = actions[0];
+  if (action === undefined) {
     console.error(USAGE);
     return 1;
   }
+  const subject = action.value as string;
 
   const env = identifyEnvironment();
   banner(`researcher:bootstrap  —  target: ${env.label}`);
@@ -97,12 +179,14 @@ async function main(): Promise<number> {
   if (env.isProduction) {
     console.log('  ⚠️  This is PRODUCTION.');
   }
-  console.log(`  action           : ${revoke !== null ? 'revoke approval' : 'approve'}`);
+  console.log(`  action           : ${action.label}`);
   console.log(`  handle requested : ${subject}\n`);
 
   const prisma = new PrismaClient();
   try {
-    if (revoke !== null) return await runRevoke(prisma, revoke);
+    if (action.flag === '--revoke') return await runRevoke(prisma, subject);
+    if (action.flag === '--make-admin') return await runMakeAdmin(prisma, subject);
+    if (action.flag === '--revoke-admin') return await runRevokeAdmin(prisma, subject);
 
     const outcome = await bootstrapResearcher(prisma, subject);
 
