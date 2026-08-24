@@ -575,7 +575,13 @@
     "trajectoryPinned": "מוצמד לחישוב מתאריך {date}",
     "trajectoryRecomputed": "סריקה מאוחרת יותר סותרת את המסלול שצוטט. הציטוט ממשיך להפנות לחישוב שצוטט.",
     "trajectoryNotFollowed": "הסריקה האחרונה אינה עוקבת עוד אחרי הטענה הזו.",
-    "trajectoryViewCapture": "צפה בהעתק"
+    "trajectoryViewCapture": "צפה בהעתק",
+    "viewThesis": "התזה",
+    "viewProcess": "מאחורי הקלעים",
+    "viewsLabel": "תצוגות התזה",
+    "close": "סגירה",
+    "openEvidence": "פתיחת הראיה",
+    "sourcesTitle": "מקורות"
   },
   "call": {
     "heroLabel": "קריאה לעדים פנימיים",

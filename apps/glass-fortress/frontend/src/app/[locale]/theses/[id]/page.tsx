@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo, useRef, Suspense, use } from 'react';
 import Image from 'next/image';
 import { useSearchParams } from 'next/navigation';
 import { useTranslations, useLocale } from 'next-intl';
-import { Link } from '@/i18n/navigation';
+import { Link, useRouter } from '@/i18n/navigation';
 import { SiteHeader } from '@/components/SiteHeader';
 import { apiUrl, authHeaders, fetchJson } from '@/lib/api';
 import { useAsyncData, type AsyncFetcher } from '@/hooks/useAsyncData';
@@ -15,6 +15,7 @@ import { LegalDisclaimer } from '@/components/LegalDisclaimer';
 import type { EvidenceGap, AIAnalysis, PublicationState, ThesisViewer } from '@/types/thesis';
 import { ThesisPublicationPanel } from '@/components/ThesisPublicationPanel';
 import { ThesisProvenancePanel } from '@/components/ThesisProvenancePanel';
+import { CitationSheet, type CitationTarget } from '@/components/CitationSheet';
 import { PublicationBadge } from '@/components/PublicationBadge';
 import { CategoryBadges } from '@/components/CategoryBadges';
 import { tierDotColor } from '@/components/TierBadge';
@@ -58,6 +59,21 @@ interface Thesis {
   publicInterestStatement: string | null;
   version: ThesisVersion | null;
 }
+
+/**
+ * The two halves of this page: the argument, and the record of how it was made.
+ *
+ * Split because the page had become one scroll holding a legal document, its
+ * citations, an adversarial critique, a publication gate and an append-only
+ * provenance timeline. Two rather than four: on a narrow RTL screen a
+ * four-item tab bar truncates, and the real boundary here is binary — what the
+ * thesis argues, versus everything the platform did to get there.
+ *
+ * Citations stay with the ARGUMENT, never behind a tab. A reader following [7]
+ * must land on the source; putting the evidence and trajectory lists in another
+ * view would break the one link the whole citation layer exists to provide.
+ */
+type ThesisView = 'thesis' | 'process';
 
 interface GapResolution {
   gapIndex: number;
@@ -291,7 +307,12 @@ function ThesisPageInner({ id }: { id: string }) {
   const tStrength = useTranslations('strengths');
   const locale = useLocale();
   const searchParams = useSearchParams();
+  const router = useRouter();
   const historicalVersionId = searchParams.get('v');
+  // Which view is showing, read from the URL rather than held in state: a link
+  // to a thesis's provenance has to be a link, and a refresh must not silently
+  // move the reader somewhere else.
+  const view: ThesisView = searchParams.get('view') === 'process' ? 'process' : 'thesis';
   const isHistorical = !!historicalVersionId;
   const { researcher } = useAuth();
   const canEdit = researcher?.approved ?? false;
@@ -309,6 +330,9 @@ function ThesisPageInner({ id }: { id: string }) {
   const [foiaModal, setFoiaModal] = useState<FoiaModalState | null>(null);
   const [tipModalGapIndex, setTipModalGapIndex] = useState<number | null>(null);
   const [foiaError, setFoiaError] = useState<number | null>(null); // gapIndex of failed FOIA gen
+  // Which citation is open. One id, resolved to its source at render — holding
+  // the resolved object instead would go stale the moment the thesis reloads.
+  const [openCitationId, setOpenCitationId] = useState<string | null>(null);
 
   useEffect(() => {
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
@@ -434,6 +458,23 @@ function ThesisPageInner({ id }: { id: string }) {
 
   const hv = thesis.version;
   const isDraft = !thesis.publication.isPublished;
+  // The process view exists for researchers only. The public page keeps
+  // everything in one scroll, critique included: the Devil's Advocate answer to
+  // a thesis is part of how it is presented honestly, and a tab is a place
+  // things go unread.
+  const hasProcessView = thesis.viewer === 'RESEARCHER';
+  const showThesis = !hasProcessView || view === 'thesis';
+  const showProcess = !hasProcessView || view === 'process';
+
+  function switchView(next: ThesisView): void {
+    const params = new URLSearchParams(searchParams.toString());
+    if (next === 'thesis') params.delete('view');
+    else params.set('view', next);
+    const query = params.toString();
+    // replace, not push: a two-way toggle should not fill the history stack,
+    // while the URL still carries the view for a refresh or a shared link.
+    router.replace(`/theses/${id}${query ? `?${query}` : ''}`);
+  }
   const analysis = hv?.aiAnalysis ?? null;
   const evidenceMentions = hv?.mentions.filter(m => m.type === 'EVIDENCE') ?? [];
   const trajectoryMentions = hv?.mentions.filter(m => m.type === 'CLAIM_TRAJECTORY') ?? [];
@@ -453,6 +494,33 @@ function ThesisPageInner({ id }: { id: string }) {
       else byKey.set(key, { info, claims: [info.claimText], firstRefId: m.refId });
     }
     return [...byKey.values()];
+  })();
+
+  // The open citation, resolved from its id at render. A trajectory id resolves
+  // to its whole co-movement, because that is what one marker stands for.
+  const openCitation: CitationTarget | null = (() => {
+    if (!openCitationId) return null;
+    const trajectory = trajectoryMap[openCitationId];
+    if (trajectory) {
+      const key = trajectory.coMovementKey || openCitationId;
+      const group = trajectoryGroups.find((g) => (g.info.coMovementKey || g.firstRefId) === key);
+      return {
+        kind: 'trajectory',
+        info: trajectory,
+        claims: group?.claims ?? [trajectory.claimText],
+        ...(citationNumbers.get(group?.firstRefId ?? openCitationId) !== undefined
+          ? { number: citationNumbers.get(group?.firstRefId ?? openCitationId) }
+          : {}),
+      };
+    }
+    return {
+      kind: 'evidence',
+      hash: openCitationId,
+      info: evidenceMap[openCitationId],
+      ...(citationNumbers.get(openCitationId) !== undefined
+        ? { number: citationNumbers.get(openCitationId) }
+        : {}),
+    };
   })();
 
   return (
@@ -500,9 +568,9 @@ function ThesisPageInner({ id }: { id: string }) {
           <h1 className="text-xl sm:text-2xl font-bold text-slate-900">{thesis.title}</h1>
         )}
 
-        {/* Researcher view: publication state + the publish control. A draft
-            is invisible to the public; a published thesis may be behind the
-            head, and only a deliberate re-publish moves it. */}
+        {/* Publication state. Global to the thesis, so it stays above
+            everything else: a draft is invisible to the public, and a published
+            thesis may be sitting behind its head version. */}
         {thesis.viewer === 'RESEARCHER' && !isHistorical && (
           <>
             {isDraft && (
@@ -517,29 +585,8 @@ function ThesisPageInner({ id }: { id: string }) {
                 <span>{t('publication.publicBehind', { count: thesis.publication.versionsAhead })}</span>
               </div>
             )}
-            <ThesisPublicationPanel
-              thesisId={id}
-              publication={thesis.publication}
-              publicInterestStatement={thesis.publicInterestStatement}
-              onChanged={reload}
-            />
-            {/* The record beside the checks: the timeline is what has happened,
-                the checks above are what remains. Researcher-only on both sides
-                — the backend route refuses anyone else, and this whole block is
-                already gated on viewer === 'RESEARCHER'. */}
-            <ThesisProvenancePanel thesisId={id} locale={locale} />
           </>
         )}
-
-        {/* Rule 5 — the public-interest anchor, rendered on every published
-            thesis as a dedicated field rather than hunted for in the body. */}
-        {thesis.publicInterestStatement && (
-          <div className="bg-sky-50 border border-sky-200 rounded-xl px-4 py-3 text-sm text-sky-900 space-y-1" dir="auto">
-            <div className="text-xs font-semibold uppercase tracking-wide text-sky-700">{t('publication.statementHeading')}</div>
-            <p className="leading-relaxed">{thesis.publicInterestStatement}</p>
-          </div>
-        )}
-
         {/* Historical version banner */}
         {isHistorical && (
           <div className="flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm text-amber-800">
@@ -548,6 +595,59 @@ function ThesisPageInner({ id }: { id: string }) {
             <Link href={`/theses/${id}`} className="ms-auto font-medium text-amber-900 hover:underline shrink-0">
               {locale === 'he' ? 'לגרסה הנוכחית ←' : 'Current version →'}
             </Link>
+          </div>
+        )}
+
+        {/* The two views. Below the publication banners on purpose: those state
+            what is true of the thesis as a whole, so they belong to both. */}
+        {hasProcessView && (
+          <div
+            role="tablist"
+            aria-label={t('viewsLabel')}
+            className="flex gap-1 bg-slate-100 border border-slate-200 rounded-xl p-1 print:hidden"
+          >
+            {(['thesis', 'process'] as const).map((v) => (
+              <button
+                key={v}
+                id={`thesis-tab-${v}`}
+                role="tab"
+                type="button"
+                aria-selected={view === v}
+                aria-controls={`thesis-panel-${v}`}
+                onKeyDown={(e) => {
+                  if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+                    e.preventDefault();
+                    switchView(v === 'thesis' ? 'process' : 'thesis');
+                  }
+                }}
+                onClick={() => { switchView(v); }}
+                className={`flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  view === v
+                    ? 'bg-white text-slate-900 shadow-sm'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                {t(v === 'thesis' ? 'viewThesis' : 'viewProcess')}
+              </button>
+            ))}
+          </div>
+        )}
+
+        <div
+          id="thesis-panel-thesis"
+          role={hasProcessView ? 'tabpanel' : undefined}
+          aria-labelledby={hasProcessView ? 'thesis-tab-thesis' : undefined}
+          // print:block — a thesis is a legal document and someone will print it.
+          // Tabs hide content from print, so the argument and its citations are
+          // always in the printed output whichever view is on screen.
+          className={showThesis ? 'space-y-8' : 'hidden print:block space-y-8'}
+        >
+        {/* Rule 5 — the public-interest anchor, rendered on every published
+            thesis as a dedicated field rather than hunted for in the body. */}
+        {thesis.publicInterestStatement && (
+          <div className="bg-sky-50 border border-sky-200 rounded-xl px-4 py-3 text-sm text-sky-900 space-y-1" dir="auto">
+            <div className="text-xs font-semibold uppercase tracking-wide text-sky-700">{t('publication.statementHeading')}</div>
+            <p className="leading-relaxed">{thesis.publicInterestStatement}</p>
           </div>
         )}
 
@@ -564,7 +664,14 @@ function ThesisPageInner({ id }: { id: string }) {
             <div className="text-xs text-slate-400" style={{ textAlign: 'left' }}>
               {new Date(thesis.createdAt).toLocaleDateString(locale === 'he' ? 'he-IL' : 'en-US')}
             </div>
-            {hv ? <TipTapRenderer doc={hv.userContent} evidenceMap={evidenceMap} trajectoryMap={trajectoryMap} /> : null}
+            {hv ? (
+              <TipTapRenderer
+                doc={hv.userContent}
+                evidenceMap={evidenceMap}
+                trajectoryMap={trajectoryMap}
+                onCitationClick={setOpenCitationId}
+              />
+            ) : null}
           </div>
         </div>
 
@@ -581,130 +688,89 @@ function ThesisPageInner({ id }: { id: string }) {
                 const label = (info?.summary ? truncateLabel(info.summary, 60) : undefined) || m.refId.slice(0, 8);
                 const number = citationNumbers.get(m.refId);
                 return (
-                  <Link
+                  <button
                     key={m.id}
-                    href={`/evidence?hash=${m.refId}`}
+                    type="button"
+                    onClick={() => { setOpenCitationId(m.refId); }}
                     className="inline-flex items-center gap-1.5 bg-amber-100 hover:bg-amber-200 text-amber-700 text-xs px-3 py-1 rounded-full transition-colors"
                   >
                     <span className="font-semibold">{number ? `[${number}]` : '#'}</span>
                     <span className={`w-2 h-2 rounded-full shrink-0 ${tierDotClass}`} />
                     {label}
-                  </Link>
+                  </button>
                 );
               })}
             </div>
           </div>
         )}
 
-        {/* Cited claim trajectories.
-            Deliberately verbose where the evidence chips are terse: this is the
-            first place a reader meets a trajectory, and what it does and does
-            not prove has to be stated where it is read, not in a doc. */}
+        {/* Sources — one compact line each, opened from here or from the [n]
+            marker in the argument above. This block used to stand every source
+            open: seven evidence chips and, once a real co-movement was cited,
+            eight trajectory panels each carrying eighty-three archived captures.
+            A citation is consulted, not read through. */}
         {trajectoryGroups.length > 0 && (
           <div className="space-y-2">
             <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
               {t('trajectoriesTitle')} ({trajectoryGroups.length})
             </h3>
-            <p className="text-xs text-slate-500 leading-relaxed">{t('trajectoryCaveat')}</p>
-            <div className="space-y-3">
+            <ul className="space-y-1">
               {trajectoryGroups.map(({ info, claims, firstRefId }) => {
                 const number = citationNumbers.get(firstRefId);
                 return (
-                  <div key={firstRefId} className="bg-teal-50/60 border border-teal-200 rounded-xl p-4 space-y-2">
-                    <div className="flex items-start gap-2">
+                  <li key={firstRefId}>
+                    <button
+                      type="button"
+                      onClick={() => { setOpenCitationId(firstRefId); }}
+                      className="w-full text-start flex items-baseline gap-2 px-3 py-2 rounded-lg bg-teal-50/60 hover:bg-teal-100/70 border border-teal-200 transition-colors"
+                    >
                       <span className="text-teal-700 text-xs font-semibold shrink-0">
                         {number ? `[${number}]` : '#'}
                       </span>
-                      <div className="space-y-1">
-                        {claims.map((claim, i) => (
-                          <p key={i} className="text-sm text-slate-700 leading-relaxed">{claim}</p>
-                        ))}
-                      </div>
-                    </div>
-
-                    {info.coMovementCount > 1 && (
-                      <p className="text-xs font-medium text-teal-800">
-                        {t('trajectoryCoMovement', { count: info.coMovementCount })}
-                        {' · '}
-                        {t('trajectoryCoMovementCited', { cited: info.coMovementCitedCount })}
-                      </p>
-                    )}
-
-                    {/* The flips, each linked to the capture it was measured in. */}
-                    <ul className="space-y-1">
-                      {info.changes.map(c => (
-                        <li key={c.snapshotDate} className="text-xs text-slate-600">
-                          <span className="font-mono">{c.snapshotDate}</span>
-                          {' — '}
-                          <span className={c.present ? 'text-emerald-700' : 'text-red-700'}>
-                            {c.present ? t('trajectoryAppeared') : t('trajectoryDisappeared')}
-                          </span>
-                          {' · '}
-                          <a
-                            href={c.snapshotUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-teal-700 hover:underline"
-                          >
-                            {t('trajectoryViewCapture')}
-                          </a>
-                        </li>
-                      ))}
-                    </ul>
-
-                    <p className="text-xs text-slate-600">
-                      {info.finalState === 'PRESENT' ? t('trajectoryFinalPresent') : t('trajectoryFinalRemoved')}
-                    </p>
-
-                    {/* Every capture examined, not only the flips: a claim absent
-                        across nine consecutive captures is a different finding
-                        from one absent across two, and the absences are what
-                        show it. */}
-                    <details className="text-xs text-slate-500">
-                      <summary className="cursor-pointer hover:text-slate-700">
-                        {t('trajectoryAllCaptures', { count: info.observations.length })}
-                      </summary>
-                      <ul className="mt-2 space-y-1 ms-3">
-                        {info.observations.map(o => (
-                          <li key={o.snapshotDate}>
-                            <a
-                              href={o.snapshotUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="font-mono text-teal-700 hover:underline"
-                            >
-                              {o.snapshotDate}
-                            </a>
-                            {' — '}
-                            {o.present ? t('trajectoryAppeared') : t('trajectoryDisappeared')}
-                          </li>
-                        ))}
-                      </ul>
-                    </details>
-
-                    <p className="text-[11px] text-slate-400">
-                      {t('trajectoryPinned', {
-                        date: new Date(info.computedAt).toLocaleDateString(locale === 'he' ? 'he-IL' : 'en-US'),
-                      })}
-                    </p>
-
-                    {/* Pinned for integrity, current for honesty — both, and
-                        labelled. A superseded trajectory is a fact about the
-                        archive changing, not a defect in the thesis. */}
-                    {info.currency.state === 'RECOMPUTED_DISAGREES' && (
-                      <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-2">
-                        {t('trajectoryRecomputed')}
-                        {info.currency.difference ? ` ${info.currency.difference}` : ''}
-                      </p>
-                    )}
-                    {info.currency.state === 'NOT_FOLLOWED_BY_LATEST' && (
-                      <p className="text-xs text-slate-500">{t('trajectoryNotFollowed')}</p>
-                    )}
-                  </div>
+                      <span className="text-xs text-slate-700 leading-relaxed line-clamp-2" dir="auto">
+                        {claims[0]}
+                      </span>
+                      {info.coMovementCount > 1 && (
+                        <span className="ms-auto text-[11px] text-teal-800 font-medium shrink-0">
+                          {t('trajectoryCoMovement', { count: info.coMovementCount })}
+                        </span>
+                      )}
+                    </button>
+                  </li>
                 );
               })}
-            </div>
+            </ul>
+            {/* The limitation stays in the list as well as in the sheet: a
+                reader who never opens one still has to be told what a
+                trajectory is computed over. */}
+            <p className="text-xs text-slate-500 leading-relaxed">{t('trajectoryCaveat')}</p>
           </div>
+        )}        </div>
+
+        <div
+          id="thesis-panel-process"
+          role={hasProcessView ? 'tabpanel' : undefined}
+          aria-labelledby={hasProcessView ? 'thesis-tab-process' : undefined}
+          className={showProcess ? 'space-y-8' : 'hidden'}
+        >
+        {/* The apparatus of publication, BELOW the thesis it judges. It used to
+            open the page: a reader arriving at a legal argument met the gate
+            checks and the provenance timeline before meeting a sentence of it.
+            The artifact comes first; the record of how it was made follows. */}
+        {thesis.viewer === 'RESEARCHER' && !isHistorical && (
+          <>
+            <ThesisPublicationPanel
+              thesisId={id}
+              publication={thesis.publication}
+              publicInterestStatement={thesis.publicInterestStatement}
+              onChanged={reload}
+            />
+            {/* The record beside the checks: the timeline is what has happened,
+                the checks above are what remains. Researcher-only on both sides
+                — the backend route refuses anyone else, and this whole block is
+                already gated on viewer === 'RESEARCHER'. */}
+            <ThesisProvenancePanel thesisId={id} locale={locale} />
+          </>
         )}
 
         {/* AI analysis — DevilsAdvocate */}
@@ -884,7 +950,13 @@ function ThesisPageInner({ id }: { id: string }) {
             <span>Running Devil&apos;s Advocate analysis… this takes ~30 seconds</span>
           </div>
         )}
+        </div>
       </main>
+
+      {/* The open citation */}
+      {openCitation && (
+        <CitationSheet target={openCitation} locale={locale} onClose={() => { setOpenCitationId(null); }} />
+      )}
 
       {/* FOIA Modal */}
       {foiaModal !== null && (

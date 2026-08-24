@@ -575,7 +575,13 @@
     "trajectoryPinned": "Pinned to the detection pass of {date}",
     "trajectoryRecomputed": "A later scan contradicts the trajectory that was cited. The citation still resolves to the pass that was cited.",
     "trajectoryNotFollowed": "The latest scan no longer follows this claim.",
-    "trajectoryViewCapture": "view capture"
+    "trajectoryViewCapture": "view capture",
+    "viewThesis": "The thesis",
+    "viewProcess": "Behind the scenes",
+    "viewsLabel": "Thesis views",
+    "close": "Close",
+    "openEvidence": "Open the record",
+    "sourcesTitle": "Sources"
   },
   "call": {
     "heroLabel": "Call for Witnesses",
