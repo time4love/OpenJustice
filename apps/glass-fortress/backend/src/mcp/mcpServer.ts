@@ -10,6 +10,10 @@ import { startForensicScanSchema, startForensicScanHandler } from './tools/start
 import { createThesisDraftSchema, createThesisDraftHandler } from './tools/createThesisDraft';
 import { addThesisVersionSchema, addThesisVersionHandler } from './tools/addThesisVersion';
 import { citeTrajectoriesSchema, citeTrajectoriesHandler } from './tools/citeTrajectories';
+import {
+  getThesisTrajectoryCitationsSchema,
+  getThesisTrajectoryCitationsHandler,
+} from './tools/getThesisTrajectoryCitations';
 import { runAiAnalysisSchema, runAiAnalysisHandler } from './tools/runAiAnalysis';
 import { createResearchSessionSchema, createResearchSessionHandler } from './tools/createResearchSession';
 import { addSessionNoteSchema, addSessionNoteHandler } from './tools/addSessionNote';
@@ -390,6 +394,23 @@ export function createMcpServer(): McpServer {
     addThesisVersionSchema,
     async (input) => ({
       content: [{ type: 'text' as const, text: await addThesisVersionHandler(input) }],
+    }),
+  );
+
+  // -------------------------------------------------------------------------
+  // Tool: get_thesis_trajectory_citations  [READ]
+  // The deterministic citations behind a thesis, resolved in full. Separate
+  // from get_thesis_context because this answer grows with how thoroughly a
+  // thesis is cited, and the context tool has to stay bounded.
+  // -------------------------------------------------------------------------
+  server.tool(
+    'get_thesis_trajectory_citations',
+    'Resolve the claim trajectories a thesis cites: which claims, which archived captures each one ' +
+      'appeared and vanished on, how much of each co-movement was cited, and whether a later ' +
+      'detection pass still agrees. get_thesis_context summarises these; this returns them in full.',
+    getThesisTrajectoryCitationsSchema,
+    async (input) => ({
+      content: [{ type: 'text' as const, text: await getThesisTrajectoryCitationsHandler(input) }],
     }),
   );
 

@@ -2,7 +2,10 @@ import { z } from 'zod';
 import { prisma } from '../../lib/prisma';
 import { getResearcherId } from '../../context/researcherContext';
 import { publicationState, versionIdForViewer, type Viewer } from '../../lib/thesisView';
-import { resolveTrajectoryCitations } from '../../services/trajectoryCitation';
+import {
+  resolveTrajectoryCitations,
+  type ResolvedTrajectoryCitation,
+} from '../../services/trajectoryCitation';
 
 export const getThesisContextSchema = {
   thesisId: z.string().describe('The Thesis cuid to retrieve'),
@@ -14,6 +17,111 @@ export const getThesisContextSchema = {
 // state, and how far the public is behind. Session context — research notes,
 // who did what — is researcher-only.
 // ---------------------------------------------------------------------------
+
+/**
+ * Trajectory citations, in as much detail as the response can afford.
+ *
+ * FULL when it fits, and it usually will: on the first real thesis the complete
+ * block is ~18 KB. Summarised only when a thesis cites so much that the whole
+ * response would stop fitting in a tool result — and then it SAYS SO, names what
+ * it dropped, and names the tool that returns it.
+ *
+ * The failure this replaces was not a large response, it was a silent one: at
+ * 375 KB the result exceeded the limit and the caller received no thesis at all.
+ * The failure this avoids is subtler — trimming unconditionally would leave a
+ * model reasoning about a thesis from claim previews while believing it had the
+ * citations.
+ */
+const TRAJECTORY_DETAIL_BUDGET_CHARS = 40_000;
+
+function byMovement(resolved: ResolvedTrajectoryCitation[]): ResolvedTrajectoryCitation[][] {
+  const groups = new Map<string, ResolvedTrajectoryCitation[]>();
+  for (const t of resolved) {
+    const key = t.coMovement.patternHash || t.id;
+    groups.set(key, [...(groups.get(key) ?? []), t]);
+  }
+  return [...groups.values()];
+}
+
+function movementCounts(groups: ResolvedTrajectoryCitation[][], resolved: ResolvedTrajectoryCitation[]) {
+  return {
+    citedMovements: groups.length,
+    citedTrajectories: resolved.length,
+    supersededMovements: groups.filter((m) => m[0].currency.state === 'RECOMPUTED_DISAGREES').length,
+  };
+}
+
+/** Everything a reader needs to reason about what the thesis cites. */
+function fullCitedTrajectories(resolved: ResolvedTrajectoryCitation[]) {
+  const groups = byMovement(resolved);
+  return {
+    ...movementCounts(groups, resolved),
+    detailLevel: 'FULL' as const,
+    movements: groups.map((members) => {
+      const first = members[0];
+      return {
+        trajectoryIds: members.map((m) => m.id),
+        claims: members.map((m) => m.claimText),
+        url: first.url,
+        claimCount: first.coMovement.claimCount,
+        citedCount: first.coMovement.members.filter((m) => m.cited).length,
+        transitions: first.transitions,
+        firstSeen: first.firstSeen,
+        lastSeen: first.lastSeen,
+        finalState: first.finalState,
+        // The flips, with the capture each was measured in. The dates ARE the
+        // finding — a thesis argues about specific captures.
+        changes: first.changes.map((o) => ({
+          snapshotDate: o.snapshotDate,
+          present: o.present,
+          snapshotUrl: o.snapshotUrl,
+        })),
+        capturesExamined: first.observations.length,
+        currency: first.currency,
+      };
+    }),
+    caveat: resolved[0]?.caveat,
+  };
+}
+
+/** One line per movement, for when the full block would not fit. */
+function summarisedCitedTrajectories(resolved: ResolvedTrajectoryCitation[]) {
+  const groups = byMovement(resolved);
+  return {
+    ...movementCounts(groups, resolved),
+    detailLevel: 'SUMMARY' as const,
+    movements: groups.map((members) => {
+      const first = members[0];
+      return {
+        trajectoryIds: members.map((m) => m.id),
+        claimPreview: first.claimText.slice(0, 120),
+        claimCount: first.coMovement.claimCount,
+        citedCount: first.coMovement.members.filter((m) => m.cited).length,
+        transitions: first.transitions,
+        finalState: first.finalState,
+        currency: first.currency.state,
+      };
+    }),
+    reduced: {
+      why: 'The full citations would have pushed this response past what a tool result can carry.',
+      omitted:
+        'the text of every cited claim, the archived capture each one appeared and vanished on, and ' +
+        'the extraction caveat that governs what a trajectory can be said to show.',
+      callInstead: 'get_thesis_trajectory_citations',
+      warning:
+        'What this thesis cites deterministically is NOT fully represented above. Reason about its ' +
+        'evidentiary weight only after making that call.',
+    },
+  };
+}
+
+function citedTrajectoriesForResponse(resolved: ResolvedTrajectoryCitation[]) {
+  if (resolved.length === 0) return fullCitedTrajectories(resolved);
+  const full = fullCitedTrajectories(resolved);
+  return JSON.stringify(full).length <= TRAJECTORY_DETAIL_BUDGET_CHARS
+    ? full
+    : summarisedCitedTrajectories(resolved);
+}
 
 export async function getThesisContextHandler(input: { thesisId: string }): Promise<string> {
   const viewer: Viewer = getResearcherId() ? 'RESEARCHER' : 'PUBLIC';
@@ -134,29 +242,16 @@ export async function getThesisContextHandler(input: { thesisId: string }): Prom
       resolved: resolvedGaps,
     },
     keyFiguresMentioned: figureNames,
-    trajectoriesCited: trajectories.resolved.map((t) => ({
-      trajectoryId: t.id,
-      claimText: t.claimText,
-      url: t.url,
-      // Every snapshot examined, in order — the absences are half the finding.
-      observations: t.observations.map((o) => ({
-        snapshotDate: o.snapshotDate,
-        present: o.present,
-        snapshotUrl: o.snapshotUrl,
-      })),
-      transitions: t.transitions,
-      firstSeen: t.firstSeen,
-      lastSeen: t.lastSeen,
-      finalState: t.finalState,
-      coMovement: {
-        claimCount: t.coMovement.claimCount,
-        citedCount: t.coMovement.members.filter((m) => m.cited).length,
-        members: t.coMovement.members.map((m) => ({ trajectoryId: m.id, claimText: m.claimText, cited: m.cited })),
-      },
-      pinnedTo: t.computation,
-      currency: t.currency,
-      caveat: t.caveat,
-    })),
+    // What the thesis cites deterministically — in full when it fits, and
+    // summarised WITH a warning when it does not.
+    //
+    // One entry per cited row with its full capture list made this response
+    // 375 KB on the first real thesis: 97% trajectories, 74% capture lists
+    // repeated across twenty-one citations describing eight movements. Over
+    // HTTP that compresses away; over MCP the reader is a model with a token
+    // budget, and the tool for READING a thesis stopped being able to return
+    // one. Different transport, different constraint.
+    trajectoriesCited: citedTrajectoriesForResponse(trajectories.resolved),
     ...(trajectories.missing.length > 0
       ? {
           trajectoryCitationsMissing: trajectories.missing,

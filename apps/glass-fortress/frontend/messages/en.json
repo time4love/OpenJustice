@@ -764,7 +764,8 @@
     "loginError_no_account": "No researcher account found. Register via the login page first.",
     "loginError_not_approved": "Your account has not been approved by an admin yet.",
     "loginError_missing_token": "Something went wrong. Try again.",
-    "backToLogin": "Back to login"
+    "backToLogin": "Back to login",
+    "approving": "Approving…"
   },
   "admin": {
     "title": "Researcher Management",

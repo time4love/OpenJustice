@@ -62,7 +62,12 @@ export function OAuthInteractionClient({ uid }: { uid: string }) {
 
   const [details, setDetails] = useState<InteractionDetails | null>(null);
   const [detailsError, setDetailsError] = useState(false);
-  const [denying, setDenying] = useState(false);
+  // Deny had a pending state and approve did not, so approve looked inert on
+  // click — a form POST gives no feedback of its own. A researcher clicked it
+  // twice; the first submit consumed the interaction and the second met a
+  // resolved one, which surfaced as a raw {"error":"invalid_request"} page at
+  // the end of the connector flow.
+  const [submitting, setSubmitting] = useState<'allow' | 'deny' | null>(null);
 
   const loginFormRef = useRef<HTMLFormElement>(null);
   const confirmFormRef = useRef<HTMLFormElement>(null);
@@ -133,7 +138,10 @@ export function OAuthInteractionClient({ uid }: { uid: string }) {
     );
   }
 
-  if (detailsError) {
+  // The server sends the reader back here with ?expired=1 when an interaction
+  // is already resolved, rather than letting oidc-provider's error envelope
+  // become the page.
+  if (detailsError || searchParams.get('expired')) {
     return (
       <AuthCard title={t('expiredTitle')}>
         <p className="text-sm text-slate-500">{t('expiredHint')}</p>
@@ -165,30 +173,36 @@ export function OAuthInteractionClient({ uid }: { uid: string }) {
       </ul>
 
       <div className="flex gap-3 pt-2">
-        <form ref={confirmFormRef} method="POST" action={apiUrl(`/oauth/interaction/${uid}/confirm`)}>
+        <form
+          ref={confirmFormRef}
+          method="POST"
+          action={apiUrl(`/oauth/interaction/${uid}/confirm`)}
+          onSubmit={() => setSubmitting('allow')}
+        >
           <input type="hidden" name="accessToken" value={accessToken} />
           <input type="hidden" name="decision" value="allow" />
           <button
             type="submit"
-            className="py-2 px-4 bg-slate-900 text-white text-sm font-medium rounded hover:bg-slate-700 transition-colors"
+            disabled={submitting !== null}
+            className="py-2 px-4 bg-slate-900 text-white text-sm font-medium rounded hover:bg-slate-700 disabled:opacity-50 transition-colors"
           >
-            {t('approve')}
+            {submitting === 'allow' ? t('approving') : t('approve')}
           </button>
         </form>
         <form
           ref={denyFormRef}
           method="POST"
           action={apiUrl(`/oauth/interaction/${uid}/confirm`)}
-          onSubmit={() => setDenying(true)}
+          onSubmit={() => setSubmitting('deny')}
         >
           <input type="hidden" name="accessToken" value={accessToken} />
           <input type="hidden" name="decision" value="deny" />
           <button
             type="submit"
-            disabled={denying}
+            disabled={submitting !== null}
             className="py-2 px-4 border border-slate-300 text-slate-700 text-sm font-medium rounded hover:bg-slate-50 disabled:opacity-50 transition-colors"
           >
-            {denying ? t('denying') : t('deny')}
+            {submitting === 'deny' ? t('denying') : t('deny')}
           </button>
         </form>
       </div>
