@@ -20,15 +20,41 @@
 /**
  * The hedge vocabulary from the defamation-risk analysis (2026-08-09). Taken
  * from the documented list, not invented; extend only by amending that record.
+ *
+ * TWO KINDS, and the second was missing.
+ *
+ * A MODAL hedge softens the assertion — לכאורה, ייתכן כי. An ATTRIBUTIVE hedge
+ * does something stronger: it says who is asserting it. "According to the
+ * documents, X" does not claim X; it claims the documents say X, which is a
+ * different and checkable proposition. That is Rule 1 satisfied more precisely
+ * than a modal, not less.
+ *
+ * The list always held attribution — to DOCUMENTS (על פי המסמכים, המסמכים
+ * מצביעים, על פי ראיה). It simply had no phrase for attributing to a published
+ * REPORT, so a sentence reading "among them, ACCORDING TO THE REPORT, Dr X"
+ * failed a check whose entire purpose it satisfied. Found by the gate refusing a
+ * real thesis over it (FINDING 60).
+ *
+ * THE RULE FOR EXTENDING THIS: a phrase qualifies only if it attributes the
+ * assertion to an identified external source, or marks it as unproven. A phrase
+ * that merely softens tone does not. Every addition amends the record above.
  */
 export const HEDGE_MARKERS: readonly string[] = [
+  // Modal — the assertion is marked unproven.
   'לכאורה',
-  'הראיות מצביעות על',
   'ייתכן כי',
+  // Attributive — the assertion belongs to a named source, not to us.
+  'הראיות מצביעות על',
   'על פי המסמכים',
   'המסמכים מצביעים',
   'בהתאם לממצאים',
   'על פי ראיה',
+  'לפי הדיווח',
+  'על פי הדיווח',
+  'לפי הפרסום',
+  'על פי הפרסום',
+  'לפי התחקיר',
+  'על פי התחקיר',
 ];
 
 /**
