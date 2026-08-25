@@ -301,6 +301,27 @@ model Evidence {
   // forensic classifier's judgment — the full debate that justified it.
   debateSession            DiffDebateSession?
   gapResolutions           ThesisGapResolution[]
+  // Which intake rubric produced this record's classification.
+  //
+  // evidenceTier, evidenceRole, investigativeCategories, summary, evidenceDate
+  // and the figures relation are all LLM output, written once and never
+  // recomputed. When the rubric changes they mean different things on different
+  // rows — the same article classified either side of the 2026-08-25 change gave
+  // Tier 3 with four figures and Tier 1 with two, and both rows would have looked
+  // equally authoritative. Mirrors UrlVersionDiff.classifierVersion.
+  //
+  // Null on every record created before this existed. That reads as "unknown",
+  // never as "current" — the same discipline as an absent EvidenceCapture.
+  //
+  // One known imprecision, recorded rather than hidden: POST /confirm receives an
+  // `analysis` the client obtained from an earlier /intake call, so if those two
+  // requests straddle a deploy the stamp names the prompt live at confirm time
+  // rather than the one that judged it. A narrow window, and still far better
+  // than no stamp at all.
+  intakeVersion            String?
+  // SHA-256 of the system prompt actually sent to the model. The version string
+  // is a promise; this is the proof, checkable against git.
+  intakePromptHash         String?
   createdById              String? // Researcher.id — null for legacy records
   createdBy                Researcher?           @relation(fields: [createdById], references: [id])
   // The stored document this record's fileHash was computed over. Absent on
