@@ -39,6 +39,21 @@ export const CAPTURE_EXTRACTOR_READABILITY = 'readability-article-v1';
 export const CAPTURE_EXTRACTOR_RAW_BYTES = 'raw-bytes-v1';
 
 /**
+ * Which text an evidence record's CLASSIFICATION was derived from.
+ *
+ * Deliberately not the same text the identity is hashed over. The two jobs want
+ * opposite things: the identity wants the narrowest stable extraction, so page
+ * furniture cannot move it; the classification wants the widest available text,
+ * because a fact the model is not shown is one it will either miss or invent.
+ *
+ * The first production record proved it. `extractArticleText` drops the byline
+ * as chrome, so the publication date was not in the text the model was given —
+ * and it produced a date from the article body instead, silently changing what
+ * `evidenceDate` meant. The date was present in `extractRawText` all along.
+ */
+export const ANALYSIS_EXTRACTOR_RAW_DOCUMENT = 'raw-document-v1';
+
+/**
  * The same extraction, but round-tripped through the browser.
  *
  * The website scrapes at `/intake` and posts the text back at `/confirm`, so the
