@@ -4634,7 +4634,42 @@ says all mutation goes through MCP.
 
 This is FINDING 7 again, in a new place: **a tool telling a researcher to leave the workflow in order
 to finish the workflow.** A capability that can only be exercised through a side channel is not part
-of the researcher's path, however well written it is. It gets built as an MCP tool.
+of the researcher's path, however well written it is. ~~It gets built as an MCP tool.~~
+
+### CORRECTED 2026-08-25 — it does NOT get built as an MCP tool
+
+The last sentence above was wrong, and it is left visible rather than deleted because it is the kind
+of wrong that reads as obvious once stated and would otherwise be repeated.
+
+**Maintenance tools do not go on the MCP surface.** A bulk backfill is not research. Exposing it
+there would let any connected researcher trigger a mass data write across every row of a tracked
+page, which is a larger blast radius than anything else the surface offers — and it would be reached
+by a client whose whole design assumption is that a researcher may call any tool they can see.
+
+The finding also conflated two problems that have different fixes:
+
+| the real problem | the actual fix |
+|---|---|
+| the **timeline tool tells a researcher** to run `npm run forensics:anchor-snapshots` | change the message. A researcher should not be told to run maintenance at all — the instruction has the wrong audience, and no new tool is needed to stop giving it |
+| the **repair needs production credentials on a laptop** | the deploy pipeline, exactly as migrations already work. `railway.json` runs `prisma migrate deploy` before the container serves; a repair belongs in the same place, which is what the project's own rule — *prefer changing the deploy pipeline over acquiring the credential* — already prescribes |
+
+Neither fix is an MCP tool. The instinct that produced that sentence — *anything a researcher needs
+must be reachable from the researcher's surface* — is right about capabilities and wrong about
+maintenance, because **a researcher does not need this capability at all.** They need the data to be
+correct. Who repairs it is not their concern, and making it their concern is what the wrong sentence
+would have built.
+
+### And the need mostly went away
+
+`registerSnapshotOnChain` was calling `registerEvidenceHash` unconditionally, so a capture whose text
+a twin had already anchored produced a rejected duplicate, a logged failure, and a permanent `null`.
+The scan now shares `anchorOneSnapshot` with the repair, checking for a twin first — **so new nulls
+do not appear.** What remains is a backfill of rows created before that fix, which is a one-off, not
+a standing capability, and one-off repairs are precisely what the pipeline is for.
+
+The same session also found that these nulls were never only cosmetic: `check_on_chain_status`
+reported every anchored capture as `ORPHANED_ANCHOR` with *"investigate before registering anything
+else against this hash"*, on production as well as staging. See FINDING 99.
 
 ### The prediction was off by one, and the one is explainable
 
@@ -4870,3 +4905,72 @@ classification: verify the hash, read and judge the classification.
 
 Nothing in either environment surfaces the disagreement. A researcher comparing the two vaults would
 have to notice a count differing by one.
+
+## FINDING 99 — an anchored capture reported as a broken chain of custody
+
+Found by a **researcher running the tutorial**, on its first cold run. The tutorial was built to teach
+people to verify this platform rather than trust it; it did that to the platform on day one.
+
+`check_on_chain_status` decided its verdict from `inVault`, which means *an Evidence row* and nothing
+else. No snapshot has one. So every correctly-anchored capture returned:
+
+```
+ORPHANED_ANCHOR · consistent: false
+"Something anchored a record that cannot now be produced —
+ investigate before registering anything else against this hash."
+```
+
+Every clause of that is false for a snapshot. The record can be produced — `list_captures` returns it,
+with its transaction.
+
+### Not a staging artifact, and the check that settled it
+
+The first hypothesis was that the staging rebuild had left the data odd. Production was asked the same
+question and answered identically:
+
+| environment | hash | verdict | registry id |
+|---|---|---|---|
+| staging | `5a51aa38…` | `ORPHANED_ANCHOR` | 13 |
+| **production** | `5a51aa38…` | **`ORPHANED_ANCHOR`** | 4 |
+| **production** | `972c2283…` | **`ORPHANED_ANCHOR`** | 5 |
+
+Structural, not environmental. On production the page holds 12 distinct texts, all anchored, so
+roughly **12 of 19 registrations on Base mainnet reported as integrity incidents** — every one of them
+working as designed. The text was genuinely on-chain throughout, confirmed by public RPC with no Glass
+Fortress code in the path.
+
+The environments do differ, but not in the way the alarm implied: staging has had the snapshot repair
+run against it and production never has, so production still shows the transaction only on the first
+sighting of each text. That is FINDING 95's distinction — **missing pointers, not missing custody.**
+
+### The seventh instance, and the cost is now measured
+
+*Mechanism right, summary wrong*, again. The mechanism was correct at every step: there is no Evidence
+row, and the tool said so accurately. Only the sentence over it was false — and the sentence is what a
+person acts on.
+
+FINDING 95 predicted the cost precisely: *a false alarm invites either a repair that is not needed, or
+doubt about evidence whose chain of custody is in fact complete.* **The researcher did the second.**
+They had done every step correctly, the chain agreed, and they still had to ask whether their evidence
+was sound — because the one tool built to be trusted about integrity told them it was not.
+
+On an evidence platform that is not cosmetic. A false alarm about custody costs more than a missing
+feature.
+
+### Fixed, and the second half of the same cause
+
+New `SNAPSHOT_ANCHOR` verdict, `consistent: true`, naming what the hash is; a `snapshot` block carries
+the transaction the Evidence lookup cannot see, since `database.onChainTxHash: null` beside a
+`list_captures` row showing a transaction reads as one system contradicting itself and is really two
+tables being asked one question. `ORPHANED_ANCHOR` survives for the genuine case: on chain, and
+neither table can produce it.
+
+The same PR fixed the cause of the nulls — see the correction to FINDING 94. Both were one defect
+wearing two faces: **a snapshot's text being on-chain was represented in two places that disagreed.**
+
+### What this says about the tutorial
+
+The chapter's premise is that verifying instead of trusting surfaces discrepancies. It surfaced one in
+the platform that shipped it, on its first run, with a learner who had never used the system — and
+1473 passing tests had not. Worth remembering the next time a chapter looks like a cost rather than an
+investment.
