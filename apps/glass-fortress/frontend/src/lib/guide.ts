@@ -236,7 +236,13 @@ export const GUIDE_PHASES: readonly GuidePhase[] = [
     screenshots: [],
     detailSteps: [],
     environmentCritical: false,
-    irreversible: false,
+    // Every capture the scan stores has its content hash anchored on the public
+    // chain automatically, so this phase spends one permanent transaction per
+    // capture — far more than `evidence`, which spends one. This flag was false
+    // because the phase promotes nothing, which is a statement about Evidence
+    // and not about the chain. The two questions are separate and only one of
+    // them is what this flag asks.
+    irreversible: true,
   },
   {
     slug: 'classification',

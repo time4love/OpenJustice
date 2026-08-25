@@ -1,10 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { apiUrl } from '@/lib/api';
 import { ClaimBlock } from '@/components/ClaimBlock';
 import { addEvidenceToThesis } from '@/lib/thesisDocument';
-import { usePromoteAction } from '@/hooks/usePromoteAction';
 import { fetchTheses } from '@/lib/thesisApi';
 import type { ThesisSummary as FullThesisSummary } from '@/types/thesis';
 
@@ -16,6 +14,12 @@ import type { ThesisSummary as FullThesisSummary } from '@/types/thesis';
 export interface PromotedEvidence {
   id: string;
   fileHash: string;
+  /**
+   * CONFIRMED means a person reviewed this and accepted it. PENDING_REVIEW
+   * means a scan recorded it as a candidate and nobody has decided yet. The
+   * card must never collapse the two — see EvidenceStatusChip.
+   */
+  status: 'PENDING_REVIEW' | 'CONFIRMED' | 'REJECTED';
 }
 
 export interface DiffItem {
@@ -44,11 +48,8 @@ export interface DiffCardLabels {
   forensicLabel: string;
   viewSnapshot: string;
   viewBeforeSnapshot: string;
-  promoteBtn: string;
-  promotingBtn: string;
-  alreadyPromoted: string;
-  promoteSuccess: string;
-  promoteError: string;
+  promotedChip: string;
+  pendingReviewChip: string;
   flaggedBadge: string;
   auditBadge: string;
   showChanges: string;
@@ -163,69 +164,45 @@ function AddToThesisButton({
 }
 
 // ---------------------------------------------------------------------------
-// Promote button — handles the on-chain registration of a single diff
+// Evidence status chip
+//
+// Replaces a "Promote to Evidence" button that POSTed to an unauthenticated
+// endpoint. Adding data to this system goes through MCP, where the caller is an
+// authenticated, approved researcher.
+//
+// It also stops the card asserting something untrue. The chip used to render
+// from the mere PRESENCE of an Evidence row, and a scan writes a row for every
+// finding it records — as PENDING_REVIEW, explicitly awaiting a person. So an
+// unreviewed candidate displayed as "promoted": the exact claim the review
+// exists to make, made on the reviewer's behalf, in front of the reviewer.
+// The status decides what is shown; nothing is inferred from existence.
 // ---------------------------------------------------------------------------
 
-function PromoteButton({
-  diffId,
+function EvidenceStatusChip({
   promoted,
   labels,
-  onPromoted,
 }: {
-  diffId: string;
   promoted: PromotedEvidence | null;
   labels: DiffCardLabels;
-  onPromoted: (diffId: string, evidence: PromotedEvidence) => void;
 }) {
-  const { state, error, run } = usePromoteAction(async () => {
-    const res = await fetch(apiUrl('/api/forensics/promote'), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ urlVersionDiffId: diffId }),
-    });
-    const data = (await res.json()) as {
-      promoted?: boolean;
-      fileHash?: string;
-      error?: string;
-      message?: string;
-    };
-    if (!res.ok) {
-      // Already promoted by someone else since this page loaded — treat as
-      // success, not an error the user needs to see.
-      if (res.status === 409) return { ok: true };
-      return { ok: false, message: data.message ?? labels.promoteError };
-    }
-    if (data.fileHash) {
-      onPromoted(diffId, { id: '', fileHash: data.fileHash });
-    }
-    return { ok: true };
-  }, promoted ? 'done' : 'idle');
+  if (!promoted) return null;
 
-  if (state === 'done' || promoted) {
-    return (
-      <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-        {labels.promoteSuccess}
-      </span>
-    );
-  }
+  const confirmed = promoted.status === 'CONFIRMED';
 
   return (
-    <div className="space-y-1">
-      <button
-        onClick={() => { void run(); }}
-        disabled={state === 'loading'}
-        className="px-4 py-1.5 rounded-lg text-xs font-semibold bg-slate-900 text-white hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-        dir="auto"
-      >
-        {state === 'loading' ? labels.promotingBtn : labels.promoteBtn}
-      </button>
-      {state === 'error' && (
-        <p className="text-xs text-red-600" dir="auto">
-          {error ?? labels.promoteError}
-        </p>
-      )}
-    </div>
+    <span
+      className={
+        confirmed
+          ? 'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200'
+          : 'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200'
+      }
+      dir="auto"
+    >
+      <span
+        className={`w-1.5 h-1.5 rounded-full ${confirmed ? 'bg-emerald-500' : 'bg-amber-500'}`}
+      />
+      {confirmed ? labels.promotedChip : labels.pendingReviewChip}
+    </span>
   );
 }
 
@@ -240,12 +217,10 @@ export function DiffCard({
   diff,
   index,
   labels,
-  onPromoted,
 }: {
   diff: DiffRecord;
   index: number;
   labels: DiffCardLabels;
-  onPromoted: (diffId: string, evidence: PromotedEvidence) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const sig = diff.isLegallySignificant;
@@ -407,12 +382,7 @@ export function DiffCard({
           {/* Footer — promote button + add to thesis + archive links */}
           <div className={`flex flex-wrap items-center justify-between gap-3 pt-1 ${footerClass}`}>
             <div className="flex flex-wrap items-center gap-2">
-              <PromoteButton
-                diffId={diff.id}
-                promoted={diff.promotedEvidence}
-                labels={labels}
-                onPromoted={onPromoted}
-              />
+              <EvidenceStatusChip promoted={diff.promotedEvidence} labels={labels} />
               {diff.promotedEvidence && (
                 <AddToThesisButton
                   fileHash={diff.promotedEvidence.fileHash}

@@ -22,7 +22,6 @@ import { buildEvidenceAnalysisData } from '../lib/evidenceCreateData';
 import { evidenceWhereForViewer, viewerSeesUnreviewed } from '../lib/evidenceVisibility';
 import { identifyResearcher } from '../middleware/researcherIdentity';
 import { upsertKeyFigures } from '../lib/upsertKeyFigures';
-import { promoteEvidence } from '../services/promoteEvidence';
 import { parseDiffItems } from '../lib/diffItems';
 import { aiCostLimiter } from '../middleware/rateLimiting';
 import { ALLOWED_EVIDENCE_MIME_TYPES, MAX_EVIDENCE_FILE_BYTES } from '../lib/evidenceFileConstraints';
@@ -622,30 +621,19 @@ router.get('/timeline', identifyResearcher, async (req: Request, res: Response):
 // Idempotent for already-CONFIRMED records — returns 200 with existing txHash.
 // ---------------------------------------------------------------------------
 
-router.post('/promote', async (req: Request, res: Response): Promise<void> => {
-  const parsed = z.object({ fileHash: z.string().min(1) }).safeParse(req.body);
-  if (!parsed.success) {
-    res.status(400).json({ error: 'Missing fileHash', details: parsed.error.flatten() });
-    return;
-  }
-
-  const { fileHash } = parsed.data;
-
-  try {
-    const record = await prisma.evidence.findUnique({ where: { fileHash } });
-    if (!record) {
-      res.status(404).json({ error: 'Evidence not found', fileHash });
-      return;
-    }
-
-    const result = await promoteEvidence(record);
-    res.status(200).json(result);
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    console.error('[promote] Error:', err instanceof Error ? err.stack : err);
-    res.status(500).json({ error: 'Promotion failed', message });
-  }
-});
+// ---------------------------------------------------------------------------
+// Promotion is deliberately NOT exposed over REST.
+//
+// It was, as POST /api/evidence/promote, taking a fileHash and no credentials.
+// The hash is not a secret: for a forensic record it is derived from the page
+// URL, the two archive timestamps and the two capture hashes, every one of
+// which this API publishes. So a pending record's identifier could be computed
+// from public data and posted back to force its promotion — registering it
+// on-chain and publishing an AI-written allegation that no person had approved.
+//
+// Promotion goes through MCP, where the caller is an authenticated, approved
+// researcher — see promote_evidence and promote_scan_findings.
+// ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
 // GET /api/evidence/stats
@@ -914,8 +902,15 @@ router.get('/:id', identifyResearcher, async (req: Request, res: Response): Prom
           rawAddedChunks: JSON.parse(diffRecord.rawAddedText) as string[],
           legalSignificance: diffRecord.aiSignificance,
           isLegallySignificant: diffRecord.isLegallySignificant,
-          // This evidence record IS the promotion of this diff — always "already promoted".
-          promotedEvidence: { id: record.id, fileHash: record.fileHash },
+          // An Evidence row for this diff — NOT necessarily a promotion of it.
+          //
+          // This said "always already promoted", which was true when every
+          // Evidence row was created by promoting something. recordScanFinding
+          // then began writing PENDING_REVIEW candidates and the assumption was
+          // never revisited, so an unreviewed finding rendered as promoted on
+          // its own page — the claim the review exists to make, made on its
+          // behalf. The status decides; the caller no longer infers it.
+          promotedEvidence: { id: record.id, fileHash: record.fileHash, status: record.status },
         }
       : null;
 

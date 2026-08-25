@@ -387,7 +387,6 @@ function StatusBadge({ status }: { status: string }) {
 function HistoryEntry({
   item,
   labels,
-  onDeleted,
   onResume,
   scanning,
 }: {
@@ -396,10 +395,6 @@ function HistoryEntry({
     viewBtn: string;
     diffsCount: string;
     batchCount: string;
-    deleteBtn: string;
-    deletingBtn: string;
-    deleteConfirm: string;
-    deleteError: string;
     expandBatches: string;
     collapseBatches: string;
     batchLabel: (n: number) => string;
@@ -412,15 +407,12 @@ function HistoryEntry({
     waybackOfflineLabel: string;
     allFetchesFailedLabel: string;
   };
-  onDeleted: (id: string) => void;
   onResume: (item: TrackedUrlItem) => void;
   scanning: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [jobs, setJobs] = useState<ScrapeJob[] | null>(null);
   const [jobsError, setJobsError] = useState<string | null>(null);
-  const [deleting, setDeleting] = useState(false);
-  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   async function loadJobs() {
     if (jobs !== null) return; // already loaded
@@ -438,25 +430,6 @@ function HistoryEntry({
     const next = !expanded;
     setExpanded(next);
     if (next) void loadJobs();
-  }
-
-  async function handleDelete() {
-    if (!window.confirm(labels.deleteConfirm)) return;
-    setDeleting(true);
-    setDeleteError(null);
-    try {
-      const res = await fetch(apiUrl(`/api/forensics/tracked/${item.id}`), { method: 'DELETE' });
-      if (!res.ok) {
-        const data = (await res.json()) as { message?: string };
-        setDeleteError(data.message ?? labels.deleteError);
-        return;
-      }
-      onDeleted(item.id);
-    } catch {
-      setDeleteError(labels.deleteError);
-    } finally {
-      setDeleting(false);
-    }
   }
 
   return (
@@ -487,7 +460,6 @@ function HistoryEntry({
               {new Date(item.createdAt).toLocaleDateString()}
             </span>
           </div>
-          {deleteError && <p className="text-xs text-red-600">{deleteError}</p>}
         </div>
 
         {/* Actions */}
@@ -506,13 +478,6 @@ function HistoryEntry({
           >
             {labels.viewBtn}
           </Link>
-          <button
-            onClick={() => { void handleDelete(); }}
-            disabled={deleting}
-            className="px-3 py-1 rounded-lg text-xs font-medium text-red-600 border border-red-200 hover:bg-red-50 disabled:opacity-40 transition-colors"
-          >
-            {deleting ? labels.deletingBtn : labels.deleteBtn}
-          </button>
         </div>
       </div>
 
@@ -850,10 +815,6 @@ export default function ForensicsPage() {
                     viewBtn: t('historyViewBtn'),
                     diffsCount: t('historyDiffsCount', { count: item.totalDiffs }),
                     batchCount: t('historyBatchCount', { count: item.totalDiffs }),
-                    deleteBtn: t('historyDeleteBtn'),
-                    deletingBtn: t('historyDeletingBtn'),
-                    deleteConfirm: t('historyDeleteConfirm'),
-                    deleteError: t('historyDeleteError'),
                     expandBatches: t('historyExpandBatches'),
                     collapseBatches: t('historyCollapseBatches'),
                     batchLabel: (n) => t('historyBatchLabel', { n }),
@@ -866,7 +827,6 @@ export default function ForensicsPage() {
                     waybackOfflineLabel: t('waybackOfflineError'),
                     allFetchesFailedLabel: t('scanFailedGeneric'),
                   }}
-                  onDeleted={(id) => setHistory((prev) => prev.filter((h) => h.id !== id))}
                   onResume={(item) => { void handleResumeFromHistory(item); }}
                   scanning={scanning}
                 />

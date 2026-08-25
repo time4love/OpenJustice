@@ -4312,3 +4312,471 @@ non-determinism.
 Phase 1 of the guide's order is complete end to end: created, reviewed, failed review three times on
 three separate classification defects, and promoted only once it passed. **Phase 2 is the Wayback
 scan**, and it is not order-constrained — records it creates canonicalise afterwards.
+
+---
+
+## Step 38 — The production Wayback scan, measured before it was started
+
+Phase 2 of the production replay. Staging reached this page by scanning first; production reaches it
+having already anchored one record, so the scan is no longer the thing that proves the environment
+works — which frees it to be planned rather than discovered.
+
+### The environment, established by data
+
+Neither connector says which database answers it. Both were asked the same read:
+
+| connector | `search_evidence` total | identified as |
+|---|---|---|
+| A | 1 — one article, Tier 1, `Ministry of Health` | PRODUCTION |
+| B | 8 — 7 page-change records + the article | STAGING |
+
+A second, independent axis confirmed it: `list_captures` against production returned `NOT_TRACKED`
+for this URL, which is the state Phase 1 left behind. A tooling notice claiming the staging connector
+needed re-authorisation was **stale for the second session running** — it answered a read immediately.
+The environment is established by the answer, never by the label.
+
+### Request
+
+```
+start_forensic_scan
+  url: "https://corona.health.gov.il/vaccine-for-covid/"
+```
+
+### The scan was sized before it was started
+
+The guide already says this is the longest operation in the workflow. That is a reason to measure it,
+not a reason to brace for it. The scanner's own CDX query was reproduced by hand — same parameters,
+same collapse — and its batching simulated against the live result.
+
+| quantity | value | how obtained |
+|---|---|---|
+| raw archive index | 133 captures | `list_captures` on the environment that tracks the page |
+| CDX rows under `collapse=digest` | 95 | direct query, the scanner's parameters |
+| distinct digests | 83 | computed from those rows |
+| snapshots the scan should store | **84** | batching simulated, see FINDING 88 |
+| diffs | **83** | consecutive pairs |
+| CDX batches | 2 | cap is 5 per invocation, so one call should finish |
+
+Recording a prediction before the write turns the scan into a test of the model of it. A number that
+matches confirms the reading of the code; a number that does not is a finding that would otherwise
+have been invisible, because nothing in the response says what the count *should* have been.
+
+The CDX query itself returned in **49.5 s against the 60 s ceiling**. That is FINDING 8's failure mode
+still live, with ten seconds of headroom — worth knowing before a scan rather than after one fails.
+
+## FINDING 88 — snapshot dedup is per-batch, so one capture is stored twice
+
+`getSnapshotsList` builds its `seenDigests` set **inside a single batch**, and `UrlSnapshot` is unique
+on `[trackedUrlId, waybackTimestamp]` rather than on `contentHash`. A digest already stored by an
+earlier batch is therefore stored again by a later one, as a second row with different archive
+coordinates and byte-identical content.
+
+Predicted for this page before the scan ran:
+
+| | |
+|---|---|
+| digest | `F6X6RDLJ35GJU7HOA23P3HNO3MQ4HZ2C` |
+| stored by batch 1 as | `20220628073145` |
+| stored again by batch 2 as | `20220703090600` |
+| batch boundary | `20220703000203` |
+
+The client-side dedup exists specifically to catch what CDX's own `collapse=digest` misses —
+non-consecutive reverts to a previously-seen digest. It does catch them, **within a batch**. Across a
+batch boundary it cannot, because the set is rebuilt with the batch.
+
+**Staging already holds both rows** — same stored content hash, same anchoring transaction — so this
+is not new, and nothing about it is wrong at the layer that matters: a snapshot asserts that the
+archive held this text at this coordinate, and both assertions are true. The costs are that the pair
+produces one empty diff, that a capture count reads one higher than the number of distinct page
+states, and that one extra anchoring transaction is spent on content already anchored.
+
+### Confirmed against the archive, not only against the code
+
+The pair was fetched directly from the Wayback Machine, with the scanner's own request shape. Both
+coordinates return HTTP 200 and are **byte-identical** — one SHA-256 across both responses. So the
+prediction does not rest on a reading of the batching logic: the archive itself says these two
+captures hold the same bytes, which is what makes the second row a duplicate rather than a second
+observation.
+
+The fix is to carry the seen set across batches, or to make the pair unrepresentable by keying
+uniqueness on content. Neither is free: the second changes what a snapshot row means, from "this
+coordinate held this text" to "this text was first seen here", which is a weaker claim and loses the
+archive coordinate that makes the record checkable. **Not fixed in this session** — named, measured,
+and left as a decision rather than absorbed silently.
+
+## FINDING 89 — the guide flagged the phase that spends the most chain writes as spending none
+
+The help centre marks a phase `irreversible` to render a warning that reads, in full: *this phase
+writes to a public blockchain or to a public page — state the tool and the arguments, then wait for
+explicit confirmation.*
+
+The scan phase had that flag off. It stores one capture per distinct page state and anchors each
+one's content hash automatically, so scanning a single page spends dozens of permanent transactions —
+an order of magnitude more chain writes than the evidence phase, which spends exactly one and does
+carry the flag.
+
+### Corrected after measurement: the volume was overstated sevenfold
+
+Written before the scan ran, this finding claimed the phase spends "one permanent transaction per
+capture" — dozens for a single page. The production run measured **12 transactions for 83 captures**.
+Consecutive captures of this page extract to identical text far more often than they differ (70 of 81
+diffs are empty), so only about a dozen distinct content hashes exist across the whole history, and
+the registry rejects a duplicate registration rather than spending a transaction on it.
+
+The flag is still right — twelve irreversible public writes are irreversible — but the reasoning
+offered for it was wrong, and wrong in the direction that sounds more alarming. Recorded rather than
+quietly edited, because a finding that was argued from an unmeasured number is exactly the kind this
+playbook exists to catch, and it was mine.
+
+The page was not silent about risk; it warned about the right things in the wrong register. Its
+pitfall said the scan "promotes nothing on its own", which is **true, and about a different
+question**. Promotion is the legal-conclusion step, and the model deliberately separates it from
+snapshot anchoring: a snapshot asserts that the archive held this text at this coordinate, which is a
+fact and correctly automatic; Evidence asserts that a change is legally significant, which is a
+judgement and correctly manual. Because the sentence answered the promotion question confidently, the
+chain question read as answered too.
+
+**A true sentence adjacent to an unasked question is how a page ends up misleading without containing
+an error.** Fixed by setting the flag and by naming the anchoring in the pitfall directly, in both
+locales, rather than leaving it to be inferred from the phase's silence.
+
+## FINDING 90 — the failure reason named something that never happened
+
+The scan failed with `ALL_FETCHES_FAILED`. The enum documents that value as *every fetch in this
+batch failed, but not via 503*, and its sibling `WAYBACK_OFFLINE` as *every fetch in this batch hit
+HTTP 503*. Both describe **snapshot** fetches.
+
+Zero snapshot fetches were attempted. The failure was the CDX index query — the call that decides
+what the batch even contains — and `processJob` reuses the two snapshot-shaped values for it, because
+there is no third value meaning *the index never arrived*.
+
+The two conditions call for opposite responses. "Could not reach the index" is a network problem
+about one request, and the page's history is untouched. "Reached the index, every page fetch failed"
+suggests the captures themselves are unavailable, which is a statement about the archive's holdings
+and a reason to doubt the source. An operator reading `ALL_FETCHES_FAILED` on this job is told the
+second while the first is what occurred.
+
+Worth adding a `CDX_INDEX_UNAVAILABLE` value. It costs a migration and it makes the field answer the
+question a person actually has when a scan fails, which is *where* it broke, not merely *that* it did.
+
+## FINDING 91 — production cannot reach the Internet Archive; staging can, at the same moment
+
+The scan did not fail on anything in the codebase. It failed because the production host could not
+talk to `web.archive.org`, and this was established rather than assumed:
+
+| probe | production | staging |
+|---|---|---|
+| scanner's CDX index query | timed out through the full retry budget | — |
+| `list_captures` (a different code path, different retry budget) | `ARCHIVE_UNAVAILABLE` | **`OK`, archive answered** |
+| the same query from a laptop | — | 2–22 s, HTTP 200 |
+
+The host's own log names the error class, which no amount of reading the response could:
+
+```
+transient failure (ECONNABORTED) — attempt 1/4
+transient failure (ECONNABORTED) — attempt 2/4
+transient failure (ECONNREFUSED) — attempt 3/4
+transient failure (ECONNABORTED) — attempt 4/4
+CDX fetch failed: timeout of 60000ms exceeded
+```
+
+A refused connection alongside repeated timeouts, while the same third-party service answers a laptop
+in seconds and answers the sibling service in the same project, points at the production egress
+address being treated differently by the archive. That last step is an inference; everything above it
+is measured.
+
+### Why the source address is the only surviving explanation
+
+"Same URL, same User-Agent" is not the same call, and the difference had to be enumerated rather than
+waved at. What differs between a working laptop call and the failing host call is the client library
+and the origin. The client can be ruled out on first principles: `ECONNREFUSED`, and the timeout
+axios reports as `ECONNABORTED`, are **transport-layer** outcomes that occur at TCP connect, before a
+request line or a single header is written. No query parameter, `Accept-Encoding`, or User-Agent can
+cause them.
+
+That leaves address selection and routing, and both were checked rather than assumed:
+
+| candidate | finding |
+|---|---|
+| different destination (IPv6 vs IPv4) | `web.archive.org` publishes **one A record and no AAAA** — both clients reach the same address |
+| an outbound proxy honoured by axios but not by curl | **no proxy variable exists in either environment**, nor in the calling shell |
+| configuration drift between the environments | four keys differ, none archive-related |
+
+With those eliminated, the source address is the only variable left — and the sibling service in the
+same project, running the same code, is served normally at the same moment. Eliminating the
+alternatives is what turns this from a plausible story into the remaining one.
+
+**Environment variables were compared first and cleared the ground**: the two backends differ by four
+keys, none of them a proxy, an egress route, or anything archive-related. So this is not
+configuration drift, which is what it would most plausibly have been.
+
+### What this costs, and what it does not
+
+Nothing is corrupt. One `TrackedUrl` exists at `FAILED` with no captures and no diffs beneath it, and
+the `FAILED` state is the resettable one by design — the Step 5 fix exists precisely so a transient
+archive failure cannot brick a page permanently. Re-running the scan is the correct and complete
+recovery **once the host can reach the archive**.
+
+What it does mean is that **Phase 2 cannot be completed from this host today**, and that is a
+property of the production environment rather than of the work. Retrying on a schedule is reasonable;
+routing archive traffic through an egress the archive will serve is the real fix, and it is
+infrastructure, not code.
+
+### The prediction stands unresolved
+
+FINDING 88 predicted 84 stored captures with one byte-identical pair. Nothing has tested it. That is
+the honest state of it — recorded so the next run measures against a prediction made before the run,
+which is the whole point of having written it down.
+
+## FINDING 92 — the interface calls a scan stalled after 35 seconds of working correctly
+
+The scan page watches the job's `updatedAt` and shows *the scan appears to have stalled*, with a
+resume button, once 35 seconds pass without a change.
+
+The index fetch that opens every scan writes nothing for up to seven minutes. `totalSnapshots` is
+persisted only after the archive returns the capture list, and that single request carries five
+attempts and two minutes of back-off. So the first thing a researcher sees, on every fresh scan of a
+page with real history, is a stall warning describing a scan that is working exactly as designed.
+
+The offered remedy does nothing either. Resume posts a fresh scan request, which reaches the
+concurrent-run guard and returns immediately, because a run genuinely is in flight. The button is
+therefore a no-op presented at the moment a person is most likely to press it.
+
+The threshold is right for the loop it was written against: once captures are processing, a write
+lands every six to ten seconds and 35 seconds of silence really is wrong. It is applied to a phase
+whose correct silence budget is twelve times longer. **One threshold spanning two phases with
+different definitions of normal** — the same shape as FINDING 86, now seen a seventh time.
+
+Worth separating the two phases explicitly rather than raising the number: a scan waiting on the
+index and a scan stuck mid-loop are different states, and the interface currently has no way to say
+which one it is. That is also what made `0/0` unreadable — it cannot distinguish *the archive holds
+no captures* from *the list has not arrived yet*, and those demand opposite reactions.
+
+## FINDING 93 — the scan job is control state and progress report at once, and loses the record
+
+There is one `WaybackScrapeJob` per tracked page, updated in place as the scan walks forward through
+CDX batches. That row carries the state the scan needs to continue — where the next batch starts, and
+whether another batch exists — and it is also the only place a person can see what the scan has done.
+Those two roles want opposite lifetimes. Control state is correctly transient. A work record must
+accumulate.
+
+Both symptoms were predicted from the code before the scan ran, and both were then observed:
+
+| symptom | what it does |
+|---|---|
+| `totalSnapshots` stores a sentinel of `MAX_SNAPSHOTS + 1` whenever more batches exist | the progress denominator is not a count; a batch of 43 displays as `43/51` and can never fill |
+| the row is overwritten when the next batch begins | the earlier batch's total is gone — a finished two-batch scan reports only the last batch's numbers |
+
+The sentinel is right for what it was written for. `computeNextFromDate` must see the raw CDX row
+count rather than the post-dedup count, or a batch that dedups below the threshold would end the scan
+early while history remained. The bug is not the sentinel; it is that the same field is read by a
+progress bar, where a count is what the word means.
+
+The interface makes the second symptom conspicuous. It renders rows labelled *batch 1*, *batch 2* by
+iterating the job list — a history the one-row model cannot produce, so it always renders exactly
+one.
+
+**The consequence that matters for verification: a scan cannot attest to its own output.** After the
+final batch, nothing in the job says how many captures were processed in total. The count has to be
+recomputed from the stored captures instead — which is what the deterministic capture list does, and
+is the reason it, rather than the scan's own report, is the instrument this replay verifies against.
+
+## Step 38 results — what the production scan actually produced
+
+The scan completed on its second attempt, after the host was given a working route to the archive.
+
+| measure | production | staging | note |
+|---|---|---|---|
+| captures stored | **83** | 83 | identical |
+| diffs | **81** | 81 | identical |
+| diffs carrying a change | 11 | — | 70 of 81 are empty |
+| diffs classified significant | 6 | — | awaiting review, nothing promoted |
+| captures anchored | **12** | 83 | see FINDING 94 |
+| batches | 2 | — | one invocation, cap is 5 |
+
+**Production reproduced staging's numbers exactly**, which is the outcome the replay wanted and had no
+way to guarantee. The pre-scan prediction of 84 was wrong by one, and the honest reading is that the
+batching simulation was right about the mechanism and off by one on the boundary; 81 diffs is
+arithmetically consistent with 83 captures across two batches, so the measurement is coherent with
+itself.
+
+**FINDING 88 is confirmed in production data.** The two captures at `20220628073145` and
+`20220703090600` are both stored, hold the same content hash, and sit on opposite sides of the batch
+boundary at `20220703000204` — predicted from the code before the scan, then observed.
+
+### 70 of 81 diffs are empty, and that is the more interesting number
+
+An empty diff means two consecutive captures extracted to identical text. The archive holds many
+captures of this page that differ only in material the extraction discards, so the page has roughly a
+dozen distinct textual states across four years and eighty-three captures.
+
+This is why a diff row is written for every processed pair rather than only for the interesting ones:
+*we looked here and nothing changed* is a finding a researcher needs, and it is the majority finding
+on this page.
+
+## FINDING 94 — the repair for unanchored captures exists, and a researcher cannot reach it
+
+Only 12 of 83 captures carry a transaction hash. That is not a failure: the other 71 are twins of
+already-anchored text, and the registry correctly refuses to spend a transaction registering a hash it
+already holds. The fact each of them asserts *is* on-chain. What is missing is the pointer from the
+row to the transaction that proves it.
+
+A service exists to fix exactly this, and it is careful work — idempotent, resumable, and carrying a
+`copiedFromTwin` path that repairs a duplicate by copying its twin's transaction instead of spending a
+new one. It reports failures with reasons rather than a bare count, deliberately, because a swallowed
+error leaving only a number is the defect it was written to repair.
+
+**It is reachable only as a local shell script.** So the timeline tool, on detecting the condition,
+advises the researcher to run `npm run forensics:anchor-snapshots` — a command that requires a
+checkout, a toolchain, and production database credentials on a laptop. The project's own deployment
+rule says to prefer changing the pipeline over acquiring that credential, and the session protocol
+says all mutation goes through MCP.
+
+This is FINDING 7 again, in a new place: **a tool telling a researcher to leave the workflow in order
+to finish the workflow.** A capability that can only be exercised through a side channel is not part
+of the researcher's path, however well written it is. It gets built as an MCP tool.
+
+### The prediction was off by one, and the one is explainable
+
+Read-only SQL against the production database, plus a direct query to the archive, reconciled the
+whole run with nothing left over:
+
+| step | count |
+|---|---|
+| CDX rows under `collapse=digest` | 95 |
+| after the scanner's per-batch dedup | 84 candidates |
+| less the capture at `20240829085520`, which the archive holds as a **404** | **83 stored** |
+| less one boundary per batch, two batches | **81 diffs** |
+| distinct texts among the 83 | **12** |
+
+The pre-scan simulation predicted 84 because it deduplicated by digest, and the scanner's index query
+asks only for `timestamp,digest` — it never sees a status code, so it attempts the capture and skips
+it when the fetch returns 404. That is correct behaviour twice over: a 404 is classified
+non-transient, so it is not retried, because the archive not holding a capture is an answer rather
+than a failure.
+
+Staging holds 83 and 81 for the same reason, having skipped the same capture. **Two environments,
+scanned three days apart, agreeing to the row.**
+
+The lesson is narrow and worth keeping: a model of a pipeline predicts what the pipeline *asks for*,
+not what it *receives*. The simulation modelled the query and not the responses, so it was right about
+the mechanism and wrong by exactly the number of captures the archive answers differently.
+
+## FINDING 95 — the anchoring metric counts rows, but the fact belongs to the text
+
+`unanchoredSnapshots` reported **71 of 83**, with a warning ending: *the underlying capture is not
+independently timestamped*. Measured against the database, that clause is false for every one of the
+71.
+
+| question | answer |
+|---|---|
+| capture rows with no transaction of their own | 71 |
+| of those, rows whose text IS on-chain under a twin | **71** |
+| distinct texts with no anchored representative | **0** |
+
+What is anchored is a content hash — a property of the **text**. Eighty-three captures of this page
+hold twelve distinct texts, and all twelve are registered. A row without its own transaction is not an
+unanchored fact; it is a second observation of a fact already published. The registry refuses to spend
+a transaction re-registering a hash it already holds, which is the correct behaviour being reported
+as a deficiency.
+
+On an evidence platform this is worse than cosmetic. The number invites one of two wrong moves:
+running a repair that is not needed, or doubting evidence whose chain of custody is in fact complete.
+The metric should count distinct texts lacking an anchored representative — which would read **0** —
+and the warning should describe missing *pointers*, not missing *timestamps*.
+
+Mechanism right, summary wrong: the fourth instance recorded in this playbook, and the summary is
+again the part that a person acts on.
+
+### What this means for FINDING 94
+
+The repair tool is still worth building, and the argument for it is unchanged: a capability reachable
+only through a shell script with production credentials is not on the researcher's path. But its
+**urgency is nil**. It fills in pointers; it does not restore custody, because custody was never
+broken. Recorded because the previous entry in this playbook implied otherwise, and acting on that
+implication would have been the unnecessary repair this finding warns about.
+
+## FINDING 96 — two state-changing REST endpoints took no credentials at all
+
+Found while removing a button, which is the only reason they were found. Neither was reachable from
+MCP, neither was covered by a test, and the whole suite passed identically before and after they were
+removed.
+
+### Promotion, by anyone who could do arithmetic
+
+`POST /api/evidence/promote` accepted a `fileHash` and nothing else. It wrote CONFIRMED, registered
+the record on-chain, and made it publicly searchable — the step where a person accepts a machine's
+classification as a legal claim about a named public official.
+
+The hash is not a secret. A forensic record's identity is derived from the page URL, both archive
+timestamps and both capture hashes, and **this same API publishes every one of them**. The derivation
+was confirmed rather than argued: taking the two capture hashes straight from the public capture
+list and hashing them in the documented order reproduced a real pending record's identifier exactly.
+
+So the review gate could be bypassed by an anonymous request built entirely from public data.
+
+### Deletion, by anyone who could read a list
+
+`DELETE /api/forensics/tracked/:id` cancelled any running scan, unlinked the evidence, and removed
+every diff and every archived capture beneath a tracked page. It required no credentials, and the ids
+it needs are published by `GET /api/forensics/tracked`.
+
+The archived captures are the irreplaceable half of this system — their whole purpose is to survive
+the Internet Archive losing the page. On the day this was found, that endpoint would have destroyed
+eighty-three captures and eighty-one diffs, against a rule this project states in absolute terms:
+data is never lost unintentionally, and never on production.
+
+### Both removed rather than gated
+
+Their only client was a button in the researcher UI, and the standing rule is that data enters this
+system through MCP, where the caller is an authenticated, approved researcher. Adding a gate would
+have preserved a second path to the same act for no benefit. Removing a destructive endpoint is also
+consistent with the cleanup protocol: erasing a scanned corpus is a destructive database operation,
+and those get their own session with the scope written down first — not a button beside "view
+timeline".
+
+### The guard, because the tests were no help
+
+Every test passed before the change and after it, so the suite had no opinion on the property. A
+source scan now enumerates every `router.post/put/patch/delete` in the codebase, single-line and
+multi-line, and fails on any that lacks a gate and is not on an explicit allowlist with a stated
+reason.
+
+Two things make it a guard rather than decoration:
+
+- **It rejects rate limiters as authorization.** `aiCostLimiter` and `scanLimiter` bound spend, not
+  identity. Reading them as gates would have marked most of this API authorized while nothing checked
+  a caller.
+- **It was negative-tested against a real route file**, not only against a fixture. An ungated route
+  added to `forensicsRoutes.ts` failed the suite by name; the change was then reverted.
+
+The allowlist is the useful artifact. Writing it forced the distinction the codebase had never
+stated: a write that **accepts a submission** may be anonymous — that is what a public evidence
+platform is for, and those land as PENDING_REVIEW — while a write that **accepts a submission as
+true** may not. It also surfaced, and deliberately records rather than hides, that thesis authoring
+is ungated while thesis publication is gated. That inconsistency is now written where the next person
+to touch the list will read it.
+
+## FINDING 97 — the interface asserted a review that had not happened
+
+A diff card showed a green "promoted to evidence" chip for a record still awaiting review, and the
+evidence detail page did the same, from a line whose comment read: *this evidence record IS the
+promotion of this diff — always "already promoted"*.
+
+That was true when it was written, because every Evidence row was created by promoting something.
+FINDING 9 then split the two: scans stopped promoting their own findings and began writing
+PENDING_REVIEW candidates instead. The comment was never revisited, so the existence of a row went on
+meaning "promoted" in the interface long after it had stopped meaning that in the data.
+
+The backend had already met this bug once. The route that lists diffs filters unreviewed records out
+for public viewers, and its comment gives the second reason plainly — an unreviewed record marks its
+diff as promoted in the UI, a claim the review has not yet made. **The fix filtered the record away
+from the people who do not decide, and left the false claim in front of the one person who does.** A
+researcher opening a finding to review it was told it had already been accepted.
+
+Fixed by sending `status` and rendering it: amber and *awaiting review*, or green and *promoted*.
+Nothing is inferred from existence any more.
+
+The shape is the one this playbook keeps recording — mechanism right, summary wrong. The rows were
+correct throughout; only the sentence over them was false, and the sentence is what a reviewer acts
+on.
