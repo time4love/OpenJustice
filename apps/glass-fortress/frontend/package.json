@@ -4,9 +4,10 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "npm run check:guide && next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "check:guide": "node scripts/check-guide-content.mjs"
   },
   "dependencies": {
     "@openjustice/document-vault": "*",

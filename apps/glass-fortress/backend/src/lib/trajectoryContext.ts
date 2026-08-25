@@ -56,8 +56,19 @@ export interface TrajectoryContext {
   claimCount: number;
   transitions: number;
   finalState: 'PRESENT' | 'REMOVED';
-  /** The flips only, each with the archived snapshot a reader can open. */
-  changes: { snapshotDate: string; present: boolean; snapshotUrl: string }[];
+  /**
+   * The flips only, each with the archived snapshot a reader can open AND how
+   * long the state it starts then held. The durations are carried, not left to
+   * be inferred: see `ChangeSpan` for why a rendered date range was not enough.
+   */
+  changes: {
+    snapshotDate: string;
+    present: boolean;
+    snapshotUrl: string;
+    captures: number;
+    days: number | null;
+    openEnded: boolean;
+  }[];
   claims: string[];
   /**
    * Evidence in this corpus that contains these exact claims, and how many.
@@ -465,6 +476,9 @@ export async function loadTrajectoryContext(
           snapshotDate: c.snapshotDate,
           present: c.present,
           snapshotUrl: c.snapshotUrl,
+          captures: c.captures,
+          days: c.days,
+          openEnded: c.openEnded,
         })),
         // Cited members first. The excerpt is capped, and quoting four arbitrary
         // members of a ten-claim group can quote none of the three the thesis
@@ -529,8 +543,11 @@ export function formatTrajectoryContext(
   const anyCitations = citedClaims > 0 || citedNotResolved.length > 0;
 
   const blocks = trajectories.map((c) => {
+    // Each state carries its own extent. Rendering `date=present → date=removed`
+    // and expecting the model to subtract is what let a 4-day gap and a 44-day
+    // gap read as the same event through four consecutive critiques.
     const timeline = c.changes
-      .map((ch) => `${ch.snapshotDate}=${ch.present ? t.present : t.removed}`)
+      .map((ch) => `${ch.snapshotDate} ${ch.present ? t.present : t.removed} (${t.span(ch)})`)
       .join(' → ');
     const overlap =
       c.overlappingEvidence.length > 0
@@ -605,7 +622,11 @@ const STRINGS = {
       'הסיכום בדבר נוכחות היא השגויה. אין נובע מכך שפרשנותו שגויה.\n' +
       'מסלול אינו יודע דבר על מיקום הטקסט בעמוד, על בולטותו, או על השאלה אם הטענה\n' +
       'הוצגה לקורא — טקסט בתפריט ניווט או בכותרת תחתונה ייקרא "קיים" כמו כל טקסט אחר.\n' +
-      'אל תתאר טענה כ"לא הוחזרה" אם מסלול מראה שהוחזרה.',
+      'אל תתאר טענה כ"לא הוחזרה" אם מסלול מראה שהוחזרה.\n' +
+      'מספר התצלומים בכל מקטע הוא ספירה ישירה. מספר הימים נמדד מהתצלום הראשון שבו נצפה\n' +
+      'המצב ועד לתצלום שסיים אותו — או עד לתצלום האחרון שנבדק. השינוי עצמו אירע בתוך\n' +
+      'החלון הזה, ולכן זהו חסם עליון ולא משך מדויק. היעדרות של תצלום אחד והיעדרות של\n' +
+      'תשעה תצלומים אינן אותה תופעה, וההבחנה הזו נתונה כאן ואינה טעונה חישוב.',
     citationRule: (claims: number, groups: number) =>
       `\nהמסמך מצטט ${String(claims)} טענות ${groups === 1 ? 'במסלול אחד' : `ב-${String(groups)} מסלולים`}. מסלול המסומן "מצוטט" הוא מה\n` +
       'שהתזה נשענת עליו בפועל; מסלול שאינו מצוטט מופיע כאן משום שהוא באותו דף, והוא\n' +
@@ -632,6 +653,16 @@ const STRINGS = {
     claims: 'טענות',
     present: 'קיים',
     removed: 'הוסר',
+    span: (ch: { captures: number; days: number | null; openEnded: boolean }) => {
+      const captures = ch.captures === 1 ? 'תצלום אחד' : `${String(ch.captures)} תצלומים`;
+      if (ch.days === null) return captures;
+      const days = ch.days === 1 ? 'יום אחד' : `${String(ch.days)} ימים`;
+      // "עד" — the window is bounded by the capture that ended the state, or by
+      // the last one examined. The change itself happened somewhere inside it.
+      return ch.openEnded
+        ? `${captures}, ${days} עד התצלום האחרון, ללא היפוך נוסף`
+        : `${captures}, ${days} עד ההיפוך הבא`;
+    },
     overlap: 'טענות זהות מופיעות בראיות',
     sharedItems: (n: number) => `${n} פריטים משותפים`,
     omitted: (n: number) =>
@@ -661,7 +692,12 @@ const STRINGS = {
       'A trajectory knows nothing about position, prominence, or whether a claim was being made to\n' +
       'the reader: text in a nav menu or a footer reads as "present" like any other text.\n' +
       'Never state that a claim was "never restored" or "permanently deleted" when a trajectory\n' +
-      'shows otherwise.',
+      'shows otherwise.\n' +
+      'A span\'s capture count is a direct count. Its day count is measured from the capture that\n' +
+      'first shows the state to the capture that ends it — or to the last capture examined. The\n' +
+      'change itself happened somewhere inside that window, so it is an upper bound, not an exact\n' +
+      'duration. A one-capture absence and a nine-capture absence are not the same event, and the\n' +
+      'distinction is given here rather than left to be computed.',
     citationRule: (claims: number, groups: number) =>
       `\nTHIS DOCUMENT CITES ${String(claims)} claims across ${String(groups)} trajector${groups === 1 ? 'y' : 'ies'}.\n` +
       'A trajectory marked CITED is what the thesis actually argues from; an uncited one is\n' +
@@ -692,6 +728,16 @@ const STRINGS = {
     claims: 'Claims',
     present: 'present',
     removed: 'removed',
+    span: (ch: { captures: number; days: number | null; openEnded: boolean }) => {
+      const captures = `${String(ch.captures)} capture${ch.captures === 1 ? '' : 's'}`;
+      if (ch.days === null) return captures;
+      const days = `${String(ch.days)} day${ch.days === 1 ? '' : 's'}`;
+      // "until" — the window is bounded by the capture that ended the state, or
+      // by the last one examined. The change itself falls somewhere inside it.
+      return ch.openEnded
+        ? `${captures}, ${days} to the last capture, no further flip`
+        : `${captures}, ${days} until the next flip`;
+    },
     overlap: 'Identical claims appear in evidence',
     sharedItems: (n: number) => `${n} shared item${n === 1 ? '' : 's'}`,
     omitted: (n: number) =>

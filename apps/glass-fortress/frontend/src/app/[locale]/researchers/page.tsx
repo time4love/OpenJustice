@@ -2,12 +2,12 @@
 
 import { useTranslations, useLocale } from 'next-intl';
 import { SiteHeader } from '@/components/SiteHeader';
+import { MCP_SERVER_URL } from '@/lib/api';
+import { CopyableCode } from '@/components/CopyableCode';
 
 // ---------------------------------------------------------------------------
 // MCP tool list — descriptions stored here since they need locale handling
 // ---------------------------------------------------------------------------
-
-const MCP_SERVER_URL = 'https://glass-fortress-backend-production.up.railway.app/api/mcp';
 
 const TOOLS = [
   { name: 'suggest_thesis',               en: 'Propose a legal thesis from evidence',                                he: 'הצע תזה משפטית מהראיות' },
@@ -79,12 +79,7 @@ export default function ResearchersPage() {
 
           <div className="mb-8">
             <p className="text-xs text-slate-400 uppercase tracking-wide mb-1.5">{t('connectServerLabel')}</p>
-            <code
-              dir="ltr"
-              className="block bg-slate-900 text-emerald-400 text-xs font-mono rounded-lg px-3 py-2.5 overflow-x-auto text-left"
-            >
-              {MCP_SERVER_URL}
-            </code>
+            <CopyableCode value={MCP_SERVER_URL} />
           </div>
 
           <div className="space-y-6">

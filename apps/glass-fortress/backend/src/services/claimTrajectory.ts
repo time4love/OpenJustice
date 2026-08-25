@@ -190,8 +190,8 @@ export function buildTrajectory(
 export interface TrajectoryGroup {
   /** SHA-256 of the presence vector. Identical movement gives an identical id. */
   patternHash: string;
-  /** The shared shape, as the flips only. */
-  changes: Observation[];
+  /** The shared shape: the flips, each carrying how long its state held. */
+  changes: ChangeSpan[];
   transitions: number;
   firstSeen: string;
   lastSeen: string;
@@ -515,9 +515,68 @@ async function persistComputation(
   });
 }
 
-/** The flips only — the unchanged stretches between them are where nothing happened. */
-export function changesOnly(observations: readonly Observation[]): Observation[] {
-  return observations.filter((o, i) => i === 0 || o.present !== observations[i - 1].present);
+/**
+ * A flip, plus how long the state it starts then held.
+ *
+ * The flips alone were not enough. Rendered as bare dates, a one-capture absence
+ * and a nine-capture absence are the same two arrows, and four consecutive
+ * critiques treated a 4-day gap and a 44-day gap as one phenomenon — the
+ * distinction that answers the strongest counter-argument in the corpus was one
+ * subtraction away, in data already in front of the model, and no agent ever did
+ * it. Arithmetic a reader must perform is arithmetic that does not happen.
+ */
+export interface ChangeSpan extends Observation {
+  /** Consecutive captures observed in this state, counted from this one. */
+  captures: number;
+  /**
+   * Days from this capture to the one that ENDS the state — the first observed
+   * to hold the opposite value — or to the last capture examined when nothing
+   * ends it. The true change point lies inside that window, never outside it,
+   * which is why this is a bound and not a duration.
+   *
+   * `null` when a capture date cannot be parsed. A missing figure degrades the
+   * block to the capture count; a `NaN` would be a number an agent reasons with.
+   */
+  days: number | null;
+  /** No later capture holds the opposite value: the state is still running. */
+  openEnded: boolean;
+}
+
+/** Whole days between two `YYYY-MM-DD` capture dates, or null if either is not one. */
+function daysBetween(from: string, to: string): number | null {
+  const a = Date.parse(`${from}T00:00:00Z`);
+  const b = Date.parse(`${to}T00:00:00Z`);
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
+  return Math.round((b - a) / 86_400_000);
+}
+
+/**
+ * The flips only — the unchanged stretches between them are where nothing
+ * happened, but how LONG nothing happened for is the finding.
+ */
+export function changeSpans(observations: readonly Observation[]): ChangeSpan[] {
+  const spans: ChangeSpan[] = [];
+
+  for (let i = 0; i < observations.length; i++) {
+    const start = observations[i];
+    if (i > 0 && start.present === observations[i - 1].present) continue;
+
+    let end = i + 1;
+    while (end < observations.length && observations[end].present === start.present) end++;
+
+    // Bounded by the capture that ends the state, or by the last one examined.
+    const openEnded = end === observations.length;
+    const boundary = observations[openEnded ? end - 1 : end];
+
+    spans.push({
+      ...start,
+      captures: end - i,
+      days: daysBetween(start.snapshotDate, boundary.snapshotDate),
+      openEnded,
+    });
+  }
+
+  return spans;
 }
 
 /**
@@ -556,7 +615,7 @@ export function groupByMovement(trajectories: readonly Trajectory[]): Trajectory
 
   const groups: TrajectoryGroup[] = [...byPattern.entries()].map(([patternHash, members]) => ({
     patternHash,
-    changes: changesOnly(members[0].observations),
+    changes: changeSpans(members[0].observations),
     transitions: members[0].transitions,
     firstSeen: members[0].firstSeen,
     lastSeen: members[0].lastSeen,

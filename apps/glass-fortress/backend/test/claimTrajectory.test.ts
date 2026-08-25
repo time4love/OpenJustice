@@ -32,7 +32,7 @@ import {
   normaliseClaim,
   claimHash,
 } from '../src/services/claimTrajectory';
-import { groupByMovement, presencePatternHash, type Observation } from '../src/services/claimTrajectory';
+import { changeSpans, groupByMovement, presencePatternHash, type Observation } from '../src/services/claimTrajectory';
 import { getClaimTrajectoriesHandler } from '../src/mcp/tools/getClaimTrajectories';
 
 const CLAIM =
@@ -667,5 +667,76 @@ describe('stored patternHash', () => {
     const alone = written.find((w) => w.claimText === ALONE)?.patternHash;
     expect(new Set(movers).size).toBe(1);
     expect(alone).not.toBe(movers[0]);
+  });
+});
+
+describe('changeSpans — the arithmetic the block used to leave to the reader', () => {
+  const obs = (dates: string[], present: boolean[]): Observation[] =>
+    dates.map((snapshotDate, i) => ({
+      snapshotDate,
+      waybackTimestamp: String(i),
+      snapshotUrl: `https://web.archive.org/${snapshotDate}`,
+      present: present[i] as boolean,
+    }));
+
+  it('is FINDING 77: a one-capture absence and a multi-capture absence stop looking alike', () => {
+    // The real shape from the corpus: a short May gap and a long August gap. As
+    // bare flip dates these are four identical arrows, and four consecutive
+    // critiques read them as one phenomenon.
+    const spans = changeSpans(
+      obs(
+        ['2022-04-01', '2022-04-27', '2022-05-13', '2022-05-17', '2022-06-01', '2022-08-05', '2022-08-20', '2022-09-18'],
+        [true, true, false, true, true, false, false, false],
+      ),
+    );
+
+    const absences = spans.filter((s) => !s.present);
+    expect(absences).toHaveLength(2);
+    expect(absences[0]).toMatchObject({ snapshotDate: '2022-05-13', captures: 1, days: 4 });
+    expect(absences[1]).toMatchObject({ snapshotDate: '2022-08-05', captures: 3, days: 44 });
+    // The whole point: the two are distinguishable without subtracting anything.
+    expect(absences[0].captures).not.toBe(absences[1].captures);
+    expect(absences[0].days).not.toBe(absences[1].days);
+  });
+
+  it('counts consecutive captures in the state, not flips', () => {
+    const spans = changeSpans(
+      obs(['2022-01-01', '2022-01-11', '2022-01-21', '2022-02-01'], [true, true, true, false]),
+    );
+    expect(spans).toHaveLength(2);
+    expect(spans[0]).toMatchObject({ present: true, captures: 3, days: 31, openEnded: false });
+  });
+
+  it('measures the final state to the last capture and marks it open-ended', () => {
+    const spans = changeSpans(obs(['2022-01-01', '2022-01-11', '2022-02-01'], [true, false, false]));
+    const last = spans[spans.length - 1];
+    // 2022-01-11 → 2022-02-01. Nothing ends this state, so the bound is the last
+    // capture examined — and it must SAY so, or a reader reads a closed interval.
+    expect(last).toMatchObject({ present: false, captures: 2, days: 21, openEnded: true });
+  });
+
+  it('gives a lone capture an open-ended span of zero days rather than no span', () => {
+    const spans = changeSpans(obs(['2022-01-01'], [true]));
+    expect(spans).toEqual([
+      expect.objectContaining({ captures: 1, days: 0, openEnded: true }),
+    ]);
+  });
+
+  it('returns nothing for no observations', () => {
+    expect(changeSpans([])).toEqual([]);
+  });
+
+  it('reports days as null rather than NaN when a capture date is not a date', () => {
+    // A NaN would render as "NaN days" into a prompt an agent then reasons with.
+    // Degrading to the capture count omits a figure; it never states a false one.
+    const spans = changeSpans(obs(['not-a-date', '2022-01-11'], [true, false]));
+    expect(spans[0].days).toBeNull();
+    expect(spans[0].captures).toBe(1);
+  });
+
+  it('keeps the observation fields, so a reader can still open the snapshot', () => {
+    const spans = changeSpans(obs(['2022-01-01', '2022-01-11'], [true, false]));
+    expect(spans[0].snapshotUrl).toContain('web.archive.org');
+    expect(spans[0].waybackTimestamp).toBe('0');
   });
 });

@@ -105,9 +105,15 @@ jest.mock('../src/services/DevilsAdvocateAgent', () => ({
 // ESM-only in its dependency chain and unparseable by ts-jest, the same reason
 // every scraper test stubs it. Nothing here exercises extraction; what the real
 // extractor does is measured in test/extraction/ against a frozen capture.
+// The stub echoes the HTML it was given back as the document body, so
+// extractArticleText's fallback path yields real text. It used to return an
+// empty body, which made every extraction produce '' — harmless while the URL
+// intake did its own tag-stripping, and an immediate "content too short" once
+// that path moved onto the shared extractor. A stub that silently returns
+// nothing is not a cheaper extractor, it is a different code path.
 jest.mock('jsdom', () => ({
-  JSDOM: jest.fn().mockImplementation(() => ({
-    window: { document: { body: { innerHTML: '' } } },
+  JSDOM: jest.fn().mockImplementation((html: string) => ({
+    window: { document: { body: { innerHTML: html ?? '' } } },
   })),
 }));
 jest.mock('@mozilla/readability', () => ({

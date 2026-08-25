@@ -1,6 +1,5 @@
 import axios from 'axios';
-import { JSDOM } from 'jsdom';
-import { Readability } from '@mozilla/readability';
+import { extractArticle } from '../lib/archiveText';
 
 export interface ScrapedPage {
   title: string;
@@ -70,11 +69,15 @@ export async function scrapeUrl(url: string): Promise<ScrapedPage> {
     throw err;
   }
 
-  const dom = new JSDOM(html, { url: fetchUrl });
-  const reader = new Readability(dom.window.document);
-  const article = reader.parse();
+  // Extraction is NOT done here. This module used to run its own
+  // JSDOM + Readability pass and return `article.textContent`, which is a
+  // different string from the one the archive path stores as
+  // UrlSnapshot.fullText — so the same URL produced different text, and
+  // therefore a different evidence identity, depending on whether it arrived
+  // through the website or through MCP. One extractor, in one place.
+  const article = extractArticle(html, fetchUrl);
 
-  if (!article?.textContent?.trim()) {
+  if (!article.text.trim()) {
     throw new Error(
       'Could not extract readable content from this URL. ' +
         'The page may require JavaScript, login, or contain no article text.',
@@ -82,8 +85,8 @@ export async function scrapeUrl(url: string): Promise<ScrapedPage> {
   }
 
   return {
-    title: article.title ?? '',
-    textContent: article.textContent.trim(),
+    title: article.title,
+    textContent: article.text,
     url: fetchUrl,
   };
 }
