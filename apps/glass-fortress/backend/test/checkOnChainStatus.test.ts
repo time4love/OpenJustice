@@ -8,7 +8,10 @@
 // ---------------------------------------------------------------------------
 
 jest.mock('../src/lib/prisma', () => ({
-  prisma: { evidence: { findUnique: jest.fn() } },
+  prisma: {
+    evidence: { findUnique: jest.fn() },
+    urlSnapshot: { findMany: jest.fn() },
+  },
 }));
 
 const mockIsHashRegistered = jest.fn();
@@ -30,14 +33,28 @@ import { checkOnChainStatusHandler } from '../src/mcp/tools/checkOnChainStatus';
 
 const HASH = `0x${'a'.repeat(64)}`;
 const TX = `0x${'b'.repeat(64)}`;
+const PAGE = 'https://corona.health.gov.il/vaccine-for-covid/';
 
 const findUnique = prisma.evidence.findUnique as jest.Mock;
+const findSnapshots = prisma.urlSnapshot.findMany as jest.Mock;
+
+/** One archived capture holding the queried text. */
+function capture(timestamp: string, txHash: string | null) {
+  return { waybackTimestamp: timestamp, onChainTxHash: txHash, trackedUrl: { url: PAGE } };
+}
 
 interface Verdict {
   verdict: string;
   safeToPromote: boolean;
   consistent: boolean;
   database: { inVault: boolean; status: string | null; onChainTxHash: string | null };
+  snapshot?: {
+    captures: number;
+    url: string;
+    firstCapture: string;
+    lastCapture: string;
+    onChainTxHash: string | null;
+  };
   chain: {
     registered: boolean;
     registryEvidenceId: string | null;
@@ -51,9 +68,10 @@ interface Verdict {
 async function run(
   record: { id: string; status: string; onChainTxHash: string | null } | null,
   registered: boolean,
-  opts?: { recoverTxHash?: boolean },
+  opts?: { recoverTxHash?: boolean; snapshots?: ReturnType<typeof capture>[] },
 ): Promise<Verdict> {
   findUnique.mockResolvedValue(record);
+  findSnapshots.mockResolvedValue(opts?.snapshots ?? []);
   mockIsHashRegistered.mockResolvedValue({ registered, evidenceId: BigInt(7) });
   return JSON.parse(await checkOnChainStatusHandler({ fileHash: HASH, ...opts })) as Verdict;
 }
@@ -61,6 +79,7 @@ async function run(
 beforeEach(() => {
   jest.clearAllMocks();
   mockConstructor.mockReturnValue(undefined);
+  findSnapshots.mockResolvedValue([]);
 });
 
 describe('check_on_chain_status', () => {
@@ -128,8 +147,10 @@ describe('check_on_chain_status', () => {
   // the boolean summarising it, which is what a caller actually gates on, said
   // the opposite.
   // ---------------------------------------------------------------------------
-  it('ORPHANED_ANCHOR — registered with no record behind it, never consistent', async () => {
-    const r = await run(null, true);
+  it('ORPHANED_ANCHOR — registered with no record AND no capture behind it, never consistent', async () => {
+    // The genuine orphan: nothing in either table can produce what was anchored.
+    // Distinct from a snapshot hash, which also has no Evidence row.
+    const r = await run(null, true, { snapshots: [] });
 
     expect(r.verdict).toBe('ORPHANED_ANCHOR');
     expect(r.database.inVault).toBe(false);
@@ -221,5 +242,93 @@ describe('check_on_chain_status', () => {
 
     expect(r.error).toBe('CHAIN_UNAVAILABLE');
     expect(r.verdict).toBeUndefined();
+  });
+  // -------------------------------------------------------------------------
+  // Archived captures are not orphans.
+  //
+  // The verdict branched on `inVault`, which means an Evidence row and nothing
+  // else — so every correctly-anchored capture was reported as a data integrity
+  // incident telling the operator to "investigate before registering anything
+  // else against this hash". On production that was 12 of 19 registrations, all
+  // of them working exactly as designed.
+  //
+  // Found on 2026-08-25 by a researcher running the tutorial, who asked this
+  // tool about a snapshot hash and was told their chain of custody was broken.
+  // 1473 tests passed while it was true.
+  // -------------------------------------------------------------------------
+  describe('snapshot hashes', () => {
+    it('SNAPSHOT_ANCHOR — an anchored capture is consistent, not an orphan', async () => {
+      const r = await run(null, true, {
+        snapshots: [capture('20220306141507', TX), capture('20220529034526', null)],
+      });
+
+      expect(r.verdict).toBe('SNAPSHOT_ANCHOR');
+      expect(r.consistent).toBe(true);
+      expect(r.safeToPromote).toBe(false);
+      // The wording is the whole defect: the previous explanation instructed the
+      // reader to investigate an incident that had not happened.
+      expect(r.explanation).not.toMatch(/investigate/i);
+      expect(r.explanation).toMatch(/nothing is wrong/i);
+    });
+
+    it('surfaces the transaction the Evidence lookup cannot see', async () => {
+      // `database.onChainTxHash: null` beside a `list_captures` row showing a
+      // transaction reads as one system contradicting itself. It is two tables
+      // being asked one question.
+      const r = await run(null, true, {
+        snapshots: [capture('20220306141507', TX), capture('20220529034526', null)],
+      });
+
+      expect(r.database.onChainTxHash).toBeNull();
+      expect(r.snapshot?.onChainTxHash).toBe(TX);
+      expect(r.snapshot?.captures).toBe(2);
+      expect(r.snapshot?.url).toBe(PAGE);
+      expect(r.snapshot?.firstCapture).toBe('20220306141507');
+      expect(r.snapshot?.lastCapture).toBe('20220529034526');
+    });
+
+    it('finds the twin transaction whichever capture spent it', async () => {
+      // Only the FIRST sighting of a text spends a transaction; later captures of
+      // the same text record null. Reading only the first row would report null
+      // for a text that is anchored.
+      const r = await run(null, true, {
+        snapshots: [capture('20220524070111', null), capture('20220529034526', TX)],
+      });
+
+      expect(r.snapshot?.onChainTxHash).toBe(TX);
+      expect(r.verdict).toBe('SNAPSHOT_ANCHOR');
+    });
+
+    it('does NOT call a capture anchored when the chain has never seen its text', async () => {
+      // A real gap, and it must not be dressed up by the new verdict. The
+      // captures are still reported so the caller can see which page it is.
+      const r = await run(null, false, {
+        snapshots: [capture('20220524070111', null)],
+      });
+
+      expect(r.verdict).toBe('NOT_IN_VAULT');
+      expect(r.chain.registered).toBe(false);
+      expect(r.snapshot?.onChainTxHash).toBeNull();
+      expect(r.snapshot?.captures).toBe(1);
+    });
+
+    it('an evidence record is never treated as a snapshot, and costs no extra query', async () => {
+      const r = await run({ id: 'e1', status: 'CONFIRMED', onChainTxHash: TX }, true);
+
+      expect(r.verdict).toBe('CONSISTENT');
+      expect(r.snapshot).toBeUndefined();
+      // Skipped in the common path so the tool costs what it did before.
+      expect(findSnapshots).not.toHaveBeenCalled();
+    });
+
+    it('matches on bare hex, because contentHash is stored without the 0x prefix', async () => {
+      // The same prefix mismatch that made snapshot anchoring silently fail for
+      // 83 snapshots by passing bare hex where bytes32 was required.
+      await run(null, true, { snapshots: [capture('20220306141507', TX)] });
+
+      expect(findSnapshots).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { contentHash: 'a'.repeat(64) } }),
+      );
+    });
   });
 });

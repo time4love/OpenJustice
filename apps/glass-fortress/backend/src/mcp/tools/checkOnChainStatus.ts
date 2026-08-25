@@ -51,6 +51,24 @@ export const ON_CHAIN_VERDICTS = {
    * and the reason this tool exists. Never report it as consistent.
    */
   ORPHANED_ANCHOR: 'ORPHANED_ANCHOR',
+  /**
+   * Registered on-chain, no Evidence row — and a UrlSnapshot holds this text.
+   * Not an orphan: an archived capture, anchored exactly as the scanner is
+   * meant to anchor it.
+   *
+   * Added 2026-08-25 after a tutorial run asked this tool about a snapshot hash
+   * and was told to "investigate before registering anything else against this
+   * hash". The verdict branched on `inVault`, which means an Evidence row and
+   * nothing else, so every correctly-anchored capture reported as a data
+   * integrity incident — 12 of production's 19 registrations, all of them
+   * working as designed.
+   *
+   * The seventh instance of mechanism right, summary wrong. FINDING 95 already
+   * wrote the argument against exactly this: a false alarm invites either a
+   * repair that is not needed, or doubt about evidence whose custody is in fact
+   * complete. The researcher who hit it did the second.
+   */
+  SNAPSHOT_ANCHOR: 'SNAPSHOT_ANCHOR',
 } as const;
 
 export type OnChainVerdict = (typeof ON_CHAIN_VERDICTS)[keyof typeof ON_CHAIN_VERDICTS];
@@ -68,6 +86,10 @@ const CONSISTENT_VERDICTS: ReadonlySet<OnChainVerdict> = new Set([
   ON_CHAIN_VERDICTS.CONSISTENT,
   ON_CHAIN_VERDICTS.PENDING_UNREGISTERED,
   ON_CHAIN_VERDICTS.NOT_IN_VAULT,
+  // The database and the chain agree completely: the capture exists, its text is
+  // registered. Reporting `consistent: false` here is what sent a researcher
+  // looking for a custody problem that did not exist.
+  ON_CHAIN_VERDICTS.SNAPSHOT_ANCHOR,
 ]);
 
 export const checkOnChainStatusSchema = {
@@ -103,6 +125,22 @@ interface OnChainStatusResult {
     /** Set when a tx-hash recovery scan failed, so `null` is not read as "none found". */
     recoveryError?: string;
   };
+  /**
+   * Present when this hash belongs to archived captures rather than an evidence
+   * record.
+   *
+   * Carries the transaction because the Evidence lookup cannot: a caller was
+   * previously shown `database.onChainTxHash: null` for a hash that
+   * `list_captures` reports with a transaction, which reads as a contradiction
+   * inside one system and is really two tables being asked one question.
+   */
+  snapshot?: {
+    captures: number;
+    url: string;
+    firstCapture: string;
+    lastCapture: string;
+    onChainTxHash: string | null;
+  };
   explanation: string;
 }
 
@@ -121,6 +159,8 @@ const EXPLANATIONS: Record<OnChainVerdict, string> = {
     'No evidence record exists for this hash, and the registry does not hold it either. There is nothing to reconcile.',
   ORPHANED_ANCHOR:
     'The registry holds this hash but no evidence record exists for it. Something anchored a record that cannot now be produced — investigate before registering anything else against this hash.',
+  SNAPSHOT_ANCHOR:
+    'This is an archived capture, not an evidence record, and its text is registered on-chain exactly as intended. Nothing is wrong and nothing needs repairing. A capture is anchored by its TEXT, so several captures of an unchanged page share one registration and one transaction; `snapshot.onChainTxHash` is the transaction that anchors this text, whichever capture spent it. To see the evidence records derived from this page, use get_scan_findings or search_evidence.',
 };
 
 function decideVerdict(
@@ -128,9 +168,15 @@ function decideVerdict(
   status: string | null,
   txHash: string | null,
   registered: boolean,
+  isSnapshot: boolean,
 ): OnChainVerdict {
   if (!inVault) {
-    return registered ? ON_CHAIN_VERDICTS.ORPHANED_ANCHOR : ON_CHAIN_VERDICTS.NOT_IN_VAULT;
+    if (!registered) return ON_CHAIN_VERDICTS.NOT_IN_VAULT;
+    // An anchored capture is not an orphan. Checked before the orphan branch
+    // because "no Evidence row" is true of every snapshot in the system, and
+    // reading that as an integrity failure is what made this tool alarm on 12 of
+    // production's 19 registrations.
+    return isSnapshot ? ON_CHAIN_VERDICTS.SNAPSHOT_ANCHOR : ON_CHAIN_VERDICTS.ORPHANED_ANCHOR;
   }
 
   if (status === 'CONFIRMED') {
@@ -169,6 +215,24 @@ export async function checkOnChainStatusHandler(input: {
     select: { id: true, status: true, onChainTxHash: true },
   });
 
+  // Only when there is no Evidence row. A hash is one or the other, and the
+  // query is skipped in the common case so the tool costs what it did before.
+  //
+  // `contentHash` is stored bare hex while fileHash is 0x-prefixed — the same
+  // mismatch that made snapshot anchoring silently fail for 83 snapshots by
+  // passing bare hex where bytes32 was required.
+  const snapshots = record
+    ? []
+    : await prisma.urlSnapshot.findMany({
+        where: { contentHash: input.fileHash.replace(/^0x/, '') },
+        select: {
+          waybackTimestamp: true,
+          onChainTxHash: true,
+          trackedUrl: { select: { url: true } },
+        },
+        orderBy: { waybackTimestamp: 'asc' },
+      });
+
   let web3: Web3Service;
   try {
     web3 = new Web3Service();
@@ -192,7 +256,29 @@ export async function checkOnChainStatusHandler(input: {
 
   const status = record?.status ?? null;
   const txHash = record?.onChainTxHash ?? null;
-  const verdict = decideVerdict(Boolean(record), status, txHash, registered);
+  const verdict = decideVerdict(Boolean(record), status, txHash, registered, snapshots.length > 0);
+
+  // Summarised here rather than inline: guarding on `length` is the only honest
+  // test, because without noUncheckedIndexedAccess the element type claims
+  // snapshots[0] is always defined and a `first && last` check reads to the
+  // compiler as dead code while being the thing that stops a crash on an empty
+  // array.
+  //
+  // Built whenever captures hold this text, including when the chain does NOT —
+  // a capture whose text was never registered is a real gap, and hiding the
+  // captures would leave the caller unable to see which page it belongs to.
+  const snapshotSummary =
+    snapshots.length > 0
+      ? {
+          captures: snapshots.length,
+          url: snapshots[0].trackedUrl.url,
+          firstCapture: snapshots[0].waybackTimestamp,
+          lastCapture: snapshots[snapshots.length - 1].waybackTimestamp,
+          // The transaction from whichever capture spent it — the twins record
+          // the same value, and null means no capture of this text is anchored.
+          onChainTxHash: snapshots.find((s) => s.onChainTxHash)?.onChainTxHash ?? null,
+        }
+      : null;
 
   const result: OnChainStatusResult = {
     fileHash: input.fileHash,
@@ -209,6 +295,7 @@ export async function checkOnChainStatusHandler(input: {
       registered,
       registryEvidenceId: registered ? registryEvidenceId.toString() : null,
     },
+    ...(snapshotSummary ? { snapshot: snapshotSummary } : {}),
     explanation: EXPLANATIONS[verdict],
   };
 
