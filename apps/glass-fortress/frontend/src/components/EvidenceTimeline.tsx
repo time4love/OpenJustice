@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useTargetEntityName } from '@/lib/targetEntity';
 import { Link, useRouter } from '@/i18n/navigation';
 import { apiUrl } from '@/lib/api';
 import { CategoryBadges } from '@/components/CategoryBadges';
@@ -137,6 +138,7 @@ function TimelineNode({
   labels: NodeLabels;
   onPromoted: (fileHash: string) => void;
 }) {
+  const targetEntityName = useTargetEntityName();
   const { metadata, score } = record;
   const styles = perspectiveStyles(metadata.evidencePerspective);
   const isUnknown = metadata.evidenceDate === 'Unknown';
@@ -357,7 +359,7 @@ function TimelineNode({
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 pt-2 border-t border-slate-100/80">
             <span className="text-xs text-slate-500">
               <span className="text-slate-400">{labels.targetEntityLabel}: </span>
-              {metadata.targetEntity}
+              {targetEntityName(metadata.canonicalTargetEntity, metadata.targetEntity)}
             </span>
             <div
               className="flex flex-wrap items-center gap-x-4 gap-y-1.5 ms-auto"

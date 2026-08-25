@@ -17,6 +17,8 @@ export interface EvidenceMetadata {
   evidencePerspective?: EvidencePerspective;
   summary: string;
   targetEntity: string;
+  /** Stable key; null when the vocabulary has no entry yet. */
+  canonicalTargetEntity?: string | null;
   evidenceDate?: string;
   figures?: { id: string; name: string }[];
   medicalConditions?: string[];

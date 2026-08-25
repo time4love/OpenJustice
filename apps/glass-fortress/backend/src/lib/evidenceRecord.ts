@@ -15,6 +15,7 @@ export interface EvidenceRecord {
   tierReasoning?: string | null;
   summary: string;
   targetEntity: string;
+  canonicalTargetEntity: string | null;
   evidenceDate: string;
   figures: { id: string; name: string }[];
   medicalConditions: string[];
@@ -40,6 +41,7 @@ export interface EvidenceRecordRow {
   tierReasoning: string | null;
   summary: string;
   targetEntity: string;
+  canonicalTargetEntity: string | null;
   evidenceDate: string;
   figures: { id: string; name: string }[];
   medicalConditions: string;
@@ -69,6 +71,9 @@ export function mapEvidenceToRecord(row: EvidenceRecordRow, trackedUrlId: string
     tierReasoning: row.tierReasoning,
     summary: row.summary,
     targetEntity: row.targetEntity,
+    // The stable key beside the raw observation. Null means the vocabulary has
+    // no entry yet, and the client falls back to showing `targetEntity`.
+    canonicalTargetEntity: row.canonicalTargetEntity,
     evidenceDate: row.evidenceDate,
     figures: row.figures,
     medicalConditions: JSON.parse(row.medicalConditions || '[]') as string[],
