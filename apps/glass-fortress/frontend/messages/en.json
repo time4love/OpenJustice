@@ -1342,8 +1342,8 @@
     "exampleLabel": "From the production run",
     "examplePendingTitle": "The production run has not reached this phase yet",
     "examplePendingBody": "This page describes the procedure, but no real production run stands behind it yet. When the run reaches this phase, the example will be written from it — not reconstructed from memory.",
-    "irreversibleLabel": "Irreversible phase",
-    "irreversibleBody": "This phase writes to a public blockchain or to a public page. Before the call, state the tool, the arguments, and exactly what gets written — then wait for explicit confirmation.",
+    "irreversibleLabel": "Permanent write",
+    "irreversibleBody": "This phase writes to a public blockchain. What gets written stays — it cannot be deleted or edited. Before the call, state the tool, the arguments, and exactly what gets written — then wait for confirmation.",
     "prevLabel": "Previous phase",
     "nextLabel": "Next phase",
     "backToIndex": "Back to the guide",
@@ -1523,9 +1523,9 @@
       },
       "evidence": {
         "title": "From a source to anchored evidence",
-        "summary": "Every record enters as PENDING_REVIEW. Nothing is public, searchable or on-chain until a person has read it and decided. Promotion is the irreversible step, and it comes last.",
-        "goal": "Evidence records in CONFIRMED state, each with an identity recomputable from what is stored — a capture for an article, a snapshot for a scan-derived record — and a real on-chain transaction.",
-        "verify": "Recompute the identity from what is stored, and compare it against the chain through a third party rather than through the tool that wrote it. A record that cannot be recomputed is not evidence; it is a claim about evidence.",
+        "summary": "Every record enters as PENDING_REVIEW. Nothing is public, searchable or on-chain until a person has read it and decided. Promotion is the permanent write, and it comes last.",
+        "goal": "Evidence records in CONFIRMED state, each independently verifiable — ask the tool to show the record, then check for yourself that it is actually on the chain.",
+        "verify": "Ask the tool to show you the record, then check the chain yourself — through a public block explorer, not through the tool that reported success. A record you cannot verify from outside is a claim, not evidence.",
         "pitfall": "A classification is model output, written once and never recomputed; a hash is a fact about a document. They do not carry the same certainty, and a review should treat them differently: verify the hash, read and judge the classification.",
         "steps": {
           "create": {
@@ -1551,7 +1551,7 @@
             "body": "A routine check that catches exactly the case where a record is marked confirmed while nothing was ever written to the chain."
           },
           "promote": {
-            "title": "Promote — the irreversible step, stated out loud first",
+            "title": "Promote — the permanent write, stated out loud first",
             "body": "State the tool, the arguments, and that the call writes to a public chain and cannot be undone. Then wait for confirmation. This is the one step in the guide where being slow is the point."
           },
           "verify": {
@@ -1564,7 +1564,21 @@
           "evidence-vault-public": "The public evidence vault after promotion. Before it, the vault was empty — the record existed and was invisible, which is the entire meaning of PENDING_REVIEW. Note “target entity: משרד הבריאות”: the database stores a language-free key and the label is chosen per locale.",
           "evidence-record-anchored": "The record page: the on-chain badge, the tier, the categories, the tier reasoning, and the file hash. That hash is the identity registered on the chain, and it recomputes from the stored text without refetching the page."
         },
-        "example": "The source: a journalistic investigation of 21 August 2022 quoting recordings from an internal Ministry of Health discussion. The record was created from that URL, reviewed, promoted and anchored — id 0 in the production registry. Its identity is 0x3a1093b2…, recomputed from the stored text without refetching the page: that is what keeps a record verifiable when the original page changes or disappears."
+        "example": "The source: a journalistic investigation of 21 August 2022 quoting recordings from an internal Ministry of Health discussion. The record was created from that URL, reviewed, promoted and anchored — id 0 in the production registry. Its identity is 0x3a1093b2…, recomputed from the stored text without refetching the page: that is what keeps a record verifiable when the original page changes or disappears.",
+        "prompts": {
+          "seeVault": {
+            "command": "search_evidence(query: \"משרד הבריאות\")",
+            "note": "Returns the confirmed records in the vault. In production you will see one record with a chain anchor."
+          },
+          "checkAnchor": {
+            "command": "check_on_chain_status(fileHash: \"0x3a1093b2...\")",
+            "note": "Compares the database record against what the chain actually holds. CONSISTENT means both agree — the evidence is genuinely anchored."
+          },
+          "promoteRecord": {
+            "command": "promote_evidence(evidenceId: \"...\")",
+            "note": "The permanent write: publishes the hash to the chain and marks the record CONFIRMED. The production record is already confirmed — this command is shown as an example of what was run."
+          }
+        }
       },
       "trajectories": {
         "title": "Following a claim across the whole history",
@@ -1731,6 +1745,7 @@
     "envWarningBody": "Testing and production have separate MCP servers, separate databases and separate chains. Connect both, under names you cannot confuse, and confirm which one you are attached to before every write — a tool response does not say which environment it ran against.",
     "endpointLabel": "MCP server address",
     "endpointNote": "This is the public environment. The testing environment is a separate server with a separate database, and its address is given to researchers directly.",
+    "promptsLabel": "Try it yourself",
     "detailLabel": "How this works underneath",
     "loopNote": "This phase feeds back into the evidence flow in phase 1 — classification does not end in itself, it produces candidates for review and promotion."
   },

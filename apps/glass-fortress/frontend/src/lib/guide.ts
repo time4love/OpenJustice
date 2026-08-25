@@ -47,6 +47,19 @@ type StepIdOf<S extends GuideSlug> = keyof PhaseMessages[S]['steps'] & string;
 type ScreenshotIdOf<S extends GuideSlug> = keyof PhaseMessages[S]['screenshots'] & string;
 
 /**
+ * A prompt id under this phase's `prompts` key, if the phase has one.
+ *
+ * Not every phase carries prompts — most have none, and forcing `"prompts": {}`
+ * into every phase just to satisfy the type would add twenty-odd empty objects
+ * that exist only for the compiler. A conditional type lets phases without the
+ * key resolve to `never`, which makes `examplePrompts: []` the only valid list.
+ */
+type PromptIdOf<S extends GuideSlug> =
+  'prompts' extends keyof PhaseMessages[S]
+    ? keyof PhaseMessages[S]['prompts'] & string
+    : never;
+
+/**
  * The arcs a page groups into. `prepare` holds the PREREQUISITES — an approved
  * account and a connected client — which are not phases: they happen once,
  * before any data is touched, and numbering them would renumber the nine that
@@ -130,6 +143,16 @@ type GuidePhaseFor<S extends GuideSlug> = GuidePhaseFields & {
    * the flow it is supposed to teach disappears into it.
    */
   detailSteps: readonly StepIdOf<S>[];
+  /**
+   * Copyable tool calls a researcher can paste into their MCP chat.
+   *
+   * Each id must have a matching `prompts.<id>.{command, note}` in the messages.
+   * The command is the copyable text; the note explains what happens. Phases
+   * without prompts just have an empty array — the conditional `PromptIdOf` type
+   * makes `never[]` the only valid value, so a prompt cannot be listed without
+   * someone having written its text.
+   */
+  examplePrompts: readonly PromptIdOf<S>[];
 };
 
 export type GuidePhase = { [S in GuideSlug]: GuidePhaseFor<S> }[GuideSlug];
@@ -148,6 +171,7 @@ export const GUIDE_PHASES: readonly GuidePhase[] = [
     hasProductionExample: true,
     screenshots: [],
     detailSteps: [],
+    examplePrompts: [],
     environmentCritical: false,
     irreversible: false,
   },
@@ -169,6 +193,7 @@ export const GUIDE_PHASES: readonly GuidePhase[] = [
       { id: 'prereq-allow-access', width: 752, height: 452 },
     ],
     detailSteps: [],
+    examplePrompts: [],
     environmentCritical: true,
     irreversible: false,
   },
@@ -184,6 +209,7 @@ export const GUIDE_PHASES: readonly GuidePhase[] = [
     hasProductionExample: true,
     screenshots: [],
     detailSteps: [],
+    examplePrompts: [],
     environmentCritical: true,
     irreversible: false,
   },
@@ -222,6 +248,7 @@ export const GUIDE_PHASES: readonly GuidePhase[] = [
     // is the sharpest legal exposure, what the rules-version stamp is for — are
     // implementation depth. They belong behind a fold, not in the flow.
     detailSteps: ['review', 'reviewClassification', 'verify'],
+    examplePrompts: ['seeVault', 'checkAnchor', 'promoteRecord'],
     environmentCritical: false,
     irreversible: true,
   },
@@ -250,6 +277,7 @@ export const GUIDE_PHASES: readonly GuidePhase[] = [
     // not flow. A researcher needs it to read the verification, but it must not
     // sit in front of the four steps it explains.
     detailSteps: ['listCaptures'],
+    examplePrompts: [],
     environmentCritical: false,
     // Every capture the scan stores has its content hash anchored on the public
     // chain automatically, so this phase spends one permanent transaction per
@@ -269,6 +297,7 @@ export const GUIDE_PHASES: readonly GuidePhase[] = [
     hasProductionExample: false,
     screenshots: [],
     detailSteps: [],
+    examplePrompts: [],
     environmentCritical: false,
     irreversible: false,
   },
@@ -282,6 +311,7 @@ export const GUIDE_PHASES: readonly GuidePhase[] = [
     hasProductionExample: false,
     screenshots: [],
     detailSteps: [],
+    examplePrompts: [],
     environmentCritical: false,
     irreversible: false,
   },
@@ -295,6 +325,7 @@ export const GUIDE_PHASES: readonly GuidePhase[] = [
     hasProductionExample: false,
     screenshots: [],
     detailSteps: [],
+    examplePrompts: [],
     environmentCritical: false,
     irreversible: false,
   },
@@ -308,6 +339,7 @@ export const GUIDE_PHASES: readonly GuidePhase[] = [
     hasProductionExample: false,
     screenshots: [],
     detailSteps: [],
+    examplePrompts: [],
     environmentCritical: false,
     irreversible: false,
   },
@@ -326,6 +358,7 @@ export const GUIDE_PHASES: readonly GuidePhase[] = [
     hasProductionExample: false,
     screenshots: [],
     detailSteps: [],
+    examplePrompts: [],
     environmentCritical: false,
     irreversible: false,
   },
@@ -339,6 +372,7 @@ export const GUIDE_PHASES: readonly GuidePhase[] = [
     hasProductionExample: false,
     screenshots: [],
     detailSteps: [],
+    examplePrompts: [],
     environmentCritical: false,
     irreversible: false,
   },
@@ -352,6 +386,7 @@ export const GUIDE_PHASES: readonly GuidePhase[] = [
     hasProductionExample: false,
     screenshots: [],
     detailSteps: [],
+    examplePrompts: [],
     environmentCritical: false,
     irreversible: true,
   },
@@ -395,6 +430,14 @@ export interface GuideScreenshot {
  */
 export function guideScreenshots(phase: GuidePhase): readonly GuideScreenshot[] {
   return phase.screenshots;
+}
+
+/**
+ * Example prompts as the renderer needs them — widened from the per-slug union
+ * to plain strings, same reason as `guideScreenshots`.
+ */
+export function guideExamplePrompts(phase: GuidePhase): readonly string[] {
+  return phase.examplePrompts;
 }
 
 /** Pages that are prerequisites rather than one of the nine numbered phases. */
