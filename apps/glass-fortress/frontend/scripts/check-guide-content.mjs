@@ -48,6 +48,28 @@ const SCREENSHOT_DIR = join(root, 'public', 'guide');
  * caption — what it cannot see is whether the FILE exists, which is what this
  * adds. A page rendering a broken image is its own kind of lie about maturity.
  */
+/**
+ * Phases whose manifest declares a worked example, and steps that declare a
+ * collapsed detail block.
+ *
+ * Both are booleans/lists in TypeScript and prose in JSON, so nothing in the
+ * type system connects them. A phase claiming `hasProductionExample: true` with
+ * no example text renders an empty box under a heading that promises one —
+ * which is exactly the "displays its own maturity" claim being false.
+ */
+function declaredExtras() {
+  const src = readFileSync(join(root, 'src', 'lib', 'guide.ts'), 'utf8');
+  const examples = new Set();
+  const details = new Set();
+  for (const m of src.matchAll(/slug: '([a-z]+)',[\s\S]*?hasProductionExample: (true|false),/g)) {
+    if (m[2] === 'true') examples.add(m[1]);
+  }
+  for (const m of src.matchAll(/slug: '([a-z]+)',[\s\S]*?detailSteps: \[([^\]]*)\]/g)) {
+    for (const step of m[2].matchAll(/'([a-zA-Z]+)'/g)) details.add(`${m[1]}.${step[1]}`);
+  }
+  return { examples, details };
+}
+
 function declaredScreenshotIds() {
   const src = readFileSync(join(root, 'src', 'lib', 'guide.ts'), 'utf8');
   const ids = new Set();
@@ -137,6 +159,27 @@ for (const locale of LOCALES) {
         if (typeof step?.[field] !== 'string' || step[field].trim() === '') {
           fail(locale, `phases.${slug}.steps.${stepId}.${field}`, 'missing or empty');
         }
+      }
+    }
+  }
+}
+
+// A declared example or detail must have text behind it, in EVERY locale.
+{
+  const { examples, details } = declaredExtras();
+  for (const locale of LOCALES) {
+    const phases = JSON.parse(readFileSync(join(root, 'messages', `${locale}.json`), 'utf8')).guide?.phases ?? {};
+    for (const slug of examples) {
+      const text = phases[slug]?.example;
+      if (typeof text !== 'string' || text.trim() === '') {
+        failures.push(`${locale}: phase "${slug}" declares hasProductionExample but has no example text`);
+      }
+    }
+    for (const ref of details) {
+      const [slug, step] = ref.split('.');
+      const text = phases[slug]?.steps?.[step]?.detail;
+      if (typeof text !== 'string' || text.trim() === '') {
+        failures.push(`${locale}: step "${ref}" is in detailSteps but has no detail text`);
       }
     }
   }

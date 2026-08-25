@@ -121,6 +121,15 @@ type GuidePhaseFor<S extends GuideSlug> = GuidePhaseFields & {
    * shown text that then jumps.
    */
   screenshots: readonly { id: ScreenshotIdOf<S>; width: number; height: number }[];
+  /**
+   * Steps that carry a collapsed "how this works underneath" block.
+   *
+   * The step BODY stays at flow level — what a researcher does. Implementation
+   * depth goes in the collapsed block, so it never competes with the step it
+   * explains. A page where every mechanism is stated inline reads as a spec, and
+   * the flow it is supposed to teach disappears into it.
+   */
+  detailSteps: readonly StepIdOf<S>[];
 };
 
 export type GuidePhase = { [S in GuideSlug]: GuidePhaseFor<S> }[GuideSlug];
@@ -132,9 +141,13 @@ export const GUIDE_PHASES: readonly GuidePhase[] = [
     arc: 'prepare',
     tools: [],
     steps: ['signIn', 'chooseHandle', 'awaitApproval', 'bootstrapFirst'],
-    verifiedBy: null,
-    hasProductionExample: false,
+    // `connect` depended on this and proved it: the OAuth flow resolves an
+    // account only for an APPROVED researcher, so an authorisation granted
+    // before approval carried no write access.
+    verifiedBy: 'connect',
+    hasProductionExample: true,
     screenshots: [],
+    detailSteps: [],
     environmentCritical: false,
     irreversible: false,
   },
@@ -144,8 +157,10 @@ export const GUIDE_PHASES: readonly GuidePhase[] = [
     arc: 'prepare',
     tools: [],
     steps: ['addServer', 'fixAuthType', 'authorize', 'nameEnvironments'],
-    verifiedBy: null,
-    hasProductionExample: false,
+    // `setup` depended on this: the environment was identified through the
+    // connector this page describes.
+    verifiedBy: 'setup',
+    hasProductionExample: true,
     // Dimensions are the files' real intrinsic sizes, so the page reserves the
     // right box before the image loads rather than reflowing the text under it.
     screenshots: [
@@ -153,6 +168,7 @@ export const GUIDE_PHASES: readonly GuidePhase[] = [
       { id: 'prereq-add-custom-connector-2', width: 1280, height: 1798 },
       { id: 'prereq-allow-access', width: 752, height: 452 },
     ],
+    detailSteps: [],
     environmentCritical: true,
     irreversible: false,
   },
@@ -162,39 +178,18 @@ export const GUIDE_PHASES: readonly GuidePhase[] = [
     arc: 'collect',
     tools: ['search_evidence', 'check_on_chain_status', 'create_research_session'],
     steps: ['verifyEnvironment', 'openSession', 'proveWritePath', 'recordAsYouGo'],
-    verifiedBy: null,
-    hasProductionExample: false,
+    // `evidence` depended on this: the first record was written only after the
+    // environment had been identified three independent ways.
+    verifiedBy: 'evidence',
+    hasProductionExample: true,
     screenshots: [],
+    detailSteps: [],
     environmentCritical: true,
     irreversible: false,
   },
   {
-    slug: 'scan',
-    phase: 1,
-    arc: 'collect',
-    tools: ['start_forensic_scan', 'get_scan_findings', 'list_captures'],
-    steps: ['addUrl', 'runScan', 'readFindings', 'listCaptures'],
-    verifiedBy: null,
-    hasProductionExample: false,
-    screenshots: [],
-    environmentCritical: false,
-    irreversible: false,
-  },
-  {
-    slug: 'classification',
-    phase: 2,
-    arc: 'collect',
-    tools: ['get_scan_findings', 'open_diff_debate', 'respond_in_diff_debate', 'get_diff_debate'],
-    steps: ['readDiffs', 'openDebate', 'respond', 'closeDebate'],
-    verifiedBy: null,
-    hasProductionExample: false,
-    screenshots: [],
-    environmentCritical: false,
-    irreversible: false,
-  },
-  {
     slug: 'evidence',
-    phase: 3,
+    phase: 1,
     arc: 'collect',
     tools: [
       'create_evidence_from_url',
@@ -208,12 +203,42 @@ export const GUIDE_PHASES: readonly GuidePhase[] = [
     // open at preCheck, which assumed a record already existed and was already
     // sound — skipping the human review that is the entire reason PENDING_REVIEW
     // exists, and never mentioning how a record is created in the first place.
-    steps: ['create', 'review', 'reject', 'preCheck', 'promote', 'verify'],
+    steps: ['create', 'review', 'reviewClassification', 'reject', 'preCheck', 'promote', 'verify'],
+    verifiedBy: null,
+    hasProductionExample: true,
+    screenshots: [],
+    // The classification mechanics — how a tier is decided, why the figures list
+    // is the sharpest legal exposure, what the rules-version stamp is for — are
+    // implementation depth. They belong behind a fold, not in the flow.
+    detailSteps: ['review', 'reviewClassification', 'verify'],
+    environmentCritical: false,
+    irreversible: true,
+  },
+  {
+    slug: 'scan',
+    phase: 2,
+    arc: 'collect',
+    tools: ['start_forensic_scan', 'get_scan_findings', 'list_captures'],
+    steps: ['addUrl', 'runScan', 'readFindings', 'listCaptures'],
     verifiedBy: null,
     hasProductionExample: false,
     screenshots: [],
+    detailSteps: [],
     environmentCritical: false,
-    irreversible: true,
+    irreversible: false,
+  },
+  {
+    slug: 'classification',
+    phase: 3,
+    arc: 'collect',
+    tools: ['get_scan_findings', 'open_diff_debate', 'respond_in_diff_debate', 'get_diff_debate'],
+    steps: ['readDiffs', 'openDebate', 'respond', 'closeDebate'],
+    verifiedBy: null,
+    hasProductionExample: false,
+    screenshots: [],
+    detailSteps: [],
+    environmentCritical: false,
+    irreversible: false,
   },
   {
     slug: 'trajectories',
@@ -224,6 +249,7 @@ export const GUIDE_PHASES: readonly GuidePhase[] = [
     verifiedBy: null,
     hasProductionExample: false,
     screenshots: [],
+    detailSteps: [],
     environmentCritical: false,
     irreversible: false,
   },
@@ -236,6 +262,7 @@ export const GUIDE_PHASES: readonly GuidePhase[] = [
     verifiedBy: null,
     hasProductionExample: false,
     screenshots: [],
+    detailSteps: [],
     environmentCritical: false,
     irreversible: false,
   },
@@ -248,6 +275,7 @@ export const GUIDE_PHASES: readonly GuidePhase[] = [
     verifiedBy: null,
     hasProductionExample: false,
     screenshots: [],
+    detailSteps: [],
     environmentCritical: false,
     irreversible: false,
   },
@@ -265,6 +293,7 @@ export const GUIDE_PHASES: readonly GuidePhase[] = [
     verifiedBy: null,
     hasProductionExample: false,
     screenshots: [],
+    detailSteps: [],
     environmentCritical: false,
     irreversible: false,
   },
@@ -277,6 +306,7 @@ export const GUIDE_PHASES: readonly GuidePhase[] = [
     verifiedBy: null,
     hasProductionExample: false,
     screenshots: [],
+    detailSteps: [],
     environmentCritical: false,
     irreversible: false,
   },
@@ -289,6 +319,7 @@ export const GUIDE_PHASES: readonly GuidePhase[] = [
     verifiedBy: null,
     hasProductionExample: false,
     screenshots: [],
+    detailSteps: [],
     environmentCritical: false,
     irreversible: true,
   },

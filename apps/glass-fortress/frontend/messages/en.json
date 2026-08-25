@@ -1350,7 +1350,7 @@
     "goalLabel": "What this phase produces",
     "verifyLabel": "How to verify — without trusting the tool",
     "pitfallLabel": "What went wrong in the test environment",
-    "exampleLabel": "Example from the production run",
+    "exampleLabel": "From the production run",
     "examplePendingTitle": "The production run has not reached this phase yet",
     "examplePendingBody": "This page describes the procedure, but no real production run stands behind it yet. When the run reaches this phase, the example will be written from it — not reconstructed from memory.",
     "irreversibleLabel": "Irreversible phase",
@@ -1414,7 +1414,8 @@
             "body": "A dedicated, committed, reviewed tool approves the first account and grants it admin. It refuses to run the moment one admin exists — which is exactly what separates a bootstrap from a privilege-escalation tool."
           }
         },
-        "screenshots": {}
+        "screenshots": {},
+        "example": "Production had no researchers, and therefore no admin to approve the first one. The first account stuck at \"awaiting admin approval\" — not a login fault. The bootstrap tool approved it and granted admin, then refused a second run: once one admin exists, the tool is inert."
       },
       "connect": {
         "title": "Connecting an MCP client",
@@ -1444,7 +1445,8 @@
           "prereq-add-custom-connector-1": "Adding a custom connector: a name that distinguishes the environment, and the server’s endpoint address. That name is what will tell testing apart from production in every later call.",
           "prereq-add-custom-connector-2": "The settings screen. Under Authentication the client marks “None” as the detected option — that is the trap. Choose “Always required”. Under OAuth client, the recommended default works against this server as it is.",
           "prereq-allow-access": "The consent screen: the two scopes the connector asks for — reading from the evidence vault, and creating and editing evidence and theses. Approving here is what actually activates the write tools."
-        }
+        },
+        "example": "Two connectors were configured under names that cannot be confused, one per environment. What proved the connection worked was not a read — reads succeed even when the grant is dead — but a non-empty authorisation table. An authorisation granted before the account was approved carried no write access and had to be redone."
       },
       "setup": {
         "title": "Proving the environment, and the write path",
@@ -1470,7 +1472,8 @@
             "body": "Requests verbatim, responses as structure only — field names, enum values, counts and status transitions, never the prose. Documentation written afterwards drifts from the system; documentation written during it does not."
           }
         },
-        "screenshots": {}
+        "screenshots": {},
+        "example": "The environment was identified three independent ways before the first write: an evidence search returned 0; the forensic timeline reported that the testing environment’s tracked URL is not tracked here; and a public endpoint outside MCP entirely returned 0 evidence and 0 theses. All three agreed. None of the tool responses said which environment they ran against."
       },
       "scan": {
         "title": "Tracked URL and a full archive scan",
@@ -1533,15 +1536,21 @@
         "steps": {
           "create": {
             "title": "Create the record — it arrives PENDING_REVIEW",
-            "body": "An article enters from its URL; a scan finding is promoted out of the scan, or out of the debate that argued for it. Either way the record lands PENDING_REVIEW: not public, not searchable, not on-chain. That state exists so a person decides what counts as evidence, not a tool."
+            "body": "An article enters from its URL and needs no scan at all — the cheapest complete loop in the system. A scan finding enters the very same flow, but arrives from phase 3. Either way the record lands PENDING_REVIEW: not public, not on-chain."
           },
           "review": {
-            "title": "Read it before you approve it",
-            "body": "Read the summary against the document itself, not against your memory of the document. Check that the tier and the incriminating/exculpatory role are what the source supports. Confirm the stored capture still reproduces the record's identity. A review that only checks whether the fields are populated is not a review."
+            "title": "Check the substance against the document itself",
+            "body": "Not against your memory of it. Three questions: does every claim in the summary actually appear in the source? Are the numeric quotations verbatim? And was the date taken from the document?",
+            "detail": "Each of the three caught a real defect in production. The date is the instructive one: it was not wrong because the model erred, but because a publication date sits outside the article body, and the extraction that produces the evidence identity discards it as chrome. The model was asked a question the text it was given could not answer, and supplied a different date from the prose. Since then the text that is analysed and the text that is hashed are two different texts on purpose — the first as wide as possible, the second narrow and stable."
+          },
+          "reviewClassification": {
+            "title": "Check the classification — it decides how the record is used and who it names",
+            "body": "Three fields that are easy to skip past: the tier, the figures list, and the rules-version stamp.",
+            "detail": "Tier decides whether a thesis may cite the record at all, and it follows from what the document CONTAINS rather than where it was published — an investigation quoting a leaked internal recording carries the weight of the primary material inside it. That rule was rewritten after showing the model MORE of a document lowered its tier, because the byline made the journalistic form more obvious while the rule was asking about form.\n\nThe figures list feeds a page per person, so a living individual who merely appears in a document is the highest legal exposure this platform carries. Someone who exposed the conduct, or warned against it, does not belong on that list — one was on it, and that was wrong.\n\nThe version stamp exists because a classification is model output written once and never recomputed. Without it, two records judged under different rules look identical."
           },
           "reject": {
             "title": "Rejecting is a real outcome, not a failure",
-            "body": "A record that does not hold up is deleted, and the tool refuses to delete anything already anchored, already cited, or pinned — so the class of record that must survive cannot be removed by this route. If every review ends in approval, the review is decorative."
+            "body": "A record that does not hold up is deleted. The tool refuses to delete anything already anchored, already cited, or pinned. If every review ends in approval, the review is decorative."
           },
           "preCheck": {
             "title": "Check the chain before promoting",
@@ -1549,14 +1558,16 @@
           },
           "promote": {
             "title": "Promote — the irreversible step, stated out loud first",
-            "body": "State the tool, the arguments, and that the call writes to a public chain and cannot be undone. Then wait for confirmation. There is no shortcut, and this is the one step in the guide where being slow is the point."
+            "body": "State the tool, the arguments, and that the call writes to a public chain and cannot be undone. Then wait for confirmation. This is the one step in the guide where being slow is the point."
           },
           "verify": {
             "title": "Verify three times, the last one independently",
-            "body": "Re-check straight after the write, then again against the chain itself rather than against the tool that reported success. Then recompute the identity from the stored capture or snapshot. Three checks are not paranoia when the act cannot be undone."
+            "body": "Re-check straight after the write, then again against the chain itself rather than the tool that reported success. Then recompute the identity from the stored text.",
+            "detail": "The recomputation must work without refetching the page. This is not fussiness: a live page moves. On one article a view counter made three fetches in the same minute produce three different identities, until the identity was moved onto a narrow, stable text stored alongside the record. A record you can only verify against the live page is not verifiable at all, because the page can also disappear."
           }
         },
-        "screenshots": {}
+        "screenshots": {},
+        "example": "The first production record was reviewed and failed review three times, on three different classification defects. It was recreated four times across three versions of the classification rules and two text-extraction regimes. Tier, date, figures and categories changed on every run. The fileHash never moved — the same value on all four, while the source page itself grew by 147 bytes."
       },
       "trajectories": {
         "title": "Following a claim across the whole history",
@@ -1722,6 +1733,8 @@
     "envWarningTitle": "Two environments, not one",
     "envWarningBody": "Testing and production have separate MCP servers, separate databases and separate chains. Connect both, under names you cannot confuse, and confirm which one you are attached to before every write — a tool response does not say which environment it ran against.",
     "endpointLabel": "MCP server address",
-    "endpointNote": "This is the public environment. The testing environment is a separate server with a separate database, and its address is given to researchers directly."
+    "endpointNote": "This is the public environment. The testing environment is a separate server with a separate database, and its address is given to researchers directly.",
+    "detailLabel": "How this works underneath",
+    "loopNote": "This phase feeds back into the evidence flow in phase 1 — classification does not end in itself, it produces candidates for review and promotion."
   }
 }
