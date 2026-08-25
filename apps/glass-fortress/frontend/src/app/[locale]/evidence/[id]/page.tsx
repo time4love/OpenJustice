@@ -6,7 +6,7 @@ import { useParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { Link, useRouter } from '@/i18n/navigation';
 import { SiteHeader } from '@/components/SiteHeader';
-import { apiUrl } from '@/lib/api';
+import { apiUrl, authHeaders } from '@/lib/api';
 import { displayUrl } from '@/lib/format';
 import { CategoryBadges } from '@/components/CategoryBadges';
 import { TierBadge } from '@/components/TierBadge';
@@ -82,7 +82,9 @@ export default function EvidencePage() {
     if (!id) return;
     void (async () => {
       try {
-        const res = await fetch(apiUrl(`/api/evidence/${id}`));
+        // Viewer-dependent: an unreviewed record is a 404 to the public, so a
+        // researcher must be identifiable or their own pending record vanishes.
+        const res = await fetch(apiUrl(`/api/evidence/${id}`), { headers: authHeaders() });
         if (res.status === 404) { setError('notFound'); setLoading(false); return; }
         if (!res.ok) { setError('error'); setLoading(false); return; }
         const data = (await res.json()) as EvidenceDetail;

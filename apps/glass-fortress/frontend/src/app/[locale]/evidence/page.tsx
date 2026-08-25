@@ -5,7 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { Link } from '@/i18n/navigation';
 import { SiteHeader } from '@/components/SiteHeader';
-import { apiUrl, fetchJson } from '@/lib/api';
+import { apiUrl, authHeaders, fetchJson } from '@/lib/api';
 import { useAsyncData, type AsyncFetcher } from '@/hooks/useAsyncData';
 import { EmptyState } from '@/components/EmptyState';
 import { SkeletonRows } from '@/components/SkeletonRows';
@@ -111,8 +111,12 @@ export default function EvidencePage() {
       if (cursor) params.set('cursor', cursor);
       if (hashParam) params.set('fileHash', hashParam);
       else if (entityParam) params.set('targetEntity', entityParam);
+      // Authenticated on purpose: the timeline is viewer-dependent now. Without
+      // the token a signed-in researcher silently sees only CONFIRMED records
+      // and never learns that anything is waiting for their review.
       return fetchJson<TimelinePage>(`/api/evidence/timeline?${params.toString()}`, {
         signal,
+        headers: authHeaders(),
         offline: BACKEND_UNREACHABLE,
       });
     },
