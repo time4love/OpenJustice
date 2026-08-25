@@ -148,12 +148,21 @@ step as weaker than its staging counterpart is a success of the protocol, not a 
 
 Mirrors the staging arc. Each phase is several steps, each step runs the §6 loop.
 
+**Renumbered 2026-08-25.** The order below is the order the production replay actually runs, which is
+not the order the staging arc happened to take. Staging scanned first because the corpus was the
+point; production wrote one article first because proving the loop was the point — and a guide that
+teaches an 83-capture scan before a reader has written a single record teaches the expensive path
+first. The numbers serve the flow, not the other way round.
+
+Note also that this is a **loop, not a line**: classification (3) produces candidates that re-enter
+the evidence flow (1). Numbering cannot express that, so the guide says it outright.
+
 | # | Phase | Staging reference |
 |---|---|---|
-| 0 | Environment, bootstrap, connector, help-centre skeleton, redaction policy | Steps 0, 12, 19 |
-| 1 | Tracked URL + full Wayback scan | Steps 4, 5 |
-| 2 | Diff classification, item-level, with provenance | Steps 8, 9 |
-| 3 | Evidence promotion + on-chain anchoring | Steps 3, 11 |
+| 0 | Environment and write path (bootstrap, connector, redaction policy) | Steps 0, 12, 19 |
+| 1 | Evidence: create → review → anchor. The cheapest complete loop, no scan needed | Steps 3, 11 |
+| 2 | Tracked URL + full Wayback scan | Steps 4, 5 |
+| 3 | Diff classification, item-level, with provenance — feeds back into 1 | Steps 8, 9 |
 | 4 | Claim trajectories — computation, groups, stored state | Step 10 |
 | 5 | Framing session and its assessment | Step 21 |
 | 6 | `suggest_thesis` → `create_thesis_draft` | Steps 22, 23 |
