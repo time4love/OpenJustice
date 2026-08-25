@@ -269,6 +269,22 @@ describe('loadTrajectoryContext', () => {
   });
 });
 
+/**
+ * A rendered flip, carrying the span arithmetic the block now does for the
+ * reader. Explicit at every call site: a default would quietly invent the very
+ * numbers some of these tests are about.
+ */
+function flip(
+  snapshotDate: string,
+  present: boolean,
+  snapshotUrl: string,
+  captures: number,
+  days: number | null,
+  openEnded = false,
+) {
+  return { snapshotDate, present, snapshotUrl, captures, days, openEnded };
+}
+
 describe('formatTrajectoryContext', () => {
   const bundle = {
     trajectories: [
@@ -279,8 +295,8 @@ describe('formatTrajectoryContext', () => {
         transitions: 2,
         finalState: 'REMOVED' as const,
         changes: [
-          { snapshotDate: '2022-08-05', present: true, snapshotUrl: `${URL}#a` },
-          { snapshotDate: '2022-09-06', present: false, snapshotUrl: `${URL}#b` },
+          flip('2022-08-05', true, `${URL}#a`, 4, 32),
+          flip('2022-09-06', false, `${URL}#b`, 9, 44, true),
         ],
         claims: [FOLLOWED],
         overlappingEvidence: [{ fileHash: '0xmixed', sharedItems: 8 }],
@@ -592,12 +608,12 @@ describe('formatTrajectoryContext with citations', () => {
     trajectories: [
       {
         url: URL, patternHash: 'p1', claimCount: 4, transitions: 2, finalState: 'REMOVED' as const,
-        changes: [{ snapshotDate: '2022-08-05', present: false, snapshotUrl: `${URL}#a` }],
+        changes: [flip('2022-08-05', false, `${URL}#a`, 3, 21, true)],
         claims: [FOLLOWED], overlappingEvidence: [], citedIds: ['a', 'b'], label: 'Taaaa1111',
       },
       {
         url: URL, patternHash: 'p2', claimCount: 3, transitions: 1, finalState: 'PRESENT' as const,
-        changes: [{ snapshotDate: '2022-09-06', present: true, snapshotUrl: `${URL}#b` }],
+        changes: [flip('2022-09-06', true, `${URL}#b`, 2, 14, true)],
         claims: [UNFOLLOWED], overlappingEvidence: [], citedIds: [], label: 'Tbbbb2222',
       },
     ],
@@ -633,7 +649,7 @@ describe('formatTrajectoryContext context rendering', () => {
   function block(i: number, cited: boolean) {
     return {
       url: URL, patternHash: `p${i}`, claimCount: 2, transitions: 3, finalState: 'REMOVED' as const,
-      changes: [{ snapshotDate: '2022-08-05', present: false, snapshotUrl: `${URL}#${i}` }],
+      changes: [flip('2022-08-05', false, `${URL}#${i}`, 1, 0, true)],
       claims: [FOLLOWED], overlappingEvidence: [{ fileHash: '0xmixed', sharedItems: 2 }],
       citedIds: cited ? [`c${i}`] : [], label: `Tlabel${i}`,
     };
@@ -752,5 +768,89 @@ describe('trajectory labels are identities, not positions', () => {
     const labels = bundle.trajectories.map((t) => t.label);
     expect(new Set(labels).size).toBe(labels.length);
     expect(new Set(labels.map((l) => l.length)).size).toBe(1);
+  });
+});
+
+describe('the timeline renders the arithmetic instead of leaving it to the reader', () => {
+  // FINDING 77. The block used to render `date=present → date=removed` across up
+  // to 83 captures. Four consecutive critiques treated a 4-day gap and a 44-day
+  // gap as one phenomenon, because the distinction was a subtraction away and no
+  // agent ever did it. These tests exist because the timeline string previously
+  // had NO coverage at all — a format change there failed nothing.
+  const withChanges = (changes: ReturnType<typeof flip>[]) => ({
+    trajectories: [
+      {
+        url: URL,
+        patternHash: 'p1',
+        claimCount: 2,
+        transitions: changes.length,
+        finalState: 'REMOVED' as const,
+        changes,
+        claims: ['a claim'],
+        overlappingEvidence: [],
+        citedIds: [],
+        label: 'Ta1b2c3d4',
+      },
+    ],
+    coverage: [],
+    omittedGroups: 0,
+    citedNotResolved: [],
+  });
+
+  it.each(['en', 'he'] as const)('distinguishes a short absence from a long one in %s', (lang) => {
+    const out = formatTrajectoryContext(
+      withChanges([
+        flip('2022-05-13', false, `${URL}#a`, 1, 4),
+        flip('2022-05-17', true, `${URL}#b`, 2, 80),
+        flip('2022-08-05', false, `${URL}#c`, 9, 44, true),
+      ]),
+      lang,
+    );
+
+    // Both extents present, and NOT interchangeable.
+    expect(out).toContain('4');
+    expect(out).toContain('44');
+    expect(out).toContain(lang === 'en' ? '9 captures' : '9 תצלומים');
+    expect(out).toContain(lang === 'en' ? '1 capture,' : 'תצלום אחד,');
+  });
+
+  it.each(['en', 'he'] as const)('says a final state is still running rather than implying it ended in %s', (lang) => {
+    const open = formatTrajectoryContext(
+      withChanges([flip('2022-08-05', false, `${URL}#a`, 9, 44, true)]),
+      lang,
+    );
+    const closed = formatTrajectoryContext(
+      withChanges([
+        flip('2022-08-05', false, `${URL}#a`, 9, 44),
+        flip('2022-09-18', true, `${URL}#b`, 1, 0, true),
+      ]),
+      lang,
+    );
+
+    expect(open).toContain(lang === 'en' ? 'to the last capture' : 'עד התצלום האחרון');
+    expect(open).not.toContain(lang === 'en' ? 'until the next flip' : 'עד ההיפוך הבא');
+    expect(closed).toContain(lang === 'en' ? 'until the next flip' : 'עד ההיפוך הבא');
+  });
+
+  it.each(['en', 'he'] as const)('omits an unmeasurable day count rather than printing NaN in %s', (lang) => {
+    // A NaN in the block is a number the agent reasons with. Absence of a figure
+    // is honest; a false figure is the failure this whole layer exists to avoid.
+    const out = formatTrajectoryContext(
+      withChanges([flip('2022-08-05', false, `${URL}#a`, 9, null, true)]),
+      lang,
+    );
+    expect(out).not.toContain('NaN');
+    expect(out).not.toContain('null');
+    expect(out).toContain(lang === 'en' ? '9 captures' : '9 תצלומים');
+  });
+
+  it.each(['en', 'he'] as const)('tells the reader what the day count bounds, in %s', (lang) => {
+    // Without this, "44 days" reads as a proven duration. It is an upper bound:
+    // the change happened somewhere inside the window between two captures.
+    const out = formatTrajectoryContext(
+      withChanges([flip('2022-08-05', false, `${URL}#a`, 9, 44, true)]),
+      lang,
+    );
+    expect(out).toContain(lang === 'en' ? 'upper bound, not an exact' : 'חסם עליון ולא משך מדויק');
   });
 });

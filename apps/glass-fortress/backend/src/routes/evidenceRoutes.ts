@@ -8,6 +8,10 @@ import { VectorStoreService } from '../services/VectorStoreService';
 import { encryptContact } from '../lib/encrypt';
 import { prisma } from '../lib/prisma';
 import { scrapeUrl } from '../utils/webScraper';
+import {
+  CAPTURE_EXTRACTOR_CLIENT_SUPPLIED,
+  evidenceHashFromCapture,
+} from '../lib/evidenceCapture';
 import { StorageService } from '../services/StorageService';
 import {
   INVESTIGATIVE_CATEGORIES,
@@ -215,6 +219,11 @@ router.post(
     try {
       let analysisRaw: unknown;
       let fileHash: string;
+      // The text the hash was taken over, stored so this record's identity can
+      // be rechecked without refetching a page that may since have changed.
+      // This route anchors on-chain immediately, which is exactly where an
+      // unverifiable identity is most expensive.
+      let capturedText: string | null = null;
       let sourceUrl: string | null = null;
       let fileUrl: string | null = null;
       let urlVersionDiffId: string | null = null;
@@ -269,7 +278,14 @@ router.post(
         urlVersionDiffId = diffId ?? null;
         // Hash URL + scraped content for legal provenance — proves exactly what
         // existed at this link at the moment of submission.
-        fileHash = Web3Service.hashFile(Buffer.from(`${url}\n\n${scrapedText}`, 'utf8'));
+        //
+        // Through the shared function, not an inline copy. The copy that used to
+        // live here omitted the 40,000-character bound the MCP path applies, so
+        // the same URL and text submitted through the website and through MCP
+        // produced DIFFERENT identities on any long document — and the unique
+        // constraint that is supposed to deduplicate them never fired.
+        fileHash = evidenceHashFromCapture(url, scrapedText);
+        capturedText = scrapedText;
       }
 
       const analysisParsed = IntakeOutputSchema.safeParse(analysisRaw);
@@ -313,6 +329,20 @@ router.post(
       // implicit, since Evidence.status defaults to PENDING_REVIEW precisely so a future
       // create() that forgets this can't silently claim on-chain registration.
       const analysisData = buildEvidenceAnalysisData(analysis);
+      // `capturedAt` is the submission moment, not the scrape moment: the client
+      // fetched the page at /intake and posted the text back here. It is an
+      // upper bound on when the text was taken, and is recorded as such rather
+      // than as a precision the route does not have.
+      const captureData =
+        capturedText !== null && sourceUrl !== null
+          ? {
+              sourceUrl,
+              extractor: CAPTURE_EXTRACTOR_CLIENT_SUPPLIED,
+              text: capturedText,
+              capturedAt: new Date(),
+            }
+          : null;
+
       await prisma.evidence.upsert({
         where: { fileHash },
         update: {
@@ -323,6 +353,10 @@ router.post(
           sourceUrl,
           fileUrl,
           urlVersionDiffId,
+          // Upsert, not create: this branch runs for a record that already
+          // exists, which may or may not already carry a capture. Re-writing it
+          // is safe because a matching fileHash means the text reproduces it.
+          ...(captureData ? { capture: { upsert: { create: captureData, update: captureData } } } : {}),
         },
         create: {
           fileHash,
@@ -333,6 +367,7 @@ router.post(
           sourceUrl,
           fileUrl,
           urlVersionDiffId,
+          ...(captureData ? { capture: { create: captureData } } : {}),
         },
       });
 

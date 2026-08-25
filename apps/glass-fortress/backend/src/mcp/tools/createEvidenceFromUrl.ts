@@ -5,6 +5,11 @@ import { getResearcherId } from '../../context/researcherContext';
 import { Web3Service } from '../../services/Web3Service';
 import { buildEvidenceAnalysisData } from '../../lib/evidenceCreateData';
 import { upsertKeyFigures } from '../../lib/upsertKeyFigures';
+import { extractArticleText } from '../../lib/archiveText';
+import {
+  CAPTURE_EXTRACTOR_READABILITY,
+  evidenceHashFromCapture,
+} from '../../lib/evidenceCapture';
 
 // IntakeAgent is instantiated per-call — construction is cheap (no LLM work);
 // only .analyzeText() triggers network I/O.
@@ -48,6 +53,12 @@ export async function createEvidenceFromUrlHandler(input: {
   const agent = getAgent();
   let analysis: Awaited<ReturnType<typeof agent.analyzeText>>;
   let fileHash: string;
+  // The exact text the hash is taken over, stored so the identity can be
+  // recomputed from the database alone. Null on the PDF path: those bytes are
+  // already stable across fetches, and a binary does not belong in a text
+  // column — that record reads as "cannot be checked", never as a mismatch.
+  let capturedText: string | null = null;
+  const capturedAt = new Date();
 
   if (contentType.includes('application/pdf')) {
     // 2a. PDF path — pass the raw buffer to analyzeEvidence so the LLM receives
@@ -60,25 +71,57 @@ export async function createEvidenceFromUrlHandler(input: {
     analysis = await agent.analyzeEvidence(buffer, 'application/pdf');
     fileHash = Web3Service.hashFile(buffer);
   } else {
-    // 2b. HTML/text path — strip markup and feed plain text to analyzeText.
+    // 2b. HTML path — Readability's article, which is the SAME extraction the
+    //     forensic scan path stores as UrlSnapshot.fullText.
+    //
+    //     It used to be a crude tag-strip, and that is FINDING 79: the strip kept
+    //     page furniture, so a live view counter ("49552 צפיות") landed in the
+    //     hashed text and three fetches seconds apart produced three different
+    //     identities. Measured on that article: crude strip 20,442 chars and
+    //     UNSTABLE; extractArticleText 12,984 chars and stable, counter absent.
+    //
+    //     Stability is not why this matters, though — `capturedText` below is.
+    //     Readability drops that counter because it sits outside the article
+    //     body on that page; a timestamp inside the body would defeat it. Only
+    //     the stored text makes the identity checkable rather than merely
+    //     reproducible-for-now.
     const html = await response.text();
-    const text = html
-      .replace(/<script[\s\S]*?<\/script>/gi, '')
-      .replace(/<style[\s\S]*?<\/style>/gi, '')
-      .replace(/<[^>]+>/g, ' ')
-      .replace(/\s{2,}/g, ' ')
-      .trim();
+    const text = extractArticleText(html, input.url);
 
     if (text.length < 100) {
       throw new Error(`Fetched content too short to analyse (${text.length} chars). Is the URL publicly accessible?`);
     }
     analysis = await agent.analyzeText(text, input.url);
-    fileHash = Web3Service.hashFile(Buffer.from(`${input.url}\n\n${text.slice(0, 40_000)}`, 'utf8'));
+    fileHash = evidenceHashFromCapture(input.url, text);
+    capturedText = text;
   }
 
-  // 5. Check for duplicate
-  const existing = await prisma.evidence.findUnique({ where: { fileHash } });
+  // 5. Check for duplicate.
+  //
+  //    This check only ever worked for stable identities. Under the old crude
+  //    strip it could not fire at all on a page with a counter, which is why the
+  //    tool's documented "duplicate URLs return the existing record" was false
+  //    (FINDING 79). It holds now because the hash holds.
+  const existing = await prisma.evidence.findUnique({
+    where: { fileHash },
+    include: { capture: { select: { id: true } } },
+  });
   if (existing) {
+    // Backfill a capture for a record that predates them — but ONLY when this
+    // text actually reproduces that record's hash. Storing a capture that does
+    // not would turn a quiet "cannot be checked" into a loud false mismatch,
+    // and a verifier that cries wolf is one nobody reads.
+    if (existing.capture === null && capturedText !== null) {
+      await prisma.evidenceCapture.create({
+        data: {
+          evidenceId: existing.id,
+          sourceUrl: input.url,
+          extractor: CAPTURE_EXTRACTOR_READABILITY,
+          text: capturedText,
+          capturedAt,
+        },
+      });
+    }
     const result: CreateEvidenceFromUrlResult = {
       evidenceId: existing.id,
       fileHash: existing.fileHash,
@@ -109,6 +152,22 @@ export async function createEvidenceFromUrlHandler(input: {
       figures: { connect: analysis.keyFigures.map((name) => ({ name })) },
       sourceUrl: input.url,
       ...(researcherId ? { createdById: researcherId } : {}),
+      // Written in the same statement as the record it explains. A capture
+      // created separately could fail after the evidence row lands, leaving an
+      // unverifiable record that looks exactly like one created before captures
+      // existed — indistinguishable from the state this fix removes.
+      ...(capturedText !== null
+        ? {
+            capture: {
+              create: {
+                sourceUrl: input.url,
+                extractor: CAPTURE_EXTRACTOR_READABILITY,
+                text: capturedText,
+                capturedAt,
+              },
+            },
+          }
+        : {}),
     },
     include: { figures: { select: { name: true } } },
   });
