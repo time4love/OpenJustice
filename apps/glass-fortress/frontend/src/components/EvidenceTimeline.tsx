@@ -3,12 +3,10 @@
 import { useState } from 'react';
 import { useTargetEntityName } from '@/lib/targetEntity';
 import { Link, useRouter } from '@/i18n/navigation';
-import { apiUrl } from '@/lib/api';
 import { CategoryBadges } from '@/components/CategoryBadges';
 import { SkeletonRows } from '@/components/SkeletonRows';
 import { TierBadge } from '@/components/TierBadge';
 import { perspectiveStyles } from '@/lib/evidencePerspective';
-import { usePromoteAction } from '@/hooks/usePromoteAction';
 import type { EvidenceMetadata as SharedEvidenceMetadata } from '@/types/evidence';
 
 // evidenceId is always populated by the backend's shared mapEvidenceToRecord
@@ -39,60 +37,7 @@ export interface NodeLabels {
   viewDiffHistory: string;
   pendingReviewBadge: string;
   pendingReviewNote: string;
-  promoteToVault: string;
-  promoting: string;
-  promoteSuccess: string;
-  promoteError: string;
   relevanceLabel: (pct: number) => string;
-}
-
-// ---------------------------------------------------------------------------
-// Promote button
-// ---------------------------------------------------------------------------
-
-function PromoteButton({
-  fileHash,
-  labels,
-  onPromoted,
-}: {
-  fileHash: string;
-  labels: NodeLabels;
-  onPromoted: () => void;
-}) {
-  const { state, error, run } = usePromoteAction(async () => {
-    const res = await fetch(apiUrl('/api/evidence/promote'), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ fileHash }),
-    });
-    if (res.ok) {
-      setTimeout(onPromoted, 1200);
-      return { ok: true };
-    }
-    const data = (await res.json().catch(() => null)) as { message?: string } | null;
-    return { ok: false, message: data?.message };
-  });
-
-  if (state === 'done') {
-    return (
-      <span className="text-xs font-semibold text-emerald-600">{labels.promoteSuccess}</span>
-    );
-  }
-
-  return (
-    <div className="space-y-1">
-      <button
-        onClick={() => void run()}
-        disabled={state === 'loading'}
-        className="shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold bg-amber-500 hover:bg-amber-600 disabled:opacity-60 text-white transition-colors"
-      >
-        {state === 'loading' ? labels.promoting : labels.promoteToVault}
-      </button>
-      {state === 'error' && (
-        <p className="text-xs text-red-600">{error ?? labels.promoteError}</p>
-      )}
-    </div>
-  );
 }
 
 // ---------------------------------------------------------------------------
@@ -131,12 +76,10 @@ function TimelineNode({
   record,
   index,
   labels,
-  onPromoted,
 }: {
   record: TimelineRecord;
   index: number;
   labels: NodeLabels;
-  onPromoted: (fileHash: string) => void;
 }) {
   const targetEntityName = useTargetEntityName();
   const { metadata, score } = record;
@@ -246,11 +189,6 @@ function TimelineNode({
                 <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0 mt-1" />
                 <span className="text-xs text-amber-800 leading-snug">{labels.pendingReviewNote}</span>
               </div>
-              <PromoteButton
-                fileHash={metadata.fileHash}
-                labels={labels}
-                onPromoted={() => onPromoted(metadata.fileHash)}
-              />
             </div>
           )}
           {metadata.euaOmissionStatus === 'Omits EUA (Misleading)' && (
@@ -405,11 +343,9 @@ function TimelineNode({
 export function UnifiedTimeline({
   records,
   labels,
-  onPromoted,
 }: {
   records: TimelineRecord[];
   labels: NodeLabels & { getPerspectiveLabel: (p?: string) => string };
-  onPromoted: (fileHash: string) => void;
 }) {
   return (
     <div>
@@ -419,7 +355,6 @@ export function UnifiedTimeline({
           record={record}
           index={i}
           labels={{ ...labels, perspective: labels.getPerspectiveLabel(record.metadata.evidencePerspective) }}
-          onPromoted={onPromoted}
         />
       ))}
     </div>

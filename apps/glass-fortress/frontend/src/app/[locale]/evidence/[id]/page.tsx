@@ -291,11 +291,8 @@ export default function EvidencePage() {
                   forensicLabel: tDiff('forensicLabel'),
                   viewSnapshot: tDiff('viewSnapshot'),
                   viewBeforeSnapshot: tDiff('viewBeforeSnapshot'),
-                  promoteBtn: tDiff('promoteBtn'),
-                  promotingBtn: tDiff('promotingBtn'),
-                  alreadyPromoted: tDiff('alreadyPromoted'),
-                  promoteSuccess: tDiff('promoteSuccess'),
-                  promoteError: tDiff('promoteError'),
+                  promotedChip: tDiff('promotedChip'),
+                  pendingReviewChip: tDiff('pendingReviewChip'),
                   flaggedBadge: tDiff('flaggedBadge'),
                   auditBadge: tDiff('auditBadge'),
                   showChanges: tDiff('showChanges'),
@@ -310,7 +307,6 @@ export default function EvidencePage() {
                     untitled: (untitledId: string) => tDiff('addToThesisUntitled', { id: untitledId }),
                   },
                 }}
-                onPromoted={() => { /* already promoted — this page IS the promotion */ }}
               />
             )}
 

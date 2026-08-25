@@ -42,21 +42,6 @@ interface AppendedPages {
 
 const NO_PAGES: TimelinePage[] = [];
 
-/**
- * Promoting a record confirms it on-chain; the server knows, and the next fetch
- * would say so. Rather than editing the fetched list in place — which the next
- * page load would undo — the confirmations are held beside it and applied on
- * the way out, so they survive every refetch.
- */
-function applyPromotions(records: TimelineRecord[], promoted: ReadonlySet<string>): TimelineRecord[] {
-  if (promoted.size === 0) return records;
-  return records.map((r) =>
-    promoted.has(r.metadata.fileHash)
-      ? { ...r, metadata: { ...r.metadata, status: 'CONFIRMED' } }
-      : r,
-  );
-}
-
 function FilterBanner({ children, clearLabel }: { children: React.ReactNode; clearLabel: string }) {
   return (
     <div className="flex items-center gap-3 px-4 py-2.5 rounded-xl bg-amber-50 border border-amber-200 text-sm mb-4">
@@ -95,7 +80,6 @@ export default function EvidencePage() {
   // Timeline-mode state
   const [appended, setAppended] = useState<AppendedPages | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [promoted, setPromoted] = useState<ReadonlySet<string>>(() => new Set());
 
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   const fetchingRef = useRef(false);
@@ -135,12 +119,8 @@ export default function EvidencePage() {
   const lastPage = extraPages.length > 0 ? extraPages[extraPages.length - 1] : firstPage;
 
   const records = useMemo(
-    () =>
-      applyPromotions(
-        firstPage ? [firstPage, ...extraPages].flatMap((page) => page.results ?? []) : [],
-        promoted,
-      ),
-    [firstPage, extraPages, promoted],
+    () => (firstPage ? [firstPage, ...extraPages].flatMap((page) => page.results ?? []) : []),
+    [firstPage, extraPages],
   );
   const totalCount = firstPage?.totalCount ?? null;
   const nextCursor = lastPage?.nextCursor ?? null;
@@ -239,16 +219,7 @@ export default function EvidencePage() {
     return tTimeline(`perspective.${p as EvidencePerspective}` as Parameters<typeof tTimeline>[0]);
   }
 
-  function handlePromoted(fileHash: string) {
-    setPromoted((prev) => new Set(prev).add(fileHash));
-  }
-
-  // Search results are a second view of the same records, so a promotion made
-  // in either mode has to show in both.
-  const shownSearchResults = useMemo(
-    () => applyPromotions(searchResults, promoted),
-    [searchResults, promoted],
-  );
+  const shownSearchResults = searchResults;
 
   const nodeLabels: NodeLabels & { getPerspectiveLabel: (p?: string) => string } = {
     unknownDate: tTimeline('unknownDate'),
@@ -266,10 +237,6 @@ export default function EvidencePage() {
     viewDiffHistory: tTimeline('viewDiffHistory'),
     pendingReviewBadge: tTimeline('pendingReviewBadge'),
     pendingReviewNote: tTimeline('pendingReviewNote'),
-    promoteToVault: tTimeline('promoteToVault'),
-    promoting: tTimeline('promoting'),
-    promoteSuccess: tTimeline('promoteSuccess'),
-    promoteError: tTimeline('promoteError'),
     relevanceLabel: (pct: number) => tTimeline('relevanceLabel', { pct }),
     getPerspectiveLabel,
   };
@@ -354,7 +321,7 @@ export default function EvidencePage() {
               )}
 
               {!searchLoading && !searchError && searchResults.length > 0 && (
-                <UnifiedTimeline records={shownSearchResults} labels={nodeLabels} onPromoted={handlePromoted} />
+                <UnifiedTimeline records={shownSearchResults} labels={nodeLabels} />
               )}
             </>
           ) : (
@@ -398,7 +365,7 @@ export default function EvidencePage() {
 
               {!initialLoading && !timelineError && records.length > 0 && (
                 <>
-                  <UnifiedTimeline records={records} labels={nodeLabels} onPromoted={handlePromoted} />
+                  <UnifiedTimeline records={records} labels={nodeLabels} />
 
                   {!hashParam && (
                     <div ref={sentinelRef} className="py-2">

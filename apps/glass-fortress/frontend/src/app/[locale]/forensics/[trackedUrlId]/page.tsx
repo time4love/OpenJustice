@@ -8,7 +8,7 @@ import { SiteHeader } from '@/components/SiteHeader';
 import { apiUrl, authHeaders, fetchJson } from '@/lib/api';
 import { useAsyncData, type AsyncFetcher } from '@/hooks/useAsyncData';
 import { SkeletonRows } from '@/components/SkeletonRows';
-import { DiffCard, type DiffRecord, type PromotedEvidence } from '@/components/DiffCard';
+import { DiffCard, type DiffRecord } from '@/components/DiffCard';
 import { TrajectoryPanel } from '@/components/TrajectoryPanel';
 
 // ---------------------------------------------------------------------------
@@ -71,7 +71,6 @@ export default function TrackedUrlPage() {
 
   const [appended, setAppended] = useState<AppendedPages | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [promoted, setPromoted] = useState<ReadonlyMap<string, PromotedEvidence>>(() => new Map());
   const [reportLoading, setReportLoading] = useState(false);
 
   // Sentinel ref for IntersectionObserver
@@ -142,15 +141,10 @@ export default function TrackedUrlPage() {
     // id so a record is never rendered twice.
     const byId = new Map<string, DiffRecord>();
     for (const d of [firstPage, ...extraPages].flatMap((page) => page.diffs)) {
-      if (!byId.has(d.id)) {
-        // A promotion made on this page is held beside the fetched diffs, not
-        // written into them, so a later page load cannot undo it.
-        const evidence = promoted.get(d.id);
-        byId.set(d.id, evidence ? { ...d, promotedEvidence: evidence } : d);
-      }
+      if (!byId.has(d.id)) byId.set(d.id, d);
     }
     return [...byId.values()];
-  }, [firstPage, extraPages, promoted]);
+  }, [firstPage, extraPages]);
 
   const loadMore = useCallback(async () => {
     // `loadingMore` is state and lands a render later; the sentinel can fire
@@ -195,21 +189,14 @@ export default function TrackedUrlPage() {
     return () => observer.disconnect();
   }, [handleIntersect]);
 
-  function handlePromoted(diffId: string, evidence: PromotedEvidence) {
-    setPromoted((prev) => new Map(prev).set(diffId, evidence));
-  }
-
   const diffLabels = {
     deletionsLabel: t('deletionsLabel'),
     additionsLabel: t('additionsLabel'),
     forensicLabel: t('forensicLabel'),
     viewSnapshot: t('viewSnapshot'),
     viewBeforeSnapshot: t('viewBeforeSnapshot'),
-    promoteBtn: t('promoteBtn'),
-    promotingBtn: t('promotingBtn'),
-    alreadyPromoted: t('alreadyPromoted'),
-    promoteSuccess: t('promoteSuccess'),
-    promoteError: t('promoteError'),
+    promotedChip: t('promotedChip'),
+    pendingReviewChip: t('pendingReviewChip'),
     flaggedBadge: t('flaggedBadge'),
     auditBadge: t('auditBadge'),
     showChanges: t('showChanges'),
@@ -343,7 +330,6 @@ export default function TrackedUrlPage() {
                       diff={diff}
                       index={i}
                       labels={diffLabels}
-                      onPromoted={handlePromoted}
                     />
                   ))}
                 </div>

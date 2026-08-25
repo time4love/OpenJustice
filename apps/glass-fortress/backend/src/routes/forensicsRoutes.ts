@@ -5,7 +5,6 @@ import { z } from 'zod';
 import { WaybackScraper } from '../services/WaybackScraper';
 import { prisma } from '../lib/prisma';
 import { type DiffItem } from '../services/ForensicAgent';
-import { promoteForensicDiff } from '../services/promoteForensicDiff';
 import { parseDiffItems } from '../lib/diffItems';
 import { scanLimiter } from '../middleware/rateLimiting';
 import { ScanRelevanceAgent } from '../services/ScanRelevanceAgent';
@@ -24,10 +23,6 @@ const WaybackQuerySchema = z.object({
 
 const ScanBodySchema = z.object({
   url: z.string().url('A valid URL is required'),
-});
-
-const PromoteSchema = z.object({
-  urlVersionDiffId: z.string().min(1, 'urlVersionDiffId is required'),
 });
 
 const DiffPageQuerySchema = z.object({
@@ -414,7 +409,12 @@ router.get('/tracked/:id', identifyResearcher, async (req: Request, res: Respons
         ...evidenceWhereForViewer(req),
         urlVersionDiffId: { in: page.map((d) => d.id) },
       },
-      select: { id: true, fileHash: true, urlVersionDiffId: true },
+      // `status` travels with the record because the UI must distinguish a
+      // CANDIDATE from a PROMOTION. An Evidence row existing means a scan
+      // recorded a finding; only CONFIRMED means a person reviewed it. Sending
+      // the row without its status forced the client to guess, and it guessed
+      // "promoted" — asserting a review that had not happened.
+      select: { id: true, fileHash: true, status: true, urlVersionDiffId: true },
     });
 
     const promotedByDiffId = new Map(promotedEvidence.map((e) => [e.urlVersionDiffId, e]));
@@ -460,117 +460,39 @@ router.get('/tracked/:id', identifyResearcher, async (req: Request, res: Respons
 // are NOT deleted — they are on-chain and must remain.
 // ---------------------------------------------------------------------------
 
-router.delete('/tracked/:id', async (req: Request, res: Response): Promise<void> => {
-  const trackedUrlId = String(req.params['id'] ?? '');
-  if (!trackedUrlId) {
-    res.status(400).json({ error: 'Missing trackedUrl id' });
-    return;
-  }
-
-  try {
-    const trackedUrl = await prisma.trackedUrl.findUnique({ where: { id: trackedUrlId } });
-    if (!trackedUrl) {
-      res.status(404).json({ error: 'TrackedUrl not found' });
-      return;
-    }
-
-    // Signal any running scan to stop creating new records
-    getWaybackScraper().cancelScan(trackedUrlId);
-
-    // Unlink Evidence records (keep them — they are on-chain)
-    await prisma.evidence.updateMany({
-      where: { urlVersionDiff: { trackedUrlId } },
-      data: { urlVersionDiffId: null },
-    });
-
-    // Delete children then parent with retry: a concurrent scan may still be inserting
-    // UrlVersionDiff records during the first attempt. Retrying after a brief delay lets the
-    // cancellation signal take effect so the scan stops writing before the next attempt.
-    let deleted = false;
-    let lastErr: unknown;
-    for (let attempt = 0; attempt <= 3 && !deleted; attempt++) {
-      if (attempt > 0) await new Promise((r) => setTimeout(r, 2_000));
-      try {
-        await prisma.urlVersionDiff.deleteMany({ where: { trackedUrlId } });
-        await prisma.waybackScrapeJob.deleteMany({ where: { trackedUrlId } });
-        await prisma.trackedUrl.delete({ where: { id: trackedUrlId } });
-        deleted = true;
-      } catch (err) {
-        lastErr = err;
-        // Only retry on FK constraint violations (P2003 = concurrent scan still writing)
-        const isFKError = err instanceof Error && 'code' in err && err.code === 'P2003';
-        if (!isFKError) throw err;
-        console.warn(`[forensics/delete] FK constraint on attempt ${attempt + 1}, retrying…`);
-      }
-    }
-    if (!deleted) throw lastErr;
-
-    res.status(200).json({ deleted: true });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    console.error('[forensics/tracked/delete] Error:', err instanceof Error ? err.stack : err);
-    res.status(500).json({ error: 'Delete failed', message });
-  }
-});
-
 // ---------------------------------------------------------------------------
-// POST /api/forensics/promote
+// Deleting a tracked page is deliberately NOT exposed over REST.
 //
-// Promotes a UrlVersionDiff to a main Evidence record:
-//   1. Fetches the diff and its parent TrackedUrl from Prisma
-//   2. Derives a deterministic analysis object from the diff data
-//   3. Hashes the diff content → registers on Ethereum → writes Evidence record
-//   4. Links the new Evidence record back to the UrlVersionDiff
+// It was, as DELETE /api/forensics/tracked/:id, with no authentication. It
+// cancelled any running scan, unlinked the Evidence, then removed every diff
+// and every archived capture beneath the page. The ids it takes are published
+// by GET /api/forensics/tracked, so the whole corpus for a page — years of
+// archived text that the Internet Archive may no longer serve — was removable
+// by an anonymous request naming an id this API hands out.
+//
+// The archived captures are the irreplaceable half of this system: a snapshot's
+// value is that it survives the archive losing the page. Nothing that erases
+// them belongs on an unauthenticated endpoint, and its only client was a button
+// in the researcher UI.
+//
+// Removing a scanned corpus is a destructive database operation. CLAUDE.md
+// gives those their own dedicated session, with the scope written down first
+// and every statement simulated before it runs — not a button beside "view
+// timeline".
 // ---------------------------------------------------------------------------
 
-router.post('/promote', async (req: Request, res: Response): Promise<void> => {
-  const parsed = PromoteSchema.safeParse(req.body);
-  if (!parsed.success) {
-    res.status(400).json({ error: 'Invalid request', details: parsed.error.flatten() });
-    return;
-  }
-
-  try {
-    // Shared with the promote_forensic_diff MCP tool. Two paths that "promote a
-    // diff" must not be able to disagree about what that produces.
-    const result = await promoteForensicDiff(parsed.data.urlVersionDiffId);
-
-    switch (result.outcome) {
-      case 'diff_not_found':
-        res.status(404).json({ error: 'UrlVersionDiff not found' });
-        return;
-
-      case 'already_promoted':
-        res.status(409).json({
-          error: 'already_promoted',
-          message:
-            result.matchedBy === 'content'
-              ? 'This exact change is already evidence (matched by content, not this diff record — likely detected by an earlier or overlapping scan).'
-              : 'This diff has already been promoted to main evidence.',
-          fileHash: result.fileHash,
-          evidenceId: result.evidenceId,
-        });
-        return;
-
-      case 'chain_error':
-        console.error('[forensics/promote] Web3 error:', result.message);
-        res.status(500).json({ error: 'Blockchain registration failed', message: result.message });
-        return;
-
-      case 'promoted':
-        res.status(201).json({
-          promoted: result.confirmed,
-          fileHash: result.fileHash,
-          txHash: result.confirmed ? result.txHash : null,
-        });
-        return;
-    }
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    console.error('[forensics/promote] Error:', err instanceof Error ? err.stack : err);
-    res.status(500).json({ error: 'Promotion failed', message });
-  }
-});
+// ---------------------------------------------------------------------------
+// Promotion is deliberately NOT exposed over REST.
+//
+// It was, as POST /api/forensics/promote, with no authentication: a request
+// carrying a diff id registered evidence on-chain and published it. Promotion
+// is the step where a person accepts a machine's classification as a legal
+// claim, so an anonymous caller could make that claim on the platform's behalf.
+//
+// The only client was a button in the researcher UI. Adding data to this system
+// goes through MCP, where the caller is an authenticated, approved researcher —
+// see promote_evidence and promote_scan_findings.
+// ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
 // Helpers for HTML report
