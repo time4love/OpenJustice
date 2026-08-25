@@ -69,3 +69,19 @@ export async function fetchJson<T>(
   if (!res.ok) throw new Error(body.message ?? `Error ${String(res.status)}`);
   return body;
 }
+
+/**
+ * The public MCP endpoint researchers point their client at.
+ *
+ * Lives here rather than beside either page that shows it. Two copies of an
+ * address is one copy that can go stale, and the failure it produces — a
+ * connector pointed at a URL that no longer serves — looks exactly like the
+ * four setup traps it would then be confused with.
+ *
+ * The testing environment has its own endpoint and its own database. It is
+ * deliberately NOT published here: a public help centre has no reason to
+ * advertise a non-public surface, and the researchers who need it are told it
+ * directly.
+ */
+export const MCP_SERVER_URL =
+  'https://glass-fortress-backend-production.up.railway.app/api/mcp';
