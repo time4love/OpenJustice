@@ -197,12 +197,18 @@ export const GUIDE_PHASES: readonly GuidePhase[] = [
     phase: 3,
     arc: 'collect',
     tools: [
+      'create_evidence_from_url',
       'promote_from_diff_debate',
       'promote_scan_findings',
-      'promote_evidence',
+      'delete_evidence',
       'check_on_chain_status',
+      'promote_evidence',
     ],
-    steps: ['preCheck', 'promote', 'anchorCheck', 'recompute'],
+    // create -> review -> (reject) -> promote, in that order. The page used to
+    // open at preCheck, which assumed a record already existed and was already
+    // sound — skipping the human review that is the entire reason PENDING_REVIEW
+    // exists, and never mentioning how a record is created in the first place.
+    steps: ['create', 'review', 'reject', 'preCheck', 'promote', 'verify'],
     verifiedBy: null,
     hasProductionExample: false,
     screenshots: [],

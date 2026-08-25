@@ -1525,27 +1525,35 @@
         "screenshots": {}
       },
       "evidence": {
-        "title": "Promoting evidence and anchoring it on-chain",
-        "summary": "This is the irreversible phase. After promotion the record’s hash is on a public blockchain and cannot be deleted.",
-        "goal": "Evidence records in CONFIRMED state, each with a hash recomputable from its stored snapshot and a real on-chain transaction.",
-        "verify": "Recompute the hash from the archived snapshot and compare it to what is on the chain — through a third party, not through the tool that wrote it. A record that cannot be recomputed is not evidence; it is a claim about evidence.",
-        "pitfall": "Five anchored records turned out to be unrecomputable from the database. Snapshot anchoring had also never actually worked — a wrong hash format, with the error swallowed silently, hid it for months. Both were found only when somebody recomputed instead of reading a status field.",
+        "title": "From a source to anchored evidence",
+        "summary": "Every record enters as PENDING_REVIEW. Nothing is public, searchable or on-chain until a person has read it and decided. Promotion is the irreversible step, and it comes last.",
+        "goal": "Evidence records in CONFIRMED state, each with an identity recomputable from what is stored — a capture for an article, a snapshot for a scan-derived record — and a real on-chain transaction.",
+        "verify": "Recompute the identity from what is stored, and compare it against the chain through a third party rather than through the tool that wrote it. A record that cannot be recomputed is not evidence; it is a claim about evidence.",
+        "pitfall": "Five anchored records were once found to be unrecomputable from the database, and snapshot anchoring had never actually worked — a wrong hash format with the error swallowed silently hid it for months. Separately, article evidence used to be hashed from a live fetch with nothing stored, so a page carrying a view counter produced a new identity on every call. All of it surfaced only when somebody recomputed instead of reading a status field.",
         "steps": {
+          "create": {
+            "title": "Create the record — it arrives PENDING_REVIEW",
+            "body": "An article enters from its URL; a scan finding is promoted out of the scan, or out of the debate that argued for it. Either way the record lands PENDING_REVIEW: not public, not searchable, not on-chain. That state exists so a person decides what counts as evidence, not a tool."
+          },
+          "review": {
+            "title": "Read it before you approve it",
+            "body": "Read the summary against the document itself, not against your memory of the document. Check that the tier and the incriminating/exculpatory role are what the source supports. Confirm the stored capture still reproduces the record's identity. A review that only checks whether the fields are populated is not a review."
+          },
+          "reject": {
+            "title": "Rejecting is a real outcome, not a failure",
+            "body": "A record that does not hold up is deleted, and the tool refuses to delete anything already anchored, already cited, or pinned — so the class of record that must survive cannot be removed by this route. If every review ends in approval, the review is decorative."
+          },
           "preCheck": {
-            "title": "Check the chain state before promoting",
-            "body": "A routine check that catches exactly the case where a record is marked confirmed while nothing was ever written."
+            "title": "Check the chain before promoting",
+            "body": "A routine check that catches exactly the case where a record is marked confirmed while nothing was ever written to the chain."
           },
           "promote": {
-            "title": "Promote — after stating it explicitly",
-            "body": "State the tool, the arguments, and that the call writes to a public chain and cannot be undone. Then wait for confirmation. There is no shortcut for this step."
+            "title": "Promote — the irreversible step, stated out loud first",
+            "body": "State the tool, the arguments, and that the call writes to a public chain and cannot be undone. Then wait for confirmation. There is no shortcut, and this is the one step in the guide where being slow is the point."
           },
-          "anchorCheck": {
-            "title": "Check immediately, then check again",
-            "body": "A check right after the write, and an independent third check against the chain itself. Three checks are not paranoia when the act cannot be undone."
-          },
-          "recompute": {
-            "title": "Recompute from the snapshot",
-            "body": "Evidence identity is derived from the stored snapshot, not from classifier output. That is what makes a record reconstructible rather than merely believable."
+          "verify": {
+            "title": "Verify three times, the last one independently",
+            "body": "Re-check straight after the write, then again against the chain itself rather than against the tool that reported success. Then recompute the identity from the stored capture or snapshot. Three checks are not paranoia when the act cannot be undone."
           }
         },
         "screenshots": {}
