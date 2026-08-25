@@ -4112,3 +4112,118 @@ shown — Readability drops 36% of the page, and `evidenceDate` moved by ninetee
 external events. **A date derived from a model reading a truncated page is a soft field standing in a
 hard position.** Not acted on here — recorded as the next thing to measure, because n=3 across two
 different extractions is not a rate.
+
+## Step 36 — The first review, and the three defects it found
+
+The guide written this morning says: read the summary against the document, check the tier and role,
+confirm the capture reproduces the identity. Applied to the first production record, it failed it.
+
+### What passed
+
+`capture verify: matches=true`. All six `statisticalClaims` verbatim in the source. All key figures
+present. Every substantive assertion in the summary traced to a passage: the two-month concealment,
+the infant approval without informing the expert committee, the denominator manipulation, the
+manufacturer's leaflet. **The substance was never the problem.**
+
+### FINDING 81 — the identity text was starving the classifier
+
+`evidenceDate` came out **2022-08-02**; the article was published **2022-08-21**.
+
+The captured text contains exactly one full date — an FDA meeting in 2021. The publication date lives
+in `<time datetime="2022-08-21T20:02:14+03:00">`, in a panel *outside* the article body, and
+Readability discards it as chrome. So the model was asked for a date the text it was given could not
+answer, and took one from the article prose instead — *"בתחילת אוגוסט"*, when the Ministry published
+its report. The field silently changed meaning from "when this was published" to "when the events
+happened".
+
+**Caused by the previous day's fix**, and predicted in its own PR: *"a caption or pull quote outside
+the article body would go silently with it."* It bit on the first record, in the field that orders the
+forensic timeline.
+
+The user named the cause before the diagnosis was complete: *hashing and analysis want different
+texts.* Measured:
+
+| Extraction | chars | publication date |
+|---|---|---|
+| `extractArticleText` (hashed) | 12,984 | **absent** |
+| `extractRawText` (whole document) | 20,770 | **present** |
+
+Identity now derives from the narrowest STABLE text; classification from the widest available one.
+Instability does not matter for the second, because it is never hashed. The capture also stores the
+fetched document, so any extraction can be re-derived — the `UrlSnapshot.fullText` lesson applied on
+time instead of after the fact.
+
+### FINDING 82 — more information moved the tier further from the truth
+
+The rubric's branch 3 read *"media article or general pattern without direct proof"*. The qualifier
+attaches to "general pattern", so **"media article" stood alone as a FORM test**.
+
+| analysis text | tier |
+|---|---|
+| truncated, byline stripped | Tier 1: Smoking Gun |
+| full page, byline visible | **Tier 3: Supporting** |
+
+Giving the model *more* of the document made the container obvious — a byline, an author, magazine
+furniture — and the rubric was asking about the container. Its own `tierReasoning` said the direct
+quotes and audio links *"מעניקים לו משקל ראייתי גבוה"* and then filed it under Supporting.
+
+**This is the sharpest instance yet of a rule that fires on the wrong feature.** A depth fix that is
+correct in every other respect made one field worse, and it would have looked like model noise if the
+before had not been kept.
+
+Graded by CONTENTS now: an investigation quoting a leaked internal recording is Tier 1, because the
+weight is in the primary material, not in who printed it. And a tier contradicting its own reasoning
+must resolve in favour of the reasoning. `thesisSynthesis` reconciled — it called Tier 1 *"official
+documents"*, which is intake's Tier 2, so theses were weighting evidence by a definition the
+classifier never used.
+
+### FINDING 83 — the key-figures rule stated a principle and named no exclusions
+
+It already said *"do not include figures merely referenced for context"*, and the model still added a
+pharmaceutical CEO who appears only as background — and, in every run including staging's anchored
+record, **the whistleblower whose warning the document reports**.
+
+A person who exposed the conduct was being listed among those whose conduct is under examination, on a
+list that feeds a per-person dossier. That is the platform's highest legal exposure pointed at exactly
+the wrong person.
+
+The default is now EXCLUSION with the excluded classes named outright: authors and journalists, anyone
+who disclosed or warned against the conduct, victims, organisation heads with no personal act
+attributed, background mentions. When in doubt, exclude.
+
+### The measurement, across five runs
+
+| | A | B | C | D |
+|---|---|---|---|---|
+| | no fixes | +depth | +rubric | +provenance |
+| `evidenceDate` | 2022-08-02 | 2022-08-21 | 2022-08-21 | 2022-08-21 |
+| `evidenceTier` | Tier 1 | **Tier 3** | Tier 1 | Tier 1 |
+| `keyFigures` | 3 | 4 | 2 | 2 |
+| categories | 5 | 5 | 5 | **4** |
+| `fileHash` | `0x3a1093b2…` | `0x3a1093b2…` | `0x3a1093b2…` | `0x3a1093b2…` |
+
+**The identity never moved.** Four deletes, four recreates, four fetches, three prompt versions, two
+extraction regimes — and the stored HTML grew from 116,837 to 116,984 bytes between the first and last,
+so the source document itself was changing throughout. That is the separation working: classification
+is judgement and moves; identity is a fact about a document and does not.
+
+### Still varying, and now visible: categories
+
+4, 5, 5, 5, 4 across the five runs — `ACCOUNTABILITY_EROSION` appears and disappears. Not introduced
+by anything changed here, and not investigated. It is recorded because the provenance stamp finally
+makes it *measurable*: two rows can now be compared knowing whether the same rubric judged them.
+
+### FINDING 84 — writing the provenance guard corrected the model behind it
+
+The first assertion was that every evidence write goes through `buildEvidenceAnalysisData`. It failed
+on `WaybackScraper` and `promoteForensicDiff` — and **both were right**. Intake never judges
+scan-derived evidence; its provenance reaches the diff's own `classifierVersion` through
+`urlVersionDiffId`.
+
+So the invariant is stronger than the one it set out to test: every evidence row goes through one of
+**two** shapers, each carrying its own provenance, and there is no third route. Negative-tested with a
+decoy carrying neither.
+
+Worth recording as a method note: the guard was written to protect a belief and instead corrected it.
+That only happens when the guard asserts a property of the whole system rather than of the change
+being made.
