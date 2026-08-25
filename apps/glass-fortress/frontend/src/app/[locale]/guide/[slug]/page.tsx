@@ -54,6 +54,7 @@ function Callout({
 function StepList({ phase }: { phase: GuidePhase }) {
   const t = useTranslations('guide');
   const accent = GUIDE_ARC_ACCENT[phase.arc];
+  const detailSteps = new Set<string>(phase.detailSteps);
 
   return (
     <ol className="space-y-5">
@@ -65,13 +66,45 @@ function StepList({ phase }: { phase: GuidePhase }) {
           >
             {index + 1}
           </span>
-          <div className="pt-0.5">
+          <div className="pt-0.5 min-w-0">
             <h3 className="text-sm font-semibold text-slate-900 mb-1.5">
               {t(`phases.${phase.slug}.steps.${stepId}.title`)}
             </h3>
             <p className="text-sm text-slate-600 leading-relaxed">
               {t(`phases.${phase.slug}.steps.${stepId}.body`)}
             </p>
+            {/* Implementation depth, folded away. A page that states every
+                mechanism inline reads as a spec, and the flow it exists to
+                teach disappears into it. Native <details>: no JS, keyboard
+                accessible, and it prints expanded. */}
+            {detailSteps.has(stepId) && (
+              <details className="mt-3 group">
+                <summary className="cursor-pointer text-xs font-medium text-slate-500 hover:text-slate-800 transition-colors list-none flex items-center gap-1.5">
+                  {/* Direction-agnostic on purpose. A rotating chevron has to
+                      be mirrored in RTL and re-mirrored when open, and the
+                      rotation silently resolved to 0deg here — so the marker
+                      would have pointed the same way in both states. +/- cannot
+                      point the wrong way. */}
+                  <span
+                    aria-hidden
+                    className="inline-block w-3 text-center font-mono leading-none"
+                  >
+                    <span className="group-open:hidden">+</span>
+                    <span className="hidden group-open:inline">−</span>
+                  </span>
+                  {t('detailLabel')}
+                </summary>
+                <div className="mt-2 ps-4 border-s-2 border-slate-200 space-y-2.5">
+                  {t(`phases.${phase.slug}.steps.${stepId}.detail`)
+                    .split('\n\n')
+                    .map((para, i) => (
+                      <p key={i} className="text-xs text-slate-500 leading-relaxed">
+                        {para}
+                      </p>
+                    ))}
+                </div>
+              </details>
+            )}
           </div>
         </li>
       ))}
@@ -214,6 +247,15 @@ export default function GuidePhasePage() {
           </section>
         )}
 
+        {/* The flow is a loop, not a line: classification produces candidates
+            that re-enter the evidence phase. Saying so beats implying the
+            phases run once each, in order, and stop. */}
+        {phase.slug === 'classification' && (
+          <p className="text-sm text-slate-500 leading-relaxed border-s-2 border-slate-300 ps-4">
+            {t('loopNote')}
+          </p>
+        )}
+
         {/* Verification, then the failure it exists because of */}
         <Callout label={t('verifyLabel')} body={t(`phases.${phase.slug}.verify`)} tone="neutral" />
         <Callout label={t('pitfallLabel')} body={t(`phases.${phase.slug}.pitfall`)} tone="warning" />
@@ -223,7 +265,11 @@ export default function GuidePhasePage() {
           <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-2.5">
             {t('exampleLabel')}
           </h2>
-          {phase.hasProductionExample ? null : (
+          {phase.hasProductionExample ? (
+            <p className="text-sm text-slate-700 leading-relaxed">
+              {t(`phases.${phase.slug}.example`)}
+            </p>
+          ) : (
             <>
               <p className="text-sm font-medium text-slate-700 mb-1.5">
                 {t('examplePendingTitle')}
