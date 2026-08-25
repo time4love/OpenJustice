@@ -3,6 +3,19 @@
 // All handlers are tested directly (no HTTP/transport layer).
 // ---------------------------------------------------------------------------
 
+// jsdom + @mozilla/readability are ESM-only and ts-jest cannot load them here.
+// Needed since the URL intake path moved onto the shared extractor: this suite
+// imports the tool registry, so it now pulls archiveText transitively. Nothing
+// here exercises extraction — the real extractor is measured in test/extraction/.
+jest.mock('jsdom', () => ({
+  JSDOM: jest.fn().mockImplementation((html: string) => ({
+    window: { document: { body: { innerHTML: html ?? '' } } },
+  })),
+}));
+jest.mock('@mozilla/readability', () => ({
+  Readability: jest.fn().mockImplementation(() => ({ parse: () => null })),
+}));
+
 jest.mock('../src/services/thesisAnalysis', () => {
   const actual = jest.requireActual('../src/services/thesisAnalysis');
   return { ...actual, triggerAIAnalysis: jest.fn() };

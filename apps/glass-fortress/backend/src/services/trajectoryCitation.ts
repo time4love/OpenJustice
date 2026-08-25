@@ -1,5 +1,5 @@
 import { prisma } from '../lib/prisma';
-import { changesOnly, type Observation, type Trajectory } from './claimTrajectory';
+import { changeSpans, type Observation, type Trajectory } from './claimTrajectory';
 
 // ---------------------------------------------------------------------------
 // Resolving a cited claim trajectory (docs/gf-trajectory-citation-dev-plan.md).
@@ -119,7 +119,7 @@ export interface TrajectoryCitationResolution {
 
 /** The presence flips, as (snapshot, present) pairs. */
 export function flipSequence(observations: readonly Observation[]): Flip[] {
-  return changesOnly(observations).map((o) => ({
+  return changeSpans(observations).map((o) => ({
     waybackTimestamp: o.waybackTimestamp,
     snapshotDate: o.snapshotDate,
     present: o.present,
@@ -366,7 +366,7 @@ export async function resolveTrajectoryCitations(ids: readonly string[]): Promis
       url: row.trackedUrl.url,
       trackedUrlId: row.trackedUrlId,
       observations: self.observations,
-      changes: changesOnly(self.observations),
+      changes: changeSpans(self.observations),
       transitions: row.transitions,
       firstSeen: row.firstSeen,
       lastSeen: row.lastSeen,

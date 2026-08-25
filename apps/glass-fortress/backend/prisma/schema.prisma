@@ -303,7 +303,41 @@ model Evidence {
   gapResolutions           ThesisGapResolution[]
   createdById              String? // Researcher.id — null for legacy records
   createdBy                Researcher?           @relation(fields: [createdById], references: [id])
+  // The stored document this record's fileHash was computed over. Absent on
+  // every record created before captures existed, and on paths that do not
+  // produce one — absence means "cannot be checked", never "does not match".
+  capture                  EvidenceCapture?
   createdAt                DateTime              @default(now())
+}
+
+/// The exact text an Evidence.fileHash was computed from, kept so the identity
+/// can be recomputed from the database alone.
+///
+/// FINDING 79: article evidence hashed a LIVE fetch and stored nothing, so a page
+/// carrying a view counter produced a new identity on every call and the record
+/// could be re-derived from nothing at all. Storing the capture is what makes
+/// "does this hash still hold?" answerable years later, against an artifact
+/// rather than against a page that has since moved.
+///
+/// Separate table rather than a column on Evidence on purpose: the text runs to
+/// tens of kilobytes, and Prisma selects every scalar by default, so a column
+/// would put the whole document into every evidence list query.
+model EvidenceCapture {
+  id         String   @id @default(cuid())
+  evidenceId String   @unique
+  evidence   Evidence @relation(fields: [evidenceId], references: [id], onDelete: Cascade)
+  /// The address the capture was taken from — part of the hashed payload, so it
+  /// is stored here rather than read back off Evidence, which is nullable.
+  sourceUrl  String
+  /// Which extraction produced `text`. Recorded per capture, so a later change
+  /// of extractor leaves old hashes explainable rather than merely superseded.
+  extractor  String
+  /// Exactly what was extracted. The identity covers its first HASHED_PREFIX_CHARS
+  /// characters; the remainder is stored so nothing captured is thrown away.
+  text       String
+  /// When the source was fetched — NOT when the row was written.
+  capturedAt DateTime
+  createdAt  DateTime @default(now())
 }
 
 enum ThesisVersionStatus {

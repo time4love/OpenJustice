@@ -75,23 +75,43 @@ export function normaliseText(text: string): string {
     .trim();
 }
 
+export interface ExtractedArticle {
+  /** Readability's title, or '' when it found none. */
+  title: string;
+  /** The article as text — the same value `extractArticleText` returns. */
+  text: string;
+}
+
 /**
- * The platform's reading of an archived page: Readability's article, converted
- * to text. This is the exact path that produces UrlSnapshot.fullText.
+ * The platform's ONE reading of a page: Readability's article, converted to text.
+ *
+ * Sole implementation on purpose. `utils/webScraper.ts` used to carry a second
+ * JSDOM+Readability block returning `article.textContent`, which is a different
+ * string from this one — so the same URL ingested through the website and
+ * through MCP produced different text and therefore different evidence
+ * identities. Two extractions of "the article" is one of them being wrong
+ * without anything saying which.
  */
-export function extractArticleText(html: string, sourceUrl: string): string {
+export function extractArticle(html: string, sourceUrl: string): ExtractedArticle {
   const dom = new JSDOM(html, { url: sourceUrl });
   const reader = new Readability(dom.window.document);
   const article = reader.parse();
 
   // Prefer article.content (clean HTML from Readability) so htmlToText can
   // insert proper line breaks. article.textContent smashes words together.
-  if (article?.content?.trim()) {
-    return normaliseText(htmlToText(article.content));
-  }
+  const text = article?.content?.trim()
+    ? normaliseText(htmlToText(article.content))
+    : // Fallback: convert full body HTML if Readability found nothing
+      normaliseText(htmlToText(dom.window.document.body.innerHTML));
 
-  // Fallback: convert full body HTML if Readability found nothing
-  return normaliseText(htmlToText(dom.window.document.body.innerHTML));
+  return { title: article?.title ?? '', text };
+}
+
+/**
+ * The article as text. This is the exact path that produces UrlSnapshot.fullText.
+ */
+export function extractArticleText(html: string, sourceUrl: string): string {
+  return extractArticle(html, sourceUrl).text;
 }
 
 /**

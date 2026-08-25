@@ -3768,7 +3768,55 @@ was one line of arithmetic away, in data already in the prompt, and no agent eve
 thesis, until a researcher's objection to a draft forced the check.
 
 Render each absence as **"absent for N captures / D days"** and the distinction is in front of every
-agent that reads it. Not built: it would change the critique, and publishing came first.
+agent that reads it. Not built at the time: it would change the critique, and publishing came first.
+
+#### Built 2026-08-25, deliberately BEFORE the production replay
+
+Ordering was the decision, not the code — a change that alters what the critic argues must land on
+one side of the run or the other, never inside it.
+
+`changeSpans()` (`src/services/claimTrajectory.ts`) replaces `changesOnly()`: same flips, each now
+carrying `captures`, `days` and `openEnded`. `TrajectoryGroup.changes` is `ChangeSpan[]`, so the
+numbers reach the block, the MCP payloads and the routes without new plumbing. The rendered timeline
+goes from
+
+```
+Timeline: 2022-05-13=removed → 2022-05-17=present → 2022-08-05=removed
+```
+
+to
+
+```
+Timeline: 2022-05-13 removed (1 capture, 4 days until the next flip)
+        → 2022-05-17 present (2 captures, 80 days until the next flip)
+        → 2022-08-05 removed (9 captures, 44 days to the last capture, no further flip)
+```
+
+**Two deviations from the finding as written, both deliberate:**
+
+1. It says *"absent for N captures / D days"*. It is rendered as a **bound**, not a duration, because
+   that is what the archive supports: the change happened somewhere between the capture that shows
+   the old state and the capture that shows the new one. The block's rule text now says so in both
+   locales. Calling a bound a duration would have been FINDING 34 again — a true layer laundering a
+   claim it does not establish.
+2. `days` is `number | null`, not `number`. An unparseable capture date yields `null` and the block
+   prints the capture count alone. A `NaN` would be a number an agent then reasons with; a missing
+   figure is merely missing.
+
+**The open-ended case is marked as such.** Two cited movements never returned at all, and a closed
+interval reading is exactly the misreading the finding is about.
+
+**Coverage:** the timeline string had **no test at all** before this — the `date=present` construction
+could have been changed to anything and nothing would have failed. Now 8 rendering tests (both
+locales) and 7 `changeSpans` unit tests, including the corpus's own May/August shape asserting
+`{captures: 1, days: 4}` against `{captures: 3, days: 44}`. Verified by reverting the renderer: 6 of
+the 8 new rendering tests fail against the old format, and the two that do not are the NaN guards,
+which are not regressions.
+
+1391/1391 backend tests, `tsc` clean, lint unchanged at the 361-problem baseline.
+
+**FINDING 78 was NOT built alongside it.** It is n=1, its repair is a proposal, and bundling an
+unproven label change into a run whose purpose is to compare against staging would confound both.
 
 ### FINDING 78 — making the label stable made it unquotable
 
@@ -3792,3 +3840,192 @@ assessor asked for a concrete custodian — HMO adverse-event registries, or com
 ministry — rather than generic reliance by vaccinees. It PASSED on run 3's gaps. Two runs of the same
 critique differ on whether their own gaps are actionable, which is worth knowing before treating any
 single critique's agenda as the research plan.
+
+---
+
+# Part IV — The production replay
+
+## Step 34 — The first production write, and what it proved about the oldest one
+
+Production held 0 evidence. The first write was the article staging began with, chosen so the two
+environments could be compared on the same input.
+
+### Request
+
+`create_evidence_from_url` — production — the RT Mag investigation URL.
+
+### Predictions, stated BEFORE the call
+
+1. The `fileHash` will match staging's, because evidence identity is content-derived and the article
+   is unchanged.
+2. The summary will differ, because intake runs an LLM. Tier and role should hold.
+
+**Both were wrong, and the first one was wrong in an important way.**
+
+### Response — structure
+
+`evidenceId`, `fileHash` (differs from staging), `status: PENDING_REVIEW`, `evidenceTier`,
+`evidenceRole`, `investigativeCategories[4]`, `targetEntity`, `evidenceDate`, `keyFigures[3]`.
+
+### Verified
+
+| Check | Result |
+|---|---|
+| `check_on_chain_status` (production) | `PENDING_UNREGISTERED`, `safeToPromote: true`, not anchored — correct pre-promotion state |
+| `check_on_chain_status` (staging, same article) | `CONSISTENT`, CONFIRMED, **registry id 2** — the first record ever anchored there |
+| Hash recomputed independently, from the live page | **A third value**, matching neither |
+| Three consecutive fetches, seconds apart | **Three different hashes** |
+
+### FINDING 79 — evidence identity from a live fetch is not an identity
+
+`createEvidenceFromUrl.ts` computes `fileHash = sha256(url + "\n\n" + strippedText[:40000])` over a
+**live fetch**. The page carries a view counter:
+
+```
+fetch 0:  … 49552 צפיות …   hash 0x5f7f9598…
+fetch 1:  … 49553 צפיות …   hash 0xf06015a4…
+fetch 2:  …                  hash 0xbae2d575…
+```
+
+and, checked independently by the user from another machine minutes later, **49557**.
+
+Same stripped length every time — the digit count did not change — and a different hash every time.
+Any page with a view counter, a timestamp, an ad slot, a CSRF nonce or an A/B variant produces a new
+evidence identity on every call. This URL is not unusual; it is a news article.
+
+**Three consequences, in ascending order of seriousness:**
+
+1. **The documented dedup is dead.** The tool says *"Safe to call multiple times — duplicate URLs
+   return the existing record."* It dedups on `findUnique({ where: { fileHash } })`
+   (`createEvidenceFromUrl.ts:80`). A hash that changes per fetch can never match, so a second call
+   creates a second row. Established from the code path, deliberately **not** by writing a duplicate
+   into production.
+
+2. **Nothing is stored to recompute against.** The fetched text is never persisted — the record keeps
+   `fileHash` and `sourceUrl` and nothing else (`createEvidenceFromUrl.ts:104-113`). So the record
+   cannot be re-derived from the live page (it moved) *or* from a stored copy (there is none). This is
+   FINDING 40's defect — "anchored records cannot be recomputed" — in a different code path, still
+   open, and reached by a completely different route.
+
+3. **Staging's registry id 2 is anchored to a hash nobody can ever reproduce.** It is on-chain, it is
+   cited, and it cannot be verified against its source. Not because anything was done wrong at the
+   time, but because the identity was never capable of being checked.
+
+**Why the snapshot work did not cover this.** Evidence identity was moved to archived snapshots on
+2026-08-23 ([[gf-evidence-identity-snapshot-derived]]) — for URL-VERSION evidence, the diff-based
+records the forensic scan produces. Article evidence created from a live URL was a separate path and
+was never migrated. The rule was applied where it was discovered, not where it was true, which is
+FINDING 37's shape exactly.
+
+**Not promoted.** Promotion anchors the hash on a public chain, irreversibly. Anchoring an identity
+already known to be unreproducible would be deliberately manufacturing the state the project spent
+2026-08-23 repairing. The row stays `PENDING_REVIEW` until the identity question is settled.
+
+### Secondary observation — tier moved, not just prose
+
+| | staging | production |
+|---|---|---|
+| Tier | Tier 2: Material | **Tier 1: Smoking Gun** |
+| Categories | 5, incl. `ACCOUNTABILITY_EROSION` | 4, without it |
+| Role | Incriminating | Incriminating |
+| Key figures | 3, identical | 3, identical |
+| Evidence date | 2022-08-21, identical | 2022-08-21, identical |
+
+Prediction 2 said prose would vary and tier would hold. Tier moved a whole band on the same article.
+Tier is not decoration — a thesis may cite only Tier 2 and above, so this is the field that decides
+whether a record is usable at all. One observation is not a rate; it is a reason to measure one.
+
+### Measured: the project already owns the extractor that fixes this
+
+Two live fetches four seconds apart, run through all three extraction paths in the codebase:
+
+| Extractor | Length | Stable across the two fetches | View counter |
+|---|---|---|---|
+| crude tag-strip — `createEvidenceFromUrl.ts:66-71` | 20,442 | **no** | present |
+| `extractArticleText` — produces `UrlSnapshot.fullText` | 12,984 | **yes** | **absent** |
+| `extractRawText` — whole document | 20,770 | **no** | present |
+
+Readability discards the counter because it is page chrome, not article body. **Article evidence is
+the only one of the three paths that produces an unstable identity**, and it is the only one not
+using the shared extractor built during the verification-tools work.
+
+**Two things follow, and only one of them is the extractor.**
+
+1. **Stability is available for free** by using `extractArticleText`, the function the scan path
+   already calls. No new normalisation, no heuristic for stripping volatile numerics.
+2. **Stability is not verifiability, and only the second one matters.** Readability's stability here
+   is incidental — the counter happens to sit outside the article body *on this page*. A timestamp
+   inside the body would defeat it. Storing the extracted text is what makes a record checkable, and
+   no extractor substitutes for it: "does the hash still match" is only answerable against a stored
+   artifact.
+
+**The cost, stated rather than buried.** `extractArticleText` returns 36% less text than the crude
+strip on this page, and [[gf-snapshot-fulltext-is-an-extraction]] already records that `fullText` is
+an extraction discarding ~31% of the page with the on-chain `contentHash` inheriting it. Moving the
+article path onto the same extractor does not create that problem; it spreads it to a second class of
+evidence. What is dropped here is nav, footer and related-article chrome — but a caption or pull
+quote outside the article body would go silently with it.
+
+### The design this opens, and the parts that already exist
+
+Proposed by the user, and it is the scan path arriving from the other direction: store the text the
+hash was computed over; on a later fetch of the same URL, diff stored against fresh, and decide
+whether the change is noise or substance. If substance, the page has two versions with a significant
+change — which is precisely what the forensic scanner produces — and splits again:
+
+- **the page is in Wayback** → recommend a full scan, because the archive holds a history this
+  platform has not looked at;
+- **the page is NOT in Wayback** → this platform just caught a diff nothing else holds. That is a
+  capability, not a repair, and also an obligation: nothing external can corroborate it.
+
+Checked, not assumed — three of the four pieces already exist and must be reused rather than rebuilt:
+
+| Need | Existing part | Why reuse is mandatory |
+|---|---|---|
+| Stable extraction | `archiveText.extractArticleText` | measured above |
+| Diff into chunks | `lib/diffChunking.ts` | dependency-free, already what the scanner feeds the classifier |
+| "Is this change significant?" | `ForensicAgent.analyzeChange(deletions, additions, url, date, [])` | standalone, no DB coupling; carries `CLASSIFIER_VERSION` + prompt hash. **A second significance heuristic would be the three-diverged-copies defect again** |
+| "Does Wayback hold this page?" | `archiveVerification.fetchCaptureIndex(url)` | pure CDX, no DB, no tracking; distinguishes "archive holds nothing" from "archive did not answer" — the exact distinction the two branches turn on. NOT `list_captures`, which short-circuits to `NOT_TRACKED` without calling CDX |
+
+Only the storage itself is new.
+
+### FINDING 79 fixed — and the fix found the bigger half
+
+Built after the user chose the minimum that unblocks promotion. Then a check of the sibling paths
+turned up the part that mattered more, and the user's instruction — *stop and discuss when you detect
+a smell* — is why it was surfaced rather than quietly patched.
+
+**What FINDING 79 actually was.** Not "a view counter". *"The article text"* and *"the evidence hash"*
+each had more than one implementation, so two of them could disagree while both looked correct.
+
+| Was | Now |
+|---|---|
+| 2 extractions of "the article" — `archiveText.extractArticle*` and a second JSDOM+Readability pass in `utils/webScraper.ts` returning `article.textContent`, **a different string** | 1. `webScraper` calls the shared extractor; `new Readability(` appears in exactly one file |
+| 3 copies of the url+text hash, one of which (`evidenceRoutes.ts`) **omitted the 40,000-char bound** | 1 shared `evidenceHashFromCapture`, plus one allow-listed copy (below) |
+| Nothing stored to recompute an identity from | `EvidenceCapture` — the exact text, its extractor, and when it was taken |
+
+**The divergence that was live in production.** The website's own submission route hashed
+`url + "\n\n" + scrapedText` with no length bound; the MCP path bounded at 40,000 characters. The same
+URL and text submitted through the website and through MCP produced **different `fileHash` values** on
+any long document — so the `@unique` constraint meant to deduplicate them could not fire. That route
+also anchors on-chain immediately, which is precisely where an unverifiable identity is most
+expensive.
+
+**`create_evidence_from_text` was deliberately left alone.** Its inline hash copy is the one entry in
+the drift guard's allowlist. The user's reasoning, recorded because it is a product decision and not
+an oversight: the mode depends on a researcher pasting text by hand, which is not a reliable basis for
+evidence; a saved PDF is the likelier replacement; and there is no real example of it in the work
+currently in hand. Refactoring something that may be deleted is wasted work.
+
+**What guards it now.** `test/evidenceIdentityDrift.test.ts` scans the source, because every existing
+test exercised one path and no test could see all of them at once — which is why both divergences
+survived. It asserts one Readability call site, one hash function, and — third test — that its own
+regex still matches the known allow-listed copy, so the guard cannot quietly become decoration.
+
+`capturedAt` on the REST route is the submission moment, not the scrape moment: the client fetches at
+`/intake` and posts the text back at `/confirm`. Recorded as an upper bound rather than as a precision
+the route does not have, and that route's captures carry `client-supplied-readability-v1` rather than
+the plain server-side label — an auditor comparing two captures has to be able to see that one of them
+left the building.
+
+1407/1407, `tsc` clean, lint unchanged at its 361 baseline.
