@@ -335,6 +335,24 @@ model EvidenceCapture {
   /// Exactly what was extracted. The identity covers its first HASHED_PREFIX_CHARS
   /// characters; the remainder is stored so nothing captured is thrown away.
   text       String
+  /// The fetched document itself, so ANY extraction can be re-derived later.
+  ///
+  /// Hashing and analysis want opposite things from a page. Hashing wants the
+  /// narrowest stable text — page furniture like a view counter must not reach
+  /// it. Analysis wants the widest text, because a fact the model is not shown
+  /// is a fact it will either miss or invent: the first production record got a
+  /// wrong `evidenceDate` because Readability discards the byline as chrome, and
+  /// the model filled the gap rather than reporting the absence.
+  ///
+  /// Storing the source is what lets both be served from one captured artifact
+  /// without either becoming unverifiable. It is also the lesson from
+  /// UrlSnapshot.fullText, where keeping only the extraction is exactly why the
+  /// discarded third of each page can never be recovered.
+  ///
+  /// Null on captures taken before this was stored, and on the website's
+  /// submission route, where the text arrives from the client and the server
+  /// never holds the document.
+  html       String?
   /// When the source was fetched — NOT when the row was written.
   capturedAt DateTime
   createdAt  DateTime @default(now())
