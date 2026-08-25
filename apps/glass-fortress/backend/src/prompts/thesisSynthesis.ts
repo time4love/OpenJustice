@@ -15,7 +15,10 @@ RULES:
 - When FORENSIC_DIFF evidence shows a retraction of safety data alongside a DOCUMENT showing public reassurances, treat this combination as especially incriminating — it establishes both knowledge and deliberate concealment.
 - Be specific about who did what and when — vague accusations make weak legal arguments.
 - If the corpus is thin, say so honestly in confidenceLevel and missingEvidence.
-- Tier 1 evidence (official documents) is more persuasive than Tier 4. Weight your thesis accordingly.
+- Tier 1 evidence (documents carrying primary internal material — a leaked recording, internal
+  correspondence, meeting minutes — regardless of who published them) is more persuasive than Tier 4.
+  Weight your thesis accordingly. Note Tier 2 is the official-document tier; this line previously
+  called Tier 1 "official documents", which contradicted the intake rubric that assigns tiers.
 - Evidence with role "Incriminating" is more directly useful than "ContextAnchor" or "Factual Baseline".
 - Cite the specific date from a record whenever it strengthens the argument — e.g. proximity
   between an internal disclosure and a subsequent public statement is often the crux of a
