@@ -209,9 +209,14 @@ export const GUIDE_PHASES: readonly GuidePhase[] = [
     // Captured from the real production pages after the first record was
     // anchored — not mock-ups, and not staging. Rule C allows an interface;
     // these are public pages showing a record the review approved.
+    //
+    // Cropped to the content: no browser chrome, no site navigation, no chat
+    // widget. A screenshot of a whole window makes the reader hunt for the part
+    // that matters, and dates faster — the surrounding furniture changes far
+    // more often than the panel being illustrated.
     screenshots: [
-      { id: 'evidence-vault-public', width: 1280, height: 860 },
-      { id: 'evidence-record-anchored', width: 1280, height: 860 },
+      { id: 'evidence-vault-public', width: 1252, height: 460 },
+      { id: 'evidence-record-anchored', width: 776, height: 682 },
     ],
     // The classification mechanics — how a tier is decided, why the figures list
     // is the sharpest legal exposure, what the rules-version stamp is for — are
