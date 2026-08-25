@@ -50,6 +50,7 @@ import {
   getDiffDebateHandler,
 } from './tools/diffDebateTools';
 import { listCapturesSchema, listCapturesHandler } from './tools/listCaptures';
+import { startTutorialSchema, startTutorialHandler } from './tools/startTutorial';
 import { verifyClaimTextSchema, verifyClaimTextHandler } from './tools/verifyClaimText';
 import { auditThesisClaimsSchema, auditThesisClaimsHandler } from './tools/auditThesisClaims';
 import {
@@ -749,6 +750,31 @@ export function createMcpServer(): McpServer {
     auditThesisClaimsSchema,
     async (input) => ({
       content: [{ type: 'text' as const, text: await auditThesisClaimsHandler(input) }],
+    }),
+  );
+
+  // -------------------------------------------------------------------------
+  // Tutorial (docs/gf-chat-tutorial-dev-plan.md)
+  //
+  // A curriculum in the repository does not exist for someone working in a chat
+  // client. Without this, "start the tutorial" makes an assistant infer a
+  // syllabus from the tool descriptions and lecture — the old guide relocated
+  // into a chat, which is the thing being replaced.
+  //
+  // Serves a static string: no model, no RPC, no database, no network. Open
+  // rather than gated, deliberately, so an account still awaiting approval has
+  // something real to do.
+  // -------------------------------------------------------------------------
+  server.tool(
+    'start_tutorial',
+    'Begin the guided researcher tutorial, which teaches how to verify this platform\'s evidence ' +
+      'rather than trust it. Returns instructions for the assistant to follow — not text to show ' +
+      'the learner. Call this whenever someone asks to learn the platform, to be onboarded, or how ' +
+      'to get started; do not assemble a lesson from the tool list instead. Writes nothing, and ' +
+      'needs no approved researcher account.',
+    startTutorialSchema,
+    (input) => ({
+      content: [{ type: 'text' as const, text: startTutorialHandler(input) }],
     }),
   );
 

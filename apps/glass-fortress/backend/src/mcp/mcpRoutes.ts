@@ -42,6 +42,11 @@ export const READ_TOOLS = new Set([
   // model. Unlike get_claim_trajectories, it can never trigger a detection pass.
   'get_thesis_trajectory_citations',
   'get_session_summary',
+  // Serves a static curriculum string: no model, no RPC, no database, no
+  // network — the cheapest tool here by construction. Open on purpose as well as
+  // by cost: its audience is an account that has signed up and is awaiting
+  // approval, which under requireResearcher can do nothing at all.
+  'start_tutorial',
 ]);
 
 export const WRITE_TOOLS = new Set([
