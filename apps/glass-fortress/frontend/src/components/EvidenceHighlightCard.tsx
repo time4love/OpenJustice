@@ -1,4 +1,5 @@
 import { useLocale, useTranslations } from 'next-intl';
+import { useTargetEntityName } from '@/lib/targetEntity';
 import { Link } from '@/i18n/navigation';
 import { TierBadge, tierAccentColor } from '@/components/TierBadge';
 import { CategoryBadges } from '@/components/CategoryBadges';
@@ -8,6 +9,7 @@ export interface EvidenceHighlight {
   fileHash: string;
   summary: string;
   targetEntity: string;
+  canonicalTargetEntity?: string | null;
   evidenceTier: string;
   investigativeCategories: string[];
   evidenceDate: string;
@@ -21,6 +23,7 @@ export function EvidenceHighlightCard({
   evidence: EvidenceHighlight;
   t: ReturnType<typeof useTranslations<'home'>>;
 }) {
+  const targetEntityName = useTargetEntityName();
   const locale = useLocale();
   const submittedLabel = new Date(evidence.createdAt).toLocaleDateString(locale, {
     day: '2-digit',
@@ -40,7 +43,7 @@ export function EvidenceHighlightCard({
       </div>
 
       <span className="px-2 py-0.5 self-start rounded text-xs font-medium bg-cyan-50 text-cyan-700 border border-cyan-200">
-        {evidence.targetEntity}
+        {targetEntityName(evidence.canonicalTargetEntity, evidence.targetEntity)}
       </span>
 
       <p className="text-xs text-slate-600 line-clamp-3 leading-relaxed flex-1">

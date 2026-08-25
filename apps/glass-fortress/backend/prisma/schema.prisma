@@ -271,7 +271,23 @@ model Evidence {
   // This is the ONLY classification axis. A coarser `category` field was removed:
   // it restated this at lower resolution and could contradict it.
   investigativeCategories  String[]              @default([])
+  // What the intake model SAID this document is about. Freeform by design: it is
+  // an observation about the document, and re-running intake to tidy it would
+  // re-roll tier, date, figures and summary too.
   targetEntity             String
+  // The KEY. Resolved from `targetEntity` by a deterministic lookup — no model —
+  // in lib/targetEntity.
+  //
+  // These were one field, doing two incompatible jobs: display label and
+  // exact-match filter key, with nothing pinning the form. One prompt produced
+  // "Ministry of Health" and "משרד הבריאות" for the same body, so
+  // `?targetEntity=` returned half the evidence under each spelling with no
+  // indication the other half existed. Seven more records named
+  // `corona.health.gov.il`, which is a source rather than an entity at all.
+  //
+  // Null means NOT YET RESOLVED — a gap in the vocabulary to fix, never
+  // "unknown entity". Same discipline as an absent EvidenceCapture.
+  canonicalTargetEntity    String?
   evidenceTier             String
   evidencePerspective      String?
   tierReasoning            String?

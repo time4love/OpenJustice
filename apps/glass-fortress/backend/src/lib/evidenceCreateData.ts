@@ -1,5 +1,6 @@
 import type { IntakeOutput } from '../services/IntakeAgent';
 import { INTAKE_VERSION, intakePromptHash } from './intakeVersion';
+import { canonicaliseTargetEntity } from './targetEntity';
 
 // The fields every evidence-creation call site derives from an IntakeOutput
 // analysis are identical everywhere evidence gets written — POST /confirm,
@@ -21,6 +22,10 @@ export function buildEvidenceAnalysisData(analysis: IntakeOutput) {
     intakePromptHash: intakePromptHash(),
     evidenceRole: analysis.evidenceRole,
     targetEntity: analysis.targetEntity,
+    // Resolved inline so a record is canonical the moment it exists. When the
+    // vocabulary has no entry yet this is null — a visible gap the sweep pass
+    // fills later, never a silent default.
+    canonicalTargetEntity: canonicaliseTargetEntity(analysis.targetEntity),
     evidenceTier: analysis.evidenceTier,
     evidencePerspective: analysis.evidencePerspective,
     investigativeCategories: analysis.investigativeCategories,

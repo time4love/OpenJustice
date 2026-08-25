@@ -1736,5 +1736,11 @@
     "endpointNote": "This is the public environment. The testing environment is a separate server with a separate database, and its address is given to researchers directly.",
     "detailLabel": "How this works underneath",
     "loopNote": "This phase feeds back into the evidence flow in phase 1 — classification does not end in itself, it produces candidates for review and promotion."
+  },
+  "entityDisplayNames": {
+    "MOH_IL": "Ministry of Health (Israel)",
+    "FDA": "U.S. Food and Drug Administration",
+    "WHO": "World Health Organization",
+    "PFIZER": "Pfizer"
   }
 }

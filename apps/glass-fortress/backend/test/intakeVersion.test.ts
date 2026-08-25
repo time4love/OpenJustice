@@ -73,6 +73,15 @@ describe('intake classification carries its own provenance', () => {
     expect(offenders.map((f) => f.slice(SRC.length + 1))).toEqual([]);
   });
 
+  it('both shapers also resolve the canonical entity, so neither can forget', () => {
+    // Same placement argument as the version stamp: a derived key set per-call-site
+    // is the key the next call site omits. buildForensicEvidence is covered by
+    // the guard below, which asserts there is no third route into the vault.
+    const data = buildEvidenceAnalysisData(analysis);
+    expect(data).toHaveProperty('canonicalTargetEntity');
+    expect(data.canonicalTargetEntity).toBe('MOH_IL');
+  });
+
   it('the version string is not left at a placeholder', () => {
     expect(INTAKE_VERSION).toMatch(/^v\d+-/);
   });

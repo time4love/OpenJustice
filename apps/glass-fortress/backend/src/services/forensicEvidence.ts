@@ -1,4 +1,5 @@
 import { ethers } from 'ethers';
+import { canonicaliseTargetEntity } from '../lib/targetEntity';
 import type { DiffItem } from './ForensicAgent';
 import {
   forensicTierReasoning,
@@ -138,6 +139,11 @@ export function buildForensicEvidence(source: ForensicEvidenceSource) {
       evidenceRole: 'Incriminating',
       investigativeCategories: source.investigativeCategories,
       targetEntity,
+      // This path sets targetEntity to the page's HOSTNAME, which is why the
+      // vault holds seven records naming corona.health.gov.il — a source, not an
+      // entity. The resolver's domain rule is the primary route here, not an
+      // edge case.
+      canonicalTargetEntity: canonicaliseTargetEntity(targetEntity),
       evidenceTier: 'Tier 2: Material',
       evidencePerspective: 'Public Statement',
       tierReasoning: forensicTierReasoning(

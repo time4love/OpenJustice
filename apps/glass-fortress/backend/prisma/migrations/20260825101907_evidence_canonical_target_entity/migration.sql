@@ -1,0 +1,16 @@
+-- `targetEntity` was doing two incompatible jobs: the display label on a
+-- Hebrew-first page, and the exact-match filter key that groups every record
+-- about one body. Nothing pinned its form, so one prompt produced "Ministry of
+-- Health" and "משרד הבריאות" for the same ministry — and `?targetEntity=`
+-- returned one record under each spelling, half the evidence, with no
+-- indication the other half existed. Seven further records named
+-- `corona.health.gov.il`, a source rather than an entity.
+--
+-- The observation stays freeform; the KEY moves here, resolved by a
+-- deterministic lookup with no model involved.
+--
+-- Nullable and purely additive: null means NOT YET RESOLVED, which is a visible
+-- gap in the vocabulary rather than a silent default. No column is dropped and
+-- no existing row is rewritten; a backfill pass fills these in separately.
+-- AlterTable
+ALTER TABLE "Evidence" ADD COLUMN     "canonicalTargetEntity" TEXT;
