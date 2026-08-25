@@ -174,6 +174,110 @@ describe('anchorSnapshots', () => {
 });
 
 // ---------------------------------------------------------------------------
+// copy-only: the run must be INCAPABLE of spending, not merely disinclined.
+//
+// Production holds 71 rows whose text is anchored under an earlier twin. Filling
+// those pointers is safe; publishing a text anchored nowhere costs real money on
+// Base mainnet and is a decision for a person. The guarantee has to be
+// structural, because "it will not encounter one" is a claim about today's data,
+// and the tool must not depend on today's data being what someone measured.
+// ---------------------------------------------------------------------------
+describe('copy-only', () => {
+  it('copies a twin pointer without touching the chain at all', async () => {
+    setup([snap('s1')]);
+    (prisma.urlSnapshot.findFirst as jest.Mock).mockResolvedValue({ onChainTxHash: '0xtwin' });
+
+    const r = await anchorSnapshots({ dryRun: false, copyOnly: true });
+
+    expect(r.copiedFromTwin).toBe(1);
+    expect(mockWeb3.registerEvidenceHash).not.toHaveBeenCalled();
+    // Not even a read: a twin copy is pure database work.
+    expect(mockWeb3.isHashRegistered).not.toHaveBeenCalled();
+  });
+
+  it('REFUSES to register a text anchored nowhere, and reports it instead', async () => {
+    setup([snap('s1', 'lonely')]);
+
+    const r = await anchorSnapshots({ dryRun: false, copyOnly: true });
+
+    expect(mockWeb3.registerEvidenceHash).not.toHaveBeenCalled();
+    expect(r.anchored).toBe(0);
+    expect(r.needsRegistration).toEqual([{ snapshotId: 's1', contentHash: 'lonely' }]);
+    // Not a failure. The run promised not to spend, and did not spend.
+    expect(r.failed).toBe(0);
+  });
+
+  it('the SAME input registers with copy-only off — proving the flag is what stops it', async () => {
+    // Without this pair the refusal above could pass because the fixture never
+    // reached the register branch at all.
+    setup([snap('s1', 'lonely')]);
+
+    const r = await anchorSnapshots({ dryRun: false });
+
+    expect(mockWeb3.registerEvidenceHash).toHaveBeenCalledTimes(1);
+    expect(r.anchored).toBe(1);
+    expect(r.needsRegistration).toEqual([]);
+  });
+
+  it('still recovers a pointer for a hash the registry already holds — that spends nothing', async () => {
+    setup([snap('s1')]);
+    (mockWeb3.isHashRegistered as jest.Mock).mockResolvedValue({ registered: true, evidenceId: 4n });
+    (mockWeb3.findRegisteringTxHash as jest.Mock).mockResolvedValue('0xfound');
+
+    const r = await anchorSnapshots({ dryRun: false, copyOnly: true });
+
+    expect(r.recovered).toBe(1);
+    expect(mockWeb3.registerEvidenceHash).not.toHaveBeenCalled();
+  });
+
+  it('repairs twins with no chain configured at all, instead of aborting', async () => {
+    // The measured production case: every null has an anchored twin, so the whole
+    // repair completes with no RPC endpoint. Aborting would demand a credential
+    // the work does not need.
+    setup([snap('s1')]);
+    (prisma.urlSnapshot.findFirst as jest.Mock).mockResolvedValue({ onChainTxHash: '0xtwin' });
+    (Web3Service as unknown as jest.Mock).mockImplementationOnce(() => {
+      throw new Error('RPC_URL missing');
+    });
+
+    const r = await anchorSnapshots({ dryRun: false, copyOnly: true });
+
+    expect(r.chainAvailable).toBe(false);
+    expect(r.copiedFromTwin).toBe(1);
+    expect(r.failed).toBe(0);
+  });
+
+  it('without a chain and without a twin, says UNKNOWN rather than "needs registration"', async () => {
+    // Collapsing the two would report "this costs money" for a row that may
+    // already be anchored — an unnecessary spend, the mirror of the unnecessary
+    // repair FINDING 95 warned about.
+    setup([snap('s1')]);
+    (Web3Service as unknown as jest.Mock).mockImplementationOnce(() => {
+      throw new Error('RPC_URL missing');
+    });
+
+    const r = await anchorSnapshots({ dryRun: false, copyOnly: true });
+
+    expect(r.chainNotConsulted).toBe(1);
+    expect(r.needsRegistration).toEqual([]);
+    expect(r.failed).toBe(0);
+  });
+
+  it('a chainless run WITHOUT copy-only still aborts, as it always did', async () => {
+    setup([snap('s1')]);
+    (Web3Service as unknown as jest.Mock).mockImplementationOnce(() => {
+      throw new Error('RPC_URL missing');
+    });
+
+    const r = await anchorSnapshots({ dryRun: false });
+
+    expect(r.chainAvailable).toBe(false);
+    expect(r.copiedFromTwin).toBe(0);
+    expect(r.failures).toHaveLength(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // The scan and the repair must not drift apart again.
 //
 // registerSnapshotOnChain in WaybackScraper called registerEvidenceHash

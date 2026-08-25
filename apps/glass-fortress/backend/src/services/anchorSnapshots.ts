@@ -27,6 +27,15 @@ export interface AnchorReport {
   copiedFromTwin: number;
   /** On-chain already, tx hash recovered by log scan rather than re-registered. */
   recovered: number;
+  /**
+   * copyOnly only. Texts anchored nowhere, which a copy-only run refuses to
+   * publish. NOT counted as failures: the run did exactly what it promised. They
+   * are listed so the operator sees which captures would cost money, and can
+   * decide separately rather than inside a repair.
+   */
+  needsRegistration: { snapshotId: string; contentHash: string }[];
+  /** copyOnly with no chain configured and no twin — undetermined, not unanchored. */
+  chainNotConsulted: number;
   failed: number;
   /**
    * Why each failure happened.
@@ -57,7 +66,23 @@ export type SnapshotAnchorOutcome =
   | { kind: 'COPIED_FROM_TWIN'; txHash: string }
   | { kind: 'RECOVERED'; txHash: string }
   | { kind: 'REGISTERED'; txHash: string }
-  | { kind: 'REGISTERED_TX_UNKNOWN' };
+  | { kind: 'REGISTERED_TX_UNKNOWN' }
+  /**
+   * copyOnly only. The text is on no twin and the registry does not hold it, so
+   * publishing it would cost a real transaction. Reported instead of spent.
+   *
+   * This is the interesting outcome, not a failure to handle: it means a capture
+   * whose text has never been anchored anywhere, which is a genuine gap in the
+   * factual layer rather than a missing pointer.
+   */
+  | { kind: 'NEEDS_REGISTRATION' }
+  /**
+   * copyOnly with no chain configured, and no twin to copy. Nothing can be
+   * concluded — distinct from NEEDS_REGISTRATION, which is a definite answer.
+   * Collapsing the two would report "needs money" for a row that may well be
+   * anchored already.
+   */
+  | { kind: 'CHAIN_NOT_CONSULTED' };
 
 /**
  * Anchor one snapshot's text, spending a transaction only if the fact is not
@@ -81,9 +106,10 @@ export type SnapshotAnchorOutcome =
  *   3. an actual registration
  */
 export async function anchorOneSnapshot(
-  web3: Web3Service,
+  web3: Web3Service | null,
   snapshotId: string,
   contentHash: string,
+  opts: { copyOnly?: boolean } = {},
 ): Promise<SnapshotAnchorOutcome> {
   // Two captures with byte-identical text share a contentHash, and the registry
   // rejects a duplicate. A twin already anchored means the fact is on-chain and
@@ -99,6 +125,11 @@ export async function anchorOneSnapshot(
     });
     return { kind: 'COPIED_FROM_TWIN', txHash: twin.onChainTxHash };
   }
+
+  // No twin. Everything past this point needs the chain — and a twin copy did
+  // not, which is why the chain is optional: a run whose every null has a twin
+  // completes without an RPC endpoint at all.
+  if (!web3) return { kind: 'CHAIN_NOT_CONSULTED' };
 
   // Then the chain, because a previous interrupted run may have registered this
   // hash without recording the result. Re-registering would revert.
@@ -118,6 +149,13 @@ export async function anchorOneSnapshot(
     return { kind: 'REGISTERED_TX_UNKNOWN' };
   }
 
+  // The register call is UNREACHABLE under copyOnly rather than guarded after
+  // the fact. Everything above this line either reads the chain or copies a
+  // pointer, so a copyOnly run cannot send a transaction by any path — which is
+  // the property that makes it safe to run against production without deciding,
+  // per row, whether spending is acceptable.
+  if (opts.copyOnly) return { kind: 'NEEDS_REGISTRATION' };
+
   const txHash = await web3.registerEvidenceHash(
     toBytes32(contentHash),
     '0x0000000000000000000000000000000000000000',
@@ -131,6 +169,16 @@ export async function anchorSnapshots(opts: {
   url?: string;
   dryRun: boolean;
   limit?: number;
+  /**
+   * Fill pointers, never publish. The run becomes structurally incapable of
+   * sending a transaction, so it can be pointed at production without deciding
+   * row by row whether spending is acceptable.
+   *
+   * Also makes the chain optional: a twin copy is pure database work, so a
+   * population whose every null has an anchored twin repairs completely with no
+   * RPC endpoint configured.
+   */
+  copyOnly?: boolean;
 }): Promise<AnchorReport> {
   const snapshots = await prisma.urlSnapshot.findMany({
     where: {
@@ -147,6 +195,8 @@ export async function anchorSnapshots(opts: {
     anchored: 0,
     copiedFromTwin: 0,
     recovered: 0,
+    needsRegistration: [],
+    chainNotConsulted: 0,
     failed: 0,
     failures: [],
     dryRun: opts.dryRun,
@@ -155,20 +205,30 @@ export async function anchorSnapshots(opts: {
 
   if (opts.dryRun || snapshots.length === 0) return report;
 
-  let web3: Web3Service;
+  let web3: Web3Service | null = null;
   try {
     web3 = new Web3Service();
   } catch (err) {
-    report.failures.push({ snapshotId: '-', reason: err instanceof Error ? err.message : String(err) });
-    // Distinct from "nothing to anchor". Reporting an unconfigured chain as a
-    // clean run is precisely how this went unnoticed for a whole scan.
     report.chainAvailable = false;
-    return report;
+    // Under copyOnly this is survivable rather than fatal: every twin copy is
+    // pure database work. The run continues, and anything it could not decide
+    // without the chain is counted in chainNotConsulted rather than guessed at.
+    if (!opts.copyOnly) {
+      report.failures.push({
+        snapshotId: '-',
+        reason: err instanceof Error ? err.message : String(err),
+      });
+      // Distinct from "nothing to anchor". Reporting an unconfigured chain as a
+      // clean run is precisely how this went unnoticed for a whole scan.
+      return report;
+    }
   }
 
   for (const snap of snapshots) {
     try {
-      const outcome = await anchorOneSnapshot(web3, snap.id, snap.contentHash);
+      const outcome = await anchorOneSnapshot(web3, snap.id, snap.contentHash, {
+        ...(opts.copyOnly ? { copyOnly: true } : {}),
+      });
       switch (outcome.kind) {
         case 'COPIED_FROM_TWIN':
           report.copiedFromTwin++;
@@ -188,6 +248,16 @@ export async function anchorSnapshots(opts: {
             snapshotId: snap.id,
             reason: 'on-chain but registering tx not found',
           });
+          break;
+        case 'NEEDS_REGISTRATION':
+          // Not a failure. The run promised not to spend and did not spend.
+          report.needsRegistration.push({
+            snapshotId: snap.id,
+            contentHash: snap.contentHash,
+          });
+          break;
+        case 'CHAIN_NOT_CONSULTED':
+          report.chainNotConsulted++;
           break;
       }
     } catch (err) {
