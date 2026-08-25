@@ -19,6 +19,8 @@ import {
 } from '../lib/investigativeCategories';
 import { mapEvidenceToRecord } from '../lib/evidenceRecord';
 import { buildEvidenceAnalysisData } from '../lib/evidenceCreateData';
+import { evidenceWhereForViewer, viewerSeesUnreviewed } from '../lib/evidenceVisibility';
+import { identifyResearcher } from '../middleware/researcherIdentity';
 import { upsertKeyFigures } from '../lib/upsertKeyFigures';
 import { promoteEvidence } from '../services/promoteEvidence';
 import { parseDiffItems } from '../lib/diffItems';
@@ -554,7 +556,7 @@ const TimelineQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(20),
 });
 
-router.get('/timeline', async (req: Request, res: Response): Promise<void> => {
+router.get('/timeline', identifyResearcher, async (req: Request, res: Response): Promise<void> => {
   const parsed = TimelineQuerySchema.safeParse(req.query);
   if (!parsed.success) {
     res.status(400).json({ error: 'Invalid query', details: parsed.error.flatten() });
@@ -563,6 +565,8 @@ router.get('/timeline', async (req: Request, res: Response): Promise<void> => {
 
   const { targetEntity, fileHash, cursor, limit } = parsed.data;
   const where = {
+    // Unreviewed records are not public. See lib/evidenceVisibility.
+    ...evidenceWhereForViewer(req),
     ...(targetEntity ? { targetEntity } : {}),
     ...(fileHash ? { fileHash } : {}),
   };
@@ -707,12 +711,16 @@ router.get('/latest', async (req: Request, res: Response): Promise<void> => {
   }
 });
 
-router.get('/stats', async (_req: Request, res: Response): Promise<void> => {
+router.get('/stats', identifyResearcher, async (req: Request, res: Response): Promise<void> => {
   try {
+    // A count discloses EXISTENCE. An unreviewed record showing up as
+    // "1 · Tier 1: Smoking Gun" tells a reader one exists and how it was graded,
+    // which is most of what the review was meant to withhold.
+    const where = evidenceWhereForViewer(req);
     const [total, tierGroups, classified] = await Promise.all([
-      prisma.evidence.count(),
-      prisma.evidence.groupBy({ by: ['evidenceTier'], _count: { evidenceTier: true } }),
-      prisma.evidence.findMany({ select: { investigativeCategories: true } }),
+      prisma.evidence.count({ where }),
+      prisma.evidence.groupBy({ by: ['evidenceTier'], where, _count: { evidenceTier: true } }),
+      prisma.evidence.findMany({ where, select: { investigativeCategories: true } }),
     ]);
 
     const byTier: Record<string, number> = {};
@@ -832,7 +840,7 @@ router.get('/key-figures', async (req: Request, res: Response): Promise<void> =>
 // GET /api/evidence/:id — full record by UUID
 // ---------------------------------------------------------------------------
 
-router.get('/:id', async (req: Request, res: Response): Promise<void> => {
+router.get('/:id', identifyResearcher, async (req: Request, res: Response): Promise<void> => {
   const id = String(req.params['id']);
   try {
     const [record, mentions] = await Promise.all([
@@ -870,7 +878,9 @@ router.get('/:id', async (req: Request, res: Response): Promise<void> => {
       }),
     ]);
 
-    if (!record) {
+    // 404, not 403: a distinguishable response would confirm the record exists,
+    // and existence is part of what the review withholds.
+    if (!record || (record.status !== 'CONFIRMED' && !viewerSeesUnreviewed(req))) {
       res.status(404).json({ error: 'Evidence not found', id });
       return;
     }

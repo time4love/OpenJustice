@@ -5,7 +5,7 @@ import { useParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { Link } from '@/i18n/navigation';
 import { SiteHeader } from '@/components/SiteHeader';
-import { apiUrl, fetchJson } from '@/lib/api';
+import { apiUrl, authHeaders, fetchJson } from '@/lib/api';
 import { useAsyncData, type AsyncFetcher } from '@/hooks/useAsyncData';
 import { SkeletonRows } from '@/components/SkeletonRows';
 import { DiffCard, type DiffRecord, type PromotedEvidence } from '@/components/DiffCard';
@@ -107,7 +107,9 @@ export default function TrackedUrlPage() {
         cursor
           ? `/api/forensics/tracked/${trackedUrlId}?cursor=${cursor}&limit=${PAGE_SIZE}`
           : `/api/forensics/tracked/${trackedUrlId}?limit=${PAGE_SIZE}`,
-        { signal, offline: BACKEND_UNREACHABLE },
+        // Viewer-dependent: the "promoted" marker on a diff comes from an
+        // evidence read, and an unreviewed record must not mark one.
+        { signal, headers: authHeaders(), offline: BACKEND_UNREACHABLE },
       ),
     [trackedUrlId],
   );
