@@ -456,6 +456,32 @@ protocol already warns about in §3 — *"`SHIP` leaves the working tree on `mas
 a ship is the one that accidentally lands there."* It was written down, and it still nearly happened.
 A rule that is known is not a rule that is followed; the gate is what made the difference.
 
+### 2026-08-25 — end of session. Phase 1 complete; phase 2 is the scan
+
+Fourteen PRs (#145-#158), five ships to production. `master` at `edb2e4c`; `staging` two commits
+ahead with the guide screenshots, deliberately unshipped.
+
+| | production |
+|---|---|
+| evidence | **1, CONFIRMED and anchored** — registry id 0, tx `0x48b6f805…` |
+| identity | recomputable from the stored capture (`matches: true`) |
+| provenance | `intakeVersion: v2-contains-not-form`, `canonicalTargetEntity: MOH_IL` |
+| researchers | 1 (ADMIN) · theses 0 · **tracked URLs 0** |
+
+**The guide teaches the order the work actually happens** — setup(0), evidence(1), scan(2),
+classification(3), with classification looping back into 1. Renumbered on the user's instruction:
+the numbers serve the flow. 3 of 12 pages `verified`, each naming the later phase that depended on
+it. The evidence phase carries two real production screenshots and a worked example.
+
+**What the first review found, and why it was worth doing.** The record failed review three times on
+three separate defects — a confabulated date, a tier graded by form, and a figures list naming a
+bystander and a whistleblower. None was visible in the substance, which checked out completely: every
+claim traced to a passage and all six statistical quotations were verbatim. **A review that only
+reads the prose would have passed it every time.**
+
+**Five instances of one defect shape** (FINDING 86) and **a rule that got worse with better input**
+(FINDING 87) are recorded in the playbook as the session's transferable findings.
+
 ### Blocked, and on what
 
 1. **§4.2 is DONE** — the production connector is live in the session and verified to be production.

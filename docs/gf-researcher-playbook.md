@@ -4227,3 +4227,88 @@ decoy carrying neither.
 Worth recording as a method note: the guard was written to protect a belief and instead corrected it.
 That only happens when the guard asserts a property of the whole system rather than of the change
 being made.
+
+---
+
+## Step 37 — Promotion, and where the replay stands
+
+Production's first evidence record is anchored. `registryEvidenceId 0` — staging's equivalent is 2,
+so a fresh environment starts its chain of custody at zero and the number is the contract's own index.
+
+### Verified three independent ways
+
+| # | channel | result |
+|---|---|---|
+| 1 | the tool that wrote it | CONSISTENT · CONFIRMED · tx recorded |
+| 2 | **the chain, by direct RPC** | block 50430105 · SUCCESS · 1 log · **event topic[1] equals the fileHash** |
+| 3 | **the stored capture, recomputed** | `matches: true` — verifiable without refetching anything |
+
+Channel 2 is the one that counts: the chain holds the hash, established with no involvement from the
+tool that reported success.
+
+### What promotion actually changed
+
+|  | before | after |
+|---|---|---|
+| `/api/evidence/stats` | total 0 | total 1 |
+| `/api/evidence/timeline` | 0 | 1 |
+| `/api/evidence/search` | count 0 | count 1 |
+| `/api/evidence/:id` | **404** | **200** |
+
+That table is the clearest statement of what `PENDING_REVIEW` means — and it was **only true from
+this morning**. Until the leak was closed, every one of those "before" values would have shown the
+record.
+
+## FINDING 86 — the same defect shape, five times in one day
+
+Not a coincidence. This is how this codebase fails.
+
+| rule | implementations | the wrong one |
+|---|---|---|
+| the evidence hash | 3 | `evidenceRoutes` omitted the 40,000-char bound |
+| "the article text" | 2 | `webScraper` returned a different string from the archive path |
+| what Tier 1 means | 2 prompts | synthesis said "official documents", intake said leaked material |
+| who may see unreviewed evidence | 5 routes | 4 unfiltered; the 5th, same file, filtered |
+| the evidence response shape | 3 | the detail route hand-built its own |
+
+Each copy looks authoritative alone. Nothing fails. Every test passes — **because every test
+exercises one path**, and testing one path at a time is exactly what missed four of five routes.
+
+What worked, and is now the standing method:
+
+1. **Enumerate every implementation before fixing one.** Grep the operation, not the symptom.
+2. **Write the guard as a SOURCE SCAN.** Only a test that reads every route file sees all copies at
+   once; behaviour tests are per-path by construction.
+3. **Negative-test the guard.** A guard that cannot fail is decoration — proven with a decoy each time.
+4. **Put the shared thing where callers cannot forget it**, inside the one function they already all
+   call. A stamp added per-caller is the stamp the sixth caller omits.
+
+## FINDING 87 — more input made the answer worse
+
+Measured twice on one article, the same day:
+
+| text shown to the model | tier |
+|---|---|
+| truncated, byline stripped | Tier 1 |
+| the full page, byline visible | **Tier 3** |
+
+Showing the model *more* of the document made the journalistic container obvious — and the rubric was
+asking about the container. Its own reasoning called the leaked recordings "high evidentiary weight"
+and then filed the document under Supporting.
+
+**A rule keyed to the wrong feature degrades as input improves**, which inverts every intuition about
+prompting. It was only visible because the before was kept; with no snapshot it reads as
+non-determinism.
+
+## Where the replay stands
+
+| | production |
+|---|---|
+| evidence | 1, CONFIRMED and anchored, identity recomputable, rubric and entity stamped |
+| researchers | 1 (ADMIN) |
+| theses | 0 |
+| tracked URLs / scans | **0 — the next session starts here** |
+
+Phase 1 of the guide's order is complete end to end: created, reviewed, failed review three times on
+three separate classification defects, and promoted only once it passed. **Phase 2 is the Wayback
+scan**, and it is not order-constrained — records it creates canonicalise afterwards.
