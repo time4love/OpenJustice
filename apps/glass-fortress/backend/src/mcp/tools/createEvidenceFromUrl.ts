@@ -5,7 +5,7 @@ import { getResearcherId } from '../../context/researcherContext';
 import { Web3Service } from '../../services/Web3Service';
 import { buildEvidenceAnalysisData } from '../../lib/evidenceCreateData';
 import { upsertKeyFigures } from '../../lib/upsertKeyFigures';
-import { extractArticleText } from '../../lib/archiveText';
+import { extractArticleText, extractRawText } from '../../lib/archiveText';
 import {
   CAPTURE_EXTRACTOR_READABILITY,
   evidenceHashFromCapture,
@@ -58,6 +58,10 @@ export async function createEvidenceFromUrlHandler(input: {
   // already stable across fetches, and a binary does not belong in a text
   // column — that record reads as "cannot be checked", never as a mismatch.
   let capturedText: string | null = null;
+  // The document itself, stored so ANY extraction can be re-derived later —
+  // including the one the classification was made from, which is otherwise
+  // unauditable the moment the page changes.
+  let capturedHtml: string | null = null;
   const capturedAt = new Date();
 
   if (contentType.includes('application/pdf')) {
@@ -86,14 +90,33 @@ export async function createEvidenceFromUrlHandler(input: {
     //     the stored text makes the identity checkable rather than merely
     //     reproducible-for-now.
     const html = await response.text();
+
+    // The identity: the narrowest STABLE extraction. Page furniture must not
+    // reach it — see the view-counter defect above.
     const text = extractArticleText(html, input.url);
+
+    // The classification: the WIDEST available text. A different job with the
+    // opposite requirement, so deliberately a different string.
+    //
+    // These were one text, and that coupling produced a wrong `evidenceDate` on
+    // the first production record. Readability discards the byline as chrome, so
+    // the publication date — `<time datetime="…">`, outside the article body —
+    // was not in what the model was shown. Asked for a date the text could not
+    // answer, it took one from the article body instead, and the field silently
+    // changed meaning from "when this was published" to "when the events were".
+    // The date is present in the whole-document extraction, and always was.
+    //
+    // Instability does not matter here: this text is never hashed. It informs a
+    // judgement, and a judgement wants depth.
+    const analysisText = extractRawText(html);
 
     if (text.length < 100) {
       throw new Error(`Fetched content too short to analyse (${text.length} chars). Is the URL publicly accessible?`);
     }
-    analysis = await agent.analyzeText(text, input.url);
+    analysis = await agent.analyzeText(analysisText, input.url);
     fileHash = evidenceHashFromCapture(input.url, text);
     capturedText = text;
+    capturedHtml = html;
   }
 
   // 5. Check for duplicate.
@@ -118,6 +141,7 @@ export async function createEvidenceFromUrlHandler(input: {
           sourceUrl: input.url,
           extractor: CAPTURE_EXTRACTOR_READABILITY,
           text: capturedText,
+          html: capturedHtml,
           capturedAt,
         },
       });
@@ -163,6 +187,7 @@ export async function createEvidenceFromUrlHandler(input: {
                 sourceUrl: input.url,
                 extractor: CAPTURE_EXTRACTOR_READABILITY,
                 text: capturedText,
+                html: capturedHtml,
                 capturedAt,
               },
             },

@@ -1,0 +1,14 @@
+-- Hashing and analysis want opposite things from a page: the narrowest stable
+-- text versus the widest available text. Serving both from one extraction gave
+-- the first production evidence record a wrong `evidenceDate` — Readability
+-- discards the byline as page chrome, so the model was asked for a date the text
+-- it was given did not contain, and it filled the gap.
+--
+-- Storing the fetched document lets any extraction be re-derived, which is also
+-- the lesson from UrlSnapshot.fullText: keeping only the extraction is why the
+-- third of each page it discards can never be recovered.
+--
+-- Nullable, and purely additive: captures written before this simply have no
+-- source document, which reads as "cannot be re-derived" and never as a
+-- mismatch. No column is dropped and no existing row is rewritten.
+ALTER TABLE "EvidenceCapture" ADD COLUMN "html" TEXT;
