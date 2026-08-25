@@ -286,7 +286,48 @@ Verified end to end on staging: evidence record `0xf6e755b5…` is `CONSISTENT` 
 Sepolia confirms `topics[1]` equals the snapshot hash `0x5a51aa38…` on the shared anchor
 `0x5abb90af…`.
 
-**Not yet done:** phase 1 — watching one real person run it.
+### Phase 1 run 1 — 2026-08-25, and it changed the design
+
+The chapter was run against staging with the researcher as learner. It failed on **step 1**, and the
+failure was worth more than the rest of the chapter.
+
+**Revision 1 taught function-call syntax.** It told the learner to paste
+`list_captures(url: ..., from: ..., to: ...)`. The learner's objection was immediate and correct:
+
+> *is that really how researcher talks to the platform? isnt it in natural language and you know
+> which tools to execute for the request?*
+
+**It is not, and teaching it is teaching the wrong thing.** The entire value of MCP is that the
+syntax is not the researcher's problem. A tutorial built on signatures trains people to do by hand
+the one thing the platform exists to remove.
+
+The corrected rule, now §"What revision 1 got wrong" in the chapter:
+
+> **Ask in your own words. Learn the tool's *name*, never its signature.**
+
+A researcher must know a capability **exists** — you cannot ask for what you do not know about — but
+never its parameter list. So the learner asks in natural language and the assistant names the tool
+afterward, building a vocabulary of capabilities with no syntax attached.
+
+**A second rule was incoherent for the medium.** Revision 1 said *"do not run the tools for the
+learner."* In an MCP chat the learner **cannot** call a tool; only the assistant can. Replaced with:
+
+> **The learner decides what to ask and what the answer means. The assistant executes, and does not
+> interpret ahead of them.**
+
+**The finding that matters most:** the learner never answered step 1's question. The mechanics
+consumed the lesson. Interface friction in a tutorial does not merely annoy — it *replaces* the
+teaching, silently, while the chapter appears to be proceeding.
+
+### Consequence for the shipped guide
+
+The `/guide` evidence page shipped to production earlier the same day carries copy-pasteable tool
+calls under *"Try it yourself"*. Those are defensible as a **record of what was run** — which is how
+they are framed — but they are function signatures, and a beginner meeting them first may reasonably
+conclude that is how one talks to the platform. Worth revisiting for consistency once the tutorial's
+natural-language approach is proven. Not changed yet.
+
+**Not yet done:** a run by someone who has never used the platform.
 
 ## 11. What happens to the existing guide
 
