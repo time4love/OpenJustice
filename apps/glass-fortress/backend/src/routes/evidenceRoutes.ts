@@ -931,6 +931,11 @@ router.get('/:id', identifyResearcher, async (req: Request, res: Response): Prom
       tierReasoning: record.tierReasoning,
       summary: record.summary,
       targetEntity: record.targetEntity,
+      // This route hand-builds its response rather than using
+      // mapEvidenceToRecord, so a field added to the shared mapper never
+      // reaches it. That is how canonicalTargetEntity came to be resolved in
+      // the database and null in this endpoint.
+      canonicalTargetEntity: record.canonicalTargetEntity,
       evidenceDate: record.evidenceDate,
       figures: record.figures,
       medicalConditions: JSON.parse(record.medicalConditions ?? '[]') as string[],
