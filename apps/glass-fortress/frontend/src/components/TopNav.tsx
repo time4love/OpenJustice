@@ -14,6 +14,7 @@ export type NavPage =
   | 'figures'
   | 'theses'
   | 'about'
+  | 'guide'
   | 'researchers'
   | 'call'
   | 'safety';
@@ -24,6 +25,7 @@ type NavLabel =
   | 'nav.forensics'
   | 'nav.theses'
   | 'nav.calls'
+  | 'nav.guide'
   | 'nav.about'
   | 'nav.safety';
 
@@ -33,6 +35,7 @@ const ALL_NAV_ITEMS: { key: NavPage; href: string; label: NavLabel; researcherOn
   { key: 'call', href: '/call', label: 'nav.calls' },
   { key: 'evidence', href: '/evidence', label: 'nav.evidence' },
   { key: 'forensics', href: '/forensics', label: 'nav.forensics' },
+  { key: 'guide', href: '/guide', label: 'nav.guide' },
   { key: 'about', href: '/about', label: 'nav.about' },
   { key: 'safety', href: '/safety', label: 'nav.safety' },
 ];
