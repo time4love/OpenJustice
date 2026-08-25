@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useMemo } from 'react';
+import { useTargetEntityName } from '@/lib/targetEntity';
 import { useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { SiteHeader } from '@/components/SiteHeader';
@@ -36,6 +37,7 @@ interface EvidenceRecord {
 // ---------------------------------------------------------------------------
 
 function EvidenceCard({ record, index }: { record: EvidenceRecord; index: number }) {
+  const targetEntityName = useTargetEntityName();
   const { metadata } = record;
   const styles = perspectiveStyles(metadata.evidencePerspective);
   const isUnknown = metadata.evidenceDate === 'Unknown';
@@ -65,7 +67,7 @@ function EvidenceCard({ record, index }: { record: EvidenceRecord; index: number
           <p className="text-sm text-slate-700 leading-relaxed" dir="auto">{metadata.summary}</p>
 
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 pt-1 border-t border-slate-100/80">
-            <span className="text-xs text-slate-500">{metadata.targetEntity}</span>
+            <span className="text-xs text-slate-500">{targetEntityName(metadata.canonicalTargetEntity, metadata.targetEntity)}</span>
             <span className="font-mono text-xs text-emerald-600" title={metadata.fileHash}>
               {formatHash(metadata.fileHash)}
             </span>

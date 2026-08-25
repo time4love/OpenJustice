@@ -8,6 +8,7 @@ import { Link, useRouter } from '@/i18n/navigation';
 import { SiteHeader } from '@/components/SiteHeader';
 import { apiUrl, authHeaders } from '@/lib/api';
 import { displayUrl } from '@/lib/format';
+import { useTargetEntityName } from '@/lib/targetEntity';
 import { CategoryBadges } from '@/components/CategoryBadges';
 import { TierBadge } from '@/components/TierBadge';
 import { DiffCard, type DiffRecord } from '@/components/DiffCard';
@@ -28,6 +29,7 @@ interface EvidenceDetail {
   tierReasoning?: string | null;
   summary: string;
   targetEntity: string;
+  canonicalTargetEntity?: string | null;
   evidenceDate: string;
   figures: { id: string; name: string }[];
   medicalConditions: string[];
@@ -72,6 +74,7 @@ export default function EvidencePage() {
   const id = typeof params.id === 'string' ? params.id : Array.isArray(params.id) ? params.id[0] : '';
   const t = useTranslations('evidence');
   const tDiff = useTranslations('forensics');
+  const targetEntityName = useTargetEntityName();
   const router = useRouter();
 
   const [evidence, setEvidence] = useState<EvidenceDetail | null>(null);
@@ -133,7 +136,7 @@ export default function EvidencePage() {
             )}
             {evidence.evidenceType === 'FORENSIC_DIFF' && evidence.trackedUrl
               ? displayUrl(evidence.trackedUrl)
-              : evidence.targetEntity}
+              : targetEntityName(evidence.canonicalTargetEntity, evidence.targetEntity)}
           </h1>
         )}
 
@@ -188,7 +191,9 @@ export default function EvidencePage() {
                 </div>
                 <div>
                   <p className="text-xs text-slate-400 mb-0.5">{t('target')}</p>
-                  <p className="text-sm font-medium text-slate-700">{evidence.targetEntity}</p>
+                  <p className="text-sm font-medium text-slate-700">
+                    {targetEntityName(evidence.canonicalTargetEntity, evidence.targetEntity)}
+                  </p>
                 </div>
                 <div>
                   <p className="text-xs text-slate-400 mb-0.5">{t('category')}</p>
