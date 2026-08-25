@@ -52,6 +52,81 @@ export async function countUnanchoredSnapshots(trackedUrlId?: string): Promise<n
   });
 }
 
+/** What anchoring one snapshot actually did. Named for the cost, not the field written. */
+export type SnapshotAnchorOutcome =
+  | { kind: 'COPIED_FROM_TWIN'; txHash: string }
+  | { kind: 'RECOVERED'; txHash: string }
+  | { kind: 'REGISTERED'; txHash: string }
+  | { kind: 'REGISTERED_TX_UNKNOWN' };
+
+/**
+ * Anchor one snapshot's text, spending a transaction only if the fact is not
+ * already on-chain.
+ *
+ * Extracted so the SCAN and the REPAIR cannot diverge, because they had. The
+ * repair checked for a twin first; the scan called registerEvidenceHash
+ * unconditionally, the registry rejected the duplicate, the rejection was
+ * logged, and the row kept its null forever. Production still carries 71 of
+ * those, every one of them a capture whose text IS on-chain under an earlier
+ * twin, with nothing pointing at it.
+ *
+ * That is this repository's most-repeated defect: one rule, two
+ * implementations, and the copies drift. The evidence-visibility rule reached
+ * five copies; the MCP tool classification reached three. One function, two
+ * callers.
+ *
+ * Order matters and each step is cheaper than the next:
+ *   1. a twin in the database — free, no chain call at all
+ *   2. the chain, in case an interrupted run registered without recording
+ *   3. an actual registration
+ */
+export async function anchorOneSnapshot(
+  web3: Web3Service,
+  snapshotId: string,
+  contentHash: string,
+): Promise<SnapshotAnchorOutcome> {
+  // Two captures with byte-identical text share a contentHash, and the registry
+  // rejects a duplicate. A twin already anchored means the fact is on-chain and
+  // only this row's pointer is missing — no transaction needed.
+  const twin = await prisma.urlSnapshot.findFirst({
+    where: { contentHash, NOT: { onChainTxHash: null }, id: { not: snapshotId } },
+    select: { onChainTxHash: true },
+  });
+  if (twin?.onChainTxHash) {
+    await prisma.urlSnapshot.update({
+      where: { id: snapshotId },
+      data: { onChainTxHash: twin.onChainTxHash },
+    });
+    return { kind: 'COPIED_FROM_TWIN', txHash: twin.onChainTxHash };
+  }
+
+  // Then the chain, because a previous interrupted run may have registered this
+  // hash without recording the result. Re-registering would revert.
+  const { registered } = await web3.isHashRegistered(toBytes32(contentHash));
+  if (registered) {
+    const recoveredTx = await web3.findRegisteringTxHash(toBytes32(contentHash));
+    if (recoveredTx) {
+      await prisma.urlSnapshot.update({
+        where: { id: snapshotId },
+        data: { onChainTxHash: recoveredTx },
+      });
+      return { kind: 'RECOVERED', txHash: recoveredTx };
+    }
+    // Registered but the transaction could not be located. Recording a null
+    // would read as "never anchored" and invite a duplicate registration, so the
+    // caller is told plainly rather than handed a false negative.
+    return { kind: 'REGISTERED_TX_UNKNOWN' };
+  }
+
+  const txHash = await web3.registerEvidenceHash(
+    toBytes32(contentHash),
+    '0x0000000000000000000000000000000000000000',
+    'Wayback Snapshot',
+  );
+  await prisma.urlSnapshot.update({ where: { id: snapshotId }, data: { onChainTxHash: txHash } });
+  return { kind: 'REGISTERED', txHash };
+}
+
 export async function anchorSnapshots(opts: {
   url?: string;
   dryRun: boolean;
@@ -93,51 +168,28 @@ export async function anchorSnapshots(opts: {
 
   for (const snap of snapshots) {
     try {
-      // Two captures with byte-identical text share a contentHash, and the
-      // registry rejects a duplicate. Check the database first: a twin already
-      // anchored means the fact is on-chain and only this row's pointer is
-      // missing — no transaction needed.
-      const twin = await prisma.urlSnapshot.findFirst({
-        where: { contentHash: snap.contentHash, NOT: { onChainTxHash: null } },
-        select: { onChainTxHash: true },
-      });
-      if (twin?.onChainTxHash) {
-        await prisma.urlSnapshot.update({
-          where: { id: snap.id },
-          data: { onChainTxHash: twin.onChainTxHash },
-        });
-        report.copiedFromTwin++;
-        continue;
-      }
-
-      // Then the chain, because a previous interrupted run may have registered
-      // this hash without recording the result. Re-registering would revert.
-      const { registered } = await web3.isHashRegistered(toBytes32(snap.contentHash));
-      if (registered) {
-        const recoveredTx = await web3.findRegisteringTxHash(toBytes32(snap.contentHash));
-        if (recoveredTx) {
-          await prisma.urlSnapshot.update({
-            where: { id: snap.id },
-            data: { onChainTxHash: recoveredTx },
-          });
+      const outcome = await anchorOneSnapshot(web3, snap.id, snap.contentHash);
+      switch (outcome.kind) {
+        case 'COPIED_FROM_TWIN':
+          report.copiedFromTwin++;
+          break;
+        case 'RECOVERED':
           report.recovered++;
-          continue;
-        }
-        // Registered but the transaction could not be located. Recording a null
-        // would read as "never anchored" and invite a duplicate registration, so
-        // it counts as a failure and stays visible.
-        report.failed++;
-        report.failures.push({ snapshotId: snap.id, reason: 'on-chain but registering tx not found' });
-        continue;
+          break;
+        case 'REGISTERED':
+          report.anchored++;
+          break;
+        case 'REGISTERED_TX_UNKNOWN':
+          // On-chain, but the transaction could not be located. Counted as a
+          // failure and left visible: writing nothing would read as "never
+          // anchored" and invite a duplicate registration.
+          report.failed++;
+          report.failures.push({
+            snapshotId: snap.id,
+            reason: 'on-chain but registering tx not found',
+          });
+          break;
       }
-
-      const txHash = await web3.registerEvidenceHash(
-        toBytes32(snap.contentHash),
-        '0x0000000000000000000000000000000000000000',
-        'Wayback Snapshot',
-      );
-      await prisma.urlSnapshot.update({ where: { id: snap.id }, data: { onChainTxHash: txHash } });
-      report.anchored++;
     } catch (err) {
       // One snapshot must not abort the pass — but it is counted WITH its reason,
       // and the script exits non-zero on any failure.

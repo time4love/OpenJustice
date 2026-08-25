@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 // ---------------------------------------------------------------------------
 // Anchoring archived snapshots that were never anchored.
 //
@@ -168,5 +170,53 @@ describe('anchorSnapshots', () => {
     expect((prisma.urlSnapshot.count as jest.Mock).mock.calls[0][0].where).toMatchObject({
       onChainTxHash: null,
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The scan and the repair must not drift apart again.
+//
+// registerSnapshotOnChain in WaybackScraper called registerEvidenceHash
+// unconditionally. For a capture whose text a twin had already anchored, the
+// registry rejected the duplicate, the rejection was logged as a failure, and
+// the row kept its null forever — while the fact was on-chain the whole time.
+// Production still holds 71 rows in that state, and every one of them made
+// check_on_chain_status report a broken chain of custody.
+//
+// The repair path had the twin check from the start. Only the scan lacked it:
+// one rule, two implementations, and the copies drifted. That is this
+// repository's most-repeated defect — the evidence-visibility rule reached five
+// copies, the MCP tool classification three.
+//
+// A behavioural test cannot catch the re-inlining, because a re-inlined copy
+// would pass every behavioural test the day it was written and rot afterwards.
+// So this reads the source.
+// ---------------------------------------------------------------------------
+describe('the scanner anchors through the shared path', () => {
+  const scraper = readFileSync(
+    join(__dirname, '..', 'src', 'services', 'WaybackScraper.ts'),
+    'utf8',
+  );
+
+  it('WaybackScraper does not register hashes on its own', () => {
+    // Matches a CALL, not the identifier: the comment at the anchoring site
+    // names registerEvidenceHash to explain what it used to do wrong, and that
+    // history is worth keeping next to the fix.
+    expect(scraper).not.toMatch(/registerEvidenceHash\s*\(/);
+  });
+
+  it('WaybackScraper anchors via anchorOneSnapshot', () => {
+    expect(scraper).toMatch(/anchorOneSnapshot/);
+    expect(scraper).toMatch(/import \{ anchorOneSnapshot \} from '\.\/anchorSnapshots'/);
+  });
+
+  it('DETECTS a re-inlined registration — proven against a decoy', () => {
+    // Without this, a pattern that silently stopped matching would report a
+    // clean codebase forever.
+    const decoy = `
+      const txHash = await web3.registerEvidenceHash(toBytes32(contentHash), ZERO, 'Wayback Snapshot');
+      await prisma.urlSnapshot.update({ where: { id }, data: { onChainTxHash: txHash } });
+    `;
+    expect(decoy).toMatch(/registerEvidenceHash\s*\(/);
   });
 });

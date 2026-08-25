@@ -1,6 +1,6 @@
 import axios from 'axios';
 import { createHash } from 'crypto';
-import { toBytes32 } from '../lib/bytes32';
+import { anchorOneSnapshot } from './anchorSnapshots';
 import { extractArticleText, timestampToDate } from '../lib/archiveText';
 import {
   CDX_MAX_RETRIES,
@@ -250,15 +250,14 @@ async function registerSnapshotOnChain(snapshotId: string, contentHash: string):
   if (!web3) return;
 
   try {
-    const txHash = await web3.registerEvidenceHash(
-      toBytes32(contentHash),
-      '0x0000000000000000000000000000000000000000',
-      'Wayback Snapshot',
-    );
-    await prisma.urlSnapshot.update({
-      where: { id: snapshotId },
-      data: { onChainTxHash: txHash },
-    });
+    // Shared with the repair pass rather than reimplemented here. This function
+    // used to call registerEvidenceHash unconditionally: for a capture whose
+    // text a twin had already anchored, the registry rejected the duplicate, the
+    // rejection was logged as a failure, and the row kept its null forever —
+    // even though the fact was on-chain the whole time. Production still holds
+    // 71 rows in that state. anchorOneSnapshot checks for the twin first and
+    // copies its transaction, so no transaction is spent and no pointer is lost.
+    await anchorOneSnapshot(web3, snapshotId, contentHash);
   } catch (err) {
     console.warn(
       '[WaybackScraper] On-chain snapshot registration failed for', snapshotId,
