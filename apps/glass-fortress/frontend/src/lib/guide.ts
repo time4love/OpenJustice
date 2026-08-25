@@ -232,9 +232,24 @@ export const GUIDE_PHASES: readonly GuidePhase[] = [
     tools: ['start_forensic_scan', 'get_scan_findings', 'list_captures'],
     steps: ['addUrl', 'runScan', 'readFindings', 'listCaptures'],
     verifiedBy: null,
-    hasProductionExample: false,
-    screenshots: [],
-    detailSteps: [],
+    hasProductionExample: true,
+    // Captured logged OUT, from the real production page after a full scan.
+    // Being signed out is not incidental: the redaction policy bars account
+    // identity from any published image, and a logged-out capture satisfies
+    // that by construction rather than by someone remembering to crop.
+    //
+    // Both frames are interface and deterministic facts — a URL, a status, a
+    // count, a date. The diff cards themselves are never photographed: they
+    // carry a classifier's assertions about named people, which the policy bars
+    // from images and from quotation alike.
+    screenshots: [
+      { id: 'scan-start', width: 1720, height: 388 },
+      { id: 'scan-tracked-url', width: 1720, height: 240 },
+    ],
+    // How the archive's capture count relates to the stored one is mechanism,
+    // not flow. A researcher needs it to read the verification, but it must not
+    // sit in front of the four steps it explains.
+    detailSteps: ['listCaptures'],
     environmentCritical: false,
     // Every capture the scan stores has its content hash anchored on the public
     // chain automatically, so this phase spends one permanent transaction per

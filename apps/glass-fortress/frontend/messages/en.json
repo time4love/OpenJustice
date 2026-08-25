@@ -1468,7 +1468,7 @@
         "title": "Tracked URL and a full archive scan",
         "summary": "The raw material is the page’s history, not the page. The scan examines every archived capture, not the latest one.",
         "goal": "The complete version history of one government page — stored, countable, and ready to be compared.",
-        "verify": "Count the captures in the deterministic list and compare that to the number the scan reported. If they differ, the scan did not finish — even if it reports success.",
+        "verify": "Ask for the capture list and compare it to what the vault holds. Expect the archive to list MORE captures than the scan stored: captures whose text is identical collapse into one, and a capture the archive holds as a 404 is skipped. What you are checking is that the stored captures span the page's whole history with no unexplained gap — an entry marked as not stored is a capture nobody has examined, and any interval you measure across it is wider than the evidence supports.",
         "pitfall": "The scan examines every capture in the archive, not the latest one. It is the longest operation in the guide — plan for it. Captures whose text differs are anchored to the public blockchain automatically, so a scan spends a permanent transaction for each distinct version of the page: that is correct, because a capture asserts a fact about what the archive held, and its value depends on being anchored promptly. What the scan does NOT do is promote anything: it produces candidates, and deciding which are evidence stays a human act.",
         "steps": {
           "addUrl": {
@@ -1477,18 +1477,23 @@
           },
           "runScan": {
             "title": "Run a full scan",
-            "body": "This is the longest operation in the guide — plan for it rather than discovering it midway. In the test environment, 83 captures of a single page were examined."
+            "body": "This is the longest operation in the guide — plan for it rather than discovering it midway. The scan walks the archive in batches, storing each capture and comparing it with the one before. On a four-year government page this takes minutes, not seconds, and it is working even while the count sits still: before the first capture arrives it is waiting on the archive's index, which is a single slow request."
           },
           "readFindings": {
             "title": "Read the findings",
-            "body": "The scan promotes nothing on its own. Findings land as PENDING_REVIEW, and deciding which of them is evidence stays a human act — phase 3."
+            "body": "The scan promotes nothing on its own. Findings land as PENDING_REVIEW, and deciding which of them is evidence stays a human act — phase 3. Expect most comparisons to record no change at all: on a real page the majority of captures differ only in material that carries no claim, and “we looked here and nothing moved” is a finding worth keeping."
           },
           "listCaptures": {
             "title": "Get the capture list",
-            "body": "A deterministic list, with no language model involved. This is the list every later claim is checked against, including claims written by the tools themselves."
+            "body": "A deterministic list, with no language model involved. This is the list every later claim is checked against, including claims written by the tools themselves.",
+            "detail": "The archive lists every capture it holds; the vault stores one per distinct version of the page. The two numbers are meant to differ. Captures identical in text collapse into a single stored record, so a page can be captured weekly for years and still hold only a dozen distinct states — and each stored record has its hash published to a public chain once, because a hash already published cannot be published again. The list marks which captures were stored, so a gap is visible rather than assumed."
           }
         },
-        "screenshots": {}
+        "screenshots": {
+          "scan-start": "The scanner takes one public government URL. Nothing is stored until the archive answers.",
+          "scan-tracked-url": "A finished scan on the live platform: the tracked page, its status, and the number of changes found across its history."
+        },
+        "example": "The page: a Ministry of Health vaccine information page, tracked from its first archived capture on 23 December 2021 through 5 March 2026. The archive lists 133 captures of it; the scan stored 83, because captures identical in text collapse into one and a capture the archive holds as a 404 is skipped. Those 83 captures hold just 12 distinct versions of the page — so 70 of the 81 comparisons record no change at all, and 12 hashes are published to the chain rather than 83. Six changes were flagged as legally significant and written as PENDING_REVIEW, where they wait for a person. Nothing was promoted by the scan."
       },
       "classification": {
         "title": "Classifying changes, item by item",
