@@ -1,4 +1,6 @@
 import { Router, Request, Response } from 'express';
+import { evidenceWhereForViewer } from '../lib/evidenceVisibility';
+import { identifyResearcher } from '../middleware/researcherIdentity';
 import { z } from 'zod';
 import { WaybackScraper } from '../services/WaybackScraper';
 import { prisma } from '../lib/prisma';
@@ -355,7 +357,7 @@ router.get('/tracked/:id/jobs', async (req: Request, res: Response): Promise<voi
 // Returns the TrackedUrl record and all its persisted UrlVersionDiff records.
 // ---------------------------------------------------------------------------
 
-router.get('/tracked/:id', async (req: Request, res: Response): Promise<void> => {
+router.get('/tracked/:id', identifyResearcher, async (req: Request, res: Response): Promise<void> => {
   const trackedUrlId = String(req.params['id'] ?? '');
 
   if (!trackedUrlId) {
@@ -404,8 +406,14 @@ router.get('/tracked/:id', async (req: Request, res: Response): Promise<void> =>
     const page = hasMore ? rawDiffs.slice(0, limit) : rawDiffs;
     const nextCursor = hasMore ? page[page.length - 1]?.id : null;
 
+    // Filtered like every other evidence read. Two reasons, and the second is
+    // not about privacy: an unreviewed record here marks its diff as "promoted"
+    // in the UI, which is a claim the review has not yet made.
     const promotedEvidence = await prisma.evidence.findMany({
-      where: { urlVersionDiffId: { in: page.map((d) => d.id) } },
+      where: {
+        ...evidenceWhereForViewer(req),
+        urlVersionDiffId: { in: page.map((d) => d.id) },
+      },
       select: { id: true, fileHash: true, urlVersionDiffId: true },
     });
 

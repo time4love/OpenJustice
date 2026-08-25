@@ -1,4 +1,6 @@
 import { Router, Request, Response } from 'express';
+import { evidenceWhereForViewer } from '../lib/evidenceVisibility';
+import { identifyResearcher } from '../middleware/researcherIdentity';
 import { prisma } from '../lib/prisma';
 
 const router = Router();
@@ -38,18 +40,16 @@ router.get('/figures', async (req: Request, res: Response): Promise<void> => {
 // fileHash is an implementation detail and is not returned here.
 // ---------------------------------------------------------------------------
 
-router.get('/evidence', async (req: Request, res: Response): Promise<void> => {
+router.get('/evidence', identifyResearcher, async (req: Request, res: Response): Promise<void> => {
   const q = typeof req.query['q'] === 'string' ? req.query['q'].trim() : '';
 
   try {
     const evidence = await prisma.evidence.findMany({
-      where: q
-        ? {
-            OR: [
-              { summary: { contains: q, mode: 'insensitive' } },
-            ],
-          }
-        : undefined,
+      where: {
+        // Unreviewed records are not public. See lib/evidenceVisibility.
+        ...evidenceWhereForViewer(req),
+        ...(q ? { OR: [{ summary: { contains: q, mode: 'insensitive' } }] } : {}),
+      },
       orderBy: { createdAt: 'desc' },
       take: MENTION_LIMIT,
       select: { id: true, summary: true, investigativeCategories: true, evidenceDate: true },
