@@ -12,6 +12,7 @@ import {
   GUIDE_ARC_ACCENT,
   findGuidePhase,
   guideScreenshots,
+  guideExamplePrompts,
   guideNeighbours,
   guideStatus,
   type GuidePhase,
@@ -127,6 +128,7 @@ export default function GuidePhasePage() {
   const status = guideStatus(phase);
   const { previous, next } = guideNeighbours(phase.slug);
   const screenshots = guideScreenshots(phase);
+  const prompts = guideExamplePrompts(phase);
 
   return (
     <main className="min-h-screen bg-slate-50">
@@ -278,6 +280,25 @@ export default function GuidePhasePage() {
             </>
           )}
         </section>
+
+        {/* Copyable tool calls a researcher can paste into their MCP chat */}
+        {prompts.length > 0 && (
+          <section className="space-y-4">
+            <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-widest">
+              {t('promptsLabel')}
+            </h2>
+            {prompts.map((promptId) => (
+              <div key={promptId} className="space-y-1.5">
+                <CopyableCode
+                  value={t(`phases.${phase.slug}.prompts.${promptId}.command`)}
+                />
+                <p className="text-xs text-slate-500 leading-relaxed ps-1">
+                  {t(`phases.${phase.slug}.prompts.${promptId}.note`)}
+                </p>
+              </div>
+            ))}
+          </section>
+        )}
 
         {/* Neighbours */}
         <nav className="flex flex-wrap gap-3 pt-2">
