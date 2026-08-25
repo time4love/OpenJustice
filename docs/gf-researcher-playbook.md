@@ -4780,3 +4780,93 @@ Nothing is inferred from existence any more.
 The shape is the one this playbook keeps recording — mechanism right, summary wrong. The rows were
 correct throughout; only the sentence over them was false, and the sentence is what a reviewer acts
 on.
+
+## Step 39 — Confirming the scanned-URL evidence in production
+
+Phase 1's promotion anchored one record. This step promotes the six the **scan** produced, which is
+the first time production's evidence layer grows from something the system found rather than
+something a person handed it.
+
+### The environment was established before anything was written
+
+Neither connector says which database answers it, so both were asked the same read:
+
+| connector | `search_evidence` total | identified as |
+|---|---|---|
+| A | 1 — the article, Tier 1, `Ministry of Health` | **PRODUCTION** |
+| B | 8 — the article + 7 page-change records | STAGING |
+
+A third axis was available here that Step 38 did not have: **all six pending production file hashes
+match staging's confirmed records exactly.** Two environments, scanned three days apart, independently
+recomputing identical identities from the same archive. The classifications are model output and can
+be argued with; the hashes are facts, and they agreed before a single transaction was spent.
+
+### The pre-state was measured, not assumed
+
+`check_on_chain_status` on all six returned `PENDING_UNREGISTERED` · `safeToPromote: true` ·
+`consistent: true` — nothing on chain, no recorded tx, database and contract in agreement about that.
+`get_scan_findings` reported `unrecorded: 0`, which is the guard that matters: there was no
+significant diff sitting without an evidence row, so six was the complete set and not merely the
+visible one.
+
+### Request
+
+```
+promote_scan_findings
+  url: "https://corona.health.gov.il/vaccine-for-covid/"
+```
+
+`promoted: 6 · failed: 0`, six distinct transaction hashes, registry ids **13–18** contiguous.
+
+### Verified four independent ways
+
+| # | channel | result |
+|---|---|---|
+| 1 | the tool that wrote it | 6 promoted, 0 failed, 6 tx hashes |
+| 2 | `check_on_chain_status` × 6 | all CONSISTENT · CONFIRMED · ids 13–18 |
+| 3 | the public REST API, unauthenticated | `/api/evidence/timeline` totalCount **1 → 7** |
+| 4 | **Base mainnet, by public RPC** | 6/6 `status: 0x1`, **`topics[1]` equals the fileHash**, `to` equals the registry |
+
+Channel 4 is the one that counts, and it needed no credential: `https://mainnet.base.org` is public,
+so the chain was asked directly with no Glass Fortress code anywhere in the path. The event log also
+carries the registry id and the category list in its data field, so the categories a reader sees in
+the vault are themselves on-chain rather than only in the database.
+
+### What the six findings actually record
+
+All Tier 2: Material, all on `corona.health.gov.il/vaccine-for-covid/`.
+
+| window | change | categories beyond the common four |
+|---|---|---|
+| 05-24 → 05-25 | mRNA "disappears within hours to days" and the AstraZeneca cardiac alternative removed; 4th-dose efficacy numbers added | — |
+| 05-26 → 05-29 | **exactly reverses the above** | — |
+| 05-29 → 05-30 | **reverses again** | — |
+| 07-24 → 08-05 | pivots to toddler vaccination from 6 months; removes the adverse-event reporting link and the vaccination-committee minutes | ACCOUNTABILITY_EROSION |
+| 09-05 → 09-06 | toddler content removed wholesale; adds that all four vaccines were FDA-approved "effective and safe" | EXPERIMENTAL_STATUS_CONCEALMENT |
+| 09-21 → 11-29 | Omicron-adapted vaccine; quantitative efficacy claims deleted and replaced with an unquantified "expected to give broader protection"; eligibility 18→12, interval 4→3 months | — |
+
+**The first three are one oscillation, not three events.** The same two claims — the mRNA-disappears
+sentence and the AstraZeneca contraindication — leave, return, and leave again across six days in
+May 2022. That pattern is only visible because the pipeline keeps every diff rather than
+deduplicating to the distinct texts, and it is precisely what the trajectory layer exists to surface.
+
+## FINDING 98 — the two environments disagree about one diff, and nothing reports the disagreement
+
+Staging holds **7** page-change records for this page; production classified **6** as significant. The
+extra staging record is `0x8b814765` (2025-06-01). Same archive, same code, same page — different
+verdict.
+
+`unrecorded: 0` establishes that production is not silently dropping a row: its classifier genuinely
+judged that diff insignificant where staging's judged it material. The classifier is an LLM, and this
+is it being non-deterministic across environments on a real corpus.
+
+This is worth recording for a reason beyond curiosity. The replay's whole argument is that two
+independently scanned environments reproducing the same numbers is evidence the pipeline is
+deterministic — and for the deterministic layer it held perfectly: 83 captures, 81 diffs, and six
+identical content hashes. The divergence sits exactly where the LLM sits, and nowhere else. That is
+the cleanest available demonstration of which parts of this system are reproducible and which are
+judgement, and it argues for the same treatment the guide already prescribes for tier and
+classification: verify the hash, read and judge the classification.
+
+Nothing in either environment surfaces the disagreement. A researcher comparing the two vaults would
+have to notice a count differing by one.
