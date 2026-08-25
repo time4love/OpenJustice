@@ -4974,3 +4974,92 @@ The chapter's premise is that verifying instead of trusting surfaces discrepanci
 the platform that shipped it, on its first run, with a learner who had never used the system — and
 1473 passing tests had not. Worth remembering the next time a chapter looks like a cost rather than an
 investment.
+
+## Step 40 — Production's snapshot pointers repaired, and the chain that got here
+
+One defect, found by a tutorial, turned out to have two faces; fixing one exposed the other; and both
+traced back to a duplicate-rejection being logged as a failure. The sequence is worth keeping because
+no step in it was reached by reading code.
+
+| # | event | how it was found |
+|---|---|---|
+| 1 | tutorial's first cold run asks `check_on_chain_status` about a **snapshot** hash | a learner following a script |
+| 2 | tool answers `ORPHANED_ANCHOR` — *"investigate before registering anything else"* | the learner disbelieved it |
+| 3 | the researcher asks whether their evidence is sound | **the false alarm working as designed** |
+| 4 | production checked: identical verdict, so not a staging artifact | asking the other environment the same question |
+| 5 | cause: the verdict branched on `inVault`, which means an Evidence row and nothing else | reading the branch after the data said it must be wrong |
+| 6 | fixing it exposed the *nulls* underneath — why did captures lack a transaction at all? | the user asking "how was a registration missed?" |
+| 7 | measured: **none was missed.** All 12 texts anchored; all 71 nulls are twins | counting production's whole capture list |
+| 8 | cause: the scan called `registerEvidenceHash` unconditionally; duplicates reverted; the revert was logged as failure and the row kept its null | comparing the scan path against the repair path |
+
+**The scan and the repair had the same job and different code.** The repair checked for a twin first;
+the scan did not. One rule, two implementations, and the copies drifted — the same shape as the
+evidence-visibility rule reaching five copies and the MCP tool classification reaching three. They now
+share `anchorOneSnapshot`, and a **source-level** guard fails if the registration is ever re-inlined,
+because a re-inlined copy would pass every behavioural test the day it was written and rot afterwards.
+
+### The repair, and why it could not spend
+
+`--copy-only` makes the run **structurally incapable** of sending a transaction: the register call is
+unreachable rather than guarded after the fact. *"It will not encounter one"* is a claim about today's
+data, and the tool must not depend on today's data being what someone measured.
+
+It also makes the chain **optional**, because a twin copy is pure database work. A population whose
+every null has an anchored twin — exactly what production was — repairs with no RPC endpoint at all.
+
+```
+examined:         71
+copied from twin: 71
+anchored:          0     ← no transaction sent, no ETH
+failed:            0
+unanchored:   71 → 0
+```
+
+### Verified three ways, two of them independent of the tool that did the work
+
+| # | channel | result |
+|---|---|---|
+| 1 | the tool | 71 copied, 0 anchored, 0 failed |
+| 2 | `list_captures` | every capture carries a transaction; each text maps to exactly one |
+| 3 | **Base mainnet, public RPC** | three sampled transactions: `status 0x1`, and **`topics[1]` equals the content hash it was copied onto** |
+
+Channel 3 is the one that counts, and it is not "did the write happen" — it is **did the write put the
+right value there.** A copy could have assigned a wrong transaction and still looked repaired. Presence
+is not correctness, and only the chain can tell them apart.
+
+## FINDING 100 — the safety tool cannot reach the environment it exists to protect
+
+Found while working out how to run the repair without production credentials on a laptop.
+
+`railway ssh <cmd>` executes inside the container, where `DATABASE_URL` already lives — the correct
+mechanism, and better than `railway run`, which injects the credential into a local process. **But no
+operational script can run there**, for two independent reasons:
+
+- `tsconfig.json` includes only `src/**/*`, so `scripts/` is never compiled;
+- `ts-node` is in neither `dependencies` nor `devDependencies` — it resolves from the monorepo root —
+  and `typescript` is a devDependency that deploy containers routinely prune.
+
+Eight scripts are affected: `db:simulate`, `researcher:bootstrap`, `forensics:reclassify`,
+`forensics:resummarize`, `forensics:anchor-snapshots`, `forensics:rehash-evidence`,
+`forensics:trajectories`, `entities:canonicalise`.
+
+**`db:simulate` is on that list.** The data-loss protocol requires simulating every destructive
+statement before executing it, and the simulator cannot run against production. A rule that mandates a
+tool the environment cannot execute is not a control; it is an assumption.
+
+`researcher:bootstrap` is also there — the only way an empty environment approves its first researcher.
+
+### This is FINDING 94's real defect, on the third reading
+
+FINDING 94 saw *"reachable only as a local shell script"* and concluded **build it as an MCP tool.**
+That was corrected once — maintenance does not go on the MCP surface. The narrower truth is neither:
+**the scripts are unreachable because the build does not ship them.** Not an architecture problem — a
+`tsconfig` include and two dependency lines. Fix it once and all eight run where the credentials
+already are, which is what the deployment rule wanted from the start.
+
+Care needed: adding `scripts/` to `include` shifts TypeScript's inferred `rootDir` and would move
+`dist/server.js`, breaking `start`. `rootDir` must be pinned explicitly in the same change.
+
+**Not fixed.** The repair was completed with `.env.production.local` under explicit permission, which
+CLAUDE.md sanctions for a deliberate production operation — but that is the manual step the deployment
+rule exists to remove, and it stays available only because this hole is still open.
