@@ -1349,7 +1349,7 @@
     "toolsLabel": "MCP tools in this phase",
     "goalLabel": "What this phase produces",
     "verifyLabel": "How to verify — without trusting the tool",
-    "pitfallLabel": "What went wrong in the test environment",
+    "pitfallLabel": "What is easy to miss here",
     "exampleLabel": "From the production run",
     "examplePendingTitle": "The production run has not reached this phase yet",
     "examplePendingBody": "This page describes the procedure, but no real production run stands behind it yet. When the run reaches this phase, the example will be written from it — not reconstructed from memory.",
@@ -1395,7 +1395,7 @@
         "summary": "Reading is open to everyone. Writing is by invitation and needs an admin's approval — including in the case where there is no admin yet.",
         "goal": "A researcher account that exists and is approved, so the write tools resolve to it.",
         "verify": "Sign in to the site and confirm the account shows as approved. An account that was created but never approved looks entirely healthy in the interface, and fails only at the moment a write tool tries to act.",
-        "pitfall": "In a new environment the approval chain has no root: only an admin can approve a researcher, and an empty environment has none. The first account sticks at “awaiting admin approval” with nobody able to approve it — this is not a login bug, and hunting for it on the OAuth side costs hours.",
+        "pitfall": "Read access and write access fail in completely different ways. An account created but not approved looks entirely healthy — the login works, the pages load — and the failure appears only when a write tool tries to act. If something is not working, check the approval state before you check the login.",
         "steps": {
           "signIn": {
             "title": "Sign in with Google",
@@ -1415,14 +1415,14 @@
           }
         },
         "screenshots": {},
-        "example": "Production had no researchers, and therefore no admin to approve the first one. The first account stuck at \"awaiting admin approval\" — not a login fault. The bootstrap tool approved it and granted admin, then refused a second run: once one admin exists, the tool is inert."
+        "example": "A new environment has no admin to approve its first researcher, so the first account is created by a dedicated bootstrap tool. That tool refuses to run once one admin exists — resolving the rootless state without becoming a way to grant privilege."
       },
       "connect": {
         "title": "Connecting an MCP client",
         "summary": "No keys and no hand-managed tokens: the client discovers OAuth itself and signs in with the same Google account you use on the site.",
         "goal": "A working connector with write access, in an environment you can name.",
         "verify": "Ask for any read, then ask for one call that requires write authorisation. The first succeeds even when the grant is dead — the read path is anonymous. Only the second proves the connection actually works.",
-        "pitfall": "Four traps, all already paid for: the auth type auto-detects as “None” and must be corrected by hand; the identity in the client must be the one you signed into the site with; every client authorises separately; and an authorisation granted before the account was approved carries no write access — you have to reconnect after approval.",
+        "pitfall": "Four things that are easy to miss: the auth type auto-detects as “None” and you must choose “Always required” by hand; the identity in the client must be the one you signed into the site with; every client authorises separately; and an authorisation granted before the account was approved carries no write access, so reconnect after approval.",
         "steps": {
           "addServer": {
             "title": "Add the server in your client",
@@ -1446,14 +1446,14 @@
           "prereq-add-custom-connector-2": "The settings screen. Under Authentication the client marks “None” as the detected option — that is the trap. Choose “Always required”. Under OAuth client, the recommended default works against this server as it is.",
           "prereq-allow-access": "The consent screen: the two scopes the connector asks for — reading from the evidence vault, and creating and editing evidence and theses. Approving here is what actually activates the write tools."
         },
-        "example": "Two connectors were configured under names that cannot be confused, one per environment. What proved the connection worked was not a read — reads succeed even when the grant is dead — but a non-empty authorisation table. An authorisation granted before the account was approved carried no write access and had to be redone."
+        "example": "Two connectors, under names that cannot be confused, one per environment. What proves a connection works is not a read — reads succeed even when the write grant is not in force — but one call that requires write authorisation."
       },
       "setup": {
         "title": "Proving the environment, and the write path",
         "summary": "Two things get checked before a single row is written: which database this is, and whether a write reaches it at all.",
         "goal": "An environment identified with certainty, an open research session, and one write proved to have landed.",
         "verify": "Count the results of a read against what you expect the environment to hold, then confirm that same number through a second channel that is not the tool — a public endpoint, for instance. An environment that should be empty and returns rows is not the environment you thought.",
-        "pitfall": "Tool responses do not identify the environment they ran against. There is no field saying “production” or “testing”, so identifying it falls to whoever is reading — and that is exactly the check that gets skipped when moving fast.",
+        "pitfall": "Tool responses do not say which environment they ran against. There is no field reading “production” or “testing”, so identifying it falls to whoever is reading — and that is exactly the check that gets skipped when moving fast.",
         "steps": {
           "verifyEnvironment": {
             "title": "Confirm which environment you are attached to",
@@ -1473,14 +1473,14 @@
           }
         },
         "screenshots": {},
-        "example": "The environment was identified three independent ways before the first write: an evidence search returned 0; the forensic timeline reported that the testing environment’s tracked URL is not tracked here; and a public endpoint outside MCP entirely returned 0 evidence and 0 theses. All three agreed. None of the tool responses said which environment they ran against."
+        "example": "The environment was identified three independent ways before the first write: an evidence search returned 0; the forensic timeline reported that the other environment’s tracked URL is not tracked here; and a public endpoint outside MCP entirely returned 0 evidence and 0 theses. All three agreed."
       },
       "scan": {
         "title": "Tracked URL and a full archive scan",
         "summary": "The raw material is the page’s history, not the page. The scan examines every archived capture, not the latest one.",
         "goal": "The complete version history of one government page — stored, countable, and ready to be compared.",
         "verify": "Count the captures in the deterministic list and compare that to the number the scan reported. If they differ, the scan did not finish — even if it reports success.",
-        "pitfall": "A single transient failure used to lock the page permanently, and the retry logic was dead code for exactly the failure that happens in practice. The scan also pointed the researcher at an endpoint they have no access to in order to follow progress.",
+        "pitfall": "The scan examines every capture in the archive, not the latest one. It is the longest operation in the guide — plan for it. And it promotes nothing on its own: it produces candidates, and deciding which are evidence stays a human act.",
         "steps": {
           "addUrl": {
             "title": "Add the tracked URL",
@@ -1506,7 +1506,7 @@
         "summary": "A diff is not a finding. Classification decides which textual changes matter — and it is settled by argument, not assumption.",
         "goal": "Every diff classified at item level, with the classifier version recorded, so the corpus can be reclassified later without losing its provenance.",
         "verify": "Check that the classifier version is identical across every diff in the corpus. A corpus mixing classifier versions is not comparable, and any measurement over it also measures the difference between the versions.",
-        "pitfall": "The classifier judged whole diffs, so a claim could be lost in a crowd: the same text was flagged in five of six diffs and missed in the one where it was bundled with routine edits. The fix was to go down to item level.",
+        "pitfall": "A consequential change can be bundled with routine edits inside the same diff. Classification works at item level rather than diff level for exactly that reason — and when you read, read item by item for the same reason.",
         "steps": {
           "readDiffs": {
             "title": "Read the diffs",
@@ -1532,7 +1532,7 @@
         "summary": "Every record enters as PENDING_REVIEW. Nothing is public, searchable or on-chain until a person has read it and decided. Promotion is the irreversible step, and it comes last.",
         "goal": "Evidence records in CONFIRMED state, each with an identity recomputable from what is stored — a capture for an article, a snapshot for a scan-derived record — and a real on-chain transaction.",
         "verify": "Recompute the identity from what is stored, and compare it against the chain through a third party rather than through the tool that wrote it. A record that cannot be recomputed is not evidence; it is a claim about evidence.",
-        "pitfall": "Five anchored records were once found to be unrecomputable from the database, and snapshot anchoring had never actually worked — a wrong hash format with the error swallowed silently hid it for months. Separately, article evidence used to be hashed from a live fetch with nothing stored, so a page carrying a view counter produced a new identity on every call. All of it surfaced only when somebody recomputed instead of reading a status field.",
+        "pitfall": "A classification is model output, written once and never recomputed; a hash is a fact about a document. They do not carry the same certainty, and a review should treat them differently: verify the hash, read and judge the classification.",
         "steps": {
           "create": {
             "title": "Create the record — it arrives PENDING_REVIEW",
@@ -1541,12 +1541,12 @@
           "review": {
             "title": "Check the substance against the document itself",
             "body": "Not against your memory of it. Three questions: does every claim in the summary actually appear in the source? Are the numeric quotations verbatim? And was the date taken from the document?",
-            "detail": "Each of the three caught a real defect in production. The date is the instructive one: it was not wrong because the model erred, but because a publication date sits outside the article body, and the extraction that produces the evidence identity discards it as chrome. The model was asked a question the text it was given could not answer, and supplied a different date from the prose. Since then the text that is analysed and the text that is hashed are two different texts on purpose — the first as wide as possible, the second narrow and stable."
+            "detail": "The date is the instructive check of the three. A publication date often sits outside the article body — in a byline, in a time element — and the extraction that produces the evidence identity deliberately keeps to the article body. So it is possible to ask the model a question the text it was shown cannot answer, and the answer will read as entirely plausible.\n\nHence the separation: the text that is analysed is as wide as possible, and the text the identity is derived from is narrow and stable. Two jobs, two opposite requirements."
           },
           "reviewClassification": {
             "title": "Check the classification — it decides how the record is used and who it names",
             "body": "Three fields that are easy to skip past: the tier, the figures list, and the rules-version stamp.",
-            "detail": "Tier decides whether a thesis may cite the record at all, and it follows from what the document CONTAINS rather than where it was published — an investigation quoting a leaked internal recording carries the weight of the primary material inside it. That rule was rewritten after showing the model MORE of a document lowered its tier, because the byline made the journalistic form more obvious while the rule was asking about form.\n\nThe figures list feeds a page per person, so a living individual who merely appears in a document is the highest legal exposure this platform carries. Someone who exposed the conduct, or warned against it, does not belong on that list — one was on it, and that was wrong.\n\nThe version stamp exists because a classification is model output written once and never recomputed. Without it, two records judged under different rules look identical."
+            "detail": "Tier decides whether a thesis may cite the record at all, and it follows from what the document CONTAINS rather than where it was published: an investigation quoting a leaked internal recording carries the weight of the primary material inside it, not the weight of the outlet that printed it.\n\nThe figures list feeds a page per person, so a living individual who merely appears in a document is the highest legal exposure this platform carries. Someone who exposed the conduct, or warned against it, does not belong on that list — the list is of those whose conduct is under examination.\n\nThe version stamp exists because a classification is model output, written once and never recomputed. Without it, two records judged under different rules look identical."
           },
           "reject": {
             "title": "Rejecting is a real outcome, not a failure",
@@ -1566,15 +1566,18 @@
             "detail": "The recomputation must work without refetching the page. This is not fussiness: a live page moves. On one article a view counter made three fetches in the same minute produce three different identities, until the identity was moved onto a narrow, stable text stored alongside the record. A record you can only verify against the live page is not verifiable at all, because the page can also disappear."
           }
         },
-        "screenshots": {},
-        "example": "The first production record was reviewed and failed review three times, on three different classification defects. It was recreated four times across three versions of the classification rules and two text-extraction regimes. Tier, date, figures and categories changed on every run. The fileHash never moved — the same value on all four, while the source page itself grew by 147 bytes."
+        "screenshots": {
+          "evidence-vault-public": "The public evidence vault after promotion. Before it, the vault was empty — the record existed and was invisible, which is the entire meaning of PENDING_REVIEW. Note “target entity: משרד הבריאות”: the database stores a language-free key and the label is chosen per locale.",
+          "evidence-record-anchored": "The record page: the on-chain badge, the tier, the categories, the tier reasoning, and the file hash. That hash is the identity registered on the chain, and it recomputes from the stored text without refetching the page."
+        },
+        "example": "The source: a journalistic investigation of 21 August 2022 quoting recordings from an internal Ministry of Health discussion. The record was created from that URL, reviewed, promoted and anchored — id 0 in the production registry. Its identity is 0x3a1093b2…, recomputed from the stored text without refetching the page: that is what keeps a record verifiable when the original page changes or disappears."
       },
       "trajectories": {
         "title": "Following a claim across the whole history",
         "summary": "A fully deterministic layer, with no language model: when a claim appeared on the page, when it disappeared, and how long it was gone.",
         "goal": "A trajectory computation with its own id, and groups of claims that move together — the base a thesis can cite later.",
         "verify": "Take one trajectory and check it by hand against the capture list. Presence and absence are facts about documents, and can be counted without trusting any tool.",
-        "pitfall": "The block renders flip dates and leaves the subtraction to the reader, so a four-day absence and a 44-day absence read identically. Four consecutive critiques treated them as the same phenomenon.",
+        "pitfall": "A trajectory reports whether a string was in the page text, and nothing else. It knows nothing about position, prominence, or whether a claim was being made to the reader — text in a nav menu reads as “present” like any other text.",
         "steps": {
           "compute": {
             "title": "Run the computation",
@@ -1600,7 +1603,7 @@
         "summary": "Decide what the thesis argues — before writing it. A separate assessor scores the framing and says what is missing.",
         "goal": "A closed framing session, with a recorded assessment and a list of what the framing still does not cover.",
         "verify": "Re-run the assessment after any change to the corpus. An assessment computed over a different corpus is not an assessment of this one, even if the wording did not change.",
-        "pitfall": "The assessor could not see the deterministic layer that actually proves the researcher right, and so scored on less than what existed. An assessor that cannot see the strongest evidence is not a strict assessor — it is a partial one.",
+        "pitfall": "Framing decides what is claimed and what is explicitly not claimed. That decision is cheap before writing and expensive after, and the assessment you get on it is useful precisely when it is inconvenient.",
         "steps": {
           "open": {
             "title": "Open a framing session",
@@ -1626,7 +1629,7 @@
         "summary": "The tool proposes a structure from the evidence; the researcher writes the draft and owns every sentence in it.",
         "goal": "A thesis draft with evidence mentions, in a numbered version you can point at and return to.",
         "verify": "Take every factual claim and find the hash of the evidence supporting it. A claim that does not resolve to a hash does not get stated as fact — not out of caution, but because it has nothing to stand on.",
-        "pitfall": "Four factual errors were found in a single paragraph. All four were caught by recomputing against the corpus, and none by re-reading the paragraph. Re-reading checks wording; recomputing checks facts.",
+        "pitfall": "Re-reading checks wording; recomputing checks facts. A paragraph can read perfectly and contain a claim no source supports — and the difference only surfaces when each claim is cross-checked against the evidence meant to carry it.",
         "steps": {
           "suggest": {
             "title": "Ask for a suggestion",
@@ -1652,7 +1655,7 @@
         "summary": "The strongest evidence in the case is the part that does not depend on a model’s judgement. This phase ties it to the sentences it supports.",
         "goal": "Trajectory citations that resolve to a real computation, and a citation audit that passes with no language model involved at all.",
         "verify": "Run the citation audit. It is deterministic: it checks that the quoted text actually exists in the source it is attributed to, not that it sounds right.",
-        "pitfall": "What looked like one group of ten claims in fact required 21 claims across eight movements. The narrow version would have left a true sentence under-supported — damaging precisely the claim that was correct.",
+        "pitfall": "A citation set that is too narrow damages a true sentence: it leaves a real claim under-supported. If a sentence rests on a measured movement, cite the whole movement rather than a sample of it.",
         "steps": {
           "verifyText": {
             "title": "Verify the text before citing it",
@@ -1678,7 +1681,7 @@
         "summary": "An adversarial critique of your own thesis, meant to find the weak point before somebody else does.",
         "goal": "A critique run against the current head version, with a verdict, counter-arguments, and a list of gaps.",
         "verify": "Confirm the critique was computed against the current version and not its predecessor. A stale critique argues with a document that no longer exists, and looks entirely valid while doing so.",
-        "pitfall": "The exact same check passed on one run and failed on the next run of the same thesis. Do not treat any single critique’s agenda as the research plan; treat it as one sample.",
+        "pitfall": "A critique is one sample, not a verdict. The same check can pass on one run and fail on the next run of the same thesis — do not treat any single critique’s agenda as the research plan.",
         "steps": {
           "run": {
             "title": "Run the critique",
@@ -1704,7 +1707,7 @@
         "summary": "The gate deterministically checks that the thesis meets the legal-framing rules. It does not publish, and its going green is not a decision.",
         "goal": "Zero hard failures — and the thesis stays a draft until a separate, explicit human decision.",
         "verify": "Run the gate again after the last edit. A gate that passed on an earlier version has not passed on this one, and that difference is the whole difference.",
-        "pitfall": "Publication is a real legal act naming living people. It is never the automatic end of a green gate, and it is never a tool’s decision.",
+        "pitfall": "Publication is a real legal act naming living people. A green gate says the wording meets the rules; it does not say the thesis should be published, and it is not a tool’s decision.",
         "steps": {
           "check": {
             "title": "Run the readiness check",

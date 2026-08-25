@@ -206,7 +206,18 @@ export const GUIDE_PHASES: readonly GuidePhase[] = [
     steps: ['create', 'review', 'reviewClassification', 'reject', 'preCheck', 'promote', 'verify'],
     verifiedBy: null,
     hasProductionExample: true,
-    screenshots: [],
+    // Captured from the real production pages after the first record was
+    // anchored — not mock-ups, and not staging. Rule C allows an interface;
+    // these are public pages showing a record the review approved.
+    //
+    // Cropped to the content: no browser chrome, no site navigation, no chat
+    // widget. A screenshot of a whole window makes the reader hunt for the part
+    // that matters, and dates faster — the surrounding furniture changes far
+    // more often than the panel being illustrated.
+    screenshots: [
+      { id: 'evidence-vault-public', width: 1252, height: 460 },
+      { id: 'evidence-record-anchored', width: 776, height: 682 },
+    ],
     // The classification mechanics — how a tier is decided, why the figures list
     // is the sharpest legal exposure, what the rules-version stamp is for — are
     // implementation depth. They belong behind a fold, not in the flow.
