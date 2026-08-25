@@ -1566,7 +1566,10 @@
             "detail": "The recomputation must work without refetching the page. This is not fussiness: a live page moves. On one article a view counter made three fetches in the same minute produce three different identities, until the identity was moved onto a narrow, stable text stored alongside the record. A record you can only verify against the live page is not verifiable at all, because the page can also disappear."
           }
         },
-        "screenshots": {},
+        "screenshots": {
+          "evidence-vault-public": "The public evidence vault after promotion. Before it, the vault was empty — the record existed and was invisible, which is the entire meaning of PENDING_REVIEW. Note “target entity: משרד הבריאות”: the database stores a language-free key and the label is chosen per locale.",
+          "evidence-record-anchored": "The record page: the on-chain badge, the tier, the categories, the tier reasoning, and the file hash. That hash is the identity registered on the chain, and it recomputes from the stored text without refetching the page."
+        },
         "example": "The first production record was reviewed and failed review three times, on three different classification defects. It was recreated four times across three versions of the classification rules and two text-extraction regimes. Tier, date, figures and categories changed on every run. The fileHash never moved — the same value on all four, while the source page itself grew by 147 bytes."
       },
       "trajectories": {
