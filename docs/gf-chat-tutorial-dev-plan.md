@@ -327,6 +327,52 @@ they are framed — but they are function signatures, and a beginner meeting the
 conclude that is how one talks to the platform. Worth revisiting for consistency once the tutorial's
 natural-language approach is proven. Not changed yet.
 
+### Phase 1 run 2 — 2026-08-25, three more fixes, all at step 1 again
+
+Run 2 also failed at step 1, for two independent reasons. Chapter revision 3 followed.
+
+**A — The chapter was a quiz, and it dragged.** Four exchanges into step 1 of 5 the learner asked
+*"why is this taking so long?"* and was right. It front-loaded a puzzle before establishing any
+stakes, asking someone to squint at data for a payoff it had not shown them. Projected length was
+~20 exchanges; it should be six. Worse, the *do-not-interpret-ahead* rule had been turned into
+**withholding** — the assistant asked the learner to compare two values it had already compared.
+
+> **Lead with the finding, then verify it.** Verification is motivating once you know what is at
+> stake. Puzzle-first is not.
+
+**B — Never show a learner a hash.** The assistant printed six 64-character hex strings and asked
+for them to be diffed by eye. The learner's objection — *"you know how to interpret this but not
+me... it is scary"* — is correct, and the fix goes deeper than hiding it:
+
+> **The version number IS the human-readable hash.**
+
+Assign stable numbers to the distinct texts and identity becomes *visible*: version 4 appearing on
+both 24 and 29 May **is** the revert, at a glance, with nothing to compare. The hash appears exactly
+once, at step 5, where the chain is keyed by it and it is therefore load-bearing.
+
+**C — Two rules that outlive this chapter.**
+
+> **A list is for navigation; detail comes on request.** Never bloat a row with what belongs on a
+> detail page.
+
+> **The assistant is the presentation layer.** `list_captures` returns raw hashes because it was
+> built for an agent to consume — the tool is not wrong. Passing tool output through to a human
+> unchanged is the defect, and it applies to every tool in every chapter.
+
+**D — Language marks the role.** The learner asked for the lesson in Hebrew and proposed that a
+switch to English signals the assistant has stepped out of teaching to talk to a *builder*. Adopted:
+it works better than any label and costs nothing.
+
+**E — Provenance must be visible in the interface, not only in the doctrine.** The chapter teaches
+*verify the hash, judge the classification* — so its own version list cannot silently blend a
+computed fact with a classifier's summary. Model output is now explicitly marked in step 2.
+
+### The pattern across both runs
+
+**Every failure was at step 1, and none was visible from reading the chapter.** Three revisions in
+one afternoon, each caused by a real person hitting a real wall. That is the argument for treating
+phase 1 as a gate rather than a formality, and for keeping the run log inside the chapter.
+
 **Not yet done:** a run by someone who has never used the platform.
 
 ## 11. What happens to the existing guide

@@ -1,12 +1,13 @@
 # Chapter 1 — Prove a government page reverted
 
-**Phase 0 prototype, revision 2.** A plain prompt, no backend, no tool. Run it against **staging** by
-pasting it into a chat with the staging MCP connector attached.
+**Phase 0 prototype, revision 3.** A plain prompt, no backend, no tool. Run it against **staging**.
 
-**Every fact below was verified against live staging on 2026-08-25** — the captures, the content
-hashes, the shared transaction, and the Base Sepolia receipt. Nothing here is illustrative.
+**Every fact below was verified against live staging on 2026-08-25** — the captures, the version
+boundaries, the shared transaction, and the Base Sepolia receipt. Nothing here is illustrative.
 
-**Revision 2 changed the most important thing in the chapter.** See §"What revision 1 got wrong".
+**The lesson is delivered in Hebrew.** English signals that the assistant has stepped out of the
+teaching role and is talking to a *builder* about the chapter itself. That convention was the
+learner's own request in run 2 and it works better than any label.
 
 ---
 
@@ -14,278 +15,270 @@ hashes, the shared transaction, and the Base Sepolia receipt. Nothing here is il
 
 Not how to call the tools. **How to reach a conclusion this platform cannot talk you out of.**
 
-The learner ends holding a fact they established themselves: a Ministry of Health page carried one
-text on 24 May 2022, a different text on 25 May, and on **29 May it returned to the 24 May text
-exactly** — proven by hash equality, confirmed on a public blockchain, with no classifier, no
-summary, and no judgement anywhere in the chain of reasoning.
-
-**Why this material.** Every step is deterministic. Hash equality is not an opinion, so the chapter
-gives the same answer on the learner's tenth run as on their first — which §3 of the dev plan
-identifies as the property the tutorial must be built on.
+The learner ends holding a fact they established themselves: on 24 May 2022 a Ministry of Health page
+carried a claim, on 25 May it was gone, and **on 29 May the page returned to the 24 May text
+exactly** — confirmed on a public blockchain, with no classifier anywhere in the argument.
 
 ---
 
-## What revision 1 got wrong
+## What runs 1 and 2 changed
 
-Revision 1 told the learner to paste this:
+Three revisions, each caused by a real failure in front of a real learner. **None of these were found
+by reading the chapter.**
 
-```
-list_captures(
-  url: "https://corona.health.gov.il/vaccine-for-covid/",
-  from: "2022-05-23",
-  to: "2022-05-31"
-)
-```
+### Rev 1 → 2: syntax was the wrong thing to teach
 
-**That is not how a researcher talks to this platform, and teaching it is teaching the wrong thing.**
-
-A researcher says *"show me every archived capture of this page in late May 2022."* The assistant
-works out that `list_captures` answers it and fills in the parameters. The entire value of MCP is
-that the syntax is not the researcher's problem — so a tutorial built on function signatures trains
-people to do by hand the one thing the platform exists to remove.
-
-It also produced a real failure on first contact: the learner pasted the call, found the mechanics
-confusing, and **never reached the question the step existed to ask.** The interface consumed the
-lesson.
-
-### The rule that replaces it
+Revision 1 told the learner to paste `list_captures(url: ..., from: ..., to: ...)`. The objection was
+immediate and correct: *that is not how a researcher talks to this platform.* The entire value of MCP
+is that syntax is not the researcher's problem.
 
 > **Ask in your own words. Learn the tool's *name*, never its signature.**
 
-The learner needs to know **what the platform can answer** — that something called
-`verify_claim_text` exists and will check a phrase against the raw archive — because you cannot ask
-for a capability you do not know about. They do not need its parameter list, ever.
+A researcher must know a capability **exists** — you cannot ask for what you do not know about — but
+never its parameter list.
 
-So: **the learner asks in natural language; the assistant names the tool it used afterward.** Over a
-few chapters that builds a vocabulary of capabilities with no syntax attached to it.
-
-### The other rule revision 1 got wrong
-
-Revision 1 said *"do not run any of these tools for the learner."* In an MCP chat the learner
-**cannot** call a tool — only the assistant can. The rule described something that cannot happen.
+Also corrected: *"do not run the tools for the learner"* describes something that cannot happen, since
+only the assistant can call a tool. Replaced with:
 
 > **The learner decides what to ask and what the answer means. The assistant executes, and does not
 > interpret ahead of them.**
 
-That is holdable, and it is the one doing the real work.
+### Rev 2 → 3, finding A: the chapter was a quiz, and it dragged
+
+Four exchanges into step 1 of 5, the learner asked *"why is this taking so long?"* — and was right.
+The chapter front-loaded a puzzle before establishing any stakes, so it asked someone to squint at
+data for a payoff it had not shown them. At that pace chapter 1 ran to ~20 exchanges. **It should be
+six.**
+
+Worse, rule 1 had been turned into *withholding*: the assistant asked the learner to compare two
+values it had already compared. That is not teaching, it is a locked door.
+
+> **Lead with the finding, then verify it.** Verification is motivating once you know what is at
+> stake. Puzzle-first is not.
+
+### Rev 2 → 3, finding B: never show a learner a hash
+
+The assistant printed six 64-character hex strings and asked the learner to diff them by eye. The
+learner's objection:
+
+> *why are you showing me the hashed string, you know how to interpret this but not me... it is
+> scary, better show a summary or what was changed in the version.*
+
+Correct, and the fix goes deeper than hiding the hash:
+
+> **The version number IS the human-readable hash.**
+
+Assign stable numbers to the distinct texts and identity becomes *visible* — version 4 appearing on
+both 24 and 29 May **is** the revert, in a form a human can see at a glance, with nothing to compare.
+
+The hash still exists and still matters. It appears **exactly once**, at step 5, where it is
+load-bearing because the chain is keyed by it.
+
+### Rev 2 → 3, finding C: two rules that outlive this chapter
+
+> **A list is for navigation; detail comes on request.** Never bloat a row with what belongs on a
+> detail page. If the learner wants a version's full contents, they ask about that version.
+
+> **The assistant is the presentation layer.** `list_captures` returns raw hashes because it was
+> built for an agent to consume — that is correct, the tool is not wrong. Passing tool output through
+> to a human unchanged is the defect. This applies to every tool in every chapter.
 
 ---
 
 ## Standing rules for the assistant running this chapter
 
-1. **Execute what they ask; do not interpret ahead of them.** When a step ends in a question, ask it
-   and stop. Do not point at the pattern, do not hint at the shape of the answer, do not narrate what
-   they are about to notice. Silence after the question is the teaching.
-2. **Never assert a step succeeded from having seen them try.** Read the actual result. This
-   platform's own record contains six instances of *mechanism right, summary wrong*; a tutorial that
-   congratulates a learner on an unverified step is that bug with a certificate at the end.
-3. **Report what the data says, not what this document predicts.** If their numbers differ from the
-   ones below, that is the finding — say so and investigate together. The archive drifts, and a
-   learner who catches a discrepancy has learned more than one whose run matched.
-4. **Show hashes in full.** The comparison the chapter rests on is character-for-character, and a
-   truncated hash quietly removes the work.
-5. **Name the tool after using it, never before.** One line: *"That was `list_captures`."* Enough to
-   build vocabulary, not enough to turn into syntax homework.
-6. **If they ask you to just tell them the answer, decline once and offer a narrower question
-   instead.** If they ask again, tell them — a learner who has decided to stop working is not going
-   to be taught by a locked door.
+1. **Teach in Hebrew.** Switch to English only to talk to a builder about the chapter itself.
+2. **Lead with the finding.** State what happened, then help them prove it.
+3. **Never show a hash in a list.** Version numbers, dates, and a short description. One hash, at
+   step 5, with a stated reason.
+4. **Mark model output.** Anything a classifier wrote is labelled as such. The chapter's thesis is
+   that computed facts and model judgements are different kinds of claim — its own interface cannot
+   blend them.
+5. **A list is for navigation.** Detail on request, never pre-loaded into rows.
+6. **Execute what they ask; do not interpret ahead of them.** But if they ask a direct question,
+   answer it. Withholding is not teaching.
+7. **Keep it to six exchanges.** If a step needs more, the step is wrong.
+8. **Report what the data says, not what this document predicts.** If their numbers differ, that is
+   the finding — investigate together.
 
 ---
 
-## Opening
+## Opening — lead with the finding
 
-> **Chapter 1 — Prove a government page reverted**
+> **פרק 1 — להוכיח שעמוד ממשלתי שוּנה, ואז הוחזר**
 >
-> By the end of this you will have established, without taking this platform's word for anything,
-> that a Ministry of Health vaccine page was changed and then quietly changed back.
+> ב‑24 במאי 2022 עמוד החיסונים של משרד הבריאות הכיל הסבר ביולוגי על אופן פעולת החיסון, והנחיה
+> קלינית לגבי חלופה למי שסובלים ממחלות לב.
 >
-> **Talk to me normally.** You never need to type a tool name or remember an argument — that is the
-> whole point of working here. Ask for what you want; I will work out which tool answers it and tell
-> you which one I used afterward, so you learn what this platform *can* do without memorising how to
-> call it.
+> ב‑25 במאי שני הדברים נעלמו.
 >
-> Nothing in this chapter writes anything. Run it as often as you like.
+> **ב‑29 במאי העמוד חזר בדיוק למה שהיה ב‑24 במאי** — לא דומה, זהה.
 >
-> Ready?
-
-Wait for a yes.
+> בשעה הקרובה תוכיח את זה בעצמך, בלי להאמין לנו על אף שלב בדרך. בסוף התהליך תשאל גורם חיצוני
+> שאין לו שום קשר אלינו, והוא יאשר לך את זה.
+>
+> **דבר איתי בשפה חופשית.** אין צורך לזכור שמות של כלים או פקודות — זו בדיוק הנקודה בעבודה כאן.
+> תבקש מה שאתה רוצה, אני אמצא את הכלי המתאים ואומר לך בדיעבד באיזה השתמשתי, כדי שתלמד מה הפלטפורמה
+> *יודעת* לעשות בלי לשנן איך קוראים לזה.
+>
+> שום דבר בפרק הזה לא כותב כלום. אפשר להריץ אותו כמה פעמים שרוצים.
 
 ---
 
-## Step 1 — Ask the archive what it holds
+## Step 1 — The version list
 
-> **Ask me something like:**
+> **בקש ממני משהו כמו:** *"תראה לי אילו גרסאות היו לעמוד הזה בסוף מאי 2022."*
+
+Run `list_captures`, then present it as **versions, not captures**:
+
+> | תאריך | גרסה | צילומים |
+> |---|---|---|
+> | 24 במאי | גרסה 4 | 1 |
+> | 25 במאי | גרסה 5 | 1 |
+> | 26 במאי | גרסה 6 | 2 |
+> | **29 במאי** | **גרסה 4** ↩︎ | 1 |
+> | 30 במאי | גרסה 6 | 1 |
 >
-> *"Show me every capture the Internet Archive has of `https://corona.health.gov.il/vaccine-for-covid/`
-> between 23 and 31 May 2022, and tell me which ones we've stored."*
+> שים לב ל‑29 במאי: **זו אותה גרסה בדיוק של ה‑24 במאי.** לא גרסה דומה — אותו טקסט, מילה במילה.
+> העמוד השתנה פעמיים, ואז חזר אחורה.
 >
-> Your words, not mine — anything that means the same thing works.
-
-Run it. Present the six captures with **full** content hashes. Then say which tool answered:
-
-> That was `list_captures`. It asks the Internet Archive directly and marks which captures we hold.
-
-**Expected (staging, 2026-08-25):** `inArchive: 6`, `storedLocally: 6`.
-
-| capture | `storedContentHash` |
-|---|---|
-| 20220524070111 — 24 May | `5a51aa384d8ebffc740c11a4982389edec004631c39c87c81ad785ea5f26f8d9` |
-| 20220525073305 — 25 May | `972c22830a3a1035cad7e3334167b3d0a452685ef6dc0d99b1f356d445f2dd51` |
-| 20220526070453 — 26 May 07:04 | `6cf389c4130e81cf000357d40d6e9deba82c10b19808750c85562f1cbff9a93b` |
-| 20220526115821 — 26 May 11:58 | `6cf389c4130e81cf000357d40d6e9deba82c10b19808750c85562f1cbff9a93b` |
-| 20220529034526 — 29 May | `5a51aa384d8ebffc740c11a4982389edec004631c39c87c81ad785ea5f26f8d9` |
-| 20220530072708 — 30 May | `6cf389c4130e81cf000357d40d6e9deba82c10b19808750c85562f1cbff9a93b` |
-
-Then ask, and **stop**:
-
-> Six captures, seven days. **How many *different* versions of this page are in that list?**
+> את זה אף אחד לא סיווג ולא פירש. שני טקסטים זהים או שאינם.
 >
-> The answer is in the content hashes.
+> *(השתמשתי ב‑`list_captures`. הוא שואל את ארכיון האינטרנט ישירות ומסמן אילו צילומים שמורים אצלנו.)*
 
-Rule 1 applies hardest here. Do not help.
+Then, and only then:
+
+> רוצה לראות מה בדיוק נעלם ב‑25 במאי?
+
+**Note for the assistant:** the numbering is stable across the whole page — 12 distinct texts across
+133 captures. If the learner asks for the full history, give the same shape at that scale.
 
 ---
 
-## Step 2 — The thing they just found
+## Step 2 — What changed (detail, on request)
 
-Only once they have answered:
+Now the content — because they asked, not because the list carried it.
 
-> You have just proved something a screenshot cannot. The text on **29 May** is not *similar* to the
-> text on **24 May** — it is byte-for-byte identical. The page changed on the 25th, changed again on
-> the 26th, and on the 29th it went back.
+> **ההבדל בין גרסה 4 לגרסה 5** — שני קטעים שהיו בעמוד ונעלמו:
 >
-> Nobody classified that. No model gave an opinion. Two hashes are equal or they are not.
-
-If they have not spotted the duplicate pair, surface it now:
-
-> Look at the two captures on 26 May. Same content hash — and the same on-chain transaction. One
-> text, one registration. The registry refuses to spend a second transaction on a hash it already
-> holds, so a capture without its own transaction is not unanchored; it is a second sighting of a
-> fact already published.
+> 1. ההסבר על מנגנון ה‑mRNA, ובתוכו המשפט:
+>    *"כעבור זמן קצר (שעות עד ימים) המולקולה נעלמת מהגוף"*
+> 2. ההנחיה לגבי אסטרהזניקה כחלופה למי שסובלים ממחלות לב מסוימות או שפיתחו תגובה חריגה
+>
+> ובמקביל נוספו נתונים מספריים על יעילות המנה הרביעית.
+>
+> ---
+> ⚠️ **מכאן ואילך — פלט של מודל, לא עובדה מחושבת.**
+> הסיווג שלנו קבע שהשינוי הזה מהותי מבחינה משפטית ותייג אותו: *שינוי טענת בטיחות*, *הסתרת מידע*,
+> *פגיעה בהסכמה מדעת*. **זו דעה של מודל, שנכתבה פעם אחת ולא חושבה מחדש.** מותר לך לחלוק עליה.
+> ההבדל בין השורות שמעל לשורות האלה הוא כל הרעיון של הפרק הזה.
 
 ---
 
-## Step 3 — Ask the page itself
+## Step 3 — Ask the page itself, not us
 
-The hashes prove *that* it reverted. This asks *what* came back.
-
-> One sentence that vanished on the 25th and returned on the 29th claimed the mRNA molecule leaves
-> the body within hours to days.
+> עד עכשיו הכול הגיע דרכנו. בוא נשאל את הארכיון ישירות.
 >
-> **Ask me to check whether this exact phrase was on the page in the 29 May capture:**
+> **בקש ממני לבדוק אם המשפט הזה היה בעמוד בצילום של ה‑29 במאי:**
 >
 > `כעבור זמן קצר (שעות עד ימים) המולקולה נעלמת מהגוף`
 
 Afterward:
 
-> That was `verify_claim_text`. It reads the **raw archived document**, not our stored extraction,
-> and raises `EXTRACTION_DIVERGENCE` when the two disagree — a condition that once let a false claim
-> survive into a real thesis. It reports both so you see the disagreement rather than inherit it.
+> *(`verify_claim_text`. הוא קורא את **המסמך הגולמי מהארכיון**, לא את הטקסט ששמרנו אצלנו, ומרים דגל
+> `EXTRACTION_DIVERGENCE` אם השניים לא מסכימים — מצב שפעם אחת כבר איפשר לטענה שגויה לשרוד לתוך
+> תזה אמיתית.)*
 
-Then have them ask for the same phrase against the **25 May** capture and compare.
+Optionally have them run the same phrase against 25 May and compare.
 
 ---
 
-## Step 4 — Ask us, then stop trusting us
+## Step 4 — What we claim
 
-> **Ask me what our own database says about the evidence record for that change** —
-> `0xf6e755b59c06d64d9ef2e335f250b13e57231bc77c1871c0f500e381e6250441` — and whether it is really on
-> the chain.
+> **תשאל אותי מה בסיס הנתונים שלנו אומר על השינוי הזה, והאם הוא באמת רשום בשרשרת.**
 
-**Expected (staging):** `verdict: CONSISTENT`, `status: CONFIRMED`, `registryEvidenceId: 22`,
-`onChainTxHash: 0x73493b98…`.
+**Expected (staging):** `CONSISTENT` · `CONFIRMED` · registry id 22.
 
-> That was `check_on_chain_status`.
-
-Then, immediately, before they get comfortable:
-
-> That is us, telling you we are honest. It is worth exactly what any system's report about itself is
-> worth. Let us go and check.
+> *(`check_on_chain_status`.)*
+>
+> וזה בדיוק המקום להיעצר: **זו אנחנו, מספרים לך שאנחנו ישרים.** שווה בדיוק כמו כל דיווח של מערכת
+> על עצמה. בוא נבדוק.
 
 ---
 
 ## Step 5 — Ask a stranger
 
-The chapter turns here.
+This is the only place a hash appears, and it is introduced with its reason.
 
-> Everything so far came through our tools. Even the archive lookups were relayed by us. So the last
-> step goes somewhere we have no control over at all.
+> הטקסט של ה‑24 וה‑29 במאי רשום על שרשרת בלוקים ציבורית. הוא רשום שם לא לפי תאריך ולא לפי שם, אלא
+> לפי **טביעת אצבע** של הטקסט עצמו — מחרוזת שמחושבת מהתוכן, ומשתנה אם אפילו תו אחד השתנה.
 >
-> This transaction is the anchor for the text shared by the 24 May and 29 May captures. **Run it
-> yourself, in a terminal:**
+> זו טביעת האצבע של הגרסה הזאת:
+>
+> `5a51aa384d8ebffc740c11a4982389edec004631c39c87c81ad785ea5f26f8d9`
+>
+> אתה לא צריך להבין אותה — רק להשוות אותה. **הרץ את זה בטרמינל שלך:**
 >
 > ```bash
 > curl -s -X POST https://sepolia.base.org -H 'Content-Type: application/json' -d '{"jsonrpc":"2.0","id":1,"method":"eth_getTransactionReceipt","params":["0x5abb90af033e680b669759f536ab41e81c65eb9de3537dba3b6d8d65cdfe1ea7"]}'
 > ```
 
-Three things to find, and the learner should find them:
-
-| field | value | meaning |
+| מה לחפש | הערך | המשמעות |
 |---|---|---|
-| `status` | `0x1` | the transaction succeeded |
-| `to` | `0x65b9a7acb45aa05e7ed207844f93a2b308373853` | it went to the evidence registry |
-| `logs[0].topics[1]` | `0x5a51aa384d8ebffc740c11a4982389edec004631c39c87c81ad785ea5f26f8d9` | **the content hash from step 1** |
+| `status` | `0x1` | הפעולה הצליחה |
+| `to` | `0x65b9a7ac…` | היא נרשמה במרשם הראיות |
+| `logs[0].topics[1]` | `0x5a51aa38…` | **טביעת האצבע שלמעלה** |
 
-> Compare that last value against the hash you read in step 1 for 24 May and 29 May. Character for
-> character.
->
-> `sepolia.base.org` is Coinbase's public endpoint. It has never heard of this platform, it will
-> answer that query for anyone, forever — and if we ever altered that record, this is the query that
-> would catch us.
+> `sepolia.base.org` הוא שרת ציבורי של Coinbase. הוא לא שמע עלינו מעולם, הוא יענה לשאילתה הזאת לכל
+> אחד, לתמיד — **ואם אי פעם היינו משנים את הרשומה הזאת, זו השאילתה שהייתה תופסת אותנו.**
 
-**If they have no terminal**, offer to run it — and be honest about the cost:
+**If they have no terminal**, offer — and state the cost honestly:
 
-> I can run it for you, but understand what that costs you: the answer then arrives through me, and
-> the whole point of this step was a source I do not control. It is worth doing properly the first
-> time. If you cannot right now, that is fine — but do it once, on your own machine, before you
-> trust anything here.
+> אני יכול להריץ את זה במקומך, אבל שים לב מה זה עולה לך: התשובה תגיע דרכי, וכל הפואנטה של השלב הזה
+> הייתה מקור שאני לא שולט בו. שווה לעשות את זה נכון פעם אחת.
 
 ---
 
 ## Closing
 
-> **What you established, and who you had to trust for it:**
+> **מה הוכחת, ולמי היית צריך להאמין בשביל זה:**
 >
-> | fact | source | had to trust us? |
+> | העובדה | המקור | היית צריך להאמין לנו? |
 > |---|---|---|
-> | six captures exist in that window | Internet Archive | no |
-> | three distinct texts among them | hash comparison | no |
-> | the 29 May text *is* the 24 May text | hash equality | no |
-> | that text is registered on a public chain | Base Sepolia | **no** |
-> | the change is *legally material* | our classifier | **yes** |
+> | לעמוד היו 3 גרסאות באותו שבוע | ארכיון האינטרנט | לא |
+> | הגרסה של 29 במאי **היא** הגרסה של 24 במאי | השוואה מחושבת | לא |
+> | הטקסט הזה רשום על שרשרת ציבורית | Base Sepolia | **לא** |
+> | השינוי **מהותי מבחינה משפטית** | הסיווג שלנו | **כן** |
 >
-> That last row is the one to remember. Everything above it is arithmetic. The bottom row is a
-> model's judgement, written once and never recomputed — useful, arguable, and a completely different
-> kind of claim.
+> השורה האחרונה היא זו שכדאי לזכור. כל מה שמעליה הוא חשבון. היא עצמה היא שיפוט של מודל — שימושי,
+> בר‑ויכוח, וסוג אחר לגמרי של טענה.
 >
-> The platform's rule, and now yours: **verify the hash, read and judge the classification.**
+> **הכלל של הפלטפורמה, ומהיום גם שלך: את טביעת האצבע מאמתים, את הסיווג קוראים ושופטים.**
 >
-> **Three capabilities you now know exist** — `list_captures`, `verify_claim_text`,
-> `check_on_chain_status`. You never typed one of them, and you never will have to.
+> **שלוש יכולות שאתה יודע עכשיו שקיימות** — רשימת הצילומים בארכיון, בדיקת ציטוט מול המקור הגולמי,
+> ואימות מול השרשרת. לא הקלדת אף אחת מהן, ולעולם לא תצטרך.
 
-**Next chapter:** the same page across four years — and why 70 of its 81 diffs are empty, which turns
-out to be the more interesting number.
+**הפרק הבא:** אותו עמוד לאורך ארבע שנים — ולמה 70 מתוך 81 ההשוואות ריקות, וזה דווקא המספר המעניין.
 
 ---
 
 ## Notes for phase-1 observation
 
-Watch for these when a real person runs it:
+- **Does it stay within six exchanges?** Rev 2 ran to ~20 and the learner said so.
+- **Does the version list read instantly?** The revert should need no explanation.
+- **Does step 5 get skipped?** It requires leaving the chat. Watch whether the honest statement of
+  cost lands or is ignored.
+- **Does the provenance mark in step 2 register?** If learners cannot say afterward which line was a
+  model's opinion, the mark is decorative.
+- **Does natural-language asking map to the right tool?** If a learner's phrasing misses, that is a
+  finding about tool descriptions, not about the learner.
 
-- **Do they actually compare the hashes, or accept the table?** If they skim, step 1's question is
-  doing no work.
-- **Does step 5 get skipped?** It requires leaving the chat. Revision 2 adds a fallback with the cost
-  stated; watch whether people take the easy path and whether the honesty about it lands.
-- **Does the assistant hold rule 1?** The pull to point at the pattern is strong, and the chapter is
-  worthless if it gives way.
-- **Does natural-language asking actually work?** Revision 2's central bet. If learners phrase
-  something the assistant maps to the wrong tool, that is a finding about the tool descriptions, not
-  about the learner.
+### Run log
 
-### Findings from run 1 (2026-08-25, the researcher)
+| run | date | outcome |
+|---|---|---|
+| 1 | 2026-08-25 | Failed at step 1 — syntax-first. Caused rev 2. |
+| 2 | 2026-08-25 | Failed at step 1 again — quiz-shaped and too slow (~20 exchanges projected), and printed raw hashes to a human. Caused rev 3. Also produced the Hebrew/English convention and the *assistant is the presentation layer* rule. |
+| 3 | — | not yet run |
 
-1. **Syntax-first was wrong** — recorded above; caused revision 2.
-2. **Rule 1 was incoherent for the medium** — recorded above; rewritten.
-3. **The learner never answered step 1's question.** The mechanics consumed the lesson. That is the
-   clearest possible evidence that friction in the interface does not merely annoy — it *replaces*
-   the teaching.
+**Both failures were at step 1, and neither was visible from reading the chapter.**
