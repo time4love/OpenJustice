@@ -62,3 +62,24 @@ describe('every route that reads evidence decides visibility the same way', () =
     expect(offenders).toEqual([]);
   });
 });
+
+describe('every evidence response carries the canonical key', () => {
+  // `canonicalTargetEntity` shipped resolved in the database and null in
+  // GET /api/evidence/:id, because that route hand-builds its response instead
+  // of using mapEvidenceToRecord. A field added to the shared shape does not
+  // reach a shape that is not shared — the fourth instance of that pattern in
+  // one day, after the evidence hash, the extractor and the tier rubric.
+  const ROUTES = join(__dirname, '..', 'src', 'routes');
+
+  it('any route serializing targetEntity also serializes the canonical key', () => {
+    const offenders: string[] = [];
+    for (const file of readdirSync(ROUTES).filter((f) => f.endsWith('.ts'))) {
+      const src = readFileSync(join(ROUTES, file), 'utf8');
+      // A response that names targetEntity by hand must name the key too.
+      if (/targetEntity: (record|row|r|e)\./.test(src) && !src.includes('canonicalTargetEntity')) {
+        offenders.push(file);
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+});
