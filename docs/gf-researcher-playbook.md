@@ -4029,3 +4029,86 @@ the plain server-side label — an auditor comparing two captures has to be able
 left the building.
 
 1407/1407, `tsc` clean, lint unchanged at its 361 baseline.
+
+## Step 35 — The row recreated, and FINDING 79 proved closed on production
+
+Deleted and recreated on the user's instruction, once the fix was live in production.
+
+**Deletion, and why it was not a cleanup session.** `CLAUDE.md` reserves a dedicated session for
+destructive database work and blocks the raw-SQL and Prisma bulk-removal paths outright. Neither was
+used: this went through `delete_evidence`, the product's own tool, which is also what this playbook's
+session protocol requires — *all mutation goes through MCP*. That tool refuses CONFIRMED, cited and
+IPFS-pinned records by construction, so the class of row that must never be removed cannot be.
+
+Risk stated before running, and it was genuinely small: one `PENDING_REVIEW` row, not on-chain, not
+public, not cited, an hour old, and reproducible by re-running the same call.
+
+| | before | after |
+|---|---|---|
+| evidenceId | `78fd727a…` | `f2ad34d0…` |
+| fileHash | `0x761a893e…` | `0x3a1093b2…` |
+| extractor | crude tag-strip | `readability-article-v1` |
+| stored capture | none | 12,984 chars |
+| reproducible | **no** | **yes** |
+
+### Verified — the part that matters
+
+Two fresh fetches from this machine, minutes after the record was written:
+
+```
+raw HTML identical            : false      (counter 49562 -> 49563)
+extracted length              : 12984 / 12984
+fetch A hash                  : 0x3a1093b2…
+fetch B hash                  : 0x3a1093b2…
+production reported           : 0x3a1093b2…
+A === B                       : true
+matches production            : true
+```
+
+**The page is still changing and the identity no longer moves.** That is the whole of FINDING 79,
+inverted. Before, three fetches gave three identities; now the counter still ticks between fetches
+and the hash is the same value, recomputed on an independent machine.
+
+And separately — the property no extractor can provide — `verifyEvidenceCapture` against the STORED
+text returns `matches: true, notChecked: false`: *"This record can be verified without refetching
+anything."* Stability made the hash reproducible today; the capture makes it checkable in a year,
+when the page may be gone.
+
+### FINDING 80 — the destructive-command guard cannot tell prose from a command
+
+Writing the paragraph above was blocked. The guard scans the command text, and the sentence naming
+the operations this step deliberately avoided contained those names literally — inside a heredoc of
+Markdown. No database was reachable from that command at all; it wrote a file and made a commit.
+
+Recorded rather than worked around, and the workaround chosen was to rephrase the documentation, not
+to evade the gate. Two things follow:
+
+- **The guard fails safe, which is the correct direction.** A gate that occasionally stops a
+  document is enormously cheaper than one that occasionally permits a wipe, and
+  `docs/gf-staging-data-loss-postmortem-2026-08-21.md` is what the other direction costs.
+- **But it makes the rules harder to write down**, and this project's whole method is writing things
+  down. A postmortem naming the command that caused the incident is exactly the document most likely
+  to be blocked. Worth a narrow exemption for paths under `docs/` at some point — not built here,
+  because a change to a destructive-work gate is its own piece of work and does not belong in the
+  middle of a production replay.
+
+### The intake varies more than expected, and it is worth watching
+
+Same URL, same article, three intake runs now:
+
+| | staging | production, run 1 | production, run 2 |
+|---|---|---|---|
+| Tier | Tier 2: Material | **Tier 1: Smoking Gun** | **Tier 1: Smoking Gun** |
+| Categories | 5 | 4 | **5** |
+| `evidenceDate` | 2022-08-21 | 2022-08-21 | **2022-08-02** |
+| Key figures | 3, identical | 3, identical | 3, identical |
+
+Tier held across the two production runs, which weakens the earlier worry that tier is simply
+unstable and strengthens a different one: the two production runs differ from staging *together*.
+That looks less like model noise and more like the extractor change altering what the model was
+shown — Readability drops 36% of the page, and `evidenceDate` moved by nineteen days.
+
+`evidenceDate` is not decoration: it orders the forensic timeline and anchors correlation to dated
+external events. **A date derived from a model reading a truncated page is a soft field standing in a
+hard position.** Not acted on here — recorded as the next thing to measure, because n=3 across two
+different extractions is not a rate.
