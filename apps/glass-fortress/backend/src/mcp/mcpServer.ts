@@ -484,11 +484,12 @@ export function createMcpServer(): McpServer {
   // -------------------------------------------------------------------------
   server.tool(
     'create_research_session',
-    'Start a new named research session on a thesis. Only ONE session may be active at a time ' +
-      'across the system: if one is open, this refuses and names it. Pass closeActiveSession: true ' +
-      'to close your own; closing another researcher\'s requires closeOtherResearchersSession: true ' +
-      'and a closeReason, recorded on their session. Publishing a thesis must happen inside an active ' +
-      'session on that thesis. Events are logged automatically. Name defaults to the current date/time.',
+    'Start a new named research session on a thesis. You may hold ONE active session at a time, and ' +
+      'a thesis may be held by ONE researcher at a time — if either is taken this refuses and says ' +
+      'which. Pass closeActiveSession: true to close your own; another researcher\'s session never ' +
+      'blocks you unless it is on this same thesis, and you cannot close theirs. Publishing must ' +
+      'happen inside an active session on that thesis. Events are logged automatically. Name defaults ' +
+      'to the current date/time.',
     createResearchSessionSchema,
     async (input) => ({
       content: [{ type: 'text' as const, text: await createResearchSessionHandler(input) }],

@@ -10,17 +10,6 @@ export const sessionConsentSchema = {
     .describe(
       'Consent to close YOUR OWN currently active session. Without it, opening refuses while one is active.',
     ),
-  closeOtherResearchersSession: z
-    .boolean()
-    .optional()
-    .describe(
-      "Distinct consent to close ANOTHER researcher's active session. Requires closeReason. The closure is " +
-        'recorded on their session, naming you and the reason.',
-    ),
-  closeReason: z
-    .string()
-    .optional()
-    .describe("Why you are closing another researcher's session. Required with closeOtherResearchersSession."),
 };
 
 export const createResearchSessionSchema = {
@@ -33,8 +22,6 @@ interface Input {
   thesisId: string;
   name?: string;
   closeActiveSession?: boolean;
-  closeOtherResearchersSession?: boolean;
-  closeReason?: string;
 }
 
 export async function createResearchSessionHandler(input: Input): Promise<string> {
@@ -56,15 +43,15 @@ export async function createResearchSessionHandler(input: Input): Promise<string
   const result = await openExclusiveSession(
     getResearcherId(),
     { thesisId: input.thesisId, question: null, name: sessionName },
-    {
-      closeActiveSession: input.closeActiveSession,
-      closeOtherResearchersSession: input.closeOtherResearchersSession,
-      closeReason: input.closeReason,
-    },
+    { closeActiveSession: input.closeActiveSession },
   );
 
   if (!result.opened) {
-    return JSON.stringify({ error: result.error, activeSession: result.activeSession, howToProceed: result.howToProceed });
+    // RESEARCHER_REQUIRED carries no activeSession — there is no session to
+    // describe, only a missing identity. Destructuring keeps each variant's own
+    // shape instead of emitting a key as present-and-undefined.
+    const { opened: _discriminant, ...refusal } = result;
+    return JSON.stringify(refusal);
   }
 
   return JSON.stringify({

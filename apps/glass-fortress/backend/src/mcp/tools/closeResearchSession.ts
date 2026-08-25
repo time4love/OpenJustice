@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { prisma } from '../../lib/prisma';
+import { getResearcherId } from '../../context/researcherContext';
 
 export const closeResearchSessionSchema = {
   thesisId: z.string().min(1).optional().describe('ID of the thesis whose active session to close'),
@@ -20,9 +21,14 @@ export async function closeResearchSessionHandler(input: Input): Promise<string>
     return JSON.stringify({ error: 'Provide thesisId or sessionId.' });
   }
 
+  // Scoped to the caller's own sessions. Unscoped, `sessionId` or a thesis id
+  // would close another researcher's open work — and under per-researcher locks
+  // there is no longer any reason to: their session does not block yours.
+  const researcherId = getResearcherId();
   const session = await prisma.researchSession.findFirst({
     where: {
       status: 'ACTIVE',
+      researcherId,
       ...(input.sessionId ? { id: input.sessionId } : { thesisId: input.thesisId }),
     },
     include: {
@@ -32,9 +38,12 @@ export async function closeResearchSessionHandler(input: Input): Promise<string>
 
   if (!session) {
     return JSON.stringify({
+      // Deliberately identical whether the session does not exist or belongs to
+      // somebody else: a differing message would let any caller probe who is
+      // working on what.
       error: input.sessionId
-        ? `No active session with id ${input.sessionId}.`
-        : `No active session for thesis ${input.thesisId ?? ''}.`,
+        ? `You have no active session with id ${input.sessionId}.`
+        : `You have no active session for thesis ${input.thesisId ?? ''}.`,
     });
   }
 

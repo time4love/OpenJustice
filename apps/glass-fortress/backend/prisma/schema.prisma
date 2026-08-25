@@ -555,20 +555,61 @@ model ResearchSession {
   // session — it just starts before its subject does, and the thesis attaches to
   // it when created.
   thesisId     String?
-  thesis       Thesis?                @relation(fields: [thesisId], references: [id], onDelete: Cascade)
+  thesis       Thesis?               @relation(fields: [thesisId], references: [id], onDelete: Cascade)
   // The question the session opened on, when it opened before a thesis.
   question     String?
   name         String
-  status       ResearchSessionStatus  @default(ACTIVE)
-  // Who opened it. Nullable: sessions that predate ownership read as legacy,
-  // the same pattern as Evidence.createdById. Only ONE session may be ACTIVE
-  // at a time across the whole system — a publication attaches to the session
-  // that did it, and an untethered publish is an act with no context.
+  status       ResearchSessionStatus @default(ACTIVE)
+  // Who opened it. Still nullable, and deliberately so: two staging sessions
+  // predate ownership, and assigning them a researcher would put a name on work
+  // nobody can attribute — falsifying provenance on a platform whose premise is
+  // that custody is verifiable. They read as legacy, the same pattern as
+  // Evidence.createdById.
+  //
+  // A session with no owner belongs to NOBODY, not to everyone. That was the
+  // opposite before 2026-08-25, when exclusivity was global and a null owner
+  // therefore matched every caller.
+  //
+  // Opening a session now REQUIRES a researcher, so no new row can be ownerless.
   researcherId String?
-  researcher   Researcher?            @relation(fields: [researcherId], references: [id])
-  events       ResearchSessionEvent[]
-  createdAt    DateTime               @default(now())
-  closedAt     DateTime?
+  researcher   Researcher?           @relation(fields: [researcherId], references: [id])
+
+  // ---------------------------------------------------------------------
+  // ⚠️  TWO CONSTRAINTS EXIST ON THIS TABLE THAT PRISMA CANNOT SHOW YOU.
+  //
+  //   ResearchSession_one_active_per_researcher  UNIQUE (researcherId) WHERE status = 'ACTIVE'
+  //   ResearchSession_one_active_per_thesis      UNIQUE (thesisId)     WHERE status = 'ACTIVE'
+  //
+  // Declared in migrations/20260825190000_session_active_locks. They enforce
+  // "one ACTIVE session per researcher, and one per thesis" — uniqueness over a
+  // SUBSET of rows, which is exactly what a partial index is for. The row itself
+  // is never deleted on close: a publication attaches to the session that
+  // performed it and its events hang off it, so it is the audit trail rather
+  // than a lock.
+  //
+  // `@@index` in Prisma 5.22 rejects a `where:` argument ("No such argument"),
+  // so these can only be raw SQL. VERIFIED against live staging 2026-08-25:
+  // Prisma does not see a partial index at all — db:check-drift still reported
+  // "No difference detected" with one present, and a generated migration did not
+  // propose dropping it. Invisible, not endangered. (An earlier design added two
+  // nullable @unique columns to emulate this; it was abandoned once the drift
+  // assumption behind it was tested and turned out to be false.)
+  //
+  // Because they are invisible they cannot be assumed. Two consequences:
+  //   1. Inserting a second ACTIVE session raises Prisma error P2002. That is
+  //      the constraint working — translate it into a named refusal, never a 500.
+  //   2. A Prisma version that DOES understand partial indexes would start
+  //      reporting them as drift. Re-check after any major upgrade.
+  //
+  // thesisId is NULL for a framing session, which opens before its thesis
+  // exists. Postgres treats NULLs as DISTINCT in a unique index, so several
+  // researchers may frame concurrently while no two can hold the same thesis —
+  // that falls out rather than needing a special case.
+  // ---------------------------------------------------------------------
+
+  events    ResearchSessionEvent[]
+  createdAt DateTime               @default(now())
+  closedAt  DateTime?
 }
 
 // One event per significant action that occurred during a session.
