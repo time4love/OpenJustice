@@ -138,7 +138,7 @@ export async function createThesisDraftHandler(input: {
   // thesis must never fail to save because its provenance record could not be
   // updated — but a failure is now REPORTED rather than silent, because an
   // orphan the caller was warned about can be repaired.
-  const framingLink = await linkThesisToFraming(thesis.id, input.framingSessionId);
+  const framingLink = await linkThesisToFraming(thesis.id, input.framingSessionId, getResearcherId());
 
   return JSON.stringify({
     thesisId: thesis.id,

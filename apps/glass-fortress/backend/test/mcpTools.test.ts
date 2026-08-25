@@ -1675,7 +1675,10 @@ describe('addSessionNoteHandler', () => {
   it('returns error when no active session', async () => {
     mockResearchSession.findFirst.mockResolvedValueOnce(null);
     const result = JSON.parse(await addSessionNoteHandler({ thesisId: 'thesis-1', note: 'test' }));
-    expect(result.error).toMatch(/No active session/);
+    expect(result.error).toMatch(/You have no active session on thesis/);
+    // A note is a provenance event, so the refusal says plainly that another
+    // researcher's session is not somewhere you may write.
+    expect(result.error).toMatch(/not one you can write into/);
   });
 
   it('logs a NOTE event to the active session', async () => {
@@ -1701,7 +1704,7 @@ describe('closeResearchSessionHandler', () => {
   it('returns error when no active session', async () => {
     mockResearchSession.findFirst.mockResolvedValueOnce(null);
     const result = JSON.parse(await closeResearchSessionHandler({ thesisId: 'thesis-1' }));
-    expect(result.error).toMatch(/No active session/);
+    expect(result.error).toMatch(/You have no active session/);
   });
 
   it('closes session and returns summary with correct counts', async () => {

@@ -33,13 +33,9 @@ export async function openThesisFramingHandler(input: {
   question: string;
   name?: string;
   closeActiveSession?: boolean;
-  closeOtherResearchersSession?: boolean;
-  closeReason?: string;
 }): Promise<string> {
   const state = await openThesisFraming(input.question, input.name, getResearcherId(), {
     closeActiveSession: input.closeActiveSession,
-    closeOtherResearchersSession: input.closeOtherResearchersSession,
-    closeReason: input.closeReason,
   });
   if ('error' in state) return JSON.stringify(state);
   return JSON.stringify({

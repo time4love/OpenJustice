@@ -81,7 +81,11 @@ export async function openThesisFraming(
     consent,
   );
   if (!opened.opened) {
-    return { error: opened.error, activeSession: opened.activeSession, howToProceed: opened.howToProceed };
+    // Destructured rather than rebuilt field-by-field: an object literal loses
+    // the correlation between `error` and whether `activeSession` accompanies
+    // it, and RESEARCHER_REQUIRED carries no session to describe.
+    const { opened: _discriminant, ...refusal } = opened;
+    return refusal;
   }
   const { session } = opened;
 
@@ -257,14 +261,21 @@ export type FramingLink =
  */
 export async function linkThesisToFraming(
   thesisId: string,
-  explicitSessionId?: string,
+  explicitSessionId: string | undefined,
+  researcherId: string | null,
 ): Promise<FramingLink> {
   if (explicitSessionId) {
     const session = await prisma.researchSession.findUnique({
       where: { id: explicitSessionId },
-      select: { id: true, thesisId: true },
+      select: { id: true, thesisId: true, researcherId: true },
     });
     if (!session) return { linked: false, reason: 'SESSION_NOT_FOUND', sessionId: explicitSessionId };
+    // Naming a session explicitly must not reach into another researcher's work.
+    // Without this check the derivation below could be bypassed by simply
+    // passing the id, attaching a thesis to reasoning that is not its author's.
+    if (session.researcherId !== researcherId) {
+      return { linked: false, reason: 'SESSION_NOT_FOUND', sessionId: explicitSessionId };
+    }
     if (session.thesisId) {
       return { linked: false, reason: 'SESSION_ALREADY_HAS_THESIS', sessionId: explicitSessionId };
     }
@@ -275,8 +286,23 @@ export async function linkThesisToFraming(
   // Derived from state, not from an argument. Only a session with no thesis yet
   // is a candidate: an ACTIVE session already bound to a thesis is that thesis's
   // working session, not this one's framing.
+  //
+  // SCOPED TO THE RESEARCHER, and that scope is load-bearing. Unscoped, this
+  // picked the most recent unattached ACTIVE session belonging to ANYONE — so
+  // with two researchers framing at once it would silently attach one
+  // researcher's framing session to the other's thesis, and report
+  // `derived: true` as though it had inferred something. The thesis would then
+  // carry somebody else's reasoning as the record of why it argues what it
+  // argues. Impossible while exclusivity was global (there was only ever one
+  // session); possible, silent and provenance-corrupting the moment it became
+  // per-researcher.
+  //
+  // A caller with no researcher gets no derivation. There is no "the" session
+  // for an unidentified caller, and guessing one is exactly the bug above.
+  if (!researcherId) return { linked: false, reason: 'NO_ACTIVE_SESSION' };
+
   const active = await prisma.researchSession.findFirst({
-    where: { status: 'ACTIVE', thesisId: null },
+    where: { status: 'ACTIVE', thesisId: null, researcherId },
     orderBy: { createdAt: 'desc' },
     select: { id: true },
   });

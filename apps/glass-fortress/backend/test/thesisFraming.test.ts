@@ -45,15 +45,37 @@ jest.mock('../src/lib/prisma', () => ({
       // derives the framing session from "ACTIVE **and not yet bound to a
       // thesis**" — a mock ignoring the second half would make the derivation
       // pass a test it does not pass in reality.
-      findFirst: jest.fn(async ({ where }: { where: { status?: string; thesisId?: string | null } }) => {
-        const s = [...db.sessions.values()].find(
-          (x) =>
-            (!where.status || x['status'] === where.status) &&
-            (!('thesisId' in where) ||
-              (where.thesisId === null ? !x['thesisId'] : x['thesisId'] === where.thesisId)),
-        );
-        return s ? { createdAt: new Date(), ...s, researcher: null, _count: { events: 0 } } : null;
-      }),
+      // Honours researcherId and NOT: the change under test is entirely about
+      // scoping, and a mock that ignored scope would pass either way.
+      findFirst: jest.fn(
+        async ({
+          where,
+        }: {
+          where: {
+            status?: string;
+            thesisId?: string | null;
+            researcherId?: string | null;
+            NOT?: { researcherId?: string };
+          };
+        }) => {
+          const s = [...db.sessions.values()].find(
+            (x) =>
+              (!where.status || x['status'] === where.status) &&
+              (!('thesisId' in where) ||
+                (where.thesisId === null ? !x['thesisId'] : x['thesisId'] === where.thesisId)) &&
+              (!('researcherId' in where) || x['researcherId'] === where.researcherId) &&
+              (where.NOT?.researcherId === undefined || x['researcherId'] !== where.NOT.researcherId),
+          );
+          if (!s) return null;
+          const handle = s['researcherId'] ? String(s['researcherId']).replace('r-', '') : null;
+          return {
+            createdAt: new Date(),
+            ...s,
+            researcher: handle ? { handle } : null,
+            _count: { events: 0 },
+          };
+        },
+      ),
       create: jest.fn(async ({ data }: { data: Record<string, unknown> }) => {
         const id = `fs-${++seq}`;
         const s: Record<string, unknown> = { id, ...data };
@@ -103,9 +125,12 @@ import {
   getThesisFraming,
 } from '../src/services/thesisFraming';
 
-/** Open a framing session, asserting it was not refused. */
-async function openThesisFraming(question: string) {
-  const state = await openThesisFramingRaw(question);
+const DANA = 'r-dana';
+const YOAV = 'r-yoav';
+
+/** Open a framing session, asserting it was not refused. Sessions need an owner. */
+async function openThesisFraming(question: string, researcherId: string = DANA) {
+  const state = await openThesisFramingRaw(question, undefined, researcherId);
   if ('error' in state) throw new Error(`framing refused: ${state.error}`);
   return state;
 }
@@ -164,11 +189,12 @@ describe('openThesisFraming', () => {
 describe('openThesisFraming — one active session', () => {
   it('refuses while another session is active and names it — framing sessions no longer escape the rule', async () => {
     const first = await openThesisFraming('first question');
-    const second = await openThesisFramingRaw('second question');
+    const second = await openThesisFramingRaw('second question', undefined, DANA);
 
     expect('error' in second).toBe(true);
     if (!('error' in second)) return;
     expect(second.error).toBe('SESSION_ACTIVE_SAME_RESEARCHER');
+    if (!('activeSession' in second)) throw new Error('unreachable');
     expect(second.activeSession.id).toBe(first.sessionId);
     expect(db.sessions.size).toBe(1);
   });
@@ -278,15 +304,56 @@ describe('linkThesisToFraming — deriving the framing session', () => {
     // omitting it lost the link permanently and no repair path existed.
     const s = await openThesisFraming('the question');
 
-    const link = await linkThesisToFraming('thesis-1');
+    const link = await linkThesisToFraming('thesis-1', undefined, DANA);
 
     expect(link).toEqual({ linked: true, sessionId: s.sessionId, derived: true });
     expect(db.sessions.get(s.sessionId)?.['thesisId']).toBe('thesis-1');
     expect(db.events.find((e) => e['type'] === 'THESIS_ATTACHED')?.['refId']).toBe('thesis-1');
   });
 
+  // -------------------------------------------------------------------------
+  // Provenance isolation. Impossible to get wrong while exclusivity was global —
+  // there was only ever one session — and silently corrupting the moment it
+  // became per-researcher.
+  // -------------------------------------------------------------------------
+
+  it("NEVER derives another researcher's framing session", async () => {
+    // Unscoped, this picked the most recent unattached ACTIVE session belonging
+    // to ANYONE, and reported derived: true. Yoav's thesis would then carry
+    // Dana's reasoning as the record of why it argues what it argues.
+    await openThesisFraming("dana's question", DANA);
+
+    const link = await linkThesisToFraming('yoav-thesis', undefined, YOAV);
+
+    expect(link).toEqual({ linked: false, reason: 'NO_ACTIVE_SESSION' });
+  });
+
+  it("refuses an explicitly named session that belongs to someone else", async () => {
+    // The same corruption through a different door: naming the id directly must
+    // not bypass the scoping that protects the derivation.
+    const dana = await openThesisFraming("dana's question", DANA);
+
+    const link = await linkThesisToFraming('yoav-thesis', dana.sessionId, YOAV);
+
+    expect(link).toEqual({
+      linked: false,
+      reason: 'SESSION_NOT_FOUND',
+      sessionId: dana.sessionId,
+    });
+    // Dana's session untouched.
+    expect(db.sessions.get(dana.sessionId)?.['thesisId']).toBeFalsy();
+  });
+
+  it('an unidentified caller derives nothing, rather than guessing a session', async () => {
+    await openThesisFraming('a question', DANA);
+
+    const link = await linkThesisToFraming('thesis-1', undefined, null);
+
+    expect(link).toEqual({ linked: false, reason: 'NO_ACTIVE_SESSION' });
+  });
+
   it('reports NO_ACTIVE_SESSION rather than silently producing an orphan', async () => {
-    const link = await linkThesisToFraming('thesis-1');
+    const link = await linkThesisToFraming('thesis-1', undefined, DANA);
 
     expect(link).toEqual({ linked: false, reason: 'NO_ACTIVE_SESSION' });
   });
@@ -297,7 +364,7 @@ describe('linkThesisToFraming — deriving the framing session', () => {
     const s = await openThesisFraming('the question');
     await attachThesisToFraming(s.sessionId, 'thesis-1');
 
-    const link = await linkThesisToFraming('thesis-2');
+    const link = await linkThesisToFraming('thesis-2', undefined, DANA);
 
     expect(link).toEqual({ linked: false, reason: 'NO_ACTIVE_SESSION' });
     expect(db.sessions.get(s.sessionId)?.['thesisId']).toBe('thesis-1');
@@ -306,7 +373,7 @@ describe('linkThesisToFraming — deriving the framing session', () => {
   it('honours an explicit session id as an override', async () => {
     const s = await openThesisFraming('the question');
 
-    const link = await linkThesisToFraming('thesis-1', s.sessionId);
+    const link = await linkThesisToFraming('thesis-1', s.sessionId, DANA);
 
     expect(link).toEqual({ linked: true, sessionId: s.sessionId, derived: false });
   });
@@ -315,7 +382,7 @@ describe('linkThesisToFraming — deriving the framing session', () => {
     const s = await openThesisFraming('the question');
     await attachThesisToFraming(s.sessionId, 'thesis-1');
 
-    const link = await linkThesisToFraming('thesis-2', s.sessionId);
+    const link = await linkThesisToFraming('thesis-2', s.sessionId, DANA);
 
     expect(link).toMatchObject({ linked: false, reason: 'SESSION_ALREADY_HAS_THESIS' });
   });
@@ -325,7 +392,7 @@ describe('linkThesisToFraming — deriving the framing session', () => {
     // named — provenance quietly reassigned by a typo.
     await openThesisFraming('the question');
 
-    const link = await linkThesisToFraming('thesis-1', 'no-such-session');
+    const link = await linkThesisToFraming('thesis-1', 'no-such-session', DANA);
 
     expect(link).toMatchObject({ linked: false, reason: 'SESSION_NOT_FOUND' });
   });

@@ -101,9 +101,25 @@ jest.mock('../src/lib/prisma', () => ({
     },
     researchSession: {
       findFirst: jest.fn(
-        async ({ where }: { where: { status?: string; thesisId?: string; events?: { some: { type: string } } } }) => {
+        async ({
+          where,
+        }: {
+          where: {
+            status?: string;
+            thesisId?: string;
+            researcherId?: string | null;
+            events?: { some: { type: string } };
+          };
+        }) => {
           if (where.status) {
-            const s = [...db.sessions.values()].find((x) => x.status === where.status);
+            // researcherId is honoured because the lookup is now scoped to the
+            // caller. A mock that ignored it would let this suite pass while a
+            // researcher published inside somebody else's session.
+            const s = [...db.sessions.values()].find(
+              (x) =>
+                x.status === where.status &&
+                (!('researcherId' in where) || x.researcherId === where.researcherId),
+            );
             return s ? { ...s, researcher: s.researcherId ? { handle: s.researcherId } : null, _count: { events: 0 } } : null;
           }
           const wanted = where.events?.some.type;
@@ -328,10 +344,18 @@ describe('the session requirement', () => {
     expect(mockAssess).not.toHaveBeenCalled();
   });
 
-  it('refuses inside another researcher\'s session, naming them', async () => {
+  it("is not blocked by another researcher's session — it is simply not yours to publish in", async () => {
+    // Was ACTIVE_SESSION_NOT_YOURS: the lookup fetched THE active session
+    // globally and then asked whether it belonged to you. Scoped to the caller,
+    // somebody else's open session is invisible here, and the honest answer is
+    // that r1 has no session at all — not that r2's is in the way.
     openSession('r2');
+
     const r = await publishThesis('t1', 'r1', RATIONALE);
-    expect(r).toMatchObject({ published: false, error: 'ACTIVE_SESSION_NOT_YOURS' });
+
+    expect(r).toMatchObject({ published: false, error: 'NO_ACTIVE_SESSION' });
+    // r2's work is untouched by r1's refused attempt.
+    expect(db.events).toHaveLength(0);
   });
 
   it('refuses inside a session on another thesis', async () => {
