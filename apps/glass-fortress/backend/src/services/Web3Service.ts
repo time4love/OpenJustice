@@ -42,6 +42,9 @@ export class Web3Service {
   private readonly provider: ethers.JsonRpcProvider;
   private readonly wallet: ethers.Wallet;
   private readonly contract: ethers.Contract;
+  private readonly contractAddress: string;
+  /** Memoised deployment check — one eth_getCode per process, not per call. */
+  private deploymentCheck: Promise<void> | null = null;
 
   constructor() {
     const rpcUrl = process.env['RPC_URL'];
@@ -56,6 +59,57 @@ export class Web3Service {
     this.provider = new ethers.JsonRpcProvider(rpcUrl);
     this.wallet = new ethers.Wallet(privateKey, this.provider);
     this.contract = new ethers.Contract(contractAddress, EVIDENCE_REGISTRY_ABI, this.wallet);
+    this.contractAddress = contractAddress;
+  }
+
+  /**
+   * Refuse to touch an address that holds no contract.
+   *
+   * THE FAILURE THIS PREVENTS DOES NOT LOOK LIKE A FAILURE.
+   *
+   * A transaction sent to an address with no code does not revert. It succeeds
+   * as a plain transfer and returns a perfectly valid transaction hash. The
+   * promotion path would then mark the evidence CONFIRMED and store that hash as
+   * proof of anchoring — a real transaction, a real hash, anchoring nothing.
+   * Fabricated chain of custody, indistinguishable from a genuine anchor without
+   * querying the contract.
+   *
+   * This is not hypothetical. On 2026-08-26 the local production env file was
+   * found holding 0x5FbDB2315678afecb367f032d93F642f64180aa3 — the Hardhat/Anvil
+   * default first-deployment address — with no contract at it on Base mainnet,
+   * while the real registry is 0x0e21561bbfbb8716713bd60cd21ec5730a4d0d22. A
+   * promotion run with that file loaded was one command away.
+   *
+   * Guarding READS as well as writes, deliberately. isRegistered against a
+   * codeless address reports "not registered", which tells check_on_chain_status
+   * that a hash is safe to promote — feeding the same disaster from the other
+   * end.
+   *
+   * A rule saying "use MCP for chain writes" is a rule; this is the mechanism,
+   * and it holds in every environment regardless of what any env file says.
+   */
+  private async assertRegistryDeployed(): Promise<void> {
+    this.deploymentCheck ??= (async (): Promise<void> => {
+      const code = await this.provider.getCode(this.contractAddress);
+      if (code === '0x' || code === '0x0') {
+        const network = await this.provider.getNetwork();
+        throw new Error(
+          `No contract at EVIDENCE_REGISTRY_ADDRESS ${this.contractAddress} on chain ` +
+            `${String(network.chainId)}. Refusing to read or write evidence anchors: a ` +
+            `transaction to a codeless address SUCCEEDS and returns a valid txHash while ` +
+            `anchoring nothing, which would record fabricated chain of custody.`,
+        );
+      }
+    })();
+
+    try {
+      await this.deploymentCheck;
+    } catch (err) {
+      // Not cached as a permanent failure: a transient RPC error must not wedge
+      // the process into refusing every subsequent call.
+      this.deploymentCheck = null;
+      throw err;
+    }
   }
 
   /**
@@ -82,6 +136,8 @@ export class Web3Service {
     submitterAddress: string,
     category: string,
   ): Promise<string> {
+    await this.assertRegistryDeployed();
+
     // Validate & normalise the hash to bytes32
     const bytes32Hash = ethers.zeroPadValue(fileHash, 32);
 
@@ -244,6 +300,8 @@ export class Web3Service {
    * Check whether a hash is already registered without sending a transaction.
    */
   async isHashRegistered(fileHash: string): Promise<{ registered: boolean; evidenceId: bigint }> {
+    await this.assertRegistryDeployed();
+
     const bytes32Hash = ethers.zeroPadValue(fileHash, 32);
     const [registered, evidenceId] = (await (
       this.contract['isRegistered'] as (fileHash: string) => Promise<[boolean, bigint]>

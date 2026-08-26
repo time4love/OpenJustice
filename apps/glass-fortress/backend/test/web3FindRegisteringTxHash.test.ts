@@ -87,6 +87,12 @@ function buildHarness(
   };
 
   const provider = {
+    // Web3Service now refuses to touch a registry address that holds no code, so
+    // the fake provider must answer getCode. Returning bytecode is the honest
+    // stand-in here: this suite is about block-range arithmetic, and a codeless
+    // registry is a separate concern covered by web3RegistryGuard.test.ts.
+    getCode: jest.fn(async () => '0x60806040'),
+    getNetwork: jest.fn(async () => ({ chainId: 84532n })),
     getBlockNumber: jest.fn(async () => HEAD_BLOCK),
     getBlock,
   };
@@ -176,7 +182,12 @@ describe('Web3Service.findRegisteringTxHash', () => {
     const { service, queryFilter } = buildHarness({ logAtBlock: 3 });
     const early = Object.create(Web3Service.prototype) as Web3Service;
     Object.defineProperty(early, 'provider', {
-      value: { getBlockNumber: async () => HEAD_BLOCK, getBlock: async (n: number) => ({ number: n, timestamp: GENESIS_TIMESTAMP + n * BLOCK_TIME_SECONDS }) },
+      value: {
+        getCode: async () => '0x60806040',
+        getNetwork: async () => ({ chainId: 84532n }),
+        getBlockNumber: async () => HEAD_BLOCK,
+        getBlock: async (n: number) => ({ number: n, timestamp: GENESIS_TIMESTAMP + n * BLOCK_TIME_SECONDS }),
+      },
     });
     Object.defineProperty(early, 'contract', {
       value: {
