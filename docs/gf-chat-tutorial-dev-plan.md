@@ -401,3 +401,64 @@ for depth rather than restating it.
 5. **Which URL for the fixture.** `https://corona.health.gov.il/vaccine-for-covid/` is the obvious
    choice — it is what production and staging both scanned, and the six confirmed hashes give the
    chapter its verifiable endpoint.
+
+---
+
+# The teaching strategy, confirmed 2026-08-26
+
+## `start_tutorial` is the delivery vehicle, and the reason is structural
+
+The curriculum ships as a TOOL, not as documentation. `chapters.ts` states why: a document in the
+repository does not exist for the person who needs it, and an assistant asked to teach without one
+infers a syllabus from tool descriptions and delivers a lecture — the old guide relocated into a chat.
+
+Two consequences that make it the right fit for teaching an **expert**:
+
+- **It versions with the platform.** When a tool changes, the lesson changes in the same PR rather
+  than drifting until someone notices. A `docs/` tutorial would already be wrong today: this session
+  changed the corpus from 131 to 290 chunks, 6 to 7 significant diffs, and 7 to 8 evidence records.
+- **`start_tutorial` is in `READ_TOOLS`** — no model, no RPC, no database, no network. Deliberately
+  open, because its audience is an account that has signed up and is awaiting approval, which under
+  `requireResearcher` can otherwise do nothing at all.
+
+## The method: generate the material by doing the work, then test it cold
+
+The production thesis walk is not a rehearsal for the teaching material — it IS the material.
+Bringing production to parity with staging produces exactly the artifacts a chapter needs, discovered
+rather than invented: a real framing question, real evidence, real dead ends, real corrections.
+
+Then the chapter is tested in a **clean claude.ai session where only the MCP is available** — no repo,
+no local tools, no context from the session that wrote it. That is the only environment that tells the
+truth about whether the lesson stands on its own.
+
+Validated on chapter 1 (read-only), 2026-08-25: three revisions in one afternoon, every failure at
+step 1, none of them visible from reading the chapter. The standing rules that came out of those runs
+are in `chapters.ts` and `docs/tutorial/chapter-01-prove-a-page-reverted.md`.
+
+## What changes for chapters that WRITE
+
+Chapter 1 is read-only and therefore repeatable by anyone, any number of times. A chapter that creates
+a thesis is not, and three things follow:
+
+1. **Auth.** Write tools are gated. A clean claude.ai session needs a working OAuth researcher
+   identity before the chapter can proceed at all — the failure mode is a lesson that dies on step 1
+   for a reason unrelated to the lesson.
+2. **State.** Every run creates real rows: a research session, a framing session, a thesis draft,
+   versions. **Production currently has 0 theses.** After the first write-chapter run against
+   production, it will not — and practice theses on the environment the public reads is a decision,
+   not a detail. Running write chapters against STAGING keeps production clean at the cost of teaching
+   against the environment the learner will not use.
+3. **Session exclusivity.** One active research session per researcher, one per thesis. A tutorial run
+   competes with the learner's own work: if the learner IS the researcher, a chapter that opens a
+   session can block or close what they were doing.
+
+**The corpus numbers must never be hardcoded into a chapter.** Chapter 1 already avoids this — it
+instructs the assistant to fetch, and carries the rule "state nothing you did not fetch in THIS
+conversation". That rule was written after a fabricated detail survived into a live run, and it is
+also what keeps the curriculum correct across repairs like today's.
+
+## Next
+
+Advance to chapters covering thesis creation, generated from the production walk, each one run cold in
+claude.ai before the next is written. `docs/gf-thesis-walk-production-handoff.md` is the walk's
+starting point; `gf-tutorial-run-log` in memory is why the runs matter more than the writing.
