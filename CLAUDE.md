@@ -185,6 +185,41 @@ been broken for as long as nothing compiled it.
 **`npm run lint` still covers `src/` only.** `scripts/` now compiles and type-checks but is not
 linted; extending it means fixing ~70 pre-existing errors, which is its own change.
 
+## On-chain writes go through MCP. Always.
+
+**Any operation that registers evidence on-chain — `promote_scan_findings`, `promote_evidence`, any
+path reaching `registerEvidenceOnChain` — must run through the MCP tools against the deployed
+service. Never from a local script, and never with `.env.production.local` loaded.**
+
+The reason is not preference. **`.env.production.local` holds a wrong `EVIDENCE_REGISTRY_ADDRESS`**:
+`0x5FbDB2315678afecb367f032d93F642f64180aa3`, the standard Hardhat/Anvil first-deployment address.
+There is **no contract at it on Base** (`eth_getCode` returns `0x`). Production's real registry is
+`0x0e21561bbfbb8716713bd60cd21ec5730a4d0d22`, confirmed by reading an existing anchoring transaction
+off chain 8453. The deployed service has the right value; the local file does not.
+
+**The failure mode is silent and produces false evidence.** A transaction sent to an address with no
+code does not revert — it succeeds as a plain transfer and returns a perfectly valid `txHash`. The
+promotion path would then mark the record `CONFIRMED` and store that hash as proof of anchoring. The
+result is an evidence record whose chain of custody is fabricated: a real transaction, a real hash,
+anchoring nothing. That is the same fake-CONFIRMED class as the 2026-08-20 audit, manufactured fresh.
+
+Reads are unaffected — verifying, planning and measuring against production locally is fine and is
+covered by the rule below. The line is the chain write.
+
+`check_on_chain_status` is the check that catches it either way: it compares what the database claims
+against what the contract actually holds. Call it after any promotion.
+
+## Production operations may run locally — except chain writes
+
+Running reviewed operational scripts against production with `.env.production.local` is authorised and
+does not require `railway ssh`. `forensics:rediff`, `forensics:reclassify`, `db:simulate` and the
+read-only measurements all qualify. Confirm the environment BY DATA first (production's `trackedUrl`
+is `0e755b7d-…`, staging's is `45ce88aa-…`), capture a before-state, run from a clean checkout of
+landed code, and verify against that before-state afterwards.
+
+The single exception is the section above: anything that writes to the chain goes through MCP,
+because the local env file would send it to the wrong address.
+
 ## Data Loss — Absolute Rules
 
 **Data is never lost unintentionally. Not on staging, and NEVER on production.** This is not a
