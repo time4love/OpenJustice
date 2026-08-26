@@ -220,7 +220,7 @@ export async function reclassifyDiffs(opts: ReclassifyOptions = {}): Promise<Rec
       failedDiffIds.push(diff.id);
       console.warn(
         `[reclassify] ${diff.beforeDate}->${diff.afterDate} left unchanged: ` +
-          `${err instanceof Error ? err.message.slice(0, 200) : String(err)}`,
+          (err instanceof Error ? err.message.slice(0, 200) : String(err)),
       );
       continue;
     }

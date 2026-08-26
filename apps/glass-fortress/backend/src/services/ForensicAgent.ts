@@ -359,7 +359,7 @@ export class ForensicAgent {
         lastError = err;
         console.warn(
           `[ForensicAgent] Draw ${String(draws)} failed for ${url} @ ${date}: ` +
-            `${err instanceof Error ? err.message.slice(0, 160) : String(err)}`,
+            (err instanceof Error ? err.message.slice(0, 160) : String(err)),
         );
         continue;
       }
@@ -385,7 +385,7 @@ export class ForensicAgent {
     if (best === null) {
       throw new Error(
         `Classification failed on all ${String(draws)} draws for ${url} @ ${date}: ` +
-          `${lastError instanceof Error ? lastError.message : String(lastError)}`,
+          (lastError instanceof Error ? lastError.message : String(lastError)),
       );
     }
 
