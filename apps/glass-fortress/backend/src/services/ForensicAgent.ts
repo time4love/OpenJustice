@@ -6,6 +6,7 @@ import {
 } from '../lib/investigativeCategories';
 import { assertSchemaCompatibility } from '../lib/assertSchemaCompatibility';
 import { FORENSIC_DIFF_CLASSIFICATION_PROMPT } from '../prompts/forensicDiffClassification';
+import { computeDiffCoverage, type DiffCoverage } from '../lib/diffCoverage';
 import type { EvidenceContext } from '../lib/evidenceContext';
 import { FORENSIC_SUMMARY_REWRITE_PROMPT } from '../prompts/forensicSummaryRewrite';
 
@@ -123,7 +124,17 @@ export const ForensicOutputSchema = ForensicLlmOutputSchema.extend({
     .describe('Derived: true when investigativeCategories is non-empty.'),
 });
 
-export type ForensicOutput = z.infer<typeof ForensicOutputSchema>;
+export type ForensicOutput = z.infer<typeof ForensicOutputSchema> & {
+  /**
+   * How much of its input this classification describes.
+   *
+   * Derived, not asked for: a model cannot be trusted to report its own
+   * omissions, and one that drops input reports success.
+   */
+  coverage: DiffCoverage;
+  /** How many draws were taken. >1 means an earlier draw covered less. */
+  draws: number;
+};
 
 /**
  * The diff's categories: the union of what its items carry, ignoring relocations.
@@ -222,13 +233,54 @@ export class ForensicSummaryRewriter {
   }
 }
 
+/**
+ * Output budget for the classifier.
+ *
+ * Was unset, so the provider default applied. Measured against the largest real
+ * diff in the corpus (68 chunks, 8,207 characters of changed text): with the
+ * default, three draws covered 57%, 76% and 75% of chunks and never approached
+ * completeness. With this budget, two of three draws reached 99% and 100% — the
+ * proof that the model CAN enumerate every change in that diff, and that the
+ * shortfall was never a capability ceiling.
+ *
+ * Set explicitly rather than left to the provider so that swapping providers, or
+ * a provider changing its own default, cannot silently change what the corpus
+ * records.
+ */
+export const FORENSIC_MAX_OUTPUT_TOKENS = 8192;
+
+/**
+ * How many times one diff may be classified before the best draw is kept.
+ *
+ * The classifier is non-deterministic at temperature 0 and the spread is wide:
+ * on the same diff and the same budget, draws ranged from 43% to 100% coverage.
+ * A corpus that stores ONE draw per diff stores a sample and presents it as a
+ * measurement — staging's stored row for that diff covers 63%, worse than five of
+ * the six draws taken while investigating it.
+ *
+ * Redrawing the WHOLE diff, not the missed chunks in isolation. Feeding back only
+ * the uncovered text removes the surrounding page along with the crowding, and a
+ * fragment judged alone is likelier to be called significant — which would bias
+ * the corpus toward inflated findings on a platform where a finding names a real
+ * ministry.
+ *
+ * Bounded, because a chunk that survives three independent draws is a finding
+ * about the classifier rather than something more calls will fix.
+ */
+export const MAX_CLASSIFICATION_DRAWS = 3;
+
 export class ForensicAgent {
   private readonly chain: { invoke(input: unknown): Promise<unknown> };
   /** `provider:model` actually used, for stamping onto whatever this classifies. */
   readonly modelId: string = resolveModelId('FORENSIC');
+  private readonly maxDraws: number;
 
-  constructor() {
-    const model = LLMFactory.getChatModel('FORENSIC', { temperature: 0 });
+  constructor(options?: { maxOutputTokens?: number; maxDraws?: number }) {
+    this.maxDraws = Math.max(1, options?.maxDraws ?? MAX_CLASSIFICATION_DRAWS);
+    const model = LLMFactory.getChatModel('FORENSIC', {
+      temperature: 0,
+      maxOutputTokens: options?.maxOutputTokens ?? FORENSIC_MAX_OUTPUT_TOKENS,
+    });
     this.chain = model.withStructuredOutput(ForensicLlmOutputSchema, {
       name: 'forensic_analysis',
     }) as { invoke(input: unknown): Promise<unknown> };
@@ -273,9 +325,50 @@ export class ForensicAgent {
       },
     ];
 
-    const result = await this.chain.invoke(messages);
-    const analysis = ForensicLlmOutputSchema.parse(result);
+    // BEST OF N, SCORED ON TEXT COVERAGE.
+    //
+    // One draw is a sample. Storing it as though it were a measurement is how a
+    // row came to describe 63% of its own input with nothing recording that fact.
+    // Draws stop as soon as one is complete, so the common case — the eleven of
+    // thirteen diffs already covered 1:1 — costs exactly one call.
+    let best: { analysis: z.infer<typeof ForensicLlmOutputSchema>; coverage: DiffCoverage } | null =
+      null;
+    let draws = 0;
 
+    for (let i = 0; i < this.maxDraws; i++) {
+      draws++;
+      const analysis = ForensicLlmOutputSchema.parse(await this.chain.invoke(messages));
+      const coverage = computeDiffCoverage({
+        rawDeletedChunks: deletions,
+        rawAddedChunks: additions,
+        deletedItems: analysis.deletedItems,
+        addedItems: analysis.addedItems,
+      });
+
+      // Strictly greater: ties keep the earlier draw, so an equally-covering
+      // redraw cannot churn the stored prose for no gain.
+      if (best === null || coverage.coveredChars > best.coverage.coveredChars) {
+        best = { analysis, coverage };
+      }
+      if (coverage.complete) break;
+    }
+
+    /* istanbul ignore next -- the loop runs at least once, so best is set. */
+    if (best === null) throw new Error('Classification produced no draw');
+
+    if (!best.coverage.complete) {
+      // Counted and loud. The defect this guards was silent: a classification
+      // that described part of its input reported success, and nothing anywhere
+      // recorded how much it had left out.
+      console.warn(
+        `[ForensicAgent] Coverage incomplete for ${url} @ ${date} after ` +
+          `${String(draws)} draw(s): ${String(best.coverage.uncoveredChunks.length)} of ` +
+          `${String(best.coverage.chunkCount)} chunks described by no item ` +
+          `(${String(Math.round(best.coverage.charRatio * 100))}% of characters covered).`,
+      );
+    }
+
+    const analysis = best.analysis;
     const investigativeCategories = deriveDiffCategories([
       ...analysis.deletedItems,
       ...analysis.addedItems,
@@ -285,6 +378,8 @@ export class ForensicAgent {
       ...analysis,
       investigativeCategories,
       isLegallySignificant: deriveSignificance(investigativeCategories),
+      coverage: best.coverage,
+      draws,
     };
   }
 }

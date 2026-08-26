@@ -1,6 +1,7 @@
 import { parseDiffItems, parseRawChunks } from '../lib/diffItems';
 import { DIFF_INPUT_VERSION } from '../lib/diffChunking';
 import { resolveModelId } from '../factories/LLMFactory';
+import { computeDiffCoverage, type UncoveredChunk } from '../lib/diffCoverage';
 import { type DiffItem } from './ForensicAgent';
 import { resolveDiff, type DiffLookupInput } from './diffLookup';
 
@@ -44,6 +45,20 @@ export interface DiffInputResult {
     rawChunkCount: number;
     itemCount: number;
   };
+  /**
+   * How much of the input this row's items describe. DERIVED on every read from
+   * the two stored column pairs, so it answers for rows written long before the
+   * check existed and can never be stale.
+   */
+  coverage: {
+    coveredChunks: number;
+    chunkCount: number;
+    chunkPercent: number;
+    charPercent: number;
+    complete: boolean;
+    /** Text detected as changed that no item describes. */
+    uncoveredChunks: UncoveredChunk[];
+  };
   provenance: {
     classifierVersion: string | null;
     classifierPromptHash: string | null;
@@ -51,6 +66,8 @@ export interface DiffInputResult {
     /** `provider:model` that judged this row; null predates model provenance. */
     classifierModel: string | null;
     currentClassifierModel: string;
+    /** null means a single draw stored as though it were a measurement. */
+    classifierDraws: number | null;
     /** null = computed under the truncating rule; raw chunks are understated. */
     diffInputVersion: string | null;
     currentDiffInputVersion: string;
@@ -84,6 +101,13 @@ export async function getDiffInput(input: DiffLookupInput): Promise<GetDiffInput
   const deletedItems = parseDiffItems(diff.deletedText);
   const addedItems = parseDiffItems(diff.addedText);
 
+  const cov = computeDiffCoverage({
+    rawDeletedChunks: deletedChunks,
+    rawAddedChunks: addedChunks,
+    deletedItems,
+    addedItems,
+  });
+
   return {
     status: 'OK',
     diff: {
@@ -98,12 +122,21 @@ export async function getDiffInput(input: DiffLookupInput): Promise<GetDiffInput
       rawChunkCount: deletedChunks.length + addedChunks.length,
       itemCount: deletedItems.length + addedItems.length,
     },
+    coverage: {
+      coveredChunks: cov.coveredChunks,
+      chunkCount: cov.chunkCount,
+      chunkPercent: Math.round(cov.chunkRatio * 100),
+      charPercent: Math.round(cov.charRatio * 100),
+      complete: cov.complete,
+      uncoveredChunks: cov.uncoveredChunks,
+    },
     provenance: {
       classifierVersion: diff.classifierVersion,
       classifierPromptHash: diff.classifierPromptHash,
       summaryVersion: diff.summaryVersion,
       classifierModel: diff.classifierModel,
       currentClassifierModel: resolveModelId('FORENSIC'),
+      classifierDraws: diff.classifierDraws,
       diffInputVersion: diff.diffInputVersion,
       currentDiffInputVersion: DIFF_INPUT_VERSION,
       rawChunksMayBeTruncated: diff.diffInputVersion !== DIFF_INPUT_VERSION,
@@ -117,7 +150,12 @@ export async function getDiffInput(input: DiffLookupInput): Promise<GetDiffInput
       '`raw` is the page text this diff detected as changed; `items` is what the classifier wrote ' +
       'about it. Nothing else exposes `raw` — get_forensic_timeline returns items only, so a change ' +
       'that was detected and never described is invisible there. Compare the two counts: they should ' +
-      'match. `provenance.diffInputVersion` says which input rule produced this row; rows below the ' +
+      '`coverage` is measured by TEXT CONTAINMENT, not by counting items: the classifier MERGES ' +
+      'consecutive chunks into single passages, so far fewer items than chunks is normal and not a ' +
+      'loss. `coverage.uncoveredChunks` is the real gap — text detected as changed that no item ' +
+      'describes. `provenance.classifierDraws` is null for rows written before best-of-N, i.e. a ' +
+      'single draw of a non-deterministic process stored as though it were a measurement. ' +
+      '`provenance.diffInputVersion` says which input rule produced this row; rows below the ' +
       'current version were computed under a chunk cap that discarded 55% of detected changes at ' +
       'write time and are understated until the diff is recomputed from its snapshots.',
   };

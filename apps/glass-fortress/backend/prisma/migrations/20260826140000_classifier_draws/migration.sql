@@ -1,0 +1,20 @@
+-- How many draws a classification took before the best-covering one was kept.
+--
+-- Stored because it is the one property of a classification that cannot be
+-- derived afterwards. Coverage IS derived, on read, from rawDeletedText/
+-- rawAddedText against deletedText/addedText — so it answers correctly for rows
+-- written long before the check existed, where a stored column would need
+-- backfilling and would meanwhile assert full coverage for rows nobody checked.
+-- The draw count is process rather than product: no amount of reading a row
+-- recovers whether it was a first draw or the best of three.
+--
+-- Why it matters: the classifier is non-deterministic at temperature 0, and the
+-- spread is wide. On the corpus's largest diff, six draws ranged from 43% to 100%
+-- coverage. Every existing row is ONE draw, stored as though it were a
+-- measurement — staging's row for that diff covers 63%, worse than five of six
+-- draws taken while investigating it.
+--
+-- NULL is meaningful and is NOT backfilled: it means the row predates best-of-N.
+--
+-- Additive and nullable: no rewrite, no data loss possible.
+ALTER TABLE "UrlVersionDiff" ADD COLUMN "classifierDraws" INTEGER;
