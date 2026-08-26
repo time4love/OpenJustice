@@ -457,6 +457,19 @@ instructs the assistant to fetch, and carries the rule "state nothing you did no
 conversation". That rule was written after a fabricated detail survived into a live run, and it is
 also what keeps the curriculum correct across repairs like today's.
 
+## The framing concept splits off as a READ-ONLY chapter — 2026-08-26
+
+The section above classifies thesis creation as a write chapter and inherits all three of its problems.
+Teaching what a framing IS inherits none of them: `get_thesis_framing` is in `READ_TOOLS` — no auth, no
+model, no RPC, no write — so a learner can read a completed framing session end to end and see the
+researcher's claim, the assessor's contradiction, the rebuttal, and the withdrawal.
+
+So the write chapter splits in two: a read-only chapter on what a framing is and why it is not the
+thesis, and a later write chapter that only has to teach *doing* it. Material captured in
+`docs/tutorial/chapter-02-what-a-framing-is.md`, generated from the production walk exactly as the
+method above prescribes — prompted by the researcher who invented the framing question asking mid-walk
+what the difference was. If that person has to ask, it is taught nowhere.
+
 ## Next
 
 Advance to chapters covering thesis creation, generated from the production walk, each one run cold in
