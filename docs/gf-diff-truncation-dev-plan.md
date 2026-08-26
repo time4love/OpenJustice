@@ -166,7 +166,38 @@ PR bodies, `grep` patterns and documentation that merely *mention* them. That is
 to fail, but it means prose about these commands has to be written through file edits rather than
 shell heredocs.
 
-## 7. Status
+## 7. The dry run, and what drives the repair
+
+The staging dry run (`npm run forensics:rediff -- --dry-run`) confirmed the measurement exactly: 6
+diffs, 159 chunks, all six carrying CONFIRMED evidence, 0 hash failures, 0 unlinked.
+
+**Scope, stated so it is not re-litigated: the tracked artifact is a single page.** A diff is a
+change to that page, and text removed from it is a removal — full stop. Whether the same text exists
+elsewhere on the wider site is a different question that this platform does not track and must not be
+used to discount a finding. The evidence is what the page said on a date, and the thesis argues about
+that page's representations.
+
+**Some recovered text is navigation boilerplate** — "where do you get vaccinated?", "you can book an
+appointment at your HMO". This is not a reason to keep a floor: per-item classification handles it
+correctly by giving it empty categories, and `deriveDiffCategories` ignores them, so boilerplate
+cannot inflate significance. The cost of keeping everything is prompt size, not corpus quality.
+
+### What the repair is FOR
+
+Not staging's marginal gain. **Production's corpus is measurably worse than staging's, on two
+independent axes:**
+
+1. **Both environments were truncated at 8 chunks per side** — 131 stored of 290 that existed.
+2. **Only staging was ever reclassified**, so only staging escaped the 40-character floor. Production
+   classified 112 of its 131 stored chunks; staging classified all 131. That is the entire reason the
+   two disagreed on `2025-06-01`, and why production holds 7 evidence records to staging's 8.
+
+Production is the environment the public reads and the one a production thesis must be argued from.
+It is also the environment that has never been repaired, and — per FINDING 100 — the one where the
+repair scripts cannot currently run at all. **That gap, not staging's yield, is what makes this
+urgent.**
+
+## 8. Status
 
 - [x] Root cause identified and measured
 - [x] Cap and floor removed; `classifierInputChunks()` shared by both paths
