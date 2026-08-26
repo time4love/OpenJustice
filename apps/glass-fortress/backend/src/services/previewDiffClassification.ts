@@ -4,6 +4,7 @@ import { ForensicAgent, type DiffItem, type RelatedEvidenceContext } from './For
 import { WaybackScraper } from './WaybackScraper';
 import { CLASSIFIER_VERSION, classifierPromptHash } from '../lib/classifierVersion';
 import { parseRawChunks } from '../lib/diffItems';
+import { classifierInputChunks } from '../lib/diffChunking';
 import { type InvestigativeCategory } from '../lib/investigativeCategories';
 
 // ---------------------------------------------------------------------------
@@ -181,8 +182,11 @@ export async function previewDiffClassification(
     diff.trackedUrlId,
   );
 
-  const deletions = parseRawChunks(diff.rawDeletedText);
-  const additions = parseRawChunks(diff.rawAddedText);
+  // Through the SAME selection step the scan and reclassify use. A preview that
+  // selected its own input would predict a classification the real system never
+  // performs, which is worse than no preview.
+  const deletions = classifierInputChunks(parseRawChunks(diff.rawDeletedText));
+  const additions = classifierInputChunks(parseRawChunks(diff.rawAddedText));
 
   const agent = new ForensicAgent();
   const results: PreviewRun[] = [];

@@ -170,6 +170,21 @@ model UrlVersionDiff {
   // null means the summary predates the self-contained rule — written under a
   // prompt that instructed cross-referencing other evidence records inside it.
   summaryVersion          String?
+  // Which INPUT RULE produced this row's raw chunks — a third provenance axis,
+  // separate from classifierVersion and summaryVersion because all three move
+  // independently and one string covering them would have to lie about two.
+  //
+  // classifierPromptHash cannot see this: the prompt is byte-identical across the
+  // change it records. What differs is what was FED to that prompt. A row written
+  // under the old rule holds at most 8 chunks per side (longest-first, the rest
+  // discarded before the write) and was classified over only those ≥ 40 chars.
+  // Measured: 159 of 290 detected changes never reached the database at all.
+  //
+  // null means the row predates input provenance — i.e. it was computed under the
+  // truncating rule and its raw chunks are UNDERSTATED. Not a cosmetic gap: such a
+  // row cannot be brought up to date by reclassification, only by recomputing the
+  // diff from its snapshots. See docs/gf-diff-truncation-dev-plan.md.
+  diffInputVersion        String?
   classifierPromptHash    String?
   // ForensicAgent classification. Stored on the diff (not only on the promoted
   // Evidence) because a researcher may promote a diff manually via

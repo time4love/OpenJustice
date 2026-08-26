@@ -23,7 +23,7 @@ import {
   buildForensicEvidence,
   type ForensicEvidenceSource,
 } from './forensicEvidence';
-import { groupDiffChunks, chunksForAI } from '../lib/diffChunking';
+import { groupDiffChunks, classifierInputChunks, DIFF_INPUT_VERSION } from '../lib/diffChunking';
 import { CLASSIFIER_VERSION, classifierPromptHash } from '../lib/classifierVersion';
 import { getClaimTrajectories } from './claimTrajectory';
 
@@ -526,9 +526,9 @@ export class WaybackScraper {
       // All changed chunks (any size) — stored verbatim for display
       const deletions = groupDiffChunks(rawDiff, 'removed');
       const additions = groupDiffChunks(rawDiff, 'added');
-      // Subset sent to AI — only substantial chunks worth analysing
-      const deletionsForAI = chunksForAI(deletions);
-      const additionsForAI = chunksForAI(additions);
+      // The one selection step both classification paths go through.
+      const deletionsForAI = classifierInputChunks(deletions);
+      const additionsForAI = classifierInputChunks(additions);
 
       const beforeDate = timestampToDate(prevSnap.timestamp);
       const afterDate = timestampToDate(snap.timestamp);
@@ -541,6 +541,7 @@ export class WaybackScraper {
         await prisma.urlVersionDiff.create({
           data: {
             trackedUrlId: trackedUrl.id,
+            diffInputVersion: DIFF_INPUT_VERSION,
             beforeDate,
             afterDate,
             snapshotUrl,
@@ -560,6 +561,7 @@ export class WaybackScraper {
         await prisma.urlVersionDiff.create({
           data: {
             trackedUrlId: trackedUrl.id,
+            diffInputVersion: DIFF_INPUT_VERSION,
             beforeDate,
             afterDate,
             snapshotUrl,
@@ -598,6 +600,7 @@ export class WaybackScraper {
         const diffRecord = await prisma.urlVersionDiff.create({
           data: {
             trackedUrlId: trackedUrl.id,
+            diffInputVersion: DIFF_INPUT_VERSION,
             beforeDate,
             afterDate,
             snapshotUrl,
@@ -651,6 +654,7 @@ export class WaybackScraper {
         await prisma.urlVersionDiff.create({
           data: {
             trackedUrlId: trackedUrl.id,
+            diffInputVersion: DIFF_INPUT_VERSION,
             beforeDate,
             afterDate,
             snapshotUrl,
@@ -837,8 +841,8 @@ export class WaybackScraper {
         const deletions = groupDiffChunks(rawDiff, 'removed');
         const additions = groupDiffChunks(rawDiff, 'added');
         // Substantial subset — for AI input only
-        const deletionsForAI = chunksForAI(deletions);
-        const additionsForAI = chunksForAI(additions);
+        const deletionsForAI = classifierInputChunks(deletions);
+        const additionsForAI = classifierInputChunks(additions);
 
         const beforeDate = i > 0 ? timestampToDate(snapshotsList[i - 1].timestamp) : 'Unknown';
         const afterDate = timestampToDate(entry.timestamp);
@@ -851,6 +855,7 @@ export class WaybackScraper {
           await prisma.urlVersionDiff.create({
             data: {
               trackedUrlId,
+              diffInputVersion: DIFF_INPUT_VERSION,
               beforeDate,
               afterDate,
               snapshotUrl,
@@ -867,6 +872,7 @@ export class WaybackScraper {
           await prisma.urlVersionDiff.create({
             data: {
               trackedUrlId,
+              diffInputVersion: DIFF_INPUT_VERSION,
               beforeDate,
               afterDate,
               snapshotUrl,
@@ -900,6 +906,7 @@ export class WaybackScraper {
             const diffRecord = await prisma.urlVersionDiff.create({
               data: {
                 trackedUrlId,
+                diffInputVersion: DIFF_INPUT_VERSION,
                 beforeDate,
                 afterDate,
                 snapshotUrl,
@@ -946,6 +953,7 @@ export class WaybackScraper {
             await prisma.urlVersionDiff.create({
               data: {
                 trackedUrlId,
+                diffInputVersion: DIFF_INPUT_VERSION,
                 beforeDate,
                 afterDate,
                 snapshotUrl,

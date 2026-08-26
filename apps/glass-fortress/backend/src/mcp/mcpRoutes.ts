@@ -47,6 +47,11 @@ export const READ_TOOLS = new Set([
   // by cost: its audience is an account that has signed up and is awaiting
   // approval, which under requireResearcher can do nothing at all.
   'start_tutorial',
+  // Two stored columns and a count. No model, no archive fetch, no write — the
+  // cheapest possible read, and the one that makes the layer beneath the
+  // classifier visible at all. Gating it would put the raw record further out of
+  // reach than the REST route that already serves it anonymously.
+  'get_diff_input',
 ]);
 
 export const WRITE_TOOLS = new Set([
