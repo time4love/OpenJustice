@@ -13,6 +13,30 @@ This allows the user to quickly spot and skip (or engage with) unsolicited opini
 - Be concise. Lead with the answer or action.
 - Do not recap what the user said — just do it.
 
+## Guided Execution — show the prompt, then run it
+
+**When walking a multi-step MCP flow (the thesis walk, a tutorial chapter, any sequence of tool calls
+against real data), do not chain the steps. For each step:**
+
+1. **Show the exact prompt/tool call you are about to make**, and what it will change.
+2. **Wait.** The user approves it, or tells you to amend it.
+3. **Execute only what was approved**, then report what actually happened before proposing the next.
+
+**Why this exists:** the staging thesis walk had steps repeated because bugs were found and fixed
+mid-flow. A step executed before it was read is a step that has to be redone once the flow changes
+under it — and on a flow that writes evidence, redoing is not free.
+
+It also puts the researcher's judgement where it belongs. The framing question, the tier, what a
+thesis claims — these are the researcher's calls, and a prompt they never saw is a call they never
+made.
+
+**This is not the same as the irreversibility warning.** That one covers permanent writes. This covers
+*every* step in a guided flow, including harmless reads, because the value is the user seeing the
+sequence rather than being protected from any one call.
+
+**Do not batch approvals.** "Approve steps 3-7" defeats it: the point is that step 4 is written after
+step 3's result is known.
+
 ## Code Quality Standard
 Above all else, code must be clean and written to the highest standards:
 - Every change must leave the codebase in a better or equal state — never worse.
