@@ -60,15 +60,23 @@ function resolveProvider(agentType: string): string {
 }
 
 export class LLMFactory {
-  static getChatModel(agentType: string, options?: { temperature?: number }): FactoryChatModel {
+  static getChatModel(
+    agentType: string,
+    options?: { temperature?: number; maxOutputTokens?: number },
+  ): FactoryChatModel {
     const provider = resolveProvider(agentType);
     const temperature = options?.temperature ?? 0;
+    // Named differently by the two SDKs for the same thing. Left undefined when
+    // the caller does not ask, so the provider default still applies and this
+    // cannot silently change any agent that has not opted in.
+    const maxOutputTokens = options?.maxOutputTokens;
 
     if (provider === 'anthropic') {
       return new ChatAnthropic({
         model: DEFAULT_ANTHROPIC_MODEL,
         apiKey: process.env['ANTHROPIC_API_KEY'],
         temperature,
+        ...(maxOutputTokens === undefined ? {} : { maxTokens: maxOutputTokens }),
       });
     }
 
@@ -77,6 +85,7 @@ export class LLMFactory {
       model: DEFAULT_GEMINI_MODEL,
       apiKey: process.env['GEMINI_API_KEY'],
       temperature,
+      ...(maxOutputTokens === undefined ? {} : { maxOutputTokens }),
     });
 
     // LangChain's _isMultimodalModel getter only recognises hardcoded name patterns

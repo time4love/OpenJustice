@@ -178,6 +178,8 @@ export async function reclassifyDiffs(opts: ReclassifyOptions = {}): Promise<Rec
             classifierVersion: CLASSIFIER_VERSION,
             classifierPromptHash: promptHash,
             classifierModel: agent.modelId,
+            // Zero draws: the model was never called for an empty diff.
+            classifierDraws: 0,
           },
         });
       }
@@ -228,6 +230,7 @@ export async function reclassifyDiffs(opts: ReclassifyOptions = {}): Promise<Rec
           classifierVersion: CLASSIFIER_VERSION,
           classifierPromptHash: promptHash,
           classifierModel: agent.modelId,
+          classifierDraws: analysis.draws,
         },
       });
       reclassified++;

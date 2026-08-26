@@ -196,6 +196,18 @@ model UrlVersionDiff {
   //
   // null means the row predates model provenance.
   classifierModel         String?
+  // How many draws the classifier took before the best-covering one was kept.
+  //
+  // Stored because it is the one thing about a classification that CANNOT be
+  // derived afterwards. Coverage itself is derived on read from the raw chunks
+  // and the items — that way it answers for rows written long before the check
+  // existed, and cannot go stale. The draw count is process, not product: no
+  // amount of reading the row recovers whether it was a first draw or the best of
+  // three.
+  //
+  // null means the row predates best-of-N, i.e. it is a single draw stored as
+  // though it were a measurement.
+  classifierDraws         Int?
   classifierPromptHash    String?
   // ForensicAgent classification. Stored on the diff (not only on the promoted
   // Evidence) because a researcher may promote a diff manually via

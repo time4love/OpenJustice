@@ -2,10 +2,19 @@ import {
   ForensicAgent,
   ForensicOutputSchema,
   deriveSignificance,
+  MAX_CLASSIFICATION_DRAWS,
 } from '../src/services/ForensicAgent';
+import { LLMFactory } from '../src/factories/LLMFactory';
 
 // ---------------------------------------------------------------------------
 // Mock LLMFactory — no real API calls
+//
+// Fixtures are mocked with mockResolvedValue rather than ...Once: the agent draws
+// again when a draw leaves input undescribed, and several of these fixtures
+// deliberately return no items for non-empty chunks. A one-shot mock would make
+// the second draw return undefined and fail these tests for a reason unrelated to
+// what they assert. Sequencing matters only in the best-of-N block below, which
+// uses ...Once on purpose.
 // ---------------------------------------------------------------------------
 
 jest.mock('../src/factories/LLMFactory', () => ({
@@ -83,7 +92,7 @@ const RELATED_EVIDENCE = [
 describe('ForensicAgent', () => {
   it('parses a legally significant response and returns the correct shape', async () => {
     const agent = new ForensicAgent();
-    getMockInvoke(agent).mockResolvedValueOnce(SIGNIFICANT_RESPONSE);
+    getMockInvoke(agent).mockResolvedValue(SIGNIFICANT_RESPONSE);
 
     const result = await agent.analyzeChange(
       ['Side effects are mild and temporary.', 'Emergency Use Authorization approved.'],
@@ -103,7 +112,7 @@ describe('ForensicAgent', () => {
 
   it('parses a cosmetic (not significant) response', async () => {
     const agent = new ForensicAgent();
-    getMockInvoke(agent).mockResolvedValueOnce(COSMETIC_RESPONSE);
+    getMockInvoke(agent).mockResolvedValue(COSMETIC_RESPONSE);
 
     const result = await agent.analyzeChange(
       ['Navigation item removed'],
@@ -121,7 +130,7 @@ describe('ForensicAgent', () => {
 
   it('throws a Zod validation error when the model returns an invalid schema', async () => {
     const agent = new ForensicAgent();
-    getMockInvoke(agent).mockResolvedValueOnce({
+    getMockInvoke(agent).mockResolvedValue({
       deletedItems: [
         {
           summary: 'x',
@@ -141,7 +150,7 @@ describe('ForensicAgent', () => {
 
   it('rejects a category outside the approved taxonomy', async () => {
     const agent = new ForensicAgent();
-    getMockInvoke(agent).mockResolvedValueOnce({
+    getMockInvoke(agent).mockResolvedValue({
       ...COSMETIC_RESPONSE,
       deletedItems: [
         {
@@ -166,7 +175,7 @@ describe('ForensicAgent', () => {
   describe('significance derivation', () => {
     it('is true when at least one category matched', async () => {
       const agent = new ForensicAgent();
-      getMockInvoke(agent).mockResolvedValueOnce({
+      getMockInvoke(agent).mockResolvedValue({
         ...COSMETIC_RESPONSE,
         deletedItems: [
           {
@@ -186,7 +195,7 @@ describe('ForensicAgent', () => {
 
     it('is false when no category matched', async () => {
       const agent = new ForensicAgent();
-      getMockInvoke(agent).mockResolvedValueOnce(COSMETIC_RESPONSE);
+      getMockInvoke(agent).mockResolvedValue(COSMETIC_RESPONSE);
 
       const result = await agent.analyzeChange([], [], 'https://health.gov.il', '2021-06-01', []);
 
@@ -197,7 +206,7 @@ describe('ForensicAgent', () => {
       const agent = new ForensicAgent();
       // A model that hedges — claiming significance while matching no concern —
       // must not be able to force evidence creation.
-      getMockInvoke(agent).mockResolvedValueOnce({
+      getMockInvoke(agent).mockResolvedValue({
         ...COSMETIC_RESPONSE,
         isLegallySignificant: true,
       });
@@ -215,7 +224,7 @@ describe('ForensicAgent', () => {
 
   it('passes both deletions and additions in the human message', async () => {
     const agent = new ForensicAgent();
-    getMockInvoke(agent).mockResolvedValueOnce(COSMETIC_RESPONSE);
+    getMockInvoke(agent).mockResolvedValue(COSMETIC_RESPONSE);
 
     await agent.analyzeChange(
       ['deleted text chunk'],
@@ -235,7 +244,7 @@ describe('ForensicAgent', () => {
 
   it('includes correlated evidence in the human message', async () => {
     const agent = new ForensicAgent();
-    getMockInvoke(agent).mockResolvedValueOnce(COSMETIC_RESPONSE);
+    getMockInvoke(agent).mockResolvedValue(COSMETIC_RESPONSE);
 
     await agent.analyzeChange([], [], 'https://health.gov.il', '2021-06-01', RELATED_EVIDENCE);
 
@@ -247,7 +256,7 @@ describe('ForensicAgent', () => {
 
   it('handles empty deletions and additions gracefully', async () => {
     const agent = new ForensicAgent();
-    getMockInvoke(agent).mockResolvedValueOnce(COSMETIC_RESPONSE);
+    getMockInvoke(agent).mockResolvedValue(COSMETIC_RESPONSE);
 
     const result = await agent.analyzeChange([], [], 'https://health.gov.il', '2021-06-01', []);
     expect(result).toMatchObject(COSMETIC_RESPONSE);
@@ -339,7 +348,7 @@ describe('item-level classification', () => {
 
   it('flags a diff whose single significant item is buried among routine ones', async () => {
     const agent = new ForensicAgent();
-    getMockInvoke(agent).mockResolvedValueOnce({
+    getMockInvoke(agent).mockResolvedValue({
       deletedItems: [
         routine(1),
         routine(2),
@@ -365,7 +374,7 @@ describe('item-level classification', () => {
 
   it('keeps a wholly routine diff routine, however many items it has', async () => {
     const agent = new ForensicAgent();
-    getMockInvoke(agent).mockResolvedValueOnce({
+    getMockInvoke(agent).mockResolvedValue({
       deletedItems: [routine(1), routine(2), routine(3)],
       addedItems: [routine(4), routine(5)],
       legalSignificance: 'עדכון ניווט בלבד.',
@@ -379,7 +388,7 @@ describe('item-level classification', () => {
 
   it('unions categories across items without duplicating them', async () => {
     const agent = new ForensicAgent();
-    getMockInvoke(agent).mockResolvedValueOnce({
+    getMockInvoke(agent).mockResolvedValue({
       deletedItems: [
         { summary: 'a', exactQuote: 'a', investigativeCategories: ['INFORMED_CONSENT'], relocated: false },
         { summary: 'b', exactQuote: 'b', investigativeCategories: ['INFORMED_CONSENT', 'WITHHOLDING_INFORMATION'], relocated: false },
@@ -405,7 +414,7 @@ describe('item-level classification', () => {
   // -------------------------------------------------------------------------
   it('ignores a relocated item — moved text removes nothing', async () => {
     const agent = new ForensicAgent();
-    getMockInvoke(agent).mockResolvedValueOnce({
+    getMockInvoke(agent).mockResolvedValue({
       deletedItems: [
         {
           summary: 'הנוסח המקורי הוסר',
@@ -433,7 +442,7 @@ describe('item-level classification', () => {
 
   it('still flags a genuine change that shares a diff with a relocation', async () => {
     const agent = new ForensicAgent();
-    getMockInvoke(agent).mockResolvedValueOnce({
+    getMockInvoke(agent).mockResolvedValue({
       deletedItems: [
         { summary: 'הועבר', exactQuote: 'moved', investigativeCategories: ['SAFETY_CLAIM_ALTERATION'], relocated: true },
         { summary: 'נמחק באמת', exactQuote: 'gone', investigativeCategories: ['WITHHOLDING_INFORMATION'], relocated: false },
@@ -448,5 +457,84 @@ describe('item-level classification', () => {
 
     expect(result.investigativeCategories).toEqual(['WITHHOLDING_INFORMATION']);
     expect(result.isLegallySignificant).toBe(true);
+  });
+});
+
+describe('ForensicAgent — best of N draws, scored on coverage', () => {
+  const CHUNKS = ['first chunk of page text', 'second chunk of page text'];
+
+  function draw(quotes: string[]): Record<string, unknown> {
+    return {
+      deletedItems: quotes.map((q) => ({
+        summary: 's', exactQuote: q, investigativeCategories: [], relocated: false,
+      })),
+      addedItems: [],
+      legalSignificance: 'x',
+    };
+  }
+
+  function agentWith(...responses: Record<string, unknown>[]): {
+    agent: ForensicAgent; invoke: jest.Mock;
+  } {
+    const invoke = jest.fn();
+    for (const r of responses) invoke.mockResolvedValueOnce(r);
+    (LLMFactory.getChatModel as jest.Mock).mockReturnValue({
+      withStructuredOutput: jest.fn().mockReturnValue({ invoke }),
+    });
+    return { agent: new ForensicAgent(), invoke };
+  }
+
+  it('stops after one draw when coverage is already complete', async () => {
+    const { agent, invoke } = agentWith(draw(CHUNKS));
+
+    const out = await agent.analyzeChange(CHUNKS, [], 'u', '2022-01-01', []);
+
+    // The common case must cost exactly one call.
+    expect(invoke).toHaveBeenCalledTimes(1);
+    expect(out.draws).toBe(1);
+    expect(out.coverage.complete).toBe(true);
+  });
+
+  it('redraws when a draw leaves chunks undescribed, and keeps the better one', async () => {
+    const { agent, invoke } = agentWith(draw([CHUNKS[0] ?? '']), draw(CHUNKS));
+
+    const out = await agent.analyzeChange(CHUNKS, [], 'u', '2022-01-01', []);
+
+    expect(invoke).toHaveBeenCalledTimes(2);
+    expect(out.draws).toBe(2);
+    expect(out.coverage.complete).toBe(true);
+    expect(out.deletedItems).toHaveLength(2);
+  });
+
+  it('keeps the best draw when none is complete, rather than the last', async () => {
+    const { agent } = agentWith(draw(CHUNKS.slice(0, 1)), draw([]), draw([]));
+
+    const out = await agent.analyzeChange(CHUNKS, [], 'u', '2022-01-01', []);
+
+    // Last-wins would silently downgrade a row by redrawing it.
+    expect(out.draws).toBe(3);
+    expect(out.coverage.coveredChunks).toBe(1);
+    expect(out.deletedItems).toHaveLength(1);
+  });
+
+  it('is bounded — a permanently incomplete diff cannot bill without limit', async () => {
+    const { agent, invoke } = agentWith(draw([]), draw([]), draw([]), draw([]), draw([]));
+
+    const out = await agent.analyzeChange(CHUNKS, [], 'u', '2022-01-01', []);
+
+    expect(invoke).toHaveBeenCalledTimes(MAX_CLASSIFICATION_DRAWS);
+    expect(out.coverage.complete).toBe(false);
+  });
+
+  it('redraws the WHOLE diff, never the missed chunks in isolation', async () => {
+    const { agent, invoke } = agentWith(draw([CHUNKS[0] ?? '']), draw(CHUNKS));
+
+    await agent.analyzeChange(CHUNKS, [], 'u', '2022-01-01', []);
+
+    // Feeding back only the uncovered text would strip the surrounding page and
+    // bias a fragment toward looking significant on its own.
+    const first = JSON.stringify(invoke.mock.calls[0]);
+    const second = JSON.stringify(invoke.mock.calls[1]);
+    expect(second).toBe(first);
   });
 });
