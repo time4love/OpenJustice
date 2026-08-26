@@ -1,4 +1,3 @@
-#!/usr/bin/env ts-node
 /**
  * Move forensic evidence onto the snapshot-derived identity.
  *

@@ -162,6 +162,29 @@ packages that may be pruned from the deploy container. Do not move it back.
 Manual `migrate deploy` remains correct in exactly one situation: an environment whose ledger is
 damaged, or a one-off repair, done under the cleanup-session protocol below.
 
+## Operational scripts are COMPILED, not interpreted
+
+`apps/glass-fortress/backend/scripts/*.ts` compile into `dist/scripts/*.js` and every npm entry runs
+them with plain `node`. **They therefore require `npm run build` first** — locally, and in a deploy
+container where the build has already run.
+
+This replaced `ts-node --transpile-only scripts/X.ts`, which could not run in a deploy container at
+all: `tsconfig` included only `src/**/*`, `ts-node` was not a dependency of this workspace (it
+resolved by hoisting from the monorepo root), and `typescript` is a devDependency that deploy
+containers prune. Nine scripts were affected, `db:simulate` among them — a rule mandating a tool the
+environment cannot execute is not a control, it is an assumption.
+
+Running compiled output is preferred over moving `ts-node` into `dependencies`: it ships no compiler
+to production and it type-checks the scripts at build time. That checking is not theoretical —
+including `scripts/` in `tsconfig` immediately caught `forensics:trajectories` importing
+`computeClaimTrajectories`, an export that had been renamed to `getClaimTrajectories`. That script had
+been broken for as long as nothing compiled it.
+
+`npm run dev` still uses `ts-node-dev`, which is fine: it is local-only and never runs in a container.
+
+**`npm run lint` still covers `src/` only.** `scripts/` now compiles and type-checks but is not
+linted; extending it means fixing ~70 pre-existing errors, which is its own change.
+
 ## Data Loss — Absolute Rules
 
 **Data is never lost unintentionally. Not on staging, and NEVER on production.** This is not a
