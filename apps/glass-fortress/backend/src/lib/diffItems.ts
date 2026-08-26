@@ -31,3 +31,24 @@ export function parseDiffItems(json: string): DiffItem[] {
     };
   });
 }
+
+// Parses the rawDeletedText/rawAddedText JSON column — the raw page-text chunks
+// captured at scan time, BEFORE the classifier turned them into items.
+//
+// Deliberately not parseDiffItems: these two column pairs hold different things
+// and are not interchangeable. deletedText/addedText are the classifier's OUTPUT
+// (summary + exactQuote + categories); rawDeletedText/rawAddedText are its
+// INPUT. Anything that re-runs the classifier over a stored diff must read the
+// raw pair, or it feeds the model its own prior conclusions instead of the page.
+//
+// Tolerant by design: a malformed or non-array column yields [], because a diff
+// with unreadable raw text must degrade to "nothing to classify" rather than
+// throw and take down the caller iterating over a corpus.
+export function parseRawChunks(json: string): string[] {
+  try {
+    const parsed = JSON.parse(json) as unknown;
+    return Array.isArray(parsed) ? (parsed as unknown[]).filter((c): c is string => typeof c === 'string') : [];
+  } catch {
+    return [];
+  }
+}
