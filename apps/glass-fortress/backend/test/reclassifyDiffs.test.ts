@@ -465,3 +465,35 @@ describe('adoptOrphanedFindings', () => {
     expect(mockRecordScanFinding).not.toHaveBeenCalled();
   });
 });
+
+describe('reclassifyDiffs — the model is never called on an empty diff', () => {
+  it('skips a diff with no chunks and does not invoke the classifier', async () => {
+    db.diffs = [
+      {
+        id: 'empty-1',
+        trackedUrlId: 't-1',
+        trackedUrl: { url: 'https://example.test/' },
+        beforeDate: '2022-01-01',
+        afterDate: '2022-01-02',
+        rawDeletedText: '[]',
+        rawAddedText: '[]',
+        deletedText: '[]',
+        addedText: '[]',
+        investigativeCategories: [],
+        isLegallySignificant: false,
+        evidence: [],
+        beforeSnapshot: { waybackTimestamp: '20220101000000', contentHash: 'a' },
+        afterSnapshot: { waybackTimestamp: '20220102000000', contentHash: 'b' },
+      },
+    ];
+
+    const result = await reclassifyDiffs({ dryRun: true });
+
+    // The scan has always skipped these. Reclassification calling the model once
+    // per empty diff was the same asymmetry, in the invocation rather than the
+    // input — and it asked a non-deterministic model a question with no content.
+    expect(mockAnalyzeChange).not.toHaveBeenCalled();
+    expect(result.skippedEmpty).toBe(1);
+    expect(result.reclassified).toBe(0);
+  });
+});
