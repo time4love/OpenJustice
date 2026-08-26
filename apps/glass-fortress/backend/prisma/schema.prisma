@@ -185,6 +185,17 @@ model UrlVersionDiff {
   // row cannot be brought up to date by reclassification, only by recomputing the
   // diff from its snapshots. See docs/gf-diff-truncation-dev-plan.md.
   diffInputVersion        String?
+  // Which MODEL produced the classification, as `provider:model`.
+  //
+  // The fourth provenance axis, and the one nothing else can express:
+  // classifierVersion names the procedure and classifierPromptHash proves the
+  // prompt TEXT, so a row judged by gemini-flash and a row judged by
+  // claude-sonnet carry byte-identical provenance. The provider is chosen by an
+  // env var (<AGENT>_PROVIDER) that can change between two runs of the same
+  // commit, so a corpus can become mixed with nothing in the data to show it.
+  //
+  // null means the row predates model provenance.
+  classifierModel         String?
   classifierPromptHash    String?
   // ForensicAgent classification. Stored on the diff (not only on the promoted
   // Evidence) because a researcher may promote a diff manually via

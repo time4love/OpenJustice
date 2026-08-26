@@ -174,7 +174,11 @@ export async function reclassifyDiffs(opts: ReclassifyOptions = {}): Promise<Rec
       if (!opts.dryRun) {
         await prisma.urlVersionDiff.update({
           where: { id: diff.id },
-          data: { classifierVersion: CLASSIFIER_VERSION, classifierPromptHash: promptHash },
+          data: {
+            classifierVersion: CLASSIFIER_VERSION,
+            classifierPromptHash: promptHash,
+            classifierModel: agent.modelId,
+          },
         });
       }
       continue;
@@ -223,6 +227,7 @@ export async function reclassifyDiffs(opts: ReclassifyOptions = {}): Promise<Rec
           addedText: JSON.stringify(analysis.addedItems),
           classifierVersion: CLASSIFIER_VERSION,
           classifierPromptHash: promptHash,
+          classifierModel: agent.modelId,
         },
       });
       reclassified++;

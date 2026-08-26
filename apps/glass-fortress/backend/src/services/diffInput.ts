@@ -1,5 +1,6 @@
 import { parseDiffItems, parseRawChunks } from '../lib/diffItems';
 import { DIFF_INPUT_VERSION } from '../lib/diffChunking';
+import { resolveModelId } from '../factories/LLMFactory';
 import { type DiffItem } from './ForensicAgent';
 import { resolveDiff, type DiffLookupInput } from './diffLookup';
 
@@ -47,6 +48,9 @@ export interface DiffInputResult {
     classifierVersion: string | null;
     classifierPromptHash: string | null;
     summaryVersion: string | null;
+    /** `provider:model` that judged this row; null predates model provenance. */
+    classifierModel: string | null;
+    currentClassifierModel: string;
     /** null = computed under the truncating rule; raw chunks are understated. */
     diffInputVersion: string | null;
     currentDiffInputVersion: string;
@@ -98,6 +102,8 @@ export async function getDiffInput(input: DiffLookupInput): Promise<GetDiffInput
       classifierVersion: diff.classifierVersion,
       classifierPromptHash: diff.classifierPromptHash,
       summaryVersion: diff.summaryVersion,
+      classifierModel: diff.classifierModel,
+      currentClassifierModel: resolveModelId('FORENSIC'),
       diffInputVersion: diff.diffInputVersion,
       currentDiffInputVersion: DIFF_INPUT_VERSION,
       rawChunksMayBeTruncated: diff.diffInputVersion !== DIFF_INPUT_VERSION,

@@ -34,10 +34,34 @@ const DEFAULT_ANTHROPIC_MODEL = 'claude-sonnet-4-6';
 // in your .env — no code change required.
 // ---------------------------------------------------------------------------
 
+/**
+ * Which model an agent type resolves to right now, as `provider:model`.
+ *
+ * Exists so a stored LLM-derived value can record WHAT JUDGED IT. classifierVersion
+ * names the procedure and classifierPromptHash proves the prompt text — neither can
+ * see the model. A corpus judged partly by Gemini and partly by Claude would carry
+ * byte-identical provenance, which is the same defect as two code paths feeding the
+ * classifier different input under one version string.
+ *
+ * Derived from the same env lookup getChatModel performs, and deliberately not a
+ * second copy of that logic: if the two could disagree, the recorded model would be
+ * a guess about the model that actually ran.
+ */
+export function resolveModelId(agentType: string): string {
+  const provider = resolveProvider(agentType);
+  return provider === 'anthropic'
+    ? `anthropic:${DEFAULT_ANTHROPIC_MODEL}`
+    : `gemini:${DEFAULT_GEMINI_MODEL}`;
+}
+
+function resolveProvider(agentType: string): string {
+  const envKey = `${agentType.toUpperCase()}_PROVIDER`;
+  return (process.env[envKey] ?? 'gemini').toLowerCase().trim();
+}
+
 export class LLMFactory {
   static getChatModel(agentType: string, options?: { temperature?: number }): FactoryChatModel {
-    const envKey = `${agentType.toUpperCase()}_PROVIDER`;
-    const provider = (process.env[envKey] ?? 'gemini').toLowerCase().trim();
+    const provider = resolveProvider(agentType);
     const temperature = options?.temperature ?? 0;
 
     if (provider === 'anthropic') {
