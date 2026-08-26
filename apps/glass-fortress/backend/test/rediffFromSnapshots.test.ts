@@ -22,13 +22,15 @@ const writeSpies = {
 jest.mock('../src/lib/prisma', () => ({
   prisma: {
     urlVersionDiff: {
-      findMany: jest.fn(async () => db.diffs),
+      findMany: jest.fn(async (a: { where?: { id?: string } }) =>
+        a.where?.id === undefined ? db.diffs : db.diffs.filter((d) => d['id'] === a.where?.id),
+      ),
       ...writeSpies,
     },
   },
 }));
 
-import { planRediff, REDIFF_TARGET_VERSION } from '../src/services/rediffFromSnapshots';
+import { planRediff, applyRediff, REDIFF_TARGET_VERSION } from '../src/services/rediffFromSnapshots';
 import { DIFF_INPUT_VERSION } from '../src/lib/diffChunking';
 
 function snap(text: string, corruptHash = false): Record<string, unknown> {
@@ -151,5 +153,68 @@ describe('planRediff', () => {
 
   it('reports the version repaired rows would carry', () => {
     expect(REDIFF_TARGET_VERSION).toBe(DIFF_INPUT_VERSION);
+  });
+});
+
+describe('applyRediff', () => {
+  it('rewrites the raw chunks and stamps the input version', async () => {
+    db.diffs = [diffRow()];
+
+    const result = await applyRediff();
+
+    expect(result.applied).toBe(1);
+    expect(result.refused).toBe(0);
+    const call = writeSpies.update.mock.calls[0]?.[0] as {
+      where: { id: string };
+      data: { rawDeletedText: string; rawAddedText: string; diffInputVersion: string };
+    };
+    expect(call.where.id).toBe('diff-1');
+    expect(call.data.diffInputVersion).toBe(REDIFF_TARGET_VERSION);
+    const written = JSON.parse(call.data.rawDeletedText) as string[];
+    expect(written).toContain('beta line two');
+    expect(written).toContain('short');
+  });
+
+  it('never touches the classifier output or the verdict', async () => {
+    db.diffs = [diffRow()];
+
+    await applyRediff();
+
+    const data = (writeSpies.update.mock.calls[0]?.[0] as { data: Record<string, unknown> }).data;
+    // The chunks become current while the classification does not, and the two
+    // provenance fields say so. Reclassification is a separate decision.
+    expect(Object.keys(data).sort()).toEqual(
+      ['diffInputVersion', 'rawAddedText', 'rawDeletedText'].sort(),
+    );
+  });
+
+  it('REFUSES an entry where applying would destroy stored text', async () => {
+    // A stored chunk with no counterpart in the recomputation: rewriting would
+    // lose it, turning a repair into a partial deletion.
+    db.diffs = [diffRow({ rawDeletedText: JSON.stringify(['beta line two', 'text that no longer exists anywhere']) })];
+
+    const result = await applyRediff();
+
+    expect(result.applied).toBe(0);
+    expect(result.refused).toBe(1);
+    expect(writeSpies.update).not.toHaveBeenCalled();
+  });
+
+  it('refuses a pair whose snapshot hash no longer verifies', async () => {
+    db.diffs = [diffRow({ afterSnapshot: snap(AFTER, true) })];
+
+    const result = await applyRediff();
+
+    expect(result.applied).toBe(0);
+    expect(writeSpies.update).not.toHaveBeenCalled();
+  });
+
+  it('writes nothing when there is nothing to recover', async () => {
+    db.diffs = [diffRow({ rawDeletedText: JSON.stringify(['beta line two', 'short']) })];
+
+    const result = await applyRediff();
+
+    expect(result.applied).toBe(0);
+    expect(writeSpies.update).not.toHaveBeenCalled();
   });
 });

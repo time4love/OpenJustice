@@ -52,6 +52,19 @@ export interface RediffPlanEntry {
   diffInputVersion: string | null;
   /** Text present in the recomputation and absent from the stored record. */
   recoveredText: { side: 'deleted' | 'added'; text: string }[];
+  /**
+   * Stored text the recomputation does NOT contain.
+   *
+   * Must be empty. The repair rewrites rawDeletedText/rawAddedText, so a stored
+   * chunk with no counterpart would be destroyed by applying — turning a repair
+   * that recovers 159 chunks into one that also silently loses some. Expected to
+   * be empty by construction (the old pipeline was a strict truncation of the
+   * same computation), but expected is not measured, and this is the one property
+   * whose failure is unrecoverable.
+   */
+  storedTextNotRecomputed: { side: 'deleted' | 'added'; text: string }[];
+  /** False when applying this entry would lose stored text. Apply must refuse. */
+  safeToApply: boolean;
 }
 
 export interface RediffPlan {
@@ -64,6 +77,8 @@ export interface RediffPlan {
   snapshotHashFailures: number;
   /** Diffs skipped because they are not linked to both snapshots. */
   unlinkedDiffs: number;
+  /** Entries where applying would destroy stored text. Must be 0 to proceed. */
+  unsafeEntries: number;
   entries: RediffPlanEntry[];
 }
 
@@ -123,7 +138,12 @@ export async function planRediff(opts: { url?: string } = {}): Promise<RediffPla
       ...missing(recomputedAdded, storedAdded, 'added'),
     ];
 
-    if (recoveredText.length === 0) continue;
+    const storedTextNotRecomputed = [
+      ...missing(storedDeleted, recomputedDeleted, 'deleted'),
+      ...missing(storedAdded, recomputedAdded, 'added'),
+    ];
+
+    if (recoveredText.length === 0 && storedTextNotRecomputed.length === 0) continue;
 
     entries.push({
       diffId: diff.id,
@@ -138,6 +158,8 @@ export async function planRediff(opts: { url?: string } = {}): Promise<RediffPla
       evidence: diff.evidence,
       diffInputVersion: diff.diffInputVersion,
       recoveredText,
+      storedTextNotRecomputed,
+      safeToApply: storedTextNotRecomputed.length === 0,
     });
   }
 
@@ -148,6 +170,7 @@ export async function planRediff(opts: { url?: string } = {}): Promise<RediffPla
     diffsWithEvidenceAffected: entries.filter((e) => e.evidence.length > 0).length,
     snapshotHashFailures,
     unlinkedDiffs,
+    unsafeEntries: entries.filter((e) => !e.safeToApply).length,
     entries,
   };
 }
@@ -177,4 +200,98 @@ function missing(
 
 function normalise(text: string): string {
   return text.replace(/\s+/gu, ' ').trim();
+}
+
+// ---------------------------------------------------------------------------
+// Applying the repair.
+//
+// This is an UPDATE that only ever GROWS the record: every entry it writes has
+// been verified to contain all of the text currently stored, plus more. An entry
+// that fails that check is REFUSED, not merged and not overwritten — the whole
+// point is that a repair which recovers 159 chunks must not also lose one.
+//
+// It deliberately does NOT touch deletedText/addedText (the classifier's items)
+// or any verdict. After this runs, a row's chunks are current while its
+// classification is not, and the two provenance fields say so honestly:
+// diffInputVersion is at the current version, classifierVersion is not.
+// Reclassification is a separate decision, made after looking at what was
+// recovered.
+//
+// Evidence identity is untouched by construction: forensicEvidenceFileHash is
+// computed from url + the two snapshots' waybackTimestamp and contentHash, and
+// contains no diff text. Nothing needs re-anchoring.
+// ---------------------------------------------------------------------------
+
+export interface ApplyRediffResult {
+  attempted: number;
+  applied: number;
+  refused: number;
+  chunksRecovered: number;
+  refusedDiffIds: string[];
+  appliedDiffIds: string[];
+}
+
+export async function applyRediff(opts: { url?: string } = {}): Promise<ApplyRediffResult> {
+  const plan = await planRediff(opts);
+
+  const appliedDiffIds: string[] = [];
+  const refusedDiffIds: string[] = [];
+  let chunksRecovered = 0;
+
+  for (const entry of plan.entries) {
+    if (!entry.safeToApply) {
+      refusedDiffIds.push(entry.diffId);
+      continue;
+    }
+
+    // Recomputed from the snapshots again rather than reconstructed from the
+    // plan's diff of the two sets: rebuilding a chunk list by merging "stored
+    // plus recovered" would invent an ordering that neither the page nor the
+    // recomputation has, and document order is the thing the sort removal was
+    // meant to restore.
+    const rows = await prisma.urlVersionDiff.findMany({
+      where: { id: entry.diffId },
+      select: {
+        id: true,
+        beforeSnapshot: { select: { fullText: true, contentHash: true } },
+        afterSnapshot: { select: { fullText: true, contentHash: true } },
+      },
+    });
+    // findMany on a unique id returns 0 or 1 row, and the compiler treats index 0
+    // as present, so the only guard that carries information is on the relations.
+    const row = rows[0];
+    if (!row.beforeSnapshot || !row.afterSnapshot) {
+      refusedDiffIds.push(entry.diffId);
+      continue;
+    }
+    if (!hashMatches(row.beforeSnapshot) || !hashMatches(row.afterSnapshot)) {
+      refusedDiffIds.push(entry.diffId);
+      continue;
+    }
+
+    const raw = diffLines(row.beforeSnapshot.fullText, row.afterSnapshot.fullText, {
+      ignoreWhitespace: true,
+    });
+
+    await prisma.urlVersionDiff.update({
+      where: { id: entry.diffId },
+      data: {
+        rawDeletedText: JSON.stringify(groupDiffChunks(raw, 'removed')),
+        rawAddedText: JSON.stringify(groupDiffChunks(raw, 'added')),
+        diffInputVersion: DIFF_INPUT_VERSION,
+      },
+    });
+
+    appliedDiffIds.push(entry.diffId);
+    chunksRecovered += entry.recoveredChunks;
+  }
+
+  return {
+    attempted: plan.entries.length,
+    applied: appliedDiffIds.length,
+    refused: refusedDiffIds.length,
+    chunksRecovered,
+    refusedDiffIds,
+    appliedDiffIds,
+  };
 }
