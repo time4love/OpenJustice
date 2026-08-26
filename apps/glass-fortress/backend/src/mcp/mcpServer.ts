@@ -52,6 +52,10 @@ import {
 import { listCapturesSchema, listCapturesHandler } from './tools/listCaptures';
 import { startTutorialSchema, startTutorialHandler } from './tools/startTutorial';
 import { verifyClaimTextSchema, verifyClaimTextHandler } from './tools/verifyClaimText';
+import {
+  previewDiffClassificationSchema,
+  previewDiffClassificationHandler,
+} from './tools/previewDiffClassification';
 import { auditThesisClaimsSchema, auditThesisClaimsHandler } from './tools/auditThesisClaims';
 import {
   checkPublicationReadinessSchema,
@@ -751,6 +755,22 @@ export function createMcpServer(): McpServer {
     auditThesisClaimsSchema,
     async (input) => ({
       content: [{ type: 'text' as const, text: await auditThesisClaimsHandler(input) }],
+    }),
+  );
+
+  server.tool(
+    'preview_diff_classification',
+    'Re-run the forensic classifier over a stored diff and return what it says, WITHOUT writing ' +
+      'anything — the stored verdict is left exactly as it was. Answers "what would the classifier ' +
+      'decide about this change today?", which the forensic timeline (stored verdict only) and ' +
+      'forensics:reclassify (overwrites the verdict to tell you) cannot. Identify the diff by ' +
+      'diffId, or by url + afterDate to ask two environments about the same change. `runs` draws ' +
+      'several independent samples, because the classifier is non-deterministic at temperature 0. ' +
+      'Returns the correlated evidence it was given: that input is queried live and differs between ' +
+      'environments, so it must be compared before concluding two classifiers disagreed.',
+    previewDiffClassificationSchema,
+    async (input) => ({
+      content: [{ type: 'text' as const, text: await previewDiffClassificationHandler(input) }],
     }),
   );
 

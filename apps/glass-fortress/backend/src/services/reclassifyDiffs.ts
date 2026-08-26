@@ -2,7 +2,7 @@ import { prisma } from '../lib/prisma';
 import { ForensicAgent } from './ForensicAgent';
 import { WaybackScraper, recordScanFinding } from './WaybackScraper';
 import { CLASSIFIER_VERSION, classifierPromptHash } from '../lib/classifierVersion';
-import { parseDiffItems } from '../lib/diffItems';
+import { parseDiffItems, parseRawChunks } from '../lib/diffItems';
 import { investigativeCategoriesField } from '../lib/investigativeCategories';
 import { deriveSignificance } from './ForensicAgent';
 import { requireSnapshotIdentity } from './forensicEvidence';
@@ -50,15 +50,6 @@ export interface ReclassifyResult {
    */
   findingsRecorded: number;
   flips: FlipRecord[];
-}
-
-function parseRawChunks(raw: string): string[] {
-  try {
-    const parsed = JSON.parse(raw) as unknown;
-    return Array.isArray(parsed) ? (parsed as string[]).filter((c) => typeof c === 'string') : [];
-  } catch {
-    return [];
-  }
 }
 
 export interface ReclassifyOptions {

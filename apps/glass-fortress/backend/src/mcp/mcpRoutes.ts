@@ -84,6 +84,13 @@ export const WRITE_TOOLS = new Set([
   'recover_evidence_from_screenshot',
   'delete_evidence',
 
+  // Writes nothing at all — no diff update, no finding, no evidence row — and is
+  // still here, because the rule at the top of this file is what it SPENDS.
+  // Every `runs` is a full LLM call, and `runs` is caller-controlled, so a single
+  // anonymous request could bill MAX_PREVIEW_RUNS classifications of the largest
+  // diff in the corpus. Same reason suggest_thesis sits below.
+  'preview_diff_classification',
+
   // Persist nothing, and were therefore unauthenticated until 2026-08-21 — but
   // both spend real money on every call, with no account and (until the
   // limiter below) no cap:
