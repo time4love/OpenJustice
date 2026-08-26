@@ -100,6 +100,13 @@ jest.mock('../src/lib/prisma', () => ({
       ),
     },
     researchSession: {
+      update: jest.fn(
+        async ({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => {
+          const s = db.sessions.get(where.id);
+          if (s) Object.assign(s, data);
+          return s;
+        },
+      ),
       findFirst: jest.fn(
         async ({
           where,
@@ -317,7 +324,14 @@ describe('publishing pins a version', () => {
     await publishThesis('t1', 'r1', RATIONALE);
 
     const types = db.events.filter((e) => e['sessionId'] === s.id).map((e) => e['type']);
-    expect(types).toEqual(['PUBLICATION_RATIONALE', 'PUBLICATION_ASSESSED', 'THESIS_PUBLISHED']);
+    // SESSION_CLOSED last: publication is the terminal act of the session, and
+    // the order is the record of that — reasoning, assessment, publication, end.
+    expect(types).toEqual([
+      'PUBLICATION_RATIONALE',
+      'PUBLICATION_ASSESSED',
+      'THESIS_PUBLISHED',
+      'SESSION_CLOSED',
+    ]);
     expect(eventsOfType('PUBLICATION_RATIONALE')[0]['description']).toBe(RATIONALE);
     expect(eventsOfType('THESIS_PUBLISHED')[0]['refId']).toBe('v1');
     const assessed = JSON.parse(String(eventsOfType('PUBLICATION_ASSESSED')[0]['description'])) as { checks: unknown[] };
@@ -333,6 +347,53 @@ describe('publishing pins a version', () => {
 
     expect(r).toMatchObject({ published: false, refusedBy: ['RATIONALE_SUBSTANCE'] });
     expect(db.thesis?.publicInterestStatement).toContain('הציבור זכאי');
+  });
+});
+
+describe('publishing closes the session', () => {
+  it('closes it, and records why, in the same act that pins the version', async () => {
+    // Publication is the terminal act of a thesis session: the rationale, the
+    // assessment and the publish are all on it, and there is nothing further it
+    // is for. Now that a thesis is held by ONE researcher at a time, leaving it
+    // open would lock a published thesis to its author indefinitely — nobody
+    // could open a session to revise, correct or retract it.
+    const s = openSession('r1');
+
+    const r = await publishThesis('t1', 'r1', RATIONALE);
+
+    expect(r).toMatchObject({ published: true, sessionClosed: true });
+    expect(db.sessions.get(s.id)?.status).toBe('CLOSED');
+    const types = db.events.filter((e) => e['sessionId'] === s.id).map((e) => e['type']);
+    expect(types).toContain('SESSION_CLOSED');
+    // The closure is explained on the session, not merely performed.
+    const closed = db.events.find((e) => e['type'] === 'SESSION_CLOSED');
+    expect(String(closed?.['description'])).toMatch(/the thesis was published/);
+  });
+
+  it('leaves the session OPEN when publication is refused', async () => {
+    // The critical half. A session closed by a publication that did not happen
+    // would strand the researcher: their work is gone from under them and the
+    // thesis is still unpublished.
+    openSession('r1');
+    mockAssess.mockResolvedValue(goodAssessment({ rationaleHasSubstance: false, substanceGaps: ['where it stops'] }));
+
+    const r = await publishThesis('t1', 'r1', RATIONALE);
+
+    expect(r).toMatchObject({ published: false });
+    expect([...db.sessions.values()][0]?.status).toBe('ACTIVE');
+    expect(db.events.map((e) => e['type'])).not.toContain('SESSION_CLOSED');
+  });
+
+  it('unpublishing does NOT close — retraction is the start of work, not the end', async () => {
+    // Deliberately not symmetric. Closing on unpublish would take the session
+    // away exactly when the remedial work needs it.
+    openSession('r1');
+    await publishThesis('t1', 'r1', RATIONALE);
+    const s2 = openSession('r1', 't1');
+
+    await unpublishThesis('t1', 'r1', 'a figure was wrong');
+
+    expect(db.sessions.get(s2.id)?.status).toBe('ACTIVE');
   });
 });
 
