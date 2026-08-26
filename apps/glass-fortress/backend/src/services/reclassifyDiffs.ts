@@ -50,6 +50,16 @@ export interface ReclassifyResult {
    * this existed would stay orphaned forever.
    */
   findingsRecorded: number;
+  /**
+   * Diffs whose selected input was empty, so the classifier was never invoked.
+   *
+   * The scan has always skipped these (WaybackScraper: "Minor changes exist but
+   * nothing substantial enough for AI"). Reclassification did not, and called the
+   * model once per empty diff — 68 of staging's 81. That is the same
+   * scan-vs-reclassify asymmetry that produced the truncation defect, in the
+   * invocation rather than the input.
+   */
+  skippedEmpty: number;
   flips: FlipRecord[];
 }
 
@@ -120,6 +130,7 @@ export async function reclassifyDiffs(opts: ReclassifyOptions = {}): Promise<Rec
   const flips: FlipRecord[] = [];
   let reclassified = 0;
   let findingsRecorded = 0;
+  let skippedEmpty = 0;
 
   for (const [i, diff] of diffs.entries()) {
     opts.onProgress?.(i + 1, diffs.length);
@@ -143,6 +154,32 @@ export async function reclassifyDiffs(opts: ReclassifyOptions = {}): Promise<Rec
     // anything when it comes from a DIFFERENT source than the page being
     // classified; a sibling diff of the same page is that page one snapshot
     // earlier, not outside support.
+    const deletions = classifierInputChunks(parseRawChunks(diff.rawDeletedText));
+    const additions = classifierInputChunks(parseRawChunks(diff.rawAddedText));
+
+    // Empty input: no model call, ever.
+    //
+    // A diff with no chunks has nothing for a classifier to judge, and the scan
+    // has always skipped it. Reclassification invoking the model on an empty
+    // deletions/additions pair spends a call to be told what is already known,
+    // and asks a non-deterministic model a question with no content — which can
+    // only add noise to a corpus.
+    //
+    // Provenance is still advanced, because the honest statement about such a row
+    // under the current classifier is "no items, no categories", and that is what
+    // it already holds. Leaving the version behind would re-target it on every
+    // future run forever.
+    if (deletions.length === 0 && additions.length === 0) {
+      skippedEmpty++;
+      if (!opts.dryRun) {
+        await prisma.urlVersionDiff.update({
+          where: { id: diff.id },
+          data: { classifierVersion: CLASSIFIER_VERSION, classifierPromptHash: promptHash },
+        });
+      }
+      continue;
+    }
+
     const relatedEvidence = await scraper.fetchCorrelatedEvidence(
       diff.afterDate,
       diff.trackedUrlId,
@@ -152,8 +189,8 @@ export async function reclassifyDiffs(opts: ReclassifyOptions = {}): Promise<Rec
     // and passing them straight to the agent is how this path silently diverged
     // from the scan in the first place.
     const analysis = await agent.analyzeChange(
-      classifierInputChunks(parseRawChunks(diff.rawDeletedText)),
-      classifierInputChunks(parseRawChunks(diff.rawAddedText)),
+      deletions,
+      additions,
       diff.trackedUrl.url,
       diff.afterDate,
       relatedEvidence,
@@ -254,6 +291,7 @@ export async function reclassifyDiffs(opts: ReclassifyOptions = {}): Promise<Rec
     runId: run.id,
     examined: diffs.length,
     reclassified,
+    skippedEmpty,
     flipsToSignificant,
     flipsToRoutine,
     flipsWithEvidence,
