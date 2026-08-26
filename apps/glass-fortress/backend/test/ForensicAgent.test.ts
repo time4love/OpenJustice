@@ -538,3 +538,65 @@ describe('ForensicAgent — best of N draws, scored on coverage', () => {
     expect(second).toBe(first);
   });
 });
+
+describe('ForensicAgent — a failed draw is not a failed classification', () => {
+  const CHUNKS = ['first chunk of page text', 'second chunk of page text'];
+
+  function ok(quotes: string[]): Record<string, unknown> {
+    return {
+      deletedItems: quotes.map((q) => ({
+        summary: 's', exactQuote: q, investigativeCategories: [], relocated: false,
+      })),
+      addedItems: [],
+      legalSignificance: 'x',
+    };
+  }
+
+  function agentWith(...outcomes: (Record<string, unknown> | Error)[]): {
+    agent: ForensicAgent; invoke: jest.Mock;
+  } {
+    const invoke = jest.fn();
+    for (const o of outcomes) {
+      if (o instanceof Error) invoke.mockRejectedValueOnce(o);
+      else invoke.mockResolvedValueOnce(o);
+    }
+    (LLMFactory.getChatModel as jest.Mock).mockReturnValue({
+      withStructuredOutput: jest.fn().mockReturnValue({ invoke }),
+    });
+    return { agent: new ForensicAgent(), invoke };
+  }
+
+  it('retries after a truncated-JSON draw and uses the draw that succeeds', async () => {
+    // The real failure: structured output cut mid-string when the answer does not
+    // fit the budget. Letting it escape would abort a whole write run.
+    const { agent, invoke } = agentWith(
+      new Error('Unterminated string in JSON at position 16671'),
+      ok(CHUNKS),
+    );
+
+    const out = await agent.analyzeChange(CHUNKS, [], 'u', '2022-01-01', []);
+
+    expect(invoke).toHaveBeenCalledTimes(2);
+    expect(out.draws).toBe(2);
+    expect(out.coverage.complete).toBe(true);
+  });
+
+  it('counts a failed draw against the bound rather than retrying forever', async () => {
+    const { agent, invoke } = agentWith(
+      new Error('boom'), new Error('boom'), new Error('boom'), ok(CHUNKS),
+    );
+
+    await expect(agent.analyzeChange(CHUNKS, [], 'u', '2022-01-01', [])).rejects.toThrow(
+      /Classification failed on all 3 draws/u,
+    );
+    expect(invoke).toHaveBeenCalledTimes(MAX_CLASSIFICATION_DRAWS);
+  });
+
+  it('throws rather than inventing an empty result when every draw fails', async () => {
+    // An empty result would record "nothing changed on this page" as though a
+    // model had said so.
+    const { agent } = agentWith(new Error('a'), new Error('b'), new Error('c'));
+
+    await expect(agent.analyzeChange(CHUNKS, [], 'u', '2022-01-01', [])).rejects.toThrow();
+  });
+});

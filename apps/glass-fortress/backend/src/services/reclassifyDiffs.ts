@@ -60,6 +60,16 @@ export interface ReclassifyResult {
    * invocation rather than the input.
    */
   skippedEmpty: number;
+  /**
+   * Diffs whose classification failed on every draw and were LEFT UNCHANGED.
+   *
+   * A per-diff failure must not abort the run. Reclassification writes row by
+   * row, so throwing out of the loop leaves a partially reclassified corpus —
+   * some rows forward, some behind, and nothing recording where it stopped. A
+   * failed diff keeps its existing classification, which is stale but coherent.
+   */
+  failed: number;
+  failedDiffIds: string[];
   flips: FlipRecord[];
 }
 
@@ -131,6 +141,7 @@ export async function reclassifyDiffs(opts: ReclassifyOptions = {}): Promise<Rec
   let reclassified = 0;
   let findingsRecorded = 0;
   let skippedEmpty = 0;
+  const failedDiffIds: string[] = [];
 
   for (const [i, diff] of diffs.entries()) {
     opts.onProgress?.(i + 1, diffs.length);
@@ -194,13 +205,25 @@ export async function reclassifyDiffs(opts: ReclassifyOptions = {}): Promise<Rec
     // Through the SAME selection step the scan uses. Reading the stored chunks
     // and passing them straight to the agent is how this path silently diverged
     // from the scan in the first place.
-    const analysis = await agent.analyzeChange(
-      deletions,
-      additions,
-      diff.trackedUrl.url,
-      diff.afterDate,
-      relatedEvidence,
-    );
+    let analysis;
+    try {
+      analysis = await agent.analyzeChange(
+        deletions,
+        additions,
+        diff.trackedUrl.url,
+        diff.afterDate,
+        relatedEvidence,
+      );
+    } catch (err) {
+      // Left exactly as it was. A row that keeps a stale classification is
+      // coherent; a run that stops halfway through a corpus is not.
+      failedDiffIds.push(diff.id);
+      console.warn(
+        `[reclassify] ${diff.beforeDate}->${diff.afterDate} left unchanged: ` +
+          `${err instanceof Error ? err.message.slice(0, 200) : String(err)}`,
+      );
+      continue;
+    }
 
     const before = diff.investigativeCategories;
     const after = analysis.investigativeCategories;
@@ -300,6 +323,8 @@ export async function reclassifyDiffs(opts: ReclassifyOptions = {}): Promise<Rec
     examined: diffs.length,
     reclassified,
     skippedEmpty,
+    failed: failedDiffIds.length,
+    failedDiffIds,
     flipsToSignificant,
     flipsToRoutine,
     flipsWithEvidence,

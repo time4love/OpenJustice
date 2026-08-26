@@ -497,3 +497,40 @@ describe('reclassifyDiffs — the model is never called on an empty diff', () =>
     expect(result.reclassified).toBe(0);
   });
 });
+
+describe('reclassifyDiffs — one failing diff must not abort the run', () => {
+  function row(id: string): Record<string, unknown> {
+    return {
+      id,
+      trackedUrlId: 't-1',
+      trackedUrl: { url: 'https://example.test/' },
+      beforeDate: '2022-01-01',
+      afterDate: `2022-01-0${id.slice(-1)}`,
+      rawDeletedText: JSON.stringify(['some real page text that changed']),
+      rawAddedText: '[]',
+      deletedText: '[]',
+      addedText: '[]',
+      investigativeCategories: [],
+      isLegallySignificant: false,
+      evidence: [],
+      beforeSnapshot: { waybackTimestamp: '20220101000000', contentHash: 'a' },
+      afterSnapshot: { waybackTimestamp: '20220102000000', contentHash: 'b' },
+    };
+  }
+
+  it('records the failure, leaves that row unchanged, and carries on', async () => {
+    db.diffs = [row('d-1'), row('d-2'), row('d-3')];
+    mockAnalyzeChange
+      .mockResolvedValueOnce({ deletedItems: [], addedItems: [], investigativeCategories: [], isLegallySignificant: false, legalSignificance: 'x' })
+      .mockRejectedValueOnce(new Error('Classification failed on all 3 draws'))
+      .mockResolvedValueOnce({ deletedItems: [], addedItems: [], investigativeCategories: [], isLegallySignificant: false, legalSignificance: 'x' });
+
+    const result = await reclassifyDiffs({ dryRun: true });
+
+    // Throwing out of the loop would leave a WRITE run partially applied: some
+    // rows forward, some behind, and nothing recording where it stopped.
+    expect(result.examined).toBe(3);
+    expect(result.failed).toBe(1);
+    expect(result.failedDiffIds).toEqual(['d-2']);
+  });
+});
