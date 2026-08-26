@@ -3,6 +3,7 @@ import { ForensicAgent } from './ForensicAgent';
 import { WaybackScraper, recordScanFinding } from './WaybackScraper';
 import { CLASSIFIER_VERSION, classifierPromptHash } from '../lib/classifierVersion';
 import { parseDiffItems, parseRawChunks } from '../lib/diffItems';
+import { classifierInputChunks } from '../lib/diffChunking';
 import { investigativeCategoriesField } from '../lib/investigativeCategories';
 import { deriveSignificance } from './ForensicAgent';
 import { requireSnapshotIdentity } from './forensicEvidence';
@@ -147,9 +148,12 @@ export async function reclassifyDiffs(opts: ReclassifyOptions = {}): Promise<Rec
       diff.trackedUrlId,
     );
 
+    // Through the SAME selection step the scan uses. Reading the stored chunks
+    // and passing them straight to the agent is how this path silently diverged
+    // from the scan in the first place.
     const analysis = await agent.analyzeChange(
-      parseRawChunks(diff.rawDeletedText),
-      parseRawChunks(diff.rawAddedText),
+      classifierInputChunks(parseRawChunks(diff.rawDeletedText)),
+      classifierInputChunks(parseRawChunks(diff.rawAddedText)),
       diff.trackedUrl.url,
       diff.afterDate,
       relatedEvidence,

@@ -1,0 +1,23 @@
+-- Provenance for the diff INPUT rule.
+--
+-- UrlVersionDiff already carries classifierVersion + classifierPromptHash (what
+-- the model was asked) and summaryVersion (how its prose was written). Neither
+-- can express what the model was FED: the prompt is byte-identical across the
+-- change this column records, so classifierPromptHash — the value that exists to
+-- prove provenance — is blind to it.
+--
+-- Rows written before this column kept at most 8 chunks per side, chose them
+-- longest-first, and discarded the rest BEFORE the write. Measured on staging by
+-- recomputing every diff from its own stored snapshots: 290 chunks truly existed
+-- across 81 diffs, 131 were stored, 159 (55%) never reached the database. The cap
+-- bit on exactly the six diffs that back every promoted evidence record.
+--
+-- NULL is therefore meaningful and is NOT backfilled: it means "computed under the
+-- truncating rule, raw chunks understated". Defaulting these rows to the new
+-- version would assert completeness for the only rows known to lack it. Such rows
+-- cannot be corrected by reclassification — the diff has to be recomputed from its
+-- snapshots, which is a separate, reviewed operation.
+--
+-- Additive and nullable: no rewrite, no lock beyond the catalog update, no data
+-- loss possible. See docs/gf-diff-truncation-dev-plan.md.
+ALTER TABLE "UrlVersionDiff" ADD COLUMN "diffInputVersion" TEXT;

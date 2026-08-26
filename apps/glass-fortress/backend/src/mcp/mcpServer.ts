@@ -56,6 +56,7 @@ import {
   previewDiffClassificationSchema,
   previewDiffClassificationHandler,
 } from './tools/previewDiffClassification';
+import { getDiffInputSchema, getDiffInputHandler } from './tools/getDiffInput';
 import { auditThesisClaimsSchema, auditThesisClaimsHandler } from './tools/auditThesisClaims';
 import {
   checkPublicationReadinessSchema,
@@ -755,6 +756,20 @@ export function createMcpServer(): McpServer {
     auditThesisClaimsSchema,
     async (input) => ({
       content: [{ type: 'text' as const, text: await auditThesisClaimsHandler(input) }],
+    }),
+  );
+
+  server.tool(
+    'get_diff_input',
+    'The page text a diff detected as changed — what the classifier was GIVEN — beside the items it ' +
+      'produced. get_forensic_timeline shows items only, so a detected change that no item describes ' +
+      'is invisible there. Reports which input rule produced the row: rows below the current ' +
+      'diffInputVersion were computed under a chunk cap that discarded changes at write time and are ' +
+      'understated until the diff is recomputed from its snapshots. No model, no archive fetch, no ' +
+      'write.',
+    getDiffInputSchema,
+    async (input) => ({
+      content: [{ type: 'text' as const, text: await getDiffInputHandler(input) }],
     }),
   );
 
