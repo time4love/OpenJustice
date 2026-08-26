@@ -121,3 +121,37 @@ describe('DIFF_INPUT_VERSION', () => {
     expect(DIFF_INPUT_VERSION).not.toBe(SUMMARY_VERSION);
   });
 });
+
+describe('model provenance', () => {
+  const ORIGINAL = process.env['FORENSIC_PROVIDER'];
+  afterEach(() => {
+    if (ORIGINAL === undefined) delete process.env['FORENSIC_PROVIDER'];
+    else process.env['FORENSIC_PROVIDER'] = ORIGINAL;
+  });
+
+  it('resolves a provider:model identity that differs per provider', () => {
+    const { resolveModelId } = jest.requireActual<{ resolveModelId: (a: string) => string }>(
+      '../src/factories/LLMFactory',
+    );
+
+    process.env['FORENSIC_PROVIDER'] = 'gemini';
+    const gemini = resolveModelId('FORENSIC');
+    process.env['FORENSIC_PROVIDER'] = 'anthropic';
+    const anthropic = resolveModelId('FORENSIC');
+
+    // The whole point: two runs of the SAME commit can produce different judges,
+    // and nothing else in the provenance record can tell them apart.
+    expect(gemini).not.toBe(anthropic);
+    expect(gemini).toMatch(/^gemini:/u);
+    expect(anthropic).toMatch(/^anthropic:/u);
+  });
+
+  it('defaults to gemini when the provider env var is unset', () => {
+    const { resolveModelId } = jest.requireActual<{ resolveModelId: (a: string) => string }>(
+      '../src/factories/LLMFactory',
+    );
+    delete process.env['FORENSIC_PROVIDER'];
+
+    expect(resolveModelId('FORENSIC')).toMatch(/^gemini:/u);
+  });
+});

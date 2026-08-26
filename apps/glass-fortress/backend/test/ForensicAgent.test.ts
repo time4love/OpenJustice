@@ -16,6 +16,10 @@ jest.mock('../src/factories/LLMFactory', () => ({
       }),
     }),
   },
+  // The agent records which model judged a row, so the factory mock has to
+  // provide the identity too — a module mock that omits a real export makes the
+  // agent unconstructable for reasons unrelated to what a test is asserting.
+  resolveModelId: jest.fn().mockReturnValue('gemini:test-model'),
 }));
 
 function getMockInvoke(agent: ForensicAgent): jest.Mock {

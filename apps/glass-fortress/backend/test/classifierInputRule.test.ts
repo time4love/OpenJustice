@@ -158,3 +158,25 @@ describe('every diff that gets created records the input rule that produced it',
     expect(stamps).toBe(creates);
   });
 });
+
+describe('every classification records which model produced it', () => {
+  it('stamps classifierModel wherever classifierVersion is written to a diff row', () => {
+    for (const relative of ['src/services/WaybackScraper.ts', 'src/services/reclassifyDiffs.ts']) {
+      const source = readSource(relative);
+      // The run record in reclassifyDiffs also carries classifierVersion but is
+      // not a diff row, so compare against writes that set the prompt hash — the
+      // marker of a row whose classification provenance is being recorded.
+      const hashWrites = source.split('classifierPromptHash:').length - 1;
+      const modelWrites = source.split('classifierModel:').length - 1;
+      expect([relative, modelWrites]).toEqual([relative, hashWrites]);
+    }
+  });
+
+  it('derives the model id from the same env lookup the factory uses', () => {
+    const factory = readSource('src/factories/LLMFactory.ts');
+    // Two copies of the provider lookup could disagree, and then the recorded
+    // model would be a guess about the model that actually ran.
+    expect(factory.split('resolveProvider(agentType)').length - 1).toBeGreaterThanOrEqual(2);
+    expect(factory).not.toMatch(/process\.env\[envKey\][\s\S]{0,80}process\.env\[envKey\]/u);
+  });
+});

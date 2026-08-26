@@ -1,0 +1,20 @@
+-- Which MODEL produced a classification, as `provider:model`.
+--
+-- The fourth provenance axis on UrlVersionDiff, and the one nothing else can
+-- express. classifierVersion names the procedure; classifierPromptHash proves the
+-- prompt TEXT; diffInputVersion records what was fed in. None of them can see
+-- which model answered, so a row judged by gemini-flash-latest and a row judged
+-- by claude-sonnet-4-6 carry byte-identical provenance today.
+--
+-- That is not hypothetical: the provider is selected by an env var
+-- (<AGENT>_PROVIDER) which can differ between two runs of the same commit and
+-- between two environments, so a corpus can become mixed with nothing in the data
+-- to show it. It is the same defect as two code paths feeding the classifier
+-- different input under one version string, one layer up.
+--
+-- NULL is meaningful and is NOT backfilled: it means the row was classified
+-- before the model was recorded. Guessing the model from today's env var would
+-- assert provenance nobody observed.
+--
+-- Additive and nullable: no rewrite, no data loss possible.
+ALTER TABLE "UrlVersionDiff" ADD COLUMN "classifierModel" TEXT;

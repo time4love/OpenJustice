@@ -197,7 +197,81 @@ It is also the environment that has never been repaired, and — per FINDING 100
 repair scripts cannot currently run at all. **That gap, not staging's yield, is what makes this
 urgent.**
 
-## 8. Status
+## 8. Executed on staging, and what it exposed
+
+Applied 2026-08-26 from a clean checkout of landed `staging` (`f021b97`), after the process error
+recorded in §6b.
+
+| | before | after |
+|---|---|---|
+| stored chunks | 131 | **290** |
+| `diffInputVersion` | none | 6 diffs `v2-uncapped` |
+| `classifierVersion` | `v2-item-level` = 81 | **`v3-self-contained-summary` = 81** |
+| significant diffs | 7 | **7** |
+| evidence / theses / trajectories | 9 / 1 / 116 | **9 / 1 / 116** |
+
+Reclassification: 13 reclassified, 68 skipped-empty, **0 flips, 0 findings recorded** — matching two
+independent dry runs. Nothing published broke.
+
+**Five CONFIRMED evidence records are now out of sync with their diffs** (`findOutOfSyncEvidence`).
+Four gained categories; `0x088e501e…` LOST `SAFETY_CLAIM_ALTERATION` and is cited by the published
+thesis. All remain significant. Only a human reconciles these.
+
+### The classifier MERGES; it does not enumerate
+
+The `2022-09-05 -> 2022-09-06` diff went to 68 chunks and produced 7 items, which looked like a 90%
+drop. It is not. Item quotes run 244–1301 characters against raw chunks averaging ~120: the model
+groups consecutive chunks into coherent passages — one 795-character item *is* the citation block that
+exists in raw form as a header plus nine URL chunks.
+
+**Comparing item COUNT to chunk COUNT is the wrong measurement**, and two claims made during this
+session were wrong because of it: "the classifier accounted for 100% of what it received" (true at 3
+chunks, false at 68) and "33% of chunks are undescribed". The correct measure is whether each raw
+chunk's text is contained in some item quote:
+
+| | |
+|---|---|
+| raw chunks | 290 |
+| covered by an item | **244 (84%)** |
+| **character coverage** | **91%** |
+
+The shortfall is one diff. Eleven of thirteen are fully covered:
+
+```
+2022-05-26 -> 2022-05-29 [SIG]  chunks=30  uncovered= 3   chars 98% covered
+2022-09-05 -> 2022-09-06 [SIG]  chunks=68  uncovered=43   chars 63% covered
+```
+
+Note for anyone building a coverage guard: it must test text CONTAINMENT, not counts. The guard
+drafted earlier in this session compared counts and would have measured the same wrong thing.
+
+## 9. Model provenance and the provider question
+
+`FORENSIC_PROVIDER` is unset, so the classifier runs on **`gemini-flash-latest`** (LLMFactory's
+default). `LLMFactory` sets `temperature` and **no `maxTokens`**, so the provider default output limit
+applies — a long prompt yielding a short merged answer is the signature of an output ceiling, but that
+is a hypothesis, not a measurement.
+
+**Nothing records which model judged a row.** `classifierPromptHash` hashes the prompt text only;
+`classifierVersion` names the procedure. A corpus judged partly by Gemini and partly by Claude would
+carry byte-identical provenance — the same defect class as the input rule, one layer up. That is a
+defect independent of which provider is chosen.
+
+Agreed order:
+
+1. **Record the model in provenance.** Do this regardless of the outcome below, so the corpus cannot
+   silently become mixed.
+2. **A/B before switching.** `preview_diff_classification` re-runs one diff and writes nothing. On the
+   `2022-09-06` diff: 3 runs per provider, measuring text coverage.
+   - coverage varies wildly per run → output pressure → set `maxTokens` (provider-agnostic)
+   - stable ~63% on Gemini, materially higher on Claude → genuine capability difference
+   - stable and similar on both → deliberate compression → the fix belongs in the prompt
+   The cheapest single call is an explicit `maxTokens` on the CURRENT provider: if coverage jumps, the
+   answer was never the model.
+3. **Then decide**, with cost in view. Switching also means reclassifying the whole corpus, since a
+   mixed-provider vault is worse than either provider alone.
+
+## 10. Status
 
 - [x] Root cause identified and measured
 - [x] Cap and floor removed; `classifierInputChunks()` shared by both paths

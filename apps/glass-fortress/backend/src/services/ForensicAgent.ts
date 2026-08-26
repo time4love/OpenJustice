@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { LLMFactory } from '../factories/LLMFactory';
+import { LLMFactory, resolveModelId } from '../factories/LLMFactory';
 import {
   investigativeCategoriesField,
   type InvestigativeCategory,
@@ -224,6 +224,8 @@ export class ForensicSummaryRewriter {
 
 export class ForensicAgent {
   private readonly chain: { invoke(input: unknown): Promise<unknown> };
+  /** `provider:model` actually used, for stamping onto whatever this classifies. */
+  readonly modelId: string = resolveModelId('FORENSIC');
 
   constructor() {
     const model = LLMFactory.getChatModel('FORENSIC', { temperature: 0 });
