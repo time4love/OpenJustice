@@ -271,19 +271,118 @@ Agreed order:
 3. **Then decide**, with cost in view. Switching also means reclassifying the whole corpus, since a
    mixed-provider vault is worse than either provider alone.
 
-## 10. Status
+## 10. Executed on production, 2026-08-26 — and the loop closing
+
+Production was the environment this whole thing was FOR. Repaired after staging, from a clean checkout
+of landed `master` (`323ba0b`), using `.env.production.local` for the database and MCP for the chain.
+
+**Correction to a claim repeated several times before it was measured:** production was NEVER at
+`v2-item-level`. It read `classifierVersion: null=70, v3=11` — it was scanned on 2026-08-25 when `v3`
+was already current, so its classified rows were `v3` and 70 were never classified at all. Staging was
+the `v2` one. The deficit was never a stale prompt; it was the INPUT — 8-chunk cap, 40-char floor,
+single draw, no budget.
+
+| | before | after |
+|---|---|---|
+| stored chunks | 131 | **290** |
+| coverage | 42% (stale items over new chunks) | **290/290 — 100%**, first attempt |
+| `classifierVersion` | `null`=70, `v3`=11 | **`v4-budgeted-best-of-n` = 81** |
+| `classifierModel` / `classifierDraws` | — | populated on all 81 (`0`=68, `1`=12, `2`=1) |
+| significant diffs | 6 | **7** |
+| evidence | 7 | **8, all CONFIRMED** |
+| theses | 0 | 0 |
+
+### The flip that closed the investigation
+
+```
+2025-04-25 → 2025-06-01   ROUTINE → SIGNIFICANT
+  after: WITHHOLDING_INFORMATION, ACCOUNTABILITY_EROSION, SAFETY_CLAIM_ALTERATION
+```
+
+That is the diff the session opened on. Production's classifier had been handed **3 of 9 chunks**; the
+40-character floor withheld the rest, including `לדיווח על תופעות לוואי >` at 24 characters. Shown all
+nine, it reaches staging's verdict and names the withheld reporting channel explicitly.
+
+The resulting evidence record is `0x8b814765297a097988280da80c4ae655547c13ae135178fa614838b6d1002a34`
+— **byte-identical to staging's**, reached independently by two repaired environments. Promoted via
+MCP, anchored on Base at registry id **19**, `check_on_chain_status` → `CONSISTENT`.
+
+### What the classifier actually does, corrected twice
+
+1. *"The classifier accounted for 100% of what it received"* — true at 3 chunks, **false at 68**.
+2. *"33% of chunks are undescribed"* — an artifact of comparing item COUNT to chunk COUNT. **The
+   classifier MERGES**: item quotes run 244-1301 characters against ~120-character chunks, and one item
+   can legitimately cover ten. Real coverage was 84% of chunks / 91% of characters.
+
+Any coverage check must test TEXT CONTAINMENT. `computeDiffCoverage` does; the guard drafted earlier in
+this session did not, and would have generated confident wrong findings corpus-wide.
+
+### Variance is the dominant effect
+
+On the largest diff (68 chunks), six draws under two configurations:
+
+```
+default budget : 57%  76%  75%
+explicit 8192  : 99%  100%  43%
+```
+
+**100% is achievable** — the model can enumerate every change, so this was never a capability ceiling
+and is not an argument for changing provider. But a corpus storing ONE draw per diff stores a sample
+and presents it as a measurement. Hence best-of-N scored on coverage.
+
+### A fragility introduced and fixed in the same session
+
+The explicit budget made the model attempt full enumeration, and on Hebrew — token-dense — the
+structured output was cut mid-string: `Unterminated string in JSON at position 16671`. The parse threw
+out of the draw loop and killed the run. Caught by a dry run, so nothing was written, but a WRITE run
+would have left a partially reclassified corpus.
+
+Fixed at two scopes: a failed draw is not a failed classification (retry within the same bound), and a
+failed diff is not a failed run (`failed`/`failedDiffIds`, row left unchanged). Proven live afterwards
+on production, which absorbed a truncated draw and completed with `Failed: 0`.
+
+### Known gaps, deliberately not closed
+
+- **A RECOVERED draw failure is invisible in the summary.** It appears only as a `console.warn`, so
+  "how often did a draw truncate and get absorbed?" cannot be answered from a run's counters.
+- **`--dry-run` is not entirely write-free.** It creates a `ReclassificationRun` audit row while
+  printing "nothing will be written". Harmless, but the sentence that authorises running against real
+  data should be true.
+- **Four evidence records on STAGING are out of sync with their diffs** — all under-categorised,
+  because they were promoted from truncated, thinly-covered classifications. Only a human reconciles.
+- **The provider A/B never ran.** The Anthropic arm returned
+  `400 invalid_request_error: credit balance is too low` on all three attempts.
+- **`MIN_CLAIM_LENGTH = 40` in `claimTrajectory.ts`** is untouched. Different rationale from the diff
+  floor (substring-presence validity, not significance), but its own comment calls it "a trade worth
+  revisiting once there are real trajectories to look at" — and there are now 116, with 21 cited by a
+  published thesis. Changing it bumps `DETECTION_VERSION` and recomputes every trajectory.
+
+## 11. Status
 
 - [x] Root cause identified and measured
 - [x] Cap and floor removed; `classifierInputChunks()` shared by both paths
-- [x] `diffInputVersion` provenance field + migration (`20260826070000_diff_input_version`, additive
-      nullable; verified offline against `prisma migrate diff --from-schema-datamodel`)
-- [x] `get_diff_input` MCP tool, in `READ_TOOLS` (raw chunks were reachable only over REST, never
-      through MCP — which is why this took a curl loop against production's public endpoint to find,
-      and could not be reproduced against staging at all, since its REST surface is behind the gate)
-- [x] Structural guard: `classifierInputRule.test.ts` fails if any path reaches the agent without the
-      shared selector. **It caught a third bypass on its first run** — `previewDiffClassification`
-      was passing raw chunks straight through, so the preview would have predicted a classification
-      the real system never performs.
-- [ ] Re-diff the corpus from stored snapshots — **staging first, dry run first**
-- [ ] Reclassify after re-diff
-- [ ] Production walk resumes only after production's corpus is repaired
+- [x] `diffInputVersion` provenance field + migration
+- [x] `classifierModel` + `classifierDraws` provenance + migrations
+- [x] `get_diff_input` MCP tool (READ_TOOLS)
+- [x] `preview_diff_classification` MCP tool (WRITE_TOOLS — it spends)
+- [x] Operational scripts compile and run in a deploy container (FINDING 100 closed)
+- [x] Explicit output budget; best-of-N scored on text coverage; `CLASSIFIER_VERSION` → `v4`
+- [x] Draw/diff failure isolation
+- [x] Registry-deployment guard — refuses a codeless registry on reads AND writes
+- [x] **STAGING repaired**: 290 chunks, 100% coverage, `v4` on all 81, 0 flips
+- [x] **PRODUCTION repaired**: 290 chunks, 100% coverage, `v4` on all 81, 1 flip, 8th record anchored
+- [x] Shipped to production (`3a80620`)
+- [ ] Reconcile 4 out-of-sync evidence records on staging
+- [ ] Provider A/B (blocked: Anthropic credit)
+- [ ] `MIN_CLAIM_LENGTH` in trajectories (separate decision, bumps `DETECTION_VERSION`)
+- [ ] Surface recovered draw failures in run counters
+- [ ] Make `--dry-run` genuinely write-free, or correct its wording
+- [ ] **The production thesis walk — unblocked, never started**
+
+## 12. PRs
+
+`#176` truncation fix · `#177` re-diff planner · `#178` docs · `#179` ship operational scripts ·
+`#180` guarded apply · `#181` empty-diff skip · `#182` model provenance · `#183` token budget +
+best-of-N · `#184` `v4` bump · `#185` draw resilience · `#186` registry guard.
+
+Two production ships: `323ba0b` (the repair capability) and `3a80620` (the registry guard).
