@@ -57,6 +57,7 @@ import {
   previewDiffClassificationHandler,
 } from './tools/previewDiffClassification';
 import { getDiffInputSchema, getDiffInputHandler } from './tools/getDiffInput';
+import { getEnvironmentSchema, getEnvironmentHandler } from './tools/getEnvironment';
 import { auditThesisClaimsSchema, auditThesisClaimsHandler } from './tools/auditThesisClaims';
 import {
   checkPublicationReadinessSchema,
@@ -721,6 +722,26 @@ export function createMcpServer(): McpServer {
   // Gated because each hits the Internet Archive — unbounded per-call work,
   // which is what WRITE_TOOLS actually means here.
   // -------------------------------------------------------------------------
+  // -------------------------------------------------------------------------
+  // get_environment
+  //
+  // Registered first among the verification tools because it is the call that
+  // has to come first: nothing else here is meaningful until the caller knows
+  // which environment answered it.
+  // -------------------------------------------------------------------------
+  server.tool(
+    'get_environment',
+    'Which environment is this — production or staging? Answers from the deployment\'s own ' +
+      'configuration (APP_ENV, already validated at startup against the database it is actually ' +
+      'connected to) cross-checked against the chain its evidence registry sits on. Call this ' +
+      'FIRST, before any write: a connector name is a local label and proves nothing, and evidence ' +
+      'counts or content hashes are checks with an expiry date. Takes no arguments. Writes nothing.',
+    getEnvironmentSchema,
+    async () => ({
+      content: [{ type: 'text' as const, text: await getEnvironmentHandler() }],
+    }),
+  );
+
   server.tool(
     'list_captures',
     'List every capture the Internet Archive holds for a tracked page, optionally within a date ' +

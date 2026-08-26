@@ -87,7 +87,7 @@ export function projectRefFromSupabaseUrl(supabaseUrl: string): string | null {
 }
 
 /** Never print a project ref in full — this repo, and its logs, are public. */
-function mask(ref: string): string {
+export function maskProjectRef(ref: string): string {
   return `${ref.slice(0, 4)}…${ref.slice(-2)}`;
 }
 
@@ -116,7 +116,7 @@ export function assertEnvironmentIdentity(env: EnvSource = process.env): Environ
   const distinct = [...new Set(identified.map((r) => r.ref))];
 
   if (distinct.length > 1) {
-    const detail = identified.map((r) => `${r.name}→${mask(r.ref)}`).join(', ');
+    const detail = identified.map((r) => `${r.name}→${maskProjectRef(r.ref)}`).join(', ');
     throw new Error(
       `Environment '${appEnv}' is half-configured: its Supabase variables name different ` +
         `projects (${detail}). Overwrite all of DATABASE_URL, DIRECT_URL and SUPABASE_URL ` +
@@ -137,7 +137,7 @@ export function assertEnvironmentIdentity(env: EnvSource = process.env): Environ
     if (projectRef !== expected) {
       throw new Error(
         `Environment '${appEnv}' is pointed at the wrong database: expected project ` +
-          `${mask(expected)}, got ${mask(projectRef)}. Refusing to start — this is how ` +
+          `${maskProjectRef(expected)}, got ${maskProjectRef(projectRef)}. Refusing to start — this is how ` +
           `development writes end up in the production vault.`,
       );
     }
@@ -161,7 +161,7 @@ function parse(
  */
 export function verifyEnvironmentIdentityAtStartup(env: EnvSource = process.env): EnvironmentIdentity {
   const identity = assertEnvironmentIdentity(env);
-  const where = identity.projectRef === null ? 'a non-Supabase database' : mask(identity.projectRef);
+  const where = identity.projectRef === null ? 'a non-Supabase database' : maskProjectRef(identity.projectRef);
 
   if (identity.pinned) {
     console.log(`[startup] Environment: ${identity.appEnv} → ${where} (pinned)`);
