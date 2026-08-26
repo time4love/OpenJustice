@@ -14,25 +14,34 @@ Canonical detail: `docs/gf-researcher-playbook.md` (Steps 33-40, FINDINGS 81-100
 
 ## Identifying the environment — READ THIS FIRST
 
-**The old rule "`search_evidence` totalling 7 is production, 8 is staging" IS NOW WRONG.** Production
-gained its eighth record during the repair. Both environments return **8**.
+**Call `get_environment`. Do not identify the environment any other way.**
 
-That rule broke *because the thing it measured got fixed*, which is worth noticing: an environment
-check keyed on a count is a check keyed on a bug.
+It takes no arguments and writes nothing. It answers from the deployment's own configuration —
+`APP_ENV`, already validated at startup against the Supabase project its connection strings actually
+name — cross-checked against the chain its evidence registry sits on (production: Base mainnet 8453;
+staging: Base Sepolia 84532). Two independent axes, and no single wrong variable can move both.
 
-Use the **2022-08-21 Berkovitch article's `fileHash`** instead. Same source URL, two independent
-captures, and the hashes are stable:
+Read the `verdict`:
 
-| | production | staging |
-|---|---|---|
-| article `fileHash` | **`0x3a1093b2dd6c…`** | **`0x06540303f46d…`** |
-| article tier | **Tier 1: Smoking Gun** | Tier 2: Material |
-| article key figures | 2 — אניס, אלרואי-פרייס | 3 — **includes ברקוביץ'** |
-| theses | **0** | 1, published |
-| `trackedUrl` id (DB only) | `0e755b7d-…` | `45ce88aa-…` |
+| verdict | meaning |
+|---|---|
+| `CONFIRMED` | both axes agree — act on it |
+| `UNVERIFIED` | only one axis could be read (unpinned database, or the RPC was unreachable) |
+| `CONFLICT` | the axes contradict each other — **write nothing** until resolved |
 
-MCP connector for production in the last session was `13fb2169…`, staging `79ec7e43…` — **but never
-trust the connector name.** Confirm by data every time.
+**Never trust the connector's name.** It is a label applied on the client side, and the production and
+staging connectors are indistinguishable from inside a conversation.
+
+**And never identify an environment by its CONTENT.** Two versions of this document tried:
+first "`search_evidence` totalling 7 is production, 8 is staging", which broke the moment production
+gained an eighth record — i.e. the moment the bug it was really measuring got fixed. Then the
+2022-08-21 Berkovitch article's `fileHash`, maintained by hand here. Content is what this platform
+exists to change, so any check keyed on it is a check with an expiry date, and the expiry arrives
+silently. `get_environment` still returns a `corpus` block — it is there to recognise an environment
+you have already identified, never to identify one, and it says so.
+
+The table below is retained on those terms: a snapshot of what each environment held on 2026-08-26,
+useful for noticing drift since, and **not** an identity check.
 
 ## The environment, as measured 2026-08-26 (post-repair)
 
@@ -106,7 +115,8 @@ Everything here is now live on **both** environments (production was shipped `32
 
 ## Next step
 
-Open a framing session on production with the question above, then follow §"Guided Execution" in
-`CLAUDE.md` — show each prompt, wait for approval, execute, report.
+Call `get_environment` and confirm `verdict: CONFIRMED`, `environment: production`. Then open a
+framing session with the question above, and follow §"Guided Execution" in `CLAUDE.md` — show each
+prompt, wait for approval, execute, report.
 
 **Production has 0 sessions and 0 theses**, so nothing has to be closed first.

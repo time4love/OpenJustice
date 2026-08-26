@@ -52,6 +52,15 @@ export const READ_TOOLS = new Set([
   // classifier visible at all. Gating it would put the raw record further out of
   // reach than the REST route that already serves it anonymously.
   'get_diff_input',
+  // Open on purpose, and the one tool where gating would be self-defeating:
+  // "which environment am I talking to?" must be answerable BEFORE authenticating
+  // into it. A caller who has to obtain a credential first has already had to
+  // guess the answer in order to pick which credential to present.
+  //
+  // Cheap by construction: eleven counts, one eth_chainId and one eth_getCode.
+  // No LLM, no archive fetch, no log scan, no write. Behind the staging access
+  // gate on staging regardless, and under the rate limiter on both.
+  'get_environment',
 ]);
 
 export const WRITE_TOOLS = new Set([
