@@ -335,9 +335,35 @@ export class ForensicAgent {
       null;
     let draws = 0;
 
+    let lastError: unknown = null;
+
     for (let i = 0; i < this.maxDraws; i++) {
       draws++;
-      const analysis = ForensicLlmOutputSchema.parse(await this.chain.invoke(messages));
+
+      // A DRAW MAY FAIL, AND A FAILED DRAW IS NOT A FAILED CLASSIFICATION.
+      //
+      // Structured output is truncated when the answer does not fit the budget,
+      // and truncated JSON does not parse. Observed on the largest diff in the
+      // corpus: "Unterminated string in JSON at position 16671" — the model
+      // enumerating 68 chunks of Hebrew and being cut mid-string.
+      //
+      // Letting that escape aborts the whole run. In a WRITE run that leaves a
+      // partially reclassified corpus, which is the worst outcome available: some
+      // rows forward, some behind, and no record of where it stopped. A draw that
+      // fails is simply a draw that yielded nothing — the next one may fit,
+      // because the model does not compose the same answer twice.
+      let analysis: z.infer<typeof ForensicLlmOutputSchema>;
+      try {
+        analysis = ForensicLlmOutputSchema.parse(await this.chain.invoke(messages));
+      } catch (err) {
+        lastError = err;
+        console.warn(
+          `[ForensicAgent] Draw ${String(draws)} failed for ${url} @ ${date}: ` +
+            (err instanceof Error ? err.message.slice(0, 160) : String(err)),
+        );
+        continue;
+      }
+
       const coverage = computeDiffCoverage({
         rawDeletedChunks: deletions,
         rawAddedChunks: additions,
@@ -353,8 +379,15 @@ export class ForensicAgent {
       if (coverage.complete) break;
     }
 
-    /* istanbul ignore next -- the loop runs at least once, so best is set. */
-    if (best === null) throw new Error('Classification produced no draw');
+    // Every draw failed. This one DOES throw: the caller asked for a
+    // classification and there is none, and inventing an empty result would
+    // record "nothing changed on this page" as though a model had said so.
+    if (best === null) {
+      throw new Error(
+        `Classification failed on all ${String(draws)} draws for ${url} @ ${date}: ` +
+          (lastError instanceof Error ? lastError.message : String(lastError)),
+      );
+    }
 
     if (!best.coverage.complete) {
       // Counted and loud. The defect this guards was silent: a classification

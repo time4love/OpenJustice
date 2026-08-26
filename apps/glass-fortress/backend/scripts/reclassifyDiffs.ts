@@ -93,6 +93,7 @@ async function main(): Promise<void> {
   console.log(`\n\nExamined:      ${result.examined}`);
   console.log(`Reclassified:  ${result.reclassified}${dryRun ? ' (dry run — none written)' : ''}`);
   console.log(`Skipped empty: ${result.skippedEmpty}  (no chunks — the model was never called)`);
+  console.log(`Failed:        ${result.failed}${result.failed > 0 ? '  <-- left unchanged; rerun to retry' : ''}`);
   console.log(`Flipped:       ${result.flips.length}`);
   console.log(`  → significant: ${result.flipsToSignificant}`);
   console.log(`  → routine:     ${result.flipsToRoutine}`);
