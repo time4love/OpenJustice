@@ -24,7 +24,8 @@
     "forensics:anchor-snapshots": "ts-node --transpile-only scripts/anchorSnapshots.ts",
     "forensics:rehash-evidence": "ts-node --transpile-only scripts/rehashEvidence.ts",
     "forensics:trajectories": "ts-node --transpile-only scripts/claimTrajectories.ts",
-    "entities:canonicalise": "ts-node --transpile-only scripts/canonicaliseTargetEntities.ts"
+    "entities:canonicalise": "ts-node --transpile-only scripts/canonicaliseTargetEntities.ts",
+    "forensics:rediff": "ts-node --transpile-only scripts/rediffFromSnapshots.ts"
   },
   "keywords": [],
   "author": "",
