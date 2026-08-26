@@ -513,7 +513,10 @@ export type PublishResult =
       thesisId: string;
       publishedVersionId: string;
       publishedAt: Date;
+      /** The session the publication was recorded on — now CLOSED by it. */
       sessionId: string;
+      /** Always true on success: publishing closes the session it happened in. */
+      sessionClosed: true;
       overObjection: boolean;
       advisoryFailures: PublicationCheckId[];
       report: PublicationReport;
@@ -575,6 +578,27 @@ export async function publishThesis(
   const advisoryNote =
     report.advisoryFailures.length > 0 ? ` Advisory checks not met: ${report.advisoryFailures.join(', ')}.` : '';
 
+  // Publishing CLOSES the session, in the same transaction that pins the version.
+  //
+  // Publication is the terminal act of a thesis session: the rationale, the
+  // assessment and the publish are all recorded on it, and there is nothing
+  // further the session is for. Leaving it open is not merely untidy now that a
+  // thesis may be held by ONE researcher at a time — a published thesis would
+  // stay locked to its author indefinitely, so nobody could open a session to
+  // revise it, correct it, or retract it until somebody remembered to close work
+  // that had already finished.
+  //
+  // Inside the transaction on purpose: a session must never be closed by a
+  // publication that did not happen. Either the version is pinned and the
+  // session is closed, or neither.
+  //
+  // Deliberately NOT symmetric with unpublish. Retraction is usually the START
+  // of remedial work, so closing there would take the session away exactly when
+  // it is needed.
+  //
+  // Publishing a revision closes the session too. An explicit new session per
+  // publication cycle is better provenance than one session spanning several
+  // publications — create_research_session reopens in one call.
   await prisma.$transaction([
     prisma.thesis.update({
       where: { id: thesisId },
@@ -591,6 +615,17 @@ export async function publishThesis(
             : 'Published with the assessor in agreement.') + advisoryNote,
       },
     }),
+    prisma.researchSessionEvent.create({
+      data: {
+        sessionId: session.sessionId,
+        type: 'SESSION_CLOSED',
+        description: 'Closed automatically: the thesis was published, which is what this session was for.',
+      },
+    }),
+    prisma.researchSession.update({
+      where: { id: session.sessionId },
+      data: { status: 'CLOSED', closedAt: publishedAt },
+    }),
   ]);
 
   return {
@@ -599,6 +634,8 @@ export async function publishThesis(
     publishedVersionId: report.headVersionId,
     publishedAt,
     sessionId: session.sessionId,
+    /** The session was closed by this publication. Said plainly so the caller does not go looking for it. */
+    sessionClosed: true,
     overObjection,
     advisoryFailures: report.advisoryFailures,
     report,
