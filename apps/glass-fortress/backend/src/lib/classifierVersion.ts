@@ -34,6 +34,35 @@ import { FORENSIC_DIFF_CLASSIFICATION_PROMPT } from '../prompts/forensicDiffClas
 /**
  * Bump on any change that alters what the classifier would decide.
  *
+ * v4-budgeted-best-of-n: the classifier is given an explicit output budget, and a
+ * diff is drawn up to MAX_CLASSIFICATION_DRAWS times with the best-covered draw
+ * kept.
+ *
+ * THE PROMPT HASH DOES NOT MOVE ACROSS v3 -> v4. The prompt text is byte-identical;
+ * what changed is the budget the answer is written into and how many answers are
+ * taken. classifierPromptHash proves the question, and is blind to both.
+ *
+ * Measured on the corpus's largest diff (68 chunks): under the provider's default
+ * budget, three draws covered 57%, 76% and 75% of chunks; with an explicit budget
+ * two of three reached 99% and 100%. The stored v3 row for that diff described 63%
+ * of its own input. After v4 it describes 99%, with the single remaining chunk
+ * reported rather than silent.
+ *
+ * WHY THIS AXIS AND NOT ANOTHER FIELD. The budget and the draw policy are code
+ * constants: they move only when someone commits a change, which is exactly what a
+ * version string tracks. classifierModel earned a separate axis because an env var
+ * can change the model with no commit at all; nothing like that is true here.
+ *
+ * The version is NOT named after the budget's value on purpose. A number in the
+ * name becomes false the moment someone tunes it without renaming, and the rule at
+ * the top of this comment already requires a bump for tuning.
+ *
+ * Note what the absence of this bump cost: with every row already at v3, the
+ * targeting filter (NOT classifierVersion = CLASSIFIER_VERSION) selected nothing,
+ * and re-running the corpus under the new behaviour required --force. A version
+ * whose job is to answer "which rows are stale?" answered "none" about rows that
+ * were.
+ *
  * v3-self-contained-summary: legalSignificance may no longer describe, quote or
  * refer to any other evidence record. Correlated evidence still reaches the
  * classifier and may still decide WHETHER an item is flagged, but it can no
@@ -55,7 +84,7 @@ import { FORENSIC_DIFF_CLASSIFICATION_PROMPT } from '../prompts/forensicDiffClas
  * relocations excluded from the derived set. Judging diffs as a whole let a
  * consequential change be masked by routine ones bundled with it.
  */
-export const CLASSIFIER_VERSION = 'v3-self-contained-summary';
+export const CLASSIFIER_VERSION = 'v4-budgeted-best-of-n';
 
 /**
  * Provenance for the summary alone.
