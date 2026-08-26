@@ -1,4 +1,3 @@
-#!/usr/bin/env ts-node
 /**
  * Anchor archived snapshots whose contentHash was never registered on-chain.
  *

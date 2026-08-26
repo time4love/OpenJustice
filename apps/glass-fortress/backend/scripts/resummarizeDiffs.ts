@@ -1,4 +1,3 @@
-#!/usr/bin/env ts-node
 /**
  * Rewrite stored forensic summaries so each describes only its own source.
  *

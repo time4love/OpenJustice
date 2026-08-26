@@ -1,4 +1,3 @@
-#!/usr/bin/env ts-node
 /**
  * Bring stored forensic classifications up to the current classifier.
  *

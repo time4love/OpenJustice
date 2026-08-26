@@ -1,4 +1,3 @@
-#!/usr/bin/env ts-node
 /**
  * Follow individual claims across a tracked page's whole archived history.
  *
@@ -10,7 +9,7 @@
  * listed snapshots on web.archive.org and searching for the claim.
  */
 import 'dotenv/config';
-import { computeClaimTrajectories } from '../src/services/claimTrajectory';
+import { getClaimTrajectories } from '../src/services/claimTrajectory';
 
 function arg(name: string): string | undefined {
   const i = process.argv.indexOf(`--${name}`);
@@ -26,7 +25,7 @@ async function main(): Promise<void> {
   }
 
   const minTransitions = arg('min-transitions');
-  const result = await computeClaimTrajectories(url, {
+  const result = await getClaimTrajectories(url, {
     ...(minTransitions ? { minTransitions: parseInt(minTransitions, 10) } : {}),
   });
 

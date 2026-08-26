@@ -42,7 +42,7 @@ async function main(): Promise<void> {
       : '';
     console.log(
       `${e.beforeDate} -> ${e.afterDate}` +
-        `${e.currentlySignificant ? '  [SIGNIFICANT]' : ''}` +
+        (e.currentlySignificant ? '  [SIGNIFICANT]' : '') +
         `  deleted ${String(e.storedDeleted)}->${String(e.recomputedDeleted)}` +
         `  added ${String(e.storedAdded)}->${String(e.recomputedAdded)}` +
         `  (+${String(e.recoveredChunks)} chunks)${ev}`,
