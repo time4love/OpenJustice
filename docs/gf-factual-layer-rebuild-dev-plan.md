@@ -601,6 +601,93 @@ axis that licenses that: the bytes are settled by an independent witness.
 
 *The durable finding is the criterion, not the bug* — hence the second axis above.
 
+###### PRODUCTION REPAIRED — 2026-08-27, from the landed `master` build
+
+Shipped `a43c536` → `17a6423` (11 commits, **no migration files** — verified by diff before shipping,
+and the deploy applied cleanly: no abort, no `migrate resolve`, no degraded window, which was
+**predicted before it ran** and is therefore a test rather than a hope). Then repaired locally from a
+clean checkout of landed `master`, `dist/` rebuilt from scratch.
+
+| | before | after |
+|---|---|---|
+| external — `sha1b32(document) == cdx.digest` | 83 VERIFIED / 0 / 0 | **83 VERIFIED / 0 / 0** |
+| internal — `sha256(document) == documentHash` | **83 CONTRADICTED** | **0 CONTRADICTED** |
+| `levelOneComplete` | NO | **YES** |
+
+83 REHASHED, 0 RACED. Second `--apply`: **83 ALREADY_CORRECT, 0 REHASHED.**
+
+**Target confirmed by data three times over, never by the variable passed:** `trackedUrl.id`
+`0e755b7d-…`; the before-state showing **83 internally contradicted when staging shows 0**; and the
+rehash reporting 83 REHASHED rather than 83 ALREADY_CORRECT. The second of those is a discriminator
+that **only existed because staging was repaired first** — an unplanned benefit of the sequencing.
+
+*Cross-environment state after both repairs:*
+
+| | staging | production |
+|---|---|---|
+| captures / payload bytes | 83 / **3,995,496** | 83 / **3,995,496** |
+| `documentHash` fingerprint | `25bdc423…` | `25bdc423…` (was `ccf9a43d…`) |
+| `textHash` / `contentHash` | `de77a9bd…` / `c2ec4433…` | identical |
+
+**Payload bytes unchanged to the byte, and `contentHash` unchanged** — the repair moved the hash column
+and nothing else, and no anchor moved. Read the fingerprint match as corroboration of *sameness* only:
+correctness comes from each environment independently passing both axes, per the withdrawal above.
+
+###### `db:simulate` SILENTLY TARGETED THE WRONG DATABASE — and said LOW RISK about it
+
+**The documented Prisma-CLI-divergence hazard, recurring in a SCRIPT rather than the CLI, caught live
+during this repair.**
+
+Invoked as `DOTENV_CONFIG_PATH=.env.production.local npm run db:simulate -- '<production statement>'`,
+it printed:
+
+```
+  target      : staging
+  project ref : elwsznbcfmbmkldpntae
+  rows reported affected by the statement : 0
+  LOW RISK — Safe to proceed on the evidence of this simulation alone
+```
+
+**`Safe to proceed` was a true statement about the wrong database** — the same shape as the `P3012`
+near-miss already recorded here, where a true error about the wrong database read as a puzzle rather
+than a warning.
+
+*Mechanism:* `scripts/dbSimulate.ts` imports `@prisma/client` and nothing else environment-related. It
+has **no `import 'dotenv/config'`**, so `DOTENV_CONFIG_PATH` is honoured by nobody and Prisma Client
+falls back to auto-loading `.env` — which points at staging. The forensics scripts (`verifyAgainstCdx`,
+`rehashDocuments`) *do* import `dotenv/config` and reached production correctly, so **two scripts in one
+repository disagreed about which database an identical invocation targets.**
+
+*What caught it — two independent signals, both by behaviour rather than by the variable passed:*
+
+1. **The tool printed its own target.** It resolves the label and ref from the live connection string,
+   so `target: staging` was self-reported. Detection works; only the targeting was broken.
+2. **`0 rows affected` rather than `1`.** The statement's guard is
+   `AND "documentHash" = '<the stale CDX digest>'`, and **staging had already been repaired**, so it
+   matched nothing there. Had production been done first — or both together — this would have read
+   `1 row affected, LOW RISK` and looked perfect while proving nothing.
+
+That second signal is worth dwelling on: **the safety of the check depended on the order the two
+environments were repaired in**, which nobody designed. Staging-first exists for other reasons and
+happened to make this detectable.
+
+*Resolution used:* export the real `DATABASE_URL`/`DIRECT_URL` and re-run, then **verify by what the
+tool prints** — `target: PRODUCTION`, `project ref: fqmczumacfbunffgodlo`, `*** THIS IS PRODUCTION ***`,
+`1 row affected, 0 permanently lost`.
+
+*The fix, not yet made:* `scripts/dbSimulate.ts` must `import 'dotenv/config'` like every other
+operational script. **Until it does, the rule "a statement that has not been simulated does not get
+executed" is enforced by a tool that cannot be pointed at production by the documented mechanism** —
+and `CLAUDE.md` already names that class exactly: *a rule mandating a tool the environment cannot
+execute is not a control, it is an assumption.* One import, plus a test that the target honours
+`DOTENV_CONFIG_PATH`.
+
+*The generalisation, since this is the second instance:* **`DOTENV_CONFIG_PATH` is honoured by whoever
+imports dotenv, and by nobody else.** The Prisma CLI ignores it; a script that never imports dotenv
+ignores it; Prisma Client then quietly auto-loads `.env`. Neither the printed datasource line nor a
+successful run distinguishes the environments. **Only reading back an environment-identifying value the
+tool itself resolved does.**
+
 ###### STAGING REPAIRED — 2026-08-27, from landed code
 
 Run from a clean checkout of `staging` at `e6dbd43` (`git reset --hard origin/staging`,
