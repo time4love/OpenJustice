@@ -1,5 +1,7 @@
 jest.mock('../src/lib/prisma', () => ({
   prisma: {
+    // The gate now RECORDS its verdict — both directions — before acting on it.
+    scanRelevanceAssessment: { create: jest.fn().mockResolvedValue({ id: 'a1' }) },
     trackedUrl: {
       findUnique: jest.fn(),
       upsert: jest.fn(),
@@ -111,6 +113,63 @@ describe('POST /api/forensics/scan — relevance gate', () => {
     expect(getStatus()).toBe(201);
     expect(getJson()).toEqual({ trackedUrlId: 'tracked-1' });
     expect(mockRunFullScan).toHaveBeenCalled();
+  });
+
+  // -------------------------------------------------------------------------
+  // THE VERDICT IS RECORDED IN BOTH DIRECTIONS.
+  //
+  // Written after the "record rejections only" mutation SURVIVED 25 tests: the
+  // unit tests exercise recordMissionAssessment directly, so nothing asserted
+  // that the ROUTE calls it for an ADMIT. Recording only rejections makes the
+  // rejection RATE incomputable — a filter turning away 1% is indistinguishable
+  // from one turning away 90% — which is a selection-bias record with selection
+  // bias in it, in the one place this platform filters its own inputs.
+  // -------------------------------------------------------------------------
+  it('records an ON_MISSION assessment when the page is APPROVED', async () => {
+    mockFindUnique.mockResolvedValue(null);
+    mockScrapeUrl.mockResolvedValue({ title: 't', textContent: 'Ministry of Health vaccine policy update', url: 'x' });
+    mockCheckRelevance.mockResolvedValue({
+      isRelevant: true,
+      reason: 'קשור למדיניות הבריאות.',
+      contentChars: 41,
+      contentTruncated: false,
+    });
+
+    const handle = getHandler('/scan', 'post');
+    const { res } = mockRes();
+    await handle(mockReq({ url: 'https://gov.example/page' }), res);
+
+    const create = prisma.scanRelevanceAssessment.create as unknown as jest.Mock;
+    expect(create).toHaveBeenCalledTimes(1);
+    const { data } = create.mock.calls[0][0] as { data: Record<string, unknown> };
+    expect(data['verdict']).toBe('ON_MISSION');
+    expect(data['author']).toBe('MODEL');
+    expect(data['promptHash']).toBeTruthy();
+    expect(data['contentTruncated']).toBe(false);
+  });
+
+  it('records an OFF_MISSION assessment when the page is REJECTED', async () => {
+    mockFindUnique.mockResolvedValue(null);
+    mockScrapeUrl.mockResolvedValue({ title: 't', textContent: 'football scores', url: 'x' });
+    mockCheckRelevance.mockResolvedValue({
+      isRelevant: false,
+      reason: 'העמוד עוסק בספורט ואינו קשור לחקירה.',
+      contentChars: 15,
+      contentTruncated: false,
+    });
+
+    const handle = getHandler('/scan', 'post');
+    const { res, getStatus } = mockRes();
+    await handle(mockReq({ url: 'https://sport.example/page' }), res);
+
+    expect(getStatus()).toBe(422);
+    const create = prisma.scanRelevanceAssessment.create as unknown as jest.Mock;
+    expect(create).toHaveBeenCalledTimes(1);
+    const { data } = create.mock.calls[0][0] as { data: Record<string, unknown> };
+    expect(data['verdict']).toBe('OFF_MISSION');
+    // The reason is kept, not just returned: a rejection has to be explicable to
+    // the person rejected, months later.
+    expect(data['reason']).toBe('העמוד עוסק בספורט ואינו קשור לחקירה.');
   });
 
   it('rejects with 422 and a reason when the page is not relevant', async () => {

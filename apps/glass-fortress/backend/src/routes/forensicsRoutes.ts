@@ -8,6 +8,10 @@ import { type DiffItem } from '../services/ForensicAgent';
 import { parseDiffItems } from '../lib/diffItems';
 import { scanLimiter } from '../middleware/rateLimiting';
 import { ScanRelevanceAgent } from '../services/ScanRelevanceAgent';
+import { recordMissionAssessment } from '../services/recordMissionAssessment';
+import { SCAN_RELEVANCE_PROMPT_HASH, SCAN_RELEVANCE_VERSION } from '../lib/mission';
+import { resolveModelId } from '../factories/LLMFactory';
+import { MissionVerdict } from '@prisma/client';
 import { scrapeUrl } from '../utils/webScraper';
 import { getStoredClaimTrajectories } from '../services/claimTrajectory';
 
@@ -115,6 +119,28 @@ router.post('/scan', scanLimiter, async (req: Request, res: Response): Promise<v
       }
 
       const relevance = await getScanRelevanceAgent().checkRelevance(content, url);
+
+      // THE VERDICT IS RECORDED BEFORE IT IS ACTED ON, and in BOTH directions.
+      //
+      // Recording only rejections would make the rejection RATE incomputable, so
+      // a filter turning away 1% would be indistinguishable from one turning away
+      // 90% — a selection-bias record with selection bias in it. This is the one
+      // place the platform filters its own inputs, and "you kept what suited you"
+      // is the standard attack on curated evidence; the answer is a queryable
+      // record of everything turned away AND everything let through.
+      await recordMissionAssessment({
+        author: 'MODEL',
+        url,
+        verdict: relevance.isRelevant ? MissionVerdict.ON_MISSION : MissionVerdict.OFF_MISSION,
+        reason: relevance.reason,
+        assessedAt: new Date(),
+        model: resolveModelId('SCAN_RELEVANCE'),
+        agentVersion: SCAN_RELEVANCE_VERSION,
+        promptHash: SCAN_RELEVANCE_PROMPT_HASH,
+        contentChars: relevance.contentChars,
+        contentTruncated: relevance.contentTruncated,
+      });
+
       if (!relevance.isRelevant) {
         res.status(422).json({ error: 'URL not relevant to this investigation', reason: relevance.reason });
         return;
