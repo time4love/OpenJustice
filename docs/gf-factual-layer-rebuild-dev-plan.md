@@ -69,8 +69,9 @@ the model carries that difference explicitly.
 - `@@unique([trackedUrlId, capturedAt])`, second resolution. Simplest thing that works; revisit only
   if a collision actually happens.
 - **An unchanged direct re-fetch is dropped**, matching CDX's collapse-by-digest.
-- On a direct fetch, also submit the URL to the Archive's Save Page Now where possible, so a
-  human-driven observation acquires a third-party-witnessed twin.
+- On a direct fetch, also submit the URL to the Archive's Save Page Now, so a human-driven observation
+  acquires a third-party-witnessed twin. See Level 2 — this is what stops `DIRECT` being a permanently
+  second-class capture.
 
 ### Storage is lossless. Filtering is a versioned view that MARKS and never DELETES
 
@@ -200,9 +201,31 @@ sites read it and swapping a column's meaning underneath them creates a differen
 is detectable.
 
 *Enforcement:* persist the CDX `digest` — already fetched by `WaybackScraper`, used only to
-de-duplicate, and thrown away — and compare it against what was fetched. For `DIRECT`, the Save Page
-Now twin. Also fix `archiveHttp`'s error message, which reports `HTTP 200` when axios throws for a
-non-status reason: a success code presented as a failure.
+de-duplicate, and thrown away — and compare it against what was fetched. Also fix `archiveHttp`'s error
+message, which reports `HTTP 200` when axios throws for a non-status reason: a success code presented
+as a failure.
+
+#### The Save Page Now twin — what makes `DIRECT` stop being permanently second-class
+
+A `DIRECT` capture is witnessed only by us, which is the one property this platform cannot afford to
+hand-wave. On every direct fetch, also submit the URL to the Archive's Save Page Now. The observation
+then has a third-party-witnessed counterpart with an Archive timestamp anyone can check, and over time
+almost every capture ends up on the strong side of the distinction rather than the weak one.
+
+**The twin does NOT corroborate our bytes, and the model must not pretend otherwise.** SPN archives at
+`T+δ`; we fetched at `T`. If the page changed in that gap the two documents legitimately differ. What
+the twin provides is an *independent capture near ours*, and comparing them is a check with a stored
+verdict:
+
+| outcome | meaning |
+|---|---|
+| byte-identical | strong corroboration — an independent party observed the same document |
+| **different** | a real change inside the gap, **or** a discrepancy in our fetch. Either is a finding. |
+| unavailable | SPN is rate-limited and fails. **Not a pass** — recorded as `UNAVAILABLE` per §3. |
+
+Treating a twin as proof of the direct capture would be the same error as treating agreement between
+two readers of one extraction as corroboration. It is a second observation, and its value is precisely
+that it can disagree.
 
 ### Level 3 — the anchor
 
