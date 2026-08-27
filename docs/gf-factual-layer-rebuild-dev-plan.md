@@ -71,6 +71,12 @@ and it persists as a first-class provenance only in the case where archiving is 
 | `DIRECT` | we fetched it and the Archive has not (yet) indexed it | **transient**, or permanent only for a page the Archive cannot take |
 | `ASSERTED` | text supplied to us; nobody we control observed the page | the exception path — see below |
 
+**For anything a reader sees, these are not three peer categories.** `DIRECT`'s own enum comment calls
+it transient — *"we fetched it and the Archive has not (yet) indexed it."* What an outsider needs is
+**re-checkability as a state**: archived and independently checkable · pending archival · never
+observable by anyone but us. Rendering `DIRECT` beside `WAYBACK` as an equal kind would tell a reader
+the opposite of what it means.
+
 That collapses the trust problem rather than managing it: the weak branch of *can a stranger re-check
 this?* stops being a standing feature of the model and becomes a labelled exception.
 
@@ -222,6 +228,26 @@ and it yields a coverage report for free.
 **A level is not finished until code makes its invariant unbreakable. No level begins until the one
 below it can no longer produce bad data.** That ordering is the entire method: it is what separates
 this from the three previous encounters with the same defect.
+
+**A level is done when its invariant is enforced in code, in both environments, AND anything an
+outsider needs in order to check it — or to avoid being misled by it — is visible.**
+
+The test for what must surface is not "is it new". Most new columns are internal provenance and showing
+them would be noise. It is: *does an outsider need this to check us, or to avoid being misled?* By that
+test the CDX verification verdict and a capture's re-checkability must surface; `textExtractionVersion`
+and `documentContentEncoding` need not.
+
+**Two things the interface already shows are known to be unreliable, and correcting those precedes
+disclosing anything new.** Evidence summary `0x7517947a…` still tells a reader the page said
+`קלים וחולפים בלבד`, which is on no reading of that capture. And `get_forensic_timeline` renders a
+model's opinion and an anchored record in one table — which the tutorial's own `COMMON_RULES` forbids —
+while showing only the opinion half. **A reader misled by what is displayed is worse off than one who
+cannot see a new verdict.**
+
+**Level 1 carries a disclosure debt**, recorded rather than acted on: it closed against an external
+criterion and nothing in the interface says so. Level 1 is not reopened for it — the verification is
+reproducible by anyone holding the tool and the public archive, so the capability is external even
+where the display is not. Named here rather than left to be noticed.
 
 **An enforcement is not proven until it has been observed to FAIL.** Level 0 was validated by breaking
 the extractor deliberately — returning `""` fails 18 tests, returning the extraction instead of the
@@ -909,8 +935,32 @@ than acted on.
 *Invariant:* the bytes stored are the bytes the source served, and a later change on the source's side
 is detectable.
 
-*Enforcement:* persist the CDX `digest` — already fetched by `WaybackScraper`, used only to
-de-duplicate, and thrown away — and compare it against what was fetched.
+*Enforcement, in two phases. The order is the level's own logic applied inside itself: do not add a
+second writer until the invariant is enforced on the first.*
+
+**Phase A — harden the path that exists.** Persist the CDX `digest` at write time (it is already
+fetched by `WaybackScraper`, used only to de-duplicate, and thrown away — and it is currently re-fetched
+on every verification) · `list_captures` partitions by provenance · the scan that reports success while
+fetching nothing · the 404 capture as queryable state · the reconciliation fast path, deferred while it
+was on the critical path.
+
+**Phase B — the submission pipeline, under that same enforcement. This is the level's centrepiece, not
+a subsection.** CDX-first → Save Page Now if the Archive holds nothing → queued, never blocking →
+reconcile our fetch against the archived capture when it lands.
+
+Measured 2026-08-27, so the size of the gap is not in doubt: **`create_evidence_from_url` contains zero
+references to `recordCapture`.** Nothing writes `DIRECT` or `ASSERTED`; every capture in both
+environments is `WAYBACK`, written by the scanner. The enum exists and the pipeline that would populate
+it does not. Until Phase B lands, evidence created from a URL still has **no capture beneath it** — the
+defect Level 1 identified and deferred here.
+
+Phase B makes `create_evidence_from_url` mean *"track this URL"*, turns `DIRECT` into the transient
+state its own enum comment describes, and closes that gap.
+
+**Save Page Now is a WRITE TO A THIRD PARTY, and this platform has never made one.** Until now it has
+only read from the Archive. Asking the Archive to crawl a government page on our behalf has rate
+limits and a footprint, and it deserves the deliberateness of a chain write rather than being treated
+as another fetch. Decide the policy before building it.
 
 **`archiveHttp`'s error message — RECLASSIFIED 2026-08-27 from tidy-up to FIX-SOON.** It reports
 `HTTP 200` when axios throws for a non-status reason, presenting a success code as a failure. It has now
