@@ -38,7 +38,6 @@ async function main(): Promise<void> {
 
   console.log(`\n${report.url}\n`);
   console.log(`Snapshots measured        ${String(s.snapshotsMeasured)}`);
-  console.log(`  holding no document     ${String(s.snapshotsWithoutDocument)}`);
   console.log(
     `  lowest retention        ${s.lowestRetainedPercent === null ? 'n/a' : `${String(s.lowestRetainedPercent)}%`}`,
   );

@@ -70,7 +70,6 @@ export interface DivergenceReport {
   diffs: DiffDivergence[];
   summary: {
     snapshotsMeasured: number;
-    snapshotsWithoutDocument: number;
     lowestRetainedPercent: number | null;
     diffsChecked: number;
     diffsContradicted: number;
@@ -128,13 +127,13 @@ export async function measureExtractionDivergence(url: string): Promise<Divergen
   });
 
   const measured: SnapshotDivergence[] = [];
-  let withoutDocument = 0;
 
+  // No "holds no document" branch and no counter for it. Since
+  // 20260827120000_snapshot_document_required, `rawText` is NOT NULL, so a
+  // capture without its document cannot exist to be counted. A metric tallying
+  // rows that lack mandatory data is an admission that the schema permits
+  // invalid rows — see the plan's §3. The check below is now total over captures.
   for (const snap of snapshots) {
-    if (snap.rawText === null) {
-      withoutDocument += 1;
-      continue;
-    }
     const extractedNormalised = normaliseForPresence(snap.fullText);
     const droppedBlocks = blocksOf(snap.rawText).filter(
       (block) => !extractedNormalised.includes(normaliseForPresence(block)),
@@ -171,6 +170,14 @@ export async function measureExtractionDivergence(url: string): Promise<Divergen
   const checked: DiffDivergence[] = [];
 
   for (const diff of diffs) {
+    // `rawText` is NOT NULL, so a capture that EXISTS always holds its document.
+    // What can still be absent is the capture itself: beforeSnapshotId and
+    // afterSnapshotId are both optional FKs, so a diff may reference no capture
+    // on either side.
+    //
+    // That distinction is the whole of §3. This is UNCHECKABLE because there is
+    // nothing to check against — a verdict about a CHECK. It is never a verdict
+    // about a capture missing mandatory data, which the schema now forbids.
     const beforeRaw = diff.beforeSnapshot?.rawText ?? null;
     const afterRaw = diff.afterSnapshot?.rawText ?? null;
 
@@ -184,8 +191,8 @@ export async function measureExtractionDivergence(url: string): Promise<Divergen
         contradicted: [],
         reason:
           beforeRaw === null && afterRaw === null
-            ? 'Neither capture holds an archived document.'
-            : `The ${beforeRaw === null ? 'before' : 'after'} capture holds no archived document.`,
+            ? 'This diff references no capture on either side.'
+            : `This diff references no ${beforeRaw === null ? 'before' : 'after'} capture.`,
       });
       continue;
     }
@@ -239,7 +246,6 @@ export async function measureExtractionDivergence(url: string): Promise<Divergen
     diffs: checked,
     summary: {
       snapshotsMeasured: measured.length,
-      snapshotsWithoutDocument: withoutDocument,
       lowestRetainedPercent: retained.length === 0 ? null : Math.min(...retained),
       diffsChecked: checked.filter((d) => d.verdict !== 'UNCHECKABLE').length,
       diffsContradicted: checked.filter((d) => d.verdict === 'CONTRADICTED').length,
