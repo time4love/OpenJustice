@@ -291,10 +291,21 @@ export async function fetchCaptureBytes(
     return {
       bytes: Buffer.from(response.data),
       contentType: typeof type === 'string' ? type : null,
-      // Stored, not discarded: the meaning of the bytes depends on it. This is
-      // the SECOND response header to prove load-bearing — charset was the
-      // first and happened not to matter. Encoding mattered on 8% of captures.
-      contentEncoding: typeof encoding === 'string' ? encoding : null,
+      // NORMALISED, NOT OBSERVED — and the distinction is deliberate. The
+      // server said nothing; HTTP convention names "nothing" as `identity`, so
+      // that is what is recorded. Read literally, this value would otherwise
+      // look like something the Archive sent, and one day that will matter.
+      //
+      // The point of normalising rather than passing null through: null must go
+      // on meaning "we never observed the headers". Storing null for "no
+      // encoding declared" would collapse those two into one value — the exact
+      // UNAVAILABLE-versus-data conflation §3 exists to prevent, in a field
+      // added to REMOVE an ambiguity.
+      //
+      // Stored at all because the meaning of the bytes depends on it. Second
+      // response header to prove load-bearing: charset was the first and
+      // happened not to matter; encoding mattered on 8% of captures.
+      contentEncoding: typeof encoding === 'string' ? encoding : 'identity',
     };
   } catch (err) {
     if (axios.isAxiosError(err)) {

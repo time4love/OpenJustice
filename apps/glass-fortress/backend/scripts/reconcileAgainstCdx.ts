@@ -35,7 +35,17 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  const report = await reconcileAgainstCdx({ url, dryRun });
+  const report = await reconcileAgainstCdx({
+    url,
+    dryRun,
+    onProgress: (done, total, outcome) => {
+      // Streamed, not buffered: this run takes ~12 minutes against a throttled
+      // Archive, and silence for that long is indistinguishable from a stall.
+      console.log(
+        `  [${String(done)}/${String(total)}] ${outcome.waybackTimestamp}  ${outcome.action}`,
+      );
+    },
+  });
 
   console.log(`${dryRun ? 'DRY RUN' : 'APPLY'} — ${report.url}`);
   console.log(`captures examined: ${String(report.captures)}`);

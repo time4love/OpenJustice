@@ -175,7 +175,8 @@ model UrlSnapshot {
   // loss this column exists to end. Nullable only because a capture stored before
   // this column cannot invent one.
   documentContentType     String?
-  // The Content-Encoding header verbatim. THE SECOND load-bearing header.
+  // The content-coding applied to the stored bytes, NORMALISED: `identity`
+  // where the response declared none, NULL where we never observed the headers.
   //
   // `document` holds the bytes AS SERVED — gzipped where the source served
   // gzip — so this is what says how to read them. Without it the payload is
@@ -186,8 +187,10 @@ model UrlSnapshot {
   // Content-Encoding; anything else is optional, and those two are part of the
   // payload's meaning rather than metadata about it.
   //
-  // Nullable because most responses declare no encoding, and because a capture
-  // stored before this column cannot invent one.
+  // Null is a real signal rather than a shrug: a row fetched by the original
+  // backfill has a documentHash and no encoding; one fetched by the current code
+  // has both. So null means "fetched by code that did not record it, or never
+  // fetched" — never "the source declared nothing", which is `identity`.
   documentContentEncoding String?
   // Normalised plain text derived from `document` — a CACHED DERIVATION, not a
   // source of truth. Renamed from `rawText`, which claimed to be the document.

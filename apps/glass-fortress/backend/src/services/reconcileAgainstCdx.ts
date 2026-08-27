@@ -79,6 +79,12 @@ const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms
 export async function reconcileAgainstCdx(opts: {
   url: string;
   dryRun: boolean;
+  /**
+   * Called after each capture. A long background run that prints nothing is
+   * indistinguishable from one that has stalled — which this session has now
+   * mistaken once already.
+   */
+  onProgress?: (done: number, total: number, outcome: ReconcileOutcome) => void;
 }): Promise<ReconcileReport> {
   const verification = await verifyAgainstCdx(opts.url);
 
@@ -92,13 +98,33 @@ export async function reconcileAgainstCdx(opts: {
   );
 
   const outcomes: ReconcileOutcome[] = [];
+  const total = verification.verdicts.length;
+  // Takes the outcome rather than reading it back off the array: indexing would
+  // be typed non-undefined (noUncheckedIndexedAccess is off) while being
+  // undefined at runtime for an empty array, so the guard the linter calls
+  // redundant is the one that actually matters. Sidestepping the index removes
+  // the disagreement instead of resolving it in the linter's favour.
+  /**
+   * Record an outcome and report it in one act, so the two cannot drift.
+   *
+   * Deliberately takes the outcome rather than reading it back off the array:
+   * indexing would be typed non-undefined (noUncheckedIndexedAccess is off)
+   * while being undefined at runtime for an empty array, so a guard the linter
+   * calls redundant would be the one that matters. Passing the value sidesteps
+   * the disagreement rather than resolving it in the linter's favour — and
+   * without a cast, which would be the escape hatch this codebase forbids.
+   */
+  const record = (outcome: ReconcileOutcome): void => {
+    outcomes.push(outcome);
+    opts.onProgress?.(outcomes.length, total, outcome);
+  };
 
   for (const verdict of verification.verdicts) {
     const row = stored.get(verdict.snapshotId);
     if (!row) continue;
 
     if (opts.dryRun) {
-      outcomes.push({
+      record({
         waybackTimestamp: verdict.waybackTimestamp,
         action: verdict.verdict === 'CONTRADICTED' ? 'REPAIRED' : 'TEXT_REDERIVED',
         cdxDigest: verdict.cdxDigest,
@@ -123,7 +149,7 @@ export async function reconcileAgainstCdx(opts: {
         // unverifiable payload for another and destroy the evidence of it. The
         // encoding is NOT written either: it describes the bytes we just fetched
         // and did not keep.
-        outcomes.push({
+        record({
           waybackTimestamp: verdict.waybackTimestamp,
           action: 'ARCHIVE_CONTRADICTED',
           cdxDigest: verdict.cdxDigest,
@@ -147,7 +173,7 @@ export async function reconcileAgainstCdx(opts: {
       const encodingMoved = (verdict.contentEncoding ?? null) !== (encoding ?? null);
 
       if (!keepFetched && !textMoved && !versionMoved && !encodingMoved) {
-        outcomes.push({
+        record({
           waybackTimestamp: verdict.waybackTimestamp,
           action: 'UNCHANGED',
           cdxDigest: verdict.cdxDigest,
@@ -180,7 +206,7 @@ export async function reconcileAgainstCdx(opts: {
           ? 'ENCODING_FILLED'
           : 'TEXT_REDERIVED';
 
-      outcomes.push({
+      record({
         waybackTimestamp: verdict.waybackTimestamp,
         action: updated === 1 ? action : 'FAILED',
         cdxDigest: verdict.cdxDigest,
@@ -194,7 +220,7 @@ export async function reconcileAgainstCdx(opts: {
         ...(updated === 1 ? {} : { error: 'row changed since verification — nothing written' }),
       });
     } catch (err) {
-      outcomes.push({
+      record({
         waybackTimestamp: verdict.waybackTimestamp,
         action: 'FAILED',
         cdxDigest: verdict.cdxDigest,

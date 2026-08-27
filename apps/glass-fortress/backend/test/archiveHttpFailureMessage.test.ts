@@ -111,3 +111,42 @@ describe('WaybackFetchError.status is not a success signal', () => {
     expect(err.message).toMatch(/failed/i);
   });
 });
+
+// ---------------------------------------------------------------------------
+// `null` and `identity` must stay distinguishable.
+//
+// Third time this project has found a column conflating "we never looked" with
+// "there was nothing to record" — after §3's UNAVAILABLE-vs-data rule and the
+// 404 living in a scan job's JSON blob. This one appeared in a column added
+// specifically to remove an ambiguity.
+// ---------------------------------------------------------------------------
+
+describe('content-encoding normalisation', () => {
+  function ok(headers: Record<string, string>) {
+    return { data: new ArrayBuffer(8), status: 200, statusText: 'OK', headers, config: {} };
+  }
+
+  it('normalises an ABSENT header to identity, never to null', () => {
+    // The server said nothing; HTTP convention names nothing as identity. This
+    // is a normalisation, not an observation — and it is what keeps null free to
+    // mean "we never observed the headers".
+    mockGet.mockResolvedValue(ok({ 'content-type': 'text/html' }));
+    return expect(fetchCaptureBytes(URL_, TS, NO_RETRY)).resolves.toMatchObject({
+      contentEncoding: 'identity',
+    });
+  });
+
+  it('passes a DECLARED encoding through verbatim', () => {
+    mockGet.mockResolvedValue(ok({ 'content-type': 'text/html', 'content-encoding': 'gzip' }));
+    return expect(fetchCaptureBytes(URL_, TS, NO_RETRY)).resolves.toMatchObject({
+      contentEncoding: 'gzip',
+    });
+  });
+
+  it('never returns null, so null in the column can only mean "never observed"', async () => {
+    mockGet.mockResolvedValue(ok({}));
+    const { contentEncoding } = await fetchCaptureBytes(URL_, TS, NO_RETRY);
+    expect(contentEncoding).not.toBeNull();
+    expect(contentEncoding).toBe('identity');
+  });
+});

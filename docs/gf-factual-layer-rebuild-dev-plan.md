@@ -397,6 +397,34 @@ gzipped; inflate is a named step in a chain the version recites —
 `Content-Type` (charset) and `Content-Encoding`. Charset was the first to prove load-bearing and
 happened not to matter; encoding mattered on 8% of captures.
 
+##### RETRACTED: "the Archive's replay disagrees with its own index"
+
+During the investigation it was said, in two forms, that the Archive was internally inconsistent — and
+in review, that *"'independently verifiable' now has a measured error rate"*. **Both are withdrawn.**
+
+Measured on staging after the fix, over all 83 captures:
+
+```
+VERIFIED     : 83
+CONTRADICTED : 0
+UNAVAILABLE  : 0
+ARCHIVE_CONTRADICTED : 0
+```
+
+**The error rate was ours. The Archive's is zero on this corpus.** Every capture's stored payload now
+reproduces the digest the Internet Archive published for it, and the reconciliation found no case where
+a fresh fetch disagreed with the index. The apparent inconsistency was axios inflating gzipped records
+before we ever saw them.
+
+Recorded next to the original claim because a sentence like *"independently verifiable has a measured
+error rate"* is exactly the kind that gets quoted onward, and it would be quoted about the Internet
+Archive rather than about a client library's default.
+
+*Independent corroboration, arrived at as a by-product rather than designed:* `documentContentEncoding`
+records `gzip` on **exactly the 7 captures** whose digests had disagreed — the same rows identified from
+the opposite direction, by the Archive declaring compression rather than by a hash mismatching. Two
+independent signals agreeing on which rows were affected is worth more than either alone.
+
 ##### Level 1's completion criterion is now EXTERNAL and falsifiable
 
 > `sha1b32(document) == cdx.digest`, for every capture, in both environments.
