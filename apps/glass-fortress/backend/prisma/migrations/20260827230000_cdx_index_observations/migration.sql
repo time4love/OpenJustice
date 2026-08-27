@@ -1,5 +1,5 @@
 -- CreateEnum
-CREATE TYPE "CdxEntryStatus" AS ENUM ('STORED', 'UNSERVABLE', 'UNFETCHED');
+CREATE TYPE "CdxEntryStatus" AS ENUM ('STORED', 'UNSERVABLE', 'UNFETCHED', 'UNCHANGED');
 
 -- CreateTable
 CREATE TABLE "CdxIndexEntry" (

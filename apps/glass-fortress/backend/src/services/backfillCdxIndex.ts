@@ -1,7 +1,16 @@
 import { prisma } from '../lib/prisma';
-import { CdxEntryStatus } from '@prisma/client';
 import { ARCHIVED_CAPTURES_ONLY } from '../lib/archivedCaptures';
-import { recordCdxObservation, markCdxEntryStored, type CdxRow } from './recordCdxObservation';
+import {
+  recordCdxObservation,
+  markCdxEntryStored,
+  markCdxEntryUnchanged,
+  markCdxEntryUnservable,
+  type CdxRow,
+} from './recordCdxObservation';
+import { noveltyAgainstPredecessor, waybackTimestampToDate } from './recordCapture';
+import { deriveText } from '../lib/captureDocument';
+import { fetchCaptureBytes } from '../lib/archiveHttp';
+import { WaybackFetchError } from '../lib/archiveHttp';
 
 /**
  * Populate the CDX observation store for a URL already scanned.
@@ -26,14 +35,19 @@ export interface CdxBackfillReport {
   held: number;
   /** Entries linked to a capture — status STORED. */
   linked: number;
+  /** Entries fetched, compared, and identical to their predecessor. */
+  unchanged: number;
+  /** Entries the Archive indexes but will not serve — HTTP 404, durable. */
+  unservable: number;
   /**
-   * Entries with no capture behind them, left UNFETCHED.
+   * Entries still UNFETCHED after classification.
    *
-   * SEE THE CAVEAT IN THE SCRIPT: some of these were fetched and deliberately not
-   * stored, which UNFETCHED does not describe.
+   * A NON-ZERO VALUE IS A FINDING, not routine: it means CDX indexes a capture
+   * that is text-distinct from its predecessor and we hold no row for it — a
+   * genuine gap for `forensics:recover-captures`, not something this tool fills.
    */
-  unlinked: number;
-  unlinkedTimestamps: string[];
+  unfetched: number;
+  unfetchedTimestamps: string[];
 }
 
 export async function backfillCdxIndex(opts: {
@@ -64,35 +78,106 @@ export async function backfillCdxIndex(opts: {
   const linkable = rows.filter((r) => byKey.has(`${r.timestamp}:${r.digest}`));
   const unlinked = rows.filter((r) => !byKey.has(`${r.timestamp}:${r.digest}`));
 
-  if (!opts.dryRun) {
-    await recordCdxObservation({
+  if (opts.dryRun) {
+    return {
+      url: opts.url,
+      dryRun: true,
+      indexed: rows.length,
+      held: captures.length,
+      linked: linkable.length,
+      // A dry run cannot say which of the unlinked are UNCHANGED and which are
+      // UNSERVABLE without fetching, and it will not guess: reporting them as
+      // one number is honest, reporting a split it did not measure is not.
+      unchanged: 0,
+      unservable: 0,
+      unfetched: unlinked.length,
+      unfetchedTimestamps: unlinked.map((r) => r.timestamp),
+    };
+  }
+
+  await recordCdxObservation({
+    trackedUrlId: tracked.id,
+    queriedAt: new Date(),
+    rows,
+    hasMore: false,
+  });
+  for (const row of linkable) {
+    const snapshotId = byKey.get(`${row.timestamp}:${row.digest}`);
+    if (!snapshotId) continue;
+    await markCdxEntryStored({
       trackedUrlId: tracked.id,
-      queriedAt: new Date(),
-      rows,
-      hasMore: false,
+      waybackTimestamp: row.timestamp,
+      digest: row.digest,
+      snapshotId,
     });
-    for (const row of linkable) {
-      const snapshotId = byKey.get(`${row.timestamp}:${row.digest}`);
-      if (!snapshotId) continue;
-      await markCdxEntryStored({
+  }
+
+  // CLASSIFY THE UNLINKED BY MEASUREMENT, NOT BY ASSUMPTION.
+  //
+  // Leaving them UNFETCHED would write rows we already know are wrong: on this
+  // corpus eleven of twelve were fetched successfully and dropped by the novelty
+  // rule, so "we never looked" would be false about eleven of them and the
+  // question "which entries have we never looked at" would return eleven false
+  // positives. A note in a plan does not protect a query.
+  //
+  // The comparison is `noveltyAgainstPredecessor`, the SAME function
+  // `recordCapture` uses. A second copy would be two definitions of "unchanged",
+  // and any drift between them would mislabel entries rather than merely
+  // duplicate code.
+  let unchanged = 0;
+  let unservable = 0;
+  const stillUnfetched: string[] = [];
+
+  for (const row of unlinked) {
+    try {
+      const { bytes, contentType, contentEncoding } = await fetchCaptureBytes(
+        opts.url,
+        row.timestamp,
+      );
+      const derived = deriveText(bytes, contentType, contentEncoding);
+      const { unchanged: isUnchanged } = await noveltyAgainstPredecessor({
         trackedUrlId: tracked.id,
-        waybackTimestamp: row.timestamp,
-        digest: row.digest,
-        snapshotId,
+        capturedAt: waybackTimestampToDate(row.timestamp),
+        textHash: derived.textHash,
       });
+      if (isUnchanged) {
+        await markCdxEntryUnchanged({
+          trackedUrlId: tracked.id,
+          waybackTimestamp: row.timestamp,
+          digest: row.digest,
+        });
+        unchanged++;
+      } else {
+        // Text-distinct and unheld: a real gap. Left UNFETCHED deliberately —
+        // filling it is `forensics:recover-captures`, not this tool.
+        stillUnfetched.push(row.timestamp);
+      }
+    } catch (err) {
+      // ONLY a 404 is permanent. A timeout or 5xx stays UNFETCHED, because
+      // collapsing them would make a durable gap indistinguishable from a
+      // retryable one — the distinction UNSERVABLE exists to keep.
+      if (err instanceof WaybackFetchError && err.status === 404) {
+        await markCdxEntryUnservable({
+          trackedUrlId: tracked.id,
+          waybackTimestamp: row.timestamp,
+          digest: row.digest,
+        });
+        unservable++;
+      } else {
+        stillUnfetched.push(row.timestamp);
+      }
     }
   }
 
   return {
     url: opts.url,
-    dryRun: opts.dryRun,
+    dryRun: false,
     indexed: rows.length,
     held: captures.length,
     linked: linkable.length,
-    unlinked: unlinked.length,
-    unlinkedTimestamps: unlinked.map((r) => r.timestamp),
+    unchanged,
+    unservable,
+    unfetched: stillUnfetched.length,
+    unfetchedTimestamps: stillUnfetched,
   };
 }
-
-/** Statuses this backfill can legitimately assign. */
-export const BACKFILL_ASSIGNS = [CdxEntryStatus.STORED, CdxEntryStatus.UNFETCHED] as const;

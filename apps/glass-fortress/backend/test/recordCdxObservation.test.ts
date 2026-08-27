@@ -9,6 +9,7 @@ import { prisma } from '../src/lib/prisma';
 import {
   recordCdxObservation,
   markCdxEntryStored,
+  markCdxEntryUnchanged,
   markCdxEntryUnservable,
 } from '../src/services/recordCdxObservation';
 
@@ -135,5 +136,35 @@ describe('an entry is keyed on the digest when its status advances', () => {
     // A 404 on a re-fetch of something already stored is a fact about the replay,
     // not a reason to forget the bytes.
     expect(where.status).toEqual({ not: 'STORED' });
+  });
+});
+
+
+describe('UNCHANGED is the novelty rule working, and it never links a capture', () => {
+  it('marks the entry UNCHANGED without a snapshotId', async () => {
+    await markCdxEntryUnchanged({
+      trackedUrlId: TRACKED,
+      waybackTimestamp: '20220703090600',
+      digest: 'DDD',
+    });
+
+    const { where, data } = entryUpdateMany.mock.calls[0][0];
+    // recordCapture returns the PRECEDING capture's id on an UNCHANGED outcome —
+    // that is what UNCHANGED means — so writing a snapshotId here would attach
+    // this entry to a capture it did not produce, and every "which capture came
+    // from this entry" answer would be wrong for exactly the rows this status
+    // describes.
+    expect(data).toEqual({ status: 'UNCHANGED' });
+    expect(data).not.toHaveProperty('snapshotId');
+    expect(where.digest).toBe('DDD');
+  });
+
+  it('never demotes a capture we hold', async () => {
+    await markCdxEntryUnchanged({
+      trackedUrlId: TRACKED,
+      waybackTimestamp: '20220703090600',
+      digest: 'DDD',
+    });
+    expect(entryUpdateMany.mock.calls[0][0].where.status).toEqual({ not: 'STORED' });
   });
 });

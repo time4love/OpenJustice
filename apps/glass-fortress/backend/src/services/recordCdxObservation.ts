@@ -120,3 +120,29 @@ export async function markCdxEntryUnservable(input: {
     data: { status: CdxEntryStatus.UNSERVABLE },
   });
 }
+
+/**
+ * Fetched, compared, and found identical to the capture before it.
+ *
+ * THE NOVELTY RULE WORKING, NOT A FAILURE — and deliberately not linked to a
+ * snapshot. `recordCapture` returns the PRECEDING capture's id on an UNCHANGED
+ * outcome, so linking would attach this entry to a capture it did not produce.
+ *
+ * Never demotes a STORED entry, on the same principle as UNSERVABLE: a later
+ * re-observation must not erase the fact that a capture exists.
+ */
+export async function markCdxEntryUnchanged(input: {
+  trackedUrlId: string;
+  waybackTimestamp: string;
+  digest: string;
+}): Promise<void> {
+  await prisma.cdxIndexEntry.updateMany({
+    where: {
+      trackedUrlId: input.trackedUrlId,
+      waybackTimestamp: input.waybackTimestamp,
+      digest: input.digest,
+      status: { not: CdxEntryStatus.STORED },
+    },
+    data: { status: CdxEntryStatus.UNCHANGED },
+  });
+}

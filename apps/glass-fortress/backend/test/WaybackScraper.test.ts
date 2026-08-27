@@ -1,4 +1,5 @@
 import { createHash } from 'crypto';
+import { deriveText } from '../src/lib/captureDocument';
 import { WaybackScraper } from '../src/services/WaybackScraper';
 import {
   WaybackFetchError,
@@ -453,6 +454,58 @@ describe('WaybackScraper.processJob', () => {
     const result = await scraper.processJob('job-id-789');
     expect(result).toMatchObject({ status: 'FAILED', failureReason: 'ALL_FETCHES_FAILED' });
   }, 15_000);
+
+  // -------------------------------------------------------------------------
+  // AN UNCHANGED CAPTURE MUST NOT LINK THE INDEX ENTRY TO A SNAPSHOT.
+  //
+  // recordCapture returns the PRECEDING capture's id on an UNCHANGED outcome —
+  // that is what UNCHANGED means. Marking the entry STORED with that id would
+  // attach it to a capture it did not produce, so "which capture came from this
+  // index entry" would be wrong for exactly the eleven rows on this corpus that
+  // the UNCHANGED status exists to describe.
+  //
+  // Written after a mutation SURVIVED: forcing the STORED branch on an UNCHANGED
+  // outcome passed all 45 tests, and it compiled cleanly, so it had genuinely hit
+  // the code. The hazard was identified while building the branch and covered by
+  // nothing.
+  // -------------------------------------------------------------------------
+  it('marks an UNCHANGED capture UNCHANGED, and never links it to the predecessor', async () => {
+    const bytes = Buffer.from('<p>identical to what came before</p>');
+    const predecessorTextHash = deriveText(bytes, 'text/html; charset=utf-8', null).textHash;
+
+    mockJobFindUnique.mockResolvedValueOnce(BASE_JOB);
+    mockAxiosGet.mockResolvedValueOnce(makeAxiosResponse(CDX_RESPONSE));
+    // A preceding capture whose text hashes identically -> recordCapture returns
+    // UNCHANGED, carrying the PREDECESSOR's id.
+    (prisma.urlSnapshot.findFirst as jest.Mock).mockResolvedValue({
+      id: 'predecessor-snapshot-id',
+      waybackTimestamp: '20211231235959',
+      capturedAt: new Date('2021-12-31T23:59:59Z'),
+      contentHash: 'prev-content-hash',
+      textHash: predecessorTextHash,
+    });
+
+    const scraper = new WaybackScraper();
+    jest.spyOn(scraper, 'scrapeSnapshotReadings').mockResolvedValue({
+      extracted: 'identical',
+      bytes,
+      contentType: 'text/html; charset=utf-8',
+      contentEncoding: null,
+    });
+
+    await scraper.processJob('job-id-789');
+
+    const updates = (prisma.cdxIndexEntry.updateMany as jest.Mock).mock.calls as [
+      { data: Record<string, unknown> },
+    ][];
+    expect(updates.length).toBeGreaterThan(0); // vacuity guard
+    for (const [call] of updates) {
+      expect(call.data['status']).toBe('UNCHANGED');
+      expect(call.data['snapshotId']).toBeUndefined();
+    }
+    // No capture was created, so nothing may claim one was stored.
+    expect(updates.some(([c]) => c.data['status'] === 'STORED')).toBe(false);
+  });
 
   it('stores the document on the CREATE path, so a capture cannot exist without one', async () => {
     // Level 1's invariant, asserted where it is actually established. `document`

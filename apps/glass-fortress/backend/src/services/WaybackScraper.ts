@@ -30,6 +30,7 @@ import { ARCHIVED_CAPTURES_ONLY } from '../lib/archivedCaptures';
 import {
   recordCdxObservation,
   markCdxEntryStored,
+  markCdxEntryUnchanged,
   markCdxEntryUnservable,
 } from './recordCdxObservation';
 
@@ -147,18 +148,32 @@ async function recordArchivedCapture(
       `recordArchivedCapture: capture ${recorded.id} came back without an Archive timestamp.`,
     );
   }
-  // Link the index entry to the capture it produced, and advance it to STORED.
+  // Advance the index entry, and DO NOT LINK ON AN UNCHANGED OUTCOME.
+  //
+  // This distinction is not cosmetic. On UNCHANGED, `recordCapture` returns the
+  // PRECEDING capture's id — that is what UNCHANGED means — so linking it here
+  // would attach this index entry to a capture it did not produce, and every
+  // "which capture came from this entry" answer would be quietly wrong for
+  // exactly the eleven rows this status exists to describe.
   //
   // Keyed on the digest as well as the timestamp so the link lands on the entry
   // we actually fetched rather than on a drifted re-observation of the same
-  // instant. Done here, in the one function both scan paths go through, so the
-  // link cannot be made by one writer and forgotten by the other.
-  await markCdxEntryStored({
-    trackedUrlId,
-    waybackTimestamp: recorded.waybackTimestamp,
-    digest: cdxDigest,
-    snapshotId: recorded.id,
-  });
+  // instant. Done here, in the one function both scan paths go through, so it
+  // cannot be handled by one writer and forgotten by the other.
+  if (recorded.outcome === 'UNCHANGED') {
+    await markCdxEntryUnchanged({
+      trackedUrlId,
+      waybackTimestamp: timestamp,
+      digest: cdxDigest,
+    });
+  } else {
+    await markCdxEntryStored({
+      trackedUrlId,
+      waybackTimestamp: recorded.waybackTimestamp,
+      digest: cdxDigest,
+      snapshotId: recorded.id,
+    });
+  }
 
   return {
     id: recorded.id,

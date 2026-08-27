@@ -1594,6 +1594,21 @@ enum CdxEntryStatus {
   /// that may be transient. Distinct from UNSERVABLE deliberately — collapsing
   /// them makes a permanent gap and a retryable one indistinguishable.
   UNFETCHED
+  /// Fetched, compared, and found identical AT THE TEXT LEVEL to the capture
+  /// immediately preceding it — so no separate capture exists. THE NOVELTY RULE
+  /// WORKING, NOT A FAILURE.
+  ///
+  /// The name is deliberately the write path's own: `RecordedCapture.outcome` is
+  /// already `CREATED | UNCHANGED | EXISTS`, and UNCHANGED there means exactly
+  /// this. One concept, one word, in both layers.
+  ///
+  /// It exists because UNFETCHED would assert "we never looked" about eleven of
+  /// the twelve indexed captures this corpus holds no row for, when the truth is
+  /// "we looked and decided" — the same never-looked-versus-nothing-there
+  /// conflation this table was built to end, one layer down. A note in a plan
+  /// does not protect a query: without this, "which entries have we never looked
+  /// at" returns eleven false positives.
+  UNCHANGED
 }
 
 /// ONE ENTRY THE CDX INDEX REPORTED, AND WHEN IT REPORTED IT.
