@@ -7,7 +7,7 @@ import {
 } from '../../src/lib/archiveText';
 
 // ---------------------------------------------------------------------------
-// Phase 0 of docs/gf-integrity-at-write-time-dev-plan.md — pin the instrument.
+// Level 0 of docs/gf-factual-layer-rebuild-dev-plan.md — pin the instrument.
 //
 // Every verification this platform performs rests on extractRawText being right.
 // Nothing validated the validator: if it regresses, every check silently starts

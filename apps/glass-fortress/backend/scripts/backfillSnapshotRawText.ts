@@ -5,7 +5,7 @@
  *   npm run forensics:backfill-raw-text -- --apply
  *   npm run forensics:backfill-raw-text -- --url https://corona.health.gov.il/vaccine-for-covid/ --limit 5 --apply
  *
- * Step 2 of Phase 1 in docs/gf-integrity-at-write-time-dev-plan.md, and the only
+ * Level 1 of docs/gf-factual-layer-rebuild-dev-plan.md, and the only
  * step between "the columns exist" and "the columns are NOT NULL". Until it has
  * run in an environment, that environment's step-3 migration will fail and the
  * deploy will abort with the previous version still serving — which is the
