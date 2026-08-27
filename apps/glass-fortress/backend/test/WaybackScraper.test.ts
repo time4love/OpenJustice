@@ -50,6 +50,17 @@ jest.mock('../src/services/VectorStoreService', () => ({
 
 jest.mock('../src/lib/prisma', () => ({
   prisma: {
+    // The CDX observation store. A scan records what the Archive told us — the
+    // query itself (so a zero-row answer is distinguishable from never asking)
+    // and one entry per indexed capture.
+    cdxQuery: {
+      create: jest.fn().mockResolvedValue({ id: 'cdx-query-1' }),
+    },
+    cdxIndexEntry: {
+      createMany: jest.fn().mockResolvedValue({ count: 0 }),
+      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      findFirst: jest.fn().mockResolvedValue(null),
+    },
     evidence: {
       findMany: jest.fn(),
       upsert: jest.fn().mockResolvedValue({ id: 'evidence-id-xyz', fileHash: '0xabc' }),
@@ -203,7 +214,7 @@ describe('WaybackScraper.getSnapshotsList', () => {
   it('returns deduplicated snapshots in chronological order', async () => {
     mockAxiosGet.mockResolvedValueOnce(makeAxiosResponse(CDX_RESPONSE));
     const scraper = new WaybackScraper();
-    const { snapshots, hasMore } = await scraper.getSnapshotsList('https://health.gov.il/page');
+    const { snapshots, hasMore } = await scraper.probeSnapshotsList('https://health.gov.il/page');
     expect(snapshots).toHaveLength(3);
     expect(snapshots[0].timestamp).toBe('20210101120000');
     expect(snapshots[2].timestamp).toBe('20220101140000');
@@ -226,7 +237,7 @@ describe('WaybackScraper.getSnapshotsList', () => {
     // is why removing the Set had to remove this assertion with it.
     mockAxiosGet.mockResolvedValueOnce(makeAxiosResponse(CDX_RESPONSE_REVERTING));
     const scraper = new WaybackScraper();
-    const { snapshots } = await scraper.getSnapshotsList('https://health.gov.il/page');
+    const { snapshots } = await scraper.probeSnapshotsList('https://health.gov.il/page');
 
     expect(snapshots).toHaveLength(3);
     expect(snapshots.map((s) => s.digest)).toEqual(['STATE_A', 'STATE_B', 'STATE_A']);
@@ -238,7 +249,7 @@ describe('WaybackScraper.getSnapshotsList', () => {
   it('returns empty snapshots when CDX returns no data rows', async () => {
     mockAxiosGet.mockResolvedValueOnce(makeAxiosResponse([['timestamp', 'digest']]));
     const scraper = new WaybackScraper();
-    const { snapshots, hasMore } = await scraper.getSnapshotsList('https://health.gov.il/page');
+    const { snapshots, hasMore } = await scraper.probeSnapshotsList('https://health.gov.il/page');
     expect(snapshots).toEqual([]);
     expect(hasMore).toBe(false);
   });
@@ -246,14 +257,14 @@ describe('WaybackScraper.getSnapshotsList', () => {
   it('returns empty snapshots when CDX returns an empty array', async () => {
     mockAxiosGet.mockResolvedValueOnce(makeAxiosResponse([]));
     const scraper = new WaybackScraper();
-    const { snapshots, hasMore } = await scraper.getSnapshotsList('https://health.gov.il/page');
+    const { snapshots, hasMore } = await scraper.probeSnapshotsList('https://health.gov.il/page');
     expect(snapshots).toEqual([]);
     expect(hasMore).toBe(false);
   });
 
   it('throws on non-http/https protocol', async () => {
     const scraper = new WaybackScraper();
-    await expect(scraper.getSnapshotsList('ftp://health.gov.il/page')).rejects.toThrow(
+    await expect(scraper.probeSnapshotsList('ftp://health.gov.il/page')).rejects.toThrow(
       'http or https',
     );
   });
@@ -261,7 +272,7 @@ describe('WaybackScraper.getSnapshotsList', () => {
   it('encodes the URL in the CDX query', async () => {
     mockAxiosGet.mockResolvedValueOnce(makeAxiosResponse([['timestamp', 'digest']]));
     const scraper = new WaybackScraper();
-    await scraper.getSnapshotsList('https://health.gov.il/page?id=1&lang=he');
+    await scraper.probeSnapshotsList('https://health.gov.il/page?id=1&lang=he');
     const calledUrl: string = mockAxiosGet.mock.calls[0][0] as string;
     expect(calledUrl).toContain('web.archive.org/cdx/search/cdx');
     expect(calledUrl).toContain('collapse=digest');
@@ -270,7 +281,7 @@ describe('WaybackScraper.getSnapshotsList', () => {
   it('returns hasMore=true when CDX returns MAX_SNAPSHOTS+1 rows', async () => {
     mockAxiosGet.mockResolvedValueOnce(makeAxiosResponse(CDX_RESPONSE_FULL_PAGE));
     const scraper = new WaybackScraper();
-    const { snapshots, hasMore } = await scraper.getSnapshotsList('https://health.gov.il/page');
+    const { snapshots, hasMore } = await scraper.probeSnapshotsList('https://health.gov.il/page');
     // Returns MAX_SNAPSHOTS (50) snapshots — the 51st row is the sentinel that triggers hasMore
     expect(snapshots).toHaveLength(50);
     expect(hasMore).toBe(true);
@@ -294,7 +305,7 @@ describe('WaybackScraper.getSnapshotsList', () => {
     ];
     mockAxiosGet.mockResolvedValueOnce(makeAxiosResponse(cdxWithReverts));
     const scraper = new WaybackScraper();
-    const { snapshots, hasMore } = await scraper.getSnapshotsList('https://health.gov.il/page');
+    const { snapshots, hasMore } = await scraper.probeSnapshotsList('https://health.gov.il/page');
 
     // Capped at MAX_SNAPSHOTS (50) — the cap is a batch size, not a filter.
     expect(snapshots).toHaveLength(50);

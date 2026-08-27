@@ -1385,10 +1385,67 @@ is detectable.
 second writer until the invariant is enforced on the first.*
 
 **Phase A — harden the path that exists.** Persist the CDX `digest` at write time (it is already
-fetched by `WaybackScraper`, used only to de-duplicate, and thrown away — and it is currently re-fetched
-on every verification) · `list_captures` partitions by provenance · the scan that reports success while
-fetching nothing · the 404 capture as queryable state · the reconciliation fast path, deferred while it
-was on the critical path.
+fetched by `WaybackScraper`, used only to de-duplicate, and thrown away) · `list_captures` partitions by
+provenance · the scan that reports success while fetching nothing · the 404 capture as queryable state ·
+the reconciliation fast path, deferred while it was on the critical path.
+
+> **CORRECTED 2026-08-27 — an earlier version of the line above added "and it is currently re-fetched on
+> every verification", which framed the live CDX fetch as a COST. It is not a cost, it is the
+> criterion.**
+>
+> Level 1 closes on `sha1b32(document) == cdx.digest`, and the entire value of that check is that its
+> right-hand side comes from **outside this platform**. A stored digest read by `verifyAgainstCdx` would
+> convert the external axis into a second internal check — our bytes against our own note of what CDX
+> once said — while every count stayed green. **The level was reopened twice for exactly that shape of
+> self-referential verification**, and this would reintroduce it in its most persuasive disguise: a
+> performance optimisation.
+>
+> The sentence is corrected rather than deleted because a plan is read for guidance, and a line inviting
+> the reader to treat the live fetch as waste is the kind of invitation that gets accepted by someone
+> who is not looking for traps. **Enforced by `test/liveArchiveObservers.test.ts`, not by this
+> paragraph** — a comment is not a control.
+
+**Three of Phase A's items were one change, and building them separately would have meant touching the
+scanner's write path twice for one concept.** The CDX digest, the unservable capture and "we asked and
+the Archive holds nothing" are all *what the Archive told us*, and all three were previously discarded
+or trapped inside `WaybackScrapeJob.snapshotsList` JSON. They are now `CdxIndexEntry` and `CdxQuery`.
+
+*`CdxQuery` exists because of a conflation caught BEFORE it became a bug, which is a first here.* **A
+query returning zero rows creates zero entries, so an empty answer is indistinguishable from never
+having asked unless the asking is itself recorded.** That is the never-looked-versus-nothing-there
+family — `UNAVAILABLE` versus missing data, the 404 in a JSON blob, `documentContentEncoding`'s null,
+and `totalSnapshots: 0` — and Phase B routes on precisely that distinction.
+
+*`CdxIndexEntry` is unique on `(trackedUrlId, waybackTimestamp, digest)`, and the digest in that key is
+load-bearing.* Keyed on the timestamp alone, a re-observation would update in place and **index drift
+would be invisible** — destroying the capability the table was partly justified by. With the digest, a
+changed answer from the Archive becomes a **second row**: the same rule as capture novelty, one layer
+out, with growth bounded by actual change rather than by scan count.
+
+*The digest is deliberately NOT denormalised onto `UrlSnapshot`.* Doing so would put a CDX-supplied hash
+in the same row as `documentHash`, and this repository has already paid for two hash-shaped columns of
+different provenance sitting together. `documentHashSingleRule` would not catch it — it asserts what
+*writes* to `documentHash`, not what sits beside it — so a test asserts `UrlSnapshot` has no
+`/cdx/i` column, and the later "saves a join" optimisation fails loudly instead of looking sensible.
+
+#### OPEN: the status enum has no name for "fetched, and deliberately not stored"
+
+Found while writing the backfill, and **not decided unilaterally.** `CdxEntryStatus` is `STORED` ·
+`UNSERVABLE` · `UNFETCHED`, and `UNFETCHED` is documented as *"CDX told us it exists; we have not
+fetched it."*
+
+That misdescribes the largest group in this corpus. CDX holds **95** rows after its own
+consecutive-collapse; we hold **83** captures. Of the ~12 without a capture, **eleven were fetched
+successfully and not stored** — they are the non-consecutive reverts that `recordCapture`'s text-level
+novelty rule correctly dropped as text-identical to their predecessor. Exactly one is the permanent
+404.
+
+So calling the eleven `UNFETCHED` asserts something false about our own behaviour — **"we never looked"
+standing in for "we looked and decided", which is the same conflation this table was built to end, one
+layer down.** A fourth status (`FETCHED_NOT_NOVEL`, or similar) is the obvious answer and it is an
+additive enum change, but it was **not** in the schema reviewed and approved, so it is recorded here
+rather than shipped. The backfill therefore leaves unlinked entries `UNFETCHED` and reports their
+timestamps, so the misdescription is visible and bounded rather than silent.
 
 **PHASE A HAS A PRECONDITION OF ITS OWN, added 2026-08-27: the `documentHash` repair
 (`forensics:rehash-documents`) must land in an environment BEFORE any scan work runs there.** Not a

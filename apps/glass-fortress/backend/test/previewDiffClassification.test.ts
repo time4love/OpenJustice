@@ -47,6 +47,17 @@ const writeSpies = {
 
 jest.mock('../src/lib/prisma', () => ({
   prisma: {
+    // The CDX observation store. A scan records what the Archive told us — the
+    // query itself (so a zero-row answer is distinguishable from never asking)
+    // and one entry per indexed capture.
+    cdxQuery: {
+      create: jest.fn().mockResolvedValue({ id: 'cdx-query-1' }),
+    },
+    cdxIndexEntry: {
+      createMany: jest.fn().mockResolvedValue({ count: 0 }),
+      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      findFirst: jest.fn().mockResolvedValue(null),
+    },
     urlVersionDiff: {
       findUnique: jest.fn(async () => db.unique),
       findMany: jest.fn(async () => db.many),

@@ -17,7 +17,7 @@ const mockRunFullScan = jest.fn().mockResolvedValue(undefined);
 
 jest.mock('../src/services/WaybackScraper', () => ({
   WaybackScraper: jest.fn().mockImplementation(() => ({
-    getSnapshotsList: mockGetSnapshotsList,
+    probeSnapshotsList: mockGetSnapshotsList,
     scrapeSnapshot: mockScrapeSnapshot,
     runFullScan: mockRunFullScan,
   })),
