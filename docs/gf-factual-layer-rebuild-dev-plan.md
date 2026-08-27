@@ -4,7 +4,9 @@
 drafting step and a day of measurement established that the layer beneath it cannot be patched into
 correctness.
 
-**Implementation starts in a new session.** This document is the handoff.
+**Implementation started 2026-08-27.** Two decisions taken that session, both recorded below:
+**Level 10 supersedes rather than deletes, and there is only ever one registry** (§4 Level 10);
+**staging is finished before any production data is migrated** (§6).
 
 Companions: `docs/gf-framing-assessor-defects.md` (four defects, with reproduction cases),
 `docs/gf-production-thesis-replay-plan.md` (how they were found).
@@ -14,7 +16,8 @@ Companions: `docs/gf-framing-assessor-defects.md` (four defects, with reproducti
 ## 1. The decision
 
 **Rebuild the factual layer from the archive, upward, with each level's integrity enforced in code
-before the next is built. Keep the existing corpus untouched as a comparison. Delete it last.**
+before the next is built. Keep the existing corpus untouched as a comparison. Supersede it last —
+**nothing is ever deleted, and there is only ever one registry.**
 
 Not a patch-in-place. Three findings make patching indefensible:
 
@@ -342,18 +345,65 @@ session with no thesis attached has no way to record a correction — during exa
 corrections are discovered. A seven-versus-five error found mid-framing on 2026-08-27 could not be
 written to the session it belonged to.
 
-### Level 10 — retire the old corpus
+### Level 10 — supersede the old corpus
+
+*Invariant:* every anchored hash stays explainable forever.
+
+*Enforcement:* the old rows are marked `SUPERSEDED` and excluded from every read, query and thesis
+path. **Nothing is deleted — not evidence, not theses, not snapshots, not diffs, at any point in the
+rebuild.**
 
 The existing data is kept throughout as the **comparison**: rebuilding from the archive and diffing the
 result against what is stored is what turns "7 of 81" into a complete account of what the old pipeline
-got wrong.
+got wrong. That role is now **permanent rather than temporary**, which is the better outcome — the
+measurement stays reproducible forever instead of disappearing with the data.
 
-Only then is it deleted.
+#### Why deleting is wrong
 
-**This is a destructive database operation and gets its own dedicated session** under
-`CLAUDE.md` §"Deleting data requires its own session": stated purpose, environment named by project
-ref, scope written to `.claude/DB_CLEANUP_SESSION`, `db:simulate` on every statement, and the predicted
-row count confirmed before anything runs.
+Removing an evidence row does not invalidate its on-chain anchor. It removes our ability to *explain*
+that anchor, and **an unexplained anchor is indistinguishable from a tampered one.**
+
+The schema already says this. `Evidence.previousFileHash` exists to record a deliberately created
+orphan, so that a future audit finds it explained rather than — in the comment's own words — reasonably
+concluding "the vault had been tampered with". Level 10 as originally written would have manufactured
+exactly that condition **at scale, deliberately, for ~90 permanent public transactions.**
+
+**No new tombstone table.** `previousFileHash` and the `ORPHANED_ANCHOR` verdict
+(`checkOnChainStatus.ts`) already provide the mechanism, and the superseded rows are what explain their
+own anchors. A tombstone would be a second record of something the retained row already states.
+
+#### One registry, forever, append-only
+
+**No replacement `EvidenceRegistry` is deployed.** Considered and rejected, for six reasons:
+
+1. It rotates `EVIDENCE_REGISTRY_ADDRESS`, the most dangerous variable in the system. A transaction to
+   a codeless address **succeeds** and produces false `CONFIRMED` evidence; `Web3Service`'s
+   `assertRegistryDeployed` exists solely because a wrong value was once found one command from use.
+2. Multi-registry lookup adds a failure mode that does not exist today: an old hash queried against the
+   new registry returns "not registered", which reads as **"never anchored"** — strictly worse than an
+   orphan, because it is a confident wrong answer rather than a flagged one.
+3. It taxes independent verification. One address, one query, runnable by a stranger, **is** the
+   product.
+4. The old snapshot anchors are **not wrong**. They attest that a text really was in our store on that
+   date — only narrower than the platform claimed. Narrower is not false.
+5. `contracts/src/EvidenceRegistry.sol` is **shared source** with Bronze Fortress. The variables are
+   namespaced (`EVIDENCE_REGISTRY_ADDRESS` vs `BF_EVIDENCE_REGISTRY_ADDRESS`), which mitigates the
+   blast radius but does not remove it: shared source makes a redeployment feel routine across both
+   apps, and it is expensive to get wrong in either.
+6. **An append-only log containing its own corrections is more credible than a clean one.** A registry
+   wiped at the moment its operator discovered problems is precisely what a tampering auditor looks
+   for. Chain of custody is not a feature here — it is the product.
+
+**The same choice applies on staging**, even though Sepolia history is disposable. Divergent
+architecture would stop staging being a faithful rehearsal of production, which is the only reason
+staging earns its cost.
+
+#### No cleanup session is required
+
+The dedicated-session requirement is dropped from this level — **not because the rule weakens, but
+because no destructive operation remains to trigger it.** `CLAUDE.md` §"Deleting data requires its own
+session" stays in force, and any future proposal to actually delete any of this must satisfy it in
+full.
 
 ---
 
@@ -369,11 +419,21 @@ row count confirmed before anything runs.
 ## 6. Open questions
 
 - **Production.** This plan rebuilds staging. Production holds the same 8 records and 83 captures and
-  is the environment the public reads. Same treatment, or a separate decision?
+  is the environment the public reads.
+  **Sequencing settled 2026-08-27: staging is finished first, and no production data is migrated until
+  it is.** Whether production then receives the same rebuild is still open.
+  *Measured that day, and worse than the handoff assumed:* production does not merely lack the
+  backfill, it **lacks the columns** — `rawText`/`rawContentHash` are absent, because migration
+  `20260827050000_snapshot_raw_text` sits in the 13 commits `master` is behind. Production's latest
+  applied migration is `20260826140000_classifier_draws`. So the order is forced and cannot be
+  compressed: ship migration A → backfill production's 83 captures → only then can `SET NOT NULL`
+  apply there. Attempting it in one ship aborts the production deploy, which is the pre-deploy
+  guarantee working as designed, not a hazard.
 - **Staging's published thesis** is still published and still contains the false claim.
 - **Correcting evidence summary `0x7517947a…`**, which describes its source falsely
-  (`קלים וחולפים בלבד`, none of which is on the page). Level 10 retires staging's copy — but
-  **production holds the same record**, so this is only moot if production is rebuilt too. The
+  (`קלים וחולפים בלבד`, none of which is on the page). **Superseding does not resolve this and never
+  did** — a superseded row is retained and explainable, not corrected, and **production holds the same
+  record** regardless. This item stays open on its own merits. The
   mechanism exists (`forensics:resummarize` → `SummaryCorrection`, safe because evidence identity is
   snapshot-derived so a rewritten summary does not orphan the anchor), but re-running the same model
   over the same extracted items guarantees nothing: the prior that produced the phrase is still there.
