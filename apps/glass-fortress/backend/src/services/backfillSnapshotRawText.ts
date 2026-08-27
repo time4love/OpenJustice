@@ -6,7 +6,7 @@ import { fetchCaptureHtml, INTERACTIVE_RETRY, WaybackFetchError } from '../lib/a
 // ---------------------------------------------------------------------------
 // Backfill UrlSnapshot.rawText for rows created before the document was stored.
 //
-// Step 2 of Phase 1 in docs/gf-integrity-at-write-time-dev-plan.md. Step 1 added
+// Level 1 of docs/gf-factual-layer-rebuild-dev-plan.md. Step 1 added
 // the columns nullable and made every NEW snapshot carry them; step 3 sets them
 // NOT NULL. This is the only thing standing between those two, and until it has
 // run in an environment, that environment's step-3 migration will fail — which

@@ -458,7 +458,7 @@ export class WaybackScraper {
    *
    * No extra fetch and no third-party dependency — both readings come from the
    * HTML already in hand, which makes this the one integrity check in
-   * docs/gf-integrity-at-write-time-dev-plan.md that cannot be defeated by the
+   * docs/gf-factual-layer-rebuild-dev-plan.md that cannot be defeated by the
    * Internet Archive being unreachable.
    */
   async scrapeSnapshotReadings(

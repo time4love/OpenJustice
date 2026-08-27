@@ -26,7 +26,8 @@
     "forensics:trajectories": "node dist/scripts/claimTrajectories.js",
     "entities:canonicalise": "node dist/scripts/canonicaliseTargetEntities.js",
     "forensics:rediff": "node dist/scripts/rediffFromSnapshots.js",
-    "forensics:backfill-raw-text": "node dist/scripts/backfillSnapshotRawText.js"
+    "forensics:backfill-raw-text": "node dist/scripts/backfillSnapshotRawText.js",
+    "forensics:measure-divergence": "node dist/scripts/measureExtractionDivergence.js"
   },
   "keywords": [],
   "author": "",
