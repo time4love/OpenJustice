@@ -601,6 +601,70 @@ axis that licenses that: the bytes are settled by an independent witness.
 
 *The durable finding is the criterion, not the bug* — hence the second axis above.
 
+###### STAGING REPAIRED — 2026-08-27, from landed code
+
+Run from a clean checkout of `staging` at `e6dbd43` (`git reset --hard origin/staging`,
+`rm -rf dist && npm run build`), per `gf-fix-real-data-with-landed-code`. The earlier diagnostic dry run
+from the working tree was treated as diagnosis only: **a dry run from unlanded code cannot authorise a
+write from landed code.**
+
+| | before | after |
+|---|---|---|
+| external — `sha1b32(document) == cdx.digest` | 83 VERIFIED / 0 / 0 | **83 VERIFIED / 0 / 0** |
+| internal — `sha256(document) == documentHash` | **83 CONTRADICTED** | **0 CONTRADICTED** |
+| `levelOneComplete` | NO | **YES** |
+
+`forensics:rehash-documents --apply`: 83 REHASHED, 0 ALREADY_CORRECT, 0 RACED. **The external axis did
+not move**, which is the point — the bytes were never in question, and a repair that changed them would
+have been the wrong repair.
+
+*Idempotence proven on real data rather than only in tests:* an immediate second `--apply` reported
+**83 ALREADY_CORRECT, 0 REHASHED, 0 RACED**. The tool converges and cannot touch a row already correct.
+
+*Simulated first, as a measurement rather than a judgement.* An UPDATE is not on the blocked-command
+list, but "a statement that has not been simulated does not get executed" does not carve out
+non-destructive ones. `db:simulate` on a representative single-row statement: target
+`elwsznbcfmbmkldpntae`, **LOW RISK — 1 row affected, 0 permanently lost**. It also holds structurally,
+which is the stronger argument: the overwritten value is `cdxDigestOf(document)`, recomputable at any
+time from a column the statement does not touch. **The write destroys no information.**
+
+#### `noUncheckedIndexedAccess` — MEASURED 2026-08-27, and it is now a number
+
+Previously recorded here as a project-wide issue owned by no level. Measured rather than argued:
+
+```
+npx tsc --noEmit --noUncheckedIndexedAccess -p tsconfig.json
+```
+
+**133 errors across 12 files.** By rule: `TS18048` (possibly undefined) 85 · `TS2532` 30 · `TS2345` 13 ·
+`TS2322` 4 · `TS2538` 1.
+
+Too large to fold into an unrelated change, too small to be indefinite — **so it is its own piece of
+work, and this is its entry.**
+
+**The concentration is the part worth acting on.** The errors sit in the files this rebuild is actively
+touching:
+
+| file | errors | why that matters here |
+|---|---|---|
+| `src/services/WaybackScraper.ts` | **20** | the file Level 2 Phase A must change (`computeNextFromDate`) |
+| `src/lib/thesisAssertions.ts` | 18 | Level 9 |
+| `src/services/claimTrajectory.ts` | 17 | Level 6 |
+| `src/mcp/tools/getThesisContext.ts` | 17 | Level 9 |
+| `src/utils/tipTapUtils.ts` | 15 | thesis rendering |
+| `src/services/measureHrefChanges.ts` | **10** | where the problem was first noticed, via `extractHrefs` |
+
+*Why this compounds, and why it is not merely tidiness.* With the flag off, TypeScript types every
+regex capture group and array index as non-`undefined` while they are `undefined` at runtime — so **the
+linter argues for deleting the guards that make the code correct.** `extractHrefs` was the first
+instance: written `m[2] ?? m[3] ?? m[4]`, the linter called the fallbacks redundant, and deleting them
+would have made single-quoted `href='…'` extract as the empty string. `documentHashSingleRule.test.ts`
+is the second — it depends on `match?.[1] !== undefined` and on iterating rather than indexing.
+
+**Every correctly-guarded file is therefore one a future lint cleanup could break, with the linter
+arguing for the break.** Each new guarded file adds to that surface, which is why the number is worth
+having now rather than at the end.
+
 ##### A new defect shape: THE BAG ASSERTION
 
 > **An assertion that checks presence in a collection rather than binding a value to a name. It looks
