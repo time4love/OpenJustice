@@ -114,14 +114,22 @@ model UrlSnapshot {
   // makes that divergence computable forever without refetching the Archive, and
   // makes every later verification a local operation.
   //
-  // Nullable only until existing rows are backfilled; a migration then sets both
-  // NOT NULL. A snapshot without the document it was extracted from is not a
-  // valid snapshot.
-  rawText          String?
+  // NOT NULL since 20260827120000_snapshot_document_required. A snapshot without
+  // the document it was extracted from is not a valid snapshot, and Level 1 of
+  // docs/gf-factual-layer-rebuild-dev-plan.md is the constraint rather than the
+  // intention: a mandatory attribute the schema permits to be absent is a rule
+  // nothing enforces, which is the exact shape of the three code comments that
+  // documented this defect and changed nothing.
+  //
+  // This is deliberately NOT an `UNAVAILABLE` verdict. A CHECK may legitimately
+  // be unavailable — the Archive was down, so a claim went unverified. A
+  // mandatory attribute may not, and conflating the two is how "we could not
+  // check" becomes indistinguishable from "we never stored it". See §3.
+  rawText          String
   // SHA-256(rawText). Stored rather than derived for the same reason contentHash
   // is: a checksum exists to DISAGREE with a recomputation. Derived, it would
   // reproduce any corruption of the stored text and call it consistent.
-  rawContentHash   String?
+  rawContentHash   String
   onChainTxHash    String? // Blockchain tx hash once contentHash is registered on-chain
   createdAt        DateTime   @default(now())
 

@@ -1,3 +1,4 @@
+import { createHash } from 'crypto';
 import { WaybackScraper } from '../src/services/WaybackScraper';
 import {
   WaybackFetchError,
@@ -61,11 +62,11 @@ jest.mock('../src/lib/prisma', () => ({
       create: jest.fn().mockResolvedValue({ id: 'diff-id-456' }),
     },
     urlSnapshot: {
-      // rawContentHash present: a row that already holds its archived document,
-      // which is what every row a current scan creates looks like.
-      upsert: jest
-        .fn()
-        .mockResolvedValue({ id: 'snapshot-id-abc', onChainTxHash: null, rawContentHash: 'h' }),
+      // Only id and onChainTxHash: since rawText is NOT NULL the write path no
+      // longer reads rawContentHash back to decide whether to repair the row.
+      upsert: jest.fn().mockResolvedValue({ id: 'snapshot-id-abc', onChainTxHash: null }),
+      // Retained solely so the "issues no repair update" test can assert it is
+      // NEVER called. Nothing in the service reaches it any more.
       updateMany: jest.fn().mockResolvedValue({ count: 1 }),
     },
     waybackScrapeJob: {
@@ -398,18 +399,17 @@ describe('WaybackScraper.processJob', () => {
     expect(result).toMatchObject({ status: 'FAILED', failureReason: 'ALL_FETCHES_FAILED' });
   }, 15_000);
 
-  it('fills the archived document on a row created before rawText existed, and never overwrites one', async () => {
-    // A row from before the document was stored has no rawContentHash. The fill
-    // is guarded by `rawText: null` in the WHERE clause rather than by a check in
-    // code: a refetch that DISAGREES with a stored document means the Internet
-    // Archive's own copy changed, which is a finding to surface and never
-    // something a scan may silently paper over.
+  it('stores the document on the CREATE path, so a capture cannot exist without one', async () => {
+    // Level 1's invariant, asserted where it is actually established. `rawText`
+    // is a required parameter of upsertSnapshot and a NOT NULL column, so the
+    // document is written in the same statement that creates the row — there is
+    // no window in which a capture exists without the document it was extracted
+    // from, and no second write that could fail and leave one.
     mockJobFindUnique.mockResolvedValueOnce(BASE_JOB);
     mockAxiosGet.mockResolvedValueOnce(makeAxiosResponse(CDX_RESPONSE));
     (prisma.urlSnapshot.upsert as jest.Mock).mockResolvedValue({
       id: 'snapshot-id-abc',
       onChainTxHash: null,
-      rawContentHash: null,
     });
 
     const scraper = new WaybackScraper();
@@ -419,22 +419,38 @@ describe('WaybackScraper.processJob', () => {
 
     await scraper.processJob('job-id-789');
 
-    const calls = (prisma.urlSnapshot.updateMany as jest.Mock).mock.calls as [
-      { where: Record<string, unknown>; data: Record<string, string> },
+    const calls = (prisma.urlSnapshot.upsert as jest.Mock).mock.calls as [
+      { create: Record<string, string> },
     ][];
     expect(calls.length).toBeGreaterThan(0);
-    expect(calls[0][0].where).toEqual({ id: 'snapshot-id-abc', rawText: null });
-    expect(calls[0][0].data.rawText).toBe('the article and the chrome around it');
-    expect(calls[0][0].data.rawContentHash).toMatch(/^[0-9a-f]{64}$/);
+    expect(calls[0][0].create.rawText).toBe('the article and the chrome around it');
+
+    // Pinned to the hash OF THE STORED DOCUMENT, not merely to the shape of a
+    // hash. A shape assertion (64 hex chars, different from contentHash) passes
+    // for sha256('') too — verified by mutation: replacing the digest input with
+    // '' left all 36 tests in this file green. A checksum exists to DISAGREE
+    // with a recomputation, so the test has to recompute it.
+    const expectedRawHash = createHash('sha256')
+      .update('the article and the chrome around it', 'utf8')
+      .digest('hex');
+    expect(calls[0][0].create.rawContentHash).toBe(expectedRawHash);
+    // The two hashes are of DIFFERENT strings and must not be conflated:
+    // contentHash covers the extraction, rawContentHash covers the document.
+    expect(calls[0][0].create.contentHash).toBe(
+      createHash('sha256').update('the article', 'utf8').digest('hex'),
+    );
   }, 15_000);
 
-  it('does not touch a row that already holds its archived document', async () => {
+  it('issues no repair update — the constraint makes a document-less row impossible', async () => {
+    // Until 20260827120000_snapshot_document_required this path carried a
+    // legacy-fill branch guarded by `rawText: null`. The constraint makes that
+    // row unrepresentable, so the branch was removed rather than left as
+    // unreachable code that reads as though the hazard is still handled here.
     mockJobFindUnique.mockResolvedValueOnce(BASE_JOB);
     mockAxiosGet.mockResolvedValueOnce(makeAxiosResponse(CDX_RESPONSE));
     (prisma.urlSnapshot.upsert as jest.Mock).mockResolvedValue({
       id: 'snapshot-id-abc',
       onChainTxHash: null,
-      rawContentHash: 'already-stored',
     });
 
     const scraper = new WaybackScraper();

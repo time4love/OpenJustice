@@ -1,0 +1,32 @@
+-- Level 1 of docs/gf-factual-layer-rebuild-dev-plan.md: the capture.
+--
+-- INVARIANT: every capture holds the document as fetched. No capture exists
+-- without one.
+--
+-- 20260827050000_snapshot_raw_text added these columns nullable, because
+-- existing rows held only the Readability extraction and nothing else. This is
+-- the other half, and it is the half that makes the invariant a CONSTRAINT
+-- rather than an intention.
+--
+-- Why the constraint and not a metric: a report counting rows that lack
+-- mandatory data is an admission that the schema permits invalid rows. The three
+-- code comments that documented this defect — archiveText.ts, evidenceCapture.ts,
+-- createEvidenceFromUrl.ts — each described it accurately and changed nothing.
+-- A comment is not a control.
+--
+-- DEPLOY ORDER IS ENFORCED BY THIS FILE FAILING. An environment whose captures
+-- have not been backfilled cannot apply this: the ALTER raises
+--   ERROR 23502: column "rawText" of relation "UrlSnapshot" contains null values
+-- the pre-deploy step aborts, and the PREVIOUS VERSION KEEPS SERVING. That is
+-- the intended ordering guarantee, not a hazard to be worked around — see
+-- CLAUDE.md §"Schema Migrations Deploy Themselves".
+--
+-- Verified before authoring, by data, not assumption:
+--   staging     83 captures, rawText NULL: 0, rawContentHash NULL: 0  -> applies
+--   production  columns absent entirely (20260827050000 not yet shipped) -> must
+--               receive that migration and be backfilled first
+--
+-- Non-destructive: no column is dropped, renamed or rewritten, and `contentHash`
+-- keeps its meaning, so every existing on-chain anchor stays valid.
+ALTER TABLE "UrlSnapshot" ALTER COLUMN "rawText" SET NOT NULL,
+ALTER COLUMN "rawContentHash" SET NOT NULL;

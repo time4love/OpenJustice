@@ -144,27 +144,24 @@ async function upsertSnapshot(
       rawText,
       rawContentHash,
     },
-    // rawContentHash, not rawText: enough to decide whether the document is
-    // stored, without reading a whole page back on every snapshot of every scan.
-    select: { id: true, onChainTxHash: true, rawContentHash: true },
+    select: { id: true, onChainTxHash: true },
   });
 
-  // Fill the document on a row created before rawText existed.
+  // No legacy-fill branch here, deliberately.
   //
-  // The upsert above uses `update: {}` so a resumed scan cannot rewrite stored
-  // text, and that is correct — but it also means a legacy row would keep a null
-  // document forever. The `rawText: null` guard is what makes this a fill rather
-  // than an overwrite: a refetch that DISAGREES with stored raw text means the
-  // Archive's own copy changed, which is a finding to be surfaced, never
-  // something to silently paper over. The write is not swallowed: if it fails,
-  // the scan fails, because a repair that reports success while doing nothing is
-  // the exact failure that hid snapshot anchoring being broken for 83 rows.
-  if (!snap.rawContentHash) {
-    await prisma.urlSnapshot.updateMany({
-      where: { id: snap.id, rawText: null },
-      data: { rawText, rawContentHash },
-    });
-  }
+  // Until 20260827120000_snapshot_document_required this function repaired rows
+  // created before the document was stored, guarded by `rawText: null`. The
+  // constraint makes that row impossible, so the branch became unreachable and
+  // was removed rather than left as reassuring dead code — an unreachable repair
+  // reads to the next person as though the hazard is still handled here.
+  //
+  // Repairing an environment whose captures predate the column is the job of
+  // `forensics:backfill-raw-text`, which is built to run against exactly that
+  // state. The `update: {}` above still means a resumed scan never rewrites
+  // stored text: a refetch that DISAGREES with a stored document means the
+  // Archive's own copy changed, which is a finding to surface and never
+  // something to silently paper over.
+
   // Register on-chain only for newly created snapshots (no existing txHash)
   if (!snap.onChainTxHash) {
     // Fire-and-forget on purpose: a chain hiccup must not fail a scan that has

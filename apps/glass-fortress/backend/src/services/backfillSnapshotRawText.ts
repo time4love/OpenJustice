@@ -47,10 +47,44 @@ export interface BackfillResult {
   dryRun: boolean;
 }
 
+// ---------------------------------------------------------------------------
+// Why these three queries are raw SQL, and must stay raw SQL.
+//
+// This tool exists to repair an environment whose schema LAGS the code — one
+// whose captures predate 20260827050000_snapshot_raw_text, or that has received
+// the columns but not yet been backfilled. HEAD's schema.prisma declares
+// `rawText` NOT NULL (20260827120000_snapshot_document_required), so Prisma's
+// generated filter type cannot express `rawText: null` at all: the typed query
+// stops compiling the moment the constraint is declared.
+//
+// That is not an obstacle to work around, it is the situation stated plainly.
+// A cross-schema repair tool is precisely the case where the ORM's model of the
+// world is the wrong one, because the ORM models HEAD and this reads an older
+// environment. Raw SQL is the honest instrument here rather than an escape
+// hatch, and every value below is still parameterised by the tagged template.
+//
+// If the columns do not exist yet, these queries raise `column ... does not
+// exist` and the run fails loudly. That is correct: the environment needs
+// 20260827050000 before it can be backfilled, and a repair tool that reported
+// success against a schema it could not read would be the exact failure that hid
+// snapshot anchoring being broken for 83 rows.
+// ---------------------------------------------------------------------------
+
+interface PendingSnapshotRow {
+  id: string;
+  waybackTimestamp: string;
+  url: string;
+}
+
 export async function countSnapshotsWithoutRawText(url?: string): Promise<number> {
-  return prisma.urlSnapshot.count({
-    where: { rawText: null, ...(url ? { trackedUrl: { url } } : {}) },
-  });
+  const rows = await prisma.$queryRaw<{ n: bigint }[]>`
+    SELECT count(*)::bigint AS n
+    FROM "UrlSnapshot" s
+    JOIN "TrackedUrl" t ON t."id" = s."trackedUrlId"
+    WHERE s."rawText" IS NULL
+      AND (${url ?? null}::text IS NULL OR t."url" = ${url ?? null}::text)
+  `;
+  return Number(rows[0]?.n ?? 0);
 }
 
 export async function backfillSnapshotRawText(options: {
@@ -60,12 +94,16 @@ export async function backfillSnapshotRawText(options: {
 }): Promise<BackfillResult> {
   const { dryRun, url, limit } = options;
 
-  const pending = await prisma.urlSnapshot.findMany({
-    where: { rawText: null, ...(url ? { trackedUrl: { url } } : {}) },
-    select: { id: true, waybackTimestamp: true, trackedUrl: { select: { url: true } } },
-    orderBy: { waybackTimestamp: 'asc' },
-    ...(limit ? { take: limit } : {}),
-  });
+  // LIMIT NULL is unlimited in PostgreSQL, so the optional limit needs no branch.
+  const pending = await prisma.$queryRaw<PendingSnapshotRow[]>`
+    SELECT s."id", s."waybackTimestamp", t."url"
+    FROM "UrlSnapshot" s
+    JOIN "TrackedUrl" t ON t."id" = s."trackedUrlId"
+    WHERE s."rawText" IS NULL
+      AND (${url ?? null}::text IS NULL OR t."url" = ${url ?? null}::text)
+    ORDER BY s."waybackTimestamp" ASC
+    LIMIT ${limit ?? null}
+  `;
 
   const missingAtStart = await countSnapshotsWithoutRawText(url);
   const failures: BackfillFailure[] = [];
@@ -77,7 +115,7 @@ export async function backfillSnapshotRawText(options: {
       // A generous retry budget on purpose: this is an operator-run repair, not a
       // scan, so waiting is cheaper than a partial fill that has to be reasoned
       // about afterwards.
-      html = await fetchCaptureHtml(snap.trackedUrl.url, snap.waybackTimestamp, INTERACTIVE_RETRY);
+      html = await fetchCaptureHtml(snap.url, snap.waybackTimestamp, INTERACTIVE_RETRY);
     } catch (err) {
       failures.push({
         snapshotId: snap.id,
@@ -109,11 +147,17 @@ export async function backfillSnapshotRawText(options: {
     }
 
     if (!dryRun) {
-      const written = await prisma.urlSnapshot.updateMany({
-        where: { id: snap.id, rawText: null },
-        data: { rawText, rawContentHash: sha256(rawText) },
-      });
-      if (written.count === 0) continue; // filled concurrently — not this run's doing
+      // `AND "rawText" IS NULL` is the fill-never-overwrite guard, enforced by the
+      // database rather than by a check above it. A refetch that DISAGREES with an
+      // already-stored document means the Archive's own copy changed — a finding to
+      // surface, never something to silently overwrite. This statement cannot
+      // produce that situation and cannot hide it.
+      const written = await prisma.$executeRaw`
+        UPDATE "UrlSnapshot"
+        SET "rawText" = ${rawText}, "rawContentHash" = ${sha256(rawText)}
+        WHERE "id" = ${snap.id} AND "rawText" IS NULL
+      `;
+      if (written === 0) continue; // filled concurrently — not this run's doing
     }
     filled += 1;
   }

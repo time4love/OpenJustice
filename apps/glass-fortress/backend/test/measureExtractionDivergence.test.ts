@@ -136,14 +136,19 @@ describe('measureExtractionDivergence — per-diff verdicts', () => {
     expect(report.diffs[0]?.contradicted[0]?.side).toBe('ADDED');
   });
 
-  it('reports UNCHECKABLE, never SURVIVES, when a document is missing', async () => {
+  it('reports UNCHECKABLE, never SURVIVES, when a diff references no capture', async () => {
     // The distinction the whole plan turns on: "could not be checked" must never
-    // be counted as "checked and fine". A diff with no document behind it is
+    // be counted as "checked and fine". A diff with nothing behind it is
     // unexamined, and the summary must say so rather than quietly passing it.
+    //
+    // The scenario is a MISSING CAPTURE, not a capture missing its document:
+    // beforeSnapshotId/afterSnapshotId are optional FKs, while `rawText` is NOT
+    // NULL since 20260827120000_snapshot_document_required. That is §3 exactly —
+    // UNAVAILABLE is a verdict about a CHECK, never about mandatory DATA.
     diffFindMany.mockResolvedValue([
       diff({
         rawDeletedText: JSON.stringify([SURVIVING_SENTENCE]),
-        afterSnapshot: { rawText: null },
+        afterSnapshot: null,
       }),
     ]);
 
@@ -157,7 +162,10 @@ describe('measureExtractionDivergence — per-diff verdicts', () => {
 });
 
 describe('measureExtractionDivergence — per-snapshot retention', () => {
-  it('measures what the extraction kept, and counts snapshots holding no document', async () => {
+  it('measures what the extraction kept, over every capture without exception', async () => {
+    // No "holds no document" fixture and no counter for one. `rawText` is NOT
+    // NULL, so the measurement is TOTAL over captures: every row that exists is
+    // measured, and there is no residual category for the summary to report.
     snapshotFindMany.mockResolvedValue([
       {
         id: 's1',
@@ -170,15 +178,14 @@ describe('measureExtractionDivergence — per-snapshot retention', () => {
         id: 's2',
         snapshotDate: '2022-09-06',
         waybackTimestamp: '20220906232435',
-        fullText: 'anything',
-        rawText: null,
+        fullText: 'half',
+        rawText: 'half of it',
       },
     ]);
 
     const report = await measureExtractionDivergence(URL);
 
-    expect(report.summary.snapshotsMeasured).toBe(1);
-    expect(report.summary.snapshotsWithoutDocument).toBe(1);
+    expect(report.summary.snapshotsMeasured).toBe(2);
     expect(report.snapshots[0]?.retainedPercent).toBe(25);
   });
 
