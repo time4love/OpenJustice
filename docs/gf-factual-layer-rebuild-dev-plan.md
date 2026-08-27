@@ -601,6 +601,100 @@ axis that licenses that: the bytes are settled by an independent witness.
 
 *The durable finding is the criterion, not the bug* — hence the second axis above.
 
+###### STAGING REPAIRED — 2026-08-27, from landed code
+
+Run from a clean checkout of `staging` at `e6dbd43` (`git reset --hard origin/staging`,
+`rm -rf dist && npm run build`), per `gf-fix-real-data-with-landed-code`. The earlier diagnostic dry run
+from the working tree was treated as diagnosis only: **a dry run from unlanded code cannot authorise a
+write from landed code.**
+
+| | before | after |
+|---|---|---|
+| external — `sha1b32(document) == cdx.digest` | 83 VERIFIED / 0 / 0 | **83 VERIFIED / 0 / 0** |
+| internal — `sha256(document) == documentHash` | **83 CONTRADICTED** | **0 CONTRADICTED** |
+| `levelOneComplete` | NO | **YES** |
+
+`forensics:rehash-documents --apply`: 83 REHASHED, 0 ALREADY_CORRECT, 0 RACED. **The external axis did
+not move**, which is the point — the bytes were never in question, and a repair that changed them would
+have been the wrong repair.
+
+*Idempotence proven on real data rather than only in tests:* an immediate second `--apply` reported
+**83 ALREADY_CORRECT, 0 REHASHED, 0 RACED**. The tool converges and cannot touch a row already correct.
+
+*Simulated first.* An UPDATE is not on the blocked-command list, but "a statement that has not been
+simulated does not get executed" does not carve out non-destructive ones.
+
+> **READ THE TWO NUMBERS TOGETHER: the simulator reported 1 row and the operation wrote 83.**
+> Both are true and they measure different things. `db:simulate` takes **one statement**, by design —
+> it reports a multi-command input as `NOT SIMULATED` — while the rehash issues **83 individually
+> guarded UPDATEs**, one per capture. So what was simulated is **one representative statement of the
+> 83**, not the operation.
+
+Stated that explicitly because, left unqualified in a log someone reads cold, `1 row affected` beside
+`83 REHASHED` reads either as a discrepancy or as though 83 rows had been simulated. That is this
+document's own recurring shape — **a number from one measure asserted about another** — which has now
+produced the 94 recount target, the "~13% incomplete" claim, and the stale 4157 kB figure.
+
+`db:simulate` on that representative statement: target `elwsznbcfmbmkldpntae`, **LOW RISK — 1 row
+affected, 0 permanently lost.**
+
+**The structural argument is what made this safe, and the simulator agreed with it rather than
+establishing it.** The overwritten value is `cdxDigestOf(document)` — recomputable at any time from a
+column the statement does not touch. **The write destroys no information**, and that is true of all 83
+statements, which is a property a one-statement simulation cannot demonstrate.
+
+#### `noUncheckedIndexedAccess` — MEASURED 2026-08-27, and it is now a number
+
+Previously recorded here as a project-wide issue owned by no level. Measured rather than argued:
+
+```
+npx tsc --noEmit --noUncheckedIndexedAccess -p tsconfig.json
+```
+
+**133 errors across 12 files.** By rule: `TS18048` (possibly undefined) 85 · `TS2532` 30 · `TS2345` 13 ·
+`TS2322` 4 · `TS2538` 1.
+
+Too large to fold into an unrelated change, too small to be indefinite. **And it is NOT a 133-error
+project — the distribution decides the shape of the work.** Two moves, settled 2026-08-27:
+
+**1. Ratchet it.** Record **133** as the baseline and add a check that the count never increases. This
+is the urgent half, because the standing risk is the bleed rather than the backlog: every correctly
+guarded new file is one a future lint cleanup could break, **with the linter arguing for the break**.
+That has already happened twice. A ratchet stops it today without waiting for anyone to schedule the
+backlog.
+
+**2. Fix `WaybackScraper.ts` inside Phase A**, since Phase A must open that file anyway for
+`computeNextFromDate`. Twenty errors in a file already being edited is incremental; twenty errors in a
+file nobody is touching is a chore that never gets scheduled. The remaining files ride on the levels
+that touch them — `claimTrajectory.ts` with Level 6, `thesisAssertions.ts` and `getThesisContext.ts`
+with Level 9.
+
+**That is the whole method here applied to itself:** work nobody owns does not land, so attach it to
+changes already planned and ratchet the rest so it cannot grow meanwhile.
+
+**The concentration is the part worth acting on.** The errors sit in the files this rebuild is actively
+touching:
+
+| file | errors | why that matters here |
+|---|---|---|
+| `src/services/WaybackScraper.ts` | **20** | the file Level 2 Phase A must change (`computeNextFromDate`) |
+| `src/lib/thesisAssertions.ts` | 18 | Level 9 |
+| `src/services/claimTrajectory.ts` | 17 | Level 6 |
+| `src/mcp/tools/getThesisContext.ts` | 17 | Level 9 |
+| `src/utils/tipTapUtils.ts` | 15 | thesis rendering |
+| `src/services/measureHrefChanges.ts` | **10** | where the problem was first noticed, via `extractHrefs` |
+
+*Why this compounds, and why it is not merely tidiness.* With the flag off, TypeScript types every
+regex capture group and array index as non-`undefined` while they are `undefined` at runtime — so **the
+linter argues for deleting the guards that make the code correct.** `extractHrefs` was the first
+instance: written `m[2] ?? m[3] ?? m[4]`, the linter called the fallbacks redundant, and deleting them
+would have made single-quoted `href='…'` extract as the empty string. `documentHashSingleRule.test.ts`
+is the second — it depends on `match?.[1] !== undefined` and on iterating rather than indexing.
+
+**Every correctly-guarded file is therefore one a future lint cleanup could break, with the linter
+arguing for the break.** Each new guarded file adds to that surface, which is why the number is worth
+having now rather than at the end.
+
 ##### A new defect shape: THE BAG ASSERTION
 
 > **An assertion that checks presence in a collection rather than binding a value to a name. It looks
