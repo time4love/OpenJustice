@@ -47,6 +47,8 @@ export interface BackfillRow {
   textChanged?: boolean;
   /** The Content-Type header verbatim. Report it, never just the diff count. */
   contentType?: string | null;
+  /** The Content-Encoding header verbatim — the second load-bearing header. */
+  contentEncoding?: string | null;
   bytes?: number;
   error?: string;
 }
@@ -150,7 +152,7 @@ export async function backfillDocumentBytes(opts: {
     }
 
     try {
-      const { bytes, contentType } = await fetchCaptureBytes(
+      const { bytes, contentType, contentEncoding } = await fetchCaptureBytes(
         snap.url,
         snap.waybackTimestamp,
       );
@@ -158,7 +160,7 @@ export async function backfillDocumentBytes(opts: {
         throw new Error('archive returned an empty payload');
       }
       const documentHash = sha256Bytes(bytes);
-      const derived = deriveText(bytes, contentType);
+      const derived = deriveText(bytes, contentType, contentEncoding);
       const changed = derived.text !== snap.text;
 
       // `AND "documentHash" IS NULL` is the fill-never-overwrite guard, enforced
@@ -168,6 +170,7 @@ export async function backfillDocumentBytes(opts: {
         SET "document" = ${bytes},
             "documentHash" = ${documentHash},
             "documentContentType" = ${contentType},
+            "documentContentEncoding" = ${contentEncoding},
             "text" = ${derived.text},
             "textHash" = ${derived.textHash},
             "textExtractionVersion" = ${derived.textExtractionVersion}
@@ -182,6 +185,7 @@ export async function backfillDocumentBytes(opts: {
           waybackTimestamp: snap.waybackTimestamp,
           bytes: bytes.length,
           contentType,
+          contentEncoding,
           textChanged: changed,
         });
       } else {

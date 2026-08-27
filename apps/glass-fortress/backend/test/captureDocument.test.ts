@@ -52,10 +52,10 @@ describe('deriveText', () => {
     // same shape as the hash-shape assertions mutation testing already caught
     // here once. Blanking the constant survived that assertion; it does not
     // survive this one.
-    expect(TEXT_EXTRACTION_VERSION).toBe('v1-htmltotext-normalised');
+    expect(TEXT_EXTRACTION_VERSION).toBe('v2-inflate-decode-htmltotext-normalised');
     expect(TEXT_EXTRACTION_VERSION.length).toBeGreaterThan(0);
     expect(deriveText(html('<p>x</p>'), UTF8).textExtractionVersion).toBe(
-      'v1-htmltotext-normalised',
+      'v2-inflate-decode-htmltotext-normalised',
     );
   });
 

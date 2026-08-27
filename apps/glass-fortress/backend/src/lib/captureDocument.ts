@@ -1,4 +1,5 @@
 import { createHash } from 'crypto';
+import { gunzipSync, inflateSync, brotliDecompressSync } from 'zlib';
 import { htmlToText, normaliseText } from './htmlText';
 
 /**
@@ -25,7 +26,7 @@ import { htmlToText, normaliseText } from './htmlText';
  * this repository has already done four times (`classifierVersion`,
  * `summaryVersion`, `diffInputVersion`, `DETECTION_VERSION`).
  */
-export const TEXT_EXTRACTION_VERSION = 'v1-htmltotext-normalised';
+export const TEXT_EXTRACTION_VERSION = 'v2-inflate-decode-htmltotext-normalised';
 
 /** SHA-256 hex digest of bytes. Bare hex — see toBytes32 before any chain call. */
 export function sha256Bytes(bytes: Buffer): string {
@@ -78,6 +79,38 @@ export interface DerivedText {
 }
 
 /**
+ * Undo the transfer encoding the source applied, if any.
+ *
+ * THE STEP THAT USED TO BE INVISIBLE. axios did this transparently and the
+ * inflated bytes were stored as though they were the payload — so this is not a
+ * new capability, it is the same transformation moved from inside a library's
+ * defaults to a named, versioned step in a chain that can be recited:
+ *
+ *     bytes as served -> inflate -> decode (charset) -> htmlToText -> normalise
+ *
+ * Deterministic and cheap, so unlike `text` it needs no caching. Unknown or
+ * absent encodings pass through untouched: the bytes are stored either way, so a
+ * label we cannot act on costs nothing and inventing a guess would cost the
+ * fidelity this whole level is about.
+ */
+export function inflateDocument(bytes: Buffer, contentEncoding: string | null | undefined): Buffer {
+  const encoding = (contentEncoding ?? '').trim().toLowerCase();
+  try {
+    if (encoding === 'gzip' || encoding === 'x-gzip') return gunzipSync(bytes);
+    if (encoding === 'deflate') return inflateSync(bytes);
+    if (encoding === 'br') return brotliDecompressSync(bytes);
+  } catch {
+    // A payload that will not inflate is a finding, not a reason to lose the
+    // capture: the bytes as served are already stored and can be re-examined
+    // forever. Returning them unchanged keeps the derivation honest — the text
+    // that follows will look wrong, which is the correct outcome for bytes that
+    // do not match their declared encoding.
+    return bytes;
+  }
+  return bytes;
+}
+
+/**
  * Derive the normalised text view of a payload.
  *
  * A CACHED DERIVATION, stored rather than recomputed per read because diffs and
@@ -85,8 +118,14 @@ export interface DerivedText {
  * data is a cached verdict invalidated by version. It is never a source of
  * truth: the payload is, and this can be rebuilt from it at any time.
  */
-export function deriveText(bytes: Buffer, contentType: string | null | undefined): DerivedText {
-  const text = normaliseText(htmlToText(decodeDocument(bytes, contentType)));
+export function deriveText(
+  bytes: Buffer,
+  contentType: string | null | undefined,
+  contentEncoding: string | null | undefined = null,
+): DerivedText {
+  const text = normaliseText(
+    htmlToText(decodeDocument(inflateDocument(bytes, contentEncoding), contentType)),
+  );
   return {
     text,
     textHash: sha256Text(text),

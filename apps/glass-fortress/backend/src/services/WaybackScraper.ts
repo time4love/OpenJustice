@@ -2,7 +2,7 @@ import axios from 'axios';
 import { CaptureProvenance } from '@prisma/client';
 import { recordCapture, waybackTimestampToDate } from './recordCapture';
 import { extractArticleText, timestampToDate } from '../lib/archiveText';
-import { decodeDocument } from '../lib/captureDocument';
+import { decodeDocument, inflateDocument } from '../lib/captureDocument';
 import {
   CDX_MAX_RETRIES,
   CDX_TIMEOUT_MS,
@@ -113,6 +113,7 @@ async function recordArchivedCapture(
   fullText: string,
   document: Buffer,
   documentContentType: string | null,
+  documentContentEncoding: string | null,
 ): Promise<{ id: string; waybackTimestamp: string; contentHash: string }> {
   const recorded = await recordCapture({
     trackedUrlId,
@@ -122,6 +123,7 @@ async function recordArchivedCapture(
     sourceUrl: viewerCaptureUrl(timestamp, url),
     document,
     documentContentType,
+    documentContentEncoding,
     extraction: fullText,
   });
 
@@ -414,7 +416,12 @@ export class WaybackScraper {
   async scrapeSnapshotReadings(
     url: string,
     timestamp: string,
-  ): Promise<{ extracted: string; bytes: Buffer; contentType: string | null }> {
+  ): Promise<{
+    extracted: string;
+    bytes: Buffer;
+    contentType: string | null;
+    contentEncoding: string | null;
+  }> {
     // ONE fetch, and it returns the payload rather than a decoded string.
     //
     // This used to fetch with responseType 'text' and return `raw:
@@ -426,12 +433,13 @@ export class WaybackScraper {
     //
     // The extraction is still derived here because Readability wants a string;
     // the bytes travel to recordCapture untouched.
-    const { bytes, contentType } = await fetchCaptureBytes(url, timestamp);
-    const html = decodeDocument(bytes, contentType);
+    const { bytes, contentType, contentEncoding } = await fetchCaptureBytes(url, timestamp);
+    const html = decodeDocument(inflateDocument(bytes, contentEncoding), contentType);
     return {
       extracted: extractArticleText(html, rawCaptureUrl(timestamp, url)),
       bytes,
       contentType,
+      contentEncoding,
     };
   }
 
@@ -516,7 +524,7 @@ export class WaybackScraper {
         try {
           snaps.push(
             await recordArchivedCapture(
-              trackedUrl.id, snap.timestamp, url, readings.extracted, readings.bytes, readings.contentType,
+              trackedUrl.id, snap.timestamp, url, readings.extracted, readings.bytes, readings.contentType, readings.contentEncoding,
             ),
           );
         } catch {
@@ -816,7 +824,7 @@ export class WaybackScraper {
           const readings = await this.scrapeSnapshotReadings(job.url, entry.timestamp);
           previousText = readings.extracted;
           previousSnapshot = await recordArchivedCapture(
-            trackedUrlId, entry.timestamp, job.url, readings.extracted, readings.bytes, readings.contentType,
+            trackedUrlId, entry.timestamp, job.url, readings.extracted, readings.bytes, readings.contentType, readings.contentEncoding,
           );
         } catch {
           // Keep last good values if re-fetch fails during resume
@@ -830,7 +838,7 @@ export class WaybackScraper {
         const readings = await this.scrapeSnapshotReadings(job.url, entry.timestamp);
         currentText = readings.extracted;
         currentSnapshot = await recordArchivedCapture(
-          trackedUrlId, entry.timestamp, job.url, readings.extracted, readings.bytes, readings.contentType,
+          trackedUrlId, entry.timestamp, job.url, readings.extracted, readings.bytes, readings.contentType, readings.contentEncoding,
         );
       } catch (err) {
         console.warn(

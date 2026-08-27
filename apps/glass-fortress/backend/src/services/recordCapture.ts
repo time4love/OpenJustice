@@ -41,6 +41,14 @@ export interface RecordCaptureInput {
   document: Buffer;
   /** The Content-Type header verbatim — what makes the bytes decodable later. */
   documentContentType?: string | null;
+  /**
+   * The Content-Encoding header verbatim.
+   *
+   * `document` is the payload AS SERVED, so this is what says how to read it.
+   * Both headers are stored on the same rule: keep every response header without
+   * which the bytes cannot be interpreted.
+   */
+  documentContentEncoding?: string | null;
   /** Readability's article view of that same payload. */
   extraction: string;
 }
@@ -233,6 +241,7 @@ export async function recordCapture(input: RecordCaptureInput): Promise<Recorded
     sourceUrl,
     document,
     documentContentType,
+    documentContentEncoding,
     extraction,
   } = input;
 
@@ -256,7 +265,7 @@ export async function recordCapture(input: RecordCaptureInput): Promise<Recorded
 
   const contentHash = sha256Text(extraction);
   const documentHash = sha256Bytes(document);
-  const derived = deriveText(document, documentContentType ?? null);
+  const derived = deriveText(document, documentContentType ?? null, documentContentEncoding ?? null);
 
   const existing = await prisma.urlSnapshot.findUnique({
     where: { trackedUrlId_capturedAt: { trackedUrlId, capturedAt } },
@@ -364,6 +373,7 @@ export async function recordCapture(input: RecordCaptureInput): Promise<Recorded
         document,
         documentHash,
         documentContentType: documentContentType ?? null,
+        documentContentEncoding: documentContentEncoding ?? null,
         text: derived.text,
         textHash: derived.textHash,
         textExtractionVersion: derived.textExtractionVersion,

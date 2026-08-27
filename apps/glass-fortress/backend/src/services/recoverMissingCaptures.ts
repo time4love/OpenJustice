@@ -2,7 +2,7 @@ import { prisma } from '../lib/prisma';
 import { CaptureProvenance } from '@prisma/client';
 import { recordCapture, waybackTimestampToDate, type DocumentComparison } from './recordCapture';
 import { extractArticleText } from '../lib/archiveText';
-import { decodeDocument } from '../lib/captureDocument';
+import { decodeDocument, inflateDocument } from '../lib/captureDocument';
 import type { SnapshotAnchorOutcome } from './anchorSnapshots';
 import axios from 'axios';
 import {
@@ -198,9 +198,9 @@ export async function recoverMissingCaptures(opts: {
     }
 
     try {
-      const { bytes, contentType } = await fetchCaptureBytes(opts.url, row.timestamp);
+      const { bytes, contentType, contentEncoding } = await fetchCaptureBytes(opts.url, row.timestamp);
       const extraction = extractArticleText(
-        decodeDocument(bytes, contentType),
+        decodeDocument(inflateDocument(bytes, contentEncoding), contentType),
         rawCaptureUrl(row.timestamp, opts.url),
       );
 
@@ -212,6 +212,7 @@ export async function recoverMissingCaptures(opts: {
         sourceUrl: viewerCaptureUrl(row.timestamp, opts.url),
         document: bytes,
         documentContentType: contentType,
+        documentContentEncoding: contentEncoding,
         extraction,
       });
 
