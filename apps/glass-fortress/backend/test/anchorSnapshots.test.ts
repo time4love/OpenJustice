@@ -322,8 +322,12 @@ describe('the scanner anchors through the shared path', () => {
 
   it('the write path anchors via the shared registerSnapshotOnChain', () => {
     expect(writePath).toMatch(/registerSnapshotOnChain\s*\(/);
+    // Matches the SYMBOL in an import from that module, not one exact import
+    // line. The earlier form pinned the whole clause and broke the moment a
+    // second symbol was imported alongside it — a test failing on a change that
+    // could not affect what it was guarding.
     expect(writePath).toMatch(
-      /import \{ registerSnapshotOnChain \} from '\.\/anchorSnapshots'/,
+      /import\s*\{[^}]*\bregisterSnapshotOnChain\b[^}]*\}\s*from\s*'\.\/anchorSnapshots'/,
     );
   });
 

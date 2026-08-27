@@ -27,6 +27,7 @@
     "entities:canonicalise": "node dist/scripts/canonicaliseTargetEntities.js",
     "forensics:rediff": "node dist/scripts/rediffFromSnapshots.js",
     "forensics:backfill-raw-text": "node dist/scripts/backfillSnapshotRawText.js",
+    "forensics:recover-captures": "node dist/scripts/recoverMissingCaptures.js",
     "forensics:measure-divergence": "node dist/scripts/measureExtractionDivergence.js"
   },
   "keywords": [],
