@@ -284,6 +284,76 @@ The twelfth revert, `20220703090600`, **is** stored — its twin fell in the pre
 per-batch Set could not see it. Whether a page state was recorded depended on **CDX pagination**, which
 is why narrowing the rule could not have fixed it.
 
+#### Level 1 REOPENED 2026-08-27 — the fix reproduced the bug it was fixing
+
+**`rawText` was a filter masquerading as storage.**
+
+The plan diagnosed Readability as discarding at write time and prescribed storing the document. The
+implementation stored `normaliseText(htmlToText(html))` — HTML stripped to text — and named it the
+document. **`NOT NULL` then enforced that SOMETHING was present, not that it was the document: a
+constraint standing in for a guarantee, inside the level built to remove exactly that.** The fix
+reproduced the bug at a lower loss rate.
+
+**The concrete cost, not an abstract one:** `htmlToText` discards hrefs while keeping anchor text, and
+this platform's central finding is that a **reporting-channel link was removed**. Two different links
+with the same visible text are, to a text-only store, the same page.
+
+*Measured, not argued:* CDX rows 6, 7 and 8 of the tracked page carry two distinct payload digests
+(`J25UK…`, `L7PKZ…`, `J25UK…`) and collapse to **one** stored hash. Recovering row 8 with
+`--limit 1 --apply` on 2026-08-27 returned `UNCHANGED`, wrote nothing, and never reached the anchoring
+twin path. Predicted from reading `extractRawText` before the run, then confirmed by it — had all twelve
+run blind, the report would have read "recovery complete, 0 created" and the corpus would have been
+called repaired.
+
+*How it was found is the method working:* a single capture, run first, against a prediction.
+
+**The fix — option (1), storing bytes.** Not for fidelity to a written invariant but because **you can
+derive text from bytes and never bytes from text**: storing the payload preserves every future
+definition of "changed", and storing text commits now, irreversibly, to one. The alternatives were
+rejected — accepting it would be "complete by our own definition", where the definition was chosen by
+accident; keying novelty on the CDX digest would give "is this capture new?" two answers again, and
+that digest is over the HTTP payload rather than anything of ours to borrow.
+
+| stored | over | used for |
+|---|---|---|
+| `document` (Bytes) + `documentContentType` | the payload as fetched | integrity; where the anchor moves at Level 3 |
+| `documentHash` | those bytes | the `EXISTS` comparison — bytes, because comparing text is what hid this |
+| `text` + `textHash` + `textExtractionVersion` | the normalised text | **novelty and diffing**, cached per §3 with its version |
+
+**Novelty stays on `textHash`, deliberately.** Byte-identity is too sensitive — a rotating cache-buster
+or a timestamp in a comment would make every capture distinct and store hundreds of near-identical
+payloads. Nothing is discarded either way, because the payload is kept whole; only whether a new ROW
+appears changes. The sensitivity question is now answered explicitly rather than decided by accident
+inside an extractor.
+
+*Cost:* `rawContentHash` was never anchored — the chain holds `contentHash = sha256(fullText)` — so
+re-hashing all 83 rows **moves nothing on-chain and orphans nothing**. Storage ~500KB → ~4.3MB.
+
+**The recount target of 94 was computed under a definition the system does not use.** It was derived
+from CDX digests, which are byte-level; our novelty rule is text-level. Those were never the same
+measure, and the gap between them is what the single capture exposed. It is re-derived after the bytes
+are stored, by re-running recovery and counting how many of the eleven are **text-distinct** — a number
+nobody currently knows.
+
+*Found while building the fix, and it is the same lesson again:* exposing the anchoring outcome made
+`anchoring` a promise callers may ignore, and the first version documented *"the promise never rejects"*
+while that guarantee lived in **another module**. The suite did not fail an assertion — it **crashed a
+Jest worker** on an unhandled rejection, which on the scanner's path would end the process during a
+routine scan. Fixed by making the guarantee local (`anchorNeverRejecting`).
+
+*Every one of the 21 mutations proved before the reopening was re-proved, none carried:* a mutation is
+evidence about an implementation, and the implementation changed. One re-run **survived** —
+blanking `TEXT_EXTRACTION_VERSION` passed, because the test asserted the constant against itself. A
+tautology, the same shape as the hash-shape assertions caught here before; now pinned to its literal
+value.
+
+**Next decision, already agreed and not to be designed against:** the observation / document split —
+`Capture(trackedUrlId, provenance, capturedAt, waybackTimestamp, documentId)` and
+`Document(hash, bytes, derived text)`. Whether bytes match should decide whether a new DOCUMENT is
+stored, never whether we record that the Archive looked. Three of this level's problems have resolved to
+that distinction: the `seenDigests` discards, the continuity-proof gap, and this one. **The split needs
+no re-fetch once the bytes are stored.**
+
 #### Level 1 is not closed until the capture layer is complete
 
 Fixing the rule going forward does not recover what it discarded. **Eleven page states are missing, and

@@ -94,7 +94,9 @@ async function main(): Promise<void> {
     console.log(
       `  ${r.waybackTimestamp}  ${String(r.outcome)}` +
         `  anchoring=${String(r.anchoring)}` +
-        (r.divergedFromStored ? '  DIVERGED' : ''),
+        (r.documentComparison && r.documentComparison !== 'MATCHES'
+          ? `  payload=${r.documentComparison}`
+          : ''),
     );
   }
 
@@ -105,7 +107,12 @@ async function main(): Promise<void> {
   console.log(`  created:   ${String(tally((r) => r.outcome === 'CREATED'))}`);
   console.log(`  unchanged: ${String(tally((r) => r.outcome === 'UNCHANGED'))}`);
   console.log(`  exists:    ${String(tally((r) => r.outcome === 'EXISTS'))}`);
-  console.log(`  diverged:  ${String(tally((r) => r.divergedFromStored === true))}`);
+  console.log(`  diverged:  ${String(tally((r) => r.documentComparison === 'DIVERGED'))}`);
+  console.log(
+    `  payload comparison unavailable: ${String(
+      tally((r) => r.documentComparison === 'UNAVAILABLE'),
+    )}`,
+  );
   console.log(`  failed:    ${String(tally((r) => r.error !== undefined))}`);
   for (const kind of [
     'COPIED_FROM_TWIN',

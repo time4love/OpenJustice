@@ -191,6 +191,54 @@ export function viewerCaptureUrl(timestamp: string, url: string): string {
  * answer" (timeout, 503) — a distinction the verification tools report as two
  * different unavailable states and must never collapse into one.
  */
+/**
+ * Fetch a capture as the PAYLOAD, not as a decoded string.
+ *
+ * `fetchCaptureHtml` asks axios for `responseType: 'text'`, which decodes the
+ * body using a charset axios infers. That is one transformation away from what
+ * the Archive served, and Level 1 was reopened precisely because a
+ * transformation was stored under the name of the thing itself. Bytes plus the
+ * declared Content-Type is the pair that can be re-decoded forever.
+ *
+ * The text path is kept for callers that genuinely want text and nothing else
+ * (Readability extraction), so this is an addition rather than a replacement.
+ */
+export async function fetchCaptureBytes(
+  url: string,
+  timestamp: string,
+  retry: { maxRetries: number; baseDelayMs?: number } = { maxRetries: SNAPSHOT_MAX_RETRIES },
+): Promise<{ bytes: Buffer; contentType: string | null }> {
+  try {
+    const response = await withRetry(
+      () =>
+        axios.get<ArrayBuffer>(rawCaptureUrl(timestamp, url), {
+          timeout: SNAPSHOT_TIMEOUT_MS,
+          headers: {
+            'User-Agent': SNAPSHOT_USER_AGENT,
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          },
+          responseType: 'arraybuffer',
+          maxContentLength: 5 * 1024 * 1024,
+        }),
+      retry,
+    );
+    const header = response.headers['content-type'];
+    return {
+      bytes: Buffer.from(response.data),
+      contentType: typeof header === 'string' ? header : null,
+    };
+  } catch (err) {
+    if (axios.isAxiosError(err)) {
+      throw new WaybackFetchError(
+        `Failed to fetch snapshot ${timestamp}: HTTP ${String(err.response?.status ?? 'unknown')}`,
+        isWaybackOffline(err),
+        err.response?.status ?? null,
+      );
+    }
+    throw err;
+  }
+}
+
 export async function fetchCaptureHtml(
   url: string,
   timestamp: string,

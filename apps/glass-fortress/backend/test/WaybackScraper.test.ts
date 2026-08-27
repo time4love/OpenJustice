@@ -455,7 +455,7 @@ describe('WaybackScraper.processJob', () => {
     const scraper = new WaybackScraper();
     jest
       .spyOn(scraper, 'scrapeSnapshotReadings')
-      .mockResolvedValue({ extracted: 'the article', raw: 'the article and the chrome around it' });
+      .mockResolvedValue({ extracted: 'the article', bytes: Buffer.from('the article and the chrome around it'), contentType: 'text/html; charset=utf-8' });
 
     await scraper.processJob('job-id-789');
 
@@ -463,19 +463,19 @@ describe('WaybackScraper.processJob', () => {
       { data: Record<string, string> },
     ][];
     expect(calls.length).toBeGreaterThan(0);
-    expect(calls[0][0].data.rawText).toBe('the article and the chrome around it');
+    expect(calls[0][0].data.document).toEqual(Buffer.from('the article and the chrome around it'));
 
     // Pinned to the hash OF THE STORED DOCUMENT, not merely to the shape of a
     // hash. A shape assertion (64 hex chars, different from contentHash) passes
     // for sha256('') too — verified by mutation: replacing the digest input with
     // '' left all 36 tests in this file green. A checksum exists to DISAGREE
     // with a recomputation, so the test has to recompute it.
-    const expectedRawHash = createHash('sha256')
-      .update('the article and the chrome around it', 'utf8')
+    const expectedDocHash = createHash('sha256')
+      .update(Buffer.from('the article and the chrome around it'))
       .digest('hex');
-    expect(calls[0][0].data.rawContentHash).toBe(expectedRawHash);
+    expect(calls[0][0].data.documentHash).toBe(expectedDocHash);
     // The two hashes are of DIFFERENT strings and must not be conflated:
-    // contentHash covers the extraction, rawContentHash covers the document.
+    // contentHash covers the extraction, documentHash covers the payload.
     expect(calls[0][0].data.contentHash).toBe(
       createHash('sha256').update('the article', 'utf8').digest('hex'),
     );
@@ -492,7 +492,7 @@ describe('WaybackScraper.processJob', () => {
     const scraper = new WaybackScraper();
     jest
       .spyOn(scraper, 'scrapeSnapshotReadings')
-      .mockResolvedValue({ extracted: 'the article', raw: 'the whole document' });
+      .mockResolvedValue({ extracted: 'the article', bytes: Buffer.from('the whole document'), contentType: 'text/html; charset=utf-8' });
 
     await scraper.processJob('job-id-789');
 
@@ -506,7 +506,7 @@ describe('WaybackScraper.processJob', () => {
     const scraper = new WaybackScraper();
     jest
       .spyOn(scraper, 'scrapeSnapshotReadings')
-      .mockResolvedValueOnce({ extracted: 'some page text', raw: 'some page text and more' })
+      .mockResolvedValueOnce({ extracted: 'some page text', bytes: Buffer.from('some page text and more'), contentType: 'text/html; charset=utf-8' })
       .mockRejectedValue(new WaybackFetchError('Failed to fetch snapshot: HTTP 503', true));
 
     const result = await scraper.processJob('job-id-789');

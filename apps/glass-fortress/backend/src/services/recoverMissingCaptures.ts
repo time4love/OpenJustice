@@ -1,14 +1,15 @@
 import { prisma } from '../lib/prisma';
 import { CaptureProvenance } from '@prisma/client';
-import { recordCapture, waybackTimestampToDate } from './recordCapture';
-import { extractArticleText, extractRawText } from '../lib/archiveText';
+import { recordCapture, waybackTimestampToDate, type DocumentComparison } from './recordCapture';
+import { extractArticleText } from '../lib/archiveText';
+import { decodeDocument } from '../lib/captureDocument';
 import type { SnapshotAnchorOutcome } from './anchorSnapshots';
 import axios from 'axios';
 import {
   CDX_MAX_RETRIES,
   CDX_TIMEOUT_MS,
   CDX_USER_AGENT,
-  fetchCaptureHtml,
+  fetchCaptureBytes,
   rawCaptureUrl,
   sleep,
   viewerCaptureUrl,
@@ -59,8 +60,8 @@ export interface RecoveredCapture {
   digest: string;
   /** Absent on a dry run, where nothing is written. */
   outcome?: 'CREATED' | 'UNCHANGED' | 'EXISTS';
-  /** The refetched document disagreed with a stored capture at the same instant. */
-  divergedFromStored?: boolean;
+  /** Whether the refetched payload matched the stored one — see DocumentComparison. */
+  documentComparison?: DocumentComparison;
   /**
    * How anchoring resolved.
    *
@@ -197,9 +198,11 @@ export async function recoverMissingCaptures(opts: {
     }
 
     try {
-      const html = await fetchCaptureHtml(opts.url, row.timestamp);
-      const document = extractRawText(html);
-      const extraction = extractArticleText(html, rawCaptureUrl(row.timestamp, opts.url));
+      const { bytes, contentType } = await fetchCaptureBytes(opts.url, row.timestamp);
+      const extraction = extractArticleText(
+        decodeDocument(bytes, contentType),
+        rawCaptureUrl(row.timestamp, opts.url),
+      );
 
       const result = await recordCapture({
         trackedUrlId: tracked.id,
@@ -207,7 +210,8 @@ export async function recoverMissingCaptures(opts: {
         capturedAt: waybackTimestampToDate(row.timestamp),
         waybackTimestamp: row.timestamp,
         sourceUrl: viewerCaptureUrl(row.timestamp, opts.url),
-        document,
+        document: bytes,
+        documentContentType: contentType,
         extraction,
       });
 
@@ -224,7 +228,7 @@ export async function recoverMissingCaptures(opts: {
         waybackTimestamp: row.timestamp,
         digest: row.digest,
         outcome: result.outcome,
-        divergedFromStored: result.divergedFromStored,
+        documentComparison: result.documentComparison,
         anchoring,
       });
     } catch (err) {
