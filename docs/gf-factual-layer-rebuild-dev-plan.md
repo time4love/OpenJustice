@@ -621,12 +621,27 @@ have been the wrong repair.
 *Idempotence proven on real data rather than only in tests:* an immediate second `--apply` reported
 **83 ALREADY_CORRECT, 0 REHASHED, 0 RACED**. The tool converges and cannot touch a row already correct.
 
-*Simulated first, as a measurement rather than a judgement.* An UPDATE is not on the blocked-command
-list, but "a statement that has not been simulated does not get executed" does not carve out
-non-destructive ones. `db:simulate` on a representative single-row statement: target
-`elwsznbcfmbmkldpntae`, **LOW RISK — 1 row affected, 0 permanently lost**. It also holds structurally,
-which is the stronger argument: the overwritten value is `cdxDigestOf(document)`, recomputable at any
-time from a column the statement does not touch. **The write destroys no information.**
+*Simulated first.* An UPDATE is not on the blocked-command list, but "a statement that has not been
+simulated does not get executed" does not carve out non-destructive ones.
+
+> **READ THE TWO NUMBERS TOGETHER: the simulator reported 1 row and the operation wrote 83.**
+> Both are true and they measure different things. `db:simulate` takes **one statement**, by design —
+> it reports a multi-command input as `NOT SIMULATED` — while the rehash issues **83 individually
+> guarded UPDATEs**, one per capture. So what was simulated is **one representative statement of the
+> 83**, not the operation.
+
+Stated that explicitly because, left unqualified in a log someone reads cold, `1 row affected` beside
+`83 REHASHED` reads either as a discrepancy or as though 83 rows had been simulated. That is this
+document's own recurring shape — **a number from one measure asserted about another** — which has now
+produced the 94 recount target, the "~13% incomplete" claim, and the stale 4157 kB figure.
+
+`db:simulate` on that representative statement: target `elwsznbcfmbmkldpntae`, **LOW RISK — 1 row
+affected, 0 permanently lost.**
+
+**The structural argument is what made this safe, and the simulator agreed with it rather than
+establishing it.** The overwritten value is `cdxDigestOf(document)` — recomputable at any time from a
+column the statement does not touch. **The write destroys no information**, and that is true of all 83
+statements, which is a property a one-statement simulation cannot demonstrate.
 
 #### `noUncheckedIndexedAccess` — MEASURED 2026-08-27, and it is now a number
 
@@ -639,8 +654,23 @@ npx tsc --noEmit --noUncheckedIndexedAccess -p tsconfig.json
 **133 errors across 12 files.** By rule: `TS18048` (possibly undefined) 85 · `TS2532` 30 · `TS2345` 13 ·
 `TS2322` 4 · `TS2538` 1.
 
-Too large to fold into an unrelated change, too small to be indefinite — **so it is its own piece of
-work, and this is its entry.**
+Too large to fold into an unrelated change, too small to be indefinite. **And it is NOT a 133-error
+project — the distribution decides the shape of the work.** Two moves, settled 2026-08-27:
+
+**1. Ratchet it.** Record **133** as the baseline and add a check that the count never increases. This
+is the urgent half, because the standing risk is the bleed rather than the backlog: every correctly
+guarded new file is one a future lint cleanup could break, **with the linter arguing for the break**.
+That has already happened twice. A ratchet stops it today without waiting for anyone to schedule the
+backlog.
+
+**2. Fix `WaybackScraper.ts` inside Phase A**, since Phase A must open that file anyway for
+`computeNextFromDate`. Twenty errors in a file already being edited is incremental; twenty errors in a
+file nobody is touching is a chore that never gets scheduled. The remaining files ride on the levels
+that touch them — `claimTrajectory.ts` with Level 6, `thesisAssertions.ts` and `getThesisContext.ts`
+with Level 9.
+
+**That is the whole method here applied to itself:** work nobody owns does not land, so attach it to
+changes already planned and ratchet the rest so it cannot grow meanwhile.
 
 **The concentration is the part worth acting on.** The errors sit in the files this rebuild is actively
 touching:
