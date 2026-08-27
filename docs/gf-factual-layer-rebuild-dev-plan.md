@@ -171,6 +171,12 @@ and it yields a coverage report for free.
 below it can no longer produce bad data.** That ordering is the entire method: it is what separates
 this from the three previous encounters with the same defect.
 
+**An enforcement is not proven until it has been observed to FAIL.** Level 0 was validated by breaking
+the extractor deliberately — returning `""` fails 18 tests, returning the extraction instead of the
+document fails 11. A guard watched only in its green state has not been demonstrated to guard anything,
+and this repository already records that lesson twice. Every level's enforcement gets the same
+treatment before it counts as done.
+
 Each level below names its **invariant** (what must always be true) and its **enforcement** (the code
 that makes violating it impossible or impossible-to-miss).
 
@@ -266,6 +272,12 @@ and missed the case this work exists for; sentence granularity found 7.
 
 *Enforcement:* verified at computation, verdict stored with `DETECTION_VERSION` and `sourceStateHash`.
 
+*Carried forward:* `MIN_CLAIM_LENGTH = 40` still filters trajectory candidates — the same
+length-as-significance assumption that had to be removed from the diff classifier, surviving in a
+second subsystem. A short claim can be the load-bearing one; "אין סיכוי לחלות בקורונה בגלל החיסון" is
+not long. Changing it bumps `DETECTION_VERSION` and recomputes every trajectory, so it belongs in this
+level rather than after it.
+
 ### Level 7 — the evidence
 
 *Invariant:* identity is recomputable from its captures, and a summary attributes nothing to a page
@@ -288,7 +300,15 @@ verified** — no archive lookup settles an opinion. Their controls are complete
 variance (`classifierDraws` is null on older rows, meaning a single draw was stored as though it were a
 measurement, and null must render as that sentence), and rendering separation. The tutorial's own
 `COMMON_RULES` already forbids mixing the two registers in one table; `get_forensic_timeline` already
-breaks it. `evidenceTier` matters most — publication check 6 gates on it.
+breaks it. `evidenceTier` matters most — publication check 6 gates on it, and the check reports itself
+as NON-BINDING because every confirmed record currently sits at or above Tier 2.
+
+*Also at this level:* `get_forensic_timeline` returns **no evidence linkage at all**. Its query is a
+flat `select` of nine `UrlVersionDiff` columns and never traverses `Evidence.urlVersionDiffId`, which
+is a `@unique` FK — so the tool reports that a legally significant change occurred while staying silent
+on whether it is backed by anchored evidence. A researcher cannot distinguish *"we detected this"* from
+*"we can prove this"* without a second tool and a manual join on dates. One `include` and two fields
+per row.
 
 ### Level 9 — the thesis
 
@@ -297,6 +317,30 @@ breaks it. `evidenceTier` matters most — publication check 6 gates on it.
 *Enforcement:* the publication gate consumes the verdicts instead of `audit_thesis_claims` merely
 reporting. Known blind spot carried forward: Hebrew number-words, which the auditor already declares it
 cannot check.
+
+*Three defects in the surrounding pipeline belong to this level, all recorded in
+`docs/gf-framing-assessor-defects.md`:*
+
+- **`researcherClaim` is a free-text paraphrase slot** with no verbatim constraint and no validation.
+  Across four framing runs — two environments, two corpora, five days apart — the assessor produced the
+  same three errors every time: dropped a trailing conjunct, inserted a causal phrase the researcher
+  never wrote, and asserted page wording that `verify_claim_text` shows is absent. Reproducibility is
+  the signature of a systematic prior, not of sampling noise. Fix: require it to be a whitespace-
+  collapsed substring of `proposedFraming`. The open decision is what happens when the model will not
+  comply — dropping the contradiction suppresses possibly-real ones, retrying burns calls, flagging
+  `claimQuoteVerified: false` suppresses nothing. Queued as task `task_3e0501b3`.
+- **`whatEvidenceShows` is equally unconstrained and nothing checks it against the archive.** The
+  researcher's thesis prose is audited mechanically; the critic's assertions never are. The one
+  participant whose claims go unverified is the one the researcher is told to defer to.
+- **`FIGURES_HEDGED` passes silently on a name the system has never recorded.** The check states this
+  itself. On production, `פרופ' מתי ברקוביץ'` is not a registered key figure, so a sentence naming him
+  would pass **unchecked rather than verified** — a silent pass wearing the face of a real one, which
+  is the same failure shape as `UNAVAILABLE` counting as `VERIFIED`.
+
+*And one gap in the session record itself:* **`add_session_note` requires a `thesisId`**, so a framing
+session with no thesis attached has no way to record a correction — during exactly the phase where
+corrections are discovered. A seven-versus-five error found mid-framing on 2026-08-27 could not be
+written to the session it belonged to.
 
 ### Level 10 — retire the old corpus
 
@@ -327,6 +371,14 @@ row count confirmed before anything runs.
 - **Production.** This plan rebuilds staging. Production holds the same 8 records and 83 captures and
   is the environment the public reads. Same treatment, or a separate decision?
 - **Staging's published thesis** is still published and still contains the false claim.
+- **Correcting evidence summary `0x7517947a…`**, which describes its source falsely
+  (`קלים וחולפים בלבד`, none of which is on the page). Level 10 retires staging's copy — but
+  **production holds the same record**, so this is only moot if production is rebuilt too. The
+  mechanism exists (`forensics:resummarize` → `SummaryCorrection`, safe because evidence identity is
+  snapshot-derived so a rewritten summary does not orphan the anchor), but re-running the same model
+  over the same extracted items guarantees nothing: the prior that produced the phrase is still there.
+  Needs a before/after design asserting the rewritten summary contains no phrase absent from the
+  capture it describes.
 - **The production thesis walk** is held at `create_thesis_draft`, framing session
   `cmta7d2zs0001fd7pxtbezflk` ACTIVE with `rounds: 2`, `contradictions: []`.
 - `IntegrityCheck` as one table or per-subject columns (§3).
