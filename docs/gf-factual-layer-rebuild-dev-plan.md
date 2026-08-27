@@ -675,12 +675,47 @@ happened to make this detectable.
 tool prints** — `target: PRODUCTION`, `project ref: fqmczumacfbunffgodlo`, `*** THIS IS PRODUCTION ***`,
 `1 row affected, 0 permanently lost`.
 
-*The fix, not yet made:* `scripts/dbSimulate.ts` must `import 'dotenv/config'` like every other
-operational script. **Until it does, the rule "a statement that has not been simulated does not get
-executed" is enforced by a tool that cannot be pointed at production by the documented mechanism** —
-and `CLAUDE.md` already names that class exactly: *a rule mandating a tool the environment cannot
-execute is not a control, it is an assumption.* One import, plus a test that the target honours
-`DOTENV_CONFIG_PATH`.
+###### FIXED — and it was FOUR scripts, not one
+
+*The survey is the finding.* Sixteen scripts under `scripts/`; **twelve imported `dotenv/config` and
+four did not** — `dbSimulate`, `rediffFromSnapshots`, `bootstrapResearcher`,
+`canonicaliseTargetEntities`. **Three of those four WRITE**, and one is named in `CLAUDE.md` as an
+authorised production operation:
+
+| script | what it does when pointed at the wrong database |
+|---|---|
+| `forensics:rediff` | `applyRediff` — rewrites the diff layer |
+| `bootstrapResearcher` | grants or revokes RESEARCHER and **ADMIN** |
+| `canonicaliseTargetEntities` | `prisma.evidence.update` |
+| `db:simulate` | reports `LOW RISK` about a database nobody asked about |
+
+One rule, sixteen implementations, twelve of them right. **This repository's dominant defect shape, and
+the reason the guard is a source scan rather than four edits.**
+
+*Position is enforced, not merely presence.* `src/lib/prisma.ts` constructs `PrismaClient` at module
+load and CommonJS executes imports in source order, so a `dotenv/config` import placed **after**
+anything reaching that module loads the environment too late to matter. A presence check would pass
+while the connection stayed wrong. `test/scriptsLoadEnvFirst.test.ts` asserts `dotenv/config` is the
+**first** import of every script, and the mutation that proves it is *present but second* — which
+presence-only checking cannot see.
+
+*Proven behaviourally, not only by the guard.* The identical invocation, before and after:
+
+```
+DOTENV_CONFIG_PATH=.env.production.local npm run db:simulate -- '<statement>'
+
+  before :  target : staging       project ref : elwsznbcfmbmkldpntae
+  after  :  target : PRODUCTION    project ref : fqmczumacfbunffgodlo   *** THIS IS PRODUCTION. ***
+```
+
+The statement was scoped to production's `trackedUrlId`, so the row count discriminates independently:
+**83 rows on production, 0 without the variable** — where the default invocation still correctly
+resolves staging, confirming the common path is unchanged.
+
+*What this closes:* `CLAUDE.md`'s *"a rule mandating a tool the environment cannot execute is not a
+control, it is an assumption"* applied to `db:simulate` itself. The rule *"a statement that has not been
+simulated does not get executed"* is now enforceable in the environment where destruction actually
+matters.
 
 *The generalisation, since this is the second instance:* **`DOTENV_CONFIG_PATH` is honoured by whoever
 imports dotenv, and by nobody else.** The Prisma CLI ignores it; a script that never imports dotenv

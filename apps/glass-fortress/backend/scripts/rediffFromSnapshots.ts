@@ -9,6 +9,20 @@
  * the six diffs that back every promoted evidence record, and a subsequent
  * reclassification then judges text no model has ever seen.
  */
+// FIRST IMPORT, AND THE ORDER IS LOAD-BEARING.
+//
+// Without it DOTENV_CONFIG_PATH is honoured by nobody and Prisma Client quietly
+// auto-loads `.env` — so `DOTENV_CONFIG_PATH=.env.production.local npm run <this>`
+// runs against STAGING while reporting nothing unusual. That is not theoretical:
+// on 2026-08-27 db:simulate did exactly this and printed
+// "target: staging ... Safe to proceed on the evidence of this simulation alone"
+// for a statement written for production — a true statement about the wrong
+// database.
+//
+// It must come BEFORE any import that reaches src/lib/prisma, which constructs
+// PrismaClient at module load; CommonJS runs imports in source order, so a
+// dotenv import placed after it loads the env too late to matter.
+import 'dotenv/config';
 import { planRediff, applyRediff, REDIFF_TARGET_VERSION } from '../src/services/rediffFromSnapshots';
 import { prisma } from '../src/lib/prisma';
 
