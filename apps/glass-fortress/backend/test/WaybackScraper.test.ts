@@ -61,7 +61,12 @@ jest.mock('../src/lib/prisma', () => ({
       create: jest.fn().mockResolvedValue({ id: 'diff-id-456' }),
     },
     urlSnapshot: {
-      upsert: jest.fn().mockResolvedValue({ id: 'snapshot-id-abc', onChainTxHash: null }),
+      // rawContentHash present: a row that already holds its archived document,
+      // which is what every row a current scan creates looks like.
+      upsert: jest
+        .fn()
+        .mockResolvedValue({ id: 'snapshot-id-abc', onChainTxHash: null, rawContentHash: 'h' }),
+      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
     },
     waybackScrapeJob: {
       findUnique: jest.fn(),
@@ -337,10 +342,17 @@ describe('isWaybackOffline', () => {
 // ---------------------------------------------------------------------------
 // Tests: processJob — total-failure classification
 //
-// scrapeSnapshot is stubbed directly (rather than mocking axios + letting
+// scrapeSnapshotReadings is stubbed directly (rather than mocking axios + letting
 // withRetry run) so these tests aren't at the mercy of the real exponential
 // backoff a sustained 503 would trigger — that behavior is covered by the
 // isWaybackOffline and scrapeSnapshot suites above.
+//
+// Stub the method processJob ACTUALLY CALLS. These stubbed scrapeSnapshot while
+// the job path moved to scrapeSnapshotReadings, so the spy was bypassed entirely
+// and the real fetch ran against an exhausted axios mock. Two of the three failed
+// loudly; the third PASSED, because a real non-503 failure happens to produce the
+// ALL_FETCHES_FAILED it was asserting. A stub on the wrong method is not a
+// neutral mistake — it can leave a test green while testing nothing.
 // ---------------------------------------------------------------------------
 
 describe('WaybackScraper.processJob', () => {
@@ -366,7 +378,7 @@ describe('WaybackScraper.processJob', () => {
 
     const scraper = new WaybackScraper();
     jest
-      .spyOn(scraper, 'scrapeSnapshot')
+      .spyOn(scraper, 'scrapeSnapshotReadings')
       .mockRejectedValue(new WaybackFetchError('Failed to fetch snapshot: HTTP 503', true));
 
     const result = await scraper.processJob('job-id-789');
@@ -379,11 +391,60 @@ describe('WaybackScraper.processJob', () => {
 
     const scraper = new WaybackScraper();
     jest
-      .spyOn(scraper, 'scrapeSnapshot')
+      .spyOn(scraper, 'scrapeSnapshotReadings')
       .mockRejectedValue(new WaybackFetchError('Failed to fetch snapshot: HTTP 404', false));
 
     const result = await scraper.processJob('job-id-789');
     expect(result).toMatchObject({ status: 'FAILED', failureReason: 'ALL_FETCHES_FAILED' });
+  }, 15_000);
+
+  it('fills the archived document on a row created before rawText existed, and never overwrites one', async () => {
+    // A row from before the document was stored has no rawContentHash. The fill
+    // is guarded by `rawText: null` in the WHERE clause rather than by a check in
+    // code: a refetch that DISAGREES with a stored document means the Internet
+    // Archive's own copy changed, which is a finding to surface and never
+    // something a scan may silently paper over.
+    mockJobFindUnique.mockResolvedValueOnce(BASE_JOB);
+    mockAxiosGet.mockResolvedValueOnce(makeAxiosResponse(CDX_RESPONSE));
+    (prisma.urlSnapshot.upsert as jest.Mock).mockResolvedValue({
+      id: 'snapshot-id-abc',
+      onChainTxHash: null,
+      rawContentHash: null,
+    });
+
+    const scraper = new WaybackScraper();
+    jest
+      .spyOn(scraper, 'scrapeSnapshotReadings')
+      .mockResolvedValue({ extracted: 'the article', raw: 'the article and the chrome around it' });
+
+    await scraper.processJob('job-id-789');
+
+    const calls = (prisma.urlSnapshot.updateMany as jest.Mock).mock.calls as [
+      { where: Record<string, unknown>; data: Record<string, string> },
+    ][];
+    expect(calls.length).toBeGreaterThan(0);
+    expect(calls[0][0].where).toEqual({ id: 'snapshot-id-abc', rawText: null });
+    expect(calls[0][0].data.rawText).toBe('the article and the chrome around it');
+    expect(calls[0][0].data.rawContentHash).toMatch(/^[0-9a-f]{64}$/);
+  }, 15_000);
+
+  it('does not touch a row that already holds its archived document', async () => {
+    mockJobFindUnique.mockResolvedValueOnce(BASE_JOB);
+    mockAxiosGet.mockResolvedValueOnce(makeAxiosResponse(CDX_RESPONSE));
+    (prisma.urlSnapshot.upsert as jest.Mock).mockResolvedValue({
+      id: 'snapshot-id-abc',
+      onChainTxHash: null,
+      rawContentHash: 'already-stored',
+    });
+
+    const scraper = new WaybackScraper();
+    jest
+      .spyOn(scraper, 'scrapeSnapshotReadings')
+      .mockResolvedValue({ extracted: 'the article', raw: 'the whole document' });
+
+    await scraper.processJob('job-id-789');
+
+    expect(prisma.urlSnapshot.updateMany).not.toHaveBeenCalled();
   }, 15_000);
 
   it('marks the job COMPLETED with no failureReason once at least one snapshot succeeds', async () => {
@@ -392,8 +453,8 @@ describe('WaybackScraper.processJob', () => {
 
     const scraper = new WaybackScraper();
     jest
-      .spyOn(scraper, 'scrapeSnapshot')
-      .mockResolvedValueOnce('some page text')
+      .spyOn(scraper, 'scrapeSnapshotReadings')
+      .mockResolvedValueOnce({ extracted: 'some page text', raw: 'some page text and more' })
       .mockRejectedValue(new WaybackFetchError('Failed to fetch snapshot: HTTP 503', true));
 
     const result = await scraper.processJob('job-id-789');

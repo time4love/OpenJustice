@@ -1,159 +1,340 @@
 # Integrity at write time — plan
 
-**Written 2026-08-26**, after the production thesis walk stopped at the drafting step. Not started.
-No code, no production writes. Amend before anything is built.
+**Written 2026-08-26. Rewritten the same day around the validation matrix**, after a review asked the
+only question that matters of a plan like this: *does every component we manage have a validation?*
+The first draft did not survive it — it guarded the derived middle and left both ends unguarded.
+
+Not started. No code, no schema, no production writes.
 
 Companions: `docs/gf-framing-assessor-defects.md` (the four defects),
 `docs/gf-production-thesis-replay-plan.md` (how they were found).
 
 ---
 
-## The finding this plan exists for
+## 1. The finding
 
-Every component the platform computes is computed over a Readability extraction that discards roughly
-a third of the archived document — **and discards a different third on different captures.** Measured:
-69% retained on the 2022-08-05 capture, 66% on 2022-09-06. That variance is not cosmetic. It is what
-manufactures a removal that never happened.
+Everything the platform computes is computed over a Readability extraction that discards roughly a
+third of the archived document — **and discards a different third on different captures.** Measured:
+69% retained on the 2022-08-05 capture, 66% on 2022-09-06.
 
-Proven on 2026-08-26: `נמצאו יעילים ובטוחים לשימוש` is present in the raw archive on 2022-07-24,
-2022-08-05 and 2022-09-06. The extraction has it on two of the three. The trajectory layer therefore
-reported a removal and a restoration that never occurred, and staging's **published** thesis asserts
-the phrase was added on 2022-09-06.
+Proven 2026-08-26: `נמצאו יעילים ובטוחים לשימוש` is in the raw archive on 2022-07-24, 2022-08-05 and
+2022-09-06. The extraction has it on two of the three. The trajectory layer reported a removal and a
+restoration that never happened, and staging's **published** thesis asserts the phrase was added on
+2022-09-06.
 
-### The part that decides the shape of this plan
+### Why the plan is shaped by history rather than by the defect
 
-**This was already known, written down, and had already been connected to this exact false claim.**
-`src/lib/archiveText.ts`, authored 2026-08-23, says in its header comment that the extraction dropped
-"the sentence a real thesis went on to claim had been ADDED the following day". Three days later the
-thesis still says it.
-
-It is at least the third recorded instance of the same class:
+**It was already known, already written down, and already connected to this exact false claim.**
+`src/lib/archiveText.ts`, authored 2026-08-23, states in its header that the extraction dropped
+*"the sentence a real thesis went on to claim had been ADDED the following day"*. Three days later the
+thesis still says it. At least the third recorded instance of the class:
 
 | instance | recorded in |
 |---|---|
-| a byline date dropped, corrupting what `evidenceDate` meant | `src/lib/evidenceCapture.ts` |
+| a dropped byline date, corrupting what `evidenceDate` meant | `src/lib/evidenceCapture.ts` |
 | a live counter kept by the crude strip, unstable across fetches | `src/mcp/tools/createEvidenceFromUrl.ts` |
 | the FDA safety sentence dropped on one capture only | `src/lib/archiveText.ts` |
 
-Three documented encounters, no change to the storage decision. **A comment is not a control, and a
-tool a human must remember to run is not a control either.** Every defect found on 2026-08-26 survived
-because nobody invoked the tool that would have caught it — including the one whose consequence had
-already been written down.
+**A comment is not a control. A tool a human must remember to run is not a control either.** Every
+defect found on 2026-08-26 survived because nobody invoked the tool that would have caught it —
+including the one whose consequence had already been written down.
 
 ---
 
-## Part A — store the document, filter at read time
+## 2. The validation matrix
 
-### The one line that decides it
+Every component this platform manages, what validates it today, and what will.
 
-`src/services/WaybackScraper.ts:417` returns `extractArticleText(...)`, and that return value becomes
-`UrlSnapshot.fullText`. Everything else — chunks, diffs, items, classifications, trajectories,
-`contentHash`, the on-chain anchor, evidence identity — is downstream of that single expression.
+| # | component | produced by | validation today | after |
+|---|---|---|---|---|
+| 1 | **Wayback capture** | Internet Archive | **none** — the CDX `digest` is fetched and discarded | **Phase 2** |
+| 2 | **`UrlSnapshot.fullText`** | Readability over #1 | none | **Phase 1** |
+| 3 | **`UrlSnapshot.contentHash`** | SHA-256 of #2 | `rediffFromSnapshots.ts:182` only, inside one path | **Phase 3** |
+| 4 | **`UrlSnapshot.onChainTxHash`** | anchors #3 | `check_on_chain_status`, human-invoked | **Phase 7** |
+| 5 | **raw chunks** | diff of #2 vs #2 | none | **Phase 4** |
+| 6 | **claim items** | classifier over #5 | containment coverage as a *measure* | **Phase 4** |
+| 7 | **`isLegallySignificant`** | model judgement | provenance only | **Phase 6 — cannot be verified** |
+| 8 | **`aiSignificance`** | model prose | none | **Phase 5** |
+| 9 | **`ClaimTrajectory`** | string search over #2 | none | **Phase 4** |
+| 10 | **`Evidence.fileHash`** | derived from #3 | a unit test | **Phase 3** |
+| 11 | **tier / categories / key figures** | model | none | **Phase 6 — cannot be verified** |
+| 12 | **thesis, critique, framing** | researcher + models | `audit_thesis_claims`, reports only | **Phase 8** |
+| 13 | **`verify_claim_text`** | reads #1 directly | unit tests, not pinned to a real capture | **Phase 0** |
 
-`extractRawText` already exists in the same module, is already exported, and is already used by
-`verify_claim_text` and by `create_evidence_from_url`'s analysis path. **The scanner is asking the
-shared extractor for the wrong reading.**
+### Three admissions this matrix forces
 
-### Why the original justification no longer holds
+**a. Rows 7 and 11 cannot be verified, and the plan must say so.** "This change is legally
+significant" and "this is Tier 2" are opinions. No archive lookup settles them. Their control is not
+verification but **disclosure**: complete provenance, honest variance, and never rendering them in the
+same register as a computed fact. `tier` matters most because publication check 6 gates on it.
 
-Readability was chosen to suppress diff noise, and the dominant noise source was the Internet Archive's
-own injected toolbar, whose timestamp differs on every capture. That is already solved by a URL
-suffix: `web.archive.org/web/<ts>id_/…` returns the original bytes with no Archive injection, and the
-verification path already fetches exactly that.
+**b. The first draft's summary check would not have caught the defect it was written for.** It said
+*"every phrase the summary attributes to the page must be a substring of the capture"*. The actual
+fabrication — `לתסמינים קלים וחולפים בלבד` — carries **no quotation marks**. A quoted-span check misses
+it entirely. See Phase 5.
 
-What remains is site chrome — and Readability is the wrong instrument for it. It is tuned to find *the
-article* on a news page. A government information page is sections, lists and links. What it discarded
-here was not chrome: it was the FDA safety sentence and the adverse-event reporting links. The
-heuristic did not fail at the margins.
-
-### The design error, stated generally
-
-**Discarding at write time.** A destructive filter in the storage layer makes the loss unrecoverable
-and invisible, and every downstream layer inherits it with no way to detect it.
-
-The correct shape is **store everything, filter at read time, reversibly.** Boilerplate then becomes
-derived state computed from the corpus itself: a text block appearing byte-identically across most of
-a page's captures is chrome. That is deterministic, auditable, per-site, and a block wrongly classified
-as chrome is still in the store — reclassifying it re-anchors nothing.
-
-The repo has already made this move one layer up: the truncation repair replaced an 8-chunk cap with
-storing all 290 chunks and deriving coverage on read. Same lesson.
-
-### Cost, honestly
-
-- `contentHash` = SHA-256(`fullText`) changes for all 83 snapshots → **83 re-anchors**.
-- `Evidence.fileHash` is snapshot-derived → evidence identities change → previously anchored records
-  become orphaned anchors.
-- **Precedent exists.** `Evidence.previousFileHash` is in the schema for exactly this, from the
-  2026-08-23 identity migration, and `check_on_chain_status` already reports `ORPHANED_ANCHOR`.
-- Classifier cost does not scale with stored text: only *changed* chunks are sent to a model. More
-  stored text means more diff noise, which is what the read-time boilerplate mask is for.
-
-### The recompute IS the measurement
-
-Recompute all 81 diffs from full text, then diff the new results against the stored ones. The delta is
-the error rate — **measured across the whole corpus, not sampled**. Every row that changes identifies a
-diff, a trajectory and possibly an evidence record that was wrong. This replaces the separate
-extraction-variance study proposed earlier; it answers the same question with the work that has to
-happen anyway.
+**c. Both ends were unguarded.** The plan validated the derived middle and skipped the source (row 1)
+and the instrument (row 13) — the two nobody thinks to check, because one is "just the archive" and
+the other is "the thing that checks".
 
 ---
 
-## Part B — the checks become preconditions, not tools
+## 3. Every check result is stored state
 
-Every check run on 2026-08-26 already exists as code. All of them ran months or days too late.
+A check that runs and is not recorded has not been performed, as far as anything downstream can tell.
+**The verdict is the deliverable, not the check.**
 
-### The three-state verdict
+### What to store, and what to derive
 
-Today the system cannot distinguish **"checked and true"** from **"never checked"**. That is precisely
-how a fabrication reaches an anchor wearing the same face as a verified fact. Every derived row gains:
+The `unanchoredSnapshots` rule — *derive from state, never track a transition* — is right, and it
+applies to **functions of data already held**. A validation result is frequently not that:
+
+| kind of check | treatment | example |
+|---|---|---|
+| function of data already held | **derive on read** | `retainedPercent`, once both texts are stored |
+| **observation of an external system** | **must be stored** — it cannot be re-derived | the CDX digest matched at fetch time; the chain held this hash |
+| expensive function of held data | **stored as a cached verdict**, invalidated by version | the Phase 5 summary check |
+
+Note what Phase 1 does to this table: once `rawText` is stored, most phrase checks stop being
+observations and become pure functions of local data. What stays genuinely observational is small —
+the fetch itself, archive availability, and chain state.
+
+### `UNAVAILABLE` is a verdict about a CHECK, never about DATA
+
+A check may legitimately be unavailable: the Archive was down, so this claim is unverified. That is a
+true and useful state.
+
+**A mandatory attribute may not.** `rawText` is not a check result — it is part of what a snapshot *is*.
+Conflating the two is how "we could not check" becomes indistinguishable from "we never stored it",
+and a metric counting rows that lack mandatory data is an admission that the schema permits invalid
+rows. The answer is never to report the partial state; it is to make it impossible, and to accept a
+migration as the price.
+
+### The record
+
+One shape for every check, mirroring `ClaimTrajectoryComputation`, which already stores
+`sourceStateHash` / `detectionVersion` / `computedAt` and reports `fromCache`:
+
+| field | why |
+|---|---|
+| subject (type + id) | what was checked |
+| `checkType` | a subject has several — a diff has chunk-presence *and* item-containment |
+| `verdict` | `VERIFIED` · `CONTRADICTED` · `UNAVAILABLE` |
+| `detail` | for `CONTRADICTED`, what disagreed — the finding itself |
+| `checkedAt` | when |
+| **`verifierVersion`** | **which checker said so** |
+| **`sourceStateHash`** | what it was checked against |
+
+### Why the last two are not optional
+
+**If `extractRawText` changes, every stored `VERIFIED` becomes unproven.** A verdict without
+provenance is a claim about the past that stops being true silently — and this repository has invented
+that axis after the fact four times already (`classifierVersion`, `summaryVersion`,
+`diffInputVersion`, `DETECTION_VERSION`). Building the fifth one correctly the first time is the
+cheapest it will ever be.
+
+`sourceStateHash` makes staleness computable rather than assumed: a verdict whose source hash no longer
+matches the current state is not `VERIFIED`, it is **stale**, and a gate must treat those differently.
+
+### What it buys
+
+- **"never checked" becomes queryable for every row in the system**, not just for diffs — the
+  distinction whose absence let a fabrication reach an anchor.
+- gating becomes a query rather than a re-run, so the publication gate does not depend on a
+  third party being up at publication time.
+- coverage becomes a number: *what fraction of this corpus is verified, by which verifier, against
+  which state* — an integrity report the platform can publish about itself.
+- a `CONTRADICTED` verdict with its `detail` **is** the pipeline-defect record. Today those live in
+  markdown files written by whoever noticed.
+
+### Design decision, not yet made
+
+One polymorphic `IntegrityCheck` table, or verdict columns on each subject? Recommendation: **the
+table**, because a subject carries several check types, history matters across re-checks, and it gives
+the coverage report for free. Verdict columns on hot paths only if a gating query proves too slow —
+and never as the source of truth, since that is the denormalisation `unanchoredSnapshots` warns about.
+
+---
+
+## 4. Phases
+
+**Every phase below writes its verdict per §3.** A phase that checks something and records nothing has
+not been implemented — the check would be exactly the kind of thing a human must remember to re-run,
+which is the failure this whole plan exists to end.
+
+### Phase 0 — pin the instrument (row 13)
+
+Tests only. No schema, no runtime change. **First, because every other phase trusts it.**
+
+A fixture suite built from real captures of `corona.health.gov.il/vaccine-for-covid`, asserting
+known-present and known-absent phrases through the **real** `extractRawText` / `extractArticleText`:
+
+- `נמצאו יעילים ובטוחים לשימוש` — present in raw on 2022-08-05, **absent from the extraction**. The
+  divergence itself becomes a regression test.
+- `חולפים`, `חולפות`, `בלבד` — absent from both readings on 2022-09-06.
+- `תופעות הלוואי השכיחות … מופיעות לרוב יום או יומיים` — present in both on 2022-09-06.
+
+If `extractRawText` regresses, every verification in the system silently starts agreeing with whatever
+it is checking. Nothing detects that today.
+
+### Phase 1 — store the document (rows 2, 3)
+
+`UrlSnapshot` gains **`rawText`** and **`rawContentHash`**, and they end up **`NOT NULL`**. A snapshot
+without the document it was extracted from is not a valid snapshot.
+
+`WaybackScraper.scrapeSnapshot` already holds the raw HTML in memory at line 416 and discards it on
+line 417. It returns both readings instead of one. **No extra fetch, no third-party dependency** — the
+only check in this plan with no Internet Archive availability risk.
+
+`NOT NULL` cannot be added to a populated table directly, so three steps across two deploys:
+
+| step | what | where |
+|---|---|---|
+| **1** | migration A — add both columns **nullable**; code always writes them | deploy |
+| **2** | backfill existing snapshots from the Archive | operational script, per environment |
+| **3** | migration B — `SET NOT NULL` on both | deploy |
+
+After step 3 the partial state is structurally impossible: no counter, no report, nothing to surface.
+If step 3 ever runs before a backfill completes, `migrate deploy` fails and the previous version keeps
+serving — it fails safe by construction. Between steps 1 and 3 the application already enforces it:
+`upsertSnapshot` takes `rawText` as a required parameter, so no code path can create an incomplete row.
+Only pre-existing rows can be incomplete, and only until step 2.
+
+**Fill only when null; never overwrite.** `upsertSnapshot` is deliberately idempotent (`update: {}`),
+so the fill is a separate conditional write. A refetch that *disagrees* with stored raw text means the
+Archive's own copy changed — a finding, and Phase 2's job, not something to silently overwrite.
+
+**`contentHash` is untouched.** Still `sha256(fullText)`, so **zero re-anchoring**; that decision belongs
+to Part A, in its own session.
+
+**Why `rawContentHash` is stored rather than derived**, against §3's own rule: a checksum's entire
+purpose is to disagree with a recomputation. Stored hash beside stored text is how Phase 3 detects that
+the text has been damaged. Derive it and there is nothing to compare against — the recomputation would
+simply reproduce the corruption and call it consistent. This is the same reason `contentHash` is stored.
+
+**Consequences beyond row 2:** divergence becomes computable forever without refetching;
+`verify_claim_text` stops needing the Archive for stored captures (the 503 class of failure
+disappears); Part A's recompute becomes a **local** operation; storage cost is nothing (83 × ~6KB).
+
+### Phase 2 — pin the source (row 1)
+
+The CDX API already returns a payload `digest` per capture, and `WaybackScraper` already reads it —
+then uses it only to de-duplicate and throws it away.
+
+Persist it on `UrlSnapshot`, and compare it against what was actually fetched at write time. That gives
+two things nothing provides today: proof the bytes we stored are the bytes the Archive indexed, and —
+on any later refetch — **detection that the Archive's own copy changed or vanished**.
+
+The data is already in hand. This is the cheapest guarantee in the plan.
+
+### Phase 3 — self-consistency audit (rows 3, 10)
+
+A standing check, runnable as a script and surfaced as a read-time flag:
+
+- `sha256(fullText) == contentHash`, and `sha256(rawText) == rawContentHash`
+- **`Evidence.fileHash` is recomputable from its snapshots.** Not hypothetical: on 2026-08-23, **5 of
+  7 anchored records could no longer be recomputed at all.** A record whose identity cannot be
+  re-derived has an anchor attesting to something the database no longer holds.
+
+### Phase 4 — derived claims verified at write (rows 5, 6, 9)
+
+Each derived row gains a three-state verdict:
 
 | verdict | meaning |
 |---|---|
-| `VERIFIED` | checked against the raw archived document, and it holds |
-| `CONTRADICTED` | checked, and the raw document disagrees — the row is a finding about the pipeline |
+| `VERIFIED` | checked against the raw document, and it holds |
+| `CONTRADICTED` | checked, and the raw document disagrees — a finding about the pipeline |
 | `UNAVAILABLE` | could not be checked. **Not a pass.** |
 
-### Where each check runs
+The third state is the point: the system currently cannot distinguish *"checked and true"* from
+*"never checked"*, which is how a fabrication reaches an anchor wearing the face of a verified fact.
 
-| written | precondition |
-|---|---|
-| `UrlSnapshot` | compare stored text with the raw `id_` document; store `retainedPercent` as a column |
-| `UrlVersionDiff` | every chunk claimed *removed* must be absent from the raw after-capture; every chunk claimed *added* must be present in it |
-| `ClaimTrajectory` | every flip confirmed against raw at that boundary — the check that kills the FDA trajectory at birth |
-| `Evidence` summary | every phrase the summary attributes to the page must be a substring of the capture it describes — kills `קלים וחולפים בלבד` before it can be anchored |
-| framing assessment | `researcherClaim` must be a verbatim span of `proposedFraming` (queued: `task_3e0501b3`) |
-| thesis | `audit_thesis_claims` exists and **reports**; the publication gate should consume its verdict |
+- **chunks**: every chunk claimed removed must be absent from the raw after-capture; every chunk
+  claimed added must be present in it.
+- **trajectories**: every flip confirmed against raw at that boundary — the check that kills the FDA
+  trajectory at birth.
+- **claim items**: containment coverage becomes a **gate**, not a measure. Items are model paraphrases,
+  so exact-substring checking does not apply; containment does.
 
-### Verify at write, block at promotion
+**A `CONTRADICTED` row is written, not refused.** Refusing it would delete the evidence that the
+pipeline is wrong — which is how this was found at all.
 
-These checks depend on the Internet Archive, a third party that returned 503 during this very session.
-A hard write-time block would let an IA outage stop all scanning.
+### Phase 5 — summary verification (row 8), the hard one
 
-So: **run the check at write, record the verdict, and gate the consequential act.** Promotion, citation
-and publication refuse any row that is not `VERIFIED`. An outage then delays evidence; it never
-fabricates it.
+The defect carries no quotation marks, so quoted-span checking is useless. What is needed is content
+n-gram extraction from the summary, checked against the capture it describes, with an explicit
+false-positive policy: a summary legitimately *characterises* (`הוסרו ההנחיות`) as well as
+*describes*, and only the second is checkable.
 
-This is the same fail-closed shape the codebase already uses — `EvidenceStatus` defaults to
-`PENDING_REVIEW` so a forgotten field cannot claim a false anchor — and the same derive-on-read
-reasoning as `unanchoredSnapshots`.
+**This phase needs design before it needs code.** It is the one place in the plan where the check is
+not obvious, and shipping a noisy check would be worse than none — a gate that cries wolf gets
+disabled.
+
+### Phase 6 — the rows that cannot be verified (7, 11)
+
+No verification is possible. The controls are:
+
+- **complete provenance** — `classifierVersion`, `classifierPromptHash`, `classifierModel`,
+  `diffInputVersion` (all exist).
+- **honest variance** — `classifierDraws` exists but is **null on older rows, meaning a single draw was
+  stored as though it were a measurement**. Null must render as that sentence, not as a blank.
+- **rendering separation** — a model opinion and a computed fact must never appear in the same table.
+  The tutorial's own `COMMON_RULES` already states this; `get_forensic_timeline` already breaks it.
+
+### Phase 7 — chain verification, automated (row 4)
+
+`check_on_chain_status` exists and is correct. `CLAUDE.md` says to call it after any promotion — which
+makes it a rule, not a control. Run it automatically on the promotion path and record the verdict.
+
+### Phase 8 — the publication gate consumes the verdicts (row 12)
+
+`audit_thesis_claims` reports; the gate should refuse. A thesis may not cite a row that is not
+`VERIFIED`. Known blind spot to carry forward: Hebrew number-words, which the auditor already declares
+it cannot check.
 
 ---
 
-## Sequencing
+## 5. Part A — the recompute, in its own session
 
-1. **Part B first, on the current pipeline.** It is additive, it blocks nothing that works today, and it
-   stops the bleeding: no *new* unverified row can be promoted or cited.
-2. **Then Part A**, whose recompute is the measurement.
-3. **Then decide what to do with the existing corpus** — with a measured delta rather than an estimate.
+Once Phase 1 has stored the documents, recomputing diffs and trajectories from `rawText` is a local
+operation. **The recompute is the measurement**: diffing the recomputed results against the stored ones
+gives the error rate across all 81 diffs rather than a sample.
 
-Rationale: doing Part A first would recompute the corpus with nothing watching, and we would be
-trusting the new numbers for the same reason we trusted the old ones.
+**This gets a dedicated session.** It rewrites `contentHash` for 83 snapshots and changes the identity
+of every evidence record on production. It is not a `DELETE`, so the destructive-database hook will not
+stop it — but it is the same shape of risk: irreversible, wide, and easy to start while attention is
+elsewhere. Capture a before-state, run from landed code, verify with `check_on_chain_status` after.
 
-## Open questions for the researcher
+Precedent exists: `Evidence.previousFileHash` and the `ORPHANED_ANCHOR` verdict were built for exactly
+this during the 2026-08-23 identity migration.
 
-- **Staging's published thesis is still published and still contains the false claim.** Unpublish now,
-  or correct and republish once the recompute lands? It is wrong either way, and it is public now.
-- The production thesis walk is **held** at `create_thesis_draft`. Resume after Part B, after Part A,
-  or accept a thesis written against `verify_claim_text`-checked quotations on the current layer?
-- Does `retainedPercent` below some threshold make a snapshot unusable, or merely flagged?
+Boilerplate suppression, once raw text is stored, becomes **derived state computed from the corpus** —
+a block appearing byte-identically across most of a page's captures is chrome — rather than a heuristic
+tuned for news articles guessing at a government information page. Deterministic, auditable, and
+reversible: a block wrongly classed as chrome is still in the store.
+
+---
+
+## 6. Sequencing, and why
+
+**0 → 1 → 2 → 3** first: pin the instrument, store the document, pin the source, prove
+self-consistency. All four are additive, none gates anything that works today, and together they make
+every later check possible **without the Internet Archive in the critical path**.
+
+**Then 4 → 5 → 6 → 7 → 8**, which turn measurement into refusal.
+
+**Then Part A**, in its own session, with the error rate measured rather than estimated.
+
+Doing Part A first would recompute the corpus with nothing watching — trusting the new numbers for the
+same reason we trusted the old ones.
+
+## 7. Open questions
+
+- Does a low `retainedPercent` make a snapshot unusable, or merely flagged?
+- Phase 5's false-positive policy: what fraction of a summary's content n-grams must be present before
+  the summary counts as describing rather than fabricating?
+- `IntegrityCheck` as one table or per-subject columns (§3).
+- **Staging's thesis is published and contains the false claim.** Unpublish now, or correct after the
+  recompute? It is wrong either way, and it is public now.
+- The production thesis walk is **held** at `create_thesis_draft`. Resume after Phase 1, after Part A,
+  or accept a thesis whose quotations were `verify_claim_text`-checked on the current layer?

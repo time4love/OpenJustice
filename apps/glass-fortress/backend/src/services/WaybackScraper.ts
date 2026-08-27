@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { createHash } from 'crypto';
 import { anchorOneSnapshot } from './anchorSnapshots';
-import { extractArticleText, timestampToDate } from '../lib/archiveText';
+import { extractArticleText, extractRawText, timestampToDate } from '../lib/archiveText';
 import {
   CDX_MAX_RETRIES,
   CDX_TIMEOUT_MS,
@@ -125,16 +125,46 @@ async function upsertSnapshot(
   timestamp: string,
   url: string,
   fullText: string,
+  rawText: string,
 ): Promise<{ id: string; waybackTimestamp: string; contentHash: string }> {
   const snapshotDate = timestampToDate(timestamp);
   const snapshotUrl = viewerCaptureUrl(timestamp, url);
   const contentHash = sha256(fullText);
+  const rawContentHash = sha256(rawText);
   const snap = await prisma.urlSnapshot.upsert({
     where: { trackedUrlId_waybackTimestamp: { trackedUrlId, waybackTimestamp: timestamp } },
     update: {},
-    create: { trackedUrlId, waybackTimestamp: timestamp, snapshotDate, snapshotUrl, fullText, contentHash },
-    select: { id: true, onChainTxHash: true },
+    create: {
+      trackedUrlId,
+      waybackTimestamp: timestamp,
+      snapshotDate,
+      snapshotUrl,
+      fullText,
+      contentHash,
+      rawText,
+      rawContentHash,
+    },
+    // rawContentHash, not rawText: enough to decide whether the document is
+    // stored, without reading a whole page back on every snapshot of every scan.
+    select: { id: true, onChainTxHash: true, rawContentHash: true },
   });
+
+  // Fill the document on a row created before rawText existed.
+  //
+  // The upsert above uses `update: {}` so a resumed scan cannot rewrite stored
+  // text, and that is correct — but it also means a legacy row would keep a null
+  // document forever. The `rawText: null` guard is what makes this a fill rather
+  // than an overwrite: a refetch that DISAGREES with stored raw text means the
+  // Archive's own copy changed, which is a finding to be surfaced, never
+  // something to silently paper over. The write is not swallowed: if it fails,
+  // the scan fails, because a repair that reports success while doing nothing is
+  // the exact failure that hid snapshot anchoring being broken for 83 rows.
+  if (!snap.rawContentHash) {
+    await prisma.urlSnapshot.updateMany({
+      where: { id: snap.id, rawText: null },
+      data: { rawText, rawContentHash },
+    });
+  }
   // Register on-chain only for newly created snapshots (no existing txHash)
   if (!snap.onChainTxHash) {
     // Fire-and-forget on purpose: a chain hiccup must not fail a scan that has
@@ -413,8 +443,33 @@ export class WaybackScraper {
    * Uses the `id_` modifier to suppress the Wayback Machine toolbar.
    */
   async scrapeSnapshot(url: string, timestamp: string): Promise<string> {
+    return (await this.scrapeSnapshotReadings(url, timestamp)).extracted;
+  }
+
+  /**
+   * Both readings of one archived capture, from one fetch.
+   *
+   * The raw document used to be discarded on the line that produced the
+   * extraction. It is the only thing that can ever say whether a change the
+   * pipeline reports actually happened on the page: the extraction keeps roughly
+   * two thirds of a capture and a DIFFERENT two thirds of the next one, so a
+   * diff computed over it manufactures removals and restorations that never
+   * occurred. One such artifact reached a published thesis.
+   *
+   * No extra fetch and no third-party dependency — both readings come from the
+   * HTML already in hand, which makes this the one integrity check in
+   * docs/gf-integrity-at-write-time-dev-plan.md that cannot be defeated by the
+   * Internet Archive being unreachable.
+   */
+  async scrapeSnapshotReadings(
+    url: string,
+    timestamp: string,
+  ): Promise<{ extracted: string; raw: string }> {
     const html = await fetchCaptureHtml(url, timestamp);
-    return extractArticleText(html, rawCaptureUrl(timestamp, url));
+    return {
+      extracted: extractArticleText(html, rawCaptureUrl(timestamp, url)),
+      raw: extractRawText(html),
+    };
   }
 
   /**
@@ -493,10 +548,14 @@ export class WaybackScraper {
     const snaps: ({ id: string; waybackTimestamp: string; contentHash: string } | null)[] = [];
     for (const snap of snapshots) {
       try {
-        const text = await this.scrapeSnapshot(url, snap.timestamp);
-        texts.push(text);
+        const readings = await this.scrapeSnapshotReadings(url, snap.timestamp);
+        texts.push(readings.extracted);
         try {
-          snaps.push(await upsertSnapshot(trackedUrl.id, snap.timestamp, url, text));
+          snaps.push(
+            await upsertSnapshot(
+              trackedUrl.id, snap.timestamp, url, readings.extracted, readings.raw,
+            ),
+          );
         } catch {
           snaps.push(null);
         }
@@ -791,8 +850,11 @@ export class WaybackScraper {
 
       if (entry.status === 'DONE') {
         try {
-          previousText = await this.scrapeSnapshot(job.url, entry.timestamp);
-          previousSnapshot = await upsertSnapshot(trackedUrlId, entry.timestamp, job.url, previousText);
+          const readings = await this.scrapeSnapshotReadings(job.url, entry.timestamp);
+          previousText = readings.extracted;
+          previousSnapshot = await upsertSnapshot(
+            trackedUrlId, entry.timestamp, job.url, readings.extracted, readings.raw,
+          );
         } catch {
           // Keep last good values if re-fetch fails during resume
         }
@@ -802,8 +864,11 @@ export class WaybackScraper {
       let currentText = '';
       let currentSnapshot: { id: string; waybackTimestamp: string; contentHash: string } | null = null;
       try {
-        currentText = await this.scrapeSnapshot(job.url, entry.timestamp);
-        currentSnapshot = await upsertSnapshot(trackedUrlId, entry.timestamp, job.url, currentText);
+        const readings = await this.scrapeSnapshotReadings(job.url, entry.timestamp);
+        currentText = readings.extracted;
+        currentSnapshot = await upsertSnapshot(
+          trackedUrlId, entry.timestamp, job.url, readings.extracted, readings.raw,
+        );
       } catch (err) {
         console.warn(
           `[WaybackScraper] Job ${jobId} — snapshot ${entry.timestamp} fetch failed:`,

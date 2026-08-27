@@ -25,7 +25,8 @@
     "forensics:rehash-evidence": "node dist/scripts/rehashEvidence.js",
     "forensics:trajectories": "node dist/scripts/claimTrajectories.js",
     "entities:canonicalise": "node dist/scripts/canonicaliseTargetEntities.js",
-    "forensics:rediff": "node dist/scripts/rediffFromSnapshots.js"
+    "forensics:rediff": "node dist/scripts/rediffFromSnapshots.js",
+    "forensics:backfill-raw-text": "node dist/scripts/backfillSnapshotRawText.js"
   },
   "keywords": [],
   "author": "",
