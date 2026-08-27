@@ -354,6 +354,123 @@ stored, never whether we record that the Archive looked. Three of this level's p
 that distinction: the `seenDigests` discards, the continuity-proof gap, and this one. **The split needs
 no re-fetch once the bytes are stored.**
 
+#### Level 1: CLOSED ON STAGING, not done
+
+Every invariant holds on staging — 83/83 captures hold their payload, both hashes recompute with 0
+mismatches, `document`/`documentHash`/`provenance`/`capturedAt` are `NOT NULL`, and "is this capture
+new?" has one answer in `recordCapture`. The corpus is complete: **0 text-distinct captures missing.**
+
+**Production lacks all three migrations and the backfill.** By the standard set when production was
+last caught up, *a level enforced in one environment and absent in the other is half-applied* — so
+production catch-up is the gating item, via the four-step procedure above.
+
+*Correction to an earlier prediction in this document:* the 7 stale diffs and 18 new pair-rows never
+materialised, because **no capture was inserted**. Level 5 inherits **no re-pairing debt** from Level 1.
+
+##### A permanent gap: capture `20240829085520`
+
+The Archive **indexes this capture but will not serve it** — `HTTP 404`, reproduced on 2026-08-27, and
+the reason the original scan recorded it `FAILED`. That is a durable third-party fact, not a transient
+failure, and it is recorded here so nobody keeps retrying it. The recount target is therefore **83, not
+94 and not 95**.
+
+*Level 2 item:* this state currently lives inside a JSON blob on the scan job record. A capture the
+Archive indexes but will not serve should be **first-class queryable state** — §3's own rule, that a
+check which runs and is not recorded has not been performed.
+
+#### Level 4 opening measurement — href changes, run 2026-08-27
+
+`forensics:measure-href-changes` over all 82 consecutive pairs. Local, deterministic, no Archive, no
+model. **The result is non-zero, so link-aware extraction stays a live line of work.**
+
+```
+83 captures, 82 consecutive pairs.
+Pairs whose href set changed: 17
+Of those, INVISIBLE to the derived text: 2
+```
+
+| invisible pair | change |
+|---|---|
+| 2022-07-03 → 2022-07-08 | `+ /daily-guidances/` |
+| 2024-01-17 → 2024-03-05 | `+ /confirmed-cases-and-patients/risk-groups/` |
+
+*The eleven-pair sample said zero; the full run disagreed.* The sample was too small to settle it.
+
+**Read the result as TWO findings, not one — and the corroboration is the larger half.**
+
+##### (1) The temporal argument is STRENGTHENED by an independent derivation
+
+The href layer reproduces the two-stage movement on its own: 2022-08-05 removes
+`/vaccine-for-covid/4th-dose/` and the four health-fund vaccination links and adds ~14 scientific
+citations; **2022-09-06 reverses it exactly.**
+
+**The href layer and the text layer share no inputs.** Two independent derivations agreeing on the same
+two-stage movement is a materially stronger evidentiary position than one — this is a *strengthening of
+the central claim*, not a footnote to the problem below it. Recorded first deliberately: destabilising
+findings are more interesting to write down, and this is the half that would otherwise be forgotten.
+
+##### (2) A separate claim is left IMPRECISE
+
+```
+captures whose HREFS contain https://t.me/MOHreport : 83  (2021-12-23 .. 2026-03-05)
+captures whose derived TEXT contains "MOHreport"    : 0
+```
+
+Something the platform could never see was present throughout. What it IS, though, is not established
+— and the honest record is **three** statements, not two:
+
+| statement | status |
+|---|---|
+| the page's own adverse-event reporting link was removed for six weeks | **supported** — trajectory data on `לדיווח על תופעות לוואי >`, unaffected by any of this |
+| a Telegram social icon linking to `t.me/MOHreport` was present throughout | **supported** — measured |
+| that icon constituted a **reporting channel** | **undetermined** — not established by anything in the vault, and not establishable from the archive |
+
+*Why the third row is undetermined rather than supported.* An earlier draft of this section asserted
+that "a Ministry route did remain reachable from the page throughout". **That was an inference from a
+URL slug.** `t.me/MOHreport` reads equally well as *"MOH reports"* — a broadcast channel the ministry
+publishes to — as it does *"report to MOH"*. Reading a capability out of a handle name is the same move
+as reading page content out of a classifier summary: an assertion derived from a LABEL rather than from
+evidence, which is the error class this level exists to remove. **A concession written into a plan
+becomes a fact someone cites later**, and this one would have been a fact about a Telegram handle
+nobody has looked at.
+
+Everything actually measured about it says chrome: anchor text **empty**, `title="טלגרם"`, an icon in
+the site-wide social bar between Facebook and the rest, one label-state across all 83 captures.
+
+```html
+<li class="social-item">
+  <a href="https://t.me/MOHreport" target="_blank" title="טלגרם" class="social-link">
+    <img src="/media/oc1ftq3z/fill-2-3x.svg" ... />
+```
+
+*Caveat, which does not shrink:* the pattern matched one reporting-shaped link. A reporting route behind
+an opaque URL would not match, so this is not proof that nothing else survived.
+
+**What to flag, and how.** Evidence summary `0x66acc98f…` asserts *"במקביל להשמטת ערוצי דיווח על תופעות
+לוואי"* — plural channels. That is `CONFIRMED`, anchored, and cited by staging's published thesis. Flag
+it as **IMPRECISE**: the supported claim is about *the page's own reporting link*, singular, and
+"removed from where a reader would look for it". Do **not** flag it as contradicted by a surviving
+channel — nothing establishes that a channel survived.
+
+That is a **third** item on that document, alongside the FDA line and `קלים וחולפים בלבד`. **It is a
+Level 9 decision and belongs to whoever owns the claim**, with this measurement in hand. The same
+sentence is in the production thesis draft, which is unwritten — the only reason this is not worse.
+
+**All three were found by instruments built AFTER the thesis was published.** That is the argument for
+the instruments, and the argument for not publishing the production thesis until they exist there too.
+
+#### Level-agnostic: `noUncheckedIndexedAccess` is off, and the linter argues from it
+
+`extractHrefs` reads regex capture groups. Written as `m[2] ?? m[3] ?? m[4]`, the linter called the
+fallbacks redundant — because with `noUncheckedIndexedAccess` off TypeScript types **every** capture
+group as `string`, while an unmatched group is `undefined` at runtime. **Deleting the `??` to satisfy
+the linter would have made `href='...'` extract as the empty string.**
+
+A linter arguing from types that do not describe reality gives confidently wrong advice. This is a
+project-wide configuration issue rather than a local one: **every regex-group and array-index read in
+this codebase carries the same false guarantee.** Not owned by any level; recorded so it is decided
+deliberately rather than discovered again.
+
 #### Storage gain, not yet a detection gain — measured 2026-08-27
 
 The payloads are stored: **83 of 83 captures**, 4157 kB, every `documentHash` recomputing from its
@@ -417,17 +534,32 @@ fine; it is precisely why per-level shipping was adopted.
 
 #### Level 1 is not closed until the capture layer is complete
 
-Fixing the rule going forward does not recover what it discarded. **Eleven page states are missing, and
-they are reverts** — the pattern trajectories exist to detect — so the corpus is ~13% incomplete
-*specifically on the events the platform is built to find*. Consequences, none of them previously
-stated:
+##### WITHDRAWN: "~13% incomplete, precisely on the pattern trajectories exist to detect"
 
-- **Every trajectory is potentially understated.** A claim that vanished and returned inside an
-  unstored window reads as continuously absent.
-- **Staging's published thesis cites 21 trajectories across 8 movements**, computed on this corpus.
-  That is a **third** reason it is unsafe, alongside the FDA claim and the summary fabrication.
-- **Level 10's comparison baseline is a comparison against something known incomplete.** Acceptable —
-  but only because it is now known.
+**That claim was wrong, and it was repeated into three reviews and two handoff prompts before it was
+measured.** It was derived from CDX digests, which are **byte-level**, and asserted about a corpus whose
+novelty rule is **text-level** — the identical mistake as the 94 recount target, one layer up: a number
+taken from one measure and stated about another. The error is sharper than the target's, because the
+target's version had already been diagnosed and the diagnosis was not applied to the claim the target
+was serving.
+
+*Measured 2026-08-27, by re-running recovery after the payloads were stored:*
+
+| the eleven "missing reverts", against their immediate predecessor | count |
+|---|---|
+| payload-distinct | **8 of 11** |
+| **text-distinct** | **0** |
+| href-distinct | **0** |
+
+**There was never a content gap.** The eleven were byte-level noise — cache-busters and timestamps —
+reverting. Eight genuinely differ in bytes and were correctly dropped by the text-level novelty rule,
+which is the sensitivity trade-off behaving as specified rather than by luck. Three differ by neither
+our decoding nor our hashing, which says something about CDX digests worth remembering: they
+distinguish things our fetch path cannot see at all.
+
+So no trajectory was understated, and Level 10's comparison baseline was never incomplete. **The corpus
+was already complete at the level the system actually uses.** Reporting the `0` alone would have been
+misleading in the opposite direction; the table is what makes it interpretable.
 
 **Recount target: 94, not 95.** CDX holds 95 rows; the 95th is capture `20240829085520`, recorded
 `FAILED` in the scan job's `snapshotsList` JSON and existing nowhere else. That gap is honest but
