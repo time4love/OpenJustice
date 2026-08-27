@@ -455,7 +455,7 @@ describe('WaybackScraper.processJob', () => {
     const scraper = new WaybackScraper();
     jest
       .spyOn(scraper, 'scrapeSnapshotReadings')
-      .mockResolvedValue({ extracted: 'the article', bytes: Buffer.from('the article and the chrome around it'), contentType: 'text/html; charset=utf-8' });
+      .mockResolvedValue({ extracted: 'the article', bytes: Buffer.from('the article and the chrome around it'), contentType: 'text/html; charset=utf-8', contentEncoding: null });
 
     await scraper.processJob('job-id-789');
 
@@ -492,7 +492,7 @@ describe('WaybackScraper.processJob', () => {
     const scraper = new WaybackScraper();
     jest
       .spyOn(scraper, 'scrapeSnapshotReadings')
-      .mockResolvedValue({ extracted: 'the article', bytes: Buffer.from('the whole document'), contentType: 'text/html; charset=utf-8' });
+      .mockResolvedValue({ extracted: 'the article', bytes: Buffer.from('the whole document'), contentType: 'text/html; charset=utf-8', contentEncoding: null });
 
     await scraper.processJob('job-id-789');
 
@@ -506,7 +506,7 @@ describe('WaybackScraper.processJob', () => {
     const scraper = new WaybackScraper();
     jest
       .spyOn(scraper, 'scrapeSnapshotReadings')
-      .mockResolvedValueOnce({ extracted: 'some page text', bytes: Buffer.from('some page text and more'), contentType: 'text/html; charset=utf-8' })
+      .mockResolvedValueOnce({ extracted: 'some page text', bytes: Buffer.from('some page text and more'), contentType: 'text/html; charset=utf-8', contentEncoding: null })
       .mockRejectedValue(new WaybackFetchError('Failed to fetch snapshot: HTTP 503', true));
 
     const result = await scraper.processJob('job-id-789');

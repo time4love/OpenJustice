@@ -1,4 +1,4 @@
-import axios from 'axios';
+import axios, { type AxiosError } from 'axios';
 
 // ---------------------------------------------------------------------------
 // Talking to the Internet Archive.
@@ -145,9 +145,56 @@ export async function withRetry<T>(
  * Carries enough detail to classify the failure — an archive.org outage
  * (retry later, our pipeline is fine) vs. something else worth investigating.
  */
+/**
+ * Why a Wayback fetch failed, naming the CAUSE rather than a status that may be
+ * irrelevant to it.
+ *
+ * This exists because `HTTP ${err.response?.status ?? 'unknown'}` cost diagnosis
+ * TWICE during live operations — once on a staging backfill, where a capture had
+ * to be curled to establish it was fine, and once inside a production migration
+ * window, where it reported `HTTP 200` for what the retry line above it showed
+ * was an ECONNABORTED timeout.
+ *
+ * The message was not lying. A response really had arrived with 200 and axios
+ * threw for another reason — a timeout mid-body, or maxContentLength exceeded —
+ * so the status was accurate and beside the point, while the actual cause
+ * (`err.code`) was dropped. **An accurate fact reported in place of the relevant
+ * one reads as an explanation and prevents the next question from being asked.**
+ *
+ * What it must distinguish, because retry-or-stop turns on it:
+ *
+ *   no response          → transient almost always; retry
+ *   HTTP 4xx/5xx         → the archive answered; 404 is permanent, 503 is not
+ *   failed AFTER a 2xx   → the archive answered FINE and the transfer broke;
+ *                          transient, and the case that read as success twice
+ */
+function describeFetchFailure(err: AxiosError): { detail: string; status: number | null } {
+  const code = err.code ?? 'no error code';
+  const status = err.response?.status ?? null;
+
+  if (status === null) {
+    return { detail: `no response from the archive (${code}: ${err.message})`, status: null };
+  }
+  if (status >= 200 && status < 300) {
+    return {
+      detail: `the transfer failed AFTER a successful HTTP ${String(status)} — ` +
+        `the archive answered and the body did not arrive (${code}: ${err.message})`,
+      status,
+    };
+  }
+  return { detail: `HTTP ${String(status)} (${code})`, status };
+}
+
 export class WaybackFetchError extends Error {
   readonly offline: boolean;
-  /** HTTP status the archive returned, or null when there was no response at all. */
+  /**
+   * HTTP status the archive returned, or null when there was no response at all.
+   *
+   * A 2xx here does NOT mean success — see describeFetchFailure. It means the
+   * archive answered and the transfer failed afterwards. Never treat this field
+   * as a success signal; it records what was returned, not whether the fetch
+   * worked, and the fetch demonstrably did not.
+   */
   readonly status: number | null;
   constructor(message: string, offline: boolean, status: number | null = null) {
     super(message);
@@ -207,7 +254,7 @@ export async function fetchCaptureBytes(
   url: string,
   timestamp: string,
   retry: { maxRetries: number; baseDelayMs?: number } = { maxRetries: SNAPSHOT_MAX_RETRIES },
-): Promise<{ bytes: Buffer; contentType: string | null }> {
+): Promise<{ bytes: Buffer; contentType: string | null; contentEncoding: string | null }> {
   try {
     const response = await withRetry(
       () =>
@@ -216,23 +263,48 @@ export async function fetchCaptureBytes(
           headers: {
             'User-Agent': SNAPSHOT_USER_AGENT,
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            // Ask for the bytes as archived. Without this the Archive may serve
+            // gzip and axios will inflate it before we ever see it.
+            'Accept-Encoding': 'identity',
           },
           responseType: 'arraybuffer',
+          // THE LINE WHOSE ABSENCE REOPENED LEVEL 1 A SECOND TIME.
+          //
+          // axios decompresses transparently in Node, so a gzipped archived
+          // record arrived INFLATED and was stored under the name of the
+          // payload — a derivative under the name of the original, the same
+          // defect as rawText one layer lower and better disguised, because
+          // responseType: 'arraybuffer' looks like it settles the question.
+          //
+          // Measured 2026-08-27: 76 of 83 captures matched their CDX digest
+          // anyway, because the Archive served those uncompressed and the
+          // inflate was a no-op — a green result from a mechanism that never
+          // checked. The 7 served gzipped did not match, and re-fetching with
+          // this line set reproduces the CDX digest exactly.
+          decompress: false,
           maxContentLength: 5 * 1024 * 1024,
         }),
       retry,
     );
-    const header = response.headers['content-type'];
+    const type = response.headers['content-type'];
+    const encoding = response.headers['content-encoding'];
     return {
       bytes: Buffer.from(response.data),
-      contentType: typeof header === 'string' ? header : null,
+      contentType: typeof type === 'string' ? type : null,
+      // Stored, not discarded: the meaning of the bytes depends on it. This is
+      // the SECOND response header to prove load-bearing — charset was the
+      // first and happened not to matter. Encoding mattered on 8% of captures.
+      contentEncoding: typeof encoding === 'string' ? encoding : null,
     };
   } catch (err) {
     if (axios.isAxiosError(err)) {
+      // One call for both, so the message a human reads and the status code
+      // reads cannot drift apart.
+      const failure = describeFetchFailure(err);
       throw new WaybackFetchError(
-        `Failed to fetch snapshot ${timestamp}: HTTP ${String(err.response?.status ?? 'unknown')}`,
+        `Failed to fetch snapshot ${timestamp}: ${failure.detail}`,
         isWaybackOffline(err),
-        err.response?.status ?? null,
+        failure.status,
       );
     }
     throw err;
@@ -261,10 +333,13 @@ export async function fetchCaptureHtml(
     return response.data;
   } catch (err) {
     if (axios.isAxiosError(err)) {
+      // One call for both, so the message a human reads and the status code
+      // reads cannot drift apart.
+      const failure = describeFetchFailure(err);
       throw new WaybackFetchError(
-        `Failed to fetch snapshot ${timestamp}: HTTP ${String(err.response?.status ?? 'unknown')}`,
+        `Failed to fetch snapshot ${timestamp}: ${failure.detail}`,
         isWaybackOffline(err),
-        err.response?.status ?? null,
+        failure.status,
       );
     }
     throw err;

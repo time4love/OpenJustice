@@ -354,6 +354,90 @@ stored, never whether we record that the Archive looked. Three of this level's p
 that distinction: the `seenDigests` discards, the continuity-proof gap, and this one. **The split needs
 no re-fetch once the bytes are stored.**
 
+#### LEVEL 1 REOPENED A SECOND TIME — and the "done" declaration is WITHDRAWN
+
+**Withdrawn, not amended.** Level 1 was declared done in both environments on 2026-08-27. It was not,
+and both environments were backfilled by the identical defective code.
+
+**The defect: axios decompresses transparently in Node.** A gzipped archived record arrived INFLATED
+and was stored as `document` — the payload as served. `responseType: 'arraybuffer'` settles the
+*decode* and says nothing about the *inflate*, which is exactly why it looked sufficient.
+
+*How it was found, and why nothing else could have found it.* The CDX index publishes
+`base32(SHA-1(response body))` for every capture — an **independent witness** to bytes we hold.
+Comparing against it gave **76 of 83 matching**: the Archive served those uncompressed, so the inflate
+was a no-op. **A green result from a mechanism that never checked.** The 7 served gzipped did not match,
+and re-fetching them with `Accept-Encoding: identity` and `decompress: false` reproduces the CDX digest
+exactly, byte for byte.
+
+*A conclusion I drew and had to withdraw:* "we fetched it twice, hours apart, got the same bytes,
+therefore the mismatch is the Archive's". **That does not follow.** Two fetches through one path agree
+by construction — **reproducibility proves determinism, never fidelity** — and a lossy pipeline returns
+the same lossy answer every time. Narrowing Level 2's invariant on that basis would have been choosing
+a definition to fit our own defect.
+
+##### The actual lesson: enumerate every transformation between the wire and the column
+
+This level has now reopened twice for **one** reason — *a derivative stored under the name of the
+original*. Three transformations sit between the socket and the column, and two were invisible:
+
+| transformation | who does it | was it visible? |
+|---|---|---|
+| decompress | axios, transparently, by default | **no** |
+| decode | axios, by charset guess | **no** |
+| extract | `htmlToText` | yes — and still misnamed as `rawText` |
+
+> **Enumerate every transformation between the wire and the column, and either store the input or
+> version the transform.**
+
+Applied rather than merely recorded: `document` now holds the bytes **as served**, gzipped where
+gzipped; inflate is a named step in a chain the version recites —
+`v2-inflate-decode-htmltotext-normalised` — and the rule for headers generalises from the instance:
+**store every response header without which the bytes cannot be interpreted.** Today that is
+`Content-Type` (charset) and `Content-Encoding`. Charset was the first to prove load-bearing and
+happened not to matter; encoding mattered on 8% of captures.
+
+##### Level 1's completion criterion is now EXTERNAL and falsifiable
+
+> `sha1b32(document) == cdx.digest`, for every capture, in both environments.
+
+`forensics:verify-against-cdx`. This replaces a structural test — *`NOT NULL` is satisfied* — with one
+that can be wrong. A structural test says a value is present; it cannot say the value is what the source
+served, and Level 1 was declared done on that basis and was wrong twice. `levelOneComplete` requires
+**zero CONTRADICTED and zero UNAVAILABLE**: an unavailable check is not a pass, or the level would be
+complete by definition again.
+
+*The reversal worth naming:* the CDX check was nearly narrowed for failing to prove provenance. It did
+something more useful — it was **the only instrument capable of detecting our own loss**. Without an
+external witness, all three transformations would have stayed invisible indefinitely.
+
+##### Repair is keyed on verification failure, not on a null column
+
+`document`/`documentHash` are `NOT NULL`, so the obvious repair — null them and let the backfill refill
+— cannot run. Making it run would mean dropping the constraint, nulling, backfilling and re-adding it:
+three migrations and a degraded window, with the constraint absent exactly while the data is worst.
+
+`forensics:repair-against-cdx` keys on the check instead. Self-targeting, idempotent, converges on
+repeated runs, and **cannot touch a row that is already correct** — which the `documentHash IS NULL`
+guard could never promise once the column was populated. The never-silently-overwrite rule survives via
+a two-way discrimination:
+
+| our bytes ≠ CDX digest, and… | action |
+|---|---|
+| a fresh identity fetch **matches** CDX | our stored bytes were wrong → **repair** |
+| a fresh identity fetch **also differs** | the Archive's replay disagrees with its own index → **do not overwrite**, record `ARCHIVE_CONTRADICTED` |
+
+The second row is the residual Archive inconsistency this work was originally chasing — now measurable
+on clean data, and stated with evidence rather than inferred.
+
+##### A refinement to "an enforcement is not proven until it has been observed to FAIL"
+
+**A mutation must be shown to have hit the code under test before its survival means anything.** A
+surviving mutation has two possible meanings and only one is a hole in the tests: mutation F4 "survived"
+because it patched `decodeDocument` instead of `inflateDocument` — the first `} catch {` in the file.
+Re-aimed, it failed immediately. **A mutation that hits the wrong code proves nothing, which deserves
+the same suspicion as a test that cannot fail.**
+
 #### Level 1: CLOSED ON STAGING, not done
 
 Every invariant holds on staging — 83/83 captures hold their payload, both hashes recompute with 0
