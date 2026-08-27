@@ -354,6 +354,67 @@ stored, never whether we record that the Archive looked. Three of this level's p
 that distinction: the `seenDigests` discards, the continuity-proof gap, and this one. **The split needs
 no re-fetch once the bytes are stored.**
 
+#### Storage gain, not yet a detection gain — measured 2026-08-27
+
+The payloads are stored: **83 of 83 captures**, 4157 kB, every `documentHash` recomputing from its
+stored bytes and every `textHash` from its stored text, one `Content-Type` throughout
+(`text/html; charset=utf-8`), 0 unanchored. **82 `href` attributes are now held on the first capture
+alone, where zero survived the old text-only column.** That is the vindication of reopening the level.
+
+**But nothing can read them yet, and the distinction must not be blurred.** `htmlToText` strips every
+tag with `.replace(/<[^>]*>/g, '')`, so `text` still holds anchor text and no targets — and diffs,
+trajectories, the classifier and the verification tools all read `text`, not `document`. The honest
+sentence is:
+
+> **The payload now holds link targets; no analysis layer can see them yet.**
+
+*What that says about findings already drawn.* Every diff, trajectory and evidence record in this corpus
+was computed over text with **no link targets at all**, so the platform's central finding — that the
+adverse-event **reporting channel** was removed — rests entirely on **anchor text**. Two blind spots
+follow, and neither has ever been looked for:
+
+- **A link whose TARGET changed while its text stayed identical is invisible.** The reporting channel
+  could have been *redirected* rather than removed, and nothing would have been recorded.
+- **A link whose TEXT changed while its target stayed is recorded as a removal PLUS an addition** — one
+  edit reported as two.
+
+*The measurement, and where it belongs.* `forensics:measure-href-changes` extracts `href` sets per
+capture and diffs consecutive sets — purely local, no Archive, no model, no cost. A non-zero answer is a
+class of change this platform has never been able to see, on the page its whole argument is about; zero
+is worth knowing too. **It is Level 4 reconnaissance** — what the view keeps — so it is written now and
+run only after Level 1 closes. Acting on it is a `textExtractionVersion` bump, which is exactly what
+that axis was built for.
+
+#### Charset: a green result from a mechanism that does not check
+
+All 83 captures declare `charset=utf-8`, and the recomputed text matched the stored text on every row.
+That is a pass, but not for the reason it appears to be: the stored text came from axios
+`responseType: 'text'`, which **defaults to UTF-8 in Node and ignores the charset a response declares**.
+It agreed with the truth here only because the truth was UTF-8. A `windows-1255` capture — plausible on
+a Hebrew government page — would have been silently mangled into mojibake that passes every structural
+test. `decodeDocument` now reads the declared charset, and `documentContentType` is stored so the bytes
+can be re-decoded forever.
+
+**A green result from a mechanism that does not check is not the same as a mechanism that checks.**
+
+#### Catching production up — the standard procedure, not a discovery
+
+Production drifts further behind at each level, and the catch-up is now a known four-step dance rather
+than something to work out again. Written down because discovering it a second time would be the exact
+pattern this level is about:
+
+1. **Ship.** The `NOT NULL` migration fails on data it cannot derive, and the deploy aborts with the
+   previous version still serving. **That is the ordering guarantee working, not a broken deploy.**
+2. **Backfill against production**, locally — authorised by `CLAUDE.md` because it is not a chain write.
+   Confirm the environment BY DATA first (`get_environment`, or production's `trackedUrl` `0e755b7d-…`)
+   and capture a before-state.
+3. **`prisma migrate resolve --rolled-back`** the failed migration, so the ledger reflects what happened.
+4. **Re-deploy.** The migration now applies.
+
+As of this level production lacks **the provenance/`capturedAt` migration, the payload columns, and the
+backfill** — and the backfill is now ~83 Archive fetches and ~4 MB rather than a text-only pass. That is
+fine; it is precisely why per-level shipping was adopted.
+
 #### Level 1 is not closed until the capture layer is complete
 
 Fixing the rule going forward does not recover what it discarded. **Eleven page states are missing, and

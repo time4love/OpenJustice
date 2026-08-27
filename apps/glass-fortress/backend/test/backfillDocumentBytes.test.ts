@@ -1,6 +1,10 @@
 jest.mock('../src/lib/prisma', () => ({
   prisma: {
-    urlSnapshot: { count: jest.fn(), findMany: jest.fn(), updateMany: jest.fn() },
+    // Raw SQL, not the typed client: HEAD's schema declares document/documentHash
+    // NOT NULL, so Prisma's filter type cannot express `documentHash: null` — the
+    // very rows this tool exists to find. See the service's own note.
+    $queryRaw: jest.fn(),
+    $executeRaw: jest.fn(),
   },
 }));
 
@@ -16,10 +20,18 @@ import {
 } from '../src/services/backfillDocumentBytes';
 import { deriveText, sha256Bytes } from '../src/lib/captureDocument';
 
-const count = prisma.urlSnapshot.count as jest.Mock;
-const findMany = prisma.urlSnapshot.findMany as jest.Mock;
-const updateMany = prisma.urlSnapshot.updateMany as jest.Mock;
+const queryRaw = prisma.$queryRaw as unknown as jest.Mock;
+const executeRaw = prisma.$executeRaw as unknown as jest.Mock;
 const fetchBytes = fetchCaptureBytes as jest.Mock;
+
+/** queryRaw serves the count query and the pending-rows query in turn. */
+function withPending(rows: ReturnType<typeof row>[], count = rows.length) {
+  queryRaw.mockReset();
+  queryRaw
+    .mockResolvedValueOnce([{ n: BigInt(count) }]) // countSnapshotsWithoutDocument
+    .mockResolvedValueOnce(rows) // pending rows
+    .mockResolvedValue([{ n: BigInt(0) }]); // missingAtEnd
+}
 
 const URL_ = 'https://corona.health.gov.il/vaccine-for-covid/';
 const CT = 'text/html; charset=utf-8';
@@ -30,28 +42,29 @@ function row(overrides: Record<string, unknown> = {}) {
     id: 'snap-1',
     waybackTimestamp: '20220306141507',
     text: deriveText(PAYLOAD, CT).text,
-    trackedUrl: { url: URL_ },
+    url: URL_,
     ...overrides,
   };
 }
 
 beforeEach(() => {
   jest.clearAllMocks();
-  count.mockResolvedValue(1);
-  findMany.mockResolvedValue([row()]);
-  updateMany.mockResolvedValue({ count: 1 });
+  withPending([row()]);
+  executeRaw.mockResolvedValue(1);
   fetchBytes.mockResolvedValue({ bytes: PAYLOAD, contentType: CT });
 });
 
 describe('countSnapshotsWithoutDocument', () => {
-  it('counts on documentHash being null, not on the payload column', async () => {
-    // documentHash is the cheap discriminator; selecting a BYTEA column to ask
+  it('asks about documentHash, never selecting the payload column to answer it', async () => {
+    // documentHash is the cheap discriminator; touching a BYTEA column to ask
     // whether it is null would pull every payload into memory to answer a
     // question a hash already answers.
-    await countSnapshotsWithoutDocument(URL_);
-    const where = count.mock.calls[0][0].where as Record<string, unknown>;
-    expect(where['documentHash']).toBeNull();
-    expect(where).not.toHaveProperty('document');
+    queryRaw.mockReset();
+    queryRaw.mockResolvedValue([{ n: BigInt(7) }]);
+    expect(await countSnapshotsWithoutDocument(URL_)).toBe(7);
+    const sqlParts = (queryRaw.mock.calls[0][0] as string[]).join('?');
+    expect(sqlParts).toContain('"documentHash" IS NULL');
+    expect(sqlParts).not.toContain('s."document"');
   });
 });
 
@@ -59,19 +72,19 @@ describe('backfillDocumentBytes', () => {
   it('writes NOTHING on a dry run, which is the default', async () => {
     const report = await backfillDocumentBytes({ dryRun: true, url: URL_ });
     expect(fetchBytes).not.toHaveBeenCalled();
-    expect(updateMany).not.toHaveBeenCalled();
+    expect(executeRaw).not.toHaveBeenCalled();
     expect(report.rows).toHaveLength(1);
   });
 
   it('stores the payload, its charset, and the recomputed text', async () => {
     await backfillDocumentBytes({ dryRun: false, url: URL_ });
 
-    const data = updateMany.mock.calls[0][0].data as Record<string, unknown>;
-    expect(data['document']).toEqual(PAYLOAD);
-    expect(data['documentHash']).toBe(sha256Bytes(PAYLOAD));
-    expect(data['documentContentType']).toBe(CT);
-    expect(data['textHash']).toBe(deriveText(PAYLOAD, CT).textHash);
-    expect(data['textExtractionVersion']).toBe(deriveText(PAYLOAD, CT).textExtractionVersion);
+    const params = executeRaw.mock.calls[0].slice(1);
+    expect(params).toContain(PAYLOAD);
+    expect(params).toContain(sha256Bytes(PAYLOAD));
+    expect(params).toContain(CT);
+    expect(params).toContain(deriveText(PAYLOAD, CT).textHash);
+    expect(params).toContain(deriveText(PAYLOAD, CT).textExtractionVersion);
   });
 
   it('guards every write with documentHash IS NULL — fills, never overwrites', async () => {
@@ -79,16 +92,16 @@ describe('backfillDocumentBytes', () => {
     // A refetch that disagrees with a payload already stored is a finding; it
     // must never quietly replace one.
     await backfillDocumentBytes({ dryRun: false, url: URL_ });
-    const where = updateMany.mock.calls[0][0].where as Record<string, unknown>;
-    expect(where['documentHash']).toBeNull();
-    expect(where['id']).toBe('snap-1');
+    const sql = (executeRaw.mock.calls[0][0] as string[]).join('?');
+    expect(sql).toContain('"documentHash" IS NULL');
+    expect(executeRaw.mock.calls[0].slice(1)).toContain('snap-1');
   });
 
   it('REPORTS a recomputed text that differs from the stored one', async () => {
     // The decoded-string path and the bytes path disagreeing about a capture is
     // worth knowing, because the stored text was the only thing this platform
     // held until now. Reported, never silently resolved.
-    findMany.mockResolvedValue([row({ text: 'something else entirely' })]);
+    withPending([row({ text: 'something else entirely' })]);
 
     const report = await backfillDocumentBytes({ dryRun: false, url: URL_ });
 
@@ -107,7 +120,7 @@ describe('backfillDocumentBytes', () => {
 
     const report = await backfillDocumentBytes({ dryRun: false, url: URL_ });
 
-    expect(updateMany).not.toHaveBeenCalled();
+    expect(executeRaw).not.toHaveBeenCalled();
     expect(report.failures).toHaveLength(1);
     expect(report.failures[0].error).toMatch(/empty payload/);
   });
@@ -115,7 +128,7 @@ describe('backfillDocumentBytes', () => {
   it('reports a non-archived capture instead of skipping it silently', async () => {
     // A DIRECT or ASSERTED capture cannot be refetched from the Archive. That is
     // a different problem, and a silent skip would leave it looking backfilled.
-    findMany.mockResolvedValue([row({ waybackTimestamp: null })]);
+    withPending([row({ waybackTimestamp: null })]);
 
     const report = await backfillDocumentBytes({ dryRun: false, url: URL_ });
 
@@ -124,7 +137,7 @@ describe('backfillDocumentBytes', () => {
   });
 
   it('one unreachable capture does not abandon the rest', async () => {
-    findMany.mockResolvedValue([row({ id: 'a' }), row({ id: 'b' })]);
+    withPending([row({ id: 'a' }), row({ id: 'b' })]);
     fetchBytes
       .mockRejectedValueOnce(new Error('archive offline'))
       .mockResolvedValue({ bytes: PAYLOAD, contentType: CT });
@@ -136,7 +149,7 @@ describe('backfillDocumentBytes', () => {
   });
 
   it('counts a row another writer filled first as filled, not as an error', async () => {
-    updateMany.mockResolvedValue({ count: 0 });
+    executeRaw.mockResolvedValue(0);
     const report = await backfillDocumentBytes({ dryRun: false, url: URL_ });
     expect(report.failures).toHaveLength(0);
     expect(report.filled).toBe(0);
