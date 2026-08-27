@@ -1292,10 +1292,40 @@ decision rather than a chore.
 
 ##### Two blockers found while planning the rescan — findings, not obstacles
 
-- **A scan that fetches nothing reports success.** `runFullScan` asks `computeNextFromDate` whether
-  more batches exist, and that returns `null` when the last batch held fewer than `MAX_SNAPSHOTS` rows.
-  Staging's `COMPLETED` job (`totalSnapshots: 41`) therefore short-circuits to `COMPLETED` without one
-  request to the Archive. Same family as the silent truncations. **Level 2 item.**
+- **A scan that fetches nothing reports success — FIXED 2026-08-27.** `runFullScan` asked
+  `computeNextFromDate` whether more batches exist, and that returns `null` when the last batch held
+  fewer than `MAX_SNAPSHOTS` rows. Staging's `COMPLETED` job (`totalSnapshots: 41`) therefore
+  short-circuited to `COMPLETED` without one request to the Archive.
+
+  **The diagnosis is sharper than "an off-by-one in a completeness check": ONE BRANCH SERVED TWO
+  DIFFERENT QUESTIONS.**
+
+  | question | asked when | answerable by |
+  |---|---|---|
+  | *is there another PAGE of this walk?* | mid-run, after a batch | the sentinel — legitimately |
+  | *has the Archive gained captures since we last looked?* | a fresh scan request | **only by asking CDX** |
+
+  `totalSnapshots` holds `MAX_SNAPSHOTS + 1` as a within-run pagination sentinel, so **a finished scan
+  always ends below `MAX_SNAPSHOTS` — that is what finishing means.** Read across runs, the sentinel
+  therefore answers "nothing more, forever" for every completed job. The fix distinguishes the two by
+  `batchesProcessedThisRun`, and a fresh scan now derives its resume point from **stored capture
+  state** — one second past the newest archived capture held — rather than from the previous run's
+  final transition. *Derive from state, not from a transition*, for the fourth time.
+
+  With no capture held it resumes unbounded, which is the Phase B case: the scan runs, CDX answers,
+  and **"the Archive holds none" becomes an observation instead of an inference from a counter nobody
+  set.** `totalSnapshots: 0` after a completed fresh scan now means *we asked and there is nothing
+  newer*, which it never did before.
+
+  *Limit, stated rather than discovered later:* a fresh scan is **incremental**. It looks only for
+  captures newer than our newest and will not rediscover a gap in the middle — that is what
+  `forensics:recover-captures` is for.
+
+  *Mutation-proven.* Restoring the original single-branch behaviour fails **all six** new tests;
+  narrowing the unbounded resume, dropping the archived-only scope, and removing the pagination
+  terminator each fail one. A fifth mutation was **discarded rather than counted**: `if (false)`
+  broke compilation, so the suite reported `0 total` — which is a vacuous result, not a kill.
+  Re-aimed at the terminating `return`, it compiled and killed a test.
 - **`UrlVersionDiff` has no unique constraint on the snapshot pair it spans**, and diffs are written
   with `create` across six call sites — so a from-scratch rescan would duplicate every existing diff.
   **Make "a diff is uniquely identified by the pair it spans" a Level 5 invariant.** With the
