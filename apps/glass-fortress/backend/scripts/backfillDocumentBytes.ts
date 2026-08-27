@@ -70,8 +70,22 @@ async function main(): Promise<void> {
   console.log(`Derived text CHANGED on ${String(report.textChanged)} capture(s).`);
   for (const r of report.rows) {
     if (r.textChanged === true) {
-      console.log(`  text changed: ${String(r.waybackTimestamp)} (${r.snapshotId})`);
+      // The header, not just the count. The stored text came from axios
+      // `responseType: 'text'`, which defaults to UTF-8 in Node and ignores a
+      // declared charset. On a Hebrew page a windows-1255 payload read as UTF-8
+      // is mojibake that passes every structural test — so if the header says
+      // windows-1255, the change is a REPAIR rather than a regression.
+      console.log(
+        `  text changed: ${String(r.waybackTimestamp)}  Content-Type: ${String(r.contentType)}`,
+      );
     }
+  }
+  // Printed whether or not anything changed, so the charset is on the record.
+  const charsets = new Set(
+    report.rows.map((r) => r.contentType).filter((c): c is string => typeof c === 'string'),
+  );
+  if (charsets.size > 0) {
+    console.log(`Content-Type header(s) seen: ${[...charsets].join(' | ')}`);
   }
 
   if (report.failures.length > 0) {

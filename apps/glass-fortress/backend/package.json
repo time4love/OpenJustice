@@ -28,6 +28,7 @@
     "forensics:rediff": "node dist/scripts/rediffFromSnapshots.js",
     "forensics:backfill-document-bytes": "node dist/scripts/backfillDocumentBytes.js",
     "forensics:recover-captures": "node dist/scripts/recoverMissingCaptures.js",
+    "forensics:measure-href-changes": "node dist/scripts/measureHrefChanges.js",
     "forensics:measure-divergence": "node dist/scripts/measureExtractionDivergence.js"
   },
   "keywords": [],

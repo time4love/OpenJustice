@@ -161,17 +161,14 @@ model UrlSnapshot {
   // bytes and never bytes from text, so this preserves every FUTURE definition of
   // "changed" instead of committing now, irreversibly, to one.
   //
-  // NULLABLE ONLY UNTIL THE BACKFILL RUNS. Unlike provenance or capturedAt this
-  // cannot be derived in SQL from anything already stored — the bytes have to
-  // come back from the Archive — so the enforcing migration
-  // (20260827180000_snapshot_document_bytes_required) is a SECOND step, applied
-  // after `forensics:backfill-document-bytes`. An environment that has not been
-  // backfilled fails that migration and aborts its deploy with the previous
-  // version still serving, which is the ordering guarantee working, not a hazard.
-  document              Bytes?
+  // NOT NULL since 20260827180000_snapshot_document_bytes_required, applied only
+  // after `forensics:backfill-document-bytes` had filled every row — the bytes
+  // cannot be derived in SQL from anything already stored, which is why it took
+  // two migrations. An environment that has not been backfilled fails that
+  // migration and aborts its deploy with the previous version still serving.
+  document              Bytes
   // SHA-256 of `document`. Integrity, and where the anchor moves at Level 3.
-  // Nullable on the same terms as `document`, and for exactly the same one step.
-  documentHash          String?
+  documentHash          String
   // The Content-Type header verbatim, so the bytes can be decoded later.
   //
   // Storing bytes without the charset that interprets them would re-create the

@@ -34,8 +34,19 @@ import { deriveText, sha256Bytes } from '../lib/captureDocument';
 export interface BackfillRow {
   snapshotId: string;
   waybackTimestamp: string | null;
-  /** The derived text changed relative to what was stored — a decoding difference. */
+  /**
+   * The derived text changed relative to what was stored.
+   *
+   * NOT NECESSARILY A REGRESSION, and the Content-Type below is what decides.
+   * The stored text came from axios `responseType: 'text'`, which in Node
+   * defaults to UTF-8 and does NOT honour the charset a response declares. This
+   * page is Hebrew: if the Archive served `windows-1255`, the STORED text is
+   * mojibake and the recomputation — which decodes per the declared charset — is
+   * the correct one. A change would then be a repair.
+   */
   textChanged?: boolean;
+  /** The Content-Type header verbatim. Report it, never just the diff count. */
+  contentType?: string | null;
   bytes?: number;
   error?: string;
 }
@@ -50,13 +61,45 @@ export interface BackfillReport {
   missingAtEnd: number;
 }
 
+// ---------------------------------------------------------------------------
+// Why these queries are raw SQL, and must stay raw SQL.
+//
+// This tool repairs an environment whose schema LAGS the code — one that has
+// received 20260827170000 (the columns) but not yet been backfilled. HEAD's
+// schema.prisma declares `document` and `documentHash` NOT NULL
+// (20260827180000), so Prisma's generated filter type cannot express
+// `documentHash: null` at all: the typed query stops compiling the moment the
+// constraint is declared.
+//
+// That is not an obstacle to work around, it is the situation stated plainly. A
+// cross-schema repair tool is precisely the case where the ORM's model of the
+// world is the wrong one, because the ORM models HEAD and this reads an older
+// environment. Raw SQL is the honest instrument here rather than an escape
+// hatch, and every value below is still parameterised by the tagged template.
+//
+// If the columns do not exist yet these queries raise `column ... does not
+// exist` and the run fails loudly, which is correct: the environment needs
+// 20260827170000 first, and a repair tool that reported success against a schema
+// it could not read would be the exact failure that hid snapshot anchoring being
+// broken for 83 rows.
+// ---------------------------------------------------------------------------
+
+interface PendingRow {
+  id: string;
+  waybackTimestamp: string | null;
+  url: string;
+  text: string;
+}
+
 export async function countSnapshotsWithoutDocument(url?: string): Promise<number> {
-  return prisma.urlSnapshot.count({
-    where: {
-      documentHash: null,
-      ...(url ? { trackedUrl: { url } } : {}),
-    },
-  });
+  const rows = await prisma.$queryRaw<{ n: bigint }[]>`
+    SELECT count(*)::bigint AS n
+    FROM "UrlSnapshot" s
+    JOIN "TrackedUrl" t ON t."id" = s."trackedUrlId"
+    WHERE s."documentHash" IS NULL
+      AND (${url ?? null}::text IS NULL OR t."url" = ${url ?? null}::text)
+  `;
+  return Number(rows[0]?.n ?? 0);
 }
 
 /** Milliseconds between Archive requests — respects rate limits. */
@@ -70,20 +113,16 @@ export async function backfillDocumentBytes(opts: {
 }): Promise<BackfillReport> {
   const missingBefore = await countSnapshotsWithoutDocument(opts.url);
 
-  const targets = await prisma.urlSnapshot.findMany({
-    where: {
-      documentHash: null,
-      ...(opts.url ? { trackedUrl: { url: opts.url } } : {}),
-    },
-    select: {
-      id: true,
-      waybackTimestamp: true,
-      text: true,
-      trackedUrl: { select: { url: true } },
-    },
-    orderBy: { capturedAt: 'asc' },
-    ...(opts.limit !== undefined ? { take: opts.limit } : {}),
-  });
+  // LIMIT NULL is unlimited in PostgreSQL, so the optional limit needs no branch.
+  const targets = await prisma.$queryRaw<PendingRow[]>`
+    SELECT s."id", s."waybackTimestamp", s."text", t."url"
+    FROM "UrlSnapshot" s
+    JOIN "TrackedUrl" t ON t."id" = s."trackedUrlId"
+    WHERE s."documentHash" IS NULL
+      AND (${opts.url ?? null}::text IS NULL OR t."url" = ${opts.url ?? null}::text)
+    ORDER BY s."capturedAt" ASC
+    LIMIT ${opts.limit ?? null}
+  `;
 
   const rows: BackfillRow[] = [];
   const failures: BackfillRow[] = [];
@@ -112,7 +151,7 @@ export async function backfillDocumentBytes(opts: {
 
     try {
       const { bytes, contentType } = await fetchCaptureBytes(
-        snap.trackedUrl.url,
+        snap.url,
         snap.waybackTimestamp,
       );
       if (bytes.length === 0) {
@@ -124,25 +163,25 @@ export async function backfillDocumentBytes(opts: {
 
       // `AND "documentHash" IS NULL` is the fill-never-overwrite guard, enforced
       // by the database rather than by having checked a moment earlier.
-      const updated = await prisma.urlSnapshot.updateMany({
-        where: { id: snap.id, documentHash: null },
-        data: {
-          document: bytes,
-          documentHash,
-          documentContentType: contentType,
-          text: derived.text,
-          textHash: derived.textHash,
-          textExtractionVersion: derived.textExtractionVersion,
-        },
-      });
+      const updated = await prisma.$executeRaw`
+        UPDATE "UrlSnapshot"
+        SET "document" = ${bytes},
+            "documentHash" = ${documentHash},
+            "documentContentType" = ${contentType},
+            "text" = ${derived.text},
+            "textHash" = ${derived.textHash},
+            "textExtractionVersion" = ${derived.textExtractionVersion}
+        WHERE "id" = ${snap.id} AND "documentHash" IS NULL
+      `;
 
-      if (updated.count === 1) {
+      if (updated === 1) {
         filled++;
         if (changed) textChanged++;
         rows.push({
           snapshotId: snap.id,
           waybackTimestamp: snap.waybackTimestamp,
           bytes: bytes.length,
+          contentType,
           textChanged: changed,
         });
       } else {
