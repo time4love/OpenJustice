@@ -114,59 +114,94 @@ model TrackedUrl {
 // contentHash (SHA-256 of fullText) can be registered on-chain for immutable chain of custody.
 // Shared across diffs: two diffs spanning the same snapshot reference the same row.
 model UrlSnapshot {
-  id               String            @id @default(cuid())
-  trackedUrlId     String
-  trackedUrl       TrackedUrl        @relation(fields: [trackedUrlId], references: [id], onDelete: Cascade)
+  id                    String            @id @default(cuid())
+  trackedUrlId          String
+  trackedUrl            TrackedUrl        @relation(fields: [trackedUrlId], references: [id], onDelete: Cascade)
   // How this capture came into our possession. See CaptureProvenance.
   //
   // Existing rows backfill to WAYBACK: every capture predating this column came
   // from WaybackScraper, which has no other source.
-  provenance       CaptureProvenance
+  provenance            CaptureProvenance
   // When the capture was TAKEN — not when we stored it (that is createdAt).
   //
   // Derived from waybackTimestamp for archived captures and from the fetch
   // moment otherwise. This is the field every chronological operation orders
   // by, so that a corpus mixing provenances still has one timeline.
-  capturedAt       DateTime
+  capturedAt            DateTime
   // The Archive's identifier, present only on archived captures.
   //
   // Nullable since a DIRECT or ASSERTED capture has none. The composite unique
   // below still holds: Postgres does not treat NULLs as colliding, so any
   // number of non-archived captures coexist under one TrackedUrl.
-  waybackTimestamp String? // YYYYMMDDHHMMSS — unique Wayback archive identifier
-  snapshotDate     String // YYYY-MM-DD — human-readable date
+  waybackTimestamp      String? // YYYYMMDDHHMMSS — unique Wayback archive identifier
+  snapshotDate          String // YYYY-MM-DD — human-readable date
   // Where this capture was fetched FROM — the Wayback canonical URL for an
   // archived capture, the live URL for a direct one.
-  snapshotUrl      String
-  fullText         String // Readability's article — NOT the page. See rawText.
-  contentHash      String // SHA-256(fullText) — chain of custody
-  // The archived document as fetched, before extraction.
+  snapshotUrl           String
+  fullText              String // Readability's article — NOT the page. See `text` and `document`.
+  contentHash           String // SHA-256(fullText) — chain of custody, and the only hash anchored today
+  // THE PAYLOAD AS FETCHED. Bytes, not text, and nothing derived from it.
   //
-  // fullText keeps roughly two thirds of the page, and a DIFFERENT two thirds on
-  // different captures — which is how a phrase present in the raw archive on
-  // three consecutive captures was reported as removed and then restored, and how
-  // a published thesis came to assert it had been added. Storing the document
-  // makes that divergence computable forever without refetching the Archive, and
-  // makes every later verification a local operation.
+  // This column exists because the first attempt at Level 1 REPRODUCED THE BUG IT
+  // WAS FIXING, at a lower loss rate. The plan diagnosed Readability as
+  // discarding at write time and prescribed storing the document; the
+  // implementation stored `normaliseText(htmlToText(html))` and named it the
+  // document. `NOT NULL` then enforced that SOMETHING was present, not that it
+  // was the document — a constraint standing in for a guarantee, inside the level
+  // built to remove exactly that.
   //
-  // NOT NULL since 20260827120000_snapshot_document_required. A snapshot without
-  // the document it was extracted from is not a valid snapshot, and Level 1 of
-  // docs/gf-factual-layer-rebuild-dev-plan.md is the constraint rather than the
-  // intention: a mandatory attribute the schema permits to be absent is a rule
-  // nothing enforces, which is the exact shape of the three code comments that
-  // documented this defect and changed nothing.
+  // The concrete cost was not abstract: htmlToText discards hrefs while keeping
+  // anchor text, and this platform's central finding is that a REPORTING-CHANNEL
+  // LINK was removed. Two different links with the same visible text were, to us,
+  // the same page. Measured on staging 2026-08-27: CDX rows 6, 7 and 8 of the
+  // tracked page carry two distinct payload digests and collapsed to ONE stored
+  // hash, so recovering row 8 returned UNCHANGED and wrote nothing.
   //
-  // This is deliberately NOT an `UNAVAILABLE` verdict. A CHECK may legitimately
-  // be unavailable — the Archive was down, so a claim went unverified. A
-  // mandatory attribute may not, and conflating the two is how "we could not
-  // check" becomes indistinguishable from "we never stored it". See §3.
-  rawText          String
-  // SHA-256(rawText). Stored rather than derived for the same reason contentHash
-  // is: a checksum exists to DISAGREE with a recomputation. Derived, it would
-  // reproduce any corruption of the stored text and call it consistent.
-  rawContentHash   String
-  onChainTxHash    String? // Blockchain tx hash once contentHash is registered on-chain
-  createdAt        DateTime          @default(now())
+  // Bytes rather than a decoded string, deliberately: you can derive text from
+  // bytes and never bytes from text, so this preserves every FUTURE definition of
+  // "changed" instead of committing now, irreversibly, to one.
+  //
+  // NULLABLE ONLY UNTIL THE BACKFILL RUNS. Unlike provenance or capturedAt this
+  // cannot be derived in SQL from anything already stored — the bytes have to
+  // come back from the Archive — so the enforcing migration
+  // (20260827180000_snapshot_document_bytes_required) is a SECOND step, applied
+  // after `forensics:backfill-document-bytes`. An environment that has not been
+  // backfilled fails that migration and aborts its deploy with the previous
+  // version still serving, which is the ordering guarantee working, not a hazard.
+  document              Bytes?
+  // SHA-256 of `document`. Integrity, and where the anchor moves at Level 3.
+  // Nullable on the same terms as `document`, and for exactly the same one step.
+  documentHash          String?
+  // The Content-Type header verbatim, so the bytes can be decoded later.
+  //
+  // Storing bytes without the charset that interprets them would re-create the
+  // loss this column exists to end. Nullable only because a capture stored before
+  // this column cannot invent one.
+  documentContentType   String?
+  // Normalised plain text derived from `document` — a CACHED DERIVATION, not a
+  // source of truth. Renamed from `rawText`, which claimed to be the document.
+  //
+  // Cached rather than recomputed per read because diffs and trajectories read it
+  // constantly, and §3 rules that an expensive function of held data is a cached
+  // verdict invalidated by version — hence textExtractionVersion below.
+  text                  String
+  // SHA-256(text). THE NOVELTY AND DIFFING KEY.
+  //
+  // Novelty is keyed here rather than on the payload deliberately. Byte-identity
+  // is too sensitive: a rotating cache-buster or a timestamp in a comment would
+  // make every capture distinct and store hundreds of near-identical documents.
+  // Nothing is discarded either way — the payload is kept whole — so the
+  // sensitivity question is answered explicitly here instead of being decided by
+  // accident inside an extractor.
+  textHash              String
+  // Which derivation produced `text`. Change it and every cached text is stale.
+  //
+  // Built now rather than invented after the fact, which this repository has now
+  // done four times (classifierVersion, summaryVersion, diffInputVersion,
+  // DETECTION_VERSION).
+  textExtractionVersion String
+  onChainTxHash         String? // Blockchain tx hash once contentHash is registered on-chain
+  createdAt             DateTime          @default(now())
 
   beforeDiffs UrlVersionDiff[] @relation("BeforeSnapshot")
   afterDiffs  UrlVersionDiff[] @relation("AfterSnapshot")

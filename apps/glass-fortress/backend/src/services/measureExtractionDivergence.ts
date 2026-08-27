@@ -130,7 +130,7 @@ export async function measureExtractionDivergence(url: string): Promise<Divergen
       snapshotDate: true,
       waybackTimestamp: true,
       fullText: true,
-      rawText: true,
+      text: true,
     },
     // capturedAt: every capture has one, so the measurement stays in
     // chronological order across provenances. Ordering by the nullable Archive
@@ -148,7 +148,7 @@ export async function measureExtractionDivergence(url: string): Promise<Divergen
   // invalid rows — see the plan's §3. The check below is now total over captures.
   for (const snap of snapshots) {
     const extractedNormalised = normaliseForPresence(snap.fullText);
-    const droppedBlocks = blocksOf(snap.rawText).filter(
+    const droppedBlocks = blocksOf(snap.text).filter(
       (block) => !extractedNormalised.includes(normaliseForPresence(block)),
     ).length;
 
@@ -156,12 +156,12 @@ export async function measureExtractionDivergence(url: string): Promise<Divergen
       snapshotId: snap.id,
       snapshotDate: snap.snapshotDate,
       waybackTimestamp: snap.waybackTimestamp,
-      rawChars: snap.rawText.length,
+      rawChars: snap.text.length,
       extractedChars: snap.fullText.length,
       retainedPercent:
-        snap.rawText.length === 0
+        snap.text.length === 0
           ? 0
-          : Math.round((snap.fullText.length / snap.rawText.length) * 100),
+          : Math.round((snap.fullText.length / snap.text.length) * 100),
       droppedBlocks,
     });
   }
@@ -174,8 +174,8 @@ export async function measureExtractionDivergence(url: string): Promise<Divergen
       afterDate: true,
       rawDeletedText: true,
       rawAddedText: true,
-      beforeSnapshot: { select: { rawText: true } },
-      afterSnapshot: { select: { rawText: true } },
+      beforeSnapshot: { select: { text: true } },
+      afterSnapshot: { select: { text: true } },
     },
     orderBy: { beforeDate: 'asc' },
   });
@@ -183,7 +183,7 @@ export async function measureExtractionDivergence(url: string): Promise<Divergen
   const checked: DiffDivergence[] = [];
 
   for (const diff of diffs) {
-    // `rawText` is NOT NULL, so a capture that EXISTS always holds its document.
+    // `text` is NOT NULL, so a capture that EXISTS always holds its derived text.
     // What can still be absent is the capture itself: beforeSnapshotId and
     // afterSnapshotId are both optional FKs, so a diff may reference no capture
     // on either side.
@@ -191,8 +191,8 @@ export async function measureExtractionDivergence(url: string): Promise<Divergen
     // That distinction is the whole of §3. This is UNCHECKABLE because there is
     // nothing to check against — a verdict about a CHECK. It is never a verdict
     // about a capture missing mandatory data, which the schema now forbids.
-    const beforeRaw = diff.beforeSnapshot?.rawText ?? null;
-    const afterRaw = diff.afterSnapshot?.rawText ?? null;
+    const beforeRaw = diff.beforeSnapshot?.text ?? null;
+    const afterRaw = diff.afterSnapshot?.text ?? null;
 
     if (beforeRaw === null || afterRaw === null) {
       checked.push({

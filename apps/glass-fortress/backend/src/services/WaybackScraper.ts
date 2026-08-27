@@ -1,12 +1,13 @@
 import axios from 'axios';
 import { CaptureProvenance } from '@prisma/client';
 import { recordCapture, waybackTimestampToDate } from './recordCapture';
-import { extractArticleText, extractRawText, timestampToDate } from '../lib/archiveText';
+import { extractArticleText, timestampToDate } from '../lib/archiveText';
+import { decodeDocument } from '../lib/captureDocument';
 import {
   CDX_MAX_RETRIES,
   CDX_TIMEOUT_MS,
   CDX_USER_AGENT,
-  fetchCaptureHtml,
+  fetchCaptureBytes,
   isWaybackOffline,
   rawCaptureUrl,
   sleep,
@@ -110,7 +111,8 @@ async function recordArchivedCapture(
   timestamp: string,
   url: string,
   fullText: string,
-  rawText: string,
+  document: Buffer,
+  documentContentType: string | null,
 ): Promise<{ id: string; waybackTimestamp: string; contentHash: string }> {
   const recorded = await recordCapture({
     trackedUrlId,
@@ -118,7 +120,8 @@ async function recordArchivedCapture(
     capturedAt: waybackTimestampToDate(timestamp),
     waybackTimestamp: timestamp,
     sourceUrl: viewerCaptureUrl(timestamp, url),
-    document: rawText,
+    document,
+    documentContentType,
     extraction: fullText,
   });
 
@@ -411,11 +414,24 @@ export class WaybackScraper {
   async scrapeSnapshotReadings(
     url: string,
     timestamp: string,
-  ): Promise<{ extracted: string; raw: string }> {
-    const html = await fetchCaptureHtml(url, timestamp);
+  ): Promise<{ extracted: string; bytes: Buffer; contentType: string | null }> {
+    // ONE fetch, and it returns the payload rather than a decoded string.
+    //
+    // This used to fetch with responseType 'text' and return `raw:
+    // extractRawText(html)` — text stripped of markup, stored under the name of
+    // the document. That is what reopened Level 1: hrefs were discarded while
+    // anchor text was kept, so two different links reading the same were the
+    // same page to us, on a corpus whose central finding is a removed
+    // reporting-channel link.
+    //
+    // The extraction is still derived here because Readability wants a string;
+    // the bytes travel to recordCapture untouched.
+    const { bytes, contentType } = await fetchCaptureBytes(url, timestamp);
+    const html = decodeDocument(bytes, contentType);
     return {
       extracted: extractArticleText(html, rawCaptureUrl(timestamp, url)),
-      raw: extractRawText(html),
+      bytes,
+      contentType,
     };
   }
 
@@ -500,7 +516,7 @@ export class WaybackScraper {
         try {
           snaps.push(
             await recordArchivedCapture(
-              trackedUrl.id, snap.timestamp, url, readings.extracted, readings.raw,
+              trackedUrl.id, snap.timestamp, url, readings.extracted, readings.bytes, readings.contentType,
             ),
           );
         } catch {
@@ -800,7 +816,7 @@ export class WaybackScraper {
           const readings = await this.scrapeSnapshotReadings(job.url, entry.timestamp);
           previousText = readings.extracted;
           previousSnapshot = await recordArchivedCapture(
-            trackedUrlId, entry.timestamp, job.url, readings.extracted, readings.raw,
+            trackedUrlId, entry.timestamp, job.url, readings.extracted, readings.bytes, readings.contentType,
           );
         } catch {
           // Keep last good values if re-fetch fails during resume
@@ -814,7 +830,7 @@ export class WaybackScraper {
         const readings = await this.scrapeSnapshotReadings(job.url, entry.timestamp);
         currentText = readings.extracted;
         currentSnapshot = await recordArchivedCapture(
-          trackedUrlId, entry.timestamp, job.url, readings.extracted, readings.raw,
+          trackedUrlId, entry.timestamp, job.url, readings.extracted, readings.bytes, readings.contentType,
         );
       } catch (err) {
         console.warn(

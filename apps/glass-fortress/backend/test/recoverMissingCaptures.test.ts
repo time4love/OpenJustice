@@ -11,14 +11,13 @@ jest.mock('../src/lib/archiveHttp', () => {
   const actual = jest.requireActual('../src/lib/archiveHttp');
   return {
     ...actual,
-    fetchCaptureHtml: jest.fn(),
+    fetchCaptureBytes: jest.fn(),
     sleep: jest.fn().mockResolvedValue(undefined),
     withRetry: (fn: () => Promise<unknown>) => fn(),
   };
 });
 
 jest.mock('../src/lib/archiveText', () => ({
-  extractRawText: jest.fn((html: string) => `RAW:${html}`),
   extractArticleText: jest.fn((html: string) => `ARTICLE:${html}`),
 }));
 
@@ -29,7 +28,7 @@ jest.mock('../src/services/recordCapture', () => {
 
 import axios from 'axios';
 import { prisma } from '../src/lib/prisma';
-import { fetchCaptureHtml } from '../src/lib/archiveHttp';
+import { fetchCaptureBytes } from '../src/lib/archiveHttp';
 import { recordCapture } from '../src/services/recordCapture';
 import { recoverMissingCaptures, fetchAllCdxRows } from '../src/services/recoverMissingCaptures';
 
@@ -37,7 +36,7 @@ const mockGet = axios.get as jest.Mock;
 const trackedFind = prisma.trackedUrl.findUnique as jest.Mock;
 const snapFindMany = prisma.urlSnapshot.findMany as jest.Mock;
 const snapCount = prisma.urlSnapshot.count as jest.Mock;
-const mockFetchHtml = fetchCaptureHtml as jest.Mock;
+const mockFetchBytes = fetchCaptureBytes as jest.Mock;
 const mockRecord = recordCapture as jest.Mock;
 
 const URL_ = 'https://corona.health.gov.il/vaccine-for-covid/';
@@ -59,7 +58,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   trackedFind.mockResolvedValue({ id: 'tracked-1' });
   mockGet.mockResolvedValue(cdxResponse(CDX));
-  mockFetchHtml.mockResolvedValue('<html>page</html>');
+  mockFetchBytes.mockResolvedValue({ bytes: Buffer.from('<html>page</html>'), contentType: 'text/html; charset=utf-8' });
   snapCount.mockResolvedValue(4);
   mockRecord.mockResolvedValue({
     id: 'new-id',
@@ -67,7 +66,7 @@ beforeEach(() => {
     capturedAt: new Date(),
     contentHash: 'c'.repeat(64),
     documentHash: 'd'.repeat(64),
-    divergedFromStored: false,
+    documentComparison: 'MATCHES',
     outcome: 'CREATED',
     anchoring: Promise.resolve({ kind: 'COPIED_FROM_TWIN', txHash: '0xabc' }),
   });
@@ -144,7 +143,7 @@ describe('recoverMissingCaptures', () => {
     const report = await recoverMissingCaptures({ url: URL_, dryRun: true });
 
     expect(mockRecord).not.toHaveBeenCalled();
-    expect(mockFetchHtml).not.toHaveBeenCalled();
+    expect(mockFetchBytes).not.toHaveBeenCalled();
     expect(report.recovered).toHaveLength(4);
     expect(report.recovered[0].outcome).toBeUndefined();
   });
@@ -181,7 +180,7 @@ describe('recoverMissingCaptures', () => {
       capturedAt: new Date(),
       contentHash: 'c'.repeat(64),
       documentHash: 'd'.repeat(64),
-      divergedFromStored: false,
+      documentComparison: 'MATCHES',
       outcome: 'CREATED',
       anchoring: Promise.resolve(null),
     });
@@ -197,7 +196,7 @@ describe('recoverMissingCaptures', () => {
       capturedAt: new Date(),
       contentHash: 'c'.repeat(64),
       documentHash: 'd'.repeat(64),
-      divergedFromStored: false,
+      documentComparison: 'MATCHES',
       outcome: 'EXISTS',
       // no `anchoring` — recordCapture omits it when onChainTxHash is set
     });
@@ -205,7 +204,7 @@ describe('recoverMissingCaptures', () => {
     expect(report.recovered[0].anchoring).toBe('NOT_ATTEMPTED');
   });
 
-  it('surfaces divergence rather than folding it into a success', async () => {
+  it('surfaces the payload comparison rather than folding it into a success', async () => {
     snapFindMany.mockResolvedValue([]);
     mockRecord.mockResolvedValue({
       id: 'x',
@@ -213,18 +212,18 @@ describe('recoverMissingCaptures', () => {
       capturedAt: new Date(),
       contentHash: 'c'.repeat(64),
       documentHash: 'd'.repeat(64),
-      divergedFromStored: true,
+      documentComparison: 'DIVERGED',
       outcome: 'EXISTS',
     });
     const report = await recoverMissingCaptures({ url: URL_, dryRun: false });
-    expect(report.recovered[0].divergedFromStored).toBe(true);
+    expect(report.recovered[0].documentComparison).toBe('DIVERGED');
   });
 
   it('one unreachable capture does not abandon the rest', async () => {
     snapFindMany.mockResolvedValue([]);
-    mockFetchHtml
+    mockFetchBytes
       .mockRejectedValueOnce(new Error('archive offline'))
-      .mockResolvedValue('<html>page</html>');
+      .mockResolvedValue({ bytes: Buffer.from('<html>page</html>'), contentType: 'text/html' });
 
     const report = await recoverMissingCaptures({ url: URL_, dryRun: false });
 

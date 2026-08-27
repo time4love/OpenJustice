@@ -1,5 +1,5 @@
-import { createHash } from 'crypto';
 import { prisma } from '../lib/prisma';
+import { deriveText, sha256Bytes, sha256Text } from '../lib/captureDocument';
 import { CaptureProvenance } from '@prisma/client';
 import { registerSnapshotOnChain, type SnapshotAnchorOutcome } from './anchorSnapshots';
 
@@ -31,11 +31,22 @@ export interface RecordCaptureInput {
   waybackTimestamp?: string;
   /** Where this was fetched from — Wayback canonical URL, or the live URL. */
   sourceUrl: string;
-  /** The document as fetched, before extraction. Never truncated. */
-  document: string;
-  /** Readability's article view of that same document. */
+  /**
+   * THE PAYLOAD AS FETCHED. Bytes, never a decoded or filtered view of them.
+   *
+   * Typed `Buffer` rather than `string` so the compiler refuses the mistake that
+   * reopened this level: a caller cannot hand text here and have it stored under
+   * the name of the document.
+   */
+  document: Buffer;
+  /** The Content-Type header verbatim — what makes the bytes decodable later. */
+  documentContentType?: string | null;
+  /** Readability's article view of that same payload. */
   extraction: string;
 }
+
+/** The verdict of comparing a refetched payload against the stored one. */
+export type DocumentComparison = 'MATCHES' | 'DIVERGED' | 'UNAVAILABLE';
 
 export interface RecordedCapture {
   id: string;
@@ -43,18 +54,24 @@ export interface RecordedCapture {
   capturedAt: Date;
   /** SHA-256(extraction) — what the chain currently attests to. */
   contentHash: string;
-  /** SHA-256(document), over the WHOLE document. */
+  /** SHA-256 of the payload, whole and untruncated. */
   documentHash: string;
+  /** SHA-256 of the derived normalised text — the novelty and diffing key. */
+  textHash: string;
   /**
-   * The stored capture at this instant holds a DIFFERENT document than the one
-   * just fetched.
+   * Whether the payload just fetched matches the one already stored.
    *
-   * Only ever true alongside `EXISTS`, and it is a finding rather than an error:
-   * either the Archive's own copy changed, or our fetch is faulty. Stored text
-   * is never rewritten on the strength of it. Persisting the verdict waits on
-   * §3's open decision about where check results live.
+   * `DIVERGED` is a finding rather than an error: either the Archive's own copy
+   * changed or our fetch is faulty, and stored bytes are never rewritten on the
+   * strength of it. `UNAVAILABLE` means the comparison could not be made — a row
+   * predating the payload column — and is deliberately NOT collapsed into
+   * `MATCHES`, per §3: UNAVAILABLE is a verdict about a CHECK, never about data.
+   *
+   * Always `MATCHES` on CREATED and UNCHANGED, where nothing was compared
+   * because nothing conflicting was stored. Persisting the verdict waits on §3's
+   * open decision about where check results live.
    */
-  divergedFromStored: boolean;
+  documentComparison: DocumentComparison;
   /**
    * Why this call did not create a row.
    *
@@ -76,11 +93,6 @@ export interface RecordedCapture {
    * itself failed, as distinct from an attempt that reached a conclusion.
    */
   anchoring?: Promise<SnapshotAnchorOutcome | null>;
-}
-
-/** SHA-256 hex digest. Bare hex — see toBytes32 before any chain call. */
-function sha256(text: string): string {
-  return createHash('sha256').update(text, 'utf8').digest('hex');
 }
 
 /**
@@ -159,21 +171,39 @@ function finishExisting(
     id: string;
     waybackTimestamp: string | null;
     contentHash: string;
-    rawContentHash: string;
+    documentHash: string | null;
     onChainTxHash: string | null;
   },
-  fetched: { documentHash: string; contentHash: string; capturedAt: Date },
+  fetched: { documentHash: string; contentHash: string; textHash: string; capturedAt: Date },
 ): RecordedCapture {
-  const diverged = existing.rawContentHash !== fetched.documentHash;
-  if (diverged) {
+  // Compared on the PAYLOAD, not on the derived text.
+  //
+  // This is the whole lesson of Level 1's reopening. Comparing normalised text
+  // is what let three CDX rows with two distinct payload digests collapse to one
+  // stored hash — a real difference in the archived bytes, invisible to the
+  // check meant to detect exactly that.
+  //
+  // UNAVAILABLE is a verdict about the CHECK, never about the data (§3). A row
+  // stored before the payload column existed has no hash to compare, and saying
+  // so is the difference between "we compared and they match" and "we could not
+  // compare". Reporting the second as the first is how a silent pass wears the
+  // face of a real one.
+  const documentComparison: DocumentComparison =
+    existing.documentHash === null
+      ? 'UNAVAILABLE'
+      : existing.documentHash === fetched.documentHash
+        ? 'MATCHES'
+        : 'DIVERGED';
+
+  if (documentComparison === 'DIVERGED') {
     console.warn(
       '[recordCapture] DIVERGENCE: capture',
       existing.id,
-      'holds a document whose hash is',
-      existing.rawContentHash,
+      'holds a payload hashing to',
+      existing.documentHash,
       'but the same capture just fetched as',
       fetched.documentHash,
-      '— the Archive copy changed, or the fetch is faulty. Stored text left untouched.',
+      '— the Archive copy changed, or the fetch is faulty. Stored payload left untouched.',
     );
   }
 
@@ -187,15 +217,24 @@ function finishExisting(
     capturedAt: fetched.capturedAt,
     contentHash: existing.contentHash,
     documentHash: fetched.documentHash,
-    divergedFromStored: diverged,
+    textHash: fetched.textHash,
+    documentComparison,
     outcome: 'EXISTS',
     ...(anchoring ? { anchoring } : {}),
   };
 }
 
 export async function recordCapture(input: RecordCaptureInput): Promise<RecordedCapture> {
-  const { trackedUrlId, provenance, capturedAt, waybackTimestamp, sourceUrl, document, extraction } =
-    input;
+  const {
+    trackedUrlId,
+    provenance,
+    capturedAt,
+    waybackTimestamp,
+    sourceUrl,
+    document,
+    documentContentType,
+    extraction,
+  } = input;
 
   if (provenance === CaptureProvenance.WAYBACK && !waybackTimestamp) {
     throw new Error('recordCapture: a WAYBACK capture requires its waybackTimestamp.');
@@ -206,17 +245,18 @@ export async function recordCapture(input: RecordCaptureInput): Promise<Recorded
         'it asserts the Archive holds a capture it does not hold.',
     );
   }
-  // trim(), not length === 0. A document of pure whitespace carries exactly as
-  // much of the page as an empty one, and `forensics:backfill-raw-text` already
-  // uses the stricter test — so the loose test here would admit a row the repair
-  // script considers document-less, which is the two-rules-one-invariant shape
-  // this level exists to remove.
-  if (document.trim().length === 0) {
+  // Emptiness is judged on the PAYLOAD and on the text it yields, because they
+  // fail differently: zero bytes is a fetch that returned nothing, while bytes
+  // that derive to pure whitespace is a page that rendered to nothing. Either
+  // way there is no document to store, and a capture without one is exactly what
+  // this level makes impossible.
+  if (document.length === 0) {
     throw new Error('recordCapture: refusing to record a capture with an empty document.');
   }
 
-  const contentHash = sha256(extraction);
-  const documentHash = sha256(document);
+  const contentHash = sha256Text(extraction);
+  const documentHash = sha256Bytes(document);
+  const derived = deriveText(document, documentContentType ?? null);
 
   const existing = await prisma.urlSnapshot.findUnique({
     where: { trackedUrlId_capturedAt: { trackedUrlId, capturedAt } },
@@ -224,12 +264,17 @@ export async function recordCapture(input: RecordCaptureInput): Promise<Recorded
       id: true,
       waybackTimestamp: true,
       contentHash: true,
-      rawContentHash: true,
+      documentHash: true,
       onChainTxHash: true,
     },
   });
   if (existing) {
-    return finishExisting(existing, { documentHash, contentHash, capturedAt });
+    return finishExisting(existing, {
+      documentHash,
+      contentHash,
+      textHash: derived.textHash,
+      capturedAt,
+    });
   }
 
   /**
@@ -279,10 +324,16 @@ export async function recordCapture(input: RecordCaptureInput): Promise<Recorded
       waybackTimestamp: true,
       capturedAt: true,
       contentHash: true,
-      rawContentHash: true,
+      textHash: true,
     },
   });
-  if (preceding?.rawContentHash === documentHash) {
+  // Novelty on the derived TEXT, not on the payload — decided explicitly rather
+  // than inherited. Byte-identity is too sensitive to be the novelty key: a
+  // rotating cache-buster or a timestamp inside a comment would make every
+  // capture distinct and store hundreds of near-identical payloads. Nothing is
+  // discarded by choosing text here, because the payload is kept whole either
+  // way; what changes is only whether a NEW ROW is created.
+  if (preceding?.textHash === derived.textHash) {
     // Every field describes the row named by `id` — the capture that already
     // holds this document — so the result is internally consistent rather than
     // mixing the request with the row it resolved to.
@@ -292,7 +343,8 @@ export async function recordCapture(input: RecordCaptureInput): Promise<Recorded
       capturedAt: preceding.capturedAt,
       contentHash: preceding.contentHash,
       documentHash,
-      divergedFromStored: false,
+      textHash: derived.textHash,
+      documentComparison: 'MATCHES',
       outcome: 'UNCHANGED',
     };
   }
@@ -309,8 +361,12 @@ export async function recordCapture(input: RecordCaptureInput): Promise<Recorded
         snapshotUrl: sourceUrl,
         fullText: extraction,
         contentHash,
-        rawText: document,
-        rawContentHash: documentHash,
+        document,
+        documentHash,
+        documentContentType: documentContentType ?? null,
+        text: derived.text,
+        textHash: derived.textHash,
+        textExtractionVersion: derived.textExtractionVersion,
       },
       select: { id: true, waybackTimestamp: true },
     });
@@ -332,7 +388,7 @@ export async function recordCapture(input: RecordCaptureInput): Promise<Recorded
         id: true,
         waybackTimestamp: true,
         contentHash: true,
-        rawContentHash: true,
+        documentHash: true,
         onChainTxHash: true,
       },
     });
@@ -340,7 +396,12 @@ export async function recordCapture(input: RecordCaptureInput): Promise<Recorded
     // was on something other than this key — surface it rather than invent a
     // result.
     if (!raced) throw err;
-    return finishExisting(raced, { documentHash, contentHash, capturedAt });
+    return finishExisting(raced, {
+      documentHash,
+      contentHash,
+      textHash: derived.textHash,
+      capturedAt,
+    });
   }
 
   // Anchoring belongs to the write path, not to its callers. A capture stored
@@ -360,7 +421,8 @@ export async function recordCapture(input: RecordCaptureInput): Promise<Recorded
     capturedAt,
     contentHash,
     documentHash,
-    divergedFromStored: false,
+    textHash: derived.textHash,
+    documentComparison: 'MATCHES',
     outcome: 'CREATED',
     anchoring,
   };

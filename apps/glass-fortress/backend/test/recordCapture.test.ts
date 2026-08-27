@@ -17,6 +17,7 @@ jest.mock('../src/services/anchorSnapshots', () => ({
 import { prisma } from '../src/lib/prisma';
 import { registerSnapshotOnChain } from '../src/services/anchorSnapshots';
 import { recordCapture, waybackTimestampToDate } from '../src/services/recordCapture';
+import { deriveText, TEXT_EXTRACTION_VERSION } from '../src/lib/captureDocument';
 import { CaptureProvenance } from '@prisma/client';
 
 const findUnique = prisma.urlSnapshot.findUnique as jest.Mock;
@@ -26,10 +27,16 @@ const anchor = registerSnapshotOnChain as jest.Mock;
 
 const TRACKED = 'tracked-url-1';
 const PAGE = 'https://corona.health.gov.il/vaccine-for-covid/';
+const CT = 'text/html; charset=utf-8';
 
 const sha256 = (t: string) => createHash('sha256').update(t, 'utf8').digest('hex');
+const sha256b = (b: Buffer) => createHash('sha256').update(b).digest('hex');
+const html = (s: string) => Buffer.from(s, 'utf8');
 
-/** A well-formed archived capture, overridable per test. */
+/** The default payload, and the text it derives to. */
+const DOC = html('<p>the article</p><a href="/report">report an adverse event</a>');
+const DOC_TEXT = deriveText(DOC, CT);
+
 function archived(overrides: Partial<Parameters<typeof recordCapture>[0]> = {}) {
   return {
     trackedUrlId: TRACKED,
@@ -37,7 +44,8 @@ function archived(overrides: Partial<Parameters<typeof recordCapture>[0]> = {}) 
     capturedAt: new Date('2022-06-22T05:44:35.000Z'),
     waybackTimestamp: '20220622054435',
     sourceUrl: PAGE,
-    document: 'the article and the chrome around it',
+    document: DOC,
+    documentContentType: CT,
     extraction: 'the article',
     ...overrides,
   };
@@ -53,51 +61,65 @@ beforeEach(() => {
 });
 
 // ---------------------------------------------------------------------------
-// The invariant: a capture holds its document
+// The invariant this level was REOPENED for: a capture holds the PAYLOAD
 // ---------------------------------------------------------------------------
 
-describe('recordCapture stores the document', () => {
-  it('writes the document and BOTH hashes in the creating statement', async () => {
+describe('recordCapture stores the payload, not a view of it', () => {
+  it('writes the bytes, its charset, and every hash in the creating statement', async () => {
     const result = await recordCapture(archived());
 
     expect(result.outcome).toBe('CREATED');
-    const data = create.mock.calls[0][0].data as Record<string, string>;
-    expect(data['rawText']).toBe('the article and the chrome around it');
-    expect(data['fullText']).toBe('the article');
+    const data = create.mock.calls[0][0].data as Record<string, unknown>;
 
-    // Recomputed, not shape-checked. A shape assertion (64 hex chars, and the
-    // two differing) passes for sha256('') too, which is exactly the mutation
-    // this file has to be able to catch.
-    expect(data['rawContentHash']).toBe(sha256('the article and the chrome around it'));
+    expect(Buffer.isBuffer(data['document'])).toBe(true);
+    expect(data['document']).toEqual(DOC);
+    expect(data['documentContentType']).toBe(CT);
+
+    // Recomputed, not shape-checked: a shape assertion passes for the hash of
+    // the wrong input, which mutation testing has already caught here once.
+    expect(data['documentHash']).toBe(sha256b(DOC));
+    expect(data['textHash']).toBe(sha256(DOC_TEXT.text));
     expect(data['contentHash']).toBe(sha256('the article'));
-    expect(result.documentHash).toBe(sha256('the article and the chrome around it'));
+    expect(data['textExtractionVersion']).toBe(TEXT_EXTRACTION_VERSION);
   });
 
-  it('hashes the WHOLE document, with no cap', async () => {
-    // Direct-URL evidence used to hash url + text[0:40k], so any two pages
-    // identical for forty thousand characters and divergent after shared one
-    // identity. Same failure family as the 8-chunk diff cap and
-    // MIN_CLAIM_LENGTH = 40 — an arbitrary limit applied at write time,
-    // invisible in the output, silently deciding what counts.
+  it('KEEPS what the text derivation discards — the defect that reopened Level 1', async () => {
+    // htmlToText discards hrefs while keeping anchor text, and this platform's
+    // central finding is that a REPORTING-CHANNEL LINK was removed. Two
+    // different links reading the same were previously the same page to us.
+    const a = html('<a href="/report-adverse-event">report an adverse event</a>');
+    const b = html('<a href="/removed">report an adverse event</a>');
+
+    expect(deriveText(a, CT).text).toBe(deriveText(b, CT).text); // same as text
+    expect(sha256b(a)).not.toBe(sha256b(b)); // different as payload
+
+    await recordCapture(archived({ document: a }));
+    const stored = create.mock.calls[0][0].data as Record<string, unknown>;
+    expect(stored['document']).toEqual(a);
+    expect((stored['document'] as Buffer).toString('utf8')).toContain('/report-adverse-event');
+  });
+
+  it('hashes the WHOLE payload, with no cap', async () => {
     const long = 'x'.repeat(40_000);
-    await recordCapture(archived({ document: `${long}A`, extraction: 'irrelevant' }));
-    await recordCapture(archived({ document: `${long}B`, extraction: 'irrelevant' }));
+    await recordCapture(archived({ document: html(`${long}A`) }));
+    await recordCapture(archived({ document: html(`${long}B`) }));
 
     const first = create.mock.calls[0][0].data as Record<string, string>;
     const second = create.mock.calls[1][0].data as Record<string, string>;
-    expect(first['rawContentHash']).not.toBe(second['rawContentHash']);
-    expect(first['rawContentHash']).toBe(sha256(`${long}A`));
+    expect(first['documentHash']).not.toBe(second['documentHash']);
+    expect(first['documentHash']).toBe(sha256b(html(`${long}A`)));
   });
 
-  it('derives snapshotDate as the Archive timestamp\'s own UTC date', async () => {
-    // snapshotDate used to come from timestampToDate, which slices the raw UTC
-    // digits. It now derives from capturedAt, and the two must agree: snapshotDate
-    // is what range queries filter on, so a timezone slip would move captures
-    // between days and quietly change which ones a date-bounded query returns.
-    //
-    // 23:30 UTC is the case that catches it — it is the NEXT day in Asia/Jerusalem
-    // and the PREVIOUS day in US timezones, so a local-time derivation disagrees
-    // here while passing for a midday capture.
+  it('refuses an empty payload rather than storing a capture without one', async () => {
+    await expect(recordCapture(archived({ document: Buffer.alloc(0) }))).rejects.toThrow(
+      /empty document/,
+    );
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it("derives snapshotDate as the Archive timestamp's own UTC date", async () => {
+    // 23:30 UTC catches a local-time derivation: it is the next day in
+    // Asia/Jerusalem and the previous day in US timezones.
     await recordCapture(
       archived({
         capturedAt: waybackTimestampToDate('20220622233000'),
@@ -107,36 +129,21 @@ describe('recordCapture stores the document', () => {
     const data = create.mock.calls[0][0].data as Record<string, string>;
     expect(data['snapshotDate']).toBe('2022-06-22');
   });
-
-  it.each([
-    ['empty', ''],
-    ['spaces', '   '],
-    ['newlines and tabs', '\n\t\r\n  '],
-  ])('refuses a %s document rather than storing a capture without one', async (_label, doc) => {
-    // Whitespace-only counts. It carries exactly as much of the page as an empty
-    // string, and forensics:backfill-raw-text already uses the stricter trim()
-    // test — so a looser test here would admit a row the repair script considers
-    // document-less.
-    await expect(recordCapture(archived({ document: doc }))).rejects.toThrow(/empty document/);
-    expect(create).not.toHaveBeenCalled();
-  });
 });
 
 // ---------------------------------------------------------------------------
-// The invariant: provenance and its timestamp agree
+// Provenance and its timestamp agree
 // ---------------------------------------------------------------------------
 
 describe('recordCapture keeps provenance honest', () => {
   it('refuses a WAYBACK capture with no Archive timestamp', async () => {
-    await expect(
-      recordCapture(archived({ waybackTimestamp: undefined })),
-    ).rejects.toThrow(/requires its waybackTimestamp/);
+    await expect(recordCapture(archived({ waybackTimestamp: undefined }))).rejects.toThrow(
+      /requires its waybackTimestamp/,
+    );
     expect(create).not.toHaveBeenCalled();
   });
 
   it('refuses an Archive timestamp on a capture the Archive does not hold', async () => {
-    // Storing one would assert the Archive holds a capture it does not, which is
-    // a claim a stranger would try to re-check and fail to find.
     await expect(
       recordCapture(
         archived({ provenance: CaptureProvenance.DIRECT, waybackTimestamp: '20220622054435' }),
@@ -157,56 +164,72 @@ describe('recordCapture keeps provenance honest', () => {
 });
 
 // ---------------------------------------------------------------------------
-// The invariant: ONE answer to "is this capture new?"
+// Novelty is decided on TEXT, explicitly — and in one place
 // ---------------------------------------------------------------------------
 
 describe('recordCapture decides novelty in one place', () => {
-  it('drops a capture identical to the one IMMEDIATELY preceding it', async () => {
-    const document = 'the page, unchanged';
+  it('drops a capture whose TEXT matches the one immediately preceding it', async () => {
     findFirst.mockResolvedValue({
       id: 'preceding-id',
       waybackTimestamp: '20220620061146',
       capturedAt: new Date('2022-06-20T06:11:46.000Z'),
       contentHash: sha256('whatever'),
-      rawContentHash: sha256(document),
+      textHash: DOC_TEXT.textHash,
     });
 
-    const result = await recordCapture(archived({ document }));
+    const result = await recordCapture(archived());
 
     expect(result.outcome).toBe('UNCHANGED');
     expect(result.id).toBe('preceding-id');
     expect(create).not.toHaveBeenCalled();
   });
 
+  it('keys novelty on TEXT, not the payload — a markup-only change is not new', async () => {
+    // Decided explicitly rather than inherited. Byte-identity is too sensitive to
+    // be the novelty key: a rotating cache-buster or a timestamp in a comment
+    // would make every capture distinct and store hundreds of near-identical
+    // payloads. Nothing is discarded either way — the payload is kept whole;
+    // only whether a NEW ROW appears changes.
+    const withComment = html(
+      '<p>the article</p><a href="/report">report an adverse event</a><!-- built 12:04 -->',
+    );
+    expect(sha256b(withComment)).not.toBe(sha256b(DOC));
+    expect(deriveText(withComment, CT).textHash).toBe(DOC_TEXT.textHash);
+
+    findFirst.mockResolvedValue({
+      id: 'preceding-id',
+      waybackTimestamp: '20220620061146',
+      capturedAt: new Date('2022-06-20T06:11:46.000Z'),
+      contentHash: sha256('whatever'),
+      textHash: DOC_TEXT.textHash,
+    });
+
+    const result = await recordCapture(archived({ document: withComment }));
+    expect(result.outcome).toBe('UNCHANGED');
+  });
+
   it('KEEPS a capture that reverts to a state seen earlier but not immediately before', async () => {
-    // The forensic case, and the one the removed `seenDigests` Set discarded.
-    // The page held STATE_A, changed to STATE_B, and returned to STATE_A. Only
-    // the immediately preceding capture (STATE_B) is consulted, so the revert is
-    // a new observation and is stored.
-    //
-    // On the real corpus this is not hypothetical: the tracked MOH page returned
-    // to an earlier state twice within six hours on 2022-06-22, and eleven such
-    // observations were never stored.
+    // The forensic case the removed `seenDigests` Set discarded. Only the
+    // IMMEDIATELY preceding capture is consulted, so a revert is a new
+    // observation — the tracked page returned to an earlier state twice within
+    // six hours on 2022-06-22.
+    const stateA = html('<p>STATE A</p>');
     findFirst.mockResolvedValue({
       id: 'state-b-id',
       waybackTimestamp: '20220620061146',
       capturedAt: new Date('2022-06-20T06:11:46.000Z'),
       contentHash: sha256('STATE_B extraction'),
-      rawContentHash: sha256('STATE_B'),
+      textHash: deriveText(html('<p>STATE B</p>'), CT).textHash,
     });
 
-    const result = await recordCapture(archived({ document: 'STATE_A' }));
+    const result = await recordCapture(archived({ document: stateA }));
 
     expect(result.outcome).toBe('CREATED');
-    expect(create).toHaveBeenCalledTimes(1);
     const data = create.mock.calls[0][0].data as Record<string, string>;
-    expect(data['rawContentHash']).toBe(sha256('STATE_A'));
+    expect(data['textHash']).toBe(deriveText(stateA, CT).textHash);
   });
 
   it('orders by capturedAt, so the answer cannot depend on arrival order', async () => {
-    // The old rule's answer depended on where a CDX page boundary fell: a revert
-    // whose twin landed in the previous batch survived, one in the same batch did
-    // not. Comparing against the row preceding IN TIME removes that dependence.
     await recordCapture(archived());
     expect(findFirst).toHaveBeenCalledWith(
       expect.objectContaining({ orderBy: { capturedAt: 'desc' } }),
@@ -220,7 +243,7 @@ describe('recordCapture decides novelty in one place', () => {
       id: 'already-here',
       waybackTimestamp: '20220622054435',
       contentHash: sha256('stored extraction'),
-      rawContentHash: sha256('the article and the chrome around it'),
+      documentHash: sha256b(DOC),
       onChainTxHash: '0xabc',
     });
 
@@ -228,84 +251,120 @@ describe('recordCapture decides novelty in one place', () => {
 
     expect(result.outcome).toBe('EXISTS');
     expect(result.id).toBe('already-here');
-    expect(result.divergedFromStored).toBe(false);
+    expect(result.documentComparison).toBe('MATCHES');
     expect(create).not.toHaveBeenCalled();
   });
 });
 
 // ---------------------------------------------------------------------------
-// Properties that existed in CODE before this write path and must not be
-// demoted to prose by it
+// Re-examining a capture already held — compared on the PAYLOAD
 // ---------------------------------------------------------------------------
 
 describe('recordCapture re-examines a capture it already holds', () => {
-  const storedElsewhere = {
+  const stored = {
     id: 'already-here',
     waybackTimestamp: '20220622054435',
     contentHash: sha256('stored extraction'),
-    rawContentHash: sha256('WHAT WE STORED'),
+    documentHash: sha256b(html('<p>WHAT WE STORED</p>')),
     onChainTxHash: '0xabc',
   };
 
-  it('reports divergence when the refetched document differs from the stored one', async () => {
-    // The comment on this path claimed a disagreement "is a finding to surface"
-    // while nothing compared anything — the exact shape of defect this level
-    // exists to stop repeating, reappearing inside the fix for it.
-    findUnique.mockResolvedValue(storedElsewhere);
+  it('compares the PAYLOAD, catching a change the derived text cannot see', async () => {
+    // The exact failure that reopened this level: comparing normalised text let
+    // three CDX rows carrying two distinct payload digests collapse to one
+    // stored hash. Same visible text, different href — it must still fire.
+    const storedDoc = html('<a href="/report-adverse-event">report an adverse event</a>');
+    const refetched = html('<a href="/removed">report an adverse event</a>');
+    expect(deriveText(storedDoc, CT).textHash).toBe(deriveText(refetched, CT).textHash);
+
+    findUnique.mockResolvedValue({ ...stored, documentHash: sha256b(storedDoc) });
     const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
 
-    const result = await recordCapture(archived({ document: 'WHAT WE JUST FETCHED' }));
+    const result = await recordCapture(archived({ document: refetched }));
 
-    expect(result.outcome).toBe('EXISTS');
-    expect(result.divergedFromStored).toBe(true);
-    expect(warn).toHaveBeenCalledWith(
-      expect.stringContaining('DIVERGENCE'),
-      ...Array<unknown>(6).fill(expect.anything()),
-    );
-    // Stored text is never rewritten on the strength of a refetch.
-    expect(create).not.toHaveBeenCalled();
+    expect(result.documentComparison).toBe('DIVERGED');
+    expect(warn).toHaveBeenCalled();
+    expect(create).not.toHaveBeenCalled(); // stored payload left untouched
     warn.mockRestore();
   });
 
+  it('reports UNAVAILABLE, never MATCHES, when there is no stored payload to compare', async () => {
+    // §3: UNAVAILABLE is a verdict about a CHECK, never about data. A row stored
+    // before the payload column existed cannot be compared, and saying so is the
+    // difference between "we compared and they match" and "we could not compare".
+    findUnique.mockResolvedValue({ ...stored, documentHash: null });
+
+    const result = await recordCapture(archived());
+
+    expect(result.documentComparison).toBe('UNAVAILABLE');
+  });
+
   it('retries the anchor for a stored capture that was never anchored', async () => {
-    // The upsert this replaced anchored whenever onChainTxHash was null,
-    // including on rows it did not create, so a resumed scan repaired a capture
-    // stored but never anchored. 83 captures once sat in exactly that state.
-    findUnique.mockResolvedValue({ ...storedElsewhere, onChainTxHash: null });
-
-    await recordCapture(archived({ document: 'WHAT WE STORED' }));
-
+    findUnique.mockResolvedValue({ ...stored, documentHash: sha256b(DOC), onChainTxHash: null });
+    await recordCapture(archived());
     expect(anchor).toHaveBeenCalledWith('already-here', sha256('stored extraction'));
   });
 
-  it('does not re-anchor a capture that already has its transaction', async () => {
-    findUnique.mockResolvedValue(storedElsewhere);
-    await recordCapture(archived({ document: 'WHAT WE STORED' }));
+  it('anchors on the MISSING transaction, not on having created the row', async () => {
+    findUnique.mockResolvedValue({ ...stored, documentHash: sha256b(DOC) });
+    await recordCapture(archived());
     expect(anchor).not.toHaveBeenCalled();
   });
 });
 
+// ---------------------------------------------------------------------------
+// Anchoring, and the promise callers may ignore
+// ---------------------------------------------------------------------------
+
+describe('recordCapture anchors what it creates', () => {
+  it('anchors a newly created capture on its contentHash', async () => {
+    await recordCapture(archived());
+    expect(anchor).toHaveBeenCalledWith('new-capture-id', sha256('the article'));
+  });
+
+  it('records the capture even when anchoring rejects, and the promise still does not reject', async () => {
+    // `anchoring` is handed to callers who may IGNORE it (the scanner does). An
+    // ignored promise that rejects is an unhandled rejection, which in Node ends
+    // the process — this suite crashed with exactly that before the guarantee
+    // was made local instead of borrowed from anchorSnapshots.
+    anchor.mockRejectedValueOnce(new Error('RPC down'));
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    const result = await recordCapture(archived());
+
+    expect(result.outcome).toBe('CREATED');
+    await expect(result.anchoring).resolves.toBeNull();
+    warn.mockRestore();
+  });
+
+  it('leaves the promise safe to ignore entirely', async () => {
+    anchor.mockRejectedValueOnce(new Error('RPC down'));
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    await recordCapture(archived());
+    await new Promise((r) => setImmediate(r));
+    warn.mockRestore();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Losing a race
+// ---------------------------------------------------------------------------
+
 describe('recordCapture survives losing a race', () => {
-  it('finishes on the winner\'s row when a concurrent writer created it first', async () => {
-    // findUnique + create are two statements; the upsert they replaced was one.
-    // A concurrent scan of the same URL can insert between them, and the loser
-    // must not report a failure for a capture that IS now stored.
-    findUnique
-      .mockResolvedValueOnce(null) // the pre-check: not there yet
-      .mockResolvedValueOnce({
-        id: 'winner-row',
-        waybackTimestamp: '20220622054435',
-        contentHash: sha256('the article'),
-        rawContentHash: sha256('the article and the chrome around it'),
-        onChainTxHash: null,
-      });
+  it("finishes on the winner's row when a concurrent writer created it first", async () => {
+    findUnique.mockResolvedValueOnce(null).mockResolvedValueOnce({
+      id: 'winner-row',
+      waybackTimestamp: '20220622054435',
+      contentHash: sha256('the article'),
+      documentHash: sha256b(DOC),
+      onChainTxHash: null,
+    });
     create.mockRejectedValueOnce(Object.assign(new Error('unique'), { code: 'P2002' }));
 
     const result = await recordCapture(archived());
 
     expect(result.outcome).toBe('EXISTS');
     expect(result.id).toBe('winner-row');
-    // And the winner's row still gets its anchor retried.
     expect(anchor).toHaveBeenCalledWith('winner-row', sha256('the article'));
   });
 
@@ -322,74 +381,12 @@ describe('recordCapture survives losing a race', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Anchoring belongs to the write path
-// ---------------------------------------------------------------------------
-
-describe('recordCapture anchors what it creates', () => {
-  it('anchors a newly created capture on its contentHash', async () => {
-    await recordCapture(archived());
-    expect(anchor).toHaveBeenCalledWith('new-capture-id', sha256('the article'));
-  });
-
-  it('anchors on the MISSING transaction, not on having created the row', async () => {
-    // The distinction matters: keying anchoring on creation loses the repair a
-    // resumed scan used to perform, against a corpus where 83 captures once sat
-    // stored-but-unanchored. An existing row with a transaction is left alone; an
-    // existing row without one is retried — see the re-examination tests above.
-    findUnique.mockResolvedValue({
-      id: 'already-here',
-      waybackTimestamp: '20220622054435',
-      contentHash: sha256('x'),
-      rawContentHash: sha256('the article and the chrome around it'),
-      onChainTxHash: '0xalready-anchored',
-    });
-    await recordCapture(archived());
-    expect(anchor).not.toHaveBeenCalled();
-  });
-
-  it('records the capture even when anchoring rejects, and the promise still does not reject', async () => {
-    // A chain hiccup must not fail a write that already holds the irreplaceable
-    // half — and `anchoring` is handed to callers who may IGNORE it (the scanner
-    // does). An ignored promise that rejects is an unhandled rejection, which in
-    // Node ends the process; this suite crashed with exactly that before the
-    // guarantee was made local instead of borrowed from anchorSnapshots.
-    anchor.mockRejectedValueOnce(new Error('RPC down'));
-    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
-
-    const result = await recordCapture(archived());
-
-    expect(result.outcome).toBe('CREATED');
-    // Resolves, never rejects, and reports the failure as such.
-    await expect(result.anchoring).resolves.toBeNull();
-    warn.mockRestore();
-  });
-
-  it('leaves the promise safe to ignore entirely', async () => {
-    // The scanner's actual usage: never touched. If this could reject, the
-    // process would die on a chain hiccup during a routine scan.
-    anchor.mockRejectedValueOnce(new Error('RPC down'));
-    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
-
-    await recordCapture(archived());
-    // Give the rejection a full turn of the event loop to surface if unhandled.
-    await new Promise((r) => setImmediate(r));
-
-    warn.mockRestore();
-  });
-});
-
-// ---------------------------------------------------------------------------
 // The one place the Archive's timestamp becomes an instant
 // ---------------------------------------------------------------------------
 
 describe('waybackTimestampToDate', () => {
   it('reads the Archive timestamp as UTC', () => {
-    // Not local time. The same corpus must produce the same instants on a laptop
-    // in Israel and a container in UTC, or capturedAt orders differently per
-    // machine.
-    expect(waybackTimestampToDate('20220622054435').toISOString()).toBe(
-      '2022-06-22T05:44:35.000Z',
-    );
+    expect(waybackTimestampToDate('20220622054435').toISOString()).toBe('2022-06-22T05:44:35.000Z');
   });
 
   it.each(['2022062205443', '202206220544356', '', 'not-a-timestamp'])(
