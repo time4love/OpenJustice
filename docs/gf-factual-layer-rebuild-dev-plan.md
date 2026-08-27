@@ -944,9 +944,11 @@ on every verification) · `list_captures` partitions by provenance · the scan t
 fetching nothing · the 404 capture as queryable state · the reconciliation fast path, deferred while it
 was on the critical path.
 
-**Phase B — the submission pipeline, under that same enforcement. This is the level's centrepiece, not
-a subsection.** CDX-first → Save Page Now if the Archive holds nothing → queued, never blocking →
-reconcile our fetch against the archived capture when it lands.
+**Phase B — acquisition through the Archive, under that same enforcement. This is the level's
+centrepiece, not a subsection.** `start_forensic_scan` stays the default entry point; the new work is
+the not-indexed branch — request archival, hold the current content as a pending precursor, reconcile
+when the capture lands. See "The tool boundary" below: `create_evidence_from_url` is deprecated rather
+than repurposed.
 
 Measured 2026-08-27, so the size of the gap is not in doubt: **`create_evidence_from_url` contains zero
 references to `recordCapture`.** Nothing writes `DIRECT` or `ASSERTED`; every capture in both
@@ -956,6 +958,41 @@ defect Level 1 identified and deferred here.
 
 Phase B makes `create_evidence_from_url` mean *"track this URL"*, turns `DIRECT` into the transient
 state its own enum comment describes, and closes that gap.
+
+#### The tool boundary — decided 2026-08-27
+
+`create_evidence_from_url` is **not** the tool that acquires archived captures, and turning it into one
+would repeat the defect this rebuild exists to remove. `rawText` was "the raw text" and wasn't;
+`fullText` was "the full text" and wasn't. A tool that keeps its name while its meaning changes is the
+same failure at a worse layer, because a tool name is a contract with callers we do not control — and
+the semantics genuinely break: today it is synchronous and returns an evidence record; under the
+pipeline it is queued and may return nothing for hours.
+
+**`start_forensic_scan` is the default entry point for adding evidence from a URL.** It already takes a
+URL and scans what the Archive holds. The new work is only the **not-indexed branch**, which is much
+smaller than "build the pipeline":
+
+| the Archive… | action |
+|---|---|
+| holds captures | scan them — the existing tool, unchanged |
+| holds none | request archival, hold the current content as a pending precursor, poll until indexed |
+| **cannot take the page** (robots.txt, paywall, login gate) | a permanent recorded state — **the only place `DIRECT` or `ASSERTED` legitimately persists** |
+
+All three are first-class outcomes. None of them collapses into "failed".
+
+**A hard dependency, not a parallel item:** routing on *"the Archive holds none"* is impossible until
+the scanner reliably reports it, and today **a scan that fetches nothing reports success**. Phase A's
+fix to `computeNextFromDate` is therefore a **precondition** for this branch, not work alongside it.
+Building the routing first would mean branching on a signal that does not exist.
+
+**The replacement returns a pending handle, not evidence.** Evidence arrives when the capture does;
+returning something evidence-shaped would invite callers to treat a pending observation as a record.
+Its act is *"make this URL part of the tracked corpus, however the Archive allows"* — name it for that.
+
+**`create_evidence_from_url` is deprecated in two steps.** Mark it, with a pointer, while the
+replacement is proven; then make it **refuse**, not delegate. Delegating would be the silent
+behaviour-change-under-an-old-name again. Refusing breaks callers, which is cheap while production has
+no audience and will not be later.
 
 **Save Page Now is a WRITE TO A THIRD PARTY, and this platform has never made one.** Until now it has
 only read from the Archive. Asking the Archive to crawl a government page on our behalf has rate
