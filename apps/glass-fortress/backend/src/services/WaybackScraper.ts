@@ -1,6 +1,6 @@
 import axios from 'axios';
-import { createHash } from 'crypto';
-import { anchorOneSnapshot } from './anchorSnapshots';
+import { CaptureProvenance } from '@prisma/client';
+import { recordCapture, waybackTimestampToDate } from './recordCapture';
 import { extractArticleText, extractRawText, timestampToDate } from '../lib/archiveText';
 import {
   CDX_MAX_RETRIES,
@@ -17,7 +17,6 @@ import {
 import { requireSnapshotIdentity } from './forensicEvidence';
 import { diffLines } from 'diff';
 import { ForensicAgent, type DiffItem, type RelatedEvidenceContext } from './ForensicAgent';
-import { Web3Service } from './Web3Service';
 import { prisma } from '../lib/prisma';
 import {
   buildForensicEvidence,
@@ -26,23 +25,6 @@ import {
 import { groupDiffChunks, classifierInputChunks, DIFF_INPUT_VERSION } from '../lib/diffChunking';
 import { CLASSIFIER_VERSION, classifierPromptHash } from '../lib/classifierVersion';
 import { getClaimTrajectories } from './claimTrajectory';
-
-// ---------------------------------------------------------------------------
-// Lazy singletons — non-fatal if unavailable
-// ---------------------------------------------------------------------------
-
-let _web3Service: Web3Service | null = null;
-let _web3Attempted = false;
-function getWeb3Service(): Web3Service | null {
-  if (_web3Attempted) return _web3Service;
-  _web3Attempted = true;
-  try {
-    _web3Service = new Web3Service();
-  } catch {
-    // env vars not set — on-chain registration disabled
-  }
-  return _web3Service;
-}
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -110,77 +92,49 @@ const MAX_CONTEXT_RECORDS = 5;
 // Helpers
 // ---------------------------------------------------------------------------
 
-/** SHA-256 hex digest of a string. Bare hex — see toBytes32 before any chain call. */
-function sha256(text: string): string {
-  return createHash('sha256').update(text, 'utf8').digest('hex');
-}
-
-
 /**
- * Upsert a UrlSnapshot row for a given scraped page text.
- * Idempotent — safe to call again on resume (update: {} is a no-op).
+ * Record one archived capture.
+ *
+ * A thin adapter over `recordCapture`, which is the ONLY way a capture is
+ * written (Level 1 of docs/gf-factual-layer-rebuild-dev-plan.md). Everything
+ * this function used to do itself — hashing, anchoring, idempotency on resume —
+ * now lives there, so the URL-tracking path gets the same guarantees rather
+ * than a second implementation of them.
+ *
+ * Returns the identity, not just the key: evidence derived from a change
+ * between two captures is hashed from their timestamps and content hashes, so
+ * every caller needs those to hand rather than a second query.
  */
-async function upsertSnapshot(
+async function recordArchivedCapture(
   trackedUrlId: string,
   timestamp: string,
   url: string,
   fullText: string,
   rawText: string,
 ): Promise<{ id: string; waybackTimestamp: string; contentHash: string }> {
-  const snapshotDate = timestampToDate(timestamp);
-  const snapshotUrl = viewerCaptureUrl(timestamp, url);
-  const contentHash = sha256(fullText);
-  const rawContentHash = sha256(rawText);
-  const snap = await prisma.urlSnapshot.upsert({
-    where: { trackedUrlId_waybackTimestamp: { trackedUrlId, waybackTimestamp: timestamp } },
-    update: {},
-    create: {
-      trackedUrlId,
-      waybackTimestamp: timestamp,
-      snapshotDate,
-      snapshotUrl,
-      fullText,
-      contentHash,
-      rawText,
-      rawContentHash,
-    },
-    select: { id: true, onChainTxHash: true },
+  const recorded = await recordCapture({
+    trackedUrlId,
+    provenance: CaptureProvenance.WAYBACK,
+    capturedAt: waybackTimestampToDate(timestamp),
+    waybackTimestamp: timestamp,
+    sourceUrl: viewerCaptureUrl(timestamp, url),
+    document: rawText,
+    extraction: fullText,
   });
 
-  // No legacy-fill branch here, deliberately.
-  //
-  // Until 20260827120000_snapshot_document_required this function repaired rows
-  // created before the document was stored, guarded by `rawText: null`. The
-  // constraint makes that row impossible, so the branch became unreachable and
-  // was removed rather than left as reassuring dead code — an unreachable repair
-  // reads to the next person as though the hazard is still handled here.
-  //
-  // Repairing an environment whose captures predate the column is the job of
-  // `forensics:backfill-raw-text`, which is built to run against exactly that
-  // state. The `update: {}` above still means a resumed scan never rewrites
-  // stored text: a refetch that DISAGREES with a stored document means the
-  // Archive's own copy changed, which is a finding to surface and never
-  // something to silently paper over.
-
-  // Register on-chain only for newly created snapshots (no existing txHash)
-  if (!snap.onChainTxHash) {
-    // Fire-and-forget on purpose: a chain hiccup must not fail a scan that has
-    // already fetched and stored archived text, which is the irreplaceable half.
-    // But the rejection is LOGGED, never discarded — an empty catch here hid a
-    // permanent bug behind what looked like a transient one for 83 snapshots.
-    // Whether it actually worked is answered by counting unanchored snapshots
-    // from state, not by trusting this call. See countUnanchoredSnapshots.
-    registerSnapshotOnChain(snap.id, contentHash).catch((err: unknown) => {
-      console.warn(
-        '[WaybackScraper] snapshot anchoring rejected for', snap.id, ':',
-        err instanceof Error ? err.message : err,
-      );
-    });
+  // An UNCHANGED outcome returns the PRECEDING capture, which for this path is
+  // necessarily archived too. Narrowing here rather than asserting: if it is
+  // ever null, the write path returned something this caller cannot describe.
+  if (recorded.waybackTimestamp === null) {
+    throw new Error(
+      `recordArchivedCapture: capture ${recorded.id} came back without an Archive timestamp.`,
+    );
   }
-  // The identity, not just the key. Evidence derived from a change between two
-  // captures is hashed from their timestamps and content hashes, so every caller
-  // that creates a snapshot needs those to hand rather than a second query.
-  return { id: snap.id, waybackTimestamp: timestamp, contentHash };
+  return {
+    id: recorded.id,
+    waybackTimestamp: recorded.waybackTimestamp,
+    contentHash: recorded.contentHash,
+  };
 }
 
 /**
@@ -268,27 +222,6 @@ async function setScanStatus(trackedUrlId: string, status: 'PAUSED' | 'FAILED'):
     console.warn(
       `[WaybackScraper] could not record ${status} for ${trackedUrlId} (row deleted mid-scan?):`,
       err instanceof Error ? err.message : err,
-    );
-  }
-}
-
-async function registerSnapshotOnChain(snapshotId: string, contentHash: string): Promise<void> {
-  const web3 = getWeb3Service();
-  if (!web3) return;
-
-  try {
-    // Shared with the repair pass rather than reimplemented here. This function
-    // used to call registerEvidenceHash unconditionally: for a capture whose
-    // text a twin had already anchored, the registry rejected the duplicate, the
-    // rejection was logged as a failure, and the row kept its null forever —
-    // even though the fact was on-chain the whole time. Production still holds
-    // 71 rows in that state. anchorOneSnapshot checks for the twin first and
-    // copies its transaction, so no transaction is spent and no pointer is lost.
-    await anchorOneSnapshot(web3, snapshotId, contentHash);
-  } catch (err) {
-    console.warn(
-      '[WaybackScraper] On-chain snapshot registration failed for', snapshotId,
-      ':', err instanceof Error ? err.message : err,
     );
   }
 }
@@ -410,20 +343,37 @@ export class WaybackScraper {
     const dataRows = rows.slice(1) as string[][];
 
     // If CDX returned MAX_SNAPSHOTS+1 rows, there are more snapshots beyond this batch.
-    // This must be checked BEFORE dedup since dedup can reduce the count below MAX_SNAPSHOTS
-    // even when CDX has more data — which would otherwise cause premature batch termination.
     const hasMore = dataRows.length > MAX_SNAPSHOTS;
 
-    // Client-side dedup guard (CDX collapse removes consecutive duplicates; this handles
-    // non-consecutive ones where content reverts to a previously-seen digest)
-    const seenDigests = new Set<string>();
+    // No client-side digest dedup here, deliberately — this is where it used to be.
+    //
+    // A `seenDigests` Set skipped ANY previously-seen digest, and its own comment
+    // named the case it was discarding: "non-consecutive ones where content
+    // reverts to a previously-seen digest". A page returning to a former state is
+    // not a duplicate. It is the whole-page form of what claim trajectories
+    // detect, and on a government page under investigation it is among the most
+    // significant things the Archive can show.
+    //
+    // Measured against the real corpus on 2026-08-27: CDX holds 95 captures of
+    // the tracked MOH page, of which 12 revert to an earlier state. ELEVEN were
+    // discarded. The page returned to one earlier state twice within six hours on
+    // 2022-06-22, and to another three times across May 2022; none of that was
+    // stored.
+    //
+    // The twelfth survived — and why it survived is the reason this could not be
+    // fixed by narrowing the rule. The Set was scoped to ONE CDX batch, so a
+    // revert whose twin fell in the previous batch was invisible to it.
+    // `20220703090600` is in staging solely because a page boundary landed
+    // between it and its twin. Whether a page state was recorded depended on
+    // pagination.
+    //
+    // Novelty is now decided in exactly one place, on content rather than on the
+    // Archive's digest, against the immediately preceding capture only — see
+    // recordCapture.
     const snapshots: RawSnapshot[] = [];
-
     for (const row of dataRows) {
       const [timestamp, digest] = row;
       if (!timestamp || !digest) continue;
-      if (seenDigests.has(digest)) continue;
-      seenDigests.add(digest);
       snapshots.push({ timestamp, digest });
     }
 
@@ -549,7 +499,7 @@ export class WaybackScraper {
         texts.push(readings.extracted);
         try {
           snaps.push(
-            await upsertSnapshot(
+            await recordArchivedCapture(
               trackedUrl.id, snap.timestamp, url, readings.extracted, readings.raw,
             ),
           );
@@ -849,7 +799,7 @@ export class WaybackScraper {
         try {
           const readings = await this.scrapeSnapshotReadings(job.url, entry.timestamp);
           previousText = readings.extracted;
-          previousSnapshot = await upsertSnapshot(
+          previousSnapshot = await recordArchivedCapture(
             trackedUrlId, entry.timestamp, job.url, readings.extracted, readings.raw,
           );
         } catch {
@@ -863,7 +813,7 @@ export class WaybackScraper {
       try {
         const readings = await this.scrapeSnapshotReadings(job.url, entry.timestamp);
         currentText = readings.extracted;
-        currentSnapshot = await upsertSnapshot(
+        currentSnapshot = await recordArchivedCapture(
           trackedUrlId, entry.timestamp, job.url, readings.extracted, readings.raw,
         );
       } catch (err) {

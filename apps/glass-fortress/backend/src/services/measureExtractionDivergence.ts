@@ -55,7 +55,16 @@ export interface DiffDivergence {
 export interface SnapshotDivergence {
   snapshotId: string;
   snapshotDate: string;
-  waybackTimestamp: string;
+  /**
+   * The Archive's identifier — null for a capture the Archive does not hold.
+   *
+   * Deliberately NOT narrowed to archived captures. Divergence between a
+   * document and its extraction is a property of the extractor, so it is
+   * measurable on every capture regardless of who observed it; scoping this
+   * measurement to archived captures would shrink the denominator of the one
+   * number that says how much the extractor discards.
+   */
+  waybackTimestamp: string | null;
   rawChars: number;
   extractedChars: number;
   /** Percentage of the document the extraction kept, rounded. */
@@ -123,7 +132,11 @@ export async function measureExtractionDivergence(url: string): Promise<Divergen
       fullText: true,
       rawText: true,
     },
-    orderBy: { waybackTimestamp: 'asc' },
+    // capturedAt: every capture has one, so the measurement stays in
+    // chronological order across provenances. Ordering by the nullable Archive
+    // timestamp would sort non-archived captures to the end (Postgres ASC is
+    // NULLS LAST) rather than into their place in time.
+    orderBy: { capturedAt: 'asc' },
   });
 
   const measured: SnapshotDivergence[] = [];

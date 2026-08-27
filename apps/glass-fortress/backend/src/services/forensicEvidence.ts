@@ -55,12 +55,35 @@ export interface SnapshotIdentity {
  * looks exactly like a real one, and this value gets registered on-chain.
  */
 export function requireSnapshotIdentity(
-  snapshot: { waybackTimestamp: string; contentHash: string } | null | undefined,
+  snapshot: { waybackTimestamp: string | null; contentHash: string } | null | undefined,
   side: 'before' | 'after',
 ): SnapshotIdentity {
   if (!snapshot) {
     throw new Error(
       `Cannot compute evidence identity: the ${side} snapshot is not linked to this diff.`,
+    );
+  }
+  if (snapshot.waybackTimestamp === null) {
+    // waybackTimestamp became nullable when captures stopped being exclusively
+    // archived (20260827160000_capture_provenance_and_captured_at). Evidence
+    // identity still hashes it, so a DIRECT or ASSERTED capture reaching this
+    // function would silently hash a different shape and mint a second identity
+    // for the same change.
+    //
+    // Refusing is the deliberate choice for Level 1. Identity is free to move —
+    // see docs/gf-factual-layer-rebuild-dev-plan.md §2, "Identity may change. It
+    // may not change unrecorded" — but moving it is Level 7's decision, taken
+    // once, with previousFileHash recording the supersession. Widening it here
+    // to accept a null would take that decision by accident, for every record,
+    // and leave the anchors unexplained.
+    //
+    // Unreachable today: every stored capture is WAYBACK. It becomes reachable
+    // the moment Level 2 creates the first direct capture, which is exactly when
+    // this needs to be a decision rather than a default.
+    throw new Error(
+      `Cannot compute evidence identity: the ${side} capture is not archived, and ` +
+        'evidence identity currently hashes the Archive timestamp. See Level 7 of ' +
+        'docs/gf-factual-layer-rebuild-dev-plan.md before widening this.',
     );
   }
   return { waybackTimestamp: snapshot.waybackTimestamp, contentHash: snapshot.contentHash };

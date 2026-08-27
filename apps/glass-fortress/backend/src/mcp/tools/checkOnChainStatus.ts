@@ -137,7 +137,9 @@ interface OnChainStatusResult {
   snapshot?: {
     captures: number;
     url: string;
+    /** ISO-8601. When the earliest capture holding this text was TAKEN. */
     firstCapture: string;
+    /** ISO-8601. When the latest capture holding this text was TAKEN. */
     lastCapture: string;
     onChainTxHash: string | null;
   };
@@ -226,11 +228,17 @@ export async function checkOnChainStatusHandler(input: {
     : await prisma.urlSnapshot.findMany({
         where: { contentHash: input.fileHash.replace(/^0x/, '') },
         select: {
-          waybackTimestamp: true,
+          capturedAt: true,
           onChainTxHash: true,
           trackedUrl: { select: { url: true } },
         },
-        orderBy: { waybackTimestamp: 'asc' },
+        // capturedAt, not waybackTimestamp. This summary reports WHEN the text
+        // was captured, which every capture has; only archived ones have an
+        // Archive timestamp. Ordering by a nullable column would also sort
+        // non-archived captures to the end regardless of when they were taken
+        // (Postgres ASC is NULLS LAST), making "lastCapture" report a null for a
+        // corpus that simply contains a direct capture.
+        orderBy: { capturedAt: 'asc' },
       });
 
   let web3: Web3Service;
@@ -272,8 +280,8 @@ export async function checkOnChainStatusHandler(input: {
       ? {
           captures: snapshots.length,
           url: snapshots[0].trackedUrl.url,
-          firstCapture: snapshots[0].waybackTimestamp,
-          lastCapture: snapshots[snapshots.length - 1].waybackTimestamp,
+          firstCapture: snapshots[0].capturedAt.toISOString(),
+          lastCapture: snapshots[snapshots.length - 1].capturedAt.toISOString(),
           // The transaction from whichever capture spent it — the twins record
           // the same value, and null means no capture of this text is anchored.
           onChainTxHash: snapshots.find((s) => s.onChainTxHash)?.onChainTxHash ?? null,

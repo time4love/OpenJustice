@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { prisma } from '../lib/prisma';
+import { CaptureProvenance } from '@prisma/client';
 import {
   CDX_TIMEOUT_MS,
   CDX_USER_AGENT,
@@ -232,6 +233,21 @@ async function loadStoredSnapshots(
   const rows = await prisma.urlSnapshot.findMany({
     where: {
       trackedUrlId,
+      // Archived captures ONLY, and this is a correctness constraint rather than
+      // a filter of convenience.
+      //
+      // These rows are cross-checked against the CDX index to find captures the
+      // Archive holds that this platform does not. A DIRECT capture is by
+      // definition absent from CDX, so including one here would report it as a
+      // gap in the Archive — a fabricated finding, emitted by the tool built to
+      // detect fabricated findings.
+      //
+      // LEVEL 2 OWES A PARTITION, NOT A WIDENING: list_captures must report
+      // non-archived captures in their own section rather than folding them in
+      // here. Today the distinction costs nothing to defer, because every stored
+      // capture is WAYBACK.
+      provenance: CaptureProvenance.WAYBACK,
+      waybackTimestamp: { not: null },
       ...(range.from || range.to
         ? {
             snapshotDate: {
@@ -250,7 +266,17 @@ async function loadStoredSnapshots(
     },
     orderBy: { waybackTimestamp: 'asc' },
   });
-  return rows;
+  return rows.map((row) => {
+    if (row.waybackTimestamp === null) {
+      // Excluded by the where clause above, so reaching this means the QUERY is
+      // wrong, not the data. Throwing says so; dropping the row would quietly
+      // shrink the comparison set and turn a bug into a missing capture.
+      throw new Error(
+        `loadStoredSnapshots: archived capture ${row.snapshotUrl} has no waybackTimestamp.`,
+      );
+    }
+    return { ...row, waybackTimestamp: row.waybackTimestamp };
+  });
 }
 
 /**

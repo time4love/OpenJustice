@@ -1,5 +1,6 @@
 import { createHash } from 'crypto';
 import { prisma } from '../lib/prisma';
+import { ARCHIVED_CAPTURES_ONLY, requireArchived } from '../lib/archivedCaptures';
 import { parseDiffItems } from '../lib/diffItems';
 
 // ---------------------------------------------------------------------------
@@ -243,11 +244,18 @@ async function loadDetectionInputs(url: string) {
   });
   if (!tracked) throw new Error(`No tracked URL found for: ${url}`);
 
-  const snapshotMeta = await prisma.urlSnapshot.findMany({
-    where: { trackedUrlId: tracked.id },
-    orderBy: { snapshotDate: 'asc' },
-    select: { snapshotDate: true, waybackTimestamp: true, snapshotUrl: true },
-  });
+  // Archived captures only. Trajectories key their sourceStateHash and their
+  // stored points on the Archive timestamp, so widening this would change
+  // DETECTION_VERSION's meaning and silently invalidate every cached
+  // trajectory. Bringing non-archived captures into trajectory detection is
+  // Level 6's decision, taken with a version bump and a full recomputation.
+  const snapshotMeta = (
+    await prisma.urlSnapshot.findMany({
+      where: { trackedUrlId: tracked.id, ...ARCHIVED_CAPTURES_ONLY },
+      orderBy: { snapshotDate: 'asc' },
+      select: { snapshotDate: true, waybackTimestamp: true, snapshotUrl: true },
+    })
+  ).map((row) => requireArchived(row, 'claimTrajectory.loadDetectionInputs'));
 
   // Candidate discovery: every verbatim quote the classifier extracted, deduped
   // by content. This is the only place extraction is trusted, and only to decide
@@ -281,11 +289,17 @@ type DetectionInputs = Awaited<ReturnType<typeof loadDetectionInputs>>;
 
 /** The expensive half: pull archived text and search it. Only ever runs on a miss. */
 async function detect(inputs: DetectionInputs) {
-  const rows = await prisma.urlSnapshot.findMany({
-    where: { trackedUrlId: inputs.trackedUrlId },
-    orderBy: { snapshotDate: 'asc' },
-    select: { snapshotDate: true, waybackTimestamp: true, snapshotUrl: true, fullText: true },
-  });
+  // Archived captures only — the same restriction as loadDetectionInputs above,
+  // and it must stay identical to it: detect() searches the set that
+  // sourceStateHash was computed over, so a wider set here would search text the
+  // cache key never saw.
+  const rows = (
+    await prisma.urlSnapshot.findMany({
+      where: { trackedUrlId: inputs.trackedUrlId, ...ARCHIVED_CAPTURES_ONLY },
+      orderBy: { snapshotDate: 'asc' },
+      select: { snapshotDate: true, waybackTimestamp: true, snapshotUrl: true, fullText: true },
+    })
+  ).map((row) => requireArchived(row, 'claimTrajectory.detect'));
 
   const snapshots = rows.map((r) => ({
     snapshotDate: r.snapshotDate,
