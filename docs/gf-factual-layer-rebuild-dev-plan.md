@@ -779,11 +779,23 @@ npx tsc --noEmit --noUncheckedIndexedAccess -p tsconfig.json
 Too large to fold into an unrelated change, too small to be indefinite. **And it is NOT a 133-error
 project — the distribution decides the shape of the work.** Two moves, settled 2026-08-27:
 
-**1. Ratchet it.** Record **133** as the baseline and add a check that the count never increases. This
-is the urgent half, because the standing risk is the bleed rather than the backlog: every correctly
-guarded new file is one a future lint cleanup could break, **with the linter arguing for the break**.
-That has already happened twice. A ratchet stops it today without waiting for anyone to schedule the
-backlog.
+**1. Ratchet it — BUILT 2026-08-27.** `test/noUncheckedIndexedAccessRatchet.test.ts`, with the
+baseline committed as `noUncheckedIndexedAccess.baseline.json` (**133 across 17 files**). This was the
+urgent half, because the standing risk is the bleed rather than the backlog: every correctly guarded
+new file is one a future lint cleanup could break, **with the linter arguing for the break**. That has
+already happened twice. The ratchet stops it today without waiting for anyone to schedule the backlog.
+
+Three properties, each mutation-proven:
+
+| property | why it is not the obvious version | mutation |
+|---|---|---|
+| **per file**, not just the total | a total-only ratchet is satisfied by fixing five errors in one file and adding five in another — net zero, undetected, and the new five sit in a file nobody has looked at | a new unguarded index in a file baselined at 0 → `REGRESSION … (NEW FILE — it must start at zero)` |
+| **improvements FAIL too** | a ratchet that tolerates being under its baseline stops ratcheting: the slack is invisible, and the next regression spends it silently. Fixing something must lock the gain in | baseline claiming one more than reality → `IMPROVEMENT NOT LOCKED IN`, with the exact regeneration command |
+| **one parser for baseline and check** | a baseline measured differently from the check drifts in whichever direction makes it pass. Same shape as one rule with four `documentHash` writers | breaking the diagnostic regex → **throws** rather than returning `{}`, which would have silently relaxed the ratchet to "anything goes" |
+
+The third deserves its own line: `measureNoUncheckedIndexedAccess` returns `{}` only when `tsc` exits
+**zero**. If `tsc` fails and nothing parses, that is the output format moving, not the debt vanishing —
+and reporting it as "no errors" would be the vacuous pass this document keeps catching.
 
 **2. Fix `WaybackScraper.ts` inside Phase A**, since Phase A must open that file anyway for
 `computeNextFromDate`. Twenty errors in a file already being edited is incremental; twenty errors in a
