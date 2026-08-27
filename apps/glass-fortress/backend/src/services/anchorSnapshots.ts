@@ -186,7 +186,10 @@ export async function anchorSnapshots(opts: {
       ...(opts.url ? { trackedUrl: { url: opts.url } } : {}),
     },
     select: { id: true, contentHash: true, snapshotDate: true },
-    orderBy: { snapshotDate: 'asc' },
+    // capturedAt, not snapshotDate. snapshotDate is day-granular, so captures
+    // sharing a day sort equal and Postgres may return them in any order —
+    // which makes `take: limit` select a different subset between runs.
+    orderBy: { capturedAt: 'asc' },
     ...(opts.limit ? { take: opts.limit } : {}),
   });
 

@@ -38,9 +38,24 @@ const PAGE = 'https://corona.health.gov.il/vaccine-for-covid/';
 const findUnique = prisma.evidence.findUnique as jest.Mock;
 const findSnapshots = prisma.urlSnapshot.findMany as jest.Mock;
 
-/** One archived capture holding the queried text. */
+/**
+ * One archived capture holding the queried text.
+ *
+ * Takes the Archive timestamp because that is how these captures are identified
+ * when reading the corpus, but yields `capturedAt` — the column the tool now
+ * selects and orders by. capturedAt is NOT NULL for every provenance, whereas
+ * waybackTimestamp is null for a capture the Archive does not hold, and ordering
+ * by a nullable column would sort direct captures to the end regardless of when
+ * they were taken (Postgres ASC is NULLS LAST).
+ *
+ * The ISO string is built here rather than by calling the production converter:
+ * a fixture that reuses the code under test cannot disagree with it.
+ */
 function capture(timestamp: string, txHash: string | null) {
-  return { waybackTimestamp: timestamp, onChainTxHash: txHash, trackedUrl: { url: PAGE } };
+  const iso =
+    `${timestamp.slice(0, 4)}-${timestamp.slice(4, 6)}-${timestamp.slice(6, 8)}` +
+    `T${timestamp.slice(8, 10)}:${timestamp.slice(10, 12)}:${timestamp.slice(12, 14)}.000Z`;
+  return { capturedAt: new Date(iso), onChainTxHash: txHash, trackedUrl: { url: PAGE } };
 }
 
 interface Verdict {
@@ -283,8 +298,10 @@ describe('check_on_chain_status', () => {
       expect(r.snapshot?.onChainTxHash).toBe(TX);
       expect(r.snapshot?.captures).toBe(2);
       expect(r.snapshot?.url).toBe(PAGE);
-      expect(r.snapshot?.firstCapture).toBe('20220306141507');
-      expect(r.snapshot?.lastCapture).toBe('20220529034526');
+      // ISO-8601 now, not the Archive's YYYYMMDDHHMMSS: this reports WHEN the
+      // capture was taken, which a non-archived capture also has.
+      expect(r.snapshot?.firstCapture).toBe('2022-03-06T14:15:07.000Z');
+      expect(r.snapshot?.lastCapture).toBe('2022-05-29T03:45:26.000Z');
     });
 
     it('finds the twin transaction whichever capture spent it', async () => {

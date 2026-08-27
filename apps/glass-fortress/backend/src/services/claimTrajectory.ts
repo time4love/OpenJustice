@@ -230,6 +230,30 @@ export interface ComputeResult {
 }
 
 /**
+ * The capture ordering trajectory detection depends on, defined once.
+ *
+ * ORDER IS SEMANTIC HERE, not presentational. buildTrajectory walks captures in
+ * sequence to decide when a claim was present and when it was absent, so the
+ * order of the rows IS the trajectory; and sourceStateHash is computed over the
+ * resulting ordered array, so an unstable order makes the cache key unstable too.
+ *
+ * capturedAt, not snapshotDate. snapshotDate is a day-granular string, so every
+ * capture sharing a day sorts EQUAL and Postgres may return them in any order.
+ * That was survivable only because same-day captures with different text could
+ * not exist: the scanner discarded any capture whose digest it had seen before,
+ * which is precisely why staging's eight same-day groups all hold exactly one
+ * distinct text today.
+ *
+ * Removing that discard (Level 1) removes the accident protecting this. The
+ * tracked page returned to an earlier state twice within six hours on
+ * 2022-06-22, so a rescan stores three captures with at least two distinct texts
+ * under one snapshotDate — and detection could then walk them present→absent
+ * →present or the reverse, giving different transition counts between runs while
+ * the cache key claimed the state had not moved.
+ */
+const TRAJECTORY_CAPTURE_SCAN = { orderBy: { capturedAt: 'asc' } } as const;
+
+/**
  * Everything needed to identify the state, WITHOUT touching snapshot fullText.
  *
  * Deliberately cheap: the whole point of the cache is that the ~2 MB of archived
@@ -252,7 +276,7 @@ async function loadDetectionInputs(url: string) {
   const snapshotMeta = (
     await prisma.urlSnapshot.findMany({
       where: { trackedUrlId: tracked.id, ...ARCHIVED_CAPTURES_ONLY },
-      orderBy: { snapshotDate: 'asc' },
+      ...TRAJECTORY_CAPTURE_SCAN,
       select: { snapshotDate: true, waybackTimestamp: true, snapshotUrl: true },
     })
   ).map((row) => requireArchived(row, 'claimTrajectory.loadDetectionInputs'));
@@ -289,14 +313,16 @@ type DetectionInputs = Awaited<ReturnType<typeof loadDetectionInputs>>;
 
 /** The expensive half: pull archived text and search it. Only ever runs on a miss. */
 async function detect(inputs: DetectionInputs) {
-  // Archived captures only — the same restriction as loadDetectionInputs above,
-  // and it must stay identical to it: detect() searches the set that
-  // sourceStateHash was computed over, so a wider set here would search text the
-  // cache key never saw.
+  // Archived captures only, in the same order — detect() searches the set that
+  // sourceStateHash was computed over, so a wider or differently-ordered set
+  // here would search text the cache key never saw. Both queries spread the
+  // same TRAJECTORY_CAPTURE_SCAN rather than restating it, because "these must
+  // stay identical" enforced by a comment is the control this repository has
+  // now been burned by four times.
   const rows = (
     await prisma.urlSnapshot.findMany({
       where: { trackedUrlId: inputs.trackedUrlId, ...ARCHIVED_CAPTURES_ONLY },
-      orderBy: { snapshotDate: 'asc' },
+      ...TRAJECTORY_CAPTURE_SCAN,
       select: { snapshotDate: true, waybackTimestamp: true, snapshotUrl: true, fullText: true },
     })
   ).map((row) => requireArchived(row, 'claimTrajectory.detect'));

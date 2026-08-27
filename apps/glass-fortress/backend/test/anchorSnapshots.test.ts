@@ -301,17 +301,49 @@ describe('the scanner anchors through the shared path', () => {
     join(__dirname, '..', 'src', 'services', 'WaybackScraper.ts'),
     'utf8',
   );
+  // The anchoring call moved when recordCapture became the single write path
+  // (Level 1). It used to live in WaybackScraper as a private function, which is
+  // precisely why the URL-tracking path could not have reused it — a second
+  // caller would have reimplemented anchoring or, more likely, omitted it. The
+  // invariant is unchanged and now easier to hold: ONE implementation, in
+  // anchorSnapshots, called from the one place captures are created.
+  const writePath = readFileSync(
+    join(__dirname, '..', 'src', 'services', 'recordCapture.ts'),
+    'utf8',
+  );
 
-  it('WaybackScraper does not register hashes on its own', () => {
+  it('neither the scanner nor the write path registers hashes on its own', () => {
     // Matches a CALL, not the identifier: the comment at the anchoring site
     // names registerEvidenceHash to explain what it used to do wrong, and that
     // history is worth keeping next to the fix.
     expect(scraper).not.toMatch(/registerEvidenceHash\s*\(/);
+    expect(writePath).not.toMatch(/registerEvidenceHash\s*\(/);
   });
 
-  it('WaybackScraper anchors via anchorOneSnapshot', () => {
-    expect(scraper).toMatch(/anchorOneSnapshot/);
-    expect(scraper).toMatch(/import \{ anchorOneSnapshot \} from '\.\/anchorSnapshots'/);
+  it('the write path anchors via the shared registerSnapshotOnChain', () => {
+    expect(writePath).toMatch(/registerSnapshotOnChain\s*\(/);
+    expect(writePath).toMatch(
+      /import \{ registerSnapshotOnChain \} from '\.\/anchorSnapshots'/,
+    );
+  });
+
+  it('registerSnapshotOnChain reaches the chain only through anchorOneSnapshot', () => {
+    // The twin check lives in anchorOneSnapshot. Bypassing it is what left 71
+    // production rows with a null onChainTxHash for text that was already
+    // anchored, so the shared entry point must keep delegating rather than
+    // growing its own registration call.
+    const anchors = readFileSync(
+      join(__dirname, '..', 'src', 'services', 'anchorSnapshots.ts'),
+      'utf8',
+    );
+    expect(anchors).toMatch(/await anchorOneSnapshot\(web3, snapshotId, contentHash\)/);
+  });
+
+  it('the scanner no longer anchors directly — the write path owns it', () => {
+    // Guards the consolidation itself. If anchoring is ever re-added to the
+    // scanner, that is a second implementation returning, which is the exact
+    // drift this whole describe block exists to prevent.
+    expect(scraper).not.toMatch(/anchorOneSnapshot\s*\(/);
   });
 
   it('DETECTS a re-inlined registration — proven against a decoy', () => {
