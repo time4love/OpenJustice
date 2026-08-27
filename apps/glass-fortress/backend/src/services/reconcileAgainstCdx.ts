@@ -1,6 +1,6 @@
 import { prisma } from '../lib/prisma';
 import { fetchCaptureBytes } from '../lib/archiveHttp';
-import { deriveText } from '../lib/captureDocument';
+import { deriveText, sha256Bytes } from '../lib/captureDocument';
 import { cdxDigestOf, verifyAgainstCdx } from './verifyAgainstCdx';
 
 /**
@@ -188,10 +188,27 @@ export async function reconcileAgainstCdx(opts: {
 
       // Guarded on the digest verification observed, so a row changed since then
       // is skipped rather than overwritten.
+      //
+      // documentHash is written with sha256Bytes, NOT cdxDigestOf. The column is
+      // defined by schema.prisma and by recordCapture as SHA-256 of the payload,
+      // and it is where the anchor moves at Level 3.
+      //
+      // This line wrote the CDX digest — base32(SHA-1) — into it, on every write
+      // action rather than only on REPAIRED, so it corrupted all 83 rows in BOTH
+      // environments. It survived because the wrong function had less friction
+      // than the right one: cdxDigestOf was already in scope from the verifier
+      // import above, and sha256Bytes was not imported at all.
+      //
+      // Level 1's external criterion could not see it. verifyAgainstCdx
+      // recomputes its digest from `document` and never reads this column, so
+      // 83/83 VERIFIED stayed true while the integrity column was wrong. A level
+      // can verify its claim about the outside world and never verify its claim
+      // about itself — which is why verifyAgainstCdx now also checks
+      // sha256(document) == documentHash.
       const updated = await prisma.$executeRaw`
         UPDATE "UrlSnapshot"
         SET "document" = ${payload},
-            "documentHash" = ${cdxDigestOf(payload)},
+            "documentHash" = ${sha256Bytes(payload)},
             "documentContentType" = ${contentType},
             "documentContentEncoding" = ${encoding},
             "text" = ${derived.text},

@@ -428,6 +428,12 @@ happened not to matter; encoding mattered on 8% of captures.
 **2026-08-27.** `sha1b32(document) == cdx.digest` for all 83 captures on staging (`a43c536`) and
 production. First level here declared done against something outside the platform's own assertions.
 
+> **READ THE TWO SECTIONS BELOW BEFORE QUOTING THIS ONE.** The criterion this closed against has since
+> gained a second, **internal** axis, and both environments currently FAIL it: `documentHash` holds the
+> CDX digest rather than SHA-256 on all 83 rows, pending `forensics:rehash-documents`. The level is not
+> reopened — the bytes are correct and externally verified, and the model and write path are right — but
+> a reader who stops here would take "done, both environments" for more than it says.
+
 | | staging | production |
 |---|---|---|
 | `verify-against-cdx` | **83 VERIFIED / 0 CONTRADICTED / 0 UNAVAILABLE** | **83 / 0 / 0** |
@@ -438,12 +444,28 @@ production. First level here declared done against something outside the platfor
 | `textHash` / `contentHash` | `de77a9bd…` / `c2ec4433…` unchanged | unchanged |
 | unanchored | 0 | 0 |
 
-**The convergence is the strongest result.** Two corpora reconciled by *different paths* — staging
-across an interrupted run, a resumption and a transient database failure (7 repairs as 4 + 3);
-production in one clean pass (7 repairs at once) — arrived at **byte-identical state**: same 83
-captures, same 3,995,496 bytes, same fingerprint. That came from the discipline of capturing
-before-states, not from a check anyone designed, and it would catch environment divergence the moment
-it appeared.
+**The convergence was called "the strongest result". THAT CLAIM IS WITHDRAWN — 2026-08-27.**
+
+Two corpora reconciled by *different paths* — staging across an interrupted run, a resumption and a
+transient database failure (7 repairs as 4 + 3); production in one clean pass (7 repairs at once) —
+arrived at **byte-identical state**: same 83 captures, same 3,995,496 bytes, same fingerprint. All of
+that is measured and none of it is retracted.
+
+What is retracted is what it was said to *prove*. **Both environments ran the same code, so
+byte-identical state is exactly what a shared defect produces.** Convergence demonstrates sameness, not
+correctness — it is `reproducible ≠ faithful` at corpus scale, the same inference this document had
+already withdrawn once at capture scale ("we fetched it twice, hours apart, got the same bytes,
+therefore the mismatch is the Archive's"). Written by the author who recorded that withdrawal, in the
+closing report of the work that produced it.
+
+It was falsified within a day. The `documentHash` corruption below sat in **all 83 rows of both
+environments**, and the fingerprints matched throughout — because both environments were wrong in the
+identical way. A convergence check would have reported green on the exact defect it was cited as
+capable of catching.
+
+*The `contentHash` half still stands*: that column is untouched by the bug, so chain-neutrality remains
+proven. The claim that shrinks is the general one about what agreement between two environments is
+evidence of.
 
 *The production deploy did NOT abort, and that was predicted before it ran.* `20260827190000` adds a
 nullable column with no data precondition, so unlike the previous two ships there was nothing for the
@@ -503,7 +525,30 @@ records `gzip` on **exactly the 7 captures** whose digests had disagreed — the
 the opposite direction, by the Archive declaring compression rather than by a hash mismatching. Two
 independent signals agreeing on which rows were affected is worth more than either alone.
 
-##### Level 1's completion criterion is now EXTERNAL and falsifiable
+##### Level 1's completion criterion has TWO axes — external AND internal
+
+> **EXTERNAL** `sha1b32(document) == cdx.digest`, for every ARCHIVED capture · *is it what the source served?*
+> **INTERNAL** `sha256(document) == documentHash`, for **every** capture · *does the row agree with itself?*
+
+**The second axis was added 2026-08-27, after the first alone proved insufficient — see
+"documentHash held the CDX digest" below.** The short statement of why:
+
+> **Level 1 verified its claim about the outside world and never verified its claim about itself.**
+
+`verifyAgainstCdx` recomputes its digest from `document` and never reads `documentHash`. So a repair
+tool could write the wrong hash function's output into the integrity column, on all 83 rows in both
+environments, while this criterion reported **83/83 VERIFIED** throughout — and did, for a day. The
+external axis is the stronger one and it is not the only one needed.
+
+*The internal axis is deliberately NOT scoped by provenance*, while the external one is. Only an
+archived capture HAS a published digest to be checked against; but "a row's integrity hash is a hash of
+that row's bytes" has nothing to do with the Archive and must hold for a `DIRECT` or `ASSERTED` capture
+identically. Folding it into the archive-scoped query would have made it **silently stop covering new
+rows the moment Level 2 Phase B creates the first non-archived capture** — a check that narrows as the
+data widens, without ever reporting less. A test asserts the internal query carries no `provenance`
+key.
+
+*The original statement of the external axis, unchanged:*
 
 > `sha1b32(document) == cdx.digest`, for every capture, in both environments.
 
@@ -516,6 +561,88 @@ complete by definition again.
 *The reversal worth naming:* the CDX check was nearly narrowed for failing to prove provenance. It did
 something more useful — it was **the only instrument capable of detecting our own loss**. Without an
 external witness, all three transformations would have stayed invisible indefinitely.
+
+##### `documentHash` held the CDX digest — found 2026-08-27, in BOTH environments
+
+**Measured, both environments, by recomputing both candidate digests from the stored bytes:**
+
+| | staging `45ce88aa…` | production `0e755b7d…` |
+|---|---|---|
+| `documentHash == sha256(document)` | **0 / 83** | **0 / 83** |
+| `documentHash == cdxDigestOf(document)` | **83 / 83** | **83 / 83** |
+
+`reconcileAgainstCdx` wrote `cdxDigestOf(payload)` — base32(SHA-1), the Archive's own digest — into a
+column `schema.prisma` and `recordCapture` both define as SHA-256 and Level 3 will anchor. The UPDATE
+runs on `TEXT_REDERIVED` and `ENCODING_FILLED` as well as `REPAIRED`, so it corrupted **all 83 rows,
+not the 7 it repaired**.
+
+**It survived because the wrong function had less friction than the right one.** `cdxDigestOf` was
+already in scope from the verifier import at the top of the file; `sha256Bytes` was not imported at all.
+Worth stating plainly, because it is a design lever rather than an anecdote: what is already in scope is
+what gets used.
+
+*The blast radius, stated exactly rather than dramatically:*
+
+- **Level 1's external criterion is untouched.** It recomputes from `document` and never reads this
+  column, so 83/83 VERIFIED was true and remains true. The bytes were never wrong.
+- **No anchor moves.** The chain holds `contentHash = sha256(fullText)`; `documentHash` has never been
+  anchored, because Level 3 is where it would be and Level 3 is not built. Had the order been reversed
+  this would have been a Level 7 evidence-integrity event instead of a repair.
+- **`recordCapture.finishExisting` fabricates DIVERGENCE.** It compares stored `documentHash` against
+  `sha256Bytes(fetched)`, so until the repair lands, **the next resumed scan reports every capture it
+  re-reaches as diverged** — the mechanism built to detect fabricated findings producing them. Not
+  latent: it fires on the next scan.
+
+**This is a bug, not a Level 1 reopening**, and the distinction sizes the work correctly. The model is
+right and the write path is right; a repair tool corrupted a column. Repair is
+`documentHash = sha256(document)` recomputed from bytes already held — local, deterministic, no Archive,
+no network, no chain (`forensics:rehash-documents`). Minutes, not a re-fetch, and it is the external
+axis that licenses that: the bytes are settled by an independent witness.
+
+*The durable finding is the criterion, not the bug* — hence the second axis above.
+
+##### A new defect shape: THE BAG ASSERTION
+
+> **An assertion that checks presence in a collection rather than binding a value to a name. It looks
+> semantic and is merely positional-agnostic.**
+
+`test/reconcileAgainstCdx.test.ts` asserted `expect(params).toContain(CDX)` on the raw-SQL parameter
+array. That passes whether the CDX digest lands in `documentHash`, in `textHash`, or anywhere else in
+the statement — it asserts only that *some* column received the value. **A test written to prove the
+repair worked was satisfied by a repair writing the wrong hash into the integrity column**, and then
+held that defect in place across two environments.
+
+Third instance of *a test encoding a defect as a requirement*, and the first where the mechanism is
+generalisable: fixing the code made exactly those two assertions fail, which is the shape's own tell.
+
+*Fixed by `test/helpers/writtenColumns.ts`*, which parses the template's own `"col" = $n` fragments so
+an assertion says which column it means. Swept across every call-argument bag assertion on a column
+write — `backfillDocumentBytes.test.ts` carried five of the same shape. Proven by a mutation that
+**swaps the `documentHash` and `textHash` values between their columns**: both values remain in the
+bag, so `toContain` cannot see it, and the column-addressed assertion fails immediately.
+
+*Left as bag assertions deliberately, because they are correct ones:* a prompt-contains-phrase check,
+and the WHERE-clause id in `backfillDocumentBytes` — `writtenColumns` reports SET columns and should not
+report that.
+
+##### The guard is a SOURCE SCAN, because four writers is a rule with four implementations
+
+`documentHash` has four writers — `recordCapture`, `reconcileAgainstCdx`, `rehashDocuments`,
+`backfillDocumentBytes`. One rule, four implementations, which this repository already names as its
+dominant defect shape with the prescription: **guard with a source scan, not a behaviour test.**
+
+The internal axis is a good runtime guard, but it catches a fifth bad writer only *after* the data is
+written and only when somebody runs the verifier. `captureDocument.ts` already exports the single
+`sha256Bytes`, so the rule is *everyone routes through it* — and that is checkable at build time.
+`test/documentHashSingleRule.test.ts` parses `src/`, extracts every expression assigned to
+`documentHash` inside a write region (a Prisma `data:` payload or a raw `SET` clause), resolves one
+level of indirection to the local `const`, and asserts each traces to `sha256Bytes`. Precedent:
+`mcpToolClassification.test.ts` parses `mcpServer.ts` to assert every registered tool is classified.
+
+It carries an explicit vacuity guard — **fewer than four writers found is itself a failure** — because a
+source scan whose pattern silently stops matching becomes a suite of assertions that cannot fail. That
+guard is mutation-proven: breaking the `SET`-clause pattern drops the test count and fires the guard
+rather than passing green.
 
 ##### Repair is keyed on verification failure, not on a null column
 
@@ -944,6 +1071,19 @@ on every verification) · `list_captures` partitions by provenance · the scan t
 fetching nothing · the 404 capture as queryable state · the reconciliation fast path, deferred while it
 was on the critical path.
 
+**PHASE A HAS A PRECONDITION OF ITS OWN, added 2026-08-27: the `documentHash` repair
+(`forensics:rehash-documents`) must land in an environment BEFORE any scan work runs there.** Not a
+tidiness preference — the two items interact:
+
+- `recordCapture.finishExisting` compares the stored `documentHash` against `sha256Bytes(fetched)`, so
+  while the column holds the CDX digest **every capture a resumed scan re-reaches is logged as
+  DIVERGED**.
+- Phase A's `computeNextFromDate` fix is precisely what makes scans reach captures again.
+
+So fixing the scan first would take a mechanism that currently fetches nothing and turn it into one
+that fabricates a divergence finding per capture — **the tool built to detect fabricated findings
+manufacturing them, at corpus scale, on its first working run.** Repair the column, then fix the scan.
+
 **Phase B — acquisition through the Archive, under that same enforcement. This is the level's
 centrepiece, not a subsection.** `start_forensic_scan` stays the default entry point; the new work is
 the not-indexed branch — request archival, hold the current content as a pending precursor, reconcile
@@ -999,13 +1139,20 @@ only read from the Archive. Asking the Archive to crawl a government page on our
 limits and a footprint, and it deserves the deliberateness of a chain write rather than being treated
 as another fetch. Decide the policy before building it.
 
-**`archiveHttp`'s error message — RECLASSIFIED 2026-08-27 from tidy-up to FIX-SOON.** It reports
-`HTTP 200` when axios throws for a non-status reason, presenting a success code as a failure. It has now
-cost diagnosis **twice, both during live operations**: once on staging's backfill (a capture had to be
-`curl`ed to establish it was fine), and once inside the production migration window, where it reported
-`HTTP 200` for what the line above it showed was an `ECONNABORTED` timeout. Three lines of code, and it
-actively degrades the ability to tell **transient from permanent** at exactly the moments that
-distinction decides whether to retry or to stop. Do it next.
+**`archiveHttp`'s error message — DONE.** It reported `HTTP 200` when axios threw for a non-status
+reason, presenting a success code as a failure, and cost diagnosis **twice during live operations**:
+once on staging's backfill (a capture had to be `curl`ed to establish it was fine), and once inside the
+production migration window, where it reported `HTTP 200` for what the line above it showed was an
+`ECONNABORTED` timeout. `describeFetchFailure` now distinguishes the three cases that decide
+retry-or-stop — no response · HTTP 4xx/5xx · failed *after* a 2xx — and
+`test/archiveHttpFailureMessage.test.ts` covers them.
+
+*This paragraph said **FIX-SOON, "do it next"** for some time after the fix had landed, and that is
+worth more than a strikethrough.* A plan is read as the current state of the work; an item marked
+urgent that is already done spends attention twice — once on the reader deciding it matters, once on
+whoever re-derives that it does not. **A document that describes code is stale by default and true only
+when checked**, which is why "verify the plan against the code before trusting it" is now the opening
+instruction of every handoff here. This is the second stale item found that way.
 
 #### Archiving, and reconciling our own fetch against it
 
@@ -1234,6 +1381,8 @@ full.
 | `get_environment` | shipped to production `930be6c`; identity by configuration and chain, never by content |
 | documents stored | `rawText`/`rawContentHash` columns, one fetch, both readings; **staging backfilled 83/83** |
 | the measurement | `forensics:measure-divergence` — **7 of 81 contradicted**, 0 uncheckable, lowest retention 60% |
+| Level 1's criterion | two axes — external (`cdx.digest`) and internal (`sha256(document) == documentHash`), the second added after the first alone missed a corrupted integrity column in both environments |
+| `archiveHttp` | error message fixed — `describeFetchFailure` names the cause rather than an irrelevant status |
 
 ## 6. Open questions
 

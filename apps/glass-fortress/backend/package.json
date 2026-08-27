@@ -30,6 +30,7 @@
     "forensics:recover-captures": "node dist/scripts/recoverMissingCaptures.js",
     "forensics:reconcile-against-cdx": "node dist/scripts/reconcileAgainstCdx.js",
     "forensics:verify-against-cdx": "node dist/scripts/verifyAgainstCdx.js",
+    "forensics:rehash-documents": "node dist/scripts/rehashDocuments.js",
     "forensics:measure-href-changes": "node dist/scripts/measureHrefChanges.js",
     "forensics:measure-divergence": "node dist/scripts/measureExtractionDivergence.js"
   },

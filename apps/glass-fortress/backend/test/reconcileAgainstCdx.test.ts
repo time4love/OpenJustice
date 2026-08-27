@@ -13,7 +13,8 @@ import { prisma } from '../src/lib/prisma';
 import { fetchCaptureBytes } from '../src/lib/archiveHttp';
 import { verifyAgainstCdx, cdxDigestOf } from '../src/services/verifyAgainstCdx';
 import { reconcileAgainstCdx } from '../src/services/reconcileAgainstCdx';
-import { deriveText } from '../src/lib/captureDocument';
+import { deriveText, sha256Bytes } from '../src/lib/captureDocument';
+import { writtenColumns } from './helpers/writtenColumns';
 
 const executeRaw = prisma.$executeRaw as unknown as jest.Mock;
 const findMany = prisma.urlSnapshot.findMany as jest.Mock;
@@ -100,22 +101,25 @@ describe('reconcileAgainstCdx fills what is missing without touching what is rig
     const report = await reconcileAgainstCdx({ url: URL_, dryRun: false });
 
     expect(report.encodingFilled).toBe(1);
-    expect(executeRaw.mock.calls[0].slice(1)).toContain('identity');
+    expect(writtenColumns(executeRaw.mock.calls[0])['documentContentEncoding']).toBe('identity');
   });
 
   it('re-derives text when the stored version is behind', async () => {
     findMany.mockResolvedValue([storedRow({ textExtractionVersion: 'v1-htmltotext-normalised' })]);
     const report = await reconcileAgainstCdx({ url: URL_, dryRun: false });
     expect(report.textRederived).toBe(1);
-    expect(executeRaw.mock.calls[0].slice(1)).toContain(V2);
+    expect(writtenColumns(executeRaw.mock.calls[0])['textExtractionVersion']).toBe(V2);
   });
 
   it('keeps the STORED bytes when only the version moved — it re-derives, never re-fetches into place', async () => {
     findMany.mockResolvedValue([storedRow({ textExtractionVersion: 'v1-htmltotext-normalised' })]);
     await reconcileAgainstCdx({ url: URL_, dryRun: false });
-    const params = executeRaw.mock.calls[0].slice(1);
-    expect(params).toContain(SERVED);
-    expect(params).toContain(CDX);
+    const cols = writtenColumns(executeRaw.mock.calls[0]);
+    expect(cols['document']).toEqual(SERVED);
+    // SHA-256 of the payload, per schema.prisma and recordCapture — never the
+    // CDX digest, which is base32(SHA-1) and belongs to the verifier alone.
+    expect(cols['documentHash']).toBe(sha256Bytes(SERVED));
+    expect(cols['documentHash']).not.toBe(CDX);
   });
 });
 
@@ -128,10 +132,11 @@ describe('reconcileAgainstCdx discriminates which side is wrong', () => {
     const report = await reconcileAgainstCdx({ url: URL_, dryRun: false });
 
     expect(report.repaired).toBe(1);
-    const params = executeRaw.mock.calls[0].slice(1);
-    expect(params).toContain(SERVED);
-    expect(params).toContain(CDX);
-    expect(params).toContain('gzip');
+    const cols = writtenColumns(executeRaw.mock.calls[0]);
+    expect(cols['document']).toEqual(SERVED);
+    expect(cols['documentHash']).toBe(sha256Bytes(SERVED));
+    expect(cols['documentHash']).not.toBe(CDX);
+    expect(cols['documentContentEncoding']).toBe('gzip');
   });
 
   it('DOES NOT overwrite when the fresh fetch also disagrees with the index', async () => {
