@@ -19,6 +19,7 @@ import {
   countSnapshotsWithoutDocument,
 } from '../src/services/backfillDocumentBytes';
 import { deriveText, sha256Bytes } from '../src/lib/captureDocument';
+import { writtenColumns } from './helpers/writtenColumns';
 
 const queryRaw = prisma.$queryRaw as unknown as jest.Mock;
 const executeRaw = prisma.$executeRaw as unknown as jest.Mock;
@@ -79,12 +80,16 @@ describe('backfillDocumentBytes', () => {
   it('stores the payload, its charset, and the recomputed text', async () => {
     await backfillDocumentBytes({ dryRun: false, url: URL_ });
 
-    const params = executeRaw.mock.calls[0].slice(1);
-    expect(params).toContain(PAYLOAD);
-    expect(params).toContain(sha256Bytes(PAYLOAD));
-    expect(params).toContain(CT);
-    expect(params).toContain(deriveText(PAYLOAD, CT).textHash);
-    expect(params).toContain(deriveText(PAYLOAD, CT).textExtractionVersion);
+    // Addressed BY COLUMN, not by membership in the parameter bag. A bag
+    // assertion here would pass if the payload hash landed in textHash, or the
+    // CDX digest in documentHash — which is exactly how the same assertion
+    // shape in reconcileAgainstCdx.test.ts held a corruption in place.
+    const cols = writtenColumns(executeRaw.mock.calls[0]);
+    expect(cols['document']).toEqual(PAYLOAD);
+    expect(cols['documentHash']).toBe(sha256Bytes(PAYLOAD));
+    expect(cols['documentContentType']).toBe(CT);
+    expect(cols['textHash']).toBe(deriveText(PAYLOAD, CT).textHash);
+    expect(cols['textExtractionVersion']).toBe(deriveText(PAYLOAD, CT).textExtractionVersion);
   });
 
   it('guards every write with documentHash IS NULL — fills, never overwrites', async () => {
@@ -94,6 +99,8 @@ describe('backfillDocumentBytes', () => {
     await backfillDocumentBytes({ dryRun: false, url: URL_ });
     const sql = (executeRaw.mock.calls[0][0] as string[]).join('?');
     expect(sql).toContain('"documentHash" IS NULL');
+    // Deliberately a bag assertion: this one is the WHERE-clause id, which
+    // writtenColumns does not and should not report — it addresses SET columns.
     expect(executeRaw.mock.calls[0].slice(1)).toContain('snap-1');
   });
 

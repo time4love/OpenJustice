@@ -2,6 +2,8 @@ import { createHash } from 'crypto';
 import axios from 'axios';
 import { prisma } from '../lib/prisma';
 import { ARCHIVED_CAPTURES_ONLY } from '../lib/archivedCaptures';
+import { sha256Bytes } from '../lib/captureDocument';
+import { CaptureProvenance } from '@prisma/client';
 import { CDX_MAX_RETRIES, CDX_TIMEOUT_MS, CDX_USER_AGENT, withRetry } from '../lib/archiveHttp';
 
 /**
@@ -73,6 +75,34 @@ export interface CdxVerdict {
   contentEncoding: string | null;
 }
 
+/**
+ * THE INTERNAL AXIS: does a row agree with itself — `sha256(document) ==
+ * documentHash`?
+ *
+ * SCOPED TO EVERY CAPTURE, NOT ONLY ARCHIVED ONES, and that is the point. The
+ * external axis is archive-scoped because only an archived capture HAS a
+ * published digest to be checked against. This invariant has nothing to do with
+ * the Archive: it says a row's integrity hash is a hash of that row's bytes,
+ * which must hold for a DIRECT or ASSERTED capture exactly as for a WAYBACK one.
+ * Folding it into the archive-scoped query would have made it silently skip
+ * every non-archived capture the moment Level 2 Phase B creates the first one.
+ *
+ * Never UNAVAILABLE, and that is a property of the check rather than an
+ * omission: both sides are held locally and both columns are NOT NULL, so the
+ * comparison can always be made and there is no third state to collapse into a
+ * pass.
+ */
+export interface InternalVerdict {
+  snapshotId: string;
+  capturedAt: Date;
+  provenance: CaptureProvenance;
+  verdict: 'VERIFIED' | 'CONTRADICTED';
+  /** What the row stores. */
+  storedDocumentHash: string;
+  /** What its own bytes hash to. */
+  recomputedDocumentHash: string;
+}
+
 export interface CdxVerificationReport {
   url: string;
   captures: number;
@@ -80,8 +110,17 @@ export interface CdxVerificationReport {
   contradicted: number;
   /** The Archive has no digest for this capture — a verdict about the CHECK. */
   unavailable: number;
+  /** Captures checked on the internal axis — EVERY capture, any provenance. */
+  internallyChecked: number;
+  /** Captures whose stored documentHash is NOT sha256 of their own bytes. */
+  internallyContradicted: number;
   verdicts: CdxVerdict[];
-  /** True only when every capture reproduces its published digest. */
+  /** The internal axis, one entry per capture regardless of provenance. */
+  internalVerdicts: InternalVerdict[];
+  /**
+   * True only when every capture reproduces its published digest AND agrees
+   * with itself.
+   */
   levelOneComplete: boolean;
 }
 
@@ -143,8 +182,35 @@ export async function verifyAgainstCdx(url: string): Promise<CdxVerificationRepo
     });
   }
 
+  // A SECOND QUERY, DELIBERATELY UNSCOPED BY PROVENANCE. See InternalVerdict.
+  const allCaptures = await prisma.urlSnapshot.findMany({
+    where: { trackedUrlId: tracked.id },
+    orderBy: { capturedAt: 'asc' },
+    select: {
+      id: true,
+      capturedAt: true,
+      provenance: true,
+      document: true,
+      documentHash: true,
+    },
+  });
+  const internalVerdicts: InternalVerdict[] = allCaptures.map((c) => {
+    const recomputedDocumentHash = sha256Bytes(c.document);
+    return {
+      snapshotId: c.id,
+      capturedAt: c.capturedAt,
+      provenance: c.provenance,
+      verdict: recomputedDocumentHash === c.documentHash ? 'VERIFIED' : 'CONTRADICTED',
+      storedDocumentHash: c.documentHash,
+      recomputedDocumentHash,
+    };
+  });
+
   const contradicted = verdicts.filter((v) => v.verdict === 'CONTRADICTED').length;
   const unavailable = verdicts.filter((v) => v.verdict === 'UNAVAILABLE').length;
+  const internallyContradicted = internalVerdicts.filter(
+    (v) => v.verdict === 'CONTRADICTED',
+  ).length;
 
   return {
     url,
@@ -152,9 +218,26 @@ export async function verifyAgainstCdx(url: string): Promise<CdxVerificationRepo
     verified: verdicts.filter((v) => v.verdict === 'VERIFIED').length,
     contradicted,
     unavailable,
+    internallyChecked: internalVerdicts.length,
+    internallyContradicted,
     verdicts,
-    // Deliberately requires zero of BOTH. An unavailable check is not a pass,
-    // and a level that counted it as one would be complete by definition again.
-    levelOneComplete: verdicts.length > 0 && contradicted === 0 && unavailable === 0,
+    internalVerdicts,
+    // Deliberately requires zero of ALL THREE.
+    //
+    // An unavailable check is not a pass, or the level would be complete by
+    // definition again. And the internal axis is here because its absence was
+    // load-bearing: this criterion was external only, so it recomputed its
+    // digest from `document` and never read `documentHash` — which let
+    // reconcileAgainstCdx write the CDX digest into that column, on all 83 rows
+    // in BOTH environments, while 83/83 VERIFIED stayed true throughout.
+    //
+    // A level can verify its claim about the outside world and never verify its
+    // claim about itself. External is the stronger axis and it is not the only
+    // one needed.
+    levelOneComplete:
+      verdicts.length > 0 &&
+      contradicted === 0 &&
+      unavailable === 0 &&
+      internallyContradicted === 0,
   };
 }
