@@ -529,8 +529,48 @@ pattern this level is about:
 4. **Re-deploy.** The migration now applies.
 
 As of this level production lacks **the provenance/`capturedAt` migration, the payload columns, and the
-backfill** — and the backfill is now ~83 Archive fetches and ~4 MB rather than a text-only pass. That is
-fine; it is precisely why per-level shipping was adopted.
+payload backfill** — and that backfill is now ~83 Archive fetches and ~4 MB rather than a text-only
+pass. (*Corrected 2026-08-27: production is FURTHER ALONG than this document previously said. Its
+latest applied migration is `20260827120000_snapshot_document_required`, not `20260826140000`, and its
+`rawText` is fully backfilled — the four-step dance below has already been run once, and the ledger
+still carries the `ROLLED_BACK` row that proves it.*)
+
+##### THE LIMIT OF THIS PROCEDURE — read before using it a third time
+
+**`migrate deploy` commits each migration in its own transaction.** When the third fails, the first two
+have already committed, and the deploy aborts with the OLD CODE serving against the NEW SCHEMA.
+
+> **The abort-and-recover pattern is safe only when every migration that commits before the failing one
+> is backward-compatible with the currently-running code. A rename is not. A `NOT NULL` without a
+> default is not.**
+
+The first run of this procedure was safe because its committed migration only added *nullable* columns,
+which old code ignores. **The second run is not**, and the difference is worth being exact about:
+
+| commits before the failure | effect on the running build |
+|---|---|
+| `rawText` → `text` rename | the old Prisma client selects `rawText`; every read of it fails |
+| `provenance` / `capturedAt` `NOT NULL`, **no DEFAULT** | the old `urlSnapshot.create` omits them; every write fails |
+
+So the window is **read-AND-write degraded**: touch nothing until the redeploy. The absent DEFAULT is
+deliberate — a default "would silently accept a row whose provenance nobody established" — which is
+correct for the schema and is exactly what makes the window worse.
+
+**Why the second run was shipped anyway, which is NOT a general licence:** production has **no
+audience** yet. The window costs nothing external, and restructuring into expand-contract would mean
+three migrations plus a later drop, buying safety that does not apply — while the rename is *wanted*,
+since `text` is the honest name for a derivation and carrying `rawText` beside it would keep the
+dishonest one in the schema longer.
+
+Recorded because otherwise the next person reads "we did this twice and it was fine" and infers a rule
+from two cases that were safe for **two different reasons** — something that worked for a reason nobody
+wrote down, which is the exact failure this level exists to remove.
+
+*Standard for every constraint-adding migration:* **verify the constraint is satisfiable against the
+target environment's real data BEFORE shipping it.** Production pre-flight for `20260827160000`: 83
+captures, 0 malformed timestamps, 0 null `rawText`, 83 distinct `(trackedUrlId, capturedAt)` pairs. That
+check is what stops an unpredicted failure landing inside a sequence that already contains a predicted
+one.
 
 #### Level 1 is not closed until the capture layer is complete
 
