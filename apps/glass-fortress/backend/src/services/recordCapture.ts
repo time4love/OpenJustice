@@ -1,0 +1,350 @@
+import { createHash } from 'crypto';
+import { prisma } from '../lib/prisma';
+import { CaptureProvenance } from '@prisma/client';
+import { registerSnapshotOnChain } from './anchorSnapshots';
+
+/**
+ * The one way a capture is written.
+ *
+ * Level 1 of docs/gf-factual-layer-rebuild-dev-plan.md. Two properties matter,
+ * and neither survives being spread across call sites:
+ *
+ *   1. A capture holds the document it was extracted from. `document` is a
+ *      required parameter, so no code path can construct an incomplete capture
+ *      — the schema's NOT NULL is the backstop, not the control.
+ *
+ *   2. "Is this capture new?" has exactly ONE answer. Before this module there
+ *      were three, and they disagreed: CDX's server-side `collapse=digest`
+ *      (consecutive only), WaybackScraper's client-side `seenDigests` set (any
+ *      repeat within one batch of 50), and the write path itself, which keyed
+ *      on (trackedUrlId, waybackTimestamp) and was digest-blind. The middle one
+ *      discarded 11 real captures of the staging corpus; a twelfth survived
+ *      only because a CDX page boundary happened to separate it from its twin.
+ *      Whether a page state was recorded therefore depended on pagination.
+ */
+export interface RecordCaptureInput {
+  trackedUrlId: string;
+  provenance: CaptureProvenance;
+  /** When the capture was TAKEN. Derived from waybackTimestamp for archived captures. */
+  capturedAt: Date;
+  /** The Archive's identifier. Present only when provenance is WAYBACK. */
+  waybackTimestamp?: string;
+  /** Where this was fetched from — Wayback canonical URL, or the live URL. */
+  sourceUrl: string;
+  /** The document as fetched, before extraction. Never truncated. */
+  document: string;
+  /** Readability's article view of that same document. */
+  extraction: string;
+}
+
+export interface RecordedCapture {
+  id: string;
+  waybackTimestamp: string | null;
+  capturedAt: Date;
+  /** SHA-256(extraction) — what the chain currently attests to. */
+  contentHash: string;
+  /** SHA-256(document), over the WHOLE document. */
+  documentHash: string;
+  /**
+   * The stored capture at this instant holds a DIFFERENT document than the one
+   * just fetched.
+   *
+   * Only ever true alongside `EXISTS`, and it is a finding rather than an error:
+   * either the Archive's own copy changed, or our fetch is faulty. Stored text
+   * is never rewritten on the strength of it. Persisting the verdict waits on
+   * §3's open decision about where check results live.
+   */
+  divergedFromStored: boolean;
+  /**
+   * Why this call did not create a row.
+   *
+   * `UNCHANGED` — identical to the immediately preceding capture.
+   * `EXISTS`    — already recorded; a resumed scan re-reaching the same capture.
+   */
+  outcome: 'CREATED' | 'UNCHANGED' | 'EXISTS';
+}
+
+/** SHA-256 hex digest. Bare hex — see toBytes32 before any chain call. */
+function sha256(text: string): string {
+  return createHash('sha256').update(text, 'utf8').digest('hex');
+}
+
+/**
+ * Prisma's unique-constraint violation, identified by code rather than message.
+ *
+ * `instanceof PrismaClientKnownRequestError` is avoided deliberately: it fails
+ * when more than one @prisma/client instance is resolved, which is exactly the
+ * condition a monorepo with workspace hoisting can produce, and it would fail
+ * OPEN here — turning a lost race into a thrown scan.
+ */
+function isUniqueViolation(err: unknown): boolean {
+  return typeof err === 'object' && err !== null && 'code' in err && err.code === 'P2002';
+}
+
+/** YYYY-MM-DD in UTC. capturedAt is UTC by construction. */
+function toSnapshotDate(capturedAt: Date): string {
+  return capturedAt.toISOString().slice(0, 10);
+}
+
+/**
+ * Is this capture new?
+ *
+ * A capture is new unless it is identical to the one immediately preceding it
+ * in time for the same TrackedUrl. Two consequences, both deliberate:
+ *
+ *   - An unchanged re-fetch is dropped. It adds a row and no information, and
+ *     CDX has already collapsed the archived equivalent before we see it.
+ *
+ *   - A NON-CONSECUTIVE revert is KEPT. A page returning to a former state is
+ *     forensically significant — it is the whole-page form of what claim
+ *     trajectories detect, and on this corpus it is not hypothetical: the
+ *     tracked MOH page returned to an earlier state twice within six hours on
+ *     2022-06-22, and to another earlier state three times across May 2022.
+ *     Every one of those observations was discarded by the rule this replaces.
+ *
+ * Ordering by capturedAt rather than by insertion makes the answer independent
+ * of the order captures arrive in, which is what made the old rule depend on
+ * CDX pagination.
+ *
+ * THIS IS A TRANSITION-DERIVED FACT, and the repository has a hard-won rule
+ * against those — derive from state, not from a transition, learned three times
+ * in one day. The decision is made once, at write, against whatever preceded the
+ * capture at that moment, and it is never revisited.
+ *
+ * Kept deliberately, and the reason is the direction of the error. A capture
+ * inserted BETWEEN two existing ones is compared against its predecessor only,
+ * so it can leave its SUCCESSOR as a now-redundant row. It cannot cause an
+ * observation to be dropped: a redundant row costs a duplicate in a report,
+ * a dropped one costs something unrecoverable, and this level exists because the
+ * unrecoverable direction was chosen once already.
+ *
+ * That case is imminent rather than theoretical. Removing the digest filter
+ * means a rescan inserts the eleven reverts the old rule discarded, each landing
+ * between captures already stored — so the redundancy above is the expected
+ * outcome of the very next scan, not a hypothetical. Anything that needs an
+ * order-independent answer must recompute from the stored captures rather than
+ * read these outcomes back.
+ */
+/**
+ * A capture already exists at this instant — a resumed scan re-reaching it.
+ *
+ * Two things must happen here that a bare early return would skip, and both
+ * were properties the `upsert` this replaced had in CODE before they were
+ * demoted to prose:
+ *
+ *  - COMPARE. Stored text is never rewritten, but the refetch is still an
+ *    observation. If it disagrees with what we hold, the Archive's own copy
+ *    changed, and that is a finding. Claiming so in a comment while never
+ *    comparing is the "documented in a comment, mistaken for a control" pattern
+ *    that Level 1 exists to stop repeating.
+ *
+ *  - RETRY THE ANCHOR. The old path anchored whenever `onChainTxHash` was null,
+ *    including on rows it did not create, so a resumed scan repaired a capture
+ *    stored but never anchored. Anchoring only on creation loses that repair —
+ *    against a corpus where 83 captures once sat unanchored and 71 production
+ *    rows still hold a null for text that IS on-chain.
+ *
+ * The divergence verdict is surfaced and logged, not yet persisted: where check
+ * verdicts live (one polymorphic IntegrityCheck table, or verdict columns per
+ * subject) is an open decision in §3 of the plan, and inventing a third shape
+ * here would prejudge it.
+ */
+function finishExisting(
+  existing: {
+    id: string;
+    waybackTimestamp: string | null;
+    contentHash: string;
+    rawContentHash: string;
+    onChainTxHash: string | null;
+  },
+  fetched: { documentHash: string; contentHash: string; capturedAt: Date },
+): RecordedCapture {
+  const diverged = existing.rawContentHash !== fetched.documentHash;
+  if (diverged) {
+    console.warn(
+      '[recordCapture] DIVERGENCE: capture',
+      existing.id,
+      'holds a document whose hash is',
+      existing.rawContentHash,
+      'but the same capture just fetched as',
+      fetched.documentHash,
+      '— the Archive copy changed, or the fetch is faulty. Stored text left untouched.',
+    );
+  }
+
+  if (!existing.onChainTxHash) {
+    registerSnapshotOnChain(existing.id, existing.contentHash).catch((err: unknown) => {
+      console.warn(
+        '[recordCapture] re-anchoring rejected for',
+        existing.id,
+        ':',
+        err instanceof Error ? err.message : err,
+      );
+    });
+  }
+
+  return {
+    id: existing.id,
+    waybackTimestamp: existing.waybackTimestamp,
+    capturedAt: fetched.capturedAt,
+    contentHash: existing.contentHash,
+    documentHash: fetched.documentHash,
+    divergedFromStored: diverged,
+    outcome: 'EXISTS',
+  };
+}
+
+export async function recordCapture(input: RecordCaptureInput): Promise<RecordedCapture> {
+  const { trackedUrlId, provenance, capturedAt, waybackTimestamp, sourceUrl, document, extraction } =
+    input;
+
+  if (provenance === CaptureProvenance.WAYBACK && !waybackTimestamp) {
+    throw new Error('recordCapture: a WAYBACK capture requires its waybackTimestamp.');
+  }
+  if (provenance !== CaptureProvenance.WAYBACK && waybackTimestamp) {
+    throw new Error(
+      `recordCapture: waybackTimestamp is meaningless for a ${provenance} capture — ` +
+        'it asserts the Archive holds a capture it does not hold.',
+    );
+  }
+  // trim(), not length === 0. A document of pure whitespace carries exactly as
+  // much of the page as an empty one, and `forensics:backfill-raw-text` already
+  // uses the stricter test — so the loose test here would admit a row the repair
+  // script considers document-less, which is the two-rules-one-invariant shape
+  // this level exists to remove.
+  if (document.trim().length === 0) {
+    throw new Error('recordCapture: refusing to record a capture with an empty document.');
+  }
+
+  const contentHash = sha256(extraction);
+  const documentHash = sha256(document);
+
+  const existing = await prisma.urlSnapshot.findUnique({
+    where: { trackedUrlId_capturedAt: { trackedUrlId, capturedAt } },
+    select: {
+      id: true,
+      waybackTimestamp: true,
+      contentHash: true,
+      rawContentHash: true,
+      onChainTxHash: true,
+    },
+  });
+  if (existing) {
+    return finishExisting(existing, { documentHash, contentHash, capturedAt });
+  }
+
+  const preceding = await prisma.urlSnapshot.findFirst({
+    where: { trackedUrlId, capturedAt: { lt: capturedAt } },
+    orderBy: { capturedAt: 'desc' },
+    select: {
+      id: true,
+      waybackTimestamp: true,
+      capturedAt: true,
+      contentHash: true,
+      rawContentHash: true,
+    },
+  });
+  if (preceding?.rawContentHash === documentHash) {
+    // Every field describes the row named by `id` — the capture that already
+    // holds this document — so the result is internally consistent rather than
+    // mixing the request with the row it resolved to.
+    return {
+      id: preceding.id,
+      waybackTimestamp: preceding.waybackTimestamp,
+      capturedAt: preceding.capturedAt,
+      contentHash: preceding.contentHash,
+      documentHash,
+      divergedFromStored: false,
+      outcome: 'UNCHANGED',
+    };
+  }
+
+  let created: { id: string; waybackTimestamp: string | null };
+  try {
+    created = await prisma.urlSnapshot.create({
+      data: {
+        trackedUrlId,
+        provenance,
+        capturedAt,
+        waybackTimestamp: waybackTimestamp ?? null,
+        snapshotDate: toSnapshotDate(capturedAt),
+        snapshotUrl: sourceUrl,
+        fullText: extraction,
+        contentHash,
+        rawText: document,
+        rawContentHash: documentHash,
+      },
+      select: { id: true, waybackTimestamp: true },
+    });
+  } catch (err) {
+    // The existence check above and this create are two statements, so a
+    // concurrent writer can insert the same capture in between. The `upsert`
+    // this replaced was one atomic statement and was documented as
+    // "idempotent — safe to call again on resume"; splitting it reintroduced a
+    // race that the comment still promised was handled.
+    //
+    // P2002 is the unique violation on (trackedUrlId, capturedAt). It means the
+    // other writer won, so re-read and finish on the existing row — which also
+    // runs the divergence comparison and the anchor retry, rather than
+    // reporting a failure for a capture that IS now stored.
+    if (!isUniqueViolation(err)) throw err;
+    const raced = await prisma.urlSnapshot.findUnique({
+      where: { trackedUrlId_capturedAt: { trackedUrlId, capturedAt } },
+      select: {
+        id: true,
+        waybackTimestamp: true,
+        contentHash: true,
+        rawContentHash: true,
+        onChainTxHash: true,
+      },
+    });
+    // Losing the race and then not finding the winner's row means the conflict
+    // was on something other than this key — surface it rather than invent a
+    // result.
+    if (!raced) throw err;
+    return finishExisting(raced, { documentHash, contentHash, capturedAt });
+  }
+
+  // Anchoring belongs to the write path, not to its callers. A capture stored
+  // but never anchored is the gap that left 83 snapshots unanchored while an
+  // empty catch reported success — so the call lives here, where every caller
+  // gets it, and its rejection is LOGGED rather than discarded.
+  //
+  // Fire-and-forget on purpose: a chain hiccup must not fail a scan that has
+  // already stored the irreplaceable half. Whether it actually worked is
+  // answered by counting unanchored snapshots from state, never by trusting this
+  // call. See countUnanchoredSnapshots.
+  registerSnapshotOnChain(created.id, contentHash).catch((err: unknown) => {
+    console.warn(
+      '[recordCapture] snapshot anchoring rejected for',
+      created.id,
+      ':',
+      err instanceof Error ? err.message : err,
+    );
+  });
+
+  return {
+    id: created.id,
+    waybackTimestamp: created.waybackTimestamp,
+    capturedAt,
+    contentHash,
+    documentHash,
+    divergedFromStored: false,
+    outcome: 'CREATED',
+  };
+}
+
+/** YYYYMMDDHHMMSS (UTC) -> Date. The one place that conversion is defined. */
+export function waybackTimestampToDate(timestamp: string): Date {
+  if (!/^\d{14}$/.test(timestamp)) {
+    throw new Error(`waybackTimestampToDate: expected 14 digits, got "${timestamp}".`);
+  }
+  const iso =
+    `${timestamp.slice(0, 4)}-${timestamp.slice(4, 6)}-${timestamp.slice(6, 8)}` +
+    `T${timestamp.slice(8, 10)}:${timestamp.slice(10, 12)}:${timestamp.slice(12, 14)}Z`;
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) {
+    throw new Error(`waybackTimestampToDate: "${timestamp}" is not a valid instant.`);
+  }
+  return date;
+}

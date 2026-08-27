@@ -62,9 +62,18 @@ jest.mock('../src/lib/prisma', () => ({
       create: jest.fn().mockResolvedValue({ id: 'diff-id-456' }),
     },
     urlSnapshot: {
-      // Only id and onChainTxHash: since rawText is NOT NULL the write path no
-      // longer reads rawContentHash back to decide whether to repair the row.
-      upsert: jest.fn().mockResolvedValue({ id: 'snapshot-id-abc', onChainTxHash: null }),
+      // The write path is recordCapture, which asks three questions in order:
+      // does this capture already exist (findUnique on the capturedAt key), is
+      // it identical to the one before it (findFirst), and if neither, create.
+      //
+      // findUnique -> null and findFirst -> null is the "new capture" path, so
+      // these defaults exercise creation. A test wanting the UNCHANGED or EXISTS
+      // branch overrides the relevant one.
+      findUnique: jest.fn().mockResolvedValue(null),
+      findFirst: jest.fn().mockResolvedValue(null),
+      create: jest
+        .fn()
+        .mockResolvedValue({ id: 'snapshot-id-abc', waybackTimestamp: '20220101120000' }),
       // Retained solely so the "issues no repair update" test can assert it is
       // NEVER called. Nothing in the service reaches it any more.
       updateMany: jest.fn().mockResolvedValue({ count: 1 }),
@@ -97,12 +106,18 @@ const CDX_RESPONSE = [
   ['20220101140000', 'GGGHHH333444'],
 ];
 
-/** A CDX response where every row has the same digest — should yield 0 snapshots after dedup */
-const CDX_RESPONSE_ALL_SAME_DIGEST = [
+/**
+ * A CDX response whose rows revert to an earlier digest.
+ *
+ * CDX is queried with `collapse=digest`, which removes CONSECUTIVE duplicates
+ * server-side. Rows that still repeat a digest are therefore reverts: the page
+ * changed and came back. Every one of them must survive this function.
+ */
+const CDX_RESPONSE_REVERTING = [
   ['timestamp', 'digest'],
-  ['20210101120000', 'SAMESAME'],
-  ['20210601130000', 'SAMESAME'],
-  ['20220101140000', 'SAMESAME'],
+  ['20210101120000', 'STATE_A'],
+  ['20210601130000', 'STATE_B'],
+  ['20220101140000', 'STATE_A'],
 ];
 
 /**
@@ -195,13 +210,29 @@ describe('WaybackScraper.getSnapshotsList', () => {
     expect(hasMore).toBe(false); // CDX returned fewer than MAX_SNAPSHOTS+1 rows
   });
 
-  it('deduplicates snapshots with the same digest', async () => {
-    mockAxiosGet.mockResolvedValueOnce(makeAxiosResponse(CDX_RESPONSE_ALL_SAME_DIGEST));
+  it('KEEPS a capture that reverts to an earlier digest', async () => {
+    // This test asserts the exact opposite of the one it replaces, which
+    // required a `seenDigests` Set to skip any digest seen before and was named
+    // "deduplicates snapshots with the same digest".
+    //
+    // A page returning to a former state is not a duplicate. It is the
+    // whole-page form of what claim trajectories detect, and discarding it
+    // deleted real observations: measured against the live CDX index on
+    // 2026-08-27, the tracked MOH page has 95 captures of which 12 revert to an
+    // earlier state, and ELEVEN of those were never stored. The page returned to
+    // one earlier state twice within six hours on 2022-06-22.
+    //
+    // The old test did not merely miss the defect — it pinned it in place, which
+    // is why removing the Set had to remove this assertion with it.
+    mockAxiosGet.mockResolvedValueOnce(makeAxiosResponse(CDX_RESPONSE_REVERTING));
     const scraper = new WaybackScraper();
     const { snapshots } = await scraper.getSnapshotsList('https://health.gov.il/page');
-    // Only the first occurrence per digest is kept
-    expect(snapshots).toHaveLength(1);
-    expect(snapshots[0].digest).toBe('SAMESAME');
+
+    expect(snapshots).toHaveLength(3);
+    expect(snapshots.map((s) => s.digest)).toEqual(['STATE_A', 'STATE_B', 'STATE_A']);
+    // And the revert keeps its OWN timestamp rather than collapsing onto the
+    // first occurrence — it is a distinct observation at a distinct moment.
+    expect(snapshots[2].timestamp).toBe('20220101140000');
   });
 
   it('returns empty snapshots when CDX returns no data rows', async () => {
@@ -245,20 +276,33 @@ describe('WaybackScraper.getSnapshotsList', () => {
     expect(hasMore).toBe(true);
   });
 
-  it('returns hasMore=true even when dedup reduces snapshots below MAX_SNAPSHOTS', async () => {
-    // 51 data rows but some have duplicate digests — dedup reduces count below 50.
-    // hasMore must still be true since CDX signalled more exist.
-    const cdxWithDupes: string[][] = [
+  it('returns every row up to MAX_SNAPSHOTS, reverts included, and still signals hasMore', async () => {
+    // 51 rows, 11 of them reverting to an earlier digest. The predecessor of
+    // this test asserted `snapshots.length` fell BELOW 50 because dedup removed
+    // the reverts; the reverts are now kept, so the batch fills to MAX_SNAPSHOTS
+    // and the eleven observations survive into the write path.
+    const cdxWithReverts: string[][] = [
       ['timestamp', 'digest'],
-      // 40 unique + 11 duplicates = 51 rows total, 40 unique
-      ...Array.from({ length: 40 }, (_, i) => [`20220101${String(i).padStart(6, '0')}`, `UNIQUE${i}`]),
-      ...Array.from({ length: 11 }, (_, i) => [`20220201${String(i).padStart(6, '0')}`, `UNIQUE${i % 5}`]),
+      ...Array.from({ length: 40 }, (_, i) => [
+        `20220101${String(i).padStart(6, '0')}`,
+        `UNIQUE${i}`,
+      ]),
+      ...Array.from({ length: 11 }, (_, i) => [
+        `20220201${String(i).padStart(6, '0')}`,
+        `UNIQUE${i % 5}`,
+      ]),
     ];
-    mockAxiosGet.mockResolvedValueOnce(makeAxiosResponse(cdxWithDupes));
+    mockAxiosGet.mockResolvedValueOnce(makeAxiosResponse(cdxWithReverts));
     const scraper = new WaybackScraper();
     const { snapshots, hasMore } = await scraper.getSnapshotsList('https://health.gov.il/page');
-    expect(snapshots.length).toBeLessThan(50);
+
+    // Capped at MAX_SNAPSHOTS (50) — the cap is a batch size, not a filter.
+    expect(snapshots).toHaveLength(50);
+    // hasMore comes from CDX returning MAX_SNAPSHOTS+1 rows, independently of
+    // anything this function does to them.
     expect(hasMore).toBe(true);
+    // The reverting digests are present rather than collapsed away.
+    expect(snapshots.filter((s) => s.digest === 'UNIQUE0').length).toBeGreaterThan(1);
   });
 });
 
@@ -400,17 +444,13 @@ describe('WaybackScraper.processJob', () => {
   }, 15_000);
 
   it('stores the document on the CREATE path, so a capture cannot exist without one', async () => {
-    // Level 1's invariant, asserted where it is actually established. `rawText`
-    // is a required parameter of upsertSnapshot and a NOT NULL column, so the
-    // document is written in the same statement that creates the row — there is
-    // no window in which a capture exists without the document it was extracted
-    // from, and no second write that could fail and leave one.
+    // Level 1's invariant, asserted where it is actually established. `document`
+    // is a required parameter of recordCapture and `rawText` a NOT NULL column,
+    // so the document is written in the same statement that creates the row —
+    // there is no window in which a capture exists without the document it was
+    // extracted from, and no second write that could fail and leave one.
     mockJobFindUnique.mockResolvedValueOnce(BASE_JOB);
     mockAxiosGet.mockResolvedValueOnce(makeAxiosResponse(CDX_RESPONSE));
-    (prisma.urlSnapshot.upsert as jest.Mock).mockResolvedValue({
-      id: 'snapshot-id-abc',
-      onChainTxHash: null,
-    });
 
     const scraper = new WaybackScraper();
     jest
@@ -419,11 +459,11 @@ describe('WaybackScraper.processJob', () => {
 
     await scraper.processJob('job-id-789');
 
-    const calls = (prisma.urlSnapshot.upsert as jest.Mock).mock.calls as [
-      { create: Record<string, string> },
+    const calls = (prisma.urlSnapshot.create as jest.Mock).mock.calls as [
+      { data: Record<string, string> },
     ][];
     expect(calls.length).toBeGreaterThan(0);
-    expect(calls[0][0].create.rawText).toBe('the article and the chrome around it');
+    expect(calls[0][0].data.rawText).toBe('the article and the chrome around it');
 
     // Pinned to the hash OF THE STORED DOCUMENT, not merely to the shape of a
     // hash. A shape assertion (64 hex chars, different from contentHash) passes
@@ -433,10 +473,10 @@ describe('WaybackScraper.processJob', () => {
     const expectedRawHash = createHash('sha256')
       .update('the article and the chrome around it', 'utf8')
       .digest('hex');
-    expect(calls[0][0].create.rawContentHash).toBe(expectedRawHash);
+    expect(calls[0][0].data.rawContentHash).toBe(expectedRawHash);
     // The two hashes are of DIFFERENT strings and must not be conflated:
     // contentHash covers the extraction, rawContentHash covers the document.
-    expect(calls[0][0].create.contentHash).toBe(
+    expect(calls[0][0].data.contentHash).toBe(
       createHash('sha256').update('the article', 'utf8').digest('hex'),
     );
   }, 15_000);
@@ -448,10 +488,6 @@ describe('WaybackScraper.processJob', () => {
     // unreachable code that reads as though the hazard is still handled here.
     mockJobFindUnique.mockResolvedValueOnce(BASE_JOB);
     mockAxiosGet.mockResolvedValueOnce(makeAxiosResponse(CDX_RESPONSE));
-    (prisma.urlSnapshot.upsert as jest.Mock).mockResolvedValue({
-      id: 'snapshot-id-abc',
-      onChainTxHash: null,
-    });
 
     const scraper = new WaybackScraper();
     jest

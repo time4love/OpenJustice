@@ -261,11 +261,52 @@ add `@@unique([trackedUrlId, capturedAt])`.
 `fullText` does not survive into the new model — consumers move across one at a time, since ~40 call
 sites read it and swapping a column's meaning underneath them creates a different silent inconsistency.
 
-*Verify before building:* `WaybackScraper` keeps a `seenDigests` set and appears to skip **any**
-previously-seen digest, not merely consecutive ones — which would silently discard an exact whole-page
-revert. A page returning to a former state is forensically significant; it is the whole-page form of
-what claim trajectories detect. Confirm the reading against the code, and make sure "is this capture
-new?" has **one** answer across archived and direct paths rather than two.
+*Verified 2026-08-27 — the reading was right, and the code's own comment named the case it discarded*
+(*"non-consecutive ones where content reverts to a previously-seen digest"*). Fourth instance of §1's
+pattern: documented in a comment, and the comment mistaken for a control.
+
+There were **three** disagreeing answers to "is this capture new?", not two: CDX's server-side
+`collapse=digest` (consecutive only), the client-side `seenDigests` Set (any repeat within one batch of
+50), and the write path itself, which keyed on `(trackedUrlId, waybackTimestamp)` and was digest-blind.
+
+Measured against the live CDX index and the staging database:
+
+| term | count |
+|---|---|
+| captures CDX holds for the tracked page, after its own consecutive-collapse | 95 |
+| distinct digests among them | 83 |
+| rows CDX returned in batch 1 / batch 2 | 51 / 44 |
+| within-batch reverts dropped in batch 1 / batch 2 | 8 / 3 |
+| captures stored from batch 1 / batch 2 | 43 / 40 (one further capture FAILED to fetch) |
+| **stored total** | **43 + 40 = 83** |
+
+The twelfth revert, `20220703090600`, **is** stored — its twin fell in the previous batch, where the
+per-batch Set could not see it. Whether a page state was recorded depended on **CDX pagination**, which
+is why narrowing the rule could not have fixed it.
+
+#### Level 1 is not closed until the corpus is rescanned
+
+Fixing the rule going forward does not recover what it discarded. **Eleven page states are missing, and
+they are reverts** — the pattern trajectories exist to detect — so the corpus is ~13% incomplete
+*specifically on the events the platform is built to find*. Consequences, none of them previously
+stated:
+
+- **Every trajectory is potentially understated.** A claim that vanished and returned inside an
+  unstored window reads as continuously absent.
+- **Staging's published thesis cites 21 trajectories across 8 movements**, computed on this corpus.
+  That is a **third** reason it is unsafe, alongside the FDA claim and the summary fabrication.
+- **Level 10's comparison baseline is a comparison against something known incomplete.** Acceptable —
+  but only because it is now known.
+
+*Closing step:* rescan once the new rule is live in an environment, which should pick up all 95, then
+recount. A level enforced in one environment and absent in the other is half-applied, so Level 1 is
+**code-complete** now and **done** when the migration is live in both environments and the rescan has
+closed the eleven.
+
+*One further gap, recorded not fixed:* capture `20240829085520` is marked `FAILED` in the scan job's
+`snapshotsList` JSON and exists nowhere else. The gap is honest but invisible — `get_environment`
+reports 83 snapshots with no indication that 84 were attempted, which is §3's "a check that runs and is
+not recorded has not been performed".
 
 ### Level 2 — the source
 

@@ -186,7 +186,10 @@ export async function anchorSnapshots(opts: {
       ...(opts.url ? { trackedUrl: { url: opts.url } } : {}),
     },
     select: { id: true, contentHash: true, snapshotDate: true },
-    orderBy: { snapshotDate: 'asc' },
+    // capturedAt, not snapshotDate. snapshotDate is day-granular, so captures
+    // sharing a day sort equal and Postgres may return them in any order —
+    // which makes `take: limit` select a different subset between runs.
+    orderBy: { capturedAt: 'asc' },
     ...(opts.limit ? { take: opts.limit } : {}),
   });
 
@@ -272,4 +275,57 @@ export async function anchorSnapshots(opts: {
   }
 
   return report;
+}
+
+/**
+ * Anchor a newly recorded capture, without letting a chain problem fail the write.
+ *
+ * Moved here from WaybackScraper when recordCapture became the single write
+ * path (Level 1). It was a private function there, so the URL-tracking path
+ * could not have reused it — anchoring would have been reimplemented or, more
+ * likely, forgotten, which is precisely how 83 snapshots came to be stored
+ * unanchored while an empty catch reported success.
+ *
+ * Its own Web3Service is constructed lazily and treated as optional: an
+ * environment without chain credentials records captures and anchors nothing,
+ * rather than refusing to record.
+ */
+let _anchorWeb3: Web3Service | null = null;
+let _anchorWeb3Attempted = false;
+
+function anchorWeb3Service(): Web3Service | null {
+  if (_anchorWeb3Attempted) return _anchorWeb3;
+  _anchorWeb3Attempted = true;
+  try {
+    _anchorWeb3 = new Web3Service();
+  } catch {
+    // env vars not set — on-chain registration disabled
+  }
+  return _anchorWeb3;
+}
+
+export async function registerSnapshotOnChain(
+  snapshotId: string,
+  contentHash: string,
+): Promise<void> {
+  const web3 = anchorWeb3Service();
+  if (!web3) return;
+
+  try {
+    // Shared with the repair pass rather than reimplemented here. This used to
+    // call registerEvidenceHash unconditionally: for a capture whose text a twin
+    // had already anchored, the registry rejected the duplicate, the rejection
+    // was logged as a failure, and the row kept its null forever — even though
+    // the fact was on-chain the whole time. Production still holds 71 rows in
+    // that state. anchorOneSnapshot checks for the twin first and copies its
+    // transaction, so no transaction is spent and no pointer is lost.
+    await anchorOneSnapshot(web3, snapshotId, contentHash);
+  } catch (err) {
+    console.warn(
+      '[anchorSnapshots] On-chain snapshot registration failed for',
+      snapshotId,
+      ':',
+      err instanceof Error ? err.message : err,
+    );
+  }
 }

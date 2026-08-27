@@ -76,6 +76,23 @@ enum TrackedUrlStatus {
   FAILED // unrecoverable error during processing
 }
 
+// How a capture came into our possession — see docs/gf-factual-layer-rebuild-dev-plan.md §2.
+//
+// These are NOT three equal kinds of capture. Archiving IS the pipeline: a URL
+// submission asks CDX what the Archive holds, and asks Save Page Now when it
+// holds nothing. WAYBACK is therefore the normal case and the destination of
+// every submission; DIRECT is a transient precursor that persists only where
+// archiving is genuinely impossible.
+//
+// Only evidential standing differs. Diffs, trajectories, identity and
+// boilerplate detection all work over the merged history without consulting
+// this field.
+enum CaptureProvenance {
+  WAYBACK // the Archive holds it; a stranger can re-check it independently
+  DIRECT // we fetched it and the Archive has not (yet) indexed it
+  ASSERTED // text supplied to us; nobody we control observed the page
+}
+
 // Tracks a government/health URL submitted for Wayback Machine forensic analysis.
 // Primary entity — navigate directly to this for version history and status.
 // url is unique: one TrackedUrl per URL, reused across re-scans.
@@ -97,12 +114,30 @@ model TrackedUrl {
 // contentHash (SHA-256 of fullText) can be registered on-chain for immutable chain of custody.
 // Shared across diffs: two diffs spanning the same snapshot reference the same row.
 model UrlSnapshot {
-  id               String     @id @default(cuid())
+  id               String            @id @default(cuid())
   trackedUrlId     String
-  trackedUrl       TrackedUrl @relation(fields: [trackedUrlId], references: [id], onDelete: Cascade)
-  waybackTimestamp String // YYYYMMDDHHMMSS — unique Wayback archive identifier
+  trackedUrl       TrackedUrl        @relation(fields: [trackedUrlId], references: [id], onDelete: Cascade)
+  // How this capture came into our possession. See CaptureProvenance.
+  //
+  // Existing rows backfill to WAYBACK: every capture predating this column came
+  // from WaybackScraper, which has no other source.
+  provenance       CaptureProvenance
+  // When the capture was TAKEN — not when we stored it (that is createdAt).
+  //
+  // Derived from waybackTimestamp for archived captures and from the fetch
+  // moment otherwise. This is the field every chronological operation orders
+  // by, so that a corpus mixing provenances still has one timeline.
+  capturedAt       DateTime
+  // The Archive's identifier, present only on archived captures.
+  //
+  // Nullable since a DIRECT or ASSERTED capture has none. The composite unique
+  // below still holds: Postgres does not treat NULLs as colliding, so any
+  // number of non-archived captures coexist under one TrackedUrl.
+  waybackTimestamp String? // YYYYMMDDHHMMSS — unique Wayback archive identifier
   snapshotDate     String // YYYY-MM-DD — human-readable date
-  snapshotUrl      String // Wayback canonical URL (for reference/audit)
+  // Where this capture was fetched FROM — the Wayback canonical URL for an
+  // archived capture, the live URL for a direct one.
+  snapshotUrl      String
   fullText         String // Readability's article — NOT the page. See rawText.
   contentHash      String // SHA-256(fullText) — chain of custody
   // The archived document as fetched, before extraction.
@@ -131,12 +166,16 @@ model UrlSnapshot {
   // reproduce any corruption of the stored text and call it consistent.
   rawContentHash   String
   onChainTxHash    String? // Blockchain tx hash once contentHash is registered on-chain
-  createdAt        DateTime   @default(now())
+  createdAt        DateTime          @default(now())
 
   beforeDiffs UrlVersionDiff[] @relation("BeforeSnapshot")
   afterDiffs  UrlVersionDiff[] @relation("AfterSnapshot")
 
   @@unique([trackedUrlId, waybackTimestamp])
+  // A TrackedUrl cannot hold two captures of the same instant. This is the
+  // constraint that makes capturedAt a usable timeline key across provenances,
+  // where waybackTimestamp only ever constrained archived ones.
+  @@unique([trackedUrlId, capturedAt])
 }
 
 // Internal scan-state record. One per TrackedUrl — updated in-place across

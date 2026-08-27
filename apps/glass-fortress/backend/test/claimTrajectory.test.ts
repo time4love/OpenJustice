@@ -740,3 +740,48 @@ describe('changeSpans — the arithmetic the block used to leave to the reader',
     expect(spans[0].waybackTimestamp).toBe('0');
   });
 });
+
+// ---------------------------------------------------------------------------
+// Order is semantic, and Postgres decides it — so this is where it is guarded.
+//
+// buildTrajectory walks captures in sequence to decide when a claim was present
+// and when it was absent, so the ORDER of the rows IS the trajectory. The
+// ordering happens in the database, which means no behavioural test over a
+// mocked client can reach it: the mock returns whatever array it was handed.
+// The query itself is therefore the only artifact that can be asserted.
+//
+// What makes this worth a test rather than a comment: the two queries were
+// keyed on snapshotDate, a DAY-granular string, so captures sharing a day sort
+// EQUAL and Postgres may return them in any order. That was survivable only
+// because same-day captures with differing text could not exist — the scanner
+// discarded any capture whose digest it had already seen, which is why all
+// eight of staging's same-day groups hold exactly one distinct text.
+//
+// Level 1 removes that discard. The tracked page returned to an earlier state
+// twice within six hours on 2022-06-22, so a rescan stores three captures with
+// at least two distinct texts under one snapshotDate — and detection could then
+// walk them present→absent→present or the reverse, producing different
+// transition counts between runs while sourceStateHash, which is computed over
+// the capture set rather than its order, claimed the state had not moved.
+// ---------------------------------------------------------------------------
+describe('trajectory detection orders captures by capturedAt', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (prisma.trackedUrl.findUnique as jest.Mock).mockResolvedValue({ id: 'tracked-1' });
+    (prisma.urlVersionDiff.findMany as jest.Mock).mockResolvedValue([]);
+    (prisma.urlSnapshot.findMany as jest.Mock).mockResolvedValue([]);
+  });
+
+  it('orders EVERY capture query by capturedAt, never by the day-granular date', async () => {
+    await getClaimTrajectories('https://corona.health.gov.il/vaccine-for-covid/');
+
+    const calls = (prisma.urlSnapshot.findMany as jest.Mock).mock.calls as [
+      { orderBy?: unknown },
+    ][];
+    expect(calls.length).toBeGreaterThan(0);
+    for (const [arg] of calls) {
+      expect(arg.orderBy).toEqual({ capturedAt: 'asc' });
+      expect(arg.orderBy).not.toEqual({ snapshotDate: 'asc' });
+    }
+  });
+});
