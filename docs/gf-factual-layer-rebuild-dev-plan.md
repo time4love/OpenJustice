@@ -535,6 +535,43 @@ latest applied migration is `20260827120000_snapshot_document_required`, not `20
 `rawText` is fully backfilled — the four-step dance below has already been run once, and the ledger
 still carries the `ROLLED_BACK` row that proves it.*)
 
+##### PRISMA CLI SUBCOMMANDS DO NOT AGREE ON WHICH DATABASE THEY TARGET
+
+**Two independent instances during this one catch-up, hours apart, one of them a command away from
+mutating the wrong migration ledger.**
+
+| instance | mechanism | what happened |
+|---|---|---|
+| 1 | real `DATABASE_URL` / `DIRECT_URL` exported | `resolve` and `migrate diff` reached **production**, while `migrate status` answered *"Database schema is up to date!"* for a database that was missing a constraint |
+| 2 | `DOTENV_CONFIG_PATH=.env.production.local` | honoured by `node` + `dotenv/config`, **ignored by the `prisma` CLI** — which printed `Environment variables loaded from .env` and ran `migrate resolve --rolled-back` against **staging** |
+
+So the finding is not "the CLI ignores that variable". It is that **subcommands disagree**, and
+**the printed `Datasource "db": …pooler.supabase.com` line carries no distinguishing information** —
+both environments share the host, and the project ref lives in the masked credentials. The line looks
+like confirmation and is not.
+
+In instance 2 the error (`P3012 … not in a failed state`) was **a true statement about the wrong
+database**, which is why it read as a puzzle rather than a warning. Nothing was modified only because
+`P3012` is a refusal. **Next time the command might be valid on the wrong database.**
+
+*Detection and prevention are both required; neither is sufficient alone.*
+
+- **Detection — verify by BEHAVIOUR, not by the variable you passed.** Staging answers "up to date";
+  production answers "Following migration have failed". That is what confirmed the corrected invocation
+  had actually landed on production. But this is detection *after the command ran*.
+- **Prevention — make the wrong target unreachable.** Run production commands from a temp directory
+  holding **only** the schema and the production env, so there is no `.env` for a subcommand to pick up
+  and nothing for subcommands to disagree about.
+- **A project-ref precondition** (refuse unless `fqmc…`) prevents, but guards only the string that was
+  extracted — not what Prisma actually used.
+
+##### Verify a RENAME moved values without altering them
+
+`ALTER TABLE … RENAME COLUMN` *should* be inert. **"Should be" is exactly what a before-state exists to
+disagree with.** Standard for any rename: fingerprint the column before, and the renamed column after —
+`md5(string_agg(col, ',' ORDER BY <stable key>))` — and compare. For `rawContentHash` → `textHash` on
+production: `de77a9bd…` before, `de77a9bd…` after, same 83 values in the same order.
+
 ##### THE LIMIT OF THIS PROCEDURE — read before using it a third time
 
 **`migrate deploy` commits each migration in its own transaction.** When the third fails, the first two
@@ -709,9 +746,15 @@ than acted on.
 is detectable.
 
 *Enforcement:* persist the CDX `digest` — already fetched by `WaybackScraper`, used only to
-de-duplicate, and thrown away — and compare it against what was fetched. Also fix `archiveHttp`'s error
-message, which reports `HTTP 200` when axios throws for a non-status reason: a success code presented
-as a failure.
+de-duplicate, and thrown away — and compare it against what was fetched.
+
+**`archiveHttp`'s error message — RECLASSIFIED 2026-08-27 from tidy-up to FIX-SOON.** It reports
+`HTTP 200` when axios throws for a non-status reason, presenting a success code as a failure. It has now
+cost diagnosis **twice, both during live operations**: once on staging's backfill (a capture had to be
+`curl`ed to establish it was fine), and once inside the production migration window, where it reported
+`HTTP 200` for what the line above it showed was an `ECONNABORTED` timeout. Three lines of code, and it
+actively degrades the ability to tell **transient from permanent** at exactly the moments that
+distinction decides whether to retry or to stop. Do it next.
 
 #### Archiving, and reconciling our own fetch against it
 

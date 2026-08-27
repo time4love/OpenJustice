@@ -191,11 +191,18 @@ linted; extending it means fixing ~70 pre-existing errors, which is its own chan
 path reaching `registerEvidenceOnChain` — must run through the MCP tools against the deployed
 service. Never from a local script, and never with `.env.production.local` loaded.**
 
-The reason is not preference. **`.env.production.local` holds a wrong `EVIDENCE_REGISTRY_ADDRESS`**:
-`0x5FbDB2315678afecb367f032d93F642f64180aa3`, the standard Hardhat/Anvil first-deployment address.
-There is **no contract at it on Base** (`eth_getCode` returns `0x`). Production's real registry is
-`0x0e21561bbfbb8716713bd60cd21ec5730a4d0d22`, confirmed by reading an existing anchoring transaction
-off chain 8453. The deployed service has the right value; the local file does not.
+The reason is not preference. `.env.production.local` was once found holding a wrong
+`EVIDENCE_REGISTRY_ADDRESS`: `0x5FbDB2315678afecb367f032d93F642f64180aa3`, the standard Hardhat/Anvil
+first-deployment address, with **no contract at it on Base** (`eth_getCode` returns `0x`). Production's
+real registry is `0x0e21561bbfbb8716713bd60cd21ec5730a4d0d22`, confirmed by reading an existing
+anchoring transaction off chain 8453.
+
+**Checked 2026-08-27: the file currently defines no `EVIDENCE_REGISTRY_ADDRESS` at all** — absent, not
+wrong. **The rule survives that anyway, and this is why:** the file is gitignored and can change without
+notice, so a session must not depend on having checked its contents once. The hazard is a state the file
+can return to at any time, and the cost of it returning unnoticed is permanent false `CONFIRMED`
+evidence on Base mainnet. Verify what a tool can actually reach; never carry forward a belief about a
+file you cannot see in git.
 
 **The failure mode is silent and produces false evidence.** A transaction sent to an address with no
 code does not revert — it succeeds as a plain transfer and returns a perfectly valid `txHash`. The
