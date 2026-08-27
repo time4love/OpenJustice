@@ -307,9 +307,9 @@ function anchorWeb3Service(): Web3Service | null {
 export async function registerSnapshotOnChain(
   snapshotId: string,
   contentHash: string,
-): Promise<void> {
+): Promise<SnapshotAnchorOutcome | null> {
   const web3 = anchorWeb3Service();
-  if (!web3) return;
+  if (!web3) return { kind: 'CHAIN_NOT_CONSULTED' };
 
   try {
     // Shared with the repair pass rather than reimplemented here. This used to
@@ -319,7 +319,7 @@ export async function registerSnapshotOnChain(
     // the fact was on-chain the whole time. Production still holds 71 rows in
     // that state. anchorOneSnapshot checks for the twin first and copies its
     // transaction, so no transaction is spent and no pointer is lost.
-    await anchorOneSnapshot(web3, snapshotId, contentHash);
+    return await anchorOneSnapshot(web3, snapshotId, contentHash);
   } catch (err) {
     console.warn(
       '[anchorSnapshots] On-chain snapshot registration failed for',
@@ -327,5 +327,10 @@ export async function registerSnapshotOnChain(
       ':',
       err instanceof Error ? err.message : err,
     );
+    // null means "the attempt failed", distinct from every SnapshotAnchorOutcome,
+    // all of which describe an attempt that reached a conclusion. It never
+    // rejects, so a caller that ignores the return is unchanged and a caller
+    // that awaits it cannot be handed an unhandled rejection.
+    return null;
   }
 }

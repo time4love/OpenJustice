@@ -1,7 +1,7 @@
 import { createHash } from 'crypto';
 import { prisma } from '../lib/prisma';
 import { CaptureProvenance } from '@prisma/client';
-import { registerSnapshotOnChain } from './anchorSnapshots';
+import { registerSnapshotOnChain, type SnapshotAnchorOutcome } from './anchorSnapshots';
 
 /**
  * The one way a capture is written.
@@ -62,6 +62,20 @@ export interface RecordedCapture {
    * `EXISTS`    — already recorded; a resumed scan re-reaching the same capture.
    */
   outcome: 'CREATED' | 'UNCHANGED' | 'EXISTS';
+  /**
+   * How anchoring resolved — present only when an attempt was made.
+   *
+   * Anchoring stays fire-and-forget for the scanner: a chain hiccup must not
+   * fail a write that already holds the irreplaceable half, and the scanner
+   * ignores this field exactly as before. A maintenance run may AWAIT it to
+   * report what actually happened per capture, which is otherwise unobservable
+   * — the outcome was previously logged and discarded.
+   *
+   * The promise never rejects (see registerSnapshotOnChain), so ignoring it
+   * cannot produce an unhandled rejection. `null` resolves when the attempt
+   * itself failed, as distinct from an attempt that reached a conclusion.
+   */
+  anchoring?: Promise<SnapshotAnchorOutcome | null>;
 }
 
 /** SHA-256 hex digest. Bare hex — see toBytes32 before any chain call. */
@@ -81,50 +95,41 @@ function isUniqueViolation(err: unknown): boolean {
   return typeof err === 'object' && err !== null && 'code' in err && err.code === 'P2002';
 }
 
+/**
+ * Anchor, and guarantee the returned promise never rejects.
+ *
+ * `RecordedCapture.anchoring` is handed to callers who may ignore it — the
+ * scanner does, deliberately, so a chain hiccup cannot fail a write that already
+ * holds the irreplaceable half. An ignored promise that rejects is an unhandled
+ * rejection, which in Node ends the process.
+ *
+ * registerSnapshotOnChain already catches internally, so this looks redundant.
+ * It is not: that is a property of ANOTHER MODULE, and this one documents the
+ * no-reject guarantee as its own. Depending on a neighbour to hold an invariant
+ * you promise is how a comment becomes the only thing enforcing it — the exact
+ * pattern this level exists to stop repeating. Proven by a test that makes
+ * anchoring reject.
+ */
+function anchorNeverRejecting(
+  snapshotId: string,
+  contentHash: string,
+): Promise<SnapshotAnchorOutcome | null> {
+  return registerSnapshotOnChain(snapshotId, contentHash).catch((err: unknown) => {
+    console.warn(
+      '[recordCapture] anchoring rejected for',
+      snapshotId,
+      ':',
+      err instanceof Error ? err.message : err,
+    );
+    return null;
+  });
+}
+
 /** YYYY-MM-DD in UTC. capturedAt is UTC by construction. */
 function toSnapshotDate(capturedAt: Date): string {
   return capturedAt.toISOString().slice(0, 10);
 }
 
-/**
- * Is this capture new?
- *
- * A capture is new unless it is identical to the one immediately preceding it
- * in time for the same TrackedUrl. Two consequences, both deliberate:
- *
- *   - An unchanged re-fetch is dropped. It adds a row and no information, and
- *     CDX has already collapsed the archived equivalent before we see it.
- *
- *   - A NON-CONSECUTIVE revert is KEPT. A page returning to a former state is
- *     forensically significant — it is the whole-page form of what claim
- *     trajectories detect, and on this corpus it is not hypothetical: the
- *     tracked MOH page returned to an earlier state twice within six hours on
- *     2022-06-22, and to another earlier state three times across May 2022.
- *     Every one of those observations was discarded by the rule this replaces.
- *
- * Ordering by capturedAt rather than by insertion makes the answer independent
- * of the order captures arrive in, which is what made the old rule depend on
- * CDX pagination.
- *
- * THIS IS A TRANSITION-DERIVED FACT, and the repository has a hard-won rule
- * against those — derive from state, not from a transition, learned three times
- * in one day. The decision is made once, at write, against whatever preceded the
- * capture at that moment, and it is never revisited.
- *
- * Kept deliberately, and the reason is the direction of the error. A capture
- * inserted BETWEEN two existing ones is compared against its predecessor only,
- * so it can leave its SUCCESSOR as a now-redundant row. It cannot cause an
- * observation to be dropped: a redundant row costs a duplicate in a report,
- * a dropped one costs something unrecoverable, and this level exists because the
- * unrecoverable direction was chosen once already.
- *
- * That case is imminent rather than theoretical. Removing the digest filter
- * means a rescan inserts the eleven reverts the old rule discarded, each landing
- * between captures already stored — so the redundancy above is the expected
- * outcome of the very next scan, not a hypothetical. Anything that needs an
- * order-independent answer must recompute from the stored captures rather than
- * read these outcomes back.
- */
 /**
  * A capture already exists at this instant — a resumed scan re-reaching it.
  *
@@ -172,16 +177,9 @@ function finishExisting(
     );
   }
 
-  if (!existing.onChainTxHash) {
-    registerSnapshotOnChain(existing.id, existing.contentHash).catch((err: unknown) => {
-      console.warn(
-        '[recordCapture] re-anchoring rejected for',
-        existing.id,
-        ':',
-        err instanceof Error ? err.message : err,
-      );
-    });
-  }
+  const anchoring = existing.onChainTxHash
+    ? undefined
+    : anchorNeverRejecting(existing.id, existing.contentHash);
 
   return {
     id: existing.id,
@@ -191,6 +189,7 @@ function finishExisting(
     documentHash: fetched.documentHash,
     divergedFromStored: diverged,
     outcome: 'EXISTS',
+    ...(anchoring ? { anchoring } : {}),
   };
 }
 
@@ -233,6 +232,45 @@ export async function recordCapture(input: RecordCaptureInput): Promise<Recorded
     return finishExisting(existing, { documentHash, contentHash, capturedAt });
   }
 
+  /**
+   * Is this capture new?
+   *
+   * A capture is new unless it is identical to the one immediately preceding it
+   * in time for the same TrackedUrl. Two consequences, both deliberate:
+   *
+   *   - An unchanged re-fetch is dropped. It adds a row and no information, and
+   *     CDX has already collapsed the archived equivalent before we see it.
+   *
+   *   - A NON-CONSECUTIVE revert is KEPT. A page returning to a former state is
+   *     forensically significant — it is the whole-page form of what claim
+   *     trajectories detect, and on this corpus it is not hypothetical: the
+   *     tracked MOH page returned to an earlier state twice within six hours on
+   *     2022-06-22, and to another earlier state three times across May 2022.
+   *     Every one of those observations was discarded by the rule this replaces.
+   *
+   * Ordering by capturedAt rather than by insertion makes the answer independent
+   * of the order captures arrive in, which is what made the old rule depend on
+   * CDX pagination.
+   *
+   * THIS IS A TRANSITION-DERIVED FACT, and the repository has a hard-won rule
+   * against those — derive from state, not from a transition, learned three times
+   * in one day. The decision is made once, at write, against whatever preceded the
+   * capture at that moment, and it is never revisited.
+   *
+   * Kept deliberately, and the reason is the direction of the error. A capture
+   * inserted BETWEEN two existing ones is compared against its predecessor only,
+   * so it can leave its SUCCESSOR as a now-redundant row. It cannot cause an
+   * observation to be dropped: a redundant row costs a duplicate in a report,
+   * a dropped one costs something unrecoverable, and this level exists because the
+   * unrecoverable direction was chosen once already.
+   *
+   * That case is imminent rather than theoretical. Removing the digest filter
+   * means a rescan inserts the eleven reverts the old rule discarded, each landing
+   * between captures already stored — so the redundancy above is the expected
+   * outcome of the very next scan, not a hypothetical. Anything that needs an
+   * order-independent answer must recompute from the stored captures rather than
+   * read these outcomes back.
+   */
   const preceding = await prisma.urlSnapshot.findFirst({
     where: { trackedUrlId, capturedAt: { lt: capturedAt } },
     orderBy: { capturedAt: 'desc' },
@@ -314,14 +352,7 @@ export async function recordCapture(input: RecordCaptureInput): Promise<Recorded
   // already stored the irreplaceable half. Whether it actually worked is
   // answered by counting unanchored snapshots from state, never by trusting this
   // call. See countUnanchoredSnapshots.
-  registerSnapshotOnChain(created.id, contentHash).catch((err: unknown) => {
-    console.warn(
-      '[recordCapture] snapshot anchoring rejected for',
-      created.id,
-      ':',
-      err instanceof Error ? err.message : err,
-    );
-  });
+  const anchoring = anchorNeverRejecting(created.id, contentHash);
 
   return {
     id: created.id,
@@ -331,6 +362,7 @@ export async function recordCapture(input: RecordCaptureInput): Promise<Recorded
     documentHash,
     divergedFromStored: false,
     outcome: 'CREATED',
+    anchoring,
   };
 }
 

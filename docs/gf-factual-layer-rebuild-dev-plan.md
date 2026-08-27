@@ -284,7 +284,7 @@ The twelfth revert, `20220703090600`, **is** stored — its twin fell in the pre
 per-batch Set could not see it. Whether a page state was recorded depended on **CDX pagination**, which
 is why narrowing the rule could not have fixed it.
 
-#### Level 1 is not closed until the corpus is rescanned
+#### Level 1 is not closed until the capture layer is complete
 
 Fixing the rule going forward does not recover what it discarded. **Eleven page states are missing, and
 they are reverts** — the pattern trajectories exist to detect — so the corpus is ~13% incomplete
@@ -298,15 +298,107 @@ stated:
 - **Level 10's comparison baseline is a comparison against something known incomplete.** Acceptable —
   but only because it is now known.
 
-*Closing step:* rescan once the new rule is live in an environment, which should pick up all 95, then
-recount. A level enforced in one environment and absent in the other is half-applied, so Level 1 is
-**code-complete** now and **done** when the migration is live in both environments and the rescan has
-closed the eleven.
+**Recount target: 94, not 95.** CDX holds 95 rows; the 95th is capture `20240829085520`, recorded
+`FAILED` in the scan job's `snapshotsList` JSON and existing nowhere else. That gap is honest but
+invisible — `get_environment` reports 83 snapshots with no indication that 84 were attempted, which is
+§3's "a check that runs and is not recorded has not been performed".
 
-*One further gap, recorded not fixed:* capture `20240829085520` is marked `FAILED` in the scan job's
-`snapshotsList` JSON and exists nowhere else. The gap is honest but invisible — `get_environment`
-reports 83 snapshots with no indication that 84 were attempted, which is §3's "a check that runs and is
-not recorded has not been performed".
+##### Where the boundary falls, and why it moved
+
+Recovering the captures makes 7 existing diffs stale — they claim a direct transition between captures
+that are no longer consecutive. Repairing that is **Level 5** work, so requiring it to close Level 1
+would invert the level ordering this whole method depends on. The boundary moves instead:
+
+> **Level 1 is done when the CAPTURE layer is complete.** The diff layer is then knowingly stale, and
+> that staleness is recorded here rather than silently carried. **Re-pairing is Level 5's opening act.**
+
+Derivation of the damage, so it can be checked rather than believed:
+
+| | |
+|---|---|
+| captures now / consecutive pairs | 83 / **82** |
+| captures after recovery / pairs | 94 / **93** |
+| existing pairs destroyed (a recovered capture falls inside them) | **7** |
+| surviving existing pairs | 82 − 7 = **75** |
+| **new pair-rows Level 5 must create** | 93 − 75 = **18** |
+
+Three reasons for deferring, the first being money:
+
+1. **The classifications would be paid for twice.** Level 5's invariant is that every reported change
+   survives the raw documents, checked at write. Diffs created now, under the current unverified
+   classifier, get re-verified when Level 5 lands. Create them once, verified.
+2. **A `SUPERSEDED` marker and Level 5's `CONTRADICTED` verdict are the same mechanism** — both say
+   "this row is no longer operative, and here is why". Building a bespoke marker now and a verdict
+   system later is two records of one idea, which is what this plan rejected when it declined a
+   tombstone table. **So no schema marker is added.** The 7 stale diffs are left unmarked for the
+   interval, which is acceptable *only because it is written down here* — that is the whole difference
+   between a known gap and a silent one.
+3. Only instrument 1 needs reviewing before it touches the corpus, which is a much smaller thing to get
+   right.
+
+##### Why leaving them stale is safe — checked, not assumed
+
+**None of the 7 straddled diffs is legally significant, and none backs an evidence record.** Verified
+against staging on 2026-08-27, pair by pair. No anchored hash and no `fileHash` is touched, so this is a
+routine repair rather than a Level 7 evidence-integrity event. Had even one been significant, the
+boundary could not have moved and this would have been Level 7 work — the check is what made this a
+decision rather than a chore.
+
+##### Two blockers found while planning the rescan — findings, not obstacles
+
+- **A scan that fetches nothing reports success.** `runFullScan` asks `computeNextFromDate` whether
+  more batches exist, and that returns `null` when the last batch held fewer than `MAX_SNAPSHOTS` rows.
+  Staging's `COMPLETED` job (`totalSnapshots: 41`) therefore short-circuits to `COMPLETED` without one
+  request to the Archive. Same family as the silent truncations. **Level 2 item.**
+- **`UrlVersionDiff` has no unique constraint on the snapshot pair it spans**, and diffs are written
+  with `create` across six call sites — so a from-scratch rescan would duplicate every existing diff.
+  **Make "a diff is uniquely identified by the pair it spans" a Level 5 invariant.** With the
+  constraint the hazard is removed rather than avoided: a rescan then *cannot* duplicate diffs.
+
+##### Instrument 1 — `forensics:recover-captures`
+
+Because of those two blockers the ordinary scan cannot do this job. `forensics:recover-captures` fetches
+the full CDX index with no pagination and no client-side dedup, and records anything missing through
+`recordCapture`. **Capture layer only: no diffs, no classification, no LLM call.** Dry run is the
+default. Maintenance, so it runs in the deploy container (`railway ssh`) — never a laptop, never MCP —
+which also keeps its chain writes on the correct registry.
+
+Every recovered capture is byte-identical to one already stored (that is what made it a revert), so each
+should reach `anchorOneSnapshot`'s **twin path** and copy an existing transaction rather than register a
+duplicate. That branch is the reason production holds 71 rows with a null `onChainTxHash`, and this is
+its first exercise against real data — so the tool reports the anchoring branch **per capture**, never
+as an aggregate "anchored".
+
+*Found while building it, and it belongs to this level's own lesson:* exposing the anchoring outcome
+turned `anchoring` into a promise callers may ignore, and the first version documented *"the promise
+never rejects"* while that guarantee was actually enforced in **another module**. The suite did not
+report a failed assertion — it **crashed a Jest worker** on an unhandled rejection, which on the
+scanner's path would end the process during a routine scan. A guarantee asserted in a comment and
+enforced somewhere else is the same defect class this level exists to remove, found inside the
+instrument built to remove it. Fixed by making the guarantee local (`anchorNeverRejecting`), proven by
+mutation.
+
+##### Open question — the platform cannot prove a page was UNCHANGED over an interval
+
+Not a defect; it follows from two deliberate rulings that are individually correct and jointly
+subtractive:
+
+- **CDX `collapse=digest` discards unchanged observations on the way in.** Consecutive-collapse removes
+  exactly the captures that prove continuity — "at T2 the page still said A".
+- **`recordCapture`'s novelty rule discards them at the door.** An unchanged re-fetch is dropped, as
+  settled in §2.
+
+Together they remove a *category of provable claim*. The strongest statement the corpus can support is
+**"we hold no capture in between"** — the weaker claim `list_captures` already warns about — never "the
+page did not change in between", which is what a reader will hear.
+
+*(Correcting the reason given for keeping `collapse=digest` in `recoverMissingCaptures`: it was
+justified as "the one form of de-duplication that discards no observation", which is false. The
+behaviour is still right — the eleven are non-consecutive reverts, and any unchanged observation that
+survived collapse would be dropped by the novelty rule anyway — so the reason changed, not the code.)*
+
+Revisiting it depends on a schema decision that comes after this rescan, so it is filed here rather
+than acted on.
 
 ### Level 2 — the source
 
@@ -338,6 +430,12 @@ proof of our bytes, it is a second observation whose value is precisely that it 
 Treating the archived capture as proof of the direct one would repeat the error this plan exists to
 undo: agreement between two readings of one artifact is not corroboration, and here they are not even
 readings of the same moment.
+
+*Also at this level, added 2026-08-27:* **a scan that fetches nothing reports success.**
+`computeNextFromDate` returns `null` when the final batch held fewer than `MAX_SNAPSHOTS` rows, so
+`runFullScan` marks the URL `COMPLETED` without one request to the Archive. Staging sat in exactly that
+state (`totalSnapshots: 41`), which is why Level 1's recovery needed its own instrument. Silence is
+indistinguishable from "nothing new" — the same family as the silent truncations.
 
 *Also at this level:* **`list_captures` must partition by provenance.** Only archived captures may be
 cross-checked against the CDX index — listing a direct capture there would report it as a gap in the
@@ -371,6 +469,18 @@ from the after document; a chunk said to be ADDED was absent from the before one
 *Enforcement:* the check runs at write and stores a verdict. **A `CONTRADICTED` diff is written, not
 refused** — refusing it would delete the evidence that the pipeline is wrong, which is how this was
 found. It is simply never promotable.
+
+*Also at this level, added 2026-08-27:*
+
+- **A diff is uniquely identified by the pair it spans.** `UrlVersionDiff` has no unique constraint on
+  `(beforeSnapshotId, afterSnapshotId)` and diffs are written with `create` across six call sites, so a
+  from-scratch rescan duplicates every existing diff. The constraint removes the hazard rather than
+  avoiding it.
+- **Level 5 opens by re-pairing the diff layer** after Level 1's capture recovery: **7** existing diffs
+  are stale (they span captures no longer consecutive) and **18** new pair-rows are needed. Deferred
+  here deliberately so the classifications are paid for once, verified — see Level 1's boundary note.
+  The 7 are safe to leave unmarked because none is legally significant and none backs an evidence
+  record; `CONTRADICTED` is the mechanism that supersedes them, so no bespoke marker is added.
 
 *Note:* `measureExtractionDivergence` already implements this check as a measurement; Level 5 is the
 same logic moved to write time. **Granularity is not a detail** — whole-chunk matching found 2 of 81

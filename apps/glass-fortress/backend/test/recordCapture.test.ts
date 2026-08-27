@@ -347,12 +347,34 @@ describe('recordCapture anchors what it creates', () => {
     expect(anchor).not.toHaveBeenCalled();
   });
 
-  it('records the capture even when anchoring rejects', async () => {
-    // A chain hiccup must not fail a write that already holds the
-    // irreplaceable half.
+  it('records the capture even when anchoring rejects, and the promise still does not reject', async () => {
+    // A chain hiccup must not fail a write that already holds the irreplaceable
+    // half — and `anchoring` is handed to callers who may IGNORE it (the scanner
+    // does). An ignored promise that rejects is an unhandled rejection, which in
+    // Node ends the process; this suite crashed with exactly that before the
+    // guarantee was made local instead of borrowed from anchorSnapshots.
     anchor.mockRejectedValueOnce(new Error('RPC down'));
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+
     const result = await recordCapture(archived());
+
     expect(result.outcome).toBe('CREATED');
+    // Resolves, never rejects, and reports the failure as such.
+    await expect(result.anchoring).resolves.toBeNull();
+    warn.mockRestore();
+  });
+
+  it('leaves the promise safe to ignore entirely', async () => {
+    // The scanner's actual usage: never touched. If this could reject, the
+    // process would die on a chain hiccup during a routine scan.
+    anchor.mockRejectedValueOnce(new Error('RPC down'));
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    await recordCapture(archived());
+    // Give the rejection a full turn of the event loop to surface if unhandled.
+    await new Promise((r) => setImmediate(r));
+
+    warn.mockRestore();
   });
 });
 
