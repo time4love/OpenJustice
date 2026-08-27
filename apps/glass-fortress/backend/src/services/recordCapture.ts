@@ -232,6 +232,49 @@ function finishExisting(
   };
 }
 
+/** The capture immediately preceding an instant, and whether text is unchanged from it. */
+export interface PrecedingCapture {
+  id: string;
+  waybackTimestamp: string | null;
+  capturedAt: Date;
+  contentHash: string;
+  textHash: string;
+}
+
+/**
+ * IS THIS CAPTURE NEW? — the one implementation of that question.
+ *
+ * Exported so nothing else has to re-derive it. `backfillCdxIndex` must classify
+ * indexed captures it holds no row for, and the honest answer ("fetched,
+ * compared, identical to its predecessor") is exactly this rule. A second copy
+ * would be one rule with two implementations, which is this repository's dominant
+ * defect shape — and here the two copies would be *the definition of unchanged*,
+ * so any drift between them would mislabel index entries rather than merely
+ * duplicating logic.
+ *
+ * Ordered by `capturedAt` rather than by insertion, so the answer does not depend
+ * on the order captures arrive in — which is what made the rule this replaced
+ * depend on CDX pagination.
+ */
+export async function noveltyAgainstPredecessor(input: {
+  trackedUrlId: string;
+  capturedAt: Date;
+  textHash: string;
+}): Promise<{ preceding: PrecedingCapture | null; unchanged: boolean }> {
+  const preceding = await prisma.urlSnapshot.findFirst({
+    where: { trackedUrlId: input.trackedUrlId, capturedAt: { lt: input.capturedAt } },
+    orderBy: { capturedAt: 'desc' },
+    select: {
+      id: true,
+      waybackTimestamp: true,
+      capturedAt: true,
+      contentHash: true,
+      textHash: true,
+    },
+  });
+  return { preceding, unchanged: preceding?.textHash === input.textHash };
+}
+
 export async function recordCapture(input: RecordCaptureInput): Promise<RecordedCapture> {
   const {
     trackedUrlId,
@@ -325,16 +368,10 @@ export async function recordCapture(input: RecordCaptureInput): Promise<Recorded
    * order-independent answer must recompute from the stored captures rather than
    * read these outcomes back.
    */
-  const preceding = await prisma.urlSnapshot.findFirst({
-    where: { trackedUrlId, capturedAt: { lt: capturedAt } },
-    orderBy: { capturedAt: 'desc' },
-    select: {
-      id: true,
-      waybackTimestamp: true,
-      capturedAt: true,
-      contentHash: true,
-      textHash: true,
-    },
+  const { preceding, unchanged } = await noveltyAgainstPredecessor({
+    trackedUrlId,
+    capturedAt,
+    textHash: derived.textHash,
   });
   // Novelty on the derived TEXT, not on the payload — decided explicitly rather
   // than inherited. Byte-identity is too sensitive to be the novelty key: a
@@ -342,7 +379,7 @@ export async function recordCapture(input: RecordCaptureInput): Promise<Recorded
   // capture distinct and store hundreds of near-identical payloads. Nothing is
   // discarded by choosing text here, because the payload is kept whole either
   // way; what changes is only whether a NEW ROW is created.
-  if (preceding?.textHash === derived.textHash) {
+  if (unchanged && preceding) {
     // Every field describes the row named by `id` — the capture that already
     // holds this document — so the result is internally consistent rather than
     // mixing the request with the row it resolved to.

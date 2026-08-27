@@ -1385,124 +1385,135 @@ is detectable.
 second writer until the invariant is enforced on the first.*
 
 **Phase A — harden the path that exists.** Persist the CDX `digest` at write time (it is already
-fetched by `WaybackScraper`, used only to de-duplicate, and thrown away — and it is currently re-fetched
-on every verification) · `list_captures` partitions by provenance · the scan that reports success while
-fetching nothing · the 404 capture as queryable state · the reconciliation fast path, deferred while it
-was on the critical path.
+fetched by `WaybackScraper`, used only to de-duplicate, and thrown away) · `list_captures` partitions by
+provenance · the scan that reports success while fetching nothing · the 404 capture as queryable state ·
+the reconciliation fast path, deferred while it was on the critical path.
 
-**PHASE A HAS A PRECONDITION OF ITS OWN, added 2026-08-27: the `documentHash` repair
-(`forensics:rehash-documents`) must land in an environment BEFORE any scan work runs there.** Not a
-tidiness preference — the two items interact:
+> **CORRECTED 2026-08-27 — an earlier version of the line above added "and it is currently re-fetched on
+> every verification", which framed the live CDX fetch as a COST. It is not a cost, it is the
+> criterion.**
+>
+> Level 1 closes on `sha1b32(document) == cdx.digest`, and the entire value of that check is that its
+> right-hand side comes from **outside this platform**. A stored digest read by `verifyAgainstCdx` would
+> convert the external axis into a second internal check — our bytes against our own note of what CDX
+> once said — while every count stayed green. **The level was reopened twice for exactly that shape of
+> self-referential verification**, and this would reintroduce it in its most persuasive disguise: a
+> performance optimisation.
+>
+> The sentence is corrected rather than deleted because a plan is read for guidance, and a line inviting
+> the reader to treat the live fetch as waste is the kind of invitation that gets accepted by someone
+> who is not looking for traps. **Enforced by `test/liveArchiveObservers.test.ts`, not by this
+> paragraph** — a comment is not a control.
 
-- `recordCapture.finishExisting` compares the stored `documentHash` against `sha256Bytes(fetched)`, so
-  while the column holds the CDX digest **every capture a resumed scan re-reaches is logged as
-  DIVERGED**.
-- Phase A's `computeNextFromDate` fix is precisely what makes scans reach captures again.
+**Three of Phase A's items were one change, and building them separately would have meant touching the
+scanner's write path twice for one concept.** The CDX digest, the unservable capture and "we asked and
+the Archive holds nothing" are all *what the Archive told us*, and all three were previously discarded
+or trapped inside `WaybackScrapeJob.snapshotsList` JSON. They are now `CdxIndexEntry` and `CdxQuery`.
 
-So fixing the scan first would take a mechanism that currently fetches nothing and turn it into one
-that fabricates a divergence finding per capture — **the tool built to detect fabricated findings
-manufacturing them, at corpus scale, on its first working run.** Repair the column, then fix the scan.
+*`CdxQuery` exists because of a conflation caught BEFORE it became a bug, which is a first here.* **A
+query returning zero rows creates zero entries, so an empty answer is indistinguishable from never
+having asked unless the asking is itself recorded.** That is the never-looked-versus-nothing-there
+family — `UNAVAILABLE` versus missing data, the 404 in a JSON blob, `documentContentEncoding`'s null,
+and `totalSnapshots: 0` — and Phase B routes on precisely that distinction.
 
-**Phase B — acquisition through the Archive, under that same enforcement. This is the level's
-centrepiece, not a subsection.** `start_forensic_scan` stays the default entry point; the new work is
-the not-indexed branch — request archival, hold the current content as a pending precursor, reconcile
-when the capture lands. See "The tool boundary" below: `create_evidence_from_url` is deprecated rather
-than repurposed.
+*`CdxIndexEntry` is unique on `(trackedUrlId, waybackTimestamp, digest)`, and the digest in that key is
+load-bearing.* Keyed on the timestamp alone, a re-observation would update in place and **index drift
+would be invisible** — destroying the capability the table was partly justified by. With the digest, a
+changed answer from the Archive becomes a **second row**: the same rule as capture novelty, one layer
+out, with growth bounded by actual change rather than by scan count.
 
-Measured 2026-08-27, so the size of the gap is not in doubt: **`create_evidence_from_url` contains zero
-references to `recordCapture`.** Nothing writes `DIRECT` or `ASSERTED`; every capture in both
-environments is `WAYBACK`, written by the scanner. The enum exists and the pipeline that would populate
-it does not. Until Phase B lands, evidence created from a URL still has **no capture beneath it** — the
-defect Level 1 identified and deferred here.
+*The digest is deliberately NOT denormalised onto `UrlSnapshot`.* Doing so would put a CDX-supplied hash
+in the same row as `documentHash`, and this repository has already paid for two hash-shaped columns of
+different provenance sitting together. `documentHashSingleRule` would not catch it — it asserts what
+*writes* to `documentHash`, not what sits beside it — so a test asserts `UrlSnapshot` has no
+`/cdx/i` column, and the later "saves a join" optimisation fails loudly instead of looking sensible.
 
-Phase B makes `create_evidence_from_url` mean *"track this URL"*, turns `DIRECT` into the transient
-state its own enum comment describes, and closes that gap.
+#### RESOLVED: `UNCHANGED` — the status for "fetched, and deliberately not stored"
 
-#### The tool boundary — decided 2026-08-27
+Found while writing the backfill; **decided before the backfill ran, deliberately.** `CdxEntryStatus`
+was `STORED · UNSERVABLE · UNFETCHED`, and `UNFETCHED` means *"we have not fetched it."*
 
-`create_evidence_from_url` is **not** the tool that acquires archived captures, and turning it into one
-would repeat the defect this rebuild exists to remove. `rawText` was "the raw text" and wasn't;
-`fullText` was "the full text" and wasn't. A tool that keeps its name while its meaning changes is the
-same failure at a worse layer, because a tool name is a contract with callers we do not control — and
-the semantics genuinely break: today it is synchronous and returns an evidence record; under the
-pipeline it is queued and may return nothing for hours.
+That misdescribed the largest group in this corpus. CDX holds **95** rows after its own
+consecutive-collapse; we hold **83** captures. Of the ~12 without a capture, **eleven were fetched
+successfully and not stored** — the non-consecutive reverts `recordCapture`'s text-level novelty rule
+correctly dropped. Exactly one is the permanent 404.
 
-**`start_forensic_scan` is the default entry point for adding evidence from a URL.** It already takes a
-URL and scans what the Archive holds. The new work is only the **not-indexed branch**, which is much
-smaller than "build the pipeline":
+**The reason it could not be deferred with a note.** Leaving them `UNFETCHED` would write eleven rows
+already known to be wrong, and *"which entries have we never looked at"* would return eleven false
+positives. **A note in a plan does not protect a query** — the note is not in the result set. Correcting
+known-wrong rows afterwards is the shape of work this whole rebuild exists to stop creating, so the
+enum value landed first and the rows were written correctly the first time. The migration had not been
+applied anywhere, so the value was added to it rather than shipped as a follow-up `ALTER TYPE`.
 
-| the Archive… | action |
-|---|---|
-| holds captures | scan them — the existing tool, unchanged |
-| holds none | request archival, hold the current content as a pending precursor, poll until indexed |
-| **cannot take the page** (robots.txt, paywall, login gate) | a permanent recorded state — **the only place `DIRECT` or `ASSERTED` legitimately persists** |
+**The name is not new.** `RecordedCapture.outcome` is already `CREATED | UNCHANGED | EXISTS`, and
+`UNCHANGED` there means precisely this: identical to the immediately preceding capture, so no new row.
+Reusing the word means someone meeting it in either layer learns **one concept rather than two**, and it
+ties the index entry to the write path's own vocabulary.
 
-All three are first-class outcomes. None of them collapses into "failed".
+##### The hazard that came with it, and a mutation that had to be re-aimed at nothing
 
-**A hard dependency, not a parallel item:** routing on *"the Archive holds none"* is impossible until
-the scanner reliably reports it, and today **a scan that fetches nothing reports success**. Phase A's
-fix to `computeNextFromDate` is therefore a **precondition** for this branch, not work alongside it.
-Building the routing first would mean branching on a signal that does not exist.
+**On an `UNCHANGED` outcome `recordCapture` returns the PRECEDING capture's id** — that is what
+UNCHANGED means. Marking the entry `STORED` with that id would attach it to a capture it did not
+produce, so *"which capture came from this index entry"* would be wrong for exactly the rows the status
+exists to describe.
 
-**The replacement returns a pending handle, not evidence.** Evidence arrives when the capture does;
-returning something evidence-shaped would invite callers to treat a pending observation as a record.
-Its act is *"make this URL part of the tracked corpus, however the Archive allows"* — name it for that.
+*The branch was written correctly and covered by nothing.* Forcing the `STORED` path on an `UNCHANGED`
+outcome **survived all 45 tests**, and it compiled cleanly, so it had genuinely hit the code — the
+survival meant a hole, not a misfire. A test now asserts the entry is marked `UNCHANGED` with no
+`snapshotId`, and the mutation fails.
 
-**`create_evidence_from_url` is deprecated in two steps.** Mark it, with a pointer, while the
-replacement is proven; then make it **refuse**, not delegate. Delegating would be the silent
-behaviour-change-under-an-old-name again. Refusing breaks callers, which is cheap while production has
-no audience and will not be later.
+**Second time in two days a mutation survived against code that had just been written by the same
+session.** Both were found only because the refactor or the new branch was mutated rather than merely
+run. *Mutate what you just wrote, not only what you are about to change* — a behaviour-preserving change
+also preserves whatever the tests failed to pin.
 
-**Save Page Now is a WRITE TO A THIRD PARTY, and this platform has never made one.** Until now it has
-only read from the Archive. Asking the Archive to crawl a government page on our behalf has rate
-limits and a footprint, and it deserves the deliberateness of a chain write rather than being treated
-as another fetch. Decide the policy before building it.
+##### A known gap, named rather than built
 
-**`archiveHttp`'s error message — DONE.** It reported `HTTP 200` when axios threw for a non-status
-reason, presenting a success code as a failure, and cost diagnosis **twice during live operations**:
-once on staging's backfill (a capture had to be `curl`ed to establish it was fine), and once inside the
-production migration window, where it reported `HTTP 200` for what the line above it showed was an
-`ECONNABORTED` timeout. `describeFetchFailure` now distinguishes the three cases that decide
-retry-or-stop — no response · HTTP 4xx/5xx · failed *after* a 2xx — and
-`test/archiveHttpFailureMessage.test.ts` covers them.
+There is a **second** "fetched but not stored" case with no status: `recordCapture` refusing a capture
+whose document is empty. That is a **failure**, not a decision, and collapsing it into `UNCHANGED`
+would be the same conflation one step further down.
 
-*This paragraph said **FIX-SOON, "do it next"** for some time after the fix had landed, and that is
-worth more than a strikethrough.* A plan is read as the current state of the work; an item marked
-urgent that is already done spends attention twice — once on the reader deciding it matters, once on
-whoever re-derives that it does not. **A document that describes code is stale by default and true only
-when checked**, which is why "verify the plan against the code before trusting it" is now the opening
-instruction of every handoff here. This is the second stale item found that way.
+**It has never fired.** No status is pre-built for it — *let real examples drive code*, which this
+project has already learned the expensive way twice with hard-coded bounds. Recorded here so that if it
+ever does fire, the answer is a new status rather than a shrug into `UNFETCHED`.
 
-#### Archiving, and reconciling our own fetch against it
+##### `UNCHANGED` is a JUDGEMENT, so it records what it was judged against
 
-Save Page Now is not a twin bolted onto a direct capture — it is **step 2 of the submission pipeline**
-(§2). Ask CDX what the Archive already holds; if nothing, ask SPN to create a capture; create evidence
-from the archived capture when it is available. Submission is **queued, never blocking**: SPN answers
-quickly but CDX indexing lags, sometimes far beyond a request's lifetime.
+Three of the four statuses are **facts** and stay true: a row exists or it does not (`STORED`), the
+Archive serves it or refuses (`UNSERVABLE`), we looked or we did not (`UNFETCHED`). **`UNCHANGED` is the
+odd one out** — it means *"its text equals the capture immediately preceding it"*, which is a judgement
+relative to a corpus state. Store a capture between those two timestamps and the predecessor changes,
+and the verdict may no longer hold.
 
-Our own fetch is kept as the pending precursor and **reconciled** when the archived capture lands. We
-fetched at `T`; the Archive captured at `T+δ`, and the page can change in between — so this is not
-proof of our bytes, it is a second observation whose value is precisely that it can disagree:
+Not hypothetical in the direction that matters: **the Archive can back-fill an OLDER capture**, which is
+precisely the case that would invalidate a neighbour's verdict silently.
 
-| outcome | meaning |
-|---|---|
-| byte-identical | corroboration — an independent party observed the same document |
-| **different** | a real change inside the gap, **or** a fault in our fetch. Either is a finding. |
-| unavailable | SPN is rate-limited, and some pages cannot be archived at all. **Not a pass** — `UNAVAILABLE` per §3. |
+`comparedToSnapshotId` answers it — §3 applied verbatim, *record what the verdict was computed against*,
+and the same discipline as `sourceStateHash` on trajectory computations. Without it the system would
+carry exactly one verdict that can quietly stop being true. The parameter is **required**, so the
+provenance cannot be omitted by a caller.
 
-Treating the archived capture as proof of the direct one would repeat the error this plan exists to
-undo: agreement between two readings of one artifact is not corroboration, and here they are not even
-readings of the same moment.
+*Two mutations, and the second is the more instructive:* dropping the column from the write kills two
+tests. **Passing the WRONG id survived** — because the recorder's test asserted the value it was
+*given*, while nothing asserted which value the scraper *passed*. Asserting a field is populated is not
+asserting it is right, which is the bag-assertion lesson in a new costume. Now pinned to the actual
+predecessor.
 
-*Also at this level, added 2026-08-27:* **a scan that fetches nothing reports success.**
-`computeNextFromDate` returns `null` when the final batch held fewer than `MAX_SNAPSHOTS` rows, so
-`runFullScan` marks the URL `COMPLETED` without one request to the Archive. Staging sat in exactly that
-state (`totalSnapshots: 41`), which is why Level 1's recovery needed its own instrument. Silence is
-indistinguishable from "nothing new" — the same family as the silent truncations.
+#### Technique worth naming: make the field REQUIRED first, and let the compiler enumerate the callers
 
-*Also at this level:* **`list_captures` must partition by provenance.** Only archived captures may be
-cross-checked against the CDX index — listing a direct capture there would report it as a gap in the
-Archive, which is a fabricated finding produced by the tool built to detect fabricated findings.
+`getSnapshotsList` gained `trackedUrlId` as a **required** parameter rather than an optional one, and
+the compiler immediately named all three call sites — including the pre-tracking relevance probe in
+`forensicsRoutes`, which nothing would have reminded anyone about.
+
+That is the type system used as a **search tool rather than a formality**, and it is the same move as
+the `documentHash` source scan performed at compile time instead of test time. The optional version
+would have compiled everywhere and silently recorded nothing on the path that had not been updated —
+which is how "records sometimes" becomes a rule with two implementations.
+
+**Generalised:** when adding a field that must not be forgotten, make it required first, read the
+compiler's list of callers, and only then decide which of them genuinely warrants a different path. Here
+exactly one did, and it became `probeSnapshotsList` — *named* for recording nothing, because there is no
+`TrackedUrl` for an observation to belong to.
 
 ### Level 3 — the anchor
 

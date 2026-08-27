@@ -66,7 +66,7 @@ async function fetchContentForRelevanceCheck(url: string): Promise<string | null
   }
 
   try {
-    const { snapshots } = await getWaybackScraper().getSnapshotsList(url);
+    const { snapshots } = await getWaybackScraper().probeSnapshotsList(url);
     if (snapshots.length === 0) return null;
     const text = await getWaybackScraper().scrapeSnapshot(url, snapshots[0].timestamp);
     return text.trim().length > 0 ? text : null;

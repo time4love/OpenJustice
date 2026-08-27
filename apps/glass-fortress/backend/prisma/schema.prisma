@@ -107,6 +107,8 @@ model TrackedUrl {
   job                    WaybackScrapeJob?
   trajectories           ClaimTrajectory[]
   trajectoryComputations ClaimTrajectoryComputation[]
+  cdxIndexEntries        CdxIndexEntry[]
+  cdxQueries             CdxQuery[]
 }
 
 // One record per unique archived snapshot of a TrackedUrl.
@@ -217,8 +219,18 @@ model UrlSnapshot {
   onChainTxHash           String? // Blockchain tx hash once contentHash is registered on-chain
   createdAt               DateTime          @default(now())
 
-  beforeDiffs UrlVersionDiff[] @relation("BeforeSnapshot")
-  afterDiffs  UrlVersionDiff[] @relation("AfterSnapshot")
+  beforeDiffs    UrlVersionDiff[] @relation("BeforeSnapshot")
+  afterDiffs     UrlVersionDiff[] @relation("AfterSnapshot")
+  // The index entry this capture was made from, when it came from the Archive.
+  //
+  // Deliberately NOT a `cdxDigest` column on this table. Two hash-shaped columns
+  // of different provenance in one row is an invitation, and this repository has
+  // already paid for it: a base32 SHA-1 was written into `documentHash`, a
+  // SHA-256 column, and stayed there across both environments. The digest lives
+  // on CdxIndexEntry, one join away, where nothing can mistake it for ours.
+  cdxIndexEntry  CdxIndexEntry?   @relation("CdxEntryCapture")
+  /// Index entries whose UNCHANGED verdict was computed against this capture.
+  cdxComparisons CdxIndexEntry[]  @relation("CdxEntryComparedTo")
 
   @@unique([trackedUrlId, waybackTimestamp])
   // A TrackedUrl cannot hold two captures of the same instant. This is the
@@ -1569,4 +1581,141 @@ model ClaimTrajectory {
   @@unique([computationId, claimHash])
   @@index([trackedUrlId, claimHash])
   @@index([computationId, patternHash])
+}
+
+/// What became of a capture the CDX index told us exists.
+enum CdxEntryStatus {
+  /// We hold it. `snapshotId` points at the capture.
+  STORED
+  /// CDX indexes it and the replay will not serve it — HTTP 404, reproduced and
+  /// durable. `20240829085520` on the tracked MOH page is the known instance.
+  /// A THIRD-PARTY FACT rather than a transient failure, so nobody keeps retrying
+  /// it. It previously existed only as a string inside a scan job's JSON blob.
+  UNSERVABLE
+  /// CDX told us it exists; we have not fetched it, or the fetch failed in a way
+  /// that may be transient. Distinct from UNSERVABLE deliberately — collapsing
+  /// them makes a permanent gap and a retryable one indistinguishable.
+  UNFETCHED
+  /// Fetched, compared, and found identical AT THE TEXT LEVEL to the capture
+  /// immediately preceding it — so no separate capture exists. THE NOVELTY RULE
+  /// WORKING, NOT A FAILURE.
+  ///
+  /// The name is deliberately the write path's own: `RecordedCapture.outcome` is
+  /// already `CREATED | UNCHANGED | EXISTS`, and UNCHANGED there means exactly
+  /// this. One concept, one word, in both layers.
+  ///
+  /// It exists because UNFETCHED would assert "we never looked" about eleven of
+  /// the twelve indexed captures this corpus holds no row for, when the truth is
+  /// "we looked and decided" — the same never-looked-versus-nothing-there
+  /// conflation this table was built to end, one layer down. A note in a plan
+  /// does not protect a query: without this, "which entries have we never looked
+  /// at" returns eleven false positives.
+  UNCHANGED
+}
+
+/// ONE ENTRY THE CDX INDEX REPORTED, AND WHEN IT REPORTED IT.
+///
+/// Models what the Archive says EXISTS, as opposed to what we managed to store —
+/// something this platform has never modelled. Three facts previously discarded
+/// or trapped inside `WaybackScrapeJob.snapshotsList` JSON live here: the
+/// published digest, the unservable capture, and the link from an index entry to
+/// the capture made from it.
+///
+/// OBSERVATIONS, NEVER CURRENT TRUTH. Every row carries `observedAt` and means
+/// "the Archive told us this, then". A live query answers "what does the Archive
+/// hold NOW"; these rows answer "what did it tell us, and WHEN". Asserting the
+/// first from the second is the self-referential verification Level 1 was
+/// reopened twice to escape — enforced by test/liveArchiveObservers.test.ts, not
+/// by this comment.
+model CdxIndexEntry {
+  id                   String         @id @default(cuid())
+  trackedUrlId         String
+  trackedUrl           TrackedUrl     @relation(fields: [trackedUrlId], references: [id], onDelete: Cascade)
+  waybackTimestamp     String
+  /// The digest CDX PUBLISHED for this capture — base32(SHA-1) of the response
+  /// body — as observed at `observedAt`.
+  ///
+  /// NOT an input to Level 1's completion criterion. That criterion's whole value
+  /// is that its right-hand side comes from outside this platform, and reading it
+  /// from here would make the external axis a second internal check while every
+  /// count stayed green.
+  digest               String
+  status               CdxEntryStatus
+  /// WHEN THE ARCHIVE TOLD US THIS. Not when it became true.
+  observedAt           DateTime
+  /// The capture we made from this entry, when we hold one.
+  snapshotId           String?        @unique
+  snapshot             UrlSnapshot?   @relation("CdxEntryCapture", fields: [snapshotId], references: [id], onDelete: SetNull)
+  /// WHAT AN `UNCHANGED` VERDICT WAS COMPUTED AGAINST.
+  ///
+  /// Three of the four statuses are FACTS and stay true: a row exists or it does
+  /// not (STORED), the Archive serves it or refuses (UNSERVABLE), we looked or we
+  /// did not (UNFETCHED). `UNCHANGED` is the odd one — it is a JUDGEMENT relative
+  /// to a corpus state, meaning "its text equals the capture immediately
+  /// preceding it". Store a capture between those two timestamps and the
+  /// predecessor changes, and the judgement may no longer hold.
+  ///
+  /// Unlikely but not hypothetical: the Archive can back-fill an OLDER capture,
+  /// which is precisely the case that would invalidate a neighbour's verdict
+  /// silently. §3 answers it — record what the verdict was computed against — and
+  /// this is the same discipline as `sourceStateHash` on trajectory computations.
+  /// Without it the system would carry one verdict that can quietly stop being
+  /// true.
+  ///
+  /// Deliberately NOT unique: many entries can be judged against one predecessor.
+  comparedToSnapshotId String?
+  comparedTo           UrlSnapshot?   @relation("CdxEntryComparedTo", fields: [comparedToSnapshotId], references: [id], onDelete: SetNull)
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
+
+  /// UNIQUE ON THE DIGEST TOO, AND THAT IS THE WHOLE POINT.
+  ///
+  /// Keyed on (trackedUrlId, waybackTimestamp) alone, a re-observation would
+  /// update in place and INDEX DRIFT WOULD BE INVISIBLE — destroying the
+  /// capability this table was partly built for. Including the digest means a
+  /// changed answer from the Archive becomes a SECOND ROW: one row normally, two
+  /// only if the index ever changes what it publishes for a timestamp.
+  ///
+  /// Same rule as capture novelty, one layer out: store the observation, add a
+  /// row only when the content differs. Growth is bounded by actual change rather
+  /// than by scan count.
+  @@unique([trackedUrlId, waybackTimestamp, digest])
+  @@index([trackedUrlId, status])
+  @@index([trackedUrlId, waybackTimestamp])
+}
+
+/// ONE QUESTION PUT TO THE CDX INDEX, AND WHAT CAME BACK.
+///
+/// Needed even with CdxIndexEntry, and the reason is the case Level 2 Phase B
+/// routes on: A QUERY RETURNING ZERO ROWS CREATES ZERO ENTRIES, so an empty
+/// result is indistinguishable from never having asked unless the ASKING is
+/// itself recorded. §3: an observation of an external system must be stored,
+/// because it cannot be re-derived.
+///
+/// It also removes the inference left behind by the fix to "a scan that fetches
+/// nothing reports success". `WaybackScrapeJob.totalSnapshots` carries a
+/// pagination sentinel (MAX_SNAPSHOTS + 1) AND a row count, so reading "we asked
+/// and there is nothing newer" out of it would be one field carrying two
+/// meanings — the exact defect that produced that bug.
+///
+/// APPEND-ONLY, AND NOT MERELY BECAUSE IT IS CONVENIENT. Nothing in this system
+/// is deleted; Level 10 supersedes rather than removes, and an append-only log of
+/// observations is that rule applied to a new table. Do not add a retention job:
+/// it would quietly contradict the deletion rule, and the sequence of empty
+/// answers is precisely the evidence that would justify declaring a page
+/// unarchivable.
+model CdxQuery {
+  id           String     @id @default(cuid())
+  trackedUrlId String
+  trackedUrl   TrackedUrl @relation(fields: [trackedUrlId], references: [id], onDelete: Cascade)
+  queriedAt    DateTime
+  /// The CDX `from=` bound used, or null for an unbounded query.
+  fromDate     String?
+  /// Rows CDX returned. ZERO IS THE POINT OF THIS TABLE.
+  rowCount     Int
+  /// Whether CDX signalled further pages beyond this batch.
+  hasMore      Boolean
+  createdAt    DateTime   @default(now())
+
+  @@index([trackedUrlId, queriedAt])
 }

@@ -1,4 +1,5 @@
 import { createHash } from 'crypto';
+import { deriveText } from '../src/lib/captureDocument';
 import { WaybackScraper } from '../src/services/WaybackScraper';
 import {
   WaybackFetchError,
@@ -50,6 +51,17 @@ jest.mock('../src/services/VectorStoreService', () => ({
 
 jest.mock('../src/lib/prisma', () => ({
   prisma: {
+    // The CDX observation store. A scan records what the Archive told us — the
+    // query itself (so a zero-row answer is distinguishable from never asking)
+    // and one entry per indexed capture.
+    cdxQuery: {
+      create: jest.fn().mockResolvedValue({ id: 'cdx-query-1' }),
+    },
+    cdxIndexEntry: {
+      createMany: jest.fn().mockResolvedValue({ count: 0 }),
+      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      findFirst: jest.fn().mockResolvedValue(null),
+    },
     evidence: {
       findMany: jest.fn(),
       upsert: jest.fn().mockResolvedValue({ id: 'evidence-id-xyz', fileHash: '0xabc' }),
@@ -203,7 +215,7 @@ describe('WaybackScraper.getSnapshotsList', () => {
   it('returns deduplicated snapshots in chronological order', async () => {
     mockAxiosGet.mockResolvedValueOnce(makeAxiosResponse(CDX_RESPONSE));
     const scraper = new WaybackScraper();
-    const { snapshots, hasMore } = await scraper.getSnapshotsList('https://health.gov.il/page');
+    const { snapshots, hasMore } = await scraper.probeSnapshotsList('https://health.gov.il/page');
     expect(snapshots).toHaveLength(3);
     expect(snapshots[0].timestamp).toBe('20210101120000');
     expect(snapshots[2].timestamp).toBe('20220101140000');
@@ -226,7 +238,7 @@ describe('WaybackScraper.getSnapshotsList', () => {
     // is why removing the Set had to remove this assertion with it.
     mockAxiosGet.mockResolvedValueOnce(makeAxiosResponse(CDX_RESPONSE_REVERTING));
     const scraper = new WaybackScraper();
-    const { snapshots } = await scraper.getSnapshotsList('https://health.gov.il/page');
+    const { snapshots } = await scraper.probeSnapshotsList('https://health.gov.il/page');
 
     expect(snapshots).toHaveLength(3);
     expect(snapshots.map((s) => s.digest)).toEqual(['STATE_A', 'STATE_B', 'STATE_A']);
@@ -238,7 +250,7 @@ describe('WaybackScraper.getSnapshotsList', () => {
   it('returns empty snapshots when CDX returns no data rows', async () => {
     mockAxiosGet.mockResolvedValueOnce(makeAxiosResponse([['timestamp', 'digest']]));
     const scraper = new WaybackScraper();
-    const { snapshots, hasMore } = await scraper.getSnapshotsList('https://health.gov.il/page');
+    const { snapshots, hasMore } = await scraper.probeSnapshotsList('https://health.gov.il/page');
     expect(snapshots).toEqual([]);
     expect(hasMore).toBe(false);
   });
@@ -246,14 +258,14 @@ describe('WaybackScraper.getSnapshotsList', () => {
   it('returns empty snapshots when CDX returns an empty array', async () => {
     mockAxiosGet.mockResolvedValueOnce(makeAxiosResponse([]));
     const scraper = new WaybackScraper();
-    const { snapshots, hasMore } = await scraper.getSnapshotsList('https://health.gov.il/page');
+    const { snapshots, hasMore } = await scraper.probeSnapshotsList('https://health.gov.il/page');
     expect(snapshots).toEqual([]);
     expect(hasMore).toBe(false);
   });
 
   it('throws on non-http/https protocol', async () => {
     const scraper = new WaybackScraper();
-    await expect(scraper.getSnapshotsList('ftp://health.gov.il/page')).rejects.toThrow(
+    await expect(scraper.probeSnapshotsList('ftp://health.gov.il/page')).rejects.toThrow(
       'http or https',
     );
   });
@@ -261,7 +273,7 @@ describe('WaybackScraper.getSnapshotsList', () => {
   it('encodes the URL in the CDX query', async () => {
     mockAxiosGet.mockResolvedValueOnce(makeAxiosResponse([['timestamp', 'digest']]));
     const scraper = new WaybackScraper();
-    await scraper.getSnapshotsList('https://health.gov.il/page?id=1&lang=he');
+    await scraper.probeSnapshotsList('https://health.gov.il/page?id=1&lang=he');
     const calledUrl: string = mockAxiosGet.mock.calls[0][0] as string;
     expect(calledUrl).toContain('web.archive.org/cdx/search/cdx');
     expect(calledUrl).toContain('collapse=digest');
@@ -270,7 +282,7 @@ describe('WaybackScraper.getSnapshotsList', () => {
   it('returns hasMore=true when CDX returns MAX_SNAPSHOTS+1 rows', async () => {
     mockAxiosGet.mockResolvedValueOnce(makeAxiosResponse(CDX_RESPONSE_FULL_PAGE));
     const scraper = new WaybackScraper();
-    const { snapshots, hasMore } = await scraper.getSnapshotsList('https://health.gov.il/page');
+    const { snapshots, hasMore } = await scraper.probeSnapshotsList('https://health.gov.il/page');
     // Returns MAX_SNAPSHOTS (50) snapshots — the 51st row is the sentinel that triggers hasMore
     expect(snapshots).toHaveLength(50);
     expect(hasMore).toBe(true);
@@ -294,7 +306,7 @@ describe('WaybackScraper.getSnapshotsList', () => {
     ];
     mockAxiosGet.mockResolvedValueOnce(makeAxiosResponse(cdxWithReverts));
     const scraper = new WaybackScraper();
-    const { snapshots, hasMore } = await scraper.getSnapshotsList('https://health.gov.il/page');
+    const { snapshots, hasMore } = await scraper.probeSnapshotsList('https://health.gov.il/page');
 
     // Capped at MAX_SNAPSHOTS (50) — the cap is a batch size, not a filter.
     expect(snapshots).toHaveLength(50);
@@ -442,6 +454,62 @@ describe('WaybackScraper.processJob', () => {
     const result = await scraper.processJob('job-id-789');
     expect(result).toMatchObject({ status: 'FAILED', failureReason: 'ALL_FETCHES_FAILED' });
   }, 15_000);
+
+  // -------------------------------------------------------------------------
+  // AN UNCHANGED CAPTURE MUST NOT LINK THE INDEX ENTRY TO A SNAPSHOT.
+  //
+  // recordCapture returns the PRECEDING capture's id on an UNCHANGED outcome —
+  // that is what UNCHANGED means. Marking the entry STORED with that id would
+  // attach it to a capture it did not produce, so "which capture came from this
+  // index entry" would be wrong for exactly the eleven rows on this corpus that
+  // the UNCHANGED status exists to describe.
+  //
+  // Written after a mutation SURVIVED: forcing the STORED branch on an UNCHANGED
+  // outcome passed all 45 tests, and it compiled cleanly, so it had genuinely hit
+  // the code. The hazard was identified while building the branch and covered by
+  // nothing.
+  // -------------------------------------------------------------------------
+  it('marks an UNCHANGED capture UNCHANGED, and never links it to the predecessor', async () => {
+    const bytes = Buffer.from('<p>identical to what came before</p>');
+    const predecessorTextHash = deriveText(bytes, 'text/html; charset=utf-8', null).textHash;
+
+    mockJobFindUnique.mockResolvedValueOnce(BASE_JOB);
+    mockAxiosGet.mockResolvedValueOnce(makeAxiosResponse(CDX_RESPONSE));
+    // A preceding capture whose text hashes identically -> recordCapture returns
+    // UNCHANGED, carrying the PREDECESSOR's id.
+    (prisma.urlSnapshot.findFirst as jest.Mock).mockResolvedValue({
+      id: 'predecessor-snapshot-id',
+      waybackTimestamp: '20211231235959',
+      capturedAt: new Date('2021-12-31T23:59:59Z'),
+      contentHash: 'prev-content-hash',
+      textHash: predecessorTextHash,
+    });
+
+    const scraper = new WaybackScraper();
+    jest.spyOn(scraper, 'scrapeSnapshotReadings').mockResolvedValue({
+      extracted: 'identical',
+      bytes,
+      contentType: 'text/html; charset=utf-8',
+      contentEncoding: null,
+    });
+
+    await scraper.processJob('job-id-789');
+
+    const updates = (prisma.cdxIndexEntry.updateMany as jest.Mock).mock.calls as [
+      { data: Record<string, unknown> },
+    ][];
+    expect(updates.length).toBeGreaterThan(0); // vacuity guard
+    for (const [call] of updates) {
+      expect(call.data['status']).toBe('UNCHANGED');
+      expect(call.data['snapshotId']).toBeUndefined();
+      // THE VERDICT NAMES WHAT IT WAS COMPUTED AGAINST, and it must be the
+      // predecessor actually compared — not merely some id. Asserting only that
+      // the field is populated let a mutation passing the WRONG id survive.
+      expect(call.data['comparedToSnapshotId']).toBe('predecessor-snapshot-id');
+    }
+    // No capture was created, so nothing may claim one was stored.
+    expect(updates.some(([c]) => c.data['status'] === 'STORED')).toBe(false);
+  });
 
   it('stores the document on the CREATE path, so a capture cannot exist without one', async () => {
     // Level 1's invariant, asserted where it is actually established. `document`

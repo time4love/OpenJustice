@@ -27,6 +27,12 @@ import { groupDiffChunks, classifierInputChunks, DIFF_INPUT_VERSION } from '../l
 import { CLASSIFIER_VERSION, classifierPromptHash } from '../lib/classifierVersion';
 import { getClaimTrajectories } from './claimTrajectory';
 import { ARCHIVED_CAPTURES_ONLY } from '../lib/archivedCaptures';
+import {
+  recordCdxObservation,
+  markCdxEntryStored,
+  markCdxEntryUnchanged,
+  markCdxEntryUnservable,
+} from './recordCdxObservation';
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -115,6 +121,12 @@ async function recordArchivedCapture(
   document: Buffer,
   documentContentType: string | null,
   documentContentEncoding: string | null,
+  /**
+   * The digest CDX published for this capture. Links the stored capture back to
+   * the index entry it came from, HERE rather than at each call site, so the two
+   * writers of captures cannot disagree about whether the link is made.
+   */
+  cdxDigest: string,
 ): Promise<{ id: string; waybackTimestamp: string; contentHash: string }> {
   const recorded = await recordCapture({
     trackedUrlId,
@@ -136,6 +148,37 @@ async function recordArchivedCapture(
       `recordArchivedCapture: capture ${recorded.id} came back without an Archive timestamp.`,
     );
   }
+  // Advance the index entry, and DO NOT LINK ON AN UNCHANGED OUTCOME.
+  //
+  // This distinction is not cosmetic. On UNCHANGED, `recordCapture` returns the
+  // PRECEDING capture's id — that is what UNCHANGED means — so linking it here
+  // would attach this index entry to a capture it did not produce, and every
+  // "which capture came from this entry" answer would be quietly wrong for
+  // exactly the eleven rows this status exists to describe.
+  //
+  // Keyed on the digest as well as the timestamp so the link lands on the entry
+  // we actually fetched rather than on a drifted re-observation of the same
+  // instant. Done here, in the one function both scan paths go through, so it
+  // cannot be handled by one writer and forgotten by the other.
+  if (recorded.outcome === 'UNCHANGED') {
+    // `recorded.id` IS the predecessor — that is what UNCHANGED means — so it is
+    // both the capture this must NOT be linked to as its own, and exactly the one
+    // the verdict was computed against.
+    await markCdxEntryUnchanged({
+      trackedUrlId,
+      waybackTimestamp: timestamp,
+      digest: cdxDigest,
+      comparedToSnapshotId: recorded.id,
+    });
+  } else {
+    await markCdxEntryStored({
+      trackedUrlId,
+      waybackTimestamp: recorded.waybackTimestamp,
+      digest: cdxDigest,
+      snapshotId: recorded.id,
+    });
+  }
+
   return {
     id: recorded.id,
     waybackTimestamp: recorded.waybackTimestamp,
@@ -368,13 +411,58 @@ export class WaybackScraper {
   }
 
   /**
-   * Fetch the deduplicated list of archive snapshots for a URL via the CDX API.
-   * Uses server-side `collapse=digest` to return only content-changed snapshots.
+   * Ask CDX what the Archive holds, AND RECORD THAT WE ASKED.
+   *
+   * `trackedUrlId` is required rather than optional, so the observation cannot be
+   * lost by a caller forgetting to pass it — the same reason `recordCapture`
+   * takes `document` as a required parameter. A CDX answer is an observation of an
+   * external system, which §3 says must be stored because it cannot be
+   * re-derived, and a zero-row answer is the one Level 2 Phase B routes on.
+   *
+   * For the pre-tracking case, where there is no TrackedUrl to attach an
+   * observation to, use `probeSnapshotsList` — which says so in its name rather
+   * than hiding it behind an optional argument.
    */
   async getSnapshotsList(
     url: string,
+    trackedUrlId: string,
     fromDate?: string,
   ): Promise<{ snapshots: RawSnapshot[]; hasMore: boolean }> {
+    const queriedAt = new Date();
+    const { snapshots, hasMore, rawRows } = await this.queryCdxIndex(url, fromDate);
+    await recordCdxObservation({ trackedUrlId, queriedAt, fromDate, rows: rawRows, hasMore });
+    return { snapshots, hasMore };
+  }
+
+  /**
+   * The same CDX query, for a URL that is NOT tracked yet.
+   *
+   * Used by the relevance pre-check, which runs before anything decides whether
+   * the URL is worth tracking — so there is no TrackedUrl for an observation to
+   * belong to. Named for that rather than expressed as an optional parameter,
+   * because "records sometimes" is how a rule acquires two implementations.
+   *
+   * It shares `queryCdxIndex` with the recording path, so there is exactly one
+   * CDX query in this class.
+   */
+  async probeSnapshotsList(url: string): Promise<{ snapshots: RawSnapshot[]; hasMore: boolean }> {
+    const { snapshots, hasMore } = await this.queryCdxIndex(url);
+    return { snapshots, hasMore };
+  }
+
+  /**
+   * Fetch the deduplicated list of archive snapshots for a URL via the CDX API.
+   * Uses server-side `collapse=digest` to return only content-changed snapshots.
+   *
+   * Pure: it queries and parses, and writes nothing. `rawRows` is every row CDX
+   * returned before the MAX_SNAPSHOTS slice, which is what the observation record
+   * needs — the stored index must reflect what the Archive said, not what one
+   * batch happened to keep.
+   */
+  private async queryCdxIndex(
+    url: string,
+    fromDate?: string,
+  ): Promise<{ snapshots: RawSnapshot[]; hasMore: boolean; rawRows: RawSnapshot[] }> {
     const parsed = new URL(url);
     if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
       throw new Error('URL must use http or https protocol.');
@@ -399,7 +487,8 @@ export class WaybackScraper {
     );
 
     const rows = response.data;
-    if (!Array.isArray(rows) || rows.length < 2) return { snapshots: [], hasMore: false };
+    if (!Array.isArray(rows) || rows.length < 2)
+      return { snapshots: [], hasMore: false, rawRows: [] };
 
     // Row 0 is ["timestamp","digest"] — skip it
     const dataRows = rows.slice(1) as string[][];
@@ -444,7 +533,7 @@ export class WaybackScraper {
     // processJob() can never be derived from a reversed pair.
     snapshots.sort((a, b) => (a.timestamp < b.timestamp ? -1 : a.timestamp > b.timestamp ? 1 : 0));
 
-    return { snapshots: snapshots.slice(0, MAX_SNAPSHOTS), hasMore };
+    return { snapshots: snapshots.slice(0, MAX_SNAPSHOTS), hasMore, rawRows: snapshots };
   }
 
   /**
@@ -558,13 +647,17 @@ export class WaybackScraper {
    * Prefer runFullScan() for new usage.
    */
   async analyzePageHistory(url: string): Promise<PageHistoryResult> {
-    const { snapshots } = await this.getSnapshotsList(url);
-
+    // The TrackedUrl is created BEFORE the CDX query, not after, because the
+    // query's answer is an observation that has to belong to something. Ordering
+    // it the other way round would mean the first observation of a URL — the one
+    // that says whether the Archive holds it at all — is the one we cannot store.
     const trackedUrl = await prisma.trackedUrl.upsert({
       where: { url },
       update: {},
       create: { url },
     });
+
+    const { snapshots } = await this.getSnapshotsList(url, trackedUrl.id);
 
     if (snapshots.length === 0) {
       return { trackedUrlId: trackedUrl.id, diffs: [] };
@@ -595,7 +688,7 @@ export class WaybackScraper {
         let stored: Observation['stored'] = null;
         try {
           stored = await recordArchivedCapture(
-            trackedUrl.id, snap.timestamp, url, readings.extracted, readings.bytes, readings.contentType, readings.contentEncoding,
+            trackedUrl.id, snap.timestamp, url, readings.extracted, readings.bytes, readings.contentType, readings.contentEncoding, snap.digest,
           );
         } catch {
           stored = null;
@@ -847,6 +940,7 @@ export class WaybackScraper {
       try {
         ({ snapshots: rawSnapshots, hasMore } = await this.getSnapshotsList(
           job.url,
+          job.trackedUrlId,
           job.fromDate ?? undefined,
         ));
       } catch (err) {
@@ -908,7 +1002,7 @@ export class WaybackScraper {
           const readings = await this.scrapeSnapshotReadings(job.url, entry.timestamp);
           previousText = readings.extracted;
           previousSnapshot = await recordArchivedCapture(
-            trackedUrlId, entry.timestamp, job.url, readings.extracted, readings.bytes, readings.contentType, readings.contentEncoding,
+            trackedUrlId, entry.timestamp, job.url, readings.extracted, readings.bytes, readings.contentType, readings.contentEncoding, entry.digest,
           );
         } catch {
           // Keep last good values if re-fetch fails during resume
@@ -922,7 +1016,7 @@ export class WaybackScraper {
         const readings = await this.scrapeSnapshotReadings(job.url, entry.timestamp);
         currentText = readings.extracted;
         currentSnapshot = await recordArchivedCapture(
-          trackedUrlId, entry.timestamp, job.url, readings.extracted, readings.bytes, readings.contentType, readings.contentEncoding,
+          trackedUrlId, entry.timestamp, job.url, readings.extracted, readings.bytes, readings.contentType, readings.contentEncoding, entry.digest,
         );
       } catch (err) {
         console.warn(
@@ -935,6 +1029,22 @@ export class WaybackScraper {
           otherFailures++;
         }
         entry.status = 'FAILED';
+        // A 404 from the replay is the Archive telling us it indexes this capture
+        // and will not serve it — a DURABLE third-party fact, and the state
+        // `20240829085520` has been in since the original scan while existing
+        // only as a string in this job's JSON blob. Recorded as first-class,
+        // queryable state so nobody keeps retrying it.
+        //
+        // Only a 404. A timeout or a 5xx is transient and must stay UNFETCHED:
+        // collapsing the two would make a permanent gap indistinguishable from a
+        // retryable one, which is the distinction this status exists to keep.
+        if (err instanceof WaybackFetchError && err.status === 404) {
+          await markCdxEntryUnservable({
+            trackedUrlId,
+            waybackTimestamp: entry.timestamp,
+            digest: entry.digest,
+          });
+        }
         processedCount++;
         await prisma.waybackScrapeJob.update({
           where: { id: jobId },
