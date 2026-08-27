@@ -589,6 +589,42 @@ describe('WaybackScraper.analyzePageHistory', () => {
     expect(trackedUrlId).toBe('tracked-url-id-123');
   });
 
+  // -------------------------------------------------------------------------
+  // DIRECTION. The classifier is handed (deletions, additions) in that order,
+  // and ADDED-vs-REMOVED is the entire semantic of a forensic diff: reversing it
+  // reports every removal as an addition on a page whose central finding is that
+  // something was REMOVED.
+  //
+  // Nothing pinned it. Reversing `diffLines(prev.text, current.text)` to
+  // `diffLines(current.text, prev.text)` passed all 41 tests of this file and its
+  // diff companion, because every existing test asserts the MOCKED classifier
+  // OUTPUT and never what the real diff handed it. Found by mutating the loop
+  // after refactoring it — the refactor was safe, the coverage was not.
+  // -------------------------------------------------------------------------
+  it('hands the classifier deletions from the BEFORE capture and additions from the AFTER one', async () => {
+    mockAxiosGet
+      .mockResolvedValueOnce(makeAxiosResponse(CDX_RESPONSE))
+      .mockResolvedValueOnce(makeAxiosResponse(MOCK_HTML))
+      .mockResolvedValueOnce(makeAxiosResponse(MOCK_HTML_CHANGED))
+      .mockResolvedValueOnce(makeAxiosResponse(MOCK_HTML_CHANGED));
+    mockAnalyzeChange.mockResolvedValue(COSMETIC_FORENSIC_OUTPUT);
+
+    const scraper = new WaybackScraper();
+    await scraper.analyzePageHistory('https://health.gov.il/page');
+
+    const [deletions, additions] = mockAnalyzeChange.mock.calls[0] as [string[], string[]];
+    const deleted = deletions.join('\n');
+    const added = additions.join('\n');
+
+    // "Emergency Use Authorization" is only in the BEFORE capture.
+    expect(deleted).toContain('Emergency Use Authorization');
+    expect(added).not.toContain('Emergency Use Authorization');
+
+    // "Full FDA approval" is only in the AFTER capture.
+    expect(added).toContain('Full FDA approval');
+    expect(deleted).not.toContain('Full FDA approval');
+  }, TEST_TIMEOUT);
+
   it('returns only legally significant diffs', async () => {
     // CDX API returns 3 snapshots
     mockAxiosGet

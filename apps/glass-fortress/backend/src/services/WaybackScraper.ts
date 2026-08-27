@@ -26,6 +26,7 @@ import {
 import { groupDiffChunks, classifierInputChunks, DIFF_INPUT_VERSION } from '../lib/diffChunking';
 import { CLASSIFIER_VERSION, classifierPromptHash } from '../lib/classifierVersion';
 import { getClaimTrajectories } from './claimTrajectory';
+import { ARCHIVED_CAPTURES_ONLY } from '../lib/archivedCaptures';
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -241,9 +242,22 @@ function offsetDate(dateStr: string, days: number): string {
 }
 
 /**
- * Compute the CDX `from` value for the next batch given a completed job's
- * snapshotsList. Returns null when the batch had fewer than MAX_SNAPSHOTS
- * (meaning CDX history is exhausted) or when no snapshots were processed.
+ * The CDX `from` value for the NEXT PAGE of the scan currently running.
+ *
+ * WITHIN-RUN PAGINATION ONLY. Null means "CDX signalled no further rows after
+ * this batch", which is a statement about one paginated walk and nothing more.
+ *
+ * IT IS NOT AN ANSWER TO "IS THERE ANYTHING LEFT TO SCAN?" and using it as one
+ * is the defect this contract now spells out. `totalSnapshots` carries a
+ * sentinel (MAX_SNAPSHOTS + 1) meaning "CDX had more", so a FINISHED scan always
+ * ends with `totalSnapshots < MAX_SNAPSHOTS` — that is what finishing means. Read
+ * across runs, this function therefore returns null for every completed job
+ * forever, and a later scan request short-circuits to COMPLETED without one
+ * request to the Archive.
+ *
+ * Staging sat in exactly that state (`totalSnapshots: 41`), which is why Level
+ * 1's capture recovery needed its own instrument. See resumePointFromCaptures
+ * for the across-run question, which can only be answered by ASKING.
  */
 function computeNextFromDate(snapshotsListJson: string, totalSnapshots: number): string | null {
   try {
@@ -251,12 +265,55 @@ function computeNextFromDate(snapshotsListJson: string, totalSnapshots: number):
     const list = JSON.parse(snapshotsListJson) as Array<{ timestamp: string; status: string }>;
     const done = list.filter((s) => s.status === 'DONE');
     if (done.length === 0) return null;
-    const last = done[done.length - 1].timestamp; // YYYYMMDDHHMMSS (14 digits)
+    // `done.length > 0` above makes this defined, but noUncheckedIndexedAccess is
+    // OFF project-wide, so the compiler types every index as non-undefined and the
+    // linter calls this guard redundant. It is not: an index read is `T | undefined`
+    // at runtime whatever the types say, and deleting these is how `extractHrefs`
+    // nearly started returning empty strings. See the debt ratchet.
+    const last = done[done.length - 1]?.timestamp; // YYYYMMDDHHMMSS (14 digits)
+    if (!last) return null;
     // Increment by 1 second so the next batch starts strictly after this snapshot
     return (BigInt(last) + BigInt(1)).toString().padStart(14, '0');
   } catch {
     return null;
   }
+}
+
+/**
+ * Where a FRESH scan of an already-completed URL should resume from.
+ *
+ * DERIVED FROM STORED STATE, NEVER FROM THE PREVIOUS RUN'S FINAL TRANSITION.
+ * "Has the Archive gained captures since we last looked?" is a question about
+ * the world, and the only honest way to answer it is to ask CDX. What we may
+ * decide locally is merely where to start asking, and that comes from the
+ * newest capture we actually hold.
+ *
+ * This repository has now learned the same lesson three times in one day and
+ * again here: derive from state, not from a transition. The old code read a
+ * pagination sentinel left behind by the last batch of the last run and treated
+ * it as a fact about the Archive.
+ *
+ * `undefined` — meaning no `from=` bound, scan from the beginning — when we hold
+ * no archived capture at all. That is the Level 2 Phase B case: the scan runs,
+ * CDX answers, and "the Archive holds none" becomes an OBSERVATION rather than
+ * an inference from a counter nobody set.
+ *
+ * INCREMENTAL BY CONSTRUCTION, and this is a real limit rather than a caveat: it
+ * looks only for captures NEWER than our newest, so it will not rediscover a gap
+ * in the middle of the history. Filling those is what
+ * `forensics:recover-captures` exists for — it fetches the whole CDX index with
+ * no pagination and no client-side dedup.
+ */
+async function resumePointFromCaptures(trackedUrlId: string): Promise<string | undefined> {
+  const newest = await prisma.urlSnapshot.findFirst({
+    where: { trackedUrlId, ...ARCHIVED_CAPTURES_ONLY },
+    orderBy: { capturedAt: 'desc' },
+    select: { waybackTimestamp: true },
+  });
+  if (!newest?.waybackTimestamp) return undefined;
+  // One second past the newest we hold, so CDX cannot return it again. Same
+  // convention as computeNextFromDate, for the same reason.
+  return (BigInt(newest.waybackTimestamp) + BigInt(1)).toString().padStart(14, '0');
 }
 
 /** Thrown when a scan is cancelled mid-flight so runFullScan exits cleanly. */
@@ -513,46 +570,70 @@ export class WaybackScraper {
       return { trackedUrlId: trackedUrl.id, diffs: [] };
     }
 
-    const texts: string[] = [];
-    // Full identities, not just keys: evidence derived from a change between two
-    // captures is hashed from their timestamps and content hashes.
-    const snaps: ({ id: string; waybackTimestamp: string; contentHash: string } | null)[] = [];
+    // ONE array of observations, not three parallel ones kept in step by index.
+    //
+    // `texts[i]`, `snaps[i]` and `snapshots[i]` were correct only while all three
+    // stayed exactly the same length, which nothing enforced — and reading them
+    // back required index arithmetic (`i - 1`) that no type system can check while
+    // noUncheckedIndexedAccess is off. Binding the three facts about one capture
+    // together removes the class: there is no index to get wrong, so the guard
+    // below is about DATA (a failed fetch stores empty text) rather than about
+    // whether an array position exists.
+    //
+    // `stored` is the full identity rather than a key: evidence derived from a
+    // change between two captures is hashed from their timestamps and content
+    // hashes.
+    interface Observation {
+      snap: RawSnapshot;
+      text: string;
+      stored: { id: string; waybackTimestamp: string; contentHash: string } | null;
+    }
+    const observations: Observation[] = [];
     for (const snap of snapshots) {
       try {
         const readings = await this.scrapeSnapshotReadings(url, snap.timestamp);
-        texts.push(readings.extracted);
+        let stored: Observation['stored'] = null;
         try {
-          snaps.push(
-            await recordArchivedCapture(
-              trackedUrl.id, snap.timestamp, url, readings.extracted, readings.bytes, readings.contentType, readings.contentEncoding,
-            ),
+          stored = await recordArchivedCapture(
+            trackedUrl.id, snap.timestamp, url, readings.extracted, readings.bytes, readings.contentType, readings.contentEncoding,
           );
         } catch {
-          snaps.push(null);
+          stored = null;
         }
+        observations.push({ snap, text: readings.extracted, stored });
       } catch (err) {
         console.warn(
           `[WaybackScraper] Skipping ${snap.timestamp}: ${
             err instanceof Error ? err.message : String(err)
           }`,
         );
-        texts.push('');
-        snaps.push(null);
+        // Empty text, deliberately kept in sequence: a failed fetch must break the
+        // chain at that point rather than silently diff across the hole.
+        observations.push({ snap, text: '', stored: null });
       }
       await sleep(FETCH_DELAY_MS);
     }
 
     const results: SnapshotDiff[] = [];
 
-    for (let i = 1; i < snapshots.length; i++) {
-      const prev = texts[i - 1];
-      const curr = texts[i];
-      const snap = snapshots[i];
-      const prevSnap = snapshots[i - 1];
+    // Carry the previous observation rather than indexing backwards. `prev` is
+    // genuinely undefined on the first iteration, so this guard is real in both
+    // directions — the compiler agrees it can be undefined, and the linter agrees
+    // the check is not redundant. Indexing `[i - 1]` satisfied neither.
+    let previous: Observation | undefined;
+    for (const current of observations) {
+      const prev = previous;
+      previous = current;
 
-      if (!prev || !curr) continue;
+      // Skip the pair when either side failed to fetch. Unchanged behaviour: a
+      // hole breaks the chain on both sides of itself rather than being diffed
+      // across, which would report the whole page as removed and re-added.
+      if (!prev?.text || !current.text) continue;
 
-      const rawDiff = diffLines(prev, curr, { ignoreWhitespace: true });
+      const snap = current.snap;
+      const prevSnap = prev.snap;
+
+      const rawDiff = diffLines(prev.text, current.text, { ignoreWhitespace: true });
       // All changed chunks (any size) — stored verbatim for display
       const deletions = groupDiffChunks(rawDiff, 'removed');
       const additions = groupDiffChunks(rawDiff, 'added');
@@ -563,8 +644,8 @@ export class WaybackScraper {
       const beforeDate = timestampToDate(prevSnap.timestamp);
       const afterDate = timestampToDate(snap.timestamp);
       const snapshotUrl = viewerCaptureUrl(snap.timestamp, url);
-      const beforeSnapshotId = snaps[i - 1]?.id ?? undefined;
-      const afterSnapshotId = snaps[i]?.id ?? undefined;
+      const beforeSnapshotId = prev.stored?.id ?? undefined;
+      const afterSnapshotId = current.stored?.id ?? undefined;
 
       // Truly identical after normalisation — record pair but skip AI
       if (deletions.length === 0 && additions.length === 0) {
@@ -666,8 +747,8 @@ export class WaybackScraper {
             url: trackedUrl.url,
             afterDate,
             snapshotUrl,
-            beforeSnapshot: requireSnapshotIdentity(snaps[i - 1], 'before'),
-            afterSnapshot: requireSnapshotIdentity(snaps[i], 'after'),
+            beforeSnapshot: requireSnapshotIdentity(prev.stored, 'before'),
+            afterSnapshot: requireSnapshotIdentity(current.stored, 'after'),
             aiSignificance: analysis.legalSignificance,
             investigativeCategories: analysis.investigativeCategories,
             deletedText: JSON.stringify(analysis.deletedItems),
@@ -808,8 +889,11 @@ export class WaybackScraper {
     let offlineFailures = 0;
     let otherFailures = 0;
 
-    for (let i = 0; i < snapshotsList.length; i++) {
-      const entry = snapshotsList[i];
+    // `.entries()` rather than an index, deliberately: it yields `[number, T]`, so
+    // `entry` is typed as present instead of needing a guard the linter would then
+    // call redundant. Mutation through the yielded reference still works — this
+    // loop sets entry.status — because it is the same object, not a copy.
+    for (const [i, entry] of snapshotsList.entries()) {
 
       // Cancellation/pause checkpoint — throw so runFullScan exits cleanly without marking FAILED
       if (trackedUrlId && this._cancelledScanIds.has(trackedUrlId)) {
@@ -882,7 +966,7 @@ export class WaybackScraper {
         const deletionsForAI = classifierInputChunks(deletions);
         const additionsForAI = classifierInputChunks(additions);
 
-        const beforeDate = i > 0 ? timestampToDate(snapshotsList[i - 1].timestamp) : 'Unknown';
+        const beforeDate = prevEntry ? timestampToDate(prevEntry.timestamp) : 'Unknown';
         const afterDate = timestampToDate(entry.timestamp);
         const snapshotUrl = viewerCaptureUrl(entry.timestamp, job.url);
         const beforeSnapshotId = previousSnapshot?.id ?? undefined;
@@ -1117,17 +1201,47 @@ export class WaybackScraper {
           // Fresh scan
           job = await this.createJob(url, trackedUrlId);
         } else if (job.status === 'COMPLETED') {
-          // Previous batch done — check if CDX has more
-          const nextFromDate = computeNextFromDate(job.snapshotsList, job.totalSnapshots);
-          if (nextFromDate === null) {
-            await prisma.trackedUrl.update({
-              where: { id: trackedUrlId },
-              data: { status: 'COMPLETED' },
-            });
-            return;
+          // TWO DIFFERENT QUESTIONS REACH THIS BRANCH, and conflating them is
+          // what made a scan report success while fetching nothing.
+          //
+          //   batchesProcessedThisRun > 0  — we just finished a page of THIS
+          //                                  run's walk. "Is there another
+          //                                  page?" is within-run pagination,
+          //                                  and the sentinel answers it.
+          //
+          //   batchesProcessedThisRun === 0 — a FRESH request against a job some
+          //                                  earlier run completed. "Has the
+          //                                  Archive gained captures since?" is
+          //                                  a question about the world, and no
+          //                                  stored counter can answer it.
+          //
+          // The old code asked the sentinel both times. A finished scan always
+          // ends with totalSnapshots < MAX_SNAPSHOTS — that is what finishing
+          // means — so every later scan request short-circuited to COMPLETED
+          // WITHOUT ONE REQUEST TO THE ARCHIVE. Silence was indistinguishable
+          // from "nothing new", which is the same family as the diff truncation
+          // this whole rebuild descends from.
+          if (batchesProcessedThisRun > 0) {
+            const nextFromDate = computeNextFromDate(job.snapshotsList, job.totalSnapshots);
+            if (nextFromDate === null) {
+              await prisma.trackedUrl.update({
+                where: { id: trackedUrlId },
+                data: { status: 'COMPLETED' },
+              });
+              return;
+            }
+            job = await this.createJob(url, trackedUrlId, nextFromDate);
+          } else {
+            // A fresh scan ALWAYS reaches the Archive at least once. If CDX
+            // returns nothing, processJob still completes with totalSnapshots 0
+            // — and that zero now means "we asked and there is nothing newer",
+            // which it never did before.
+            job = await this.createJob(
+              url,
+              trackedUrlId,
+              await resumePointFromCaptures(trackedUrlId),
+            );
           }
-          // Reset the same job record for the next batch
-          job = await this.createJob(url, trackedUrlId, nextFromDate);
         } else if (job.status === 'FAILED') {
           // A previous attempt failed. Retry it rather than refusing forever.
           //
