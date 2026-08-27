@@ -99,6 +99,17 @@ Note what Phase 1 does to this table: once `rawText` is stored, most phrase chec
 observations and become pure functions of local data. What stays genuinely observational is small —
 the fetch itself, archive availability, and chain state.
 
+### `UNAVAILABLE` is a verdict about a CHECK, never about DATA
+
+A check may legitimately be unavailable: the Archive was down, so this claim is unverified. That is a
+true and useful state.
+
+**A mandatory attribute may not.** `rawText` is not a check result — it is part of what a snapshot *is*.
+Conflating the two is how "we could not check" becomes indistinguishable from "we never stored it",
+and a metric counting rows that lack mandatory data is an admission that the schema permits invalid
+rows. The answer is never to report the partial state; it is to make it impossible, and to accept a
+migration as the price.
+
 ### The record
 
 One shape for every check, mirroring `ClaimTrajectoryComputation`, which already stores
@@ -168,25 +179,42 @@ it is checking. Nothing detects that today.
 
 ### Phase 1 — store the document (rows 2, 3)
 
-`UrlSnapshot` gains **`rawText String?`** and **`rawContentHash String?`**, additive and nullable.
-Nothing existing changes: `contentHash` keeps its meaning and **every anchor stays valid**.
+`UrlSnapshot` gains **`rawText`** and **`rawContentHash`**, and they end up **`NOT NULL`**. A snapshot
+without the document it was extracted from is not a valid snapshot.
 
 `WaybackScraper.scrapeSnapshot` already holds the raw HTML in memory at line 416 and discards it on
 line 417. It returns both readings instead of one. **No extra fetch, no third-party dependency** — the
 only check in this plan with no Internet Archive availability risk.
 
-- **null is meaningful**: it is the `UNAVAILABLE` state for this layer — "we do not hold the document
-  for this capture".
-- `retainedPercent` and the divergence flag are **derived on read, never stored** — the same reasoning
-  as `unanchoredSnapshots`.
-- a one-off backfill for the 83 existing snapshots: read-only against the Archive, idempotent,
-  resumable.
-- storage cost is nothing: 83 × ~6KB.
+`NOT NULL` cannot be added to a populated table directly, so three steps across two deploys:
+
+| step | what | where |
+|---|---|---|
+| **1** | migration A — add both columns **nullable**; code always writes them | deploy |
+| **2** | backfill existing snapshots from the Archive | operational script, per environment |
+| **3** | migration B — `SET NOT NULL` on both | deploy |
+
+After step 3 the partial state is structurally impossible: no counter, no report, nothing to surface.
+If step 3 ever runs before a backfill completes, `migrate deploy` fails and the previous version keeps
+serving — it fails safe by construction. Between steps 1 and 3 the application already enforces it:
+`upsertSnapshot` takes `rawText` as a required parameter, so no code path can create an incomplete row.
+Only pre-existing rows can be incomplete, and only until step 2.
+
+**Fill only when null; never overwrite.** `upsertSnapshot` is deliberately idempotent (`update: {}`),
+so the fill is a separate conditional write. A refetch that *disagrees* with stored raw text means the
+Archive's own copy changed — a finding, and Phase 2's job, not something to silently overwrite.
+
+**`contentHash` is untouched.** Still `sha256(fullText)`, so **zero re-anchoring**; that decision belongs
+to Part A, in its own session.
+
+**Why `rawContentHash` is stored rather than derived**, against §3's own rule: a checksum's entire
+purpose is to disagree with a recomputation. Stored hash beside stored text is how Phase 3 detects that
+the text has been damaged. Derive it and there is nothing to compare against — the recomputation would
+simply reproduce the corruption and call it consistent. This is the same reason `contentHash` is stored.
 
 **Consequences beyond row 2:** divergence becomes computable forever without refetching;
 `verify_claim_text` stops needing the Archive for stored captures (the 503 class of failure
-disappears); Part A's recompute becomes a **local** operation; and re-anchoring becomes a later,
-unforced decision.
+disappears); Part A's recompute becomes a **local** operation; storage cost is nothing (83 × ~6KB).
 
 ### Phase 2 — pin the source (row 1)
 
