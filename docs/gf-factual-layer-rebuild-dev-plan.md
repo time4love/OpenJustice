@@ -397,6 +397,58 @@ gzipped; inflate is a named step in a chain the version recites —
 `Content-Type` (charset) and `Content-Encoding`. Charset was the first to prove load-bearing and
 happened not to matter; encoding mattered on 8% of captures.
 
+#### LEVEL 1 IS DONE — both environments, closed against an EXTERNAL criterion
+
+**2026-08-27.** `sha1b32(document) == cdx.digest` for all 83 captures on staging (`a43c536`) and
+production. First level here declared done against something outside the platform's own assertions.
+
+| | staging | production |
+|---|---|---|
+| `verify-against-cdx` | **83 VERIFIED / 0 CONTRADICTED / 0 UNAVAILABLE** | **83 / 0 / 0** |
+| `documentHash` fingerprint | `ccf9a43d96a62968a6652662d3dda108` | **identical** |
+| payload total | **3,995,496 bytes** | **identical** |
+| `documentContentEncoding` | identity 76, gzip 7 | identity 76, gzip 7 |
+| `textExtractionVersion` | 83 at v2 | 83 at v2 |
+| `textHash` / `contentHash` | `de77a9bd…` / `c2ec4433…` unchanged | unchanged |
+| unanchored | 0 | 0 |
+
+**The convergence is the strongest result.** Two corpora reconciled by *different paths* — staging
+across an interrupted run, a resumption and a transient database failure (7 repairs as 4 + 3);
+production in one clean pass (7 repairs at once) — arrived at **byte-identical state**: same 83
+captures, same 3,995,496 bytes, same fingerprint. That came from the discipline of capturing
+before-states, not from a check anyone designed, and it would catch environment divergence the moment
+it appeared.
+
+*The production deploy did NOT abort, and that was predicted before it ran.* `20260827190000` adds a
+nullable column with no data precondition, so unlike the previous two ships there was nothing for the
+four-step procedure to recover from: applied in 748 ms, one ledger row, no degraded window. Worth
+recording because **a procedure that always seems necessary is one nobody is checking the precondition
+for** — the prediction made it a test rather than a hope.
+
+##### CORRECTED: a stale measurement explained away instead of re-run
+
+The first report of this result carried a footnote claiming production held **3902 kB** against
+staging's **4157 kB**, "expected" because staging's partial run had replaced three payloads early.
+
+**That was wrong, and it contradicted the fingerprint match cited two paragraphs above it.** Identical
+`documentHash` on all 83 rows means identical payloads, which means identical byte totals. Both could
+not be true.
+
+The real cause: **4157 kB was a stale figure**, measured during the payload backfill while all 83
+payloads were still axios-inflated. Reconciliation then stored the 7 gzipped captures as served and the
+total fell by ~264 kB. Re-measured: **both environments hold exactly 3,995,496 bytes.**
+
+*This is the second instance in this document of a pattern named in it:* **an accurate fact reported in
+place of the relevant one reads as an explanation and stops the next question being asked.** The first
+was `archiveHttp` reporting `HTTP 200` for an `ECONNABORTED` timeout. The second was written by the
+same author who had recorded the first, two days later, in the closing report of the work that fixed it.
+Every component of the explanation was individually true — staging *had* had a partial run, three
+captures *were* replaced early — and the conclusion was false, which is what made it convincing enough
+to record.
+
+**A wrong explanation in the record is worse than an open question, because nobody re-asks.** One
+`SELECT sum(octet_length(document))` settled it.
+
 ##### RETRACTED: "the Archive's replay disagrees with its own index"
 
 During the investigation it was said, in two forms, that the Archive was internally inconsistent — and
