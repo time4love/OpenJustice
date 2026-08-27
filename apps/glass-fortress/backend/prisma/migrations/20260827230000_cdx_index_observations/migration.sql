@@ -10,6 +10,7 @@ CREATE TABLE "CdxIndexEntry" (
     "status" "CdxEntryStatus" NOT NULL,
     "observedAt" TIMESTAMP(3) NOT NULL,
     "snapshotId" TEXT,
+    "comparedToSnapshotId" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
@@ -49,6 +50,9 @@ ALTER TABLE "CdxIndexEntry" ADD CONSTRAINT "CdxIndexEntry_trackedUrlId_fkey" FOR
 
 -- AddForeignKey
 ALTER TABLE "CdxIndexEntry" ADD CONSTRAINT "CdxIndexEntry_snapshotId_fkey" FOREIGN KEY ("snapshotId") REFERENCES "UrlSnapshot"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "CdxIndexEntry" ADD CONSTRAINT "CdxIndexEntry_comparedToSnapshotId_fkey" FOREIGN KEY ("comparedToSnapshotId") REFERENCES "UrlSnapshot"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "CdxQuery" ADD CONSTRAINT "CdxQuery_trackedUrlId_fkey" FOREIGN KEY ("trackedUrlId") REFERENCES "TrackedUrl"("id") ON DELETE CASCADE ON UPDATE CASCADE;

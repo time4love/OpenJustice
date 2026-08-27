@@ -502,6 +502,10 @@ describe('WaybackScraper.processJob', () => {
     for (const [call] of updates) {
       expect(call.data['status']).toBe('UNCHANGED');
       expect(call.data['snapshotId']).toBeUndefined();
+      // THE VERDICT NAMES WHAT IT WAS COMPUTED AGAINST, and it must be the
+      // predecessor actually compared — not merely some id. Asserting only that
+      // the field is populated let a mutation passing the WRONG id survive.
+      expect(call.data['comparedToSnapshotId']).toBe('predecessor-snapshot-id');
     }
     // No capture was created, so nothing may claim one was stored.
     expect(updates.some(([c]) => c.data['status'] === 'STORED')).toBe(false);

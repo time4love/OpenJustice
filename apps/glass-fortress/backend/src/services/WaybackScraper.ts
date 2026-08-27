@@ -161,10 +161,14 @@ async function recordArchivedCapture(
   // instant. Done here, in the one function both scan paths go through, so it
   // cannot be handled by one writer and forgotten by the other.
   if (recorded.outcome === 'UNCHANGED') {
+    // `recorded.id` IS the predecessor — that is what UNCHANGED means — so it is
+    // both the capture this must NOT be linked to as its own, and exactly the one
+    // the verdict was computed against.
     await markCdxEntryUnchanged({
       trackedUrlId,
       waybackTimestamp: timestamp,
       digest: cdxDigest,
+      comparedToSnapshotId: recorded.id,
     });
   } else {
     await markCdxEntryStored({

@@ -219,8 +219,8 @@ model UrlSnapshot {
   onChainTxHash           String? // Blockchain tx hash once contentHash is registered on-chain
   createdAt               DateTime          @default(now())
 
-  beforeDiffs   UrlVersionDiff[] @relation("BeforeSnapshot")
-  afterDiffs    UrlVersionDiff[] @relation("AfterSnapshot")
+  beforeDiffs    UrlVersionDiff[] @relation("BeforeSnapshot")
+  afterDiffs     UrlVersionDiff[] @relation("AfterSnapshot")
   // The index entry this capture was made from, when it came from the Archive.
   //
   // Deliberately NOT a `cdxDigest` column on this table. Two hash-shaped columns
@@ -228,7 +228,9 @@ model UrlSnapshot {
   // already paid for it: a base32 SHA-1 was written into `documentHash`, a
   // SHA-256 column, and stayed there across both environments. The digest lives
   // on CdxIndexEntry, one join away, where nothing can mistake it for ours.
-  cdxIndexEntry CdxIndexEntry?
+  cdxIndexEntry  CdxIndexEntry?   @relation("CdxEntryCapture")
+  /// Index entries whose UNCHANGED verdict was computed against this capture.
+  cdxComparisons CdxIndexEntry[]  @relation("CdxEntryComparedTo")
 
   @@unique([trackedUrlId, waybackTimestamp])
   // A TrackedUrl cannot hold two captures of the same instant. This is the
@@ -1626,10 +1628,10 @@ enum CdxEntryStatus {
 /// reopened twice to escape — enforced by test/liveArchiveObservers.test.ts, not
 /// by this comment.
 model CdxIndexEntry {
-  id               String         @id @default(cuid())
-  trackedUrlId     String
-  trackedUrl       TrackedUrl     @relation(fields: [trackedUrlId], references: [id], onDelete: Cascade)
-  waybackTimestamp String
+  id                   String         @id @default(cuid())
+  trackedUrlId         String
+  trackedUrl           TrackedUrl     @relation(fields: [trackedUrlId], references: [id], onDelete: Cascade)
+  waybackTimestamp     String
   /// The digest CDX PUBLISHED for this capture — base32(SHA-1) of the response
   /// body — as observed at `observedAt`.
   ///
@@ -1637,15 +1639,34 @@ model CdxIndexEntry {
   /// is that its right-hand side comes from outside this platform, and reading it
   /// from here would make the external axis a second internal check while every
   /// count stayed green.
-  digest           String
-  status           CdxEntryStatus
+  digest               String
+  status               CdxEntryStatus
   /// WHEN THE ARCHIVE TOLD US THIS. Not when it became true.
-  observedAt       DateTime
+  observedAt           DateTime
   /// The capture we made from this entry, when we hold one.
-  snapshotId       String?        @unique
-  snapshot         UrlSnapshot?   @relation(fields: [snapshotId], references: [id], onDelete: SetNull)
-  createdAt        DateTime       @default(now())
-  updatedAt        DateTime       @updatedAt
+  snapshotId           String?        @unique
+  snapshot             UrlSnapshot?   @relation("CdxEntryCapture", fields: [snapshotId], references: [id], onDelete: SetNull)
+  /// WHAT AN `UNCHANGED` VERDICT WAS COMPUTED AGAINST.
+  ///
+  /// Three of the four statuses are FACTS and stay true: a row exists or it does
+  /// not (STORED), the Archive serves it or refuses (UNSERVABLE), we looked or we
+  /// did not (UNFETCHED). `UNCHANGED` is the odd one — it is a JUDGEMENT relative
+  /// to a corpus state, meaning "its text equals the capture immediately
+  /// preceding it". Store a capture between those two timestamps and the
+  /// predecessor changes, and the judgement may no longer hold.
+  ///
+  /// Unlikely but not hypothetical: the Archive can back-fill an OLDER capture,
+  /// which is precisely the case that would invalidate a neighbour's verdict
+  /// silently. §3 answers it — record what the verdict was computed against — and
+  /// this is the same discipline as `sourceStateHash` on trajectory computations.
+  /// Without it the system would carry one verdict that can quietly stop being
+  /// true.
+  ///
+  /// Deliberately NOT unique: many entries can be judged against one predecessor.
+  comparedToSnapshotId String?
+  comparedTo           UrlSnapshot?   @relation("CdxEntryComparedTo", fields: [comparedToSnapshotId], references: [id], onDelete: SetNull)
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
 
   /// UNIQUE ON THE DIGEST TOO, AND THAT IS THE WHOLE POINT.
   ///

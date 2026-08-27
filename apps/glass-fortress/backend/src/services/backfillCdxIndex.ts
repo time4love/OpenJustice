@@ -135,16 +135,20 @@ export async function backfillCdxIndex(opts: {
         row.timestamp,
       );
       const derived = deriveText(bytes, contentType, contentEncoding);
-      const { unchanged: isUnchanged } = await noveltyAgainstPredecessor({
+      const { unchanged: isUnchanged, preceding } = await noveltyAgainstPredecessor({
         trackedUrlId: tracked.id,
         capturedAt: waybackTimestampToDate(row.timestamp),
         textHash: derived.textHash,
       });
-      if (isUnchanged) {
+      if (isUnchanged && preceding) {
         await markCdxEntryUnchanged({
           trackedUrlId: tracked.id,
           waybackTimestamp: row.timestamp,
           digest: row.digest,
+          // The verdict records WHAT IT WAS COMPUTED AGAINST, so a later
+          // back-filled capture between the two makes the staleness detectable
+          // rather than leaving a judgement that quietly stopped being true.
+          comparedToSnapshotId: preceding.id,
         });
         unchanged++;
       } else {

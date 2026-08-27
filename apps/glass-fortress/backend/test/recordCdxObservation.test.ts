@@ -146,6 +146,7 @@ describe('UNCHANGED is the novelty rule working, and it never links a capture', 
       trackedUrlId: TRACKED,
       waybackTimestamp: '20220703090600',
       digest: 'DDD',
+      comparedToSnapshotId: 'predecessor-1',
     });
 
     const { where, data } = entryUpdateMany.mock.calls[0][0];
@@ -154,7 +155,7 @@ describe('UNCHANGED is the novelty rule working, and it never links a capture', 
     // this entry to a capture it did not produce, and every "which capture came
     // from this entry" answer would be wrong for exactly the rows this status
     // describes.
-    expect(data).toEqual({ status: 'UNCHANGED' });
+    expect(data).toEqual({ status: 'UNCHANGED', comparedToSnapshotId: 'predecessor-1' });
     expect(data).not.toHaveProperty('snapshotId');
     expect(where.digest).toBe('DDD');
   });
@@ -164,7 +165,26 @@ describe('UNCHANGED is the novelty rule working, and it never links a capture', 
       trackedUrlId: TRACKED,
       waybackTimestamp: '20220703090600',
       digest: 'DDD',
+      comparedToSnapshotId: 'predecessor-1',
     });
     expect(entryUpdateMany.mock.calls[0][0].where.status).toEqual({ not: 'STORED' });
+  });
+});
+
+
+describe('UNCHANGED is a judgement, so it records what it was judged against', () => {
+  it('stores comparedToSnapshotId — the only status that can stop being true', async () => {
+    // STORED, UNSERVABLE and UNFETCHED are facts and stay true. UNCHANGED means
+    // "text equals the capture immediately preceding it", which a later
+    // back-filled capture between the two can invalidate silently. Recording the
+    // predecessor makes that staleness detectable instead of invisible — the same
+    // discipline as sourceStateHash on trajectory computations.
+    await markCdxEntryUnchanged({
+      trackedUrlId: TRACKED,
+      waybackTimestamp: '20220703090600',
+      digest: 'DDD',
+      comparedToSnapshotId: 'snap-predecessor',
+    });
+    expect(entryUpdateMany.mock.calls[0][0].data.comparedToSnapshotId).toBe('snap-predecessor');
   });
 });

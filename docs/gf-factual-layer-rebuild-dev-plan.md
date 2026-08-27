@@ -1477,6 +1477,28 @@ would be the same conflation one step further down.
 project has already learned the expensive way twice with hard-coded bounds. Recorded here so that if it
 ever does fire, the answer is a new status rather than a shrug into `UNFETCHED`.
 
+##### `UNCHANGED` is a JUDGEMENT, so it records what it was judged against
+
+Three of the four statuses are **facts** and stay true: a row exists or it does not (`STORED`), the
+Archive serves it or refuses (`UNSERVABLE`), we looked or we did not (`UNFETCHED`). **`UNCHANGED` is the
+odd one out** — it means *"its text equals the capture immediately preceding it"*, which is a judgement
+relative to a corpus state. Store a capture between those two timestamps and the predecessor changes,
+and the verdict may no longer hold.
+
+Not hypothetical in the direction that matters: **the Archive can back-fill an OLDER capture**, which is
+precisely the case that would invalidate a neighbour's verdict silently.
+
+`comparedToSnapshotId` answers it — §3 applied verbatim, *record what the verdict was computed against*,
+and the same discipline as `sourceStateHash` on trajectory computations. Without it the system would
+carry exactly one verdict that can quietly stop being true. The parameter is **required**, so the
+provenance cannot be omitted by a caller.
+
+*Two mutations, and the second is the more instructive:* dropping the column from the write kills two
+tests. **Passing the WRONG id survived** — because the recorder's test asserted the value it was
+*given*, while nothing asserted which value the scraper *passed*. Asserting a field is populated is not
+asserting it is right, which is the bag-assertion lesson in a new costume. Now pinned to the actual
+predecessor.
+
 #### Technique worth naming: make the field REQUIRED first, and let the compiler enumerate the callers
 
 `getSnapshotsList` gained `trackedUrlId` as a **required** parameter rather than an optional one, and

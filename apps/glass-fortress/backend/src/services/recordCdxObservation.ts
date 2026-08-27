@@ -135,6 +135,17 @@ export async function markCdxEntryUnchanged(input: {
   trackedUrlId: string;
   waybackTimestamp: string;
   digest: string;
+  /**
+   * The capture the verdict was computed against — REQUIRED, not optional.
+   *
+   * UNCHANGED is the only status that is a judgement rather than a fact, so it is
+   * the only one that can quietly stop being true: back-fill an older capture
+   * between this entry and its predecessor and the comparison no longer holds.
+   * §3 answers that by recording what the verdict was computed against, and
+   * making the parameter required means the provenance cannot be omitted by a
+   * caller — the same reason `recordCapture` takes `document` as required.
+   */
+  comparedToSnapshotId: string;
 }): Promise<void> {
   await prisma.cdxIndexEntry.updateMany({
     where: {
@@ -143,6 +154,9 @@ export async function markCdxEntryUnchanged(input: {
       digest: input.digest,
       status: { not: CdxEntryStatus.STORED },
     },
-    data: { status: CdxEntryStatus.UNCHANGED },
+    data: {
+      status: CdxEntryStatus.UNCHANGED,
+      comparedToSnapshotId: input.comparedToSnapshotId,
+    },
   });
 }
