@@ -773,7 +773,14 @@ Previously recorded here as a project-wide issue owned by no level. Measured rat
 npx tsc --noEmit --noUncheckedIndexedAccess -p tsconfig.json
 ```
 
-**133 errors across 12 files.** By rule: `TS18048` (possibly undefined) 85 · `TS2532` 30 · `TS2345` 13 ·
+**133 errors across 17 files.**
+
+> *Corrected 2026-08-27, and the cause is this document's own subject.* This was first reported as
+> **"133 errors across 12 files"**. The error total was right and the denominator was wrong, because
+> the by-file breakdown was produced with `… | sort -rn | head -12` and **the number of rows displayed
+> was reported as the number of files**. A truncation reported as a total — the exact family this
+> entire plan descends from, committed while writing the entry that measures it. Caught by the
+> reviewing session recounting rather than reading. `sort -u | wc -l` settles it: **17**. By rule: `TS18048` (possibly undefined) 85 · `TS2532` 30 · `TS2345` 13 ·
 `TS2322` 4 · `TS2538` 1.
 
 Too large to fold into an unrelated change, too small to be indefinite. **And it is NOT a 133-error
@@ -797,6 +804,21 @@ The third deserves its own line: `measureNoUncheckedIndexedAccess` returns `{}` 
 **zero**. If `tsc` fails and nothing parses, that is the output format moving, not the debt vanishing —
 and reporting it as "no errors" would be the vacuous pass this document keeps catching.
 
+**What actually stops someone hand-editing the baseline — stated precisely, because the obvious answer
+is wrong.** The baseline file carries a `_comment` saying to regenerate it rather than edit it. **That
+comment is not the control.** This document's own first section says so: *a comment is not a control,
+and a tool a human must remember to run is not a control either.*
+
+The real control is that **the baseline is a committed file, so raising it shows up as a diff in the
+pull request, and a reviewer sees a number going the wrong way.** That is a genuine mechanism here
+rather than an aspiration, because the two-session split supplies the reviewer — and it is the reason
+the baseline is a file at all instead of a constant computed at runtime, which would have made the same
+loosening invisible.
+
+Said explicitly so the next person trusts the right thing. Left implicit, the `_comment` looks like the
+mechanism, and someone would eventually delete it as noise without realising nothing was lost —
+or worse, keep it and believe it was doing something.
+
 **2. Fix `WaybackScraper.ts` inside Phase A**, since Phase A must open that file anyway for
 `computeNextFromDate`. Twenty errors in a file already being edited is incremental; twenty errors in a
 file nobody is touching is a chore that never gets scheduled. The remaining files ride on the levels
@@ -806,17 +828,27 @@ with Level 9.
 **That is the whole method here applied to itself:** work nobody owns does not land, so attach it to
 changes already planned and ratchet the rest so it cannot grow meanwhile.
 
-**The concentration is the part worth acting on.** The errors sit in the files this rebuild is actively
-touching:
+**The DISTRIBUTION is the plan, and it is better than "fix one file during Phase A".**
+**100 of the 133 sit in six files, and those six map onto the level path** — so the debt is not a
+project anyone has to schedule. Each level opens its own files anyway, clears them, and the ratchet
+locks the gain in.
 
-| file | errors | why that matters here |
+| file | errors | cleared by |
 |---|---|---|
-| `src/services/WaybackScraper.ts` | **20** | the file Level 2 Phase A must change (`computeNextFromDate`) |
+| `src/services/WaybackScraper.ts` | **20** | **Level 2 Phase A** — must open it for `computeNextFromDate` |
 | `src/lib/thesisAssertions.ts` | 18 | Level 9 |
 | `src/services/claimTrajectory.ts` | 17 | Level 6 |
 | `src/mcp/tools/getThesisContext.ts` | 17 | Level 9 |
-| `src/utils/tipTapUtils.ts` | 15 | thesis rendering |
-| `src/services/measureHrefChanges.ts` | **10** | where the problem was first noticed, via `extractHrefs` |
+| `src/utils/tipTapUtils.ts` | 15 | Level 9 — thesis rendering |
+| `src/mcp/tools/getThesisTrajectoryCitations.ts` | 13 | Level 6 |
+| | **100 of 133** | |
+
+The remaining 33 are scattered one to ten per file, including `measureHrefChanges.ts` (10) where the
+problem was first noticed via `extractHrefs`.
+
+**So the 133 disappears as a BY-PRODUCT of work already scheduled, never as work of its own.** That is
+the generalisation of the coupling that made `WaybackScraper.ts` attractive: it was not special, it was
+simply the next level's file.
 
 *Why this compounds, and why it is not merely tidiness.* With the flag off, TypeScript types every
 regex capture group and array index as non-`undefined` while they are `undefined` at runtime — so **the
@@ -828,6 +860,35 @@ is the second — it depends on `match?.[1] !== undefined` and on iterating rath
 **Every correctly-guarded file is therefore one a future lint cleanup could break, with the linter
 arguing for the break.** Each new guarded file adds to that surface, which is why the number is worth
 having now rather than at the end.
+
+##### HOUSE PATTERN: a check that parses must fail loudly when its pattern stops matching
+
+**Third instance in this work, so it stops being a knack and becomes a rule.**
+
+> **Any check that derives its expectation by parsing — source, tool output, a log — must FAIL when the
+> pattern matches nothing. A parse that finds nothing is a broken parser far more often than it is a
+> clean result, and the two are indistinguishable from the outside.**
+
+The failure mode is specific and quiet: the parse returns empty, every assertion downstream becomes
+vacuously true, and the suite goes green **more emphatically than before**. Nothing looks wrong. The
+check has stopped checking and reports success for exactly that reason.
+
+| instance | what a silent zero would have meant |
+|---|---|
+| `mcpToolClassification.test.ts` | "every registered tool is classified" — over zero tools |
+| `documentHashSingleRule.test.ts` | "every `documentHash` writer uses `sha256Bytes`" — over zero writers |
+| `noUncheckedIndexedAccess` measurer | "the debt is zero" — when `tsc` failed and the output format had merely moved |
+| `scriptsLoadEnvFirst.test.ts` | "every script loads env first" — over zero scripts |
+
+Each carries an explicit guard, and each guard has been **mutation-proven by breaking the pattern**:
+the `SET`-clause regex, the diagnostic regex, the directory filter. In every case the test count
+collapsed and the guard fired instead of the suite passing green.
+
+*Distinguish the two shapes, because they are cousins and the fix differs:* an
+**assertion that cannot fail** is one whose expectation is trivially satisfied — a constant
+compared against itself. A **vacuous pass** is an assertion that would be fine, applied to an empty
+set. The first is fixed by making the assertion meaningful; the second by asserting the set is
+non-empty before trusting anything derived from it.
 
 ##### A new defect shape: THE BAG ASSERTION
 
