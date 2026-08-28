@@ -82,7 +82,9 @@ jest.mock('../src/lib/prisma', () => ({
       upsert: jest.fn().mockResolvedValue({ id: 'tracked-url-id-123' }),
     },
     urlVersionDiff: {
-      create: jest.fn().mockResolvedValue({ id: 'diff-id-456' }),
+      // recordDiff UPSERTS on the capture pair, so a rescan converges instead of
+      // duplicating every diff it re-derives.
+      upsert: jest.fn().mockResolvedValue({ id: 'diff-id-456' }),
     },
     urlSnapshot: {
       // The write path is recordCapture, which asks three questions in order:

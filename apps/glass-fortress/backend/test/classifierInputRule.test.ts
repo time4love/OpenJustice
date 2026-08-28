@@ -149,7 +149,12 @@ describe('every diff that gets created records the input rule that produced it',
   it('stamps diffInputVersion at every UrlVersionDiff creation', () => {
     const source = readSource('src/services/WaybackScraper.ts');
 
-    const creates = source.split('urlVersionDiff.create(').length - 1;
+    // Follows the WRITER, which is now recordDiff: diffs used to be created from
+    // eight direct `urlVersionDiff.create` call sites and are funnelled through
+    // one function so a rescan converges on the capture pair rather than
+    // duplicating. Counting the old expression here would have silently dropped
+    // to zero and made the assertion below vacuous.
+    const creates = source.split('recordDiff({').length - 1;
     const stamps = source.split('diffInputVersion: DIFF_INPUT_VERSION').length - 1;
 
     // A row without it is indistinguishable from a row written under the
