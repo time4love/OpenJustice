@@ -29,6 +29,14 @@ export interface SurvivalView {
   chunksChecked: number | null;
   contradictedCount: number;
   checkedAt: string | null;
+  /**
+   * Why there is no usable answer, when the server can say.
+   *
+   * `UNCHECKABLE` has two causes — captures that were never comparable, and a
+   * diff that reported nothing to compare — and one fixed sentence per state
+   * would assert the wrong one for whichever case it was not written for.
+   */
+  reason?: string;
 }
 
 export interface SurvivalLabels {
@@ -117,7 +125,10 @@ export function SurvivalNotice({
       }`}
       dir="auto"
     >
-      <p>{labels.note[survival.state]}</p>
+      {/* The server's reason wins when it has one. The catalogue string is the
+          fallback for states whose cause is not in doubt, and for an older
+          payload that predates the reason being sent. */}
+      <p>{survival.reason ?? labels.note[survival.state]}</p>
       {contradicted && (
         // Stated on the card itself. A diff the documents refute is a record of a
         // pipeline defect, not of a change to the page, and nothing built on it

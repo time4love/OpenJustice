@@ -58,6 +58,26 @@ export type DiffWrite = Omit<
  * which is how this was found. It is simply never promotable.
  */
 export async function recordDiff(data: DiffWrite): Promise<{ id: string }> {
+  // A DIFF SPANS TWO CAPTURES. A row whose two sides are the same capture
+  // describes a transition that did not happen, and it is unfalsifiable by
+  // construction: a document always contains itself, so every reported change
+  // would be refuted and every empty one would vacuously pass.
+  //
+  // THROWS RATHER THAN SKIPS, and that is the difference between this guard and
+  // the one in the scan paths. There the CAUSE is known — an UNCHANGED capture
+  // resolves to its predecessor — so skipping is the correct, quiet handling of
+  // an expected case. Here the cause is unknown by definition: anything reaching
+  // this line found a way to pair a capture with itself that nobody anticipated,
+  // and swallowing it would let the next such route write silently, exactly as
+  // the last one did until a real scan surfaced a single row among 22.
+  if (data.beforeSnapshotId === data.afterSnapshotId) {
+    throw new Error(
+      `recordDiff: refusing a diff whose two sides are the same capture ` +
+        `(${data.beforeSnapshotId}). A diff spans a transition between two captures; ` +
+        'a capture compared against itself is not one.',
+    );
+  }
+
   const survival = await computeDiffSurvival({
     beforeSnapshotId: data.beforeSnapshotId,
     afterSnapshotId: data.afterSnapshotId,

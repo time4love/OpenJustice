@@ -104,9 +104,18 @@ jest.mock('../src/lib/prisma', () => ({
       // branch overrides the relevant one.
       findUnique: jest.fn().mockResolvedValue(null),
       findFirst: jest.fn().mockResolvedValue(null),
-      create: jest
-        .fn()
-        .mockResolvedValue({ id: 'snapshot-id-abc', waybackTimestamp: '20220101120000' }),
+      // A DISTINCT ID PER CAPTURE, which the constant `snapshot-id-abc` was not.
+      //
+      // Every capture resolving to one id meant every diff these tests produced
+      // was a capture paired with ITSELF — the exact shape a real scan later hit
+      // and `recordDiff` now refuses. The fixture was modelling a state the
+      // database cannot hold, so it could not have caught it.
+      create: jest.fn().mockImplementation(({ data }: { data: { waybackTimestamp: string } }) =>
+        Promise.resolve({
+          id: `snapshot-${data.waybackTimestamp}`,
+          waybackTimestamp: data.waybackTimestamp,
+        }),
+      ),
       // Retained solely so the "issues no repair update" test can assert it is
       // NEVER called. Nothing in the service reaches it any more.
       updateMany: jest.fn().mockResolvedValue({ count: 1 }),

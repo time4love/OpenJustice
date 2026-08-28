@@ -47,7 +47,7 @@ jest.mock('../src/services/evidenceOnChain', () => ({
 import request from 'supertest';
 import express from 'express';
 import { evidenceRouter } from '../src/routes/evidenceRoutes';
-import { survivalSourceStateHash } from '../src/lib/diffSurvival';
+import { SURVIVAL_CHECK_VERSION, survivalSourceStateHash } from '../src/lib/diffSurvival';
 import { TEXT_VERSION } from './helpers/survivalFixture';
 
 const app = express();
@@ -108,6 +108,7 @@ function diffRow(over: Record<string, unknown>): Record<string, unknown> {
 function verdict(value: 'CONTRADICTED' | 'SURVIVES'): Record<string, unknown> {
   return {
     survivalVerdict: value,
+    survivalCheckVersion: SURVIVAL_CHECK_VERSION,
     survivalTextVersion: TEXT_VERSION,
     survivalCheckedAt: new Date('2026-08-28'),
     survivalChunksChecked: 1,

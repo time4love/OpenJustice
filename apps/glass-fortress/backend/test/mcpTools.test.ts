@@ -105,7 +105,7 @@ jest.mock('../src/services/GapRevisionAgent', () => ({
 
 import { prisma } from '../src/lib/prisma';
 import { survivalFixture, TEXT_VERSION } from './helpers/survivalFixture';
-import { survivalSourceStateHash } from '../src/lib/diffSurvival';
+import { SURVIVAL_CHECK_VERSION, survivalSourceStateHash } from '../src/lib/diffSurvival';
 import { admitUrl } from '../src/services/admitUrl';
 import { triggerAIAnalysis } from '../src/services/thesisAnalysis';
 import { VectorStoreService } from '../src/services/VectorStoreService';
@@ -340,6 +340,7 @@ describe('getForensicTimelineHandler', () => {
       ...survivalFixture({
         rawDeletedText,
         survivalVerdict: 'CONTRADICTED',
+        survivalCheckVersion: SURVIVAL_CHECK_VERSION,
         survivalTextVersion: TEXT_VERSION,
         survivalCheckedAt: new Date('2026-08-28'),
         survivalChunksChecked: 1,

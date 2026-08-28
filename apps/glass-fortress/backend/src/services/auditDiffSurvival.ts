@@ -1,6 +1,6 @@
 import { SurvivalVerdict } from '@prisma/client';
 import { prisma } from '../lib/prisma';
-import { survivalSourceStateHash } from '../lib/diffSurvival';
+import { SURVIVAL_CHECK_VERSION, survivalSourceStateHash } from '../lib/diffSurvival';
 
 /**
  * IS EVERY DIFF'S VERDICT PRESENT, AND IS IT STILL ABOUT THIS DIFF?
@@ -71,6 +71,7 @@ export function survivalStateOf(diff: {
   survivalVerdict: SurvivalVerdict | null;
   survivalSourceStateHash: string | null;
   survivalTextVersion: string | null;
+  survivalCheckVersion: string | null;
   rawDeletedText: string;
   rawAddedText: string;
   beforeSnapshot: { textHash: string; textExtractionVersion: string };
@@ -95,6 +96,25 @@ export function survivalStateOf(diff: {
       reason:
         'The verdict was computed against different inputs than this row now holds — ' +
         'either the captures were re-derived or the diff’s own chunks were rewritten.',
+    };
+  }
+
+  // THE RULE CAN MOVE WHILE THE DATA STANDS STILL, and the hash cannot see that.
+  //
+  // It commits to the check's four INPUTS, so it catches a verdict whose data
+  // changed underneath it. When the CHECKER's semantics change — zero-chunk diffs
+  // ceasing to count as SURVIVES — every input is untouched, the hash still
+  // matches, and 88 of 103 stored verdicts on staging were wrong while the audit
+  // called them all CURRENT. NULL is included: it is a verdict from a rule older
+  // than any named one, which is the same reasoning that makes a NULL verdict
+  // UNCHECKED rather than passing.
+  if (diff.survivalCheckVersion !== SURVIVAL_CHECK_VERSION) {
+    return {
+      state: 'STALE',
+      reason:
+        `The verdict was reached under check rule ${diff.survivalCheckVersion ?? '(none recorded)'}, ` +
+        `and the current rule is ${SURVIVAL_CHECK_VERSION}. Re-run ` +
+        'npm run forensics:backfill-survival to re-derive it.',
     };
   }
 
@@ -126,6 +146,7 @@ export async function auditDiffSurvival(): Promise<SurvivalAuditReport> {
       survivalVerdict: true,
       survivalSourceStateHash: true,
       survivalTextVersion: true,
+      survivalCheckVersion: true,
       beforeSnapshot: { select: { textHash: true, textExtractionVersion: true } },
       afterSnapshot: { select: { textHash: true, textExtractionVersion: true } },
     },
@@ -199,6 +220,7 @@ export interface SurvivalViewInput {
   survivalVerdict: SurvivalVerdict | null;
   survivalSourceStateHash: string | null;
   survivalTextVersion: string | null;
+  survivalCheckVersion: string | null;
   survivalCheckedAt: Date | null;
   survivalChunksChecked: number | null;
   survivalContradicted: unknown;
@@ -240,7 +262,45 @@ export function diffSurvivalView(diff: SurvivalViewInput): DiffSurvivalView {
     chunksChecked: diff.survivalChunksChecked,
     contradictedCount,
     checkedAt,
+    ...(diff.survivalVerdict === 'UNCHECKABLE'
+      ? { reason: uncheckableReason(diff) }
+      : {}),
   };
+}
+
+/**
+ * WHY this check could not be made — re-derived, never stored.
+ *
+ * `UNCHECKABLE` has two causes and they are not interchangeable. One says the two
+ * captures were never comparable; the other says the diff reported nothing to
+ * compare. Rendering a single fixed sentence for the state would have told 19
+ * legitimate no-change diffs that they were "extracted under different rules",
+ * which is false — a reason invented for a reader is worse than none.
+ *
+ * DERIVED FROM STORED STATE rather than carried in a column, because both causes
+ * already are stored: the extraction versions sit on the captures and the chunk
+ * count sits on the row. Adding a column would have meant a migration to persist
+ * something the data already answers, and a stored reason can go stale against
+ * the row it describes while a derived one cannot.
+ */
+function uncheckableReason(diff: SurvivalViewInput): string {
+  if (diff.beforeSnapshot.textExtractionVersion !== diff.afterSnapshot.textExtractionVersion) {
+    return (
+      `The two captures were extracted under different rules ` +
+      `(${diff.beforeSnapshot.textExtractionVersion} vs ` +
+      `${diff.afterSnapshot.textExtractionVersion}), so a presence test across them ` +
+      'compares text that was never comparable.'
+    );
+  }
+  if (diff.survivalChunksChecked === 0) {
+    return (
+      'This diff reports no changes, so there was nothing to check against the documents. ' +
+      'That is not the same as a reported change the documents support.'
+    );
+  }
+  // Neither known cause fits. Said plainly rather than guessed at: a confident
+  // wrong explanation is what this function exists to avoid.
+  return 'The check could not be made, and the stored row does not say which cause applied.';
 }
 
 /**
@@ -254,6 +314,7 @@ export const SURVIVAL_VIEW_SELECT = {
   survivalVerdict: true,
   survivalSourceStateHash: true,
   survivalTextVersion: true,
+  survivalCheckVersion: true,
   survivalCheckedAt: true,
   survivalChunksChecked: true,
   survivalContradicted: true,

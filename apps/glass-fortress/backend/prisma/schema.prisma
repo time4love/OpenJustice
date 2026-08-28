@@ -397,6 +397,21 @@ model UrlVersionDiff {
   /// archaeology exercise. A diff whose two sides disagree on this is UNCHECKABLE
   /// rather than passed or failed.
   survivalTextVersion     String?
+  /// The rule that reached the verdict — SURVIVAL_CHECK_VERSION.
+  ///
+  /// `survivalTextVersion` above says which rule produced the TEXT. This says
+  /// which rule produced the JUDGEMENT, and they go stale independently.
+  ///
+  /// Added after a rule change reached no data. When zero-chunk diffs stopped
+  /// counting as SURVIVES, 88 of 103 stored verdicts on staging became wrong
+  /// while `survivalSourceStateHash` still matched — the hash commits to the
+  /// check's INPUTS and nothing committed to its RULE, so the audit read every
+  /// one of them CURRENT and all the counts stayed green.
+  ///
+  /// NULL means a verdict written before this column existed, which is a rule
+  /// older than any named one — the audit treats it as STALE rather than as
+  /// current, on the same reasoning that makes a NULL verdict UNCHECKED.
+  survivalCheckVersion    String?
   /// For CONTRADICTED, WHAT DISAGREED — the pipeline-defect record itself.
   ///
   /// §3: the detail is the point of storing a contradiction. A count says the

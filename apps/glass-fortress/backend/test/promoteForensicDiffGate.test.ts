@@ -37,7 +37,7 @@ jest.mock('../src/services/Web3Service', () => ({
 
 import { createHash } from 'crypto';
 import { promoteForensicDiff } from '../src/services/promoteForensicDiff';
-import { survivalSourceStateHash } from '../src/lib/diffSurvival';
+import { SURVIVAL_CHECK_VERSION, survivalSourceStateHash } from '../src/lib/diffSurvival';
 import { TEXT_VERSION } from './helpers/survivalFixture';
 
 const DIFF_ID = 'diff-1';
@@ -81,6 +81,7 @@ function diffRow(survival: Record<string, unknown>): Record<string, unknown> {
 function verdict(value: 'CONTRADICTED' | 'SURVIVES'): Record<string, unknown> {
   return {
     survivalVerdict: value,
+    survivalCheckVersion: SURVIVAL_CHECK_VERSION,
     survivalTextVersion: TEXT_VERSION,
     survivalCheckedAt: new Date('2026-08-28'),
     survivalChunksChecked: 1,
