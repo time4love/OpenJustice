@@ -74,6 +74,8 @@ import {
 } from '../src/services/previewDiffClassification';
 import { CLASSIFIER_VERSION, classifierPromptHash } from '../src/lib/classifierVersion';
 
+const TEXT_VERSION = 'v2-inflate-decode-htmltotext-normalised';
+
 function storedDiff(over: Record<string, unknown> = {}): Record<string, unknown> {
   return {
     id: 'diff-1',
@@ -91,6 +93,18 @@ function storedDiff(over: Record<string, unknown> = {}): Record<string, unknown>
     classifierVersion: 'v2-item-level',
     classifierPromptHash: 'stale-hash',
     summaryVersion: null,
+    // The capture relations the lookup now loads, because every reader of a diff
+    // must be able to show its Level 5 verdict. Present here so the fixture is
+    // the row the query actually returns, rather than a smaller one that would
+    // let a missing relation pass unnoticed.
+    beforeSnapshot: { textHash: 'a'.repeat(64), textExtractionVersion: TEXT_VERSION },
+    afterSnapshot: { textHash: 'b'.repeat(64), textExtractionVersion: TEXT_VERSION },
+    survivalVerdict: null,
+    survivalSourceStateHash: null,
+    survivalTextVersion: null,
+    survivalCheckedAt: null,
+    survivalChunksChecked: null,
+    survivalContradicted: [],
     ...over,
   };
 }

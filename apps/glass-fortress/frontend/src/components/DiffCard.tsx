@@ -2,6 +2,8 @@
 
 import { useState } from 'react';
 import { ClaimBlock } from '@/components/ClaimBlock';
+import { SurvivalChip, SurvivalNotice } from '@/components/SurvivalChip';
+import type { SurvivalLabels, SurvivalView } from '@/components/SurvivalChip';
 import { addEvidenceToThesis } from '@/lib/thesisDocument';
 import { fetchTheses } from '@/lib/thesisApi';
 import type { ThesisSummary as FullThesisSummary } from '@/types/thesis';
@@ -40,6 +42,14 @@ export interface DiffRecord {
   legalSignificance: string;
   isLegallySignificant: boolean;
   promotedEvidence: PromotedEvidence | null;
+  /**
+   * LEVEL 5 — does the archived pair actually support this reported change?
+   *
+   * REQUIRED, not optional. An optional field would let a surface that forgot to
+   * request it render exactly like a diff that passed, which is the confusion
+   * this whole level exists to remove.
+   */
+  survival: SurvivalView;
 }
 
 export interface DiffCardLabels {
@@ -52,6 +62,7 @@ export interface DiffCardLabels {
   pendingReviewChip: string;
   flaggedBadge: string;
   auditBadge: string;
+  survival: SurvivalLabels;
   showChanges: string;
   hideChanges: string;
   addToThesis: {
@@ -277,11 +288,15 @@ export function DiffCard({
               {labels.auditBadge}
             </span>
           )}
+          <SurvivalChip survival={diff.survival} labels={labels.survival} />
           <span className="ms-auto text-xs text-slate-300 font-mono shrink-0">#{index + 1}</span>
         </div>
 
         {/* Body */}
         <div className="px-4 py-3 space-y-4">
+          {/* Above the model's analysis on purpose: whether the documents support
+              the change is prior to what the change is claimed to mean. */}
+          <SurvivalNotice survival={diff.survival} labels={labels.survival} />
           {/* AI Forensic Analysis — the model's rationale, shown regardless of
               significance so a "Version Change" badge always comes with the reasoning
               behind it instead of a bare label. */}

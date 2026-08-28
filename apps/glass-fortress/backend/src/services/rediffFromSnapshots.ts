@@ -1,6 +1,7 @@
 import { createHash } from 'crypto';
 import { diffLines } from 'diff';
 import { prisma } from '../lib/prisma';
+import { computeDiffSurvival } from './computeDiffSurvival';
 import { groupDiffChunks, DIFF_INPUT_VERSION } from '../lib/diffChunking';
 import { parseRawChunks } from '../lib/diffItems';
 
@@ -249,17 +250,24 @@ export async function applyRediff(opts: { url?: string } = {}): Promise<ApplyRed
     // plus recovered" would invent an ordering that neither the page nor the
     // recomputation has, and document order is the thing the sort removal was
     // meant to restore.
-    const rows = await prisma.urlVersionDiff.findMany({
+    // findUniqueOrThrow, not findMany-then-[0]. A unique id yields one row or
+    // none, and indexing into an array to say so left five call sites reading a
+    // possibly-undefined value — debt the noUncheckedIndexedAccess ratchet
+    // counted, and which grew the moment this select gained two more fields.
+    // Asking for the single row the id identifies removes the indexing rather
+    // than guarding it.
+    const row = await prisma.urlVersionDiff.findUniqueOrThrow({
       where: { id: entry.diffId },
       select: {
         id: true,
+        beforeSnapshotId: true,
+        afterSnapshotId: true,
         beforeSnapshot: { select: { fullText: true, contentHash: true } },
         afterSnapshot: { select: { fullText: true, contentHash: true } },
       },
     });
-    // findMany on a unique id returns 0 or 1 row, and the compiler treats index 0
-    // as present, so the only guard that carries information is on the relations.
-    const row = rows[0];
+    // The only guard that carries information is on the relations: the row itself
+    // is now either returned or thrown for.
     if (!row.beforeSnapshot || !row.afterSnapshot) {
       refusedDiffIds.push(entry.diffId);
       continue;
@@ -273,12 +281,33 @@ export async function applyRediff(opts: { url?: string } = {}): Promise<ApplyRed
       ignoreWhitespace: true,
     });
 
+    const rawDeletedText = JSON.stringify(groupDiffChunks(raw, 'removed'));
+    const rawAddedText = JSON.stringify(groupDiffChunks(raw, 'added'));
+
+    // THE VERDICT IS RECOMPUTED HERE BECAUSE THIS IS WHAT INVALIDATES IT.
+    //
+    // These two payloads are two of `checkDiffSurvival`'s four inputs. Rewriting
+    // them without re-running the check leaves a Level 5 verdict describing chunks
+    // that no longer exist — and, before the source-state hash was widened to
+    // cover them, one that reported itself as CURRENT while doing so, because the
+    // captures this tool re-derives from do not move.
+    //
+    // Computed on the NEW payloads and written in the same statement, so a row can
+    // never hold new chunks beside a verdict about the old ones.
+    const survival = await computeDiffSurvival({
+      beforeSnapshotId: row.beforeSnapshotId,
+      afterSnapshotId: row.afterSnapshotId,
+      rawDeletedText,
+      rawAddedText,
+    });
+
     await prisma.urlVersionDiff.update({
       where: { id: entry.diffId },
       data: {
-        rawDeletedText: JSON.stringify(groupDiffChunks(raw, 'removed')),
-        rawAddedText: JSON.stringify(groupDiffChunks(raw, 'added')),
+        rawDeletedText,
+        rawAddedText,
         diffInputVersion: DIFF_INPUT_VERSION,
+        ...survival,
       },
     });
 

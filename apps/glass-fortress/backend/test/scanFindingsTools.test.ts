@@ -22,6 +22,8 @@ jest.mock('../src/services/promoteEvidence', () => ({
 import { prisma } from '../src/lib/prisma';
 import { getScanFindingsHandler } from '../src/mcp/tools/getScanFindings';
 import { promoteScanFindingsHandler } from '../src/mcp/tools/promoteScanFindings';
+import { survivalFixture, TEXT_VERSION } from './helpers/survivalFixture';
+import { survivalSourceStateHash } from '../src/lib/diffSurvival';
 
 const URL = 'https://corona.health.gov.il/vaccine-for-covid/';
 
@@ -37,6 +39,7 @@ function diff(overrides: Record<string, unknown> = {}): Record<string, unknown> 
     aiSignificance: 'האזהרה נמחקה.',
     deletedText: '["warning removed"]',
     addedText: '[]',
+    ...survivalFixture(),
     evidence: [
       {
         id: 'ev-1',
@@ -173,5 +176,65 @@ describe('promote_scan_findings', () => {
 
     expect(r.promoted).toBe(0);
     expect(mockPromoteEvidence).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// LEVEL 5 IN THE PROMOTION QUEUE
+//
+// This list is read in order to decide what to promote, so it is the one surface
+// where the verdict changes a decision rather than informing one.
+// ---------------------------------------------------------------------------
+describe('get_scan_findings surfaces the Level 5 verdict', () => {
+  function contradictedDiff(): Record<string, unknown> {
+    const rawDeletedText = JSON.stringify(['a sentence long enough to clear the presence floor']);
+    return diff({
+      ...survivalFixture({
+        rawDeletedText,
+        survivalVerdict: 'CONTRADICTED',
+        survivalTextVersion: TEXT_VERSION,
+        survivalCheckedAt: new Date('2026-08-28'),
+        survivalChunksChecked: 1,
+        survivalContradicted: [{ side: 'REMOVED', excerpt: 'still on the page' }],
+        survivalSourceStateHash: survivalSourceStateHash({
+          beforeTextHash: 'a'.repeat(64),
+          afterTextHash: 'b'.repeat(64),
+          rawDeletedText,
+          rawAddedText: '[]',
+        }),
+      }),
+    });
+  }
+
+  it('marks a pending finding whose diff the documents refute', async () => {
+    diffFindMany.mockResolvedValue([contradictedDiff()]);
+
+    const r = JSON.parse(await getScanFindingsHandler({ url: URL }));
+
+    expect(r.findings[0].survival.state).toBe('CONTRADICTED');
+  });
+
+  it('warns in the SUMMARY, not only on the row', async () => {
+    // A per-finding field that nothing aggregates is a field a caller skims past
+    // on the way to promoting the batch.
+    diffFindMany.mockResolvedValue([contradictedDiff()]);
+
+    const r = JSON.parse(await getScanFindingsHandler({ url: URL }));
+
+    expect(r.contradictedPending).toBe(1);
+    expect(r.survivalWarning).toContain('DO NOT PROMOTE');
+  });
+
+  it('reports an unchecked finding as unchecked, and never as a pass', async () => {
+    diffFindMany.mockResolvedValue([diff()]);
+
+    const r = JSON.parse(await getScanFindingsHandler({ url: URL }));
+
+    expect(r.findings[0].survival.state).toBe('UNCHECKED');
+    expect(r.uncheckedPending).toBe(1);
+    expect(r.uncheckedWarning).toContain('NOT A PASS');
+    // Kept apart from the refuted count: different problems, different remedies.
+    expect(r.contradictedPending).toBe(0);
+    expect(r.survivalWarning).toBeUndefined();
   });
 });

@@ -13,7 +13,23 @@ import { prisma } from '../lib/prisma';
 // prompt runs unchanged against any deployment.
 // ---------------------------------------------------------------------------
 
-export type DiffWithUrl = Prisma.UrlVersionDiffGetPayload<{ include: { trackedUrl: true } }>;
+/**
+ * The relations both lookup paths load.
+ *
+ * Declared once so the by-id and by-url-and-date paths cannot drift: a relation
+ * added to one and not the other makes a tool correct when called one way and
+ * wrong when called the other. The capture fields are here because every reader
+ * of a diff must be able to show its Level 5 verdict.
+ */
+export const DIFF_LOOKUP_INCLUDE = {
+  trackedUrl: true,
+  beforeSnapshot: { select: { textHash: true, textExtractionVersion: true } },
+  afterSnapshot: { select: { textHash: true, textExtractionVersion: true } },
+} as const;
+
+export type DiffWithUrl = Prisma.UrlVersionDiffGetPayload<{
+  include: typeof DIFF_LOOKUP_INCLUDE;
+}>;
 
 export type DiffLookupResult =
   | { status: 'FOUND'; diff: DiffWithUrl }
@@ -34,7 +50,7 @@ export async function resolveDiff(input: DiffLookupInput): Promise<DiffLookupRes
   if (input.diffId !== undefined) {
     const diff = await prisma.urlVersionDiff.findUnique({
       where: { id: input.diffId },
-      include: { trackedUrl: true },
+      include: DIFF_LOOKUP_INCLUDE,
     });
     if (diff === null) {
       return {
@@ -59,7 +75,7 @@ export async function resolveDiff(input: DiffLookupInput): Promise<DiffLookupRes
 
   const matches = await prisma.urlVersionDiff.findMany({
     where: { trackedUrl: { url: input.url }, afterDate: input.afterDate },
-    include: { trackedUrl: true },
+    include: DIFF_LOOKUP_INCLUDE,
     orderBy: { beforeDate: 'asc' },
   });
 

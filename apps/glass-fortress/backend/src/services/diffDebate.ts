@@ -1,5 +1,11 @@
 import { prisma } from '../lib/prisma';
 import {
+  diffSurvivalView,
+  promotionBlockFor,
+  SURVIVAL_VIEW_SELECT,
+  type DiffSurvivalView,
+} from './auditDiffSurvival';
+import {
   ForensicPromotionAssessorAgent,
   type ForensicPromotionAssessment,
 } from './ForensicPromotionAssessorAgent';
@@ -57,6 +63,14 @@ export interface DiffDebateState {
   blockedBy: string | null;
   latestAssessment: ForensicPromotionAssessment | null;
   rounds: number;
+  /**
+   * LEVEL 5 — whether the archived documents support the change being debated.
+   *
+   * A debate is an argument about what a change MEANS. This says whether the
+   * change happened at all, which is prior to it: no argument about significance
+   * can rescue a diff whose removal is still on the page.
+   */
+  survival: DiffSurvivalView;
 }
 
 /**
@@ -201,8 +215,34 @@ async function buildState(sessionId: string): Promise<DiffDebateState> {
   // before this shipped reads correctly without a data migration.
   const hasSubstance = await substanceEverMet(sessionId);
 
+  // LEVEL 5 TAKES PRECEDENCE OVER EVERY OTHER BLOCK, and the ordering is the
+  // point: the others are about whether the ARGUMENT is good enough. This one is
+  // about whether there is anything to argue about. A researcher who clears the
+  // substance gate and answers the assessor has still not made a refuted change
+  // real, and the message must not arrive after they have done that work.
+  const diffRow = await prisma.urlVersionDiff.findUniqueOrThrow({
+    where: { id: session.urlVersionDiffId },
+    select: SURVIVAL_VIEW_SELECT,
+  });
+  const survival = diffSurvivalView(diffRow);
+
+  // UNCHECKED and STALE are deliberately NOT blocks. An unchecked diff is not a
+  // refuted one, and refusing it would halt work on the strength of a question
+  // nobody has asked yet. They are not silent either — `survival` travels in the
+  // returned state, because UNCHECKED IS NOT A PASS.
+  // THE SHARED RULE, not a copy of it. The same refusal is enforced at the two
+  // paths that actually create evidence from a diff; three phrasings of one rule
+  // would be three rules the first time anybody edited one of them.
+  // Level 5 takes precedence over every other block, and the ordering is the
+  // point: the others ask whether the ARGUMENT is good enough. This one asks
+  // whether there is anything to argue about. A researcher who clears the
+  // substance gate and answers the assessor has still not made a refuted change
+  // real, and the message must not arrive after they have done that work.
+  const refuted = promotionBlockFor(survival);
+
   let blockedBy: string | null = null;
-  if (session.status !== 'OPEN') blockedBy = `The debate is ${session.status}.`;
+  if (refuted !== null) blockedBy = refuted;
+  else if (session.status !== 'OPEN') blockedBy = `The debate is ${session.status}.`;
   else if (!hasSubstance) {
     blockedBy =
       'The argument has not cleared the substance gate: it must make specific, falsifiable claims about the changed content. See substanceGaps and respond with respond_in_diff_debate.';
@@ -221,6 +261,7 @@ async function buildState(sessionId: string): Promise<DiffDebateState> {
     blockedBy,
     latestAssessment,
     rounds: assessments.length,
+    survival,
   };
 }
 
@@ -329,6 +370,10 @@ export async function promoteFromDiffDebate(sessionId: string): Promise<PromoteF
       error: 'PROMOTION_FAILED',
       outcome: result.outcome,
       ...(result.outcome === 'chain_error' ? { message: result.message } : {}),
+      // Defence in depth: buildState already blocks a contradicted diff, so
+      // reaching here means the two disagreed. Carrying the reason means the
+      // caller is told WHY rather than being handed a bare outcome name.
+      ...(result.outcome === 'contradicted' ? { message: result.reason } : {}),
     };
   }
 

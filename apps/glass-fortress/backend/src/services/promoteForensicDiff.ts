@@ -1,6 +1,7 @@
 import { prisma } from '../lib/prisma';
 import { Web3Service } from './Web3Service';
 import { buildForensicEvidence, requireSnapshotIdentity } from './forensicEvidence';
+import { diffSurvivalView, promotionBlockFor } from './auditDiffSurvival';
 import { registerEvidenceOnChain } from './evidenceOnChain';
 import { investigativeCategoriesField } from '../lib/investigativeCategories';
 import type { DiffItem } from './ForensicAgent';
@@ -37,6 +38,8 @@ import type { DiffItem } from './ForensicAgent';
 export type PromoteForensicDiffResult =
   | { outcome: 'promoted'; evidenceId: string; fileHash: string; txHash: string | null; confirmed: boolean }
   | { outcome: 'diff_not_found'; urlVersionDiffId: string }
+  /** The archived documents refute the change. Written, visible, never promotable. */
+  | { outcome: 'contradicted'; urlVersionDiffId: string; reason: string }
   | { outcome: 'already_promoted'; evidenceId: string; fileHash: string; matchedBy: 'diff' | 'content' }
   | { outcome: 'chain_error'; message: string };
 
@@ -70,12 +73,39 @@ export async function promoteForensicDiff(
     where: { id: urlVersionDiffId },
     include: {
       trackedUrl: true,
-      beforeSnapshot: { select: { waybackTimestamp: true, contentHash: true } },
-      afterSnapshot: { select: { waybackTimestamp: true, contentHash: true } },
+      beforeSnapshot: {
+        select: {
+          waybackTimestamp: true,
+          contentHash: true,
+          textHash: true,
+          textExtractionVersion: true,
+        },
+      },
+      afterSnapshot: {
+        select: {
+          waybackTimestamp: true,
+          contentHash: true,
+          textHash: true,
+          textExtractionVersion: true,
+        },
+      },
     },
   });
 
   if (!diff) return { outcome: 'diff_not_found', urlVersionDiffId };
+
+  // LEVEL 5. A CONTRADICTED diff is never promotable, and this is one of the two
+  // paths that can actually make one into evidence — it registers on chain, so
+  // promoting a refuted change anchors a fault in the detection pipeline as
+  // though it were something the page did.
+  //
+  // Refused BEFORE the already-promoted check on purpose: a row that reached the
+  // corpus before this gate existed must not read as permission to add another.
+  // The whole row is already loaded, so this costs no query.
+  const refuted = promotionBlockFor(diffSurvivalView(diff));
+  if (refuted !== null) {
+    return { outcome: 'contradicted', urlVersionDiffId, reason: refuted };
+  }
 
   const existing = await prisma.evidence.findFirst({ where: { urlVersionDiffId } });
   if (existing) {

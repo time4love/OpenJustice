@@ -4,6 +4,10 @@ import { identifyResearcher } from '../middleware/researcherIdentity';
 import { z } from 'zod';
 import { WaybackScraper } from '../services/WaybackScraper';
 import { prisma } from '../lib/prisma';
+import {
+  diffSurvivalView,
+  SURVIVAL_VIEW_SELECT,
+} from '../services/auditDiffSurvival';
 import { type DiffItem } from '../services/ForensicAgent';
 import { parseDiffItems } from '../lib/diffItems';
 import { scanLimiter } from '../middleware/rateLimiting';
@@ -180,9 +184,11 @@ router.get('/tracked/:id/status', async (req: Request, res: Response): Promise<v
           snapshotUrl: true,
           deletedText: true,
           addedText: true,
-          rawDeletedText: true,
-          rawAddedText: true,
           aiSignificance: true,
+          // rawDeletedText / rawAddedText arrive with the shared select: they are
+          // both the chunks this endpoint renders and two of the checker's four
+          // inputs, so naming them twice would let the two uses drift.
+          ...SURVIVAL_VIEW_SELECT,
         },
       }),
     ]);
@@ -197,6 +203,7 @@ router.get('/tracked/:id/status', async (req: Request, res: Response): Promise<v
       rawDeletedChunks: JSON.parse(d.rawDeletedText) as string[],
       rawAddedChunks: JSON.parse(d.rawAddedText) as string[],
       legalSignificance: d.aiSignificance,
+      survival: diffSurvivalView(d),
     }));
 
     res.status(200).json({
@@ -352,7 +359,16 @@ router.get('/tracked/:id', identifyResearcher, async (req: Request, res: Respons
       orderBy: { afterDate: 'asc' },
       take: limit + 1,
       ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-      include: { beforeSnapshot: { select: { snapshotUrl: true } } },
+      // The snapshot relations are selected TWICE over: `snapshotUrl` for the
+      // archive link, and the survival view's own capture fields. Spreading the
+      // shared select is what keeps a surface from fetching some of the six
+      // columns and rendering UNCHECKED for a row that has been checked.
+      include: {
+        beforeSnapshot: {
+          select: { snapshotUrl: true, textHash: true, textExtractionVersion: true },
+        },
+        afterSnapshot: { select: { textHash: true, textExtractionVersion: true } },
+      },
     });
 
     const hasMore = rawDiffs.length > limit;
@@ -390,6 +406,7 @@ router.get('/tracked/:id', identifyResearcher, async (req: Request, res: Respons
       legalSignificance: d.aiSignificance,
       isLegallySignificant: d.isLegallySignificant,
       promotedEvidence: promotedByDiffId.get(d.id) ?? null,
+      survival: diffSurvivalView(d),
     }));
 
     res.status(200).json({
@@ -716,7 +733,12 @@ router.get('/tracked/:id/report', async (req: Request, res: Response): Promise<v
     const allDiffs = await prisma.urlVersionDiff.findMany({
       where: { trackedUrlId },
       orderBy: { afterDate: 'asc' },
-      include: { beforeSnapshot: { select: { snapshotUrl: true } } },
+      include: {
+        beforeSnapshot: {
+          select: { snapshotUrl: true, textHash: true, textExtractionVersion: true },
+        },
+        afterSnapshot: { select: { textHash: true, textExtractionVersion: true } },
+      },
     });
 
     const diffs = allDiffs
@@ -729,6 +751,7 @@ router.get('/tracked/:id/report', async (req: Request, res: Response): Promise<v
         addedItems: parseDiffItems(d.addedText),
         legalSignificance: d.aiSignificance,
         isLegallySignificant: d.isLegallySignificant,
+        survival: diffSurvivalView(d),
       }))
       .filter((d) => d.deletedItems.length > 0 || d.addedItems.length > 0);
 

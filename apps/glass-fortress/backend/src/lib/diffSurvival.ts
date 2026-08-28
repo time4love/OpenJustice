@@ -73,20 +73,43 @@ export function segmentsOf(chunk: string): string[] {
 }
 
 /**
- * What the verdict was computed against.
- *
- * Taken over the two snapshots' `textHash` values rather than over the text
- * itself — they are already SHA-256 of exactly that text, so this is the same
- * commitment at a fraction of the cost, and it moves if and only if the text
- * moves.
+ * What the verdict was computed against — ALL FOUR INPUTS, not just the captures.
  *
  * §3's `sourceStateHash` discipline: staleness becomes COMPUTABLE rather than
  * assumed. Level 4 will change what counts as chrome and therefore what text a
  * diff compares; without this, that change silently invalidates every Level 5
  * verdict while all the counts stay green.
+ *
+ * THE CAPTURE HASHES ALONE WERE NOT ENOUGH, and that was found by reading the
+ * callers rather than the checker. `rediffFromSnapshots` rewrites a diff's
+ * `rawDeletedText` / `rawAddedText` — the checker's other two inputs — while the
+ * captures it re-derives them from do not move. Committing only to the captures
+ * would leave a verdict computed against chunks that no longer exist, reporting
+ * itself as current. A source-state hash has to cover every input the verdict was
+ * derived from, or it certifies freshness it cannot see.
+ *
+ * The two capture hashes are used rather than the capture text: they are already
+ * SHA-256 of exactly that text, so this is the same commitment at a fraction of
+ * the cost. The two chunk payloads are hashed here for the same reason — and
+ * hashing them, rather than joining them raw, is what makes the delimiter
+ * unforgeable: every one of the four components is then fixed-length hex, so no
+ * content can contain a separator and shift the framing.
  */
-export function survivalSourceStateHash(beforeTextHash: string, afterTextHash: string): string {
-  return createHash('sha256').update(`${beforeTextHash}|${afterTextHash}`, 'utf8').digest('hex');
+export function survivalSourceStateHash(input: {
+  beforeTextHash: string;
+  afterTextHash: string;
+  rawDeletedText: string;
+  rawAddedText: string;
+}): string {
+  const sha = (value: string): string =>
+    createHash('sha256').update(value, 'utf8').digest('hex');
+  const parts = [
+    input.beforeTextHash,
+    input.afterTextHash,
+    sha(input.rawDeletedText),
+    sha(input.rawAddedText),
+  ];
+  return sha(parts.join('|'));
 }
 
 /**

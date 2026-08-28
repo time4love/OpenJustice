@@ -36,7 +36,12 @@ let seq = 0;
 
 jest.mock('../src/lib/prisma', () => ({
   prisma: {
-    urlVersionDiff: { findUnique: jest.fn(async () => db.diff) },
+    urlVersionDiff: {
+      findUnique: jest.fn(async () => db.diff),
+      // buildState re-reads the diff for its Level 5 verdict on every entry
+      // point, so the state cannot depend on which caller assembled it.
+      findUniqueOrThrow: jest.fn(async () => db.diff),
+    },
     evidence: { findFirst: jest.fn(async () => db.evidence) },
     diffDebateSession: {
       findFirst: jest.fn(async ({ where }: { where: { status: string } }) =>
@@ -94,6 +99,8 @@ jest.mock('../src/lib/prisma', () => ({
   },
 }));
 
+import { survivalFixture, TEXT_VERSION } from './helpers/survivalFixture';
+import { survivalSourceStateHash } from '../src/lib/diffSurvival';
 import {
   openDiffDebate,
   respondInDiffDebate,
@@ -124,6 +131,7 @@ beforeEach(() => {
     deletedText: '[{"summary":"הוסרה אזהרה"}]',
     addedText: '[]',
     trackedUrl: { url: 'https://health.gov.il/x' },
+    ...survivalFixture(),
   };
   db.evidence = null;
   db.sessions.clear();
@@ -337,5 +345,71 @@ describe('substance derived from the event log', () => {
     const after = await respondInDiffDebate(sessionId, 'עוד טיעון');
 
     expect((after as { hasSubstance: boolean }).hasSubstance).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// LEVEL 5 — A DEBATE ABOUT A CHANGE THAT DID NOT HAPPEN
+// ---------------------------------------------------------------------------
+describe('a CONTRADICTED diff cannot be argued into evidence', () => {
+  /** The stored verdict as `survivalStateOf` must read it: present and current. */
+  function contradicted(): Record<string, unknown> {
+    const rawDeletedText = JSON.stringify(['a sentence long enough to clear the presence floor']);
+    return survivalFixture({
+      rawDeletedText,
+      survivalVerdict: 'CONTRADICTED',
+      survivalTextVersion: TEXT_VERSION,
+      survivalCheckedAt: new Date('2026-08-28'),
+      survivalChunksChecked: 1,
+      survivalContradicted: [{ side: 'REMOVED', excerpt: 'still on the page' }],
+      survivalSourceStateHash: survivalSourceStateHash({
+        beforeTextHash: 'a'.repeat(64),
+        afterTextHash: 'b'.repeat(64),
+        rawDeletedText,
+        rawAddedText: '[]',
+      }),
+    });
+  }
+
+  it('blocks promotion no matter how good the argument is', async () => {
+    // ASSERTING THE CALLER. The checker and the audit are covered in isolation;
+    // this is the assertion that the debate — where promotion is actually decided
+    // — reaches them. An assessment that finds substance AND agrees is used on
+    // purpose: every other gate is open, so only this one can be doing the work.
+    db.diff = { ...db.diff, ...contradicted() };
+    mockAssess.mockResolvedValue(assessment({ hasSubstance: true, verdict: 'AGREES' }));
+
+    const state = await openDiffDebate(DIFF_ID, 'הטענה על יעילות הוסרה מן העמוד ביום זה.');
+
+    expect('canPromote' in state && state.canPromote).toBe(false);
+    expect('blockedBy' in state && state.blockedBy).toContain('CONTRADICTED');
+    expect('survival' in state && state.survival.state).toBe('CONTRADICTED');
+  });
+
+  it('says so BEFORE the substance gate, not after the researcher has cleared it', async () => {
+    // The other blocks are about whether the ARGUMENT is good enough. This one is
+    // about whether there is anything to argue about, and arriving second would
+    // make a researcher earn their way to it.
+    db.diff = { ...db.diff, ...contradicted() };
+    mockAssess.mockResolvedValue(
+      assessment({ hasSubstance: false, substanceGaps: ['לא צוין איזה תוכן השתנה'] }),
+    );
+
+    const state = await openDiffDebate(DIFF_ID, 'זה חשוב');
+
+    expect('blockedBy' in state && state.blockedBy).toContain('CONTRADICTED');
+    expect('blockedBy' in state && state.blockedBy).not.toContain('substance');
+  });
+
+  it('does NOT block an unchecked diff — that is a question nobody asked, not a refutation', async () => {
+    // UNCHECKED must not be treated as failure any more than as a pass. It
+    // travels in the state instead, so the researcher sees it and decides.
+    db.diff = { ...db.diff, ...survivalFixture() };
+    mockAssess.mockResolvedValue(assessment({ hasSubstance: true, verdict: 'AGREES' }));
+
+    const state = await openDiffDebate(DIFF_ID, 'הטענה על יעילות הוסרה מן העמוד ביום זה.');
+
+    expect('canPromote' in state && state.canPromote).toBe(true);
+    expect('survival' in state && state.survival.state).toBe('UNCHECKED');
   });
 });

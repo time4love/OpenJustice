@@ -1,6 +1,9 @@
 'use client';
 
 import { useState, useRef, useCallback, useEffect, Fragment, FormEvent } from 'react';
+import { buildSurvivalLabels } from '@/lib/survivalLabels';
+import { SurvivalChip, SurvivalNotice } from '@/components/SurvivalChip';
+import type { SurvivalLabels, SurvivalView } from '@/components/SurvivalChip';
 import { useTranslations } from 'next-intl';
 import { Link, useRouter } from '@/i18n/navigation';
 import { SiteHeader } from '@/components/SiteHeader';
@@ -48,6 +51,8 @@ interface SnapshotDiff {
   rawAddedChunks: string[];
   legalSignificance: string;
   promotedEvidence: { id: string; fileHash: string } | null;
+  /** LEVEL 5 — required, so a surface that forgets it cannot render as a pass. */
+  survival: SurvivalView;
 }
 
 interface TrackedUrlItem {
@@ -253,6 +258,7 @@ function DiffNode({
     viewSnapshot: string;
     inVaultBadge: string;
     flaggedBadge: string;
+    survival: SurvivalLabels;
   };
 }) {
   return (
@@ -271,6 +277,7 @@ function DiffNode({
           <span className="shrink-0 text-xs font-bold px-2 py-0.5 rounded-full border bg-red-100 text-red-700 border-red-300 uppercase tracking-wide">
             {labels.flaggedBadge}
           </span>
+          <SurvivalChip survival={diff.survival} labels={labels.survival} />
           {diff.promotedEvidence && (
             <span className="shrink-0 inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 border border-emerald-200">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
@@ -282,6 +289,7 @@ function DiffNode({
 
         {/* Body */}
         <div className="px-4 py-3 space-y-4">
+          <SurvivalNotice survival={diff.survival} labels={labels.survival} />
           {(diff.deletedItems.length > 0 || diff.rawDeletedChunks.length > 0) && (
             <div className="space-y-1.5">
               <span className="text-xs font-bold text-red-600 uppercase tracking-widest">
@@ -756,6 +764,7 @@ export default function ForensicsPage() {
     viewSnapshot: t('viewSnapshot'),
     inVaultBadge: t('inVaultBadge'),
     flaggedBadge: t('flaggedBadge'),
+    survival: buildSurvivalLabels(t),
   };
 
   return (

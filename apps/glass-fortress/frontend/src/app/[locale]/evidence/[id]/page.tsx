@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { buildSurvivalLabels } from '@/lib/survivalLabels';
 import Image from 'next/image';
 import { useParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
@@ -295,6 +296,7 @@ export default function EvidencePage() {
                   pendingReviewChip: tDiff('pendingReviewChip'),
                   flaggedBadge: tDiff('flaggedBadge'),
                   auditBadge: tDiff('auditBadge'),
+                  survival: buildSurvivalLabels(tDiff),
                   showChanges: tDiff('showChanges'),
                   hideChanges: tDiff('hideChanges'),
                   addToThesis: {
