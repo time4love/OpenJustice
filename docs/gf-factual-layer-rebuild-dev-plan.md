@@ -1908,9 +1908,35 @@ found. It is simply never promotable.
   that guarantees migrations land first.
 
   Deleting them is defensible once the migration is applied everywhere; doing it in the same change that
-  introduces the constraint is not. **Flagged rather than decided either way** — and
-  `measureExtractionDivergence` is touched again by Level 5's write-time enforcement, which is the
-  natural moment to settle it with the enforcement in view.
+  introduces the constraint is not.
+
+  ##### RESOLVED — the intention became a condition
+
+  *"Settle it in step 2, which is the natural moment"* was **a plan to remember**, and this document's
+  own hierarchy puts that at the bottom. Worse, the entire record of a deliberate decision was a number
+  in a session summary: `npm run lint` is `eslint src/` with **no `--max-warnings` and no baseline**, so
+  363 → 381 was tracked by nothing. The next reader sees 381, cannot tell 18 deliberate guards from 18
+  accidents, and **the honest reading of a raw count is that the debt grew.**
+
+  So `no-unnecessary-condition` gets the treatment `noUncheckedIndexedAccess` already has:
+  `noUnnecessaryCondition.baseline.json` plus `test/noUnnecessaryConditionRatchet.test.ts` — per file,
+  can only go down, with the same three properties and the same mutation proofs.
+
+  **The baseline carries the reasoning, not just the numbers.** It names the migration, says why the 18
+  were kept, and states the condition for removing them: *when `20260828120000` is applied in every
+  environment — checked against the `_prisma_migrations` ledger, not the deploy status — set those
+  files' entries to 0.* The ratchet then reports a **REGRESSION** until the dead branches are actually
+  removed. **That converts "delete them later" from an intention into a checkable condition**, and it
+  stops 381 becoming the new floor by default.
+
+  *A hazard found in the tool by mutating it:* renaming the rule constant made every file report zero,
+  which the improvement arm reported as **progress** — and its remedy, "regenerate the baseline", would
+  have baked in zeros and disabled the check permanently. **A suggested fix has to be safe when the
+  diagnosis is wrong.** A wholesale collapse now throws instead of offering it.
+
+  *Scope note:* the ratchet is project-wide (51 across 18 files), not scoped to the four diff-readers,
+  so growth anywhere is caught. Only 18 of the 51 come from this migration; the rest is pre-existing
+  debt, **bounded here rather than endorsed**.
 - **Level 5 opens by re-pairing the diff layer** after Level 1's capture recovery: **7** existing diffs
   are stale (they span captures no longer consecutive) and **18** new pair-rows are needed. Deferred
   here deliberately so the classifications are paid for once, verified — see Level 1's boundary note.
