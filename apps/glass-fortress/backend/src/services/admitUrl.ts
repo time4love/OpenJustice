@@ -76,18 +76,38 @@ export async function admitUrl(input: {
 
   const content = await input.fetchContent(input.url);
   if (content === null) {
-    // Deliberately NOT recorded as an assessment: nothing was judged. A verdict
-    // implies a judgement was made, and "we could not read the page" is a verdict
-    // about the CHECK rather than about the URL — §3's own distinction, and
-    // storing it as OFF_MISSION would make an unavailable check indistinguishable
-    // from a refusal.
-    return {
-      admitted: false,
+    const reason =
+      'Could not retrieve any content for this URL — neither the live page nor any ' +
+      'archived snapshot. Nothing was assessed.';
+    // RECORDED, NOT LEFT AS AN ABSENCE — corrected from a first version that
+    // returned without writing anything.
+    //
+    // UNREADABLE is a verdict about the CHECK rather than about the URL, and §3
+    // stores exactly that rather than omitting it: without a row, "did we try to
+    // admit this URL?" is unanswerable, which is the
+    // never-looked-versus-nothing-there family at the front door of the corpus.
+    //
+    // It stays out of OFF_MISSION because collapsing them would make an
+    // unavailable check indistinguishable from a refusal — the same rule that
+    // keeps UNAVAILABLE from counting as VERIFIED.
+    //
+    // No model provenance: no model ran. The HUMAN branch is not right either —
+    // nobody judged — so this is a MODEL-authored row recording that the
+    // procedure reached the point of having nothing to judge.
+    await recordUrlAssessment({
+      author: 'MODEL',
+      url: input.url,
       verdict: 'UNREADABLE',
-      reason:
-        'Could not retrieve any content for this URL — neither the live page nor any ' +
-        'archived snapshot. Nothing was assessed.',
-    };
+      reason,
+      assessedAt: new Date(),
+      model: resolveModelId('SCAN_RELEVANCE'),
+      agentVersion: SCAN_RELEVANCE_VERSION,
+      promptHash: SCAN_RELEVANCE_PROMPT_HASH,
+      contentChars: 0,
+      contentTruncated: false,
+      ...(input.submitterId === undefined ? {} : { submitterId: input.submitterId }),
+    });
+    return { admitted: false, verdict: 'UNREADABLE', reason };
   }
 
   const relevance = await agent().checkRelevance(content, input.url);
@@ -96,7 +116,6 @@ export async function admitUrl(input: {
   // rejections makes the rejection RATE incomputable, so a filter turning away 1%
   // is indistinguishable from one turning away 90%.
   await recordUrlAssessment({
-    checkType: 'MISSION',
     author: 'MODEL',
     url: input.url,
     verdict: relevance.isRelevant ? 'ON_MISSION' : 'OFF_MISSION',

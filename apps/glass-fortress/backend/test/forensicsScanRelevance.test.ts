@@ -1,7 +1,7 @@
 jest.mock('../src/lib/prisma', () => ({
   prisma: {
     // The gate now RECORDS its verdict — both directions — before acting on it.
-    urlAssessment: { create: jest.fn().mockResolvedValue({ id: 'a1' }) },
+    scanRelevanceAssessment: { create: jest.fn().mockResolvedValue({ id: 'a1' }) },
     trackedUrl: {
       findUnique: jest.fn(),
       upsert: jest.fn(),
@@ -139,11 +139,10 @@ describe('POST /api/forensics/scan — relevance gate', () => {
     const { res } = mockRes();
     await handle(mockReq({ url: 'https://gov.example/page' }), res);
 
-    const create = prisma.urlAssessment.create as unknown as jest.Mock;
+    const create = prisma.scanRelevanceAssessment.create as unknown as jest.Mock;
     expect(create).toHaveBeenCalledTimes(1);
     const { data } = create.mock.calls[0][0] as { data: Record<string, unknown> };
     expect(data['verdict']).toBe('ON_MISSION');
-    expect(data['checkType']).toBe('MISSION');
     expect(data['author']).toBe('MODEL');
     expect(data['promptHash']).toBeTruthy();
     expect(data['contentTruncated']).toBe(false);
@@ -164,11 +163,10 @@ describe('POST /api/forensics/scan — relevance gate', () => {
     await handle(mockReq({ url: 'https://sport.example/page' }), res);
 
     expect(getStatus()).toBe(422);
-    const create = prisma.urlAssessment.create as unknown as jest.Mock;
+    const create = prisma.scanRelevanceAssessment.create as unknown as jest.Mock;
     expect(create).toHaveBeenCalledTimes(1);
     const { data } = create.mock.calls[0][0] as { data: Record<string, unknown> };
     expect(data['verdict']).toBe('OFF_MISSION');
-    expect(data['checkType']).toBe('MISSION');
     // The reason is kept, not just returned: a rejection has to be explicable to
     // the person rejected, months later.
     expect(data['reason']).toBe('העמוד עוסק בספורט ואינו קשור לחקירה.');

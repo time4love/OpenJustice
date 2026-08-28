@@ -1601,6 +1601,88 @@ an assessment: a verdict implies a judgement was made, and "we could not read th
 about the CHECK. Storing it as `OFF_MISSION` would make an unavailable check indistinguishable from a
 refusal — §3's own distinction, at the front door.
 
+##### PHASE B SCOPE, CORRECTED 2026-08-28 — do not build ahead of a real case
+
+Phase B was drifting into Save Page Now machinery: a subject-sensitivity agent with its own prompt and
+hash, a four-state `SpnOutcome` lifecycle, `PENDING` resolution, and a polymorphic assessment table with
+a `checkType` discriminator to hold two vocabularies.
+
+**Production tracks ONE url. Zero Save Page Now requests have ever been made**, because the Archive
+already held captures for everything — 83 for the MOH page, 25 for rtmag. **SPN is the branch taken when
+CDX returns zero rows, and that has never happened.**
+
+*All of it was reverted*, including the `UrlAssessment` restructure: a discriminator whose only value is
+`MISSION` is speculative generality of exactly the kind being corrected. The reasoning is kept below;
+the code is not. `20260828020000` was unapplied everywhere, so the restructure cost nothing to withdraw
+— and that is the argument for withdrawing it now rather than after it carried rows.
+
+**What survives is the real fix:** `admitUrl` as the only writer of `TrackedUrl`, and the verdict
+recorded in every direction.
+
+##### Until SPN exists, a zero-row CDX answer REFUSES the submission
+
+`DIRECT` must mean *"archiving was attempted and is impossible"*, never *"we did not ask"*. Without Save
+Page Now only the second is achievable, so writing a `DIRECT` capture as a fallback would be a
+provenance asserting an attempt that never happened — on the axis a reader uses to judge whether a
+stranger can re-check the evidence.
+
+**`CaptureProvenance.DIRECT` has zero writers, and `test/directProvenanceUnused.test.ts` keeps it that
+way** by source scan. The refusal is not silent: the `CdxQuery` row with `rowCount: 0` is its record,
+written by Phase A precisely so that "the Archive holds none" is an observation rather than an
+inference. rtmag's existing capture is grandfathered and already carries `independentlyRecheckable:
+false` through the `notArchived` partition.
+
+*The scan proves an ABSENCE, which a broken pattern also produces*, so it carries two guards: an anchor
+on `recordCapture` naming the enum it does write, and a case exercising the matcher against both shapes
+a writer would use.
+
+##### `UNREADABLE` is a recorded verdict, not an absence — corrected
+
+The first version of `admitUrl` returned `UNREADABLE` and wrote nothing, reasoning that a verdict
+implies a judgement was made. §3 already answers that: **`UNAVAILABLE` is a verdict about a CHECK, never
+about DATA — and §3 stores it.** Writing nothing makes *"did we try to admit this URL?"* unanswerable,
+which is the never-looked-versus-nothing-there family **at the front door of the corpus**.
+
+One value on the mission vocabulary, kept out of `OFF_MISSION` so an unavailable check stays
+distinguishable from a refusal.
+
+*A mutation SURVIVED here.* Returning `UNREADABLE` without recording it passed all 25 tests, because
+they exercise `recordUrlAssessment` directly and nothing asserted that `admitUrl` **calls** it. **Third
+time this session with that exact shape** — the route not recording an admit, the scraper passing a
+wrong predecessor id, and this. *Testing a collaborator in isolation says nothing about whether its
+caller reaches it*, and "the unit is covered" reads as "the behaviour is covered" until something
+silently stops happening. `test/admitUrl.test.ts` now tests the caller.
+
+##### FINDING: the migration history is not self-contained — pgcrypto is undeclared
+
+`20260824150000_claim_trajectory_pattern_hash` calls `digest()`, which comes from **pgcrypto**, and the
+history declares only `vector`. Replaying from empty fails at that migration.
+
+**It works in every real environment because Supabase pre-installs pgcrypto — so no deploy can ever
+catch it**, which is precisely why a shadow replay is the only thing that would have. The consequence is
+concrete: **`db:verify-migrations` cannot pass today.**
+
+Not fixable by amending that migration — it is applied, and applied migrations are never edited. A later
+`CREATE EXTENSION` would not help either, because the replay fails before reaching it. **Recorded as a
+finding rather than worked around**, and the tool says so in its own header rather than appearing merely
+unrun.
+
+*Also corrected:* the documented shadow one-liner named `postgres:16`, which lacks pgvector and would
+fail on `CREATE EXTENSION vector`. It is `pgvector/pgvector:pg16`.
+
+##### PARKED — design kept, code not built
+
+**The subject-sensitivity gate and the SPN request record.** The design stands and is worth keeping:
+`ON_MISSION` is a precondition rather than the question, because SPN makes a page *durable* rather than
+*visible* and the mission gate reads subject matter rather than who is in the page. A second gate would
+carry its own vocabulary with the **uncertainty default inverted** — `NEEDS_HUMAN` rather than
+`UNCLEAR`, deliberately a different word, so that one column cannot hold a value meaning *proceed* in
+one gate and *stop* in the other. Mission `UNCLEAR` would refuse outright, human or not: **a human may
+authorise permanence; a human may not authorise relevance.**
+
+**Build it when a URL actually needs Save Page Now.** The subject gate is a privacy-policy question with
+no bearing on Level 2's invariant, and it stays parked regardless.
+
 ##### Still to build
 
 The schema, the two-gate decision and the request record are in. **The subject-gate agent and the SPN

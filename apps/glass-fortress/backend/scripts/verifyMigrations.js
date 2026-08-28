@@ -13,22 +13,37 @@
  * green on the first check and wrong on the second: the live database is whatever
  * the SQL actually did, so drift compares the model against the mistake.
  *
- * WHY THIS EXISTS NOW. 20260828020000_url_assessment is hand-written and does
- * three things where a typo yields a schema that WORKS but is not the one
- * modelled — a table rename, an enum-to-text conversion, and a pair CHECK. The
- * failure mode is quiet: `verdict` ending up TEXT in the database while the model
- * still says otherwise would surface only when Prisma Client returned a value its
- * own types called impossible.
+ * WHY THIS EXISTS. Migrations here are hand-written, and the operations that
+ * matter — a rename, a type conversion, a CHECK — are exactly the ones where a
+ * typo yields a schema that WORKS but is not the one modelled. The failure mode is
+ * quiet: a column ending up a different type in the database than in the model
+ * surfaces only when Prisma Client returns a value its own types called
+ * impossible.
+ *
+ * (An earlier version of this comment named a specific migration that has since
+ * been withdrawn. The tool is not about one migration.)
  *
  * Runs against a THROWAWAY database, never a real one. Prisma resets the shadow
  * database repeatedly, which is why pointing this at staging or production would
  * be catastrophic rather than merely wrong — hence the refusal below.
  *
- *   docker run --rm -d -p 5433:5432 -e POSTGRES_PASSWORD=shadow --name gf-shadow postgres:16
+ *   docker run --rm -d -p 5433:5432 -e POSTGRES_PASSWORD=shadow --name gf-shadow pgvector/pgvector:pg16
  *   SHADOW_DATABASE_URL=postgresql://postgres:shadow@localhost:5433/postgres npm run db:verify-migrations
  *
  * Empty output from the diff is the proof. Non-empty output IS the drift, printed
  * as the SQL that would close it.
+ *
+ * KNOWN BLOCKER, recorded 2026-08-28: THIS CANNOT PASS TODAY.
+ * `20260824150000_claim_trajectory_pattern_hash` calls `digest()`, which comes
+ * from pgcrypto, and the migration history declares only `vector`. Replaying from
+ * empty therefore fails at that migration. It works in every real environment
+ * because Supabase pre-installs pgcrypto — so no deploy can catch it, which is
+ * exactly why a shadow replay is the only thing that would have.
+ *
+ * Not fixable by amending that migration: it is applied, and applied migrations
+ * are never edited. A later `CREATE EXTENSION` would not help either, since the
+ * replay fails before reaching it. Recorded as a finding rather than worked
+ * around.
  */
 const { execFileSync } = require('node:child_process');
 
@@ -42,7 +57,7 @@ if (!shadow) {
     'SHADOW_DATABASE_URL is not set, so nothing was verified.\n\n' +
       'This replays every migration into a THROWAWAY database and diffs the result\n' +
       'against schema.prisma. It needs any local Postgres — not the target:\n\n' +
-      '  docker run --rm -d -p 5433:5432 -e POSTGRES_PASSWORD=shadow --name gf-shadow postgres:16\n' +
+      '  docker run --rm -d -p 5433:5432 -e POSTGRES_PASSWORD=shadow --name gf-shadow pgvector/pgvector:pg16\n' +
       '  SHADOW_DATABASE_URL=postgresql://postgres:shadow@localhost:5433/postgres \\\n' +
       '    npm run db:verify-migrations\n',
   );

@@ -1,0 +1,14 @@
+-- UNREADABLE: nothing could be read, so nothing was judged.
+--
+-- §3 stores a verdict about a CHECK rather than leaving an absence. Without this
+-- value, a submission whose page could not be retrieved leaves no row at all, and
+-- "did we try to admit this URL?" becomes unanswerable — the
+-- never-looked-versus-nothing-there family, at the front door of the corpus.
+--
+-- Kept out of OFF_MISSION deliberately: collapsing them makes an unavailable
+-- check indistinguishable from a refusal, exactly as UNAVAILABLE must never count
+-- as VERIFIED.
+--
+-- ADD VALUE only. Postgres 12+ permits this inside a transaction provided the new
+-- value is not used in the same transaction, which it is not.
+ALTER TYPE "MissionVerdict" ADD VALUE 'UNREADABLE';

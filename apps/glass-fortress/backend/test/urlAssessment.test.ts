@@ -1,5 +1,5 @@
 jest.mock('../src/lib/prisma', () => ({
-  prisma: { urlAssessment: { create: jest.fn(), findFirst: jest.fn() } },
+  prisma: { scanRelevanceAssessment: { create: jest.fn(), findFirst: jest.fn() } },
 }));
 
 import { readFileSync } from 'node:fs';
@@ -9,22 +9,19 @@ import { prisma } from '../src/lib/prisma';
 import {
   recordUrlAssessment,
   currentVerdict,
-  savePageNowDecision,
   MISSION_VERDICTS,
-  SUBJECT_VERDICTS,
 } from '../src/services/recordUrlAssessment';
 import { SCAN_RELEVANCE_PROMPT_HASH, SCAN_RELEVANCE_VERSION } from '../src/lib/mission';
 import { SCAN_RELEVANCE_CHECK_PROMPT } from '../src/prompts/scanRelevanceCheck';
 
-const create = prisma.urlAssessment.create as unknown as jest.Mock;
-const findFirst = prisma.urlAssessment.findFirst as unknown as jest.Mock;
+const create = prisma.scanRelevanceAssessment.create as unknown as jest.Mock;
+const findFirst = prisma.scanRelevanceAssessment.findFirst as unknown as jest.Mock;
 
 const URL_ = 'https://example.gov.il/some-page';
 const AT = new Date('2026-08-28T09:00:00Z');
 
 function modelInput(o: Record<string, unknown> = {}) {
   return {
-    checkType: 'MISSION' as const,
     author: 'MODEL' as const,
     url: URL_,
     verdict: 'ON_MISSION' as const,
@@ -71,7 +68,7 @@ describe('every mission assessment is stored', () => {
       join(__dirname, '..', 'prisma', 'schema.prisma'),
       'utf8',
     );
-    const start = schema.indexOf('model UrlAssessment {');
+    const start = schema.indexOf('model ScanRelevanceAssessment {');
     expect(start).toBeGreaterThan(-1); // vacuity guard
     const model = schema.slice(start, schema.indexOf('\n}', start));
     expect(model).toMatch(/^\s+reason\s+String\s*$/m); // not String?
@@ -92,7 +89,7 @@ describe('every mission assessment is stored', () => {
 // 2. PROVENANCE IS COMPLETE BY CONSTRUCTION
 // ---------------------------------------------------------------------------
 describe('provenance cannot be omitted', () => {
-  it('writes model, agentVersion, promptHash and missionHash on a MODEL row', async () => {
+  it('writes model, agentVersion and promptHash on a MODEL row', async () => {
     await recordUrlAssessment(modelInput());
     const { data } = create.mock.calls[0][0];
     for (const field of ['model', 'agentVersion', 'promptHash']) {
@@ -109,29 +106,26 @@ describe('provenance cannot be omitted', () => {
   it('carries the CHECK constraint in the migration, not only in TypeScript', () => {
     // The write path's discriminated union is a check in ONE LANGUAGE guarding a
     // table any other path can write. Constraint over check.
-    // The constraint is DEFINED in the migration that created the table and
-    // RENAMED by the one that restructured it. Asserting only against the latest
-    // file would have reported the constraint missing when it is merely inherited
-    // — so both halves are checked, which is what "it still holds" actually means.
-    const migrations = join(__dirname, '..', 'prisma', 'migrations');
     const defined = readFileSync(
-      join(migrations, '20260828010000_scan_relevance_assessment', 'migration.sql'),
+      join(
+        __dirname,
+        '..',
+        'prisma',
+        'migrations',
+        '20260828010000_scan_relevance_assessment',
+        'migration.sql',
+      ),
       'utf8',
     );
-    const renamed = readFileSync(
-      join(migrations, '20260828020000_url_assessment', 'migration.sql'),
-      'utf8',
-    );
+    expect(defined).toContain('ScanRelevanceAssessment_provenance_complete');
     expect(defined).toMatch(/"author"\s*=\s*'MODEL'/);
     expect(defined).toMatch(/"promptHash"\s+IS NOT NULL/);
     expect(defined).toMatch(/"author"\s*=\s*'HUMAN'/);
     expect(defined).toMatch(/"actorId"\s+IS NOT NULL/);
-    expect(renamed).toContain('UrlAssessment_provenance_complete');
   });
 
   it('writes actorId and no model provenance on a HUMAN row', async () => {
     await recordUrlAssessment({
-      checkType: 'MISSION',
       author: 'HUMAN',
       url: URL_,
       verdict: 'ON_MISSION',
@@ -207,14 +201,13 @@ describe('the assessment records what the model actually saw', () => {
 describe('the latest assessment governs, and nothing is edited', () => {
   it('reads the most recent verdict for a URL', async () => {
     findFirst.mockResolvedValue({ verdict: 'ON_MISSION' });
-    const current = await currentVerdict(URL_, 'MISSION');
+    const current = await currentVerdict(URL_);
     expect(current).toBe('ON_MISSION');
     expect(findFirst.mock.calls[0][0].orderBy).toEqual({ assessedAt: 'desc' });
   });
 
   it('appends a human override rather than editing the model row', async () => {
     await recordUrlAssessment({
-      checkType: 'MISSION',
       author: 'HUMAN',
       url: URL_,
       verdict: 'ON_MISSION',
@@ -225,125 +218,40 @@ describe('the latest assessment governs, and nothing is edited', () => {
     // MARK, NEVER REMOVE: the model's verdict stays beside the correction, which
     // is what makes the filter auditable rather than merely overridable.
     expect(create).toHaveBeenCalledTimes(1);
-    expect(prisma.urlAssessment).not.toHaveProperty('update');
+    expect(prisma.scanRelevanceAssessment).not.toHaveProperty('update');
   });
 
   it('treats an unassessed URL as unassessed, never as ON_MISSION', async () => {
     findFirst.mockResolvedValue(null);
-    expect(await currentVerdict(URL_, 'MISSION')).toBeNull();
-    // Absence is not a pass — the UNAVAILABLE lesson.
-    expect(savePageNowDecision(null, 'NO_PRIVATE_INDIVIDUAL').allowed).toBe(false);
+    // Absence is not a pass — the UNAVAILABLE lesson. Never assessed is not
+    // on-mission, and callers must read null as "unassessed" rather than as a
+    // permissive default.
+    expect(await currentVerdict(URL_)).toBeNull();
   });
 });
 
 // ---------------------------------------------------------------------------
-// 6. TWO GATES, AND THE ASYMMETRY BETWEEN THEM
+// 6. UNREADABLE IS RECORDED, NOT LEFT AS AN ABSENCE
 // ---------------------------------------------------------------------------
-describe('Save Page Now is gated on two different questions', () => {
-  it('proceeds WITHOUT a human for an on-mission institutional page', () => {
-    // CHANGED FROM THE PREVIOUS RULE, deliberately. Requiring a human on every
-    // ON_MISSION is a gate that cries wolf, and this project already records that
-    // such a gate gets disabled. An institutional or press page on Covid-19
-    // health policy is the whole point of the platform: permanence harms nobody,
-    // SPN only fires when the Archive holds nothing, and asking every time trains
-    // a reader to stop reading.
-    expect(savePageNowDecision('ON_MISSION', 'NO_PRIVATE_INDIVIDUAL')).toEqual({
-      allowed: true,
-      humanConfirmationRequired: false,
-    });
+describe('a URL that could not be read still leaves a row', () => {
+  it('is on the mission vocabulary', () => {
+    expect(MISSION_VERDICTS).toContain('UNREADABLE');
   });
 
-  it('requires a human when the page is about a named private individual', () => {
-    expect(savePageNowDecision('ON_MISSION', 'NAMED_PRIVATE_INDIVIDUAL')).toEqual({
-      allowed: true,
-      humanConfirmationRequired: true,
-    });
+  it('is DISTINCT from OFF_MISSION', () => {
+    // Collapsing them would make an unavailable CHECK indistinguishable from a
+    // refusal of the DATA — the same rule that keeps UNAVAILABLE from counting as
+    // VERIFIED, applied at the front door of the corpus.
+    expect(MISSION_VERDICTS.filter((v) => v === 'UNREADABLE')).toHaveLength(1);
+    expect(MISSION_VERDICTS).toContain('OFF_MISSION');
   });
 
-  it('requires a human when the SUBJECT gate is uncertain — the inverted default', () => {
-    // The mission gate resolves uncertainty toward ADMITTING: a false rejection
-    // blocks a legitimate investigation, a false approval costs one scan. This
-    // gate resolves it the other way, because a false negative performs an
-    // IRREVERSIBLE act on someone who did not choose it.
-    expect(savePageNowDecision('ON_MISSION', 'NEEDS_HUMAN')).toEqual({
-      allowed: true,
-      humanConfirmationRequired: true,
-    });
-  });
-
-  it('refuses outright when the MISSION gate is uncertain, human or not', () => {
-    // THE ASSERTION TO GUARD HARDEST. A human may authorise permanence; a human
-    // may NOT authorise relevance. Without this the subject gate becomes a way to
-    // talk past the first gate entirely.
-    const decision = savePageNowDecision('UNCLEAR', 'NO_PRIVATE_INDIVIDUAL');
-    expect(decision.allowed).toBe(false);
-    if (decision.allowed) throw new Error('unreachable');
-    expect(decision.reason).toContain('cannot authorise relevance');
-  });
-
-  it('refuses on OFF_MISSION', () => {
-    expect(savePageNowDecision('OFF_MISSION', 'NO_PRIVATE_INDIVIDUAL').allowed).toBe(false);
-  });
-
-  it('refuses when the subject gate has never run', () => {
-    expect(savePageNowDecision('ON_MISSION', null).allowed).toBe(false);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// 7. THE TWO VOCABULARIES ARE DISJOINT
-// ---------------------------------------------------------------------------
-describe('no verdict value belongs to both gates', () => {
-  it('shares no value between the mission and subject vocabularies', () => {
-    // Both once used UNCLEAR, resolving it in OPPOSITE directions. Sharing one
-    // column, that made a single value mean two opposite things depending on a
-    // sibling column — so a query filtering on it would return rows meaning
-    // *proceed* beside rows meaning *stop*. One value answering two questions,
-    // which is the shape the checkType enum was split to avoid, reappearing one
-    // level below it.
-    const overlap = (MISSION_VERDICTS as readonly string[]).filter((v) =>
-      (SUBJECT_VERDICTS as readonly string[]).includes(v),
-    );
-    expect(MISSION_VERDICTS.length).toBeGreaterThan(0); // vacuity guard
-    expect(SUBJECT_VERDICTS.length).toBeGreaterThan(0);
-    expect(overlap).toEqual([]);
-  });
-
-  it('constrains each verdict to its OWN check type in the database', () => {
-    // Because the vocabularies are disjoint, this CHECK is a MISATTRIBUTION GUARD
-    // rather than a membership test: a mission verdict written under
-    // checkType = 'SUBJECT' violates it instead of being stored and silently
-    // meaning something else.
-    const sql = readFileSync(
-      join(__dirname, '..', 'prisma', 'migrations', '20260828020000_url_assessment', 'migration.sql'),
-      'utf8',
-    );
-    expect(sql).toContain('UrlAssessment_verdict_matches_checkType');
-    for (const v of MISSION_VERDICTS) expect(sql).toContain(`'${v}'`);
-    for (const v of SUBJECT_VERDICTS) expect(sql).toContain(`'${v}'`);
-  });
-
-  it('renames rather than recreating, so the migration cannot lose a row', () => {
-    // `prisma migrate diff` generates a table drop here. The table held 0 rows
-    // when measured — which is exactly the reasoning to refuse: a scan between
-    // the measurement and the deploy would write one, and the drop would destroy
-    // it while still reporting success.
-    const sql = readFileSync(
-      join(__dirname, '..', 'prisma', 'migrations', '20260828020000_url_assessment', 'migration.sql'),
-      'utf8',
-    );
-    expect(sql).toContain('RENAME TO "UrlAssessment"');
-    // Matched as a STATEMENT, not as a string anywhere in the file: the comment
-    // above explains what `prisma migrate diff` would have generated, and a bare
-    // substring check failed on the explanation rather than on the SQL. A test
-    // that fires on prose is not testing the code.
-    const statements = sql
-      .split('\n')
-      .filter((l) => !l.trimStart().startsWith('--'))
-      .join('\n');
-    expect(statements).not.toMatch(new RegExp(['DROP', 'TABLE'].join('\\s+')));
-    // NOT NULL with no DEFAULT is the emptiness guard: Postgres refuses it on a
-    // table with rows, so a surprise row aborts the deploy instead of vanishing.
-    expect(sql).toMatch(/ADD COLUMN "checkType" "UrlAssessmentType" NOT NULL;/);
+  it('stores a row rather than returning silently', async () => {
+    await recordUrlAssessment(modelInput({ verdict: 'UNREADABLE', contentChars: 0 }));
+    const { data } = create.mock.calls[0][0];
+    expect(data.verdict).toBe('UNREADABLE');
+    // Without a row, "did we try to admit this URL?" is unanswerable — the
+    // never-looked-versus-nothing-there family at the front door.
+    expect(create).toHaveBeenCalledTimes(1);
   });
 });

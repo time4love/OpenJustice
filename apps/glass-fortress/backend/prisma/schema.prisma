@@ -1720,19 +1720,23 @@ model CdxQuery {
   @@index([trackedUrlId, queriedAt])
 }
 
-/// Which question an assessment answers about a URL.
-///
-/// The discriminator for UrlAssessment. Two judgements, deliberately not one:
-/// "is this on-mission" reads SUBJECT MATTER, "is this about a named private
-/// individual" reads WHO IS IN THE PAGE. Collapsing them into one enum would be
-/// one value answering two questions.
-enum UrlAssessmentType {
-  /// Is this URL within the platform's stated purpose?
-  MISSION
-  /// Is this page about a named private individual, rather than an institution
-  /// or an official acting as one? Runs only when Save Page Now is about to
-  /// fire — i.e. when the Archive holds nothing.
-  SUBJECT
+/// Whether a submitted URL is within the platform's stated purpose.
+enum MissionVerdict {
+  ON_MISSION
+  OFF_MISSION
+  /// The assessment ran and could not decide.
+  UNCLEAR
+  /// NOTHING COULD BE READ, so nothing was judged.
+  ///
+  /// A verdict about the CHECK rather than about the URL — §3's own distinction,
+  /// and §3 stores it rather than leaving an absence. Recording nothing would make
+  /// "did we try to admit this URL?" unanswerable, which is the
+  /// never-looked-versus-nothing-there family at the front door.
+  ///
+  /// Kept out of OFF_MISSION deliberately: collapsing them would make an
+  /// unavailable check indistinguishable from a refusal, exactly as UNAVAILABLE
+  /// must never count as VERIFIED.
+  UNREADABLE
 }
 
 /// Who made the judgement.
@@ -1745,69 +1749,34 @@ enum AssessmentAuthor {
 
 /// ONE ASSESSMENT OF ONE SUBMITTED URL, KEPT WHATEVER IT DECIDED.
 ///
-/// WHY THIS EXISTS. `POST /api/forensics/scan` already screens submissions with
-/// `ScanRelevanceAgent` and returns 422 for an off-mission URL. That gate is
-/// correct and stays. What it does not do is LEAVE A TRACE: the verdict and its
-/// reason exist only in an HTTP response body, so §3 applies — a check that runs
-/// and is not recorded has not been performed, as far as anything downstream can
-/// tell.
+/// `POST /api/forensics/scan` already screened submissions and returned 422 for an
+/// off-mission URL. What it did not do is LEAVE A TRACE: the verdict and its
+/// reason existed only in an HTTP response body, so §3 applied — a check that runs
+/// and is not recorded has not been performed.
 ///
 /// It is also the one place this platform FILTERS ITS OWN INPUTS, which is the
-/// standard attack on curated evidence: "you kept what suited you." The answer to
-/// that is not an assurance that the filter was principled. It is a queryable
-/// record of everything turned away and why, checkable by the same outsider the
-/// rest of the platform is built for.
+/// standard attack on curated evidence: "you kept what suited you." The answer is
+/// a queryable record of everything turned away and everything let through.
 ///
-/// `url` IS A PLAIN STRING, NOT A RELATION TO TrackedUrl — and that is the whole
-/// point. A rejected URL never becomes a TrackedUrl, so a foreign key would make
-/// exactly the rejections unrepresentable and the table would record only what it
-/// admitted. That is the "zero rows create zero entries" trap one layer up, and
-/// it would produce a selection-bias record with selection bias in it.
+/// `url` IS A PLAIN STRING, NOT A RELATION TO TrackedUrl. A rejected URL never
+/// becomes a TrackedUrl, so a foreign key would make exactly the rejections
+/// unrepresentable — the "zero rows create zero entries" trap one layer up, which
+/// would produce a selection-bias record with selection bias in it.
 ///
-/// APPEND-ONLY. Re-assessment creates a new row; the operative verdict for a URL
-/// is the latest by `assessedAt`, DERIVED rather than stored. Relevance changes —
-/// the Berkovitch article was off-topic until it was the centre of the case — so
-/// the history of how a judgement moved is evidence in its own right.
-/// NOTE: this table carries TWO CHECK constraints Prisma cannot declare, both
-/// hand-written in 20260828020000_url_assessment:
+/// APPEND-ONLY. Re-assessment creates a new row; the operative verdict is the
+/// latest by `assessedAt`, DERIVED rather than stored.
 ///
-///   `UrlAssessment_provenance_complete` — a MODEL row holds its full provenance,
-///   a HUMAN row names its actor.
-///
-///   `UrlAssessment_verdict_matches_checkType` — the verdict belongs to the
-///   vocabulary of its check type. Because the two vocabularies are DISJOINT,
-///   this is a MISATTRIBUTION GUARD rather than a membership test: a mission
-///   verdict written under `checkType = 'SUBJECT'` violates it instead of
-///   silently meaning something else.
-///
-/// Recorded here because a database object invented in raw SQL and unmentioned in
-/// this file is how `evidence_embeddings` went unmodelled for months.
-model UrlAssessment {
-  id         String            @id @default(cuid())
-  /// The URL as submitted. Not a relation to TrackedUrl: a rejected URL never
-  /// becomes one, so a foreign key would make exactly the rejections
-  /// unrepresentable — "zero rows create zero entries", one layer up.
+/// NOTE: carries a CHECK constraint Prisma cannot declare —
+/// `ScanRelevanceAssessment_provenance_complete`, hand-written in
+/// 20260828010000. A MODEL row holds its full provenance, a HUMAN row names its
+/// actor. Recorded here because a database object invented in raw SQL and
+/// unmentioned in this file is how `evidence_embeddings` went unmodelled for
+/// months.
+model ScanRelevanceAssessment {
+  id         String           @id @default(cuid())
   url        String
-  checkType  UrlAssessmentType
-  /// The verdict, from its check type's own vocabulary.
-  ///
-  ///   MISSION  ON_MISSION · OFF_MISSION · UNCLEAR
-  ///   SUBJECT  NO_PRIVATE_INDIVIDUAL · NAMED_PRIVATE_INDIVIDUAL · NEEDS_HUMAN
-  ///
-  /// TEXT rather than an enum, because one column serves two vocabularies — and
-  /// the CHECK constraint IS the enum: a constraint on an enumerated set is what
-  /// an enum is, and it lives in the database rather than in one language.
-  ///
-  /// THE VOCABULARIES ARE DISJOINT, DELIBERATELY. Both gates once used `UNCLEAR`,
-  /// resolving it in OPPOSITE directions — mission-uncertain permits the scan,
-  /// subject-uncertain requires a human. In one column that made `UNCLEAR` mean
-  /// two opposite things depending on a sibling column, so a query filtering on
-  /// it would return rows meaning *proceed* beside rows meaning *stop*. Renaming
-  /// the subject verdict to NEEDS_HUMAN removes the hazard rather than guarding
-  /// it with a comment and a test — and it makes every verdict imply its own
-  /// check type, which is what makes the discriminator checkable.
-  verdict    String
-  /// The judgement in its author's own words. Required for BOTH verdicts — a
+  verdict    MissionVerdict
+  /// The judgement in its author's own words. Required for EVERY verdict — a
   /// filter that explains only its rejections cannot be audited for what it let
   /// through.
   reason     String
@@ -1815,15 +1784,14 @@ model UrlAssessment {
   assessedAt DateTime
 
   // MODEL provenance. Null on HUMAN rows — a real distinction rather than a
-  // missing value. Completeness is enforced by the CHECK above and by a
-  // discriminated union at the write path.
+  // missing value.
   model            String?
   agentVersion     String?
   /// SHA-256 of the criterion the verdict was reached under — the prompt itself.
   promptHash       String?
-  /// How many characters of page content the model was given, and whether the
-  /// page was longer. A bound on what a JUDGEMENT reads is defensible in a way a
-  /// bound on what is STORED is not — but only while it is visible.
+  /// How many characters the model was given, and whether the page was longer. A
+  /// bound on what a JUDGEMENT reads is defensible in a way a bound on what is
+  /// STORED is not — but only while it is visible.
   contentChars     Int?
   contentTruncated Boolean?
 
@@ -1835,74 +1803,5 @@ model UrlAssessment {
   createdAt DateTime @default(now())
 
   @@index([url, assessedAt])
-  @@index([checkType, verdict, assessedAt])
-}
-
-/// How the Internet Archive answered a Save Page Now request.
-enum SpnOutcome {
-  /// Sent, and no capture has appeared yet. NOT a failure — CDX indexing lags,
-  /// sometimes far beyond a request's lifetime.
-  PENDING
-  /// A capture appeared and was reconciled.
-  INDEXED
-  /// The Archive declined — robots.txt, paywall, login gate. A durable fact about
-  /// the page, and the only place DIRECT or ASSERTED legitimately persists.
-  DECLINED
-  /// Rate-limited or errored. Retryable, and deliberately distinct from DECLINED:
-  /// collapsing them makes a permanent refusal indistinguishable from a busy day.
-  FAILED
-}
-
-/// ONE REQUEST ASKING A THIRD PARTY TO MAKE A PAGE PERMANENT.
-///
-/// Everything else this platform does is passive observation — it reads an
-/// independent third party's record. Save Page Now makes it a PARTICIPANT in
-/// creating that record, and the act cannot be withdrawn.
-///
-/// An off-mission refusal is already a queryable fact. Without this table the
-/// irreversible act would leave no trace at all, which is backwards: the act that
-/// cannot be undone should leave at least as good a record as the one that can.
-///
-/// APPEND-ONLY. A second request for the same URL is a new row; `resolvedAt` and
-/// `waybackTimestamp` fill in on the row that was already there.
-model SavePageNowRequest {
-  id               String   @id @default(cuid())
-  url              String
-  requestedAt      DateTime
-  /// Who asked. NEVER NULL — an irreversible act has an author, and this is what
-  /// makes "authenticated and identified" meaningful rather than decorative.
-  requestedBy      String
-  /// SHA-256 of the criterion in force when the governing verdicts were reached.
-  ///
-  /// Named `criterionHash`, not `missionHash`: that column was collapsed into
-  /// `promptHash` when the prompt became the criterion, because two columns held
-  /// one value.
-  criterionHash    String
-  /// The subject verdict that governed. Self-describing WITHOUT a discriminator
-  /// beside it, because the two vocabularies are disjoint — 'ON_MISSION' written
-  /// here would be visibly wrong rather than interpretable by convention.
-  subjectVerdict   String
-  /// Set only when the subject gate required a human, which is the narrow case.
-  humanConfirmedBy String?
-
-  /// What the Archive answered.
-  outcome         SpnOutcome
-  archiveResponse String?
-
-  /// WHEN WE LAST LOOKED FOR THE CAPTURE.
-  ///
-  /// PENDING distinguishes *asked* from *never asked*. This distinguishes *asked
-  /// and still waiting* from *asked and never checked again* — the same
-  /// never-looked-versus-nothing-there family one level up, and without it a
-  /// PENDING row nothing revisits decays into exactly the inference this table
-  /// exists to prevent. `reconcileAgainstCdx` already runs a live CDX query per
-  /// tracked URL, so resolving open requests there is nearly free.
-  lastCheckedAt DateTime?
-
-  resolvedAt       DateTime?
-  waybackTimestamp String?
-  createdAt        DateTime  @default(now())
-
-  @@index([url, requestedAt])
-  @@index([outcome, lastCheckedAt])
+  @@index([verdict, assessedAt])
 }
