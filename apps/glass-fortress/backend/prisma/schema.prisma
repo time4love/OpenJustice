@@ -340,13 +340,44 @@ model UrlVersionDiff {
   // the agent. isLegallySignificant is derived from this being non-empty.
   investigativeCategories String[]            @default([])
   debates                 DiffDebateSession[]
-  beforeSnapshotId        String? // FK to the UrlSnapshot for the "before" state
-  beforeSnapshot          UrlSnapshot?        @relation("BeforeSnapshot", fields: [beforeSnapshotId], references: [id])
-  afterSnapshotId         String? // FK to the UrlSnapshot for the "after" state
-  afterSnapshot           UrlSnapshot?        @relation("AfterSnapshot", fields: [afterSnapshotId], references: [id])
+  /// THE CAPTURES THIS DIFF SPANS — its identity, and NOT NULL for that reason.
+  ///
+  /// Identity is the capture pair rather than the date pair, decided by
+  /// measurement rather than preference. Both environments hold a date pair that
+  /// spans two DIFFERENT transitions:
+  ///
+  ///   2022-05-03 -> 2022-05-03   20220503051621 -> 20220503102648
+  ///                              20220503102648 -> 20220503165508
+  ///
+  /// Three captures on one day, two consecutive diffs, one date pair. Keying on
+  /// dates collapses them into one and discards a real transition — and it
+  /// discards precisely the same-day revert material `recordCapture`'s novelty
+  /// rule exists to preserve. That would be Level 1's defect one layer up.
+  ///
+  /// NOT NULL because a diff whose captures we do not hold is UNVERIFIABLE BY
+  /// CONSTRUCTION: Level 5's invariant is that a reported change survives the
+  /// documents, and there are no documents to check it against. The gap is not
+  /// lost by declining to write such a row — it lives at the capture layer, where
+  /// `CdxIndexEntry` records UNSERVABLE/UNFETCHED as first-class queryable state.
+  /// Measured before the constraint: 81 of 81 rows populated in BOTH environments,
+  /// so nothing existing is excluded.
+  beforeSnapshotId        String
+  beforeSnapshot          UrlSnapshot         @relation("BeforeSnapshot", fields: [beforeSnapshotId], references: [id])
+  afterSnapshotId         String
+  afterSnapshot           UrlSnapshot         @relation("AfterSnapshot", fields: [afterSnapshotId], references: [id])
   createdAt               DateTime            @default(now())
   evidence                Evidence[]
   summaryCorrections      SummaryCorrection[]
+
+  /// A DIFF IS THE PAIR IT SPANS. Nothing enforced this, and diffs are written
+  /// from eight call sites, so a from-scratch rescan duplicated every diff it
+  /// re-derived. The constraint removes the hazard rather than avoiding it: with
+  /// it, a rescan CONVERGES instead of accumulating.
+  ///
+  /// Measured before adding: 0 duplicate groups under this key in both
+  /// environments, so it applies to the existing corpus untouched.
+  @@unique([beforeSnapshotId, afterSnapshotId])
+  @@index([trackedUrlId, afterDate])
 }
 
 // Mirrors the pgvector table created via raw SQL in the baseline migration

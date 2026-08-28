@@ -28,6 +28,7 @@ import { CLASSIFIER_VERSION, classifierPromptHash } from '../lib/classifierVersi
 import { getClaimTrajectories } from './claimTrajectory';
 import { ARCHIVED_CAPTURES_ONLY } from '../lib/archivedCaptures';
 import { admitUrl } from './admitUrl';
+import { recordDiff } from './recordDiff';
 import { fetchContentForRelevanceCheck } from './fetchContentForRelevanceCheck';
 import {
   recordCdxObservation,
@@ -750,13 +751,31 @@ export class WaybackScraper {
       const beforeDate = timestampToDate(prevSnap.timestamp);
       const afterDate = timestampToDate(snap.timestamp);
       const snapshotUrl = viewerCaptureUrl(snap.timestamp, url);
-      const beforeSnapshotId = prev.stored?.id ?? undefined;
-      const afterSnapshotId = current.stored?.id ?? undefined;
+      // A DIFF REQUIRES BOTH CAPTURES, and skipping is the honest outcome when one
+      // is missing rather than writing a row with a null pair.
+      //
+      // Level 5's invariant is that a reported change survives the DOCUMENTS. If a
+      // capture failed to store there are no documents, so such a diff is
+      // unverifiable by construction — a row that can never be validated and can
+      // never be promoted, occupying the corpus as though it had been checked.
+      //
+      // The gap is NOT lost by declining to write it: it lives at the capture
+      // layer, where CdxIndexEntry records UNSERVABLE / UNFETCHED as first-class
+      // queryable state. Recording it twice, once as a half-formed diff, would be
+      // the weaker of the two records claiming the stronger one's ground.
+      const beforeSnapshotId = prev.stored?.id;
+      const afterSnapshotId = current.stored?.id;
+      if (!beforeSnapshotId || !afterSnapshotId) {
+        console.warn(
+          `[WaybackScraper] no diff for ${prevSnap.timestamp} -> ${snap.timestamp}: ` +
+            'a capture is missing, so the pair cannot be checked against its documents.',
+        );
+        continue;
+      }
 
       // Truly identical after normalisation — record pair but skip AI
       if (deletions.length === 0 && additions.length === 0) {
-        await prisma.urlVersionDiff.create({
-          data: {
+        await recordDiff({
             trackedUrlId: trackedUrl.id,
             diffInputVersion: DIFF_INPUT_VERSION,
             beforeDate,
@@ -768,15 +787,13 @@ export class WaybackScraper {
             isLegallySignificant: false,
             beforeSnapshotId,
             afterSnapshotId,
-          },
-        });
+          });
         continue;
       }
 
       // Minor changes exist but nothing substantial enough for AI
       if (deletionsForAI.length === 0 && additionsForAI.length === 0) {
-        await prisma.urlVersionDiff.create({
-          data: {
+        await recordDiff({
             trackedUrlId: trackedUrl.id,
             diffInputVersion: DIFF_INPUT_VERSION,
             beforeDate,
@@ -790,8 +807,7 @@ export class WaybackScraper {
             isLegallySignificant: false,
             beforeSnapshotId,
             afterSnapshotId,
-          },
-        });
+          });
         continue;
       }
 
@@ -814,8 +830,7 @@ export class WaybackScraper {
           relatedEvidence,
         );
 
-        const diffRecord = await prisma.urlVersionDiff.create({
-          data: {
+        const diffRecord = await recordDiff({
             trackedUrlId: trackedUrl.id,
             diffInputVersion: DIFF_INPUT_VERSION,
             beforeDate,
@@ -834,8 +849,7 @@ export class WaybackScraper {
             investigativeCategories: analysis.investigativeCategories,
             beforeSnapshotId,
             afterSnapshotId,
-          },
-        });
+          });
 
         if (analysis.isLegallySignificant) {
           results.push({
@@ -870,8 +884,7 @@ export class WaybackScraper {
           `[WaybackScraper] ForensicAgent failed for ${snap.timestamp}:`,
           err instanceof Error ? err.message : err,
         );
-        await prisma.urlVersionDiff.create({
-          data: {
+        await recordDiff({
             trackedUrlId: trackedUrl.id,
             diffInputVersion: DIFF_INPUT_VERSION,
             beforeDate,
@@ -885,8 +898,7 @@ export class WaybackScraper {
             isLegallySignificant: false,
             beforeSnapshotId,
             afterSnapshotId,
-          },
-        });
+          });
       }
 
       await sleep(FETCH_DELAY_MS);
@@ -1092,13 +1104,24 @@ export class WaybackScraper {
         const beforeDate = prevEntry ? timestampToDate(prevEntry.timestamp) : 'Unknown';
         const afterDate = timestampToDate(entry.timestamp);
         const snapshotUrl = viewerCaptureUrl(entry.timestamp, job.url);
-        const beforeSnapshotId = previousSnapshot?.id ?? undefined;
-        const afterSnapshotId = currentSnapshot?.id ?? undefined;
+        // Same rule as analyzePageHistory: a diff requires both captures, and the
+        // capture layer already records why one is missing.
+        const beforeSnapshotId = previousSnapshot?.id;
+        const afterSnapshotId = currentSnapshot?.id;
 
-        if (deletions.length === 0 && additions.length === 0) {
+        // THE FIRST BRANCH, not an early `continue`. Continuing would skip the
+        // loop tail — `processedCount++` and the job progress write — so a capture
+        // would be fetched and stored while the job reported no progress for it.
+        // The missing-pair case belongs in the diff chain, because it is a
+        // statement about the DIFF and not about the capture.
+        if (!beforeSnapshotId || !afterSnapshotId) {
+          console.warn(
+            `[WaybackScraper] Job ${jobId} — no diff for ${entry.timestamp}: a capture is ` +
+              'missing, so the pair cannot be checked against its documents.',
+          );
+        } else if (deletions.length === 0 && additions.length === 0) {
           // Truly identical after normalisation — skip AI
-          await prisma.urlVersionDiff.create({
-            data: {
+          await recordDiff({
               trackedUrlId,
               diffInputVersion: DIFF_INPUT_VERSION,
               beforeDate,
@@ -1110,12 +1133,10 @@ export class WaybackScraper {
               isLegallySignificant: false,
               beforeSnapshotId,
               afterSnapshotId,
-            },
-          });
+            });
         } else if (deletionsForAI.length === 0 && additionsForAI.length === 0) {
           // Minor changes only — store raw chunks, skip AI
-          await prisma.urlVersionDiff.create({
-            data: {
+          await recordDiff({
               trackedUrlId,
               diffInputVersion: DIFF_INPUT_VERSION,
               beforeDate,
@@ -1129,8 +1150,7 @@ export class WaybackScraper {
               isLegallySignificant: false,
               beforeSnapshotId,
               afterSnapshotId,
-            },
-          });
+            });
         } else {
           let relatedEvidence: RelatedEvidenceContext[] = [];
           try {
@@ -1148,8 +1168,7 @@ export class WaybackScraper {
               relatedEvidence,
             );
 
-            const diffRecord = await prisma.urlVersionDiff.create({
-              data: {
+            const diffRecord = await recordDiff({
                 trackedUrlId,
                 diffInputVersion: DIFF_INPUT_VERSION,
                 beforeDate,
@@ -1168,8 +1187,7 @@ export class WaybackScraper {
                 investigativeCategories: analysis.investigativeCategories,
                 beforeSnapshotId,
                 afterSnapshotId,
-              },
-            });
+              });
 
             if (analysis.isLegallySignificant) {
               const trackedUrl = await prisma.trackedUrl.findUnique({ where: { id: trackedUrlId } });
@@ -1197,8 +1215,7 @@ export class WaybackScraper {
               `[WaybackScraper] Job ${jobId} — ForensicAgent failed for ${entry.timestamp}:`,
               err instanceof Error ? err.message : err,
             );
-            await prisma.urlVersionDiff.create({
-              data: {
+            await recordDiff({
                 trackedUrlId,
                 diffInputVersion: DIFF_INPUT_VERSION,
                 beforeDate,
@@ -1212,8 +1229,7 @@ export class WaybackScraper {
                 isLegallySignificant: false,
                 beforeSnapshotId,
                 afterSnapshotId,
-              },
-            });
+              });
           }
         }
       }

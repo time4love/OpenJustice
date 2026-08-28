@@ -1,0 +1,36 @@
+{
+  "_comment": "RATCHET BASELINE. Regenerate with: UPDATE_BASELINE=1 npx jest test/noUnnecessaryConditionRatchet.test.ts \u2014 never edit by hand to make a failure go away.",
+  "_why": {
+    "summary": "18 of these entries are DELIBERATE guards, not accidents. Migration 20260828120000_diff_identity_is_its_capture_pair made UrlVersionDiff.beforeSnapshotId/afterSnapshotId NOT NULL, so the UNCHECKABLE / unlinkedDiffs / refusedDiffIds branches in the diff-readers became branches the TYPES say can never run.",
+    "why_kept": "The type is enforced by a constraint that ships with this code but is NOT YET APPLIED, and forensics:rediff / forensics:measure-divergence run locally against real environments OUTSIDE the deploy ordering that guarantees migrations land first. Between merge and migration the runtime can produce what the type calls impossible. Deleting a guard because a linter argues from a type that does not yet describe reality is the extractHrefs near-miss, recorded in the plan.",
+    "condition_to_drop": "When 20260828120000 is applied in EVERY environment \u2014 check the _prisma_migrations ledger on production, not the deploy status \u2014 set these files' entries to 0. The ratchet then reports a REGRESSION until the dead branches are actually removed, which turns 'delete them later' from an intention into a condition.",
+    "affected_by_that_migration": {
+      "src/services/measureExtractionDivergence.ts": 9,
+      "src/routes/forensicsRoutes.ts": 4,
+      "src/services/rediffFromSnapshots.ts": 4,
+      "src/routes/evidenceRoutes.ts": 2
+    },
+    "note": "evidenceRoutes carries 6 in total; only 2 of them come from that migration. The rest of this baseline is pre-existing debt that predates Level 5 and is bounded here rather than endorsed."
+  },
+  "total": 51,
+  "files": {
+    "src/services/measureExtractionDivergence.ts": 9,
+    "src/services/resummarizeDiffs.ts": 7,
+    "src/routes/evidenceRoutes.ts": 6,
+    "src/routes/forensicsRoutes.ts": 4,
+    "src/services/rediffFromSnapshots.ts": 4,
+    "src/utils/tipTapUtils.ts": 4,
+    "src/services/WaybackScraper.ts": 3,
+    "src/routes/thesisRoutes.ts": 2,
+    "src/services/VectorStoreService.ts": 2,
+    "src/services/reportPatternService.ts": 2,
+    "src/lib/appEnv.ts": 1,
+    "src/mcp/tools/generateFoiaRequest.ts": 1,
+    "src/mcp/tools/getScanFindings.ts": 1,
+    "src/middleware/supabaseAuth.ts": 1,
+    "src/routes/authRoutes.ts": 1,
+    "src/services/diffDebate.ts": 1,
+    "src/services/fetchContentForRelevanceCheck.ts": 1,
+    "src/utils/parseMentions.ts": 1
+  }
+}

@@ -1851,10 +1851,92 @@ found. It is simply never promotable.
 
 *Also at this level, added 2026-08-27:*
 
-- **A diff is uniquely identified by the pair it spans.** `UrlVersionDiff` has no unique constraint on
-  `(beforeSnapshotId, afterSnapshotId)` and diffs are written with `create` across six call sites, so a
-  from-scratch rescan duplicates every existing diff. The constraint removes the hazard rather than
-  avoiding it.
+- **A diff is uniquely identified by the pair it spans — DONE 2026-08-28.**
+
+  *Two corrections to what this line used to say.* It said diffs are written across **six** call
+  sites; there were **eight**, all in `WaybackScraper.ts`. And a later reading of it claimed
+  `beforeSnapshotId` / `afterSnapshotId` **do not exist** — they did, as nullable FKs with
+  `BeforeSnapshot` / `AfterSnapshot` relations. What was missing was any constraint at all: the model
+  carried no `@@unique` and no `@@index`.
+
+  **Identity is the capture pair, and that was decided by measurement rather than preference.** Both
+  environments hold a date pair spanning two *different* transitions:
+
+  ```
+  2022-05-03 -> 2022-05-03    20220503051621 -> 20220503102648
+                              20220503102648 -> 20220503165508
+  ```
+
+  Three captures on one day, two consecutive diffs, one date pair. **Keying on dates collapses them and
+  discards a real transition** — and it discards precisely the same-day revert material
+  `recordCapture`'s novelty rule exists to preserve. That would be Level 1's defect one layer up.
+
+  *Safe on the existing corpus, measured before writing the migration:* **81 of 81 diffs have both
+  snapshot ids populated, and 0 duplicate groups under the pair — in BOTH environments.** So the
+  constraint applies to what is already there, untouched.
+
+  **`recordDiff` is the one writer**, upserting on the pair so a rescan **converges** instead of
+  accumulating, guarded by `test/diffSingleWriter.test.ts` — a source scan, because a behaviour test
+  covers only the paths someone thought to test and a ninth call site is covered by nothing.
+
+  **Both ids are NOT NULL**, because a diff whose captures we do not hold is *unverifiable by
+  construction*: Level 5 checks a reported change against the documents, and there would be none. The
+  gap is not lost by declining to write such a row — it lives at the capture layer, where
+  `CdxIndexEntry` records `UNSERVABLE` / `UNFETCHED` as first-class queryable state.
+
+  *A guard that had to be moved rather than added:* the first version skipped a missing-pair diff with
+  `continue`, which would have skipped the loop tail — `processedCount++` and the job progress write —
+  so a capture would be stored while the job reported no progress for it. It is the first branch of the
+  existing if/else chain instead.
+
+  *The FK became `ON DELETE RESTRICT`*, where an optional relation had `SET NULL`. Worth stating rather
+  than passing as generated boilerplate: deleting a capture a diff depends on is now **refused**, where
+  before it would have quietly nulled the pair and left a row nothing could check.
+
+  ##### OPEN FOR REVIEW — the tightening made 18 guards dead, and they were NOT deleted
+
+  Lint moved **363 → 381**, every one `no-unnecessary-condition`, concentrated in four diff-readers:
+  `measureExtractionDivergence` (9), `forensicsRoutes` (4), `rediffFromSnapshots` (4),
+  `evidenceRoutes` (2). They are the `UNCHECKABLE`, `unlinkedDiffs` and `refusedDiffIds` branches —
+  guards for a case the constraint now makes impossible.
+
+  **They were kept deliberately.** This document already records that *the linter argues from types
+  that do not describe runtime reality*, and that deleting guards to satisfy it is how `extractHrefs`
+  nearly began returning empty strings. Here the type is enforced by a constraint that **ships with this
+  code but is not yet applied**, and operational scripts (`forensics:rediff`,
+  `forensics:measure-divergence`) run locally against real environments *outside* the deploy ordering
+  that guarantees migrations land first.
+
+  Deleting them is defensible once the migration is applied everywhere; doing it in the same change that
+  introduces the constraint is not.
+
+  ##### RESOLVED — the intention became a condition
+
+  *"Settle it in step 2, which is the natural moment"* was **a plan to remember**, and this document's
+  own hierarchy puts that at the bottom. Worse, the entire record of a deliberate decision was a number
+  in a session summary: `npm run lint` is `eslint src/` with **no `--max-warnings` and no baseline**, so
+  363 → 381 was tracked by nothing. The next reader sees 381, cannot tell 18 deliberate guards from 18
+  accidents, and **the honest reading of a raw count is that the debt grew.**
+
+  So `no-unnecessary-condition` gets the treatment `noUncheckedIndexedAccess` already has:
+  `noUnnecessaryCondition.baseline.json` plus `test/noUnnecessaryConditionRatchet.test.ts` — per file,
+  can only go down, with the same three properties and the same mutation proofs.
+
+  **The baseline carries the reasoning, not just the numbers.** It names the migration, says why the 18
+  were kept, and states the condition for removing them: *when `20260828120000` is applied in every
+  environment — checked against the `_prisma_migrations` ledger, not the deploy status — set those
+  files' entries to 0.* The ratchet then reports a **REGRESSION** until the dead branches are actually
+  removed. **That converts "delete them later" from an intention into a checkable condition**, and it
+  stops 381 becoming the new floor by default.
+
+  *A hazard found in the tool by mutating it:* renaming the rule constant made every file report zero,
+  which the improvement arm reported as **progress** — and its remedy, "regenerate the baseline", would
+  have baked in zeros and disabled the check permanently. **A suggested fix has to be safe when the
+  diagnosis is wrong.** A wholesale collapse now throws instead of offering it.
+
+  *Scope note:* the ratchet is project-wide (51 across 18 files), not scoped to the four diff-readers,
+  so growth anywhere is caught. Only 18 of the 51 come from this migration; the rest is pre-existing
+  debt, **bounded here rather than endorsed**.
 - **Level 5 opens by re-pairing the diff layer** after Level 1's capture recovery: **7** existing diffs
   are stale (they span captures no longer consecutive) and **18** new pair-rows are needed. Deferred
   here deliberately so the classifications are paid for once, verified — see Level 1's boundary note.
