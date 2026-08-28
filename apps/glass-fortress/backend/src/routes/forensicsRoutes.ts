@@ -7,12 +7,8 @@ import { prisma } from '../lib/prisma';
 import { type DiffItem } from '../services/ForensicAgent';
 import { parseDiffItems } from '../lib/diffItems';
 import { scanLimiter } from '../middleware/rateLimiting';
-import { ScanRelevanceAgent } from '../services/ScanRelevanceAgent';
-import { recordMissionAssessment } from '../services/recordMissionAssessment';
-import { SCAN_RELEVANCE_PROMPT_HASH, SCAN_RELEVANCE_VERSION } from '../lib/mission';
-import { resolveModelId } from '../factories/LLMFactory';
-import { MissionVerdict } from '@prisma/client';
-import { scrapeUrl } from '../utils/webScraper';
+import { admitUrl } from '../services/admitUrl';
+import { fetchContentForRelevanceCheck } from '../services/fetchContentForRelevanceCheck';
 import { getStoredClaimTrajectories } from '../services/claimTrajectory';
 
 const router = Router();
@@ -39,44 +35,10 @@ const DiffPageQuerySchema = z.object({
 // ---------------------------------------------------------------------------
 
 let _waybackScraper: WaybackScraper | null = null;
-let _scanRelevanceAgent: ScanRelevanceAgent | null = null;
 
 function getWaybackScraper(): WaybackScraper {
   if (!_waybackScraper) _waybackScraper = new WaybackScraper();
   return _waybackScraper;
-}
-
-function getScanRelevanceAgent(): ScanRelevanceAgent {
-  if (!_scanRelevanceAgent) _scanRelevanceAgent = new ScanRelevanceAgent();
-  return _scanRelevanceAgent;
-}
-
-/**
- * Content to screen a URL against before committing to a full scan. Tries the
- * live page first (cheap, usually works); falls back to the earliest archived
- * Wayback snapshot for pages that have since gone offline or been taken down —
- * exactly the kind of page this tool exists to investigate, so a 404 on the
- * live site must not by itself block the scan.
- *
- * Returns null only when neither source yields any content — nothing to
- * classify, and nothing to scan either.
- */
-async function fetchContentForRelevanceCheck(url: string): Promise<string | null> {
-  try {
-    const page = await scrapeUrl(url);
-    if (page.textContent.trim().length > 0) return page.textContent;
-  } catch {
-    // Live fetch failed — fall through to the archive.
-  }
-
-  try {
-    const { snapshots } = await getWaybackScraper().probeSnapshotsList(url);
-    if (snapshots.length === 0) return null;
-    const text = await getWaybackScraper().scrapeSnapshot(url, snapshots[0].timestamp);
-    return text.trim().length > 0 ? text : null;
-  } catch {
-    return null;
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -105,54 +67,24 @@ router.post('/scan', scanLimiter, async (req: Request, res: Response): Promise<v
   const { url } = parsed.data;
 
   try {
-    const existing = await prisma.trackedUrl.findUnique({ where: { url } });
-
-    if (!existing) {
-      const content = await fetchContentForRelevanceCheck(url);
-      if (content === null) {
-        res.status(502).json({
+    // ONE ADMISSION PATH. This route was the only one that gated; the two MCP
+    // tools and GET /wayback did not. The check now lives in admitUrl, which a
+    // source scan makes the only writer of TrackedUrl.
+    const admission = await admitUrl({ url, fetchContent: fetchContentForRelevanceCheck });
+    if (!admission.admitted) {
+      res
+        .status(admission.verdict === 'UNREADABLE' ? 502 : 422)
+        .json({
           error:
-            'Could not retrieve any content for this URL — neither the live page nor any ' +
-            'archived Wayback snapshot. Nothing to scan.',
+            admission.verdict === 'UNREADABLE'
+              ? admission.reason
+              : 'URL not relevant to this investigation',
+          verdict: admission.verdict,
+          reason: admission.reason,
         });
-        return;
-      }
-
-      const relevance = await getScanRelevanceAgent().checkRelevance(content, url);
-
-      // THE VERDICT IS RECORDED BEFORE IT IS ACTED ON, and in BOTH directions.
-      //
-      // Recording only rejections would make the rejection RATE incomputable, so
-      // a filter turning away 1% would be indistinguishable from one turning away
-      // 90% — a selection-bias record with selection bias in it. This is the one
-      // place the platform filters its own inputs, and "you kept what suited you"
-      // is the standard attack on curated evidence; the answer is a queryable
-      // record of everything turned away AND everything let through.
-      await recordMissionAssessment({
-        author: 'MODEL',
-        url,
-        verdict: relevance.isRelevant ? MissionVerdict.ON_MISSION : MissionVerdict.OFF_MISSION,
-        reason: relevance.reason,
-        assessedAt: new Date(),
-        model: resolveModelId('SCAN_RELEVANCE'),
-        agentVersion: SCAN_RELEVANCE_VERSION,
-        promptHash: SCAN_RELEVANCE_PROMPT_HASH,
-        contentChars: relevance.contentChars,
-        contentTruncated: relevance.contentTruncated,
-      });
-
-      if (!relevance.isRelevant) {
-        res.status(422).json({ error: 'URL not relevant to this investigation', reason: relevance.reason });
-        return;
-      }
+      return;
     }
-
-    // One TrackedUrl per URL — upsert then set status to SCANNING
-    const trackedUrl = await prisma.trackedUrl.upsert({
-      where: { url },
-      update: { status: 'SCANNING' },
-      create: { url, status: 'SCANNING' },
-    });
+    const trackedUrl = { id: admission.trackedUrlId };
 
     res.status(201).json({ trackedUrlId: trackedUrl.id });
 

@@ -1480,9 +1480,258 @@ this tool's own header exists to prevent.
 fact (`CdxQuery`) rather than inferred from an overloaded counter. Routing on *"the Archive holds no
 captures for this URL"* is now branching on a signal that exists.
 
-**Phase B remains blocked on the Save Page Now policy decision.** That is the researcher's call and not
-an implementation question — the four operational points have defensible defaults; the fifth, whether
-any page should not be asked of a third party in perpetuity, does not.
+#### SAVE PAGE NOW — the policy is DECIDED, 2026-08-28
+
+*Five decisions. Four were operational with defensible defaults; the fifth was not, and the first answer
+to it was disproved by this corpus.*
+
+**A domain allowlist was proposed and REJECTED, on evidence.** Production's only **Tier 1: Smoking Gun**
+sits on `rtmag.co.il` — a media domain. A government-domain allowlist would have refused the most
+probative record the platform holds. Measured, not argued: every other confirmed record is
+`web.archive.org`.
+
+**The replacement is a second gate, and the reframe is the substance.** `ON_MISSION` is a precondition,
+not the question. Relevance is not what SPN adds: the page is already public, so SPN makes it *durable*
+rather than *visible*, and the harm case has exactly one shape — someone who published something about
+themselves and later wants it gone. **The mission gate cannot see that axis at all**, because it reads
+subject matter rather than who is in the page.
+
+| | mission gate | subject gate |
+|---|---|---|
+| question | is this within the stated purpose? | is this page about a named private individual? |
+| verdicts | `ON_MISSION` · `OFF_MISSION` · `UNCLEAR` | `NO_PRIVATE_INDIVIDUAL` · `NAMED_PRIVATE_INDIVIDUAL` · `NEEDS_HUMAN` |
+| uncertainty resolves toward | **admitting** — a false rejection blocks a legitimate investigation | **asking a human** — a false negative performs an irreversible act on someone who did not choose it |
+| runs | every submission | only when SPN is about to fire |
+
+**A human is NOT asked every time, and that is the correction.** The first design required confirmation
+on every `ON_MISSION` — a gate that cries wolf, which this document already records gets disabled. An
+institutional or press page on Covid-19 health policy is the whole point; permanence harms nobody, SPN
+fires only when the Archive holds nothing, and asking every time trains a reader to stop reading.
+
+**Mission `UNCLEAR` refuses outright, human or not.** *A human may authorise permanence; a human may not
+authorise relevance.* Without that, the subject gate becomes a way to talk past the first gate.
+
+##### The vocabularies are DISJOINT, and under one table that is a correctness property
+
+Both gates originally used `UNCLEAR`, resolving it in **opposite** directions. The first design guarded
+that with a comment stating the asymmetry and a test pinning both — **the two weakest rungs of the
+hierarchy, guarding a hazard the same document had just named.**
+
+Sharing one `verdict` column made it worse than a naming smell: one value would mean two opposite things
+depending on a sibling column, so a query filtering on it would return rows meaning *proceed* beside rows
+meaning *stop*. **One value answering two questions — the shape the `checkType` enum was split to avoid,
+reappearing one level below it.**
+
+Renaming the subject verdict to `NEEDS_HUMAN` removes the hazard instead of watching it, and something
+better falls out: **every verdict value now implies its own check type**, so
+`UrlAssessment_verdict_matches_checkType` is a **misattribution guard** rather than a membership test —
+a mission verdict written under `checkType = 'SUBJECT'` violates the constraint instead of being stored
+and silently meaning its opposite. It also makes `SavePageNowRequest.subjectVerdict` self-describing in
+a table that has no discriminator at all.
+
+##### One table, and why the CHECK is the constraint rather than a check
+
+`UrlAssessment` carries both judgements. Two tables would mean the provenance-recording rule — author,
+model, version, criterion hash, what the model was shown, who overrode it, and the completeness CHECK —
+existing **twice**: one rule, two implementations. `verdict` is `TEXT` constrained per check type, and
+**a constraint on an enumerated set is what an enum is**; the earlier argument was against a check in
+one language guarding a table any path can write, which is not this.
+
+##### The migration RENAMES rather than recreating, and the reason is not caution
+
+`prisma migrate diff` generates a table removal here. The table held **0 rows**, measured. *That is
+exactly the reasoning to refuse:* a scan between the measurement and the deploy would write one, and the
+removal would destroy it while still reporting success. `ADD COLUMN "checkType" … NOT NULL` with no
+`DEFAULT` is a **built-in emptiness guard** — Postgres refuses it on a table with rows, so a surprise row
+aborts the deploy with the previous version still serving.
+
+##### `PENDING` was not enough — `lastCheckedAt`
+
+`PENDING` distinguishes *asked* from *never asked*. It does not distinguish **asked and still waiting**
+from **asked and never checked again**, and a `PENDING` row nothing revisits decays into exactly the
+inference the table exists to prevent — the never-looked-versus-nothing-there family one level up from
+where it was designed out. `reconcileAgainstCdx` already runs a live CDX query per tracked URL, so
+resolving open requests there is nearly free.
+
+`DECLINED` (robots.txt, paywall — durable) stays distinct from `FAILED` (rate-limited — retryable), for
+the same reason `UNSERVABLE` is distinct from `UNFETCHED`.
+
+##### THE GATE COVERED ONE PATH OF FOUR — found and closed 2026-08-28
+
+**Before any of this could be relied on, the admission check had to actually run.** It was built on
+`POST /api/forensics/scan` and nowhere else, while **four** code paths could create a `TrackedUrl`:
+
+| path | reached by | gated? |
+|---|---|---|
+| `forensicsRoutes.ts:151` | `POST /api/forensics/scan` — the website | **yes** |
+| `WaybackScraper.analyzePageHistory` | `GET /api/forensics/wayback` | no |
+| `startForensicScan.ts` | **MCP `start_forensic_scan`** | no |
+| `enrichEvidenceWithHistory.ts` | **MCP `enrich_evidence_with_history`** | no |
+
+> **The admission check existed on the path THE WEBSITE uses and not on the paths THE RESEARCHER uses.**
+
+The gate was the exception rather than the rule, and the ungated majority is the interface the
+investigation is actually conducted through. That is
+[[gf-investigation-tools-must-be-mcp]] **inverted**: a control present in REST and absent from MCP is
+as broken as a capability present in REST and absent from MCP — and harder to notice, because nothing
+fails. It is also the same shape as FINDING 14, where the UI promote button routes around the debate.
+
+*It mattered concretely and immediately.* The revised rtmag plan opens with `start_forensic_scan` on the
+URL backing the case's central claim — which would have admitted it **through the gap the machinery was
+built to close, on the single page where its absence is least defensible.**
+
+**One admission path.** `admitUrl` runs the gate, records the verdict in both directions, and is the
+only writer of `TrackedUrl`. `test/urlAdmission.test.ts` asserts that by source scan —
+`trackedUrl.upsert` / `trackedUrl.create` appear in `admitUrl.ts` and nowhere else — with comments
+stripped first, because `admitUrl.ts` documents the rule in prose and would otherwise match itself for
+the wrong reason. **A behaviour test could only cover paths someone thought to test; a fifth path added
+tomorrow is covered by nothing.**
+
+*Two tests were replaced rather than repaired, and the distinction is the point:* `mcpTools.test.ts` and
+`mcpIntegration.test.ts` each asserted that `start_forensic_scan` **upserts a `TrackedUrl` directly**.
+Those tests pinned the bypass — they asserted the gap as the requirement, which is the third instance of
+that shape in this work.
+
+*Also extracted:* `fetchContentForRelevanceCheck`, which lived inside the one route that gated. Part of
+why the other three could not gate was that gating required duplicating it — **a rule expensive to apply
+everywhere ends up applied in one place.**
+
+*`UNREADABLE` is not a verdict about the URL.* When no content can be retrieved, nothing is recorded as
+an assessment: a verdict implies a judgement was made, and "we could not read the page" is a verdict
+about the CHECK. Storing it as `OFF_MISSION` would make an unavailable check indistinguishable from a
+refusal — §3's own distinction, at the front door.
+
+##### PHASE B SCOPE, CORRECTED 2026-08-28 — do not build ahead of a real case
+
+Phase B was drifting into Save Page Now machinery: a subject-sensitivity agent with its own prompt and
+hash, a four-state `SpnOutcome` lifecycle, `PENDING` resolution, and a polymorphic assessment table with
+a `checkType` discriminator to hold two vocabularies.
+
+**Production tracks ONE url. Zero Save Page Now requests have ever been made**, because the Archive
+already held captures for everything — 83 for the MOH page, 25 for rtmag. **SPN is the branch taken when
+CDX returns zero rows, and that has never happened.**
+
+*All of it was reverted*, including the `UrlAssessment` restructure: a discriminator whose only value is
+`MISSION` is speculative generality of exactly the kind being corrected. The reasoning is kept below;
+the code is not. `20260828020000` was unapplied everywhere, so the restructure cost nothing to withdraw
+— and that is the argument for withdrawing it now rather than after it carried rows.
+
+**What survives is the real fix:** `admitUrl` as the only writer of `TrackedUrl`, and the verdict
+recorded in every direction.
+
+##### Until SPN exists, a zero-row CDX answer REFUSES the submission
+
+`DIRECT` must mean *"archiving was attempted and is impossible"*, never *"we did not ask"*. Without Save
+Page Now only the second is achievable, so writing a `DIRECT` capture as a fallback would be a
+provenance asserting an attempt that never happened — on the axis a reader uses to judge whether a
+stranger can re-check the evidence.
+
+**`CaptureProvenance.DIRECT` has zero writers, and `test/directProvenanceUnused.test.ts` keeps it that
+way** by source scan. The refusal is not silent: the `CdxQuery` row with `rowCount: 0` is its record,
+written by Phase A precisely so that "the Archive holds none" is an observation rather than an
+inference. rtmag's existing capture is grandfathered and already carries `independentlyRecheckable:
+false` through the `notArchived` partition.
+
+*The scan proves an ABSENCE, which a broken pattern also produces*, so it carries two guards: an anchor
+on `recordCapture` naming the enum it does write, and a case exercising the matcher against both shapes
+a writer would use.
+
+##### `UNREADABLE` is a recorded verdict, not an absence — corrected
+
+The first version of `admitUrl` returned `UNREADABLE` and wrote nothing, reasoning that a verdict
+implies a judgement was made. §3 already answers that: **`UNAVAILABLE` is a verdict about a CHECK, never
+about DATA — and §3 stores it.** Writing nothing makes *"did we try to admit this URL?"* unanswerable,
+which is the never-looked-versus-nothing-there family **at the front door of the corpus**.
+
+One value on the mission vocabulary, kept out of `OFF_MISSION` so an unavailable check stays
+distinguishable from a refusal.
+
+*A mutation SURVIVED here.* Returning `UNREADABLE` without recording it passed all 25 tests, because
+they exercise `recordUrlAssessment` directly and nothing asserted that `admitUrl` **calls** it. **Third
+time this session with that exact shape** — the route not recording an admit, the scraper passing a
+wrong predecessor id, and this. *Testing a collaborator in isolation says nothing about whether its
+caller reaches it*, and "the unit is covered" reads as "the behaviour is covered" until something
+silently stops happening. `test/admitUrl.test.ts` now tests the caller.
+
+##### FINDING: the migration history is not self-contained — pgcrypto is undeclared
+
+`20260824150000_claim_trajectory_pattern_hash` calls `digest()`, which comes from **pgcrypto**, and the
+history declares only `vector`. Replaying from empty fails at that migration.
+
+**It works in every real environment because Supabase pre-installs pgcrypto — so no deploy can ever
+catch it**, which is precisely why a shadow replay is the only thing that would have. The consequence is
+concrete: **`db:verify-migrations` cannot pass today.**
+
+Not fixable by amending that migration — it is applied, and applied migrations are never edited. A later
+`CREATE EXTENSION` would not help either, because the replay fails before reaching it. **Recorded as a
+finding rather than worked around**, and the tool says so in its own header rather than appearing merely
+unrun.
+
+*Also corrected:* the documented shadow one-liner named `postgres:16`, which lacks pgvector and would
+fail on `CREATE EXTENSION vector`. It is `pgvector/pgvector:pg16`.
+
+##### PARKED — design kept, code not built
+
+**The subject-sensitivity gate and the SPN request record.** The design stands and is worth keeping:
+`ON_MISSION` is a precondition rather than the question, because SPN makes a page *durable* rather than
+*visible* and the mission gate reads subject matter rather than who is in the page. A second gate would
+carry its own vocabulary with the **uncertainty default inverted** — `NEEDS_HUMAN` rather than
+`UNCLEAR`, deliberately a different word, so that one column cannot hold a value meaning *proceed* in
+one gate and *stop* in the other. Mission `UNCLEAR` would refuse outright, human or not: **a human may
+authorise permanence; a human may not authorise relevance.**
+
+**Build it when a URL actually needs Save Page Now.** The subject gate is a privacy-policy question with
+no bearing on Level 2's invariant, and it stays parked regardless.
+
+##### Still to build
+
+The schema, the two-gate decision and the request record are in. **The subject-gate agent and the SPN
+HTTP call are not** — that is Phase B's remaining work, and it now has somewhere to record what it does.
+
+#### CORRECTED: a hand-written migration CAN be proven before it applies
+
+*A claim made and withdrawn the same day.* It was said that `db:check-drift` cannot validate a
+hand-written migration and therefore **"the deploy is the proof"**. That is wrong, and the correction
+matters because it turns a deploy from a proof into a formality.
+
+`check-drift` compares the **live database** against the model, so it cannot help: the live database is
+whatever the SQL actually did, and drift then compares the model against the mistake. A different diff
+answers the question that matters:
+
+```
+npx prisma migrate diff --from-migrations ./prisma/migrations   --to-schema-datamodel ./prisma/schema.prisma   --shadow-database-url "$SHADOW_DATABASE_URL" --script
+```
+
+That replays the whole history into a **throwaway** database and diffs the result against
+`schema.prisma`. Empty output is proof that the hand-written SQL lands exactly the modelled schema,
+**before any deploy and against no real environment**. Non-empty output *is* the drift, printed as the
+SQL that would close it — so the failure hands you the correction.
+
+**Two questions, two tools, and the names must not suggest one covers both:**
+
+| | asks |
+|---|---|
+| `db:check-drift` | does the LIVE DATABASE match the model? |
+| `db:verify-migrations` | does replaying every migration from empty PRODUCE the model? |
+
+**Staging having drifted and staging's HISTORY being wrong are separate failures, and only the second
+travels to production.**
+
+*Why it bites hardest on this particular migration:* `20260828020000_url_assessment` is hand-written and
+does three things where a typo yields a schema that **works but is not the one modelled** — a table
+rename, an enum-to-text conversion, and a pair CHECK. The failure would be quiet: `verdict` ending up
+`TEXT` in the database while the model said otherwise surfaces only when Prisma Client returns a value
+its own types call impossible.
+
+*The tool refuses rather than skipping.* Unset `SHADOW_DATABASE_URL` exits non-zero with the docker
+one-liner, because a verification tool that silently does nothing when unconfigured reports success for
+a check it never ran. It also refuses a URL naming either real project ref or any Supabase host —
+identified by data in the connection string, not by trusting the caller — because Prisma **resets** the
+shadow database repeatedly.
+
+**NOT YET RUN.** The Docker daemon is not running on this machine, and starting it is the researcher's
+call. The script and its refusals are proven; the verification itself is outstanding, and saying so is
+the point — an unrun check is not a passing one.
 
 #### RESOLVED: `UNCHANGED` — the status for "fetched, and deliberately not stored"
 

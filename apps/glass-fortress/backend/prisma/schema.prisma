@@ -1724,16 +1724,19 @@ model CdxQuery {
 enum MissionVerdict {
   ON_MISSION
   OFF_MISSION
-  /// The assessment could not decide.
-  ///
-  /// PERMITS THE REVERSIBLE ACT AND BLOCKS THE IRREVERSIBLE ONE: scanning may
-  /// proceed (tracking is undoable — stop tracking, supersede the rows, nothing
-  /// left the building), while Save Page Now may not, because asking a third
-  /// party to make a page permanent cannot be undone.
-  ///
-  /// The same shape as UNAVAILABLE never counting as a pass: an undecided check
-  /// is not a positive result, and the two must not collapse.
+  /// The assessment ran and could not decide.
   UNCLEAR
+  /// NOTHING COULD BE READ, so nothing was judged.
+  ///
+  /// A verdict about the CHECK rather than about the URL — §3's own distinction,
+  /// and §3 stores it rather than leaving an absence. Recording nothing would make
+  /// "did we try to admit this URL?" unanswerable, which is the
+  /// never-looked-versus-nothing-there family at the front door.
+  ///
+  /// Kept out of OFF_MISSION deliberately: collapsing them would make an
+  /// unavailable check indistinguishable from a refusal, exactly as UNAVAILABLE
+  /// must never count as VERIFIED.
+  UNREADABLE
 }
 
 /// Who made the judgement.
@@ -1746,84 +1749,55 @@ enum AssessmentAuthor {
 
 /// ONE ASSESSMENT OF ONE SUBMITTED URL, KEPT WHATEVER IT DECIDED.
 ///
-/// WHY THIS EXISTS. `POST /api/forensics/scan` already screens submissions with
-/// `ScanRelevanceAgent` and returns 422 for an off-mission URL. That gate is
-/// correct and stays. What it does not do is LEAVE A TRACE: the verdict and its
-/// reason exist only in an HTTP response body, so §3 applies — a check that runs
-/// and is not recorded has not been performed, as far as anything downstream can
-/// tell.
+/// `POST /api/forensics/scan` already screened submissions and returned 422 for an
+/// off-mission URL. What it did not do is LEAVE A TRACE: the verdict and its
+/// reason existed only in an HTTP response body, so §3 applied — a check that runs
+/// and is not recorded has not been performed.
 ///
 /// It is also the one place this platform FILTERS ITS OWN INPUTS, which is the
-/// standard attack on curated evidence: "you kept what suited you." The answer to
-/// that is not an assurance that the filter was principled. It is a queryable
-/// record of everything turned away and why, checkable by the same outsider the
-/// rest of the platform is built for.
+/// standard attack on curated evidence: "you kept what suited you." The answer is
+/// a queryable record of everything turned away and everything let through.
 ///
-/// `url` IS A PLAIN STRING, NOT A RELATION TO TrackedUrl — and that is the whole
-/// point. A rejected URL never becomes a TrackedUrl, so a foreign key would make
-/// exactly the rejections unrepresentable and the table would record only what it
-/// admitted. That is the "zero rows create zero entries" trap one layer up, and
-/// it would produce a selection-bias record with selection bias in it.
+/// `url` IS A PLAIN STRING, NOT A RELATION TO TrackedUrl. A rejected URL never
+/// becomes a TrackedUrl, so a foreign key would make exactly the rejections
+/// unrepresentable — the "zero rows create zero entries" trap one layer up, which
+/// would produce a selection-bias record with selection bias in it.
 ///
-/// APPEND-ONLY. Re-assessment creates a new row; the operative verdict for a URL
-/// is the latest by `assessedAt`, DERIVED rather than stored. Relevance changes —
-/// the Berkovitch article was off-topic until it was the centre of the case — so
-/// the history of how a judgement moved is evidence in its own right.
-/// NOTE: this table carries a CHECK constraint Prisma cannot declare —
-/// `ScanRelevanceAssessment_provenance_complete`, added by hand in
-/// 20260828010000_scan_relevance_assessment. It enforces that a MODEL row holds
-/// its full provenance and a HUMAN row names its actor. Recorded here because a
-/// database object invented in raw SQL and unmentioned in this file is how
-/// `evidence_embeddings` went unmodelled for months.
+/// APPEND-ONLY. Re-assessment creates a new row; the operative verdict is the
+/// latest by `assessedAt`, DERIVED rather than stored.
+///
+/// NOTE: carries a CHECK constraint Prisma cannot declare —
+/// `ScanRelevanceAssessment_provenance_complete`, hand-written in
+/// 20260828010000. A MODEL row holds its full provenance, a HUMAN row names its
+/// actor. Recorded here because a database object invented in raw SQL and
+/// unmentioned in this file is how `evidence_embeddings` went unmodelled for
+/// months.
 model ScanRelevanceAssessment {
   id         String           @id @default(cuid())
-  /// The URL as submitted. Not normalised away: what was judged is what was sent.
   url        String
   verdict    MissionVerdict
-  /// The judgement in its author's own words. Required for BOTH verdicts — a
+  /// The judgement in its author's own words. Required for EVERY verdict — a
   /// filter that explains only its rejections cannot be audited for what it let
   /// through.
   reason     String
   author     AssessmentAuthor
   assessedAt DateTime
 
-  // --- MODEL provenance. Null on HUMAN rows, and that is a real distinction
-  //     rather than a missing value. Completeness is enforced at the write path
-  //     by a discriminated union, so an incomplete MODEL row is unconstructable.
-  /// The model that judged. `classifierDraws` is null on older rows and that null
-  /// had to be rendered as a sentence; this axis is built now rather than
-  /// invented after the fact for the fifth time.
+  // MODEL provenance. Null on HUMAN rows — a real distinction rather than a
+  // missing value.
   model            String?
-  /// The agent version, pinned to its literal so blanking it cannot pass.
   agentVersion     String?
   /// SHA-256 of the criterion the verdict was reached under — the prompt itself.
-  ///
-  /// The prompt IS the admission criterion here; there is no separate policy
-  /// document it paraphrases, so one hash covers both and a second column would
-  /// be the same value under two names. Mirrors `classifierPromptHash`: the
-  /// version names the procedure, the hash proves the text.
-  ///
-  /// §3's sourceStateHash discipline — change the criterion and every prior
-  /// verdict is visibly reached under different words.
   promptHash       String?
-  /// How many characters of page content the model actually saw.
-  ///
-  /// The gate truncates its input for cost. A bound on what a JUDGEMENT reads is
-  /// defensible in a way a bound on what is STORED is not — but only if it is
-  /// recorded, or a rejection made on a prefix is indistinguishable from one made
-  /// on the whole page. Unrecorded caps are the family this rebuild descends from.
+  /// How many characters the model was given, and whether the page was longer. A
+  /// bound on what a JUDGEMENT reads is defensible in a way a bound on what is
+  /// STORED is not — but only while it is visible.
   contentChars     Int?
-  /// True when the source was longer than what the model was given.
   contentTruncated Boolean?
 
-  // --- HUMAN provenance
   /// Who overturned or confirmed it.
   actorId     String?
   /// Who submitted the URL, when known.
-  ///
-  /// Repeated off-mission submissions from one account is a signal, and it is the
-  /// difference between "our filter is systematically wrong" and "one person keeps
-  /// submitting football". Nullable: submissions can predate authentication.
   submitterId String?
 
   createdAt DateTime @default(now())

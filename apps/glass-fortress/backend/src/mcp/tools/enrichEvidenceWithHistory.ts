@@ -1,5 +1,7 @@
 import { z } from 'zod';
 import { prisma } from '../../lib/prisma';
+import { admitUrl } from '../../services/admitUrl';
+import { fetchContentForRelevanceCheck } from '../../services/fetchContentForRelevanceCheck';
 import { WaybackScraper } from '../../services/WaybackScraper';
 
 function getScraper(): WaybackScraper {
@@ -29,11 +31,21 @@ export async function enrichEvidenceWithHistoryHandler(input: { fileHash: string
 
   const url = evidence.sourceUrl;
 
-  const trackedUrl = await prisma.trackedUrl.upsert({
-    where: { url },
-    update: { status: 'SCANNING' },
-    create: { url, status: 'SCANNING' },
-  });
+  // Admission runs here too. This tool takes the sourceUrl of an EXISTING
+  // evidence record, so the URL has usually been through the gate already — and
+  // "usually" is exactly the word that made this a bypass. admitUrl returns
+  // immediately for an already-tracked URL, so the cost is one indexed lookup and
+  // the guarantee is that nothing enters the corpus unassessed.
+  const admission = await admitUrl({ url, fetchContent: fetchContentForRelevanceCheck });
+  if (!admission.admitted) {
+    return JSON.stringify({
+      error: 'This evidence record\'s source URL was not admitted to the corpus.',
+      verdict: admission.verdict,
+      reason: admission.reason,
+      url,
+    });
+  }
+  const trackedUrl = { id: admission.trackedUrlId };
 
   void getScraper()
     .runFullScan(trackedUrl.id, url)

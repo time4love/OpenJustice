@@ -16,6 +16,7 @@
     "format:check": "prettier --check src/",
     "test": "jest --config jest.config.ts",
     "db:check-drift": "prisma migrate diff --from-schema-datasource prisma/schema.prisma --to-schema-datamodel prisma/schema.prisma --exit-code",
+    "db:verify-migrations": "node scripts/verifyMigrations.js",
     "db:simulate": "node dist/scripts/dbSimulate.js",
     "db:deploy": "prisma migrate deploy",
     "researcher:bootstrap": "node dist/scripts/bootstrapResearcher.js",

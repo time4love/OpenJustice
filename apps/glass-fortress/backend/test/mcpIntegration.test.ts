@@ -7,6 +7,14 @@
 // this is the staging gate: write tools must never touch on-chain or Pinecone.
 // ---------------------------------------------------------------------------
 
+jest.mock('../src/services/admitUrl', () => ({
+  admitUrl: jest.fn(async () => ({
+    admitted: true,
+    trackedUrlId: 'tu-int-1',
+    alreadyTracked: false,
+  })),
+}));
+
 jest.mock('../src/lib/prisma', () => ({
   prisma: {
     evidence: { findUnique: jest.fn(), create: jest.fn(), findMany: jest.fn() },
@@ -381,19 +389,17 @@ describe('start_forensic_scan integration', () => {
     expect(result['status']).toBe('SCANNING');
   });
 
-  it('upserts TrackedUrl with SCANNING status', async () => {
+  it('ADMITS the URL rather than upserting a TrackedUrl directly', async () => {
+    // Replaces an assertion that pinned the bypass: the tool used to create a
+    // TrackedUrl itself, with no relevance check and no recorded verdict.
+    const { admitUrl } = await import('../src/services/admitUrl');
     await request(app)
       .post('/api/mcp')
       .set('Accept', MCP_ACCEPT)
       .set('Authorization', `Bearer ${VALID_TOKEN}`)
       .send(mcpCall('start_forensic_scan', args));
 
-    expect(mockTrackedUrlUpsert).toHaveBeenCalledWith(
-      expect.objectContaining({
-        update: { status: 'SCANNING' },
-        create: expect.objectContaining({ status: 'SCANNING' }),
-      }),
-    );
+    expect(admitUrl).toHaveBeenCalledWith(expect.objectContaining({ url: args.url }));
   });
 });
 

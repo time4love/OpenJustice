@@ -7,10 +7,10 @@ import { join } from 'node:path';
 import { createHash } from 'crypto';
 import { prisma } from '../src/lib/prisma';
 import {
-  recordMissionAssessment,
-  currentMissionVerdict,
-  maySubmitToSavePageNow,
-} from '../src/services/recordMissionAssessment';
+  recordUrlAssessment,
+  currentVerdict,
+  MISSION_VERDICTS,
+} from '../src/services/recordUrlAssessment';
 import { SCAN_RELEVANCE_PROMPT_HASH, SCAN_RELEVANCE_VERSION } from '../src/lib/mission';
 import { SCAN_RELEVANCE_CHECK_PROMPT } from '../src/prompts/scanRelevanceCheck';
 
@@ -47,7 +47,7 @@ beforeEach(() => {
 // ---------------------------------------------------------------------------
 describe('every mission assessment is stored', () => {
   it('stores a row when the URL is REJECTED', async () => {
-    await recordMissionAssessment(modelInput({ verdict: 'OFF_MISSION' }));
+    await recordUrlAssessment(modelInput({ verdict: 'OFF_MISSION' }));
     expect(create).toHaveBeenCalledTimes(1);
     expect(create.mock.calls[0][0].data.verdict).toBe('OFF_MISSION');
   });
@@ -56,7 +56,7 @@ describe('every mission assessment is stored', () => {
     // THE SUBTLE ONE. Recording only rejections makes the rejection RATE
     // incomputable, so a filter turning away 1% is indistinguishable from one
     // turning away 90% — a selection-bias record with selection bias in it.
-    await recordMissionAssessment(modelInput({ verdict: 'ON_MISSION' }));
+    await recordUrlAssessment(modelInput({ verdict: 'ON_MISSION' }));
     expect(create).toHaveBeenCalledTimes(1);
     expect(create.mock.calls[0][0].data.verdict).toBe('ON_MISSION');
   });
@@ -78,7 +78,7 @@ describe('every mission assessment is stored', () => {
     // The load-bearing modelling choice: a rejected URL never becomes a
     // TrackedUrl, so a foreign key would make exactly the rejections
     // unrepresentable — "zero rows create zero entries", one layer up.
-    await recordMissionAssessment(modelInput({ verdict: 'OFF_MISSION' }));
+    await recordUrlAssessment(modelInput({ verdict: 'OFF_MISSION' }));
     const { data } = create.mock.calls[0][0];
     expect(data.url).toBe(URL_);
     expect(data).not.toHaveProperty('trackedUrlId');
@@ -89,8 +89,8 @@ describe('every mission assessment is stored', () => {
 // 2. PROVENANCE IS COMPLETE BY CONSTRUCTION
 // ---------------------------------------------------------------------------
 describe('provenance cannot be omitted', () => {
-  it('writes model, agentVersion, promptHash and missionHash on a MODEL row', async () => {
-    await recordMissionAssessment(modelInput());
+  it('writes model, agentVersion and promptHash on a MODEL row', async () => {
+    await recordUrlAssessment(modelInput());
     const { data } = create.mock.calls[0][0];
     for (const field of ['model', 'agentVersion', 'promptHash']) {
       expect(data[field]).toBeTruthy();
@@ -106,7 +106,7 @@ describe('provenance cannot be omitted', () => {
   it('carries the CHECK constraint in the migration, not only in TypeScript', () => {
     // The write path's discriminated union is a check in ONE LANGUAGE guarding a
     // table any other path can write. Constraint over check.
-    const sql = readFileSync(
+    const defined = readFileSync(
       join(
         __dirname,
         '..',
@@ -117,15 +117,15 @@ describe('provenance cannot be omitted', () => {
       ),
       'utf8',
     );
-    expect(sql).toContain('ScanRelevanceAssessment_provenance_complete');
-    expect(sql).toMatch(/"author"\s*=\s*'MODEL'/);
-    expect(sql).toMatch(/"promptHash"\s+IS NOT NULL/);
-    expect(sql).toMatch(/"author"\s*=\s*'HUMAN'/);
-    expect(sql).toMatch(/"actorId"\s+IS NOT NULL/);
+    expect(defined).toContain('ScanRelevanceAssessment_provenance_complete');
+    expect(defined).toMatch(/"author"\s*=\s*'MODEL'/);
+    expect(defined).toMatch(/"promptHash"\s+IS NOT NULL/);
+    expect(defined).toMatch(/"author"\s*=\s*'HUMAN'/);
+    expect(defined).toMatch(/"actorId"\s+IS NOT NULL/);
   });
 
   it('writes actorId and no model provenance on a HUMAN row', async () => {
-    await recordMissionAssessment({
+    await recordUrlAssessment({
       author: 'HUMAN',
       url: URL_,
       verdict: 'ON_MISSION',
@@ -181,7 +181,7 @@ describe('the admission criterion is recorded, not merely applied', () => {
 // ---------------------------------------------------------------------------
 describe('the assessment records what the model actually saw', () => {
   it('stores contentChars and contentTruncated', async () => {
-    await recordMissionAssessment(modelInput({ contentChars: 10_000, contentTruncated: true }));
+    await recordUrlAssessment(modelInput({ contentChars: 10_000, contentTruncated: true }));
     const { data } = create.mock.calls[0][0];
     expect(data.contentChars).toBe(10_000);
     expect(data.contentTruncated).toBe(true);
@@ -190,7 +190,7 @@ describe('the assessment records what the model actually saw', () => {
   it('reports contentTruncated false when the whole page was seen', async () => {
     // An always-true flag is an assertion that cannot fail wearing a data field's
     // clothes.
-    await recordMissionAssessment(modelInput({ contentChars: 120, contentTruncated: false }));
+    await recordUrlAssessment(modelInput({ contentChars: 120, contentTruncated: false }));
     expect(create.mock.calls[0][0].data.contentTruncated).toBe(false);
   });
 });
@@ -200,19 +200,14 @@ describe('the assessment records what the model actually saw', () => {
 // ---------------------------------------------------------------------------
 describe('the latest assessment governs, and nothing is edited', () => {
   it('reads the most recent verdict for a URL', async () => {
-    findFirst.mockResolvedValue({
-      verdict: 'ON_MISSION',
-      reason: 'r',
-      author: 'HUMAN',
-      assessedAt: AT,
-    });
-    const current = await currentMissionVerdict(URL_);
-    expect(current?.verdict).toBe('ON_MISSION');
+    findFirst.mockResolvedValue({ verdict: 'ON_MISSION' });
+    const current = await currentVerdict(URL_);
+    expect(current).toBe('ON_MISSION');
     expect(findFirst.mock.calls[0][0].orderBy).toEqual({ assessedAt: 'desc' });
   });
 
   it('appends a human override rather than editing the model row', async () => {
-    await recordMissionAssessment({
+    await recordUrlAssessment({
       author: 'HUMAN',
       url: URL_,
       verdict: 'ON_MISSION',
@@ -228,31 +223,35 @@ describe('the latest assessment governs, and nothing is edited', () => {
 
   it('treats an unassessed URL as unassessed, never as ON_MISSION', async () => {
     findFirst.mockResolvedValue(null);
-    expect(await currentMissionVerdict(URL_)).toBeNull();
-    // Absence is not a pass — the UNAVAILABLE lesson.
-    expect(maySubmitToSavePageNow(null, true)).toBe(false);
+    // Absence is not a pass — the UNAVAILABLE lesson. Never assessed is not
+    // on-mission, and callers must read null as "unassessed" rather than as a
+    // permissive default.
+    expect(await currentVerdict(URL_)).toBeNull();
   });
 });
 
 // ---------------------------------------------------------------------------
-// 6. THE REVERSIBILITY ASYMMETRY
+// 6. UNREADABLE IS RECORDED, NOT LEFT AS AN ABSENCE
 // ---------------------------------------------------------------------------
-describe('UNCLEAR permits the reversible act and blocks the irreversible one', () => {
-  it('refuses Save Page Now on UNCLEAR even with human confirmation', () => {
-    expect(maySubmitToSavePageNow('UNCLEAR', true)).toBe(false);
+describe('a URL that could not be read still leaves a row', () => {
+  it('is on the mission vocabulary', () => {
+    expect(MISSION_VERDICTS).toContain('UNREADABLE');
   });
 
-  it('refuses Save Page Now on OFF_MISSION', () => {
-    expect(maySubmitToSavePageNow('OFF_MISSION', true)).toBe(false);
+  it('is DISTINCT from OFF_MISSION', () => {
+    // Collapsing them would make an unavailable CHECK indistinguishable from a
+    // refusal of the DATA — the same rule that keeps UNAVAILABLE from counting as
+    // VERIFIED, applied at the front door of the corpus.
+    expect(MISSION_VERDICTS.filter((v) => v === 'UNREADABLE')).toHaveLength(1);
+    expect(MISSION_VERDICTS).toContain('OFF_MISSION');
   });
 
-  it('refuses Save Page Now on ON_MISSION WITHOUT human confirmation', () => {
-    // Asking a third party to make a page permanent is the only act here that
-    // cannot be undone, so it is the only one gated on a human.
-    expect(maySubmitToSavePageNow('ON_MISSION', false)).toBe(false);
-  });
-
-  it('permits Save Page Now only on ON_MISSION plus a human yes', () => {
-    expect(maySubmitToSavePageNow('ON_MISSION', true)).toBe(true);
+  it('stores a row rather than returning silently', async () => {
+    await recordUrlAssessment(modelInput({ verdict: 'UNREADABLE', contentChars: 0 }));
+    const { data } = create.mock.calls[0][0];
+    expect(data.verdict).toBe('UNREADABLE');
+    // Without a row, "did we try to admit this URL?" is unanswerable — the
+    // never-looked-versus-nothing-there family at the front door.
+    expect(create).toHaveBeenCalledTimes(1);
   });
 });

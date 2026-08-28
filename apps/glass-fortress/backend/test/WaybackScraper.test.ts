@@ -49,6 +49,17 @@ jest.mock('../src/services/VectorStoreService', () => ({
   },
 }));
 
+// analyzePageHistory now ADMITS rather than upserting a TrackedUrl directly —
+// GET /api/forensics/wayback was one of three paths that created a TrackedUrl
+// with no relevance check and no recorded verdict.
+jest.mock('../src/services/admitUrl', () => ({
+  admitUrl: jest.fn(async () => ({
+    admitted: true,
+    trackedUrlId: 'tracked-url-id-123',
+    alreadyTracked: false,
+  })),
+}));
+
 jest.mock('../src/lib/prisma', () => ({
   prisma: {
     // The CDX observation store. A scan records what the Archive told us — the
