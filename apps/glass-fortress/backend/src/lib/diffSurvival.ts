@@ -1,0 +1,154 @@
+import { createHash } from 'crypto';
+import { normaliseForPresence } from './htmlText';
+
+/**
+ * LEVEL 5'S INVARIANT, as one function.
+ *
+ * *A change the platform reports survives the documents.* A chunk said to be
+ * REMOVED is absent from the after document; a chunk said to be ADDED was absent
+ * from the before one. Anything else is the pipeline reporting its own blind spot
+ * as an edit to the page.
+ *
+ * ONE IMPLEMENTATION, TWO CALLERS. `measureExtractionDivergence` already did this
+ * as a measurement, and Level 5 is the same logic moved to write time. Copying it
+ * would be one rule with two implementations — and here the two copies would be
+ * *the definition of a contradiction*, so any drift between them would mean the
+ * measurement and the enforcement disagreed about what the corpus contains.
+ *
+ * PURE. No Archive, no model, no network — a function of text already stored,
+ * which is what makes it affordable at write time.
+ */
+
+/** Verdicts a diff can receive. */
+export type SurvivalVerdict = 'SURVIVES' | 'CONTRADICTED' | 'UNCHECKABLE';
+
+export interface ContradictedChunk {
+  side: 'REMOVED' | 'ADDED';
+  excerpt: string;
+}
+
+export interface SurvivalResult {
+  verdict: SurvivalVerdict;
+  chunksChecked: number;
+  contradicted: ContradictedChunk[];
+  /** Populated only for UNCHECKABLE — a verdict about the CHECK needs its reason. */
+  reason?: string;
+}
+
+/**
+ * The floor below which a fragment matches by accident across a whole document.
+ *
+ * CARRIED, NOT ENDORSED. This is the same length-as-significance assumption as
+ * `MIN_CLAIM_LENGTH`, which the plan records as surviving in a second subsystem
+ * and slates for removal at Level 6 — a short claim can be the load-bearing one.
+ * It is named here rather than left as a bare `40` so that removing it is one
+ * edit against a constant with a written justification, not a hunt for literals.
+ */
+export const PRESENCE_FLOOR_CHARS = 40;
+
+/** Stored as a JSON array of strings; a malformed value checks as no chunks. */
+export function parseChunks(json: string): string[] {
+  try {
+    const parsed: unknown = JSON.parse(json);
+    return Array.isArray(parsed) ? parsed.filter((c): c is string => typeof c === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * A chunk and the sentences within it.
+ *
+ * GRANULARITY IS NOT A DETAIL. Whole-chunk matching found 2 contradictions of 81
+ * and missed the case this work exists for; sentence granularity found 7. The
+ * chunk itself comes first so an exact whole-chunk contradiction is reported as
+ * such rather than as one of its fragments.
+ */
+export function segmentsOf(chunk: string): string[] {
+  const parts = chunk
+    .split(/\n+|(?<=[.!?])\s+/)
+    .map((part) => part.trim())
+    .filter((part) => part.length > 0);
+  return [chunk, ...parts];
+}
+
+/**
+ * What the verdict was computed against.
+ *
+ * Taken over the two snapshots' `textHash` values rather than over the text
+ * itself — they are already SHA-256 of exactly that text, so this is the same
+ * commitment at a fraction of the cost, and it moves if and only if the text
+ * moves.
+ *
+ * §3's `sourceStateHash` discipline: staleness becomes COMPUTABLE rather than
+ * assumed. Level 4 will change what counts as chrome and therefore what text a
+ * diff compares; without this, that change silently invalidates every Level 5
+ * verdict while all the counts stay green.
+ */
+export function survivalSourceStateHash(beforeTextHash: string, afterTextHash: string): string {
+  return createHash('sha256').update(`${beforeTextHash}|${afterTextHash}`, 'utf8').digest('hex');
+}
+
+/**
+ * Does this diff's own report survive the documents it spans?
+ *
+ * `beforeVersion` / `afterVersion` are the snapshots' extraction versions. When
+ * they DISAGREE the result is `UNCHECKABLE`, not a verdict: the two sides were
+ * produced by different rules, so a presence test across them compares text that
+ * was never comparable. That is a verdict about the CHECK, which §3 requires be
+ * recorded rather than collapsed into a pass or a failure — and it is the reason
+ * `UNCHECKABLE` remains reachable now that a diff cannot exist without both
+ * captures.
+ */
+export function checkDiffSurvival(input: {
+  rawDeletedText: string;
+  rawAddedText: string;
+  beforeText: string;
+  afterText: string;
+  beforeVersion: string;
+  afterVersion: string;
+}): SurvivalResult {
+  if (input.beforeVersion !== input.afterVersion) {
+    return {
+      verdict: 'UNCHECKABLE',
+      chunksChecked: 0,
+      contradicted: [],
+      reason:
+        `The two captures were extracted under different rules ` +
+        `(${input.beforeVersion} vs ${input.afterVersion}), so a presence test across them ` +
+        `compares text that was never comparable.`,
+    };
+  }
+
+  const beforeNormalised = normaliseForPresence(input.beforeText);
+  const afterNormalised = normaliseForPresence(input.afterText);
+
+  const contradicted: ContradictedChunk[] = [];
+  let chunksChecked = 0;
+
+  for (const [side, json, haystack] of [
+    ['REMOVED', input.rawDeletedText, afterNormalised],
+    ['ADDED', input.rawAddedText, beforeNormalised],
+  ] as const) {
+    for (const chunk of parseChunks(json)) {
+      chunksChecked += 1;
+      for (const segment of segmentsOf(chunk)) {
+        const needle = normaliseForPresence(segment);
+        if (needle.length < PRESENCE_FLOOR_CHARS) continue;
+        if (haystack.includes(needle)) {
+          contradicted.push({ side, excerpt: needle.slice(0, 120) });
+          // One contradiction per chunk: the finding is that this chunk's removal
+          // is not supported, and listing every sentence inside it would inflate
+          // the count without adding a fact.
+          break;
+        }
+      }
+    }
+  }
+
+  return {
+    verdict: contradicted.length > 0 ? 'CONTRADICTED' : 'SURVIVES',
+    chunksChecked,
+    contradicted,
+  };
+}

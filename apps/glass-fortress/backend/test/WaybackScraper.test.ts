@@ -87,6 +87,14 @@ jest.mock('../src/lib/prisma', () => ({
       upsert: jest.fn().mockResolvedValue({ id: 'diff-id-456' }),
     },
     urlSnapshot: {
+      // recordDiff reads the two captures' STORED text to compute the Level 5
+      // survival verdict — the verdict must be re-derivable from stored state, so
+      // it is computed against stored state rather than from text held in memory.
+      findUniqueOrThrow: jest.fn().mockResolvedValue({
+        text: 'stored capture text',
+        textHash: 'a'.repeat(64),
+        textExtractionVersion: 'v2-inflate-decode-htmltotext-normalised',
+      }),
       // The write path is recordCapture, which asks three questions in order:
       // does this capture already exist (findUnique on the capturedAt key), is
       // it identical to the one before it (findFirst), and if neither, create.

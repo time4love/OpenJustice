@@ -1,5 +1,6 @@
-import { Prisma } from '@prisma/client';
+import { Prisma, SurvivalVerdict } from '@prisma/client';
 import { prisma } from '../lib/prisma';
+import { checkDiffSurvival, survivalSourceStateHash } from '../lib/diffSurvival';
 
 /**
  * THE ONE WAY A DIFF IS WRITTEN.
@@ -52,6 +53,9 @@ export type DiffWrite = Omit<
  * columns say which version produced it.
  */
 export async function recordDiff(data: DiffWrite): Promise<{ id: string }> {
+  const survival = await computeSurvival(data);
+  const row = { ...data, ...survival };
+
   return prisma.urlVersionDiff.upsert({
     where: {
       beforeSnapshotId_afterSnapshotId: {
@@ -59,8 +63,66 @@ export async function recordDiff(data: DiffWrite): Promise<{ id: string }> {
         afterSnapshotId: data.afterSnapshotId,
       },
     },
-    create: data,
-    update: data,
+    create: row,
+    update: row,
     select: { id: true },
   });
+}
+
+/**
+ * LEVEL 5 AT WRITE TIME.
+ *
+ * Reads the two captures' STORED text rather than taking it from the caller, and
+ * that is deliberate: the verdict must be re-derivable from stored state, so it
+ * has to be computed against stored state. A verdict computed from text held in
+ * memory would carry a `sourceStateHash` that nothing could reproduce.
+ *
+ * The cost is one indexed read per diff, of a pure local function — no Archive,
+ * no model, no network — which is what makes an invariant affordable at write
+ * time instead of as a script somebody remembers to run.
+ */
+async function computeSurvival(data: DiffWrite): Promise<{
+  survivalVerdict: SurvivalVerdict;
+  survivalCheckedAt: Date;
+  survivalSourceStateHash: string;
+  survivalTextVersion: string;
+  survivalContradicted: Prisma.InputJsonValue;
+  survivalChunksChecked: number;
+}> {
+  const [before, after] = await Promise.all([
+    prisma.urlSnapshot.findUniqueOrThrow({
+      where: { id: data.beforeSnapshotId },
+      select: { text: true, textHash: true, textExtractionVersion: true },
+    }),
+    prisma.urlSnapshot.findUniqueOrThrow({
+      where: { id: data.afterSnapshotId },
+      select: { text: true, textHash: true, textExtractionVersion: true },
+    }),
+  ]);
+
+  const result = checkDiffSurvival({
+    rawDeletedText: typeof data.rawDeletedText === 'string' ? data.rawDeletedText : '[]',
+    rawAddedText: typeof data.rawAddedText === 'string' ? data.rawAddedText : '[]',
+    beforeText: before.text,
+    afterText: after.text,
+    beforeVersion: before.textExtractionVersion,
+    afterVersion: after.textExtractionVersion,
+  });
+
+  return {
+    // No cast: the checker's verdict union and the Prisma enum have the same
+    // members, so the compiler already agrees. A cast here would be an escape
+    // hatch hiding a divergence if they ever stopped agreeing.
+    survivalVerdict: result.verdict,
+    survivalCheckedAt: new Date(),
+    survivalSourceStateHash: survivalSourceStateHash(before.textHash, after.textHash),
+    // The versions agree unless the verdict is UNCHECKABLE, which is exactly what
+    // a disagreement produces — so recording the before side is unambiguous.
+    survivalTextVersion: before.textExtractionVersion,
+    // Serialised through the JSON boundary explicitly rather than cast: Prisma's
+    // InputJsonValue does not accept an interface, and a cast would silently
+    // accept a shape that later fails at the database.
+    survivalContradicted: result.contradicted.map((c) => ({ side: c.side, excerpt: c.excerpt })),
+    survivalChunksChecked: result.chunksChecked,
+  };
 }

@@ -1875,6 +1875,54 @@ from the after document; a chunk said to be ADDED was absent from the before one
 refused** — refusing it would delete the evidence that the pipeline is wrong, which is how this was
 found. It is simply never promotable.
 
+#### STEP 2 DONE 2026-08-28 — the check runs at write and its verdict is stored
+
+`checkDiffSurvival` in `src/lib/diffSurvival.ts` is **one implementation with two callers**:
+`measureExtractionDivergence`, which already did this as a measurement, and `recordDiff`, which now does
+it at write. Copying it would have been one rule with two implementations — and here the two copies
+would be *the definition of a contradiction*, so any drift between them would mean the measurement and
+the enforcement disagreed about what the corpus contains.
+
+*Pure by construction:* no Archive, no model, no network. That is what makes an invariant affordable at
+write time instead of as a script somebody remembers to run.
+
+**Stored with what it was computed under**, which is the condition that makes running Level 5 ahead of
+Levels 3 and 4 safe:
+
+| column | why |
+|---|---|
+| `survivalVerdict` | `SURVIVES` · `CONTRADICTED` · `UNCHECKABLE` |
+| `survivalSourceStateHash` | SHA-256 over the two captures' `textHash` — §3's staleness discipline |
+| `survivalTextVersion` | the hash says the text MOVED; this says which rule produced it |
+| `survivalContradicted` | **what disagreed** — §3's pipeline-defect record, not just a count |
+| `survivalChunksChecked` | the denominator, so a verdict of SURVIVES over zero chunks is visible |
+
+Without the hash and the version, Level 4's change to what counts as chrome **silently invalidates every
+Level 5 verdict while all the counts stay green** — the exact shape this plan descends from.
+
+##### `UNCHECKABLE` gained a real reason to exist
+
+Making the capture pair `NOT NULL` in step 1 removed the case `UNCHECKABLE` originally covered — a diff
+referencing no capture. It now covers a different one that can genuinely occur: **the two captures were
+extracted under different rules**, so a presence test across them compares text that was never
+comparable.
+
+That is a verdict about the CHECK, and it is kept out of both `SURVIVES` and `CONTRADICTED`. Reporting
+it as either would be an unavailable check counting as a result, which is the failure §3 exists to
+prevent. *Mutation-proven:* removing the version comparison makes a mixed-version pair report
+`CONTRADICTED`, and the test fails.
+
+##### The verdict is computed against STORED text, deliberately
+
+`recordDiff` re-reads both captures rather than taking the text from its caller, which has it in memory.
+**A verdict must be re-derivable from stored state, so it has to be computed against stored state** — one
+computed from in-memory text would carry a `sourceStateHash` that nothing could reproduce. The cost is
+one indexed read per diff.
+
+*Carried, not endorsed:* the presence floor is `PRESENCE_FLOOR_CHARS = 40`, the same
+length-as-significance assumption as `MIN_CLAIM_LENGTH`. It is now a named constant with its
+justification attached, so removing it at Level 6 is one edit rather than a hunt for literals.
+
 *Also at this level, added 2026-08-27:*
 
 - **A diff is uniquely identified by the pair it spans — DONE 2026-08-28.**

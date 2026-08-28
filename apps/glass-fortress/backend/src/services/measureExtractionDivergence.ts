@@ -1,5 +1,6 @@
 import { prisma } from '../lib/prisma';
 import { normaliseForPresence } from '../lib/archiveText';
+import { checkDiffSurvival } from '../lib/diffSurvival';
 
 // ---------------------------------------------------------------------------
 // What did the extraction discard, and which reported changes did that invent?
@@ -87,26 +88,6 @@ export interface DivergenceReport {
   };
 }
 
-/**
- * A chunk, and the sentences inside it.
- *
- * Whole-chunk matching UNDER-REPORTS, and the case that proves it is the one this
- * work exists for. The FDA safety line survived on the 2022-08-05 page, but the
- * chunk reported as removed around it also contained text that genuinely went —
- * so the chunk as a unit is absent from the after document and the contradiction
- * hides inside it. Measuring at both granularities is the difference between "2
- * of 81 diffs are wrong" and the truth.
- *
- * The chunk itself comes first so an exact whole-chunk contradiction is reported
- * as such rather than as one of its fragments.
- */
-function segmentsOf(chunk: string): string[] {
-  const parts = chunk
-    .split(/\n+|(?<=[.!?])\s+/)
-    .map((part) => part.trim())
-    .filter((part) => part.length > 0);
-  return [chunk, ...parts];
-}
 
 /** Non-empty lines of a document, which is the granularity htmlToText produces. */
 function blocksOf(text: string): string[] {
@@ -174,8 +155,8 @@ export async function measureExtractionDivergence(url: string): Promise<Divergen
       afterDate: true,
       rawDeletedText: true,
       rawAddedText: true,
-      beforeSnapshot: { select: { text: true } },
-      afterSnapshot: { select: { text: true } },
+      beforeSnapshot: { select: { text: true, textExtractionVersion: true } },
+      afterSnapshot: { select: { text: true, textExtractionVersion: true } },
     },
     orderBy: { beforeDate: 'asc' },
   });
@@ -210,42 +191,25 @@ export async function measureExtractionDivergence(url: string): Promise<Divergen
       continue;
     }
 
-    const beforeNormalised = normaliseForPresence(beforeRaw);
-    const afterNormalised = normaliseForPresence(afterRaw);
-    const contradicted: ContradictedChunk[] = [];
-    let chunksChecked = 0;
-
-    // A chunk said to be REMOVED must be gone from the AFTER document; a chunk
-    // said to be ADDED must have been absent from the BEFORE one. Anything else
-    // is the pipeline reporting its own blind spot as an edit to the page.
-    for (const [side, json, haystack] of [
-      ['REMOVED', diff.rawDeletedText, afterNormalised],
-      ['ADDED', diff.rawAddedText, beforeNormalised],
-    ] as const) {
-      for (const chunk of parseChunks(json)) {
-        chunksChecked += 1;
-        for (const segment of segmentsOf(chunk)) {
-          const needle = normaliseForPresence(segment);
-          // Short fragments match by accident across a whole document, which would
-          // report contradictions that are really coincidences. The floor matches
-          // the one claim-trajectory detection already applies.
-          if (needle.length < 40) continue;
-          if (haystack.includes(needle)) {
-            contradicted.push({ side, excerpt: needle.slice(0, 120) });
-            // One contradiction per chunk: the finding is that this chunk's
-            // removal is not supported, and listing every sentence inside it
-            // would inflate the count without adding a fact.
-            break;
-          }
-        }
-      }
-    }
+    // THE SAME FUNCTION THE WRITE PATH USES. Level 5 moved this logic to write
+    // time; keeping a second copy here would make the measurement and the
+    // enforcement two definitions of what a contradiction IS, and any drift
+    // between them would mean they disagreed about what the corpus contains.
+    const survival = checkDiffSurvival({
+      rawDeletedText: diff.rawDeletedText,
+      rawAddedText: diff.rawAddedText,
+      beforeText: beforeRaw,
+      afterText: afterRaw,
+      beforeVersion: diff.beforeSnapshot.textExtractionVersion,
+      afterVersion: diff.afterSnapshot.textExtractionVersion,
+    });
+    const { contradicted, chunksChecked } = survival;
 
     checked.push({
       diffId: diff.id,
       beforeDate: diff.beforeDate,
       afterDate: diff.afterDate,
-      verdict: contradicted.length > 0 ? 'CONTRADICTED' : 'SURVIVES',
+      verdict: survival.verdict,
       chunksChecked,
       contradicted,
     });
@@ -268,12 +232,3 @@ export async function measureExtractionDivergence(url: string): Promise<Divergen
   };
 }
 
-/** Stored as a JSON array of strings; a malformed value measures as no chunks. */
-function parseChunks(json: string): string[] {
-  try {
-    const parsed: unknown = JSON.parse(json);
-    return Array.isArray(parsed) ? parsed.filter((c): c is string => typeof c === 'string') : [];
-  } catch {
-    return [];
-  }
-}
