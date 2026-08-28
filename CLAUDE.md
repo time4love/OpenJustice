@@ -295,6 +295,19 @@ that makes an environment reproducible.
 The guard **fails open** on internal error, by design: a broken hook must not wedge the session. It is
 a net under the rules above, never a substitute for them.
 
+#### It matches statement text ANYWHERE in a Bash command, including prose
+
+Writing documentation, tests, or commit messages that *discuss* `DROP TABLE` / `TRUNCATE` /
+`DELETE FROM` will be blocked. This cost four blocks in one session — a code comment, a test string, a
+plan paragraph, and a commit message — and diagnosing it from the refusal text is not obvious, because
+the command genuinely does contain the words.
+
+**Use the `Write` tool rather than a heredoc, and `git commit -F <file>` rather than `-m`, for anything
+that names a destructive statement.**
+
+Failing closed is correct here and the pattern should not be loosened: a guard that tried to tell prose
+from intent would be a guard with a bypass in it.
+
 ### Why a rule alone was not enough
 
 The migration rules below landed *hours before* the 2026-08-21 wipe and did not prevent it. They named

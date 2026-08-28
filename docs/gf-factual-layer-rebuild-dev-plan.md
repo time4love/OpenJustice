@@ -1561,6 +1561,51 @@ the same reason `UNSERVABLE` is distinct from `UNFETCHED`.
 The schema, the two-gate decision and the request record are in. **The subject-gate agent and the SPN
 HTTP call are not** — that is Phase B's remaining work, and it now has somewhere to record what it does.
 
+#### CORRECTED: a hand-written migration CAN be proven before it applies
+
+*A claim made and withdrawn the same day.* It was said that `db:check-drift` cannot validate a
+hand-written migration and therefore **"the deploy is the proof"**. That is wrong, and the correction
+matters because it turns a deploy from a proof into a formality.
+
+`check-drift` compares the **live database** against the model, so it cannot help: the live database is
+whatever the SQL actually did, and drift then compares the model against the mistake. A different diff
+answers the question that matters:
+
+```
+npx prisma migrate diff --from-migrations ./prisma/migrations   --to-schema-datamodel ./prisma/schema.prisma   --shadow-database-url "$SHADOW_DATABASE_URL" --script
+```
+
+That replays the whole history into a **throwaway** database and diffs the result against
+`schema.prisma`. Empty output is proof that the hand-written SQL lands exactly the modelled schema,
+**before any deploy and against no real environment**. Non-empty output *is* the drift, printed as the
+SQL that would close it — so the failure hands you the correction.
+
+**Two questions, two tools, and the names must not suggest one covers both:**
+
+| | asks |
+|---|---|
+| `db:check-drift` | does the LIVE DATABASE match the model? |
+| `db:verify-migrations` | does replaying every migration from empty PRODUCE the model? |
+
+**Staging having drifted and staging's HISTORY being wrong are separate failures, and only the second
+travels to production.**
+
+*Why it bites hardest on this particular migration:* `20260828020000_url_assessment` is hand-written and
+does three things where a typo yields a schema that **works but is not the one modelled** — a table
+rename, an enum-to-text conversion, and a pair CHECK. The failure would be quiet: `verdict` ending up
+`TEXT` in the database while the model said otherwise surfaces only when Prisma Client returns a value
+its own types call impossible.
+
+*The tool refuses rather than skipping.* Unset `SHADOW_DATABASE_URL` exits non-zero with the docker
+one-liner, because a verification tool that silently does nothing when unconfigured reports success for
+a check it never ran. It also refuses a URL naming either real project ref or any Supabase host —
+identified by data in the connection string, not by trusting the caller — because Prisma **resets** the
+shadow database repeatedly.
+
+**NOT YET RUN.** The Docker daemon is not running on this machine, and starting it is the researcher's
+call. The script and its refusals are proven; the verification itself is outstanding, and saying so is
+the point — an unrun check is not a passing one.
+
 #### RESOLVED: `UNCHANGED` — the status for "fetched, and deliberately not stored"
 
 Found while writing the backfill; **decided before the backfill ran, deliberately.** `CdxEntryStatus`
