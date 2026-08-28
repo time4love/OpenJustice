@@ -369,6 +369,42 @@ model UrlVersionDiff {
   evidence                Evidence[]
   summaryCorrections      SummaryCorrection[]
 
+  // --- LEVEL 5: does this diff's own report survive the documents it spans? ---
+  //
+  // The check runs AT WRITE and its verdict is stored, because a check that runs
+  // and is not recorded has not been performed as far as anything downstream can
+  // tell (§3). A CONTRADICTED diff is WRITTEN, NOT REFUSED — refusing it would
+  // delete the evidence that the pipeline is wrong, which is how this was found.
+  // It is simply never promotable.
+  //
+  // Nullable only because rows written before this level exist; a row without a
+  // verdict is unchecked, which is not the same as passing.
+  survivalVerdict         SurvivalVerdict?
+  survivalCheckedAt       DateTime?
+  /// SHA-256 over the two captures' `textHash` values — what the verdict was
+  /// computed against.
+  ///
+  /// §3's sourceStateHash discipline, and it is what makes running Level 5 ahead
+  /// of Levels 3 and 4 safe. Level 4 changes what counts as chrome and therefore
+  /// what text a diff compares; without this, that change silently invalidates
+  /// every Level 5 verdict while all the counts stay green — the exact shape this
+  /// plan descends from.
+  survivalSourceStateHash String?
+  /// The extraction rule both captures were produced under.
+  ///
+  /// The hash above says the text MOVED; this says which rule produced it, so
+  /// "re-check everything decided under v2" is a query rather than an
+  /// archaeology exercise. A diff whose two sides disagree on this is UNCHECKABLE
+  /// rather than passed or failed.
+  survivalTextVersion     String?
+  /// For CONTRADICTED, WHAT DISAGREED — the pipeline-defect record itself.
+  ///
+  /// §3: the detail is the point of storing a contradiction. A count says the
+  /// pipeline is wrong somewhere; this says where, so the next person can check
+  /// the claim rather than re-derive it.
+  survivalContradicted    Json?
+  survivalChunksChecked   Int?
+
   /// A DIFF IS THE PAIR IT SPANS. Nothing enforced this, and diffs are written
   /// from eight call sites, so a from-scratch rescan duplicated every diff it
   /// re-derived. The constraint removes the hazard rather than avoiding it: with
@@ -1835,4 +1871,20 @@ model ScanRelevanceAssessment {
 
   @@index([url, assessedAt])
   @@index([verdict, assessedAt])
+}
+
+/// Whether a diff's own report survives the documents it spans.
+enum SurvivalVerdict {
+  /// Every reported change is supported by the raw documents.
+  SURVIVES
+  /// At least one chunk said to be REMOVED is present in the after document, or
+  /// one said to be ADDED was already in the before one. WRITTEN, NOT REFUSED —
+  /// and never promotable.
+  CONTRADICTED
+  /// The check could not be made. A verdict about the CHECK, never about the
+  /// data: the two captures were extracted under different rules, so a presence
+  /// test across them compares text that was never comparable. Kept distinct
+  /// because an unavailable check counting as a pass is the failure §3 exists to
+  /// prevent.
+  UNCHECKABLE
 }
