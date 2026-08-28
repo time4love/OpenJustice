@@ -78,6 +78,32 @@ describe('noUncheckedIndexedAccess debt ratchet', () => {
       return;
     }
 
+    // A WHOLESALE COLLAPSE IS A BROKEN MEASUREMENT, NOT A TRIUMPH.
+    //
+    // PORTED FROM THE no-unnecessary-condition RATCHET, where mutating the tool
+    // exposed it: breaking the parser made every file report zero, the improvement
+    // arm reported that as PROGRESS, and its remedy — "regenerate the baseline" —
+    // would have baked in zeros and disabled the check permanently.
+    //
+    // That is worse than a check that cannot fail, because it RECRUITS THE
+    // OPERATOR into disabling it. The rule generalises past this file: A SUGGESTED
+    // FIX HAS TO BE SAFE WHEN THE DIAGNOSIS IS WRONG.
+    //
+    // `measureNoUncheckedIndexedAccess` already throws when tsc fails and nothing
+    // parses. This covers the other shape: tsc exits ZERO because it was invoked
+    // wrongly — a changed flag, a moved tsconfig — which looks like the debt being
+    // paid off in one go.
+    const baselineTotal = Object.values(baseline.files).reduce((a, b) => a + b, 0);
+    const actualTotal = Object.values(actual).reduce((a, b) => a + b, 0);
+    if (baselineTotal > 0 && actualTotal === 0) {
+      throw new Error(
+        `noUncheckedIndexedAccess: measured 0 across the whole project against a baseline of ` +
+          `${String(baselineTotal)}. That is far more likely a broken measurement — a changed ` +
+          `flag, a moved tsconfig — than ${String(baselineTotal)} simultaneous fixes. ` +
+          `Do NOT regenerate the baseline; fix the measurer.`,
+      );
+    }
+
     const regressions: string[] = [];
     const improvements: string[] = [];
 
