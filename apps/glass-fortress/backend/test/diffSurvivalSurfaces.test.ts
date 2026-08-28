@@ -58,17 +58,18 @@ const EXEMPT: Record<string, string> = {
   'services/resummarizeDiffs.ts': 'maintenance tool, rewrites summaries, shows nobody a diff',
   'services/reclassifyDiffs.ts': 'maintenance tool, replaces a classification, shows nobody a diff',
 
-  // OPEN FINDING, RECORDED HERE RATHER THAN IN A COMMENT NOBODY READS.
+  // NOT DISPLAY SURFACES, AND NOT AN OPEN GAP EITHER.
   //
-  // These two are the PROMOTION PATHS, and Level 5 says a CONTRADICTED diff is
-  // "never promotable" — but nothing in this codebase enforces that. The plan
-  // asserts the property; the code does not have it. They are exempted from the
-  // DISPLAY rule because they display nothing, and naming them here is what
-  // stops the exemption from reading as "nothing to do".
+  // These were briefly labelled 'the CONTRADICTED gate is NOT implemented here',
+  // which described a gap that did not exist and hid the question of where the
+  // real admission points were. `forensicEvidence` is a BUILDER — a gate inside
+  // it would fire wherever the object is merely hashed — and `promoteForensicDiff`
+  // now consults the verdict. Both are enumerated by what they WRITE in
+  // test/diffPromotionGate.test.ts, which is where promotion is guarded.
   'services/forensicEvidence.ts':
-    'promotion path, not a display surface — the CONTRADICTED gate is NOT implemented here',
+    'builder, not an admission point and not a display surface — gate the callers',
   'services/promoteForensicDiff.ts':
-    'promotion path, not a display surface — the CONTRADICTED gate is NOT implemented here',
+    'promotion path, not a display surface — gated in test/diffPromotionGate.test.ts',
 };
 
 function tsFiles(dir: string): string[] {

@@ -262,3 +262,62 @@ export const SURVIVAL_VIEW_SELECT = {
   beforeSnapshot: { select: { textHash: true, textExtractionVersion: true } },
   afterSnapshot: { select: { textHash: true, textExtractionVersion: true } },
 } as const;
+
+// ---------------------------------------------------------------------------
+// WHAT THE VERDICT FORBIDS.
+//
+// Level 5: a CONTRADICTED diff is WRITTEN, NOT REFUSED — and NEVER PROMOTABLE.
+// The first half was implemented; the second was a sentence in a plan.
+//
+// ONE RULE, ONE MESSAGE, because the alternative is what the enumeration below
+// found. `Evidence` rows are created from a diff at THREE places, and the count
+// people reach for is the count they can remember:
+//
+//   WaybackScraper.recordScanFinding  PENDING_REVIEW candidate — NOT gated, see below
+//   promoteForensicDiff               CONFIRMED + registers on chain — GATED
+//   evidenceRoutes (upsert)           CONFIRMED + onChainTxHash — GATED
+//
+// The third was on nobody's list. It hid the same way `getDiffInput` hid from
+// the display scan: `buildForensicEvidence` sets `urlVersionDiffId` itself, so
+// grepping the field name finds the callers that name it and misses the ones
+// that delegate. Enumerate by what a path WRITES, never by what it mentions.
+//
+// WHY THE SCANNER IS DELIBERATELY NOT GATED. It writes a PENDING_REVIEW
+// candidate, which is not a promotion — the status enum exists precisely because
+// conflating "a scan recorded this" with "a person accepted this" was a real
+// defect. Refusing to record the candidate would remove the contradicted diff
+// from the promotion queue, and with it the warning that says why it must not be
+// promoted: the platform would go quiet about its own defect. It is recorded,
+// flagged, and unpromotable — which is the whole design.
+// ---------------------------------------------------------------------------
+
+/** The refusal a CONTRADICTED diff earns, or null when promotion may proceed. */
+export function promotionBlockFor(view: DiffSurvivalView): string | null {
+  // UNCHECKED and STALE are NOT blocks. An unchecked diff is not a refuted one,
+  // and refusing it would halt work on the strength of a question nobody has
+  // asked yet. They are surfaced everywhere instead, so the decision is informed
+  // rather than made on the researcher's behalf.
+  if (view.state !== 'CONTRADICTED') return null;
+  return (
+    'This diff is CONTRADICTED: the archived documents refute the change it reports — text marked ' +
+    'as removed is still present in the after capture, or text marked as added was already in the ' +
+    'before one. It records a fault in the detection pipeline rather than a change to the page, ' +
+    'and it cannot support evidence. Inspect the chunks with get_diff_input.'
+  );
+}
+
+/**
+ * The same rule, for a caller holding an id rather than a loaded row.
+ *
+ * Returns null when the diff does not exist: absence is the caller's own error
+ * to report, and inventing a promotion block for a missing row would answer a
+ * different question than the one asked.
+ */
+export async function loadPromotionBlock(urlVersionDiffId: string): Promise<string | null> {
+  const diff = await prisma.urlVersionDiff.findUnique({
+    where: { id: urlVersionDiffId },
+    select: SURVIVAL_VIEW_SELECT,
+  });
+  if (diff === null) return null;
+  return promotionBlockFor(diffSurvivalView(diff));
+}

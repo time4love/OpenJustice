@@ -9,6 +9,7 @@ import { encryptContact } from '../lib/encrypt';
 import { prisma } from '../lib/prisma';
 import {
   diffSurvivalView,
+  loadPromotionBlock,
   SURVIVAL_VIEW_SELECT,
 } from '../services/auditDiffSurvival';
 import { scrapeUrl } from '../utils/webScraper';
@@ -291,6 +292,27 @@ router.post(
         // constraint that is supposed to deduplicate them never fired.
         fileHash = evidenceHashFromCapture(url, scrapedText);
         capturedText = scrapedText;
+      }
+
+      // LEVEL 5. THE SECOND OF THE TWO PATHS THAT CREATE EVIDENCE FROM A DIFF,
+      // and the one that was on nobody's list — it writes status CONFIRMED with
+      // an on-chain tx hash, so a refuted change promoted here is anchored as
+      // though the page had done it.
+      //
+      // It hid the way `getDiffInput` hid from the display scan: enumerating by
+      // the field name finds the paths that mention `urlVersionDiffId` and misses
+      // the ones that delegate it to `buildForensicEvidence`. Enumerate by what a
+      // path WRITES. Guarded by test/diffPromotionGate.test.ts.
+      //
+      // Refused BEFORE the chain write and before the upsert, because an anchored
+      // record built on a contradicted diff is the expensive, hard-to-unwind
+      // version of this mistake.
+      if (urlVersionDiffId !== null) {
+        const refuted = await loadPromotionBlock(urlVersionDiffId);
+        if (refuted !== null) {
+          res.status(409).json({ error: 'Diff is contradicted', message: refuted });
+          return;
+        }
       }
 
       const analysisParsed = IntakeOutputSchema.safeParse(analysisRaw);
