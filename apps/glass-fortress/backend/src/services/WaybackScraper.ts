@@ -27,6 +27,8 @@ import { groupDiffChunks, classifierInputChunks, DIFF_INPUT_VERSION } from '../l
 import { CLASSIFIER_VERSION, classifierPromptHash } from '../lib/classifierVersion';
 import { getClaimTrajectories } from './claimTrajectory';
 import { ARCHIVED_CAPTURES_ONLY } from '../lib/archivedCaptures';
+import { admitUrl } from './admitUrl';
+import { fetchContentForRelevanceCheck } from './fetchContentForRelevanceCheck';
 import {
   recordCdxObservation,
   markCdxEntryStored,
@@ -647,15 +649,26 @@ export class WaybackScraper {
    * Prefer runFullScan() for new usage.
    */
   async analyzePageHistory(url: string): Promise<PageHistoryResult> {
-    // The TrackedUrl is created BEFORE the CDX query, not after, because the
-    // query's answer is an observation that has to belong to something. Ordering
-    // it the other way round would mean the first observation of a URL — the one
-    // that says whether the Archive holds it at all — is the one we cannot store.
-    const trackedUrl = await prisma.trackedUrl.upsert({
-      where: { url },
-      update: {},
-      create: { url },
-    });
+    // ADMISSION, NOT AN UPSERT. This method reached `GET /api/forensics/wayback`
+    // and created a TrackedUrl directly, so that route admitted URLs with no
+    // relevance check and no recorded verdict — the third of four admission paths
+    // that bypassed the gate.
+    //
+    // The TrackedUrl is still created BEFORE the CDX query, because the query's
+    // answer is an observation that has to belong to something. Ordering it the
+    // other way round would mean the first observation of a URL — the one saying
+    // whether the Archive holds it at all — is the one we cannot store.
+    const admission = await admitUrl({ url, fetchContent: fetchContentForRelevanceCheck });
+    if (!admission.admitted) {
+      // Refusal is not an error here: the caller asked for a page's history and
+      // the page is not admissible. An empty result with no TrackedUrl created is
+      // the honest answer, and the verdict is on the record either way.
+      console.log(
+        `[WaybackScraper] ${url} not admitted (${admission.verdict}): ${admission.reason}`,
+      );
+      return { trackedUrlId: '', diffs: [] };
+    }
+    const trackedUrl = { id: admission.trackedUrlId };
 
     const { snapshots } = await this.getSnapshotsList(url, trackedUrl.id);
 
@@ -837,7 +850,7 @@ export class WaybackScraper {
           });
           recordScanFinding({
             diffId: diffRecord.id,
-            url: trackedUrl.url,
+            url,
             afterDate,
             snapshotUrl,
             beforeSnapshot: requireSnapshotIdentity(prev.stored, 'before'),

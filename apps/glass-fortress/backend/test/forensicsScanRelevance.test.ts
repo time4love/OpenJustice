@@ -187,6 +187,10 @@ describe('POST /api/forensics/scan — relevance gate', () => {
     expect(getJson()).toEqual({
       error: 'URL not relevant to this investigation',
       reason: 'אתר מסחרי שאינו קשור לחקירה.',
+      // The verdict is now returned as well as the reason, so a caller learns
+      // WHICH judgement refused it rather than only why — and OFF_MISSION is
+      // distinguishable from UNREADABLE, which is a verdict about the CHECK.
+      verdict: 'OFF_MISSION',
     });
     expect(mockUpsert).not.toHaveBeenCalled();
     expect(mockRunFullScan).not.toHaveBeenCalled();

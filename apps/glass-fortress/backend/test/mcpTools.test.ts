@@ -70,6 +70,14 @@ jest.mock('../src/services/IntakeAgent', () => ({
   })),
 }));
 
+// Admission is mocked, not bypassed. Both MCP tools now go through admitUrl —
+// they used to upsert a TrackedUrl directly, with no relevance check and no
+// recorded verdict, which is the bypass this mock exists to represent rather
+// than to hide.
+jest.mock('../src/services/admitUrl', () => ({
+  admitUrl: jest.fn(),
+}));
+
 jest.mock('../src/services/WaybackScraper', () => ({
   WaybackScraper: jest.fn().mockImplementation(() => ({
     runFullScan: jest.fn().mockResolvedValue(undefined),
@@ -96,6 +104,7 @@ jest.mock('../src/services/GapRevisionAgent', () => ({
 }));
 
 import { prisma } from '../src/lib/prisma';
+import { admitUrl } from '../src/services/admitUrl';
 import { triggerAIAnalysis } from '../src/services/thesisAnalysis';
 import { VectorStoreService } from '../src/services/VectorStoreService';
 import { IntakeAgent } from '../src/services/IntakeAgent';
@@ -103,6 +112,8 @@ import { WaybackScraper } from '../src/services/WaybackScraper';
 
 // Re-import handlers AFTER mocks are in place
 import { searchEvidenceHandler } from '../src/mcp/tools/searchEvidence';
+
+const admitMock = admitUrl as unknown as jest.Mock;
 import { getForensicTimelineHandler } from '../src/mcp/tools/getForensicTimeline';
 import { getFigureDossierHandler } from '../src/mcp/tools/getFigureDossier';
 import { createEvidenceFromUrlHandler } from '../src/mcp/tools/createEvidenceFromUrl';
@@ -688,6 +699,14 @@ describe('createEvidenceFromUrlHandler', () => {
 // ===========================================================================
 
 describe('startForensicScanHandler', () => {
+  beforeEach(() => {
+    admitMock.mockResolvedValue({
+      admitted: true,
+      trackedUrlId: 'tu-uuid-1',
+      alreadyTracked: false,
+    });
+  });
+
   const testUrl = 'https://corona.health.gov.il/vaccine-for-covid/';
   const trackedUrlFixture = { id: 'tu-uuid-1', url: testUrl, status: 'SCANNING' };
 
@@ -710,14 +729,18 @@ describe('startForensicScanHandler', () => {
     expect(result.status).toBe('SCANNING');
   });
 
-  it('upserts TrackedUrl with status SCANNING', async () => {
-    await startForensicScanHandler({ url: testUrl });
-
-    expect(mockTrackedUrlUpsert).toHaveBeenCalledWith({
-      where: { url: testUrl },
-      update: { status: 'SCANNING' },
-      create: { url: testUrl, status: 'SCANNING' },
-    });
+  it('ADMITS the URL rather than upserting a TrackedUrl directly', async () => {
+    admitMock.mockResolvedValue({ admitted: true, trackedUrlId: 'tu-uuid-1', alreadyTracked: false });
+    // REPLACES an assertion that pinned the bypass. The tool used to call
+    // prisma.trackedUrl.upsert itself — no relevance check, no recorded verdict —
+    // so the admission gate existed on the path the WEBSITE uses and not on the
+    // path the RESEARCHER uses. The old test asserted that direct upsert, which
+    // made it a test that held the gap open.
+    const { admitUrl } = await import('../src/services/admitUrl');
+    await startForensicScanHandler({ url: 'https://corona.health.gov.il/vaccine-for-covid/' });
+    expect(admitUrl).toHaveBeenCalledWith(
+      expect.objectContaining({ url: 'https://corona.health.gov.il/vaccine-for-covid/' }),
+    );
   });
 
   it('fires runFullScan as fire-and-forget', async () => {
@@ -747,17 +770,19 @@ describe('startForensicScanHandler', () => {
     await expect(startForensicScanHandler({ url: testUrl })).resolves.toBeDefined();
   });
 
-  it('is idempotent — upsert update sets SCANNING for already-tracked URLs', async () => {
-    // Simulate URL already exists as PAUSED
-    mockTrackedUrlUpsert.mockResolvedValue({ ...trackedUrlFixture, status: 'SCANNING' });
-
-    const raw = await startForensicScanHandler({ url: testUrl });
-    const result = JSON.parse(raw);
-
-    expect(result.status).toBe('SCANNING');
-    expect(mockTrackedUrlUpsert).toHaveBeenCalledWith(
-      expect.objectContaining({ update: { status: 'SCANNING' } }),
-    );
+  it('is idempotent — an already-tracked URL is admitted without re-assessment', async () => {
+    // Re-gating an admitted URL would let a later model draw a different
+    // conclusion and strand a corpus already built on it. Changing an admission
+    // is a deliberate act, which is what the HUMAN author on UrlAssessment is for.
+    admitMock.mockResolvedValue({
+      admitted: true,
+      trackedUrlId: 'tu-uuid-1',
+      alreadyTracked: true,
+    });
+    const out = JSON.parse(
+      await startForensicScanHandler({ url: 'https://corona.health.gov.il/vaccine-for-covid/' }),
+    ) as { trackedUrlId: string };
+    expect(out.trackedUrlId).toBe('tu-uuid-1');
   });
 });
 
@@ -1971,6 +1996,14 @@ describe('suggestThesisHandler', () => {
 // ===========================================================================
 
 describe('enrichEvidenceWithHistoryHandler', () => {
+  beforeEach(() => {
+    admitMock.mockResolvedValue({
+      admitted: true,
+      trackedUrlId: 'tu-enrich-1',
+      alreadyTracked: false,
+    });
+  });
+
   const fileHash = '0xdeadbeef';
   const sourceUrl = 'https://corona.health.gov.il/vaccine-page/';
   const evidenceFixture = { id: 'ev-1', fileHash, sourceUrl };
@@ -1994,13 +2027,13 @@ describe('enrichEvidenceWithHistoryHandler', () => {
     expect(result.url).toBe(sourceUrl);
   });
 
-  it('upserts TrackedUrl with status SCANNING', async () => {
-    await enrichEvidenceWithHistoryHandler({ fileHash });
-    expect(mockTrackedUrlUpsert).toHaveBeenCalledWith({
-      where: { url: sourceUrl },
-      update: { status: 'SCANNING' },
-      create: { url: sourceUrl, status: 'SCANNING' },
-    });
+  it('ADMITS the source URL rather than upserting a TrackedUrl directly', async () => {
+    // Same replacement as in startForensicScanHandler: the old assertion pinned a
+    // direct upsert, which is the bypass rather than the behaviour.
+    await enrichEvidenceWithHistoryHandler({ fileHash: '0xabc' });
+    expect(admitMock).toHaveBeenCalledWith(
+      expect.objectContaining({ url: 'https://corona.health.gov.il/vaccine-page/' }),
+    );
   });
 
   it('fires runFullScan fire-and-forget', async () => {

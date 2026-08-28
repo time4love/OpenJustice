@@ -1556,6 +1556,51 @@ resolving open requests there is nearly free.
 `DECLINED` (robots.txt, paywall — durable) stays distinct from `FAILED` (rate-limited — retryable), for
 the same reason `UNSERVABLE` is distinct from `UNFETCHED`.
 
+##### THE GATE COVERED ONE PATH OF FOUR — found and closed 2026-08-28
+
+**Before any of this could be relied on, the admission check had to actually run.** It was built on
+`POST /api/forensics/scan` and nowhere else, while **four** code paths could create a `TrackedUrl`:
+
+| path | reached by | gated? |
+|---|---|---|
+| `forensicsRoutes.ts:151` | `POST /api/forensics/scan` — the website | **yes** |
+| `WaybackScraper.analyzePageHistory` | `GET /api/forensics/wayback` | no |
+| `startForensicScan.ts` | **MCP `start_forensic_scan`** | no |
+| `enrichEvidenceWithHistory.ts` | **MCP `enrich_evidence_with_history`** | no |
+
+> **The admission check existed on the path THE WEBSITE uses and not on the paths THE RESEARCHER uses.**
+
+The gate was the exception rather than the rule, and the ungated majority is the interface the
+investigation is actually conducted through. That is
+[[gf-investigation-tools-must-be-mcp]] **inverted**: a control present in REST and absent from MCP is
+as broken as a capability present in REST and absent from MCP — and harder to notice, because nothing
+fails. It is also the same shape as FINDING 14, where the UI promote button routes around the debate.
+
+*It mattered concretely and immediately.* The revised rtmag plan opens with `start_forensic_scan` on the
+URL backing the case's central claim — which would have admitted it **through the gap the machinery was
+built to close, on the single page where its absence is least defensible.**
+
+**One admission path.** `admitUrl` runs the gate, records the verdict in both directions, and is the
+only writer of `TrackedUrl`. `test/urlAdmission.test.ts` asserts that by source scan —
+`trackedUrl.upsert` / `trackedUrl.create` appear in `admitUrl.ts` and nowhere else — with comments
+stripped first, because `admitUrl.ts` documents the rule in prose and would otherwise match itself for
+the wrong reason. **A behaviour test could only cover paths someone thought to test; a fifth path added
+tomorrow is covered by nothing.**
+
+*Two tests were replaced rather than repaired, and the distinction is the point:* `mcpTools.test.ts` and
+`mcpIntegration.test.ts` each asserted that `start_forensic_scan` **upserts a `TrackedUrl` directly**.
+Those tests pinned the bypass — they asserted the gap as the requirement, which is the third instance of
+that shape in this work.
+
+*Also extracted:* `fetchContentForRelevanceCheck`, which lived inside the one route that gated. Part of
+why the other three could not gate was that gating required duplicating it — **a rule expensive to apply
+everywhere ends up applied in one place.**
+
+*`UNREADABLE` is not a verdict about the URL.* When no content can be retrieved, nothing is recorded as
+an assessment: a verdict implies a judgement was made, and "we could not read the page" is a verdict
+about the CHECK. Storing it as `OFF_MISSION` would make an unavailable check indistinguishable from a
+refusal — §3's own distinction, at the front door.
+
 ##### Still to build
 
 The schema, the two-gate decision and the request record are in. **The subject-gate agent and the SPN
