@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { buildSurvivalLabels } from '@/lib/survivalLabels';
 import { useParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { Link } from '@/i18n/navigation';
@@ -199,6 +200,7 @@ export default function TrackedUrlPage() {
     pendingReviewChip: t('pendingReviewChip'),
     flaggedBadge: t('flaggedBadge'),
     auditBadge: t('auditBadge'),
+    survival: buildSurvivalLabels(t),
     showChanges: t('showChanges'),
     hideChanges: t('hideChanges'),
     addToThesis: {

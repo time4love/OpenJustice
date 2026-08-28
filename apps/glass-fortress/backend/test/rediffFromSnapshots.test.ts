@@ -9,7 +9,10 @@
 
 import { createHash } from 'crypto';
 
-const db = { diffs: [] as Record<string, unknown>[] };
+const db = {
+  diffs: [] as Record<string, unknown>[],
+  captures: {} as Record<string, Record<string, unknown>>,
+};
 
 const writeSpies = {
   update: jest.fn(),
@@ -25,13 +28,28 @@ jest.mock('../src/lib/prisma', () => ({
       findMany: jest.fn(async (a: { where?: { id?: string } }) =>
         a.where?.id === undefined ? db.diffs : db.diffs.filter((d) => d['id'] === a.where?.id),
       ),
+      findUniqueOrThrow: jest.fn(async (a: { where: { id: string } }) => {
+        const row = db.diffs.find((d) => d['id'] === a.where.id);
+        if (row === undefined) throw new Error(`no diff ${a.where.id}`);
+        return row;
+      }),
       ...writeSpies,
+    },
+    // The rediff recomputes the Level 5 verdict against STORED capture text, so
+    // the captures have to exist as rows and not only as relations on the diff.
+    urlSnapshot: {
+      findUniqueOrThrow: jest.fn(async (a: { where: { id: string } }) => {
+        const stored = db.captures[a.where.id];
+        if (stored === undefined) throw new Error(`no capture ${a.where.id}`);
+        return stored;
+      }),
     },
   },
 }));
 
 import { planRediff, applyRediff, REDIFF_TARGET_VERSION } from '../src/services/rediffFromSnapshots';
 import { DIFF_INPUT_VERSION } from '../src/lib/diffChunking';
+import { survivalSourceStateHash } from '../src/lib/diffSurvival';
 
 function snap(text: string, corruptHash = false): Record<string, unknown> {
   return {
@@ -55,6 +73,8 @@ function diffRow(over: Record<string, unknown> = {}): Record<string, unknown> {
     id: 'diff-1',
     beforeDate: '2022-09-05',
     afterDate: '2022-09-06',
+    beforeSnapshotId: 'cap-before',
+    afterSnapshotId: 'cap-after',
     isLegallySignificant: true,
     diffInputVersion: null,
     // Truncated record: only ONE of the two real deletions was stored.
@@ -67,9 +87,21 @@ function diffRow(over: Record<string, unknown> = {}): Record<string, unknown> {
   };
 }
 
+const TEXT_VERSION = 'v2-inflate-decode-htmltotext-normalised';
+
+/** A stored capture as `computeDiffSurvival` reads it, not as the diff embeds it. */
+function capture(text: string): Record<string, unknown> {
+  return {
+    text,
+    textHash: createHash('sha256').update(text, 'utf8').digest('hex'),
+    textExtractionVersion: TEXT_VERSION,
+  };
+}
+
 beforeEach(() => {
   jest.clearAllMocks();
   db.diffs = [];
+  db.captures = { 'cap-before': capture(BEFORE), 'cap-after': capture(AFTER) };
 });
 
 describe('planRediff', () => {
@@ -175,7 +207,7 @@ describe('applyRediff', () => {
     expect(written).toContain('short');
   });
 
-  it('never touches the classifier output or the verdict', async () => {
+  it('never touches the classifier output', async () => {
     db.diffs = [diffRow()];
 
     await applyRediff();
@@ -183,9 +215,75 @@ describe('applyRediff', () => {
     const data = (writeSpies.update.mock.calls[0]?.[0] as { data: Record<string, unknown> }).data;
     // The chunks become current while the classification does not, and the two
     // provenance fields say so. Reclassification is a separate decision.
-    expect(Object.keys(data).sort()).toEqual(
-      ['diffInputVersion', 'rawAddedText', 'rawDeletedText'].sort(),
+    //
+    // WHAT THIS ASSERTION USED TO SAY. It required the write to consist of
+    // EXACTLY these three keys, under the title "never touches the classifier
+    // output or the verdict" — which made the defect below a requirement, and
+    // would have failed the moment anyone fixed it. A test can encode a defect
+    // more durably than a comment can, because it fails loudly when corrected.
+    expect(Object.keys(data)).toEqual(
+      expect.arrayContaining(['diffInputVersion', 'rawAddedText', 'rawDeletedText']),
     );
+    for (const classifierColumn of [
+      'deletedText',
+      'addedText',
+      'aiSignificance',
+      'investigativeCategories',
+      'isLegallySignificant',
+      'classifierVersion',
+    ]) {
+      expect(data).not.toHaveProperty(classifierColumn);
+    }
+  });
+
+  it('RECOMPUTES the Level 5 verdict, because rewriting the chunks invalidates it', async () => {
+    // ASSERTING THE CALLER. `checkDiffSurvival` was covered in isolation while
+    // nothing asserted that the tool which rewrites its inputs reaches it — the
+    // shape three surviving mutations shared in an earlier session. This is the
+    // caller assertion.
+    //
+    // `rawDeletedText` / `rawAddedText` are two of the checker's four inputs. A
+    // rediff that rewrote them and left the old verdict in place would leave a
+    // row whose verdict is about chunks it no longer holds.
+    db.diffs = [diffRow()];
+
+    await applyRediff();
+
+    const data = (writeSpies.update.mock.calls[0]?.[0] as { data: Record<string, unknown> }).data;
+    expect(Object.keys(data)).toEqual(
+      expect.arrayContaining([
+        'survivalVerdict',
+        'survivalCheckedAt',
+        'survivalSourceStateHash',
+        'survivalTextVersion',
+        'survivalContradicted',
+        'survivalChunksChecked',
+      ]),
+    );
+    expect(data['survivalVerdict']).toBe('SURVIVES');
+    expect(data['survivalTextVersion']).toBe(TEXT_VERSION);
+  });
+
+  it('commits the verdict to the chunks it just wrote, not the ones it replaced', async () => {
+    // The source-state hash has to cover the NEW payloads. If it committed only
+    // to the captures — which this tool does not move — the stored verdict would
+    // certify itself as current over chunks that had been replaced underneath it.
+    db.diffs = [diffRow()];
+
+    await applyRediff();
+
+    const data = (writeSpies.update.mock.calls[0]?.[0] as { data: Record<string, unknown> }).data;
+    expect(data['survivalSourceStateHash']).toBe(
+      survivalSourceStateHash({
+        beforeTextHash: createHash('sha256').update(BEFORE, 'utf8').digest('hex'),
+        afterTextHash: createHash('sha256').update(AFTER, 'utf8').digest('hex'),
+        rawDeletedText: data['rawDeletedText'] as string,
+        rawAddedText: data['rawAddedText'] as string,
+      }),
+    );
+    // Vacuity guard: this would pass trivially if the rediff had written the
+    // chunks it read instead of the ones it recomputed.
+    expect(data['rawDeletedText']).not.toBe(diffRow()['rawDeletedText']);
   });
 
   it('REFUSES an entry where applying would destroy stored text', async () => {

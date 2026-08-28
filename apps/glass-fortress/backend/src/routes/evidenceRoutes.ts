@@ -7,6 +7,10 @@ import { Web3Service, DuplicateEvidenceError } from '../services/Web3Service';
 import { VectorStoreService } from '../services/VectorStoreService';
 import { encryptContact } from '../lib/encrypt';
 import { prisma } from '../lib/prisma';
+import {
+  diffSurvivalView,
+  SURVIVAL_VIEW_SELECT,
+} from '../services/auditDiffSurvival';
 import { scrapeUrl } from '../utils/webScraper';
 import {
   CAPTURE_EXTRACTOR_CLIENT_SUPPLIED,
@@ -843,13 +847,23 @@ router.get('/:id', identifyResearcher, async (req: Request, res: Response): Prom
               beforeDate: true,
               afterDate: true,
               snapshotUrl: true,
-              beforeSnapshot: { select: { snapshotUrl: true } },
               deletedText: true,
               addedText: true,
-              rawDeletedText: true,
-              rawAddedText: true,
               aiSignificance: true,
               isLegallySignificant: true,
+              // LEVEL 5 MATTERS MOST HERE. This is the diff a promoted — and
+              // possibly ANCHORED — evidence record is built from. If the
+              // archived documents refute the change, the record above it rests
+              // on a fault in the pipeline rather than on something the page did,
+              // and this page is where a reader would find that out.
+              //
+              // rawDeletedText / rawAddedText and the snapshot relations arrive
+              // with the shared select; `snapshotUrl` is merged into the before
+              // relation rather than named twice.
+              ...SURVIVAL_VIEW_SELECT,
+              beforeSnapshot: {
+                select: { snapshotUrl: true, textHash: true, textExtractionVersion: true },
+              },
             },
           },
           createdBy: { select: { handle: true } },
@@ -902,6 +916,7 @@ router.get('/:id', identifyResearcher, async (req: Request, res: Response): Prom
           rawAddedChunks: JSON.parse(diffRecord.rawAddedText) as string[],
           legalSignificance: diffRecord.aiSignificance,
           isLegallySignificant: diffRecord.isLegallySignificant,
+          survival: diffSurvivalView(diffRecord),
           // An Evidence row for this diff — NOT necessarily a promotion of it.
           //
           // This said "always already promoted", which was true when every

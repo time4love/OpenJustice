@@ -1,5 +1,10 @@
 import { prisma } from '../lib/prisma';
 import {
+  diffSurvivalView,
+  SURVIVAL_VIEW_SELECT,
+  type DiffSurvivalView,
+} from './auditDiffSurvival';
+import {
   ForensicPromotionAssessorAgent,
   type ForensicPromotionAssessment,
 } from './ForensicPromotionAssessorAgent';
@@ -57,6 +62,14 @@ export interface DiffDebateState {
   blockedBy: string | null;
   latestAssessment: ForensicPromotionAssessment | null;
   rounds: number;
+  /**
+   * LEVEL 5 — whether the archived documents support the change being debated.
+   *
+   * A debate is an argument about what a change MEANS. This says whether the
+   * change happened at all, which is prior to it: no argument about significance
+   * can rescue a diff whose removal is still on the page.
+   */
+  survival: DiffSurvivalView;
 }
 
 /**
@@ -201,8 +214,29 @@ async function buildState(sessionId: string): Promise<DiffDebateState> {
   // before this shipped reads correctly without a data migration.
   const hasSubstance = await substanceEverMet(sessionId);
 
+  // LEVEL 5 TAKES PRECEDENCE OVER EVERY OTHER BLOCK, and the ordering is the
+  // point: the others are about whether the ARGUMENT is good enough. This one is
+  // about whether there is anything to argue about. A researcher who clears the
+  // substance gate and answers the assessor has still not made a refuted change
+  // real, and the message must not arrive after they have done that work.
+  const diffRow = await prisma.urlVersionDiff.findUniqueOrThrow({
+    where: { id: session.urlVersionDiffId },
+    select: SURVIVAL_VIEW_SELECT,
+  });
+  const survival = diffSurvivalView(diffRow);
+
+  // UNCHECKED and STALE are deliberately NOT blocks. An unchecked diff is not a
+  // refuted one, and refusing it would halt work on the strength of a question
+  // nobody has asked yet. They are not silent either — `survival` travels in the
+  // returned state, because UNCHECKED IS NOT A PASS.
   let blockedBy: string | null = null;
-  if (session.status !== 'OPEN') blockedBy = `The debate is ${session.status}.`;
+  if (survival.state === 'CONTRADICTED') {
+    blockedBy =
+      'This diff is CONTRADICTED: the archived documents refute the change it reports — text marked ' +
+      'as removed is still present in the after capture, or text marked as added was already in the ' +
+      'before one. It records a fault in the detection pipeline rather than a change to the page, ' +
+      'and it cannot support evidence. Inspect the chunks with get_diff_input.';
+  } else if (session.status !== 'OPEN') blockedBy = `The debate is ${session.status}.`;
   else if (!hasSubstance) {
     blockedBy =
       'The argument has not cleared the substance gate: it must make specific, falsifiable claims about the changed content. See substanceGaps and respond with respond_in_diff_debate.';
@@ -221,6 +255,7 @@ async function buildState(sessionId: string): Promise<DiffDebateState> {
     blockedBy,
     latestAssessment,
     rounds: assessments.length,
+    survival,
   };
 }
 

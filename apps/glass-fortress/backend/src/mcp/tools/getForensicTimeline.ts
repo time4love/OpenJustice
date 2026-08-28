@@ -1,5 +1,9 @@
 import { z } from 'zod';
 import { prisma } from '../../lib/prisma';
+import {
+  diffSurvivalView,
+  SURVIVAL_VIEW_SELECT,
+} from '../../services/auditDiffSurvival';
 
 export const getForensicTimelineSchema = {
   url: z.string().url().describe('The tracked URL to retrieve forensic diff history for'),
@@ -21,6 +25,7 @@ export async function getForensicTimelineHandler(input: { url: string }): Promis
           aiSignificance: true,
           isLegallySignificant: true,
           createdAt: true,
+          ...SURVIVAL_VIEW_SELECT,
         },
       },
     },
@@ -41,6 +46,10 @@ export async function getForensicTimelineHandler(input: { url: string }): Promis
     addedItems: parseJsonArray(d.addedText),
     aiSignificance: d.aiSignificance,
     isLegallySignificant: d.isLegallySignificant,
+    // LEVEL 5. Rendered from the same helper the REST surfaces use, because a
+    // defect visible only through REST is unfindable from the research
+    // interface — and the researcher decides here, not there.
+    survival: diffSurvivalView(d),
   }));
 
   // Derived from state on every read, never tracked through a write.
@@ -55,12 +64,49 @@ export async function getForensicTimelineHandler(input: { url: string }): Promis
     prisma.urlSnapshot.count({ where: { trackedUrlId: tracked.id, onChainTxHash: null } }),
   ]);
 
+  // LEVEL 5, IN THE SUMMARY AND NOT ONLY PER ROW.
+  //
+  // A per-diff field that nothing aggregates is a field a reader skims past —
+  // this repository has recorded six occasions where the mechanism was right and
+  // the summary was what people acted on. `anchoringWarning` above is the same
+  // pattern, and these counts are read from the SAME view helper the rows use, so
+  // the headline and the detail cannot disagree.
+  const survivalStates = timeline.map((d) => d.survival.state);
+  const contradictedDiffs = survivalStates.filter((v) => v === 'CONTRADICTED').length;
+  const uncheckedDiffs = survivalStates.filter(
+    (v) => v === 'UNCHECKED' || v === 'STALE',
+  ).length;
+
   return JSON.stringify({
     url: tracked.url,
     title: tracked.title,
     status: tracked.status,
     totalDiffs: tracked.diffs.length,
     significantDiffs: significantCount,
+    // Never folded into one number. A diff nobody has checked and a diff the
+    // documents refute are different problems with different remedies, and the
+    // second is never promotable.
+    contradictedDiffs,
+    uncheckedDiffs,
+    ...(contradictedDiffs > 0
+      ? {
+          survivalWarning:
+            `${String(contradictedDiffs)} of ${String(tracked.diffs.length)} diffs are CONTRADICTED: the archived ` +
+            'documents refute a change the platform reports. A chunk said to be REMOVED is still ' +
+            'present in the after capture, or one said to be ADDED was already in the before one. ' +
+            'These record a defect in the pipeline, not a change to the page, and must not back ' +
+            'evidence. Inspect with get_diff_input; measure with npm run forensics:measure-divergence.',
+        }
+      : {}),
+    ...(uncheckedDiffs > 0
+      ? {
+          uncheckedWarning:
+            `${String(uncheckedDiffs)} of ${String(tracked.diffs.length)} diffs carry no current Level 5 verdict. ` +
+            'UNCHECKED IS NOT A PASS — nothing has compared these reported changes against the ' +
+            'documents they span. Repair with npm run forensics:backfill-survival, then verify ' +
+            'with npm run forensics:audit-survival.',
+        }
+      : {}),
     snapshotsStored,
     // The factual layer's chain of custody. Non-zero means the archived text for
     // this page is stored but its hash was never published, so "this page held

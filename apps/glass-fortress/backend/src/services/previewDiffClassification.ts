@@ -1,5 +1,7 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
+import { diffSurvivalView } from './auditDiffSurvival';
+import type { DiffSurvivalView } from './auditDiffSurvival';
 import { ForensicAgent, type DiffItem, type RelatedEvidenceContext } from './ForensicAgent';
 import { WaybackScraper } from './WaybackScraper';
 import { CLASSIFIER_VERSION, classifierPromptHash } from '../lib/classifierVersion';
@@ -67,6 +69,16 @@ export interface PreviewStoredClassification {
   classifierVersion: string | null;
   classifierPromptHash: string | null;
   summaryVersion: string | null;
+  /**
+   * LEVEL 5, on the stored side of the comparison.
+   *
+   * A preview asks whether a NEWER CLASSIFIER would read this change
+   * differently. If the documents refute the change itself, no classifier can
+   * fix that — the fault is upstream of classification, and reclassifying a
+   * CONTRADICTED diff produces a better-worded account of something that did not
+   * happen.
+   */
+  survival: DiffSurvivalView;
 }
 
 export interface PreviewAgreement {
@@ -141,7 +153,7 @@ export async function previewDiffClassification(
   const diff = opts.diffId
     ? await prisma.urlVersionDiff.findUnique({
         where: { id: opts.diffId },
-        include: { trackedUrl: true },
+        include: DIFF_WITH_CONTEXT,
       })
     : await resolveByUrlAndDate(opts.url, opts.afterDate);
 
@@ -235,6 +247,7 @@ export async function previewDiffClassification(
       classifierVersion: diff.classifierVersion,
       classifierPromptHash: diff.classifierPromptHash,
       summaryVersion: diff.summaryVersion,
+      survival: diffSurvivalView(diff),
     },
     classifier: {
       version: CLASSIFIER_VERSION,
@@ -275,7 +288,20 @@ function countItems(json: string): number {
   }
 }
 
-type DiffWithUrl = Prisma.UrlVersionDiffGetPayload<{ include: { trackedUrl: true } }>;
+/**
+ * The relations BOTH resolvers must load.
+ *
+ * Declared once as the payload type so the two lookups cannot drift: adding a
+ * relation the renderer needs to one path and not the other is how a tool comes
+ * to work when called one way and fail when called the other.
+ */
+const DIFF_WITH_CONTEXT = {
+  trackedUrl: true,
+  beforeSnapshot: { select: { textHash: true, textExtractionVersion: true } },
+  afterSnapshot: { select: { textHash: true, textExtractionVersion: true } },
+} as const;
+
+type DiffWithUrl = Prisma.UrlVersionDiffGetPayload<{ include: typeof DIFF_WITH_CONTEXT }>;
 
 /**
  * Resolve a diff by the pair that means the same thing in every environment.
@@ -296,7 +322,7 @@ async function resolveByUrlAndDate(
 
   const matches = await prisma.urlVersionDiff.findMany({
     where: { trackedUrl: { url }, afterDate },
-    include: { trackedUrl: true },
+    include: DIFF_WITH_CONTEXT,
     orderBy: { beforeDate: 'asc' },
   });
 

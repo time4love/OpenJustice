@@ -35,6 +35,8 @@ import { DIFF_INPUT_VERSION } from '../src/lib/diffChunking';
 
 const LINK = 'לדיווח על תופעות לוואי >';
 
+const TEXT_VERSION = 'v2-inflate-decode-htmltotext-normalised';
+
 function row(over: Record<string, unknown> = {}): Record<string, unknown> {
   return {
     id: 'diff-1',
@@ -57,6 +59,18 @@ function row(over: Record<string, unknown> = {}): Record<string, unknown> {
     classifierPromptHash: 'hash',
     summaryVersion: null,
     diffInputVersion: null,
+    // The capture relations the lookup now loads, because every reader of a diff
+    // must be able to show its Level 5 verdict. Present here so the fixture is
+    // the row the query actually returns, rather than a smaller one that would
+    // let a missing relation pass unnoticed.
+    beforeSnapshot: { textHash: 'a'.repeat(64), textExtractionVersion: TEXT_VERSION },
+    afterSnapshot: { textHash: 'b'.repeat(64), textExtractionVersion: TEXT_VERSION },
+    survivalVerdict: null,
+    survivalSourceStateHash: null,
+    survivalTextVersion: null,
+    survivalCheckedAt: null,
+    survivalChunksChecked: null,
+    survivalContradicted: [],
     ...over,
   };
 }

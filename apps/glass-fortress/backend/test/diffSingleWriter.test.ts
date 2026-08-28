@@ -29,6 +29,7 @@ const DIFF_WRITER = 'services/recordDiff.ts';
  * keyed to its captures. Listed explicitly so a new one is a decision.
  */
 const UPDATERS = [
+  'services/backfillDiffSurvival.ts',
   'services/reclassifyDiffs.ts',
   'services/rediffFromSnapshots.ts',
   'services/resummarizeDiffs.ts',

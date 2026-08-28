@@ -4,6 +4,7 @@ import { resolveModelId } from '../factories/LLMFactory';
 import { computeDiffCoverage, type UncoveredChunk } from '../lib/diffCoverage';
 import { type DiffItem } from './ForensicAgent';
 import { resolveDiff, type DiffLookupInput } from './diffLookup';
+import { diffSurvivalView, type DiffSurvivalView } from './auditDiffSurvival';
 
 // ---------------------------------------------------------------------------
 // What the classifier was GIVEN, beside what it produced.
@@ -78,6 +79,7 @@ export interface DiffInputResult {
     isLegallySignificant: boolean;
     investigativeCategories: string[];
     aiSignificance: string;
+    survival: DiffSurvivalView;
   };
   explanation: string;
 }
@@ -145,6 +147,11 @@ export async function getDiffInput(input: DiffLookupInput): Promise<GetDiffInput
       isLegallySignificant: diff.isLegallySignificant,
       investigativeCategories: diff.investigativeCategories,
       aiSignificance: diff.aiSignificance,
+      // LEVEL 5, ON THE TOOL THAT SHOWS THE CHUNKS THE CHECK READS. `raw` above
+      // is exactly the text the survival check evaluates, so this is the one
+      // surface where a reader can see the verdict AND the evidence for it
+      // together — and the timeline's own CONTRADICTED warning sends them here.
+      survival: diffSurvivalView(diff),
     },
     explanation:
       '`raw` is the page text this diff detected as changed; `items` is what the classifier wrote ' +

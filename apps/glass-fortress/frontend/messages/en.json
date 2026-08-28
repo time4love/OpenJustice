@@ -343,7 +343,17 @@
     "trajectoryVerifyHint": "Every point on the timeline links to the archived capture itself. Open it and search for the claim text — verifying this requires no trust in this platform.",
     "trajectoryNotComputed": "Claim trajectories for this page have not been detected yet. They are computed when a scan completes; re-scanning will populate them.",
     "promotedChip": "Promoted to Evidence",
-    "pendingReviewChip": "Awaiting review"
+    "pendingReviewChip": "Awaiting review",
+    "survivalUnchecked": "Not checked",
+    "survivalStale": "Check out of date",
+    "survivalSurvives": "Matches the documents",
+    "survivalContradicted": "Refuted by the documents",
+    "survivalUncheckable": "Cannot be checked",
+    "survivalUncheckedNote": "Nothing has yet compared this reported change against the archived pages it spans. This is not a pass — it means the question has not been asked.",
+    "survivalStaleNote": "This change was checked against the documents, but the inputs have since been re-derived, so the earlier result no longer describes what is stored here.",
+    "survivalContradictedNote": "The archived pages contradict this reported change: text marked as removed is still present in the later capture, or text marked as added was already in the earlier one. This records a fault in how the change was detected, not a change to the page.",
+    "survivalUncheckableNote": "The two captures were extracted under different rules, so their text was never comparable. No verdict can be reached either way.",
+    "survivalNotPromotable": "This diff cannot support evidence."
   },
   "theses": {
     "aiReviewedStatus": "AI reviewed",

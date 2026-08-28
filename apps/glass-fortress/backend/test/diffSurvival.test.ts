@@ -197,9 +197,52 @@ describe('recordDiff runs the check and stores its verdict', () => {
     // Level 4 changes what text a diff compares; without this, that change
     // silently invalidates every verdict while the counts stay green.
     expect(create['survivalSourceStateHash']).toBe(
-      survivalSourceStateHash(before.textHash, after.textHash),
+      survivalSourceStateHash({
+        beforeTextHash: before.textHash,
+        afterTextHash: after.textHash,
+        rawDeletedText: '[]',
+        rawAddedText: '[]',
+      }),
     );
     expect(create['survivalTextVersion']).toBe(V2);
+  });
+
+  it('commits the hash to the DIFF’S OWN CHUNKS, not only to the captures', async () => {
+    // FOUND BY READING THE CALLERS, NOT THE CHECKER. `rediffFromSnapshots`
+    // rewrites rawDeletedText / rawAddedText — two of the checker's four inputs —
+    // while the captures it re-derives them from do not move. A hash over the
+    // captures alone would be IDENTICAL before and after that rewrite, so a
+    // verdict about chunks that no longer exist would report itself as current.
+    findSnapshot.mockResolvedValue(snapshot('some stored capture text'));
+    await recordDiff(diffWrite({ rawDeletedText: JSON.stringify([SENTENCE]) }));
+    const first = (upsert.mock.calls[0][0] as { create: Record<string, unknown> }).create;
+
+    upsert.mockClear();
+    findSnapshot.mockResolvedValue(snapshot('some stored capture text'));
+    await recordDiff(diffWrite({ rawDeletedText: JSON.stringify([`${SENTENCE} And more.`]) }));
+    const second = (upsert.mock.calls[0][0] as { create: Record<string, unknown> }).create;
+
+    // Same captures, different reported chunks: the commitment must differ.
+    expect(second['survivalSourceStateHash']).not.toBe(first['survivalSourceStateHash']);
+  });
+
+  it('cannot be spoofed by moving content across the separator', async () => {
+    // Every component is hashed to fixed-length hex before being joined, so no
+    // payload can contain the delimiter and shift the framing — two different
+    // input sets cannot collide by rearranging where one value ends.
+    const a = survivalSourceStateHash({
+      beforeTextHash: 'aa',
+      afterTextHash: 'bb',
+      rawDeletedText: 'x|y',
+      rawAddedText: 'z',
+    });
+    const b = survivalSourceStateHash({
+      beforeTextHash: 'aa',
+      afterTextHash: 'bb',
+      rawDeletedText: 'x',
+      rawAddedText: 'y|z',
+    });
+    expect(a).not.toBe(b);
   });
 
   it('computes against STORED text, not text handed in by the caller', async () => {

@@ -1,5 +1,10 @@
 import { z } from 'zod';
 import { prisma } from '../../lib/prisma';
+import {
+  diffSurvivalView,
+  SURVIVAL_VIEW_SELECT,
+} from '../../services/auditDiffSurvival';
+import type { DiffSurvivalView } from '../../services/auditDiffSurvival';
 
 // ---------------------------------------------------------------------------
 // get_scan_findings
@@ -42,6 +47,14 @@ interface Finding {
   snapshotUrl: string;
   /** ForensicAgent's Hebrew explanation of why this change matters. */
   aiSignificance: string;
+  /**
+   * LEVEL 5 — do the archived documents support the change this finding is
+   * built on? THIS IS THE PROMOTION QUEUE, so it is the surface where the
+   * verdict changes a decision rather than informing one: a CONTRADICTED diff
+   * records a fault in the pipeline, not a change to the page, and promoting it
+   * would anchor that fault.
+   */
+  survival: DiffSurvivalView;
   deletedItems: unknown[];
   addedItems: unknown[];
 }
@@ -78,6 +91,7 @@ export async function getScanFindingsHandler(input: { url: string }): Promise<st
       aiSignificance: true,
       deletedText: true,
       addedText: true,
+      ...SURVIVAL_VIEW_SELECT,
       evidence: {
         select: {
           id: true,
@@ -120,10 +134,16 @@ export async function getScanFindingsHandler(input: { url: string }): Promise<st
       afterDate: diff.afterDate,
       snapshotUrl: diff.snapshotUrl,
       aiSignificance: diff.aiSignificance,
+      survival: diffSurvivalView(diff),
       deletedItems: parseJsonArray(diff.deletedText),
       addedItems: parseJsonArray(diff.addedText),
     });
   }
+
+  const contradictedPending = pending.filter((f) => f.survival.state === 'CONTRADICTED').length;
+  const uncheckedPending = pending.filter(
+    (f) => f.survival.state === 'UNCHECKED' || f.survival.state === 'STALE',
+  ).length;
 
   return JSON.stringify({
     url: tracked.url,
@@ -133,6 +153,28 @@ export async function getScanFindingsHandler(input: { url: string }): Promise<st
     pendingReview: pending.length,
     alreadyConfirmed: confirmed,
     unrecorded,
+    // IN THE SUMMARY, NOT ONLY PER FINDING. This list is read to decide what to
+    // promote, and a caller who skims the explanation and promotes the batch
+    // must not have to open each finding to learn that some of them are refuted
+    // by the documents they cite.
+    contradictedPending,
+    uncheckedPending,
+    ...(contradictedPending > 0
+      ? {
+          survivalWarning:
+            `${String(contradictedPending)} of ${String(pending.length)} findings awaiting review are CONTRADICTED: ` +
+            'the archived documents refute the change they report. DO NOT PROMOTE THESE. Promoting ' +
+            'one anchors a defect in the detection pipeline as though it were a change to the page.',
+        }
+      : {}),
+    ...(uncheckedPending > 0
+      ? {
+          uncheckedWarning:
+            `${String(uncheckedPending)} of ${String(pending.length)} findings carry no current Level 5 verdict. ` +
+            'UNCHECKED IS NOT A PASS — nothing has compared these against the documents they span. ' +
+            'Run npm run forensics:backfill-survival before deciding on them.',
+        }
+      : {}),
     explanation:
       pending.length > 0
         ? 'These findings were classified as legally significant and are awaiting a human decision. Nothing here is on-chain or publicly searchable yet. Promote them with promote_scan_findings once reviewed.'

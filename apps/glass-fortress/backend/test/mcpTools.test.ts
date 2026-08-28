@@ -104,6 +104,8 @@ jest.mock('../src/services/GapRevisionAgent', () => ({
 }));
 
 import { prisma } from '../src/lib/prisma';
+import { survivalFixture, TEXT_VERSION } from './helpers/survivalFixture';
+import { survivalSourceStateHash } from '../src/lib/diffSurvival';
 import { admitUrl } from '../src/services/admitUrl';
 import { triggerAIAnalysis } from '../src/services/thesisAnalysis';
 import { VectorStoreService } from '../src/services/VectorStoreService';
@@ -299,6 +301,7 @@ describe('getForensicTimelineHandler', () => {
         aiSignificance: 'מחיקה של טענת יעילות',
         isLegallySignificant: true,
         createdAt: new Date('2022-06-15'),
+        ...survivalFixture(),
       },
       {
         id: 'diff-2',
@@ -310,9 +313,87 @@ describe('getForensicTimelineHandler', () => {
         aiSignificance: '',
         isLegallySignificant: false,
         createdAt: new Date('2022-07-15'),
+        ...survivalFixture(),
       },
     ],
   };
+
+  // -------------------------------------------------------------------------
+  // LEVEL 5 IN THE TIMELINE SUMMARY
+  //
+  // A source scan asserting these fields EXIST cannot fail when the count is
+  // hard-coded to zero — which a mutation proved, by surviving. These assert the
+  // number is computed from the rows.
+  // -------------------------------------------------------------------------
+  function contradictedDiff(over: Record<string, unknown> = {}): Record<string, unknown> {
+    const rawDeletedText = JSON.stringify(['a sentence long enough to clear the presence floor']);
+    return {
+      id: 'diff-c',
+      beforeDate: '20220701',
+      afterDate: '20220801',
+      snapshotUrl: 'https://web.archive.org/web/20220801/...',
+      deletedText: '[]',
+      addedText: '[]',
+      aiSignificance: 'x',
+      isLegallySignificant: true,
+      createdAt: new Date('2022-08-15'),
+      ...survivalFixture({
+        rawDeletedText,
+        survivalVerdict: 'CONTRADICTED',
+        survivalTextVersion: TEXT_VERSION,
+        survivalCheckedAt: new Date('2026-08-28'),
+        survivalChunksChecked: 1,
+        survivalContradicted: [{ side: 'REMOVED', excerpt: 'still on the page' }],
+        survivalSourceStateHash: survivalSourceStateHash({
+          beforeTextHash: 'a'.repeat(64),
+          afterTextHash: 'b'.repeat(64),
+          rawDeletedText,
+          rawAddedText: '[]',
+        }),
+      }),
+      ...over,
+    };
+  }
+
+  it('COUNTS contradicted diffs and warns, rather than merely naming the field', async () => {
+    mockTrackedUrlFindFirst.mockResolvedValue({
+      ...trackedUrlFixture,
+      diffs: [...trackedUrlFixture.diffs, contradictedDiff()],
+    });
+
+    const result = JSON.parse(await getForensicTimelineHandler({ url: 'https://health.gov.il/corona' }));
+
+    expect(result.contradictedDiffs).toBe(1);
+    expect(result.survivalWarning).toContain('CONTRADICTED');
+    // The row carries it too, so the headline and the detail cannot disagree.
+    expect(result.timeline[2].survival.state).toBe('CONTRADICTED');
+  });
+
+  it('counts the unchecked separately, and never folds them together', async () => {
+    // The base fixture's two diffs are UNCHECKED. A diff nobody has checked and a
+    // diff the documents refute are different problems with different remedies.
+    mockTrackedUrlFindFirst.mockResolvedValue({
+      ...trackedUrlFixture,
+      diffs: [...trackedUrlFixture.diffs, contradictedDiff()],
+    });
+
+    const result = JSON.parse(await getForensicTimelineHandler({ url: 'https://health.gov.il/corona' }));
+
+    expect(result.uncheckedDiffs).toBe(2);
+    expect(result.contradictedDiffs).toBe(1);
+    expect(result.uncheckedWarning).toContain('NOT A PASS');
+  });
+
+  it('omits the survival warning when nothing is contradicted', async () => {
+    // Vacuity guard for the two tests above: if the warning were unconditional,
+    // asserting its presence would prove nothing.
+    mockTrackedUrlFindFirst.mockResolvedValue(trackedUrlFixture);
+
+    const result = JSON.parse(await getForensicTimelineHandler({ url: 'https://health.gov.il/corona' }));
+
+    expect(result.contradictedDiffs).toBe(0);
+    expect(result.survivalWarning).toBeUndefined();
+  });
 
   it('returns full timeline with diff count and significance stats', async () => {
     mockTrackedUrlFindFirst.mockResolvedValue(trackedUrlFixture);
