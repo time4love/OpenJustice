@@ -861,6 +861,32 @@ is the second — it depends on `match?.[1] !== undefined` and on iterating rath
 arguing for the break.** Each new guarded file adds to that surface, which is why the number is worth
 having now rather than at the end.
 
+##### HOUSE PATTERN: a suggested fix must be safe when the diagnosis is wrong
+
+**Found by mutating a ratchet rather than the code it guards, 2026-08-28.**
+
+Renaming the rule constant in the `no-unnecessary-condition` measurer made every file report zero. The
+ratchet's improvement arm reported that as **progress**, and the remedy it printed — *"regenerate the
+baseline"* — would have written zeros into the baseline and **disabled the check permanently.**
+
+> **That is worse than a check that cannot fail, because it RECRUITS THE OPERATOR into disabling it.**
+> A check that silently passes wastes the effort of writing it. A check that congratulates you and hands
+> you the command that destroys it converts a broken tool into a broken tool nobody can find.
+
+The fix is not only to detect the collapse but to change what the message *offers*: a wholesale drop to
+zero throws, and says explicitly **do not regenerate the baseline; fix the measurer.**
+
+**Generalised, because it applies to every error message that tells someone what to run next:**
+
+> *A suggested remedy is executed by someone who trusts the diagnosis. So the remedy has to be safe in
+> the case where the diagnosis is wrong — and the case where a check is broken is precisely the case
+> where its diagnosis is least trustworthy.*
+
+*Ported to the `noUncheckedIndexedAccess` ratchet as its own change, and the port caught a DIFFERENT
+shape:* that measurer already threw when `tsc` **failed** and nothing parsed, but not when `tsc`
+**succeeded** for the wrong reason — a changed flag, a moved tsconfig — which also reads as the debt
+being paid off in one go. Two ratchets, two collapse routes, one rule.
+
 ##### HOUSE PATTERN: a check that parses must fail loudly when its pattern stops matching
 
 **Third instance in this work, so it stops being a knack and becomes a rule.**
