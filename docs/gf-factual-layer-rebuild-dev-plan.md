@@ -1480,9 +1480,86 @@ this tool's own header exists to prevent.
 fact (`CdxQuery`) rather than inferred from an overloaded counter. Routing on *"the Archive holds no
 captures for this URL"* is now branching on a signal that exists.
 
-**Phase B remains blocked on the Save Page Now policy decision.** That is the researcher's call and not
-an implementation question — the four operational points have defensible defaults; the fifth, whether
-any page should not be asked of a third party in perpetuity, does not.
+#### SAVE PAGE NOW — the policy is DECIDED, 2026-08-28
+
+*Five decisions. Four were operational with defensible defaults; the fifth was not, and the first answer
+to it was disproved by this corpus.*
+
+**A domain allowlist was proposed and REJECTED, on evidence.** Production's only **Tier 1: Smoking Gun**
+sits on `rtmag.co.il` — a media domain. A government-domain allowlist would have refused the most
+probative record the platform holds. Measured, not argued: every other confirmed record is
+`web.archive.org`.
+
+**The replacement is a second gate, and the reframe is the substance.** `ON_MISSION` is a precondition,
+not the question. Relevance is not what SPN adds: the page is already public, so SPN makes it *durable*
+rather than *visible*, and the harm case has exactly one shape — someone who published something about
+themselves and later wants it gone. **The mission gate cannot see that axis at all**, because it reads
+subject matter rather than who is in the page.
+
+| | mission gate | subject gate |
+|---|---|---|
+| question | is this within the stated purpose? | is this page about a named private individual? |
+| verdicts | `ON_MISSION` · `OFF_MISSION` · `UNCLEAR` | `NO_PRIVATE_INDIVIDUAL` · `NAMED_PRIVATE_INDIVIDUAL` · `NEEDS_HUMAN` |
+| uncertainty resolves toward | **admitting** — a false rejection blocks a legitimate investigation | **asking a human** — a false negative performs an irreversible act on someone who did not choose it |
+| runs | every submission | only when SPN is about to fire |
+
+**A human is NOT asked every time, and that is the correction.** The first design required confirmation
+on every `ON_MISSION` — a gate that cries wolf, which this document already records gets disabled. An
+institutional or press page on Covid-19 health policy is the whole point; permanence harms nobody, SPN
+fires only when the Archive holds nothing, and asking every time trains a reader to stop reading.
+
+**Mission `UNCLEAR` refuses outright, human or not.** *A human may authorise permanence; a human may not
+authorise relevance.* Without that, the subject gate becomes a way to talk past the first gate.
+
+##### The vocabularies are DISJOINT, and under one table that is a correctness property
+
+Both gates originally used `UNCLEAR`, resolving it in **opposite** directions. The first design guarded
+that with a comment stating the asymmetry and a test pinning both — **the two weakest rungs of the
+hierarchy, guarding a hazard the same document had just named.**
+
+Sharing one `verdict` column made it worse than a naming smell: one value would mean two opposite things
+depending on a sibling column, so a query filtering on it would return rows meaning *proceed* beside rows
+meaning *stop*. **One value answering two questions — the shape the `checkType` enum was split to avoid,
+reappearing one level below it.**
+
+Renaming the subject verdict to `NEEDS_HUMAN` removes the hazard instead of watching it, and something
+better falls out: **every verdict value now implies its own check type**, so
+`UrlAssessment_verdict_matches_checkType` is a **misattribution guard** rather than a membership test —
+a mission verdict written under `checkType = 'SUBJECT'` violates the constraint instead of being stored
+and silently meaning its opposite. It also makes `SavePageNowRequest.subjectVerdict` self-describing in
+a table that has no discriminator at all.
+
+##### One table, and why the CHECK is the constraint rather than a check
+
+`UrlAssessment` carries both judgements. Two tables would mean the provenance-recording rule — author,
+model, version, criterion hash, what the model was shown, who overrode it, and the completeness CHECK —
+existing **twice**: one rule, two implementations. `verdict` is `TEXT` constrained per check type, and
+**a constraint on an enumerated set is what an enum is**; the earlier argument was against a check in
+one language guarding a table any path can write, which is not this.
+
+##### The migration RENAMES rather than recreating, and the reason is not caution
+
+`prisma migrate diff` generates a table removal here. The table held **0 rows**, measured. *That is
+exactly the reasoning to refuse:* a scan between the measurement and the deploy would write one, and the
+removal would destroy it while still reporting success. `ADD COLUMN "checkType" … NOT NULL` with no
+`DEFAULT` is a **built-in emptiness guard** — Postgres refuses it on a table with rows, so a surprise row
+aborts the deploy with the previous version still serving.
+
+##### `PENDING` was not enough — `lastCheckedAt`
+
+`PENDING` distinguishes *asked* from *never asked*. It does not distinguish **asked and still waiting**
+from **asked and never checked again**, and a `PENDING` row nothing revisits decays into exactly the
+inference the table exists to prevent — the never-looked-versus-nothing-there family one level up from
+where it was designed out. `reconcileAgainstCdx` already runs a live CDX query per tracked URL, so
+resolving open requests there is nearly free.
+
+`DECLINED` (robots.txt, paywall — durable) stays distinct from `FAILED` (rate-limited — retryable), for
+the same reason `UNSERVABLE` is distinct from `UNFETCHED`.
+
+##### Still to build
+
+The schema, the two-gate decision and the request record are in. **The subject-gate agent and the SPN
+HTTP call are not** — that is Phase B's remaining work, and it now has somewhere to record what it does.
 
 #### RESOLVED: `UNCHANGED` — the status for "fetched, and deliberately not stored"
 

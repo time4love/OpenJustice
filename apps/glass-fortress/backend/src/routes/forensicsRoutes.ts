@@ -8,10 +8,9 @@ import { type DiffItem } from '../services/ForensicAgent';
 import { parseDiffItems } from '../lib/diffItems';
 import { scanLimiter } from '../middleware/rateLimiting';
 import { ScanRelevanceAgent } from '../services/ScanRelevanceAgent';
-import { recordMissionAssessment } from '../services/recordMissionAssessment';
+import { recordUrlAssessment } from '../services/recordUrlAssessment';
 import { SCAN_RELEVANCE_PROMPT_HASH, SCAN_RELEVANCE_VERSION } from '../lib/mission';
 import { resolveModelId } from '../factories/LLMFactory';
-import { MissionVerdict } from '@prisma/client';
 import { scrapeUrl } from '../utils/webScraper';
 import { getStoredClaimTrajectories } from '../services/claimTrajectory';
 
@@ -128,10 +127,11 @@ router.post('/scan', scanLimiter, async (req: Request, res: Response): Promise<v
       // place the platform filters its own inputs, and "you kept what suited you"
       // is the standard attack on curated evidence; the answer is a queryable
       // record of everything turned away AND everything let through.
-      await recordMissionAssessment({
+      await recordUrlAssessment({
+        checkType: 'MISSION',
         author: 'MODEL',
         url,
-        verdict: relevance.isRelevant ? MissionVerdict.ON_MISSION : MissionVerdict.OFF_MISSION,
+        verdict: relevance.isRelevant ? 'ON_MISSION' : 'OFF_MISSION',
         reason: relevance.reason,
         assessedAt: new Date(),
         model: resolveModelId('SCAN_RELEVANCE'),
