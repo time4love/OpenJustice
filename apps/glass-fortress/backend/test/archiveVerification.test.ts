@@ -41,6 +41,20 @@ const mockedAxios = axios as jest.Mocked<typeof axios>;
 const findTracked = prisma.trackedUrl.findFirst as jest.Mock;
 const findSnapshots = prisma.urlSnapshot.findMany as jest.Mock;
 
+/**
+ * `listCaptures` issues TWO snapshot queries: the archived captures it
+ * cross-checks against CDX, and the never-archived ones it reports in their own
+ * section. Routing the mock on the WHERE clause rather than on call order keeps
+ * these tests describing intent instead of sequence — and a shared
+ * `mockResolvedValue` would hand archived rows to the non-archived query, which
+ * is exactly what it did before this helper existed.
+ */
+function mockSnapshots(archived: unknown[], notArchived: unknown[] = []): void {
+  findSnapshots.mockImplementation((args: { where?: Record<string, unknown> }) =>
+    Promise.resolve(args?.where && 'NOT' in args.where ? notArchived : archived),
+  );
+}
+
 const URL = 'https://corona.health.gov.il/vaccine-for-covid/';
 
 /** A CDX response body: header row plus one row per capture. */
@@ -63,7 +77,7 @@ beforeEach(() => {
     e: unknown,
   ) => Boolean((e as { isAxiosError?: boolean })?.isAxiosError)) as never;
   findTracked.mockResolvedValue({ id: 'tracked-1' });
-  findSnapshots.mockResolvedValue([]);
+  mockSnapshots([]);
 });
 
 describe('fetchCaptureIndex', () => {
@@ -149,7 +163,7 @@ describe('listCaptures', () => {
         ['20220806010101', 'BBB', '200'],
       ]),
     });
-    findSnapshots.mockResolvedValue([
+    mockSnapshots([
       {
         waybackTimestamp: '20220805010101',
         snapshotDate: '2022-08-05',
@@ -166,14 +180,74 @@ describe('listCaptures', () => {
       inArchive: 2,
       storedLocally: 1,
       storedNotInArchiveIndex: 0,
+      notArchived: 0,
     });
     expect(result.captures.map((c) => c.storedLocally)).toEqual([true, false]);
     expect(result.captures[0].storedOnChainTxHash).toBe('0xabc');
   });
 
+  // -------------------------------------------------------------------------
+  // A PARTITION, NOT AN EXCLUSION.
+  //
+  // Cross-checking a never-archived capture against CDX would report it as a gap
+  // in the Archive — a fabricated finding from the tool built to detect
+  // fabricated findings — so it is correctly kept OUT of `captures`. But dropping
+  // it from the answer entirely makes list_captures UNDER-REPORT what the
+  // platform holds, which is the same failure in the other direction.
+  //
+  // Built while the answer is always empty, for the same reason the UNCHANGED
+  // status landed before the backfill wrote a row: the first DIRECT capture
+  // Level 2 Phase B creates must appear here on the day it is created.
+  // -------------------------------------------------------------------------
+  it('reports a never-archived capture in its own section, not among the archived ones', async () => {
+    mockedAxios.get.mockResolvedValue({ data: cdxRows([['20220403152841', 'AAA', '200']]) });
+    mockSnapshots(
+      [
+        {
+          waybackTimestamp: '20220403152841',
+          snapshotDate: '2022-04-03',
+          snapshotUrl: 'u',
+          contentHash: 'h',
+          onChainTxHash: null,
+        },
+      ],
+      [{ capturedAt: new Date('2026-08-28T09:00:00Z'), provenance: 'DIRECT' }],
+    );
+
+    const result = await listCaptures(URL, {});
+    if (result.status !== 'OK') throw new Error('unreachable');
+
+    expect(result.counts.notArchived).toBe(1);
+    expect(result.notArchived).toHaveLength(1);
+    expect(result.notArchived[0]).toEqual({
+      capturedAt: '2026-08-28T09:00:00.000Z',
+      provenance: 'DIRECT',
+      // Stated on the row rather than inferred from which array it came out of.
+      independentlyRecheckable: false,
+    });
+
+    // It must NOT appear among the archived captures, or it would be reported as
+    // a gap in the Archive.
+    expect(result.captures.every((c) => c.waybackTimestamp !== undefined)).toBe(true);
+    expect(result.counts.storedNotInArchiveIndex).toBe(0);
+  });
+
+  it('scopes the never-archived query to non-WAYBACK captures only', async () => {
+    mockedAxios.get.mockResolvedValue({ data: cdxRows([['20220403152841', 'AAA', '200']]) });
+    mockSnapshots([], []);
+    await listCaptures(URL, {});
+
+    const notArchivedCall = findSnapshots.mock.calls.find(
+      (c) => (c[0] as { where?: Record<string, unknown> }).where?.['NOT'] !== undefined,
+    );
+    expect(notArchivedCall).toBeDefined(); // vacuity guard: the query must exist
+    const where = (notArchivedCall?.[0] as { where: Record<string, unknown> }).where;
+    expect(where['NOT']).toEqual({ provenance: 'WAYBACK' });
+  });
+
   it('reports a stored capture the archive index did not return — the two sources disagreeing is itself a finding', async () => {
     mockedAxios.get.mockResolvedValue({ data: cdxRows([['20220805010101', 'AAA', '200']]) });
-    findSnapshots.mockResolvedValue([
+    mockSnapshots([
       {
         waybackTimestamp: '20220901010101',
         snapshotDate: '2022-09-01',
@@ -195,7 +269,7 @@ describe('listCaptures', () => {
 
   it('returns stored captures with an explicit warning when the archive is unreachable', async () => {
     mockedAxios.get.mockRejectedValue(axiosError(503));
-    findSnapshots.mockResolvedValue([
+    mockSnapshots([
       {
         waybackTimestamp: '20220805010101',
         snapshotDate: '2022-08-05',

@@ -1428,6 +1428,62 @@ different provenance sitting together. `documentHashSingleRule` would not catch 
 *writes* to `documentHash`, not what sits beside it — so a test asserts `UrlSnapshot` has no
 `/cdx/i` column, and the later "saves a join" optimisation fails loudly instead of looking sensible.
 
+#### `list_captures` PARTITIONS — DONE 2026-08-28, and the item was half-wrong
+
+Only archived captures may be cross-checked against the CDX index; listing a direct capture there would
+report it as a gap in the Archive, a fabricated finding from the tool built to detect fabricated
+findings. **That scoping already existed and was correct.** What it produced was a tool that *omitted*
+never-archived captures entirely — so `list_captures` UNDER-REPORTED what the platform holds, which is
+the same failure in the other direction.
+
+**A partition, not an exclusion.** They now appear in their own `notArchived` section, each row carrying
+`independentlyRecheckable: false` **stated rather than inferred from which array it came out of** —
+because that is the distinction a reader actually needs: everything in `captures` can be verified by a
+stranger against a public archive, and nothing in `notArchived` can.
+
+Built while the answer is always empty, since every stored capture is `WAYBACK`, for the same reason
+`UNCHANGED` landed before the backfill wrote a row: **the first `DIRECT` capture Phase B creates must
+appear in this tool on the day it is created, not the day somebody notices it is missing.**
+
+#### THE RECONCILIATION FAST PATH — DONE 2026-08-28
+
+Deferred while it was on the critical path, so production could run the exact tool proven on staging.
+A capture is skipped only when all three of its inputs are already settled: the payload **VERIFIED**
+against the Archive's published digest — an *external* witness, not our own record of it — the encoding
+already observed, and the text already at the current extraction version. Nothing a fetch could return
+would change a column, so fetching costs 1.5s and an Archive request for nothing.
+
+*The three-way condition was mutation-proven the hard way.* Skipping on the **verdict alone** kills four
+tests. Ignoring the **encoding** kills four. **Ignoring the stale text version SURVIVED all 31** — the
+existing "re-derives when the version is behind" case could not catch it, because its verdict carries a
+null encoding, so the skip was already blocked for a different reason and the version conjunct was never
+the thing under test.
+
+> **A test that passes for a reason other than the one it names is not covering what it appears to
+> cover.**
+
+The consequence would not have been cosmetic: after a `textExtractionVersion` bump, every verified row
+with a stored encoding would be skipped and left at the old version — the two-partial-states condition
+this tool's own header exists to prevent.
+
+#### LEVEL 2 PHASE A IS COMPLETE — 2026-08-28
+
+| item | outcome |
+|---|---|
+| persist the CDX digest at write time | `CdxIndexEntry`, unique on `(trackedUrlId, waybackTimestamp, digest)` so index drift is a new row |
+| `list_captures` partitions by provenance | `notArchived` section, `independentlyRecheckable` on the row |
+| a scan that reports success while fetching nothing | one branch was answering two questions; a fresh scan now always reaches the Archive |
+| the 404 capture as queryable state | `UNSERVABLE`, distinct from `UNFETCHED` and from `UNCHANGED` |
+| the reconciliation fast path | skips only when payload, encoding and text version are all settled |
+
+**Phase B's precondition is discharged**: a scan always asks, and a zero-row answer is recorded as a
+fact (`CdxQuery`) rather than inferred from an overloaded counter. Routing on *"the Archive holds no
+captures for this URL"* is now branching on a signal that exists.
+
+**Phase B remains blocked on the Save Page Now policy decision.** That is the researcher's call and not
+an implementation question — the four operational points have defensible defaults; the fifth, whether
+any page should not be asked of a third party in perpetuity, does not.
+
 #### RESOLVED: `UNCHANGED` — the status for "fetched, and deliberately not stored"
 
 Found while writing the backfill; **decided before the backfill ran, deliberately.** `CdxEntryStatus`

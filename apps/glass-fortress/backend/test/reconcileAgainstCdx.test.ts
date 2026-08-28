@@ -111,6 +111,49 @@ describe('reconcileAgainstCdx fills what is missing without touching what is rig
     expect(writtenColumns(executeRaw.mock.calls[0])['textExtractionVersion']).toBe(V2);
   });
 
+  // -------------------------------------------------------------------------
+  // THE FAST PATH SKIPS ONLY WHEN ALL THREE INPUTS HOLD.
+  //
+  // Written after a mutation SURVIVED: dropping the textExtractionVersion check
+  // from the skip condition passed all 31 tests. The existing "re-derives when
+  // the version is behind" case does not catch it, because its verdict carries a
+  // NULL encoding — so the skip was already blocked for a different reason, and
+  // the version conjunct was never the thing under test.
+  //
+  // The consequence is not cosmetic: after a textExtractionVersion bump, a
+  // VERIFIED row with its encoding already stored would be skipped and left at
+  // the old version — leaving the corpus in the two-partial-states condition this
+  // tool's own header exists to prevent.
+  // -------------------------------------------------------------------------
+  it('does NOT skip a verified row whose text version is behind, even with the encoding stored', async () => {
+    verify.mockResolvedValue(
+      verification([verdict({ verdict: 'VERIFIED', contentEncoding: 'identity' })]),
+    );
+    findMany.mockResolvedValue([storedRow({ textExtractionVersion: 'v1-htmltotext-normalised' })]);
+
+    const report = await reconcileAgainstCdx({ url: URL_, dryRun: false });
+
+    expect(report.textRederived).toBe(1);
+    expect(report.unchanged).toBe(0);
+    expect(fetchBytes).toHaveBeenCalled();
+    expect(writtenColumns(executeRaw.mock.calls[0])['textExtractionVersion']).toBe(V2);
+  });
+
+  it('DOES skip a verified row that is already complete — the fast path working', async () => {
+    verify.mockResolvedValue(
+      verification([verdict({ verdict: 'VERIFIED', contentEncoding: 'identity' })]),
+    );
+    findMany.mockResolvedValue([storedRow()]);
+
+    const report = await reconcileAgainstCdx({ url: URL_, dryRun: false });
+
+    expect(report.unchanged).toBe(1);
+    // The point of the fast path: no Archive request for a capture that cannot
+    // change.
+    expect(fetchBytes).not.toHaveBeenCalled();
+    expect(executeRaw).not.toHaveBeenCalled();
+  });
+
   it('keeps the STORED bytes when only the version moved — it re-derives, never re-fetches into place', async () => {
     findMany.mockResolvedValue([storedRow({ textExtractionVersion: 'v1-htmltotext-normalised' })]);
     await reconcileAgainstCdx({ url: URL_, dryRun: false });

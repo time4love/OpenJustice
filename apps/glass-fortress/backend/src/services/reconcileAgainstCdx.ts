@@ -1,6 +1,6 @@
 import { prisma } from '../lib/prisma';
 import { fetchCaptureBytes } from '../lib/archiveHttp';
-import { deriveText, sha256Bytes } from '../lib/captureDocument';
+import { deriveText, sha256Bytes, TEXT_EXTRACTION_VERSION } from '../lib/captureDocument';
 import { cdxDigestOf, verifyAgainstCdx } from './verifyAgainstCdx';
 
 /**
@@ -130,6 +130,39 @@ export async function reconcileAgainstCdx(opts: {
         cdxDigest: verdict.cdxDigest,
         storedDigest: verdict.ourDigest,
         bytesChanged: verdict.verdict === 'CONTRADICTED',
+      });
+      continue;
+    }
+
+    // THE FAST PATH — skip the fetch for a capture that cannot change.
+    //
+    // Deferred while it was on the critical path: production had to run the exact
+    // tool proven on staging, so convergence cost a full ~12-minute pass to fix
+    // one row. It is safe now because all three inputs are already known:
+    //
+    //   the payload   VERIFIED against the Archive's published digest, so the
+    //                 bytes are settled by an EXTERNAL witness rather than by our
+    //                 own record of them
+    //   the encoding  already stored, so there is nothing to fill
+    //   the text      already at the current extraction version, so re-deriving
+    //                 is a no-op by construction
+    //
+    // Nothing a fetch could return would change any column, so fetching only
+    // costs 1.5s and an Archive request. A row failing ANY of the three still
+    // takes the full path — the skip is on all three holding, never on the
+    // verdict alone.
+    const alreadyConsistent =
+      verdict.verdict === 'VERIFIED' &&
+      verdict.contentEncoding !== null &&
+      row.textExtractionVersion === TEXT_EXTRACTION_VERSION;
+    if (alreadyConsistent) {
+      record({
+        waybackTimestamp: verdict.waybackTimestamp,
+        action: 'UNCHANGED',
+        cdxDigest: verdict.cdxDigest,
+        storedDigest: verdict.ourDigest,
+        contentEncoding: verdict.contentEncoding,
+        bytesChanged: false,
       });
       continue;
     }

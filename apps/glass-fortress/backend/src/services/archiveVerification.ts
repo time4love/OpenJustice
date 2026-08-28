@@ -214,9 +214,46 @@ export type ListCapturesResult =
         storedLocally: number;
         /** Captures this platform holds that the archive index did not return. */
         storedNotInArchiveIndex: number;
+        /**
+         * Captures this platform holds that the Archive does NOT hold at all.
+         *
+         * Distinct from `storedNotInArchiveIndex`, which counts ARCHIVED captures
+         * the index did not return — a disagreement between two sources about the
+         * same page. This counts captures that were never archived, so no
+         * disagreement is possible and none should be reported.
+         */
+        notArchived: number;
       };
       captures: ListedCapture[];
+      /**
+       * Captures held but never archived, in their own section.
+       *
+       * A PARTITION, NOT AN EXCLUSION. Cross-checking these against CDX would
+       * report each as a gap in the Archive — a fabricated finding from the tool
+       * built to detect fabricated findings — so they are correctly kept out of
+       * `captures`. But dropping them from the answer entirely makes
+       * `list_captures` UNDER-REPORT what the platform holds, which is the same
+       * failure in the other direction.
+       *
+       * The distinction a reader needs is re-checkability: everything in
+       * `captures` can be verified by a stranger against a public archive, and
+       * nothing here can.
+       */
+      notArchived: NotArchivedCapture[];
     };
+
+/** A capture this platform holds that the Internet Archive does not. */
+export interface NotArchivedCapture {
+  capturedAt: string;
+  provenance: string;
+  /**
+   * Always false, and stated rather than implied.
+   *
+   * A reader scanning two lists needs the difference between them to be on the
+   * row, not inferred from which array it came out of.
+   */
+  independentlyRecheckable: false;
+}
 
 interface StoredSnapshotRow {
   waybackTimestamp: string;
@@ -368,6 +405,35 @@ export async function listCaptures(
     a.waybackTimestamp.localeCompare(b.waybackTimestamp),
   );
 
+  // The partition the archived-only scoping above owes. Built now, while the
+  // answer is always empty, for the same reason the UNCHANGED status landed
+  // before the backfill wrote a row: the first DIRECT capture Level 2 Phase B
+  // creates must appear in this tool on the day it is created, not the day
+  // somebody notices it is missing.
+  const notArchivedRows = await prisma.urlSnapshot.findMany({
+    where: {
+      trackedUrlId: tracked.id,
+      NOT: { provenance: CaptureProvenance.WAYBACK },
+      // Same `snapshotDate` bound the archived query uses, so the two sections of
+      // one answer cover the same interval.
+      ...(range.from || range.to
+        ? {
+            snapshotDate: {
+              ...(range.from ? { gte: range.from } : {}),
+              ...(range.to ? { lte: range.to } : {}),
+            },
+          }
+        : {}),
+    },
+    orderBy: { capturedAt: 'asc' },
+    select: { capturedAt: true, provenance: true },
+  });
+  const notArchived: NotArchivedCapture[] = notArchivedRows.map((r) => ({
+    capturedAt: r.capturedAt.toISOString(),
+    provenance: r.provenance,
+    independentlyRecheckable: false,
+  }));
+
   return {
     status: 'OK',
     url,
@@ -377,8 +443,10 @@ export async function listCaptures(
       inArchive: index.captures.length,
       storedLocally: captures.filter((c) => c.storedLocally).length + storedOnly.length,
       storedNotInArchiveIndex: storedOnly.length,
+      notArchived: notArchived.length,
     },
     captures: all,
+    notArchived,
   };
 }
 
