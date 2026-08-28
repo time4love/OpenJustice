@@ -256,3 +256,99 @@ describe('recordDiff runs the check and stores its verdict', () => {
     expect(findSnapshot.mock.calls[1][0].where).toEqual({ id: 'snap-after' });
   });
 });
+
+// ---------------------------------------------------------------------------
+// A CHECK THAT INSPECTED NOTHING DID NOT PASS
+//
+// Found by a real scan, not by a mutation: 20 of 22 rtmag diffs reported zero
+// chunks and every one of them read SURVIVES, so the audit claimed 20
+// verifications that never happened.
+// ---------------------------------------------------------------------------
+describe('zero chunks checked is UNCHECKABLE, never SURVIVES', () => {
+  it('refuses to call an empty diff a pass', () => {
+    const result = checkDiffSurvival({
+      rawDeletedText: '[]',
+      rawAddedText: '[]',
+      beforeText: 'a page that did not change',
+      afterText: 'a page that did not change',
+      beforeVersion: V2,
+      afterVersion: V2,
+    });
+    expect(result.verdict).toBe('UNCHECKABLE');
+    expect(result.chunksChecked).toBe(0);
+    expect(result.reason).toContain('nothing to check');
+  });
+
+  it('says WHY, and not the mixed-versions reason', () => {
+    // Two causes reach UNCHECKABLE and they are not interchangeable. Asserting
+    // the wrong one would tell a legitimate no-change diff it was extracted
+    // under incomparable rules.
+    const result = checkDiffSurvival({
+      rawDeletedText: '[]',
+      rawAddedText: '[]',
+      beforeText: 'x',
+      afterText: 'x',
+      beforeVersion: V2,
+      afterVersion: V2,
+    });
+    expect(result.reason).not.toContain('different rules');
+  });
+
+  it('still reaches SURVIVES when something WAS examined', () => {
+    // Vacuity guard: if everything were UNCHECKABLE the tests above would pass
+    // while proving nothing about the count.
+    const result = checkDiffSurvival({
+      rawDeletedText: JSON.stringify([SENTENCE]),
+      rawAddedText: '[]',
+      beforeText: `intro\n${SENTENCE}`,
+      afterText: 'intro',
+      beforeVersion: V2,
+      afterVersion: V2,
+    });
+    expect(result.verdict).toBe('SURVIVES');
+    expect(result.chunksChecked).toBe(1);
+  });
+
+  it('malformed chunk JSON is UNCHECKABLE too, not a pass', () => {
+    // parseChunks returns [] for unparseable input, which used to mean a row
+    // with a corrupt payload reported SURVIVES.
+    const result = checkDiffSurvival({
+      rawDeletedText: 'not json at all',
+      rawAddedText: '[]',
+      beforeText: 'x',
+      afterText: 'y',
+      beforeVersion: V2,
+      afterVersion: V2,
+    });
+    expect(result.verdict).toBe('UNCHECKABLE');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// A DIFF SPANS TWO CAPTURES
+// ---------------------------------------------------------------------------
+describe('recordDiff refuses a capture paired with itself', () => {
+  it('throws rather than writing a transition that never happened', async () => {
+    // Unfalsifiable by construction: a document always contains itself, so every
+    // reported change would be refuted and every empty one would vacuously pass.
+    await expect(
+      recordDiff(diffWrite({ beforeSnapshotId: 'snap-x', afterSnapshotId: 'snap-x' })),
+    ).rejects.toThrow(/same capture/);
+    expect(upsert).not.toHaveBeenCalled();
+  });
+
+  it('refuses BEFORE reading the captures — nothing is loaded for a row it will not write', async () => {
+    await expect(
+      recordDiff(diffWrite({ beforeSnapshotId: 'snap-x', afterSnapshotId: 'snap-x' })),
+    ).rejects.toThrow();
+    expect(findSnapshot).not.toHaveBeenCalled();
+  });
+
+  it('still writes an ordinary two-capture diff', async () => {
+    // Vacuity guard: a recordDiff that threw on everything would pass the two
+    // assertions above.
+    findSnapshot.mockResolvedValue(snapshot('stored text'));
+    await recordDiff(diffWrite({ rawDeletedText: JSON.stringify([SENTENCE]) }));
+    expect(upsert).toHaveBeenCalledTimes(1);
+  });
+});

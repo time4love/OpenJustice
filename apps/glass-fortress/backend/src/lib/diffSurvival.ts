@@ -19,6 +19,27 @@ import { normaliseForPresence } from './htmlText';
  * which is what makes it affordable at write time.
  */
 
+/**
+ * WHICH RULE PRODUCED A VERDICT.
+ *
+ * `survivalTextVersion` says which rule produced the TEXT; this says which rule
+ * produced the JUDGEMENT, and the two go stale independently.
+ *
+ * WHY IT EXISTS, found the hard way. `sourceStateHash` commits to the check's
+ * four INPUTS, so it detects a verdict whose data moved underneath it. It cannot
+ * detect a verdict whose RULE moved: when zero-chunk diffs stopped being SURVIVES
+ * and became UNCHECKABLE, 88 of 103 stored verdicts on staging became wrong while
+ * the hash still matched, the audit still read CURRENT, and every count stayed
+ * green. That is the exact failure this level was built to prevent, one level up
+ * from the data it was watching.
+ *
+ * BUMP THIS whenever `checkDiffSurvival` can return a different verdict for
+ * unchanged inputs. The audit then reports every earlier verdict STALE and the
+ * backfill recomputes them — which is what makes a rule change reach the corpus
+ * instead of quietly disagreeing with it.
+ */
+export const SURVIVAL_CHECK_VERSION = 'v2-zero-chunks-uncheckable';
+
 /** Verdicts a diff can receive. */
 export type SurvivalVerdict = 'SURVIVES' | 'CONTRADICTED' | 'UNCHECKABLE';
 
@@ -167,6 +188,33 @@ export function checkDiffSurvival(input: {
         }
       }
     }
+  }
+
+  // A CHECK THAT INSPECTED NOTHING DID NOT PASS.
+  //
+  // With no chunks there is no reported change, so `contradicted` is empty and
+  // the verdict would fall through to SURVIVES — a pass earned by having nothing
+  // to examine. That is the same sentence as "UNCHECKED is not SURVIVES", one
+  // level down, and it is the shape §3 exists to prevent: an unavailable result
+  // counting as a result.
+  //
+  // It also inflates the only number anyone reads. On the corpus that surfaced
+  // this, 20 of 22 diffs reported zero chunks; as SURVIVES they made the audit
+  // claim 20 verifications that never happened.
+  //
+  // UNCHECKABLE, not a fourth verdict: this is a statement about the CHECK, which
+  // is exactly what that member already means. The REASON distinguishes it from
+  // the mixed-version case — see `diffSurvivalView`, which re-derives it from
+  // stored state so no column is needed to carry it.
+  if (chunksChecked === 0) {
+    return {
+      verdict: 'UNCHECKABLE',
+      chunksChecked: 0,
+      contradicted: [],
+      reason:
+        'This diff reports no changes, so there was nothing to check against the documents. ' +
+        'That is not the same as a reported change the documents support.',
+    };
   }
 
   return {

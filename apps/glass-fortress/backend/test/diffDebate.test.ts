@@ -100,7 +100,7 @@ jest.mock('../src/lib/prisma', () => ({
 }));
 
 import { survivalFixture, TEXT_VERSION } from './helpers/survivalFixture';
-import { survivalSourceStateHash } from '../src/lib/diffSurvival';
+import { SURVIVAL_CHECK_VERSION, survivalSourceStateHash } from '../src/lib/diffSurvival';
 import {
   openDiffDebate,
   respondInDiffDebate,
@@ -358,6 +358,7 @@ describe('a CONTRADICTED diff cannot be argued into evidence', () => {
     return survivalFixture({
       rawDeletedText,
       survivalVerdict: 'CONTRADICTED',
+      survivalCheckVersion: SURVIVAL_CHECK_VERSION,
       survivalTextVersion: TEXT_VERSION,
       survivalCheckedAt: new Date('2026-08-28'),
       survivalChunksChecked: 1,

@@ -23,7 +23,7 @@ import { prisma } from '../src/lib/prisma';
 import { getScanFindingsHandler } from '../src/mcp/tools/getScanFindings';
 import { promoteScanFindingsHandler } from '../src/mcp/tools/promoteScanFindings';
 import { survivalFixture, TEXT_VERSION } from './helpers/survivalFixture';
-import { survivalSourceStateHash } from '../src/lib/diffSurvival';
+import { SURVIVAL_CHECK_VERSION, survivalSourceStateHash } from '../src/lib/diffSurvival';
 
 const URL = 'https://corona.health.gov.il/vaccine-for-covid/';
 
@@ -192,6 +192,7 @@ describe('get_scan_findings surfaces the Level 5 verdict', () => {
       ...survivalFixture({
         rawDeletedText,
         survivalVerdict: 'CONTRADICTED',
+        survivalCheckVersion: SURVIVAL_CHECK_VERSION,
         survivalTextVersion: TEXT_VERSION,
         survivalCheckedAt: new Date('2026-08-28'),
         survivalChunksChecked: 1,

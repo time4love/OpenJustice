@@ -23,6 +23,9 @@ export function survivalFixture(
     survivalVerdict: null,
     survivalSourceStateHash: null,
     survivalTextVersion: null,
+    // NULL is a verdict from a rule older than any named one. The audit reads it
+    // as STALE, on the same reasoning that makes a NULL verdict UNCHECKED.
+    survivalCheckVersion: null,
     survivalCheckedAt: null,
     survivalChunksChecked: null,
     survivalContradicted: [],

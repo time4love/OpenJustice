@@ -1,6 +1,10 @@
 import { Prisma, SurvivalVerdict } from '@prisma/client';
 import { prisma } from '../lib/prisma';
-import { checkDiffSurvival, survivalSourceStateHash } from '../lib/diffSurvival';
+import {
+  checkDiffSurvival,
+  SURVIVAL_CHECK_VERSION,
+  survivalSourceStateHash,
+} from '../lib/diffSurvival';
 
 /**
  * LEVEL 5'S VERDICT, COMPUTED AGAINST STORED STATE, IN ONE PLACE.
@@ -35,6 +39,8 @@ export interface SurvivalColumns {
   survivalCheckedAt: Date;
   survivalSourceStateHash: string;
   survivalTextVersion: string;
+  /** Which rule reached this verdict — see SURVIVAL_CHECK_VERSION. */
+  survivalCheckVersion: string;
   survivalContradicted: Prisma.InputJsonValue;
   survivalChunksChecked: number;
 }
@@ -92,6 +98,10 @@ export async function computeDiffSurvival(input: SurvivalInput): Promise<Surviva
     // The versions agree unless the verdict is UNCHECKABLE, which is exactly what
     // a disagreement produces — so recording the before side is unambiguous.
     survivalTextVersion: before.textExtractionVersion,
+    // The text version says which rule produced the TEXT; this says which rule
+    // produced the JUDGEMENT. They go stale independently, and only the second
+    // one moves when the checker's semantics change.
+    survivalCheckVersion: SURVIVAL_CHECK_VERSION,
     // Serialised through the JSON boundary explicitly rather than cast: Prisma's
     // InputJsonValue does not accept an interface, and a cast would silently
     // accept a shape that later fails at the database.

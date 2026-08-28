@@ -1,0 +1,16 @@
+-- Which RULE produced a Level 5 verdict.
+--
+-- `survivalTextVersion` records the rule that produced the TEXT; this records the
+-- rule that produced the JUDGEMENT. They go stale independently, and only this
+-- one moves when the checker's semantics change.
+--
+-- Added because a rule change reached no data: when zero-chunk diffs stopped
+-- counting as SURVIVES, 88 of 103 stored verdicts on staging became wrong while
+-- `survivalSourceStateHash` still matched. That hash commits to the check's four
+-- INPUTS; nothing committed to its RULE, so the audit reported every affected row
+-- CURRENT and every count stayed green.
+--
+-- Nullable, and deliberately so: NULL is every verdict written before this column
+-- existed. The audit treats NULL as STALE rather than as current, which is what
+-- makes the existing corpus re-derivable rather than silently trusted.
+ALTER TABLE "UrlVersionDiff" ADD COLUMN "survivalCheckVersion" TEXT;

@@ -104,6 +104,20 @@ const MAX_CONTEXT_RECORDS = 5;
 // ---------------------------------------------------------------------------
 
 /**
+ * A capture as the scan paths see it, INCLUDING WHY IT LOOKS THAT WAY.
+ *
+ * `outcome` is not decoration. `UNCHANGED` means `recordCapture` found this
+ * capture text-identical to its predecessor and returned THE PREDECESSOR'S id —
+ * so a caller that reads only `id` sees the previous capture and cannot know it.
+ */
+interface StoredCapture {
+  id: string;
+  waybackTimestamp: string;
+  contentHash: string;
+  outcome: 'CREATED' | 'UNCHANGED' | 'EXISTS';
+}
+
+/**
  * Record one archived capture.
  *
  * A thin adapter over `recordCapture`, which is the ONLY way a capture is
@@ -130,7 +144,7 @@ async function recordArchivedCapture(
    * writers of captures cannot disagree about whether the link is made.
    */
   cdxDigest: string,
-): Promise<{ id: string; waybackTimestamp: string; contentHash: string }> {
+): Promise<StoredCapture> {
   const recorded = await recordCapture({
     trackedUrlId,
     provenance: CaptureProvenance.WAYBACK,
@@ -186,6 +200,14 @@ async function recordArchivedCapture(
     id: recorded.id,
     waybackTimestamp: recorded.waybackTimestamp,
     contentHash: recorded.contentHash,
+    // THE OUTCOME TRAVELS WITH THE CAPTURE, and this line is the fix for a real
+    // defect. It used to be consumed here for the CDX link and then DISCARDED,
+    // so the diff paths could not tell UNCHANGED from CREATED even though the
+    // distinction was already known — and on UNCHANGED both sides of the diff
+    // resolve to the same surviving snapshot, producing a row that compares a
+    // capture against itself. A caller cannot honour a distinction its input
+    // does not carry.
+    outcome: recorded.outcome,
   };
 }
 
@@ -693,7 +715,7 @@ export class WaybackScraper {
     interface Observation {
       snap: RawSnapshot;
       text: string;
-      stored: { id: string; waybackTimestamp: string; contentHash: string } | null;
+      stored: StoredCapture | null;
     }
     const observations: Observation[] = [];
     for (const snap of snapshots) {
@@ -769,6 +791,27 @@ export class WaybackScraper {
         console.warn(
           `[WaybackScraper] no diff for ${prevSnap.timestamp} -> ${snap.timestamp}: ` +
             'a capture is missing, so the pair cannot be checked against its documents.',
+        );
+        continue;
+      }
+
+      // AN UNCHANGED CAPTURE IS NOT A TRANSITION, SO IT GETS NO DIFF.
+      //
+      // `recordCapture` deliberately does not store a capture whose text is
+      // identical to its predecessor — that novelty rule is correct and preserves
+      // same-day revert material. On that outcome it returns THE PREDECESSOR'S
+      // id, which is what UNCHANGED means. Both sides of this diff therefore
+      // resolve to the same snapshot, and the row compares a capture against
+      // itself: a transition that never happened, reported as one that did.
+      //
+      // DERIVED FROM THE OUTCOME, NOT FROM ID EQUALITY. Equality is the symptom.
+      // Skipping on it alone would also swallow a genuine future bug that
+      // produced equal ids for some other reason — `recordDiff` refuses that case
+      // loudly instead, so the two guards catch different things.
+      if (current.stored?.outcome === 'UNCHANGED') {
+        console.warn(
+          `[WaybackScraper] no diff for ${prevSnap.timestamp} -> ${snap.timestamp}: ` +
+            'the later capture is text-identical to its predecessor, so there is no transition.',
         );
         continue;
       }
@@ -1000,7 +1043,7 @@ export class WaybackScraper {
     const trackedUrlId = job.trackedUrlId;
 
     let previousText = '';
-    let previousSnapshot: { id: string; waybackTimestamp: string; contentHash: string } | null = null;
+    let previousSnapshot: StoredCapture | null = null;
     let processedCount = snapshotsList.filter((s) => s.status === 'DONE').length;
     // Tallied across this call only — used solely to classify a total-failure
     // outcome (see the end of this method). A prior run's failures aren't
@@ -1036,7 +1079,7 @@ export class WaybackScraper {
       }
 
       let currentText = '';
-      let currentSnapshot: { id: string; waybackTimestamp: string; contentHash: string } | null = null;
+      let currentSnapshot: StoredCapture | null = null;
       try {
         const readings = await this.scrapeSnapshotReadings(job.url, entry.timestamp);
         currentText = readings.extracted;
@@ -1118,6 +1161,19 @@ export class WaybackScraper {
           console.warn(
             `[WaybackScraper] Job ${jobId} — no diff for ${entry.timestamp}: a capture is ` +
               'missing, so the pair cannot be checked against its documents.',
+          );
+        } else if (currentSnapshot.outcome === 'UNCHANGED') {
+          // A BRANCH IN THE CHAIN, not an early `continue` — same reason the
+          // missing-pair case is: continuing would skip the loop tail's
+          // `processedCount++` and job progress write, so a capture would be
+          // fetched while the job reported no progress for it. See the note above.
+          //
+          // The cause, not the symptom: an UNCHANGED capture resolves to its
+          // predecessor's id, so both sides of this diff would be the same
+          // snapshot. That is a transition that never happened.
+          console.warn(
+            `[WaybackScraper] Job ${jobId} — no diff for ${entry.timestamp}: the capture is ` +
+              'text-identical to its predecessor, so there is no transition.',
           );
         } else if (deletions.length === 0 && additions.length === 0) {
           // Truly identical after normalisation — skip AI
