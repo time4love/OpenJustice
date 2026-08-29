@@ -887,6 +887,37 @@ shape:* that measurer already threw when `tsc` **failed** and nothing parsed, bu
 **succeeded** for the wrong reason — a changed flag, a moved tsconfig — which also reads as the debt
 being paid off in one go. Two ratchets, two collapse routes, one rule.
 
+##### HOUSE PATTERN: when a guard fails on the rows a change is meant to fix, RESTATE it — never loosen it
+
+**Found applying `v3-sentence-claims`, 2026-08-29.**
+
+`planRediff`'s `safeToApply` required every stored chunk to reappear verbatim in the recomputation. That
+was exactly right for the truncation repair, which only ever **grew** a record: stored text missing from
+the recomputation meant the repair was also losing something.
+
+Under a **narrowing** migration the premise inverts. Sentence-granular claims deliberately shrink a
+stored block chunk to the sentences that actually changed, so verbatim reappearance is **guaranteed to
+fail on precisely the rows the migration exists to fix** — and the guard would have refused all of them.
+
+> **The tempting move at that moment is to weaken the guard, and it is the wrong one.** The guard is
+> protecting the single unrecoverable property: applying rewrites the chunk payloads in place, so text
+> with no counterpart is gone. Loosening it to get the migration through would trade a real protection
+> for a convenience, at exactly the moment the protection is doing its job.
+
+Restated instead, to permit that specific transition and nothing wider:
+
+> *A sentence of a stored chunk may disappear ONLY IF it is present in BOTH captures — that is, only if
+> it never changed.*
+
+That permits exactly the rider and forbids everything else: a genuinely removed sentence is absent from
+the after capture, so narrowing it away fails the check and the row is refused. Measured on both corpora
+at apply time: **0 entries unsafe.**
+
+**Generalised:** a guard encodes an invariant *and* an assumption about the direction of change. When a
+new change reverses the direction, separate the two — keep the invariant, restate the assumption. The
+question to ask is never *"can we relax this?"* but *"what is the narrowest transition that must now be
+permitted, and does permitting it still forbid the thing the guard was written for?"*
+
 ##### HOUSE PATTERN: a check that parses must fail loudly when its pattern stops matching
 
 **Third instance in this work, so it stops being a knack and becomes a rule.**
@@ -1866,6 +1897,63 @@ rather than deletes.
 counter on this same domain that differs every fetch, so frequency reads it as content. Marking rather
 than deleting is what keeps this affordable.
 
+#### DEFERRED 2026-08-29 — this level's RATIONALE was falsified by measurement
+
+**This section previously claimed Level 4 was the fix for the contradicted diffs, and set
+`CONTRADICTED → 0` as its acceptance test. Both were wrong, and the excerpts say so.**
+
+Every contradicted excerpt in both environments was classified by mechanism before anything was built:
+
+| mechanism | staging (n=31) | production (n=14) |
+|---|---|---|
+| **RIDER** — an unchanged sentence carried inside an edited paragraph's chunk | 12 (39%) | 10 (71%) |
+| **MOVE** — a paragraph relocated on the page | 15 (48%) | 1 (7%) |
+| **EXTRACTION** — Readability kept a block in one capture and dropped it in the other | 4 (13%) | 3 (21%) |
+
+Only the EXTRACTION column is Level 4's target: **13% and 21%**, not the whole. 14 of staging's 15
+moves are one rtmag article restructured between August and October 2022.
+
+**Replacing the diff input with a corpus-derived view makes the corpus WORSE.** Measured across all 103
+staging diffs, every variant with the granularity fix already applied:
+
+| diff input | CONTRADICTED | real changes lost |
+|---|---|---|
+| `fullText` — unchanged | **4** | **0** |
+| `text`, raw | 19 | — |
+| `text`, block-normalised | 10 | 2 |
+| `text` + chrome in ≥100% of captures | 9 | 1 |
+| `text` + chrome in ≥95% | 9 | **29** |
+| `text` + chrome in ≥80% | 10 | **84** |
+| corpus-stabilised extraction (kept anywhere → content everywhere) | 5 | 2 |
+
+Two structural reasons:
+
+1. **`text` includes chrome, and chrome repeats.** A nav label sits in the header *and* the footer, so
+   removing it from one leaves it present in the other — which Level 5 correctly reports as a
+   contradiction. Sentence refinement barely moves it (21 → 19), confirming these are repetition hits
+   rather than riders.
+2. **Frequency filtering causes the invisible edit — now with a number on it.** A block held for 80 of
+   83 captures and then genuinely removed scores 96%. At a 95% threshold it is classified chrome,
+   filtered from every view, and **the removal disappears**. That is 29 real changes lost on staging
+   alone, and 84 at 80%. This section already named that hazard as *known, not solved*; the measurement
+   is the argument against every filtering variant, permanently.
+
+**What survives, and what it costs.** The invariant is still right, and the plan's own safety clause is
+the resolution: the view **MARKS, it never DELETES**. Every variant above deletes. A marking-only Level
+4 — corpus-derived classification stored with its observation count, used to LABEL chunks — satisfies
+the invariant at zero measured harm, and it clears **zero** contradictions.
+
+**So it is deferred until something reads the marks, and deferring costs nothing.** Marking-only does
+not touch the diff input, so landing it later needs **no second recompute cascade** — the bundling
+argument that would have justified building it now does not apply. Building it before it has a consumer
+would be marks nobody can see: the SPN-machinery shape reverted on 2026-08-21, and the
+verdict-nobody-reads shape corrected in Level 5 step 4.
+
+> **The lesson is about the plan, not the level.** `CONTRADICTED → 0` was asserted from this document's
+> reasoning rather than from the excerpts, and it would have bought a full cascade on both corpora to
+> discover a 13% mechanism. **Classify every instance before building the remedy** — the classification
+> cost minutes and changed the whole shape of the work.
+
 ### Level 5 — the diff
 
 *Invariant:* a change the platform reports survives the documents. A chunk said to be REMOVED is absent
@@ -1874,6 +1962,33 @@ from the after document; a chunk said to be ADDED was absent from the before one
 *Enforcement:* the check runs at write and stores a verdict. **A `CONTRADICTED` diff is written, not
 refused** — refusing it would delete the evidence that the pipeline is wrong, which is how this was
 found. It is simply never promotable.
+
+#### NOBODY MAY CLOSE A CONTRADICTION BY COARSENING THIS CHECK
+
+**Written 2026-08-29, after the rider mechanism was measured and fixed at its source.**
+
+The pipeline used to CLAIM at block granularity while this level TESTED at sentence granularity, so a
+four-word edit re-emitted its whole paragraph as REMOVED and every unchanged sentence inside it was
+found, correctly, in the after document.
+
+**Those contradictions were true positives.** Whatever the differ intended at chunk level, the stored
+artifact asserts to a researcher that a 155-character paragraph was deleted when four words changed —
+and that the unchanged sentence inside it was removed. It was not. That is real over-reporting about the
+one page this investigation rests on, and Level 5 was detecting it.
+
+So the fix went to the **claim**: `sentencesOf` in `lib/textSegments.ts` is now imported by the differ
+and by this checker alike, so a change is claimed at the granularity it is checked at and the two cannot
+drift apart again.
+
+> **The forbidden move.** Widening `segmentsOf` back to whole-chunk matching would drive the
+> contradiction count to zero while the record went on asserting a deletion that never happened. That
+> silences the detector rather than the defect — **and it would look like progress**, because the only
+> number anyone reads would improve.
+
+This applies to every contradiction still standing. **A written mechanism for each survivor is a better
+state than a zero**, and a zero obtained by redefinition is worse than the 4 and 2 that remain. If the
+contradiction count ever falls without a corresponding change to what the pipeline claims, the question
+is *which rule moved*, not whether to update the number.
 
 #### STEP 2 DONE 2026-08-28 — the check runs at write and its verdict is stored
 
