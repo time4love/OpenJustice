@@ -181,13 +181,14 @@ describe('getClaimTrajectories', () => {
     );
   });
 
-  function withSnapshots(dates: [string, boolean][]): void {
+  /** `present` is the text a capture holds when the boolean says present. */
+  function withSnapshots(dates: [string, boolean][], present: string = CLAIM): void {
     (prisma.urlSnapshot.findMany as jest.Mock).mockResolvedValue(
       dates.map(([d, c]) => ({
         snapshotDate: d,
         waybackTimestamp: d.replace(/-/g, '') + '000000',
         snapshotUrl: `https://web.archive.org/web/${d}/x`,
-        fullText: c ? `prefix ${CLAIM} suffix` : 'prefix suffix',
+        fullText: c ? `prefix ${present} suffix` : 'prefix suffix',
       })),
     );
   }
@@ -230,13 +231,58 @@ describe('getClaimTrajectories', () => {
     expect(r.candidatesConsidered).toBe(1);
   });
 
-  it('ignores short quotes that recur incidentally', async () => {
-    withSnapshots([['2022-05-25', true]]);
-    withCandidates(['החיסון בטוח']);
+  // -------------------------------------------------------------------------
+  // THIS TEST USED TO ASSERT `candidatesConsidered === 0` FOR A SHORT QUOTE.
+  //
+  // That encoded the rule rather than the requirement. The requirement is that a
+  // quote recurring INCIDENTALLY produces no trajectory; v1 approximated it with
+  // a 40-character floor, and the corpus proved the approximation
+  // non-separating — it also excluded `לדיווח על תופעות לוואי >`, the removal
+  // this platform's case rests on.
+  //
+  // So the requirement is restated over the rule that actually implements it.
+  // Both cases below use a SHORT claim; only the incidental one is dropped.
+  // -------------------------------------------------------------------------
+  it('drops a short quote whose every sighting sits inside another claim', async () => {
+    const INSIDE = 'החיסון בטוח';
+    const AROUND = `${INSIDE} לחלוטין וללא כל סיכון ידוע לציבור הרחב`;
+    // The only text on the page containing INSIDE is the longer claim, so
+    // INSIDE's presence is that claim's presence wearing a disguise.
+    withSnapshots(
+      [
+        ['2022-05-25', true],
+        ['2022-08-25', false],
+        ['2022-11-25', true],
+      ],
+      AROUND,
+    );
+    withCandidates([AROUND, INSIDE]);
 
     const r = await getClaimTrajectories('https://health.gov.il/x');
 
-    expect(r.candidatesConsidered).toBe(0);
+    expect(r.candidatesConsidered).toBe(2);
+    expect(r.candidatesDerivative).toBe(1);
+    expect(r.trajectories.map((t) => t.claimText)).not.toContain(INSIDE);
+  });
+
+  it('KEEPS a short quote that appears where nothing containing it does', async () => {
+    // The reporting-link shape: 24 characters, contained by nothing, and the
+    // finding the whole corpus exists for. v1 discarded it on length alone.
+    const SHORT = 'לדיווח על תופעות לוואי >';
+    withSnapshots(
+      [
+        ['2022-05-25', true],
+        ['2022-08-25', false],
+        ['2022-11-25', true],
+      ],
+      SHORT,
+    );
+    withCandidates([SHORT]);
+
+    const r = await getClaimTrajectories('https://health.gov.il/x');
+
+    expect(r.candidatesDerivative).toBe(0);
+    expect(r.trajectories.map((t) => t.claimText)).toContain(SHORT);
   });
 
   it('counts candidates the archive never contained rather than hiding them', async () => {
@@ -540,15 +586,40 @@ describe('groupByMovement', () => {
 });
 
 describe('get_claim_trajectories grouping', () => {
+  // ITS OWN SETUP. This block had none and ran on whatever mocks the previous
+  // describe happened to leave behind — so its verdict depended on test ORDER,
+  // and it broke the moment an unrelated change altered which path it took.
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (prisma.claimTrajectoryComputation.findUnique as jest.Mock).mockResolvedValue(null);
+    (prisma.claimTrajectoryComputation.create as jest.Mock).mockResolvedValue({
+      id: 'comp-1',
+      computedAt: new Date('2026-08-22T00:00:00.000Z'),
+    });
+    (prisma.$transaction as jest.Mock).mockImplementation(async (fn: (tx: unknown) => unknown) =>
+      fn(prisma),
+    );
+    (prisma.claimTrajectory.createManyAndReturn as jest.Mock).mockImplementation(
+      ({ data }: { data: { claimHash: string }[] }) =>
+        Promise.resolve(
+          data.map((d, i) => ({ id: `traj-${String(i + 1)}`, claimHash: d.claimHash })),
+        ),
+    );
+  });
+
   it('reports findings as groups, with claims nested and counted', async () => {
     (prisma.trackedUrl.findUnique as jest.Mock).mockResolvedValue({ id: 't-1' });
-    const OTHER = `${CLAIM} וגם משפט נוסף שנע יחד עם הראשון בדיוק באותם צילומים`;
+    // SIBLINGS, NOT NESTED. The old fixture built OTHER by appending to CLAIM,
+    // which under the containment rule makes CLAIM derivative — so the test
+    // would have been asserting grouping over a set of one. Two distinct claims
+    // moving together is the case it means to cover.
+    const OTHER = 'ומשפט נפרד לגמרי שנע יחד עם הראשון בדיוק באותם צילומים';
     (prisma.urlSnapshot.findMany as jest.Mock).mockResolvedValue(
       [true, false, true].map((c, i) => ({
         snapshotDate: `2022-0${i + 1}-01`,
         waybackTimestamp: `20220${i + 1}01000000`,
         snapshotUrl: `https://web.archive.org/web/20220${i + 1}01/x`,
-        fullText: c ? `prefix ${OTHER} suffix` : 'prefix suffix',
+        fullText: c ? `prefix ${CLAIM} middle ${OTHER} suffix` : 'prefix suffix',
       })),
     );
     (prisma.urlVersionDiff.findMany as jest.Mock).mockResolvedValue([

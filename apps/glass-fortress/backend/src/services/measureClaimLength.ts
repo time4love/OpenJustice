@@ -1,12 +1,20 @@
 import {
-  MIN_CLAIM_LENGTH,
   MIN_TRANSITIONS,
   detectAtClaimLength,
+  containmentOf,
   type DetectedTrajectory,
 } from './claimTrajectory';
 
+/**
+ * The length threshold production used until DETECTION_VERSION v2 retired it.
+ *
+ * Kept HERE and nowhere else: this tool exists to say what that rule cost, so it
+ * needs the number, and no production path may read it again.
+ */
+const RETIRED_LENGTH_THRESHOLD = 40;
+
 // ---------------------------------------------------------------------------
-// WHAT WOULD `MIN_CLAIM_LENGTH` COST, AND WHAT WOULD IT BUY?
+// WHAT WOULD `RETIRED_LENGTH_THRESHOLD` COST, AND WHAT WOULD IT BUY?
 //
 // The plan carries this constant forward as "the same length-as-significance
 // assumption that had to be removed from the diff classifier". THE CODE AND THE
@@ -52,7 +60,7 @@ export interface AdmittedClaim {
   /**
    * OTHER CANDIDATES THAT CONTAIN THIS ONE AS A SUBSTRING.
    *
-   * The precise form of the hazard `MIN_CLAIM_LENGTH` approximates. A contained
+   * The precise form of the hazard `RETIRED_LENGTH_THRESHOLD` approximates. A contained
    * claim is found by the presence probe whenever any containing phrase is
    * present, so its observations are the UNION of theirs and its trajectory can
    * be an artifact of movement that belongs to something else.
@@ -119,7 +127,7 @@ export async function measureClaimLength(
   // "admitted" means nothing without the set it is admitted against, and
   // deriving that set from whichever threshold happened to be swept first would
   // silently change what the column means.
-  const baseline = await detectAtClaimLength(url, MIN_CLAIM_LENGTH);
+  const baseline = await detectAtClaimLength(url, RETIRED_LENGTH_THRESHOLD);
   const baselineSurfacing = surfacingHashes(baseline.trajectories);
 
   const measurements: ThresholdMeasurement[] = [];
@@ -127,7 +135,7 @@ export async function measureClaimLength(
 
   for (const threshold of [...thresholds].sort((a, b) => a - b)) {
     const at =
-      threshold === MIN_CLAIM_LENGTH ? baseline : await detectAtClaimLength(url, threshold);
+      threshold === RETIRED_LENGTH_THRESHOLD ? baseline : await detectAtClaimLength(url, threshold);
     snapshotsExamined = at.snapshotsExamined;
 
     const surfacing = at.trajectories.filter((t) => t.transitions >= MIN_TRANSITIONS);
@@ -151,7 +159,7 @@ export async function measureClaimLength(
   return {
     url,
     snapshotsExamined,
-    productionThreshold: MIN_CLAIM_LENGTH,
+    productionThreshold: RETIRED_LENGTH_THRESHOLD,
     minTransitions: MIN_TRANSITIONS,
     measurements,
   };
@@ -162,28 +170,10 @@ function admittedClaim(
   claim: DetectedTrajectory,
   all: readonly DetectedTrajectory[],
 ): AdmittedClaim {
-  const containers = all.filter(
-    (other) => other.claimHash !== claim.claimHash && other.claimText.includes(claim.claimText),
-  );
-
-  // KEYED ON THE CAPTURE, not on position. Lining two observation arrays up by
-  // index assumes every trajectory was built over the same captures in the same
-  // order — true today, and an assumption nothing enforces. `waybackTimestamp`
-  // is the capture's own identity, so this stays correct if that ever stops
-  // holding rather than silently comparing one capture against another.
-  const capturesWithContainer = new Set<string>();
-  for (const container of containers) {
-    for (const observation of container.observations) {
-      if (observation.present) capturesWithContainer.add(observation.waybackTimestamp);
-    }
-  }
-
-  let capturesWhereIndependent = 0;
-  for (const observation of claim.observations) {
-    if (observation.present && !capturesWithContainer.has(observation.waybackTimestamp)) {
-      capturesWhereIndependent++;
-    }
-  }
+  // THE PRODUCTION RULE, not a copy of it. Detection filters on
+  // `isDerivativeTrajectory`, which is defined over this same function — so this
+  // tool cannot report one thing while the pipeline does another.
+  const { containers, capturesWhereIndependent } = containmentOf(claim, all);
 
   return {
     claim: claim.claimText,
@@ -230,10 +220,7 @@ export async function inspectClaim(
   const claim = at.trajectories.find((t) => t.claimText === claimText);
   if (claim === undefined) return null;
 
-  const containers = at.trajectories.filter(
-    (other) => other.claimHash !== claim.claimHash && other.claimText.includes(claim.claimText),
-  );
-
+  const { containers } = containmentOf(claim, at.trajectories);
   const capturesWithContainer = new Set<string>();
   for (const container of containers) {
     for (const observation of container.observations) {
