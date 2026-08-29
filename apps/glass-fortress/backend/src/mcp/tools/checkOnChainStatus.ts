@@ -7,6 +7,7 @@ import {
 } from '../../lib/onChainVerdict';
 import { observeOnChainStatus } from '../../services/onChainVerification';
 import { Web3Service } from '../../services/Web3Service';
+import { capturesAnchoredBy } from '../../lib/anchoredCaptureHash';
 
 // ---------------------------------------------------------------------------
 // check_on_chain_status
@@ -125,7 +126,7 @@ export async function checkOnChainStatusHandler(input: {
   const snapshots =
     observation.claim.snapshots > 0
       ? await prisma.urlSnapshot.findMany({
-          where: { contentHash: input.fileHash.replace(/^0x/, '') },
+          where: capturesAnchoredBy(input.fileHash),
           select: {
             capturedAt: true,
             onChainTxHash: true,

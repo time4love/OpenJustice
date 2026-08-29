@@ -8,6 +8,8 @@ import { prisma } from '../lib/prisma';
 import { ON_CHAIN_CHECK_VERSION, onChainSourceStateHash } from '../lib/onChainVerdict';
 import { anchoringTarget, chainProvenanceGap, type AnchoringTarget } from '../lib/anchoringTarget';
 import { readOnChainClaim } from './onChainVerification';
+import { ANCHORABLE_CAPTURE_SELECT, anchoredCaptureHash } from '../lib/anchoredCaptureHash';
+import { toBytes32 } from '../lib/bytes32';
 
 /**
  * LEVEL 3a's MEASUREMENT — is every anchoring claim in this corpus CHECKED, and
@@ -163,7 +165,7 @@ export async function auditOnChainAnchorSubjects(): Promise<AnchorClaimingSubjec
     }),
     prisma.urlSnapshot.findMany({
       where: { NOT: { onChainTxHash: null } },
-      select: { id: true, contentHash: true },
+      select: { id: true, ...ANCHORABLE_CAPTURE_SELECT },
     }),
   ]);
 
@@ -176,10 +178,14 @@ export async function auditOnChainAnchorSubjects(): Promise<AnchorClaimingSubjec
     ...snapshots.map((s) => ({
       subjectType: IntegrityCheckSubject.URL_SNAPSHOT,
       subjectId: s.id,
-      // Normalised to the form the check stores and the contract speaks.
-      // `contentHash` is bare hex, and the mismatch between the two is exactly
-      // what made 83 anchorings silently no-op.
-      fileHash: s.contentHash.startsWith('0x') ? s.contentHash : `0x${s.contentHash}`,
+      // Normalised to the form the check stores and the contract speaks. The
+      // capture columns are bare hex, and the mismatch between the two is
+      // exactly what made 83 anchorings silently no-op.
+      //
+      // WHICH hash is `anchoredCaptureHash`'s answer, not this function's. An
+      // audit that decided for itself would keep auditing the old hash after the
+      // anchor moved, and report a clean run about a claim nobody makes.
+      fileHash: toBytes32(anchoredCaptureHash(s)),
     })),
   ];
 }

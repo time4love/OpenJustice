@@ -202,7 +202,7 @@ describe('copy-only', () => {
 
     expect(mockWeb3.registerEvidenceHash).not.toHaveBeenCalled();
     expect(r.anchored).toBe(0);
-    expect(r.needsRegistration).toEqual([{ snapshotId: 's1', contentHash: 'lonely' }]);
+    expect(r.needsRegistration).toEqual([{ snapshotId: 's1', anchoredHash: 'lonely' }]);
     // Not a failure. The run promised not to spend, and did not spend.
     expect(r.failed).toBe(0);
   });
@@ -340,7 +340,7 @@ describe('the scanner anchors through the shared path', () => {
       join(__dirname, '..', 'src', 'services', 'anchorSnapshots.ts'),
       'utf8',
     );
-    expect(anchors).toMatch(/await anchorOneSnapshot\(web3, snapshotId, contentHash\)/);
+    expect(anchors).toMatch(/await anchorOneSnapshot\(web3, snapshotId, capture\)/);
   });
 
   it('the scanner no longer anchors directly — the write path owns it', () => {
