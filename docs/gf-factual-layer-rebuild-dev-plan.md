@@ -1449,7 +1449,7 @@ than acted on.
 
 ### Level 2 — the source
 
-**STATUS: PHASE A COMPLETE (2026-08-28) — see the section below for what Phase A covered**
+**STATUS: PHASE A COMPLETE (2026-08-28) — see the section below for what Phase A covered. REOPENED 2026-08-29: `create_evidence_from_url` bypasses `admitUrl` entirely and is DEPRECATED by researcher decision; the archive-first pipeline is mandatory, and a `DIRECT` fallback must link to the recorded Wayback failure. Blocked on Save Page Now, which does not exist.**
 
 *Invariant:* the bytes stored are the bytes the source served, and a later change on the source's side
 is detectable.
@@ -1691,6 +1691,51 @@ the code is not. `20260828020000` was unapplied everywhere, so the restructure c
 
 **What survives is the real fix:** `admitUrl` as the only writer of `TrackedUrl`, and the verdict
 recorded in every direction.
+
+##### DECIDED 2026-08-29 — `create_evidence_from_url` is DEPRECATED
+
+**Researcher's decision.** A URL submission may not enter the corpus through a tool that skips the
+pipeline. The rule, in the researcher's terms:
+
+> ask `track_url` from Wayback, handle the error condition or any way Wayback can tell us this can't be
+> done, then act on the failure and execute the fallback — never as a direct MCP that does not enforce
+> the allowed flow. And direct-URL evidence must be linked to a record that shows the failed attempt
+> and the failed Wayback reason.
+
+This is §2's pipeline made mandatory rather than merely intended. Today `start_forensic_scan` routes
+through `admitUrl` and asks CDX first; **`create_evidence_from_url` asks nothing.** It fetches the live
+page, extracts, hashes `url + text[0:40k]` and writes an `Evidence` row — step 1 of the pipeline never
+happens. Two admission paths, one gated and one not, which is this repository's dominant defect shape
+sitting on the corpus's front door.
+
+**The fallback is not merely permitted-when-archiving-fails; it is EVIDENCED by the failure.** A
+`DIRECT` record must carry a link to the stored attempt and the reason Wayback gave. That is stronger
+than the rule below, which makes a zero-row `CdxQuery` the *record* of a refusal: a co-existing row is
+something an auditor must think to look for, and a link is something the evidence itself asserts. It
+also closes the gap the rule below names — "archiving was attempted and is impossible" becomes a claim
+with a referent instead of a label.
+
+###### The two halves have different readiness, and building the second one early is the trap
+
+**Save Page Now does not exist in this codebase** — no implementation, on any path. So:
+
+- **Deprecating `create_evidence_from_url` is available now.** Nothing depends on Save Page Now to stop
+  a tool from bypassing the gate.
+- **The fallback is not.** Without SPN there is no attempt to fail, so there is no failure record to
+  link to, and a `DIRECT` record created now could only mean *"we did not ask"* — exactly the
+  provenance the rule below forbids, now wearing a link to a record of nothing.
+
+**Until SPN lands, the correct behaviour on a zero-row CDX answer remains REFUSAL**, which `admitUrl`
+already does. The deprecation removes a bypass; it does not create a fallback.
+
+**Open, not decided here:** `create_evidence_from_text` (`ASSERTED`) is the other write tool that
+enters evidence without a capture. It is a different exception — text supplied to us, nobody we control
+observed the page — and the researcher's decision above did not name it. It should not be folded in by
+inference.
+
+**Owed before migration planning:** a count of existing evidence rows that entered this way, in both
+environments. §2 corrects an earlier claim about exactly this that was *"reasoned from plausibility
+instead of counted"*, so the number is taken, not estimated.
 
 ##### Until SPN exists, a zero-row CDX answer REFUSES the submission
 
@@ -1940,9 +1985,16 @@ about the axis you checked, read as proof about the axis you didn't.
 
 **What closing clause 1 costs, so the decision is made with the price visible:**
 
-1. **New chain writes.** Every capture would need re-registering under `documentHash`. Chain writes are
-   MCP-only and are the researcher's call; the existing `contentHash` registrations stay on chain
-   forever and would be superseded, never removed (Level 10).
+1. **New chain writes.** Every capture would need re-registering under `documentHash`. The existing
+   `contentHash` registrations stay on chain forever and are superseded, never removed (Level 10).
+
+   *Corrected 2026-08-29: an earlier version of this line said "chain writes are MCP-only". That is
+   wrong for this operation. `CLAUDE.md`'s MCP-only rule names research acts — `promote_evidence`,
+   `promote_scan_findings` — and its hazard was a LAPTOP with a partial env file. A re-anchoring pass
+   is MAINTENANCE, and this plan already rules on where maintenance runs: "**Maintenance, so it runs in
+   the deploy container (`railway ssh`) — never a laptop, never MCP — which also keeps its chain writes
+   on the correct registry**" (Instrument 1, `forensics:recover-captures`). The split is research act
+   versus maintenance act, not chain-write versus not.*
 2. **A decision about evidence identity, which is the larger half.**
    `forensicEvidenceFileHash = sha256(url + before.waybackTimestamp + before.contentHash +
    after.waybackTimestamp + after.contentHash)` — the extraction is baked into the identity of every
