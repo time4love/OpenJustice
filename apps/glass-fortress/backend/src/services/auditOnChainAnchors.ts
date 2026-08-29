@@ -86,12 +86,47 @@ export interface AnchorAuditReport {
   unverified: AnchorSubjectRow[];
   currentVerifierVersion: string;
   /**
+   * THE CHECKS BEHIND THE VERDICTS ABOVE — the table, not just its top row.
+   *
+   * Everything else in this report answers "where does each subject stand?",
+   * which by construction reads only the NEWEST check per subject. That question
+   * cannot see history, and after a backfill history is exactly what matters:
+   * a corpus whose old checks were REPLACED and one whose old checks were
+   * SUPERSEDED look identical from up there.
+   *
+   * The distinction is load-bearing. The cleanup after the 2026-08-29
+   * cross-environment write turns on the 91 wrong rows being KEPT — the
+   * project's argument for storing a contradiction rather than refusing it is
+   * that refusing would delete the evidence the pipeline was wrong, and those
+   * rows are that evidence. Until this existed, "they are still there" rested on
+   * the table being append-only: true, and an argument rather than a
+   * measurement. Structure being fine and contents being fine are different
+   * questions, and this repository has already paid once for letting one answer
+   * stand in for the other.
+   */
+  history: CheckHistory;
+  /**
    * Checks whose subject no longer exists. The cost of a polymorphic table
    * without a foreign key, REPORTED rather than skipped: Level 10 forbids
    * deleting a subject, so a row here is a rule violation somewhere else and
    * must not be silently swallowed by a query that joins them away.
    */
   danglingChecks: { subjectType: IntegrityCheckSubject; subjectId: string }[];
+}
+
+export interface CheckHistory {
+  /** Every ON_CHAIN_ANCHOR check ever recorded, superseded ones included. */
+  totalChecks: number;
+  /** Checks a newer check for the same subject now stands in front of. */
+  superseded: number;
+  /**
+   * Checks that do not name the chain and registry THIS deployment anchors to —
+   * counted across the whole table, not only the newest row per subject.
+   *
+   * These are kept deliberately. A superseded one is a record of what a verdict
+   * used to say; a CURRENT one puts its subject in STALE above.
+   */
+  provenanceIncomplete: number;
 }
 
 const EMPTY_STATES: Record<AnchorCheckState, number> = {
@@ -207,6 +242,14 @@ export async function auditOnChainAnchors(
     byState,
     unverified,
     currentVerifierVersion: ON_CHAIN_CHECK_VERSION,
+    // Counted over EVERY check, not over `latest`. Counting the newest per
+    // subject would report zero the moment a backfill superseded the incomplete
+    // rows, which is precisely when the count starts to mean something.
+    history: {
+      totalChecks: checks.length,
+      superseded: checks.length - latest.size,
+      provenanceIncomplete: checks.filter((c) => chainProvenanceGap(c, target) !== null).length,
+    },
     danglingChecks,
   };
 }
