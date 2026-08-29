@@ -1960,14 +1960,27 @@ document's Level 10, and it always was.
 in `CLAUDE.md`: **fix what future state needs; do not invest in repairing legacy state** — with the
 narrow carve-out that legacy state making a FALSE claim is not archaeology.
 
-**What clause 1 still needs is one line and one decision:**
-1. `anchoredCaptureHash` returns `documentHash` rather than `contentHash`. One line — that is what the
-   single-symbol consolidation was for.
-2. **A COST DECISION THAT IS THE RESEARCHER'S.** Measured on staging, 105 captures: `contentHash`
-   collapses to **15** distinct values, `documentHash` to **104**. Twins are what make snapshot
-   anchoring cheap, and under `documentHash` they go nearly extinct — roughly **one transaction per
-   capture, permanently**, where 15 transactions cover 105 captures today. That is a new and ongoing
-   operating cost, and it is not an implementation detail.
+**CLAUSE 1'S CODE IS DONE (2026-08-30).** `anchoredCaptureHash` returns `documentHash`; every new
+capture is anchored to the payload as served. One line, which is what the single-symbol consolidation
+was for — and the compiler and the fixtures between them found every site that had to follow.
+
+**The cost was decided on a measurement rather than an intuition.** Twins are what made snapshot
+anchoring cheap, and under `documentHash` they go nearly extinct: 105 staging captures collapse to
+**15** distinct `contentHash` values and **104** distinct `documentHash` values, so anchoring now
+costs roughly **one transaction per capture, permanently**. Measured price: **144,875 gas** per
+registration, and Base mainnet at 0.006 gwei makes the whole 104 about **0.00009 ETH** — cents.
+
+Merkle batching was considered and REJECTED. It would restore cheap anchoring by making an outsider
+need a proof from us plus a script, and a lost proof produces exactly the unexplainable anchor
+Level 10 forbids: cheaper transactions, more expensive truth. A batch boundary is also a cap decided
+at write time and invisible in the output, which is the family §2 already counts three of. The twin
+collapse was never a saving either; it was 15 hashes standing in for 104 documents — the defect
+restated as an optimisation.
+
+**What remains for the level to close:** every legacy capture now attests a superseded hash, so once
+their anchors are confirmed the audit reports them `MISATTESTING` — never `VERIFIED`, exit 5. That is
+correct, and superseding them is Level 10's, per the boundary above. Whether EVIDENCE identity follows
+the anchor is §2's decision and remains the researcher's.
 
 The audit already refuses to call the result done prematurely: a row whose anchor attests a hash the
 current rule does not name is `MISATTESTING`, never `VERIFIED`, and the script exits 5. After the flip

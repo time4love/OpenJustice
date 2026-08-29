@@ -35,9 +35,9 @@ import {
 const HASH = `0x${'a'.repeat(64)}`;
 const OTHER = `0x${'b'.repeat(64)}`;
 
-/** One unconfirmed capture claiming an anchor. `contentHash` is stored bare. */
-function capture(contentHash = HASH.slice(2)) {
-  return { id: 'snap-1', onChainTxHash: '0xtx', contentHash };
+/** One unconfirmed capture claiming an anchor. The hash column is stored bare. */
+function capture(documentHash = HASH.slice(2)) {
+  return { id: 'snap-1', onChainTxHash: '0xtx', documentHash };
 }
 
 function setup(opts: { snapshots?: unknown[]; evidence?: unknown[] } = {}) {

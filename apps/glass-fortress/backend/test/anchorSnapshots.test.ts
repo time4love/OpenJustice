@@ -29,8 +29,10 @@ import { prisma } from '../src/lib/prisma';
 import { Web3Service } from '../src/services/Web3Service';
 import { anchorSnapshots, countUnanchoredSnapshots } from '../src/services/anchorSnapshots';
 
-function snap(id: string, contentHash = '0xaaa') {
-  return { id, contentHash, snapshotDate: '2022-05-25' };
+// The capture as the anchoring rule reads it. `documentHash` since Level 3
+// clause 1: the anchor attests to the payload, not to Readability's article.
+function snap(id: string, documentHash = '0xaaa') {
+  return { id, documentHash };
 }
 
 function setup(rows: ReturnType<typeof snap>[]) {

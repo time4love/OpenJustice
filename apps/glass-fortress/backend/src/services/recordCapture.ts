@@ -179,7 +179,7 @@ function toSnapshotDate(capturedAt: Date): string {
  * here would prejudge it.
  */
 function finishExisting(
-  existing: AnchorableCapture & {
+  existing: {
     id: string;
     waybackTimestamp: string | null;
     contentHash: string;
@@ -219,9 +219,15 @@ function finishExisting(
     );
   }
 
-  const anchoring = existing.onChainTxHash
-    ? undefined
-    : anchorNeverRejecting(existing.id, existing);
+  // A row with no stored document hash cannot be anchored under the document
+  // rule, and saying so is better than anchoring something else. Unreachable
+  // while the column is NOT NULL (20260827180000), and the declared type still
+  // permits it — tightening that type means removing the UNAVAILABLE comparison
+  // above, which is its own change rather than a side effect of moving the anchor.
+  const anchoring =
+    existing.onChainTxHash !== null || existing.documentHash === null
+      ? undefined
+      : anchorNeverRejecting(existing.id, { documentHash: existing.documentHash });
 
   return {
     id: existing.id,
