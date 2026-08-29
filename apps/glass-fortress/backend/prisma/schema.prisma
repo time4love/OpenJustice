@@ -87,6 +87,46 @@ enum TrackedUrlStatus {
 // Only evidential standing differs. Diffs, trajectories, identity and
 // boilerplate detection all work over the merged history without consulting
 // this field.
+/// The TERMINAL verdict of asking the chain what a row's anchoring transaction
+/// registered. See `UrlSnapshot.anchorCheck`.
+///
+/// TERMINAL is the whole point. A transient failure — an RPC that answered
+/// nothing — records NOTHING here, so the column's NULL carries exactly one
+/// meaning: no terminal verdict yet. That is the distinction this repository has
+/// now had to unpick four separate times (`IntegrityCheck.chainId` NULL,
+/// `classifiedInputVersion` NULL vs STALE, UNAVAILABLE vs UNCHECKED, UNRECORDED
+/// vs stale), and each time the fix was the same: never let one NULL carry more
+/// than one meaning.
+///
+/// HOW it was confirmed is in the VALUE, not in a companion provenance column.
+/// The two routes are not equally strong in the same way and a reader must not
+/// have to look elsewhere to find out which one answered.
+enum AnchorCheckOutcome {
+  /// The transaction's own receipt log carried the hash the row claims.
+  CONFIRMED_BY_RECEIPT
+  /// The receipt was unreadable, but the registry's EvidenceSubmitted log names
+  /// this transaction as the one that registered this hash. The same fact by the
+  /// other direction — logs are capped by RANGE, receipts pruned by AGE, so this
+  /// route survives where the first does not.
+  CONFIRMED_BY_LOG
+  /// The transaction registered a different hash, or the registry names a
+  /// different transaction for this hash. Recorded, never discarded.
+  MISANCHORED
+  /// A real transaction that registered nothing with this registry — the
+  /// fake-CONFIRMED shape. No hash to record.
+  ANCHORED_NOTHING
+  /// Neither route could name the registering transaction, but the registry DOES
+  /// hold the row's hash. The anchor is real and unattributable.
+  ///
+  /// Named for what was OBSERVED, not for the cause. "Beyond the retention
+  /// horizon" is our inference about staging's RPC on 2026-08-30; the observation
+  /// is that neither route named a transaction.
+  TX_UNREADABLE
+  /// Neither the transaction nor the hash is on this chain, by either route. The
+  /// most serious verdict this check can reach.
+  NO_TRACE_ON_CHAIN
+}
+
 enum CaptureProvenance {
   WAYBACK // the Archive holds it; a stranger can re-check it independently
   DIRECT // we fetched it and the Archive has not (yet) indexed it
@@ -116,9 +156,9 @@ model TrackedUrl {
 // contentHash (SHA-256 of fullText) can be registered on-chain for immutable chain of custody.
 // Shared across diffs: two diffs spanning the same snapshot reference the same row.
 model UrlSnapshot {
-  id                      String            @id @default(cuid())
+  id                      String              @id @default(cuid())
   trackedUrlId            String
-  trackedUrl              TrackedUrl        @relation(fields: [trackedUrlId], references: [id], onDelete: Cascade)
+  trackedUrl              TrackedUrl          @relation(fields: [trackedUrlId], references: [id], onDelete: Cascade)
   // How this capture came into our possession. See CaptureProvenance.
   //
   // Existing rows backfill to WAYBACK: every capture predating this column came
@@ -245,7 +285,21 @@ model UrlSnapshot {
   // over. Null therefore means "not yet confirmed against the chain", which is
   // an honest state; it is never a guess.
   anchoredHash            String?
-  createdAt               DateTime          @default(now())
+  /// The TERMINAL verdict of the check that produced `anchoredHash`, or null if
+  /// no terminal verdict has been reached.
+  ///
+  /// `anchoredHash IS NULL` alone cannot say why. Measured on staging
+  /// 2026-08-30: 91 of 113 anchoring claims are REAL — the registry holds their
+  /// hash — but their transactions are beyond the RPC's receipt horizon, so a
+  /// bare null there would mean "never examined", "the RPC was down" and
+  /// "examined, and this is as far as this route reaches" all at once. Only the
+  /// third is terminal, and a CHECK constraint or a gate on moving the anchor
+  /// needs to be able to tell them apart.
+  ///
+  /// A transient failure records NOTHING here. That is what keeps the null
+  /// single-meaning.
+  anchorCheck             AnchorCheckOutcome?
+  createdAt               DateTime            @default(now())
 
   beforeDiffs    UrlVersionDiff[] @relation("BeforeSnapshot")
   afterDiffs     UrlVersionDiff[] @relation("AfterSnapshot")
@@ -565,6 +619,8 @@ model Evidence {
   /// Null means not yet confirmed against the chain. Never backfilled from
   /// `fileHash` — see `UrlSnapshot.anchoredHash`.
   anchoredHash             String?
+  /// The terminal verdict behind `anchoredHash`. See `UrlSnapshot.anchorCheck`.
+  anchorCheck              AnchorCheckOutcome?
   // The identity this record carried before the evidence hash moved to being
   // derived from its two archived snapshots, and the anchor registered under it.
   //

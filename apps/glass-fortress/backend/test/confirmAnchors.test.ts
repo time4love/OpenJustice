@@ -16,7 +16,11 @@ jest.mock('../src/lib/prisma', () => ({
     evidence: { findMany: jest.fn(), update: jest.fn(), count: jest.fn() },
   },
 }));
-const mockWeb3 = { readRegisteredHashes: jest.fn(), isHashRegistered: jest.fn() };
+const mockWeb3 = {
+  readRegisteredHashes: jest.fn(),
+  isHashRegistered: jest.fn(),
+  findRegisteringTxHash: jest.fn(),
+};
 jest.mock('../src/services/Web3Service', () => ({
   Web3Service: jest.fn().mockImplementation(() => mockWeb3),
 }));
@@ -41,6 +45,9 @@ function setup(opts: { snapshots?: unknown[]; evidence?: unknown[] } = {}) {
   (prisma.evidence.findMany as jest.Mock).mockResolvedValue(opts.evidence ?? []);
   (prisma.urlSnapshot.count as jest.Mock).mockResolvedValue(0);
   (prisma.evidence.count as jest.Mock).mockResolvedValue(0);
+  // Default: the registry's log names no transaction. A test that wants the
+  // second route to succeed says so explicitly, so no test confirms by accident.
+  mockWeb3.findRegisteringTxHash.mockResolvedValue(null);
 }
 
 beforeEach(() => jest.clearAllMocks());
@@ -60,7 +67,7 @@ describe('what the transaction says, not what the row expects', () => {
     expect(r.misanchored).toBe(0);
     expect(prisma.urlSnapshot.update).toHaveBeenCalledWith({
       where: { id: 'snap-1' },
-      data: { anchoredHash: HASH },
+      data: { anchoredHash: HASH, anchorCheck: 'CONFIRMED_BY_RECEIPT' },
     });
   });
 
@@ -99,7 +106,7 @@ describe('what the transaction says, not what the row expects', () => {
     // examined and found wrong look merely unexamined.
     expect(prisma.urlSnapshot.update).toHaveBeenCalledWith({
       where: { id: 'snap-1' },
-      data: { anchoredHash: OTHER },
+      data: { anchoredHash: OTHER, anchorCheck: 'MISANCHORED' },
     });
   });
 
@@ -112,7 +119,12 @@ describe('what the transaction says, not what the row expects', () => {
     const r = await confirmAnchors({ dryRun: false });
 
     expect(r.anchoredNothing).toBe(1);
-    expect(prisma.urlSnapshot.update).not.toHaveBeenCalled();
+    // A terminal verdict with NO hash: there is no hash to record, and saying so
+    // is a finished answer rather than an absence.
+    expect(prisma.urlSnapshot.update).toHaveBeenCalledWith({
+      where: { id: 'snap-1' },
+      data: { anchoredHash: null, anchorCheck: 'ANCHORED_NOTHING' },
+    });
   });
 
   it('keeps NO RECEIPT separate from ANCHORED NOTHING', async () => {
@@ -127,7 +139,6 @@ describe('what the transaction says, not what the row expects', () => {
 
     expect(r.noReceiptHashRegistered).toBe(1);
     expect(r.anchoredNothing).toBe(0);
-    expect(prisma.urlSnapshot.update).not.toHaveBeenCalled();
   });
 
   // -------------------------------------------------------------------------
@@ -147,9 +158,13 @@ describe('what the transaction says, not what the row expects', () => {
 
     expect(r.noReceiptHashRegistered).toBe(1);
     expect(r.noReceiptHashAbsent).toBe(0);
-    // Still nothing written: the fact is anchored, but WHICH transaction did it
-    // is exactly what could not be observed, and that is what the column means.
-    expect(prisma.urlSnapshot.update).not.toHaveBeenCalled();
+    // No HASH is written — which transaction anchored it is exactly what could
+    // not be observed, and that is what the hash column means. The VERDICT is,
+    // because "real and unattributable" is a terminal answer.
+    expect(prisma.urlSnapshot.update).toHaveBeenCalledWith({
+      where: { id: 'snap-1' },
+      data: { anchoredHash: null, anchorCheck: 'TX_UNREADABLE' },
+    });
   });
 
   it('an unreadable transaction whose hash is ABSENT is the serious finding', async () => {
@@ -203,7 +218,10 @@ describe('what the transaction says, not what the row expects', () => {
     const r = await confirmAnchors({ dryRun: false });
 
     expect(r.ambiguous).toBe(1);
-    expect(prisma.urlSnapshot.update).not.toHaveBeenCalled();
+    expect(prisma.urlSnapshot.update).toHaveBeenCalledWith({
+      where: { id: 'snap-1' },
+      data: { anchoredHash: null, anchorCheck: 'TX_UNREADABLE' },
+    });
   });
 
   it('picks the matching hash when a transaction registered several', async () => {
@@ -257,7 +275,7 @@ describe('both subject types', () => {
     expect(r.confirmed).toBe(1);
     expect(prisma.evidence.update).toHaveBeenCalledWith({
       where: { id: 'ev-1' },
-      data: { anchoredHash: HASH },
+      data: { anchoredHash: HASH, anchorCheck: 'CONFIRMED_BY_RECEIPT' },
     });
   });
 });
@@ -299,7 +317,9 @@ describe('what a run means, as an exit code', () => {
       dryRun: true,
       examined: 1,
       confirmed: 0,
+      confirmedByLog: 0,
       misanchored: 0,
+      registeredByAnotherTx: 0,
       anchoredNothing: 0,
       noReceiptHashRegistered: 0,
       noReceiptHashAbsent: 0,
@@ -353,5 +373,108 @@ describe('what a run means, as an exit code', () => {
     // A pass that crashed halfway has measured nothing, whatever the counters
     // it managed to increment say.
     expect(confirmAnchorsExitCode(report({ failed: 1, confirmed: 100 }))).toBe(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// THE SECOND ROUTE, and the terminal verdict.
+//
+// Measured on staging 2026-08-30: 91 of 113 transactions are beyond the RPC's
+// receipt horizon while their hashes ARE registered. Receipts are pruned by AGE;
+// `eth_getLogs` is capped by RANGE, and the range is derived from the registry's
+// own stored timestamp — contract state, which never expires. So the log route
+// reaches where the receipt route does not.
+// ---------------------------------------------------------------------------
+describe('the registry log confirms what the receipt could not', () => {
+  function unreadableReceipt(registered = true) {
+    mockWeb3.readRegisteredHashes.mockResolvedValue({ kind: 'NO_RECEIPT' });
+    mockWeb3.isHashRegistered.mockResolvedValue({ registered, evidenceId: 1n });
+  }
+
+  it('CONFIRMS when the registry names THIS row’s transaction', async () => {
+    // A statement about the hash becomes a statement about the transaction the
+    // moment it is compared to the one the row claims. That is the whole reason
+    // this route counts as a confirmation rather than corroboration.
+    setup({ snapshots: [capture()] });
+    unreadableReceipt();
+    mockWeb3.findRegisteringTxHash.mockResolvedValue('0xTX');
+
+    const r = await confirmAnchors({ dryRun: false });
+
+    expect(r.confirmedByLog).toBe(1);
+    expect(r.noReceiptHashRegistered).toBe(0);
+    expect(prisma.urlSnapshot.update).toHaveBeenCalledWith({
+      where: { id: 'snap-1' },
+      data: { anchoredHash: HASH.slice(2), anchorCheck: 'CONFIRMED_BY_LOG' },
+    });
+  });
+
+  it('flags a hash the registry attributes to a DIFFERENT transaction', async () => {
+    // Should be impossible — the contract reverts duplicate registration — which
+    // is why it gets its own arm rather than being counted as MISANCHORED.
+    setup({ snapshots: [capture()] });
+    unreadableReceipt();
+    mockWeb3.findRegisteringTxHash.mockResolvedValue('0xsomeoneelse');
+
+    const r = await confirmAnchors({ dryRun: false });
+
+    expect(r.registeredByAnotherTx).toBe(1);
+    expect(r.confirmedByLog).toBe(0);
+  });
+
+  it('stays unresolved when the log names nothing', async () => {
+    setup({ snapshots: [capture()] });
+    unreadableReceipt();
+
+    const r = await confirmAnchors({ dryRun: false });
+
+    expect(r.noReceiptHashRegistered).toBe(1);
+    expect(prisma.urlSnapshot.update).toHaveBeenCalledWith({
+      where: { id: 'snap-1' },
+      // A TERMINAL verdict with NO hash. That pairing is the honest one: the
+      // anchor is real and unattributable, which is a finished answer.
+      data: { anchoredHash: null, anchorCheck: 'TX_UNREADABLE' },
+    });
+  });
+
+  it('does NOT consult the log when the chain has no trace of the hash', async () => {
+    // The expensive search runs only where the fact is known to be on chain.
+    setup({ snapshots: [capture()] });
+    unreadableReceipt(false);
+
+    const r = await confirmAnchors({ dryRun: false });
+
+    expect(r.noReceiptHashAbsent).toBe(1);
+    expect(mockWeb3.findRegisteringTxHash).not.toHaveBeenCalled();
+  });
+});
+
+describe('a transient failure records NOTHING — that is what keeps the null single-meaning', () => {
+  it('writes no verdict when the RPC answered neither question', async () => {
+    // `anchorCheck IS NULL` must mean exactly "no terminal verdict yet". If an
+    // RPC outage wrote a verdict, the column would carry the same conflation the
+    // bare `anchoredHash` null carried, one level up.
+    setup({ snapshots: [capture()] });
+    mockWeb3.readRegisteredHashes.mockResolvedValue({ kind: 'NO_RECEIPT' });
+    mockWeb3.isHashRegistered.mockRejectedValue(new Error('no healthy backend'));
+
+    const r = await confirmAnchors({ dryRun: false });
+
+    expect(r.unreachable).toBe(1);
+    expect(prisma.urlSnapshot.update).not.toHaveBeenCalled();
+  });
+
+  it('records a verdict for every OTHER outcome', async () => {
+    // The complement of the test above, and the reason it is here: a rule with
+    // one exception is a rule someone will add a second exception to.
+    setup({ snapshots: [capture()] });
+    mockWeb3.readRegisteredHashes.mockResolvedValue({ kind: 'ANCHORED_NOTHING' });
+
+    await confirmAnchors({ dryRun: false });
+
+    expect(prisma.urlSnapshot.update).toHaveBeenCalledWith({
+      where: { id: 'snap-1' },
+      data: { anchoredHash: null, anchorCheck: 'ANCHORED_NOTHING' },
+    });
   });
 });
