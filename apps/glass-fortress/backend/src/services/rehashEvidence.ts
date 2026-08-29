@@ -1,5 +1,7 @@
+import { IntegrityCheckSubject } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { Web3Service } from './Web3Service';
+import { recordOnChainCheckNeverThrowing } from './onChainVerification';
 import { VectorStoreService } from './VectorStoreService';
 import { forensicEvidenceFileHash, requireSnapshotIdentity } from './forensicEvidence';
 
@@ -151,6 +153,19 @@ export async function rehashEvidence(opts: { dryRun: boolean; limit?: number }):
           previousOnChainTxHash: rec.onChainTxHash,
           onChainTxHash: row.newTxHash,
         },
+      });
+
+      // LEVEL 3a — the identity moved, so the ANCHOR CLAIM moved with it.
+      //
+      // This path is the one where a stale verdict would be most misleading:
+      // any earlier check was about `previousFileHash`, and the row now asserts
+      // an anchor for a hash nothing has ever verified. Recorded here so the
+      // audit sees the new claim rather than an old pass that no longer
+      // describes the record.
+      await recordOnChainCheckNeverThrowing({
+        subjectType: IntegrityCheckSubject.EVIDENCE,
+        subjectId: rec.id,
+        fileHash: newFileHash,
       });
 
       if (rec.status === 'CONFIRMED') {

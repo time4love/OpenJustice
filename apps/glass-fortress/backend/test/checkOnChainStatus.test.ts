@@ -10,7 +10,12 @@
 jest.mock('../src/lib/prisma', () => ({
   prisma: {
     evidence: { findUnique: jest.fn() },
-    urlSnapshot: { findMany: jest.fn() },
+    // `count` and `findMany` are two different questions, and Level 3a split
+    // them deliberately: the VERDICT needs only how many captures hold this
+    // text, so `readOnChainClaim` counts; only this tool's human-facing summary
+    // needs the rows. Both are mocked from one fixture list below, so a test
+    // cannot set up a count that disagrees with the captures it provides.
+    urlSnapshot: { findMany: jest.fn(), count: jest.fn() },
   },
 }));
 
@@ -37,6 +42,13 @@ const PAGE = 'https://corona.health.gov.il/vaccine-for-covid/';
 
 const findUnique = prisma.evidence.findUnique as jest.Mock;
 const findSnapshots = prisma.urlSnapshot.findMany as jest.Mock;
+const countSnapshots = prisma.urlSnapshot.count as jest.Mock;
+
+/** One fixture list drives both queries, so they can never disagree. */
+function stubSnapshots(rows: ReturnType<typeof capture>[]): void {
+  findSnapshots.mockResolvedValue(rows);
+  countSnapshots.mockResolvedValue(rows.length);
+}
 
 /**
  * One archived capture holding the queried text.
@@ -86,7 +98,7 @@ async function run(
   opts?: { recoverTxHash?: boolean; snapshots?: ReturnType<typeof capture>[] },
 ): Promise<Verdict> {
   findUnique.mockResolvedValue(record);
-  findSnapshots.mockResolvedValue(opts?.snapshots ?? []);
+  stubSnapshots(opts?.snapshots ?? []);
   mockIsHashRegistered.mockResolvedValue({ registered, evidenceId: BigInt(7) });
   return JSON.parse(await checkOnChainStatusHandler({ fileHash: HASH, ...opts })) as Verdict;
 }
@@ -94,7 +106,7 @@ async function run(
 beforeEach(() => {
   jest.clearAllMocks();
   mockConstructor.mockReturnValue(undefined);
-  findSnapshots.mockResolvedValue([]);
+  stubSnapshots([]);
 });
 
 describe('check_on_chain_status', () => {
@@ -317,16 +329,40 @@ describe('check_on_chain_status', () => {
     });
 
     it('does NOT call a capture anchored when the chain has never seen its text', async () => {
-      // A real gap, and it must not be dressed up by the new verdict. The
-      // captures are still reported so the caller can see which page it is.
+      // A real gap, and it must not be dressed up by any verdict.
+      //
+      // THIS ASSERTION USED TO NAME `NOT_IN_VAULT`, and that was the defect its
+      // own comment warned about. NOT_IN_VAULT explains itself as "there is
+      // nothing to reconcile" and sits in CONSISTENT_VERDICTS, so a capture
+      // whose text the registry has never held reported `consistent: true` —
+      // the chain-of-custody gap dressed up as agreement, which is the precise
+      // shape Level 3a exists to end. The verdict now distinguishes a hash
+      // nobody meant to anchor from captures that assert one.
+      //
+      // `consistent` is asserted alongside the verdict deliberately: the verdict
+      // is a label and consistency is what a caller ACTS on, and the old test
+      // constrained only the label. A rename would have satisfied it while the
+      // false reassurance survived untouched.
       const r = await run(null, false, {
         snapshots: [capture('20220524070111', null)],
       });
 
-      expect(r.verdict).toBe('NOT_IN_VAULT');
+      expect(r.verdict).toBe('SNAPSHOT_UNANCHORED');
+      expect(r.consistent).toBe(false);
       expect(r.chain.registered).toBe(false);
       expect(r.snapshot?.onChainTxHash).toBeNull();
       expect(r.snapshot?.captures).toBe(1);
+    });
+
+    it('reports nothing to reconcile only when NOTHING holds the hash', async () => {
+      // The other side of the split above, so the two cannot collapse back into
+      // one verdict without a test failing: no evidence row, no captures, no
+      // registration is genuinely nothing to reconcile — and consistent.
+      const r = await run(null, false, { snapshots: [] });
+
+      expect(r.verdict).toBe('NOT_IN_VAULT');
+      expect(r.consistent).toBe(true);
+      expect(r.snapshot).toBeUndefined();
     });
 
     it('an evidence record is never treated as a snapshot, and costs no extra query', async () => {

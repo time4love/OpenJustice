@@ -1,5 +1,7 @@
+import { IntegrityCheckSubject } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { Web3Service } from './Web3Service';
+import { recordOnChainCheckNeverThrowing } from './onChainVerification';
 import { toBytes32 } from '../lib/bytes32';
 
 // ---------------------------------------------------------------------------
@@ -111,6 +113,30 @@ export async function anchorOneSnapshot(
   contentHash: string,
   opts: { copyOnly?: boolean } = {},
 ): Promise<SnapshotAnchorOutcome> {
+  /**
+   * LEVEL 3a — every outcome that WRITES A POINTER is checked against the chain
+   * and the verdict stored.
+   *
+   * Wrapped around the returns rather than appended after each `update`, because
+   * there are three of them and this rule must not be one a fourth can miss.
+   * The three that qualify are exactly the ones that leave the row asserting an
+   * anchor: COPIED_FROM_TWIN, RECOVERED and REGISTERED. The rest assert nothing
+   * — NEEDS_REGISTRATION and CHAIN_NOT_CONSULTED are honest reports that no
+   * anchor was claimed, and REGISTERED_TX_UNKNOWN deliberately writes nothing.
+   *
+   * `toBytes32`, not the bare hex. Passing bare hex where bytes32 was required
+   * is what made snapshot anchoring silently fail for 83 captures, and a
+   * verification that repeated the mistake would confirm the wrong hash.
+   */
+  const verified = async (outcome: SnapshotAnchorOutcome): Promise<SnapshotAnchorOutcome> => {
+    await recordOnChainCheckNeverThrowing({
+      subjectType: IntegrityCheckSubject.URL_SNAPSHOT,
+      subjectId: snapshotId,
+      fileHash: toBytes32(contentHash),
+    });
+    return outcome;
+  };
+
   // Two captures with byte-identical text share a contentHash, and the registry
   // rejects a duplicate. A twin already anchored means the fact is on-chain and
   // only this row's pointer is missing — no transaction needed.
@@ -123,7 +149,7 @@ export async function anchorOneSnapshot(
       where: { id: snapshotId },
       data: { onChainTxHash: twin.onChainTxHash },
     });
-    return { kind: 'COPIED_FROM_TWIN', txHash: twin.onChainTxHash };
+    return verified({ kind: 'COPIED_FROM_TWIN', txHash: twin.onChainTxHash });
   }
 
   // No twin. Everything past this point needs the chain — and a twin copy did
@@ -141,7 +167,7 @@ export async function anchorOneSnapshot(
         where: { id: snapshotId },
         data: { onChainTxHash: recoveredTx },
       });
-      return { kind: 'RECOVERED', txHash: recoveredTx };
+      return verified({ kind: 'RECOVERED', txHash: recoveredTx });
     }
     // Registered but the transaction could not be located. Recording a null
     // would read as "never anchored" and invite a duplicate registration, so the
@@ -162,7 +188,7 @@ export async function anchorOneSnapshot(
     'Wayback Snapshot',
   );
   await prisma.urlSnapshot.update({ where: { id: snapshotId }, data: { onChainTxHash: txHash } });
-  return { kind: 'REGISTERED', txHash };
+  return verified({ kind: 'REGISTERED', txHash });
 }
 
 export async function anchorSnapshots(opts: {

@@ -15,7 +15,13 @@
 // ---------------------------------------------------------------------------
 
 jest.mock('../src/utils/webScraper', () => ({ scrapeUrl: jest.fn() }));
-jest.mock('../src/services/VectorStoreService', () => ({ VectorStoreService: { create: jest.fn() } }));
+// `create` RESOLVES, rather than returning undefined. The route awaits nothing
+// from it, but it does call `.then(...).catch(...)` on the result, so a mock
+// returning undefined throws inside the request handler. Nothing noticed while
+// every non-refused submission died at the chain call first.
+jest.mock('../src/services/VectorStoreService', () => ({
+  VectorStoreService: { create: jest.fn(async () => ({ upsertEvidence: jest.fn() })) },
+}));
 jest.mock('../src/lib/encrypt', () => ({ encryptContact: jest.fn() }));
 
 jest.mock('../src/middleware/rateLimiting', () => ({
@@ -42,6 +48,28 @@ jest.mock('../src/lib/prisma', () => ({
 
 jest.mock('../src/services/evidenceOnChain', () => ({
   registerEvidenceOnChain: registerOnChain,
+}));
+
+// THE CHAIN IS MOCKED, AND THAT IS A FIX RATHER THAN A CONVENIENCE.
+//
+// This route reaches `new Web3Service().registerEvidenceHash(...)` on every
+// non-refused submission. Nothing here mocked it, so the assertions below
+// passed for a reason unrelated to what they test: RPC_URL was unset in the
+// test environment, the constructor threw, and the route answered 500 — which
+// is merely "not 409".
+//
+// That made the verdict depend on ambient configuration. The moment anything in
+// the import graph loaded `.env` — which `@prisma/client` does — the same tests
+// began making a REAL call to Base Sepolia, and the registry's honest "already
+// registered" answer came back as the 409 these tests exist to rule out. A gate
+// test that passes or fails on whether a public RPC is reachable is testing the
+// network, not the gate.
+const mockRegisterEvidenceHash = jest.fn();
+jest.mock('../src/services/Web3Service', () => ({
+  Web3Service: class {
+    registerEvidenceHash = mockRegisterEvidenceHash;
+  },
+  DuplicateEvidenceError: class DuplicateEvidenceError extends Error {},
 }));
 
 import request from 'supertest';
@@ -126,6 +154,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   db.diff = null;
   registerOnChain.mockResolvedValue({ txHash: '0xdeadbeef', confirmed: true });
+  mockRegisterEvidenceHash.mockResolvedValue('0xdeadbeef');
   evidenceUpsert.mockResolvedValue({ id: 'ev-1' });
 });
 
@@ -147,6 +176,10 @@ describe('POST /api/evidence/confirm refuses a contradicted diff', () => {
     await request(app).post('/api/evidence/confirm').send(body());
 
     expect(registerOnChain).not.toHaveBeenCalled();
+    // The registration this route ACTUALLY makes. Asserting only the shared
+    // helper left the route's own chain call unguarded — and that is the call
+    // that would anchor a contradicted diff.
+    expect(mockRegisterEvidenceHash).not.toHaveBeenCalled();
     expect(evidenceUpsert).not.toHaveBeenCalled();
   });
 });
@@ -159,7 +192,11 @@ describe('the refusal is narrow', () => {
 
     const res = await request(app).post('/api/evidence/confirm').send(body());
 
-    expect(res.status).not.toBe(409);
+    // 201, not merely "not 409". With the chain mocked the route runs to
+    // completion, so the guard can assert the submission SUCCEEDED rather than
+    // that it failed for some other reason — which is what it was doing.
+    expect(res.status).toBe(201);
+    expect(mockRegisterEvidenceHash).toHaveBeenCalled();
   });
 
   it('does not refuse an UNCHECKED diff — that is an unasked question', async () => {
@@ -167,7 +204,7 @@ describe('the refusal is narrow', () => {
 
     const res = await request(app).post('/api/evidence/confirm').send(body());
 
-    expect(res.status).not.toBe(409);
+    expect(res.status).toBe(201);
   });
 
   it('does not refuse a submission that names no diff at all', async () => {
@@ -175,6 +212,6 @@ describe('the refusal is narrow', () => {
 
     const res = await request(app).post('/api/evidence/confirm').send(noDiff);
 
-    expect(res.status).not.toBe(409);
+    expect(res.status).toBe(201);
   });
 });
