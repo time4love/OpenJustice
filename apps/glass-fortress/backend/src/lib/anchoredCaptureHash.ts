@@ -17,19 +17,28 @@ import { Prisma } from '@prisma/client';
 // the anchoring path is where a drifted copy produces FALSE CUSTODY rather than
 // a wrong number.
 //
-// It matters most NOW because the rule is about to change. Level 3's first
-// clause moves the anchor from `contentHash` to `documentHash`, and nine edits
-// made by hand is nine chances to leave one behind — a site still asking the
-// chain about the extraction while the rest of the system has moved to the
-// document. Collapsed to one symbol, that change is one line, and no caller can
-// be missed because no caller names the column.
+// LEVEL 3 CLAUSE 1 MOVED THE RULE HERE, 2026-08-30, and this module is why that
+// was one line rather than nine edits with nine chances to leave one behind.
+// The anchor now attests to `documentHash` — the payload as served — rather than
+// to `contentHash`, which is SHA-256 of Readability's article and discards ~31%
+// of the page, hrefs among it. This platform's central finding is that a
+// reporting-channel LINK was removed, so the one layer the old anchor could not
+// speak for was the layer the thesis turns on.
 //
-// WHAT IS DELIBERATELY NOT HERE. `UrlSnapshot.contentHash` has a second,
-// unrelated job: it is `SHA-256(fullText)`, the hash `rediffFromSnapshots`
-// re-verifies its inputs against and `forensicEvidenceFileHash` composes
-// evidence identity from. Those are claims about the EXTRACTION and are correct
-// as they stand; they must not follow the anchor. Separating the two meanings is
-// the point of naming this one.
+// Measured on staging, 105 captures: `contentHash` collapses to 15 distinct
+// values and `documentHash` to 104. The old anchor distinguished 15 states of a
+// page that had 104, and one hash covered 25 distinct documents. Twins are
+// therefore near-extinct now and anchoring costs roughly one transaction per
+// capture — measured at 144,875 gas, about 0.00009 ETH for the whole corpus at
+// Base mainnet's 0.006 gwei. That price was accepted deliberately: per-capture
+// truth costs per-capture anchoring, and the twin collapse was never a saving,
+// it was the defect restated as one.
+//
+// `contentHash` KEEPS ITS OTHER JOBS. It is still what `rediffFromSnapshots`
+// re-verifies its inputs against and what `forensicEvidenceFileHash` composes
+// evidence identity from. Whether identity follows the anchor is §2's decision
+// and the researcher's, not this module's.
+//
 //
 // STILL OUTSIDE, AND KNOWN: `archiveVerification`'s `storedContentHash` reports
 // a capture's hash beside `storedOnChainTxHash` in `list_captures` output, so it
@@ -48,7 +57,7 @@ import { Prisma } from '@prisma/client';
  * for the same reason: a compiler's list is complete and a grep's is not.
  */
 export interface AnchorableCapture {
-  contentHash: string;
+  documentHash: string;
 }
 
 /**
@@ -58,7 +67,7 @@ export interface AnchorableCapture {
  * column itself is a caller the flip will not reach.
  */
 export const ANCHORABLE_CAPTURE_SELECT = {
-  contentHash: true,
+  documentHash: true,
 } satisfies Prisma.UrlSnapshotSelect;
 
 /**
@@ -70,7 +79,7 @@ export const ANCHORABLE_CAPTURE_SELECT = {
  * stored formats still disagree.
  */
 export function anchoredCaptureHash(capture: AnchorableCapture): string {
-  return capture.contentHash;
+  return capture.documentHash;
 }
 
 /**
@@ -96,7 +105,7 @@ export function capturesAnchoredBy(hash: string): Prisma.UrlSnapshotWhereInput {
   // Level 3 moves the anchor. The second arm covers a capture that is not
   // anchored yet, or not yet confirmed: there is no recorded answer, so the
   // question can only be asked of the rule.
-  return { OR: [{ anchoredHash: bare }, { anchoredHash: null, contentHash: bare }] };
+  return { OR: [{ anchoredHash: bare }, { anchoredHash: null, documentHash: bare }] };
 }
 
 /** A row that may already state what its anchoring transaction registered. */
@@ -128,8 +137,13 @@ export function hashUnderAudit(
     : { hash: row.anchoredHash, confirmed: true };
 }
 
-/** Every hash a capture is known by, whichever one the anchoring rule currently names. */
-export interface CaptureHashes extends AnchorableCapture {
+/**
+ * Every hash a capture is known by, whichever one the anchoring rule currently
+ * names. Declared independently of `AnchorableCapture` rather than extending it,
+ * so moving the rule cannot silently shrink the set an anchor is checked against.
+ */
+export interface CaptureHashes {
+  contentHash: string;
   documentHash: string;
 }
 

@@ -321,7 +321,9 @@ describe('recordCapture re-examines a capture it already holds', () => {
   it('retries the anchor for a stored capture that was never anchored', async () => {
     findUnique.mockResolvedValue({ ...stored, documentHash: sha256b(DOC), onChainTxHash: null });
     await recordCapture(archived());
-    expect(anchoredOf(0)).toEqual(['already-here', sha256('stored extraction')]);
+    // The DOCUMENT, not the extraction — Level 3 clause 1. The row is anchored on
+    // the payload it holds, which is the layer that carries the hrefs.
+    expect(anchoredOf(0)).toEqual(['already-here', sha256b(DOC)]);
   });
 
   it('anchors on the MISSING transaction, not on having created the row', async () => {
@@ -338,10 +340,10 @@ describe('recordCapture re-examines a capture it already holds', () => {
 describe('recordCapture anchors what it creates', () => {
   it('anchors the row it just wrote, on whichever hash the rule names', async () => {
     // The write path hands over the CAPTURE and `anchoredCaptureHash` picks the
-    // hash. Asserting through the same symbol is deliberate: this test pins that
-    // anchoring happens for the created row, not which column Level 3 settles on.
+    // hash. Asserting through the same symbol is deliberate: this pins that
+    // anchoring happens for the created row, and follows the rule when it moves.
     await recordCapture(archived());
-    expect(anchoredOf(0)).toEqual(['new-capture-id', sha256('the article')]);
+    expect(anchoredOf(0)).toEqual(['new-capture-id', sha256b(DOC)]);
   });
 
   it('records the capture even when anchoring rejects, and the promise still does not reject', async () => {
@@ -387,7 +389,7 @@ describe('recordCapture survives losing a race', () => {
 
     expect(result.outcome).toBe('EXISTS');
     expect(result.id).toBe('winner-row');
-    expect(anchoredOf(0)).toEqual(['winner-row', sha256('the article')]);
+    expect(anchoredOf(0)).toEqual(['winner-row', sha256b(DOC)]);
   });
 
   it('rethrows a create failure that is not a unique violation', async () => {

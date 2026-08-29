@@ -298,7 +298,12 @@ describe('which subjects are asked for a verdict at all', () => {
     // verification repeating it would confirm the wrong hash.
     evidenceMany.mockResolvedValue([]);
     snapshotMany.mockResolvedValue([
-      { id: 'snap-1', contentHash: 'a'.repeat(64), anchoredHash: null },
+      {
+        id: 'snap-1',
+        contentHash: 'a'.repeat(64),
+        documentHash: 'a'.repeat(64),
+        anchoredHash: null,
+      },
     ]);
     evidenceUnique.mockResolvedValue(null);
     snapshotCount.mockResolvedValue(1);

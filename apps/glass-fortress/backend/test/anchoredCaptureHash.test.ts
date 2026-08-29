@@ -83,7 +83,7 @@ describe('anchoredCaptureHash is the only answer to "which hash is anchored"', (
 
 describe('the rule itself', () => {
   it('derives the anchored hash from the capture, bare hex as stored', () => {
-    expect(anchoredCaptureHash({ contentHash: 'abc123' })).toBe('abc123');
+    expect(anchoredCaptureHash({ documentHash: 'abc123' })).toBe('abc123');
   });
 
   it('finds captures by either spelling of the same hash', () => {
@@ -96,7 +96,7 @@ describe('the rule itself', () => {
   it('selects exactly the columns the rule reads', () => {
     // Pins the select to the interface. A select that grew a column the type
     // does not carry would be a select nobody is required to keep in step.
-    expect(Object.keys(ANCHORABLE_CAPTURE_SELECT).sort()).toEqual(['contentHash']);
+    expect(Object.keys(ANCHORABLE_CAPTURE_SELECT).sort()).toEqual(['documentHash']);
   });
 });
 
