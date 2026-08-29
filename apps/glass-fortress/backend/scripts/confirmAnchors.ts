@@ -90,9 +90,9 @@ async function main(): Promise<number> {
       case 'NO_RECEIPT_HASH_REGISTERED':
         console.error(
           `  no receipt ${where}  tx ${row.txHash}\n` +
-            '      The registry DOES hold this row\u2019s hash, so the fact is anchored on this ' +
-            'chain — but neither the receipt nor the registry log could name the transaction ' +
-            'that did it. Recorded as TX_UNREADABLE: terminal, honest, and not a confirmation.',
+            '      The registry DOES hold this hash, so the fact is anchored on this chain.\n' +
+            `      Why no transaction was named: ${c.logLookup}\n` +
+            '      Recorded as TX_UNREADABLE: terminal, honest, and not a confirmation.',
         );
         break;
       case 'NO_RECEIPT_HASH_ABSENT':

@@ -1,6 +1,10 @@
 import { AnchorCheckOutcome } from '@prisma/client';
 import { prisma } from '../lib/prisma';
-import { Web3Service, type RegisteredByTransaction } from './Web3Service';
+import {
+  Web3Service,
+  type RegisteredByTransaction,
+  type RegisteringTxLookup,
+} from './Web3Service';
 import { toBytes32 } from '../lib/bytes32';
 import { ANCHORABLE_CAPTURE_SELECT, anchoredCaptureHash } from '../lib/anchoredCaptureHash';
 
@@ -63,7 +67,22 @@ export type AnchorConfirmation =
    * limit of the RPC we are reading through; the other is a claim about a chain
    * that has no record of it.
    */
-  | { kind: 'NO_RECEIPT_HASH_REGISTERED'; expected: string; txHashFromLog: string | null }
+  | {
+      kind: 'NO_RECEIPT_HASH_REGISTERED';
+      expected: string;
+      /**
+       * WHY the registry's log named no transaction — the step and the message,
+       * never a bare null.
+       *
+       * The first version of this swallowed the reason in a bare `catch`, and
+       * that cost a whole diagnostic run: 0 of 91 resolved and nothing could
+       * distinguish "the log holds no such transaction" from "the endpoint
+       * refused the query". The same defect `anchorSnapshots` documents having
+       * made and repaired, reproduced inside the pass built not to lose
+       * information.
+       */
+      logLookup: string;
+    }
   /**
    * No receipt AND the registry does not hold the expected hash. The row asserts
    * an anchor that this chain has no trace of, by either route.
@@ -223,6 +242,35 @@ async function anchorClaimants(): Promise<AnchorClaimant[]> {
  * would let a caller hand over `NO_RECEIPT` alongside a list of hashes, which is
  * a state the chain cannot produce and this function would have to decide about.
  */
+/**
+ * WHY a lookup named no transaction, in one line a human can act on.
+ *
+ * The window is included wherever the lookup got far enough to have one, because
+ * the obvious next question about NO_LOG_IN_WINDOW is whether the window was
+ * wide enough — and an answer that omits where it looked cannot be argued with.
+ */
+function describeLookup(lookup: RegisteringTxLookup): string {
+  switch (lookup.kind) {
+    case 'FOUND':
+      return `named ${lookup.txHash}`;
+    case 'NOT_REGISTERED':
+      return 'the registry does not hold this hash';
+    case 'NO_LOG_IN_WINDOW':
+      return (
+        'the registry holds the hash but no EvidenceSubmitted log sits in blocks ' +
+        `${String(lookup.searchedFrom)}–${String(lookup.searchedTo)} around block ` +
+        String(lookup.anchorBlock)
+      );
+    case 'LOOKUP_FAILED':
+      return (
+        `the ${lookup.step} step failed: ${lookup.reason}` +
+        (lookup.anchorBlock === undefined
+          ? ''
+          : ` (blocks ${String(lookup.searchedFrom)}–${String(lookup.searchedTo)})`)
+      );
+  }
+}
+
 function decide(
   observed: RegisteredByTransaction,
   /** What the row claims: the hash it carries and the transaction it points at. */
@@ -234,10 +282,10 @@ function decide(
    * `hashRegistered: null` means the registry could not be asked either, which is
    * a third thing again and must not read as "this chain does not hold it".
    */
-  fallback: { hashRegistered: boolean | null; txHashFromLog: string | null },
+  fallback: { hashRegistered: boolean | null; lookup: RegisteringTxLookup | null },
 ): AnchorConfirmation {
   const { expected, txHash } = claim;
-  const { hashRegistered, txHashFromLog } = fallback;
+  const { hashRegistered, lookup } = fallback;
   if (observed.kind === 'NO_RECEIPT') {
     if (hashRegistered === null) return { kind: 'UNREACHABLE' };
     if (!hashRegistered) return { kind: 'NO_RECEIPT_HASH_ABSENT', expected };
@@ -253,18 +301,20 @@ function decide(
     // are pruned by AGE, `eth_getLogs` is capped by RANGE — and the range is
     // found from the registry's own stored timestamp, which is contract state and
     // never expires.
-    if (txHashFromLog !== null && sameTx(txHashFromLog, txHash)) {
-      return { kind: 'CONFIRMED_BY_LOG', anchoredHash: expected };
+    if (lookup === null) {
+      return { kind: 'NO_RECEIPT_HASH_REGISTERED', expected, logLookup: 'the log was not consulted' };
     }
-    if (txHashFromLog !== null) {
-      // The registry names a DIFFERENT transaction for this hash. Reported with
-      // both transactions rather than collapsed into MISANCHORED: the contract
-      // reverts a duplicate registration, so this should be impossible, and a
-      // verdict that cannot happen deserves to be read by a human rather than
-      // counted. Asserted rather than assumed.
-      return { kind: 'REGISTERED_BY_ANOTHER_TX', expected, txHashFromLog };
+    if (lookup.kind === 'FOUND') {
+      return sameTx(lookup.txHash, txHash)
+        ? { kind: 'CONFIRMED_BY_LOG', anchoredHash: expected }
+        : // The registry names a DIFFERENT transaction for this hash. Its own arm
+          // rather than folded into a misanchor: the contract reverts a duplicate
+          // registration, so this should be impossible, and a state that cannot
+          // happen — happening — deserves a human reading both transaction hashes
+          // rather than a counter incrementing.
+          { kind: 'REGISTERED_BY_ANOTHER_TX', expected, txHashFromLog: lookup.txHash };
     }
-    return { kind: 'NO_RECEIPT_HASH_REGISTERED', expected, txHashFromLog: null };
+    return { kind: 'NO_RECEIPT_HASH_REGISTERED', expected, logLookup: describeLookup(lookup) };
   }
   if (observed.kind === 'ANCHORED_NOTHING') return { kind: 'ANCHORED_NOTHING' };
 
@@ -313,8 +363,13 @@ function terminalVerdict(confirmation: AnchorConfirmation): AnchorCheckOutcome |
     case 'CONFIRMED_BY_LOG':
       return AnchorCheckOutcome.CONFIRMED_BY_LOG;
     case 'MISANCHORED':
+      // Found from the transaction's own receipt — the stronger observation.
+      return AnchorCheckOutcome.MISANCHORED_BY_RECEIPT;
     case 'REGISTERED_BY_ANOTHER_TX':
-      return AnchorCheckOutcome.MISANCHORED;
+      // Found from the registry's log, which infers the transaction from a
+      // stored timestamp and a bounded window. Recorded distinctly so anyone
+      // re-opening it knows to widen that window before concluding anything.
+      return AnchorCheckOutcome.MISANCHORED_BY_LOG;
     case 'ANCHORED_NOTHING':
       return AnchorCheckOutcome.ANCHORED_NOTHING;
     case 'NO_RECEIPT_HASH_REGISTERED':
@@ -408,7 +463,7 @@ export async function confirmAnchors(opts: {
       // the fact at all is what decides that, and it is a different question
       // from the one the receipt answers.
       let hashRegistered: boolean | null = null;
-      let txHashFromLog: string | null = null;
+      let lookup: RegisteringTxLookup | null = null;
       if (observed.kind === 'NO_RECEIPT') {
         try {
           hashRegistered = (await web3.isHashRegistered(toBytes32(claimant.expected))).registered;
@@ -419,22 +474,21 @@ export async function confirmAnchors(opts: {
           hashRegistered = null;
         }
         if (hashRegistered === true) {
-          try {
-            // Costly — a block-range binary search per subject — so it runs only
-            // where the cheap route already failed AND the fact is known to be on
-            // chain. Never on a row whose receipt was readable.
-            txHashFromLog = await web3.findRegisteringTxHash(toBytes32(claimant.expected));
-          } catch {
-            // Leaves the row at NO_RECEIPT_HASH_REGISTERED: unresolved rather
-            // than wrong, which is exactly what a failed lookup licenses.
-            txHashFromLog = null;
-          }
+          // Costly — a block-range binary search per subject — so it runs only
+          // where the cheap route already failed AND the fact is known to be on
+          // chain. Never on a row whose receipt was readable.
+          //
+          // `lookupRegisteringTx` REPORTS its failures rather than throwing them,
+          // so there is no catch here to swallow one. That is deliberate: the
+          // bare catch this replaced turned every distinct cause into the same
+          // null and made a 91-row result undiagnosable.
+          lookup = await web3.lookupRegisteringTx(toBytes32(claimant.expected));
         }
       }
       const confirmation = decide(
         observed,
         { expected: claimant.expected, txHash: claimant.txHash },
-        { hashRegistered, txHashFromLog },
+        { hashRegistered, lookup },
       );
 
       // The hash and the verdict are written TOGETHER, or neither is. A verdict

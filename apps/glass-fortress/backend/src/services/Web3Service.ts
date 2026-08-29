@@ -38,6 +38,39 @@ export type RegisteredByTransaction =
   /** A real transaction that emitted no registration. The fake-CONFIRMED shape. */
   | { kind: 'ANCHORED_NOTHING' };
 
+/** Which network step a registering-transaction lookup reached, and what it said. */
+export type RegisteringTxLookup =
+  | ({ kind: 'FOUND'; txHash: string } & LogSearchWindow)
+  /** The registry does not hold the hash. A definite answer, not a failure. */
+  | { kind: 'NOT_REGISTERED' }
+  /**
+   * The registry holds the hash and the window around its recorded block carries
+   * no matching log. Also a definite answer — and a surprising one, since the
+   * window is derived from the contract's own timestamp for that registration.
+   * The window is reported so the next question can be about its width.
+   */
+  | ({ kind: 'NO_LOG_IN_WINDOW' } & LogSearchWindow)
+  /**
+   * A step failed. NEVER collapsed into "no transaction found": an endpoint that
+   * refused the query and a chain that holds no such log license opposite
+   * conclusions about a stored anchoring claim.
+   */
+  | ({ kind: 'LOOKUP_FAILED'; step: RegisteringTxLookupStep; reason: string } & Partial<LogSearchWindow>);
+
+export type RegisteringTxLookupStep = 'REGISTRY' | 'RECORD' | 'BLOCK_SEARCH' | 'LOG_QUERY';
+
+/** Where the log query looked. Reported on every outcome that got far enough to have one. */
+export interface LogSearchWindow {
+  anchorBlock: number;
+  searchedFrom: number;
+  searchedTo: number;
+}
+
+/** An error's message, whatever it was thrown as. */
+function messageOf(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
 export class Web3Service {
   /**
    * Half-width, in blocks, of the window scanned for a registering event.
@@ -266,25 +299,77 @@ export class Web3Service {
   }
 
   async findRegisteringTxHash(fileHash: string): Promise<string | null> {
-    const { registered, evidenceId } = await this.isHashRegistered(fileHash);
-    if (!registered) return null;
+    const lookup = await this.lookupRegisteringTx(fileHash);
+    return lookup.kind === 'FOUND' ? lookup.txHash : null;
+  }
+
+  /**
+   * The same lookup, SAYING WHICH STEP ANSWERED — or which step failed.
+   *
+   * `findRegisteringTxHash` collapses four distinct outcomes into `null`, and
+   * that cost a whole diagnostic run: the log route resolved 0 of 91 staging
+   * subjects and nothing in the output could distinguish "the registry's log
+   * holds no such transaction" from "the endpoint refused the query" from "the
+   * block search threw before any log was ever requested". A count tells you
+   * something is wrong; only the step and the message tell you what.
+   *
+   * Four network steps, each able to fail for its own reason, and they are NOT
+   * interchangeable news:
+   *   REGISTRY      — is the hash registered at all
+   *   RECORD        — the contract's stored timestamp for it
+   *   BLOCK_SEARCH  — the block at that timestamp
+   *   LOG_QUERY     — EvidenceSubmitted within a window around that block
+   *
+   * `findRegisteringTxHash` delegates rather than duplicating: one
+   * implementation, two shapes, the same move as `anchorOneSnapshot`.
+   */
+  async lookupRegisteringTx(fileHash: string): Promise<RegisteringTxLookup> {
+    let evidenceId: bigint;
+    try {
+      const registry = await this.isHashRegistered(fileHash);
+      if (!registry.registered) return { kind: 'NOT_REGISTERED' };
+      evidenceId = registry.evidenceId;
+    } catch (err) {
+      return { kind: 'LOOKUP_FAILED', step: 'REGISTRY', reason: messageOf(err) };
+    }
 
     // The contract stores the block timestamp of the registering transaction,
     // which is the only pointer back to its block — so locate that block by
     // timestamp, then query a narrow window around it.
-    const record = await this.getEvidenceRecord(evidenceId);
-    const anchorBlock = await this.findBlockAtTimestamp(Number(record.timestamp));
+    let timestamp: number;
+    try {
+      timestamp = Number((await this.getEvidenceRecord(evidenceId)).timestamp);
+    } catch (err) {
+      return { kind: 'LOOKUP_FAILED', step: 'RECORD', reason: messageOf(err) };
+    }
 
-    const bytes32Hash = ethers.zeroPadValue(fileHash, 32);
-    const filterFn = this.contract.filters.EvidenceSubmitted as (
-      fileHash: string,
-    ) => ethers.DeferredTopicFilter;
-    const logs = await this.contract.queryFilter(
-      filterFn(bytes32Hash),
-      Math.max(0, anchorBlock - Web3Service.LOG_WINDOW_BLOCKS),
-      anchorBlock + Web3Service.LOG_WINDOW_BLOCKS,
-    );
-    return logs[0]?.transactionHash ?? null;
+    let anchorBlock: number;
+    try {
+      anchorBlock = await this.findBlockAtTimestamp(timestamp);
+    } catch (err) {
+      return { kind: 'LOOKUP_FAILED', step: 'BLOCK_SEARCH', reason: messageOf(err) };
+    }
+
+    const from = Math.max(0, anchorBlock - Web3Service.LOG_WINDOW_BLOCKS);
+    const to = anchorBlock + Web3Service.LOG_WINDOW_BLOCKS;
+    const window = { anchorBlock, searchedFrom: from, searchedTo: to };
+
+    try {
+      const bytes32Hash = ethers.zeroPadValue(fileHash, 32);
+      const filterFn = this.contract.filters.EvidenceSubmitted as (
+        fileHash: string,
+      ) => ethers.DeferredTopicFilter;
+      const logs = await this.contract.queryFilter(filterFn(bytes32Hash), from, to);
+      // `.at(0)`, not `logs[0]?.` — the two debt ratchets contradict each other
+      // over element access and `.at()` is the house answer: it is typed
+      // `T | undefined` unconditionally, so this guard is genuinely necessary.
+      const first = logs.at(0);
+      return first === undefined
+        ? { kind: 'NO_LOG_IN_WINDOW', ...window }
+        : { kind: 'FOUND', txHash: first.transactionHash, ...window };
+    } catch (err) {
+      return { kind: 'LOOKUP_FAILED', step: 'LOG_QUERY', reason: messageOf(err), ...window };
+    }
   }
 
   /**
