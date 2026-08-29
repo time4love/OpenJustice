@@ -1885,6 +1885,57 @@ rather than asserted.
 *Enforcement:* anchor `documentHash`; run `check_on_chain_status` automatically on the write path and
 record the verdict. Never a rule a human must remember.
 
+#### STATUS 2026-08-29 — clause 2 is CLOSED, clause 1 is OPEN. The level is NOT done.
+
+**The invariant is two claims joined by "and", and only the second one is built.** They were closed
+apart, they can be measured apart, and the danger is that the measurement for the second reads as a
+verdict on the whole.
+
+**Clause 2 — "the database's claim is checked rather than asserted" — DONE and verified.**
+`recordOnChainCheck` runs on every write path and stores its verdict in `IntegrityCheck`;
+`auditOnChainAnchors` reports coverage and exits non-zero on anything that is not a current pass. Since
+`a790c0b` a verdict also records the chain and registry it was reached against, and a verdict that
+names neither is `STALE` rather than a pass. Both environments, in-container, exit 0:
+
+| | subjects | VERIFIED | STALE | checks | superseded | not naming their chain |
+|---|---|---|---|---|---|---|
+| production | 91 | 91 | 0 | 182 | 91 | 91 |
+| staging | 113 | 113 | 0 | 226 | 113 | 113 |
+
+**Clause 1 — "the on-chain record attests to the DOCUMENT" — NOT DONE.**
+
+What actually reaches the chain is `toBytes32(contentHash)` (`anchorSnapshots.ts`), and `contentHash`
+is `SHA-256(fullText)` — Readability's *article*, not the page. The schema has said so plainly the
+whole time: *"the only hash anchored today"* on `contentHash`, and *"Integrity, and where the anchor
+moves at Level 3"* on `documentHash`.
+
+So today's anchor attests to an **extraction that discards ~31% of the page, hrefs among it** — and
+this platform's central finding is that a reporting-channel LINK was removed. The one layer the anchor
+cannot currently speak for is the layer the thesis turns on. `documentHash` exists, is `NOT NULL` on
+every row since `20260827180000`, and is never registered.
+
+**Do not read a clean anchor audit as Level 3 being done.** The audit measures whether every anchoring
+claim carries a current, chain-stamped verdict. It is silent on *what was anchored*, and it would stay
+green if the answer were a hash of the page's title. That is the same shape as `db:check-drift`
+reporting "No difference detected" about a database that had just lost every row: an accurate fact
+about the axis you checked, read as proof about the axis you didn't.
+
+**What closing clause 1 costs, so the decision is made with the price visible:**
+
+1. **New chain writes.** Every capture would need re-registering under `documentHash`. Chain writes are
+   MCP-only and are the researcher's call; the existing `contentHash` registrations stay on chain
+   forever and would be superseded, never removed (Level 10).
+2. **A decision about evidence identity, which is the larger half.**
+   `forensicEvidenceFileHash = sha256(url + before.waybackTimestamp + before.contentHash +
+   after.waybackTimestamp + after.contentHash)` — the extraction is baked into the identity of every
+   evidence record, not only into the anchor. Moving the anchor without moving identity leaves the two
+   attesting to different things; moving both changes the `fileHash` of already-anchored, CONFIRMED,
+   publicly cited records.
+3. **A re-audit afterwards**, since every stored verdict is about the hash it judged.
+
+None of that is a repair, and none of it is mine to decide: it changes what the chain of custody
+asserts. Recorded here so the next person does not close this level on the strength of a green audit.
+
 ### Level 4 — the view
 
 *Invariant:* no block unique to a capture is ever classified chrome; the view is versioned and marks
