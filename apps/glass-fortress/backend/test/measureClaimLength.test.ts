@@ -21,7 +21,11 @@ jest.mock('../src/services/claimTrajectory', () => {
 });
 
 import { MIN_CLAIM_LENGTH, MIN_TRANSITIONS, detectAtClaimLength } from '../src/services/claimTrajectory';
-import { isDerivative, measureClaimLength } from '../src/services/measureClaimLength';
+import {
+  inspectClaim,
+  isDerivative,
+  measureClaimLength,
+} from '../src/services/measureClaimLength';
 
 const detect = detectAtClaimLength as jest.MockedFunction<typeof detectAtClaimLength>;
 
@@ -324,5 +328,51 @@ describe('containment, and whether a claim ever speaks for itself', () => {
 
     const report = await measureClaimLength('https://example.test', [0, MIN_CLAIM_LENGTH]);
     expect(report.measurements[0]?.admitted[0]?.containedInCandidates).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// NAMING THE CAPTURE, because a count cannot decide the marginal case.
+//
+// `למפת מוקדי החיסון >` is independent in exactly 1 capture of 56, on BOTH
+// corpora. One observation is not wrong, it is weak — and a bar anywhere between
+// 2 and 17 partitions this corpus identically, so any number would be doing no
+// work. The honest move is to name the capture and let someone open it: a
+// genuine independent sighting and a truncated capture are identical in a count
+// and nothing alike on the page.
+// ---------------------------------------------------------------------------
+describe('inspecting one claim', () => {
+  it('names the capture where it appears and no container does', async () => {
+    detect.mockResolvedValue(
+      result(
+        [
+          trajectory(CONTAINER, [true, false, false, false]),
+          trajectory(CONTAINED, [true, false, true, false]),
+        ],
+        2,
+      ),
+    );
+
+    const inspection = await inspectClaim('https://example.test', CONTAINED);
+
+    expect(inspection?.presentIn).toBe(2);
+    expect(inspection?.containers).toEqual([{ claim: CONTAINER, presentIn: 1 }]);
+    // Capture index 0 has the container too; index 2 does not.
+    expect(inspection?.independentCaptures).toEqual([
+      { snapshotDate: '2022-01-03', snapshotUrl: 'https://example.test' },
+    ]);
+  });
+
+  it('inspects at threshold 0 — the claim is below the production one by definition', async () => {
+    detect.mockResolvedValue(result([trajectory(CONTAINED, OSCILLATES)], 1));
+    await inspectClaim('https://example.test', CONTAINED);
+    expect(detect).toHaveBeenCalledWith('https://example.test', 0);
+  });
+
+  it('returns null rather than an empty report for a claim that is not a candidate', async () => {
+    // An empty report reads as "no independent captures", which is the opposite
+    // of "this claim was never looked for".
+    detect.mockResolvedValue(result([trajectory(LONG, OSCILLATES)], 1));
+    expect(await inspectClaim('https://example.test', 'not a candidate')).toBeNull();
   });
 });

@@ -3,6 +3,7 @@
  *
  *   npm run forensics:measure-claim-length -- --env <env> --url <url>
  *   npm run forensics:measure-claim-length -- --env <env> --url <url> --thresholds 0,20,40
+ *   npm run forensics:measure-claim-length -- --env <env> --url <url> --claim '<exact text>'
  *
  * READ-ONLY. It never lowers the threshold, never recommends a value, and writes
  * nothing — not even a trajectory computation, which `get_claim_trajectories`
@@ -33,6 +34,7 @@ import 'dotenv/config';
 import { runOperationalScript } from '../src/lib/operationalContext';
 import {
   DEFAULT_THRESHOLDS,
+  inspectClaim,
   isDerivative,
   measureClaimLength,
 } from '../src/services/measureClaimLength';
@@ -47,6 +49,41 @@ async function main(): Promise<void> {
   if (url === undefined) {
     console.error('Usage: npm run forensics:measure-claim-length -- --env <env> --url <url>');
     process.exit(1);
+  }
+
+  // ONE CLAIM, NAMED. The sweep's counts settle every case but the marginal one,
+  // and a count cannot say whether a lone independent sighting is a real one or a
+  // truncated capture. This prints the Wayback URL so anyone can look.
+  const claim = arg('claim');
+  if (claim !== undefined) {
+    const inspection = await inspectClaim(url, claim);
+    if (inspection === null) {
+      console.error(
+        `No candidate matches that claim exactly. It must be the NORMALISED text as stored —\n` +
+          'copy it from the sweep output rather than from the page.',
+      );
+      process.exit(1);
+    }
+
+    console.log(`\n${inspection.claim}`);
+    console.log(`present in ${String(inspection.presentIn)} capture(s)\n`);
+    console.log(`Containers — ${String(inspection.containers.length)}:`);
+    for (const c of inspection.containers) {
+      console.log(`  present in ${String(c.presentIn).padStart(3)}   ${c.claim}`);
+    }
+
+    console.log(
+      `\nCaptures where it appears and NO container does — ` +
+        `${String(inspection.independentCaptures.length)}:`,
+    );
+    for (const c of inspection.independentCaptures) {
+      console.log(`  ${c.snapshotDate}  ${c.snapshotUrl}`);
+    }
+    console.log(
+      '\nOpen those and search for the claim. A genuine independent sighting and a truncated\n' +
+        'capture look identical in a count and nothing alike on the page.\n',
+    );
+    return;
   }
 
   const raw = arg('thresholds');
