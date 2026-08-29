@@ -26,6 +26,18 @@ export class ContractRevertError extends Error {
 // Web3Service
 // ---------------------------------------------------------------------------
 
+/**
+ * What one transaction registered with THIS registry, as observed from its
+ * receipt. A discriminated union so a caller cannot read "could not ask" as
+ * "anchored nothing" — the two license opposite decisions about a stored claim.
+ */
+export type RegisteredByTransaction =
+  | { kind: 'REGISTERED'; hashes: string[]; registryAddress: string }
+  /** The RPC has no receipt for this transaction. Nothing may be concluded. */
+  | { kind: 'NO_RECEIPT' }
+  /** A real transaction that emitted no registration. The fake-CONFIRMED shape. */
+  | { kind: 'ANCHORED_NOTHING' };
+
 export class Web3Service {
   /**
    * Half-width, in blocks, of the window scanned for a registering event.
@@ -201,6 +213,58 @@ export class Web3Service {
    * chain, where a genesis-to-head query throws), which would turn every
    * duplicate into a failed promotion.
    */
+  /**
+   * WHAT A TRANSACTION ACTUALLY REGISTERED — the inverse of
+   * findRegisteringTxHash, and the only direction that can CONFIRM a stored
+   * anchoring claim rather than corroborate it.
+   *
+   * `findRegisteringTxHash` answers "is this hash registered, and by what?". It
+   * cannot check a row, because a row whose transaction registered something
+   * else still passes whenever the hash it carries was registered by some OTHER
+   * transaction. This reads the receipt the row points at and reports the hash
+   * that transaction emitted, so a mismatch is DISCOVERED instead of averaging
+   * out.
+   *
+   * ONLY LOGS FROM THIS REGISTRY COUNT. `EvidenceSubmitted` is an ordinary event
+   * signature and any contract may emit one; a log from elsewhere in the same
+   * transaction is not this registry speaking. The plan permits exactly one
+   * registry, and this is where that is enforced rather than assumed.
+   *
+   * `ANCHORED_NOTHING` is the important arm and it is named for the hazard, not
+   * for the shape of the data. A transaction sent to an address holding no code
+   * SUCCEEDS as a plain transfer and returns a perfectly valid hash — see
+   * assertRegistryDeployed. A row anchored that way carries a real transaction
+   * that attests to nothing, which is the fake-CONFIRMED family. Collapsing it
+   * into "no hash found" would report the one condition worth finding as an
+   * absence of data.
+   */
+  async readRegisteredHashes(txHash: string): Promise<RegisteredByTransaction> {
+    const receipt = await this.provider.getTransactionReceipt(txHash);
+    // Distinct from a receipt that anchors nothing: a transaction the RPC cannot
+    // produce is a question we could not ask, and §3 rules that a verdict about
+    // the CHECK is never a verdict about the data.
+    if (!receipt) return { kind: 'NO_RECEIPT' };
+
+    const mine = this.contractAddress.toLowerCase();
+    const hashes: string[] = [];
+    for (const log of receipt.logs) {
+      if (log.address.toLowerCase() !== mine) continue;
+      // parseLog returns null for a log this ABI does not describe, which is the
+      // normal case for role events and anything else the registry emits.
+      const parsed = this.contract.interface.parseLog({
+        topics: [...log.topics],
+        data: log.data,
+      });
+      if (parsed?.name !== 'EvidenceSubmitted') continue;
+      // getValue by name, not index: the ABI's parameter order is the contract's
+      // to change and this must keep meaning `fileHash` if it ever does.
+      hashes.push((parsed.args.getValue('fileHash') as string).toLowerCase());
+    }
+
+    if (hashes.length === 0) return { kind: 'ANCHORED_NOTHING' };
+    return { kind: 'REGISTERED', hashes, registryAddress: mine };
+  }
+
   async findRegisteringTxHash(fileHash: string): Promise<string | null> {
     const { registered, evidenceId } = await this.isHashRegistered(fileHash);
     if (!registered) return null;

@@ -2,6 +2,10 @@ import { prisma } from '../lib/prisma';
 import { deriveText, sha256Bytes, sha256Text } from '../lib/captureDocument';
 import { CaptureProvenance } from '@prisma/client';
 import { registerSnapshotOnChain, type SnapshotAnchorOutcome } from './anchorSnapshots';
+import {
+  ANCHORABLE_CAPTURE_SELECT,
+  type AnchorableCapture,
+} from '../lib/anchoredCaptureHash';
 
 /**
  * The one way a capture is written.
@@ -132,9 +136,9 @@ function isUniqueViolation(err: unknown): boolean {
  */
 function anchorNeverRejecting(
   snapshotId: string,
-  contentHash: string,
+  capture: AnchorableCapture,
 ): Promise<SnapshotAnchorOutcome | null> {
-  return registerSnapshotOnChain(snapshotId, contentHash).catch((err: unknown) => {
+  return registerSnapshotOnChain(snapshotId, capture).catch((err: unknown) => {
     console.warn(
       '[recordCapture] anchoring rejected for',
       snapshotId,
@@ -175,7 +179,7 @@ function toSnapshotDate(capturedAt: Date): string {
  * here would prejudge it.
  */
 function finishExisting(
-  existing: {
+  existing: AnchorableCapture & {
     id: string;
     waybackTimestamp: string | null;
     contentHash: string;
@@ -217,7 +221,7 @@ function finishExisting(
 
   const anchoring = existing.onChainTxHash
     ? undefined
-    : anchorNeverRejecting(existing.id, existing.contentHash);
+    : anchorNeverRejecting(existing.id, existing);
 
   return {
     id: existing.id,
@@ -395,7 +399,7 @@ export async function recordCapture(input: RecordCaptureInput): Promise<Recorded
     };
   }
 
-  let created: { id: string; waybackTimestamp: string | null };
+  let created: { id: string; waybackTimestamp: string | null } & AnchorableCapture;
   try {
     created = await prisma.urlSnapshot.create({
       data: {
@@ -415,7 +419,11 @@ export async function recordCapture(input: RecordCaptureInput): Promise<Recorded
         textHash: derived.textHash,
         textExtractionVersion: derived.textExtractionVersion,
       },
-      select: { id: true, waybackTimestamp: true },
+      // The anchorable columns are read back from the row AS WRITTEN, not
+      // reused from the local variables that produced it. Anchoring records what
+      // was OBSERVED in the database rather than what this function believed it
+      // stored — the same rule that makes a chain-provenance stamp worth having.
+      select: { id: true, waybackTimestamp: true, ...ANCHORABLE_CAPTURE_SELECT },
     });
   } catch (err) {
     // The existence check above and this create are two statements, so a
@@ -460,7 +468,7 @@ export async function recordCapture(input: RecordCaptureInput): Promise<Recorded
   // already stored the irreplaceable half. Whether it actually worked is
   // answered by counting unanchored snapshots from state, never by trusting this
   // call. See countUnanchoredSnapshots.
-  const anchoring = anchorNeverRejecting(created.id, contentHash);
+  const anchoring = anchorNeverRejecting(created.id, created);
 
   return {
     id: created.id,

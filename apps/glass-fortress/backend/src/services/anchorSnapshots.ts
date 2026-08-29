@@ -3,6 +3,12 @@ import { prisma } from '../lib/prisma';
 import { Web3Service } from './Web3Service';
 import { recordOnChainCheckNeverThrowing } from './onChainVerification';
 import { toBytes32 } from '../lib/bytes32';
+import {
+  ANCHORABLE_CAPTURE_SELECT,
+  anchoredCaptureHash,
+  capturesAnchoredBy,
+  type AnchorableCapture,
+} from '../lib/anchoredCaptureHash';
 
 // ---------------------------------------------------------------------------
 // Anchoring archived snapshots that were never anchored.
@@ -35,7 +41,7 @@ export interface AnchorReport {
    * are listed so the operator sees which captures would cost money, and can
    * decide separately rather than inside a repair.
    */
-  needsRegistration: { snapshotId: string; contentHash: string }[];
+  needsRegistration: { snapshotId: string; anchoredHash: string }[];
   /** copyOnly with no chain configured and no twin — undetermined, not unanchored. */
   chainNotConsulted: number;
   failed: number;
@@ -107,12 +113,42 @@ export type SnapshotAnchorOutcome =
  *   2. the chain, in case an interrupted run registered without recording
  *   3. an actual registration
  */
+/**
+ * Write an anchoring claim — the transaction AND the hash it registered,
+ * together or not at all.
+ *
+ * Three outcomes leave a row asserting an anchor, and before this each wrote
+ * `onChainTxHash` on its own. That is the gap `anchoredHash` exists to close, so
+ * closing it with three more copies of the same pair would rebuild the defect
+ * one layer up. One function, three callers.
+ *
+ * The hash is OBSERVED here in the only sense available at write time: it is the
+ * value this code just asked the registry about. `forensics:confirm-anchors`
+ * checks it against the transaction's own log afterwards, which is the stronger
+ * observation and the one that can disagree.
+ */
+async function claimAnchor(
+  snapshotId: string,
+  txHash: string,
+  anchoredHash: string,
+): Promise<void> {
+  await prisma.urlSnapshot.update({
+    where: { id: snapshotId },
+    data: { onChainTxHash: txHash, anchoredHash },
+  });
+}
+
 export async function anchorOneSnapshot(
   web3: Web3Service | null,
   snapshotId: string,
-  contentHash: string,
+  capture: AnchorableCapture,
   opts: { copyOnly?: boolean } = {},
 ): Promise<SnapshotAnchorOutcome> {
+  // The CAPTURE is the parameter, never the hash. Which of a capture's hashes
+  // the chain attests to is one rule with one home (`anchoredCaptureHash`), and
+  // a caller that picks the hash itself is a caller that keeps its own answer
+  // when the rule moves at Level 3.
+  const anchoredHash = anchoredCaptureHash(capture);
   /**
    * LEVEL 3a — every outcome that WRITES A POINTER is checked against the chain
    * and the verdict stored.
@@ -132,23 +168,31 @@ export async function anchorOneSnapshot(
     await recordOnChainCheckNeverThrowing({
       subjectType: IntegrityCheckSubject.URL_SNAPSHOT,
       subjectId: snapshotId,
-      fileHash: toBytes32(contentHash),
+      fileHash: toBytes32(anchoredHash),
     });
     return outcome;
   };
 
-  // Two captures with byte-identical text share a contentHash, and the registry
-  // rejects a duplicate. A twin already anchored means the fact is on-chain and
-  // only this row's pointer is missing — no transaction needed.
+  // Two captures sharing an anchored hash are one fact to the registry, which
+  // rejects the duplicate. A twin already anchored means the fact is on-chain
+  // and only this row's pointer is missing — no transaction needed.
+  //
+  // How MANY captures share one is a property of the rule, not of this code:
+  // measured on staging 2026-08-29, 105 captures collapse onto 15 `contentHash`
+  // values and onto 104 `documentHash` values. Moving the anchor to the document
+  // therefore makes twins nearly extinct and every capture cost a transaction.
+  // That is a price, not a defect — the extraction's cheapness comes precisely
+  // from its being blind to what it discards.
   const twin = await prisma.urlSnapshot.findFirst({
-    where: { contentHash, NOT: { onChainTxHash: null }, id: { not: snapshotId } },
+    where: {
+      ...capturesAnchoredBy(anchoredHash),
+      NOT: { onChainTxHash: null },
+      id: { not: snapshotId },
+    },
     select: { onChainTxHash: true },
   });
   if (twin?.onChainTxHash) {
-    await prisma.urlSnapshot.update({
-      where: { id: snapshotId },
-      data: { onChainTxHash: twin.onChainTxHash },
-    });
+    await claimAnchor(snapshotId, twin.onChainTxHash, anchoredHash);
     return verified({ kind: 'COPIED_FROM_TWIN', txHash: twin.onChainTxHash });
   }
 
@@ -159,14 +203,11 @@ export async function anchorOneSnapshot(
 
   // Then the chain, because a previous interrupted run may have registered this
   // hash without recording the result. Re-registering would revert.
-  const { registered } = await web3.isHashRegistered(toBytes32(contentHash));
+  const { registered } = await web3.isHashRegistered(toBytes32(anchoredHash));
   if (registered) {
-    const recoveredTx = await web3.findRegisteringTxHash(toBytes32(contentHash));
+    const recoveredTx = await web3.findRegisteringTxHash(toBytes32(anchoredHash));
     if (recoveredTx) {
-      await prisma.urlSnapshot.update({
-        where: { id: snapshotId },
-        data: { onChainTxHash: recoveredTx },
-      });
+      await claimAnchor(snapshotId, recoveredTx, anchoredHash);
       return verified({ kind: 'RECOVERED', txHash: recoveredTx });
     }
     // Registered but the transaction could not be located. Recording a null
@@ -183,11 +224,11 @@ export async function anchorOneSnapshot(
   if (opts.copyOnly) return { kind: 'NEEDS_REGISTRATION' };
 
   const txHash = await web3.registerEvidenceHash(
-    toBytes32(contentHash),
+    toBytes32(anchoredHash),
     '0x0000000000000000000000000000000000000000',
     'Wayback Snapshot',
   );
-  await prisma.urlSnapshot.update({ where: { id: snapshotId }, data: { onChainTxHash: txHash } });
+  await claimAnchor(snapshotId, txHash, anchoredHash);
   return verified({ kind: 'REGISTERED', txHash });
 }
 
@@ -211,7 +252,10 @@ export async function anchorSnapshots(opts: {
       onChainTxHash: null,
       ...(opts.url ? { trackedUrl: { url: opts.url } } : {}),
     },
-    select: { id: true, contentHash: true, snapshotDate: true },
+    // `snapshotDate` was selected here and never read. Ordering is by
+    // `capturedAt` (below) and the loop uses only the id and the anchorable
+    // columns.
+    select: { id: true, ...ANCHORABLE_CAPTURE_SELECT },
     // capturedAt, not snapshotDate. snapshotDate is day-granular, so captures
     // sharing a day sort equal and Postgres may return them in any order —
     // which makes `take: limit` select a different subset between runs.
@@ -255,7 +299,7 @@ export async function anchorSnapshots(opts: {
 
   for (const snap of snapshots) {
     try {
-      const outcome = await anchorOneSnapshot(web3, snap.id, snap.contentHash, {
+      const outcome = await anchorOneSnapshot(web3, snap.id, snap, {
         ...(opts.copyOnly ? { copyOnly: true } : {}),
       });
       switch (outcome.kind) {
@@ -282,7 +326,7 @@ export async function anchorSnapshots(opts: {
           // Not a failure. The run promised not to spend and did not spend.
           report.needsRegistration.push({
             snapshotId: snap.id,
-            contentHash: snap.contentHash,
+            anchoredHash: anchoredCaptureHash(snap),
           });
           break;
         case 'CHAIN_NOT_CONSULTED':
@@ -332,7 +376,7 @@ function anchorWeb3Service(): Web3Service | null {
 
 export async function registerSnapshotOnChain(
   snapshotId: string,
-  contentHash: string,
+  capture: AnchorableCapture,
 ): Promise<SnapshotAnchorOutcome | null> {
   const web3 = anchorWeb3Service();
   if (!web3) return { kind: 'CHAIN_NOT_CONSULTED' };
@@ -345,7 +389,7 @@ export async function registerSnapshotOnChain(
     // the fact was on-chain the whole time. Production still holds 71 rows in
     // that state. anchorOneSnapshot checks for the twin first and copies its
     // transaction, so no transaction is spent and no pointer is lost.
-    return await anchorOneSnapshot(web3, snapshotId, contentHash);
+    return await anchorOneSnapshot(web3, snapshotId, capture);
   } catch (err) {
     console.warn(
       '[anchorSnapshots] On-chain snapshot registration failed for',

@@ -77,6 +77,19 @@ async function main(): Promise<void> {
     for (const d of report.danglingChecks) console.error(`  ${d.subjectType} ${d.subjectId}`);
   }
 
+  // NOT an exit condition, and deliberately so: every subject is in this state
+  // today and the audit is correct about all of them. It is the gate on MOVING
+  // the anchor, printed where whoever is about to move it will read it.
+  if (report.anchorsUnconfirmed > 0) {
+    console.log(
+      `\n${String(report.anchorsUnconfirmed)} of ${String(report.subjects)} anchoring claims are ` +
+        'judged against what the current rule EXPECTS their transaction registered, not against ' +
+        'what it did.\n' +
+        '  Sound only while the anchoring rule has not moved. Run forensics:confirm-anchors ' +
+        'before Level 3 moves it.',
+    );
+  }
+
   if (s.UNCHECKED > 0 || s.STALE > 0 || s.UNAVAILABLE > 0 || s.CONTRADICTED > 0) process.exit(4);
 }
 

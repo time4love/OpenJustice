@@ -16,6 +16,10 @@ jest.mock('../src/services/anchorSnapshots', () => ({
 
 import { prisma } from '../src/lib/prisma';
 import { registerSnapshotOnChain } from '../src/services/anchorSnapshots';
+import {
+  anchoredCaptureHash,
+  type AnchorableCapture,
+} from '../src/lib/anchoredCaptureHash';
 import { recordCapture, waybackTimestampToDate } from '../src/services/recordCapture';
 import { deriveText, TEXT_EXTRACTION_VERSION } from '../src/lib/captureDocument';
 import { CaptureProvenance } from '@prisma/client';
@@ -24,6 +28,12 @@ const findUnique = prisma.urlSnapshot.findUnique as jest.Mock;
 const findFirst = prisma.urlSnapshot.findFirst as jest.Mock;
 const create = prisma.urlSnapshot.create as jest.Mock;
 const anchor = registerSnapshotOnChain as jest.Mock;
+
+/** What the nth anchoring call was about: the snapshot id, and the hash the rule derives. */
+function anchoredOf(nth: number): [string, string] {
+  const [snapshotId, capture] = anchor.mock.calls[nth] as [string, AnchorableCapture];
+  return [snapshotId, anchoredCaptureHash(capture)];
+}
 
 const TRACKED = 'tracked-url-1';
 const PAGE = 'https://corona.health.gov.il/vaccine-for-covid/';
@@ -55,8 +65,17 @@ beforeEach(() => {
   jest.clearAllMocks();
   findUnique.mockResolvedValue(null);
   findFirst.mockResolvedValue(null);
+  // Returns the ANCHORABLE COLUMNS too, because the real `create` is asked for
+  // them by its `select` and the write path anchors the row as written rather
+  // than the local variables that produced it. A mock that answered less would
+  // let `anchoredCaptureHash` read undefined and every assertion below still pass.
   create.mockImplementation(({ data }: { data: Record<string, unknown> }) =>
-    Promise.resolve({ id: 'new-capture-id', waybackTimestamp: data['waybackTimestamp'] }),
+    Promise.resolve({
+      id: 'new-capture-id',
+      waybackTimestamp: data['waybackTimestamp'],
+      contentHash: data['contentHash'],
+      documentHash: data['documentHash'],
+    }),
   );
 });
 
@@ -302,7 +321,7 @@ describe('recordCapture re-examines a capture it already holds', () => {
   it('retries the anchor for a stored capture that was never anchored', async () => {
     findUnique.mockResolvedValue({ ...stored, documentHash: sha256b(DOC), onChainTxHash: null });
     await recordCapture(archived());
-    expect(anchor).toHaveBeenCalledWith('already-here', sha256('stored extraction'));
+    expect(anchoredOf(0)).toEqual(['already-here', sha256('stored extraction')]);
   });
 
   it('anchors on the MISSING transaction, not on having created the row', async () => {
@@ -317,9 +336,12 @@ describe('recordCapture re-examines a capture it already holds', () => {
 // ---------------------------------------------------------------------------
 
 describe('recordCapture anchors what it creates', () => {
-  it('anchors a newly created capture on its contentHash', async () => {
+  it('anchors the row it just wrote, on whichever hash the rule names', async () => {
+    // The write path hands over the CAPTURE and `anchoredCaptureHash` picks the
+    // hash. Asserting through the same symbol is deliberate: this test pins that
+    // anchoring happens for the created row, not which column Level 3 settles on.
     await recordCapture(archived());
-    expect(anchor).toHaveBeenCalledWith('new-capture-id', sha256('the article'));
+    expect(anchoredOf(0)).toEqual(['new-capture-id', sha256('the article')]);
   });
 
   it('records the capture even when anchoring rejects, and the promise still does not reject', async () => {
@@ -365,7 +387,7 @@ describe('recordCapture survives losing a race', () => {
 
     expect(result.outcome).toBe('EXISTS');
     expect(result.id).toBe('winner-row');
-    expect(anchor).toHaveBeenCalledWith('winner-row', sha256('the article'));
+    expect(anchoredOf(0)).toEqual(['winner-row', sha256('the article')]);
   });
 
   it('rethrows a create failure that is not a unique violation', async () => {
