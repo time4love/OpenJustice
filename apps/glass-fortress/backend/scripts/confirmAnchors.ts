@@ -62,6 +62,17 @@ async function main(): Promise<number> {
       case 'CONFIRMED':
         console.log(`  ok        ${where}  ${c.anchoredHash.slice(0, 14)}…`);
         break;
+      case 'CONFIRMED_BY_LOG':
+        console.log(`  ok (log)  ${where}  ${c.anchoredHash.slice(0, 14)}…`);
+        break;
+      case 'REGISTERED_BY_ANOTHER_TX':
+        console.error(
+          `  REGISTERED BY ANOTHER TX ${where}\n` +
+            `      row points at  ${row.txHash}\n` +
+            `      registry names ${c.txHashFromLog}  for hash ${c.expected}\n` +
+            '      The contract reverts duplicate registration, so this should be impossible.',
+        );
+        break;
       case 'MISANCHORED':
         console.error(
           `  MISANCHORED ${where}\n` +
@@ -80,7 +91,8 @@ async function main(): Promise<number> {
         console.error(
           `  no receipt ${where}  tx ${row.txHash}\n` +
             '      The registry DOES hold this row\u2019s hash, so the fact is anchored on this ' +
-            'chain — but which transaction anchored it cannot be read, so it is not recorded.',
+            'chain — but neither the receipt nor the registry log could name the transaction ' +
+            'that did it. Recorded as TX_UNREADABLE: terminal, honest, and not a confirmation.',
         );
         break;
       case 'NO_RECEIPT_HASH_ABSENT':
@@ -106,9 +118,11 @@ async function main(): Promise<number> {
 
   console.log('\n---');
   console.log(`examined:          ${report.examined}`);
-  console.log(`confirmed:         ${report.confirmed}${dryRun ? ' (dry run — none written)' : ''}`);
+  console.log(`confirmed (receipt): ${report.confirmed}${dryRun ? ' (dry run — none written)' : ''}`);
+  console.log(`confirmed (log):     ${report.confirmedByLog}`);
   console.log(`already confirmed: ${report.alreadyConfirmed}`);
   console.log(`MISANCHORED:       ${report.misanchored}`);
+  console.log(`REGISTERED BY ANOTHER TX: ${report.registeredByAnotherTx}`);
   console.log(`ANCHORED NOTHING:  ${report.anchoredNothing}`);
   console.log(`NO TRACE ON CHAIN: ${report.noReceiptHashAbsent}`);
   console.log(`no receipt, hash registered: ${report.noReceiptHashRegistered}`);

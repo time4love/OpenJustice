@@ -1,3 +1,4 @@
+import { AnchorCheckOutcome } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { Web3Service, type RegisteredByTransaction } from './Web3Service';
 import { toBytes32 } from '../lib/bytes32';
@@ -62,7 +63,7 @@ export type AnchorConfirmation =
    * limit of the RPC we are reading through; the other is a claim about a chain
    * that has no record of it.
    */
-  | { kind: 'NO_RECEIPT_HASH_REGISTERED'; expected: string }
+  | { kind: 'NO_RECEIPT_HASH_REGISTERED'; expected: string; txHashFromLog: string | null }
   /**
    * No receipt AND the registry does not hold the expected hash. The row asserts
    * an anchor that this chain has no trace of, by either route.
@@ -72,6 +73,21 @@ export type AnchorConfirmation =
    * read, or an anchor that never existed.
    */
   | { kind: 'NO_RECEIPT_HASH_ABSENT'; expected: string }
+  /**
+   * The receipt was unreadable, but the registry's own log names THIS
+   * transaction as the one that registered the row's hash. The same fact the
+   * receipt would have given, reached from the other direction.
+   */
+  | { kind: 'CONFIRMED_BY_LOG'; anchoredHash: string }
+  /**
+   * The registry names a DIFFERENT transaction for this row's hash.
+   *
+   * Should be unreachable: the contract reverts a duplicate registration, so one
+   * hash has one registering transaction. Given its own arm rather than folded
+   * into MISANCHORED because a state that cannot happen, happening, is worth a
+   * human reading both transaction hashes rather than a counter incrementing.
+   */
+  | { kind: 'REGISTERED_BY_ANOTHER_TX'; expected: string; txHashFromLog: string }
   /**
    * The receipt could not be read and neither could the registry be asked. A
    * verdict about the CHECK, never about the data (§3) — an RPC that answers
@@ -96,8 +112,13 @@ export interface AnchorConfirmationRow {
 export interface ConfirmAnchorsReport {
   dryRun: boolean;
   examined: number;
+  /** Confirmed from the transaction's own receipt. */
   confirmed: number;
+  /** Confirmed from the registry's log, where the receipt was unreadable. */
+  confirmedByLog: number;
   misanchored: number;
+  /** The registry names a different transaction for this hash. Should be impossible. */
+  registeredByAnotherTx: number;
   anchoredNothing: number;
   /** No receipt, but the registry holds the hash — the fact is here, the tx is not. */
   noReceiptHashRegistered: number;
@@ -150,6 +171,18 @@ function requireAnchorTx(txHash: string | null, id: string): string {
   return txHash;
 }
 
+/**
+ * Transaction hashes compared case-insensitively.
+ *
+ * Separate from `sameHash` on purpose: that one normalises the 0x prefix because
+ * the two hash columns genuinely disagree about it. Transaction hashes always
+ * carry it, so folding them into the same helper would hide a real difference
+ * between the two kinds of value behind one name.
+ */
+function sameTx(a: string, b: string): boolean {
+  return a.toLowerCase() === b.toLowerCase();
+}
+
 async function anchorClaimants(): Promise<AnchorClaimant[]> {
   const [snapshots, evidence] = await Promise.all([
     prisma.urlSnapshot.findMany({
@@ -192,19 +225,46 @@ async function anchorClaimants(): Promise<AnchorClaimant[]> {
  */
 function decide(
   observed: RegisteredByTransaction,
-  expected: string,
+  /** What the row claims: the hash it carries and the transaction it points at. */
+  claim: { expected: string; txHash: string },
   /**
-   * Whether the registry holds `expected`, asked ONLY when the receipt could not
-   * be read — one extra round trip, on exactly the rows that need it. `null`
-   * means the registry could not be asked either, which is a third thing again.
+   * The answers to the two fallback questions, asked ONLY when the receipt could
+   * not be read — on exactly the rows that need them, never on all of them.
+   *
+   * `hashRegistered: null` means the registry could not be asked either, which is
+   * a third thing again and must not read as "this chain does not hold it".
    */
-  hashRegistered: boolean | null,
+  fallback: { hashRegistered: boolean | null; txHashFromLog: string | null },
 ): AnchorConfirmation {
+  const { expected, txHash } = claim;
+  const { hashRegistered, txHashFromLog } = fallback;
   if (observed.kind === 'NO_RECEIPT') {
     if (hashRegistered === null) return { kind: 'UNREACHABLE' };
-    return hashRegistered
-      ? { kind: 'NO_RECEIPT_HASH_REGISTERED', expected }
-      : { kind: 'NO_RECEIPT_HASH_ABSENT', expected };
+    if (!hashRegistered) return { kind: 'NO_RECEIPT_HASH_ABSENT', expected };
+
+    // THE SECOND ROUTE. `txHashFromLog` is the registry's own EvidenceSubmitted
+    // log answering "which transaction registered this hash?" — and comparing it
+    // to the transaction THIS ROW claims turns a statement about the hash into a
+    // statement about the transaction, which is the only kind that can confirm a
+    // row. Dismissed in an earlier draft as "the weaker form"; standalone it is,
+    // and against the row it is not.
+    //
+    // It reaches where receipts do not because the constraints differ: receipts
+    // are pruned by AGE, `eth_getLogs` is capped by RANGE — and the range is
+    // found from the registry's own stored timestamp, which is contract state and
+    // never expires.
+    if (txHashFromLog !== null && sameTx(txHashFromLog, txHash)) {
+      return { kind: 'CONFIRMED_BY_LOG', anchoredHash: expected };
+    }
+    if (txHashFromLog !== null) {
+      // The registry names a DIFFERENT transaction for this hash. Reported with
+      // both transactions rather than collapsed into MISANCHORED: the contract
+      // reverts a duplicate registration, so this should be impossible, and a
+      // verdict that cannot happen deserves to be read by a human rather than
+      // counted. Asserted rather than assumed.
+      return { kind: 'REGISTERED_BY_ANOTHER_TX', expected, txHashFromLog };
+    }
+    return { kind: 'NO_RECEIPT_HASH_REGISTERED', expected, txHashFromLog: null };
   }
   if (observed.kind === 'ANCHORED_NOTHING') return { kind: 'ANCHORED_NOTHING' };
 
@@ -226,10 +286,48 @@ function writableHash(confirmation: AnchorConfirmation): string | null {
   // transaction registered, and a divergence is exactly the fact worth having on
   // the row — suppressing it would leave the anchor looking unexamined rather
   // than examined and wrong.
-  if (confirmation.kind === 'CONFIRMED' || confirmation.kind === 'MISANCHORED') {
+  if (
+    confirmation.kind === 'CONFIRMED' ||
+    confirmation.kind === 'CONFIRMED_BY_LOG' ||
+    confirmation.kind === 'MISANCHORED'
+  ) {
     return confirmation.anchoredHash;
   }
   return null;
+}
+
+/**
+ * THE TERMINAL VERDICT a confirmation licenses recording, or null where it
+ * licenses none.
+ *
+ * `null` is returned for exactly one arm — UNREACHABLE — and that is the
+ * property the column depends on. A transient RPC failure must leave the row
+ * untouched, so that `anchorCheck IS NULL` keeps one meaning: no terminal
+ * verdict yet. Every other arm is an answer, including the ones that say the
+ * chain cannot tell us more.
+ */
+function terminalVerdict(confirmation: AnchorConfirmation): AnchorCheckOutcome | null {
+  switch (confirmation.kind) {
+    case 'CONFIRMED':
+      return AnchorCheckOutcome.CONFIRMED_BY_RECEIPT;
+    case 'CONFIRMED_BY_LOG':
+      return AnchorCheckOutcome.CONFIRMED_BY_LOG;
+    case 'MISANCHORED':
+    case 'REGISTERED_BY_ANOTHER_TX':
+      return AnchorCheckOutcome.MISANCHORED;
+    case 'ANCHORED_NOTHING':
+      return AnchorCheckOutcome.ANCHORED_NOTHING;
+    case 'NO_RECEIPT_HASH_REGISTERED':
+      return AnchorCheckOutcome.TX_UNREADABLE;
+    case 'NO_RECEIPT_HASH_ABSENT':
+      return AnchorCheckOutcome.NO_TRACE_ON_CHAIN;
+    case 'AMBIGUOUS':
+      // The transaction registered several hashes and none is this row's. The
+      // chain answered; we cannot attribute the answer. Terminal, and not a pass.
+      return AnchorCheckOutcome.TX_UNREADABLE;
+    case 'UNREACHABLE':
+      return null;
+  }
 }
 
 /**
@@ -248,7 +346,19 @@ function writableHash(confirmation: AnchorConfirmation): string | null {
  */
 export function confirmAnchorsExitCode(report: ConfirmAnchorsReport): number {
   if (report.failed > 0) return 1;
-  if (report.misanchored + report.anchoredNothing + report.noReceiptHashAbsent > 0) return 2;
+  if (
+    report.misanchored +
+      report.anchoredNothing +
+      report.noReceiptHashAbsent +
+      report.registeredByAnotherTx >
+    0
+  ) {
+    return 2;
+  }
+  // TX_UNREADABLE is TERMINAL but it is not a confirmation, so it stays here
+  // rather than folding into the pass. A corpus whose anchors are real and
+  // unattributable is a different thing from one whose anchors were checked and
+  // held, and only the second may gate moving the anchor.
   if (report.noReceiptHashRegistered + report.unreachable + report.ambiguous > 0) return 3;
   return 0;
 }
@@ -269,7 +379,9 @@ export async function confirmAnchors(opts: {
     dryRun: opts.dryRun,
     examined: claimants.length,
     confirmed: 0,
+    confirmedByLog: 0,
     misanchored: 0,
+    registeredByAnotherTx: 0,
     anchoredNothing: 0,
     noReceiptHashRegistered: 0,
     noReceiptHashAbsent: 0,
@@ -296,6 +408,7 @@ export async function confirmAnchors(opts: {
       // the fact at all is what decides that, and it is a different question
       // from the one the receipt answers.
       let hashRegistered: boolean | null = null;
+      let txHashFromLog: string | null = null;
       if (observed.kind === 'NO_RECEIPT') {
         try {
           hashRegistered = (await web3.isHashRegistered(toBytes32(claimant.expected))).registered;
@@ -305,22 +418,42 @@ export async function confirmAnchors(opts: {
           // failure and a negative answer license opposite conclusions.
           hashRegistered = null;
         }
+        if (hashRegistered === true) {
+          try {
+            // Costly — a block-range binary search per subject — so it runs only
+            // where the cheap route already failed AND the fact is known to be on
+            // chain. Never on a row whose receipt was readable.
+            txHashFromLog = await web3.findRegisteringTxHash(toBytes32(claimant.expected));
+          } catch {
+            // Leaves the row at NO_RECEIPT_HASH_REGISTERED: unresolved rather
+            // than wrong, which is exactly what a failed lookup licenses.
+            txHashFromLog = null;
+          }
+        }
       }
-      const confirmation = decide(observed, claimant.expected, hashRegistered);
+      const confirmation = decide(
+        observed,
+        { expected: claimant.expected, txHash: claimant.txHash },
+        { hashRegistered, txHashFromLog },
+      );
 
+      // The hash and the verdict are written TOGETHER, or neither is. A verdict
+      // naming a hash that the row does not carry, or a hash with no verdict
+      // behind it, would put the two columns back into the state this change
+      // exists to leave: a claim whose provenance has to be inferred.
+      //
+      // A row can carry a verdict and NO hash — TX_UNREADABLE and
+      // ANCHORED_NOTHING are exactly that, and they are honest terminal answers.
+      // What it can never carry is a hash with no verdict.
       const hash = writableHash(confirmation);
+      const verdict = terminalVerdict(confirmation);
       let written = false;
-      if (hash !== null && !opts.dryRun) {
+      if (verdict !== null && !opts.dryRun) {
+        const data = { anchoredHash: hash, anchorCheck: verdict };
         if (claimant.subject === 'URL_SNAPSHOT') {
-          await prisma.urlSnapshot.update({
-            where: { id: claimant.id },
-            data: { anchoredHash: hash },
-          });
+          await prisma.urlSnapshot.update({ where: { id: claimant.id }, data });
         } else {
-          await prisma.evidence.update({
-            where: { id: claimant.id },
-            data: { anchoredHash: hash },
-          });
+          await prisma.evidence.update({ where: { id: claimant.id }, data });
         }
         written = true;
       }
@@ -328,6 +461,12 @@ export async function confirmAnchors(opts: {
       switch (confirmation.kind) {
         case 'CONFIRMED':
           report.confirmed++;
+          break;
+        case 'CONFIRMED_BY_LOG':
+          report.confirmedByLog++;
+          break;
+        case 'REGISTERED_BY_ANOTHER_TX':
+          report.registeredByAnotherTx++;
           break;
         case 'MISANCHORED':
           report.misanchored++;
