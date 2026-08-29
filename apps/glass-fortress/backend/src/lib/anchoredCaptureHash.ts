@@ -127,3 +127,66 @@ export function hashUnderAudit(
     ? { hash: expected, confirmed: false }
     : { hash: row.anchoredHash, confirmed: true };
 }
+
+/** Every hash a capture is known by, whichever one the anchoring rule currently names. */
+export interface CaptureHashes extends AnchorableCapture {
+  documentHash: string;
+}
+
+/** The columns needed to say whether an anchor attests to something this capture IS. */
+export const CAPTURE_HASHES_SELECT = {
+  contentHash: true,
+  documentHash: true,
+} satisfies Prisma.UrlSnapshotSelect;
+
+/** Every hash this capture is known by. Order carries no meaning. */
+export function capturesKnownHashes(capture: CaptureHashes): string[] {
+  return [capture.contentHash, capture.documentHash];
+}
+
+/** What a recorded anchor turns out to attest to. */
+export type AnchorAttestation =
+  /** Attests the hash the CURRENT rule names. The only one that may read VERIFIED. */
+  | 'ATTESTS_CURRENT'
+  /**
+   * Attests a hash this subject really has, but not the one the current rule
+   * names — an anchor made under a superseded rule.
+   *
+   * EXPLAINABLE IS NOT PASSING, and keeping those apart is the whole point of
+   * this classification. After Level 3 moves the anchor to the document, all 105
+   * legacy captures land here: they attest the Readability extraction. If that
+   * read VERIFIED, the audit would go green on a corpus where clause 1 is false
+   * for every single row, and the flip would "close" Level 3 with nothing changed
+   * on chain — which is precisely what the plan warns against: "it would stay
+   * green if the answer were a hash of the page title."
+   *
+   * Superseding these is Level 10's business. Until then they are visible and
+   * non-passing.
+   */
+  | 'ATTESTS_SUPERSEDED'
+  /** Attests a hash this subject does not have by any rule. Misanchored. */
+  | 'UNRECOGNISED'
+  /** No recorded anchor to classify. Not a verdict about the anchor at all. */
+  | 'UNCONFIRMED';
+
+/**
+ * THREE WAYS AN ANCHOR CAN RELATE TO ITS SUBJECT, not two.
+ *
+ * A two-way split — matches one of the subject's hashes, or matches none —
+ * collapses "attests a superseded rule" into "attests correctly", which is the
+ * failure above. The middle case is the one that matters, because after the flip
+ * it is the case every legacy row is in.
+ */
+export function attestationOf(input: {
+  anchoredHash: string | null;
+  /** The hash the current rule says this subject should be anchored by. */
+  current: string;
+  /** Every hash the subject is known by, the current one included. */
+  known: readonly string[];
+}): AnchorAttestation {
+  if (input.anchoredHash === null) return 'UNCONFIRMED';
+  const bare = (h: string): string => h.replace(/^0x/, '').toLowerCase();
+  const anchored = bare(input.anchoredHash);
+  if (anchored === bare(input.current)) return 'ATTESTS_CURRENT';
+  return input.known.some((h) => bare(h) === anchored) ? 'ATTESTS_SUPERSEDED' : 'UNRECOGNISED';
+}

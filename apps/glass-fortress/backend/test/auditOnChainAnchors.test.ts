@@ -75,7 +75,12 @@ beforeEach(() => {
   // forensics:confirm-anchors has observed its transaction. Stating it rather
   // than omitting it: a fixture that leaves the column out is a fixture asserting
   // a shape the database cannot produce.
-  evidenceMany.mockResolvedValue([{ id: 'ev-1', fileHash: HASH, anchoredHash: null }]);
+  // `previousFileHash` stated too: a fixture that omits a selected column is a
+  // fixture asserting a shape the database cannot produce, and this one would
+  // throw the moment a test gave the row a recorded anchor.
+  evidenceMany.mockResolvedValue([
+    { id: 'ev-1', fileHash: HASH, previousFileHash: null, anchoredHash: null },
+  ]);
   snapshotMany.mockResolvedValue([]);
   // What `readOnChainClaim` sees when the audit recomputes the source state.
   evidenceUnique.mockResolvedValue({ status: 'CONFIRMED', onChainTxHash: TX });
@@ -334,5 +339,75 @@ describe('the newest check wins', () => {
     expect(report.byState.CONTRADICTED).toBe(1);
     expect(report.byState.VERIFIED).toBe(0);
     expect(report.unverified[0].onChainVerdict).toBe('UNANCHORED_CONFIRMED');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// WHAT WAS ANCHORED — the question every state above is silent about.
+//
+// The plan's own warning: "Do not read a clean anchor audit as Level 3 being
+// done. It is silent on WHAT was anchored, and would stay green if the answer
+// were a hash of the page title." These are the cases that make it not silent.
+// ---------------------------------------------------------------------------
+describe('a current, correct verdict about the WRONG hash is not a pass', () => {
+  const SUPERSEDED = `0x${'b'.repeat(64)}`;
+  const STRANGER = `0x${'c'.repeat(64)}`;
+
+  it('EXPLAINABLE IS NOT PASSING: an anchor on a superseded identity', () => {
+    // The exact shape every legacy capture takes the moment Level 3 flips the
+    // anchor to the document. If this read VERIFIED the audit would go green on a
+    // corpus where clause 1 is false for every row.
+    return (async () => {
+      evidenceMany.mockResolvedValue([
+        { id: 'ev-1', fileHash: HASH, previousFileHash: SUPERSEDED, anchoredHash: SUPERSEDED },
+      ]);
+      checkMany.mockResolvedValue([check()]);
+
+      const report = await auditOnChainAnchors(MAINNET);
+
+      expect(report.byState.MISATTESTING).toBe(1);
+      expect(report.byState.VERIFIED).toBe(0);
+      expect(report.unverified[0]?.staleReason).toContain('superseded rule');
+    })();
+  });
+
+  it('a hash the record does not have by any rule is misanchored, and says so differently', () => {
+    return (async () => {
+      evidenceMany.mockResolvedValue([
+        { id: 'ev-1', fileHash: HASH, previousFileHash: null, anchoredHash: STRANGER },
+      ]);
+      checkMany.mockResolvedValue([check()]);
+
+      const report = await auditOnChainAnchors(MAINNET);
+
+      expect(report.byState.MISATTESTING).toBe(1);
+      // Same state, different remedy — one is Level 10's to supersede, the other
+      // is a custody incident. Collapsing the reasons would name the wrong fix.
+      expect(report.unverified[0]?.staleReason).toContain('does not have by any rule');
+    })();
+  });
+
+  it('an anchor on the CURRENT hash still passes — the guard is not vacuous', async () => {
+    evidenceMany.mockResolvedValue([
+      { id: 'ev-1', fileHash: HASH, previousFileHash: SUPERSEDED, anchoredHash: HASH },
+    ]);
+    checkMany.mockResolvedValue([check()]);
+
+    const report = await auditOnChainAnchors(MAINNET);
+
+    expect(report.byState.VERIFIED).toBe(1);
+    expect(report.byState.MISATTESTING).toBe(0);
+  });
+
+  it('an UNCONFIRMED row is untouched by this — it is every row until the pass runs', async () => {
+    // If UNCONFIRMED read as MISATTESTING the audit would go red immediately on
+    // both environments, about rows that are behaving correctly.
+    checkMany.mockResolvedValue([check()]);
+
+    const report = await auditOnChainAnchors(MAINNET);
+
+    expect(report.byState.MISATTESTING).toBe(0);
+    expect(report.byState.VERIFIED).toBe(1);
+    expect(report.anchorsUnconfirmed).toBe(1);
   });
 });

@@ -3,7 +3,9 @@ import { join } from 'path';
 import {
   ANCHORABLE_CAPTURE_SELECT,
   anchoredCaptureHash,
+  attestationOf,
   capturesAnchoredBy,
+  capturesKnownHashes,
 } from '../src/lib/anchoredCaptureHash';
 import { stripComments } from './detectionVersionPinned.test';
 
@@ -95,5 +97,74 @@ describe('the rule itself', () => {
     // Pins the select to the interface. A select that grew a column the type
     // does not carry would be a select nobody is required to keep in step.
     expect(Object.keys(ANCHORABLE_CAPTURE_SELECT).sort()).toEqual(['contentHash']);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// THREE WAYS AN ANCHOR CAN RELATE TO ITS SUBJECT, not two.
+//
+// The middle case is the whole reason this exists. After Level 3 moves the
+// anchor to the document, all 105 legacy captures attest the Readability
+// extraction — a hash they really have, under a rule no longer in force. A
+// two-way split (matches one of mine / matches none) puts them in the first
+// bucket, the audit goes green, and the flip "closes" Level 3 with nothing
+// changed on chain. That is the plan's own warning coming true through the fix
+// for it: "it would stay green if the answer were a hash of the page title."
+// ---------------------------------------------------------------------------
+describe('what an anchor attests to', () => {
+  const CURRENT = 'a'.repeat(64);
+  const SUPERSEDED = 'b'.repeat(64);
+  const STRANGER = 'c'.repeat(64);
+  const known = [CURRENT, SUPERSEDED];
+
+  it('the current rule’s hash is the only one that may pass', () => {
+    expect(attestationOf({ anchoredHash: CURRENT, current: CURRENT, known })).toBe(
+      'ATTESTS_CURRENT',
+    );
+  });
+
+  it('EXPLAINABLE IS NOT PASSING: a superseded hash is its own answer', () => {
+    // The case a two-way split loses. This must never be ATTESTS_CURRENT.
+    const verdict = attestationOf({ anchoredHash: SUPERSEDED, current: CURRENT, known });
+    expect(verdict).toBe('ATTESTS_SUPERSEDED');
+    expect(verdict).not.toBe('ATTESTS_CURRENT');
+  });
+
+  it('a hash the subject does not have by any rule is misanchored', () => {
+    expect(attestationOf({ anchoredHash: STRANGER, current: CURRENT, known })).toBe('UNRECOGNISED');
+  });
+
+  it('no recorded anchor is not a verdict about the anchor', () => {
+    // Every row is in this state until forensics:confirm-anchors has run. It must
+    // not read as a finding, or the audit goes red on a corpus that is fine.
+    expect(attestationOf({ anchoredHash: null, current: CURRENT, known })).toBe('UNCONFIRMED');
+  });
+
+  it('compares across the 0x boundary and casing, as every hash comparison must', () => {
+    expect(
+      attestationOf({ anchoredHash: `0x${CURRENT.toUpperCase()}`, current: CURRENT, known }),
+    ).toBe('ATTESTS_CURRENT');
+  });
+
+  it('SURVIVES THE FLIP: the same row reclassifies when the rule moves', () => {
+    // Simulates Level 3 clause 1 landing. A capture anchored on its extraction
+    // passes today and must stop passing the moment the document becomes the
+    // rule — without any row changing.
+    const capture = { contentHash: CURRENT, documentHash: SUPERSEDED };
+    const anchoredHash = capture.contentHash;
+
+    const beforeFlip = attestationOf({
+      anchoredHash,
+      current: capture.contentHash,
+      known: capturesKnownHashes(capture),
+    });
+    const afterFlip = attestationOf({
+      anchoredHash,
+      current: capture.documentHash,
+      known: capturesKnownHashes(capture),
+    });
+
+    expect(beforeFlip).toBe('ATTESTS_CURRENT');
+    expect(afterFlip).toBe('ATTESTS_SUPERSEDED');
   });
 });

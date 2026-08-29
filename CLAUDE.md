@@ -459,6 +459,40 @@ months until a 2026-08-20 fix added it as an `Unsupported()` model). Prevent a r
   (`prisma migrate diff --from-schema-datamodel <old> --to-schema-datamodel <new> --script`) needs no
   database connection and is the safe way to produce one.
 
+## Fix what future state needs. Do not invest in repairing legacy state.
+
+**The test is: does this problem recur for state created from now on?** If yes, it is the work. If it
+exists only because of rows already written, it is archaeology — record it honestly and move on.
+
+Established 2026-08-30, after four consecutive runs and four landed commits spent trying to attribute
+91 legacy anchoring transactions. Every one of those fixes was individually sound and none of them
+touched a defect that could happen again:
+
+| the problem | recurs for new state? |
+|---|---|
+| a transaction's receipt is beyond the RPC's retention horizon | **no** — a new capture's receipt is read seconds after the write, not eight days later |
+| `onChainTxHash` says a row is anchored but not *what* was anchored | **no** — `anchoredHash` is written at write time |
+| the audit asked "is this hash registered?" rather than "did THIS transaction register it?" | **no** — same fix |
+| the log-lookup fallback | **it has no future caller at all** — it exists only to serve those 91 |
+
+That last row is the tell. **An instrument built only to explain legacy rows is an instrument nothing
+will call once they are superseded** — and validating it costs as much as building it did.
+
+Nothing in `docs/gf-factual-layer-rebuild-dev-plan.md` asked for that work either. §1 says *"Keep the
+existing corpus untouched as a comparison"* — and **comparison does not require attribution.** Keeping
+the rows is the whole requirement; proving which transaction anchored each one serves no purpose the
+plan names. Re-anchoring the legacy corpus is Level 10's, explicitly.
+
+**The one carve-out, and it is narrow: legacy state that makes a FALSE CLAIM is not archaeology.** An
+anchor attesting nothing, a `CONFIRMED` record with no registration, a published thesis containing a
+claim the corpus contradicts — those are wrong *now*, in public, and correctness of a live claim is
+future work by definition. The line is between a legacy row that is **unexplained** (record it,
+supersede it later) and one that is **untrue** (fix it, or mark it so nobody relies on it).
+
+That is why `TX_UNREADABLE` is the right ending for those 91: the anchors are real, the registry holds
+every hash, and only the attribution is lost. Recording that as a terminal verdict is honest and costs
+nothing. Chasing the attribution was the mistake.
+
 ## The two debt ratchets can contradict each other. `.at()` is the answer.
 
 `no-unnecessary-condition` and the `noUncheckedIndexedAccess` ratchet disagree about reading an array

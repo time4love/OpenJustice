@@ -90,6 +90,17 @@ async function main(): Promise<void> {
     );
   }
 
+  // MISATTESTING is its own exit, not folded into the four above. Those all say
+  // the CHECK is not good; this says the check is fine and the wrong thing was
+  // anchored — a different repair, and the one Level 3 clause 1 is about.
+  if (s.MISATTESTING > 0) {
+    console.error(
+      `\n${String(s.MISATTESTING)} subject(s) carry a current, correct verdict about a hash the ` +
+        'current anchoring rule does not name. Explainable is not passing.',
+    );
+    process.exit(5);
+  }
+
   if (s.UNCHECKED > 0 || s.STALE > 0 || s.UNAVAILABLE > 0 || s.CONTRADICTED > 0) process.exit(4);
 }
 
