@@ -38,3 +38,33 @@ process.env['OAUTH_JWKS'] ??= JSON.stringify({
   ],
 });
 process.env['OAUTH_COOKIE_KEYS'] ??= 'jest-oauth-cookie-key';
+
+// ---------------------------------------------------------------------------
+// NO UNIT TEST MAY REACH A REAL CHAIN — enforced here, not remembered per file.
+//
+// The three variables `Web3Service`'s constructor requires are deleted before
+// any test module is evaluated, so a test that forgets to mock the chain fails
+// loudly at construction instead of quietly spending a request — or, worse,
+// getting a real answer.
+//
+// FOUND, NOT ANTICIPATED. `evidenceConfirmPromotionGate` asserted that the
+// /confirm route does NOT answer 409 for a non-contradicted diff, and it passed
+// because RPC_URL happened to be unset, the constructor threw, and the route
+// answered 500. The moment a `@prisma/client` value import entered that route's
+// module graph, Prisma loaded `.env` on import, the constructor succeeded, and
+// the test made a live call to Base Sepolia — where the registry's honest
+// "already registered" reply came back as exactly the 409 the test rules out.
+//
+// The test was repaired to mock the chain, which is the right fix for that
+// file. This is the fix for the CLASS: a suite whose verdict depends on which
+// ambient variables a transitive import happened to load is a suite that can
+// change its answer without a line of code changing. The variables are deleted
+// rather than set to placeholders, because a placeholder RPC endpoint is a
+// network call that hangs instead of one that fails.
+//
+// This is deliberately NOT a way to avoid mocking. A test needing chain
+// behaviour mocks `Web3Service`, which is what every test that already does the
+// right thing already does.
+delete process.env['RPC_URL'];
+delete process.env['REGISTRAR_PRIVATE_KEY'];
+delete process.env['EVIDENCE_REGISTRY_ADDRESS'];

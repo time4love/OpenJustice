@@ -2,6 +2,7 @@ import { Router, Request, Response, NextFunction } from 'express';
 import multer from 'multer';
 import { z } from 'zod';
 import { ethers } from 'ethers';
+import { IntegrityCheckSubject } from '@prisma/client';
 import { IntakeAgent, IntakeOutputSchema } from '../services/IntakeAgent';
 import { Web3Service, DuplicateEvidenceError } from '../services/Web3Service';
 import { VectorStoreService } from '../services/VectorStoreService';
@@ -27,6 +28,7 @@ import { buildEvidenceAnalysisData } from '../lib/evidenceCreateData';
 import { evidenceWhereForViewer, viewerSeesUnreviewed } from '../lib/evidenceVisibility';
 import { identifyResearcher } from '../middleware/researcherIdentity';
 import { upsertKeyFigures } from '../lib/upsertKeyFigures';
+import { recordOnChainCheckNeverThrowing } from '../services/onChainVerification';
 import { parseDiffItems } from '../lib/diffItems';
 import { aiCostLimiter } from '../middleware/rateLimiting';
 import { ALLOWED_EVIDENCE_MIME_TYPES, MAX_EVIDENCE_FILE_BYTES } from '../lib/evidenceFileConstraints';
@@ -404,11 +406,35 @@ router.post(
         .then((vs) => vs.upsertEvidence(analysis.summary, fileHash))
         .catch((err) => console.error('[confirm] VectorStoreService upsert error (non-fatal):', err));
 
+      // LEVEL 3a — the row above now CLAIMS an anchor; this CHECKS it.
+      //
+      // This route is a fourth anchoring path, and covering only the promotion
+      // services would have left it as the one that asserts CONFIRMED without
+      // ever asking the contract — one rule with an implementation that opted
+      // out, which is this repository's most-repeated defect shape.
+      //
+      // Looked up by fileHash: the upsert above may have created or updated,
+      // and the check's subject is the row's id either way.
+      const confirmed = await prisma.evidence.findUnique({
+        where: { fileHash },
+        select: { id: true },
+      });
+      const anchorVerification = confirmed
+        ? await recordOnChainCheckNeverThrowing({
+            subjectType: IntegrityCheckSubject.EVIDENCE,
+            subjectId: confirmed.id,
+            fileHash,
+          })
+        : null;
+
       res.status(201).json({
         relevant: analysis.isRelevant,
         fileHash,
         txHash,
         analysis,
+        // Reported, never assumed. Null means the check could not be recorded,
+        // which a client must read as "not verified" and never as a pass.
+        anchorVerification,
       });
     } catch (err) {
       next(err);

@@ -1903,3 +1903,98 @@ enum SurvivalVerdict {
   /// prevent.
   UNCHECKABLE
 }
+
+// ---------------------------------------------------------------------------
+// LEVEL 3 — the anchor. §3's check record, made general.
+// ---------------------------------------------------------------------------
+
+/// What a stored check concluded. §3's three verdicts, and no fourth.
+enum IntegrityCheckVerdict {
+  /// The check ran and the claim held.
+  VERIFIED
+  /// The check ran and the claim did not hold. `detail` is the defect record.
+  CONTRADICTED
+  /// THE CHECK COULD NOT BE MADE — a verdict about the CHECK, never about the
+  /// data. The chain was unreachable, so nothing is known either way.
+  ///
+  /// It must never count as a pass. Conflating "we could not check" with "we
+  /// checked and it was fine" is the single failure §3 exists to prevent, and
+  /// on this level it is the difference between an unverified anchor and a
+  /// fabricated one.
+  UNAVAILABLE
+}
+
+/// Which table `subjectId` points into. No foreign key can express a
+/// polymorphic subject, so this column is what makes the reference readable.
+enum IntegrityCheckSubject {
+  EVIDENCE
+  URL_SNAPSHOT
+}
+
+/// A subject carries several kinds of check; this says which one ran.
+enum IntegrityCheckType {
+  /// Does the EvidenceRegistry contract agree with what the database claims
+  /// about this hash? See lib/onChainVerdict.ts.
+  ON_CHAIN_ANCHOR
+}
+
+/// A CHECK THAT RAN AND WAS NOT RECORDED HAS NOT BEEN PERFORMED.
+///
+/// §3 of docs/gf-factual-layer-rebuild-dev-plan.md, and the plan's own
+/// recommendation between the two designs it names: one polymorphic table
+/// rather than verdict columns per subject. Three reasons, all of which apply
+/// here — a subject carries several check types, history matters across
+/// re-checks, and a coverage report falls out for free.
+///
+/// APPEND-ONLY. Each row is one observation at one instant, never updated. A
+/// chain check is an observation of an EXTERNAL system: §3's middle row rules
+/// that such a result must be stored because it cannot be re-derived, and
+/// overwriting the last one would destroy the only record that the answer ever
+/// changed. `latestIntegrityCheck` in services/onChainVerification.ts reads the
+/// newest row per subject.
+///
+/// NO FOREIGN KEY, deliberately and at a cost. `subjectId` points into whichever
+/// table `subjectType` names, so the database cannot cascade a delete or refuse
+/// a dangling id. That is accepted here because the alternative — a nullable FK
+/// column per subject type — puts the polymorphism in the schema instead of in
+/// one column and grows with every new subject. Level 10 forbids deleting a
+/// subject anyway, so the dangling case is a rule violation elsewhere rather
+/// than an ordinary state, and `auditOnChainAnchors` reports any check whose
+/// subject cannot be resolved rather than skipping it.
+model IntegrityCheck {
+  id              String                @id @default(cuid())
+  subjectType     IntegrityCheckSubject
+  subjectId       String
+  checkType       IntegrityCheckType
+  verdict         IntegrityCheckVerdict
+  /// WHAT DISAGREED, or why the check was unavailable.
+  ///
+  /// For ON_CHAIN_ANCHOR this holds the specific on-chain verdict
+  /// (UNANCHORED_CONFIRMED, ORPHANED_ANCHOR, …) and its explanation. The coarse
+  /// verdict above is what gates a decision; this is what a person reads to act
+  /// on it. §3: for a contradiction, the detail IS the deliverable.
+  detail          Json?
+  checkedAt       DateTime              @default(now())
+  /// The rule that reached the verdict — ON_CHAIN_CHECK_VERSION.
+  ///
+  /// Not optional, and not invented later. This repository has added a
+  /// provenance axis after the fact five times now (classifierVersion,
+  /// summaryVersion, diffInputVersion, DETECTION_VERSION, survivalCheckVersion),
+  /// and the last of those was added only after a rule change made 88 stored
+  /// verdicts wrong while every hash still matched and every count stayed green.
+  verifierVersion String
+  /// The LOCAL claim this verdict judged — see onChainSourceStateHash.
+  ///
+  /// Makes staleness computable: recompute it from the subject as it stands now
+  /// and a mismatch means the claim moved under the verdict. The chain side is
+  /// deliberately not in it — an external observation cannot be re-derived,
+  /// which is exactly why it is stored instead.
+  sourceStateHash String
+
+  /// The newest check of one kind for one subject — the read every consumer
+  /// makes, on a table that only ever grows.
+  @@index([subjectType, subjectId, checkType, checkedAt])
+  /// The coverage report: how many subjects of this check type stand at each
+  /// verdict. Free, and the reason the plan chose a table.
+  @@index([checkType, verdict, checkedAt])
+}

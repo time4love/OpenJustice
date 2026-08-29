@@ -1,8 +1,13 @@
+import { IntegrityCheckSubject } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { Web3Service } from './Web3Service';
 import { buildForensicEvidence, requireSnapshotIdentity } from './forensicEvidence';
 import { diffSurvivalView, promotionBlockFor } from './auditDiffSurvival';
 import { registerEvidenceOnChain } from './evidenceOnChain';
+import {
+  recordOnChainCheckNeverThrowing,
+  type RecordedOnChainCheck,
+} from './onChainVerification';
 import { investigativeCategoriesField } from '../lib/investigativeCategories';
 import type { DiffItem } from './ForensicAgent';
 
@@ -36,7 +41,23 @@ import type { DiffItem } from './ForensicAgent';
  * a rationale too. Tracked, not silently accepted.
  */
 export type PromoteForensicDiffResult =
-  | { outcome: 'promoted'; evidenceId: string; fileHash: string; txHash: string | null; confirmed: boolean }
+  | {
+      outcome: 'promoted';
+      evidenceId: string;
+      fileHash: string;
+      txHash: string | null;
+      confirmed: boolean;
+      /**
+       * LEVEL 3a — the contract's own answer about the record just written.
+       *
+       * `confirmed` above says what the WRITE PATH believed; this says what the
+       * CHAIN said when asked. Both are reported because they can disagree, and
+       * a row that claims CONFIRMED while the registry has never seen its hash
+       * is the fake-CONFIRMED class this level exists to make visible. Null
+       * means the check could not even be recorded — never a pass.
+       */
+      anchorVerification: RecordedOnChainCheck | null;
+    }
   | { outcome: 'diff_not_found'; urlVersionDiffId: string }
   /** The archived documents refute the change. Written, visible, never promotable. */
   | { outcome: 'contradicted'; urlVersionDiffId: string; reason: string }
@@ -175,11 +196,23 @@ export async function promoteForensicDiff(
     },
   });
 
+  // LEVEL 3a — ask the contract whether the row just written is true.
+  //
+  // After the create, so the check reads the claim as it now stands. It never
+  // throws: the transaction is already spent, and reporting a completed
+  // promotion as a failure would invite a retry that reverts as a duplicate.
+  const anchorVerification = await recordOnChainCheckNeverThrowing({
+    subjectType: IntegrityCheckSubject.EVIDENCE,
+    subjectId: record.id,
+    fileHash,
+  });
+
   return {
     outcome: 'promoted',
     evidenceId: record.id,
     fileHash,
     txHash: registration.txHash,
     confirmed: registration.confirmed,
+    anchorVerification,
   };
 }

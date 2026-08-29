@@ -1,5 +1,11 @@
 import { z } from 'zod';
 import { prisma } from '../../lib/prisma';
+import {
+  ON_CHAIN_EXPLANATIONS,
+  ON_CHAIN_VERDICTS,
+  type OnChainVerdict,
+} from '../../lib/onChainVerdict';
+import { observeOnChainStatus } from '../../services/onChainVerification';
 import { Web3Service } from '../../services/Web3Service';
 
 // ---------------------------------------------------------------------------
@@ -15,82 +21,17 @@ import { Web3Service } from '../../services/Web3Service';
 // looks verified. Nothing reachable from MCP could detect that, which is why
 // it went unnoticed for two months.
 //
-// Read-only against both sources. It never writes and never registers.
+// THE RULE NO LONGER LIVES HERE. Level 3a moved the verdict decision to
+// lib/onChainVerdict.ts and the observation to services/onChainVerification.ts,
+// so the write path reaches the same conclusion by the same code instead of a
+// second copy of it. What remains here is this tool's own job: the human-facing
+// report, including the capture summary the write path has no use for.
+//
+// Read-only against both sources. It never writes and never registers — which
+// is why it calls `observeOnChainStatus` and not `recordOnChainCheck`.
 // ---------------------------------------------------------------------------
 
-/**
- * Verdicts are named for the operator decision they imply, not for the field
- * values that produced them.
- */
-export const ON_CHAIN_VERDICTS = {
-  /** DB CONFIRMED, chain registered, tx hash recorded. Nothing to do. */
-  CONSISTENT: 'CONSISTENT',
-  /**
-   * DB says CONFIRMED but the contract has never seen this hash. The record
-   * asserts an anchor that does not exist. This is the fake-CONFIRMED class.
-   */
-  UNANCHORED_CONFIRMED: 'UNANCHORED_CONFIRMED',
-  /**
-   * Chain agrees the hash is registered, but the row records no tx hash, so
-   * the anchor cannot be cited. Recoverable — pass recoverTxHash: true.
-   */
-  MISSING_TX_HASH: 'MISSING_TX_HASH',
-  /** PENDING_REVIEW and unregistered. The normal pre-promotion state. */
-  PENDING_UNREGISTERED: 'PENDING_UNREGISTERED',
-  /**
-   * PENDING_REVIEW, but the contract already holds this hash. Either a prior
-   * promotion half-completed, or the hash collides with an orphaned anchor.
-   * Promoting will revert as a duplicate — investigate before promoting.
-   */
-  PENDING_BUT_ANCHORED: 'PENDING_BUT_ANCHORED',
-  /** No Evidence row and no registration. Nothing anywhere — nothing to reconcile. */
-  NOT_IN_VAULT: 'NOT_IN_VAULT',
-  /**
-   * Registered on-chain with no Evidence row behind it. An anchor asserting a
-   * record nobody can produce — the condition the 2026-08-20 audit found twice
-   * and the reason this tool exists. Never report it as consistent.
-   */
-  ORPHANED_ANCHOR: 'ORPHANED_ANCHOR',
-  /**
-   * Registered on-chain, no Evidence row — and a UrlSnapshot holds this text.
-   * Not an orphan: an archived capture, anchored exactly as the scanner is
-   * meant to anchor it.
-   *
-   * Added 2026-08-25 after a tutorial run asked this tool about a snapshot hash
-   * and was told to "investigate before registering anything else against this
-   * hash". The verdict branched on `inVault`, which means an Evidence row and
-   * nothing else, so every correctly-anchored capture reported as a data
-   * integrity incident — 12 of production's 19 registrations, all of them
-   * working as designed.
-   *
-   * The seventh instance of mechanism right, summary wrong. FINDING 95 already
-   * wrote the argument against exactly this: a false alarm invites either a
-   * repair that is not needed, or doubt about evidence whose custody is in fact
-   * complete. The researcher who hit it did the second.
-   */
-  SNAPSHOT_ANCHOR: 'SNAPSHOT_ANCHOR',
-} as const;
-
-export type OnChainVerdict = (typeof ON_CHAIN_VERDICTS)[keyof typeof ON_CHAIN_VERDICTS];
-
-/**
- * Verdicts in which the database and the contract actually agree.
- *
- * Deliberately a positive list. This was written as a negative filter — every
- * verdict except a few named ones counted as consistent — and NOT_IN_VAULT
- * therefore reported `consistent: true` even when the chain held the hash,
- * which is precisely an orphaned anchor. A positive list fails the safe way:
- * a verdict added later is inconsistent until someone says otherwise.
- */
-const CONSISTENT_VERDICTS: ReadonlySet<OnChainVerdict> = new Set([
-  ON_CHAIN_VERDICTS.CONSISTENT,
-  ON_CHAIN_VERDICTS.PENDING_UNREGISTERED,
-  ON_CHAIN_VERDICTS.NOT_IN_VAULT,
-  // The database and the chain agree completely: the capture exists, its text is
-  // registered. Reporting `consistent: false` here is what sent a researcher
-  // looking for a custody problem that did not exist.
-  ON_CHAIN_VERDICTS.SNAPSHOT_ANCHOR,
-]);
+export { ON_CHAIN_VERDICTS, type OnChainVerdict } from '../../lib/onChainVerdict';
 
 export const checkOnChainStatusSchema = {
   fileHash: z
@@ -146,51 +87,6 @@ interface OnChainStatusResult {
   explanation: string;
 }
 
-const EXPLANATIONS: Record<OnChainVerdict, string> = {
-  CONSISTENT:
-    'The database and the contract agree, and the anchoring transaction is recorded. This record can be cited as on-chain evidence.',
-  UNANCHORED_CONFIRMED:
-    'The record claims CONFIRMED but the contract has no registration for this hash. The evidentiary claim is unsupported — treat the record as unverified until it is registered.',
-  MISSING_TX_HASH:
-    'The hash is registered on-chain but the row does not record which transaction did it, so the anchor cannot be cited. Re-run with recoverTxHash: true.',
-  PENDING_UNREGISTERED:
-    'Awaiting review, not yet anchored. This is the expected state before promotion.',
-  PENDING_BUT_ANCHORED:
-    'The contract already holds this hash while the row is still PENDING_REVIEW. Promotion would revert as a duplicate. Investigate the existing anchor before promoting.',
-  NOT_IN_VAULT:
-    'No evidence record exists for this hash, and the registry does not hold it either. There is nothing to reconcile.',
-  ORPHANED_ANCHOR:
-    'The registry holds this hash but no evidence record exists for it. Something anchored a record that cannot now be produced — investigate before registering anything else against this hash.',
-  SNAPSHOT_ANCHOR:
-    'This is an archived capture, not an evidence record, and its text is registered on-chain exactly as intended. Nothing is wrong and nothing needs repairing. A capture is anchored by its TEXT, so several captures of an unchanged page share one registration and one transaction; `snapshot.onChainTxHash` is the transaction that anchors this text, whichever capture spent it. To see the evidence records derived from this page, use get_scan_findings or search_evidence.',
-};
-
-function decideVerdict(
-  inVault: boolean,
-  status: string | null,
-  txHash: string | null,
-  registered: boolean,
-  isSnapshot: boolean,
-): OnChainVerdict {
-  if (!inVault) {
-    if (!registered) return ON_CHAIN_VERDICTS.NOT_IN_VAULT;
-    // An anchored capture is not an orphan. Checked before the orphan branch
-    // because "no Evidence row" is true of every snapshot in the system, and
-    // reading that as an integrity failure is what made this tool alarm on 12 of
-    // production's 19 registrations.
-    return isSnapshot ? ON_CHAIN_VERDICTS.SNAPSHOT_ANCHOR : ON_CHAIN_VERDICTS.ORPHANED_ANCHOR;
-  }
-
-  if (status === 'CONFIRMED') {
-    if (!registered) return ON_CHAIN_VERDICTS.UNANCHORED_CONFIRMED;
-    return txHash ? ON_CHAIN_VERDICTS.CONSISTENT : ON_CHAIN_VERDICTS.MISSING_TX_HASH;
-  }
-
-  return registered
-    ? ON_CHAIN_VERDICTS.PENDING_BUT_ANCHORED
-    : ON_CHAIN_VERDICTS.PENDING_UNREGISTERED;
-}
-
 /**
  * The only honest answer when the registry cannot be questioned.
  *
@@ -198,11 +94,11 @@ function decideVerdict(
  * and a definitive negative license opposite decisions about an irreversible
  * write, and the caller cannot tell them apart once the distinction is lost.
  */
-function chainUnavailable(fileHash: string, err: unknown): string {
+function chainUnavailable(fileHash: string, message: string): string {
   return JSON.stringify({
     fileHash,
     error: 'CHAIN_UNAVAILABLE',
-    message: err instanceof Error ? err.message : String(err),
+    message,
     explanation:
       'The on-chain registry could not be reached, so no verdict is possible. This is not evidence that the hash is unregistered.',
   });
@@ -212,59 +108,38 @@ export async function checkOnChainStatusHandler(input: {
   fileHash: string;
   recoverTxHash?: boolean;
 }): Promise<string> {
-  const record = await prisma.evidence.findUnique({
-    where: { fileHash: input.fileHash },
-    select: { id: true, status: true, onChainTxHash: true },
-  });
+  const observation = await observeOnChainStatus(input.fileHash);
+  if (!observation.reachable) return chainUnavailable(input.fileHash, observation.message);
 
-  // Only when there is no Evidence row. A hash is one or the other, and the
-  // query is skipped in the common case so the tool costs what it did before.
-  //
-  // `contentHash` is stored bare hex while fileHash is 0x-prefixed — the same
-  // mismatch that made snapshot anchoring silently fail for 83 snapshots by
-  // passing bare hex where bytes32 was required.
-  const snapshots = record
-    ? []
-    : await prisma.urlSnapshot.findMany({
-        where: { contentHash: input.fileHash.replace(/^0x/, '') },
-        select: {
-          capturedAt: true,
-          onChainTxHash: true,
-          trackedUrl: { select: { url: true } },
-        },
-        // capturedAt, not waybackTimestamp. This summary reports WHEN the text
-        // was captured, which every capture has; only archived ones have an
-        // Archive timestamp. Ordering by a nullable column would also sort
-        // non-archived captures to the end regardless of when they were taken
-        // (Postgres ASC is NULLS LAST), making "lastCapture" report a null for a
-        // corpus that simply contains a direct capture.
-        orderBy: { capturedAt: 'asc' },
-      });
+  // The identity behind the claim, for the report only. `observeOnChainStatus`
+  // reduces the local side to what the RULE needs — a status, a transaction, a
+  // count — and this tool additionally names the record and the captures, which
+  // is presentation rather than verdict.
+  const record = observation.claim.inVault
+    ? await prisma.evidence.findUnique({
+        where: { fileHash: input.fileHash },
+        select: { id: true },
+      })
+    : null;
 
-  let web3: Web3Service;
-  try {
-    web3 = new Web3Service();
-  } catch (err) {
-    // Misconfiguration — RPC_URL, key, or contract address absent.
-    return chainUnavailable(input.fileHash, err);
-  }
-
-  // A CONFIGURED chain can still be unreachable, and that is the common case:
-  // a public RPC returning "no backend is currently healthy" surfaces here as
-  // an ethers CALL_EXCEPTION, not as a constructor failure. Left unguarded it
-  // escaped as a raw exception where this tool promises a verdict — found on
-  // the first real call against a real endpoint, 2026-08-22.
-  let registered: boolean;
-  let registryEvidenceId: bigint;
-  try {
-    ({ registered, evidenceId: registryEvidenceId } = await web3.isHashRegistered(input.fileHash));
-  } catch (err) {
-    return chainUnavailable(input.fileHash, err);
-  }
-
-  const status = record?.status ?? null;
-  const txHash = record?.onChainTxHash ?? null;
-  const verdict = decideVerdict(Boolean(record), status, txHash, registered, snapshots.length > 0);
+  const snapshots =
+    observation.claim.snapshots > 0
+      ? await prisma.urlSnapshot.findMany({
+          where: { contentHash: input.fileHash.replace(/^0x/, '') },
+          select: {
+            capturedAt: true,
+            onChainTxHash: true,
+            trackedUrl: { select: { url: true } },
+          },
+          // capturedAt, not waybackTimestamp. This summary reports WHEN the text
+          // was captured, which every capture has; only archived ones have an
+          // Archive timestamp. Ordering by a nullable column would also sort
+          // non-archived captures to the end regardless of when they were taken
+          // (Postgres ASC is NULLS LAST), making "lastCapture" report a null for
+          // a corpus that simply contains a direct capture.
+          orderBy: { capturedAt: 'asc' },
+        })
+      : [];
 
   // Summarised here rather than inline: guarding on `length` is the only honest
   // test, because without noUncheckedIndexedAccess the element type claims
@@ -290,26 +165,29 @@ export async function checkOnChainStatusHandler(input: {
 
   const result: OnChainStatusResult = {
     fileHash: input.fileHash,
-    verdict,
-    safeToPromote: verdict === ON_CHAIN_VERDICTS.PENDING_UNREGISTERED,
-    consistent: CONSISTENT_VERDICTS.has(verdict),
+    verdict: observation.verdict,
+    safeToPromote: observation.verdict === ON_CHAIN_VERDICTS.PENDING_UNREGISTERED,
+    consistent: observation.consistent,
     database: {
-      inVault: Boolean(record),
+      inVault: observation.claim.inVault,
       evidenceId: record?.id ?? null,
-      status,
-      onChainTxHash: txHash,
+      status: observation.claim.status,
+      onChainTxHash: observation.claim.txHash,
     },
     chain: {
-      registered,
-      registryEvidenceId: registered ? registryEvidenceId.toString() : null,
+      registered: observation.registered,
+      registryEvidenceId: observation.registryEvidenceId,
     },
     ...(snapshotSummary ? { snapshot: snapshotSummary } : {}),
-    explanation: EXPLANATIONS[verdict],
+    explanation: ON_CHAIN_EXPLANATIONS[observation.verdict],
   };
 
-  if (input.recoverTxHash && registered && !txHash) {
+  if (input.recoverTxHash && observation.registered && !observation.claim.txHash) {
     try {
-      result.chain.recoveredTxHash = await web3.findRegisteringTxHash(input.fileHash);
+      // Constructed rather than carried: `observeOnChainStatus` returns an
+      // answer, not a live connection, and this optional second query is the
+      // only reason a caller would need one.
+      result.chain.recoveredTxHash = await new Web3Service().findRegisteringTxHash(input.fileHash);
     } catch (err) {
       // The verdict above is already established and stays valid — only the
       // convenience lookup failed. But an unannotated null would read as "no
