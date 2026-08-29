@@ -4,6 +4,10 @@ import {
   diffSurvivalView,
   SURVIVAL_VIEW_SELECT,
 } from '../../services/auditDiffSurvival';
+import {
+  CLASSIFICATION_PROVENANCE_SELECT,
+  classificationInputView,
+} from '../../lib/classificationProvenance';
 
 export const getForensicTimelineSchema = {
   url: z.string().url().describe('The tracked URL to retrieve forensic diff history for'),
@@ -26,6 +30,7 @@ export async function getForensicTimelineHandler(input: { url: string }): Promis
           isLegallySignificant: true,
           createdAt: true,
           ...SURVIVAL_VIEW_SELECT,
+          ...CLASSIFICATION_PROVENANCE_SELECT,
         },
       },
     },
@@ -50,6 +55,10 @@ export async function getForensicTimelineHandler(input: { url: string }): Promis
     // defect visible only through REST is unfindable from the research
     // interface — and the researcher decides here, not there.
     survival: diffSurvivalView(d),
+    // WHAT THE CLASSIFIER READ, beside what the row now holds. `survival` above
+    // says whether the change is real; this says whether the description of it
+    // was written about the text still stored here.
+    classificationInput: classificationInputView(d),
   }));
 
   // Derived from state on every read, never tracked through a write.
@@ -71,6 +80,10 @@ export async function getForensicTimelineHandler(input: { url: string }): Promis
   // the summary was what people acted on. `anchoringWarning` above is the same
   // pattern, and these counts are read from the SAME view helper the rows use, so
   // the headline and the detail cannot disagree.
+  const staleClassifications = timeline.filter(
+    (d) => d.classificationInput.state === 'STALE',
+  ).length;
+
   const survivalStates = timeline.map((d) => d.survival.state);
   const contradictedDiffs = survivalStates.filter((v) => v === 'CONTRADICTED').length;
   const uncheckedDiffs = survivalStates.filter(
@@ -88,6 +101,7 @@ export async function getForensicTimelineHandler(input: { url: string }): Promis
     // second is never promotable.
     contradictedDiffs,
     uncheckedDiffs,
+    staleClassifications,
     ...(contradictedDiffs > 0
       ? {
           survivalWarning:
@@ -96,6 +110,17 @@ export async function getForensicTimelineHandler(input: { url: string }): Promis
             'present in the after capture, or one said to be ADDED was already in the before one. ' +
             'These record a defect in the pipeline, not a change to the page, and must not back ' +
             'evidence. Inspect with get_diff_input; measure with npm run forensics:measure-divergence.',
+        }
+      : {}),
+    ...(staleClassifications > 0
+      ? {
+          classificationWarning:
+            `${String(staleClassifications)} of ${String(tracked.diffs.length)} diffs carry a classification made from ` +
+            'chunks that have since been recomputed. Their stored items describe text the row no ' +
+            'longer holds — a v4 classification over v3 chunks, when the v4 run read v2 chunks ' +
+            'that no longer exist. This is a PROVENANCE fact, not a repair instruction: ' +
+            'reclassifying changes what the record says about the ministry\'s edit, which is the ' +
+            "researcher's decision. Inspect with get_diff_input.",
         }
       : {}),
     ...(uncheckedDiffs > 0

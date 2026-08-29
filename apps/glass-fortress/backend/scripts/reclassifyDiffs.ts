@@ -11,6 +11,7 @@
  * deletes. Costs one LLM call per diff, so --dry-run first is usually right.
  */
 import 'dotenv/config';
+import { runOperationalScript } from '../src/lib/operationalContext';
 import {
   reclassifyDiffs,
   findOutOfSyncEvidence,
@@ -125,9 +126,4 @@ async function main(): Promise<void> {
   console.log(`\nRun recorded as ${result.runId}.`);
 }
 
-main()
-  .catch((err: unknown) => {
-    console.error('Reclassification failed:', err instanceof Error ? err.message : err);
-    process.exitCode = 1;
-  })
-  .finally(() => process.exit());
+void runOperationalScript(main).finally(() => { process.exit(); });

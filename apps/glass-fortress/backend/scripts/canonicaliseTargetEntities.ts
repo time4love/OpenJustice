@@ -30,18 +30,20 @@
 // PrismaClient at module load; CommonJS runs imports in source order, so a
 // dotenv import placed after it loads the env too late to matter.
 import 'dotenv/config';
+import { runOperationalScript } from '../src/lib/operationalContext';
 import { PrismaClient } from '@prisma/client';
-import { identifyEnvironment } from '../src/lib/dbEnvironment';
 import { canonicaliseTargetEntity } from '../src/lib/targetEntity';
 
 async function main(): Promise<number> {
   const apply = process.argv.includes('--apply');
-  const env = identifyEnvironment();
 
+  // The environment is NOT restated here — `runOperationalScript` has already
+  // named it, having made Railway, APP_ENV, the database and the chain all agree
+  // with the operator's own `--env`, which is strictly more than this line ever
+  // checked.
   console.log('\n' + '='.repeat(72));
-  console.log(`entities:canonicalise  —  target: ${env.label}  —  ${apply ? 'APPLY' : 'report only'}`);
+  console.log(`entities:canonicalise  —  ${apply ? 'APPLY' : 'report only'}`);
   console.log('='.repeat(72));
-  if (env.isProduction) console.log('  ⚠️  This is PRODUCTION.');
 
   const prisma = new PrismaClient();
   try {
@@ -98,9 +100,4 @@ async function main(): Promise<number> {
   }
 }
 
-main()
-  .then((code) => process.exit(code))
-  .catch((err: unknown) => {
-    console.error('entities:canonicalise failed:', err instanceof Error ? err.message : err);
-    process.exit(1);
-  });
+void runOperationalScript(main);

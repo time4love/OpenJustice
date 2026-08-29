@@ -1,12 +1,18 @@
 // ---------------------------------------------------------------------------
 // LEVEL 3a's MEASUREMENT — the states that must never read as a pass.
 //
-// Three of them, and this repository has been burned by each: a claim with no
-// verdict behind it (UNCHECKED), a verdict that says the check could not be
-// made (UNAVAILABLE), and a verdict about a subject that has since moved
-// (STALE). The last one is the expensive one: when the survival rule changed,
-// 88 stored verdicts became wrong while every hash still matched and every
-// count stayed green.
+// Four of them now, and this repository has been burned by each: a claim with no
+// verdict behind it (UNCHECKED), a verdict that says the check could not be made
+// (UNAVAILABLE), a verdict about a subject that has since moved (STALE), and a
+// verdict that does not say WHICH CHAIN it asked.
+//
+// The last two are the expensive ones. When the survival rule changed, 88 stored
+// verdicts became wrong while every hash still matched and every count stayed
+// green. Then on 2026-08-29 a local run read production's database against Base
+// Sepolia's registry and wrote 91 verdicts into production — where the rule had
+// not moved and the claims had not moved, so every existing axis reported all 91
+// of them current. Those rows are KEPT, because they are the evidence that the
+// pipeline was wrong; what changes is that they can no longer read as a pass.
 // ---------------------------------------------------------------------------
 
 jest.mock('../src/lib/prisma', () => ({
@@ -20,10 +26,22 @@ jest.mock('../src/lib/prisma', () => ({
 import { IntegrityCheckSubject, IntegrityCheckVerdict } from '@prisma/client';
 import { prisma } from '../src/lib/prisma';
 import { ON_CHAIN_CHECK_VERSION, onChainSourceStateHash } from '../src/lib/onChainVerdict';
+import type { AnchoringTarget } from '../src/lib/anchoringTarget';
 import { auditOnChainAnchors } from '../src/services/auditOnChainAnchors';
 
 const HASH = `0x${'a'.repeat(64)}`;
 const TX = `0x${'b'.repeat(64)}`;
+
+/**
+ * The registry this "deployment" anchors to. STATED, never inherited from the
+ * environment: `test/setupEnv.ts` deletes EVIDENCE_REGISTRY_ADDRESS so no test
+ * can reach a real chain, and a suite that silently read whatever was left over
+ * would be asserting about a registry it never named.
+ */
+const MAINNET: AnchoringTarget = {
+  chainId: 8453,
+  registryAddress: '0x0e21561bbfbb8716713bd60cd21ec5730a4d0d22',
+};
 
 const evidenceMany = prisma.evidence.findMany as jest.Mock;
 const evidenceUnique = prisma.evidence.findUnique as jest.Mock;
@@ -44,6 +62,8 @@ function check(over: Partial<Record<string, unknown>> = {}) {
     verifierVersion: ON_CHAIN_CHECK_VERSION,
     sourceStateHash: CURRENT_HASH,
     detail: { onChainVerdict: 'CONSISTENT' },
+    chainId: MAINNET.chainId,
+    registryAddress: MAINNET.registryAddress,
     ...over,
   };
 }
@@ -61,7 +81,7 @@ beforeEach(() => {
 
 describe('states that are not a pass', () => {
   it('a CONFIRMED record with no check is UNCHECKED, not VERIFIED', async () => {
-    const report = await auditOnChainAnchors();
+    const report = await auditOnChainAnchors(MAINNET);
 
     expect(report.subjects).toBe(1);
     expect(report.byState.UNCHECKED).toBe(1);
@@ -73,7 +93,7 @@ describe('states that are not a pass', () => {
     checkMany.mockResolvedValue([
       check({ verdict: IntegrityCheckVerdict.UNAVAILABLE, detail: { onChainVerdict: null } }),
     ]);
-    const report = await auditOnChainAnchors();
+    const report = await auditOnChainAnchors(MAINNET);
 
     expect(report.byState.UNAVAILABLE).toBe(1);
     expect(report.byState.VERIFIED).toBe(0);
@@ -86,7 +106,7 @@ describe('states that are not a pass', () => {
     // correct; only the rule that read it moved, and a hash over inputs is
     // structurally blind to that.
     checkMany.mockResolvedValue([check({ verifierVersion: 'v0-something-older' })]);
-    const report = await auditOnChainAnchors();
+    const report = await auditOnChainAnchors(MAINNET);
 
     expect(report.byState.STALE).toBe(1);
     expect(report.byState.VERIFIED).toBe(0);
@@ -98,7 +118,7 @@ describe('states that are not a pass', () => {
     // different transaction, so the verdict is an answer about something else.
     checkMany.mockResolvedValue([check()]);
     evidenceUnique.mockResolvedValue({ status: 'CONFIRMED', onChainTxHash: `0x${'c'.repeat(64)}` });
-    const report = await auditOnChainAnchors();
+    const report = await auditOnChainAnchors(MAINNET);
 
     expect(report.byState.STALE).toBe(1);
     expect(report.unverified[0].staleReason).toContain('database claim');
@@ -106,10 +126,78 @@ describe('states that are not a pass', () => {
 
   it('only a current verdict at the current rule counts as VERIFIED', async () => {
     checkMany.mockResolvedValue([check()]);
-    const report = await auditOnChainAnchors();
+    const report = await auditOnChainAnchors(MAINNET);
 
     expect(report.byState.VERIFIED).toBe(1);
     expect(report.unverified).toHaveLength(0);
+  });
+
+  // -------------------------------------------------------------------------
+  // THE 2026-08-29 INCIDENT, as the audit must now see it.
+  //
+  // Every one of these rows is VERIFIED, at the current rule, against a claim
+  // that has not moved. Nothing about the verdict itself is wrong. What is wrong
+  // is that it is an answer to a question about somewhere else — and before
+  // these cases existed, the audit could not tell.
+  // -------------------------------------------------------------------------
+  it('a verdict that does not record WHICH CHAIN it asked is not a pass', async () => {
+    // The exact shape of the 91 production rows: written before the columns
+    // existed, so nothing distinguishes the 90 read off Base Sepolia from a
+    // correct one. NULL is the state, and NULL may not read as agreement.
+    checkMany.mockResolvedValue([check({ chainId: null, registryAddress: null })]);
+    const report = await auditOnChainAnchors(MAINNET);
+
+    expect(report.byState.VERIFIED).toBe(0);
+    expect(report.byState.STALE).toBe(1);
+    expect(report.unverified[0].staleReason).toContain('does not record which chain');
+  });
+
+  it('a verdict reached against ANOTHER CHAIN is not a pass, and says which', async () => {
+    // Base Sepolia's answer, stored in production. Once the column exists this
+    // is no longer indistinguishable — it is self-reporting.
+    checkMany.mockResolvedValue([check({ chainId: 84532 })]);
+    const report = await auditOnChainAnchors(MAINNET);
+
+    expect(report.byState.VERIFIED).toBe(0);
+    expect(report.byState.STALE).toBe(1);
+    expect(report.unverified[0].staleReason).toContain('84532');
+  });
+
+  it('a verdict reached against another REGISTRY on the right chain is not a pass', async () => {
+    // The chain alone is not enough. The address that started this whole rule
+    // was a Hardhat first-deployment address: right shape, right chain, no code.
+    checkMany.mockResolvedValue([
+      check({ registryAddress: '0x5fbdb2315678afecb367f032d93f642f64180aa3' }),
+    ]);
+    const report = await auditOnChainAnchors(MAINNET);
+
+    expect(report.byState.VERIFIED).toBe(0);
+    expect(report.byState.STALE).toBe(1);
+    expect(report.unverified[0].staleReason).toContain('0x5fbdb2315678afecb367f032d93f642f64180aa3');
+  });
+
+  it('EIP-55 casing is the same registry, not a different one', async () => {
+    // A checksum over the same 20 bytes. Comparing the spellings as strings
+    // would report every verdict about this very registry as a verdict about
+    // somewhere else — a guard that fails on correct data gets switched off.
+    checkMany.mockResolvedValue([
+      check({ registryAddress: '0x0E21561bBFBB8716713bd60CD21eC5730a4D0D22' }),
+    ]);
+    const report = await auditOnChainAnchors(MAINNET);
+
+    expect(report.byState.VERIFIED).toBe(1);
+    expect(report.unverified).toHaveLength(0);
+  });
+
+  it('a deployment that cannot name its own registry confirms nothing', async () => {
+    // EVIDENCE_REGISTRY_ADDRESS unset. Fail-safe in the only tolerable
+    // direction: loud, and never a pass.
+    checkMany.mockResolvedValue([check()]);
+    const report = await auditOnChainAnchors({ chainId: 8453, registryAddress: null });
+
+    expect(report.byState.VERIFIED).toBe(0);
+    expect(report.byState.STALE).toBe(1);
+    expect(report.unverified[0].staleReason).toContain('EVIDENCE_REGISTRY_ADDRESS is not set');
   });
 });
 
@@ -118,7 +206,7 @@ describe('which subjects are asked for a verdict at all', () => {
     // Demanding a verdict for a row that asserts nothing would manufacture a
     // backlog out of rows behaving correctly, and bury the ones that are not.
     evidenceMany.mockResolvedValue([]);
-    const report = await auditOnChainAnchors();
+    const report = await auditOnChainAnchors(MAINNET);
     expect(report.subjects).toBe(0);
   });
 
@@ -131,7 +219,7 @@ describe('which subjects are asked for a verdict at all', () => {
     evidenceUnique.mockResolvedValue(null);
     snapshotCount.mockResolvedValue(1);
 
-    const report = await auditOnChainAnchors();
+    const report = await auditOnChainAnchors(MAINNET);
 
     expect(report.subjects).toBe(1);
     expect(report.unverified[0].fileHash).toBe(HASH);
@@ -142,7 +230,7 @@ describe('which subjects are asked for a verdict at all', () => {
 describe('the cost of a polymorphic table without a foreign key', () => {
   it('reports a check whose subject no longer exists rather than joining it away', async () => {
     checkMany.mockResolvedValue([check(), check({ subjectId: 'ev-deleted' })]);
-    const report = await auditOnChainAnchors();
+    const report = await auditOnChainAnchors(MAINNET);
 
     expect(report.danglingChecks).toEqual([
       { subjectType: IntegrityCheckSubject.EVIDENCE, subjectId: 'ev-deleted' },
@@ -162,7 +250,7 @@ describe('the newest check wins', () => {
       }),
       check({ checkedAt: new Date('2026-08-29T10:00:00Z') }),
     ]);
-    const report = await auditOnChainAnchors();
+    const report = await auditOnChainAnchors(MAINNET);
 
     expect(report.byState.CONTRADICTED).toBe(1);
     expect(report.byState.VERIFIED).toBe(0);

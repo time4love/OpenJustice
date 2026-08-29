@@ -19,6 +19,7 @@
  * computed against what it currently holds.
  */
 import 'dotenv/config';
+import { runOperationalScript } from '../src/lib/operationalContext';
 import { auditDiffSurvival } from '../src/services/auditDiffSurvival';
 
 async function main(): Promise<void> {
@@ -55,7 +56,4 @@ async function main(): Promise<void> {
   if (s.unchecked > 0 || s.stale > 0) process.exit(4);
 }
 
-main().catch((err: unknown) => {
-  console.error(err);
-  process.exit(1);
-});
+void runOperationalScript(main);

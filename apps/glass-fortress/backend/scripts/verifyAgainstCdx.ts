@@ -21,6 +21,7 @@
  * verify its claim about itself.
  */
 import 'dotenv/config';
+import { runOperationalScript } from '../src/lib/operationalContext';
 import { verifyAgainstCdx } from '../src/services/verifyAgainstCdx';
 
 function arg(name: string): string | undefined {
@@ -84,7 +85,4 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch((err: unknown) => {
-  console.error(err instanceof Error ? err.message : err);
-  process.exit(1);
-});
+void runOperationalScript(main);

@@ -42,8 +42,12 @@
 // PrismaClient at module load; CommonJS runs imports in source order, so a
 // dotenv import placed after it loads the env too late to matter.
 import 'dotenv/config';
+import {
+  runOperationalScript,
+  withoutEnvFlag,
+  type OperationalContext,
+} from '../src/lib/operationalContext';
 import { PrismaClient } from '@prisma/client';
-import { identifyEnvironment } from '../src/lib/dbEnvironment';
 import { simulateStatement, type SimulationOutcome } from '../src/services/dbSimulation';
 
 function banner(text: string): void {
@@ -117,26 +121,28 @@ function report(outcome: SimulationOutcome): number {
   return 0;
 }
 
-async function main(): Promise<void> {
-  const sql = process.argv.slice(2).join(' ').trim();
+async function main(context: OperationalContext): Promise<void> {
+  // STRIPPED, because this is the one script that reads its argument
+  // positionally: everything after `--` is joined into the statement, so an
+  // un-stripped `--env production` would be simulated as part of the SQL.
+  const sql = withoutEnvFlag(process.argv.slice(2)).join(' ').trim();
   if (!sql) {
-    console.error('Usage: npm run db:simulate -- \'<SQL>\'');
+    console.error('Usage: npm run db:simulate -- --env <env> \'<SQL>\'');
     process.exit(1);
   }
 
-  const env = identifyEnvironment();
   const prisma = new PrismaClient();
 
+  // The environment is NOT restated here. `runOperationalScript` has already
+  // printed it, having made every axis agree with the operator's own `--env`;
+  // a second, differently-derived line naming the same thing is how a reader
+  // ends up trusting whichever one they happened to read. The old line printed
+  // the project ref IN FULL, which this repository — and its transcripts — are
+  // public enough to make its own problem.
   banner(`SIMULATION — nothing below is committed`);
-  console.log(`  target      : ${env.label}`);
-  console.log(`  project ref : ${env.ref}`);
   console.log(`  statement   : ${sql.replace(/\s+/g, ' ').slice(0, 200)}`);
-  if (env.isProduction) {
+  if (context.env === 'production') {
     console.log('\n  *** THIS IS PRODUCTION. ***');
-  }
-  if (env.label.startsWith('UNRECOGNISED')) {
-    console.log('\n  *** The target project is not recognised. Confirm which database this is');
-    console.log('      before acting on anything below. ***');
   }
 
   let outcome: SimulationOutcome;
@@ -149,7 +155,4 @@ async function main(): Promise<void> {
   process.exit(report(outcome));
 }
 
-main().catch((err) => {
-  console.error('simulation failed to run:', err instanceof Error ? err.message : err);
-  process.exit(1);
-});
+void runOperationalScript(main);

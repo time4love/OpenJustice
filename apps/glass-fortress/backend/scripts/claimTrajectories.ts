@@ -9,6 +9,7 @@
  * listed snapshots on web.archive.org and searching for the claim.
  */
 import 'dotenv/config';
+import { runOperationalScript } from '../src/lib/operationalContext';
 import { getClaimTrajectories } from '../src/services/claimTrajectory';
 
 function arg(name: string): string | undefined {
@@ -61,9 +62,4 @@ async function main(): Promise<void> {
   }
 }
 
-main()
-  .catch((err: unknown) => {
-    console.error('Failed:', err instanceof Error ? err.message : err);
-    process.exitCode = 1;
-  })
-  .finally(() => process.exit());
+void runOperationalScript(main).finally(() => { process.exit(); });

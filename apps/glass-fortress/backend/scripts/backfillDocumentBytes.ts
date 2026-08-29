@@ -16,6 +16,7 @@
  * DRY RUN IS THE DEFAULT. --apply is required to write.
  */
 import 'dotenv/config';
+import { runOperationalScript } from '../src/lib/operationalContext';
 import {
   backfillDocumentBytes,
   countSnapshotsWithoutDocument,
@@ -97,7 +98,4 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch((err: unknown) => {
-  console.error(err instanceof Error ? err.message : err);
-  process.exit(1);
-});
+void runOperationalScript(main);

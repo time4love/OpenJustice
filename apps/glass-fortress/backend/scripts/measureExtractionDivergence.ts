@@ -19,6 +19,7 @@
  * inform a person. Exit 0 means the raw documents agree with every stored diff.
  */
 import 'dotenv/config';
+import { runOperationalScript } from '../src/lib/operationalContext';
 import { measureExtractionDivergence } from '../src/services/measureExtractionDivergence';
 
 function arg(name: string): string | undefined {
@@ -68,7 +69,4 @@ async function main(): Promise<void> {
   if (s.chunksContradicted > 0) process.exit(3);
 }
 
-main().catch((err: unknown) => {
-  console.error(err);
-  process.exit(1);
-});
+void runOperationalScript(main);

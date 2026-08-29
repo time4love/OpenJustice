@@ -17,6 +17,7 @@
  * DRY RUN IS THE DEFAULT. --apply is required to write.
  */
 import 'dotenv/config';
+import { runOperationalScript } from '../src/lib/operationalContext';
 import { reconcileAgainstCdx } from '../src/services/reconcileAgainstCdx';
 
 function arg(name: string): string | undefined {
@@ -85,7 +86,4 @@ async function main(): Promise<void> {
   if (dryRun) console.log('\nDry run — nothing written. Re-run with --apply.');
 }
 
-main().catch((err: unknown) => {
-  console.error(err instanceof Error ? err.message : err);
-  process.exit(1);
-});
+void runOperationalScript(main);

@@ -15,6 +15,7 @@
  * reports are the before-state this run should be measured against.
  */
 import 'dotenv/config';
+import { runOperationalScript } from '../src/lib/operationalContext';
 import { backfillDiffSurvival } from '../src/services/backfillDiffSurvival';
 
 async function main(): Promise<void> {
@@ -34,7 +35,4 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch((err: unknown) => {
-  console.error(err);
-  process.exit(1);
-});
+void runOperationalScript(main);
