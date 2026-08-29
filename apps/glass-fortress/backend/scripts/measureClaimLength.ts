@@ -31,7 +31,11 @@
  */
 import 'dotenv/config';
 import { runOperationalScript } from '../src/lib/operationalContext';
-import { DEFAULT_THRESHOLDS, measureClaimLength } from '../src/services/measureClaimLength';
+import {
+  DEFAULT_THRESHOLDS,
+  isDerivative,
+  measureClaimLength,
+} from '../src/services/measureClaimLength';
 
 function arg(name: string): string | undefined {
   const i = process.argv.indexOf(`--${name}`);
@@ -101,21 +105,46 @@ async function main(): Promise<void> {
     return;
   }
 
-  console.log(
-    `\nClaims surfacing at min=${String(lowest.minClaimLength)} and NOT at ` +
-      `${String(report.productionThreshold)} — read these, the counts above do not settle it:\n`,
-  );
-  for (const c of lowest.admitted) {
+  // SPLIT BY THE MEASURE, NOT BY LENGTH. A contained claim whose every sighting
+  // sits inside another claim's text is carrying no signal of its own; one that
+  // appears where no container does is, however short it is. Printing them in one
+  // list would leave the reader to re-derive that from two numbers per row, which
+  // is the work this column exists to have already done.
+  const derivative = lowest.admitted.filter(isDerivative);
+  const independent = lowest.admitted.filter((c) => !isDerivative(c));
+
+  const render = (c: (typeof lowest.admitted)[number]): void => {
     console.log(
       `  [${String(c.length).padStart(3)} chars]  ${String(c.transitions)} transitions  ` +
-        `present in ${String(c.presentIn)}/${String(report.snapshotsExamined)}  ${c.finalState}`,
+        `present in ${String(c.presentIn)}/${String(report.snapshotsExamined)}  ${c.finalState}  ` +
+        `contained in ${String(c.containedInCandidates)}  ` +
+        `independent in ${String(c.capturesWhereIndependent)}`,
     );
     console.log(`    ${c.claim}`);
-  }
+  };
+
   console.log(
-    '\nPresent in nearly every capture while still flipping is the incidental-match signature.\n' +
-      'A contiguous run ending REMOVED is a withdrawal. Changing the constant bumps\n' +
-      'DETECTION_VERSION and recomputes every trajectory — it is a research decision.\n',
+    `\nAt min=${String(lowest.minClaimLength)}, ${String(lowest.admitted.length)} claim(s) surface that do not at ` +
+      `${String(report.productionThreshold)}.\n`,
+  );
+
+  console.log(
+    `CARRYING THEIR OWN SIGNAL — ${String(independent.length)}. Each appears in at least one capture where no\n` +
+      'containing candidate does, so its movement is its own. Length is filtering these out for\n' +
+      'nothing.\n',
+  );
+  for (const c of independent) render(c);
+
+  console.log(
+    `\nDERIVATIVE — ${String(derivative.length)}. Every sighting sits inside another candidate's text, so the\n` +
+      'trajectory reports movement that belongs to something else. THIS is the hazard the\n' +
+      'threshold exists to prevent, and it is detectable directly.\n',
+  );
+  for (const c of derivative) render(c);
+
+  console.log(
+    '\nLength only correlates with containment. Changing the rule bumps DETECTION_VERSION and\n' +
+      'recomputes every trajectory — it is a research decision, not a repair.\n',
   );
 }
 

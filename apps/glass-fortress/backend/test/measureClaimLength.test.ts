@@ -21,7 +21,7 @@ jest.mock('../src/services/claimTrajectory', () => {
 });
 
 import { MIN_CLAIM_LENGTH, MIN_TRANSITIONS, detectAtClaimLength } from '../src/services/claimTrajectory';
-import { measureClaimLength } from '../src/services/measureClaimLength';
+import { isDerivative, measureClaimLength } from '../src/services/measureClaimLength';
 
 const detect = detectAtClaimLength as jest.MockedFunction<typeof detectAtClaimLength>;
 
@@ -85,6 +85,9 @@ describe('what a lower threshold would admit', () => {
     const lowest = report.measurements[0];
 
     expect(lowest?.minClaimLength).toBe(0);
+    // Kept as a strict equality rather than a partial match: this is the one
+    // case that pins the WHOLE admitted shape, so a field added later cannot
+    // slip in unasserted.
     expect(lowest?.admitted).toEqual([
       {
         claim: SHORT,
@@ -92,6 +95,8 @@ describe('what a lower threshold would admit', () => {
         transitions: 3,
         presentIn: 2,
         finalState: 'REMOVED',
+        containedInCandidates: 0,
+        capturesWhereIndependent: 2,
       },
     ]);
   });
@@ -189,5 +194,135 @@ describe('the baseline the measurement is made against', () => {
     const report = await measureClaimLength('https://example.test', [0]);
     expect(report.productionThreshold).toBe(MIN_CLAIM_LENGTH);
     expect(report.minTransitions).toBe(MIN_TRANSITIONS);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// CONTAINMENT — the hazard the length threshold only approximates.
+//
+// Presence is a verbatim substring search over each capture. So when one
+// candidate is a substring of another, the shorter one is "present" every time
+// the longer is — not because it was asserted, but because its characters are
+// inside the other's text. Its trajectory then reports movement belonging to
+// something else.
+//
+// Being contained is NOT the verdict, and that is the whole point of the second
+// number. A claim that appears in even one capture where no container does is
+// carrying its own signal, however short it is and however many phrases embed it
+// elsewhere. Only "contained AND never independent" is derivative.
+// ---------------------------------------------------------------------------
+
+const CONTAINER = 'מי יכולים לקבל חיסון רביעי';
+const CONTAINED = 'חיסון רביעי';
+
+describe('containment, and whether a claim ever speaks for itself', () => {
+  it('marks a claim DERIVATIVE when every sighting sits inside a container', async () => {
+    // Identical presence vectors: the short claim is never seen without the long
+    // one, so nothing about its trajectory is its own.
+    detect.mockImplementation((_url, min) =>
+      Promise.resolve(
+        min < MIN_CLAIM_LENGTH
+          ? result(
+              [trajectory(CONTAINER, OSCILLATES), trajectory(CONTAINED, OSCILLATES)],
+              2,
+            )
+          : result([trajectory(CONTAINER, OSCILLATES)], 1),
+      ),
+    );
+
+    const report = await measureClaimLength('https://example.test', [0, MIN_CLAIM_LENGTH]);
+    const admitted = report.measurements[0]?.admitted ?? [];
+
+    expect(admitted).toHaveLength(1);
+    expect(admitted[0]).toMatchObject({
+      claim: CONTAINED,
+      containedInCandidates: 1,
+      capturesWhereIndependent: 0,
+    });
+    expect(isDerivative(admitted[0]!)).toBe(true);
+  });
+
+  it('does NOT mark it derivative when it appears where no container does', async () => {
+    // One capture holds the short claim and not the long one. That single
+    // observation is the claim speaking for itself, and it is the difference
+    // between an artifact and a finding.
+    detect.mockImplementation((_url, min) =>
+      Promise.resolve(
+        min < MIN_CLAIM_LENGTH
+          ? result(
+              [
+                trajectory(CONTAINER, [true, false, false, false]),
+                trajectory(CONTAINED, [true, false, true, false]),
+              ],
+              2,
+            )
+          : result([trajectory(CONTAINER, [true, false, false, false])], 1),
+      ),
+    );
+
+    const report = await measureClaimLength('https://example.test', [0, MIN_CLAIM_LENGTH]);
+    const admitted = report.measurements[0]?.admitted ?? [];
+
+    expect(admitted[0]).toMatchObject({
+      claim: CONTAINED,
+      containedInCandidates: 1,
+      capturesWhereIndependent: 1,
+    });
+    expect(isDerivative(admitted[0]!)).toBe(false);
+  });
+
+  it('an uncontained short claim is never derivative — the reporting-link shape', async () => {
+    // `לדיווח על תופעות לוואי >` is 24 characters and nothing in the corpus
+    // contains it. Length filters it out; containment does not, and that is the
+    // entire argument for measuring the right thing.
+    detect.mockImplementation((_url, min) =>
+      Promise.resolve(
+        min < MIN_CLAIM_LENGTH
+          ? result([trajectory(LONG, CONSTANT), trajectory(SHORT, OSCILLATES)], 2)
+          : result([trajectory(LONG, CONSTANT)], 1),
+      ),
+    );
+
+    const report = await measureClaimLength('https://example.test', [0, MIN_CLAIM_LENGTH]);
+    const admitted = report.measurements[0]?.admitted ?? [];
+
+    expect(admitted[0]).toMatchObject({ containedInCandidates: 0, capturesWhereIndependent: 2 });
+    expect(isDerivative(admitted[0]!)).toBe(false);
+  });
+
+  it('counts containers that never move — a still container still explains a sighting', async () => {
+    // The container has zero transitions, so it never surfaces as a trajectory.
+    // Measuring containment against surfacing claims only would miss it entirely
+    // and report the contained claim as independent.
+    detect.mockImplementation((_url, min) =>
+      Promise.resolve(
+        min < MIN_CLAIM_LENGTH
+          ? result([trajectory(CONTAINER, CONSTANT), trajectory(CONTAINED, OSCILLATES)], 2)
+          : result([], 0),
+      ),
+    );
+
+    const report = await measureClaimLength('https://example.test', [0, MIN_CLAIM_LENGTH]);
+    const admitted = report.measurements[0]?.admitted ?? [];
+
+    expect(admitted[0]).toMatchObject({
+      claim: CONTAINED,
+      containedInCandidates: 1,
+      // Present in captures 0 and 2; the container is present in all four.
+      capturesWhereIndependent: 0,
+    });
+  });
+
+  it('does not treat a claim as containing itself', async () => {
+    detect.mockImplementation((_url, min) =>
+      Promise.resolve(
+        min < MIN_CLAIM_LENGTH
+          ? result([trajectory(SHORT, OSCILLATES)], 1)
+          : result([], 0),
+      ),
+    );
+
+    const report = await measureClaimLength('https://example.test', [0, MIN_CLAIM_LENGTH]);
+    expect(report.measurements[0]?.admitted[0]?.containedInCandidates).toBe(0);
   });
 });
