@@ -1,8 +1,9 @@
 import { createHash } from 'crypto';
-import { diffLines } from 'diff';
 import { prisma } from '../lib/prisma';
 import { computeDiffSurvival } from './computeDiffSurvival';
-import { groupDiffChunks, DIFF_INPUT_VERSION } from '../lib/diffChunking';
+import { diffChunkPair, DIFF_INPUT_VERSION } from '../lib/diffChunking';
+import { sentencesOf } from '../lib/textSegments';
+import { checkDiffSurvival, type SurvivalVerdict } from '../lib/diffSurvival';
 import { parseRawChunks } from '../lib/diffItems';
 
 // ---------------------------------------------------------------------------
@@ -52,20 +53,26 @@ export interface RediffPlanEntry {
   evidence: { id: string; status: string; fileHash: string }[];
   diffInputVersion: string | null;
   /** Text present in the recomputation and absent from the stored record. */
-  recoveredText: { side: 'deleted' | 'added'; text: string }[];
+  recoveredText: LostText[];
   /**
-   * Stored text the recomputation does NOT contain.
+   * Stored text a rewrite would DESTROY.
    *
-   * Must be empty. The repair rewrites rawDeletedText/rawAddedText, so a stored
-   * chunk with no counterpart would be destroyed by applying — turning a repair
-   * that recovers 159 chunks into one that also silently loses some. Expected to
-   * be empty by construction (the old pipeline was a strict truncation of the
-   * same computation), but expected is not measured, and this is the one property
-   * whose failure is unrecoverable.
+   * Must be empty. Applying rewrites rawDeletedText/rawAddedText in place, so
+   * stored text with no counterpart is gone — turning a repair into a loss. This
+   * is the one property whose failure is unrecoverable.
+   *
+   * A sentence dropped because it never changed does NOT count: narrowing an
+   * over-broad claim is the point of `v3-sentence-claims`. See
+   * `textLostByRewrite` for why that exception is exactly as wide as the rider
+   * and no wider.
    */
-  storedTextNotRecomputed: { side: 'deleted' | 'added'; text: string }[];
+  storedTextNotRecomputed: LostText[];
   /** False when applying this entry would lose stored text. Apply must refuse. */
   safeToApply: boolean;
+  /** The stored Level 5 verdict, or null for a row written before the check. */
+  currentSurvivalVerdict: SurvivalVerdict | null;
+  /** The verdict this row WOULD carry after repair. Derived, never written here. */
+  projectedSurvivalVerdict: SurvivalVerdict;
 }
 
 export interface RediffPlan {
@@ -101,9 +108,14 @@ export async function planRediff(opts: { url?: string } = {}): Promise<RediffPla
       diffInputVersion: true,
       rawDeletedText: true,
       rawAddedText: true,
-      beforeSnapshot: { select: { fullText: true, contentHash: true } },
-      afterSnapshot: { select: { fullText: true, contentHash: true } },
+      // `text` as well as `fullText`: the diff is computed over the extraction,
+      // and Level 5 checks the result against the whole document. Projecting the
+      // verdict needs both, and reading them here is what makes the projection a
+      // property of the PLAN rather than something only applying can reveal.
+      beforeSnapshot: { select: { fullText: true, contentHash: true, text: true, textExtractionVersion: true } },
+      afterSnapshot: { select: { fullText: true, contentHash: true, text: true, textExtractionVersion: true } },
       evidence: { select: { id: true, status: true, fileHash: true } },
+      survivalVerdict: true,
     },
   });
 
@@ -127,9 +139,10 @@ export async function planRediff(opts: { url?: string } = {}): Promise<RediffPla
       continue;
     }
 
-    const raw = diffLines(before.fullText, after.fullText, { ignoreWhitespace: true });
-    const recomputedDeleted = groupDiffChunks(raw, 'removed');
-    const recomputedAdded = groupDiffChunks(raw, 'added');
+    const { removed: recomputedDeleted, added: recomputedAdded } = diffChunkPair(
+      before.fullText,
+      after.fullText,
+    );
 
     const storedDeleted = parseRawChunks(diff.rawDeletedText);
     const storedAdded = parseRawChunks(diff.rawAddedText);
@@ -139,9 +152,12 @@ export async function planRediff(opts: { url?: string } = {}): Promise<RediffPla
       ...missing(recomputedAdded, storedAdded, 'added'),
     ];
 
+    // What a rewrite would DESTROY, not merely what it would restate. Under a
+    // narrowing migration those are different questions, and only the first one
+    // may block an apply.
     const storedTextNotRecomputed = [
-      ...missing(storedDeleted, recomputedDeleted, 'deleted'),
-      ...missing(storedAdded, recomputedAdded, 'added'),
+      ...textLostByRewrite(storedDeleted, recomputedDeleted, 'deleted', before.fullText, after.fullText),
+      ...textLostByRewrite(storedAdded, recomputedAdded, 'added', before.fullText, after.fullText),
     ];
 
     if (recoveredText.length === 0 && storedTextNotRecomputed.length === 0) continue;
@@ -161,6 +177,22 @@ export async function planRediff(opts: { url?: string } = {}): Promise<RediffPla
       recoveredText,
       storedTextNotRecomputed,
       safeToApply: storedTextNotRecomputed.length === 0,
+      currentSurvivalVerdict: diff.survivalVerdict,
+      // WHAT THE VERDICT WOULD BECOME, computed without writing anything.
+      //
+      // `checkDiffSurvival` is pure — no Archive, no model, no network — so the
+      // outcome of a cascade is knowable before the cascade. That is the
+      // difference between attributing a result to a fix and guessing which of
+      // two bundled fixes underperformed, and it costs one local function call
+      // per row.
+      projectedSurvivalVerdict: checkDiffSurvival({
+        rawDeletedText: JSON.stringify(recomputedDeleted),
+        rawAddedText: JSON.stringify(recomputedAdded),
+        beforeText: before.text,
+        afterText: after.text,
+        beforeVersion: before.textExtractionVersion,
+        afterVersion: after.textExtractionVersion,
+      }).verdict,
     });
   }
 
@@ -181,6 +213,64 @@ export const REDIFF_TARGET_VERSION = DIFF_INPUT_VERSION;
 
 function hashMatches(snapshot: { fullText: string; contentHash: string }): boolean {
   return createHash('sha256').update(snapshot.fullText, 'utf8').digest('hex') === snapshot.contentHash;
+}
+
+/**
+ * TEXT A REWRITE WOULD DESTROY — the guard, restated for a narrowing migration.
+ *
+ * The original rule was "every stored chunk must reappear verbatim", which was
+ * exactly right for the truncation repair: that repair only ever GREW a record,
+ * so any stored text missing from the recomputation meant the repair was also
+ * losing something. Under `v3-sentence-claims` the premise no longer holds. A
+ * stored block chunk is DELIBERATELY narrowed to the sentences that changed, so
+ * verbatim reappearance is guaranteed to fail on precisely the rows the
+ * migration exists to fix, and the guard would refuse all of them.
+ *
+ * Loosening it to "apply anyway" would be the dangerous move: this is the one
+ * property whose failure is unrecoverable, because applying rewrites the chunk
+ * payloads in place. So it is RESTATED rather than relaxed:
+ *
+ *   a sentence of a stored chunk may disappear ONLY IF it is present in BOTH
+ *   captures — that is, only if it never changed.
+ *
+ * That permits exactly the rider (an unchanged sentence that rode along inside
+ * an edited paragraph) and forbids everything else. A genuinely removed sentence
+ * is absent from the after capture, so dropping it fails this check and the row
+ * is refused.
+ *
+ * Compared on normalised text rather than identity: the stored chunk survived a
+ * JSON round-trip, and a whitespace difference would report text as lost that is
+ * merely re-wrapped.
+ */
+export interface LostText {
+  side: 'deleted' | 'added';
+  text: string;
+}
+
+function textLostByRewrite(
+  stored: readonly string[],
+  recomputed: readonly string[],
+  side: 'deleted' | 'added',
+  beforeText: string,
+  afterText: string,
+): LostText[] {
+  const carried = recomputed.map(normalise);
+  const before = normalise(beforeText);
+  const after = normalise(afterText);
+  const lost: LostText[] = [];
+
+  for (const chunk of stored) {
+    for (const sentence of sentencesOf(chunk)) {
+      const needle = normalise(sentence);
+      if (needle.length === 0) continue;
+      // Still claimed somewhere in the new payload.
+      if (carried.some((c) => c.includes(needle))) continue;
+      // Dropped. Legitimate ONLY if it never changed — present in both captures.
+      if (before.includes(needle) && after.includes(needle)) continue;
+      lost.push({ side, text: sentence });
+    }
+  }
+  return lost;
 }
 
 /**
@@ -206,10 +296,12 @@ function normalise(text: string): string {
 // ---------------------------------------------------------------------------
 // Applying the repair.
 //
-// This is an UPDATE that only ever GROWS the record: every entry it writes has
-// been verified to contain all of the text currently stored, plus more. An entry
-// that fails that check is REFUSED, not merged and not overwritten — the whole
-// point is that a repair which recovers 159 chunks must not also lose one.
+// This is an UPDATE that never LOSES A CHANGE. Under the truncation repair that
+// was the same thing as only ever growing the record; under a narrowing
+// migration it is not, and the distinction is the whole of `textLostByRewrite`.
+// An entry that fails the check is REFUSED, not merged and not overwritten — a
+// repair that recovers 159 chunks must not also lose one, and a repair that
+// narrows an over-broad claim must not narrow away a real removal.
 //
 // It deliberately does NOT touch deletedText/addedText (the classifier's items)
 // or any verdict. After this runs, a row's chunks are current while its
@@ -277,12 +369,10 @@ export async function applyRediff(opts: { url?: string } = {}): Promise<ApplyRed
       continue;
     }
 
-    const raw = diffLines(row.beforeSnapshot.fullText, row.afterSnapshot.fullText, {
-      ignoreWhitespace: true,
-    });
+    const recomputed = diffChunkPair(row.beforeSnapshot.fullText, row.afterSnapshot.fullText);
 
-    const rawDeletedText = JSON.stringify(groupDiffChunks(raw, 'removed'));
-    const rawAddedText = JSON.stringify(groupDiffChunks(raw, 'added'));
+    const rawDeletedText = JSON.stringify(recomputed.removed);
+    const rawAddedText = JSON.stringify(recomputed.added);
 
     // THE VERDICT IS RECOMPUTED HERE BECAUSE THIS IS WHAT INVALIDATES IT.
     //

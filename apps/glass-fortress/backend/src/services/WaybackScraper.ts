@@ -16,14 +16,13 @@ import {
   withRetry,
 } from '../lib/archiveHttp';
 import { requireSnapshotIdentity } from './forensicEvidence';
-import { diffLines } from 'diff';
 import { ForensicAgent, type DiffItem, type RelatedEvidenceContext } from './ForensicAgent';
 import { prisma } from '../lib/prisma';
 import {
   buildForensicEvidence,
   type ForensicEvidenceSource,
 } from './forensicEvidence';
-import { groupDiffChunks, classifierInputChunks, DIFF_INPUT_VERSION } from '../lib/diffChunking';
+import { diffChunkPair, classifierInputChunks, DIFF_INPUT_VERSION } from '../lib/diffChunking';
 import { CLASSIFIER_VERSION, classifierPromptHash } from '../lib/classifierVersion';
 import { getClaimTrajectories } from './claimTrajectory';
 import { ARCHIVED_CAPTURES_ONLY } from '../lib/archivedCaptures';
@@ -762,10 +761,9 @@ export class WaybackScraper {
       const snap = current.snap;
       const prevSnap = prev.snap;
 
-      const rawDiff = diffLines(prev.text, current.text, { ignoreWhitespace: true });
-      // All changed chunks (any size) — stored verbatim for display
-      const deletions = groupDiffChunks(rawDiff, 'removed');
-      const additions = groupDiffChunks(rawDiff, 'added');
+      // All changed chunks (any size) — stored verbatim for display, claimed at
+      // the granularity Level 5 checks at.
+      const { removed: deletions, added: additions } = diffChunkPair(prev.text, current.text);
       // The one selection step both classification paths go through.
       const deletionsForAI = classifierInputChunks(deletions);
       const additionsForAI = classifierInputChunks(additions);
@@ -1136,10 +1134,9 @@ export class WaybackScraper {
           `[WaybackScraper] Job ${jobId} — snapshot order violation: ${prevEntry?.timestamp} is not before ${entry.timestamp}. Skipping diff for this pair.`,
         );
       } else if (previousText) {
-        const rawDiff = diffLines(previousText, currentText, { ignoreWhitespace: true });
-        // All changed chunks (any size) — for storage and display
-        const deletions = groupDiffChunks(rawDiff, 'removed');
-        const additions = groupDiffChunks(rawDiff, 'added');
+        // All changed chunks (any size) — for storage and display, claimed at
+        // the granularity Level 5 checks at.
+        const { removed: deletions, added: additions } = diffChunkPair(previousText, currentText);
         // Substantial subset — for AI input only
         const deletionsForAI = classifierInputChunks(deletions);
         const additionsForAI = classifierInputChunks(additions);

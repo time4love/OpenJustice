@@ -1,4 +1,5 @@
-import type { Change } from 'diff';
+import { diffArrays, diffLines, type Change } from 'diff';
+import { sentencesOf } from './textSegments';
 
 // Pure text-processing helpers over a line-diff result. Deliberately dependency-free
 // (no jsdom/readability/axios, unlike WaybackScraper.ts) so they — and the tests
@@ -65,35 +66,33 @@ import type { Change } from 'diff';
  * are understated at the storage layer and cannot be corrected by reclassification;
  * the diff has to be recomputed from its snapshots.
  */
-export const DIFF_INPUT_VERSION = 'v2-uncapped';
+export const DIFF_INPUT_VERSION = 'v3-sentence-claims';
 
 /**
- * Group consecutive diff changes of the same type into single string chunks.
+ * v3-sentence-claims: a changed region whose two sides are BOTH non-empty is
+ * refined to sentence granularity, so a chunk stored as REMOVED contains only
+ * text that was actually removed.
  *
- * Returns EVERY non-empty chunk, in document order. Nothing is dropped: a change
- * detected on the page is a change that gets persisted, because the record is
- * the product and losing part of it at write time is not recoverable from the
- * database afterwards — the evidence of the truncation is itself truncated.
+ * WHY, MEASURED. `htmlToText` inserts newlines at block boundaries so that a
+ * "line" is a paragraph — a deliberate design, and the reason the chunks a
+ * researcher reads are legible units rather than fragments. The cost was that a
+ * four-word edit re-emitted its whole paragraph as removed, carrying every
+ * unchanged sentence in it along inside the claim. On staging that produced 12
+ * of 31 contradicted excerpts; on production 10 of 14.
+ *
+ * WORD GRANULARITY WAS REJECTED. The chunk is not an internal intermediate: it
+ * is what the classifier reads and what the forensic timeline displays. Diffing
+ * words would fix the rider and leave unreadable fragments in the evidentiary
+ * record, which trades a false claim for an illegible one. The sentence is the
+ * smallest unit that is both a true claim and a legible one — and it is the
+ * unit Level 5 already tests at, which is the whole point.
+ *
+ * A REGION WITH ONLY ONE SIDE IS LEFT ALONE. A pure insertion or deletion has no
+ * counterpart for anything to ride along in, so refining it would fragment a
+ * genuinely-deleted paragraph into sentences for no gain. Scoping the change to
+ * exactly the pattern that was measured is what keeps it safe if the diagnosis
+ * is wrong.
  */
-export function groupDiffChunks(raw: Change[], type: 'added' | 'removed'): string[] {
-  const chunks: string[] = [];
-  let current = '';
-
-  for (const part of raw) {
-    const isMatch = type === 'added' ? part.added : part.removed;
-    if (isMatch) {
-      current += part.value;
-    } else {
-      const trimmed = current.trim();
-      if (trimmed.length > 0) chunks.push(trimmed);
-      current = '';
-    }
-  }
-  const trimmed = current.trim();
-  if (trimmed.length > 0) chunks.push(trimmed);
-
-  return chunks;
-}
 
 /**
  * The chunks a classification is performed over.
@@ -119,4 +118,102 @@ export function groupDiffChunks(raw: Change[], type: 'added' | 'removed'): strin
  */
 export function classifierInputChunks(chunks: readonly string[]): string[] {
   return chunks.filter((c) => c.trim().length > 0);
+}
+
+/**
+ * THE ONE PLACE A DIFF IS COMPUTED.
+ *
+ * `diffLines` had THREE call sites — two in `rediffFromSnapshots`, one in
+ * `WaybackScraper` — each pairing it with its own `groupDiffChunks` calls. One
+ * rule, three implementations, is this repository's dominant defect shape, and
+ * here it has a specific edge: a fourth call site added later would keep the OLD
+ * granularity while stamping the NEW `DIFF_INPUT_VERSION`, which is precisely
+ * the two-paths-one-version-string defect already on the record.
+ *
+ * Enforced by a source scan rather than by this comment: `diffLines` may be
+ * imported in this file and nowhere else. See test/diffSingleDiffer.test.ts.
+ */
+export interface DiffChunks {
+  removed: string[];
+  added: string[];
+}
+
+/**
+ * A maximal run of non-common parts, with its two sides paired.
+ *
+ * PAIRING IS THE POINT. `groupDiffChunks` walks each side independently, so it
+ * can say "these lines were removed" and "these were added" but never "these two
+ * are the same edit". Refinement needs the pair: the unchanged sentence rides
+ * along inside a region, and only the region's own counterpart can show that it
+ * survived.
+ */
+interface ChangedRegion {
+  removed: string;
+  added: string;
+}
+
+function changedRegions(raw: readonly Change[]): ChangedRegion[] {
+  const regions: ChangedRegion[] = [];
+  let removed = '';
+  let added = '';
+
+  // ITERATED, NOT INDEXED. The first draft walked `raw[index]` with a nested
+  // while loop and the noUncheckedIndexedAccess ratchet refused it — correctly:
+  // without that flag the element type lies about being defined, so every such
+  // access is an unchecked assumption the compiler cannot see. Accumulating
+  // across a for..of and flushing on the first common part expresses the same
+  // grouping with no index to get wrong.
+  const flush = (): void => {
+    const r = removed.trim();
+    const a = added.trim();
+    if (r.length > 0 || a.length > 0) regions.push({ removed: r, added: a });
+    removed = '';
+    added = '';
+  };
+
+  for (const part of raw) {
+    if (part.added) added += part.value;
+    else if (part.removed) removed += part.value;
+    else flush();
+  }
+  flush();
+
+  return regions;
+}
+
+/**
+ * Compute a diff and return its chunks, claimed at sentence granularity.
+ *
+ * NOTHING IS DROPPED. Every changed region contributes; refinement only decides
+ * how finely a region is described, never whether it is described. The
+ * no-cap-no-unexamined-tail rule the 8-chunk truncation established still holds,
+ * and this function is where it would be violated if anyone tried again.
+ */
+export function diffChunkPair(before: string, after: string): DiffChunks {
+  const removed: string[] = [];
+  const added: string[] = [];
+
+  for (const region of changedRegions(diffLines(before, after, { ignoreWhitespace: true }))) {
+    // One-sided region: a genuine insertion or deletion. Kept whole, because
+    // there is no counterpart for an unchanged sentence to have ridden in on,
+    // and a deleted paragraph reads better than its sentences listed apart.
+    if (region.removed.length === 0 || region.added.length === 0) {
+      if (region.removed.length > 0) removed.push(region.removed);
+      if (region.added.length > 0) added.push(region.added);
+      continue;
+    }
+
+    // Two-sided region: an EDIT. Describe only the sentences that differ.
+    //
+    // diffArrays over sentence lists rather than a second character diff: it
+    // aligns whole sentences, so an unchanged one is common on both sides and
+    // is emitted on neither. That is the rider, removed at its source.
+    const parts = diffArrays(sentencesOf(region.removed), sentencesOf(region.added));
+    for (const part of parts) {
+      if (part.removed) removed.push(...part.value);
+      else if (part.added) added.push(...part.value);
+    }
+  }
+
+  return { removed, added };
 }

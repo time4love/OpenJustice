@@ -27,6 +27,24 @@ declare module 'diff' {
     ignoreCase?: boolean;
   }
 
+  /**
+   * A change over a sequence of items rather than of characters.
+   *
+   * Declared because `diffChunkPair` aligns SENTENCE LISTS: comparing whole
+   * sentences is what lets an unchanged one be recognised as common on both
+   * sides and emitted on neither, which is the rider fix. A second character
+   * diff could not express that — it would report the surviving sentence as
+   * changed text inside a changed region.
+   */
+  export interface ArrayChange<T> {
+    count?: number;
+    value: T[];
+    added?: boolean;
+    removed?: boolean;
+  }
+
+  export function diffArrays<T>(oldArr: readonly T[], newArr: readonly T[]): ArrayChange<T>[];
+
   export function diffChars(oldStr: string, newStr: string): Change[];
   export function diffWords(oldStr: string, newStr: string, options?: WordsOptions): Change[];
   export function diffWordsWithSpace(oldStr: string, newStr: string): Change[];
