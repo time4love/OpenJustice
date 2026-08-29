@@ -462,17 +462,99 @@ function terminalVerdict(confirmation: AnchorConfirmation): AnchorCheckOutcome |
  *   3  a claim could not be CONFIRMED — not wrong, and not proven either
  *   0  every claim was checked and every one held
  */
+/**
+ * THE SUMMARY, AS ONE STRING.
+ *
+ * Built here rather than printed line by line in the script, for two reasons that
+ * turned out to matter on the same day.
+ *
+ * IT CANNOT BE SPLIT. The per-row detail goes to stderr and the summary used to
+ * go to stdout; redirecting both into one file interleaved them MID-LINE, and a
+ * staging run printed `confirmed (log):` followed by another row's text. The
+ * count was recoverable only by counting rows in the log. A summary block is
+ * what an operator reads to decide, so one that another stream can corrupt is
+ * one that can mislead — and this session has twice mistaken a damaged local log
+ * for a fact about the run. One string, one write, one stream.
+ *
+ * IT IS TESTABLE. Printed inline in a script it had no test at all, which is how
+ * the exit rule next door came to be wrong and unexercised.
+ */
+export function formatConfirmAnchorsSummary(report: ConfirmAnchorsReport): string {
+  const dry = report.dryRun ? ' (dry run — none written)' : '';
+  const lines = [
+    '',
+    '---',
+    `examined:                    ${String(report.examined)}`,
+    `confirmed (receipt):         ${String(report.confirmed)}${dry}`,
+    `confirmed (log):             ${String(report.confirmedByLog)}${dry}`,
+    `already carried a verdict:   ${String(report.alreadyConfirmed)}`,
+    `MISANCHORED:                 ${String(report.misanchored)}`,
+    `REGISTERED BY ANOTHER TX:    ${String(report.registeredByAnotherTx)}`,
+    `ANCHORED NOTHING:            ${String(report.anchoredNothing)}`,
+    `NO TRACE ON CHAIN:           ${String(report.noReceiptHashAbsent)}`,
+    `no receipt, hash registered: ${String(report.noReceiptHashRegistered)}`,
+    `unreachable:                 ${String(report.unreachable)}`,
+    `ambiguous:                   ${String(report.ambiguous)}`,
+    `failed:                      ${String(report.failed)}`,
+  ];
+
+  if (report.failures.length > 0) {
+    lines.push('', 'failures:');
+    for (const f of report.failures) lines.push(`  ${f.id}: ${f.reason}`);
+  }
+
+  // EVERY SUBJECT IS ACCOUNTED FOR, or the summary says so rather than letting a
+  // reader add the columns up and assume. A run whose parts do not sum to its
+  // whole has lost a subject somewhere, and a silent loss is how a partial pass
+  // reads as a complete one.
+  const counted =
+    report.confirmed +
+    report.confirmedByLog +
+    report.misanchored +
+    report.registeredByAnotherTx +
+    report.anchoredNothing +
+    report.noReceiptHashAbsent +
+    report.noReceiptHashRegistered +
+    report.unreachable +
+    report.ambiguous +
+    report.failed;
+  if (counted !== report.examined) {
+    lines.push(
+      '',
+      `⚠️  ${String(counted)} outcomes for ${String(report.examined)} subjects — they must be equal. ` +
+        'Some subject reached no outcome at all.',
+    );
+  }
+
+  return lines.join('\n');
+}
+
+/**
+ * Claims that are WRONG: anchored elsewhere, anchoring nothing, or with no trace
+ * on this chain by either route.
+ *
+ * Exported so the exit code and the message that explains it cannot disagree.
+ * They already had: the script's own tally omitted `registeredByAnotherTx` while
+ * the exit rule counted it, so a run could exit 2 and print a number one short.
+ * One rule, two implementations, in miniature.
+ */
+export function wrongClaims(report: ConfirmAnchorsReport): number {
+  return (
+    report.misanchored +
+    report.anchoredNothing +
+    report.noReceiptHashAbsent +
+    report.registeredByAnotherTx
+  );
+}
+
+/** Claims that could not be CONFIRMED — not wrong, and not proven either. */
+export function unresolvedClaims(report: ConfirmAnchorsReport): number {
+  return report.noReceiptHashRegistered + report.unreachable + report.ambiguous;
+}
+
 export function confirmAnchorsExitCode(report: ConfirmAnchorsReport): number {
   if (report.failed > 0) return 1;
-  if (
-    report.misanchored +
-      report.anchoredNothing +
-      report.noReceiptHashAbsent +
-      report.registeredByAnotherTx >
-    0
-  ) {
-    return 2;
-  }
+  if (wrongClaims(report) > 0) return 2;
   // TX_UNREADABLE is TERMINAL but it is not a confirmation, so it stays here
   // rather than folding into the pass. A corpus whose anchors are real and
   // unattributable is a different thing from one whose anchors were checked and

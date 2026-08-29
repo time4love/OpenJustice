@@ -29,6 +29,8 @@ import { prisma } from '../src/lib/prisma';
 import {
   confirmAnchors,
   confirmAnchorsExitCode,
+  formatConfirmAnchorsSummary,
+  wrongClaims,
   type ConfirmAnchorsReport,
 } from '../src/services/confirmAnchors';
 
@@ -704,5 +706,91 @@ describe('a terminal verdict is what marks a subject done', () => {
     await confirmAnchors({ dryRun: true, recheck: true });
     const where = (prisma.urlSnapshot.findMany as jest.Mock).mock.calls[0][0].where;
     expect(where.anchorCheck).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// THE SUMMARY IS THE DELIVERABLE, so it gets a test.
+//
+// It was printed line by line inside a script — untested, and on a stream the
+// per-row detail could interleave with. A staging run printed
+// `confirmed (log):` followed by another row's text, and the count was
+// recoverable only by counting rows in the log.
+// ---------------------------------------------------------------------------
+describe('the summary', () => {
+  function report(over: Partial<ConfirmAnchorsReport> = {}): ConfirmAnchorsReport {
+    return {
+      dryRun: true,
+      examined: 0,
+      confirmed: 0,
+      confirmedByLog: 0,
+      misanchored: 0,
+      registeredByAnotherTx: 0,
+      anchoredNothing: 0,
+      noReceiptHashRegistered: 0,
+      noReceiptHashAbsent: 0,
+      unreachable: 0,
+      ambiguous: 0,
+      alreadyConfirmed: 0,
+      failed: 0,
+      failures: [],
+      rows: [],
+      ...over,
+    };
+  }
+
+  it('is ONE string, so nothing can split it mid-line', () => {
+    // The property the incident turned on. A caller that writes this in one call
+    // cannot have another stream corrupt a line of it.
+    const out = formatConfirmAnchorsSummary(report({ examined: 113, confirmed: 113 }));
+    expect(typeof out).toBe('string');
+    expect(out).toContain('confirmed (receipt):         113');
+  });
+
+  it('reports the real staging shape faithfully', () => {
+    const out = formatConfirmAnchorsSummary(
+      report({ examined: 113, confirmed: 22, noReceiptHashRegistered: 91, alreadyConfirmed: 22 }),
+    );
+    expect(out).toContain('examined:                    113');
+    expect(out).toContain('no receipt, hash registered: 91');
+    expect(out).toContain('NO TRACE ON CHAIN:           0');
+  });
+
+  it('SAYS SO when the outcomes do not add up to the subjects', () => {
+    // A run whose parts do not sum to its whole has lost a subject, and a silent
+    // loss is how a partial pass reads as a complete one. Nothing else in the
+    // report would show it.
+    const out = formatConfirmAnchorsSummary(report({ examined: 113, confirmed: 22 }));
+    expect(out).toContain('Some subject reached no outcome at all');
+  });
+
+  it('stays quiet when they do add up — the warning is not vacuous', () => {
+    const out = formatConfirmAnchorsSummary(
+      report({ examined: 113, confirmed: 22, noReceiptHashRegistered: 91 }),
+    );
+    expect(out).not.toContain('Some subject reached no outcome');
+  });
+
+  it('lists failures with their reasons, never just a count', () => {
+    const out = formatConfirmAnchorsSummary(
+      report({ examined: 1, failed: 1, failures: [{ id: 'snap-1', reason: 'RPC down' }] }),
+    );
+    expect(out).toContain('snap-1: RPC down');
+  });
+});
+
+describe('the message and the exit code cannot disagree', () => {
+  it('counts REGISTERED BY ANOTHER TX as wrong, as the exit rule does', () => {
+    // They already disagreed: the script tallied findings without this arm while
+    // the exit rule counted it, so a run could exit 2 and print a number one
+    // short of the truth. One rule, two implementations, in miniature.
+    const r = {
+      dryRun: true, examined: 1, confirmed: 0, confirmedByLog: 0, misanchored: 0,
+      registeredByAnotherTx: 1, anchoredNothing: 0, noReceiptHashRegistered: 0,
+      noReceiptHashAbsent: 0, unreachable: 0, ambiguous: 0, alreadyConfirmed: 0,
+      failed: 0, failures: [], rows: [],
+    } satisfies ConfirmAnchorsReport;
+    expect(wrongClaims(r)).toBe(1);
+    expect(confirmAnchorsExitCode(r)).toBe(2);
   });
 });

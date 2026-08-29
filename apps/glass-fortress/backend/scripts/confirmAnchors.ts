@@ -28,7 +28,13 @@
  */
 import 'dotenv/config';
 import { runOperationalScript } from '../src/lib/operationalContext';
-import { confirmAnchors, confirmAnchorsExitCode } from '../src/services/confirmAnchors';
+import {
+  confirmAnchors,
+  confirmAnchorsExitCode,
+  formatConfirmAnchorsSummary,
+  unresolvedClaims,
+  wrongClaims,
+} from '../src/services/confirmAnchors';
 
 function arg(name: string): string | undefined {
   const i = process.argv.indexOf(`--${name}`);
@@ -128,37 +134,24 @@ async function main(): Promise<number> {
     }
   }
 
-  console.log('\n---');
-  console.log(`examined:          ${report.examined}`);
-  console.log(`confirmed (receipt): ${report.confirmed}${dryRun ? ' (dry run — none written)' : ''}`);
-  console.log(`confirmed (log):     ${report.confirmedByLog}`);
-  console.log(`already confirmed: ${report.alreadyConfirmed}`);
-  console.log(`MISANCHORED:       ${report.misanchored}`);
-  console.log(`REGISTERED BY ANOTHER TX: ${report.registeredByAnotherTx}`);
-  console.log(`ANCHORED NOTHING:  ${report.anchoredNothing}`);
-  console.log(`NO TRACE ON CHAIN: ${report.noReceiptHashAbsent}`);
-  console.log(`no receipt, hash registered: ${report.noReceiptHashRegistered}`);
-  console.log(`unreachable:       ${report.unreachable}`);
-  console.log(`ambiguous:         ${report.ambiguous}`);
-  console.log(`failed:            ${report.failed}`);
-
-  if (report.failures.length > 0) {
-    console.error('\nfailures:');
-    for (const f of report.failures) console.error(`  ${f.id}: ${f.reason}`);
-  }
+  // ONE WRITE, ON THE SAME STREAM AS THE DETAIL ABOVE. Printed line by line to
+  // stdout while the detail went to stderr, a `> log 2>&1` interleaved them
+  // mid-line and corrupted a count. The summary is what an operator reads to
+  // decide, so it may not be corruptible by anything else the run prints.
+  console.error(formatConfirmAnchorsSummary(report));
 
   // The RULE lives in the service, with a test. It was wrong here, inline and
   // unexercised, and reported a run that answered 22 of 113 questions as a pass.
   const code = confirmAnchorsExitCode(report);
+  // Counted by the same functions the exit rule uses, so the number printed and
+  // the code returned cannot drift apart.
   if (code === 2) {
-    const findings = report.misanchored + report.anchoredNothing + report.noReceiptHashAbsent;
-    console.error(`\n${String(findings)} anchoring claim(s) are WRONG. See above.`);
+    console.error(`\n${String(wrongClaims(report))} anchoring claim(s) are WRONG. See above.`);
   }
   if (code === 3) {
-    const unresolved = report.noReceiptHashRegistered + report.unreachable + report.ambiguous;
     console.error(
-      `\n${String(unresolved)} of ${String(report.examined)} anchoring claim(s) could not be ` +
-        'confirmed. Nothing is wrong with them and nothing is proven about them.',
+      `\n${String(unresolvedClaims(report))} of ${String(report.examined)} anchoring claim(s) ` +
+        'could not be confirmed. Nothing is wrong with them and nothing is proven about them.',
     );
   }
   return code;
