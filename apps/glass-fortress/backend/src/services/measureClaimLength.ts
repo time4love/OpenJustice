@@ -195,3 +195,61 @@ function admittedClaim(
     capturesWhereIndependent,
   };
 }
+
+/**
+ * ONE CLAIM, AND THE CAPTURES WHERE IT SPEAKS FOR ITSELF.
+ *
+ * The sweep reports `capturesWhereIndependent` as a count, which settles every
+ * case but one: `למפת מוקדי החיסון >` is independent in exactly 1 capture of 56,
+ * on both corpora. A single observation is not wrong, it is WEAK, and no
+ * threshold decides it honestly — a bar anywhere between 2 and 17 partitions
+ * this corpus identically, so the number would be doing no work.
+ *
+ * So this names the capture instead. The output is a Wayback URL and a claim: an
+ * outsider can open it and search, which is the standard the whole trajectory
+ * subsystem exists to meet. It also distinguishes the two readings a count
+ * cannot — a genuine independent sighting, versus a truncated capture where the
+ * container is missing because half the page is.
+ */
+export interface ClaimInspection {
+  claim: string;
+  presentIn: number;
+  /** Every other candidate containing this claim, with how often it appears. */
+  containers: { claim: string; presentIn: number }[];
+  /** The captures where the claim appears and no container does. */
+  independentCaptures: { snapshotDate: string; snapshotUrl: string }[];
+}
+
+export async function inspectClaim(
+  url: string,
+  claimText: string,
+): Promise<ClaimInspection | null> {
+  // Threshold 0: the claim under inspection is by definition below the
+  // production one, and its containers may be any length.
+  const at = await detectAtClaimLength(url, 0);
+  const claim = at.trajectories.find((t) => t.claimText === claimText);
+  if (claim === undefined) return null;
+
+  const containers = at.trajectories.filter(
+    (other) => other.claimHash !== claim.claimHash && other.claimText.includes(claim.claimText),
+  );
+
+  const capturesWithContainer = new Set<string>();
+  for (const container of containers) {
+    for (const observation of container.observations) {
+      if (observation.present) capturesWithContainer.add(observation.waybackTimestamp);
+    }
+  }
+
+  return {
+    claim: claim.claimText,
+    presentIn: claim.observations.filter((o) => o.present).length,
+    containers: containers.map((c) => ({
+      claim: c.claimText,
+      presentIn: c.observations.filter((o) => o.present).length,
+    })),
+    independentCaptures: claim.observations
+      .filter((o) => o.present && !capturesWithContainer.has(o.waybackTimestamp))
+      .map((o) => ({ snapshotDate: o.snapshotDate, snapshotUrl: o.snapshotUrl })),
+  };
+}
