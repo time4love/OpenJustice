@@ -6,7 +6,11 @@ import {
   type RegisteringTxLookup,
 } from './Web3Service';
 import { toBytes32 } from '../lib/bytes32';
-import { ANCHORABLE_CAPTURE_SELECT, anchoredCaptureHash } from '../lib/anchoredCaptureHash';
+import {
+  CAPTURE_HASHES_SELECT,
+  anchoredCaptureHash,
+  capturesKnownHashes,
+} from '../lib/anchoredCaptureHash';
 
 // ---------------------------------------------------------------------------
 // CONFIRM WHAT EACH ANCHORING TRANSACTION ACTUALLY REGISTERED, AND RECORD IT.
@@ -158,8 +162,34 @@ interface AnchorClaimant {
   subject: 'URL_SNAPSHOT' | 'EVIDENCE';
   id: string;
   txHash: string;
-  /** The hash the row carries — what the transaction is EXPECTED to have registered. */
-  expected: string;
+  /** The hash the CURRENT rule names. Reporting only — never the test. */
+  current: string;
+  /**
+   * EVERY hash this subject is known by. A transaction registering ANY of them
+   * anchors this subject.
+   *
+   * This is the fix for the incident of 2026-08-30. The test used to be the
+   * current rule's hash alone, so the moment Level 3 moved the anchor to the
+   * document, 83 staging captures whose real, registered `contentHash` anchors
+   * were perfectly intact came back NO_TRACE_ON_CHAIN — the most serious verdict
+   * this check has — and 22 more came back MISANCHORED.
+   *
+   * The audit already had the three-way answer (`attestationOf`: current,
+   * superseded, unrecognised) and this pass did not: one rule, two
+   * implementations, and they disagreed the instant the rule moved.
+   *
+   * THE SEPARATION THAT REMOVES THE DUPLICATION, rather than copying the audit's
+   * logic here: this pass OBSERVES what the transaction registered, and records
+   * it. Whether that hash is the one the current rule names is a question about
+   * the RULE, answered at read time by `attestationOf` from `anchoredHash`. So
+   * "confirmed" here means "the transaction registered a hash this subject
+   * genuinely has" — and a superseded-rule anchor is confirmed AND reported
+   * MISATTESTING by the audit, which is exactly right.
+   *
+   * It is also why this fix needed no new enum value. A verdict that has to name
+   * the rule it was judged against is a verdict doing the audit's job.
+   */
+  known: string[];
 }
 
 /**
@@ -202,16 +232,21 @@ function sameTx(a: string, b: string): boolean {
   return a.toLowerCase() === b.toLowerCase();
 }
 
-async function anchorClaimants(): Promise<AnchorClaimant[]> {
+async function anchorClaimants(recheck: boolean): Promise<AnchorClaimant[]> {
   const [snapshots, evidence] = await Promise.all([
     prisma.urlSnapshot.findMany({
-      where: { NOT: { onChainTxHash: null }, anchoredHash: null },
-      select: { id: true, onChainTxHash: true, ...ANCHORABLE_CAPTURE_SELECT },
+      // A TERMINAL VERDICT is what marks a subject done, not a recorded hash.
+      // TX_UNREADABLE and ANCHORED_NOTHING are finished answers that record no
+      // hash, and filtering on `anchoredHash` re-examined them on every run
+      // forever while skipping rows that had one — the exact combination that
+      // left 22 wrong verdicts unreachable by a re-run.
+      where: { NOT: { onChainTxHash: null }, ...(recheck ? {} : { anchorCheck: null }) },
+      select: { id: true, onChainTxHash: true, ...CAPTURE_HASHES_SELECT },
       orderBy: { capturedAt: 'asc' },
     }),
     prisma.evidence.findMany({
-      where: { NOT: { onChainTxHash: null }, anchoredHash: null },
-      select: { id: true, onChainTxHash: true, fileHash: true },
+      where: { NOT: { onChainTxHash: null }, ...(recheck ? {} : { anchorCheck: null }) },
+      select: { id: true, onChainTxHash: true, fileHash: true, previousFileHash: true },
       orderBy: { evidenceDate: 'asc' },
     }),
   ]);
@@ -221,16 +256,18 @@ async function anchorClaimants(): Promise<AnchorClaimant[]> {
       subject: 'URL_SNAPSHOT' as const,
       id: s.id,
       txHash: requireAnchorTx(s.onChainTxHash, s.id),
-      // What the CURRENT rule says this capture is anchored by. Only ever the
-      // expectation the observation is compared against — never the value
-      // written, which is the whole point of this pass.
-      expected: anchoredCaptureHash(s),
+      current: anchoredCaptureHash(s),
+      known: capturesKnownHashes(s),
     })),
     ...evidence.map((e) => ({
       subject: 'EVIDENCE' as const,
       id: e.id,
       txHash: requireAnchorTx(e.onChainTxHash, e.id),
-      expected: e.fileHash,
+      current: e.fileHash,
+      // `previousFileHash` is a superseded identity this record really had. A
+      // transaction still registering it anchors this record, under a rule that
+      // has moved — explainable, and the audit says so.
+      known: e.previousFileHash === null ? [e.fileHash] : [e.fileHash, e.previousFileHash],
     })),
   ];
 }
@@ -274,7 +311,7 @@ function describeLookup(lookup: RegisteringTxLookup): string {
 function decide(
   observed: RegisteredByTransaction,
   /** What the row claims: the hash it carries and the transaction it points at. */
-  claim: { expected: string; txHash: string },
+  claim: { current: string; known: readonly string[]; txHash: string },
   /**
    * The answers to the two fallback questions, asked ONLY when the receipt could
    * not be read — on exactly the rows that need them, never on all of them.
@@ -282,13 +319,27 @@ function decide(
    * `hashRegistered: null` means the registry could not be asked either, which is
    * a third thing again and must not read as "this chain does not hold it".
    */
-  fallback: { hashRegistered: boolean | null; lookup: RegisteringTxLookup | null },
+  fallback: {
+    /**
+     * WHICH of the subject's known hashes the registry holds, `null` if none, and
+     * `undefined` if the registry could not be asked at all.
+     *
+     * Three values, not two. A registry that answered "no" and one that could not
+     * answer license opposite conclusions about a stored anchoring claim, and the
+     * old boolean|null could not carry the difference once "which hash" mattered.
+     */
+    registeredHash: string | null | undefined;
+    lookup: RegisteringTxLookup | null;
+  },
 ): AnchorConfirmation {
-  const { expected, txHash } = claim;
-  const { hashRegistered, lookup } = fallback;
+  const { current, known, txHash } = claim;
+  const { registeredHash, lookup } = fallback;
   if (observed.kind === 'NO_RECEIPT') {
-    if (hashRegistered === null) return { kind: 'UNREACHABLE' };
-    if (!hashRegistered) return { kind: 'NO_RECEIPT_HASH_ABSENT', expected };
+    if (registeredHash === undefined) return { kind: 'UNREACHABLE' };
+    // NONE of the subject's hashes is on this registry, by any rule. Only now is
+    // "no trace" true — asking about the current rule's hash alone reported it
+    // for 83 captures whose superseded-rule anchors were entirely intact.
+    if (registeredHash === null) return { kind: 'NO_RECEIPT_HASH_ABSENT', expected: current };
 
     // THE SECOND ROUTE. `txHashFromLog` is the registry's own EvidenceSubmitted
     // log answering "which transaction registered this hash?" — and comparing it
@@ -302,23 +353,35 @@ function decide(
     // found from the registry's own stored timestamp, which is contract state and
     // never expires.
     if (lookup === null) {
-      return { kind: 'NO_RECEIPT_HASH_REGISTERED', expected, logLookup: 'the log was not consulted' };
+      return {
+        kind: 'NO_RECEIPT_HASH_REGISTERED',
+        expected: registeredHash,
+        logLookup: 'the log was not consulted',
+      };
     }
     if (lookup.kind === 'FOUND') {
       return sameTx(lookup.txHash, txHash)
-        ? { kind: 'CONFIRMED_BY_LOG', anchoredHash: expected }
+        ? { kind: 'CONFIRMED_BY_LOG', anchoredHash: registeredHash }
         : // The registry names a DIFFERENT transaction for this hash. Its own arm
           // rather than folded into a misanchor: the contract reverts a duplicate
           // registration, so this should be impossible, and a state that cannot
           // happen — happening — deserves a human reading both transaction hashes
           // rather than a counter incrementing.
-          { kind: 'REGISTERED_BY_ANOTHER_TX', expected, txHashFromLog: lookup.txHash };
+          { kind: 'REGISTERED_BY_ANOTHER_TX', expected: registeredHash, txHashFromLog: lookup.txHash };
     }
-    return { kind: 'NO_RECEIPT_HASH_REGISTERED', expected, logLookup: describeLookup(lookup) };
+    return {
+      kind: 'NO_RECEIPT_HASH_REGISTERED',
+      expected: registeredHash,
+      logLookup: describeLookup(lookup),
+    };
   }
   if (observed.kind === 'ANCHORED_NOTHING') return { kind: 'ANCHORED_NOTHING' };
 
-  const match = observed.hashes.find((h) => sameHash(h, expected));
+  // Matched against EVERY hash this subject is known by, not against the current
+  // rule's alone. A transaction registering a superseded-rule hash DID anchor this
+  // subject; whether that is the hash the rule now names is the audit's question,
+  // answered from `anchoredHash` by `attestationOf`.
+  const match = observed.hashes.find((h) => known.some((k) => sameHash(h, k)));
   if (match) return { kind: 'CONFIRMED', anchoredHash: match };
   // `.at()`, not `[0]` and not a destructure. Both debt ratchets have an opinion
   // and between them they rule out the obvious spellings: `hashes[0]` is an
@@ -326,8 +389,8 @@ function decide(
   // the types say can never be false. `.at()` is honestly typed as optional, so
   // the guard is real and neither ratchet has to be argued with.
   const sole = observed.hashes.length === 1 ? observed.hashes.at(0) : undefined;
-  if (sole !== undefined) return { kind: 'MISANCHORED', anchoredHash: sole, expected };
-  return { kind: 'AMBIGUOUS', candidates: observed.hashes, expected };
+  if (sole !== undefined) return { kind: 'MISANCHORED', anchoredHash: sole, expected: current };
+  return { kind: 'AMBIGUOUS', candidates: observed.hashes, expected: current };
 }
 
 /** The hash a confirmation licenses writing, or null when it licenses none. */
@@ -421,13 +484,22 @@ export function confirmAnchorsExitCode(report: ConfirmAnchorsReport): number {
 export async function confirmAnchors(opts: {
   dryRun: boolean;
   limit?: number;
+  /**
+   * Re-examine subjects that already carry a terminal verdict.
+   *
+   * Needed because a verdict recorded by a wrong rule is unreachable otherwise —
+   * on 2026-08-30 105 staging rows took a verdict computed against the current
+   * rule's hash alone, and the default filter would have skipped every one of
+   * them forever.
+   */
+  recheck?: boolean;
 }): Promise<ConfirmAnchorsReport> {
   const [snapshotsDone, evidenceDone] = await Promise.all([
     prisma.urlSnapshot.count({ where: { NOT: { anchoredHash: null } } }),
     prisma.evidence.count({ where: { NOT: { anchoredHash: null } } }),
   ]);
 
-  const all = await anchorClaimants();
+  const all = await anchorClaimants(opts.recheck === true);
   const claimants = opts.limit ? all.slice(0, opts.limit) : all;
 
   const report: ConfirmAnchorsReport = {
@@ -462,18 +534,30 @@ export async function confirmAnchors(opts: {
       // receipt is unreadable is not yet a finding — whether this chain holds
       // the fact at all is what decides that, and it is a different question
       // from the one the receipt answers.
-      let hashRegistered: boolean | null = null;
+      // undefined = the registry could not be asked; null = asked, holds none of
+      // this subject's hashes; a string = the one it holds.
+      let registeredHash: string | null | undefined;
       let lookup: RegisteringTxLookup | null = null;
       if (observed.kind === 'NO_RECEIPT') {
         try {
-          hashRegistered = (await web3.isHashRegistered(toBytes32(claimant.expected))).registered;
+          registeredHash = null;
+          // EVERY known hash, not just the current rule's. Two reads for a capture
+          // and at most two for an evidence record, on rows whose receipt already
+          // failed — and the difference between this and asking about one hash is
+          // the difference between TX_UNREADABLE and a false NO_TRACE_ON_CHAIN.
+          for (const candidate of claimant.known) {
+            if ((await web3.isHashRegistered(toBytes32(candidate))).registered) {
+              registeredHash = candidate;
+              break;
+            }
+          }
         } catch {
-          // The registry could not be asked either. Left null so the verdict is
+          // The registry could not be asked. Left undefined so the verdict is
           // UNREACHABLE rather than "this chain does not hold it" — an RPC
           // failure and a negative answer license opposite conclusions.
-          hashRegistered = null;
+          registeredHash = undefined;
         }
-        if (hashRegistered === true) {
+        if (registeredHash !== null && registeredHash !== undefined) {
           // Costly — a block-range binary search per subject — so it runs only
           // where the cheap route already failed AND the fact is known to be on
           // chain. Never on a row whose receipt was readable.
@@ -482,13 +566,13 @@ export async function confirmAnchors(opts: {
           // so there is no catch here to swallow one. That is deliberate: the
           // bare catch this replaced turned every distinct cause into the same
           // null and made a 91-row result undiagnosable.
-          lookup = await web3.lookupRegisteringTx(toBytes32(claimant.expected));
+          lookup = await web3.lookupRegisteringTx(toBytes32(registeredHash));
         }
       }
       const confirmation = decide(
         observed,
-        { expected: claimant.expected, txHash: claimant.txHash },
-        { hashRegistered, lookup },
+        { current: claimant.current, known: claimant.known, txHash: claimant.txHash },
+        { registeredHash, lookup },
       );
 
       // The hash and the verdict are written TOGETHER, or neither is. A verdict

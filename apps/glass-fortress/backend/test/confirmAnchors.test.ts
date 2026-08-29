@@ -34,10 +34,26 @@ import {
 
 const HASH = `0x${'a'.repeat(64)}`;
 const OTHER = `0x${'b'.repeat(64)}`;
+/** The hash the anchor USED to be about — a superseded rule, still a real hash of the row. */
+const LEGACY = `0x${'d'.repeat(64)}`;
 
-/** One unconfirmed capture claiming an anchor. The hash column is stored bare. */
-function capture(documentHash = HASH.slice(2)) {
-  return { id: 'snap-1', onChainTxHash: '0xtx', documentHash };
+/**
+ * One unconfirmed capture claiming an anchor. Hash columns are stored bare.
+ *
+ * It carries BOTH hashes because that is what the database holds and what the
+ * 2026-08-30 incident turned on: a capture's `contentHash` anchor stays real
+ * after the rule moves to `documentHash`.
+ */
+function capture(documentHash = HASH.slice(2), contentHash = LEGACY.slice(2)) {
+  return { id: 'snap-1', onChainTxHash: '0xtx', documentHash, contentHash };
+}
+
+/** The registry holds exactly these hashes and nothing else. */
+function registryHolds(...hashes: string[]) {
+  const held = new Set(hashes.map((h) => h.replace(/^0x/, '').toLowerCase()));
+  mockWeb3.isHashRegistered.mockImplementation((h: string) =>
+    Promise.resolve({ registered: held.has(h.replace(/^0x/, '').toLowerCase()), evidenceId: 1n }),
+  );
 }
 
 function setup(opts: { snapshots?: unknown[]; evidence?: unknown[] } = {}) {
@@ -139,7 +155,7 @@ describe('what the transaction says, not what the row expects', () => {
     // the reverse.
     setup({ snapshots: [capture()] });
     mockWeb3.readRegisteredHashes.mockResolvedValue({ kind: 'NO_RECEIPT' });
-    mockWeb3.isHashRegistered.mockResolvedValue({ registered: true, evidenceId: 1n });
+    registryHolds(HASH);
 
     const r = await confirmAnchors({ dryRun: false });
 
@@ -158,7 +174,7 @@ describe('what the transaction says, not what the row expects', () => {
   it('an unreadable transaction whose hash IS registered is unresolved, not wrong', async () => {
     setup({ snapshots: [capture()] });
     mockWeb3.readRegisteredHashes.mockResolvedValue({ kind: 'NO_RECEIPT' });
-    mockWeb3.isHashRegistered.mockResolvedValue({ registered: true, evidenceId: 1n });
+    registryHolds(HASH);
 
     const r = await confirmAnchors({ dryRun: false });
 
@@ -176,7 +192,7 @@ describe('what the transaction says, not what the row expects', () => {
   it('an unreadable transaction whose hash is ABSENT is the serious finding', async () => {
     setup({ snapshots: [capture()] });
     mockWeb3.readRegisteredHashes.mockResolvedValue({ kind: 'NO_RECEIPT' });
-    mockWeb3.isHashRegistered.mockResolvedValue({ registered: false, evidenceId: 0n });
+    registryHolds();
 
     const r = await confirmAnchors({ dryRun: false });
 
@@ -269,7 +285,9 @@ describe('both subject types', () => {
     // `Evidence.fileHash` asserts identity and is read as though it also
     // asserted registration — true only because rehashEvidence happens to
     // register before it writes, which is a property of one function.
-    setup({ evidence: [{ id: 'ev-1', onChainTxHash: '0xevtx', fileHash: HASH }] });
+    setup({
+      evidence: [{ id: 'ev-1', onChainTxHash: '0xevtx', fileHash: HASH, previousFileHash: null }],
+    });
     mockWeb3.readRegisteredHashes.mockResolvedValue({
       kind: 'REGISTERED',
       hashes: [HASH],
@@ -394,7 +412,8 @@ describe('what a run means, as an exit code', () => {
 describe('the registry log confirms what the receipt could not', () => {
   function unreadableReceipt(registered = true) {
     mockWeb3.readRegisteredHashes.mockResolvedValue({ kind: 'NO_RECEIPT' });
-    mockWeb3.isHashRegistered.mockResolvedValue({ registered, evidenceId: 1n });
+    if (registered) registryHolds(HASH);
+    else registryHolds();
   }
 
   it('CONFIRMS when the registry names THIS row’s transaction', async () => {
@@ -515,7 +534,7 @@ describe('a transient failure records NOTHING — that is what keeps the null si
 describe('a lookup that names no transaction says why', () => {
   function unreadableReceiptRegistered() {
     mockWeb3.readRegisteredHashes.mockResolvedValue({ kind: 'NO_RECEIPT' });
-    mockWeb3.isHashRegistered.mockResolvedValue({ registered: true, evidenceId: 1n });
+    registryHolds(HASH);
   }
 
   it('records a DEFINITE empty window, naming the blocks it searched', async () => {
@@ -582,5 +601,108 @@ describe('a lookup that names no transaction says why', () => {
     expect((empty as { logLookup: string }).logLookup).not.toBe(
       (failed as { logLookup: string }).logLookup,
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// THE 2026-08-30 INCIDENT, as three tests that would have stopped it.
+//
+// Level 3 clause 1 moved the anchoring rule from `contentHash` to
+// `documentHash`. This pass tested the observed hash against the CURRENT rule's
+// hash alone, so on the first --apply after the flip:
+//
+//   83 captures  → NO_TRACE_ON_CHAIN  (the most serious verdict this check has)
+//   22 captures  → MISANCHORED
+//
+// Every one of them was anchored, correctly, under the superseded rule. The
+// audit already had the three-way answer and this pass did not: one rule, two
+// implementations, disagreeing the instant the rule moved.
+//
+// The fix is a SEPARATION, not a copy: this pass observes WHAT the transaction
+// registered; whether that is the hash the rule now names is the audit's
+// question, answered from `anchoredHash` by `attestationOf`.
+// ---------------------------------------------------------------------------
+describe('an anchor made under a superseded rule is still an anchor', () => {
+  it('CONFIRMS a transaction that registered the row’s legacy hash', async () => {
+    // The 22. The receipt names contentHash; the rule now names documentHash.
+    setup({ snapshots: [capture()] });
+    mockWeb3.readRegisteredHashes.mockResolvedValue({
+      kind: 'REGISTERED',
+      hashes: [LEGACY],
+      registryAddress: '0xreg',
+    });
+
+    const r = await confirmAnchors({ dryRun: false });
+
+    expect(r.confirmed).toBe(1);
+    expect(r.misanchored).toBe(0);
+    // The OBSERVED hash is recorded. `attestationOf` reads it later and reports
+    // ATTESTS_SUPERSEDED, which is what makes the audit say MISATTESTING —
+    // explainable, not passing, and Level 10's to supersede.
+    expect(prisma.urlSnapshot.update).toHaveBeenCalledWith({
+      where: { id: 'snap-1' },
+      data: { anchoredHash: LEGACY, anchorCheck: 'CONFIRMED_BY_RECEIPT' },
+    });
+  });
+
+  it('an unreadable transaction whose LEGACY hash is registered is unresolved, not "no trace"', async () => {
+    // The 83. Asking only about the current rule's hash reported the most serious
+    // verdict this check can reach, about anchors that were entirely intact.
+    setup({ snapshots: [capture()] });
+    mockWeb3.readRegisteredHashes.mockResolvedValue({ kind: 'NO_RECEIPT' });
+    registryHolds(LEGACY);
+
+    const r = await confirmAnchors({ dryRun: false });
+
+    expect(r.noReceiptHashAbsent).toBe(0);
+    expect(r.noReceiptHashRegistered).toBe(1);
+    expect(prisma.urlSnapshot.update).toHaveBeenCalledWith({
+      where: { id: 'snap-1' },
+      data: { anchoredHash: null, anchorCheck: 'TX_UNREADABLE' },
+    });
+  });
+
+  it('NO TRACE still fires when NONE of the row’s hashes is registered', async () => {
+    // The guard is not vacuous: the serious verdict must survive the fix, or the
+    // repair would have removed the only thing that detects a fabricated anchor.
+    setup({ snapshots: [capture()] });
+    mockWeb3.readRegisteredHashes.mockResolvedValue({ kind: 'NO_RECEIPT' });
+    registryHolds();
+
+    const r = await confirmAnchors({ dryRun: false });
+
+    expect(r.noReceiptHashAbsent).toBe(1);
+  });
+
+  it('asks the registry about EVERY hash the row is known by', async () => {
+    setup({ snapshots: [capture()] });
+    mockWeb3.readRegisteredHashes.mockResolvedValue({ kind: 'NO_RECEIPT' });
+    registryHolds();
+
+    await confirmAnchors({ dryRun: true });
+
+    const asked = mockWeb3.isHashRegistered.mock.calls.map((c: string[]) =>
+      String(c[0]).replace(/^0x/, '').toLowerCase(),
+    );
+    expect(asked).toEqual(expect.arrayContaining([LEGACY.slice(2), HASH.slice(2)]));
+  });
+});
+
+describe('a terminal verdict is what marks a subject done', () => {
+  it('skips subjects that already carry one', async () => {
+    // The default. Filtering on `anchoredHash` instead re-examined TX_UNREADABLE
+    // rows forever while making rows that DID record a hash unreachable — which
+    // is what put 22 wrong verdicts beyond the reach of a re-run.
+    setup();
+    await confirmAnchors({ dryRun: true });
+    const where = (prisma.urlSnapshot.findMany as jest.Mock).mock.calls[0][0].where;
+    expect(where).toMatchObject({ anchorCheck: null });
+  });
+
+  it('--recheck re-examines them, which is the only way to correct a wrong rule', async () => {
+    setup();
+    await confirmAnchors({ dryRun: true, recheck: true });
+    const where = (prisma.urlSnapshot.findMany as jest.Mock).mock.calls[0][0].where;
+    expect(where.anchorCheck).toBeUndefined();
   });
 });

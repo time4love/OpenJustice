@@ -3,6 +3,7 @@
  *
  *   npm run forensics:confirm-anchors -- --env staging
  *   npm run forensics:confirm-anchors -- --env production --apply
+ *   npm run forensics:confirm-anchors -- --env staging --apply --recheck
  *
  * `anchoredHash` is added nullable and is never backfilled from the column the
  * code anchors today — that would stamp a belief, which is how ninety-one
@@ -39,6 +40,11 @@ function flag(name: string): boolean {
 
 async function main(): Promise<number> {
   const dryRun = !flag('apply');
+  // Re-examine subjects that already carry a terminal verdict. Needed after a
+  // verdict has been recorded by a rule that has since been corrected — the
+  // default filter treats a terminal verdict as done, which is right until the
+  // rule that produced it was wrong.
+  const recheck = flag('recheck');
   const limitRaw = arg('limit');
   const limit = limitRaw ? Number(limitRaw) : undefined;
 
@@ -48,12 +54,18 @@ async function main(): Promise<number> {
   }
 
   console.log(
-    dryRun
-      ? 'DRY RUN — every chain read happens, nothing is written. Pass --apply to record.\n'
-      : 'APPLYING — observed hashes will be written to anchoredHash.\n',
+    (dryRun
+      ? 'DRY RUN — every chain read happens, nothing is written. Pass --apply to record.'
+      : 'APPLYING — observed hashes will be written to anchoredHash.') +
+      (recheck ? '\nRECHECK — subjects that already carry a terminal verdict are re-examined.' : '') +
+      '\n',
   );
 
-  const report = await confirmAnchors({ dryRun, ...(limit ? { limit } : {}) });
+  const report = await confirmAnchors({
+    dryRun,
+    ...(limit ? { limit } : {}),
+    ...(recheck ? { recheck: true } : {}),
+  });
 
   for (const row of report.rows) {
     const c = row.confirmation;
