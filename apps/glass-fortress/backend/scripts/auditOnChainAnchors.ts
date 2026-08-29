@@ -20,24 +20,17 @@
  */
 import 'dotenv/config';
 import { runOperationalScript } from '../src/lib/operationalContext';
-import { auditOnChainAnchors } from '../src/services/auditOnChainAnchors';
+import {
+  auditOnChainAnchors,
+  formatAnchorAuditSummary,
+} from '../src/services/auditOnChainAnchors';
 
 async function main(): Promise<void> {
   const verbose = process.argv.includes('--verbose');
   const report = await auditOnChainAnchors();
   const s = report.byState;
 
-  console.log('\nLevel 3a — anchor check coverage\n');
-  console.log(`Subjects claiming an anchor   ${String(report.subjects)}`);
-  console.log(`  VERIFIED                    ${String(s.VERIFIED)}`);
-  console.log(`  CONTRADICTED                ${String(s.CONTRADICTED)}   (chain and database disagree)`);
-  console.log(`  UNAVAILABLE                 ${String(s.UNAVAILABLE)}   (chain unreachable — NOT a pass)`);
-  console.log(`  UNCHECKED                   ${String(s.UNCHECKED)}   (no verdict ever recorded — NOT a pass)`);
-  console.log(
-    `  STALE                       ${String(s.STALE)}   ` +
-      '(the claim moved, the rule moved, or the verdict does not name this chain)',
-  );
-  console.log(`\nVerifier version              ${report.currentVerifierVersion}`);
+  console.log(formatAnchorAuditSummary(report));
 
   // THE TABLE, NOT JUST ITS TOP ROW. Everything above reads the newest check per
   // subject, so a corpus whose old checks were REPLACED and one whose old checks
@@ -80,19 +73,29 @@ async function main(): Promise<void> {
   // NOT an exit condition, and deliberately so: every subject is in this state
   // today and the audit is correct about all of them. It is the gate on MOVING
   // the anchor, printed where whoever is about to move it will read it.
+  // Reported, never advised into. An earlier version told the operator to run
+  // confirm-anchors "before Level 3 moves the rule" — advice that outlived the
+  // move and pointed at an action that could not help.
   if (report.anchorsUnconfirmed > 0) {
     console.log(
-      `\n${String(report.anchorsUnconfirmed)} of ${String(report.subjects)} anchoring claims are ` +
-        'judged against what the current rule EXPECTS their transaction registered, not against ' +
-        'what it did.\n' +
-        '  Sound only while the anchoring rule has not moved. Run forensics:confirm-anchors ' +
-        'before Level 3 moves it.',
+      `\n${String(report.anchorsUnconfirmed)} of ${String(report.subjects)} anchoring claims have ` +
+        'never had their transaction read, so what they attest is unknown.\n' +
+        '  forensics:confirm-anchors resolves the ones the chain still remembers. Where the ' +
+        'transaction is beyond the endpoint\u2019s reach this is permanent, and true.',
     );
   }
 
   // MISATTESTING is its own exit, not folded into the four above. Those all say
   // the CHECK is not good; this says the check is fine and the wrong thing was
   // anchored — a different repair, and the one Level 3 clause 1 is about.
+  if (s.UNATTRIBUTED > 0 && s.MISATTESTING === 0) {
+    console.error(
+      `\n${String(s.UNATTRIBUTED)} subject(s) claim an anchor whose content has never been ` +
+        'observed. Nothing is wrong with them and nothing is proven about them.',
+    );
+    process.exit(6);
+  }
+
   if (s.MISATTESTING > 0) {
     console.error(
       `\n${String(s.MISATTESTING)} subject(s) carry a current, correct verdict about a hash the ` +
