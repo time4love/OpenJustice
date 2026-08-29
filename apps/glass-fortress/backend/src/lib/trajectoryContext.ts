@@ -4,6 +4,7 @@ import {
   claimHash,
   normaliseClaim,
   MIN_TRANSITIONS,
+  CONTAINMENT_MATCH_MIN_LENGTH,
 } from '../services/claimTrajectory';
 import { parseDiffItems } from './diffItems';
 
@@ -167,23 +168,6 @@ interface DiffItemRef {
   text: string;
   significant: boolean;
 }
-
-/**
- * Shortest quote matched to a trajectory BY CONTAINMENT rather than by identity.
- *
- * THIS IS THE LAST LENGTH HEURISTIC IN THE TRAJECTORY PATH, and it is unmeasured.
- * It is kept because it guards a genuinely different operation from the one
- * measured on 2026-08-29: that one asked whether a claim's own presence signal
- * was real, and length turned out to be non-separating for it. This one asks
- * whether a diff item and a trajectory claim are the same assertion when their
- * text merely overlaps, and nothing has yet been measured about it.
- *
- * Retained rather than removed because removing it fails in the direction that
- * LOSES a finding — a false containment match reports a classified item as
- * covered when it is not. If it is ever revisited, measure it first; the tool
- * for that shape already exists (`forensics:measure-claim-length`).
- */
-const CONTAINMENT_MATCH_MIN_LENGTH = 40;
 
 /** The claim identities a diff's items would produce, and which are classified. */
 function diffItemRefs(deletedText: string, addedText: string): DiffItemRef[] {
