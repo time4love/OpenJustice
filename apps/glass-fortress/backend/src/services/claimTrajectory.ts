@@ -49,6 +49,36 @@ import { parseDiffItems } from '../lib/diffItems';
 export const MIN_CLAIM_LENGTH_REMOVED_IN = 'v2-containment-not-length';
 
 /**
+ * Shortest quote matched to a trajectory BY CONTAINMENT rather than by identity.
+ *
+ * THE LAST LENGTH HEURISTIC IN THE TRAJECTORY PATH, and it is unmeasured. It
+ * guards a genuinely different operation from the one the sweep measured: that
+ * one asked whether a claim's own presence signal was real, and length turned out
+ * non-separating for it. This one asks whether a diff item and a trajectory claim
+ * are the SAME ASSERTION when their text merely overlaps.
+ *
+ * Kept because removing it fails in the direction that LOSES a finding — a false
+ * containment match reports a classified item as covered when it is not. Exact
+ * hash matching is unaffected and needs no floor: a hash match is identity, not
+ * resemblance. If this is ever revisited, measure it first;
+ * `forensics:measure-claim-length` is the tool for that shape.
+ *
+ * IT LIVES HERE, NOT AT ITS USE SITE, AND THAT PLACEMENT IS THE POINT.
+ *
+ * `MIN_CLAIM_LENGTH` was retired safely only because it was a shared exported
+ * symbol: deleting it made the COMPILER name every dependent, and that is how
+ * `trajectoryContext` — which carried the same 40 and would have hidden the
+ * recovered reporting-link trajectory from every agent — was found at all. A
+ * private literal at the use site would have been invisible to that.
+ *
+ * So the rule this file keeps is: a heuristic gets exactly ONE IMPORTABLE NAME.
+ * Not merely one implementation — one SYMBOL, because a symbol is what the
+ * compiler can enumerate. Two implementations of a rule are findable; two
+ * anonymous literals of it are not.
+ */
+export const CONTAINMENT_MATCH_MIN_LENGTH = 40;
+
+/**
  * Transitions required before a trajectory is stored.
  *
  * One transition is an ordinary removal or addition, already fully visible as a
