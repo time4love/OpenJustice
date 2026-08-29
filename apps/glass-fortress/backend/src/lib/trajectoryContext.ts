@@ -3,7 +3,6 @@ import {
   getClaimTrajectories,
   claimHash,
   normaliseClaim,
-  MIN_CLAIM_LENGTH,
   MIN_TRANSITIONS,
 } from '../services/claimTrajectory';
 import { parseDiffItems } from './diffItems';
@@ -169,20 +168,47 @@ interface DiffItemRef {
   significant: boolean;
 }
 
+/**
+ * Shortest quote matched to a trajectory BY CONTAINMENT rather than by identity.
+ *
+ * THIS IS THE LAST LENGTH HEURISTIC IN THE TRAJECTORY PATH, and it is unmeasured.
+ * It is kept because it guards a genuinely different operation from the one
+ * measured on 2026-08-29: that one asked whether a claim's own presence signal
+ * was real, and length turned out to be non-separating for it. This one asks
+ * whether a diff item and a trajectory claim are the same assertion when their
+ * text merely overlaps, and nothing has yet been measured about it.
+ *
+ * Retained rather than removed because removing it fails in the direction that
+ * LOSES a finding — a false containment match reports a classified item as
+ * covered when it is not. If it is ever revisited, measure it first; the tool
+ * for that shape already exists (`forensics:measure-claim-length`).
+ */
+const CONTAINMENT_MATCH_MIN_LENGTH = 40;
+
 /** The claim identities a diff's items would produce, and which are classified. */
 function diffItemRefs(deletedText: string, addedText: string): DiffItemRef[] {
   const all: DiffItemRef[] = [];
   for (const raw of [deletedText, addedText]) {
     for (const item of parseDiffItems(raw)) {
       const normalised = normaliseClaim(item.exactQuote);
-      // Below the length threshold a quote is never followed as a trajectory and
-      // is not safe to match by containment either — a short string is a
-      // substring of unrelated claims by accident, and a false match would
-      // discount a classified item, which is the direction that LOSES a finding.
-      const usable = normalised.length >= MIN_CLAIM_LENGTH;
+      // THE TWO MATCHES ARE NOT EQUALLY RISKY, and v1 gated them together.
+      //
+      // The old gate read "below the length threshold a quote is never followed
+      // as a trajectory and is not safe to match by containment either", and
+      // blanked BOTH fields below it. Its first clause is now false — since
+      // DETECTION_VERSION v2 a short claim is followed, and the claim this
+      // platform's case rests on is 24 characters. Leaving the gate would have
+      // recovered `לדיווח על תופעות לוואי >` as a trajectory and then hidden it
+      // from every agent that reasons over one.
+      //
+      // EXACT IDENTITY IS SAFE AT ANY LENGTH — a hash match is the same
+      // assertion, not a resemblance. Only the CONTAINMENT fallback carries the
+      // risk the old comment named: a short string is a substring of unrelated
+      // claims by accident, and a false match would discount a classified item,
+      // which is the direction that loses a finding. So only `text` is gated.
       all.push({
-        hash: usable ? claimHash(normalised) : '',
-        text: usable ? normalised : '',
+        hash: claimHash(normalised),
+        text: normalised.length >= CONTAINMENT_MATCH_MIN_LENGTH ? normalised : '',
         significant: item.investigativeCategories.length > 0,
       });
     }

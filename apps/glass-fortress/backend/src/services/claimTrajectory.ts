@@ -27,14 +27,26 @@ import { parseDiffItems } from '../lib/diffItems';
 // ---------------------------------------------------------------------------
 
 /**
- * Claims shorter than this are not followed.
+ * REMOVED 2026-08-29, and replaced by the containment rule below.
  *
- * A short string ("החיסון בטוח") recurs incidentally across unrelated passages,
- * so its presence says nothing about a specific assertion surviving or being
- * withdrawn. The threshold buys precision at the cost of missing terse claims —
- * a trade worth revisiting once there are real trajectories to look at.
+ * The rationale was sound and the instrument was wrong. A short string
+ * ("החיסון בטוח") does recur incidentally across unrelated passages, so its
+ * presence says nothing about a specific assertion — but LENGTH does not
+ * identify which claims that happens to, and the corpus proved it:
+ *
+ *   independent claims spanned 12-37 characters
+ *   derivative claims spanned 11-37 characters
+ *
+ * The two sets OVERLAP across the whole range, so no value of this constant
+ * separated them. It was non-separating, not merely imprecise — and the claim it
+ * cost was `לדיווח על תופעות לוואי >` (24 chars), the removal of the page's own
+ * adverse-event reporting link, which is the finding this platform exists for.
+ * It had no trajectory at all while this constant stood.
+ *
+ * Measured on both corpora: `forensics:measure-claim-length`, and
+ * [[gf-claim-length-threshold-measured]].
  */
-export const MIN_CLAIM_LENGTH = 40;
+export const MIN_CLAIM_LENGTH_REMOVED_IN = 'v2-containment-not-length';
 
 /**
  * Transitions required before a trajectory is stored.
@@ -68,10 +80,16 @@ export function claimHash(normalised: string): string {
  * prevent one layer down, so this takes the same shape: one version covering the
  * whole detection procedure, bumped by whoever changes any part of it.
  *
- * Covers: normaliseClaim · MIN_CLAIM_LENGTH · the presence test · candidate
- * eligibility · anything else that decides what a trajectory IS.
+ * Covers: normaliseClaim · the presence test · candidate eligibility · the
+ * containment rule · anything else that decides what a trajectory IS.
+ *
+ * v2 retired the length filter for `isDerivativeTrajectory`. Every stored v1
+ * trajectory was decided by a rule that excluded `לדיווח על תופעות לוואי >`
+ * outright, so no v1 computation describes the corpus under v2 — which is what
+ * this version string is for. Old computations are NOT rewritten: a cited
+ * trajectory still resolves to what was cited.
  */
-export const DETECTION_VERSION = 'v1-collapse-ws-min40-substring-presence';
+export const DETECTION_VERSION = 'v2-collapse-ws-containment-substring-presence';
 
 /**
  * The identity of the state a detection pass ran against.
@@ -136,6 +154,73 @@ export interface Trajectory extends DetectedTrajectory {
    * a citation silently change meaning when the archive grows.
    */
   id: string;
+}
+
+/**
+ * IS THIS TRAJECTORY REPORTING MOVEMENT THAT BELONGS TO SOMETHING ELSE?
+ *
+ * Presence is a verbatim substring search, so when one candidate sits inside
+ * another the shorter is "present" every time the longer is — not because it was
+ * asserted, but because its characters are inside the other's text. Its
+ * observations are then the UNION of its containers', and its flips are theirs.
+ *
+ * BEING CONTAINED IS NOT THE VERDICT, and that distinction is the whole rule. A
+ * claim appearing in even ONE capture where no container does is carrying its own
+ * signal, however short it is and however many phrases embed it elsewhere. Only
+ * contained AND never independent is derivative.
+ *
+ * Measured: this admits 6 real claims that length excluded — the reporting link
+ * among them — and excludes 12 artifacts that length admitted or excluded by
+ * accident. The two sets overlap on length across the whole range, so no
+ * character count could have done both.
+ *
+ * KEYED ON THE CAPTURE, not on position: lining two observation arrays up by
+ * index assumes every trajectory was built over the same captures in the same
+ * order, which is true today and enforced by nothing.
+ */
+export interface Containment {
+  /** Other candidates whose text contains this claim's. */
+  containers: DetectedTrajectory[];
+  /** Captures where the claim appears and no container does. */
+  capturesWhereIndependent: number;
+}
+
+export function containmentOf(
+  claim: DetectedTrajectory,
+  all: readonly DetectedTrajectory[],
+): Containment {
+  const containers = all.filter(
+    (other) => other.claimHash !== claim.claimHash && other.claimText.includes(claim.claimText),
+  );
+
+  const capturesWithContainer = new Set<string>();
+  for (const container of containers) {
+    for (const observation of container.observations) {
+      if (observation.present) capturesWithContainer.add(observation.waybackTimestamp);
+    }
+  }
+
+  let capturesWhereIndependent = 0;
+  for (const observation of claim.observations) {
+    if (observation.present && !capturesWithContainer.has(observation.waybackTimestamp)) {
+      capturesWhereIndependent++;
+    }
+  }
+
+  return { containers, capturesWhereIndependent };
+}
+
+/**
+ * The VERDICT, expressed over the measurement above so the two cannot drift.
+ * `forensics:measure-claim-length` reports the numbers; detection reads the
+ * boolean; both come from `containmentOf`.
+ */
+export function isDerivativeTrajectory(
+  claim: DetectedTrajectory,
+  all: readonly DetectedTrajectory[],
+): boolean {
+  const { containers, capturesWhereIndependent } = containmentOf(claim, all);
+  return containers.length > 0 && capturesWhereIndependent === 0;
 }
 
 /** Counts how many times presence flips across the ordered observations. */
@@ -223,6 +308,14 @@ export interface ComputeResult {
   candidatesConsidered: number;
   /** Candidate quotes that appear in no snapshot — usually paraphrased extractions. */
   candidatesUnmatched: number;
+  /**
+   * Claims dropped because every sighting sat inside another claim's text.
+   *
+   * Surfaced, not swallowed: a reader comparing `candidatesConsidered` against
+   * the trajectories returned would otherwise have an unexplained gap, and an
+   * unexplained gap is how a filter comes to look like an absence of findings.
+   */
+  candidatesDerivative: number;
   trajectories: Trajectory[];
   /** The same trajectories, collapsed by shared movement. This is the finding count. */
   groups: TrajectoryGroup[];
@@ -262,16 +355,16 @@ const TRAJECTORY_CAPTURE_SCAN = { orderBy: { capturedAt: 'asc' } } as const;
  * would defeat it.
  */
 /**
- * `minClaimLength` is a PARAMETER with the production value as its default, so
- * the measurement below runs the real discovery rule rather than a second copy
- * of it. A sweep that re-implemented the filter would be measuring the copy.
+ * `minClaimLength` DEFAULTS TO ZERO — production applies no length filter since
+ * v2. It survives as a parameter only so `forensics:measure-claim-length` can
+ * still ask what the retired rule would have done, through this code path rather
+ * than a copy of it.
  *
  * It deliberately does NOT reach `sourceStateHash`'s inputs as a named field:
- * DETECTION_VERSION already covers the threshold, and enumerating it there is
- * the mistake that hash's own comment records — it once listed `normaliseClaim`
- * and `MIN_CLAIM_LENGTH` and missed the presence test.
+ * DETECTION_VERSION already covers candidate eligibility, and enumerating knobs
+ * there is the mistake that hash's own comment records.
  */
-async function loadDetectionInputs(url: string, minClaimLength: number = MIN_CLAIM_LENGTH) {
+async function loadDetectionInputs(url: string, minClaimLength = 0) {
   const tracked = await prisma.trackedUrl.findUnique({
     where: { url },
     select: { id: true },
@@ -368,7 +461,12 @@ async function detect(inputs: DetectionInputs) {
 function shape(
   url: string,
   all: readonly Trajectory[],
-  counts: { snapshotsExamined: number; candidatesConsidered: number; candidatesUnmatched: number },
+  counts: {
+    snapshotsExamined: number;
+    candidatesConsidered: number;
+    candidatesUnmatched: number;
+    candidatesDerivative: number;
+  },
   provenance: TrajectoryProvenance,
   minTransitions: number,
 ): ComputeResult {
@@ -470,15 +568,31 @@ export async function getClaimTrajectories(
   }
 
   const detected = await detect(inputs);
+
+  // THE CONTAINMENT FILTER, applied after detection rather than at candidate
+  // discovery — it needs per-capture presence, which only detection produces.
+  // Length could be applied earlier and that convenience is exactly what made it
+  // attractive; it is not a reason to keep filtering on the wrong thing.
+  const derivative = detected.trajectories.filter((t) =>
+    isDerivativeTrajectory(t, detected.trajectories),
+  );
+  const derivativeHashes = new Set(derivative.map((t) => t.claimHash));
+  const kept = detected.trajectories.filter((t) => !derivativeHashes.has(t.claimHash));
+
   const counts = {
     snapshotsExamined: detected.snapshotsExamined,
     candidatesConsidered: inputs.candidates.size,
     candidatesUnmatched: detected.unmatched,
+    // COUNTED, NEVER SILENT. A filter that reports nothing is how the 8-chunk
+    // cap discarded 159 of 290 changes without a line of output, and how this
+    // very rule hid the reporting-link claim for months. The number is stored on
+    // the computation so a reader can see what the pass declined to keep.
+    candidatesDerivative: derivative.length,
   };
 
   let persisted: { computedAt: string; stored: Trajectory[] };
   try {
-    persisted = await persistComputation(inputs, detected.trajectories, counts);
+    persisted = await persistComputation(inputs, kept, counts);
   } catch (err) {
     // Two concurrent misses race to write the same state. The loser reads the
     // winner's rows rather than failing: the answer is identical by
@@ -536,6 +650,7 @@ async function readComputation(inputs: DetectionInputs) {
       snapshotsExamined: computation.snapshotsExamined,
       candidatesConsidered: computation.candidatesConsidered,
       candidatesUnmatched: computation.candidatesUnmatched,
+      candidatesDerivative: computation.candidatesDerivative,
     },
     provenance: {
       sourceStateHash: computation.sourceStateHash,
@@ -558,7 +673,12 @@ async function readComputation(inputs: DetectionInputs) {
 async function persistComputation(
   inputs: DetectionInputs,
   trajectories: readonly DetectedTrajectory[],
-  counts: { snapshotsExamined: number; candidatesConsidered: number; candidatesUnmatched: number },
+  counts: {
+    snapshotsExamined: number;
+    candidatesConsidered: number;
+    candidatesUnmatched: number;
+    candidatesDerivative: number;
+  },
 ): Promise<{ computedAt: string; stored: Trajectory[] }> {
   return prisma.$transaction(async (tx) => {
     const computation = await tx.claimTrajectoryComputation.create({

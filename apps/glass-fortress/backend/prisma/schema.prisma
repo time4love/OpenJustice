@@ -1636,6 +1636,17 @@ model ClaimTrajectoryComputation {
   // Kept because a high count means candidate discovery is degrading, which is
   // invisible if only the successes are stored.
   candidatesUnmatched  Int
+  /// Claims dropped because every sighting sat inside another claim's text.
+  ///
+  /// STORED, NOT DERIVED ON READ, because it is a fact about the PASS: a later
+  /// reader recomputing it would be measuring today's corpus against a count
+  /// taken from a different one. It is also what stops the filter being silent —
+  /// `candidatesConsidered` minus the trajectories kept would otherwise be an
+  /// unexplained gap, and an unexplained gap reads as an absence of findings.
+  ///
+  /// Zero on every v1 computation, which is honest: v1 filtered by LENGTH at
+  /// candidate discovery and dropped nothing for containment.
+  candidatesDerivative Int               @default(0)
   computedAt           DateTime          @default(now())
   trajectories         ClaimTrajectory[]
 

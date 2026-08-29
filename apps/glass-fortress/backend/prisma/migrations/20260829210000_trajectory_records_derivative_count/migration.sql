@@ -1,0 +1,14 @@
+-- A filter that reports nothing is how a corpus loses findings quietly.
+--
+-- DETECTION_VERSION v2 replaces the MIN_CLAIM_LENGTH filter with a containment
+-- rule: a claim is dropped only when every sighting of it sits inside another
+-- claim's text. That drops real rows, so the pass must say how many.
+--
+-- Without this column, `candidatesConsidered` minus the trajectories kept is an
+-- unexplained gap — and an unexplained gap reads as an absence of findings. The
+-- 8-chunk diff cap discarded 159 of 290 changes with no output at all, and the
+-- length rule this replaces hid the reporting-link claim for months.
+--
+-- DEFAULT 0 is honest for existing rows: v1 filtered by length at candidate
+-- discovery and dropped nothing for containment.
+ALTER TABLE "ClaimTrajectoryComputation" ADD COLUMN "candidatesDerivative" INTEGER NOT NULL DEFAULT 0;

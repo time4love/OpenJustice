@@ -20,7 +20,10 @@ jest.mock('../src/services/claimTrajectory', () => {
   return { ...actual, detectAtClaimLength: jest.fn() };
 });
 
-import { MIN_CLAIM_LENGTH, MIN_TRANSITIONS, detectAtClaimLength } from '../src/services/claimTrajectory';
+import { MIN_TRANSITIONS, detectAtClaimLength } from '../src/services/claimTrajectory';
+
+/** The threshold production used until DETECTION_VERSION v2 retired it. */
+const MIN_CLAIM_LENGTH = 40;
 import {
   inspectClaim,
   isDerivative,
