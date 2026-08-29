@@ -51,9 +51,27 @@ import { planRediff, applyRediff, REDIFF_TARGET_VERSION } from '../src/services/
 import { DIFF_INPUT_VERSION } from '../src/lib/diffChunking';
 import { survivalSourceStateHash } from '../src/lib/diffSurvival';
 
+/**
+ * A capture as the PLAN reads it — the diff's embedded relation.
+ *
+ * Carries `text` and `textExtractionVersion` as well as `fullText`, because the
+ * plan now projects the Level 5 verdict each row WOULD carry after repair, and
+ * that check runs against the whole document rather than the extraction. Both
+ * columns are NOT NULL in the schema, so a fixture omitting them modelled a row
+ * that cannot exist — and the projection read `undefined` and threw.
+ *
+ * `text` equals `fullText` here: this synthetic page has no chrome, so the
+ * extraction and the document are the same string. Keeping them equal is the
+ * honest simplification — inventing a difference would make the fixture assert
+ * something about extraction that this test is not about.
+ */
+const TEXT_VERSION = 'v2-inflate-decode-htmltotext-normalised';
+
 function snap(text: string, corruptHash = false): Record<string, unknown> {
   return {
     fullText: text,
+    text,
+    textExtractionVersion: TEXT_VERSION,
     contentHash: corruptHash
       ? 'deadbeef'
       : createHash('sha256').update(text, 'utf8').digest('hex'),
@@ -77,6 +95,7 @@ function diffRow(over: Record<string, unknown> = {}): Record<string, unknown> {
     afterSnapshotId: 'cap-after',
     isLegallySignificant: true,
     diffInputVersion: null,
+    survivalVerdict: null,
     // Truncated record: only ONE of the two real deletions was stored.
     rawDeletedText: JSON.stringify(['beta line two']),
     rawAddedText: JSON.stringify(['delta replaced']),
@@ -86,8 +105,6 @@ function diffRow(over: Record<string, unknown> = {}): Record<string, unknown> {
     ...over,
   };
 }
-
-const TEXT_VERSION = 'v2-inflate-decode-htmltotext-normalised';
 
 /** A stored capture as `computeDiffSurvival` reads it, not as the diff embeds it. */
 function capture(text: string): Record<string, unknown> {
@@ -115,6 +132,75 @@ describe('planRediff', () => {
     const entry = plan.entries[0];
     expect(entry?.recoveredText.map((r) => r.text)).toContain('short');
     expect(entry?.recoveredText.every((r) => r.side === 'deleted' || r.side === 'added')).toBe(true);
+  });
+
+  it('projects the Level 5 verdict each row WOULD carry, without writing it', async () => {
+    // ATTRIBUTION WITHOUT A CASCADE. `checkDiffSurvival` is pure — no Archive, no
+    // model, no network — so the outcome of a recompute is knowable before the
+    // recompute. That is what lets a bundled change be attributed per fix
+    // instead of by running the expensive step twice and comparing.
+    db.diffs = [diffRow()];
+
+    const plan = await planRediff();
+    const entry = plan.entries[0];
+
+    expect(entry?.currentSurvivalVerdict).toBeNull();
+    expect(entry?.projectedSurvivalVerdict).toBe('SURVIVES');
+    // And it is a PROJECTION: nothing reached the database.
+    for (const spy of Object.values(writeSpies)) expect(spy).not.toHaveBeenCalled();
+  });
+
+  it('projects a verdict about the RECOMPUTED chunks, not the stored ones', async () => {
+    // VACUITY GUARD. A projection that echoed the stored verdict would agree with
+    // every expectation above while telling nobody anything — the shape that made
+    // 88 stale verdicts read as current one level up. Here the stored verdict is
+    // CONTRADICTED and the recomputation is clean, so echoing is visible.
+    db.diffs = [diffRow({ survivalVerdict: 'CONTRADICTED' })];
+
+    const plan = await planRediff();
+    const entry = plan.entries[0];
+
+    expect(entry?.currentSurvivalVerdict).toBe('CONTRADICTED');
+    expect(entry?.projectedSurvivalVerdict).toBe('SURVIVES');
+  });
+
+  it('projects the REPAIRED chunks, not the stored ones — the rider, end to end', async () => {
+    // THE FIXTURE THAT CAN TELL THEM APART, and it had to be built deliberately:
+    // a projection reading the STORED payload survived every assertion above,
+    // because on short synthetic chunks both payloads happen to yield SURVIVES.
+    // A projection that reports the CURRENT state would make the dry run's
+    // transition table a lie while every count looked right — so the fixture is
+    // the real defect: one paragraph, one sentence edited, the other unchanged
+    // and long enough to clear the presence floor.
+    const beforePara =
+      'Side effects usually appear a day or two after the vaccine. ' +
+      'The common ones are local pain, fever, headache and chills.';
+    const afterPara =
+      'Side effects usually appear a day or two after the corona vaccine. ' +
+      'The common ones are local pain, fever, headache and chills.';
+
+    db.diffs = [
+      diffRow({
+        beforeSnapshot: snap(beforePara),
+        afterSnapshot: snap(afterPara),
+        // What the OLD block-granular pipeline stored: the whole paragraph,
+        // carrying a sentence that was never removed.
+        rawDeletedText: JSON.stringify([beforePara]),
+        rawAddedText: JSON.stringify([afterPara]),
+        survivalVerdict: 'CONTRADICTED',
+      }),
+    ];
+
+    const plan = await planRediff();
+    const entry = plan.entries[0];
+
+    // Stored: the unchanged second sentence is present in the after document.
+    expect(entry?.currentSurvivalVerdict).toBe('CONTRADICTED');
+    // Repaired: only the edited sentence is claimed, and it really did go.
+    expect(entry?.projectedSurvivalVerdict).toBe('SURVIVES');
+    // And the repair is SAFE: the sentence it drops never changed.
+    expect(entry?.storedTextNotRecomputed).toEqual([]);
+    expect(entry?.safeToApply).toBe(true);
   });
 
   it('writes nothing', async () => {
