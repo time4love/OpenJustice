@@ -109,9 +109,20 @@ enum AnchorCheckOutcome {
   /// other direction — logs are capped by RANGE, receipts pruned by AGE, so this
   /// route survives where the first does not.
   CONFIRMED_BY_LOG
-  /// The transaction registered a different hash, or the registry names a
-  /// different transaction for this hash. Recorded, never discarded.
-  MISANCHORED
+  /// The transaction's own receipt log carried a hash the row does not claim.
+  ///
+  /// Split from MISANCHORED_BY_LOG because a bad answer is the one a human
+  /// actually re-opens, and the two rest on different observations. Recording the
+  /// route only for the PASSING arms was the asymmetry worth removing.
+  MISANCHORED_BY_RECEIPT
+  /// The registry's log names a different transaction as the one that registered
+  /// this row's hash.
+  ///
+  /// A narrower observation than the receipt: the transaction is inferred from
+  /// the registry's stored timestamp and a bounded block window, so a re-check
+  /// should start by widening that window. The contract reverts duplicate
+  /// registration, so this should not be reachable at all.
+  MISANCHORED_BY_LOG
   /// A real transaction that registered nothing with this registry — the
   /// fake-CONFIRMED shape. No hash to record.
   ANCHORED_NOTHING

@@ -19,7 +19,7 @@ jest.mock('../src/lib/prisma', () => ({
 const mockWeb3 = {
   readRegisteredHashes: jest.fn(),
   isHashRegistered: jest.fn(),
-  findRegisteringTxHash: jest.fn(),
+  lookupRegisteringTx: jest.fn(),
 };
 jest.mock('../src/services/Web3Service', () => ({
   Web3Service: jest.fn().mockImplementation(() => mockWeb3),
@@ -45,9 +45,15 @@ function setup(opts: { snapshots?: unknown[]; evidence?: unknown[] } = {}) {
   (prisma.evidence.findMany as jest.Mock).mockResolvedValue(opts.evidence ?? []);
   (prisma.urlSnapshot.count as jest.Mock).mockResolvedValue(0);
   (prisma.evidence.count as jest.Mock).mockResolvedValue(0);
-  // Default: the registry's log names no transaction. A test that wants the
-  // second route to succeed says so explicitly, so no test confirms by accident.
-  mockWeb3.findRegisteringTxHash.mockResolvedValue(null);
+  // Default: the registry holds the hash and no log sits in the window — a
+  // DEFINITE answer, not a failure. A test that wants the second route to
+  // succeed says so explicitly, so no test confirms by accident.
+  mockWeb3.lookupRegisteringTx.mockResolvedValue({
+    kind: 'NO_LOG_IN_WINDOW',
+    anchorBlock: 1000,
+    searchedFrom: 872,
+    searchedTo: 1128,
+  });
 }
 
 beforeEach(() => jest.clearAllMocks());
@@ -106,7 +112,7 @@ describe('what the transaction says, not what the row expects', () => {
     // examined and found wrong look merely unexamined.
     expect(prisma.urlSnapshot.update).toHaveBeenCalledWith({
       where: { id: 'snap-1' },
-      data: { anchoredHash: OTHER, anchorCheck: 'MISANCHORED' },
+      data: { anchoredHash: OTHER, anchorCheck: 'MISANCHORED_BY_RECEIPT' },
     });
   });
 
@@ -397,7 +403,13 @@ describe('the registry log confirms what the receipt could not', () => {
     // this route counts as a confirmation rather than corroboration.
     setup({ snapshots: [capture()] });
     unreadableReceipt();
-    mockWeb3.findRegisteringTxHash.mockResolvedValue('0xTX');
+    mockWeb3.lookupRegisteringTx.mockResolvedValue({
+      kind: 'FOUND',
+      txHash: '0xTX',
+      anchorBlock: 1000,
+      searchedFrom: 872,
+      searchedTo: 1128,
+    });
 
     const r = await confirmAnchors({ dryRun: false });
 
@@ -414,12 +426,24 @@ describe('the registry log confirms what the receipt could not', () => {
     // is why it gets its own arm rather than being counted as MISANCHORED.
     setup({ snapshots: [capture()] });
     unreadableReceipt();
-    mockWeb3.findRegisteringTxHash.mockResolvedValue('0xsomeoneelse');
+    mockWeb3.lookupRegisteringTx.mockResolvedValue({
+      kind: 'FOUND',
+      txHash: '0xsomeoneelse',
+      anchorBlock: 1000,
+      searchedFrom: 872,
+      searchedTo: 1128,
+    });
 
     const r = await confirmAnchors({ dryRun: false });
 
     expect(r.registeredByAnotherTx).toBe(1);
     expect(r.confirmedByLog).toBe(0);
+    // Recorded as found BY LOG, so anyone re-opening it knows the transaction was
+    // inferred from a bounded window rather than read from a receipt.
+    expect(prisma.urlSnapshot.update).toHaveBeenCalledWith({
+      where: { id: 'snap-1' },
+      data: { anchoredHash: null, anchorCheck: 'MISANCHORED_BY_LOG' },
+    });
   });
 
   it('stays unresolved when the log names nothing', async () => {
@@ -445,7 +469,7 @@ describe('the registry log confirms what the receipt could not', () => {
     const r = await confirmAnchors({ dryRun: false });
 
     expect(r.noReceiptHashAbsent).toBe(1);
-    expect(mockWeb3.findRegisteringTxHash).not.toHaveBeenCalled();
+    expect(mockWeb3.lookupRegisteringTx).not.toHaveBeenCalled();
   });
 });
 
@@ -476,5 +500,87 @@ describe('a transient failure records NOTHING — that is what keeps the null si
       where: { id: 'snap-1' },
       data: { anchoredHash: null, anchorCheck: 'ANCHORED_NOTHING' },
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// WHY THE LOG NAMED NOTHING — the distinction a bare catch destroyed.
+//
+// The first version swallowed the lookup's failure into `null`. A staging run
+// then resolved 0 of 91 subjects and nothing in the output could tell "the
+// registry's log holds no such transaction" from "the endpoint refused the
+// query" — conclusions that are worlds apart, collapsed into one number. Same
+// defect `anchorSnapshots` documents having made and repaired.
+// ---------------------------------------------------------------------------
+describe('a lookup that names no transaction says why', () => {
+  function unreadableReceiptRegistered() {
+    mockWeb3.readRegisteredHashes.mockResolvedValue({ kind: 'NO_RECEIPT' });
+    mockWeb3.isHashRegistered.mockResolvedValue({ registered: true, evidenceId: 1n });
+  }
+
+  it('records a DEFINITE empty window, naming the blocks it searched', async () => {
+    setup({ snapshots: [capture()] });
+    unreadableReceiptRegistered();
+    mockWeb3.lookupRegisteringTx.mockResolvedValue({
+      kind: 'NO_LOG_IN_WINDOW',
+      anchorBlock: 1000,
+      searchedFrom: 872,
+      searchedTo: 1128,
+    });
+
+    const r = await confirmAnchors({ dryRun: true });
+    const row = r.rows[0]?.confirmation;
+
+    expect(row?.kind).toBe('NO_RECEIPT_HASH_REGISTERED');
+    // The blocks are in the message because the obvious next question is whether
+    // the window was wide enough, and an answer that omits where it looked
+    // cannot be argued with.
+    expect(row).toMatchObject({ logLookup: expect.stringContaining('872–1128') });
+  });
+
+  it('records a FAILED step and its reason, never as an empty answer', async () => {
+    setup({ snapshots: [capture()] });
+    unreadableReceiptRegistered();
+    mockWeb3.lookupRegisteringTx.mockResolvedValue({
+      kind: 'LOOKUP_FAILED',
+      step: 'LOG_QUERY',
+      reason: 'query exceeds max block range',
+    });
+
+    const r = await confirmAnchors({ dryRun: true });
+    const row = r.rows[0]?.confirmation;
+
+    expect(row).toMatchObject({
+      logLookup: expect.stringContaining('LOG_QUERY step failed: query exceeds max block range'),
+    });
+  });
+
+  it('DISTINGUISHES the two — proven against each other, not asserted', async () => {
+    // Without this the two could produce the same string and the whole fix would
+    // be decorative. The verdict is identical (TX_UNREADABLE, terminal); only the
+    // reason differs, and the reason is the entire deliverable.
+    setup({ snapshots: [capture()] });
+    unreadableReceiptRegistered();
+
+    mockWeb3.lookupRegisteringTx.mockResolvedValue({
+      kind: 'NO_LOG_IN_WINDOW',
+      anchorBlock: 1,
+      searchedFrom: 0,
+      searchedTo: 129,
+    });
+    const empty = (await confirmAnchors({ dryRun: true })).rows[0]?.confirmation;
+
+    mockWeb3.lookupRegisteringTx.mockResolvedValue({
+      kind: 'LOOKUP_FAILED',
+      step: 'BLOCK_SEARCH',
+      reason: 'timeout',
+    });
+    const failed = (await confirmAnchors({ dryRun: true })).rows[0]?.confirmation;
+
+    expect(empty).toMatchObject({ kind: 'NO_RECEIPT_HASH_REGISTERED' });
+    expect(failed).toMatchObject({ kind: 'NO_RECEIPT_HASH_REGISTERED' });
+    expect((empty as { logLookup: string }).logLookup).not.toBe(
+      (failed as { logLookup: string }).logLookup,
+    );
   });
 });
