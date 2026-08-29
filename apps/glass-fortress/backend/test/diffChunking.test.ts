@@ -1,10 +1,4 @@
-import type { Change } from 'diff';
-import { diffLines } from 'diff';
-import {
-  groupDiffChunks,
-  classifierInputChunks,
-  DIFF_INPUT_VERSION,
-} from '../src/lib/diffChunking';
+import { diffChunkPair, classifierInputChunks, DIFF_INPUT_VERSION } from '../src/lib/diffChunking';
 
 // ---------------------------------------------------------------------------
 // The layer that decides WHAT PAGE CHANGES EXIST AT ALL.
@@ -18,34 +12,44 @@ import {
 // docs/gf-diff-truncation-dev-plan.md.
 // ---------------------------------------------------------------------------
 
-function removed(lines: string[]): Change[] {
-  return lines.flatMap((l) => [
-    { value: `${l}\n`, removed: true, added: false, count: 1 },
-    { value: 'unchanged\n', removed: false, added: false, count: 1 },
-  ]);
+/**
+ * A document whose every listed line is deleted, each separated by an unchanged
+ * one so the deletions are distinct regions rather than a single run.
+ *
+ * REAL STRINGS, not hand-built `Change[]`. The old helper fabricated the
+ * differ's output and handed it to the grouper, so it tested the grouping and
+ * assumed the diffing. `diffChunkPair` owns both halves now — which is the point
+ * of funnelling it — so the input has to be what the pipeline actually gets.
+ */
+function deletionOf(lines: string[]): { before: string; after: string } {
+  const before = lines.flatMap((l) => [l, 'unchanged']).join('\n');
+  const after = lines.map(() => 'unchanged').join('\n');
+  return { before, after };
 }
 
-describe('groupDiffChunks — nothing is discarded at write time', () => {
+describe('diffChunkPair — nothing is discarded at write time', () => {
   it('returns every chunk when there are far more than the old cap of 8', () => {
     const lines = Array.from({ length: 34 }, (_, i) => `change number ${String(i)}`);
 
-    const chunks = groupDiffChunks(removed(lines), 'removed');
+    const { before, after } = deletionOf(lines);
+    const { removed } = diffChunkPair(before, after);
 
     // The real corpus had two diffs with exactly 34 changes per side that stored
     // 8. That is the case this asserts, at the size it actually happened.
-    expect(chunks).toHaveLength(34);
+    expect(removed).toHaveLength(34);
   });
 
   it('preserves DOCUMENT order, not longest-first', () => {
-    const chunks = groupDiffChunks(
-      removed(['short', 'a considerably longer line of text here', 'mid length line']),
-      'removed',
-    );
+    const { before, after } = deletionOf([
+      'short',
+      'a considerably longer line of text here',
+      'mid length line',
+    ]);
 
     // Ordering by length existed only to choose what to keep. With nothing
     // discarded it would destroy where-on-the-page information, which a
     // researcher reads as evidence.
-    expect(chunks).toEqual([
+    expect(diffChunkPair(before, after).removed).toEqual([
       'short',
       'a considerably longer line of text here',
       'mid length line',
@@ -58,24 +62,22 @@ describe('groupDiffChunks — nothing is discarded at write time', () => {
     const link = 'לדיווח על תופעות לוואי >';
     expect(link.length).toBeLessThan(40);
 
-    expect(groupDiffChunks(removed([link]), 'removed')).toEqual([link]);
+    const { before, after } = deletionOf([link]);
+    expect(diffChunkPair(before, after).removed).toEqual([link]);
   });
 
   it('separates added from removed', () => {
-    const raw = diffLines('alpha\nbeta\n', 'alpha\ngamma\n', { ignoreWhitespace: true });
+    const { removed, added } = diffChunkPair('alpha\nbeta\n', 'alpha\ngamma\n');
 
-    expect(groupDiffChunks(raw, 'removed')).toEqual(['beta']);
-    expect(groupDiffChunks(raw, 'added')).toEqual(['gamma']);
+    expect(removed).toEqual(['beta']);
+    expect(added).toEqual(['gamma']);
   });
 
   it('drops nothing but genuinely empty chunks', () => {
-    const raw: Change[] = [
-      { value: '   \n', removed: true, added: false, count: 1 },
-      { value: 'keep\n', removed: false, added: false, count: 1 },
-      { value: 'real content\n', removed: true, added: false, count: 1 },
-    ];
+    // A whitespace-only line carries no change to describe; a real one does.
+    const { removed } = diffChunkPair('   \nkeep\nreal content\n', 'keep\n');
 
-    expect(groupDiffChunks(raw, 'removed')).toEqual(['real content']);
+    expect(removed).toEqual(['real content']);
   });
 });
 
@@ -105,7 +107,7 @@ describe('classifierInputChunks — one rule, shared', () => {
 
 describe('DIFF_INPUT_VERSION', () => {
   it('is a non-empty string that names the current rule', () => {
-    expect(DIFF_INPUT_VERSION).toBe('v2-uncapped');
+    expect(DIFF_INPUT_VERSION).toBe('v3-sentence-claims');
   });
 
   it('is NOT the classifier version — three provenance axes move independently', () => {

@@ -51,7 +51,28 @@ async function main(): Promise<void> {
   console.log(`skipped — snapshots unlinked  : ${String(plan.unlinkedDiffs)}`);
   console.log(`entries UNSAFE to apply       : ${String(plan.unsafeEntries)}` +
     (plan.unsafeEntries > 0 ? '   <-- applying would DESTROY stored text; these are refused' : '   (no stored text would be lost)'));
-  console.log(`repaired rows would carry     : diffInputVersion = ${REDIFF_TARGET_VERSION}\n`);
+  console.log(`repaired rows would carry     : diffInputVersion = ${REDIFF_TARGET_VERSION}`);
+
+  // THE PROJECTION — what a cascade would do to Level 5, computed without one.
+  //
+  // `checkDiffSurvival` is pure, so the outcome is knowable before the write.
+  // Printed as a transition table rather than two totals: "CONTRADICTED fell by
+  // five" is the number people quote, and it hides a row that moved the wrong
+  // way behind four that moved the right way.
+  const moves = new Map<string, number>();
+  for (const e of plan.entries) {
+    const key = `${e.currentSurvivalVerdict ?? 'UNCHECKED'} -> ${e.projectedSurvivalVerdict}`;
+    moves.set(key, (moves.get(key) ?? 0) + 1);
+  }
+  if (moves.size > 0) {
+    console.log('\nprojected Level 5 verdicts for the rows this would repair:');
+    for (const [move, count] of [...moves].sort()) {
+      const marker = move.split(' -> ')[0] === move.split(' -> ')[1] ? ' ' : '*';
+      console.log(`  ${marker} ${move.padEnd(30)} ${String(count)}`);
+    }
+    console.log('  (* = the verdict changes; rows not listed are not repaired and do not move)');
+  }
+  console.log('');
 
   for (const e of plan.entries) {
     const ev = e.evidence.length > 0

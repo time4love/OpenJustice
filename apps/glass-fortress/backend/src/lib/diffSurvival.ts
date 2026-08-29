@@ -1,5 +1,6 @@
 import { createHash } from 'crypto';
 import { normaliseForPresence } from './htmlText';
+import { sentencesOf } from './textSegments';
 
 /**
  * LEVEL 5'S INVARIANT, as one function.
@@ -84,13 +85,22 @@ export function parseChunks(json: string): string[] {
  * and missed the case this work exists for; sentence granularity found 7. The
  * chunk itself comes first so an exact whole-chunk contradiction is reported as
  * such rather than as one of its fragments.
+ *
+ * THE SPLITTER IS SHARED WITH THE DIFFER, and that is Level 4's rider fix. The
+ * pipeline used to CLAIM at block granularity while this CHECKED at sentence
+ * granularity, so a four-word edit re-emitted its whole paragraph as removed and
+ * every unchanged sentence inside it was found, correctly, in the after
+ * document. Importing one `sentencesOf` means the claim and the test cannot
+ * drift apart again.
+ *
+ * AND THE FIX WENT TO THE CLAIM, NOT TO THIS CHECK. Widening back to whole-chunk
+ * matching would drive the contradiction count to zero while the record went on
+ * asserting that a paragraph had been deleted — silencing the detector instead
+ * of the defect, and looking like progress while doing it. Nobody may close a
+ * remaining contradiction by coarsening this function.
  */
 export function segmentsOf(chunk: string): string[] {
-  const parts = chunk
-    .split(/\n+|(?<=[.!?])\s+/)
-    .map((part) => part.trim())
-    .filter((part) => part.length > 0);
-  return [chunk, ...parts];
+  return [chunk, ...sentencesOf(chunk)];
 }
 
 /**
