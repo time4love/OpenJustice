@@ -10,8 +10,12 @@ import { anchoringTarget, chainProvenanceGap, type AnchoringTarget } from '../li
 import { readOnChainClaim } from './onChainVerification';
 import {
   ANCHORABLE_CAPTURE_SELECT,
+  CAPTURE_HASHES_SELECT,
   anchoredCaptureHash,
+  attestationOf,
+  capturesKnownHashes,
   hashUnderAudit,
+  type AnchorAttestation,
 } from '../lib/anchoredCaptureHash';
 import { toBytes32 } from '../lib/bytes32';
 
@@ -73,7 +77,23 @@ export type AnchorCheckState =
    * moved, so both existing axes reported every one of them current. What was
    * wrong was the question, not the answer.
    */
-  | 'STALE';
+  | 'STALE'
+  /**
+   * The verdict is current and correct, and what the anchor ATTESTS TO is not
+   * what the current rule requires.
+   *
+   * A different question from every state above, all of which ask whether the
+   * CHECK is good. This asks whether the thing checked is the right thing —
+   * exactly the gap the plan warns about: "Do not read a clean anchor audit as
+   * Level 3 being done. It is silent on WHAT was anchored, and would stay green
+   * if the answer were a hash of the page title."
+   *
+   * Two causes, distinguished in the reason because their remedies are opposite:
+   * an anchor made under a SUPERSEDED rule is explainable and Level 10's to
+   * supersede; one attesting a hash the subject does not have by any rule is
+   * misanchored and is a custody incident.
+   */
+  | 'MISATTESTING';
 
 export interface AnchorSubjectRow extends AnchorClaimingSubject {
   state: AnchorCheckState;
@@ -156,6 +176,7 @@ const EMPTY_STATES: Record<AnchorCheckState, number> = {
   UNAVAILABLE: 0,
   UNCHECKED: 0,
   STALE: 0,
+  MISATTESTING: 0,
 };
 
 /** A subject that asserts an anchor, and the hash the assertion is about. */
@@ -174,6 +195,8 @@ export interface AnchorClaimingSubject {
    * turns one into the other.
    */
   anchorConfirmed: boolean;
+  /** What the recorded anchor attests to, relative to the rule in force now. */
+  attestation: AnchorAttestation;
 }
 
 /**
@@ -191,11 +214,19 @@ export async function auditOnChainAnchorSubjects(): Promise<AnchorClaimingSubjec
   const [evidence, snapshots] = await Promise.all([
     prisma.evidence.findMany({
       where: { status: 'CONFIRMED' },
-      select: { id: true, fileHash: true, anchoredHash: true },
+      // `previousFileHash` is the superseded identity — an anchor still pointing
+      // at it attests something this record really was, which is explainable
+      // rather than wrong. Selecting it is what lets those be told apart.
+      select: { id: true, fileHash: true, previousFileHash: true, anchoredHash: true },
     }),
     prisma.urlSnapshot.findMany({
       where: { NOT: { onChainTxHash: null } },
-      select: { id: true, anchoredHash: true, ...ANCHORABLE_CAPTURE_SELECT },
+      select: {
+        id: true,
+        anchoredHash: true,
+        ...ANCHORABLE_CAPTURE_SELECT,
+        ...CAPTURE_HASHES_SELECT,
+      },
     }),
   ]);
 
@@ -216,6 +247,11 @@ export async function auditOnChainAnchorSubjects(): Promise<AnchorClaimingSubjec
         subjectId: e.id,
         fileHash: toBytes32(hash),
         anchorConfirmed: confirmed,
+        attestation: attestationOf({
+          anchoredHash: e.anchoredHash,
+          current: e.fileHash,
+          known: e.previousFileHash === null ? [e.fileHash] : [e.fileHash, e.previousFileHash],
+        }),
       };
     }),
     ...snapshots.map((s) => {
@@ -225,6 +261,11 @@ export async function auditOnChainAnchorSubjects(): Promise<AnchorClaimingSubjec
         subjectId: s.id,
         fileHash: toBytes32(hash),
         anchorConfirmed: confirmed,
+        attestation: attestationOf({
+          anchoredHash: s.anchoredHash,
+          current: anchoredCaptureHash(s),
+          known: capturesKnownHashes(s),
+        }),
       };
     }),
   ];
@@ -325,7 +366,40 @@ async function classify(
     // about the verdict, so a row that has no current verdict still has to say
     // which kind of hash it is being judged on.
     anchorConfirmed: subject.anchorConfirmed,
+    attestation: subject.attestation,
   };
+
+  // WHAT WAS ANCHORED — judged FIRST, before anything about the check.
+  //
+  // The first draft put this after the staleness gates and it was wrong, in a way
+  // worth keeping: auditing a row on its recorded `anchoredHash` moves the claim,
+  // so a misattesting subject came out STALE. Re-checking it would then clear the
+  // staleness and mint a fresh, current verdict about the superseded hash — and
+  // the row would read VERIFIED forever. The finding would have repaired itself
+  // into silence.
+  //
+  // Attestation is a property of the SUBJECT, not of any verdict: what this
+  // row's anchor attests to does not depend on whether a check exists or how old
+  // it is. So it is asked before the check is consulted at all.
+  //
+  // UNCONFIRMED falls through untouched. It is every row until
+  // `forensics:confirm-anchors` has run, and it is not a claim about what was
+  // anchored — `anchorsUnconfirmed` counts it instead.
+  if (subject.attestation === 'ATTESTS_SUPERSEDED' || subject.attestation === 'UNRECOGNISED') {
+    return {
+      ...base,
+      state: 'MISATTESTING',
+      checkedAt: check?.checkedAt.toISOString() ?? null,
+      onChainVerdict: null,
+      staleReason:
+        subject.attestation === 'ATTESTS_SUPERSEDED'
+          ? 'The anchor attests a hash this subject really has, but not the one the current rule ' +
+            'names. Explainable — an anchor made under a superseded rule — and not a pass. ' +
+            'Superseding it is Level 10.'
+          : 'The anchor attests a hash this subject does not have by any rule. Misanchored: the ' +
+            'transaction is real and does not attest this record.',
+    };
+  }
 
   if (!check) {
     return {

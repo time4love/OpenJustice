@@ -1940,7 +1940,38 @@ exactly one did, and it became `probeSnapshotsList` — *named* for recording no
 
 ### Level 3 — the anchor
 
-**STATUS: PARTIAL — clause 2 (the database claim is CHECKED) is closed; clause 1 (the anchor attests to the DOCUMENT) is OPEN. See the status note below.**
+**STATUS: PARTIAL — clause 2 (the database claim is CHECKED) is closed; clause 1 (the anchor attests to the DOCUMENT) is OPEN. The instrumentation clause 1 needs is BUILT (2026-08-30); the flip itself is not done. Attributing LEGACY anchors is explicitly NOT part of this level — see the boundary below.**
+
+#### THE BOUNDARY, drawn 2026-08-30: legacy anchor attribution is Level 10, not clause 1
+
+`anchoredHash` records what a row's transaction registered, and `forensics:confirm-anchors` observes
+it from the chain. On staging that pass confirms **22 of 113** subjects and reports the other **91** as
+`TX_UNREADABLE`: the registry holds every one of their hashes, so the anchors are real, but the
+transactions predate the RPC's receipt retention (a clean date boundary — everything stored
+2026-08-22 unreadable, everything stored 2026-08-28 readable) and a log-based fallback resolved none.
+
+**That is where it stops.** Four runs and four commits went into attributing those 91, and none of it
+touched a defect that can recur: a new capture's receipt is read seconds after the write. The log
+fallback has no other caller, and §1 of this plan asks only that the legacy corpus be *kept as a
+comparison* — comparison does not require attribution. Re-anchoring the legacy corpus is this
+document's Level 10, and it always was.
+
+`TX_UNREADABLE` is therefore the terminal, honest answer for those rows, and the general rule is now
+in `CLAUDE.md`: **fix what future state needs; do not invest in repairing legacy state** — with the
+narrow carve-out that legacy state making a FALSE claim is not archaeology.
+
+**What clause 1 still needs is one line and one decision:**
+1. `anchoredCaptureHash` returns `documentHash` rather than `contentHash`. One line — that is what the
+   single-symbol consolidation was for.
+2. **A COST DECISION THAT IS THE RESEARCHER'S.** Measured on staging, 105 captures: `contentHash`
+   collapses to **15** distinct values, `documentHash` to **104**. Twins are what make snapshot
+   anchoring cheap, and under `documentHash` they go nearly extinct — roughly **one transaction per
+   capture, permanently**, where 15 transactions cover 105 captures today. That is a new and ongoing
+   operating cost, and it is not an implementation detail.
+
+The audit already refuses to call the result done prematurely: a row whose anchor attests a hash the
+current rule does not name is `MISATTESTING`, never `VERIFIED`, and the script exits 5. After the flip
+every legacy capture lands there — visible, non-passing, and Level 10's to supersede.
 
 *Invariant:* the on-chain record attests to the document, and the database's claim about it is checked
 rather than asserted.
