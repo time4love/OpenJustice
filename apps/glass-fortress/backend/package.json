@@ -38,6 +38,7 @@
     "forensics:audit-survival": "node dist/scripts/auditDiffSurvival.js",
     "forensics:backfill-survival": "node dist/scripts/backfillDiffSurvival.js",
     "forensics:audit-anchors": "node dist/scripts/auditOnChainAnchors.js",
+    "forensics:confirm-anchors": "node dist/scripts/confirmAnchors.js",
     "forensics:backfill-anchor-checks": "node dist/scripts/backfillOnChainChecks.js"
   },
   "keywords": [],

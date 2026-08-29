@@ -87,5 +87,43 @@ export function anchoredCaptureHash(capture: AnchorableCapture): string {
  * restating this one.
  */
 export function capturesAnchoredBy(hash: string): Prisma.UrlSnapshotWhereInput {
-  return { contentHash: hash.replace(/^0x/, '') };
+  const bare = hash.replace(/^0x/, '');
+  // RECORDED FIRST, RULE ONLY AS A FALLBACK.
+  //
+  // A confirmed row says what its transaction registered, and that answer is
+  // true whatever rule wrote it — which is what keeps a capture anchored under a
+  // superseded rule resolving as SNAPSHOT_ANCHOR instead of ORPHANED_ANCHOR once
+  // Level 3 moves the anchor. The second arm covers a capture that is not
+  // anchored yet, or not yet confirmed: there is no recorded answer, so the
+  // question can only be asked of the rule.
+  return { OR: [{ anchoredHash: bare }, { anchoredHash: null, contentHash: bare }] };
+}
+
+/** A row that may already state what its anchoring transaction registered. */
+export interface AnchorClaimRow {
+  anchoredHash: string | null;
+}
+
+/**
+ * WHICH HASH A STORED ANCHORING CLAIM SHOULD BE AUDITED AGAINST.
+ *
+ * `confirmed` is returned rather than folded away because the two cases are
+ * different KINDS of answer and an audit that cannot tell them apart is the
+ * failure this whole column exists to end. A confirmed hash is an observation of
+ * the transaction itself. An unconfirmed one is our current rule's expectation —
+ * true today only because the rule has not moved yet, and it stops being true
+ * the moment it does.
+ *
+ * That is precisely why `forensics:confirm-anchors` must run to completion in an
+ * environment BEFORE the anchor moves there. Until it has, this falls back to
+ * the rule, and a rule that has changed under a legacy row would audit it
+ * against a hash nothing registered.
+ */
+export function hashUnderAudit(
+  row: AnchorClaimRow,
+  expected: string,
+): { hash: string; confirmed: boolean } {
+  return row.anchoredHash === null
+    ? { hash: expected, confirmed: false }
+    : { hash: row.anchoredHash, confirmed: true };
 }

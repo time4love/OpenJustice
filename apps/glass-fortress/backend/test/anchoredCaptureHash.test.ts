@@ -30,6 +30,7 @@ const ANCHORING_PATH = [
   ['src', 'services', 'auditOnChainAnchors.ts'],
   ['src', 'services', 'onChainVerification.ts'],
   ['src', 'mcp', 'tools', 'checkOnChainStatus.ts'],
+  ['src', 'services', 'confirmAnchors.ts'],
 ];
 
 function sourceOf(parts: string[]): string {

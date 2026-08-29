@@ -8,7 +8,11 @@ import { prisma } from '../lib/prisma';
 import { ON_CHAIN_CHECK_VERSION, onChainSourceStateHash } from '../lib/onChainVerdict';
 import { anchoringTarget, chainProvenanceGap, type AnchoringTarget } from '../lib/anchoringTarget';
 import { readOnChainClaim } from './onChainVerification';
-import { ANCHORABLE_CAPTURE_SELECT, anchoredCaptureHash } from '../lib/anchoredCaptureHash';
+import {
+  ANCHORABLE_CAPTURE_SELECT,
+  anchoredCaptureHash,
+  hashUnderAudit,
+} from '../lib/anchoredCaptureHash';
 import { toBytes32 } from '../lib/bytes32';
 
 /**
@@ -114,6 +118,21 @@ export interface AnchorAuditReport {
    * must not be silently swallowed by a query that joins them away.
    */
   danglingChecks: { subjectType: IntegrityCheckSubject; subjectId: string }[];
+  /**
+   * ANCHORING CLAIMS NOT YET CONFIRMED AGAINST THEIR OWN TRANSACTION.
+   *
+   * A subject counted here is audited against what the CURRENT RULE expects its
+   * transaction registered, never against what the transaction says. That is
+   * sound only while the rule has not moved, so this number is the gate on
+   * moving it: Level 3 clause 1 may not flip the anchor in an environment where
+   * it is non-zero, or every legacy row is judged against a hash nothing
+   * registered and a perfectly anchored corpus reports SNAPSHOT_UNANCHORED.
+   *
+   * Reported rather than merely available, because the check that would catch
+   * the mistake is the one nobody runs. `forensics:confirm-anchors` drives it to
+   * zero by observation.
+   */
+  anchorsUnconfirmed: number;
 }
 
 export interface CheckHistory {
@@ -144,6 +163,17 @@ export interface AnchorClaimingSubject {
   subjectType: IntegrityCheckSubject;
   subjectId: string;
   fileHash: string;
+  /**
+   * Whether `fileHash` is what the row's TRANSACTION registered, or only what
+   * the current rule expects it to have registered.
+   *
+   * Carried rather than collapsed because the two are different kinds of answer.
+   * An unconfirmed subject is audited against an expectation, and that
+   * expectation stops being true the moment the anchoring rule moves — so the
+   * count of them is the gate on moving it. `forensics:confirm-anchors` is what
+   * turns one into the other.
+   */
+  anchorConfirmed: boolean;
 }
 
 /**
@@ -161,32 +191,42 @@ export async function auditOnChainAnchorSubjects(): Promise<AnchorClaimingSubjec
   const [evidence, snapshots] = await Promise.all([
     prisma.evidence.findMany({
       where: { status: 'CONFIRMED' },
-      select: { id: true, fileHash: true },
+      select: { id: true, fileHash: true, anchoredHash: true },
     }),
     prisma.urlSnapshot.findMany({
       where: { NOT: { onChainTxHash: null } },
-      select: { id: true, ...ANCHORABLE_CAPTURE_SELECT },
+      select: { id: true, anchoredHash: true, ...ANCHORABLE_CAPTURE_SELECT },
     }),
   ]);
 
+  // RECORDED FIRST, RULE ONLY AS A STATED FALLBACK — `hashUnderAudit` decides,
+  // and it is the same decision for both subject types.
+  //
+  // An audit that derived the hash from the current rule alone would keep
+  // auditing the NEW hash after the anchor moved, against legacy rows anchored
+  // under the old one, and report SNAPSHOT_UNANCHORED for a corpus that is
+  // perfectly anchored. Normalised to the 0x form the check stores and the
+  // contract speaks: the capture columns are bare hex, and that mismatch is what
+  // made 83 anchorings silently no-op.
   return [
-    ...evidence.map((e) => ({
-      subjectType: IntegrityCheckSubject.EVIDENCE,
-      subjectId: e.id,
-      fileHash: e.fileHash,
-    })),
-    ...snapshots.map((s) => ({
-      subjectType: IntegrityCheckSubject.URL_SNAPSHOT,
-      subjectId: s.id,
-      // Normalised to the form the check stores and the contract speaks. The
-      // capture columns are bare hex, and the mismatch between the two is
-      // exactly what made 83 anchorings silently no-op.
-      //
-      // WHICH hash is `anchoredCaptureHash`'s answer, not this function's. An
-      // audit that decided for itself would keep auditing the old hash after the
-      // anchor moved, and report a clean run about a claim nobody makes.
-      fileHash: toBytes32(anchoredCaptureHash(s)),
-    })),
+    ...evidence.map((e) => {
+      const { hash, confirmed } = hashUnderAudit(e, e.fileHash);
+      return {
+        subjectType: IntegrityCheckSubject.EVIDENCE,
+        subjectId: e.id,
+        fileHash: toBytes32(hash),
+        anchorConfirmed: confirmed,
+      };
+    }),
+    ...snapshots.map((s) => {
+      const { hash, confirmed } = hashUnderAudit(s, anchoredCaptureHash(s));
+      return {
+        subjectType: IntegrityCheckSubject.URL_SNAPSHOT,
+        subjectId: s.id,
+        fileHash: toBytes32(hash),
+        anchorConfirmed: confirmed,
+      };
+    }),
   ];
 }
 
@@ -257,6 +297,7 @@ export async function auditOnChainAnchors(
       provenanceIncomplete: checks.filter((c) => chainProvenanceGap(c, target) !== null).length,
     },
     danglingChecks,
+    anchorsUnconfirmed: subjects.filter((s) => !s.anchorConfirmed).length,
   };
 }
 
@@ -279,6 +320,11 @@ async function classify(
     subjectType: subject.subjectType,
     subjectId: subject.subjectId,
     fileHash: subject.fileHash,
+    // Carried through every state, including UNCHECKED and STALE. Whether the
+    // hash was OBSERVED from the transaction is a fact about the subject, not
+    // about the verdict, so a row that has no current verdict still has to say
+    // which kind of hash it is being judged on.
+    anchorConfirmed: subject.anchorConfirmed,
   };
 
   if (!check) {

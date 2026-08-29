@@ -380,7 +380,16 @@ describe('check_on_chain_status', () => {
       await run(null, true, { snapshots: [capture('20220306141507', TX)] });
 
       expect(findSnapshots).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { contentHash: 'a'.repeat(64) } }),
+        // Recorded answer first, current rule only as a fallback — a capture
+        // anchored under a superseded rule must still resolve to itself.
+        expect.objectContaining({
+          where: {
+            OR: [
+              { anchoredHash: 'a'.repeat(64) },
+              { anchoredHash: null, contentHash: 'a'.repeat(64) },
+            ],
+          },
+        }),
       );
     });
   });

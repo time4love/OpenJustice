@@ -71,7 +71,11 @@ function check(over: Partial<Record<string, unknown>> = {}) {
 beforeEach(() => {
   jest.clearAllMocks();
   // One CONFIRMED evidence row claiming an anchor, and nothing else.
-  evidenceMany.mockResolvedValue([{ id: 'ev-1', fileHash: HASH }]);
+  // `anchoredHash: null` is the real state of every row until
+  // forensics:confirm-anchors has observed its transaction. Stating it rather
+  // than omitting it: a fixture that leaves the column out is a fixture asserting
+  // a shape the database cannot produce.
+  evidenceMany.mockResolvedValue([{ id: 'ev-1', fileHash: HASH, anchoredHash: null }]);
   snapshotMany.mockResolvedValue([]);
   // What `readOnChainClaim` sees when the audit recomputes the source state.
   evidenceUnique.mockResolvedValue({ status: 'CONFIRMED', onChainTxHash: TX });
@@ -288,7 +292,9 @@ describe('which subjects are asked for a verdict at all', () => {
     // mismatch between the two is what made 83 anchorings silently no-op, and a
     // verification repeating it would confirm the wrong hash.
     evidenceMany.mockResolvedValue([]);
-    snapshotMany.mockResolvedValue([{ id: 'snap-1', contentHash: 'a'.repeat(64) }]);
+    snapshotMany.mockResolvedValue([
+      { id: 'snap-1', contentHash: 'a'.repeat(64), anchoredHash: null },
+    ]);
     evidenceUnique.mockResolvedValue(null);
     snapshotCount.mockResolvedValue(1);
 

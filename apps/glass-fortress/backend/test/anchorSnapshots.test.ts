@@ -75,7 +75,9 @@ describe('anchorSnapshots', () => {
 
     expect(mockWeb3.registerEvidenceHash).toHaveBeenCalledWith('0xaaa', expect.any(String), 'Wayback Snapshot');
     expect(prisma.urlSnapshot.update).toHaveBeenCalledWith(
-      expect.objectContaining({ data: { onChainTxHash: '0xtx' } }),
+      // The transaction AND the hash it registered, written together. Writing
+      // onChainTxHash alone is the gap anchoredHash exists to close.
+      expect.objectContaining({ data: { onChainTxHash: '0xtx', anchoredHash: '0xaaa' } }),
     );
     expect(r.anchored).toBe(1);
   });

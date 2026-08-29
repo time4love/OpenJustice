@@ -216,7 +216,35 @@ model UrlSnapshot {
   // done four times (classifierVersion, summaryVersion, diffInputVersion,
   // DETECTION_VERSION).
   textExtractionVersion   String
-  onChainTxHash           String? // Blockchain tx hash once contentHash is registered on-chain
+  onChainTxHash           String? // Blockchain tx hash once this capture is registered on-chain
+  // WHAT `onChainTxHash` ACTUALLY REGISTERED — observed from the transaction,
+  // never assumed from a column.
+  //
+  // `onChainTxHash` asserts THAT a capture is anchored and has never said WHAT
+  // was anchored. Which hash that is was inferred from whichever column the code
+  // happened to anchor at the time, so the moment the rule moves — Level 3
+  // clause 1 moves it from the extraction to the document — every legacy row
+  // silently starts being audited against a hash nothing registered. The audit
+  // would report SNAPSHOT_UNANCHORED for 105 correctly anchored captures, and
+  // `check_on_chain_status` would report ORPHANED_ANCHOR for the same rows: the
+  // false alarm already fixed once, in 2026-08-25, returning on every capture.
+  //
+  // So the rule that WRITES an anchor and the record of what was written are
+  // separated. `anchoredCaptureHash` answers "what should a new anchor be
+  // about"; this column answers "what was this one about", and only the second
+  // can be true of a row anchored under a superseded rule. That is also what
+  // makes Level 10's supersession auditable rather than merely documented.
+  //
+  // DELIBERATELY NOT BACKFILLED from `contentHash`. Writing the value we expect
+  // is stamping a BELIEF, and this repository has already paid for that once:
+  // 91 integrity verdicts were written carrying a chain they had never been
+  // reached against, and were indistinguishable from correct ones afterwards.
+  // `forensics:confirm-anchors` reads each transaction's own
+  // `EvidenceSubmitted` log and writes what it observes — so a row whose
+  // transaction registered something else is DISCOVERED rather than papered
+  // over. Null therefore means "not yet confirmed against the chain", which is
+  // an honest state; it is never a guess.
+  anchoredHash            String?
   createdAt               DateTime          @default(now())
 
   beforeDiffs    UrlVersionDiff[] @relation("BeforeSnapshot")
@@ -520,6 +548,23 @@ model Evidence {
   // See onChainTxHash — CONFIRMED must only ever be set alongside a real tx hash.
   status                   EvidenceStatus        @default(PENDING_REVIEW)
   onChainTxHash            String? // Blockchain tx hash once fileHash is registered on-chain — mirrors UrlSnapshot.onChainTxHash
+  /// What `onChainTxHash` actually registered, observed from the transaction.
+  ///
+  /// The same column as `UrlSnapshot.anchoredHash`, for the same reason, and it
+  /// is needed here for a reason `previousFileHash` does not cover:
+  /// `previousFileHash` records that identity was SUPERSEDED, never what a given
+  /// transaction anchored. `fileHash` asserts identity and is read as if it also
+  /// asserted registration — true today only because `rehashEvidence` happens to
+  /// register before it writes, which is a property of one function rather than
+  /// of the model.
+  ///
+  /// It is what allows evidence identity to move at all without the anchor audit
+  /// going red, which is the mechanism §2's permission needs: "Identity may
+  /// change. It may not change unrecorded."
+  ///
+  /// Null means not yet confirmed against the chain. Never backfilled from
+  /// `fileHash` — see `UrlSnapshot.anchoredHash`.
+  anchoredHash             String?
   // The identity this record carried before the evidence hash moved to being
   // derived from its two archived snapshots, and the anchor registered under it.
   //

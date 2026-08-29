@@ -113,6 +113,31 @@ export type SnapshotAnchorOutcome =
  *   2. the chain, in case an interrupted run registered without recording
  *   3. an actual registration
  */
+/**
+ * Write an anchoring claim — the transaction AND the hash it registered,
+ * together or not at all.
+ *
+ * Three outcomes leave a row asserting an anchor, and before this each wrote
+ * `onChainTxHash` on its own. That is the gap `anchoredHash` exists to close, so
+ * closing it with three more copies of the same pair would rebuild the defect
+ * one layer up. One function, three callers.
+ *
+ * The hash is OBSERVED here in the only sense available at write time: it is the
+ * value this code just asked the registry about. `forensics:confirm-anchors`
+ * checks it against the transaction's own log afterwards, which is the stronger
+ * observation and the one that can disagree.
+ */
+async function claimAnchor(
+  snapshotId: string,
+  txHash: string,
+  anchoredHash: string,
+): Promise<void> {
+  await prisma.urlSnapshot.update({
+    where: { id: snapshotId },
+    data: { onChainTxHash: txHash, anchoredHash },
+  });
+}
+
 export async function anchorOneSnapshot(
   web3: Web3Service | null,
   snapshotId: string,
@@ -167,10 +192,7 @@ export async function anchorOneSnapshot(
     select: { onChainTxHash: true },
   });
   if (twin?.onChainTxHash) {
-    await prisma.urlSnapshot.update({
-      where: { id: snapshotId },
-      data: { onChainTxHash: twin.onChainTxHash },
-    });
+    await claimAnchor(snapshotId, twin.onChainTxHash, anchoredHash);
     return verified({ kind: 'COPIED_FROM_TWIN', txHash: twin.onChainTxHash });
   }
 
@@ -185,10 +207,7 @@ export async function anchorOneSnapshot(
   if (registered) {
     const recoveredTx = await web3.findRegisteringTxHash(toBytes32(anchoredHash));
     if (recoveredTx) {
-      await prisma.urlSnapshot.update({
-        where: { id: snapshotId },
-        data: { onChainTxHash: recoveredTx },
-      });
+      await claimAnchor(snapshotId, recoveredTx, anchoredHash);
       return verified({ kind: 'RECOVERED', txHash: recoveredTx });
     }
     // Registered but the transaction could not be located. Recording a null
@@ -209,7 +228,7 @@ export async function anchorOneSnapshot(
     '0x0000000000000000000000000000000000000000',
     'Wayback Snapshot',
   );
-  await prisma.urlSnapshot.update({ where: { id: snapshotId }, data: { onChainTxHash: txHash } });
+  await claimAnchor(snapshotId, txHash, anchoredHash);
   return verified({ kind: 'REGISTERED', txHash });
 }
 
