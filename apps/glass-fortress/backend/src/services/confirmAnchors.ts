@@ -52,8 +52,32 @@ export type AnchorConfirmation =
    * no hash to record.
    */
   | { kind: 'ANCHORED_NOTHING' }
-  /** The RPC has no receipt. The question could not be asked; nothing concluded. */
-  | { kind: 'NO_RECEIPT' }
+  /**
+   * The RPC has no receipt for the transaction, but the registry DOES hold the
+   * hash the row expects. The fact is anchored on this chain; only the
+   * transaction that did it is unreadable, so which transaction anchored it
+   * cannot be recorded — but the row is not fabricated.
+   *
+   * Split from the arm below because they are not the same news. This one is a
+   * limit of the RPC we are reading through; the other is a claim about a chain
+   * that has no record of it.
+   */
+  | { kind: 'NO_RECEIPT_HASH_REGISTERED'; expected: string }
+  /**
+   * No receipt AND the registry does not hold the expected hash. The row asserts
+   * an anchor that this chain has no trace of, by either route.
+   *
+   * The most serious verdict this pass can reach, and it must never be reported
+   * alongside a benign one. It is either a transaction from a chain we no longer
+   * read, or an anchor that never existed.
+   */
+  | { kind: 'NO_RECEIPT_HASH_ABSENT'; expected: string }
+  /**
+   * The receipt could not be read and neither could the registry be asked. A
+   * verdict about the CHECK, never about the data (§3) — an RPC that answers
+   * nothing must not be reported as a chain that holds nothing.
+   */
+  | { kind: 'UNREACHABLE' }
   /**
    * The transaction registered several hashes and none is this row's. Which one
    * the row means cannot be decided from the chain, so it is reported rather
@@ -75,7 +99,12 @@ export interface ConfirmAnchorsReport {
   confirmed: number;
   misanchored: number;
   anchoredNothing: number;
-  noReceipt: number;
+  /** No receipt, but the registry holds the hash — the fact is here, the tx is not. */
+  noReceiptHashRegistered: number;
+  /** No receipt and no registration. This chain has no trace of the claim. */
+  noReceiptHashAbsent: number;
+  /** Neither the receipt nor the registry could be read. Nothing concluded. */
+  unreachable: number;
   ambiguous: number;
   /** Already carried an observed `anchoredHash`; not re-read. */
   alreadyConfirmed: number;
@@ -161,8 +190,22 @@ async function anchorClaimants(): Promise<AnchorClaimant[]> {
  * would let a caller hand over `NO_RECEIPT` alongside a list of hashes, which is
  * a state the chain cannot produce and this function would have to decide about.
  */
-function decide(observed: RegisteredByTransaction, expected: string): AnchorConfirmation {
-  if (observed.kind === 'NO_RECEIPT') return { kind: 'NO_RECEIPT' };
+function decide(
+  observed: RegisteredByTransaction,
+  expected: string,
+  /**
+   * Whether the registry holds `expected`, asked ONLY when the receipt could not
+   * be read — one extra round trip, on exactly the rows that need it. `null`
+   * means the registry could not be asked either, which is a third thing again.
+   */
+  hashRegistered: boolean | null,
+): AnchorConfirmation {
+  if (observed.kind === 'NO_RECEIPT') {
+    if (hashRegistered === null) return { kind: 'UNREACHABLE' };
+    return hashRegistered
+      ? { kind: 'NO_RECEIPT_HASH_REGISTERED', expected }
+      : { kind: 'NO_RECEIPT_HASH_ABSENT', expected };
+  }
   if (observed.kind === 'ANCHORED_NOTHING') return { kind: 'ANCHORED_NOTHING' };
 
   const match = observed.hashes.find((h) => sameHash(h, expected));
@@ -189,6 +232,27 @@ function writableHash(confirmation: AnchorConfirmation): string | null {
   return null;
 }
 
+/**
+ * WHAT A RUN'S OUTCOME MEANS, AS AN EXIT CODE. One rule, one home, testable.
+ *
+ * This lived inline in the script and was WRONG: it counted only the arms
+ * meaning "wrong" and let every arm meaning "could not tell" fall through to 0.
+ * The first real run answered 22 of 113 questions and reported success — the
+ * rule this level exists to enforce, broken by the code written to apply it.
+ * Extracted here so the rule has a test rather than a reader.
+ *
+ *   1  the run itself failed on a subject
+ *   2  a claim is WRONG — anchored elsewhere, anchoring nothing, or no trace
+ *   3  a claim could not be CONFIRMED — not wrong, and not proven either
+ *   0  every claim was checked and every one held
+ */
+export function confirmAnchorsExitCode(report: ConfirmAnchorsReport): number {
+  if (report.failed > 0) return 1;
+  if (report.misanchored + report.anchoredNothing + report.noReceiptHashAbsent > 0) return 2;
+  if (report.noReceiptHashRegistered + report.unreachable + report.ambiguous > 0) return 3;
+  return 0;
+}
+
 export async function confirmAnchors(opts: {
   dryRun: boolean;
   limit?: number;
@@ -207,7 +271,9 @@ export async function confirmAnchors(opts: {
     confirmed: 0,
     misanchored: 0,
     anchoredNothing: 0,
-    noReceipt: 0,
+    noReceiptHashRegistered: 0,
+    noReceiptHashAbsent: 0,
+    unreachable: 0,
     ambiguous: 0,
     alreadyConfirmed: snapshotsDone + evidenceDone,
     failed: 0,
@@ -224,10 +290,23 @@ export async function confirmAnchors(opts: {
 
   for (const claimant of claimants) {
     try {
-      const confirmation = decide(
-        await web3.readRegisteredHashes(claimant.txHash),
-        claimant.expected,
-      );
+      const observed = await web3.readRegisteredHashes(claimant.txHash);
+      // Asked only when the transaction itself could not be read. A row whose
+      // receipt is unreadable is not yet a finding — whether this chain holds
+      // the fact at all is what decides that, and it is a different question
+      // from the one the receipt answers.
+      let hashRegistered: boolean | null = null;
+      if (observed.kind === 'NO_RECEIPT') {
+        try {
+          hashRegistered = (await web3.isHashRegistered(toBytes32(claimant.expected))).registered;
+        } catch {
+          // The registry could not be asked either. Left null so the verdict is
+          // UNREACHABLE rather than "this chain does not hold it" — an RPC
+          // failure and a negative answer license opposite conclusions.
+          hashRegistered = null;
+        }
+      }
+      const confirmation = decide(observed, claimant.expected, hashRegistered);
 
       const hash = writableHash(confirmation);
       let written = false;
@@ -256,8 +335,14 @@ export async function confirmAnchors(opts: {
         case 'ANCHORED_NOTHING':
           report.anchoredNothing++;
           break;
-        case 'NO_RECEIPT':
-          report.noReceipt++;
+        case 'NO_RECEIPT_HASH_REGISTERED':
+          report.noReceiptHashRegistered++;
+          break;
+        case 'NO_RECEIPT_HASH_ABSENT':
+          report.noReceiptHashAbsent++;
+          break;
+        case 'UNREACHABLE':
+          report.unreachable++;
           break;
         case 'AMBIGUOUS':
           report.ambiguous++;

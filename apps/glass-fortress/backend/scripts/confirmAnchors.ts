@@ -20,12 +20,14 @@
  * read happens, nothing is written. Run it that way first, in both
  * environments, before --apply.
  *
- * Exit codes: 2 if anything was misanchored, anchored nothing, or came back
- * ambiguous — findings, not failures of the run. 1 if a subject errored.
+ * Exit codes: 1 if a subject errored, 2 if any claim is WRONG (misanchored, a
+ * transaction that registered nothing, or a claim this chain has no trace of),
+ * 3 if any claim could not be CONFIRMED. Only 0 means every claim was checked
+ * and every one held — an unresolved run is not a pass.
  */
 import 'dotenv/config';
 import { runOperationalScript } from '../src/lib/operationalContext';
-import { confirmAnchors } from '../src/services/confirmAnchors';
+import { confirmAnchors, confirmAnchorsExitCode } from '../src/services/confirmAnchors';
 
 function arg(name: string): string | undefined {
   const i = process.argv.indexOf(`--${name}`);
@@ -74,8 +76,25 @@ async function main(): Promise<number> {
             '      A real transaction that registered nothing with this registry.',
         );
         break;
-      case 'NO_RECEIPT':
-        console.error(`  no receipt ${where}  tx ${row.txHash} — nothing concluded`);
+      case 'NO_RECEIPT_HASH_REGISTERED':
+        console.error(
+          `  no receipt ${where}  tx ${row.txHash}\n` +
+            '      The registry DOES hold this row\u2019s hash, so the fact is anchored on this ' +
+            'chain — but which transaction anchored it cannot be read, so it is not recorded.',
+        );
+        break;
+      case 'NO_RECEIPT_HASH_ABSENT':
+        console.error(
+          `  NO TRACE ${where}  tx ${row.txHash}\n` +
+            `      Neither the transaction nor the hash ${c.expected} is on this chain.\n` +
+            '      Either the transaction belongs to a chain this deployment no longer reads, ' +
+            'or the anchor never existed.',
+        );
+        break;
+      case 'UNREACHABLE':
+        console.error(
+          `  unreachable ${where}  tx ${row.txHash} — the RPC answered neither question`,
+        );
         break;
       case 'AMBIGUOUS':
         console.error(
@@ -91,7 +110,9 @@ async function main(): Promise<number> {
   console.log(`already confirmed: ${report.alreadyConfirmed}`);
   console.log(`MISANCHORED:       ${report.misanchored}`);
   console.log(`ANCHORED NOTHING:  ${report.anchoredNothing}`);
-  console.log(`no receipt:        ${report.noReceipt}`);
+  console.log(`NO TRACE ON CHAIN: ${report.noReceiptHashAbsent}`);
+  console.log(`no receipt, hash registered: ${report.noReceiptHashRegistered}`);
+  console.log(`unreachable:       ${report.unreachable}`);
   console.log(`ambiguous:         ${report.ambiguous}`);
   console.log(`failed:            ${report.failed}`);
 
@@ -100,11 +121,21 @@ async function main(): Promise<number> {
     for (const f of report.failures) console.error(`  ${f.id}: ${f.reason}`);
   }
 
-  if (report.failed > 0) return 1;
-  // Findings, not run failures — and non-zero so a pipeline cannot read a
-  // corpus with a fabricated anchor in it as a clean pass.
-  if (report.misanchored + report.anchoredNothing + report.ambiguous > 0) return 2;
-  return 0;
+  // The RULE lives in the service, with a test. It was wrong here, inline and
+  // unexercised, and reported a run that answered 22 of 113 questions as a pass.
+  const code = confirmAnchorsExitCode(report);
+  if (code === 2) {
+    const findings = report.misanchored + report.anchoredNothing + report.noReceiptHashAbsent;
+    console.error(`\n${String(findings)} anchoring claim(s) are WRONG. See above.`);
+  }
+  if (code === 3) {
+    const unresolved = report.noReceiptHashRegistered + report.unreachable + report.ambiguous;
+    console.error(
+      `\n${String(unresolved)} of ${String(report.examined)} anchoring claim(s) could not be ` +
+        'confirmed. Nothing is wrong with them and nothing is proven about them.',
+    );
+  }
+  return code;
 }
 
 void runOperationalScript(main);

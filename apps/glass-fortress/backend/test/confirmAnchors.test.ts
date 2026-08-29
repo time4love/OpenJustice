@@ -16,13 +16,17 @@ jest.mock('../src/lib/prisma', () => ({
     evidence: { findMany: jest.fn(), update: jest.fn(), count: jest.fn() },
   },
 }));
-const mockWeb3 = { readRegisteredHashes: jest.fn() };
+const mockWeb3 = { readRegisteredHashes: jest.fn(), isHashRegistered: jest.fn() };
 jest.mock('../src/services/Web3Service', () => ({
   Web3Service: jest.fn().mockImplementation(() => mockWeb3),
 }));
 
 import { prisma } from '../src/lib/prisma';
-import { confirmAnchors } from '../src/services/confirmAnchors';
+import {
+  confirmAnchors,
+  confirmAnchorsExitCode,
+  type ConfirmAnchorsReport,
+} from '../src/services/confirmAnchors';
 
 const HASH = `0x${'a'.repeat(64)}`;
 const OTHER = `0x${'b'.repeat(64)}`;
@@ -117,12 +121,75 @@ describe('what the transaction says, not what the row expects', () => {
     // the reverse.
     setup({ snapshots: [capture()] });
     mockWeb3.readRegisteredHashes.mockResolvedValue({ kind: 'NO_RECEIPT' });
+    mockWeb3.isHashRegistered.mockResolvedValue({ registered: true, evidenceId: 1n });
 
     const r = await confirmAnchors({ dryRun: false });
 
-    expect(r.noReceipt).toBe(1);
+    expect(r.noReceiptHashRegistered).toBe(1);
     expect(r.anchoredNothing).toBe(0);
     expect(prisma.urlSnapshot.update).not.toHaveBeenCalled();
+  });
+
+  // -------------------------------------------------------------------------
+  // Splitting NO RECEIPT. Measured on staging 2026-08-29: 91 of 113 subjects
+  // returned no receipt, all of them stored on one date and none of the 22
+  // stored six days later. An unreadable transaction is not yet a finding —
+  // whether this chain holds the fact AT ALL is what decides that, and the two
+  // answers are worlds apart in consequence.
+  // -------------------------------------------------------------------------
+
+  it('an unreadable transaction whose hash IS registered is unresolved, not wrong', async () => {
+    setup({ snapshots: [capture()] });
+    mockWeb3.readRegisteredHashes.mockResolvedValue({ kind: 'NO_RECEIPT' });
+    mockWeb3.isHashRegistered.mockResolvedValue({ registered: true, evidenceId: 1n });
+
+    const r = await confirmAnchors({ dryRun: false });
+
+    expect(r.noReceiptHashRegistered).toBe(1);
+    expect(r.noReceiptHashAbsent).toBe(0);
+    // Still nothing written: the fact is anchored, but WHICH transaction did it
+    // is exactly what could not be observed, and that is what the column means.
+    expect(prisma.urlSnapshot.update).not.toHaveBeenCalled();
+  });
+
+  it('an unreadable transaction whose hash is ABSENT is the serious finding', async () => {
+    setup({ snapshots: [capture()] });
+    mockWeb3.readRegisteredHashes.mockResolvedValue({ kind: 'NO_RECEIPT' });
+    mockWeb3.isHashRegistered.mockResolvedValue({ registered: false, evidenceId: 0n });
+
+    const r = await confirmAnchors({ dryRun: false });
+
+    expect(r.noReceiptHashAbsent).toBe(1);
+    expect(r.noReceiptHashRegistered).toBe(0);
+  });
+
+  it('an RPC that answers NEITHER question concludes nothing at all', async () => {
+    // The distinction §3 insists on: a verdict about the CHECK is never a
+    // verdict about the data. A registry that cannot be asked must not be
+    // reported as a chain that holds nothing.
+    setup({ snapshots: [capture()] });
+    mockWeb3.readRegisteredHashes.mockResolvedValue({ kind: 'NO_RECEIPT' });
+    mockWeb3.isHashRegistered.mockRejectedValue(new Error('no healthy backend'));
+
+    const r = await confirmAnchors({ dryRun: false });
+
+    expect(r.unreachable).toBe(1);
+    expect(r.noReceiptHashAbsent).toBe(0);
+    expect(r.failed).toBe(0);
+  });
+
+  it('asks the registry ONLY when the receipt could not be read', async () => {
+    // One extra round trip, on exactly the rows that need it — not on all 113.
+    setup({ snapshots: [capture()] });
+    mockWeb3.readRegisteredHashes.mockResolvedValue({
+      kind: 'REGISTERED',
+      hashes: [HASH],
+      registryAddress: '0xreg',
+    });
+
+    await confirmAnchors({ dryRun: true });
+
+    expect(mockWeb3.isHashRegistered).not.toHaveBeenCalled();
   });
 
   it('refuses to guess when several were registered and none is the row\u2019s', async () => {
@@ -214,5 +281,77 @@ describe('the pass cannot report a clean corpus it never asked about', () => {
     expect(r.failed).toBe(1);
     expect(r.failures[0]?.reason).toBe('RPC down');
     expect(r.confirmed).toBe(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// UNRESOLVED IS NOT A PASS.
+//
+// The first version of this rule counted only the arms meaning "wrong" and let
+// every arm meaning "could not tell" fall through to 0. The first real run
+// answered 22 of 113 questions and exited 0 — the rule this level exists to
+// enforce, broken by the code written to apply it. It lived inline in a script,
+// where nothing exercised it.
+// ---------------------------------------------------------------------------
+describe('what a run means, as an exit code', () => {
+  function report(over: Partial<ConfirmAnchorsReport> = {}): ConfirmAnchorsReport {
+    return {
+      dryRun: true,
+      examined: 1,
+      confirmed: 0,
+      misanchored: 0,
+      anchoredNothing: 0,
+      noReceiptHashRegistered: 0,
+      noReceiptHashAbsent: 0,
+      unreachable: 0,
+      ambiguous: 0,
+      alreadyConfirmed: 0,
+      failed: 0,
+      failures: [],
+      rows: [],
+      ...over,
+    };
+  }
+
+  it('THE REGRESSION: a run that could not answer is not a pass', () => {
+    // Exactly the staging shape — 22 confirmed, 91 unreadable, nothing wrong.
+    expect(
+      confirmAnchorsExitCode(
+        report({ examined: 113, confirmed: 22, noReceiptHashRegistered: 91 }),
+      ),
+    ).toBe(3);
+  });
+
+  it('passes only when every claim was checked and every one held', () => {
+    expect(confirmAnchorsExitCode(report({ examined: 113, confirmed: 113 }))).toBe(0);
+  });
+
+  it('reports WRONG above UNRESOLVED — the worse news wins', () => {
+    // A corpus with both must never report merely "could not confirm".
+    expect(
+      confirmAnchorsExitCode(report({ misanchored: 1, noReceiptHashRegistered: 90 })),
+    ).toBe(2);
+  });
+
+  it.each([
+    ['misanchored', { misanchored: 1 }],
+    ['a transaction that registered nothing', { anchoredNothing: 1 }],
+    ['a claim this chain has no trace of', { noReceiptHashAbsent: 1 }],
+  ])('%s is WRONG, not merely unresolved', (_label, over) => {
+    expect(confirmAnchorsExitCode(report(over))).toBe(2);
+  });
+
+  it.each([
+    ['an unreadable transaction whose hash is registered', { noReceiptHashRegistered: 1 }],
+    ['an RPC that answered neither question', { unreachable: 1 }],
+    ['several hashes and none the row’s', { ambiguous: 1 }],
+  ])('%s is unresolved, not wrong', (_label, over) => {
+    expect(confirmAnchorsExitCode(report(over))).toBe(3);
+  });
+
+  it('a run that errored on a subject reports the run, not the corpus', () => {
+    // A pass that crashed halfway has measured nothing, whatever the counters
+    // it managed to increment say.
+    expect(confirmAnchorsExitCode(report({ failed: 1, confirmed: 100 }))).toBe(1);
   });
 });
