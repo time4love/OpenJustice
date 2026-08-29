@@ -277,7 +277,12 @@ async function classify(
       state: 'STALE',
       checkedAt: check.checkedAt.toISOString(),
       onChainVerdict,
-      staleReason: `This verdict no longer describes the subject: ${reasons.join(' and ')}.`,
+      // "does not", not "no longer": a verdict that never recorded which chain it
+      // asked did not stop describing this subject, it never did. The wording
+      // matters because the two license different next steps — one says something
+      // changed under a good verdict, the other says the verdict was never
+      // anchored to anything checkable.
+      staleReason: `This verdict does not describe the subject: ${reasons.join(' and ')}.`,
     };
   }
 

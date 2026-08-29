@@ -33,7 +33,10 @@ async function main(): Promise<void> {
   console.log(`  CONTRADICTED                ${String(s.CONTRADICTED)}   (chain and database disagree)`);
   console.log(`  UNAVAILABLE                 ${String(s.UNAVAILABLE)}   (chain unreachable — NOT a pass)`);
   console.log(`  UNCHECKED                   ${String(s.UNCHECKED)}   (no verdict ever recorded — NOT a pass)`);
-  console.log(`  STALE                       ${String(s.STALE)}   (verdict is about a claim or rule that has moved)`);
+  console.log(
+    `  STALE                       ${String(s.STALE)}   ` +
+      '(the claim moved, the rule moved, or the verdict does not name this chain)',
+  );
   console.log(`\nVerifier version              ${report.currentVerifierVersion}\n`);
 
   // A silent zero here would make every reassuring line above vacuous: a corpus
