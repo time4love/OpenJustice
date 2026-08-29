@@ -216,16 +216,97 @@ covered by the rule below. The line is the chain write.
 `check_on_chain_status` is the check that catches it either way: it compares what the database claims
 against what the contract actually holds. Call it after any promotion.
 
-## Production operations may run locally — except chain writes
+## Operational scripts run ONLY inside a deployment — every environment, no exceptions
 
-Running reviewed operational scripts against production with `.env.production.local` is authorised and
-does not require `railway ssh`. `forensics:rediff`, `forensics:reclassify`, `db:simulate` and the
-read-only measurements all qualify. Confirm the environment BY DATA first (production's `trackedUrl`
-is `0e755b7d-…`, staging's is `45ce88aa-…`), capture a before-state, run from a clean checkout of
-landed code, and verify against that before-state afterwards.
+**Never run an operational script from a laptop against staging or production.** Not with
+`.env.production.local`, not with `.env`, not with `railway run`. The only invocation is:
 
-The single exception is the section above: anything that writes to the chain goes through MCP,
-because the local env file would send it to the wrong address.
+```bash
+railway ssh --environment production --service glass-fortress-backend \
+  "cd apps/glass-fortress/backend && npm run forensics:audit-anchors -- --env production"
+```
+
+**The environment is stated TWICE on purpose** — once to Railway, telling it where to connect, and once
+to the script, declaring what the operator believes. `--env` is required; omitting it is a refusal.
+
+`--environment` is still a human assertion, exactly as `.env.production.local` was, and a typo still
+sends you somewhere you didn't mean. What changed is that a single wrong assertion is now **detectable**,
+because the container independently knows four other things about itself:
+
+| voice | production | staging |
+|---|---|---|
+| `RAILWAY_ENVIRONMENT_NAME` | `production` | `staging` |
+| `APP_ENV` | unset → production | `staging` |
+| database | the ref pinned in `EXPECTED_SUPABASE_PROJECT_REF` | likewise |
+| tracked URL (by data) | `0e755b7d-…` | `45ce88aa-…` |
+| chain id | 8453 | 84532 |
+
+The script compares all of them against `--env` and refuses on any disagreement. To defeat that you
+would have to make the *same* mistake twice, in two different places, consistently.
+
+**That is the property the old rule lacked, and it is not merely "more checks".** The old failure was
+*incoherent* — production's database with staging's chain, a state no flag described, each half
+internally valid, undetectable by any single axis. A wrong `--environment` is *coherent*: everything
+arrives from one place, so every axis agrees with every other and disagrees only with the operator.
+Coherent-and-wrong is catchable. Incoherent-and-confident is not.
+
+Name the service every time too — the CLI context has silently reset to staging with no service linked.
+
+Three properties follow from *where* the command runs, none of which anyone has to remember:
+
+- **The environment is whole.** Railway supplies every variable or none, so the database and the chain
+  cannot come from different environments.
+- **The code is landed.** The container is built from `master`, so *fix real data with landed code only*
+  stops being a rule and becomes a fact about the runner.
+- **The runner is identifiable.** `RAILWAY_GIT_COMMIT_SHA` names the exact commit, so an operational
+  write can record what produced it.
+
+### Enforced, not requested
+
+`RAILWAY_DEPLOYMENT_ID` is set **only inside a running deployment** — absent locally and absent under
+`railway run`. Every operational script refuses without it:
+
+```
+Operational scripts run only inside a deployment.
+  railway ssh --environment <env> --service <service> "cd apps/glass-fortress/backend && npm run <script>"
+```
+
+One shared guard imported by every script, held by a source scan so a new script cannot opt out
+silently. This does not apply to `npm run dev` or to tests, which never touch an operational path.
+
+> **`railway ssh` propagates the remote exit code faithfully — but a pipe inside the remote command
+> throws it away.** `… "npm run x | tail"` returns `0` whatever `x` did. When the exit code is the
+> gate, capture first and filter afterwards. This cost three false green readings in one session.
+
+### The rule this replaces was falsified on 2026-08-29, and the reason matters
+
+### The rule this replaces was falsified on 2026-08-29, and the reason matters
+
+The previous rule authorised local production runs via `.env.production.local`, requiring only that the
+environment be confirmed BY DATA first. That check was performed on every run, correctly, and was **not
+enough** — because it confirmed one axis and the failure was on another.
+
+`.env.production.local` defines `DATABASE_URL` and **no chain variables at all**. `dotenv` never
+overrides a variable that is already set, so loading it pinned the database to production and the
+application's own `.env` then filled the chain gaps from **staging**. A `forensics:backfill-anchor-checks`
+run therefore read production's database and Base **Sepolia's** registry, reported 90 `VERIFIED` and one
+`CONTRADICTED` with complete confidence, and wrote 91 integrity verdicts into production that do not
+mean what they say — including Sepolia registry indices stored as though they were mainnet facts. No
+evidence, snapshot or anchor was altered, and nothing was written to any chain; the damage was contained
+to a table created that morning.
+
+Three lessons, in order of what they cost:
+
+- **Confirming the database is not confirming the environment.** Any script touching a database *and* a
+  chain must confirm both, the way `get_environment` does. A confirmation line naming the axis you
+  checked reads as proof about the axis you didn't.
+- **A partial credential file is more dangerous than none.** The gaps are what get filled, silently, from
+  whatever is loaded next. `.env.production.local` should not exist on a laptop.
+- **Prefer removing the capability over forbidding its use** — the principle already stated above as
+  *prefer changing the deploy pipeline over acquiring the credential*, which this section had been
+  contradicting.
+
+Chain **writes** remain MCP-only regardless, per the section above.
 
 ## Data Loss — Absolute Rules
 
