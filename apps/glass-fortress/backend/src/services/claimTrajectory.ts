@@ -113,6 +113,13 @@ export function claimHash(normalised: string): string {
  * Covers: normaliseClaim · the presence test · candidate eligibility · the
  * containment rule · anything else that decides what a trajectory IS.
  *
+ * HELD BY `test/detectionVersionPinned.test.ts`, which hashes the bodies of the
+ * functions that decide what a trajectory is. Changing any of them without
+ * bumping this string fails the suite and names what moved. It cannot force a
+ * CORRECT version — someone can update the pin without thinking — but it turns a
+ * silent omission into a deliberate act, which is the same bargain
+ * `classifierPromptHash` makes one layer down.
+ *
  * v2 retired the length filter for `isDerivativeTrajectory`. Every stored v1
  * trajectory was decided by a rule that excluded `לדיווח על תופעות לוואי >`
  * outright, so no v1 computation describes the corpus under v2 — which is what
