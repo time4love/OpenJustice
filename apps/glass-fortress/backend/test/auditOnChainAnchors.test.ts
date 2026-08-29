@@ -201,6 +201,79 @@ describe('states that are not a pass', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// THE TABLE, NOT JUST ITS TOP ROW.
+//
+// Every state above reads the NEWEST check per subject, so a corpus whose old
+// checks were REPLACED and one whose old checks were SUPERSEDED look identical
+// from there. The cleanup after the 2026-08-29 cross-environment write turns on
+// the 91 wrong rows being KEPT — refusing to store a wrong verdict would delete
+// the evidence that the pipeline was wrong — and until these counts existed,
+// "they are still there" rested on the table being append-only. True, and an
+// argument rather than a measurement.
+// ---------------------------------------------------------------------------
+describe('the checks behind the verdicts', () => {
+  it('THE CLEANUP SHAPE: a chain-stamped check supersedes an unstamped one, which is kept', async () => {
+    // Production after the backfill, in miniature. The subject reads VERIFIED
+    // off the new check while the old one remains, visibly not naming a chain.
+    checkMany.mockResolvedValue([
+      check({ checkedAt: new Date('2026-08-29T16:00:00Z') }),
+      check({
+        checkedAt: new Date('2026-08-29T10:00:00Z'),
+        chainId: null,
+        registryAddress: null,
+      }),
+    ]);
+    const report = await auditOnChainAnchors(MAINNET);
+
+    expect(report.byState.VERIFIED).toBe(1);
+    expect(report.history).toEqual({
+      totalChecks: 2,
+      superseded: 1,
+      provenanceIncomplete: 1,
+    });
+  });
+
+  it('counts provenance gaps across the WHOLE table, not the newest row per subject', async () => {
+    // The mutation that matters. Counting only `latest` would report zero the
+    // moment a backfill superseded the incomplete rows — which is exactly when
+    // the count starts to mean something, and exactly when a reader would take
+    // the zero as proof the incident had been cleaned away rather than recorded.
+    checkMany.mockResolvedValue([
+      check({ checkedAt: new Date('2026-08-29T16:00:00Z') }),
+      check({ checkedAt: new Date('2026-08-29T12:00:00Z'), chainId: null, registryAddress: null }),
+      check({ checkedAt: new Date('2026-08-29T10:00:00Z'), chainId: 84532 }),
+    ]);
+    const report = await auditOnChainAnchors(MAINNET);
+
+    expect(report.history.provenanceIncomplete).toBe(2);
+    expect(report.history.superseded).toBe(2);
+  });
+
+  it('a verdict off ANOTHER chain counts as not naming this one', async () => {
+    // Base Sepolia's answer stored in production: it names a chain, just not
+    // this deployment's. Counting only NULLs would miss the 90 rows that were
+    // wrong rather than merely unrecorded.
+    checkMany.mockResolvedValue([check({ chainId: 84532 })]);
+    const report = await auditOnChainAnchors(MAINNET);
+
+    expect(report.history.provenanceIncomplete).toBe(1);
+  });
+
+  it('reports zeroes on an empty table rather than throwing', async () => {
+    // A corpus with no checks at all: the subject is UNCHECKED above, and these
+    // counts must say nothing rather than invent something.
+    const report = await auditOnChainAnchors(MAINNET);
+
+    expect(report.byState.UNCHECKED).toBe(1);
+    expect(report.history).toEqual({
+      totalChecks: 0,
+      superseded: 0,
+      provenanceIncomplete: 0,
+    });
+  });
+});
+
 describe('which subjects are asked for a verdict at all', () => {
   it('a PENDING_REVIEW record is not a subject — it claims no anchor', async () => {
     // Demanding a verdict for a row that asserts nothing would manufacture a

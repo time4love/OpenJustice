@@ -37,7 +37,20 @@ async function main(): Promise<void> {
     `  STALE                       ${String(s.STALE)}   ` +
       '(the claim moved, the rule moved, or the verdict does not name this chain)',
   );
-  console.log(`\nVerifier version              ${report.currentVerifierVersion}\n`);
+  console.log(`\nVerifier version              ${report.currentVerifierVersion}`);
+
+  // THE TABLE, NOT JUST ITS TOP ROW. Everything above reads the newest check per
+  // subject, so a corpus whose old checks were REPLACED and one whose old checks
+  // were SUPERSEDED look identical from there. The cleanup after the 2026-08-29
+  // cross-environment write turns on 91 wrong rows being kept as the record of
+  // what the pipeline got wrong, and this is the line that shows they still are.
+  const h = report.history;
+  console.log(`\nChecks recorded               ${String(h.totalChecks)}`);
+  console.log(`  superseded                  ${String(h.superseded)}   (kept — a check is never replaced)`);
+  console.log(
+    `  not naming their chain      ${String(h.provenanceIncomplete)}   ` +
+      '(no chain recorded, or another chain)\n',
+  );
 
   // A silent zero here would make every reassuring line above vacuous: a corpus
   // with no anchored subjects reports nothing unchecked and reads as a pass.
