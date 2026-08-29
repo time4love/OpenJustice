@@ -8,6 +8,16 @@ correctness.
 **Level 10 supersedes rather than deletes, and there is only ever one registry** (§4 Level 10);
 **staging is finished before any production data is migrated** (§6).
 
+**Every level carries a `STATUS:` line directly under its heading.** It exists so that "what is the
+state of Level N?" is one `grep -n '^\*\*STATUS:' ` against THIS file rather than a recollection or an
+index entry. It is a POINTER, never a replacement: why a level is deferred, or what "partial" covers,
+lives in that level's own prose below it and nowhere else.
+
+Added 2026-08-29 after three recommendations in a single session were made from a summary of this
+document rather than from the document — twice proposing work it had already ruled out. A memory index
+is loaded automatically and this plan is not, so any decision copied out of here is what gets acted on,
+and the copy drifts. The status line makes reading the source cheaper than trusting a copy.
+
 Companions: `docs/gf-framing-assessor-defects.md` (four defects, with reproduction cases),
 `docs/gf-production-thesis-replay-plan.md` (how they were found).
 
@@ -260,6 +270,8 @@ that makes violating it impossible or impossible-to-miss).
 
 ### Level 0 — the instrument · **DONE**
 
+**STATUS: DONE**
+
 *Invariant:* the extractor's behaviour is pinned to real captures, so a regression cannot silently make
 every verification agree with whatever it checks.
 
@@ -268,6 +280,8 @@ every verification agree with whatever it checks.
 fails 11).
 
 ### Level 1 — the capture
+
+**STATUS: DONE — closed against the Archive's own digest, both environments**
 
 *Invariant:* every capture holds the document as fetched. No capture exists without one.
 
@@ -1435,6 +1449,8 @@ than acted on.
 
 ### Level 2 — the source
 
+**STATUS: PHASE A COMPLETE (2026-08-28) — see the section below for what Phase A covered**
+
 *Invariant:* the bytes stored are the bytes the source served, and a later change on the source's side
 is detectable.
 
@@ -1879,6 +1895,8 @@ exactly one did, and it became `probeSnapshotsList` — *named* for recording no
 
 ### Level 3 — the anchor
 
+**STATUS: PARTIAL — clause 2 (the database claim is CHECKED) is closed; clause 1 (the anchor attests to the DOCUMENT) is OPEN. See the status note below.**
+
 *Invariant:* the on-chain record attests to the document, and the database's claim about it is checked
 rather than asserted.
 
@@ -1937,6 +1955,8 @@ None of that is a repair, and none of it is mine to decide: it changes what the 
 asserts. Recorded here so the next person does not close this level on the strength of a green audit.
 
 ### Level 4 — the view
+
+**STATUS: DEFERRED (2026-08-29) — rationale falsified by measurement in `d4739aa`. It needs a CONSUMER FOR THE MARKS, not code. Do not revive without new measurement.**
 
 *Invariant:* no block unique to a capture is ever classified chrome; the view is versioned and marks
 rather than deletes.
@@ -2006,6 +2026,8 @@ verdict-nobody-reads shape corrected in Level 5 step 4.
 > cost minutes and changed the whole shape of the work.
 
 ### Level 5 — the diff
+
+**STATUS: ENFORCED in both environments**
 
 *Invariant:* a change the platform reports survives the documents. A chunk said to be REMOVED is absent
 from the after document; a chunk said to be ADDED was absent from the before one.
@@ -2189,6 +2211,8 @@ and missed the case this work exists for; sentence granularity found 7.
 
 ### Level 6 — the trajectory
 
+**STATUS: PARTIAL — `DETECTION_VERSION` v2 retired `MIN_CLAIM_LENGTH` for the containment rule (2026-08-29). The invariant itself — every reported flip confirmed against the documents at that boundary — is NOT yet enforced.**
+
 *Invariant:* every reported flip is confirmed against the documents at that boundary.
 
 *Enforcement:* verified at computation, verdict stored with `DETECTION_VERSION` and `sourceStateHash`.
@@ -2200,6 +2224,8 @@ not long. Changing it bumps `DETECTION_VERSION` and recomputes every trajectory,
 level rather than after it.
 
 ### Level 7 — the evidence
+
+**STATUS: OPEN**
 
 *Invariant:* identity is recomputable from its captures, and a summary attributes nothing to a page
 that the page does not contain.
@@ -2213,6 +2239,8 @@ explicit false-positive policy — a summary legitimately characterises as well 
 the second is checkable. A gate that cries wolf gets disabled.
 
 ### Level 8 — the opinions
+
+**STATUS: OPEN**
 
 *Invariant:* nothing presents a model's judgement as a computed fact.
 
@@ -2232,6 +2260,8 @@ on whether it is backed by anchored evidence. A researcher cannot distinguish *"
 per row.
 
 ### Level 9 — the thesis
+
+**STATUS: OPEN**
 
 *Invariant:* a thesis cites nothing that is not `VERIFIED`.
 
@@ -2264,6 +2294,8 @@ corrections are discovered. A seven-versus-five error found mid-framing on 2026-
 written to the session it belonged to.
 
 ### Level 10 — supersede the old corpus
+
+**STATUS: OPEN — two decisions already taken: supersede rather than delete, and only ever one registry**
 
 *Invariant:* every anchored hash stays explainable forever.
 
