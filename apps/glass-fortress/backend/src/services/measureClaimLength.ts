@@ -49,6 +49,33 @@ export interface AdmittedClaim {
   presentIn: number;
   /** Where it ends up — a REMOVED short claim is the case worth reading first. */
   finalState: 'PRESENT' | 'REMOVED';
+  /**
+   * OTHER CANDIDATES THAT CONTAIN THIS ONE AS A SUBSTRING.
+   *
+   * The precise form of the hazard `MIN_CLAIM_LENGTH` approximates. A contained
+   * claim is found by the presence probe whenever any containing phrase is
+   * present, so its observations are the UNION of theirs and its trajectory can
+   * be an artifact of movement that belongs to something else.
+   */
+  containedInCandidates: number;
+  /**
+   * CAPTURES WHERE IT APPEARS AND NO CONTAINING CANDIDATE DOES.
+   *
+   * The measure that actually decides it, and the reason counting containers is
+   * not enough. Being contained is only a hazard if every observation is
+   * explained by a container: a claim that shows up somewhere none of them do is
+   * carrying its own signal, however short it is and however many phrases
+   * happen to embed it elsewhere.
+   *
+   * Zero here, with containers present, means the trajectory is DERIVATIVE —
+   * every sighting is inside another claim's text.
+   */
+  capturesWhereIndependent: number;
+}
+
+/** True when every sighting of a contained claim is inside a container's text. */
+export function isDerivative(c: AdmittedClaim): boolean {
+  return c.containedInCandidates > 0 && c.capturesWhereIndependent === 0;
 }
 
 export interface ThresholdMeasurement {
@@ -112,13 +139,11 @@ export async function measureClaimLength(
       surfacing: surfacing.length,
       admitted: surfacing
         .filter((t) => !baselineSurfacing.has(t.claimHash))
-        .map((t) => ({
-          claim: t.claimText,
-          length: t.claimText.length,
-          transitions: t.transitions,
-          presentIn: t.observations.filter((o) => o.present).length,
-          finalState: t.finalState,
-        }))
+        // Containment is measured against EVERY detected candidate at this
+        // threshold, not only the surfacing ones: a container that never moves
+        // still explains a sighting, and is exactly the case that makes a short
+        // claim's flicker look like movement of its own.
+        .map((t) => admittedClaim(t, at.trajectories))
         .sort((a, b) => a.length - b.length),
     });
   }
@@ -129,5 +154,44 @@ export async function measureClaimLength(
     productionThreshold: MIN_CLAIM_LENGTH,
     minTransitions: MIN_TRANSITIONS,
     measurements,
+  };
+}
+
+
+function admittedClaim(
+  claim: DetectedTrajectory,
+  all: readonly DetectedTrajectory[],
+): AdmittedClaim {
+  const containers = all.filter(
+    (other) => other.claimHash !== claim.claimHash && other.claimText.includes(claim.claimText),
+  );
+
+  // KEYED ON THE CAPTURE, not on position. Lining two observation arrays up by
+  // index assumes every trajectory was built over the same captures in the same
+  // order — true today, and an assumption nothing enforces. `waybackTimestamp`
+  // is the capture's own identity, so this stays correct if that ever stops
+  // holding rather than silently comparing one capture against another.
+  const capturesWithContainer = new Set<string>();
+  for (const container of containers) {
+    for (const observation of container.observations) {
+      if (observation.present) capturesWithContainer.add(observation.waybackTimestamp);
+    }
+  }
+
+  let capturesWhereIndependent = 0;
+  for (const observation of claim.observations) {
+    if (observation.present && !capturesWithContainer.has(observation.waybackTimestamp)) {
+      capturesWhereIndependent++;
+    }
+  }
+
+  return {
+    claim: claim.claimText,
+    length: claim.claimText.length,
+    transitions: claim.transitions,
+    presentIn: claim.observations.filter((o) => o.present).length,
+    finalState: claim.finalState,
+    containedInCandidates: containers.length,
+    capturesWhereIndependent,
   };
 }
