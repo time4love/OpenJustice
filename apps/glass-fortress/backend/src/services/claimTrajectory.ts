@@ -261,7 +261,17 @@ const TRAJECTORY_CAPTURE_SCAN = { orderBy: { capturedAt: 'asc' } } as const;
  * state has not moved. Loading fullText here to decide whether we need fullText
  * would defeat it.
  */
-async function loadDetectionInputs(url: string) {
+/**
+ * `minClaimLength` is a PARAMETER with the production value as its default, so
+ * the measurement below runs the real discovery rule rather than a second copy
+ * of it. A sweep that re-implemented the filter would be measuring the copy.
+ *
+ * It deliberately does NOT reach `sourceStateHash`'s inputs as a named field:
+ * DETECTION_VERSION already covers the threshold, and enumerating it there is
+ * the mistake that hash's own comment records — it once listed `normaliseClaim`
+ * and `MIN_CLAIM_LENGTH` and missed the presence test.
+ */
+async function loadDetectionInputs(url: string, minClaimLength: number = MIN_CLAIM_LENGTH) {
   const tracked = await prisma.trackedUrl.findUnique({
     where: { url },
     select: { id: true },
@@ -294,7 +304,7 @@ async function loadDetectionInputs(url: string) {
     for (const raw of [diff.deletedText, diff.addedText]) {
       for (const item of parseDiffItems(raw)) {
         const normalised = normaliseClaim(item.exactQuote);
-        if (normalised.length < MIN_CLAIM_LENGTH) continue;
+        if (normalised.length < minClaimLength) continue;
         candidates.set(claimHash(normalised), normalised);
       }
     }
@@ -409,6 +419,44 @@ export async function getStoredClaimTrajectories(
  * trajectory that has been cited still resolves to what was cited — see the
  * schema note on ClaimTrajectoryComputation.
  */
+/**
+ * WHAT DETECTION WOULD FIND AT A DIFFERENT CANDIDATE-LENGTH THRESHOLD.
+ *
+ * `MIN_CLAIM_LENGTH = 40` buys precision at the cost of missing terse claims,
+ * and its own comment calls that "a trade worth revisiting once there are real
+ * trajectories to look at". There are now real trajectories, so this exists to
+ * look at them — and to make the revisit a MEASUREMENT rather than an argument.
+ * Level 4 is deferred in this same plan because its rationale was falsified by
+ * exactly this kind of pass; changing the constant first and measuring second
+ * would repeat that in a subsystem with a recompute cascade attached.
+ *
+ * READ-ONLY AND IT NEVER PERSISTS. `getClaimTrajectories` writes a
+ * ClaimTrajectoryComputation for the state it computed; a sweep over hypothetical
+ * thresholds must not, or it would fill the cache with answers no production read
+ * can ever be served — and, worse, rows whose `sourceStateHash` claims to
+ * describe a state the corpus is not in.
+ */
+export async function detectAtClaimLength(
+  url: string,
+  minClaimLength: number,
+): Promise<{
+  minClaimLength: number;
+  candidatesConsidered: number;
+  candidatesUnmatched: number;
+  snapshotsExamined: number;
+  trajectories: DetectedTrajectory[];
+}> {
+  const inputs = await loadDetectionInputs(url, minClaimLength);
+  const detected = await detect(inputs);
+  return {
+    minClaimLength,
+    candidatesConsidered: inputs.candidates.size,
+    candidatesUnmatched: detected.unmatched,
+    snapshotsExamined: detected.snapshotsExamined,
+    trajectories: detected.trajectories,
+  };
+}
+
 export async function getClaimTrajectories(
   url: string,
   opts: { minTransitions?: number; forceRecompute?: boolean } = {},
