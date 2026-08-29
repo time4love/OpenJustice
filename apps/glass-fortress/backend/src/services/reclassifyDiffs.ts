@@ -187,6 +187,10 @@ export async function reclassifyDiffs(opts: ReclassifyOptions = {}): Promise<Rec
           where: { id: diff.id },
           data: {
             classifierVersion: CLASSIFIER_VERSION,
+            // THE ROW'S OWN version, not the current one. Reclassification reads
+            // the chunks the row already holds; stamping the current rule here
+            // would claim this classification had seen chunks nobody recomputed.
+            classifiedInputVersion: diff.diffInputVersion,
             classifierPromptHash: promptHash,
             classifierModel: agent.modelId,
             // Zero draws: the model was never called for an empty diff.
@@ -251,6 +255,8 @@ export async function reclassifyDiffs(opts: ReclassifyOptions = {}): Promise<Rec
           deletedText: JSON.stringify(analysis.deletedItems),
           addedText: JSON.stringify(analysis.addedItems),
           classifierVersion: CLASSIFIER_VERSION,
+          // As above: what this run actually read is the row's stored chunks.
+          classifiedInputVersion: diff.diffInputVersion,
           classifierPromptHash: promptHash,
           classifierModel: agent.modelId,
           classifierDraws: analysis.draws,

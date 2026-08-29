@@ -29,6 +29,7 @@
  * DRY RUN IS THE DEFAULT. --apply is required to write.
  */
 import 'dotenv/config';
+import { runOperationalScript } from '../src/lib/operationalContext';
 import { recoverMissingCaptures } from '../src/services/recoverMissingCaptures';
 
 function arg(name: string): string | undefined {
@@ -139,11 +140,4 @@ async function main(): Promise<void> {
   }
 }
 
-main()
-  .catch((err: unknown) => {
-    console.error(err instanceof Error ? err.message : err);
-    process.exit(1);
-  })
-  .finally(() => {
-    void 0;
-  });
+void runOperationalScript(main);

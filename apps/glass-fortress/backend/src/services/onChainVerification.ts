@@ -15,6 +15,8 @@ import {
   type OnChainVerdict,
 } from '../lib/onChainVerdict';
 import { Web3Service } from './Web3Service';
+import { normaliseAddress } from '../lib/anchoringTarget';
+import { readChainIdentity } from '../lib/chainIdentity';
 
 /**
  * LEVEL 3a — THE CHECK RUNS ON THE WRITE PATH, AND ITS VERDICT IS STORED.
@@ -65,13 +67,34 @@ export type OnChainObservation =
       registryEvidenceId: string | null;
       claim: OnChainClaim;
       explanation: string;
+      registry: ObservedRegistry;
     }
   | {
       reachable: false;
       /** Why the registry could not be questioned. Stored, never collapsed. */
       message: string;
       claim: OnChainClaim;
+      registry: ObservedRegistry;
     };
+
+/**
+ * WHICH REGISTRY WAS ACTUALLY ASKED — reported on both arms, because a verdict
+ * that does not name its registry is not a fact about one.
+ *
+ * OBSERVED, NOT CONFIGURED, and the distinction is the whole incident. On
+ * 2026-08-29 the deployment believed it was production and its RPC was Base
+ * Sepolia; stamping the belief would have written `8453` onto ninety-one rows
+ * read off chain `84532` and made them indistinguishable from correct ones a
+ * second time. `chainId` is what the RPC reported, so a wrong environment
+ * records itself.
+ *
+ * `chainId` is null only when the chain could not be reached at all, which the
+ * audit reads as no current answer rather than as a pass.
+ */
+export interface ObservedRegistry {
+  chainId: number | null;
+  registryAddress: string | null;
+}
 
 /** Where a hash's local claim is read from — one query shape, one meaning. */
 export async function readOnChainClaim(fileHash: string): Promise<OnChainClaim> {
@@ -111,11 +134,29 @@ export async function readOnChainClaim(fileHash: string): Promise<OnChainClaim> 
 export async function observeOnChainStatus(fileHash: string): Promise<OnChainObservation> {
   const claim = await readOnChainClaim(fileHash);
 
+  // Read the identity of the chain being asked BEFORE asking it anything, from
+  // the wallet-free path: "which registry is this?" is not a signed question,
+  // and a deployment that cannot answer it must not be trusted with the answer
+  // to the signed one. Both calls resolve the same RPC_URL and
+  // EVIDENCE_REGISTRY_ADDRESS in the same process, so the identity reported here
+  // is the identity of the registry queried below.
+  const identity = await readChainIdentity();
+  const registry: ObservedRegistry = identity.reachable
+    ? {
+        chainId: identity.chainId,
+        registryAddress: normaliseAddress(identity.registryAddress),
+      }
+    : {
+        chainId: null,
+        registryAddress:
+          identity.registryAddress === null ? null : normaliseAddress(identity.registryAddress),
+      };
+
   let web3: Web3Service;
   try {
     web3 = new Web3Service();
   } catch (err) {
-    return { reachable: false, message: messageOf(err), claim };
+    return { reachable: false, message: messageOf(err), claim, registry };
   }
 
   let registered: boolean;
@@ -123,7 +164,7 @@ export async function observeOnChainStatus(fileHash: string): Promise<OnChainObs
   try {
     ({ registered, evidenceId: registryEvidenceId } = await web3.isHashRegistered(fileHash));
   } catch (err) {
-    return { reachable: false, message: messageOf(err), claim };
+    return { reachable: false, message: messageOf(err), claim, registry };
   }
 
   const verdict = decideOnChainVerdict(claim, registered);
@@ -135,6 +176,7 @@ export async function observeOnChainStatus(fileHash: string): Promise<OnChainObs
     registryEvidenceId: registered ? registryEvidenceId.toString() : null,
     claim,
     explanation: ON_CHAIN_EXPLANATIONS[verdict],
+    registry,
   };
 }
 
@@ -200,7 +242,7 @@ export async function recordOnChainCheck(input: {
   const observation = await observeOnChainStatus(input.fileHash);
   const verdict = storedVerdictFor(observation);
 
-  const detail: Prisma.InputJsonValue = observation.reachable
+  const detail: Record<string, Prisma.InputJsonValue | null> = observation.reachable
     ? {
         onChainVerdict: observation.verdict,
         registered: observation.registered,
@@ -224,7 +266,13 @@ export async function recordOnChainCheck(input: {
       subjectId: input.subjectId,
       checkType: IntegrityCheckType.ON_CHAIN_ANCHOR,
       verdict,
-      detail,
+      detail: { ...detail, deploymentCommitSha: process.env.RAILWAY_GIT_COMMIT_SHA ?? null },
+      // OFF THE OBSERVATION, never off configuration — see ObservedRegistry.
+      // Recorded even when the chain was unreachable: an UNAVAILABLE verdict is
+      // still a verdict about a specific registry, and one that cannot name it
+      // is exactly the row these columns exist to make visible.
+      chainId: observation.registry.chainId,
+      registryAddress: observation.registry.registryAddress,
       // The SAME claim the verdict was reached against, so the commitment is to
       // what was actually checked rather than to what the row holds afterwards.
       sourceStateHash: onChainSourceStateHash({
@@ -282,36 +330,4 @@ export async function recordOnChainCheckNeverThrowing(input: {
     );
     return null;
   }
-}
-
-/**
- * The newest check of one kind for one subject.
- *
- * The table is append-only, so "the current verdict" is a read rather than a
- * column. Ordered by `checkedAt` and then by `id` so two checks recorded inside
- * the same millisecond still resolve to a stable, defined answer rather than to
- * whichever row Postgres happens to return first.
- */
-export async function latestOnChainCheck(
-  subjectType: IntegrityCheckSubject,
-  subjectId: string,
-): Promise<{
-  verdict: IntegrityCheckVerdict;
-  checkedAt: Date;
-  verifierVersion: string;
-  sourceStateHash: string;
-  detail: Prisma.JsonValue;
-} | null> {
-  const row = await prisma.integrityCheck.findFirst({
-    where: { subjectType, subjectId, checkType: IntegrityCheckType.ON_CHAIN_ANCHOR },
-    orderBy: [{ checkedAt: 'desc' }, { id: 'desc' }],
-    select: {
-      verdict: true,
-      checkedAt: true,
-      verifierVersion: true,
-      sourceStateHash: true,
-      detail: true,
-    },
-  });
-  return row;
 }

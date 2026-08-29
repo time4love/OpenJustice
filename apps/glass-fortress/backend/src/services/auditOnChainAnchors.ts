@@ -6,6 +6,7 @@ import {
 } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { ON_CHAIN_CHECK_VERSION, onChainSourceStateHash } from '../lib/onChainVerdict';
+import { anchoringTarget, chainProvenanceGap, type AnchoringTarget } from '../lib/anchoringTarget';
 import { readOnChainClaim } from './onChainVerification';
 
 /**
@@ -18,7 +19,13 @@ import { readOnChainClaim } from './onChainVerification';
  *
  *   1. Is there a verdict at all?      — UNCHECKED is not a pass
  *   2. Was the verdict a pass?         — UNAVAILABLE is not a pass either
- *   3. Is the verdict still current?   — a claim that moved makes it STALE
+ *   3. Is the verdict still current?   — a claim or rule that moved makes it STALE
+ *   4. Is it a verdict about US?       — a verdict that does not name the chain
+ *                                        and registry this deployment anchors to
+ *                                        is also STALE. Added after 91 verdicts
+ *                                        read off Base Sepolia were written into
+ *                                        production, where questions 1-3 all
+ *                                        reported them current.
  *
  * READ-ONLY, AND IT NEVER TOUCHES THE CHAIN. Every state here is derived from
  * stored rows, so the audit is cheap, deterministic, and safe to run against
@@ -41,13 +48,24 @@ export type AnchorCheckState =
   /** No check has ever been recorded for this subject. NOT a pass. */
   | 'UNCHECKED'
   /**
-   * A verdict exists but no longer describes this subject: the claim moved
-   * (`sourceStateHash`) or the rule did (`verifierVersion`).
+   * A verdict exists but does not describe this subject: the claim moved
+   * (`sourceStateHash`), the rule moved (`verifierVersion`), or the verdict does
+   * not name the chain and registry this deployment anchors to (`chainId`,
+   * `registryAddress`).
    *
-   * BOTH AXES, and that is the lesson from one level up. A hash over the inputs
-   * is structurally blind to a change in the RULE that read them — when the
-   * survival rule changed, 88 stored verdicts became wrong while every hash
-   * still matched and the audit read every one of them current.
+   * THREE AXES, each added after the previous set proved insufficient, and the
+   * pattern is the same every time — a commitment that is blind to the thing
+   * that actually changed.
+   *
+   * A hash over the INPUTS is structurally blind to a change in the RULE that
+   * read them: when the survival rule changed, 88 stored verdicts became wrong
+   * while every hash still matched and the audit read every one of them current.
+   *
+   * And BOTH of those are blind to WHICH CHAIN was asked. On 2026-08-29 a local
+   * run read production's database against Base Sepolia's registry and wrote 91
+   * verdicts into production; the rule had not moved and the claims had not
+   * moved, so both existing axes reported every one of them current. What was
+   * wrong was the question, not the answer.
    */
   | 'STALE';
 
@@ -57,7 +75,7 @@ export interface AnchorSubjectRow extends AnchorClaimingSubject {
   checkedAt: string | null;
   /** The specific on-chain verdict behind a stored check, when it recorded one. */
   onChainVerdict: string | null;
-  /** Why the state is STALE — which axis moved. Empty otherwise. */
+  /** Why the state is STALE — which axis moved, or which provenance is missing. */
   staleReason: string | null;
 }
 
@@ -131,7 +149,16 @@ export async function auditOnChainAnchorSubjects(): Promise<AnchorClaimingSubjec
   ];
 }
 
-export async function auditOnChainAnchors(): Promise<AnchorAuditReport> {
+/**
+ * `target` is a parameter rather than an ambient read so a test can state the
+ * registry it is reasoning about instead of inheriting one. A suite whose
+ * verdict depends on which variables a transitive import happened to load is a
+ * suite that can change its answer without a line of code changing — the same
+ * reasoning that makes `test/setupEnv.ts` delete the chain variables outright.
+ */
+export async function auditOnChainAnchors(
+  target: AnchoringTarget = anchoringTarget(),
+): Promise<AnchorAuditReport> {
   const subjects = await auditOnChainAnchorSubjects();
 
   const checks = await prisma.integrityCheck.findMany({
@@ -145,6 +172,8 @@ export async function auditOnChainAnchors(): Promise<AnchorAuditReport> {
       verifierVersion: true,
       sourceStateHash: true,
       detail: true,
+      chainId: true,
+      registryAddress: true,
     },
   });
 
@@ -164,7 +193,7 @@ export async function auditOnChainAnchors(): Promise<AnchorAuditReport> {
     seen.add(key);
     const check = latest.get(key);
 
-    const row = await classify(subject, check);
+    const row = await classify(subject, check, target);
     byState[row.state] += 1;
     if (row.state !== 'VERIFIED') unverified.push(row);
   }
@@ -191,8 +220,11 @@ async function classify(
         verifierVersion: string;
         sourceStateHash: string;
         detail: Prisma.JsonValue;
+        chainId: number | null;
+        registryAddress: string | null;
       }
     | undefined,
+  target: AnchoringTarget,
 ): Promise<AnchorSubjectRow> {
   const base = {
     subjectType: subject.subjectType,
@@ -231,11 +263,14 @@ async function classify(
     claim: await readOnChainClaim(subject.fileHash),
   });
   const claimMoved = check.sourceStateHash !== expectedHash;
+  // Configuration only — this keeps the audit's promise never to touch the chain.
+  const provenanceGap = chainProvenanceGap(check, target);
 
-  if (ruleMoved || claimMoved) {
+  if (ruleMoved || claimMoved || provenanceGap !== null) {
     const reasons = [
       ruleMoved ? `the rule moved (${check.verifierVersion} -> ${ON_CHAIN_CHECK_VERSION})` : null,
       claimMoved ? 'the database claim it judged has changed' : null,
+      provenanceGap,
     ].filter((r): r is string => r !== null);
     return {
       ...base,

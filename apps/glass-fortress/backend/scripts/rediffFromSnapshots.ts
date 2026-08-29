@@ -23,6 +23,7 @@
 // PrismaClient at module load; CommonJS runs imports in source order, so a
 // dotenv import placed after it loads the env too late to matter.
 import 'dotenv/config';
+import { runOperationalScript } from '../src/lib/operationalContext';
 import { planRediff, applyRediff, REDIFF_TARGET_VERSION } from '../src/services/rediffFromSnapshots';
 import { prisma } from '../src/lib/prisma';
 
@@ -115,4 +116,4 @@ async function main(): Promise<void> {
   await prisma.$disconnect();
 }
 
-void main();
+void runOperationalScript(main);

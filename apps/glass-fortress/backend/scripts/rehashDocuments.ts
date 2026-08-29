@@ -13,6 +13,7 @@
  * INTERNALLY CONTRADICTED count is the before-state and the proof.
  */
 import 'dotenv/config';
+import { runOperationalScript } from '../src/lib/operationalContext';
 import { rehashDocuments } from '../src/services/rehashDocuments';
 
 function arg(name: string): string | undefined {
@@ -51,7 +52,4 @@ async function main(): Promise<void> {
   if (report.raced > 0) process.exitCode = 2;
 }
 
-main().catch((err: unknown) => {
-  console.error(err instanceof Error ? err.message : err);
-  process.exit(1);
-});
+void runOperationalScript(main);

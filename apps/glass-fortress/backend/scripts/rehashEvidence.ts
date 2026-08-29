@@ -19,6 +19,7 @@
  * DRY RUN IS THE DEFAULT. --apply is required to send transactions.
  */
 import 'dotenv/config';
+import { runOperationalScript } from '../src/lib/operationalContext';
 import { rehashEvidence } from '../src/services/rehashEvidence';
 
 function arg(name: string): string | undefined {
@@ -67,7 +68,4 @@ async function main(): Promise<void> {
   if (report.failed > 0) process.exit(1);
 }
 
-main().catch((err: unknown) => {
-  console.error(err instanceof Error ? err.message : err);
-  process.exit(1);
-});
+void runOperationalScript(main);

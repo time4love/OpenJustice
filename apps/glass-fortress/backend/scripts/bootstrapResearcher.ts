@@ -40,8 +40,8 @@
 // PrismaClient at module load; CommonJS runs imports in source order, so a
 // dotenv import placed after it loads the env too late to matter.
 import 'dotenv/config';
+import { runOperationalScript } from '../src/lib/operationalContext';
 import { PrismaClient } from '@prisma/client';
-import { identifyEnvironment } from '../src/lib/dbEnvironment';
 import { bootstrapResearcher, revokeResearcher } from '../src/services/bootstrapResearcher';
 import { bootstrapAdmin, demoteAdmin } from '../src/services/bootstrapAdmin';
 
@@ -181,18 +181,11 @@ async function main(): Promise<number> {
   }
   const subject = action.value as string;
 
-  const env = identifyEnvironment();
-  banner(`researcher:bootstrap  —  target: ${env.label}`);
-
-  // Naming the target is the whole point of the banner, so an unrecognised one
-  // is worth calling out rather than passing over: it means DATABASE_URL points
-  // somewhere this codebase has no name for.
-  if (env.isUnrecognised) {
-    console.log('  ⚠️  This database ref is not a known Glass Fortress environment.');
-  }
-  if (env.isProduction) {
-    console.log('  ⚠️  This is PRODUCTION.');
-  }
+  // The environment is NOT restated here. `runOperationalScript` has already
+  // named it, having made Railway, APP_ENV, the database and the chain all agree
+  // with the operator's own `--env` — which is strictly more than this banner
+  // ever checked. An unrecognised database can no longer reach this line at all.
+  banner('researcher:bootstrap');
   console.log(`  action           : ${action.label}`);
   console.log(`  handle requested : ${subject}\n`);
 
@@ -243,9 +236,4 @@ async function main(): Promise<number> {
   }
 }
 
-main()
-  .then((code) => process.exit(code))
-  .catch((err: unknown) => {
-    console.error('researcher:bootstrap failed:', err instanceof Error ? err.message : err);
-    process.exit(1);
-  });
+void runOperationalScript(main);

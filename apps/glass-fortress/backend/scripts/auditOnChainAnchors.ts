@@ -19,6 +19,7 @@
  * can gate a pipeline as well as inform a person.
  */
 import 'dotenv/config';
+import { runOperationalScript } from '../src/lib/operationalContext';
 import { auditOnChainAnchors } from '../src/services/auditOnChainAnchors';
 
 async function main(): Promise<void> {
@@ -63,7 +64,4 @@ async function main(): Promise<void> {
   if (s.UNCHECKED > 0 || s.STALE > 0 || s.UNAVAILABLE > 0 || s.CONTRADICTED > 0) process.exit(4);
 }
 
-main().catch((err: unknown) => {
-  console.error(err);
-  process.exit(1);
-});
+void runOperationalScript(main);

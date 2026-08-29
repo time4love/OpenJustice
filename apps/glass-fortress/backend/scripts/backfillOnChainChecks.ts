@@ -19,6 +19,7 @@
  * re-checks everything, which is what to use after the chain was unreachable.
  */
 import 'dotenv/config';
+import { runOperationalScript } from '../src/lib/operationalContext';
 import {
   auditOnChainAnchorSubjects,
   auditOnChainAnchors,
@@ -78,7 +79,4 @@ async function main(): Promise<void> {
   console.log('\nRun `npm run forensics:audit-anchors` to gate on the result.\n');
 }
 
-main().catch((err: unknown) => {
-  console.error(err);
-  process.exit(1);
-});
+void runOperationalScript(main);

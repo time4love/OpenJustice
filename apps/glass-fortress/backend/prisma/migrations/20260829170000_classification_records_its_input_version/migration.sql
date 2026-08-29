@@ -1,0 +1,13 @@
+-- A version for the PROCEDURE is not a version for what the procedure was FED.
+--
+-- The granularity cascade rewrote chunks v2 -> v3 and updated diffInputVersion,
+-- while classifierVersion stayed v4-budgeted-best-of-n because it was already
+-- current. Ten production rows therefore assert a pairing that never happened: a
+-- v4 classification over v3 chunks, when the v4 run saw v2 chunks that no longer
+-- exist. Seven CONFIRMED, anchored records sit downstream.
+--
+-- ADDITIVE, and deliberately NOT backfilled. Setting this to diffInputVersion
+-- for existing rows would claim every stored classification had read the chunks
+-- the row now holds — which is exactly the assumption that produced the defect.
+-- NULL means unrecorded, which is read as "not current" and never as a pass.
+ALTER TABLE "UrlVersionDiff" ADD COLUMN "classifiedInputVersion" TEXT;

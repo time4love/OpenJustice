@@ -1,13 +1,24 @@
+// Fabricated project refs — never the real ones. This repo is public.
+const PROD = 'aaaaaaaaaaaaaaaaaaaa';
+const STAGING = 'bbbbbbbbbbbbbbbbbbbb';
+
+// The ref→environment lookup is STATED here rather than imported, so this file
+// keeps its promise above and every ref in it stays fabricated. That also makes
+// these cases about the RULE — a recognised database overrules an absent label —
+// rather than about which two projects happen to exist today. The real wiring is
+// covered where the real refs already appear: `operationalContext.test.ts` and
+// `stagingAccess.test.ts`.
+jest.mock('../src/lib/dbEnvironment', () => ({
+  environmentOfProjectRef: (ref: string) =>
+    ({ aaaaaaaaaaaaaaaaaaaa: 'production', bbbbbbbbbbbbbbbbbbbb: 'staging' })[ref] ?? null,
+}));
+
 import {
   assertEnvironmentIdentity,
   getAppEnv,
   projectRefFromPostgresUrl,
   projectRefFromSupabaseUrl,
 } from '../src/lib/appEnv';
-
-// Fabricated project refs — never the real ones. This repo is public.
-const PROD = 'aaaaaaaaaaaaaaaaaaaa';
-const STAGING = 'bbbbbbbbbbbbbbbbbbbb';
 
 const pooler = (ref: string, port = 6543) =>
   `postgresql://postgres.${ref}:pw@aws-0-eu-central-1.pooler.supabase.com:${port}/postgres?pgbouncer=true`;
@@ -118,14 +129,25 @@ describe('assertEnvironmentIdentity', () => {
   });
 
   it('rejects a wholesale-copied environment via the pin', () => {
-    // Every variable is internally consistent — only the pin can catch this.
-    const env = { APP_ENV: 'staging', ...envFor(PROD), EXPECTED_SUPABASE_PROJECT_REF: STAGING };
+    // Every variable is internally consistent, and the project is one this
+    // codebase has no name for — so the ref→environment check below has nothing
+    // to say and the PIN is the only thing left that can catch it. That is why
+    // the pin still earns its place after that check exists.
+    const unknown = 'cccccccccccccccccccc';
+    const env = { APP_ENV: 'staging', ...envFor(unknown), EXPECTED_SUPABASE_PROJECT_REF: STAGING };
     expect(() => assertEnvironmentIdentity(env)).toThrow(/pointed at the wrong database/);
   });
 
-  it('rejects production pointed at the staging database', () => {
+  it('rejects production pointed at the staging database, before the pin is consulted', () => {
+    // The same disagreement, now caught EARLIER and diagnosed better: a
+    // recognised project ref names its own environment, so this no longer
+    // depends on the pin having been set. It refused before; it refuses for a
+    // stronger reason, and it would still refuse with no pin at all.
     const env = { APP_ENV: 'production', ...envFor(STAGING), EXPECTED_SUPABASE_PROJECT_REF: PROD };
-    expect(() => assertEnvironmentIdentity(env)).toThrow(/pointed at the wrong database/);
+    expect(() => assertEnvironmentIdentity(env)).toThrow(/connected to the staging database/);
+
+    const unpinned = { APP_ENV: 'production', ...envFor(STAGING) };
+    expect(() => assertEnvironmentIdentity(unpinned)).toThrow(/connected to the staging database/);
   });
 
   it('rejects a pin it cannot check', () => {
@@ -135,6 +157,66 @@ describe('assertEnvironmentIdentity', () => {
       EXPECTED_SUPABASE_PROJECT_REF: STAGING,
     };
     expect(() => assertEnvironmentIdentity(env)).toThrow(/no Supabase project could be read/);
+  });
+
+  // -------------------------------------------------------------------------
+  // A LOST LABEL AND A DELIBERATELY ABSENT ONE ARE THE SAME THING, until the
+  // database is asked.
+  //
+  // `APP_ENV` unset means production, which is correct for the production
+  // services — the variable really is absent there. On staging that default is
+  // indistinguishable from the variable having been DROPPED, and dropping it
+  // removed `requireStagingAccess` entirely, leaving the public Railway URL
+  // open. The database cannot go missing the same way: without DATABASE_URL
+  // nothing runs at all.
+  // -------------------------------------------------------------------------
+  it('refuses to start when the label was lost on a staging database', () => {
+    expect(() => assertEnvironmentIdentity(envFor(STAGING))).toThrow(
+      /connected to the staging database/,
+    );
+  });
+
+  it('refuses even with no pin to fall back on', () => {
+    // The pin is the check this would otherwise rely on, and it is another
+    // variable that the same accident drops.
+    const env = envFor(STAGING);
+    expect(Object.keys(env)).not.toContain('EXPECTED_SUPABASE_PROJECT_REF');
+    expect(() => assertEnvironmentIdentity(env)).toThrow(/connected to the staging database/);
+  });
+
+  it('accepts the staging database once the label agrees', () => {
+    expect(assertEnvironmentIdentity({ APP_ENV: 'staging', ...envFor(STAGING) }).appEnv).toBe(
+      'staging',
+    );
+  });
+
+  it('accepts production unlabelled, which is how the production services run', () => {
+    expect(assertEnvironmentIdentity(envFor(PROD)).appEnv).toBe('production');
+  });
+
+  it('refuses a label that names the OTHER environment, not merely a missing one', () => {
+    expect(() => assertEnvironmentIdentity({ APP_ENV: 'staging', ...envFor(PROD) })).toThrow(
+      /connected to the production database/,
+    );
+  });
+
+  it('does not refuse an unrecognised project — that is an outage, not a mismatch', () => {
+    // Failing closed here would take the production API down over a renamed
+    // Supabase project. An unknown ref is not evidence of a disagreement.
+    expect(assertEnvironmentIdentity(envFor('cccccccccccccccccccc')).appEnv).toBe('production');
+  });
+
+  it('does not print a project ref in full when it refuses', () => {
+    const message = (() => {
+      try {
+        assertEnvironmentIdentity(envFor(STAGING));
+        return '';
+      } catch (err) {
+        return err instanceof Error ? err.message : String(err);
+      }
+    })();
+    expect(message).not.toContain(STAGING);
+    expect(message).toContain('bbbb…bb');
   });
 
   it('allows a local database when nothing is pinned', () => {

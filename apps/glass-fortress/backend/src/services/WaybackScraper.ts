@@ -884,6 +884,11 @@ export class WaybackScraper {
             aiSignificance: analysis.legalSignificance,
             isLegallySignificant: analysis.isLegallySignificant,
             classifierVersion: CLASSIFIER_VERSION,
+            // WHAT THE CLASSIFIER READ, which on a scan is the chunks computed
+            // above and written in this same statement. A version for the
+            // procedure is not a version for what the procedure was fed — see
+            // lib/classificationProvenance.
+            classifiedInputVersion: DIFF_INPUT_VERSION,
             classifierModel: this.forensicAgent.modelId,
             classifierDraws: analysis.draws,
             classifierPromptHash: classifierPromptHash(),
@@ -1234,6 +1239,9 @@ export class WaybackScraper {
                 aiSignificance: analysis.legalSignificance,
                 isLegallySignificant: analysis.isLegallySignificant,
                 classifierVersion: CLASSIFIER_VERSION,
+                // As above: the chunks this classification read are the ones
+                // written beside it, at the current input rule.
+                classifiedInputVersion: DIFF_INPUT_VERSION,
                 classifierModel: this.forensicAgent.modelId,
                 classifierDraws: analysis.draws,
                 classifierPromptHash: classifierPromptHash(),

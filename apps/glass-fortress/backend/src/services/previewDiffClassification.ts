@@ -5,6 +5,10 @@ import type { DiffSurvivalView } from './auditDiffSurvival';
 import { ForensicAgent, type DiffItem, type RelatedEvidenceContext } from './ForensicAgent';
 import { WaybackScraper } from './WaybackScraper';
 import { CLASSIFIER_VERSION, classifierPromptHash } from '../lib/classifierVersion';
+import {
+  classificationInputView,
+  type ClassificationInputView,
+} from '../lib/classificationProvenance';
 import { parseRawChunks } from '../lib/diffItems';
 import { classifierInputChunks } from '../lib/diffChunking';
 import { type InvestigativeCategory } from '../lib/investigativeCategories';
@@ -67,6 +71,8 @@ export interface PreviewStoredClassification {
   deletedItemCount: number;
   addedItemCount: number;
   classifierVersion: string | null;
+  /** Whether the STORED classification describes the chunks the preview re-read. */
+  classificationInput: ClassificationInputView;
   classifierPromptHash: string | null;
   summaryVersion: string | null;
   /**
@@ -248,6 +254,11 @@ export async function previewDiffClassification(
       classifierPromptHash: diff.classifierPromptHash,
       summaryVersion: diff.summaryVersion,
       survival: diffSurvivalView(diff),
+      // The preview re-runs the classifier over the chunks the row holds NOW. If
+      // the stored classification was made from different chunks, every
+      // disagreement below is between two different questions, and reading it as
+      // model variance would be reading a provenance gap as noise.
+      classificationInput: classificationInputView(diff),
     },
     classifier: {
       version: CLASSIFIER_VERSION,

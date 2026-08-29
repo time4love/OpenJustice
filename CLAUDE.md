@@ -236,13 +236,26 @@ because the container independently knows four other things about itself:
 | voice | production | staging |
 |---|---|---|
 | `RAILWAY_ENVIRONMENT_NAME` | `production` | `staging` |
-| `APP_ENV` | unset → production | `staging` |
-| database | the ref pinned in `EXPECTED_SUPABASE_PROJECT_REF` | likewise |
-| tracked URL (by data) | `0e755b7d-…` | `45ce88aa-…` |
-| chain id | 8453 | 84532 |
+| `APP_ENV`, pinned to its database | unset → production | `staging` |
+| `DATABASE_URL`'s project ref | production's ref | staging's ref |
+| chain id, read from the RPC | 8453 | 84532 |
 
-The script compares all of them against `--env` and refuses on any disagreement. To defeat that you
-would have to make the *same* mistake twice, in two different places, consistently.
+`assertOperationalContext` (`src/lib/operationalContext.ts`) compares all four against `--env` and
+refuses on any disagreement, reporting *every* one rather than the first. To defeat that you would
+have to make the *same* mistake twice, in two different places, consistently.
+
+**A fifth, content-derived axis was considered and deliberately rejected.** An earlier draft listed a
+`TrackedUrl` id known to one environment and not the other. Environment identity derived from CONTENT
+is exactly what `environmentIdentity.ts` was written to replace — first "production holds 7 evidence
+records", which broke the moment production gained an eighth; then a hand-maintained `fileHash` in a
+markdown handoff. A hand-maintained row id is the same shape, it rots when the row is legitimately
+removed, and the four axes above already make a wrong `--env` detectable. The rule is: **configuration
+and chain, never corpus.**
+
+The chain axis is required for **every** script, including ones that never touch a chain. A per-script
+"does this one need it?" flag would be one rule with twenty implementations — this repository's
+dominant defect shape — and the script that got the flag wrong would be the one that needed it. The
+cost is that an RPC outage refuses an unrelated script, loudly and with a message saying so.
 
 **That is the property the old rule lacked, and it is not merely "more checks".** The old failure was
 *incoherent* — production's database with staging's chain, a state no flag described, each half
@@ -271,14 +284,15 @@ Operational scripts run only inside a deployment.
   railway ssh --environment <env> --service <service> "cd apps/glass-fortress/backend && npm run <script>"
 ```
 
-One shared guard imported by every script, held by a source scan so a new script cannot opt out
-silently. This does not apply to `npm run dev` or to tests, which never touch an operational path.
+**`runOperationalScript` is the only entry point**, and it takes the script's body as a value — so the
+body cannot run before the context is asserted. There is no ordering to get wrong and nothing to opt
+out of; a source scan (`test/operationalScriptsGuarded.test.ts`) holds that no script invents a second
+way in, and that no `src/` module imports the guard. This does not apply to `npm run dev` or to tests,
+which never touch an operational path.
 
 > **`railway ssh` propagates the remote exit code faithfully — but a pipe inside the remote command
 > throws it away.** `… "npm run x | tail"` returns `0` whatever `x` did. When the exit code is the
 > gate, capture first and filter afterwards. This cost three false green readings in one session.
-
-### The rule this replaces was falsified on 2026-08-29, and the reason matters
 
 ### The rule this replaces was falsified on 2026-08-29, and the reason matters
 
@@ -335,9 +349,14 @@ That session must:
 ### Simulate before every destructive statement — no exceptions
 
 ```bash
-cd apps/glass-fortress/backend
-npm run db:simulate -- '<the exact statement>'
+railway ssh --environment <env> --service glass-fortress-backend \
+  "cd apps/glass-fortress/backend && npm run db:simulate -- --env <env> '<the exact statement>'"
 ```
+
+`db:simulate` is an operational script like any other: it runs **only inside a deployment**, and the
+environment is stated twice. The `--env` flag is stripped from the statement before it is simulated —
+without that it would be joined into the SQL, since this is the one script that reads its argument
+positionally.
 
 It runs the statement **for real** inside a transaction, measures what it destroys, and rolls back.
 **One statement per run** — Prisma sends raw SQL as a single prepared statement, and the simulator

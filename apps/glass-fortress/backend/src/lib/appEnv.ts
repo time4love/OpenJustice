@@ -13,14 +13,21 @@
 //
 //   1. DATABASE_URL, DIRECT_URL and SUPABASE_URL must all name the same Supabase
 //      project. Always enforced — this catches a half-overwritten environment.
-//   2. If EXPECTED_SUPABASE_PROJECT_REF is set, that project must be the one
+//   2. The project ref, WHERE IT IS RECOGNISED, must name the same environment
+//      the label does. This is what stops APP_ENV going missing unnoticed — see
+//      the comment on that check below; a lost label and a deliberately absent
+//      one are otherwise the same thing, and one of them removes a gate.
+//   3. If EXPECTED_SUPABASE_PROJECT_REF is set, that project must be the one
 //      configured. This is the explicit per-environment pin, and the only thing
 //      that catches an environment whose credentials were copied wholesale.
 //
-// Project refs are credentials-adjacent for a public repo, so they are never
-// hardcoded here — the pin lives in the deployment's environment variables, and
-// failure messages never print a ref in full.
+// Failure messages never print a project ref in full — this repository, and its
+// logs, are public. The per-deployment PIN is a variable and is never hardcoded;
+// the ref→environment lookup behind (2) lives in `dbEnvironment.ts`, which is
+// the one place this codebase names the two projects.
 // ---------------------------------------------------------------------------
+
+import { environmentOfProjectRef } from './dbEnvironment';
 
 export type AppEnv = 'production' | 'staging';
 
@@ -125,6 +132,34 @@ export function assertEnvironmentIdentity(env: EnvSource = process.env): Environ
   }
 
   const projectRef = distinct[0] ?? null;
+
+  // THE LABEL MAY NOT SILENTLY GO MISSING, and this is what makes that true.
+  //
+  // `APP_ENV` unset means production — correct for the production services,
+  // where the variable is deliberately absent. But that default is also what a
+  // LOST variable looks like, and on staging the two are indistinguishable: the
+  // deployment would come up calling itself production, and
+  // `requireStagingAccess` — which gates the public Railway URL only when
+  // APP_ENV=staging — would silently stop existing. Absence is safe for a LABEL
+  // and unsafe for a GATE, and one variable was doing both jobs.
+  //
+  // The database is the voice that cannot go missing: without DATABASE_URL
+  // nothing runs at all. So when it names an environment, the label must agree,
+  // and the process refuses to start rather than serving an ungated API.
+  //
+  // ONLY WHEN THE REF IS RECOGNISED. An unknown project is not evidence of a
+  // mismatch, and failing closed on it would take production down over a
+  // renamed Supabase project rather than over a real disagreement.
+  const namedByDatabase = databaseVoice(projectRef);
+  if (namedByDatabase !== null && namedByDatabase.env !== appEnv) {
+    throw new Error(
+      `Environment '${appEnv}' is connected to the ${namedByDatabase.env} database ` +
+        `(project ${maskProjectRef(namedByDatabase.ref)}). Refusing to start. If APP_ENV was lost, ` +
+        `restoring it is the fix — a deployment that calls itself production while holding ` +
+        `staging's database serves staging's API with production's absence of a gate.`,
+    );
+  }
+
   const expected = env['EXPECTED_SUPABASE_PROJECT_REF'];
 
   if (expected !== undefined && expected !== '') {
@@ -145,6 +180,19 @@ export function assertEnvironmentIdentity(env: EnvSource = process.env): Environ
   }
 
   return { appEnv, projectRef, pinned: false };
+}
+
+/**
+ * The environment a connection's project ref names, CARRYING the ref that named
+ * it. Returning the pair is what lets the caller report the ref without
+ * re-narrowing a value the compiler has already lost track of — and this file is
+ * measured under two different strictness settings that disagree about whether
+ * `projectRef` can be null, so a re-narrowing here is flagged either way.
+ */
+function databaseVoice(projectRef: string | null): { env: AppEnv; ref: string } | null {
+  if (projectRef === null) return null;
+  const env = environmentOfProjectRef(projectRef);
+  return env === null ? null : { env, ref: projectRef };
 }
 
 function parse(

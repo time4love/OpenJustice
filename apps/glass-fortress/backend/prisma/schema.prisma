@@ -310,6 +310,33 @@ model UrlVersionDiff {
   // row cannot be brought up to date by reclassification, only by recomputing the
   // diff from its snapshots. See docs/gf-diff-truncation-dev-plan.md.
   diffInputVersion        String?
+  /// WHICH INPUT RULE THE CLASSIFIER ACTUALLY READ — not the row's current one.
+  ///
+  /// `diffInputVersion` above says which rule produced the chunks the row holds
+  /// NOW. This says which rule produced the chunks the stored classification was
+  /// made from, and they go stale independently — exactly as
+  /// `survivalCheckVersion` is separate from `survivalTextVersion` one level up.
+  ///
+  /// ADDED AFTER THE GRANULARITY CASCADE, which is what proved a single field
+  /// cannot carry both. `applyRediff` rewrote chunks v2 -> v3 and updated
+  /// `diffInputVersion`, deliberately leaving the classification alone so that
+  /// "chunks current, classification not" would be visible in the data. It was
+  /// not: `classifierVersion` was ALREADY at v4 and stayed there, so ten rows
+  /// came to assert a pairing that never happened — a v4 classification over v3
+  /// chunks, when the v4 run had seen v2 chunks that no longer exist. Seven
+  /// CONFIRMED, anchored records sit downstream of those ten.
+  ///
+  /// The lesson is [[gf-sourcestate-hash-must-cover-all-inputs]] one layer down:
+  /// a version for the PROCEDURE is not a version for what the procedure was
+  /// FED, and a field that names one while being read as both reports currency
+  /// it never measured.
+  ///
+  /// NULL means the row predates this column, which is not the same as stale and
+  /// is emphatically not current: what the classifier saw is unrecorded, and
+  /// unrecorded may not read as agreement. It is not backfilled, because the
+  /// value is not recoverable from the row — writing `diffInputVersion` into it
+  /// would manufacture the very provenance this column exists to stop assuming.
+  classifiedInputVersion  String?
   // Which MODEL produced the classification, as `provider:model`.
   //
   // The fourth provenance axis, and the one nothing else can express:
@@ -1990,6 +2017,32 @@ model IntegrityCheck {
   /// deliberately not in it — an external observation cannot be re-derived,
   /// which is exactly why it is stored instead.
   sourceStateHash String
+  /// WHICH CHAIN THE VERDICT WAS REACHED AGAINST, and at which registry.
+  ///
+  /// Added after a local run read PRODUCTION's database and STAGING's chain and
+  /// wrote 91 verdicts into production that do not mean what they say — 90
+  /// VERIFIED computed against Base Sepolia, and one CONTRADICTED against the
+  /// corpus's strongest record, which production's own service disproves.
+  ///
+  /// THE POINT IS NOT THAT THE ENVIRONMENT CAN GO WRONG; it is that afterwards
+  /// nothing could tell a right row from a wrong one. Every other column was
+  /// identical between the two. A verdict about a registry is not a fact until
+  /// it names the registry it asked, so this is the check's identity and not
+  /// its metadata.
+  ///
+  /// NULL means a verdict written before this column existed, and the audit
+  /// treats it as no current answer — not as a pass. Those rows are KEPT: they
+  /// are the evidence that the pipeline was wrong, and the project's own
+  /// argument for storing a contradiction rather than refusing it applies to
+  /// them exactly.
+  chainId         Int?
+  /// The registry contract the verdict was read from, alongside `chainId`.
+  ///
+  /// Both, because neither alone is sufficient: two registries can be deployed
+  /// to one chain, and one address exists on every chain. The address that
+  /// started this rule was a Hardhat first-deployment address with no code on
+  /// Base at all — right shape, right chain, anchoring nothing.
+  registryAddress String?
 
   /// The newest check of one kind for one subject — the read every consumer
   /// makes, on a table that only ever grows.

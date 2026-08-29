@@ -5,6 +5,10 @@ import { computeDiffCoverage, type UncoveredChunk } from '../lib/diffCoverage';
 import { type DiffItem } from './ForensicAgent';
 import { resolveDiff, type DiffLookupInput } from './diffLookup';
 import { diffSurvivalView, type DiffSurvivalView } from './auditDiffSurvival';
+import {
+  classificationInputView,
+  type ClassificationInputView,
+} from '../lib/classificationProvenance';
 
 // ---------------------------------------------------------------------------
 // What the classifier was GIVEN, beside what it produced.
@@ -74,6 +78,8 @@ export interface DiffInputResult {
     currentDiffInputVersion: string;
     /** True when this row's chunks predate the uncapped rule and need a re-diff. */
     rawChunksMayBeTruncated: boolean;
+    /** Whether the stored classification describes the chunks the row now holds. */
+    classificationInput: ClassificationInputView;
   };
   stored: {
     isLegallySignificant: boolean;
@@ -142,6 +148,13 @@ export async function getDiffInput(input: DiffLookupInput): Promise<GetDiffInput
       diffInputVersion: diff.diffInputVersion,
       currentDiffInputVersion: DIFF_INPUT_VERSION,
       rawChunksMayBeTruncated: diff.diffInputVersion !== DIFF_INPUT_VERSION,
+      // WHICH CHUNKS THE CLASSIFIER ACTUALLY READ. `diffInputVersion` above is
+      // about the row; this is about the classification, and they move
+      // independently — which is the whole finding. `raw` on this tool is the
+      // text as it stands NOW, so without this a reader compares the stored
+      // items against chunks the classifier never saw and reads the difference
+      // as a coverage gap.
+      classificationInput: classificationInputView(diff),
     },
     stored: {
       isLegallySignificant: diff.isLegallySignificant,

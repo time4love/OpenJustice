@@ -12,6 +12,7 @@
  * removed — rests entirely on anchor text.
  */
 import 'dotenv/config';
+import { runOperationalScript } from '../src/lib/operationalContext';
 import { measureHrefChanges } from '../src/services/measureHrefChanges';
 
 function arg(name: string): string | undefined {
@@ -48,7 +49,4 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch((err: unknown) => {
-  console.error(err instanceof Error ? err.message : err);
-  process.exit(1);
-});
+void runOperationalScript(main);

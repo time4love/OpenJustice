@@ -25,6 +25,7 @@
  * DRY RUN IS THE DEFAULT. --apply is required to write.
  */
 import 'dotenv/config';
+import { runOperationalScript } from '../src/lib/operationalContext';
 import { resummarizeDiffs } from '../src/services/resummarizeDiffs';
 import { SUMMARY_VERSION } from '../src/lib/classifierVersion';
 
@@ -102,8 +103,4 @@ async function main(): Promise<void> {
   if (report.failed > 0) process.exit(1);
 }
 
-main()
-  .catch((err: unknown) => {
-    console.error(err instanceof Error ? err.message : err);
-    process.exit(1);
-  });
+void runOperationalScript(main);

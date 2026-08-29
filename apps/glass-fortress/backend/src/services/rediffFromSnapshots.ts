@@ -247,10 +247,23 @@ function normalise(text: string): string {
 //
 // It deliberately does NOT touch deletedText/addedText (the classifier's items)
 // or any verdict. After this runs, a row's chunks are current while its
-// classification is not, and the two provenance fields say so honestly:
-// diffInputVersion is at the current version, classifierVersion is not.
-// Reclassification is a separate decision, made after looking at what was
-// recovered.
+// classification is not. Reclassification is a separate decision, made after
+// looking at what was recovered.
+//
+// THAT CLAIM WAS FALSE FOR AS LONG AS IT RELIED ON `classifierVersion`. The
+// comment here used to say the two provenance fields would say so honestly —
+// diffInputVersion current, classifierVersion not. The granularity cascade
+// disproved it: ten rows were ALREADY at `v4-budgeted-best-of-n`, so nothing
+// moved, and they came to assert a v4 classification over v3 chunks when the v4
+// run had read v2 chunks that no longer exist. Seven CONFIRMED, anchored records
+// sit downstream.
+//
+// `classifiedInputVersion` is the field that actually says it, and this is the
+// one moment its value is knowable for a row that never carried it: the stored
+// classification was made from the stored chunks, whose rule is the row's
+// diffInputVersion AS IT STANDS BEFORE the rewrite. It is written only when
+// absent, so a row already staled by an earlier rewrite keeps the older, truer
+// value and is never quietly reported as fresher than it is.
 //
 // Evidence identity is untouched by construction: forensicEvidenceFileHash is
 // computed from url + the two snapshots' waybackTimestamp and contentHash, and
@@ -296,6 +309,10 @@ export async function applyRediff(opts: { url?: string } = {}): Promise<ApplyRed
         id: true,
         beforeSnapshotId: true,
         afterSnapshotId: true,
+        // Read BEFORE the rewrite, because that is the only moment the value is
+        // knowable for a row that never carried it.
+        diffInputVersion: true,
+        classifiedInputVersion: true,
         beforeSnapshot: { select: { fullText: true, contentHash: true } },
         afterSnapshot: { select: { fullText: true, contentHash: true } },
       },
@@ -339,6 +356,8 @@ export async function applyRediff(opts: { url?: string } = {}): Promise<ApplyRed
         rawDeletedText,
         rawAddedText,
         diffInputVersion: DIFF_INPUT_VERSION,
+        // See the note above: only when absent, so an older honest value wins.
+        classifiedInputVersion: row.classifiedInputVersion ?? row.diffInputVersion,
         ...survival,
       },
     });
