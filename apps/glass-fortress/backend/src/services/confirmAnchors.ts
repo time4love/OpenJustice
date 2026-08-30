@@ -560,6 +560,20 @@ export function unresolvedClaims(report: ConfirmAnchorsReport): number {
 }
 
 export function confirmAnchorsExitCode(report: ConfirmAnchorsReport): number {
+  // EXAMINED NOTHING IS NOT A PASS, and this is the arm that was missing.
+  //
+  // The default filter selects `anchorCheck: null`, so once every subject carries a
+  // terminal verdict this pass has nothing to look at — and with every counter at
+  // zero it fell through to `return 0`. A run that checked an empty set therefore
+  // reported success, and the public integrity board scored the level 100 on it.
+  //
+  // `auditOnChainAnchors` and `auditDiffSurvival` both already refuse a vacuous run
+  // ("No diffs found. This report says nothing; it is not a pass."). This was the
+  // one check of the three without that arm.
+  //
+  // It is not a failure either: nothing is wrong, nothing was proven. Its own code
+  // says exactly that, and `--recheck` is what makes the pass non-empty again.
+  if (report.examined === 0) return 4;
   if (report.failed > 0) return 1;
   if (wrongClaims(report) > 0) return 2;
   // TX_UNREADABLE is TERMINAL but it is not a confirmation, so it stays here

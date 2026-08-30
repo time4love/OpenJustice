@@ -27,7 +27,11 @@
     "`node tools/integrity-board/record.mjs <log>`. Entries still carrying",
     "outcomeSource: transcribed-2026-08-30 were written by hand before this existed.",
     "`exitMeans` is the one declared human input: what a non-zero exit MEANS for this",
-    "check, decided once rather than re-judged per run."
+    "check, decided once rather than re-judged per run.",
+    "",
+    "B8, 2026-08-30: VACUOUS. forensics:confirm-anchors selects anchorCheck: null, so",
+    "once every subject carries a terminal verdict it examines NOTHING, exited 0, and",
+    "this board scored the level 100 on it. It now exits 4, and 4 never scores as proof."
   ],
   "generatedFor": "docs/gf-factual-layer-rebuild-dev-plan.md",
   "backendRoot": "apps/glass-fortress/backend",
@@ -36,7 +40,8 @@
     "PASS_WITH_KNOWN_LEGACY": "Non-zero exit that is CORRECT: the failures it reports are legacy state explicitly out of this level's scope.",
     "FINDING": "Ran and found something real. Not a failure of the check — a result.",
     "BLOCKED": "Cannot pass for a reason outside the check itself.",
-    "UNRECORDED": "May have run before this ledger existed. Not evidence either way."
+    "UNRECORDED": "May have run before this ledger existed. Not evidence either way.",
+    "VACUOUS": "Ran, exited cleanly, and EXAMINED NOTHING. Never proof: a check over an empty set says nothing about the corpus."
   },
   "checks": [
     {
@@ -189,7 +194,8 @@
         "0": "CLEAN",
         "1": "FINDING",
         "2": "FINDING",
-        "3": "FINDING"
+        "3": "FINDING",
+        "4": "VACUOUS"
       }
     },
     {

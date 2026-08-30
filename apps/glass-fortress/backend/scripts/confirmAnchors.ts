@@ -23,8 +23,9 @@
  *
  * Exit codes: 1 if a subject errored, 2 if any claim is WRONG (misanchored, a
  * transaction that registered nothing, or a claim this chain has no trace of),
- * 3 if any claim could not be CONFIRMED. Only 0 means every claim was checked
- * and every one held — an unresolved run is not a pass.
+ * 3 if any claim could not be CONFIRMED, and 4 if it EXAMINED NOTHING. Only 0
+ * means every claim was checked and every one held — an unresolved run is not a
+ * pass, and neither is an empty one.
  */
 import 'dotenv/config';
 import { runOperationalScript } from '../src/lib/operationalContext';
