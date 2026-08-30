@@ -812,3 +812,34 @@ describe('the message and the exit code cannot disagree', () => {
     expect(confirmAnchorsExitCode(r)).toBe(2);
   });
 });
+
+describe('a run that examined nothing is not a pass', () => {
+  const empty = (over = {}) =>
+    ({
+      dryRun: false, examined: 0, confirmed: 0, confirmedByLog: 0, misanchored: 0,
+      registeredByAnotherTx: 0, anchoredNothing: 0, noReceiptHashRegistered: 0,
+      noReceiptHashAbsent: 0, unreachable: 0, ambiguous: 0, alreadyConfirmed: 29,
+      failed: 0, failures: [], rows: [], ...over,
+    }) as ConfirmAnchorsReport;
+
+  it('EXAMINED 0 exits 4, not 0', () => {
+    // The hole this closes. The default filter selects `anchorCheck: null`, so once
+    // every subject carries a terminal verdict there is nothing to examine — and
+    // with every counter at zero the code fell through to a clean 0. The public
+    // integrity board then scored the level 100 on a run that checked an empty set.
+    expect(confirmAnchorsExitCode(empty())).toBe(4);
+  });
+
+  it('DETECTS the difference — a real clean run still exits 0', () => {
+    // Without this the test above would pass against a function that returned 4 for
+    // everything, and the check would refuse every run rather than only empty ones.
+    expect(confirmAnchorsExitCode(empty({ examined: 7, confirmed: 7 }))).toBe(0);
+  });
+
+  it('a real failure still outranks emptiness', () => {
+    // Ordering matters: a run with failures is a FAILED run, not an empty one, even
+    // if the examined count is somehow zero. The louder verdict wins.
+    expect(confirmAnchorsExitCode(empty({ failed: 1 }))).toBe(4);
+    expect(confirmAnchorsExitCode(empty({ examined: 3, failed: 1 }))).toBe(1);
+  });
+});

@@ -120,6 +120,12 @@ function proofScore(check, stale) {
   if (stale.state === 'NEVER') return 25;
   if (stale.state === 'STALE') return 50;
   if (stale.state === 'BASELINE_UNKNOWN') return 40;
+  // VACUOUS IS NEVER PROOF, and it is listed first because it is the one outcome
+  // that ARRIVES LOOKING LIKE A PASS. `confirm-anchors` over an empty selection
+  // exited 0 and scored 100 here until 2026-08-30 — a green level backed by a run
+  // that examined nothing. It scores below "never run": a check believed to have
+  // passed is worse than one known not to have run.
+  if (check.lastRun.outcome === 'VACUOUS') return 25;
   const ok = check.lastRun.outcome === 'CLEAN' || check.lastRun.outcome === 'PASS_WITH_KNOWN_LEGACY';
   return ok ? 100 : 75;
 }
