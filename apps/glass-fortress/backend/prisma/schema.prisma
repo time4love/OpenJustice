@@ -192,7 +192,17 @@ model UrlSnapshot {
   // archived capture, the live URL for a direct one.
   snapshotUrl             String
   fullText                String // Readability's article — NOT the page. See `text` and `document`.
-  contentHash             String // SHA-256(fullText) — chain of custody, and the only hash anchored today
+  // SHA-256(fullText) — Readability's article, NOT the page.
+  //
+  // NO LONGER THE ANCHORED HASH. This said "the only hash anchored today" until
+  // 2026-08-30, when Level 3 clause 1 moved the anchor to `documentHash`; the
+  // comment outlived the fact by exactly as long as nobody reread it.
+  //
+  // It keeps its OTHER jobs, and they are why it is not going anywhere:
+  // `rediffFromSnapshots` re-verifies its inputs against it, and
+  // `forensicEvidenceFileHash` composes evidence identity from it. Whether that
+  // identity should follow the anchor is §2's decision and the researcher's.
+  contentHash             String
   // THE PAYLOAD AS FETCHED. Bytes, not text, and nothing derived from it.
   //
   // This column exists because the first attempt at Level 1 REPRODUCED THE BUG IT
@@ -220,7 +230,11 @@ model UrlSnapshot {
   // two migrations. An environment that has not been backfilled fails that
   // migration and aborts its deploy with the previous version still serving.
   document                Bytes
-  // SHA-256 of `document`. Integrity, and where the anchor moves at Level 3.
+  // SHA-256 of `document`. Integrity, and WHERE THE ANCHOR NOW IS.
+  //
+  // Moved here 2026-08-30 by Level 3 clause 1, and proven by execution in both
+  // environments rather than by fixtures. `anchoredCaptureHash` is the one symbol
+  // that names it; nothing else on an anchoring path may name a hash column.
   documentHash            String
   // The Content-Type header verbatim, so the bytes can be decoded later.
   //

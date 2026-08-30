@@ -231,6 +231,53 @@ times already (`classifierVersion`, `summaryVersion`, `diffInputVersion`, `DETEC
 Recommendation: the table — a subject carries several check types, history matters across re-checks,
 and it yields a coverage report for free.
 
+### The ledger is transported BY HAND. Removing that is the next infrastructure change — DECIDED 2026-08-30
+
+`emitLedgerRecord` (`src/lib/operationalContext.ts`) **prints** a record from inside the container; a
+person then copies it into `docs/integrity/ledger.json` and commits it. Its own comment already names
+the hazard: a hand-written commit *"makes the board silently wrong in the reassuring direction — it
+reports CURRENT for a proof that no longer covers the code."* The published board is additionally a
+**build artifact under version control**, so it can drift from its sources; `integrity:check` exists
+only to detect that drift, and a pre-commit hook or a CI gate would only guard it.
+
+**Decision: the run writes its own record, and the board becomes a live view served by the platform.**
+Not a check that detects drift — the removal of the second copy.
+
+- `runOperationalScript` writes an `IntegrityRun` row instead of printing for transcription. One
+  change at the entry point every operational script already routes through — and therefore **tested
+  at the hardest caller, never at the one that motivated it.**
+- `GET /api/integrity` returns, per level: the plan's claimed `STATUS:`, the stored computed proof,
+  the commit and deployment that produced it, and staleness computed from `dependsOn` against the
+  current commit. The container has `docs/` — nixpacks builds from the repo root — so the deployment
+  can read the plan itself. **It READS stored results and does not recompute inline**; recomputing 83
+  snapshots and chain reads per request is a self-inflicted denial of service.
+- A page on the site renders it. `tools/integrity-board/`, `docs/integrity/` and `integrity:check`
+  are then deleted.
+- **CI has no role.** The deployment knows its commit, holds the plan and owns the runs. A second
+  computer that knows strictly less is how the hand-transport arose.
+
+**What must survive the move, or the board becomes a self-graded exam:** colour is the plan's CLAIM
+and bar length is COMPUTED proof, never merged · whether a non-zero exit is a failure stays a property
+of the CHECK, declared once, never re-decided per run · `VACUOUS` scores **below** "never run" · every
+field is observed from the container, none typed by a person.
+
+**MEASURED 2026-08-30, and it makes the decision necessary rather than merely nicer:
+`integrity:check` CANNOT PASS ON ANY COMMIT.** The board embeds `git rev-parse --short HEAD` at build
+time and `--check` compares the whole file, so the commit that lands a freshly built board changes the
+HEAD it was stamped with. Verified directly: after committing a board whose substantive staleness was
+fully resolved, `--check` still exited 1 with the stamp as the only difference. A pre-commit hook would
+stage a board carrying the parent's sha and fail the same way; a CI gate would fail on every pull
+request; branch protection would have left `staging` permanently unmergeable. This is the
+assertions-that-cannot-fail family inverted — an assertion that cannot succeed — and Level 7 already
+states the consequence: *a gate that cries wolf gets disabled*. The committed board is therefore
+**permanently stale by construction**, that item is closed as not-actionable rather than open, and no
+guard is to be built on `--check`.
+
+**Sequenced AFTER the breadth-first pass**, because several checks it must display do not exist yet —
+building it first would be choosing what to display before knowing what there is. Whether the
+dashboard is public or researcher-only is a publication decision, not an engineering one, and is the
+researcher's. What produced this decision: `docs/gf-published-thesis-fda-claim-2026-08-30.md`.
+
 ---
 
 ## 4. The levels
@@ -1940,7 +1987,25 @@ exactly one did, and it became `probeSnapshotsList` — *named* for recording no
 
 ### Level 3 — the anchor
 
-**STATUS: CLOSED ON STAGING, 2026-08-30 — clause 2 was already closed; clause 1 is now PROVEN BY EXECUTION, not by fixtures. `VERIFIED 7 · MISATTESTING 22 · UNATTRIBUTED 91`, exit 5, on deployment `863cd928 @ 3c0e639`. Seven captures anchored to their `documentHash`, seven transactions, each transaction's own log read back, each audited `ATTESTS_CURRENT`. NOT YET TRUE ON PRODUCTION — production runs `master`, which does not carry the spelling fix (`3c0e639`) and whose database has not had the normalising migration; a capture anchored and confirmed there today would still land STALE. That needs a `SHIP`, which is the researcher's. Attributing LEGACY anchors remains explicitly NOT part of this level — see the boundary below.**
+**STATUS: CLOSED, 2026-08-30, IN BOTH ENVIRONMENTS — clause 2 was already closed; clause 1 is PROVEN BY EXECUTION rather than by fixtures. Staging `VERIFIED 7 · MISATTESTING 22 · UNATTRIBUTED 91`; production, after the ship, `VERIFIED 8 · MISATTESTING 83 · UNATTRIBUTED 0 · STALE 0`, exit 5 in both (correct — the legacy corpus is unsuperseded, which is Level 10's). ONE THING IS STILL TRUE OF PRODUCTION AND WORTH KNOWING: it has never exercised the WRITE path, because it has no novel capture to do it with — its 8 VERIFIED are evidence rows and its 83 captures are legacy. The rule, the instrument and the audit arm are correct there; the flip will be demonstrated on production's next novel capture. Attributing LEGACY anchors remains explicitly NOT part of this level — see the boundary below.**
+
+#### SHIPPED 2026-08-30 — `master` at `6535948`, and the migration applied
+
+The spelling fix and the normalising migration reached production in one deploy. The pre-deploy step
+reported `All migrations have been successfully applied` before the new version served, so the split
+state — normalised rows against old code — lasted only the length of the deploy and nothing ran in it.
+
+**The audit afterwards matched every prediction, including the one held loosely.** `STALE 0`: the
+normalisation moved no production claim, exactly as on staging, where the same prediction had been
+made and *wrongly doubted*. The 8 evidence rows were untouched throughout, because `readOnChainClaim`
+returns on the `Evidence` row before it consults `capturesAnchoredBy` — which is why the evidence arm
+worked all along while the snapshot arm could not.
+
+**The public integrity board still scores this level 50%, and that is correct rather than a
+contradiction.** A level scores its WEAKEST invariant: `forensics:confirm-anchors` last ran at
+`7740e11`, and its code moved in `3c0e639`, so the `anchoredHash` values in BOTH environments were
+confirmed by pre-fix code. The claim is closed; the proof is partial, and the board is the thing that
+says so out loud.
 
 #### THE POSITIVE CONTROL RAN 2026-08-30, AND FALSIFIED THE PREDICTION
 
@@ -2415,7 +2480,7 @@ and missed the case this work exists for; sentence granularity found 7.
 
 ### Level 6 — the trajectory
 
-**STATUS: PARTIAL — the invariant (every reported flip confirmed against the documents at that boundary) is NOT enforced, and the obvious route to it is CANCELLED BY MEASUREMENT (2026-08-30). Moving detection to the document layer loses 2 trajectories and gains 0. The run also produced a finding about the EVIDENCE rather than the pipeline: the verbatim probe has only ever been tested against the renderer it was born from, and 2 of 90 MOH claims are not findable by the outsider check this platform's value rests on. Read the section below before proposing any Level 6 work.**
+**STATUS: PARTIAL — and the ROUTE IS NOW DECIDED BY MEASUREMENT (2026-08-30): take the FREE option first. `forensics:compare-candidate-sources` varied the candidate source, the axis `compare-detection-layers` held fixed, and found that SENTENCE CANDIDATES PRODUCE AN IDENTICAL TRAJECTORY SET AT THE DOCUMENT LAYER AND AT THE EXTRACTION — zero difference in both directions, 0 unmatched, on an arm that cannot pass by construction. The free option survives the renderer a stranger actually searches, so moving the differ is NOT load-bearing for outsider-verifiability. Two compute-only options exist (raw-chunk candidates ~115 findings, sentence candidates ~121) against a smaller increment for the API-spend option, and that ORDERING held across five instrument corrections while every individual figure moved. Measured numbers, the five corrections, and what is still unmeasured: `docs/gf-candidate-source-measurement-2026-08-30.md` — do not re-derive them here. SEQUENCING NOTE: a `DETECTION_VERSION` bump recomputes every trajectory, and Level 7 records 5 of 7 anchored records unrecomputable — compute-only is not the same as free of ordering cost, so Level 7's diagnostic comes first. The invariant (every reported flip confirmed against the documents at that boundary) is still NOT enforced, and the obvious route to it — moving DETECTION alone — remains CANCELLED BY MEASUREMENT: it loses 2 trajectories and gains 0. The run also produced a finding about the EVIDENCE rather than the pipeline: the verbatim probe has only ever been tested against the renderer it was born from, and 2 of 90 MOH claims are not findable by the outsider check this platform's value rests on. Read the section below before proposing any Level 6 work.**
 
 #### THE FLIP IS A NET LOSS — measured 2026-08-30, `forensics:compare-detection-layers`
 
@@ -2632,7 +2697,7 @@ a confident reader.
 
 ### Level 7 — the evidence
 
-**STATUS: OPEN**
+**STATUS: OPEN — clause 1 MEASURED 2026-08-30 on staging and it HOLDS for everything the instrument covers: `forensics:rehash-evidence` dry run examined 7, found 7 already current, 0 to rehash, so the “5 of 7 unrecomputable” figure below is SUPERSEDED. The instrument selects `NOT: { urlVersionDiffId: null }` — diff-derived evidence only — so `DOCUMENT` evidence has no recomputable identity and no check at all, and that is the class the currently published thesis cites. Clause 2 remains untested; no instrument exists. → `docs/gf-level-diagnostics-2026-08-30.md`**
 
 *Invariant:* identity is recomputable from its captures, and a summary attributes nothing to a page
 that the page does not contain.
@@ -2647,7 +2712,7 @@ the second is checkable. A gate that cries wolf gets disabled.
 
 ### Level 8 — the opinions
 
-**STATUS: OPEN**
+**STATUS: OPEN — DIAGNOSED 2026-08-30, three defects confirmed on the MOH corpus: `get_forensic_timeline` returns TEN fields and none reaches `Evidence`; `aiSignificance` and `isLegallySignificant` sit in the same flat row at the same weight as the computed `addedItems`/`deletedItems`, so the invariant fails as a DATA SHAPE rather than as a sentence; and the boundary-stored-twice defect reproduces here, not only on the news page — a diff reports `2024-08-29 → 2025-01-11` where the corpus holds no 2024-08-29 capture and the true predecessor is 2024-03-05, overstating precision by ~177 days. The MECHANISM cannot be closed without exposing `beforeSnapshotId`’s date, which no tool does; exposing it is part of the fix. → `docs/gf-level-diagnostics-2026-08-30.md`**
 
 *Invariant:* nothing presents a model's judgement as a computed fact.
 
@@ -2680,7 +2745,7 @@ derive the displayed dates from the captures rather than storing them a second t
 
 ### Level 9 — the thesis
 
-**STATUS: OPEN**
+**STATUS: OPEN — and the invariant AS WRITTEN IS UNSATISFIABLE ON STAGING, measured 2026-08-30: no evidence record can be `VERIFIED`, because all 8 anchored records are `TX_UNREADABLE` — the registry holds every hash, the receipts are past the endpoint’s horizon, and that is terminal rather than a gap to close. A thesis published that day passed all 16 hard checks while citing one of them. Do not plan this level as “make theses cite VERIFIED evidence” until Level 10’s supersession provides records that can be. → `docs/gf-level-diagnostics-2026-08-30.md` · `docs/gf-published-thesis-fda-claim-2026-08-30.md`**
 
 *Invariant:* a thesis cites nothing that is not `VERIFIED`.
 
@@ -2714,7 +2779,7 @@ written to the session it belonged to.
 
 ### Level 10 — supersede the old corpus
 
-**STATUS: OPEN — two decisions already taken: supersede rather than delete, and only ever one registry**
+**STATUS: OPEN — two decisions already taken: supersede rather than delete, and only ever one registry. PROMOTED 2026-08-30 from tidy-up to LOAD-BEARING: with Level 9’s invariant unsatisfiable, supersession is the only route by which any thesis can ever cite VERIFIED evidence. The 91 legacy claims are now MEASURED rather than assumed — nothing is wrong with them, only the attribution is lost, permanently — and recording them as `TX_UNREADABLE` via `forensics:confirm-anchors --apply` is a PRECONDITION for supersession, since this level’s own argument is that an unexplained anchor is indistinguishable from a tampered one. Neither standing decision is contradicted. → `docs/gf-level-diagnostics-2026-08-30.md`**
 
 *Invariant:* every anchored hash stays explainable forever.
 

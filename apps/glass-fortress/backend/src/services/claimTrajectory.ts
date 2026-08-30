@@ -1,7 +1,10 @@
 import { createHash } from 'crypto';
 import { prisma } from '../lib/prisma';
 import { ARCHIVED_CAPTURES_ONLY, requireArchived } from '../lib/archivedCaptures';
-import { parseDiffItems } from '../lib/diffItems';
+import { parseDiffItems, parseRawChunks } from '../lib/diffItems';
+import { diffChunkPair, DIFF_INPUT_VERSION } from '../lib/diffChunking';
+import { TEXT_EXTRACTION_VERSION } from '../lib/captureDocument';
+import { sentencesOf } from '../lib/textSegments';
 
 // ---------------------------------------------------------------------------
 // Following one claim across a page's whole archived history.
@@ -449,7 +452,35 @@ async function loadDetectionInputs(url: string, minClaimLength = 0) {
   return { trackedUrlId: tracked.id, snapshotMeta, candidates, sourceStateHash };
 }
 
-type DetectionInputs = Awaited<ReturnType<typeof loadDetectionInputs>>;
+/**
+ * What a detection pass READS. Deliberately WITHOUT `sourceStateHash`.
+ *
+ * `detect` needs a corpus and a candidate set. `persistComputation` needs one
+ * thing more — the identity of a state the corpus is actually in — and the two
+ * requirements are separated HERE, in the types, rather than by a comment asking
+ * a caller not to cache an experiment.
+ *
+ * The hazard is specific and it is not hypothetical. `compareCandidateSources`
+ * runs four candidate sets over one corpus; each would hash to a different
+ * `sourceStateHash`, and three of them describe states no scan ever produced.
+ * Writing one would put a computation in the cache that claims to describe the
+ * corpus, and the next `getClaimTrajectories` would serve it. A comment cannot
+ * stop that. A type can: experimental inputs carry `sourceStateHash: null`, the
+ * writer demands `string`, and the compiler refuses the call.
+ */
+type DetectionInputs = Omit<Awaited<ReturnType<typeof loadDetectionInputs>>, 'sourceStateHash'>;
+
+/** Detection inputs that MAY be cached: the hash describes a real corpus state. */
+type CacheableDetectionInputs = DetectionInputs & { readonly sourceStateHash: string };
+
+/**
+ * Detection inputs for a MEASUREMENT. Structurally unable to reach the writer.
+ *
+ * `null` rather than absent, and that is the point: an optional field would make
+ * these assignable to the cacheable type the moment someone widened a signature.
+ * `null` is not `string`, so the refusal survives refactoring.
+ */
+type ExperimentalDetectionInputs = DetectionInputs & { readonly sourceStateHash: null };
 
 /** The expensive half: pull archived text and search it. Only ever runs on a miss. */
 // ---------------------------------------------------------------------------
@@ -680,7 +711,19 @@ export async function compareDetectionLayers(url: string): Promise<DetectionLaye
   // two runs comparable: a second `loadDetectionInputs` could observe a different
   // corpus if a scan landed between them, and the difference would be read as a
   // property of the layer.
-  const inputs = await loadDetectionInputs(url);
+  const cacheable = await loadDetectionInputs(url);
+  // STRIPPED OF ITS HASH BEFORE EITHER ARM RUNS, and this is not decoration.
+  //
+  // `sourceStateHash` covers the snapshots, the candidates and DETECTION_VERSION
+  // — it does NOT name the layer. A DOCUMENT-layer detection persisted under it
+  // would be indistinguishable from the EXTRACTION one production reads: a cache
+  // entry describing a state the corpus is not in.
+  //
+  // Nothing here calls the writer today. That was equally true of this file
+  // before `compareCandidateSources` existed, and protecting only the new path
+  // would leave the two instruments disagreeing about whether the hazard is real
+  // — fixing one side is what creates the divergence.
+  const inputs: ExperimentalDetectionInputs = { ...cacheable, sourceStateHash: null };
   const extraction = await detect(inputs, 'EXTRACTION');
   const document = await detect(inputs, 'DOCUMENT');
 
@@ -727,6 +770,680 @@ export async function compareDetectionLayers(url: string): Promise<DetectionLaye
     lostByMoving,
     gainedByMoving,
     changedShape,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// WHERE CANDIDATES COME FROM — the axis that was never varied.
+//
+// `compareDetectionLayers` varies WHICH TEXT presence is tested against and
+// holds the candidate set fixed. That is why its gain arm can only ever return
+// "same or worse": candidates are discovered from diff items, the differ runs on
+// `fullText`, so every candidate is a string the extraction already contained.
+// Searching a superset for a subset of strings cannot find a new one. The plan
+// calls this "zero BY CONSTRUCTION"; this type is that sentence made adjustable.
+//
+// THE POINT OF MEASURING IT HERE IS THAT IT COSTS NOTHING. Moving the differ for
+// real means a `diffInputVersion` bump and re-classifying every diff — hundreds
+// of model calls. But the raw `fullText` chunks are already stored, the payloads
+// are already stored, and detection is deterministic and free. So what the move
+// would make REACHABLE can be computed before a single call is paid for.
+//
+// WHAT THIS CAN AND CANNOT SETTLE, and the asymmetry is the whole caveat:
+// `DOCUMENT_CHUNKS` bounds the candidate set a re-classification could draw
+// from, not the one it would actually produce — the classifier samples and
+// merges. So a claim absent from every document chunk cannot be produced by any
+// re-classification (a genuine veto), while a claim present in one merely COULD
+// be (never an approval). This instrument can cancel the spend. It can never
+// justify it.
+// ---------------------------------------------------------------------------
+
+/** Where a detection pass discovers the claims it will look for. */
+export type CandidateSource =
+  /** `deletedText`/`addedText` — the classifier's quotes. What production reads. */
+  | 'CLASSIFIED'
+  /** Those quotes, split by `sentencesOf`. Level 5's fix, one layer up. */
+  | 'CLASSIFIED_SENTENCES'
+  /**
+   * The same sentences, tested against the DOCUMENT — the outsider's check.
+   *
+   * A NAMED COMBINATION, NOT A LOOSENED PINNING. Sentence candidates are
+   * compute-only, but they are discovered from Readability's article and have
+   * only ever been tested against it. A stranger searches the RENDERED page, so
+   * `CLASSIFIED_SENTENCES`' zero broken probes cannot fail by construction and
+   * says nothing about outsider-verifiability. This arm is the only thing that
+   * can show the free option standing on its own, and it is the one question
+   * whose answer changes which option comes first.
+   */
+  | 'CLASSIFIED_SENTENCES_AT_DOCUMENT'
+  /** `rawDeletedText`/`rawAddedText` — the chunks the classifier was FED. */
+  | 'RAW_CHUNKS'
+  /** Chunks re-derived from the payloads with the differ moved to `text`. */
+  | 'DOCUMENT_CHUNKS';
+
+/** The source production detection reads. 6.2c moves this to `DOCUMENT_CHUNKS`. */
+export const CANDIDATE_SOURCE: CandidateSource = 'CLASSIFIED';
+
+/**
+ * The presence layer each source MUST be detected against — NOT a free flag.
+ *
+ * Four sources times two layers is eight combinations and only four of them mean
+ * anything. Candidates derived from `text` and tested against `fullText` measure
+ * the cross-renderer mismatch that the arm exists to REMOVE, and the number that
+ * came back would be read as the effect. Pairing is therefore a property of the
+ * arm, decided here once, rather than two arguments a caller can combine wrongly.
+ */
+export const ARM_LAYER: Readonly<Record<CandidateSource, DetectionLayer>> = {
+  CLASSIFIED: 'EXTRACTION',
+  CLASSIFIED_SENTENCES: 'EXTRACTION',
+  CLASSIFIED_SENTENCES_AT_DOCUMENT: 'DOCUMENT',
+  RAW_CHUNKS: 'EXTRACTION',
+  DOCUMENT_CHUNKS: 'DOCUMENT',
+};
+
+/**
+ * The arm that isolates ONE axis from another arm — its control.
+ *
+ * `DOCUMENT_CHUNKS` differs from `CLASSIFIED` in two ways at once, renderer and
+ * granularity. `RAW_CHUNKS` holds granularity constant, so what the LAYER buys is
+ * the set difference between their gains — not the difference of their counts.
+ * Subtracting counts assumes one gain set contains the other, which nothing
+ * establishes and which the probe-broken column already contradicts.
+ */
+export const ARM_CONTROL: Readonly<Partial<Record<CandidateSource, CandidateSource>>> = {
+  DOCUMENT_CHUNKS: 'RAW_CHUNKS',
+  // Identical candidates, different layer — so the difference is the LAYER alone,
+  // for a candidate set that costs no model calls.
+  CLASSIFIED_SENTENCES_AT_DOCUMENT: 'CLASSIFIED_SENTENCES',
+};
+
+/**
+ * Whether this arm's `trajectories` and `unmatched` are GUARANTEED rather than measured.
+ *
+ * A chunk arm takes its candidates from the very text presence is then tested
+ * against, so every candidate is a substring of at least one capture and matches
+ * by construction: `unmatched` is 0 and `trajectories` equals `candidates`, always.
+ *
+ * THIS IS THE DEFECT THIS INSTRUMENT WAS BUILT TO STUDY, REPRODUCED INSIDE IT —
+ * candidates and presence drawn from the same renderer, so matching cannot fail.
+ * It is not a reason to change the arms: a chunk arm has nowhere else to get
+ * candidates. It is a reason to REFUSE TO REPORT those two cells as findings,
+ * which is what this flag makes the output do.
+ *
+ * `CLASSIFIED_SENTENCES` is NOT structural: its candidates come from the
+ * classifier, which paraphrases, so a sentence of a quote need not appear
+ * anywhere. `CLASSIFIED`'s own 5 unmatched are the proof that it can fail.
+ */
+export const ARM_PRESENCE_IS_STRUCTURAL: Readonly<Record<CandidateSource, boolean>> = {
+  CLASSIFIED: false,
+  CLASSIFIED_SENTENCES: false,
+  // Candidates come from Readability's article and presence is tested against the
+  // document — DIFFERENT texts, so matching can genuinely fail. That is the point.
+  CLASSIFIED_SENTENCES_AT_DOCUMENT: false,
+  RAW_CHUNKS: true,
+  DOCUMENT_CHUNKS: true,
+};
+
+/** Every arm, in the order they are reported. CLASSIFIED first: it is the datum. */
+export const CANDIDATE_SOURCES: readonly CandidateSource[] = [
+  'CLASSIFIED',
+  'CLASSIFIED_SENTENCES',
+  'CLASSIFIED_SENTENCES_AT_DOCUMENT',
+  'RAW_CHUNKS',
+  'DOCUMENT_CHUNKS',
+];
+
+/** Why a snapshot pair cannot serve as input to the chunk arms. */
+export type PairExclusion =
+  /**
+   * The row's stored chunks are UNDERSTATED, so it is not a clean baseline.
+   *
+   * `diffInputVersion` null or below current means the row was written under the
+   * 8-chunk cap that discarded 55% of detected changes before the write. Using
+   * such a row in `RAW_CHUNKS` would shrink the control arm — making the
+   * granularity change look smaller than it is, which argues AGAINST the very
+   * change being measured. A measurement that quietly favours the cheaper
+   * decision is the one to be most suspicious of.
+   */
+  | 'CHUNKS_UNDERSTATED'
+  /**
+   * The two captures' `text` came from different derivations.
+   *
+   * `text` is a cached derivation carrying its own version. Diffing across a
+   * version boundary compares text that was never comparable and reports the
+   * derivation change as a page change — exactly the case Level 5 introduced
+   * `UNCHECKABLE` for, one layer down.
+   */
+  | 'TEXT_VERSION_MISMATCH';
+
+// THERE IS NO 'PAIR_INCOMPLETE'. `beforeSnapshotId` and `afterSnapshotId` are
+// NOT NULL with required relations, so a diff cannot exist without both captures
+// — the guard would be an assertion that cannot fail, and this repository has
+// eight of those written down. The no-unnecessary-condition ratchet refused the
+// first draft of this file for exactly that, which is the ratchet working.
+
+/** A pair both chunk arms can read, with everything either of them needs. */
+interface EligiblePair {
+  diffId: string;
+  classified: readonly string[];
+  rawChunks: readonly string[];
+  /** True when the classifier recorded quotes the raw columns do not account for. */
+  rawAbsentDespiteClassification: boolean;
+  beforeText: string;
+  afterText: string;
+}
+
+/**
+ * The pair universe all four arms share.
+ *
+ * ONE ELIGIBLE SET, NOT ONE PER ARM, and this is the part that is easy to get
+ * wrong. Gating `RAW_CHUNKS` on `diffInputVersion` and `DOCUMENT_CHUNKS` on
+ * `textExtractionVersion` is individually correct and jointly useless: the arms
+ * would run over different populations, so their difference would carry a
+ * population change as well as the renderer change, and the control would no
+ * longer control anything. Both gates apply to both arms.
+ *
+ * `CLASSIFIED` and `CLASSIFIED_SENTENCES` are held to the same set for the same
+ * reason. Production's real, whole-corpus candidate count is reported separately
+ * and labelled as a baseline rather than as an arm.
+ */
+async function loadArmUniverse(trackedUrlId: string): Promise<{
+  eligible: EligiblePair[];
+  excluded: Record<PairExclusion, number>;
+  totalPairs: number;
+}> {
+  const rows = await prisma.urlVersionDiff.findMany({
+    where: { trackedUrlId },
+    select: {
+      id: true,
+      diffInputVersion: true,
+      deletedText: true,
+      addedText: true,
+      rawDeletedText: true,
+      rawAddedText: true,
+      beforeSnapshot: { select: { text: true, textExtractionVersion: true } },
+      afterSnapshot: { select: { text: true, textExtractionVersion: true } },
+    },
+  });
+
+  const excluded: Record<PairExclusion, number> = {
+    CHUNKS_UNDERSTATED: 0,
+    TEXT_VERSION_MISMATCH: 0,
+  };
+  const eligible: EligiblePair[] = [];
+
+  for (const row of rows) {
+    if (row.diffInputVersion !== DIFF_INPUT_VERSION) {
+      excluded.CHUNKS_UNDERSTATED++;
+      continue;
+    }
+    const before = row.beforeSnapshot;
+    const after = row.afterSnapshot;
+    if (
+      before.textExtractionVersion !== TEXT_EXTRACTION_VERSION ||
+      after.textExtractionVersion !== TEXT_EXTRACTION_VERSION
+    ) {
+      excluded.TEXT_VERSION_MISMATCH++;
+      continue;
+    }
+
+    const classified = [row.deletedText, row.addedText].flatMap((raw) =>
+      parseDiffItems(raw).map((item) => item.exactQuote),
+    );
+    const rawChunks = [row.rawDeletedText, row.rawAddedText].flatMap(parseRawChunks);
+
+    eligible.push({
+      diffId: row.id,
+      classified,
+      rawChunks,
+      // AN EMPTY RAW COLUMN MEANS TWO DIFFERENT THINGS AND LOOKS THE SAME.
+      //
+      // `[]` is what a genuinely unchanged pair stores AND what a row whose raw
+      // columns were never written stores. On an eligible row the current writer
+      // always writes both, so classified quotes beside empty raw columns is a
+      // contradiction rather than a quiet zero — and a quiet zero here would
+      // shrink an arm and read as "nothing lost".
+      rawAbsentDespiteClassification: rawChunks.length === 0 && classified.length > 0,
+      beforeText: before.text,
+      afterText: after.text,
+    });
+  }
+
+  return { eligible, excluded, totalPairs: rows.length };
+}
+
+/**
+ * The candidate strings one arm discovers from one pair.
+ *
+ * Normalisation and admission are deliberately NOT applied here — they belong to
+ * the caller, which applies `loadDetectionInputs`'s exact rule to every arm. An
+ * arm that filtered its own candidates differently would be measuring its filter.
+ */
+function armCandidateStrings(source: CandidateSource, pair: EligiblePair): string[] {
+  switch (source) {
+    case 'CLASSIFIED':
+      return [...pair.classified];
+    case 'CLASSIFIED_SENTENCES':
+    case 'CLASSIFIED_SENTENCES_AT_DOCUMENT':
+      // IDENTICAL CANDIDATES ON PURPOSE. The two arms differ only in the layer
+      // they are tested against, which is what makes their difference readable.
+      return pair.classified.flatMap(sentencesOf);
+    case 'RAW_CHUNKS':
+      return [...pair.rawChunks];
+    case 'DOCUMENT_CHUNKS': {
+      // THE MOVE ITSELF, and the only line of 6.2c that is actually in question.
+      // Nothing is written: the chunks live for the length of this comparison.
+      const { removed, added } = diffChunkPair(pair.beforeText, pair.afterText);
+      return [...removed, ...added];
+    }
+  }
+}
+
+/**
+ * One arm's candidate set, admitted by production's exact rule.
+ *
+ * `normaliseClaim` then dedupe by `claimHash` — the same two steps
+ * `loadDetectionInputs` applies, including its lack of an emptiness filter. Not
+ * tidying that up here is deliberate: an arm that dropped empty candidates while
+ * the baseline kept them would differ from production in a second way, and the
+ * difference would be attributed to the axis under test.
+ */
+function armCandidates(source: CandidateSource, pairs: readonly EligiblePair[]): Map<string, string> {
+  const candidates = new Map<string, string>();
+  for (const pair of pairs) {
+    for (const text of armCandidateStrings(source, pair)) {
+      const normalised = normaliseClaim(text);
+      candidates.set(claimHash(normalised), normalised);
+    }
+  }
+  return candidates;
+}
+
+/**
+ * A claim in a comparison set. `transitions` travels WITH it, never separately.
+ *
+ * A set size is not a finding count. `MIN_TRANSITIONS` is a read filter applied
+ * in `shape()`, which no comparison calls, so an unfiltered set includes strings
+ * present in EVERY capture — the opposite of a finding. Carrying the count on
+ * each member is what lets a reader apply the threshold to any set here.
+ */
+export interface ComparedClaim {
+  claimText: string;
+  transitions: number;
+}
+
+/**
+ * A claim in one arm's gains and not the other's, and whether that is REAL.
+ *
+ * `claimHash` is SHA-256 of the normalised string, so identity is EXACT. The arms
+ * read different renderings of the same page: a paragraph with a heading sitting
+ * inside or beside it is a DIFFERENT STRING in `text` than in `fullText`, so it
+ * lands in a set difference while being the same finding in substance.
+ *
+ * `respellingOf` names a counterpart in the other set that contains this claim or
+ * is contained by it BY AT LEAST `CONTAINMENT_MATCH_MIN_LENGTH` characters.
+ * Non-null means the difference is a re-spelling and the finding is not new; null
+ * means nothing in the other set meaningfully overlaps it, which for the layer
+ * arms is what a heading Readability discards looks like.
+ *
+ * THE FLOOR IS NOT OPTIONAL AND THE CONSTANT IS NOT A NEW ONE. Bare containment
+ * on short strings matches by accident, and a false match here classifies a
+ * genuinely-new claim as a re-spelling and SUBTRACTS IT FROM THE PURCHASE — the
+ * direction that loses a finding, which is the same direction `trajectoryContext`
+ * already gates for with the same constant and the same reasoning. The claims at
+ * stake are short: `קישורים למידע נוסף` is 18 characters and is the whole of what
+ * moving the differ buys.
+ *
+ * COMPUTED, NOT EYEBALLED. Judging this by reading a sample is how "the layer-only
+ * claims are headings" becomes a belief rather than a measurement.
+ */
+export type DifferenceVerdict =
+  /** Nothing in the other set contains it or is contained by it. MEASURED. */
+  | 'UNIQUE'
+  /** Covered by a counterpart, on an overlap long enough to mean it. MEASURED. */
+  | 'RESPELLING'
+  /**
+   * A containment relation EXISTS but rests on fewer than
+   * `CONTAINMENT_MATCH_MIN_LENGTH` characters, so it cannot be told from an
+   * accident. NOT MEASURED — and counted as neither bought nor discounted.
+   *
+   * THIS CATEGORY IS WHY THE FLOOR DID NOT SIMPLY MOVE THE BIAS. A two-way split
+   * would put these with the genuinely-new ones, making "new" true by
+   * construction for every short claim — the cannot-fail shape this instrument
+   * already had to mark once, one level up. A short claim that overlaps NOTHING
+   * is still a measurement; only a short claim that overlaps SOMETHING is not.
+   */
+  | 'OVERLAP_BELOW_FLOOR';
+
+export interface DifferedClaim extends ComparedClaim {
+  verdict: DifferenceVerdict;
+  /** The counterpart, for RESPELLING and OVERLAP_BELOW_FLOOR alike. */
+  respellingOf: string | null;
+}
+
+/** Members of a set that clear `MIN_TRANSITIONS` — the ones that are findings. */
+export function findingsIn(claims: readonly ComparedClaim[]): ComparedClaim[] {
+  return claims.filter((c) => c.transitions >= MIN_TRANSITIONS);
+}
+
+/** Members that overlap nothing in the other set — genuinely new, and MEASURED. */
+export function unique(claims: readonly DifferedClaim[]): DifferedClaim[] {
+  return claims.filter((c) => c.verdict === 'UNIQUE');
+}
+
+/** Members the floor cannot rule on. Neither bought nor discounted — reported apart. */
+export function unclassifiable(claims: readonly DifferedClaim[]): DifferedClaim[] {
+  return claims.filter((c) => c.verdict === 'OVERLAP_BELOW_FLOOR');
+}
+
+/**
+ * One direction of a set difference, with each member classified.
+ *
+ * BOTH DIRECTIONS ARE ALWAYS REPORTED BY THE CALLER. Printing only
+ * `mine \\ theirs` and letting a reader infer the reverse is the count-subtraction
+ * mistake one level up: the sets are not nested, so the net is not recoverable
+ * from one direction and a threshold applied per-side makes it worse — the same
+ * claim can clear MIN_TRANSITIONS in one arm and not the other.
+ */
+/**
+ * Whether a claim is covered by anything in the other set, and whether we can tell.
+ *
+ * The overlap IS the shorter string, since one contains the other. Below the
+ * floor the relation is real but uninterpretable: `containmentOf`'s constant
+ * exists because a short string is a substring of unrelated text by accident.
+ * Reporting that as coverage discounts a finding; reporting it as new invents
+ * one. It gets its own verdict instead.
+ */
+function classifyOverlap(
+  text: string,
+  others: readonly string[],
+): { verdict: DifferenceVerdict; respellingOf: string | null } {
+  const overlapping = others.filter((o) => o.includes(text) || text.includes(o));
+  const solid = overlapping.find(
+    (o) => Math.min(o.length, text.length) >= CONTAINMENT_MATCH_MIN_LENGTH,
+  );
+  if (solid !== undefined) return { verdict: 'RESPELLING', respellingOf: solid };
+  const weak = overlapping.at(0);
+  if (weak !== undefined) return { verdict: 'OVERLAP_BELOW_FLOOR', respellingOf: weak };
+  return { verdict: 'UNIQUE', respellingOf: null };
+}
+
+function differenceWithRespelling(
+  mine: ReadonlyMap<string, ComparedClaim>,
+  theirs: ReadonlyMap<string, ComparedClaim>,
+): DifferedClaim[] {
+  const theirTexts = [...theirs.values()].map((c) => c.claimText);
+  return [...mine.entries()]
+    .filter(([hash]) => !theirs.has(hash))
+    .map(([, claim]) => ({
+      ...claim,
+      // Exact identity needs no floor and is already excluded — these are the
+      // members whose HASH is absent from the other set. Only containment is left,
+      // and containment on a short overlap is the accident the floor exists for.
+      // The overlap IS the shorter string, since one contains the other.
+      ...classifyOverlap(claim.claimText, theirTexts),
+    }));
+}
+
+/** One arm's result. `layer` is reported so a reader can see the pairing held. */
+export interface CandidateSourceArm {
+  source: CandidateSource;
+  layer: DetectionLayer;
+  candidates: number;
+  /**
+   * GUARANTEED, NOT MEASURED, when `presenceIsStructural`. See
+   * ARM_PRESENCE_IS_STRUCTURAL — these two cells can only read one way.
+   */
+  trajectories: number;
+  unmatched: number;
+  presenceIsStructural: boolean;
+  /** The arm that holds granularity constant, when one exists. */
+  controlSource: CandidateSource | null;
+  /**
+   * Gained by THIS arm and not by its control — what the isolated axis buys.
+   *
+   * A SET DIFFERENCE OVER CLAIM HASHES, never a difference of counts. Empty when
+   * the arm has no control.
+   */
+  gainedNotInControl: DifferedClaim[];
+  /**
+   * Gained by the CONTROL and not by this arm — what the isolated axis COSTS.
+   *
+   * THE REVERSE DIRECTION, REPORTED RATHER THAN LEFT TO ARITHMETIC. The sets are
+   * not nested, and per-side thresholding means the intersection does not even
+   * have one size: a claim can clear MIN_TRANSITIONS in one arm and not the
+   * other. A reader handed only the forward difference infers a net that the
+   * data does not support — which is the count-subtraction error wearing a set's
+   * clothes.
+   */
+  controlGainsNotHere: DifferedClaim[];
+  /** Trajectories this arm has that CLASSIFIED does not. Empty for CLASSIFIED. */
+  gainedVsClassified: ComparedClaim[];
+  /**
+   * THE VETO NUMBER. A claim CLASSIFIED follows that is NOT FINDABLE under this
+   * arm's layer — tested directly, so its absence is the probe failing rather
+   * than the candidate never being offered.
+   *
+   * This is evidence breaking. A stranger who opens the archived page and
+   * searches for the claim finds nothing, which is the check the whole platform
+   * rests on.
+   */
+  lostProbeBroken: ComparedClaim[];
+  /**
+   * A claim this arm's differ did not re-discover, though it WOULD still have a
+   * trajectory under this layer if asked.
+   *
+   * SEPARATED FROM THE ABOVE BECAUSE THEY IMPLY OPPOSITE THINGS, and a single
+   * "lost" count cannot tell them apart. Different chunk boundaries produce
+   * different quotes; the claim is intact and a re-classification over the new
+   * chunks may well quote it again. Counting this as breakage would veto the
+   * move for doing exactly what moving the differ means.
+   */
+  lostNotRediscovered: ComparedClaim[];
+}
+
+export interface CandidateSourceComparison {
+  url: string;
+  snapshotsExamined: number;
+  totalPairs: number;
+  eligiblePairs: number;
+  excluded: Record<PairExclusion, number>;
+  /**
+   * CLASSIFIED over the WHOLE corpus — what production actually detects from.
+   *
+   * Reported for context and NOT comparable to any arm: the arms run over the
+   * eligible subset. Printing it as a fifth arm is precisely how a population
+   * difference gets read as an effect.
+   */
+  productionBaselineCandidates: number;
+  arms: CandidateSourceArm[];
+  /**
+   * Why the run cannot be believed. Non-empty means the script must exit non-zero.
+   *
+   * An arm that yields nothing reports "0 lost", and 0 lost reads as no loss —
+   * failure and success sharing a representation, which is the rule this session
+   * established after four reassuring answers in one day. So an arm that CANNOT
+   * have measured anything says so instead of scoring well.
+   */
+  refusals: string[];
+}
+
+/**
+ * What each candidate source would make detectable, measured before it is paid for.
+ *
+ * READ-ONLY AND UNCACHEABLE BY CONSTRUCTION — the arms carry
+ * `sourceStateHash: null`, so `persistComputation` will not accept them and the
+ * compiler, not a reviewer, is what enforces it.
+ */
+export async function compareCandidateSources(url: string): Promise<CandidateSourceComparison> {
+  // ONE load for the corpus, exactly as compareDetectionLayers does it: a second
+  // one could observe a different snapshot set if a scan landed between them, and
+  // the difference would be read as a property of the arm.
+  const base = await loadDetectionInputs(url);
+  const { eligible, excluded, totalPairs } = await loadArmUniverse(base.trackedUrlId);
+
+  const refusals: string[] = [];
+  if (eligible.length === 0) {
+    refusals.push(
+      `No pair is eligible for the chunk arms (${String(totalPairs)} pairs, all excluded). ` +
+        'Nothing was measured; the zeroes below are absence of input, not absence of effect.',
+    );
+  }
+  const contradicted = eligible.filter((p) => p.rawAbsentDespiteClassification);
+  if (contradicted.length > 0) {
+    refusals.push(
+      `${String(contradicted.length)} eligible pair(s) hold classifier quotes but no raw chunks, ` +
+        'which the current writer cannot produce. RAW_CHUNKS is understated by an unknown amount: ' +
+        contradicted.slice(0, 5).map((p) => p.diffId).join(', '),
+    );
+  }
+
+  /** One arm's inputs. `sourceStateHash: null` is what bars them from the cache. */
+  const inputsFor = (candidates: Map<string, string>): ExperimentalDetectionInputs => ({
+    trackedUrlId: base.trackedUrlId,
+    snapshotMeta: base.snapshotMeta,
+    candidates,
+    sourceStateHash: null,
+  });
+
+  const noteEmpty = (source: CandidateSource, size: number): void => {
+    if (size > 0) return;
+    refusals.push(
+      `Arm ${source} discovered no candidates. It cannot lose or gain a trajectory, ` +
+        'so its zeroes carry no information about the change.',
+    );
+  };
+
+  // THE DATUM. Computed before the loop rather than inside it: reading it out of
+  // a variable the loop also assigns made the comparison depend on array order,
+  // and the order of an exported constant is not a thing to depend on.
+  const classifiedCandidates = armCandidates('CLASSIFIED', eligible);
+  noteEmpty('CLASSIFIED', classifiedCandidates.size);
+  const classifiedDetected = await detect(inputsFor(classifiedCandidates), ARM_LAYER.CLASSIFIED);
+  const classifiedIndex = new Map(classifiedDetected.trajectories.map((t) => [t.claimHash, t]));
+
+  /** One arm before the control comparison, which needs every arm's gains first. */
+  interface ArmDraft {
+    arm: CandidateSourceArm;
+    gainedHashes: Map<string, ComparedClaim>;
+  }
+
+  const asClaim = (t: DetectedTrajectory): ComparedClaim => ({
+    claimText: t.claimText,
+    transitions: t.transitions,
+  });
+
+  const drafts: ArmDraft[] = [
+    {
+      arm: {
+        source: 'CLASSIFIED',
+        layer: ARM_LAYER.CLASSIFIED,
+        candidates: classifiedCandidates.size,
+        trajectories: classifiedDetected.trajectories.length,
+        unmatched: classifiedDetected.unmatched,
+        presenceIsStructural: ARM_PRESENCE_IS_STRUCTURAL.CLASSIFIED,
+        controlSource: ARM_CONTROL.CLASSIFIED ?? null,
+        gainedNotInControl: [],
+        controlGainsNotHere: [],
+        gainedVsClassified: [],
+        lostProbeBroken: [],
+        lostNotRediscovered: [],
+      },
+      gainedHashes: new Map(),
+    },
+  ];
+
+  for (const source of CANDIDATE_SOURCES.filter((x) => x !== 'CLASSIFIED')) {
+    const layer = ARM_LAYER[source];
+    const candidates = armCandidates(source, eligible);
+    noteEmpty(source, candidates.size);
+    const detected = await detect(inputsFor(candidates), layer);
+    const index = new Map(detected.trajectories.map((t) => [t.claimHash, t]));
+
+    // WHY A SECOND PASS. A claim missing from `index` is missing for one of two
+    // reasons that mean opposite things — the differ did not offer it, or the
+    // page no longer contains it. Detecting the DATUM'S candidates against THIS
+    // arm's layer separates them: whatever survives here is still findable, so
+    // its absence above is a chunking difference and not evidence breaking.
+    //
+    // Free, deterministic, and it reuses `detect` rather than reimplementing the
+    // presence test — which is the rule that keeps this file's answers single.
+    const probe = await detect(inputsFor(classifiedCandidates), layer);
+    const stillFindable = new Set(probe.trajectories.map((t) => t.claimHash));
+
+    const missing = [...classifiedIndex.values()].filter((t) => !index.has(t.claimHash));
+    const gainedHashes = new Map(
+      [...index.values()]
+        .filter((t) => !classifiedIndex.has(t.claimHash))
+        .map((t) => [t.claimHash, asClaim(t)] as const),
+    );
+
+    drafts.push({
+      gainedHashes,
+      arm: {
+        source,
+        layer,
+        candidates: candidates.size,
+        trajectories: detected.trajectories.length,
+        unmatched: detected.unmatched,
+        presenceIsStructural: ARM_PRESENCE_IS_STRUCTURAL[source],
+        controlSource: ARM_CONTROL[source] ?? null,
+        // Filled in the second pass — every arm's gains must exist first.
+        gainedNotInControl: [],
+        controlGainsNotHere: [],
+        gainedVsClassified: [...gainedHashes.values()],
+        lostProbeBroken: missing.filter((t) => !stillFindable.has(t.claimHash)).map(asClaim),
+        lostNotRediscovered: missing.filter((t) => stillFindable.has(t.claimHash)).map(asClaim),
+      },
+    });
+  }
+
+  // THE ISOLATED AXIS, AS A SET DIFFERENCE OVER CLAIM HASHES.
+  //
+  // `gained(DOCUMENT_CHUNKS).length - gained(RAW_CHUNKS).length` would only mean
+  // something if one set contained the other, and nothing establishes that — the
+  // arms already disagree about which probes break, so they are known to diverge.
+  // The difference of the SETS is what the layer buys; the difference of the
+  // counts is an arithmetic accident that happens to look like an answer.
+  const bySource = new Map(drafts.map((d) => [d.arm.source, d]));
+  for (const draft of drafts) {
+    const control = draft.arm.controlSource;
+    if (control === null) continue;
+    const controlGains = bySource.get(control)?.gainedHashes;
+    if (!controlGains) continue;
+    draft.arm.gainedNotInControl = differenceWithRespelling(draft.gainedHashes, controlGains);
+    draft.arm.controlGainsNotHere = differenceWithRespelling(controlGains, draft.gainedHashes);
+  }
+
+  const arms = drafts.map((d) => d.arm);
+
+  // A STRUCTURAL INVARIANT, NOT A THRESHOLD. `sentencesOf` returns at least one
+  // part for every non-empty input, so splitting a quote set can only hold or
+  // grow it. Fewer sentences than quotes means the splitter or the admission rule
+  // is dropping candidates, and every "lost" it then reports is an artefact.
+  //
+  // Preferred over "materially smaller than CLASSIFIED", which would need a
+  // percentage nobody has measured — and this repository has already paid for one
+  // unmeasured constant that looked reasonable (MIN_CLAIM_LENGTH, 40, which hid
+  // the reporting-link claim). The ratios are printed instead, for a human.
+  const sentences = arms.find((a) => a.source === 'CLASSIFIED_SENTENCES');
+  if (sentences && sentences.candidates < classifiedCandidates.size) {
+    refusals.push(
+      `CLASSIFIED_SENTENCES yielded fewer candidates (${String(sentences.candidates)}) than ` +
+        `CLASSIFIED (${String(classifiedCandidates.size)}), which sentence splitting cannot do. ` +
+        'Candidates are being dropped somewhere in this instrument.',
+    );
+  }
+
+  return {
+    url,
+    snapshotsExamined: base.snapshotMeta.length,
+    totalPairs,
+    eligiblePairs: eligible.length,
+    excluded,
+    productionBaselineCandidates: base.candidates.size,
+    arms,
+    refusals,
   };
 }
 
@@ -796,7 +1513,7 @@ function isUniqueViolation(err: unknown): boolean {
   return typeof err === 'object' && err !== null && (err as { code?: string }).code === 'P2002';
 }
 
-async function readComputation(inputs: DetectionInputs) {
+async function readComputation(inputs: CacheableDetectionInputs) {
   const computation = await prisma.claimTrajectoryComputation.findUnique({
     where: {
       trackedUrlId_sourceStateHash: {
@@ -846,7 +1563,7 @@ async function readComputation(inputs: DetectionInputs) {
  * not depending on whether it had been asked for before.
  */
 async function persistComputation(
-  inputs: DetectionInputs,
+  inputs: CacheableDetectionInputs,
   trajectories: readonly DetectedTrajectory[],
   counts: {
     snapshotsExamined: number;
