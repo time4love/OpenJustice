@@ -1,7 +1,11 @@
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { DETECTION_VERSION } from '../src/services/claimTrajectory';
+import {
+  DETECTION_LAYER,
+  DETECTION_VERSION,
+  presenceText,
+} from '../src/services/claimTrajectory';
 
 // ---------------------------------------------------------------------------
 // CHANGE DETECTION, BUMP DETECTION_VERSION. This is what makes that true.
@@ -47,6 +51,10 @@ const DETECTION_FUNCTIONS = [
   'containmentOf',
   'isDerivativeTrajectory',
   'loadDetectionInputs',
+  // WHICH TEXT presence is tested against is as much "what a trajectory is" as
+  // the presence test itself. Added 2026-08-30 with the layer parameter: a
+  // change here silently re-decides every trajectory in the corpus.
+  'presenceText',
   'detect',
 ];
 
@@ -56,8 +64,38 @@ const DETECTION_FUNCTIONS = [
  */
 const PINNED = {
   version: 'v2-collapse-ws-containment-substring-presence',
-  sourceHash: '017a82a2e0c8657713299c7e07a7aaeb822e10900f6d6acc08665d177a7409f1',
+  // Regenerated 2026-08-30 WITHOUT a version bump, deliberately and for one
+  // reason: `detect` became parameterised by `DETECTION_LAYER`, and that constant
+  // is still `EXTRACTION`, so `presenceText` returns `fullText` exactly as the
+  // code it replaced did. The source moved; the behaviour provably did not.
+  //
+  // Bumping the version here would have invalidated every stored trajectory and
+  // forced the full recompute that `forensics:compare-detection-layers` exists to
+  // measure BEFORE it is paid for.
+  //
+  // The property that makes this defensible is now itself pinned, below — so the
+  // Level 6 flip cannot reach `DOCUMENT` without failing a test that names the
+  // version bump as its price.
+  sourceHash: '99d020ccf1f2f8b64109ff31fc39343b05522c16e384b1dc4936415d7c16950d',
 };
+
+describe('the detection LAYER cannot move silently either', () => {
+  it('production detection still reads the EXTRACTION', () => {
+    // The pin above was regenerated without a version bump on the strength of
+    // this being true. If Level 6 flips it to DOCUMENT, this fails first and
+    // says so — which is the point: the flip changes what every trajectory IS,
+    // so it must arrive with a DETECTION_VERSION bump and a full recompute.
+    expect(DETECTION_LAYER).toBe('EXTRACTION');
+  });
+
+  it('EXTRACTION means fullText, unchanged and byte-for-byte', () => {
+    // A refactor that quietly changed which column EXTRACTION names would keep
+    // the constant, keep the source hash plausible, and change every trajectory.
+    const capture = { fullText: 'the article', text: 'the whole page' };
+    expect(presenceText(capture, 'EXTRACTION')).toBe('the article');
+    expect(presenceText(capture, 'DOCUMENT')).toBe('the whole page');
+  });
+});
 
 /** Removes block and line comments so prose edits cannot trip the guard. */
 export function stripComments(source: string): string {

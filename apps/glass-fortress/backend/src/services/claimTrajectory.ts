@@ -452,7 +452,41 @@ async function loadDetectionInputs(url: string, minClaimLength = 0) {
 type DetectionInputs = Awaited<ReturnType<typeof loadDetectionInputs>>;
 
 /** The expensive half: pull archived text and search it. Only ever runs on a miss. */
-async function detect(inputs: DetectionInputs) {
+// ---------------------------------------------------------------------------
+// WHICH TEXT OF A CAPTURE PRESENCE IS TESTED AGAINST.
+//
+// One rule, one home — the same treatment `anchoredCaptureHash` gave "which hash
+// does the chain attest to", and for the same reason: Level 6 moves this, and the
+// move must be ONE line rather than a hunt through every query that happens to
+// select a text column.
+//
+//   EXTRACTION  `fullText` — Readability's article. What detection reads today,
+//               and what the differ that produced the candidates reads too, so
+//               the two agree. It discards ~31% of the page, hrefs included.
+//   DOCUMENT    `text` — derived from the payload as served. The whole page,
+//               losing only link targets.
+//
+// The constant below is NOT flipped yet, deliberately. `text` and `fullText` are
+// produced by DIFFERENT RENDERERS — Readability and `htmlToText` — so the same
+// sentence is not guaranteed to be the same string in both, and a candidate
+// extracted from one may simply not be found in the other. Flipping first and
+// measuring second would bump `DETECTION_VERSION`, recompute every trajectory,
+// and only then reveal whether the platform's central finding survived the move.
+// `compareDetectionLayers` measures it first, and writes nothing.
+// ---------------------------------------------------------------------------
+
+/** Which text of a capture a presence test reads. */
+export type DetectionLayer = 'EXTRACTION' | 'DOCUMENT';
+
+/** The layer production detection reads. Level 6 moves this to `DOCUMENT`. */
+export const DETECTION_LAYER: DetectionLayer = 'EXTRACTION';
+
+/** A capture's text under one layer. Named so no caller picks a column itself. */
+export function presenceText(row: { fullText: string; text: string }, layer: DetectionLayer): string {
+  return layer === 'EXTRACTION' ? row.fullText : row.text;
+}
+
+async function detect(inputs: DetectionInputs, layer: DetectionLayer = DETECTION_LAYER) {
   // Archived captures only, in the same order — detect() searches the set that
   // sourceStateHash was computed over, so a wider or differently-ordered set
   // here would search text the cache key never saw. Both queries spread the
@@ -463,7 +497,22 @@ async function detect(inputs: DetectionInputs) {
     await prisma.urlSnapshot.findMany({
       where: { trackedUrlId: inputs.trackedUrlId, ...ARCHIVED_CAPTURES_ONLY },
       ...TRAJECTORY_CAPTURE_SCAN,
-      select: { snapshotDate: true, waybackTimestamp: true, snapshotUrl: true, fullText: true },
+      // BOTH columns, and the layer chooses between them in memory rather than
+      // in the query. A `select` built from a variable collapses Prisma's
+      // inference to a union with neither column in it, and the two obvious
+      // escapes are worse: a cast would silence the compiler on the one line that
+      // decides what a trajectory IS, and a per-layer query would be two
+      // implementations of the rule this symbol exists to keep single.
+      //
+      // The cost is real and small: detection runs only on a cache miss, and a
+      // miss now loads ~2x the text of one. That buys the flip being one constant.
+      select: {
+        snapshotDate: true,
+        waybackTimestamp: true,
+        snapshotUrl: true,
+        fullText: true,
+        text: true,
+      },
     })
   ).map((row) => requireArchived(row, 'claimTrajectory.detect'));
 
@@ -471,7 +520,7 @@ async function detect(inputs: DetectionInputs) {
     snapshotDate: r.snapshotDate,
     waybackTimestamp: r.waybackTimestamp,
     snapshotUrl: r.snapshotUrl,
-    normalisedText: normaliseClaim(r.fullText),
+    normalisedText: normaliseClaim(presenceText(r, layer)),
   }));
 
   const trajectories: DetectedTrajectory[] = [];
@@ -589,6 +638,95 @@ export async function detectAtClaimLength(
     candidatesUnmatched: detected.unmatched,
     snapshotsExamined: detected.snapshotsExamined,
     trajectories: detected.trajectories,
+  };
+}
+
+/**
+ * WHAT WOULD CHANGE IF DETECTION READ THE DOCUMENT INSTEAD OF THE EXTRACTION.
+ *
+ * READ-ONLY AND IT NEVER PERSISTS, for the same reason `detectAtClaimLength`
+ * does not: a computation written for a layer production does not read would fill
+ * the cache with answers no read can be served, and — worse — rows whose
+ * `sourceStateHash` claims to describe a state the corpus is not in.
+ *
+ * IT EXISTS TO PRODUCE ONE NUMBER THAT CAN VETO THE CHANGE IT PRECEDES.
+ * `lostByMoving` is that number. `text` and `fullText` come from DIFFERENT
+ * RENDERERS — `htmlToText` and Readability — so the same sentence is not
+ * guaranteed to be the same string in both, and a claim with a trajectory today
+ * may have none after the move. Anything above zero must be explained before
+ * `DETECTION_VERSION` is bumped and every trajectory recomputed.
+ *
+ * `changedShape` is the subtler half and is deliberately reported separately: a
+ * claim that keeps a trajectory but changes its TRANSITION COUNT has changed the
+ * finding, and counting it as "survived" would hide that behind a set membership.
+ */
+export interface DetectionLayerComparison {
+  url: string;
+  candidatesConsidered: number;
+  perLayer: Record<
+    DetectionLayer,
+    { trajectories: number; unmatched: number; snapshotsExamined: number }
+  >;
+  /** THE GATE: a trajectory under EXTRACTION and none under DOCUMENT. */
+  lostByMoving: { claimText: string; transitions: number }[];
+  /** The gain: a trajectory the extraction could never have seen. */
+  gainedByMoving: { claimText: string; transitions: number }[];
+  /** Kept by both layers, but the trajectory is not the same shape. */
+  changedShape: { claimText: string; extraction: number; document: number }[];
+}
+
+export async function compareDetectionLayers(url: string): Promise<DetectionLayerComparison> {
+  // ONE candidate set, detected twice. Loading the inputs once is what makes the
+  // two runs comparable: a second `loadDetectionInputs` could observe a different
+  // corpus if a scan landed between them, and the difference would be read as a
+  // property of the layer.
+  const inputs = await loadDetectionInputs(url);
+  const extraction = await detect(inputs, 'EXTRACTION');
+  const document = await detect(inputs, 'DOCUMENT');
+
+  const index = (ts: readonly DetectedTrajectory[]): Map<string, DetectedTrajectory> =>
+    new Map(ts.map((t) => [t.claimHash, t]));
+  const e = index(extraction.trajectories);
+  const d = index(document.trajectories);
+
+  const lostByMoving = [...e.values()]
+    .filter((t) => !d.has(t.claimHash))
+    .map((t) => ({ claimText: t.claimText, transitions: t.transitions }));
+  const gainedByMoving = [...d.values()]
+    .filter((t) => !e.has(t.claimHash))
+    .map((t) => ({ claimText: t.claimText, transitions: t.transitions }));
+  const changedShape = [...e.values()]
+    .filter((t) => {
+      const other = d.get(t.claimHash);
+      return other !== undefined && other.transitions !== t.transitions;
+    })
+    .map((t) => ({
+      claimText: t.claimText,
+      extraction: t.transitions,
+      // `.at`-free: the filter above already proved this key is present, and a
+      // second lookup returning undefined would be a Map contract violation
+      // rather than a case to handle.
+      document: d.get(t.claimHash)?.transitions ?? -1,
+    }));
+
+  return {
+    url,
+    candidatesConsidered: inputs.candidates.size,
+    perLayer: {
+      EXTRACTION: {
+        trajectories: extraction.trajectories.length,
+        unmatched: extraction.unmatched,
+        snapshotsExamined: extraction.snapshotsExamined,
+      },
+      DOCUMENT: {
+        trajectories: document.trajectories.length,
+        unmatched: document.unmatched,
+        snapshotsExamined: document.snapshotsExamined,
+      },
+    },
+    lostByMoving,
+    gainedByMoving,
+    changedShape,
   };
 }
 
