@@ -13,6 +13,8 @@
 // rule with twenty copies.
 // ---------------------------------------------------------------------------
 
+import { readFileSync, readdirSync } from 'fs';
+import { join } from 'path';
 import { LEDGER_RECORD_BEGIN, LEDGER_RECORD_END } from '../src/lib/operationalContext';
 
 /** Pull the record out of captured output exactly as `record.mjs` does. */
@@ -75,5 +77,38 @@ describe('the ledger record a run emits about itself', () => {
     // producing logs the ingest tool no longer recognises.
     expect(LEDGER_RECORD_BEGIN).toBe('--- INTEGRITY-LEDGER-RECORD ---');
     expect(LEDGER_RECORD_END).toBe('--- END-INTEGRITY-LEDGER-RECORD ---');
+  });
+});
+
+describe('a script that exits directly still records itself', () => {
+  it('SEVENTEEN OF TWENTY-THREE SCRIPTS call process.exit() in their own body', () => {
+    // The count is the finding, not the trivia. The first version of this emission
+    // ran after `await body(context)` returned — which never happens for a script
+    // that exits from inside itself. `forensics:audit-anchors` exits 5 that way and
+    // produced no record at all, found the first time the ledger was fed a real run.
+    //
+    // The guard is the COUNT being non-zero: if every script were rewritten to
+    // return its code instead, this test would be free to go. While any script
+    // exits directly, the emission must not depend on the body returning.
+    const dir = join(__dirname, '..', 'scripts');
+    const direct = readdirSync(dir)
+      .filter((f) => f.endsWith('.ts'))
+      .filter((f) => readFileSync(join(dir, f), 'utf8').includes('process.exit('));
+    expect(direct.length).toBeGreaterThan(0);
+  });
+
+  it('the emission is registered on the exit EVENT, not after the body', () => {
+    // A behavioural test cannot reach this without spawning a process per script.
+    // The source is the cheap, honest check: `process.on('exit'` is the only
+    // construction that survives a direct `process.exit()`.
+    const src = readFileSync(join(__dirname, '..', 'src', 'lib', 'operationalContext.ts'), 'utf8');
+    expect(src).toMatch(/process\.on\(\s*'exit'/);
+  });
+
+  it('DETECTS the regression — proven against the shape that failed', () => {
+    // Emitting straight after the awaited body is exactly what was wrong. If that
+    // pattern returns, this fails and names it.
+    const src = readFileSync(join(__dirname, '..', 'src', 'lib', 'operationalContext.ts'), 'utf8');
+    expect(src).not.toMatch(/const code = await body\(context\);\s*\n\s*emitLedgerRecord/);
   });
 });
