@@ -39,7 +39,8 @@
     "forensics:backfill-survival": "node dist/scripts/backfillDiffSurvival.js",
     "forensics:audit-anchors": "node dist/scripts/auditOnChainAnchors.js",
     "forensics:confirm-anchors": "node dist/scripts/confirmAnchors.js",
-    "forensics:backfill-anchor-checks": "node dist/scripts/backfillOnChainChecks.js"
+    "forensics:backfill-anchor-checks": "node dist/scripts/backfillOnChainChecks.js",
+    "forensics:compare-detection-layers": "node dist/scripts/compareDetectionLayers.js"
   },
   "keywords": [],
   "author": "",
