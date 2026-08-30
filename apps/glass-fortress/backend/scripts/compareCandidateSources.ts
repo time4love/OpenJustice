@@ -34,9 +34,13 @@ import { runOperationalScript } from '../src/lib/operationalContext';
 import {
   compareCandidateSources,
   findingsIn,
+  unique,
+  unclassifiable,
   MIN_TRANSITIONS,
   type CandidateSourceArm,
+  CONTAINMENT_MATCH_MIN_LENGTH,
   type ComparedClaim,
+  type DifferedClaim,
 } from '../src/services/claimTrajectory';
 
 function arg(name: string): string | undefined {
@@ -44,8 +48,15 @@ function arg(name: string): string | undefined {
   return i >= 0 ? process.argv[i + 1] : undefined;
 }
 
-/** Never list more than this per set. Whatever is dropped is COUNTED and said. */
+/**
+ * Never list more than this per set. Whatever is dropped is COUNTED and said.
+ *
+ * `--list-all` lifts it, which a researcher wants when reading the sets rather
+ * than the summary. It also restores the output volume that exposed the ledger
+ * record being discarded by `process.exit()`, so the two are the same switch.
+ */
 const MAX_LISTED = 8;
+const listAll = process.argv.includes('--list-all');
 
 /**
  * A set, reported as a size AND a finding count.
@@ -62,7 +73,7 @@ function printSet(label: string, claims: readonly ComparedClaim[]): void {
     `\n  ${label}: ${String(findings.length)} finding(s) ` +
       `[>=${String(MIN_TRANSITIONS)} transitions] of ${String(claims.length)} in the set`,
   );
-  const listed = findings.slice(0, MAX_LISTED);
+  const listed = listAll ? findings : findings.slice(0, MAX_LISTED);
   for (const t of listed) {
     // LENGTH IS PRINTED, and it is the number that diagnoses this class: whether
     // a claim survives the layer move is decided by whether it REACHES the point
@@ -75,12 +86,78 @@ function printSet(label: string, claims: readonly ComparedClaim[]): void {
   if (hidden > 0) console.log(`    … ${String(hidden)} more finding(s) not listed`);
 }
 
+/**
+ * A set difference, split by whether each member is genuinely new.
+ *
+ * `claimHash` is exact and the arms read different renderings, so a paragraph
+ * with a heading beside it differs as a STRING while being one finding in
+ * substance. Members that overlap nothing in the other set are the real
+ * difference; the rest are re-spellings and must not be counted as a purchase.
+ */
+function printDifference(label: string, claims: readonly DifferedClaim[]): void {
+  const findings = findingsIn(claims) as DifferedClaim[];
+  const genuinelyNew = unique(findings);
+  const undecidable = unclassifiable(findings);
+  const respellings = findings.length - genuinelyNew.length - undecidable.length;
+  // THE THREE ARE PRINTED APART BECAUSE ONE OF THEM IS NOT A MEASUREMENT.
+  // Merging the undecidable band into either neighbour hands the reader a single
+  // figure blending what was measured with what the floor could not rule on.
+  console.log(
+    `\n  ${label}:` +
+      `\n    ${String(genuinelyNew.length)} GENUINELY NEW  [measured: overlaps nothing in the ` +
+      `other set]` +
+      `\n    ${String(respellings)} re-spelling(s)  [measured: covered on >=` +
+      `${String(CONTAINMENT_MATCH_MIN_LENGTH)} chars]` +
+      `\n    ${String(undecidable.length)} UNCLASSIFIABLE  [NOT measured: overlaps something, but ` +
+      `below the floor]` +
+      `\n    ${String(findings.length)} finding(s) [>=${String(MIN_TRANSITIONS)} transitions] of ` +
+      `${String(claims.length)} in the set`,
+  );
+  const listed = listAll ? genuinelyNew : genuinelyNew.slice(0, MAX_LISTED);
+  for (const t of listed) {
+    console.log(`      ${String(t.transitions)} transitions, ${String(t.claimText.length)} chars`);
+    console.log(`        ${t.claimText}`);
+  }
+  const hidden = genuinelyNew.length - listed.length;
+  if (hidden > 0) console.log(`      … ${String(hidden)} more genuinely-new finding(s) not listed`);
+}
+
+/**
+ * How much this run wrote before it exited — the quantity the ledger record depends on.
+ *
+ * `emitLedgerRecord` writes from a `process.on('exit')` handler. The old
+ * `console.log` version lost the record whenever enough output was queued on a
+ * pipe for `process.exit()` to discard it, and the run that exposed it wrote
+ * 164KB. A later run whose record SURVIVES therefore proves nothing unless it
+ * wrote comparably much — a small run would have survived the broken version too.
+ *
+ * Printing the size turns "the record survived" into "the record survived N KB",
+ * which is the difference between a claim and a measurement.
+ */
+function reportOutputSize(): void {
+  // `bytesWritten` exists on a socket, which stdout is when piped — and not on
+  // every stream stdout can be. Asserted as optional so the fallback is real.
+  const written = (process.stdout as { bytesWritten?: number }).bytesWritten ?? 0;
+  console.log(
+    `\nOutput written before exit: ${String(Math.round(written / 1024))} KB` +
+      (listAll ? ' (--list-all)' : ' (listings capped — pass --list-all to lift)'),
+  );
+}
+
 async function main(): Promise<number> {
   const url = arg('url');
   if (url === undefined || url.startsWith('--')) {
     console.error('--url is required.');
     return 1;
   }
+
+  // EVERY EXIT PATH REPORTS THE SIZE, and the last real run exited 3. A helper
+  // rather than a call before each `return`, because the path that forgets it
+  // would be the one that mattered.
+  const finish = (code: number): number => {
+    reportOutputSize();
+    return code;
+  };
 
   const r = await compareCandidateSources(url);
 
@@ -133,10 +210,15 @@ async function main(): Promise<number> {
     printSet('lost — not re-discovered (still findable)', a.lostNotRediscovered);
     printSet('GAINED vs the datum (renderer AND granularity together)', a.gainedVsClassified);
     if (a.controlSource !== null) {
-      // WHAT THE ISOLATED AXIS BUYS. A set difference over claim hashes — the
-      // difference of the two GAINED counts would assume one set contains the
-      // other, which nothing establishes.
-      printSet(
+      // BOTH DIRECTIONS, AND THE COST ONE FIRST. Reporting only what the axis
+      // BUYS and leaving the reader to infer what it COSTS is the
+      // count-subtraction error one level up — the sets are not nested, so the
+      // net is not recoverable from one direction.
+      printDifference(
+        `LOST to ${a.controlSource} — reachable for free, NOT by this arm`,
+        a.controlGainsNotHere,
+      );
+      printDifference(
         `GAINED and NOT in ${a.controlSource} — attributable to the LAYER alone`,
         a.gainedNotInControl,
       );
@@ -150,20 +232,23 @@ async function main(): Promise<number> {
       '\n   Zeroes above are absence of input, not absence of effect. Fix the input\n' +
         '   before reading a single number as a result.',
     );
-    return 4;
+    return finish(4);
   }
 
   const moved = r.arms.find((a) => a.source === 'DOCUMENT_CHUNKS');
   if (!moved) {
     console.error('\n⛔ DOCUMENT_CHUNKS did not run. The comparison has no subject.');
-    return 4;
+    return finish(4);
   }
 
   // EVERY GATE BELOW COUNTS FINDINGS, NOT SET MEMBERS. A set includes claims
   // present in every capture; gating on its size prices the decision on strings
   // that are the opposite of a finding.
   const brokenFindings = findingsIn(moved.lostProbeBroken);
-  const layerFindings = findingsIn(moved.gainedNotInControl);
+  // GENUINELY NEW, NOT MERELY DIFFERENT. A re-spelling of a claim the free option
+  // already reaches is not something a re-classification buys.
+  const layerFindings = unique(findingsIn(moved.gainedNotInControl) as DifferedClaim[]);
+  const layerCost = unique(findingsIn(moved.controlGainsNotHere) as DifferedClaim[]);
 
   if (brokenFindings.length > 0) {
     console.error(
@@ -175,7 +260,7 @@ async function main(): Promise<number> {
         'string the\n    page never contained, losing it is the CORRECTION. Read each one before ' +
         'deciding.',
     );
-    return 3;
+    return finish(3);
   }
 
   // NOT AN ERROR, AND DELIBERATELY NOT EXIT 3. A claim the new differ did not
@@ -197,23 +282,34 @@ async function main(): Promise<number> {
   // available from sentence candidates for compute alone. What a
   // `diffInputVersion` bump and a full re-classification buy is the part the
   // control arm does NOT already reach.
-  if (layerFindings.length === 0) {
+  // THE NET, NOT THE GROSS. A move that reaches 25 findings while losing 12 to the
+  // free option buys 13, and a gate reading only the forward direction would
+  // approve an exchange it never measured.
+  if (layerFindings.length - layerCost.length <= 0) {
     console.error(
-      '\n⛔ THE SPEND IS VETOED BY MEASUREMENT. Every finding the moved differ reaches is\n' +
-        `   already reachable from ${String(moved.controlSource)}, which needs no re-classification.\n` +
-        '   The renderer buys nothing the granularity change does not. Do not pay for it.',
+      '\n⛔ THE SPEND IS VETOED BY MEASUREMENT. Net of what it also loses, moving the\n' +
+        `   differ reaches nothing beyond ${String(moved.controlSource)} — ` +
+        `+${String(layerFindings.length)} / −${String(layerCost.length)} genuinely-new finding(s),\n` +
+        '   and that arm needs no re-classification at all. Do not pay for it.',
     );
-    return 3;
+    return finish(3);
   }
 
+  const undecided =
+    unclassifiable(findingsIn(moved.gainedNotInControl) as DifferedClaim[]).length +
+    unclassifiable(findingsIn(moved.controlGainsNotHere) as DifferedClaim[]).length;
   console.log(
-    `\n✅ ${String(layerFindings.length)} finding(s) are reachable ONLY by moving the differ — not ` +
-      `by\n   ${String(moved.controlSource)}, and not by the datum. Nothing findable is broken.\n\n` +
+    `\n✅ NET ${String(layerFindings.length - layerCost.length)} finding(s): ` +
+      `+${String(layerFindings.length)} reachable ONLY by moving the differ, ` +
+      `−${String(layerCost.length)} reachable\n   only from ${String(moved.controlSource)}, which ` +
+      'needs no re-classification. Nothing findable is broken.\n' +
+      `   ${String(undecided)} further claim(s) the containment floor could not rule on, counted ` +
+      'as NEITHER.\n\n' +
       '   THIS IS NOT APPROVAL. Reachable is not produced: the classifier samples and\n' +
       '   merges, so it may quote none of these. The measurement can cancel the spend;\n' +
       '   it cannot justify it. That call is the researcher\'s.',
   );
-  return 0;
+  return finish(0);
 }
 
 void runOperationalScript(main);
