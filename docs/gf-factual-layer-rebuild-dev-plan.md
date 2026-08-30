@@ -1940,7 +1940,37 @@ exactly one did, and it became `probeSnapshotsList` — *named* for recording no
 
 ### Level 3 — the anchor
 
-**STATUS: PARTIAL — clause 2 (the database claim is CHECKED) is closed; clause 1 (the anchor attests to the DOCUMENT) is OPEN. The instrumentation clause 1 needs is BUILT (2026-08-30); the flip itself is not done. Attributing LEGACY anchors is explicitly NOT part of this level — see the boundary below.**
+**STATUS: PARTIAL — clause 2 (the database claim is CHECKED) is closed; clause 1 (the anchor attests to the DOCUMENT) is OPEN. The code is shipped AND the write path has now been EXECUTED against a chain (2026-08-30 positive control, 7 captures, 7 transactions, all confirmed by receipt) — but the level CANNOT CLOSE, because the audit arm that would say so is unreachable: `anchoredHash` is written bare by the write path and `0x`-prefixed by `forensics:confirm-anchors`, so a confirmed row is invisible to `capturesAnchoredBy` and every new capture lands STALE instead of VERIFIED. See `docs/gf-positive-control-2026-08-30.md`. Attributing LEGACY anchors is explicitly NOT part of this level — see the boundary below.**
+
+#### THE POSITIVE CONTROL RAN 2026-08-30, AND FALSIFIED THE PREDICTION
+
+Full record: **`docs/gf-positive-control-2026-08-30.md`**.
+
+Seven captures of a newly tracked page were stored, anchored under `documentHash` in seven distinct
+transactions with zero twin reuse, and confirmed against Base Sepolia by receipt — `examined 7,
+confirmed 7, exit 0`, with no observed hash equal to any row's `contentHash`. **The chain writes are
+correct.** The audit then reported `VERIFIED 0 · STALE 7`, not the predicted `VERIFIED 7`.
+
+**The cause is a spelling divergence in one column.** `claimAnchor` writes `anchoredHash` as bare hex;
+`confirmAnchors` writes the log's `fileHash`, which ethers returns `0x`-prefixed. `capturesAnchoredBy`
+strips `0x` from its argument and compares against the stored value literally, so a confirmed row
+matches neither arm. `readOnChainClaim`'s snapshot count then falls 1 → 0, `onChainSourceStateHash`
+moves, and the write-time verdict goes STALE. Three consequences: **`VERIFIED` is unreachable for any
+capture**, the twin lookup is blinded (FINDING 41's shape), and the `ORPHANED_ANCHOR` regression is
+armed.
+
+Production's 8 `VERIFIED` evidence rows were never affected because `readOnChainClaim` returns on the
+`Evidence` row before consulting `capturesAnchoredBy`. **The evidence success arm works; the snapshot
+success arm has never fired because it cannot** — which explains, with a cause, an asymmetry previously
+recorded only as an observation.
+
+**No test could have caught this.** Nine repaired fixtures and a simulated-flip test all pass, because
+each spelling is internally consistent within its own writer. The divergence lives in the seam, and
+only a real execution crosses it. **Quote this the next time a positive control looks expensive.**
+
+*What closing the clause now requires:* one spelling owned in one place; a test that crosses the seam
+rather than exercising either writer alone; the seven checks re-recorded; the audit re-run to
+`VERIFIED 7 · MISATTESTING 22 · UNATTRIBUTED 91`, exit 5. Only then does the `STATUS:` line move.
 
 #### THE BOUNDARY, drawn 2026-08-30: legacy anchor attribution is Level 10, not clause 1
 
@@ -2052,7 +2082,46 @@ asserts. Recorded here so the next person does not close this level on the stren
 
 ### Level 4 — the view
 
-**STATUS: DEFERRED (2026-08-29) — rationale falsified by measurement in `d4739aa`. It needs a CONSUMER FOR THE MARKS, not code. Do not revive without new measurement.**
+**STATUS: DEFERRED (2026-08-29) — rationale falsified by measurement in `d4739aa`. It needs a CONSUMER FOR THE MARKS, not code. Do not revive without new measurement. THE NEW MEASUREMENT NOW EXISTS (2026-08-30) — see below; the deferral is ready to be reconsidered and that is the researcher's call.**
+
+#### THE MEASUREMENT THIS DEFERRAL ASKED FOR — a news page, 2026-08-30
+
+Full record: `docs/gf-positive-control-2026-08-30.md`. The Level 3 control added
+`https://news.walla.co.il/item/3403847`, the **first news page this corpus has ever held**. Government
+pages carry no ad slots; this one does, and the difference is not marginal:
+
+```
+6 diffs · 22 items · 24 chunks checked · significantDiffs 0 · contradictedDiffs 3
+```
+
+| item category | count |
+|---|---|
+| promotional links | 12 |
+| section headers (`NEWS`, `עוד בוואלה!`, `אל תפספס`) | 4 |
+| date / timestamp metadata | 4 |
+| video-caption punctuation | 2 |
+| **items changing article wording** | **0** |
+
+The article did not change between 2020-12-09 and 2025-03-26; the advertising changed seven times. The
+only item with any investigative flavour is the removal of the navigation tag `משרד הבריאות`.
+
+| corpus | contradicted | rate |
+|---|---|---|
+| production (government pages) | 2 of 13 | 15% |
+| staging (government pages) | 4 of 15 | 27% |
+| **this news page** | **3 of 6** | **50%** |
+
+One of those three consists of nothing but two rotating ad links and still produced a pipeline-defect
+verdict. **The deferral was calibrated on a corpus of one page type.**
+
+**This is not the forbidden move.** That move was widening `segmentsOf` to silence the detector. Level 4
+acts on the CLAIM rather than the CHECK, and marks rather than deletes — so chrome leaving the diff is
+not a contradiction count driven to zero by redefinition.
+
+*Also measured:* all seven captures produced seven distinct `documentHash` values **and** seven distinct
+`contentHash` values. Readability keeps this page's caption, timestamp and promo text, so on a news page
+**cost scales with ad rotation under either anchoring rule** — the twin-collapse argument is not the
+whole story, and "the document changed" stops implying "the page changed".
 
 *Invariant:* no block unique to a capture is ever classified chrome; the view is versioned and marks
 rather than deletes.
@@ -2131,6 +2200,27 @@ from the after document; a chunk said to be ADDED was absent from the before one
 *Enforcement:* the check runs at write and stores a verdict. **A `CONTRADICTED` diff is written, not
 refused** — refusing it would delete the evidence that the pipeline is wrong, which is how this was
 found. It is simply never promotable.
+
+##### TWO GAPS FOUND 2026-08-30, neither of which licenses coarsening the check
+
+**`relocated` is never consulted.** The classifier marks an item `relocated: true` when text moved
+rather than being removed — three such items in one fresh diff. The identifier appears nowhere in
+`src/lib/diffSurvival.ts` or `src/services/computeDiffSurvival.ts`. By this level's own reasoning —
+*"the stored artifact asserts to a researcher…"* — such an artifact asserts relocation, not deletion,
+so contradicting it tests a claim the record does not make. **It is not a complete explanation:** a
+second fresh diff contradicts with every item `relocated: false`, so another mechanism exists and has
+not been named.
+
+**`survivalContradicted` cannot be read from outside the database.** This level justifies the column as
+*"what disagreed — §3's pipeline-defect record, not just a count"*. `forensics:audit-survival` prints
+verdicts and never excerpts, no MCP tool exposes it, and the UI shows only the `1/5` ratio. **A
+pipeline-defect record nobody can read is a count wearing a record's description** — and it is why the
+mechanism above could be narrowed but not named. Printing the excerpts under `--verbose` is the whole
+fix.
+
+*Context for both:* the fresh contradictions came from a news page whose every detected change is
+chrome. See Level 4's 2026-08-30 measurement — the contradiction rate there is roughly double the
+government-page rate, and it is chrome-driven.
 
 #### NOBODY MAY CLOSE A CONTRADICTION BY COARSENING THIS CHECK
 
@@ -2354,6 +2444,18 @@ is a `@unique` FK — so the tool reports that a legally significant change occu
 on whether it is backed by anchored evidence. A researcher cannot distinguish *"we detected this"* from
 *"we can prove this"* without a second tool and a manual join on dates. One `include` and two fields
 per row.
+
+*And the same flat select produces a second, sharper defect, found 2026-08-30:* **`UrlVersionDiff`
+holds two representations of its own boundary** — the `beforeDate`/`afterDate` **String** columns and
+the `beforeSnapshotId`/`afterSnapshotId` **foreign keys** — and nothing enforces that they agree.
+`get_forensic_timeline` reports the strings. On the newly scanned news page it reports a diff
+`2025-02-08 → 2025-02-19` whose before-capture **was never stored**; seven stored captures admit exactly
+six consecutive boundaries, and the reported set substitutes that one for the real
+`2024-05-20 → 2025-02-19`. **The platform displays a version boundary against a capture the corpus does
+not contain, and the true interval is nine months wider.** That is worse than the gap `list_captures`
+warns about, because it *overstates* precision rather than understating it. The direction is settled by
+arithmetic; confirming it outright needs `beforeSnapshotId`'s date, which no tool exposes. The fix is to
+derive the displayed dates from the captures rather than storing them a second time.
 
 ### Level 9 — the thesis
 

@@ -6,6 +6,7 @@ import {
   attestationOf,
   capturesAnchoredBy,
   capturesKnownHashes,
+  storedAnchorHash,
 } from '../src/lib/anchoredCaptureHash';
 import { stripComments } from './detectionVersionPinned.test';
 
@@ -91,6 +92,37 @@ describe('the rule itself', () => {
     // zero rows, and zero rows turns SNAPSHOT_ANCHOR into ORPHANED_ANCHOR — a
     // correctly anchored capture reported as a custody incident.
     expect(capturesAnchoredBy('0xabc123')).toEqual(capturesAnchoredBy('abc123'));
+  });
+
+  it('no module on the anchoring path strips the prefix itself', () => {
+    // ONE NORMALISER, NOT A CONVENTION. The column had two writers and two
+    // spellings until 2026-08-30 — bare from the write path, `0x` from the
+    // transaction log — and a confirmed row then matched neither arm of
+    // `capturesAnchoredBy`, making `VERIFIED` unreachable for every snapshot.
+    //
+    // `storedAnchorHash` is now the only place that decides the spelling, and
+    // the branded return type keeps a raw string out of both write sites. This
+    // guard covers the rest: a module that writes its own `replace(/^0x/)` has
+    // re-created the second implementation whatever the types say.
+    for (const parts of ANCHORING_PATH) {
+      expect(stripComments(sourceOf(parts))).not.toMatch(/replace\(\s*\/\^0x/);
+    }
+  });
+
+  it('DETECTS a re-inlined prefix strip — proven against a decoy', () => {
+    // Same discipline as the column guard above: without a case proving the
+    // pattern still matches something, this could silently cover nothing.
+    const decoy = stripComments(`const bare = hash.replace(/^0x/, '');`);
+    expect(decoy).toMatch(/replace\(\s*\/\^0x/);
+  });
+
+  it('normalises case as well as the prefix — the two used to disagree', () => {
+    // `capturesAnchoredBy` stripped without lower-casing while `attestationOf`
+    // did both, inside the module written to end duplicate implementations.
+    expect(storedAnchorHash(`0X${'AB'.repeat(32)}`)).toBe('ab'.repeat(32));
+    expect(capturesAnchoredBy(`0X${'AB'.repeat(32)}`)).toEqual(
+      capturesAnchoredBy('ab'.repeat(32)),
+    );
   });
 
   it('selects exactly the columns the rule reads', () => {
