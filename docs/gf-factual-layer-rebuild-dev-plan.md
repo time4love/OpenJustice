@@ -2421,11 +2421,71 @@ and missed the case this work exists for; sentence granularity found 7.
 
 *Enforcement:* verified at computation, verdict stored with `DETECTION_VERSION` and `sourceStateHash`.
 
-*Carried forward:* `MIN_CLAIM_LENGTH = 40` still filters trajectory candidates — the same
-length-as-significance assumption that had to be removed from the diff classifier, surviving in a
-second subsystem. A short claim can be the load-bearing one; "אין סיכוי לחלות בקורונה בגלל החיסון" is
-not long. Changing it bumps `DETECTION_VERSION` and recomputes every trajectory, so it belongs in this
-level rather than after it.
+#### THE HREF LAYER, MEASURED 2026-08-30 — and the instrument was broken the first time
+
+**Run once, believed, and wrong.** `forensics:measure-href-changes` called `decodeDocument` without
+`inflateDocument`, so every capture whose origin served `Content-Encoding: gzip` was read as compressed
+bytes and yielded ZERO hrefs. Fixed in `77f1281`; `captureHtml` is now the only way to read a stored
+payload and a source scan holds that nothing else spells the two-step decode.
+
+| MOH page, 82 consecutive pairs | broken | **fixed** |
+|---|---|---|
+| pairs whose href set changed | 27 | **17** |
+| invisible to the derived text | 12 | **2** |
+| `https://t.me/MOHreport` flips | 13 | **0** |
+| mass swings (≥15 links at once) | 10 | **0** |
+
+**The adverse-event reporting channel was never removed** — not once, across 83 captures from 2021 to
+2026. That entire signal was a gzip header. **A defective measurement is worse than a wrong verdict: an
+audit can catch a verdict, and a plausible measurement is what a researcher builds a claim on.** This
+one pointed straight at the platform's central finding. Full record:
+`docs/gf-positive-control-2026-08-30.md`.
+
+**What the href layer actually holds, counted in the INVESTIGATION'S window rather than the corpus's:**
+
+```
+changed pairs by year   2021: 1 · 2022: 11 · 2023: 2 · 2024: 1 · 2025: 2
+within 2019–2022        12 of 17  (70%)
+```
+
+Two changes are invisible to every layer the platform reads — both link ADDITIONS whose anchor text did
+not change, so a new destination was attached to existing words:
+
+- **2022-07-08 `+ /daily-guidances/`** — inside the investigation window
+- 2024-03-05 `+ /confirmed-cases-and-patients/risk-groups/` — outside it
+
+*Recommendation, and the reasoning is the researcher's correction:* **record the href layer, do not yet
+detect on it.** "Two in 82 pairs" is the wrong denominator — the investigation is about 2019–2022, where
+70% of the activity sits. But two additions still do not make a finding stream, and building flip
+detection on a layer this thinly exercised is precisely what produced the false measurement above.
+Storing href sets per capture makes the question answerable later without re-deriving it.
+
+#### A RESEARCHER PROPOSAL, RECORDED AND NOT SCHEDULED (2026-08-30)
+
+**Tracked URLs should carry a date range, stored as part of the forensic record.** The corpus scope and
+the investigation scope are not the same thing, and today only the corpus scope exists.
+
+Two measurements from the same day show what it costs to conflate them. The FDA press page holds
+**3,036 distinct-digest captures**, of which only a fraction fall in the period of interest — and
+`start_forensic_scan` takes a URL and nothing else, so scanning it means 250 captures and 250 chain
+transactions per call with no way to say which years matter. In the other direction, every rate this
+platform reports is computed over the whole corpus, which understates density inside the window and
+overstates it outside: 2 of 82 becomes a very different number once the window is named.
+
+Storing `from`/`to` on the `TrackedUrl` makes the window an attribute of the record rather than an
+argument someone remembers to pass — so a rate can be quoted against the scope it was gathered for.
+**Not scheduled. Recorded here so it is not re-derived.**
+
+*~~Carried forward~~ — DONE 2026-08-29, and this paragraph was stale until 2026-08-30:*
+`MIN_CLAIM_LENGTH = 40` no longer filters trajectory candidates. `DETECTION_VERSION` v2 retired it for
+the containment rule, `minClaimLength` defaults to **0**, and the constant survives only so
+`forensics:measure-claim-length` can ask what the retired rule would have done — through this code path
+rather than a copy of it. The reasoning that retired it stands and is worth keeping: a short claim can
+be the load-bearing one, and "אין סיכוי לחלות בקורונה בגלל החיסון" is not long.
+
+**Corrected while writing the section above it**, because a paragraph asserting a live filter that no
+longer exists, sitting beside a new measurement, is the shape that produces a wrong recommendation from
+a confident reader.
 
 ### Level 7 — the evidence
 

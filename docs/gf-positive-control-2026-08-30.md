@@ -353,6 +353,60 @@ consulted `capturesAnchoredBy`.
 
 Closing this on production needs a `SHIP`, which is the researcher's decision and nobody else's.
 
+## 5c. THE HREF INSTRUMENT WAS BROKEN, AND ITS OUTPUT WAS A FINDING
+
+Run for the first time on 2026-08-30 as Level 6 reconnaissance, `forensics:measure-href-changes`
+reported that the MOH page's adverse-event reporting channel `https://t.me/MOHreport` **appeared and
+vanished 13 times**, that 7 captures each lost ~50 links and got them back, and that 12 changes were
+"invisible to the derived text".
+
+**None of it describes the page.** The instrument called `decodeDocument` without `inflateDocument`, so
+every capture whose origin served `Content-Encoding: gzip` was read as compressed bytes and yielded zero
+hrefs. Four call sites decode a stored payload; three inflated and one did not — and that one also never
+selected `documentContentEncoding`, so it was a missing call AND a missing column, with no type able to
+complain about either.
+
+| MOH page, 82 consecutive pairs | broken | fixed (`77f1281`) |
+|---|---|---|
+| pairs whose href set changed | 27 | **17** |
+| invisible to the derived text | 12 | **2** |
+| `t.me/MOHreport` flips | 13 | **0** |
+| mass swings (≥15 links at once) | 10 | **0** |
+
+**The reporting channel was never removed**, across 83 captures from 2021 to 2026.
+
+**Three readings were needed to get there, and the first two were wrong:** "partial captures" (no — the
+thin captures are LARGER and all return 200), then "two document variants" (no — both decode to the same
+50,651 bytes), then the missing inflate (yes, and verified). The corroboration was in the instrument's
+own output the whole time: it labelled those boundaries `INVISIBLE TO TEXT`, meaning the text layer saw
+no change there — because `deriveText` inflates.
+
+**The lesson is sharper than "there was a bug".** A wrong verdict can be caught by an audit. **A
+defective measurement that looks plausible is what a researcher builds a claim on**, and this one
+pointed straight at the platform's central finding. The instrument had never been run before, so there
+was no earlier output to disagree with it — the same shape as a success arm that has never fired.
+
+The fix is `captureHtml`, the single way to read a stored payload, with `DECODABLE_CAPTURE_SELECT` so a
+caller that omits the encoding column cannot build the argument. **Every fixture in its test suite is
+compressed**, deliberately: an uncompressed payload decodes correctly with or without the inflate, so an
+uncompressed fixture cannot fail — which is exactly why nothing caught this.
+
+### What the href layer holds, counted in the investigation's window
+
+The corpus spans 2021–2026; the investigation is about 2019–2022. Quoting a rate over the corpus
+understates density inside the window:
+
+```
+changed pairs by year   2021: 1 · 2022: 11 · 2023: 2 · 2024: 1 · 2025: 2
+within 2019–2022        12 of 17  (70%)
+```
+
+The two changes invisible to every layer the platform reads are both link ADDITIONS whose anchor text
+did not change — a new destination attached to existing words:
+
+- **2022-07-08 `+ /daily-guidances/`** — inside the investigation window
+- 2024-03-05 `+ /confirmed-cases-and-patients/risk-groups/` — outside it
+
 ## 6. What did NOT happen
 
 - **No legacy state was touched.** `confirm-anchors` selects `anchorCheck: null`, and `--recheck` was
