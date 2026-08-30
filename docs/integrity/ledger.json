@@ -18,12 +18,19 @@
     "",
     "NEVER write a lastRun that was not observed. `null` means nobody has recorded a run — which",
     "is an honest state and the whole point of the board. Stamping a believed value here would be",
-    "the same defect as backfilling anchoredHash from the column the code happens to anchor."
+    "the same defect as backfilling anchoredHash from the column the code happens to anchor.",
+    "",
+    "B6, 2026-08-30: runs now RECORD THEMSELVES. runOperationalScript emits an",
+    "INTEGRITY-LEDGER-RECORD block containing only observed values — the commit and",
+    "deployment id the CONTAINER read, never a SHA typed from memory. A hand-written",
+    "commit makes staleness silently wrong in the reassuring direction. Ingest with",
+    "`node tools/integrity-board/record.mjs <log>`. Entries still carrying",
+    "outcomeSource: transcribed-2026-08-30 were written by hand before this existed.",
+    "`exitMeans` is the one declared human input: what a non-zero exit MEANS for this",
+    "check, decided once rather than re-judged per run."
   ],
-
   "generatedFor": "docs/gf-factual-layer-rebuild-dev-plan.md",
   "backendRoot": "apps/glass-fortress/backend",
-
   "outcomeMeanings": {
     "CLEAN": "Ran to completion and everything it checks held.",
     "PASS_WITH_KNOWN_LEGACY": "Non-zero exit that is CORRECT: the failures it reports are legacy state explicitly out of this level's scope.",
@@ -31,7 +38,6 @@
     "BLOCKED": "Cannot pass for a reason outside the check itself.",
     "UNRECORDED": "May have run before this ledger existed. Not evidence either way."
   },
-
   "checks": [
     {
       "id": "verify-against-cdx",
@@ -50,7 +56,12 @@
         "environment": "both",
         "exit": 0,
         "outcome": "UNRECORDED",
-        "summary": "Level 1 was closed against the Archive's own digest in both environments. The run predates this ledger, so its commit is unrecorded — the date is from the plan, not from an observation recorded here."
+        "summary": "Level 1 was closed against the Archive's own digest in both environments. The run predates this ledger, so its commit is unrecorded — the date is from the plan, not from an observation recorded here.",
+        "outcomeSource": "transcribed-2026-08-30"
+      },
+      "runner": "verifyAgainstCdx",
+      "exitMeans": {
+        "0": "CLEAN"
       }
     },
     {
@@ -59,14 +70,22 @@
       "role": "invariant",
       "claim": "schema.prisma and the live database have not drifted.",
       "command": "npm run db:check-drift",
-      "dependsOn": ["prisma/schema.prisma", "prisma/migrations"],
+      "dependsOn": [
+        "prisma/schema.prisma",
+        "prisma/migrations"
+      ],
       "lastRun": {
         "commit": "199eac6",
         "at": "2026-08-30",
         "environment": "staging",
         "exit": 0,
         "outcome": "CLEAN",
-        "summary": "No difference detected. Run before writing the anchoredHash normalisation migration, as the migration rules require."
+        "summary": "No difference detected. Run before writing the anchoredHash normalisation migration, as the migration rules require.",
+        "outcomeSource": "transcribed-2026-08-30"
+      },
+      "exitMeans": {
+        "0": "CLEAN",
+        "2": "FINDING"
       }
     },
     {
@@ -75,14 +94,23 @@
       "role": "invariant",
       "claim": "Every migration in the ledger applied and took.",
       "command": "npm run db:verify-migrations",
-      "dependsOn": ["scripts/verifyMigrations.js", "prisma/migrations"],
+      "dependsOn": [
+        "scripts/verifyMigrations.js",
+        "prisma/migrations"
+      ],
       "lastRun": {
         "commit": null,
         "at": "2026-08-29",
         "environment": "staging",
         "exit": 1,
         "outcome": "BLOCKED",
-        "summary": "Cannot pass: pgcrypto is undeclared. A finding about the check, not about the migrations."
+        "summary": "Cannot pass: pgcrypto is undeclared. A finding about the check, not about the migrations.",
+        "outcomeSource": "transcribed-2026-08-30"
+      },
+      "runner": "verifyMigrations",
+      "exitMeans": {
+        "0": "CLEAN",
+        "1": "BLOCKED"
       }
     },
     {
@@ -91,14 +119,22 @@
       "role": "invariant",
       "claim": "admitUrl is the only path to a TrackedUrl.",
       "command": "npx jest test/urlAdmission.test.ts",
-      "dependsOn": ["src/services/admitUrl.ts", "src/utils/webScraper.ts"],
+      "dependsOn": [
+        "src/services/admitUrl.ts",
+        "src/utils/webScraper.ts"
+      ],
       "lastRun": {
         "commit": "d6b6fda",
         "at": "2026-08-30",
         "environment": "local",
         "exit": 0,
         "outcome": "FINDING",
-        "summary": "The source scan holds. But utm_* is stripped only for the FETCH, not for admission, so the URL judged and the URL stored can differ. Level 2 is REOPENED for a separate reason (create_evidence_from_url bypasses the gate)."
+        "summary": "The source scan holds. But utm_* is stripped only for the FETCH, not for admission, so the URL judged and the URL stored can differ. Level 2 is REOPENED for a separate reason (create_evidence_from_url bypasses the gate).",
+        "outcomeSource": "transcribed-2026-08-30"
+      },
+      "exitMeans": {
+        "0": "CLEAN",
+        "1": "FINDING"
       }
     },
     {
@@ -119,7 +155,13 @@
         "environment": "staging",
         "exit": 5,
         "outcome": "PASS_WITH_KNOWN_LEGACY",
-        "summary": "VERIFIED 7 · MISATTESTING 22 · UNATTRIBUTED 91 · STALE 0. The 7 are the positive control's captures — the first time this arm has ever fired. Exit 5 is correct: 113 legacy subjects are unsuperseded, which is Level 10's."
+        "summary": "VERIFIED 7 · MISATTESTING 22 · UNATTRIBUTED 91 · STALE 0. The 7 are the positive control's captures — the first time this arm has ever fired. Exit 5 is correct: 113 legacy subjects are unsuperseded, which is Level 10's.",
+        "outcomeSource": "transcribed-2026-08-30"
+      },
+      "runner": "auditOnChainAnchors",
+      "exitMeans": {
+        "0": "CLEAN",
+        "5": "PASS_WITH_KNOWN_LEGACY"
       }
     },
     {
@@ -139,7 +181,15 @@
         "environment": "staging",
         "exit": 0,
         "outcome": "CLEAN",
-        "summary": "7 of 7 confirmed by receipt. Ran on the deployment BEFORE the anchoredHash spelling fix, so its dependencies have since moved — the board should show this stale, and it is."
+        "summary": "7 of 7 confirmed by receipt. Ran on the deployment BEFORE the anchoredHash spelling fix, so its dependencies have since moved — the board should show this stale, and it is.",
+        "outcomeSource": "transcribed-2026-08-30"
+      },
+      "runner": "confirmAnchors",
+      "exitMeans": {
+        "0": "CLEAN",
+        "1": "FINDING",
+        "2": "FINDING",
+        "3": "FINDING"
       }
     },
     {
@@ -153,7 +203,12 @@
         "src/lib/diffSurvival.ts",
         "src/services/computeDiffSurvival.ts"
       ],
-      "lastRun": null
+      "lastRun": null,
+      "runner": "auditDiffSurvival",
+      "exitMeans": {
+        "0": "CLEAN",
+        "4": "FINDING"
+      }
     },
     {
       "id": "trajectory-flip-confirmation",
@@ -161,7 +216,9 @@
       "role": "invariant",
       "claim": "Every reported flip is confirmed against the documents at that boundary.",
       "command": null,
-      "dependsOn": ["src/services/claimTrajectory.ts"],
+      "dependsOn": [
+        "src/services/claimTrajectory.ts"
+      ],
       "lastRun": null,
       "note": "No check exists. This is the level's invariant and nothing enforces it. Blocked: two claims are strings the page never contained, so the confirmation would fail for a reason the corpus must fix first."
     },
@@ -171,7 +228,9 @@
       "role": "invariant",
       "claim": "Evidence identity is recomputable from its captures; summaries attribute nothing absent.",
       "command": null,
-      "dependsOn": ["src/services/forensicEvidence.ts"],
+      "dependsOn": [
+        "src/services/forensicEvidence.ts"
+      ],
       "lastRun": null
     },
     {
@@ -180,7 +239,9 @@
       "role": "invariant",
       "claim": "Nothing presents a model's judgement as a computed fact.",
       "command": null,
-      "dependsOn": ["src/services/ForensicAgent.ts"],
+      "dependsOn": [
+        "src/services/ForensicAgent.ts"
+      ],
       "lastRun": null
     },
     {
@@ -189,7 +250,9 @@
       "role": "invariant",
       "claim": "A thesis cites nothing that is not VERIFIED.",
       "command": null,
-      "dependsOn": ["src/services/thesisPublication.ts"],
+      "dependsOn": [
+        "src/services/thesisPublication.ts"
+      ],
       "lastRun": null
     },
     {
@@ -198,24 +261,34 @@
       "role": "invariant",
       "claim": "Every anchored hash stays explainable forever.",
       "command": null,
-      "dependsOn": ["src/lib/anchoredCaptureHash.ts"],
+      "dependsOn": [
+        "src/lib/anchoredCaptureHash.ts"
+      ],
       "lastRun": null
     },
-
     {
       "id": "compare-detection-layers",
       "level": 6,
       "role": "instrument",
       "claim": "What would change if detection read the document instead of the extraction.",
       "command": "npm run forensics:compare-detection-layers -- --env <env> --url <url>",
-      "dependsOn": ["src/services/claimTrajectory.ts", "scripts/compareDetectionLayers.ts"],
+      "dependsOn": [
+        "src/services/claimTrajectory.ts",
+        "scripts/compareDetectionLayers.ts"
+      ],
       "lastRun": {
         "commit": "d6b6fda",
         "at": "2026-08-30",
         "environment": "staging",
         "exit": 3,
         "outcome": "FINDING",
-        "summary": "LOST 2 · GAINED 0 · SHAPE CHANGED 0. The flip is strictly worse, and the gain is zero by construction. The 2 lost are 352 and 567 characters — strings the page never contained, stitched by Readability across a heading it drops."
+        "summary": "LOST 2 · GAINED 0 · SHAPE CHANGED 0. The flip is strictly worse, and the gain is zero by construction. The 2 lost are 352 and 567 characters — strings the page never contained, stitched by Readability across a heading it drops.",
+        "outcomeSource": "transcribed-2026-08-30"
+      },
+      "runner": "compareDetectionLayers",
+      "exitMeans": {
+        "0": "CLEAN",
+        "3": "FINDING"
       }
     },
     {
@@ -224,14 +297,22 @@
       "role": "instrument",
       "claim": "Href-only changes that no text-layer check could ever report.",
       "command": "npm run forensics:measure-href-changes -- --env <env> --url <url>",
-      "dependsOn": ["src/services/measureHrefChanges.ts", "src/lib/captureDocument.ts"],
+      "dependsOn": [
+        "src/services/measureHrefChanges.ts",
+        "src/lib/captureDocument.ts"
+      ],
       "lastRun": {
         "commit": "77f1281",
         "at": "2026-08-30",
         "environment": "staging",
         "exit": 0,
         "outcome": "FINDING",
-        "summary": "17 of 82 pairs changed, 2 invisible to the derived text. Its first run — before the decode fix — reported 27 and 12, including a government reporting channel vanishing 13 times. It never did."
+        "summary": "17 of 82 pairs changed, 2 invisible to the derived text. Its first run — before the decode fix — reported 27 and 12, including a government reporting channel vanishing 13 times. It never did.",
+        "outcomeSource": "transcribed-2026-08-30"
+      },
+      "runner": "measureHrefChanges",
+      "exitMeans": {
+        "0": "CLEAN"
       }
     }
   ]

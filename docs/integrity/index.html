@@ -257,7 +257,7 @@
     <h1>Factual Layer Survey</h1>
     <p class="standfirst">Eleven levels, drawn as strata because they rest on one another. <b>Colour is what the plan claims. Bar length is how much of that claim has actually been proved.</b> A level can be green and nearly empty — that is the state worth seeing.</p>
     <p class="datestamp">
-      <span>GENERATED FROM d6b6fda</span>
+      <span>GENERATED FROM 5970c35</span>
       <span>2026-08-30</span>
       <span>no database · no chain · no model</span>
     </p>
@@ -365,31 +365,31 @@
             <td class="k">1 · verify-against-cdx</td>
             <td>Every stored capture matches the Archive's own digest.</td>
             <td><code>npm run forensics:verify-against-cdx -- --env &lt;env&gt;</code></td>
-            <td><span class="ran">2026-08-28</span> <span class="dim">@ <code>—</code> · exit 0 · UNRECORDED</span><p class="sum">Level 1 was closed against the Archive's own digest in both environments. The run predates this ledger, so its commit is unrecorded — the date is from the plan, not from an observation recorded here.</p></td>
+            <td><span class="ran">2026-08-28</span> <span class="dim">@ <code>—</code> · exit 0 · UNRECORDED</span> <span class="pill" title="written by hand before runs recorded themselves">transcribed</span><p class="sum">Level 1 was closed against the Archive's own digest in both environments. The run predates this ledger, so its commit is unrecorded — the date is from the plan, not from an observation recorded here.</p></td>
           </tr>
           <tr class="ran">
             <td class="k">1 · check-drift</td>
             <td>schema.prisma and the live database have not drifted.</td>
             <td><code>npm run db:check-drift</code></td>
-            <td><span class="ran">2026-08-30</span> <span class="dim">@ <code>199eac6</code> · exit 0 · CLEAN</span><p class="sum">No difference detected. Run before writing the anchoredHash normalisation migration, as the migration rules require.</p></td>
+            <td><span class="ran">2026-08-30</span> <span class="dim">@ <code>199eac6</code> · exit 0 · CLEAN</span> <span class="pill" title="written by hand before runs recorded themselves">transcribed</span><p class="sum">No difference detected. Run before writing the anchoredHash normalisation migration, as the migration rules require.</p></td>
           </tr>
           <tr class="ran">
             <td class="k">1 · verify-migrations</td>
             <td>Every migration in the ledger applied and took.</td>
             <td><code>npm run db:verify-migrations</code></td>
-            <td><span class="ran">2026-08-29</span> <span class="dim">@ <code>—</code> · exit 1 · BLOCKED</span><p class="sum">Cannot pass: pgcrypto is undeclared. A finding about the check, not about the migrations.</p></td>
+            <td><span class="ran">2026-08-29</span> <span class="dim">@ <code>—</code> · exit 1 · BLOCKED</span> <span class="pill" title="written by hand before runs recorded themselves">transcribed</span><p class="sum">Cannot pass: pgcrypto is undeclared. A finding about the check, not about the migrations.</p></td>
           </tr>
           <tr class="ran">
             <td class="k">2 · url-admission</td>
             <td>admitUrl is the only path to a TrackedUrl.</td>
             <td><code>npx jest test/urlAdmission.test.ts</code></td>
-            <td><span class="ran">2026-08-30</span> <span class="dim">@ <code>d6b6fda</code> · exit 0 · FINDING</span><p class="sum">The source scan holds. But utm_* is stripped only for the FETCH, not for admission, so the URL judged and the URL stored can differ. Level 2 is REOPENED for a separate reason (create_evidence_from_url bypasses the gate).</p></td>
+            <td><span class="ran">2026-08-30</span> <span class="dim">@ <code>d6b6fda</code> · exit 0 · FINDING</span> <span class="pill" title="written by hand before runs recorded themselves">transcribed</span><p class="sum">The source scan holds. But utm_* is stripped only for the FETCH, not for admission, so the URL judged and the URL stored can differ. Level 2 is REOPENED for a separate reason (create_evidence_from_url bypasses the gate).</p></td>
           </tr>
           <tr class="ran">
             <td class="k">3 · audit-anchors</td>
             <td>Every anchoring claim carries a current verdict about the hash the rule names.</td>
             <td><code>npm run forensics:audit-anchors -- --env &lt;env&gt;</code></td>
-            <td><span class="ran">2026-08-30</span> <span class="dim">@ <code>3c0e639</code> · exit 5 · PASS_WITH_KNOWN_LEGACY</span><p class="sum">VERIFIED 7 · MISATTESTING 22 · UNATTRIBUTED 91 · STALE 0. The 7 are the positive control's captures — the first time this arm has ever fired. Exit 5 is correct: 113 legacy subjects are unsuperseded, which is Level 10's.</p></td>
+            <td><span class="ran">2026-08-30</span> <span class="dim">@ <code>3c0e639</code> · exit 5 · PASS_WITH_KNOWN_LEGACY</span> <span class="pill" title="written by hand before runs recorded themselves">transcribed</span><p class="sum">VERIFIED 7 · MISATTESTING 22 · UNATTRIBUTED 91 · STALE 0. The 7 are the positive control's captures — the first time this arm has ever fired. Exit 5 is correct: 113 legacy subjects are unsuperseded, which is Level 10's.</p></td>
           </tr>
           <tr class="stale">
             <td class="k">3 · confirm-anchors</td>
@@ -437,13 +437,13 @@
             <td class="k">6 · compare-detection-layers</td>
             <td><span class="pill">instrument</span> What would change if detection read the document instead of the extraction.</td>
             <td><code>npm run forensics:compare-detection-layers -- --env &lt;env&gt; --url &lt;url&gt;</code></td>
-            <td><span class="ran">2026-08-30</span> <span class="dim">@ <code>d6b6fda</code> · exit 3 · FINDING</span><p class="sum">LOST 2 · GAINED 0 · SHAPE CHANGED 0. The flip is strictly worse, and the gain is zero by construction. The 2 lost are 352 and 567 characters — strings the page never contained, stitched by Readability across a heading it drops.</p></td>
+            <td><span class="ran">2026-08-30</span> <span class="dim">@ <code>d6b6fda</code> · exit 3 · FINDING</span> <span class="pill" title="written by hand before runs recorded themselves">transcribed</span><p class="sum">LOST 2 · GAINED 0 · SHAPE CHANGED 0. The flip is strictly worse, and the gain is zero by construction. The 2 lost are 352 and 567 characters — strings the page never contained, stitched by Readability across a heading it drops.</p></td>
           </tr>
           <tr class="ran">
             <td class="k">6 · measure-href-changes</td>
             <td><span class="pill">instrument</span> Href-only changes that no text-layer check could ever report.</td>
             <td><code>npm run forensics:measure-href-changes -- --env &lt;env&gt; --url &lt;url&gt;</code></td>
-            <td><span class="ran">2026-08-30</span> <span class="dim">@ <code>77f1281</code> · exit 0 · FINDING</span><p class="sum">17 of 82 pairs changed, 2 invisible to the derived text. Its first run — before the decode fix — reported 27 and 12, including a government reporting channel vanishing 13 times. It never did.</p></td>
+            <td><span class="ran">2026-08-30</span> <span class="dim">@ <code>77f1281</code> · exit 0 · FINDING</span> <span class="pill" title="written by hand before runs recorded themselves">transcribed</span><p class="sum">17 of 82 pairs changed, 2 invisible to the derived text. Its first run — before the decode fix — reported 27 and 12, including a government reporting channel vanishing 13 times. It never did.</p></td>
           </tr>
         </tbody>
       </table>
