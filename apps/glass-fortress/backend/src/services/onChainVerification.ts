@@ -17,6 +17,7 @@ import {
 import { Web3Service } from './Web3Service';
 import { normaliseAddress } from '../lib/anchoringTarget';
 import { readChainIdentity } from '../lib/chainIdentity';
+import { capturesAnchoredBy } from '../lib/anchoredCaptureHash';
 
 /**
  * LEVEL 3a — THE CHECK RUNS ON THE WRITE PATH, AND ITS VERDICT IS STORED.
@@ -106,12 +107,14 @@ export async function readOnChainClaim(fileHash: string): Promise<OnChainClaim> 
   // Only when there is no Evidence row. A hash is one or the other, and the
   // query is skipped in the common case so the check costs what it did before.
   //
-  // `contentHash` is stored bare hex while fileHash is 0x-prefixed — the same
-  // mismatch that made snapshot anchoring silently fail for 83 snapshots by
-  // passing bare hex where bytes32 was required.
+  // `capturesAnchoredBy` owns both which column is asked and the 0x strip. That
+  // strip is load-bearing: fileHash carries the prefix and the capture columns do
+  // not, and a lookup returning zero rows here turns SNAPSHOT_ANCHOR into
+  // ORPHANED_ANCHOR — reporting every correctly anchored capture as a custody
+  // incident, which has already happened to 12 of production's 19 registrations.
   const snapshots = record
     ? 0
-    : await prisma.urlSnapshot.count({ where: { contentHash: fileHash.replace(/^0x/, '') } });
+    : await prisma.urlSnapshot.count({ where: capturesAnchoredBy(fileHash) });
 
   return {
     inVault: Boolean(record),

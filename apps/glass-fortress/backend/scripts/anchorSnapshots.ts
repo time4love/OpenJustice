@@ -95,7 +95,7 @@ async function main(): Promise<void> {
         '    Copy-only refused to publish them. Each would cost one transaction.\n' +
         '    Distinct content hashes needing registration:',
     );
-    for (const h of new Set(report.needsRegistration.map((n) => n.contentHash))) {
+    for (const h of new Set(report.needsRegistration.map((n) => n.anchoredHash))) {
       console.warn(`      ${h}`);
     }
   }

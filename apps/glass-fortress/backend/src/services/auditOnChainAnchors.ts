@@ -8,6 +8,16 @@ import { prisma } from '../lib/prisma';
 import { ON_CHAIN_CHECK_VERSION, onChainSourceStateHash } from '../lib/onChainVerdict';
 import { anchoringTarget, chainProvenanceGap, type AnchoringTarget } from '../lib/anchoringTarget';
 import { readOnChainClaim } from './onChainVerification';
+import {
+  ANCHORABLE_CAPTURE_SELECT,
+  CAPTURE_HASHES_SELECT,
+  anchoredCaptureHash,
+  attestationOf,
+  capturesKnownHashes,
+  hashUnderAudit,
+  type AnchorAttestation,
+} from '../lib/anchoredCaptureHash';
+import { toBytes32 } from '../lib/bytes32';
 
 /**
  * LEVEL 3a's MEASUREMENT — is every anchoring claim in this corpus CHECKED, and
@@ -67,7 +77,45 @@ export type AnchorCheckState =
    * moved, so both existing axes reported every one of them current. What was
    * wrong was the question, not the answer.
    */
-  | 'STALE';
+  | 'STALE'
+  /**
+   * The verdict is current and correct, and what the anchor ATTESTS TO is not
+   * what the current rule requires.
+   *
+   * A different question from every state above, all of which ask whether the
+   * CHECK is good. This asks whether the thing checked is the right thing —
+   * exactly the gap the plan warns about: "Do not read a clean anchor audit as
+   * Level 3 being done. It is silent on WHAT was anchored, and would stay green
+   * if the answer were a hash of the page title."
+   *
+   * Two causes, distinguished in the reason because their remedies are opposite:
+   * an anchor made under a SUPERSEDED rule is explainable and Level 10's to
+   * supersede; one attesting a hash the subject does not have by any rule is
+   * misanchored and is a custody incident.
+   */
+  | 'MISATTESTING'
+  /**
+   * The subject claims an anchor and WHAT that anchor attests has never been
+   * observed. Not a pass, and not a failure of the check either.
+   *
+   * This replaced a FALLBACK, and the fallback was the defect. An unconfirmed row
+   * used to be audited against the hash the CURRENT RULE names — sound only while
+   * the rule had not moved. Level 3 clause 1 moved it, and 91 staging subjects
+   * were then judged against a `documentHash` that nothing ever registered. They
+   * showed STALE, whose documented remedy is to re-check — and a re-check would
+   * have minted a confident `SNAPSHOT_UNANCHORED` verdict about captures that are
+   * correctly anchored.
+   *
+   * That is the self-healing-finding shape: a true finding that the standard
+   * remediation launders into a durable false one. The answer is to stop
+   * guessing. A row with no recorded anchor has no hash to be judged on, and
+   * saying so is the honest verdict.
+   *
+   * `forensics:confirm-anchors` is what clears it — where the chain still
+   * remembers. Where it does not, the row stays here permanently, which is a true
+   * statement about the corpus rather than an absence.
+   */
+  | 'UNATTRIBUTED';
 
 export interface AnchorSubjectRow extends AnchorClaimingSubject {
   state: AnchorCheckState;
@@ -112,6 +160,21 @@ export interface AnchorAuditReport {
    * must not be silently swallowed by a query that joins them away.
    */
   danglingChecks: { subjectType: IntegrityCheckSubject; subjectId: string }[];
+  /**
+   * ANCHORING CLAIMS NOT YET CONFIRMED AGAINST THEIR OWN TRANSACTION.
+   *
+   * A subject counted here is audited against what the CURRENT RULE expects its
+   * transaction registered, never against what the transaction says. That is
+   * sound only while the rule has not moved, so this number is the gate on
+   * moving it: Level 3 clause 1 may not flip the anchor in an environment where
+   * it is non-zero, or every legacy row is judged against a hash nothing
+   * registered and a perfectly anchored corpus reports SNAPSHOT_UNANCHORED.
+   *
+   * Reported rather than merely available, because the check that would catch
+   * the mistake is the one nobody runs. `forensics:confirm-anchors` drives it to
+   * zero by observation.
+   */
+  anchorsUnconfirmed: number;
 }
 
 export interface CheckHistory {
@@ -135,6 +198,8 @@ const EMPTY_STATES: Record<AnchorCheckState, number> = {
   UNAVAILABLE: 0,
   UNCHECKED: 0,
   STALE: 0,
+  MISATTESTING: 0,
+  UNATTRIBUTED: 0,
 };
 
 /** A subject that asserts an anchor, and the hash the assertion is about. */
@@ -142,6 +207,19 @@ export interface AnchorClaimingSubject {
   subjectType: IntegrityCheckSubject;
   subjectId: string;
   fileHash: string;
+  /**
+   * Whether `fileHash` is what the row's TRANSACTION registered, or only what
+   * the current rule expects it to have registered.
+   *
+   * Carried rather than collapsed because the two are different kinds of answer.
+   * An unconfirmed subject is audited against an expectation, and that
+   * expectation stops being true the moment the anchoring rule moves — so the
+   * count of them is the gate on moving it. `forensics:confirm-anchors` is what
+   * turns one into the other.
+   */
+  anchorConfirmed: boolean;
+  /** What the recorded anchor attests to, relative to the rule in force now. */
+  attestation: AnchorAttestation;
 }
 
 /**
@@ -155,32 +233,121 @@ export interface AnchorClaimingSubject {
  * `onChainTxHash: null` is a capture that says it is not anchored, which is an
  * honest state and a different problem (`countUnanchoredSnapshots`).
  */
+/**
+ * WHAT EACH STATE MEANS, as a `Record` over every state.
+ *
+ * A Record, not a list, so the COMPILER requires an entry when a state is added.
+ * The summary block used to hand-list five states; `MISATTESTING` was added to
+ * the model and the exit code and forgotten here, so a staging run printed
+ * `8 VERIFIED + 83 STALE` against `113 subjects` and 22 rows were simply absent
+ * from the only place a human reads. Same class of defect as the one that run
+ * was reporting.
+ */
+const STATE_MEANING: Record<AnchorCheckState, string> = {
+  VERIFIED: 'a current verdict, about the hash the rule names',
+  CONTRADICTED: 'chain and database disagree',
+  UNAVAILABLE: 'chain unreachable — NOT a pass',
+  UNCHECKED: 'no verdict ever recorded — NOT a pass',
+  STALE: 'the claim moved, the rule moved, or the verdict does not name this chain',
+  MISATTESTING: 'anchored to a hash the current rule does not name — explainable is not passing',
+  UNATTRIBUTED: 'claims an anchor; what it attests has never been observed',
+};
+
+/**
+ * The coverage block, as one string.
+ *
+ * Built here rather than printed line by line so it is testable and so nothing
+ * else can interleave with it — the same two reasons as
+ * `formatConfirmAnchorsSummary`, and the second one has already corrupted a
+ * count in this repository once.
+ */
+export function formatAnchorAuditSummary(report: AnchorAuditReport): string {
+  const width = Math.max(...Object.keys(STATE_MEANING).map((k) => k.length));
+  const lines = ['', 'Level 3a — anchor check coverage', ''];
+  lines.push(`Subjects claiming an anchor   ${String(report.subjects)}`);
+
+  // Every state, from the record. A state that exists but is never printed is a
+  // state whose subjects vanish from the report.
+  let counted = 0;
+  for (const [state, meaning] of Object.entries(STATE_MEANING)) {
+    const n = report.byState[state as AnchorCheckState];
+    counted += n;
+    lines.push(`  ${state.padEnd(width)}  ${String(n).padStart(4)}   (${meaning})`);
+  }
+
+  // THE STATES MUST ACCOUNT FOR EVERY SUBJECT. Nothing else in this report would
+  // show a subject that reached no state, and a reader adding the column up and
+  // finding it short has no way to tell whether the run lost one or the printer did.
+  if (counted !== report.subjects) {
+    lines.push(
+      '',
+      `⚠️  the states account for ${String(counted)} of ${String(report.subjects)} subjects. ` +
+        'They must be equal — a state is missing from this report, or a subject reached none.',
+    );
+  }
+
+  lines.push('', `Verifier version              ${report.currentVerifierVersion}`);
+  return lines.join('\n');
+}
+
 export async function auditOnChainAnchorSubjects(): Promise<AnchorClaimingSubject[]> {
   const [evidence, snapshots] = await Promise.all([
     prisma.evidence.findMany({
       where: { status: 'CONFIRMED' },
-      select: { id: true, fileHash: true },
+      // `previousFileHash` is the superseded identity — an anchor still pointing
+      // at it attests something this record really was, which is explainable
+      // rather than wrong. Selecting it is what lets those be told apart.
+      select: { id: true, fileHash: true, previousFileHash: true, anchoredHash: true },
     }),
     prisma.urlSnapshot.findMany({
       where: { NOT: { onChainTxHash: null } },
-      select: { id: true, contentHash: true },
+      select: {
+        id: true,
+        anchoredHash: true,
+        ...ANCHORABLE_CAPTURE_SELECT,
+        ...CAPTURE_HASHES_SELECT,
+      },
     }),
   ]);
 
+  // RECORDED FIRST, RULE ONLY AS A STATED FALLBACK — `hashUnderAudit` decides,
+  // and it is the same decision for both subject types.
+  //
+  // An audit that derived the hash from the current rule alone would keep
+  // auditing the NEW hash after the anchor moved, against legacy rows anchored
+  // under the old one, and report SNAPSHOT_UNANCHORED for a corpus that is
+  // perfectly anchored. Normalised to the 0x form the check stores and the
+  // contract speaks: the capture columns are bare hex, and that mismatch is what
+  // made 83 anchorings silently no-op.
   return [
-    ...evidence.map((e) => ({
-      subjectType: IntegrityCheckSubject.EVIDENCE,
-      subjectId: e.id,
-      fileHash: e.fileHash,
-    })),
-    ...snapshots.map((s) => ({
-      subjectType: IntegrityCheckSubject.URL_SNAPSHOT,
-      subjectId: s.id,
-      // Normalised to the form the check stores and the contract speaks.
-      // `contentHash` is bare hex, and the mismatch between the two is exactly
-      // what made 83 anchorings silently no-op.
-      fileHash: s.contentHash.startsWith('0x') ? s.contentHash : `0x${s.contentHash}`,
-    })),
+    ...evidence.map((e) => {
+      const { hash, confirmed } = hashUnderAudit(e, e.fileHash);
+      return {
+        subjectType: IntegrityCheckSubject.EVIDENCE,
+        subjectId: e.id,
+        fileHash: toBytes32(hash),
+        anchorConfirmed: confirmed,
+        attestation: attestationOf({
+          anchoredHash: e.anchoredHash,
+          current: e.fileHash,
+          known: e.previousFileHash === null ? [e.fileHash] : [e.fileHash, e.previousFileHash],
+        }),
+      };
+    }),
+    ...snapshots.map((s) => {
+      const { hash, confirmed } = hashUnderAudit(s, anchoredCaptureHash(s));
+      return {
+        subjectType: IntegrityCheckSubject.URL_SNAPSHOT,
+        subjectId: s.id,
+        fileHash: toBytes32(hash),
+        anchorConfirmed: confirmed,
+        attestation: attestationOf({
+          anchoredHash: s.anchoredHash,
+          current: anchoredCaptureHash(s),
+          known: capturesKnownHashes(s),
+        }),
+      };
+    }),
   ];
 }
 
@@ -251,6 +418,7 @@ export async function auditOnChainAnchors(
       provenanceIncomplete: checks.filter((c) => chainProvenanceGap(c, target) !== null).length,
     },
     danglingChecks,
+    anchorsUnconfirmed: subjects.filter((s) => !s.anchorConfirmed).length,
   };
 }
 
@@ -273,7 +441,65 @@ async function classify(
     subjectType: subject.subjectType,
     subjectId: subject.subjectId,
     fileHash: subject.fileHash,
+    // Carried through every state, including UNCHECKED and STALE. Whether the
+    // hash was OBSERVED from the transaction is a fact about the subject, not
+    // about the verdict, so a row that has no current verdict still has to say
+    // which kind of hash it is being judged on.
+    anchorConfirmed: subject.anchorConfirmed,
+    attestation: subject.attestation,
   };
+
+  // WHAT WAS ANCHORED — judged FIRST, before anything about the check.
+  //
+  // The first draft put this after the staleness gates and it was wrong, in a way
+  // worth keeping: auditing a row on its recorded `anchoredHash` moves the claim,
+  // so a misattesting subject came out STALE. Re-checking it would then clear the
+  // staleness and mint a fresh, current verdict about the superseded hash — and
+  // the row would read VERIFIED forever. The finding would have repaired itself
+  // into silence.
+  //
+  // Attestation is a property of the SUBJECT, not of any verdict: what this
+  // row's anchor attests to does not depend on whether a check exists or how old
+  // it is. So it is asked before the check is consulted at all.
+  //
+  // UNCONFIRMED falls through untouched. It is every row until
+  // `forensics:confirm-anchors` has run, and it is not a claim about what was
+  // anchored — `anchorsUnconfirmed` counts it instead.
+  // NO RECORDED ANCHOR, SO NOTHING TO JUDGE — asked before the check, for the
+  // same reason MISATTESTING is: this is a property of the subject.
+  //
+  // What stood here was a fallback to the current rule's hash, and it was wrong
+  // the moment the rule moved. Guessing produced a verdict about a hash nothing
+  // registered, and the STALE it caused invited a re-check that would have made
+  // it worse.
+  if (subject.attestation === 'UNCONFIRMED') {
+    return {
+      ...base,
+      state: 'UNATTRIBUTED',
+      checkedAt: check?.checkedAt.toISOString() ?? null,
+      onChainVerdict: null,
+      staleReason:
+        'This subject claims an anchor and what that anchor attests has never been observed. ' +
+        'Run forensics:confirm-anchors; where the chain no longer remembers the transaction, ' +
+        'this is permanent and true rather than a gap to be closed.',
+    };
+  }
+
+  if (subject.attestation === 'ATTESTS_SUPERSEDED' || subject.attestation === 'UNRECOGNISED') {
+    return {
+      ...base,
+      state: 'MISATTESTING',
+      checkedAt: check?.checkedAt.toISOString() ?? null,
+      onChainVerdict: null,
+      staleReason:
+        subject.attestation === 'ATTESTS_SUPERSEDED'
+          ? 'The anchor attests a hash this subject really has, but not the one the current rule ' +
+            'names. Explainable — an anchor made under a superseded rule — and not a pass. ' +
+            'Superseding it is Level 10.'
+          : 'The anchor attests a hash this subject does not have by any rule. Misanchored: the ' +
+            'transaction is real and does not attest this record.',
+    };
+  }
 
   if (!check) {
     return {

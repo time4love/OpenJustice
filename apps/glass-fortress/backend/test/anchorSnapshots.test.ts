@@ -29,8 +29,10 @@ import { prisma } from '../src/lib/prisma';
 import { Web3Service } from '../src/services/Web3Service';
 import { anchorSnapshots, countUnanchoredSnapshots } from '../src/services/anchorSnapshots';
 
-function snap(id: string, contentHash = '0xaaa') {
-  return { id, contentHash, snapshotDate: '2022-05-25' };
+// The capture as the anchoring rule reads it. `documentHash` since Level 3
+// clause 1: the anchor attests to the payload, not to Readability's article.
+function snap(id: string, documentHash = '0xaaa') {
+  return { id, documentHash };
 }
 
 function setup(rows: ReturnType<typeof snap>[]) {
@@ -75,7 +77,9 @@ describe('anchorSnapshots', () => {
 
     expect(mockWeb3.registerEvidenceHash).toHaveBeenCalledWith('0xaaa', expect.any(String), 'Wayback Snapshot');
     expect(prisma.urlSnapshot.update).toHaveBeenCalledWith(
-      expect.objectContaining({ data: { onChainTxHash: '0xtx' } }),
+      // The transaction AND the hash it registered, written together. Writing
+      // onChainTxHash alone is the gap anchoredHash exists to close.
+      expect.objectContaining({ data: { onChainTxHash: '0xtx', anchoredHash: '0xaaa' } }),
     );
     expect(r.anchored).toBe(1);
   });
@@ -202,7 +206,7 @@ describe('copy-only', () => {
 
     expect(mockWeb3.registerEvidenceHash).not.toHaveBeenCalled();
     expect(r.anchored).toBe(0);
-    expect(r.needsRegistration).toEqual([{ snapshotId: 's1', contentHash: 'lonely' }]);
+    expect(r.needsRegistration).toEqual([{ snapshotId: 's1', anchoredHash: 'lonely' }]);
     // Not a failure. The run promised not to spend, and did not spend.
     expect(r.failed).toBe(0);
   });
@@ -340,7 +344,7 @@ describe('the scanner anchors through the shared path', () => {
       join(__dirname, '..', 'src', 'services', 'anchorSnapshots.ts'),
       'utf8',
     );
-    expect(anchors).toMatch(/await anchorOneSnapshot\(web3, snapshotId, contentHash\)/);
+    expect(anchors).toMatch(/await anchorOneSnapshot\(web3, snapshotId, capture\)/);
   });
 
   it('the scanner no longer anchors directly — the write path owns it', () => {

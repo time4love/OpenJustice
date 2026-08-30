@@ -8,6 +8,16 @@ correctness.
 **Level 10 supersedes rather than deletes, and there is only ever one registry** (§4 Level 10);
 **staging is finished before any production data is migrated** (§6).
 
+**Every level carries a `STATUS:` line directly under its heading.** It exists so that "what is the
+state of Level N?" is one `grep -n '^\*\*STATUS:' ` against THIS file rather than a recollection or an
+index entry. It is a POINTER, never a replacement: why a level is deferred, or what "partial" covers,
+lives in that level's own prose below it and nowhere else.
+
+Added 2026-08-29 after three recommendations in a single session were made from a summary of this
+document rather than from the document — twice proposing work it had already ruled out. A memory index
+is loaded automatically and this plan is not, so any decision copied out of here is what gets acted on,
+and the copy drifts. The status line makes reading the source cheaper than trusting a copy.
+
 Companions: `docs/gf-framing-assessor-defects.md` (four defects, with reproduction cases),
 `docs/gf-production-thesis-replay-plan.md` (how they were found).
 
@@ -260,6 +270,8 @@ that makes violating it impossible or impossible-to-miss).
 
 ### Level 0 — the instrument · **DONE**
 
+**STATUS: DONE**
+
 *Invariant:* the extractor's behaviour is pinned to real captures, so a regression cannot silently make
 every verification agree with whatever it checks.
 
@@ -268,6 +280,8 @@ every verification agree with whatever it checks.
 fails 11).
 
 ### Level 1 — the capture
+
+**STATUS: DONE — closed against the Archive's own digest, both environments**
 
 *Invariant:* every capture holds the document as fetched. No capture exists without one.
 
@@ -1435,6 +1449,8 @@ than acted on.
 
 ### Level 2 — the source
 
+**STATUS: PHASE A COMPLETE (2026-08-28) — see the section below for what Phase A covered. REOPENED 2026-08-29: `create_evidence_from_url` bypasses `admitUrl` entirely and is DEPRECATED by researcher decision; the archive-first pipeline is mandatory, and a `DIRECT` fallback must link to the recorded Wayback failure. Blocked on Save Page Now, which does not exist.**
+
 *Invariant:* the bytes stored are the bytes the source served, and a later change on the source's side
 is detectable.
 
@@ -1676,6 +1692,51 @@ the code is not. `20260828020000` was unapplied everywhere, so the restructure c
 **What survives is the real fix:** `admitUrl` as the only writer of `TrackedUrl`, and the verdict
 recorded in every direction.
 
+##### DECIDED 2026-08-29 — `create_evidence_from_url` is DEPRECATED
+
+**Researcher's decision.** A URL submission may not enter the corpus through a tool that skips the
+pipeline. The rule, in the researcher's terms:
+
+> ask `track_url` from Wayback, handle the error condition or any way Wayback can tell us this can't be
+> done, then act on the failure and execute the fallback — never as a direct MCP that does not enforce
+> the allowed flow. And direct-URL evidence must be linked to a record that shows the failed attempt
+> and the failed Wayback reason.
+
+This is §2's pipeline made mandatory rather than merely intended. Today `start_forensic_scan` routes
+through `admitUrl` and asks CDX first; **`create_evidence_from_url` asks nothing.** It fetches the live
+page, extracts, hashes `url + text[0:40k]` and writes an `Evidence` row — step 1 of the pipeline never
+happens. Two admission paths, one gated and one not, which is this repository's dominant defect shape
+sitting on the corpus's front door.
+
+**The fallback is not merely permitted-when-archiving-fails; it is EVIDENCED by the failure.** A
+`DIRECT` record must carry a link to the stored attempt and the reason Wayback gave. That is stronger
+than the rule below, which makes a zero-row `CdxQuery` the *record* of a refusal: a co-existing row is
+something an auditor must think to look for, and a link is something the evidence itself asserts. It
+also closes the gap the rule below names — "archiving was attempted and is impossible" becomes a claim
+with a referent instead of a label.
+
+###### The two halves have different readiness, and building the second one early is the trap
+
+**Save Page Now does not exist in this codebase** — no implementation, on any path. So:
+
+- **Deprecating `create_evidence_from_url` is available now.** Nothing depends on Save Page Now to stop
+  a tool from bypassing the gate.
+- **The fallback is not.** Without SPN there is no attempt to fail, so there is no failure record to
+  link to, and a `DIRECT` record created now could only mean *"we did not ask"* — exactly the
+  provenance the rule below forbids, now wearing a link to a record of nothing.
+
+**Until SPN lands, the correct behaviour on a zero-row CDX answer remains REFUSAL**, which `admitUrl`
+already does. The deprecation removes a bypass; it does not create a fallback.
+
+**Open, not decided here:** `create_evidence_from_text` (`ASSERTED`) is the other write tool that
+enters evidence without a capture. It is a different exception — text supplied to us, nobody we control
+observed the page — and the researcher's decision above did not name it. It should not be folded in by
+inference.
+
+**Owed before migration planning:** a count of existing evidence rows that entered this way, in both
+environments. §2 corrects an earlier claim about exactly this that was *"reasoned from plausibility
+instead of counted"*, so the number is taken, not estimated.
+
 ##### Until SPN exists, a zero-row CDX answer REFUSES the submission
 
 `DIRECT` must mean *"archiving was attempted and is impossible"*, never *"we did not ask"*. Without Save
@@ -1879,6 +1940,52 @@ exactly one did, and it became `probeSnapshotsList` — *named* for recording no
 
 ### Level 3 — the anchor
 
+**STATUS: PARTIAL — clause 2 (the database claim is CHECKED) is closed; clause 1 (the anchor attests to the DOCUMENT) is OPEN. The instrumentation clause 1 needs is BUILT (2026-08-30); the flip itself is not done. Attributing LEGACY anchors is explicitly NOT part of this level — see the boundary below.**
+
+#### THE BOUNDARY, drawn 2026-08-30: legacy anchor attribution is Level 10, not clause 1
+
+`anchoredHash` records what a row's transaction registered, and `forensics:confirm-anchors` observes
+it from the chain. On staging that pass confirms **22 of 113** subjects and reports the other **91** as
+`TX_UNREADABLE`: the registry holds every one of their hashes, so the anchors are real, but the
+transactions predate the RPC's receipt retention (a clean date boundary — everything stored
+2026-08-22 unreadable, everything stored 2026-08-28 readable) and a log-based fallback resolved none.
+
+**That is where it stops.** Four runs and four commits went into attributing those 91, and none of it
+touched a defect that can recur: a new capture's receipt is read seconds after the write. The log
+fallback has no other caller, and §1 of this plan asks only that the legacy corpus be *kept as a
+comparison* — comparison does not require attribution. Re-anchoring the legacy corpus is this
+document's Level 10, and it always was.
+
+`TX_UNREADABLE` is therefore the terminal, honest answer for those rows, and the general rule is now
+in `CLAUDE.md`: **fix what future state needs; do not invest in repairing legacy state** — with the
+narrow carve-out that legacy state making a FALSE claim is not archaeology.
+
+**CLAUSE 1'S CODE IS DONE (2026-08-30).** `anchoredCaptureHash` returns `documentHash`; every new
+capture is anchored to the payload as served. One line, which is what the single-symbol consolidation
+was for — and the compiler and the fixtures between them found every site that had to follow.
+
+**The cost was decided on a measurement rather than an intuition.** Twins are what made snapshot
+anchoring cheap, and under `documentHash` they go nearly extinct: 105 staging captures collapse to
+**15** distinct `contentHash` values and **104** distinct `documentHash` values, so anchoring now
+costs roughly **one transaction per capture, permanently**. Measured price: **144,875 gas** per
+registration, and Base mainnet at 0.006 gwei makes the whole 104 about **0.00009 ETH** — cents.
+
+Merkle batching was considered and REJECTED. It would restore cheap anchoring by making an outsider
+need a proof from us plus a script, and a lost proof produces exactly the unexplainable anchor
+Level 10 forbids: cheaper transactions, more expensive truth. A batch boundary is also a cap decided
+at write time and invisible in the output, which is the family §2 already counts three of. The twin
+collapse was never a saving either; it was 15 hashes standing in for 104 documents — the defect
+restated as an optimisation.
+
+**What remains for the level to close:** every legacy capture now attests a superseded hash, so once
+their anchors are confirmed the audit reports them `MISATTESTING` — never `VERIFIED`, exit 5. That is
+correct, and superseding them is Level 10's, per the boundary above. Whether EVIDENCE identity follows
+the anchor is §2's decision and remains the researcher's.
+
+The audit already refuses to call the result done prematurely: a row whose anchor attests a hash the
+current rule does not name is `MISATTESTING`, never `VERIFIED`, and the script exits 5. After the flip
+every legacy capture lands there — visible, non-passing, and Level 10's to supersede.
+
 *Invariant:* the on-chain record attests to the document, and the database's claim about it is checked
 rather than asserted.
 
@@ -1922,9 +2029,16 @@ about the axis you checked, read as proof about the axis you didn't.
 
 **What closing clause 1 costs, so the decision is made with the price visible:**
 
-1. **New chain writes.** Every capture would need re-registering under `documentHash`. Chain writes are
-   MCP-only and are the researcher's call; the existing `contentHash` registrations stay on chain
-   forever and would be superseded, never removed (Level 10).
+1. **New chain writes.** Every capture would need re-registering under `documentHash`. The existing
+   `contentHash` registrations stay on chain forever and are superseded, never removed (Level 10).
+
+   *Corrected 2026-08-29: an earlier version of this line said "chain writes are MCP-only". That is
+   wrong for this operation. `CLAUDE.md`'s MCP-only rule names research acts — `promote_evidence`,
+   `promote_scan_findings` — and its hazard was a LAPTOP with a partial env file. A re-anchoring pass
+   is MAINTENANCE, and this plan already rules on where maintenance runs: "**Maintenance, so it runs in
+   the deploy container (`railway ssh`) — never a laptop, never MCP — which also keeps its chain writes
+   on the correct registry**" (Instrument 1, `forensics:recover-captures`). The split is research act
+   versus maintenance act, not chain-write versus not.*
 2. **A decision about evidence identity, which is the larger half.**
    `forensicEvidenceFileHash = sha256(url + before.waybackTimestamp + before.contentHash +
    after.waybackTimestamp + after.contentHash)` — the extraction is baked into the identity of every
@@ -1937,6 +2051,8 @@ None of that is a repair, and none of it is mine to decide: it changes what the 
 asserts. Recorded here so the next person does not close this level on the strength of a green audit.
 
 ### Level 4 — the view
+
+**STATUS: DEFERRED (2026-08-29) — rationale falsified by measurement in `d4739aa`. It needs a CONSUMER FOR THE MARKS, not code. Do not revive without new measurement.**
 
 *Invariant:* no block unique to a capture is ever classified chrome; the view is versioned and marks
 rather than deletes.
@@ -2006,6 +2122,8 @@ verdict-nobody-reads shape corrected in Level 5 step 4.
 > cost minutes and changed the whole shape of the work.
 
 ### Level 5 — the diff
+
+**STATUS: ENFORCED in both environments**
 
 *Invariant:* a change the platform reports survives the documents. A chunk said to be REMOVED is absent
 from the after document; a chunk said to be ADDED was absent from the before one.
@@ -2189,6 +2307,8 @@ and missed the case this work exists for; sentence granularity found 7.
 
 ### Level 6 — the trajectory
 
+**STATUS: PARTIAL — `DETECTION_VERSION` v2 retired `MIN_CLAIM_LENGTH` for the containment rule (2026-08-29). The invariant itself — every reported flip confirmed against the documents at that boundary — is NOT yet enforced.**
+
 *Invariant:* every reported flip is confirmed against the documents at that boundary.
 
 *Enforcement:* verified at computation, verdict stored with `DETECTION_VERSION` and `sourceStateHash`.
@@ -2200,6 +2320,8 @@ not long. Changing it bumps `DETECTION_VERSION` and recomputes every trajectory,
 level rather than after it.
 
 ### Level 7 — the evidence
+
+**STATUS: OPEN**
 
 *Invariant:* identity is recomputable from its captures, and a summary attributes nothing to a page
 that the page does not contain.
@@ -2213,6 +2335,8 @@ explicit false-positive policy — a summary legitimately characterises as well 
 the second is checkable. A gate that cries wolf gets disabled.
 
 ### Level 8 — the opinions
+
+**STATUS: OPEN**
 
 *Invariant:* nothing presents a model's judgement as a computed fact.
 
@@ -2232,6 +2356,8 @@ on whether it is backed by anchored evidence. A researcher cannot distinguish *"
 per row.
 
 ### Level 9 — the thesis
+
+**STATUS: OPEN**
 
 *Invariant:* a thesis cites nothing that is not `VERIFIED`.
 
@@ -2264,6 +2390,8 @@ corrections are discovered. A seven-versus-five error found mid-framing on 2026-
 written to the session it belonged to.
 
 ### Level 10 — supersede the old corpus
+
+**STATUS: OPEN — two decisions already taken: supersede rather than delete, and only ever one registry**
 
 *Invariant:* every anchored hash stays explainable forever.
 

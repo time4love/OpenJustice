@@ -27,7 +27,11 @@ import { IntegrityCheckSubject, IntegrityCheckVerdict } from '@prisma/client';
 import { prisma } from '../src/lib/prisma';
 import { ON_CHAIN_CHECK_VERSION, onChainSourceStateHash } from '../src/lib/onChainVerdict';
 import type { AnchoringTarget } from '../src/lib/anchoringTarget';
-import { auditOnChainAnchors } from '../src/services/auditOnChainAnchors';
+import {
+  auditOnChainAnchors,
+  formatAnchorAuditSummary,
+  type AnchorAuditReport,
+} from '../src/services/auditOnChainAnchors';
 
 const HASH = `0x${'a'.repeat(64)}`;
 const TX = `0x${'b'.repeat(64)}`;
@@ -71,7 +75,20 @@ function check(over: Partial<Record<string, unknown>> = {}) {
 beforeEach(() => {
   jest.clearAllMocks();
   // One CONFIRMED evidence row claiming an anchor, and nothing else.
-  evidenceMany.mockResolvedValue([{ id: 'ev-1', fileHash: HASH }]);
+  // `anchoredHash: null` is the real state of every row until
+  // forensics:confirm-anchors has observed its transaction. Stating it rather
+  // than omitting it: a fixture that leaves the column out is a fixture asserting
+  // a shape the database cannot produce.
+  // `previousFileHash` stated too: a fixture that omits a selected column is a
+  // fixture asserting a shape the database cannot produce, and this one would
+  // throw the moment a test gave the row a recorded anchor.
+  // ATTRIBUTED by default. These tests are about the states of the CHECK, and a
+  // subject whose anchor has never been observed short-circuits to UNATTRIBUTED
+  // before any check is consulted — deliberately, since judging it against the
+  // current rule's hash is the guess that was removed.
+  evidenceMany.mockResolvedValue([
+    { id: 'ev-1', fileHash: HASH, previousFileHash: null, anchoredHash: HASH },
+  ]);
   snapshotMany.mockResolvedValue([]);
   // What `readOnChainClaim` sees when the audit recomputes the source state.
   evidenceUnique.mockResolvedValue({ status: 'CONFIRMED', onChainTxHash: TX });
@@ -288,7 +305,14 @@ describe('which subjects are asked for a verdict at all', () => {
     // mismatch between the two is what made 83 anchorings silently no-op, and a
     // verification repeating it would confirm the wrong hash.
     evidenceMany.mockResolvedValue([]);
-    snapshotMany.mockResolvedValue([{ id: 'snap-1', contentHash: 'a'.repeat(64) }]);
+    snapshotMany.mockResolvedValue([
+      {
+        id: 'snap-1',
+        contentHash: 'a'.repeat(64),
+        documentHash: 'a'.repeat(64),
+        anchoredHash: 'a'.repeat(64),
+      },
+    ]);
     evidenceUnique.mockResolvedValue(null);
     snapshotCount.mockResolvedValue(1);
 
@@ -328,5 +352,137 @@ describe('the newest check wins', () => {
     expect(report.byState.CONTRADICTED).toBe(1);
     expect(report.byState.VERIFIED).toBe(0);
     expect(report.unverified[0].onChainVerdict).toBe('UNANCHORED_CONFIRMED');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// WHAT WAS ANCHORED — the question every state above is silent about.
+//
+// The plan's own warning: "Do not read a clean anchor audit as Level 3 being
+// done. It is silent on WHAT was anchored, and would stay green if the answer
+// were a hash of the page title." These are the cases that make it not silent.
+// ---------------------------------------------------------------------------
+describe('a current, correct verdict about the WRONG hash is not a pass', () => {
+  const SUPERSEDED = `0x${'b'.repeat(64)}`;
+  const STRANGER = `0x${'c'.repeat(64)}`;
+
+  it('EXPLAINABLE IS NOT PASSING: an anchor on a superseded identity', () => {
+    // The exact shape every legacy capture takes the moment Level 3 flips the
+    // anchor to the document. If this read VERIFIED the audit would go green on a
+    // corpus where clause 1 is false for every row.
+    return (async () => {
+      evidenceMany.mockResolvedValue([
+        { id: 'ev-1', fileHash: HASH, previousFileHash: SUPERSEDED, anchoredHash: SUPERSEDED },
+      ]);
+      checkMany.mockResolvedValue([check()]);
+
+      const report = await auditOnChainAnchors(MAINNET);
+
+      expect(report.byState.MISATTESTING).toBe(1);
+      expect(report.byState.VERIFIED).toBe(0);
+      expect(report.unverified[0]?.staleReason).toContain('superseded rule');
+    })();
+  });
+
+  it('a hash the record does not have by any rule is misanchored, and says so differently', () => {
+    return (async () => {
+      evidenceMany.mockResolvedValue([
+        { id: 'ev-1', fileHash: HASH, previousFileHash: null, anchoredHash: STRANGER },
+      ]);
+      checkMany.mockResolvedValue([check()]);
+
+      const report = await auditOnChainAnchors(MAINNET);
+
+      expect(report.byState.MISATTESTING).toBe(1);
+      // Same state, different remedy — one is Level 10's to supersede, the other
+      // is a custody incident. Collapsing the reasons would name the wrong fix.
+      expect(report.unverified[0]?.staleReason).toContain('does not have by any rule');
+    })();
+  });
+
+  it('an anchor on the CURRENT hash still passes — the guard is not vacuous', async () => {
+    evidenceMany.mockResolvedValue([
+      { id: 'ev-1', fileHash: HASH, previousFileHash: SUPERSEDED, anchoredHash: HASH },
+    ]);
+    checkMany.mockResolvedValue([check()]);
+
+    const report = await auditOnChainAnchors(MAINNET);
+
+    expect(report.byState.VERIFIED).toBe(1);
+    expect(report.byState.MISATTESTING).toBe(0);
+  });
+
+  it('a row whose anchor was never observed is UNATTRIBUTED, not misattesting', async () => {
+    // And not VERIFIED either. What stood here was a fallback to the current
+    // rule's hash, which was sound only until the rule moved — then 91 staging
+    // subjects were judged against a hash nothing had registered.
+    evidenceMany.mockResolvedValue([
+      { id: 'ev-1', fileHash: HASH, previousFileHash: null, anchoredHash: null },
+    ]);
+    checkMany.mockResolvedValue([check()]);
+
+    const report = await auditOnChainAnchors(MAINNET);
+
+    expect(report.byState.UNATTRIBUTED).toBe(1);
+    expect(report.byState.MISATTESTING).toBe(0);
+    expect(report.byState.VERIFIED).toBe(0);
+    expect(report.anchorsUnconfirmed).toBe(1);
+  });
+
+  it('does not GUESS a hash for it — the fallback is gone, not relocated', async () => {
+    // The row must not be judged against the current rule's hash at all. If it
+    // were, a re-check would mint a confident verdict about a hash nothing
+    // registered — a true finding laundered into a durable false pass.
+    evidenceMany.mockResolvedValue([
+      { id: 'ev-1', fileHash: HASH, previousFileHash: null, anchoredHash: null },
+    ]);
+    checkMany.mockResolvedValue([check()]);
+
+    const report = await auditOnChainAnchors(MAINNET);
+
+    expect(report.unverified[0]?.state).toBe('UNATTRIBUTED');
+    expect(report.unverified[0]?.staleReason).toContain('has never been observed');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// THE SUMMARY MUST ACCOUNT FOR EVERY SUBJECT.
+//
+// The block hand-listed five states. MISATTESTING was added to the model and to
+// the exit code and forgotten here, so a staging run printed 8 VERIFIED and
+// 83 STALE against 113 subjects and 22 rows were absent from the only place a
+// human reads. The same class of defect the run was reporting.
+// ---------------------------------------------------------------------------
+describe('the coverage summary', () => {
+  function report(byState: Partial<Record<string, number>>, subjects: number): AnchorAuditReport {
+    return {
+      subjects,
+      byState: {
+        VERIFIED: 0, CONTRADICTED: 0, UNAVAILABLE: 0, UNCHECKED: 0,
+        STALE: 0, MISATTESTING: 0, UNATTRIBUTED: 0, ...byState,
+      } as AnchorAuditReport['byState'],
+      unverified: [],
+      currentVerifierVersion: 'v1',
+      history: { totalChecks: 0, superseded: 0, provenanceIncomplete: 0 },
+      danglingChecks: [],
+      anchorsUnconfirmed: 0,
+    };
+  }
+
+  it('prints EVERY state, including the ones added late', () => {
+    const out = formatAnchorAuditSummary(report({ MISATTESTING: 22, UNATTRIBUTED: 91 }, 113));
+    expect(out).toContain('MISATTESTING');
+    expect(out).toContain('UNATTRIBUTED');
+  });
+
+  it('SAYS SO when the states do not account for every subject', () => {
+    // The exact staging shape that went unnoticed: 8 + 83 printed, 113 claimed.
+    const out = formatAnchorAuditSummary(report({ VERIFIED: 8, STALE: 83 }, 113));
+    expect(out).toContain('account for 91 of 113');
+  });
+
+  it('stays quiet when they do — the warning is not vacuous', () => {
+    const out = formatAnchorAuditSummary(report({ VERIFIED: 8, STALE: 83, MISATTESTING: 22 }, 113));
+    expect(out).not.toContain('account for');
   });
 });

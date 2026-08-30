@@ -374,13 +374,22 @@ describe('check_on_chain_status', () => {
       expect(findSnapshots).not.toHaveBeenCalled();
     });
 
-    it('matches on bare hex, because contentHash is stored without the 0x prefix', async () => {
+    it('matches on bare hex, because the capture hash is stored without the 0x prefix', async () => {
       // The same prefix mismatch that made snapshot anchoring silently fail for
       // 83 snapshots by passing bare hex where bytes32 was required.
       await run(null, true, { snapshots: [capture('20220306141507', TX)] });
 
       expect(findSnapshots).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { contentHash: 'a'.repeat(64) } }),
+        // Recorded answer first, current rule only as a fallback — a capture
+        // anchored under a superseded rule must still resolve to itself.
+        expect.objectContaining({
+          where: {
+            OR: [
+              { anchoredHash: 'a'.repeat(64) },
+              { anchoredHash: null, documentHash: 'a'.repeat(64) },
+            ],
+          },
+        }),
       );
     });
   });

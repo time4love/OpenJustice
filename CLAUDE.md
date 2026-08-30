@@ -210,6 +210,19 @@ promotion path would then mark the record `CONFIRMED` and store that hash as pro
 result is an evidence record whose chain of custody is fabricated: a real transaction, a real hash,
 anchoring nothing. That is the same fake-CONFIRMED class as the 2026-08-20 audit, manufactured fresh.
 
+**The split is RESEARCH ACT versus MAINTENANCE ACT, not chain-write versus not.** The rule above names
+research acts — `promote_evidence`, `promote_scan_findings`, anything where a researcher decides that a
+record becomes evidence. A **maintenance** pass that happens to write to the chain — a re-anchoring
+sweep, a repair that registers a hash the corpus already claims — runs in the deploy container via
+`railway ssh`, never MCP and never a laptop, exactly as every other operational script does.
+
+That is not a loophole in the rule; it is the rule's own reasoning applied. The hazard was a LAPTOP
+with a partial env file silently mixing production's database with staging's chain. A deploy container
+cannot do that — Railway supplies every variable or none — so the container is the *safest* place for a
+maintenance chain write, and the researcher's standing rule already says maintenance tools do not
+belong on the MCP surface. `docs/gf-factual-layer-rebuild-dev-plan.md` rules the same way for
+`forensics:recover-captures`.
+
 Reads are unaffected — verifying, planning and measuring against production locally is fine and is
 covered by the rule below. The line is the chain write.
 
@@ -445,6 +458,56 @@ months until a 2026-08-20 fix added it as an `Unsupported()` model). Prevent a r
   `evidence_embeddings` drop nearly went through. Generating offline
   (`prisma migrate diff --from-schema-datamodel <old> --to-schema-datamodel <new> --script`) needs no
   database connection and is the safe way to produce one.
+
+## Fix what future state needs. Do not invest in repairing legacy state.
+
+**The test is: does this problem recur for state created from now on?** If yes, it is the work. If it
+exists only because of rows already written, it is archaeology — record it honestly and move on.
+
+Established 2026-08-30, after four consecutive runs and four landed commits spent trying to attribute
+91 legacy anchoring transactions. Every one of those fixes was individually sound and none of them
+touched a defect that could happen again:
+
+| the problem | recurs for new state? |
+|---|---|
+| a transaction's receipt is beyond the RPC's retention horizon | **no** — a new capture's receipt is read seconds after the write, not eight days later |
+| `onChainTxHash` says a row is anchored but not *what* was anchored | **no** — `anchoredHash` is written at write time |
+| the audit asked "is this hash registered?" rather than "did THIS transaction register it?" | **no** — same fix |
+| the log-lookup fallback | **it has no future caller at all** — it exists only to serve those 91 |
+
+That last row is the tell. **An instrument built only to explain legacy rows is an instrument nothing
+will call once they are superseded** — and validating it costs as much as building it did.
+
+Nothing in `docs/gf-factual-layer-rebuild-dev-plan.md` asked for that work either. §1 says *"Keep the
+existing corpus untouched as a comparison"* — and **comparison does not require attribution.** Keeping
+the rows is the whole requirement; proving which transaction anchored each one serves no purpose the
+plan names. Re-anchoring the legacy corpus is Level 10's, explicitly.
+
+**The one carve-out, and it is narrow: legacy state that makes a FALSE CLAIM is not archaeology.** An
+anchor attesting nothing, a `CONFIRMED` record with no registration, a published thesis containing a
+claim the corpus contradicts — those are wrong *now*, in public, and correctness of a live claim is
+future work by definition. The line is between a legacy row that is **unexplained** (record it,
+supersede it later) and one that is **untrue** (fix it, or mark it so nobody relies on it).
+
+That is why `TX_UNREADABLE` is the right ending for those 91: the anchors are real, the registry holds
+every hash, and only the attribution is lost. Recording that as a terminal verdict is honest and costs
+nothing. Chasing the attribution was the mistake.
+
+## The two debt ratchets can contradict each other. `.at()` is the answer.
+
+`no-unnecessary-condition` and the `noUncheckedIndexedAccess` ratchet disagree about reading an array
+element, and between them they rule out both obvious spellings: `xs[0]` is an unguarded indexed
+access, and a `!== undefined` guard on it is a condition the types say can never be false. The same
+conflict has now been dodged three separate ways — `?? ''` in `appEnv.ts`, a restructure in
+`measureClaimLength.ts`, and a length check in `confirmAnchors.ts`.
+
+**Use `xs.at(0)`.** It is typed `T | undefined` unconditionally, so the guard is genuinely necessary
+under both settings and neither linter objects. Neither ratchet is ever to be raised to resolve this.
+
+The same shape appears with `!`: `non-nullable-type-assertion-style` asks for it and
+`no-non-null-assertion` forbids it. There the answer is a **loud guard** that throws — the
+`requireSnapshotIdentity` pattern — never a silent filter, because a subject quietly dropped from a
+pass is a subject reported as nothing to check.
 
 ## Workflow
 - Do not commit unless explicitly asked.

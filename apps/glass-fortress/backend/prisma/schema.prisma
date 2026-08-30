@@ -87,6 +87,57 @@ enum TrackedUrlStatus {
 // Only evidential standing differs. Diffs, trajectories, identity and
 // boilerplate detection all work over the merged history without consulting
 // this field.
+/// The TERMINAL verdict of asking the chain what a row's anchoring transaction
+/// registered. See `UrlSnapshot.anchorCheck`.
+///
+/// TERMINAL is the whole point. A transient failure — an RPC that answered
+/// nothing — records NOTHING here, so the column's NULL carries exactly one
+/// meaning: no terminal verdict yet. That is the distinction this repository has
+/// now had to unpick four separate times (`IntegrityCheck.chainId` NULL,
+/// `classifiedInputVersion` NULL vs STALE, UNAVAILABLE vs UNCHECKED, UNRECORDED
+/// vs stale), and each time the fix was the same: never let one NULL carry more
+/// than one meaning.
+///
+/// HOW it was confirmed is in the VALUE, not in a companion provenance column.
+/// The two routes are not equally strong in the same way and a reader must not
+/// have to look elsewhere to find out which one answered.
+enum AnchorCheckOutcome {
+  /// The transaction's own receipt log carried the hash the row claims.
+  CONFIRMED_BY_RECEIPT
+  /// The receipt was unreadable, but the registry's EvidenceSubmitted log names
+  /// this transaction as the one that registered this hash. The same fact by the
+  /// other direction — logs are capped by RANGE, receipts pruned by AGE, so this
+  /// route survives where the first does not.
+  CONFIRMED_BY_LOG
+  /// The transaction's own receipt log carried a hash the row does not claim.
+  ///
+  /// Split from MISANCHORED_BY_LOG because a bad answer is the one a human
+  /// actually re-opens, and the two rest on different observations. Recording the
+  /// route only for the PASSING arms was the asymmetry worth removing.
+  MISANCHORED_BY_RECEIPT
+  /// The registry's log names a different transaction as the one that registered
+  /// this row's hash.
+  ///
+  /// A narrower observation than the receipt: the transaction is inferred from
+  /// the registry's stored timestamp and a bounded block window, so a re-check
+  /// should start by widening that window. The contract reverts duplicate
+  /// registration, so this should not be reachable at all.
+  MISANCHORED_BY_LOG
+  /// A real transaction that registered nothing with this registry — the
+  /// fake-CONFIRMED shape. No hash to record.
+  ANCHORED_NOTHING
+  /// Neither route could name the registering transaction, but the registry DOES
+  /// hold the row's hash. The anchor is real and unattributable.
+  ///
+  /// Named for what was OBSERVED, not for the cause. "Beyond the retention
+  /// horizon" is our inference about staging's RPC on 2026-08-30; the observation
+  /// is that neither route named a transaction.
+  TX_UNREADABLE
+  /// Neither the transaction nor the hash is on this chain, by either route. The
+  /// most serious verdict this check can reach.
+  NO_TRACE_ON_CHAIN
+}
+
 enum CaptureProvenance {
   WAYBACK // the Archive holds it; a stranger can re-check it independently
   DIRECT // we fetched it and the Archive has not (yet) indexed it
@@ -116,9 +167,9 @@ model TrackedUrl {
 // contentHash (SHA-256 of fullText) can be registered on-chain for immutable chain of custody.
 // Shared across diffs: two diffs spanning the same snapshot reference the same row.
 model UrlSnapshot {
-  id                      String            @id @default(cuid())
+  id                      String              @id @default(cuid())
   trackedUrlId            String
-  trackedUrl              TrackedUrl        @relation(fields: [trackedUrlId], references: [id], onDelete: Cascade)
+  trackedUrl              TrackedUrl          @relation(fields: [trackedUrlId], references: [id], onDelete: Cascade)
   // How this capture came into our possession. See CaptureProvenance.
   //
   // Existing rows backfill to WAYBACK: every capture predating this column came
@@ -216,8 +267,50 @@ model UrlSnapshot {
   // done four times (classifierVersion, summaryVersion, diffInputVersion,
   // DETECTION_VERSION).
   textExtractionVersion   String
-  onChainTxHash           String? // Blockchain tx hash once contentHash is registered on-chain
-  createdAt               DateTime          @default(now())
+  onChainTxHash           String? // Blockchain tx hash once this capture is registered on-chain
+  // WHAT `onChainTxHash` ACTUALLY REGISTERED — observed from the transaction,
+  // never assumed from a column.
+  //
+  // `onChainTxHash` asserts THAT a capture is anchored and has never said WHAT
+  // was anchored. Which hash that is was inferred from whichever column the code
+  // happened to anchor at the time, so the moment the rule moves — Level 3
+  // clause 1 moves it from the extraction to the document — every legacy row
+  // silently starts being audited against a hash nothing registered. The audit
+  // would report SNAPSHOT_UNANCHORED for 105 correctly anchored captures, and
+  // `check_on_chain_status` would report ORPHANED_ANCHOR for the same rows: the
+  // false alarm already fixed once, in 2026-08-25, returning on every capture.
+  //
+  // So the rule that WRITES an anchor and the record of what was written are
+  // separated. `anchoredCaptureHash` answers "what should a new anchor be
+  // about"; this column answers "what was this one about", and only the second
+  // can be true of a row anchored under a superseded rule. That is also what
+  // makes Level 10's supersession auditable rather than merely documented.
+  //
+  // DELIBERATELY NOT BACKFILLED from `contentHash`. Writing the value we expect
+  // is stamping a BELIEF, and this repository has already paid for that once:
+  // 91 integrity verdicts were written carrying a chain they had never been
+  // reached against, and were indistinguishable from correct ones afterwards.
+  // `forensics:confirm-anchors` reads each transaction's own
+  // `EvidenceSubmitted` log and writes what it observes — so a row whose
+  // transaction registered something else is DISCOVERED rather than papered
+  // over. Null therefore means "not yet confirmed against the chain", which is
+  // an honest state; it is never a guess.
+  anchoredHash            String?
+  /// The TERMINAL verdict of the check that produced `anchoredHash`, or null if
+  /// no terminal verdict has been reached.
+  ///
+  /// `anchoredHash IS NULL` alone cannot say why. Measured on staging
+  /// 2026-08-30: 91 of 113 anchoring claims are REAL — the registry holds their
+  /// hash — but their transactions are beyond the RPC's receipt horizon, so a
+  /// bare null there would mean "never examined", "the RPC was down" and
+  /// "examined, and this is as far as this route reaches" all at once. Only the
+  /// third is terminal, and a CHECK constraint or a gate on moving the anchor
+  /// needs to be able to tell them apart.
+  ///
+  /// A transient failure records NOTHING here. That is what keeps the null
+  /// single-meaning.
+  anchorCheck             AnchorCheckOutcome?
+  createdAt               DateTime            @default(now())
 
   beforeDiffs    UrlVersionDiff[] @relation("BeforeSnapshot")
   afterDiffs     UrlVersionDiff[] @relation("AfterSnapshot")
@@ -520,6 +613,25 @@ model Evidence {
   // See onChainTxHash — CONFIRMED must only ever be set alongside a real tx hash.
   status                   EvidenceStatus        @default(PENDING_REVIEW)
   onChainTxHash            String? // Blockchain tx hash once fileHash is registered on-chain — mirrors UrlSnapshot.onChainTxHash
+  /// What `onChainTxHash` actually registered, observed from the transaction.
+  ///
+  /// The same column as `UrlSnapshot.anchoredHash`, for the same reason, and it
+  /// is needed here for a reason `previousFileHash` does not cover:
+  /// `previousFileHash` records that identity was SUPERSEDED, never what a given
+  /// transaction anchored. `fileHash` asserts identity and is read as if it also
+  /// asserted registration — true today only because `rehashEvidence` happens to
+  /// register before it writes, which is a property of one function rather than
+  /// of the model.
+  ///
+  /// It is what allows evidence identity to move at all without the anchor audit
+  /// going red, which is the mechanism §2's permission needs: "Identity may
+  /// change. It may not change unrecorded."
+  ///
+  /// Null means not yet confirmed against the chain. Never backfilled from
+  /// `fileHash` — see `UrlSnapshot.anchoredHash`.
+  anchoredHash             String?
+  /// The terminal verdict behind `anchoredHash`. See `UrlSnapshot.anchorCheck`.
+  anchorCheck              AnchorCheckOutcome?
   // The identity this record carried before the evidence hash moved to being
   // derived from its two archived snapshots, and the anchor registered under it.
   //
