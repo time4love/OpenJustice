@@ -804,6 +804,18 @@ export type CandidateSource =
   | 'CLASSIFIED'
   /** Those quotes, split by `sentencesOf`. Level 5's fix, one layer up. */
   | 'CLASSIFIED_SENTENCES'
+  /**
+   * The same sentences, tested against the DOCUMENT — the outsider's check.
+   *
+   * A NAMED COMBINATION, NOT A LOOSENED PINNING. Sentence candidates are
+   * compute-only, but they are discovered from Readability's article and have
+   * only ever been tested against it. A stranger searches the RENDERED page, so
+   * `CLASSIFIED_SENTENCES`' zero broken probes cannot fail by construction and
+   * says nothing about outsider-verifiability. This arm is the only thing that
+   * can show the free option standing on its own, and it is the one question
+   * whose answer changes which option comes first.
+   */
+  | 'CLASSIFIED_SENTENCES_AT_DOCUMENT'
   /** `rawDeletedText`/`rawAddedText` — the chunks the classifier was FED. */
   | 'RAW_CHUNKS'
   /** Chunks re-derived from the payloads with the differ moved to `text`. */
@@ -824,6 +836,7 @@ export const CANDIDATE_SOURCE: CandidateSource = 'CLASSIFIED';
 export const ARM_LAYER: Readonly<Record<CandidateSource, DetectionLayer>> = {
   CLASSIFIED: 'EXTRACTION',
   CLASSIFIED_SENTENCES: 'EXTRACTION',
+  CLASSIFIED_SENTENCES_AT_DOCUMENT: 'DOCUMENT',
   RAW_CHUNKS: 'EXTRACTION',
   DOCUMENT_CHUNKS: 'DOCUMENT',
 };
@@ -839,6 +852,9 @@ export const ARM_LAYER: Readonly<Record<CandidateSource, DetectionLayer>> = {
  */
 export const ARM_CONTROL: Readonly<Partial<Record<CandidateSource, CandidateSource>>> = {
   DOCUMENT_CHUNKS: 'RAW_CHUNKS',
+  // Identical candidates, different layer — so the difference is the LAYER alone,
+  // for a candidate set that costs no model calls.
+  CLASSIFIED_SENTENCES_AT_DOCUMENT: 'CLASSIFIED_SENTENCES',
 };
 
 /**
@@ -861,6 +877,9 @@ export const ARM_CONTROL: Readonly<Partial<Record<CandidateSource, CandidateSour
 export const ARM_PRESENCE_IS_STRUCTURAL: Readonly<Record<CandidateSource, boolean>> = {
   CLASSIFIED: false,
   CLASSIFIED_SENTENCES: false,
+  // Candidates come from Readability's article and presence is tested against the
+  // document — DIFFERENT texts, so matching can genuinely fail. That is the point.
+  CLASSIFIED_SENTENCES_AT_DOCUMENT: false,
   RAW_CHUNKS: true,
   DOCUMENT_CHUNKS: true,
 };
@@ -869,6 +888,7 @@ export const ARM_PRESENCE_IS_STRUCTURAL: Readonly<Record<CandidateSource, boolea
 export const CANDIDATE_SOURCES: readonly CandidateSource[] = [
   'CLASSIFIED',
   'CLASSIFIED_SENTENCES',
+  'CLASSIFIED_SENTENCES_AT_DOCUMENT',
   'RAW_CHUNKS',
   'DOCUMENT_CHUNKS',
 ];
@@ -1004,6 +1024,9 @@ function armCandidateStrings(source: CandidateSource, pair: EligiblePair): strin
     case 'CLASSIFIED':
       return [...pair.classified];
     case 'CLASSIFIED_SENTENCES':
+    case 'CLASSIFIED_SENTENCES_AT_DOCUMENT':
+      // IDENTICAL CANDIDATES ON PURPOSE. The two arms differ only in the layer
+      // they are tested against, which is what makes their difference readable.
       return pair.classified.flatMap(sentencesOf);
     case 'RAW_CHUNKS':
       return [...pair.rawChunks];
@@ -1049,9 +1072,117 @@ export interface ComparedClaim {
   transitions: number;
 }
 
+/**
+ * A claim in one arm's gains and not the other's, and whether that is REAL.
+ *
+ * `claimHash` is SHA-256 of the normalised string, so identity is EXACT. The arms
+ * read different renderings of the same page: a paragraph with a heading sitting
+ * inside or beside it is a DIFFERENT STRING in `text` than in `fullText`, so it
+ * lands in a set difference while being the same finding in substance.
+ *
+ * `respellingOf` names a counterpart in the other set that contains this claim or
+ * is contained by it BY AT LEAST `CONTAINMENT_MATCH_MIN_LENGTH` characters.
+ * Non-null means the difference is a re-spelling and the finding is not new; null
+ * means nothing in the other set meaningfully overlaps it, which for the layer
+ * arms is what a heading Readability discards looks like.
+ *
+ * THE FLOOR IS NOT OPTIONAL AND THE CONSTANT IS NOT A NEW ONE. Bare containment
+ * on short strings matches by accident, and a false match here classifies a
+ * genuinely-new claim as a re-spelling and SUBTRACTS IT FROM THE PURCHASE — the
+ * direction that loses a finding, which is the same direction `trajectoryContext`
+ * already gates for with the same constant and the same reasoning. The claims at
+ * stake are short: `קישורים למידע נוסף` is 18 characters and is the whole of what
+ * moving the differ buys.
+ *
+ * COMPUTED, NOT EYEBALLED. Judging this by reading a sample is how "the layer-only
+ * claims are headings" becomes a belief rather than a measurement.
+ */
+export type DifferenceVerdict =
+  /** Nothing in the other set contains it or is contained by it. MEASURED. */
+  | 'UNIQUE'
+  /** Covered by a counterpart, on an overlap long enough to mean it. MEASURED. */
+  | 'RESPELLING'
+  /**
+   * A containment relation EXISTS but rests on fewer than
+   * `CONTAINMENT_MATCH_MIN_LENGTH` characters, so it cannot be told from an
+   * accident. NOT MEASURED — and counted as neither bought nor discounted.
+   *
+   * THIS CATEGORY IS WHY THE FLOOR DID NOT SIMPLY MOVE THE BIAS. A two-way split
+   * would put these with the genuinely-new ones, making "new" true by
+   * construction for every short claim — the cannot-fail shape this instrument
+   * already had to mark once, one level up. A short claim that overlaps NOTHING
+   * is still a measurement; only a short claim that overlaps SOMETHING is not.
+   */
+  | 'OVERLAP_BELOW_FLOOR';
+
+export interface DifferedClaim extends ComparedClaim {
+  verdict: DifferenceVerdict;
+  /** The counterpart, for RESPELLING and OVERLAP_BELOW_FLOOR alike. */
+  respellingOf: string | null;
+}
+
 /** Members of a set that clear `MIN_TRANSITIONS` — the ones that are findings. */
 export function findingsIn(claims: readonly ComparedClaim[]): ComparedClaim[] {
   return claims.filter((c) => c.transitions >= MIN_TRANSITIONS);
+}
+
+/** Members that overlap nothing in the other set — genuinely new, and MEASURED. */
+export function unique(claims: readonly DifferedClaim[]): DifferedClaim[] {
+  return claims.filter((c) => c.verdict === 'UNIQUE');
+}
+
+/** Members the floor cannot rule on. Neither bought nor discounted — reported apart. */
+export function unclassifiable(claims: readonly DifferedClaim[]): DifferedClaim[] {
+  return claims.filter((c) => c.verdict === 'OVERLAP_BELOW_FLOOR');
+}
+
+/**
+ * One direction of a set difference, with each member classified.
+ *
+ * BOTH DIRECTIONS ARE ALWAYS REPORTED BY THE CALLER. Printing only
+ * `mine \\ theirs` and letting a reader infer the reverse is the count-subtraction
+ * mistake one level up: the sets are not nested, so the net is not recoverable
+ * from one direction and a threshold applied per-side makes it worse — the same
+ * claim can clear MIN_TRANSITIONS in one arm and not the other.
+ */
+/**
+ * Whether a claim is covered by anything in the other set, and whether we can tell.
+ *
+ * The overlap IS the shorter string, since one contains the other. Below the
+ * floor the relation is real but uninterpretable: `containmentOf`'s constant
+ * exists because a short string is a substring of unrelated text by accident.
+ * Reporting that as coverage discounts a finding; reporting it as new invents
+ * one. It gets its own verdict instead.
+ */
+function classifyOverlap(
+  text: string,
+  others: readonly string[],
+): { verdict: DifferenceVerdict; respellingOf: string | null } {
+  const overlapping = others.filter((o) => o.includes(text) || text.includes(o));
+  const solid = overlapping.find(
+    (o) => Math.min(o.length, text.length) >= CONTAINMENT_MATCH_MIN_LENGTH,
+  );
+  if (solid !== undefined) return { verdict: 'RESPELLING', respellingOf: solid };
+  const weak = overlapping.at(0);
+  if (weak !== undefined) return { verdict: 'OVERLAP_BELOW_FLOOR', respellingOf: weak };
+  return { verdict: 'UNIQUE', respellingOf: null };
+}
+
+function differenceWithRespelling(
+  mine: ReadonlyMap<string, ComparedClaim>,
+  theirs: ReadonlyMap<string, ComparedClaim>,
+): DifferedClaim[] {
+  const theirTexts = [...theirs.values()].map((c) => c.claimText);
+  return [...mine.entries()]
+    .filter(([hash]) => !theirs.has(hash))
+    .map(([, claim]) => ({
+      ...claim,
+      // Exact identity needs no floor and is already excluded — these are the
+      // members whose HASH is absent from the other set. Only containment is left,
+      // and containment on a short overlap is the accident the floor exists for.
+      // The overlap IS the shorter string, since one contains the other.
+      ...classifyOverlap(claim.claimText, theirTexts),
+    }));
 }
 
 /** One arm's result. `layer` is reported so a reader can see the pairing held. */
@@ -1074,7 +1205,18 @@ export interface CandidateSourceArm {
    * A SET DIFFERENCE OVER CLAIM HASHES, never a difference of counts. Empty when
    * the arm has no control.
    */
-  gainedNotInControl: ComparedClaim[];
+  gainedNotInControl: DifferedClaim[];
+  /**
+   * Gained by the CONTROL and not by this arm — what the isolated axis COSTS.
+   *
+   * THE REVERSE DIRECTION, REPORTED RATHER THAN LEFT TO ARITHMETIC. The sets are
+   * not nested, and per-side thresholding means the intersection does not even
+   * have one size: a claim can clear MIN_TRANSITIONS in one arm and not the
+   * other. A reader handed only the forward difference infers a net that the
+   * data does not support — which is the count-subtraction error wearing a set's
+   * clothes.
+   */
+  controlGainsNotHere: DifferedClaim[];
   /** Trajectories this arm has that CLASSIFIED does not. Empty for CLASSIFIED. */
   gainedVsClassified: ComparedClaim[];
   /**
@@ -1202,6 +1344,7 @@ export async function compareCandidateSources(url: string): Promise<CandidateSou
         presenceIsStructural: ARM_PRESENCE_IS_STRUCTURAL.CLASSIFIED,
         controlSource: ARM_CONTROL.CLASSIFIED ?? null,
         gainedNotInControl: [],
+        controlGainsNotHere: [],
         gainedVsClassified: [],
         lostProbeBroken: [],
         lostNotRediscovered: [],
@@ -1247,6 +1390,7 @@ export async function compareCandidateSources(url: string): Promise<CandidateSou
         controlSource: ARM_CONTROL[source] ?? null,
         // Filled in the second pass — every arm's gains must exist first.
         gainedNotInControl: [],
+        controlGainsNotHere: [],
         gainedVsClassified: [...gainedHashes.values()],
         lostProbeBroken: missing.filter((t) => !stillFindable.has(t.claimHash)).map(asClaim),
         lostNotRediscovered: missing.filter((t) => stillFindable.has(t.claimHash)).map(asClaim),
@@ -1267,9 +1411,8 @@ export async function compareCandidateSources(url: string): Promise<CandidateSou
     if (control === null) continue;
     const controlGains = bySource.get(control)?.gainedHashes;
     if (!controlGains) continue;
-    draft.arm.gainedNotInControl = [...draft.gainedHashes.entries()]
-      .filter(([hash]) => !controlGains.has(hash))
-      .map(([, claim]) => claim);
+    draft.arm.gainedNotInControl = differenceWithRespelling(draft.gainedHashes, controlGains);
+    draft.arm.controlGainsNotHere = differenceWithRespelling(controlGains, draft.gainedHashes);
   }
 
   const arms = drafts.map((d) => d.arm);

@@ -34,8 +34,10 @@ import {
   CANDIDATE_SOURCE,
   CANDIDATE_SOURCES,
   MIN_TRANSITIONS,
+  CONTAINMENT_MATCH_MIN_LENGTH,
   compareCandidateSources,
   findingsIn,
+  unique,
   type CandidateSource,
   type CandidateSourceComparison,
 } from '../src/services/claimTrajectory';
@@ -395,5 +397,169 @@ describe('cells that can only read one way are declared, not reported', () => {
     expect(ARM_CONTROL.DOCUMENT_CHUNKS).toBe('RAW_CHUNKS');
     // RAW_CHUNKS' own control is the datum, which is already the comparison.
     expect(ARM_CONTROL.RAW_CHUNKS).toBeUndefined();
+  });
+});
+
+describe('both directions of the difference, and whether each side is REAL', () => {
+  // `htmlToText` inserts a block boundary where Readability joins, so the SAME
+  // content is one chunk in `fullText` and two in `text`. That lands in both
+  // directions of the set difference while being one finding in substance —
+  // claimHash is exact, and the arms read different renderings.
+  // BOTH HALVES CLEAR THE CONTAINMENT FLOOR. A shorter pair would not be a
+  // re-spelling under `CONTAINMENT_MATCH_MIN_LENGTH` — it would be an accidental
+  // substring, which is exactly what the floor refuses to call coverage.
+  const HALF_A = 'The vaccine cannot cause the disease at all.';
+  const HALF_B = 'It contains no live virus of any kind here.';
+  const JOINED = `${HALF_A} ${HALF_B}`;
+  const REPLACEMENT = 'Four vaccines are now approved for use in the country.';
+  // Short, and a substring of HALF_A — which is what the floor cannot rule on.
+  const SHORT_INSIDE = 'cannot cause';
+
+  function twoRenderings(index: number, heading: string, body: string) {
+    const split = body === JOINED ? `${HALF_A}\n${HALF_B}` : body;
+    return {
+      snapshotDate: `2022-0${String(index)}-01`,
+      waybackTimestamp: `20220${String(index)}01000000`,
+      snapshotUrl: `https://web.archive.org/web/20220${String(index)}01000000/${URL}`,
+      fullText: `${BODY}\n${body}`,
+      // The heading exists only here — Readability drops it entirely. The short
+      // line likewise appears only in this rendering, as its own block.
+      text: `${BODY}\n${heading}\n${body === JOINED ? SHORT_INSIDE : REPLACEMENT}\n${split}`,
+    };
+  }
+
+  const CAPS = [
+    twoRenderings(1, HEADING_A, JOINED),
+    twoRenderings(2, HEADING_B, REPLACEMENT),
+    twoRenderings(3, HEADING_A, JOINED),
+  ];
+
+  function row(id: string, before: number, after: number) {
+    return {
+      id,
+      diffInputVersion: DIFF_INPUT_VERSION,
+      deletedText: JSON.stringify([
+        { summary: 's', exactQuote: BODY, investigativeCategories: [], relocated: false },
+      ]),
+      addedText: '[]',
+      // The raw chunks are the fullText diff: the JOINED form, not the split one.
+      rawDeletedText: JSON.stringify([before === 0 ? JOINED : REPLACEMENT]),
+      rawAddedText: JSON.stringify([after === 1 ? REPLACEMENT : JOINED]),
+      beforeSnapshot: { text: CAPS[before]?.text, textExtractionVersion: TEXT_EXTRACTION_VERSION },
+      afterSnapshot: { text: CAPS[after]?.text, textExtractionVersion: TEXT_EXTRACTION_VERSION },
+    };
+  }
+
+  async function run() {
+    (prisma.trackedUrl.findUnique as jest.Mock).mockResolvedValue({ id: 'tracked-1' });
+    (prisma.urlSnapshot.findMany as jest.Mock).mockResolvedValue(CAPS);
+    (prisma.urlVersionDiff.findMany as jest.Mock).mockResolvedValue([row('r1', 0, 1), row('r2', 1, 2)]);
+    return arm(await compareCandidateSources(URL), 'DOCUMENT_CHUNKS');
+  }
+
+  it('reports what the control reaches and this arm does not', async () => {
+    const moved = await run();
+    // THE REVERSE DIRECTION. Without it a reader nets the exchange by arithmetic
+    // over sets that were never shown to nest — the count-subtraction error one
+    // level up.
+    expect(moved.controlGainsNotHere.map((c) => c.claimText)).toContain(JOINED);
+  });
+
+  it('marks a re-spelling as such in BOTH directions', async () => {
+    const moved = await run();
+    // `Alpha Beta` contains `Alpha`, so neither side is a new finding — the two
+    // renderings spell one change differently.
+    const back = moved.controlGainsNotHere.find((c) => c.claimText === JOINED);
+    expect(back?.respellingOf).not.toBeNull();
+    const forward = moved.gainedNotInControl.find((c) => c.claimText === HALF_A);
+    expect(forward?.respellingOf).toBe(JOINED);
+    // The overlap is HALF_A's own length, which clears the floor.
+    expect(HALF_A.length).toBeGreaterThanOrEqual(CONTAINMENT_MATCH_MIN_LENGTH);
+  });
+
+  it('leaves a claim the other rendering never contained as genuinely new', async () => {
+    const moved = await run();
+    // The heading is absent from `fullText` altogether, so nothing in the control
+    // set overlaps it. This is what the layer actually buys.
+    const genuinely = unique(moved.gainedNotInControl).map((c) => c.claimText);
+    expect(genuinely).toContain(HEADING_A);
+    expect(genuinely).not.toContain(HALF_A);
+  });
+
+  it('calls a SHORT claim that overlaps NOTHING measured, not assumed', async () => {
+    const moved = await run();
+    // `HEADING_A` is under the floor, but nothing in the control set contains it
+    // at all — Readability drops the heading entirely. "Overlaps nothing" is a
+    // measurement at any length, so this is UNIQUE on evidence rather than by
+    // default, which is the distinction the third verdict exists to keep.
+    expect(HEADING_A.length).toBeLessThan(CONTAINMENT_MATCH_MIN_LENGTH);
+    const heading = moved.gainedNotInControl.find((c) => c.claimText === HEADING_A);
+    expect(heading?.verdict).toBe('UNIQUE');
+    expect(heading?.respellingOf).toBeNull();
+  });
+
+  it('refuses to rule on a SHORT claim that DOES overlap — neither new nor covered', async () => {
+    const moved = await run();
+    // A short claim contained in a counterpart cannot be told from an accidental
+    // substring. Counting it as new would make "new" true by construction for
+    // every short claim — the cannot-fail shape, one level up from where this
+    // instrument started. It gets its own band and counts toward neither side.
+    const short = moved.gainedNotInControl.find((c) => c.claimText === SHORT_INSIDE);
+    expect(SHORT_INSIDE.length).toBeLessThan(CONTAINMENT_MATCH_MIN_LENGTH);
+    expect(short?.verdict).toBe('OVERLAP_BELOW_FLOOR');
+    expect(unique(moved.gainedNotInControl).map((c) => c.claimText)).not.toContain(SHORT_INSIDE);
+  });
+});
+
+describe('the free option, tested against the layer a stranger actually searches', () => {
+  it('pairs identical candidates with the DOCUMENT layer and controls on the datum', () => {
+    // Sentence candidates cost no model calls, but they are discovered from
+    // Readability's article and have only ever been tested against it.
+    // CLASSIFIED_SENTENCES' zero broken probes cannot fail by construction.
+    expect(ARM_LAYER.CLASSIFIED_SENTENCES_AT_DOCUMENT).toBe('DOCUMENT');
+    expect(ARM_CONTROL.CLASSIFIED_SENTENCES_AT_DOCUMENT).toBe('CLASSIFIED_SENTENCES');
+    // Candidates from one text, presence against another — matching CAN fail here,
+    // which is the whole reason the arm is worth running.
+    expect(ARM_PRESENCE_IS_STRUCTURAL.CLASSIFIED_SENTENCES_AT_DOCUMENT).toBe(false);
+  });
+
+  it('breaks the probe when a SENTENCE exists only in the extraction', async () => {
+    // NOT the stitched-span case — sentence splitting already fixes that, because
+    // each half is findable on its own. The free option's real exposure is
+    // narrower: Readability JOINS across an element the document keeps, so a
+    // single sentence in the article has words inserted into the middle of it on
+    // the page. Splitting cannot help; the sentence itself is the artefact.
+    const JOINED_SENTENCE = 'Vaccines approved here are safe and effective for use.';
+    const captures = [1, 2, 3].map((i) => ({
+      snapshotDate: `2022-0${String(i)}-01`,
+      waybackTimestamp: `20220${String(i)}01000000`,
+      snapshotUrl: `https://web.archive.org/web/20220${String(i)}01000000/${URL}`,
+      fullText: `${BODY}\n${JOINED_SENTENCE}`,
+      // The document keeps a heading INSIDE what Readability joined.
+      text: `${BODY}\nVaccines approved here\n${HEADING_A}\nare safe and effective for use.`,
+    }));
+
+    (prisma.trackedUrl.findUnique as jest.Mock).mockResolvedValue({ id: 'tracked-1' });
+    (prisma.urlSnapshot.findMany as jest.Mock).mockResolvedValue(captures);
+    (prisma.urlVersionDiff.findMany as jest.Mock).mockResolvedValue([
+      diffRow({
+        deletedText: JSON.stringify([
+          { summary: 's', exactQuote: JOINED_SENTENCE, investigativeCategories: [], relocated: false },
+        ]),
+        rawDeletedText: JSON.stringify([JOINED_SENTENCE]),
+        beforeSnapshot: { text: captures[0]?.text, textExtractionVersion: TEXT_EXTRACTION_VERSION },
+        afterSnapshot: { text: captures[1]?.text, textExtractionVersion: TEXT_EXTRACTION_VERSION },
+      }),
+    ]);
+
+    const r = await compareCandidateSources(URL);
+
+    // The extraction arm CANNOT see this — same renderer both sides, so matching
+    // is guaranteed. Only the document arm can, and that is the whole point of
+    // running it before choosing free-first.
+    expect(arm(r, 'CLASSIFIED_SENTENCES').lostProbeBroken).toEqual([]);
+    expect(
+      arm(r, 'CLASSIFIED_SENTENCES_AT_DOCUMENT').lostProbeBroken.map((c) => c.claimText),
+    ).toContain(JOINED_SENTENCE);
   });
 });
