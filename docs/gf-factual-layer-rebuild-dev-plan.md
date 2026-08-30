@@ -2532,9 +2532,33 @@ part that matters — would actually be findable by the outsider check.
 Re-run `forensics:compare-detection-layers` against sentence candidates BEFORE paying for that, not
 after.
 
-*Still to confirm (small):* the span reading rests on both claims being longer than their divergence
-point. `compareDetectionLayers` truncates `claimText` at 90 characters in its output; printing the two
-in full settles it.
+##### CONFIRMED BY MEASUREMENT, and the stitch is visible in the claim itself
+
+The span reading rested on both claims being longer than their divergence point.
+`compareDetectionLayers` truncated `claimText` at 90 characters, so the first run could not settle it;
+it now prints the length and the full text (`d6b6fda`). Re-run on staging:
+
+```
+claim A   352 chars   diverges at 226
+claim B   567 chars   diverges at 431–441
+```
+
+Both exceed it, as predicted. **This is the third diagnosis of this phenomenon and the first confirmed
+by measurement** — the first two, "partial captures" and "two document variants", were both wrong.
+
+**The stitch is legible in the stored text.** Claim A ends:
+
+> `…ולכן הוא לא יכול לגרום למחלה. • הודעות דוברות משרד הבריאות בנושא חיסונים > • ועדות מבצע החיסונים >…`
+
+Body prose running straight into the link list, with the heading `קישורים למידע נוסף` — which sits
+between them in the document — **absent**. There is no whitespace to normalise here; there is a missing
+section heading. A reader searching the archived page for this claim finds nothing, because the page
+never contained it.
+
+**Claim B (567 chars) contains `לדיווח על תופעות לוואי >`** — the adverse-event reporting link, this
+platform's central finding — embedded inside a stitched span. The clean 24-character version of that
+claim has its own trajectory and is unaffected; but a second, artefactual claim covering the same
+content also sits in the corpus, and only the first is citable.
 
 *Invariant:* every reported flip is confirmed against the documents at that boundary.
 
