@@ -291,6 +291,68 @@ recorded here.
 
 ---
 
+## 5a. CLOSED, the same day
+
+The fix landed as `3c0e639` (PR #248). `storedAnchorHash` is the single normaliser, returning a
+branded `StoredAnchorHash` only it can produce; both write sites require it, so a raw string cannot
+reach the column. A data migration normalised the existing rows. `attestationOf`'s private prefix strip
+went too — it lower-cased where `capturesAnchoredBy` did not, so the module written to end duplicate
+implementations of one rule held two that already disagreed about case.
+
+**Five existing assertions expected `0x` and one expected bare.** The defect had been written down as a
+requirement, in a suite that documented both spellings without anyone noticing. Corrected against an
+independent oracle, never weakened.
+
+`test/anchoredHashOneSpelling.test.ts` tests neither writer: it tests that what one writer stores, the
+lookup finds — for both writers, every spelling the chain can return, with a decoy proving the old form
+genuinely does not match. Mutation-checked: removing the normaliser fails 3 of its 5 cases.
+
+**The result on staging, deployment `863cd928 @ 3c0e639`:**
+
+```
+Subjects claiming an anchor   120
+  VERIFIED         7      ← the seven captures of this control
+  CONTRADICTED     0
+  UNAVAILABLE      0
+  UNCHECKED        0
+  STALE            0
+  MISATTESTING    22
+  UNATTRIBUTED    91
+exit 5
+```
+
+**The success arm has fired.** A capture has been anchored to the document it attests, had that
+transaction's own log read back, and been audited `ATTESTS_CURRENT` — every stage proven by execution.
+
+**A prediction in the fix plan was wrong.** The 22 legacy rows were expected to flip to `STALE`; they
+stayed `MISATTESTING` and `STALE` came out 0, so `forensics:backfill-anchor-checks` was never run. The
+migration alone sufficed: the write-time verdict encoded `snapshots: 1`, and normalisation restored it.
+
+### Two deployment notes worth keeping
+
+**The first deploy stalled for 27 minutes and it was not the build.** The build finished in 72 seconds
+and the pre-deploy migration applied successfully; the start command then produced zero log lines. A
+redeploy of the same commit cleared it. The stalled deployment is now `REMOVED`.
+
+**`railway logs --build` without a deployment id shows the MOST RECENT SUCCESSFUL deployment**, not the
+one in flight — so it served a five-hour-old build log for a deploy that had just started, and hid the
+real state for most of those 27 minutes. Always pass the deployment id. Same family as everything else
+in this document: an accurate fact about the axis you did not ask about.
+
+**This left a split state worth naming for next time:** the migration applied while the OLD code was
+still serving, so for 27 minutes staging's database was normalised and its running code was not. No
+anchor confirmation must run in that window, or it writes the old spelling straight back.
+
+## 5b. NOT TRUE ON PRODUCTION YET
+
+Production runs `master`, which does not carry `3c0e639`, and its database has not had the normalising
+migration. **A capture anchored and confirmed on production today would land `STALE` exactly as
+staging's seven did.** Production's own corpus is unaffected in the meantime — its 83 captures are
+`MISATTESTING` under the superseded rule and its 8 evidence rows `VERIFIED` through the path that never
+consulted `capturesAnchoredBy`.
+
+Closing this on production needs a `SHIP`, which is the researcher's decision and nobody else's.
+
 ## 6. What did NOT happen
 
 - **No legacy state was touched.** `confirm-anchors` selects `anchorCheck: null`, and `--recheck` was

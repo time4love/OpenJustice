@@ -1940,7 +1940,7 @@ exactly one did, and it became `probeSnapshotsList` — *named* for recording no
 
 ### Level 3 — the anchor
 
-**STATUS: PARTIAL — clause 2 (the database claim is CHECKED) is closed; clause 1 (the anchor attests to the DOCUMENT) is OPEN. The code is shipped AND the write path has now been EXECUTED against a chain (2026-08-30 positive control, 7 captures, 7 transactions, all confirmed by receipt) — but the level CANNOT CLOSE, because the audit arm that would say so is unreachable: `anchoredHash` is written bare by the write path and `0x`-prefixed by `forensics:confirm-anchors`, so a confirmed row is invisible to `capturesAnchoredBy` and every new capture lands STALE instead of VERIFIED. See `docs/gf-positive-control-2026-08-30.md`. Attributing LEGACY anchors is explicitly NOT part of this level — see the boundary below.**
+**STATUS: CLOSED ON STAGING, 2026-08-30 — clause 2 was already closed; clause 1 is now PROVEN BY EXECUTION, not by fixtures. `VERIFIED 7 · MISATTESTING 22 · UNATTRIBUTED 91`, exit 5, on deployment `863cd928 @ 3c0e639`. Seven captures anchored to their `documentHash`, seven transactions, each transaction's own log read back, each audited `ATTESTS_CURRENT`. NOT YET TRUE ON PRODUCTION — production runs `master`, which does not carry the spelling fix (`3c0e639`) and whose database has not had the normalising migration; a capture anchored and confirmed there today would still land STALE. That needs a `SHIP`, which is the researcher's. Attributing LEGACY anchors remains explicitly NOT part of this level — see the boundary below.**
 
 #### THE POSITIVE CONTROL RAN 2026-08-30, AND FALSIFIED THE PREDICTION
 
@@ -1968,9 +1968,27 @@ recorded only as an observation.
 each spelling is internally consistent within its own writer. The divergence lives in the seam, and
 only a real execution crosses it. **Quote this the next time a positive control looks expensive.**
 
-*What closing the clause now requires:* one spelling owned in one place; a test that crosses the seam
+*What closing the clause required:* one spelling owned in one place; a test that crosses the seam
 rather than exercising either writer alone; the seven checks re-recorded; the audit re-run to
-`VERIFIED 7 · MISATTESTING 22 · UNATTRIBUTED 91`, exit 5. Only then does the `STATUS:` line move.
+`VERIFIED 7 · MISATTESTING 22 · UNATTRIBUTED 91`, exit 5.
+
+##### CLOSED THE SAME DAY — and the re-record turned out to be unnecessary
+
+`storedAnchorHash` is now the single normaliser, returning a branded type only it can produce, so a
+raw string cannot reach either write site. A data migration normalised the existing rows. Landed as
+`3c0e639`; the first deploy stalled between a successful pre-deploy and its start command and was
+redeployed as `863cd928`.
+
+**The audit then read `VERIFIED 7 · MISATTESTING 22 · UNATTRIBUTED 91`, exit 5** — the target exactly.
+
+**One prediction in the fix plan was wrong, and it is worth keeping wrong here.** The 22 legacy rows
+were expected to flip to `STALE`, on the reasoning that normalising *their* `anchoredHash` moved
+*their* claim too. They stayed `MISATTESTING` and `STALE` came out 0, so
+`forensics:backfill-anchor-checks` was never run. The migration alone was sufficient — the write-time
+verdict encoded `snapshots: 1`, and normalisation restored precisely that.
+
+**`exit 5` is still correct and must remain.** 113 legacy subjects are unsuperseded; that is Level 10's
+and no part of this level.
 
 #### THE BOUNDARY, drawn 2026-08-30: legacy anchor attribution is Level 10, not clause 1
 
