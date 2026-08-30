@@ -6,6 +6,7 @@ import { deriveCallState, type CallGap } from './whistleblowerCall';
 import { checkFiguresHedged, checkPublicInterestStatement, MAX_SENTENCE_LENGTH } from '../lib/publicationLanguage';
 import { requireActiveSessionFor, type ActiveSessionForThesis } from './researchSessions';
 import { resolveTrajectoryCitations } from './trajectoryCitation';
+import { assessEvidenceInputSoundness } from './evidenceInputSoundness';
 import {
   ThesisPublicationAssessorAgent,
   type ThesisPublicationAssessment,
@@ -18,7 +19,7 @@ import {
 // the public sees, until someone publishes again. Editing the head and
 // re-running the Devil's Advocate changes nothing public.
 //
-// Fifteen checks, reported individually so a refusal names what is missing.
+// Seventeen checks, reported individually so a refusal names what is missing.
 // Hard checks block. Advisory checks never block: they are recorded with the
 // publication and a researcher may publish over them, and the dissent stands
 // on the record — the same posture as the diff debate.
@@ -53,7 +54,8 @@ export type PublicationCheckId =
   | 'FRAMING_ATTACHED'
   | 'TRAJECTORIES_RESOLVE'
   | 'TRAJECTORIES_CURRENT'
-  | 'ANALYSIS_CURRENT';
+  | 'ANALYSIS_CURRENT'
+  | 'EVIDENCE_DIFF_INPUT_SOUND';
 
 export interface PublicationCheck {
   number: number;
@@ -63,9 +65,11 @@ export interface PublicationCheck {
   summary: string;
   details?: unknown;
   /**
-   * Check 6 only. False while every confirmed record in the vault is at or
-   * above the threshold — a pass that blocks nothing must say so, because a
-   * threshold that looks strict and blocks nothing reads as protection.
+   * Checks 6 and 17 only. False when the check passed with nothing in its
+   * scope — every confirmed record in the vault already at or above the tier
+   * threshold, or no cited record derived from a diff. A pass that blocks
+   * nothing must say so, because a check that looks strict and blocks nothing
+   * reads as protection.
    */
   binding?: boolean;
 }
@@ -490,6 +494,56 @@ export async function assessPublication(
             'fingerprinting. Run run_ai_analysis to re-argue it against what is there now.',
     ),
   );
+
+  // 17 — the INPUT behind every cited record, not the record's status.
+  //
+  // Checks 5 and 6 ask whether a cited record is CONFIRMED, anchored and at
+  // tier. None of the three asks whether the change it reports happened. A
+  // record whose diff the archived documents REFUTE satisfies all of them, and
+  // one did: an anchored, CONFIRMED record passing all sixteen checks, whose
+  // summary asserts a safety presentation was added on a date the raw archive
+  // shows it was already there.
+  //
+  // Level 5 has refused to PROMOTE such a diff since its gate landed. This is
+  // the same rule at the other end — records promoted before that gate existed
+  // are still citable, and a diff can become CONTRADICTED after promotion.
+  //
+  // HARD, and failing on four of the five states rather than on refutation
+  // alone. Promotion may proceed on an unchecked diff because unchecked is not
+  // refuted; publication may not, because publishing asserts the change in
+  // public. See `unsoundReasonFor`.
+  const soundness = await assessEvidenceInputSoundness(citedHashes);
+  const documentScope =
+    soundness.outOfScope > 0
+      ? ` ${String(soundness.outOfScope)} cited record(s) are not derived from a diff and are not ` +
+        'covered here: DOCUMENT evidence has no snapshot-derived input and no soundness check at all.'
+      : '';
+  checks.push({
+    ...check(
+      17,
+      'EVIDENCE_DIFF_INPUT_SOUND',
+      'hard',
+      soundness.passed,
+      (!soundness.binding
+        ? 'No cited record is derived from a diff — NON-BINDING: this check judges the archived ' +
+          'documents behind diff-derived evidence, and there is none to judge.'
+        : soundness.passed
+          ? `All ${String(soundness.inScope)} diff-derived cited record(s) rest on a change the ` +
+            'archived documents support.'
+          : `${String(soundness.unsound.length)} of ${String(soundness.inScope)} diff-derived cited ` +
+            'record(s) rest on an input the documents do not support, or that the platform has no ' +
+            'current answer about.') + documentScope,
+      soundness.unsound.length > 0
+        ? soundness.unsound.map((r) => ({
+            fileHash: r.fileHash,
+            urlVersionDiffId: r.urlVersionDiffId,
+            state: r.survival?.state ?? 'DIFF_NOT_LOADED',
+            reason: r.unsoundReason,
+          }))
+        : undefined,
+    ),
+    binding: soundness.binding,
+  });
 
   const hardFailures = checks.filter((c) => c.kind === 'hard' && !c.passed).map((c) => c.id);
   const advisoryFailures = checks.filter((c) => c.kind === 'advisory' && !c.passed).map((c) => c.id);
