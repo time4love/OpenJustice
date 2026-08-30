@@ -25,6 +25,7 @@
     "test:bf": "npm run test --workspace=apps/bronze-fortress/backend",
     "test:vault": "npm run test --workspace=packages/document-vault",
     "integrity:board": "node tools/integrity-board/build.mjs",
-    "integrity:check": "node tools/integrity-board/build.mjs --check"
+    "integrity:check": "node tools/integrity-board/build.mjs --check",
+    "lint:ratchet": "node tools/lint-ratchet/check.mjs"
   }
 }

@@ -44,3 +44,11 @@ jobs:
 
       - name: Run the suite
         run: npm run test:gf
+
+      # A RATCHET, NOT A SWEEP. `eslint src/` exits 1 today, so running it here
+      # directly would install a permanently red required check — the defect
+      # retired the same day this was written. This compares per-rule counts
+      # against a recorded baseline, so the steady state is green and the debt
+      # cannot grow unnoticed while the cleanup PRs are still queued.
+      - name: Lint debt may not grow
+        run: npm run lint:ratchet
