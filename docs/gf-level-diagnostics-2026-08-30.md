@@ -240,3 +240,62 @@ records unrecomputable; that is now 0 of 7 and **that reason is gone**. A differ
 `DETECTION_VERSION` bump recomputes every trajectory, and the thesis published 2026-08-30 cites **15**
 of them, so recomputation would move `TRAJECTORIES_CURRENT` on a live public artefact. Not a blocker —
 a fact that did not exist this morning.
+
+
+## After the ranking — what was executed, and three more findings
+
+### Tier 1 item 1 — the 91 recorded (staging)
+
+```bash
+railway ssh --environment staging --service glass-fortress-backend \
+  "cd apps/glass-fortress/backend && npm run forensics:confirm-anchors -- --env staging --recheck --apply"
+```
+
+`examined 120 · confirmed by receipt 29 · no receipt, hash registered 91`, exit 3 — **which is correct,
+not a failure.** 91 rows now carry `anchorCheck: TX_UNREADABLE` with `anchoredHash: null`, the honest
+terminal answer. **`--recheck` is mandatory**: without it the run examines 0 (finding 20).
+
+**24 — `audit-anchors` has no terminal bucket.** After the write the audit is byte-identical: still
+`UNATTRIBUTED 91`, still advising *"Run forensics:confirm-anchors"* — a command that has now run,
+applied, and cannot change the answer. `classify()` sends a subject to `UNATTRIBUTED` when
+`attestation === 'UNCONFIRMED'`, which derives from `anchoredHash`; a terminal row has `anchoredHash:
+null` and lands in the same bucket as one nobody ever asked about. **Splitting them needs a new state
+in the union that drives the counts, the summary and the EXIT CODES** — its own change, tested at the
+hardest caller, and `classify()`'s own comments record an earlier version of that decision being wrong
+in a way that let a finding *"repair itself into silence."*
+
+**25 — no tool exposed `anchorCheck`.** So after writing 91 verdicts nothing could confirm they had
+landed. **FIXED the same day**: `check_on_chain_status` now returns an `attribution` block carrying
+`anchoredHash`, `anchorCheck` and `confirmed`. This was the **second** instance that day of a
+verdict-bearing column readable by no instrument — `beforeSnapshotId`'s date is the other, and it is
+still unexposed, which is why Level 8's mechanism stays unresolved.
+
+**26 — the dry run prints `"Recorded as TX_UNREADABLE"`** for rows it does not record. Identical text in
+both modes; only the banner differs. A message asserting a write that did not happen.
+
+### Tier 1 item 2 — landed
+
+`check_on_chain_status` returned `CONSISTENT` with *"This record can be cited as on-chain evidence"* for
+a record the audit calls `UNATTRIBUTED` — **to the session that had published a thesis citing it an hour
+earlier.** The verdict was right; the sentence asserted a second thing the verdict never asks. The
+explanation now states what it checked, the attribution block answers the other question in four
+distinguished states, and a test holds that **no** verdict explanation may promise citability.
+
+### Infrastructure that did not exist this morning
+
+- **CI** — `.github/workflows/tests.yml` runs 151 suites / 2357 tests on every PR to `staging` and
+  `master`, plus the lint ratchet. First run green in 1m53s. Node 22, which also proved
+  `engines.node >= 22` true.
+- **Branch protection** — `master`: force pushes and deletions blocked, **no required checks, so `SHIP`
+  still works**. `staging`: required check `glass-fortress-backend` + PR required. `enforce_admins` off
+  on both, deliberately, so a solo operator cannot lock themselves out.
+- **Lint ratchet** — per rule, baseline **382 across 23 rules**, fails on growth *and* on an
+  unrecorded fall. **CI is the source of truth**: its first run disagreed with the laptop that recorded
+  the baseline by one `no-unnecessary-type-assertion`, a type-aware rule reading types the drifted local
+  `node_modules` produces. Regenerating Prisma did not close it, so the cause is the install.
+
+### Shipped
+
+`master` `6535948 → 9661206`, deploy `SUCCESS`, all four production services Online, `get_environment`
+`CONFIRMED` on every axis. No migration; `DETECTION_VERSION` unchanged; production holds 0 theses.
+**One behaviour change: production's operational scripts now emit ledger records too.**
