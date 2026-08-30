@@ -125,8 +125,14 @@ export const CONSISTENT_VERDICTS: ReadonlySet<OnChainVerdict> = new Set([
 ]);
 
 export const ON_CHAIN_EXPLANATIONS: Record<OnChainVerdict, string> = {
+  // SAYS WHAT IT CHECKED, NOT WHAT THE CALLER MAY CONCLUDE. This asserted
+  // "This record can be cited as on-chain evidence" until 2026-08-30, when it
+  // said exactly that about a record the anchor audit calls UNATTRIBUTED and
+  // `confirm-anchors` calls TX_UNREADABLE — during the session that had just
+  // published a thesis citing it. The verdict was right; the sentence claimed
+  // a second thing the verdict never asked.
   CONSISTENT:
-    'The database and the contract agree, and the anchoring transaction is recorded. This record can be cited as on-chain evidence.',
+    'The database and the contract agree, and the anchoring transaction is recorded. That is a check on CONSISTENCY, not on ATTRIBUTION: it does not establish that the recorded transaction is the one that registered this hash. Read `attribution`, or run forensics:confirm-anchors.',
   UNANCHORED_CONFIRMED:
     'The record claims CONFIRMED but the contract has no registration for this hash. The evidentiary claim is unsupported — treat the record as unverified until it is registered.',
   MISSING_TX_HASH:

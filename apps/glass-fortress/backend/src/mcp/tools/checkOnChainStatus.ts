@@ -85,7 +85,52 @@ interface OnChainStatusResult {
     lastCapture: string;
     onChainTxHash: string | null;
   };
+  /**
+   * WHAT THIS ROW'S OWN TRANSACTION WAS OBSERVED TO REGISTER — the question
+   * `verdict` does not ask.
+   *
+   * `verdict: CONSISTENT` means the hash is registered and the row carries a
+   * transaction hash. It never asks whether THAT transaction registered THIS
+   * hash, which is the question that can fail and the one
+   * `forensics:confirm-anchors` exists for. Surfacing the two columns it writes
+   * is what stops a caller reading consistency as attribution — a reading this
+   * tool actively invited on 2026-08-30, about a record the audit calls
+   * UNATTRIBUTED, to a session that had just published a thesis citing it.
+   */
+  attribution: {
+    /** The hash observed in the transaction's own log. Null when never observed. */
+    anchoredHash: string | null;
+    /**
+     * The stored terminal verdict from `forensics:confirm-anchors`. Null means
+     * the question has never been asked — which is NOT the same as an answer,
+     * and TX_UNREADABLE is an answer rather than a gap.
+     */
+    anchorCheck: string | null;
+    /** True only when the recorded transaction was observed registering THIS hash. */
+    confirmed: boolean;
+  };
   explanation: string;
+}
+
+/**
+ * One sentence naming what attribution is known, appended to the verdict's own
+ * explanation. Never silent: "not asked" and "asked, terminally unanswerable"
+ * license different decisions and must not collapse into the same absence.
+ */
+export function attributionSentence(
+  a: { anchoredHash: string | null; anchorCheck: string | null; confirmed: boolean },
+  fileHash: string,
+): string {
+  if (a.confirmed) {
+    return 'ATTRIBUTION CONFIRMED: the transaction this row records was observed registering this hash.';
+  }
+  if (a.anchoredHash !== null && a.anchoredHash !== fileHash) {
+    return `ATTRIBUTION MISMATCH: the transaction this row records was observed registering ${a.anchoredHash}, not this hash. Do not cite it for this hash.`;
+  }
+  if (a.anchorCheck !== null) {
+    return `ATTRIBUTION NOT ESTABLISHED, and the answer is terminal: anchorCheck is ${a.anchorCheck}. The registration is real; which transaction made it is not recoverable. Do not cite this as a verified anchor.`;
+  }
+  return 'ATTRIBUTION NEVER OBSERVED: nothing has checked whether the recorded transaction registered this hash. Run forensics:confirm-anchors before citing it as verified.';
 }
 
 /**
@@ -119,7 +164,10 @@ export async function checkOnChainStatusHandler(input: {
   const record = observation.claim.inVault
     ? await prisma.evidence.findUnique({
         where: { fileHash: input.fileHash },
-        select: { id: true },
+        // anchoredHash / anchorCheck are what `forensics:confirm-anchors` writes,
+        // and until 2026-08-30 no tool exposed either — so a row's attribution
+        // state had to be believed rather than read.
+        select: { id: true, anchoredHash: true, anchorCheck: true },
       })
     : null;
 
@@ -130,6 +178,8 @@ export async function checkOnChainStatusHandler(input: {
           select: {
             capturedAt: true,
             onChainTxHash: true,
+            anchoredHash: true,
+            anchorCheck: true,
             trackedUrl: { select: { url: true } },
           },
           // capturedAt, not waybackTimestamp. This summary reports WHEN the text
@@ -164,6 +214,18 @@ export async function checkOnChainStatusHandler(input: {
         }
       : null;
 
+  // The subject the verdict is ABOUT: the evidence row when there is one, else
+  // whichever capture carries an observed hash, else any capture. `.at(0)`
+  // rather than `[0]` — the two debt ratchets disagree about indexed access and
+  // only `.at` is typed `T | undefined` unconditionally.
+  const attributionSource: { anchoredHash: string | null; anchorCheck: string | null } | null =
+    record ?? snapshots.find((s) => s.anchoredHash !== null) ?? snapshots.at(0) ?? null;
+  const attribution = {
+    anchoredHash: attributionSource?.anchoredHash ?? null,
+    anchorCheck: attributionSource?.anchorCheck ?? null,
+    confirmed: attributionSource?.anchoredHash === input.fileHash,
+  };
+
   const result: OnChainStatusResult = {
     fileHash: input.fileHash,
     verdict: observation.verdict,
@@ -180,7 +242,8 @@ export async function checkOnChainStatusHandler(input: {
       registryEvidenceId: observation.registryEvidenceId,
     },
     ...(snapshotSummary ? { snapshot: snapshotSummary } : {}),
-    explanation: ON_CHAIN_EXPLANATIONS[observation.verdict],
+    attribution,
+    explanation: `${ON_CHAIN_EXPLANATIONS[observation.verdict]} ${attributionSentence(attribution, input.fileHash)}`,
   };
 
   if (input.recoverTxHash && observation.registered && !observation.claim.txHash) {
