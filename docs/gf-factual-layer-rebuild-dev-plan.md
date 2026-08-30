@@ -2697,7 +2697,7 @@ a confident reader.
 
 ### Level 7 — the evidence
 
-**STATUS: OPEN**
+**STATUS: OPEN — clause 1 MEASURED 2026-08-30 on staging and it HOLDS for everything the instrument covers: `forensics:rehash-evidence` dry run examined 7, found 7 already current, 0 to rehash, so the “5 of 7 unrecomputable” figure below is SUPERSEDED. The instrument selects `NOT: { urlVersionDiffId: null }` — diff-derived evidence only — so `DOCUMENT` evidence has no recomputable identity and no check at all, and that is the class the currently published thesis cites. Clause 2 remains untested; no instrument exists. → `docs/gf-level-diagnostics-2026-08-30.md`**
 
 *Invariant:* identity is recomputable from its captures, and a summary attributes nothing to a page
 that the page does not contain.
@@ -2745,7 +2745,7 @@ derive the displayed dates from the captures rather than storing them a second t
 
 ### Level 9 — the thesis
 
-**STATUS: OPEN**
+**STATUS: OPEN — and the invariant AS WRITTEN IS UNSATISFIABLE ON STAGING, measured 2026-08-30: no evidence record can be `VERIFIED`, because all 8 anchored records are `TX_UNREADABLE` — the registry holds every hash, the receipts are past the endpoint’s horizon, and that is terminal rather than a gap to close. A thesis published that day passed all 16 hard checks while citing one of them. Do not plan this level as “make theses cite VERIFIED evidence” until Level 10’s supersession provides records that can be. → `docs/gf-level-diagnostics-2026-08-30.md`**
 
 *Invariant:* a thesis cites nothing that is not `VERIFIED`.
 
