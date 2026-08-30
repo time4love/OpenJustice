@@ -93,7 +93,29 @@ export type AnchorCheckState =
    * supersede; one attesting a hash the subject does not have by any rule is
    * misanchored and is a custody incident.
    */
-  | 'MISATTESTING';
+  | 'MISATTESTING'
+  /**
+   * The subject claims an anchor and WHAT that anchor attests has never been
+   * observed. Not a pass, and not a failure of the check either.
+   *
+   * This replaced a FALLBACK, and the fallback was the defect. An unconfirmed row
+   * used to be audited against the hash the CURRENT RULE names — sound only while
+   * the rule had not moved. Level 3 clause 1 moved it, and 91 staging subjects
+   * were then judged against a `documentHash` that nothing ever registered. They
+   * showed STALE, whose documented remedy is to re-check — and a re-check would
+   * have minted a confident `SNAPSHOT_UNANCHORED` verdict about captures that are
+   * correctly anchored.
+   *
+   * That is the self-healing-finding shape: a true finding that the standard
+   * remediation launders into a durable false one. The answer is to stop
+   * guessing. A row with no recorded anchor has no hash to be judged on, and
+   * saying so is the honest verdict.
+   *
+   * `forensics:confirm-anchors` is what clears it — where the chain still
+   * remembers. Where it does not, the row stays here permanently, which is a true
+   * statement about the corpus rather than an absence.
+   */
+  | 'UNATTRIBUTED';
 
 export interface AnchorSubjectRow extends AnchorClaimingSubject {
   state: AnchorCheckState;
@@ -177,6 +199,7 @@ const EMPTY_STATES: Record<AnchorCheckState, number> = {
   UNCHECKED: 0,
   STALE: 0,
   MISATTESTING: 0,
+  UNATTRIBUTED: 0,
 };
 
 /** A subject that asserts an anchor, and the hash the assertion is about. */
@@ -210,6 +233,63 @@ export interface AnchorClaimingSubject {
  * `onChainTxHash: null` is a capture that says it is not anchored, which is an
  * honest state and a different problem (`countUnanchoredSnapshots`).
  */
+/**
+ * WHAT EACH STATE MEANS, as a `Record` over every state.
+ *
+ * A Record, not a list, so the COMPILER requires an entry when a state is added.
+ * The summary block used to hand-list five states; `MISATTESTING` was added to
+ * the model and the exit code and forgotten here, so a staging run printed
+ * `8 VERIFIED + 83 STALE` against `113 subjects` and 22 rows were simply absent
+ * from the only place a human reads. Same class of defect as the one that run
+ * was reporting.
+ */
+const STATE_MEANING: Record<AnchorCheckState, string> = {
+  VERIFIED: 'a current verdict, about the hash the rule names',
+  CONTRADICTED: 'chain and database disagree',
+  UNAVAILABLE: 'chain unreachable — NOT a pass',
+  UNCHECKED: 'no verdict ever recorded — NOT a pass',
+  STALE: 'the claim moved, the rule moved, or the verdict does not name this chain',
+  MISATTESTING: 'anchored to a hash the current rule does not name — explainable is not passing',
+  UNATTRIBUTED: 'claims an anchor; what it attests has never been observed',
+};
+
+/**
+ * The coverage block, as one string.
+ *
+ * Built here rather than printed line by line so it is testable and so nothing
+ * else can interleave with it — the same two reasons as
+ * `formatConfirmAnchorsSummary`, and the second one has already corrupted a
+ * count in this repository once.
+ */
+export function formatAnchorAuditSummary(report: AnchorAuditReport): string {
+  const width = Math.max(...Object.keys(STATE_MEANING).map((k) => k.length));
+  const lines = ['', 'Level 3a — anchor check coverage', ''];
+  lines.push(`Subjects claiming an anchor   ${String(report.subjects)}`);
+
+  // Every state, from the record. A state that exists but is never printed is a
+  // state whose subjects vanish from the report.
+  let counted = 0;
+  for (const [state, meaning] of Object.entries(STATE_MEANING)) {
+    const n = report.byState[state as AnchorCheckState];
+    counted += n;
+    lines.push(`  ${state.padEnd(width)}  ${String(n).padStart(4)}   (${meaning})`);
+  }
+
+  // THE STATES MUST ACCOUNT FOR EVERY SUBJECT. Nothing else in this report would
+  // show a subject that reached no state, and a reader adding the column up and
+  // finding it short has no way to tell whether the run lost one or the printer did.
+  if (counted !== report.subjects) {
+    lines.push(
+      '',
+      `⚠️  the states account for ${String(counted)} of ${String(report.subjects)} subjects. ` +
+        'They must be equal — a state is missing from this report, or a subject reached none.',
+    );
+  }
+
+  lines.push('', `Verifier version              ${report.currentVerifierVersion}`);
+  return lines.join('\n');
+}
+
 export async function auditOnChainAnchorSubjects(): Promise<AnchorClaimingSubject[]> {
   const [evidence, snapshots] = await Promise.all([
     prisma.evidence.findMany({
@@ -385,6 +465,26 @@ async function classify(
   // UNCONFIRMED falls through untouched. It is every row until
   // `forensics:confirm-anchors` has run, and it is not a claim about what was
   // anchored — `anchorsUnconfirmed` counts it instead.
+  // NO RECORDED ANCHOR, SO NOTHING TO JUDGE — asked before the check, for the
+  // same reason MISATTESTING is: this is a property of the subject.
+  //
+  // What stood here was a fallback to the current rule's hash, and it was wrong
+  // the moment the rule moved. Guessing produced a verdict about a hash nothing
+  // registered, and the STALE it caused invited a re-check that would have made
+  // it worse.
+  if (subject.attestation === 'UNCONFIRMED') {
+    return {
+      ...base,
+      state: 'UNATTRIBUTED',
+      checkedAt: check?.checkedAt.toISOString() ?? null,
+      onChainVerdict: null,
+      staleReason:
+        'This subject claims an anchor and what that anchor attests has never been observed. ' +
+        'Run forensics:confirm-anchors; where the chain no longer remembers the transaction, ' +
+        'this is permanent and true rather than a gap to be closed.',
+    };
+  }
+
   if (subject.attestation === 'ATTESTS_SUPERSEDED' || subject.attestation === 'UNRECOGNISED') {
     return {
       ...base,
