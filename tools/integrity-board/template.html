@@ -1,0 +1,314 @@
+<title>Factual Layer Survey</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+
+<style>
+  :root {
+    --ground:      #f5f6f8;
+    --surface:     #ffffff;
+    --surface-sunk:#eceff3;
+    --ink:         #10151c;
+    --ink-soft:    #4a5563;
+    --ink-faint:   #7c8797;
+    --rule:        #d7dce3;
+    --rule-soft:   #e6eaf0;
+    --accent:      #39457a;
+
+    --proven:      #2f6b4f;
+    --partial:     #a8761f;
+    --open:        #9d3b34;
+    --dormant:     #6b7480;
+
+    --proven-wash: #e7f0ea;
+    --partial-wash:#f6eeda;
+    --open-wash:   #f6e6e4;
+    --dormant-wash:#e9ecef;
+
+    --shadow: 0 1px 2px rgba(16,21,28,.06), 0 8px 24px rgba(16,21,28,.05);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground:      #0e1116;
+      --surface:     #161b22;
+      --surface-sunk:#11151b;
+      --ink:         #e6e9ee;
+      --ink-soft:    #a3adbb;
+      --ink-faint:   #6f7a89;
+      --rule:        #262d38;
+      --rule-soft:   #1d232c;
+      --accent:      #8f9ed6;
+
+      --proven:      #6fbf92;
+      --partial:     #dfa94a;
+      --open:        #e0776d;
+      --dormant:     #8b95a3;
+
+      --proven-wash: #17251d;
+      --partial-wash:#2a2113;
+      --open-wash:   #2a1a18;
+      --dormant-wash:#1b1f25;
+
+      --shadow: 0 1px 2px rgba(0,0,0,.4), 0 10px 28px rgba(0,0,0,.35);
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --ground:      #0e1116;
+    --surface:     #161b22;
+    --surface-sunk:#11151b;
+    --ink:         #e6e9ee;
+    --ink-soft:    #a3adbb;
+    --ink-faint:   #6f7a89;
+    --rule:        #262d38;
+    --rule-soft:   #1d232c;
+    --accent:      #8f9ed6;
+
+    --proven:      #6fbf92;
+    --partial:     #dfa94a;
+    --open:        #e0776d;
+    --dormant:     #8b95a3;
+
+    --proven-wash: #17251d;
+    --partial-wash:#2a2113;
+    --open-wash:   #2a1a18;
+    --dormant-wash:#1b1f25;
+
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 10px 28px rgba(0,0,0,.35);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    background: var(--ground);
+    color: var(--ink);
+    font-family: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+    font-size: 15px;
+    line-height: 1.55;
+    margin: 0;
+    padding: 40px 24px 80px;
+  }
+
+  .wrap { max-width: 1080px; margin: 0 auto; display: flex; flex-direction: column; gap: 40px; }
+
+  h1, h2, h3, .label {
+    font-family: "IBM Plex Sans Condensed", "IBM Plex Sans", ui-sans-serif, sans-serif;
+    text-wrap: balance;
+  }
+
+  .label {
+    font-size: 11px; font-weight: 700; letter-spacing: .13em;
+    text-transform: uppercase; color: var(--ink-faint);
+  }
+
+  mono, .mono, code { font-family: "IBM Plex Mono", ui-monospace, monospace; }
+
+  /* ---------- masthead ---------- */
+  header { display: flex; flex-direction: column; gap: 14px; }
+  h1 { font-size: 34px; font-weight: 700; letter-spacing: -.015em; margin: 0; }
+  .standfirst { font-size: 17px; color: var(--ink-soft); max-width: 62ch; margin: 0; }
+  .datestamp {
+    font-family: "IBM Plex Mono", monospace; font-size: 12px;
+    color: var(--ink-faint); display: flex; gap: 18px; flex-wrap: wrap;
+  }
+
+  .verdict {
+    border-left: 3px solid var(--accent);
+    background: var(--surface);
+    padding: 16px 20px; border-radius: 0 8px 8px 0;
+    box-shadow: var(--shadow);
+    max-width: 68ch;
+  }
+  .verdict p { margin: 0; }
+  .verdict strong { font-weight: 600; }
+
+  /* ---------- section frame ---------- */
+  section { display: flex; flex-direction: column; gap: 16px; }
+  h2 { font-size: 13px; font-weight: 700; letter-spacing: .13em; text-transform: uppercase;
+       color: var(--ink-faint); margin: 0; padding-bottom: 8px; border-bottom: 1px solid var(--rule); }
+  .note { font-size: 14px; color: var(--ink-soft); max-width: 66ch; margin: 0; }
+
+  /* ---------- strata ---------- */
+  .strata { display: flex; flex-direction: column-reverse; gap: 3px; }
+
+  .stratum {
+    display: grid;
+    grid-template-columns: 34px minmax(140px, 190px) 1fr 92px;
+    align-items: center; gap: 14px;
+    background: var(--surface);
+    border: 1px solid var(--rule-soft);
+    border-radius: 5px;
+    padding: 9px 14px;
+  }
+  .stratum:hover { border-color: var(--rule); }
+
+  .lv { font-family: "IBM Plex Mono", monospace; font-size: 12px; color: var(--ink-faint);
+        font-variant-numeric: tabular-nums; }
+  .nm { font-family: "IBM Plex Sans Condensed", sans-serif; font-weight: 600; font-size: 15px; }
+  .nm small { display: block; font-family: "IBM Plex Sans", sans-serif; font-weight: 400;
+              font-size: 12px; color: var(--ink-faint); letter-spacing: 0; }
+
+  .track { position: relative; height: 22px; background: var(--surface-sunk);
+           border-radius: 3px; overflow: hidden; }
+  .fill { position: absolute; inset: 0 auto 0 0; border-radius: 3px; }
+  /* The caption sits at a FIXED position with the bar behind it, never inside the
+     fill. A caption inside a 5%-wide fill spills past its own edge, which is
+     exactly the score most rows on this board have. */
+  .cap  { position: absolute; left: 9px; top: 0; bottom: 0; display: flex; align-items: center;
+          font-family: "IBM Plex Mono", monospace; font-size: 10.5px; font-weight: 500;
+          letter-spacing: .04em; text-transform: uppercase; white-space: nowrap; }
+
+  .t-proven  .fill { background: var(--proven-wash);  border-right: 2px solid var(--proven); }
+  .t-partial .fill { background: var(--partial-wash); border-right: 2px solid var(--partial); }
+  .t-open    .fill { background: var(--open-wash);    border-right: 2px solid var(--open); }
+  .t-dormant .fill { background: var(--dormant-wash); border-right: 2px solid var(--dormant); }
+  .t-proven  .cap { color: var(--proven); }
+  .t-partial .cap { color: var(--partial); }
+  .t-open    .cap { color: var(--open); }
+  .t-dormant .cap { color: var(--dormant); }
+
+  .claim { font-family: "IBM Plex Mono", monospace; font-size: 10.5px; font-weight: 500;
+           letter-spacing: .05em; text-align: right; text-transform: uppercase; }
+  .t-proven  .claim { color: var(--proven); }
+  .t-partial .claim { color: var(--partial); }
+  .t-open    .claim { color: var(--open); }
+  .t-dormant .claim { color: var(--dormant); }
+
+  .substrate {
+    margin-top: 10px; border: 1px dashed var(--rule); border-radius: 5px;
+    padding: 11px 14px; background: transparent;
+    font-size: 13px; color: var(--ink-soft);
+  }
+  .substrate b { font-family: "IBM Plex Sans Condensed", sans-serif; color: var(--ink); font-weight: 600; }
+
+  /* ---------- legend ---------- */
+  .legend { display: grid; grid-template-columns: repeat(auto-fit, minmax(215px, 1fr)); gap: 14px; }
+  .legend div { background: var(--surface); border: 1px solid var(--rule-soft);
+                border-radius: 6px; padding: 13px 15px; }
+  .legend p { margin: 6px 0 0; font-size: 13px; color: var(--ink-soft); }
+
+  /* ---------- table ---------- */
+  .scroll { overflow-x: auto; border: 1px solid var(--rule-soft); border-radius: 7px;
+            background: var(--surface); box-shadow: var(--shadow); }
+  table { border-collapse: collapse; width: 100%; min-width: 780px; }
+  th { font-family: "IBM Plex Sans Condensed", sans-serif; font-size: 11px; font-weight: 700;
+       letter-spacing: .11em; text-transform: uppercase; color: var(--ink-faint);
+       text-align: left; padding: 12px 14px; border-bottom: 1px solid var(--rule); }
+  td { padding: 12px 14px; border-bottom: 1px solid var(--rule-soft); font-size: 13.5px;
+       vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+  td.k { font-family: "IBM Plex Sans Condensed", sans-serif; font-weight: 600; white-space: nowrap; }
+  td code { font-size: 12px; color: var(--ink-soft); }
+  .never { color: var(--open); font-weight: 600; }
+  .ran   { color: var(--proven); font-weight: 600; }
+
+  /* ---------- change log ---------- */
+  .changes { display: flex; flex-direction: column; gap: 10px; }
+  .change {
+    display: grid; grid-template-columns: 74px 1fr; gap: 16px;
+    background: var(--surface); border: 1px solid var(--rule-soft);
+    border-left: 3px solid var(--rule); border-radius: 0 6px 6px 0; padding: 13px 16px;
+  }
+  .change.up   { border-left-color: var(--proven); }
+  .change.down { border-left-color: var(--partial); }
+  .change.flat { border-left-color: var(--dormant); }
+  .change .who { font-family: "IBM Plex Mono", monospace; font-size: 12px; color: var(--ink-faint);
+                 font-variant-numeric: tabular-nums; }
+  .change .what { margin: 0; font-size: 14px; }
+  .change .what b { font-weight: 600; }
+  .change .why { margin: 5px 0 0; font-size: 13px; color: var(--ink-soft); }
+  .arrow { font-family: "IBM Plex Mono", monospace; font-weight: 500; }
+  .up .arrow   { color: var(--proven); }
+  .down .arrow { color: var(--partial); }
+  .flat .arrow { color: var(--dormant); }
+
+  .heb { direction: rtl; unicode-bidi: isolate; font-size: 13px; }
+
+  footer { border-top: 1px solid var(--rule); padding-top: 18px; font-size: 13px; color: var(--ink-faint); }
+  footer code { font-size: 12px; }
+
+  @media (max-width: 640px) {
+    .stratum { grid-template-columns: 28px 1fr; grid-template-areas: "lv nm" "tr tr" "cl cl"; gap: 8px; }
+    .lv { grid-area: lv; } .nm { grid-area: nm; } .track { grid-area: tr; } .claim { grid-area: cl; text-align: left; }
+    h1 { font-size: 27px; }
+  }
+</style>
+<style>
+  .pill { font-family:"IBM Plex Mono",monospace; font-size:10px; letter-spacing:.06em;
+          text-transform:uppercase; color:var(--accent); border:1px solid var(--rule);
+          border-radius:3px; padding:1px 5px; margin-right:6px; white-space:nowrap; }
+  .dim  { color: var(--ink-faint); }
+  .stale { color: var(--partial); font-weight:600; }
+  .sum  { margin:6px 0 0; font-size:12.5px; color:var(--ink-soft); max-width:60ch; }
+  tr.never td.k { color: var(--open); }
+  tr.stale td.k { color: var(--partial); }
+  .counts { display:flex; gap:28px; flex-wrap:wrap; }
+  .counts div { display:flex; flex-direction:column; gap:2px; }
+  .counts b { font-family:"IBM Plex Mono",monospace; font-size:26px; font-weight:500;
+              font-variant-numeric:tabular-nums; line-height:1.1; }
+  .counts span { font-size:12px; color:var(--ink-faint); }
+</style>
+
+<div class="wrap">
+
+  <header>
+    <p class="label">Glass Fortress · factual layer rebuild</p>
+    <h1>Factual Layer Survey</h1>
+    <p class="standfirst">Eleven levels, drawn as strata because they rest on one another. <b>Colour is what the plan claims. Bar length is how much of that claim has actually been proved.</b> A level can be green and nearly empty — that is the state worth seeing.</p>
+    <p class="datestamp">
+      <span>GENERATED FROM {{HEAD}}</span>
+      <span>{{WHEN}}</span>
+      <span>no database · no chain · no model</span>
+    </p>
+  </header>
+
+  <div class="verdict">
+    <div class="counts">
+      <div><b>{{NEVER}}<span style="font-size:15px;color:var(--ink-faint)">/{{TOTAL}}</span></b><span>levels whose check has never run</span></div>
+      <div><b>{{STALE}}</b><span>results whose code has moved since</span></div>
+    </div>
+    <p style="margin-top:14px">Colour comes from the plan's own <code>STATUS:</code> lines. Bar length is computed: a check that does not exist scores nothing, one that has never run scores little, and one whose dependencies changed since it ran is marked <b>stale</b> — the same discipline that invalidates a Level 5 verdict when the inputs it judged have moved.</p>
+  </div>
+
+  <section>
+    <h2>The strata</h2>
+    <div class="strata">
+{{STRATA}}
+    </div>
+    <div class="substrate"><b>Shared foundation, Levels 3–6.</b> All four rest on one substrate decision: the factual layer is Readability's article (<code>fullText</code>), not the payload as served. Level 3's anchor attested it; Level 4's chrome is invisible because the differ reads it; Level 5's contradictions came from its granularity; Level 6's claims are stitched by it. <b>They move together, and one decision — moving the differ off <code>fullText</code> — addresses three at once.</b></div>
+  </section>
+
+  <section>
+    <h2>How a bar is computed</h2>
+    <div class="legend">
+      <div><p class="label" style="color:var(--proven)">Full</p><p>The check ran, its code has not moved since, and it held. <code>PASS_WITH_KNOWN_LEGACY</code> counts — a correct non-zero exit is not a failure.</p></div>
+      <div><p class="label" style="color:var(--partial)">Half</p><p><b>Stale.</b> It ran and passed, but files it depends on have changed since. The proof no longer covers the code.</p></div>
+      <div><p class="label" style="color:var(--open)">A sliver</p><p>Either no check exists for this level's invariant, or none has ever been recorded. Honest, and the most common state here.</p></div>
+      <div><p class="label" style="color:var(--dormant)">A level scores its weakest check</p><p>Never its best. One unchecked clause is enough for a level's claim to outrun its evidence.</p></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>The falsifiers — what could prove each level wrong, and when it last ran</h2>
+    <p class="note">This table is the survey's real content, and it is a <b>ledger, not a computation</b>. Every check below is an operational script that refuses to run outside a deployment, so none of them can run in CI. A run records itself; this page renders what was recorded. Nothing here is re-derived at build time except staleness.</p>
+    <div class="scroll">
+      <table>
+        <thead><tr><th>Level · check</th><th>What it would falsify</th><th>Command</th><th>Last recorded run</th></tr></thead>
+        <tbody>
+{{ROWS}}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2>What this predicts</h2>
+    <p class="note"><b>Levels 7, 8 and 9 will behave like Level 6.</b> All three ask the same question in different clothes — does this artefact say something true about the page? Each is likely to find something on first honest execution. Their statuses will not move backwards; the confidence behind the earlier ones should widen. Discovery here is a function of <em>first-time execution</em>, not decay — four instruments ran for the first time on 2026-08-30 and all four found something. That backlog is finite.</p>
+  </section>
+
+  <footer>
+    <p>Regenerated on every pull request by <code>node tools/integrity-board/build.mjs</code>, from <code>docs/gf-factual-layer-rebuild-dev-plan.md</code> and <code>docs/integrity/ledger.json</code>. Published because a platform whose thesis is outsider-verifiability should show what it has <em>not</em> proved.</p>
+  </footer>
+
+</div>
