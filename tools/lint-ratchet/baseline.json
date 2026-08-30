@@ -1,6 +1,6 @@
 {
   "target": "glass-fortress-backend",
-  "total": 381,
+  "total": 382,
   "rules": {
     "(parse-error)": 1,
     "@typescript-eslint/array-type": 7,
@@ -14,7 +14,7 @@
     "@typescript-eslint/no-non-null-assertion": 9,
     "@typescript-eslint/no-unnecessary-condition": 51,
     "@typescript-eslint/no-unnecessary-template-expression": 7,
-    "@typescript-eslint/no-unnecessary-type-assertion": 3,
+    "@typescript-eslint/no-unnecessary-type-assertion": 4,
     "@typescript-eslint/no-unnecessary-type-conversion": 1,
     "@typescript-eslint/no-unsafe-assignment": 3,
     "@typescript-eslint/prefer-nullish-coalescing": 24,

@@ -19,6 +19,13 @@
 // number in the same change, which is one command and keeps the file honest
 // about what the codebase actually contains.
 //
+// CI IS THE SOURCE OF TRUTH FOR THE BASELINE, and that is not a preference. The
+// first CI run of this check disagreed with the laptop that recorded it by one
+// `no-unnecessary-type-assertion` — a TYPE-AWARE rule, so it reads whatever types
+// the installed dependencies produce. CI installs with `npm ci` from the
+// lockfile; a laptop's node_modules drifts. Recording the baseline from the
+// drifted side would make the check enforce a state no clean checkout has.
+//
 // NO ERROR IS RESOLVED BY AN eslint-disable OR BY RELAXING A RULE. That makes
 // the number fall while the codebase stays the same, which is a test encoding a
 // defect as a requirement — a shape this repository has paid for before.
@@ -93,6 +100,11 @@ if (worse.length > 0) {
 if (better.length > 0) {
   console.error(`Lint debt fell — record it in the same change:\n${better.join('\n')}`);
   console.error('\n  npm run lint:ratchet -- --update\n\nthen commit tools/lint-ratchet/baseline.json.');
+  console.error(
+    'If this appears LOCALLY but not in CI, the debt did not fall — your node_modules has drifted ' +
+      'from the lockfile, and type-aware rules read different types as a result. CI installs with ' +
+      '`npm ci` and is the source of truth. Run `npm ci` before updating the baseline.',
+  );
   process.exit(1);
 }
 
