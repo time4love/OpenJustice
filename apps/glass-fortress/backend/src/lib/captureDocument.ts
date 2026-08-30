@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import { createHash } from 'crypto';
 import { gunzipSync, inflateSync, brotliDecompressSync } from 'zlib';
 import { htmlToText, normaliseText } from './htmlText';
@@ -110,6 +111,58 @@ export function inflateDocument(bytes: Buffer, contentEncoding: string | null | 
   return bytes;
 }
 
+// ---------------------------------------------------------------------------
+// THE ONE WAY TO READ A STORED PAYLOAD AS HTML.
+//
+// `inflate -> decode` is two steps and the first one is easy to forget, because
+// a payload that was never compressed reads perfectly without it. It was
+// forgotten: `measureHrefChanges` called `decodeDocument` alone, so every
+// capture whose origin served `Content-Encoding: gzip` was read as compressed
+// bytes and yielded ZERO hrefs.
+//
+// What that produced was not a crash. It was a MEASUREMENT — 7 of the MOH page's
+// 103 captures appeared to lose ~50 links each and get them back, which read as
+// 12 "changes invisible to the derived text", including the adverse-event
+// reporting channel `https://t.me/MOHreport` apparently appearing and vanishing
+// 13 times. Every one of those was this missing call. The page never changed and
+// the corpus was never wrong; `deriveText` inflates, which is why the text layer
+// correctly reported no change at exactly those boundaries.
+//
+// So the pair becomes one symbol with a select the compiler enforces, in the
+// same shape as `ANCHORABLE_CAPTURE_SELECT`: a caller that forgets the encoding
+// column cannot build the argument. `test/captureHtml.test.ts` holds that
+// nothing outside this module calls `decodeDocument` or `inflateDocument`
+// directly.
+// ---------------------------------------------------------------------------
+
+/** A capture, reduced to what reading its payload as HTML requires. */
+export interface DecodableCapture {
+  document: Buffer;
+  documentContentType: string | null;
+  documentContentEncoding: string | null;
+}
+
+/**
+ * The columns a query must select for its rows to be readable as HTML.
+ *
+ * Spread into a Prisma `select` rather than copied. `measureHrefChanges` listed
+ * its own columns and omitted `documentContentEncoding` — so the bug was not
+ * only a missing call, it was a missing COLUMN, and no type complained.
+ */
+export const DECODABLE_CAPTURE_SELECT = {
+  document: true,
+  documentContentType: true,
+  documentContentEncoding: true,
+} satisfies Prisma.UrlSnapshotSelect;
+
+/** A stored payload, as HTML: the bytes as served, inflated and decoded. */
+export function captureHtml(capture: DecodableCapture): string {
+  return decodeDocument(
+    inflateDocument(capture.document, capture.documentContentEncoding),
+    capture.documentContentType,
+  );
+}
+
 /**
  * Derive the normalised text view of a payload.
  *
@@ -124,7 +177,13 @@ export function deriveText(
   contentEncoding: string | null | undefined = null,
 ): DerivedText {
   const text = normaliseText(
-    htmlToText(decodeDocument(inflateDocument(bytes, contentEncoding), contentType)),
+    htmlToText(
+      captureHtml({
+        document: bytes,
+        documentContentType: contentType ?? null,
+        documentContentEncoding: contentEncoding ?? null,
+      }),
+    ),
   );
   return {
     text,

@@ -1,0 +1,462 @@
+<title>Factual Layer Survey</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+
+<style>
+  :root {
+    --ground:      #f5f6f8;
+    --surface:     #ffffff;
+    --surface-sunk:#eceff3;
+    --ink:         #10151c;
+    --ink-soft:    #4a5563;
+    --ink-faint:   #7c8797;
+    --rule:        #d7dce3;
+    --rule-soft:   #e6eaf0;
+    --accent:      #39457a;
+
+    --proven:      #2f6b4f;
+    --partial:     #a8761f;
+    --open:        #9d3b34;
+    --dormant:     #6b7480;
+
+    --proven-wash: #e7f0ea;
+    --partial-wash:#f6eeda;
+    --open-wash:   #f6e6e4;
+    --dormant-wash:#e9ecef;
+
+    --shadow: 0 1px 2px rgba(16,21,28,.06), 0 8px 24px rgba(16,21,28,.05);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground:      #0e1116;
+      --surface:     #161b22;
+      --surface-sunk:#11151b;
+      --ink:         #e6e9ee;
+      --ink-soft:    #a3adbb;
+      --ink-faint:   #6f7a89;
+      --rule:        #262d38;
+      --rule-soft:   #1d232c;
+      --accent:      #8f9ed6;
+
+      --proven:      #6fbf92;
+      --partial:     #dfa94a;
+      --open:        #e0776d;
+      --dormant:     #8b95a3;
+
+      --proven-wash: #17251d;
+      --partial-wash:#2a2113;
+      --open-wash:   #2a1a18;
+      --dormant-wash:#1b1f25;
+
+      --shadow: 0 1px 2px rgba(0,0,0,.4), 0 10px 28px rgba(0,0,0,.35);
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --ground:      #0e1116;
+    --surface:     #161b22;
+    --surface-sunk:#11151b;
+    --ink:         #e6e9ee;
+    --ink-soft:    #a3adbb;
+    --ink-faint:   #6f7a89;
+    --rule:        #262d38;
+    --rule-soft:   #1d232c;
+    --accent:      #8f9ed6;
+
+    --proven:      #6fbf92;
+    --partial:     #dfa94a;
+    --open:        #e0776d;
+    --dormant:     #8b95a3;
+
+    --proven-wash: #17251d;
+    --partial-wash:#2a2113;
+    --open-wash:   #2a1a18;
+    --dormant-wash:#1b1f25;
+
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 10px 28px rgba(0,0,0,.35);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    background: var(--ground);
+    color: var(--ink);
+    font-family: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+    font-size: 15px;
+    line-height: 1.55;
+    margin: 0;
+    padding: 40px 24px 80px;
+  }
+
+  .wrap { max-width: 1080px; margin: 0 auto; display: flex; flex-direction: column; gap: 40px; }
+
+  h1, h2, h3, .label {
+    font-family: "IBM Plex Sans Condensed", "IBM Plex Sans", ui-sans-serif, sans-serif;
+    text-wrap: balance;
+  }
+
+  .label {
+    font-size: 11px; font-weight: 700; letter-spacing: .13em;
+    text-transform: uppercase; color: var(--ink-faint);
+  }
+
+  mono, .mono, code { font-family: "IBM Plex Mono", ui-monospace, monospace; }
+
+  /* ---------- masthead ---------- */
+  header { display: flex; flex-direction: column; gap: 14px; }
+  h1 { font-size: 34px; font-weight: 700; letter-spacing: -.015em; margin: 0; }
+  .standfirst { font-size: 17px; color: var(--ink-soft); max-width: 62ch; margin: 0; }
+  .datestamp {
+    font-family: "IBM Plex Mono", monospace; font-size: 12px;
+    color: var(--ink-faint); display: flex; gap: 18px; flex-wrap: wrap;
+  }
+
+  .verdict {
+    border-left: 3px solid var(--accent);
+    background: var(--surface);
+    padding: 16px 20px; border-radius: 0 8px 8px 0;
+    box-shadow: var(--shadow);
+    max-width: 68ch;
+  }
+  .verdict p { margin: 0; }
+  .verdict strong { font-weight: 600; }
+
+  /* ---------- section frame ---------- */
+  section { display: flex; flex-direction: column; gap: 16px; }
+  h2 { font-size: 13px; font-weight: 700; letter-spacing: .13em; text-transform: uppercase;
+       color: var(--ink-faint); margin: 0; padding-bottom: 8px; border-bottom: 1px solid var(--rule); }
+  .note { font-size: 14px; color: var(--ink-soft); max-width: 66ch; margin: 0; }
+
+  /* ---------- strata ---------- */
+  .strata { display: flex; flex-direction: column-reverse; gap: 3px; }
+
+  .stratum {
+    display: grid;
+    grid-template-columns: 34px minmax(140px, 190px) 1fr 92px;
+    align-items: center; gap: 14px;
+    background: var(--surface);
+    border: 1px solid var(--rule-soft);
+    border-radius: 5px;
+    padding: 9px 14px;
+  }
+  .stratum:hover { border-color: var(--rule); }
+
+  .lv { font-family: "IBM Plex Mono", monospace; font-size: 12px; color: var(--ink-faint);
+        font-variant-numeric: tabular-nums; }
+  .nm { font-family: "IBM Plex Sans Condensed", sans-serif; font-weight: 600; font-size: 15px; }
+  .nm small { display: block; font-family: "IBM Plex Sans", sans-serif; font-weight: 400;
+              font-size: 12px; color: var(--ink-faint); letter-spacing: 0; }
+
+  .track { position: relative; height: 22px; background: var(--surface-sunk);
+           border-radius: 3px; overflow: hidden; }
+  .fill { position: absolute; inset: 0 auto 0 0; border-radius: 3px; }
+  /* The caption sits at a FIXED position with the bar behind it, never inside the
+     fill. A caption inside a 5%-wide fill spills past its own edge, which is
+     exactly the score most rows on this board have. */
+  .cap  { position: absolute; left: 9px; top: 0; bottom: 0; display: flex; align-items: center;
+          font-family: "IBM Plex Mono", monospace; font-size: 10.5px; font-weight: 500;
+          letter-spacing: .04em; text-transform: uppercase; white-space: nowrap; }
+
+  .t-proven  .fill { background: var(--proven-wash);  border-right: 2px solid var(--proven); }
+  .t-partial .fill { background: var(--partial-wash); border-right: 2px solid var(--partial); }
+  .t-open    .fill { background: var(--open-wash);    border-right: 2px solid var(--open); }
+  .t-dormant .fill { background: var(--dormant-wash); border-right: 2px solid var(--dormant); }
+  .t-proven  .cap { color: var(--proven); }
+  .t-partial .cap { color: var(--partial); }
+  .t-open    .cap { color: var(--open); }
+  .t-dormant .cap { color: var(--dormant); }
+
+  .claim { font-family: "IBM Plex Mono", monospace; font-size: 10.5px; font-weight: 500;
+           letter-spacing: .05em; text-align: right; text-transform: uppercase; }
+  .t-proven  .claim { color: var(--proven); }
+  .t-partial .claim { color: var(--partial); }
+  .t-open    .claim { color: var(--open); }
+  .t-dormant .claim { color: var(--dormant); }
+
+  .substrate {
+    margin-top: 10px; border: 1px dashed var(--rule); border-radius: 5px;
+    padding: 11px 14px; background: transparent;
+    font-size: 13px; color: var(--ink-soft);
+  }
+  .substrate b { font-family: "IBM Plex Sans Condensed", sans-serif; color: var(--ink); font-weight: 600; }
+
+  /* ---------- legend ---------- */
+  .legend { display: grid; grid-template-columns: repeat(auto-fit, minmax(215px, 1fr)); gap: 14px; }
+  .legend div { background: var(--surface); border: 1px solid var(--rule-soft);
+                border-radius: 6px; padding: 13px 15px; }
+  .legend p { margin: 6px 0 0; font-size: 13px; color: var(--ink-soft); }
+
+  /* ---------- table ---------- */
+  .scroll { overflow-x: auto; border: 1px solid var(--rule-soft); border-radius: 7px;
+            background: var(--surface); box-shadow: var(--shadow); }
+  table { border-collapse: collapse; width: 100%; min-width: 780px; }
+  th { font-family: "IBM Plex Sans Condensed", sans-serif; font-size: 11px; font-weight: 700;
+       letter-spacing: .11em; text-transform: uppercase; color: var(--ink-faint);
+       text-align: left; padding: 12px 14px; border-bottom: 1px solid var(--rule); }
+  td { padding: 12px 14px; border-bottom: 1px solid var(--rule-soft); font-size: 13.5px;
+       vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+  td.k { font-family: "IBM Plex Sans Condensed", sans-serif; font-weight: 600; white-space: nowrap; }
+  td code { font-size: 12px; color: var(--ink-soft); }
+  .never { color: var(--open); font-weight: 600; }
+  .ran   { color: var(--proven); font-weight: 600; }
+
+  /* ---------- change log ---------- */
+  .changes { display: flex; flex-direction: column; gap: 10px; }
+  .change {
+    display: grid; grid-template-columns: 74px 1fr; gap: 16px;
+    background: var(--surface); border: 1px solid var(--rule-soft);
+    border-left: 3px solid var(--rule); border-radius: 0 6px 6px 0; padding: 13px 16px;
+  }
+  .change.up   { border-left-color: var(--proven); }
+  .change.down { border-left-color: var(--partial); }
+  .change.flat { border-left-color: var(--dormant); }
+  .change .who { font-family: "IBM Plex Mono", monospace; font-size: 12px; color: var(--ink-faint);
+                 font-variant-numeric: tabular-nums; }
+  .change .what { margin: 0; font-size: 14px; }
+  .change .what b { font-weight: 600; }
+  .change .why { margin: 5px 0 0; font-size: 13px; color: var(--ink-soft); }
+  .arrow { font-family: "IBM Plex Mono", monospace; font-weight: 500; }
+  .up .arrow   { color: var(--proven); }
+  .down .arrow { color: var(--partial); }
+  .flat .arrow { color: var(--dormant); }
+
+  .heb { direction: rtl; unicode-bidi: isolate; font-size: 13px; }
+
+  footer { border-top: 1px solid var(--rule); padding-top: 18px; font-size: 13px; color: var(--ink-faint); }
+  footer code { font-size: 12px; }
+
+  @media (max-width: 640px) {
+    .stratum { grid-template-columns: 28px 1fr; grid-template-areas: "lv nm" "tr tr" "cl cl"; gap: 8px; }
+    .lv { grid-area: lv; } .nm { grid-area: nm; } .track { grid-area: tr; } .claim { grid-area: cl; text-align: left; }
+    h1 { font-size: 27px; }
+  }
+</style>
+<style>
+  .pill { font-family:"IBM Plex Mono",monospace; font-size:10px; letter-spacing:.06em;
+          text-transform:uppercase; color:var(--accent); border:1px solid var(--rule);
+          border-radius:3px; padding:1px 5px; margin-right:6px; white-space:nowrap; }
+  .dim  { color: var(--ink-faint); }
+  .stale { color: var(--partial); font-weight:600; }
+  .sum  { margin:6px 0 0; font-size:12.5px; color:var(--ink-soft); max-width:60ch; }
+  tr.never td.k { color: var(--open); }
+  tr.stale td.k { color: var(--partial); }
+  .counts { display:flex; gap:28px; flex-wrap:wrap; }
+  .counts div { display:flex; flex-direction:column; gap:2px; }
+  .counts b { font-family:"IBM Plex Mono",monospace; font-size:26px; font-weight:500;
+              font-variant-numeric:tabular-nums; line-height:1.1; }
+  .counts span { font-size:12px; color:var(--ink-faint); }
+</style>
+
+<div class="wrap">
+
+  <header>
+    <p class="label">Glass Fortress · factual layer rebuild</p>
+    <h1>Factual Layer Survey</h1>
+    <p class="standfirst">Eleven levels, drawn as strata because they rest on one another. <b>Colour is what the plan claims. Bar length is how much of that claim has actually been proved.</b> A level can be green and nearly empty — that is the state worth seeing.</p>
+    <p class="datestamp">
+      <span>GENERATED FROM 4d8e6df</span>
+      <span>2026-08-30</span>
+      <span>no database · no chain · no model</span>
+    </p>
+  </header>
+
+  <div class="verdict">
+    <div class="counts">
+      <div><b>7<span style="font-size:15px;color:var(--ink-faint)">/11</span></b><span>levels whose check has never run</span></div>
+      <div><b>1</b><span>results whose code has moved since</span></div>
+    </div>
+    <p style="margin-top:14px">Colour comes from the plan's own <code>STATUS:</code> lines. Bar length is computed: a check that does not exist scores nothing, one that has never run scores little, and one whose dependencies changed since it ran is marked <b>stale</b> — the same discipline that invalidates a Level 5 verdict when the inputs it judged have moved.</p>
+  </div>
+
+  <section>
+    <h2>The strata</h2>
+    <div class="strata">
+      <div class="stratum t-open">
+        <span class="lv">10</span>
+        <span class="nm">supersede the old corpus<small>Every anchored hash stays explainable forever.</small></span>
+        <div class="track"><div class="fill" style="width:4%"></div><span class="cap">no check exists</span></div>
+        <span class="claim">OPEN</span>
+      </div>
+      <div class="stratum t-open">
+        <span class="lv">09</span>
+        <span class="nm">the thesis<small>A thesis cites nothing that is not VERIFIED.</small></span>
+        <div class="track"><div class="fill" style="width:4%"></div><span class="cap">no check exists</span></div>
+        <span class="claim">OPEN</span>
+      </div>
+      <div class="stratum t-open">
+        <span class="lv">08</span>
+        <span class="nm">the opinions<small>Nothing presents a model's judgement as a computed fact.</small></span>
+        <div class="track"><div class="fill" style="width:4%"></div><span class="cap">no check exists</span></div>
+        <span class="claim">OPEN</span>
+      </div>
+      <div class="stratum t-open">
+        <span class="lv">07</span>
+        <span class="nm">the evidence<small>Evidence identity is recomputable from its captures; summaries attribute nothing absent.</small></span>
+        <div class="track"><div class="fill" style="width:4%"></div><span class="cap">no check exists</span></div>
+        <span class="claim">OPEN</span>
+      </div>
+      <div class="stratum t-partial">
+        <span class="lv">06</span>
+        <span class="nm">the trajectory<small>Every reported flip is confirmed against the documents at that boundary.</small></span>
+        <div class="track"><div class="fill" style="width:4%"></div><span class="cap">no check exists</span></div>
+        <span class="claim">PARTIAL</span>
+      </div>
+      <div class="stratum t-proven">
+        <span class="lv">05</span>
+        <span class="nm">the diff<small>Every diff carries a survival verdict computed against what it currently holds.</small></span>
+        <div class="track"><div class="fill" style="width:100%"></div><span class="cap">run, current, held</span></div>
+        <span class="claim">ENFORCED in both environments</span>
+      </div>
+      <div class="stratum t-dormant">
+        <span class="lv">04</span>
+        <span class="nm">the view<small>no invariant check</small></span>
+        <div class="track"><div class="fill" style="width:4%"></div><span class="cap">no check exists</span></div>
+        <span class="claim">DEFERRED (2026-08-29)</span>
+      </div>
+      <div class="stratum t-proven">
+        <span class="lv">03</span>
+        <span class="nm">the anchor<small>Every anchoring claim carries a current verdict about the hash the rule names.</small></span>
+        <div class="track"><div class="fill" style="width:50%"></div><span class="cap">stale — its code moved since</span></div>
+        <span class="claim">CLOSED ON STAGING, 2026-08-30</span>
+      </div>
+      <div class="stratum t-partial">
+        <span class="lv">02</span>
+        <span class="nm">the source<small>admitUrl is the only path to a TrackedUrl.</small></span>
+        <div class="track"><div class="fill" style="width:75%"></div><span class="cap">run, current, reported a finding</span></div>
+        <span class="claim">PHASE A COMPLETE (2026-08-28)</span>
+      </div>
+      <div class="stratum t-proven">
+        <span class="lv">01</span>
+        <span class="nm">the capture<small>Every stored capture matches the Archive's own digest.</small></span>
+        <div class="track"><div class="fill" style="width:40%"></div><span class="cap">run, baseline unrecorded</span></div>
+        <span class="claim">DONE</span>
+      </div>
+      <div class="stratum t-proven">
+        <span class="lv">00</span>
+        <span class="nm">the instrument<small>no invariant check</small></span>
+        <div class="track"><div class="fill" style="width:4%"></div><span class="cap">no check exists</span></div>
+        <span class="claim">DONE</span>
+      </div>
+    </div>
+    <div class="substrate"><b>Shared foundation, Levels 3–6.</b> All four rest on one substrate decision: the factual layer is Readability's article (<code>fullText</code>), not the payload as served. Level 3's anchor attested it; Level 4's chrome is invisible because the differ reads it; Level 5's contradictions came from its granularity; Level 6's claims are stitched by it. <b>They move together, and one decision — moving the differ off <code>fullText</code> — addresses three at once.</b></div>
+  </section>
+
+  <section>
+    <h2>How a bar is computed</h2>
+    <div class="legend">
+      <div><p class="label" style="color:var(--proven)">Full</p><p>The check ran, its code has not moved since, and it held. <code>PASS_WITH_KNOWN_LEGACY</code> counts — a correct non-zero exit is not a failure.</p></div>
+      <div><p class="label" style="color:var(--partial)">Half</p><p><b>Stale.</b> It ran and passed, but files it depends on have changed since. The proof no longer covers the code.</p></div>
+      <div><p class="label" style="color:var(--open)">A sliver</p><p>Either no check exists for this level's invariant, or none has ever been recorded. Honest, and the most common state here.</p></div>
+      <div><p class="label" style="color:var(--dormant)">A level scores its weakest check</p><p>Never its best. One unchecked clause is enough for a level's claim to outrun its evidence.</p></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>The falsifiers — what could prove each level wrong, and when it last ran</h2>
+    <p class="note">This table is the survey's real content, and it is a <b>ledger, not a computation</b>. Every check below is an operational script that refuses to run outside a deployment, so none of them can run in CI. A run records itself; this page renders what was recorded. Nothing here is re-derived at build time except staleness.</p>
+    <div class="scroll">
+      <table>
+        <thead><tr><th>Level · check</th><th>What it would falsify</th><th>Command</th><th>Last recorded run</th></tr></thead>
+        <tbody>
+          <tr class="ran">
+            <td class="k">1 · verify-against-cdx</td>
+            <td>Every stored capture matches the Archive's own digest.</td>
+            <td><code>npm run forensics:verify-against-cdx -- --env &lt;env&gt;</code></td>
+            <td><span class="ran">2026-08-28</span> <span class="dim">@ <code>—</code> · exit 0 · UNRECORDED</span> <span class="pill" title="written by hand before runs recorded themselves">transcribed</span><p class="sum">Level 1 was closed against the Archive's own digest in both environments. The run predates this ledger, so its commit is unrecorded — the date is from the plan, not from an observation recorded here.</p></td>
+          </tr>
+          <tr class="ran">
+            <td class="k">1 · check-drift</td>
+            <td>schema.prisma and the live database have not drifted.</td>
+            <td><code>npm run db:check-drift</code></td>
+            <td><span class="ran">2026-08-30</span> <span class="dim">@ <code>199eac6</code> · exit 0 · CLEAN</span> <span class="pill" title="written by hand before runs recorded themselves">transcribed</span><p class="sum">No difference detected. Run before writing the anchoredHash normalisation migration, as the migration rules require.</p></td>
+          </tr>
+          <tr class="ran">
+            <td class="k">1 · verify-migrations</td>
+            <td>Every migration in the ledger applied and took.</td>
+            <td><code>npm run db:verify-migrations</code></td>
+            <td><span class="ran">2026-08-29</span> <span class="dim">@ <code>—</code> · exit 1 · BLOCKED</span> <span class="pill" title="written by hand before runs recorded themselves">transcribed</span><p class="sum">Cannot pass: pgcrypto is undeclared. A finding about the check, not about the migrations.</p></td>
+          </tr>
+          <tr class="ran">
+            <td class="k">2 · url-admission</td>
+            <td>admitUrl is the only path to a TrackedUrl.</td>
+            <td><code>npx jest test/urlAdmission.test.ts</code></td>
+            <td><span class="ran">2026-08-30</span> <span class="dim">@ <code>d6b6fda</code> · exit 0 · FINDING</span> <span class="pill" title="written by hand before runs recorded themselves">transcribed</span><p class="sum">The source scan holds. But utm_* is stripped only for the FETCH, not for admission, so the URL judged and the URL stored can differ. Level 2 is REOPENED for a separate reason (create_evidence_from_url bypasses the gate).</p></td>
+          </tr>
+          <tr class="ran">
+            <td class="k">3 · audit-anchors</td>
+            <td>Every anchoring claim carries a current verdict about the hash the rule names.</td>
+            <td><code>npm run forensics:audit-anchors -- --env &lt;env&gt;</code></td>
+            <td><span class="ran">2026-08-30</span> <span class="dim">@ <code>3c0e639</code> · exit 5 · PASS_WITH_KNOWN_LEGACY</span> <span class="pill" title="written by hand before runs recorded themselves">transcribed</span><p class="sum">VERIFIED 7 · MISATTESTING 22 · UNATTRIBUTED 91 · STALE 0. The 7 are the positive control's captures — the first time this arm has ever fired. Exit 5 is correct: 113 legacy subjects are unsuperseded, which is Level 10's.</p></td>
+          </tr>
+          <tr class="stale">
+            <td class="k">3 · confirm-anchors</td>
+            <td>What each anchoring transaction actually registered, observed from its own log.</td>
+            <td><code>npm run forensics:confirm-anchors -- --env &lt;env&gt;</code></td>
+            <td><span class="stale">stale</span> <span class="dim">— 2 dependency file(s) moved since <code>7740e11</code></span><p class="sum">7 of 7 confirmed by receipt. Ran on the deployment BEFORE the anchoredHash spelling fix, so its dependencies have since moved — the board should show this stale, and it is.</p></td>
+          </tr>
+          <tr class="ran">
+            <td class="k">5 · audit-survival</td>
+            <td>Every diff carries a survival verdict computed against what it currently holds.</td>
+            <td><code>npm run forensics:audit-survival -- --env &lt;env&gt;</code></td>
+            <td><span class="ran">2026-08-30</span> <span class="dim">@ <code>10a15f9b295d81ff766c6c9af9b6d8935ff7fadb</code> · exit 0 · CLEAN</span><p class="sum">109 diffs · UNCHECKED 0 · STALE 0 · all current. SURVIVES 14 · CONTRADICTED 7 · UNCHECKABLE 88. Level 5's enforcement is real, not merely claimed.</p></td>
+          </tr>
+          <tr class="never">
+            <td class="k">6 · trajectory-flip-confirmation</td>
+            <td>Every reported flip is confirmed against the documents at that boundary.</td>
+            <td><span class="dim">—</span></td>
+            <td><span class="never">no check exists</span><p class="sum">No check exists. This is the level's invariant and nothing enforces it. Blocked: two claims are strings the page never contained, so the confirmation would fail for a reason the corpus must fix first.</p></td>
+          </tr>
+          <tr class="never">
+            <td class="k">7 · evidence-recomputable</td>
+            <td>Evidence identity is recomputable from its captures; summaries attribute nothing absent.</td>
+            <td><span class="dim">—</span></td>
+            <td><span class="never">no check exists</span></td>
+          </tr>
+          <tr class="never">
+            <td class="k">8 · opinions-not-facts</td>
+            <td>Nothing presents a model's judgement as a computed fact.</td>
+            <td><span class="dim">—</span></td>
+            <td><span class="never">no check exists</span></td>
+          </tr>
+          <tr class="never">
+            <td class="k">9 · thesis-cites-verified</td>
+            <td>A thesis cites nothing that is not VERIFIED.</td>
+            <td><span class="dim">—</span></td>
+            <td><span class="never">no check exists</span></td>
+          </tr>
+          <tr class="never">
+            <td class="k">10 · anchors-explainable</td>
+            <td>Every anchored hash stays explainable forever.</td>
+            <td><span class="dim">—</span></td>
+            <td><span class="never">no check exists</span></td>
+          </tr>
+          <tr class="ran">
+            <td class="k">6 · compare-detection-layers</td>
+            <td><span class="pill">instrument</span> What would change if detection read the document instead of the extraction.</td>
+            <td><code>npm run forensics:compare-detection-layers -- --env &lt;env&gt; --url &lt;url&gt;</code></td>
+            <td><span class="ran">2026-08-30</span> <span class="dim">@ <code>d6b6fda</code> · exit 3 · FINDING</span> <span class="pill" title="written by hand before runs recorded themselves">transcribed</span><p class="sum">LOST 2 · GAINED 0 · SHAPE CHANGED 0. The flip is strictly worse, and the gain is zero by construction. The 2 lost are 352 and 567 characters — strings the page never contained, stitched by Readability across a heading it drops.</p></td>
+          </tr>
+          <tr class="ran">
+            <td class="k">6 · measure-href-changes</td>
+            <td><span class="pill">instrument</span> Href-only changes that no text-layer check could ever report.</td>
+            <td><code>npm run forensics:measure-href-changes -- --env &lt;env&gt; --url &lt;url&gt;</code></td>
+            <td><span class="ran">2026-08-30</span> <span class="dim">@ <code>77f1281</code> · exit 0 · FINDING</span> <span class="pill" title="written by hand before runs recorded themselves">transcribed</span><p class="sum">17 of 82 pairs changed, 2 invisible to the derived text. Its first run — before the decode fix — reported 27 and 12, including a government reporting channel vanishing 13 times. It never did.</p></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2>What this predicts</h2>
+    <p class="note"><b>Levels 7, 8 and 9 will behave like Level 6.</b> All three ask the same question in different clothes — does this artefact say something true about the page? Each is likely to find something on first honest execution. Their statuses will not move backwards; the confidence behind the earlier ones should widen. Discovery here is a function of <em>first-time execution</em>, not decay — four instruments ran for the first time on 2026-08-30 and all four found something. That backlog is finite.</p>
+  </section>
+
+  <footer>
+    <p>Regenerated on every pull request by <code>node tools/integrity-board/build.mjs</code>, from <code>docs/gf-factual-layer-rebuild-dev-plan.md</code> and <code>docs/integrity/ledger.json</code>. Published because a platform whose thesis is outsider-verifiability should show what it has <em>not</em> proved.</p>
+  </footer>
+
+</div>

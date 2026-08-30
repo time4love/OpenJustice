@@ -339,6 +339,27 @@ export async function runOperationalScript(
 
   console.log(`\n${describeOperationalContext(context)}\n`);
 
+  const startedAt = new Date().toISOString();
+
+  // ON THE PROCESS'S OWN EXIT, NOT AT THE END OF `body`.
+  //
+  // The first version emitted after `await body(context)` returned, and that was
+  // wrong for SEVENTEEN OF TWENTY-THREE SCRIPTS: they call `process.exit()`
+  // directly on their own exit paths, so the emission never ran on exactly the
+  // runs worth recording. `forensics:audit-anchors` exits 5 from inside its body
+  // and produced no record at all — found the first time the ledger was fed a
+  // real run rather than a rehearsal.
+  //
+  // `exit` fires for a direct `process.exit()` as well as a natural end, so the
+  // record no longer depends on how a script chooses to finish. Synchronous work
+  // only, which `console.log` is.
+  let emitted = false;
+  process.on('exit', (code) => {
+    if (emitted) return;
+    emitted = true;
+    emitLedgerRecord(context, startedAt, code);
+  });
+
   try {
     const code = await body(context);
     if (typeof code === 'number') process.exit(code);
@@ -346,4 +367,61 @@ export async function runOperationalScript(
     console.error(err instanceof Error ? err.message : err);
     process.exit(1);
   }
+}
+
+/**
+ * Emit what this run OBSERVED about itself, for `docs/integrity/ledger.json`.
+ *
+ * WHY IT LIVES HERE AND NOWHERE ELSE. `runOperationalScript` is already the single
+ * entry point every operational script must route through — held by a source scan —
+ * so putting the record here makes it automatic for all of them and impossible for a
+ * new script to forget. A per-script implementation would be one rule with twenty
+ * copies, and the one that got it wrong would be the one that mattered.
+ *
+ * EVERY FIELD IS OBSERVED, NONE IS TYPED BY A PERSON. `commitSha` comes from
+ * `RAILWAY_GIT_COMMIT_SHA` and `deploymentId` from `RAILWAY_DEPLOYMENT_ID`, both read
+ * from the container that actually ran. The integrity board computes staleness by
+ * diffing a check's `dependsOn` paths against this commit, so a HAND-WRITTEN commit
+ * makes the board silently wrong in the reassuring direction — it reports CURRENT for
+ * a proof that no longer covers the code. The first ledger was transcribed from a
+ * session's memory, which is exactly the belief-stamping this repository has paid for
+ * before; see `anchoredHash`, deliberately never backfilled.
+ *
+ * WHAT IS DELIBERATELY ABSENT: any interpretation. Whether a non-zero exit is a
+ * failure is a property of the CHECK, not of the run — `forensics:audit-anchors`
+ * exits 5 on a corpus whose legacy anchors are unsuperseded and that is correct — so
+ * it stays declared once per check in the ledger and is never re-decided here.
+ */
+function emitLedgerRecord(context: OperationalContext, startedAt: string, exit: number): void {
+  const record = {
+    runner: scriptRunnerName(),
+    env: context.env,
+    commit: context.commitSha,
+    deploymentId: context.deploymentId,
+    exit,
+    startedAt,
+    finishedAt: new Date().toISOString(),
+  };
+  // Delimited so it survives being read out of a `railway ssh` log, which is the
+  // only way this reaches a repository: the container cannot commit, so a run is
+  // transcribed by a person or a tool from exactly these lines.
+  console.log(`\n${LEDGER_RECORD_BEGIN}`);
+  console.log(JSON.stringify(record));
+  console.log(LEDGER_RECORD_END);
+}
+
+export const LEDGER_RECORD_BEGIN = '--- INTEGRITY-LEDGER-RECORD ---';
+export const LEDGER_RECORD_END = '--- END-INTEGRITY-LEDGER-RECORD ---';
+
+/**
+ * Which script is running, taken from the entry module's filename.
+ *
+ * Not a hand-kept table of names. The ledger declares `runner` per check and the
+ * ingest tool matches on it, so the correspondence is written down in one place
+ * rather than inferred in two.
+ */
+function scriptRunnerName(): string {
+  const entry = process.argv[1] ?? '';
+  const base = entry.split('/').pop() ?? entry;
+  return base.replace(/\.[cm]?js$/, '').replace(/\.ts$/, '');
 }

@@ -1,6 +1,6 @@
 import { prisma } from '../lib/prisma';
 import { ARCHIVED_CAPTURES_ONLY } from '../lib/archivedCaptures';
-import { decodeDocument } from '../lib/captureDocument';
+import { DECODABLE_CAPTURE_SELECT, captureHtml } from '../lib/captureDocument';
 
 /**
  * Were there href-only changes across the stored captures?
@@ -99,8 +99,10 @@ export async function measureHrefChanges(url: string): Promise<HrefChangeReport>
     select: {
       waybackTimestamp: true,
       snapshotDate: true,
-      document: true,
-      documentContentType: true,
+      // Spread, never listed. This query named its own payload columns and left
+      // out `documentContentEncoding`, so every gzip-served capture decoded to
+      // compressed bytes and reported zero hrefs.
+      ...DECODABLE_CAPTURE_SELECT,
       textHash: true,
     },
   });
@@ -113,12 +115,8 @@ export async function measureHrefChanges(url: string): Promise<HrefChangeReport>
     const after = captures[i];
     pairs++;
 
-    const beforeHrefs = new Set(
-      extractHrefs(decodeDocument(before.document, before.documentContentType)),
-    );
-    const afterHrefs = new Set(
-      extractHrefs(decodeDocument(after.document, after.documentContentType)),
-    );
+    const beforeHrefs = new Set(extractHrefs(captureHtml(before)));
+    const afterHrefs = new Set(extractHrefs(captureHtml(after)));
 
     const added = [...afterHrefs].filter((h) => !beforeHrefs.has(h));
     const removed = [...beforeHrefs].filter((h) => !afterHrefs.has(h));

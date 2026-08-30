@@ -50,6 +50,24 @@ function capture(documentHash = HASH.slice(2), contentHash = LEGACY.slice(2)) {
   return { id: 'snap-1', onChainTxHash: '0xtx', documentHash, contentHash };
 }
 
+/**
+ * The spelling `anchoredHash` is STORED in — bare, lower-case, no `0x`.
+ *
+ * Re-implemented here rather than imported from `storedAnchorHash`, deliberately:
+ * a test that asserts a writer's output by calling the writer's own normaliser
+ * proves only that the function is deterministic. This is an INDEPENDENT oracle,
+ * and it is the one place in the repository where a second implementation of a
+ * rule is the point rather than the defect.
+ *
+ * Four assertions in this file used to expect the `0x` form, and one — the
+ * CONFIRMED_BY_LOG case at the bottom — expected the bare form. That was the
+ * defect written down as a requirement: the same script stored two spellings
+ * depending on which route confirmed the row, and a row confirmed by receipt
+ * became invisible to `capturesAnchoredBy`. See
+ * `docs/gf-positive-control-2026-08-30.md`.
+ */
+const stored = (h: string): string => h.replace(/^0x/i, '').toLowerCase();
+
 /** The registry holds exactly these hashes and nothing else. */
 function registryHolds(...hashes: string[]) {
   const held = new Set(hashes.map((h) => h.replace(/^0x/, '').toLowerCase()));
@@ -91,7 +109,7 @@ describe('what the transaction says, not what the row expects', () => {
     expect(r.misanchored).toBe(0);
     expect(prisma.urlSnapshot.update).toHaveBeenCalledWith({
       where: { id: 'snap-1' },
-      data: { anchoredHash: HASH, anchorCheck: 'CONFIRMED_BY_RECEIPT' },
+      data: { anchoredHash: stored(HASH), anchorCheck: 'CONFIRMED_BY_RECEIPT' },
     });
   });
 
@@ -130,7 +148,7 @@ describe('what the transaction says, not what the row expects', () => {
     // examined and found wrong look merely unexamined.
     expect(prisma.urlSnapshot.update).toHaveBeenCalledWith({
       where: { id: 'snap-1' },
-      data: { anchoredHash: OTHER, anchorCheck: 'MISANCHORED_BY_RECEIPT' },
+      data: { anchoredHash: stored(OTHER), anchorCheck: 'MISANCHORED_BY_RECEIPT' },
     });
   });
 
@@ -301,7 +319,7 @@ describe('both subject types', () => {
     expect(r.confirmed).toBe(1);
     expect(prisma.evidence.update).toHaveBeenCalledWith({
       where: { id: 'ev-1' },
-      data: { anchoredHash: HASH, anchorCheck: 'CONFIRMED_BY_RECEIPT' },
+      data: { anchoredHash: stored(HASH), anchorCheck: 'CONFIRMED_BY_RECEIPT' },
     });
   });
 });
@@ -438,7 +456,7 @@ describe('the registry log confirms what the receipt could not', () => {
     expect(r.noReceiptHashRegistered).toBe(0);
     expect(prisma.urlSnapshot.update).toHaveBeenCalledWith({
       where: { id: 'snap-1' },
-      data: { anchoredHash: HASH.slice(2), anchorCheck: 'CONFIRMED_BY_LOG' },
+      data: { anchoredHash: stored(HASH), anchorCheck: 'CONFIRMED_BY_LOG' },
     });
   });
 
@@ -643,7 +661,7 @@ describe('an anchor made under a superseded rule is still an anchor', () => {
     // explainable, not passing, and Level 10's to supersede.
     expect(prisma.urlSnapshot.update).toHaveBeenCalledWith({
       where: { id: 'snap-1' },
-      data: { anchoredHash: LEGACY, anchorCheck: 'CONFIRMED_BY_RECEIPT' },
+      data: { anchoredHash: stored(LEGACY), anchorCheck: 'CONFIRMED_BY_RECEIPT' },
     });
   });
 
@@ -792,5 +810,36 @@ describe('the message and the exit code cannot disagree', () => {
     } satisfies ConfirmAnchorsReport;
     expect(wrongClaims(r)).toBe(1);
     expect(confirmAnchorsExitCode(r)).toBe(2);
+  });
+});
+
+describe('a run that examined nothing is not a pass', () => {
+  const empty = (over = {}) =>
+    ({
+      dryRun: false, examined: 0, confirmed: 0, confirmedByLog: 0, misanchored: 0,
+      registeredByAnotherTx: 0, anchoredNothing: 0, noReceiptHashRegistered: 0,
+      noReceiptHashAbsent: 0, unreachable: 0, ambiguous: 0, alreadyConfirmed: 29,
+      failed: 0, failures: [], rows: [], ...over,
+    }) as ConfirmAnchorsReport;
+
+  it('EXAMINED 0 exits 4, not 0', () => {
+    // The hole this closes. The default filter selects `anchorCheck: null`, so once
+    // every subject carries a terminal verdict there is nothing to examine — and
+    // with every counter at zero the code fell through to a clean 0. The public
+    // integrity board then scored the level 100 on a run that checked an empty set.
+    expect(confirmAnchorsExitCode(empty())).toBe(4);
+  });
+
+  it('DETECTS the difference — a real clean run still exits 0', () => {
+    // Without this the test above would pass against a function that returned 4 for
+    // everything, and the check would refuse every run rather than only empty ones.
+    expect(confirmAnchorsExitCode(empty({ examined: 7, confirmed: 7 }))).toBe(0);
+  });
+
+  it('a real failure still outranks emptiness', () => {
+    // Ordering matters: a run with failures is a FAILED run, not an empty one, even
+    // if the examined count is somehow zero. The louder verdict wins.
+    expect(confirmAnchorsExitCode(empty({ failed: 1 }))).toBe(4);
+    expect(confirmAnchorsExitCode(empty({ examined: 3, failed: 1 }))).toBe(1);
   });
 });

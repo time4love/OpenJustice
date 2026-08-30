@@ -1940,7 +1940,55 @@ exactly one did, and it became `probeSnapshotsList` — *named* for recording no
 
 ### Level 3 — the anchor
 
-**STATUS: PARTIAL — clause 2 (the database claim is CHECKED) is closed; clause 1 (the anchor attests to the DOCUMENT) is OPEN. The instrumentation clause 1 needs is BUILT (2026-08-30); the flip itself is not done. Attributing LEGACY anchors is explicitly NOT part of this level — see the boundary below.**
+**STATUS: CLOSED ON STAGING, 2026-08-30 — clause 2 was already closed; clause 1 is now PROVEN BY EXECUTION, not by fixtures. `VERIFIED 7 · MISATTESTING 22 · UNATTRIBUTED 91`, exit 5, on deployment `863cd928 @ 3c0e639`. Seven captures anchored to their `documentHash`, seven transactions, each transaction's own log read back, each audited `ATTESTS_CURRENT`. NOT YET TRUE ON PRODUCTION — production runs `master`, which does not carry the spelling fix (`3c0e639`) and whose database has not had the normalising migration; a capture anchored and confirmed there today would still land STALE. That needs a `SHIP`, which is the researcher's. Attributing LEGACY anchors remains explicitly NOT part of this level — see the boundary below.**
+
+#### THE POSITIVE CONTROL RAN 2026-08-30, AND FALSIFIED THE PREDICTION
+
+Full record: **`docs/gf-positive-control-2026-08-30.md`**.
+
+Seven captures of a newly tracked page were stored, anchored under `documentHash` in seven distinct
+transactions with zero twin reuse, and confirmed against Base Sepolia by receipt — `examined 7,
+confirmed 7, exit 0`, with no observed hash equal to any row's `contentHash`. **The chain writes are
+correct.** The audit then reported `VERIFIED 0 · STALE 7`, not the predicted `VERIFIED 7`.
+
+**The cause is a spelling divergence in one column.** `claimAnchor` writes `anchoredHash` as bare hex;
+`confirmAnchors` writes the log's `fileHash`, which ethers returns `0x`-prefixed. `capturesAnchoredBy`
+strips `0x` from its argument and compares against the stored value literally, so a confirmed row
+matches neither arm. `readOnChainClaim`'s snapshot count then falls 1 → 0, `onChainSourceStateHash`
+moves, and the write-time verdict goes STALE. Three consequences: **`VERIFIED` is unreachable for any
+capture**, the twin lookup is blinded (FINDING 41's shape), and the `ORPHANED_ANCHOR` regression is
+armed.
+
+Production's 8 `VERIFIED` evidence rows were never affected because `readOnChainClaim` returns on the
+`Evidence` row before consulting `capturesAnchoredBy`. **The evidence success arm works; the snapshot
+success arm has never fired because it cannot** — which explains, with a cause, an asymmetry previously
+recorded only as an observation.
+
+**No test could have caught this.** Nine repaired fixtures and a simulated-flip test all pass, because
+each spelling is internally consistent within its own writer. The divergence lives in the seam, and
+only a real execution crosses it. **Quote this the next time a positive control looks expensive.**
+
+*What closing the clause required:* one spelling owned in one place; a test that crosses the seam
+rather than exercising either writer alone; the seven checks re-recorded; the audit re-run to
+`VERIFIED 7 · MISATTESTING 22 · UNATTRIBUTED 91`, exit 5.
+
+##### CLOSED THE SAME DAY — and the re-record turned out to be unnecessary
+
+`storedAnchorHash` is now the single normaliser, returning a branded type only it can produce, so a
+raw string cannot reach either write site. A data migration normalised the existing rows. Landed as
+`3c0e639`; the first deploy stalled between a successful pre-deploy and its start command and was
+redeployed as `863cd928`.
+
+**The audit then read `VERIFIED 7 · MISATTESTING 22 · UNATTRIBUTED 91`, exit 5** — the target exactly.
+
+**One prediction in the fix plan was wrong, and it is worth keeping wrong here.** The 22 legacy rows
+were expected to flip to `STALE`, on the reasoning that normalising *their* `anchoredHash` moved
+*their* claim too. They stayed `MISATTESTING` and `STALE` came out 0, so
+`forensics:backfill-anchor-checks` was never run. The migration alone was sufficient — the write-time
+verdict encoded `snapshots: 1`, and normalisation restored precisely that.
+
+**`exit 5` is still correct and must remain.** 113 legacy subjects are unsuperseded; that is Level 10's
+and no part of this level.
 
 #### THE BOUNDARY, drawn 2026-08-30: legacy anchor attribution is Level 10, not clause 1
 
@@ -2052,7 +2100,46 @@ asserts. Recorded here so the next person does not close this level on the stren
 
 ### Level 4 — the view
 
-**STATUS: DEFERRED (2026-08-29) — rationale falsified by measurement in `d4739aa`. It needs a CONSUMER FOR THE MARKS, not code. Do not revive without new measurement.**
+**STATUS: DEFERRED (2026-08-29) — rationale falsified by measurement in `d4739aa`. It needs a CONSUMER FOR THE MARKS, not code. Do not revive without new measurement. THE NEW MEASUREMENT NOW EXISTS (2026-08-30) — see below; the deferral is ready to be reconsidered and that is the researcher's call.**
+
+#### THE MEASUREMENT THIS DEFERRAL ASKED FOR — a news page, 2026-08-30
+
+Full record: `docs/gf-positive-control-2026-08-30.md`. The Level 3 control added
+`https://news.walla.co.il/item/3403847`, the **first news page this corpus has ever held**. Government
+pages carry no ad slots; this one does, and the difference is not marginal:
+
+```
+6 diffs · 22 items · 24 chunks checked · significantDiffs 0 · contradictedDiffs 3
+```
+
+| item category | count |
+|---|---|
+| promotional links | 12 |
+| section headers (`NEWS`, `עוד בוואלה!`, `אל תפספס`) | 4 |
+| date / timestamp metadata | 4 |
+| video-caption punctuation | 2 |
+| **items changing article wording** | **0** |
+
+The article did not change between 2020-12-09 and 2025-03-26; the advertising changed seven times. The
+only item with any investigative flavour is the removal of the navigation tag `משרד הבריאות`.
+
+| corpus | contradicted | rate |
+|---|---|---|
+| production (government pages) | 2 of 13 | 15% |
+| staging (government pages) | 4 of 15 | 27% |
+| **this news page** | **3 of 6** | **50%** |
+
+One of those three consists of nothing but two rotating ad links and still produced a pipeline-defect
+verdict. **The deferral was calibrated on a corpus of one page type.**
+
+**This is not the forbidden move.** That move was widening `segmentsOf` to silence the detector. Level 4
+acts on the CLAIM rather than the CHECK, and marks rather than deletes — so chrome leaving the diff is
+not a contradiction count driven to zero by redefinition.
+
+*Also measured:* all seven captures produced seven distinct `documentHash` values **and** seven distinct
+`contentHash` values. Readability keeps this page's caption, timestamp and promo text, so on a news page
+**cost scales with ad rotation under either anchoring rule** — the twin-collapse argument is not the
+whole story, and "the document changed" stops implying "the page changed".
 
 *Invariant:* no block unique to a capture is ever classified chrome; the view is versioned and marks
 rather than deletes.
@@ -2131,6 +2218,27 @@ from the after document; a chunk said to be ADDED was absent from the before one
 *Enforcement:* the check runs at write and stores a verdict. **A `CONTRADICTED` diff is written, not
 refused** — refusing it would delete the evidence that the pipeline is wrong, which is how this was
 found. It is simply never promotable.
+
+##### TWO GAPS FOUND 2026-08-30, neither of which licenses coarsening the check
+
+**`relocated` is never consulted.** The classifier marks an item `relocated: true` when text moved
+rather than being removed — three such items in one fresh diff. The identifier appears nowhere in
+`src/lib/diffSurvival.ts` or `src/services/computeDiffSurvival.ts`. By this level's own reasoning —
+*"the stored artifact asserts to a researcher…"* — such an artifact asserts relocation, not deletion,
+so contradicting it tests a claim the record does not make. **It is not a complete explanation:** a
+second fresh diff contradicts with every item `relocated: false`, so another mechanism exists and has
+not been named.
+
+**`survivalContradicted` cannot be read from outside the database.** This level justifies the column as
+*"what disagreed — §3's pipeline-defect record, not just a count"*. `forensics:audit-survival` prints
+verdicts and never excerpts, no MCP tool exposes it, and the UI shows only the `1/5` ratio. **A
+pipeline-defect record nobody can read is a count wearing a record's description** — and it is why the
+mechanism above could be narrowed but not named. Printing the excerpts under `--verbose` is the whole
+fix.
+
+*Context for both:* the fresh contradictions came from a news page whose every detected change is
+chrome. See Level 4's 2026-08-30 measurement — the contradiction rate there is roughly double the
+government-page rate, and it is chrome-driven.
 
 #### NOBODY MAY CLOSE A CONTRADICTION BY COARSENING THIS CHECK
 
@@ -2307,17 +2415,220 @@ and missed the case this work exists for; sentence granularity found 7.
 
 ### Level 6 — the trajectory
 
-**STATUS: PARTIAL — `DETECTION_VERSION` v2 retired `MIN_CLAIM_LENGTH` for the containment rule (2026-08-29). The invariant itself — every reported flip confirmed against the documents at that boundary — is NOT yet enforced.**
+**STATUS: PARTIAL — the invariant (every reported flip confirmed against the documents at that boundary) is NOT enforced, and the obvious route to it is CANCELLED BY MEASUREMENT (2026-08-30). Moving detection to the document layer loses 2 trajectories and gains 0. The run also produced a finding about the EVIDENCE rather than the pipeline: the verbatim probe has only ever been tested against the renderer it was born from, and 2 of 90 MOH claims are not findable by the outsider check this platform's value rests on. Read the section below before proposing any Level 6 work.**
+
+#### THE FLIP IS A NET LOSS — measured 2026-08-30, `forensics:compare-detection-layers`
+
+`compareDetectionLayers` detects twice over one candidate set and never persists. On the MOH page:
+
+```
+                    trajectories   unmatched   snapshots
+  EXTRACTION             90            5          83
+  DOCUMENT               88            7          83
+
+LOST 2 · GAINED 0 · SHAPE CHANGED 0        exit 3
+```
+
+**Moving detection to `text` is strictly worse.** The prediction that preceded it — *lost 0, gained
+> 0* — was wrong in both directions.
+
+**The gain is ZERO BY CONSTRUCTION, not by accident.** Candidates are discovered from diff items, and
+the differ runs on `fullText`. Every candidate is therefore a string the extraction already contained,
+so searching a superset can only match the same ones or fewer. **The ~31% the extraction discards can
+never produce a candidate, because the differ never sees it.**
+
+That also reframes the instrument honestly: its gain arm was **not vacuous, it was NOT YET
+ANSWERABLE**. It can only return "same or worse" while candidates come from `fullText` — `exit 0` would
+have meant "no difference", never "gain". Moving the differ is what makes it capable of measuring what
+it was built for, and re-running it afterwards is the payoff.
+
+##### THE MORE IMPORTANT HALF: the two are FALSE NEGATIVES OF THE PROBE, not losses
+
+```
+3 transitions  בכל מקרה, אין סיכוי לחלות בקורונה בגלל החיסון…
+6 transitions  תופעות הלוואי של החיסון…
+```
+
+The claims did not leave the page. **The string stopped matching.** Both are long multi-sentence
+quotes, so the likely cause is `htmlToText` breaking them where Readability did not, and
+`normaliseClaim` collapses whitespace only.
+
+The first is **the exact claim this plan quotes** as its example of a load-bearing assertion — the one
+used to justify retiring `MIN_CLAIM_LENGTH`. The second is one of the strongest oscillation patterns in
+the corpus.
+
+**A trajectory is a verbatim substring probe, and it has only ever been tested against the renderer it
+was born from.** Candidates come from `fullText`; presence is tested against `fullText`. Same renderer
+both sides, so matching is guaranteed by construction and had never been checked.
+
+**The platform's evidentiary value is that a stranger opens the archived page and finds the string.** A
+stranger searches the rendered DOM, which is closer to `htmlToText` than to Readability's article. So
+**at least 2 of 90 claims may not survive the outsider check the whole platform rests on** — and
+nothing before this run could have detected it. This is a finding about the EVIDENCE, and it is the
+half that goes missing if only the cancellation is written down.
+
+##### What this reprioritises
+
+- **Diagnosing the two non-matching quotes is a PREREQUISITE FOR THIS LEVEL'S INVARIANT, not cleanup
+  after a cancelled change.** Confirming a flip *against the documents* hits the identical probe, so the
+  same two claims that failed to match will fail to confirm. Cancelling the detection move did not
+  cancel that; it ruled out one route to it.
+- **If the cause is whitespace and breaks, the fix belongs in `normaliseClaim`** — cheap, and it
+  improves outsider-verifiability for every trajectory rather than for these two.
+- **Moving the DIFFER to `text`** bumps `diffInputVersion` and re-classifies every diff — hundreds of
+  model calls and real spend. That is a cost decision and the researcher's, not a technical step. It is
+  also the only thing that unblocks the gain arm.
+- **Moving detection alone is CANCELLED.** Do not revive it without moving the differ first.
+
+##### DIAGNOSED 2026-08-30 — it is NOT whitespace, and the cheap fix is dead
+
+Reproduced locally against the archived HTML, running BOTH renderers over identical bytes across eight
+captures spanning 2021-12 to 2024-06. The two agree for **226 characters** (claim A) and **431–441**
+(claim B) and then diverge at the same structural place every time:
+
+```
+fullText (Readability):  "• הודעות דוברות משרד הבריאות בנושא חיסונים…"
+text     (htmlToText):   "קישורים למידע נוסף • הודעות דוברות משרד הבריאות…"
+                          ^^^^^^^^^^^^^^^^^^ a section heading Readability drops
+```
+
+and in the 2021 capture, `text` additionally carries `לחזור למעלה` (back to top) and
+`שאלון תופעות לוואי` (side-effects questionnaire).
+
+**`htmlToText` retains section headings and navigation that Readability discards.** A stored claim long
+enough to cross that boundary therefore has extra words inserted INTO THE MIDDLE of it in the document
+layer, and the verbatim substring no longer exists. The divergence point being identical in all eight
+captures makes this structural, not incidental.
+
+**`normaliseClaim` cannot fix this.** It collapses whitespace; it cannot bridge inserted content. The
+"probably whitespace, cheap normaliser fix" reading — held by both the author and the reviewer — is
+falsified.
+
+##### THE EVIDENTIARY CONSEQUENCE, which is worse than a renderer quirk
+
+**The stored claim is a contiguous string the page never contained.** Readability stitched two passages
+together across a heading it dropped, and the diff chunk preserved that stitching as one quote.
+
+A stranger who opens the archived page and searches for that claim **will not find it** — not because
+our probe is renderer-bound, but because *that exact sequence of characters was never on the page*. The
+claim is an artefact of the extraction, presented as a verbatim quote. That is a defect in the
+EVIDENCE, and it is invisible to every check the platform currently runs, because candidates and
+presence are both taken from the extraction that produced the artefact.
+
+##### THE FIX THIS POINTS AT IS ONE THIS REPOSITORY HAS ALREADY MADE ONCE
+
+Both failing claims are long multi-sentence spans, and **their first sentences match in both renderers**
+— `בכל מקרה, אין סיכוי לחלות בקורונה בגלל החיסון.` is 45 characters and identical in each.
+
+Level 5 solved exactly this shape one layer down: the differ claimed at block granularity while the
+check tested at sentence granularity, and the fix was `sentencesOf` in `lib/textSegments.ts`, imported
+by both. **Trajectory candidates are still whole diff-chunk spans — the same defect in a second
+subsystem**, which is this repository's dominant pattern.
+
+Sentence-granularity candidates cannot span a structural gap, would survive the layer move, and — the
+part that matters — would actually be findable by the outsider check.
+
+**Not done, and not to be done casually:** it bumps `DETECTION_VERSION` and recomputes every trajectory.
+Re-run `forensics:compare-detection-layers` against sentence candidates BEFORE paying for that, not
+after.
+
+##### CONFIRMED BY MEASUREMENT, and the stitch is visible in the claim itself
+
+The span reading rested on both claims being longer than their divergence point.
+`compareDetectionLayers` truncated `claimText` at 90 characters, so the first run could not settle it;
+it now prints the length and the full text (`d6b6fda`). Re-run on staging:
+
+```
+claim A   352 chars   diverges at 226
+claim B   567 chars   diverges at 431–441
+```
+
+Both exceed it, as predicted. **This is the third diagnosis of this phenomenon and the first confirmed
+by measurement** — the first two, "partial captures" and "two document variants", were both wrong.
+
+**The stitch is legible in the stored text.** Claim A ends:
+
+> `…ולכן הוא לא יכול לגרום למחלה. • הודעות דוברות משרד הבריאות בנושא חיסונים > • ועדות מבצע החיסונים >…`
+
+Body prose running straight into the link list, with the heading `קישורים למידע נוסף` — which sits
+between them in the document — **absent**. There is no whitespace to normalise here; there is a missing
+section heading. A reader searching the archived page for this claim finds nothing, because the page
+never contained it.
+
+**Claim B (567 chars) contains `לדיווח על תופעות לוואי >`** — the adverse-event reporting link, this
+platform's central finding — embedded inside a stitched span. The clean 24-character version of that
+claim has its own trajectory and is unaffected; but a second, artefactual claim covering the same
+content also sits in the corpus, and only the first is citable.
 
 *Invariant:* every reported flip is confirmed against the documents at that boundary.
 
 *Enforcement:* verified at computation, verdict stored with `DETECTION_VERSION` and `sourceStateHash`.
 
-*Carried forward:* `MIN_CLAIM_LENGTH = 40` still filters trajectory candidates — the same
-length-as-significance assumption that had to be removed from the diff classifier, surviving in a
-second subsystem. A short claim can be the load-bearing one; "אין סיכוי לחלות בקורונה בגלל החיסון" is
-not long. Changing it bumps `DETECTION_VERSION` and recomputes every trajectory, so it belongs in this
-level rather than after it.
+#### THE HREF LAYER, MEASURED 2026-08-30 — and the instrument was broken the first time
+
+**Run once, believed, and wrong.** `forensics:measure-href-changes` called `decodeDocument` without
+`inflateDocument`, so every capture whose origin served `Content-Encoding: gzip` was read as compressed
+bytes and yielded ZERO hrefs. Fixed in `77f1281`; `captureHtml` is now the only way to read a stored
+payload and a source scan holds that nothing else spells the two-step decode.
+
+| MOH page, 82 consecutive pairs | broken | **fixed** |
+|---|---|---|
+| pairs whose href set changed | 27 | **17** |
+| invisible to the derived text | 12 | **2** |
+| `https://t.me/MOHreport` flips | 13 | **0** |
+| mass swings (≥15 links at once) | 10 | **0** |
+
+**The adverse-event reporting channel was never removed** — not once, across 83 captures from 2021 to
+2026. That entire signal was a gzip header. **A defective measurement is worse than a wrong verdict: an
+audit can catch a verdict, and a plausible measurement is what a researcher builds a claim on.** This
+one pointed straight at the platform's central finding. Full record:
+`docs/gf-positive-control-2026-08-30.md`.
+
+**What the href layer actually holds, counted in the INVESTIGATION'S window rather than the corpus's:**
+
+```
+changed pairs by year   2021: 1 · 2022: 11 · 2023: 2 · 2024: 1 · 2025: 2
+within 2019–2022        12 of 17  (70%)
+```
+
+Two changes are invisible to every layer the platform reads — both link ADDITIONS whose anchor text did
+not change, so a new destination was attached to existing words:
+
+- **2022-07-08 `+ /daily-guidances/`** — inside the investigation window
+- 2024-03-05 `+ /confirmed-cases-and-patients/risk-groups/` — outside it
+
+*Recommendation, and the reasoning is the researcher's correction:* **record the href layer, do not yet
+detect on it.** "Two in 82 pairs" is the wrong denominator — the investigation is about 2019–2022, where
+70% of the activity sits. But two additions still do not make a finding stream, and building flip
+detection on a layer this thinly exercised is precisely what produced the false measurement above.
+Storing href sets per capture makes the question answerable later without re-deriving it.
+
+#### A RESEARCHER PROPOSAL, RECORDED AND NOT SCHEDULED (2026-08-30)
+
+**Tracked URLs should carry a date range, stored as part of the forensic record.** The corpus scope and
+the investigation scope are not the same thing, and today only the corpus scope exists.
+
+Two measurements from the same day show what it costs to conflate them. The FDA press page holds
+**3,036 distinct-digest captures**, of which only a fraction fall in the period of interest — and
+`start_forensic_scan` takes a URL and nothing else, so scanning it means 250 captures and 250 chain
+transactions per call with no way to say which years matter. In the other direction, every rate this
+platform reports is computed over the whole corpus, which understates density inside the window and
+overstates it outside: 2 of 82 becomes a very different number once the window is named.
+
+Storing `from`/`to` on the `TrackedUrl` makes the window an attribute of the record rather than an
+argument someone remembers to pass — so a rate can be quoted against the scope it was gathered for.
+**Not scheduled. Recorded here so it is not re-derived.**
+
+*~~Carried forward~~ — DONE 2026-08-29, and this paragraph was stale until 2026-08-30:*
+`MIN_CLAIM_LENGTH = 40` no longer filters trajectory candidates. `DETECTION_VERSION` v2 retired it for
+the containment rule, `minClaimLength` defaults to **0**, and the constant survives only so
+`forensics:measure-claim-length` can ask what the retired rule would have done — through this code path
+rather than a copy of it. The reasoning that retired it stands and is worth keeping: a short claim can
+be the load-bearing one, and "אין סיכוי לחלות בקורונה בגלל החיסון" is not long.
+
+**Corrected while writing the section above it**, because a paragraph asserting a live filter that no
+longer exists, sitting beside a new measurement, is the shape that produces a wrong recommendation from
+a confident reader.
 
 ### Level 7 — the evidence
 
@@ -2354,6 +2665,18 @@ is a `@unique` FK — so the tool reports that a legally significant change occu
 on whether it is backed by anchored evidence. A researcher cannot distinguish *"we detected this"* from
 *"we can prove this"* without a second tool and a manual join on dates. One `include` and two fields
 per row.
+
+*And the same flat select produces a second, sharper defect, found 2026-08-30:* **`UrlVersionDiff`
+holds two representations of its own boundary** — the `beforeDate`/`afterDate` **String** columns and
+the `beforeSnapshotId`/`afterSnapshotId` **foreign keys** — and nothing enforces that they agree.
+`get_forensic_timeline` reports the strings. On the newly scanned news page it reports a diff
+`2025-02-08 → 2025-02-19` whose before-capture **was never stored**; seven stored captures admit exactly
+six consecutive boundaries, and the reported set substitutes that one for the real
+`2024-05-20 → 2025-02-19`. **The platform displays a version boundary against a capture the corpus does
+not contain, and the true interval is nine months wider.** That is worse than the gap `list_captures`
+warns about, because it *overstates* precision rather than understating it. The direction is settled by
+arithmetic; confirming it outright needs `beforeSnapshotId`'s date, which no tool exposes. The fix is to
+derive the displayed dates from the captures rather than storing them a second time.
 
 ### Level 9 — the thesis
 

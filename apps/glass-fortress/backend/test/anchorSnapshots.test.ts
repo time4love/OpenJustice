@@ -79,7 +79,11 @@ describe('anchorSnapshots', () => {
     expect(prisma.urlSnapshot.update).toHaveBeenCalledWith(
       // The transaction AND the hash it registered, written together. Writing
       // onChainTxHash alone is the gap anchoredHash exists to close.
-      expect.objectContaining({ data: { onChainTxHash: '0xtx', anchoredHash: '0xaaa' } }),
+      // BARE, because that is the one spelling `anchoredHash` is stored in. This
+      // assertion used to expect `0xaaa` — the write path and
+      // `forensics:confirm-anchors` disagreed about the format, and the lookup
+      // that joins them matched only one. See `docs/gf-positive-control-2026-08-30.md`.
+      expect.objectContaining({ data: { onChainTxHash: '0xtx', anchoredHash: 'aaa' } }),
     );
     expect(r.anchored).toBe(1);
   });

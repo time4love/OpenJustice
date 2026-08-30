@@ -83,6 +83,37 @@ export function anchoredCaptureHash(capture: AnchorableCapture): string {
 }
 
 /**
+ * THE ONE SPELLING `anchoredHash` IS STORED IN — bare, lower-case, no `0x`.
+ *
+ * WHY A BRANDED TYPE. Until 2026-08-30 this column had TWO writers and TWO
+ * spellings: `claimAnchor` wrote `documentHash` bare, and `forensics:confirm-anchors`
+ * wrote the value ethers returns from the transaction log, which carries `0x`.
+ * Both were internally consistent, so every fixture and the simulated-flip test
+ * passed — and `capturesAnchoredBy` below, which compares a normalised ARGUMENT
+ * against the RAW COLUMN, matched neither arm for a confirmed row. The positive
+ * control found it: seven correctly anchored captures audited `STALE`, and
+ * `VERIFIED` was unreachable for every snapshot that has ever existed. See
+ * `docs/gf-positive-control-2026-08-30.md`.
+ *
+ * A comment saying "normalise before writing" would be the same control that
+ * already failed. The brand makes the compiler ask: a raw `string` cannot reach
+ * either write site, so a third writer cannot invent a third spelling.
+ *
+ * THIS IS NOT A CONTRADICTION OF `toBytes32`'s "convert at the boundary, never
+ * at rest". That rule protects `contentHash` and `Evidence.fileHash`, whose
+ * formats came from different producers and are load-bearing elsewhere.
+ * `anchoredHash` is neither: it has no external contract, and it is the only one
+ * of the three used as a SQL EQUALITY KEY — and SQL cannot normalise the column
+ * side of a comparison. A key must have one spelling or it is not a key.
+ */
+export type StoredAnchorHash = string & { readonly __storedAnchorHash: unique symbol };
+
+/** Normalise any spelling of a hash to the one `anchoredHash` is stored in. */
+export function storedAnchorHash(hash: string): StoredAnchorHash {
+  return hash.replace(/^0x/i, '').toLowerCase() as StoredAnchorHash;
+}
+
+/**
  * Captures whose anchored hash is this one, in either spelling.
  *
  * The prefix strip is part of the rule, not a caller's detail. `Evidence.fileHash`
@@ -90,13 +121,14 @@ export function anchoredCaptureHash(capture: AnchorableCapture): string {
  * returns zero rows — and zero rows here means `SNAPSHOT_ANCHOR` degrades to
  * `ORPHANED_ANCHOR`, reporting every correctly anchored capture as a custody
  * incident. That regression has already happened once, on 12 of production's 19
- * registrations.
+ * registrations, and a second time — via the column rather than the argument —
+ * for every capture confirmed between 2026-08-30 and this fix.
  *
  * Returns a `where` fragment so callers can add their own conditions without
  * restating this one.
  */
 export function capturesAnchoredBy(hash: string): Prisma.UrlSnapshotWhereInput {
-  const bare = hash.replace(/^0x/, '');
+  const bare = storedAnchorHash(hash);
   // RECORDED FIRST, RULE ONLY AS A FALLBACK.
   //
   // A confirmed row says what its transaction registered, and that answer is
@@ -199,8 +231,13 @@ export function attestationOf(input: {
   known: readonly string[];
 }): AnchorAttestation {
   if (input.anchoredHash === null) return 'UNCONFIRMED';
-  const bare = (h: string): string => h.replace(/^0x/, '').toLowerCase();
-  const anchored = bare(input.anchoredHash);
-  if (anchored === bare(input.current)) return 'ATTESTS_CURRENT';
-  return input.known.some((h) => bare(h) === anchored) ? 'ATTESTS_SUPERSEDED' : 'UNRECOGNISED';
+  // `storedAnchorHash`, not a private copy. This function had its OWN prefix
+  // strip — lower-casing, where `capturesAnchoredBy`'s did not — so the module
+  // built to end duplicate implementations of one rule contained two of them,
+  // and they already disagreed about case. One normaliser, three callers.
+  const anchored = storedAnchorHash(input.anchoredHash);
+  if (anchored === storedAnchorHash(input.current)) return 'ATTESTS_CURRENT';
+  return input.known.some((h) => storedAnchorHash(h) === anchored)
+    ? 'ATTESTS_SUPERSEDED'
+    : 'UNRECOGNISED';
 }

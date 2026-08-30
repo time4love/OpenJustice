@@ -83,3 +83,33 @@ function walk(dir: string): string[] {
     return entry.name.endsWith('.ts') ? [path] : [];
   });
 }
+
+describe('a check that examined nothing refuses to pass', () => {
+  // ONE RULE, THREE CHECKS. `auditDiffSurvival` said it first — "No diffs found.
+  // This report says nothing; it is not a pass." — and `auditOnChainAnchors` guards
+  // `subjects === 0`. `confirmAnchors` had no such arm until 2026-08-30, and its
+  // empty run exited 0, which the public integrity board scored as full proof.
+  //
+  // A source scan rather than three behavioural tests, because the property is
+  // "every check has this arm", and only reading the sources can say that.
+  const CHECKS = [
+    ['scripts', 'auditDiffSurvival.ts'],
+    ['scripts', 'auditOnChainAnchors.ts'],
+  ];
+
+  it.each(CHECKS.map((p) => [p.join('/'), p] as const))(
+    '%s refuses an empty subject set',
+    (_label, parts) => {
+      const code = readFileSync(join(__dirname, '..', ...parts), 'utf8');
+      expect(code).toMatch(/(total === 0|subjects === 0)/);
+    },
+  );
+
+  it('confirmAnchors refuses it in its exit code, where its verdict lives', () => {
+    // It has no `main`-level guard because its verdict is computed by a pure
+    // function the script exits with. The arm belongs there, and a test that only
+    // grepped the script would have missed it and passed.
+    const code = readFileSync(join(__dirname, '..', 'src', 'services', 'confirmAnchors.ts'), 'utf8');
+    expect(code).toMatch(/report\.examined === 0/);
+  });
+});

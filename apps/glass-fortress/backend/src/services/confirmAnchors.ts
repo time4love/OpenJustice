@@ -10,6 +10,8 @@ import {
   CAPTURE_HASHES_SELECT,
   anchoredCaptureHash,
   capturesKnownHashes,
+  storedAnchorHash,
+  type StoredAnchorHash,
 } from '../lib/anchoredCaptureHash';
 
 // ---------------------------------------------------------------------------
@@ -394,7 +396,7 @@ function decide(
 }
 
 /** The hash a confirmation licenses writing, or null when it licenses none. */
-function writableHash(confirmation: AnchorConfirmation): string | null {
+function writableHash(confirmation: AnchorConfirmation): StoredAnchorHash | null {
   // MISANCHORED writes too, deliberately. The column records what the
   // transaction registered, and a divergence is exactly the fact worth having on
   // the row — suppressing it would leave the anchor looking unexamined rather
@@ -404,7 +406,12 @@ function writableHash(confirmation: AnchorConfirmation): string | null {
     confirmation.kind === 'CONFIRMED_BY_LOG' ||
     confirmation.kind === 'MISANCHORED'
   ) {
-    return confirmation.anchoredHash;
+    // NORMALISED, and this is the whole defect the positive control found. The
+    // observed value comes from the transaction log via ethers, which returns
+    // bytes32 `0x`-prefixed; the write path stores the same fact bare. Two
+    // spellings in one column made every confirmed row invisible to
+    // `capturesAnchoredBy`, so `VERIFIED` was unreachable for every snapshot.
+    return storedAnchorHash(confirmation.anchoredHash);
   }
   return null;
 }
@@ -553,6 +560,20 @@ export function unresolvedClaims(report: ConfirmAnchorsReport): number {
 }
 
 export function confirmAnchorsExitCode(report: ConfirmAnchorsReport): number {
+  // EXAMINED NOTHING IS NOT A PASS, and this is the arm that was missing.
+  //
+  // The default filter selects `anchorCheck: null`, so once every subject carries a
+  // terminal verdict this pass has nothing to look at — and with every counter at
+  // zero it fell through to `return 0`. A run that checked an empty set therefore
+  // reported success, and the public integrity board scored the level 100 on it.
+  //
+  // `auditOnChainAnchors` and `auditDiffSurvival` both already refuse a vacuous run
+  // ("No diffs found. This report says nothing; it is not a pass."). This was the
+  // one check of the three without that arm.
+  //
+  // It is not a failure either: nothing is wrong, nothing was proven. Its own code
+  // says exactly that, and `--recheck` is what makes the pass non-empty again.
+  if (report.examined === 0) return 4;
   if (report.failed > 0) return 1;
   if (wrongClaims(report) > 0) return 2;
   // TX_UNREADABLE is TERMINAL but it is not a confirmation, so it stays here
