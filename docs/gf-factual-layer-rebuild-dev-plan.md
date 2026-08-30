@@ -2480,6 +2480,62 @@ half that goes missing if only the cancellation is written down.
   also the only thing that unblocks the gain arm.
 - **Moving detection alone is CANCELLED.** Do not revive it without moving the differ first.
 
+##### DIAGNOSED 2026-08-30 — it is NOT whitespace, and the cheap fix is dead
+
+Reproduced locally against the archived HTML, running BOTH renderers over identical bytes across eight
+captures spanning 2021-12 to 2024-06. The two agree for **226 characters** (claim A) and **431–441**
+(claim B) and then diverge at the same structural place every time:
+
+```
+fullText (Readability):  "• הודעות דוברות משרד הבריאות בנושא חיסונים…"
+text     (htmlToText):   "קישורים למידע נוסף • הודעות דוברות משרד הבריאות…"
+                          ^^^^^^^^^^^^^^^^^^ a section heading Readability drops
+```
+
+and in the 2021 capture, `text` additionally carries `לחזור למעלה` (back to top) and
+`שאלון תופעות לוואי` (side-effects questionnaire).
+
+**`htmlToText` retains section headings and navigation that Readability discards.** A stored claim long
+enough to cross that boundary therefore has extra words inserted INTO THE MIDDLE of it in the document
+layer, and the verbatim substring no longer exists. The divergence point being identical in all eight
+captures makes this structural, not incidental.
+
+**`normaliseClaim` cannot fix this.** It collapses whitespace; it cannot bridge inserted content. The
+"probably whitespace, cheap normaliser fix" reading — held by both the author and the reviewer — is
+falsified.
+
+##### THE EVIDENTIARY CONSEQUENCE, which is worse than a renderer quirk
+
+**The stored claim is a contiguous string the page never contained.** Readability stitched two passages
+together across a heading it dropped, and the diff chunk preserved that stitching as one quote.
+
+A stranger who opens the archived page and searches for that claim **will not find it** — not because
+our probe is renderer-bound, but because *that exact sequence of characters was never on the page*. The
+claim is an artefact of the extraction, presented as a verbatim quote. That is a defect in the
+EVIDENCE, and it is invisible to every check the platform currently runs, because candidates and
+presence are both taken from the extraction that produced the artefact.
+
+##### THE FIX THIS POINTS AT IS ONE THIS REPOSITORY HAS ALREADY MADE ONCE
+
+Both failing claims are long multi-sentence spans, and **their first sentences match in both renderers**
+— `בכל מקרה, אין סיכוי לחלות בקורונה בגלל החיסון.` is 45 characters and identical in each.
+
+Level 5 solved exactly this shape one layer down: the differ claimed at block granularity while the
+check tested at sentence granularity, and the fix was `sentencesOf` in `lib/textSegments.ts`, imported
+by both. **Trajectory candidates are still whole diff-chunk spans — the same defect in a second
+subsystem**, which is this repository's dominant pattern.
+
+Sentence-granularity candidates cannot span a structural gap, would survive the layer move, and — the
+part that matters — would actually be findable by the outsider check.
+
+**Not done, and not to be done casually:** it bumps `DETECTION_VERSION` and recomputes every trajectory.
+Re-run `forensics:compare-detection-layers` against sentence candidates BEFORE paying for that, not
+after.
+
+*Still to confirm (small):* the span reading rests on both claims being longer than their divergence
+point. `compareDetectionLayers` truncates `claimText` at 90 characters in its output; printing the two
+in full settles it.
+
 *Invariant:* every reported flip is confirmed against the documents at that boundary.
 
 *Enforcement:* verified at computation, verdict stored with `DETECTION_VERSION` and `sourceStateHash`.
