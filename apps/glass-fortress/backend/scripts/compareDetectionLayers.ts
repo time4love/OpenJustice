@@ -60,12 +60,20 @@ async function main(): Promise<number> {
   // measurement read as a discovery.
   console.log(`\nLOST by moving to DOCUMENT: ${String(r.lostByMoving.length)}`);
   for (const t of r.lostByMoving) {
-    console.log(`  ${String(t.transitions)} transitions  ${t.claimText.slice(0, 90)}`);
+    // LENGTH IS PRINTED, and it is the number that diagnoses this class. The two
+    // renderings of a capture agree for a long prefix and then diverge where
+    // `htmlToText` keeps a heading Readability drops, so whether a claim survives
+    // the move is decided by whether it REACHES that divergence. A truncated
+    // excerpt cannot answer that; the first run of this script printed 90
+    // characters and left the question open.
+    console.log(`  ${String(t.transitions)} transitions, ${String(t.claimText.length)} chars`);
+    console.log(`    ${t.claimText}`);
   }
 
   console.log(`\nGAINED by moving to DOCUMENT: ${String(r.gainedByMoving.length)}`);
   for (const t of r.gainedByMoving) {
-    console.log(`  ${String(t.transitions)} transitions  ${t.claimText.slice(0, 90)}`);
+    console.log(`  ${String(t.transitions)} transitions, ${String(t.claimText.length)} chars`);
+    console.log(`    ${t.claimText}`);
   }
 
   // Kept by both and NOT the same finding. Reported separately because set
