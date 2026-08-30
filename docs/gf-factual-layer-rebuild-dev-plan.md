@@ -2415,7 +2415,70 @@ and missed the case this work exists for; sentence granularity found 7.
 
 ### Level 6 — the trajectory
 
-**STATUS: PARTIAL — `DETECTION_VERSION` v2 retired `MIN_CLAIM_LENGTH` for the containment rule (2026-08-29). The invariant itself — every reported flip confirmed against the documents at that boundary — is NOT yet enforced.**
+**STATUS: PARTIAL — the invariant (every reported flip confirmed against the documents at that boundary) is NOT enforced, and the obvious route to it is CANCELLED BY MEASUREMENT (2026-08-30). Moving detection to the document layer loses 2 trajectories and gains 0. The run also produced a finding about the EVIDENCE rather than the pipeline: the verbatim probe has only ever been tested against the renderer it was born from, and 2 of 90 MOH claims are not findable by the outsider check this platform's value rests on. Read the section below before proposing any Level 6 work.**
+
+#### THE FLIP IS A NET LOSS — measured 2026-08-30, `forensics:compare-detection-layers`
+
+`compareDetectionLayers` detects twice over one candidate set and never persists. On the MOH page:
+
+```
+                    trajectories   unmatched   snapshots
+  EXTRACTION             90            5          83
+  DOCUMENT               88            7          83
+
+LOST 2 · GAINED 0 · SHAPE CHANGED 0        exit 3
+```
+
+**Moving detection to `text` is strictly worse.** The prediction that preceded it — *lost 0, gained
+> 0* — was wrong in both directions.
+
+**The gain is ZERO BY CONSTRUCTION, not by accident.** Candidates are discovered from diff items, and
+the differ runs on `fullText`. Every candidate is therefore a string the extraction already contained,
+so searching a superset can only match the same ones or fewer. **The ~31% the extraction discards can
+never produce a candidate, because the differ never sees it.**
+
+That also reframes the instrument honestly: its gain arm was **not vacuous, it was NOT YET
+ANSWERABLE**. It can only return "same or worse" while candidates come from `fullText` — `exit 0` would
+have meant "no difference", never "gain". Moving the differ is what makes it capable of measuring what
+it was built for, and re-running it afterwards is the payoff.
+
+##### THE MORE IMPORTANT HALF: the two are FALSE NEGATIVES OF THE PROBE, not losses
+
+```
+3 transitions  בכל מקרה, אין סיכוי לחלות בקורונה בגלל החיסון…
+6 transitions  תופעות הלוואי של החיסון…
+```
+
+The claims did not leave the page. **The string stopped matching.** Both are long multi-sentence
+quotes, so the likely cause is `htmlToText` breaking them where Readability did not, and
+`normaliseClaim` collapses whitespace only.
+
+The first is **the exact claim this plan quotes** as its example of a load-bearing assertion — the one
+used to justify retiring `MIN_CLAIM_LENGTH`. The second is one of the strongest oscillation patterns in
+the corpus.
+
+**A trajectory is a verbatim substring probe, and it has only ever been tested against the renderer it
+was born from.** Candidates come from `fullText`; presence is tested against `fullText`. Same renderer
+both sides, so matching is guaranteed by construction and had never been checked.
+
+**The platform's evidentiary value is that a stranger opens the archived page and finds the string.** A
+stranger searches the rendered DOM, which is closer to `htmlToText` than to Readability's article. So
+**at least 2 of 90 claims may not survive the outsider check the whole platform rests on** — and
+nothing before this run could have detected it. This is a finding about the EVIDENCE, and it is the
+half that goes missing if only the cancellation is written down.
+
+##### What this reprioritises
+
+- **Diagnosing the two non-matching quotes is a PREREQUISITE FOR THIS LEVEL'S INVARIANT, not cleanup
+  after a cancelled change.** Confirming a flip *against the documents* hits the identical probe, so the
+  same two claims that failed to match will fail to confirm. Cancelling the detection move did not
+  cancel that; it ruled out one route to it.
+- **If the cause is whitespace and breaks, the fix belongs in `normaliseClaim`** — cheap, and it
+  improves outsider-verifiability for every trajectory rather than for these two.
+- **Moving the DIFFER to `text`** bumps `diffInputVersion` and re-classifies every diff — hundreds of
+  model calls and real spend. That is a cost decision and the researcher's, not a technical step. It is
+  also the only thing that unblocks the gain arm.
+- **Moving detection alone is CANCELLED.** Do not revive it without moving the differ first.
 
 *Invariant:* every reported flip is confirmed against the documents at that boundary.
 
