@@ -2,6 +2,8 @@
 
 **2026-08-30 · staging · thesis `cmt5jffqy000lf52mn6t56f3l`**
 
+**Bears on: Level 9**
+
 This is a findings record, not a plan. `docs/gf-factual-layer-rebuild-dev-plan.md` holds decisions;
 this holds what was measured on one day and the fifteen defects the day surfaced.
 

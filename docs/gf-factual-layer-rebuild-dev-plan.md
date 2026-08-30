@@ -2745,7 +2745,7 @@ derive the displayed dates from the captures rather than storing them a second t
 
 ### Level 9 — the thesis
 
-**STATUS: OPEN — and the invariant AS WRITTEN IS UNSATISFIABLE ON STAGING, measured 2026-08-30: no evidence record can be `VERIFIED`, because all 8 anchored records are `TX_UNREADABLE` — the registry holds every hash, the receipts are past the endpoint’s horizon, and that is terminal rather than a gap to close. A thesis published that day passed all 16 hard checks while citing one of them. Do not plan this level as “make theses cite VERIFIED evidence” until Level 10’s supersession provides records that can be. → `docs/gf-level-diagnostics-2026-08-30.md`**
+**STATUS: OPEN — and the invariant AS WRITTEN IS UNSATISFIABLE ON STAGING, measured 2026-08-30: no evidence record can be `VERIFIED`, because all 8 anchored records are `TX_UNREADABLE` — the registry holds every hash, the receipts are past the endpoint’s horizon, and that is terminal rather than a gap to close. A thesis published that day passed all 16 hard checks while citing one of them. Do not plan this level as “make theses cite VERIFIED evidence” until Level 10’s supersession provides records that can be. → `docs/gf-level-diagnostics-2026-08-30.md` · `docs/gf-published-thesis-fda-claim-2026-08-30.md`**
 
 *Invariant:* a thesis cites nothing that is not `VERIFIED`.
 
