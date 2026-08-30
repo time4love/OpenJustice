@@ -10,6 +10,8 @@ import {
   CAPTURE_HASHES_SELECT,
   anchoredCaptureHash,
   capturesKnownHashes,
+  storedAnchorHash,
+  type StoredAnchorHash,
 } from '../lib/anchoredCaptureHash';
 
 // ---------------------------------------------------------------------------
@@ -394,7 +396,7 @@ function decide(
 }
 
 /** The hash a confirmation licenses writing, or null when it licenses none. */
-function writableHash(confirmation: AnchorConfirmation): string | null {
+function writableHash(confirmation: AnchorConfirmation): StoredAnchorHash | null {
   // MISANCHORED writes too, deliberately. The column records what the
   // transaction registered, and a divergence is exactly the fact worth having on
   // the row — suppressing it would leave the anchor looking unexamined rather
@@ -404,7 +406,12 @@ function writableHash(confirmation: AnchorConfirmation): string | null {
     confirmation.kind === 'CONFIRMED_BY_LOG' ||
     confirmation.kind === 'MISANCHORED'
   ) {
-    return confirmation.anchoredHash;
+    // NORMALISED, and this is the whole defect the positive control found. The
+    // observed value comes from the transaction log via ethers, which returns
+    // bytes32 `0x`-prefixed; the write path stores the same fact bare. Two
+    // spellings in one column made every confirmed row invisible to
+    // `capturesAnchoredBy`, so `VERIFIED` was unreachable for every snapshot.
+    return storedAnchorHash(confirmation.anchoredHash);
   }
   return null;
 }

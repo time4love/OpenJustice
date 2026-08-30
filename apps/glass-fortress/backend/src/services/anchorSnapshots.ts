@@ -7,7 +7,9 @@ import {
   ANCHORABLE_CAPTURE_SELECT,
   anchoredCaptureHash,
   capturesAnchoredBy,
+  storedAnchorHash,
   type AnchorableCapture,
+  type StoredAnchorHash,
 } from '../lib/anchoredCaptureHash';
 
 // ---------------------------------------------------------------------------
@@ -130,7 +132,7 @@ export type SnapshotAnchorOutcome =
 async function claimAnchor(
   snapshotId: string,
   txHash: string,
-  anchoredHash: string,
+  anchoredHash: StoredAnchorHash,
 ): Promise<void> {
   await prisma.urlSnapshot.update({
     where: { id: snapshotId },
@@ -148,7 +150,11 @@ export async function anchorOneSnapshot(
   // the chain attests to is one rule with one home (`anchoredCaptureHash`), and
   // a caller that picks the hash itself is a caller that keeps its own answer
   // when the rule moves at Level 3.
-  const anchoredHash = anchoredCaptureHash(capture);
+  // Normalised HERE rather than at each of the three `claimAnchor` calls, so the
+  // value that reaches the chain and the value that reaches the column are the
+  // same object. The brand then makes a fourth call site impossible to write
+  // without passing through this line.
+  const anchoredHash = storedAnchorHash(anchoredCaptureHash(capture));
   /**
    * LEVEL 3a — every outcome that WRITES A POINTER is checked against the chain
    * and the verdict stored.
