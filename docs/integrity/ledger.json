@@ -1,0 +1,238 @@
+{
+  "$comment": [
+    "THE INTEGRITY LEDGER — what has actually been checked, when, and against what code.",
+    "",
+    "WHY IT IS A LEDGER AND NOT A COMPUTATION. Every check below is an operational script",
+    "guarded by RAILWAY_DEPLOYMENT_ID: it refuses to run outside a deployment, and it needs the",
+    "database and the chain. Recomputing them at PR time is impossible by construction, not",
+    "merely expensive. So a run RECORDS itself here, and the board RENDERS this file.",
+    "",
+    "STALENESS IS THE ONLY THING COMPUTED AT PR TIME, and it reuses the discipline the",
+    "codebase already trusts: a Level 5 verdict is stale when the inputs it judged have moved,",
+    "and a check's result is stale when the code it exercised has moved. `dependsOn` declares",
+    "that code; the board diffs it against `lastRun.commit`.",
+    "",
+    "`outcome` is the ONE human input, declared once per check rather than re-judged each run:",
+    "an exit code alone cannot say whether a non-zero exit is a failure. forensics:audit-anchors",
+    "exits 5 on a corpus whose legacy anchors are not yet superseded, and that is CORRECT.",
+    "",
+    "NEVER write a lastRun that was not observed. `null` means nobody has recorded a run — which",
+    "is an honest state and the whole point of the board. Stamping a believed value here would be",
+    "the same defect as backfilling anchoredHash from the column the code happens to anchor."
+  ],
+
+  "generatedFor": "docs/gf-factual-layer-rebuild-dev-plan.md",
+  "backendRoot": "apps/glass-fortress/backend",
+
+  "outcomeMeanings": {
+    "CLEAN": "Ran to completion and everything it checks held.",
+    "PASS_WITH_KNOWN_LEGACY": "Non-zero exit that is CORRECT: the failures it reports are legacy state explicitly out of this level's scope.",
+    "FINDING": "Ran and found something real. Not a failure of the check — a result.",
+    "BLOCKED": "Cannot pass for a reason outside the check itself.",
+    "UNRECORDED": "May have run before this ledger existed. Not evidence either way."
+  },
+
+  "checks": [
+    {
+      "id": "verify-against-cdx",
+      "level": 1,
+      "role": "invariant",
+      "claim": "Every stored capture matches the Archive's own digest.",
+      "command": "npm run forensics:verify-against-cdx -- --env <env>",
+      "dependsOn": [
+        "src/services/verifyAgainstCdx.ts",
+        "src/services/archiveVerification.ts",
+        "src/lib/captureDocument.ts"
+      ],
+      "lastRun": {
+        "commit": null,
+        "at": "2026-08-28",
+        "environment": "both",
+        "exit": 0,
+        "outcome": "UNRECORDED",
+        "summary": "Level 1 was closed against the Archive's own digest in both environments. The run predates this ledger, so its commit is unrecorded — the date is from the plan, not from an observation recorded here."
+      }
+    },
+    {
+      "id": "check-drift",
+      "level": 1,
+      "role": "invariant",
+      "claim": "schema.prisma and the live database have not drifted.",
+      "command": "npm run db:check-drift",
+      "dependsOn": ["prisma/schema.prisma", "prisma/migrations"],
+      "lastRun": {
+        "commit": "199eac6",
+        "at": "2026-08-30",
+        "environment": "staging",
+        "exit": 0,
+        "outcome": "CLEAN",
+        "summary": "No difference detected. Run before writing the anchoredHash normalisation migration, as the migration rules require."
+      }
+    },
+    {
+      "id": "verify-migrations",
+      "level": 1,
+      "role": "invariant",
+      "claim": "Every migration in the ledger applied and took.",
+      "command": "npm run db:verify-migrations",
+      "dependsOn": ["scripts/verifyMigrations.js", "prisma/migrations"],
+      "lastRun": {
+        "commit": null,
+        "at": "2026-08-29",
+        "environment": "staging",
+        "exit": 1,
+        "outcome": "BLOCKED",
+        "summary": "Cannot pass: pgcrypto is undeclared. A finding about the check, not about the migrations."
+      }
+    },
+    {
+      "id": "url-admission",
+      "level": 2,
+      "role": "invariant",
+      "claim": "admitUrl is the only path to a TrackedUrl.",
+      "command": "npx jest test/urlAdmission.test.ts",
+      "dependsOn": ["src/services/admitUrl.ts", "src/utils/webScraper.ts"],
+      "lastRun": {
+        "commit": "d6b6fda",
+        "at": "2026-08-30",
+        "environment": "local",
+        "exit": 0,
+        "outcome": "FINDING",
+        "summary": "The source scan holds. But utm_* is stripped only for the FETCH, not for admission, so the URL judged and the URL stored can differ. Level 2 is REOPENED for a separate reason (create_evidence_from_url bypasses the gate)."
+      }
+    },
+    {
+      "id": "audit-anchors",
+      "level": 3,
+      "role": "invariant",
+      "claim": "Every anchoring claim carries a current verdict about the hash the rule names.",
+      "command": "npm run forensics:audit-anchors -- --env <env>",
+      "dependsOn": [
+        "src/services/auditOnChainAnchors.ts",
+        "src/services/onChainVerification.ts",
+        "src/lib/onChainVerdict.ts",
+        "src/lib/anchoredCaptureHash.ts"
+      ],
+      "lastRun": {
+        "commit": "3c0e639",
+        "at": "2026-08-30",
+        "environment": "staging",
+        "exit": 5,
+        "outcome": "PASS_WITH_KNOWN_LEGACY",
+        "summary": "VERIFIED 7 · MISATTESTING 22 · UNATTRIBUTED 91 · STALE 0. The 7 are the positive control's captures — the first time this arm has ever fired. Exit 5 is correct: 113 legacy subjects are unsuperseded, which is Level 10's."
+      }
+    },
+    {
+      "id": "confirm-anchors",
+      "level": 3,
+      "role": "invariant",
+      "claim": "What each anchoring transaction actually registered, observed from its own log.",
+      "command": "npm run forensics:confirm-anchors -- --env <env>",
+      "dependsOn": [
+        "src/services/confirmAnchors.ts",
+        "src/services/Web3Service.ts",
+        "src/lib/anchoredCaptureHash.ts"
+      ],
+      "lastRun": {
+        "commit": "7740e11",
+        "at": "2026-08-30",
+        "environment": "staging",
+        "exit": 0,
+        "outcome": "CLEAN",
+        "summary": "7 of 7 confirmed by receipt. Ran on the deployment BEFORE the anchoredHash spelling fix, so its dependencies have since moved — the board should show this stale, and it is."
+      }
+    },
+    {
+      "id": "audit-survival",
+      "level": 5,
+      "role": "invariant",
+      "claim": "Every diff carries a survival verdict computed against what it currently holds.",
+      "command": "npm run forensics:audit-survival -- --env <env>",
+      "dependsOn": [
+        "src/services/auditDiffSurvival.ts",
+        "src/lib/diffSurvival.ts",
+        "src/services/computeDiffSurvival.ts"
+      ],
+      "lastRun": null
+    },
+    {
+      "id": "trajectory-flip-confirmation",
+      "level": 6,
+      "role": "invariant",
+      "claim": "Every reported flip is confirmed against the documents at that boundary.",
+      "command": null,
+      "dependsOn": ["src/services/claimTrajectory.ts"],
+      "lastRun": null,
+      "note": "No check exists. This is the level's invariant and nothing enforces it. Blocked: two claims are strings the page never contained, so the confirmation would fail for a reason the corpus must fix first."
+    },
+    {
+      "id": "evidence-recomputable",
+      "level": 7,
+      "role": "invariant",
+      "claim": "Evidence identity is recomputable from its captures; summaries attribute nothing absent.",
+      "command": null,
+      "dependsOn": ["src/services/forensicEvidence.ts"],
+      "lastRun": null
+    },
+    {
+      "id": "opinions-not-facts",
+      "level": 8,
+      "role": "invariant",
+      "claim": "Nothing presents a model's judgement as a computed fact.",
+      "command": null,
+      "dependsOn": ["src/services/ForensicAgent.ts"],
+      "lastRun": null
+    },
+    {
+      "id": "thesis-cites-verified",
+      "level": 9,
+      "role": "invariant",
+      "claim": "A thesis cites nothing that is not VERIFIED.",
+      "command": null,
+      "dependsOn": ["src/services/thesisPublication.ts"],
+      "lastRun": null
+    },
+    {
+      "id": "anchors-explainable",
+      "level": 10,
+      "role": "invariant",
+      "claim": "Every anchored hash stays explainable forever.",
+      "command": null,
+      "dependsOn": ["src/lib/anchoredCaptureHash.ts"],
+      "lastRun": null
+    },
+
+    {
+      "id": "compare-detection-layers",
+      "level": 6,
+      "role": "instrument",
+      "claim": "What would change if detection read the document instead of the extraction.",
+      "command": "npm run forensics:compare-detection-layers -- --env <env> --url <url>",
+      "dependsOn": ["src/services/claimTrajectory.ts", "scripts/compareDetectionLayers.ts"],
+      "lastRun": {
+        "commit": "d6b6fda",
+        "at": "2026-08-30",
+        "environment": "staging",
+        "exit": 3,
+        "outcome": "FINDING",
+        "summary": "LOST 2 · GAINED 0 · SHAPE CHANGED 0. The flip is strictly worse, and the gain is zero by construction. The 2 lost are 352 and 567 characters — strings the page never contained, stitched by Readability across a heading it drops."
+      }
+    },
+    {
+      "id": "measure-href-changes",
+      "level": 6,
+      "role": "instrument",
+      "claim": "Href-only changes that no text-layer check could ever report.",
+      "command": "npm run forensics:measure-href-changes -- --env <env> --url <url>",
+      "dependsOn": ["src/services/measureHrefChanges.ts", "src/lib/captureDocument.ts"],
+      "lastRun": {
+        "commit": "77f1281",
+        "at": "2026-08-30",
+        "environment": "staging",
+        "exit": 0,
+        "outcome": "FINDING",
+        "summary": "17 of 82 pairs changed, 2 invisible to the derived text. Its first run — before the decode fix — reported 27 and 12, including a government reporting channel vanishing 13 times. It never did."
+      }
+    }
+  ]
+}
