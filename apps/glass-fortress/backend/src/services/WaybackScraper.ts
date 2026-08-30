@@ -2,7 +2,7 @@ import axios from 'axios';
 import { CaptureProvenance } from '@prisma/client';
 import { recordCapture, waybackTimestampToDate } from './recordCapture';
 import { extractArticleText, timestampToDate } from '../lib/archiveText';
-import { decodeDocument, inflateDocument } from '../lib/captureDocument';
+import { captureHtml } from '../lib/captureDocument';
 import {
   CDX_MAX_RETRIES,
   CDX_TIMEOUT_MS,
@@ -604,7 +604,11 @@ export class WaybackScraper {
     // The extraction is still derived here because Readability wants a string;
     // the bytes travel to recordCapture untouched.
     const { bytes, contentType, contentEncoding } = await fetchCaptureBytes(url, timestamp);
-    const html = decodeDocument(inflateDocument(bytes, contentEncoding), contentType);
+    const html = captureHtml({
+      document: bytes,
+      documentContentType: contentType,
+      documentContentEncoding: contentEncoding,
+    });
     return {
       extracted: extractArticleText(html, rawCaptureUrl(timestamp, url)),
       bytes,
