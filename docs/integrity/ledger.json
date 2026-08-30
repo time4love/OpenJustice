@@ -182,13 +182,14 @@
         "src/lib/anchoredCaptureHash.ts"
       ],
       "lastRun": {
-        "commit": "7740e11",
+        "commit": "20eccf9347f751ef2dd22749714120cca2d6a99e",
         "at": "2026-08-30",
         "environment": "staging",
-        "exit": 0,
-        "outcome": "CLEAN",
-        "summary": "7 of 7 confirmed by receipt. Ran on the deployment BEFORE the anchoredHash spelling fix, so its dependencies have since moved — the board should show this stale, and it is.",
-        "outcomeSource": "transcribed-2026-08-30"
+        "exit": 3,
+        "outcome": "FINDING",
+        "deploymentId": "8c3b025c-1cbd-4ecf-90c6-2e109895d085",
+        "summary": "STAGING, with --recheck: examined 120 · confirmed by receipt 29 · no receipt but hash registered 91 · MISANCHORED 0 · REGISTERED BY ANOTHER TX 0 · ANCHORED NOTHING 0 · NO TRACE 0. Nothing is wrong: every hash is registered on this chain and only the attribution is lost, permanently, because the receipts are past the endpoint's horizon. TX_UNREADABLE is terminal. WITHOUT --recheck the same run examined 0 and exited 4, because the skip predicate reads anchorCheck while the summary counts anchoredHash — 91 subjects were dropped and never mentioned. See docs/gf-level-diagnostics-2026-08-30.md.",
+        "observed": true
       },
       "runner": "confirmAnchors",
       "exitMeans": {

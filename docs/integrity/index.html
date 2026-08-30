@@ -257,7 +257,7 @@
     <h1>Factual Layer Survey</h1>
     <p class="standfirst">Eleven levels, drawn as strata because they rest on one another. <b>Colour is what the plan claims. Bar length is how much of that claim has actually been proved.</b> A level can be green and nearly empty — that is the state worth seeing.</p>
     <p class="datestamp">
-      <span>GENERATED FROM 25fe3f7</span>
+      <span>GENERATED FROM dbc4c3e</span>
       <span>2026-08-30</span>
       <span>no database · no chain · no model</span>
     </p>
@@ -266,7 +266,7 @@
   <div class="verdict">
     <div class="counts">
       <div><b>7<span style="font-size:15px;color:var(--ink-faint)">/11</span></b><span>levels whose check has never run</span></div>
-      <div><b>3</b><span>results whose code has moved since</span></div>
+      <div><b>2</b><span>results whose code has moved since</span></div>
     </div>
     <p style="margin-top:14px">Colour comes from the plan's own <code>STATUS:</code> lines. Bar length is computed: a check that does not exist scores nothing, one that has never run scores little, and one whose dependencies changed since it ran is marked <b>stale</b> — the same discipline that invalidates a Level 5 verdict when the inputs it judged have moved.</p>
   </div>
@@ -319,7 +319,7 @@
       <div class="stratum t-proven">
         <span class="lv">03</span>
         <span class="nm">the anchor<small>Every anchoring claim carries a current verdict about the hash the rule names.</small></span>
-        <div class="track"><div class="fill" style="width:50%"></div><span class="cap">stale — its code moved since</span></div>
+        <div class="track"><div class="fill" style="width:75%"></div><span class="cap">run, current, reported a finding</span></div>
         <span class="claim">CLOSED, 2026-08-30, IN BOTH ENVIRONMENTS</span>
       </div>
       <div class="stratum t-partial">
@@ -391,11 +391,11 @@
             <td><code>npm run forensics:audit-anchors -- --env &lt;env&gt;</code></td>
             <td><span class="ran">2026-08-30</span> <span class="dim">@ <code>65359489c3a153612db8b52e64d279817dd233e3</code> · exit 5 · PASS_WITH_KNOWN_LEGACY</span><p class="sum">PRODUCTION, post-ship: 91 subjects · VERIFIED 8 · MISATTESTING 83 · UNATTRIBUTED 0 · STALE 0 · UNCHECKED 0. The anchoredHash normalisation moved no claim into STALE and left the 8 evidence rows untouched. Exit 5 is correct: the 83 legacy captures attest a superseded hash, which is Level 10's.</p></td>
           </tr>
-          <tr class="stale">
+          <tr class="ran">
             <td class="k">3 · confirm-anchors</td>
             <td>What each anchoring transaction actually registered, observed from its own log.</td>
             <td><code>npm run forensics:confirm-anchors -- --env &lt;env&gt;</code></td>
-            <td><span class="stale">stale</span> <span class="dim">— 2 dependency file(s) moved since <code>7740e11</code></span><p class="sum">7 of 7 confirmed by receipt. Ran on the deployment BEFORE the anchoredHash spelling fix, so its dependencies have since moved — the board should show this stale, and it is.</p></td>
+            <td><span class="ran">2026-08-30</span> <span class="dim">@ <code>20eccf9347f751ef2dd22749714120cca2d6a99e</code> · exit 3 · FINDING</span><p class="sum">STAGING, with --recheck: examined 120 · confirmed by receipt 29 · no receipt but hash registered 91 · MISANCHORED 0 · REGISTERED BY ANOTHER TX 0 · ANCHORED NOTHING 0 · NO TRACE 0. Nothing is wrong: every hash is registered on this chain and only the attribution is lost, permanently, because the receipts are past the endpoint's horizon. TX_UNREADABLE is terminal. WITHOUT --recheck the same run examined 0 and exited 4, because the skip predicate reads anchorCheck while the summary counts anchoredHash — 91 subjects were dropped and never mentioned. See docs/gf-level-diagnostics-2026-08-30.md.</p></td>
           </tr>
           <tr class="ran">
             <td class="k">5 · audit-survival</td>
