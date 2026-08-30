@@ -66,7 +66,7 @@ interface Session {
 const db = {
   thesis: null as Thesis | null,
   versions: [] as Version[],
-  evidence: [] as { fileHash: string; status: string; onChainTxHash: string | null; evidenceTier: string; summary: string }[],
+  evidence: [] as Record<string, unknown>[],
   sessions: new Map<string, Session>(),
   events: [] as Record<string, unknown>[],
   keyFigures: [] as string[],
@@ -93,10 +93,12 @@ jest.mock('../src/lib/prisma', () => ({
     },
     evidence: {
       findMany: jest.fn(async ({ where }: { where: { fileHash: { in: string[] } } }) =>
-        db.evidence.filter((e) => where.fileHash.in.includes(e.fileHash)),
+        db.evidence.filter((e) => where.fileHash.in.includes(e['fileHash'] as string)),
       ),
       count: jest.fn(async ({ where }: { where: { status: string; evidenceTier: { notIn: string[] } } }) =>
-        db.evidence.filter((e) => e.status === where.status && !where.evidenceTier.notIn.includes(e.evidenceTier)).length,
+        db.evidence.filter(
+          (e) => e['status'] === where.status && !where.evidenceTier.notIn.includes(e['evidenceTier'] as string),
+        ).length,
       ),
     },
     researchSession: {
@@ -159,9 +161,34 @@ jest.mock('../src/lib/prisma', () => ({
 
 import { assessPublication, publishThesis, unpublishThesis } from '../src/services/thesisPublication';
 import { publicationState } from '../src/lib/thesisView';
+import { SURVIVAL_CHECK_VERSION, survivalSourceStateHash } from '../src/lib/diffSurvival';
+import { TEXT_VERSION, survivalFixture } from './helpers/survivalFixture';
 
 const FIGURE = 'נחמן אש';
 const EV = '0xaaa';
+
+/**
+ * A cited record as check 5, 6 and 17 all read it.
+ *
+ * DOCUMENT by default, because check 17 judges the archived documents behind
+ * DIFF-DERIVED evidence and a fixture that defaulted to one would make every
+ * unrelated test in this file assert against a survival verdict it never meant
+ * to set. Built through one helper for the reason survivalFixture exists: six
+ * suites hand-rolling a row is how they drift from what the query returns.
+ */
+function documentEvidence(fileHash: string, over: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    fileHash,
+    status: 'CONFIRMED',
+    onChainTxHash: '0xtx',
+    evidenceTier: 'Tier 2: Material',
+    summary: 's',
+    evidenceType: 'DOCUMENT',
+    urlVersionDiffId: null,
+    urlVersionDiff: null,
+    ...over,
+  };
+}
 
 function hedgedDoc(extraSentence?: string) {
   return {
@@ -209,6 +236,41 @@ function addVersion(id: string, over: Partial<Version> = {}): Version {
   return v;
 }
 
+/**
+ * The diff-derived half of a cited record, in one Level 5 state.
+ *
+ * Built through the shared survivalFixture for the reason that helper exists:
+ * these rows must be what the gate's own query returns, and a hand-rolled one is
+ * how six suites came to disagree with it.
+ */
+function forensicDiff(state: 'SURVIVES' | 'CONTRADICTED' | 'UNCHECKED'): Record<string, unknown> {
+  const provenance =
+    state === 'UNCHECKED'
+      ? {}
+      : {
+          survivalVerdict: state,
+          survivalCheckVersion: SURVIVAL_CHECK_VERSION,
+          survivalTextVersion: TEXT_VERSION,
+          survivalCheckedAt: new Date('2026-08-28'),
+          survivalChunksChecked: 1,
+          survivalContradicted: state === 'CONTRADICTED' ? [{ side: 'REMOVED', excerpt: 'x' }] : [],
+          survivalSourceStateHash: survivalSourceStateHash({
+            beforeTextHash: 'a'.repeat(64),
+            afterTextHash: 'b'.repeat(64),
+            rawDeletedText: '["a chunk long enough to clear the presence floor in the checker"]',
+            rawAddedText: '[]',
+          }),
+        };
+  return {
+    evidenceType: 'FORENSIC_DIFF',
+    urlVersionDiffId: 'diff-1',
+    urlVersionDiff: survivalFixture({
+      rawDeletedText: '["a chunk long enough to clear the presence floor in the checker"]',
+      ...provenance,
+    }),
+  };
+}
+
 function openSession(researcherId: string | null, thesisId: string | null = 't1', id = `s-${String(++seq)}`): Session {
   const s: Session = { id, thesisId, researcherId, status: 'ACTIVE', name: 'work', question: null, createdAt: new Date() };
   db.sessions.set(id, s);
@@ -250,7 +312,7 @@ beforeEach(() => {
     publicInterestStatement: 'הציבור זכאי לדעת כיצד שונו הנחיות בטיחות רשמיות בזמן אמת.',
   };
   db.versions = [];
-  db.evidence = [{ fileHash: EV, status: 'CONFIRMED', onChainTxHash: '0xtx', evidenceTier: 'Tier 2: Material', summary: 's' }];
+  db.evidence = [documentEvidence(EV)];
   db.sessions.clear();
   db.events = [];
   db.keyFigures = [];
@@ -335,7 +397,7 @@ describe('publishing pins a version', () => {
     expect(eventsOfType('PUBLICATION_RATIONALE')[0]['description']).toBe(RATIONALE);
     expect(eventsOfType('THESIS_PUBLISHED')[0]['refId']).toBe('v1');
     const assessed = JSON.parse(String(eventsOfType('PUBLICATION_ASSESSED')[0]['description'])) as { checks: unknown[] };
-    expect(assessed.checks).toHaveLength(16);
+    expect(assessed.checks).toHaveLength(17);
   });
 
   it('saves the public-interest statement on the thesis even when the attempt is refused', async () => {
@@ -446,11 +508,81 @@ describe('each hard check blocks alone, and the refusal names it', () => {
     expect(r.checks.find((c) => c.id === 'ANALYSIS_COMPLETE')?.passed).toBe(true);
   });
 
+  it('17 — a cited record whose diff the archived documents REFUTE blocks publication', async () => {
+    // The class that published a false claim. `0x7517…` was anchored, CONFIRMED,
+    // Tier 2 and passed all sixteen checks while its summary asserted a change
+    // the raw archive contradicts. Checks 5 and 6 ask what the record IS; none of
+    // them asked whether what it reports happened.
+    db.evidence = [documentEvidence(EV, forensicDiff('CONTRADICTED'))];
+
+    const r = await report();
+
+    expect(r.hardFailures).toEqual(['EVIDENCE_DIFF_INPUT_SOUND']);
+    expect(r.publishable).toBe(false);
+    // Checks 5 and 6 still pass. Three questions, three checks — the refusal
+    // must not read as a vault problem.
+    expect(r.checks.find((c) => c.id === 'EVIDENCE_CONFIRMED_AND_ANCHORED')?.passed).toBe(true);
+    expect(r.checks.find((c) => c.id === 'EVIDENCE_TIER')?.passed).toBe(true);
+  });
+
+  it('17 — refuses to PUBLISH, not merely to report, and the refusal names the check', async () => {
+    // Asserted at the write path rather than at the report: a hard failure that
+    // publishThesis did not honour would be a check that only looked like a gate.
+    db.evidence = [documentEvidence(EV, forensicDiff('CONTRADICTED'))];
+
+    const r = await publishThesis('t1', 'r1', RATIONALE);
+
+    expect(r).toMatchObject({ published: false });
+    expect(JSON.stringify(r)).toContain('EVIDENCE_DIFF_INPUT_SOUND');
+    expect(db.thesis?.publishedVersionId).toBeNull();
+  });
+
+  it('17 — an UNCHECKED diff blocks too, and says so in different words', async () => {
+    // Where this rule departs from the promotion gate on purpose. Promotion
+    // proceeds on an unchecked diff because unchecked is not refuted; publishing
+    // asserts the change in public, so no current answer is not permission.
+    db.evidence = [documentEvidence(EV, forensicDiff('UNCHECKED'))];
+
+    const r = await report();
+
+    expect(r.hardFailures).toEqual(['EVIDENCE_DIFF_INPUT_SOUND']);
+    const details = JSON.stringify(r.checks.find((c) => c.id === 'EVIDENCE_DIFF_INPUT_SOUND')?.details);
+    expect(details).toContain('UNCHECKED');
+    expect(details).not.toContain('CONTRADICTED');
+  });
+
+  it('17 — passes on a diff the documents support, and says it is binding', async () => {
+    // A check with no reachable passing state is worse than none. 14 of staging's
+    // 109 diffs hold this verdict today.
+    db.evidence = [documentEvidence(EV, forensicDiff('SURVIVES'))];
+
+    const r = await report();
+
+    expect(r.hardFailures).toEqual([]);
+    const c = r.checks.find((x) => x.id === 'EVIDENCE_DIFF_INPUT_SOUND');
+    expect(c?.passed).toBe(true);
+    expect(c?.binding).toBe(true);
+  });
+
+  it('17 — is NON-BINDING on DOCUMENT-only evidence, and names the class it cannot cover', async () => {
+    // The default fixture, and the shape the currently published thesis has.
+    // It passes — refusing a thesis for citing DOCUMENT evidence would be wrong —
+    // but a pass with nothing in scope must not read as a verification, and the
+    // uncovered class is named rather than left to be inferred.
+    const r = await report();
+
+    const c = r.checks.find((x) => x.id === 'EVIDENCE_DIFF_INPUT_SOUND');
+    expect(c?.passed).toBe(true);
+    expect(c?.binding).toBe(false);
+    expect(c?.summary).toContain('NON-BINDING');
+    expect(c?.summary).toContain('DOCUMENT evidence has no snapshot-derived input');
+  });
+
   it('passes the good fixture with every hard check', async () => {
     const r = await report();
     expect(r.hardFailures).toEqual([]);
     expect(r.publishable).toBe(true);
-    expect(r.checks.map((c) => c.number)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]);
+    expect(r.checks.map((c) => c.number)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17]);
   });
 
   it('1 — no head version', async () => {
@@ -488,12 +620,12 @@ describe('each hard check blocks alone, and the refusal names it', () => {
     expect(r.hardFailures).toEqual(['EVIDENCE_CONFIRMED_AND_ANCHORED']);
     expect(r.checks.find((c) => c.id === 'EVIDENCE_CONFIRMED_AND_ANCHORED')?.details).toMatchObject({ missing: [EV] });
 
-    db.evidence = [{ fileHash: EV, status: 'PENDING_REVIEW', onChainTxHash: null, evidenceTier: 'Tier 2: Material', summary: 's' }];
+    db.evidence = [documentEvidence(EV, { status: 'PENDING_REVIEW', onChainTxHash: null })];
     r = await report();
     expect(r.hardFailures).toEqual(['EVIDENCE_CONFIRMED_AND_ANCHORED']);
 
     // CONFIRMED without a tx hash is the invariant violation promote_evidence guards against.
-    db.evidence = [{ fileHash: EV, status: 'CONFIRMED', onChainTxHash: null, evidenceTier: 'Tier 2: Material', summary: 's' }];
+    db.evidence = [documentEvidence(EV, { onChainTxHash: null })];
     r = await report();
     expect(r.hardFailures).toEqual(['EVIDENCE_CONFIRMED_AND_ANCHORED']);
     expect(r.checks.find((c) => c.id === 'EVIDENCE_CONFIRMED_AND_ANCHORED')?.details).toMatchObject({ unanchored: [EV] });
@@ -515,7 +647,7 @@ describe('each hard check blocks alone, and the refusal names it', () => {
   });
 
   it('6 — binds once a confirmed below-threshold record exists anywhere in the vault', async () => {
-    db.evidence.push({ fileHash: '0xbbb', status: 'CONFIRMED', onChainTxHash: '0x2', evidenceTier: 'Tier 3: Supporting', summary: 's' });
+    db.evidence.push(documentEvidence('0xbbb', { onChainTxHash: '0x2', evidenceTier: 'Tier 3: Supporting' }));
     const r = await report();
     const c = r.checks.find((x) => x.id === 'EVIDENCE_TIER');
     expect(c?.passed).toBe(true);
