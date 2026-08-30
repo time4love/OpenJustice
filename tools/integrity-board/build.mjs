@@ -33,11 +33,21 @@ const PLAN = join(ROOT, 'docs', 'gf-factual-layer-rebuild-dev-plan.md');
 const LEDGER = join(ROOT, 'docs', 'integrity', 'ledger.json');
 const OUT = join(ROOT, 'docs', 'integrity', 'index.html');
 
+/**
+ * Run git, returning NULL on failure — never an empty string.
+ *
+ * The distinction is load-bearing and was got wrong first time. `git diff X..HEAD`
+ * on an unresolvable commit fails; an empty-string fallback then reads as "no files
+ * changed", which makes the check CURRENT and the level fully proved. A ledger entry
+ * with a typo'd or rebased-away commit would have scored 100.
+ *
+ * Wrong in the reassuring direction is the only kind of wrong this board must not be.
+ */
 const git = (...args) => {
   try {
-    return execFileSync('git', args, { cwd: ROOT, encoding: 'utf8' }).trim();
+    return execFileSync('git', args, { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
   } catch {
-    return '';
+    return null;
   }
 };
 
@@ -80,7 +90,11 @@ function tone(status) {
 // ---------------------------------------------------------------------------
 function changedSince(commit) {
   if (!commit) return null; // unknown baseline: cannot compute, must not guess
+  // Resolvable first, and separately. A failed diff and a diff with no results are
+  // opposite answers, and only the second means "nothing moved".
+  if (git('rev-parse', '--verify', '--quiet', `${commit}^{commit}`) === null) return null;
   const out = git('diff', '--name-only', `${commit}..HEAD`);
+  if (out === null) return null;
   return out ? out.split('\n').filter(Boolean) : [];
 }
 
@@ -146,8 +160,8 @@ function build() {
     return { ...lv, checks, invariants, score, tone: tone(lv.status) };
   });
 
-  const head = git('rev-parse', '--short', 'HEAD') || 'unknown';
-  const when = git('log', '-1', '--format=%cs') || '';
+  const head = git('rev-parse', '--short', 'HEAD') ?? 'unknown';
+  const when = git('log', '-1', '--format=%cs') ?? '';
   const neverRun = rows.filter((r) => r.score <= 25).length;
   const stalest = ledger.checks
     .map((c) => ({ id: c.id, s: staleness(c, backendRoot) }))
@@ -177,7 +191,7 @@ function build() {
           ? '<span class="never">never recorded</span>'
           : stale.state === 'STALE'
             ? `<span class="stale">stale</span> <span class="dim">— ${esc(stale.movedPaths.length)} dependency file(s) moved since <code>${esc(run.commit)}</code></span>`
-            : `<span class="ran">${esc(run.at)}</span> <span class="dim">@ <code>${esc(run.commit ?? '—')}</code> · exit ${esc(run.exit)} · ${esc(run.outcome)}</span>`;
+            : `<span class="ran">${esc(run.at)}</span> <span class="dim">@ <code>${esc(run.commit ?? '—')}</code> · exit ${esc(run.exit)} · ${esc(run.outcome)}</span>${run.observed ? '' : ' <span class="pill" title="written by hand before runs recorded themselves">transcribed</span>'}`;
       return `          <tr class="${cls}">
             <td class="k">${esc(c.level)} · ${esc(c.id)}</td>
             <td>${c.role === 'instrument' ? '<span class="pill">instrument</span> ' : ''}${esc(c.claim)}</td>
