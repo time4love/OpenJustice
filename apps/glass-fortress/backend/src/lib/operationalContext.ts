@@ -358,7 +358,21 @@ export async function runOperationalScript(
   process.on('exit', (code) => {
     if (emitted) return;
     emitted = true;
-    emitLedgerRecord(context, startedAt, code);
+    try {
+      emitLedgerRecord(context, startedAt, code);
+    } catch {
+      // A LEDGER LINE IS NEVER WORTH AN EXIT CODE.
+      //
+      // An uncaught throw in an `exit` handler makes Node exit 1, overwriting
+      // whatever the script decided. Observed 2026-08-30: a 169KB run whose
+      // verdict was 3 ("do not pay") exited 1 ("bad arguments") because the
+      // record write threw on a full pipe. That is worse than the silent loss it
+      // replaced — a missing record is missing data, a wrong exit code is a wrong
+      // ANSWER, and `forensics:audit-anchors` exits 5 meaningfully.
+      //
+      // Swallowed deliberately and unconditionally: the record is best-effort,
+      // the exit code is the verdict.
+    }
   });
 
   try {
@@ -421,7 +435,43 @@ function emitLedgerRecord(context: OperationalContext, startedAt: string, exit: 
   //
   // `writeSync` does not queue, so it completes before `exit` returns. One call
   // rather than three, so the block cannot be torn in half either.
-  writeSync(1, `\n${LEDGER_RECORD_BEGIN}\n${JSON.stringify(record)}\n${LEDGER_RECORD_END}\n`);
+  writeLedgerLine(`\n${LEDGER_RECORD_BEGIN}\n${JSON.stringify(record)}\n${LEDGER_RECORD_END}\n`);
+}
+
+/**
+ * How long to keep retrying a record write against a pipe that is still draining.
+ *
+ * A busy wait, and it is the only synchronous option: this runs from an `exit`
+ * handler, so nothing else can make progress anyway and an async write would be
+ * discarded by the exit it is racing. Bounded because a reader that has gone away
+ * never drains, and a process that will not exit is worse than a lost record.
+ */
+const LEDGER_WRITE_DEADLINE_MS = 2000;
+
+/**
+ * Write one line to stdout synchronously, tolerating a full pipe.
+ *
+ * `writeSync` does not queue, which is why it survives `process.exit()` where
+ * `console.log` does not. But stdout is NON-BLOCKING when it is a pipe — always,
+ * under `railway ssh` — so a write into a full buffer fails with `EAGAIN` rather
+ * than waiting. The first version of this fix did not handle that: it threw, and
+ * a throw in an `exit` handler silently rewrote the script's exit code to 1.
+ *
+ * Returns whether the line was written. NEVER THROWS — the caller is an exit
+ * handler and the exit code is the thing being protected.
+ */
+export function writeLedgerLine(payload: string): boolean {
+  const deadline = Date.now() + LEDGER_WRITE_DEADLINE_MS;
+  while (Date.now() < deadline) {
+    try {
+      writeSync(1, payload);
+      return true;
+    } catch (err) {
+      // Anything other than back-pressure will not clear by waiting.
+      if ((err as NodeJS.ErrnoException).code !== 'EAGAIN') return false;
+    }
+  }
+  return false;
 }
 
 export const LEDGER_RECORD_BEGIN = '--- INTEGRITY-LEDGER-RECORD ---';
