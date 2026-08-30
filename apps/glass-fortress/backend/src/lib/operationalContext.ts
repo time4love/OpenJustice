@@ -340,13 +340,31 @@ export async function runOperationalScript(
   console.log(`\n${describeOperationalContext(context)}\n`);
 
   const startedAt = new Date().toISOString();
+
+  // ON THE PROCESS'S OWN EXIT, NOT AT THE END OF `body`.
+  //
+  // The first version emitted after `await body(context)` returned, and that was
+  // wrong for SEVENTEEN OF TWENTY-THREE SCRIPTS: they call `process.exit()`
+  // directly on their own exit paths, so the emission never ran on exactly the
+  // runs worth recording. `forensics:audit-anchors` exits 5 from inside its body
+  // and produced no record at all — found the first time the ledger was fed a
+  // real run rather than a rehearsal.
+  //
+  // `exit` fires for a direct `process.exit()` as well as a natural end, so the
+  // record no longer depends on how a script chooses to finish. Synchronous work
+  // only, which `console.log` is.
+  let emitted = false;
+  process.on('exit', (code) => {
+    if (emitted) return;
+    emitted = true;
+    emitLedgerRecord(context, startedAt, code);
+  });
+
   try {
     const code = await body(context);
-    emitLedgerRecord(context, startedAt, typeof code === 'number' ? code : 0);
     if (typeof code === 'number') process.exit(code);
   } catch (err) {
     console.error(err instanceof Error ? err.message : err);
-    emitLedgerRecord(context, startedAt, 1);
     process.exit(1);
   }
 }

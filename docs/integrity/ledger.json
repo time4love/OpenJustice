@@ -203,7 +203,16 @@
         "src/lib/diffSurvival.ts",
         "src/services/computeDiffSurvival.ts"
       ],
-      "lastRun": null,
+      "lastRun": {
+        "commit": "10a15f9b295d81ff766c6c9af9b6d8935ff7fadb",
+        "at": "2026-08-30",
+        "environment": "staging",
+        "exit": 0,
+        "outcome": "CLEAN",
+        "deploymentId": "6e53fa16-6b66-4831-aea9-13d428038a2f",
+        "summary": "109 diffs · UNCHECKED 0 · STALE 0 · all current. SURVIVES 14 · CONTRADICTED 7 · UNCHECKABLE 88. Level 5's enforcement is real, not merely claimed.",
+        "observed": true
+      },
       "runner": "auditDiffSurvival",
       "exitMeans": {
         "0": "CLEAN",

@@ -257,7 +257,7 @@
     <h1>Factual Layer Survey</h1>
     <p class="standfirst">Eleven levels, drawn as strata because they rest on one another. <b>Colour is what the plan claims. Bar length is how much of that claim has actually been proved.</b> A level can be green and nearly empty — that is the state worth seeing.</p>
     <p class="datestamp">
-      <span>GENERATED FROM 5970c35</span>
+      <span>GENERATED FROM 10a15f9</span>
       <span>2026-08-30</span>
       <span>no database · no chain · no model</span>
     </p>
@@ -265,7 +265,7 @@
 
   <div class="verdict">
     <div class="counts">
-      <div><b>8<span style="font-size:15px;color:var(--ink-faint)">/11</span></b><span>levels whose check has never run</span></div>
+      <div><b>7<span style="font-size:15px;color:var(--ink-faint)">/11</span></b><span>levels whose check has never run</span></div>
       <div><b>1</b><span>results whose code has moved since</span></div>
     </div>
     <p style="margin-top:14px">Colour comes from the plan's own <code>STATUS:</code> lines. Bar length is computed: a check that does not exist scores nothing, one that has never run scores little, and one whose dependencies changed since it ran is marked <b>stale</b> — the same discipline that invalidates a Level 5 verdict when the inputs it judged have moved.</p>
@@ -307,7 +307,7 @@
       <div class="stratum t-proven">
         <span class="lv">05</span>
         <span class="nm">the diff<small>Every diff carries a survival verdict computed against what it currently holds.</small></span>
-        <div class="track"><div class="fill" style="width:25%"></div><span class="cap">never run</span></div>
+        <div class="track"><div class="fill" style="width:100%"></div><span class="cap">run, current, held</span></div>
         <span class="claim">ENFORCED in both environments</span>
       </div>
       <div class="stratum t-dormant">
@@ -397,11 +397,11 @@
             <td><code>npm run forensics:confirm-anchors -- --env &lt;env&gt;</code></td>
             <td><span class="stale">stale</span> <span class="dim">— 2 dependency file(s) moved since <code>7740e11</code></span><p class="sum">7 of 7 confirmed by receipt. Ran on the deployment BEFORE the anchoredHash spelling fix, so its dependencies have since moved — the board should show this stale, and it is.</p></td>
           </tr>
-          <tr class="never">
+          <tr class="ran">
             <td class="k">5 · audit-survival</td>
             <td>Every diff carries a survival verdict computed against what it currently holds.</td>
             <td><code>npm run forensics:audit-survival -- --env &lt;env&gt;</code></td>
-            <td><span class="never">never recorded</span></td>
+            <td><span class="ran">2026-08-30</span> <span class="dim">@ <code>10a15f9b295d81ff766c6c9af9b6d8935ff7fadb</code> · exit 0 · CLEAN</span><p class="sum">109 diffs · UNCHECKED 0 · STALE 0 · all current. SURVIVES 14 · CONTRADICTED 7 · UNCHECKABLE 88. Level 5's enforcement is real, not merely claimed.</p></td>
           </tr>
           <tr class="never">
             <td class="k">6 · trajectory-flip-confirmation</td>
