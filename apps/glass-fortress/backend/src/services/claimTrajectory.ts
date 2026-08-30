@@ -828,6 +828,43 @@ export const ARM_LAYER: Readonly<Record<CandidateSource, DetectionLayer>> = {
   DOCUMENT_CHUNKS: 'DOCUMENT',
 };
 
+/**
+ * The arm that isolates ONE axis from another arm — its control.
+ *
+ * `DOCUMENT_CHUNKS` differs from `CLASSIFIED` in two ways at once, renderer and
+ * granularity. `RAW_CHUNKS` holds granularity constant, so what the LAYER buys is
+ * the set difference between their gains — not the difference of their counts.
+ * Subtracting counts assumes one gain set contains the other, which nothing
+ * establishes and which the probe-broken column already contradicts.
+ */
+export const ARM_CONTROL: Readonly<Partial<Record<CandidateSource, CandidateSource>>> = {
+  DOCUMENT_CHUNKS: 'RAW_CHUNKS',
+};
+
+/**
+ * Whether this arm's `trajectories` and `unmatched` are GUARANTEED rather than measured.
+ *
+ * A chunk arm takes its candidates from the very text presence is then tested
+ * against, so every candidate is a substring of at least one capture and matches
+ * by construction: `unmatched` is 0 and `trajectories` equals `candidates`, always.
+ *
+ * THIS IS THE DEFECT THIS INSTRUMENT WAS BUILT TO STUDY, REPRODUCED INSIDE IT —
+ * candidates and presence drawn from the same renderer, so matching cannot fail.
+ * It is not a reason to change the arms: a chunk arm has nowhere else to get
+ * candidates. It is a reason to REFUSE TO REPORT those two cells as findings,
+ * which is what this flag makes the output do.
+ *
+ * `CLASSIFIED_SENTENCES` is NOT structural: its candidates come from the
+ * classifier, which paraphrases, so a sentence of a quote need not appear
+ * anywhere. `CLASSIFIED`'s own 5 unmatched are the proof that it can fail.
+ */
+export const ARM_PRESENCE_IS_STRUCTURAL: Readonly<Record<CandidateSource, boolean>> = {
+  CLASSIFIED: false,
+  CLASSIFIED_SENTENCES: false,
+  RAW_CHUNKS: true,
+  DOCUMENT_CHUNKS: true,
+};
+
 /** Every arm, in the order they are reported. CLASSIFIED first: it is the datum. */
 export const CANDIDATE_SOURCES: readonly CandidateSource[] = [
   'CLASSIFIED',
@@ -999,15 +1036,47 @@ function armCandidates(source: CandidateSource, pairs: readonly EligiblePair[]):
   return candidates;
 }
 
+/**
+ * A claim in a comparison set. `transitions` travels WITH it, never separately.
+ *
+ * A set size is not a finding count. `MIN_TRANSITIONS` is a read filter applied
+ * in `shape()`, which no comparison calls, so an unfiltered set includes strings
+ * present in EVERY capture — the opposite of a finding. Carrying the count on
+ * each member is what lets a reader apply the threshold to any set here.
+ */
+export interface ComparedClaim {
+  claimText: string;
+  transitions: number;
+}
+
+/** Members of a set that clear `MIN_TRANSITIONS` — the ones that are findings. */
+export function findingsIn(claims: readonly ComparedClaim[]): ComparedClaim[] {
+  return claims.filter((c) => c.transitions >= MIN_TRANSITIONS);
+}
+
 /** One arm's result. `layer` is reported so a reader can see the pairing held. */
 export interface CandidateSourceArm {
   source: CandidateSource;
   layer: DetectionLayer;
   candidates: number;
+  /**
+   * GUARANTEED, NOT MEASURED, when `presenceIsStructural`. See
+   * ARM_PRESENCE_IS_STRUCTURAL — these two cells can only read one way.
+   */
   trajectories: number;
   unmatched: number;
+  presenceIsStructural: boolean;
+  /** The arm that holds granularity constant, when one exists. */
+  controlSource: CandidateSource | null;
+  /**
+   * Gained by THIS arm and not by its control — what the isolated axis buys.
+   *
+   * A SET DIFFERENCE OVER CLAIM HASHES, never a difference of counts. Empty when
+   * the arm has no control.
+   */
+  gainedNotInControl: ComparedClaim[];
   /** Trajectories this arm has that CLASSIFIED does not. Empty for CLASSIFIED. */
-  gainedVsClassified: { claimText: string; transitions: number }[];
+  gainedVsClassified: ComparedClaim[];
   /**
    * THE VETO NUMBER. A claim CLASSIFIED follows that is NOT FINDABLE under this
    * arm's layer — tested directly, so its absence is the probe failing rather
@@ -1017,7 +1086,7 @@ export interface CandidateSourceArm {
    * searches for the claim finds nothing, which is the check the whole platform
    * rests on.
    */
-  lostProbeBroken: { claimText: string; transitions: number }[];
+  lostProbeBroken: ComparedClaim[];
   /**
    * A claim this arm's differ did not re-discover, though it WOULD still have a
    * trajectory under this layer if asked.
@@ -1028,7 +1097,7 @@ export interface CandidateSourceArm {
    * chunks may well quote it again. Counting this as breakage would veto the
    * move for doing exactly what moving the differ means.
    */
-  lostNotRediscovered: { claimText: string; transitions: number }[];
+  lostNotRediscovered: ComparedClaim[];
 }
 
 export interface CandidateSourceComparison {
@@ -1111,16 +1180,33 @@ export async function compareCandidateSources(url: string): Promise<CandidateSou
   const classifiedDetected = await detect(inputsFor(classifiedCandidates), ARM_LAYER.CLASSIFIED);
   const classifiedIndex = new Map(classifiedDetected.trajectories.map((t) => [t.claimHash, t]));
 
-  const arms: CandidateSourceArm[] = [
+  /** One arm before the control comparison, which needs every arm's gains first. */
+  interface ArmDraft {
+    arm: CandidateSourceArm;
+    gainedHashes: Map<string, ComparedClaim>;
+  }
+
+  const asClaim = (t: DetectedTrajectory): ComparedClaim => ({
+    claimText: t.claimText,
+    transitions: t.transitions,
+  });
+
+  const drafts: ArmDraft[] = [
     {
-      source: 'CLASSIFIED',
-      layer: ARM_LAYER.CLASSIFIED,
-      candidates: classifiedCandidates.size,
-      trajectories: classifiedDetected.trajectories.length,
-      unmatched: classifiedDetected.unmatched,
-      gainedVsClassified: [],
-      lostProbeBroken: [],
-      lostNotRediscovered: [],
+      arm: {
+        source: 'CLASSIFIED',
+        layer: ARM_LAYER.CLASSIFIED,
+        candidates: classifiedCandidates.size,
+        trajectories: classifiedDetected.trajectories.length,
+        unmatched: classifiedDetected.unmatched,
+        presenceIsStructural: ARM_PRESENCE_IS_STRUCTURAL.CLASSIFIED,
+        controlSource: ARM_CONTROL.CLASSIFIED ?? null,
+        gainedNotInControl: [],
+        gainedVsClassified: [],
+        lostProbeBroken: [],
+        lostNotRediscovered: [],
+      },
+      gainedHashes: new Map(),
     },
   ];
 
@@ -1143,21 +1229,50 @@ export async function compareCandidateSources(url: string): Promise<CandidateSou
     const stillFindable = new Set(probe.trajectories.map((t) => t.claimHash));
 
     const missing = [...classifiedIndex.values()].filter((t) => !index.has(t.claimHash));
-    const asClaim = (t: DetectedTrajectory) => ({ claimText: t.claimText, transitions: t.transitions });
-
-    arms.push({
-      source,
-      layer,
-      candidates: candidates.size,
-      trajectories: detected.trajectories.length,
-      unmatched: detected.unmatched,
-      gainedVsClassified: [...index.values()]
+    const gainedHashes = new Map(
+      [...index.values()]
         .filter((t) => !classifiedIndex.has(t.claimHash))
-        .map(asClaim),
-      lostProbeBroken: missing.filter((t) => !stillFindable.has(t.claimHash)).map(asClaim),
-      lostNotRediscovered: missing.filter((t) => stillFindable.has(t.claimHash)).map(asClaim),
+        .map((t) => [t.claimHash, asClaim(t)] as const),
+    );
+
+    drafts.push({
+      gainedHashes,
+      arm: {
+        source,
+        layer,
+        candidates: candidates.size,
+        trajectories: detected.trajectories.length,
+        unmatched: detected.unmatched,
+        presenceIsStructural: ARM_PRESENCE_IS_STRUCTURAL[source],
+        controlSource: ARM_CONTROL[source] ?? null,
+        // Filled in the second pass — every arm's gains must exist first.
+        gainedNotInControl: [],
+        gainedVsClassified: [...gainedHashes.values()],
+        lostProbeBroken: missing.filter((t) => !stillFindable.has(t.claimHash)).map(asClaim),
+        lostNotRediscovered: missing.filter((t) => stillFindable.has(t.claimHash)).map(asClaim),
+      },
     });
   }
+
+  // THE ISOLATED AXIS, AS A SET DIFFERENCE OVER CLAIM HASHES.
+  //
+  // `gained(DOCUMENT_CHUNKS).length - gained(RAW_CHUNKS).length` would only mean
+  // something if one set contained the other, and nothing establishes that — the
+  // arms already disagree about which probes break, so they are known to diverge.
+  // The difference of the SETS is what the layer buys; the difference of the
+  // counts is an arithmetic accident that happens to look like an answer.
+  const bySource = new Map(drafts.map((d) => [d.arm.source, d]));
+  for (const draft of drafts) {
+    const control = draft.arm.controlSource;
+    if (control === null) continue;
+    const controlGains = bySource.get(control)?.gainedHashes;
+    if (!controlGains) continue;
+    draft.arm.gainedNotInControl = [...draft.gainedHashes.entries()]
+      .filter(([hash]) => !controlGains.has(hash))
+      .map(([, claim]) => claim);
+  }
+
+  const arms = drafts.map((d) => d.arm);
 
   // A STRUCTURAL INVARIANT, NOT A THRESHOLD. `sentencesOf` returns at least one
   // part for every non-empty input, so splitting a quote set can only hold or
