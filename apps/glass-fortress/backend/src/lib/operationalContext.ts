@@ -1,3 +1,4 @@
+import { writeSync } from 'fs';
 import { EXPECTED_CHAIN_ID, readChainIdentity } from './chainIdentity';
 import { assertEnvironmentIdentity, maskProjectRef, type AppEnv } from './appEnv';
 import { identifyEnvironment } from './dbEnvironment';
@@ -405,9 +406,22 @@ function emitLedgerRecord(context: OperationalContext, startedAt: string, exit: 
   // Delimited so it survives being read out of a `railway ssh` log, which is the
   // only way this reaches a repository: the container cannot commit, so a run is
   // transcribed by a person or a tool from exactly these lines.
-  console.log(`\n${LEDGER_RECORD_BEGIN}`);
-  console.log(JSON.stringify(record));
-  console.log(LEDGER_RECORD_END);
+  //
+  // `writeSync`, NOT `console.log`, AND THE DIFFERENCE IS THE WHOLE RECORD.
+  //
+  // This runs from a `process.on('exit')` handler. When stdout is a PIPE — which
+  // it always is under `railway ssh` — Node buffers writes and `process.exit()`
+  // DISCARDS whatever is still queued. A run with enough output to fill that
+  // buffer therefore emitted no record at all, and the board read the check as
+  // "never run" (score 25) rather than "record lost".
+  //
+  // Observed on 2026-08-30: `forensics:compare-candidate-sources` produced 164KB
+  // and no record. Failure and success sharing a representation for the third
+  // time inside one instrument — and here the reassuring reading was the wrong one.
+  //
+  // `writeSync` does not queue, so it completes before `exit` returns. One call
+  // rather than three, so the block cannot be torn in half either.
+  writeSync(1, `\n${LEDGER_RECORD_BEGIN}\n${JSON.stringify(record)}\n${LEDGER_RECORD_END}\n`);
 }
 
 export const LEDGER_RECORD_BEGIN = '--- INTEGRITY-LEDGER-RECORD ---';

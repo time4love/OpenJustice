@@ -33,7 +33,10 @@ import 'dotenv/config';
 import { runOperationalScript } from '../src/lib/operationalContext';
 import {
   compareCandidateSources,
+  findingsIn,
+  MIN_TRANSITIONS,
   type CandidateSourceArm,
+  type ComparedClaim,
 } from '../src/services/claimTrajectory';
 
 function arg(name: string): string | undefined {
@@ -41,13 +44,35 @@ function arg(name: string): string | undefined {
   return i >= 0 ? process.argv[i + 1] : undefined;
 }
 
-/** Claims are Hebrew and long; length is printed because it diagnoses this class. */
-function printClaims(label: string, claims: readonly { claimText: string; transitions: number }[]): void {
-  console.log(`\n  ${label}: ${String(claims.length)}`);
-  for (const t of claims) {
+/** Never list more than this per set. Whatever is dropped is COUNTED and said. */
+const MAX_LISTED = 8;
+
+/**
+ * A set, reported as a size AND a finding count.
+ *
+ * `MIN_TRANSITIONS` is a read filter applied in `shape()`, which no comparison
+ * calls. An unfiltered set therefore includes claims present in EVERY capture —
+ * the opposite of a finding. Printing only the size is how a candidate count
+ * comes to be read as a result, and it is the number a spend decision would then
+ * rest on.
+ */
+function printSet(label: string, claims: readonly ComparedClaim[]): void {
+  const findings = findingsIn(claims);
+  console.log(
+    `\n  ${label}: ${String(findings.length)} finding(s) ` +
+      `[>=${String(MIN_TRANSITIONS)} transitions] of ${String(claims.length)} in the set`,
+  );
+  const listed = findings.slice(0, MAX_LISTED);
+  for (const t of listed) {
+    // LENGTH IS PRINTED, and it is the number that diagnoses this class: whether
+    // a claim survives the layer move is decided by whether it REACHES the point
+    // where the two renderers diverge.
     console.log(`    ${String(t.transitions)} transitions, ${String(t.claimText.length)} chars`);
     console.log(`      ${t.claimText}`);
   }
+  // NO SILENT CAP. A bounded listing that says nothing reads as complete coverage.
+  const hidden = findings.length - listed.length;
+  if (hidden > 0) console.log(`    … ${String(hidden)} more finding(s) not listed`);
 }
 
 async function main(): Promise<number> {
@@ -76,12 +101,23 @@ async function main(): Promise<number> {
       `${String(r.productionBaselineCandidates)} candidates — NOT comparable to the arms below.`,
   );
 
-  console.log('\n                          layer     candidates  trajectories  unmatched');
+  console.log('\n                          layer         candidates  trajectories  unmatched');
   for (const a of r.arms) {
+    // A CELL THAT CAN ONLY READ ONE WAY IS MARKED, NOT REPORTED AS A RESULT.
+    // A chunk arm draws candidates from the very text presence is tested
+    // against, so every candidate matches and these two are guaranteed.
+    const mark = a.presenceIsStructural ? '*' : ' ';
     console.log(
-      `  ${a.source.padEnd(22)} ${a.layer.padEnd(10)}` +
-        `${String(a.candidates).padStart(10)}${String(a.trajectories).padStart(14)}` +
-        String(a.unmatched).padStart(11),
+      `  ${a.source.padEnd(22)} ${a.layer.padEnd(12)}` +
+        `${String(a.candidates).padStart(10)}${(String(a.trajectories) + mark).padStart(14)}` +
+        (String(a.unmatched) + mark).padStart(11),
+    );
+  }
+  if (r.arms.some((a) => a.presenceIsStructural)) {
+    console.log(
+      '\n  * GUARANTEED, NOT MEASURED. These arms take candidates from the same text\n' +
+        '    presence is tested against, so unmatched is 0 and trajectories == candidates\n' +
+        '    by construction — the very defect this instrument exists to study.',
     );
   }
 
@@ -89,12 +125,22 @@ async function main(): Promise<number> {
   // there, which is the shape that made a broken href measurement read as a
   // discovery.
   for (const a of r.arms.filter((x: CandidateSourceArm) => x.source !== 'CLASSIFIED')) {
-    console.log(`\n── ${a.source} vs CLASSIFIED ${'─'.repeat(Math.max(0, 40 - a.source.length))}`);
-    // LOST-PROBE-BROKEN FIRST. It is the only one of the three that says the
-    // EVIDENCE is wrong; the other two are properties of the pipeline.
-    printClaims('LOST — probe broken (NOT FINDABLE on the page)', a.lostProbeBroken);
-    printClaims('lost — not re-discovered (still findable)', a.lostNotRediscovered);
-    printClaims('GAINED', a.gainedVsClassified);
+    const control = a.controlSource === null ? '' : ` (control: ${a.controlSource})`;
+    console.log(`\n── ${a.source} vs CLASSIFIED${control} ${'─'.repeat(Math.max(0, 30 - a.source.length))}`);
+    // The only one of the three that says the EVIDENCE is wrong; the others are
+    // properties of the pipeline.
+    printSet('LOST — probe broken (NOT FINDABLE on the page)', a.lostProbeBroken);
+    printSet('lost — not re-discovered (still findable)', a.lostNotRediscovered);
+    printSet('GAINED vs the datum (renderer AND granularity together)', a.gainedVsClassified);
+    if (a.controlSource !== null) {
+      // WHAT THE ISOLATED AXIS BUYS. A set difference over claim hashes — the
+      // difference of the two GAINED counts would assume one set contains the
+      // other, which nothing establishes.
+      printSet(
+        `GAINED and NOT in ${a.controlSource} — attributable to the LAYER alone`,
+        a.gainedNotInControl,
+      );
+    }
   }
 
   if (r.refusals.length > 0) {
@@ -113,12 +159,21 @@ async function main(): Promise<number> {
     return 4;
   }
 
-  if (moved.lostProbeBroken.length > 0) {
+  // EVERY GATE BELOW COUNTS FINDINGS, NOT SET MEMBERS. A set includes claims
+  // present in every capture; gating on its size prices the decision on strings
+  // that are the opposite of a finding.
+  const brokenFindings = findingsIn(moved.lostProbeBroken);
+  const layerFindings = findingsIn(moved.gainedNotInControl);
+
+  if (brokenFindings.length > 0) {
     console.error(
-      `\n⚠️  Moving the differ BREAKS ${String(moved.lostProbeBroken.length)} trajectory(ies): the ` +
-        'claim is no longer findable\n    on the page at all, which is the outsider check this ' +
-        'platform rests on. Explain\n    every one before bumping diffInputVersion — a ' +
-        're-classification makes this the\n    corpus\'s only answer.',
+      `\n⚠️  Moving the differ BREAKS ${String(brokenFindings.length)} trajectory(ies) with ` +
+        `>=${String(MIN_TRANSITIONS)} transitions:\n    the claim is no longer findable on the ` +
+        'page at all, which is the outsider check\n    this platform rests on. Explain every one ' +
+        'before bumping diffInputVersion — a\n    re-classification makes this the corpus\'s only ' +
+        'answer.\n\n    A BROKEN PROBE IS NOT AUTOMATICALLY A LOSS. If the stored claim is a ' +
+        'string the\n    page never contained, losing it is the CORRECTION. Read each one before ' +
+        'deciding.',
     );
     return 3;
   }
@@ -127,26 +182,33 @@ async function main(): Promise<number> {
   // re-discover is still on the page; different chunk boundaries produce
   // different quotes, and a re-classification over those chunks may quote it
   // again. Vetoing the move for this would veto it for doing what it means.
-  if (moved.lostNotRediscovered.length > 0) {
+  const notRediscovered = findingsIn(moved.lostNotRediscovered);
+  if (notRediscovered.length > 0) {
     console.log(
-      `\nℹ️  ${String(moved.lostNotRediscovered.length)} claim(s) would not be re-discovered by the ` +
-        'moved differ, but remain\n   findable on the page. That is a chunking difference, not ' +
-        'evidence breaking.',
+      `\nℹ️  ${String(notRediscovered.length)} finding(s) would not be re-discovered by the moved ` +
+        'differ, but remain\n   findable on the page. That is a chunking difference, not evidence ' +
+        'breaking.',
     );
   }
 
-  if (moved.gainedVsClassified.length === 0) {
+  // THE VETO IS ABOUT THE LAYER, BECAUSE THE LAYER IS WHAT COSTS MONEY.
+  //
+  // `gainedVsClassified` mixes the renderer with granularity, and granularity is
+  // available from sentence candidates for compute alone. What a
+  // `diffInputVersion` bump and a full re-classification buy is the part the
+  // control arm does NOT already reach.
+  if (layerFindings.length === 0) {
     console.error(
-      '\n⛔ THE SPEND IS VETOED BY MEASUREMENT. Moving the differ reaches no claim the\n' +
-        '   extraction did not already contain, so no re-classification can produce one.\n' +
-        '   This is the one direction this instrument can settle. Do not pay for it.',
+      '\n⛔ THE SPEND IS VETOED BY MEASUREMENT. Every finding the moved differ reaches is\n' +
+        `   already reachable from ${String(moved.controlSource)}, which needs no re-classification.\n` +
+        '   The renderer buys nothing the granularity change does not. Do not pay for it.',
     );
     return 3;
   }
 
   console.log(
-    `\n✅ ${String(moved.gainedVsClassified.length)} claim(s) become REACHABLE by moving the differ, ` +
-      'and none is lost.\n' +
+    `\n✅ ${String(layerFindings.length)} finding(s) are reachable ONLY by moving the differ — not ` +
+      `by\n   ${String(moved.controlSource)}, and not by the datum. Nothing findable is broken.\n\n` +
       '   THIS IS NOT APPROVAL. Reachable is not produced: the classifier samples and\n' +
       '   merges, so it may quote none of these. The measurement can cancel the spend;\n' +
       '   it cannot justify it. That call is the researcher\'s.',

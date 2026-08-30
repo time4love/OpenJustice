@@ -28,10 +28,14 @@ import { prisma } from '../src/lib/prisma';
 import { DIFF_INPUT_VERSION } from '../src/lib/diffChunking';
 import { TEXT_EXTRACTION_VERSION } from '../src/lib/captureDocument';
 import {
+  ARM_CONTROL,
   ARM_LAYER,
+  ARM_PRESENCE_IS_STRUCTURAL,
   CANDIDATE_SOURCE,
   CANDIDATE_SOURCES,
+  MIN_TRANSITIONS,
   compareCandidateSources,
+  findingsIn,
   type CandidateSource,
   type CandidateSourceComparison,
 } from '../src/services/claimTrajectory';
@@ -281,5 +285,115 @@ describe('sentence candidates', () => {
       arm(r, 'CLASSIFIED').candidates,
     );
     expect(r.refusals.filter((x) => /fewer candidates/.test(x))).toEqual([]);
+  });
+});
+
+describe('a set size is not a finding count', () => {
+  it('findingsIn keeps only claims that clear MIN_TRANSITIONS', () => {
+    // `MIN_TRANSITIONS` is applied in `shape()`, which no comparison calls. An
+    // unfiltered set therefore includes claims present in EVERY capture — the
+    // opposite of a finding — and a spend decision priced on the set size is
+    // priced on those. Measured 2026-08-30: the FDA line arrived in GAINED with
+    // 0 transitions.
+    const set = [
+      { claimText: 'present in every capture', transitions: 0 },
+      { claimText: 'removed once', transitions: 1 },
+      { claimText: 'removed and restored', transitions: 2 },
+      { claimText: 'oscillating', transitions: 6 },
+    ];
+    expect(findingsIn(set).map((c) => c.claimText)).toEqual(['removed and restored', 'oscillating']);
+    expect(MIN_TRANSITIONS).toBe(2);
+  });
+});
+
+describe('the isolated axis is a SET DIFFERENCE, never a count difference', () => {
+  // A body sentence that changes and reverts in BOTH renderings, plus a heading
+  // that does so only in the document. RAW_CHUNKS reaches the first; only
+  // DOCUMENT_CHUNKS reaches the second, and that difference is what the layer buys.
+  const WAS = 'Three vaccines are approved.';
+  const NOW = 'Four vaccines are approved.';
+
+  function bothLayers(index: number, heading: string, sentence: string) {
+    return {
+      snapshotDate: `2022-0${String(index)}-01`,
+      waybackTimestamp: `20220${String(index)}01000000`,
+      snapshotUrl: `https://web.archive.org/web/20220${String(index)}01000000/${URL}`,
+      fullText: `${BODY}\n${sentence}\n${LINK}`,
+      text: `${BODY}\n${heading}\n${sentence}\n${LINK}`,
+    };
+  }
+
+  const PAIR_CAPTURES = [
+    bothLayers(1, HEADING_A, WAS),
+    bothLayers(2, HEADING_B, NOW),
+    bothLayers(3, HEADING_A, WAS),
+  ];
+
+  function pairRow(id: string, before: number, after: number) {
+    return {
+      id,
+      diffInputVersion: DIFF_INPUT_VERSION,
+      // The classifier quoted only the unchanging body, so the datum gains nothing.
+      deletedText: JSON.stringify([
+        { summary: 's', exactQuote: BODY, investigativeCategories: [], relocated: false },
+      ]),
+      addedText: '[]',
+      // The raw chunks are the fullText diff: they reach the sentence, not the heading.
+      rawDeletedText: JSON.stringify([before === 0 ? WAS : NOW]),
+      rawAddedText: JSON.stringify([after === 1 ? NOW : WAS]),
+      beforeSnapshot: {
+        text: PAIR_CAPTURES[before]?.text,
+        textExtractionVersion: TEXT_EXTRACTION_VERSION,
+      },
+      afterSnapshot: {
+        text: PAIR_CAPTURES[after]?.text,
+        textExtractionVersion: TEXT_EXTRACTION_VERSION,
+      },
+    };
+  }
+
+  it('excludes what the control already reaches, and keeps what only the layer does', async () => {
+    (prisma.trackedUrl.findUnique as jest.Mock).mockResolvedValue({ id: 'tracked-1' });
+    (prisma.urlSnapshot.findMany as jest.Mock).mockResolvedValue(PAIR_CAPTURES);
+    (prisma.urlVersionDiff.findMany as jest.Mock).mockResolvedValue([
+      pairRow('p1', 0, 1),
+      pairRow('p2', 1, 2),
+    ]);
+
+    const r = await compareCandidateSources(URL);
+    const moved = arm(r, 'DOCUMENT_CHUNKS');
+    const control = arm(r, 'RAW_CHUNKS');
+
+    expect(moved.controlSource).toBe('RAW_CHUNKS');
+
+    // The sentence is reached by BOTH, so it is not what the renderer buys —
+    // even though it counts toward `gainedVsClassified` in both arms.
+    expect(control.gainedVsClassified.map((c) => c.claimText)).toContain(WAS);
+    expect(moved.gainedVsClassified.map((c) => c.claimText)).toContain(WAS);
+    expect(moved.gainedNotInControl.map((c) => c.claimText)).not.toContain(WAS);
+
+    // The heading is reached ONLY through the document. This is the layer's own
+    // contribution, and subtracting the two GAINED counts would not have
+    // identified it — the sets were never shown to nest.
+    expect(moved.gainedNotInControl.map((c) => c.claimText)).toContain(HEADING_A);
+  });
+});
+
+describe('cells that can only read one way are declared, not reported', () => {
+  it('marks both chunk arms as structural and neither classified arm', () => {
+    // A chunk arm draws candidates from the very text presence is tested
+    // against, so every candidate matches: unmatched is 0 and trajectories ==
+    // candidates by construction. That is the defect this instrument studies,
+    // reproduced inside it — reportable only if it is marked.
+    expect(ARM_PRESENCE_IS_STRUCTURAL.RAW_CHUNKS).toBe(true);
+    expect(ARM_PRESENCE_IS_STRUCTURAL.DOCUMENT_CHUNKS).toBe(true);
+    expect(ARM_PRESENCE_IS_STRUCTURAL.CLASSIFIED).toBe(false);
+    expect(ARM_PRESENCE_IS_STRUCTURAL.CLASSIFIED_SENTENCES).toBe(false);
+  });
+
+  it('gives the moved arm a control that holds granularity constant', () => {
+    expect(ARM_CONTROL.DOCUMENT_CHUNKS).toBe('RAW_CHUNKS');
+    // RAW_CHUNKS' own control is the datum, which is already the comparison.
+    expect(ARM_CONTROL.RAW_CHUNKS).toBeUndefined();
   });
 });
