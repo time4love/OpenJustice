@@ -2712,7 +2712,7 @@ the second is checkable. A gate that cries wolf gets disabled.
 
 ### Level 8 — the opinions
 
-**STATUS: OPEN**
+**STATUS: OPEN — DIAGNOSED 2026-08-30, three defects confirmed on the MOH corpus: `get_forensic_timeline` returns TEN fields and none reaches `Evidence`; `aiSignificance` and `isLegallySignificant` sit in the same flat row at the same weight as the computed `addedItems`/`deletedItems`, so the invariant fails as a DATA SHAPE rather than as a sentence; and the boundary-stored-twice defect reproduces here, not only on the news page — a diff reports `2024-08-29 → 2025-01-11` where the corpus holds no 2024-08-29 capture and the true predecessor is 2024-03-05, overstating precision by ~177 days. The MECHANISM cannot be closed without exposing `beforeSnapshotId`’s date, which no tool does; exposing it is part of the fix. → `docs/gf-level-diagnostics-2026-08-30.md`**
 
 *Invariant:* nothing presents a model's judgement as a computed fact.
 
@@ -2779,7 +2779,7 @@ written to the session it belonged to.
 
 ### Level 10 — supersede the old corpus
 
-**STATUS: OPEN — two decisions already taken: supersede rather than delete, and only ever one registry**
+**STATUS: OPEN — two decisions already taken: supersede rather than delete, and only ever one registry. PROMOTED 2026-08-30 from tidy-up to LOAD-BEARING: with Level 9’s invariant unsatisfiable, supersession is the only route by which any thesis can ever cite VERIFIED evidence. The 91 legacy claims are now MEASURED rather than assumed — nothing is wrong with them, only the attribution is lost, permanently — and recording them as `TX_UNREADABLE` via `forensics:confirm-anchors --apply` is a PRECONDITION for supersession, since this level’s own argument is that an unexplained anchor is indistinguishable from a tampered one. Neither standing decision is contradicted. → `docs/gf-level-diagnostics-2026-08-30.md`**
 
 *Invariant:* every anchored hash stays explainable forever.
 
