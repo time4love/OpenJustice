@@ -257,7 +257,7 @@
     <h1>Factual Layer Survey</h1>
     <p class="standfirst">Eleven levels, drawn as strata because they rest on one another. <b>Colour is what the plan claims. Bar length is how much of that claim has actually been proved.</b> A level can be green and nearly empty — that is the state worth seeing.</p>
     <p class="datestamp">
-      <span>GENERATED FROM 4d8e6df</span>
+      <span>GENERATED FROM 6535948</span>
       <span>2026-08-30</span>
       <span>no database · no chain · no model</span>
     </p>
@@ -320,7 +320,7 @@
         <span class="lv">03</span>
         <span class="nm">the anchor<small>Every anchoring claim carries a current verdict about the hash the rule names.</small></span>
         <div class="track"><div class="fill" style="width:50%"></div><span class="cap">stale — its code moved since</span></div>
-        <span class="claim">CLOSED ON STAGING, 2026-08-30</span>
+        <span class="claim">CLOSED, 2026-08-30, IN BOTH ENVIRONMENTS</span>
       </div>
       <div class="stratum t-partial">
         <span class="lv">02</span>
@@ -389,7 +389,7 @@
             <td class="k">3 · audit-anchors</td>
             <td>Every anchoring claim carries a current verdict about the hash the rule names.</td>
             <td><code>npm run forensics:audit-anchors -- --env &lt;env&gt;</code></td>
-            <td><span class="ran">2026-08-30</span> <span class="dim">@ <code>3c0e639</code> · exit 5 · PASS_WITH_KNOWN_LEGACY</span> <span class="pill" title="written by hand before runs recorded themselves">transcribed</span><p class="sum">VERIFIED 7 · MISATTESTING 22 · UNATTRIBUTED 91 · STALE 0. The 7 are the positive control's captures — the first time this arm has ever fired. Exit 5 is correct: 113 legacy subjects are unsuperseded, which is Level 10's.</p></td>
+            <td><span class="ran">2026-08-30</span> <span class="dim">@ <code>65359489c3a153612db8b52e64d279817dd233e3</code> · exit 5 · PASS_WITH_KNOWN_LEGACY</span><p class="sum">PRODUCTION, post-ship: 91 subjects · VERIFIED 8 · MISATTESTING 83 · UNATTRIBUTED 0 · STALE 0 · UNCHECKED 0. The anchoredHash normalisation moved no claim into STALE and left the 8 evidence rows untouched. Exit 5 is correct: the 83 legacy captures attest a superseded hash, which is Level 10's.</p></td>
           </tr>
           <tr class="stale">
             <td class="k">3 · confirm-anchors</td>

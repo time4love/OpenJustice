@@ -155,13 +155,14 @@
         "src/lib/anchoredCaptureHash.ts"
       ],
       "lastRun": {
-        "commit": "3c0e639",
+        "commit": "65359489c3a153612db8b52e64d279817dd233e3",
         "at": "2026-08-30",
-        "environment": "staging",
+        "environment": "production",
         "exit": 5,
         "outcome": "PASS_WITH_KNOWN_LEGACY",
-        "summary": "VERIFIED 7 · MISATTESTING 22 · UNATTRIBUTED 91 · STALE 0. The 7 are the positive control's captures — the first time this arm has ever fired. Exit 5 is correct: 113 legacy subjects are unsuperseded, which is Level 10's.",
-        "outcomeSource": "transcribed-2026-08-30"
+        "deploymentId": "b296b329-d808-4769-b0c8-c461bda90d18",
+        "summary": "PRODUCTION, post-ship: 91 subjects · VERIFIED 8 · MISATTESTING 83 · UNATTRIBUTED 0 · STALE 0 · UNCHECKED 0. The anchoredHash normalisation moved no claim into STALE and left the 8 evidence rows untouched. Exit 5 is correct: the 83 legacy captures attest a superseded hash, which is Level 10's.",
+        "observed": true
       },
       "runner": "auditOnChainAnchors",
       "exitMeans": {
