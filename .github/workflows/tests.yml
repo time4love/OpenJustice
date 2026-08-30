@@ -1,0 +1,46 @@
+# The Glass Fortress backend suite, on every pull request.
+#
+# WHY IT EXISTS. Until now the suite ran on a laptop, before a PR, because
+# somebody remembered to run it. That is the same shape as every other rule this
+# repository has had to convert into a control: read, agreed with, and eventually
+# skipped. Here the runner does it, and with branch protection it becomes a
+# required check rather than a habit.
+#
+# WHY THIS ONE CAN PASS, unlike the gate retired on 2026-08-30. `integrity:check`
+# compared a committed artifact against a rebuild that embeds `git rev-parse HEAD`,
+# so the commit landing the artifact changed the thing it was stamped with and no
+# passing state existed. A test suite has no such fixed point.
+#
+# NODE 22 IS DELIBERATE AND IS ITSELF A CHECK. The backend declares
+# `engines.node >= 22`; local development has been running 20. If the suite fails
+# here and passes locally, the declaration is wrong — which is worth knowing.
+#
+# `prisma generate` IS EXPLICIT because nothing in the install lifecycle runs it —
+# only `npm run build` does, and a clean checkout has no generated client. Locally
+# it survives in node_modules from an earlier build, which is exactly the kind of
+# ambient state a fresh runner exists to remove.
+name: tests
+
+on:
+  pull_request:
+    branches: [staging, master]
+
+jobs:
+  glass-fortress-backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Generate the Prisma client
+        run: npx prisma generate
+        working-directory: apps/glass-fortress/backend
+
+      - name: Run the suite
+        run: npm run test:gf
