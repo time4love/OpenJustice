@@ -257,7 +257,7 @@
     <h1>Factual Layer Survey</h1>
     <p class="standfirst">Eleven levels, drawn as strata because they rest on one another. <b>Colour is what the plan claims. Bar length is how much of that claim has actually been proved.</b> A level can be green and nearly empty — that is the state worth seeing.</p>
     <p class="datestamp">
-      <span>GENERATED FROM 6535948</span>
+      <span>GENERATED FROM 25fe3f7</span>
       <span>2026-08-30</span>
       <span>no database · no chain · no model</span>
     </p>
@@ -266,7 +266,7 @@
   <div class="verdict">
     <div class="counts">
       <div><b>7<span style="font-size:15px;color:var(--ink-faint)">/11</span></b><span>levels whose check has never run</span></div>
-      <div><b>1</b><span>results whose code has moved since</span></div>
+      <div><b>3</b><span>results whose code has moved since</span></div>
     </div>
     <p style="margin-top:14px">Colour comes from the plan's own <code>STATUS:</code> lines. Bar length is computed: a check that does not exist scores nothing, one that has never run scores little, and one whose dependencies changed since it ran is marked <b>stale</b> — the same discipline that invalidates a Level 5 verdict when the inputs it judged have moved.</p>
   </div>
@@ -367,11 +367,11 @@
             <td><code>npm run forensics:verify-against-cdx -- --env &lt;env&gt;</code></td>
             <td><span class="ran">2026-08-28</span> <span class="dim">@ <code>—</code> · exit 0 · UNRECORDED</span> <span class="pill" title="written by hand before runs recorded themselves">transcribed</span><p class="sum">Level 1 was closed against the Archive's own digest in both environments. The run predates this ledger, so its commit is unrecorded — the date is from the plan, not from an observation recorded here.</p></td>
           </tr>
-          <tr class="ran">
+          <tr class="stale">
             <td class="k">1 · check-drift</td>
             <td>schema.prisma and the live database have not drifted.</td>
             <td><code>npm run db:check-drift</code></td>
-            <td><span class="ran">2026-08-30</span> <span class="dim">@ <code>199eac6</code> · exit 0 · CLEAN</span> <span class="pill" title="written by hand before runs recorded themselves">transcribed</span><p class="sum">No difference detected. Run before writing the anchoredHash normalisation migration, as the migration rules require.</p></td>
+            <td><span class="stale">stale</span> <span class="dim">— 1 dependency file(s) moved since <code>199eac6</code></span><p class="sum">No difference detected. Run before writing the anchoredHash normalisation migration, as the migration rules require.</p></td>
           </tr>
           <tr class="ran">
             <td class="k">1 · verify-migrations</td>
@@ -433,11 +433,11 @@
             <td><span class="dim">—</span></td>
             <td><span class="never">no check exists</span></td>
           </tr>
-          <tr class="ran">
+          <tr class="stale">
             <td class="k">6 · compare-detection-layers</td>
             <td><span class="pill">instrument</span> What would change if detection read the document instead of the extraction.</td>
             <td><code>npm run forensics:compare-detection-layers -- --env &lt;env&gt; --url &lt;url&gt;</code></td>
-            <td><span class="ran">2026-08-30</span> <span class="dim">@ <code>d6b6fda</code> · exit 3 · FINDING</span> <span class="pill" title="written by hand before runs recorded themselves">transcribed</span><p class="sum">LOST 2 · GAINED 0 · SHAPE CHANGED 0. The flip is strictly worse, and the gain is zero by construction. The 2 lost are 352 and 567 characters — strings the page never contained, stitched by Readability across a heading it drops.</p></td>
+            <td><span class="stale">stale</span> <span class="dim">— 1 dependency file(s) moved since <code>d6b6fda</code></span><p class="sum">LOST 2 · GAINED 0 · SHAPE CHANGED 0. The flip is strictly worse, and the gain is zero by construction. The 2 lost are 352 and 567 characters — strings the page never contained, stitched by Readability across a heading it drops.</p></td>
           </tr>
           <tr class="ran">
             <td class="k">6 · measure-href-changes</td>

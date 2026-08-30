@@ -231,6 +231,53 @@ times already (`classifierVersion`, `summaryVersion`, `diffInputVersion`, `DETEC
 Recommendation: the table — a subject carries several check types, history matters across re-checks,
 and it yields a coverage report for free.
 
+### The ledger is transported BY HAND. Removing that is the next infrastructure change — DECIDED 2026-08-30
+
+`emitLedgerRecord` (`src/lib/operationalContext.ts`) **prints** a record from inside the container; a
+person then copies it into `docs/integrity/ledger.json` and commits it. Its own comment already names
+the hazard: a hand-written commit *"makes the board silently wrong in the reassuring direction — it
+reports CURRENT for a proof that no longer covers the code."* The published board is additionally a
+**build artifact under version control**, so it can drift from its sources; `integrity:check` exists
+only to detect that drift, and a pre-commit hook or a CI gate would only guard it.
+
+**Decision: the run writes its own record, and the board becomes a live view served by the platform.**
+Not a check that detects drift — the removal of the second copy.
+
+- `runOperationalScript` writes an `IntegrityRun` row instead of printing for transcription. One
+  change at the entry point every operational script already routes through — and therefore **tested
+  at the hardest caller, never at the one that motivated it.**
+- `GET /api/integrity` returns, per level: the plan's claimed `STATUS:`, the stored computed proof,
+  the commit and deployment that produced it, and staleness computed from `dependsOn` against the
+  current commit. The container has `docs/` — nixpacks builds from the repo root — so the deployment
+  can read the plan itself. **It READS stored results and does not recompute inline**; recomputing 83
+  snapshots and chain reads per request is a self-inflicted denial of service.
+- A page on the site renders it. `tools/integrity-board/`, `docs/integrity/` and `integrity:check`
+  are then deleted.
+- **CI has no role.** The deployment knows its commit, holds the plan and owns the runs. A second
+  computer that knows strictly less is how the hand-transport arose.
+
+**What must survive the move, or the board becomes a self-graded exam:** colour is the plan's CLAIM
+and bar length is COMPUTED proof, never merged · whether a non-zero exit is a failure stays a property
+of the CHECK, declared once, never re-decided per run · `VACUOUS` scores **below** "never run" · every
+field is observed from the container, none typed by a person.
+
+**MEASURED 2026-08-30, and it makes the decision necessary rather than merely nicer:
+`integrity:check` CANNOT PASS ON ANY COMMIT.** The board embeds `git rev-parse --short HEAD` at build
+time and `--check` compares the whole file, so the commit that lands a freshly built board changes the
+HEAD it was stamped with. Verified directly: after committing a board whose substantive staleness was
+fully resolved, `--check` still exited 1 with the stamp as the only difference. A pre-commit hook would
+stage a board carrying the parent's sha and fail the same way; a CI gate would fail on every pull
+request; branch protection would have left `staging` permanently unmergeable. This is the
+assertions-that-cannot-fail family inverted — an assertion that cannot succeed — and Level 7 already
+states the consequence: *a gate that cries wolf gets disabled*. The committed board is therefore
+**permanently stale by construction**, that item is closed as not-actionable rather than open, and no
+guard is to be built on `--check`.
+
+**Sequenced AFTER the breadth-first pass**, because several checks it must display do not exist yet —
+building it first would be choosing what to display before knowing what there is. Whether the
+dashboard is public or researcher-only is a publication decision, not an engineering one, and is the
+researcher's. What produced this decision: `docs/gf-published-thesis-fda-claim-2026-08-30.md`.
+
 ---
 
 ## 4. The levels
