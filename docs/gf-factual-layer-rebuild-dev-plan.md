@@ -1940,7 +1940,25 @@ exactly one did, and it became `probeSnapshotsList` — *named* for recording no
 
 ### Level 3 — the anchor
 
-**STATUS: CLOSED ON STAGING, 2026-08-30 — clause 2 was already closed; clause 1 is now PROVEN BY EXECUTION, not by fixtures. `VERIFIED 7 · MISATTESTING 22 · UNATTRIBUTED 91`, exit 5, on deployment `863cd928 @ 3c0e639`. Seven captures anchored to their `documentHash`, seven transactions, each transaction's own log read back, each audited `ATTESTS_CURRENT`. NOT YET TRUE ON PRODUCTION — production runs `master`, which does not carry the spelling fix (`3c0e639`) and whose database has not had the normalising migration; a capture anchored and confirmed there today would still land STALE. That needs a `SHIP`, which is the researcher's. Attributing LEGACY anchors remains explicitly NOT part of this level — see the boundary below.**
+**STATUS: CLOSED, 2026-08-30, IN BOTH ENVIRONMENTS — clause 2 was already closed; clause 1 is PROVEN BY EXECUTION rather than by fixtures. Staging `VERIFIED 7 · MISATTESTING 22 · UNATTRIBUTED 91`; production, after the ship, `VERIFIED 8 · MISATTESTING 83 · UNATTRIBUTED 0 · STALE 0`, exit 5 in both (correct — the legacy corpus is unsuperseded, which is Level 10's). ONE THING IS STILL TRUE OF PRODUCTION AND WORTH KNOWING: it has never exercised the WRITE path, because it has no novel capture to do it with — its 8 VERIFIED are evidence rows and its 83 captures are legacy. The rule, the instrument and the audit arm are correct there; the flip will be demonstrated on production's next novel capture. Attributing LEGACY anchors remains explicitly NOT part of this level — see the boundary below.**
+
+#### SHIPPED 2026-08-30 — `master` at `6535948`, and the migration applied
+
+The spelling fix and the normalising migration reached production in one deploy. The pre-deploy step
+reported `All migrations have been successfully applied` before the new version served, so the split
+state — normalised rows against old code — lasted only the length of the deploy and nothing ran in it.
+
+**The audit afterwards matched every prediction, including the one held loosely.** `STALE 0`: the
+normalisation moved no production claim, exactly as on staging, where the same prediction had been
+made and *wrongly doubted*. The 8 evidence rows were untouched throughout, because `readOnChainClaim`
+returns on the `Evidence` row before it consults `capturesAnchoredBy` — which is why the evidence arm
+worked all along while the snapshot arm could not.
+
+**The public integrity board still scores this level 50%, and that is correct rather than a
+contradiction.** A level scores its WEAKEST invariant: `forensics:confirm-anchors` last ran at
+`7740e11`, and its code moved in `3c0e639`, so the `anchoredHash` values in BOTH environments were
+confirmed by pre-fix code. The claim is closed; the proof is partial, and the board is the thing that
+says so out loud.
 
 #### THE POSITIVE CONTROL RAN 2026-08-30, AND FALSIFIED THE PREDICTION
 
