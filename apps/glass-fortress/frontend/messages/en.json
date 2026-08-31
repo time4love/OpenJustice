@@ -1807,6 +1807,18 @@
     "abandoned": "Closed. The page keeps the rules it had.",
     "staleVersion": "Another tab changed this run. Reloading what it says now.",
     "runClosed": "This run is closed.",
-    "expired": "This marking link is no longer valid."
+    "expired": "This marking link is no longer valid.",
+    "tabRendered": "Page as captured",
+    "tabKept": "Text kept",
+    "tabRules": "Rules",
+    "outlineUnreachable": "{chars} characters cannot be marked — the structure was cut here.",
+    "outlineComplete": "The whole document is reachable.",
+    "foldedWrappers": "folds {count} wrapper(s)",
+    "marked": "marked",
+    "unmark": "Click again to unmark",
+    "expand": "Expand",
+    "collapse": "Collapse",
+    "outlineHint": "Click a block to mark it as furniture. Click it again to unmark. Watch the removed pane on the right.",
+    "removedPinned": "Stays visible whichever tab is open — over-marking is invisible in the text that survives."
   }
 }

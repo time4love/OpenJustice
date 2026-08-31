@@ -28,11 +28,32 @@ const PAGE = `<!doctype html><html><body>
   <footer class="site-footer">Ministry of Health</footer>
 </body></html>`;
 
+interface FlatNode {
+  selector: string;
+  positional: boolean;
+  textLength: number;
+  tag: string;
+  id: string | null;
+  label: string;
+  collapsedFrom: readonly string[];
+  /** The node's own children, by selector — so a fold can be asserted on. */
+  childSelectors: string[];
+}
+
 /** Every node in the tree, flattened — the tree is a shape, not an order. */
-function flatten(node: ReturnType<typeof documentOutline>['root']): { selector: string; positional: boolean; textLength: number; tag: string }[] {
-  const out: { selector: string; positional: boolean; textLength: number; tag: string }[] = [];
+function flatten(node: ReturnType<typeof documentOutline>['root']): FlatNode[] {
+  const out: FlatNode[] = [];
   const walk = (n: typeof node): void => {
-    out.push({ selector: n.selector, positional: n.positional, textLength: n.textLength, tag: n.tag });
+    out.push({
+      selector: n.selector,
+      positional: n.positional,
+      textLength: n.textLength,
+      tag: n.tag,
+      id: n.id,
+      label: n.label,
+      collapsedFrom: n.collapsedFrom,
+      childSelectors: n.children.map((c) => c.selector),
+    });
     for (const child of n.children) walk(child);
   };
   walk(node);
@@ -88,8 +109,26 @@ describe('the outline reports its own limits', () => {
     // A tree truncated silently is a researcher marking against a document they
     // cannot see all of: the same class of error as the diff truncated at eight
     // chunks that this whole rebuild descends from.
-    const deep = `<html><body>${'<div>'.repeat(20)}x${'</div>'.repeat(20)}</body></html>`;
+    //
+    // THE FIXTURE BRANCHES AT EVERY LEVEL, and it has to. This was twenty nested
+    // single-child <div>s, which is now exactly the shape the outline FOLDS: it
+    // collapses to one node holding all the text, nothing is out of reach, and
+    // `truncated: false` became the right answer. A depth fixture made of
+    // pass-through wrappers no longer tests depth.
+    const branching = (levels: number): string =>
+      levels === 0 ? '<p>leaf</p>' : `<div><span>sibling</span>${branching(levels - 1)}</div>`;
+    const deep = `<html><body>${branching(20)}</body></html>`;
     expect(documentOutline(deep, { maxDepth: 3 }).truncated).toBe(true);
+  });
+
+  it('reports HOW MUCH text a cut put out of reach, not just that it cut', () => {
+    // `truncated: true` alone is what the MOH page reported while hiding 76% of
+    // itself. The number is what tells a researcher whether the cut mattered.
+    const branching = (levels: number): string =>
+      levels === 0 ? '<p>leaf</p>' : `<div><span>sibling</span>${branching(levels - 1)}</div>`;
+    const cut = documentOutline(`<html><body>${branching(20)}</body></html>`, { maxDepth: 3 });
+    expect(cut.unreachableTextLength).toBeGreaterThan(0);
+    expect(documentOutline(PAGE).unreachableTextLength).toBe(0);
   });
 
   it('says so when the node cap cuts it short', () => {
@@ -99,9 +138,13 @@ describe('the outline reports its own limits', () => {
 
   it('carries the subtree text length, which the next-capture policy reads', () => {
     const nodes = flatten(documentOutline(PAGE).root);
-    const article = nodes.find((n) => n.tag === 'article');
+    // `main` rather than `article`: <main> wraps <article> alone, so they remove
+    // identical text and are folded into one node carrying the outer, semantic
+    // selector. The text length is the same either way — which is precisely why
+    // offering both was never a choice.
+    const content = nodes.find((n) => n.tag === 'main');
     const nav = nodes.find((n) => n.tag === 'nav');
-    expect(article?.textLength).toBeGreaterThan(nav?.textLength ?? 0);
+    expect(content?.textLength).toBeGreaterThan(nav?.textLength ?? 0);
   });
 
   it('always has a root, because the HTML parser always makes a body', () => {
@@ -110,6 +153,147 @@ describe('the outline reports its own limits', () => {
     // case no caller could ever reach.
     expect(documentOutline('not markup at all').root.tag).toBe('body');
     expect(documentOutline('').root.tag).toBe('body');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// F1 — THE OUTLINE HAS TO REACH THE CONTENT.
+//
+// Measured on the MOH vaccine page, 2026-08-31: under `maxDepth: 6`, depth-first,
+// `div.articles-block` held 3,587 of the document's 4,731 characters — 76% — and
+// arrived as an unopenable leaf, while `maxNodes: 400` never came near binding
+// at ~40 emitted nodes. The page asked the researcher to mark TIMESTAMPS and put
+// every timestamp out of reach.
+//
+// The template below is that page's shape: five single-child wrappers between
+// <body> and the article.
+// ---------------------------------------------------------------------------
+
+const GOVERNMENT_TEMPLATE = `<!doctype html><html><body class="rtl">
+  <div id="wrapper"><div><div id="main"><div><div class="article-page">
+    <div class="banner-section">banner</div>
+    <div class="articles-block">
+      <h1>Vaccines</h1>
+      <div class="meta"><time>Updated 3 March</time></div>
+      <p>Three vaccines are approved for use in Israel.</p>
+    </div>
+    <div class="related-content">related pages</div>
+  </div></div></div></div></div>
+  <footer id="footer">Ministry of Health</footer>
+</body></html>`;
+
+describe('the outline reaches the content — the defect that stopped the first walk', () => {
+  const outline = documentOutline(GOVERNMENT_TEMPLATE);
+  const nodes = flatten(outline.root);
+  const bySelector = (s: string) => nodes.find((n) => n.selector === s);
+
+  it('folds the wrapper chain instead of spending depth on it', () => {
+    // Every element from #wrapper down to .article-page removes identical text,
+    // so they are one choice, not five levels of nesting to descend.
+    expect(bySelector('div.articles-block')).toBeDefined();
+    expect(outline.truncated).toBe(false);
+    expect(outline.unreachableTextLength).toBe(0);
+  });
+
+  it('reaches INSIDE the article block, where the timestamps live', () => {
+    // The exact thing the page's own instruction asks for — mark "navigation,
+    // ads, footers and TIMESTAMPS" — and the exact thing the old bound made
+    // impossible, since `div.articles-block` arrived as a leaf.
+    //
+    // The <time> element is not its OWN row: `div.meta` wraps it alone, so the
+    // two remove identical text and are folded into one choice. Reachability is
+    // the property, not node count — and the label is what makes it findable.
+    const meta = bySelector('div.meta');
+    expect(meta).toBeDefined();
+    expect(meta?.label).toContain('Updated 3 March');
+  });
+
+  it('never trades a stable id for a positional path when folding', () => {
+    // #wrapper's only child is a bare <div> whose selector is :nth-of-type. The
+    // fold must keep the id — a positional selector is the kind that silently
+    // stops meaning the same thing after a redesign.
+    const folded = nodes.find((n) => n.id === 'wrapper');
+    expect(folded?.selector).toBe('#wrapper');
+    expect(folded?.positional).toBe(false);
+  });
+
+  it('describes the node its SELECTOR points at, not the end of the chain', () => {
+    // A node reading `#wrapper` while calling itself the tag of some deeper
+    // element describes neither element.
+    const folded = nodes.find((n) => n.id === 'wrapper');
+    expect(folded?.tag).toBe('div');
+    // ...and it is EXPANDED from the end of the chain: that is the whole point.
+    expect(folded?.childSelectors).toContain('div.articles-block');
+  });
+
+  it('says which levels it folded rather than losing them quietly', () => {
+    const folded = nodes.find((n) => n.id === 'wrapper');
+    expect(folded?.collapsedFrom.length).toBeGreaterThan(0);
+    // #main is inside the folded chain, so it is named there rather than shown.
+    expect(folded?.collapsedFrom.some((s) => s.includes('#main'))).toBe(true);
+  });
+
+  it('every selector still matches, folding included', () => {
+    const doc = new JSDOM(GOVERNMENT_TEMPLATE).window.document;
+    for (const node of nodes) {
+      expect(doc.querySelectorAll(node.selector).length).toBeGreaterThan(0);
+    }
+  });
+});
+
+describe('a cut removes DEPTH, never a sibling', () => {
+  // Depth-first spent the whole budget on the first subtree, so a truncated
+  // outline lost the FOOTER — a whole section of furniture the researcher needs
+  // — rather than losing detail. Level-order cannot do that.
+  const WIDE = `<!doctype html><html><body>
+    <nav><ul><li>one</li><li>two</li><li>three</li><li>four</li></ul></nav>
+    <main><article><p>a</p><p>b</p><p>c</p><p>d</p></article></main>
+    <footer id="the-footer"><span>Ministry</span><span>Contact</span></footer>
+  </body></html>`;
+
+  it('keeps every top-level section when the budget runs out', () => {
+    const tight = documentOutline(WIDE, { maxNodes: 6 });
+    const top = tight.root.children.map((c) => c.tag);
+    expect(top).toEqual(['nav', 'main', 'footer']);
+    expect(tight.truncated).toBe(true);
+  });
+
+  it('still reaches the footer, which depth-first truncation used to eat', () => {
+    const tight = documentOutline(WIDE, { maxNodes: 6 });
+    expect(flatten(tight.root).some((n) => n.selector === '#the-footer')).toBe(true);
+  });
+});
+
+describe('the label — what the researcher reads instead of a selector', () => {
+  it('names a landmark by what it is', () => {
+    const nodes = flatten(documentOutline(PAGE).root);
+    expect(nodes.find((n) => n.tag === 'nav')?.label).toBe('navigation');
+    expect(nodes.find((n) => n.tag === 'footer')?.label).toBe('footer');
+  });
+
+  it('prefers an aria-label, and says what the element is as well', () => {
+    const labelled = `<html><body><nav aria-label="Main menu"><a href="/">x</a></nav></body></html>`;
+    const nodes = flatten(documentOutline(labelled).root);
+    expect(nodes.find((n) => n.tag === 'nav')?.label).toBe('navigation — Main menu');
+  });
+
+  it('falls back to a text preview when nothing declares what it is', () => {
+    const nodes = flatten(documentOutline(GOVERNMENT_TEMPLATE).root);
+    expect(nodes.find((n) => n.selector === 'div.banner-section')?.label).toBe('banner');
+  });
+
+  it('truncates a long preview rather than shipping a paragraph as a label', () => {
+    const wordy = `<html><body><div class="x">${'y'.repeat(500)}</div></body></html>`;
+    const node = flatten(documentOutline(wordy).root).find((n) => n.selector === 'div.x');
+    expect(node?.label.length).toBeLessThanOrEqual(61);
+    expect(node?.label.endsWith('…')).toBe(true);
+  });
+
+  it('never returns an empty label, because a blank row cannot be clicked', () => {
+    const empty = `<html><body><div class="a"></div><div class="b"></div></body></html>`;
+    for (const node of flatten(documentOutline(empty).root)) {
+      expect(node.label.length).toBeGreaterThan(0);
+    }
   });
 });
 
