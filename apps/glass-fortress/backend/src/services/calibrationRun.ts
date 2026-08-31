@@ -633,14 +633,19 @@ export async function abandonCalibrationRun(
   return readCalibrationRun(runId);
 }
 
-/** Prisma's unique-constraint failure, without importing its error class shape. */
+/**
+ * Prisma's unique-constraint failure, without importing its error class shape.
+ *
+ * NO ASSERTION AFTER THE `in` NARROWING. `'code' in err` already gives `err` a
+ * `code` of type `unknown`, so casting to `{ code: unknown }` re-states what the
+ * compiler has just proved — and `no-unnecessary-type-assertion` is type-aware,
+ * so it saw that in CI while this laptop's eslint reported nothing at all. See
+ * [[gf-lint-baseline-is-cis-not-the-laptops]]: the local pass goes SILENT on
+ * type-aware rules rather than disagreeing, which is why the baseline is never
+ * updated from here.
+ */
 function isUniqueViolation(err: unknown): boolean {
-  return (
-    typeof err === 'object' &&
-    err !== null &&
-    'code' in err &&
-    (err as { code: unknown }).code === 'P2002'
-  );
+  return typeof err === 'object' && err !== null && 'code' in err && err.code === 'P2002';
 }
 
 /**
