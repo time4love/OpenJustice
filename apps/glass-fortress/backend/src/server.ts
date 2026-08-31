@@ -20,6 +20,7 @@ import { evidenceRouter } from './routes/evidenceRoutes';
 import { argumentRouter } from './routes/argumentRoutes';
 import { chatRouter } from './routes/chatRoutes';
 import { forensicsRouter } from './routes/forensicsRoutes';
+import { articleRulesRouter } from './routes/articleRulesRoutes';
 import { figuresRouter } from './routes/figuresRoutes';
 import { mentionRouter } from './routes/mentionRoutes';
 import { thesisRouter } from './routes/thesisRoutes';
@@ -201,6 +202,9 @@ app.use('/api/evidence', evidenceRouter);
 app.use('/api/arguments', argumentRouter);
 app.use('/api/chat', chatRouter);
 app.use('/api/forensics', forensicsRouter);
+// Level 4's marking surface. Behind requireResearcher inside the router itself,
+// like the researcher routes it sits beside.
+app.use('/api/article-rules', articleRulesRouter);
 app.use('/api/figures', figuresRouter);
 app.use('/api/mentions', mentionRouter);
 app.use('/api/thesis', thesisRouter);

@@ -1,0 +1,240 @@
+// ---------------------------------------------------------------------------
+// LEVEL 4 — the three tools, tested at the seams that can actually be wrong.
+//
+// The tools are thin over one service, so this file does not re-test the fold.
+// What it tests is what only exists HERE: which precondition each tool enforces,
+// that the confirmation sentence is RENDERED rather than authored, and that a
+// null correction rate survives the trip to the model as null.
+//
+// THE PRECONDITIONS ARE THE WHOLE REASON THERE ARE THREE TOOLS. "A wrong enum
+// value is representable, a wrong tool is not" only holds if each tool actually
+// refuses the case that belongs to the other one.
+// ---------------------------------------------------------------------------
+
+jest.mock('../src/lib/prisma', () => ({
+  prisma: {
+    trackedUrl: { findUnique: jest.fn() },
+    calibrationRun: { findUnique: jest.fn(), create: jest.fn() },
+    articleRuleset: { findUnique: jest.fn() },
+    urlSnapshot: { count: jest.fn() },
+    rulesetObservation: { findMany: jest.fn() },
+  },
+}));
+
+const mockAdmitUrl = jest.fn();
+jest.mock('../src/services/admitUrl', () => ({ admitUrl: mockAdmitUrl }));
+jest.mock('../src/services/fetchContentForRelevanceCheck', () => ({
+  fetchContentForRelevanceCheck: jest.fn(),
+}));
+
+const mockResearcherId = jest.fn();
+jest.mock('../src/context/researcherContext', () => ({ getResearcherId: mockResearcherId }));
+
+import { CalibrationDecisionType, CalibrationRunStatus } from '@prisma/client';
+import { prisma } from '../src/lib/prisma';
+import {
+  calibrateArticleRulesHandler,
+  correctArticleRulesHandler,
+  getArticleRulesHandler,
+} from '../src/mcp/tools/articleRuleTools';
+import { calibrationEffect, renderApprovalEffect } from '../src/services/approvalEffect';
+import { chromeRulesetId } from '../src/lib/chromeRuleset';
+
+interface Parsed {
+  error?: string;
+  runId?: string;
+  markingUrl?: string;
+  storedCaptures?: number;
+  effect?: string;
+  correctionRate?: number | null;
+  stoppingIndicator?: string;
+  selectors?: string[];
+  staleSelectors?: { selector: string }[];
+}
+
+function decisions(types: CalibrationDecisionType[], selectors: string[] = []) {
+  return types.map((type, i) => ({
+    id: `d${String(i)}`,
+    calibrationRunId: 'run-1',
+    sequence: i + 1,
+    type,
+    selectors,
+    rulesetId: chromeRulesetId({ selectors }),
+    snapshotId: null,
+    waybackTimestamp: null,
+    observationId: null,
+    reason: null,
+    createdAt: new Date('2026-08-31T00:00:00Z'),
+  }));
+}
+
+function armRun(types: CalibrationDecisionType[], selectors: string[] = []) {
+  (prisma.calibrationRun.findUnique as jest.Mock).mockResolvedValue({
+    id: 'run-1',
+    trackedUrlId: 'url-1',
+    researcherId: 'res-1',
+    status: CalibrationRunStatus.OPEN,
+    seededFromRulesetId: null,
+    committedRulesetId: null,
+    createdAt: new Date(),
+    closedAt: null,
+    decisions: decisions(types, selectors),
+  });
+}
+
+beforeEach(() => {
+  mockResearcherId.mockReturnValue('res-1');
+  (prisma.calibrationRun.create as jest.Mock).mockResolvedValue({ id: 'run-1' });
+  (prisma.articleRuleset.findUnique as jest.Mock).mockResolvedValue(null);
+  (prisma.urlSnapshot.count as jest.Mock).mockResolvedValue(0);
+  (prisma.rulesetObservation.findMany as jest.Mock).mockResolvedValue([]);
+  armRun([CalibrationDecisionType.RUN_OPENED]);
+});
+
+describe('calibrate_article_rules — the tool for a page not yet in the corpus', () => {
+  it('admits the URL first, because this tool can bring one into the corpus', async () => {
+    mockAdmitUrl.mockResolvedValue({ admitted: true, trackedUrlId: 'url-1', alreadyTracked: false });
+    (prisma.trackedUrl.findUnique as jest.Mock).mockResolvedValue({
+      id: 'url-1',
+      activeArticleRuleset: null,
+    });
+
+    const out = JSON.parse(await calibrateArticleRulesHandler({ url: 'https://example.gov/a' })) as Parsed;
+
+    // The mission gate must be on the researcher's path, not only the website's.
+    expect(mockAdmitUrl).toHaveBeenCalled();
+    expect(out.runId).toBe('run-1');
+    expect(out.markingUrl).toContain('/article-rules/run-1');
+  });
+
+  it('refuses an off-mission URL without opening a run', async () => {
+    mockAdmitUrl.mockResolvedValue({ admitted: false, verdict: 'OFF_MISSION', reason: 'unrelated' });
+
+    const out = JSON.parse(await calibrateArticleRulesHandler({ url: 'https://example.com/x' })) as Parsed;
+
+    expect(out.error).toMatch(/not relevant/i);
+    expect(prisma.calibrationRun.create).not.toHaveBeenCalled();
+  });
+
+  it('refuses when no researcher is in context — a mark is an attributed judgement', async () => {
+    mockResearcherId.mockReturnValue(null);
+    const out = JSON.parse(await calibrateArticleRulesHandler({ url: 'https://example.gov/a' })) as Parsed;
+    expect(out.error).toMatch(/attributed to a researcher/i);
+    expect(mockAdmitUrl).not.toHaveBeenCalled();
+  });
+});
+
+describe('correct_article_rules — the tool for a page already scanned', () => {
+  it('DOES NOT re-admit a URL already in the corpus', async () => {
+    (prisma.trackedUrl.findUnique as jest.Mock)
+      .mockResolvedValueOnce({ id: 'url-1', _count: { snapshots: 12 } })
+      .mockResolvedValueOnce({ id: 'url-1', activeArticleRuleset: null });
+    (prisma.urlSnapshot.count as jest.Mock).mockResolvedValue(12);
+
+    const out = JSON.parse(await correctArticleRulesHandler({ url: 'https://example.gov/a' })) as Parsed;
+
+    // Re-admitting spends a fetch and a model call to write a second verdict
+    // about a page whose admission was never in question.
+    expect(mockAdmitUrl).not.toHaveBeenCalled();
+    expect(out.runId).toBe('run-1');
+    expect(out.storedCaptures).toBe(12);
+  });
+
+  it('refuses a URL that is not in the corpus, and names the other tool', async () => {
+    (prisma.trackedUrl.findUnique as jest.Mock).mockResolvedValue(null);
+
+    const out = JSON.parse(await correctArticleRulesHandler({ url: 'https://example.gov/new' })) as Parsed;
+
+    expect(out.error).toMatch(/calibrate_article_rules/);
+    expect(prisma.calibrationRun.create).not.toHaveBeenCalled();
+  });
+
+  it('refuses a tracked URL that holds NO captures — there is nothing to mark against', async () => {
+    // The precondition that makes this a different tool rather than a different
+    // enum value. Correcting rules against nothing is vacuity.
+    (prisma.trackedUrl.findUnique as jest.Mock).mockResolvedValue({
+      id: 'url-1',
+      _count: { snapshots: 0 },
+    });
+
+    const out = JSON.parse(await correctArticleRulesHandler({ url: 'https://example.gov/a' })) as Parsed;
+
+    expect(out.error).toMatch(/nothing to mark against/i);
+    expect(out.storedCaptures).toBe(0);
+    expect(prisma.calibrationRun.create).not.toHaveBeenCalled();
+  });
+});
+
+describe('the confirmation is RENDERED from the declaration, never authored beside it', () => {
+  it('says what committing writes, and that it is reversible', async () => {
+    mockAdmitUrl.mockResolvedValue({ admitted: true, trackedUrlId: 'url-1', alreadyTracked: true });
+    (prisma.trackedUrl.findUnique as jest.Mock).mockResolvedValue({
+      id: 'url-1',
+      activeArticleRuleset: null,
+    });
+    (prisma.urlSnapshot.count as jest.Mock).mockResolvedValue(40);
+
+    const out = JSON.parse(await calibrateArticleRulesHandler({ url: 'https://example.gov/a' })) as Parsed;
+
+    // Byte-for-byte the renderer's output: nobody composed a second sentence.
+    expect(out.effect).toBe(renderApprovalEffect(calibrationEffect(40)));
+    expect(out.effect).toContain('40 stored captures');
+    expect(out.effect).toContain('Reversible');
+  });
+
+  it('never claims a capture is written — calibration writes none', async () => {
+    mockAdmitUrl.mockResolvedValue({ admitted: true, trackedUrlId: 'url-1', alreadyTracked: true });
+    (prisma.trackedUrl.findUnique as jest.Mock).mockResolvedValue({
+      id: 'url-1',
+      activeArticleRuleset: null,
+    });
+    (prisma.urlSnapshot.count as jest.Mock).mockResolvedValue(3);
+
+    const out = JSON.parse(await calibrateArticleRulesHandler({ url: 'https://example.gov/a' })) as Parsed;
+
+    // The difference a researcher is entitled to see stated rather than inferred.
+    expect(out.effect).not.toMatch(/write \d+ captures?/);
+    expect(out.effect).toContain('save the ruleset');
+  });
+});
+
+describe('get_article_rules', () => {
+  it('passes a null correction rate through AS NULL, and says what null means', async () => {
+    armRun([CalibrationDecisionType.RUN_OPENED]);
+    const out = JSON.parse(await getArticleRulesHandler({ runId: 'run-1' })) as Parsed;
+
+    expect(out.correctionRate).toBeNull();
+    expect(out.stoppingIndicator).toMatch(/says nothing about the rules/i);
+  });
+
+  it('warns that a clean streak is only informative on an adversarial sample', async () => {
+    armRun([
+      CalibrationDecisionType.RUN_OPENED,
+      CalibrationDecisionType.CAPTURE_SHOWN,
+      CalibrationDecisionType.CAPTURE_ACCEPTED,
+    ]);
+    const out = JSON.parse(await getArticleRulesHandler({ runId: 'run-1' })) as Parsed;
+
+    expect(out.correctionRate).toBe(0);
+    expect(out.stoppingIndicator).toMatch(/chosen to disagree/i);
+  });
+
+  it('answers a missing run rather than throwing a 500 at the model', async () => {
+    (prisma.calibrationRun.findUnique as jest.Mock).mockResolvedValue(null);
+    const out = JSON.parse(await getArticleRulesHandler({ runId: 'nope' })) as Parsed;
+    expect(out.error).toMatch(/No calibration run/i);
+  });
+
+  it('reports a selector that has stopped matching — what a redesign looks like', async () => {
+    armRun([CalibrationDecisionType.RUN_OPENED], ['.ad', 'nav']);
+    (prisma.articleRuleset.findUnique as jest.Mock).mockResolvedValue({ id: 'ars-1' });
+    (prisma.rulesetObservation.findMany as jest.Mock).mockResolvedValue([
+      { matchCounts: { '.ad': 0, nav: 2 }, observedAt: new Date('2026-08-31T00:00:00Z') },
+      { matchCounts: { '.ad': 3, nav: 2 }, observedAt: new Date('2026-01-01T00:00:00Z') },
+    ]);
+
+    const out = JSON.parse(await getArticleRulesHandler({ runId: 'run-1' })) as Parsed;
+
+    expect(out.staleSelectors?.map((s) => s.selector)).toEqual(['.ad']);
+  });
+});

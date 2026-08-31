@@ -82,6 +82,19 @@ export const WRITE_TOOLS = new Set([
   'create_evidence_from_url',
   'create_evidence_from_text',
   'start_forensic_scan',
+  // Level 4's marking tools, ALL THREE GATED — including the one whose name
+  // reads like a read.
+  //
+  // The two start tools write a CalibrationRun, and calibrate_article_rules can
+  // admit a URL into the corpus. get_article_rules writes nothing, and is gated
+  // anyway: it returns a researcher's in-progress working state — which URLs are
+  // being marked and how often their rules needed fixing — which is not
+  // published evidence. "An anonymous caller would have to guess a cuid" is
+  // obscurity, not a gate, and `get_claim_trajectories` above is the standing
+  // precedent for gating a read-named tool with the reason written down.
+  'calibrate_article_rules',
+  'correct_article_rules',
+  'get_article_rules',
   'create_thesis_draft',
   'add_thesis_version',
   // Writes a new ThesisVersion. Cheaper and narrower than add_thesis_version —

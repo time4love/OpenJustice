@@ -48,19 +48,47 @@ import { READ_TOOLS, WRITE_TOOLS } from '../src/mcp/mcpRoutes';
  * Fails loudly if the pattern stops matching. A silent zero would make every
  * assertion below vacuously true, which is worse than no test at all.
  */
-function registeredToolNames(): string[] {
-  const source = readFileSync(join(__dirname, '../src/mcp/mcpServer.ts'), 'utf8');
-  const names = [...source.matchAll(/server\.tool\(\s*'([a-z_]+)'/g)].map((m) => m[1]);
+export function registeredToolNamesIn(source: string): string[] {
+  // BOTH SPELLINGS. `server.tool()` is deprecated in the SDK and `registerTool`
+  // is its replacement; the two coexist while the 47 older registrations are
+  // migrated separately. A regex written for one would make every tool in the
+  // other style INVISIBLE HERE — the guard would keep passing while new tools
+  // arrived unclassified, which is precisely the failure it was written for, in
+  // its most convincing disguise: a green test.
+  const names = [...source.matchAll(/server\.(?:tool|registerTool)\(\s*'([a-z_]+)'/g)].map(
+    (m) => m[1],
+  );
 
   if (names.length === 0) {
     throw new Error(
-      'Found no server.tool() registrations in mcpServer.ts — the registration style changed. ' +
-        'Fix this helper rather than deleting the test: without it nothing checks that a new ' +
-        'tool has been classified as gated or open.',
+      'Found no server.tool()/server.registerTool() registrations in mcpServer.ts — the ' +
+        'registration style changed. Fix this helper rather than deleting the test: without it ' +
+        'nothing checks that a new tool has been classified as gated or open.',
     );
   }
   return [...new Set(names)].sort();
 }
+
+function registeredToolNames(): string[] {
+  return registeredToolNamesIn(readFileSync(join(__dirname, '../src/mcp/mcpServer.ts'), 'utf8'));
+}
+
+describe('the registry scan sees every registration style', () => {
+  // Broadening a guard is where a guard quietly stops guarding, so the
+  // broadening is checked directly. A style this misses does not fail loudly —
+  // it reports fewer tools and passes.
+  it('finds a tool registered with the deprecated tool()', () => {
+    expect(registeredToolNamesIn("server.tool(\n    'old_style',")).toEqual(['old_style']);
+  });
+
+  it('finds a tool registered with registerTool()', () => {
+    expect(registeredToolNamesIn("server.registerTool(\n    'new_style',")).toEqual(['new_style']);
+  });
+
+  it('throws rather than reporting nothing when the style changes again', () => {
+    expect(() => registeredToolNamesIn('server.addTool("x")')).toThrow(/registration style changed/);
+  });
+});
 
 describe('MCP tool classification', () => {
   const registered = registeredToolNames();
