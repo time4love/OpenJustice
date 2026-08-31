@@ -224,6 +224,142 @@ describe('the stopping indicator', () => {
     expect(state.consecutiveCleanCaptures).toBe(0);
   });
 
+  // -------------------------------------------------------------------------
+  // SHOWING IS NOT JUDGING.
+  //
+  // Every test above this block pairs SHOWN with ACCEPTED, which is why the
+  // defect below survived them all: the fold pushed a CLEAN episode on
+  // CAPTURE_SHOWN, so a capture merely displayed counted as a capture that
+  // needed no correction. The schema documents that same event as "Nothing is
+  // judged yet." Observed on the marking page's first render, 2026-08-31: a
+  // clean streak of 1 before the researcher had judged anything.
+  //
+  // The stopping rule is "no corrections on the last three versions". These
+  // cases hold that it cannot be reached by scrolling.
+  // -------------------------------------------------------------------------
+
+  it('does not count a capture that was SHOWN and never judged', async () => {
+    mockRun([OPENED, SHOWN]);
+    const state = await readCalibrationRun('run-1');
+
+    expect(state.capturesShown).toBe(1);
+    expect(state.capturesJudged).toBe(0);
+    // The exact reading the page produced on first render. It must be 0.
+    expect(state.consecutiveCleanCaptures).toBe(0);
+    expect(state.correctionRate).toBeNull();
+    expect(state.correctionRate).not.toBe(0);
+  });
+
+  it('cannot reach the stopping rule by paging through captures', async () => {
+    mockRun([OPENED, SHOWN, SHOWN, SHOWN]);
+    const state = await readCalibrationRun('run-1');
+
+    expect(state.capturesShown).toBe(3);
+    expect(state.capturesJudged).toBe(0);
+    // Three captures displayed, nothing decided. "No corrections on the last
+    // three" must NOT be satisfied by this.
+    expect(state.consecutiveCleanCaptures).toBe(0);
+    expect(state.correctionRate).toBeNull();
+  });
+
+  it('does not let a capture awaiting judgement break an earned streak', async () => {
+    // The mirror error of the one above: loading the next capture is not a
+    // verdict against the previous one either.
+    mockRun([OPENED, SHOWN, ACCEPTED, SHOWN, ACCEPTED, SHOWN]);
+    const state = await readCalibrationRun('run-1');
+
+    expect(state.capturesShown).toBe(3);
+    expect(state.capturesJudged).toBe(2);
+    expect(state.consecutiveCleanCaptures).toBe(2);
+  });
+
+  it('counts a correction as a judgement — acting on the rules IS deciding', async () => {
+    mockRun([
+      OPENED,
+      SHOWN,
+      { type: CalibrationDecisionType.RULESET_CORRECTED, selectors: ['.ad'] },
+    ]);
+    const state = await readCalibrationRun('run-1');
+
+    expect(state.capturesJudged).toBe(1);
+    expect(state.capturesNeedingCorrection).toBe(1);
+    expect(state.correctionRate).toBe(1);
+    expect(state.consecutiveCleanCaptures).toBe(0);
+  });
+
+  it('excludes a SKIPPED capture rather than counting it clean', async () => {
+    // A skip declares the capture unusable. It says nothing about the rules, so
+    // it must not pad the streak and must not sit in the denominator.
+    mockRun([
+      OPENED,
+      SHOWN,
+      ACCEPTED,
+      SHOWN,
+      // `reason` is required on a real skip and enforced at the append; the
+      // fold never reads it, so the seed does not carry it.
+      { type: CalibrationDecisionType.CAPTURE_SKIPPED },
+    ]);
+    const state = await readCalibrationRun('run-1');
+
+    expect(state.capturesShown).toBe(2);
+    expect(state.capturesJudged).toBe(1);
+    expect(state.consecutiveCleanCaptures).toBe(1);
+    expect(state.correctionRate).toBe(0);
+  });
+
+  // -------------------------------------------------------------------------
+  // A RATE MUST BE A RATE.
+  //
+  // The denominator was `capturesShown` and the numerator counted EDITS, so the
+  // value was bounded by nothing. The first walk measured `correctionRate: 2`
+  // with a single capture on screen. Five edits against one capture is one
+  // capture that disagreed, not five.
+  // -------------------------------------------------------------------------
+
+  it('counts a capture that needed several edits ONCE, and stays within [0,1]', async () => {
+    mockRun([
+      OPENED,
+      SHOWN,
+      { type: CalibrationDecisionType.RULESET_CORRECTED, selectors: ['.ad'] },
+      { type: CalibrationDecisionType.RULESET_CORRECTED, selectors: ['.ad', '.promo'] },
+      { type: CalibrationDecisionType.RULESET_CORRECTED, selectors: ['.ad', '.promo', '#nav'] },
+      ACCEPTED,
+    ]);
+    const state = await readCalibrationRun('run-1');
+
+    // The raw edit count is still reported — it is just not the rate.
+    expect(state.corrections).toBe(3);
+    expect(state.capturesJudged).toBe(1);
+    expect(state.capturesNeedingCorrection).toBe(1);
+    // Was 3 under the old arithmetic. A rate cannot exceed 1.
+    expect(state.correctionRate).toBe(1);
+  });
+
+  it('keeps correctionRate within [0,1] across a mixed run', async () => {
+    mockRun([
+      OPENED,
+      SHOWN,
+      { type: CalibrationDecisionType.RULESET_CORRECTED, selectors: ['.ad'] },
+      { type: CalibrationDecisionType.RULESET_CORRECTED, selectors: ['.ad', '.promo'] },
+      ACCEPTED,
+      SHOWN,
+      ACCEPTED,
+      SHOWN,
+      ACCEPTED,
+      SHOWN, // shown, still awaiting judgement
+    ]);
+    const state = await readCalibrationRun('run-1');
+
+    expect(state.capturesShown).toBe(4);
+    expect(state.capturesJudged).toBe(3);
+    expect(state.corrections).toBe(2);
+    expect(state.capturesNeedingCorrection).toBe(1);
+    expect(state.correctionRate).toBeCloseTo(1 / 3);
+    expect(state.correctionRate).toBeGreaterThanOrEqual(0);
+    expect(state.correctionRate).toBeLessThanOrEqual(1);
+    expect(state.consecutiveCleanCaptures).toBe(2);
+  });
+
   it('treats a rejection’s correction as dirtying the capture it followed', async () => {
     // A rejection means the RULES are wrong, not that the capture is bad, so it
     // routes back to marking and the correction lands inside the same episode.
