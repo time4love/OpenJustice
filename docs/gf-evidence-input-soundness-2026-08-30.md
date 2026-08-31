@@ -158,8 +158,44 @@ of the five states separately, including that `UNCHECKABLE`'s refusal does not c
 it against `publishThesis`, not only against the report, because a hard failure the write path did
 not honour would be a check that only looked like a gate.
 
-## Not yet done
+## Verified on the live surface
 
-**Check 17 has never run on the live surface.** The staging MCP server executes deployed code; the
-check exists only in this change. `check_publication_readiness` against the published thesis is the
-verification, and it can only happen after this lands.
+Landed as PR #277, `staging` `837f590`, deploy green. Then `check_publication_readiness` against the
+published thesis `cmt5jffqy000lf52mn6t56f3l` — read-only, writes nothing.
+
+**Every prediction stated before the run held.** Seventeen checks rather than sixteen, which is itself
+the proof the deploy carries the change:
+
+```
+17  EVIDENCE_DIFF_INPUT_SOUND  hard · passed: true · binding: false
+    "No cited record is derived from a diff — NON-BINDING: this check judges the
+     archived documents behind diff-derived evidence, and there is none to judge.
+     1 cited record(s) are not derived from a diff and are not covered here:
+     DOCUMENT evidence has no snapshot-derived input and no soundness check at all."
+```
+
+The published thesis cites exactly one evidence record and it is the `DOCUMENT` one — which the
+measurement above inferred, and the gate has now confirmed from its own query rather than from that
+inference.
+
+The run's only hard failure was `RATIONALE_SUBSTANCE`, an artefact of calling the tool with no
+rationale, not a fact about the thesis. The published version was unchanged throughout; publication is
+a pinned version and this tool writes nothing.
+
+**Production does NOT have check 17**, and that is the intended state after a `LAND`. `master` is at
+`9661206`; check 17 is one of nine commits `staging` is ahead by. Production holds 0 theses, so the
+check would bind on nothing there today.
+
+## Finding 30 — the MCP surface cannot enumerate theses
+
+Every thesis tool requires a `thesisId` — `get_thesis_context`, `check_publication_readiness`,
+`get_research_agenda`, `get_whistleblower_call`, `audit_thesis_claims`. None lists them, and staging's
+HTTP API refuses without `x-staging-token`. **The id used above was recoverable only because R1
+happened to record it in `gf-published-thesis-fda-claim-2026-08-30.md`.** A researcher returning to a
+thesis they know exists cannot address it through the tools at all.
+
+Third instance in two days of a thing the platform holds that no instrument can reach, after
+`anchorCheck` (fixed) and `beforeSnapshotId`'s date (open). The shape is worth naming because the
+other two were found by needing them; this one was found by needing it too. **An investigation tool
+that cannot name its own subject is not yet a tool** — [[gf-investigation-tools-must-be-mcp]] one step
+earlier in the sequence.
