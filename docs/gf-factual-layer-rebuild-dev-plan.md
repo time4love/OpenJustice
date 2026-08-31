@@ -2630,11 +2630,33 @@ the marks to FILTER**, or 3,000 rows are still stored, and every filtering varia
 long-stable content block from furniture. A human can — so human-marked filtering is a *different
 instrument*, and the earlier result does not automatically transfer to it.
 
-**That is an argument, not a measurement, and this section's own lesson forbids acting on it:**
-*classify every instance before building the remedy.* The resolution is that **stage 2 IS the
-measurement** — a simulated scan with the ruleset applied, compared against one without it, showing
-exactly which changes the marks removed. Filtering is enabled on the strength of that comparison and on
-nothing else.
+**SUPERSEDED 2026-08-31 — the researcher's call, and it is better.** An earlier draft resolved this by
+re-measuring: apply a ruleset to the EXISTING 109 diffs and add a row to the table above. Two reasons
+that was wrong.
+
+**It is archaeology.** *Fix what future state needs; do not invest in repairing legacy state.* The test
+is whether the problem recurs for captures made from now on, and that is judged on those captures, not
+by re-deriving old ones.
+
+**And the baseline it would compare against cannot be reproduced.** The commit that produced the
+seven-variant table (`d4739aa`) is DOCS-ONLY — 115 lines, no script. The harness was never committed,
+so *"29 real changes lost"* rests on an instrument nobody can inspect: something decided those 29 were
+real, and what it was is unrecorded. A number reproduced against that is weaker than a person looking
+at what disappeared.
+
+**So validation is a HUMAN judging newly created state**, which is the marking loop itself rather than a
+separate phase. This is not a softer bar — the human sees the actual removals, where a count only ever
+saw an estimate of them.
+
+**IT PUTS ONE HARD REQUIREMENT ON THE UI, and it is not optional:** the surface must show what the
+ruleset REMOVED, not only what it kept. Over-matching is the dangerous direction and it is INVISIBLE in
+the kept text — a rule that swallows a paragraph leaves something clean, short and plausible on screen.
+`ChromeApplication.removedText` exists for exactly this and is computed in the same pass as the kept
+text, so the two cannot disagree.
+
+**Consequence to expect rather than discover:** the corpus becomes mixed, and the first diff spanning an
+un-ruled capture and a ruled one reads `UNCHECKABLE` — different `textExtractionVersion` on the two
+sides. That is that state working as designed.
 
 ##### The UI rule, restated
 
@@ -2675,9 +2697,11 @@ self-assessed confidence score.
 
 **Also decided (technical shape):** the MCP-to-UI contract is a SESSION ROW, extending the OAuth
 handoff · the UI writes DECISIONS and the backend applies EFFECTS · three tools over one service ·
-durable run state is a PREREQUISITE.
+durable run state is a PREREQUISITE · **filtering is validated by a HUMAN on newly created state, not
+by re-measuring the corpus** (2026-08-31) · **the ruleset is applied before `htmlToText` and is scoped
+to the `text` derivation** — `src/lib/chromeRuleset.ts`, landed with no session and no UI.
 
-**Open:** whether filtering is safe at all (mode 3 answers it more cheaply than stage 2) · the marking UX · the next-capture
+**Open:** the marking UX · the marking UX · the next-capture
 selection policy, which is the same mechanism as the indicator · how a ruleset is inherited by a
 second URL on the same site · what "the page stopped resembling the approved set" is computed from.
 
