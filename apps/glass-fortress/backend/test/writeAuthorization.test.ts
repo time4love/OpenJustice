@@ -59,11 +59,9 @@ const ANONYMOUS_WRITES_ALLOWED: Record<string, string> = {
   // makes a thesis public is gated while the acts that shape its content are
   // not. That is a real inconsistency and it belongs in front of whoever reads
   // this list, not hidden by a looser pattern.
-  'thesisRoutes.ts POST /': 'UNGATED — thesis creation, see note above',
   'thesisRoutes.ts POST /:id/analyze': 'UNGATED — see note above',
   'thesisRoutes.ts POST /:id/version': 'UNGATED — see note above',
   'thesisRoutes.ts POST /:id/suggest-revision': 'UNGATED — see note above',
-  'thesisRoutes.ts POST /suggest': 'UNGATED — see note above',
   'thesisRoutes.ts POST /draft': 'UNGATED — see note above',
   'thesisRoutes.ts POST /:id/foia-request': 'UNGATED — see note above',
   'thesisRoutes.ts POST /:id/gaps/:gapIndex/resolve': 'UNGATED — see note above',

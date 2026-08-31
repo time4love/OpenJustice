@@ -16,7 +16,7 @@ import { formatSummaryCaveat, type SummaryCaveat } from '../lib/summaryProvenanc
 // The topic string decides which evidence is pulled semantically and what the
 // Devil's Advocate attacks, so a wrong framing produces a well-argued thesis
 // about the wrong thing that no later iteration rescues. Until 2026-08-22 that
-// decision happened entirely outside the system: suggest_thesis interpolated its
+// decision happened entirely outside the system: a retrieval topic was interpolated into a prompt, its
 // `topic` into a prompt and discarded it.
 //
 // The valuable output is `contradictions`, not `candidateFramings`. Generating
@@ -70,7 +70,7 @@ export const ThesisFramingAssessmentSchema = z.object({
     .string()
     .describe(
       'The framing best supported by the evidence, concrete and dated. This is what gets fed to ' +
-        'suggest_thesis. It need not be the researcher\'s framing.',
+        'evidence retrieval. It need not be the researcher\'s framing.',
     ),
   assessment: z.string().describe('Professional Hebrew reasoning for the recommendation, kept on the session record.'),
 });

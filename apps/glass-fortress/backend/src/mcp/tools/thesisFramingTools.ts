@@ -10,7 +10,7 @@ import { sessionConsentSchema } from './createResearchSession';
 // ---------------------------------------------------------------------------
 // Deciding what a thesis should argue, before writing one.
 //
-// suggest_thesis takes a topic string, interpolates it into a prompt and discards
+// A retrieval topic string is interpolated into a prompt and then discarded
 // it. That string is the most consequential decision in the workflow — it
 // determines which evidence is pulled semantically and what the Devil's Advocate
 // attacks — and until now the conversation that chose it left no trace.
@@ -81,7 +81,7 @@ export async function assessThesisFramingHandler(input: {
         ? 'The evidence contradicts part of the proposed framing — see contradictions. Revise and call ' +
           'this again, or proceed knowingly: the exchange is recorded either way and attaches to the thesis.'
         : 'No contradiction found. Verify anything under unverifiedAssumptions before building on it, then ' +
-          'pass recommendedTopicString to suggest_thesis.',
+          'recommendedTopicString is the framing the evidence supports, on the record.',
   });
 }
 

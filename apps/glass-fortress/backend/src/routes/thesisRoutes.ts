@@ -11,7 +11,6 @@ import { analyzeEphemeral, storeEphemeral } from '../services/EphemeralAnalysisS
 import { buildTipTapDoc } from '../utils/tipTapUtils';
 import { sha256, extractText, extractPreview, triggerAIAnalysis } from '../services/thesisAnalysis';
 import { logSessionEvent } from '../services/sessionService';
-import { suggestThesisHandler } from '../mcp/tools/suggestThesis';
 import { createThesisDraftHandler } from '../mcp/tools/createThesisDraft';
 import { buildEvidenceAnalysisData } from '../lib/evidenceCreateData';
 import { upsertKeyFigures } from '../lib/upsertKeyFigures';
@@ -146,76 +145,17 @@ const ResolveGapSchema = z.object({
 });
 
 // ---------------------------------------------------------------------------
-// POST /api/thesis
+// CREATING A THESIS IS NOT A UI ACT.
 //
-// Creates a new Thesis with its first ThesisVersion.
-// Mention extraction is synchronous; AI analysis fires in the background.
+// `POST /api/thesis` was the browser's create-thesis form. Researcher work now
+// happens only through MCP, where `create_thesis_draft` covers the same ground
+// AND attaches the framing session that decided what to argue — which this form
+// never did. The route is removed rather than hidden: a capability that must not
+// be used is removed, not forbidden.
+//
+// `CreateThesisSchema` stays. It is shared with POST /:id/version, which is a
+// different act and remains.
 // ---------------------------------------------------------------------------
-
-router.post('/', aiCostLimiter, async (req: Request, res: Response): Promise<void> => {
-  const parsed = CreateThesisSchema.safeParse(req.body);
-  if (!parsed.success) {
-    res.status(400).json({ error: 'Invalid request', details: parsed.error.flatten() });
-    return;
-  }
-
-  const { userContent } = parsed.data;
-
-  let mentions: ReturnType<typeof parseMentions>;
-  try {
-    mentions = parseMentions(userContent);
-  } catch {
-    res.status(400).json({ error: 'userContent is not a valid TipTap document' });
-    return;
-  }
-
-  try {
-    const contentHash = sha256(userContent);
-
-    const { updatedThesis, version } = await prisma.$transaction(async (tx) => {
-      const thesis = await tx.thesis.create({ data: {} });
-
-      const version = await tx.thesisVersion.create({
-        data: {
-          thesisId: thesis.id,
-          userContent: userContent as Prisma.InputJsonValue,
-          contentHash,
-          status: 'PENDING_AI',
-          mentions: {
-            createMany: { data: mentions.map((m) => ({ type: m.type, refId: m.refId })) },
-          },
-        },
-      });
-
-      const updatedThesis = await tx.thesis.update({
-        where: { id: thesis.id },
-        data: { headVersionId: version.id },
-      });
-
-      return { updatedThesis, version };
-    });
-
-    res.status(201).json({
-      thesis: {
-        id: updatedThesis.id,
-        createdAt: updatedThesis.createdAt,
-        headVersion: {
-          id: version.id,
-          status: version.status,
-          contentHash: version.contentHash,
-          preview: extractPreview(userContent),
-          createdAt: version.createdAt,
-        },
-      },
-    });
-
-    // Fire-and-forget — do not await
-    void triggerAIAnalysis(version.id, userContent);
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    res.status(500).json({ error: 'Failed to create thesis', message });
-  }
-});
 
 // ---------------------------------------------------------------------------
 // GET /api/thesis
@@ -982,40 +922,6 @@ router.delete('/:id/gaps/:gapIndex/resolve', async (req: Request, res: Response)
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     res.status(500).json({ error: 'Failed to unresolve gap', message });
-  }
-});
-
-// ---------------------------------------------------------------------------
-// POST /api/thesis/suggest
-//
-// REST wrapper around the suggest_thesis MCP tool — searches the evidence vault
-// semantically and proposes the strongest defensible thesis the corpus supports.
-// Returns a readyForDraft payload that can be passed directly to POST /draft.
-// ---------------------------------------------------------------------------
-
-const SuggestThesisSchema = z.object({
-  topic: z.string().min(1),
-  maxEvidence: z.number().int().min(1).max(20).optional(),
-});
-
-router.post('/suggest', aiCostLimiter, async (req: Request, res: Response): Promise<void> => {
-  const parsed = SuggestThesisSchema.safeParse(req.body);
-  if (!parsed.success) {
-    res.status(400).json({ error: 'Invalid request', details: parsed.error.flatten() });
-    return;
-  }
-
-  try {
-    const json = await suggestThesisHandler(parsed.data);
-    const result = JSON.parse(json) as Record<string, unknown>;
-    if (result['error']) {
-      res.status(400).json(result);
-      return;
-    }
-    res.status(200).json(result);
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    res.status(500).json({ error: 'Failed to generate thesis suggestion', message });
   }
 });
 

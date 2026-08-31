@@ -10,7 +10,6 @@ import { CopyableCode } from '@/components/CopyableCode';
 // ---------------------------------------------------------------------------
 
 const TOOLS = [
-  { name: 'suggest_thesis',               en: 'Propose a legal thesis from evidence',                                he: 'הצע תזה משפטית מהראיות' },
   { name: 'create_thesis_draft',          en: 'Save a structured thesis with evidence mentions',                     he: 'שמור תזה מובנית עם אזכורי ראיות' },
   { name: 'start_forensic_scan',          en: 'Scan government URLs for silent edits',                              he: 'סרוק כתובות URL ממשלתיות לאיתור עריכות שקטות' },
   { name: 'get_research_agenda',          en: 'See open evidence gaps per thesis',                                   he: 'ראה פערי ראיות פתוחים לכל תזה' },

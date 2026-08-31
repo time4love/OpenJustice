@@ -1649,9 +1649,9 @@
         "verify": "Take every factual claim and find the hash of the evidence supporting it. A claim that does not resolve to a hash does not get stated as fact — not out of caution, but because it has nothing to stand on.",
         "pitfall": "Re-reading checks wording; recomputing checks facts. A paragraph can read perfectly and contain a claim no source supports — and the difference only surfaces when each claim is cross-checked against the evidence meant to carry it.",
         "steps": {
-          "suggest": {
-            "title": "Ask for a suggestion",
-            "body": "The suggestion is a starting point. It is tidier than the evidence justifies, and that is exactly what you correct."
+          "search": {
+            "title": "Find the records first",
+            "body": "Search the vault for what bears on your question, and read the records before you write a line. The thesis is yours to write — nothing here drafts it for you, because a claim you did not make is a claim you cannot defend."
           },
           "draft": {
             "title": "Write the draft",
