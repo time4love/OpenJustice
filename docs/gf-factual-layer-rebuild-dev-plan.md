@@ -2539,12 +2539,86 @@ then cannot introduce a description that lies, because it never writes one.
 written snapshot requires a cleanup session" is true, is unobvious, and is exactly the kind of fact a
 confirmation dialog exists to carry — and it can only carry it if `effect` holds it.
 
-##### Mechanics to settle before building
+##### HOW MCP DRIVES A UI — the technical shape
 
-`start_forensic_scan` already exists, so this either extends its contract or is a new tool, and it must
-skip calibration for a URL already calibrated. The MCP-to-browser-and-back handoff also has precedent
-here: `oauthInteractionRoutes` is exactly *the tool needs a human in a browser, then continues* — read
-it before inventing a second shape.
+**The constraint everything follows from: an MCP tool call is request/response and cannot wait for a
+human.** There is no protocol primitive for a server driving a client's UI, and a client times out long
+before a researcher finishes marking twenty pages. MCP *elicitation* does not rescue it either — it is
+for structured field input, not an interactive canvas, and client support varies.
+
+```
+chat    -> MCP: start_...(url)            creates a session row, returns a URL, RETURNS NOW
+browser -> /article-rules/:sessionId      the human works; the browser reads and writes
+                                          ONLY that session row
+chat    -> MCP: get_article_rules(id)     reads the outcome when the human says they are done
+```
+
+**`oauthInteractionRoutes` is already this pattern** — a `uid` in the path, a frontend page at
+`/oauth/interaction/:uid`, a read-only `GET /:uid` for state, and posts that finish the interaction.
+**Extend that shape; do not invent a second one.**
+
+**THE CONTRACT IS A SESSION ROW, NOT A CALLBACK.** The tool and the browser never talk to each other —
+both talk to a row holding the URL, the mode, the ruleset under construction, which captures were
+shown, which were corrected, the correction counter and the decision log. Resumption is then free
+(close the tab, reopen the URL), the model can ask "are we done?" at any time, and nothing anywhere is
+blocked. **Name it `ArticleRuleSession` or `CalibrationRun`, NOT "session"** — `ResearchSession` exists
+and means something else.
+
+**THE UI WRITES DECISIONS. THE BACKEND APPLIES EFFECTS.** The browser never calls `recordCapture`,
+never writes a snapshot and never triggers an anchor; it appends *"capture X approved"* to the session,
+and the scanner — the same code path that runs headless — reads decisions and performs the writes.
+Three consequences: `ApprovalPolicy.apply()` runs server-side, so a scan cannot depend on a browser
+staying open; every UI write is reversible session state, so *never irreversible or unrecorded* holds
+without exception; and the interactive and headless paths are THE SAME PATH, differing only in whether
+they consult a decision log.
+
+**THREE TOOLS, ONE SERVICE.**
+
+| tool | precondition | returns |
+|---|---|---|
+| `correct_article_rules(url)` | the URL has stored captures | session URL |
+| `calibrate_article_rules(url)` | none | session URL |
+| `scan_with_approval(url, from?, to?)` | a ruleset exists for this URL | session URL |
+| `get_article_rules(sessionId)` | — | state, correction rate, ruleset version, what remains |
+
+Three tools rather than one with a `mode` enum because the preconditions genuinely differ and a tool
+DESCRIPTION is how the model decides what to call: **a wrong enum value is representable, a wrong tool
+is not.** The tool layer stays thin over one service. Each start tool returns the declared `effect`, so
+the chat shows what approving will do before the browser is even opened.
+
+##### PREREQUISITE THAT DOES NOT EXIST YET — durable run state
+
+`start_forensic_scan` is fire-and-forget and its concurrency guard is **in memory**: *"runFullScan()
+carries its own in-memory concurrent-run guard per trackedUrlId"*. So today there is **no persistent
+run state and no progress** — a restart loses the run, nothing can report how far a scan got, and two
+processes would not see each other's guard.
+
+All three modes need a durable run record, and mode 2 cannot work without one: *approve and continue*
+is meaningless if the run cannot be resumed. **This is a prerequisite, not part of the UI, and it is a
+real gap in the current scanner whether or not any of this is built.**
+
+##### Failure modes to design against
+
+- **Two browsers on one session** — last-write-wins would silently corrupt a ruleset. Version the
+  session; reject a write carrying a stale version.
+- **Session expired or gone** — OAuth already redirects with `expired=1`. Same treatment, not a 500.
+- **The model polling `get_article_rules` on a timer** — make it cheap, and say in the tool description
+  that it is called when the HUMAN says they are done.
+- **A ruleset changing under a run in progress** — pin the ruleset version into the run record, so a
+  scan uses the rules that were approved rather than whatever the rules became.
+
+##### Anti-patterns, named so they are not proposed later
+
+Do not block the tool call. Do not make the tool poll. Do not put effect logic in the browser. Do not
+invent a second browser-handoff mechanism when OAuth's exists. Do not let the UI hold state the session
+row does not — that is what makes resumption fail six months later.
+
+##### Other mechanics
+
+`start_forensic_scan` already exists, so scanning either extends its contract or becomes a new tool,
+and it must skip calibration for a URL already calibrated. Auth: **the session id in the URL is a
+POINTER, NOT A CREDENTIAL** — reuse the existing researcher auth rather than putting a bearer token in
+a URL, where it leaks through history and referrers.
 
 ##### THE OPEN QUESTION, AND IT IS THE WHOLE THING: filtering is UNMEASURED
 
@@ -2599,7 +2673,11 @@ consent is bounded to the approved era · the stopping indicator is the correcti
 to calibration · the UI rule is *never irreversible or unrecorded* · no frequency signal, and no
 self-assessed confidence score.
 
-**Open:** whether filtering is safe at all (stage 2 answers it) · the marking UX · the next-capture
+**Also decided (technical shape):** the MCP-to-UI contract is a SESSION ROW, extending the OAuth
+handoff · the UI writes DECISIONS and the backend applies EFFECTS · three tools over one service ·
+durable run state is a PREREQUISITE.
+
+**Open:** whether filtering is safe at all (mode 3 answers it more cheaply than stage 2) · the marking UX · the next-capture
 selection policy, which is the same mechanism as the indicator · how a ruleset is inherited by a
 second URL on the same site · what "the page stopped resembling the approved set" is computed from.
 
