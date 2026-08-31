@@ -190,6 +190,33 @@ export function ArticleRulesClient({ runId }: { runId: string }) {
     [base, call],
   );
 
+  /**
+   * Write ONE decision for a ruleset that was actually adopted.
+   *
+   * COALESCED, BY RESEARCHER DECISION. A toggle-to-look and a considered change
+   * are the same event to the log otherwise: eight `RULESET_CORRECTED` rows for
+   * one capture's worth of exploration, which is the record a future reader
+   * audits. Comparing against what was last RECORDED — not against the previous
+   * click — means marking a block and unmarking it writes nothing at all,
+   * because the ruleset ended where it started.
+   *
+   * `foldEpisodes` already coalesces at the EPISODE level, so the correction
+   * RATE was never wrong. This is about the log, not the indicator.
+   */
+  const flushCorrection = useCallback(async () => {
+    if (!state || state.status !== 'OPEN') return;
+    if (sameSet(selectors, state.selectors)) return;
+    const next = await call<RunState>(`${base}/decisions`, {
+      method: 'POST',
+      body: JSON.stringify({
+        expectedVersion: state.version,
+        type: 'RULESET_CORRECTED',
+        selectors,
+      }),
+    });
+    setState(next);
+  }, [base, call, selectors, state]);
+
   const guard = async (work: () => Promise<void>) => {
     setBusy(true);
     setError(null);
@@ -208,12 +235,17 @@ export function ArticleRulesClient({ runId }: { runId: string }) {
   };
 
   const showCapture = (snapshotId: string) =>
-    void guard(async () => {
-      const detail = await call<CaptureDetail>(`${base}/captures/${snapshotId}`);
-      setCapture(detail);
-      await runPreview(snapshotId, selectors);
-      await decide('CAPTURE_SHOWN', { snapshotId });
-    });
+    void guard(() =>
+      // Settle first: the draft belongs to the capture being left, not the one
+      // being opened.
+      settleThen(async () => {
+        const detail = await call<CaptureDetail>(`${base}/captures/${snapshotId}`);
+        setCapture(detail);
+        await runPreview(snapshotId, selectors);
+        await decide('CAPTURE_SHOWN', { snapshotId });
+      }),
+    );
+
 
   const decide = async (type: DecisionType, extra: Record<string, unknown> = {}) => {
     if (!state) return;
@@ -224,12 +256,72 @@ export function ArticleRulesClient({ runId }: { runId: string }) {
     setState(next);
   };
 
-  const applyRules = (rules: string[]) =>
-    void guard(async () => {
-      setSelectors(rules);
-      if (capture) await runPreview(capture.snapshotId, rules);
-      await decide('RULESET_CORRECTED', { selectors: rules });
-    });
+  /**
+   * Settle the draft, then act.
+   *
+   * ORDER MATTERS AND IT IS SEQUENTIAL. A judgement is ABOUT a ruleset, so the
+   * ruleset it judges has to be in the log before it. Running them concurrently
+   * would also race the optimistic-concurrency version and turn an ordinary
+   * accept into a 409.
+   */
+  const settleThen = async (work: () => Promise<void>) => {
+    await flushCorrection();
+    await work();
+  };
+
+  // ---------------------------------------------------------------------
+  // The draft, debounced twice on different clocks.
+  //
+  // The PREVIEW follows the tree closely, because it is the feedback the
+  // researcher is watching. The DECISION waits longer, because it is a record
+  // and a record of every intermediate click is noise. Neither blocks a click.
+  // ---------------------------------------------------------------------
+  useEffect(() => {
+    if (!capture) return undefined;
+    const id = setTimeout(() => {
+      void runPreview(capture.snapshotId, selectors).catch(() => undefined);
+    }, PREVIEW_MS);
+    return () => { clearTimeout(id); };
+  }, [capture, selectors, runPreview]);
+
+  useEffect(() => {
+    if (!capture || state === null || state.status !== 'OPEN') return undefined;
+    if (sameSet(selectors, state.selectors)) return undefined;
+    const id = setTimeout(() => {
+      void (async () => {
+        try {
+          await flushCorrection();
+        } catch (err) {
+          // NEVER SWALLOWED. This is the write that makes the researcher's marks
+          // durable, so a failure here loses work silently — the one outcome
+          // this page must not produce. A 409 is another tab having got there
+          // first: re-read, and the effect re-runs and retries, because the
+          // draft still differs from what is recorded.
+          if (err instanceof StaleError) {
+            setNotice(err.message);
+            await refresh().catch(() => undefined);
+          } else {
+            setError(err instanceof Error ? err.message : t('offline'));
+          }
+        }
+      })();
+    }, SETTLE_MS);
+    return () => { clearTimeout(id); };
+  }, [capture, selectors, state, flushCorrection, refresh, t]);
+
+  /**
+   * Adopt a draft ruleset. RETURNS IMMEDIATELY — nothing here awaits the network.
+   *
+   * THE HIGHLIGHT MUST NOT WAIT FOR A ROUND TRIP. Every click used to fire two
+   * sequential POSTs with the whole tree `disabled` until both returned, so a
+   * click landing in that window hit a dead button and vanished. The researcher
+   * reported it as "click takes time to turn yellow, it takes several clicks",
+   * which is exactly what it was.
+   *
+   * The preview and the decision are driven by the effect below instead.
+   */
+  const applyRules = (rules: string[]) => { setSelectors(rules); };
+
 
   const finish = (action: 'commit' | 'abandon') =>
     void guard(async () => {
@@ -310,9 +402,10 @@ export function ArticleRulesClient({ runId }: { runId: string }) {
               <Outline
                 node={capture.outline}
                 depth={0}
+                documentTextLength={capture.outline.textLength}
                 selected={selectors}
                 preview={preview}
-                disabled={busy || closed}
+                disabled={closed}
                 onToggle={(sel) => {
                   // CLICK MARKS, CLICK AGAIN UNMARKS. The researcher asked for
                   // this in as many words: "if I can click, I should be able to
@@ -395,11 +488,11 @@ export function ArticleRulesClient({ runId }: { runId: string }) {
       {capture && !closed && (
         <section className="flex flex-wrap items-center gap-2">
           <button type="button" disabled={busy} className="rounded bg-black px-3 py-2 text-sm text-white"
-            onClick={() => { void guard(() => decide('CAPTURE_ACCEPTED', { snapshotId: capture.snapshotId })); }}>
+            onClick={() => { void guard(() => settleThen(() => decide('CAPTURE_ACCEPTED', { snapshotId: capture.snapshotId }))); }}>
             {t('accept')}
           </button>
           <button type="button" disabled={busy} className="rounded border border-gray-400 px-3 py-2 text-sm"
-            onClick={() => { void guard(() => decide('CAPTURE_REJECTED', { snapshotId: capture.snapshotId })); }}>
+            onClick={() => { void guard(() => settleThen(() => decide('CAPTURE_REJECTED', { snapshotId: capture.snapshotId }))); }}>
             {t('reject')}
           </button>
           <span className="text-xs text-gray-600">{t('rejectNote')}</span>
@@ -412,10 +505,12 @@ export function ArticleRulesClient({ runId }: { runId: string }) {
             />
             <button type="button" disabled={busy || skipReason.trim() === ''} className="rounded border border-gray-400 px-2 py-1"
               onClick={() => {
-                void guard(async () => {
-                  await decide('CAPTURE_SKIPPED', { snapshotId: capture.snapshotId, reason: skipReason });
-                  setSkipReason('');
-                });
+                void guard(() =>
+                  settleThen(async () => {
+                    await decide('CAPTURE_SKIPPED', { snapshotId: capture.snapshotId, reason: skipReason });
+                    setSkipReason('');
+                  }),
+                );
               }}>
               {t('skip')}
             </button>
@@ -447,6 +542,24 @@ export function ArticleRulesClient({ runId }: { runId: string }) {
 
 /** A 409 is a race, not a fault, and the caller treats it differently. */
 class StaleError extends Error {}
+
+/**
+ * Two rulesets are the same rule, whatever order they were built in.
+ *
+ * ORDER IS NOT MEANING HERE. Marking the footer then the nav produces the same
+ * filter as marking the nav then the footer, so comparing arrays positionally
+ * would record a "correction" that changed nothing.
+ */
+function sameSet(a: readonly string[], b: readonly string[]): boolean {
+  if (a.length !== b.length) return false;
+  const seen = new Set(b);
+  return a.every((item) => seen.has(item));
+}
+
+/** How long the researcher has to keep clicking before anything is written. */
+const SETTLE_MS = 900;
+/** The removed pane should track the tree closely — it is the feedback. */
+const PREVIEW_MS = 200;
 
 function Shell({ children }: { children: React.ReactNode }) {
   return <main className="mx-auto flex max-w-6xl flex-col gap-4 p-4">{children}</main>;
@@ -506,6 +619,7 @@ const OPEN_TO_DEPTH = 2;
 function Outline({
   node,
   depth,
+  documentTextLength,
   selected,
   preview,
   disabled,
@@ -514,6 +628,8 @@ function Outline({
 }: {
   node: OutlineNode;
   depth: number;
+  /** The whole document's text. A rule matching all of it is not a rule. */
+  documentTextLength: number;
   selected: string[];
   preview: Preview | null;
   disabled: boolean;
@@ -523,6 +639,14 @@ function Outline({
   const [open, setOpen] = useState(depth < OPEN_TO_DEPTH);
   const isSelected = selected.includes(node.selector);
   const count = preview?.matchCounts[node.selector];
+
+  // MARKING THE WHOLE DOCUMENT IS NOT A FURNITURE RULE, it is "delete the page".
+  // The first researcher to use the rebuilt tree marked `body.rtl` while
+  // exploring and drove the removed pane to 98%. The removed pane told them
+  // loudly, which is what it is for — but the click should not have been on
+  // offer. Judged by TEXT rather than by depth, so a body with a single
+  // all-containing wrapper is refused too.
+  const wholeDocument = node.textLength >= documentTextLength;
 
   return (
     <div className={depth === 0 ? '' : 'ps-3'}>
@@ -543,11 +667,15 @@ function Outline({
 
         <button
           type="button"
-          disabled={disabled}
+          disabled={disabled || wholeDocument}
           onClick={() => { onToggle(node.selector); }}
-          title={isSelected ? t('unmark') : node.selector}
+          title={wholeDocument ? t('wholeDocument') : isSelected ? t('unmark') : node.selector}
           className={`min-w-0 flex-1 rounded px-1 text-start ${
-            isSelected ? 'bg-amber-100 ring-1 ring-amber-400' : 'hover:bg-gray-100'
+            wholeDocument
+              ? 'cursor-not-allowed text-gray-500'
+              : isSelected
+                ? 'bg-amber-100 ring-1 ring-amber-400'
+                : 'hover:bg-gray-100'
           }`}
         >
           {/* THE LABEL LEADS. The selector is what the system acts on and it is
@@ -567,6 +695,7 @@ function Outline({
             {node.collapsedFrom.length > 0 && (
               <span className="ms-1">· {t('foldedWrappers', { count: node.collapsedFrom.length })}</span>
             )}
+            {wholeDocument && <span className="ms-1">· {t('wholeDocument')}</span>}
           </span>
         </button>
       </div>
@@ -577,6 +706,7 @@ function Outline({
             key={child.selector}
             node={child}
             depth={depth + 1}
+            documentTextLength={documentTextLength}
             selected={selected}
             preview={preview}
             disabled={disabled}

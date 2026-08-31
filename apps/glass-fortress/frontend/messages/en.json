@@ -1819,6 +1819,7 @@
     "expand": "Expand",
     "collapse": "Collapse",
     "outlineHint": "Click a block to mark it as furniture. Click it again to unmark. Watch the removed pane on the right.",
-    "removedPinned": "Stays visible whichever tab is open — over-marking is invisible in the text that survives."
+    "removedPinned": "Stays visible whichever tab is open — over-marking is invisible in the text that survives.",
+    "wholeDocument": "The whole document — not a furniture rule, and not markable."
   }
 }
