@@ -342,14 +342,17 @@ function labelFor(el: Element, text: string): string {
  * vaccine page spends five of them getting from `<body>` to the article.
  */
 function isPassThrough(el: Element, text: string): boolean {
-  if (el.children.length !== 1) return false;
-  // `.item(0)` rather than `[0]`: the DOM types an indexed read on an
-  // HTMLCollection as `Element`, which makes the guard below look dead, while
-  // `item()` is `Element | null` by specification. Same shape as the `.at(0)`
-  // rule the two debt ratchets forced everywhere else — the spelling that is
-  // honest about absence is the one that satisfies both.
-  const only = el.children.item(0);
-  if (only === null) return false;
+  // COUNTED OVER TEXT-CARRYING CHILDREN ONLY, to agree with the tree that is
+  // actually built. The Walla news page wraps its article in `#root > div >
+  // section` and hangs 36 empty `<script>` tags off `<body>` beside them: by the
+  // raw child count none of those wrappers is a pass-through, so the spine
+  // stayed four levels deep while every level of it removed identical text. A
+  // child that carries no text is not a branch — it is not even in the tree.
+  const carrying = [...el.children].filter(
+    (child) => normaliseText(htmlToText(child.outerHTML)).length > 0,
+  );
+  const only = carrying.at(0);
+  if (carrying.length !== 1 || only === undefined) return false;
   return normaliseText(htmlToText(only.outerHTML)).length === text.length;
 }
 
@@ -375,8 +378,10 @@ function collapseWrappers(
   let current = el;
   // Bounded by the DOM itself: each step strictly descends, so it terminates.
   while (isPassThrough(current, normaliseText(htmlToText(current.outerHTML)))) {
-    const only = current.children.item(0);
-    if (only === null) break;
+    const only = [...current.children].find(
+      (child) => normaliseText(htmlToText(child.outerHTML)).length > 0,
+    );
+    if (only === undefined) break;
     current = only;
     chain.push(current);
   }
@@ -485,6 +490,28 @@ export function documentOutline(
     };
   };
 
+  /**
+   * A node that can never affect the derived text, and therefore is not a choice.
+   *
+   * `textLength` is the whole SUBTREE's text, so zero means nothing under this
+   * element contributes a character — every `<script>`, `<style>`, `<noscript>`,
+   * and every empty container. A chrome rule matching one of them removes
+   * nothing, in every capture, by construction.
+   *
+   * OMITTED RATHER THAN LABELLED, because the cost is not confusion but
+   * CROWDING. The Walla news page puts 36 empty `<script>` tags directly under
+   * `<body>`, ahead of the article — the researcher opened it and reported
+   * having nothing to click, while looking at a wall of rows that could not have
+   * done anything if clicked.
+   *
+   * The trade is real and worth stating: an ad slot that is empty in THIS
+   * capture disappears from THIS capture's tree. It costs nothing, because a
+   * rule against it would also have removed nothing here — and in a capture
+   * where that slot does carry text, it carries text and appears.
+   */
+  const carriesText = (el: Element): boolean =>
+    normaliseText(htmlToText(el.outerHTML)).length > 0;
+
   const rootPair = { node: build(doc.body).node, element: doc.body };
   // The body is never folded away: it is the tree's root and the researcher's
   // frame of reference, even when it wraps a single element.
@@ -503,8 +530,9 @@ export function documentOutline(
     let exhausted = false;
 
     for (const { node, element } of frontier) {
-      if (element.children.length === 0) continue;
-      if (exhausted || nodes + element.children.length > maxNodes) {
+      const markable = [...element.children].filter(carriesText);
+      if (markable.length === 0) continue;
+      if (exhausted || nodes + markable.length > maxNodes) {
         // Not expanded. Recorded rather than silently dropped, and the text it
         // holds is what the researcher cannot reach.
         exhausted = true;
@@ -513,6 +541,7 @@ export function documentOutline(
         continue;
       }
       for (const child of element.children) {
+        if (!carriesText(child)) continue;
         const pair = build(child);
         node.children.push(pair.node);
         next.push(pair);
@@ -524,7 +553,7 @@ export function documentOutline(
 
   // Whatever the depth guard left unexpanded is unreachable too.
   for (const { node, element } of frontier) {
-    if (element.children.length > 0) {
+    if ([...element.children].some(carriesText)) {
       truncated = true;
       unreachableTextLength += node.textLength;
     }

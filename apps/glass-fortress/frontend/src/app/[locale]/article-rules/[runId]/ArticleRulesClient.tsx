@@ -65,13 +65,34 @@ interface RunState {
   distinctCapturesShown: number;
   /** Captures a human ACTED on. Showing is not judging — see calibrationRun.ts. */
   capturesJudged: number;
+  /** WHICH captures were judged, folded from the log — not remembered in this tab. */
+  judgedCaptures: { snapshotId: string; verdict: DecisionType }[];
   corrections: number;
   capturesNeedingCorrection: number;
   correctionRate: number | null;
   consecutiveCleanCaptures: number;
   staleSelectors: { selector: string; lastMatchedAt: string | null }[];
   storedCaptures: number;
+  /** The backend's English rendering. Kept for headless callers; not shown here. */
   effect: string;
+  /** The same effect as STRUCTURED FACTS, which is what this page renders. */
+  effectDeclaration: ApprovalEffect;
+}
+
+/**
+ * What approving will actually do, as data rather than as a sentence.
+ *
+ * The write kinds are a closed set on the backend precisely so that a new mode
+ * cannot introduce a description that lies. Rendering from the declaration keeps
+ * that property AND lets the words come from the locale file — the prose field
+ * was English, and it was the one sentence asking a Hebrew reader to authorise
+ * a write across every stored capture.
+ */
+interface ApprovalEffect {
+  writes: { kind: string; rows: number }[];
+  reversible: boolean;
+  reversedBy?: string;
+  requiresCleanupSessionToUndo: boolean;
 }
 
 interface CaptureRow {
@@ -120,15 +141,16 @@ export function ArticleRulesClient({ runId }: { runId: string }) {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   /**
-   * Captures judged in THIS tab, so the page can advance and show which are done.
+   * Captures judged in this tab SINCE the last state read.
    *
-   * A JUDGEMENT THAT LEAVES NO TRACE ON SCREEN READS AS A DEAD BUTTON. The
-   * researcher accepted a capture, the decision was written, the streak
-   * incremented — and the page did not move, confirm, or advance, so they
-   * reported the control as unresponsive. They were describing what they saw
-   * accurately.
+   * A BRIDGE, NOT A RECORD. It exists only so the tick appears on the click
+   * rather than on the round trip; the authority is `state.judgedCaptures`,
+   * folded from the decision log. An earlier version made this the ONLY source,
+   * so a reload erased every verdict the researcher had recorded and the capture
+   * strip went blank — they reported not being able to see which versions they
+   * had confirmed, and the system had known all along.
    */
-  const [judged, setJudged] = useState<string[]>([]);
+  const [judgedLocal, setJudgedLocal] = useState<string[]>([]);
   /**
    * The selector set the current preview was computed for.
    *
@@ -342,14 +364,14 @@ export function ArticleRulesClient({ runId }: { runId: string }) {
     void guard(() =>
       settleThen(async () => {
         await decide(type, { snapshotId, ...extra });
-        setJudged((prev) => (prev.includes(snapshotId) ? prev : [...prev, snapshotId]));
+        setJudgedLocal((prev) => (prev.includes(snapshotId) ? prev : [...prev, snapshotId]));
         if (type === 'CAPTURE_REJECTED') {
           setNotice(t('recordedRejected'));
           return;
         }
         setNotice(type === 'CAPTURE_ACCEPTED' ? t('recordedAccepted') : t('recordedSkipped'));
         const next = captures?.sample.find(
-          (row) => row.id !== snapshotId && !judged.includes(row.id),
+          (row) => row.id !== snapshotId && !verdicts.has(row.id),
         );
         if (!next) {
           setNotice(t('sampleExhausted'));
@@ -376,6 +398,19 @@ export function ArticleRulesClient({ runId }: { runId: string }) {
     }, PREVIEW_MS);
     return () => { clearTimeout(id); };
   }, [capture, selectors, runPreview]);
+
+  /**
+   * Verdict per capture: the log's, with this tab's newest clicks layered on.
+   *
+   * The server is the authority and the local set only covers the gap between a
+   * click and the next state read, so a reload loses nothing.
+   */
+  // Not memoised: it is a Map over at most a dozen rows, rebuilt per render. An
+  // explicit `useMemo` here is memoisation the compiler then refuses to preserve,
+  // which is a lint error bought with no measurable saving.
+  const verdicts = new Map<string, DecisionType>();
+  for (const row of state?.judgedCaptures ?? []) verdicts.set(row.snapshotId, row.verdict);
+  for (const id of judgedLocal) if (!verdicts.has(id)) verdicts.set(id, 'CAPTURE_ACCEPTED');
 
   // Stale exactly when the rules have moved on from what was previewed.
   const previewPending = previewFor === null || !sameSet(selectors, previewFor);
@@ -460,7 +495,7 @@ export function ArticleRulesClient({ runId }: { runId: string }) {
                 nothing, they could not even tell whether the last one counted. */}
             <ul className="mt-1 flex flex-wrap gap-1">
               {captures.sample.map((c) => {
-                const isJudged = judged.includes(c.id);
+                const verdict = verdicts.get(c.id);
                 const isCurrent = capture?.snapshotId === c.id;
                 return (
                   <li key={c.id}>
@@ -468,14 +503,18 @@ export function ArticleRulesClient({ runId }: { runId: string }) {
                       type="button"
                       disabled={busy || closed}
                       onClick={() => { showCapture(c.id); }}
-                      title={isJudged ? t('judgedBadge') : c.snapshotDate}
+                      title={verdict === undefined ? c.snapshotDate : t('judgedBadge')}
                       className={`rounded border px-2 py-1 text-xs disabled:opacity-50 ${
-                        isJudged
-                          ? 'border-green-600 bg-green-100 text-green-900'
-                          : 'border-gray-300'
+                        VERDICT_STYLE[verdict ?? 'NONE']
                       } ${isCurrent ? 'font-semibold ring-2 ring-black' : ''}`}
                     >
-                      {isJudged && <span aria-hidden>✓ </span>}
+                      {/* THE VERDICT, NOT JUST "DONE". A capture the rules were
+                          right on and one they were wrong on have both been
+                          judged; showing them alike would hide the disagreement,
+                          which is the only thing the sample is there to find. */}
+                      {verdict === 'CAPTURE_ACCEPTED' && <span aria-hidden>✓ </span>}
+                      {verdict === 'CAPTURE_REJECTED' && <span aria-hidden>✕ </span>}
+                      {verdict === 'CAPTURE_SKIPPED' && <span aria-hidden>– </span>}
                       {c.snapshotDate}
                     </button>
                   </li>
@@ -500,11 +539,18 @@ export function ArticleRulesClient({ runId }: { runId: string }) {
           <section className="flex min-w-0 flex-col">
             <h2 className="font-semibold">{t('outlineHeading')}</h2>
             <p className="text-xs text-gray-600">{t('outlineHint')}</p>
-            {capture.outlineTruncated ? (
+            {/* A CUT AND A LOSS ARE DIFFERENT FACTS. Saying "the structure was
+                cut — 0 characters cannot be marked" in one breath reads as a
+                contradiction and trains the researcher to ignore the warning
+                that matters. The alarming version is reserved for a cut that
+                actually put text out of reach. */}
+            {capture.outlineTruncated && capture.outlineUnreachableTextLength > 0 ? (
               <p className="mt-1 rounded bg-amber-50 p-2 text-xs text-amber-900">
                 {t('outlineTruncated')}{' '}
                 {t('outlineUnreachable', { chars: capture.outlineUnreachableTextLength })}
               </p>
+            ) : capture.outlineTruncated ? (
+              <p className="mt-1 text-xs text-gray-500">{t('outlineTruncatedHarmless')}</p>
             ) : (
               <p className="mt-1 text-xs text-gray-500">{t('outlineComplete')}</p>
             )}
@@ -595,8 +641,18 @@ export function ArticleRulesClient({ runId }: { runId: string }) {
         </div>
       )}
 
+      {/*
+        TWO DIFFERENT SCOPES, AND THEY MUST NOT LOOK ALIKE. Judging a capture is
+        about ONE capture and writes a decision; applying the rules is about the
+        WHOLE PAGE, saves the ruleset and re-derives every stored capture. They
+        sat adjacent as two black buttons, one above the other, and the
+        researcher reported the pair as confusing — correctly, because nothing on
+        screen said they operated on different things. Each group is now headed
+        by what it acts on.
+      */}
       {capture && !closed && (
-        <section className="flex flex-wrap items-center gap-2">
+        <section className="flex flex-wrap items-center gap-2 rounded border border-gray-300 p-3">
+          <h2 className="w-full font-semibold">{t('captureVerdictHeading')}</h2>
           <button type="button" disabled={busy}
             className="rounded bg-black px-3 py-2 text-sm text-white disabled:opacity-50"
             onClick={() => { judge('CAPTURE_ACCEPTED'); }}>
@@ -626,21 +682,32 @@ export function ArticleRulesClient({ runId }: { runId: string }) {
       )}
 
       {!closed && (
-        <section className="rounded border border-gray-300 p-3">
-          {/* RENDERED FROM THE BACKEND'S DECLARATION. Nobody writes this sentence
-              on this side — a confirmation authored next to the effect it
-              describes is free to drift from it. */}
-          <p className="text-sm">{state.effect}</p>
+        <section className="rounded border-2 border-gray-400 bg-gray-50 p-3">
+          <h2 className="font-semibold">{t('finishHeading')}</h2>
+          {/* RENDERED FROM THE BACKEND'S STRUCTURED DECLARATION, not from its
+              English prose. The principle stands — nobody authors this sentence
+              next to the effect it describes, because such a sentence is free to
+              drift — but `effectDeclaration` carries the FACTS (which write
+              kinds, how many rows, whether it is reversible) while the WORDS
+              come from the locale file. The prose field put an untranslated
+              English paragraph in front of a Hebrew reader at the one moment the
+              page asks them to authorise something. */}
+          <EffectSummary effect={state.effectDeclaration} t={t} />
           <div className="mt-2 flex gap-2">
-            <button type="button" disabled={busy} className="rounded bg-black px-3 py-2 text-sm text-white"
+            <button type="button" disabled={busy} className="rounded bg-black px-3 py-2 text-sm text-white disabled:opacity-50"
               onClick={() => { finish('commit'); }}>
-              {t('commit')}
+              {t('commit', { count: state.storedCaptures })}
             </button>
-            <button type="button" disabled={busy} className="rounded border border-gray-400 px-3 py-2 text-sm"
+            <button type="button" disabled={busy} className="rounded border border-gray-400 px-3 py-2 text-sm disabled:opacity-50"
               onClick={() => { finish('abandon'); }}>
               {t('abandon')}
             </button>
           </div>
+          {/* "CLOSE WITHOUT SAVING" WAS A LIE, and the researcher caught it:
+              accepting a capture DOES save something — a decision in the run's
+              log. What closing without applying does not save is the RULESET.
+              Naming the two separately is the whole fix. */}
+          <p className="mt-2 text-xs text-gray-600">{t('abandonNote')}</p>
         </section>
       )}
     </Shell>
@@ -649,6 +716,46 @@ export function ArticleRulesClient({ runId }: { runId: string }) {
 
 /** A 409 is a race, not a fault, and the caller treats it differently. */
 class StaleError extends Error {}
+
+/**
+ * What approving does, rendered from the backend's STRUCTURED declaration.
+ *
+ * The principle the prose field was protecting still holds — nobody authors a
+ * confirmation next to the effect it describes, because such a sentence drifts
+ * away from the code as soon as a new write kind appears. What it got wrong was
+ * shipping the SENTENCE rather than the FACTS: the backend's rendering is
+ * English, and it was the one thing on a Hebrew page asking the researcher to
+ * authorise a write across every stored capture.
+ *
+ * So the facts come from the closed set of write kinds and the words come from
+ * the locale file. An UNKNOWN kind renders as its raw name and its row count
+ * rather than being dropped: a write nobody has translated yet must still be
+ * visible, because the failure mode this whole panel exists to prevent is a
+ * researcher approving something the page did not mention.
+ */
+function EffectSummary({
+  effect,
+  t,
+}: {
+  effect: ApprovalEffect;
+  t: ReturnType<typeof useTranslations>;
+}) {
+  const WORDS: Record<string, (rows: number) => string> = {
+    ARTICLE_RULESET: () => t('effectRuleset'),
+    REDERIVED_CAPTURES: (rows) => t('effectRederive', { count: rows }),
+  };
+  return (
+    <>
+      <p className="text-sm">{t('effectHeading')}</p>
+      <ul className="list-disc ps-5 text-sm">
+        {effect.writes.map((w) => (
+          <li key={w.kind}>{(WORDS[w.kind] ?? (() => `${w.kind} × ${String(w.rows)}`))(w.rows)}</li>
+        ))}
+      </ul>
+      {effect.reversible && <p className="text-xs text-gray-600">{t('effectReversible')}</p>}
+    </>
+  );
+}
 
 /**
  * Two rulesets are the same rule, whatever order they were built in.
@@ -662,6 +769,14 @@ function sameSet(a: readonly string[], b: readonly string[]): boolean {
   const seen = new Set(b);
   return a.every((item) => seen.has(item));
 }
+
+/** How a judged capture reads in the strip. Accepted is the only green one. */
+const VERDICT_STYLE: Record<string, string> = {
+  CAPTURE_ACCEPTED: 'border-green-600 bg-green-100 text-green-900',
+  CAPTURE_REJECTED: 'border-amber-600 bg-amber-100 text-amber-900',
+  CAPTURE_SKIPPED: 'border-gray-400 bg-gray-100 text-gray-600',
+  NONE: 'border-gray-300',
+};
 
 /** How long the researcher has to keep clicking before anything is written. */
 const SETTLE_MS = 900;

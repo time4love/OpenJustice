@@ -360,6 +360,69 @@ describe('the stopping indicator', () => {
     expect(state.consecutiveCleanCaptures).toBe(2);
   });
 
+  // -------------------------------------------------------------------------
+  // WHICH captures were judged, not just how many.
+  //
+  // The marking page tracked this in the browser tab, so a reload erased every
+  // verdict and the capture strip went blank — the researcher reported not being
+  // able to see which versions they had confirmed. The log knew all along.
+  // -------------------------------------------------------------------------
+
+  it('folds which captures were judged, and what the verdict was', async () => {
+    (prisma.calibrationRun.findUnique as jest.Mock).mockResolvedValue({
+      ...runRow([OPENED]),
+      // EVERY JUDGEMENT NAMES ITS CAPTURE, because `requireSubjectForType`
+      // enforces exactly that on append — CAPTURE_ACCEPTED, _REJECTED and
+      // _SKIPPED are all capture-bearing. The bare `ACCEPTED` fixture at the top
+      // of this file predates that rule and is only safe in tests that count
+      // rather than attribute; a log the service would actually have written
+      // always carries the id.
+      decisions: log([
+        OPENED,
+        { ...SHOWN, snapshotId: 'snap-1' },
+        { ...ACCEPTED, snapshotId: 'snap-1' },
+        { ...SHOWN, snapshotId: 'snap-2' },
+        { type: CalibrationDecisionType.CAPTURE_SKIPPED, snapshotId: 'snap-2' },
+        { ...SHOWN, snapshotId: 'snap-3' },
+      ]),
+    });
+
+    const state = await readCalibrationRun('run-1');
+    // snap-3 was shown and never judged, so it must not appear.
+    expect(state.judgedCaptures).toEqual([
+      { snapshotId: 'snap-1', verdict: CalibrationDecisionType.CAPTURE_ACCEPTED },
+      { snapshotId: 'snap-2', verdict: CalibrationDecisionType.CAPTURE_SKIPPED },
+    ]);
+  });
+
+  it('lets the NEWEST verdict on a capture stand', async () => {
+    // A rejection routes back to marking, so the same capture is judged again.
+    // Reporting the rejection after the researcher has accepted it would show a
+    // disagreement that was already resolved.
+    (prisma.calibrationRun.findUnique as jest.Mock).mockResolvedValue({
+      ...runRow([OPENED]),
+      decisions: log([
+        OPENED,
+        { ...SHOWN, snapshotId: 'snap-1' },
+        { type: CalibrationDecisionType.CAPTURE_REJECTED, snapshotId: 'snap-1' },
+        { type: CalibrationDecisionType.RULESET_CORRECTED, selectors: ['.ad'] },
+        { ...SHOWN, snapshotId: 'snap-1' },
+        { ...ACCEPTED, snapshotId: 'snap-1' },
+      ]),
+    });
+
+    const state = await readCalibrationRun('run-1');
+    expect(state.judgedCaptures).toEqual([
+      { snapshotId: 'snap-1', verdict: CalibrationDecisionType.CAPTURE_ACCEPTED },
+    ]);
+  });
+
+  it('reports no judged captures before anything has been judged', async () => {
+    mockRun([OPENED, SHOWN]);
+    const state = await readCalibrationRun('run-1');
+    expect(state.judgedCaptures).toEqual([]);
+  });
+
   it('treats a rejection’s correction as dirtying the capture it followed', async () => {
     // A rejection means the RULES are wrong, not that the capture is bad, so it
     // routes back to marking and the correction lands inside the same episode.
