@@ -39,6 +39,14 @@ export interface CaptureForMarking {
   outline: OutlineNode;
   /** True when the outline was cut short by depth or node count. */
   outlineTruncated: boolean;
+  /**
+   * Characters the researcher cannot reach because the outline was cut there.
+   *
+   * `outlineTruncated` alone is what the MOH page reported while putting 76% of
+   * itself out of reach. A bare boolean cannot tell a cut that lost a footnote
+   * from one that lost the article.
+   */
+  outlineUnreachableTextLength: number;
 }
 
 export interface CapturePreview {
@@ -97,6 +105,7 @@ export async function loadCaptureForMarking(snapshotId: string): Promise<Capture
     html: inertDocument(html),
     outline: outline.root,
     outlineTruncated: outline.truncated,
+    outlineUnreachableTextLength: outline.unreachableTextLength,
   };
 }
 

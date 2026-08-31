@@ -43,6 +43,15 @@ interface OutlineNode {
   classes: string[];
   textLength: number;
   positional: boolean;
+  /**
+   * What this block IS, in words. THE SELECTOR IS NOT A LABEL: the first
+   * researcher to use this page reported the tree as "very technical, using
+   * cryptic code, and it is very hard to understand what to click", and marking
+   * is supposed to be a PERCEPTION task.
+   */
+  label: string;
+  /** Pass-through wrappers folded into this row. Shown, never hidden. */
+  collapsedFrom: string[];
   children: OutlineNode[];
 }
 
@@ -79,6 +88,8 @@ interface CaptureDetail {
   html: string;
   outline: OutlineNode;
   outlineTruncated: boolean;
+  /** How much of the document a cut put out of reach. `true` alone hid 76% once. */
+  outlineUnreachableTextLength: number;
 }
 
 interface Preview {
@@ -273,51 +284,113 @@ export function ArticleRulesClient({ runId }: { runId: string }) {
         )}
       </section>
 
+      {/*
+        THE WORKING AREA. Marking happens in the left column and its consequence
+        is rendered in the right one, side by side, because the first walk found
+        the researcher clicking a node and seeing nothing happen: the removal
+        fraction and the removed text were three screens below the control.
+        A wide screen is assumed here and that is deliberate — this route sits
+        behind the researcher unlock and is not part of the public site, so the
+        project's mobile-first rule was never about this page. It still stacks.
+      */}
       {capture && (
-        <div className="grid gap-4 lg:grid-cols-2">
-          <section>
-            <h2 className="font-semibold">{t('renderedHeading')}</h2>
-            <p className="text-xs text-gray-600">{t('renderedNote')}</p>
-            {/*
-              NO `allow-scripts`, EVER. Selection happens against the outline
-              beside this frame, so nothing needs to run inside it. An empty
-              sandbox blocks scripts, forms, popups and same-origin access.
-            */}
-            <iframe
-              title={capture.snapshotUrl}
-              sandbox=""
-              srcDoc={capture.html}
-              className="h-96 w-full border border-gray-300 bg-white"
-            />
-          </section>
-
-          <section>
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+          <section className="flex min-w-0 flex-col">
             <h2 className="font-semibold">{t('outlineHeading')}</h2>
-            {capture.outlineTruncated && (
-              <p className="rounded bg-amber-50 p-2 text-xs text-amber-900">{t('outlineTruncated')}</p>
+            <p className="text-xs text-gray-600">{t('outlineHint')}</p>
+            {capture.outlineTruncated ? (
+              <p className="mt-1 rounded bg-amber-50 p-2 text-xs text-amber-900">
+                {t('outlineTruncated')}{' '}
+                {t('outlineUnreachable', { chars: capture.outlineUnreachableTextLength })}
+              </p>
+            ) : (
+              <p className="mt-1 text-xs text-gray-500">{t('outlineComplete')}</p>
             )}
-            <div className="h-96 overflow-auto border border-gray-300 p-2 text-xs">
+            <div className="mt-1 h-[32rem] overflow-auto border border-gray-300 p-2 text-xs">
               <Outline
                 node={capture.outline}
+                depth={0}
                 selected={selectors}
+                preview={preview}
                 disabled={busy || closed}
-                onPick={(sel) => { applyRules(selectors.includes(sel) ? selectors : [...selectors, sel]); }}
+                onToggle={(sel) => {
+                  // CLICK MARKS, CLICK AGAIN UNMARKS. The researcher asked for
+                  // this in as many words: "if I can click, I should be able to
+                  // unclick so I can play around freely." Marking used to be
+                  // one-way from the tree, with removal only from a list
+                  // somewhere else on the page.
+                  applyRules(
+                    selectors.includes(sel)
+                      ? selectors.filter((s) => s !== sel)
+                      : [...selectors, sel],
+                  );
+                }}
                 t={t}
               />
             </div>
           </section>
+
+          <div className="flex min-w-0 flex-col gap-4">
+            <Tabs
+              t={t}
+              tabs={[
+                {
+                  id: 'rendered',
+                  label: t('tabRendered'),
+                  body: (
+                    <>
+                      <p className="text-xs text-gray-600">{t('renderedNote')}</p>
+                      {/*
+                        NO `allow-scripts`, EVER. Selection happens against the
+                        outline beside this frame, so nothing needs to run inside
+                        it. An empty sandbox blocks scripts, forms, popups and
+                        same-origin access.
+                      */}
+                      <iframe
+                        title={capture.snapshotUrl}
+                        sandbox=""
+                        srcDoc={capture.html}
+                        className="mt-1 h-80 w-full border border-gray-300 bg-white"
+                      />
+                    </>
+                  ),
+                },
+                {
+                  id: 'kept',
+                  label: t('tabKept'),
+                  body: (
+                    <pre className="h-80 overflow-auto whitespace-pre-wrap border border-gray-300 p-2 text-xs">
+                      {preview?.keptText ?? ''}
+                    </pre>
+                  ),
+                },
+                {
+                  id: 'rules',
+                  label: t('tabRules'),
+                  body: (
+                    <Rules
+                      selectors={selectors}
+                      preview={preview}
+                      disabled={busy || closed}
+                      onRemove={(sel) => { applyRules(selectors.filter((s) => s !== sel)); }}
+                      t={t}
+                    />
+                  ),
+                },
+              ]}
+            />
+
+            {/*
+              PINNED, NEVER A TAB. The page's own text says why: a rule that
+              swallows a paragraph leaves something clean and convincing on
+              screen. Before and after are alternatives and may be tabbed;
+              REMOVED is the instrument, and an instrument you have to click to
+              reach is one you will not be looking at when it matters.
+            */}
+            {preview && <RemovedPane preview={preview} t={t} />}
+          </div>
         </div>
       )}
-
-      <Rules
-        selectors={selectors}
-        preview={preview}
-        disabled={busy || closed}
-        onRemove={(sel) => { applyRules(selectors.filter((s) => s !== sel)); }}
-        t={t}
-      />
-
-      {preview && <TextPanes preview={preview} t={t} />}
 
       {capture && !closed && (
         <section className="flex flex-wrap items-center gap-2">
@@ -421,36 +494,137 @@ function Indicator({ state, t }: { state: RunState; t: ReturnType<typeof useTran
   );
 }
 
+/**
+ * How deep the tree opens by itself.
+ *
+ * The whole document is now reachable, which on a news page is ~880 rows — a
+ * tree that would be complete and unusable at the same time. Two levels is the
+ * page's shape; anything below it opens on demand.
+ */
+const OPEN_TO_DEPTH = 2;
+
 function Outline({
   node,
+  depth,
   selected,
+  preview,
   disabled,
-  onPick,
+  onToggle,
   t,
 }: {
   node: OutlineNode;
+  depth: number;
   selected: string[];
+  preview: Preview | null;
   disabled: boolean;
-  onPick: (selector: string) => void;
+  onToggle: (selector: string) => void;
   t: ReturnType<typeof useTranslations>;
 }) {
+  const [open, setOpen] = useState(depth < OPEN_TO_DEPTH);
   const isSelected = selected.includes(node.selector);
+  const count = preview?.matchCounts[node.selector];
+
   return (
-    <div className="ps-2">
-      <button
-        type="button"
-        disabled={disabled}
-        onClick={() => { onPick(node.selector); }}
-        title={node.positional ? t('positional') : node.selector}
-        className={`text-start ${isSelected ? 'font-bold' : ''} ${node.positional ? 'text-amber-800' : ''}`}
-      >
-        <code>{node.selector}</code>{' '}
-        <span className="text-gray-500">({node.textLength})</span>
-      </button>
-      {node.children.map((child) => (
-        <Outline key={child.selector} node={child} selected={selected} disabled={disabled} onPick={onPick} t={t} />
-      ))}
+    <div className={depth === 0 ? '' : 'ps-3'}>
+      <div className="flex items-start gap-1 py-0.5">
+        {node.children.length > 0 ? (
+          <button
+            type="button"
+            onClick={() => { setOpen((v) => !v); }}
+            aria-label={open ? t('collapse') : t('expand')}
+            aria-expanded={open}
+            className="w-4 shrink-0 text-gray-500"
+          >
+            {open ? '▾' : '▸'}
+          </button>
+        ) : (
+          <span className="w-4 shrink-0" />
+        )}
+
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={() => { onToggle(node.selector); }}
+          title={isSelected ? t('unmark') : node.selector}
+          className={`min-w-0 flex-1 rounded px-1 text-start ${
+            isSelected ? 'bg-amber-100 ring-1 ring-amber-400' : 'hover:bg-gray-100'
+          }`}
+        >
+          {/* THE LABEL LEADS. The selector is what the system acts on and it is
+              still here, one line down and dimmed — it is simply no longer the
+              only thing on offer, which is what made the tree unreadable. */}
+          <span className={isSelected ? 'font-semibold' : ''}>{node.label}</span>{' '}
+          <span className="text-gray-500">({node.textLength})</span>
+          {isSelected && <span className="ms-1 text-amber-800">· {t('marked')}</span>}
+          {isSelected && count !== undefined && count !== 1 && (
+            <span className="ms-1 text-amber-800">
+              {count === 0 ? t('matchedNothing') : t('matched', { count })}
+            </span>
+          )}
+          <span className="block overflow-hidden text-ellipsis whitespace-nowrap text-[10px] text-gray-400">
+            <code>{node.selector}</code>
+            {node.positional && <span className="ms-1 text-amber-700">· {t('positional')}</span>}
+            {node.collapsedFrom.length > 0 && (
+              <span className="ms-1">· {t('foldedWrappers', { count: node.collapsedFrom.length })}</span>
+            )}
+          </span>
+        </button>
+      </div>
+
+      {open &&
+        node.children.map((child) => (
+          <Outline
+            key={child.selector}
+            node={child}
+            depth={depth + 1}
+            selected={selected}
+            preview={preview}
+            disabled={disabled}
+            onToggle={onToggle}
+            t={t}
+          />
+        ))}
     </div>
+  );
+}
+
+/**
+ * Before / after / rules, as the researcher asked for.
+ *
+ * These are ALTERNATIVES — three views of one capture, only one of which is
+ * useful at a time. What must never join them is the removed pane.
+ */
+function Tabs({
+  tabs,
+  t,
+}: {
+  tabs: { id: string; label: string; body: React.ReactNode }[];
+  t: ReturnType<typeof useTranslations>;
+}) {
+  const [active, setActive] = useState(tabs[0]?.id ?? '');
+  const current = tabs.find((tab) => tab.id === active) ?? tabs[0];
+  return (
+    <section className="min-w-0">
+      <div role="tablist" aria-label={t('title')} className="flex gap-1 border-b border-gray-300">
+        {tabs.map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            role="tab"
+            aria-selected={tab.id === current?.id}
+            onClick={() => { setActive(tab.id); }}
+            className={`rounded-t px-3 py-1 text-sm ${
+              tab.id === current?.id
+                ? 'border border-b-0 border-gray-300 bg-white font-semibold'
+                : 'text-gray-600'
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+      <div className="pt-2">{current?.body}</div>
+    </section>
   );
 }
 
@@ -501,25 +675,35 @@ function Rules({
   );
 }
 
-function TextPanes({ preview, t }: { preview: Preview; t: ReturnType<typeof useTranslations> }) {
+/**
+ * THE HALF THAT MAKES THIS PAGE HONEST. Never collapse it, never tab it away.
+ *
+ * The kept text moved into a tab and this did not, and the asymmetry is the
+ * whole point: what survives a rule is reassurance, and what a rule DESTROYS is
+ * the evidence. Over-matching is the dangerous direction and it is invisible in
+ * the kept pane by construction.
+ *
+ * It renders beside the tree rather than below it because the first walk found
+ * the researcher marking a node and reporting that nothing happened — the pane
+ * was three screens away, and it opened scrolled past the text it had removed.
+ */
+function RemovedPane({ preview, t }: { preview: Preview; t: ReturnType<typeof useTranslations> }) {
   const percent = useMemo(() => Math.round(preview.removalFraction * 100), [preview.removalFraction]);
+  const empty = preview.removedText === '';
   return (
-    <div className="grid gap-4 lg:grid-cols-2">
-      <section>
-        <h2 className="font-semibold">{t('keptHeading')}</h2>
-        <pre className="h-64 overflow-auto whitespace-pre-wrap border border-gray-300 p-2 text-xs">
-          {preview.keptText}
-        </pre>
-      </section>
-      <section>
-        {/* THE HALF THAT MAKES THIS PAGE HONEST. Never collapse or hide it. */}
-        <h2 className="font-semibold">{t('removedHeading')}</h2>
-        <p className="text-xs text-gray-600">{t('removedWhy')}</p>
-        <p className="text-xs">{t('removalFraction', { percent })}</p>
-        <pre className="h-64 overflow-auto whitespace-pre-wrap border border-amber-400 bg-amber-50 p-2 text-xs">
-          {preview.removedText === '' ? t('removedNothing') : preview.removedText}
-        </pre>
-      </section>
-    </div>
+    <section className="min-w-0">
+      <h2 className="font-semibold">{t('removedHeading')}</h2>
+      <p className="text-xs text-gray-600">{t('removedWhy')}</p>
+      <p className="text-xs text-gray-500">{t('removedPinned')}</p>
+      <p className={`text-sm ${percent > 0 ? 'font-semibold text-amber-900' : 'text-gray-600'}`}>
+        {t('removalFraction', { percent })}
+      </p>
+      {/* `overflow-anchor-none` and no scroll restoration: the pane always shows
+          the TOP of what was removed. It used to open scrolled to its tail, so
+          the researcher saw the end of a nav block and not the block. */}
+      <pre className="h-72 overflow-auto whitespace-pre-wrap border border-amber-400 bg-amber-50 p-2 text-xs">
+        {empty ? t('removedNothing') : preview.removedText}
+      </pre>
+    </section>
   );
 }

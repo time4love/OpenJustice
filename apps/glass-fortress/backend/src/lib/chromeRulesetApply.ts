@@ -201,6 +201,32 @@ export interface OutlineNode {
    * after the fact. Better the researcher sees it before committing.
    */
   positional: boolean;
+  /**
+   * What this element IS, in words a person can act on.
+   *
+   * THE TREE WAS UNUSABLE WITHOUT THIS. The first researcher to see it reported
+   * that the structure was "very technical, using cryptic code, and it is very
+   * hard to understand what to click" — and they were right: a selector is what
+   * the SYSTEM needs to act, not what a HUMAN needs to choose. Level 4 rests on
+   * marking being a PERCEPTION task, and a page's furniture is not perceivable
+   * through `div.footer-top > div:nth-of-type(1)`.
+   *
+   * Derived, in order, from: the landmark role a semantic tag or `role`
+   * attribute declares, an `aria-label`, and finally a short preview of the
+   * element's own text. The selector is still carried, and is still the thing a
+   * mark is made of — it just stops being the only thing on offer.
+   */
+  label: string;
+  /**
+   * Selectors of the single-child wrapper elements folded into this node.
+   *
+   * NOT HIDDEN, BECAUSE COLLAPSING IS STILL A CHOICE MADE FOR THE RESEARCHER.
+   * Marking a pass-through wrapper and marking its only child remove exactly
+   * the same characters, so offering both is noise — but the researcher is
+   * entitled to know which levels the tree skipped on their behalf. Empty for
+   * the overwhelming majority of nodes.
+   */
+  collapsedFrom: readonly string[];
   children: OutlineNode[];
 }
 
@@ -213,6 +239,15 @@ export interface DocumentOutline {
   root: OutlineNode;
   /** True when depth or node count cut the tree short. NEVER silent. */
   truncated: boolean;
+  /**
+   * Text characters sitting inside nodes whose children were NOT expanded.
+   *
+   * `truncated` says the tree was cut; this says how much of the document the
+   * cut put out of reach, which is the number that tells a researcher whether
+   * the cut mattered. On the MOH vaccine page the old depth bound made this
+   * 3,587 of 4,731 characters — 76% — while reporting only a bare `true`.
+   */
+  unreachableTextLength: number;
 }
 
 const SAFE_NAME = /^[A-Za-z_-][\w-]*$/;
@@ -252,6 +287,133 @@ function selectorFor(el: Element, doc: Document): { selector: string; positional
 }
 
 /**
+ * Landmark tags that describe themselves, and need no text preview.
+ *
+ * The value type says `| undefined` because a LOOKUP CAN MISS — most tags are
+ * not landmarks. Without it the indexed read types as `string`, the `??` after
+ * it becomes unreachable, and the debt ratchet correctly calls the guard dead:
+ * the condition was real and the type was lying about it.
+ */
+const LANDMARKS: Readonly<Record<string, string | undefined>> = {
+  nav: 'navigation',
+  header: 'header',
+  footer: 'footer',
+  main: 'main content',
+  aside: 'sidebar',
+  article: 'article',
+  section: 'section',
+  form: 'form',
+  table: 'table',
+  figure: 'figure',
+};
+
+/** The longest text preview a label carries. Enough to recognise, not to read. */
+const LABEL_PREVIEW = 60;
+
+/**
+ * What to call this element on screen.
+ *
+ * A LANDMARK BEATS A PREVIEW, because "navigation" is what the researcher is
+ * looking for and the nav's first link is not. Falls through to the element's
+ * own text only when nothing has declared what it is.
+ */
+function labelFor(el: Element, text: string): string {
+  const tag = el.tagName.toLowerCase();
+  const aria = el.getAttribute('aria-label')?.trim();
+  const role = el.getAttribute('role')?.trim().toLowerCase();
+  const landmark = LANDMARKS[tag] ?? (role !== undefined && role !== '' ? role : undefined);
+
+  if (aria !== undefined && aria !== '') {
+    return landmark === undefined ? aria : `${landmark} — ${aria}`;
+  }
+  if (landmark !== undefined) return landmark;
+
+  const preview = text.trim().slice(0, LABEL_PREVIEW);
+  if (preview === '') return `<${tag}>`;
+  return text.trim().length > LABEL_PREVIEW ? `${preview}…` : preview;
+}
+
+/**
+ * A pass-through wrapper: exactly one element child, and no text of its own.
+ *
+ * Marking it and marking its child remove IDENTICAL characters, so it is not a
+ * distinct choice — it is a level of nesting the researcher has to descend for
+ * nothing. Government templates are built almost entirely of these: the MOH
+ * vaccine page spends five of them getting from `<body>` to the article.
+ */
+function isPassThrough(el: Element, text: string): boolean {
+  if (el.children.length !== 1) return false;
+  // `.item(0)` rather than `[0]`: the DOM types an indexed read on an
+  // HTMLCollection as `Element`, which makes the guard below look dead, while
+  // `item()` is `Element | null` by specification. Same shape as the `.at(0)`
+  // rule the two debt ratchets forced everywhere else — the spelling that is
+  // honest about absence is the one that satisfies both.
+  const only = el.children.item(0);
+  if (only === null) return false;
+  return normaliseText(htmlToText(only.outerHTML)).length === text.length;
+}
+
+/**
+ * Follow a chain of pass-through wrappers to the element that actually branches.
+ *
+ * Returns that element and the selectors skipped on the way, so the tree can
+ * say which levels it folded rather than quietly losing them.
+ */
+function collapseWrappers(
+  el: Element,
+  doc: Document,
+): {
+  /** Whose CHILDREN the folded node shows: the end of the chain. */
+  target: Element;
+  /** Whose IDENTITY it carries — tag, id, classes, label — and whose selector. */
+  identity: Element;
+  skipped: string[];
+  selector: string;
+  positional: boolean;
+} {
+  const chain: Element[] = [el];
+  let current = el;
+  // Bounded by the DOM itself: each step strictly descends, so it terminates.
+  while (isPassThrough(current, normaliseText(htmlToText(current.outerHTML)))) {
+    const only = current.children.item(0);
+    if (only === null) break;
+    current = only;
+    chain.push(current);
+  }
+
+  // THE BEST SELECTOR IN THE CHAIN, not the first or the last. Every element in
+  // it removes the same text, so the one worth offering is the one most likely
+  // to survive a redesign — and collapsing must never trade a stable id for a
+  // positional path just because the positional one sits deeper.
+  // THE OUTERMOST NON-POSITIONAL ONE. Outer elements in a pass-through chain are
+  // the semantic containers — `nav`, `#main`, `#wrapper` — and inner ones are
+  // the generic `<div>`s and `<a>`s they wrap. Preferring the DEEPEST match
+  // instead once folded `<nav aria-label="Main menu">` away into its only link,
+  // which is the opposite of what a label is for. Falling back to the outermost
+  // keeps the node the caller actually asked about.
+  const scored = chain.map((c) => ({ el: c, ...selectorFor(c, doc) }));
+  const best = scored.find((c) => !c.positional) ?? scored.at(0);
+  /* istanbul ignore next -- chain always holds at least `el`. */
+  if (best === undefined) {
+    return { target: current, identity: current, skipped: [], ...selectorFor(current, doc) };
+  }
+
+  // IDENTITY AND CHILDREN COME FROM DIFFERENT ENDS, ON PURPOSE. The node is
+  // DESCRIBED by the element its selector points at — a node reading `#ad-slot`
+  // while calling itself a `<span>` describes neither element — and it is
+  // EXPANDED from the end of the chain, which is the whole point of folding.
+  // Every element between them removes identical text, so this is one choice
+  // presented once, not two choices merged.
+  return {
+    target: current,
+    identity: best.el,
+    skipped: scored.filter((c) => c.el !== best.el).map((c) => c.selector),
+    selector: best.selector,
+    positional: best.positional,
+  };
+}
+
+/**
  * The document's element structure, bounded.
  *
  * BOUNDED, AND IT SAYS WHEN IT CUT. A page with ten thousand elements would
@@ -259,46 +421,116 @@ function selectorFor(el: Element, doc: Document): { selector: string; positional
  * and a tree truncated SILENTLY would be a researcher marking against a document
  * they cannot see all of, which is the same class of error as the diff truncated
  * at eight chunks that this whole rebuild descends from.
+ *
+ * ---------------------------------------------------------------------------
+ * EXPANDED BREADTH-FIRST, AND DEPTH IS NO LONGER THE BINDING CONSTRAINT.
+ *
+ * The first version walked depth-first under `maxDepth: 6`. On the MOH vaccine
+ * page that made `div.articles-block` — 3,587 of the document's 4,731
+ * characters — an unopenable leaf, while `maxNodes: 400` never came close to
+ * binding at roughly 40 emitted nodes. The researcher was asked to mark
+ * timestamps and handed a tree in which every timestamp was out of reach.
+ *
+ * Two changes, and the second matters more than the first:
+ *
+ * 1. Pass-through wrappers are FOLDED, so nesting that carries no choice costs
+ *    no budget. This alone recovers five levels on that page.
+ * 2. Expansion is BREADTH-FIRST against the node budget. Depth-first spends the
+ *    whole budget on the first subtree, so a truncated outline loses the FOOTER
+ *    — a whole section of furniture — rather than losing detail. Level-order
+ *    means a cut can only ever remove depth, never a sibling: whatever the
+ *    budget, the researcher always sees the complete top-level shape of the
+ *    page and can descend where it matters.
+ *
+ * `maxDepth` survives only as a guard against pathological nesting; `maxNodes`
+ * is the real bound, and `unreachableTextLength` reports what a cut cost.
  */
 export function documentOutline(
   html: string,
   options: { maxDepth?: number; maxNodes?: number } = {},
 ): DocumentOutline {
-  const maxDepth = options.maxDepth ?? 6;
-  const maxNodes = options.maxNodes ?? 400;
+  // MEASURED ON THE TWO REAL PAGES THIS CORPUS HOLDS, not chosen for roundness.
+  // The MOH vaccine page needs depth 9 and 294 nodes; the Walla news page —
+  // which carries real ad slots and is the harder shape — needs depth 16 and
+  // 878. Both are then fully reachable, `unreachableTextLength: 0`. At the old
+  // `maxNodes: 400` the news page would have hidden 5,347 of its 6,426
+  // characters, so the cap that "never came near binding" on one page was the
+  // binding constraint on the other. Headroom above the measurement, and a
+  // breadth-first cut plus `unreachableTextLength` to make an overflow honest.
+  const maxDepth = options.maxDepth ?? 16;
+  const maxNodes = options.maxNodes ?? 1200;
   const dom = new JSDOM(html);
   const doc = dom.window.document;
 
-  let nodes = 0;
   let truncated = false;
+  let unreachableTextLength = 0;
 
-  const walk = (el: Element, depth: number): OutlineNode => {
-    nodes += 1;
-    const { selector, positional } = selectorFor(el, doc);
-    const node: OutlineNode = {
-      selector,
-      tag: el.tagName.toLowerCase(),
-      id: el.getAttribute('id'),
-      classes: [...el.classList],
-      textLength: normaliseText(htmlToText(el.outerHTML)).length,
-      positional,
-      children: [],
+  const build = (el: Element): { node: OutlineNode; element: Element } => {
+    const { target, identity, skipped, selector, positional } = collapseWrappers(el, doc);
+    // Identical for every element in a pass-through chain, by its definition.
+    const text = normaliseText(htmlToText(target.outerHTML));
+    return {
+      element: target,
+      node: {
+        selector,
+        tag: identity.tagName.toLowerCase(),
+        id: identity.getAttribute('id'),
+        classes: [...identity.classList],
+        textLength: text.length,
+        positional,
+        label: labelFor(identity, text),
+        collapsedFrom: skipped,
+        children: [],
+      },
     };
-    if (depth >= maxDepth) {
-      if (el.children.length > 0) truncated = true;
-      return node;
-    }
-    for (const child of el.children) {
-      if (nodes >= maxNodes) {
-        truncated = true;
-        break;
-      }
-      node.children.push(walk(child, depth + 1));
-    }
-    return node;
   };
 
-  return { root: walk(doc.body, 0), truncated };
+  const rootPair = { node: build(doc.body).node, element: doc.body };
+  // The body is never folded away: it is the tree's root and the researcher's
+  // frame of reference, even when it wraps a single element.
+  rootPair.node = {
+    ...rootPair.node,
+    selector: selectorFor(doc.body, doc).selector,
+    tag: 'body',
+    collapsedFrom: [],
+  };
+
+  let nodes = 1;
+  let frontier: { node: OutlineNode; element: Element }[] = [rootPair];
+
+  for (let depth = 0; depth < maxDepth && frontier.length > 0; depth += 1) {
+    const next: { node: OutlineNode; element: Element }[] = [];
+    let exhausted = false;
+
+    for (const { node, element } of frontier) {
+      if (element.children.length === 0) continue;
+      if (exhausted || nodes + element.children.length > maxNodes) {
+        // Not expanded. Recorded rather than silently dropped, and the text it
+        // holds is what the researcher cannot reach.
+        exhausted = true;
+        truncated = true;
+        unreachableTextLength += node.textLength;
+        continue;
+      }
+      for (const child of element.children) {
+        const pair = build(child);
+        node.children.push(pair.node);
+        next.push(pair);
+        nodes += 1;
+      }
+    }
+    frontier = next;
+  }
+
+  // Whatever the depth guard left unexpanded is unreachable too.
+  for (const { node, element } of frontier) {
+    if (element.children.length > 0) {
+      truncated = true;
+      unreachableTextLength += node.textLength;
+    }
+  }
+
+  return { root: rootPair.node, truncated, unreachableTextLength };
 }
 
 /**
