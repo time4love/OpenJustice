@@ -170,3 +170,158 @@ export function chromeRemovalFraction(derived: DerivedText & { chrome: ChromeApp
   const total = kept + removed;
   return total === 0 ? 0 : removed / total;
 }
+
+// ---------------------------------------------------------------------------
+// THE OUTLINE — what the researcher clicks, instead of the page itself.
+//
+// Marking is a perception task, so the capture is rendered for LOOKING. But a
+// click-to-select overlay inside an archived document needs `allow-scripts` on
+// the iframe, and these are captures of real sites carrying real analytics and
+// advertising tags: that permission runs their code in the researcher's
+// authenticated origin. So the render is sandboxed and inert, and SELECTION
+// happens against this structure, which executes nothing anywhere.
+// ---------------------------------------------------------------------------
+
+/** One element, and the selector that would mark it. */
+export interface OutlineNode {
+  /** A CSS selector matching this element in this document. */
+  selector: string;
+  tag: string;
+  id: string | null;
+  classes: readonly string[];
+  /** Normalised text length of this element's whole subtree. */
+  textLength: number;
+  /**
+   * True when the selector needed `:nth-of-type` to be unique.
+   *
+   * SURFACED BECAUSE IT PREDICTS FAILURE. A mark must generalise from a handful
+   * of sampled pages to thousands, and only STRUCTURE can. A positional selector
+   * is the kind that silently stops meaning the same thing after a redesign —
+   * which the null check would later report as "matched nothing since", long
+   * after the fact. Better the researcher sees it before committing.
+   */
+  positional: boolean;
+  children: OutlineNode[];
+}
+
+export interface DocumentOutline {
+  /**
+   * Never null: jsdom parses as `text/html`, and the HTML parser inserts a
+   * `<body>` even for input that is not HTML at all. An optional root would be
+   * a case no caller can ever reach, which the debt ratchet correctly refuses.
+   */
+  root: OutlineNode;
+  /** True when depth or node count cut the tree short. NEVER silent. */
+  truncated: boolean;
+}
+
+const SAFE_NAME = /^[A-Za-z_-][\w-]*$/;
+
+/**
+ * A selector for one element, preferring the structural over the positional.
+ *
+ * Order is id, then tag-with-classes, then a positional fallback — the order in
+ * which they survive a redesign. Names that are not plain identifiers are
+ * skipped rather than escaped: an unescaped selector throwing at match time
+ * would cost a capture, and this module has no business shipping a hand-rolled
+ * CSS escaper.
+ */
+function selectorFor(el: Element, doc: Document): { selector: string; positional: boolean } {
+  const tag = el.tagName.toLowerCase();
+  const id = el.getAttribute('id');
+  if (id !== null && SAFE_NAME.test(id) && doc.querySelectorAll(`#${id}`).length === 1) {
+    return { selector: `#${id}`, positional: false };
+  }
+
+  const classes = [...el.classList].filter((c) => SAFE_NAME.test(c));
+  if (classes.length > 0) {
+    const candidate = `${tag}.${classes.join('.')}`;
+    if (doc.querySelectorAll(candidate).length === 1) {
+      return { selector: candidate, positional: false };
+    }
+  }
+
+  // Positional, and said so. Counted among siblings of the SAME TAG rather than
+  // all siblings, so an inserted comment or text node cannot shift it.
+  const siblings = [...(el.parentElement?.children ?? [])].filter((c) => c.tagName === el.tagName);
+  const index = siblings.indexOf(el) + 1;
+  const parent = el.parentElement;
+  const parentPart =
+    parent && parent.tagName !== 'HTML' ? `${selectorFor(parent, doc).selector} > ` : '';
+  return { selector: `${parentPart}${tag}:nth-of-type(${String(index)})`, positional: true };
+}
+
+/**
+ * The document's element structure, bounded.
+ *
+ * BOUNDED, AND IT SAYS WHEN IT CUT. A page with ten thousand elements would
+ * otherwise produce a tree nobody can use inside a response nobody can send —
+ * and a tree truncated SILENTLY would be a researcher marking against a document
+ * they cannot see all of, which is the same class of error as the diff truncated
+ * at eight chunks that this whole rebuild descends from.
+ */
+export function documentOutline(
+  html: string,
+  options: { maxDepth?: number; maxNodes?: number } = {},
+): DocumentOutline {
+  const maxDepth = options.maxDepth ?? 6;
+  const maxNodes = options.maxNodes ?? 400;
+  const dom = new JSDOM(html);
+  const doc = dom.window.document;
+
+  let nodes = 0;
+  let truncated = false;
+
+  const walk = (el: Element, depth: number): OutlineNode => {
+    nodes += 1;
+    const { selector, positional } = selectorFor(el, doc);
+    const node: OutlineNode = {
+      selector,
+      tag: el.tagName.toLowerCase(),
+      id: el.getAttribute('id'),
+      classes: [...el.classList],
+      textLength: normaliseText(htmlToText(el.outerHTML)).length,
+      positional,
+      children: [],
+    };
+    if (depth >= maxDepth) {
+      if (el.children.length > 0) truncated = true;
+      return node;
+    }
+    for (const child of el.children) {
+      if (nodes >= maxNodes) {
+        truncated = true;
+        break;
+      }
+      node.children.push(walk(child, depth + 1));
+    }
+    return node;
+  };
+
+  return { root: walk(doc.body, 0), truncated };
+}
+
+/**
+ * The document with its executable content removed, for rendering.
+ *
+ * DEFENCE IN DEPTH, NOT THE DEFENCE. `sandbox=""` on the iframe is what actually
+ * stops scripts running; this removes the single point of failure rather than
+ * replacing it, because one attribute forgotten in one render is all it takes.
+ *
+ * IT IS NOT WHAT THE RULES ACT ON. The ruleset is applied to the stored
+ * document, and the outline above is built from the real one. A selector
+ * matching a `<script>` therefore still works — it simply has nothing to show.
+ */
+export function inertDocument(html: string): string {
+  const dom = new JSDOM(html);
+  const { document } = dom.window;
+  for (const el of document.querySelectorAll('script, iframe, object, embed')) {
+    el.remove();
+  }
+  for (const el of document.querySelectorAll('*')) {
+    for (const attr of [...el.attributes]) {
+      if (/^on/i.test(attr.name)) el.removeAttribute(attr.name);
+    }
+  }
+  return dom.serialize();
+}

@@ -23,6 +23,8 @@ jest.mock('../src/middleware/researcherIdentity', () => ({
 
 const service = {
   describeCalibrationRun: jest.fn(),
+  readCalibrationRun: jest.fn(),
+  ensureCurrentRuleset: jest.fn(),
   appendCalibrationDecision: jest.fn(),
   commitCalibrationRuleset: jest.fn(),
   abandonCalibrationRun: jest.fn(),
@@ -41,9 +43,22 @@ class CalibrationRunClosedError extends Error {
   }
 }
 
+// `captureMarking` imports the HTML parser, whose dependency chain is ESM-only
+// and unparseable by this project's `unit` transform. Mocked with a factory so
+// the real module is never loaded — the same treatment every scraper test gives
+// jsdom, and the reason the marking service was split out of `calibrationRun`
+// in the first place.
+jest.mock('../src/services/captureMarking', () => ({
+  loadCaptureForMarking: jest.fn(),
+  previewUnderSelectors: jest.fn(),
+  recordObservationForCapture: jest.fn().mockResolvedValue({ observationId: 'obs-1' }),
+}));
+
 jest.mock('../src/services/calibrationRun', () => ({
   ...service,
   describeCalibrationRun: (...a: unknown[]) => service.describeCalibrationRun(...a),
+  readCalibrationRun: (...a: unknown[]) => service.readCalibrationRun(...a),
+  ensureCurrentRuleset: (...a: unknown[]) => service.ensureCurrentRuleset(...a),
   appendCalibrationDecision: (...a: unknown[]) => service.appendCalibrationDecision(...a),
   commitCalibrationRuleset: (...a: unknown[]) => service.commitCalibrationRuleset(...a),
   abandonCalibrationRun: (...a: unknown[]) => service.abandonCalibrationRun(...a),
@@ -81,6 +96,8 @@ const DETAIL = {
 
 beforeEach(() => {
   service.describeCalibrationRun.mockResolvedValue(DETAIL);
+  service.readCalibrationRun.mockResolvedValue(DETAIL.state);
+  service.ensureCurrentRuleset.mockResolvedValue({ id: 'ars-1', rulesetId: 'abc12345' });
   service.appendCalibrationDecision.mockResolvedValue(DETAIL.state);
   service.commitCalibrationRuleset.mockResolvedValue({
     state: DETAIL.state,
@@ -117,6 +134,8 @@ describe('POST /api/article-rules/:runId/decisions', () => {
     expect(service.appendCalibrationDecision).toHaveBeenCalledWith('run-1', 3, {
       type: 'CAPTURE_SHOWN',
       snapshotId: 'snap-1',
+      // Computed server-side and linked here. The page never posts the numbers.
+      observationId: 'obs-1',
     });
   });
 
@@ -179,11 +198,31 @@ describe('the UI writes decisions; the backend applies effects', () => {
   });
 
   it('exposes NO route that writes a capture, a snapshot or an anchor', () => {
-    // The rule stated as a check rather than as a comment. A route added here
-    // that reaches an effect fails this by name.
+    // The rule stated as a check rather than as a comment, with every route
+    // named and what it does beside it. A route added here fails this until
+    // somebody writes down which column it belongs in.
+    //
+    //   /:runId                            read   run state
+    //   /:runId/captures                   read   which captures to mark against
+    //   /:runId/captures/:snapshotId       read   one capture, rendered inert
+    //   .../preview                        read   derives a view; writes nothing
+    //   /:runId/decisions                  write  a DECISION, plus its observation
+    //   /:runId/commit                     write  moves the active-ruleset pointer
+    //   /:runId/abandon                    write  closes the run
+    //
+    // Every write is run state or a derived measurement. None reaches
+    // recordCapture, a snapshot, or an anchor.
     const paths = articleRulesRouter.stack
       .flatMap((layer: { route?: { path: string } }) => (layer.route ? [layer.route.path] : []))
       .sort();
-    expect(paths).toEqual(['/:runId', '/:runId/abandon', '/:runId/commit', '/:runId/decisions']);
+    expect(paths).toEqual([
+      '/:runId',
+      '/:runId/abandon',
+      '/:runId/captures',
+      '/:runId/captures/:snapshotId',
+      '/:runId/captures/:snapshotId/preview',
+      '/:runId/commit',
+      '/:runId/decisions',
+    ]);
   });
 });
