@@ -1820,6 +1820,12 @@
     "collapse": "Collapse",
     "outlineHint": "Click a block to mark it as furniture. Click it again to unmark. Watch the removed pane on the right.",
     "removedPinned": "Stays visible whichever tab is open — over-marking is invisible in the text that survives.",
-    "wholeDocument": "The whole document — not a furniture rule, and not markable."
+    "wholeDocument": "The whole document — not a furniture rule, and not markable.",
+    "recordedAccepted": "Recorded: the rules are right on this capture. Moving to the next one.",
+    "recordedRejected": "Recorded: the rules are wrong here. Fix them and look again.",
+    "recordedSkipped": "Recorded: this capture cannot be used.",
+    "sampleExhausted": "Every capture in the sample has been judged.",
+    "saving": "Saving…",
+    "judgedBadge": "judged"
   }
 }
