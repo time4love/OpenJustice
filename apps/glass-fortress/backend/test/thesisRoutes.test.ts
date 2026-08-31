@@ -198,71 +198,10 @@ beforeEach(() => jest.clearAllMocks());
 // POST /
 // ---------------------------------------------------------------------------
 
-describe('POST /', () => {
-  const handle = getHandler('/', 'post');
-
-  it('returns 400 when userContent is missing', async () => {
-    const { res, getStatus } = mockRes();
-    await handle(mockReq({}, {}), res);
-    expect(getStatus()).toBe(400);
-  });
-
-  it('returns 400 when userContent is not a valid TipTap document', async () => {
-    const { res, getStatus } = mockRes();
-    await handle(mockReq({}, { userContent: { notType: 'invalid' } }), res);
-    expect(getStatus()).toBe(400);
-  });
-
-  it('returns 201 and creates thesis + version in a transaction', async () => {
-    setupTransaction();
-    const { res, getStatus, json } = mockRes();
-    await handle(mockReq({}, { userContent: TIPTAP_DOC }), res);
-    expect(getStatus()).toBe(201);
-    const body = (json.mock.calls[0] as [Record<string, unknown>])[0];
-    const thesis = body.thesis as Record<string, unknown>;
-    expect(thesis.id).toBe('thesis-1');
-    expect(thesis.headVersion).toBeDefined();
-    const hv = thesis.headVersion as Record<string, unknown>;
-    expect(hv.status).toBe('PENDING_AI');
-  });
-
-  it('includes a text preview in the response', async () => {
-    setupTransaction();
-    const { res, json } = mockRes();
-    await handle(mockReq({}, { userContent: TIPTAP_DOC }), res);
-    const thesis = ((json.mock.calls[0] as [Record<string, unknown>])[0].thesis as Record<string, unknown>);
-    const preview = (thesis.headVersion as Record<string, unknown>).preview as string;
-    expect(preview).toContain('Officials knew');
-  });
-
-  it('resolves mention nodes to readable tokens in preview', async () => {
-    setupTransaction();
-    const { res, json } = mockRes();
-    await handle(mockReq({}, { userContent: TIPTAP_DOC_WITH_MENTIONS }), res);
-    const thesis = ((json.mock.calls[0] as [Record<string, unknown>])[0].thesis as Record<string, unknown>);
-    const preview = (thesis.headVersion as Record<string, unknown>).preview as string;
-    expect(preview).toContain('@Fauci');
-    expect(preview).toContain('#ev_hash-001');
-  });
-
-  it('calls $transaction once', async () => {
-    setupTransaction();
-    const { res } = mockRes();
-    await handle(mockReq({}, { userContent: TIPTAP_DOC }), res);
-    expect(mockTransaction).toHaveBeenCalledTimes(1);
-  });
-
-  it('returns 500 when transaction throws', async () => {
-    mockTransaction.mockRejectedValueOnce(new Error('DB error'));
-    const { res, getStatus } = mockRes();
-    await handle(mockReq({}, { userContent: TIPTAP_DOC }), res);
-    expect(getStatus()).toBe(500);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// GET /
-// ---------------------------------------------------------------------------
+// `POST /` is gone: creating a thesis is not a UI act, and `create_thesis_draft`
+// on MCP covers it while also attaching the framing session. Its tests went with
+// it rather than being retargeted — a test for a route that does not exist is a
+// test that asserts nothing. See docs/gf-prosecutor-dev-plan.md §11.1.
 
 describe('GET /', () => {
   const handle = getHandler('/', 'get');

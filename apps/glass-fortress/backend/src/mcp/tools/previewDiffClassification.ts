@@ -20,7 +20,7 @@ import {
 //
 // Classified as a WRITE tool despite writing nothing. mcpRoutes.ts states the
 // rule — "ask what it spends, not what it writes" — and this spends one full
-// LLM call per `runs`, the same reason suggest_thesis and get_research_agenda
+// LLM call per `runs`, the same reason get_research_agenda
 // are gated there.
 // ---------------------------------------------------------------------------
 

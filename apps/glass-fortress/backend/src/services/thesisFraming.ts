@@ -13,7 +13,7 @@ import { parseAssessment, type ParsedAssessment } from './thesisProvenance';
 // ---------------------------------------------------------------------------
 // Deciding what a thesis should argue, before one exists.
 //
-// The topic string fed to suggest_thesis determines which evidence is pulled
+// The topic string that drives evidence retrieval determines which evidence is pulled
 // semantically and what the Devil's Advocate attacks. A wrong framing produces a
 // well-argued thesis about the wrong thing, and no later iteration rescues it —
 // yet until 2026-08-22 that decision left no trace: the topic was interpolated

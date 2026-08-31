@@ -1,7 +1,7 @@
 // ---------------------------------------------------------------------------
 // Thesis framing — deciding what to argue, before writing it.
 //
-// The topic string fed to suggest_thesis determines which evidence is pulled
+// The topic string that drives evidence retrieval determines which evidence is pulled
 // semantically and what the Devil's Advocate attacks, so a wrong framing yields
 // a well-argued thesis about the wrong thing. Until 2026-08-22 that decision left
 // no trace: the topic was interpolated into a prompt and discarded, and a

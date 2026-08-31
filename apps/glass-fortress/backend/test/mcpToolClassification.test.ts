@@ -25,7 +25,7 @@ import { READ_TOOLS, WRITE_TOOLS } from '../src/mcp/mcpRoutes';
 // This exists because the classification used to live in three places that
 // could not see each other: the WRITE_TOOLS set the auth gate actually reads,
 // and two hand-maintained literal arrays in GET /api/mcp that advertise the
-// tool list. They had already drifted by 2026-08-21 — `suggest_thesis` was in
+// tool list. They had already drifted by 2026-08-21 — a paid tool was in
 // none of them, so it ran unauthenticated while not appearing in the endpoint's
 // own inventory. It embeds its topic and then runs a long-context LLM call, so
 // the one tool missing from the list was the most expensive anonymous path in
@@ -94,7 +94,7 @@ describe('MCP tool classification', () => {
     // Named explicitly rather than derived, so that moving any of these back to
     // the open set is a deliberate edit to this list with a test failure to
     // explain. Each embeds input and then invokes an LLM.
-    for (const tool of ['suggest_thesis', 'get_research_agenda', 'run_ai_analysis']) {
+    for (const tool of ['get_research_agenda', 'run_ai_analysis']) {
       expect(WRITE_TOOLS.has(tool)).toBe(true);
     }
   });

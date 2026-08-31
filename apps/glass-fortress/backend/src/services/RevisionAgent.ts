@@ -35,7 +35,9 @@ export const RevisionOutputSchema = z.object({
     .string()
     .describe(
       'A concise English summary (2-4 sentences) of the key changes made and the reasoning behind them. ' +
-        'Be specific: which claims were softened, which evidence was added, which gaps were addressed.',
+        'For each counter-argument, say which of the three answers it received: the corpus answered ' +
+        'it, a nameable document would answer it, or it was conceded. Naming the category is what ' +
+        'makes a quiet hedge visible as the non-answer it is.',
     ),
 });
 

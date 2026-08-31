@@ -102,25 +102,25 @@ export const WRITE_TOOLS = new Set([
   // still here, because the rule at the top of this file is what it SPENDS.
   // Every `runs` is a full LLM call, and `runs` is caller-controlled, so a single
   // anonymous request could bill MAX_PREVIEW_RUNS classifications of the largest
-  // diff in the corpus. Same reason suggest_thesis sits below.
+  // diff in the corpus. Same reason get_research_agenda sits below.
   'preview_diff_classification',
 
-  // Persist nothing, and were therefore unauthenticated until 2026-08-21 — but
-  // both spend real money on every call, with no account and (until the
-  // limiter below) no cap:
+  // Persists nothing, and was therefore unauthenticated until 2026-08-21 — but
+  // spends real money on every call, with no account and (until the limiter
+  // below) no cap:
   //
-  //   suggest_thesis      — embeds the topic, then runs ThesisSynthesisAgent.
-  //                         One long-context LLM call per request.
   //   get_research_agenda — embeds each gap, and with includeSuggestions:true
   //                         runs GapRevisionAgent once PER OPEN GAP, so the
   //                         cost of a single call scales with thesis state
   //                         rather than being fixed.
   //
+  // suggest_thesis sat here too until it was retired — see
+  // docs/gf-prosecutor-dev-plan.md §11.1.
+  //
   // search_evidence stays open deliberately: it embeds a query and nothing
   // more (cents), it is the core public read, and it is what the anonymous
   // ChatGPT integration depends on. Gating it would break a working consumer
   // to solve a problem it is not causing.
-  'suggest_thesis',
   'get_research_agenda',
 
   // Persists nothing either, and is semantically a read — but every call hits
@@ -147,7 +147,7 @@ export const WRITE_TOOLS = new Set([
   // criterion here: each issues one or more requests to the Internet Archive,
   // which is unbounded per-call work against a free third-party service. An
   // anonymous caller could walk a decade of captures through them, which is the
-  // same exposure that gated suggest_thesis and check_on_chain_status.
+  // same exposure that gated get_research_agenda and check_on_chain_status.
   'list_captures',
   'verify_claim_text',
   'audit_thesis_claims',
@@ -419,7 +419,7 @@ router.get('/', (_req: Request, res: Response) => {
     transport: 'streamable-http',
     // Derived from the sets the gate itself reads, never re-typed. These were
     // previously two hardcoded literals maintained by hand, and they had
-    // already drifted: suggest_thesis appeared in NEITHER, so the endpoint
+    // already drifted: a tool once appeared in NEITHER, so the endpoint
     // advertised 20 of its 21 tools and silently omitted the most expensive
     // anonymous one. mcpToolClassification.test.ts now asserts the two sets are
     // exhaustive and disjoint against the server's real registry, so a new tool

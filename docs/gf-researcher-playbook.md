@@ -202,7 +202,7 @@ hide a deliberately public page from the tool that describes it.
 `check_on_chain_status` is **gated**, despite being semantically a read: every call
 hits the chain RPC and `recoverTxHash: true` issues a bounded log scan, so an
 anonymous caller could drain the project's RPC quota. Same exposure that gated
-`suggest_thesis` and `get_research_agenda`.
+`get_research_agenda` (and `suggest_thesis`, until it was retired).
 
 Both are covered by `mcpToolClassification.test.ts`, which fails if a registered
 tool is in neither set or in both.
@@ -2693,7 +2693,16 @@ window rather than beside an unprovable removal date. Topic string passed forwar
 **Expectation stated before the call:** with 8 confirmed records and a `maxEvidence` of 10,
 all 8 will be pulled whatever the string says. The topic string is directive, not retrieval.
 
-## Step 22 — `suggest_thesis`
+## Step 22 — `suggest_thesis` — **RETIRED 2026-08-31**
+
+> **THIS TOOL NO LONGER EXISTS.** It wrote a full Hebrew narrative body, and a thesis is the
+> researcher's to write — see `docs/gf-prosecutor-dev-plan.md` §11.1 for the decision and its reasons.
+> The step below is kept as the record of a walk that was actually performed, and the findings it
+> produced remain valid; it is not an instruction. **The live path is `search_evidence` to find the
+> records, then `create_thesis_draft` with a body you wrote.**
+>
+> The rest of this walkthrough still names the retired tool in places. Rewriting the narrative is its
+> own change; this notice is here so no reader follows it in the meantime.
 
 ```
 suggest_thesis
