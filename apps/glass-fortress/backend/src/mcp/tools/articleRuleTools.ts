@@ -176,7 +176,12 @@ export async function getArticleRulesHandler(input: { runId: string }): Promise<
     selectors: state.selectors,
     rulesetId: state.rulesetId,
     capturesShown: state.capturesShown,
+    // REPORTED BESIDE `capturesShown` BECAUSE SHOWING IS NOT JUDGING. When the
+    // two differ, the gap is captures the researcher looked at and left alone,
+    // and every number below is computed from the judged ones only.
+    capturesJudged: state.capturesJudged,
     corrections: state.corrections,
+    capturesNeedingCorrection: state.capturesNeedingCorrection,
     // NULL IS NOT ZERO. A rate of 0 from an empty denominator would read as a
     // ruleset tested and never found wanting, which is the opposite of the
     // truth, so the null is passed through and named.
@@ -184,10 +189,12 @@ export async function getArticleRulesHandler(input: { runId: string }): Promise<
     consecutiveCleanCaptures: state.consecutiveCleanCaptures,
     stoppingIndicator:
       state.correctionRate === null
-        ? 'No capture has been marked yet — this says nothing about the rules.'
-        : `${String(state.consecutiveCleanCaptures)} capture(s) in a row needed no correction. ` +
-          'Informative only if those captures were chosen to disagree — similar pages produce no ' +
-          'corrections and test nothing.',
+        ? `No capture has been judged yet${
+            state.capturesShown > 0 ? ` (${String(state.capturesShown)} shown)` : ''
+          } — this says nothing about the rules.`
+        : `${String(state.consecutiveCleanCaptures)} of ${String(state.capturesJudged)} judged ` +
+          'capture(s) in a row needed no correction. Informative only if those captures were chosen ' +
+          'to disagree — similar pages produce no corrections and test nothing.',
     staleSelectors: detail.staleSelectors,
     storedCaptures: detail.storedCaptures,
     effect: renderApprovalEffect(detail.effect),

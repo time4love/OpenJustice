@@ -54,7 +54,10 @@ interface RunState {
   rulesetId: string;
   capturesShown: number;
   distinctCapturesShown: number;
+  /** Captures a human ACTED on. Showing is not judging — see calibrationRun.ts. */
+  capturesJudged: number;
   corrections: number;
+  capturesNeedingCorrection: number;
   correctionRate: number | null;
   consecutiveCleanCaptures: number;
   staleSelectors: { selector: string; lastMatchedAt: string | null }[];
@@ -390,6 +393,9 @@ function Indicator({ state, t }: { state: RunState; t: ReturnType<typeof useTran
           <p>
             {t('cleanStreak', {
               streak: state.consecutiveCleanCaptures,
+              // JUDGED, not shown: a capture the researcher looked at and left
+              // alone is not one the rules were tested against.
+              judged: state.capturesJudged,
               distinct: state.distinctCapturesShown,
             })}
           </p>

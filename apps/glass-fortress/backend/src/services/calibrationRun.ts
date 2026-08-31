@@ -133,27 +133,69 @@ export interface CalibrationRunState {
    * the other.
    */
   distinctCapturesShown: number;
+  /**
+   * Captures the human actually JUDGED — the denominator of everything below.
+   *
+   * SHOWING IS NOT JUDGING, and the schema says so in its own words:
+   * `CAPTURE_SHOWN` is documented as *"The system chose this capture and showed
+   * it. Nothing is judged yet."* A capture that was displayed and then left
+   * alone is evidence about nothing, so it is not counted here and it does not
+   * reach the streak.
+   *
+   * A capture is judged when the human ACTED on it — accepted it, rejected it,
+   * or corrected the rules against it. A correction is a verdict: it says the
+   * rules were wrong here. A `CAPTURE_SKIPPED` is the one human action that is
+   * NOT a judgement, because its whole meaning is that the capture cannot speak
+   * to the rules; it is excluded rather than counted clean.
+   */
+  capturesJudged: number;
+  /** Every `RULESET_CORRECTED` event — edits made, not captures affected. */
   corrections: number;
   /**
-   * Corrections per capture shown — **null when no capture has been shown yet**.
+   * Judged captures that needed at least one correction. The rate's numerator.
+   *
+   * DISTINCT FROM `corrections` ON PURPOSE: five edits while looking at one
+   * capture is one capture that disagreed, not five. Conflating them is what
+   * made the old rate unbounded.
+   */
+  capturesNeedingCorrection: number;
+  /**
+   * `capturesNeedingCorrection / capturesJudged` — **null when nothing has been
+   * judged**, and always within `[0, 1]`.
    *
    * NULL IS NOT ZERO, and conflating them is the vacuity shape this repository
    * demotes below "never run": a rate of 0 from an empty denominator reads as a
    * ruleset that has been tested and never needed fixing, which is the opposite
    * of the truth. Every consumer must handle null as "this says nothing".
+   *
+   * THE DENOMINATOR WAS ONCE `capturesShown`, WHICH BROKE IT TWICE OVER. Every
+   * capture displayed and not decided diluted the rate, and the numerator
+   * counted edits rather than captures, so the value was not bounded by 1 at
+   * all — a first walk on 2026-08-31 measured it at **2.0** with one capture on
+   * screen. A quantity presented as a rate must be one.
    */
   correctionRate: number | null;
   /**
-   * Captures shown most recently, in a row, that needed no correction.
+   * JUDGED captures most recently, in a row, that needed no correction.
    *
    * The stopping indicator — Level 4: *"No corrections on the last three
    * versions."* It measures the instrument against the only ground truth there
    * is, and it needs no calibration of its own, which a model's confidence
    * score would.
    *
+   * IT COUNTS JUDGEMENTS, NEVER RENDERS. The fold once pushed a clean episode
+   * on `CAPTURE_SHOWN`, so the streak could be run up to any length by paging
+   * through captures and marking nothing — the stopping rule reachable without
+   * a single human decision. Observed on the page's first render: a streak of 1
+   * before anything had been judged.
+   *
+   * A capture shown and not yet judged is neither clean nor dirty and does not
+   * appear here at all. It must not break a streak either: opening the next
+   * capture is not a verdict against the previous one.
+   *
    * INFORMATIVE ONLY WHEN THE SAMPLE WAS ADVERSARIAL. Three similar pages
    * produce no corrections and test nothing; that is the next-capture policy's
-   * job, and it is why this number is reported beside `capturesShown` rather
+   * job, and it is why this number is reported beside `capturesJudged` rather
    * than on its own.
    */
   consecutiveCleanCaptures: number;
@@ -168,31 +210,94 @@ function foldSelectors(decisions: readonly CalibrationDecision[]): readonly stri
 }
 
 /**
- * Trailing captures with no correction against them.
+ * One capture's episode: what was shown, and what the human then did about it.
  *
- * An episode opens at each CAPTURE_SHOWN and runs to the next one. It is dirty
- * if the rules were corrected inside it — which is what a rejection produces,
- * since a rejection means the RULES are wrong rather than that the capture is
- * bad, and routes back to marking.
+ * An episode opens at each CAPTURE_SHOWN and runs to the next one. `dirty` says
+ * the rules were corrected inside it. `judged` says a HUMAN ACTED on it — which
+ * showing it is not, and which is the whole distinction the old fold collapsed.
  */
-function foldEpisodes(decisions: readonly CalibrationDecision[]): boolean[] {
-  const clean: boolean[] = [];
-  for (const decision of decisions) {
-    if (decision.type === CalibrationDecisionType.CAPTURE_SHOWN) {
-      clean.push(true);
-      continue;
-    }
-    if (decision.type === CalibrationDecisionType.RULESET_CORRECTED && clean.length > 0) {
-      clean[clean.length - 1] = false;
-    }
-  }
-  return clean;
+interface Episode {
+  dirty: boolean;
+  judged: boolean;
+  /** The capture could not be used. Says nothing about the rules, either way. */
+  skipped: boolean;
 }
 
-function trailingClean(episodes: readonly boolean[]): number {
+/**
+ * The run's episodes, in order.
+ *
+ * THREE EVENTS ARE JUDGEMENTS AND ONE IS NOT. Accepting says the rules are
+ * right here; rejecting says they are wrong here; correcting says so too, by
+ * doing something about it — the plan is explicit that a rejection means the
+ * RULES are wrong rather than that the capture is bad, and routes back to
+ * marking. Skipping is the exception: it declares the capture unusable, so the
+ * episode is neither clean nor dirty and is excluded from every denominator
+ * rather than counted as agreement.
+ */
+function foldEpisodes(decisions: readonly CalibrationDecision[]): Episode[] {
+  const episodes: Episode[] = [];
+  const current = (): Episode | undefined => episodes.at(-1);
+
+  for (const decision of decisions) {
+    switch (decision.type) {
+      case CalibrationDecisionType.CAPTURE_SHOWN:
+        // Opened, and NOT yet clean. The old fold pushed `true` here, which is
+        // how a render became a verdict.
+        episodes.push({ dirty: false, judged: false, skipped: false });
+        break;
+      case CalibrationDecisionType.RULESET_CORRECTED: {
+        const episode = current();
+        if (episode) {
+          episode.dirty = true;
+          episode.judged = true;
+        }
+        break;
+      }
+      case CalibrationDecisionType.CAPTURE_REJECTED: {
+        // A rejection is a verdict against the RULES on its own, whether or not
+        // a correction has landed yet.
+        const episode = current();
+        if (episode) {
+          episode.dirty = true;
+          episode.judged = true;
+        }
+        break;
+      }
+      case CalibrationDecisionType.CAPTURE_ACCEPTED: {
+        const episode = current();
+        if (episode) episode.judged = true;
+        break;
+      }
+      case CalibrationDecisionType.CAPTURE_SKIPPED: {
+        const episode = current();
+        if (episode) episode.skipped = true;
+        break;
+      }
+      default:
+        break;
+    }
+  }
+  return episodes;
+}
+
+/** The episodes that say something about the rules. Every denominator's input. */
+function judgedEpisodes(episodes: readonly Episode[]): Episode[] {
+  return episodes.filter((e) => e.judged && !e.skipped);
+}
+
+/**
+ * Judged captures at the end of the run, in a row, that needed no correction.
+ *
+ * Computed over JUDGED episodes only, so a capture currently on screen and not
+ * yet decided neither extends the streak nor breaks it. Both directions are
+ * errors: counting it clean is the defect this replaces, and counting it dirty
+ * would zero the streak every time the next capture loaded.
+ */
+function trailingClean(episodes: readonly Episode[]): number {
+  const judged = judgedEpisodes(episodes);
   let count = 0;
-  for (let i = episodes.length - 1; i >= 0; i -= 1) {
-    if (episodes.at(i) !== true) break;
+  for (let i = judged.length - 1; i >= 0; i -= 1) {
+    if (judged.at(i)?.dirty !== false) break;
     count += 1;
   }
   return count;
@@ -267,6 +372,8 @@ export async function readCalibrationRun(runId: string): Promise<CalibrationRunS
 
   const selectors = foldSelectors(run.decisions);
   const episodes = foldEpisodes(run.decisions);
+  const judged = judgedEpisodes(episodes);
+  const needingCorrection = judged.filter((e) => e.dirty).length;
   const corrections = run.decisions.filter(
     (d) => d.type === CalibrationDecisionType.RULESET_CORRECTED,
   ).length;
@@ -302,8 +409,12 @@ export async function readCalibrationRun(runId: string): Promise<CalibrationRunS
     rulesetId,
     capturesShown: episodes.length,
     distinctCapturesShown: distinct,
+    capturesJudged: judged.length,
     corrections,
-    correctionRate: episodes.length === 0 ? null : corrections / episodes.length,
+    capturesNeedingCorrection: needingCorrection,
+    // Bounded by construction: the numerator is a subset of the denominator,
+    // which the old `corrections / capturesShown` was not.
+    correctionRate: judged.length === 0 ? null : needingCorrection / judged.length,
     consecutiveCleanCaptures: trailingClean(episodes),
   };
 }
