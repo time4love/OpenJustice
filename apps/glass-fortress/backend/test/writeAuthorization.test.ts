@@ -81,6 +81,30 @@ interface RouteDecl {
 }
 
 /**
+ * Where a router-level `router.use(<gate>)` appears, if it does.
+ *
+ * A GATE MOUNTED ON THE ROUTER IS A REAL GATE, and reading only each route's own
+ * declaration made this guard blind to it — so a genuinely gated router looked
+ * anonymous, and the only ways to satisfy the guard were an allowlist entry
+ * claiming the route is ungated (false) or middleware repeated per route
+ * (redundant). Both make the record worse than the code.
+ *
+ * POSITION MATTERS AND IS CHECKED. Express applies middleware in registration
+ * order, so `router.use(gate)` gates only the routes declared AFTER it. Treating
+ * it as file-wide would let a gate added at the bottom of a file appear to
+ * protect everything above it, which is a guard that lies in the safe-looking
+ * direction.
+ */
+function routerGateIndex(src: string): number | null {
+  const re = /router\.use\(([^)]*)\)/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(src)) !== null) {
+    if (GATES.some((g) => (m as RegExpExecArray)[1]?.includes(g) === true)) return m.index;
+  }
+  return null;
+}
+
+/**
  * Parse `router.<verb>(` declarations, single- or multi-line.
  *
  * Both forms exist in this codebase and a regex written for one silently misses
@@ -89,6 +113,7 @@ interface RouteDecl {
  */
 function parseRoutes(file: string, src: string): RouteDecl[] {
   const out: RouteDecl[] = [];
+  const gateAt = routerGateIndex(src);
   const re = /router\.(post|put|patch|delete)\(\s*([\s\S]{0,400}?)=>\s*\{/g;
   let m: RegExpExecArray | null;
 
@@ -99,7 +124,7 @@ function parseRoutes(file: string, src: string): RouteDecl[] {
     if (!path) continue;
     out.push({
       key: `${file} ${verb} ${path}`,
-      gated: GATES.some((g) => head.includes(g)),
+      gated: GATES.some((g) => head.includes(g)) || (gateAt !== null && gateAt < m.index),
     });
   }
   return out;
@@ -112,6 +137,35 @@ function allRoutes(): RouteDecl[] {
     .filter((f) => statSync(f).isFile())
     .flatMap((f) => parseRoutes(f.slice(ROUTES_DIR.length + 1), readFileSync(f, 'utf8')));
 }
+
+describe('the parser understands a router-level gate, and only where it applies', () => {
+  // Broadening a guard is where a guard quietly stops guarding, so the
+  // broadening is tested directly rather than only through the corpus of real
+  // route files — where a mistake would show up as silence.
+  it('counts a gate mounted BEFORE the routes', () => {
+    const src = `
+      router.use(requireResearcher);
+      router.post('/x', async (req, res) => {});
+    `;
+    expect(parseRoutes('f.ts', src)).toEqual([{ key: 'f.ts POST /x', gated: true }]);
+  });
+
+  it('does NOT count a gate mounted AFTER a route — Express would not apply it', () => {
+    const src = `
+      router.post('/x', async (req, res) => {});
+      router.use(requireResearcher);
+    `;
+    expect(parseRoutes('f.ts', src)).toEqual([{ key: 'f.ts POST /x', gated: false }]);
+  });
+
+  it('does not mistake a non-gate middleware for a gate', () => {
+    const src = `
+      router.use(urlencoded({ extended: false }));
+      router.post('/x', async (req, res) => {});
+    `;
+    expect(parseRoutes('f.ts', src)).toEqual([{ key: 'f.ts POST /x', gated: false }]);
+  });
+});
 
 describe('no state-changing route is reachable anonymously without a stated reason', () => {
   it('finds routes at all — a scan that matches nothing would pass by not looking', () => {

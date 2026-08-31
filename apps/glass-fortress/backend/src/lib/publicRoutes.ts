@@ -41,4 +41,19 @@ export const routing = {
 
     return { canonical: byLocale[DEFAULT_LOCALE], ...byLocale };
   },
+
+  /**
+   * The Level 4 marking page for one calibration run.
+   *
+   * THE RUN ID IS A POINTER, NOT A CREDENTIAL. The page is behind the existing
+   * researcher auth; the plan is explicit that a bearer token must not travel in
+   * a URL, where it leaks through history and referrers.
+   *
+   * Built here rather than at the tool that returns it, for the reason this
+   * file's header already gives: a locale-prefixed path composed by hand is how
+   * the OAuth `returnTo` ended up as `/he/he/...`.
+   */
+  articleRulesUrl(runId: string, locale: Locale = DEFAULT_LOCALE): string {
+    return publicUrl(`/article-rules/${runId}`, locale);
+  },
 };

@@ -9,6 +9,7 @@ import { prisma } from '../lib/prisma';
 // `chromeRuleset` and NOT `chromeRulesetApply`: naming a view is a hash over
 // strings, and this service must not inherit a parser to do it.
 import { chromeRulesetId, type ChromeRuleset } from '../lib/chromeRuleset';
+import { calibrationEffect, type ApprovalEffect } from './approvalEffect';
 
 // ---------------------------------------------------------------------------
 // LEVEL 4 — the calibration loop's service. Modes 1 and 3 of three.
@@ -681,4 +682,62 @@ async function sequencedWrite<T>(
     }
     throw err;
   }
+}
+
+// ---------------------------------------------------------------------------
+// The composed read. ONE function, because two callers need it.
+//
+// The MCP tool and the browser ask the same question — what is the state of this
+// run — and a second copy of the composition is how the two surfaces start
+// disagreeing about the correction rate.
+// ---------------------------------------------------------------------------
+
+export interface CalibrationRunDetail {
+  state: CalibrationRunState;
+  /** Selectors in the current ruleset that no longer match. May be empty. */
+  staleSelectors: readonly StaleSelector[];
+  /** How many stored captures the URL has — what committing would re-derive. */
+  storedCaptures: number;
+  /** What committing does, declared as data. The sentence is rendered from it. */
+  effect: ApprovalEffect;
+}
+
+export async function describeCalibrationRun(runId: string): Promise<CalibrationRunDetail> {
+  const state = await readCalibrationRun(runId);
+
+  const [ruleset, storedCaptures] = await Promise.all([
+    prisma.articleRuleset.findUnique({
+      where: {
+        trackedUrlId_rulesetId: {
+          trackedUrlId: state.trackedUrlId,
+          rulesetId: state.rulesetId,
+        },
+      },
+      select: { id: true },
+    }),
+    prisma.urlSnapshot.count({ where: { trackedUrlId: state.trackedUrlId } }),
+  ]);
+
+  // No ruleset row means nothing has ever been observed under these exact rules
+  // — a run whose selectors are still the empty seed, most often. The null check
+  // then has nothing to say, which `findStaleSelectors` already reports as an
+  // empty list rather than as every selector being stale.
+  const observations = ruleset
+    ? await prisma.rulesetObservation.findMany({
+        where: { articleRulesetId: ruleset.id },
+        select: { matchCounts: true, observedAt: true },
+        orderBy: { observedAt: 'desc' },
+        // Bounded: the question is "does this selector still match", and the
+        // newest observations answer it. An unbounded read would grow with the
+        // corpus on a call the plan requires to stay cheap.
+        take: 200,
+      })
+    : [];
+
+  return {
+    state,
+    staleSelectors: findStaleSelectors(state.selectors, observations),
+    storedCaptures,
+    effect: calibrationEffect(storedCaptures),
+  };
 }

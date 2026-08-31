@@ -8,6 +8,14 @@ import { getResearchAgendaSchema, getResearchAgendaHandler } from './tools/getRe
 import { createEvidenceFromUrlSchema, createEvidenceFromUrlHandler } from './tools/createEvidenceFromUrl';
 import { createEvidenceFromTextSchema, createEvidenceFromTextHandler } from './tools/createEvidenceFromText';
 import { startForensicScanSchema, startForensicScanHandler } from './tools/startForensicScan';
+import {
+  calibrateArticleRulesSchema,
+  calibrateArticleRulesHandler,
+  correctArticleRulesSchema,
+  correctArticleRulesHandler,
+  getArticleRulesSchema,
+  getArticleRulesHandler,
+} from './tools/articleRuleTools';
 import { createThesisDraftSchema, createThesisDraftHandler } from './tools/createThesisDraft';
 import { addThesisVersionSchema, addThesisVersionHandler } from './tools/addThesisVersion';
 import { citeTrajectoriesSchema, citeTrajectoriesHandler } from './tools/citeTrajectories';
@@ -547,6 +555,81 @@ export function createMcpServer(): McpServer {
     startForensicScanSchema,
     async (input) => ({
       content: [{ type: 'text' as const, text: await startForensicScanHandler(input) }],
+    }),
+  );
+
+  // -------------------------------------------------------------------------
+  // Tools: calibrate_article_rules · correct_article_rules · get_article_rules
+  //        [WRITE — HANDS OFF TO A BROWSER, RETURNS IMMEDIATELY]
+  //
+  // Level 4's marking flow. An MCP call cannot wait for a human, so a start tool
+  // creates a run, returns its marking URL and returns now; the researcher marks
+  // in the browser; get_article_rules reads the outcome afterwards.
+  //
+  // THREE TOOLS RATHER THAN ONE WITH A MODE ENUM. The preconditions genuinely
+  // differ, and a tool description is how the model decides what to call: a
+  // wrong enum value is representable, a wrong tool is not.
+  //
+  // `scan_with_approval` is absent until ScanRun exists (step 2b). A stub
+  // describing a capability it does not have is worse than no tool at all.
+  //
+  // REGISTERED WITH `registerTool`, WHERE EVERY OTHER TOOL HERE USES `tool()`.
+  // `tool()` is deprecated in the SDK and the lint ratchet counts each use, so
+  // new tools take the supported API rather than adding to a debt that scales
+  // with tool count. The other 47 are a mechanical migration of their own —
+  // deliberately not bundled into a Level 4 change, where a slip would break
+  // every MCP tool at once. `mcpToolClassification.test.ts` matches BOTH
+  // spellings, so nothing added either way can escape classification.
+  // -------------------------------------------------------------------------
+  server.registerTool(
+    'calibrate_article_rules',
+    {
+      description:
+        'Start marking the page furniture — navigation, advertising, footers, timestamps — on a ' +
+        'URL, so that a rotating advert stops being recorded as a page change. Use this for a URL ' +
+        'that is NOT yet in the corpus, or that holds no captures; it admits the URL first, and ' +
+        'marks against freshly fetched pages that are NOT persisted. Returns a marking URL and ' +
+        'returns immediately — marking is visual and cannot be done through a chat tool. Nothing ' +
+        'is written until the researcher commits in the browser, and the reply states exactly ' +
+        'what committing will do.',
+      inputSchema: calibrateArticleRulesSchema,
+    },
+    async (input) => ({
+      content: [{ type: 'text' as const, text: await calibrateArticleRulesHandler(input) }],
+    }),
+  );
+
+  server.registerTool(
+    'correct_article_rules',
+    {
+      description:
+        'Correct the furniture rules for a URL ALREADY in the corpus, marking against captures ' +
+        'already stored. Needs no network and fetches nothing. Prefer this over ' +
+        'calibrate_article_rules whenever the URL has stored captures. Committing saves the ' +
+        'ruleset; the stored captures are re-derived from bytes already held, which cannot ' +
+        'invalidate any snapshot anchor because the anchor commits to the raw bytes. Returns a ' +
+        'marking URL and returns immediately.',
+      inputSchema: correctArticleRulesSchema,
+    },
+    async (input) => ({
+      content: [{ type: 'text' as const, text: await correctArticleRulesHandler(input) }],
+    }),
+  );
+
+  server.registerTool(
+    'get_article_rules',
+    {
+      description:
+        'Read the state of a calibration run: the selectors in force, how many captures have ' +
+        'been marked, how often the rules needed correcting, and any selector that has stopped ' +
+        'matching anything (which is what a site redesign looks like). CALL THIS WHEN THE ' +
+        'RESEARCHER SAYS THEY ARE DONE — it is not to be polled on a timer. A null correction ' +
+        'rate means no capture has been marked yet and says NOTHING about the rules; it is not a ' +
+        'rate of zero.',
+      inputSchema: getArticleRulesSchema,
+    },
+    async (input) => ({
+      content: [{ type: 'text' as const, text: await getArticleRulesHandler(input) }],
     }),
   );
 
