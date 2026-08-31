@@ -149,6 +149,20 @@ export interface CalibrationRunState {
    * to the rules; it is excluded rather than counted clean.
    */
   capturesJudged: number;
+  /**
+   * Which captures were judged, and how. FOLDED FROM THE LOG, not remembered.
+   *
+   * The marking page first tracked this in the browser tab, so a reload erased
+   * every verdict the researcher had recorded and the capture strip went blank —
+   * they reported not being able to see which versions they had confirmed. The
+   * decision log is the authority for what was judged, and a view that cannot
+   * show it forces the researcher to remember what the system already knows.
+   *
+   * The VERDICT travels with the id because they are not interchangeable: a
+   * capture the rules were right on and a capture the rules were wrong on have
+   * both been judged, and showing them alike would hide the disagreement.
+   */
+  judgedCaptures: readonly { snapshotId: string; verdict: CalibrationDecisionType }[];
   /** Every `RULESET_CORRECTED` event — edits made, not captures affected. */
   corrections: number;
   /**
@@ -390,6 +404,22 @@ export async function readCalibrationRun(runId: string): Promise<CalibrationRunS
   // fact can disagree only through a bug in the writer, and a ruleset id that
   // silently disagreed would send a deviation baseline to the wrong set of
   // captures. So the disagreement is made loud rather than left possible.
+  // Newest verdict per capture wins: a rejection routes back to marking, so the
+  // same capture is judged again and the later word is the one that stands.
+  const verdicts = new Map<string, CalibrationDecisionType>();
+  for (const decision of run.decisions) {
+    const subject = decision.snapshotId ?? decision.waybackTimestamp;
+    if (subject === null) continue;
+    if (
+      decision.type === CalibrationDecisionType.CAPTURE_ACCEPTED ||
+      decision.type === CalibrationDecisionType.CAPTURE_REJECTED ||
+      decision.type === CalibrationDecisionType.CAPTURE_SKIPPED
+    ) {
+      verdicts.set(subject, decision.type);
+    }
+  }
+  const judgedCaptures = [...verdicts].map(([snapshotId, verdict]) => ({ snapshotId, verdict }));
+
   const rulesetId = chromeRulesetId({ selectors });
   const stored = run.decisions.at(-1)?.rulesetId;
   if (stored !== undefined && stored !== rulesetId) {
@@ -410,6 +440,7 @@ export async function readCalibrationRun(runId: string): Promise<CalibrationRunS
     capturesShown: episodes.length,
     distinctCapturesShown: distinct,
     capturesJudged: judged.length,
+    judgedCaptures,
     corrections,
     capturesNeedingCorrection: needingCorrection,
     // Bounded by construction: the numerator is a subset of the denominator,

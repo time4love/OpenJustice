@@ -241,6 +241,53 @@ describe('the outline reaches the content — the defect that stopped the first 
   });
 });
 
+describe('a node that can never remove text is not offered', () => {
+  // The Walla news page hangs 36 empty <script> tags directly off <body>, ahead
+  // of the article. The researcher opened the rebuilt tree and reported having
+  // nothing to click — while looking at a wall of rows none of which could have
+  // done anything if clicked. `textLength` is the whole subtree's text, so zero
+  // means a rule against it removes nothing, in every capture, by construction.
+  const NOISY = `<!doctype html><html><body>
+    <script>var a = 1;</script>
+    <noscript><iframe src="x"></iframe></noscript>
+    <style>.a{color:red}</style>
+    <div id="empty-ad-slot"></div>
+    <div id="root"><article><h1>The headline</h1><p>The body.</p></article></div>
+    <script>var b = 2;</script>
+  </body></html>`;
+
+  const outline = documentOutline(NOISY);
+  const nodes = flatten(outline.root);
+
+  it('omits scripts, styles and empty containers entirely', () => {
+    expect(nodes.some((n) => n.tag === 'script')).toBe(false);
+    expect(nodes.some((n) => n.tag === 'style')).toBe(false);
+    expect(nodes.some((n) => n.tag === 'noscript')).toBe(false);
+    expect(nodes.some((n) => n.id === 'empty-ad-slot')).toBe(false);
+  });
+
+  it('leaves the content as the FIRST thing under the body', () => {
+    // The whole point: the article was behind 36 rows of noise.
+    expect(outline.root.children).toHaveLength(1);
+    expect(outline.root.children.at(0)?.textLength).toBeGreaterThan(0);
+  });
+
+  it('folds a wrapper chain that is only a chain once the noise is gone', () => {
+    // #root wraps <article> alone — but by RAW child count neither is a
+    // pass-through while the empty siblings are still counted. The two rules
+    // have to agree about what a child is, or the spine stays deep for nothing.
+    const labels = nodes.map((n) => n.label);
+    expect(labels.some((l) => l.includes('The headline'))).toBe(true);
+    expect(nodes.length).toBeLessThan(8);
+  });
+
+  it('still offers a container that DOES carry text', () => {
+    const withText = `<html><body><div class="promo">Sponsored</div><p>Article.</p></body></html>`;
+    const kept = flatten(documentOutline(withText).root);
+    expect(kept.some((n) => n.selector === 'div.promo')).toBe(true);
+  });
+});
+
 describe('a cut removes DEPTH, never a sibling', () => {
   // Depth-first spent the whole budget on the first subtree, so a truncated
   // outline lost the FOOTER — a whole section of furniture the researcher needs
@@ -303,7 +350,7 @@ describe('inertDocument — the second layer, tested because an untested layer i
     <img src="x" onerror="window.stolen = 1">
     <div onclick="alert(1)" class="keep">visible text</div>
     <iframe src="https://tracker.example/pixel"></iframe>
-    <object data="x.swf"></object>
+    <object data="x.swf">Legacy player notice</object>
     <p>the article</p>
   </body></html>`;
 
@@ -331,9 +378,16 @@ describe('inertDocument — the second layer, tested because an untested layer i
 
   it('does NOT change what the rules act on', () => {
     // The ruleset is applied to the stored document and the outline is built
-    // from the real one; this copy exists only to be looked at. A selector
-    // matching a <script> therefore still works — it just has nothing to show.
+    // from the real one; this copy exists only to be looked at.
+    //
+    // THE WITNESS CHANGED, THE PROPERTY DID NOT. This used to assert that the
+    // outline contained <script> nodes, because `inertDocument` strips them —
+    // but the outline now omits every element whose subtree carries no text, for
+    // an unrelated reason, so a missing <script> no longer tells the two copies
+    // apart. `<object>` does the job instead: `inertDocument` removes it, and
+    // its fallback text means the outline keeps it.
+    expect(inert).not.toContain('Legacy player notice');
     const nodes = flatten(documentOutline(HOSTILE).root);
-    expect(nodes.some((n) => n.tag === 'script')).toBe(true);
+    expect(nodes.some((n) => n.tag === 'object')).toBe(true);
   });
 });

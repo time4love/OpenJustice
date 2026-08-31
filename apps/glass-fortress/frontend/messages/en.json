@@ -1796,13 +1796,13 @@
     "staleHeading": "Rules to check",
     "staleNever": "has never matched anything, on any capture",
     "staleSince": "last matched on {date}",
-    "accept": "These rules are right here",
+    "accept": "The rules are right on this capture",
     "reject": "The rules are wrong",
     "rejectNote": "Rejecting means the RULES are wrong, not the capture. Fix them and look again.",
     "skip": "Cannot use this capture",
     "skipReason": "Why? (recorded — a silent gap is not permitted)",
-    "commit": "Put these rules in force",
-    "abandon": "Close without saving",
+    "commit": "Apply these rules to all {count} captures",
+    "abandon": "Close without applying",
     "committed": "These rules are now in force for this page.",
     "abandoned": "Closed. The page keeps the rules it had.",
     "staleVersion": "Another tab changed this run. Reloading what it says now.",
@@ -1831,6 +1831,14 @@
     "streakLine": "The last {streak} judged, in a row, needed no correction.",
     "correctionLine": "{needing} of {judged} judged captures needed the rules corrected.",
     "distinctLine": "{distinct} different captures have been shown.",
-    "previewPending": "Recomputing…"
+    "previewPending": "Recomputing…",
+    "captureVerdictHeading": "This capture",
+    "finishHeading": "Finish the calibration",
+    "abandonNote": "What you marked stays in the record. The rules are not applied to any capture.",
+    "effectRuleset": "saves the rules as a new version",
+    "effectRederive": "re-derives the text of {count} stored captures",
+    "effectReversible": "Reversible — mark again and apply. The documents are stored whole and re-derived from bytes already held, so no anchor is affected.",
+    "effectHeading": "Applying will:",
+    "outlineTruncatedHarmless": "The structure was cut at branches holding no text, so nothing is out of reach."
   }
 }
