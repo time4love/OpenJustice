@@ -2165,7 +2165,7 @@ asserts. Recorded here so the next person does not close this level on the stren
 
 ### Level 4 — the view
 
-**STATUS: DEFERRED (2026-08-29) — rationale falsified by measurement in `d4739aa`. It needs a CONSUMER FOR THE MARKS, not code. Do not revive without new measurement. THE NEW MEASUREMENT NOW EXISTS (2026-08-30). REOPENED IN DESIGN 2026-08-31: SCAN SCALE IS THE CONSUMER, and the instrument is a HUMAN rather than a corpus-derived statistic — the frequency variants below were re-proposed in discussion and re-rejected on this section's own measurement. Design in `#### THE CONSUMER ARRIVED` below; not started, and the filtering question is explicitly UNMEASURED.**
+**STATUS: IN BUILD (2026-08-31). Reopened in design the same day: SCAN SCALE IS THE CONSUMER, and the instrument is a HUMAN rather than a corpus-derived statistic — the frequency variants below were re-proposed in discussion and re-rejected on this section's own measurement, and are not to be proposed a third time. STEP 1 IS LANDED: `src/lib/chromeRuleset.ts`, a ruleset applied before `htmlToText`, deriving byte-identically when empty (PR #282, staging `6acfb07`). THE DATA MODEL FOR ALL THREE MODES IS SIGNED OFF (`##### THE DATA MODEL` below) — it corrected the single-row design in four places and forced the anchoring ruling beneath it. Step 2 (`ArticleRuleset` + `CalibrationRun`) is next, then 2b (`ScanRun`, superseding the in-memory scan guard), the three MCP tools, and the marking page with MODE 3 FIRST. The filtering question stays UNMEASURED and is answered by a human judging newly created state, never by re-measuring the corpus.**
 
 #### THE MEASUREMENT THIS DEFERRAL ASKED FOR — a news page, 2026-08-30
 
@@ -2597,6 +2597,137 @@ All three modes need a durable run record, and mode 2 cannot work without one: *
 is meaningless if the run cannot be resumed. **This is a prerequisite, not part of the UI, and it is a
 real gap in the current scanner whether or not any of this is built.**
 
+##### THE DATA MODEL, SIGNED OFF FOR ALL THREE MODES — 2026-08-31
+
+Modelled in full before step 2 was written, at the researcher's instruction, **because modelling the
+later modes either corrects the current model or proves it holds.** It did both: four corrections and
+one contradiction in this section, below. Steps 2 and 2b implement it; step 2 cannot be forced into a
+rewrite by 2b, which was the point of doing it now.
+
+**ONE ROW COULD NOT CARRY IT, and the naming told us first.** `CalibrationRun` reads wrong for mode 2
+because mode 2 is not a calibration — modes 1 and 3 approve RULES, mode 2 approves WRITES. That is not
+a naming compromise, it is a contradiction: this section requires a scan to **pin** the ruleset version
+so it uses the rules that were approved, and **a single row cannot both pin a ruleset and be the
+ruleset under construction.** `REJECT ROUTES BACK TO CALIBRATION` puts that collision on the normal
+path — the researcher rejects mid-scan and the rules are edited in the row holding the scan's pin.
+
+```
+ArticleRuleset      the committed artifact — content-addressed, attributed, append-only
+   ^ commits              ^ pins
+CalibrationRun      a human building or fixing rules      (step 2 — modes 1 and 3)
+ScanRun             a run that fetches and persists       (step 2b — mode 2, and headless)
+```
+
+`ScanRun` is also the durable run state the section above calls a prerequisite: it supersedes
+`WaybackScraper._runningScanIds` and covers the headless scan, which is this section's own
+*"the interactive and headless paths are THE SAME PATH, differing only in whether they consult a
+decision log."* `WaybackScrapeJob` is untouched and stays the CDX batch unit inside a run.
+
+**THE MODE ENUM DOES NOT EXIST.** *"Mode 1 is mode 3 with a fetch"* is exact, and the effect side
+collapses with it: committing a ruleset means *re-derive every stored capture under it*, which is a
+no-op when there are none — one path, no branch. So the document source is a property of **each
+capture shown**, not of the run, which also unlocks a case a per-run enum forecloses: a URL whose
+stored captures are all one era can only be calibrated adversarially by reaching outside the corpus for
+a fetch. The differing preconditions stay where this section already put them — in the three TOOLS.
+
+**THE RUN HOLDS NO SELECTORS. THE LOG DOES.** Every decision stamps the selectors in force after it;
+the current ruleset is the last one; the optimistic-concurrency token is the decision count. Resumption
+is a fold, and the anti-pattern named above — *do not let the UI hold state the session row does not* —
+goes one level further: the run holds no state its log does not, so nothing can drift.
+
+**`RulesetObservation` — the correction mode 2 forced, and the one shared table.** Four requirements in
+this section are per-`(ruleset, capture)` facts: the null check's *"matched nothing since &lt;date&gt;"*,
+the deviation baseline (*12% on every approved page and then 61%*), the audit sample *biased toward the
+highest-deviation ones*, and the next-capture policy's *step changes in derived-text length*. **Both
+the calibration loop and the headless scan produce them** — two producers writing one fact into two
+tables is [[gf-one-rule-many-implementations]], this repository's dominant defect shape. One table, two
+writers, four readers.
+
+**Consent records what it was told.** *Show the cost before the blank cheque* only survives if the
+quoted capture count, the quoted spend and the declared `effect` go on the GRANT rather than on the
+button. Consent given against a stated cost is auditable only when the statement is kept.
+
+**One table was expected and is not needed.** *"Re-derivation of N rows"* is a `COUNT` over
+`UrlSnapshot.textExtractionVersion` — the corpus already records it, including partial failure, as a
+mixed count. Derive, never restate.
+
+```prisma
+model ArticleRuleset {                    // the artifact — append-only, attributed
+  id, trackedUrlId, rulesetId, selectors[], createdById, createdAt
+  @@unique([trackedUrlId, rulesetId])     // rulesetId = chromeRulesetId(selectors)
+}
+// TrackedUrl.activeArticleRulesetId  — which rules are in force, as a FACT rather
+//                                      than an inference from ordering
+// TrackedUrl.activeScanRunId @unique — one live run per URL: the cross-process
+//                                      guard the in-memory Set cannot be
+
+model RulesetObservation {                // one per (ruleset, capture) derivation
+  articleRulesetId
+  snapshotId? | waybackTimestamp?         // stored capture, or fetched-not-persisted
+  matchCounts Json                        // -> null check: "matched nothing since"
+  removalFraction Float                   // -> deviation pause, audit ordering
+  derivedTextLength Int                   // -> next-capture policy
+  observedAt
+  @@unique([articleRulesetId, snapshotId])
+}
+
+model CalibrationRun {                            // step 2 — modes 1 and 3
+  trackedUrlId, researcherId, status, version Int
+  seededFromRulesetId?                    // mode 3 starts from the rules in force
+  committedRulesetId?                     // what it produced, on close
+  originScanRunId?                        // set when a scan's REJECT spawned it   [2b]
+}
+
+model CalibrationDecision {               // append-only; the ONLY selector state
+  RUN_OPENED | CAPTURE_SHOWN | RULESET_CORRECTED
+  | CAPTURE_ACCEPTED | CAPTURE_REJECTED | CAPTURE_SKIPPED | RUN_CLOSED
+  selectors[]                             // in force AFTER this decision
+  rulesetId                               // its hash — identifies "the approved set"
+  observationId?                          // the numbers live there, never here
+  reason?                                 // SKIPPED always carries one
+  sequence Int                            // == the version this decision produced
+}
+
+model ScanRun {                           // 2b — durable run state; covers headless
+  trackedUrlId, researcherId?, status
+  fromTimestamp?, toTimestamp?, cursor?
+}
+
+model ScanDecision {                      // 2b — append-only
+  RUN_OPENED | RULESET_PINNED | RULESET_REPINNED
+  | CAPTURE_APPROVED | CAPTURE_REJECTED | BATCH_APPROVED
+  | PAUSED_ON_DEVIATION | RESUMED | AUDIT_SAMPLED | AUDIT_PASSED | AUDIT_FAILED
+  articleRulesetId?                       // the pin, at this point in the run
+  quotedCaptureCount?, quotedCostUsd?, declaredEffect Json?  // what consent was told
+}
+// UrlSnapshot.scanRunId? — provenance, and what makes DEFERRED distinguishable
+//                          from FAILED without a new enum. See the ruling below.
+```
+
+**THE PIN IS RE-PINNED, so it is logged rather than cached.** A rejection spawns a calibration that
+commits new rules, and the scan must adopt them or the rejection accomplished nothing. Captures
+processed before the re-pin stay recorded against the OLD ruleset — which `RulesetObservation` gets
+right for free by being keyed on the ruleset, and which is the mixed corpus this section already
+predicts.
+
+##### RULED 2026-08-31 — the audit GATES anchoring, and the feared schema state costs nothing
+
+This section said both *"auto mode MAY ANCHOR SNAPSHOTS"* and *"sample-audit the auto range BEFORE
+anchoring"*, and the two do not sit together: if anchoring is safe because the anchor is on bytes, the
+audit protects nothing; if the audit gates anchoring, auto mode does not anchor and the
+deferred-versus-failed schema state the earlier draft was rejected for is back.
+
+**Both halves survive under a third reading, and it is the ruling.** Anchoring is SAFE — the byte
+argument is untouched — and it is still DEFERRED, for a reason that is not safety: anchoring thousands
+of snapshots is real spend on Base, and a bad run's anchors are wasted money. So `AUDIT_PASSED` gates
+anchoring.
+
+**And the state that made the earlier draft too strict is now free.** A snapshot belonging to an
+in-flight `ScanRun` that has not passed audit is DEFERRED; one belonging to no run is FAILED.
+`UrlSnapshot.scanRunId` carries that by RELATION — no new enum, no new column on the snapshot, and
+`audit-anchors` and `get_environment`'s `snapshotsUnanchored` can both learn it. The distinction only
+became affordable once `ScanRun` existed, which is the argument for modelling the later modes early.
+
 ##### Failure modes to design against
 
 - **Two browsers on one session** — last-write-wins would silently corrupt a ruleset. Version the
@@ -2688,22 +2819,27 @@ machinery makes it safe rather than merely defensible** — changing the ruleset
 **Decided:** the instrument is a human · marks are structural and act before `htmlToText` · the sample
 is timeline-stratified and then adaptive · mark against the document with the derived text shown ·
 **approval precedes persistence, so no simulation table is needed** · **auto mode may not PROMOTE;
-snapshot anchoring is safe because the anchor is on bytes** · **three modes, one loop, and mode 3
-first** · the ruleset is scoped to the `text` derivation · **the approval confirmation is derived from
+snapshot anchoring is SAFE because the anchor is on bytes, and is nonetheless DEFERRED until the
+sample audit passes — for spend, not for safety (ruled 2026-08-31)** · **three modes, one loop, and
+mode 3 first** · the ruleset is scoped to the `text` derivation · **the approval confirmation is derived from
 a declared effect, never authored beside it** ·
 consent is bounded to the approved era · the stopping indicator is the correction rate · reject routes
 to calibration · the UI rule is *never irreversible or unrecorded* · no frequency signal, and no
 self-assessed confidence score.
 
-**Also decided (technical shape):** the MCP-to-UI contract is a SESSION ROW, extending the OAuth
-handoff · the UI writes DECISIONS and the backend applies EFFECTS · three tools over one service ·
+**Also decided (technical shape):** THE DATA MODEL IS SIGNED OFF FOR ALL THREE MODES (2026-08-31) —
+`ArticleRuleset` / `CalibrationRun` / `ScanRun`, no mode enum, the run holds no selectors, and
+`RulesetObservation` is the one shared table; see the section above · the MCP-to-UI contract is a
+SESSION ROW, extending the OAuth handoff · the UI writes DECISIONS and the backend applies EFFECTS · three tools over one service ·
 durable run state is a PREREQUISITE · **filtering is validated by a HUMAN on newly created state, not
 by re-measuring the corpus** (2026-08-31) · **the ruleset is applied before `htmlToText` and is scoped
 to the `text` derivation** — `src/lib/chromeRuleset.ts`, landed with no session and no UI.
 
-**Open:** the marking UX · the marking UX · the next-capture
+**Open:** the marking UX · the next-capture
 selection policy, which is the same mechanism as the indicator · how a ruleset is inherited by a
-second URL on the same site · what "the page stopped resembling the approved set" is computed from.
+second URL on the same site · what "the page stopped resembling the approved set" is computed from —
+NOT invented by the data model deliberately, which holds the inputs every candidate formula needs ·
+**restating the standing invariant for structural marks, which is the researcher's.**
 
 ### Level 5 — the diff
 
