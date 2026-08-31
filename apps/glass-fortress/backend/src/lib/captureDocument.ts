@@ -176,18 +176,32 @@ export function deriveText(
   contentType: string | null | undefined,
   contentEncoding: string | null | undefined = null,
 ): DerivedText {
-  const text = normaliseText(
-    htmlToText(
-      captureHtml({
-        document: bytes,
-        documentContentType: contentType ?? null,
-        documentContentEncoding: contentEncoding ?? null,
-      }),
-    ),
+  return deriveTextFromHtml(
+    captureHtml({
+      document: bytes,
+      documentContentType: contentType ?? null,
+      documentContentEncoding: contentEncoding ?? null,
+    }),
   );
-  return {
-    text,
-    textHash: sha256Text(text),
-    textExtractionVersion: TEXT_EXTRACTION_VERSION,
-  };
+}
+
+/**
+ * The text derivation itself, from HTML that is already decoded.
+ *
+ * Split out so Level 4 can insert its view BETWEEN the decode and this, without
+ * this module gaining a dependency on an HTML parser. `captureDocument` is
+ * imported by almost everything that touches a capture; `jsdom`'s dependency
+ * chain is ESM-only and unloadable in the `unit` jest project, so importing it
+ * here would break every suite that transitively reaches a capture — which is
+ * how this was found. A shared entry point sets the blast radius.
+ *
+ * `version` is a parameter for the same reason: the chrome layer must be able to
+ * record WHICH view produced the text without a second copy of the derivation.
+ */
+export function deriveTextFromHtml(
+  html: string,
+  version: string = TEXT_EXTRACTION_VERSION,
+): DerivedText {
+  const text = normaliseText(htmlToText(html));
+  return { text, textHash: sha256Text(text), textExtractionVersion: version };
 }

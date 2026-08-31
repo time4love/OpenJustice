@@ -34,11 +34,36 @@ describe('there is one extraction of "the article", and one evidence hash', () =
     // `article.textContent` — a different string from the one the archive path
     // stores — so the same URL yielded different text via the website and via
     // MCP, and therefore different evidence identities.
+    //
+    // SPLIT FROM THE JSDOM CHECK BELOW, 2026-08-31, and narrowed rather than
+    // loosened. This assertion matched `new JSDOM(` too, using the parser as a
+    // proxy for the extractor. They are not the same thing: READABILITY decides
+    // what "the article" is, and a second one is a second identity; JSDOM only
+    // parses markup. Level 4's chrome ruleset needs a parser to honour a
+    // selector — a regex over markup cannot — and produces no competing notion
+    // of the article, because the text is still derived by the one
+    // `deriveTextFromHtml`. The parser allowance is now its own, explicit list.
     const offenders = files
-      .filter((f) => /new Readability\(|new JSDOM\(/.test(readFileSync(f, 'utf8')))
+      .filter((f) => /new Readability\(/.test(readFileSync(f, 'utf8')))
       .map(rel);
 
     expect(offenders).toEqual(['lib/archiveText.ts']);
+  });
+
+  it('every file that parses HTML is on this list, and a third one needs a reason', () => {
+    // The other half of the guard above. Constructing a DOM is not by itself a
+    // second extraction, but it is how one would arrive unnoticed — so the set
+    // of files allowed to do it is enumerated rather than bounded by a rule.
+    //
+    //   lib/archiveText.ts     — Readability's article, `fullText`
+    //   lib/chromeRuleset.ts   — Level 4's view: removes marked furniture from
+    //                            the HTML before the ONE text derivation runs
+    //
+    // Adding a third means answering which of those two it is. If it is neither,
+    // it is probably a second extraction wearing a parser's clothes.
+    const parsers = files.filter((f) => /new JSDOM\(/.test(readFileSync(f, 'utf8'))).map(rel);
+
+    expect(parsers.sort()).toEqual(['lib/archiveText.ts', 'lib/chromeRuleset.ts']);
   });
 
   it('the url+text evidence hash is computed only through the shared function', () => {
