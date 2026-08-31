@@ -121,6 +121,18 @@ export interface CalibrationRunState {
   selectors: readonly string[];
   rulesetId: string;
   capturesShown: number;
+  /**
+   * How many DISTINCT captures have been shown.
+   *
+   * REPORTED BESIDE `capturesShown` BECAUSE THEY COME APART, and when they do
+   * the difference is the whole story. Re-showing one capture after a
+   * correction is legitimate — it checks the new rules against the case that
+   * broke them — but three clean showings of ONE capture is the vacuity this
+   * level demotes everywhere else, wearing the streak's clothes. Neither number
+   * alone can tell those apart, so both are shown and neither is derived from
+   * the other.
+   */
+  distinctCapturesShown: number;
   corrections: number;
   /**
    * Corrections per capture shown — **null when no capture has been shown yet**.
@@ -258,6 +270,12 @@ export async function readCalibrationRun(runId: string): Promise<CalibrationRunS
   const corrections = run.decisions.filter(
     (d) => d.type === CalibrationDecisionType.RULESET_CORRECTED,
   ).length;
+  const distinct = new Set(
+    run.decisions
+      .filter((d) => d.type === CalibrationDecisionType.CAPTURE_SHOWN)
+      .map((d) => d.snapshotId ?? d.waybackTimestamp)
+      .filter((subject): subject is string => subject !== null),
+  ).size;
 
   // RECOMPUTED, AND CHECKED AGAINST WHAT WAS STORED. The column exists so a
   // scan can identify "the approved set" in SQL without folding every run; this
@@ -283,6 +301,7 @@ export async function readCalibrationRun(runId: string): Promise<CalibrationRunS
     selectors,
     rulesetId,
     capturesShown: episodes.length,
+    distinctCapturesShown: distinct,
     corrections,
     correctionRate: episodes.length === 0 ? null : corrections / episodes.length,
     consecutiveCleanCaptures: trailingClean(episodes),
@@ -740,4 +759,22 @@ export async function describeCalibrationRun(runId: string): Promise<Calibration
     storedCaptures,
     effect: calibrationEffect(storedCaptures),
   };
+}
+
+/**
+ * The `ArticleRuleset` row for the rules a run currently holds, creating it if
+ * this is the first time these exact selectors have been named.
+ *
+ * EXISTS SO AN OBSERVATION HAS SOMETHING TO HANG FROM. Observations are keyed on
+ * a ruleset, and a ruleset under construction is still a ruleset — the row is
+ * content-addressed and idempotent, and it asserts nothing about what is in
+ * force. Only committing moves `TrackedUrl.activeArticleRulesetId`.
+ */
+export async function ensureCurrentRuleset(runId: string): Promise<{ id: string; rulesetId: string }> {
+  const state = await readCalibrationRun(runId);
+  return ensureArticleRuleset(prisma, {
+    trackedUrlId: state.trackedUrlId,
+    selectors: state.selectors,
+    researcherId: state.researcherId,
+  });
 }

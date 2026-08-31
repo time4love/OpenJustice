@@ -7,10 +7,19 @@ import {
   appendCalibrationDecision,
   commitCalibrationRuleset,
   describeCalibrationRun,
+  ensureCurrentRuleset,
+  readCalibrationRun,
   CalibrationRunClosedError,
   StaleCalibrationVersionError,
 } from '../services/calibrationRun';
 import { renderApprovalEffect } from '../services/approvalEffect';
+import {
+  loadCaptureForMarking,
+  previewUnderSelectors,
+  recordObservationForCapture,
+} from '../services/captureMarking';
+import { stratifiedSample } from '../lib/timelineSample';
+import { prisma } from '../lib/prisma';
 
 // ---------------------------------------------------------------------------
 // LEVEL 4 — the browser's half of the MCP handoff.
@@ -114,6 +123,71 @@ router.get('/:runId', async (req: RunRequest, res: Response): Promise<void> => {
   }
 });
 
+// -------------------------------------------------------------------------
+// The capture surface. Reads only — none of this writes a capture, a snapshot
+// or an anchor; it renders bytes already held and derives views over them.
+// -------------------------------------------------------------------------
+
+const CAPTURE_SAMPLE = 12;
+
+// GET /api/article-rules/:runId/captures — which captures to mark against.
+//
+// TIMELINE-STRATIFIED, NOT THE FIRST N. The first captures are consecutive and
+// from the page's earliest era, possibly a template that no longer exists and
+// possibly predating the site's advertising entirely. The whole history costs
+// the same number of pages to look at and surfaces the redesigns.
+router.get('/:runId/captures', async (req: RunRequest, res: Response): Promise<void> => {
+  try {
+    const state = await readCalibrationRun(req.params.runId);
+    const all = await prisma.urlSnapshot.findMany({
+      where: { trackedUrlId: state.trackedUrlId },
+      select: { id: true, capturedAt: true, waybackTimestamp: true, snapshotDate: true },
+      orderBy: { capturedAt: 'asc' },
+    });
+    res.json({
+      total: all.length,
+      // The sample is what to look at; `total` is what exists. Reporting only
+      // the sample would let twelve captures read as the whole history.
+      sample: stratifiedSample(all, CAPTURE_SAMPLE),
+    });
+  } catch (err) {
+    respondToFailure(res, err);
+  }
+});
+
+// GET /api/article-rules/:runId/captures/:snapshotId — one capture to look at.
+router.get(
+  '/:runId/captures/:snapshotId',
+  async (req: Request<{ runId: string; snapshotId: string }>, res: Response): Promise<void> => {
+    try {
+      res.json(await loadCaptureForMarking(req.params.snapshotId));
+    } catch (err) {
+      respondToFailure(res, err);
+    }
+  },
+);
+
+// POST /api/article-rules/:runId/captures/:snapshotId/preview — draft rules,
+// applied. PURE: called on every edit, so it must leave nothing behind.
+router.post(
+  '/:runId/captures/:snapshotId/preview',
+  async (
+    req: Request<{ runId: string; snapshotId: string }, unknown, unknown>,
+    res: Response,
+  ): Promise<void> => {
+    const parsed = z.object({ selectors: z.array(z.string()) }).safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: 'invalid_body', message: parsed.error.message });
+      return;
+    }
+    try {
+      res.json(await previewUnderSelectors(req.params.snapshotId, parsed.data.selectors));
+    } catch (err) {
+      respondToFailure(res, err);
+    }
+  },
+);
+
 // POST /api/article-rules/:runId/decisions — append one decision.
 router.post('/:runId/decisions', async (req: RunRequest, res: Response): Promise<void> => {
   const parsed = decisionBody.safeParse(req.body);
@@ -123,7 +197,29 @@ router.post('/:runId/decisions', async (req: RunRequest, res: Response): Promise
   }
   const { expectedVersion, ...decision } = parsed.data;
   try {
-    await appendCalibrationDecision(req.params.runId, expectedVersion, decision);
+    // THE OBSERVATION IS COMPUTED HERE, NOT POSTED BY THE PAGE. The browser has
+    // just rendered a preview and could send the figures back a round trip
+    // cheaper — which would make a scan's deviation baseline something a client
+    // asserts. Deriving again costs one parse per capture a human looks at.
+    //
+    // Written BEFORE the append, and that ordering is safe: an observation is a
+    // measurement of (ruleset, capture) that is true whether or not the decision
+    // lands, and the write is an idempotent upsert. A stale-version refusal
+    // therefore leaves a correct row, not a stray one.
+    let observationId: string | undefined;
+    if (decision.snapshotId !== undefined && decision.type !== 'RULESET_CORRECTED') {
+      const ruleset = await ensureCurrentRuleset(req.params.runId);
+      ({ observationId } = await recordObservationForCapture({
+        articleRulesetId: ruleset.id,
+        snapshotId: decision.snapshotId,
+        selectors: (await readCalibrationRun(req.params.runId)).selectors,
+      }));
+    }
+
+    await appendCalibrationDecision(req.params.runId, expectedVersion, {
+      ...decision,
+      ...(observationId === undefined ? {} : { observationId }),
+    });
     res.json(present(await describeCalibrationRun(req.params.runId)));
   } catch (err) {
     respondToFailure(res, err);

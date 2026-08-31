@@ -50,6 +50,8 @@ import { chromeRulesetId } from '../src/lib/chromeRuleset';
 type DecisionSeed = {
   type: CalibrationDecisionType;
   selectors?: string[];
+  /** Which capture the decision is about, when the assertion turns on it. */
+  snapshotId?: string;
 };
 
 /** Build a decision log the way the service would have written it. */
@@ -64,7 +66,7 @@ function log(seeds: DecisionSeed[]) {
       type: seed.type,
       selectors: [...selectors],
       rulesetId: chromeRulesetId({ selectors }),
-      snapshotId: null,
+      snapshotId: seed.snapshotId ?? null,
       waybackTimestamp: null,
       observationId: null,
       reason: null,
@@ -174,6 +176,38 @@ describe('the stopping indicator', () => {
     expect(state.correctionRate).toBeCloseTo(1 / 3);
     // Only the trailing clean run counts: the first capture needed a fix.
     expect(state.consecutiveCleanCaptures).toBe(2);
+  });
+
+  it('separates captures SHOWN from DISTINCT captures shown', async () => {
+    // Three clean showings of ONE capture is the vacuity this level demotes,
+    // wearing the streak's clothes. Neither number alone tells that apart from
+    // three different captures agreeing, so both are reported.
+    const same = { ...SHOWN, snapshotId: 'snap-same' };
+    (prisma.calibrationRun.findUnique as jest.Mock).mockResolvedValue({
+      ...runRow([OPENED]),
+      decisions: log([OPENED, same, ACCEPTED, same, ACCEPTED, same, ACCEPTED]),
+    });
+
+    const state = await readCalibrationRun('run-1');
+    expect(state.capturesShown).toBe(3);
+    expect(state.distinctCapturesShown).toBe(1);
+    expect(state.consecutiveCleanCaptures).toBe(3);
+  });
+
+  it('counts distinct captures when they really are distinct', async () => {
+    (prisma.calibrationRun.findUnique as jest.Mock).mockResolvedValue({
+      ...runRow([OPENED]),
+      decisions: log([
+        OPENED,
+        { ...SHOWN, snapshotId: 'snap-1' },
+        ACCEPTED,
+        { ...SHOWN, snapshotId: 'snap-2' },
+        ACCEPTED,
+      ]),
+    });
+
+    const state = await readCalibrationRun('run-1');
+    expect(state.distinctCapturesShown).toBe(2);
   });
 
   it('resets the clean streak when a later capture needs a correction', async () => {
