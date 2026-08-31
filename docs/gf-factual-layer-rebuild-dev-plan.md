@@ -2165,7 +2165,7 @@ asserts. Recorded here so the next person does not close this level on the stren
 
 ### Level 4 — the view
 
-**STATUS: DEFERRED (2026-08-29) — rationale falsified by measurement in `d4739aa`. It needs a CONSUMER FOR THE MARKS, not code. Do not revive without new measurement. THE NEW MEASUREMENT NOW EXISTS (2026-08-30) — see below; the deferral is ready to be reconsidered and that is the researcher's call.**
+**STATUS: DEFERRED (2026-08-29) — rationale falsified by measurement in `d4739aa`. It needs a CONSUMER FOR THE MARKS, not code. Do not revive without new measurement. THE NEW MEASUREMENT NOW EXISTS (2026-08-30). REOPENED IN DESIGN 2026-08-31: SCAN SCALE IS THE CONSUMER, and the instrument is a HUMAN rather than a corpus-derived statistic — the frequency variants below were re-proposed in discussion and re-rejected on this section's own measurement. Design in `#### THE CONSUMER ARRIVED` below; not started, and the filtering question is explicitly UNMEASURED.**
 
 #### THE MEASUREMENT THIS DEFERRAL ASKED FOR — a news page, 2026-08-30
 
@@ -2272,6 +2272,245 @@ verdict-nobody-reads shape corrected in Level 5 step 4.
 > reasoning rather than from the excerpts, and it would have bought a full cascade on both corpora to
 > discover a 13% mechanism. **Classify every instance before building the remedy** — the classification
 > cost minutes and changed the whole shape of the work.
+
+#### THE CONSUMER ARRIVED — scan scale, 2026-08-31. And the instrument is a human.
+
+Design record from discussion with the researcher. **Nothing is built.** The deferral asked for a
+consumer for the marks; scanning a page with thousands of captures is that consumer.
+
+**What reopens it.** A candidate FDA page has on the order of 3,000 archived captures. The cost of a
+scan is driven by CDX entry count, not by stored rows: every capture is fetched from a free archive,
+every stored row produces a diff, and every diff produces a **paid** best-of-N classifier call.
+
+**The mechanism, precisely, because it is not where it is usually assumed to be.** `text` is
+`inflate -> decode -> htmlToText -> normalise`, and `htmlToText` strips MARKUP, not FURNITURE — it
+removes `<script>/<style>/<noscript>/<template>` bodies and then strips every remaining tag while
+keeping its text. `nav`, `header` and `footer` are on the newline list, so their text is retained.
+`text` therefore contains ads, navigation, footers and timestamps; it feeds `textHash`, which is the
+novelty key, which decides whether a row exists at all.
+
+**Claim trajectories are NOT on this path** — they read `fullText`, Readability's article
+(`DetectionLayer.EXTRACTION`), so the explosion hits the snapshot and diff layers only. That is the
+gap, stated exactly.
+
+**Why the fix cannot live in the novelty rule.** The rule compares this capture's derived text against
+its immediate predecessor's and is CORRECT given its input: the text it was shown did change. Making
+it less sensitive — fuzzy comparison, ignore-small-changes, an N% threshold — would also drop a
+four-word safety edit, which is smaller than a swapped ad. That is the forbidden move Level 5 already
+names, one layer down.
+
+**And the rule that causes it is one the corpus needs.** Non-consecutive reverts are KEPT deliberately,
+because the MOH page returned to an earlier state twice within six hours on 2022-06-22 and three times
+across May 2022 — eleven observations the previous rule discarded. On an alternating page (`A B A B`)
+every capture differs from its predecessor, so every one is stored. **The rule that preserves MOH's
+reverts is the rule that stores 3,000 FDA rows. They cannot be separated by tuning.**
+
+##### THE FREQUENCY SIGNAL WAS PROPOSED AGAIN AND RE-REJECTED. Do not propose it a third time.
+
+A ratio of `transitions` to `capturesExamined` was put forward in discussion as a way to separate
+rotating furniture from content. **It is the same family as the variants measured above, and this
+section already holds the number that kills it:** a block present for 80 of 83 captures and then
+genuinely removed scores 96%, so a 95% threshold classifies it chrome and the removal disappears — 29
+real changes lost on staging, 84 at 80%. The known-hard case recorded above is the mirror image: a
+live visitor counter differs every fetch, so no string of it ever accumulates frequency and it reads as
+content.
+
+**The researcher's objection was the stronger one, and it generalises beyond this level.** This
+project's instruments have needed repeated calibration to become trustworthy — the candidate-source
+measurement took five corrections before its figures stopped moving; `FIGURES_HEDGED` turns on how a
+name is spelled. **Putting a new, uncalibrated statistic in front of a reliable human instrument is a
+bad trade**, and Level 7 already wrote the ending: a gate that cries wolf gets disabled.
+
+##### THE INSTRUMENT IS A HUMAN, because this is a PERCEPTION task
+
+A person looking at a rendered page identifies the article, the nav, the footer and the ads
+immediately, and needs no statistic to do it. Identifying furniture is perception, not inference —
+the one place on this plan where the human instrument is decisively better than anything computable.
+The platform's own division of labour applies unchanged: **computed where computation is reliable,
+human where judgement is needed.**
+
+**What survives of the automated part is a NULL CHECK, not a signal.** A mark is a selector; after a
+redesign it may match nothing. The system reports *"this rule has matched nothing since <date>"* and
+asks for a fresh sample. A selector either matches or it does not — no threshold, no calibration, and
+nothing that can silently drift.
+
+##### Consequence: Level 4 acts on the HTML, before `htmlToText`
+
+A mark must generalise from a handful of sampled pages to thousands. Exact text cannot (rotating
+content never repeats). Position cannot (redesigns). **Only structure can** — and structure is gone
+once every tag has been stripped. So:
+
+```
+document (stored whole, anchored)
+   -> [ chrome ruleset: selectors ]      <- Level 4 acts HERE
+   -> htmlToText -> normalise -> text -> textHash -> novelty -> diffs -> classifier
+```
+
+The ruleset is a **versioned view specification over the anchored document**, which destroys nothing:
+a bad mark is a bad view, re-derived. That is what "the view" should have meant all along, and it
+preserves this section's standing invariant that the view marks rather than deletes.
+
+**The sample must be TIMELINE-STRATIFIED, not the first N captures.** The first captures are
+consecutive and from the page's earliest era — possibly a template that no longer exists, possibly
+predating the site's advertising entirely. Spreading the sample across the whole history costs the
+same number of pages to look at, and surfaces the redesigns, which is itself something to know before
+scanning.
+
+**Mark against the DOCUMENT, and show the DERIVED TEXT beside it.** What renders is CSS-laid-out and
+often incomplete, because the Archive frequently did not capture the stylesheets; what the pipeline
+consumes is a flat tag-stripped string. A block that looks like one visual unit may be several disjoint
+subtrees. Showing the derived text before and after the mark makes the correspondence **visible rather
+than assumed** — checkable by eye, in the same act, with no instrument in between.
+
+##### The two-stage flow, MCP-initiated, approval BEFORE the write
+
+The researcher's design, 2026-08-31. **A simulation table was considered and is NOT needed**, which is
+the better outcome: approval happens before persistence, so nothing bad is ever written and there is
+nothing to clean up. That matters more than it sounds — in this project removing bad rows is not a
+delete, it is a destructive-database session with its own protocol and a postmortem behind it.
+
+**Stage 1 — calibrate, interactively.** An MCP tool starts the scan and hands off to a browser page
+showing the article-text detection on one capture. The researcher confirms the detected article is
+right, or corrects it. Captures are fetched **one at a time, on request** rather than N in advance,
+and **the system chooses which capture comes next** from the full timeline. Cheap: no classifier, no
+chain.
+
+**The stopping indicator is the RESEARCHER'S OWN CORRECTION RATE, not a model's confidence.** *"No
+corrections on the last three versions."* A count of how often the rules had to be fixed needs no
+calibration, no threshold and no model opinion, and it measures the instrument against the only ground
+truth there is. **A self-assessed confidence score is the frequency signal wearing a different hat and
+is not to be built.**
+
+**Which means the NEXT-CAPTURE POLICY and the indicator are one mechanism.** Three similar pages
+produce no corrections and test nothing — the vacuity shape this repository already demotes. The
+selector must reach for captures likely to DISAGREE: other eras, other layouts, step changes in
+derived-text length. *No corrections* is informative only when the sample was adversarial.
+
+**REJECT ROUTES BACK TO CALIBRATION. It never skips a capture.** A rejection means the RULES are
+wrong, not that the capture is bad, so the ruleset is fixed and the capture re-derived. A capture that
+genuinely cannot be taken is RECORDED as skipped with a reason — `CdxIndexEntry` already holds
+`UNSERVABLE`/`UNFETCHED` as first-class state, and a silent hole in the record is the one outcome this
+corpus does not permit.
+
+**Stage 2 — the real scan, approved incrementally.** Not a simulation: the real capture path runs on
+the first capture in range, the researcher is shown what is ABOUT TO BE captured, and it persists only
+on approval. Then either *approve this one* and continue interactively, or *approve this and all
+following*.
+
+##### "Approve all following" — how it is kept safe
+
+**The premise is smaller than it looks.** `document` is stored WHOLE for every capture and is what is
+anchored; `text` is a VIEW derived from it. A bad ruleset therefore produces a bad view, and views are
+re-derivable **without re-fetching**: fix the rules, bump `textExtractionVersion`, recompute. A
+thousand degraded captures are a recompute, not data loss.
+
+**What is NOT recoverable is what gets built on top, so the primary control is sequencing:**
+
+```
+auto mode MAY:      fetch · derive · diff · classify
+auto mode MAY NOT:  promote to evidence · anchor on chain
+```
+
+Anchoring waits for the post-run audit below. With that one rule a degraded auto run costs a recompute
+and some classifier spend, and can never produce a false record on chain.
+
+**The null check is necessary and INSUFFICIENT.** It catches a selector matching ZERO nodes. The
+dangerous direction is a selector matching TOO MUCH — a rule that after a redesign swallows the article
+body deletes real content while matching plenty of nodes, and the null check never fires.
+Under-matching gives a noisy corpus; over-matching gives an invisible article.
+
+**So: a DEVIATION PAUSE, and the distinction that makes it legitimate.** Measure what fraction of the
+document text the ruleset removes, and compare each capture against the pages the researcher APPROVED.
+Removing 12% on every approved page and then 61% pauses the scan.
+
+> **A statistic that decides WHEN TO ASK A HUMAN is safe. A statistic that decides INSTEAD OF a human
+> is not.** The frequency signal classified blocks as chrome — it made the judgement, and lost 29 real
+> changes doing it. A deviation pause classifies nothing; its worst failure is an unnecessary
+> interruption, and its baseline is the researcher's own approvals rather than a tuned threshold.
+
+**Consent is BOUNDED, because this project already forbids batching approvals.** `CLAUDE.md`: *"Do not
+batch approvals. 'Approve steps 3-7' defeats it: the point is that step 4 is written after step 3's
+result is known."* Approving 2,600 captures is that, four hundred times over. It is not forbidden —
+that would make a large scan impossible — it is SCOPED: approval runs until the page stops resembling
+the approved set, then the scan pauses and re-asks. Consent over an era, not over a decade.
+
+**A redesign mid-timeline is the concrete case**, and without the pause, auto mode is a blank cheque
+across it — the silently-stopped-working failure this project keeps finding, at scale and with spend
+attached.
+
+**Then SAMPLE-AUDIT the auto range before anchoring.** Show K captures from the auto-processed range,
+**biased toward the highest-deviation ones**. That is where the deviation number earns its keep: not as
+a gate that blocks, but as a SAMPLER that decides what a human looks at. Clean → anchor. Not clean →
+the deviations say where to re-calibrate, and nothing irreversible has happened.
+
+**Show the cost before the blank cheque.** *Approve all following* is the moment thousands of paid
+classifier calls become inevitable. How many captures remain and what they will cost belongs on that
+button. See `docs/gf-cost-exposure-dev-plan.md`.
+
+**Defence in depth, cheapest first:** documents stored whole → auto mode cannot anchor → null check
+catches under-matching → deviation pause catches over-matching → bounded consent → sampled audit before
+the chain.
+
+##### Mechanics to settle before building
+
+`start_forensic_scan` already exists, so this either extends its contract or is a new tool, and it must
+skip calibration for a URL already calibrated. The MCP-to-browser-and-back handoff also has precedent
+here: `oauthInteractionRoutes` is exactly *the tool needs a human in a browser, then continues* — read
+it before inventing a second shape.
+
+##### THE OPEN QUESTION, AND IT IS THE WHOLE THING: filtering is UNMEASURED
+
+Marking-only is safe and clears zero contradictions — that is measured, above. **But scan scale needs
+the marks to FILTER**, or 3,000 rows are still stored, and every filtering variant measured on
+2026-08-29 lost real changes.
+
+**The measured harm was FREQUENCY-derived filtering.** It fails because a statistic cannot tell a
+long-stable content block from furniture. A human can — so human-marked filtering is a *different
+instrument*, and the earlier result does not automatically transfer to it.
+
+**That is an argument, not a measurement, and this section's own lesson forbids acting on it:**
+*classify every instance before building the remedy.* The resolution is that **stage 2 IS the
+measurement** — a simulated scan with the ruleset applied, compared against one without it, showing
+exactly which changes the marks removed. Filtering is enabled on the strength of that comparison and on
+nothing else.
+
+##### The UI rule, restated
+
+Researcher work moved to MCP-only and the UI became view-only. Marking is inherently visual and cannot
+be done through a chat tool, so the rule is restated rather than excepted:
+
+> **The UI never performs an act that is irreversible or unrecorded.**
+
+That explains both sides. UI evidence promotion was wrong because it wrote a `CONFIRMED` record and
+triggered a chain write — irreversible, and it bypassed the debate. Chrome marking destroys nothing:
+the document stays whole and anchored, and the ruleset is versioned and attributed. **And the existing
+machinery makes it safe rather than merely defensible** — changing the ruleset bumps
+`textExtractionVersion`, so every derived verdict becomes computably stale instead of quietly wrong.
+
+##### Notes for whoever builds it
+
+- **The standing invariant needs re-reading for structural marks.** *"No block unique to a capture is
+  ever classified chrome"* was written against content-derived classification. A human marks a SLOT
+  whose content is unique in every capture — which is the point of marking an ad — so the invariant
+  must be restated in terms of the selector rather than the block, or it forbids the design.
+- **Log every article-text change; decide relevance at thesis time, never at capture time.** A logged
+  ad change is noise in a list; a dropped article change is unrecoverable.
+- **Chrome is not a synonym for irrelevant.** In the news-page measurement the single item with any
+  investigative flavour was a removed NAVIGATION tag. Mark, never delete.
+- **A value that never repeats is not a claim.** A counter has no stable state to flip between, so the
+  trajectory model has nothing to hold it with. Track the block's PRESENCE — "the page stopped
+  publishing the figure" is a real finding — and not its value.
+
+**Decided:** the instrument is a human · marks are structural and act before `htmlToText` · the sample
+is timeline-stratified and then adaptive · mark against the document with the derived text shown ·
+**approval precedes persistence, so no simulation table is needed** · **auto mode may not anchor** ·
+consent is bounded to the approved era · the stopping indicator is the correction rate · reject routes
+to calibration · the UI rule is *never irreversible or unrecorded* · no frequency signal, and no
+self-assessed confidence score.
+
+**Open:** whether filtering is safe at all (stage 2 answers it) · the marking UX · the next-capture
+selection policy, which is the same mechanism as the indicator · how a ruleset is inherited by a
+second URL on the same site · what "the page stopped resembling the approved set" is computed from.
 
 ### Level 5 — the diff
 
