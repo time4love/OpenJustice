@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { apiUrl, authHeaders } from '@/lib/api';
 
@@ -129,6 +129,39 @@ export function ArticleRulesClient({ runId }: { runId: string }) {
    * accurately.
    */
   const [judged, setJudged] = useState<string[]>([]);
+  /**
+   * The selector set the current preview was computed for.
+   *
+   * DERIVED, NOT FLAGGED. An earlier version set a `previewPending` boolean at
+   * the top of the debounce effect, which the linter correctly refused: a
+   * setState in an effect body is a cascading render, and this repository
+   * already has the rule — derive from state, never from a transition. Holding
+   * what the preview was FOR makes staleness a comparison rather than a flag,
+   * and it is exact: the pane is out of date precisely when the rules have
+   * moved on from the ones it was computed against.
+   */
+  const [previewFor, setPreviewFor] = useState<string[] | null>(null);
+
+  /**
+   * The pending settle timer, and whether a settle is already in flight.
+   *
+   * WITHOUT THESE, THE PAGE RACES ITSELF. The settle timer was cancelled when
+   * its dependencies changed but NOT when the researcher did something, so
+   * clicking accept while a settle was still pending fired the same write twice
+   * against one `expectedVersion` — and the loser came back 409, surfacing as
+   * "another tab changed this run" when there was no other tab. Nothing was
+   * lost, because the page re-reads on a stale version; it was noise in the
+   * middle of a measurement, produced by this page arguing with itself.
+   */
+  const settleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const settling = useRef(false);
+
+  const cancelSettle = useCallback(() => {
+    if (settleTimer.current !== null) {
+      clearTimeout(settleTimer.current);
+      settleTimer.current = null;
+    }
+  }, []);
 
   const base = `/api/article-rules/${runId}`;
 
@@ -190,12 +223,12 @@ export function ArticleRulesClient({ runId }: { runId: string }) {
 
   const runPreview = useCallback(
     async (snapshotId: string, rules: string[]) => {
-      setPreview(
-        await call<Preview>(`${base}/captures/${snapshotId}/preview`, {
-          method: 'POST',
-          body: JSON.stringify({ selectors: rules }),
-        }),
-      );
+      const next = await call<Preview>(`${base}/captures/${snapshotId}/preview`, {
+        method: 'POST',
+        body: JSON.stringify({ selectors: rules }),
+      });
+      setPreview(next);
+      setPreviewFor(rules);
     },
     [base, call],
   );
@@ -216,18 +249,29 @@ export function ArticleRulesClient({ runId }: { runId: string }) {
   const flushCorrection = useCallback(async () => {
     if (!state || state.status !== 'OPEN') return;
     if (sameSet(selectors, state.selectors)) return;
-    const next = await call<RunState>(`${base}/decisions`, {
+    // Belt to the cancellation's braces: two settles must never overlap, however
+    // they were started.
+    if (settling.current) return;
+    settling.current = true;
+    try {
+      const next = await call<RunState>(`${base}/decisions`, {
       method: 'POST',
       body: JSON.stringify({
         expectedVersion: state.version,
-        type: 'RULESET_CORRECTED',
-        selectors,
-      }),
-    });
-    setState(next);
+          type: 'RULESET_CORRECTED',
+          selectors,
+        }),
+      });
+      setState(next);
+    } finally {
+      settling.current = false;
+    }
   }, [base, call, selectors, state]);
 
   const guard = async (work: () => Promise<void>) => {
+    // The researcher just acted, so the pending settle is theirs to carry out,
+    // not the timer's. Cancelling here is what stops the page racing itself.
+    cancelSettle();
     setBusy(true);
     setError(null);
     try {
@@ -333,10 +377,14 @@ export function ArticleRulesClient({ runId }: { runId: string }) {
     return () => { clearTimeout(id); };
   }, [capture, selectors, runPreview]);
 
+  // Stale exactly when the rules have moved on from what was previewed.
+  const previewPending = previewFor === null || !sameSet(selectors, previewFor);
+
   useEffect(() => {
     if (!capture || state === null || state.status !== 'OPEN') return undefined;
     if (sameSet(selectors, state.selectors)) return undefined;
     const id = setTimeout(() => {
+      settleTimer.current = null;
       void (async () => {
         try {
           await flushCorrection();
@@ -355,6 +403,7 @@ export function ArticleRulesClient({ runId }: { runId: string }) {
         }
       })();
     }, SETTLE_MS);
+    settleTimer.current = id;
     return () => { clearTimeout(id); };
   }, [capture, selectors, state, flushCorrection, refresh, t]);
 
@@ -421,8 +470,10 @@ export function ArticleRulesClient({ runId }: { runId: string }) {
                       onClick={() => { showCapture(c.id); }}
                       title={isJudged ? t('judgedBadge') : c.snapshotDate}
                       className={`rounded border px-2 py-1 text-xs disabled:opacity-50 ${
-                        isCurrent ? 'border-black bg-gray-100 font-semibold' : 'border-gray-300'
-                      } ${isJudged ? 'text-green-800' : ''}`}
+                        isJudged
+                          ? 'border-green-600 bg-green-100 text-green-900'
+                          : 'border-gray-300'
+                      } ${isCurrent ? 'font-semibold ring-2 ring-black' : ''}`}
                     >
                       {isJudged && <span aria-hidden>✓ </span>}
                       {c.snapshotDate}
@@ -539,7 +590,7 @@ export function ArticleRulesClient({ runId }: { runId: string }) {
               REMOVED is the instrument, and an instrument you have to click to
               reach is one you will not be looking at when it matters.
             */}
-            {preview && <RemovedPane preview={preview} t={t} />}
+            {preview && <RemovedPane preview={preview} pending={previewPending} t={t} />}
           </div>
         </div>
       )}
@@ -614,8 +665,16 @@ function sameSet(a: readonly string[], b: readonly string[]): boolean {
 
 /** How long the researcher has to keep clicking before anything is written. */
 const SETTLE_MS = 900;
-/** The removed pane should track the tree closely — it is the feedback. */
-const PREVIEW_MS = 200;
+/**
+ * How long the tree has to settle before the removed pane is recomputed.
+ *
+ * EVERY PREVIEW IS A FULL RE-PARSE of the stored document server-side, so a
+ * click is not cheap however local the highlight is. Raised from 200ms after
+ * the researcher reported the page as slow to respond: a burst of marking now
+ * costs one recomputation rather than one per click, and the pane says
+ * "recomputing" instead of showing a stale number in silence.
+ */
+const PREVIEW_MS = 350;
 
 function Shell({ children }: { children: React.ReactNode }) {
   return <main className="mx-auto flex max-w-6xl flex-col gap-4 p-4">{children}</main>;
@@ -632,16 +691,23 @@ function Indicator({ state, t }: { state: RunState; t: ReturnType<typeof useTran
         <p>{t('noCaptureYet')}</p>
       ) : (
         <>
-          <p>
-            {t('cleanStreak', {
-              streak: state.consecutiveCleanCaptures,
-              // JUDGED, not shown: a capture the researcher looked at and left
-              // alone is not one the rules were tested against.
-              judged: state.capturesJudged,
-              distinct: state.distinctCapturesShown,
-            })}
-          </p>
-          <p className="text-xs text-gray-600">{t('streakCaveat')}</p>
+          {/* ONE FACT PER LINE. This was a single sentence carrying the streak,
+              the judged count and the distinct count at once — three different
+              numbers welded together, which the researcher reported as unclear.
+              They are separate facts and none of them is derived from another,
+              which is exactly why they cannot be said in one breath. */}
+          <ul className="list-disc ps-5">
+            <li>{t('judgedOfShown', { judged: state.capturesJudged, shown: state.capturesShown })}</li>
+            <li>{t('streakLine', { streak: state.consecutiveCleanCaptures })}</li>
+            <li>
+              {t('correctionLine', {
+                needing: state.capturesNeedingCorrection,
+                judged: state.capturesJudged,
+              })}
+            </li>
+            <li>{t('distinctLine', { distinct: state.distinctCapturesShown })}</li>
+          </ul>
+          <p className="mt-1 text-xs text-gray-600">{t('streakCaveat')}</p>
         </>
       )}
       {state.staleSelectors.length > 0 && (
@@ -873,7 +939,16 @@ function Rules({
  * the researcher marking a node and reporting that nothing happened — the pane
  * was three screens away, and it opened scrolled past the text it had removed.
  */
-function RemovedPane({ preview, t }: { preview: Preview; t: ReturnType<typeof useTranslations> }) {
+function RemovedPane({
+  preview,
+  pending,
+  t,
+}: {
+  preview: Preview;
+  /** True while the tree has moved on and this pane has not caught up yet. */
+  pending: boolean;
+  t: ReturnType<typeof useTranslations>;
+}) {
   const percent = useMemo(() => Math.round(preview.removalFraction * 100), [preview.removalFraction]);
   const empty = preview.removedText === '';
   return (
@@ -882,12 +957,18 @@ function RemovedPane({ preview, t }: { preview: Preview; t: ReturnType<typeof us
       <p className="text-xs text-gray-600">{t('removedWhy')}</p>
       <p className="text-xs text-gray-500">{t('removedPinned')}</p>
       <p className={`text-sm ${percent > 0 ? 'font-semibold text-amber-900' : 'text-gray-600'}`}>
-        {t('removalFraction', { percent })}
+        {/* A NUMBER THAT IS SILENTLY OUT OF DATE IS WORSE THAN NO NUMBER, because
+            this pane is the only thing that catches over-matching. */}
+        {pending ? t('previewPending') : t('removalFraction', { percent })}
       </p>
       {/* `overflow-anchor-none` and no scroll restoration: the pane always shows
           the TOP of what was removed. It used to open scrolled to its tail, so
           the researcher saw the end of a nav block and not the block. */}
-      <pre className="h-72 overflow-auto whitespace-pre-wrap border border-amber-400 bg-amber-50 p-2 text-xs">
+      <pre
+        className={`h-72 overflow-auto whitespace-pre-wrap border border-amber-400 bg-amber-50 p-2 text-xs ${
+          pending ? 'opacity-50' : ''
+        }`}
+      >
         {empty ? t('removedNothing') : preview.removedText}
       </pre>
     </section>
