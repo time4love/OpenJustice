@@ -1,12 +1,15 @@
 import {
-  applyChromeRuleset,
   chromeRulesetId,
   chromeTextVersion,
   EMPTY_CHROME_RULESET,
   isEmptyRuleset,
   type ChromeRuleset,
 } from '../../src/lib/chromeRuleset';
-import { deriveTextUnderRuleset } from '../../src/lib/chromeRuleset';
+import {
+  applyChromeRuleset,
+  chromeRemovalFraction,
+  deriveTextUnderRuleset,
+} from '../../src/lib/chromeRulesetApply';
 import { deriveText, TEXT_EXTRACTION_VERSION } from '../../src/lib/captureDocument';
 
 // ---------------------------------------------------------------------------
@@ -194,5 +197,71 @@ describe('a ruleset identity commits to the view, not to how it was written', ()
     expect(isEmptyRuleset(undefined)).toBe(true);
     expect(isEmptyRuleset(EMPTY_CHROME_RULESET)).toBe(true);
     expect(isEmptyRuleset(CHROME)).toBe(false);
+  });
+});
+
+describe('the removal fraction — one definition, four readers', () => {
+  // IT EXISTS AS ONE SYMBOL BECAUSE FOUR MECHANISMS READ IT: the deviation
+  // pause, the sample audit's ordering, the stored observation and whatever the
+  // researcher is shown. A fraction computed slightly differently in two of them
+  // is a pause firing against a baseline it does not share.
+
+  it('is zero when the ruleset removes nothing', () => {
+    const derived = deriveTextUnderRuleset(
+      bytes(page('Advert A')),
+      'text/html',
+      null,
+      EMPTY_CHROME_RULESET,
+    );
+    expect(chromeRemovalFraction(derived)).toBe(0);
+  });
+
+  it('is a MEASURED share of this fixture, not a restatement of the formula', () => {
+    // Pinned to what the definition actually produces on a known page. Asserting
+    // `removed / (kept + removed)` instead would have recomputed the function
+    // body and passed however the definition changed.
+    const derived = deriveTextUnderRuleset(bytes(page('Advert A')), 'text/html', null, CHROME);
+    expect(chromeRemovalFraction(derived)).toBeCloseTo(0.2323, 4);
+  });
+
+  it('ORDERS BY HOW MUCH WAS REMOVED — the property the deviation pause rests on', () => {
+    // The pause compares a capture against the approved pages and asks whether
+    // this one removed conspicuously more. That question is only answerable if
+    // more removal reliably means a bigger number.
+    const navOnly = deriveTextUnderRuleset(
+      bytes(page('Advert A')),
+      'text/html',
+      null,
+      { selectors: ['nav.site-nav'] },
+    );
+    const everything = deriveTextUnderRuleset(bytes(page('Advert A')), 'text/html', null, CHROME);
+
+    expect(chromeRemovalFraction(navOnly)).toBeLessThan(chromeRemovalFraction(everything));
+  });
+
+  it('goes conspicuously high when a rule SWALLOWS THE ARTICLE', () => {
+    // The dangerous direction, and the one the null check cannot see: a rule
+    // that matches plenty of nodes and eats the content. What is left on screen
+    // is clean, short and plausible — this number is what betrays it.
+    const overMatching = deriveTextUnderRuleset(bytes(page('Advert A')), 'text/html', null, {
+      selectors: ['nav.site-nav', '#ad-slot', 'footer.site-footer', 'main'],
+    });
+    const correct = deriveTextUnderRuleset(bytes(page('Advert A')), 'text/html', null, CHROME);
+
+    expect(chromeRemovalFraction(correct)).toBeLessThan(0.35);
+    expect(chromeRemovalFraction(overMatching)).toBeGreaterThan(0.9);
+    // And the null check stays silent through it: every selector matched.
+    expect(Object.values(overMatching.chrome.matchCounts).every((n) => n > 0)).toBe(true);
+  });
+
+  it('returns 0 rather than NaN for a document that derives to nothing', () => {
+    // A pause triggered by a division is a pause with no finding behind it.
+    const empty = deriveTextUnderRuleset(
+      bytes('<html><body></body></html>'),
+      'text/html',
+      null,
+      CHROME,
+    );
+    expect(chromeRemovalFraction(empty)).toBe(0);
   });
 });

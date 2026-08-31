@@ -42,6 +42,8 @@ model Researcher {
   publishedTheses    Thesis[]            @relation("ThesisPublisher")
   researchSessions   ResearchSession[]
   summaryCorrections SummaryCorrection[]
+  articleRulesets    ArticleRuleset[]
+  calibrationRuns    CalibrationRun[]
 }
 
 // ---------------------------------------------------------------------------
@@ -160,6 +162,14 @@ model TrackedUrl {
   trajectoryComputations ClaimTrajectoryComputation[]
   cdxIndexEntries        CdxIndexEntry[]
   cdxQueries             CdxQuery[]
+  // Level 4 — the view. Every ruleset ever committed for this page...
+  articleRulesets        ArticleRuleset[]             @relation("TrackedUrlRulesets")
+  calibrationRuns        CalibrationRun[]
+  // ...and which one is IN FORCE, as a FACT rather than an inference from
+  // ordering. Unique because a ruleset is scoped to one page, so it can be
+  // active for at most one.
+  activeArticleRulesetId String?                      @unique
+  activeArticleRuleset   ArticleRuleset?              @relation("ActiveArticleRuleset", fields: [activeArticleRulesetId], references: [id])
 }
 
 // One record per unique archived snapshot of a TrackedUrl.
@@ -326,8 +336,8 @@ model UrlSnapshot {
   anchorCheck             AnchorCheckOutcome?
   createdAt               DateTime            @default(now())
 
-  beforeDiffs    UrlVersionDiff[] @relation("BeforeSnapshot")
-  afterDiffs     UrlVersionDiff[] @relation("AfterSnapshot")
+  beforeDiffs          UrlVersionDiff[]      @relation("BeforeSnapshot")
+  afterDiffs           UrlVersionDiff[]      @relation("AfterSnapshot")
   // The index entry this capture was made from, when it came from the Archive.
   //
   // Deliberately NOT a `cdxDigest` column on this table. Two hash-shaped columns
@@ -335,9 +345,13 @@ model UrlSnapshot {
   // already paid for it: a base32 SHA-1 was written into `documentHash`, a
   // SHA-256 column, and stayed there across both environments. The digest lives
   // on CdxIndexEntry, one join away, where nothing can mistake it for ours.
-  cdxIndexEntry  CdxIndexEntry?   @relation("CdxEntryCapture")
+  cdxIndexEntry        CdxIndexEntry?        @relation("CdxEntryCapture")
   /// Index entries whose UNCHANGED verdict was computed against this capture.
-  cdxComparisons CdxIndexEntry[]  @relation("CdxEntryComparedTo")
+  cdxComparisons       CdxIndexEntry[]       @relation("CdxEntryComparedTo")
+  /// Level 4 — what each ruleset did to this capture, and the marking decisions
+  /// taken about it.
+  rulesetObservations  RulesetObservation[]
+  calibrationDecisions CalibrationDecision[]
 
   @@unique([trackedUrlId, waybackTimestamp])
   // A TrackedUrl cannot hold two captures of the same instant. This is the
@@ -2187,4 +2201,237 @@ model IntegrityCheck {
   /// The coverage report: how many subjects of this check type stand at each
   /// verdict. Free, and the reason the plan chose a table.
   @@index([checkType, verdict, checkedAt])
+}
+
+// ---------------------------------------------------------------------------
+// LEVEL 4 — THE VIEW. The rules a human marked, and the loop that produced them.
+//
+// Signed off for all three modes on 2026-08-31 before any of it was written; the
+// reasoning is `docs/gf-factual-layer-rebuild-dev-plan.md`, Level 4,
+// `##### THE DATA MODEL`. Read that before changing anything here.
+//
+// THE SPLIT IS NOT COSMETIC. An earlier draft held one "session row" carrying the
+// mode, the ruleset under construction and the decision log. Level 4 requires a
+// scan to PIN the ruleset version it was approved under — and one row cannot both
+// pin a ruleset and be the ruleset under construction. `REJECT ROUTES BACK TO
+// CALIBRATION` puts that collision on the normal path, so the pin and the draft
+// are separate records with opposite lifetimes:
+//
+//     ArticleRuleset    the committed artifact — content-addressed, append-only
+//        ^ commits            ^ pins
+//     CalibrationRun    a human building or fixing rules      (here)
+//     ScanRun           a run that fetches and persists       (step 2b)
+//
+// THERE IS NO MODE ENUM. "Mode 1 is mode 3 with a fetch" is exact, and the effect
+// side collapses with it: committing a ruleset re-derives every stored capture,
+// which is a no-op when there are none. So the document source is a property of
+// each CAPTURE SHOWN, not of the run — which also permits the case a per-run
+// enum forecloses, a URL whose stored captures are all one era and can only be
+// calibrated adversarially by reaching outside the corpus for a fetch.
+// ---------------------------------------------------------------------------
+
+enum CalibrationRunStatus {
+  /// Under construction. The current ruleset is the newest decision's.
+  OPEN
+  /// Closed having committed a ruleset. `committedRulesetId` is set.
+  COMMITTED
+  /// Closed without committing. Deliberately distinct from COMMITTED: a run that
+  /// produced nothing is a fact about the calibration, not a missing value.
+  ABANDONED
+}
+
+enum CalibrationDecisionType {
+  /// Logged when the run is created, carrying the seed ruleset (empty, or the
+  /// rules already in force when correcting an existing URL).
+  RUN_OPENED
+  /// The system chose this capture and showed it. Nothing is judged yet.
+  CAPTURE_SHOWN
+  /// The human changed the selectors. This is the event the stopping indicator
+  /// counts, and the only one that changes what the rules are.
+  RULESET_CORRECTED
+  /// Under these rules, this capture is right.
+  CAPTURE_ACCEPTED
+  /// The RULES are wrong — never that the capture is bad. Level 4: "REJECT
+  /// ROUTES BACK TO CALIBRATION. It never skips a capture."
+  CAPTURE_REJECTED
+  /// The capture genuinely cannot be taken. `reason` is REQUIRED, because a
+  /// silent hole in the record is the one outcome this corpus does not permit.
+  CAPTURE_SKIPPED
+  RUN_CLOSED
+}
+
+/// A COMMITTED RULESET — the artifact a calibration produces and a scan pins.
+///
+/// APPEND-ONLY. Nothing here is ever edited: `rulesetId` is
+/// `chromeRulesetId(selectors)`, so changing the selectors is a different row by
+/// construction, and the whole point of a versioned view is that the previous
+/// version still names what was derived under it. Level 10 supersedes rather
+/// than removes; this is that rule applied to a view specification.
+///
+/// SCOPED TO ONE TrackedUrl. Whether a ruleset can be inherited by a second URL
+/// on the same site is OPEN in the plan and deliberately not decided here — a
+/// table keyed on `trackedUrlId` can gain a site-level parent later, whereas a
+/// site-level table would have had to guess the inheritance rule now.
+model ArticleRuleset {
+  id           String     @id @default(cuid())
+  trackedUrlId String
+  trackedUrl   TrackedUrl @relation("TrackedUrlRulesets", fields: [trackedUrlId], references: [id], onDelete: Cascade)
+  /// `chromeRulesetId(selectors)` — sha256 over the sorted, de-duplicated
+  /// selectors, first 8 hex. Order- and duplicate-insensitive, so two spellings
+  /// of one view do not produce two rulesets.
+  rulesetId    String
+  selectors    String[]
+  /// Attributed, because a mark is a JUDGEMENT and this platform records who
+  /// made every judgement it acts on.
+  createdById  String
+  createdBy    Researcher @relation(fields: [createdById], references: [id])
+  createdAt    DateTime   @default(now())
+
+  observations   RulesetObservation[]
+  seededRuns     CalibrationRun[]     @relation("CalibrationSeed")
+  committingRuns CalibrationRun[]     @relation("CalibrationCommit")
+  /// Set when this is the ruleset currently IN FORCE for its TrackedUrl.
+  activeFor      TrackedUrl?          @relation("ActiveArticleRuleset")
+
+  /// Recommitting an identical view is the SAME row, not a second one — the
+  /// same discipline as capture novelty one layer out.
+  @@unique([trackedUrlId, rulesetId])
+  @@index([trackedUrlId, createdAt])
+}
+
+/// WHAT ONE RULESET DID TO ONE CAPTURE. The single shared table of this level.
+///
+/// FOUR REQUIREMENTS ARE THE SAME FACT, and finding that out is what corrected
+/// the model:
+///
+///   - the null check      — "this rule has matched nothing since <date>"
+///   - the deviation pause — "12% on every approved page and then 61%"
+///   - the sample audit    — K captures "biased toward the highest-deviation ones"
+///   - the next-capture policy — "step changes in derived-text length"
+///
+/// All four are per-`(ruleset, capture)`, and BOTH the calibration loop and the
+/// headless scan produce them. Two producers writing one fact into two tables is
+/// this repository's dominant defect shape, so: one table, two writers, four
+/// readers.
+///
+/// EXACTLY ONE OF `snapshotId` AND `waybackTimestamp` IS SET. A stored capture is
+/// identified by its snapshot, which already carries its timestamp; a capture
+/// fetched for marking and deliberately NOT persisted (calibration mode) has no
+/// snapshot and is identified by the timestamp alone. Enforced by
+/// `requireObservationSubject` in the service rather than by a CHECK constraint —
+/// Prisma does not model CHECK constraints, and one added by raw SQL cannot be
+/// shown not to register as drift without a shadow database to test it against.
+/// A loud guard plus a test is this repository's named pattern for exactly that.
+model RulesetObservation {
+  id                String         @id @default(cuid())
+  articleRulesetId  String
+  articleRuleset    ArticleRuleset @relation(fields: [articleRulesetId], references: [id], onDelete: Cascade)
+  /// A capture we hold.
+  snapshotId        String?
+  snapshot          UrlSnapshot?   @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
+  /// A capture fetched for marking and not persisted.
+  waybackTimestamp  String?
+  /// Elements matched per selector — the NULL CHECK's input, and the only
+  /// automated part of this level. A count, never a judgement.
+  matchCounts       Json
+  /// The share of the capture's derived text this ruleset removed, `[0, 1]`.
+  /// Defined once, by `chromeRemovalFraction` — never recomputed at a callsite.
+  removalFraction   Float
+  /// Length of the text that SURVIVED. A step change here is what the
+  /// next-capture policy reaches for.
+  derivedTextLength Int
+  observedAt        DateTime       @default(now())
+
+  decisions CalibrationDecision[]
+
+  /// One observation per capture per ruleset, under either identity. Postgres
+  /// does not treat NULLs as colliding, so the two uniques do not constrain each
+  /// other — the same property `UrlSnapshot`'s composite unique relies on.
+  @@unique([articleRulesetId, snapshotId])
+  @@unique([articleRulesetId, waybackTimestamp])
+  /// The audit sample: highest deviation first.
+  @@index([articleRulesetId, removalFraction])
+  @@index([articleRulesetId, observedAt])
+}
+
+/// ONE PASS OF A HUMAN BUILDING OR FIXING A RULESET — modes 1 and 3.
+///
+/// THE RUN HOLDS NO SELECTORS. Its decisions do, and the current ruleset is the
+/// newest decision's. That is Level 4's own anti-pattern — "do not let the UI
+/// hold state the session row does not" — taken one level further: the run holds
+/// no state its log does not, so nothing can drift and resumption is a fold.
+///
+/// THERE IS NO `version` COLUMN EITHER, and the sign-off named one. Implementing
+/// it showed the column would be both redundant with `CalibrationDecision.sequence`
+/// and unable to be updated atomically without a transaction; the unique index on
+/// `(calibrationRunId, sequence)` IS the compare-and-set, since a second browser
+/// writing the same sequence loses on the constraint. Removing it is more
+/// faithful to the decision above than keeping it would have been.
+model CalibrationRun {
+  id                  String               @id @default(cuid())
+  trackedUrlId        String
+  trackedUrl          TrackedUrl           @relation(fields: [trackedUrlId], references: [id], onDelete: Cascade)
+  researcherId        String
+  researcher          Researcher           @relation(fields: [researcherId], references: [id])
+  status              CalibrationRunStatus @default(OPEN)
+  /// The rules in force when the run opened, when correcting an existing URL.
+  seededFromRulesetId String?
+  seededFrom          ArticleRuleset?      @relation("CalibrationSeed", fields: [seededFromRulesetId], references: [id])
+  /// What the run committed, on close. Null while OPEN and on ABANDONED.
+  committedRulesetId  String?
+  committed           ArticleRuleset?      @relation("CalibrationCommit", fields: [committedRulesetId], references: [id])
+  createdAt           DateTime             @default(now())
+  closedAt            DateTime?
+
+  decisions CalibrationDecision[]
+
+  @@index([trackedUrlId, status])
+}
+
+/// ONE DECISION IN A CALIBRATION. Append-only, and the only place selectors live.
+///
+/// `sequence` IS THE RUN'S VERSION. It starts at 1 with `RUN_OPENED` and is
+/// unique per run, so an append carrying a stale expected version collides
+/// rather than overwriting — the "two browsers on one session" failure mode,
+/// answered by a constraint instead of by a read-modify-write.
+///
+/// THE NUMBERS ARE NOT HERE. `observationId` points at what was measured;
+/// copying `removalFraction` or `matchCounts` onto the decision would be the
+/// same fact in two places, free to disagree.
+model CalibrationDecision {
+  id               String                  @id @default(cuid())
+  calibrationRunId String
+  calibrationRun   CalibrationRun          @relation(fields: [calibrationRunId], references: [id], onDelete: Cascade)
+  sequence         Int
+  type             CalibrationDecisionType
+  /// The selectors in force AFTER this decision. Stored in full rather than as a
+  /// delta: a correction IS a new list, and a fold that replays deltas is a fold
+  /// that can be replayed wrongly.
+  selectors        String[]
+  /// `chromeRulesetId(selectors)` — identifies "the approved set" a scan's
+  /// deviation baseline is computed over.
+  rulesetId        String
+  /// Which capture this decision is about, under the same two identities
+  /// `RulesetObservation` uses. Both null on RUN_OPENED and RUN_CLOSED, and
+  /// exactly one set on every CAPTURE_* type — held by `requireSubjectForType`,
+  /// which keys the rule on the decision TYPE rather than on whether the caller
+  /// happened to supply an identity.
+  ///
+  /// `SetNull` HERE AND `Cascade` ON THE OBSERVATION, DELIBERATELY. A decision
+  /// is the record of a human judgement and must survive; an observation is a
+  /// measurement that can be recomputed from bytes we still hold. Deleting a
+  /// capture is a destructive-database session either way, and this asymmetry
+  /// is what keeps the judgement rather than the arithmetic.
+  snapshotId       String?
+  snapshot         UrlSnapshot?            @relation(fields: [snapshotId], references: [id], onDelete: SetNull)
+  waybackTimestamp String?
+  observationId    String?
+  observation      RulesetObservation?     @relation(fields: [observationId], references: [id], onDelete: SetNull)
+  /// REQUIRED on CAPTURE_SKIPPED. A capture that cannot be taken is recorded
+  /// with its reason; a silent hole is the one outcome this corpus forbids.
+  reason           String?
+  createdAt        DateTime                @default(now())
+
+  @@unique([calibrationRunId, sequence])
+  @@index([calibrationRunId, type])
 }

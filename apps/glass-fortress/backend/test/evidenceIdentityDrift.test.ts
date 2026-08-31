@@ -56,14 +56,17 @@ describe('there is one extraction of "the article", and one evidence hash', () =
     // of files allowed to do it is enumerated rather than bounded by a rule.
     //
     //   lib/archiveText.ts     — Readability's article, `fullText`
-    //   lib/chromeRuleset.ts   — Level 4's view: removes marked furniture from
-    //                            the HTML before the ONE text derivation runs
+    //   lib/chromeRulesetApply.ts — Level 4's view: removes marked furniture
+    //                            from the HTML before the ONE text derivation
+    //                            runs. NOT `chromeRuleset.ts`, which holds a
+    //                            ruleset's identity and is deliberately
+    //                            parser-free so naming a view costs no jsdom.
     //
     // Adding a third means answering which of those two it is. If it is neither,
     // it is probably a second extraction wearing a parser's clothes.
     const parsers = files.filter((f) => /new JSDOM\(/.test(readFileSync(f, 'utf8'))).map(rel);
 
-    expect(parsers.sort()).toEqual(['lib/archiveText.ts', 'lib/chromeRuleset.ts']);
+    expect(parsers.sort()).toEqual(['lib/archiveText.ts', 'lib/chromeRulesetApply.ts']);
   });
 
   it('the url+text evidence hash is computed only through the shared function', () => {
