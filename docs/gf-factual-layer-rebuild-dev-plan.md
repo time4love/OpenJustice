@@ -2407,12 +2407,22 @@ thousand degraded captures are a recompute, not data loss.
 **What is NOT recoverable is what gets built on top, so the primary control is sequencing:**
 
 ```
-auto mode MAY:      fetch · derive · diff · classify
-auto mode MAY NOT:  promote to evidence · anchor on chain
+auto mode MAY:      fetch · derive · diff · classify · ANCHOR SNAPSHOTS
+auto mode MAY NOT:  promote to evidence, and the evidence anchoring that follows it
 ```
 
-Anchoring waits for the post-run audit below. With that one rule a degraded auto run costs a recompute
-and some classifier spend, and can never produce a false record on chain.
+**SNAPSHOT ANCHORING IS SAFE IN AUTO MODE, and the reason is `anchoredCaptureHash`: it returns
+`documentHash`** — the raw bytes as served. A chrome ruleset cannot change the bytes, so a snapshot's
+anchor is untouched however badly the article was detected. An earlier draft of this section forbade
+all anchoring; that was stricter than the architecture requires, and the cost of the mistake would have
+been a new schema state, since deliberately unanchored rows read as an anchoring FAILURE to
+`audit-anchors` and are counted by `get_environment` as `snapshotsUnanchored`. Getting the line right
+removes that state entirely.
+
+**Evidence promotion is the genuine exposure**, because diff-derived evidence identity is
+snapshot-derived and moves when the diffs move — §2's question, and the researcher's. It waits for the
+post-run audit below. With that one rule a degraded auto run costs a recompute and some classifier
+spend, and can never produce a false evidence record on chain.
 
 **The null check is necessary and INSUFFICIENT.** It catches a selector matching ZERO nodes. The
 dangerous direction is a selector matching TOO MUCH — a rule that after a redesign swallows the article
@@ -2450,6 +2460,84 @@ button. See `docs/gf-cost-exposure-dev-plan.md`.
 **Defence in depth, cheapest first:** documents stored whole → auto mode cannot anchor → null check
 catches under-matching → deviation pause catches over-matching → bounded consent → sampled audit before
 the chain.
+
+##### THREE MODES, ONE LOOP — and the third one comes FIRST
+
+The researcher's observation, 2026-08-31: **URLs already scanned can drive the same UI.** Their
+documents are stored, so correcting the article detection on an existing corpus needs no network at
+all. That is a third mode the two-stage design did not name.
+
+**The marking loop is identical in all three:** render the document, show the detected article beside
+what is excluded, the researcher corrects, the ruleset updates, the derived text is shown before and
+after, the correction-rate indicator moves, the next capture is chosen.
+
+| | 1 · calibrate | 2 · live scan | 3 · correct existing |
+|---|---|---|---|
+| document from | fetched, not persisted | fetched, persisted on approval | **already stored** |
+| network | yes | yes | **none** |
+| approval means | *the ruleset is right* | ***persist this capture*** | *the ruleset is right* |
+| after | ruleset saved | capture written | existing rows re-derived |
+
+**Mode 1 is mode 3 with a fetch** — they differ in exactly one axis. So this is ONE loop with a
+document source and an approval policy, three callers, rather than three screens that drift apart.
+
+**IT CANNOT BREAK A SNAPSHOT ANCHOR.** `anchoredCaptureHash` returns `documentHash`, the raw bytes, so
+re-deriving an already-scanned URL under a corrected ruleset leaves every snapshot anchor intact. What
+IS exposed is evidence identity, since diff-derived hashes are snapshot-derived — §2, and reserved.
+
+**So scope the ruleset to the `text` derivation only.** The explosion this level exists to fix is on
+the `text` path — novelty and diffs — while `fullText` feeds `contentHash` and every claim trajectory,
+including the fifteen the published thesis cites. Leaving `fullText` alone turns a safety constraint
+into a free choice and keeps a live public artefact stable.
+
+**MODE 3 SHOULD BE BUILT FIRST, inverting the natural order**, and the reason is that it is also THE
+MISSING MEASUREMENT. This section records the central open question as *whether human-marked filtering
+is safe at all*. Mode 3 answers it on data already held:
+
+| diff input | CONTRADICTED | real changes lost |
+|---|---|---|
+| `fullText` — unchanged | 4 | 0 |
+| `text` + frequency chrome ≥95% | 9 | 29 |
+| **`text` + HUMAN-MARKED chrome** | **?** | **?** |
+
+No fetches, no scan, no classifier spend, no chain — and it exercises the whole UI while producing the
+number that unblocks the other two modes. Stage 2 was named as the measurement above; **mode 3 is a
+cheaper one and is available now.**
+
+##### The approval policy is an EXTENSION POINT, and its description is DERIVED
+
+Approval means different things in different modes, so the flow takes a policy rather than hard-coding
+one. A researcher who believes they are approving a ruleset while actually approving a capture write
+is the confusion this exists to prevent.
+
+**The policy supplies ONE thing, not two.** A caller that provided both "what to say" and "what to do"
+could let them drift — and this repository already has that defect on the record: `check_on_chain_status`
+returned a correct verdict beside a sentence asserting a second thing the verdict never asked, to the
+session that had published a thesis an hour earlier. A caller-authored confirmation string next to a
+caller-authored effect is that failure with a UI on it.
+
+```
+ApprovalPolicy
+  effect        DECLARED AS DATA — what it writes, whether it is reversible,
+                what reverses it, how many rows it touches
+  apply()       the act
+  precondition  when this policy is offerable at all
+  batch         whether "and all following" exists here, and what bounds it
+```
+
+**The confirmation is RENDERED FROM `effect`. Nobody writes the sentence** — the same discipline as
+`diffSurvivalView`, which derives display state from stored columns rather than storing it. A new mode
+then cannot introduce a description that lies, because it never writes one.
+
+| policy | writes | reversible | reversed by | batch |
+|---|---|---|---|---|
+| calibrate | the ruleset, versioned | yes | re-mark | no — each correction is its own act |
+| live scan | one snapshot: bytes + derived rows | yes, **but removal is a destructive-DB session** | — | yes, bounded to the approved era |
+| correct existing | ruleset + re-derivation of N rows | yes | re-derive | yes — cheap and reversible |
+
+**The live-scan row is the one that must be said out loud.** "Reversible in principle, but removing a
+written snapshot requires a cleanup session" is true, is unobvious, and is exactly the kind of fact a
+confirmation dialog exists to carry — and it can only carry it if `effect` holds it.
 
 ##### Mechanics to settle before building
 
@@ -2503,7 +2591,10 @@ machinery makes it safe rather than merely defensible** — changing the ruleset
 
 **Decided:** the instrument is a human · marks are structural and act before `htmlToText` · the sample
 is timeline-stratified and then adaptive · mark against the document with the derived text shown ·
-**approval precedes persistence, so no simulation table is needed** · **auto mode may not anchor** ·
+**approval precedes persistence, so no simulation table is needed** · **auto mode may not PROMOTE;
+snapshot anchoring is safe because the anchor is on bytes** · **three modes, one loop, and mode 3
+first** · the ruleset is scoped to the `text` derivation · **the approval confirmation is derived from
+a declared effect, never authored beside it** ·
 consent is bounded to the approved era · the stopping indicator is the correction rate · reject routes
 to calibration · the UI rule is *never irreversible or unrecorded* · no frequency signal, and no
 self-assessed confidence score.
