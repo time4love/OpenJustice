@@ -119,6 +119,16 @@ export function ArticleRulesClient({ runId }: { runId: string }) {
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  /**
+   * Captures judged in THIS tab, so the page can advance and show which are done.
+   *
+   * A JUDGEMENT THAT LEAVES NO TRACE ON SCREEN READS AS A DEAD BUTTON. The
+   * researcher accepted a capture, the decision was written, the streak
+   * incremented — and the page did not move, confirm, or advance, so they
+   * reported the control as unresponsive. They were describing what they saw
+   * accurately.
+   */
+  const [judged, setJudged] = useState<string[]>([]);
 
   const base = `/api/article-rules/${runId}`;
 
@@ -269,6 +279,45 @@ export function ArticleRulesClient({ runId }: { runId: string }) {
     await work();
   };
 
+  /**
+   * Judge the capture on screen, SAY SO, and move on.
+   *
+   * The three things a judgement now does that it did not: it names what was
+   * recorded, it marks the capture done in the strip, and it opens the next
+   * unjudged one. Any of the three would have prevented "the button is
+   * unresponsive"; the accept had in fact written a decision and advanced the
+   * streak every time.
+   *
+   * A REJECTION DOES NOT ADVANCE. The plan is explicit — "reject routes back to
+   * calibration, it never skips a capture" — so the researcher stays here, fixes
+   * the rules, and looks again at the capture that disagreed.
+   */
+  const judge = (type: 'CAPTURE_ACCEPTED' | 'CAPTURE_REJECTED' | 'CAPTURE_SKIPPED', extra: Record<string, unknown> = {}) => {
+    if (!capture) return;
+    const snapshotId = capture.snapshotId;
+    void guard(() =>
+      settleThen(async () => {
+        await decide(type, { snapshotId, ...extra });
+        setJudged((prev) => (prev.includes(snapshotId) ? prev : [...prev, snapshotId]));
+        if (type === 'CAPTURE_REJECTED') {
+          setNotice(t('recordedRejected'));
+          return;
+        }
+        setNotice(type === 'CAPTURE_ACCEPTED' ? t('recordedAccepted') : t('recordedSkipped'));
+        const next = captures?.sample.find(
+          (row) => row.id !== snapshotId && !judged.includes(row.id),
+        );
+        if (!next) {
+          setNotice(t('sampleExhausted'));
+          return;
+        }
+        const detail = await call<CaptureDetail>(`${base}/captures/${next.id}`);
+        setCapture(detail);
+        await decide('CAPTURE_SHOWN', { snapshotId: next.id });
+      }),
+    );
+  };
+
   // ---------------------------------------------------------------------
   // The draft, debounced twice on different clocks.
   //
@@ -356,21 +405,31 @@ export function ArticleRulesClient({ runId }: { runId: string }) {
             <p className="text-xs text-gray-600">
               {t('capturesSpread', { shown: captures.sample.length, total: captures.total })}
             </p>
+            {/* PROGRESS HAS TO BE VISIBLE. Twelve identical buttons say nothing
+                about which have been judged, so a researcher working through the
+                sample has to remember — and after an accept that confirmed
+                nothing, they could not even tell whether the last one counted. */}
             <ul className="mt-1 flex flex-wrap gap-1">
-              {captures.sample.map((c) => (
-                <li key={c.id}>
-                  <button
-                    type="button"
-                    disabled={busy || closed}
-                    onClick={() => { showCapture(c.id); }}
-                    className={`rounded border px-2 py-1 text-xs ${
-                      capture?.snapshotId === c.id ? 'border-black bg-gray-100' : 'border-gray-300'
-                    }`}
-                  >
-                    {c.snapshotDate}
-                  </button>
-                </li>
-              ))}
+              {captures.sample.map((c) => {
+                const isJudged = judged.includes(c.id);
+                const isCurrent = capture?.snapshotId === c.id;
+                return (
+                  <li key={c.id}>
+                    <button
+                      type="button"
+                      disabled={busy || closed}
+                      onClick={() => { showCapture(c.id); }}
+                      title={isJudged ? t('judgedBadge') : c.snapshotDate}
+                      className={`rounded border px-2 py-1 text-xs disabled:opacity-50 ${
+                        isCurrent ? 'border-black bg-gray-100 font-semibold' : 'border-gray-300'
+                      } ${isJudged ? 'text-green-800' : ''}`}
+                    >
+                      {isJudged && <span aria-hidden>✓ </span>}
+                      {c.snapshotDate}
+                    </button>
+                  </li>
+                );
+              })}
             </ul>
           </>
         )}
@@ -487,12 +546,13 @@ export function ArticleRulesClient({ runId }: { runId: string }) {
 
       {capture && !closed && (
         <section className="flex flex-wrap items-center gap-2">
-          <button type="button" disabled={busy} className="rounded bg-black px-3 py-2 text-sm text-white"
-            onClick={() => { void guard(() => settleThen(() => decide('CAPTURE_ACCEPTED', { snapshotId: capture.snapshotId }))); }}>
-            {t('accept')}
+          <button type="button" disabled={busy}
+            className="rounded bg-black px-3 py-2 text-sm text-white disabled:opacity-50"
+            onClick={() => { judge('CAPTURE_ACCEPTED'); }}>
+            {busy ? t('saving') : t('accept')}
           </button>
           <button type="button" disabled={busy} className="rounded border border-gray-400 px-3 py-2 text-sm"
-            onClick={() => { void guard(() => settleThen(() => decide('CAPTURE_REJECTED', { snapshotId: capture.snapshotId }))); }}>
+            onClick={() => { judge('CAPTURE_REJECTED'); }}>
             {t('reject')}
           </button>
           <span className="text-xs text-gray-600">{t('rejectNote')}</span>
@@ -505,12 +565,8 @@ export function ArticleRulesClient({ runId }: { runId: string }) {
             />
             <button type="button" disabled={busy || skipReason.trim() === ''} className="rounded border border-gray-400 px-2 py-1"
               onClick={() => {
-                void guard(() =>
-                  settleThen(async () => {
-                    await decide('CAPTURE_SKIPPED', { snapshotId: capture.snapshotId, reason: skipReason });
-                    setSkipReason('');
-                  }),
-                );
+                judge('CAPTURE_SKIPPED', { reason: skipReason });
+                setSkipReason('');
               }}>
               {t('skip')}
             </button>
