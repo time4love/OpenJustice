@@ -1,12 +1,4 @@
 import { createHash } from 'crypto';
-import { JSDOM } from 'jsdom';
-import { htmlToText, normaliseText } from './htmlText';
-import {
-  captureHtml,
-  deriveTextFromHtml,
-  TEXT_EXTRACTION_VERSION,
-  type DerivedText,
-} from './captureDocument';
 
 // ---------------------------------------------------------------------------
 // LEVEL 4 — THE VIEW. What counts as the document, before it becomes text.
@@ -30,6 +22,13 @@ import {
 // then genuinely removed scores 96%, so a 95% threshold classifies it chrome and
 // the removal disappears — 29 real changes lost on staging, 84 at 80%. Nothing
 // here classifies anything. It applies selectors a person chose.
+//
+// THIS MODULE IS PARSER-FREE, AND THAT IS LOAD-BEARING. A ruleset's IDENTITY is
+// a hash over strings; APPLYING one needs a real HTML parser. Keeping them apart
+// means a caller that only needs to name a view — the calibration service, an
+// MCP tool, a route — does not drag jsdom's ESM-only dependency chain in behind
+// it. `chromeRulesetApply.ts` is where the parser lives, and the same mistake in
+// `captureDocument` broke every unit suite that transitively reached a capture.
 //
 // IT REMOVES FROM A VIEW, NEVER FROM THE RECORD. `document` is stored whole and
 // is what the anchor commits to (`anchoredCaptureHash` returns `documentHash`),
@@ -69,93 +68,6 @@ export function chromeRulesetId(ruleset: ChromeRuleset): string {
 }
 
 /**
- * What applying a ruleset to one capture did.
- *
- * `removedText` EXISTS FOR THE HUMAN, and it is the half that matters. A person
- * shown only the article that survived will approve a ruleset that quietly
- * swallowed a paragraph — over-matching is the dangerous direction and it is
- * invisible in the kept text. Whatever renders a capture for marking must show
- * this beside it.
- *
- * `matchCounts` is the NULL CHECK the design asks for, and the only automated
- * part of this level: a selector at 0 no longer matches the page, which is what
- * a redesign looks like. It is a count, not a judgement — nothing here decides
- * whether the ruleset is right.
- */
-export interface ChromeApplication {
-  html: string;
-  /** Normalised text of everything removed. Empty string when nothing matched. */
-  removedText: string;
-  /** Elements matched, per selector, in the order the ruleset lists them. */
-  matchCounts: Readonly<Record<string, number>>;
-  /**
-   * Selectors the parser rejected.
-   *
-   * Reported rather than thrown: a typo in one selector must not cost a capture,
-   * and it must not silently behave as "matched nothing" either — those are
-   * different facts and a caller may treat them differently. Distinguishing them
-   * is why this is not folded into `matchCounts` as a zero.
-   */
-  invalidSelectors: readonly string[];
-}
-
-/**
- * Remove every element a ruleset selects, and report what went.
- *
- * PURE, and it parses the HTML rather than pattern-matching it: a selector is
- * structural by definition, and a regex over markup cannot honour one. The cost
- * is a parse per capture, paid only when a ruleset is non-empty.
- */
-export function applyChromeRuleset(html: string, ruleset: ChromeRuleset): ChromeApplication {
-  if (isEmptyRuleset(ruleset)) {
-    return { html, removedText: '', matchCounts: {}, invalidSelectors: [] };
-  }
-
-  const dom = new JSDOM(html);
-  const { document } = dom.window;
-  const matchCounts: Record<string, number> = {};
-  const invalidSelectors: string[] = [];
-  const removedFragments: string[] = [];
-
-  // Returns null for a selector the parser rejects, so the caller can tell a
-  // BROKEN rule from one that matched nothing. Annotating the result as
-  // `ReturnType<typeof document.querySelectorAll>` would name the whole
-  // overloaded signature, whose last overload is deprecated — inference picks
-  // the string overload, which is not.
-  const tryQuery = (selector: string): Element[] | null => {
-    try {
-      return [...document.querySelectorAll(selector)];
-    } catch {
-      return null;
-    }
-  };
-
-  for (const selector of ruleset.selectors) {
-    const matched = tryQuery(selector);
-    if (matched === null) {
-      // A malformed selector. Recorded and skipped — see `invalidSelectors`.
-      invalidSelectors.push(selector);
-      continue;
-    }
-    matchCounts[selector] = matched.length;
-    for (const element of matched) {
-      // The element's own markup, so the removed text is derived by the SAME
-      // path as the kept text. Reading `textContent` here instead would give the
-      // reviewer a differently-derived string from the one the rules acted on.
-      removedFragments.push(element.outerHTML);
-      element.remove();
-    }
-  }
-
-  return {
-    html: dom.serialize(),
-    removedText: normaliseText(removedFragments.map((f) => htmlToText(f)).join('\n\n')),
-    matchCounts,
-    invalidSelectors,
-  };
-}
-
-/**
  * The extraction version a ruleset produces, given the base rule's version.
  *
  * An EMPTY ruleset returns the base version UNCHANGED, and that is the property
@@ -174,35 +86,4 @@ export function chromeTextVersion(baseVersion: string, ruleset: ChromeRuleset | 
   // guard that replaces it. See [[gf-two-lint-ratchets]].
   if (ruleset === null || ruleset.selectors.length === 0) return baseVersion;
   return `${baseVersion}+chrome-${chromeRulesetId(ruleset)}`;
-}
-
-/**
- * A capture's text, derived under a ruleset — the Level 4 entry point.
- *
- * LIVES HERE RATHER THAN IN `captureDocument` because it needs a real HTML
- * parser, and that module is imported by almost everything that touches a
- * capture. Putting `jsdom` behind it made every `unit` suite that transitively
- * reaches a capture fail to parse, since jsdom's dependency chain is ESM-only.
- * Only the scan and marking paths import this file, so only they pay for it.
- *
- * ONE DERIVATION, TWO ENTRY POINTS. The text itself is still produced by
- * `deriveTextFromHtml`, exactly as the un-ruled path produces it — this adds a
- * step BEFORE it and a version string AFTER it, and copies nothing.
- */
-export function deriveTextUnderRuleset(
-  bytes: Buffer,
-  contentType: string | null | undefined,
-  contentEncoding: string | null | undefined,
-  ruleset: ChromeRuleset,
-): DerivedText & { chrome: ChromeApplication } {
-  const html = captureHtml({
-    document: bytes,
-    documentContentType: contentType ?? null,
-    documentContentEncoding: contentEncoding ?? null,
-  });
-  const chrome = applyChromeRuleset(html, ruleset);
-  return {
-    ...deriveTextFromHtml(chrome.html, chromeTextVersion(TEXT_EXTRACTION_VERSION, ruleset)),
-    chrome,
-  };
 }
