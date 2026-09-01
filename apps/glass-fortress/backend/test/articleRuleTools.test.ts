@@ -49,6 +49,7 @@ import {
   correctArticleRulesHandler,
   getArticleRulesHandler,
   nextArticleCaptureHandler,
+  judgeArticleCaptureHandler,
   commitArticleRulesHandler,
   abandonArticleRulesHandler,
 } from '../src/mcp/tools/articleRuleTools';
@@ -64,6 +65,8 @@ interface CoverageShape {
 
 interface Parsed {
   error?: string;
+  recorded?: string;
+  next?: string;
   coverage?: CoverageShape;
   nextCapture?: { date?: string; why?: string; daysFromNearestJudged?: number } | null;
   stopping?: string;
@@ -532,5 +535,122 @@ describe('next_article_capture', () => {
 
     expect(out.stopping).toContain('stopping rule is satisfied');
     expect(out.nextCapture).not.toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// judge_article_capture — the piece that made the redesign inconsistent.
+//
+// Sequencing moved to `next_article_capture` and approval to
+// `commit_article_rules`, while the VERDICT — the actual judgement — was still
+// written by the browser. The researcher noticed on the first session that used
+// the new flow: "aren't we supposed to be using MCP tools now?" They were right;
+// there was nothing to call.
+//
+// The append itself is reached through a DYNAMIC import, because recording a
+// verdict records an observation, which needs the HTML parser. These tests
+// therefore exercise only the seams that live in the tool: the guards, the
+// version read, and what it says about what happens next.
+// ---------------------------------------------------------------------------
+
+jest.mock('../src/services/captureMarking', () => ({
+  appendDecisionWithObservation: (...args: unknown[]) => mockAppend(...args),
+}));
+const mockAppend = jest.fn();
+
+describe('judge_article_capture', () => {
+  beforeEach(() => {
+    mockAppend.mockReset();
+    mockAppend.mockResolvedValue({ observationId: 'obs-1' });
+    armSnapshots([{ id: 's1', date: '2020-12-09' }]);
+  });
+
+  it('refuses SKIPPED without a reason — a silent hole is not permitted', async () => {
+    armRun([CalibrationDecisionType.RUN_OPENED], ['#header']);
+
+    const out = JSON.parse(
+      await judgeArticleCaptureHandler({ runId: 'run-1', snapshotId: 's1', verdict: 'SKIPPED' }),
+    ) as Parsed;
+
+    expect(out.error).toContain('reason');
+    expect(mockAppend).not.toHaveBeenCalled();
+  });
+
+  it('answers rather than throwing when the run does not exist', async () => {
+    (prisma.calibrationRun.findUnique as jest.Mock).mockResolvedValue(null);
+
+    const out = JSON.parse(
+      await judgeArticleCaptureHandler({ runId: 'gone', snapshotId: 's1', verdict: 'ACCEPTED' }),
+    ) as Parsed;
+
+    expect(out.error).toContain('No calibration run');
+    expect(mockAppend).not.toHaveBeenCalled();
+  });
+
+  it('refuses a closed run without writing', async () => {
+    armRun([CalibrationDecisionType.RUN_OPENED]);
+    (prisma.calibrationRun.findUnique as jest.Mock).mockResolvedValue({
+      ...(await (prisma.calibrationRun.findUnique as jest.Mock)()),
+      status: CalibrationRunStatus.COMMITTED,
+    });
+
+    const out = JSON.parse(
+      await judgeArticleCaptureHandler({ runId: 'run-1', snapshotId: 's1', verdict: 'ACCEPTED' }),
+    ) as Parsed;
+
+    expect(out.error).toContain('COMMITTED');
+    expect(mockAppend).not.toHaveBeenCalled();
+  });
+
+  it('reads the version itself and records the verdict against the capture', async () => {
+    armRun(
+      [CalibrationDecisionType.RUN_OPENED, CalibrationDecisionType.CAPTURE_SHOWN],
+      ['#header'],
+    );
+
+    const out = JSON.parse(
+      await judgeArticleCaptureHandler({ runId: 'run-1', snapshotId: 's1', verdict: 'ACCEPTED' }),
+    ) as Parsed;
+
+    expect(mockAppend).toHaveBeenCalledWith('run-1', 2, {
+      type: CalibrationDecisionType.CAPTURE_ACCEPTED,
+      snapshotId: 's1',
+    });
+    expect(out.recorded).toBe('ACCEPTED');
+  });
+
+  it('does NOT advance on a rejection — it routes back to calibration', async () => {
+    // The plan is explicit: "reject routes back to calibration, it never skips a
+    // capture." The researcher fixes the rules and judges the SAME capture again.
+    armRun([CalibrationDecisionType.RUN_OPENED], ['#header']);
+
+    const out = JSON.parse(
+      await judgeArticleCaptureHandler({ runId: 'run-1', snapshotId: 's1', verdict: 'REJECTED' }),
+    ) as Parsed;
+
+    expect(out.next).toContain('judge this capture again');
+    expect(out.next).not.toContain('next_article_capture');
+  });
+
+  it('points at the next capture after an acceptance', async () => {
+    armRun([CalibrationDecisionType.RUN_OPENED], ['#header']);
+
+    const out = JSON.parse(
+      await judgeArticleCaptureHandler({ runId: 'run-1', snapshotId: 's1', verdict: 'ACCEPTED' }),
+    ) as Parsed;
+
+    expect(out.next).toContain('next_article_capture');
+  });
+
+  it('surfaces a stale-version refusal with a way forward', async () => {
+    armRun([CalibrationDecisionType.RUN_OPENED], ['#header']);
+    mockAppend.mockRejectedValue(new Error('Calibration run run-1 is at version 9, not 1.'));
+
+    const out = JSON.parse(
+      await judgeArticleCaptureHandler({ runId: 'run-1', snapshotId: 's1', verdict: 'ACCEPTED' }),
+    ) as Parsed;
+
+    expect(out.error).toContain('version 9');
+    expect(out.hint).toContain('get_article_rules');
   });
 });

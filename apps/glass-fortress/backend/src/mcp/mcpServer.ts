@@ -15,6 +15,8 @@ import {
   correctArticleRulesHandler,
   getArticleRulesSchema,
   getArticleRulesHandler,
+  judgeArticleCaptureSchema,
+  judgeArticleCaptureHandler,
   nextArticleCaptureSchema,
   nextArticleCaptureHandler,
   commitArticleRulesSchema,
@@ -619,6 +621,23 @@ export function createMcpServer(): McpServer {
     },
     async (input) => ({
       content: [{ type: 'text' as const, text: await correctArticleRulesHandler(input) }],
+    }),
+  );
+
+  server.registerTool(
+    'judge_article_capture',
+    {
+      description:
+        'RECORD THE VERDICT on one capture, after looking at it in the marking page. ACCEPTED: ' +
+        'the rules are right here. REJECTED: the RULES are wrong — never that the capture is bad; ' +
+        'it routes back to calibration and does NOT advance, so correct the rules and judge the ' +
+        'same capture again. SKIPPED: the capture cannot be used, and a reason is REQUIRED. This ' +
+        'is where a judgement is written; the marking page checks and corrects a ruleset, it does ' +
+        'not decide. Returns the updated coverage, distinct captures first.',
+      inputSchema: judgeArticleCaptureSchema,
+    },
+    async (input) => ({
+      content: [{ type: 'text' as const, text: await judgeArticleCaptureHandler(input) }],
     }),
   );
 

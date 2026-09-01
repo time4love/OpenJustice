@@ -106,6 +106,8 @@ export const WRITE_TOOLS = new Set([
   // returns a researcher's in-progress working state — which captures of which
   // page are being marked, and where the rules are failing.
   'next_article_capture',
+  // Writes a decision and an observation. The verdict of the calibration flow.
+  'judge_article_capture',
   'create_thesis_draft',
   'add_thesis_version',
   // Writes a new ThesisVersion. Cheaper and narrower than add_thesis_version —

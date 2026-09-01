@@ -7,6 +7,13 @@ import {
   inertDocument,
   type OutlineNode,
 } from '../lib/chromeRulesetApply';
+import { CalibrationDecisionType } from '@prisma/client';
+import {
+  appendCalibrationDecision,
+  ensureCurrentRuleset,
+  readCalibrationRun,
+  type CalibrationDecisionInput,
+} from './calibrationRun';
 
 // ---------------------------------------------------------------------------
 // LEVEL 4 — one capture, rendered for a human and derived under draft rules.
@@ -189,4 +196,50 @@ export async function recordObservationForCapture(input: {
     select: { id: true },
   });
   return { observationId: observation.id, preview };
+}
+
+/**
+ * Append a decision, recording the observation it implies.
+ *
+ * ONE IMPLEMENTATION, TWO CALLERS. The browser route did this inline; when
+ * `judge_article_capture` arrived the choice was to copy it or to share it, and
+ * the plan requires that the interactive and headless paths differ only in who
+ * calls them. A second copy is how they stop being the same path.
+ *
+ * THE OBSERVATION IS COMPUTED HERE, NEVER POSTED BY A CALLER. The browser has
+ * just rendered a preview and could send the figures back a round trip cheaper —
+ * which would make a scan's deviation baseline something a client asserts.
+ * Deriving again costs one parse per capture a human actually looks at.
+ *
+ * WRITTEN BEFORE THE APPEND, and that ordering is safe: an observation is a
+ * measurement of (ruleset, capture) that is true whether or not the decision
+ * lands, and the write is an idempotent upsert. A stale-version refusal
+ * therefore leaves a correct row, not a stray one.
+ *
+ * IT LIVES HERE, WITH THE PARSER, because the observation is a derivation.
+ * Callers that must stay parser-free — the MCP tool module, whose static import
+ * graph feeds every `unit` suite — reach it through a dynamic import.
+ */
+export async function appendDecisionWithObservation(
+  runId: string,
+  expectedVersion: number,
+  decision: CalibrationDecisionInput,
+): Promise<{ observationId?: string }> {
+  let observationId: string | undefined;
+  // A RULESET_CORRECTED names no capture to measure: it changes the rules, and
+  // the next showing is what measures them.
+  if (decision.snapshotId !== undefined && decision.type !== CalibrationDecisionType.RULESET_CORRECTED) {
+    const ruleset = await ensureCurrentRuleset(runId);
+    ({ observationId } = await recordObservationForCapture({
+      articleRulesetId: ruleset.id,
+      snapshotId: decision.snapshotId,
+      selectors: (await readCalibrationRun(runId)).selectors,
+    }));
+  }
+
+  await appendCalibrationDecision(runId, expectedVersion, {
+    ...decision,
+    ...(observationId === undefined ? {} : { observationId }),
+  });
+  return observationId === undefined ? {} : { observationId };
 }
