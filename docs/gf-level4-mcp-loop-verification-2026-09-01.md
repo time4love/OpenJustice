@@ -328,3 +328,78 @@ For the unjudged captures nothing can be said, and that limit is permanent.
 **Opening a marking URL directly records no showing.** The flow assumes `open_article_capture`, which
 appends `CAPTURE_SHOWN`; a link pasted into a browser bypasses it. `capturesShown` therefore
 undercounts, and any inference keyed on "what was on screen" has a hole in it. Not fixed here.
+
+---
+
+# I16 — THE RULESET HAS NEVER BEEN APPLIED TO ANYTHING
+
+**Addendum, 2026-09-01.** Found while starting build-order step 2, by reading the code the step was
+going to stamp.
+
+## The finding
+
+A chrome ruleset can be marked, corrected, approved, committed, versioned and attributed. **It is
+inert.** No stored capture is re-derived under it, and no new capture is derived under it.
+
+```
+deriveTextUnderRuleset / applyChromeRuleset — three callers, all of them the
+  instrument or a check:
+    chromeRulesetApply.ts   the implementation
+    captureMarking.ts       the marking page's preview
+    rulesetSurvival.ts      the survival check, itself slated for retirement
+
+recordCapture.ts:321   deriveText(document, contentType, encoding)   ← no ruleset
+TrackedUrl.activeArticleRulesetId   written by the commit, read by nothing
+scripts/               no caller
+```
+
+## What it was telling the researcher
+
+`commit_article_rules` returned **`capturesRederived: <storedCaptures>`** — 83 on the corona URL — and
+described itself as re-deriving every stored capture. The pre-approval sentence, rendered from
+`calibrationEffect`, read *"Approving will save the ruleset as a new version, and re-derive the text of
+7 stored captures."*
+
+**That is a false statement at the exact moment a researcher approves a research act**, and it is
+specific and numeric, which is what makes it credible.
+
+## THE DEFECT IS IN THE DECLARATION, NOT THE RENDERER — and the renderer's design is right
+
+`approvalEffect.ts` exists because *"a caller that provided both 'what to say' and 'what to do' could
+let them drift"*. It works: the sentence is rendered from structured data and no caller authors words.
+
+**But a renderer that cannot lie about the DECLARATION is not a renderer that cannot lie about
+REALITY.** The declaration listed a `REDERIVED_CAPTURES` write with a counted row number, and nothing
+performed it. The mechanism guaranteed the sentence matched the declaration; nothing guaranteed the
+declaration matched the code.
+
+That is the same shape as `check_on_chain_status` returning a correct verdict beside a sentence
+asserting a second thing the verdict never asked — which is the failure this module's own header cites
+as its reason for existing.
+
+## Why nobody caught it
+
+**No run has ever been committed.** Three marking walks and a full loop verification, each ending
+before the act that would have exposed it. A success arm that has never fired is unproven — and this
+one was the level's terminal act.
+
+## Fixed here, narrowly
+
+The claim is withdrawn rather than the behaviour added, because adding it is build-order step 2:
+
+- `REDERIVED_CAPTURES` is **removed from the closed set of write kinds**. A member nothing performs is
+  a claim the system can make and never honour. It returns in step 2, in the same change as the write —
+  which is the discipline the set was created for.
+- `capturesRederived` is `0`, and `storedCaptures` reports what it always was: a fact about the URL,
+  not a claim about the call.
+- The tool's description, the route allowlist comment and the reversibility sentence say what happens.
+- A test asserts the sentence **does not** contain "re-derive the text", so the claim cannot return
+  without the code.
+
+## What this means for Level 4
+
+The level's chain — mark, correct, approve, commit — currently terminates in a write that changes
+nothing observable. **`filtering is a versioned view` is specified, stored, and unimplemented.** Build
+order step 2 is where it becomes real, and its scope is larger than the era-version stamp it was
+written as: deriving a capture's text under the era covering its date, at record time and at commit
+time, with the stamp written in the same act.

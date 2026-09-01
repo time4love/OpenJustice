@@ -618,7 +618,8 @@ export function createMcpServer(): McpServer {
         'Correct the furniture rules for a URL ALREADY in the corpus, marking against captures ' +
         'already stored. Needs no network and fetches nothing. Prefer this over ' +
         'calibrate_article_rules whenever the URL has stored captures. Committing saves the ' +
-        'ruleset; the stored captures are re-derived from bytes already held, which cannot ' +
+        'ruleset; the documents are stored whole, so any extraction can be re-derived from bytes ' +
+        'already held, which cannot ' +
         'invalidate any snapshot anchor because the anchor commits to the raw bytes. Returns a ' +
         'marking URL and returns immediately.',
       inputSchema: correctArticleRulesSchema,
@@ -686,7 +687,9 @@ export function createMcpServer(): McpServer {
     {
       description:
         'PUT THE MARKED RULES IN FORCE for this page: saves the ruleset as a new version and ' +
-        're-derives the text of every stored capture under it. THIS IS THE RESEARCH ACT of the ' +
+        'sets it active for this URL. IT DOES NOT RE-DERIVE ANY CAPTURE — nothing applies a chrome ' +
+        'ruleset to a stored capture yet, so committing versions the rules and changes no text; ' +
+        'this tool claimed otherwise until 2026-09-01. THIS IS THE RESEARCH ACT of the ' +
         'calibration flow and the researcher approves it HERE, not in the browser — the marking ' +
         'page checks and corrects a ruleset, it does not decide. Read get_article_rules first and ' +
         'show the effect and the selector list before calling this. Reversible: mark again and ' +

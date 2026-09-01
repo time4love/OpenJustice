@@ -809,7 +809,7 @@ export async function describeCalibrationRun(runId: string): Promise<Calibration
     state,
     staleSelectors: findStaleSelectors(state.selectors, observations),
     storedCaptures,
-    effect: calibrationEffect(storedCaptures),
+    effect: calibrationEffect(),
   };
 }
 

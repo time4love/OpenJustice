@@ -157,7 +157,23 @@ async function closeRun(
   }
 }
 
-/** Put the marked rules in force, and re-derive every stored capture under them. */
+/**
+ * Put the marked rules in force for this URL.
+ *
+ * IT DOES NOT RE-DERIVE ANYTHING, and it used to say that it did. Until
+ * 2026-09-01 this returned `capturesRederived: <storedCaptures>` and described
+ * itself as re-deriving every stored capture. Nothing applies a chrome ruleset
+ * to a stored capture: `deriveTextUnderRuleset` has three callers, all of them
+ * the marking page or a check, and `TrackedUrl.activeArticleRulesetId` is
+ * written and never read.
+ *
+ * NOBODY CAUGHT IT BECAUSE NO RUN HAS EVER BEEN COMMITTED — three marking walks,
+ * each ending before the act that would have exposed it. A success arm that has
+ * never fired is unproven, and this one was reporting a fabricated number at the
+ * exact moment a researcher approves a research act.
+ *
+ * Build-order step 2 makes the claim true. Until then this says what it does.
+ */
 export async function commitArticleRulesHandler(input: { runId: string }): Promise<string> {
   return closeRun(
     input.runId,
@@ -169,13 +185,21 @@ export async function commitArticleRulesHandler(input: { runId: string }): Promi
         status: 'COMMITTED',
         rulesetId: committed.rulesetId,
         selectors: before.state.selectors,
-        capturesRederived: before.storedCaptures,
+        // A FACT ABOUT THE URL, NOT A CLAIM ABOUT THIS CALL. It says how many
+        // captures the ruleset will govern once something applies it — never
+        // how many were changed here, which is none.
+        storedCaptures: before.storedCaptures,
+        capturesRederived: 0,
+        note:
+          'The ruleset is saved and set active for this URL. NO STORED CAPTURE CHANGED: nothing ' +
+          'applies a chrome ruleset to a capture yet, so committing versions the rules and ' +
+          'derives nothing. Build-order step 2 in the plan is what makes it act.',
         // WHAT WAS APPROVED, restated from the declaration the researcher saw.
         applied: renderApprovalEffect(before.effect),
         reversible:
-          'Reversible: mark again and commit. The documents are stored whole and are re-derived ' +
-          'from bytes already held, so no snapshot anchor is affected — an anchor commits to the ' +
-          'raw bytes, not to the derived text.',
+          'Reversible: mark again and commit. The documents are stored whole, so any extraction ' +
+          'can be re-derived from bytes already held and no snapshot anchor is affected — an ' +
+          'anchor commits to the raw bytes, not to the derived text.',
       };
     },
   );
