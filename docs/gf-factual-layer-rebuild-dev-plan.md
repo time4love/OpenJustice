@@ -2165,7 +2165,7 @@ asserts. Recorded here so the next person does not close this level on the stren
 
 ### Level 4 — the view
 
-**STATUS: IN USE. Steps 1–4 live; three marking walks done 2026-08-31/09-01; NOTHING COMMITTED ON ANY RUN.** BUILT: the chrome ruleset (#282); the DATA MODEL for all three modes, signed off before any of it was written and correcting the single-row design in four places (#283); `ArticleRuleset`/`CalibrationRun`/`RulesetObservation` (#283); `calibrate_article_rules`, `correct_article_rules`, `get_article_rules` over one service (#284); the marking page (#285). THE PAGE WAS FIRST USED BY A HUMAN ON 2026-08-31, and every defect since was found by using it and fixed (#288–#295). **THE FILTERING QUESTION IS ANSWERED** — 12–13% of the derived text was furniture on the government page against **74% on the news page**, every substantive claim surviving on both; the largest removed block is a rotating "more in news" sidebar holding over a third of that document, so unfiltered every capture of it would diff. THE OVER-MATCH HAPPENED ON THE NEWS PAGE, within minutes, and the removed pane caught it. **DURABILITY IS ERA-BOUND** — authored names survive (8 of 9 selectors over 4.2 years on the MOH page), build artifacts do not (3 of 21 over 4.3 years on the news page, decay measurable within 9 days). **THE DISTINCTION IS AUTHORED NAMES VERSUS BUILD ARTIFACTS, and "structural marks generalise" must not be carried unqualified.** The failure direction is the SAFE one — under-matching is loud and harmless and the null check catches it free, unlike over-matching, which is quiet, destructive, and caught only by a human at the removed pane. **THE UI IS A PURE TRANSFORMATION — ruleset in, ruleset out, no decision and no effect. This SUPERSEDES "the UI writes decisions"; see the section below.** **STILL OPEN:** 2b `ScanRun`/`ScanDecision`, which supersedes `WaybackScraper`'s in-memory guard and brings `scan_with_approval` · the ADAPTIVE next-capture policy, now homed in `next_article_capture` with its purpose settled — **find where a ruleset STOPS APPLYING**, steering by the stale-selector count · what "the page stopped resembling the approved set" is computed from · **ERA-BOUND RULESET SELECTION — nothing picks a ruleset by the era of the capture being scanned, a real gap in this level as designed** · the PAGE-SCOPED restatement of this level's invariant (proposed 2026-08-31, **NOT ADOPTED** — the researcher's) · the ruleset QUALITY STAMP (proposed, unruled: named facts, never a score). **THE MCP LOOP WAS WALKED END TO END 2026-09-01 AND EVERY PIECE HELD** — the policy's maximin pick found the page's boundary on its first try and bisected on its second, the draft was promoted before the verdict, and the browser wrote nothing but its draft. `2022-05-23` at 5 of 21 selectors places the CSS-in-JS collapse **between December 2020 and May 2022 — under seventeen months**, not 4.3 years. **I12, AND IT MADE CORRECT GUIDANCE WRONG WITHIN ONE ACTION: `lastMatchedAt: null` means "never matched UNDER THE CURRENT SELECTOR SET", not "never matched anywhere" — observations are keyed to `chromeRulesetId`, so every correction orphans the history and resets the field to the value that reads as safe-to-delete. Do not close I11 without ruling on it.** → `docs/gf-level4-first-marking-walk-2026-08-31.md` · `docs/gf-level4-second-marking-walk-2026-08-31.md` · `docs/gf-level4-third-marking-walk-2026-09-01.md` · `docs/gf-level4-mcp-loop-verification-2026-09-01.md`**
+**STATUS: IN USE. Steps 1–4 live; three marking walks done 2026-08-31/09-01; NOTHING COMMITTED ON ANY RUN.** BUILT: the chrome ruleset (#282); the DATA MODEL for all three modes, signed off before any of it was written and correcting the single-row design in four places (#283); `ArticleRuleset`/`CalibrationRun`/`RulesetObservation` (#283); `calibrate_article_rules`, `correct_article_rules`, `get_article_rules` over one service (#284); the marking page (#285). THE PAGE WAS FIRST USED BY A HUMAN ON 2026-08-31, and every defect since was found by using it and fixed (#288–#295). **THE FILTERING QUESTION IS ANSWERED** — 12–13% of the derived text was furniture on the government page against **74% on the news page**, every substantive claim surviving on both; the largest removed block is a rotating "more in news" sidebar holding over a third of that document, so unfiltered every capture of it would diff. THE OVER-MATCH HAPPENED ON THE NEWS PAGE, within minutes, and the removed pane caught it. **DURABILITY IS ERA-BOUND** — authored names survive (8 of 9 selectors over 4.2 years on the MOH page), build artifacts do not (3 of 21 over 4.3 years on the news page, decay measurable within 9 days). **THE DISTINCTION IS AUTHORED NAMES VERSUS BUILD ARTIFACTS, and "structural marks generalise" must not be carried unqualified.** The failure direction is the SAFE one — under-matching is loud and harmless and the null check catches it free, unlike over-matching, which is quiet, destructive, and caught only by a human at the removed pane. **THE UI IS A PURE TRANSFORMATION — ruleset in, ruleset out, no decision and no effect. This SUPERSEDES "the UI writes decisions"; see the section below.** **ERA-SCOPED RULESETS ARE DECIDED (2026-09-01) AND THE UNION IS SUPERSEDED — date-bounded, deterministic selection, and an approved era is FROZEN so its captures are never re-derived. The union was rejected for UNDECIDABILITY and unbounded verification cost, not for observed damage: on the news page nothing added after an approval removed any text from it. `check_ruleset_survival` (#311–#313) is not superseded — its scope narrows to the one act that can still regress, editing a frozen era. See the section below; the schema, the rename of `judge_article_capture`, and `SKIPPED`'s home are NOT decided.** **STILL OPEN:** 2b `ScanRun`/`ScanDecision`, which supersedes `WaybackScraper`'s in-memory guard and brings `scan_with_approval` · the ADAPTIVE next-capture policy, now homed in `next_article_capture` with its purpose settled — **find where a ruleset STOPS APPLYING**, steering by the stale-selector count · what "the page stopped resembling the approved set" is computed from · the PAGE-SCOPED restatement of this level's invariant (proposed 2026-08-31, **NOT ADOPTED** — the researcher's) · the ruleset QUALITY STAMP (proposed, unruled: named facts, never a score). **THE MCP LOOP WAS WALKED END TO END 2026-09-01 AND EVERY PIECE HELD** — the policy's maximin pick found the page's boundary on its first try and bisected on its second, the draft was promoted before the verdict, and the browser wrote nothing but its draft. `2022-05-23` at 5 of 21 selectors places the CSS-in-JS collapse **between December 2020 and May 2022 — under seventeen months**, not 4.3 years. **I12, AND IT MADE CORRECT GUIDANCE WRONG WITHIN ONE ACTION: `lastMatchedAt: null` means "never matched UNDER THE CURRENT SELECTOR SET", not "never matched anywhere" — observations are keyed to `chromeRulesetId`, so every correction orphans the history and resets the field to the value that reads as safe-to-delete. Do not close I11 without ruling on it.** → `docs/gf-level4-first-marking-walk-2026-08-31.md` · `docs/gf-level4-second-marking-walk-2026-08-31.md` · `docs/gf-level4-third-marking-walk-2026-09-01.md` · `docs/gf-level4-mcp-loop-verification-2026-09-01.md`**
 
 #### THE MEASUREMENT THIS DEFERRAL ASKED FOR — a news page, 2026-08-30
 
@@ -2898,6 +2898,97 @@ selection policy, which is the same mechanism as the indicator · how a ruleset 
 second URL on the same site · what "the page stopped resembling the approved set" is computed from —
 NOT invented by the data model deliberately, which holds the inputs every candidate formula needs ·
 **restating the standing invariant for structural marks, which is the researcher's.**
+
+#### ERA-SCOPED RULESETS — DECIDED 2026-09-01, and the union is superseded
+
+The researcher's ruling, after a day of measuring the union approach. **Nothing is built.**
+
+**The gap this closes is one this level already named:** *"nothing picks a ruleset by the era of the
+capture being scanned."* It had been carried as an open item; it is now the design.
+
+##### What was actually wrong with the union
+
+A calibration ruleset accumulated selectors across eras: marking a 2022 capture added marks a 2020
+capture never needed. The measured case is on the news page's run — 19 selectors at the first
+acceptance, 22 at the second, 35 after the 2022 boundary, one page.
+
+That is cheap for an IDENTITY-BEARING selector: one that does not apply matches nothing and removes
+nothing. It is not cheap for a POSITIONAL one. `article.common-item > div:nth-of-type(1)` names a
+place rather than a thing, and a redesign can move article text into that place. Six of the run's 35
+are of that shape.
+
+**But the defect that decided it is not the damage — it is the UNDECIDABILITY.** In the researcher's
+words: *"the union approach will always be undecided regarding potential regression."* Under it, the
+correctness of a 2020 capture's derived text depends on edits someone makes in 2027. **No extraction
+is ever final.** On a platform that anchors hashes and publishes theses, that means a published
+claim's underlying text can change because an unrelated capture was marked. Detecting that afterwards
+does not fix it; only structure does.
+
+**And the verification cost grows without bound.** The check written for the union re-derives every
+stored capture per draft. Seven captures is seconds; the 3,000-capture page this level exists for,
+against twenty corrections in a marking session, is a batch job standing between a researcher and
+every approval. *"in time it will become more time consuming to verify ever growing history."* A
+verification whose cost grows with history will be skipped, and a check that gets skipped is worse
+than no check, because it was counted on.
+
+##### The design
+
+**Eras are DATE-BOUNDED, and selection is therefore deterministic.** An era runs from its start until
+the next era's start; the earliest extends backwards; the capture's own date selects. There is no
+classifier and no judgement in the selection step — which was the standing objection to era-scoping
+and it does not survive contact with a date range. *(An earlier draft proposed a per-selector validity
+window as a lighter alternative to eras. They are the same mechanism; do not treat them as two
+options.)*
+
+**The property is bought by FREEZING, not by partitioning.** Partitioning alone changes nothing: if a
+researcher later corrects era-2020's ruleset, the 2020 captures change exactly as they do now. So the
+rule is two lines and both are load-bearing:
+
+1. **An approved era's ruleset is frozen. Its captures are never re-derived.**
+2. **Marking a capture outside every approved era opens a NEW era.**
+
+What the partition buys is that freezing stops being paralysing. Without eras, "never touch approved
+history" would mean never fixing anything again; with them, *do not touch approved history* and *keep
+marking new captures* stop being in conflict. Editing a frozen era remains possible — some corrections
+are genuinely necessary — but it becomes an explicit, named act rather than a side effect of ordinary
+marking.
+
+##### What survives of the union's machinery
+
+`check_ruleset_survival` (#311, #312, #313) is **not superseded — its scope becomes bounded.** It stops
+being "re-verify all history on every draft" and becomes the guard on the one remaining operation that
+can cause regression: editing a frozen era. Scope is that era's captures, not the corpus, so the cost
+stops growing with history.
+
+The selector ANCHOR built for it becomes the era boundary rather than a diagnostic. `RULESET_CORRECTED`
+now records the capture it was made against (#312) — a prerequisite this design cannot be built without,
+and which did not exist before that change.
+
+##### What the measurement gave, and what it could not
+
+On the two approved captures of the news page's run, everything added after their approval — all six
+positional selectors among it — removes NOTHING from either. `2461` characters kept before and after,
+both times. **On that page the union caused no harm**, and the decision above is therefore taken on the
+design argument rather than on observed damage.
+
+It could not speak for the unjudged captures, and that limit is permanent: recovering a legacy
+selector's anchor failed in both directions, and the reason is that the events were never recorded.
+That is archaeology under this repo's own rule and is abandoned deliberately. → `docs/gf-level4-mcp-loop-verification-2026-09-01.md`
+
+##### Still to design, and NOT decided here
+
+- **The schema.** An era needs a validity range and a frozen flag; the migration is additive, and every
+  existing run becomes one era covering all time.
+- **`judge_article_capture` is misnamed under this design** and its `verdict` parameter is
+  always `ACCEPTED` — the researcher's observation. The tool returns a user-approved DRAFT, and the
+  chat validates it before putting it in force. **`SKIPPED` then has no home**: it is not "giving up on
+  the rules" but "this capture is unusable", and it must not vanish by omission.
+- **The validation-then-promotion order.** The check must run on the DRAFT, before the rules are in
+  force — not after, which is where it was first built.
+- **The re-draft loop must be bounded.** Approving despite a loss and reopening to fix are different
+  acts; only the second can loop, and it converges only while each fix shrinks the loss set. When it
+  does not, that IS the signal that a selector one era needs damages another — which under this design
+  is answered by the era boundary rather than by another draft.
 
 ### Level 5 — the diff
 
