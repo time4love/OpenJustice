@@ -1791,7 +1791,6 @@
     "removalFraction": "{percent}% מהטקסט הנגזר הוסר",
     "indicatorHeading": "המצב הנוכחי",
     "noCaptureYet": "טרם נשפט צילום — אין בכך אמירה על הכללים. הצגת צילום אינה שיפוטו.",
-    "cleanStreak": "{streak} מתוך {judged} צילומים שנשפטו, ברצף ללא צורך בתיקון, על פני {distinct} צילומים שונים.",
     "streakCaveat": "מלמד רק אם הצילומים נבחרו כדי לחלוק — עמודים דומים אינם מייצרים תיקונים ואינם בודקים דבר.",
     "staleHeading": "כללים שדורשים בדיקה",
     "staleNever": "מעולם לא התאים לאף צילום",
@@ -1827,10 +1826,8 @@
     "sampleExhausted": "כל הצילומים במדגם נשפטו.",
     "saving": "שומר…",
     "judgedBadge": "נשפט",
-    "judgedOfShown": "נשפטו {judged} צילומים, מתוך {shown} שהוצגו.",
     "streakLine": "{streak} הצילומים האחרונים שנשפטו, ברצף, לא נזקקו לתיקון.",
     "correctionLine": "ב־{needing} מתוך {judged} הצילומים שנשפטו נדרש תיקון בכללים.",
-    "distinctLine": "הוצגו {distinct} צילומים שונים.",
     "previewPending": "מחשב מחדש…",
     "captureVerdictHeading": "הצילום הזה",
     "finishHeading": "סיום הכיול",
@@ -1840,6 +1837,11 @@
     "effectReversible": "הפיך — סמנו שוב והחילו. המסמכים שמורים במלואם ונגזרים מחדש מבייטים שכבר בידינו, ולכן שום עוגן אינו מושפע.",
     "effectHeading": "החלה תבצע:",
     "outlineTruncatedHarmless": "המבנה נקטע בענפים שאין בהם טקסט, ולכן דבר אינו מחוץ להישג יד.",
-    "unmarkThisRule": "לחצו כדי לבטל את הכלל שהסיר את הטקסט הזה"
+    "unmarkThisRule": "לחצו כדי לבטל את הכלל שהסיר את הטקסט הזה",
+    "renderedOutlineNote": "הרכיבים המסומנים מודגשים כאן. אם גוף הכתבה מודגש — כלל בלע אותו.",
+    "judgedDistinct": "נשפטו {distinct} צילומים שונים.",
+    "judgedEpisodes": "{episodes} שיפוטים בסך הכול, על פני {shown} הצגות של צילום.",
+    "repeatWarning": "חלק מהצילומים נשפטו יותר מפעם אחת. שיפוט של אותו צילום פעמיים אינו בודק את הכללים פעמיים.",
+    "indicatorSummary": "נשפטו {distinct} צילומים · {streak} ברצף ללא תיקון"
   }
 }

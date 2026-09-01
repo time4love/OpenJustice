@@ -597,10 +597,11 @@ export function ArticleRulesClient({ runId }: { runId: string }) {
                         it. An empty sandbox blocks scripts, forms, popups and
                         same-origin access.
                       */}
+                      <p className="text-xs text-gray-600">{t('renderedOutlineNote')}</p>
                       <iframe
                         title={capture.snapshotUrl}
                         sandbox=""
-                        srcDoc={capture.html}
+                        srcDoc={highlighted(capture.html, selectors)}
                         className="mt-1 h-80 w-full border border-gray-300 bg-white"
                       />
                     </>
@@ -728,6 +729,45 @@ export function ArticleRulesClient({ runId }: { runId: string }) {
 class StaleError extends Error {}
 
 /**
+ * The captured page with every marked element outlined — CSS ONLY.
+ *
+ * THE DEVTOOLS FEELING, IN THE DIRECTION THAT DOES NOT COST THE SANDBOX. The
+ * researcher asked for the Chrome inspector's hover-to-see-the-element, and the
+ * page → tree half of that needs code running inside the frame, which means
+ * `allow-scripts`. That would turn `inertDocument` from the SECOND defence into
+ * the ONLY one, on captures of real commercial pages carrying real ad and
+ * analytics payloads — a missed `<svg><script>` or `javascript:` href would then
+ * execute where today nothing runs at all. The tree → page half needs no script:
+ * a stylesheet naming the marked selectors is enough.
+ *
+ * IT IS A BETTER OVER-MATCH DETECTOR THAN THE TEXT, and that is the real reason
+ * to have it. Over-matching is currently caught by READING the removed pane and
+ * recognising a sentence. Outlining catches it SPATIALLY: a rule that swallowed
+ * the article lights up the article, in the layout, at a glance.
+ *
+ * Each selector gets its OWN rule, so a selector the browser rejects is skipped
+ * on its own rather than killing the whole block. Anything containing a `<` or a
+ * closing brace is refused outright: these strings come from our own outline,
+ * but they are interpolated into markup, and a rule that is merely unlikely to
+ * be hostile is not a rule.
+ */
+function highlighted(html: string, selectors: readonly string[]): string {
+  const safe = selectors.filter((s) => !/[<>{}]/.test(s));
+  if (safe.length === 0) return html;
+  const style =
+    `<style>${safe
+      .map(
+        (s) =>
+          `${s}{outline:3px solid #d97706 !important;` +
+          `outline-offset:-3px !important;background:rgba(217,119,6,.18) !important;}`,
+      )
+      .join('')}</style>`;
+  // Appended rather than inserted into <head>: the document may not have one,
+  // and a trailing <style> still applies. The parser moves it where it belongs.
+  return `${html}${style}`;
+}
+
+/**
  * What approving does, rendered from the backend's STRUCTURED declaration.
  *
  * The principle the prose field was protecting still holds — nobody authors a
@@ -807,32 +847,78 @@ function Shell({ children }: { children: React.ReactNode }) {
 
 function Indicator({ state, t }: { state: RunState; t: ReturnType<typeof useTranslations> }) {
   return (
+    // COLLAPSED, BECAUSE IT IS REFERENCE AND NOT THE WORK. Four lines of
+    // counters sat above the marking area taking the top of every screen, and
+    // this is something a researcher consults rather than uses.
+    //
+    // WHAT DOES NOT COLLAPSE IS THE WARNINGS. The repeat-judgement notice and
+    // the stale-selector list are exceptions — they cost nothing when everything
+    // is fine, and a warning behind a disclosure is a warning nobody reads. The
+    // headline stays on the summary line for the same reason: Level 4's stopping
+    // rule is "no corrections on the last three", and nobody decides to stop
+    // against a number they have to go and open.
+    //
+    // `<details>` rather than a hover tooltip, which is unreachable by keyboard,
+    // invisible on touch, and vanishes while you are reading it.
     <section className="rounded border border-gray-300 p-3 text-sm">
-      <h2 className="font-semibold">{t('indicatorHeading')}</h2>
       {/* NULL IS NOT ZERO. Rendering `0%` here would tell the researcher the
           rules had been tested and never needed fixing, before anything was
           looked at. */}
       {state.correctionRate === null ? (
-        <p>{t('noCaptureYet')}</p>
+        <>
+          <h2 className="font-semibold">{t('indicatorHeading')}</h2>
+          <p>{t('noCaptureYet')}</p>
+        </>
       ) : (
         <>
+          <details>
+            <summary className="cursor-pointer font-semibold">
+              {t('indicatorHeading')}{' — '}
+              <span className="font-normal text-gray-700">
+                {t('indicatorSummary', {
+                  distinct: state.judgedCaptures.length,
+                  streak: state.consecutiveCleanCaptures,
+                })}
+              </span>
+            </summary>
           {/* ONE FACT PER LINE. This was a single sentence carrying the streak,
               the judged count and the distinct count at once — three different
               numbers welded together, which the researcher reported as unclear.
               They are separate facts and none of them is derived from another,
               which is exactly why they cannot be said in one breath. */}
-          <ul className="list-disc ps-5">
-            <li>{t('judgedOfShown', { judged: state.capturesJudged, shown: state.capturesShown })}</li>
-            <li>{t('streakLine', { streak: state.consecutiveCleanCaptures })}</li>
-            <li>
-              {t('correctionLine', {
-                needing: state.capturesNeedingCorrection,
-                judged: state.capturesJudged,
-              })}
-            </li>
-            <li>{t('distinctLine', { distinct: state.distinctCapturesShown })}</li>
-          </ul>
-          <p className="mt-1 text-xs text-gray-600">{t('streakCaveat')}</p>
+          {/* DISTINCT CAPTURES LEADS, because it is the only one of these
+              numbers that says anything about coverage. The four lines read as
+              four independent facts, and "2 judged of 2 shown" beside "1
+              different capture" left the reader to notice the contradiction —
+              two judgements of ONE page, presented as if two pages had been
+              tested. The plan named this shape: three clean showings of one
+              capture is the vacuity this level demotes, wearing the streak's
+              clothes. */}
+            <ul className="mt-1 list-disc ps-5">
+              <li>{t('judgedDistinct', { distinct: state.judgedCaptures.length })}</li>
+              <li>{t('streakLine', { streak: state.consecutiveCleanCaptures })}</li>
+              <li>
+                {t('correctionLine', {
+                  needing: state.capturesNeedingCorrection,
+                  judged: state.capturesJudged,
+                })}
+              </li>
+              <li className="text-gray-600">
+                {t('judgedEpisodes', {
+                  episodes: state.capturesJudged,
+                  shown: state.capturesShown,
+                })}
+              </li>
+            </ul>
+            <p className="mt-1 text-xs text-gray-600">{t('streakCaveat')}</p>
+          </details>
+
+          {/* OUTSIDE the disclosure, on purpose — see the note above. */}
+          {state.capturesJudged > state.judgedCaptures.length && (
+            <p className="mt-1 rounded bg-amber-50 p-2 text-xs text-amber-900">
+              {t('repeatWarning')}
+            </p>
+          )}
         </>
       )}
       {state.staleSelectors.length > 0 && (
