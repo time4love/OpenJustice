@@ -45,6 +45,20 @@ export interface ChromeApplication {
   html: string;
   /** Normalised text of everything removed. Empty string when nothing matched. */
   removedText: string;
+  /**
+   * The same removed text, ATTRIBUTED to the selector that removed it.
+   *
+   * THE REMOVED PANE IS THE INSTRUMENT, AND AN INSTRUMENT SHOULD BE ACTIONABLE.
+   * A researcher marking the news page found the article's own reporting in the
+   * removed text — a ministry announcement with dates — and could see the damage
+   * without being able to act on it: the pane was one undifferentiated block, so
+   * undoing meant guessing which of a dozen marks had swallowed the paragraph
+   * and unmarking them one at a time from the tree.
+   *
+   * Selectors that matched nothing do not appear. Order follows the ruleset, so
+   * the pane reads in the same order the rules are listed.
+   */
+  removedSegments: readonly { selector: string; text: string }[];
   /** Elements matched, per selector, in the order the ruleset lists them. */
   matchCounts: Readonly<Record<string, number>>;
   /**
@@ -67,7 +81,7 @@ export interface ChromeApplication {
  */
 export function applyChromeRuleset(html: string, ruleset: ChromeRuleset): ChromeApplication {
   if (isEmptyRuleset(ruleset)) {
-    return { html, removedText: '', matchCounts: {}, invalidSelectors: [] };
+    return { html, removedText: '', removedSegments: [], matchCounts: {}, invalidSelectors: [] };
   }
 
   const dom = new JSDOM(html);
@@ -75,6 +89,7 @@ export function applyChromeRuleset(html: string, ruleset: ChromeRuleset): Chrome
   const matchCounts: Record<string, number> = {};
   const invalidSelectors: string[] = [];
   const removedFragments: string[] = [];
+  const removedSegments: { selector: string; text: string }[] = [];
 
   // Returns null for a selector the parser rejects, so the caller can tell a
   // BROKEN rule from one that matched nothing. Annotating the result as
@@ -97,18 +112,27 @@ export function applyChromeRuleset(html: string, ruleset: ChromeRuleset): Chrome
       continue;
     }
     matchCounts[selector] = matched.length;
+    const forThisSelector: string[] = [];
     for (const element of matched) {
       // The element's own markup, so the removed text is derived by the SAME
       // path as the kept text. Reading `textContent` here instead would give the
       // reviewer a differently-derived string from the one the rules acted on.
       removedFragments.push(element.outerHTML);
+      forThisSelector.push(element.outerHTML);
       element.remove();
     }
+    // Attributed separately, and `removedText` is still built from the flat list
+    // exactly as before — the joined string is stored on observations, so
+    // rebuilding it from the segments would risk a different normalisation for
+    // no gain.
+    const text = normaliseText(forThisSelector.map((f) => htmlToText(f)).join('\n\n'));
+    if (text !== '') removedSegments.push({ selector, text });
   }
 
   return {
     html: dom.serialize(),
     removedText: normaliseText(removedFragments.map((f) => htmlToText(f)).join('\n\n')),
+    removedSegments,
     matchCounts,
     invalidSelectors,
   };
@@ -323,14 +347,30 @@ function labelFor(el: Element, text: string): string {
   const role = el.getAttribute('role')?.trim().toLowerCase();
   const landmark = LANDMARKS[tag] ?? (role !== undefined && role !== '' ? role : undefined);
 
+  // WHITESPACE COLLAPSED BEFORE SLICING, so the budget is spent on words. The
+  // derived text keeps paragraph breaks, and a preview taken straight off it
+  // spends a third of its characters on newlines and list bullets — on the news
+  // page the first label read "section · חדשות\n\n• \n\n• שתף ב וואצאפ…" and
+  // said almost nothing.
+  const trimmed = text.replace(/\s+/g, ' ').trim();
+  const preview =
+    trimmed.length > LABEL_PREVIEW ? `${trimmed.slice(0, LABEL_PREVIEW)}…` : trimmed;
+
   if (aria !== undefined && aria !== '') {
     return landmark === undefined ? aria : `${landmark} — ${aria}`;
   }
-  if (landmark !== undefined) return landmark;
 
-  const preview = text.trim().slice(0, LABEL_PREVIEW);
-  if (preview === '') return `<${tag}>`;
-  return text.trim().length > LABEL_PREVIEW ? `${preview}…` : preview;
+  // A LANDMARK NAME QUALIFIES THE PREVIEW; IT DOES NOT REPLACE IT.
+  //
+  // It used to replace it, which is fine on a page holding one <nav> and one
+  // <footer> and useless on one holding nine <section>s: every row read
+  // "section", and the researcher marking the news page reported being unable to
+  // tell them apart without clicking each one and watching the removed pane.
+  // "What kind of thing is this" and "which one is it" are different questions,
+  // and the label has to answer both.
+  if (landmark !== undefined) return preview === '' ? landmark : `${landmark} · ${preview}`;
+
+  return preview === '' ? `<${tag}>` : preview;
 }
 
 /**

@@ -132,6 +132,62 @@ describe('what the rules removed is reported, because a human must see it', () =
   });
 });
 
+describe('removed text is attributed to the rule that removed it', () => {
+  // The pane is where over-matching becomes visible, so it is where undoing has
+  // to be possible — and undoing the WRONG rule because the attribution slipped
+  // would be worse than not offering it. A researcher marking the news page
+  // found the article's own reporting in the removed text, which is exactly the
+  // moment this mapping has to be right.
+  const PAGE = `<!doctype html><html><body>
+    <nav class="site-nav">Home</nav>
+    <div class="promo">Buy now</div>
+    <article><p>The Ministry announced 20 December.</p></article>
+    <footer class="site-footer">Ministry of Health</footer>
+  </body></html>`;
+
+  it('splits the removed text per selector, in ruleset order', () => {
+    const applied = applyChromeRuleset(PAGE, {
+      selectors: ['nav.site-nav', 'div.promo', 'footer.site-footer'],
+    });
+    expect(applied.removedSegments.map((s) => s.selector)).toEqual([
+      'nav.site-nav',
+      'div.promo',
+      'footer.site-footer',
+    ]);
+    expect(applied.removedSegments.map((s) => s.text)).toEqual([
+      'Home',
+      'Buy now',
+      'Ministry of Health',
+    ]);
+  });
+
+  it('omits a selector that removed nothing, so no block is unclickable', () => {
+    const applied = applyChromeRuleset(PAGE, { selectors: ['div.promo', 'div.absent'] });
+    expect(applied.removedSegments).toHaveLength(1);
+    expect(applied.removedSegments.at(0)?.selector).toBe('div.promo');
+  });
+
+  it('attributes a PARENT rule the whole subtree it took with it', () => {
+    // Marking a parent is ONE rule whose effect covers its descendants — it does
+    // not select the children individually. So the segment carries everything
+    // that went, and clicking it undoes the parent rather than a child.
+    const applied = applyChromeRuleset(PAGE, { selectors: ['article'] });
+    expect(applied.removedSegments).toHaveLength(1);
+    expect(applied.removedSegments.at(0)?.text).toContain('20 December');
+  });
+
+  it('agrees with removedText, which stored observations still use', () => {
+    const applied = applyChromeRuleset(PAGE, { selectors: ['nav.site-nav', 'footer.site-footer'] });
+    for (const segment of applied.removedSegments) {
+      expect(applied.removedText).toContain(segment.text);
+    }
+  });
+
+  it('is empty when the ruleset is', () => {
+    expect(applyChromeRuleset(PAGE, { selectors: [] }).removedSegments).toEqual([]);
+  });
+});
+
 describe('matchCounts is the null check, and it is a count rather than a judgement', () => {
   it('reports zero for a selector that no longer matches the page', () => {
     const stale: ChromeRuleset = { selectors: ['#ad-slot', '.redesigned-away'] };

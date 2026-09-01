@@ -63,6 +63,15 @@ export interface CapturePreview {
    * beside it.
    */
   removedText: string;
+  /**
+   * The removed text, split by the rule that removed it.
+   *
+   * SO THE PANE CAN BE ACTED ON, not only read. A researcher marking the news
+   * page found the article's own reporting in the removed text and could see the
+   * damage without being able to undo it: one undifferentiated block meant
+   * guessing which of a dozen marks had swallowed the paragraph.
+   */
+  removedSegments: readonly { selector: string; text: string }[];
   matchCounts: Readonly<Record<string, number>>;
   /** Selectors the parser rejected — a typo, not a rule that matched nothing. */
   invalidSelectors: readonly string[];
@@ -131,6 +140,9 @@ export async function previewUnderSelectors(
     snapshotId,
     keptText: derived.text,
     removedText: derived.chrome.removedText,
+    // Attributed to the rule that removed it, so the pane can be acted on
+    // rather than only read.
+    removedSegments: derived.chrome.removedSegments,
     matchCounts: derived.chrome.matchCounts,
     invalidSelectors: derived.chrome.invalidSelectors,
     removalFraction: chromeRemovalFraction(derived),

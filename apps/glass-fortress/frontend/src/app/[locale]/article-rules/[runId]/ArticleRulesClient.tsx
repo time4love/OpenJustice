@@ -116,6 +116,8 @@ interface CaptureDetail {
 interface Preview {
   keptText: string;
   removedText: string;
+  /** The removed text, attributed to the rule that removed it. */
+  removedSegments: { selector: string; text: string }[];
   matchCounts: Record<string, number>;
   invalidSelectors: string[];
   removalFraction: number;
@@ -636,7 +638,15 @@ export function ArticleRulesClient({ runId }: { runId: string }) {
               REMOVED is the instrument, and an instrument you have to click to
               reach is one you will not be looking at when it matters.
             */}
-            {preview && <RemovedPane preview={preview} pending={previewPending} t={t} />}
+            {preview && (
+              <RemovedPane
+                preview={preview}
+                pending={previewPending}
+                disabled={busy || closed}
+                onUnmark={(sel) => { applyRules(selectors.filter((x) => x !== sel)); }}
+                t={t}
+              />
+            )}
           </div>
         </div>
       )}
@@ -906,7 +916,13 @@ function Outline({
           type="button"
           disabled={disabled || wholeDocument}
           onClick={() => { onToggle(node.selector); }}
-          title={wholeDocument ? t('wholeDocument') : isSelected ? t('unmark') : node.selector}
+          // The full label AND the selector: labels now carry a text preview and
+          // are clamped to one line, so the hover is where the rest of it lives.
+          title={
+            wholeDocument
+              ? t('wholeDocument')
+              : `${node.label}\n${node.selector}${isSelected ? `\n${t('unmark')}` : ''}`
+          }
           className={`min-w-0 flex-1 rounded px-1 text-start ${
             wholeDocument
               ? 'cursor-not-allowed text-gray-500'
@@ -918,8 +934,15 @@ function Outline({
           {/* THE LABEL LEADS. The selector is what the system acts on and it is
               still here, one line down and dimmed — it is simply no longer the
               only thing on offer, which is what made the tree unreadable. */}
-          <span className={isSelected ? 'font-semibold' : ''}>{node.label}</span>{' '}
-          <span className="text-gray-500">({node.textLength})</span>
+          {/* ONE LINE. Labels carry a text preview now, so an unclamped label
+              wraps to three lines and a tree of 658 rows stops being scannable. */}
+          <span
+            className={`block overflow-hidden text-ellipsis whitespace-nowrap ${
+              isSelected ? 'font-semibold' : ''
+            }`}
+          >
+            {node.label} <span className="text-gray-500">({node.textLength})</span>
+          </span>
           {isSelected && <span className="ms-1 text-amber-800">· {t('marked')}</span>}
           {isSelected && count !== undefined && count !== 1 && (
             <span className="ms-1 text-amber-800">
@@ -1057,11 +1080,15 @@ function Rules({
 function RemovedPane({
   preview,
   pending,
+  disabled,
+  onUnmark,
   t,
 }: {
   preview: Preview;
   /** True while the tree has moved on and this pane has not caught up yet. */
   pending: boolean;
+  disabled: boolean;
+  onUnmark: (selector: string) => void;
   t: ReturnType<typeof useTranslations>;
 }) {
   const percent = useMemo(() => Math.round(preview.removalFraction * 100), [preview.removalFraction]);
@@ -1079,13 +1106,38 @@ function RemovedPane({
       {/* `overflow-anchor-none` and no scroll restoration: the pane always shows
           the TOP of what was removed. It used to open scrolled to its tail, so
           the researcher saw the end of a nav block and not the block. */}
-      <pre
-        className={`h-72 overflow-auto whitespace-pre-wrap border border-amber-400 bg-amber-50 p-2 text-xs ${
+      {/*
+        EACH BLOCK IS THE RULE THAT REMOVED IT, AND CLICKING IT UNDOES THAT RULE.
+        The pane is where over-matching becomes visible, so it is where undoing
+        should be possible: a researcher who reads the article's own reporting in
+        here should not then have to work out which of a dozen marks swallowed it
+        and hunt that row down in a 658-row tree.
+      */}
+      <div
+        className={`h-72 overflow-auto border border-amber-400 bg-amber-50 p-2 text-xs ${
           pending ? 'opacity-50' : ''
         }`}
       >
-        {empty ? t('removedNothing') : preview.removedText}
-      </pre>
+        {empty ? (
+          <p>{t('removedNothing')}</p>
+        ) : (
+          preview.removedSegments.map((seg) => (
+            <button
+              key={seg.selector}
+              type="button"
+              disabled={disabled}
+              onClick={() => { onUnmark(seg.selector); }}
+              title={`${t('unmarkThisRule')}\n${seg.selector}`}
+              className="mb-2 block w-full whitespace-pre-wrap rounded border border-amber-300 bg-white/60 p-1 text-start hover:border-amber-600 hover:bg-white disabled:cursor-not-allowed"
+            >
+              <span className="block overflow-hidden text-ellipsis whitespace-nowrap text-[10px] text-amber-800">
+                <code>{seg.selector}</code>
+              </span>
+              {seg.text}
+            </button>
+          ))
+        )}
+      </div>
     </section>
   );
 }
