@@ -158,3 +158,91 @@ committed  nothing. No capture has been re-derived under any ruleset.
 - **The boundary's exact location.** It lies between 2020-12-18 and 2022-05-23; three captures in that
   range are unjudged.
 - **Anything at scale.** One page, one researcher, seven captures, nothing committed.
+
+---
+
+# I14 — THE CAPTURED PAGE REFRESHED ITSELF INTO THE PRESENT
+
+**Addendum, 2026-09-01. Found by the researcher, mid-marking, on `2020-12-18`.**
+
+## What happened
+
+Marking was going well — the ruleset had been corrected to 72% removal on `2020-12-18` — when the
+researcher reported that the **העמוד כפי שנלכד** tab was *"showing the wrong page"*, and then, more
+precisely, *"the original page but it looks like only furniture."*
+
+It was. The frame held Walla as it stands **today**: a topic bar reading `בחירות 2026`, a breaking-news
+ticker about floods in Nepal, `איזנקוט`, `מבקר המדינה`. None of those strings exist in the stored
+document.
+
+## Why
+
+The captured page carries the site's own auto-refresh, faithfully preserved from 2020:
+
+```html
+<meta http-equiv="refresh" content="300">
+```
+
+**`sandbox` does not stop it.** The attribute was `sandbox=""` — maximally restrictive, no
+`allow-scripts` — and the document contained zero `<script>` tags, because `inertDocument` had already
+removed them. A meta refresh needs none. There is no sandbox flag for it.
+
+Five minutes into a marking session the frame reloaded, and from then on the researcher was looking at
+the live site while marking rules against a 2020 capture.
+
+## Why it is worse than it looks
+
+**THE NUMBERS STAYED RIGHT.** The removal fraction, the kept text and the removed-blocks pane are all
+computed on the server against the **stored** document; the iframe feeds none of them. So the
+instrument disagreed with itself and gave no sign of it — and the half that stayed correct was the half
+that carries authority. A researcher checking their work against the percentages would find everything
+in order.
+
+**It takes five minutes to appear.** Three marking walks and a full loop verification never saw it,
+because no single capture had been held on screen that long. The defect is invisible to exactly the
+kind of session that tests for defects.
+
+## What it did NOT corrupt, and why that is checkable rather than hopeful
+
+- **Selection never came from the frame.** The tree is built by `documentOutline` from the stored
+  document, and click-to-select inside the page was deliberately never wired — it would have required
+  `allow-scripts`, which the design refused. Every selector in the ruleset came from the real capture.
+- **Every derived text is server-side.** Kept text, removed segments and the fraction are applied to
+  stored HTML.
+- **The researcher verified against the removed text**, not the picture — *"it is correct by looking at
+  the text that was removed"* — which is the one surface the defect could not reach.
+
+**The `2020-12-18` ruleset at 72% therefore stands.** Only the picture was lying.
+
+## The class of defect
+
+`inertDocument` is documented as the layer that makes a document unable to act. Its implementation was
+a list: `script, iframe, object, embed`, and `on*` attributes. Its test fixture was the same list, under
+a heading reading *"the second layer, tested because an untested layer is not one"*.
+
+**A rule stated as a property and implemented as an enumeration is tested against the cases already
+thought of.** The fixture could not have caught this, because the fixture was written from the same
+understanding as the code.
+
+## Fixed
+
+Render-side only — the stored capture keeps its meta refresh, which is a true fact about the page:
+
+- `<meta http-equiv="refresh">` removed, matched on the attribute's **value** rather than by selector,
+  since `[http-equiv="refresh"]` is case-sensitive and the corpus holds mixed casing.
+- `<base>` removed, which would otherwise resolve every relative URL against the live site.
+- `frame` added to the removed elements alongside `iframe`.
+
+The fixture now carries both, plus a guard that ordinary `<meta>` tags survive. Confirmed falsifiable:
+**2 failures without the fix, 37 passing with it.**
+
+## Open, and the researcher's to rule
+
+**Remote `<link rel="stylesheet">` and `<img>` still load from the live site.** A 2020 capture is
+therefore dressed in 2026 stylesheets and images, and opening a capture reaches out to `walla.co.il`
+from the researcher's browser.
+
+Stripping them makes the frame authentic and visually degraded; keeping them makes it presentable and
+partly false. Since the question the frame exists to answer is *"is this block furniture ON THIS PAGE
+AT THIS DATE"*, the trade-off is not obviously resolved either way — and it is a decision about the
+instrument, not a defect in it.

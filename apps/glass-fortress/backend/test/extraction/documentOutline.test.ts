@@ -375,7 +375,10 @@ describe('the label — what the researcher reads instead of a selector', () => 
 });
 
 describe('inertDocument — the second layer, tested because an untested layer is not one', () => {
-  const HOSTILE = `<!doctype html><html><body>
+  const HOSTILE = `<!doctype html><html><head>
+    <meta http-equiv="Refresh" content="300">
+    <base href="https://news.walla.co.il/">
+  </head><body>
     <script>window.stolen = document.cookie;</script>
     <img src="x" onerror="window.stolen = 1">
     <div onclick="alert(1)" class="keep">visible text</div>
@@ -392,6 +395,31 @@ describe('inertDocument — the second layer, tested because an untested layer i
     expect(inert).not.toContain('<object');
     expect(inert).not.toContain('document.cookie');
     expect(inert).not.toContain('tracker.example');
+  });
+
+  // THE CASE THIS FIXTURE DID NOT HOLD, AND WHICH REACHED A RESEARCHER. Walla's
+  // captured pages carry `<meta http-equiv="refresh" content="300">` — the site's
+  // own auto-refresh, captured in 2020 and still live in the marking frame. Five
+  // minutes in, the frame reloaded and the page being marked was no longer the
+  // capture. `sandbox` has no flag for it and the fixture had no example of it,
+  // so a layer described as "the document cannot act" was tested only against
+  // the ways of acting we had already thought of.
+  it('removes a self-navigating meta refresh, whatever case it was captured in', () => {
+    expect(inert.toLowerCase()).not.toContain('http-equiv="refresh"');
+    expect(inert).not.toContain('content="300"');
+  });
+
+  // A capture must not dress itself in the live site's stylesheets and images:
+  // the researcher is asked what is furniture ON THIS PAGE AT THIS DATE.
+  it('removes <base>, which would resolve every relative URL against the live site', () => {
+    expect(inert).not.toContain('<base');
+    expect(inert).not.toContain('news.walla.co.il/"');
+  });
+
+  it('keeps the meta tags that only describe the document', () => {
+    const described = inertDocument('<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="X-UA-Compatible" content="ie=edge"></head><body><p>a</p></body></html>');
+    expect(described).toContain('charset="utf-8"');
+    expect(described.toLowerCase()).toContain('x-ua-compatible');
   });
 
   it('strips every on* handler attribute, not just the ones we thought of', () => {
