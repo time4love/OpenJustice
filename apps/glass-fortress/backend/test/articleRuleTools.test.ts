@@ -66,6 +66,7 @@ interface CoverageShape {
 
 interface Parsed {
   error?: string;
+  removedSample?: { selector: string; sample: string; fullLength: number }[];
   captureUrl?: string;
   rulesStillMatching?: string;
   alreadyJudged?: string | null;
@@ -687,6 +688,7 @@ describe('open_article_capture', () => {
     mockPreview.mockResolvedValue({
       matchCounts: { '#header': 1, '#footer': 0 },
       removalFraction: 0.68,
+      removedSegments: [{ selector: '#header', text: 'Home  News\n\n Sport' }],
     });
     (prisma.urlSnapshot.findFirst as jest.Mock).mockResolvedValue({
       id: 's1',
@@ -868,5 +870,94 @@ describe('judge_article_capture promotes the draft', () => {
 
     const types = mockAppend.mock.calls.map((c) => (c[2] as { type: string }).type);
     expect(types).toEqual([CalibrationDecisionType.CAPTURE_ACCEPTED]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// THE EVIDENCE HAS TO REACH THE CONVERSATION.
+//
+// A researcher on claude.ai has an MCP connector and nothing else — no developer
+// tools, no way for the assistant to read the page. Reporting "68% removed" and
+// nothing about WHAT left the only record of an approval as the word "accepted",
+// with no trace of what was inspected.
+//
+// TRUNCATED ON PURPOSE. Enough to spot prose among furniture; not enough to
+// substitute for looking, and not a whole document handed to something that is
+// not supposed to be judging it.
+// ---------------------------------------------------------------------------
+
+describe('open_article_capture returns a sample of what was removed', () => {
+  beforeEach(() => {
+    mockPreview.mockReset();
+    (prisma.urlSnapshot.findFirst as jest.Mock).mockResolvedValue({
+      id: 's1',
+      snapshotDate: '2020-12-18',
+      waybackTimestamp: '20201218044603',
+    });
+    armRun([CalibrationDecisionType.RUN_OPENED], ['#header']);
+  });
+
+  it('carries each block with the rule that removed it', async () => {
+    mockPreview.mockResolvedValue({
+      matchCounts: { '#header': 1 },
+      removalFraction: 0.68,
+      removedSegments: [{ selector: '#header', text: 'Home News Sport' }],
+    });
+
+    const out = JSON.parse(
+      await openArticleCaptureHandler({ runId: 'run-1', snapshotId: 's1' }),
+    ) as Parsed;
+
+    expect(out.removedSample).toEqual([
+      { selector: '#header', sample: 'Home News Sport', fullLength: 15 },
+    ]);
+  });
+
+  it('collapses whitespace, so the budget is spent on words', async () => {
+    mockPreview.mockResolvedValue({
+      matchCounts: { '#header': 1 },
+      removalFraction: 0.1,
+      removedSegments: [{ selector: '#header', text: '  Home\n\n\n  •  \n News  ' }],
+    });
+
+    const out = JSON.parse(
+      await openArticleCaptureHandler({ runId: 'run-1', snapshotId: 's1' }),
+    ) as Parsed;
+
+    expect(out.removedSample?.[0]?.sample).toBe('Home • News');
+  });
+
+  it('truncates a long block and reports its FULL length', async () => {
+    // A truncated block must not read as a short one — the same reason the
+    // outline reports `truncated` rather than silently stopping.
+    const long = 'x'.repeat(900);
+    mockPreview.mockResolvedValue({
+      matchCounts: { '#header': 1 },
+      removalFraction: 0.9,
+      removedSegments: [{ selector: '#header', text: long }],
+    });
+
+    const out = JSON.parse(
+      await openArticleCaptureHandler({ runId: 'run-1', snapshotId: 's1' }),
+    ) as Parsed;
+
+    const sample = out.removedSample?.[0];
+    expect(sample?.sample.endsWith('…')).toBe(true);
+    expect(sample?.sample.length).toBeLessThanOrEqual(201);
+    expect(sample?.fullLength).toBe(900);
+  });
+
+  it('is empty when the rules removed nothing', async () => {
+    mockPreview.mockResolvedValue({
+      matchCounts: {},
+      removalFraction: 0,
+      removedSegments: [],
+    });
+
+    const out = JSON.parse(
+      await openArticleCaptureHandler({ runId: 'run-1', snapshotId: 's1' }),
+    ) as Parsed;
+
+    expect(out.removedSample).toEqual([]);
   });
 });
