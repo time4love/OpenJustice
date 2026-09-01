@@ -17,6 +17,8 @@ import {
   getArticleRulesHandler,
   checkRulesetSurvivalHandler,
   checkRulesetSurvivalSchema,
+  resolveEraBoundaryHandler,
+  resolveEraBoundarySchema,
   openArticleCaptureSchema,
   openArticleCaptureHandler,
   judgeArticleCaptureSchema,
@@ -730,6 +732,27 @@ export function createMcpServer(): McpServer {
     },
     async (input) => ({
       content: [{ type: 'text' as const, text: await getArticleRulesHandler(input) }],
+    }),
+  );
+
+  server.registerTool(
+    'resolve_era_boundary',
+    {
+      description:
+        'ANSWER THE ONE QUESTION A DETECTOR CANNOT: the rules stopped matching at this capture — is it ' +
+        'a REDESIGN, or a BAD CAPTURE? A redesign and a truncated archive page look identical to a ' +
+        'match rate, so the pass stops and asks rather than concluding. THIS IS THE ONLY WAY AN ERA ' +
+        'COMES INTO EXISTENCE: a boundary is always a decision and never an inference. REDESIGN ends ' +
+        'the era at this capture and opens the next one here, carrying the previous rules forward ' +
+        'UNCHANGED — it records that the page was rebuilt, it does not guess the new rules, and the ' +
+        'new era is UNCONFIRMED until marking. BAD_CAPTURE records the capture as unusable, REQUIRES a ' +
+        'reason, and continues IN THE SAME ERA however many consecutive bad captures occur — no number ' +
+        'of them adds up to a structural claim. It judges nothing about whether the rules are right; ' +
+        'that is judge_article_capture.',
+      inputSchema: resolveEraBoundarySchema,
+    },
+    async (input) => ({
+      content: [{ type: 'text' as const, text: await resolveEraBoundaryHandler(input) }],
     }),
   );
 

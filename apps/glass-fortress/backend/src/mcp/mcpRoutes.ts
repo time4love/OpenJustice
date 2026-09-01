@@ -113,6 +113,10 @@ export const WRITE_TOOLS = new Set([
   // Reads only, and gated for the same reason: it reports which captures of which
   // page were accepted and where a later rule has since changed their text.
   'check_ruleset_survival',
+  // Writes a decision, and the ONLY one that can open an era. Obviously gated; it
+  // is named here rather than by omission, which is how a tool ends up
+  // unclassified.
+  'resolve_era_boundary',
   'create_thesis_draft',
   'add_thesis_version',
   // Writes a new ThesisVersion. Cheaper and narrower than add_thesis_version —
