@@ -2383,6 +2383,26 @@ model CalibrationRun {
   createdAt           DateTime             @default(now())
   closedAt            DateTime?
 
+  /// THE DRAFT THE MARKING PAGE HANDS BACK, and the reason it is not a decision.
+  ///
+  /// The page is a visual instrument for checking and correcting a ruleset
+  /// against one capture: it takes a ruleset in and returns a corrected ruleset.
+  /// It decides nothing — the verdict and the approval are the researcher's, made
+  /// through a tool. Writing a `RULESET_CORRECTED` per edit made the browser a
+  /// writer of decisions, which is what produced this level's swallowed clicks,
+  /// its eight correction rows for one capture of exploration, and a page that
+  /// raced itself into a 409.
+  ///
+  /// A DRAFT IS NOT A DECISION. It records nothing about whether the rules are
+  /// right; it is the researcher's work in progress, kept so that a dying tab
+  /// does not take twenty minutes of marking with it.
+  draftSelectors      String[]
+  /// Which capture the draft was marked against. NULL means there is no draft.
+  draftSnapshotId     String?
+  /// Set when the researcher hands the draft back. NULL while it is still being
+  /// edited — which is how "saved as I go" is told apart from "I am done".
+  draftReturnedAt     DateTime?
+
   decisions CalibrationDecision[]
 
   @@index([trackedUrlId, status])

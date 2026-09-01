@@ -180,6 +180,15 @@ export function ArticleRulesClient({ runId, snapshotId }: { runId: string; snaps
    * moved on from the ones it was computed against.
    */
   const [previewFor, setPreviewFor] = useState<string[] | null>(null);
+  /**
+   * The selectors last SAVED as a draft, and whether the draft was handed back.
+   *
+   * The baseline is what was saved, not what is committed: a researcher who marks
+   * a block and unmarks it is back at the committed ruleset but their draft still
+   * needs writing, or a reload would resurrect marks they had removed.
+   */
+  const [draftBaseline, setDraftBaseline] = useState<string[]>([]);
+  const [returnedAt, setReturnedAt] = useState<string | null>(null);
 
   /**
    * The pending settle timer, and whether a settle is already in flight.
@@ -193,7 +202,6 @@ export function ArticleRulesClient({ runId, snapshotId }: { runId: string; snaps
    * middle of a measurement, produced by this page arguing with itself.
    */
   const settleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const settling = useRef(false);
 
   const cancelSettle = useCallback(() => {
     if (settleTimer.current !== null) {
@@ -274,15 +282,25 @@ export function ArticleRulesClient({ runId, snapshotId }: { runId: string; snaps
           const detail = await call<CaptureDetail>(`${base}/captures/${snapshotId}`);
           if (cancelled) return;
           setCapture(detail);
-          await runPreview(snapshotId, run.selectors);
-          await call<RunState>(`${base}/decisions`, {
-            method: 'POST',
-            body: JSON.stringify({
-              expectedVersion: run.version,
-              type: 'CAPTURE_SHOWN',
-              snapshotId,
-            }),
-          }).then(setState);
+
+          // A DRAFT FOR THIS CAPTURE WINS OVER THE COMMITTED RULES. It is the
+          // researcher's work in progress; showing them the rules in force after
+          // a reload would silently discard it, which is the thing persisting it
+          // exists to prevent.
+          const { draft } = await call<{
+            draft: { selectors: string[]; snapshotId: string; returnedAt: string | null } | null;
+          }>(`${base}/draft`);
+          const rules =
+            draft !== null && draft.snapshotId === snapshotId ? draft.selectors : run.selectors;
+          setSelectors(rules);
+          setDraftBaseline(draft !== null && draft.snapshotId === snapshotId ? rules : []);
+          setReturnedAt(draft?.snapshotId === snapshotId ? draft.returnedAt : null);
+          await runPreview(snapshotId, rules);
+          // NO `CAPTURE_SHOWN` FROM HERE. Being shown is a decision, and the page
+          // writes none: `open_article_capture` is the thing that shows a capture,
+          // so it is the thing that records the showing. Posting it here also
+          // meant a re-run of this effect appended a second one against a moved
+          // version — a 409, and an inflated `capturesShown` if it landed.
         }
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : t('offline'));
@@ -294,39 +312,31 @@ export function ArticleRulesClient({ runId, snapshotId }: { runId: string; snaps
   }, [base, call, t, snapshotId, runPreview]);
 
   /**
-   * Write ONE decision for a ruleset that was actually adopted.
+   * Save the researcher's work in progress. THE ONLY THING THIS PAGE WRITES.
    *
-   * COALESCED, BY RESEARCHER DECISION. A toggle-to-look and a considered change
-   * are the same event to the log otherwise: eight `RULESET_CORRECTED` rows for
-   * one capture's worth of exploration, which is the record a future reader
-   * audits. Comparing against what was last RECORDED — not against the previous
-   * click — means marking a block and unmarking it writes nothing at all,
-   * because the ruleset ended where it started.
+   * A DRAFT IS NOT A DECISION, and that is the whole of the page's new contract:
+   * it takes a ruleset in and returns a corrected one, deciding nothing. The
+   * verdict and the approval are made through tools, with the draft in hand.
    *
-   * `foldEpisodes` already coalesces at the EPISODE level, so the correction
-   * RATE was never wrong. This is about the log, not the indicator.
+   * Writing a `RULESET_CORRECTED` per settle is what this replaces, and what that
+   * cost is on the record: clicks swallowed behind two sequential POSTs, eight
+   * correction rows for one capture's worth of exploration, and a page that raced
+   * itself into a 409 with no other tab open. None of those are reachable from
+   * here — a draft is one row per run, last write wins, no version to collide on.
    */
-  const flushCorrection = useCallback(async () => {
-    if (!state || state.status !== 'OPEN') return;
-    if (sameSet(selectors, state.selectors)) return;
-    // Belt to the cancellation's braces: two settles must never overlap, however
-    // they were started.
-    if (settling.current) return;
-    settling.current = true;
-    try {
-      const next = await call<RunState>(`${base}/decisions`, {
-      method: 'POST',
-      body: JSON.stringify({
-        expectedVersion: state.version,
-          type: 'RULESET_CORRECTED',
-          selectors,
-        }),
+  const saveDraft = useCallback(
+    async (rules: string[], returned: boolean) => {
+      if (capture === null) return;
+      await call(`${base}/draft`, {
+        method: 'PUT',
+        body: JSON.stringify({ snapshotId: capture.snapshotId, selectors: rules, returned }),
       });
-      setState(next);
-    } finally {
-      settling.current = false;
-    }
-  }, [base, call, selectors, state]);
+      setDraftBaseline(rules);
+      setReturnedAt(returned ? new Date().toISOString() : null);
+    },
+    [base, call, capture],
+  );
+
 
   const guard = async (work: () => Promise<void>) => {
     // The researcher just acted, so the pending settle is theirs to carry out,
@@ -379,7 +389,9 @@ export function ArticleRulesClient({ runId, snapshotId }: { runId: string; snaps
    * accept into a 409.
    */
   const settleThen = async (work: () => Promise<void>) => {
-    await flushCorrection();
+    // Save the draft first, then act. The draft belongs to what is on screen; a
+    // judgement or a capture change must not leave it behind.
+    if (!sameSet(selectors, draftBaseline)) await saveDraft(selectors, false);
     await work();
   };
 
@@ -455,12 +467,15 @@ export function ArticleRulesClient({ runId, snapshotId }: { runId: string; snaps
 
   useEffect(() => {
     if (!capture || state === null || state.status !== 'OPEN') return undefined;
-    if (sameSet(selectors, state.selectors)) return undefined;
+    // Against what was last SAVED as a draft, not against the committed rules:
+    // a draft that matches the ruleset in force is still a draft worth keeping,
+    // because the researcher may have marked and unmarked back to it.
+    if (sameSet(selectors, draftBaseline)) return undefined;
     const id = setTimeout(() => {
       settleTimer.current = null;
       void (async () => {
         try {
-          await flushCorrection();
+          await saveDraft(selectors, false);
         } catch (err) {
           // NEVER SWALLOWED. This is the write that makes the researcher's marks
           // durable, so a failure here loses work silently — the one outcome
@@ -478,7 +493,7 @@ export function ArticleRulesClient({ runId, snapshotId }: { runId: string; snaps
     }, SETTLE_MS);
     settleTimer.current = id;
     return () => { clearTimeout(id); };
-  }, [capture, selectors, state, flushCorrection, refresh, t]);
+  }, [capture, selectors, state, saveDraft, refresh, t, draftBaseline]);
 
   /**
    * Adopt a draft ruleset. RETURNS IMMEDIATELY — nothing here awaits the network.
@@ -731,6 +746,62 @@ export function ArticleRulesClient({ runId, snapshotId }: { runId: string; snaps
               {t('skip')}
             </button>
           </label>
+        </section>
+      )}
+
+      {/* A PAGE WITH NO WAY TO FINISH READS AS A BROKEN PAGE. The verdict buttons
+          are gone on purpose — judging is `judge_article_capture` now — but the
+          researcher opened this view and found nothing to click, which is the
+          same defect as the accept that recorded a decision and said nothing.
+          Correct behaviour still has to be legible. */}
+      {/*
+        THE PAGE'S OUTPUT, AND THE ONLY TWO THINGS IT CAN SAY.
+        "Here is my corrected ruleset" and "forget my changes" — neither is a
+        verdict and neither is an approval. Those are made in the chat, with this
+        draft in hand. Removing the old accept/reject buttons without putting
+        these here left a page with no way to finish, which reads as broken.
+      */}
+      {oneCapture && !closed && (
+        <section className="rounded border border-gray-300 p-3">
+          <h2 className="font-semibold">{t('singleCaptureHeading')}</h2>
+          <p className="text-sm">{t('singleCaptureNext')}</p>
+          <p className="mt-1 text-xs text-gray-600">
+            {returnedAt === null ? t('draftPending') : t('handBackDone')}
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <button
+              type="button"
+              disabled={busy}
+              className="rounded bg-black px-3 py-2 text-sm text-white disabled:opacity-50"
+              onClick={() => {
+                void guard(async () => {
+                  await saveDraft(selectors, true);
+                  setNotice(t('handBackDone'));
+                });
+              }}
+            >
+              {busy ? t('saving') : t('handBack')}
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              className="rounded border border-gray-400 px-3 py-2 text-sm disabled:opacity-50"
+              onClick={() => {
+                void guard(async () => {
+                  await call(`${base}/draft`, { method: 'DELETE' });
+                  // Back to the rules in force — discarding the draft means the
+                  // page shows what a scan would use, not what was abandoned.
+                  const rules = state.selectors;
+                  setSelectors(rules);
+                  setDraftBaseline(rules);
+                  setReturnedAt(null);
+                  setNotice(t('discardDone'));
+                });
+              }}
+            >
+              {t('discardDraft')}
+            </button>
+          </div>
         </section>
       )}
 

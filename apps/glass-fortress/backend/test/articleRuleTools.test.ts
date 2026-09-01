@@ -14,7 +14,7 @@
 jest.mock('../src/lib/prisma', () => ({
   prisma: {
     trackedUrl: { findUnique: jest.fn() },
-    calibrationRun: { findUnique: jest.fn(), create: jest.fn() },
+    calibrationRun: { findUnique: jest.fn(), create: jest.fn(), update: jest.fn() },
     articleRuleset: { findUnique: jest.fn() },
     urlSnapshot: { count: jest.fn(), findMany: jest.fn(), findFirst: jest.fn() },
     rulesetObservation: { findMany: jest.fn() },
@@ -127,6 +127,13 @@ beforeEach(() => {
   mockAbandon.mockReset();
   mockResearcherId.mockReturnValue('res-1');
   (prisma.calibrationRun.create as jest.Mock).mockResolvedValue({ id: 'run-1' });
+  // `discardCalibrationDraft` clears the draft after promoting it. Unmocked, it
+  // throws and the verdict never lands — which is how this was first caught.
+  (prisma.calibrationRun.update as jest.Mock).mockResolvedValue({
+    draftSelectors: [],
+    draftSnapshotId: null,
+    draftReturnedAt: null,
+  });
   (prisma.articleRuleset.findUnique as jest.Mock).mockResolvedValue(null);
   (prisma.urlSnapshot.count as jest.Mock).mockResolvedValue(0);
   // Coverage reads the snapshots to build the sample. Empty by default: these
@@ -763,5 +770,101 @@ describe('open_article_capture', () => {
     ) as Parsed;
 
     expect(out.error).toContain('No calibration run');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// THE DRAFT — the page's output, and the one thing it writes.
+//
+// The researcher's ruling: the UI takes a ruleset in and returns a corrected
+// one, deciding nothing. `judge_article_capture` is where that draft becomes a
+// decision, and the ORDER matters — a verdict is ABOUT a ruleset, so judging
+// before promoting would attach the judgement to the rules as they were before
+// the corrections it is a judgement of.
+// ---------------------------------------------------------------------------
+
+describe('judge_article_capture promotes the draft', () => {
+  beforeEach(() => {
+    mockAppend.mockReset();
+    mockAppend.mockResolvedValue({ observationId: 'obs-1' });
+    armSnapshots([{ id: 's1', date: '2020-12-09' }]);
+    armRun([CalibrationDecisionType.RUN_OPENED], ['#header']);
+  });
+
+  const armDraft = (draft: {
+    selectors: string[];
+    snapshotId: string;
+    returnedAt: Date | null;
+  } | null) => {
+    (prisma.calibrationRun.findUnique as jest.Mock).mockImplementation(
+      (args: { select?: Record<string, boolean> }) =>
+        args.select?.['draftSelectors'] === true
+          ? Promise.resolve(
+              draft === null
+                ? { draftSelectors: [], draftSnapshotId: null, draftReturnedAt: null }
+                : {
+                    draftSelectors: draft.selectors,
+                    draftSnapshotId: draft.snapshotId,
+                    draftReturnedAt: draft.returnedAt,
+                  },
+            )
+          : Promise.resolve({
+              id: 'run-1',
+              trackedUrlId: 'url-1',
+              researcherId: 'res-1',
+              status: CalibrationRunStatus.OPEN,
+              seededFromRulesetId: null,
+              committedRulesetId: null,
+              createdAt: new Date(),
+              closedAt: null,
+              decisions: decisions([CalibrationDecisionType.RUN_OPENED], ['#header']),
+            }),
+    );
+  };
+
+  it('records the CORRECTION before the verdict, never after', async () => {
+    armDraft({ selectors: ['#header', '#footer'], snapshotId: 's1', returnedAt: new Date() });
+
+    await judgeArticleCaptureHandler({ runId: 'run-1', snapshotId: 's1', verdict: 'ACCEPTED' });
+
+    const types = mockAppend.mock.calls.map((c) => (c[2] as { type: string }).type);
+    expect(types).toEqual([
+      CalibrationDecisionType.RULESET_CORRECTED,
+      CalibrationDecisionType.CAPTURE_ACCEPTED,
+    ]);
+    // And the second append carries the NEXT version, since the first consumed one.
+    expect(mockAppend.mock.calls[0]?.[1]).toBe(1);
+    expect(mockAppend.mock.calls[1]?.[1]).toBe(2);
+  });
+
+  it('does NOT promote a draft that was never handed back', async () => {
+    // Still being edited. Promoting an autosave records rules the researcher was
+    // in the middle of changing.
+    armDraft({ selectors: ['#header', '#footer'], snapshotId: 's1', returnedAt: null });
+
+    await judgeArticleCaptureHandler({ runId: 'run-1', snapshotId: 's1', verdict: 'ACCEPTED' });
+
+    const types = mockAppend.mock.calls.map((c) => (c[2] as { type: string }).type);
+    expect(types).toEqual([CalibrationDecisionType.CAPTURE_ACCEPTED]);
+  });
+
+  it('does NOT promote a draft belonging to a different capture', async () => {
+    armDraft({ selectors: ['#header', '#footer'], snapshotId: 'other', returnedAt: new Date() });
+
+    await judgeArticleCaptureHandler({ runId: 'run-1', snapshotId: 's1', verdict: 'ACCEPTED' });
+
+    const types = mockAppend.mock.calls.map((c) => (c[2] as { type: string }).type);
+    expect(types).toEqual([CalibrationDecisionType.CAPTURE_ACCEPTED]);
+  });
+
+  it('does NOT record a correction that corrects nothing', async () => {
+    // Same rules, different order. A `RULESET_CORRECTED` recording no correction
+    // is the vacuity this level demotes everywhere else.
+    armDraft({ selectors: ['#header'], snapshotId: 's1', returnedAt: new Date() });
+
+    await judgeArticleCaptureHandler({ runId: 'run-1', snapshotId: 's1', verdict: 'ACCEPTED' });
+
+    const types = mockAppend.mock.calls.map((c) => (c[2] as { type: string }).type);
+    expect(types).toEqual([CalibrationDecisionType.CAPTURE_ACCEPTED]);
   });
 });

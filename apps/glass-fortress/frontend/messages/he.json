@@ -1842,6 +1842,13 @@
     "judgedDistinct": "נשפטו {distinct} צילומים שונים.",
     "judgedEpisodes": "{episodes} שיפוטים בסך הכול, על פני {shown} הצגות של צילום.",
     "repeatWarning": "חלק מהצילומים נשפטו יותר מפעם אחת. שיפוט של אותו צילום פעמיים אינו בודק את הכללים פעמיים.",
-    "indicatorSummary": "נשפטו {distinct} צילומים · {streak} ברצף ללא תיקון"
+    "indicatorSummary": "נשפטו {distinct} צילומים · {streak} ברצף ללא תיקון",
+    "singleCaptureHeading": "כשתסיימו כאן",
+    "singleCaptureNext": "הסימונים נשמרים תוך כדי עבודה. השיפוט על צילום זה נרשם בצ׳אט ולא בעמוד הזה — חזרו לשם ורשמו אותו באמצעות judge_article_capture.",
+    "handBack": "סיימתי — החזירו את מערכת הכללים",
+    "handBackDone": "הוחזר. רשמו את השיפוט בצ׳אט באמצעות judge_article_capture.",
+    "discardDraft": "בטלו את השינויים שלי",
+    "discardDone": "השינויים בוטלו. הכללים שבתוקף לא השתנו.",
+    "draftPending": "נשמר תוך כדי עבודה. דבר אינו נשפט עד שתחזירו אותו."
   }
 }

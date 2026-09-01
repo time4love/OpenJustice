@@ -1842,6 +1842,13 @@
     "judgedDistinct": "{distinct} different captures have been judged.",
     "judgedEpisodes": "{episodes} judgements in total, across {shown} times a capture was shown.",
     "repeatWarning": "Some captures were judged more than once. Judging one capture twice does not test the rules twice.",
-    "indicatorSummary": "{distinct} captures judged · {streak} clean in a row"
+    "indicatorSummary": "{distinct} captures judged · {streak} clean in a row",
+    "singleCaptureHeading": "When you are done here",
+    "singleCaptureNext": "Your marks are saved as you go. The verdict on this capture is recorded in the chat, not on this page — return there and record it with judge_article_capture.",
+    "handBack": "Done — return this ruleset",
+    "handBackDone": "Returned. Record the verdict in the chat with judge_article_capture.",
+    "discardDraft": "Discard my changes",
+    "discardDone": "Changes discarded. The rules in force are unchanged.",
+    "draftPending": "Saved as you go. Nothing is judged until you return it."
   }
 }
