@@ -246,3 +246,85 @@ Stripping them makes the frame authentic and visually degraded; keeping them mak
 partly false. Since the question the frame exists to answer is *"is this block furniture ON THIS PAGE
 AT THIS DATE"*, the trade-off is not obviously resolved either way — and it is a decision about the
 instrument, not a defect in it.
+
+---
+
+# I15 — THE SURVIVAL CHECK, AND THREE DEFECTS IT FOUND IN ITSELF
+
+**Addendum, 2026-09-01.** Written after the check that answered the union-versus-era question was
+built, run, and corrected twice against its own output.
+
+## What it was for
+
+The researcher's question: *"if a ruleset that is the union of every era can be used successfully to
+extract the article text on every snapshot maybe we should not split rulesets per era… the only
+question is of a rule that is good for snapshot x is bad for snapshot y."*
+
+`check_ruleset_survival` re-derives stored captures under the ruleset in force and reports what any of
+them stopped keeping. Three rulings from the researcher shaped it, and each corrected a weaker design:
+
+- **Any loss is an alert.** It first reported the difference and left the judgement open, on the
+  grounds that a change is as likely to be furniture the earlier pass missed as article text
+  destroyed. **Acceptance is a commitment**: the record says that capture's text was checked and
+  agreed, so if the text changes the agreement no longer describes anything.
+- **Every stored capture, not only the accepted ones.** `commit_article_rules` re-derives every stored
+  capture, so damage to an unjudged one enters the corpus just as silently — it simply breaks no
+  approval on the way in.
+- **The selector's date scopes the recheck.** *"we need to recheck all previous snapshots in the
+  timeline."*
+
+## THE THREE DEFECTS, IN THE ORDER THEY WERE FOUND
+
+**1. A correction recorded no capture.** `RULESET_CORRECTED` was FORBIDDEN a subject, with the reason
+written down: *"a decision that names a capture it is not about makes the log answer a question it was
+never asked."* The premise is false. A correction's selectors were checked against exactly one capture,
+and that capture's date is what scopes every later question about them. **The only event that adds
+selectors was the only event recording nothing about what it was looking at** — and the era design
+selects on precisely that date, so it was blocked on data that was never written. Fixed in #312; the
+guard `CAPTURE_BEARING` collapsed with it, because every appendable type is now capture-bearing.
+
+**2. A comparison that did not happen was counted as a pass.** With no untested selector the baseline
+IS the current ruleset, so the check compared each capture with itself, found it identical, and
+reported `intact: 7` having tested three. It would do that for any input, forever. `tested` and
+`notTested` are now reported and `intact` counts only captures that had something to try. Fixed in #312.
+
+**3. The anchor recovery was wrong in both directions.** Legacy corrections have no anchor, so one was
+inferred — twice, wrongly.
+
+  - **Forward** (*"the next decision that names a capture"*) was justified by `judge_article_capture`
+    promoting and then recording a verdict. True of that writer, false of the browser, which autosaved
+    many corrections between one verdict and the next. It stamped December 2020 selectors with a
+    March 2025 date and produced **three alerts naming the wrong rules**. The run's own output
+    contained the refutation: a selector dated 2025-03-26 was already in the 22-selector ruleset a
+    2020-12-18 capture had been accepted under.
+  - **Backward** (*"the last capture SHOWN"*) is correct in principle and still fails on this run,
+    because **opening a marking URL directly records no `CAPTURE_SHOWN`** — `open_article_capture` is
+    what records the showing, and `2022-05-23` was opened from a link instead. Every anchor then falls
+    back to an unrelated earlier showing, and the 2022-era selectors are misdated as predating
+    `2021-06-12`, so they are never tried against it.
+
+**Recovery is abandoned.** `CLAUDE.md`: *the test is whether the problem recurs for state created from
+now on.* It does not — corrections carry their own anchor as of #312. Three landed corrections spent on
+attributing rows already written is the archaeology that rule exists to stop.
+
+## WHAT WAS MEASURED, AND IT IS ANCHOR-INDEPENDENT
+
+One half of the suspect rule needs no anchor: the selectors added since a capture was approved, read
+from the ruleset recorded at its acceptance.
+
+| capture | selectors added since approval | kept before | kept now |
+|---|---|---|---|
+| `2020-12-09` | 16 | 2461 | 2461 |
+| `2020-12-18` | 13 | 2461 | 2461 |
+
+**Nothing was lost on either.** All six positional selectors are among those added. On this page the
+union caused no harm to any approved capture — which is why the era decision was taken on the design
+argument rather than on damage.
+
+For the unjudged captures nothing can be said, and that limit is permanent.
+
+## A GAP FOUND ON THE WAY
+
+**Opening a marking URL directly records no showing.** The flow assumes `open_article_capture`, which
+appends `CAPTURE_SHOWN`; a link pasted into a browser bypasses it. `capturesShown` therefore
+undercounts, and any inference keyed on "what was on screen" has a hole in it. Not fixed here.
