@@ -91,6 +91,10 @@ export const judgeArticleCaptureSchema = {
     .describe('Required for SKIPPED. A silent hole in the record is not permitted.'),
 };
 
+export const checkRulesetSurvivalSchema = {
+  runId: z.string().min(1).describe('The calibration run to re-check its accepted captures against'),
+};
+
 export const commitArticleRulesSchema = {
   runId: z.string().min(1).describe('The calibration run whose rules are to be put in force'),
 };
@@ -463,6 +467,41 @@ function coverageReport(
 }
 
 /**
+ * Re-derive every ACCEPTED capture under the ruleset in force now.
+ *
+ * THE UNION RULESET'S ONE RISK, MADE CHECKABLE — and the researcher's ruling on
+ * what a difference means: ANY text a capture no longer keeps is lost text and
+ * is alerted, whether or not it was furniture. On a capture whose extraction was
+ * APPROVED that is worse still, since an approval whose text has since changed
+ * no longer describes anything.
+ *
+ * Marking only ever looks forward: the researcher reads the removed text of the
+ * capture in front of them. A selector added for a 2022 page that damages a 2020
+ * page lands where nobody is looking. This is the pass that looks back — over
+ * EVERY stored capture, because `commit_article_rules` re-derives every one of
+ * them and an unjudged capture is damaged just as silently, it simply breaks no
+ * approval on the way in.
+ *
+ * THE PARSER ARRIVES BY DYNAMIC IMPORT, as it does for `judge_article_capture`:
+ * re-deriving text needs jsdom, and a static import here would pull it into
+ * every unit suite that loads this module.
+ */
+export async function checkRulesetSurvivalHandler(input: { runId: string }): Promise<string> {
+  const { checkRulesetSurvival } = await import('../../services/rulesetSurvival');
+  const report = await checkRulesetSurvival(input.runId);
+  return JSON.stringify({
+    ...report,
+    next:
+      report.alerts === 0
+        ? 'No stored capture loses text under a rule that was never checked against it.'
+        : 'Each alerted capture must be re-judged under the current rules, or the suspect ' +
+          'selector undone. `brokenApprovals` is the worse half: those captures had their ' +
+          'extraction APPROVED, and an approval whose text has since changed no longer ' +
+          'describes anything.',
+  });
+}
+
+/**
  * Record a verdict on one capture, from the researcher's own surface.
  *
  * THE PIECE THAT MADE THE REDESIGN INCONSISTENT UNTIL NOW. Sequencing moved to
@@ -571,12 +610,24 @@ export async function judgeArticleCaptureHandler(input: {
     // A REJECTION DOES NOT ADVANCE. The plan: "reject routes back to
     // calibration, it never skips a capture." The researcher fixes the rules and
     // looks at the same capture again.
+    //
+    // AND WHEN THE RULES JUST CHANGED, THE CHECK COMES FIRST. A judgement that
+    // promoted a correction added selectors that have never been tried against
+    // any EARLIER capture, and that is precisely when a positional selector
+    // starts removing text from a page nobody is looking at. Naming the check
+    // here is what makes it part of the loop rather than a tool someone has to
+    // remember exists.
     next:
       input.verdict === 'REJECTED'
         ? 'The rules are recorded as wrong here. Correct them in the marking page and judge this ' +
           'capture again — a rejection routes back to calibration, it never skips a capture.'
-        : 'Call next_article_capture for the capture where the ruleset is most likely to have ' +
-          'stopped applying.',
+        : promotedSelectors === null
+          ? 'Call next_article_capture for the capture where the ruleset is most likely to have ' +
+            'stopped applying.'
+          : 'The rules changed with this verdict. Call check_ruleset_survival BEFORE moving on: ' +
+            'the added selectors have never been tried against any earlier capture, and a ' +
+            'positional one can remove text from a page nobody re-renders. Then ' +
+            'next_article_capture.',
     staleSelectors: state.staleSelectors,
   });
 }
