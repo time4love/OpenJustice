@@ -130,7 +130,22 @@ type DecisionType =
   | 'CAPTURE_REJECTED'
   | 'CAPTURE_SKIPPED';
 
-export function ArticleRulesClient({ runId }: { runId: string }) {
+/**
+ * The marking surface, in one of two shapes.
+ *
+ * WITH `snapshotId` IT IS A SINGLE-CAPTURE VIEW — the researcher's ruling: the UI
+ * checks and corrects a ruleset against ONE capture, and everything else is MCP.
+ * The capture strip, the progress panel and the finish section are sequencing,
+ * reporting and approval, which `next_article_capture`, `get_article_rules` and
+ * `commit_article_rules` now own. Showing them here hands the researcher
+ * controls that decide things the tools decide.
+ *
+ * WITHOUT IT, the run-level page as it was. Kept while the flow proves out, so a
+ * researcher mid-run is not stranded — not because both shapes are wanted.
+ */
+export function ArticleRulesClient({ runId, snapshotId }: { runId: string; snapshotId?: string }) {
+  /** True in the single-capture shape. Named for what it IS, not what it hides. */
+  const oneCapture = snapshotId !== undefined;
   const t = useTranslations('articleRules');
 
   const [state, setState] = useState<RunState | null>(null);
@@ -222,6 +237,19 @@ export function ArticleRulesClient({ runId }: { runId: string }) {
     setState(await call<RunState>(base));
   }, [base, call]);
 
+
+  const runPreview = useCallback(
+    async (snapshotId: string, rules: string[]) => {
+      const next = await call<Preview>(`${base}/captures/${snapshotId}/preview`, {
+        method: 'POST',
+        body: JSON.stringify({ selectors: rules }),
+      });
+      setPreview(next);
+      setPreviewFor(rules);
+    },
+    [base, call],
+  );
+
   // Initial load. Nothing is appended to the log by RENDERING — a capture counts
   // as shown when the researcher asks for it, not when a tab is reopened.
   useEffect(() => {
@@ -236,6 +264,26 @@ export function ArticleRulesClient({ runId }: { runId: string }) {
         setState(run);
         setSelectors(run.selectors);
         setCaptures(caps);
+
+        // THE SINGLE-CAPTURE SHAPE OPENS ON ITS CAPTURE. A tool named this one;
+        // landing on a page that shows nothing until something is clicked would
+        // make the deep link pointless. `CAPTURE_SHOWN` is appended for it, the
+        // same as any other showing — being shown is being shown, however the
+        // researcher arrived.
+        if (snapshotId !== undefined) {
+          const detail = await call<CaptureDetail>(`${base}/captures/${snapshotId}`);
+          if (cancelled) return;
+          setCapture(detail);
+          await runPreview(snapshotId, run.selectors);
+          await call<RunState>(`${base}/decisions`, {
+            method: 'POST',
+            body: JSON.stringify({
+              expectedVersion: run.version,
+              type: 'CAPTURE_SHOWN',
+              snapshotId,
+            }),
+          }).then(setState);
+        }
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : t('offline'));
       }
@@ -243,19 +291,7 @@ export function ArticleRulesClient({ runId }: { runId: string }) {
     return () => {
       cancelled = true;
     };
-  }, [base, call, t]);
-
-  const runPreview = useCallback(
-    async (snapshotId: string, rules: string[]) => {
-      const next = await call<Preview>(`${base}/captures/${snapshotId}/preview`, {
-        method: 'POST',
-        body: JSON.stringify({ selectors: rules }),
-      });
-      setPreview(next);
-      setPreviewFor(rules);
-    },
-    [base, call],
-  );
+  }, [base, call, t, snapshotId, runPreview]);
 
   /**
    * Write ONE decision for a ruleset that was actually adopted.
@@ -482,8 +518,13 @@ export function ArticleRulesClient({ runId }: { runId: string }) {
       {notice && <p className="rounded bg-amber-50 p-2 text-sm text-amber-900">{notice}</p>}
       {error && <p className="rounded bg-red-50 p-2 text-sm text-red-800">{error}</p>}
 
-      <Indicator state={state} t={t} />
+      {/* SEQUENCING, REPORTING AND APPROVAL ARE MCP'S NOW. In the single-capture
+          shape none of them render: the strip picks a capture, the panel reports
+          progress, and the finish section approves — `next_article_capture`,
+          `get_article_rules` and `commit_article_rules` do each of those. */}
+      {!oneCapture && <Indicator state={state} t={t} />}
 
+      {!oneCapture && (
       <section>
         <h2 className="font-semibold">{t('capturesHeading')}</h2>
         {captures && (
@@ -526,6 +567,7 @@ export function ArticleRulesClient({ runId }: { runId: string }) {
           </>
         )}
       </section>
+      )}
 
       {/*
         THE WORKING AREA. Marking happens in the left column and its consequence
@@ -661,7 +703,7 @@ export function ArticleRulesClient({ runId }: { runId: string }) {
         screen said they operated on different things. Each group is now headed
         by what it acts on.
       */}
-      {capture && !closed && (
+      {capture && !closed && !oneCapture && (
         <section className="flex flex-wrap items-center gap-2 rounded border border-gray-300 p-3">
           <h2 className="w-full font-semibold">{t('captureVerdictHeading')}</h2>
           <button type="button" disabled={busy}
@@ -692,7 +734,7 @@ export function ArticleRulesClient({ runId }: { runId: string }) {
         </section>
       )}
 
-      {!closed && (
+      {!closed && !oneCapture && (
         <section className="rounded border-2 border-gray-400 bg-gray-50 p-3">
           <h2 className="font-semibold">{t('finishHeading')}</h2>
           {/* RENDERED FROM THE BACKEND'S STRUCTURED DECLARATION, not from its

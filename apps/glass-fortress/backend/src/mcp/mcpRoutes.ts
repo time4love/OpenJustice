@@ -108,6 +108,8 @@ export const WRITE_TOOLS = new Set([
   'next_article_capture',
   // Writes a decision and an observation. The verdict of the calibration flow.
   'judge_article_capture',
+  // Reads only, gated like the rest: it exposes a researcher's working state.
+  'open_article_capture',
   'create_thesis_draft',
   'add_thesis_version',
   // Writes a new ThesisVersion. Cheaper and narrower than add_thesis_version —

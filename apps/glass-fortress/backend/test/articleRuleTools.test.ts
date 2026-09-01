@@ -16,7 +16,7 @@ jest.mock('../src/lib/prisma', () => ({
     trackedUrl: { findUnique: jest.fn() },
     calibrationRun: { findUnique: jest.fn(), create: jest.fn() },
     articleRuleset: { findUnique: jest.fn() },
-    urlSnapshot: { count: jest.fn(), findMany: jest.fn() },
+    urlSnapshot: { count: jest.fn(), findMany: jest.fn(), findFirst: jest.fn() },
     rulesetObservation: { findMany: jest.fn() },
   },
 }));
@@ -50,6 +50,7 @@ import {
   getArticleRulesHandler,
   nextArticleCaptureHandler,
   judgeArticleCaptureHandler,
+  openArticleCaptureHandler,
   commitArticleRulesHandler,
   abandonArticleRulesHandler,
 } from '../src/mcp/tools/articleRuleTools';
@@ -65,6 +66,10 @@ interface CoverageShape {
 
 interface Parsed {
   error?: string;
+  captureUrl?: string;
+  rulesStillMatching?: string;
+  alreadyJudged?: string | null;
+  whatTheNumbersDoNotSay?: string;
   recorded?: string;
   next?: string;
   coverage?: CoverageShape;
@@ -555,8 +560,10 @@ describe('next_article_capture', () => {
 
 jest.mock('../src/services/captureMarking', () => ({
   appendDecisionWithObservation: (...args: unknown[]) => mockAppend(...args),
+  previewUnderSelectors: (...args: unknown[]) => mockPreview(...args),
 }));
 const mockAppend = jest.fn();
+const mockPreview = jest.fn();
 
 describe('judge_article_capture', () => {
   beforeEach(() => {
@@ -652,5 +659,109 @@ describe('judge_article_capture', () => {
 
     expect(out.error).toContain('version 9');
     expect(out.hint).toContain('get_article_rules');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// open_article_capture — the tool that spawns the UI.
+//
+// It returns a DEEP LINK to one capture, because a tool that names a capture and
+// then sends the researcher to a page listing twelve dates has not finished its
+// sentence. And it reports match counts WITH the caveat that they say only
+// whether the rules still MATCH — a rule that has swallowed a paragraph reports
+// a healthy percentage.
+// ---------------------------------------------------------------------------
+
+describe('open_article_capture', () => {
+  beforeEach(() => {
+    mockPreview.mockReset();
+    mockPreview.mockResolvedValue({
+      matchCounts: { '#header': 1, '#footer': 0 },
+      removalFraction: 0.68,
+    });
+    (prisma.urlSnapshot.findFirst as jest.Mock).mockResolvedValue({
+      id: 's1',
+      snapshotDate: '2022-05-23',
+      waybackTimestamp: '20220523123302',
+    });
+  });
+
+  it('deep-links to the capture, not to the run', async () => {
+    armRun([CalibrationDecisionType.RUN_OPENED], ['#header', '#footer']);
+
+    const out = JSON.parse(
+      await openArticleCaptureHandler({ runId: 'run-1', snapshotId: 's1' }),
+    ) as Parsed;
+
+    expect(out.captureUrl).toContain('/article-rules/run-1/capture/s1');
+  });
+
+  it('reports how many selectors still match', async () => {
+    armRun([CalibrationDecisionType.RUN_OPENED], ['#header', '#footer']);
+
+    const out = JSON.parse(
+      await openArticleCaptureHandler({ runId: 'run-1', snapshotId: 's1' }),
+    ) as Parsed;
+
+    // `#footer` matched zero, so one of two.
+    expect(out.rulesStillMatching).toBe('1 of 2 selectors');
+  });
+
+  it('carries the caveat WITH the numbers, because they invite one wrong reading', async () => {
+    armRun([CalibrationDecisionType.RUN_OPENED], ['#header']);
+
+    const out = JSON.parse(
+      await openArticleCaptureHandler({ runId: 'run-1', snapshotId: 's1' }),
+    ) as Parsed;
+
+    expect(out.whatTheNumbersDoNotSay).toContain('do NOT say whether what was removed is furniture');
+  });
+
+  it('says when the capture has already been judged', async () => {
+    (prisma.calibrationRun.findUnique as jest.Mock).mockResolvedValue({
+      id: 'run-1',
+      trackedUrlId: 'url-1',
+      researcherId: 'res-1',
+      status: CalibrationRunStatus.OPEN,
+      seededFromRulesetId: null,
+      committedRulesetId: null,
+      createdAt: new Date(),
+      closedAt: null,
+      decisions: [
+        ...decisions([CalibrationDecisionType.RUN_OPENED], ['#header']),
+        { ...decisions([CalibrationDecisionType.CAPTURE_SHOWN], ['#header'])[0], sequence: 2, snapshotId: 's1' },
+        { ...decisions([CalibrationDecisionType.CAPTURE_REJECTED], ['#header'])[0], sequence: 3, snapshotId: 's1' },
+      ],
+    });
+
+    const out = JSON.parse(
+      await openArticleCaptureHandler({ runId: 'run-1', snapshotId: 's1' }),
+    ) as Parsed;
+
+    expect(out.alreadyJudged).toBe(CalibrationDecisionType.CAPTURE_REJECTED);
+  });
+
+  it('refuses a capture belonging to another page', async () => {
+    // Scoped to the run's tracked URL: a snapshot id from elsewhere would open a
+    // capture this ruleset was never about.
+    armRun([CalibrationDecisionType.RUN_OPENED], ['#header']);
+    (prisma.urlSnapshot.findFirst as jest.Mock).mockResolvedValue(null);
+
+    const out = JSON.parse(
+      await openArticleCaptureHandler({ runId: 'run-1', snapshotId: 'elsewhere' }),
+    ) as Parsed;
+
+    expect(out.error).toContain('no such capture');
+    expect(mockPreview).not.toHaveBeenCalled();
+  });
+
+  it('answers rather than throwing when the run does not exist', async () => {
+    (prisma.calibrationRun.findUnique as jest.Mock).mockResolvedValue(null);
+
+    const out = JSON.parse(
+      await openArticleCaptureHandler({ runId: 'gone', snapshotId: 's1' }),
+    ) as Parsed;
+
+    expect(out.error).toContain('No calibration run');
   });
 });

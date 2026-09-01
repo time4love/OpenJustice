@@ -56,4 +56,22 @@ export const routing = {
   articleRulesUrl(runId: string, locale: Locale = DEFAULT_LOCALE): string {
     return publicUrl(`/article-rules/${runId}`, locale);
   },
+
+  /**
+   * ONE CAPTURE, and nothing else on the page.
+   *
+   * The view every mode of this level needs, and the one the researcher's own
+   * ruling asks for: *"the UI is a visual instrument for checking and correcting
+   * a ruleset against one capture."* The run-level page carries a capture strip
+   * and a finish section — sequencing and approval — which now belong to MCP.
+   * Sending a researcher there to look at one capture hands them two controls
+   * that decide things the tools are supposed to decide.
+   *
+   * A DEEP LINK RATHER THAN AN INSTRUCTION TO GO CLICKING. `next_article_capture`
+   * names a capture; the researcher should land on it, not hunt for it in a
+   * strip of twelve dates.
+   */
+  articleCaptureUrl(runId: string, snapshotId: string, locale: Locale = DEFAULT_LOCALE): string {
+    return publicUrl(`/article-rules/${runId}/capture/${snapshotId}`, locale);
+  },
 };
