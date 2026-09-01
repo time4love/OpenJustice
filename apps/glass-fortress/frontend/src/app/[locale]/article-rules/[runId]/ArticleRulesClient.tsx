@@ -208,7 +208,8 @@ export function ArticleRulesClient({ runId, snapshotId }: { runId: string; snaps
    * also the way back for a researcher who handed over too early.
    */
   const [finished, setFinished] = useState(false);
-  const [copied, setCopied] = useState(false);
+  const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle');
+  const commandRef = useRef<HTMLElement | null>(null);
 
   /**
    * The pending settle timer, and whether a settle is already in flight.
@@ -564,6 +565,47 @@ export function ArticleRulesClient({ runId, snapshotId }: { runId: string; snaps
       setNotice(action === 'commit' ? t('committed') : t('abandoned'));
     });
 
+  /**
+   * Copy the handoff command, and SAY WHICH HAPPENED.
+   *
+   * `writeText` REJECTS more readily than it looks: `NotAllowedError` for a
+   * document that is not focused, and for an embedded view whose permissions
+   * policy withholds `clipboard-write`. The previous spelling ended in
+   * `.catch(() => undefined)`, so every one of those became a button that did
+   * nothing and said nothing — indistinguishable, from the outside, from a dead
+   * control. A button reporting neither success nor failure is one you have to
+   * test by pasting somewhere else to find out.
+   *
+   * THIRD TIME THIS SWALLOW HAS COST SOMETHING in this file. It is not a style
+   * preference: a discarded rejection turns a failure into a non-event, and a
+   * non-event is what nobody reports until it has wasted an afternoon.
+   *
+   * On refusal the command is left SELECTED, so the keyboard still works and a
+   * refusal costs one keystroke rather than the handoff — which is what the old
+   * comment claimed happened, without anything doing it.
+   */
+  const copyCommand = async () => {
+    if (capture === null) return;
+    const text = judgeCommand(runId, capture.snapshotId);
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopyState('copied');
+    } catch {
+      const node = commandRef.current;
+      const selection = window.getSelection();
+      if (node && selection) {
+        const range = document.createRange();
+        range.selectNodeContents(node);
+        selection.removeAllRanges();
+        selection.addRange(range);
+      }
+      setCopyState('failed');
+    }
+    // Reverts, so the button stops reporting on a copy that happened a while ago
+    // and may not be what is now on the clipboard.
+    setTimeout(() => { setCopyState('idle'); }, 4000);
+  };
+
   const closed = state !== null && state.status !== 'OPEN';
 
   /*
@@ -903,37 +945,37 @@ export function ArticleRulesClient({ runId, snapshotId }: { runId: string; snaps
               </p>
               <div className="mt-1 flex items-start gap-2">
                 <code
+                  ref={commandRef}
                   dir="ltr"
-                  className="block flex-1 overflow-x-auto whitespace-nowrap rounded border border-gray-300 bg-gray-50 p-2 text-xs"
+                  className="block flex-1 overflow-x-auto whitespace-nowrap rounded border border-gray-700 bg-gray-900 p-2 font-mono text-xs text-gray-100"
                 >
                   {judgeCommand(runId, capture.snapshotId)}
                 </code>
                 <button
                   type="button"
-                  className="shrink-0 rounded border border-gray-400 px-2 py-1 text-xs"
+                  title={t('copyCommand')}
+                  className="shrink-0 rounded border border-gray-400 px-2 py-1.5 text-xs hover:bg-gray-100"
                   onClick={() => {
-                    // The clipboard can refuse — a denied permission, an
-                    // insecure context, a browser that simply does not. The
-                    // command is rendered either way, so a refusal costs a
-                    // manual selection rather than the handoff.
-                    void navigator.clipboard
-                      .writeText(judgeCommand(runId, capture.snapshotId))
-                      .then(() => {
-                        setCopied(true);
-                        // Reverts, so the button stops claiming a copy that
-                        // happened a while ago and may not be what is now on the
-                        // clipboard.
-                        setTimeout(() => { setCopied(false); }, 2000);
-                      })
-                      .catch(() => undefined);
+                    void copyCommand();
                   }}
                 >
-                  {copied ? t('copied') : t('copyCommand')}
+                  <CopyIcon state={copyState} />
+                  <span className="sr-only">{t('copyCommand')}</span>
                 </button>
               </div>
               {/* AN INTERACTIVE PAGE SHOULD SAY WHEN IT IS DONE WITH YOU. Without
                   it a researcher is left on a screen with nothing to do and no
                   statement that nothing is what is left to do. */}
+              {/* SAY WHICH HAPPENED. A copy button that reports neither success
+                  nor failure is a button you have to test by pasting somewhere
+                  else — and this one could not copy at all in a browser without
+                  a clipboard API, silently, because the throw was synchronous. */}
+              {copyState === 'copied' && (
+                <p className="mt-1 text-xs text-green-700">{t('copied')}</p>
+              )}
+              {copyState === 'failed' && (
+                <p className="mt-1 text-xs text-amber-800">{t('copyFailed')}</p>
+              )}
               {finished && <p className="mt-3 text-sm text-gray-600">{t('closeWindow')}</p>}
             </div>
           )}
@@ -1520,6 +1562,40 @@ function RemovedPane({
  * correcting; you correct the ruleset for that era. Rejection is the system
  * forcing a bad choice, and it should be revisited when the gap closes.
  */
+/**
+ * The standard clipboard glyph, and a tick once the command has been taken.
+ *
+ * An icon rather than a word: the button sits against a code line the researcher
+ * is about to paste, and that is a shape everyone already reads. The label lives
+ * in `title` and a screen-reader-only span, so nothing is lost by not printing it.
+ */
+function CopyIcon({ state }: { state: 'idle' | 'copied' | 'failed' }) {
+  const shared = {
+    width: 14,
+    height: 14,
+    viewBox: '0 0 24 24',
+    fill: 'none',
+    stroke: 'currentColor',
+    strokeWidth: 2,
+    strokeLinecap: 'round' as const,
+    strokeLinejoin: 'round' as const,
+    'aria-hidden': true,
+  };
+  if (state === 'copied') {
+    return (
+      <svg {...shared}>
+        <path d="M20 6 9 17l-5-5" />
+      </svg>
+    );
+  }
+  return (
+    <svg {...shared}>
+      <rect x="9" y="9" width="13" height="13" rx="2" />
+      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+    </svg>
+  );
+}
+
 function judgeCommand(runId: string, snapshotId: string): string {
   return `judge_article_capture runId=${runId} snapshotId=${snapshotId} verdict=ACCEPTED`;
 }

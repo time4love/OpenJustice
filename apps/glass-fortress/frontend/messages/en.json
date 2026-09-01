@@ -1851,6 +1851,7 @@
     "sessionExpired": "Your session expired. Your marks are not being saved.",
     "signInAgain": "Sign in",
     "previewFailed": "Could not refresh — what is shown is out of date.",
-    "closeWindow": "You can close this window."
+    "closeWindow": "You can close this window.",
+    "copyFailed": "Copy was blocked — the command is selected, press Cmd+C."
   }
 }
