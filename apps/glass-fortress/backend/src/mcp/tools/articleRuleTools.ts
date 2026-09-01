@@ -449,7 +449,16 @@ function coverageReport(
     // showed two judgements of one capture as coverage of two.
     judgements: state.capturesJudged,
     capturesShown: state.capturesShown,
-    captures: coverage.rows.map((r) => ({ date: r.date, verdict: r.verdict })),
+    // THE ID TRAVELS WITH THE DATE. `open_article_capture` names a capture by
+    // snapshotId — correctly, since a date is not unique in this corpus — but
+    // coverage reported dates alone, so there was no way to open any capture
+    // except the one the policy happened to pick. A table you can read and
+    // cannot act on is half a table.
+    captures: coverage.rows.map((r) => ({
+      date: r.date,
+      snapshotId: r.snapshotId,
+      verdict: r.verdict,
+    })),
   };
 }
 

@@ -61,7 +61,7 @@ interface CoverageShape {
   distinctCapturesJudged?: number;
   judgements?: number;
   sampleSize?: number;
-  captures?: { date: string; verdict: string | null }[];
+  captures?: { date: string; snapshotId: string; verdict: string | null }[];
 }
 
 interface Parsed {
@@ -437,10 +437,12 @@ describe('next_article_capture', () => {
 
     const out = JSON.parse(await nextArticleCaptureHandler({ runId: 'run-1' })) as Parsed;
 
+    // The ID travels with the date: `open_article_capture` names a capture by
+    // snapshotId, so a coverage table without ids can be read and not acted on.
     expect(out.coverage?.captures).toEqual([
-      { date: '2020-12-09', verdict: null },
-      { date: '2022-05-23', verdict: null },
-      { date: '2025-03-26', verdict: null },
+      { date: '2020-12-09', snapshotId: 's1', verdict: null },
+      { date: '2022-05-23', snapshotId: 's2', verdict: null },
+      { date: '2025-03-26', snapshotId: 's3', verdict: null },
     ]);
   });
 
