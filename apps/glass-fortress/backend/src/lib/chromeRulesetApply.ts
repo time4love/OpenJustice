@@ -616,7 +616,35 @@ export function documentOutline(
 export function inertDocument(html: string): string {
   const dom = new JSDOM(html);
   const { document } = dom.window;
-  for (const el of document.querySelectorAll('script, iframe, object, embed')) {
+  for (const el of document.querySelectorAll('script, iframe, frame, object, embed')) {
+    el.remove();
+  }
+
+  // A DOCUMENT THAT NAVIGATES ITSELF IS A DOCUMENT THAT ACTS, and it needs no
+  // script to do it. Walla's captured pages carry their own five-minute
+  // auto-refresh:
+  //
+  //     <meta http-equiv="refresh" content="300">
+  //
+  // Faithfully captured in 2020, still live in the marking frame, and `sandbox`
+  // does not stop it — there is no flag for meta refresh. Five minutes into a
+  // marking session the frame reloaded and the researcher went on marking rules
+  // against something that was no longer the capture. THE PERCENTAGES STAYED
+  // RIGHT, which is what made it dangerous: they are computed on the stored
+  // document, so the numbers agreed while the picture did not.
+  //
+  // Matched on the attribute's VALUE rather than by selector, because
+  // `[http-equiv="refresh"]` is case-sensitive and this one was captured as
+  // `refresh`, `Refresh` and `REFRESH` across the corpus.
+  for (const el of document.querySelectorAll('meta[http-equiv]')) {
+    if ((el.getAttribute('http-equiv') ?? '').trim().toLowerCase() === 'refresh') el.remove();
+  }
+
+  // `<base>` repoints every relative URL in the document at the ORIGINAL SITE,
+  // so a capture would quietly dress itself in today's stylesheets and images.
+  // The researcher is asked whether a block is furniture ON THIS PAGE AT THIS
+  // DATE; a page part-rendered from the live site cannot answer that.
+  for (const el of document.querySelectorAll('base')) {
     el.remove();
   }
   for (const el of document.querySelectorAll('*')) {
