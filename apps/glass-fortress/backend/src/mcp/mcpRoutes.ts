@@ -96,7 +96,7 @@ export const WRITE_TOOLS = new Set([
   'correct_article_rules',
   'get_article_rules',
   // The RESEARCH ACT of this flow and its refusal. `commit_article_rules` saves a
-  // versioned ruleset and re-derives every stored capture under it; the other
+  // versioned ruleset and sets it active for the URL; the other
   // closes the run. Both are obviously gated — they are here so the set names
   // them explicitly rather than by omission, which is how a tool ends up
   // unclassified.

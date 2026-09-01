@@ -230,9 +230,16 @@ describe('the confirmation is RENDERED from the declaration, never authored besi
     const out = JSON.parse(await calibrateArticleRulesHandler({ url: 'https://example.gov/a' })) as Parsed;
 
     // Byte-for-byte the renderer's output: nobody composed a second sentence.
-    expect(out.effect).toBe(renderApprovalEffect(calibrationEffect(40)));
-    expect(out.effect).toContain('40 stored captures');
+    expect(out.effect).toBe(renderApprovalEffect(calibrationEffect()));
+    expect(out.effect).toContain('save the ruleset as a new version');
     expect(out.effect).toContain('Reversible');
+    // AND IT MUST NOT CLAIM A RE-DERIVATION. This assertion previously required
+    // "40 stored captures" to appear — it was holding the false claim in place.
+    // Nothing applies a chrome ruleset to a stored capture, so a sentence saying
+    // committing re-derives them is wrong at the moment a researcher approves.
+    // Build-order step 2 restores the words WITH the write; until then, if this
+    // fails, the claim came back without the code.
+    expect(out.effect).not.toContain('re-derive the text');
   });
 
   it('never claims a capture is written — calibration writes none', async () => {
@@ -348,10 +355,16 @@ describe('commit_article_rules', () => {
 
     expect(out.status).toBe('COMMITTED');
     expect(out.rulesetId).toBe('abc123');
-    expect(out.capturesRederived).toBe(83);
+    // THE ASSERTION THAT HELD THE FALSE CLAIM. It required the tool to report 83
+    // captures re-derived, and nothing re-derives a capture — `activeArticleRulesetId`
+    // is written and never read. Committing versions the rules and changes no text,
+    // so the count of captures it touched is ZERO and the URL's total is reported
+    // separately as what it is: a fact about the URL, not about this call.
+    expect(out.capturesRederived).toBe(0);
+    expect(out.storedCaptures).toBe(83);
     expect(out.selectors).toEqual(['#header', '#footer']);
     // RENDERED from the declaration, never authored beside it.
-    expect(out.applied).toBe(renderApprovalEffect(calibrationEffect(83)));
+    expect(out.applied).toBe(renderApprovalEffect(calibrationEffect()));
   });
 
   it('surfaces a stale-version refusal as an answer with a way forward', async () => {

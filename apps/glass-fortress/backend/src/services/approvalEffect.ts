@@ -35,10 +35,21 @@
 export type EffectWriteKind =
   /** The ruleset itself, versioned and attributed. */
   | 'ARTICLE_RULESET'
-  /** Stored captures re-derived under new rules. Bytes are untouched. */
-  | 'REDERIVED_CAPTURES'
   /** A capture written: the bytes as served, plus everything derived from them. */
   | 'CAPTURE_SNAPSHOT';
+
+// `REDERIVED_CAPTURES` WAS HERE AND IS REMOVED, because nothing performs it.
+//
+// Committing declared it, the renderer turned it into "and re-derive the text of
+// 7 stored captures", and no code path applies a chrome ruleset to a stored
+// capture — `activeArticleRulesetId` is written and never read. A member of a
+// closed set that nothing performs is a claim the system can make and never
+// honour, which is worse than no member at all.
+//
+// It comes back in build-order step 2, IN THE SAME CHANGE AS THE WRITE, which is
+// the discipline this set was created for: adding a kind means adding its words
+// where they can be read next to every other kind's — and now also means adding
+// the code that makes them true.
 
 export interface EffectWrite {
   kind: EffectWriteKind;
@@ -80,8 +91,6 @@ export interface ApprovalEffect {
 
 const WRITE_WORDS: Record<EffectWriteKind, (rows: number) => string> = {
   ARTICLE_RULESET: () => 'save the ruleset as a new version',
-  REDERIVED_CAPTURES: (rows) =>
-    rows === 1 ? 're-derive the text of 1 stored capture' : `re-derive the text of ${String(rows)} stored captures`,
   CAPTURE_SNAPSHOT: (rows) =>
     rows === 1 ? 'write 1 capture — its bytes and everything derived from them' : `write ${String(rows)} captures — their bytes and everything derived from them`,
 };
@@ -122,13 +131,15 @@ export function renderApprovalEffect(effect: ApprovalEffect): string {
  * is the difference the researcher is entitled to see stated rather than
  * inferred.
  */
-export function calibrationEffect(storedCaptures: number): ApprovalEffect {
-  const writes: EffectWrite[] = [{ kind: 'ARTICLE_RULESET', rows: 1 }];
-  if (storedCaptures > 0) writes.push({ kind: 'REDERIVED_CAPTURES', rows: storedCaptures });
+export function calibrationEffect(): ApprovalEffect {
   return {
-    writes,
+    // THE RULESET, AND ONLY THE RULESET. This declared a re-derivation of every
+    // stored capture until 2026-09-01, when the code was read: nothing applies a
+    // ruleset to a stored capture, so committing changed no text and the
+    // sentence a researcher approved was false about its main consequence.
+    writes: [{ kind: 'ARTICLE_RULESET', rows: 1 }],
     reversible: true,
-    reversedBy: 'mark again and commit; the documents are stored whole and are re-derived from bytes already held',
+    reversedBy: 'mark again and commit; the documents are stored whole, so any extraction can be re-derived from bytes already held',
     requiresCleanupSessionToUndo: false,
     batch: { kind: 'NONE' },
   };

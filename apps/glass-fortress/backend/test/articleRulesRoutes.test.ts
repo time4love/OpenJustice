@@ -105,7 +105,7 @@ const DETAIL = {
   },
   staleSelectors: [],
   storedCaptures: 12,
-  effect: calibrationEffect(12),
+  effect: calibrationEffect(),
 };
 
 beforeEach(() => {
