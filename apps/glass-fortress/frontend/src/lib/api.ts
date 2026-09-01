@@ -1,3 +1,5 @@
+import { currentAccessToken, refreshSession } from '@/lib/session';
+
 /**
  * Base URL for all backend API calls.
  *
@@ -26,10 +28,48 @@ export function apiUrl(path: string): string {
  * signed out.
  */
 export function authHeaders(): Record<string, string> {
-  if (typeof window === 'undefined') return {};
-  const token = window.localStorage.getItem('gf_access_token');
+  const token = currentAccessToken();
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
+
+/**
+ * Fetch, retrying ONCE when the backend says the token is dead.
+ *
+ * The retry is a backstop, not the mechanism: `AuthContext` refreshes ahead of
+ * expiry, so in normal running the stored token is always valid. What this
+ * catches is the request already in flight when the hour turned, and the tab
+ * whose refresh timer a background throttle held back.
+ *
+ * IT AUTHENTICATES NOTHING THE CALLER DID NOT. A request that arrived without an
+ * `Authorization` header is retried without one, because some reads are
+ * deliberately made as the public — a thesis serves the PUBLISHED version to a
+ * viewer and the head to a researcher, so quietly attaching a token here would
+ * change which document a page displays. The retry replaces a header the caller
+ * chose to send; it never adds one they didn't.
+ *
+ * It also retries only when the refresh produced a token at all. A refusal
+ * clears the session, and re-sending a dead token would turn one honest 401
+ * into two.
+ *
+ * Every authenticated call goes through here — `fetchJson` and the marking
+ * page's own client alike — so the rule has one implementation, not one per
+ * caller.
+ */
+export async function authedFetch(path: string, init?: RequestInit): Promise<Response> {
+  const url = apiUrl(path);
+  const sentAuth = new Headers(init?.headers).has('authorization');
+
+  const first = await fetch(url, init);
+  if (first.status !== 401 || !sentAuth) return first;
+
+  const refreshed = await refreshSession();
+  if (!refreshed) return first;
+
+  const headers = new Headers(init?.headers);
+  headers.set('Authorization', `Bearer ${refreshed.accessToken}`);
+  return fetch(url, { ...init, headers });
+}
+
 
 /**
  * Fetch JSON and turn every failure into a thrown `Error` whose `message` is
@@ -52,7 +92,7 @@ export async function fetchJson<T>(
 ): Promise<T> {
   let res: Response;
   try {
-    res = await fetch(apiUrl(path), init);
+    res = await authedFetch(path, init);
   } catch (err) {
     if (init.signal?.aborted) throw err;
     throw new Error(offline);

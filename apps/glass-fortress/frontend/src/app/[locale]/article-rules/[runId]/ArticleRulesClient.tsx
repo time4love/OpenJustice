@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
-import { apiUrl, authHeaders } from '@/lib/api';
+import { authedFetch, authHeaders } from '@/lib/api';
+import { Link, usePathname } from '@/i18n/navigation';
 
 // ---------------------------------------------------------------------------
 // LEVEL 4 — the marking loop.
@@ -159,7 +160,10 @@ export function ArticleRulesClient({ runId, snapshotId }: { runId: string; snaps
   const [selectors, setSelectors] = useState<string[]>([]);
   const [skipReason, setSkipReason] = useState('');
   const [notice, setNotice] = useState<string | null>(null);
+  const pathname = usePathname();
   const [error, setError] = useState<string | null>(null);
+  const [signedOut, setSignedOut] = useState(false);
+  const [previewFailed, setPreviewFailed] = useState(false);
   const [busy, setBusy] = useState(false);
   /**
    * Captures judged in this tab SINCE the last state read.
@@ -193,6 +197,17 @@ export function ArticleRulesClient({ runId, snapshotId }: { runId: string; snaps
    */
   const [draftBaseline, setDraftBaseline] = useState<string[]>([]);
   const [returnedAt, setReturnedAt] = useState<string | null>(null);
+  /**
+   * This window has handed its ruleset back and is FINISHED.
+   *
+   * Deliberately NOT `returnedAt`, which is the server's flag and survives a
+   * reload. A page that went terminal on the stored flag could never be reopened
+   * to correct anything — `open_article_capture` on a capture with a returned
+   * draft would hand back a screen with no controls, which is a trap rather than
+   * a guard. Reopening is a fresh act of intent and gets a working page; it is
+   * also the way back for a researcher who handed over too early.
+   */
+  const [finished, setFinished] = useState(false);
   const [copied, setCopied] = useState(false);
 
   /**
@@ -219,7 +234,7 @@ export function ArticleRulesClient({ runId, snapshotId }: { runId: string; snaps
 
   const call = useCallback(
     async <T,>(path: string, init?: RequestInit): Promise<T> => {
-      const res = await fetch(apiUrl(path), {
+      const res = await authedFetch(path, {
         ...init,
         headers: {
           ...(init?.body === undefined ? {} : { 'Content-Type': 'application/json' }),
@@ -236,12 +251,28 @@ export function ArticleRulesClient({ runId, snapshotId }: { runId: string; snaps
         // backend's 401 body is English prose written for an API client, and
         // showing it here would put an untranslated string in front of a Hebrew
         // reader at the one moment the page cannot do anything for them.
-        if (res.status === 401 || res.status === 403) throw new Error(t('signedOut'));
+        if (res.status === 401 || res.status === 403) throw new SignedOutError(t('signedOut'));
         if (res.status === 409) throw new StaleError(t('staleVersion'));
         if (res.status === 410) throw new Error(err.error === 'run_closed' ? t('runClosed') : t('expired'));
         throw new Error(err.message ?? t('offline'));
       }
       return body as T;
+    },
+    [t],
+  );
+
+  /**
+   * One place decides what a failure LOOKS like.
+   *
+   * A dead session is not a red line among other red lines: nothing on this
+   * screen recovers it, and the researcher's marks stop being saved from that
+   * moment. It gets its own banner and a way back in. Everything else is a
+   * message.
+   */
+  const reportError = useCallback(
+    (err: unknown) => {
+      if (err instanceof SignedOutError) setSignedOut(true);
+      else setError(err instanceof Error ? err.message : t('offline'));
     },
     [t],
   );
@@ -259,6 +290,7 @@ export function ArticleRulesClient({ runId, snapshotId }: { runId: string; snaps
       });
       setPreview(next);
       setPreviewFor(rules);
+      setPreviewFailed(false);
     },
     [base, call],
   );
@@ -308,13 +340,13 @@ export function ArticleRulesClient({ runId, snapshotId }: { runId: string; snaps
           // version — a 409, and an inflated `capturesShown` if it landed.
         }
       } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : t('offline'));
+        if (!cancelled) reportError(err);
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [base, call, t, snapshotId, runPreview]);
+  }, [base, call, t, snapshotId, runPreview, reportError]);
 
   /**
    * Save the researcher's work in progress. THE ONLY THING THIS PAGE WRITES.
@@ -356,7 +388,7 @@ export function ArticleRulesClient({ runId, snapshotId }: { runId: string; snaps
         setNotice(err.message);
         await refresh().catch(() => undefined);
       } else {
-        setError(err instanceof Error ? err.message : t('offline'));
+        reportError(err);
       }
     } finally {
       setBusy(false);
@@ -449,10 +481,17 @@ export function ArticleRulesClient({ runId, snapshotId }: { runId: string; snaps
   useEffect(() => {
     if (!capture) return undefined;
     const id = setTimeout(() => {
-      void runPreview(capture.snapshotId, selectors).catch(() => undefined);
+      void runPreview(capture.snapshotId, selectors).catch((err: unknown) => {
+        // NOT SWALLOWED. A discarded rejection here left the pane reading
+        // "recomputing" forever while every mark did nothing — a dead session
+        // presenting as a working page with dead feedback, which cost four
+        // misdiagnoses in one day. The pane must say it is stale, and say why.
+        setPreviewFailed(true);
+        reportError(err);
+      });
     }, PREVIEW_MS);
     return () => { clearTimeout(id); };
-  }, [capture, selectors, runPreview]);
+  }, [capture, selectors, runPreview, reportError]);
 
   /**
    * Verdict per capture: the log's, with this tab's newest clicks layered on.
@@ -491,14 +530,14 @@ export function ArticleRulesClient({ runId, snapshotId }: { runId: string; snaps
             setNotice(err.message);
             await refresh().catch(() => undefined);
           } else {
-            setError(err instanceof Error ? err.message : t('offline'));
+            reportError(err);
           }
         }
       })();
     }, SETTLE_MS);
     settleTimer.current = id;
     return () => { clearTimeout(id); };
-  }, [capture, selectors, state, saveDraft, refresh, t, draftBaseline]);
+  }, [capture, selectors, state, saveDraft, refresh, t, draftBaseline, reportError]);
 
   /**
    * Adopt a draft ruleset. RETURNS IMMEDIATELY — nothing here awaits the network.
@@ -527,6 +566,32 @@ export function ArticleRulesClient({ runId, snapshotId }: { runId: string; snaps
 
   const closed = state !== null && state.status !== 'OPEN';
 
+  /*
+   * A DEAD SESSION IS NOT A RED LINE AMONG RED LINES. Nothing on this screen
+   * recovers it, and every mark made from here on is unsaved — so it says so
+   * where the researcher is looking and carries the way back in, rather than
+   * being a sentence that describes a button nobody was given.
+   *
+   * The wording splits on whether the page ever loaded: arriving signed out is
+   * an invitation, being signed out mid-run is a warning that work has stopped
+   * being saved. The page keeps rendering in the second case, because signing in
+   * elsewhere and coming back should not cost the marks already made.
+   */
+  const signedOutBanner = signedOut && (
+    <div className="rounded border-2 border-red-600 bg-red-50 p-3 text-sm text-red-900">
+      <p className="font-bold">{state === null ? t('signedOut') : t('sessionExpired')}</p>
+      <Link
+        href={`/login?returnTo=${encodeURIComponent(pathname)}`}
+        className="mt-2 inline-block rounded bg-red-700 px-3 py-1.5 font-semibold text-white hover:bg-red-800"
+      >
+        {t('signInAgain')}
+      </Link>
+    </div>
+  );
+
+  // Signed out before the first read landed: there is no state coming, and
+  // without this the page waits on `loading` forever.
+  if (signedOut && !state) return <Shell>{signedOutBanner}</Shell>;
   if (error && !state) return <Shell><p className="text-red-700">{error}</p></Shell>;
   if (!state) return <Shell><p>{t('loading')}</p></Shell>;
 
@@ -544,6 +609,7 @@ export function ArticleRulesClient({ runId, snapshotId }: { runId: string; snaps
         </p>
       )}
 
+      {signedOutBanner}
       {notice && <p className="rounded bg-amber-50 p-2 text-sm text-amber-900">{notice}</p>}
       {error && <p className="rounded bg-red-50 p-2 text-sm text-red-800">{error}</p>}
 
@@ -607,7 +673,7 @@ export function ArticleRulesClient({ runId, snapshotId }: { runId: string; snaps
         behind the researcher unlock and is not part of the public site, so the
         project's mobile-first rule was never about this page. It still stacks.
       */}
-      {capture && (
+      {capture && !finished && (
         <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
           <section className="flex min-w-0 flex-col">
             <h2 className="font-semibold">{t('outlineHeading')}</h2>
@@ -715,6 +781,7 @@ export function ArticleRulesClient({ runId, snapshotId }: { runId: string; snaps
               <RemovedPane
                 preview={preview}
                 pending={previewPending}
+                failed={previewFailed}
                 disabled={busy || closed}
                 onUnmark={(sel) => { applyRules(selectors.filter((x) => x !== sel)); }}
                 t={t}
@@ -778,6 +845,11 @@ export function ArticleRulesClient({ runId, snapshotId }: { runId: string; snaps
       */}
       {oneCapture && !closed && (
         <section className="rounded border border-gray-300 p-3">
+          {/* ONCE IT IS HANDED BACK, IT IS HANDED BACK. Leaving the controls live
+              would let a researcher keep marking a page whose ruleset has already
+              been returned — the screen and the draft in the chat would drift
+              apart, and only one of them is real. */}
+          {!finished && (
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
@@ -786,7 +858,11 @@ export function ArticleRulesClient({ runId, snapshotId }: { runId: string; snaps
               onClick={() => {
                 void guard(async () => {
                   await saveDraft(selectors, true);
-                  setNotice(t('handBackDone'));
+                  // The panel below says this, and says it with the command
+                  // attached. A banner repeating it at the top of a page whose
+                  // only remaining content IS that panel is noise.
+                  setNotice(null);
+                  setFinished(true);
                 });
               }}
             >
@@ -812,6 +888,7 @@ export function ArticleRulesClient({ runId, snapshotId }: { runId: string; snaps
               {t('discardDraft')}
             </button>
           </div>
+          )}
 
           {/* BELOW THE BUTTONS, because that is where the researcher is looking
               once they have clicked one — and it hands over the COMMAND rather
@@ -819,7 +896,7 @@ export function ArticleRulesClient({ runId, snapshotId }: { runId: string; snaps
               transcription error waiting to happen, and the ids are the two
               things in this flow nobody can sanity-check by eye. */}
           {returnedAt !== null && capture !== null && (
-            <div className="mt-3 border-t border-gray-300 pt-3">
+            <div className={finished ? '' : 'mt-3 border-t border-gray-300 pt-3'}>
               <p className="text-sm">
                 <span className="font-semibold text-green-800">{t('handBackDone')}</span>{' '}
                 <span className="text-gray-700">{t('commandLabel')}</span>
@@ -854,6 +931,10 @@ export function ArticleRulesClient({ runId, snapshotId }: { runId: string; snaps
                   {copied ? t('copied') : t('copyCommand')}
                 </button>
               </div>
+              {/* AN INTERACTIVE PAGE SHOULD SAY WHEN IT IS DONE WITH YOU. Without
+                  it a researcher is left on a screen with nothing to do and no
+                  statement that nothing is what is left to do. */}
+              {finished && <p className="mt-3 text-sm text-gray-600">{t('closeWindow')}</p>}
             </div>
           )}
         </section>
@@ -894,6 +975,16 @@ export function ArticleRulesClient({ runId, snapshotId }: { runId: string; snaps
 
 /** A 409 is a race, not a fault, and the caller treats it differently. */
 class StaleError extends Error {}
+
+/**
+ * The session is gone — expired, revoked, or never there.
+ *
+ * TYPED RATHER THAN MATCHED ON ITS TEXT, because the page renders it differently
+ * from every other failure: nothing the researcher does on this screen can
+ * recover it, so it gets a way back in instead of a red line. Comparing the
+ * translated sentence would tie that behaviour to the Hebrew wording.
+ */
+class SignedOutError extends Error {}
 
 /**
  * The captured page with every marked element outlined — CSS ONLY.
@@ -1333,6 +1424,7 @@ function Rules({
 function RemovedPane({
   preview,
   pending,
+  failed,
   disabled,
   onUnmark,
   t,
@@ -1340,6 +1432,8 @@ function RemovedPane({
   preview: Preview;
   /** True while the tree has moved on and this pane has not caught up yet. */
   pending: boolean;
+  /** The last refresh threw. What is on screen is stale, and must not read as merely slow. */
+  failed: boolean;
   disabled: boolean;
   onUnmark: (selector: string) => void;
   t: ReturnType<typeof useTranslations>;
@@ -1359,7 +1453,11 @@ function RemovedPane({
       <p className={`text-sm ${percent > 0 ? 'font-semibold text-amber-900' : 'text-gray-600'}`}>
         {/* A NUMBER THAT IS SILENTLY OUT OF DATE IS WORSE THAN NO NUMBER, because
             this pane is the only thing that catches over-matching. */}
-        {pending ? t('previewPending') : t('removalFraction', { percent })}
+        {failed
+          ? t('previewFailed')
+          : pending
+            ? t('previewPending')
+            : t('removalFraction', { percent })}
       </p>
       {/* `overflow-anchor-none` and no scroll restoration: the pane always shows
           the TOP of what was removed. It used to open scrolled to its tail, so
