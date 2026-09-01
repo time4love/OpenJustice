@@ -95,6 +95,13 @@ export const WRITE_TOOLS = new Set([
   'calibrate_article_rules',
   'correct_article_rules',
   'get_article_rules',
+  // The RESEARCH ACT of this flow and its refusal. `commit_article_rules` saves a
+  // versioned ruleset and re-derives every stored capture under it; the other
+  // closes the run. Both are obviously gated — they are here so the set names
+  // them explicitly rather than by omission, which is how a tool ends up
+  // unclassified.
+  'commit_article_rules',
+  'abandon_article_rules',
   'create_thesis_draft',
   'add_thesis_version',
   // Writes a new ThesisVersion. Cheaper and narrower than add_thesis_version —
