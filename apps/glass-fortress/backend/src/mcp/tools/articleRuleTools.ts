@@ -10,6 +10,8 @@ import {
   commitCalibrationRuleset,
   describeCalibrationRun,
   openCalibrationRun,
+  readCalibrationDraft,
+  discardCalibrationDraft,
 } from '../../services/calibrationRun';
 import { renderApprovalEffect } from '../../services/approvalEffect';
 import { describeRunCoverage } from '../../services/runCoverage';
@@ -500,10 +502,43 @@ export async function judgeArticleCaptureHandler(input: {
   }
 
   const { appendDecisionWithObservation } = await import('../../services/captureMarking');
+  let promotedSelectors: { from: number; to: number; selectors: string[] } | null = null;
   try {
+    // THE DRAFT IS PROMOTED FIRST, and only when it was handed back. This is
+    // where the page's output becomes a decision: the researcher marked, pressed
+    // done, and is now judging what they marked. Promoting an autosave instead
+    // would record rules they were still in the middle of changing.
+    //
+    // It must precede the verdict, because a verdict is ABOUT a ruleset — judging
+    // first would attach the judgement to the rules as they were before the
+    // corrections it is a judgement of.
+    let version = before.state.version;
+    const draft = await readCalibrationDraft(input.runId);
+    const promoted =
+      draft !== null &&
+      draft.returnedAt !== null &&
+      draft.snapshotId === input.snapshotId &&
+      !sameSelectorSet(draft.selectors, before.state.selectors);
+    // `if (promoted)` alone: TypeScript narrows `draft` through the aliased
+    // condition above, so an extra `&& draft` is a guard the types say can never
+    // fail — which the debt ratchet correctly refuses.
+    if (promoted) {
+      await appendDecisionWithObservation(input.runId, version, {
+        type: CalibrationDecisionType.RULESET_CORRECTED,
+        selectors: [...draft.selectors],
+      });
+      version += 1;
+      await discardCalibrationDraft(input.runId);
+      promotedSelectors = {
+        from: before.state.selectors.length,
+        to: draft.selectors.length,
+        selectors: [...draft.selectors],
+      };
+    }
+
     // The version is read here, not supplied: a researcher judging in chat is
     // judging a capture, not a version number they have no way to hold.
-    await appendDecisionWithObservation(input.runId, before.state.version, {
+    await appendDecisionWithObservation(input.runId, version, {
       type: VERDICT[input.verdict],
       snapshotId: input.snapshotId,
       ...(input.reason === undefined ? {} : { reason: input.reason }),
@@ -522,6 +557,7 @@ export async function judgeArticleCaptureHandler(input: {
     runId: input.runId,
     recorded: input.verdict,
     snapshotId: input.snapshotId,
+    rulesetChanged: promotedSelectors,
     coverage: coverageReport(after, state.state),
     // A REJECTION DOES NOT ADVANCE. The plan: "reject routes back to
     // calibration, it never skips a capture." The researcher fixes the rules and
@@ -596,12 +632,30 @@ export async function openArticleCaptureHandler(input: {
   const preview = await previewUnderSelectors(capture.id, detail.state.selectors);
   const matched = detail.state.selectors.filter((sel) => (preview.matchCounts[sel] ?? 0) > 0).length;
 
+  // SHOWING IS RECORDED HERE, because this is the thing that shows it. The page
+  // used to post `CAPTURE_SHOWN` on load, which made the browser a writer of
+  // decisions for the one act it no longer performs — and a re-run of that effect
+  // appended a second showing against a moved version.
+  //
+  // A FAILURE HERE IS NOT FATAL TO THE ANSWER. The researcher still needs the
+  // URL; a run whose log is missing one showing is a smaller problem than a tool
+  // that refuses to open a capture because it could not write a note about it.
+  if (detail.state.status === 'OPEN') {
+    const { appendDecisionWithObservation } = await import('../../services/captureMarking');
+    await appendDecisionWithObservation(input.runId, detail.state.version, {
+      type: CalibrationDecisionType.CAPTURE_SHOWN,
+      snapshotId: capture.id,
+    }).catch(() => undefined);
+  }
+
+  const draft = await readCalibrationDraft(input.runId);
   return JSON.stringify({
     runId: input.runId,
     snapshotId: capture.id,
     date: capture.snapshotDate,
     captureUrl: routing.articleCaptureUrl(input.runId, capture.id),
     alreadyJudged: verdict,
+    draft: describeDraft(draft, detail.state.selectors),
     rulesStillMatching: `${String(matched)} of ${String(detail.state.selectors.length)} selectors`,
     removalFraction: Math.round(preview.removalFraction * 100) / 100,
     // THE CAVEAT TRAVELS WITH THE NUMBERS, because they invite exactly one wrong
@@ -616,3 +670,49 @@ export async function openArticleCaptureHandler(input: {
   });
 }
 
+
+/**
+ * Two rulesets are the same rule, whatever order they were built in.
+ *
+ * Marking the footer then the nav produces the same filter as the reverse, so
+ * comparing positionally would promote a draft that changed nothing — a
+ * `RULESET_CORRECTED` recording no correction, which is the vacuity this level
+ * demotes everywhere else.
+ */
+function sameSelectorSet(a: readonly string[], b: readonly string[]): boolean {
+  if (a.length !== b.length) return false;
+  const seen = new Set(b);
+  return a.every((item) => seen.has(item));
+}
+
+/**
+ * What the researcher's draft would change, said in chat before they judge it.
+ *
+ * A VERDICT IS ABOUT A RULESET, so the researcher has to be able to see the one
+ * they are about to judge. A tool that promoted a draft silently would ask for a
+ * judgement on rules nobody had read since they were edited — which is the
+ * approving-what-you-cannot-see failure the effect declaration exists to prevent
+ * elsewhere in this platform.
+ */
+function describeDraft(
+  draft: { selectors: readonly string[]; snapshotId: string; returnedAt: Date | null } | null,
+  inForce: readonly string[],
+): object | null {
+  if (draft === null) return null;
+  const added = draft.selectors.filter((s) => !inForce.includes(s));
+  const removed = inForce.filter((s) => !draft.selectors.includes(s));
+  return {
+    snapshotId: draft.snapshotId,
+    // HANDED BACK, or still being edited. Promoting an autosave would record
+    // rules the researcher was in the middle of changing.
+    handedBack: draft.returnedAt !== null,
+    selectorCount: draft.selectors.length,
+    added,
+    removed,
+    unchanged: added.length === 0 && removed.length === 0,
+    note:
+      draft.returnedAt === null
+        ? 'Still being edited in the marking page. It will not be promoted until it is handed back.'
+        : 'Handed back. judge_article_capture will record it as a correction before the verdict.',
+  };
+}

@@ -223,6 +223,15 @@ describe('the UI writes decisions; the backend applies effects', () => {
     //   /:runId/decisions                  write  a DECISION, plus its observation
     //   /:runId/commit                     write  moves the active-ruleset pointer
     //   /:runId/abandon                    write  closes the run
+    //   /:runId/draft   GET                read   the work in progress
+    //   /:runId/draft   PUT                write  the DRAFT — and it is not a
+    //                                             decision. The page takes a
+    //                                             ruleset in and returns a
+    //                                             corrected one; this is the
+    //                                             return, kept so a dying tab
+    //                                             does not take the marking with
+    //                                             it. Nothing is judged by it.
+    //   /:runId/draft   DELETE             write  discards the draft, NOT the run
     //
     // Every write is run state or a derived measurement. None reaches
     // recordCapture, a snapshot, or an anchor.
@@ -237,6 +246,10 @@ describe('the UI writes decisions; the backend applies effects', () => {
       '/:runId/captures/:snapshotId/preview',
       '/:runId/commit',
       '/:runId/decisions',
+      // Three verbs on one path: GET, PUT and DELETE each register a layer.
+      '/:runId/draft',
+      '/:runId/draft',
+      '/:runId/draft',
     ]);
   });
 });

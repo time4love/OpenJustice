@@ -7,6 +7,9 @@ import {
   commitCalibrationRuleset,
   describeCalibrationRun,
   readCalibrationRun,
+  readCalibrationDraft,
+  saveCalibrationDraft,
+  discardCalibrationDraft,
   CalibrationRunClosedError,
   StaleCalibrationVersionError,
 } from '../services/calibrationRun';
@@ -200,6 +203,63 @@ router.post('/:runId/decisions', async (req: RunRequest, res: Response): Promise
     // live in one place.
     await appendDecisionWithObservation(req.params.runId, expectedVersion, decision);
     res.json(present(await describeCalibrationRun(req.params.runId)));
+  } catch (err) {
+    respondToFailure(res, err);
+  }
+});
+
+// GET /api/article-rules/:runId/draft — the work in progress, if any.
+router.get('/:runId/draft', async (req: RunRequest, res: Response): Promise<void> => {
+  try {
+    res.json({ draft: await readCalibrationDraft(req.params.runId) });
+  } catch (err) {
+    respondToFailure(res, err);
+  }
+});
+
+// PUT /api/article-rules/:runId/draft — save the corrected ruleset.
+//
+// THE ONE THING THE PAGE WRITES, and it is not a decision. `returned: true` is
+// the researcher handing it back; anything else is an autosave, kept only so a
+// dying tab does not take twenty minutes of marking with it.
+//
+// NO `expectedVersion`. A draft is not appended to a log, so it cannot collide
+// with one — there is exactly one per run and the last write wins, which is what
+// autosave means. Demanding a version here would reintroduce the optimistic
+// concurrency that made this page race itself.
+const draftBody = z.object({
+  snapshotId: z.string().min(1),
+  selectors: z.array(z.string().min(1)),
+  returned: z.boolean().optional(),
+});
+
+router.put('/:runId/draft', async (req: RunRequest, res: Response): Promise<void> => {
+  const parsed = draftBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'invalid_draft', message: parsed.error.message });
+    return;
+  }
+  try {
+    const draft = await saveCalibrationDraft({
+      runId: req.params.runId,
+      snapshotId: parsed.data.snapshotId,
+      selectors: parsed.data.selectors,
+      returned: parsed.data.returned ?? false,
+    });
+    res.json({ draft });
+  } catch (err) {
+    respondToFailure(res, err);
+  }
+});
+
+// DELETE /api/article-rules/:runId/draft — the researcher's cancel.
+//
+// IT DISCARDS THE DRAFT, NOT THE RUN. Every decision already recorded stays;
+// this level has already been caught once calling those the same thing.
+router.delete('/:runId/draft', async (req: RunRequest, res: Response): Promise<void> => {
+  try {
+    await discardCalibrationDraft(req.params.runId);
+    res.json({ draft: null });
   } catch (err) {
     respondToFailure(res, err);
   }

@@ -920,3 +920,99 @@ export async function ensureCurrentRuleset(runId: string): Promise<{ id: string;
     researcherId: state.researcherId,
   });
 }
+
+// ---------------------------------------------------------------------------
+// THE DRAFT — what the marking page hands back, and the one thing it may write.
+//
+// The researcher's ruling, superseding "THE UI WRITES DECISIONS": the page takes
+// a ruleset in and returns a corrected ruleset. It decides nothing. Writing a
+// `RULESET_CORRECTED` per edit is what made the browser a writer, and it produced
+// this level's swallowed clicks, its eight correction rows for one capture of
+// exploration, and a page that raced itself into a 409 with no other tab open.
+//
+// A DRAFT IS NOT A DECISION, and the distinction is the whole design. It says
+// nothing about whether the rules are RIGHT — that is the verdict, and the
+// verdict is made through a tool. It exists so that a dying tab does not take
+// twenty minutes of marking with it, which happened on 2026-09-01.
+// ---------------------------------------------------------------------------
+
+export interface CalibrationDraft {
+  /** The corrected ruleset, as the researcher left it. */
+  selectors: readonly string[];
+  /** Which capture it was marked against. */
+  snapshotId: string;
+  /**
+   * Set when the researcher handed it back; null while still editing.
+   *
+   * THE ONLY THING THAT DISTINGUISHES "saved as I go" FROM "I am done". An
+   * autosave that looked like a handoff would put half-finished rules in front
+   * of a researcher about to record a verdict on them.
+   */
+  returnedAt: Date | null;
+}
+
+/** The draft on a run, or null when there is none. */
+export async function readCalibrationDraft(runId: string): Promise<CalibrationDraft | null> {
+  const run = await prisma.calibrationRun.findUnique({
+    where: { id: runId },
+    select: { draftSelectors: true, draftSnapshotId: true, draftReturnedAt: true },
+  });
+  if (!run?.draftSnapshotId) return null;
+  return {
+    selectors: run.draftSelectors,
+    snapshotId: run.draftSnapshotId,
+    returnedAt: run.draftReturnedAt,
+  };
+}
+
+/**
+ * Save the researcher's work in progress. NO VERSION, and that is deliberate.
+ *
+ * A draft is not appended to the log, so it cannot collide with one: there is
+ * exactly one draft per run and the last write wins, which is what "autosave"
+ * means. Requiring an `expectedVersion` here would reintroduce the optimistic
+ * concurrency that made the page race itself, for a write that decides nothing.
+ */
+export async function saveCalibrationDraft(input: {
+  runId: string;
+  snapshotId: string;
+  selectors: readonly string[];
+  returned: boolean;
+}): Promise<CalibrationDraft> {
+  const current = await readCalibrationRun(input.runId);
+  if (current.status !== CalibrationRunStatus.OPEN) {
+    throw new CalibrationRunClosedError(input.runId, current.status);
+  }
+  const run = await prisma.calibrationRun.update({
+    where: { id: input.runId },
+    data: {
+      draftSelectors: [...input.selectors],
+      draftSnapshotId: input.snapshotId,
+      // HANDING BACK IS A LATCH, NOT A TOGGLE: an edit after the handoff clears
+      // it, because the thing that was handed back is no longer what is on
+      // screen, and a stale "ready" would hand a tool the wrong ruleset.
+      draftReturnedAt: input.returned ? new Date() : null,
+    },
+    select: { draftSelectors: true, draftSnapshotId: true, draftReturnedAt: true },
+  });
+  return {
+    selectors: run.draftSelectors,
+    // Non-null: it was just written.
+    snapshotId: run.draftSnapshotId ?? input.snapshotId,
+    returnedAt: run.draftReturnedAt,
+  };
+}
+
+/**
+ * Discard the draft. The researcher's cancel.
+ *
+ * IT CANCELS THE DRAFT, NOT THE RUN. Every decision already recorded stays —
+ * "close without saving" was a label this level has already been caught getting
+ * wrong once, and the two are not the same act.
+ */
+export async function discardCalibrationDraft(runId: string): Promise<void> {
+  await prisma.calibrationRun.update({
+    where: { id: runId },
+    data: { draftSelectors: [], draftSnapshotId: null, draftReturnedAt: null },
+  });
+}
