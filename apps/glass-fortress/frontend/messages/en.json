@@ -1839,11 +1839,14 @@
     "judgedEpisodes": "{episodes} judgements in total, across {shown} times a capture was shown.",
     "repeatWarning": "Some captures were judged more than once. Judging one capture twice does not test the rules twice.",
     "indicatorSummary": "{distinct} captures judged · {streak} clean in a row",
-    "handBack": "Done — return this ruleset",
-    "handBackDone": "Returned. Record the verdict in the chat with judge_article_capture.",
+    "handBack": "Save a new draft of the text-extraction rules",
+    "handBackDone": "Draft saved.",
     "discardDraft": "Discard my changes",
     "discardDone": "Changes discarded. The rules in force are unchanged.",
     "captureFrom": "Capture from {date}",
-    "checkBeforeApproving": "Check this before approving"
+    "checkBeforeApproving": "Check this before approving",
+    "copyCommand": "Copy",
+    "copied": "Copied",
+    "commandLabel": "Paste this command in the chat to save a new version of the text-extraction rules."
   }
 }

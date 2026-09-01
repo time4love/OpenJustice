@@ -193,6 +193,7 @@ export function ArticleRulesClient({ runId, snapshotId }: { runId: string; snaps
    */
   const [draftBaseline, setDraftBaseline] = useState<string[]>([]);
   const [returnedAt, setReturnedAt] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
 
   /**
    * The pending settle timer, and whether a settle is already in flight.
@@ -777,9 +778,6 @@ export function ArticleRulesClient({ runId, snapshotId }: { runId: string; snaps
       */}
       {oneCapture && !closed && (
         <section className="rounded border border-gray-300 p-3">
-          {returnedAt !== null && (
-            <p className="mb-2 text-xs text-green-800">{t('handBackDone')}</p>
-          )}
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
@@ -814,6 +812,50 @@ export function ArticleRulesClient({ runId, snapshotId }: { runId: string; snaps
               {t('discardDraft')}
             </button>
           </div>
+
+          {/* BELOW THE BUTTONS, because that is where the researcher is looking
+              once they have clicked one — and it hands over the COMMAND rather
+              than describing it. Retyping two cuids from a screen is a
+              transcription error waiting to happen, and the ids are the two
+              things in this flow nobody can sanity-check by eye. */}
+          {returnedAt !== null && capture !== null && (
+            <div className="mt-3 border-t border-gray-300 pt-3">
+              <p className="text-sm">
+                <span className="font-semibold text-green-800">{t('handBackDone')}</span>{' '}
+                <span className="text-gray-700">{t('commandLabel')}</span>
+              </p>
+              <div className="mt-1 flex items-start gap-2">
+                <code
+                  dir="ltr"
+                  className="block flex-1 overflow-x-auto whitespace-nowrap rounded border border-gray-300 bg-gray-50 p-2 text-xs"
+                >
+                  {judgeCommand(runId, capture.snapshotId)}
+                </code>
+                <button
+                  type="button"
+                  className="shrink-0 rounded border border-gray-400 px-2 py-1 text-xs"
+                  onClick={() => {
+                    // The clipboard can refuse — a denied permission, an
+                    // insecure context, a browser that simply does not. The
+                    // command is rendered either way, so a refusal costs a
+                    // manual selection rather than the handoff.
+                    void navigator.clipboard
+                      .writeText(judgeCommand(runId, capture.snapshotId))
+                      .then(() => {
+                        setCopied(true);
+                        // Reverts, so the button stops claiming a copy that
+                        // happened a while ago and may not be what is now on the
+                        // clipboard.
+                        setTimeout(() => { setCopied(false); }, 2000);
+                      })
+                      .catch(() => undefined);
+                  }}
+                >
+                  {copied ? t('copied') : t('copyCommand')}
+                </button>
+              </div>
+            </div>
+          )}
         </section>
       )}
 
@@ -1356,4 +1398,30 @@ function RemovedPane({
       </div>
     </section>
   );
+}
+
+/**
+ * The exact call the researcher pastes into the chat, ids filled in.
+ *
+ * THE IDS ARE THE PART NOBODY CAN CHECK BY EYE. Two cuids, differing in the
+ * middle, naming a run and a capture — retyping them from a screen is a
+ * transcription error that would attach a verdict to the wrong document, and
+ * nothing downstream would notice.
+ *
+ * IT OFFERS NO REJECTION, AND THAT IS THE RESEARCHER'S RULING. This dialog
+ * exists to FIX the rules; someone who opens it and returns "the rules are
+ * wrong" has given up rather than decided, which is not an outcome the page
+ * should hand them a button for.
+ *
+ * AND THE ONE REJECTION THAT LOOKED LEGITIMATE WAS A SYMPTOM, NOT A VERDICT.
+ * `2025-03-26` was rejected because correcting the rules for it would have broken
+ * 2020, where they work — but that dilemma exists only because A RULESET IS NOT
+ * SCOPED TO AN ERA (recorded as a gap in `docs/gf-level4-third-marking-walk-
+ * 2026-09-01.md`: nothing selects a ruleset by the era of the capture being
+ * scanned). With era-scoped rulesets there is no capture you would give up
+ * correcting; you correct the ruleset for that era. Rejection is the system
+ * forcing a bad choice, and it should be revisited when the gap closes.
+ */
+function judgeCommand(runId: string, snapshotId: string): string {
+  return `judge_article_capture runId=${runId} snapshotId=${snapshotId} verdict=ACCEPTED`;
 }

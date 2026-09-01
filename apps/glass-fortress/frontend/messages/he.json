@@ -1839,11 +1839,14 @@
     "judgedEpisodes": "{episodes} שיפוטים בסך הכול, על פני {shown} הצגות של צילום.",
     "repeatWarning": "חלק מהצילומים נשפטו יותר מפעם אחת. שיפוט של אותו צילום פעמיים אינו בודק את הכללים פעמיים.",
     "indicatorSummary": "נשפטו {distinct} צילומים · {streak} ברצף ללא תיקון",
-    "handBack": "סיימתי — החזירו את מערכת הכללים",
-    "handBackDone": "הוחזר. רשמו את השיפוט בצ׳אט באמצעות judge_article_capture.",
+    "handBack": "שמור טיוטא חדשה של חוקי חילוץ הטקסט",
+    "handBackDone": "טיוטא נשמרה,",
     "discardDraft": "בטלו את השינויים שלי",
     "discardDone": "השינויים בוטלו. הכללים שבתוקף לא השתנו.",
     "captureFrom": "צילום מתאריך {date}",
-    "checkBeforeApproving": "בדקו זאת לפני אישור"
+    "checkBeforeApproving": "בדקו זאת לפני אישור",
+    "copyCommand": "העתיקו",
+    "copied": "הועתק",
+    "commandLabel": "הדביקו את הפקודה בצ׳אט כדי לשמור גירסה חדשה של חוקי חילוץ הטקסט"
   }
 }
