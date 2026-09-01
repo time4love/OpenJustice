@@ -110,16 +110,16 @@ describe('the survival check — a comparison that did not happen is not a pass'
   });
 
   // WHAT EMPTIED EVERY SUSPECT SET ON THE FIRST RUN. `RULESET_CORRECTED` was
-  // forbidden to name a capture, so no selector had an anchor. It is recoverable
-  // exactly: judge_article_capture promotes the correction and THEN records the
-  // verdict for the same capture, so the anchor is the next decision that names
-  // one.
-  it('recovers the anchor of a correction written before corrections carried a capture', async () => {
+  // forbidden to name a capture, so no selector in any existing run has an anchor
+  // of its own. It is recovered from the last capture SHOWN, because a correction
+  // is made while a capture is on screen.
+  it('recovers the anchor of a correction from the capture that was on screen', async () => {
     setup({
       decisions: [
-        { type: CalibrationDecisionType.RULESET_CORRECTED, selectors: ['.ad'], snapshotId: OLD.id },
+        { type: CalibrationDecisionType.CAPTURE_SHOWN, selectors: [], snapshotId: OLD.id },
+        { type: CalibrationDecisionType.RULESET_CORRECTED, selectors: ['.ad'], snapshotId: null },
+        { type: CalibrationDecisionType.CAPTURE_SHOWN, selectors: ['.ad'], snapshotId: NEW.id },
         { type: CalibrationDecisionType.RULESET_CORRECTED, selectors: ['.ad', '.share'], snapshotId: null },
-        { type: CalibrationDecisionType.CAPTURE_ACCEPTED, selectors: ['.ad', '.share'], snapshotId: NEW.id },
       ],
       selectors: ['.ad', '.share'],
       textByCount: { 1: 'body text', 2: 'body text' },
@@ -127,9 +127,31 @@ describe('the survival check — a comparison that did not happen is not a pass'
 
     const report = await checkRulesetSurvival('run-1');
     const old = report.captures.find((capture) => capture.snapshotDate === '2020-12-09');
-    // Without recovery this is `anchoredTo: null`, the suspect set is empty, and
-    // the capture is silently untested.
     expect(old?.suspectSelectors).toEqual([{ selector: '.share', anchoredTo: '2022-05-23' }]);
     expect(old?.tested).toBe(true);
+  });
+
+  // THE DEFECT THIS REPLACED, HELD SO IT CANNOT RETURN. An earlier recovery looked
+  // FORWARD to the next decision naming a capture. The browser flow autosaved many
+  // corrections between one verdict and the next, so that could be years away — it
+  // stamped 2020 selectors with a 2025 date and produced three alerts naming the
+  // wrong rules. Here `.ad` is corrected while the 2020 capture is shown, and the
+  // next named decision is the 2022 one; the anchor must be 2020.
+  it('does not date a correction by a verdict recorded long afterwards', async () => {
+    setup({
+      decisions: [
+        { type: CalibrationDecisionType.CAPTURE_SHOWN, selectors: [], snapshotId: OLD.id },
+        { type: CalibrationDecisionType.RULESET_CORRECTED, selectors: ['.ad'], snapshotId: null },
+        { type: CalibrationDecisionType.CAPTURE_ACCEPTED, selectors: ['.ad'], snapshotId: NEW.id },
+      ],
+      selectors: ['.ad'],
+      textByCount: { 1: 'body text' },
+    });
+
+    const report = await checkRulesetSurvival('run-1');
+    const old = report.captures.find((capture) => capture.snapshotDate === '2020-12-09');
+    // Looking forward would date `.ad` to 2022-05-23 and call it a rule from the
+    // 2020 capture's future — an alert against a selector that was always there.
+    expect(old?.suspectSelectors).toEqual([]);
   });
 });

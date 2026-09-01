@@ -118,18 +118,33 @@ export async function checkRulesetSurvival(runId: string): Promise<RulesetSurviv
   // is the only one it was ever checked against.
   //
   // RECOVERED FOR DECISIONS WRITTEN BEFORE CORRECTIONS CARRIED A CAPTURE. Until
-  // this was fixed, `RULESET_CORRECTED` was FORBIDDEN to name one, so every
-  // selector in every existing run has no anchor of its own. It is recoverable
-  // exactly: `judge_article_capture` promotes the correction and THEN records the
-  // verdict for the same capture, so the anchor is the snapshot named by the next
-  // decision that names one. This is inference over a known writer, not a guess —
-  // and it costs nothing once new corrections carry their own.
+  // that was fixed, `RULESET_CORRECTED` was FORBIDDEN to name one, so every
+  // selector in every existing run has no anchor of its own.
+  //
+  // THE RECOVERY LOOKS BACKWARD, TO THE LAST CAPTURE SHOWN. A correction is made
+  // while a capture is on screen, and the capture on screen is the one most
+  // recently SHOWN. That is exact for both writers: the browser flow shows a
+  // capture and then autosaves corrections against it, and
+  // `open_article_capture` records the showing before `judge_article_capture`
+  // promotes a draft.
+  //
+  // AN EARLIER VERSION LOOKED FORWARD -- to the next decision that named a
+  // capture -- reasoning that judging promotes and then records a verdict on the
+  // same capture. True of that writer and FALSE of the browser, which autosaved
+  // many corrections between one verdict and the next, so the next named
+  // decision could be years away. It stamped December 2020 selectors with a
+  // March 2025 date and produced three alerts naming the wrong rules. The
+  // contradiction was visible in the run's own data: a selector it dated to 2025
+  // was already in the ruleset a 2020 capture had been accepted under.
   const anchors = new Map<string, Anchor>();
-  for (const [index, decision] of decisions.entries()) {
-    const named =
-      decision.snapshotId ??
-      decisions.slice(index + 1).find((later) => later.snapshotId !== null)?.snapshotId ??
-      null;
+  let lastShown: string | null = null;
+  for (const decision of decisions) {
+    if (decision.type === CalibrationDecisionType.CAPTURE_SHOWN && decision.snapshotId !== null) {
+      lastShown = decision.snapshotId;
+    }
+    // A correction that names its own capture is authoritative and needs no
+    // recovery; the fallback exists only for the ones written before it could.
+    const named = decision.snapshotId ?? lastShown;
     for (const selector of decision.selectors) {
       if (anchors.has(selector)) continue;
       anchors.set(selector, {
