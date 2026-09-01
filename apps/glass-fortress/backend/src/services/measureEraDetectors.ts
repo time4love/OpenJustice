@@ -54,6 +54,23 @@ async function selectorsAtVersion(
   return decision === null ? null : { selectors: decision.selectors, version: decision.sequence };
 }
 
+/**
+ * The newest calibration run for a URL.
+ *
+ * BY URL, BECAUSE THAT IS WHAT A RESEARCHER HOLDS. Reaching a run id otherwise
+ * means calling `correct_article_rules`, which ALWAYS OPENS A NEW RUN — a write,
+ * and a fragmented record — merely to learn an identifier. A measurement must not
+ * cost the corpus a row.
+ */
+export async function newestRunForUrl(url: string): Promise<string | null> {
+  const run = await prisma.calibrationRun.findFirst({
+    where: { trackedUrl: { url } },
+    orderBy: { createdAt: 'desc' },
+    select: { id: true },
+  });
+  return run?.id ?? null;
+}
+
 export async function measureEraDetectors(
   runId: string,
   version?: number,

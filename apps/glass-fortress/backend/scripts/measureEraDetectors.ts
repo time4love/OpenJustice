@@ -1,7 +1,7 @@
 /**
  * What the two era detectors actually see, across a page's whole timeline.
  *
- *   npm run forensics:measure-era-detectors -- --env staging --run <runId> [--version <n>]
+ *   npm run forensics:measure-era-detectors -- --env staging (--url <url> | --run <runId>) [--version <n>]
  *
  * READ-ONLY. It parses documents already held, reaches no network and no model,
  * and writes nothing.
@@ -28,7 +28,7 @@
  */
 import 'dotenv/config';
 import { runOperationalScript } from '../src/lib/operationalContext';
-import { measureEraDetectors } from '../src/services/measureEraDetectors';
+import { measureEraDetectors, newestRunForUrl } from '../src/services/measureEraDetectors';
 
 function arg(name: string): string | undefined {
   const i = process.argv.indexOf(`--${name}`);
@@ -36,10 +36,25 @@ function arg(name: string): string | undefined {
 }
 
 async function main(): Promise<number> {
-  const runId = arg('run');
-  if (runId === undefined || runId.startsWith('--')) {
-    console.error('--run <calibrationRunId> is required.');
+  // `--url` IS THE INTENDED INTERFACE. A researcher holds a page, not a cuid, and
+  // the only other way to reach a run id is `correct_article_rules`, which always
+  // OPENS A NEW RUN — a write, to learn an identifier. `--run` remains for naming
+  // one run when a URL has several.
+  const url = arg('url');
+  const explicitRun = arg('run');
+  const runId =
+    explicitRun !== undefined && !explicitRun.startsWith('--')
+      ? explicitRun
+      : url !== undefined && !url.startsWith('--')
+        ? await newestRunForUrl(url)
+        : undefined;
+  if (runId === undefined) {
+    console.error('--url <url> or --run <calibrationRunId> is required.');
     return 1;
+  }
+  if (runId === null) {
+    console.error(`No calibration run for ${String(url)} — nothing has been marked on it.`);
+    return 4;
   }
   const versionArg = arg('version');
   const version = versionArg === undefined ? undefined : Number(versionArg);
