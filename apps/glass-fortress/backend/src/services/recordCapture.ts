@@ -1,4 +1,5 @@
 import { prisma } from '../lib/prisma';
+import { rulesetForCapture } from './rulesetForCapture';
 import { deriveText, sha256Bytes, sha256Text } from '../lib/captureDocument';
 import { CaptureProvenance } from '@prisma/client';
 import { registerSnapshotOnChain, type SnapshotAnchorOutcome } from './anchorSnapshots';
@@ -318,7 +319,41 @@ export async function recordCapture(input: RecordCaptureInput): Promise<Recorded
 
   const contentHash = sha256Text(extraction);
   const documentHash = sha256Bytes(document);
-  const derived = deriveText(document, documentContentType ?? null, documentContentEncoding ?? null);
+  // DERIVED UNDER THE ERA THAT COVERS THIS CAPTURE'S DATE.
+  //
+  // Until 2026-09-01 this called `deriveText`, which takes no ruleset — so a page
+  // whose furniture had been marked, approved and versioned was still recorded
+  // with that furniture in `text`, and therefore in `textHash`, which is the
+  // NOVELTY KEY. A rotating advert continued to make every capture look new,
+  // which is the problem Level 4 exists to solve.
+  //
+  // AN EMPTY RULESET IS THE UNCALIBRATED CASE AND COSTS NOTHING:
+  // `applyChromeRuleset` short-circuits on it and the result is byte-identical to
+  // the old call, so a URL with no committed calibration behaves exactly as
+  // before. `textExtractionVersion` records which it was — `chromeTextVersion`
+  // appends the ruleset id only when there is one.
+  //
+  // THE EMPTY CASE DOES NOT REACH FOR THE PARSER AT ALL, and that is not an
+  // optimisation for its own sake. `chromeRulesetApply` brings jsdom, whose
+  // dependency chain is ESM-only; loading it here would drag it into every suite
+  // that records a capture, and most URLs have no rules. `captureDocument` was
+  // written to avoid exactly that dependency.
+  //
+  // TWO CALL SITES, AND A TEST THAT THEY AGREE. `applyChromeRuleset` already
+  // short-circuits on an empty ruleset, so this duplicates a decision that exists
+  // one layer down — the shape this repository names as its dominant defect.
+  // `test/emptyRulesetDerivation.test.ts` holds the equivalence, so "they agree
+  // today" is a fact under test rather than an assumption.
+  const selectors = await rulesetForCapture(trackedUrlId, toSnapshotDate(capturedAt));
+  const derived =
+    selectors.length === 0
+      ? deriveText(document, documentContentType ?? null, documentContentEncoding ?? null)
+      : (await import('../lib/chromeRulesetApply')).deriveTextUnderRuleset(
+          document,
+          documentContentType ?? null,
+          documentContentEncoding ?? null,
+          { selectors: [...selectors] },
+        );
 
   const existing = await prisma.urlSnapshot.findUnique({
     where: { trackedUrlId_capturedAt: { trackedUrlId, capturedAt } },

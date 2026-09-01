@@ -62,6 +62,11 @@ jest.mock('../src/services/admitUrl', () => ({
 
 jest.mock('../src/lib/prisma', () => ({
   prisma: {
+    // Recording a capture now looks up which era governs it. These fixtures
+    // describe an UNCALIBRATED url, so the lookup finds no runs and the
+    // derivation is the ruleset-free one.
+    calibrationRun: { findMany: jest.fn().mockResolvedValue([]) },
+    calibrationDecision: { findMany: jest.fn().mockResolvedValue([]) },
     // The CDX observation store. A scan records what the Archive told us — the
     // query itself (so a zero-row answer is distinguishable from never asking)
     // and one entry per indexed capture.
