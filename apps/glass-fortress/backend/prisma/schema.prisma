@@ -2257,6 +2257,16 @@ enum CalibrationDecisionType {
   /// The capture genuinely cannot be taken. `reason` is REQUIRED, because a
   /// silent hole in the record is the one outcome this corpus does not permit.
   CAPTURE_SKIPPED
+  /// THE RESEARCHER SAID THIS CAPTURE IS A REDESIGN — the first one the previous
+  /// era's rules do not describe, so it OPENS an era rather than closing one.
+  ///
+  /// This is the only way an era comes into existence: a boundary is always a
+  /// decision and never an inference, which is why the detectors STOP and ask
+  /// rather than concluding. There is no era table — every other property of an
+  /// era (its range, its ruleset, whether it is confirmed) is derived from this
+  /// log, and a stored status is a claim about history that can disagree with
+  /// the history.
+  ERA_BOUNDARY
   RUN_CLOSED
 }
 

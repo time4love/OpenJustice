@@ -1,0 +1,14 @@
+-- Level 4, build order step 1: an era comes into existence only by a researcher's decision.
+--
+-- ERA_BOUNDARY names the capture the researcher called a redesign — the first one
+-- the previous era's rules do not describe — so it OPENS an era rather than
+-- closing the one before it.
+--
+-- ONE ENUM VALUE AND NOTHING ELSE. There is no era table: an era's range, its
+-- ruleset and whether it is confirmed are all derived from this log, and a stored
+-- status is a claim about history that can disagree with the history.
+--
+-- `ALTER TYPE ... ADD VALUE` is permitted inside a transaction on PostgreSQL 12+
+-- so long as the new value is not USED in the same transaction. This migration
+-- only adds it; the first row carrying it is written by a later deploy.
+ALTER TYPE "CalibrationDecisionType" ADD VALUE 'ERA_BOUNDARY';
