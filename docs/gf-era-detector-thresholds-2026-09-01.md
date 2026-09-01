@@ -111,3 +111,92 @@ and bisected to 2022-05-23, passing over it.
 
 **One human verdict on one capture fixes the remaining number.** Nothing else in the measurement is
 ambiguous.
+
+---
+
+# RESOLVED, 2026-09-02 — `2021-06-12` IS A REDESIGN, AND THE PAGE HAS THREE ERAS
+
+The measurement above ended on one ambiguous point. It has been judged.
+
+## What happened
+
+`open_article_capture` opened `2021-06-12` — the first time a showing was RECORDED for it, which
+matters because the anchor recovery reads the last preceding `CAPTURE_SHOWN`. The researcher marked
+many rules and accepted. The ruleset went **35 → 45**, and its kept text went **4,342 → 2,382**: the
+furniture the era-1 rules were leaving behind is now removed.
+
+## The ten new selectors are a THIRD HASH GENERATION of the same elements
+
+| element | 2020 era | **2021-06 (new)** | 2022 era |
+|---|---|---|---|
+| mobile header | `css-14xb3av` | **`css-icq85b`** | `css-lhs48d` |
+| main header | `css-gf5unx` | **`css-1mryvlz`** | `css-1huua83` |
+| breadcrumb nav | `css-yfuuno` | **`css-1ws3k16`** | — |
+| footer | `css-1oin1li` / `css-1r2389` | **`css-qd0zdg`** | — |
+| tags list | `css-1234ruv` | **`css-1innaux`** | — |
+
+The semantic classes are IDENTICAL throughout — `no-mobile-app`, `noprint`, `only-mobile`,
+`main-header` — and only the CSS-in-JS build hash differs. **That is the same structural element,
+rebuilt three times.** `2021-06-12` is a redesign, and the news page has **three eras, not two**.
+
+## THE THRESHOLD FOLLOWS
+
+| observation | ratio |
+|---|---|
+| within-era, 90 captures across two pages | **1.00** — no variance at all |
+| `2021-06-12`, now a confirmed boundary | **0.64** ← must be caught |
+| `2022-05-23`, confirmed boundary | **0.27** |
+
+`minMatchRateRatio` must therefore sit **above 0.64**. With no within-era drift ever observed, **0.80**
+catches both boundaries and still tolerates twenty points of variation the corpus has never shown.
+
+## THE THREE VALUES, AND WHAT EACH RESTS ON
+
+| threshold | value | evidence |
+|---|---|---|
+| `minMatchRateRatio` | **0.80** | measured: boundaries at 0.64 and 0.27, within-era 1.00 over 90 captures |
+| `minKeptLengthRatio` | **0.70** | measured: worst within-era ratio 0.833 over 83 captures |
+| `minBaselineSamples` | **3** | **NOT MEASURED — a judgement.** Two captures cannot establish a norm, and the corpus offers no evidence about the right number. Recorded as a judgement so it is not mistaken for a measurement later. |
+
+## THE GATE STAYS CLOSED, DELIBERATELY
+
+**These values are NOT in `src/`, and the source scan that forbids them is untouched.** Nothing
+consumes them yet — the batch that calls `assessCapture` is build-order step 11 — so adopting them now
+would add a constant no code reads.
+
+They land in the commit that USES them, where the number and this measurement can be read next to each
+other. That is what `test/eraDetectorsUnmeasured.test.ts` exists to force.
+
+## THE POSITIONAL SELECTORS DID NOT DAMAGE ANYTHING
+
+`check_ruleset_survival` after the correction: **0 alerts.** Three of the ten new selectors name a
+POSITION rather than a thing — `nav…css-1ws3k16 > ul > li:nth-of-type(1)`, `li:nth-of-type(2)`, and
+`div.css-0.vertical-1 > span:nth-of-type(1)` — and they remove nothing from the 2020 or 2022 captures.
+
+```
+2020-12-09   26 suspects tested   2461 → 2461
+2020-12-18   23 suspects tested   2461 → 2461
+2022-05-23   10 suspects tested   2507 → 2507
+4 captures   nothing to test, reported as such and NOT counted as passing
+```
+
+**The anchors are now precise for anything written after 2026-09-01**: every new selector reads
+`anchoredTo: 2021-06-12`, because the showing was recorded and the correction carried its own
+`snapshotId`. Older selectors still read `2020-12-18` where they are 2022-era — the legacy imprecision
+that recovery cannot fix, now confined to rows written before that change.
+
+## AND THE DESIGN'S OWN GAP SHOWED UP IN PRACTICE
+
+The researcher met a redesign and **the only action available was to correct the rules and accept**, so
+the union grew 35 → 45. `ERA_BOUNDARY` exists as an enum value and a fold, and nothing writes one:
+`resolve_boundary` is build-order step 10 and unbuilt.
+
+**This correction is a UNION correction and will need re-reading as an era boundary once step 10
+lands.** It is the exact behaviour era-scoping supersedes, happening once more because the alternative
+does not exist yet.
+
+## STILL NOT MEASURED
+
+- **The over-match detector has never seen an over-match.** Unchanged, and unchangeable from this
+  corpus: no page in it has been over-matched.
+- **A third PAGE.** Three eras on one page is not three constructions; the gate asked for the latter.
