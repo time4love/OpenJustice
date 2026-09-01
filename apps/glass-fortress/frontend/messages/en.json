@@ -1839,6 +1839,7 @@
     "effectRederive": "re-derives the text of {count} stored captures",
     "effectReversible": "Reversible — mark again and apply. The documents are stored whole and re-derived from bytes already held, so no anchor is affected.",
     "effectHeading": "Applying will:",
-    "outlineTruncatedHarmless": "The structure was cut at branches holding no text, so nothing is out of reach."
+    "outlineTruncatedHarmless": "The structure was cut at branches holding no text, so nothing is out of reach.",
+    "unmarkThisRule": "Click to unmark the rule that removed this"
   }
 }

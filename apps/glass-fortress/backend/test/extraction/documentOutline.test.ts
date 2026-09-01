@@ -312,10 +312,40 @@ describe('a cut removes DEPTH, never a sibling', () => {
 });
 
 describe('the label — what the researcher reads instead of a selector', () => {
-  it('names a landmark by what it is', () => {
+  it('names a landmark by what it is, AND by which one it is', () => {
+    // A landmark name QUALIFIES the preview rather than replacing it. Replacing
+    // was fine on a page with one <nav> and one <footer>, and useless on the
+    // news page with nine <section>s — every row read "section", and the
+    // researcher could not tell them apart without clicking each one.
     const nodes = flatten(documentOutline(PAGE).root);
-    expect(nodes.find((n) => n.tag === 'nav')?.label).toBe('navigation');
-    expect(nodes.find((n) => n.tag === 'footer')?.label).toBe('footer');
+    expect(nodes.find((n) => n.tag === 'nav')?.label).toBe('navigation · Home');
+    expect(nodes.find((n) => n.tag === 'footer')?.label).toBe('footer · Ministry of Health');
+  });
+
+  it('tells two same-tag landmarks apart', () => {
+    // The defect, as a fixture: without the preview both of these read "section".
+    const two = `<html><body>
+      <section><h2>Vaccine eligibility</h2></section>
+      <section><h2>Reporting side effects</h2></section>
+    </body></html>`;
+    const labels = flatten(documentOutline(two).root)
+      .filter((n) => n.tag === 'section')
+      .map((n) => n.label);
+    expect(labels).toHaveLength(2);
+    expect(new Set(labels).size).toBe(2);
+    expect(labels.every((l) => l.startsWith('section · '))).toBe(true);
+  });
+
+  it('falls back to the bare landmark when it has no text to preview', () => {
+    const empty = `<html><body><nav></nav><p>text</p></body></html>`;
+    // The <nav> carries no text, so it is not in the tree at all — a landmark
+    // with nothing in it is not a choice. The rule is asserted on `role`, which
+    // survives on an element that does have text.
+    const roled = `<html><body><div role="banner">Site name</div></body></html>`;
+    expect(flatten(documentOutline(empty).root).some((n) => n.tag === 'nav')).toBe(false);
+    expect(flatten(documentOutline(roled).root).find((n) => n.tag === 'div')?.label).toBe(
+      'banner · Site name',
+    );
   });
 
   it('prefers an aria-label, and says what the element is as well', () => {
