@@ -4,19 +4,17 @@ import { z } from 'zod';
 import { requireResearcher } from '../middleware/researcherIdentity';
 import {
   abandonCalibrationRun,
-  appendCalibrationDecision,
   commitCalibrationRuleset,
   describeCalibrationRun,
-  ensureCurrentRuleset,
   readCalibrationRun,
   CalibrationRunClosedError,
   StaleCalibrationVersionError,
 } from '../services/calibrationRun';
 import { renderApprovalEffect } from '../services/approvalEffect';
 import {
+  appendDecisionWithObservation,
   loadCaptureForMarking,
   previewUnderSelectors,
-  recordObservationForCapture,
 } from '../services/captureMarking';
 import { CAPTURE_SAMPLE, stratifiedSample } from '../lib/timelineSample';
 import { prisma } from '../lib/prisma';
@@ -197,29 +195,10 @@ router.post('/:runId/decisions', async (req: RunRequest, res: Response): Promise
   }
   const { expectedVersion, ...decision } = parsed.data;
   try {
-    // THE OBSERVATION IS COMPUTED HERE, NOT POSTED BY THE PAGE. The browser has
-    // just rendered a preview and could send the figures back a round trip
-    // cheaper — which would make a scan's deviation baseline something a client
-    // asserts. Deriving again costs one parse per capture a human looks at.
-    //
-    // Written BEFORE the append, and that ordering is safe: an observation is a
-    // measurement of (ruleset, capture) that is true whether or not the decision
-    // lands, and the write is an idempotent upsert. A stale-version refusal
-    // therefore leaves a correct row, not a stray one.
-    let observationId: string | undefined;
-    if (decision.snapshotId !== undefined && decision.type !== 'RULESET_CORRECTED') {
-      const ruleset = await ensureCurrentRuleset(req.params.runId);
-      ({ observationId } = await recordObservationForCapture({
-        articleRulesetId: ruleset.id,
-        snapshotId: decision.snapshotId,
-        selectors: (await readCalibrationRun(req.params.runId)).selectors,
-      }));
-    }
-
-    await appendCalibrationDecision(req.params.runId, expectedVersion, {
-      ...decision,
-      ...(observationId === undefined ? {} : { observationId }),
-    });
+    // DELEGATED, so the browser and `judge_article_capture` write a decision by
+    // exactly the same code. The observation, its ordering and the append all
+    // live in one place.
+    await appendDecisionWithObservation(req.params.runId, expectedVersion, decision);
     res.json(present(await describeCalibrationRun(req.params.runId)));
   } catch (err) {
     respondToFailure(res, err);

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { CalibrationDecisionType } from '@prisma/client';
 import { prisma } from '../../lib/prisma';
 import { routing } from '../../lib/publicRoutes';
 import { getResearcherId } from '../../context/researcherContext';
@@ -58,6 +59,26 @@ export const getArticleRulesSchema = {
 
 export const nextArticleCaptureSchema = {
   runId: z.string().min(1).describe('The calibration run to choose the next capture for'),
+};
+
+export const judgeArticleCaptureSchema = {
+  runId: z.string().min(1).describe('The calibration run this verdict belongs to'),
+  snapshotId: z
+    .string()
+    .min(1)
+    .describe('The capture being judged — the snapshotId next_article_capture returned'),
+  verdict: z
+    .enum(['ACCEPTED', 'REJECTED', 'SKIPPED'])
+    .describe(
+      'ACCEPTED: the rules are right on this capture. REJECTED: the RULES are wrong here — never ' +
+        'that the capture is bad; it routes back to marking. SKIPPED: the capture genuinely ' +
+        'cannot be used, and a reason is REQUIRED.',
+    ),
+  reason: z
+    .string()
+    .min(1)
+    .optional()
+    .describe('Required for SKIPPED. A silent hole in the record is not permitted.'),
 };
 
 export const commitArticleRulesSchema = {
@@ -418,3 +439,94 @@ function coverageReport(
     captures: coverage.rows.map((r) => ({ date: r.date, verdict: r.verdict })),
   };
 }
+
+/**
+ * Record a verdict on one capture, from the researcher's own surface.
+ *
+ * THE PIECE THAT MADE THE REDESIGN INCONSISTENT UNTIL NOW. Sequencing moved to
+ * `next_article_capture` and approval to `commit_article_rules`, while the
+ * verdict — the actual judgement — was still written by the browser. The
+ * researcher noticed on the first session that used the new flow: "aren't we
+ * supposed to be using MCP tools now?" They were right; there was nothing to
+ * call.
+ *
+ * THE PARSER ARRIVES BY DYNAMIC IMPORT. Recording a verdict also records an
+ * observation, which derives the capture's text and therefore needs jsdom. A
+ * static import would put that chain in front of every `unit` suite that reaches
+ * these tools, which is the failure this module hit an hour before this was
+ * written.
+ */
+export async function judgeArticleCaptureHandler(input: {
+  runId: string;
+  snapshotId: string;
+  verdict: 'ACCEPTED' | 'REJECTED' | 'SKIPPED';
+  reason?: string;
+}): Promise<string> {
+  if (input.verdict === 'SKIPPED' && (input.reason === undefined || input.reason.trim() === '')) {
+    return JSON.stringify({
+      error:
+        'A skipped capture is recorded with its reason. A silent hole in the record is the one ' +
+        'outcome this corpus does not permit.',
+      runId: input.runId,
+    });
+  }
+
+  let before;
+  try {
+    before = await describeCalibrationRun(input.runId);
+  } catch {
+    return JSON.stringify({
+      error: 'No calibration run with that id. It may have been created against another environment.',
+      runId: input.runId,
+    });
+  }
+  if (before.state.status !== 'OPEN') {
+    return JSON.stringify({
+      error: `This run is ${before.state.status} and accepts no further decisions.`,
+      runId: input.runId,
+      status: before.state.status,
+    });
+  }
+
+  const { appendDecisionWithObservation } = await import('../../services/captureMarking');
+  try {
+    // The version is read here, not supplied: a researcher judging in chat is
+    // judging a capture, not a version number they have no way to hold.
+    await appendDecisionWithObservation(input.runId, before.state.version, {
+      type: VERDICT[input.verdict],
+      snapshotId: input.snapshotId,
+      ...(input.reason === undefined ? {} : { reason: input.reason }),
+    });
+  } catch (err) {
+    return JSON.stringify({
+      runId: input.runId,
+      error: err instanceof Error ? err.message : 'The verdict could not be recorded.',
+      hint: 'Re-read the run with get_article_rules and try again.',
+    });
+  }
+
+  const after = await describeRunCoverage(input.runId);
+  const state = await describeCalibrationRun(input.runId);
+  return JSON.stringify({
+    runId: input.runId,
+    recorded: input.verdict,
+    snapshotId: input.snapshotId,
+    coverage: coverageReport(after, state.state),
+    // A REJECTION DOES NOT ADVANCE. The plan: "reject routes back to
+    // calibration, it never skips a capture." The researcher fixes the rules and
+    // looks at the same capture again.
+    next:
+      input.verdict === 'REJECTED'
+        ? 'The rules are recorded as wrong here. Correct them in the marking page and judge this ' +
+          'capture again — a rejection routes back to calibration, it never skips a capture.'
+        : 'Call next_article_capture for the capture where the ruleset is most likely to have ' +
+          'stopped applying.',
+    staleSelectors: state.staleSelectors,
+  });
+}
+
+const VERDICT = {
+  ACCEPTED: CalibrationDecisionType.CAPTURE_ACCEPTED,
+  REJECTED: CalibrationDecisionType.CAPTURE_REJECTED,
+  SKIPPED: CalibrationDecisionType.CAPTURE_SKIPPED,
+} as const;

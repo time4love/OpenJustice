@@ -52,6 +52,20 @@ jest.mock('../src/services/captureMarking', () => ({
   loadCaptureForMarking: jest.fn(),
   previewUnderSelectors: jest.fn(),
   recordObservationForCapture: jest.fn().mockResolvedValue({ observationId: 'obs-1' }),
+  // The route delegates the whole append to this, so the browser and
+  // `judge_article_capture` write a decision by exactly the same code. The stub
+  // forwards to the real service append, which is what these tests assert on.
+  appendDecisionWithObservation: async (
+    runId: string,
+    expectedVersion: number,
+    decision: Parameters<typeof service.appendCalibrationDecision>[2],
+  ) => {
+    await service.appendCalibrationDecision(runId, expectedVersion, {
+      ...decision,
+      observationId: 'obs-1',
+    });
+    return { observationId: 'obs-1' };
+  },
 }));
 
 jest.mock('../src/services/calibrationRun', () => ({
