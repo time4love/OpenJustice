@@ -492,9 +492,13 @@ export async function checkRulesetSurvivalHandler(input: { runId: string }): Pro
   return JSON.stringify({
     ...report,
     next:
-      report.alerts === 0
-        ? 'No stored capture loses text under a rule that was never checked against it.'
-        : 'Each alerted capture must be re-judged under the current rules, or the suspect ' +
+      report.notTested === report.capturesChecked
+        ? 'NOTHING WAS TESTED: every capture had already been checked against every selector in ' +
+          'force, so no comparison was made. This is not a pass.'
+        : report.alerts === 0
+          ? `No stored capture loses text under a rule that was never checked against it. ` +
+            `${String(report.notTested)} capture(s) had nothing to test and are not counted as passing.`
+          : 'Each alerted capture must be re-judged under the current rules, or the suspect ' +
           'selector undone. `brokenApprovals` is the worse half: those captures had their ' +
           'extraction APPROVED, and an approval whose text has since changed no longer ' +
           'describes anything.',
@@ -573,6 +577,11 @@ export async function judgeArticleCaptureHandler(input: {
     if (promoted) {
       await appendDecisionWithObservation(input.runId, version, {
         type: CalibrationDecisionType.RULESET_CORRECTED,
+        // THE CAPTURE THESE SELECTORS WERE CHECKED AGAINST, and the only one they
+        // were. The draft has always known it; it used to be discarded one line
+        // later, which left every selector in the corpus without a date and made
+        // the survival check compare four captures against themselves.
+        snapshotId: input.snapshotId,
         selectors: [...draft.selectors],
       });
       version += 1;

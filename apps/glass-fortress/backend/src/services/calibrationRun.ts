@@ -550,26 +550,28 @@ export interface CalibrationDecisionInput {
  *
  * The rule is a property of the TYPE, so it is stated as one.
  */
-const CAPTURE_BEARING: ReadonlySet<CalibrationDecisionType> = new Set([
-  CalibrationDecisionType.CAPTURE_SHOWN,
-  CalibrationDecisionType.CAPTURE_ACCEPTED,
-  CalibrationDecisionType.CAPTURE_REJECTED,
-  CalibrationDecisionType.CAPTURE_SKIPPED,
-]);
-
+/**
+ * EVERY APPENDABLE DECISION IS ABOUT A CAPTURE, so every one must name it.
+ *
+ * This was a set of capture-bearing types and a refusal for the rest. The rest
+ * has since emptied: `CalibrationDecisionInput` excludes `RUN_OPENED` and
+ * `RUN_CLOSED` at the type level — they are the server's, not a caller's — and
+ * `RULESET_CORRECTED` joined the capture-bearing types once it became clear that
+ * a correction IS about a capture: the one that motivated it.
+ *
+ * That last one is not a tidying. It was previously REFUSED a subject, on the
+ * reasoning that a correction "changes the rules" while the next showing
+ * measures them. True of the OBSERVATION, false of the DECISION — and the
+ * difference cost the era design its input, because the only event that adds
+ * selectors was the only event recording nothing about what it was looking at.
+ * The selectors a correction adds were checked against exactly one capture, and
+ * that capture's DATE is what scopes every later question about them: which
+ * earlier captures a new rule could damage, and where one era ends and the next
+ * begins.
+ */
 function requireSubjectForType(input: CalibrationDecisionInput): void {
-  const named = input.snapshotId !== undefined || input.waybackTimestamp !== undefined;
-  if (CAPTURE_BEARING.has(input.type)) {
-    // Throws unless EXACTLY one identity is present.
-    requireObservationSubject(input);
-    return;
-  }
-  if (named) {
-    throw new Error(
-      `${input.type} is not about a capture and must not name one. A decision that names a ` +
-        'capture it is not about makes the log answer a question it was never asked.',
-    );
-  }
+  // Throws unless EXACTLY one identity is present.
+  requireObservationSubject(input);
 }
 
 /**
