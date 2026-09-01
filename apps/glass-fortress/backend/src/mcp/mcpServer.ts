@@ -15,6 +15,8 @@ import {
   correctArticleRulesHandler,
   getArticleRulesSchema,
   getArticleRulesHandler,
+  checkRulesetSurvivalHandler,
+  checkRulesetSurvivalSchema,
   openArticleCaptureSchema,
   openArticleCaptureHandler,
   judgeArticleCaptureSchema,
@@ -725,6 +727,25 @@ export function createMcpServer(): McpServer {
     },
     async (input) => ({
       content: [{ type: 'text' as const, text: await getArticleRulesHandler(input) }],
+    }),
+  );
+
+  server.registerTool(
+    'check_ruleset_survival',
+    {
+      description:
+        'Re-derive every ACCEPTED capture under the ruleset in force now, and report any text a ' +
+        'confirmed capture no longer keeps. A calibration ruleset is the UNION of every era it ' +
+        'has met, and a selector that names a POSITION rather than a thing can start removing ' +
+        'article text on an older capture that nobody re-renders. ACCEPTANCE IS A COMMITMENT: any ' +
+        'loss on a confirmed capture is an alert, whether or not the text was furniture, because ' +
+        'an approved extraction that changed without re-approval no longer describes anything. ' +
+        'Clear an alert by re-judging that capture under the current rules, or by undoing the ' +
+        'selector. Writes nothing.',
+      inputSchema: checkRulesetSurvivalSchema,
+    },
+    async (input) => ({
+      content: [{ type: 'text' as const, text: await checkRulesetSurvivalHandler(input) }],
     }),
   );
 

@@ -110,6 +110,9 @@ export const WRITE_TOOLS = new Set([
   'judge_article_capture',
   // Reads only, gated like the rest: it exposes a researcher's working state.
   'open_article_capture',
+  // Reads only, and gated for the same reason: it reports which captures of which
+  // page were accepted and where a later rule has since changed their text.
+  'check_ruleset_survival',
   'create_thesis_draft',
   'add_thesis_version',
   // Writes a new ThesisVersion. Cheaper and narrower than add_thesis_version —
