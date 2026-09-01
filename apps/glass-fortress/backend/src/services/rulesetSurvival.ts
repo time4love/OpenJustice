@@ -44,6 +44,18 @@ export interface CaptureSurvival {
   snapshotDate: string;
   /** The capture's extraction was approved, and this loss breaks that approval. */
   wasAccepted: boolean;
+  /**
+   * A comparison actually happened — there was at least one selector this capture
+   * had never been checked against.
+   *
+   * REPORTED SEPARATELY FROM `survived`, BECAUSE A COMPARISON THAT DID NOT HAPPEN
+   * IS NOT A PASS. With no suspects the baseline IS the current ruleset, and the
+   * check compares a capture with itself and finds it identical — which it will
+   * do forever, on any input. Counting that as intact is how a check reports
+   * safety it never looked for; the first run of this tool did exactly that for
+   * five of seven captures.
+   */
+  tested: boolean;
   survived: boolean;
   noLongerKept: readonly string[];
   noLongerKeptChars: number;
@@ -62,7 +74,13 @@ export interface RulesetSurvivalReport {
   runId: string;
   selectorsNow: number;
   capturesChecked: number;
+  /** Captures that HAD something to test and came through it unchanged. */
   intact: number;
+  /**
+   * Captures with no untested selector to try — nothing was compared. NOT a
+   * pass, and never folded into `intact`.
+   */
+  notTested: number;
   /**
    * Captures that have lost text. NON-ZERO IS A FINDING: each is a capture whose
    * text a later rule changed without that rule ever being checked against it.
@@ -98,13 +116,25 @@ export async function checkRulesetSurvival(runId: string): Promise<RulesetSurviv
   // WHERE EACH SELECTOR CAME FROM. First appearance wins: a selector present in
   // several later decisions was introduced once, and the capture on screen then
   // is the only one it was ever checked against.
+  //
+  // RECOVERED FOR DECISIONS WRITTEN BEFORE CORRECTIONS CARRIED A CAPTURE. Until
+  // this was fixed, `RULESET_CORRECTED` was FORBIDDEN to name one, so every
+  // selector in every existing run has no anchor of its own. It is recoverable
+  // exactly: `judge_article_capture` promotes the correction and THEN records the
+  // verdict for the same capture, so the anchor is the snapshot named by the next
+  // decision that names one. This is inference over a known writer, not a guess —
+  // and it costs nothing once new corrections carry their own.
   const anchors = new Map<string, Anchor>();
-  for (const decision of decisions) {
+  for (const [index, decision] of decisions.entries()) {
+    const named =
+      decision.snapshotId ??
+      decisions.slice(index + 1).find((later) => later.snapshotId !== null)?.snapshotId ??
+      null;
     for (const selector of decision.selectors) {
       if (anchors.has(selector)) continue;
       anchors.set(selector, {
-        snapshotId: decision.snapshotId,
-        date: decision.snapshotId === null ? null : (dates.get(decision.snapshotId) ?? null),
+        snapshotId: named,
+        date: named === null ? null : (dates.get(named) ?? null),
       });
     }
   }
@@ -161,6 +191,7 @@ export async function checkRulesetSurvival(runId: string): Promise<RulesetSurviv
       snapshotId,
       snapshotDate: captureDate,
       wasAccepted: approvedUnder !== undefined,
+      tested: suspects.length > 0,
       survived: comparison.survived,
       noLongerKept: comparison.noLongerKept,
       noLongerKeptChars: comparison.noLongerKeptChars,
@@ -174,12 +205,14 @@ export async function checkRulesetSurvival(runId: string): Promise<RulesetSurviv
     });
   }
 
-  const alerts = captures.filter((capture) => !capture.survived);
+  const tested = captures.filter((capture) => capture.tested);
+  const alerts = tested.filter((capture) => !capture.survived);
   return {
     runId,
     selectorsNow: current.length,
     capturesChecked: captures.length,
-    intact: captures.length - alerts.length,
+    intact: tested.length - alerts.length,
+    notTested: captures.length - tested.length,
     alerts: alerts.length,
     brokenApprovals: alerts.filter((capture) => capture.wasAccepted).length,
     captures,

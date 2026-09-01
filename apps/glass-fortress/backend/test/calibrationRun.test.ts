@@ -751,16 +751,34 @@ describe('a decision that is ABOUT a capture must name one', () => {
     expect(prisma.calibrationDecision.create).not.toHaveBeenCalled();
   });
 
-  it('refuses a correction that names a capture it is not about', async () => {
+  // THIS TEST HELD THE OPPOSITE RULE AND WAS WRONG, which is how the era design
+  // lost its input: a correction was REFUSED a capture, on the reasoning that it
+  // "changes the rules" rather than being about any one page. That is true of the
+  // observation and false of the decision. The selectors a correction adds were
+  // checked against exactly one capture, and that capture's date is what scopes
+  // every later question about them.
+  it('requires a correction to name the capture it was made against', async () => {
+    mockRun([OPENED]);
+    (prisma.calibrationDecision.create as jest.Mock).mockResolvedValue({});
+    await appendCalibrationDecision('run-1', 1, {
+      type: CalibrationDecisionType.RULESET_CORRECTED,
+      selectors: ['.ad'],
+      snapshotId: 'snap-1',
+    });
+    expect(prisma.calibrationDecision.create).toHaveBeenCalled();
+  });
+
+  it('refuses a correction that names no capture at all', async () => {
     mockRun([OPENED]);
     await expect(
       appendCalibrationDecision('run-1', 1, {
         type: CalibrationDecisionType.RULESET_CORRECTED,
         selectors: ['.ad'],
-        snapshotId: 'snap-1',
       }),
-    ).rejects.toThrow(/must not name one/);
+    ).rejects.toThrow(/neither was given/);
+    expect(prisma.calibrationDecision.create).not.toHaveBeenCalled();
   });
+
 
   it('accepts a capture named exactly once', async () => {
     mockRun([OPENED]);
