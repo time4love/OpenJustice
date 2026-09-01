@@ -4,7 +4,12 @@ import { routing } from '../../lib/publicRoutes';
 import { getResearcherId } from '../../context/researcherContext';
 import { admitUrl } from '../../services/admitUrl';
 import { fetchContentForRelevanceCheck } from '../../services/fetchContentForRelevanceCheck';
-import { describeCalibrationRun, openCalibrationRun } from '../../services/calibrationRun';
+import {
+  abandonCalibrationRun,
+  commitCalibrationRuleset,
+  describeCalibrationRun,
+  openCalibrationRun,
+} from '../../services/calibrationRun';
 import { renderApprovalEffect } from '../../services/approvalEffect';
 
 // ---------------------------------------------------------------------------
@@ -49,6 +54,109 @@ export const correctArticleRulesSchema = {
 export const getArticleRulesSchema = {
   runId: z.string().min(1).describe('The calibration run id returned by a start tool'),
 };
+
+export const commitArticleRulesSchema = {
+  runId: z.string().min(1).describe('The calibration run whose rules are to be put in force'),
+};
+
+export const abandonArticleRulesSchema = {
+  runId: z.string().min(1).describe('The calibration run to close without applying its rules'),
+};
+
+/**
+ * Approving and abandoning belong HERE, not on a web page.
+ *
+ * COMMITTING A RULESET IS A RESEARCH ACT — a researcher deciding that this filter
+ * becomes what the corpus reads for this page, saving a versioned ruleset and
+ * re-deriving every stored capture under it. Every other research act in this
+ * platform (`promote_evidence`, `publish_thesis`, `promote_scan_findings`) is
+ * authorised through a tool that declares its effect. Until now `commit` and
+ * `abandon` existed only as HTTP routes, which made this the one consequential
+ * act approved from a browser rather than from the researcher's own surface.
+ *
+ * The routes remain, so the interactive and headless paths stay the same path.
+ */
+async function closeRun(
+  runId: string,
+  close: (runId: string, expectedVersion: number) => Promise<unknown>,
+  describe: (result: unknown, before: Awaited<ReturnType<typeof describeCalibrationRun>>) => object,
+): Promise<string> {
+  let before;
+  try {
+    before = await describeCalibrationRun(runId);
+  } catch {
+    return JSON.stringify({
+      error: 'No calibration run with that id. It may have been created against another environment.',
+      runId,
+    });
+  }
+
+  if (before.state.status !== 'OPEN') {
+    return JSON.stringify({
+      error: `This run is ${before.state.status} and accepts no further decisions.`,
+      runId,
+      status: before.state.status,
+    });
+  }
+
+  try {
+    // THE VERSION IS READ HERE, NOT SUPPLIED BY THE CALLER. A researcher
+    // approving in chat is approving "commit this run", not "commit at version
+    // N" — a number they have no way to hold. If another writer moves the run
+    // between the read and the write the service refuses, and that refusal is
+    // reported rather than forced: a stale version means somebody else changed
+    // the rules, which is exactly when a silent overwrite would be wrong.
+    const result = await close(runId, before.state.version);
+    return JSON.stringify(describe(result, before));
+  } catch (err) {
+    return JSON.stringify({
+      runId,
+      error: err instanceof Error ? err.message : 'The run could not be closed.',
+      hint: 'Re-read the run with get_article_rules and try again.',
+    });
+  }
+}
+
+/** Put the marked rules in force, and re-derive every stored capture under them. */
+export async function commitArticleRulesHandler(input: { runId: string }): Promise<string> {
+  return closeRun(
+    input.runId,
+    commitCalibrationRuleset,
+    (result, before) => {
+      const committed = result as { rulesetId: string; articleRulesetId: string };
+      return {
+        runId: input.runId,
+        status: 'COMMITTED',
+        rulesetId: committed.rulesetId,
+        selectors: before.state.selectors,
+        capturesRederived: before.storedCaptures,
+        // WHAT WAS APPROVED, restated from the declaration the researcher saw.
+        applied: renderApprovalEffect(before.effect),
+        reversible:
+          'Reversible: mark again and commit. The documents are stored whole and are re-derived ' +
+          'from bytes already held, so no snapshot anchor is affected — an anchor commits to the ' +
+          'raw bytes, not to the derived text.',
+      };
+    },
+  );
+}
+
+/** Close the run without applying anything. The marking record is kept. */
+export async function abandonArticleRulesHandler(input: { runId: string }): Promise<string> {
+  return closeRun(
+    input.runId,
+    abandonCalibrationRun,
+    (_result, before) => ({
+      runId: input.runId,
+      status: 'ABANDONED',
+      // NOT "nothing was saved". The decision log is kept — what is NOT saved is
+      // the RULESET. Calling those the same thing is the confusion the marking
+      // page's own "close without saving" label caused.
+      keptRecord: `${String(before.state.capturesJudged)} judged capture(s) and their decisions remain in the log.`,
+      applied: 'No ruleset was saved. No capture was re-derived.',
+    }),
+  );
+}
 
 /** The one place a start tool's answer is composed, so the two cannot diverge. */
 async function startedRun(runId: string): Promise<string> {

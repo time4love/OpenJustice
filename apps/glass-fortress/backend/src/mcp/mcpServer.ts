@@ -15,6 +15,10 @@ import {
   correctArticleRulesHandler,
   getArticleRulesSchema,
   getArticleRulesHandler,
+  commitArticleRulesSchema,
+  commitArticleRulesHandler,
+  abandonArticleRulesSchema,
+  abandonArticleRulesHandler,
 } from './tools/articleRuleTools';
 import { createThesisDraftSchema, createThesisDraftHandler } from './tools/createThesisDraft';
 import { addThesisVersionSchema, addThesisVersionHandler } from './tools/addThesisVersion';
@@ -613,6 +617,38 @@ export function createMcpServer(): McpServer {
     },
     async (input) => ({
       content: [{ type: 'text' as const, text: await correctArticleRulesHandler(input) }],
+    }),
+  );
+
+  server.registerTool(
+    'commit_article_rules',
+    {
+      description:
+        'PUT THE MARKED RULES IN FORCE for this page: saves the ruleset as a new version and ' +
+        're-derives the text of every stored capture under it. THIS IS THE RESEARCH ACT of the ' +
+        'calibration flow and the researcher approves it HERE, not in the browser — the marking ' +
+        'page checks and corrects a ruleset, it does not decide. Read get_article_rules first and ' +
+        'show the effect and the selector list before calling this. Reversible: mark again and ' +
+        'commit. No snapshot anchor is affected, because an anchor commits to the raw bytes and ' +
+        'not to the derived text.',
+      inputSchema: commitArticleRulesSchema,
+    },
+    async (input) => ({
+      content: [{ type: 'text' as const, text: await commitArticleRulesHandler(input) }],
+    }),
+  );
+
+  server.registerTool(
+    'abandon_article_rules',
+    {
+      description:
+        'Close a calibration run WITHOUT applying its rules. No ruleset is saved and no capture ' +
+        'is re-derived. THE MARKING RECORD IS KEPT: the judged captures and their decisions stay ' +
+        'in the log, so this is "do not apply these rules", never "forget that this happened".',
+      inputSchema: abandonArticleRulesSchema,
+    },
+    async (input) => ({
+      content: [{ type: 'text' as const, text: await abandonArticleRulesHandler(input) }],
     }),
   );
 

@@ -30,18 +30,38 @@ jest.mock('../src/services/fetchContentForRelevanceCheck', () => ({
 const mockResearcherId = jest.fn();
 jest.mock('../src/context/researcherContext', () => ({ getResearcherId: mockResearcherId }));
 
+// ONLY THE TWO CLOSERS ARE MOCKED. `describeCalibrationRun` stays real, so every
+// assertion below still runs against the actual fold over a decision log — the
+// thing that can be wrong. What is stubbed is the write these tools delegate to,
+// which `calibrationRun.test.ts` already covers.
+const mockCommit = jest.fn();
+const mockAbandon = jest.fn();
+jest.mock('../src/services/calibrationRun', () => ({
+  ...jest.requireActual('../src/services/calibrationRun'),
+  commitCalibrationRuleset: (...args: unknown[]) => mockCommit(...args),
+  abandonCalibrationRun: (...args: unknown[]) => mockAbandon(...args),
+}));
+
 import { CalibrationDecisionType, CalibrationRunStatus } from '@prisma/client';
 import { prisma } from '../src/lib/prisma';
 import {
   calibrateArticleRulesHandler,
   correctArticleRulesHandler,
   getArticleRulesHandler,
+  commitArticleRulesHandler,
+  abandonArticleRulesHandler,
 } from '../src/mcp/tools/articleRuleTools';
 import { calibrationEffect, renderApprovalEffect } from '../src/services/approvalEffect';
 import { chromeRulesetId } from '../src/lib/chromeRuleset';
 
 interface Parsed {
   error?: string;
+  status?: string;
+  rulesetId?: string;
+  capturesRederived?: number;
+  applied?: string;
+  keptRecord?: string;
+  hint?: string;
   runId?: string;
   markingUrl?: string;
   storedCaptures?: number;
@@ -83,6 +103,8 @@ function armRun(types: CalibrationDecisionType[], selectors: string[] = []) {
 }
 
 beforeEach(() => {
+  mockCommit.mockReset();
+  mockAbandon.mockReset();
   mockResearcherId.mockReturnValue('res-1');
   (prisma.calibrationRun.create as jest.Mock).mockResolvedValue({ id: 'run-1' });
   (prisma.articleRuleset.findUnique as jest.Mock).mockResolvedValue(null);
@@ -236,5 +258,116 @@ describe('get_article_rules', () => {
     const out = JSON.parse(await getArticleRulesHandler({ runId: 'run-1' })) as Parsed;
 
     expect(out.staleSelectors?.map((s) => s.selector)).toEqual(['.ad']);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// COMMITTING IS A RESEARCH ACT, AND IT IS APPROVED HERE.
+//
+// It saves a versioned ruleset and re-derives every stored capture under it.
+// Until these tools existed it was reachable only from a web page, which made it
+// the one consequential act in this platform authorised somewhere other than the
+// researcher's own surface.
+// ---------------------------------------------------------------------------
+
+describe('commit_article_rules', () => {
+  it('answers rather than throwing when the run does not exist', async () => {
+    (prisma.calibrationRun.findUnique as jest.Mock).mockResolvedValue(null);
+
+    const out = JSON.parse(await commitArticleRulesHandler({ runId: 'gone' })) as Parsed;
+
+    expect(out.error).toContain('No calibration run');
+    expect(mockCommit).not.toHaveBeenCalled();
+  });
+
+  it('refuses a run that is already closed, and names its status', async () => {
+    armRun([CalibrationDecisionType.RUN_OPENED], ['#header']);
+    (prisma.calibrationRun.findUnique as jest.Mock).mockResolvedValue({
+      ...(await (prisma.calibrationRun.findUnique as jest.Mock)()),
+      status: CalibrationRunStatus.COMMITTED,
+    });
+
+    const out = JSON.parse(await commitArticleRulesHandler({ runId: 'run-1' })) as Parsed;
+
+    expect(out.status).toBe(CalibrationRunStatus.COMMITTED);
+    expect(out.error).toContain('COMMITTED');
+    // The refusal must not reach the writer at all.
+    expect(mockCommit).not.toHaveBeenCalled();
+  });
+
+  it('reads the version itself, because a researcher approving in chat has none', async () => {
+    armRun(
+      [CalibrationDecisionType.RUN_OPENED, CalibrationDecisionType.CAPTURE_SHOWN],
+      ['#header'],
+    );
+    mockCommit.mockResolvedValue({ rulesetId: 'abc123', articleRulesetId: 'ars-1' });
+
+    await commitArticleRulesHandler({ runId: 'run-1' });
+
+    // Version 2: the newest decision's sequence. The caller supplied nothing.
+    expect(mockCommit).toHaveBeenCalledWith('run-1', 2);
+  });
+
+  it('reports what was applied, including how many captures were re-derived', async () => {
+    armRun([CalibrationDecisionType.RUN_OPENED], ['#header', '#footer']);
+    (prisma.urlSnapshot.count as jest.Mock).mockResolvedValue(83);
+    mockCommit.mockResolvedValue({ rulesetId: 'abc123', articleRulesetId: 'ars-1' });
+
+    const out = JSON.parse(await commitArticleRulesHandler({ runId: 'run-1' })) as Parsed;
+
+    expect(out.status).toBe('COMMITTED');
+    expect(out.rulesetId).toBe('abc123');
+    expect(out.capturesRederived).toBe(83);
+    expect(out.selectors).toEqual(['#header', '#footer']);
+    // RENDERED from the declaration, never authored beside it.
+    expect(out.applied).toBe(renderApprovalEffect(calibrationEffect(83)));
+  });
+
+  it('surfaces a stale-version refusal as an answer with a way forward', async () => {
+    // Another writer moved the run between the read and the write. A silent
+    // overwrite is exactly wrong here: somebody else changed the rules.
+    armRun([CalibrationDecisionType.RUN_OPENED], ['#header']);
+    mockCommit.mockRejectedValue(new Error('Calibration run run-1 is at version 9, not 1.'));
+
+    const out = JSON.parse(await commitArticleRulesHandler({ runId: 'run-1' })) as Parsed;
+
+    expect(out.error).toContain('version 9');
+    expect(out.hint).toContain('get_article_rules');
+  });
+});
+
+describe('abandon_article_rules', () => {
+  it('says the RULESET was not saved, never that nothing was', async () => {
+    // "Close without saving" was the marking page's own label and it was a lie:
+    // accepting a capture DOES save a decision. What abandoning does not save is
+    // the ruleset, and the two must not be described as the same thing.
+    armRun(
+      [
+        CalibrationDecisionType.RUN_OPENED,
+        CalibrationDecisionType.CAPTURE_SHOWN,
+        CalibrationDecisionType.CAPTURE_ACCEPTED,
+      ],
+      ['#header'],
+    );
+    mockAbandon.mockResolvedValue({});
+
+    const out = JSON.parse(await abandonArticleRulesHandler({ runId: 'run-1' })) as Parsed;
+
+    expect(out.status).toBe('ABANDONED');
+    expect(out.keptRecord).toContain('remain in the log');
+    expect(out.applied).toContain('No ruleset was saved');
+  });
+
+  it('refuses a closed run without calling the writer', async () => {
+    armRun([CalibrationDecisionType.RUN_OPENED]);
+    (prisma.calibrationRun.findUnique as jest.Mock).mockResolvedValue({
+      ...(await (prisma.calibrationRun.findUnique as jest.Mock)()),
+      status: CalibrationRunStatus.ABANDONED,
+    });
+
+    const out = JSON.parse(await abandonArticleRulesHandler({ runId: 'run-1' })) as Parsed;
+
+    expect(out.error).toContain('ABANDONED');
+    expect(mockAbandon).not.toHaveBeenCalled();
   });
 });
