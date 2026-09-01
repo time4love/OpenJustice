@@ -95,6 +95,26 @@ export const checkRulesetSurvivalSchema = {
   runId: z.string().min(1).describe('The calibration run to re-check its accepted captures against'),
 };
 
+export const resolveEraBoundarySchema = {
+  runId: z.string().min(1).describe('The calibration run this resolution belongs to'),
+  snapshotId: z
+    .string()
+    .min(1)
+    .describe('The capture the rules stopped matching on — the one the detector stopped at'),
+  resolution: z
+    .enum(['REDESIGN', 'BAD_CAPTURE'])
+    .describe(
+      'REDESIGN: the page was rebuilt, so the era ENDS at this capture and the next opens here. ' +
+        'BAD_CAPTURE: this capture is unusable — truncated, an error page, a paywall redirect — and ' +
+        'the pass continues IN THE SAME ERA, however many consecutive bad captures occur.',
+    ),
+  reason: z
+    .string()
+    .min(1)
+    .optional()
+    .describe('Required for BAD_CAPTURE. A silent hole in the record is not permitted.'),
+};
+
 export const commitArticleRulesSchema = {
   runId: z.string().min(1).describe('The calibration run whose rules are to be put in force'),
 };
@@ -526,6 +546,124 @@ export async function checkRulesetSurvivalHandler(input: { runId: string }): Pro
           'selector undone. `brokenApprovals` is the worse half: those captures had their ' +
           'extraction APPROVED, and an approval whose text has since changed no longer ' +
           'describes anything.',
+  });
+}
+
+/**
+ * WHERE A DETECTION BECOMES A DECISION.
+ *
+ * The detectors notice that the rules stopped matching. Nothing in the system can
+ * say what that MEANS — a redesign and a truncated archive page look identical to
+ * a match rate — so the pass stops and puts one binary question to the researcher.
+ * This is where their answer enters the record.
+ *
+ * IT IS THE ONLY WAY AN ERA COMES INTO EXISTENCE. The plan: a boundary is always a
+ * DECISION and never an inference. That constrains every other tool more than it
+ * constrains this one — the detectors must stop and ask rather than conclude, and
+ * no other path may write `ERA_BOUNDARY`.
+ *
+ * THE TWO ANSWERS ARE DELIBERATELY ASYMMETRIC. Only `REDESIGN` creates anything.
+ * `BAD_CAPTURE` skips and continues in the SAME era however many consecutive ones
+ * occur — an archive outage or a stretch of paywall redirects is a real pattern,
+ * and no number of them adds up to a structural claim. An earlier draft required a
+ * failure to persist over k captures before declaring a boundary; `k` was a number
+ * with nothing measured behind it, and asking on the FIRST detection deletes it.
+ *
+ * A BOUNDARY CARRIES THE PREVIOUS ERA'S RULES FORWARD UNCHANGED, and this tool
+ * DERIVES NOTHING. An earlier design seeded the new era with the selectors that
+ * still matched — but that is a ruleset no human approved, sitting in the log
+ * looking exactly like one that had. After a boundary the rules genuinely have not
+ * changed; the PAGE has. The researcher's marking is what sets the new era's
+ * rules, and until then the era is UNCONFIRMED, so nothing acts on it.
+ *
+ * That behaviour needs no code here: `appendCalibrationDecision` already carries
+ * `current.selectors` forward for every decision that is not a correction.
+ *
+ * WHAT IT DOES NOT DO: it does not detect (it takes no thresholds and computes no
+ * signals), it does not judge whether the rules are RIGHT (that is
+ * `approve`/`judge`), it does not mark, it re-derives nothing, and it does not
+ * advance the pass. It records one answer about one capture.
+ */
+export async function resolveEraBoundaryHandler(input: {
+  runId: string;
+  snapshotId: string;
+  resolution: 'REDESIGN' | 'BAD_CAPTURE';
+  reason?: string;
+}): Promise<string> {
+  if (input.resolution === 'BAD_CAPTURE' && (input.reason === undefined || input.reason.trim() === '')) {
+    return JSON.stringify({
+      error:
+        'A capture recorded as unusable carries its reason. A silent hole in the record is the one ' +
+        'outcome this corpus does not permit.',
+      runId: input.runId,
+    });
+  }
+
+  let before;
+  try {
+    before = await describeCalibrationRun(input.runId);
+  } catch {
+    return JSON.stringify({
+      error: 'No calibration run with that id. It may have been created against another environment.',
+      runId: input.runId,
+    });
+  }
+  if (before.state.status !== 'OPEN') {
+    return JSON.stringify({
+      error: `This run is ${before.state.status} and accepts no further decisions.`,
+      runId: input.runId,
+      status: before.state.status,
+    });
+  }
+
+  try {
+    // DYNAMIC IMPORT, as `judge_article_capture` does: `captureMarking` reaches
+    // `chromeRulesetApply` and through it jsdom, whose dependency chain is
+    // ESM-only, so a static import here would pull it into every unit suite that
+    // loads this module.
+    const { appendDecisionWithObservation } = await import('../../services/captureMarking');
+    await appendDecisionWithObservation(input.runId, before.state.version, {
+      type:
+        input.resolution === 'REDESIGN'
+          ? CalibrationDecisionType.ERA_BOUNDARY
+          : CalibrationDecisionType.CAPTURE_SKIPPED,
+      snapshotId: input.snapshotId,
+      ...(input.reason === undefined ? {} : { reason: input.reason }),
+    });
+  } catch (err) {
+    return JSON.stringify({
+      runId: input.runId,
+      error: err instanceof Error ? err.message : 'The resolution could not be recorded.',
+      hint: 'Re-read the run with get_article_rules and try again.',
+    });
+  }
+
+  const after = await describeCalibrationRun(input.runId);
+  return JSON.stringify({
+    runId: input.runId,
+    snapshotId: input.snapshotId,
+    recorded: input.resolution,
+    selectors: after.state.selectors.length,
+    ...(input.resolution === 'REDESIGN'
+      ? {
+          eraOpened: true,
+          rulesCarriedForward:
+            'The new era starts with the previous era\'s rules UNCHANGED. This tool records that the ' +
+            'page was rebuilt; it does not guess the new rules, because a ruleset nobody approved ' +
+            'must not sit in the log looking like one that was.',
+          next:
+            'Mark this capture — it is the first of the new era and is never clean, because the rules ' +
+            'have not met this page before. The era is UNCONFIRMED until n consecutive captures need ' +
+            'no correction, and an unconfirmed era is abandonable.',
+        }
+      : {
+          eraOpened: false,
+          next:
+            'The capture is recorded as unusable and the pass continues IN THE SAME ERA. Consecutive ' +
+            'bad captures never add up to a boundary — only a REDESIGN opens an era. NOTE: a skipped ' +
+            'capture must also be excluded from DIFFING, or a truncated page manufactures a false ' +
+            '"text removed" diff; that is Level 5 and is NOT yet enforced.',
+        }),
   });
 }
 
