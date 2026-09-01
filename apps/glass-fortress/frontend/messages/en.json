@@ -1767,7 +1767,6 @@
   },
   "articleRules": {
     "title": "Mark page furniture",
-    "intro": "Mark navigation, ads and footers so they stop counting as changes. Nothing is saved until you approve.",
     "loading": "Loading the run…",
     "signedOut": "Sign in as a researcher to mark this page.",
     "offline": "Could not reach the server.",
@@ -1786,7 +1785,6 @@
     "invalidSelector": "The parser rejected this rule — it is a typo, not a rule that matched nothing.",
     "keptHeading": "Kept — what the pipeline would read",
     "removedHeading": "Removed — check this before you approve",
-    "removedWhy": "Over-matching is invisible in the kept text: a rule that swallows a paragraph leaves something clean and plausible on screen.",
     "removedNothing": "Nothing removed.",
     "removalFraction": "{percent}% of the derived text removed",
     "indicatorHeading": "Where this stands",
@@ -1811,14 +1809,12 @@
     "tabKept": "Text kept",
     "tabRules": "Rules",
     "outlineUnreachable": "{chars} characters cannot be marked — the structure was cut here.",
-    "outlineComplete": "The whole document is reachable.",
     "foldedWrappers": "folds {count} wrapper(s)",
     "marked": "marked",
     "unmark": "Click again to unmark",
     "expand": "Expand",
     "collapse": "Collapse",
-    "outlineHint": "Click a block to mark it as furniture. Click it again to unmark. Watch the removed pane on the right.",
-    "removedPinned": "Stays visible whichever tab is open — over-marking is invisible in the text that survives.",
+    "outlineHint": "Mark page elements to remove them from the final text of the document.",
     "wholeDocument": "The whole document — not a furniture rule, and not markable.",
     "recordedAccepted": "Recorded: the rules are right on this capture. Moving to the next one.",
     "recordedRejected": "Recorded: the rules are wrong here. Fix them and look again.",
@@ -1843,12 +1839,11 @@
     "judgedEpisodes": "{episodes} judgements in total, across {shown} times a capture was shown.",
     "repeatWarning": "Some captures were judged more than once. Judging one capture twice does not test the rules twice.",
     "indicatorSummary": "{distinct} captures judged · {streak} clean in a row",
-    "singleCaptureHeading": "When you are done here",
-    "singleCaptureNext": "Your marks are saved as you go. The verdict on this capture is recorded in the chat, not on this page — return there and record it with judge_article_capture.",
     "handBack": "Done — return this ruleset",
     "handBackDone": "Returned. Record the verdict in the chat with judge_article_capture.",
     "discardDraft": "Discard my changes",
     "discardDone": "Changes discarded. The rules in force are unchanged.",
-    "draftPending": "Saved as you go. Nothing is judged until you return it."
+    "captureFrom": "Capture from {date}",
+    "checkBeforeApproving": "Check this before approving"
   }
 }

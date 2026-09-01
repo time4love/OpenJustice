@@ -33,8 +33,12 @@ import {
 export interface CaptureForMarking {
   snapshotId: string;
   capturedAt: Date;
+  /** `YYYY-MM-DD`. The page has to say WHICH capture is on screen. */
+  snapshotDate: string;
   waybackTimestamp: string | null;
   snapshotUrl: string;
+  /** The page this capture is OF — not the archive link that serves it. */
+  pageUrl: string;
   /**
    * The document with scripts and event handlers removed, for rendering.
    *
@@ -93,11 +97,13 @@ async function loadBytes(snapshotId: string) {
       id: true,
       trackedUrlId: true,
       capturedAt: true,
+      snapshotDate: true,
       waybackTimestamp: true,
       snapshotUrl: true,
       document: true,
       documentContentType: true,
       documentContentEncoding: true,
+      trackedUrl: { select: { url: true } },
     },
   });
   if (!snapshot) throw new Error(`Capture ${snapshotId} not found.`);
@@ -116,8 +122,10 @@ export async function loadCaptureForMarking(snapshotId: string): Promise<Capture
   return {
     snapshotId: snapshot.id,
     capturedAt: snapshot.capturedAt,
+    snapshotDate: snapshot.snapshotDate,
     waybackTimestamp: snapshot.waybackTimestamp,
     snapshotUrl: snapshot.snapshotUrl,
+    pageUrl: snapshot.trackedUrl.url,
     html: inertDocument(html),
     outline: outline.root,
     outlineTruncated: outline.truncated,

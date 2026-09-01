@@ -111,6 +111,10 @@ interface CaptureDetail {
   outlineTruncated: boolean;
   /** How much of the document a cut put out of reach. `true` alone hid 76% once. */
   outlineUnreachableTextLength: number;
+  /** `YYYY-MM-DD` — the page has to say which capture is on screen. */
+  snapshotDate: string;
+  /** The page this capture is OF, not the archive link that serves it. */
+  pageUrl: string;
 }
 
 interface Preview {
@@ -527,8 +531,17 @@ export function ArticleRulesClient({ runId, snapshotId }: { runId: string; snaps
 
   return (
     <Shell>
-      <h1 className="text-2xl font-bold">{t('title')}</h1>
-      <p className="text-sm text-gray-600">{t('intro')}</p>
+      {/* WHICH CAPTURE, AND OF WHAT. The page carried a title and a paragraph of
+          instructions and never said what was on screen — a researcher deep in a
+          run had no way to tell one capture from another without leaving it. */}
+      <h1 className="text-2xl font-bold">
+        {capture === null ? t('title') : t('captureFrom', { date: capture.snapshotDate })}
+      </h1>
+      {capture !== null && (
+        <p className="text-sm text-gray-600" dir="ltr">
+          {capture.pageUrl}
+        </p>
+      )}
 
       {notice && <p className="rounded bg-amber-50 p-2 text-sm text-amber-900">{notice}</p>}
       {error && <p className="rounded bg-red-50 p-2 text-sm text-red-800">{error}</p>}
@@ -598,6 +611,9 @@ export function ArticleRulesClient({ runId, snapshotId }: { runId: string; snaps
           <section className="flex min-w-0 flex-col">
             <h2 className="font-semibold">{t('outlineHeading')}</h2>
             <p className="text-xs text-gray-600">{t('outlineHint')}</p>
+            {/* The "everything is reachable" line is gone: it reported a
+                non-event on every healthy page, which is noise. The TRUNCATED
+                case still speaks, because that one is a finding. */}
             {/* A CUT AND A LOSS ARE DIFFERENT FACTS. Saying "the structure was
                 cut — 0 characters cannot be marked" in one breath reads as a
                 contradiction and trains the researcher to ignore the warning
@@ -610,9 +626,7 @@ export function ArticleRulesClient({ runId, snapshotId }: { runId: string; snaps
               </p>
             ) : capture.outlineTruncated ? (
               <p className="mt-1 text-xs text-gray-500">{t('outlineTruncatedHarmless')}</p>
-            ) : (
-              <p className="mt-1 text-xs text-gray-500">{t('outlineComplete')}</p>
-            )}
+            ) : null}
             <div className="mt-1 h-[32rem] overflow-auto border border-gray-300 p-2 text-xs">
               <Outline
                 node={capture.outline}
@@ -763,12 +777,10 @@ export function ArticleRulesClient({ runId, snapshotId }: { runId: string; snaps
       */}
       {oneCapture && !closed && (
         <section className="rounded border border-gray-300 p-3">
-          <h2 className="font-semibold">{t('singleCaptureHeading')}</h2>
-          <p className="text-sm">{t('singleCaptureNext')}</p>
-          <p className="mt-1 text-xs text-gray-600">
-            {returnedAt === null ? t('draftPending') : t('handBackDone')}
-          </p>
-          <div className="mt-2 flex flex-wrap gap-2">
+          {returnedAt !== null && (
+            <p className="mb-2 text-xs text-green-800">{t('handBackDone')}</p>
+          )}
+          <div className="flex flex-wrap gap-2">
             <button
               type="button"
               disabled={busy}
@@ -1294,9 +1306,14 @@ function RemovedPane({
   const empty = preview.removedText === '';
   return (
     <section className="min-w-0">
-      <h2 className="font-semibold">{t('removedHeading')}</h2>
-      <p className="text-xs text-gray-600">{t('removedWhy')}</p>
-      <p className="text-xs text-gray-500">{t('removedPinned')}</p>
+      {/* A BOLD LINE, NOT A PARAGRAPH. Everything below it is what has to be
+          checked before approving, and a rule across the page says that faster
+          than three sentences explaining why over-matching is invisible — which
+          is true, and is why this pane exists, and belongs in the code rather
+          than on screen. */}
+      <div className="mb-2 border-t-4 border-amber-500 pt-2">
+        <h2 className="font-semibold">{t('removedHeading')}</h2>
+      </div>
       <p className={`text-sm ${percent > 0 ? 'font-semibold text-amber-900' : 'text-gray-600'}`}>
         {/* A NUMBER THAT IS SILENTLY OUT OF DATE IS WORSE THAN NO NUMBER, because
             this pane is the only thing that catches over-matching. */}
