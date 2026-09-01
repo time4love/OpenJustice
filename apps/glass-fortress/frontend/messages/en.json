@@ -1791,7 +1791,6 @@
     "removalFraction": "{percent}% of the derived text removed",
     "indicatorHeading": "Where this stands",
     "noCaptureYet": "No capture has been judged yet — this says nothing about the rules. Showing a capture is not judging it.",
-    "cleanStreak": "{streak} of {judged} judged capture(s) in a row needed no correction, across {distinct} different captures.",
     "streakCaveat": "Only informative if those captures were chosen to disagree — similar pages produce no corrections and test nothing.",
     "staleHeading": "Rules to check",
     "staleNever": "has never matched anything, on any capture",
@@ -1827,10 +1826,8 @@
     "sampleExhausted": "Every capture in the sample has been judged.",
     "saving": "Saving…",
     "judgedBadge": "judged",
-    "judgedOfShown": "{judged} of {shown} captures shown have been judged.",
     "streakLine": "The last {streak} judged, in a row, needed no correction.",
     "correctionLine": "{needing} of {judged} judged captures needed the rules corrected.",
-    "distinctLine": "{distinct} different captures have been shown.",
     "previewPending": "Recomputing…",
     "captureVerdictHeading": "This capture",
     "finishHeading": "Finish the calibration",
@@ -1840,6 +1837,11 @@
     "effectReversible": "Reversible — mark again and apply. The documents are stored whole and re-derived from bytes already held, so no anchor is affected.",
     "effectHeading": "Applying will:",
     "outlineTruncatedHarmless": "The structure was cut at branches holding no text, so nothing is out of reach.",
-    "unmarkThisRule": "Click to unmark the rule that removed this"
+    "unmarkThisRule": "Click to unmark the rule that removed this",
+    "renderedOutlineNote": "Marked elements are outlined here. If the article is outlined, a rule has swallowed it.",
+    "judgedDistinct": "{distinct} different captures have been judged.",
+    "judgedEpisodes": "{episodes} judgements in total, across {shown} times a capture was shown.",
+    "repeatWarning": "Some captures were judged more than once. Judging one capture twice does not test the rules twice.",
+    "indicatorSummary": "{distinct} captures judged · {streak} clean in a row"
   }
 }
