@@ -18,7 +18,7 @@ import {
   previewUnderSelectors,
   recordObservationForCapture,
 } from '../services/captureMarking';
-import { stratifiedSample } from '../lib/timelineSample';
+import { CAPTURE_SAMPLE, stratifiedSample } from '../lib/timelineSample';
 import { prisma } from '../lib/prisma';
 
 // ---------------------------------------------------------------------------
@@ -128,7 +128,7 @@ router.get('/:runId', async (req: RunRequest, res: Response): Promise<void> => {
 // or an anchor; it renders bytes already held and derives views over them.
 // -------------------------------------------------------------------------
 
-const CAPTURE_SAMPLE = 12;
+// `CAPTURE_SAMPLE` now lives beside the sampler — the adaptive policy needs it too.
 
 // GET /api/article-rules/:runId/captures — which captures to mark against.
 //

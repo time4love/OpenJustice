@@ -15,6 +15,8 @@ import {
   correctArticleRulesHandler,
   getArticleRulesSchema,
   getArticleRulesHandler,
+  nextArticleCaptureSchema,
+  nextArticleCaptureHandler,
   commitArticleRulesSchema,
   commitArticleRulesHandler,
   abandonArticleRulesSchema,
@@ -617,6 +619,24 @@ export function createMcpServer(): McpServer {
     },
     async (input) => ({
       content: [{ type: 'text' as const, text: await correctArticleRulesHandler(input) }],
+    }),
+  );
+
+  server.registerTool(
+    'next_article_capture',
+    {
+      description:
+        'WHICH CAPTURE TO MARK NEXT, and why. Returns the coverage so far — DISTINCT captures ' +
+        'judged, with their dates and verdicts — and recommends the capture where the ruleset is ' +
+        'most likely to have STOPPED APPLYING: the one furthest in time from anything already ' +
+        'judged. It RECOMMENDS and does not sequence; the researcher may open any capture. Also ' +
+        'reports whether the stopping rule (no corrections on the last three) is satisfied, and ' +
+        'any selector that has stopped matching — a clean streak on a ruleset that no longer ' +
+        'matches is the emptiest kind of agreement.',
+      inputSchema: nextArticleCaptureSchema,
+    },
+    async (input) => ({
+      content: [{ type: 'text' as const, text: await nextArticleCaptureHandler(input) }],
     }),
   );
 

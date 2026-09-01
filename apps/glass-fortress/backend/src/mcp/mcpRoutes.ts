@@ -102,6 +102,10 @@ export const WRITE_TOOLS = new Set([
   // unclassified.
   'commit_article_rules',
   'abandon_article_rules',
+  // Writes nothing, and gated for the same reason `get_article_rules` is: it
+  // returns a researcher's in-progress working state — which captures of which
+  // page are being marked, and where the rules are failing.
+  'next_article_capture',
   'create_thesis_draft',
   'add_thesis_version',
   // Writes a new ThesisVersion. Cheaper and narrower than add_thesis_version —

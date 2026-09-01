@@ -11,6 +11,7 @@ import {
   openCalibrationRun,
 } from '../../services/calibrationRun';
 import { renderApprovalEffect } from '../../services/approvalEffect';
+import { describeRunCoverage } from '../../services/runCoverage';
 
 // ---------------------------------------------------------------------------
 // LEVEL 4 — the three tools, over one service.
@@ -53,6 +54,10 @@ export const correctArticleRulesSchema = {
 
 export const getArticleRulesSchema = {
   runId: z.string().min(1).describe('The calibration run id returned by a start tool'),
+};
+
+export const nextArticleCaptureSchema = {
+  runId: z.string().min(1).describe('The calibration run to choose the next capture for'),
 };
 
 export const commitArticleRulesSchema = {
@@ -277,9 +282,14 @@ export async function getArticleRulesHandler(input: { runId: string }): Promise<
   }
 
   const { state } = detail;
+  const coverage = await describeRunCoverage(input.runId);
   return JSON.stringify({
     runId: state.runId,
     status: state.status,
+    // COVERAGE LEADS, and it leads with DISTINCT captures. Everything below is
+    // about the rules; this is the only part that says how much of the page's
+    // history they have actually been tested against.
+    coverage: coverageReport(coverage, state),
     version: state.version,
     selectors: state.selectors,
     rulesetId: state.rulesetId,
@@ -308,4 +318,103 @@ export async function getArticleRulesHandler(input: { runId: string }): Promise<
     effect: renderApprovalEffect(detail.effect),
     markingUrl: routing.articleRulesUrl(state.runId),
   });
+}
+
+/**
+ * WHICH CAPTURE TO LOOK AT NEXT, and why — the adaptive half of the policy.
+ *
+ * Its purpose was settled by measurement rather than design: on 2026-09-01 one
+ * unchanged ruleset matched 19 of 21 selectors on a 2020 capture, 16 of 21 nine
+ * days later and 3 of 21 after 4.3 years. Decay along the time axis is a
+ * BOUNDARY, so the job is to find it — reach for the point furthest from
+ * everything judged, then bisect.
+ *
+ * IT RECOMMENDS; IT DOES NOT SEQUENCE. The researcher can open any capture they
+ * like, which is why the reason travels with the pick: a recommendation nobody
+ * can disagree with usefully is not a recommendation.
+ */
+export async function nextArticleCaptureHandler(input: { runId: string }): Promise<string> {
+  let detail;
+  let coverage;
+  try {
+    [detail, coverage] = await Promise.all([
+      describeCalibrationRun(input.runId),
+      describeRunCoverage(input.runId),
+    ]);
+  } catch {
+    return JSON.stringify({
+      error: 'No calibration run with that id. It may have been created against another environment.',
+      runId: input.runId,
+    });
+  }
+
+  const { state } = detail;
+  const picked = coverage.next;
+  const row =
+    picked === null ? null : (coverage.rows.find((r) => r.snapshotId === picked.snapshotId) ?? null);
+
+  return JSON.stringify({
+    runId: state.runId,
+    status: state.status,
+    coverage: coverageReport(coverage, state),
+    nextCapture:
+      picked === null || row === null
+        ? null
+        : {
+            snapshotId: picked.snapshotId,
+            date: row.date,
+            markingUrl: routing.articleRulesUrl(state.runId),
+            why: WHY[picked.reason],
+            daysFromNearestJudged: picked.daysFromNearestJudged,
+          },
+    // THE STOPPING RULE IS REPORTED, NEVER ENFORCED. Level 4's rule is "no
+    // corrections on the last three versions" — and a streak means nothing
+    // unless the captures were chosen to disagree, which is exactly what this
+    // tool is now for. Stale selectors are reported beside it because a clean
+    // streak on a ruleset that has stopped matching is the emptiest kind of
+    // agreement.
+    stopping:
+      picked === null
+        ? 'Every capture in the sample has been judged.'
+        : state.consecutiveCleanCaptures >= 3
+          ? `${String(state.consecutiveCleanCaptures)} judged captures in a row needed no correction — ` +
+            'the stopping rule is satisfied. Informative only if those captures were chosen to disagree.'
+          : `${String(state.consecutiveCleanCaptures)} of the last judged captures needed no correction; ` +
+            'the stopping rule asks for three.',
+    staleSelectors: detail.staleSelectors,
+    message:
+      picked === null
+        ? 'Nothing left to show. Call commit_article_rules to put these rules in force, or ' +
+          'abandon_article_rules to close without applying them.'
+        : 'Open the marking URL and select this capture. Marking is visual and cannot be done ' +
+          'through a chat tool.',
+  });
+}
+
+const WHY: Record<NonNullable<Awaited<ReturnType<typeof describeRunCoverage>>['next']>['reason'], string> = {
+  FIRST:
+    'Nothing has been judged yet, so this starts in the MIDDLE of the history rather than at the ' +
+    'earliest capture — the oldest era may be a template the site has left entirely.',
+  FURTHEST_FROM_JUDGED:
+    'This capture is the furthest in time from anything already judged, so it is where the ruleset ' +
+    'is most likely to have stopped applying.',
+  ONLY_REMAINING: 'It is the only capture in the sample not yet judged.',
+};
+
+/** Coverage, DISTINCT CAPTURES FIRST — the number that says anything about it. */
+function coverageReport(
+  coverage: Awaited<ReturnType<typeof describeRunCoverage>>,
+  state: { capturesJudged: number; capturesShown: number },
+): object {
+  return {
+    distinctCapturesJudged: coverage.distinctJudged,
+    sampleSize: coverage.rows.length,
+    storedCaptures: coverage.storedCaptures,
+    // Reported after, and separately: a capture judged twice is two episodes and
+    // one capture, and presenting them as the same thing is how the page once
+    // showed two judgements of one capture as coverage of two.
+    judgements: state.capturesJudged,
+    capturesShown: state.capturesShown,
+    captures: coverage.rows.map((r) => ({ date: r.date, verdict: r.verdict })),
+  };
 }

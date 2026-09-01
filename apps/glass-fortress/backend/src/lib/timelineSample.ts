@@ -36,6 +36,16 @@
  * asking for more of the history than exists is not an error, it is a short
  * history.
  */
+/**
+ * How many captures a run puts in front of a researcher.
+ *
+ * DEFINED BESIDE THE SAMPLER, because two callers now need it: the browser's
+ * capture list and the adaptive policy that picks the next one. A second
+ * declaration would let the page and the tool disagree about what "the sample"
+ * is, and the policy's whole job is to choose within it.
+ */
+export const CAPTURE_SAMPLE = 12;
+
 export function stratifiedSample<T>(items: readonly T[], count: number): T[] {
   if (count <= 0 || items.length === 0) return [];
   if (count >= items.length) return [...items];

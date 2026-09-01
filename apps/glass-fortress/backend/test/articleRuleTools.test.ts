@@ -16,7 +16,7 @@ jest.mock('../src/lib/prisma', () => ({
     trackedUrl: { findUnique: jest.fn() },
     calibrationRun: { findUnique: jest.fn(), create: jest.fn() },
     articleRuleset: { findUnique: jest.fn() },
-    urlSnapshot: { count: jest.fn() },
+    urlSnapshot: { count: jest.fn(), findMany: jest.fn() },
     rulesetObservation: { findMany: jest.fn() },
   },
 }));
@@ -48,14 +48,26 @@ import {
   calibrateArticleRulesHandler,
   correctArticleRulesHandler,
   getArticleRulesHandler,
+  nextArticleCaptureHandler,
   commitArticleRulesHandler,
   abandonArticleRulesHandler,
 } from '../src/mcp/tools/articleRuleTools';
 import { calibrationEffect, renderApprovalEffect } from '../src/services/approvalEffect';
 import { chromeRulesetId } from '../src/lib/chromeRuleset';
 
+interface CoverageShape {
+  distinctCapturesJudged?: number;
+  judgements?: number;
+  sampleSize?: number;
+  captures?: { date: string; verdict: string | null }[];
+}
+
 interface Parsed {
   error?: string;
+  coverage?: CoverageShape;
+  nextCapture?: { date?: string; why?: string; daysFromNearestJudged?: number } | null;
+  stopping?: string;
+  message?: string;
   status?: string;
   rulesetId?: string;
   capturesRederived?: number;
@@ -109,6 +121,9 @@ beforeEach(() => {
   (prisma.calibrationRun.create as jest.Mock).mockResolvedValue({ id: 'run-1' });
   (prisma.articleRuleset.findUnique as jest.Mock).mockResolvedValue(null);
   (prisma.urlSnapshot.count as jest.Mock).mockResolvedValue(0);
+  // Coverage reads the snapshots to build the sample. Empty by default: these
+  // tests are about the tools' seams, not about the sampler.
+  (prisma.urlSnapshot.findMany as jest.Mock).mockResolvedValue([]);
   (prisma.rulesetObservation.findMany as jest.Mock).mockResolvedValue([]);
   armRun([CalibrationDecisionType.RUN_OPENED]);
 });
@@ -369,5 +384,153 @@ describe('abandon_article_rules', () => {
 
     expect(out.error).toContain('ABANDONED');
     expect(mockAbandon).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// next_article_capture — the adaptive half, at the seam between policy and run.
+//
+// The policy itself is pure and tested in `nextCapture.test.ts`. What only
+// exists here is the JOIN: dates rather than cuids, coverage that leads with
+// DISTINCT captures, and a stopping rule that is reported rather than enforced.
+// ---------------------------------------------------------------------------
+
+function armSnapshots(rows: { id: string; date: string }[]) {
+  (prisma.urlSnapshot.findMany as jest.Mock).mockResolvedValue(
+    rows.map((r) => ({
+      id: r.id,
+      capturedAt: new Date(`${r.date}T00:00:00Z`),
+      snapshotDate: r.date,
+    })),
+  );
+}
+
+describe('next_article_capture', () => {
+  it('answers rather than throwing when the run does not exist', async () => {
+    (prisma.calibrationRun.findUnique as jest.Mock).mockResolvedValue(null);
+    const out = JSON.parse(await nextArticleCaptureHandler({ runId: 'gone' })) as Parsed;
+    expect(out.error).toContain('No calibration run');
+  });
+
+  it('reports coverage by DATE, because a chat table keyed by cuid is unreadable', async () => {
+    armSnapshots([
+      { id: 's1', date: '2020-12-09' },
+      { id: 's2', date: '2022-05-23' },
+      { id: 's3', date: '2025-03-26' },
+    ]);
+    armRun([CalibrationDecisionType.RUN_OPENED], ['#header']);
+
+    const out = JSON.parse(await nextArticleCaptureHandler({ runId: 'run-1' })) as Parsed;
+
+    expect(out.coverage?.captures).toEqual([
+      { date: '2020-12-09', verdict: null },
+      { date: '2022-05-23', verdict: null },
+      { date: '2025-03-26', verdict: null },
+    ]);
+  });
+
+  it('leads with DISTINCT captures judged, reporting judgements separately', async () => {
+    // The page once showed two judgements of ONE capture as coverage of two.
+    // Coverage is about how many DIFFERENT documents the rules were tested
+    // against; episodes are a different fact and sit behind it.
+    armSnapshots([
+      { id: 's1', date: '2020-12-09' },
+      { id: 's2', date: '2025-03-26' },
+    ]);
+    (prisma.calibrationRun.findUnique as jest.Mock).mockResolvedValue({
+      id: 'run-1',
+      trackedUrlId: 'url-1',
+      researcherId: 'res-1',
+      status: CalibrationRunStatus.OPEN,
+      seededFromRulesetId: null,
+      committedRulesetId: null,
+      createdAt: new Date(),
+      closedAt: null,
+      decisions: [
+        ...decisions([CalibrationDecisionType.RUN_OPENED], ['#header']),
+        // The SAME capture shown and judged twice.
+        { ...decisions([CalibrationDecisionType.CAPTURE_SHOWN], ['#header'])[0], sequence: 2, snapshotId: 's1' },
+        { ...decisions([CalibrationDecisionType.CAPTURE_ACCEPTED], ['#header'])[0], sequence: 3, snapshotId: 's1' },
+        { ...decisions([CalibrationDecisionType.CAPTURE_SHOWN], ['#header'])[0], sequence: 4, snapshotId: 's1' },
+        { ...decisions([CalibrationDecisionType.CAPTURE_ACCEPTED], ['#header'])[0], sequence: 5, snapshotId: 's1' },
+      ],
+    });
+
+    const out = JSON.parse(await nextArticleCaptureHandler({ runId: 'run-1' })) as Parsed;
+
+    expect(out.coverage?.distinctCapturesJudged).toBe(1);
+    expect(out.coverage?.judgements).toBe(2);
+  });
+
+  it('recommends the capture furthest from anything judged, and says why', async () => {
+    armSnapshots([
+      { id: 's1', date: '2020-12-09' },
+      { id: 's2', date: '2022-05-23' },
+      { id: 's3', date: '2025-03-26' },
+    ]);
+    (prisma.calibrationRun.findUnique as jest.Mock).mockResolvedValue({
+      id: 'run-1',
+      trackedUrlId: 'url-1',
+      researcherId: 'res-1',
+      status: CalibrationRunStatus.OPEN,
+      seededFromRulesetId: null,
+      committedRulesetId: null,
+      createdAt: new Date(),
+      closedAt: null,
+      decisions: [
+        ...decisions([CalibrationDecisionType.RUN_OPENED], ['#header']),
+        { ...decisions([CalibrationDecisionType.CAPTURE_SHOWN], ['#header'])[0], sequence: 2, snapshotId: 's1' },
+        { ...decisions([CalibrationDecisionType.CAPTURE_ACCEPTED], ['#header'])[0], sequence: 3, snapshotId: 's1' },
+      ],
+    });
+
+    const out = JSON.parse(await nextArticleCaptureHandler({ runId: 'run-1' })) as Parsed;
+
+    // The far end — where a ruleset built on 2020 is likeliest to have stopped
+    // applying. This is the click that found the news page's boundary.
+    expect(out.nextCapture?.date).toBe('2025-03-26');
+    expect(out.nextCapture?.why).toContain('furthest in time');
+    expect(out.nextCapture?.daysFromNearestJudged).toBeGreaterThan(1500);
+  });
+
+  it('reports the sample exhausted, and points at the two closing tools', async () => {
+    armSnapshots([]);
+    armRun([CalibrationDecisionType.RUN_OPENED], ['#header']);
+
+    const out = JSON.parse(await nextArticleCaptureHandler({ runId: 'run-1' })) as Parsed;
+
+    expect(out.nextCapture).toBeNull();
+    expect(out.message).toContain('commit_article_rules');
+    expect(out.message).toContain('abandon_article_rules');
+  });
+
+  it('REPORTS the stopping rule rather than enforcing it', async () => {
+    // Three clean captures satisfies "no corrections on the last three" — and it
+    // still returns a next capture. The researcher decides when to stop.
+    armSnapshots([
+      { id: 's1', date: '2020-12-09' },
+      { id: 's2', date: '2021-06-12' },
+      { id: 's3', date: '2022-05-23' },
+      { id: 's4', date: '2025-03-26' },
+    ]);
+    (prisma.calibrationRun.findUnique as jest.Mock).mockResolvedValue({
+      id: 'run-1',
+      trackedUrlId: 'url-1',
+      researcherId: 'res-1',
+      status: CalibrationRunStatus.OPEN,
+      seededFromRulesetId: null,
+      committedRulesetId: null,
+      createdAt: new Date(),
+      closedAt: null,
+      decisions: ['s1', 's2', 's3'].flatMap((snapshotId, i) => [
+        { ...decisions([CalibrationDecisionType.CAPTURE_SHOWN], ['#header'])[0], sequence: i * 2 + 1, snapshotId },
+        { ...decisions([CalibrationDecisionType.CAPTURE_ACCEPTED], ['#header'])[0], sequence: i * 2 + 2, snapshotId },
+      ]),
+    });
+
+    const out = JSON.parse(await nextArticleCaptureHandler({ runId: 'run-1' })) as Parsed;
+
+    expect(out.stopping).toContain('stopping rule is satisfied');
+    expect(out.nextCapture).not.toBeNull();
   });
 });
