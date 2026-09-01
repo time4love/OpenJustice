@@ -667,12 +667,15 @@ export async function openArticleCaptureHandler(input: {
     draft: describeDraft(draft, detail.state.selectors),
     rulesStillMatching: `${String(matched)} of ${String(detail.state.selectors.length)} selectors`,
     removalFraction: Math.round(preview.removalFraction * 100) / 100,
+    removedSample: sampleRemoved(preview.removedSegments),
     // THE CAVEAT TRAVELS WITH THE NUMBERS, because they invite exactly one wrong
     // reading and it is the dangerous one.
     whatTheNumbersDoNotSay:
       'These say whether the rules still MATCH this capture. They do NOT say whether what was ' +
       'removed is furniture — a rule that has swallowed a paragraph reports a healthy percentage. ' +
-      'Open the capture and read the removed pane; that judgement is why the page exists.',
+      '`removedSample` is a TRUNCATED sample of each block, enough to spot prose among furniture ' +
+      'and not a substitute for looking: open the capture and read the removed pane. That ' +
+      'judgement is the researcher\'s and is why the page exists.',
     message:
       'Open the capture URL, check what the rules remove, correct them if needed, then record the ' +
       'verdict with judge_article_capture.',
@@ -724,4 +727,38 @@ function describeDraft(
         ? 'Still being edited in the marking page. It will not be promoted until it is handed back.'
         : 'Handed back. judge_article_capture will record it as a correction before the verdict.',
   };
+}
+
+/** How much of each removed block travels back to the chat. */
+const REMOVED_SAMPLE = 200;
+
+/**
+ * A SAMPLE of what each rule removed — deliberately not the whole thing.
+ *
+ * WITHOUT IT THE EVIDENCE NEVER REACHES THE CONVERSATION. A researcher on
+ * claude.ai has an MCP connector and nothing else: no developer tools, no way for
+ * the assistant to read the page. The tool reported that 68% was removed and
+ * said nothing about WHAT, so the only record of an approval was the word
+ * "accepted" with no trace of what had been inspected.
+ *
+ * TRUNCATED ON PURPOSE, AND THE TRUNCATION IS THE POINT. The news page removes
+ * 6,548 characters; returning all of it every call is unreasonable, and a tool
+ * that handed over the whole document would invite the assistant to judge it —
+ * which is the one thing this level says it does not do. A sample is enough to
+ * spot PROSE among furniture and not enough to substitute for looking.
+ *
+ * `fullLength` travels with each sample so a truncated block cannot be mistaken
+ * for a short one — the same reason `truncated` exists on the outline.
+ */
+function sampleRemoved(
+  segments: readonly { selector: string; text: string }[],
+): { selector: string; sample: string; fullLength: number }[] {
+  return segments.map((seg) => {
+    const flat = seg.text.replace(/\s+/g, ' ').trim();
+    return {
+      selector: seg.selector,
+      sample: flat.length > REMOVED_SAMPLE ? `${flat.slice(0, REMOVED_SAMPLE)}…` : flat,
+      fullLength: seg.text.length,
+    };
+  });
 }
