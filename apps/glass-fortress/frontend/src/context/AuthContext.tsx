@@ -1,7 +1,16 @@
 'use client';
 
-import { createContext, useContext, useMemo, useState, useCallback, ReactNode } from 'react';
+import { createContext, useContext, useEffect, useMemo, useState, useCallback, ReactNode } from 'react';
 import { apiUrl } from '@/lib/api';
+import {
+  clearSession,
+  msUntilRefresh,
+  needsRefresh,
+  readSession,
+  refreshSession,
+  writeSession,
+  type StoredSession,
+} from '@/lib/session';
 import { useAsyncData, type AsyncFetcher } from '@/hooks/useAsyncData';
 
 // ---------------------------------------------------------------------------
@@ -23,8 +32,13 @@ interface AuthState {
 }
 
 interface AuthContextValue extends AuthState {
-  /** Store a new Supabase access token and load the researcher profile. */
-  login: (accessToken: string) => Promise<void>;
+  /**
+   * Store a new Supabase session and load the researcher profile. A bare token
+   * is accepted for the call sites that only ever had one (re-reading the
+   * profile after registering a handle); it keeps whatever refresh token is
+   * already stored rather than dropping it.
+   */
+  login: (session: StoredSession | string) => Promise<void>;
   /** Clear session from memory and localStorage. */
   logout: () => void;
 }
@@ -34,8 +48,6 @@ interface AuthContextValue extends AuthState {
 // ---------------------------------------------------------------------------
 
 const AuthContext = createContext<AuthContextValue | null>(null);
-
-const STORAGE_KEY = 'gf_access_token';
 
 /** Signed out — the answer both "no stored token" and "stored token is dead" reduce to. */
 const SIGNED_OUT: Session = { accessToken: null, researcher: null };
@@ -73,14 +85,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // restore is still doing, even if it lands afterwards.
   const restoreSession = useMemo<AsyncFetcher<Session> | null>(
     () => async (signal) => {
-      const stored = localStorage.getItem(STORAGE_KEY);
+      const stored = readSession();
       if (!stored) return SIGNED_OUT;
-      const researcher = await fetchProfile(stored, signal);
+      // A tab reopened after the token's hour is up starts by renewing it. This
+      // is the common case for a researcher who left the page open overnight,
+      // and without it the restore below would 401 and sign them out on sight.
+      const live = needsRefresh(stored) ? await refreshSession() : stored;
+      if (!live) return SIGNED_OUT;
+      const researcher = await fetchProfile(live.accessToken, signal);
       if (!researcher) {
-        localStorage.removeItem(STORAGE_KEY);
+        clearSession();
         return SIGNED_OUT;
       }
-      return { accessToken: stored, researcher };
+      return { accessToken: live.accessToken, researcher };
     },
     [],
   );
@@ -93,13 +110,75 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const session = override ?? restored;
   const loading = override === null && state.status === 'loading';
 
-  const login = useCallback(async (accessToken: string) => {
-    localStorage.setItem(STORAGE_KEY, accessToken);
-    setOverride({ accessToken, researcher: await fetchProfile(accessToken) });
+  // -------------------------------------------------------------------------
+  // Keeping the session alive
+  // -------------------------------------------------------------------------
+  // Supabase's access token lasts an hour, and renewing it BEFORE it expires is
+  // what lets `accessToken` be read synchronously by thirteen call sites and
+  // still be valid when they read it.
+  //
+  // TWO TRIGGERS, BECAUSE ONE IS NOT ENOUGH. The timer covers a tab in use. A
+  // background tab's timers are throttled by the browser, so a page left open in
+  // another window can sail past its expiry with the callback still pending —
+  // `visibilitychange` catches that on the way back, before the researcher's
+  // first click discovers it the hard way.
+  const { accessToken, researcher } = session;
+  useEffect(() => {
+    if (!accessToken) return undefined;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+
+    const renew = async () => {
+      const stored = readSession();
+      if (cancelled || !stored || !needsRefresh(stored)) return;
+      const next = await refreshSession();
+      if (cancelled) return;
+      if (next) setOverride({ accessToken: next.accessToken, researcher });
+      // A refused refresh clears storage; a network failure leaves it intact.
+      // Only the first is a sign-out, and reading storage is how they are told
+      // apart without the refresh having to report which it was.
+      else if (readSession() === null) setOverride(SIGNED_OUT);
+    };
+
+    const schedule = () => {
+      const stored = readSession();
+      const due = stored ? msUntilRefresh(stored) : null;
+      // A session whose expiry the issuer never stated schedules nothing. There
+      // is no honest moment to pick, and guessing one would refresh on a loop.
+      if (due === null) return;
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        void renew().then(schedule);
+      }, due);
+    };
+
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') void renew().then(schedule);
+    };
+
+    schedule();
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [accessToken, researcher]);
+
+  const login = useCallback(async (next: StoredSession | string) => {
+    const session: StoredSession =
+      typeof next === 'string'
+        ? { ...(readSession() ?? { refreshToken: null, expiresAt: null }), accessToken: next }
+        : next;
+    writeSession(session);
+    setOverride({
+      accessToken: session.accessToken,
+      researcher: await fetchProfile(session.accessToken),
+    });
   }, []);
 
   const logout = useCallback(() => {
-    localStorage.removeItem(STORAGE_KEY);
+    clearSession();
     setOverride(SIGNED_OUT);
   }, []);
 

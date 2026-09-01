@@ -6,6 +6,7 @@ import { AuthMessage, AuthShell } from '@/components/AuthShell';
 import { Link, useRouter } from '@/i18n/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { apiUrl } from '@/lib/api';
+import { sessionFromFragment } from '@/lib/session';
 
 // ---------------------------------------------------------------------------
 // Auth Callback
@@ -42,7 +43,10 @@ export default function AuthCallbackPage() {
     async function handleCallback() {
       const hash = window.location.hash.slice(1); // strip leading #
       const params = new URLSearchParams(hash);
-      const accessToken = params.get('access_token');
+      // The fragment carries the refresh token and the expiry alongside the
+      // access token. Reading only the first is what made a session last exactly
+      // one hour with no way to renew it.
+      const session = sessionFromFragment(params);
       const errorDescription = params.get('error_description');
       const returnTo = new URLSearchParams(window.location.search).get('returnTo');
 
@@ -52,19 +56,20 @@ export default function AuthCallbackPage() {
         return;
       }
 
-      if (!accessToken) {
+      if (!session) {
         setErrorMsg(t('callbackNoToken'));
         setStatus('error');
         return;
       }
+      const { accessToken } = session;
 
       // Check if a Researcher record already exists for this user
       const meRes = await fetch(apiUrl('/api/auth/me'), {
         headers: { Authorization: `Bearer ${accessToken}` },
       });
 
-      // Store token and load profile into context
-      await login(accessToken);
+      // Store the session and load the profile into context
+      await login(session);
 
       const returnToSuffix = returnTo ? `&returnTo=${encodeURIComponent(returnTo)}` : '';
       if (meRes.status === 404) {

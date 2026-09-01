@@ -1847,6 +1847,10 @@
     "checkBeforeApproving": "Check this before approving",
     "copyCommand": "Copy",
     "copied": "Copied",
-    "commandLabel": "Paste this command in the chat to save a new version of the text-extraction rules."
+    "commandLabel": "Paste this command in the chat to save a new version of the text-extraction rules.",
+    "sessionExpired": "Your session expired. Your marks are not being saved.",
+    "signInAgain": "Sign in",
+    "previewFailed": "Could not refresh — what is shown is out of date.",
+    "closeWindow": "You can close this window."
   }
 }
