@@ -2165,7 +2165,7 @@ asserts. Recorded here so the next person does not close this level on the stren
 
 ### Level 4 — the view
 
-**STATUS: BUILT AND LIVE ON STAGING, NEVER USED (2026-08-31). Reopened in design that day: SCAN SCALE IS THE CONSUMER, and the instrument is a HUMAN rather than a corpus-derived statistic — the frequency variants below were re-proposed in discussion and re-rejected on this section's own measurement, and are not to be proposed a third time. LANDED, in order: step 1 the chrome ruleset (#282); the DATA MODEL FOR ALL THREE MODES, signed off before any of it was written and correcting the single-row design in four places (#283); step 2 `ArticleRuleset`/`CalibrationRun`/`RulesetObservation` with its migration (#283); step 3 `calibrate_article_rules`, `correct_article_rules`, `get_article_rules` over one service, plus the browser's routes (#284); step 4 the marking page and the capture surface (#285). STILL OPEN: **2b — `ScanRun`/`ScanDecision`, which supersedes `WaybackScraper`'s in-memory guard and brings `scan_with_approval` with it**; the adaptive half of the next-capture policy; what "the page stopped resembling the approved set" is computed from; and restating this level's invariant for structural marks, which is the researcher's. THE PAGE HAS NEVER BEEN RENDERED BY ANYONE — `next build` passes and the route is in the table, and that is all. THE PAGE WAS RENDERED AND USED FOR THE FIRST TIME ON 2026-08-31 and the walk STOPPED AT ONE SELECTOR ON ONE CAPTURE — the removed text was pure furniture, but the outline's depth bound leaves 76% of that page unreachable and the stopping indicator counts captures nobody judged, so THE FILTERING QUESTION REMAINS UNMEASURED and neither `correctionRate` nor `consecutiveCleanCaptures` may be quoted until both are fixed. THOSE INSTRUMENT DEFECTS ARE NOW FIXED (#288–#291) AND **THE FILTERING QUESTION IS ANSWERED FOR THE FIRST TIME**, on two captures 4.2 years apart: structural marks generalised across a redesign, 12%/13% removed was furniture throughout, every substantive claim survived, and the stale-selector null check fired unprompted on the one positional mark that broke. SCOPE IS NARROW — one government page, two captures, one researcher, nothing committed; the ad-carrying news page is still unmarked. The researcher RULED that `#footer` is chrome, and their reason supplies a PAGE-SCOPED candidate restatement of this level's invariant which is PROPOSED AND NOT ADOPTED — confirming or amending its wording is still theirs. → `docs/gf-level4-first-marking-walk-2026-08-31.md` · `docs/gf-level4-second-marking-walk-2026-08-31.md`**
+**STATUS: BUILT AND LIVE ON STAGING, NEVER USED (2026-08-31). Reopened in design that day: SCAN SCALE IS THE CONSUMER, and the instrument is a HUMAN rather than a corpus-derived statistic — the frequency variants below were re-proposed in discussion and re-rejected on this section's own measurement, and are not to be proposed a third time. LANDED, in order: step 1 the chrome ruleset (#282); the DATA MODEL FOR ALL THREE MODES, signed off before any of it was written and correcting the single-row design in four places (#283); step 2 `ArticleRuleset`/`CalibrationRun`/`RulesetObservation` with its migration (#283); step 3 `calibrate_article_rules`, `correct_article_rules`, `get_article_rules` over one service, plus the browser's routes (#284); step 4 the marking page and the capture surface (#285). STILL OPEN: **2b — `ScanRun`/`ScanDecision`, which supersedes `WaybackScraper`'s in-memory guard and brings `scan_with_approval` with it**; the adaptive half of the next-capture policy; what "the page stopped resembling the approved set" is computed from; and restating this level's invariant for structural marks, which is the researcher's. THE PAGE HAS NEVER BEEN RENDERED BY ANYONE — `next build` passes and the route is in the table, and that is all. THE PAGE WAS RENDERED AND USED FOR THE FIRST TIME ON 2026-08-31 and the walk STOPPED AT ONE SELECTOR ON ONE CAPTURE — the removed text was pure furniture, but the outline's depth bound leaves 76% of that page unreachable and the stopping indicator counts captures nobody judged, so THE FILTERING QUESTION REMAINS UNMEASURED and neither `correctionRate` nor `consecutiveCleanCaptures` may be quoted until both are fixed. THOSE INSTRUMENT DEFECTS ARE NOW FIXED (#288–#291) AND **THE FILTERING QUESTION IS ANSWERED FOR THE FIRST TIME**, on two captures 4.2 years apart: structural marks generalised across a redesign, 12%/13% removed was furniture throughout, every substantive claim survived, and the stale-selector null check fired unprompted on the one positional mark that broke. SCOPE IS NARROW — one government page, two captures, one researcher, nothing committed; the ad-carrying news page is still unmarked. The researcher RULED that `#footer` is chrome, and their reason supplies a PAGE-SCOPED candidate restatement of this level's invariant which is PROPOSED AND NOT ADOPTED — confirming or amending its wording is still theirs. THE NEWS PAGE WAS MARKED 2026-09-01 AND THE CONTRAST IS THE LEVEL'S OWN ARGUMENT: **12–13% furniture on the government page against 74% on the news page**, article intact in both, the largest removed block a rotating "more in news" sidebar holding over a third of the document — without filtering, every capture of it would diff. THE OVER-MATCH ALSO HAPPENED THERE, within minutes, and the removed pane caught it. **A NEW AND UNMEASURED DURABILITY QUESTION:** 12 of that page's 21 selectors depend on BUILD-GENERATED CSS-in-JS class names, so the second walk's "structural marks generalise across a redesign" may not transfer to such sites — only 3 of 7 captures are judged, all early era. Nothing is committed on either run. **THE UI'S ROLE WAS RE-DECIDED 2026-09-01 AND SUPERSEDES "THE UI WRITES DECISIONS": the page is a PURE TRANSFORMATION, ruleset in and ruleset out, writing no decision and applying no effect — three of this level's defects existed only because the browser was a writer. It brings `next_article_capture`, `commit_article_rules` and `abandon_article_rules`, and gives the ADAPTIVE next-capture policy its home. See the section below.** → `docs/gf-level4-first-marking-walk-2026-08-31.md` · `docs/gf-level4-second-marking-walk-2026-08-31.md` · `docs/gf-level4-third-marking-walk-2026-09-01.md`**
 
 #### THE MEASUREMENT THIS DEFERRAL ASKED FOR — a news page, 2026-08-30
 
@@ -2564,13 +2564,71 @@ shown, which were corrected, the correction counter and the decision log. Resump
 blocked. **Name it `ArticleRuleSession` or `CalibrationRun`, NOT "session"** — `ResearchSession` exists
 and means something else.
 
-**THE UI WRITES DECISIONS. THE BACKEND APPLIES EFFECTS.** The browser never calls `recordCapture`,
-never writes a snapshot and never triggers an anchor; it appends *"capture X approved"* to the session,
-and the scanner — the same code path that runs headless — reads decisions and performs the writes.
-Three consequences: `ApprovalPolicy.apply()` runs server-side, so a scan cannot depend on a browser
-staying open; every UI write is reversible session state, so *never irreversible or unrecorded* holds
-without exception; and the interactive and headless paths are THE SAME PATH, differing only in whether
-they consult a decision log.
+**~~THE UI WRITES DECISIONS. THE BACKEND APPLIES EFFECTS.~~ SUPERSEDED 2026-09-01 — see below.** The
+original rule: the browser never calls `recordCapture`, never writes a snapshot and never triggers an
+anchor; it appends *"capture X approved"* to the session, and the scanner — the same code path that
+runs headless — reads decisions and performs the writes. Three consequences: `ApprovalPolicy.apply()`
+runs server-side, so a scan cannot depend on a browser staying open; every UI write is reversible
+session state; and the interactive and headless paths are THE SAME PATH.
+
+##### THE UI IS A PURE TRANSFORMATION: RULESET IN, RULESET OUT (researcher's decision, 2026-09-01)
+
+**The rule above put the browser one step too far in.** It made the page a WRITER — of decisions, if
+not of effects — and that is the half that went wrong. Stated as it now stands:
+
+> **The UI is a visual instrument for checking and correcting a ruleset against one capture.** It takes
+> a ruleset in and returns a corrected ruleset and a verdict. It **may persist its own draft** so that
+> work survives a crash. It writes **no decision** and applies **no effect**. Which capture comes next,
+> whether to continue, recording the verdict, and the approval and its effects are all **MCP's**.
+
+**Decided against three defects measured on 2026-09-01, all of which exist only because the browser
+was a writer** — `docs/gf-level4-third-marking-walk-2026-09-01.md` and the walks before it:
+
+- clicks were swallowed, because each one fired two sequential POSTs with the tree disabled;
+- eight `RULESET_CORRECTED` rows were written for one capture's worth of exploration, needing
+  coalescing logic in the client to undo;
+- the page **raced itself** on `expectedVersion` and surfaced *"another tab changed this run"* when
+  there was no other tab.
+
+A page that writes nothing has none of them: no optimistic concurrency in the browser, no settle
+timer, no coalescing, no 409 handling. **And the decision log gains a single writer**, which improves
+its provenance — it records *the researcher approved this through the tool* rather than *the browser
+said so*.
+
+**DRAFT IS NOT DECISION, and the distinction is load-bearing.** Taken literally, "no side effects"
+means a dying tab takes the marking with it. That is not hypothetical: a session dropped mid-marking
+on 2026-09-01 and the work survived precisely because the page had been persisting as it went — twenty
+minutes of marking on a 658-node tree. Persisting a draft decides nothing and changes nothing in the
+corpus, so it is permitted; writing a verdict or committing a ruleset is neither.
+
+**What the original rule was protecting still holds**, and by a shorter route: an effect cannot depend
+on a browser staying open, because the browser no longer produces effects at all; and the interactive
+and headless paths are the same path, because both now enter through the same MCP tools.
+
+**Consequences for the tool surface** — `commit` and `abandon` exist today as HTTP routes with **no MCP
+tool at all**, which makes committing a ruleset the only research act in this platform authorised from
+a web page rather than from the researcher's own surface:
+
+| tool | status | returns |
+|---|---|---|
+| `correct_article_rules(url)` · `calibrate_article_rules(url)` | exist | ONE capture's marking URL |
+| `get_article_rules(runId)` | exists | progress, **coverage-first: distinct captures judged, not episodes** |
+| `next_article_capture(runId)` | **NEW** | the next capture by policy, or "the stopping condition is met" |
+| `commit_article_rules(runId)` · `abandon_article_rules(runId)` | **NEW** | the effect declaration, approved in chat |
+
+**`next_article_capture` is where the ADAPTIVE HALF of the next-capture policy finally lives** — the
+half this level lists as open, which until now had nowhere to go because the page simply listed twelve
+dates and the researcher chose.
+
+**ONE REQUIREMENT ON THE MOVE.** The capture strip's per-capture verdict marks are the only honest
+view of how much of the sample was actually tested, and the counters have already misreported exactly
+that — two judgements of ONE capture were displayed as coverage of two. When coverage moves into a
+chat table it must **lead with distinct captures judged**, or the vacuity is relocated rather than
+fixed.
+
+**Long-running sessions are answered by the working protocol, not by a mechanism**: each tool call is
+one decision, reports what happened, recommends the next step, and waits — which is `CLAUDE.md`'s
+guided execution, applied to this flow.
 
 **THREE TOOLS, ONE SERVICE.**
 
