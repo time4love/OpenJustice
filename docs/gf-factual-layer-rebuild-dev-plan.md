@@ -2165,7 +2165,7 @@ asserts. Recorded here so the next person does not close this level on the stren
 
 ### Level 4 — the view
 
-**STATUS: IN USE. Steps 1–4 live; three marking walks done 2026-08-31/09-01; NOTHING COMMITTED ON ANY RUN.** BUILT: the chrome ruleset (#282); the DATA MODEL for all three modes, signed off before any of it was written and correcting the single-row design in four places (#283); `ArticleRuleset`/`CalibrationRun`/`RulesetObservation` (#283); `calibrate_article_rules`, `correct_article_rules`, `get_article_rules` over one service (#284); the marking page (#285). THE PAGE WAS FIRST USED BY A HUMAN ON 2026-08-31, and every defect since was found by using it and fixed (#288–#295). **THE FILTERING QUESTION IS ANSWERED** — 12–13% of the derived text was furniture on the government page against **74% on the news page**, every substantive claim surviving on both; the largest removed block is a rotating "more in news" sidebar holding over a third of that document, so unfiltered every capture of it would diff. THE OVER-MATCH HAPPENED ON THE NEWS PAGE, within minutes, and the removed pane caught it. **DURABILITY IS ERA-BOUND** — authored names survive (8 of 9 selectors over 4.2 years on the MOH page), build artifacts do not (3 of 21 over 4.3 years on the news page, decay measurable within 9 days). **THE DISTINCTION IS AUTHORED NAMES VERSUS BUILD ARTIFACTS, and "structural marks generalise" must not be carried unqualified.** The failure direction is the SAFE one — under-matching is loud and harmless and the null check catches it free, unlike over-matching, which is quiet, destructive, and caught only by a human at the removed pane. **THE UI IS A PURE TRANSFORMATION — ruleset in, ruleset out, no decision and no effect. This SUPERSEDES "the UI writes decisions"; see the section below.** **ERA-SCOPED RULESETS ARE DECIDED (2026-09-01) AND THE UNION IS SUPERSEDED — date-bounded, deterministic selection, and an approved era is FROZEN so its captures are never re-derived. The union was rejected for UNDECIDABILITY and unbounded verification cost, not for observed damage: on the news page nothing added after an approval removed any text from it. `check_ruleset_survival` (#311–#313) is not superseded — its scope narrows to the one act that can still regress, editing a frozen era. See the section below; the schema, the rename of `judge_article_capture`, and `SKIPPED`'s home are NOT decided.** **THE FLOW IS SEQUENTIAL: calibration and scanning are ONE FORWARD PASS in date order, an era is confirmed by n consecutive captures needing no correction, and the pass then runs automatically until a capture breaks the rules. TWO DETECTORS, because the failure directions differ — MATCH RATE catches under-matching (loud), KEPT-TEXT LENGTH catches over-matching (silent and destructive); neither may substitute for the other and neither needs a model. ON DETECTION THE SYSTEM STOPS AT THE FIRST CAPTURE and asks ONE binary question — REDESIGN or BAD CAPTURE. Only 'redesign' opens an era, so a boundary is always a decision; 'bad capture' SKIPS and continues in the same era however many times it happens. `SKIPPED` means the capture DOES NOT SPEAK and must be excluded from DIFFING too, or a truncated page manufactures a false diff — that reaches Level 5. THERE IS NO EDITING A FROZEN ERA: derived text of an approved capture is STORED, not recomputed, and the only re-derivation is a SUPERSESSION that keeps the previous text. THIS SUPERSEDES THE ADAPTIVE POLICY — `next_article_capture`, `nextCapture.ts` and the stratified sample answered a sampling question this design does not ask. `check_ruleset_survival` has NO STEADY-STATE CALLER under it. AN ERA IS DERIVED, NOT MODELLED — no era table, no range columns, no status flag, because the log already answers every one of those; only the ERA-VERSION STAMP on a capture is stored, since supersession makes deriving it lie. The schema change is ONE DECISION TYPE and ONE COLUMN. NOT DECIDED: the DETECTOR THRESHOLDS (one page is not a threshold), the rename of `judge_article_capture`, and whether the confirm and go-automatic counts are one number or two.** **STILL OPEN:** 2b `ScanRun`/`ScanDecision`, which supersedes `WaybackScraper`'s in-memory guard and brings `scan_with_approval` · the ADAPTIVE next-capture policy, now homed in `next_article_capture` with its purpose settled — **find where a ruleset STOPS APPLYING**, steering by the stale-selector count · what "the page stopped resembling the approved set" is computed from · the PAGE-SCOPED restatement of this level's invariant (proposed 2026-08-31, **NOT ADOPTED** — the researcher's) · the ruleset QUALITY STAMP (proposed, unruled: named facts, never a score). **THE MCP LOOP WAS WALKED END TO END 2026-09-01 AND EVERY PIECE HELD** — the policy's maximin pick found the page's boundary on its first try and bisected on its second, the draft was promoted before the verdict, and the browser wrote nothing but its draft. `2022-05-23` at 5 of 21 selectors places the CSS-in-JS collapse **between December 2020 and May 2022 — under seventeen months**, not 4.3 years. **I12, AND IT MADE CORRECT GUIDANCE WRONG WITHIN ONE ACTION: `lastMatchedAt: null` means "never matched UNDER THE CURRENT SELECTOR SET", not "never matched anywhere" — observations are keyed to `chromeRulesetId`, so every correction orphans the history and resets the field to the value that reads as safe-to-delete. Do not close I11 without ruling on it.** → `docs/gf-level4-first-marking-walk-2026-08-31.md` · `docs/gf-level4-second-marking-walk-2026-08-31.md` · `docs/gf-level4-third-marking-walk-2026-09-01.md` · `docs/gf-level4-mcp-loop-verification-2026-09-01.md`**
+**STATUS: IN USE. Steps 1–4 live; three marking walks done 2026-08-31/09-01; NOTHING COMMITTED ON ANY RUN.** BUILT: the chrome ruleset (#282); the DATA MODEL for all three modes, signed off before any of it was written and correcting the single-row design in four places (#283); `ArticleRuleset`/`CalibrationRun`/`RulesetObservation` (#283); `calibrate_article_rules`, `correct_article_rules`, `get_article_rules` over one service (#284); the marking page (#285). THE PAGE WAS FIRST USED BY A HUMAN ON 2026-08-31, and every defect since was found by using it and fixed (#288–#295). **THE FILTERING QUESTION IS ANSWERED** — 12–13% of the derived text was furniture on the government page against **74% on the news page**, every substantive claim surviving on both; the largest removed block is a rotating "more in news" sidebar holding over a third of that document, so unfiltered every capture of it would diff. THE OVER-MATCH HAPPENED ON THE NEWS PAGE, within minutes, and the removed pane caught it. **DURABILITY IS ERA-BOUND** — authored names survive (8 of 9 selectors over 4.2 years on the MOH page), build artifacts do not (3 of 21 over 4.3 years on the news page, decay measurable within 9 days). **THE DISTINCTION IS AUTHORED NAMES VERSUS BUILD ARTIFACTS, and "structural marks generalise" must not be carried unqualified.** The failure direction is the SAFE one — under-matching is loud and harmless and the null check catches it free, unlike over-matching, which is quiet, destructive, and caught only by a human at the removed pane. **THE UI IS A PURE TRANSFORMATION — ruleset in, ruleset out, no decision and no effect. This SUPERSEDES "the UI writes decisions"; see the section below.** **ERA-SCOPED RULESETS ARE DECIDED (2026-09-01) AND THE UNION IS SUPERSEDED — date-bounded, deterministic selection, and an approved era is FROZEN so its captures are never re-derived. The union was rejected for UNDECIDABILITY and unbounded verification cost, not for observed damage: on the news page nothing added after an approval removed any text from it. `check_ruleset_survival` (#311–#313) is not superseded — its scope narrows to the one act that can still regress, editing a frozen era. See the section below; the schema, the rename of `judge_article_capture`, and `SKIPPED`'s home are NOT decided.** **THE FLOW IS SEQUENTIAL: calibration and scanning are ONE FORWARD PASS in date order, an era is confirmed by n consecutive captures needing no correction, and the pass then runs automatically until a capture breaks the rules. TWO DETECTORS, because the failure directions differ — MATCH RATE catches under-matching (loud), KEPT-TEXT LENGTH catches over-matching (silent and destructive); neither may substitute for the other and neither needs a model. ON DETECTION THE SYSTEM STOPS AT THE FIRST CAPTURE and asks ONE binary question — REDESIGN or BAD CAPTURE. Only 'redesign' opens an era, so a boundary is always a decision; 'bad capture' SKIPS and continues in the same era however many times it happens. `SKIPPED` means the capture DOES NOT SPEAK and must be excluded from DIFFING too, or a truncated page manufactures a false diff — that reaches Level 5. THERE IS NO EDITING A FROZEN ERA: derived text of an approved capture is STORED, not recomputed, and the only re-derivation is a SUPERSESSION that keeps the previous text. THIS SUPERSEDES THE ADAPTIVE POLICY — `next_article_capture`, `nextCapture.ts` and the stratified sample answered a sampling question this design does not ask. `check_ruleset_survival` has NO STEADY-STATE CALLER under it. AN ERA IS DERIVED, NOT MODELLED — no era table, no range columns, no status flag, because the log already answers every one of those; only the ERA-VERSION STAMP on a capture is stored, since supersession makes deriving it lie. The schema change is ONE DECISION TYPE and ONE COLUMN. **THE BUILD ORDER IS WRITTEN — 16 steps, and THE GATE IS THAT AUTOMATIC MODE MAY BE BUILT BEFORE THE DETECTOR THRESHOLDS ARE MEASURED AND MAY NOT BE ENABLED**, because a batch running unattended on guessed thresholds is the one configuration here that can silently corrupt a corpus. `ScanRun` is PROMOTED from open step 2b to a PRECONDITION — a batch that yields to a human must know where it got to. NOT DECIDED: the DETECTOR THRESHOLDS (one page is not a threshold), the rename of `judge_article_capture`, and whether the confirm and go-automatic counts are one number or two.** **STILL OPEN:** 2b `ScanRun`/`ScanDecision`, which supersedes `WaybackScraper`'s in-memory guard and brings `scan_with_approval` · the ADAPTIVE next-capture policy, now homed in `next_article_capture` with its purpose settled — **find where a ruleset STOPS APPLYING**, steering by the stale-selector count · what "the page stopped resembling the approved set" is computed from · the PAGE-SCOPED restatement of this level's invariant (proposed 2026-08-31, **NOT ADOPTED** — the researcher's) · the ruleset QUALITY STAMP (proposed, unruled: named facts, never a score). **THE MCP LOOP WAS WALKED END TO END 2026-09-01 AND EVERY PIECE HELD** — the policy's maximin pick found the page's boundary on its first try and bisected on its second, the draft was promoted before the verdict, and the browser wrote nothing but its draft. `2022-05-23` at 5 of 21 selectors places the CSS-in-JS collapse **between December 2020 and May 2022 — under seventeen months**, not 4.3 years. **I12, AND IT MADE CORRECT GUIDANCE WRONG WITHIN ONE ACTION: `lastMatchedAt: null` means "never matched UNDER THE CURRENT SELECTOR SET", not "never matched anywhere" — observations are keyed to `chromeRulesetId`, so every correction orphans the history and resets the field to the value that reads as safe-to-delete. Do not close I11 without ruling on it.** → `docs/gf-level4-first-marking-walk-2026-08-31.md` · `docs/gf-level4-second-marking-walk-2026-08-31.md` · `docs/gf-level4-third-marking-walk-2026-09-01.md` · `docs/gf-level4-mcp-loop-verification-2026-09-01.md`**
 
 #### THE MEASUREMENT THIS DEFERRAL ASKED FOR — a news page, 2026-08-30
 
@@ -3133,6 +3133,85 @@ So the schema change is one enum value and one column:
 + era-version provenance on the capture, stamped when its text is derived
   (no era table, no range columns, no status flag)
 ```
+
+##### THE BUILD ORDER — written 2026-09-01, after the design stopped moving
+
+Every shape question is answered above. What follows is sequence and dependency, not design.
+
+**THE GATE, STATED FIRST BECAUSE IT IS THE ONE THING THAT MUST NOT SLIP: automatic mode may be BUILT
+before the detector thresholds are measured, and may not be ENABLED.** A batch running unattended on
+guessed thresholds is the one configuration in this design that can silently corrupt a corpus — an
+over-match nobody is watching. A rule mandating a control the environment cannot exercise is not a
+control, and a threshold nobody measured is not a threshold.
+
+**FOUNDATION — nothing else is meaningful without these.**
+
+1. **`ERA_BOUNDARY` decision type**, naming the capture the researcher called a redesign, plus the fold
+   that derives eras, their rulesets, and the confirmed predicate from the log. No era table. Migration
+   is one enum value.
+2. **The era-version stamp on the capture**, written when its text is derived. The one thing that is
+   stored rather than derived, because supersession makes the derivation lie.
+3. **Migration**: every existing run becomes one era covering all time. Additive.
+
+**DETECTORS — pure, independent, buildable in parallel with 1–3.**
+
+4. **Match-rate detector** (under-match): the era's ruleset matched k of N on this capture. Pure over
+   match counts, which `RulesetObservation` already records.
+5. **Kept-text-length detector** (over-match): this capture's kept text against the era's norm. Pure.
+   **Neither may substitute for the other**, and a model may not replace either.
+
+**DURABLE RUN STATE — the precondition for batch, promoted from "step 2b, open".**
+
+6. **`ScanRun`/`ScanDecision`.** This was an improvement while scanning was fire-and-forget; under this
+   design it is REQUIRED, because a batch that yields to a human must know where it got to. It also
+   retires `start_forensic_scan`'s in-memory guard, which loses a run on restart.
+
+**TOOLS — the state machine's surface. Source-dependent tools split; decision tools do not.**
+
+7. **`survey_wayback_captures(url)`** — the archive's CDX index: how many captures, over what span, how
+   many we already hold. Writes nothing, needs no rules, and **its output is the work-list**. Live only;
+   the replay path's first step is `get_article_rules`, which already answers the equivalent question.
+8. **`scan_next_capture` (live)** and **`replay_next_capture` (corpus)** — the next capture in date
+   order, derived under the current era's rules. Two tools because the preconditions and the
+   consequences differ: a live scan creates rows, a replay only re-derives.
+9. **`approve_article_rules`** — the rename of `judge_article_capture` with `verdict` removed, since it
+   is always `ACCEPTED`. It returns a researcher-approved DRAFT and the chat puts it in force. ONE
+   implementation, shared by both paths: it acts on the calibration log, not on the source.
+10. **`resolve_boundary(runId, snapshotId, REDESIGN | BAD_CAPTURE)`** — the single binary question, and
+    **where `SKIPPED` lives**. Also shared by both paths.
+11. **`scan_batch` / `replay_batch`** — one URL per call, a MAX-CAPTURES BUDGET, running until a
+    detector fires, the budget is spent, or the range ends. **It reports the boundary and never writes
+    it**; the capture stays unresolved until 10 is called, or the tool has made the decision the human
+    is there to make.
+
+**REACHES ANOTHER LEVEL.**
+
+12. **A `SKIPPED` capture is excluded from DIFFING**, not only from calibration — otherwise a truncated
+    archive page manufactures a false "text removed" diff. This belongs to Level 5 and should be landed
+    with 10, not after it.
+
+**MEASUREMENT — gates the switch, not the build.**
+
+13. **Measure both detectors across at least three pages** of different construction. One page gives
+    19→5 across a boundary and 16 of 19 within one; that is a data point. Until this lands, batch mode
+    asks rather than proceeds, and the band is wide.
+
+**RETIREMENT — deliberate, not by neglect.**
+
+14. **`next_article_capture`, `nextCapture.ts`, the stratified sample.** They answer the union model's
+    sampling question. A loop in date order replaces them; they are not maintained alongside it.
+15. **`check_ruleset_survival`** — decide its fate rather than leaving it. It has no steady-state caller
+    under this design; the only honest role is showing what a supersession would change, for the
+    researcher to approve.
+
+**OPEN INSIDE THIS PLAN, not blocking it.**
+
+- **Whether the survey PINS its work-list into the `ScanRun`.** The archive can gain captures during a
+  long batch; walking by "next capture after date X" tolerates additions at the end but silently skips a
+  backfilled capture in the middle. Pinning is nearly free once 6 exists.
+- **`n`** — whether the count to confirm an era and the count to enter automatic mode are one number.
+- **The two runs left OPEN and uncommitted** (`cmthffvwu0001…` v29, `cmthqbikb003j…` v38) — under this
+  design they are era-1 runs of the union era. Adopt or abandon; not decided.
 
 ##### Still to design, and NOT decided here
 
