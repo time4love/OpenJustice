@@ -15,6 +15,8 @@ import {
   correctArticleRulesHandler,
   getArticleRulesSchema,
   getArticleRulesHandler,
+  openArticleCaptureSchema,
+  openArticleCaptureHandler,
   judgeArticleCaptureSchema,
   judgeArticleCaptureHandler,
   nextArticleCaptureSchema,
@@ -621,6 +623,24 @@ export function createMcpServer(): McpServer {
     },
     async (input) => ({
       content: [{ type: 'text' as const, text: await correctArticleRulesHandler(input) }],
+    }),
+  );
+
+  server.registerTool(
+    'open_article_capture',
+    {
+      description:
+        'OPEN ONE CAPTURE for the researcher to look at, named by the snapshotId that ' +
+        'next_article_capture returns. Returns a deep ' +
+        'link to that single capture — not to the run — because checking and correcting a ruleset ' +
+        'against one capture is the whole of what the marking page is for. Also reports how many ' +
+        'selectors still match and how much text they remove, WITH the caveat that those numbers ' +
+        'say only whether the rules still MATCH: whether what was removed is furniture is the ' +
+        'judgement the page exists for.',
+      inputSchema: openArticleCaptureSchema,
+    },
+    async (input) => ({
+      content: [{ type: 'text' as const, text: await openArticleCaptureHandler(input) }],
     }),
   );
 

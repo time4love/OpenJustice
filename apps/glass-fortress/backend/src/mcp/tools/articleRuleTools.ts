@@ -61,6 +61,14 @@ export const nextArticleCaptureSchema = {
   runId: z.string().min(1).describe('The calibration run to choose the next capture for'),
 };
 
+export const openArticleCaptureSchema = {
+  runId: z.string().min(1).describe('The calibration run whose capture is to be opened'),
+  snapshotId: z
+    .string()
+    .min(1)
+    .describe('The capture to open — the snapshotId next_article_capture returned'),
+};
+
 export const judgeArticleCaptureSchema = {
   runId: z.string().min(1).describe('The calibration run this verdict belongs to'),
   snapshotId: z
@@ -384,7 +392,10 @@ export async function nextArticleCaptureHandler(input: { runId: string }): Promi
         : {
             snapshotId: picked.snapshotId,
             date: row.date,
-            markingUrl: routing.articleRulesUrl(state.runId),
+            // THE DEEP LINK, not the run. A tool that names a capture and then
+            // sends the researcher to a page listing twelve dates has not
+            // finished its sentence.
+            captureUrl: routing.articleCaptureUrl(state.runId, picked.snapshotId),
             why: WHY[picked.reason],
             daysFromNearestJudged: picked.daysFromNearestJudged,
           },
@@ -407,8 +418,8 @@ export async function nextArticleCaptureHandler(input: { runId: string }): Promi
       picked === null
         ? 'Nothing left to show. Call commit_article_rules to put these rules in force, or ' +
           'abandon_article_rules to close without applying them.'
-        : 'Open the marking URL and select this capture. Marking is visual and cannot be done ' +
-          'through a chat tool.',
+        : 'Open the capture URL — it shows this one capture and nothing else. Marking is visual ' +
+          'and cannot be done through a chat tool. Record the verdict with judge_article_capture.',
   });
 }
 
@@ -530,3 +541,78 @@ const VERDICT = {
   REJECTED: CalibrationDecisionType.CAPTURE_REJECTED,
   SKIPPED: CalibrationDecisionType.CAPTURE_SKIPPED,
 } as const;
+
+/**
+ * Open ONE capture for a human to look at.
+ *
+ * THE TOOL THAT SPAWNS THE UI, which is the whole of the UI's remaining job:
+ * "a visual instrument for checking and correcting a ruleset against one
+ * capture." It returns a deep link to that capture rather than to the run, so
+ * the researcher lands on the page they were sent to instead of hunting for it
+ * in a strip of dates.
+ *
+ * IT TAKES A SNAPSHOT ID, NOT A DATE. A date is what a person holds, but it is
+ * not unique — this corpus has days carrying two and three captures — and
+ * resolving one would mean either guessing, or an ambiguity branch on every
+ * call. `next_article_capture` hands the id over, so the flow always has one.
+ *
+ * IT REPORTS MATCH COUNTS, AND SAYS WHAT THEY DO NOT MEAN. A removal fraction
+ * tells you the selectors still MATCH; it cannot tell you whether what they
+ * removed was furniture, and a rule that has swallowed a paragraph reports a
+ * healthy-looking percentage. That judgement is why the page exists, and these
+ * numbers are context for the visit, never a substitute for it.
+ */
+export async function openArticleCaptureHandler(input: {
+  runId: string;
+  snapshotId: string;
+}): Promise<string> {
+  let detail;
+  try {
+    detail = await describeCalibrationRun(input.runId);
+  } catch {
+    return JSON.stringify({
+      error: 'No calibration run with that id. It may have been created against another environment.',
+      runId: input.runId,
+    });
+  }
+
+  const capture = await prisma.urlSnapshot.findFirst({
+    where: { id: input.snapshotId, trackedUrlId: detail.state.trackedUrlId },
+    select: { id: true, snapshotDate: true, waybackTimestamp: true },
+  });
+  if (!capture) {
+    // SCOPED TO THE RUN'S PAGE, deliberately: a snapshot id from another page
+    // would otherwise open a capture this ruleset was never about.
+    return JSON.stringify({
+      error: 'This run\'s page has no such capture.',
+      runId: input.runId,
+      snapshotId: input.snapshotId,
+    });
+  }
+
+  const verdict =
+    detail.state.judgedCaptures.find((j) => j.snapshotId === capture.id)?.verdict ?? null;
+  const { previewUnderSelectors } = await import('../../services/captureMarking');
+  const preview = await previewUnderSelectors(capture.id, detail.state.selectors);
+  const matched = detail.state.selectors.filter((sel) => (preview.matchCounts[sel] ?? 0) > 0).length;
+
+  return JSON.stringify({
+    runId: input.runId,
+    snapshotId: capture.id,
+    date: capture.snapshotDate,
+    captureUrl: routing.articleCaptureUrl(input.runId, capture.id),
+    alreadyJudged: verdict,
+    rulesStillMatching: `${String(matched)} of ${String(detail.state.selectors.length)} selectors`,
+    removalFraction: Math.round(preview.removalFraction * 100) / 100,
+    // THE CAVEAT TRAVELS WITH THE NUMBERS, because they invite exactly one wrong
+    // reading and it is the dangerous one.
+    whatTheNumbersDoNotSay:
+      'These say whether the rules still MATCH this capture. They do NOT say whether what was ' +
+      'removed is furniture — a rule that has swallowed a paragraph reports a healthy percentage. ' +
+      'Open the capture and read the removed pane; that judgement is why the page exists.',
+    message:
+      'Open the capture URL, check what the rules remove, correct them if needed, then record the ' +
+      'verdict with judge_article_capture.',
+  });
+}
+
