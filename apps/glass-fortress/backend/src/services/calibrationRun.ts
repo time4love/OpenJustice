@@ -6,6 +6,7 @@ import {
   type Prisma,
 } from '@prisma/client';
 import { prisma } from '../lib/prisma';
+import { foldEpisodes, judgedEpisodes, trailingClean } from '../lib/calibrationFold';
 // `chromeRuleset` and NOT `chromeRulesetApply`: naming a view is a hash over
 // strings, and this service must not inherit a parser to do it.
 import { chromeRulesetId, type ChromeRuleset } from '../lib/chromeRuleset';
@@ -223,99 +224,6 @@ function foldSelectors(decisions: readonly CalibrationDecision[]): readonly stri
   return decisions.at(-1)?.selectors ?? [];
 }
 
-/**
- * One capture's episode: what was shown, and what the human then did about it.
- *
- * An episode opens at each CAPTURE_SHOWN and runs to the next one. `dirty` says
- * the rules were corrected inside it. `judged` says a HUMAN ACTED on it — which
- * showing it is not, and which is the whole distinction the old fold collapsed.
- */
-interface Episode {
-  dirty: boolean;
-  judged: boolean;
-  /** The capture could not be used. Says nothing about the rules, either way. */
-  skipped: boolean;
-}
-
-/**
- * The run's episodes, in order.
- *
- * THREE EVENTS ARE JUDGEMENTS AND ONE IS NOT. Accepting says the rules are
- * right here; rejecting says they are wrong here; correcting says so too, by
- * doing something about it — the plan is explicit that a rejection means the
- * RULES are wrong rather than that the capture is bad, and routes back to
- * marking. Skipping is the exception: it declares the capture unusable, so the
- * episode is neither clean nor dirty and is excluded from every denominator
- * rather than counted as agreement.
- */
-function foldEpisodes(decisions: readonly CalibrationDecision[]): Episode[] {
-  const episodes: Episode[] = [];
-  const current = (): Episode | undefined => episodes.at(-1);
-
-  for (const decision of decisions) {
-    switch (decision.type) {
-      case CalibrationDecisionType.CAPTURE_SHOWN:
-        // Opened, and NOT yet clean. The old fold pushed `true` here, which is
-        // how a render became a verdict.
-        episodes.push({ dirty: false, judged: false, skipped: false });
-        break;
-      case CalibrationDecisionType.RULESET_CORRECTED: {
-        const episode = current();
-        if (episode) {
-          episode.dirty = true;
-          episode.judged = true;
-        }
-        break;
-      }
-      case CalibrationDecisionType.CAPTURE_REJECTED: {
-        // A rejection is a verdict against the RULES on its own, whether or not
-        // a correction has landed yet.
-        const episode = current();
-        if (episode) {
-          episode.dirty = true;
-          episode.judged = true;
-        }
-        break;
-      }
-      case CalibrationDecisionType.CAPTURE_ACCEPTED: {
-        const episode = current();
-        if (episode) episode.judged = true;
-        break;
-      }
-      case CalibrationDecisionType.CAPTURE_SKIPPED: {
-        const episode = current();
-        if (episode) episode.skipped = true;
-        break;
-      }
-      default:
-        break;
-    }
-  }
-  return episodes;
-}
-
-/** The episodes that say something about the rules. Every denominator's input. */
-function judgedEpisodes(episodes: readonly Episode[]): Episode[] {
-  return episodes.filter((e) => e.judged && !e.skipped);
-}
-
-/**
- * Judged captures at the end of the run, in a row, that needed no correction.
- *
- * Computed over JUDGED episodes only, so a capture currently on screen and not
- * yet decided neither extends the streak nor breaks it. Both directions are
- * errors: counting it clean is the defect this replaces, and counting it dirty
- * would zero the streak every time the next capture loaded.
- */
-function trailingClean(episodes: readonly Episode[]): number {
-  const judged = judgedEpisodes(episodes);
-  let count = 0;
-  for (let i = judged.length - 1; i >= 0; i -= 1) {
-    if (judged.at(i)?.dirty !== false) break;
-    count += 1;
-  }
-  return count;
-}
 
 /**
  * Selectors in the current ruleset that no longer match anything.
