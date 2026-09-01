@@ -224,9 +224,17 @@ export interface DatedEra extends Era {
  * Eras are assumed in time order, which `deriveEras` produces because the log is
  * ordered by sequence and a boundary is always appended after the captures it
  * follows.
+ *
+ * GENERIC OVER THE ERA, because two callers need it and they carry different
+ * fields: the run view wants the whole `Era`, and governance wants selectors and
+ * a date and must NOT be handed a `confirmed` flag folded from a filtered log,
+ * where it would not mean what it says. One implementation either way.
  */
-export function eraForDate(eras: readonly DatedEra[], date: string): DatedEra | null {
-  let selected: DatedEra | null = null;
+export function eraForDate<T extends { startDate: string | null }>(
+  eras: readonly T[],
+  date: string,
+): T | null {
+  let selected: T | null = null;
   for (const era of eras) {
     if (era.startDate === null || era.startDate <= date) selected = era;
     else break;
