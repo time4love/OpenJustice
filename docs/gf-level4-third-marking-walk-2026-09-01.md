@@ -164,7 +164,101 @@ instead, as CSS only.
 
 ## What is still NOT measured
 
-- **Whether these marks survive the page's own history.** 3 of 7 captures judged, all early era.
-- **Whether CSS-in-JS selectors are durable at all.** The open question this walk created.
+- ~~Whether these marks survive the page's own history.~~ **MEASURED — see the addendum below.**
+- ~~Whether CSS-in-JS selectors are durable at all.~~ **MEASURED — see the addendum below.**
 - **Anything committed.** The ruleset has never been applied, so no capture has been re-derived under
   it and the deviation check still has no inputs.
+
+---
+
+# ADDENDUM — the durability question, answered in four clicks
+
+The body above left two things open and hedged its conclusion accordingly. **Both were settled the
+same day**, by the researcher showing the ruleset three captures and reading the null check. This
+addendum records the answer, which **contradicts a conclusion already written into the plan.**
+
+## The erosion curve
+
+One ruleset — the 21 selectors above, `rulesetId 5f9cddbd`, unchanged throughout — shown three
+captures of the same page:
+
+| capture | interval | selectors still matching | removal | article text |
+|---|---|---|---|---|
+| `2020-12-09` | *marked here* | **19 of 21** | 74% | correct |
+| `2020-12-18` | +9 days | **16 of 21** | 68% | correct |
+| `2025-03-26` | +4.3 years | **3 of 21** | **1%** | **wrong** |
+
+The three survivors at 2025 are two `<script>` marks — which remove no text at all — and
+`#xlandingzone`. **Every CSS-in-JS selector is gone. So is `#main-footer`**, an authored id, so the
+decay is not confined to the build-generated hashes.
+
+**Erosion begins within days, not years.** Three selectors stopped matching between 2020-12-09 and
+2020-12-18 — `footer.css-1oin1li`, `section.css-kw6ugw.section-links.undefined`,
+`section.css-1t6uvhp.noprint` — and that is the 74% → 68% step.
+
+The measurement is clean because **`RulesetObservation` is keyed to `chromeRulesetId(selectors)`**:
+adding a selector produces a different ruleset row, so `describeCalibrationRun` reads only
+observations taken under the *exact* current selector set. Every figure above is one ruleset against
+three documents.
+
+## What it settles, and what it contradicts
+
+**The second walk's conclusion does not generalise.** That walk found 8 of 9 selectors surviving 4.2
+years on the MOH page and concluded that structural marks generalise across a redesign. Here, **3 of
+21 survive 4.3 years**, and decay is measurable in nine days.
+
+| | MOH vaccine page | Walla news item |
+|---|---|---|
+| selector kind | authored — `#header`, `#footer`, `#link-dictionary` | build artifacts — `css-gf5unx`, `css-12flape` |
+| after ~4.2 years | **8 of 9 matching** | **3 of 21 matching** |
+| decay within days | none observed | **3 selectors in 9 days** |
+
+**The distinction is authored names versus build artifacts**, and the plan should not carry
+"structural marks generalise" as an unqualified claim. It generalises on pages whose structure is
+*named by a person*. On a CSS-in-JS site the "structure" a mark commits to is a build output, and it
+moves when the build moves.
+
+## THE GAP THIS EXPOSES: a ruleset is ERA-BOUND, and nothing selects one by era
+
+**One ruleset per page cannot span this page's history.** The data model already versions
+`ArticleRuleset` and records `RulesetObservation` per `(ruleset, capture)` — but **nothing chooses a
+ruleset according to the era of the capture being scanned.** A scan across all 7 captures under this
+ruleset would filter the 2020 ones correctly and pass the 2025 one through almost unfiltered.
+
+This is a real gap in Level 4 as designed, and it is now evidenced rather than anticipated. It is not
+resolved here; it is recorded.
+
+## The failure direction is the SAFE one, and that is worth stating
+
+At 1% removal the rules **under-match**: the kept text retains the furniture. Nothing of the article is
+lost — every substantive claim survives, because almost nothing was removed at all. The result is
+useless rather than dangerous: every capture would diff on navigation.
+
+That asymmetry matters for how the deviation check should behave. **A ruleset that stops matching
+fails loudly and harmlessly. A ruleset that matches too much fails quietly and destructively** — which
+is the over-match this same page produced earlier the same day. The null check catches the first for
+free; only the removed pane and a human catch the second.
+
+## What this means for the adaptive next-capture policy
+
+The plan's open half of the sampling policy — *reaching for captures likely to DISAGREE* — now has both
+a purpose and a measurement. Its job is not merely to spread across the timeline but to **find where a
+ruleset stops applying**, and the stale-selector count is the signal it should be steering by. Four
+clicks located this page's boundary; a policy that reached for it deliberately would have done so
+without a human choosing dates.
+
+## Caveats on the reading
+
+- **Three observation points, one page, one researcher.** The curve is not a general law about
+  CSS-in-JS sites; it is this page's behaviour, measured.
+- Two selectors (`noscript > iframe`) report `lastMatchedAt: null` — they never matched any observed
+  capture, which is a marking artefact from before zero-text nodes were hidden (see I7), not evidence
+  about decay.
+- **I9**, filed while checking this: `findStaleSelectors` reads `counts[selector] ?? 0`, so a selector
+  the parser *rejected* reports as "never matched" — conflating a typo with a redesign, which this
+  codebase elsewhere is explicit are different facts. It does not affect the figures above; none of
+  these selectors is malformed.
+- **I8**: at 1% removal the tree shows almost nothing marked and the removed pane is nearly empty,
+  which is visually indistinguishable from a lost ruleset. The researcher read it that way, correctly
+  given what was on screen. A ruleset that matches nothing and a ruleset that does not exist should
+  not look alike.
