@@ -54,6 +54,47 @@ what the bootstrap exists for: a human has already looked at that page.
 
 ---
 
+## FLOW 0 — ADMITTING A URL TO THE CORPUS
+
+**Before anything else, and once per page.** It answers one question — *is this page part of the
+investigation?* — and every later flow assumes the answer was yes. **Calibration must never be the place
+that finds out otherwise.**
+
+```
+researcher   "add <url>"  /  "is <url> in scope?"
+Claude       → admit_url(url)                          ⚠️ to build — there is no front door today
+backend      TrackedUrl exists? → already admitted, nothing further, no cost
+             otherwise:
+             → fetches the LIVE page          the page AS IT IS TODAY, not an archive capture
+             ← content, or nothing
+             nothing        → UrlAssessment { UNREADABLE } · REFUSED
+             → model: checkRelevance(content, url)               a PAID call
+             writes UrlAssessment { ON_MISSION | OFF_MISSION · reason ·
+                                    model · agentVersion · promptHash · contentChars }
+             OFF_MISSION    → REFUSED
+             ON_MISSION     → creates the TrackedUrl
+
+STATE        a UrlAssessment ALWAYS · a TrackedUrl only on ON_MISSION
+```
+
+**Recorded in BOTH directions, deliberately.** Recording only refusals makes the refusal RATE
+incomputable — a filter turning away 1% would be indistinguishable from one turning away 90%.
+
+**`UNREADABLE` is a verdict about the CHECK, not about the URL**, and is stored rather than omitted:
+without a row, *"did we try to admit this?"* is unanswerable.
+
+**Judged on the LIVE page.** A URL is admitted on what it says today, and its history is scanned
+afterwards — so admission and the archive can disagree, and nothing currently reconciles them. **OPEN.**
+
+**OPEN — ADMISSION HAS NO FRONT DOOR.** It is reachable only as a side effect of five other operations
+(`calibrate_article_rules`, `start_forensic_scan`, `enrich_evidence_with_history`, a forensics route,
+and `WaybackScraper`), so a researcher cannot deliberately ask whether a page is in scope — only
+discover it by trying to do something else. **One rule, five implementations**, on the corpus's front
+door. The target is one tool that admits, and every other operation REFUSING an unadmitted URL rather
+than admitting it silently.
+
+---
+
 ## FLOW 1 — SCANNING A URL THAT IS NEW TO THE CORPUS
 
 ### Phase 0 — survey
@@ -76,6 +117,9 @@ the researcher sees the number before anything is spent.
 
 ### Phase 1 — bootstrap, the one fetch that is not an acquisition
 
+**Requires an ADMITTED URL — see Flow 0.** Calibration runs only on pages already judged part of the
+investigation; it does not make that judgement and must not discover it late.
+
 **Once per URL, and only while no rules exist.** Its whole purpose is to put a page in front of a human
 so that rules can come into being — nothing can be derived, compared or judged until they do. The page
 it fetches is deliberately never stored.
@@ -83,7 +127,8 @@ it fetches is deliberately never stored.
 ```
 ── CALIBRATION ONLY · nothing is ACQUIRED ────────────────────────────
 Claude       → calibrate_article_rules(url)
-backend      admits the TrackedUrl · opens a CalibrationRun
+backend      REFUSES if the URL is not admitted — admission is Flow 0's, not this tool's
+             opens a CalibrationRun
              → Wayback replay: fetch the EARLIEST capture
              ← bytes
              writes a FETCH RECORD, outcome PENDING_JUDGEMENT, HOLDING the bytes
