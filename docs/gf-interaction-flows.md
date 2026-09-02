@@ -121,18 +121,34 @@ date order, each one fetched, kept, derived and compared with the one before it.
 rules stop needing correction — which is not a fixed number of captures but a property of the page.
 
 ```
-── ACQUISITION ───────────────────────────────────────────────────────
+── ACQUISITION · one capture, and it either completes or halts ───────
 Claude       → scan_next_capture(runId)                                ⚠️ to build
 backend      → Wayback replay: fetch the next capture in DATE order
              ← bytes
              writes an EXISTENCE ROW: date, wayback timestamp, raw-bytes hash   ⚠️ new
+                    ── rule-free, true whatever the rules say, so it is written first ──
              derives text under the rules whose validFrom ≤ THIS capture's date
-             keeps the body when textHash is novel → UrlSnapshot + anchor
              compares this extraction with the PREVIOUS stored capture's
-             ← what was removed · drift, if any · the marking URL
-Claude       reports; if nothing needs correcting, straight to the next capture
+             checks the gates
 
-── CALIBRATION · only when the researcher corrects ───────────────────
+             ┌─ gates quiet ──────────────────────────────────────────┐
+             │ stores the body when textHash is novel → UrlSnapshot   │
+             │ anchors documentHash on chain                          │
+             │ ← ACQUIRED                                             │
+             └────────────────────────────────────────────────────────┘
+             ┌─ a gate fires ─────────────────────────────────────────┐
+             │ stores NOTHING beyond the existence row                │
+             │ writes NOTHING to the chain                            │
+             │ ← JUDGEMENT REQUIRED · why · the drifted text          │
+             └────────────────────────────────────────────────────────┘
+Claude       ACQUIRED → straight to the next capture
+             JUDGEMENT REQUIRED → Flow 2
+
+── CALIBRATION · reached only from JUDGEMENT REQUIRED ────────────────
+Claude       → calibrate_article_rules(url, atCapture)                 ⚠️ gains a capture
+backend      → Wayback replay: RE-FETCHES the same capture
+             ← bytes, held and NOT PERSISTED — acquisition halted, so nothing is stored
+             ← marking URL
 Claude       hands over the marking URL and the command to paste back
 researcher   opens the marking URL in a browser
 browser      → GET  /api/article-rules/:runId/captures/:snapshotId
@@ -147,11 +163,27 @@ browser      → PUT  /api/article-rules/:runId/draft
 researcher   pastes into the chat:  approve_article_rules runId=… snapshotId=…
 Claude       → approve_article_rules(runId, snapshotId)                MCP
 backend      promotes the draft → Rule rows, validFrom = THIS capture's date · a decision
-             ← the rules now in force · coverage
+             ← the rules now in force
+Claude       → scan_next_capture(runId)     RETRIES THE SAME CAPTURE, now with rules
+backend      ← ACQUIRED
 
-STATE        existence row ALWAYS · UrlSnapshot + on-chain anchor when kept
+STATE        existence row ALWAYS · UrlSnapshot + on-chain anchor only on ACQUIRED
              Rule rows + a decision ONLY when the researcher corrected
 ```
+
+**NOTHING IRREVERSIBLE HAPPENS BEFORE THE CHECK.** The existence row is rule-free — that capture is in
+the archive whatever the rules say — so it is written immediately. The BODY and the ON-CHAIN ANCHOR wait
+until the gates are quiet, because the decision to store is made under the rules, and a gate firing says
+those rules are suspect HERE. A capture is never stored under rules that were in doubt at the time.
+
+**Acquisition is atomic per capture: it completes, or it halts having written only the existence row.**
+The same capture is retried once the rules are fixed, and succeeds the second time.
+
+**`calibrate_article_rules` IS THE RECOVERY MECHANISM, NOT A FIRST-RUN SPECIAL CASE.** It is the tool
+that gets rules out of a page: fetch it, do not persist it, let a human mark it. Bootstrap is simply its
+FIRST use. When acquisition halts, the bytes were never stored — so getting them in front of a
+researcher means fetching that same capture again, which is exactly what this tool already does. It
+gains only a parameter naming WHICH capture.
 
 **The two alternate here, capture by capture** — which is what makes the separation easy to miss. It is
 a separation of AUTHORITY, not of distance in time: acquisition may write bytes and never rules;
