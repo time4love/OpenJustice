@@ -52,3 +52,58 @@ jobs:
       # cannot grow unnoticed while the cleanup PRs are still queued.
       - name: Lint debt may not grow
         run: npm run lint:ratchet
+
+  # THE ACCEPTANCE SUITE OF THE ARTICLE-RULES REFACTOR — informational, not a
+  # gate. docs/gf-refactor-plan.md step 0 writes it from the flows appendix
+  # before any code, and every file is RED until its step builds the module it
+  # names; the retired-names scan is red until step 8, the switch. A required
+  # check cannot hold a suite that is red by design, so this job runs it beside
+  # the required one, and the summary below lists which files are green and
+  # which are red, so the red reads as progress. It joins the required run at
+  # step 8, in the commit that turns it green.
+  acceptance-suite:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Generate the Prisma client
+        run: npx prisma generate
+        working-directory: apps/glass-fortress/backend
+
+      # Run from the workspace, not through the root script: arguments passed
+      # through a nested `npm run` reach npm, which has a `--json` flag of its
+      # own, and the results file is never written.
+      - name: Run the walk's acceptance suite
+        run: npm run test:walk -- --json --outputFile=walk-results.json
+        working-directory: apps/glass-fortress/backend
+
+      - name: Which walk files are green, and which are red
+        if: always()
+        run: |
+          node -e '
+            const { readFileSync } = require("node:fs");
+            const { relative } = require("node:path");
+            const results = JSON.parse(readFileSync("apps/glass-fortress/backend/walk-results.json", "utf8"));
+            const rows = results.testResults
+              .map((f) => ({ file: relative(process.cwd(), f.name), status: f.status, passed: f.assertionResults.filter((a) => a.status === "passed").length, failed: f.assertionResults.filter((a) => a.status === "failed").length }))
+              .sort((a, b) => a.file.localeCompare(b.file));
+            const green = rows.filter((r) => r.status === "passed").length;
+            const lines = [
+              `## Acceptance suite — ${green} of ${rows.length} files green`,
+              "",
+              "| file | | passed | failed |",
+              "|---|---|---|---|",
+              ...rows.map((r) => `| \`${r.file}\` | ${r.status === "passed" ? "🟢 green" : r.passed + r.failed === 0 ? "🔴 red — module not built yet" : "🔴 red"} | ${r.passed} | ${r.failed} |`),
+              "",
+              "_Red is expected until the step that builds the module each file names; `retiredNames` is red until step 8._",
+            ];
+            require("node:fs").appendFileSync(process.env.GITHUB_STEP_SUMMARY, lines.join("\n") + "\n");
+          '

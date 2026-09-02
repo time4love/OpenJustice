@@ -15,6 +15,14 @@ import type { Config } from 'jest';
 // assert the stub and prove nothing. The `extraction` project transforms
 // node_modules so those tests can run the genuine article against frozen real
 // captures. It costs a few seconds and applies to nothing else.
+//
+// `walk` is the acceptance suite of the article-rules refactor
+// (docs/gf-refactor-plan.md, step 0): written from the flows appendix before
+// the code, and RED by design until each step builds the module it names. It is
+// its own project so `npm test` — the required CI check — keeps running `unit`
+// and `extraction` only, while `npm run test:walk` reports the walk's progress
+// on every PR without gating it. At step 8, the switch, it joins the required
+// run in the same commit that turns it green.
 // ---------------------------------------------------------------------------
 
 const shared = {
@@ -36,7 +44,12 @@ const config: Config = {
       ...shared,
       displayName: 'unit',
       testMatch: ['<rootDir>/test/**/*.test.ts'],
-      testPathIgnorePatterns: ['<rootDir>/test/extraction/'],
+      testPathIgnorePatterns: ['<rootDir>/test/extraction/', '<rootDir>/test/walk/'],
+    },
+    {
+      ...shared,
+      displayName: 'walk',
+      testMatch: ['<rootDir>/test/walk/**/*.test.ts'],
     },
     {
       ...shared,
