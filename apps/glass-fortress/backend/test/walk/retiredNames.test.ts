@@ -20,6 +20,8 @@ import { SRC, tsFiles, readCode, identifiersWithWord } from './scan';
 
 const srcModules = () => tsFiles(SRC).map((file) => ({ file: relative(SRC, file), code: readCode(file) }));
 
+const TRACKED_URL_WRITE = /\.trackedUrl\.(?:create|createMany|upsert)\s*\(/;
+
 const RETIRED_TOOLS = [
   'calibrate_article_rules',
   'correct_article_rules',
@@ -52,9 +54,16 @@ describe('EXPECTED RED UNTIL STEP 8 — no file under src names a retired concep
     expect(offenders).toEqual([]);
   });
 
-  it('TrackedUrl is created in exactly one module — the survey', () => {
-    const creators = srcModules().filter(({ code }) => /\.trackedUrl\.create(?:Many)?\(/.test(code));
-    expect(creators.map((m) => m.file)).toHaveLength(1);
+  // WRITERS, not creators by verb: admitUrl brings a page in with `upsert`, and
+  // a scan that counted `create` alone saw zero writers today and would have
+  // seen one at step 2 — the survey — while admitUrl still existed beside it.
+  // test/urlAdmission.test.ts counts the same writers and pins the one to
+  // admitUrl, which is TODAY's rule; this pins it to the survey, the TARGET's.
+  // Between step 2 and step 8 the true count is two.
+  it('TrackedUrl is written from exactly one module, and it is under src/walk — the survey', () => {
+    const writers = srcModules().filter(({ code }) => TRACKED_URL_WRITE.test(code));
+    expect(writers.map((m) => m.file)).toHaveLength(1);
+    expect(writers.at(0)?.file.startsWith('walk/')).toBe(true);
   });
 
   it('urlVersionDiff is written from exactly one module', () => {
@@ -68,6 +77,8 @@ describe('EXPECTED RED UNTIL STEP 8 — no file under src names a retired concep
     expect(identifiersWithWord(`const camera = general.operation;`, ['era', 'eras'])).toEqual([]);
     expect(/\b(?:calibrationRunId|admitUrl)\b/.test(`where: { calibrationRunId }`)).toBe(true);
     expect(RETIRED_TOOLS.filter((t) => `server.tool('judge_article_capture', …)`.includes(t))).toEqual(['judge_article_capture']);
-    expect(/\.trackedUrl\.create(?:Many)?\(/.test(`await prisma.trackedUrl.create({ data })`)).toBe(true);
+    expect(TRACKED_URL_WRITE.test(`await prisma.trackedUrl.create({ data })`)).toBe(true);
+    expect(TRACKED_URL_WRITE.test(`const page = await prisma.trackedUrl.upsert({ where, create, update });`)).toBe(true);
+    expect(TRACKED_URL_WRITE.test(`createdAt: trackedUrl.createdAt,`)).toBe(false);
   });
 });
