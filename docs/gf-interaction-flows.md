@@ -304,9 +304,13 @@ judgements. It ends the moment any gate fires, and returns to Phase 2 for that c
 ── ACQUISITION ONLY, until a gate fires ──────────────────────────────
 after n consecutive captures needing NO correction:
 Claude       → scan_batch(runId, maxCaptures)                          ⚠️ to build
-backend      loop, per capture:  fetch → existence row → derive → store if novel
+backend      loop, per capture:  fetch → FETCH RECORD, rule-free, written FIRST
+                                 → derive under the rules whose validFrom ≤ THIS
+                                   capture's date
                                  → compareExtractions(previous, current)
                                  → check the gates
+                                 → THEN the same three outcomes as Phase 2:
+                                   ACQUIRED · DUPLICATE · PENDING_JUDGEMENT
              stops on: content changing sides · a rule that matched
                        the previous capture matching nothing here ·
                        batch bound · the periodic self-check
@@ -356,6 +360,21 @@ the DECISIONS      CAPTURE_SHOWN · RULESET_CORRECTED · CAPTURE_ACCEPTED · CAP
 the DRAFT          the marking page's working state, one at a time
 ```
 
+**THE DRAFT STAYS HERE — ONE PER PAGE — AND DOES NOT MOVE ONTO THE FETCH RECORD.** The fetch record was
+the obvious home, since it already holds the bytes being marked. It cannot be, for two reasons and either
+alone is enough:
+
+- **Not every markable capture has one.** Flow 3 marks captures already stored, fetching nothing, so
+  there is no fetch record to hold a draft. Neither is there for a DIRECT or ASSERTED capture, whose
+  wayback timestamp is null.
+- **A per-capture draft is a lost update.** A draft is the FULL selector list, not a delta. Two drafts
+  held against the same baseline and promoted in turn would silently discard the first one's marks. One
+  draft per page is precisely what makes switching captures settle the previous draft instead.
+
+**A draft is not a judgement, and this is the one thing in here that is not one.** The log is otherwise
+append-only and immutable; the draft is transient, overwritten, and discarded on promotion. It sits here
+because a page is the only scope that works, not because it belongs with the decisions.
+
 **It is NOT a sitting.** A run per sitting would make the settle count a scheduling artefact: stopping
 for the night and resuming would reset it, and how long a researcher works is not a fact about the page.
 
@@ -378,22 +397,26 @@ held — and both end the same way, by handing back to `scan_next_capture`.
 ```
 Claude       hands over the marking URL and the exact command to paste back:
 
-                 approve_article_rules runId=<runId> snapshotId=<snapshotId>
+                 approve_article_rules runId=<runId> capture=<capture>
 
              the page shows that same line with a copy button once the draft is
              handed back, so a mismatch means the wrong page is open
 researcher   opens the marking URL in a browser
-browser      → GET  /api/article-rules/:runId/captures/:snapshotId
+browser      → GET  /api/article-rules/:runId/captures/:capture
+                    :capture is EITHER a wayback timestamp — the capture is held
+                    on a FETCH RECORD and has no UrlSnapshot yet, which is the
+                    case in BOTH flows that reach marking — OR a snapshotId,
+                    for a capture already stored, which is Flow 3's case
              ← the capture, inert, plus its outline
-browser      → POST /api/article-rules/:runId/captures/:snapshotId/preview
+browser      → POST /api/article-rules/:runId/captures/:capture/preview
                     { selectors }                      on EVERY edit, PURE, stores nothing
              ← keptText · removedText · removedSegments · matchCounts
 researcher   marks furniture, presses שמור טיוטא חדשה של חוקי חילוץ הטקסט
 browser      → PUT  /api/article-rules/:runId/draft
-                    { snapshotId, selectors, returned: true }
+                    { capture, selectors, returned: true }
              ← the draft, handed back
-researcher   pastes into the chat:  approve_article_rules runId=… snapshotId=…
-Claude       → approve_article_rules(runId, snapshotId)                MCP
+researcher   pastes into the chat:  approve_article_rules runId=… capture=…
+Claude       → approve_article_rules(runId, capture)                   MCP
 backend      promotes the draft → Rule rows, validFrom = THIS capture's date · a decision
              ← the rules now in force
 Claude       → scan_next_capture(runId)      the held record, now with rules
@@ -408,6 +431,20 @@ STATE        draft (written by the BROWSER) · Rule rows · one decision
 **It always ends by handing back to `scan_next_capture`.** Bootstrap and recovery differ at the start
 and converge here: rules now exist, a fetch record holds bytes, and the walk promotes it. Nothing else
 in either flow acquires a capture.
+
+**A CAPTURE IS NAMED BY ONE OF TWO IDENTITIES, AND MARKING USUALLY GETS THE SECOND ONE.** A `snapshotId`
+cannot name the capture being marked in either flow that reaches here: bootstrap writes no `UrlSnapshot`,
+and a gate stop deliberately writes none either — in both cases the bytes are held on a fetch record and
+nothing has been stored. A marking step addressed by `snapshotId` could therefore not be called at the one
+moment it exists for. The capture is named instead by its **wayback timestamp**, which with the page is
+the fetch record's own key and is derived from Wayback alone.
+
+The second identity is still needed: **Flow 3 marks captures already stored**, which have a `snapshotId`
+and may have no fetch record at all. So the parameter accepts either, exactly one, never both.
+
+  **THIS IS NOT A NEW SHAPE.** `CalibrationDecision` already models a capture as `snapshotId` XOR
+  `waybackTimestamp`, and `requireObservationSubject` already refuses zero or two. The tools and routes
+  are adopting the identity the decision log has always used.
 
 **DEFINED ONCE SO THE COPIES CANNOT DISAGREE.** Every step here is one a researcher performs or watches,
 and a flow described twice is a flow that will eventually be described two ways.
@@ -434,13 +471,15 @@ GATE 4   the periodic self-check interval elapses
 backend      stops at a capture and reports WHY, with the DRIFTED TEXT
              ← the segments themselves, not a count
 Claude       shows them and puts ONE binary question
-researcher   → open_article_capture(runId, snapshotId)     [if they want to look]
+researcher   → open_article_capture(runId, capture)        [if they want to look]
 backend      records CAPTURE_SHOWN
              ← the capture, the rules, what they remove
+                 the capture is named by its WAYBACK TIMESTAMP here — a gate stop
+                 stored no UrlSnapshot, so there is no snapshotId to name it by
 
 ── CALIBRATION ANSWERS · one of two ──────────────────────────────────
 
-REDESIGN     Claude       → open_article_capture(runId, snapshotId)
+REDESIGN     Claude       → open_article_capture(runId, capture)
              backend      records CAPTURE_SHOWN
                           then the SAME ENTRY as Phase 1: the run is already open and
                           the fetch record already holds the bytes, so neither is
@@ -448,9 +487,9 @@ REDESIGN     Claude       → open_article_capture(runId, snapshotId)
                           ← marking URL
                           → MARKING  (below), which ends by retrying this capture
 
-BAD CAPTURE  researcher   pastes:  resolve_scan_stop runId=… snapshotId=…
+BAD CAPTURE  researcher   pastes:  resolve_scan_stop runId=… capture=…
                             BAD_CAPTURE reason=…                                ⚠️ renamed
-             Claude       → resolve_scan_stop(runId, snapshotId, BAD_CAPTURE, reason)
+             Claude       → resolve_scan_stop(runId, capture, BAD_CAPTURE, reason)
              backend      CAPTURE_SKIPPED, reason REQUIRED
                           → the batch resumes from the next capture
 
@@ -584,6 +623,14 @@ Listed so a future session does not mistake silence for settlement.
 - **`n`, and the periodic-check interval** — derived, not chosen, but the derivation is unwritten.
 - **`ScanRun` versus `CalibrationRun`** — acquisition and calibration are separate passes over one
   timeline. Whether they share a run or hold two is not decided.
+- **`runId` as a parameter** — every tool and route above still carries one. A capture names a page and
+  a page has one log, so it is derivable, and a wrong one has already cost two false "I marked it"
+  exchanges. A second model reviewed removing it and found no case where it is REQUIRED, but four
+  consequences that are: `researcherId` would have to move onto `CalibrationDecision`, the
+  compare-and-set would have to be re-homed to the page (which collides on live rows that all start at
+  sequence 1), each write would have to become one transaction, and a superseded log would need an
+  address. **Under review, deliberately not acted on** — the shape of the flows above does not depend on
+  the answer.
 - **Rule expiry** — `RuleMatch` makes *"when did this stop matching"* answerable; how much silence
   justifies retiring a rule is unmeasured, and a number chosen now would be the magic number the gates
   exist to avoid.
