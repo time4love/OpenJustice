@@ -13,6 +13,23 @@ does and never what happens between them, which is where the judgement lives.
 
 ---
 
+## THE FOUR ACTORS, AND WHICH SURFACE EACH USES
+
+```
+researcher   the human. Marks in a browser; pastes commands into the chat.
+Claude       the orchestrator. Calls MCP TOOLS only — never an HTTP route.
+browser      the marking page. Calls the BACKEND'S HTTP ROUTES directly,
+             under /api/article-rules — it never goes through Claude or MCP.
+backend      the services. Reaches WAYBACK for CDX and replay; writes the database
+             and the chain.
+```
+
+**The browser's direct line to the backend is the only path that bypasses Claude**, and it is the
+reason the marking page can be a pure transformation: it reads a capture, previews selectors, and hands
+back a draft. It records no decision and applies no effect.
+
+---
+
 ## THE TWO RESPONSIBILITIES, AND THE DIRECTION BETWEEN THEM
 
 ```
@@ -20,26 +37,17 @@ ACQUISITION    get bytes from the archive and keep them          maintenance act
 CALIBRATION    decide what of a page is article text             research act
 ```
 
-**ACQUISITION READS RULES. CALIBRATION WRITES THEM.** A one-way dependency, not an entanglement:
-acquisition needs the current ruleset to decide which bodies to keep, and never CREATES one.
+**ACQUISITION READS RULES. CALIBRATION WRITES THEM.** One direction, not an entanglement: acquisition
+needs the current ruleset to decide which bodies to keep, and never creates one.
 
-**It needs no human to PROCEED, and a human to RESOLVE A STOP.** That distinction is what keeps the two
-responsibilities apart while letting acquisition halt: it can run unattended for as long as nothing
-fires, and the moment something does, the answer is not its to give.
+**ACQUISITION STOPS ON THE GATES, FROM THE SECOND STORED CAPTURE ONWARD.** Acquiring under broken rules
+is not a harmless over-storing: every stored row produces a diff and every diff is a PAID classifier
+call, so a 3,400-capture page yields thousands of spurious rows and thousands of paid calls — the
+explosion this level exists to prevent. From the second stored capture the signal is available, because
+the previous capture's extraction is held.
 
-**ACQUISITION STOPS ON THE GATES, FROM THE SECOND STORED CAPTURE ONWARD.** An earlier draft of this
-document said it never stops, on the reasoning that wrong rules make it OVER-store and that
-over-storing is the safe direction. **That was wrong about the consequences.** Every stored row
-produces a diff and every diff is a PAID classifier call, so acquiring under broken rules across a
-3,400-capture page produces thousands of spurious rows and thousands of paid calls — which is
-precisely the explosion this level was reopened to prevent.
-
-**And from the second stored capture the signal is available**: the previous capture's extraction is
-held, so drift is computable at acquisition time. Declining to use a signal you have, and calling the
-result safe, is how a corpus nobody trusts gets built.
-
-The separation of responsibility survives intact, because acquisition does not JUDGE — it detects and
-YIELDS. Calibration is what resolves the stop.
+**It does not JUDGE — it detects and YIELDS.** So it needs no human to PROCEED and a human to RESOLVE A
+STOP, which is what keeps the two responsibilities apart while letting the pass halt.
 
 **The one capture that cannot be checked is the first stored one**, which has no predecessor. That is
 what the bootstrap exists for: a human has already looked at that page.
@@ -49,6 +57,9 @@ what the bootstrap exists for: a human has already looked at that page.
 ## FLOW 1 — SCANNING A URL THAT IS NEW TO THE CORPUS
 
 ### Phase 0 — survey
+
+**Before anything is fetched, stored or spent.** It happens the moment a researcher names a URL, and
+answers one question: how big is this job? Nothing else in the flow can be sized without it.
 
 ```
 researcher   "scan https://example.gov.il/page"
@@ -65,30 +76,52 @@ the researcher sees the number before anything is spent.
 
 ### Phase 1 — bootstrap, the one fetch that is not an acquisition
 
+**Once per URL, and only while no rules exist.** Its whole purpose is to put a page in front of a human
+so that rules can come into being — nothing can be derived, compared or judged until they do. The page
+it fetches is deliberately never stored.
+
 ```
+── CALIBRATION ONLY · nothing is acquired ────────────────────────────
 Claude       → calibrate_article_rules(url)
 backend      admits the TrackedUrl · opens a CalibrationRun
              → Wayback replay: fetch the EARLIEST capture
              ← bytes, held in memory and NOT PERSISTED
              ← marking URL
+Claude       hands the researcher the marking URL and the command to paste back
+researcher   opens the marking URL in a browser
+browser      → GET  /api/article-rules/:runId/captures/:snapshotId
+             ← the capture, inert, plus its outline
+browser      → POST /api/article-rules/:runId/captures/:snapshotId/preview
+                    { selectors }                      on every edit, PURE, stores nothing
+             ← keptText · removedText · removedSegments · matchCounts
 researcher   marks furniture, presses שמור טיוטא חדשה של חוקי חילוץ הטקסט
-backend      ← draft saved on the run
-researcher   pastes:  approve_article_rules runId=… snapshotId=…        ⚠️ renamed
+browser      → PUT  /api/article-rules/:runId/draft
+                    { snapshotId, selectors, returned: true }
+researcher   pastes into the chat:  approve_article_rules runId=… snapshotId=…   ⚠️ renamed
+Claude       → approve_article_rules(runId, snapshotId)                MCP
 backend      promotes the draft → Rule rows, validFrom = THIS capture's date   ⚠️ new table
              records the acceptance
+             ← the rules now in force · coverage
 
 STATE        TrackedUrl admitted · CalibrationRun · draft · Rule rows · one decision
 NOT WRITTEN  no UrlSnapshot — the bootstrap bytes are discarded
 ```
 
-**The first capture has no rules AND no predecessor.** This removes the first half, so every acquisition
-after it has rules — no special case in the path that decides corpus membership. The capture is
-re-fetched during the walk: free, idempotent, and it avoids a second place a capture can live. A draft
-capture table was considered and rejected for exactly that reason.
+**The first capture has no rules AND no predecessor.** Bootstrapping removes the first half, so every
+acquisition after it has rules — no special case in the path that decides corpus membership.
+
+The capture is re-fetched during the walk: free, idempotent, and it keeps a capture to ONE shape. A
+draft capture table would be a second storage path for the most sensitive data in the system, with
+promotion logic between the two.
 
 ### Phase 2 — the walk, one capture at a time
 
+**The main body of the work, and where the researcher's attention is spent.** One capture at a time, in
+date order, each one fetched, kept, derived and compared with the one before it. It continues until the
+rules stop needing correction — which is not a fixed number of captures but a property of the page.
+
 ```
+── ACQUISITION ───────────────────────────────────────────────────────
 Claude       → scan_next_capture(runId)                                ⚠️ to build
 backend      → Wayback replay: fetch the next capture in DATE order
              ← bytes
@@ -96,19 +129,46 @@ backend      → Wayback replay: fetch the next capture in DATE order
              derives text under the rules whose validFrom ≤ THIS capture's date
              keeps the body when textHash is novel → UrlSnapshot + anchor
              compares this extraction with the PREVIOUS stored capture's
-             ← what was removed · drift, if any
-Claude       reports; researcher marks and approves, or moves on
+             ← what was removed · drift, if any · the marking URL
+Claude       reports; if nothing needs correcting, straight to the next capture
+
+── CALIBRATION · only when the researcher corrects ───────────────────
+Claude       hands over the marking URL and the command to paste back
+researcher   opens the marking URL in a browser
+browser      → GET  /api/article-rules/:runId/captures/:snapshotId
+             ← the capture, inert, plus its outline
+browser      → POST /api/article-rules/:runId/captures/:snapshotId/preview
+                    { selectors }                      on every edit, PURE, stores nothing
+             ← keptText · removedText · removedSegments · matchCounts
+researcher   marks furniture, presses שמור טיוטא חדשה של חוקי חילוץ הטקסט
+browser      → PUT  /api/article-rules/:runId/draft
+                    { snapshotId, selectors, returned: true }
+             ← the draft, handed back
+researcher   pastes into the chat:  approve_article_rules runId=… snapshotId=…
+Claude       → approve_article_rules(runId, snapshotId)                MCP
+backend      promotes the draft → Rule rows, validFrom = THIS capture's date · a decision
+             ← the rules now in force · coverage
 
 STATE        existence row ALWAYS · UrlSnapshot + on-chain anchor when kept
-             Rule rows + a decision when the researcher corrects
+             Rule rows + a decision ONLY when the researcher corrected
 ```
+
+**The two alternate here, capture by capture** — which is what makes the separation easy to miss. It is
+a separation of AUTHORITY, not of distance in time: acquisition may write bytes and never rules;
+calibration may write rules and never bytes. In Phase 3 the same boundary holds while acquisition runs
+for hundreds of captures between one calibration and the next.
 
 **The first STORED capture has no predecessor**, so drift is undefined for it — inherent, and harmless:
 it is the page the researcher just marked in Phase 1.
 
 ### Phase 3 — the ruleset settles, and the batch grows
 
+**Reached when n consecutive captures have needed no correction.** The same loop, in larger steps and
+without a human watching each one — the point at which a 3,400-capture timeline stops requiring 3,400
+judgements. It ends the moment any gate fires, and returns to Phase 2 for that capture.
+
 ```
+── ACQUISITION ONLY, until a gate fires ──────────────────────────────
 after n consecutive captures needing NO correction:
 Claude       → scan_batch(runId, maxCaptures)                          ⚠️ to build
 backend      loop, per capture:  fetch → existence row → derive → store if novel
@@ -131,6 +191,10 @@ looked at — deliberately, because the blind spot above is real.
 
 ### Phase 4 — completion
 
+**When the timeline is exhausted, or the researcher stops.** There is nothing to finalise: every rule
+has been in force since the moment it was created, and every capture was derived under the rules valid
+for its own date as it was stored.
+
 ```
 timeline exhausted, or the researcher stops
 backend      nothing to commit — rules were in force from the moment they were created
@@ -147,8 +211,11 @@ is nothing to activate.
 
 ## FLOW 2 — A STOP FOR JUDGEMENT
 
-**Reached from the one-at-a-time walk OR from a batch** — the gates are the same either way, and
-neither pass may conclude anything from them. None carries a threshold:
+**The only place a human is required, and the only place a judgement is made.** It happens whenever a
+gate fires — from the one-at-a-time walk or from a batch, and the gates are the same either way. The
+pass has noticed that something changed; it cannot know WHAT, and does not try.
+
+None of the gates carries a threshold:
 
 ```
 GATE 1   any content segment changes sides, EITHER direction
@@ -158,6 +225,7 @@ GATE 4   the periodic self-check interval elapses
 ```
 
 ```
+── ACQUISITION YIELDS ────────────────────────────────────────────────
 backend      stops at a capture and reports WHY, with the DRIFTED TEXT
              ← the segments themselves, not a count
 Claude       shows them and puts ONE binary question
@@ -165,17 +233,24 @@ researcher   → open_article_capture(runId, snapshotId)     [if they want to lo
 backend      records CAPTURE_SHOWN
              ← the capture, the rules, what they remove
 
-             ── then one of two answers ──
+── CALIBRATION ANSWERS · one of two ──────────────────────────────────
 
-REDESIGN     researcher marks the capture, presses שמור טיוטא…
-             pastes:  approve_article_rules runId=… snapshotId=…      ⚠️ renamed
-backend      Rule rows, validFrom = THIS capture's date · a decision
-             → back to the one-at-a-time walk until the ruleset settles again
+REDESIGN     researcher   opens the marking URL, marks, presses שמור טיוטא…
+             browser      → GET  /api/article-rules/:runId/captures/:snapshotId
+                          → POST …/captures/:snapshotId/preview  { selectors }   per edit
+                          → PUT  /api/article-rules/:runId/draft
+                                 { snapshotId, selectors, returned: true }
+             researcher   pastes:  approve_article_rules runId=… snapshotId=…   ⚠️ renamed
+             Claude       → approve_article_rules(runId, snapshotId)             MCP
+             backend      Rule rows, validFrom = THIS capture's date · a decision
+                          ← the rules now in force · coverage
+                          → back to the one-at-a-time walk until the rules settle again
 
-BAD CAPTURE  researcher pastes:
-               resolve_scan_stop runId=… snapshotId=… BAD_CAPTURE reason=…   ⚠️ renamed
-backend      CAPTURE_SKIPPED, reason REQUIRED
-             → the batch resumes from the next capture
+BAD CAPTURE  researcher   pastes:  resolve_scan_stop runId=… snapshotId=…
+                            BAD_CAPTURE reason=…                                ⚠️ renamed
+             Claude       → resolve_scan_stop(runId, snapshotId, BAD_CAPTURE, reason)
+             backend      CAPTURE_SKIPPED, reason REQUIRED
+                          → the batch resumes from the next capture
 
 STATE        CAPTURE_SHOWN if looked at · then EITHER Rule rows + a decision
              OR a CAPTURE_SKIPPED carrying its reason
@@ -194,7 +269,9 @@ manufactures a false "text removed" diff. **OPEN: unenforced, and Level 5's.**
 
 ## FLOW 3 — CORRECTING A CORPUS ALREADY SCANNED
 
-No acquisition: the captures are already stored, so nothing is fetched.
+**When a page already in the corpus turns out to have been extracted wrongly** — noticed in a diff, a
+thesis, or by a researcher reading the text. It needs no scan and no network: the captures are already
+stored, so this walks them.
 
 ```
 researcher   "the rules are wrong on <url>"
@@ -247,8 +324,10 @@ with no object is not an act.
 
 ## FLOW 5 — CHANGING A PAST EXTRACTION
 
-**The only way, and it is deliberate.** A stored capture's text is what it was derived as. Rules created
-later never touch it, because they carry a `validFrom` that is later than its date.
+**The only way a stored extraction ever changes, and it is deliberate.** It happens rarely and always by
+explicit decision — never as a side effect of calibrating, committing or scanning. A stored capture's
+text is what it was derived as, and rules created later cannot touch it, because they carry a
+`validFrom` later than its date.
 
 Two reasons qualify, and both are *"the stored text is UNTRUE"* — never *"the rules could be better"*:
 
