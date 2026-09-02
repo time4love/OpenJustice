@@ -87,7 +87,10 @@ backend      admits the TrackedUrl · opens a CalibrationRun
              → Wayback replay: fetch the EARLIEST capture
              ← bytes, held in memory and NOT PERSISTED
              ← marking URL
-Claude       hands the researcher the marking URL and the command to paste back
+Claude       hands the researcher the marking URL and the exact command to paste back:
+
+                 approve_article_rules runId=<runId> snapshotId=<snapshotId>
+
 researcher   opens the marking URL in a browser
 browser      → GET  /api/article-rules/:runId/captures/:snapshotId
              ← the capture, inert, plus its outline
@@ -142,14 +145,23 @@ backend      → Wayback replay: fetch the next capture in DATE order
              │ ← JUDGEMENT REQUIRED · why · the drifted text          │
              └────────────────────────────────────────────────────────┘
 Claude       ACQUIRED → straight to the next capture
-             JUDGEMENT REQUIRED → Flow 2
+             JUDGEMENT REQUIRED → Flow 2, which has TWO answers:
+                 REDESIGN     → calibrate below, then retry this capture
+                 BAD CAPTURE  → resolve_scan_stop(… BAD_CAPTURE, reason)
+                                the capture is SKIPPED, nothing is ever stored
+                                for it beyond its existence row, and the walk
+                                moves to the next one
 
-── CALIBRATION · reached only from JUDGEMENT REQUIRED ────────────────
+── CALIBRATION · reached from JUDGEMENT REQUIRED · REDESIGN ──────────
 Claude       → calibrate_article_rules(url, atCapture)                 ⚠️ gains a capture
-backend      → Wayback replay: RE-FETCHES the same capture
-             ← bytes, held and NOT PERSISTED — acquisition halted, so nothing is stored
+backend      makes THIS capture's bytes readable by the marking page   ⚠️ OPEN, see below
              ← marking URL
-Claude       hands over the marking URL and the command to paste back
+Claude       hands over the marking URL and the exact command to paste back:
+
+                 approve_article_rules runId=<runId> snapshotId=<snapshotId>
+
+             the page shows that same line with a copy button once the draft is
+             handed back, so a mismatch means the wrong page is open
 researcher   opens the marking URL in a browser
 browser      → GET  /api/article-rules/:runId/captures/:snapshotId
              ← the capture, inert, plus its outline
@@ -178,6 +190,27 @@ those rules are suspect HERE. A capture is never stored under rules that were in
 
 **Acquisition is atomic per capture: it completes, or it halts having written only the existence row.**
 The same capture is retried once the rules are fixed, and succeeds the second time.
+
+**OPEN — WHERE THE BYTES FOR MARKING COME FROM.** The marking page reads a capture through
+`GET /api/article-rules/:runId/captures/:snapshotId`, which today loads a STORED `UrlSnapshot`. Acquisition
+halted before storing one, so something must make those bytes readable, and it is not decided which:
+
+```
+A   store the BODY on fetch and anchor only on ACQUIRED
+    raw bytes are rule-free, so storing them is true whatever the rules say;
+    only the CHAIN WRITE waits. No re-fetch, no second shape, no cache.
+    Costs: `text`/`textHash` are derived under rules in doubt — what is written
+    for them, if anything, is the open part.
+
+B   hold the bytes server-side for the life of the marking session
+    nothing enters the corpus. Costs a cache with a lifetime, and the preview
+    endpoint re-derives on EVERY EDIT, so the bytes must stay reachable throughout.
+```
+
+**And today neither exists.** `calibrate_article_rules` describes itself as marking against *"freshly
+fetched pages that are NOT persisted"*, and its handler admits the URL and opens a run — it fetches
+nothing for marking. The marking page can only mark captures already stored. The claim is unimplemented,
+in the same way `commit_article_rules` claimed a re-derivation it never performed.
 
 **`calibrate_article_rules` IS THE RECOVERY MECHANISM, NOT A FIRST-RUN SPECIAL CASE.** It is the tool
 that gets rules out of a page: fetch it, do not persist it, let a human mark it. Bootstrap is simply its
