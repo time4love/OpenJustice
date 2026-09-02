@@ -21,7 +21,11 @@ CALIBRATION    decide what of a page is article text             research act
 ```
 
 **ACQUISITION READS RULES. CALIBRATION WRITES THEM.** A one-way dependency, not an entanglement:
-acquisition needs the current ruleset to decide which bodies to keep, and never needs a human.
+acquisition needs the current ruleset to decide which bodies to keep, and never CREATES one.
+
+**It needs no human to PROCEED, and a human to RESOLVE A STOP.** That distinction is what keeps the two
+responsibilities apart while letting acquisition halt: it can run unattended for as long as nothing
+fires, and the moment something does, the answer is not its to give.
 
 **ACQUISITION STOPS ON THE GATES, FROM THE SECOND STORED CAPTURE ONWARD.** An earlier draft of this
 document said it never stops, on the reasoning that wrong rules make it OVER-store and that
@@ -138,6 +142,8 @@ STATE        nothing further written
 
 **There is no commit step.** `commit_article_rules` is retired: with rules in force from creation there
 is nothing to activate.
+
+---
 
 ## FLOW 2 — A STOP FOR JUDGEMENT
 
