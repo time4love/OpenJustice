@@ -143,8 +143,22 @@ is filtering that deletes, by never creating.
 its body is kept. Under a megabyte per 3,400-capture page, against ~470 MB to keep every body. A missing
 body is then an unexplained gap that Wayback can refill, never an untrue silence.
 
-**Acquisition never stops for judgement.** Wrong rules make furniture leak, `textHash` change, and the
-pass OVER-store — the safe direction, and the existence rows mean nothing is lost either way.
+**ACQUISITION STOPS ON THE GATES, FROM THE SECOND STORED CAPTURE ONWARD.** An earlier draft of this
+document said it never stops, on the reasoning that wrong rules make it OVER-store and that
+over-storing is the safe direction. **That was wrong about the consequences.** Every stored row
+produces a diff and every diff is a PAID classifier call, so acquiring under broken rules across a
+3,400-capture page produces thousands of spurious rows and thousands of paid calls — which is
+precisely the explosion this level was reopened to prevent.
+
+**And from the second stored capture the signal is available**: the previous capture's extraction is
+held, so drift is computable at acquisition time. Declining to use a signal you have, and calling the
+result safe, is how a corpus nobody trusts gets built.
+
+The separation of responsibility survives intact, because acquisition does not JUDGE — it detects and
+YIELDS. Calibration is what resolves the stop.
+
+**The one capture that cannot be checked is the first stored one**, which has no predecessor. That is
+what the bootstrap exists for: a human has already looked at that page.
 
 **THE FIRST FETCH IS NOT AN ACQUISITION.** `calibrate_article_rules` fetches the earliest capture WITHOUT
 persisting it, purely so a human can mark it and rules can exist. Every acquisition after that has rules,

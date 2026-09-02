@@ -67,8 +67,10 @@ where it got to. Also retires `start_forensic_scan`'s in-memory guard, which los
 ### 6b · Split acquisition from calibration
 
 Acquisition gets bytes and keeps them; calibration decides what is article text. **Acquisition READS
-rules and never writes them, and never stops for judgement** — wrong rules make it OVER-store, which is
-the safe direction.
+rules and never writes them**, and **STOPS on the gates from the second stored capture onward** —
+because every stored row produces a diff and every diff is a PAID classifier call, so acquiring under
+broken rules is the explosion this level exists to prevent, not a safe over-storing. It detects and
+YIELDS; calibration resolves.
 
 **Every capture leaves an EXISTENCE ROW** — date, wayback timestamp, raw-bytes hash — so a capture the
 rules dropped is an unexplained gap Wayback can refill rather than an untrue silence. That is §2's
