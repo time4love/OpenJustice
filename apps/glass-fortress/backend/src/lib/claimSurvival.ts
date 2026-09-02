@@ -22,6 +22,26 @@
  * question.
  */
 
+
+
+/**
+ * Split into comparable segments.
+ *
+ * Line-wise and whitespace-normalised, because the extraction's line breaks are
+ * stable while its internal spacing is not, and a segment that differs only by a
+ * doubled space is not a segment that disappeared.
+ *
+ * EXPORTED, because `extractionDrift` compares the same kind of text and the two
+ * checks must agree about what a segment IS — otherwise a finding from one could
+ * not be looked up in the other.
+ */
+export function segments(text: string): string[] {
+  return text
+    .split('\n')
+    .map((line) => line.replace(/\s+/g, ' ').trim())
+    .filter((line) => line.length > 0);
+}
+
 export interface SurvivalComparison {
   /** Nothing kept before is missing now. */
   survived: boolean;
@@ -42,19 +62,6 @@ export interface SurvivalComparison {
   keptCharsAfter: number;
 }
 
-/**
- * Split into comparable segments.
- *
- * Line-wise and whitespace-normalised, because the extraction's line breaks are
- * stable while its internal spacing is not, and a segment that differs only by a
- * doubled space is not a segment that disappeared.
- */
-function segments(text: string): string[] {
-  return text
-    .split('\n')
-    .map((line) => line.replace(/\s+/g, ' ').trim())
-    .filter((line) => line.length > 0);
-}
 
 /**
  * Compare kept text before and after a ruleset change.
