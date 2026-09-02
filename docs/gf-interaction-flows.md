@@ -62,7 +62,7 @@ that finds out otherwise.**
 
 ```
 researcher   "add <url>"  /  "is <url> in scope?"
-Claude       → admit_url(url)                          ⚠️ to build — there is no front door today
+Claude       → admit_url(url)                                            ⚠️ to build
 backend      TrackedUrl exists? → already admitted, nothing further, no cost
              otherwise:
              → fetches the LIVE page          the page AS IT IS TODAY, not an archive capture
@@ -86,12 +86,9 @@ without a row, *"did we try to admit this?"* is unanswerable.
 **Judged on the LIVE page.** A URL is admitted on what it says today, and its history is scanned
 afterwards — so admission and the archive can disagree, and nothing currently reconciles them. **OPEN.**
 
-**OPEN — ADMISSION HAS NO FRONT DOOR.** It is reachable only as a side effect of five other operations
-(`calibrate_article_rules`, `start_forensic_scan`, `enrich_evidence_with_history`, a forensics route,
-and `WaybackScraper`), so a researcher cannot deliberately ask whether a page is in scope — only
-discover it by trying to do something else. **One rule, five implementations**, on the corpus's front
-door. The target is one tool that admits, and every other operation REFUSING an unadmitted URL rather
-than admitting it silently.
+**ONE TOOL ADMITS, AND EVERY OTHER OPERATION REFUSES AN UNADMITTED URL** rather than admitting it as a
+side effect. Admission is a research judgement with a paid model call behind it, and a judgement made
+implicitly, while a researcher was asking for something else, is a judgement nobody made.
 
 ---
 
@@ -271,11 +268,6 @@ of a FETCH, which has an outcome and a lifetime, and which exists whether or not
 `PENDING_JUDGEMENT` is a work queue that says a human owes a decision, and a row that describes itself
 that way is not a half-written capture.
 
-**Today none of this exists.** `calibrate_article_rules` describes itself as marking against *"freshly
-fetched pages that are NOT persisted"*, and its handler admits the URL and opens a run — it fetches
-nothing for marking, and the marking page can only mark captures already stored. The claim is
-unimplemented, in the same way `commit_article_rules` claimed a re-derivation it never performed.
-
 **`calibrate_article_rules` IS THE RECOVERY MECHANISM, NOT A FIRST-RUN SPECIAL CASE.** It is the tool
 that gets rules out of a page: fetch it, do not persist it, let a human mark it. Bootstrap is simply its
 FIRST use. When acquisition halts, the bytes were never stored — so getting them in front of a
@@ -378,10 +370,8 @@ STATE        draft (written by the BROWSER) · Rule rows · one decision
 and converge here: rules now exist, a fetch record holds bytes, and the walk promotes it. Nothing else
 in either flow acquires a capture.
 
-**IT WAS DUPLICATED, AND IT HAD ALREADY DRIFTED.** The same fifteen lines appeared in two phases, and
-after two editing passes six differences had appeared between them — wording, a missing copy-button
-note, and one factual divergence about whether the tool returns `coverage`. Defining it once is what
-stops the two copies disagreeing about a flow neither of them is allowed to get wrong.
+**DEFINED ONCE SO THE COPIES CANNOT DISAGREE.** Every step here is one a researcher performs or watches,
+and a flow described twice is a flow that will eventually be described two ways.
 
 ---
 
