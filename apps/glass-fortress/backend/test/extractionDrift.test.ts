@@ -114,3 +114,36 @@ describe('compareExtractions', () => {
     expect(drift.quiet).toBe(true);
   });
 });
+
+// ---------------------------------------------------------------------------
+// PUNCTUATION IS NOT DRIFT.
+//
+// Measured on the news page: the comparison reported 69 segments moving from kept
+// to removed, totalling 69 characters — sixty-nine single bullets — which buried
+// the 1,662 characters of furniture genuinely returning in the same run.
+// ---------------------------------------------------------------------------
+describe('segments with no readable content', () => {
+  it('does not count bullets and separators as drift', () => {
+    const drift = compareExtractions(
+      { keptText: '•\n•\n—\n···', removedText: '' },
+      { keptText: '', removedText: '•\n•\n—\n···', removedSegments: [] },
+    );
+    expect(drift.quiet).toBe(true);
+  });
+
+  it('still counts a short HEBREW segment, which a length threshold would have dropped', () => {
+    const drift = compareExtractions(
+      { keptText: 'לא', removedText: '' },
+      { keptText: '', removedText: 'לא', removedSegments: [] },
+    );
+    expect(drift.nowRemoved.map((s) => s.text)).toEqual(['לא']);
+  });
+
+  it('counts a bulleted line whose bullet is attached to real text', () => {
+    const drift = compareExtractions(
+      { keptText: '• משרד הבריאות אישר את החיסון', removedText: '' },
+      { keptText: '', removedText: '• משרד הבריאות אישר את החיסון', removedSegments: [] },
+    );
+    expect(drift.quiet).toBe(false);
+  });
+});
