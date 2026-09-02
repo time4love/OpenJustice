@@ -120,6 +120,24 @@ abandon_article_rules        close without applying
 All gated in `WRITE_TOOLS`. The marking page is a pure transformation: ruleset in, draft out, no
 decision and no effect.
 
+## 6b. ADMISSION IS A SIDE EFFECT, AND HAS NO FRONT DOOR
+
+`admitUrl` decides whether a URL belongs to the corpus at all — a live fetch of the page as it is today,
+a PAID model relevance call, and a `UrlAssessment` recorded in both directions. It is invoked from
+**five places**, always as a side effect of doing something else:
+
+```
+calibrate_article_rules · start_forensic_scan · enrich_evidence_with_history
+forensicsRoutes         · WaybackScraper
+```
+
+**There is no tool that simply admits a URL.** A researcher cannot ask whether a page is in scope; they
+can only discover it by trying to calibrate or scan, and a refusal arrives as a failure of the thing
+they asked for. One rule, five implementations, on the corpus's front door.
+
+`correct_article_rules` does NOT admit — it requires the URL to be tracked already — so the two
+calibration entry points already disagree about this.
+
 ## 7. KNOWN DEFECTS IN THE CURRENT SHAPE
 
 - **I12** — `lastMatchedAt` resets on every correction, because `RulesetObservation` is keyed to

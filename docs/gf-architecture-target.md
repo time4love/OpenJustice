@@ -139,8 +139,9 @@ rules → text → textHash → novelty → WHETHER A ROW EXISTS AT ALL
 **The rules decided what was in the corpus**, so a capture dropped under wrong rules left no trace. That
 is filtering that deletes, by never creating.
 
-**EVERY CAPTURE NOW LEAVES AN EXISTENCE ROW** — date, wayback timestamp, raw-bytes hash — whether or not
-its body is kept. Under a megabyte per 3,400-capture page, against ~470 MB to keep every body. A missing
+**EVERY FETCH NOW LEAVES A RECORD** — date, wayback timestamp, raw-bytes hash — whether or not a capture
+follows. While a judgement is owed that record also HOLDS THE BYTES (`PENDING_JUDGEMENT`), which is what
+lets the marking page read a capture acquisition halted on without claiming an extraction for it. Under a megabyte per 3,400-capture page, against ~470 MB to keep every body. A missing
 body is then an unexplained gap that Wayback can refill, never an untrue silence.
 
 **ACQUISITION STOPS ON THE GATES, FROM THE SECOND STORED CAPTURE ONWARD.** An earlier draft of this

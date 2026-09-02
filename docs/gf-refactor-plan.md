@@ -72,12 +72,36 @@ because every stored row produces a diff and every diff is a PAID classifier cal
 broken rules is the explosion this level exists to prevent, not a safe over-storing. It detects and
 YIELDS; calibration resolves.
 
-**Every capture leaves an EXISTENCE ROW** — date, wayback timestamp, raw-bytes hash — so a capture the
-rules dropped is an unexplained gap Wayback can refill rather than an untrue silence. That is §2's
+**Every fetch leaves a RECORD** — date, wayback timestamp, raw-bytes hash — so a capture the rules dropped
+is an unexplained gap Wayback can refill rather than an untrue silence. While a judgement is owed the
+record also holds the bytes, which is how a halted capture reaches the marking page without a derivation
+being claimed for it. That is §2's
 *"storage is lossless"* finally holding, and it is what makes the split possible at all.
 
 *Leaves working:* everything. Acquisition becomes runnable independently of the calibration refactor,
 which makes the sensitive part of this work smaller.
+
+### 6c · Give admission a front door, and make every other caller refuse
+
+`admitUrl` decides whether a URL belongs to the corpus at all — a live fetch of the page as it is
+today, a PAID model relevance call, and a `UrlAssessment` recorded in both directions. It is reachable
+from **five places and from nowhere on its own**:
+
+```
+calibrate_article_rules · start_forensic_scan · enrich_evidence_with_history
+forensicsRoutes         · WaybackScraper
+```
+
+**So a researcher cannot ask whether a page is in scope** — only discover it by trying to calibrate or
+scan, with the refusal arriving as the failure of a different request. One rule, five implementations,
+on the corpus's front door. `correct_article_rules` does not admit at all, so the two calibration entry
+points already disagree.
+
+**One tool admits; every other operation REFUSES an unadmitted URL.** A judgement made implicitly, while
+a researcher was asking for something else, is a judgement nobody made.
+
+*Leaves working:* everything — the callers keep working until each is switched from admitting to
+refusing, which can be done one at a time.
 
 ### 7 · The tool surface
 
