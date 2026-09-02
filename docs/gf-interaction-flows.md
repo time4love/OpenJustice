@@ -117,7 +117,7 @@ the researcher sees the number before anything is spent.
 deciding whether it belongs: scope comes first, and a survey of something out of scope is a question
 nobody needed answered.
 
-### Phase 1 — bootstrap, the one fetch that is not an acquisition
+### Phase 1 — the first capture, where rules come into being
 
 **Requires an ADMITTED URL — see Flow 0.** Calibration runs only on pages already judged part of the
 investigation; it does not make that judgement and must not discover it late.
@@ -127,29 +127,35 @@ so that rules can come into being — nothing can be derived, compared or judged
 it fetches is deliberately never stored.
 
 ```
-── ENTRY · bootstrap · nothing is ACQUIRED ───────────────────────────
+── ENTRY · the same steps wherever calibration is reached from ───────
 Claude       → calibrate_article_rules(url)
 backend      REFUSES if the URL is not admitted — admission is Flow 0's
-             opens a CalibrationRun
-             → Wayback replay: fetch the EARLIEST capture
-             ← bytes
-             writes a FETCH RECORD, outcome PENDING_JUDGEMENT, HOLDING the bytes
-                    ── every fetch leaves a record; no rules exist yet, so a
-                       human owes the first ruleset and the bytes stay readable ──
+             uses the URL's CalibrationRun, opening one only if none is open
+             takes the capture: the EARLIEST here, the halted one in Flow 2
+             if a FETCH RECORD already holds its bytes → uses them, fetches nothing
+             otherwise → Wayback replay
+                         ← bytes
+                         writes a FETCH RECORD, PENDING_JUDGEMENT, HOLDING the bytes
              ← marking URL
 
-             → MARKING  (defined once, below — identical in both flows that use it)
+             → MARKING  (defined once, below)
 
-STATE        CalibrationRun · a FETCH RECORD holding the bytes · then MARKING's
+STATE        a CalibrationRun, if one had to be opened
+             a FETCH RECORD holding the bytes, if one had to be written
+             then MARKING's
 NOT WRITTEN  no UrlSnapshot and no chain write here — nothing is ACQUIRED yet
 ```
 
-**The first capture has no rules AND no predecessor.** Bootstrapping removes the first half, so every
+**The first capture has no rules AND no predecessor.** Marking it removes the first half, so every
 acquisition after it has rules — no special case in the path that decides corpus membership.
 
 **The walk does not re-fetch it.** The fetch record already holds the bytes, so the first step of Phase 2
-finds it waiting, derives under the rules that now exist, and promotes it. Bootstrap is simply the first
-fetch — it differs only in that nothing could be derived yet.
+finds it waiting, derives under the rules that now exist, and promotes it.
+
+**THIS PHASE IS NOT A SPECIAL CASE, ONLY A FIRST ONE.** Its entry is the same as the one Flow 2 reaches:
+use the open run or open one, use the held bytes or fetch them. It differs only in what happens to be
+true the first time — no run, no record, no rules, no predecessor — and every one of those is a
+condition the same steps already handle.
 
 ### Phase 2 — the walk, one capture at a time
 
@@ -195,9 +201,10 @@ Claude       ACQUIRED or DUPLICATE → straight to the next capture
                                 its reason, the body is cleared, no UrlSnapshot
                                 is ever created, and the walk moves on
 
-── CALIBRATION · reached from JUDGEMENT REQUIRED · REDESIGN ──────────
-             → Flow 2, then MARKING. Neither opens a new run, and neither fetches:
-               the fetch record already holds the bytes.
+── CALIBRATION · reached from JUDGEMENT REQUIRED ─────────────────────
+             → Flow 2, which resolves the stop and, on REDESIGN, runs the same
+               ENTRY and MARKING as Phase 1 — opening nothing and fetching nothing,
+               because the run is open and the fetch record holds the bytes.
 
 STATE        fetch record ALWAYS · UrlSnapshot + on-chain anchor only on ACQUIRED
              the fetch record holds the BYTES only while PENDING_JUDGEMENT
@@ -335,6 +342,33 @@ is nothing to activate.
 
 ---
 
+## THE CALIBRATION RUN — WHAT IT IS, AND WHO OPENS IT
+
+**One per page, opened the first time calibration is needed, and reused ever after** — including by
+Flow 2's recovery, which must not open a second one.
+
+It holds two things and nothing else:
+
+```
+the DECISIONS      CAPTURE_SHOWN · RULESET_CORRECTED · CAPTURE_ACCEPTED · CAPTURE_SKIPPED
+                   the record of what was shown, judged and skipped, and the source of
+                   the "n consecutive captures needing no correction" count
+the DRAFT          the marking page's working state, one at a time
+```
+
+**It is NOT a sitting.** A run per sitting would make the settle count a scheduling artefact: stopping
+for the night and resuming would reset it, and how long a researcher works is not a fact about the page.
+
+**It does not hold the rules.** Rules are rows with their own dates; the run records what a human did,
+not what the rules are.
+
+**OPEN — when, if ever, a run closes.** There is no commit in this architecture, so nothing ends one
+naturally. `reset_article_calibration` supersedes its decisions, and abandoning closes it without
+applying anything — but a run that is simply finished has no end state, and it is not decided whether it
+needs one.
+
+---
+
 ## MARKING — THE SHARED SUB-FLOW
 
 **Defined once because it is identical wherever it is reached from.** Two flows use it: bootstrap
@@ -407,11 +441,12 @@ backend      records CAPTURE_SHOWN
 ── CALIBRATION ANSWERS · one of two ──────────────────────────────────
 
 REDESIGN     Claude       → open_article_capture(runId, snapshotId)
-             backend      reads the PENDING_JUDGEMENT fetch record — bytes already there
-                          records CAPTURE_SHOWN · SAME RUN, no new one is opened
+             backend      records CAPTURE_SHOWN
+                          then the SAME ENTRY as Phase 1: the run is already open and
+                          the fetch record already holds the bytes, so neither is
+                          created and nothing is fetched
                           ← marking URL
-                          → MARKING  (below)
-                          → and MARKING ends by retrying this capture, which acquires
+                          → MARKING  (below), which ends by retrying this capture
 
 BAD CAPTURE  researcher   pastes:  resolve_scan_stop runId=… snapshotId=…
                             BAD_CAPTURE reason=…                                ⚠️ renamed
