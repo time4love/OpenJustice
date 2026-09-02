@@ -102,7 +102,8 @@ answers one question: how big is this job? Nothing else in the flow can be sized
 ```
 researcher   "scan https://example.gov.il/page"
 Claude       → survey_wayback_captures(url)                            ⚠️ to build
-backend      → Wayback CDX index — ONE request, no page fetches
+backend      REFUSES if the URL is not admitted — admission is Flow 0's
+             → Wayback CDX index — ONE request, no page fetches
              ← 3,412 captures · 2019-03 → 2026-08 · we hold 0
 Claude       reports the size; the researcher decides whether to start
 
@@ -111,6 +112,10 @@ STATE        nothing written
 
 Its output is the WORK-LIST. A 40-capture page and a 3,400-capture page are different decisions, and
 the researcher sees the number before anything is spent.
+
+**It refuses an unadmitted URL like every other operation.** Sizing a page is not a reason to skip
+deciding whether it belongs: scope comes first, and a survey of something out of scope is a question
+nobody needed answered.
 
 ### Phase 1 — bootstrap, the one fetch that is not an acquisition
 
