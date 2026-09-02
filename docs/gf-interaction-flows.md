@@ -23,9 +23,22 @@ CALIBRATION    decide what of a page is article text             research act
 **ACQUISITION READS RULES. CALIBRATION WRITES THEM.** A one-way dependency, not an entanglement:
 acquisition needs the current ruleset to decide which bodies to keep, and never needs a human.
 
-**Acquisition therefore never stops for judgement.** If the rules are wrong, furniture leaks into
-`text`, `textHash` changes on every capture, and it over-stores. That is the SAFE direction — and every
-capture leaves an existence row regardless, so nothing is lost either way.
+**ACQUISITION STOPS ON THE GATES, FROM THE SECOND STORED CAPTURE ONWARD.** An earlier draft of this
+document said it never stops, on the reasoning that wrong rules make it OVER-store and that
+over-storing is the safe direction. **That was wrong about the consequences.** Every stored row
+produces a diff and every diff is a PAID classifier call, so acquiring under broken rules across a
+3,400-capture page produces thousands of spurious rows and thousands of paid calls — which is
+precisely the explosion this level was reopened to prevent.
+
+**And from the second stored capture the signal is available**: the previous capture's extraction is
+held, so drift is computable at acquisition time. Declining to use a signal you have, and calling the
+result safe, is how a corpus nobody trusts gets built.
+
+The separation of responsibility survives intact, because acquisition does not JUDGE — it detects and
+YIELDS. Calibration is what resolves the stop.
+
+**The one capture that cannot be checked is the first stored one**, which has no predecessor. That is
+what the bootstrap exists for: a human has already looked at that page.
 
 ---
 
@@ -70,8 +83,9 @@ between them, is a second storage path for the most sensitive data in the system
 | keep the body if `textHash` is novel | — | `UrlSnapshot` bytes, hashes, `text`, `textHash`, `textExtractionVersion` |
 | anchor | existing anchoring path | `documentHash` on chain |
 
-**Bounded per call** so no tool call runs unwatched over thousands of captures. **It does not stop for
-judgement** — see the note above.
+**Bounded per call** so no tool call runs unwatched over thousands of captures. **It STOPS on the gates
+from the second stored capture onward** — see above, and Flow 2 for what a stop is. The existence rows
+mean a capture is never lost while a stop is resolved.
 
 **OPEN — the body-retention rule.** Existence rows are decided; bodies are kept by text-novelty, which
 is what leaves acquisition reading rules. Raw-hash retention would remove the dependency and costs
@@ -109,7 +123,8 @@ formula undecided. No magic numbers.
 
 ## FLOW 2 — A STOP FOR JUDGEMENT
 
-The gates, and none of them carries a threshold:
+**Reached from acquisition OR from a calibration batch** — the gates are the same either way, and
+neither pass may conclude anything from them. The gates, and none carries a threshold:
 
 ```
 GATE 1   any content segment changes sides (either direction)
