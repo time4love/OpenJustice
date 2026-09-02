@@ -81,11 +81,14 @@ so that rules can come into being — nothing can be derived, compared or judged
 it fetches is deliberately never stored.
 
 ```
-── CALIBRATION ONLY · nothing is acquired ────────────────────────────
+── CALIBRATION ONLY · nothing is ACQUIRED ────────────────────────────
 Claude       → calibrate_article_rules(url)
 backend      admits the TrackedUrl · opens a CalibrationRun
              → Wayback replay: fetch the EARLIEST capture
-             ← bytes, held in memory and NOT PERSISTED
+             ← bytes
+             writes a FETCH RECORD, outcome PENDING_JUDGEMENT, HOLDING the bytes
+                    ── every fetch leaves a record; no rules exist yet, so a
+                       human owes the first ruleset and the bytes stay readable ──
              ← marking URL
 Claude       hands the researcher the marking URL and the exact command to paste back:
 
@@ -106,16 +109,17 @@ backend      promotes the draft → Rule rows, validFrom = THIS capture's date  
              records the acceptance
              ← the rules now in force · coverage
 
-STATE        TrackedUrl admitted · CalibrationRun · draft · Rule rows · one decision
-NOT WRITTEN  no UrlSnapshot — the bootstrap bytes are discarded
+STATE        TrackedUrl admitted · CalibrationRun · a FETCH RECORD holding the bytes
+             draft · Rule rows · one decision
+NOT WRITTEN  no UrlSnapshot and no chain write — nothing is ACQUIRED here
 ```
 
 **The first capture has no rules AND no predecessor.** Bootstrapping removes the first half, so every
 acquisition after it has rules — no special case in the path that decides corpus membership.
 
-The capture is re-fetched during the walk: free, idempotent, and it keeps a capture to ONE shape. A
-draft capture table would be a second storage path for the most sensitive data in the system, with
-promotion logic between the two.
+**The walk does not re-fetch it.** The fetch record already holds the bytes, so the first step of Phase 2
+finds it waiting, derives under the rules that now exist, and promotes it. Bootstrap is simply the first
+fetch — it differs only in that nothing could be derived yet.
 
 ### Phase 2 — the walk, one capture at a time
 
@@ -126,7 +130,10 @@ rules stop needing correction — which is not a fixed number of captures but a 
 ```
 ── ACQUISITION · one capture, and it either completes or halts ───────
 Claude       → scan_next_capture(runId)                                ⚠️ to build
-backend      → Wayback replay: fetch the next capture in DATE order
+backend      takes the next capture in DATE order
+             if a FETCH RECORD already holds its bytes — the bootstrap's, or a
+               PENDING_JUDGEMENT being retried — it uses those and fetches nothing
+             otherwise → Wayback replay
              ← bytes
              writes a FETCH RECORD: date, wayback timestamp, raw-bytes hash   ⚠️ new
                     ── rule-free, true whatever the rules say, so it is written first ──
@@ -134,10 +141,15 @@ backend      → Wayback replay: fetch the next capture in DATE order
              compares this extraction with the PREVIOUS stored capture's
              checks the gates
 
-             ┌─ gates quiet ──────────────────────────────────────────┐
-             │ stores the body when textHash is novel → UrlSnapshot   │
-             │ anchors documentHash on chain                          │
+             ┌─ gates quiet · textHash NOVEL ─────────────────────────┐
+             │ body → UrlSnapshot · anchors documentHash on chain     │
+             │ fetch record outcome := ACQUIRED, held body cleared    │
              │ ← ACQUIRED                                             │
+             └────────────────────────────────────────────────────────┘
+             ┌─ gates quiet · textHash UNCHANGED ─────────────────────┐
+             │ no UrlSnapshot, no chain write — the page did not move │
+             │ fetch record outcome := DUPLICATE, no body kept        │
+             │ ← DUPLICATE                                            │
              └────────────────────────────────────────────────────────┘
              ┌─ a gate fires ─────────────────────────────────────────┐
              │ the fetch record becomes PENDING_JUDGEMENT and KEEPS    │
@@ -145,7 +157,7 @@ backend      → Wayback replay: fetch the next capture in DATE order
              │ no UrlSnapshot · no derived text claimed · no chain    │
              │ ← JUDGEMENT REQUIRED · why · the drifted text          │
              └────────────────────────────────────────────────────────┘
-Claude       ACQUIRED → straight to the next capture
+Claude       ACQUIRED or DUPLICATE → straight to the next capture
              JUDGEMENT REQUIRED → Flow 2, which has TWO answers:
                  REDESIGN     → calibrate below, then retry this capture
                  BAD CAPTURE  → resolve_scan_stop(… BAD_CAPTURE, reason)
@@ -186,6 +198,14 @@ STATE        fetch record ALWAYS · UrlSnapshot + on-chain anchor only on ACQUIR
              the fetch record holds the BYTES only while PENDING_JUDGEMENT
              Rule rows + a decision ONLY when the researcher corrected
 ```
+
+**THE FETCH RECORD IS ALWAYS WRITTEN, AND ALWAYS FIRST.** Every fetch leaves one, whatever the rules
+say and whatever the outcome — that is what makes it the existence record and why the corpus has no
+silent holes. What varies is only its `outcome`, and whether it holds the bytes.
+
+**`DUPLICATE` IS THE COMMON CASE.** Most captures of most pages are the page unchanged, and on a
+3,400-capture timeline the great majority of fetch records will say so. That is the whole point of
+novelty: the archive holds thousands of captures and the corpus should hold the moments it moved.
 
 **NOTHING IRREVERSIBLE HAPPENS BEFORE THE CHECK.** The existence row is rule-free — that capture is in
 the archive whatever the rules say — so it is written immediately. The BODY and the ON-CHAIN ANCHOR wait
