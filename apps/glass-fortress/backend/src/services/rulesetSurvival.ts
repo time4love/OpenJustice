@@ -2,6 +2,7 @@ import { prisma } from '../lib/prisma';
 import { CalibrationDecisionType } from '@prisma/client';
 import { deriveTextUnderRuleset } from '../lib/chromeRulesetApply';
 import { compareKeptText, attributeRemoval } from '../lib/claimSurvival';
+import { selectorAnchors } from '../lib/calibrationFold';
 import { readCalibrationRun } from './calibrationRun';
 
 /**
@@ -32,12 +33,6 @@ import { readCalibrationRun } from './calibrationRun';
  * future" — plus, if it was accepted, anything added since that acceptance.
  * Those are the suspects, and the baseline is the ruleset without them.
  */
-
-/** A selector, and the capture it was introduced for. */
-interface Anchor {
-  snapshotId: string | null;
-  date: string | null;
-}
 
 export interface CaptureSurvival {
   snapshotId: string;
@@ -116,43 +111,7 @@ export async function checkRulesetSurvival(runId: string): Promise<RulesetSurviv
   // WHERE EACH SELECTOR CAME FROM. First appearance wins: a selector present in
   // several later decisions was introduced once, and the capture on screen then
   // is the only one it was ever checked against.
-  //
-  // RECOVERED FOR DECISIONS WRITTEN BEFORE CORRECTIONS CARRIED A CAPTURE. Until
-  // that was fixed, `RULESET_CORRECTED` was FORBIDDEN to name one, so every
-  // selector in every existing run has no anchor of its own.
-  //
-  // THE RECOVERY LOOKS BACKWARD, TO THE LAST CAPTURE SHOWN. A correction is made
-  // while a capture is on screen, and the capture on screen is the one most
-  // recently SHOWN. That is exact for both writers: the browser flow shows a
-  // capture and then autosaves corrections against it, and
-  // `open_article_capture` records the showing before `judge_article_capture`
-  // promotes a draft.
-  //
-  // AN EARLIER VERSION LOOKED FORWARD -- to the next decision that named a
-  // capture -- reasoning that judging promotes and then records a verdict on the
-  // same capture. True of that writer and FALSE of the browser, which autosaved
-  // many corrections between one verdict and the next, so the next named
-  // decision could be years away. It stamped December 2020 selectors with a
-  // March 2025 date and produced three alerts naming the wrong rules. The
-  // contradiction was visible in the run's own data: a selector it dated to 2025
-  // was already in the ruleset a 2020 capture had been accepted under.
-  const anchors = new Map<string, Anchor>();
-  let lastShown: string | null = null;
-  for (const decision of decisions) {
-    if (decision.type === CalibrationDecisionType.CAPTURE_SHOWN && decision.snapshotId !== null) {
-      lastShown = decision.snapshotId;
-    }
-    // A correction that names its own capture is authoritative and needs no
-    // recovery; the fallback exists only for the ones written before it could.
-    const named = decision.snapshotId ?? lastShown;
-    for (const selector of decision.selectors) {
-      if (anchors.has(selector)) continue;
-      anchors.set(selector, {
-        snapshotId: named,
-        date: named === null ? null : (dates.get(named) ?? null),
-      });
-    }
-  }
+  const anchors = selectorAnchors(decisions, dates);
 
   // The ruleset each accepted capture was approved under, newest acceptance
   // winning: a capture re-judged after a correction was approved under the LATER

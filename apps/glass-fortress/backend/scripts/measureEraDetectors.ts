@@ -79,12 +79,32 @@ async function main(): Promise<number> {
 
   console.log(`\n${measured.url}`);
   console.log(`run ${measured.runId}  version ${String(measured.version)}  ${String(measured.selectors.length)} selectors\n`);
-  console.log('date         matched/total   rate    kept chars');
-  console.log('----------   -------------   -----   ----------');
-  for (const capture of measured.captures) {
-    const matched = `${String(capture.matchedSelectors)}/${String(capture.totalSelectors)}`;
+  // BOTH MODELS, SIDE BY SIDE. The union applies every selector to every capture;
+  // DATE-SCOPED applies only those anchored at or before the capture's date, which
+  // is what makes a future rule structurally unable to touch a past capture.
+  console.log(
+    `anchored     ${String(measured.anchoredSelectors)} of ${String(measured.selectors.length)} selectors carry a usable date`,
+  );
+  if (measured.anchoredSelectors < measured.selectors.length) {
     console.log(
-      `${capture.snapshotDate}   ${matched.padEnd(13)}   ${capture.matchRate.toFixed(2)}    ${String(capture.keptTextLength)}`,
+      'WARNING      unanchored selectors ALWAYS apply, so the scoped columns understate the filtering.',
+    );
+  }
+  console.log('');
+  console.log('                 union                      date-scoped');
+  console.log('date         matched/total  rate   kept    matched/total  rate   kept');
+  console.log('----------   -------------  -----  -----   -------------  -----  -----');
+  for (const capture of measured.captures) {
+    const union = `${String(capture.matchedSelectors)}/${String(capture.totalSelectors)}`;
+    const scoped = capture.scoped;
+    const scopedCell =
+      scoped === undefined
+        ? '—'
+        : `${String(scoped.matchedSelectors)}/${String(scoped.totalSelectors)}`;
+    const scopedRate = scoped === undefined ? '  —  ' : scoped.matchRate.toFixed(2);
+    const scopedKept = scoped === undefined ? '—' : String(scoped.keptTextLength);
+    console.log(
+      `${capture.snapshotDate}   ${union.padEnd(13)}  ${capture.matchRate.toFixed(2)}   ${String(capture.keptTextLength).padEnd(5)}   ${scopedCell.padEnd(13)}  ${scopedRate}  ${scopedKept}`,
     );
   }
 

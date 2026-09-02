@@ -241,3 +241,88 @@ export function eraForDate<T extends { startDate: string | null }>(
   }
   return selected;
 }
+
+
+/** A selector, and the capture it was introduced against. */
+export interface SelectorAnchor {
+  snapshotId: string | null;
+  /** `null` when the capture's date is unknown, or the decision named none. */
+  date: string | null;
+}
+
+/**
+ * WHICH CAPTURE EACH SELECTOR WAS MARKED AGAINST — the only one it was ever
+ * checked on.
+ *
+ * That capture's DATE is what scopes every later question about the selector:
+ * which earlier captures it could damage, where one era ends, and — under
+ * date-scoped application — whether it runs against a given capture at all.
+ *
+ * RECOVERED FOR DECISIONS WRITTEN BEFORE CORRECTIONS CARRIED A CAPTURE.
+ * `RULESET_CORRECTED` was FORBIDDEN to name one until 2026-09-01, so every
+ * selector recorded before that has no anchor of its own.
+ *
+ * THE RECOVERY LOOKS BACKWARD, TO THE LAST CAPTURE SHOWN, because a correction is
+ * made while a capture is on screen. That is exact for both writers: the browser
+ * shows a capture and then autosaves against it, and `open_article_capture`
+ * records the showing before a draft is promoted.
+ *
+ * AN EARLIER VERSION LOOKED FORWARD — to the next decision naming a capture —
+ * which was true of the judging tool and FALSE of the browser, where many
+ * corrections sat between one verdict and the next. It stamped December 2020
+ * selectors with a March 2025 date and produced three alerts naming the wrong
+ * rules. RECOVERED ANCHORS ARE THEREFORE NOT TRUSTWORTHY for runs predating the
+ * fix, and a caller relying on them should say so.
+ */
+export function selectorAnchors(
+  decisions: readonly FoldableDecision[],
+  dateOf: ReadonlyMap<string, string>,
+): Map<string, SelectorAnchor> {
+  const anchors = new Map<string, SelectorAnchor>();
+  let lastShown: string | null = null;
+  for (const decision of decisions) {
+    if (decision.type === CalibrationDecisionType.CAPTURE_SHOWN && decision.snapshotId !== null) {
+      lastShown = decision.snapshotId;
+    }
+    // A correction naming its own capture is authoritative; the fallback exists
+    // only for the ones written before they could.
+    const named = decision.snapshotId ?? lastShown;
+    for (const selector of decision.selectors) {
+      if (anchors.has(selector)) continue;
+      anchors.set(selector, {
+        snapshotId: named,
+        date: named === null ? null : (dateOf.get(named) ?? null),
+      });
+    }
+  }
+  return anchors;
+}
+
+/**
+ * The selectors that apply to a capture on this date — those anchored at or
+ * before it.
+ *
+ * THE RESEARCHER'S PROPOSAL, and it makes backwards harm STRUCTURALLY IMPOSSIBLE
+ * rather than merely unobserved: a rule marked on a 2022 page never runs against a
+ * 2020 one, so it cannot remove anything from it. Per selector, not per era.
+ *
+ * AN UNANCHORED SELECTOR APPLIES. Its anchor is missing rather than late, and
+ * excluding it would silently drop rules from runs recorded before anchors were
+ * kept — turning missing provenance into missing filtering.
+ *
+ * IT FILTERS BACKWARDS AND NOT FORWARDS: a 2022 capture still receives every
+ * selector anchored before it, including ones whose structure is long gone. Those
+ * match nothing and remove nothing, but they DILUTE a match rate, which is why a
+ * ratio-based detector degrades over time under this model and a
+ * segment-comparison one does not.
+ */
+export function selectorsForDate(
+  selectors: readonly string[],
+  anchors: ReadonlyMap<string, SelectorAnchor>,
+  date: string,
+): string[] {
+  return selectors.filter((selector) => {
+    const anchored = anchors.get(selector)?.date;
+    return anchored === undefined || anchored === null || anchored <= date;
+  });
+}
