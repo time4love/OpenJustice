@@ -22,6 +22,7 @@ jest.mock('../../src/lib/prisma', () => ({
     // byte-identical to what it was before rulesets applied at all.
     calibrationRun: { findMany: jest.fn() },
     calibrationDecision: { findMany: jest.fn() },
+    calibrationReset: { findFirst: jest.fn() },
   },
 }));
 
@@ -84,6 +85,7 @@ beforeEach(() => {
   // derivation these fixtures assert is byte-identical to the pre-ruleset one.
   (prisma.calibrationRun.findMany as jest.Mock).mockResolvedValue([]);
   (prisma.calibrationDecision.findMany as jest.Mock).mockResolvedValue([]);
+  (prisma.calibrationReset.findFirst as jest.Mock).mockResolvedValue(null);
   // Returns the ANCHORABLE COLUMNS too, because the real `create` is asked for
   // them by its `select` and the write path anchors the row as written rather
   // than the local variables that produced it. A mock that answered less would

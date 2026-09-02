@@ -28,6 +28,12 @@ import { deriveEras, eraForDate, type FoldableDecision } from '../lib/calibratio
  * So the fold sees: every decision of a COMMITTED run, plus every `ERA_BOUNDARY`
  * from any run whatsoever. An OPEN run's corrections are excluded for the same
  * reason an abandoned one's are — only committing puts rules in force.
+ *
+ * AND NOTHING RECORDED BEFORE A RESET IS SEEN AT ALL. `reset_article_calibration`
+ * draws a line under a URL's calibration: the decisions stay in the log and their
+ * authority ends. That includes ERA_BOUNDARY, which survives an abandoned RUN but
+ * not a reset — a reset is often reached for BECAUSE the era structure is wrong,
+ * and one that spared boundaries would preserve the corruption it was called for.
  */
 
 /** An era, reduced to what governance needs. Deliberately no `confirmed`. */
@@ -56,8 +62,19 @@ export async function governingEras(trackedUrlId: string): Promise<GoverningEra[
     runs.filter((run) => run.status === CalibrationRunStatus.COMMITTED).map((run) => run.id),
   );
 
+  // THE LINE, IF ONE HAS BEEN DRAWN. Only the NEWEST matters: a second reset
+  // supersedes the first exactly as it supersedes everything else.
+  const reset = await prisma.calibrationReset.findFirst({
+    where: { trackedUrlId },
+    orderBy: { createdAt: 'desc' },
+    select: { createdAt: true },
+  });
+
   const decisions = await prisma.calibrationDecision.findMany({
-    where: { calibrationRunId: { in: runs.map((run) => run.id) } },
+    where: {
+      calibrationRunId: { in: runs.map((run) => run.id) },
+      ...(reset === null ? {} : { createdAt: { gt: reset.createdAt } }),
+    },
     // ACROSS RUNS, SO `sequence` IS NOT ENOUGH — it restarts per run. `createdAt`
     // orders the URL's whole history and `sequence` breaks ties within a run.
     orderBy: [{ createdAt: 'asc' }, { sequence: 'asc' }],

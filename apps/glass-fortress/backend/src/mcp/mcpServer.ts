@@ -19,6 +19,8 @@ import {
   checkRulesetSurvivalSchema,
   resolveEraBoundaryHandler,
   resolveEraBoundarySchema,
+  resetArticleCalibrationHandler,
+  resetArticleCalibrationSchema,
   openArticleCaptureSchema,
   openArticleCaptureHandler,
   judgeArticleCaptureSchema,
@@ -732,6 +734,25 @@ export function createMcpServer(): McpServer {
     },
     async (input) => ({
       content: [{ type: 'text' as const, text: await getArticleRulesHandler(input) }],
+    }),
+  );
+
+  server.registerTool(
+    'reset_article_calibration',
+    {
+      description:
+        'DRAW A LINE UNDER A URL\'S CALIBRATION: nothing recorded before it governs. Use it when a ' +
+        'ruleset has become entangled past repair rather than merely wrong — an era\'s selectors ' +
+        'landed inside another era, say — because the log is APPEND-ONLY and a boundary recorded ' +
+        'afterwards gives the DATE and never the rule split. SUPERSEDES, NEVER DELETES: every decision ' +
+        'stays in the log and only its authority ends, so what was tried is still readable. NOTHING ' +
+        'SURVIVES IT, ERA BOUNDARIES INCLUDED — a reset is often reached for BECAUSE the era structure ' +
+        'is wrong, and re-recording a boundary you still believe costs one call and no marking. It ' +
+        'opens no run and marks nothing; calibrate afterwards as usual. A REASON IS REQUIRED.',
+      inputSchema: resetArticleCalibrationSchema,
+    },
+    async (input) => ({
+      content: [{ type: 'text' as const, text: await resetArticleCalibrationHandler(input) }],
     }),
   );
 
