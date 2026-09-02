@@ -79,13 +79,53 @@ async function main(): Promise<number> {
 
   console.log(`\n${measured.url}`);
   console.log(`run ${measured.runId}  version ${String(measured.version)}  ${String(measured.selectors.length)} selectors\n`);
-  console.log('date         matched/total   rate    kept chars');
-  console.log('----------   -------------   -----   ----------');
-  for (const capture of measured.captures) {
-    const matched = `${String(capture.matchedSelectors)}/${String(capture.totalSelectors)}`;
+  // BOTH MODELS, SIDE BY SIDE. The union applies every selector to every capture;
+  // DATE-SCOPED applies only those anchored at or before the capture's date, which
+  // is what makes a future rule structurally unable to touch a past capture.
+  console.log(
+    `anchored     ${String(measured.anchoredSelectors)} of ${String(measured.selectors.length)} selectors carry a usable date`,
+  );
+  if (measured.anchoredSelectors < measured.selectors.length) {
     console.log(
-      `${capture.snapshotDate}   ${matched.padEnd(13)}   ${capture.matchRate.toFixed(2)}    ${String(capture.keptTextLength)}`,
+      'WARNING      unanchored selectors ALWAYS apply, so the scoped columns understate the filtering.',
     );
+  }
+  console.log('');
+  console.log('                 union                      date-scoped');
+  console.log('date         matched/total  rate   kept    matched/total  rate   kept');
+  console.log('----------   -------------  -----  -----   -------------  -----  -----');
+  for (const capture of measured.captures) {
+    const union = `${String(capture.matchedSelectors)}/${String(capture.totalSelectors)}`;
+    const scoped = capture.scoped;
+    const scopedCell =
+      scoped === undefined
+        ? '—'
+        : `${String(scoped.matchedSelectors)}/${String(scoped.totalSelectors)}`;
+    const scopedRate = scoped === undefined ? '  —  ' : scoped.matchRate.toFixed(2);
+    const scopedKept = scoped === undefined ? '—' : String(scoped.keptTextLength);
+    console.log(
+      `${capture.snapshotDate}   ${union.padEnd(13)}  ${capture.matchRate.toFixed(2)}   ${String(capture.keptTextLength).padEnd(5)}   ${scopedCell.padEnd(13)}  ${scopedRate}  ${scopedKept}`,
+    );
+  }
+
+  // WHAT CHANGED SIDES, capture to capture. This is the signal that needs no
+  // baseline: text the previous capture KEPT and this one REMOVES is a rule that
+  // has started taking article text, and nothing else here sees it directly.
+  const withDrift = measured.captures.filter((capture) => capture.drift !== undefined);
+  if (withDrift.length > 0) {
+    console.log('\ndrift vs the previous capture   (kept→removed is the dangerous direction)');
+    console.log('                 union                     date-scoped');
+    console.log('date         kept→rm   rm→kept      kept→rm   rm→kept');
+    console.log('----------   -------   -------      -------   -------');
+    for (const capture of withDrift) {
+      const d = capture.drift;
+      if (d === undefined) continue;
+      const cell = (n: number, chars: number) => `${String(n)} (${String(chars)}c)`.padEnd(9);
+      console.log(
+        `${capture.snapshotDate}   ${cell(d.union.nowRemoved, d.union.nowRemovedChars)} ${cell(d.union.nowKept, d.union.nowKeptChars)}    ${cell(d.scoped.nowRemoved, d.scoped.nowRemovedChars)} ${cell(d.scoped.nowKept, d.scoped.nowKeptChars)}`,
+      );
+      for (const sample of d.nowRemovedSample) console.log(`             ↳ ${sample}`);
+    }
   }
 
   // THE SHAPE, NOT A THRESHOLD. Reported so the distribution can be read at a
