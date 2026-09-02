@@ -125,9 +125,9 @@ so that rules can come into being — nothing can be derived, compared or judged
 it fetches is deliberately never stored.
 
 ```
-── CALIBRATION ONLY · nothing is ACQUIRED ────────────────────────────
+── ENTRY · bootstrap · nothing is ACQUIRED ───────────────────────────
 Claude       → calibrate_article_rules(url)
-backend      REFUSES if the URL is not admitted — admission is Flow 0's, not this tool's
+backend      REFUSES if the URL is not admitted — admission is Flow 0's
              opens a CalibrationRun
              → Wayback replay: fetch the EARLIEST capture
              ← bytes
@@ -135,28 +135,11 @@ backend      REFUSES if the URL is not admitted — admission is Flow 0's, not t
                     ── every fetch leaves a record; no rules exist yet, so a
                        human owes the first ruleset and the bytes stay readable ──
              ← marking URL
-Claude       hands the researcher the marking URL and the exact command to paste back:
 
-                 approve_article_rules runId=<runId> snapshotId=<snapshotId>
+             → MARKING  (defined once, below — identical in both flows that use it)
 
-researcher   opens the marking URL in a browser
-browser      → GET  /api/article-rules/:runId/captures/:snapshotId
-             ← the capture, inert, plus its outline
-browser      → POST /api/article-rules/:runId/captures/:snapshotId/preview
-                    { selectors }                      on every edit, PURE, stores nothing
-             ← keptText · removedText · removedSegments · matchCounts
-researcher   marks furniture, presses שמור טיוטא חדשה של חוקי חילוץ הטקסט
-browser      → PUT  /api/article-rules/:runId/draft
-                    { snapshotId, selectors, returned: true }
-researcher   pastes into the chat:  approve_article_rules runId=… snapshotId=…   ⚠️ renamed
-Claude       → approve_article_rules(runId, snapshotId)                MCP
-backend      promotes the draft → Rule rows, validFrom = THIS capture's date   ⚠️ new table
-             records the acceptance
-             ← the rules now in force · coverage
-
-STATE        TrackedUrl admitted · CalibrationRun · a FETCH RECORD holding the bytes
-             draft · Rule rows · one decision
-NOT WRITTEN  no UrlSnapshot and no chain write — nothing is ACQUIRED here
+STATE        CalibrationRun · a FETCH RECORD holding the bytes · then MARKING's
+NOT WRITTEN  no UrlSnapshot and no chain write here — nothing is ACQUIRED yet
 ```
 
 **The first capture has no rules AND no predecessor.** Bootstrapping removes the first half, so every
@@ -211,33 +194,8 @@ Claude       ACQUIRED or DUPLICATE → straight to the next capture
                                 is ever created, and the walk moves on
 
 ── CALIBRATION · reached from JUDGEMENT REQUIRED · REDESIGN ──────────
-Claude       → calibrate_article_rules(url, atCapture)                 ⚠️ gains a capture
-backend      reads the PENDING_JUDGEMENT fetch record — the bytes are already there
-             ← marking URL
-Claude       hands over the marking URL and the exact command to paste back:
-
-                 approve_article_rules runId=<runId> snapshotId=<snapshotId>
-
-             the page shows that same line with a copy button once the draft is
-             handed back, so a mismatch means the wrong page is open
-researcher   opens the marking URL in a browser
-browser      → GET  /api/article-rules/:runId/captures/:snapshotId
-             ← the capture, inert, plus its outline
-browser      → POST /api/article-rules/:runId/captures/:snapshotId/preview
-                    { selectors }                      on every edit, PURE, stores nothing
-             ← keptText · removedText · removedSegments · matchCounts
-researcher   marks furniture, presses שמור טיוטא חדשה של חוקי חילוץ הטקסט
-browser      → PUT  /api/article-rules/:runId/draft
-                    { snapshotId, selectors, returned: true }
-             ← the draft, handed back
-researcher   pastes into the chat:  approve_article_rules runId=… snapshotId=…
-Claude       → approve_article_rules(runId, snapshotId)                MCP
-backend      promotes the draft → Rule rows, validFrom = THIS capture's date · a decision
-             ← the rules now in force
-Claude       → scan_next_capture(runId)     RETRIES THE SAME CAPTURE, now with rules
-backend      derives again · gates quiet · promotes the fetch record to a UrlSnapshot
-             anchors documentHash · clears the held body
-             ← ACQUIRED
+             → Flow 2, then MARKING. Neither opens a new run, and neither fetches:
+               the fetch record already holds the bytes.
 
 STATE        fetch record ALWAYS · UrlSnapshot + on-chain anchor only on ACQUIRED
              the fetch record holds the BYTES only while PENDING_JUDGEMENT
@@ -380,6 +338,53 @@ is nothing to activate.
 
 ---
 
+## MARKING — THE SHARED SUB-FLOW
+
+**Defined once because it is identical wherever it is reached from.** Two flows use it: bootstrap
+(Flow 1, Phase 1) and a stop resolved as REDESIGN (Flow 2). They differ ONLY in how the bytes came to be
+held — and both end the same way, by handing back to `scan_next_capture`.
+
+```
+Claude       hands over the marking URL and the exact command to paste back:
+
+                 approve_article_rules runId=<runId> snapshotId=<snapshotId>
+
+             the page shows that same line with a copy button once the draft is
+             handed back, so a mismatch means the wrong page is open
+researcher   opens the marking URL in a browser
+browser      → GET  /api/article-rules/:runId/captures/:snapshotId
+             ← the capture, inert, plus its outline
+browser      → POST /api/article-rules/:runId/captures/:snapshotId/preview
+                    { selectors }                      on EVERY edit, PURE, stores nothing
+             ← keptText · removedText · removedSegments · matchCounts
+researcher   marks furniture, presses שמור טיוטא חדשה של חוקי חילוץ הטקסט
+browser      → PUT  /api/article-rules/:runId/draft
+                    { snapshotId, selectors, returned: true }
+             ← the draft, handed back
+researcher   pastes into the chat:  approve_article_rules runId=… snapshotId=…
+Claude       → approve_article_rules(runId, snapshotId)                MCP
+backend      promotes the draft → Rule rows, validFrom = THIS capture's date · a decision
+             ← the rules now in force
+Claude       → scan_next_capture(runId)      the held record, now with rules
+backend      derives · gates quiet · promotes the fetch record to a UrlSnapshot
+             anchors documentHash · clears the held body
+             ← ACQUIRED
+
+STATE        draft (written by the BROWSER) · Rule rows · one decision
+             then UrlSnapshot + on-chain anchor, when the retry acquires
+```
+
+**It always ends by handing back to `scan_next_capture`.** Bootstrap and recovery differ at the start
+and converge here: rules now exist, a fetch record holds bytes, and the walk promotes it. Nothing else
+in either flow acquires a capture.
+
+**IT WAS DUPLICATED, AND IT HAD ALREADY DRIFTED.** The same fifteen lines appeared in two phases, and
+after two editing passes six differences had appeared between them — wording, a missing copy-button
+note, and one factual divergence about whether the tool returns `coverage`. Defining it once is what
+stops the two copies disagreeing about a flow neither of them is allowed to get wrong.
+
+---
+
 ## FLOW 2 — A STOP FOR JUDGEMENT
 
 **The only place a human is required, and the only place a judgement is made.** It happens whenever a
@@ -406,16 +411,12 @@ backend      records CAPTURE_SHOWN
 
 ── CALIBRATION ANSWERS · one of two ──────────────────────────────────
 
-REDESIGN     researcher   opens the marking URL, marks, presses שמור טיוטא…
-             browser      → GET  /api/article-rules/:runId/captures/:snapshotId
-                          → POST …/captures/:snapshotId/preview  { selectors }   per edit
-                          → PUT  /api/article-rules/:runId/draft
-                                 { snapshotId, selectors, returned: true }
-             researcher   pastes:  approve_article_rules runId=… snapshotId=…   ⚠️ renamed
-             Claude       → approve_article_rules(runId, snapshotId)             MCP
-             backend      Rule rows, validFrom = THIS capture's date · a decision
-                          ← the rules now in force · coverage
-                          → back to the one-at-a-time walk until the rules settle again
+REDESIGN     Claude       → open_article_capture(runId, snapshotId)
+             backend      reads the PENDING_JUDGEMENT fetch record — bytes already there
+                          records CAPTURE_SHOWN · SAME RUN, no new one is opened
+                          ← marking URL
+                          → MARKING  (below)
+                          → and MARKING ends by retrying this capture, which acquires
 
 BAD CAPTURE  researcher   pastes:  resolve_scan_stop runId=… snapshotId=…
                             BAD_CAPTURE reason=…                                ⚠️ renamed
