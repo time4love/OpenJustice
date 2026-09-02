@@ -1,7 +1,9 @@
 # The factual layer's article-rules architecture AS BUILT — 2026-09-02
 
-**This describes the CODE AS IT STANDS, not the target.** The target is
-`docs/gf-architecture-target.md`; the route between them is `docs/gf-refactor-plan.md`.
+**This describes the CODE AS IT STANDS, not the target.** The design is `docs/gf-interaction-flows.md`
+and its reasoning is `docs/gf-architecture-target.md`; the route between this and them is
+`docs/gf-refactor-plan.md`. §6 corrects this document's own earlier claims, §7 maps every target part
+to the module that does the nearest thing today, and §8 tags every test.
 
 It exists because the next change is a refactor of live, sensitive code, and a refactor session that
 has to infer the current shape from the source will infer it wrong somewhere.
@@ -73,6 +75,10 @@ the text, which is better than a foreign key because it also names the extractio
 
 ## 4. ERAS, AS BUILT
 
+> **RETIRED under the design.** Every mechanism below is deleted with its tests — §7, rows "rules in
+> force" and "eras, detectors, sampling". It is described here so a reader who meets `deriveEras` in
+> the source knows what it was for.
+
 Derived, never stored — no table, no range columns, no status flag:
 
 | what a table would hold | how it derives |
@@ -101,7 +107,30 @@ sharp edge, unguarded.
 `segments()` in `claimSurvival` is shared and drops any line with no letter or digit — measured, after
 69 single bullets swamped the first real drift run.
 
-## 6. THE MCP SURFACE
+## 6. WHAT THE CODE ACTUALLY DOES, WHERE THE EARLIER DRAFT WAS WRONG
+
+- **`calibrate_article_rules` fetches nothing.** It admits the URL and opens a run; that is all. The
+  marking page loads captures only from `UrlSnapshot`, by id. "Marks against freshly fetched pages" is
+  a docstring, not a path. No bootstrap of any kind exists.
+- **The wayback-timestamp identity is modelled and never written.** `CalibrationDecision` and
+  `RulesetObservation` allow it and `requireObservationSubject` enforces exactly one; every caller
+  passes a snapshot id. The draft is snapshot-id only.
+- **`CdxIndexEntry` is already the existence row.** Keyed by page, timestamp and digest; statuses
+  STORED · UNCHANGED · UNSERVABLE · UNFETCHED; links to the snapshot it became; records what an
+  UNCHANGED verdict was compared against; written by `recordCdxObservation` on every CDX query. The
+  earlier draft proposed a second table beside it.
+- **Admission sets `TrackedUrl.status = SCANNING` whoever calls it**, including calibration, which
+  scans nothing. The MCP callers pass no `submitterId`, so an admission from the chat is unattributed.
+  `UNCLEAR` is a verdict in the enum that no path can produce.
+- **`reconcileAgainstCdx` re-derives text IN PLACE, with the rule-free extractor**, via a raw SQL
+  update of `text` and `textExtractionVersion`, when the stored extraction version is behind. Under the
+  target that is a versioned supersession under the rules in force; today it is an overwrite that
+  ignores rules. Its "superset check" — text moved while bytes did not — is the re-walk's comparison
+  against a capture's own previous text.
+- **`start_forensic_scan` is fire-and-forget with an in-memory guard.** No durable run state, a
+  restart loses a run.
+
+The MCP surface as registered today, all gated in `WRITE_TOOLS`:
 
 ```
 calibrate_article_rules      new URL, marks against freshly fetched pages
@@ -117,28 +146,99 @@ commit_article_rules         version the ruleset, set it active
 abandon_article_rules        close without applying
 ```
 
-All gated in `WRITE_TOOLS`. The marking page is a pure transformation: ruleset in, draft out, no
-decision and no effect.
+Admission (`admitUrl`) is invoked from five places, always as a side effect: `calibrate_article_rules`,
+`start_forensic_scan`, `enrich_evidence_with_history`, `forensicsRoutes`, `WaybackScraper`. There is no
+tool that simply admits a URL, and `correct_article_rules` does not admit at all.
 
-## 6b. ADMISSION IS A SIDE EFFECT, AND HAS NO FRONT DOOR
+## 7. THE MODULE MAP — WHERE EACH TARGET PART LIVES TODAY
 
-`admitUrl` decides whether a URL belongs to the corpus at all — a live fetch of the page as it is today,
-a PAID model relevance call, and a `UrlAssessment` recorded in both directions. It is invoked from
-**five places**, always as a side effect of doing something else:
+Every row below was read from source in the session that wrote it. Verbs: REUSE (import as-is) ·
+TRANSFORM (same module, changed contract) · BUILD (nothing to reuse) · RETIRE (deleted with its
+tests, in the step that retires the concept). A REUSE is a claim the acceptance suite proves, not
+this table.
 
-```
-calibrate_article_rules · start_forensic_scan · enrich_evidence_with_history
-forensicsRoutes         · WaybackScraper
-```
+| target part | legacy modules | verb | notes |
+|---|---|---|---|
+| survey: CDX query, the work-list | `WaybackScraper.getSnapshotsList` / `queryCdxIndex` (paging, retries), `recordCdxObservation` (UNFETCHED rows via `createMany`, the `CdxQuery` row), `backfillCdxIndex` (links existing snapshots by timestamp and digest) | TRANSFORM | the writer is the survey; add attributed `TrackedUrl` creation and the byte-distinct count; `backfillCdxIndex`'s linking is the legacy join |
+| the work-list row | `CdxIndexEntry`, `markCdxEntryStored` / `markCdxEntryUnservable` / `markCdxEntryUnchanged` | TRANSFORM | add IDENTICAL, PENDING_JUDGEMENT, SKIPPED, held body, ruleset, text hash, stop gate, reason, digestVerified; the digest leaves the unique key |
+| fetch | `archiveHttp`: `fetchCaptureBytes`, `rawCaptureUrl` (`id_`), `withRetry`, `isTransientWaybackError`, `WaybackFetchError`; `WaybackScraper.scrapeSnapshotReadings` (bytes, content type, encoding from one fetch) | REUSE | raw fetch, the transient/durable distinction and the payload headers all exist |
+| derive | `chromeRulesetApply.deriveTextUnderRuleset`, `chromeRuleset` (the ruleset id), `captureDocument.deriveText` (the empty case), `textSegments` | REUSE | only the caller changes |
+| rules in force | `rulesetForCapture` (`governingEras`, `rulesetForCapture`), `calibrationFold` (`deriveEras`, `eraForDate`, `selectorsForDate`, `selectorAnchors`, `CONFIRM_AFTER_CLEAN`) | RETIRE | replaced by RULES_IN_FORCE over `Rule` rows |
+| Gate 1 | `extractionDrift.compareExtractions`, `claimSurvival.segments` | REUSE | exactly Gate 1; no production caller today; `measureEraDetectors` is its only importer |
+| Gate 2, `RuleMatch` | `RulesetObservation.matchCounts`, `calibrationRun.findStaleSelectors`, `recordRulesetObservation` | TRANSFORM | keyed to the rule, not the ruleset hash (I12) |
+| Gate 4, SEEN, TRUST | — | BUILD | folded from the log |
+| Gate 5 | `diffChunking.diffChunkPair` + `classifierInputChunks`, `ForensicAgent.analyzeChange`, `recordDiff` (upsert keyed on the capture pair; Level 5's `computeDiffSurvival` at write) | REUSE all four; TRANSFORM the order | classify before storing; `recordDiff` requires both snapshot ids, so the diff row is written the moment the capture is acquired, carrying the verdict already in hand |
+| store and anchor | `recordCapture` (the create path, `registerSnapshotOnChain`), `anchorSnapshots`, `anchoredCaptureHash` | REUSE the storage and anchoring; RETIRE the novelty decision inside it | the hardest seam: `recordCapture` derives, decides novelty against the predecessor, stores and anchors in one call; the walk needs only store-and-anchor |
+| the log | `CalibrationRun` / `CalibrationDecision` / `CalibrationReset`, `calibrationRun.ts` (`sequencedWrite`, `appendCalibrationDecision`, `readCalibrationRun`) | TRANSFORM | re-homed to the page; keep the unique-index compare-and-set; `researcherId` per row; new types |
+| `Rule` rows | — (selectors live inside decisions; `ArticleRuleset` is a hash of the set) | BUILD | |
+| the draft | `CalibrationRun.draft*`, `saveCalibrationDraft` / `readCalibrationDraft` / `discardCalibrationDraft` | TRANSFORM | onto `TrackedUrl`; gains `trusted[]` |
+| marking page | `ArticleRulesClient.tsx` (1,601 lines, one route base), `captureMarking.ts` (`loadCaptureForMarking`, `previewUnderSelectors`), `articleRulesRoutes.ts` (nine routes) | TRANSFORM | page-scoped routes; bytes from the held body or the snapshot; approve-as-is and trust affordances; the `rules=0` line |
+| `approve_article_rules` | `commitCalibrationRuleset`, `ensureArticleRuleset`, the judge handler | BUILD | one transaction: Rule rows, RULE_ENDED, RULE_TRUSTED, CAPTURE_ACCEPTED |
+| `resolve_scan_stop` | `resolve_era_boundary`'s BAD_CAPTURE branch | TRANSFORM | |
+| reset | `reset_article_calibration`, `CalibrationReset` | TRANSFORM | a RESET decision plus RULE_RETIRED per rule; refuses when nothing to retire |
+| re-walk, STALE, `TextVersion` | `reconcileAgainstCdx` | RETIRE | in-place, rule-free overwrite; its superset check becomes the re-walk's own-previous-text comparison. `rehashDocuments` is a finished one-off repair and is outside this layer |
+| admission | `admitUrl`, `ScanRelevanceAgent`, `recordUrlAssessment`, `fetchContentForRelevanceCheck`, `ScanRelevanceAssessment`, the five callers | RETIRE | the source scan in `urlAdmission.test.ts` becomes: only the survey creates a `TrackedUrl` |
+| the scan job | `WaybackScraper.processJob` / `runFullScan` / `createJob` / `analyzePageHistory`, `WaybackScrapeJob`, `start_forensic_scan` | RETIRE | replaced by `scan_captures`; the in-memory guard goes with it; the eight `recordDiff` call sites collapse to one |
+| gap fill | `recoverMissingCaptures` | RETIRE | the walk fills gaps by construction |
+| eras, detectors, sampling | `eraDetectors`, `nextCapture`, `timelineSample`, `rulesetSurvival`, `claimSurvival.compareKeptText` / `attributeRemoval`, `runCoverage` | RETIRE | `measureEraDetectors` stays as a script until the three measurements are taken, then goes |
+| the diff preview | `previewDiffClassification` | untouched | a read-only re-run of the classifier; not on the walk's path |
+| MCP surface | `mcpServer.ts` registrations, `mcpRoutes.WRITE_TOOLS`, `mcpToolClassification.test.ts` | TRANSFORM | five writes and two reads; the classification test's expected set changes with them |
 
-**There is no tool that simply admits a URL.** A researcher cannot ask whether a page is in scope; they
-can only discover it by trying to calibrate or scan, and a refusal arrives as a failure of the thing
-they asked for. One rule, five implementations, on the corpus's front door.
+## 8. THE TEST INVENTORY — WHAT EACH FILE ASSERTS, AND WHAT BECOMES OF IT
 
-`correct_article_rules` does NOT admit — it requires the URL to be tracked already — so the two
-calibration entry points already disagree about this.
+Three tags, and the rule behind them. **KEEP**: asserts an invariant or a reused contract; stays
+untouched and must stay green on every step. **REWRITE**: the concept survives with a changed shape;
+the file is rewritten to the flows appendix in the step that changes the shape. **RETIRE**: asserts a
+retired concept; deleted in the same commit as the code it tests, never weakened to pass. A file can
+split: its groups are tagged separately below.
 
-## 7. KNOWN DEFECTS IN THE CURRENT SHAPE
+| test file | lines | tag | what it holds |
+|---|---|---|---|
+| `anchorSnapshots` | 370 | KEEP | the anchoring path, twin recovery, the write path owns anchoring |
+| `anchoredCaptureHash` | 202 | KEEP | one rule names the anchored hash; a superseded hash is its own answer |
+| `documentHashSingleRule` | 129 | KEEP | every `documentHash` write routes through `sha256Bytes` |
+| `evidenceIdentityDrift` | 98 | KEEP | one Readability construction; one evidence hash function |
+| `directProvenanceUnused` | 91 | KEEP | `DIRECT` has no writer — now a design statement, not only a fact |
+| `liveArchiveObservers` | 122 | KEEP | live observers never read our record; no CDX-shaped column on `UrlSnapshot` |
+| `extraction/documentOutline` | 451 | KEEP | the outline, selector choice, `inertDocument` |
+| `extraction/emptyRulesetDerivation` | 36 | KEEP | an empty ruleset derives what no ruleset does |
+| `extractionDrift` | 149 | KEEP | Gate 1's contract, exactly; add cases for A4's set semantics if any are missing |
+| `previewDiffClassification` | 396 | KEEP | writes nothing; off the walk's path |
+| `thesisClaimAudit` | 464 | KEEP | reads captures; unaffected |
+| `mcpToolClassification` | 157 | KEEP | the assertions stay; the expected set changes in the switch step |
+| `extraction/chromeRuleset` | 323 | KEEP, one group RETIRE | derivation, removal attribution, ruleset identity, malformed selectors all stay; "the removal fraction — four readers" goes with `RulesetObservation` |
+| `extraction/recordCapture` | 499 | KEEP three groups, REWRITE two | payload, provenance, anchoring and the race stay; "decides novelty in one place" and "derives under the era" are rewritten: novelty and RULES_IN_FORCE belong to the walk |
+| `WaybackScraper` | 907 | KEEP four groups, RETIRE two | `getSnapshotsList`, `scrapeSnapshot`, `isWaybackOffline`, `isTransientWaybackError` stay; `processJob` and `analyzePageHistory` go with the scan job |
+| `recordCdxObservation` | 190 | REWRITE | append-only observation and the UNCHANGED-records-its-predecessor rule survive; the digest-in-key and the four-status vocabulary become the seven outcomes |
+| `unchangedNoDiff` | 76 | REWRITE | a source scan over eight diff sites becomes a scan over one, in the walk |
+| `articleRulesRoutes` | 255 | REWRITE | page-scoped routes; "the UI writes decisions" group is retired, the browser writes only the draft |
+| `calibrationRun` | 804 | REWRITE four groups, RETIRE two | the fold, the compare-and-set, one-identity, skip-needs-reason survive on the page log; the stopping indicator and its streaks, and the null check on the ruleset hash, go |
+| `resetArticleCalibration` | 95 | REWRITE | a RESET decision plus RULE_RETIRED; refuses when nothing to retire; "era boundaries did not survive" goes |
+| `urlAdmission` | 95 | REWRITE | the source scan becomes: only the survey creates a `TrackedUrl` |
+| `mcpIntegration` | 526 | KEEP two groups, RETIRE two | write-tool auth and evidence creation stay; "ADMITS the URL" and the `start_forensic_scan` group go |
+| `mcpTools` | 1,941 | KEEP, small RETIRE | unrelated handlers stay; any scan or calibration assertions go |
+| `recoverMissingCaptures` | 249 | RETIRE, one assertion migrates | "keeps every row, reverts included" moves to the survey's tests |
+| `reconcileAgainstCdx` | 258 | RETIRE, one assertion migrates | the superset check moves to the re-walk's own-previous-text comparison |
+| `articleRuleTools` | 976 | RETIRE, one group REWRITE | five retired tools; `get_article_rules` is rewritten to A5 |
+| `calibrationEras` | 118 | RETIRE | the era fold |
+| `eraDetectors` · `eraDetectorsUnmeasured` | 152 | RETIRE | the detectors and their threshold scan |
+| `nextCapture` · `timelineSample` | 194 | RETIRE | the sampling policy |
+| `rulesetForCapture` | 253 | RETIRE | `governingEras`; the "reset ends authority" assertions are re-expressed against AUTHORITY on the page log |
+| `rulesetSurvival` · `claimSurvival` | 238 | RETIRE, one group migrates | `segments` cases move under `extractionDrift` |
+| `resolveEraBoundary` | 131 | RETIRE | `ERA_BOUNDARY`; the BAD_CAPTURE assertions are re-expressed against `resolve_scan_stop` |
+| `admitUrl` · `urlAssessment` · `forensicsScanRelevance` | 595 | RETIRE | admission and its table |
+
+**NEW — the acceptance suite, written FIRST from the flows appendix and failing until the walk
+reaches it:** A3's derivations as pure functions over fixtures; A4's five gates, one file each, with
+the RESOLVED skip and the re-walk's own-previous-text case; A5's seven tools, every refusal named;
+A6's five routes; A7's transaction and STALE_SEQUENCE; the target doc's ten invariants; and the
+source scan for retired names (`era`, `calibrationRunId`, `admitUrl`, every retired tool) with a decoy
+proving it is not vacuous.
+
+**The arithmetic, so the size of the job is stated:** 37 files, 11,383 lines touch this layer.
+Roughly 3,000 lines KEEP untouched, 2,400 REWRITE, 4,000 RETIRE outright, and the rest split.
+
+## 9. KNOWN DEFECTS IN THE CURRENT SHAPE
 
 - **I12** — `lastMatchedAt` resets on every correction, because `RulesetObservation` is keyed to
   `articleRulesetId` and any edit produces a new one. **Do not act on the stale-selector list.**

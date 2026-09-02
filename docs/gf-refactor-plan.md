@@ -1,177 +1,352 @@
 # Refactoring the article-rules layer — 2026-09-02
 
-**From** `docs/gf-architecture-current.md` **to** `docs/gf-architecture-target.md`.
-**How it is used, step by step:** `docs/gf-interaction-flows.md`.
+**From** `docs/gf-architecture-current.md` **to** the design in `docs/gf-interaction-flows.md`, whose
+reasoning is `docs/gf-architecture-target.md`. The flows doc's appendix is the contract every step
+builds to; the as-built doc's §7 maps every part to its legacy module and §8 tags every test.
 
 This is harder than building the target on clean ground, and the reason is worth stating before any
 step: **the code being changed is live, its data is real research, and the layer it feeds decides
-whether a capture is stored at all.** `text` → `textHash` → novelty → whether a row exists. A refactor
-that gets extraction wrong does not produce wrong text; it produces a corpus with holes.
+whether a capture is stored at all.** A refactor that gets extraction wrong does not produce wrong
+text; it produces a corpus with holes.
 
 ---
 
-## THE ORDER, AND WHY IT IS THIS ORDER
+## 1. THE STRATEGY — BESIDE, NOT THROUGH
 
-Each step leaves the system working. **No step depends on a later one to be correct.**
+The code is far from the design, the data is live research, and the suite holds ~4,000 lines of
+assertions about behaviour the design retires. Refactoring through that in place would mean every
+step touching tests that encode the old model, and a test modified to pass is the one thing this
+plan forbids.
 
-### 1 · `Rule` and `RuleMatch` tables, written but not yet read
+So the new walk is built BESIDE the old scan. New tables are additive. New tools have new names. The
+pieces the design reuses — the fetch, the derivation, the drift comparison, the storage-and-anchor
+path, the CDX table and its writer, the marking page's preview — are reached by import from the new
+code, and nothing new imports from `calibrationRun`, `rulesetForCapture`, `calibrationFold`,
+`admitUrl` or the scan job. The old tools and the old scan keep working, and their tests keep passing
+untouched, until the acceptance suite is green. Then ONE step switches the MCP surface, retires the
+old path, and deletes its tests in the same commit.
 
-Additive migration. Backfill `Rule` rows from the distinct selectors of each URL's decisions, with
-`validFrom` derived by the existing fold.
+Three properties follow:
 
-**The backfill is imperfect and must SAY so.** Anchors for decisions written before 2026-09-01 are
-RECOVERED, and the recovery has been wrong in both directions. Mark backfilled rules as
-`anchorRecovered` so nothing downstream treats a reconstructed date as a recorded one.
+- **"Each step leaves it working" is true without effort.** The old path is never half-changed.
+- **The legacy suite is a guard, not an obstacle.** It protects the old path until the old path is
+  removed, and nothing is ever weakened to pass.
+- **The switch is one reviewable diff**, and it is the only step that can break a researcher's
+  workflow — so it is the step that waits for the researcher's word.
 
-*Leaves working:* everything. Nothing reads the tables yet.
+The cost is a stretch where two implementations coexist. The discipline that stretch needs is a
+source scan, from the first step: no file under the new walk imports a retired module.
 
-### 2 · Write `Rule` rows on every correction, and `RuleMatch` on every derivation
+## 2. THE TRANSLATION TABLE — OLD TO NEW, ONE ROW EACH
 
-The tables become authoritative for new work while the old path still drives behaviour.
+| old | new | verb |
+|---|---|---|
+| era, `ERA_BOUNDARY`, `deriveEras`, `eraForDate`, `governingEras` | nothing; RULES_IN_FORCE over `Rule` rows by date | retire |
+| `CalibrationRun`, `runId` | the page: log and draft on `TrackedUrl` | retire |
+| `CalibrationDecision` (run-scoped, no researcher) | `Decision` (page-scoped, `researcherId`, seven types) | transform |
+| `RUN_OPENED` · `RUN_CLOSED` · `CAPTURE_SHOWN` · `CAPTURE_REJECTED` · `ERA_BOUNDARY` | nothing | retire |
+| `RULESET_CORRECTED` (full selector list) | `RULESET_CORRECTED` naming the capture, with `Rule` rows following | transform |
+| `CAPTURE_ACCEPTED` · `CAPTURE_SKIPPED` | the same, page-scoped, attributed | transform |
+| — | `RULE_TRUSTED` · `RULE_ENDED` · `RULE_RETIRED` · `RESET` | build |
+| `CalibrationReset` | the `RESET` decision | transform |
+| `ArticleRuleset` (hash of the set), `activeArticleRulesetId`, `commit_article_rules` | `Rule` rows; RULESET_ID derived per date; nothing to activate | retire |
+| `RulesetObservation` (keyed to the hash) | `RuleMatch` (keyed to the rule) | transform |
+| `CdxIndexEntry` STORED · UNCHANGED · UNSERVABLE · UNFETCHED, unique with digest | the work-list row: ACQUIRED · DUPLICATE · UNSERVABLE · UNFETCHED + IDENTICAL · PENDING_JUDGEMENT · SKIPPED, unique on page and timestamp | transform |
+| `admitUrl`, `ScanRelevanceAssessment`, the five callers | the survey creates the `TrackedUrl`, attributed; every other operation refuses an unsurveyed page | retire |
+| `WaybackScrapeJob`, `processJob`, `runFullScan`, `start_forensic_scan` | `scan_captures` | retire |
+| `recordCapture` (derive + novelty + store + anchor) | the walk derives and decides; `recordCapture` stores and anchors | transform |
+| `recoverMissingCaptures` | the walk over UNFETCHED rows | retire |
+| `reconcileAgainstCdx` | the re-walk over STALE rows, versioning text | retire |
+| `calibrate_article_rules` · `correct_article_rules` · `open_article_capture` · `judge_article_capture` · `next_article_capture` · `resolve_era_boundary` · `check_ruleset_survival` · `abandon_article_rules` | `survey_wayback_captures` · `scan_captures` · `approve_article_rules` · `resolve_scan_stop`; MARKING on any capture; abandon is deleting the draft | retire |
+| `get_article_rules(runId)` | `get_article_rules(url)` per A5 | transform |
+| `/api/article-rules/:runId/…` (nine routes) | `/api/article-rules/pages/:trackedUrlId/…` (five routes) | transform |
+| `TrackedUrl.status` SCANNING on admit | no status written by entry; the walk's state is the work-list | transform |
+| `text` overwritten in place | `TextVersion` keeps the previous | build |
+| a run's `CONFIRM_AFTER_CLEAN`, interactive/automatic mode | nothing | retire |
 
-*Leaves working:* everything. Now there is real data to verify step 3 against.
+## 3. THE STEPS — EACH LEAVES THE OLD PATH WORKING; THE EIGHTH SWITCHES
 
-### 3 · Derive using `validFrom`, replacing `governingEras`
+### 0 · The acceptance suite, failing
 
-`rulesetForCapture` selects rules by `validFrom ≤ snapshotDate` instead of folding partitions.
+Written from the flows appendix before any code: A3's derivations as pure functions over fixtures;
+A4's five gates, one file each, including the RESOLVED skip and the re-walk's own-previous-text case;
+A5's seven tools with every refusal; A6's five routes; A7's transaction and STALE_SEQUENCE; the ten
+invariants of the target doc's §6; and the source scan — no file under the new walk imports a retired
+module, proven against a decoy. Every file red. **This is the spec; the steps below turn it green.**
 
-**Verify by re-deriving, not by reading code.** For every stored capture, the new path must produce the
-same `textHash` as the old one wherever the partitioned model and date-scoping agree — and the
-measurement instrument already reports both side by side.
+*Leaves working:* everything; nothing is touched.
 
-*Leaves working:* extraction, on a simpler path.
+### 1 · Schema, additive only
 
-### 4 · `RuleMatch` supersedes `RulesetObservation` for staleness — **closes I12**
+New tables `Rule`, `PageDecision`, `RuleMatch`, `TextVersion`. New columns on `TrackedUrl`
+(`createdById`, the draft fields). New outcome values and columns on `CdxIndexEntry` (IDENTICAL,
+PENDING_JUDGEMENT, SKIPPED; held body, ruleset id, text hash, stop gate, reason, digestVerified) and a
+new unique index on page and timestamp beside the old one. No old table, column or constraint changes.
 
-`lastMatchedAt` stops resetting, because a match is keyed to a rule rather than to a hash of the whole
-set. The stale-selector list becomes readable for the first time.
+*Leaves working:* everything. *Verified by:* `db:check-drift` clean before writing the migration; the
+migration read before commit; deploys itself.
 
-*Leaves working:* everything, and one long-standing lie stops being told.
+### 2 · The survey
 
-### 5 · The previous-capture comparison becomes the scan's signal
+`survey_wayback_captures` as a new MCP tool: reuses the CDX query and `recordCdxObservation`, adds
+attributed `TrackedUrl` creation, the byte-distinct count, and the legacy join (a row whose page and
+timestamp match an existing `UrlSnapshot` is ACQUIRED with that id). `admitUrl` is not called.
 
-`extractionDrift` has no caller today. Give it one: the sequential pass holds the previous capture's
-extraction and compares.
+*Leaves working:* the old scan, untouched. *Verified by:* A5's survey contract green; the legacy join
+proven on the staging corpus — every existing snapshot has a row.
 
-**Gate 1 is any content segment changing sides.** No threshold.
+### 3 · The page log and the rules
 
-*Leaves working:* everything; the signal is reported before it is allowed to stop anything.
+The page-scoped decision writer with the unique-index compare-and-set inside one transaction;
+`researcherId` on every row. RULES_IN_FORCE, RULESET_ID, AUTHORITY, TRUSTED, SEEN, RESOLVED, STALE
+and NEXT_ROW as queries. `approve_article_rules` and `resolve_scan_stop` as new tools. The new
+`reset_article_calibration` and `get_article_rules` are built under their final names but
+REGISTERED ONLY AT STEP 8, because the old tools own those names until the switch.
 
-### 6 · `ScanRun` / `ScanDecision`, and the bounded batch
+*Leaves working:* the old calibration, on its own tables. *Verified by:* A3 and A5 green for these
+four; the source scan green.
 
-Durable run state is a PRECONDITION for a batch that yields to a human: a batch that stops must know
-where it got to. Also retires `start_forensic_scan`'s in-memory guard, which loses a run on restart.
+### 4 · The walk, reporting only
 
-*Leaves working:* everything. Scanning becomes resumable.
+`scan_captures` with every step of Phase 2 EXCEPT the writes: fetch, derive, compare, all five gates,
+and the stop's material — reported, storing nothing. Reuses `archiveHttp`, `deriveTextUnderRuleset`,
+`compareExtractions`, the classifier via `analyzeChange`.
 
-### 6b · Split acquisition from calibration
+**This is where the three measurements are taken.** Run against walla and corona: Gate 2's stop rate,
+Gate 4's stop volume before any rule is trusted and after the obvious ones are, Gate 5's verdicts on
+diffs a human has already classified. Recorded in a dated doc, pointed at from the plan's STATUS. The
+design's premise — stops become rare once rules are trusted — is confirmed or refuted HERE, before a
+walk is allowed to store anything.
 
-Acquisition gets bytes and keeps them; calibration decides what is article text. **Acquisition READS
-rules and never writes them**, and **STOPS on the gates from the second stored capture onward** —
-because every stored row produces a diff and every diff is a PAID classifier call, so acquiring under
-broken rules is the explosion this level exists to prevent, not a safe over-storing. It detects and
-YIELDS; calibration resolves.
+*Leaves working:* everything. *Verified by:* A4 green; the dated measurement doc.
 
-**Every fetch leaves a RECORD** — date, wayback timestamp, raw-bytes hash — so a capture the rules dropped
-is an unexplained gap Wayback can refill rather than an untrue silence. While a judgement is owed the
-record also holds the bytes, which is how a halted capture reaches the marking page without a derivation
-being claimed for it. That is §2's
-*"storage is lossless"* finally holding, and it is what makes the split possible at all.
+### 5 · The walk, writing
 
-*Leaves working:* everything. Acquisition becomes runnable independently of the calibration refactor,
-which makes the sensitive part of this work smaller.
+The outcomes on the work-list row; held bytes while PENDING_JUDGEMENT; digest verification; the
+store-and-anchor step, which needs `recordCapture` split so the walk can call storage and anchoring
+without the derivation and novelty it also performs — the one change to a reused module, and its
+existing tests must stay green; the diff written at acquisition with its verdict via `recordDiff`;
+Gate 0 as the bootstrap.
 
-### 6c · Give admission a front door, and make every other caller refuse
+*Leaves working:* the old scan, still on its own path. *Verified by:* A5's `scan_captures` contract
+green; a full walk of a small staging page end to end, stops resolved through the chat.
 
-`admitUrl` decides whether a URL belongs to the corpus at all — a live fetch of the page as it is
-today, a PAID model relevance call, and a `UrlAssessment` recorded in both directions. It is reachable
-from **five places and from nowhere on its own**:
+### 6 · The marking page and its routes
 
-```
-calibrate_article_rules · start_forensic_scan · enrich_evidence_with_history
-forensicsRoutes         · WaybackScraper
-```
+The five page-scoped routes beside the nine run-scoped ones; bytes served from the held body or the
+snapshot; approve-as-is and trust affordances; the `rules=0` line; the draft with `trusted[]`. The old
+routes and page stay for the old tools.
 
-**So a researcher cannot ask whether a page is in scope** — only discover it by trying to calibrate or
-scan, with the refusal arriving as the failure of a different request. One rule, five implementations,
-on the corpus's front door. `correct_article_rules` does not admit at all, so the two calibration entry
-points already disagree.
+*Leaves working:* the old marking flow. *Verified by:* A6 green; a stop resolved through the new page
+against staging.
 
-**One tool admits; every other operation REFUSES an unadmitted URL.** A judgement made implicitly, while
-a researcher was asking for something else, is a judgement nobody made.
+### 7 · The re-walk
 
-*Leaves working:* everything — the callers keep working until each is switched from admitting to
-refusing, which can be done one at a time.
+STALE rows walked; `TextVersion` written on supersession in the same transaction; the
+own-previous-text comparison; RULE_ENDED from unmarking; the reset as RESET plus RULE_RETIRED.
 
-### 7 · The tool surface
+*Leaves working:* everything. *Verified by:* A4's re-walk case green; a correction on a staging page
+that supersedes stored text with the previous version retained and the anchors untouched.
 
-```
-resolve_era_boundary   →  the same binary question, renamed, creating nothing structural
-next_article_capture   →  deleted; the walk is sequential
-check_ruleset_survival →  deleted; nothing re-derives the past
-commit_article_rules   →  DELETED; rules are in force from creation, so there is nothing to activate
-activeArticleRulesetId →  deleted; written and never read, and now meaningless
-ERA_BOUNDARY           →  removed from the decision enum
-```
+### 8 · THE SWITCH — the researcher's word
 
-**Deletion is a step, not a side effect.** A superseded tool left in place is one a future session will
-call.
+Register the new tools and unregister the old; `WRITE_TOOLS` and the classification test's expected
+set updated; the old scan job, calibration service, era fold, detectors, sampling, admission and
+their five callers deleted; every RETIRE-tagged test deleted in the same commit; `urlAdmission`'s
+scan rewritten to "only the survey creates a `TrackedUrl`"; the retired-names source scan goes green.
+`start_forensic_scan` and `enrich_evidence_with_history` refuse an unsurveyed page instead of
+admitting.
 
-### 8 · Vocabulary
+*Leaves working:* the new path only. *Verified by:* the whole suite green with the RETIRE files gone;
+the integrity board.
 
-`era` out of identifiers, comments, tool text and docs. Left last **on purpose**: renaming before the
-behaviour settles produces a diff nobody can review, and the word is harmless while it is still true of
-the code.
+### 9 · The legacy log and the drop — its own session
 
----
+The three legacy runs' decisions are COPIED into the page log, attributed to their run's researcher,
+sequence offset per run in creation order, under a RESET dated at the copy so they carry no
+authority — "nothing is deleted; every decision stays readable" holds. Then the old tables are dropped
+by a migration written, simulated and applied under the destructive-database protocol, in a session
+whose only purpose is that drop. Not before step 8 has served for long enough that nothing reads them.
 
-## WHAT MUST NOT BREAK, AND HOW EACH IS HELD
+### 10 · Vocabulary
 
-| invariant | how it is held |
+`era` out of identifiers, comments, tool text and docs. Last on purpose: renaming before the
+behaviour is gone produces a diff nobody can review, and the word is harmless while it is still true
+of code that is about to be deleted.
+
+## 4. THE TEST RULES
+
+The suite is the thing most likely to make this refactor fail, in either direction: weakened to pass,
+or left asserting the old model so the new one cannot land. Four rules, none with an exception.
+
+1. **A test asserting a retired concept is deleted in the commit that retires the concept.** Never
+   modified to pass, never skipped, never left red. The as-built doc's §8 names every file and group
+   with the RETIRE tag; step 8 is where they go, and a RETIRE file still present after step 8 is a
+   defect in step 8.
+
+2. **A test asserting an invariant or a reused contract is never edited.** §8's KEEP files. They are
+   green before step 0 and green after step 10, and every step in between. A KEEP file that has to
+   change to keep passing means a reused module's contract moved, and the step that moved it is wrong.
+
+3. **A REWRITE file is rewritten to the appendix, in the step that changes its shape**, as a new
+   file beside the old one; the old one is deleted at step 8 with its code. Two files coexist for the
+   stretch, one for each path, and neither is edited to accommodate the other.
+
+4. **The acceptance suite is written first, from the contract, and fails until the walk reaches it.**
+   It never imports a retired module, which the source scan holds from step 0. When it is green, the
+   switch is allowed; until it is green, no step may claim to be done.
+
+**What a source scan holds, and why it is a test and not a review note:** that no new file imports
+`calibrationRun`, `rulesetForCapture`, `calibrationFold`, `admitUrl` or the scan job, from step 0;
+that after step 8 no file under `src` names `era`, `calibrationRunId`, `admitUrl` or any retired tool;
+that `TrackedUrl` is created in exactly one module; that `urlVersionDiff` is written from exactly one
+site. Each scan carries a decoy proving it can see what it scans for — a scan that matches nothing
+is the vacuity this repository has paid for before.
+
+**Migrating assertions, not files.** Four assertions survive their file's retirement and move:
+"keeps every row, reverts included" to the survey; the superset check to the re-walk; `segments`'
+cases under `extractionDrift`; the BAD_CAPTURE assertions to `resolve_scan_stop`. They are moved as
+assertions about the new contract, not copied with their old fixtures.
+
+## 5. THE DATA STORY
+
+**Read on staging, 2026-09-02, read-only.** Production is read the same way before step 1 runs there;
+its numbers differ, the shape does not.
+
+| fact | staging |
 |---|---|
-| `fullText` / `contentHash` untouched by rules | `deriveTextUnderRuleset` returns `text`/`textHash`/`textExtractionVersion` only — a test asserts the shape |
-| a past extraction changes only by supersession | recording derives; committing versions and re-derives nothing |
-| the log stays append-only | no step edits or deletes a decision |
-| the marking page decides nothing | it returns a draft; the chat records |
-| storage stays lossless | no step lets a rule decide whether bytes are kept |
-| `SKIPPED` means the capture does not speak | and must be excluded from **diffing** — Level 5, still unenforced |
+| tracked pages · snapshots | 3 · 112, all WAYBACK, all anchored |
+| snapshots with no CDX row | 83 of 112 |
+| CDX rows sharing a page and timestamp | 0 |
+| text extraction version | one, `v2…`, on all 112; no ruleset id anywhere |
+| calibration runs | 3, all OPEN, 30 + 43 + 15 decisions, no draft on any |
+| resets · rulesets · observations · assessments | 1 · 44 · 23 · 2 |
+| diffs | 109 |
 
-## THE HAZARDS, NAMED
+**Every migration before step 9 is additive.** New tables, new columns, new enum values, a new unique
+index beside the old one. No column is dropped, renamed or narrowed, and no row is deleted. The old
+path keeps its tables until it is gone.
 
-- **`textHash` is the novelty key.** Any change to derivation changes which captures are considered new.
-  Verify against stored captures before it reaches a scan.
-- **Legacy anchors are unreliable.** Step 1's backfill reconstructs them; steps 3 and 4 must not present
-  a reconstructed date as a recorded one.
+**The digest can leave the work-list's key.** Zero rows on staging share a page and timestamp, which
+is what immutability predicts. The new unique index on `(trackedUrlId, waybackTimestamp)` is added
+beside the old three-column one in step 1 and the old one is dropped in step 9; a duplicate found on
+production before step 1 is a finding to record, not a reason to keep the digest in the key.
+
+**The legacy join is load-bearing, not a corner case.** 83 of 112 staging snapshots predate the CDX
+table and have no row. The first survey of each page writes their rows and links them ACQUIRED by
+page and timestamp — `backfillCdxIndex` already does the linking, by timestamp and digest; the survey
+does it by timestamp alone. After step 2 every snapshot has a row, and that is asserted on staging
+before step 5 is allowed to walk.
+
+**Legacy text is the empty ruleset, and needs no migration.** All 112 captures carry one extraction
+version and none carries a ruleset id: nothing was ever derived under rules. Under the design that is
+a capture derived under a ruleset of zero rules, which RULESET_ID names. The first rule created for a
+page makes every capture from its date STALE, and the re-walk (step 7) supersedes them keeping the old
+text as a `TextVersion`. The corpus is migrated by the product, page by page, when a researcher first
+calibrates it — not by a script, and not before step 7 exists.
+
+**Anchors are untouched throughout.** All 112 captures are anchored on `documentHash`, which no rule
+changes and no step rewrites. Nothing on chain is orphaned by any step, including step 9.
+
+**The three legacy runs are archaeology with a home.** 88 decisions across three OPEN runs, one reset,
+44 hashed rulesets, 23 observations, and no draft. None ever governed a capture. At step 9 the
+decisions are copied into the page log — attributed to each run's researcher, sequence offset per run
+in creation order, under a RESET dated at the copy so they carry no authority — and the rulesets and
+observations are dropped with their tables: a ruleset hash is derivable from the decisions it came
+from, and an observation is a measurement recomputable from bytes still held. The assessments, two
+MODEL rows, are dropped with admission; they recorded a gate that no longer exists.
+
+**Step 9 is a destructive-database session and nothing else.** Its opening message states its
+purpose, names the environment by project ref, writes the scope to `.claude/DB_CLEANUP_SESSION`,
+simulates every statement with `db:simulate` inside the deployment, announces the measured loss, and
+stops. It runs on staging first, and on production only after staging has served on the new path.
+
+## 6. VERIFICATION — WHAT "VERIFIED" MEANS AT EACH STEP
+
+**A step is verified by a check that ran, never by a reading.** Four instruments, and every step's
+"verified by" line in §3 names one of them.
+
+1. **The acceptance suite (step 0).** Green per file, per step: step 2 turns the survey's file green
+   and no other; step 8 turns the last one green. A step that turns a file green it does not own has
+   done work outside its scope, and that is reviewed as a defect, not a bonus.
+
+2. **The source scans.** From step 0: no new file imports a retired module. From step 8: no file under
+   `src` names a retired concept or tool. Always: one `TrackedUrl` creator, one `urlVersionDiff` writer,
+   one `documentHash` writer, one anchored-hash rule. Each with a decoy that proves it can see.
+
+3. **A staging exercise, in the chat, with the literal commands.** Steps 2, 5, 6 and 7 each end with
+   a researcher driving the new path against staging through the MCP tools — a survey, a walk that
+   stops and is resolved in the marking page, a correction that supersedes text. The commands pasted
+   and the responses received go into the step's dated doc. Prose handoffs have twice produced a false
+   "I marked it"; a transcript cannot.
+
+4. **The measurements, at step 4, in one dated doc.** The reporting-only walk over walla and corona
+   records, per page: Gate 1 stops; Gate 2 stops and how many were a widget legitimately leaving;
+   Gate 4 stops with every rule REVIEWED, then with the ticker, related box and comments trusted;
+   Gate 5's verdict on every diff a human has already classified, as a confusion table; and the
+   digest verification's match count. **The design's premise is that stops become rare once rules are
+   trusted.** If the walla numbers say otherwise, the design changes before step 5, and the change is
+   ruled in the flows doc, not patched in code. `measureEraDetectors` is the instrument's ancestor and
+   is retired once this doc exists.
+
+**Two rules from this repository's own history, restated because they will be tempted:**
+
+- **Recompute, never restate.** A number in a step's dated doc is produced by the instrument on that
+  day, not carried forward from an earlier doc. The union's "no measured harm" and the "0 to 1 versus
+  129" figures are cited, never re-quoted as if re-measured.
+- **A clean audit is not done.** The anchor audit, the integrity board and the suite going green say
+  the new path is consistent with itself. Only the staging exercise says a researcher can use it.
+
+**The integrity board** reflects each step's state as a ledger entry, colour from the plan's STATUS
+line, bar from the computed proof; it is read before anyone asks how far the refactor has got.
+
+## 7. DEFINITION OF DONE
+
+The refactor is done when every line below is a check that has run, not a sentence that was read:
+
+- the acceptance suite is green, every file;
+- every RETIRE-tagged test in the as-built doc's §8 is gone, and every KEEP file is unchanged since
+  step 0 — `git diff` against the step-0 commit shows no edit to a KEEP file;
+- the retired-names source scan is green, with its decoy;
+- the MCP surface is exactly five write tools and two reads, and `mcpToolClassification` agrees;
+- the walla page has been re-walked from its first rule on staging: the survey, the bootstrap stop,
+  the stops that followed, and the first re-walk after a correction, with the transcript in a dated
+  doc; every capture has a row, every acquired capture is anchored, and the previous text of every
+  superseded capture is a `TextVersion`;
+- the step-4 measurement doc exists and the design either held or was changed in the flows doc first;
+- step 9 has run on staging under the cleanup protocol and the old tables are gone there;
+- the integrity board shows the refactor's entries at their computed proof, and `get_environment` on
+  staging reports no unanchored snapshot.
+
+Production is not part of done. `SHIP` is the researcher's, every time, and step 9 on production is
+its own session after that.
+
+## 8. HAZARDS, NAMED — the ones that have already cost something
+
+- **`textHash` is the novelty key.** Any change to derivation changes which captures are considered
+  new. Step 4 reports before step 5 writes for exactly this reason.
+- **`recordCapture` is the one reused module that must change (step 5).** Its KEEP tests must stay
+  green through the split; if one has to move, the split is wrong.
 - **The jsdom boundary.** `chromeRulesetApply` is ESM-only; a static import drags it into every unit
-  suite that touches the module. It has broken the suite twice. Use the dynamic-import pattern.
+  suite that touches the module. It has broken the suite twice. Use the dynamic-import pattern, and
+  keep the walk's gate predicates in a module that never imports it.
 - **Two lint ratchets** rule out both spellings of an indexed read; `.at()` is the answer, and neither
-  ratchet is ever raised.
-- **Do not run `lint:ratchet --update` locally** — the local pass under-reports type-aware rules.
-- **Migrations self-apply** on deploy. Run `db:check-drift` before writing one and read the generated
-  SQL before committing it.
+  ratchet is ever raised. **Do not run `lint:ratchet --update` locally** — the local pass
+  under-reports type-aware rules.
+- **Migrations self-apply on deploy.** Run `db:check-drift` before writing one and read the generated
+  SQL before committing it. Step 1's migration touches an enum and a unique index on a live table;
+  both are read twice.
+- **The destructive-DB guard matches PROSE.** Any doc, test or commit message that names a destructive
+  statement is written with the Write tool and committed with `git commit -F`.
+- **Tool-name collisions during coexistence.** `reset_article_calibration` and `get_article_rules`
+  keep their old handlers until step 8; the new ones are built unregistered. Registering both would
+  make the MCP surface answer the same name two ways.
+- **A `railway ssh` pipe swallows the exit code.** Capture first, filter after, whenever the exit code
+  is the gate.
 
-## THE DATA AS IT STANDS
-
-```
-news.walla.co.il/item/3403847
-  run cmthqbikb003jbm4o3zbr8hlm   SUPERSEDED by a reset, 43 decisions, entangled, legacy anchors
-  run cmtjip3b90003qgwxrwym97n0   OPEN, 42 rules, anchors CORRECT, 4 of 7 captures judged
-                                  redesigns recorded at 2021-06-12 and 2022-05-23
-corona.health.gov.il/vaccine-for-covid/
-  run cmthffvwu0001xlvibn62hc1r   OPEN, 9 rules, 83 captures, 8 of 9 matching for 4.2 years
-```
-
-**Nothing has ever been committed on any run**, so no ruleset is in force for any URL and no capture's
-text has been derived under one outside a scan started after 2026-09-01.
-
-## WHAT IS ALREADY MEASURED, SO IT IS NOT RE-DERIVED
-
-- Drift is **0 to 1 segments** across a stable stretch and **129 segments / 1,704 characters** at a real
-  break. That gap is why Gate 1 needs no threshold.
-- Date-scoping's match-rate benefit **decays forward to nothing**, and a partitioned model decays
-  identically. Neither fixes forward dilution.
-- The union caused **no measured harm**: nothing added after a capture's approval removed text from it.
-- A rule marked against one structure does not match another — three hash generations of the same
-  header across four years on one page.
-
+**What is already measured, so it is cited and not re-derived** (recompute before relying, never
+restate): drift is 0 to 1 segments across a stable stretch and 129 segments at a real break, which is
+why Gate 1 needs no threshold; date-scoping's match-rate benefit decays forward to nothing and a
+partitioned model decays identically; the union caused no measured harm; a rule marked against one
+structure does not match another across three hash generations of one header in four years.
 → `docs/gf-era-detector-thresholds-2026-09-01.md`, `docs/gf-level4-mcp-loop-verification-2026-09-01.md`
