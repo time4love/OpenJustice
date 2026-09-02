@@ -10,6 +10,7 @@ jest.mock('../src/lib/prisma', () => ({
   prisma: {
     calibrationRun: { findMany: jest.fn() },
     calibrationDecision: { findMany: jest.fn() },
+    calibrationReset: { findFirst: jest.fn() },
     urlSnapshot: { findMany: jest.fn() },
   },
 }));
@@ -31,6 +32,7 @@ function setup(runs: { id: string; status: CalibrationRunStatus }[], decisions: 
   (prisma.urlSnapshot.findMany as jest.Mock).mockResolvedValue(
     Object.entries(dates).map(([id, snapshotDate]) => ({ id, snapshotDate })),
   );
+  (prisma.calibrationReset.findFirst as jest.Mock).mockResolvedValue(null);
 }
 
 beforeEach(() => { jest.clearAllMocks(); });
@@ -119,5 +121,77 @@ describe('governingEras — a run is a session, an era is a property of the page
     );
     expect(await rulesetForCapture('url-1', '2022-05-22')).toEqual(['.old']);
     expect(await rulesetForCapture('url-1', '2022-05-23')).toEqual(['.new']);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// A RESET DRAWS A LINE, AND NOTHING BEFORE IT GOVERNS.
+//
+// The fold's filter is a `createdAt` comparison, so these tests drive it through
+// the query rather than asserting on the query: the mock returns only what the
+// filter would have returned, and the assertions are about the ERAS produced.
+// ---------------------------------------------------------------------------
+describe('a reset ends the authority of everything before it', () => {
+  it('with no reset, every committed decision governs', async () => {
+    setup(
+      [{ id: 'run-1', status: CalibrationRunStatus.COMMITTED }],
+      [D('run-1', CalibrationDecisionType.RULESET_CORRECTED, ['.old'], 'a')],
+    );
+    expect(await rulesetForCapture('url-1', '2021-01-01')).toEqual(['.old']);
+  });
+
+  it('filters the decision query by the newest reset, not the first', async () => {
+    setup([{ id: 'run-1', status: CalibrationRunStatus.COMMITTED }], []);
+    const newest = new Date('2026-09-02T12:00:00Z');
+    (prisma.calibrationReset.findFirst as jest.Mock).mockResolvedValue({ createdAt: newest });
+
+    await governingEras('url-1');
+
+    // A second reset supersedes the first exactly as it supersedes everything
+    // else, so the query orders by `createdAt` DESC and takes one.
+    const resetQuery = (prisma.calibrationReset.findFirst as jest.Mock).mock.calls[0]?.[0] as {
+      orderBy: { createdAt: string };
+    };
+    expect(resetQuery.orderBy).toEqual({ createdAt: 'desc' });
+
+    const decisionQuery = (prisma.calibrationDecision.findMany as jest.Mock).mock.calls[0]?.[0] as {
+      where: { createdAt?: { gt: Date } };
+    };
+    expect(decisionQuery.where.createdAt).toEqual({ gt: newest });
+  });
+
+  // ERA BOUNDARIES DO NOT SURVIVE A RESET, and this is the case that separates a
+  // reset from an abandoned run. A boundary outlives an abandoned RUN because a
+  // session is not a page; a reset is often reached for BECAUSE the era structure
+  // is wrong, so sparing boundaries would preserve the corruption it was called
+  // for. Here the pre-reset log held a boundary and the fold sees one era.
+  it('an era boundary recorded before the reset does not survive it', async () => {
+    setup([{ id: 'run-1', status: CalibrationRunStatus.COMMITTED }], []);
+    (prisma.calibrationReset.findFirst as jest.Mock).mockResolvedValue({
+      createdAt: new Date('2026-09-02T12:00:00Z'),
+    });
+    // The filtered query returns nothing: the boundary and its rules are both
+    // behind the line.
+    const eras = await governingEras('url-1');
+    expect(eras).toEqual([{ startDate: null, selectors: [] }]);
+  });
+
+  it('decisions recorded after the reset govern normally', async () => {
+    setup(
+      [{ id: 'run-2', status: CalibrationRunStatus.COMMITTED }],
+      [
+        D('run-2', CalibrationDecisionType.RULESET_CORRECTED, ['.fresh'], 'a'),
+        D('run-2', CalibrationDecisionType.ERA_BOUNDARY, ['.fresh'], 'b'),
+      ],
+      { b: '2022-05-23' },
+    );
+    (prisma.calibrationReset.findFirst as jest.Mock).mockResolvedValue({
+      createdAt: new Date('2026-09-02T12:00:00Z'),
+    });
+    const eras = await governingEras('url-1');
+    expect(eras).toEqual([
+      { startDate: null, selectors: ['.fresh'] },
+      { startDate: '2022-05-23', selectors: ['.fresh'] },
+    ]);
   });
 });

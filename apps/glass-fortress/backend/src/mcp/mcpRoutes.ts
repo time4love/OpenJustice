@@ -117,6 +117,9 @@ export const WRITE_TOOLS = new Set([
   // is named here rather than by omission, which is how a tool ends up
   // unclassified.
   'resolve_era_boundary',
+  // Ends the authority of every calibration decision on a URL. Gated for the
+  // obvious reason, and named rather than omitted.
+  'reset_article_calibration',
   'create_thesis_draft',
   'add_thesis_version',
   // Writes a new ThesisVersion. Cheaper and narrower than add_thesis_version —

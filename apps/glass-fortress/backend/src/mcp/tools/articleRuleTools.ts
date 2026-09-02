@@ -95,6 +95,17 @@ export const checkRulesetSurvivalSchema = {
   runId: z.string().min(1).describe('The calibration run to re-check its accepted captures against'),
 };
 
+export const resetArticleCalibrationSchema = {
+  url: z.url().describe('The page whose calibration is to be superseded'),
+  reason: z
+    .string()
+    .min(1)
+    .describe(
+      'REQUIRED. A reset ends the authority of real work, and why is not optional — the same rule ' +
+        'that makes a skipped capture carry its reason.',
+    ),
+};
+
 export const resolveEraBoundarySchema = {
   runId: z.string().min(1).describe('The calibration run this resolution belongs to'),
   snapshotId: z
@@ -546,6 +557,88 @@ export async function checkRulesetSurvivalHandler(input: { runId: string }): Pro
           'selector undone. `brokenApprovals` is the worse half: those captures had their ' +
           'extraction APPROVED, and an approval whose text has since changed no longer ' +
           'describes anything.',
+  });
+}
+
+/**
+ * DRAW A LINE UNDER A URL'S CALIBRATION — nothing recorded before it governs.
+ *
+ * SUPERSEDES, NEVER DELETES. Every decision stays in the log with its authority
+ * ended, so the record of what was tried survives. Level 10 rules the same way for
+ * the corpus; this is that rule applied to a calibration.
+ *
+ * WHY IT EXISTS. A ruleset can become entangled past repair: the news page met a
+ * redesign at `2021-06-12` while `resolve_era_boundary` did not yet exist, so the
+ * only available action was to correct and accept, and ten selectors belonging to
+ * a new era landed inside the old one. THE LOG IS APPEND-ONLY, so a boundary
+ * recorded afterwards gives the DATE and never the rule split — both eras would
+ * carry the same union. The researcher's diagnosis: an entangled history is a
+ * SYMPTOM, and the cure is a fresh start rather than a repair.
+ *
+ * IT IS AN EVENT ON THE URL, NOT A DECISION IN A RUN, and the difference is
+ * load-bearing rather than tidy. A run is a WORKING SESSION whose decisions inherit
+ * its lifecycle; a reset has no work attached and no lifecycle. Modelling it inside
+ * a run forced the question "does abandoning that run un-reset the URL" — and a
+ * question with no good answer is how a wrong model announces itself.
+ *
+ * NOTHING SURVIVES IT, ERA BOUNDARIES INCLUDED. A boundary survives an ABANDONED
+ * RUN because a session is not a page; that is a rule about runs and does not
+ * transfer. A reset is often reached for BECAUSE the era structure is wrong — a
+ * redesign answered where there was none — so one that spared boundaries would
+ * preserve exactly the corruption it was called for. Re-recording a known boundary
+ * costs one tool call, not a marking pass.
+ *
+ * IT OPENS NOTHING AND MARKS NOTHING. Calibrating after it is the ordinary flow.
+ */
+export async function resetArticleCalibrationHandler(input: {
+  url: string;
+  reason: string;
+}): Promise<string> {
+  const researcherId = getResearcherId();
+  if (!researcherId) {
+    return JSON.stringify({ error: 'A reset is attributed to a researcher. No researcher in context.' });
+  }
+  if (input.reason.trim() === '') {
+    return JSON.stringify({
+      error:
+        'A reset ends the authority of real work and carries its reason. A silent hole in the ' +
+        'record is the one outcome this corpus does not permit.',
+      url: input.url,
+    });
+  }
+
+  const trackedUrl = await prisma.trackedUrl.findUnique({
+    where: { url: input.url },
+    select: { id: true },
+  });
+  if (!trackedUrl) {
+    return JSON.stringify({ error: 'This URL is not in the corpus.', url: input.url });
+  }
+
+  const superseded = await prisma.calibrationDecision.count({
+    where: { calibrationRun: { trackedUrlId: trackedUrl.id } },
+  });
+
+  const reset = await prisma.calibrationReset.create({
+    data: { trackedUrlId: trackedUrl.id, researcherId, reason: input.reason.trim() },
+    select: { id: true, createdAt: true },
+  });
+
+  return JSON.stringify({
+    url: input.url,
+    resetId: reset.id,
+    at: reset.createdAt.toISOString(),
+    reason: input.reason.trim(),
+    // COUNTED, NOT ESTIMATED. A researcher is told how much work just lost its
+    // authority, in the same breath as being told it still exists.
+    decisionsSuperseded: superseded,
+    kept:
+      'Nothing was deleted. Every decision stays in the log; only its authority over this URL ' +
+      'ended, so what was tried is still readable.',
+    next:
+      'Calibrate from here as usual. ERA BOUNDARIES DID NOT SURVIVE — a reset is often reached for ' +
+      'because the era structure is wrong, so re-record any boundary you still believe with ' +
+      'resolve_era_boundary, which costs one call per boundary and no marking.',
   });
 }
 

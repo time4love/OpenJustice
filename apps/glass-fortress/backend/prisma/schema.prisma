@@ -44,6 +44,7 @@ model Researcher {
   summaryCorrections SummaryCorrection[]
   articleRulesets    ArticleRuleset[]
   calibrationRuns    CalibrationRun[]
+  calibrationResets  CalibrationReset[]
 }
 
 // ---------------------------------------------------------------------------
@@ -165,6 +166,7 @@ model TrackedUrl {
   // Level 4 — the view. Every ruleset ever committed for this page...
   articleRulesets        ArticleRuleset[]             @relation("TrackedUrlRulesets")
   calibrationRuns        CalibrationRun[]
+  calibrationResets      CalibrationReset[]
   // ...and which one is IN FORCE, as a FACT rather than an inference from
   // ordering. Unique because a ruleset is scoped to one page, so it can be
   // active for at most one.
@@ -2428,6 +2430,40 @@ model CalibrationRun {
 /// THE NUMBERS ARE NOT HERE. `observationId` points at what was measured;
 /// copying `removalFraction` or `matchCounts` onto the decision would be the
 /// same fact in two places, free to disagree.
+/// A LINE DRAWN UNDER A URL'S CALIBRATION — nothing recorded before it governs.
+///
+/// SUPERSEDES, NEVER DELETES. Every decision stays in the log with its authority
+/// ended, so the record of what was tried survives. Level 10 rules the same way
+/// for the corpus; this is that rule applied to a calibration.
+///
+/// AN EVENT ON THE URL, NOT A DECISION IN A RUN, and the difference is load-bearing.
+/// A run is a WORKING SESSION and its decisions inherit its lifecycle; a reset has
+/// no work attached and no lifecycle — it either happened or it did not. Modelling
+/// it inside a run forced the question "does abandoning that run un-reset the URL",
+/// which has no good answer, and a question with no good answer is how a wrong
+/// model announces itself.
+///
+/// NOTHING SURVIVES IT, ERA BOUNDARIES INCLUDED. A boundary survives an ABANDONED
+/// RUN because a session is not a page, but that is a rule about runs and does not
+/// transfer here. A reset is often wanted BECAUSE the era structure is wrong — a
+/// redesign answered where there was none — and a reset that spared boundaries
+/// would preserve exactly the corruption it was reached for. Re-recording a known
+/// boundary costs one tool call, not a marking pass.
+model CalibrationReset {
+  id           String     @id @default(cuid())
+  trackedUrlId String
+  trackedUrl   TrackedUrl @relation(fields: [trackedUrlId], references: [id], onDelete: Cascade)
+  /// Who drew the line. Every judgement this platform acts on names who made it.
+  researcherId String
+  researcher   Researcher @relation(fields: [researcherId], references: [id])
+  /// REQUIRED. A reset ends the authority of real work, and why is not optional —
+  /// the same rule that makes a skipped capture carry its reason.
+  reason       String
+  createdAt    DateTime   @default(now())
+
+  @@index([trackedUrlId, createdAt])
+}
+
 model CalibrationDecision {
   id               String                  @id @default(cuid())
   calibrationRunId String
