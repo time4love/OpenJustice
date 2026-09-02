@@ -108,6 +108,26 @@ async function main(): Promise<number> {
     );
   }
 
+  // WHAT CHANGED SIDES, capture to capture. This is the signal that needs no
+  // baseline: text the previous capture KEPT and this one REMOVES is a rule that
+  // has started taking article text, and nothing else here sees it directly.
+  const withDrift = measured.captures.filter((capture) => capture.drift !== undefined);
+  if (withDrift.length > 0) {
+    console.log('\ndrift vs the previous capture   (kept→removed is the dangerous direction)');
+    console.log('                 union                     date-scoped');
+    console.log('date         kept→rm   rm→kept      kept→rm   rm→kept');
+    console.log('----------   -------   -------      -------   -------');
+    for (const capture of withDrift) {
+      const d = capture.drift;
+      if (d === undefined) continue;
+      const cell = (n: number, chars: number) => `${String(n)} (${String(chars)}c)`.padEnd(9);
+      console.log(
+        `${capture.snapshotDate}   ${cell(d.union.nowRemoved, d.union.nowRemovedChars)} ${cell(d.union.nowKept, d.union.nowKeptChars)}    ${cell(d.scoped.nowRemoved, d.scoped.nowRemovedChars)} ${cell(d.scoped.nowKept, d.scoped.nowKeptChars)}`,
+      );
+      for (const sample of d.nowRemovedSample) console.log(`             ↳ ${sample}`);
+    }
+  }
+
   // THE SHAPE, NOT A THRESHOLD. Reported so the distribution can be read at a
   // glance; choosing a number from it is the researcher's act and lands with the
   // source scan that currently forbids one.

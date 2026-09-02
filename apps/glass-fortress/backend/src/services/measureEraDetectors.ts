@@ -2,6 +2,7 @@ import { prisma } from '../lib/prisma';
 import { deriveTextUnderRuleset } from '../lib/chromeRulesetApply';
 import { matchRate, type CaptureReading } from '../lib/eraDetectors';
 import { selectorAnchors, selectorsForDate } from '../lib/calibrationFold';
+import { compareExtractions } from '../lib/extractionDrift';
 
 /**
  * WHAT THE TWO DETECTORS ACTUALLY SEE, measured across a page's whole timeline.
@@ -30,6 +31,19 @@ export interface CaptureMeasurement extends CaptureReading {
    * before its date. Absent when the run holds no anchors to scope by.
    */
   scoped?: CaptureReading & { matchRate: number; selectors: number };
+  /**
+   * What CHANGED SIDES against the previous capture in time — the signal that
+   * needs no baseline. Absent on the first capture, which has no predecessor.
+   *
+   * Reported for BOTH models, because the question is whether date-scoping
+   * changes what the drift signals see.
+   */
+  drift?: {
+    union: { nowRemoved: number; nowRemovedChars: number; nowKept: number; nowKeptChars: number };
+    scoped: { nowRemoved: number; nowRemovedChars: number; nowKept: number; nowKeptChars: number };
+    /** The first few segments a rule started removing. The dangerous direction. */
+    nowRemovedSample: readonly string[];
+  };
 }
 
 export interface EraDetectorMeasurement {
@@ -130,7 +144,21 @@ export async function measureEraDetectors(
     return { matchedSelectors, totalSelectors: selectors.length, keptTextLength: derived.text.length };
   };
 
-  const captures = snapshots.map((snapshot) => {
+  const summarise = (drift: ReturnType<typeof compareExtractions>) => ({
+    nowRemoved: drift.nowRemoved.length,
+    nowRemovedChars: drift.nowRemovedChars,
+    nowKept: drift.nowKept.length,
+    nowKeptChars: drift.nowKeptChars,
+  });
+
+  // SEQUENTIAL, NOT `map`, because each capture is compared with the one before
+  // it in time — which is the whole of the drift signal and cannot be computed
+  // from a capture alone.
+  const captures: CaptureMeasurement[] = [];
+  let previousUnion: { keptText: string; removedText: string } | null = null;
+  let previousScoped: { keptText: string; removedText: string } | null = null;
+
+  for (const snapshot of snapshots) {
     const derive = (selectors: readonly string[]) =>
       deriveTextUnderRuleset(
         snapshot.document,
@@ -152,14 +180,41 @@ export async function measureEraDetectors(
     const scopedSelectors = selectorsForDate(at.selectors, anchors, snapshot.snapshotDate);
     const scopedReading = read(scopedSelectors, derive(scopedSelectors));
 
-    return {
+    const unionDerived = derive(at.selectors);
+    const scopedDerived = derive(scopedSelectors);
+    const asExtraction = (d: typeof unionDerived) => ({
+      keptText: d.text,
+      removedText: d.chrome.removedText,
+      removedSegments: d.chrome.removedSegments,
+    });
+
+    const unionDrift =
+      previousUnion === null ? null : compareExtractions(previousUnion, asExtraction(unionDerived));
+    const scopedDrift =
+      previousScoped === null ? null : compareExtractions(previousScoped, asExtraction(scopedDerived));
+
+    captures.push({
       ...reading,
       snapshotId: snapshot.id,
       snapshotDate: snapshot.snapshotDate,
       matchRate: matchRate(reading),
       scoped: { ...scopedReading, matchRate: matchRate(scopedReading), selectors: scopedSelectors.length },
-    };
-  });
+      ...(unionDrift === null || scopedDrift === null
+        ? {}
+        : {
+            drift: {
+              union: summarise(unionDrift),
+              scoped: summarise(scopedDrift),
+              // THE DANGEROUS DIRECTION, sampled: text a rule started removing
+              // that the previous capture kept.
+              nowRemovedSample: unionDrift.nowRemoved.slice(0, 3).map((segment) => segment.text.slice(0, 90)),
+            },
+          }),
+    });
+
+    previousUnion = asExtraction(unionDerived);
+    previousScoped = asExtraction(scopedDerived);
+  }
 
   return {
     runId,
