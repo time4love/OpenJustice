@@ -195,3 +195,59 @@ describe('a reset ends the authority of everything before it', () => {
     ]);
   });
 });
+
+// ---------------------------------------------------------------------------
+// FOLDING ONCE INSTEAD OF ONCE PER CAPTURE.
+//
+// Recording a capture calls `rulesetForCapture`, so a 3,000-capture scan would
+// otherwise re-fold the whole calibration history three thousand times at four
+// queries each. Indexes make every one of those fast; they do not stop there
+// being twelve thousand.
+// ---------------------------------------------------------------------------
+describe('pre-computed eras', () => {
+  it('selects from the supplied eras and asks the database NOTHING', async () => {
+    setup([{ id: 'run-1', status: CalibrationRunStatus.COMMITTED }], []);
+    const eras = [
+      { startDate: null, selectors: ['.old'] },
+      { startDate: '2022-05-23', selectors: ['.new'] },
+    ];
+
+    expect(await rulesetForCapture('url-1', '2021-01-01', eras)).toEqual(['.old']);
+    expect(await rulesetForCapture('url-1', '2023-01-01', eras)).toEqual(['.new']);
+
+    // THE POINT OF THE PARAMETER. If any of these fired, the caller paid for the
+    // fold it had already done.
+    expect(prisma.calibrationRun.findMany).not.toHaveBeenCalled();
+    expect(prisma.calibrationDecision.findMany).not.toHaveBeenCalled();
+    expect(prisma.calibrationReset.findFirst).not.toHaveBeenCalled();
+  });
+
+  it('falls back to folding when none are supplied, so a single-capture caller is unchanged', async () => {
+    setup(
+      [{ id: 'run-1', status: CalibrationRunStatus.COMMITTED }],
+      [D('run-1', CalibrationDecisionType.RULESET_CORRECTED, ['.folded'], 'a')],
+    );
+    expect(await rulesetForCapture('url-1', '2021-01-01')).toEqual(['.folded']);
+    expect(prisma.calibrationDecision.findMany).toHaveBeenCalled();
+  });
+
+  // ONE IMPLEMENTATION, NOT TWO. The supplied and folded paths must select the
+  // same way, or a scan and a single capture would disagree about which era a
+  // date belongs to.
+  it('supplied and folded eras select identically', async () => {
+    setup(
+      [{ id: 'run-1', status: CalibrationRunStatus.COMMITTED }],
+      [
+        D('run-1', CalibrationDecisionType.RULESET_CORRECTED, ['.old'], 'a'),
+        D('run-1', CalibrationDecisionType.ERA_BOUNDARY, ['.old'], 'b'),
+      ],
+      { b: '2022-05-23' },
+    );
+    const folded = await governingEras('url-1');
+    for (const date of ['2020-01-01', '2022-05-22', '2022-05-23', '2026-01-01']) {
+      expect(await rulesetForCapture('url-1', date, folded)).toEqual(
+        await rulesetForCapture('url-1', date),
+      );
+    }
+  });
+});

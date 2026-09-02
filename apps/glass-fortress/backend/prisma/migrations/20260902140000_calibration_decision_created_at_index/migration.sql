@@ -1,0 +1,14 @@
+-- The era fold's query, indexed.
+--
+-- `governingEras` reads a URL's decisions across runs, filtered by the newest
+-- reset and ordered in time: `calibrationRunId IN (…) AND createdAt > reset
+-- ORDER BY createdAt, sequence`. The existing indexes cover the run lookup and
+-- leave the filter and the sort uncovered.
+--
+-- A decision log is SMALL -- one row per marking action -- so this is not what
+-- would ever hurt. It is here because it is free, and because the fold sits on
+-- the capture-recording path, which is the one place that runs thousands of times.
+--
+-- Purely additive: one index, verified against `prisma migrate diff` to be exactly
+-- this. `db:check-drift` was clean before it was written.
+CREATE INDEX "CalibrationDecision_calibrationRunId_createdAt_idx" ON "CalibrationDecision"("calibrationRunId", "createdAt");
