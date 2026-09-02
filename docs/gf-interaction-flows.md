@@ -222,12 +222,35 @@ and while a decision is pending it also holds the bytes:
 
 ```
 CaptureFetch                                                    ⚠️ to build
-  trackedUrlId · snapshotDate · waybackTimestamp · rawBytesHash · fetchedAt
+  KEY       @@unique([trackedUrlId, waybackTimestamp])
+  fields    snapshotDate · rawBytesHash · fetchedAt
   outcome   DUPLICATE           the archive had it, nothing changed
             ACQUIRED            it joined the corpus as a UrlSnapshot
             PENDING_JUDGEMENT   a gate fired; a human owes a decision here
   body      present ONLY while PENDING_JUDGEMENT
 ```
+
+**THE KEY MUST BE KNOWABLE BEFORE THE FETCH, or the record cannot prevent one.** `waybackTimestamp` and
+the URL are exactly what the CDX index yields, so the lookup happens from the work-list alone — no body,
+no derivation, no run. `rawBytesHash` is a PAYLOAD field and could never be the key: it is only known
+after the thing the key exists to avoid.
+
+**It survives across runs, which is the other half.** `trackedUrlId` identifies the PAGE and does not
+change between calibrations; a run id or a decision id would make the same capture look unfetched every
+time a run was opened. `UrlSnapshot` is already keyed `@@unique([trackedUrlId, waybackTimestamp])`, so
+the two join directly and a fetch record can be matched to the capture it became.
+
+**A DIRECT capture has no archive identity.** `waybackTimestamp` is nullable on `UrlSnapshot` precisely
+because a live fetch has none, so a fetch record cannot describe one. Acquisition reads the archive, so
+this does not arise in these flows — but nothing here covers direct captures, and it should not be
+assumed to. **OPEN.**
+
+**OPEN — the CDX digest may remove most fetches entirely.** The index carries a content digest per
+capture, so a capture whose digest matches the one before it is byte-identical and could be recorded
+`DUPLICATE` WITHOUT FETCHING THE BODY AT ALL. On a 3,400-capture page where most captures are unchanged
+that is the difference between thousands of fetches and dozens. Not designed, not measured, and it
+interacts with novelty: a digest that changed says the BYTES moved, which is the sensitive signal
+`textHash` exists to replace.
 
 **It claims no extraction.** That is the point, and it is what neither alternative could manage: a row
 in `UrlSnapshot` must carry `text` and `textHash`, so storing a halted capture there would mean writing
