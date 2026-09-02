@@ -1,6 +1,7 @@
 # Refactoring the article-rules layer — 2026-09-02
 
 **From** `docs/gf-architecture-current.md` **to** `docs/gf-architecture-target.md`.
+**How it is used, step by step:** `docs/gf-interaction-flows.md`.
 
 This is harder than building the target on clean ground, and the reason is worth stating before any
 step: **the code being changed is live, its data is real research, and the layer it feeds decides
@@ -63,12 +64,27 @@ where it got to. Also retires `start_forensic_scan`'s in-memory guard, which los
 
 *Leaves working:* everything. Scanning becomes resumable.
 
+### 6b · Split acquisition from calibration
+
+Acquisition gets bytes and keeps them; calibration decides what is article text. **Acquisition READS
+rules and never writes them, and never stops for judgement** — wrong rules make it OVER-store, which is
+the safe direction.
+
+**Every capture leaves an EXISTENCE ROW** — date, wayback timestamp, raw-bytes hash — so a capture the
+rules dropped is an unexplained gap Wayback can refill rather than an untrue silence. That is §2's
+*"storage is lossless"* finally holding, and it is what makes the split possible at all.
+
+*Leaves working:* everything. Acquisition becomes runnable independently of the calibration refactor,
+which makes the sensitive part of this work smaller.
+
 ### 7 · The tool surface
 
 ```
 resolve_era_boundary   →  the same binary question, renamed, creating nothing structural
 next_article_capture   →  deleted; the walk is sequential
 check_ruleset_survival →  deleted; nothing re-derives the past
+commit_article_rules   →  DELETED; rules are in force from creation, so there is nothing to activate
+activeArticleRulesetId →  deleted; written and never read, and now meaningless
 ERA_BOUNDARY           →  removed from the decision enum
 ```
 

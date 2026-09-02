@@ -120,6 +120,45 @@ be a number invented to sit inside a gap nothing occupies.
 thousands of captures; the periodic check is *the system validating itself* against its own blind spot
 in §3. The interval follows from the timeline size and the batch bound rather than being picked.
 
+## 4b. ACQUISITION AND CALIBRATION ARE SEPARATE RESPONSIBILITIES
+
+```
+ACQUISITION    get bytes from the archive and keep them        maintenance act
+CALIBRATION    decide what of a page is article text           research act
+```
+
+**ACQUISITION READS RULES; CALIBRATION WRITES THEM.** One direction, not entanglement.
+
+The plan already required this in two places — *"storage is lossless, filtering is a versioned view that
+MARKS and never DELETES"*, and the research-act/maintenance-act split — and one thing contradicted it:
+
+```
+rules → text → textHash → novelty → WHETHER A ROW EXISTS AT ALL
+```
+
+**The rules decided what was in the corpus**, so a capture dropped under wrong rules left no trace. That
+is filtering that deletes, by never creating.
+
+**EVERY CAPTURE NOW LEAVES AN EXISTENCE ROW** — date, wayback timestamp, raw-bytes hash — whether or not
+its body is kept. Under a megabyte per 3,400-capture page, against ~470 MB to keep every body. A missing
+body is then an unexplained gap that Wayback can refill, never an untrue silence.
+
+**Acquisition never stops for judgement.** Wrong rules make furniture leak, `textHash` change, and the
+pass OVER-store — the safe direction, and the existence rows mean nothing is lost either way.
+
+**THE FIRST FETCH IS NOT AN ACQUISITION.** `calibrate_article_rules` fetches the earliest capture WITHOUT
+persisting it, purely so a human can mark it and rules can exist. Every acquisition after that has rules,
+which removes the "no rules" special case from the path that decides corpus membership. The capture is
+re-fetched during the scan — free, idempotent, and it avoids a second place a capture can live. A draft
+capture table was considered and rejected for exactly that reason.
+
+What survives is one asymmetry that cannot be removed: **the first STORED capture has no predecessor**,
+so drift is undefined for it. Harmless — it is the capture the researcher just marked.
+
+**`commit_article_rules` IS RETIRED.** With rules in force from the moment they are created, there is
+nothing to activate; `textExtractionVersion` already records which ruleset produced each capture's text.
+The tool belonged to a model where a ruleset was a versioned artefact that had to be switched on.
+
 ## 5. THE FLOW
 
 ```
@@ -164,6 +203,8 @@ one capture.
 | `next_article_capture`, `nextCapture.ts`, the stratified sample | the sequential walk replaces sampling |
 | `check_ruleset_survival` | with rules scoped by date and no re-derivation, it has no caller |
 | `CONFIRM_AFTER_CLEAN` as a per-partition rule | becomes per-run, which also dissolves the short-partition problem |
+| `commit_article_rules` | rules are in force from creation; there is nothing to activate |
+| `activeArticleRulesetId` | written and never read, and now meaningless |
 
 ## 8. OPEN, AND DELIBERATELY NOT DECIDED HERE
 
@@ -173,3 +214,9 @@ one capture.
 - **Whether `RuleMatch` is written for every capture or only where a rule's state changes.** One row
   per rule per capture is exact and grows with the corpus.
 - **The periodic-check interval's formula**, beyond "derived from timeline size and batch bound".
+- **Body retention.** Existence rows are decided. Whether bodies are kept by TEXT-novelty (which leaves
+  acquisition reading the rules) or by RAW hash (rule-free, and ~470 MB per large page) is not.
+- **Whether acquisition and calibration share one run** or hold a `ScanRun` and a `CalibrationRun`.
+
+→ The step-by-step interactions, with the tool and the state changed at each step:
+`docs/gf-interaction-flows.md`.
