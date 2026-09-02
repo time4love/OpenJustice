@@ -44,160 +44,229 @@ what the bootstrap exists for: a human has already looked at that page.
 
 ## FLOW 1 — SCANNING A URL THAT IS NEW TO THE CORPUS
 
-### 1.1 Survey
+### Phase 0 — survey
 
-| step | tool | state |
-|---|---|---|
-| researcher asks to scan a URL | — | — |
-| Claude surveys the archive | ⚠️ `survey_wayback_captures(url)` | **none** |
-| backend queries the CDX index | → Wayback CDX, one request | none |
-| Claude reports count, span, how many held | — | — |
+```
+researcher   "scan https://example.gov.il/page"
+Claude       → survey_wayback_captures(url)                            ⚠️ to build
+backend      → Wayback CDX index — ONE request, no page fetches
+             ← 3,412 captures · 2019-03 → 2026-08 · we hold 0
+Claude       reports the size; the researcher decides whether to start
 
-Its output is the WORK-LIST. A 40-capture page and a 3,400-capture page are different decisions and the
-researcher sees the number before anything is spent.
+STATE        nothing written
+```
 
-### 1.2 Bootstrap — the one fetch that is not an acquisition
+Its output is the WORK-LIST. A 40-capture page and a 3,400-capture page are different decisions, and
+the researcher sees the number before anything is spent.
 
-| step | tool | state |
-|---|---|---|
-| Claude opens calibration | `calibrate_article_rules(url)` | admits the `TrackedUrl`; opens a `CalibrationRun` |
-| backend fetches the earliest capture | → Wayback replay | **NOT PERSISTED** |
-| researcher marks furniture, hands back | the marking page | `CalibrationRun.draft` |
-| researcher approves | ⚠️ `approve_article_rules` | `Rule` rows, `validFrom` = that capture's date; a decision |
+### Phase 1 — bootstrap, the one fetch that is not an acquisition
 
-**The first capture has no rules AND no predecessor.** This removes the first half: every acquisition
-from here has rules. The bytes are discarded and re-fetched during the scan — free and idempotent, and
-it avoids a second place a capture can live.
+```
+Claude       → calibrate_article_rules(url)
+backend      admits the TrackedUrl · opens a CalibrationRun
+             → Wayback replay: fetch the EARLIEST capture
+             ← bytes, held in memory and NOT PERSISTED
+             ← marking URL
+researcher   marks furniture, presses שמור טיוטא חדשה של חוקי חילוץ הטקסט
+backend      ← draft saved on the run
+researcher   pastes:  approve_article_rules runId=… snapshotId=…        ⚠️ renamed
+backend      promotes the draft → Rule rows, validFrom = THIS capture's date   ⚠️ new table
+             records the acceptance
 
-**A draft capture table was considered and rejected**: two shapes for one capture, with promotion logic
-between them, is a second storage path for the most sensitive data in the system.
+STATE        TrackedUrl admitted · CalibrationRun · draft · Rule rows · one decision
+NOT WRITTEN  no UrlSnapshot — the bootstrap bytes are discarded
+```
 
-### 1.3 Acquisition
+**The first capture has no rules AND no predecessor.** This removes the first half, so every acquisition
+after it has rules — no special case in the path that decides corpus membership. The capture is
+re-fetched during the walk: free, idempotent, and it avoids a second place a capture can live. A draft
+capture table was considered and rejected for exactly that reason.
 
-| step | tool | state |
-|---|---|---|
-| Claude starts the pass | ⚠️ `scan_captures(url, maxCaptures)` | opens a `ScanRun` ⚠️ |
-| per CDX entry: fetch | → Wayback replay | — |
-| record that it existed | — | **existence row: date, wayback timestamp, raw-bytes hash** ⚠️ |
-| derive under rules valid for ITS date | — | — |
-| keep the body if `textHash` is novel | — | `UrlSnapshot` bytes, hashes, `text`, `textHash`, `textExtractionVersion` |
-| anchor | existing anchoring path | `documentHash` on chain |
+### Phase 2 — the walk, one capture at a time
 
-**Bounded per call** so no tool call runs unwatched over thousands of captures. **It STOPS on the gates
-from the second stored capture onward** — see above, and Flow 2 for what a stop is. The existence rows
-mean a capture is never lost while a stop is resolved.
+```
+Claude       → scan_next_capture(runId)                                ⚠️ to build
+backend      → Wayback replay: fetch the next capture in DATE order
+             ← bytes
+             writes an EXISTENCE ROW: date, wayback timestamp, raw-bytes hash   ⚠️ new
+             derives text under the rules whose validFrom ≤ THIS capture's date
+             keeps the body when textHash is novel → UrlSnapshot + anchor
+             compares this extraction with the PREVIOUS stored capture's
+             ← what was removed · drift, if any
+Claude       reports; researcher marks and approves, or moves on
 
-**OPEN — the body-retention rule.** Existence rows are decided; bodies are kept by text-novelty, which
-is what leaves acquisition reading rules. Raw-hash retention would remove the dependency and costs
-~470 MB per 3,400-capture page. Not decided.
+STATE        existence row ALWAYS · UrlSnapshot + on-chain anchor when kept
+             Rule rows + a decision when the researcher corrects
+```
 
-### 1.4 Calibration over stored captures
+**The first STORED capture has no predecessor**, so drift is undefined for it — inherent, and harmless:
+it is the page the researcher just marked in Phase 1.
 
-| step | tool | state |
-|---|---|---|
-| next stored capture in date order | ⚠️ `calibrate_next(runId)` | records `CAPTURE_SHOWN` |
-| derive; compare with the PREVIOUS stored capture | `compareExtractions` | none |
-| **any content changes sides** | — | → FLOW 2 |
-| otherwise researcher marks or approves | marking page · ⚠️ `approve_article_rules` | `Rule` rows · a decision |
+### Phase 3 — the ruleset settles, and the batch grows
 
-**The first stored capture has no predecessor**, so drift is undefined for it. Inherent, and harmless:
-it is the capture the researcher marked during bootstrap.
+```
+after n consecutive captures needing NO correction:
+Claude       → scan_batch(runId, maxCaptures)                          ⚠️ to build
+backend      loop, per capture:  fetch → existence row → derive → store if novel
+                                 → compareExtractions(previous, current)
+                                 → check the gates
+             stops on: content changing sides · a rule that matched
+                       the previous capture matching nothing here ·
+                       batch bound · the periodic self-check
+             ← where it got to, WHY it stopped, and the DRIFTED TEXT
 
-### 1.5 Settling and automatic mode
+STATE        as Phase 2, per capture · ScanRun progress, durably       ⚠️ to build
+```
 
-After **n consecutive captures needing no correction**, the run becomes ELIGIBLE for automatic mode.
+**Eligible, never automatic.** A run does not start batched: drift detects a TRANSITION, not a STATE, so
+two equally-broken consecutive captures are silent and an unwatched run cannot tell a settled ruleset
+from a uniformly broken one.
 
-**Eligible, never automatic.** Drift detects a TRANSITION, not a STATE — two equally-broken consecutive
-captures are silent, measured at match rate `0.07` — so a run that has not been watched cannot tell a
-settled ruleset from a uniformly broken one.
+**The batch is bounded even when nothing fires**, and the periodic self-check is the system asking to be
+looked at — deliberately, because the blind spot above is real.
 
-| step | tool | state |
-|---|---|---|
-| run unattended | ⚠️ `calibrate_batch(runId, maxCaptures)` | `ScanDecision` progress ⚠️ |
-| stops on a gate | — | → FLOW 2 |
+### Phase 4 — completion
 
-**OPEN — `n`, and the periodic-check interval.** *"Derived from timeline size and max batch count"*,
-formula undecided. No magic numbers.
+```
+timeline exhausted, or the researcher stops
+backend      nothing to commit — rules were in force from the moment they were created
+             textExtractionVersion on each capture already records which ruleset
+             produced its text
 
----
+STATE        nothing further written
+```
+
+**There is no commit step.** `commit_article_rules` is retired: with rules in force from creation there
+is nothing to activate.
 
 ## FLOW 2 — A STOP FOR JUDGEMENT
 
-**Reached from acquisition OR from a calibration batch** — the gates are the same either way, and
-neither pass may conclude anything from them. The gates, and none carries a threshold:
+**Reached from the one-at-a-time walk OR from a batch** — the gates are the same either way, and
+neither pass may conclude anything from them. None carries a threshold:
 
 ```
-GATE 1   any content segment changes sides (either direction)
+GATE 1   any content segment changes sides, EITHER direction
 GATE 2   a rule that matched the previous capture matches nothing here
 GATE 3   the batch reaches its bounded size
 GATE 4   the periodic self-check interval elapses
 ```
 
-| step | tool | state |
-|---|---|---|
-| batch stops, reports the DRIFTED TEXT | — | where it stopped |
-| researcher looks at the capture | `open_article_capture` | records `CAPTURE_SHOWN` |
-| **redesign** → mark and approve | marking page · ⚠️ `approve_article_rules` | `Rule` rows, `validFrom` = this date |
-| **bad capture** → skip | ⚠️ `resolve_scan_stop(…, BAD_CAPTURE, reason)` | `CAPTURE_SKIPPED`, reason REQUIRED |
-| resume | ⚠️ `calibrate_batch` | — |
+```
+backend      stops at a capture and reports WHY, with the DRIFTED TEXT
+             ← the segments themselves, not a count
+Claude       shows them and puts ONE binary question
+researcher   → open_article_capture(runId, snapshotId)     [if they want to look]
+backend      records CAPTURE_SHOWN
+             ← the capture, the rules, what they remove
 
-**Both directions stop.** `kept → removed` is data loss; `removed → kept` is corpus pollution, because
+             ── then one of two answers ──
+
+REDESIGN     researcher marks the capture, presses שמור טיוטא…
+             pastes:  approve_article_rules runId=… snapshotId=…      ⚠️ renamed
+backend      Rule rows, validFrom = THIS capture's date · a decision
+             → back to the one-at-a-time walk until the ruleset settles again
+
+BAD CAPTURE  researcher pastes:
+               resolve_scan_stop runId=… snapshotId=… BAD_CAPTURE reason=…   ⚠️ renamed
+backend      CAPTURE_SKIPPED, reason REQUIRED
+             → the batch resumes from the next capture
+
+STATE        CAPTURE_SHOWN if looked at · then EITHER Rule rows + a decision
+             OR a CAPTURE_SKIPPED carrying its reason
+```
+
+**Both directions stop.** `kept → removed` is DATA LOSS; `removed → kept` is CORPUS POLLUTION, because
 `text` feeds `textHash` and every later capture then looks novel.
 
-**A stop is a question, never a conclusion.** No detector may conclude a redesign.
+**A stop is a question, never a conclusion.** No detector may conclude a redesign — that is the whole
+reason the pass stops instead of deciding.
 
 **A skipped capture does not speak** — excluded from calibration AND from diffing, or a truncated page
-manufactures a false "text removed" diff. **OPEN: unenforced, Level 5's.**
+manufactures a false "text removed" diff. **OPEN: unenforced, and Level 5's.**
 
 ---
 
 ## FLOW 3 — CORRECTING A CORPUS ALREADY SCANNED
 
-Same as 1.4 onward, with no acquisition: the captures are already stored.
+No acquisition: the captures are already stored, so nothing is fetched.
 
-| step | tool | state |
-|---|---|---|
-| open a run against stored captures | `correct_article_rules(url)` | opens a `CalibrationRun` |
-| walk, compare, mark | as 1.4 | `Rule` rows with `validFrom` = the marked capture's date |
+```
+researcher   "the rules are wrong on <url>"
+Claude       → correct_article_rules(url)
+backend      refuses if the URL holds NO captures — there is nothing to mark against
+             opens a CalibrationRun
+             ← marking URL
+             ── then the Phase-2 walk, over STORED captures only ──
+             derive → compare with the previous stored capture → mark → approve
+backend      Rule rows, validFrom = the MARKED capture's date
 
-**New rules apply from their own date FORWARD.** Correcting against a 2024 capture does not change what
-a 2020 capture extracted — that is what makes this safe to run at any time.
+STATE        CalibrationRun · Rule rows · decisions
+NOT WRITTEN  no fetch, no new UrlSnapshot, and NOTHING already stored is re-derived
+```
 
-**It does NOT re-derive anything already stored.** See Flow 5.
+**New rules apply from their own date FORWARD.** Correcting against a 2024 capture cannot change what a
+2020 capture extracted — which is what makes this safe to run at any time, against any page, without
+first working out what it might disturb.
+
+**To change what is already stored, see Flow 5.** This flow never does.
 
 ---
 
 ## FLOW 4 — RESETTING A CALIBRATION
 
-For a ruleset entangled past repair — not merely wrong.
+For a ruleset entangled past repair — **not merely wrong**. The case it exists for: rules belonging to
+two different page structures ended up interleaved, and the log is APPEND-ONLY, so a correction
+recorded now cannot separate them.
 
-| step | tool | state |
-|---|---|---|
-| draw the line | `reset_article_calibration(url, reason)` | `CalibrationReset` on the `TrackedUrl` |
-| calibrate again | Flow 3 | new decisions govern; older ones stay and stop counting |
+```
+researcher   "the calibration on <url> is beyond fixing"
+Claude       → reset_article_calibration(url, reason)          reason REQUIRED
+backend      writes a CalibrationReset on the TrackedUrl
+             ← how many decisions just lost their authority
+             ── every later fold ignores everything recorded before the reset ──
+             → then Flow 3, from nothing
 
-**Supersedes, never deletes.** Every decision stays readable; only its authority ends. Nothing survives
-a reset. **OPEN: refuse a reset that supersedes nothing** — currently accepted silently.
+STATE        one CalibrationReset row
+NOT WRITTEN  nothing is deleted; every decision stays readable
+```
+
+**Supersedes, never deletes.** Only authority ends. **Nothing survives a reset** — a reset is often
+reached for BECAUSE the structure recorded is wrong, so sparing anything would preserve what it was
+called for.
+
+**OPEN: a reset that supersedes nothing is currently accepted silently** and should be refused — an act
+with no object is not an act.
 
 ---
 
 ## FLOW 5 — CHANGING A PAST EXTRACTION
 
-**The only way, and it is deliberate.** A stored capture's text is what it was derived as; rules created
-later never touch it.
+**The only way, and it is deliberate.** A stored capture's text is what it was derived as. Rules created
+later never touch it, because they carry a `validFrom` that is later than its date.
 
-Two reasons qualify — both are *"the stored text is UNTRUE"*, never *"the rules could be better"*:
+Two reasons qualify, and both are *"the stored text is UNTRUE"* — never *"the rules could be better"*:
 
-1. the extraction PIPELINE was defective
-2. an approval was WRONG
+```
+1   the extraction PIPELINE was defective        e.g. inertDocument, htmlToText
+2   an approval was WRONG                        the researcher approved damage
+```
 
-| step | tool | state |
-|---|---|---|
-| supersede | ⚠️ not built | a new derivation, **keeping the previous text** |
+```
+                                                              ⚠️ NOTHING IMPLEMENTS THIS
+researcher   names the captures and why
+backend      re-derives them under a NAMED ruleset version
+             KEEPS the previous derived text alongside the new one
+             records what changed and who decided it
 
-**OPEN — the whole flow.** Nothing implements it. `commit_article_rules` is RETIRED under this
-architecture: with rules in force from creation, there is nothing to activate, and
-`textExtractionVersion` already records which ruleset produced each capture's text.
+STATE        a new derivation · the PREVIOUS text retained · an explicit record
+```
+
+**The previous text is kept because a thesis may cite it**, and the record has to show what changed
+rather than quietly presenting the new value as what was always there.
+
+**There is no commit step anywhere in this architecture.** `commit_article_rules` is RETIRED: rules are
+in force from creation, so there is nothing to activate, and `textExtractionVersion` already records
+which ruleset produced each capture's text.
 
 ---
 
