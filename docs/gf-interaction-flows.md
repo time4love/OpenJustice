@@ -50,7 +50,7 @@ survey_wayback_captures(url)                    Phase 0 · the entry to the corp
 scan_captures(url, maxCaptures)                 Phases 1–4 and Flow 3 · the walk, bootstrap included
 approve_article_rules(url, capture)             MARKING · every answer that is a draft
 resolve_scan_stop(url, capture, BAD_CAPTURE, reason)   Flow 2 · the one answer that is not
-reset_article_calibration(url, reason)          Flow 3 · RULE_RETIRED for every rule in force
+reset_article_calibration(url, reason)          Flow 3 · one RESET; every earlier rule loses authority
 reads: get_article_rules(url) · list_captures(url)
 ```
 
@@ -683,11 +683,12 @@ NOT WRITTEN  no snapshot deleted, no anchor touched, no text overwritten — ver
 | case | trigger | what becomes stale |
 |---|---|---|
 | a trusted rule later ate article text | mark that capture | from its date |
-| a calibration is garbage | `reset_article_calibration(url, reason)`: RULE_RETIRED for every rule in force, reason REQUIRED; refused when there is nothing to retire | everything; the first capture stops on Gate 0 |
+| a calibration is garbage | `reset_article_calibration(url, reason)`: one RESET decision, reason REQUIRED; every rule created before it loses authority; refused when there is nothing to retire | everything; the first capture stops on Gate 0 |
 | the extraction pipeline was defective | a new extraction version | everything, every page |
 
-**RULE_RETIRED ends a rule's authority for ALL dates.** It is the decision a reset is made of, one per
-rule, and it is how a single wrong rule is removed without a reset. **RULE_ENDED is the other way a rule
+**RULE_RETIRED ends a rule's authority for ALL dates.** It is how a single wrong rule is removed
+without a reset; a reset itself writes no RULE_RETIRED — every rule created before the RESET loses
+authority by the predicate. **RULE_ENDED is the other way a rule
 stops: from a date, not for all dates.** Unmarking a rule in MARKING is RULE_ENDED with `validTo` =
 that capture's date, so a rule that was right in 2020 and wrong after a 2022 redesign keeps governing
 2020. Expiry — a rule that stopped matching years ago, still open — would be RULE_ENDED with a date
@@ -772,6 +773,7 @@ WorkListRow             one per capture the archive reported          ⚠️ on 
   from CDX              digest · snapshotDate · observedAt
   at fetch              fetchedAt · rawBytesHash · contentType · contentEncoding ·
                         digestVerified Bool — sha1(bytes) = digest
+  textExtractionVersion (DUPLICATE, ACQUIRED) — the extractor that produced the text
   outcome               UNFETCHED | UNSERVABLE | IDENTICAL | DUPLICATE | ACQUIRED |
                         PENDING_JUDGEMENT | SKIPPED
   comparedTo            waybackTimestamp of the predecessor row (IDENTICAL, DUPLICATE)
@@ -784,10 +786,10 @@ WorkListRow             one per capture the archive reported          ⚠️ on 
 
 Rule
   id · trackedUrlId · selector
-  validFrom             snapshotDate of the capture it was created against
-  validTo               snapshotDate | null — set by RULE_ENDED
-  createdFrom           waybackTimestamp of that capture
-  createdById · createdAt · createdByDecisionId
+  validFrom             waybackTimestamp of the capture it was created against — a rule marked
+                        against the 14:00 capture must not govern 09:00 of the same day
+  validTo               waybackTimestamp | null — set by RULE_ENDED
+  createdById · createdAt · createdByDecisionId — a rule's AUTHORITY is its creating decision's
 
 Decision                the page's log, append-only
   id · trackedUrlId
@@ -798,6 +800,8 @@ Decision                the page's log, append-only
   waybackTimestamp      the capture judged — REQUIRED on every type except RESET
   ruleId                REQUIRED on RULE_TRUSTED | RULE_ENDED | RULE_RETIRED
   reason                REQUIRED on CAPTURE_SKIPPED | RESET
+  rulesetId             RULESET_ID at the judged capture's timestamp — REQUIRED on
+                        CAPTURE_ACCEPTED | CAPTURE_SKIPPED; what RESOLVED reads
   createdAt
 
 RuleMatch               one row per rule per capture examined
@@ -825,23 +829,30 @@ UrlVersionDiff          written by the walk AT ACQUISITION, carrying the Gate 5 
 ### A3. Derivations, as predicates
 
 ```
-AUTHORITY(page)         decisions with createdAt > the newest RESET's createdAt (all, if none)
-RULES_IN_FORCE(page, d) rules with validFrom ≤ d AND (validTo IS NULL OR d < validTo)
-                        AND not RULE_RETIRED under AUTHORITY
-RULESET_ID(page, d)     sha256 over the sorted, de-duplicated selectors of RULES_IN_FORCE, first 8 hex
+AUTHORITY(page)         decisions with sequence > the newest RESET's sequence (all, if none).
+                        SEQUENCE, never createdAt: rows written in one transaction share now()
+RULES_IN_FORCE(page, t) rules whose creating decision is under AUTHORITY,
+                        with validFrom ≤ t AND (validTo IS NULL OR t < validTo),
+                        AND no RULE_RETIRED for them under AUTHORITY.
+                        t is a waybackTimestamp. After a RESET this is EMPTY at every t, with no
+                        RULE_RETIRED row written — the property that makes a reset a reset
+RULESET_ID(page, t)     sha256 over the sorted, de-duplicated selectors of RULES_IN_FORCE, first 8 hex
                         — the empty set has an id too
 TRUSTED(rule)           a RULE_TRUSTED for it exists under AUTHORITY; REVIEWED otherwise
-APPROVED_BEFORE(page,d) a CAPTURE_ACCEPTED under AUTHORITY on a capture with snapshotDate ≤ d
+APPROVED_BEFORE(page,t) a CAPTURE_ACCEPTED under AUTHORITY on a capture with waybackTimestamp ≤ t
 RESOLVED(row)           a CAPTURE_ACCEPTED or CAPTURE_SKIPPED for its capture, under AUTHORITY,
-                        created after every RULESET_CORRECTED / RULE_* affecting its date
-SEEN(page)              the set of removed-side segments of every capture that has a decision
-                        under AUTHORITY — computed, cached per page, invalidated by any decision
+                        whose rulesetId = RULESET_ID(page, row.waybackTimestamp). Trust does not
+                        change the text, so RULE_TRUSTED never un-resolves a capture
+SEEN(page)              the removed-side segments of every ACQUIRED capture that has a decision
+                        under AUTHORITY, plus the PENDING_JUDGEMENT capture being judged — computed
+                        from bytes held, so a SKIPPED capture contributes nothing and its removals
+                        may be shown again; cached per page, invalidated by any decision
 STALE(row)              outcome ∈ {DUPLICATE, ACQUIRED} AND
-                        (row.rulesetId ≠ RULESET_ID(page, row.snapshotDate)
-                         OR snapshot.textExtractionVersion's extractor ≠ CURRENT_EXTRACTOR)
-PREDECESSOR(row)        the latest row before it in date order with outcome ACQUIRED
+                        (row.rulesetId ≠ RULESET_ID(page, row.waybackTimestamp)
+                         OR row.textExtractionVersion's extractor ≠ CURRENT_EXTRACTOR)
+PREDECESSOR(row)        the latest row before it in timestamp order with outcome ACQUIRED
 KNOWN_TEXT(row)         outcome ∈ {ACQUIRED, DUPLICATE, IDENTICAL}
-NEXT_ROW(page)          the earliest row in date order with outcome ∈ {UNFETCHED, PENDING_JUDGEMENT}
+NEXT_ROW(page)          the earliest row in timestamp order with outcome ∈ {UNFETCHED, PENDING_JUDGEMENT}
                         OR STALE(row)
 ```
 
@@ -873,7 +884,9 @@ survey_wayback_captures({ url })
   does      creates TrackedUrl if absent (createdById = researcher) · CDX query, all pages ·
             upserts WorkListRows (append only; existing rows untouched) · records the query ·
             LEGACY JOIN: a new row whose (page, timestamp) matches an existing UrlSnapshot
-            is written ACQUIRED with that snapshotId
+            is written ACQUIRED with that snapshotId, rulesetId = RULESET_ID(page, timestamp)
+            — the empty set's id until a rule exists — and the snapshot's textExtractionVersion,
+            so a null never reaches STALE
   returns   { trackedUrlId, created: bool, captures: n, byteDistinct: n,
               span: { from: date, to: date }, held: n, appended: n, unservable: n }
   refuses   CDX unreachable → { code: 'ARCHIVE_UNAVAILABLE' }, nothing written
@@ -915,9 +928,9 @@ resolve_scan_stop({ url, capture, resolution: 'BAD_CAPTURE', reason })
   refuses   NOT_PENDING · reason empty
 
 reset_article_calibration({ url, reason })
-  does      one RESET decision · RULE_RETIRED for every rule in RULES_IN_FORCE at any date ·
-            draft cleared
-  returns   { retired: n, decisionsSuperseded: n }
+  does      ONE RESET decision — every rule created before it loses authority by A3, no per-rule
+            row is written · draft cleared
+  returns   { rulesLostAuthority: n, decisionsSuperseded: n }
   refuses   NOTHING_TO_RETIRE (no rule in force and no decision under AUTHORITY) · reason empty
 
 get_article_rules({ url })                                                        read
