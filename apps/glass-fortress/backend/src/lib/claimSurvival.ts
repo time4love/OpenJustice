@@ -39,7 +39,28 @@ export function segments(text: string): string[] {
   return text
     .split('\n')
     .map((line) => line.replace(/\s+/g, ' ').trim())
-    .filter((line) => line.length > 0);
+    .filter(hasContent);
+}
+
+/**
+ * A segment carries information only if it contains a LETTER OR A DIGIT.
+ *
+ * MEASURED, NOT SUPPOSED. On the news page the drift comparison reported 69
+ * segments moving from kept to removed, totalling 69 CHARACTERS — sixty-nine
+ * single bullets. Walla's extraction emits lines that are just `•`, they drift in
+ * and out constantly, and they buried the one real movement in the same run
+ * (1,662 characters of furniture returning).
+ *
+ * A LENGTH THRESHOLD WAS CONSIDERED AND REJECTED as arbitrary: there is no
+ * principled shortest meaningful line, and a two-character Hebrew word is content
+ * while a twenty-character run of separators is not. "Contains something readable"
+ * is the property; length is a proxy for it that would be wrong in both
+ * directions.
+ *
+ * `\p{L}` and `\p{N}` rather than `[a-zA-Z0-9]`, because this corpus is Hebrew.
+ */
+function hasContent(line: string): boolean {
+  return /[\p{L}\p{N}]/u.test(line);
 }
 
 export interface SurvivalComparison {
