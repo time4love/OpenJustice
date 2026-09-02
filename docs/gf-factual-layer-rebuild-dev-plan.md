@@ -2931,6 +2931,43 @@ every approval. *"in time it will become more time consuming to verify ever grow
 verification whose cost grows with history will be skipped, and a check that gets skipped is worse
 than no check, because it was counted on.
 
+##### THE LOAD-BEARING REASON IS THE DETECTOR — challenged and re-ruled 2026-09-02
+
+**The challenge, and it is the right one:** marking two captures of one era is ITSELF a union — 18
+selectors from `2020-12-09` plus 3 from `2020-12-18`. *"If a union is acceptable over a small date
+range, why not over the whole timeline?"*
+
+**Because the difference is not kind, it is CHECKABILITY.** Within an era the union's members describe
+ONE STRUCTURE, so a selector that fails to match is rare and meaningful — an absent block, an empty
+comments box. Across eras it is systematic and meaningless: an era-2 selector can never match an era-1
+page, because the build hash changed.
+
+And that is precisely what blinds the detector, because match rate is a RATIO OVER THE RULESET:
+
+| | on a 2020 capture | at the 2022 boundary | ratio |
+|---|---|---|---|
+| era-1 ruleset (22) | 19/22 = 0.86 | 5/22 = 0.23 | **0.27 — fires** |
+| union (35) | 19/35 = 0.54 | 16/35 = 0.46 | **0.85 — invisible** |
+
+Selectors that can never match this structure DILUTE THE DENOMINATOR. Measured, not argued:
+`docs/gf-era-detector-thresholds-2026-09-01.md`.
+
+**THE RULING THAT DECIDES IT: unattended scanning is a REQUIREMENT.** The researcher's words — *"a
+human should not be asked to manually observe and approve 3000 snapshots."* If a human supervises every
+capture the union is fine and simpler, because THE HUMAN IS THE DETECTOR. The consumer this level was
+reopened for is a page with ~3,000 captures, so the system must know unaided when the rules stopped
+applying, and under a union it cannot.
+
+**AND THE TRAP IN THE ALTERNATIVE:** any fix to the union's blindness must know which SUBSET of
+selectors should be matching this capture. That subset IS an era. It would be rebuilt under another
+name with less of the structure written down.
+
+**Two honest limits, so this is not read as more than it is.** The union CAUSED NO MEASURED HARM on the
+news page — nothing added after a capture's approval removed text from it — so the case for eras rests
+on the detector rather than on damage. And eras do not eliminate the undecidability; marking capture B
+can still change capture A's text WITHIN an era. They BOUND it to a size where the check is affordable
+and the signal readable, which is what `check_ruleset_survival` is scoped to.
+
 ##### The design
 
 **Eras are DATE-BOUNDED, and selection is therefore deterministic.** An era runs from its start until
