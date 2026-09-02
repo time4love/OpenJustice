@@ -2500,4 +2500,14 @@ model CalibrationDecision {
 
   @@unique([calibrationRunId, sequence])
   @@index([calibrationRunId, type])
+  /// THE ERA FOLD'S QUERY. `governingEras` reads a URL's decisions across runs
+  /// filtered by the newest reset and ordered in time — `calibrationRunId IN (…)
+  /// AND createdAt > reset ORDER BY createdAt`. The two indexes above cover the
+  /// run lookup and leave the filter and the sort uncovered.
+  ///
+  /// A decision log is SMALL — one row per marking action, low hundreds per URL —
+  /// so this is not what would ever hurt. It is here because it is free and
+  /// because the fold is on the capture-recording path, which is the one place in
+  /// this system that runs thousands of times.
+  @@index([calibrationRunId, createdAt])
 }

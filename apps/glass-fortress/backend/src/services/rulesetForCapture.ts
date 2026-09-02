@@ -117,10 +117,25 @@ export async function governingEras(trackedUrlId: string): Promise<GoverningEra[
  * has no rules, and deriving under an empty ruleset is exactly what the pipeline
  * did before this existed. `applyChromeRuleset` short-circuits on it, so an
  * uncalibrated URL costs nothing and behaves as it always has.
+ *
+ * `eras` LETS A CALLER FOLD ONCE INSTEAD OF ONCE PER CAPTURE, and it is an
+ * optional input to ONE implementation rather than a second path. Recording a
+ * capture calls this, so a 3,000-capture scan otherwise re-folds the whole
+ * calibration history three thousand times — four queries each. Indexes make
+ * every one of those fast; they do not stop there being twelve thousand.
+ *
+ * THE HAZARD IS STALENESS, AND IT IS NARROW BY CONSTRUCTION. Eras change when a
+ * researcher corrects rules or names a boundary, so hoisting across such a change
+ * would derive captures under rules that no longer apply. A BATCH IS EXACTLY THE
+ * STRETCH WHERE THEY CANNOT CHANGE — it runs under a confirmed era and STOPS when
+ * a human is needed — so it is safe to hoist within one segment and MUST recompute
+ * when it yields. The interactive loop has nothing to hoist: it is one capture at
+ * a time. Step 11 owns the test that holds the recompute.
  */
 export async function rulesetForCapture(
   trackedUrlId: string,
   snapshotDate: string,
+  eras?: readonly GoverningEra[],
 ): Promise<readonly string[]> {
-  return eraForDate(await governingEras(trackedUrlId), snapshotDate)?.selectors ?? [];
+  return eraForDate(eras ?? (await governingEras(trackedUrlId)), snapshotDate)?.selectors ?? [];
 }

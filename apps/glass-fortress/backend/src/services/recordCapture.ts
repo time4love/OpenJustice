@@ -1,5 +1,5 @@
 import { prisma } from '../lib/prisma';
-import { rulesetForCapture } from './rulesetForCapture';
+import { rulesetForCapture, type GoverningEra } from './rulesetForCapture';
 import { deriveText, sha256Bytes, sha256Text } from '../lib/captureDocument';
 import { CaptureProvenance } from '@prisma/client';
 import { registerSnapshotOnChain, type SnapshotAnchorOutcome } from './anchorSnapshots';
@@ -56,6 +56,20 @@ export interface RecordCaptureInput {
   documentContentEncoding?: string | null;
   /** Readability's article view of that same payload. */
   extraction: string;
+  /**
+   * The URL's governing eras, folded ONCE by a caller that records many captures.
+   *
+   * PURELY AN AFFORDANCE: omit it and the fold happens here, which is what a
+   * single-capture caller wants. A scan recording thousands would otherwise
+   * re-fold the whole calibration history for every one of them — four queries
+   * each — and no index prevents doing that three thousand times.
+   *
+   * A CALLER THAT PASSES THIS PROMISES THE ERAS HAVE NOT CHANGED SINCE IT FOLDED
+   * THEM. A batch is exactly the stretch where they cannot: it runs under a
+   * confirmed era and stops when a human is needed, so it hoists within a segment
+   * and MUST recompute when it yields.
+   */
+  governingEras?: readonly GoverningEra[];
 }
 
 /** The verdict of comparing a refetched payload against the stored one. */
@@ -297,6 +311,7 @@ export async function recordCapture(input: RecordCaptureInput): Promise<Recorded
     documentContentType,
     documentContentEncoding,
     extraction,
+    governingEras,
   } = input;
 
   if (provenance === CaptureProvenance.WAYBACK && !waybackTimestamp) {
@@ -344,7 +359,7 @@ export async function recordCapture(input: RecordCaptureInput): Promise<Recorded
   // one layer down — the shape this repository names as its dominant defect.
   // `test/emptyRulesetDerivation.test.ts` holds the equivalence, so "they agree
   // today" is a fact under test rather than an assumption.
-  const selectors = await rulesetForCapture(trackedUrlId, toSnapshotDate(capturedAt));
+  const selectors = await rulesetForCapture(trackedUrlId, toSnapshotDate(capturedAt), governingEras);
   const derived =
     selectors.length === 0
       ? deriveText(document, documentContentType ?? null, documentContentEncoding ?? null)
