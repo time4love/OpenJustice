@@ -72,8 +72,10 @@ because every stored row produces a diff and every diff is a PAID classifier cal
 broken rules is the explosion this level exists to prevent, not a safe over-storing. It detects and
 YIELDS; calibration resolves.
 
-**Every capture leaves an EXISTENCE ROW** — date, wayback timestamp, raw-bytes hash — so a capture the
-rules dropped is an unexplained gap Wayback can refill rather than an untrue silence. That is §2's
+**Every fetch leaves a RECORD** — date, wayback timestamp, raw-bytes hash — so a capture the rules dropped
+is an unexplained gap Wayback can refill rather than an untrue silence. While a judgement is owed the
+record also holds the bytes, which is how a halted capture reaches the marking page without a derivation
+being claimed for it. That is §2's
 *"storage is lossless"* finally holding, and it is what makes the split possible at all.
 
 *Leaves working:* everything. Acquisition becomes runnable independently of the calibration refactor,

@@ -128,7 +128,7 @@ rules stop needing correction — which is not a fixed number of captures but a 
 Claude       → scan_next_capture(runId)                                ⚠️ to build
 backend      → Wayback replay: fetch the next capture in DATE order
              ← bytes
-             writes an EXISTENCE ROW: date, wayback timestamp, raw-bytes hash   ⚠️ new
+             writes a FETCH RECORD: date, wayback timestamp, raw-bytes hash   ⚠️ new
                     ── rule-free, true whatever the rules say, so it is written first ──
              derives text under the rules whose validFrom ≤ THIS capture's date
              compares this extraction with the PREVIOUS stored capture's
@@ -140,21 +140,22 @@ backend      → Wayback replay: fetch the next capture in DATE order
              │ ← ACQUIRED                                             │
              └────────────────────────────────────────────────────────┘
              ┌─ a gate fires ─────────────────────────────────────────┐
-             │ stores NOTHING beyond the existence row                │
-             │ writes NOTHING to the chain                            │
+             │ the fetch record becomes PENDING_JUDGEMENT and KEEPS    │
+             │   the bytes, so the marking page can read them         │
+             │ no UrlSnapshot · no derived text claimed · no chain    │
              │ ← JUDGEMENT REQUIRED · why · the drifted text          │
              └────────────────────────────────────────────────────────┘
 Claude       ACQUIRED → straight to the next capture
              JUDGEMENT REQUIRED → Flow 2, which has TWO answers:
                  REDESIGN     → calibrate below, then retry this capture
                  BAD CAPTURE  → resolve_scan_stop(… BAD_CAPTURE, reason)
-                                the capture is SKIPPED, nothing is ever stored
-                                for it beyond its existence row, and the walk
-                                moves to the next one
+                                SKIPPED · the fetch record keeps its outcome and
+                                its reason, the body is cleared, no UrlSnapshot
+                                is ever created, and the walk moves on
 
 ── CALIBRATION · reached from JUDGEMENT REQUIRED · REDESIGN ──────────
 Claude       → calibrate_article_rules(url, atCapture)                 ⚠️ gains a capture
-backend      makes THIS capture's bytes readable by the marking page   ⚠️ OPEN, see below
+backend      reads the PENDING_JUDGEMENT fetch record — the bytes are already there
              ← marking URL
 Claude       hands over the marking URL and the exact command to paste back:
 
@@ -177,9 +178,12 @@ Claude       → approve_article_rules(runId, snapshotId)                MCP
 backend      promotes the draft → Rule rows, validFrom = THIS capture's date · a decision
              ← the rules now in force
 Claude       → scan_next_capture(runId)     RETRIES THE SAME CAPTURE, now with rules
-backend      ← ACQUIRED
+backend      derives again · gates quiet · promotes the fetch record to a UrlSnapshot
+             anchors documentHash · clears the held body
+             ← ACQUIRED
 
-STATE        existence row ALWAYS · UrlSnapshot + on-chain anchor only on ACQUIRED
+STATE        fetch record ALWAYS · UrlSnapshot + on-chain anchor only on ACQUIRED
+             the fetch record holds the BYTES only while PENDING_JUDGEMENT
              Rule rows + a decision ONLY when the researcher corrected
 ```
 
@@ -191,26 +195,40 @@ those rules are suspect HERE. A capture is never stored under rules that were in
 **Acquisition is atomic per capture: it completes, or it halts having written only the existence row.**
 The same capture is retried once the rules are fixed, and succeeds the second time.
 
-**OPEN — WHERE THE BYTES FOR MARKING COME FROM.** The marking page reads a capture through
-`GET /api/article-rules/:runId/captures/:snapshotId`, which today loads a STORED `UrlSnapshot`. Acquisition
-halted before storing one, so something must make those bytes readable, and it is not decided which:
+**WHERE THE BYTES FOR MARKING COME FROM — the fetch record carries them while a judgement is owed.**
+
+Every fetch writes a row whether or not the capture joins the corpus. That row is the existence record,
+and while a decision is pending it also holds the bytes:
 
 ```
-A   store the BODY on fetch and anchor only on ACQUIRED
-    raw bytes are rule-free, so storing them is true whatever the rules say;
-    only the CHAIN WRITE waits. No re-fetch, no second shape, no cache.
-    Costs: `text`/`textHash` are derived under rules in doubt — what is written
-    for them, if anything, is the open part.
-
-B   hold the bytes server-side for the life of the marking session
-    nothing enters the corpus. Costs a cache with a lifetime, and the preview
-    endpoint re-derives on EVERY EDIT, so the bytes must stay reachable throughout.
+CaptureFetch                                                    ⚠️ to build
+  trackedUrlId · snapshotDate · waybackTimestamp · rawBytesHash · fetchedAt
+  outcome   DUPLICATE           the archive had it, nothing changed
+            ACQUIRED            it joined the corpus as a UrlSnapshot
+            PENDING_JUDGEMENT   a gate fired; a human owes a decision here
+  body      present ONLY while PENDING_JUDGEMENT
 ```
 
-**And today neither exists.** `calibrate_article_rules` describes itself as marking against *"freshly
+**It claims no extraction.** That is the point, and it is what neither alternative could manage: a row
+in `UrlSnapshot` must carry `text` and `textHash`, so storing a halted capture there would mean writing
+a derivation under rules the gate has just called into question. A fetch record asserts only what is
+true regardless of rules — that these bytes were served at this timestamp.
+
+**The duplication is real, temporary and small.** A capture awaiting judgement exists in two places for
+as long as the judgement is owed: one in the walk, at most one per halted batch. On REDESIGN the retry
+promotes it to a `UrlSnapshot` and the body is cleared; on BAD CAPTURE the outcome is recorded and the
+body is cleared. Neither leaves it in both.
+
+**This is NOT the draft capture table rejected in Phase 1.** That was two shapes of the same thing —
+a capture, provisional and real — with promotion logic between them. This is a different thing: a record
+of a FETCH, which has an outcome and a lifetime, and which exists whether or not a capture ever follows.
+`PENDING_JUDGEMENT` is a work queue that says a human owes a decision, and a row that describes itself
+that way is not a half-written capture.
+
+**Today none of this exists.** `calibrate_article_rules` describes itself as marking against *"freshly
 fetched pages that are NOT persisted"*, and its handler admits the URL and opens a run — it fetches
-nothing for marking. The marking page can only mark captures already stored. The claim is unimplemented,
-in the same way `commit_article_rules` claimed a re-derivation it never performed.
+nothing for marking, and the marking page can only mark captures already stored. The claim is
+unimplemented, in the same way `commit_article_rules` claimed a re-derivation it never performed.
 
 **`calibrate_article_rules` IS THE RECOVERY MECHANISM, NOT A FIRST-RUN SPECIAL CASE.** It is the tool
 that gets rules out of a page: fetch it, do not persist it, let a human mark it. Bootstrap is simply its
