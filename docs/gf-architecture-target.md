@@ -1,8 +1,10 @@
 # The factual layer's article-rules architecture — TARGET, 2026-09-02
 
-**The REASONING behind the design.** The mechanism is `docs/gf-interaction-flows.md`, signed off
-2026-09-02, and its appendix holds every shape; nothing here restates how a thing works. What exists
-today is `docs/gf-architecture-current.md`; the route is `docs/gf-refactor-plan.md`.
+**The REASONING behind the design.** The mechanism is `docs/gf-interaction-flows.md` for the
+factual layer and `docs/gf-evidence-flows.md` for evidence, both signed off with the researcher;
+their appendices hold every shape, and nothing here restates how a thing works. What exists today
+is `docs/gf-architecture-current.md`; the route is `docs/gf-refactor-plan.md`; a researcher's day,
+read as a sequence of tool calls, is `docs/gf-researcher-day.md`.
 
 > **VOCABULARY.** The word **era** does not appear in this design. The researcher ruled it out: it named
 > an implementation detail rather than anything the research is about. The domain words are
@@ -267,3 +269,195 @@ one, however temporarily, is not a step.
 Nothing in the design is open. Rule expiry is out of scope, with its mechanism named; the gate rates
 are verified by measurement, on the dev plan's list; and every shape is in the flows doc's appendix.
 Both are stated in `docs/gf-interaction-flows.md`, last two sections.
+
+## 9. EVIDENCE — WHY A RECORD, NOT A CLAIM
+
+A researcher's day on the platform has an hour of calibration that judges nothing, a corpus that
+holds every real change a page went through, a thesis that selects from it and says why, and a
+public surface where the selection and everything it left out are both in view. The evidence
+layer is the part between the corpus and the thesis, and the design's whole argument is that it
+is thinner than it looked. That day, step by step with the tool that carries each step, is
+`docs/gf-researcher-day.md`; the mechanism is `docs/gf-evidence-flows.md`; this is why each part
+of it is the way it is.
+
+### 9.1 The corpus already holds the evidence
+
+The design began with evidence as "a claim made from captures". The researcher asked what a
+claim adds to the record beneath it, and item by item the answer was nothing: the identity is a
+name for a record the corpus already keys; the bytes, the anchor, the diff and its survival
+verdict are the walk's, written before any research act; the classification is an opinion the
+diff already carries. What is new is only the selection — who, when, why, and whether they still
+stand behind it. **So evidence is a corpus record a researcher has promoted, and the row that
+records it is the record, marked.** Three things follow, and each removed a mechanism:
+
+- **Identity is the record's own name**, ruling 1 read literally: `CAPTURE_ID` and the pair
+  hash are deterministic from the corpus, so RECOMPUTABLE is a predicate a row either satisfies
+  or is malformed by, never a rate. There is no "re-hash" tool, because a row that fails it did
+  not drift; it was written wrong.
+- **The name is derived and never stored on the record.** Its inputs are immutable, so a stored
+  copy could not go stale — but nothing queries by it, the pair of page and timestamp is already
+  unique, and a hash-shaped column beside `documentHash` is the shape that once let a SHA-1 sit
+  in a SHA-256 column across both environments. The one stored copy is the evidence row's
+  public name, and the predicate keeps it honest.
+- **`create_evidence_from_url` was wrong for a reason the old model could not state**: it made
+  a selection with nothing to select. Under this model that is not a defect in a tool but a
+  category error, and the tool has no replacement — the corpus is entered by survey.
+
+### 9.2 Why there is no promotion without a thesis, and why the citation comes first
+
+Why is this diff important? The question has no answer outside a claim someone is trying to
+establish. A news article quoting the ministry on safety is a page; a ministry page losing a
+paragraph on adverse events is a change; the thesis that the two happened in the same week is
+what makes either of them evidence. **Importance is a relation, and the relation is the
+thesis's.** So the rationale belongs to the citation, one row per record and many citations,
+and there is no promotion that does not name the thesis it serves. `promote_scan_findings`,
+which promoted whatever the classifier called significant, was the classifier selecting
+evidence, and it is gone.
+
+**The citation precedes the argument.** The first draft argued for a record and cited it later,
+and that order produced a state with no meaning: a thesis that argued for a record its text
+never used. The order that removes it is to cite first — a version names a corpus record by its
+derived name, which exists before any evidence row — and to argue on the citation. The assessor
+then reads the argument against the passage that cites the record, which is a stronger
+SUBSTANCE gate than one judged against a thesis as a whole, and a draft may hold unargued
+citations exactly as long as it is a draft.
+
+**The corpus is the counterweight, and it must be said out loud.** Evidence promoted in light
+of a claim is by construction the claim's side. That is honest only if everything not selected
+stays reachable, and it does, because storage is lossless and the walk keeps every real change.
+The critic's material is the corpus, never the evidence table — which is the first design under
+which the Prosecutor has something concrete to search.
+
+### 9.3 Why content is a version, and why CURRENT is derived
+
+Everything a record says beyond its name is derived — from bytes, under a ruleset, by an
+extractor, a differ and a classifier, each of which can change. Drift under a citation is
+therefore not preventable; it is made visible and rare, by holding content as append-only
+versions and having a thesis cite one. A version is **named by what it contains**, not by what
+produced it, so a re-derivation that changes no text creates nothing — the same rule the flows
+doc applies to a text version, and the reason a restamp is free. Two registers live on a version
+and only one is pinned: the computed chunks, which check 17 judges and a citation names, and the
+classifier's opinion, which is provenance and never part of the hash (Level 8, as a data shape).
+
+**CURRENT is derived because a pointer the walk had to move would be the walk writing
+evidence.** The two authorities of the factual layer — acquisition reads rules and never writes
+one — hold here in the same form: the walk writes versions and never an evidence row; research
+acts write evidence and never a version. What the evidence row stores is the one thing only a
+human can produce, the version they last stood behind.
+
+**The row carries no prose.** The change's description is the version's computed content, the
+classifier's words are opinion on the version, the researcher's words are the citation's
+argument. A tier is a strength score nothing verifies, and it was dropped rather than moved; a
+role is relative to a thesis and went to the mention.
+
+### 9.4 Why nothing above the corpus is anchored
+
+The first draft registered every promoted record on chain and defended it with four
+attestations. Examined, three of them were the corpus's already and the fourth was the thesis's:
+the bytes are anchored at acquisition; the archive's name for a capture is bound to those bytes
+by the archive itself, a second witness anyone can ask; a pair of captures is derived from the
+corpus and can stop being consecutive; and the commitment "we will not swap what a thesis cites"
+belongs to the act that is public, publication, whose version hash pins every citation at once.
+**The chain attests the corpus, and a chain entry for a derived fact attests only that someone
+wrote it.**
+
+Two things fell with the write. The confirmation moment existed because a chain write was
+irreversible and deserved its own act; with no write it was ceremony, and a record is simply
+promoted, its standing for publication derived. And the hazard class that produced the false-
+CONFIRMED audit — a laptop mixing one environment's database with another's registry — lost its
+only research-act path: the walk is the sole chain writer and runs in the deployment. That is
+the plan's own principle, *prefer removing the capability over forbidding its use*, applied to
+the capability it was written about.
+
+### 9.5 Why the public reads the corpus
+
+An outsider verifying a thesis does not consult our evidence table. The cited record resolves
+to a capture or a pair, the capture to bytes, the bytes to the registry and to the archive. The
+evidence table is the linkage between corpus and thesis and is read by nobody outside; a public
+evidence surface ranked by an embedding of prose was a catalogue of selections with the
+unselected hidden. **The public surface is the corpus and the published theses**, and the
+repaired timeline is one read for everyone, with published citations as its linkage.
+
+**Publication opens the page, not the record.** Surveying a page is a research act, and a public
+list of surveyed pages says "under investigation" before any thesis says why — the framing risk
+the defamation rules rank first. A page becomes public in full, every capture and every diff,
+the moment a published thesis cites any record of it; that is what makes the counterweight of
+§9.2 real for an outsider and not only for a researcher. The alternative, the whole corpus
+public from the survey, is simpler and would be accepted if the framing risk were judged small.
+The record alone becoming public was never acceptable.
+
+### 9.6 Why review is stop-shaped, and narrowing is not a flow
+
+When a re-walk moves a cited record's content, the old version is kept and every citation still
+pins it; nothing is wrong yet. What is owed is a judgement no pass can make — does the new
+version still support what the thesis says — and so the review has the walk's shape: a list of
+what is owed, old beside new, one command per record, and **no automatic re-affirmation, ever**.
+Withdrawal keeps everything, because a withdrawn record is what lets a reader of the thesis that
+cited it find out what happened. A published thesis is flagged beside the citation and never
+unpublished by the platform: silent unpublishing rewrites the public record, and silence
+misleads its readers.
+
+Interval narrowing was ruled a flow and fell to one question: does the archive place captures
+between ones we hold? It does not; it appends with new dates. A capture lands between two in two
+ways, and the first, the re-walk turning a DUPLICATE into an ACQUIRED capture, already puts the
+wide record in review because its endpoints' text moved. The second, index lag, changes no text,
+leaves a wide claim true and coarser than the corpus, understates precision — the safe
+direction — and is measured rather than handled. What survived is a predicate: a new citation
+takes what the corpus holds at its finest, and a reviewed record shows its narrower diffs as
+material.
+
+### 9.7 Why the database is disposable and the registry is fresh
+
+The corpus is small, the one thesis is the researcher's own, there are no users. Every row can
+be rebuilt from the archive and the code; what cannot be rebuilt is the chain. So the design's
+care goes to the chain and nowhere else: no supersession of evidence identities, no legacy
+statuses held by source scans, no migration.
+
+The plan's "one registry, forever" refused a replacement deployed to escape a registry's
+problems while the database that explained them was kept. This is the opposite act: the
+database goes, the old contract stays public and immutable, and every entry on it is explained
+in a committed ledger. The fact that decides it was read from the chain, not from a document:
+**production's registry holds 20 entries — 12 extraction anchors covering 83 captures and 8
+evidence names under the retired formula, all written on two days in August — and not one is a
+hash of bytes.** A fresh contract is one meaning from index zero, and a verifier of any future
+thesis never needs the ledger. That window closes with the first production capture the new
+walk anchors, so the rotation happens before it and is held shut by a refusal derived from the
+chain rather than by a rule: a registry accepts writes only while it is empty or its first entry
+carries the anchoring scheme. If production already held entries under the new meaning, the
+answer would be the same contract with the scheme in the category field.
+
+**Attribution is read from chain state, never from receipts.** The audit's `TX_UNREADABLE`
+described a transaction our row named, past the RPC's horizon; the registry's own state says who
+registered a hash and when, forever. Level 9's "unsatisfiable" was a finding about the
+instrument's question. It is measured on both registries before it replaces receipts.
+
+**Staging is the rehearsal, and the mainnet act is one-shot.** A botched production deploy would
+put a third contract on Base and hand a hostile reader the story the design answers, so the
+same path runs on Sepolia first, in full, before production begins.
+
+### 9.8 Invariants — true after every step
+
+| invariant | why it is absolute |
+|---|---|
+| `Evidence.fileHash = ID(the record it is keyed to)` | a row that fails it is malformed, and a tool that repaired it would hide how it got that way |
+| the walk never writes an evidence row, a mention or a decision | CURRENT is derived; a pointer the walk moved would be acquisition judging research |
+| no research act reaches the chain; the registry's `submit` has one caller | the false-CONFIRMED class has no path left to travel |
+| a citation pins only the record's `affirmed` version | a thesis cannot cite a version nobody stood behind |
+| no promotion without a citation in the thesis's head version | a thesis cannot argue for a record it does not use |
+| the evidence row carries no prose and no opinion | nothing presents a model's judgement as fact, as a schema rather than a sentence |
+| nothing is deleted after the rebuild; a withdrawn record keeps its name, argument and citations | the reader of a thesis that cited it can find out what happened |
+| a registry accepts writes only while empty or scheme-stamped at index zero | one meaning per contract, enforced by the contract's own state |
+
+### 9.9 What is retired, and why
+
+| retired | why |
+|---|---|
+| evidence as "a claim"; `create_evidence_from_url` | a selection with nothing to select |
+| thesis-less promotion; `promote_scan_findings`; the debate as "is this evidence?" | importance is a relation, and the relation is the thesis's |
+| the confirmation act; `promote_evidence`; the evidence chain write; `CONFIRMED` | nothing above the corpus is anchored; the act was ceremony without the write |
+| `search_evidence`; the evidence routes; the public evidence surface | a catalogue of selections with the unselected hidden |
+| `delete_evidence`; `SUPERSEDED`; `previousFileHash` | nothing is deleted, identity never moves, legacy names are explained in git |
+| summary, tier, role and categories on the evidence row; `SummaryCorrection` | prose and opinion belong to the version or the citation, or nowhere |
+| interval narrowing as a flow | the case it handled is the re-walk's, and the archive's case is measured |
+| the legacy migration; `forensics:rehash-evidence`; `forensics:confirm-anchors` | the database is disposable; attribution is chain state |
+| "one registry, forever" | its premise was a kept database; the fresh contract is one meaning from index zero |

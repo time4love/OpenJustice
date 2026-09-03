@@ -286,6 +286,15 @@ researcher's. What produced this decision: `docs/gf-published-thesis-fda-claim-2
 below it can no longer produce bad data.** That ordering is the entire method: it is what separates
 this from the three previous encounters with the same defect.
 
+**The ORDERING clause is superseded by the refactor plan's route (ruled 2026-09-02):** the walk
+enforces Levels 1, 2, 4 and 5 in one mechanism, built beside the old path and switched once, so
+levels no longer begin one after another. The CRITERION for a level's STATUS stands unchanged —
+enforced in code, in both environments, outsider-checkable, observed to fail. The two "done"s
+relate as follows: the refactor plan's done (§7 there) is a route reaching STAGING; a level's
+STATUS moves only under the criterion here, which is at `SHIP` for production — Level 4's STATUS
+moves at SHIP, not at step 8, and the board's colour follows this plan. The evidence design
+(`docs/gf-evidence-flows.md`) designs Level 7's enforcement; it does not make Level 7 done.
+
 **A level is done when its invariant is enforced in code, in both environments, AND anything an
 outsider needs in order to check it — or to avoid being misled by it — is visible.**
 
@@ -3718,7 +3727,7 @@ a confident reader.
 
 ### Level 7 — the evidence
 
-**STATUS: OPEN — clause 1 MEASURED 2026-08-30 on staging and it HOLDS for everything the instrument covers: `forensics:rehash-evidence` dry run examined 7, found 7 already current, 0 to rehash, so the “5 of 7 unrecomputable” figure below is SUPERSEDED. The instrument selects `NOT: { urlVersionDiffId: null }` — diff-derived evidence only — so `DOCUMENT` evidence has no recomputable identity and no check at all, and that is the class the currently published thesis cites. Clause 2 remains untested; no instrument exists. → `docs/gf-level-diagnostics-2026-08-30.md`**
+**STATUS: OPEN — clause 1 MEASURED 2026-08-30 on staging and it HOLDS for everything the instrument covers: `forensics:rehash-evidence` dry run examined 7, found 7 already current, 0 to rehash, so the “5 of 7 unrecomputable” figure below is SUPERSEDED. The instrument selects `NOT: { urlVersionDiffId: null }` — diff-derived evidence only — so `DOCUMENT` evidence has no recomputable identity and no check at all, and that is the class the currently published thesis cites. Clause 2 remains untested; no instrument exists. → `docs/gf-level-diagnostics-2026-08-30.md` · DESIGNED 2026-09-03 — NOT DONE, and this design does not make it done. Evidence is a corpus record a researcher has promoted; its identity is the record's own name, derived and recomputable by construction, so clause 1 becomes the predicate RECOMPUTABLE and the instrument `forensics:audit-evidence`; clause 2 has no summary to test because the evidence row carries no prose, and becomes the schema-and-source scan `evidence-no-prose`. STATUS moves under this plan's criterion — enforced in both environments, outsider-checkable, observed to fail — at SHIP, not at any refactor step. → `docs/gf-evidence-flows.md` §1–§3, A3, A7**
 
 *Invariant:* identity is recomputable from its captures, and a summary attributes nothing to a page
 that the page does not contain.
@@ -3733,7 +3742,7 @@ the second is checkable. A gate that cries wolf gets disabled.
 
 ### Level 8 — the opinions
 
-**STATUS: OPEN — DIAGNOSED 2026-08-30, three defects confirmed on the MOH corpus: `get_forensic_timeline` returns TEN fields and none reaches `Evidence`; `aiSignificance` and `isLegallySignificant` sit in the same flat row at the same weight as the computed `addedItems`/`deletedItems`, so the invariant fails as a DATA SHAPE rather than as a sentence; and the boundary-stored-twice defect reproduces here, not only on the news page — a diff reports `2024-08-29 → 2025-01-11` where the corpus holds no 2024-08-29 capture and the true predecessor is 2024-03-05, overstating precision by ~177 days. The MECHANISM cannot be closed without exposing `beforeSnapshotId`’s date, which no tool does; exposing it is part of the fix. → `docs/gf-level-diagnostics-2026-08-30.md`**
+**STATUS: OPEN — DIAGNOSED 2026-08-30, three defects confirmed on the MOH corpus: `get_forensic_timeline` returns TEN fields and none reaches `Evidence`; `aiSignificance` and `isLegallySignificant` sit in the same flat row at the same weight as the computed `addedItems`/`deletedItems`, so the invariant fails as a DATA SHAPE rather than as a sentence; and the boundary-stored-twice defect reproduces here, not only on the news page — a diff reports `2024-08-29 → 2025-01-11` where the corpus holds no 2024-08-29 capture and the true predecessor is 2024-03-05, overstating precision by ~177 days. The MECHANISM cannot be closed without exposing `beforeSnapshotId`’s date, which no tool does; exposing it is part of the fix. → `docs/gf-level-diagnostics-2026-08-30.md` · DESIGNED 2026-09-03: the timeline is repaired into `list_findings`, ordered by date only, with the classifier's opinion a separate labelled object and published citations as its linkage; the boundary defect is unmakeable because a diff is its pair and the interval is read from the captures. The shape test is `opinions-not-facts`. → `docs/gf-evidence-flows.md` §4, §5, A4**
 
 *Invariant:* nothing presents a model's judgement as a computed fact.
 
@@ -3766,7 +3775,7 @@ derive the displayed dates from the captures rather than storing them a second t
 
 ### Level 9 — the thesis
 
-**STATUS: OPEN — and the invariant AS WRITTEN IS UNSATISFIABLE ON STAGING, measured 2026-08-30: no evidence record can be `VERIFIED`, because all 8 anchored records are `TX_UNREADABLE` — the registry holds every hash, the receipts are past the endpoint’s horizon, and that is terminal rather than a gap to close. A thesis published that day passed all 16 hard checks while citing one of them. Do not plan this level as “make theses cite VERIFIED evidence” until Level 10’s supersession provides records that can be. A SEPARATE CLAUSE IS NOW ENFORCED (2026-08-30): check 17 blocks a thesis citing a record whose diff the documents refute — 2 of staging’s 7 diff-derived records fail it, 5 pass, and it is NON-BINDING on `DOCUMENT` evidence, which is what the published thesis cites. → `docs/gf-level-diagnostics-2026-08-30.md` · `docs/gf-published-thesis-fda-claim-2026-08-30.md` · `docs/gf-evidence-input-soundness-2026-08-30.md`**
+**STATUS: OPEN — and the invariant AS WRITTEN IS UNSATISFIABLE ON STAGING, measured 2026-08-30: no evidence record can be `VERIFIED`, because all 8 anchored records are `TX_UNREADABLE` — the registry holds every hash, the receipts are past the endpoint’s horizon, and that is terminal rather than a gap to close. A thesis published that day passed all 16 hard checks while citing one of them. Do not plan this level as “make theses cite VERIFIED evidence” until Level 10’s supersession provides records that can be. A SEPARATE CLAUSE IS NOW ENFORCED (2026-08-30): check 17 blocks a thesis citing a record whose diff the documents refute — 2 of staging’s 7 diff-derived records fail it, 5 pass, and it is NON-BINDING on `DOCUMENT` evidence, which is what the published thesis cites. → `docs/gf-level-diagnostics-2026-08-30.md` · `docs/gf-published-thesis-fda-claim-2026-08-30.md` · `docs/gf-evidence-input-soundness-2026-08-30.md` · DESIGNED 2026-09-03, and the "unsatisfiable" finding is re-read: VERIFIED is a property of the corpus record — attribution from chain STATE (`isRegistered` + `getEvidence`), never from receipts — so `TX_UNREADABLE` was a claim about the transaction our row named, not about the chain; measured on both registries before it replaces receipts. The publication gate consumes six predicate-backed checks (check 5 becomes `EVIDENCE_VERIFIED`, check 6 is retired with the tier, four are new) and a citation pins the record's affirmed content version. → `docs/gf-evidence-flows.md` §5, A3, A6**
 
 *Invariant:* a thesis cites nothing that is not `VERIFIED`.
 
@@ -3800,7 +3809,7 @@ written to the session it belonged to.
 
 ### Level 10 — supersede the old corpus
 
-**STATUS: OPEN — two decisions already taken: supersede rather than delete, and only ever one registry. PROMOTED 2026-08-30 from tidy-up to LOAD-BEARING: with Level 9’s invariant unsatisfiable, supersession is the only route by which any thesis can ever cite VERIFIED evidence. The 91 legacy claims are now MEASURED rather than assumed — nothing is wrong with them, only the attribution is lost, permanently — and recording them as `TX_UNREADABLE` via `forensics:confirm-anchors --apply` is a PRECONDITION for supersession, since this level’s own argument is that an unexplained anchor is indistinguishable from a tampered one. Neither standing decision is contradicted. → `docs/gf-level-diagnostics-2026-08-30.md`**
+**STATUS: OPEN — two decisions already taken: supersede rather than delete, and only ever one registry. PROMOTED 2026-08-30 from tidy-up to LOAD-BEARING: with Level 9’s invariant unsatisfiable, supersession is the only route by which any thesis can ever cite VERIFIED evidence. The 91 legacy claims are now MEASURED rather than assumed — nothing is wrong with them, only the attribution is lost, permanently — and recording them as `TX_UNREADABLE` via `forensics:confirm-anchors --apply` is a PRECONDITION for supersession, since this level’s own argument is that an unexplained anchor is indistinguishable from a tampered one. Neither standing decision is contradicted. → `docs/gf-level-diagnostics-2026-08-30.md` · SUPERSEDED IN PART 2026-09-03 — the researcher's ruling: the databases are DISPOSABLE and are rebuilt from the archive on a FRESH REGISTRY per environment; the old contracts stay frozen, public, and explained index by index in a committed ledger; production's registry was counted FROM THE CHAIN at 20 entries, none a bytes hash, which is the window for a clean cut and is held shut by the `REGISTRY_FROZEN` refusal. "Supersede rather than delete" stands for everything after the rebuild; "only ever one registry" does not, and the six reasons below are answered one by one in the design. → `docs/gf-evidence-flows.md` §8 · `docs/gf-architecture-target.md` §9.7 · `docs/gf-refactor-plan.md` step 9**
 
 *Invariant:* every anchored hash stays explainable forever.
 
@@ -3832,7 +3841,7 @@ plan should be constrained by a wish to avoid orphaning an anchor.
 (`checkOnChainStatus.ts`) already provide the mechanism, and the superseded rows are what explain their
 own anchors. A tombstone would be a second record of something the retained row already states.
 
-#### One registry, forever, append-only
+#### One registry, forever, append-only — SUPERSEDED 2026-09-03, see the STATUS line; kept for its reasoning
 
 **No replacement `EvidenceRegistry` is deployed.** Considered and rejected, for six reasons:
 
