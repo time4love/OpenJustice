@@ -461,3 +461,118 @@ same path runs on Sepolia first, in full, before production begins.
 | interval narrowing as a flow | the case it handled is the re-walk's, and the archive's case is measured |
 | the legacy migration; `forensics:rehash-evidence`; `forensics:confirm-anchors` | the database is disposable; attribution is chain state |
 | "one registry, forever" | its premise was a kept database; the fresh contract is one meaning from index zero |
+
+## 10. THESIS — WHY A CLAIM IS CHOSEN BEFORE IT IS WRITTEN
+
+The thesis layer sits on the evidence layer and is thinner than it was built, for the same reason
+§9 found evidence thinner than it looked: item by item, the researcher asked what each mechanism
+added to the record beneath it, whether the state it created should exist at all, and whether the
+scenario it served was real. The mechanism is `docs/gf-thesis-flows.md`; this is why each part of
+it is the way it is.
+
+### 10.1 The glasses come first
+
+A thesis was written and then framed, and its framing was assessed against evidence summaries a
+model had written. Under this design the order inverts and the material changes. The platform
+exists to test one question — whether the state and the ministry violated the Nuremberg Code, and
+where the Code does not reach, Israel's own law — and a provision of that law says what a
+violation is made of: a duty holder, what was known and when, what the public was told and when,
+and the gap between the two timelines. So a provision is the GLASSES a researcher puts on before
+reading the corpus, and framing is where they put them on: the claim's wording, tested against
+the corpus's COMPUTED content — never a summary — and, for each element of the provision, the
+record that supplies it or the word MISSING. **A missing element at framing is the first gap, and
+a gap is the honest output of a design that refuses to write around one.** The Prosecutor, when
+it exists, proposes clusters of that shape; it feeds framing and never frames.
+
+Two defects the framing round carried are removed by shape. The assessor quoted the researcher
+and the quote was wrong the same way four times; now a quote that is not a substring of the
+proposal is labelled as a paraphrase, shown, and never dropped. The assessor asserted page wording
+the page never had; now every assertion a model makes about a record is checked against that
+record by the one verdict rule that already audits the researcher. **Both parties to the round
+are audited by the same rule**, and the one whose word had gone unverified was the one the
+researcher was told to defer to.
+
+### 10.2 Models write; the researcher decides
+
+The first draft of this design said no model writes thesis text, and the researcher refused it:
+reading a corpus record against a claim and turning it into coherent, grounded prose is the
+model's strongest capability, and writing it by hand is long work. The line that matters is not
+who types but who stands behind it. **Nothing a model writes becomes a version, a citation, a
+promotion, a request or a publication except by the researcher's act, after the researcher has
+read it**, and a version is the researcher's statement whoever produced the words. What carries
+the label "AI analysis" is the opinions — assessments, critiques, verdicts — and they stay gated;
+what goes public is approved text. The agent that rewrote the thesis under an instruction to
+soften, unread, is retired: the ratchet the prosecutor plan diagnosed was that agent, and
+answering an objection has three outputs — the corpus answers it, a document would, or the
+researcher concedes — with "quietly hedge" not among them.
+
+### 10.3 What is not there
+
+- **There is no session.** A row with an id and a status, opened by one act and closed by another,
+  holding one researcher to one thesis and logging an event beside everything that happened.
+  Every event was a copy of a row that already existed; the lock protected nothing the head's
+  compare-and-set does not; closing wrote a flag. *What exactly does a day close?* Nothing. The
+  history is derived from the acts, framing is a record of rounds, a note attaches to what it is
+  about, and authorship refuses a stranger's write.
+- **There is no key figure.** The duty holder is the office; a violation is two timelines and a
+  gap; a person adds nothing to a charge and has no content version to pin. The dossier that
+  aggregated everything about one named individual was the reputational-attack surface the
+  compliance rules feared, and its only source was a model's output on the evidence row, already
+  gone. A published thesis names offices and roles, never a person; the corpus records beneath it
+  carry names as the pages said them; the one real use — which records mention a name — is the
+  gated corpus search.
+- **A FOIA request is not state.** The platform cannot know a letter was sent, and a SENT it
+  could not verify would be a public claim on one person's word. Freedom of information is a
+  public action: the thesis publishes the request ready to send, in the statutory form a model
+  drafted and the researcher approved, resting on named records, and any citizen sends it under
+  their own name. An answer, like a whistleblower's submission, arrives through the public's
+  intake and is R12's — the DOCUMENT class, scheduled and not designed here, with no placeholder
+  built for it, because a platform that waits for every design to close never works.
+- **Publication anchors nothing.** The registry carries one meaning from index zero — the hash of
+  a page as served — and a thesis hash on it would be a second; on a second contract it would add
+  a timestamp on the platform's commitment that the public page and the archive already give. No
+  research act reaches the chain.
+- **The version tree does not branch**, the body is text and not an editor's JSON, a page is
+  cited through its records and not by itself, and the analysis is a row beside the version and
+  not a column on it.
+
+### 10.4 What is there, and why it is enough
+
+A claim chosen after an assessed round, restated verbatim on every version so the gate can tell a
+reworded claim from a framed one. A version write that is one transaction — text, hash, mentions,
+each pin computed and never supplied — with a compare-and-set in place of a lock. A gap list that
+is the researcher's, one decision per gap, so that what a thesis lacks is on record from its first
+day and a published thesis ends in two appeals derived from those decisions: a call to the people
+who saw the document and a request any citizen can send for it. A gate of seventeen checks, each a
+predicate with one implementation or an opinion that says so, none non-binding. A public page that
+resolves every citation to the corpus, shows beside it what the platform has since learned, and
+links to everything the researcher looked at — the selection and the counterweight both in view.
+And after publication, nothing silent: a flag beside a citation, a notice where a withdrawn thesis
+was, pages that stay open, and one list that tells an author what they owe.
+
+### 10.5 The invariants this layer adds
+
+| invariant | why it is absolute |
+|---|---|
+| a version's claim is one the author chose after an assessed round under the thesis's provision | a claim never tested against the corpus is the state that published a false one |
+| a citation's pin is computed by the write and equals `affirmed` where a human affirmed one | a thesis cannot cite a version nobody stood behind, and cannot be asked to type a hash |
+| every write on a thesis is its author's; two writers meet a compare-and-set, never a lock | attribution is per act, and a lock is a row someone forgets to release |
+| no model output becomes state except through a tool the researcher called, after the audit | models write; the researcher decides |
+| no row describes another row; the history is derived | a log is the copy that drifts, and a closed session was a decision nobody made |
+| a published version is never edited and never unpublished by the platform; flags are derived | the public record says what happened, and only its author may withdraw it |
+| a published version names no person; the appeals name units and roles | truth is the only defence and the burden is the platform's |
+| nothing above the corpus is anchored; the registry's `submit` keeps one caller | one meaning per contract, and no research act on the chain |
+| opened pages stay open | a public record retracted is the state this design keeps nowhere |
+
+### 10.6 What is retired, and why
+
+| retired | why |
+|---|---|
+| the research session, its lock, its event log; `create_research_session`, `close_research_session`, `get_session_summary`, `add_session_note` | every event was a copy; the lock guarded nothing; closing wrote a flag |
+| the key figure, `KEY_FIGURE`, the dossier, its routes, per-sentence hedging | a person adds nothing to a charge; the surface was the risk |
+| the FOIA request as state; `generate_foia_request` as a writer | the platform cannot verify a sending; the request is the public's |
+| `RevisionAgent`, `GapRevisionAgent`, `get_research_agenda`'s rewrite and embedding search | text that became a version unread, under an instruction to soften |
+| `cite_trajectories`, `TRACKED_URL`, TipTap as the record, `ThesisVersionStatus`, `title` | a second writer, a citation of nothing pinned, an editor's format with no editor, a status for an opinion, a heading that was not the claim |
+| `ThesisGapResolution`, gaps by index, `CALL_LIVE`, `GAP_ACTIONABILITY`, `FIGURES_HEDGED`, `OFFICIAL_CAPACITY`, `FRAMING_ATTACHED`, `ANALYSIS_COMPLETE`, `ANALYSIS_WELL_FORMED` | each replaced by a predicate with one implementation, or left with no subject |
+| the browser as an editor and every research act it performed through a route | the chat is the workflow; a dialog returns a command |
+| anchoring the published version | a second meaning on a registry rotated to have one |

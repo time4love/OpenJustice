@@ -21,6 +21,8 @@ researcher   the human. Marks in a browser; pastes commands into the chat.
 Claude       the orchestrator. Calls MCP TOOLS only — never an HTTP route.
 browser      the marking page. Calls the BACKEND'S HTTP ROUTES directly,
              under /api/article-rules — it never goes through Claude or MCP.
+             A DIALOG Claude opens: an immutable transformation returning a
+             pasted command; the rule is stated once, thesis flows §2.
 backend      the services. Reaches WAYBACK for CDX and replay; writes the database
              and the chain.
 model        the PAID actor. Reached at exactly ONE point IN THESE FLOWS: the
@@ -39,7 +41,7 @@ archive is asked, and the page is fetched from it. All acquisition into the corp
 **PARKED, for their own discussion once this document is signed off** — not gaps in these flows:
 1. a page the archive does not hold
 2. a live page that blocks fetching, so acquisition needs another form — screenshot, text copy, PDF
-3. a whistleblower adding evidence
+3. a whistleblower adding evidence — scheduled as R12 by `docs/gf-thesis-flows.md` §1
 
 ---
 

@@ -9,6 +9,10 @@ the work it exists for. Written 2026-09-03 with the researcher, under the design
 > **STATUS.** ⚠️ marks a tool that does not exist yet or exists under another name; everything else
 > is on the MCP surface today. The marking page is a browser, not a tool. Where a step has no tool
 > at all, the last section says so — those are the surface's gaps, found by walking the day.
+> Written under the evidence design; the thesis design that followed the same day
+> (`docs/gf-thesis-flows.md`) renames the thesis-side tools, removes the research session, the
+> key figure and the FOIA request as state, and closes every gap below — each names where. This
+> narrative is a dated snapshot and is not rewritten.
 
 ---
 
@@ -136,19 +140,23 @@ counterweight are both in view.
 **Steps with no tool behind them.**
 
 - **Returning to last week's thesis.** Every thesis tool needs a `thesisId` and nothing lists
-  them (finding 30). `list_theses` belongs to the thesis flows.
+  them (finding 30). `list_theses` belongs to the thesis flows — closed, thesis flows A4.
 - **Recording a gap resolution.** The resolution of a gap into a FOIA request or a call is
-  written on the site; no tool records it. The thesis flows'.
+  written on the site; no tool records it. Closed: `decide_gap`, thesis flows T4 — and the
+  request is a public appeal, never a researcher's state.
 - **The return path.** A FOIA answer is a document. A whistleblower's submission is a document.
   Both are the DOCUMENT class, which is parked — so the artefacts the day produces to make a
   claim court-applicable have no path back into the corpus yet. The DOCUMENT discussion is the
-  second half of the court path, not a side topic.
+  second half of the court path, not a side topic. Scheduled as R12 (thesis flows §1); the
+  thesis side of the return path is T6 there.
 - **A note before a thesis exists.** Framing produces corrections, and `add_session_note`
-  requires a `thesisId` (recorded at Level 9).
+  requires a `thesisId` (recorded at Level 9). Closed: `add_note` on a framing or a thesis, and
+  there is no session (thesis flows §9).
 
 **Tools that exist, are not retired, and the day never called.** `get_figure_dossier`, which
 aggregated evidence by named official and loses half its source when figures leave the evidence
-row — it re-homes to theses' mentions, and it is a defamation surface, so that is not optional.
+row — RETIRED by the thesis flows T2 with the key figure itself; the name search is the corpus
+search, gated, the Prosecutor's (thesis flows §10).
 `preview_diff_classification`, a diagnostic that previews the classifier — under the design the
 classifier runs once at acquisition, so it is an instrument, not a research act. `reset_article_
 calibration` and `start_tutorial`, a recovery act and onboarding, correctly absent from a normal

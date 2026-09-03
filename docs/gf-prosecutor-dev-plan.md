@@ -8,7 +8,10 @@ clearest statement of what the Prosecutor is.
 
 **It is not an author.** A thesis is written by a human. Model output is non-deterministic and error
 prone, and this platform has already published a false claim produced by exactly that route. Nothing
-here writes a claim.
+here writes a claim. *Re-read 2026-09-03 under `docs/gf-thesis-flows.md` §2: the drafting model
+writes thesis text WITH the researcher, in the chat, and the researcher decides what becomes a
+version; what this sentence rules is that the Prosecutor proposes CLUSTERS, never claims — a claim is
+chosen at framing (thesis flows T1, §10).*
 
 **It is not a second critic.** The Devil's Advocate reasons about the thesis. The Prosecutor reasons
 about the *corpus*.
@@ -323,9 +326,10 @@ specification · the duty holder is the office · blindness to the critique rath
 ordering · UI is view-only · **one article per thesis, stored on `Thesis`, optional** (§4) · **role is
 derived, never stored** (§4.1) · **`suggest_thesis` is RETIRED** (§11.1).
 
-**Open, and the researcher's:** which articles to enable beyond 1 and 10 · whether the Prosecutor
-writes anything or only reports · the consumer for surviving output, without which no tool gets run
-twice.
+**Open, and the researcher's:** which articles to enable beyond 1 and 10. **Answered 2026-09-03 by
+`docs/gf-thesis-flows.md` §10:** the Prosecutor writes its own run record and nothing else; its
+consumer is framing, where a cluster is judged as the researcher's own proposal is; the name search
+it needs is the gated corpus search, with no index table until a measurement asks for one.
 
 ### 11.1 `suggest_thesis` is retired, not narrowed
 

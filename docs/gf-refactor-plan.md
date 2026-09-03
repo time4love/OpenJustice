@@ -202,12 +202,17 @@ of code that is about to be deleted.
 
 ## 3b. THE EVIDENCE STEPS — after the rebuild, on the target schema
 
+**Implementation order is corpus → evidence → thesis, and each plan points to the next.** §3 above
+is the corpus; this section is evidence; the thesis steps are `docs/gf-thesis-refactor-plan.md`,
+which begins where step 16 ends and builds to `docs/gf-thesis-flows.md`'s appendix.
+
 Each is one PR, each leaves the suite green, and each lands with the instrument that proves it
 and the breakage that proves the instrument (evidence doc A7).
 
 ### 11 · Schema
 `Evidence` as the marked record, `EvidenceDecision`, the debate's thesis and record columns, the
-mention's pin, argument and role; the identity module as one importable symbol;
+mention's pin and argument — no role, withdrawn by the thesis flows A2; the identity module as
+one importable symbol;
 `evidence-recomputable` and `evidence-no-prose` green on an empty database.
 
 ### 12 · The reads
@@ -228,7 +233,7 @@ The six checks of A6 calling A3's predicates, check 6 gone; `audit-theses`.
 
 ### 16 · The evidence switch
 The retired names of A4 unregistered, the retired-names scan extended, the evidence routes handed
-to the frontend's change.
+to the frontend's change. **Next: `docs/gf-thesis-refactor-plan.md`, step 17 onward.**
 
 ## 4. THE TEST RULES
 

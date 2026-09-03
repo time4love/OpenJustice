@@ -31,8 +31,8 @@ These pages are publicly shareable and name officials while making specific alle
 **User-Written Thesis Bodies**
 Researchers write content naming officials and making factual claims. The platform publishes and structures this content, placing it closer to publisher than neutral host under Israeli law.
 
-**Key Figures Dossier Pages (`/figures/[id]`)**
-Aggregating all evidence and theses about a single named individual into one page could be construed as a coordinated reputational attack. Frame these pages as evidence indexes, not accusation records.
+**Key Figures Dossier Pages (`/figures/[id]`)** — RETIRED 2026-09-03 (`docs/gf-thesis-flows.md` T2)
+Aggregating all evidence and theses about a single named individual into one page could be construed as a coordinated reputational attack. The surface is removed rather than framed: a published thesis names offices and roles, never a person, and the name search is internal.
 
 ### LOW RISK
 
@@ -77,6 +77,8 @@ Claims about named individuals must reference their official role and documented
 | "X is corrupt" | "In their capacity as Director General, X signed [document hash] authorising [act]" |
 | "X is dishonest" | "X's public statement on [date] contradicts the internal protocol dated [date]" |
 
+Structural since 2026-09-03 (`docs/gf-thesis-flows.md` T5): a PUBLISHED thesis names no person at all — the gate's `NAMES_NO_PERSON` check refuses one that does — so this rule now governs the corpus records the thesis cites, which carry names as the pages said them, and any text a model produces about them.
+
 ### Rule 5 — Public Interest Anchor
 
 Every thesis and call page must open with a statement anchoring the investigation in public health interest. This activates the public interest defense under חוק איסור לשון הרע s.15.
@@ -87,7 +89,7 @@ Every thesis and call page must open with a statement anchoring the investigatio
 
 ### Legal Disclaimer
 
-Must appear on: every thesis page · every `/call/[thesisId]` page · every key figures dossier page.
+Must appear on: every thesis page · every `/call/[thesisId]` page.
 
 **Hebrew:**
 > כל הטענות המוצגות מבוססות על ראיות מתועדות ומהוות ניתוח משפטי בתום לב בעניין ציבורי.

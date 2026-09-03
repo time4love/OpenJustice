@@ -826,22 +826,22 @@ it is.
   database (§8).
 - **The blocked-live-page fallback and whistleblower material** — parked with the factual
   layer's list, for the same discussion as DOCUMENT evidence.
-- **The thesis flows** — the next document. This one hands it five requirements: the mention
-  carries the pin `(fileHash, contentVersionHash)`, its argument by reference, and may only pin
-  the record's `affirmed` version (§4, §9); a new version is how a citation is re-pinned (§6);
-  the public page shows the derived flag beside a citation (§6); `ThesisGapResolution`, which
-  also references a record by name, pins the same way; and whether publication anchors the
-  version's hash is that document's decision (§5).
+- **The thesis flows** — `docs/gf-thesis-flows.md`, signed off 2026-09-03. It takes the five
+  requirements this document handed it (the pin, the argument by reference, `affirmed` only, a
+  new version to re-pin, the flag beside a citation) and amends three clauses of this one where
+  they are named: the mention's `role` is withdrawn (A2), `ThesisGapResolution` becomes a gap
+  decision that names a mention (A2), and PUBLIC_PAGE holds for a page ever cited by a published
+  version (A3). Publication anchors nothing (thesis flows T5).
 - **Trajectories as a citation kind** — a claim's history across a page, "removed and never
   restored", is Level 6's and is cited by its detection-pass id with its own currency check
   (`TRAJECTORIES_CURRENT`). It already has the shape this design gives evidence, pin and
   re-affirm by a new version, and must keep it; nothing here changes it, and the thesis flows
   name it beside evidence as the second thing a version cites.
 - **The return path of a FOIA answer or a whistleblower submission** — both are DOCUMENT
-  evidence, the parked class. The day that produces them ends at that door: the DOCUMENT
-  discussion is the second half of the court path, not a side topic, and the key-figure dossier,
-  which aggregated evidence by named official, re-homes to theses' mentions in the same
-  discussion.
+  evidence, the parked class, SCHEDULED as R12 by the thesis flows §1; the thesis side of the
+  path — the appeals, the arrival, the gap — is theirs (T4, T6). The key-figure dossier is
+  RETIRED there (T2), not re-homed: a person adds nothing to a charge, and the name search is
+  the corpus search, gated.
 - **Search over the corpus by text** — the public read's shape beyond one claim at a time.
   This design leaves no prose to embed and no evidence surface to search, so whatever search
   is built searches text versions; that is a read-tool design, not this one.
@@ -984,12 +984,14 @@ DIFF_VERSION            one constant naming the differ AND the classifier togeth
 ThesisMention           the citation                                   ⚠️ three columns
   + contentVersionHash    REQUIRED on type = EVIDENCE — the pin
   + debateSessionId       REQUIRED on type = EVIDENCE — the argument, by reference
-  + role                  String? — the researcher's word for what the record does here;
-                          evidenceRole's replacement, optional, never a model's
+  + role                  WITHDRAWN by the thesis flows (T2, prosecutor plan §4.1): a role is
+                          meaningful only relative to a provision, and the element a record
+                          fills is the framing's; what the record does here is the argument
   INVARIANT: contentVersionHash = Evidence(fileHash).affirmedContentVersionHash at the time the
   version is created — the thesis flows enforce it at that write
 
-ThesisGapResolution     + contentVersionHash, pinned the same way
+ThesisGapResolution     REPLACED by ThesisGapDecision (thesis flows T4, A2): a gap resolved by the
+                        corpus names a mention of the head version, and the pin is the mention's
 
 registry entry          { fileHash = documentHash, submitter, block time, category = ANCHOR_SCHEME }
                         written by the walk on ACQUIRED; the contract is unchanged
@@ -1030,8 +1032,9 @@ PUBLISHABLE(m)          e = Evidence(m.fileHash) exists AND e.status = PROMOTED
                         — a thesis version is publishable iff every EVIDENCE mention is
 
 WRITES_ALLOWED(registry)   totalEvidence() = 0 OR getEvidence(0).category = ANCHOR_SCHEME   (§8)
-PUBLIC_PAGE(page)       ∃ a PUBLISHED thesis version with an EVIDENCE mention whose record is a
-                        capture or diff of the page                                          (§5)
+PUBLIC_PAGE(page)       ∃ a thesis version EVER published with an EVIDENCE mention whose record
+                        is a capture or diff of the page — amended by thesis flows T6: opened
+                        pages stay open through a withdrawal                                (§5)
 FLAGGED(m)              m is on a published version AND
                         (Evidence(m.fileHash).status = WITHDRAWN OR NOT CITATION_CURRENT(m))
                         — the flag the public page shows; its text names which
@@ -1113,8 +1116,9 @@ promote_from_debate({ sessionId })                                        WRITE
             ONE transaction: Evidence row created iff none for fileHash — status PROMOTED,
             affirmed = CURRENT.hash, promotedBy, promotedAt; debate := PROMOTED with evidenceId
             and promotedOverObjection; the mention on the head version gains debateSessionId
-            — the thesis flows may instead take it at the next version write; either way the
-            invariant of A2 holds when a version is created
+            — ruled by the thesis flows T3: promotion writes it, and the next version write
+            copies it while (fileHash, pin) is unchanged; it also refuses STALE_PIN when the
+            head's mention pins a version that is not CURRENT
   returns   { fileHash, status, affirmedContentVersionHash, created: bool, promotedOverObjection }
   refuses   SESSION_NOT_FOUND · SESSION_CLOSED · NOT_READY (with blockedBy) · and every refusal
             of open_debate re-checked at this moment — the record may have moved since
@@ -1171,9 +1175,9 @@ The evidence routes as built — `/search`, `/latest`, `/timeline`, `/:id`, `/ke
 `/stats` — served a public evidence surface that no longer exists and are the FRONTEND's to
 replace with corpus reads, in its own change (§10). One route is named here because a thesis
 requirement depends on it: the editor's mention autocomplete (`/mentions/evidence`) offered
-promoted evidence; under citation-first it must offer CORPUS RECORDS by name, from the page
-timelines, so that a version can cite a record before any evidence row exists. That is the
-thesis flows' route, with this doc's requirement on it.
+promoted evidence; under citation-first a version must be able to cite a CORPUS RECORD by name
+before any evidence row exists. The thesis flows meet that without a route: there is no editor,
+`list_findings` names every record on a timeline, and the route is retired (thesis flows T2, A5).
 
 ### A6. The checks a thesis runs
 
