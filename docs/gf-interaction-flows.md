@@ -836,7 +836,8 @@ TextVersion             one row per SUPERSEDED derivation of a capture
   copies the current row here and writes the new text onto the snapshot, in ONE transaction. A
   re-derivation whose textHash already exists here is not a new version: the current pointer moves.
 
-UrlVersionDiff          written by the walk AT ACQUISITION, carrying the Gate 5 verdict
+UrlVersionDiff          the PAIR, written by the walk AT ACQUISITION; its content, carrying the
+                        Gate 5 verdict, is a DiffContentVersion — evidence doc A2
 ```
 
 **Nothing is deleted, ever.** Rows are appended, outcomes are updated, text is versioned.
@@ -944,6 +945,12 @@ scan_captures({ url, maxCaptures })
             a TRANSIENT fetch failure (isTransientWaybackError) leaves the row UNFETCHED and the call
             returns { code: 'ARCHIVE_UNAVAILABLE' } at that row, everything before it kept; a durable
             404 is UNSERVABLE and the walk continues
+            on acquiring a capture that has an ACQUIRED successor — a re-walk turning a DUPLICATE
+            novel, or a capture the index gained with an old date — the successor's diff is
+            written against it as well, classified like any other, so the timeline stays a
+            consecutive chain; the old pair's row stays (evidence doc §7)
+            every diff is written as the PAIR, its chunks, survival and classification as a
+            DiffContentVersion (evidence doc A2); the old columns are the old path's
   returns   { walked: n,
               outcomes: { identical, duplicate, acquired, unservable, superseded, restamped },
                 superseded: a STALE ACQUIRED row whose text changed — a TextVersion written
@@ -962,6 +969,9 @@ scan_captures({ url, maxCaptures })
   refuses   NOT_SURVEYED · INVALID_MAX_CAPTURES (maxCaptures < 1) · a stop already pending — a
             PENDING row WITH a stop — → returns it verbatim from the row, walks nothing. A PENDING
             row with stop = null is evaluated, not returned
+            REGISTRY_FROZEN — NOT WRITES_ALLOWED(registry), evaluated once per call before the
+            first anchor: the registry is neither empty nor scheme-stamped at index 0, nothing is
+            acquired, and the message names index 0's category (evidence doc §8)
 
 approve_article_rules({ url, capture, rules?: 0 })
   does      ONE transaction, in order, t = the capture's timestamp:

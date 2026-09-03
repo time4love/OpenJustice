@@ -128,6 +128,13 @@ without the derivation and novelty it also performs — the one change to a reus
 existing tests must stay green; the diff written at acquisition with its verdict via `recordDiff`;
 Gate 0 as the bootstrap.
 
+The walk writes the diff in its target shape from the first capture it acquires: `UrlVersionDiff`
+as the pair, and the chunks, survival and classification as a `DiffContentVersion` (evidence
+doc A2); the old columns keep being written by the old path only, until step 8. And the
+anchoring path evaluates `WRITES_ALLOWED` before its first write and refuses `REGISTRY_FROZEN`
+(evidence doc §8) — the refusal that holds the registry window shut, landed here so that it is
+on production before any capture could be anchored there.
+
 *Leaves working:* the old scan, still on its own path. *Verified by:* A5's `scan_captures` contract
 green; a full walk of a small staging page end to end, stops resolved through the chat.
 
@@ -145,8 +152,14 @@ against staging.
 STALE rows walked; `TextVersion` written on supersession in the same transaction; the
 own-previous-text comparison; RULE_ENDED from unmarking; the reset as RESET plus RULE_RETIRED.
 
+`DiffContentVersion` lands with `TextVersion`: a superseded text version re-derives every diff
+spanning it as a new content version, keeping the old, in the same transaction (evidence doc §3);
+a capture acquired between two ACQUIRED captures re-diffs its successor against it (flows A5, the
+clause owed by the evidence doc §7).
+
 *Leaves working:* everything. *Verified by:* A4's re-walk case green; a correction on a staging page
-that supersedes stored text with the previous version retained and the anchors untouched.
+that supersedes stored text with the previous version retained and the anchors untouched; one
+promoted record entering NEEDS_REVIEW on staging with old and new versions both readable.
 
 ### 8 · THE SWITCH — the researcher's word
 
@@ -160,19 +173,62 @@ admitting.
 *Leaves working:* the new path only. *Verified by:* the whole suite green with the RETIRE files gone;
 the integrity board.
 
-### 9 · The legacy log and the drop — its own session
+### 9 · THE REBUILD — the database is disposable, the chain is not; its own sessions
 
-The three legacy runs' decisions are COPIED into the page log, attributed to their run's researcher,
-sequence offset per run in creation order, under a RESET dated at the copy so they carry no
-authority — "nothing is deleted; every decision stays readable" holds. Then the old tables are dropped
-by a migration written, simulated and applied under the destructive-database protocol, in a session
-whose only purpose is that drop. Not before step 8 has served for long enough that nothing reads them.
+Ruled 2026-09-03 (evidence doc §8): nothing in either database is migrated. The legacy log is not
+copied — it goes with the database. The order, each step gated by the one before, staging in
+full before production begins:
+
+1. MEASURE, read-only, in the container: extractor equality per capture, chain-state attribution
+   on both old registries, the archive still serving each capture's bytes.
+2. EMIT AND VERIFY THE REGISTRY LEDGER for the old contract — every index explained, complete
+   against `totalEvidence()` — and commit it.
+3. DEPLOY THE NEW CONTRACT, unchanged source, the researcher's deployer key, never MCP.
+4. ROTATE the configuration; acceptance: `get_environment` names the new address, code at it,
+   `REGISTRAR_ROLE` held, `totalEvidence() = 0`.
+5. DROP THE DATABASE under the destructive-database protocol, whole, after a dump kept offline.
+6. SURVEY AND WALK: the corpus rebuilds itself from the archive and anchors as it goes, index
+   zero stamped with the anchoring scheme.
+
+Steps 5 and 6 are the cleanup session; steps 1–4 precede it and write nothing to a database.
+Production runs 3–6 at SHIP, after staging's six have been verified end to end — the mainnet
+deploy is one-shot, and staging is its rehearsal. Not before step 8 has served on staging.
 
 ### 10 · Vocabulary
 
 `era` out of identifiers, comments, tool text and docs. Last on purpose: renaming before the
 behaviour is gone produces a diff nobody can review, and the word is harmless while it is still true
 of code that is about to be deleted.
+
+## 3b. THE EVIDENCE STEPS — after the rebuild, on the target schema
+
+Each is one PR, each leaves the suite green, and each lands with the instrument that proves it
+and the breakage that proves the instrument (evidence doc A7).
+
+### 11 · Schema
+`Evidence` as the marked record, `EvidenceDecision`, the debate's thesis and record columns, the
+mention's pin, argument and role; the identity module as one importable symbol;
+`evidence-recomputable` and `evidence-no-prose` green on an empty database.
+
+### 12 · The reads
+`list_findings` replacing the timeline and the scan findings, `resolve_record`, `get_diff_input`
+by pair, `check_on_chain_status` re-scoped to captures, PUBLIC_PAGE gating; `opinions-not-facts`
+as the shape test.
+
+### 13 · The debate on a citation
+`open_debate`, `respond_in_debate`, `promote_from_debate`, `get_debate`, the assessor reading the
+citing passage; `NOT_CITED` proven to refuse.
+
+### 14 · Review
+`list_evidence_reviews`, `review_evidence`; a re-walk on staging putting one promoted record into
+review and both decisions exercised.
+
+### 15 · The gate
+The six checks of A6 calling A3's predicates, check 6 gone; `audit-theses`.
+
+### 16 · The evidence switch
+The retired names of A4 unregistered, the retired-names scan extended, the evidence routes handed
+to the frontend's change.
 
 ## 4. THE TEST RULES
 
@@ -238,23 +294,14 @@ page and timestamp — `backfillCdxIndex` already does the linking, by timestamp
 does it by timestamp alone. After step 2 every snapshot has a row, and that is asserted on staging
 before step 5 is allowed to walk.
 
-**Legacy text is the empty ruleset, and needs no migration.** All 112 captures carry one extraction
-version and none carries a ruleset id: nothing was ever derived under rules. Under the design that is
-a capture derived under a ruleset of zero rules, which RULESET_ID names. The first rule created for a
-page makes every capture from its date STALE, and the re-walk (step 7) supersedes them keeping the old
-text as a `TextVersion`. The corpus is migrated by the product, page by page, when a researcher first
-calibrates it — not by a script, and not before step 7 exists.
-
-**Anchors are untouched throughout.** All 112 captures are anchored on `documentHash`, which no rule
-changes and no step rewrites. Nothing on chain is orphaned by any step, including step 9.
-
-**The three legacy runs are archaeology with a home.** 88 decisions across three OPEN runs, one reset,
-44 hashed rulesets, 23 observations, and no draft. None ever governed a capture. At step 9 the
-decisions are copied into the page log — attributed to each run's researcher, sequence offset per run
-in creation order, under a RESET dated at the copy so they carry no authority — and the rulesets and
-observations are dropped with their tables: a ruleset hash is derivable from the decisions it came
-from, and an observation is a measurement recomputable from bytes still held. The assessments, two
-MODEL rows, are dropped with admission; they recorded a gate that no longer exists.
+**Nothing is migrated. Ruled 2026-09-03, superseding the three paragraphs this one replaces.** The
+112 captures, the 88 decisions, the 44 rulesets, the evidence rows and the one thesis go with the
+database at step 9 and come back, where they come back at all, by the archive and the researcher's
+own hand. The old registries stay on chain, frozen and explained in git; the rebuilt corpus is
+anchored on a fresh contract with one meaning from index zero (evidence doc §8). Every migration
+before step 9 is still additive — the old path serves until step 8 — and after step 9 the schema is
+created in its target shape on an empty database, so the evidence steps of §3b carry no additive
+constraint.
 
 **Step 9 is a destructive-database session and nothing else.** Its opening message states its
 purpose, names the environment by project ref, writes the scope to `.claude/DB_CLEANUP_SESSION`,
@@ -308,13 +355,17 @@ The refactor is done when every line below is a check that has run, not a senten
 - every RETIRE-tagged test in the as-built doc's §8 is gone, and every KEEP file is unchanged since
   step 0 — `git diff` against the step-0 commit shows no edit to a KEEP file;
 - the retired-names source scan is green, with its decoy;
-- the MCP surface is exactly five write tools and two reads, and `mcpToolClassification` agrees;
+- the MCP surface is exactly the factual layer's five write tools and two reads plus the
+  evidence surface of the evidence doc's A4, and `mcpToolClassification` agrees;
 - the walla page has been re-walked from its first rule on staging: the survey, the bootstrap stop,
   the stops that followed, and the first re-walk after a correction, with the transcript in a dated
   doc; every capture has a row, every acquired capture is anchored, and the previous text of every
   superseded capture is a `TextVersion`;
 - the step-4 measurement doc exists and the design either held or was changed in the flows doc first;
-- step 9 has run on staging under the cleanup protocol and the old tables are gone there;
+- step 9 has run on staging: the ledger is committed, the new registry's index 0 carries the
+  scheme, the database was rebuilt by survey and walk, and `audit-registry` exits 0 there;
+- the evidence steps of §3b have run on staging and `audit-evidence`, `audit-theses` and
+  `audit-registry` have each been observed to FAIL before going green;
 - the integrity board shows the refactor's entries at their computed proof, and `get_environment` on
   staging reports no unanchored snapshot.
 
