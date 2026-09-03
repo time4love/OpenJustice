@@ -45,6 +45,9 @@ model Researcher {
   articleRulesets    ArticleRuleset[]
   calibrationRuns    CalibrationRun[]
   calibrationResets  CalibrationReset[]
+  createdTrackedUrls TrackedUrl[]        @relation("TrackedUrlCreator")
+  rules              Rule[]
+  pageDecisions      PageDecision[]
 }
 
 // ---------------------------------------------------------------------------
@@ -172,6 +175,26 @@ model TrackedUrl {
   // active for at most one.
   activeArticleRulesetId String?                      @unique
   activeArticleRuleset   ArticleRuleset?              @relation("ActiveArticleRuleset", fields: [activeArticleRulesetId], references: [id])
+
+  // THE WALK (docs/gf-interaction-flows.md A2) — additive, refactor step 1.
+  //
+  // Who brought this page into the corpus: the researcher whose first
+  // survey_wayback_captures created it. NULL on every page that predates the
+  // survey — those entered by admission, unattributed, and there is nobody to
+  // attribute them to after the fact. A legacy fact, recorded as such.
+  createdById   String?
+  createdBy     Researcher? @relation("TrackedUrlCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  // THE DRAFT — the marking page's working state, ONE PER PAGE, written by the
+  // browser and discarded on promotion. Not a judgement: the log is append-only
+  // and attributed; this is transient and overwritten. `draftTrusted` names
+  // SELECTORS, because one live rule per selector makes a selector a unique
+  // name, and it is what the page has.
+  draftCapture    String?
+  draftSelectors  String[]  @default([])
+  draftTrusted    String[]  @default([])
+  draftReturnedAt DateTime?
+  rules           Rule[]
+  pageDecisions   PageDecision[]
 }
 
 // One record per unique archived snapshot of a TrackedUrl.
@@ -350,6 +373,8 @@ model UrlSnapshot {
   cdxIndexEntry        CdxIndexEntry?        @relation("CdxEntryCapture")
   /// Index entries whose UNCHANGED verdict was computed against this capture.
   cdxComparisons       CdxIndexEntry[]       @relation("CdxEntryComparedTo")
+  // Every SUPERSEDED derivation of this capture — the re-walk keeps what it replaces.
+  textVersions         TextVersion[]
   /// Level 4 — what each ruleset did to this capture, and the marking decisions
   /// taken about it.
   rulesetObservations  RulesetObservation[]
@@ -1847,6 +1872,18 @@ model ClaimTrajectory {
 
 /// What became of a capture the CDX index told us exists.
 enum CdxEntryStatus {
+  // THE WALK'S OUTCOMES (docs/gf-interaction-flows.md A2), added at refactor
+  // step 1. UNFETCHED and UNSERVABLE below are shared with the old path.
+  /// Bytes equal to the predecessor's, by digest; nothing fetched; rule-free; terminal.
+  IDENTICAL
+  /// Text equal to the predecessor's under a named ruleset; fetched and derived; revisitable.
+  DUPLICATE
+  /// It joined the corpus as a UrlSnapshot.
+  ACQUIRED
+  /// A gate fired; a human owes a decision; the bytes are held on the row.
+  PENDING_JUDGEMENT
+  /// A human's verdict that this capture does not speak; reason REQUIRED.
+  SKIPPED
   /// We hold it. `snapshotId` points at the capture.
   STORED
   /// CDX indexes it and the replay will not serve it — HTTP 404, reproduced and
@@ -1926,7 +1963,50 @@ model CdxIndexEntry {
   ///
   /// Deliberately NOT unique: many entries can be judged against one predecessor.
   comparedToSnapshotId String?
-  comparedTo           UrlSnapshot?   @relation("CdxEntryComparedTo", fields: [comparedToSnapshotId], references: [id], onDelete: SetNull)
+  comparedToSnapshot   UrlSnapshot?   @relation("CdxEntryComparedTo", fields: [comparedToSnapshotId], references: [id], onDelete: SetNull)
+
+  // THE WORK-LIST ROW (docs/gf-interaction-flows.md A2) — additive, refactor
+  // step 1. This table IS the existence row: written by the survey before any
+  // fetch, updated by the walk with what it observed getting to an outcome.
+  //
+  // The seven outcomes the walk writes are the five values added to
+  // CdxEntryStatus below plus UNFETCHED and UNSERVABLE. STORED and UNCHANGED
+  // stay for the old path until step 8 retires it; while the two coexist the
+  // walk reads them as ACQUIRED and DUPLICATE at one boundary. Nothing converts
+  // them: at step 9 the database is dropped and rebuilt from the archive on a
+  // fresh registry (docs/gf-evidence-flows.md §8), and the old values go with it.
+  //
+  // At fetch — observed, never assumed from the digest.
+  fetchedAt             DateTime?
+  rawBytesHash          String?
+  contentType           String?
+  contentEncoding       String?
+  // sha1(bytes) = digest. FALSE on any row of a page turns the IDENTICAL
+  // shortcut off for that page: once it has served bytes its own index does
+  // not describe, "same digest, same bytes" is false there.
+  digestVerified        Boolean?
+  // The extractor that produced the text (DUPLICATE, ACQUIRED) — what STALE
+  // reads, for both outcomes, so a DUPLICATE can go stale on the extractor axis.
+  textExtractionVersion String?
+  // The predecessor's waybackTimestamp (IDENTICAL, DUPLICATE). The legacy
+  // `comparedToSnapshotId` above is the old path's; the new one names the
+  // capture the way every tool does — by timestamp.
+  comparedTo            String?
+  // The ruleset id in force at this row's timestamp when it was derived
+  // (DUPLICATE, ACQUIRED); STALE compares it with RULESET_ID now.
+  rulesetId             String?
+  textHash              String?
+  // Non-null ONLY while PENDING_JUDGEMENT: the bytes a human owes a decision
+  // on, held here rather than in UrlSnapshot so nothing is stored under rules a
+  // gate has doubted. Promoted or cleared with the outcome.
+  heldBody              Bytes?
+  // { gates: [{ gate, material }, …] }, gate ∈ 0|1|2|4|5|'DIGEST'. Written with
+  // PENDING_JUDGEMENT, cleared with it; a pending stop is returned VERBATIM from
+  // here. A PENDING row with stop = null is awaiting evaluation (a reset clears
+  // stops), not a pending stop.
+  stop                  Json?
+  // REQUIRED on SKIPPED — a human's verdict carries why.
+  reason                String?
   createdAt            DateTime       @default(now())
   updatedAt            DateTime       @updatedAt
 
@@ -1942,6 +2022,10 @@ model CdxIndexEntry {
   /// row only when the content differs. Growth is bounded by actual change rather
   /// than by scan count.
   @@unique([trackedUrlId, waybackTimestamp, digest])
+  // The walk's key: a capture is named by its page and timestamp, and the
+  // digest leaves the key (zero rows on staging share a page and timestamp,
+  // which is what immutability predicts). Beside the old key until step 9.
+  @@unique([trackedUrlId, waybackTimestamp])
   @@index([trackedUrlId, status])
   @@index([trackedUrlId, waybackTimestamp])
 }
@@ -1980,6 +2064,128 @@ model CdxQuery {
   createdAt    DateTime   @default(now())
 
   @@index([trackedUrlId, queriedAt])
+}
+
+// ---------------------------------------------------------------------------
+// THE WALK — docs/gf-interaction-flows.md A2. Four tables, additive, refactor
+// step 1. Built BESIDE the calibration-run tables, which the old path keeps
+// until step 8 retires it and step 9 drops them.
+// ---------------------------------------------------------------------------
+
+/// A RULE IS A ROW. It carries the capture it was marked against, applies from
+/// that capture's timestamp until a human ends it, and is the one thing a human
+/// can trust. Its history — creation, matches, trust, end — is its own.
+model Rule {
+  id           String     @id @default(cuid())
+  trackedUrlId String
+  trackedUrl   TrackedUrl @relation(fields: [trackedUrlId], references: [id], onDelete: Cascade)
+  selector     String
+  /// waybackTimestamp of the capture it was created against. A rule marked
+  /// against the 14:00 capture must not govern 09:00 of the same day. May move
+  /// EARLIER, never later, by RULE_EXTENDED (a gap-fill approval).
+  validFrom    String
+  /// waybackTimestamp | null — set by RULE_ENDED. Governs t < validTo.
+  validTo      String?
+  createdById  String
+  createdBy    Researcher @relation(fields: [createdById], references: [id])
+  /// A rule's AUTHORITY is its creating decision's: after a RESET the decision
+  /// is out of AUTHORITY and so is the rule, with no per-rule row written.
+  createdByDecisionId String
+  createdByDecision   PageDecision @relation("RuleCreatedBy", fields: [createdByDecisionId], references: [id])
+  createdAt    DateTime   @default(now())
+  matches      RuleMatch[]
+  decisions    PageDecision[] @relation("DecisionRule")
+
+  // INVARIANT, kept by approve_article_rules and not expressible as an index
+  // (liveness is derived from the log): at most ONE live rule per selector
+  // under AUTHORITY.
+  @@index([trackedUrlId, selector])
+  @@index([trackedUrlId, validFrom])
+}
+
+enum PageDecisionType {
+  /// The researcher changed the rules; Rule rows follow, naming this decision.
+  RULESET_CORRECTED
+  /// Under the rules in force, this capture is right. Carries rulesetId.
+  CAPTURE_ACCEPTED
+  /// This capture does not speak; reason REQUIRED. Carries rulesetId.
+  CAPTURE_SKIPPED
+  /// This rule's removals need no more review.
+  RULE_TRUSTED
+  /// This rule stops applying from this capture's timestamp (unmarking).
+  RULE_ENDED
+  /// This rule's authority ends for ALL timestamps.
+  RULE_RETIRED
+  /// This rule now governs from an EARLIER capture; waybackTimestamp is the new validFrom.
+  RULE_EXTENDED
+  /// Ends the authority of everything before it; reason REQUIRED. ONE row.
+  RESET
+}
+
+/// THE PAGE'S LOG — append-only, every row attributed. Immutable attribution
+/// of human judgement on a platform whose evidence is public, and what the walk
+/// folds SEEN, RESOLVED, TRUSTED and AUTHORITY from. `sequence` is the
+/// compare-and-set: a write that finds it moved is refused as STALE_SEQUENCE.
+model PageDecision {
+  id               String           @id @default(cuid())
+  trackedUrlId     String
+  trackedUrl       TrackedUrl       @relation(fields: [trackedUrlId], references: [id], onDelete: Cascade)
+  sequence         Int
+  type             PageDecisionType
+  researcherId     String
+  researcher       Researcher       @relation(fields: [researcherId], references: [id])
+  /// The capture judged — REQUIRED on every type except RESET; on
+  /// RULE_EXTENDED, the rule's NEW validFrom.
+  waybackTimestamp String?
+  /// REQUIRED on RULE_TRUSTED | RULE_ENDED | RULE_RETIRED | RULE_EXTENDED.
+  ruleId           String?
+  rule             Rule?            @relation("DecisionRule", fields: [ruleId], references: [id], onDelete: Restrict)
+  /// REQUIRED on CAPTURE_SKIPPED | RESET.
+  reason           String?
+  /// RULESET_ID at the judged capture's timestamp — REQUIRED on CAPTURE_ACCEPTED
+  /// | CAPTURE_SKIPPED; what RESOLVED reads.
+  rulesetId        String?
+  createdAt        DateTime         @default(now())
+  createdRules     Rule[]           @relation("RuleCreatedBy")
+  supersededVersions TextVersion[]
+
+  @@unique([trackedUrlId, sequence])
+  @@index([trackedUrlId, waybackTimestamp])
+}
+
+/// One row per rule per capture examined — keyed to the RULE, so a correction
+/// orphans nothing (I12). What Gate 2 reads, and what expiry would read.
+model RuleMatch {
+  id               String   @id @default(cuid())
+  ruleId           String
+  rule             Rule     @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  waybackTimestamp String
+  matchedNodes     Int
+  observedAt       DateTime @default(now())
+
+  @@unique([ruleId, waybackTimestamp])
+}
+
+/// One row per SUPERSEDED derivation of a capture. A thesis cites
+/// (snapshotId, textHash), which pins the version it read; on supersession the
+/// walk copies the current row here and writes the new text onto the snapshot,
+/// in ONE transaction. A re-derivation whose textHash already exists here is
+/// not a new version: the current pointer moves.
+model TextVersion {
+  id                     String       @id @default(cuid())
+  snapshotId             String
+  snapshot               UrlSnapshot  @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
+  text                   String
+  textHash               String
+  textExtractionVersion  String
+  rulesetId              String
+  /// When this version was the current one.
+  derivedAt              DateTime
+  supersededAt           DateTime     @default(now())
+  supersededByDecisionId String
+  supersededByDecision   PageDecision @relation(fields: [supersededByDecisionId], references: [id])
+
+  @@unique([snapshotId, textHash])
 }
 
 /// Whether a submitted URL is within the platform's stated purpose.
