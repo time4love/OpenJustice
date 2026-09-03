@@ -409,3 +409,93 @@ why Gate 1 needs no threshold; date-scoping's match-rate benefit decays forward 
 partitioned model decays identically; the union caused no measured harm; a rule marked against one
 structure does not match another across three hash generations of one header in four years.
 → `docs/gf-era-detector-thresholds-2026-09-01.md`, `docs/gf-level4-mcp-loop-verification-2026-09-01.md`
+
+## 9. THE OPERATING MODEL — DEVELOPER, REVIEWER, CONDUCTOR
+
+Recorded 2026-09-03, after the thesis design closed, so that the next refactor session builds from
+the plan and not from a conversation. **This section is about the coding effort only.** The slow
+gates — the ledger, the contract, the drop, the switch, `SHIP` — stay exactly as §3 and §3b place
+them and are not made faster by anything here.
+
+### 9.1 What was learned from steps 0 and 1
+
+Two sessions with different roles, and the researcher relaying between them: a DEVELOPER session
+implements a step and writes a summary; the researcher pastes it into a REVIEWER session that never
+touches the repo; the reviewer answers with a prompt; the developer applies it and acknowledges. The
+reviewer found something every time and the developer agreed every time. That is not politeness: a
+fresh context reading a diff cold sees what the author's context cannot, and the findings split by
+who did not build the thing (Level 1 recorded the same). **The protocol is kept. What goes is the
+relaying, and reading every round.**
+
+### 9.2 The same protocol, with the copying removed
+
+```
+conductor    one session — holds the plan, cuts a step into a brief, reviews the finished diff,
+             merges in dependency order, holds every ruling; the researcher's seat
+developer    a worker per step, in its OWN git worktree on its own branch: implements to the
+             step's contract files until they are green; may import only what §4's scans allow
+reviewer     a fresh context, given ONLY the diff, the step's contract section and §4's rules;
+             may read, may run read-only checks, never writes; returns findings as a prompt
+verify       mechanical: the finding's test exists and fails on the old code; the KEEP paths show
+             no diff against the base; the scan's decoy is caught; npm test green FROM THE
+             BACKEND DIRECTORY
+loop         developer → reviewer → developer, until the STOP RULE; then the researcher reads
+             ONCE: the final diff, the developer's summary, and the reviewer's rounds with what
+             was accepted and what was pushed back — and approves the merge, or not
+```
+
+The workflow tool runs exactly this shape — implement, review, verify, in phases, transcript kept —
+and the researcher opts into it by asking for it in their own words; subagents in worktrees run the
+developer and reviewer roles without it. The hazard the two-session protocol met once — two sessions
+sharing one working tree — cannot recur: a worker holds its own worktree and the reviewer holds none.
+
+### 9.3 What must be written in, or the automated loop is worse than the manual one
+
+1. **A stop rule.** A reviewer always finds something. Findings must cite the contract or a test; a
+   severity threshold ends the loop; rounds are capped. Left implicit, the loop runs until the budget
+   does.
+2. **The developer's acknowledgement is not evidence.** "The comments were correct" is what a
+   developer says; the verify phase checks that the finding's test exists and fails on the old code.
+3. **Design-level catches are the researcher's.** Every mechanism that fell in the design sessions
+   fell to the researcher's three questions — what does this add to the record beneath it, should
+   this state exist at all, is this scenario real — and no reviewer agent asks them. The researcher
+   stays at the step boundary, reading once per step.
+4. **A second, different reviewer at the PR:** `/code-review ultra` on the finished branch, a fresh
+   context with different instructions, triggered by the researcher.
+
+### 9.4 Width, and what limits it
+
+The plans already partition the work: the corpus track (§3) is mostly sequential; evidence (§3b) and
+thesis (`docs/gf-thesis-refactor-plan.md`) run beside it once the schema step lands, ordered only at
+the seams the plans name (evidence step 13 before thesis step 21; the frontend's page change before
+the switch). Inside the thesis track, framing, the version write, gaps and the gate are separate
+modules with separate contract files. Five or six workers at once is plausible. **What limits
+throughput is reading**: the conductor's and the researcher's capacity to review finished diffs per
+day. Parallelism is sized to that, never to the number of agents available.
+
+### 9.5 Guardrails, each a trap already paid for
+
+- Every worktree needs its own `npm install`, which needs the Wix VPN; a worker without it cannot
+  run the suite and must say so rather than guess.
+- jest walks into `.claude/worktrees/` when run from the repo root and runs every file two to four
+  times, including half-written copies; workers run it from `apps/glass-fortress/backend` by
+  absolute path. A stale worktree from an earlier run was already found there on 2026-09-03.
+- KEEP tests are the tripwire: the conductor checks `git diff` on KEEP paths before any merge, by
+  command, not by reading the summary.
+- The destructive-DB hook, the lint ratchet and `CLAUDE.md` bind every session, subagents included.
+- `gh` drifts to the wrong account mid-session; every push is preceded by the switch.
+
+### 9.6 The pilot, and one undecided proposal
+
+**The pilot is step 17**, the thesis acceptance suite: transcription from a signed-off contract, no
+design risk, parallel by appendix section, and it exercises every guardrail above on real work. It
+is judged by the one test the researcher already applies — were the reviewer's findings the ones
+they would have relayed by hand — and by the measured throughput, before anything harder is
+parallelised. After it, this section gains what the pilot changed.
+
+**Proposed on 2026-09-03 and NOT decided:** cutting staging over early — running the rebuild's
+steps 1–5 on staging before the evidence and thesis tracks, so they build against an empty database
+on the target schema written as one baseline migration, instead of additive steps followed by a
+drop. It removes the coexistence stretch on staging at the cost of the three marking walks' rules,
+which §3's step 9 already sends with the database. It is the researcher's call and changes §3's
+order if taken; it changes nothing in this section.
