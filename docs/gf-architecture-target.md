@@ -142,7 +142,8 @@ why the interactive phase and its `n` were redundant and were removed.
 
 **Gate 5 costs nothing and decides nothing.** A capture polluted by new furniture is NOVEL, so its
 diff against the predecessor is classified anyway — the paid call this whole level exists to bound. A
-verdict of NOT EDITORIAL is pollution's symptom, and the walk uses a verdict it already paid for. The
+verdict of "not editorial" is pollution's symptom, and the walk adds one question to the call it
+already pays for — the classifier did not answer "editorial?" before; it does now, versioned. The
 model calls a human; it never rules. It runs last because it is the one paid gate.
 
 **Gate 2's false alarm is accepted.** Furniture legitimately leaving a page silences its rule without
