@@ -453,7 +453,8 @@ the LOG      append-only, every entry attributed — who, when, against which ca
              CAPTURE_ACCEPTED    under the rules in force, this capture is right
              CAPTURE_SKIPPED     this capture does not speak; reason REQUIRED
              RULE_TRUSTED        this rule's removals need no more review
-             RULE_ENDED          this rule stops applying from this capture's date (unmarking)
+             RULE_ENDED          this rule stops applying from this capture's timestamp (unmarking)
+             RULE_EXTENDED       this rule now governs from an EARLIER capture (a gap-fill approval)
              RULE_RETIRED        this rule's authority ends for ALL dates
              RESET               ends the authority of everything before it; reason REQUIRED
 the DRAFT    the marking page's working state, one per page
@@ -536,7 +537,7 @@ researcher   answers ONE of, in the page:
                TRUST      ticks any rules whose removals need no more review      ⚠️ affordance
              and presses שמור טיוטא חדשה של חוקי חילוץ הטקסט
 browser      → PUT  /api/article-rules/pages/:trackedUrlId/draft
-                    { capture, selectors, trusted: [ruleId…], returned: true }
+                    { capture, selectors, trusted: [selector…], returned: true }
              ← the draft, handed back
 researcher   pastes into the chat:  approve_article_rules url=… capture=…
 Claude       → approve_article_rules(url, capture)                     MCP
@@ -611,7 +612,7 @@ CORRECT      the rules are wrong here
                RULESET_CORRECTED, CAPTURE_ACCEPTED → the walk re-derives and acquires it
 
 TRUST        Gate 4 only: these rules' removals need no more review
-             → MARKING, draft carrying rule ids → RULE_TRUSTED per rule,
+             → MARKING, draft carrying selectors → RULE_TRUSTED per rule,
                CAPTURE_ACCEPTED → the walk acquires it
 
 BAD CAPTURE  this capture does not speak; reason REQUIRED
@@ -685,6 +686,11 @@ NOT WRITTEN  no snapshot deleted, no anchor touched, no text overwritten — ver
 | a trusted rule later ate article text | mark that capture | from its date |
 | a calibration is garbage | `reset_article_calibration(url, reason)`: one RESET decision, reason REQUIRED; every rule created before it loses authority; refused when there is nothing to retire | everything; the first capture stops on Gate 0 |
 | the extraction pipeline was defective | a new extraction version | everything, every page |
+
+**A GAP-FILL APPROVAL EXTENDS, NEVER DUPLICATES.** Marking a back-filled capture under a selector the
+page already has as a live rule with a later `validFrom` moves that rule's `validFrom` back to this
+capture, by RULE_EXTENDED, so trust stays one judgement per element and no selector ever has two
+live rules.
 
 **RULE_RETIRED ends a rule's authority for ALL dates.** It is how a single wrong rule is removed
 without a reset; a reset itself writes no RULE_RETIRED — every rule created before the RESET loses
@@ -766,7 +772,9 @@ rule        ruleId (cuid)
 ```
 TrackedUrl              + createdById (researcher) · createdAt
                         + draftCapture (timestamp | null) · draftSelectors String[] ·
-                          draftTrusted ruleId[] · draftReturnedAt (DateTime | null)
+                          draftTrusted SELECTOR[] · draftReturnedAt (DateTime | null)
+                          — trust is named by selector: one live rule per selector makes a
+                          selector a unique name, and it is what the page has
 
 WorkListRow             one per capture the archive reported          ⚠️ on the existing index table
   KEY                   @@unique([trackedUrlId, waybackTimestamp])
@@ -781,24 +789,31 @@ WorkListRow             one per capture the archive reported          ⚠️ on 
   textHash              (DUPLICATE)
   snapshotId            (ACQUIRED) — the UrlSnapshot it became
   heldBody              Bytes | null — non-null ONLY while PENDING_JUDGEMENT
-  stopGate              0 | 1 | 2 | 4 | 5 | null — set with PENDING_JUDGEMENT
+  stop                  Json | null — { gates: [{ gate, material }, …] }, gate ∈ 0|1|2|4|5|'DIGEST';
+                        written with PENDING_JUDGEMENT, cleared with it; a pending stop is returned
+                        VERBATIM from it, so nothing recomputes material. A PENDING row with stop =
+                        null is awaiting evaluation (a reset clears stops), not a pending stop
   reason                String | null — REQUIRED on SKIPPED
 
 Rule
   id · trackedUrlId · selector
   validFrom             waybackTimestamp of the capture it was created against — a rule marked
-                        against the 14:00 capture must not govern 09:00 of the same day
+                        against the 14:00 capture must not govern 09:00 of the same day.
+                        May move EARLIER, never later, by RULE_EXTENDED
   validTo               waybackTimestamp | null — set by RULE_ENDED
   createdById · createdAt · createdByDecisionId — a rule's AUTHORITY is its creating decision's
+  INVARIANT             at most ONE live rule per selector under AUTHORITY — live: created under
+                        AUTHORITY, not ended at t, not retired. approve_article_rules keeps it
 
-Decision                the page's log, append-only
+Decision                the page's log, append-only — the PageDecision table, delegate pageDecision
   id · trackedUrlId
   sequence              Int — @@unique([trackedUrlId, sequence]); the compare-and-set
   type                  RULESET_CORRECTED | CAPTURE_ACCEPTED | CAPTURE_SKIPPED |
-                        RULE_TRUSTED | RULE_ENDED | RULE_RETIRED | RESET
+                        RULE_TRUSTED | RULE_ENDED | RULE_RETIRED | RULE_EXTENDED | RESET
   researcherId          REQUIRED on every row
-  waybackTimestamp      the capture judged — REQUIRED on every type except RESET
-  ruleId                REQUIRED on RULE_TRUSTED | RULE_ENDED | RULE_RETIRED
+  waybackTimestamp      the capture judged — REQUIRED on every type except RESET;
+                        on RULE_EXTENDED, the rule's NEW validFrom
+  ruleId                REQUIRED on RULE_TRUSTED | RULE_ENDED | RULE_RETIRED | RULE_EXTENDED
   reason                REQUIRED on CAPTURE_SKIPPED | RESET
   rulesetId             RULESET_ID at the judged capture's timestamp — REQUIRED on
                         CAPTURE_ACCEPTED | CAPTURE_SKIPPED; what RESOLVED reads
@@ -830,7 +845,9 @@ UrlVersionDiff          written by the walk AT ACQUISITION, carrying the Gate 5 
 
 ```
 AUTHORITY(page)         decisions with sequence > the newest RESET's sequence (all, if none).
-                        SEQUENCE, never createdAt: rows written in one transaction share now()
+                        SEQUENCE, never createdAt: rows written in one transaction share now().
+                        A rule's creating decision is under AUTHORITY only if it EXISTS in the log
+                        with such a sequence — a rule whose decision is not in the log is not in force
 RULES_IN_FORCE(page, t) rules whose creating decision is under AUTHORITY,
                         with validFrom ≤ t AND (validTo IS NULL OR t < validTo),
                         AND no RULE_RETIRED for them under AUTHORITY.
@@ -860,24 +877,43 @@ NEXT_ROW(page)          the earliest row in timestamp order with outcome ∈ {UN
 
 A **segment** is a line of the derived text, whitespace-normalised, containing at least one letter or
 digit. Sides are compared as SETS. `kept(c)` and `removed(c)` are the segment sets of capture `c`
-under RULES_IN_FORCE for its date; `p` = PREDECESSOR(c).
+under RULES_IN_FORCE for its timestamp `t`; `p` = PREDECESSOR(c). Every gate takes a timestamp.
 
 ```
-GATE 0   NOT APPROVED_BEFORE(page, c.date)
+GATE 0   NOT APPROVED_BEFORE(page, c.t)
 GATE 1   (removed(c) ∩ kept(p)) ∪ (kept(c) ∩ removed(p)) ≠ ∅
-GATE 2   ∃ rule r in force for both dates: RuleMatch(r, p) > 0 AND RuleMatch(r, c) = 0
-GATE 4   ∃ segment s ∈ removed(c) removed by a REVIEWED rule AND s ∉ SEEN(page)
-GATE 5   classify(diff(text(p), text(c))) = NOT_EDITORIAL          — evaluated LAST, only if 0–4 quiet
+         material { against: 'PREDECESSOR', nowRemoved: [{ text, ruleId|null }], nowKept: [text] }
+GATE 1'  on a STALE ACQUIRED row only: removed(c_new) ∩ kept(c_previous_version) ≠ ∅ — one
+         direction — material { against: 'OWN_PREVIOUS_TEXT', nowRemoved, nowKept: [] }.
+         A DUPLICATE has no approved text of its own
+GATE 2   ∃ rule r in force at both timestamps: RuleMatch(r, p) > 0 AND RuleMatch(r, c) = 0.
+         A rule in force at p or c with NO RuleMatch row for that timestamp is a WALK DEFECT: the
+         gate THROWS naming the rule and the timestamp — never read as 0, never as quiet
+GATE 4   ∃ segment s ∈ removed(c) removed by a REVIEWED rule AND s ∉ SEEN(page).
+         Derivation runs under RULES_IN_FORCE, so every selector in removedSegments names a live
+         rule; one that does not is a WALK DEFECT and the gate THROWS. A segment claimed by more
+         than one REVIEWED rule is listed ONCE PER RULE — trust is per rule
+GATE 5   classify(diff(text(p), text(c))).editorial = false      — evaluated LAST, only if 0–4 quiet
+         and the capture is NOVEL. The classifier's output gains `editorial: boolean`, asked in the
+         same call as significance and categories; CLASSIFIER_VERSION and the prompt hash move.
+         One paid call per novel capture, one more question. Gate 5 never reads a stored diff
 ```
 
-Order of evaluation: 0, then 1, 2, 4 together, then 5. A RESOLVED row skips all five. On a STALE
-ACQUIRED row (Flow 3) one more test runs with the others: `removed(c_new) ∩ kept(c_previous_version)
-≠ ∅` → STOP, reported as Gate 1 with "against its own approved text".
+**Order of evaluation, and the stop.** 0 alone; then 1, 1', 2 and 4 are ALL evaluated; then 5. The
+stop carries EVERY gate that fired on this capture, each with its own material, in that order —
+`{ capture, gates: [{ gate, material }, …], markingUrl }`. Gate 0, Gate 5 and DIGEST arrive alone by
+construction. A walk defect in any gate throws whether or not another gate fired first. A RESOLVED
+row skips all five gates — and NOT the classifier: its diff row is still written with a
+classification, whose editorial answer stops nothing. The DIGEST check runs at fetch, before any
+gate, only on a fresh fetch.
 
 ### A5. Tool contracts
 
-Every write tool: REFUSES with no researcher in context; REFUSES a URL that has no TrackedUrl (except
-`survey_wayback_captures`, which creates it). Every refusal is a JSON `{ error, code }`, never a throw.
+Every write tool: REFUSES with no researcher in context (`NO_RESEARCHER`); REFUSES a URL that has no
+TrackedUrl (`NOT_SURVEYED`, except `survey_wayback_captures`, which creates it). Every refusal is a
+JSON `{ error, code }`, never a throw. `REASON_REQUIRED` for a missing or blank reason wherever one
+is required. The two reads are GATED in WRITE_TOOLS by the standing precedent — a researcher's
+working state is not published evidence — while their handlers answer without an identity.
 
 ```
 survey_wayback_captures({ url })
@@ -889,58 +925,100 @@ survey_wayback_captures({ url })
             so a null never reaches STALE
   returns   { trackedUrlId, created: bool, captures: n, byteDistinct: n,
               span: { from: date, to: date }, held: n, appended: n, unservable: n }
-  refuses   CDX unreachable → { code: 'ARCHIVE_UNAVAILABLE' }, nothing written
+  empty     CDX answers with ZERO rows → the TrackedUrl is created, one query row with rowCount 0
+            is recorded, the return says captures: 0, nothing else is written. An empty answer is
+            an observation, not an outage: "did we ever ask?" stays answerable
+  refuses   CDX unreachable → { code: 'ARCHIVE_UNAVAILABLE' }, nothing written — the TrackedUrl
+            included; creation follows the archive's answer
 
 scan_captures({ url, maxCaptures })
   does      from NEXT_ROW, up to maxCaptures rows, the walk of Phase 2 / Flow 3
             fetches RAW replay (`id_`), hashes the bytes, compares with the row's digest →
-            digestVerified; a MISMATCH is recorded, IDENTICAL is disabled for the page until a
-            human has seen it, and the walk stops with material { expected: digest, got: sha1 }
-  returns   { walked: n, outcomes: { identical, duplicate, acquired, unservable, superseded },
-              stop: null | { capture, gate: 0|1|2|4|5|'DIGEST', markingUrl, material },
+            digestVerified; a MISMATCH is recorded and the walk stops with material
+            { expected: digest, got: sha1 } — a stop like any other. The IDENTICAL shortcut is OFF
+            for the page while ANY row on it carries digestVerified = false: once a page has served
+            bytes its own index does not describe, "same digest, same bytes" is false for that page,
+            and a human looking does not make it true. A broken page is fetched capture by capture
+            a RESOLVED novel capture skips the GATES, not the classifier: its diff row is written
+            with a classification; the editorial answer is recorded and stops nothing
+            a TRANSIENT fetch failure (isTransientWaybackError) leaves the row UNFETCHED and the call
+            returns { code: 'ARCHIVE_UNAVAILABLE' } at that row, everything before it kept; a durable
+            404 is UNSERVABLE and the walk continues
+  returns   { walked: n,
+              outcomes: { identical, duplicate, acquired, unservable, superseded, restamped },
+                superseded: a STALE ACQUIRED row whose text changed — a TextVersion written
+                restamped:  a STALE ACQUIRED row re-derived to the same textHash — rulesetId moved,
+                            no version written
+              stop: null | { capture, gates: [{ gate, material }, …], markingUrl },
               next: timestamp | null }
   material  gate 0: {}
-            gate 1: { nowRemoved: [{ text, ruleId|null }], nowKept: [text] }
+            gate 1: { against: 'PREDECESSOR' | 'OWN_PREVIOUS_TEXT', nowRemoved: [{ text, ruleId|null }],
+                      nowKept: [text] }
             gate 2: { rules: [{ ruleId, selector, matchedOnPredecessor: n }] }
-            gate 4: { removals: [{ text, ruleId, selector }] }
-            gate 5: { diff: diffId-or-inline, verdict, reason }
+            gate 4: { removals: [{ text, ruleId, selector }] }   — one entry per claiming rule
+            gate 5: { diff: inline, the chunks the classifier saw, editorial: false, reason }
+                    — inline always: a stop holds an unstored capture
             DIGEST: { expected, got }
-  refuses   NOT_SURVEYED · maxCaptures < 1 · a stop already pending → returns it, walks nothing
+  refuses   NOT_SURVEYED · INVALID_MAX_CAPTURES (maxCaptures < 1) · a stop already pending — a
+            PENDING row WITH a stop — → returns it verbatim from the row, walks nothing. A PENDING
+            row with stop = null is evaluated, not returned
 
 approve_article_rules({ url, capture, rules?: 0 })
-  does      ONE transaction, in order:
+  does      ONE transaction, in order, t = the capture's timestamp:
               draft must exist, be returned, and name THIS capture → else REFUSES
-              selectors added vs RULES_IN_FORCE(page, capture.date)  → Rule rows (validFrom = date),
-                                                                       one RULESET_CORRECTED
-              selectors removed                                       → RULE_ENDED each, validTo = date
-              draftTrusted                                            → RULE_TRUSTED each
-              then CAPTURE_ACCEPTED
+              selectors added vs RULES_IN_FORCE(page, t):
+                not a live rule anywhere       → a new Rule row, validFrom = t
+                a live rule with validFrom > t → that rule's validFrom := t, one RULE_EXTENDED;
+                                                 NO second row — one live rule per selector.
+                                                 Captures between the old and new validFrom become
+                                                 STALE by predicate; the re-walk takes them
+                                               one RULESET_CORRECTED names the capture
+              selectors removed                → RULE_ENDED each, validTo = t
+              draftTrusted (selectors)         → RULE_TRUSTED each, mapped to the live rule — created
+                                                 by this approval or existing; a rule created in a
+                                                 draft can be trusted in that draft
+              then CAPTURE_ACCEPTED, rulesetId = RULESET_ID(page, t) after the changes
               draft cleared
-  returns   { rules: [{ ruleId, selector, validFrom, validTo, trusted }], added: n, ended: n,
-              trusted: n, decisionSequence }
+  returns   { rules: RULES_IN_FORCE(page, t) after the approval, each { ruleId, selector, validFrom,
+              validTo, trusted },
+              changes: { added, ended, trusted, extended } each [{ ruleId, selector }],
+              decisionSequence }
+            — "the rules now in force, and what changed" are literally the two fields
   refuses   NO_DRAFT · DRAFT_NOT_RETURNED · DRAFT_FOR_OTHER_CAPTURE · CAPTURE_NOT_MARKABLE
             (row not PENDING_JUDGEMENT and not ACQUIRED) · EMPTY_RULESET_UNCONFIRMED
             (zero rules in force after this approval and rules≠0) · STALE_SEQUENCE
 
 resolve_scan_stop({ url, capture, resolution: 'BAD_CAPTURE', reason })
-  does      CAPTURE_SKIPPED · row := SKIPPED, heldBody cleared, reason stored
+  does      ONE transaction: CAPTURE_SKIPPED with rulesetId = RULESET_ID(page, t) · row := SKIPPED,
+            heldBody and stop cleared, reason stored · the draft cleared IF it names this capture —
+            a draft naming a skipped capture is void — and left if it names another
   returns   { capture, outcome: 'SKIPPED', decisionSequence }
-  refuses   NOT_PENDING · reason empty
+  refuses   NOT_PENDING · REASON_REQUIRED · INVALID_RESOLUTION (anything but BAD_CAPTURE) ·
+            STALE_SEQUENCE
 
 reset_article_calibration({ url, reason })
-  does      ONE RESET decision — every rule created before it loses authority by A3, no per-rule
-            row is written · draft cleared
+  does      ONE transaction: one RESET decision — every rule created before it loses authority by
+            A3, no per-rule row is written · draft cleared · `stop` cleared on every PENDING_JUDGEMENT
+            row of the page, held bytes kept, so the next scan_captures evaluates them (Gate 0, by
+            construction) instead of returning a stop written under the authority just ended
   returns   { rulesLostAuthority: n, decisionsSuperseded: n }
-  refuses   NOTHING_TO_RETIRE (no rule in force and no decision under AUTHORITY) · reason empty
+  refuses   NOTHING_TO_RETIRE (no rule in force and no decision under AUTHORITY) · REASON_REQUIRED ·
+            STALE_SEQUENCE
 
-get_article_rules({ url })                                                        read
-  returns   { rules: [{ ruleId, selector, validFrom, validTo, trusted, lastMatched: timestamp|null }],
-              pendingStop: as scan_captures.stop | null,
-              counts: outcomes by kind, stale: n, decisions: n, lastDecisionAt }
+get_article_rules({ url })                                                 read, GATED
+  returns   { rules: every rule under AUTHORITY — in force or ended, with validTo; retired and
+              pre-RESET rules absent — each { ruleId, selector, validFrom, validTo, trusted,
+              lastMatched: timestamp|null },
+              pendingStop: the PENDING row's stop verbatim with markingUrl | null,
+              counts: all seven outcomes, zero-filled, stale: n,
+              decisions: every decision on the page, lastDecisionAt }
+  refuses   NOT_SURVEYED
 
-list_captures({ url, outcome? })                                                  read
-  returns   [{ capture, snapshotDate, outcome, digest, comparedTo, rulesetId, snapshotId,
-               stale: bool, stopGate }]
+list_captures({ url, outcome? })                                           read, GATED
+  returns   one entry per row in timestamp order: [{ capture, snapshotDate, outcome, digest,
+              comparedTo, rulesetId, snapshotId, stale: bool, stopGates: gate[] | null }]
+            — never the held bytes
+  refuses   NOT_SURVEYED · INVALID_OUTCOME
 ```
 
 ### A6. Routes — the marking page's only surface
@@ -951,8 +1029,9 @@ All under `/api/article-rules`, all behind `requireResearcher`, all page-scoped.
 GET    /pages/:trackedUrlId/captures/:capture
        ← { capture, snapshotDate, outcome, document: inert HTML, rulesInForce: [{ ruleId, selector,
             trusted }], draft: { selectors, trusted, returnedAt } | null,
-            stop: { gate, material } | null }
-       404 when no row; 409 when the row is UNSERVABLE or IDENTICAL (nothing to show)
+            stop: { gates: [{ gate, material }, …] } | null }
+       404 when no row; 409 for every outcome that holds no bytes: UNFETCHED, UNSERVABLE, IDENTICAL,
+       DUPLICATE, SKIPPED
        bytes come from heldBody (PENDING_JUDGEMENT) or the UrlSnapshot's document (ACQUIRED)
 
 POST   /pages/:trackedUrlId/captures/:capture/preview
@@ -964,14 +1043,15 @@ GET    /pages/:trackedUrlId/draft
        ← { capture, selectors, trusted, returnedAt } | null
 
 PUT    /pages/:trackedUrlId/draft
-       → { capture, selectors: string[], trusted: ruleId[], returned: bool }
+       → { capture, selectors: string[], trusted: selector[], returned: bool }
        ← the draft; last write wins, no version
 
 DELETE /pages/:trackedUrlId/draft                     the researcher's cancel; the log is untouched
 ```
 
-The marking URL, carried in every stop and composed by nothing else:
-`<frontend>/article-rules/<trackedUrlId>/<capture>`. The page shows
+The marking URL, carried in every stop and composed in exactly ONE module under src/walk, through
+the reused `publicUrl` with the default locale:
+`<frontend>/<locale>/article-rules/<trackedUrlId>/<capture>`. The page shows
 `approve_article_rules url=<url> capture=<capture>` (with ` rules=0` when the draft leaves no rule in
 force) once the draft is returned.
 

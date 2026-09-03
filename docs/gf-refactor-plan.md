@@ -343,6 +343,9 @@ its own session after that.
   make the MCP surface answer the same name two ways.
 - **A `railway ssh` pipe swallows the exit code.** Capture first, filter after, whenever the exit code
   is the gate.
+- **Route shadowing during coexistence (step 6).** The legacy router owns `/:runId/captures/:snapshotId`,
+  which also matches `/pages/<id>/captures/<capture>` with `runId = 'pages'`. The new router is mounted
+  BEFORE the legacy one at the same base, and a server-level test holds the order until step 8.
 
 **What is already measured, so it is cited and not re-derived** (recompute before relying, never
 restate): drift is 0 to 1 segments across a stable stretch and 129 segments at a real break, which is
