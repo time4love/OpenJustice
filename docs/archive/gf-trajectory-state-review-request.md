@@ -1,5 +1,8 @@
 # Review request — trajectory detection becomes stored, versioned state
 
+> **ARCHIVED 2026-09-04 — no successor — completed 2026-08-22.** The review was held and every finding
+> acted on; the reasoning it produced lives in `docs/gf-trajectory-state-implementation.md`.
+
 > **REVIEWED, and every finding acted on.** The outcome is recorded at the end of this
 > document; the questions below are left as they were asked, because the answers only make
 > sense against them. The review caught a defect that would have shipped: the tool was still

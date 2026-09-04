@@ -1,5 +1,8 @@
 # GF Tech-Debt Cleanup — Dev Plan
 
+> **ARCHIVED 2026-09-04 — no successor — completed 2026-08-18.** All three phases landed on staging the
+> day they were written.
+
 **Status:** ✅ ALL THREE PHASES COMPLETE and landed on `staging`. Phase 1 (§2.1–§2.8, legally-sensitive
 items) and Phase 2 (§3.1–§3.9, everything else) — 17 PRs (#14–#28), all merged. Phase 3 (§4,
 low-priority/optional) — 1 more PR, both items resolved (one fixed, one found to not actually be a

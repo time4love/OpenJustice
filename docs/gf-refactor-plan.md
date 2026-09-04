@@ -219,6 +219,7 @@ one importable symbol;
 `list_findings` replacing the timeline and the scan findings, `resolve_record`, `get_diff_input`
 by pair, `check_on_chain_status` re-scoped to captures, PUBLIC_PAGE gating; `opinions-not-facts`
 as the shape test.
+The anonymous trajectory read (`GET /tracked/:id/trajectories` today) survives as a PUBLIC read under the same PUBLIC_PAGE rule, bounded to one page — amended 2026-09-04 (pre-design triage, docs/gf-pre-design-plans-triage-2026-09-04.md).
 
 ### 13 · The debate on a citation
 `open_debate`, `respond_in_debate`, `promote_from_debate`, `get_debate`, the assessor reading the

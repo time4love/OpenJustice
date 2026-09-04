@@ -1,5 +1,11 @@
 # PENDING migration — a diff's two sides must be two different captures
 
+> **SUPERSEDED 2026-09-04 by `docs/gf-evidence-flows.md` A2.** `UrlVersionDiff` gains
+> `CHECK (beforeSnapshotId <> afterSnapshotId)` in the contract, ruled today; refactor step 11 builds it
+> there and no migration is written anywhere else. The staging row below is not migrated (refactor step 9),
+> so the choice between the two orders no longer exists. Triaged in
+> `docs/gf-pre-design-plans-triage-2026-09-04.md` §2.
+
 **Status: WRITTEN, DELIBERATELY NOT IN `prisma/migrations/`. It cannot be applied yet.**
 
 ## Why it is not in the migrations directory

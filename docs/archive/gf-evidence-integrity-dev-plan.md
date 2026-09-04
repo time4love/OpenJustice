@@ -1,5 +1,9 @@
 # GF Evidence On-Chain Integrity & Forensic-Diff Model — Dev Plan
 
+> **ARCHIVED 2026-09-04 — succeeded by `docs/gf-evidence-flows.md` §5 and §8.** Evidence is no longer
+> registered on chain; the shared registration helper, the receipt-reading audit and the CONFIRMED status
+> this plan built each have a successor there or none.
+
 **Status:** Phase 0 (auto-promote bug fix) ✅ DONE. Phase 1 (schema migration) ✅ DONE 2026-08-18 —
 **migration applied directly to the staging Supabase DB**, not just written locally (see §3.7). Phase 2
 (shared on-chain-registration helper) ✅ DONE 2026-08-18 (§4.1) — fixed the §0.2 drift bug by

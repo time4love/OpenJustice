@@ -1,5 +1,8 @@
 # Glass Fortress — In-Chat Tutorial
 
+> **Written before the target designs of 2026-09-02–04.** Its open items are triaged in
+> `docs/gf-pre-design-plans-triage-2026-09-04.md` §6; nothing here is a required task by virtue of being listed.
+
 **Status:** DESIGNED 2026-08-25, not started. Tiers 1 and 2 are in scope; Tier 3 is deferred
 indefinitely with the reason recorded. Build on **staging** for the short cycle.
 **Designed:** 2026-08-25 with the researcher, from the observation that the existing guide teaches
@@ -257,7 +260,7 @@ Staging throughout — shorter cycle, and Base Sepolia costs nothing.
 
 ### Phase 0 — WRITTEN 2026-08-25
 
-`docs/tutorial/chapter-01-prove-a-page-reverted.md`. Every fact in it was verified against live
+`docs/archive/chapter-01-prove-a-page-reverted.md`. Every fact in it was verified against live
 staging while writing, not assumed.
 
 **The material turned out to be much stronger than this plan originally sketched.** The first draft
@@ -433,7 +436,7 @@ truth about whether the lesson stands on its own.
 
 Validated on chapter 1 (read-only), 2026-08-25: three revisions in one afternoon, every failure at
 step 1, none of them visible from reading the chapter. The standing rules that came out of those runs
-are in `chapters.ts` and `docs/tutorial/chapter-01-prove-a-page-reverted.md`.
+are in `chapters.ts` and `docs/archive/chapter-01-prove-a-page-reverted.md`.
 
 ## What changes for chapters that WRITE
 
@@ -466,7 +469,7 @@ researcher's claim, the assessor's contradiction, the rebuttal, and the withdraw
 
 So the write chapter splits in two: a read-only chapter on what a framing is and why it is not the
 thesis, and a later write chapter that only has to teach *doing* it. Material captured in
-`docs/tutorial/chapter-02-what-a-framing-is.md`, generated from the production walk exactly as the
+`docs/archive/chapter-02-what-a-framing-is.md`, generated from the production walk exactly as the
 method above prescribes — prompted by the researcher who invented the framing question asking mid-walk
 what the difference was. If that person has to ask, it is taught nowhere.
 

@@ -1,5 +1,9 @@
 # Staging Environment — Dev Plan
 
+> **ARCHIVED 2026-09-04 — succeeded by `CLAUDE.md`, Branching & Deployment Protocol.** Staging is live and
+> its rules are stated there; the Railway branch-binding root cause recorded below (§9) is the one finding
+> worth reading from here.
+
 **Status:** Phases 0, 0b, 1, 2, 3 and 4 COMPLETE — **staging is live, password-gated and `noindex`**,
 and the backend API is now gated too (§9). Phase 3 **shipped to production** 2026-08-15 (`ebbcc29`);
 production is unchanged except that the backend now logs its database identity at boot and

@@ -1,5 +1,8 @@
 # GF MCP OAuth 2.1 Upgrade — Dev Plan
 
+> **Written before the target designs of 2026-09-02–04.** Its open items are triaged in
+> `docs/gf-pre-design-plans-triage-2026-09-04.md` §4, and §1 records the bootstrap ruling this plan now carries; nothing here is a required task by virtue of being listed.
+
 **Status:** Phase 0 ✅ LOCKED. Phase 1 ✅ DONE, merged
 ([PR #55](https://github.com/time4love/OpenJustice/pull/55)). Phase 2 ✅ DONE, merged
 ([PR #56](https://github.com/time4love/OpenJustice/pull/56)) — a live-staging proxy-scheme bug found
@@ -90,6 +93,9 @@ this implies once Phase 4 ships.
 Access tokens 1 hour, refresh tokens 30 days (rotating on use), two scopes — `mcp:read` (no-op today,
 read tools already need no auth, but reserved so a future "require login even for reads" policy has
 somewhere to hang) and `mcp:write` (gates the existing `WRITE_TOOLS` set in `mcpRoutes.ts`).
+
+### 2.5 Bootstrapping the first researcher of an empty environment — **the in-container run** ✅
+Ruled 2026-09-04 (pre-design triage, `docs/gf-pre-design-plans-triage-2026-09-04.md` §1): `researcher:bootstrap` runs over `railway ssh`, environment stated twice — the runner every operational script uses. No email allowlist: a second auth branch for a one-time act. Closes `docs/gf-production-readiness-prerequisites.md` item 2.
 
 ---
 

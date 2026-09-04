@@ -976,6 +976,7 @@ DiffContentVersion                                                    ⚠️ to 
 
 UrlVersionDiff          becomes the PAIR                                ⚠️ columns leave
   beforeSnapshotId · afterSnapshotId   @@unique — unchanged, and now the whole identity
+  CHECK (beforeSnapshotId <> afterSnapshotId) — the two sides are two captures · amended 2026-09-04 (pre-design triage, docs/gf-pre-design-plans-triage-2026-09-04.md)
   trackedUrlId · createdAt
   REMOVED: beforeDate · afterDate · deletedText · addedText · rawDeletedText · rawAddedText ·
     aiSignificance · isLegallySignificant · investigativeCategories · every *Version column ·
@@ -1088,6 +1089,7 @@ get_diff_input({ url, before, after })                                    PUBLIC
 
 verify_claim_text({ url, phrase })                                         PUBLIC · unchanged
   does      the corpus read by text, over current text versions; gated by PUBLIC_PAGE as above
+get_claim_trajectories({ url })  PUBLIC · one page's trajectories, identical for everyone, gated by PUBLIC_PAGE as above; its shape is the read-tool design §10 names · amended 2026-09-04 (pre-design triage, docs/gf-pre-design-plans-triage-2026-09-04.md)
 
 resolve_record({ fileHash })                                               PUBLIC · ⚠️ to build
   does      what a stranger holding a citation needs: the record the name resolves to — kind,

@@ -1,5 +1,9 @@
 # Chapter 2 material — what a framing is, and why it is not the thesis
 
+> **ARCHIVED 2026-09-04 — succeeded by `docs/gf-chat-tutorial-dev-plan.md` and `docs/gf-thesis-flows.md`
+> T1.** Material captured mid-walk under retired tools; the framing chapter is rewritten against thesis
+> flows T1 and §10.
+
 **Material, not a shipped chapter.** Nothing here is in `chapters.ts` yet. Per
 `docs/gf-chat-tutorial-dev-plan.md`, a chapter is written from work actually done and then run cold in
 a clean claude.ai session before the next one is written. This is the first half of that: the material,

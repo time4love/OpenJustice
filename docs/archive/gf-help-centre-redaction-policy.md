@@ -1,5 +1,9 @@
 # Help Centre Redaction Policy
 
+> **ARCHIVED 2026-09-04 — no successor — removed 2026-09-04.** The static help centre it governed is
+> removed; the platform has no users. Its reasoning about naming living officials in examples is
+> `COMPLIANCE.md`'s defamation rules', not this policy's.
+
 **Status:** decided 2026-08-25, before the first example was written.
 **Governs:** every page under `/guide`, and every example inside one.
 **Required by:** `docs/production-help-center-build.md` §5b.

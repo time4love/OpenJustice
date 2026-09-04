@@ -1,5 +1,9 @@
 # Glass Fortress — Citing a Claim Trajectory
 
+> **SUPERSEDED 2026-09-04 by `docs/gf-thesis-flows.md` T2.** A trajectory is cited as `#tr_<id>` by its
+> detection-pass id; `cite_trajectories` is retired (A4). Open items triaged in
+> `docs/gf-pre-design-plans-triage-2026-09-04.md` §10. Kept as the record of what was built.
+
 **Status:** BUILT 2026-08-24 on `feat/gf-trajectory-citation`. §8 records what was built and what
 the build found. Canonical.
 **Designed:** 2026-08-23 with the researcher. Written for a session with **no prior context**.

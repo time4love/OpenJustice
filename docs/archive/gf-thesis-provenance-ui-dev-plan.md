@@ -1,5 +1,8 @@
 # Glass Fortress — Thesis Provenance UI
 
+> **ARCHIVED 2026-09-04 — succeeded by `docs/gf-thesis-flows.md` §9.** `ResearchSession` and its events
+> leave the schema; provenance is the version chain and the argument records, read through MCP.
+
 **Status:** BUILT 2026-08-24. §9 records what implementing it found. This document remains
 canonical — §1-§8 are the design as specified, §9 is what the build changed.
 **Designed:** 2026-08-23 with the researcher. Written for a session with **no prior context**.

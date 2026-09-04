@@ -1,5 +1,8 @@
 # Glass Fortress — Claude Instructions
 
+**`docs/README.md` is the index of every document in `docs/`** — read it before opening any plan; it
+says which design owns a subject and what is superseded.
+
 ## Communication Style
 
 ### Claude's Take
@@ -66,9 +69,9 @@ corrections and preferences, blocked items and what unblocks them, and the state
 Write each to the right place:
 - **Memory files** — reasoning, preferences, decisions, blockers (one fact per file).
 - **`MEMORY.md`** — index pointer per memory + a current Next Session Priorities list.
-- **Repo docs in git** (`docs/*-dev-plan.md`, `docs/phases/`, `COMPLIANCE.md`) — anything a future
-  contributor would need. If it belongs to the project rather than to Claude's memory of it, it goes
-  in git.
+- **Repo docs in git** — anything a future contributor would need, placed where `docs/README.md`
+  puts it: a design, a plan, a dated findings doc, or `COMPLIANCE.md`. If it belongs to the project
+  rather than to Claude's memory of it, it goes in git.
 
 Then report exactly what was written and where, and name anything deliberately not saved.
 
@@ -310,7 +313,8 @@ which never touch an operational path.
 ### The rule this replaces was falsified on 2026-08-29, and the reason matters
 
 The previous rule authorised local production runs via `.env.production.local`, requiring only that the
-environment be confirmed BY DATA first. That check was performed on every run, correctly, and was **not
+environment be confirmed BY DATA first (the postmortem is
+`docs/gf-cross-environment-write-postmortem-2026-08-29.md`). That check was performed on every run, correctly, and was **not
 enough** — because it confirmed one axis and the failure was on another.
 
 `.env.production.local` defines `DATABASE_URL` and **no chain variables at all**. `dotenv` never

@@ -1,5 +1,8 @@
 # GF Thesis Citation Footnotes — Dev Plan
 
+> **ARCHIVED 2026-09-04 — succeeded by `docs/gf-thesis-flows.md` T2.** TipTap is no longer the record; a
+> citation is a mention by name (`#ev_`, `#tr_`, `#doc_`) pinning a content version.
+
 **Status:** ✅ Shipped to staging and validated live, including a full create → critique →
 revise → re-critique loop through the real MCP interfaces on a real thesis. Not yet on
 `master` (no SHIP).

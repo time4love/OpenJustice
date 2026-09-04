@@ -1,5 +1,9 @@
 # Glass Fortress — Researcher Playbook
 
+> **SUPERSEDED 2026-09-04 by `docs/gf-researcher-day.md`.** This is the staging transcript of August,
+> steps 1–40, under tools the thesis flows have since retired. It is never edited. Kept in place because
+> tests read it as a fixture source; when they stop, it moves to the archive.
+
 How a real legal thesis is built from nothing, using only the MCP research tools.
 
 This document is a **live transcript**, written as each call is made — not reconstructed

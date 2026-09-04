@@ -163,6 +163,7 @@ Tasks identified but not yet implemented. Must be resolved before broad public l
 - [ ] **Privacy policy** — A published, linked privacy policy page is required under חוק הגנת הפרטיות. Must cover: what data is collected, retention periods, third-party processors (Supabase, Pinata, Railway), and subject rights.
 - [ ] **Terms of service** — Establishes permitted use, user declarations (legally obtained documents), and platform liability limits. Required before any public-facing upload feature is live.
 - [ ] **Legal counsel review** — An Israeli lawyer specialising in media/communications law must review: (a) the safety page, (b) the call page copy, (c) the submission terms, and (d) the privacy policy before broad launch.
+- [ ] **Adverse-outcome reports legal pass** — `docs/gf-reporter-legal-pass.md` audits the reports feature's public copy; its §6 names two items that want counsel before `/reports/patterns` is ungated.
 
 ---
 
