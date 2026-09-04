@@ -72,6 +72,9 @@ Write each to the right place:
 - **Repo docs in git** — anything a future contributor would need, placed where `docs/README.md`
   puts it: a design, a plan, a dated findings doc, or `COMPLIANCE.md`. If it belongs to the project
   rather than to Claude's memory of it, it goes in git.
+- **The docs the session made stale** — if a design or plan landed in this session, every document it
+  superseded or completed gets its dated banner and its index line moves, before the session closes.
+  The test holds that a doc is indexed; only this step holds that the index still tells the truth.
 
 Then report exactly what was written and where, and name anything deliberately not saved.
 
