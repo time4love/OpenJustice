@@ -2,6 +2,7 @@
 
 > Decision log and platform recommendations for Glass Fortress and Bronze Fortress.
 > Read before touching any deployment config.
+> The staging environment and its rules are not described here: see `CLAUDE.md`, Branching & Deployment Protocol.
 
 ---
 

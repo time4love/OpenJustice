@@ -1,5 +1,10 @@
 # Production Replay + Help Centre Build
 
+> **SUPERSEDED 2026-09-04 by `docs/gf-chat-tutorial-dev-plan.md`.** Goal 1, the production replay, falls
+> to `docs/gf-thesis-refactor-plan.md` step 26; goal 2, the web help centre, to the in-chat tutorial — the
+> static help-centre pages are removed by the researcher's decision, recorded in
+> `docs/gf-pre-design-plans-triage-2026-09-04.md`.
+
 **Status:** planned, not started. Written 2026-08-25 at the end of the staging session that produced
 `docs/gf-researcher-playbook.md` Steps 26–33.
 

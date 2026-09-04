@@ -1,5 +1,9 @@
 # Production thesis walk — handoff
 
+> **SUPERSEDED 2026-09-04 by `docs/gf-thesis-refactor-plan.md` step 26.** The thesis is rewritten on
+> staging under the new tools, then production at SHIP; the walk this hands off is not run. Open items
+> triaged in `docs/gf-pre-design-plans-triage-2026-09-04.md` §10.
+
 **Rewritten 2026-08-26**, after the diff-truncation repair. The previous version of this file
 described an environment that no longer exists, and its environment check has since become actively
 wrong — see §"Identifying the environment".

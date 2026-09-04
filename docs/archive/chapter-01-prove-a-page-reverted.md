@@ -1,5 +1,9 @@
 # Chapter 1 — Prove a government page reverted
 
+> **ARCHIVED 2026-09-04 — succeeded by `docs/gf-chat-tutorial-dev-plan.md` and `docs/gf-thesis-flows.md`
+> A4.** Production-walk content under retired tools; every chapter is rewritten against the flows before
+> it is served. `chapters.ts` names this file as chapter 1's history.
+
 **Phase 0 prototype, revision 3.** A plain prompt, no backend, no tool. Run it against **staging**.
 
 **Every fact below was verified against live staging on 2026-08-25** — the captures, the version

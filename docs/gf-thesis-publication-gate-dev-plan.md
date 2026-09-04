@@ -1,5 +1,9 @@
 # Glass Fortress — Thesis Publication Gate
 
+> **SUPERSEDED 2026-09-04 by `docs/gf-thesis-flows.md` T5 and A6**, as amended by
+> `docs/gf-document-flows.md` A6 — the gate's checks are that table and nothing beyond it. Open items
+> triaged in `docs/gf-pre-design-plans-triage-2026-09-04.md` §10. Kept as the record of what was built.
+
 **Status:** BUILT 2026-08-23 on `feat/gf-thesis-publication-gate-v2`, not yet landed. Canonical spec;
 §10 records how the build resolved what the spec left open.
 **Designed:** 2026-08-23, with the researcher. **Every decision below was theirs**; where the

@@ -1,5 +1,10 @@
 # GF Cost-Exposure Hardening — Dev Plan
 
+> **Written before the target designs of 2026-09-02–04. Phase 1's rate limiting is LIVE and this plan stays
+> its authority; the route inventory of §0.1 and Phases 2–5 are RETIRED or covered by the designs**, item by
+> item in `docs/gf-pre-design-plans-triage-2026-09-04.md` §3. Nothing here is a required task by virtue of
+> being listed.
+
 **Status:** Phase 1 (rate limiting) ✅ DONE 2026-08-19 — **and merged**: `src/middleware/rateLimiting.ts`
 is on `origin/master`. (This line previously read "not yet committed/pushed/merged"; corrected
 2026-08-21 after checking the actual ref.) Phase 1b ✅ DONE 2026-08-21 — see #9 below, the MCP surface

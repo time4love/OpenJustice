@@ -101,6 +101,7 @@ argued again.
 `run_analysis` with FINGERPRINT and the audit, appending `ThesisAnalysis`; `decide_gap` with the
 six decisions and `STALE_SEQUENCE`; `draft_foia_request`; `get_whistleblower_call` derived from
 CALLED gaps, public, no model.
+FINDINGS 77 and 78 of the staging critique runs — absence rendered as a duration, a trajectory label that can be quoted — are the critic prompt's own change here, measured by its verdict rates (thesis flows §13) — amended 2026-09-04 (pre-design triage, docs/gf-pre-design-plans-triage-2026-09-04.md).
 
 *Verified by:* the T4 contract; `gap-id-stable`; a second `run_analysis` on the same input refused
 `ANALYSIS_CURRENT` — no call spent twice.
@@ -135,6 +136,7 @@ a migration read before commit, on a database that holds nothing they describe; 
 joins the required run; the retired-names scan extended; the tutorial's COMMON_RULES re-read
 against A4; the frontend handed the page contract of T5 in its own change, landed FIRST, since the
 public page reads TipTap today and would break at this commit otherwise.
+`chatRoutes` and `argumentRoutes` are removed in the same commit: public routes that run a model are research acts the browser performs, the class thesis flows §10.6 retired — amended 2026-09-04 (pre-design triage, docs/gf-pre-design-plans-triage-2026-09-04.md).
 
 *Verified by:* every KEEP file unchanged since step 17; every RETIRE file gone; `npm test` green
 with `thesis` in it; `get_environment`'s counts no longer name a removed table.

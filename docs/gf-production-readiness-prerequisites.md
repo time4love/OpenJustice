@@ -1,5 +1,8 @@
 # GF Production Readiness — Prerequisites Discovered While Rebuilding Staging
 
+> **Written before the target designs of 2026-09-02–04.** Its open items are triaged in
+> `docs/gf-pre-design-plans-triage-2026-09-04.md` §1; nothing here is a required task by virtue of being listed.
+
 **Status:** Items 1, 4, 5 and 8 are **fixed and live in production** (PRs #86-#90, shipped
 2026-08-21, `master` == `staging` == `78afe9e`). `OAUTH_JWKS` has been rotated on staging *and*
 production, each with its own freshly generated RSA+EC pair. Items 2, 3, 6, 7, 9, 10 remain open.

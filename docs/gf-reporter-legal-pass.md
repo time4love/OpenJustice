@@ -1,5 +1,8 @@
 # Adverse-Outcome Reports — Legal & Compliance Pass (Phase 10)
 
+> **Written before the target designs of 2026-09-02–04.** Its open items are triaged in
+> `docs/gf-pre-design-plans-triage-2026-09-04.md` §5; nothing here is a required task by virtue of being listed.
+
 **Status:** first pass done 2026-08-21. **Not a substitute for legal review** — see §6.
 **Scope:** every user-facing claim the adverse-outcome report feature makes, across the public intake
 form (`/{he,en}/reports/new`), the researcher-gated pattern display (`/{he,en}/reports/patterns`), and

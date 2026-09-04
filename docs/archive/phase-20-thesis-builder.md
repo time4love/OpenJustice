@@ -1,5 +1,8 @@
 # Phase 20: Thesis Builder — Crowdsourced Legal Theories
 
+> **ARCHIVED 2026-09-04 — succeeded by `docs/gf-thesis-flows.md`.** The 2026-08-08 vision of the thesis
+> builder: its editor, key figures and devil's-advocate scoring are each retired or redesigned there.
+
 ## Vision
 
 Transform the platform from a passive evidence archive into an active legal synthesis engine.

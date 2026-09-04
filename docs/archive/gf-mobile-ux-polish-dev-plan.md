@@ -1,5 +1,8 @@
 # GF Mobile UX Polish — Dev Plan
 
+> **ARCHIVED 2026-09-04 — no successor — completed 2026-08-19.** Phases 1–3 and 5–6 shipped to staging;
+> Phase 4, the icon and chip-colour pass, was never started and is not a task by virtue of being listed here.
+
 **Status:** Phases 1–3, 5–6 items 1–10 ✅ SHIPPED TO STAGING — PR #47 (`fix/gf-mobile-ux-polish` →
 `staging`, 2026-08-18), PR #49 (`fix/gf-evidence-page-header-consistency` → `staging`, 2026-08-19),
 and PR #50 (`fix/gf-call-thesis-card-links` → `staging`, 2026-08-19, Phase 6 items 9–10), all

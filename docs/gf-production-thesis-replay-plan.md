@@ -1,5 +1,10 @@
 # Production thesis walk — replay plan
 
+> **SUPERSEDED 2026-09-04 by `docs/gf-thesis-refactor-plan.md` step 26.** Nothing is replayed into
+> production; the thesis is rewritten under the new tools. The replay rule this doc left behind
+> (§"The rule this leaves behind") stands as history. Open items triaged in
+> `docs/gf-pre-design-plans-triage-2026-09-04.md` §10.
+
 **Written 2026-08-26.** Reconstructed from staging's own MCP records, not from any document.
 Companion to `docs/gf-thesis-walk-production-handoff.md`; canonical for *what production replays and
 what it drops*.

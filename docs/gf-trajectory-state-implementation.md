@@ -1,12 +1,15 @@
 # Trajectory state — implementation reasoning
 
+> **Written before the target designs of 2026-09-02–04.** Its open items are triaged in
+> `docs/gf-pre-design-plans-triage-2026-09-04.md` §7; nothing here is a required task by virtue of being listed.
+
 Written for whoever picks this up next, including a later session of mine with none of the
 context that produced it. It records *why* the code is shaped this way, because the shape is
 not obvious and several of the obvious alternatives are wrong for reasons that took a live
 failure to discover.
 
 Companion documents: `gf-researcher-playbook.md` Steps 13–15 (the transcript and findings 24–29)
-and `gf-trajectory-state-review-request.md` (the questions put to the session that built the
+and `docs/archive/gf-trajectory-state-review-request.md` (the questions put to the session that built the
 table).
 
 ---

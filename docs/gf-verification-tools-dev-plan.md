@@ -1,5 +1,8 @@
 # Glass Fortress — Verification Tools
 
+> **Written before the target designs of 2026-09-02–04.** Its open items are triaged in
+> `docs/gf-pre-design-plans-triage-2026-09-04.md` §8; nothing here is a required task by virtue of being listed.
+
 **Status:** BUILT 2026-08-23. All three tools live as gated MCP tools; §8 records what the build
 found. This document remains canonical — §1-§7 are the design as specified, §8 is what implementing
 it changed.
