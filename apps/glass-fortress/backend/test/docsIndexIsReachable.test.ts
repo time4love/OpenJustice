@@ -36,6 +36,15 @@ import { join, relative } from 'node:path';
 // THE VACUITY GUARD IS NOT OPTIONAL. An empty scan reporting success is the
 // defect this repository has found more than once; the last case asserts the
 // scan examined documents, archived documents, and links.
+//
+// AMENDED 2026-09-04, THE SAME DAY: A FINDING CARRIES ITS DATE. The one
+// classification this scan can check mechanically is the "Findings, by date"
+// section of the index: every entry there names a date, in its filename
+// (`*-YYYY-MM-DD.md`, the convention) or in its line text (two undated files
+// predate the convention and carry the date in the line). A finding filed
+// without a date is a finding nobody can order, and the section's whole point
+// is its order. Observed red with the date struck from the framing-assessor
+// line: the case failed naming that one entry; restored, it passed.
 // ---------------------------------------------------------------------------
 
 const REPO = join(__dirname, '..', '..', '..', '..');
@@ -74,8 +83,22 @@ function existingRepoPaths(line: string): string[] {
     .filter((token) => token !== '' && existsSync(join(REPO, token)));
 }
 
+const ISO_DATE = /\d{4}-\d{2}-\d{2}/;
+const FINDINGS_HEADING = /^## Findings, by date/;
+const ANY_HEADING = /^## /;
+
 const index = readFileSync(INDEX, 'utf8');
 const indexLinks = [...index.matchAll(MARKDOWN_LINK)].map((m) => m[1] ?? '');
+
+/** The bullet lines of the index's "Findings, by date" section, and nothing outside it. */
+function findingsEntries(): string[] {
+  const lines = index.split('\n');
+  const start = lines.findIndex((line) => FINDINGS_HEADING.test(line));
+  if (start === -1) return [];
+  const body = lines.slice(start + 1);
+  const end = body.findIndex((line) => ANY_HEADING.test(line));
+  return (end === -1 ? body : body.slice(0, end)).filter((line) => line.startsWith('- '));
+}
 const everyDoc = markdownUnder(DOCS).filter((f) => f !== 'README.md');
 const archived = everyDoc.filter((f) => f.startsWith('archive/'));
 const indexed = everyDoc.filter((f) => !f.startsWith('archive/'));
@@ -125,6 +148,19 @@ describe('docs/README.md reaches every document, and the archive says where its 
       )
       .map((file) => `docs/${file} says it is ARCHIVED but is not under docs/archive/. Move it, or change the banner.`);
     expect(halfMoved).toEqual([]);
+  });
+
+  it('every entry under "Findings, by date" carries a date, in its filename or its line', () => {
+    const entries = findingsEntries();
+    const undated = entries
+      .filter((line) => !ISO_DATE.test(line))
+      .map(
+        (line) =>
+          `docs/README.md, Findings: this entry names no date — name the file *-YYYY-MM-DD.md, or put ` +
+          `the date in the line. It reads: ${line}`,
+      );
+    expect(undated).toEqual([]);
+    expect(entries.length).toBeGreaterThan(0);
   });
 
   it('examined something — an empty scan is not a pass', () => {
