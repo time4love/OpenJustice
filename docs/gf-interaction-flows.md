@@ -38,10 +38,14 @@ back a draft. It records no decision and applies no effect.
 was added to it, until it became clear that a live fetch is a special case of an archive scan: the
 archive is asked, and the page is fetched from it. All acquisition into the corpus is from Wayback.
 
-**PARKED, for their own discussion once this document is signed off** — not gaps in these flows:
-1. a page the archive does not hold
-2. a live page that blocks fetching, so acquisition needs another form — screenshot, text copy, PDF
-3. a whistleblower adding evidence — scheduled as R12 by `docs/gf-thesis-flows.md` §1
+**PARKED, and now designed** — each was named here so it would not read as a gap in these flows,
+and each is closed by `docs/gf-document-flows.md` (R12, landed 2026-09-04):
+1. a page the archive does not hold — a DOCUMENT, held, through the researcher's door, sitting on
+   the page's timeline in its own register and never diffed (its §9)
+2. a live page that blocks fetching, so acquisition needs another form — screenshot, text copy,
+   PDF — the same: one document per file, the URL and date the researcher's assertions (its §2, §9)
+3. a whistleblower adding evidence — the public's intake, sealed, addressed to a published thesis;
+   intake until a researcher cites and argues it (its §5, §6)
 
 ---
 

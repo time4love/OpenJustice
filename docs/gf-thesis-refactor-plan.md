@@ -2,8 +2,9 @@
 
 **Third of three, in implementation order.** `docs/gf-refactor-plan.md` §3 is the CORPUS (steps
 0–10) and §3b is EVIDENCE (steps 11–16); this plan is the THESIS, steps 17–26, and it begins where
-step 16 ends. **Next after this:** R12's plan, when the DOCUMENT class is designed; nothing here
-waits for it. The target is `docs/gf-thesis-flows.md`, whose appendix is the contract every step
+step 16 ends. **Next after this:** R12's plan — the DOCUMENT class is designed in
+`docs/gf-document-flows.md` (landed 2026-09-04), and its steps are their own document, chained
+after step 26; nothing here waits for it. The target is `docs/gf-thesis-flows.md`, whose appendix is the contract every step
 builds to; the reasoning is `docs/gf-architecture-target.md` §10; the test rules are the refactor
 plan's §4, unchanged, and every rule there binds here.
 
@@ -117,8 +118,8 @@ one 404.
 
 ### 24 · After publication
 
-`list_thesis_reviews` — FLAGGED, STALE_TRAJECTORY, UNARGUED, and ARRIVED as a count R12 will
-supply; `audit-theses` as A7 specifies, with the exit that proves the gate held.
+`list_thesis_reviews` — FLAGGED, STALE_TRAJECTORY, UNARGUED, and ARRIVED in the shape
+`docs/gf-document-flows.md` §5 gives it; `audit-theses` as A7 specifies, with the exit that proves the gate held.
 
 *Verified by:* on staging, a re-walk moving one cited record's content; the author's list shows it;
 `audit-theses` exits 2 before the new version and 0 after.

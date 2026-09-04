@@ -1,7 +1,8 @@
 # The factual layer's article-rules architecture — TARGET, 2026-09-02
 
 **The REASONING behind the design.** The mechanism is `docs/gf-interaction-flows.md` for the
-factual layer and `docs/gf-evidence-flows.md` for evidence, both signed off with the researcher;
+factual layer, `docs/gf-evidence-flows.md` for evidence, `docs/gf-thesis-flows.md` for the thesis
+and `docs/gf-document-flows.md` for documents, all signed off with the researcher;
 their appendices hold every shape, and nothing here restates how a thing works. What exists today
 is `docs/gf-architecture-current.md`; the route is `docs/gf-refactor-plan.md`; a researcher's day,
 read as a sequence of tool calls, is `docs/gf-researcher-day.md`.
@@ -576,3 +577,151 @@ was, pages that stay open, and one list that tells an author what they owe.
 | `ThesisGapResolution`, gaps by index, `CALL_LIVE`, `GAP_ACTIONABILITY`, `FIGURES_HEDGED`, `OFFICIAL_CAPACITY`, `FRAMING_ATTACHED`, `ANALYSIS_COMPLETE`, `ANALYSIS_WELL_FORMED` | each replaced by a predicate with one implementation, or left with no subject |
 | the browser as an editor and every research act it performed through a route | the chat is the workflow; a dialog returns a command |
 | anchoring the published version | a second meaning on a registry rotated to have one |
+
+## 11. DOCUMENTS — WHY BYTES WITH NO ARCHIVE ARE ONE CLASS, SEALED AT THE PUBLIC DOOR
+
+The document class is what comes back through the two appeals a published thesis ends in, and
+what a researcher holds of a page the archive lacks. It is the one class of record with nothing
+beneath it — no page, no archive timestamp, no second witness — and the design's whole argument is
+that this changes what can be verified, not what a record is. The mechanism is
+`docs/gf-document-flows.md`; this is why each part of it is the way it is.
+
+### 11.1 One class, because provenance is asserted
+
+Five things arrive: a whistleblower's submission, a FOIA answer to a request the platform
+published, a FOIA answer nobody requested through it, a capture of a blocked page, a capture of a
+page never archived. The first draft asked whether they were subclasses, and the answer was that
+every difference between them is something the party at the door asserts — that a source saw
+this, that a ministry sent it, that a URL served it on a date — and the platform can verify none
+of it. A `FOIA_ANSWER` row would be an unchecked claim written into the schema. What the platform
+can verify is the door: the public's, anonymous, under the terms, addressed to a published thesis;
+or a researcher's, attributed, through MCP. **One class, two doors, and every downstream
+difference is either a property of the door or a decision a researcher makes on reading.**
+
+The researcher's correction that shaped the class: the archive confers no credibility. Wayback
+captures untrustworthy sites too; what makes a ministry page a good record is `.gov.il`, and what
+makes a FOIA answer a good record is its letterhead and signature. So **custody and credibility
+are kept apart everywhere**: custody is attested by an instrument — the archive and the registry
+for a capture, the platform's receipt and commitment for a document — and credibility is a human's
+reading of the bytes, argued in the citation, never a kind.
+
+### 11.2 Why the name is the plaintext hash, and why custody follows the door
+
+Identity is a property of bytes held (evidence §2), and a document's bytes are the whole record,
+so its identity is their SHA-256 — plain, unprefixed, over the file exactly as handed over, so
+that a ministry, a journalist or the source can check it with `sha256sum` and no knowledge of the
+platform. The ciphertext hash the code used gave one letter as many names as encryptions and let
+no holder of the original recompute it.
+
+The vault promise on the public safety page — encrypted in the browser, sealed on IPFS, plaintext
+read in memory once and never stored, no key kept — is kept for everything through the public
+door. The design went through a sender's declaration of what their material is, public record or
+internal, and withdrew it twice: the platform cannot check the declaration, and a wrong one is the
+platform possessing what it must not. **Custody follows the door: the public's is sealed, always;
+the researcher's is held, always**, because a researcher has read what they hand over. The cost is
+named: a citizen-sent FOIA answer is sealed and the researcher never sees its letterhead; the way
+to a held copy is the researcher obtaining the original, which the published request lets them do
+as a citizen.
+
+Content is a version, as for every record. What is new is the line between an extractor's text —
+reproducible from the bytes at a pinned version, pinned by citations — and a model's transcription
+or description — an opinion, labelled, never cited. A vision model reads a scanned Hebrew memo
+better than any engine, and its reading is still an opinion, because two draws differ and nobody
+can recompute it. Derivation runs on the server, in memory, at receipt, for both doors: one
+extractor, one version, and a sealed document's text derived in the one moment its plaintext
+exists.
+
+### 11.3 Why every document is committed, never named, on the chain
+
+A document is not above the corpus; it is a corpus record with no page. So it is anchored at
+receipt as a capture is at acquisition, by the same module, in the deployment, as an act of
+acquisition and not of research. The one-meaning rule is answered by the category field the
+evidence design put on the registry for exactly this: a second meaning, self-describing on the
+same contract.
+
+The first draft anchored a held document by its name and a sealed one by a salted commitment. The
+researcher's question — what if a sender declares an internal document public? — showed the name
+anchor irreversible before anyone had read the file, and the door-based custody that followed
+removed the declaration; but the commitment stayed and became the rule for every document, then
+became the document's **public name**. A registry of plaintext hashes is a leak detector: an
+authority hashes its own copies and learns the platform holds that exact document, and where
+copies are individually varied, learns who had it. With the commitment as the citation token and
+the registry entry, **no hash of a copy a source held is ever published**, and the researcher's
+judgement about whether an authority varies its copies — a burden the first draft put on them —
+does not exist. The plaintext hash is served only when the file itself is, where anyone could
+compute it. Receipt is never refused for a chain outage: a whistleblower turned away may not
+return, so the anchor is owed and a standing pass pays it.
+
+### 11.4 Why the sender holds the only key, and there is no contact
+
+Two risks meet at the sealed document, and a sender can waive only one. The platform's risk —
+possessing a classified document — is the operator's, and a stranger's permission does not lift
+it, so there is no "you may decrypt" a sender can grant. The sender's risk is theirs, and what
+they can waive they already hold: the key the browser showed them once, the salt and the CID. The
+server holds the key for one call and discards it; the platform can produce nothing on any
+demand, and its promise "even from us" is literally true. The researcher reads a sealed document
+as its receipt text and the labelled opinion, never as bytes.
+
+A contact — encrypted to a key the server held — was the one piece of state an operator without
+press standing cannot protect, and the safety page's "no identity stored" was false while it
+existed. It is gone: the return channel is the published thesis, and a source who wants to say
+more sends more. The model at the door is gone too: the preview that showed a sender "the AI did
+not detect relevance" was a model deciding at the door, in front of the one person it must never
+coach. What remains for counsel, said plainly rather than hidden: the platform holds a sealed
+document's derived text at rest, on the reading that text is its own record of what a source said.
+
+### 11.5 Why what publication opens is a decision, and why it only widens
+
+For a corpus record publication opens the page. A document has no page, and whether its bytes
+name a source, carry a classification or are a public record is a fact only a reader knows. So
+what opens is decided per document by the researcher who read it, before publication, as one of
+three openings — the passage alone, the content, the bytes — and the gate refuses a version with a
+document undecided. The platform enforces that the choice is made; it cannot make it, because
+content can identify a source when few people saw it, and that is the act of publishing itself.
+Opening only widens, on the reasoning that opened pages stay open: what the public has read, it
+has read. Redaction is a document a researcher makes, with its own identity, not a mode: a part
+the platform cut would be content the platform authored under the original's name. A model's
+reading — the very metadata COMPLIANCE.md's state-secrets note fears — is published never.
+
+### 11.6 Why withdrawal is the sender's act, and what "nothing is deleted" still means
+
+An anonymous sender has one credential, the key, and only its holder can open the sealed copy;
+presenting it is proof of sending, and the platform needs no other and asks no researcher. A
+consent the platform could decline to un-give is not consent. The act it triggers, SHED, is the one
+destruction in the design beyond the rebuild's drop, defined once: it removes what the platform
+holds of the document — bytes, its pin, every derived text, every opinion — and keeps everything
+about it — identity, commitment, hashes, arrival, citations, decisions and the shed record. The
+reader of a thesis that cited it can still learn what happened; nobody can read what the sender
+took back. The text goes with the bytes, because a withdrawal that kept the text would be one in
+name, and every citing thesis is flagged and owes a new version — the evidence review's shape,
+with one new cause. The same act carries an operator cause, with a reason, so that a legal demand
+never has to be met by inventing a delete; when it is used is counsel's.
+
+### 11.7 The invariants this layer adds
+
+| invariant | why it is absolute |
+|---|---|
+| everything through the public door is sealed; everything through the researcher's is held | the platform cannot check a declaration, and a wrong one is possession |
+| a document's identity is the plaintext hash; its public name is the commitment; the identity is served only with the bytes | no hash of a copy a source held is ever published, and no researcher has to judge whether copies vary |
+| the sender holds the only key; the platform keeps no key, no plaintext of a sealed document, no contact, no sender identity | the platform cannot produce what it does not possess, on any demand |
+| a model's reading of a document is an opinion — labelled, never pinned, never cited, never published | credibility is read by a human and argued; the §114 metadata never goes public |
+| the walk touches no document; nothing is diffed against a document | a diff is the corpus's interval; a document's date is one researcher's word |
+| every cited document has an opening decided before publication, and an opening only widens | the choice is made by the person who read the bytes, and a public record is not retracted |
+| withdrawal is honoured on the key with no decision; SHED removes content and no row | consent is the sender's to withdraw; the record of what was here is not |
+| receipt is never refused for a chain outage; the anchor is owed and paid by a pass | a source turned away may not return |
+
+### 11.8 What is retired, and why
+
+| retired | why |
+|---|---|
+| subclasses of document by provenance; a sender's declaration of what their material is | provenance is asserted; the door is verified |
+| the ciphertext as a name; the concatenation of screenshots into one name | one letter, many names; a name only its author can reproduce |
+| extraction in the sender's browser | a second extractor at a version the platform cannot pin |
+| anchoring a held document by its plaintext hash | irreversible before anyone read the file; a leak detector |
+| the "you may decrypt" override; the contact; `Whistleblower` | a stranger cannot waive the operator's risk; a stored route to a source cannot be protected |
+| the model's verdict and preview at the door | a model deciding in front of the sender |
+| redaction as an opening mode | content the platform authored under the original's name |
+| a researcher deciding whether to honour a withdrawal | a consent the platform could refuse to un-give |
+| `DIRECT` and `ASSERTED` as capture provenance; a capture without an archive timestamp | a second spelling of identity with the platform's date where the archive's stands |
+| `create_evidence_from_text`, `recover_evidence_from_screenshot`, the `/submit` intake, `/confirm`, `/contact`, the screenshot-recovery route | one tool for a researcher's document; one sealed door for the public |
+| evidence A6's non-binding arm | the class it excused now satisfies the predicates |

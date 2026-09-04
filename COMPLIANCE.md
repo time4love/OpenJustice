@@ -106,6 +106,8 @@ Must be acknowledged before any anonymous document upload:
 >
 > I declare that the documents I am uploading were obtained by lawful means, and I authorise their use for the purposes of this public investigation.
 
+Structural since 2026-09-04 (`docs/gf-document-flows.md` §5): the terms are accepted before anything is sent, the hash of the text shown travels with every arrival, and an arrival without it is malformed. Every document through the public door is sealed in the sender's browser; the sender holds the only key (§5, §8 there).
+
 ---
 
 ## AI Agent Prompt Requirements
@@ -133,17 +135,23 @@ If a whistleblower uploads a classified government document and the platform pub
 
 **Mitigation pending:** Legal counsel guidance on whether editorial review of AI-extracted metadata is required before publication to a thesis.
 
+Structural since 2026-09-04 (`docs/gf-document-flows.md` §3, §7): AI-derived metadata from a document is an OPINION register — gated, labelled, never published. What is published is the researcher's text and the content they chose to open, per document, before publication — the editorial review this item asks about, as a gate. Counsel's remaining question is named there: whether a sealed document's derived text at rest is the platform's record or the authority's document (its §5).
+
 ### Privacy Law (חוק הגנת הפרטיות תשמ"א-1981)
 
 The platform processes personal data on named individuals (government officials). Operating a database of personal information may require registration with the Privacy Protection Authority (רשם מאגרי המידע). A published privacy policy is required.
 
 **Mitigation pending:** Privacy policy document + assessment of whether registration threshold is met.
 
+Facts for the policy since 2026-09-04 (`docs/gf-document-flows.md` §8): of senders the platform holds no identity, address, contact or key, by construction; documents and their derived text are kept until their sender withdraws them by presenting the key or the operator sheds them with a reason; the pinning service holds ciphertext it cannot read.
+
 ### Absence of Press Status
 
 Journalistic organisations in Israel have specific source-protection rights not available to general platforms. The platform currently has no formal press standing. This means that in response to a court order, the operator has no statutory source-protection defence that a newspaper would have.
 
 **Mitigation to consider:** Formal association with a recognised journalistic body, or obtaining legal opinion on whether the platform's investigative mission qualifies for equivalent treatment under Israeli law.
+
+Since 2026-09-04 the design's answer is to hold nothing an order could take — `docs/gf-document-flows.md` §7; the contact a court could have compelled is removed (its §5).
 
 ---
 
@@ -191,5 +199,6 @@ Violation of these rules may result in access revocation and, if content causes 
 |------|--------|
 | 2026-08-09 | Initial version — defamation risk analysis, framing rules, UI requirements |
 | 2026-08-15 | Added: state secrets risk, privacy law exposure, press status gap, open tasks section. Safety page copy reviewed and neutralised (court-defiance framing removed, key-storage claim corrected). |
+| 2026-09-04 | Pointers to docs/gf-document-flows.md under the submission terms, state secrets, privacy and press-status sections: sealing, the opinion register, no sender data, no contact. |
 
 *This document must be updated whenever new public-facing features are added that reference named individuals or make factual allegations.*
