@@ -19,8 +19,10 @@ reasoning is `docs/gf-architecture-target.md` §9 once these flows are signed of
 > composed with the factual layer's A1–A5 and never restating them.
 >
 > **SCOPE. Wayback-based evidence only.** DOCUMENT evidence — a file, pasted text, a screenshot — the
-> blocked-live-page fallback and whistleblower material are PARKED for their own discussion, and the
-> one DOCUMENT record a published thesis cites is named in LEGACY, untouched.
+> blocked-live-page fallback and whistleblower material were PARKED here and are designed in
+> `docs/gf-document-flows.md` (R12, landed 2026-09-04), which amends three clauses of this one and
+> marks each: `Evidence` gains kind DOCUMENT (A2), FLAGGED gains SHED (A3), A6's non-binding arm
+> falls. The one DOCUMENT record a published thesis cites is named in LEGACY, untouched.
 
 ---
 
@@ -105,8 +107,8 @@ identity, a cleaner invariant than a nullable column on the record.
 
 ⚠️ As built, `EvidenceType` is `DOCUMENT | FORENSIC_DIFF`, identity is over `contentHash` (the
 Readability extraction), and `create_evidence_from_url` made evidence with no record beneath it.
-The target kinds are `CAPTURE | DIFF` over the corpus record's identity. `DOCUMENT` is out of
-scope and keeps its name.
+The target kinds are `CAPTURE | DIFF` over the corpus record's identity. `DOCUMENT` was out of
+scope here; document flows §6 makes it the third kind.
 
 ---
 
@@ -716,7 +718,8 @@ nothing is migrated.
 
 **The DOCUMENT record and the published thesis are rebuilt or not, by the researcher.** The
 thesis is theirs to write again under the design, citing corpus records; the DOCUMENT class
-stays parked and its one record is not carried into the new database. `EvidenceCapture`,
+is designed in `docs/gf-document-flows.md` and its one record is not carried into the new
+database (its §10). `EvidenceCapture`,
 `SummaryCorrection`, the debate sessions on legacy diffs, the three open calibration runs and
 their eighty-eight decisions go with the database.
 
@@ -819,13 +822,12 @@ Each of these is named so that it is not read as a gap. None is decided here; ea
 it is.
 
 - **DOCUMENT evidence** — a file, pasted text, a screenshot: a record with no corpus record
-  beneath it, which this design can neither name, version, verify nor review. Its own
-  discussion, with one requirement stated from here: it needs an identity composed from bytes
-  held and a content version of its own, or nothing built here applies to it and no thesis
-  citing it can be PUBLISHABLE. The one legacy DOCUMENT record is not carried into the rebuilt
-  database (§8).
-- **The blocked-live-page fallback and whistleblower material** — parked with the factual
-  layer's list, for the same discussion as DOCUMENT evidence.
+  beneath it, which this design could neither name, version, verify nor review. Designed in
+  `docs/gf-document-flows.md`, which met the one requirement stated from here — an identity
+  composed from bytes held (its §2) and a content version of its own (its §3) — and gave the
+  class VERIFIED, CURRENT and PUBLISHABLE (its §4). The one legacy DOCUMENT record is not carried
+  into the rebuilt database (§8).
+- **The blocked-live-page fallback and whistleblower material** — the same document's §9 and §5.
 - **The thesis flows** — `docs/gf-thesis-flows.md`, signed off 2026-09-03. It takes the five
   requirements this document handed it (the pin, the argument by reference, `affirmed` only, a
   new version to re-pin, the flag beside a citation) and amends three clauses of this one where
@@ -837,8 +839,8 @@ it is.
   (`TRAJECTORIES_CURRENT`). It already has the shape this design gives evidence, pin and
   re-affirm by a new version, and must keep it; nothing here changes it, and the thesis flows
   name it beside evidence as the second thing a version cites.
-- **The return path of a FOIA answer or a whistleblower submission** — both are DOCUMENT
-  evidence, the parked class, SCHEDULED as R12 by the thesis flows §1; the thesis side of the
+- **The return path of a FOIA answer or a whistleblower submission** — both are DOCUMENTS,
+  `docs/gf-document-flows.md` §5–§6; the thesis side of the
   path — the appeals, the arrival, the gap — is theirs (T4, T6). The key-figure dossier is
   RETIRED there (T2), not re-homed: a person adds nothing to a charge, and the name search is
   the corpus search, gated.
@@ -914,17 +916,19 @@ ANCHOR_SCHEME           the registry category written on every entry: 'DOCUMENT_
                         — one constant, one importable symbol, read by WRITES_ALLOWED
 ```
 
-A capture without a `waybackTimestamp` has no CAPTURE_ID (§8, DIRECT class, parked).
+A capture without a `waybackTimestamp` has no CAPTURE_ID; what a researcher holds of such a page
+is a DOCUMENT (document flows §2, §9), and `DIRECT` is retired.
 
 ### A2. Data model
 
 ```
 Evidence                                                              ⚠️ replaces the row as built
   fileHash                @unique — ID(record); the public name
-  kind                    CAPTURE | DIFF
+  kind                    CAPTURE | DIFF | DOCUMENT       — the third kind: document flows §6, A2
   snapshotId              String? @unique       set iff kind = CAPTURE
   urlVersionDiffId        String? @unique       set iff kind = DIFF
-                          INVARIANT: exactly one of the two is set, and it matches kind —
+  documentCommitment      String? @unique       set iff kind = DOCUMENT; fileHash = the commitment
+                          INVARIANT: exactly one of the three is set, and it matches kind —
                           a CHECK constraint, not a convention
   status                  PROMOTED | WITHDRAWN
   affirmedContentVersionHash   the version a human last stood behind (§3)
@@ -1036,7 +1040,8 @@ PUBLIC_PAGE(page)       ∃ a thesis version EVER published with an EVIDENCE men
                         is a capture or diff of the page — amended by thesis flows T6: opened
                         pages stay open through a withdrawal                                (§5)
 FLAGGED(m)              m is on a published version AND
-                        (Evidence(m.fileHash).status = WITHDRAWN OR NOT CITATION_CURRENT(m))
+                        (Evidence(m.fileHash).status = WITHDRAWN OR NOT CITATION_CURRENT(m)
+                         OR SHED(record of m))     — the third arm: document flows §8, A3
                         — the flag the public page shows; its text names which
 ```
 
@@ -1162,9 +1167,8 @@ open_diff_debate · respond_in_diff_debate · promote_from_diff_debate · get_di
                                renamed without 'diff': the record is the parameter          §4
 ```
 
-`create_evidence_from_text` and `recover_evidence_from_screenshot` are the DOCUMENT class's
-and are neither kept nor retired here; they wait on that discussion (§10). Until it rules, they
-are GATED and their records are not citable under PUBLISHABLE.
+`create_evidence_from_text` and `recover_evidence_from_screenshot` are RETIRED by document
+flows §9, replaced by `add_document`, and their records were never citable here.
 
 ### A5. Routes
 
@@ -1202,10 +1206,11 @@ is.** The predicate and the gate are one implementation: the checks CALL the pre
 and never re-derive them — a second spelling of VERIFIED inside the gate is the copy that
 drifts.
 
-**The one non-binding arm, and it says what it is.** A mention of a DOCUMENT record — the
-parked class, should it ever exist in the rebuilt database — passes `EVIDENCE_VERIFIED`,
-`EVIDENCE_PINNED_CURRENT` and `EVIDENCE_DERIVED` with `binding: false` and a summary naming
-the class it cannot cover, the shape the integrity board demotes rather than hides.
+**The one non-binding arm FELL when the DOCUMENT class landed.** This design let a mention of a
+DOCUMENT record pass `EVIDENCE_VERIFIED`, `EVIDENCE_PINNED_CURRENT` and `EVIDENCE_DERIVED` with
+`binding: false` because it could define none of them for the class. Document flows §4 defines
+VERIFIED, CURRENT and derivation for a document, and the three checks bind on it (its A6). No
+check has a non-binding pass.
 
 **After publication nothing re-runs.** A published version is pinned to what it cited. FLAGGED
 is derived on every read of it (A3) and rendered beside the citation; `check_publication_
@@ -1276,9 +1281,11 @@ invariants — a step that breaks one is not a step:
 - the walk never writes evidence: no module under the walk imports an evidence writer, and
   `Evidence`, `EvidenceDecision`, `ThesisMention` have no writer outside `promote_from_debate`,
   `review_evidence` and the thesis version write — a source scan
-- no research act reaches the chain: the registry's `submit` has ONE caller, the walk's
-  anchoring, and `WRITES_ALLOWED` is evaluated in it — a source scan and a test that breaks
-  it by pointing the configuration at a contract whose index 0 is not the scheme
+- no research act reaches the chain: the registry's `submit` has ONE caller, the anchoring
+  module, which has exactly two callers — the walk on ACQUIRED and a document's receipt or its
+  standing pass (document flows §4) — and `WRITES_ALLOWED` is evaluated in it — a source scan
+  and a test that breaks it by pointing the configuration at a contract whose index 0 is not
+  the scheme, and a test that breaks it with a third caller
 - every predicate of A3 has one importable symbol and the publication gate calls it — a
   source scan that fails on a second spelling of VERIFIED, CURRENT or PUBLISHABLE
 - the retired names of A4 do not exist as tools, routes or exports — the retired-names scan

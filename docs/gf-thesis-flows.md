@@ -24,11 +24,15 @@ signed off.
 > is the implementation contract, composed with the factual layer's A1–A8 and evidence's A1–A7
 > and restating neither. Three of evidence's clauses are AMENDED here and named where they
 > are: the mention's `role` (A2), `ThesisGapResolution`'s pin (A2), and PUBLIC_PAGE (A3).
+> Four clauses of THIS document are amended by `docs/gf-document-flows.md` (R12, landed
+> 2026-09-04) and marked where they are: T1's verdict rule gains UNCHECKED, T2 gains the `#doc_`
+> kind, T5's `CITES_EVIDENCE` counts a document and the gate gains two checks, T6's ARRIVED gains
+> its shape.
 >
 > **SCOPE.** The thesis lifecycle: framing, versions, citations, the argument, gaps, publication,
 > the public page, what follows publication, history and notes, and the thesis side of the
-> return path. The DOCUMENT class is SCHEDULED as R12, not designed here — §1 says why. Bronze
-> Fortress is untouched.
+> return path. The DOCUMENT class was SCHEDULED as R12 and is designed in
+> `docs/gf-document-flows.md` — §1 says why it was not designed here. Bronze Fortress is untouched.
 
 ---
 
@@ -61,12 +65,13 @@ are THIS document's; the thing that arrives is R12's.**
   the point where the thing that arrived needs a name — which is R12's.
 - **No placeholder for the class is built here** — no citation kind, no enum, no refusal naming a
   design that does not exist. The platform must work before every design is closed, and the
-  rebuilt database holds no document (evidence §8), so nothing in these flows needs one. When R12
-  lands, it adds its citation kind to T2 and its arrival to T6, and nothing else moves.
+  rebuilt database holds no document (evidence §8), so nothing in these flows needs one. R12
+  LANDED on 2026-09-04 as `docs/gf-document-flows.md`: it added `#doc_` to T2 and the arrival's
+  shape to T6, amended the verdict rule (T1) and `CITES_EVIDENCE` (T5), and nothing else moved.
 
 **Is the scenario real?** Designed for, and not yet met: no request has been sent under the
 design, and the number of whistleblower submissions ever received is a measurement, read from
-the table when it is needed. R12 is scheduled, not parked.
+the table when it is needed. R12 was scheduled, not parked, and has landed.
 
 **WHAT A THESIS IS.** A thesis is a claim a researcher is trying to establish, written as text
 with its citations inside the text — corpus records by name, trajectories by detection-pass id,
@@ -253,7 +258,8 @@ backend      REFUSES NO_RECORDS · NOT_ACQUIRED · AWAITING_DERIVATION · NOT_YO
                whatEvidenceShows the phrase it attributes to the record, checked against that
                                  record's CURRENT content by the ONE verdict rule
                                  (audit_thesis_claims' — never a second spelling)
-                                 → phraseVerified: PRESENT | ABSENT
+                                 → phraseVerified: PRESENT | ABSENT | UNCHECKED
+                                   (document flows §3: the record's content is bytes)
                each element      the record it names is one the researcher supplied, and it
                                  is ACQUIRED — an element "filled" by a record nobody holds
                                  is UNFILLED
@@ -368,6 +374,10 @@ the hash is over those bytes; how it renders is the reader's surface (§2), not 
                    claimHash: the id pins the pass, so "removed and never restored" stays what
                    was cited when a later pass finds the claim back. TRAJECTORIES_CURRENT is its
                    currency check, unchanged (evidence §10).
+#doc_<COMMITMENT>  a DOCUMENT — the class `docs/gf-document-flows.md` designs, by the public name
+                   its §4 gives it; the mention pins a content version and references its
+                   argument exactly as #ev_ does (its §6). Added when R12 landed, 2026-09-04 —
+                   the one addition this list was reserved for
 ```
 
 **`TRACKED_URL` and `KEY_FIGURE` are RETIRED. Ruled 2026-09-03.** A page is reached through the
@@ -585,7 +595,8 @@ backend      REFUSES NO_HEAD · NOT_AUTHOR · AWAITING_DERIVATION (naming the di
              AUDITS it, mechanically, before recording (T1's rule for every model actor):
                each counter-argument's quoted sentence   a substring of the text? → quoteVerified
                each assertion about a record            checked by the ONE verdict rule
-                                                         → phraseVerified: PRESENT | ABSENT
+                                                         → phraseVerified: PRESENT | ABSENT |
+                                                           UNCHECKED (document flows §3)
              appends ONE ThesisAnalysis row: versionId · inputFingerprint · the opinion, with
                every verdict beside its assertion · model · promptVersion · runAt
              ← the analysis, labelled AI analysis; the suggested gaps as candidates, not gaps
@@ -734,11 +745,13 @@ that says so:
 |---|---|---|
 | `HEAD_VERSION` | hard | a version exists and is not the published one — publishing the published version is NOTHING_NEW |
 | `CLAIM_FRAMED` | hard | CLAIM_FRAMED(head) (T1): the claim was chosen after an assessed round, under this provision |
-| `CITES_EVIDENCE` | hard | at least one EVIDENCE mention — a thesis with none argues from nothing the corpus holds |
+| `CITES_EVIDENCE` | hard | at least one EVIDENCE or DOCUMENT mention (document flows A6) — a thesis with none argues from nothing the corpus holds |
 | `TRAJECTORIES_RESOLVE` | hard | every cited trajectory id resolves to a stored detection pass |
 | `TRAJECTORIES_CURRENT` | hard | no cited trajectory is contradicted by the newest pass; a stale one is re-pinned by a new version, as evidence is |
 | `ANALYSIS_CURRENT` | hard | CURRENT_ANALYSIS(head) exists (T4): the text being published is the text that was criticised; a stale analysis is named, never run |
 | `GAPS_DECIDED` | hard | no gap on the list is OPEN — every one is CITED, REQUESTED, CALLED, CONCEDED or DISMISSED (T4); mechanical, replacing the assessor's actionability opinion |
+| `DOCUMENT_OPENING_DECIDED` | hard | every `#doc_` mention of the head has an opening decided, and none is BYTES on a sealed document — document flows §7, A6 |
+| `DOCUMENT_QUOTES_PRESENT` | hard | every quoted span of a paragraph carrying a `#doc_` token is PRESENT or UNCHECKED in the content the platform holds; ABSENT refuses — document flows §7, A6 |
 | `RATIONALE_SUBSTANCE` | hard | the publication assessor: did the rationale ARGUE — the debate's question of the whole; MERIT is advisory and recorded |
 | `PUBLIC_INTEREST_STATEMENT` | hard | present on the thesis (COMPLIANCE.md rule 5) |
 | `NAMES_NO_PERSON` | hard | the assessor lists every personal name in the text; the list is empty. A published version names offices, units and roles (T2); the corpus records beneath it carry the names as the pages said them |
@@ -857,8 +870,9 @@ backend      ← one entry per thing owed on the caller's theses, oldest first:
                              withdrawn (reason) or content moved (old beside new, the E3
                              decision that moved it) — and the command: a new version
                STALE_TRAJECTORY  a published or head citation the newest pass contradicts
-               ARRIVED       N intake items addressed to gap G of thesis T through the call or
-                             the request — the count and the gap; what they are is R12's
+               ARRIVED       an arrival addressed to thesis T and gap G, or to T alone — its
+                             documents by commitment, when it arrived, and the command:
+                             get_arrivals (document flows §5)
                UNARGUED      the head cites a record with no argument (T2's list, repeated
                              here so one read answers the question)
              an empty list is an answer
@@ -918,18 +932,17 @@ performs under a legal demand is COMPLIANCE.md's question, out of scope here and
 A whistleblower's submission answering a call, or a citizen's FOIA answer sent in through the
 request's instruction, arrives through the public's intake channel addressed to a thesis and a
 gap — both appeals carry the gap id. From here the flow is three acts this document already
-has, once R12 has given the arrived thing a name and a standing:
+has, and `docs/gf-document-flows.md` gives the arrived thing its name and standing (its §2–§4):
 
 ```
 1  the author is told     list_thesis_reviews: ARRIVED, gap G, N items — intake, not evidence
-2  the author cites it    a new version names it (T2, the citation kind R12 adds) and argues
+2  the author cites it    a new version names it (T2, `#doc_`) and argues
                           it (T3) — promoted in light of the thesis, as every record is
 3  the gap closes         decide_gap CITED, naming the citation (T4); publish again (T5)
 ```
 
-Until R12 lands, an arrived item is intake with no name, and nothing in these flows pretends
-otherwise: the author is told it exists and the gap stays REQUESTED or CALLED. What an item
-IS, how it is held, and what it takes to become a record are R12's (§1).
+An arrived item is a DOCUMENT: what it is, how it is held, and what it takes to become a
+record are `docs/gf-document-flows.md` §1–§6.
 
 ⚠️ As built, nothing tells an author that a published citation is flagged — the gate does not
 re-run and no read lists it; `unpublish_thesis` is any researcher's, sets the pin to null with
@@ -1156,13 +1169,12 @@ is the rebuild's drop (§11), once per environment, in its own session.
 
 Each is named so that it is not read as a gap. None is decided here; each says whose it is.
 
-- **The DOCUMENT class** — what a FOIA answer or a whistleblower's submission IS: its identity
-  from bytes held, its content version, its standing, what publication opens for it, and the
-  path from the public's intake to a record a thesis can cite. R12, scheduled (§1). Until it
-  lands an arrived item is intake with no name, the author is told it exists, and the gap it
-  addresses stays REQUESTED or CALLED (T6).
+- **The DOCUMENT class** — designed in `docs/gf-document-flows.md` (R12, landed 2026-09-04):
+  identity, content, standing, intake, citation, what publication opens, withdrawal, the
+  researcher's door. This document took from it `#doc_` (T2), the arrival's shape (T6),
+  UNCHECKED (T1) and two checks (T5, A6), and nothing else.
 - **The public's intake channel** — the submission terms, the encryption, the contact — the
-  public's pipeline, as the prosecutor plan rules; R12 designs its far end.
+  public's pipeline, as the prosecutor plan rules; `docs/gf-document-flows.md` §5 designs its far end.
 - **The Prosecutor's build** — its prompt, which provisions beyond Articles 1 and 10, its cost;
   this document fixed its hook and nothing else (§10).
 - **The public page's rendering** — what a resolved citation, a flag, a request, a call, the
@@ -1337,7 +1349,7 @@ ProsecutionRun                                                     later (§10)
 
 REMOVED from the schema: ResearchSession · ResearchSessionEvent · ResearchSessionEventType ·
 ResearchSessionStatus · ThesisGapResolution · KeyFigure · ThesisVersionStatus · MentionType's
-KEY_FIGURE and TRACKED_URL · Whistleblower's link to Evidence by fileHash (R12's to redraw)
+KEY_FIGURE and TRACKED_URL · Whistleblower — removed entirely by document flows §5 and §10
 ```
 
 **Nothing is deleted, ever, after the rebuild.** Rows are appended; pointers move forward;
@@ -1395,7 +1407,7 @@ THE_REQUESTS(t)         likewise, REQUESTED, each request
 HISTORY(t)              every row naming t, in createdAt order, attributed              (§9)
 REVIEWS(researcher)     for each thesis they author: FLAGGED mentions of PUBLISHED(t) ·
                         STALE_TRAJECTORY mentions of PUBLISHED(t) and HEAD(t) · UNARGUED(HEAD(t))
-                        · ARRIVED intake items per gap (R12 supplies the count)         (T6)
+                        · ARRIVED(t) (document flows A3)                                (T6)
 ```
 
 **Every predicate is computed on read and none is stored.** Where one is expensive — VERIFIED
@@ -1539,8 +1551,8 @@ start_tutorial                 the tutorial's own change; its COMMON_RULES cite 
 preview_diff_classification    an instrument, not a research act (researcher's day)
 ```
 
-`create_evidence_from_text` and `recover_evidence_from_screenshot` remain R12's, as evidence A4
-rules: GATED, their records not citable.
+`create_evidence_from_text` and `recover_evidence_from_screenshot` are RETIRED by document
+flows §9, replaced by `add_document`.
 
 ### A5. Routes
 
@@ -1565,8 +1577,9 @@ GET /api/thesis/:id/versions/:v    a version that was ever published — the his
 `POST|DELETE /:id/gaps/:gapIndex/resolve`, `POST /:id/foia-request`,
 `POST /:id/provenance/repair`, `GET /:id/provenance` (model opinions are gated reads through
 MCP), `/mentions/figures`, `/mentions/evidence`, `/figures`, `/figures/:id`.
-`POST /:id/gaps/:gapIndex/whistleblower` and its preview are the public's intake, R12's to
-redraw; `argumentRoutes` and `chatRoutes` are outside these flows.
+`POST /:id/gaps/:gapIndex/whistleblower` and its preview are re-shaped into
+`POST /api/thesis/:id/intake` by document flows A5; `argumentRoutes` and `chatRoutes` are
+outside these flows.
 
 ### A6. The checks a thesis runs
 
@@ -1586,11 +1599,13 @@ evidence checks are evidence A6's, unchanged, and run first. Order and ids:
 12 TRAJECTORIES_CURRENT    hard  15 RATIONALE_SUBSTANCE      hard   the assessor; MERIT advisory
 13 ANALYSIS_CURRENT        hard  16 NAMES_NO_PERSON          hard   the assessor's list, empty
                                  17 ALLEGATIONS_FRAMED       advisory
+18 DOCUMENT_OPENING_DECIDED hard 19 DOCUMENT_QUOTES_PRESENT  hard   document flows A6
 ```
 
 **There is no non-binding pass.** Evidence A6's one arm — a DOCUMENT mention passing with
-`binding: false` — has no population until R12, and R12 decides whether it survives. Every check
-above binds or is advisory by name.
+`binding: false` — FELL when R12 landed: document flows §4 defines VERIFIED, CURRENT and
+derivation for a document, and the three checks bind on it. Every check above binds or is
+advisory by name.
 
 **After publication nothing re-runs** (evidence A6). `check_publication_readiness` on a thesis
 whose head is its published version reports FLAGGED and STALE_TRAJECTORY as information and

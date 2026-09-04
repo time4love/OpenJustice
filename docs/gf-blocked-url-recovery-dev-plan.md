@@ -1,5 +1,11 @@
 # GF Blocked-URL Evidence Recovery — Dev Plan
 
+> **SUPERSEDED 2026-09-04 by `docs/gf-document-flows.md` §9.** A page the archive lacks or that
+> blocks fetching yields a DOCUMENT, held, through the researcher's door — one document per file,
+> the URL and date the researcher's assertions, in its own register on the page's timeline, never
+> diffed. The permission model, the multi-screenshot record, the reviewer page and the `DIRECT`
+> fallback below each have a successor there or none. Kept as the record of what was built.
+
 **Status:** Phase 1 ✅ DONE 2026-08-20, committed on `refactor/gf-evidence-shared-helpers`
 (`c13baba`), pushed, PR not yet opened. Phase 2 ✅ DONE 2026-08-20, committed on
 `schema/gf-evidence-additional-screenshot-urls` (`a3496fe`), pushed, PR not yet opened, migration
