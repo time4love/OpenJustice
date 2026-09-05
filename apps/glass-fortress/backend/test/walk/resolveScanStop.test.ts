@@ -3,7 +3,7 @@ jest.mock('../../src/lib/prisma', () => {
     trackedUrl: { findUnique: jest.fn(), update: jest.fn() },
     cdxIndexEntry: { findFirst: jest.fn(), update: jest.fn() },
     rule: { findMany: jest.fn(), create: jest.fn(), update: jest.fn() },
-    pageDecision: { findMany: jest.fn(), create: jest.fn() },
+    pageDecision: { findMany: jest.fn(), findFirst: jest.fn(), create: jest.fn() },
   };
   prisma['$transaction'] = jest.fn(async (arg: unknown) =>
     typeof arg === 'function' ? (arg as (tx: unknown) => Promise<unknown>)(prisma) : Promise.all(arg as Promise<unknown>[]),
@@ -65,6 +65,7 @@ const rulesFind = delegate('rule')['findMany'] as Mock;
 const ruleCreate = delegate('rule')['create'] as Mock;
 const ruleUpdate = delegate('rule')['update'] as Mock;
 const decisionsFind = delegate('pageDecision')['findMany'] as Mock;
+const decisionFindFirst = delegate('pageDecision')['findFirst'] as Mock;
 const decisionCreate = delegate('pageDecision')['create'] as Mock;
 const transaction = (prisma as unknown as { $transaction: Mock }).$transaction;
 
@@ -94,8 +95,12 @@ function pageWith(rowStatus = 'PENDING_JUDGEMENT', draftCapture: string | null =
 const decisionsCreated = () =>
   decisionCreate.mock.calls.map(([call]: [{ data: Record<string, unknown> }]) => call.data);
 
-async function resolve(reason: string | undefined = REASON, resolution = 'BAD_CAPTURE'): Promise<Record<string, unknown>> {
-  return JSON.parse(await resolveScanStopHandler({ url: URL, capture: T14, resolution, reason })) as Record<string, unknown>;
+/** "No reason at all": a sentinel, because an explicit `undefined` would take the helper's default. */
+const MISSING = Symbol('missing reason');
+
+async function resolve(reason: string | typeof MISSING = REASON, resolution = 'BAD_CAPTURE'): Promise<Record<string, unknown>> {
+  const input = { url: URL, capture: T14, resolution, ...(reason === MISSING ? {} : { reason }) };
+  return JSON.parse(await resolveScanStopHandler(input)) as Record<string, unknown>;
 }
 
 beforeEach(() => {
@@ -105,6 +110,16 @@ beforeEach(() => {
   rulesFind.mockResolvedValue([r1]);
   decisionsFind.mockResolvedValue(log([r1], [D.corrected(T09), D.accepted(T09)]));
   decisionCreate.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({ id: `d${String(data['sequence'])}`, ...data }));
+  // A7: the page log reads the page's last sequence inside the transaction.
+  // The mock answers with the last in the log this test set, or the last this
+  // test has created. RULED 2026-09-05 (Q1 of step 3): a mock-shape
+  // amendment, no assertion touched.
+  decisionFindFirst.mockImplementation(async () => {
+    const inLog = ((await decisionsFind()) as { sequence: number }[]).map((d) => d.sequence);
+    const created = decisionsCreated().map((d) => d['sequence'] as number);
+    const last = Math.max(0, ...inLog, ...created);
+    return last === 0 ? null : { sequence: last };
+  });
   rowUpdate.mockResolvedValue({});
   trackedUpdate.mockResolvedValue({});
 });
@@ -134,7 +149,7 @@ describe('resolve_scan_stop — refusals, as JSON, with nothing written', () => 
 
   // A SILENT HOLE IN THE RECORD IS THE ONE OUTCOME THIS CORPUS DOES NOT PERMIT.
   it('refuses a missing reason, and a blank one', async () => {
-    for (const reason of [undefined, '   ']) {
+    for (const reason of [MISSING, '   '] as const) {
       jest.clearAllMocks();
       pageWith();
       await expect(resolve(reason)).resolves.toEqual({ error: expect.stringContaining('reason'), code: 'REASON_REQUIRED' });
@@ -191,7 +206,10 @@ describe('resolve_scan_stop — the row', () => {
     await resolve();
     expect(rowUpdate).toHaveBeenCalledWith({
       where: { id: `row-${T14}` },
-      data: { status: 'SKIPPED', reason: REASON, heldBody: null, stop: null },
+      // SQL NULL is Prisma.DbNull on a nullable Json column; it reads back as
+      // null, which is what every derivation compares against. RULED
+      // 2026-09-05 (Q8 of step 3): the suite saying what the client can do.
+      data: { status: 'SKIPPED', reason: REASON, heldBody: null, stop: Prisma.DbNull },
     });
   });
 

@@ -2,9 +2,10 @@ import { z } from 'zod';
 import { CdxEntryStatus, type Prisma } from '@prisma/client';
 import { prisma } from '../../lib/prisma';
 import { getResearcherId } from '../../context/researcherContext';
-import { WaybackScraper } from '../../services/WaybackScraper';
+import type { WaybackScraper } from '../../services/WaybackScraper';
 import { rulesetIdAt, type Outcome } from '../derivations';
-import { loadWorkListRows } from '../rows';
+import { loadWorkListRows, snapshotDateOf } from '../rows';
+import type { Refusal } from '../refusals';
 
 // ---------------------------------------------------------------------------
 // survey_wayback_captures — docs/gf-interaction-flows.md Phase 0 and A5.
@@ -50,11 +51,6 @@ interface CdxPage {
   hasMore: boolean;
 }
 
-interface Refusal {
-  error: string;
-  code: 'NO_RESEARCHER' | 'ARCHIVE_UNAVAILABLE';
-}
-
 interface Survey {
   trackedUrlId: string;
   created: boolean;
@@ -91,11 +87,6 @@ async function askEveryPage(scraper: WaybackScraper, url: string): Promise<CdxPa
   }
 }
 
-/** YYYYMMDDHHMMSS → YYYY-MM-DD. */
-function isoDate(waybackTimestamp: string): string {
-  return `${waybackTimestamp.slice(0, 4)}-${waybackTimestamp.slice(4, 6)}-${waybackTimestamp.slice(6, 8)}`;
-}
-
 /** Captures whose digest differs from the one immediately before, the first counting. */
 function byteDistinctCount(rows: readonly CdxRow[]): number {
   let count = 0;
@@ -105,6 +96,27 @@ function byteDistinctCount(rows: readonly CdxRow[]): number {
     previous = row.digest;
   }
   return count;
+}
+
+/**
+ * The answer with one row per timestamp, the first occurrence kept. The index
+ * has been seen reporting one capture twice in a single answer (the Walla page,
+ * 2026-09-05); a capture is its timestamp (A1), and A2's key on (page,
+ * timestamp) would reject the second copy at the insert — a throw where A5
+ * says a refusal. De-duplicated BEFORE the filter against held rows, so a new
+ * page and a surveyed page see the same answer.
+ *
+ * `captures` is counted AFTER this: it is the count of distinct captures —
+ * Phase 0's "the archive's activity" is captures, not index rows — while each
+ * cdxQuery.rowCount keeps the archive's raw count, the answer as given.
+ * Ruled 2026-09-05.
+ */
+function firstPerTimestamp<T extends CdxRow>(rows: readonly T[]): T[] {
+  const byTimestamp = new Map<string, T>();
+  for (const row of rows) {
+    if (!byTimestamp.has(row.timestamp)) byTimestamp.set(row.timestamp, row);
+  }
+  return [...byTimestamp.values()];
 }
 
 export async function surveyWaybackCapturesHandler(input: { url: string }): Promise<string> {
@@ -118,13 +130,18 @@ export async function surveyWaybackCapturesHandler(input: { url: string }): Prom
 
   let pages: CdxPage[];
   try {
+    // Loaded where the archive is asked, never at import: WaybackScraper
+    // reaches jsdom, whose dependency chain is ESM-only and unloadable in the
+    // unit jest project (refactor plan §8, the jsdom boundary). A failure to
+    // load reads as the archive failing to answer.
+    const { WaybackScraper } = await import('../../services/WaybackScraper');
     pages = await askEveryPage(new WaybackScraper(), input.url);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     const refusal: Refusal = { error: `The archive's index could not be read: ${message}`, code: 'ARCHIVE_UNAVAILABLE' };
     return JSON.stringify(refusal);
   }
-  const reported = pages.flatMap((page) => page.rows.map((row) => ({ ...row, observedAt: page.queriedAt })));
+  const reported = firstPerTimestamp(pages.flatMap((page) => page.rows.map((row) => ({ ...row, observedAt: page.queriedAt }))));
 
   const survey = await prisma.$transaction(async (tx: Prisma.TransactionClient): Promise<Survey> => {
     const trackedUrlId =
@@ -205,7 +222,7 @@ export async function surveyWaybackCapturesHandler(input: { url: string }): Prom
       created: existingPage === null,
       captures: reported.length,
       byteDistinct: byteDistinctCount(page),
-      span: first !== undefined && last !== undefined ? { from: isoDate(first.timestamp), to: isoDate(last.timestamp) } : null,
+      span: first !== undefined && last !== undefined ? { from: snapshotDateOf(first.timestamp), to: snapshotDateOf(last.timestamp) } : null,
       held: page.filter((row) => row.outcome === 'ACQUIRED').length,
       appended: fresh.length,
       unservable: page.filter((row) => row.outcome === 'UNSERVABLE').length,

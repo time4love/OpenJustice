@@ -32,7 +32,14 @@ import {
   abandonArticleRulesSchema,
   abandonArticleRulesHandler,
 } from './tools/articleRuleTools';
-import { surveyWaybackCapturesSchema, surveyWaybackCapturesHandler } from '../walk/tools';
+import {
+  surveyWaybackCapturesSchema,
+  surveyWaybackCapturesHandler,
+  approveArticleRulesSchema,
+  approveArticleRulesHandler,
+  resolveScanStopSchema,
+  resolveScanStopHandler,
+} from '../walk/tools';
 import { createThesisDraftSchema, createThesisDraftHandler } from './tools/createThesisDraft';
 import { addThesisVersionSchema, addThesisVersionHandler } from './tools/addThesisVersion';
 import { citeTrajectoriesSchema, citeTrajectoriesHandler } from './tools/citeTrajectories';
@@ -783,6 +790,58 @@ export function createMcpServer(): McpServer {
     },
     async (input) => ({
       content: [{ type: 'text' as const, text: await surveyWaybackCapturesHandler(input) }],
+    }),
+  );
+
+  // -------------------------------------------------------------------------
+  // Tools: approve_article_rules · resolve_scan_stop  [WRITE — the page's log]
+  //
+  // THE WALK'S TWO ANSWERS AT A STOP — docs/gf-interaction-flows.md MARKING
+  // and Flow 2, built at refactor step 3 BESIDE the old calibration. A capture
+  // is named by its page's URL and its wayback timestamp, nothing else (A1).
+  // Neither touches the old tables; the old marking tools above keep working
+  // until step 8. The new get_article_rules, list_captures and
+  // reset_article_calibration are built and NOT registered: the old handlers
+  // own those names until the switch (refactor plan §8).
+  // -------------------------------------------------------------------------
+  server.registerTool(
+    'approve_article_rules',
+    {
+      description:
+        'PROMOTE THE DRAFT YOU HANDED BACK FROM THE MARKING PAGE — the one command whichever answer ' +
+        'it was. CONTINUE (unchanged draft), CORRECT (changed selectors) and TRUST (rules whose removals ' +
+        'need no more review) all end here: new selectors become rules in force from THIS capture; ' +
+        'removed ones end here; trusted ones are recorded; the capture is accepted under the rules ' +
+        'now in force; the draft is cleared. Names the page by url and the capture by its 14-digit ' +
+        'wayback timestamp — paste the line the page shows. A draft that leaves NO rule in force ' +
+        'needs `rules: 0`, stated, never assumed. Refuses NO_DRAFT, DRAFT_NOT_RETURNED, ' +
+        'DRAFT_FOR_OTHER_CAPTURE (the wrong page is open), CAPTURE_NOT_MARKABLE, ' +
+        'EMPTY_RULESET_UNCONFIRMED and STALE_SEQUENCE (someone else decided on this page first — ' +
+        're-read). Then scan_captures acquires the capture; nothing else does.',
+      inputSchema: approveArticleRulesSchema,
+    },
+    async (input) => ({
+      content: [{ type: 'text' as const, text: await approveArticleRulesHandler(input) }],
+    }),
+  );
+
+  server.registerTool(
+    'resolve_scan_stop',
+    {
+      description:
+        'THE ONE ANSWER AT A STOP THAT IS NOT A DRAFT: this capture does not speak. BAD_CAPTURE ' +
+        'records a truncated archive page, a paywall redirect, anything a human has looked at and ' +
+        'judged unusable — with a REQUIRED reason, because a silent hole in the record is the one ' +
+        'outcome this corpus does not permit. The capture becomes SKIPPED, its held bytes are ' +
+        'discarded, no snapshot is ever made of it, and the rules are untouched however many bad ' +
+        'captures occur in a row. Every other answer — CONTINUE, CORRECT, TRUST — is given in the ' +
+        'marking page and promoted by approve_article_rules. Names the page by url and the capture ' +
+        'by its 14-digit wayback timestamp. Refuses NOT_PENDING, REASON_REQUIRED, INVALID_RESOLUTION ' +
+        'and STALE_SEQUENCE.',
+      inputSchema: resolveScanStopSchema,
+    },
+    async (input) => ({
+      content: [{ type: 'text' as const, text: await resolveScanStopHandler(input) }],
     }),
   );
 

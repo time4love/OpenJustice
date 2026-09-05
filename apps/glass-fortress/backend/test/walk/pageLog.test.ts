@@ -215,18 +215,32 @@ describe('one implementation — by source scan', () => {
     expect(modulesWith("'P2002'")).toEqual(['pageLog.ts']);
   });
 
-  // Every write handler is one transaction, and nothing writes outside it:
-  // tools.ts reaches the database through `tx.` inside `$transaction`
-  // callbacks, never through `prisma.<delegate>.<write>` directly.
-  it('tools.ts holds one $transaction per write tool and no direct prisma write', () => {
-    const file = join(WALK, 'tools.ts');
-    expect(tsFiles(WALK).map((f) => f.slice(WALK.length + 1))).toContain('tools.ts');
-    const code = tsFiles(WALK).some((f) => f.endsWith('tools.ts')) ? readCode(file) : '';
-    const handlers = code.match(/export async function \w+Handler\(/g) ?? [];
-    const writeHandlers = handlers.filter((h) => !/get\w*Handler|list\w*Handler/.test(h));
+  // Every write handler is one transaction, and nothing writes outside it.
+  // RULED 2026-09-05 (Q2 of step 3): the tool surface is a DIRECTORY, one
+  // file per tool with an index — landed at step 2 — so the property is held
+  // over src/walk/tools/*.ts: five write handlers across the tool files, each
+  // write-tool file holding exactly one $transaction, and no file under tools/
+  // reaching the database through `prisma.<delegate>.<write>` directly — every
+  // write goes through `tx.` inside the callback. RED on the count of five
+  // until step 5 lands scan_captures, by construction.
+  it('the tool files hold five write handlers, one $transaction each, and no direct prisma write', () => {
+    const toolFiles = tsFiles(join(WALK, 'tools')).filter((f) => !f.endsWith('/index.ts'));
+    expect(toolFiles.length).toBeGreaterThan(0);
+    const handlerOf = (code: string) => code.match(/export async function (\w+Handler)\(/g) ?? [];
+    const isWriteHandler = (handler: string) => !/get\w*Handler|list\w*Handler/.test(handler);
+    const writeFiles = toolFiles.filter((f) => handlerOf(readCode(f)).some(isWriteHandler));
+    const writeHandlers = writeFiles.flatMap((f) => handlerOf(readCode(f)).filter(isWriteHandler));
     expect(writeHandlers).toHaveLength(5);
-    expect((code.match(/\$transaction\(/g) ?? []).length).toBe(5);
-    expect(code.match(/\bprisma\.\w+\.(?:create|createMany|update|updateMany|upsert|delete|deleteMany)\(/)).toBeNull();
+    for (const file of writeFiles) {
+      const transactions = (readCode(file).match(/\$transaction\(/g) ?? []).length;
+      expect({ file: file.slice(WALK.length + 1), transactions }).toEqual({ file: file.slice(WALK.length + 1), transactions: 1 });
+    }
+    for (const file of toolFiles) {
+      expect({ file: file.slice(WALK.length + 1), direct: readCode(file).match(/\bprisma\.\w+\.(?:create|createMany|update|updateMany|upsert|delete|deleteMany)\(/) }).toEqual({
+        file: file.slice(WALK.length + 1),
+        direct: null,
+      });
+    }
   });
 
   it('DETECTS a direct write and a second create site — proven against decoys', () => {

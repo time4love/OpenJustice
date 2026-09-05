@@ -6,3 +6,8 @@
 // ---------------------------------------------------------------------------
 
 export { surveyWaybackCapturesSchema, surveyWaybackCapturesHandler } from './surveyWaybackCaptures';
+export { approveArticleRulesSchema, approveArticleRulesHandler } from './approveArticleRules';
+export { resolveScanStopSchema, resolveScanStopHandler } from './resolveScanStop';
+export { resetArticleCalibrationSchema, resetArticleCalibrationHandler } from './resetArticleCalibration';
+export { getArticleRulesSchema, getArticleRulesHandler } from './getArticleRules';
+export { listCapturesSchema, listCapturesHandler } from './listCaptures';

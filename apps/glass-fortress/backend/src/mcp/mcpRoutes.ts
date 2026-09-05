@@ -124,6 +124,11 @@ export const WRITE_TOOLS = new Set([
   // attributed to the researcher and writes work-list rows — a write on its
   // face, and one CDX query per fifty captures besides.
   'survey_wayback_captures',
+  // MARKING's one command and Flow 2's one non-draft answer (refactor step 3).
+  // Both write the page's decision log, attributed; both refuse without a
+  // researcher — the gate supplies the identity the handler refuses without.
+  'approve_article_rules',
+  'resolve_scan_stop',
   'create_thesis_draft',
   'add_thesis_version',
   // Writes a new ThesisVersion. Cheaper and narrower than add_thesis_version —
