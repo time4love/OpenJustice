@@ -94,6 +94,9 @@ timestamp match an existing `UrlSnapshot` is ACQUIRED with that id). `admitUrl` 
 
 *Leaves working:* the old scan, untouched. *Verified by:* A5's survey contract green; the legacy join
 proven on the staging corpus — every existing snapshot has a row.
+*Verified on staging 2026-09-05:* landed as PR #351; `held` equalled each page's snapshot count
+(7, 22, 83 = 112) — `docs/gf-walk-step-2-survey-verified-2026-09-05.md`, which also owes step 3
+one change (the archive can report a timestamp twice).
 
 ### 3 · The page log and the rules
 
@@ -121,6 +124,14 @@ walk is allowed to store anything.
 *Leaves working:* everything. *Verified by:* A4 green; the dated measurement doc.
 
 ### 5 · The walk, writing
+
+> **BEFORE THIS STEP ON STAGING — the rebuild, early (§9.6, decided 2026-09-05).** The rebuild's
+> sub-steps of evidence §8 — measure, ledger, deploy the fresh registry, rotate the configuration,
+> drop the database in its own cleanup session, survey and walk — run on staging after step 4's
+> measurements and before this step, the first that writes to the chain. From here staging builds
+> on the target schema and a registry with one meaning from index zero; the three marking walks'
+> rules go with the database, as step 9 already sends them. Production's rebuild stays at SHIP.
+> Ruled in `docs/gf-walk-step-2-survey-verified-2026-09-05.md`.
 
 The outcomes on the work-list row; held bytes while PENDING_JUDGEMENT; digest verification; the
 store-and-anchor step, which needs `recordCapture` split so the walk can call storage and anchoring
@@ -499,7 +510,8 @@ is judged by the one test the researcher already applies — were the reviewer's
 they would have relayed by hand — and by the measured throughput, before anything harder is
 parallelised. After it, this section gains what the pilot changed.
 
-**Proposed on 2026-09-03 and NOT decided:** cutting staging over early — running the rebuild's
+**Proposed on 2026-09-03; DECIDED 2026-09-05 — taken, placed between step 4 and step 5 (see the note
+at step 5):** cutting staging over early — running the rebuild's
 steps 1–5 on staging before the evidence and thesis tracks, so they build against an empty database
 on the target schema written as one baseline migration, instead of additive steps followed by a
 drop. It removes the coexistence stretch on staging at the cost of the three marking walks' rules,
