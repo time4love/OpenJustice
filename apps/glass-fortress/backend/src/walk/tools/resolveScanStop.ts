@@ -4,7 +4,7 @@ import { prisma } from '../../lib/prisma';
 import { getResearcherId } from '../../context/researcherContext';
 import { rulesetIdAt, type Rule, type Decision } from '../derivations';
 import { loadWorkListRow } from '../rows';
-import { appendDecisions } from '../pageLog';
+import { appendDecisions, WRITE_TRANSACTION } from '../pageLog';
 import { clearDraft } from '../draft';
 import { answer, refusal, shared, type Refusal } from '../refusals';
 
@@ -70,7 +70,7 @@ export async function resolveScanStopHandler(input: ResolveInput): Promise<strin
     }
     const reason = input.reason?.trim() ?? '';
     if (reason.length === 0) return shared.reasonRequired('A skip');
-    return prisma.$transaction((tx: Prisma.TransactionClient) => skip(tx, researcherId, input.url, input.capture, reason));
+    return prisma.$transaction((tx: Prisma.TransactionClient) => skip(tx, researcherId, input.url, input.capture, reason), WRITE_TRANSACTION);
   });
 }
 

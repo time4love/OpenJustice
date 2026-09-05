@@ -67,6 +67,19 @@ export type PageDecisionData = Pick<
   'trackedUrlId' | 'sequence' | 'type' | 'researcherId' | 'waybackTimestamp' | 'ruleId' | 'reason' | 'rulesetId'
 >;
 
+/**
+ * THE WINDOW EVERY WRITE TOOL'S TRANSACTION IS OPENED WITH — an operational
+ * parameter (A8), stated once and passed by every `$transaction` under
+ * tools/, which pageLog.test.ts holds by scan. Prisma's unstated default is
+ * five seconds, and the staging exercise of 2026-09-06 found an approval of
+ * seventeen rules rolling back under it — Railway to Supabase, one round trip
+ * per write. `maxWait` is the wait for a connection; `timeout` the window a
+ * write tool has once it holds one. Both generous: a write tool that runs long
+ * is a slow link, never a judgement, and a rollback costs the researcher the
+ * whole marking.
+ */
+export const WRITE_TRANSACTION = { maxWait: 10_000, timeout: 60_000 } as const;
+
 export class StaleSequenceError extends Error {
   constructor(
     readonly trackedUrlId: string,

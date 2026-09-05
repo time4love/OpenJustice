@@ -5,7 +5,7 @@ import { getResearcherId } from '../../context/researcherContext';
 import { liveRules, rulesInForce, rulesetIdAt, trusted, type Rule, type Decision } from '../derivations';
 import { loadWorkListRow } from '../rows';
 import { clearDraft } from '../draft';
-import { appendDecisions, asDecision, type DecisionEntry } from '../pageLog';
+import { appendDecisions, asDecision, WRITE_TRANSACTION, type DecisionEntry } from '../pageLog';
 import { answer, refusal, shared, type Refusal } from '../refusals';
 
 // ---------------------------------------------------------------------------
@@ -111,7 +111,7 @@ export async function approveArticleRulesHandler(input: ApproveInput): Promise<s
   return answer(async () => {
     const researcherId = getResearcherId();
     if (researcherId === null) return shared.noResearcher('An approval');
-    return prisma.$transaction((tx: Prisma.TransactionClient) => approve(tx, researcherId, input));
+    return prisma.$transaction((tx: Prisma.TransactionClient) => approve(tx, researcherId, input), WRITE_TRANSACTION);
   });
 }
 
@@ -189,20 +189,22 @@ async function approve(tx: Prisma.TransactionClient, researcherId: string, input
     const corrected = (await appendDecisions(tx, page.id, [stamp({ type: 'RULESET_CORRECTED', waybackTimestamp: t })])).at(0);
     if (corrected === undefined) throw new Error('appendDecisions returned no row for RULESET_CORRECTED');
     log.push(asDecision(corrected));
-    for (const selector of toCreate) {
-      created.push(
-        await tx.rule.create({
-          data: {
-            trackedUrlId: page.id,
-            selector,
-            validFrom: t,
-            validTo: null,
-            createdById: researcherId,
-            createdByDecisionId: corrected.id,
-          },
-        }),
-      );
-    }
+    // ONE round trip for every new rule, not one per selector: the staging
+    // exercise of 2026-09-06 saw seventeen sequential creates outlive the
+    // transaction window and the whole approval roll back. The rows come back
+    // in the order given; nothing here depends on it beyond the return.
+    created.push(
+      ...(await tx.rule.createManyAndReturn({
+        data: toCreate.map((selector) => ({
+          trackedUrlId: page.id,
+          selector,
+          validFrom: t,
+          validTo: null,
+          createdById: researcherId,
+          createdByDecisionId: corrected.id,
+        })),
+      })),
+    );
   }
 
   // 2. The rules as they will stand, in memory, so RULESET_ID after the changes

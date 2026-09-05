@@ -2,7 +2,7 @@ jest.mock('../../src/lib/prisma', () => {
   const prisma: Record<string, unknown> = {
     trackedUrl: { findUnique: jest.fn(), update: jest.fn() },
     cdxIndexEntry: { findFirst: jest.fn(), update: jest.fn() },
-    rule: { findMany: jest.fn(), create: jest.fn(), update: jest.fn() },
+    rule: { findMany: jest.fn(), create: jest.fn(), createManyAndReturn: jest.fn(), update: jest.fn() },
     pageDecision: { findMany: jest.fn(), findFirst: jest.fn(), create: jest.fn() },
   };
   prisma['$transaction'] = jest.fn(async (arg: unknown) =>
@@ -17,6 +17,7 @@ jest.mock('../../src/context/researcherContext', () => ({ getResearcherId: mockR
 import { Prisma } from '@prisma/client';
 import { prisma } from '../../src/lib/prisma';
 import { rulesetId } from '../../src/walk/derivations';
+import { WRITE_TRANSACTION } from '../../src/walk/pageLog';
 import { approveArticleRulesHandler } from '../../src/walk/tools';
 import { T09, T14, T2, T3, T5, EMPTY_ID, OUTCOMES, rule, D, log } from './fixtures';
 
@@ -73,13 +74,14 @@ const rowFind = delegate('cdxIndexEntry')['findFirst'] as Mock;
 const rowUpdate = delegate('cdxIndexEntry')['update'] as Mock;
 const rulesFind = delegate('rule')['findMany'] as Mock;
 const ruleCreate = delegate('rule')['create'] as Mock;
+const ruleCreateMany = delegate('rule')['createManyAndReturn'] as Mock;
 const ruleUpdate = delegate('rule')['update'] as Mock;
 const decisionsFind = delegate('pageDecision')['findMany'] as Mock;
 const decisionFindFirst = delegate('pageDecision')['findFirst'] as Mock;
 const decisionCreate = delegate('pageDecision')['create'] as Mock;
 const transaction = (prisma as unknown as { $transaction: Mock }).$transaction;
 
-const WRITES = [trackedUpdate, rowUpdate, ruleCreate, ruleUpdate, decisionCreate];
+const WRITES = [trackedUpdate, rowUpdate, ruleCreate, ruleCreateMany, ruleUpdate, decisionCreate];
 
 interface Draft {
   draftCapture: string | null;
@@ -106,7 +108,10 @@ const r1 = rule('r1', '.ticker', T09, 'd1');
 
 const decisionsCreated = () =>
   decisionCreate.mock.calls.map(([call]: [{ data: Record<string, unknown> }]) => call.data);
-const rulesCreated = () => ruleCreate.mock.calls.map(([call]: [{ data: Record<string, unknown> }]) => call.data);
+// AMENDED 2026-09-06: the Rule rows are created in ONE createManyAndReturn — the
+// staging exercise found seventeen one-at-a-time creates outliving Prisma's
+// default transaction window, and the approval rolled back. Read from that call.
+const rulesCreated = () => ruleCreateMany.mock.calls.flatMap(([call]: [{ data: Record<string, unknown>[] }]) => call.data);
 const ruleUpdates = () =>
   ruleUpdate.mock.calls.map(([call]: [{ where: { id: string }; data: Record<string, unknown> }]) => ({
     id: call.where.id,
@@ -125,7 +130,9 @@ beforeEach(() => {
   rulesFind.mockResolvedValue([r1]);
   decisionsFind.mockResolvedValue(log([r1], [D.corrected(T09), D.accepted(T09)]));
   let created = 0;
-  ruleCreate.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({ id: `rule-new-${++created}`, ...data }));
+  ruleCreateMany.mockImplementation(async ({ data }: { data: Record<string, unknown>[] }) =>
+    data.map((row) => ({ id: `rule-new-${++created}`, ...row })),
+  );
   ruleUpdate.mockImplementation(async ({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => ({ ...where, ...data }));
   decisionCreate.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({ id: `d${String(data['sequence'])}`, ...data }));
   // A7: the page log reads the page's last sequence inside the transaction.
@@ -220,6 +227,25 @@ describe('approve_article_rules — the promotion, in order', () => {
       expect.objectContaining({ selector: '.share', validFrom: T14, validTo: null, createdById: RESEARCHER, createdByDecisionId: 'd3' }),
       expect.objectContaining({ selector: '.related', validFrom: T14, validTo: null, createdById: RESEARCHER, createdByDecisionId: 'd3' }),
     ]);
+  });
+
+  // The staging exercise of 2026-09-06: seventeen selectors, one create each, and
+  // the transaction closed under them. The rows are created in ONE call.
+  it('creates every new rule in one call, never one round trip per selector', async () => {
+    pageWith({ draftSelectors: ['.ticker', '.share', '.related', '.promo'] });
+    await approve();
+    expect(ruleCreateMany).toHaveBeenCalledTimes(1);
+    expect(ruleCreateMany.mock.calls[0]?.[0]).toEqual({ data: [expect.objectContaining({ selector: '.share' }), expect.objectContaining({ selector: '.related' }), expect.objectContaining({ selector: '.promo' })] });
+    expect(ruleCreate).not.toHaveBeenCalled();
+  });
+
+  it('opens its transaction with the shared window, stated — never Prisma’s default', async () => {
+    pageWith({ draftSelectors: ['.ticker', '.share'] });
+    await approve();
+    const tx = (prisma as unknown as { $transaction: Mock }).$transaction;
+    expect(tx).toHaveBeenCalledTimes(1);
+    expect(tx.mock.calls[0]?.[1]).toEqual(WRITE_TRANSACTION);
+    expect(WRITE_TRANSACTION).toEqual({ maxWait: expect.any(Number), timeout: expect.any(Number) });
   });
 
   it('ends a rule the draft no longer carries, from this timestamp', async () => {
