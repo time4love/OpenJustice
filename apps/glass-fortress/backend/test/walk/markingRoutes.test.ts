@@ -43,7 +43,7 @@ import { prisma } from '../../src/lib/prisma';
 import { markingUrl } from '../../src/walk/markingUrl';
 import { walkArticleRulesRouter } from '../../src/walk/routes';
 import { T09, T14, T2, OUTCOMES, rule, D, log } from './fixtures';
-import { WALK, tsFiles, readCode } from './scan';
+import { WALK, tsFiles, readCode, codeOf } from './scan';
 
 // ---------------------------------------------------------------------------
 // A6 — THE MARKING PAGE'S ONLY SURFACE. Five page-scoped routes under
@@ -59,6 +59,11 @@ import { WALK, tsFiles, readCode } from './scan';
 // previews selectors, and hands back a draft. No route here writes a decision,
 // a rule or a row; invariants.test.ts holds that by source scan, this file by
 // behaviour.
+//
+// AMENDED 2026-09-05 (A6): the GET body also carries `url` — the page's url,
+// exact, what the approve line is shown with — and `outline`, the reused
+// `documentOutline` over the DECODED document, never the inert one: the tree
+// the page offers to click. MARKING already said "plus its outline".
 //
 // RULED 2026-09-03. The marking URL is composed by the reused `publicUrl`
 // with the default locale — <frontend>/<locale>/article-rules/<id>/<capture>
@@ -178,9 +183,16 @@ describe('all five routes', () => {
     for (const call of calls()) expect((await call).status).toBe(401);
   });
 
+  // Routes name the page by ID (A1); A5's NOT_SURVEYED is worded for a URL.
+  // The body carries the code and a message about an id, never "survey this
+  // id as a URL" (finding 2, 2026-09-05).
   it('answer 404 for a page that does not exist', async () => {
     trackedFind.mockResolvedValue(null);
-    for (const call of calls()) expect((await call).status).toBe(404);
+    for (const call of calls()) {
+      const res = await call;
+      expect(res.status).toBe(404);
+      expect(res.body).toEqual({ code: 'NOT_SURVEYED', error: expect.not.stringContaining('survey_wayback_captures') });
+    }
   });
 });
 
@@ -198,6 +210,38 @@ describe('GET /pages/:trackedUrlId/captures/:capture', () => {
     }
   });
 
+  // A2: heldBody is non-null ONLY while PENDING_JUDGEMENT, snapshotId is set
+  // on ACQUIRED. A row that claims bytes it does not hold is a WALK DEFECT — a
+  // throw, never a refusal (the recurring ruling of steps 3–4; finding 1,
+  // 2026-09-05): the test app has no error handler, so the answer is the
+  // default 500 and the body carries no code.
+  it('a row that claims bytes it does not hold is a walk defect: 500, no refusal code', async () => {
+    const defects = [
+      { name: 'PENDING_JUDGEMENT with heldBody null', status: 'PENDING_JUDGEMENT', heldBody: null, snapshotId: null },
+      { name: 'ACQUIRED with snapshotId null', status: 'ACQUIRED', heldBody: null, snapshotId: null },
+    ];
+    for (const defect of defects) {
+      rowFind.mockResolvedValue({
+        id: `row-${T14}`,
+        trackedUrlId: TRACKED,
+        waybackTimestamp: T14,
+        digest: 'A',
+        status: defect.status,
+        heldBody: defect.heldBody,
+        contentType: null,
+        contentEncoding: null,
+        stop: null,
+        snapshotId: defect.snapshotId,
+      });
+      const res = await request(app).get(`${BASE}/captures/${T14}`);
+      expect({ defect: defect.name, status: res.status, code: (res.body as { code?: string }).code }).toEqual({
+        defect: defect.name,
+        status: 500,
+        code: undefined,
+      });
+    }
+  });
+
   it('serves a PENDING_JUDGEMENT capture from the held body', async () => {
     rowOf('PENDING_JUDGEMENT');
     const res = await request(app).get(`${BASE}/captures/${T14}`);
@@ -205,6 +249,10 @@ describe('GET /pages/:trackedUrlId/captures/:capture', () => {
     expect(mockCaptureHtml).toHaveBeenCalledWith(expect.objectContaining({ document: HELD }));
     expect(mockInert).toHaveBeenCalledWith('<html>held</html>');
     expect(res.body.document).toBe('<inert><html>held</html></inert>');
+    // The outline is built over the decoded document — the same string the
+    // inert render receives — never over the inert one.
+    expect(mockOutline).toHaveBeenCalledWith('<html>held</html>');
+    expect(res.body.outline).toEqual({ root: { tag: 'body', children: [] }, truncated: false, unreachableTextLength: 0 });
   });
 
   it('serves an ACQUIRED capture from the snapshot’s document', async () => {
@@ -219,12 +267,13 @@ describe('GET /pages/:trackedUrlId/captures/:capture', () => {
     page({ draftCapture: T14, draftSelectors: ['.ticker', '.new'], draftTrusted: ['.new'], draftReturnedAt: RETURNED_AT });
     rowOf('PENDING_JUDGEMENT');
     const res = await request(app).get(`${BASE}/captures/${T14}`);
-    expect(Object.keys(res.body as object).sort()).toEqual(['capture', 'document', 'draft', 'outcome', 'rulesInForce', 'snapshotDate', 'stop']);
+    expect(Object.keys(res.body as object).sort()).toEqual(['capture', 'document', 'draft', 'outcome', 'outline', 'rulesInForce', 'snapshotDate', 'stop', 'url']);
     expect(res.body).toEqual(
       expect.objectContaining({
         capture: T14,
         snapshotDate: '2020-03-01',
         outcome: 'PENDING_JUDGEMENT',
+        url: URL,
         // r2 is created at T2, after T14: not in force here.
         rulesInForce: [{ ruleId: 'r1', selector: '.ticker', trusted: true }],
         draft: { capture: T14, selectors: ['.ticker', '.new'], trusted: ['.new'], returnedAt: RETURNED_AT.toISOString() },
@@ -361,8 +410,10 @@ describe('the marking URL — carried in every stop, composed by nothing else', 
     expect(composers.map((f) => f.slice(WALK.length + 1))).toEqual(['markingUrl.ts']);
   });
 
+  // `codeOf`, not `readCode`: the decoy is a snippet, and readCode reads a file
+  // (amended 2026-09-05 — the spec called the file reader on a string).
   it('DETECTS a second composer — proven against a decoy', () => {
-    expect(readCode(`const url = \`\${base}/article-rules/\${id}/\${capture}\`; // /article-rules/ in a comment`)).toContain('/article-rules/');
-    expect(readCode(`// only a comment names /article-rules/`)).not.toContain('/article-rules/');
+    expect(codeOf(`const url = \`\${base}/article-rules/\${id}/\${capture}\`; // /article-rules/ in a comment`)).toContain('/article-rules/');
+    expect(codeOf(`// only a comment names /article-rules/`)).not.toContain('/article-rules/');
   });
 });

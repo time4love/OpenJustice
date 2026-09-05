@@ -1,6 +1,6 @@
 import type { CaptureExtraction, CurrentExtraction } from '../lib/extractionDrift';
 import { cdxDigestOf } from '../services/verifyAgainstCdx';
-import { resolved, rulesInForce, type Decision, type Rule, type WorkListRow } from './derivations';
+import { acceptedCaptures, resolved, rulesInForce, type Decision, type Rule, type WorkListRow } from './derivations';
 import { gate0, gate1, gate1OwnText, gate2, gate4, gate5, type Classify } from './gates';
 import type { StopGate } from './stop';
 
@@ -20,6 +20,15 @@ import type { StopGate } from './stop';
 // ALL evaluated, ALL reported, in that order, each with its own material. Then
 // Gate 5, last, only when everything before it is quiet and the capture is
 // NOVEL: the one paid gate.
+//
+// APPROVED TEXT IS TEXT A HUMAN ACCEPTED AT A STOP (A4 amended 2026-09-05).
+// Gate 1' is asked only on a STALE ACQUIRED row that carries a CAPTURE_ACCEPTED
+// under AUTHORITY. A capture acquired quietly, or derived under no rules before
+// any marking — the legacy corpus — has no approved text of its own and is
+// superseded by the re-walk without a stop. Read from the code before the
+// amendment, the predicate would have stopped on every legacy row with
+// CONTINUE the only answer. The walk hands `ownPrevious` for exactly the
+// accepted rows; an accepted row derived without it is still a walk defect.
 //
 // WHERE THE GATES' INPUTS COME FROM (Q4, ruled 2026-09-05). `derive` is the
 // walk's, lazy, called at most once here: it derives THIS capture under
@@ -59,7 +68,7 @@ export interface Derived {
   matches: { p: Matched[] | null; c: Matched[] };
   /** SEEN(page): the removed-side segments a human has looked at, normalised. */
   seen: Set<string>;
-  /** The capture's own approved text — REQUIRED on an ACQUIRED row, absent otherwise. */
+  /** The capture's own approved text — REQUIRED on an ACQUIRED row accepted under AUTHORITY, absent otherwise. */
   ownPrevious?: { keptText: string } | null;
 }
 
@@ -113,9 +122,9 @@ export async function evaluateCapture(input: EvaluateInput): Promise<CaptureStop
     if (moved !== null) fired.push(moved);
   }
 
-  if (row.outcome === 'ACQUIRED') {
+  if (row.outcome === 'ACQUIRED' && acceptedCaptures(decisions).has(t)) {
     if (derived.ownPrevious === null || derived.ownPrevious === undefined) {
-      throw new Error(`Walk defect: stale ACQUIRED capture ${t} was derived without its own approved text.`);
+      throw new Error(`Walk defect: stale ACQUIRED capture ${t} was accepted but derived without its own approved text.`);
     }
     const eaten = gate1OwnText(derived.ownPrevious, derived.current, inForce);
     if (eaten !== null) fired.push(eaten);

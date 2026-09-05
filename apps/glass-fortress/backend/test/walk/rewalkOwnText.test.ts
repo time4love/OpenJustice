@@ -27,6 +27,14 @@ import { T09, T2, rule, D, log, row } from './fixtures';
 // 'OWN_PREVIOUS_TEXT'`, set by both checks; and in the stop the order is Gate 1
 // against the predecessor, Gate 1 against own text, then 2, then 4.
 //
+// RULED 2026-09-05 (A4 amended): APPROVED TEXT IS TEXT A HUMAN ACCEPTED AT A
+// STOP. The check runs only on a STALE ACQUIRED row that carries a
+// CAPTURE_ACCEPTED under AUTHORITY. A capture acquired quietly, or derived under
+// no rules before any marking — the legacy corpus — has no approved text of its
+// own and is superseded by the re-walk without a stop. Read from the code, the
+// unamended predicate would have stopped on every legacy row with CONTINUE the
+// only answer.
+//
 // This is the assertion that survives `reconcileAgainstCdx`'s retirement: its
 // "superset check" — text moved while bytes did not — re-expressed against the
 // new contract, not copied with its old fixtures (refactor plan §4).
@@ -49,6 +57,8 @@ const current = (
 const r1 = rule('r1', '.ticker', T09, 'd1');
 const r2 = rule('r2', '.byline', T09, 'd3');
 const corrected = log([r1, r2], [D.corrected(T09), D.accepted(T09), D.corrected(T09)]);
+/** The same page, with T2 ACCEPTED under r1 alone before the correction: stale now, and its text approved. */
+const acceptedUnderR1 = log([r1, r2], [D.corrected(T09), D.accepted(T09), D.corrected(T09), D.accepted(T2, rulesetId(['.ticker']))]);
 
 describe('gate1OwnText — the new derivation removed text a human approved on this capture', () => {
   it('fires when an approved segment is now removed, naming the rule that took it', () => {
@@ -108,7 +118,7 @@ describe('evaluateCapture — the own-text check runs with 1, 2 and 4, on a STAL
     return {
       t: T2,
       rules: [r1, r2],
-      decisions: corrected,
+      decisions: acceptedUnderR1,
       row: staleRow('ACQUIRED'),
       predecessor: T09,
       fetched: null,
@@ -119,6 +129,8 @@ describe('evaluateCapture — the own-text check runs with 1, 2 and 4, on a STAL
     };
   }
 
+  // T2 carries a CAPTURE_ACCEPTED under AUTHORITY (the fixture above), so its
+  // stored text IS approved text, and the check is asked.
   it('reports Gate 1 against the predecessor, then Gate 1 against own text, before 2 and 4', async () => {
     const stop = await evaluateCapture(input());
     expect(stop).toEqual({
@@ -136,6 +148,20 @@ describe('evaluateCapture — the own-text check runs with 1, 2 and 4, on a STAL
         { gate: 2, material: { rules: [{ ruleId: 'r1', selector: '.ticker', matchedOnPredecessor: 1 }] } },
       ],
     });
+  });
+
+  // A stale ACQUIRED row nobody accepted — acquired quietly, or the legacy corpus
+  // derived under no rules — has no approved text. Whether the walk hands the
+  // check nothing or the stored text, the check is not asked (ruled 2026-09-05).
+  it('runs no own-text check on a stale ACQUIRED row with no CAPTURE_ACCEPTED under AUTHORITY — the legacy corpus', async () => {
+    const withoutOwn = (): Derived => ({ ...bothFire(), ownPrevious: null });
+    for (const derive of [withoutOwn, bothFire]) {
+      const stop = await evaluateCapture(input({ decisions: corrected, derive: jest.fn(derive) }));
+      expect(stop?.gates).toEqual([
+        { gate: 1, material: expect.objectContaining({ against: 'PREDECESSOR' }) },
+        { gate: 2, material: expect.anything() },
+      ]);
+    }
   });
 
   it('runs no own-text check on an UNFETCHED or PENDING_JUDGEMENT row — there is no approved text of its own', async () => {

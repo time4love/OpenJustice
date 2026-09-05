@@ -449,9 +449,12 @@ its own session after that.
   make the MCP surface answer the same name two ways.
 - **A `railway ssh` pipe swallows the exit code.** Capture first, filter after, whenever the exit code
   is the gate.
-- **Route shadowing during coexistence (step 6).** The legacy router owns `/:runId/captures/:snapshotId`,
-  which also matches `/pages/<id>/captures/<capture>` with `runId = 'pages'`. The new router is mounted
-  BEFORE the legacy one at the same base, and a server-level test holds the order until step 8.
+- **Route coexistence (step 6).** Measured 2026-09-05, correcting this bullet's earlier claim that the
+  legacy `/:runId/captures/:snapshotId` would answer `/pages/<id>/captures/<capture>` with
+  `runId = 'pages'`: it cannot, in either mount order — a static segment matches literally, and the
+  legacy route needs `captures` where the new path carries the page id. The new router is still
+  mounted BEFORE the legacy one at the same base, and a server-level test holds the order so that
+  step 8's removal of the legacy mount changes nothing observable; the test goes with it.
 
 **What is already measured, so it is cited and not re-derived** (recompute before relying, never
 restate): drift is 0 to 1 segments across a stable stretch and 129 segments at a real break, which is
