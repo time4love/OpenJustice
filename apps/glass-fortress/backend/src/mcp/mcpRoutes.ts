@@ -129,6 +129,10 @@ export const WRITE_TOOLS = new Set([
   // researcher — the gate supplies the identity the handler refuses without.
   'approve_article_rules',
   'resolve_scan_stop',
+  // The walk (refactor step 4, reporting only until step 5). Gated because it
+  // SPENDS: one classifier call per novel capture that reaches Gate 5 — and
+  // from step 5 it stores, anchors and writes rows besides.
+  'scan_captures',
   'create_thesis_draft',
   'add_thesis_version',
   // Writes a new ThesisVersion. Cheaper and narrower than add_thesis_version —

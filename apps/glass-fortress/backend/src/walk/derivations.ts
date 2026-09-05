@@ -175,6 +175,20 @@ export function resolved(row: WorkListRow, rules: readonly Rule[], decisions: re
 }
 
 /**
+ * The captures a human has ACCEPTED under AUTHORITY, by timestamp — what SEEN
+ * folds over, and what the walk derives for it (one implementation of
+ * "judged", so the fold and the walk cannot disagree about which captures).
+ */
+export function acceptedCaptures(decisions: readonly Decision[]): Set<string> {
+  return new Set(
+    authority(decisions)
+      .filter((d) => d.type === 'CAPTURE_ACCEPTED')
+      .map((d) => d.waybackTimestamp)
+      .filter((t): t is string => t !== null),
+  );
+}
+
+/**
  * SEEN(page): the removed-side segments of every ACQUIRED capture a human has
  * judged — a CAPTURE_ACCEPTED for it under AUTHORITY — plus the
  * PENDING_JUDGEMENT capture being judged. Computed from bytes held, so a
@@ -187,12 +201,7 @@ export function resolved(row: WorkListRow, rules: readonly Rule[], decisions: re
  * seen, and Gate 4 would never show them.
  */
 export function seen(captures: readonly CaptureRemovals[], decisions: readonly Decision[]): Set<string> {
-  const judged = new Set(
-    authority(decisions)
-      .filter((d) => d.type === 'CAPTURE_ACCEPTED')
-      .map((d) => d.waybackTimestamp)
-      .filter((t): t is string => t !== null),
-  );
+  const judged = acceptedCaptures(decisions);
   const out = new Set<string>();
   for (const capture of captures) {
     const contributes =

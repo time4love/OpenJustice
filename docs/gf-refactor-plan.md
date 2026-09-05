@@ -108,8 +108,29 @@ REGISTERED ONLY AT STEP 8, because the old tools own those names until the switc
 
 *Leaves working:* the old calibration, on its own tables. *Verified by:* A3 and A5 green for these
 four; the source scan green.
+*Verified on staging 2026-09-05:* landed as PR #353; the two registered tools' REFUSAL surface
+exercised through the connector, nothing written — `docs/gf-walk-step-3-refusals-verified-2026-09-05.md`.
+The write paths are exercised at steps 5 and 6.
 
 ### 4 · The walk, reporting only
+
+> **DECIDED 2026-09-05 — the order is 4 → 6 → 5 → 7, and this step takes ONE of the measurements.**
+> The reporting walk, the gates and `evaluateCapture` are built here, and the one measurement that
+> needs no rule is taken here: Gate 5's editorial verdicts on a labelled sample of stored diffs, as a
+> confusion table. The digest verification's match count is NOT taken here: after the rebuild, step
+> 5's walk verifies every digest as it acquires and writes `digestVerified` per row, so the count per
+> page is a read of that column, recorded then. The three measurements that need rules — Gate 1
+> stops, Gate 2 stops and how many were furniture leaving, Gate 4 stops before and after trust — are
+> taken AFTER step 6, under rules created through MARKING on STORED captures (Flow 3: every staging
+> capture is ACQUIRED via step 2's legacy join), in a second dated part of the same measurement doc.
+> Reason: no `Rule` row exists under the new model until step 6, and the old rulesets were judged
+> under the era model — measuring them under the new gates would be a number lifted from a different
+> question. Step 6 before step 5 is also what §6 item 3 already requires: step 5's verification is "a
+> walk that stops and is resolved in the marking page". The premise — stops become rare once rules
+> are trusted — is still confirmed or refuted before any walk stores. §9.6's early cutover — the
+> rebuild on staging (measure, ledger, fresh registry, rotate, the DROP in its own cleanup session,
+> survey) — now runs AFTER step 6's measurement part 2 and BEFORE step 5, which walks the empty
+> database onto the fresh registry.
 
 `scan_captures` with every step of Phase 2 EXCEPT the writes: fetch, derive, compare, all five gates,
 and the stop's material — reported, storing nothing. Reuses `archiveHttp`, `deriveTextUnderRuleset`,
@@ -125,10 +146,12 @@ walk is allowed to store anything.
 
 ### 5 · The walk, writing
 
+> **Step 5 follows step 6 — DECIDED 2026-09-05; the note at step 4 records why.**
+
 > **BEFORE THIS STEP ON STAGING — the rebuild, early (§9.6, decided 2026-09-05).** The rebuild's
 > sub-steps of evidence §8 — measure, ledger, deploy the fresh registry, rotate the configuration,
-> drop the database in its own cleanup session, survey and walk — run on staging after step 4's
-> measurements and before this step, the first that writes to the chain. From here staging builds
+> drop the database in its own cleanup session, survey and walk — run on staging after step 6's
+> measurement part 2 and before this step, the first that writes to the chain. From here staging builds
 > on the target schema and a registry with one meaning from index zero; the three marking walks'
 > rules go with the database, as step 9 already sends them. Production's rebuild stays at SHIP.
 > Ruled in `docs/gf-walk-step-2-survey-verified-2026-09-05.md`.
@@ -150,6 +173,11 @@ on production before any capture could be anchored there.
 green; a full walk of a small staging page end to end, stops resolved through the chat.
 
 ### 6 · The marking page and its routes
+
+> **DECIDED 2026-09-05 — this step precedes step 5.** Its staging exercise opens a STORED capture
+> from its UrlSnapshot (Flow 3) and `approve_article_rules` promotes the draft; the rules that
+> creates are what the second part of step 4's measurement doc measures Gates 1, 2 and 4 under.
+> The rebuild (§9.6) follows that measurement, and step 5 follows the rebuild.
 
 The five page-scoped routes beside the nine run-scoped ones; bytes served from the held body or the
 snapshot; approve-as-is and trust affordances; the `rules=0` line; the draft with `trusted[]`. The old
@@ -356,7 +384,11 @@ stops. It runs on staging first, and on production only after staging has served
    digest verification's match count. **The design's premise is that stops become rare once rules are
    trusted.** If the walla numbers say otherwise, the design changes before step 5, and the change is
    ruled in the flows doc, not patched in code. `measureEraDetectors` is the instrument's ancestor and
-   is retired once this doc exists.
+   is retired once this doc exists. The doc is written in two dated parts — decided 2026-09-05,
+   recorded at steps 4 and 6: part 1 at step 4 (Gate 5's confusion table over a labelled sample of
+   stored diffs, and the walk's first observed stop), part 2 after step 6 (Gates 1, 2 and 4 under
+   rules created by MARKING); the digest match count is read from `digestVerified` after step 5's
+   walk, which verifies every fetch, and is recorded then.
 
 **Two rules from this repository's own history, restated because they will be tempted:**
 
@@ -511,7 +543,10 @@ they would have relayed by hand — and by the measured throughput, before anyth
 parallelised. After it, this section gains what the pilot changed.
 
 **Proposed on 2026-09-03; DECIDED 2026-09-05 — taken, placed between step 4 and step 5 (see the note
-at step 5):** cutting staging over early — running the rebuild's
+at step 5); the same day the order became 4 → 6 → 5 → 7 (the note at step 4), so the rebuild on
+staging — measure, ledger, fresh registry, rotate, the DROP in its own cleanup session, survey — now
+runs AFTER step 6's measurement part 2 and BEFORE step 5, which walks the empty database onto the
+fresh registry:** cutting staging over early — running the rebuild's
 steps 1–5 on staging before the evidence and thesis tracks, so they build against an empty database
 on the target schema written as one baseline migration, instead of additive steps followed by a
 drop. It removes the coexistence stretch on staging at the cost of the three marking walks' rules,

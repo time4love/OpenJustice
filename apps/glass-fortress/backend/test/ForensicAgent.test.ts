@@ -67,12 +67,16 @@ const SIGNIFICANT_RESPONSE = {
   ],
   legalSignificance:
     'הסרת האזהרה בדבר תופעות לוואי נעשתה 18 יום לאחר שדו"ח פנימי הדגיש סיכונים קרדיולוגיים.',
+  editorial: true,
+  editorialReason: 'authored content changed',
 };
 
 const COSMETIC_RESPONSE = {
   deletedItems: [],
   addedItems: [],
   legalSignificance: 'עדכון קישורי ניווט בלבד ללא שינוי בתוכן הרפואי או הרגולטורי.',
+  editorial: false,
+  editorialReason: 'navigation links only',
 };
 
 const RELATED_EVIDENCE = [
@@ -128,6 +132,32 @@ describe('ForensicAgent', () => {
     expect(result.addedItems).toEqual([]);
   });
 
+  // GATE 5 OF THE WALK READS THIS ANSWER (docs/gf-interaction-flows.md A4, amended
+  // 2026-09-02): the classifier is asked, in the same call, whether the diff is
+  // EDITORIAL, and the walk's classify reads the DERIVED output. Two schemas sit
+  // between the model and that reader — the LLM schema and ForensicOutputSchema —
+  // so both must carry the fields, verbatim, or the walk reads nothing. Added at
+  // refactor step 4 beside the mocks gaining the fields (ruled 2026-09-05).
+  it('returns the model’s editorial verdict and its reason, verbatim', async () => {
+    const agent = new ForensicAgent();
+    getMockInvoke(agent).mockResolvedValue({
+      ...COSMETIC_RESPONSE,
+      editorial: false,
+      editorialReason: 'a share bar entered the compared text',
+    });
+
+    const result = await agent.analyzeChange(
+      ['Navigation item removed'],
+      ['like · share'],
+      'https://health.gov.il/vaccines',
+      '2021-06-01',
+      [],
+    );
+
+    expect(result.editorial).toBe(false);
+    expect(result.editorialReason).toBe('a share bar entered the compared text');
+  });
+
   it('throws a Zod validation error when the model returns an invalid schema', async () => {
     const agent = new ForensicAgent();
     getMockInvoke(agent).mockResolvedValue({
@@ -141,6 +171,8 @@ describe('ForensicAgent', () => {
       ],
       addedItems: [],
       legalSignificance: '',
+      editorial: true,
+      editorialReason: 'fixture reason',
     });
 
     await expect(
@@ -364,6 +396,8 @@ describe('item-level classification', () => {
       ],
       addedItems: [routine(6), routine(7)],
       legalSignificance: 'עדכון מבצע חיסונים.',
+      editorial: true,
+      editorialReason: 'fixture reason',
     });
 
     const result = await agent.analyzeChange([], [], 'https://health.gov.il', '2022-11-29', []);
@@ -378,6 +412,8 @@ describe('item-level classification', () => {
       deletedItems: [routine(1), routine(2), routine(3)],
       addedItems: [routine(4), routine(5)],
       legalSignificance: 'עדכון ניווט בלבד.',
+      editorial: false,
+      editorialReason: 'navigation links only',
     });
 
     const result = await agent.analyzeChange([], [], 'https://health.gov.il', '2022-01-01', []);
@@ -395,6 +431,8 @@ describe('item-level classification', () => {
       ],
       addedItems: [],
       legalSignificance: '',
+      editorial: true,
+      editorialReason: 'fixture reason',
     });
 
     const result = await agent.analyzeChange([], [], 'https://health.gov.il', '2022-01-01', []);
@@ -432,6 +470,8 @@ describe('item-level classification', () => {
         },
       ],
       legalSignificance: 'העברת פסקה בתוך הדף.',
+      editorial: true,
+      editorialReason: 'fixture reason',
     });
 
     const result = await agent.analyzeChange([], [], 'https://health.gov.il', '2022-01-05', []);
@@ -451,6 +491,8 @@ describe('item-level classification', () => {
         { summary: 'הועבר', exactQuote: 'moved', investigativeCategories: ['SAFETY_CLAIM_ALTERATION'], relocated: true },
       ],
       legalSignificance: '',
+      editorial: true,
+      editorialReason: 'fixture reason',
     });
 
     const result = await agent.analyzeChange([], [], 'https://health.gov.il', '2022-01-05', []);
@@ -470,6 +512,8 @@ describe('ForensicAgent — best of N draws, scored on coverage', () => {
       })),
       addedItems: [],
       legalSignificance: 'x',
+      editorial: true,
+      editorialReason: 'fixture reason',
     };
   }
 
@@ -549,6 +593,8 @@ describe('ForensicAgent — a failed draw is not a failed classification', () =>
       })),
       addedItems: [],
       legalSignificance: 'x',
+      editorial: true,
+      editorialReason: 'fixture reason',
     };
   }
 

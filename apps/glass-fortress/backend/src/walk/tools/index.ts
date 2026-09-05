@@ -3,6 +3,7 @@
 // tool, each built at the refactor step that owns it (docs/gf-refactor-plan.md
 // §3). Step 2: the survey. Step 3 adds approve_article_rules, resolve_scan_stop
 // and the two built under their final names but registered only at step 8.
+// Step 4: scan_captures, reporting only; step 5 adds its writes.
 // ---------------------------------------------------------------------------
 
 export { surveyWaybackCapturesSchema, surveyWaybackCapturesHandler } from './surveyWaybackCaptures';
@@ -11,3 +12,4 @@ export { resolveScanStopSchema, resolveScanStopHandler } from './resolveScanStop
 export { resetArticleCalibrationSchema, resetArticleCalibrationHandler } from './resetArticleCalibration';
 export { getArticleRulesSchema, getArticleRulesHandler } from './getArticleRules';
 export { listCapturesSchema, listCapturesHandler } from './listCaptures';
+export { scanCapturesSchema, scanCapturesHandler } from './scanCaptures';

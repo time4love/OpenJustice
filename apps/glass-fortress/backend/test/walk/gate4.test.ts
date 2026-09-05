@@ -93,6 +93,15 @@ describe('Gate 4 — a removed segment no human has seen, under a rule still REV
     ]);
   });
 
+  // SIDES ARE SETS (A4), as Gate 1 already holds: a segment repeated inside
+  // one rule's removal moved once and is listed once. Once PER RULE stays.
+  it('a segment repeated inside one rule’s removal is listed once — sides are sets', () => {
+    const c = current([{ selector: '.ticker', text: 'ticker item\nticker item' }]);
+    expect(gate4(T2, c, [r1], reviewed, NOTHING_SEEN)?.material.removals).toEqual([
+      { text: 'ticker item', ruleId: 'r1', selector: '.ticker' },
+    ]);
+  });
+
   // TRUST IS PER RULE. Two REVIEWED rules claiming one segment are two
   // judgements the researcher has yet to make, and they must see both.
   it('lists a segment removed by two REVIEWED rules once per rule', () => {

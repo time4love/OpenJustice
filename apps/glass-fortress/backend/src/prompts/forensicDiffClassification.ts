@@ -20,6 +20,8 @@ The practical consequence is unacceptable for a forensic tool: it would mean the
 
 Relocation is the one case where surrounding context legitimately changes the reading, which is why it is asked for explicitly rather than inferred. Text moved elsewhere on the page appears here as both a deletion and an addition; reporting the deletion alone would claim the removal of something still on the page.
 
+5. Answer, for the diff as a whole, whether it is EDITORIAL. editorial is true ONLY when every change in this diff is authored content — text the page's authors added, removed or rewrote, which a reader would take as part of the page — whether or not it is significant. It is false when ANY part of the diff is page FURNITURE entering or leaving the compared text rather than authorship: a navigation bar, a ticker, a related-stories box, a comments widget, a share bar, a cookie notice, a footer, an advertisement, a date stamp or a view counter. A diff that mixes an authored change with furniture is NOT editorial: the furniture is what this answer exists to catch. Answer from the text alone; significance is a separate question. Give ONE sentence in editorialReason, in English, naming what decided it.
+
 ${INVESTIGATIVE_CATEGORY_PROMPT_BLOCK}
 
 Return an empty array FOR THAT ITEM for: navigation and menu updates, formatting and styling, broken-link fixes, contact-page edits, rewording that preserves meaning, and content on unrelated subjects (budgets, tenders, appointments, unrelated press releases). Most items fall here. An empty array is a correct, expected, and useful answer, and a diff in which every item is empty is an ordinary outcome.

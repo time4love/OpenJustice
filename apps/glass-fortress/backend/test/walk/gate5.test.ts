@@ -1,5 +1,5 @@
 import { classifierInputChunks, diffChunkPair } from '../../src/lib/diffChunking';
-import { gate5, type Classify } from '../../src/walk/gates';
+import { gate5, type Classify, type ClassifierDiff, type EditorialVerdict } from '../../src/walk/gates';
 
 // ---------------------------------------------------------------------------
 // GATE 5 — THE CLASSIFIER CALLED THE DIFF NOT EDITORIAL. A4 of the flows
@@ -37,7 +37,7 @@ const expectedDiff = (() => {
 })();
 
 const answering = (editorial: boolean, reason = 'fixture reason'): jest.MockedFunction<Classify> =>
-  jest.fn(async () => ({ editorial, reason }));
+  jest.fn<Promise<EditorialVerdict>, [ClassifierDiff]>(async () => ({ editorial, reason }));
 
 describe('Gate 5 — the classifier judged the diff against the predecessor not editorial', () => {
   it('fires when the classifier says the change is not editorial, carrying the diff, the verdict and the reason', async () => {

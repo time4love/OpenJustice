@@ -106,6 +106,30 @@ const ForensicLlmOutputSchema = z.object({
         'For NON-SIGNIFICANT changes: write a brief 1-sentence note explaining why this change was classified as cosmetic ' +
         '(e.g., "עדכון קישורי ניווט בלבד ללא שינוי בתוכן הרפואי או הרגולטורי.").',
     ),
+
+  // GATE 5 OF THE WALK (docs/gf-interaction-flows.md A4, amended 2026-09-02). Asked
+  // in the same call as the items: a not-editorial verdict is the symptom of
+  // furniture entering `text`, and Gate 5 is evaluated only when Gates 1–4 are
+  // quiet, so furniture arriving beside a real edit is the one case nothing else
+  // catches. Hence "ONLY when every change is authored".
+  editorial: z
+    .boolean()
+    .describe(
+      'True ONLY when every change in this diff is authored content — text the page\'s authors ' +
+        'added, removed or rewrote, which a reader would take as part of the page — whether or not ' +
+        'it is significant. False when ANY part of the diff is page FURNITURE entering or leaving ' +
+        'the compared text rather than authorship: a navigation bar, a ticker, a related-stories ' +
+        'box, a comments widget, a share bar, a cookie notice, a footer, an advertisement, a date ' +
+        'stamp or a view counter. A diff that mixes an authored change with furniture is NOT ' +
+        'editorial: the furniture is what this answer exists to catch. Answer from the text alone; ' +
+        'significance is a separate question.',
+    ),
+  editorialReason: z
+    .string()
+    .describe(
+      'ONE sentence, in English, naming what decided the editorial answer: the furniture that ' +
+        'entered or left, or the authored content that changed.',
+    ),
 });
 
 /**

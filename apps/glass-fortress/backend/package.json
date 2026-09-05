@@ -43,7 +43,8 @@
     "forensics:backfill-anchor-checks": "node dist/scripts/backfillOnChainChecks.js",
     "forensics:compare-detection-layers": "node dist/scripts/compareDetectionLayers.js",
     "forensics:compare-candidate-sources": "node dist/scripts/compareCandidateSources.js",
-    "forensics:measure-era-detectors": "node dist/scripts/measureEraDetectors.js"
+    "forensics:measure-era-detectors": "node dist/scripts/measureEraDetectors.js",
+    "forensics:measure-gate5": "node dist/scripts/measureGate5.js"
   },
   "keywords": [],
   "author": "",

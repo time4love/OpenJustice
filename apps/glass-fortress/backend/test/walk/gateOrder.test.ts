@@ -1,3 +1,4 @@
+import type { ClassifierDiff, EditorialVerdict } from '../../src/walk/gates';
 import { evaluateCapture, type EvaluateInput } from '../../src/walk/evaluate';
 import { T09, T2, rule, D, log, row } from './fixtures';
 
@@ -77,9 +78,9 @@ const DIGEST_OF_ABC = '2ALYL55WYSWHKBLTC6NABOPUYCJ36ZBI';
 const DIGEST_OF_XYZ = 'XO6R53JL6SS554OEGXG5BTSJQOSBAOL4';
 
 const editorial = (): jest.MockedFunction<EvaluateInput['classify']> =>
-  jest.fn(async () => ({ editorial: true, reason: 'an edit' }));
+  jest.fn<Promise<EditorialVerdict>, [ClassifierDiff]>(async () => ({ editorial: true, reason: 'an edit' }));
 const notEditorial = (): jest.MockedFunction<EvaluateInput['classify']> =>
-  jest.fn(async () => ({ editorial: false, reason: 'a widget entered the text' }));
+  jest.fn<Promise<EditorialVerdict>, [ClassifierDiff]>(async () => ({ editorial: false, reason: 'a widget entered the text' }));
 
 function input(overrides: Partial<EvaluateInput> = {}): EvaluateInput {
   return {
@@ -87,6 +88,7 @@ function input(overrides: Partial<EvaluateInput> = {}): EvaluateInput {
     rules: [r1],
     decisions: calibrated,
     row: row(T2, 'UNFETCHED'),
+    predecessor: T09,
     fetched: null,
     derive: jest.fn(quiet),
     novel: false,
@@ -141,7 +143,13 @@ describe('evaluateCapture — the digest check, then Gate 0, then 1, 2, 4 togeth
   it('when Gate 1 fires, the classifier is not called — Gate 5 only if 0 to 4 are quiet', async () => {
     const classify = notEditorial();
     const stop = await evaluateCapture(input({ derive: jest.fn(gate1Fires), classify, novel: true }));
-    expect(stop?.gates).toEqual([{ gate: 1, material: expect.anything() }]);
+    // The fixture keeps the ticker text AND silences its rule — one event seen
+    // by two gates — so the stop carries both (ruled 2026-09-02, all reported),
+    // and the classifier is still not called: the stronger statement.
+    expect(stop?.gates).toEqual([
+      { gate: 1, material: expect.anything() },
+      { gate: 2, material: { rules: [{ ruleId: 'r1', selector: '.ticker', matchedOnPredecessor: 1 }] } },
+    ]);
     expect(classify).not.toHaveBeenCalled();
   });
 
@@ -174,6 +182,35 @@ describe('evaluateCapture — the digest check, then Gate 0, then 1, 2, 4 togeth
     expect(result).toBeNull();
     expect(derive).not.toHaveBeenCalled();
     expect(classify).not.toHaveBeenCalled();
+  });
+
+  // A CAPTURE MAY HAVE NO PREDECESSOR PAST GATE 0 (ruled 2026-09-05): the first
+  // stored capture of a page is stale the moment a rule exists, its own
+  // acceptance keeps Gate 0 quiet, and Flow 3's re-walk starts there. With
+  // nothing to compare against, 1(P), 2 and 5 are not asked; 1' and 4 are.
+  it('a capture with no predecessor past Gate 0: 1, 2 and 5 are not asked; 1′ and 4 are', async () => {
+    const first = (): Derived => ({
+      previous: null,
+      current: {
+        keptText: 'headline\nbody',
+        removedText: 'never seen item',
+        removedSegments: [{ selector: '.ticker', text: 'never seen item' }],
+      },
+      matches: { p: null, c: [m('r1', 1)] },
+      seen: new Set<string>(),
+    });
+    const classify = notEditorial();
+    const stop = await evaluateCapture(input({ predecessor: null, derive: jest.fn(first), novel: true, classify }));
+    expect(stop).toEqual({
+      capture: T2,
+      gates: [{ gate: 4, material: { removals: [{ text: 'never seen item', ruleId: 'r1', selector: '.ticker' }] } }],
+    });
+    expect(classify).not.toHaveBeenCalled();
+  });
+
+  it('a capture with a predecessor derived without it is a walk defect, naming the capture', async () => {
+    const withoutPrevious = (): Derived => ({ ...quiet(), previous: null, matches: { p: null, c: [m('r1', 1)] } });
+    await expect(evaluateCapture(input({ predecessor: T09, derive: jest.fn(withoutPrevious) }))).rejects.toThrow(T2);
   });
 
   // RULED: 1, 2 and 4 are all evaluated; the stop carries every gate that fired,
