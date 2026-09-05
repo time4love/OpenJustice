@@ -122,7 +122,7 @@ The write paths are exercised at steps 5 and 6.
 > page is a read of that column, recorded then. The three measurements that need rules — Gate 1
 > stops, Gate 2 stops and how many were furniture leaving, Gate 4 stops before and after trust — are
 > taken AFTER step 6, under rules created through MARKING on STORED captures (Flow 3: every staging
-> capture is ACQUIRED via step 2's legacy join), in a second dated part of the same measurement doc.
+> capture is ACQUIRED via step 2's legacy join), in a second dated findings doc.
 > Reason: no `Rule` row exists under the new model until step 6, and the old rulesets were judged
 > under the era model — measuring them under the new gates would be a number lifted from a different
 > question. Step 6 before step 5 is also what §6 item 3 already requires: step 5's verification is "a
@@ -130,7 +130,8 @@ The write paths are exercised at steps 5 and 6.
 > are trusted — is still confirmed or refuted before any walk stores. §9.6's early cutover — the
 > rebuild on staging (measure, ledger, fresh registry, rotate, the DROP in its own cleanup session,
 > survey) — now runs AFTER step 6's measurement part 2 and BEFORE step 5, which walks the empty
-> database onto the fresh registry.
+> database onto the fresh registry. Part 1 recorded: `docs/gf-walk-step-4-measurements-2026-09-05.md`
+> — the premise holds on the sample; the empty-input case is step 5's.
 
 `scan_captures` with every step of Phase 2 EXCEPT the writes: fetch, derive, compare, all five gates,
 and the stop's material — reported, storing nothing. Reuses `archiveHttp`, `deriveTextUnderRuleset`,
@@ -384,7 +385,7 @@ stops. It runs on staging first, and on production only after staging has served
    digest verification's match count. **The design's premise is that stops become rare once rules are
    trusted.** If the walla numbers say otherwise, the design changes before step 5, and the change is
    ruled in the flows doc, not patched in code. `measureEraDetectors` is the instrument's ancestor and
-   is retired once this doc exists. The doc is written in two dated parts — decided 2026-09-05,
+   is retired once this doc exists. The measurement is recorded in two dated findings docs — decided 2026-09-05,
    recorded at steps 4 and 6: part 1 at step 4 (Gate 5's confusion table over a labelled sample of
    stored diffs, and the walk's first observed stop), part 2 after step 6 (Gates 1, 2 and 4 under
    rules created by MARKING); the digest match count is read from `digestVerified` after step 5's
