@@ -130,7 +130,7 @@ export function MarkingClient({ trackedUrlId, capture }: { trackedUrlId: string;
   const [focused, setFocused] = useState<string | null>(null);
   /** The researcher reopened the working area after handing the draft back; an edit then un-returns it. */
   const [editingAgain, setEditingAgain] = useState(false);
-  /** The toolbox drawer over the canvas; opens by itself when the page has no rule in force. */
+  /** The toolbox under the canvas, open or folded to its bar; opens by itself when the page has no rule in force. */
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [canvas, setCanvas] = useState<'page' | 'text'>('page');
   const [panelOpen, setPanelOpen] = useState(true);
@@ -435,25 +435,14 @@ export function MarkingClient({ trackedUrlId, capture }: { trackedUrlId: string;
         <>
           {/*
             THE CANVAS: the captured page, or the transformed text, full width
-            and tall — what the researcher reads. THE TOOLBOX DRAWER opens over
-            it from the start edge and holds the structure; closed, it is an
-            icon on that edge, where later tools will join it. Ruled 2026-09-06.
+            and tall at ONE height whichever view is on — what the researcher
+            reads. THE TOOLBOX sits UNDER it as a bar that opens into the
+            structure and folds back to the bar, so the tree never hides the
+            text and folding it brings the text and the removed pane together.
+            Ruled 2026-09-06.
           */}
-          <section className="relative">
-            <div className="flex items-center gap-2 border-b border-gray-300">
-              {!drawerOpen && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setDrawerOpen(true);
-                  }}
-                  title={t('toolbox')}
-                  aria-label={t('toolbox')}
-                  className="rounded border px-2 py-1 text-gray-700 hover:bg-gray-100"
-                >
-                  <ToolboxIcon />
-                </button>
-              )}
+          <section>
+            <div role="tablist" className="flex items-center gap-1 border-b border-gray-300">
               {(['page', 'text'] as const).map((id) => (
                 <button
                   key={id}
@@ -470,9 +459,8 @@ export function MarkingClient({ trackedUrlId, capture }: { trackedUrlId: string;
                   {id === 'page' ? t('renderedHeading') : t('keptHeading')}
                 </button>
               ))}
-              {canvas === 'page' && <span className="ms-2 text-xs text-gray-500">{t('renderedNote')}</span>}
             </div>
-            <div className="relative h-[68vh]">
+            <div className="h-[62vh]">
               {canvas === 'page' ? (
                 /* AN EMPTY SANDBOX IS THE PRIMARY DEFENCE; the backend's inert document is the second. */
                 <iframe
@@ -488,43 +476,45 @@ export function MarkingClient({ trackedUrlId, capture }: { trackedUrlId: string;
                   {preview?.keptText ?? ''}
                 </pre>
               )}
-              {drawerOpen && (
-                <aside className="absolute inset-y-0 start-0 flex w-full flex-col border-e border-gray-400 bg-white/95 shadow-xl lg:w-2/5">
-                  <div className="flex items-center justify-between border-b px-2 py-1">
-                    <div>
-                      <h2 className="font-semibold">{t('outlineHeading')}</h2>
-                      <p className="text-xs text-gray-600">{t('outlineNote')}</p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setDrawerOpen(false);
-                      }}
-                      title={t('closeDrawer')}
-                      aria-label={t('closeDrawer')}
-                      className="rounded px-2 py-1 text-gray-600 hover:bg-gray-100"
-                    >
-                      ✕
-                    </button>
-                  </div>
-                  {view.outline.truncated && (
-                    <p className="px-2 text-xs text-amber-800">{t('outlineTruncated', { chars: view.outline.unreachableTextLength })}</p>
-                  )}
-                  <div className="min-h-0 flex-1 overflow-auto p-2 text-sm">
-                    <Outline
-                      node={view.outline.root}
-                      depth={0}
-                      documentTextLength={view.outline.root.textLength}
-                      selected={selectors}
-                      preview={previewStale ? null : preview}
-                      disabled={busy}
-                      onToggle={toggle}
-                      t={t}
-                    />
-                  </div>
-                </aside>
-              )}
             </div>
+          </section>
+
+          <section className="rounded border border-gray-400">
+            <button
+              type="button"
+              onClick={() => {
+                setDrawerOpen((v) => !v);
+              }}
+              aria-expanded={drawerOpen}
+              title={drawerOpen ? t('collapseToolbox') : t('expandToolbox')}
+              className="flex w-full items-center gap-2 bg-gray-100 px-3 py-2 text-start"
+            >
+              <ToolboxIcon />
+              <span className="font-semibold">{t('outlineHeading')}</span>
+              <span className="text-xs text-gray-600">{t('outlineNote')}</span>
+              <span className="ms-auto" aria-hidden="true">
+                {drawerOpen ? '▾' : '▸'}
+              </span>
+            </button>
+            {drawerOpen && (
+              <div>
+                {view.outline.truncated && (
+                  <p className="px-2 pt-1 text-xs text-amber-800">{t('outlineTruncated', { chars: view.outline.unreachableTextLength })}</p>
+                )}
+                <div className="h-[40vh] overflow-auto p-2 text-sm">
+                  <Outline
+                    node={view.outline.root}
+                    depth={0}
+                    documentTextLength={view.outline.root.textLength}
+                    selected={selectors}
+                    preview={previewStale ? null : preview}
+                    disabled={busy}
+                    onToggle={toggle}
+                    t={t}
+                  />
+                </div>
+              </div>
+            )}
           </section>
 
           <MarkedPanel
@@ -959,10 +949,19 @@ function MarkedPanel({
                     {t('remove')}
                   </button>
                 </div>
+                {/* EACH BLOCK IS THE RULE THAT REMOVED IT: clicking it focuses that rule, here and on the canvas. */}
                 {removedBy(selector).map((text, i) => (
-                  <p key={i} className="mt-1 whitespace-pre-wrap border-s-2 border-amber-300 ps-2 text-gray-800">
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => {
+                      onFocus(selector);
+                    }}
+                    title={`${t('focusBlock')}\n${selector}`}
+                    className="mt-1 block w-full whitespace-pre-wrap border-s-2 border-amber-300 ps-2 text-start text-gray-800 hover:bg-amber-50"
+                  >
                     {text}
-                  </p>
+                  </button>
                 ))}
               </li>
             );
