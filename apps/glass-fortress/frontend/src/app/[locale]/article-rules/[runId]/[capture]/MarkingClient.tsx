@@ -126,6 +126,8 @@ export function MarkingClient({ trackedUrlId, capture }: { trackedUrlId: string;
   const [error, setError] = useState<string | null>(null);
   const [signedOut, setSignedOut] = useState(false);
   const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle');
+  /** The rule the researcher is looking at: its removals and its element are emphasised; a second click clears it. */
+  const [focused, setFocused] = useState<string | null>(null);
   const autosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const call = useCallback(
@@ -284,7 +286,13 @@ export function MarkingClient({ trackedUrlId, capture }: { trackedUrlId: string;
   const toggle = (selector: string) => {
     const removing = selectors.includes(selector);
     setSelectors((current) => (removing ? current.filter((s) => s !== selector) : [...current, selector]));
-    if (removing) setTicked((current) => current.filter((s) => s !== selector));
+    if (removing) {
+      setTicked((current) => current.filter((s) => s !== selector));
+      setFocused((current) => (current === selector ? null : current));
+    }
+  };
+  const focus = (selector: string) => {
+    setFocused((current) => (current === selector ? null : selector));
   };
   const untick = (selector: string) => {
     setTicked((current) => current.filter((s) => s !== selector));
@@ -355,25 +363,20 @@ export function MarkingClient({ trackedUrlId, capture }: { trackedUrlId: string;
         </div>
       )}
 
+      {/*
+        THE WORKING AREA: the structure to click on one side, the page and its
+        kept text as tabs on the other, both at ONE fixed height with their own
+        scroll — the page never grows with the tree. Restored on 2026-09-06 from
+        the old page, whose layout the researcher preferred.
+      */}
       <div className="grid gap-4 md:grid-cols-2">
         <section className="min-w-0">
-          <h2 className="font-semibold">{t('renderedHeading')}</h2>
-          <p className="text-xs text-gray-600">{t('renderedNote')}</p>
-          {/* AN EMPTY SANDBOX IS THE PRIMARY DEFENCE; the backend's inert document is the second. */}
-          <iframe
-            title={t('renderedHeading')}
-            sandbox=""
-            srcDoc={highlighted(view.document, selectors)}
-            className="mt-2 h-[32rem] w-full rounded border bg-white"
-          />
-        </section>
-
-        <section className="min-w-0">
           <h2 className="font-semibold">{t('outlineHeading')}</h2>
+          <p className="text-xs text-gray-600">{t('outlineNote')}</p>
           {view.outline.truncated && (
             <p className="text-sm text-amber-800">{t('outlineTruncated', { chars: view.outline.unreachableTextLength })}</p>
           )}
-          <div className="mt-2 max-h-[32rem] overflow-auto rounded border p-2 text-sm">
+          <div className="mt-2 h-[32rem] overflow-auto rounded border p-2 text-sm">
             <Outline
               node={view.outline.root}
               depth={0}
@@ -386,8 +389,49 @@ export function MarkingClient({ trackedUrlId, capture }: { trackedUrlId: string;
             />
           </div>
         </section>
+
+        <section className="min-w-0">
+          <Tabs
+            label={t('title')}
+            tabs={[
+              {
+                id: 'rendered',
+                label: t('renderedHeading'),
+                body: (
+                  <>
+                    <p className="text-xs text-gray-600">{t('renderedNote')}</p>
+                    {/* AN EMPTY SANDBOX IS THE PRIMARY DEFENCE; the backend's inert document is the second. */}
+                    <iframe
+                      title={t('renderedHeading')}
+                      sandbox=""
+                      srcDoc={highlighted(view.document, selectors, focused)}
+                      className="mt-1 h-[30rem] w-full rounded border bg-white"
+                    />
+                  </>
+                ),
+              },
+              {
+                id: 'kept',
+                label: t('keptHeading'),
+                body: (
+                  <pre
+                    className={`mt-1 h-[30rem] overflow-auto whitespace-pre-wrap rounded border p-2 text-sm ${previewStale ? 'opacity-50' : ''}`}
+                  >
+                    {preview?.keptText ?? ''}
+                  </pre>
+                ),
+              },
+            ]}
+          />
+        </section>
       </div>
 
+      {/*
+        THE DRAFT AND WHAT IT REMOVES, side by side and linked: a rule clicked
+        here lights its blocks there and its element in the page; a block
+        clicked there lights its rule here. The removed pane keeps its height
+        and scrolls — it never collapses and never tabs away.
+      */}
       <div className="grid gap-4 md:grid-cols-2">
         <Rules
           selectors={selectors}
@@ -395,17 +439,24 @@ export function MarkingClient({ trackedUrlId, capture }: { trackedUrlId: string;
           inForce={inForce}
           ticked={ticked}
           preview={previewStale ? null : preview}
+          focused={focused}
           disabled={busy}
+          onFocus={focus}
           onRemove={toggle}
           onRestore={toggle}
           onTick={tick}
           onUntick={untick}
           t={t}
         />
-        <RemovedPane preview={preview} pending={previewStale} failed={previewFailed} t={t} />
+        <RemovedPane
+          preview={preview}
+          pending={previewStale}
+          failed={previewFailed}
+          focused={focused}
+          onFocus={focus}
+          t={t}
+        />
       </div>
-
-      <KeptPane preview={preview} pending={previewStale} t={t} />
 
       <section className="rounded border-2 border-gray-800 p-3">
         <h2 className="font-semibold">{t('answerHeading')}</h2>
@@ -471,6 +522,35 @@ export function MarkingClient({ trackedUrlId, capture }: { trackedUrlId: string;
 
 function Shell({ children }: { children: React.ReactNode }) {
   return <main className="mx-auto flex max-w-6xl flex-col gap-4 p-4">{children}</main>;
+}
+
+/** The page and its kept text are alternatives and may be tabbed; the removed text is not, and is never in here. */
+function Tabs({ label, tabs }: { label: string; tabs: { id: string; label: string; body: React.ReactNode }[] }) {
+  const [active, setActive] = useState(tabs[0]?.id ?? '');
+  const current = tabs.find((tab) => tab.id === active) ?? tabs[0];
+  return (
+    <div>
+      <div role="tablist" aria-label={label} className="flex gap-1 border-b border-gray-300">
+        {tabs.map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            role="tab"
+            aria-selected={tab.id === current?.id}
+            onClick={() => {
+              setActive(tab.id);
+            }}
+            className={`-mb-px rounded-t border border-b-0 px-3 py-1 text-sm ${
+              tab.id === current?.id ? 'border-gray-300 bg-white font-semibold' : 'border-transparent text-gray-600 hover:text-gray-900'
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+      <div role="tabpanel">{current?.body}</div>
+    </div>
+  );
 }
 
 /**
@@ -599,7 +679,6 @@ function Outline({
   // Judged by TEXT rather than by depth, so a body with one all-containing
   // wrapper is refused too.
   const wholeDocument = node.textLength >= documentTextLength;
-  const share = documentTextLength > 0 ? Math.round((node.textLength / documentTextLength) * 100) : 0;
 
   return (
     <div className={depth === 0 ? '' : 'ps-3'}>
@@ -628,11 +707,11 @@ function Outline({
           title={wholeDocument ? t('wholeDocument') : node.selector}
           className={`min-w-0 text-start ${isSelected ? 'bg-amber-100 font-semibold' : ''} ${wholeDocument ? 'cursor-not-allowed text-gray-400' : ''}`}
         >
-          <span>{node.label}</span>{' '}
+          {/* The character count is what a click removes — the number the researcher reads first. */}
+          <span>{node.label}</span> <span className="text-gray-500">({node.textLength})</span>{' '}
           <code dir="ltr" className="text-xs text-gray-500">
             {node.selector}
-          </code>{' '}
-          <span className="text-xs text-gray-500">{share}%</span>
+          </code>
           {node.positional && <span className="ms-1 text-xs text-amber-800">{t('positional')}</span>}
           {count !== undefined && isSelected && (
             <span className="ms-1 text-xs text-gray-600">{count === 0 ? t('matchedNothing') : t('matched', { count })}</span>
@@ -673,7 +752,9 @@ function Rules({
   inForce,
   ticked,
   preview,
+  focused,
   disabled,
+  onFocus,
   onRemove,
   onRestore,
   onTick,
@@ -685,7 +766,9 @@ function Rules({
   inForce: Map<string, RuleInForce>;
   ticked: string[];
   preview: Preview | null;
+  focused: string | null;
   disabled: boolean;
+  onFocus: (selector: string) => void;
   onRemove: (selector: string) => void;
   onRestore: (selector: string) => void;
   onTick: (selector: string) => void;
@@ -693,20 +776,34 @@ function Rules({
   t: ReturnType<typeof useTranslations>;
 }) {
   return (
-    <section>
+    <section className="min-w-0">
       <h2 className="font-semibold">{t('rulesHeading')}</h2>
+      <p className="text-xs text-gray-600">{t('rulesNote')}</p>
       {selectors.length === 0 && ended.length === 0 ? (
-        <p className="text-sm text-gray-600">{t('noRules')}</p>
+        <p className="mt-2 text-sm text-gray-600">{t('noRules')}</p>
       ) : (
-        <ul className="flex flex-col gap-1 text-sm">
+        <ul className="mt-2 flex h-72 flex-col gap-1 overflow-auto rounded border p-2 text-sm">
           {selectors.map((selector) => {
             const rule = inForce.get(selector);
             const count = preview?.matchCounts[selector];
             const locked = rule?.trusted === true;
             const isTicked = locked || ticked.includes(selector);
+            const isFocused = focused === selector;
             return (
-              <li key={selector} className="flex flex-wrap items-center gap-2">
-                <code dir="ltr">{selector}</code>
+              <li
+                key={selector}
+                className={`flex flex-wrap items-center gap-2 rounded px-1 ${isFocused ? 'bg-amber-100 ring-2 ring-amber-500' : ''}`}
+              >
+                <button
+                  type="button"
+                  onClick={() => {
+                    onFocus(selector);
+                  }}
+                  title={t('focusRule')}
+                  className="text-start"
+                >
+                  <code dir="ltr">{selector}</code>
+                </button>
                 <span className="text-xs text-gray-600">{rule === undefined ? t('newRule') : t('inForce')}</span>
                 {count === undefined ? null : count === 0 ? (
                   <span className="text-amber-800">{t('matchedNothing')}</span>
@@ -748,68 +845,90 @@ function Rules({
   );
 }
 
-/** THE HALF THAT MAKES THIS PAGE HONEST. Never collapsed, never tabbed away. */
+/**
+ * THE HALF THAT MAKES THIS PAGE HONEST. Never collapsed, never tabbed away,
+ * and at a fixed height with its own scroll so the page does not grow with
+ * what the rules remove. A block is the rule that removed it: clicking one
+ * lights that rule in the draft, and a rule focused there scrolls its first
+ * block into view here.
+ */
 function RemovedPane({
   preview,
   pending,
   failed,
+  focused,
+  onFocus,
   t,
 }: {
   preview: Preview | null;
   pending: boolean;
   failed: boolean;
+  focused: string | null;
+  onFocus: (selector: string) => void;
   t: ReturnType<typeof useTranslations>;
 }) {
+  const firstFocused = useRef<HTMLLIElement | null>(null);
+  useEffect(() => {
+    firstFocused.current?.scrollIntoView({ block: 'nearest' });
+  }, [focused, preview]);
+  const firstIndex = focused === null ? -1 : (preview?.removedSegments.findIndex((s) => s.selector === focused) ?? -1);
   return (
     <section className="min-w-0">
-      <div className="mb-2 border-t-4 border-amber-500 pt-2">
+      <div className="border-t-4 border-amber-500 pt-2">
         <h2 className="font-semibold">{t('removedHeading')}</h2>
+        <p className="text-xs text-gray-600">{t('removedNote')}</p>
       </div>
       {failed && <p className="text-sm text-red-700">{t('previewFailed')}</p>}
       {pending && !failed && <p className="text-sm text-gray-600">{t('previewPending')}</p>}
-      {preview !== null && preview.removedSegments.length === 0 && !pending && (
-        <p className="text-sm text-gray-600">{t('removedEmpty')}</p>
-      )}
-      {preview !== null && (
-        <ul className={`flex flex-col gap-2 text-sm ${pending ? 'opacity-50' : ''}`}>
-          {preview.removedSegments.map((segment, i) => (
-            <li key={`${segment.selector}-${i}`} className="rounded bg-amber-50 p-2">
-              <code dir="ltr" className="text-xs text-amber-900">
-                {segment.selector}
-              </code>
-              <p className="whitespace-pre-wrap">{segment.text}</p>
-            </li>
-          ))}
-        </ul>
-      )}
+      <div className={`mt-2 h-72 overflow-auto rounded border border-amber-300 bg-amber-50/40 p-2 ${pending ? 'opacity-50' : ''}`}>
+        {preview !== null && preview.removedSegments.length === 0 && !pending && (
+          <p className="text-sm text-gray-600">{t('removedEmpty')}</p>
+        )}
+        {preview !== null && (
+          <ul className="flex flex-col gap-2 text-sm">
+            {preview.removedSegments.map((segment, i) => {
+              const isFocused = focused === segment.selector;
+              return (
+                <li key={`${segment.selector}-${i}`} ref={i === firstIndex ? firstFocused : null}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onFocus(segment.selector);
+                    }}
+                    title={t('focusBlock')}
+                    className={`block w-full rounded border p-2 text-start ${
+                      isFocused ? 'border-amber-600 bg-amber-100 ring-2 ring-amber-500' : 'border-amber-200 bg-white/70 hover:border-amber-500'
+                    }`}
+                  >
+                    <code dir="ltr" className="block text-xs text-amber-900">
+                      {segment.selector}
+                    </code>
+                    <p className="whitespace-pre-wrap">{segment.text}</p>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
     </section>
   );
 }
 
-function KeptPane({ preview, pending, t }: { preview: Preview | null; pending: boolean; t: ReturnType<typeof useTranslations> }) {
-  return (
-    <details className="rounded border p-2">
-      <summary className="cursor-pointer font-semibold">{t('keptHeading')}</summary>
-      {preview !== null && (
-        <pre className={`mt-2 max-h-96 overflow-auto whitespace-pre-wrap text-sm ${pending ? 'opacity-50' : ''}`}>{preview.keptText}</pre>
-      )}
-    </details>
-  );
-}
-
 /**
- * The inert document with the marked elements outlined. One rule per selector,
- * so one selector the parser refuses does not silence the others; nothing here
- * runs, and a selector carrying markup is dropped rather than injected.
+ * The inert document with the marked elements outlined, the focused one
+ * heavier. One rule per selector, so one selector the parser refuses does not
+ * silence the others; nothing here runs, and a selector carrying markup is
+ * dropped rather than injected.
  */
-function highlighted(html: string, selectors: readonly string[]): string {
+function highlighted(html: string, selectors: readonly string[], focused: string | null): string {
   const safe = selectors.filter((s) => !/[<>{}]/.test(s));
   if (safe.length === 0) return html;
-  const style = `<style>${safe
-    .map(
-      (s) =>
-        `${s}{outline:3px solid #d97706 !important;outline-offset:-3px !important;background:rgba(217,119,6,.18) !important;}`,
-    )
-    .join('')}</style>`;
-  return `${html}${style}`;
+  const rules = safe.map(
+    (s) => `${s}{outline:3px solid #d97706 !important;outline-offset:-3px !important;background:rgba(217,119,6,.18) !important;}`,
+  );
+  if (focused !== null && safe.includes(focused)) {
+    rules.push(`${focused}{outline:5px solid #b91c1c !important;background:rgba(185,28,28,.22) !important;}`);
+  }
+  return `${html}<style>${rules.join('')}</style>`;
 }
