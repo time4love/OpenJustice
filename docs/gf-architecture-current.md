@@ -197,8 +197,8 @@ split: its groups are tagged separately below.
 | `anchorSnapshots` | 370 | KEEP | the anchoring path, twin recovery, the write path owns anchoring |
 | `anchoredCaptureHash` | 202 | KEEP | one rule names the anchored hash; a superseded hash is its own answer |
 | `documentHashSingleRule` | 129 | KEEP | every `documentHash` write routes through `sha256Bytes` |
-| `evidenceIdentityDrift` | 98 | KEEP | one Readability construction; one evidence hash function |
-| `directProvenanceUnused` | 91 | KEEP | `DIRECT` has no writer — now a design statement, not only a fact |
+| `evidenceIdentityDrift` | 98 | KEEP one group, RETIRE-AT-11 one group | one Readability construction stays; "one evidence hash function" is `create_evidence_from_text`'s url+text formula and goes with it at refactor step 11 — amended 2026-09-05 (document refactor plan §5) |
+| `directProvenanceUnused` | 91 | KEEP until document step 36, then RETIRE | `DIRECT` has no writer — now a design statement, not only a fact; at step 36 `DIRECT` leaves the enum and the retired-names scan holds its absence, subsuming this file — amended 2026-09-05 (document refactor plan §5) |
 | `liveArchiveObservers` | 122 | KEEP | live observers never read our record; no CDX-shaped column on `UrlSnapshot` |
 | `extraction/documentOutline` | 451 | KEEP | the outline, selector choice, `inertDocument` |
 | `extraction/emptyRulesetDerivation` | 36 | KEEP | an empty ruleset derives what no ruleset does |
@@ -215,7 +215,7 @@ split: its groups are tagged separately below.
 | `calibrationRun` | 804 | REWRITE four groups, RETIRE two | the fold, the compare-and-set, one-identity, skip-needs-reason survive on the page log; the stopping indicator and its streaks, and the null check on the ruleset hash, go |
 | `resetArticleCalibration` | 95 | REWRITE | a RESET decision plus RULE_RETIRED; refuses when nothing to retire; "era boundaries did not survive" goes |
 | `urlAdmission` | 95 | REWRITE | the source scan becomes: only the survey creates a `TrackedUrl` |
-| `mcpIntegration` | 526 | KEEP two groups, RETIRE two | write-tool auth and evidence creation stay; "ADMITS the URL" and the `start_forensic_scan` group go |
+| `mcpIntegration` | 526 | KEEP two groups, RETIRE two; the KEEP groups MOVE at document step 36 | write-tool auth and evidence creation stay; "ADMITS the URL" and the `start_forensic_scan` group go; the file mocks `IntakeAgent` by path, which step 36 deletes, so the two KEEP groups move to a file without the mock — amended 2026-09-05 (document refactor plan §5) |
 | `mcpTools` | 1,941 | KEEP, small RETIRE | unrelated handlers stay; any scan or calibration assertions go |
 | `recoverMissingCaptures` | 249 | RETIRE, one assertion migrates | "keeps every row, reverts included" moves to the survey's tests |
 | `reconcileAgainstCdx` | 258 | RETIRE, one assertion migrates | the superset check moves to the re-walk's own-previous-text comparison |
