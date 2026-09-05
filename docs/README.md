@@ -42,6 +42,7 @@ is reachable from here and that everything in the archive says where its subject
 
 ## Findings, by date — newest first, never edited
 
+- [gf-walk-step-2-survey-verified-2026-09-05.md](gf-walk-step-2-survey-verified-2026-09-05.md) — refactor step 2 on staging: `held` equalled every page's snapshot count; the early cutover decided; one change owed to step 3
 - [gf-pre-design-plans-triage-2026-09-04.md](gf-pre-design-plans-triage-2026-09-04.md) — every pre-design open item, one disposition each; six rulings
 - [gf-era-detector-thresholds-2026-09-01.md](gf-era-detector-thresholds-2026-09-01.md) — Level 4: the two detectors measured, no threshold adopted
 - [gf-level4-mcp-loop-verification-2026-09-01.md](gf-level4-mcp-loop-verification-2026-09-01.md) — Level 4: the MCP loop end to end, a signal that resets
