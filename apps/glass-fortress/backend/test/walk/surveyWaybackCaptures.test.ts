@@ -226,6 +226,26 @@ describe('survey_wayback_captures — the work-list', () => {
     expect(result).toEqual(expect.objectContaining({ captures: 4, byteDistinct: 3 }));
   });
 
+  // Seen on the Walla page, 2026-09-05: the archive's index returned one
+  // timestamp twice in a single answer. A capture is named by its timestamp
+  // (A1), so a repeated row is the same capture reported twice, not a second
+  // one. On a page that already holds the row the filter drops both copies; on
+  // a NEW page both would reach the one createMany, and A2's unique key on
+  // (page, timestamp) would make the survey THROW where A5 says a refusal,
+  // never a throw. The answer is de-duplicated by timestamp before filtering,
+  // first occurrence wins — asserted on the rows handed to createMany, because
+  // rowsWritten() is keyed by timestamp and would hide a second copy.
+  it('the archive reports one timestamp twice; one row is written', async () => {
+    mockQueryCdxIndex.mockResolvedValue(page([cdx(T09, 'A'), cdx(T14, 'A'), cdx(T14, 'X'), cdx(T2, 'B')]));
+    const result = await survey();
+    const inserted = rowsCreateMany.mock.calls.flatMap(
+      ([call]: [{ data: { waybackTimestamp: string; digest: string }[] }]) => call.data,
+    );
+    expect(inserted.map((row) => row.waybackTimestamp)).toEqual([T09, T14, T2]);
+    expect(inserted.find((row) => row.waybackTimestamp === T14)?.digest).toBe('A');
+    expect(result).toEqual(expect.objectContaining({ captures: 3, appended: 3, byteDistinct: 2 }));
+  });
+
   it('reports the span as the ISO dates of the earliest and latest capture on the page', async () => {
     mockQueryCdxIndex.mockResolvedValue(page([cdx(T2, 'B'), cdx(T09, 'A'), cdx(T3, 'B')]));
     const result = await survey();

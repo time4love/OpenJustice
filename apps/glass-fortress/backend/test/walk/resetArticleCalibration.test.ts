@@ -3,7 +3,7 @@ jest.mock('../../src/lib/prisma', () => {
     trackedUrl: { findUnique: jest.fn(), update: jest.fn() },
     cdxIndexEntry: { findMany: jest.fn(), update: jest.fn(), updateMany: jest.fn() },
     rule: { findMany: jest.fn(), create: jest.fn(), update: jest.fn(), delete: jest.fn(), deleteMany: jest.fn() },
-    pageDecision: { findMany: jest.fn(), create: jest.fn() },
+    pageDecision: { findMany: jest.fn(), findFirst: jest.fn(), create: jest.fn() },
   };
   prisma['$transaction'] = jest.fn(async (arg: unknown) =>
     typeof arg === 'function' ? (arg as (tx: unknown) => Promise<unknown>)(prisma) : Promise.all(arg as Promise<unknown>[]),
@@ -67,6 +67,7 @@ const ruleUpdate = delegate('rule')['update'] as Mock;
 const ruleDelete = delegate('rule')['delete'] as Mock;
 const ruleDeleteMany = delegate('rule')['deleteMany'] as Mock;
 const decisionsFind = delegate('pageDecision')['findMany'] as Mock;
+const decisionFindFirst = delegate('pageDecision')['findFirst'] as Mock;
 const decisionCreate = delegate('pageDecision')['create'] as Mock;
 const transaction = (prisma as unknown as { $transaction: Mock }).$transaction;
 
@@ -108,8 +109,12 @@ function logAfter(): Decision[] {
   return [...LOG, ...written];
 }
 
-async function reset(reason: string | undefined = REASON): Promise<Record<string, unknown>> {
-  return JSON.parse(await resetArticleCalibrationHandler({ url: URL, reason })) as Record<string, unknown>;
+/** "No reason at all": a sentinel, because an explicit `undefined` would take the helper's default. */
+const MISSING = Symbol('missing reason');
+
+async function reset(reason: string | typeof MISSING = REASON): Promise<Record<string, unknown>> {
+  const input = { url: URL, ...(reason === MISSING ? {} : { reason }) };
+  return JSON.parse(await resetArticleCalibrationHandler(input)) as Record<string, unknown>;
 }
 
 beforeEach(() => {
@@ -118,6 +123,16 @@ beforeEach(() => {
   pageWith();
   rowsFind.mockResolvedValue([]);
   decisionCreate.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({ id: `d${String(data['sequence'])}`, ...data }));
+  // A7: the page log reads the page's last sequence inside the transaction.
+  // The mock answers with the last in the log this test set, or the last this
+  // test has created. RULED 2026-09-05 (Q1 of step 3): a mock-shape
+  // amendment, no assertion touched.
+  decisionFindFirst.mockImplementation(async () => {
+    const inLog = ((await decisionsFind()) as { sequence: number }[]).map((d) => d.sequence);
+    const created = decisionsCreated().map((d) => d['sequence'] as number);
+    const last = Math.max(0, ...inLog, ...created);
+    return last === 0 ? null : { sequence: last };
+  });
   rowUpdate.mockResolvedValue({});
   rowsUpdateMany.mockResolvedValue({ count: 0 });
   trackedUpdate.mockResolvedValue({});
@@ -138,7 +153,7 @@ describe('reset_article_calibration — refusals, as JSON, with nothing written'
 
   // A reset ends the authority of real work, and why is not optional.
   it('refuses REASON_REQUIRED for a missing reason, and a blank one', async () => {
-    for (const reason of [undefined, '   ']) {
+    for (const reason of [MISSING, '   '] as const) {
       jest.clearAllMocks();
       pageWith();
       await expect(reset(reason)).resolves.toEqual({ error: expect.stringContaining('reason'), code: 'REASON_REQUIRED' });
@@ -251,7 +266,10 @@ describe('reset_article_calibration — pending stops, the draft, and the transa
     ];
     expect(cleared.length).toBeGreaterThan(0);
     for (const call of cleared) {
-      expect(call.data).toEqual({ stop: null });
+      // SQL NULL is Prisma.DbNull on a nullable Json column; it reads back as
+      // null, which is what every derivation compares against. RULED
+      // 2026-09-05 (Q8 of step 3): the suite saying what the client can do.
+      expect(call.data).toEqual({ stop: Prisma.DbNull });
       expect(JSON.stringify(call.where)).toContain('PENDING_JUDGEMENT');
     }
     expect(transaction).toHaveBeenCalledTimes(1);

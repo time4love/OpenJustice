@@ -287,6 +287,17 @@ describe('SEEN — removed-side segments of judged ACQUIRED captures, plus the P
     expect(seen([judged('ACQUIRED', ['ticker line'])], decisions).size).toBe(0);
   });
 
+  // A2: on RULE_EXTENDED the waybackTimestamp is the rule's NEW validFrom — a
+  // capture the rule reaches back to, not one a human judged. An ACQUIRED
+  // capture that passed every gate, or a legacy-joined one, has no decision;
+  // an extension landing on its timestamp must not make its removals seen, or
+  // Gate 4 never shows them. Ruled 2026-09-05: "has a decision under
+  // AUTHORITY" is a CAPTURE_ACCEPTED for that capture.
+  it('a RULE_EXTENDED whose new validFrom is an unjudged ACQUIRED capture’s timestamp does not make that capture’s removals seen', () => {
+    const decisions = log([], [{ type: 'RULE_EXTENDED', waybackTimestamp: T2, ruleId: 'r1' }]);
+    expect(seen([judged('ACQUIRED', ['ticker line'])], decisions).size).toBe(0);
+  });
+
   it('exhaustively: only ACQUIRED (with a decision) and PENDING_JUDGEMENT contribute', () => {
     const decisions = log([], [D.accepted(T2)]);
     for (const outcome of OUTCOMES) {

@@ -3,7 +3,7 @@ jest.mock('../../src/lib/prisma', () => {
     trackedUrl: { findUnique: jest.fn(), update: jest.fn() },
     cdxIndexEntry: { findFirst: jest.fn(), update: jest.fn() },
     rule: { findMany: jest.fn(), create: jest.fn(), update: jest.fn() },
-    pageDecision: { findMany: jest.fn(), create: jest.fn() },
+    pageDecision: { findMany: jest.fn(), findFirst: jest.fn(), create: jest.fn() },
   };
   prisma['$transaction'] = jest.fn(async (arg: unknown) =>
     typeof arg === 'function' ? (arg as (tx: unknown) => Promise<unknown>)(prisma) : Promise.all(arg as Promise<unknown>[]),
@@ -18,7 +18,7 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '../../src/lib/prisma';
 import { rulesetId } from '../../src/walk/derivations';
 import { approveArticleRulesHandler } from '../../src/walk/tools';
-import { T09, T14, T3, EMPTY_ID, OUTCOMES, rule, D, log } from './fixtures';
+import { T09, T14, T2, T3, T5, EMPTY_ID, OUTCOMES, rule, D, log } from './fixtures';
 
 // ---------------------------------------------------------------------------
 // approve_article_rules — A5. MARKING's one command, whichever answer it was.
@@ -75,6 +75,7 @@ const rulesFind = delegate('rule')['findMany'] as Mock;
 const ruleCreate = delegate('rule')['create'] as Mock;
 const ruleUpdate = delegate('rule')['update'] as Mock;
 const decisionsFind = delegate('pageDecision')['findMany'] as Mock;
+const decisionFindFirst = delegate('pageDecision')['findFirst'] as Mock;
 const decisionCreate = delegate('pageDecision')['create'] as Mock;
 const transaction = (prisma as unknown as { $transaction: Mock }).$transaction;
 
@@ -112,8 +113,8 @@ const ruleUpdates = () =>
     ...call.data,
   }));
 
-async function approve(rules?: 0): Promise<Record<string, unknown>> {
-  const input = rules === undefined ? { url: URL, capture: T14 } : { url: URL, capture: T14, rules };
+async function approve(rules?: 0, capture = T14): Promise<Record<string, unknown>> {
+  const input = rules === undefined ? { url: URL, capture } : { url: URL, capture, rules };
   return JSON.parse(await approveArticleRulesHandler(input)) as Record<string, unknown>;
 }
 
@@ -127,6 +128,17 @@ beforeEach(() => {
   ruleCreate.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({ id: `rule-new-${++created}`, ...data }));
   ruleUpdate.mockImplementation(async ({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => ({ ...where, ...data }));
   decisionCreate.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({ id: `d${String(data['sequence'])}`, ...data }));
+  // A7: the page log reads the page's last sequence inside the transaction.
+  // The mock answers with the last in the log this test set, or the last this
+  // test has created — an approval appends twice (RULESET_CORRECTED before the
+  // Rule rows, the rest after) and the two must number contiguously. RULED
+  // 2026-09-05 (Q1 of step 3): a mock-shape amendment, no assertion touched.
+  decisionFindFirst.mockImplementation(async () => {
+    const inLog = ((await decisionsFind()) as { sequence: number }[]).map((d) => d.sequence);
+    const created = decisionsCreated().map((d) => d['sequence'] as number);
+    const last = Math.max(0, ...inLog, ...created);
+    return last === 0 ? null : { sequence: last };
+  });
   trackedUpdate.mockResolvedValue({});
 });
 
@@ -304,6 +316,51 @@ describe('approve_article_rules — one selector, one live rule', () => {
       expect.objectContaining({ ruleId: 'r2', waybackTimestamp: T14 }),
     ]);
     expect(decisionsCreated().filter((d) => d['type'] === 'RULESET_CORRECTED')).toHaveLength(0);
+  });
+
+  // RULED 2026-09-05. A2 defines "live" PER t — not ended at t — and Flow 3
+  // says a rule right in 2020 and wrong after a redesign keeps governing 2020.
+  // So RULE_ENDED '.x' at T3 and a re-mark of '.x' at T5 leave the page holding
+  // r_a [T09, T3) and r_b [T5, ∞): both LIVE at T14, and exactly one — r_a —
+  // GOVERNING it. A2's invariant is one rule governing any t; two live rules
+  // for one selector across disjoint spans is the page working as designed,
+  // never a defect to throw on.
+  // r_a governs [T2, T3); r_b governs [T5, ∞). At T2 r_a is in force; at T14
+  // both are live and neither is in force — the gap-fill.
+  const rA = rule('r_a', '.x', T2, 'd3', T3);
+  const rB = rule('r_b', '.x', T5, 'd5');
+  const disjoint = () => {
+    rulesFind.mockResolvedValue([r1, rA, rB]);
+    decisionsFind.mockResolvedValue(
+      log([r1, rA, rB], [D.corrected(T09), D.accepted(T09), D.corrected(T2), D.accepted(T2), D.corrected(T5)]),
+    );
+  };
+
+  it('a selector in force through one of two disjoint live rules is CONTINUE — no throw, no rule touched', async () => {
+    disjoint();
+    pageWith({ draftCapture: T2, draftSelectors: ['.ticker', '.x'] });
+    rowFind.mockResolvedValue({ id: `row-${T2}`, trackedUrlId: TRACKED, waybackTimestamp: T2, status: 'ACQUIRED' });
+    const result = await approve(undefined, T2);
+    expect(result['code']).toBeUndefined();
+    expect(decisionsCreated().map((d) => d['type'])).toEqual(['CAPTURE_ACCEPTED']);
+    expect(rulesCreated()).toEqual([]);
+    expect(ruleUpdates()).toEqual([]);
+    expect(result['changes']).toEqual({ added: [], ended: [], trusted: [], extended: [] });
+  });
+
+  // At T14 neither governs; both are live. Only the one with the EARLIEST
+  // validFrom can be extended without overlap — extending r_b to T14 would put
+  // two rules in force at T2.
+  it('a gap-fill before both extends the live rule with the earliest validFrom, and leaves the later one alone', async () => {
+    disjoint();
+    pageWith({ draftSelectors: ['.ticker', '.x'] });
+    const result = await approve();
+    expect(result['code']).toBeUndefined();
+    expect(decisionsCreated().filter((d) => d['type'] === 'RULE_EXTENDED')).toEqual([
+      expect.objectContaining({ ruleId: 'r_a', waybackTimestamp: T14 }),
+    ]);
+    expect(ruleUpdates()).toEqual([{ id: 'r_a', validFrom: T14 }]);
+    expect(result['changes']).toEqual({ added: [], ended: [], trusted: [], extended: [{ ruleId: 'r_a', selector: '.x' }] });
   });
 });
 

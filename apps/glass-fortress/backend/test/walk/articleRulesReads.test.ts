@@ -11,6 +11,15 @@ jest.mock('../../src/lib/prisma', () => ({
 const mockResearcherId = jest.fn<string | null, []>();
 jest.mock('../../src/context/researcherContext', () => ({ getResearcherId: mockResearcherId }));
 
+// RULED 2026-09-05 (Q5 of step 3): the fixtures mean to exercise STALE's
+// ruleset axis only, so the current extractor is pinned to the fixtures' BASE
+// (fixtures.ts) — consistent with derivations.test.ts passing BASE explicitly.
+// Without it both ACQUIRED rows are stale on the extractor axis.
+jest.mock('../../src/lib/captureDocument', () => ({
+  ...jest.requireActual<typeof import('../../src/lib/captureDocument')>('../../src/lib/captureDocument'),
+  TEXT_EXTRACTION_VERSION: 'v2-fixture-extractor',
+}));
+
 import { prisma } from '../../src/lib/prisma';
 import { rulesetId } from '../../src/walk/derivations';
 import { getArticleRulesHandler, listCapturesHandler } from '../../src/walk/tools';
