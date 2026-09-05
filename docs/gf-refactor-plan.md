@@ -202,9 +202,11 @@ of code that is about to be deleted.
 
 ## 3b. THE EVIDENCE STEPS — after the rebuild, on the target schema
 
-**Implementation order is corpus → evidence → thesis, and each plan points to the next.** §3 above
-is the corpus; this section is evidence; the thesis steps are `docs/gf-thesis-refactor-plan.md`,
-which begins where step 16 ends and builds to `docs/gf-thesis-flows.md`'s appendix.
+**Implementation order is corpus → evidence → thesis → document, and each plan points to the
+next.** §3 above is the corpus; this section is evidence; the thesis steps are
+`docs/gf-thesis-refactor-plan.md`, which begins where step 16 ends and builds to
+`docs/gf-thesis-flows.md`'s appendix; the document steps are `docs/gf-document-refactor-plan.md`,
+27–37, which begins where step 26 ends and builds to `docs/gf-document-flows.md`'s appendix.
 
 Each is one PR, each leaves the suite green, and each lands with the instrument that proves it
 and the breakage that proves the instrument (evidence doc A7).
@@ -214,6 +216,9 @@ and the breakage that proves the instrument (evidence doc A7).
 mention's pin and argument — no role, withdrawn by the thesis flows A2; the identity module as
 one importable symbol;
 `evidence-recomputable` and `evidence-no-prose` green on an empty database.
+The as-built document writers retire in this step — which ones, and their tests, is
+`docs/gf-document-refactor-plan.md` §5's RETIRE-AT-11 tag, never a list here — amended 2026-09-05
+(document refactor plan).
 
 ### 12 · The reads
 `list_findings` replacing the timeline and the scan findings, `resolve_record`, `get_diff_input`

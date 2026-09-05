@@ -19,7 +19,8 @@ is reachable from here and that everything in the archive says where its subject
 - [gf-architecture-target.md](gf-architecture-target.md) — why the designs are shaped as they are; §9–§11 defer to the flows
 - [gf-architecture-current.md](gf-architecture-current.md) — the code as it stands, 2026-09-02; the refactor's "from"
 - [gf-refactor-plan.md](gf-refactor-plan.md) — corpus steps 0–10, evidence steps 11–16; the test rules in §4
-- [gf-thesis-refactor-plan.md](gf-thesis-refactor-plan.md) — thesis steps 17–26; R12's plan, not yet written, chains after it
+- [gf-thesis-refactor-plan.md](gf-thesis-refactor-plan.md) — thesis steps 17–26; the document plan chains after it
+- [gf-document-refactor-plan.md](gf-document-refactor-plan.md) — document steps 27–37, on clean ground; the seams to the three plans before it, and the switch
 - [gf-factual-layer-rebuild-dev-plan.md](gf-factual-layer-rebuild-dev-plan.md) — the levels; `grep -n '^\*\*STATUS:'` is the level authority
 - [gf-researcher-day.md](gf-researcher-day.md) — the flows read as one working day, tool by tool
 - [gf-prosecutor-dev-plan.md](gf-prosecutor-dev-plan.md) — the Prosecutor design, re-read under thesis flows §10; deliberately not next

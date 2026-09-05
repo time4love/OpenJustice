@@ -2,9 +2,9 @@
 
 **Third of three, in implementation order.** `docs/gf-refactor-plan.md` §3 is the CORPUS (steps
 0–10) and §3b is EVIDENCE (steps 11–16); this plan is the THESIS, steps 17–26, and it begins where
-step 16 ends. **Next after this:** R12's plan — the DOCUMENT class is designed in
-`docs/gf-document-flows.md` (landed 2026-09-04), and its steps are their own document, chained
-after step 26; nothing here waits for it. The target is `docs/gf-thesis-flows.md`, whose appendix is the contract every step
+step 16 ends. **Next after this:** `docs/gf-document-refactor-plan.md` — the DOCUMENT class, steps 27–37,
+building to `docs/gf-document-flows.md`; nothing here waits for it, and four arms of this plan's
+steps are the document plan's — steps 17, 20, 23 and 24 say which. The target is `docs/gf-thesis-flows.md`, whose appendix is the contract every step
 builds to; the reasoning is `docs/gf-architecture-target.md` §10; the test rules are the refactor
 plan's §4, unchanged, and every rule there binds here.
 
@@ -53,7 +53,8 @@ every one, and a RETIRE file still present after step 25 is a defect in step 25.
 
 A jest project `thesis`, like `walk`: A3's derivations as pure functions over fixtures — CLAIM_FRAMED,
 FINGERPRINT, GAP_IN_FORCE, GAPS_DECIDED, UNARGUED, PUBLISHABLE(v), PUBLIC_PAGE as amended; A4's
-tools with every refusal; A6's seventeen checks by id and kind; A7's scans with decoys —
+tools with every refusal; seventeen of A6's nineteen checks by id and kind — 18 and 19 are the
+document plan's; A7's scans with decoys —
 `thesis-no-log`, `versions-immutable`, `models-write-no-state`, `one-symbol`, `names-vacuity`,
 `gap-id-stable`; the nine invariants of target §10.5. Every file red. Informational in CI until
 step 25.
@@ -84,6 +85,8 @@ round whose contradiction fails the substring check and is shown flagged.
 `create_thesis` and `add_thesis_version`: the token parser, the pin computed from `affirmed` or
 CURRENT, the argument carried forward, `STALE_HEAD`, `STALE_PIN`; `get_thesis_context` with
 HISTORY, UNARGUED and the gap list; `list_theses`; `add_note`.
+The `#doc_` kind of the amended T2 is added by `docs/gf-document-refactor-plan.md` step 33: it
+resolves against a table that plan creates — amended 2026-09-05 (document refactor plan).
 
 *Verified by:* the T2 contract; two writes against one head, the second refused; `affirmed` moved
 between two writes, the second refused; `versions-immutable` green.
@@ -112,6 +115,9 @@ The seventeen checks of A6 calling A3's predicates, `NAMES_NO_PERSON` with its e
 `publish_thesis` writing a `PublicationAttempt`, refused or not; `unpublish_thesis` writing a
 `Withdrawal`; the three public routes of A5 serving text and resolved mentions, never TipTap and
 never model prose; PUBLIC_PAGE amended in evidence's predicate module.
+Checks 18 and 19 of the amended A6, and `CITES_EVIDENCE`'s document arm, are added by
+`docs/gf-document-refactor-plan.md` step 34: they read tables that plan creates — amended
+2026-09-05 (document refactor plan).
 
 *Verified by:* the T5 contract; `names-vacuity`; the shape test that no analysis, assessment or
 objection field reaches `GET /api/thesis/:id`; a withdrawn thesis answers a notice, a never-published
@@ -119,8 +125,10 @@ one 404.
 
 ### 24 · After publication
 
-`list_thesis_reviews` — FLAGGED, STALE_TRAJECTORY, UNARGUED, and ARRIVED in the shape
-`docs/gf-document-flows.md` §5 gives it; `audit-theses` as A7 specifies, with the exit that proves the gate held.
+`list_thesis_reviews` — FLAGGED, STALE_TRAJECTORY, UNARGUED; `audit-theses` as A7 specifies, with
+the exit that proves the gate held. The ARRIVED arm, in the shape `docs/gf-document-flows.md` §5
+gives it, is added by `docs/gf-document-refactor-plan.md` step 32: it reads the Arrival table that
+plan creates — amended 2026-09-05 (document refactor plan).
 
 *Verified by:* on staging, a re-walk moving one cited record's content; the author's list shows it;
 `audit-theses` exits 2 before the new version and 0 after.
