@@ -1,13 +1,17 @@
-jest.mock('../../src/lib/prisma', () => ({
-  prisma: {
+jest.mock('../../src/lib/prisma', () => {
+  const prisma: Record<string, unknown> = {
     trackedUrl: { findUnique: jest.fn(), create: jest.fn() },
     cdxQuery: { create: jest.fn() },
     cdxIndexEntry: { findMany: jest.fn(), createMany: jest.fn(), update: jest.fn(), updateMany: jest.fn() },
     urlSnapshot: { findMany: jest.fn() },
     rule: { findMany: jest.fn() },
     pageDecision: { findMany: jest.fn() },
-  },
-}));
+  };
+  prisma['$transaction'] = jest.fn(async (arg: unknown) =>
+    typeof arg === 'function' ? (arg as (tx: unknown) => Promise<unknown>)(prisma) : Promise.all(arg as Promise<unknown>[]),
+  );
+  return { prisma };
+});
 
 const mockResearcherId = jest.fn<string | null, []>();
 jest.mock('../../src/context/researcherContext', () => ({ getResearcherId: mockResearcherId }));

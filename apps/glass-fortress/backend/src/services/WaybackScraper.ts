@@ -476,16 +476,26 @@ export class WaybackScraper {
 
   /**
    * Fetch the deduplicated list of archive snapshots for a URL via the CDX API.
-   * Uses server-side `collapse=digest` to return only content-changed snapshots.
+   * By default uses server-side `collapse=digest` to return only content-changed
+   * snapshots — the old path's contract, pinned by its tests.
+   *
+   * `collapse: false` asks for EVERY capture the index holds. The walk's survey
+   * (docs/gf-interaction-flows.md Phase 0) needs the uncollapsed answer: it
+   * counts byte-distinct captures against the one immediately before, and the
+   * walk records a capture whose digest equals its predecessor's IDENTICAL
+   * without fetching. Neither exists under a query that has already removed
+   * those rows. PUBLIC for that caller; the two recording methods above remain
+   * the old path's only entry.
    *
    * Pure: it queries and parses, and writes nothing. `rawRows` is every row CDX
    * returned before the MAX_SNAPSHOTS slice, which is what the observation record
    * needs — the stored index must reflect what the Archive said, not what one
    * batch happened to keep.
    */
-  private async queryCdxIndex(
+  async queryCdxIndex(
     url: string,
     fromDate?: string,
+    options: { collapse: boolean } = { collapse: true },
   ): Promise<{ snapshots: RawSnapshot[]; hasMore: boolean; rawRows: RawSnapshot[] }> {
     const parsed = new URL(url);
     if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
@@ -497,7 +507,7 @@ export class WaybackScraper {
       `?url=${encodeURIComponent(url)}` +
       `&output=json` +
       `&fl=timestamp,digest` +
-      `&collapse=digest` +
+      (options.collapse ? `&collapse=digest` : '') +
       `&limit=${MAX_SNAPSHOTS + 1}` + // request one extra row to detect "more exist"
       (fromDate ? `&from=${fromDate}` : '');
 

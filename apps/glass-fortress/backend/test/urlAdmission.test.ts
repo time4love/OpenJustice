@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 // ---------------------------------------------------------------------------
@@ -20,58 +20,20 @@ import { join } from 'node:path';
 // nothing fails.
 //
 // A BEHAVIOUR TEST CANNOT COVER THIS. It can only cover paths someone thought to
-// test, and a fifth path added tomorrow is covered by nothing. The source scan
-// asserts the property directly: `trackedUrl.upsert` and `trackedUrl.create`
-// appear in admitUrl.ts and nowhere else, so a new admission route either goes
-// through the gate or fails here.
+// test, and a fifth path added tomorrow is covered by nothing. Each named path
+// is therefore held to import admitUrl.
+//
+// THE ONE-WRITER GROUP THIS FILE HELD — "trackedUrl.upsert and trackedUrl.create
+// appear in admitUrl.ts and nowhere else" — was deleted at refactor step 2
+// (docs/gf-refactor-plan.md §4, rule 3). The survey is a second, deliberate
+// writer from step 2 to step 8: a page enters the corpus by survey, attributed,
+// with no admission gate (docs/gf-interaction-flows.md Phase 0). The target
+// form of the rule — exactly one writer, and it is the survey — is held by
+// test/walk/retiredNames.test.ts, red until step 8 retires admitUrl and this
+// file with it.
 // ---------------------------------------------------------------------------
 
 const SRC = join(__dirname, '..', 'src');
-
-/** The one file permitted to create a TrackedUrl. */
-const ADMISSION_MODULE = 'services/admitUrl.ts';
-
-function tsFiles(dir: string): string[] {
-  return readdirSync(dir).flatMap((entry) => {
-    const full = join(dir, entry);
-    if (statSync(full).isDirectory()) return tsFiles(full);
-    return full.endsWith('.ts') ? [full] : [];
-  });
-}
-
-/** Files containing a TrackedUrl WRITE, as paths relative to src/. */
-function trackedUrlWriters(): string[] {
-  return tsFiles(SRC)
-    .filter((file) => {
-      const source = readFileSync(file, 'utf8');
-      // Comments are stripped first. admitUrl.ts documents the rule in prose and
-      // would otherwise match itself for the wrong reason — and a scan that fires
-      // on prose is not testing the code.
-      const code = source
-        .split('\n')
-        .filter((l) => {
-          const t = l.trimStart();
-          return !t.startsWith('//') && !t.startsWith('*') && !t.startsWith('/*');
-        })
-        .join('\n');
-      return /\btrackedUrl\.(upsert|create)\s*\(/.test(code);
-    })
-    .map((file) => file.slice(SRC.length + 1));
-}
-
-describe('a URL enters the corpus through admitUrl or not at all', () => {
-  const writers = trackedUrlWriters();
-
-  it('finds a TrackedUrl writer at all — a silent zero would make this vacuous', () => {
-    // If the pattern stops matching, every assertion below passes over an empty
-    // set and the guard reports success for a check it never ran.
-    expect(writers.length).toBeGreaterThan(0);
-  });
-
-  it('has exactly one, and it is the admission module', () => {
-    expect(writers).toEqual([ADMISSION_MODULE]);
-  });
-});
 
 describe('every admission path calls admitUrl', () => {
   // Named explicitly rather than discovered, so adding a route is a deliberate
@@ -83,6 +45,12 @@ describe('every admission path calls admitUrl', () => {
     'mcp/tools/startForensicScan.ts',
     'mcp/tools/enrichEvidenceWithHistory.ts',
   ] as const;
+
+  // The vacuity guard the deleted group carried, re-homed: a table that
+  // enumerates zero paths must fail, not pass over nothing.
+  it('names at least one admission path — a silent zero would make the group vacuous', () => {
+    expect(ADMISSION_PATHS.length).toBeGreaterThan(0);
+  });
 
   it.each(ADMISSION_PATHS)('%s routes through admitUrl', (rel) => {
     const source = readFileSync(join(SRC, rel), 'utf8');

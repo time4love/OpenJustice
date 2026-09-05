@@ -120,6 +120,10 @@ export const WRITE_TOOLS = new Set([
   // Ends the authority of every calibration decision on a URL. Gated for the
   // obvious reason, and named rather than omitted.
   'reset_article_calibration',
+  // The walk's entry to the corpus (refactor step 2). Creates a TrackedUrl
+  // attributed to the researcher and writes work-list rows — a write on its
+  // face, and one CDX query per fifty captures besides.
+  'survey_wayback_captures',
   'create_thesis_draft',
   'add_thesis_version',
   // Writes a new ThesisVersion. Cheaper and narrower than add_thesis_version —

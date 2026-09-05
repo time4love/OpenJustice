@@ -32,6 +32,7 @@ import {
   abandonArticleRulesSchema,
   abandonArticleRulesHandler,
 } from './tools/articleRuleTools';
+import { surveyWaybackCapturesSchema, surveyWaybackCapturesHandler } from '../walk/tools';
 import { createThesisDraftSchema, createThesisDraftHandler } from './tools/createThesisDraft';
 import { addThesisVersionSchema, addThesisVersionHandler } from './tools/addThesisVersion';
 import { citeTrajectoriesSchema, citeTrajectoriesHandler } from './tools/citeTrajectories';
@@ -753,6 +754,35 @@ export function createMcpServer(): McpServer {
     },
     async (input) => ({
       content: [{ type: 'text' as const, text: await resetArticleCalibrationHandler(input) }],
+    }),
+  );
+
+  // -------------------------------------------------------------------------
+  // Tool: survey_wayback_captures  [WRITE — SYNCHRONOUS, ONE CDX QUERY]
+  //
+  // THE WALK'S ENTRY TO THE CORPUS — docs/gf-interaction-flows.md Phase 0,
+  // built at refactor step 2 BESIDE the old path (docs/gf-refactor-plan.md
+  // §1). It admits nothing and fetches nothing: the first survey creates the
+  // TrackedUrl attributed to the researcher, every survey records what the
+  // archive's index said, one row per capture. The old scan and the
+  // calibration tools above keep working on their own tables until step 8.
+  // -------------------------------------------------------------------------
+  server.registerTool(
+    'survey_wayback_captures',
+    {
+      description:
+        'SIZE THE JOB BEFORE ANYTHING IS FETCHED, STORED OR SPENT. Asks the Internet Archive\'s ' +
+        'index for every capture of a URL — one query, no page fetches — and records one work-list ' +
+        'row per capture. The first survey of a URL brings it into the corpus, attributed to you; ' +
+        'a later survey appends captures the archive has added and rewrites nothing. Returns two ' +
+        'sizes: `captures`, the archive\'s activity, and `byteDistinct`, captures whose bytes differ ' +
+        'from the one before — the upper bound on fetches and on your attention. Also `held` (captures ' +
+        'this platform already holds), `appended`, `unservable` and the date `span`. Refuses ' +
+        'ARCHIVE_UNAVAILABLE with nothing written when the index cannot be read.',
+      inputSchema: surveyWaybackCapturesSchema,
+    },
+    async (input) => ({
+      content: [{ type: 'text' as const, text: await surveyWaybackCapturesHandler(input) }],
     }),
   );
 
