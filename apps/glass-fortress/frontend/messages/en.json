@@ -1880,7 +1880,6 @@
     "unseenRemovals": "Removals not yet seen",
     "verdictReason": "The classifier's reason",
     "renderedHeading": "The page, as captured",
-    "renderedNote": "Shown without scripts and inside a sandbox — it cannot run code. Stylesheets are often missing from the archive, so it may look unstyled.",
     "outlineHeading": "Structure — click to mark",
     "outlineNote": "The number in brackets is how many characters a click on that element removes.",
     "outlineTruncated": "The structure was cut short. {chars} characters are not reachable in the tree.",
@@ -1900,6 +1899,7 @@
     "matchedNothing": "matched nothing",
     "remove": "Remove",
     "focusRule": "Show what this rule removed",
+    "focusBlock": "Show the rule that removed this block",
     "keptHeading": "The text kept",
     "previewPending": "Recomputing…",
     "previewFailed": "The preview failed; the marks are not lost.",
@@ -1925,10 +1925,10 @@
     "badCaptureNote": "Skipping is not an answer on this page. Instead of saving, paste into the chat:",
     "momentDefining": "First capture — no rules yet. Mark the page elements that are not part of the article.",
     "momentCorrecting": "Correcting a stored capture — the rules in force for this date are shown; change them here.",
-    "toolbox": "Toolbox — the page structure",
-    "closeDrawer": "Close the toolbox",
     "markedHeading": "Marked for removal",
     "markedBar": "{rules} rules · {chars} characters will be removed",
-    "markedEmpty": "Nothing marked yet — open the toolbox and click an element in the structure."
+    "markedEmpty": "Nothing marked yet — click an element in the structure.",
+    "collapseToolbox": "Collapse the toolbox",
+    "expandToolbox": "Expand the toolbox"
   }
 }
