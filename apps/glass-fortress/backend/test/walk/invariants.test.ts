@@ -199,6 +199,9 @@ describe('I9 · the marking page decides nothing and applies nothing', () => {
   it('DETECTS a route that records a decision — proven against a decoy', () => {
     const decoy = `await prisma.pageDecision.create({ data: { type: 'CAPTURE_ACCEPTED', researcherId } });`;
     expect(writesTo(decoy, 'pageDecision')).toHaveLength(1);
+    // The bulk verb approve uses since 2026-09-06: a scan blind to it would pass a route that writes rules in bulk.
+    const bulk = `await prisma.rule.createManyAndReturn({ data: { selector, validFrom } });`;
+    expect(writesTo(bulk, 'rule')).toHaveLength(1);
   });
 });
 

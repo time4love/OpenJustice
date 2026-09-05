@@ -6,6 +6,7 @@ import type { WaybackScraper } from '../../services/WaybackScraper';
 import { rulesetIdAt, type Outcome } from '../derivations';
 import { loadWorkListRows, snapshotDateOf } from '../rows';
 import type { Refusal } from '../refusals';
+import { WRITE_TRANSACTION } from '../pageLog';
 
 // ---------------------------------------------------------------------------
 // survey_wayback_captures — docs/gf-interaction-flows.md Phase 0 and A5.
@@ -227,7 +228,7 @@ export async function surveyWaybackCapturesHandler(input: { url: string }): Prom
       appended: fresh.length,
       unservable: page.filter((row) => row.outcome === 'UNSERVABLE').length,
     };
-  });
+  }, WRITE_TRANSACTION);
 
   return JSON.stringify(survey);
 }

@@ -223,6 +223,28 @@ describe('one implementation — by source scan', () => {
   // reaching the database through `prisma.<delegate>.<write>` directly — every
   // write goes through `tx.` inside the callback. RED on the count of five
   // until step 5 lands scan_captures, by construction.
+  // A8: the transaction window is an operational parameter, stated once (WRITE_TRANSACTION in
+  // pageLog.ts) and passed by every write tool — the staging exercise of 2026-09-06 found the
+  // approval rolling back under Prisma's unstated default. One rule, one spelling.
+  it('every $transaction in the tool files carries the shared window, WRITE_TRANSACTION', () => {
+    const toolFiles = tsFiles(join(WALK, 'tools')).filter((f) => !f.endsWith('/index.ts'));
+    const withTransactions = toolFiles.filter((f) => /\$transaction\(/.test(readCode(f)));
+    expect(withTransactions.length).toBeGreaterThan(0);
+    for (const file of withTransactions) {
+      const code = readCode(file);
+      const opened = (code.match(/\$transaction\(/g) ?? []).length;
+      const windowed = (code.match(/,\s*WRITE_TRANSACTION\s*\)/g) ?? []).length;
+      expect({ file: file.slice(WALK.length + 1), opened, windowed }).toEqual({ file: file.slice(WALK.length + 1), opened, windowed: opened });
+    }
+  });
+
+  it('DETECTS a transaction without the window — proven against a decoy', () => {
+    const bare = `return prisma.$transaction((tx) => approve(tx, input));`;
+    const windowed = `return prisma.$transaction((tx) => approve(tx, input), WRITE_TRANSACTION);`;
+    expect((bare.match(/,\s*WRITE_TRANSACTION\s*\)/g) ?? []).length).toBe(0);
+    expect((windowed.match(/,\s*WRITE_TRANSACTION\s*\)/g) ?? []).length).toBe(1);
+  });
+
   it('the tool files hold five write handlers, one $transaction each, and no direct prisma write', () => {
     const toolFiles = tsFiles(join(WALK, 'tools')).filter((f) => !f.endsWith('/index.ts'));
     expect(toolFiles.length).toBeGreaterThan(0);

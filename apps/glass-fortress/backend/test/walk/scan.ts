@@ -56,7 +56,10 @@ export function balanced(source: string, from: number): string {
   return source.slice(from);
 }
 
-const WRITE_VERBS = 'create|createMany|update|updateMany|upsert';
+// `createManyAndReturn` since 2026-09-06 — approve creates its Rule rows in one call. A payload
+// passed as an array or by reference has no `data: {` region and its columns are not read; the
+// call itself is still seen.
+const WRITE_VERBS = 'create|createMany|createManyAndReturn|update|updateMany|upsert';
 
 /**
  * The `data: { … }` payloads of every Prisma write on one delegate, plus the

@@ -3,7 +3,7 @@ import { CdxEntryStatus, Prisma } from '@prisma/client';
 import { prisma } from '../../lib/prisma';
 import { getResearcherId } from '../../context/researcherContext';
 import { authority, rulesUnderAuthority, type Rule, type Decision } from '../derivations';
-import { appendDecisions } from '../pageLog';
+import { appendDecisions, WRITE_TRANSACTION } from '../pageLog';
 import { clearDraft } from '../draft';
 import { answer, refusal, shared, type Refusal } from '../refusals';
 
@@ -51,7 +51,7 @@ export async function resetArticleCalibrationHandler(input: ResetInput): Promise
     if (researcherId === null) return shared.noResearcher('A reset');
     const reason = input.reason?.trim() ?? '';
     if (reason.length === 0) return shared.reasonRequired('A reset');
-    return prisma.$transaction((tx: Prisma.TransactionClient) => reset(tx, researcherId, input.url, reason));
+    return prisma.$transaction((tx: Prisma.TransactionClient) => reset(tx, researcherId, input.url, reason), WRITE_TRANSACTION);
   });
 }
 
