@@ -10,10 +10,12 @@ import { StaleSequenceError } from './pageLog';
 // ---------------------------------------------------------------------------
 
 /**
- * Every code A5 names, transcribed whole — the survey's, this step's four
- * tools', the two reads' and scan_captures' — so step 5 adds nothing here and
- * the set cannot drift from the contract one tool at a time. A refusal with a
- * code the contract does not name fails to compile.
+ * Every code A5 and A6 name, transcribed whole — the survey's, this step's
+ * four tools', the two reads', scan_captures' and the marking routes'
+ * (INVALID_BODY for a 400; 404 and 409 reuse NOT_SURVEYED and
+ * CAPTURE_NOT_MARKABLE) — so step 5 adds nothing here and the set cannot
+ * drift from the contract one tool at a time. A refusal with a code the
+ * contract does not name fails to compile.
  */
 export type RefusalCode =
   | 'NO_RESEARCHER'
@@ -31,7 +33,8 @@ export type RefusalCode =
   | 'NOT_PENDING'
   | 'INVALID_RESOLUTION'
   | 'NOTHING_TO_RETIRE'
-  | 'INVALID_OUTCOME';
+  | 'INVALID_OUTCOME'
+  | 'INVALID_BODY';
 
 export interface Refusal {
   error: string;

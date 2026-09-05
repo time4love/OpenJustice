@@ -45,6 +45,7 @@ const mockEvaluate = jest.fn();
 jest.mock('../../src/walk/evaluate', () => ({ evaluateCapture: mockEvaluate }));
 
 import { WaybackFetchError } from '../../src/lib/archiveHttp';
+import { TEXT_EXTRACTION_VERSION } from '../../src/lib/captureDocument';
 import { prisma } from '../../src/lib/prisma';
 import { rulesetId } from '../../src/walk/derivations';
 import { scanCapturesHandler } from '../../src/walk/tools';
@@ -521,6 +522,40 @@ describe('scan_captures — Flow 3, the re-walk over rows that already have an o
     expect(mockStoreCapture).not.toHaveBeenCalled();
     expect(updatesTo(T14)).toEqual(expect.objectContaining({ rulesetId: NEW_ID, textHash: 'hash-new' }));
     expect(result['outcomes']).toEqual(expect.objectContaining({ superseded: 1 }));
+  });
+
+  // RULED 2026-09-05 (A4 amended): approved text is text a human accepted at a
+  // stop. A stale ACQUIRED row with no CAPTURE_ACCEPTED under AUTHORITY — the
+  // legacy corpus, derived under no rules — reaches the evaluation (Gates 1, 2,
+  // 4) with NO own text, so no OWN_PREVIOUS_TEXT entry can be reported for it;
+  // one that was accepted reaches it with the snapshot's text.
+  it('hands the evaluation no own text for a stale ACQUIRED row nobody accepted, and the snapshot’s text for one somebody did', async () => {
+    const evaluated = () => {
+      const call = mockEvaluate.mock.calls.find(([arg]: [{ t: string }]) => arg.t === T14);
+      if (call === undefined) throw new Error('the stale row was not evaluated');
+      const [arg] = call as [{ derive: () => { ownPrevious?: { keptText: string } | null } }];
+      return arg.derive().ownPrevious;
+    };
+    const predecessor = acquired(T09, 'hash-09', NEW_ID);
+    const stale = acquired(T14, 'hash-old', EMPTY_ID);
+    // Re-derived to the CURRENT extractor, so the in-memory restamp clears
+    // the extractor axis and the walk reaches T14 within one call.
+    const current = { ...derived('hash-new'), textExtractionVersion: TEXT_EXTRACTION_VERSION };
+
+    withRule();
+    page([predecessor.row, stale.row], [predecessor.snapshot, stale.snapshot]);
+    mockDerive.mockReturnValue(current);
+    await scan();
+    expect(evaluated()).toBeNull();
+
+    jest.clearAllMocks();
+    rulesFind.mockResolvedValue([r1]);
+    decisionsFind.mockResolvedValue(log([r1], [D.corrected(T09), D.accepted(T09), D.accepted(T14, EMPTY_ID)]));
+    page([predecessor.row, stale.row], [predecessor.snapshot, stale.snapshot]);
+    mockDerive.mockReturnValue(current);
+    mockEvaluate.mockResolvedValue(null);
+    await scan();
+    expect(evaluated()).toEqual({ keptText: stale.snapshot.text });
   });
 
   // RULED: the same textHash under the new rules is not a new version. The row

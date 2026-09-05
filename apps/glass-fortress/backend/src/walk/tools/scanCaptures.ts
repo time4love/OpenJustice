@@ -196,6 +196,8 @@ class PageWalk {
   private readonly view: Map<string, LoadedRow>;
   private readonly extractions = new Map<string, Extraction>();
   private removedByAccepted: Map<string, readonly string[]> | null = null;
+  /** The captures a human ACCEPTED under AUTHORITY, folded once: SEEN's captures, and the rows that have approved text. */
+  private readonly accepted: Set<string>;
   private agent: ForensicAgent | null = null;
   private readonly outcomes = zeroOutcomes();
   private walked = 0;
@@ -209,6 +211,7 @@ class PageWalk {
     private readonly derive: Derive,
   ) {
     this.view = new Map(stored.map((row) => [row.waybackTimestamp, { ...row }]));
+    this.accepted = acceptedCaptures(decisions);
   }
 
   private rows(): LoadedRow[] {
@@ -354,6 +357,11 @@ class PageWalk {
    * raw fetch), its own approved text when it has one, and its predecessor,
    * loaded and derived so `derive` can be synchronous. Reads only — the walk
    * spends nothing before the gates.
+   *
+   * APPROVED TEXT IS TEXT A HUMAN ACCEPTED (A4 amended 2026-09-05): the
+   * snapshot's text is handed over only for an ACQUIRED row with a
+   * CAPTURE_ACCEPTED under AUTHORITY. A row acquired quietly, or the legacy
+   * corpus derived under no rules, has none, and Gate 1' is not asked of it.
    */
   private async prepare(
     row: LoadedRow,
@@ -372,7 +380,7 @@ class PageWalk {
           contentEncoding: snapshot.documentContentEncoding,
           fresh: false,
         },
-        approvedText: { keptText: snapshot.text },
+        approvedText: this.accepted.has(row.waybackTimestamp) ? { keptText: snapshot.text } : null,
         predecessor: pred,
       };
     }
@@ -468,8 +476,7 @@ class PageWalk {
   /** SEEN's fold, once per call: each accepted ACQUIRED capture's removed side, as segments. */
   private async foldSeen(rows: readonly LoadedRow[]): Promise<void> {
     if (this.removedByAccepted !== null) return;
-    const accepted = acceptedCaptures(this.decisions);
-    const judged = rows.filter((r) => r.outcome === 'ACQUIRED' && accepted.has(r.waybackTimestamp));
+    const judged = rows.filter((r) => r.outcome === 'ACQUIRED' && this.accepted.has(r.waybackTimestamp));
     for (const capture of judged) await this.ensureExtracted(capture);
     this.removedByAccepted = new Map(
       judged.map((r) => [r.waybackTimestamp, segments(this.extractionOf(r).current.removedText)]),
