@@ -34,6 +34,17 @@ import { FORENSIC_DIFF_CLASSIFICATION_PROMPT } from '../prompts/forensicDiffClas
 /**
  * Bump on any change that alters what the classifier would decide.
  *
+ * v5-editorial-verdict: the classifier is asked, in the same call, whether the diff is
+ * EDITORIAL — every change authored content — or NOT: any furniture entered or left the
+ * compared text. Gate 5 of the walk (docs/gf-interaction-flows.md A4, amended 2026-09-02)
+ * reads that answer; nothing before this version could. THE PROMPT HASH MOVES WITH THIS
+ * ONE, because the question changed: a row at v4 was never asked. `editorialReason` is one
+ * sentence naming what decided it, carried in Gate 5's material as `reason` (A5). Neither
+ * field is written by the old scan path; the walk writes them with the diff from refactor
+ * step 5. `forensics:reclassify` regards every v4 row as stale from this version on and
+ * would re-spend on all of them if run — recorded, not acted on: the old columns retire at
+ * refactor step 8.
+ *
  * v4-budgeted-best-of-n: the classifier is given an explicit output budget, and a
  * diff is drawn up to MAX_CLASSIFICATION_DRAWS times with the best-covered draw
  * kept.
@@ -84,7 +95,7 @@ import { FORENSIC_DIFF_CLASSIFICATION_PROMPT } from '../prompts/forensicDiffClas
  * relocations excluded from the derived set. Judging diffs as a whole let a
  * consequential change be masked by routine ones bundled with it.
  */
-export const CLASSIFIER_VERSION = 'v4-budgeted-best-of-n';
+export const CLASSIFIER_VERSION = 'v5-editorial-verdict';
 
 /**
  * Provenance for the summary alone.

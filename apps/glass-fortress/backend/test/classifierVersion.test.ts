@@ -30,7 +30,7 @@ describe('provenance axes are distinct', () => {
   });
 
   it('CLASSIFIER_VERSION names the current procedure', () => {
-    expect(CLASSIFIER_VERSION).toBe('v4-budgeted-best-of-n');
+    expect(CLASSIFIER_VERSION).toBe('v5-editorial-verdict');
   });
 
   it('does not encode a tunable value in the version name', () => {

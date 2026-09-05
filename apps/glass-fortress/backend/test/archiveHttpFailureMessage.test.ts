@@ -1,7 +1,7 @@
 jest.mock('axios');
 
 import axios from 'axios';
-import { fetchCaptureBytes, fetchCaptureHtml, WaybackFetchError } from '../src/lib/archiveHttp';
+import { fetchCaptureBytes, fetchCaptureHtml, isTransientFetchFailure, WaybackFetchError } from '../src/lib/archiveHttp';
 
 const mockGet = axios.get as jest.Mock;
 const isAxiosError = axios.isAxiosError as unknown as jest.Mock;
@@ -148,5 +148,26 @@ describe('content-encoding normalisation', () => {
     const { contentEncoding } = await fetchCaptureBytes(URL_, TS, NO_RETRY);
     expect(contentEncoding).not.toBeNull();
     expect(contentEncoding).toBe('identity');
+  });
+});
+
+// THE WALK'S TRANSIENT/DURABLE SPLIT ON THE WRAPPED SHAPE (refactor step 4,
+// ruled 2026-09-05). fetchCaptureBytes wraps every axios failure in a
+// WaybackFetchError carrying the status, so a caller that catches it cannot ask
+// isTransientWaybackError (an axios-shape predicate). Both predicates read ONE
+// status rule: a 4xx other than 429 is durable — the archive will say it again —
+// and 429, 5xx or no response at all is transient. Two spellings of that rule
+// in two modules is how the walk came to carry a dead branch.
+describe('isTransientFetchFailure — the same rule as isTransientWaybackError, on WaybackFetchError', () => {
+  const failure = (status: number | null) => new WaybackFetchError('failed', false, status);
+
+  it('a 404 is durable', () => {
+    expect(isTransientFetchFailure(failure(404))).toBe(false);
+  });
+
+  it('429, 503 and no response at all are transient', () => {
+    expect(isTransientFetchFailure(failure(429))).toBe(true);
+    expect(isTransientFetchFailure(failure(503))).toBe(true);
+    expect(isTransientFetchFailure(failure(null))).toBe(true);
   });
 });

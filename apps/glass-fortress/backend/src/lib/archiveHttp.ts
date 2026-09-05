@@ -95,9 +95,29 @@ export function sleep(ms: number): Promise<void> {
  */
 export function isTransientWaybackError(err: unknown): boolean {
   if (!axios.isAxiosError(err)) return false;
-  if (!err.response) return true; // timeout / reset / DNS — no status to inspect
-  const status = err.response.status;
-  return status === 429 || status >= 500;
+  // timeout / reset / DNS — no status to inspect
+  return isTransientStatus(err.response ? err.response.status : null);
+}
+
+/**
+ * THE ONE STATUS RULE both shapes read: no response at all, 429, or 5xx is
+ * transient — the archive may answer differently next time; any other 4xx is
+ * durable — it will say the same again. Spelled once so the axios-shape
+ * predicate above and the wrapped-shape predicate below cannot drift.
+ */
+function isTransientStatus(status: number | null): boolean {
+  return status === null || status === 429 || status >= 500;
+}
+
+/**
+ * The same rule on the WRAPPED shape. `fetchCaptureBytes` turns every axios
+ * failure into a WaybackFetchError carrying the status, so a caller that
+ * catches one cannot ask isTransientWaybackError; the walk (refactor step 4)
+ * asks this instead. Anything that is not a WaybackFetchError is not the
+ * archive's failure and is the caller's to rethrow.
+ */
+export function isTransientFetchFailure(err: WaybackFetchError): boolean {
+  return isTransientStatus(err.status);
 }
 
 /**

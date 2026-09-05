@@ -122,7 +122,7 @@ describe('MCP tool classification', () => {
     // Named explicitly rather than derived, so that moving any of these back to
     // the open set is a deliberate edit to this list with a test failure to
     // explain. Each embeds input and then invokes an LLM.
-    for (const tool of ['get_research_agenda', 'run_ai_analysis']) {
+    for (const tool of ['get_research_agenda', 'run_ai_analysis', 'scan_captures']) {
       expect(WRITE_TOOLS.has(tool)).toBe(true);
     }
   });

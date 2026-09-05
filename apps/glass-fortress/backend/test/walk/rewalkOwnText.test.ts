@@ -110,6 +110,7 @@ describe('evaluateCapture — the own-text check runs with 1, 2 and 4, on a STAL
       rules: [r1, r2],
       decisions: corrected,
       row: staleRow('ACQUIRED'),
+      predecessor: T09,
       fetched: null,
       derive: jest.fn(bothFire),
       novel: true,

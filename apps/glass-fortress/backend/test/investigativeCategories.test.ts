@@ -24,6 +24,8 @@ describe('investigative categories', () => {
         deletedItems: [],
         addedItems: [],
         legalSignificance: 'נימוק',
+        editorial: true,
+        editorialReason: 'fixture reason',
       });
       expect(result.success).toBe(true);
     });
