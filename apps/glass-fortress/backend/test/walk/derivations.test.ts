@@ -53,6 +53,15 @@ describe('AUTHORITY — decisions after the newest RESET, by sequence', () => {
     const decisions = log([], [D.accepted(T2), D.reset(), D.accepted(T3), D.reset(), D.accepted(T4)]);
     expect(sequences(authority(decisions))).toEqual([5]);
   });
+
+  // A2 fixes no origin for the sequence. "All, if none" is a branch, not a
+  // comparison against a sentinel: implemented as `sequence > 0`, a first
+  // decision numbered 0 would fall outside AUTHORITY on a page never reset.
+  // Built by hand because `log()` numbers from 1 and cannot make this case.
+  it('with no RESET, a decision numbered 0 is under AUTHORITY — the "none" branch is not a sentinel', () => {
+    const decisions = log([], [D.accepted(T2), D.accepted(T3)]).map((d) => ({ ...d, sequence: d.sequence - 1 }));
+    expect(sequences(authority(decisions))).toEqual([0, 1]);
+  });
 });
 
 describe('RULES_IN_FORCE(t) — created under AUTHORITY, validFrom ≤ t < validTo, not retired', () => {
