@@ -890,9 +890,14 @@ under RULES_IN_FORCE for its timestamp `t`; `p` = PREDECESSOR(c). Every gate tak
 GATE 0   NOT APPROVED_BEFORE(page, c.t)
 GATE 1   (removed(c) ∩ kept(p)) ∪ (kept(c) ∩ removed(p)) ≠ ∅
          material { against: 'PREDECESSOR', nowRemoved: [{ text, ruleId|null }], nowKept: [text] }
-GATE 1'  on a STALE ACQUIRED row only: removed(c_new) ∩ kept(c_previous_version) ≠ ∅ — one
-         direction — material { against: 'OWN_PREVIOUS_TEXT', nowRemoved, nowKept: [] }.
-         A DUPLICATE has no approved text of its own
+GATE 1'  on a STALE ACQUIRED row that carries a CAPTURE_ACCEPTED under AUTHORITY only:
+         removed(c_new) ∩ kept(c_previous_version) ≠ ∅ — one direction —
+         material { against: 'OWN_PREVIOUS_TEXT', nowRemoved, nowKept: [] }.
+         Approved text is text a human accepted at a stop. A capture acquired quietly, or one
+         derived under no rules before any marking (the legacy corpus), has no approved text of
+         its own and is superseded by the re-walk without a stop (Flow 3). A DUPLICATE has no
+         text of its own. Amended 2026-09-05: read from the code, the unamended predicate would
+         have stopped on every legacy row with CONTINUE the only answer
 GATE 2   ∃ rule r in force at both timestamps: RuleMatch(r, p) > 0 AND RuleMatch(r, c) = 0.
          A rule in force at p or c with NO RuleMatch row for that timestamp is a WALK DEFECT: the
          gate THROWS naming the rule and the timestamp — never read as 0, never as quiet
@@ -1043,9 +1048,14 @@ All under `/api/article-rules`, all behind `requireResearcher`, all page-scoped.
 
 ```
 GET    /pages/:trackedUrlId/captures/:capture
-       ← { capture, snapshotDate, outcome, document: inert HTML, rulesInForce: [{ ruleId, selector,
-            trusted }], draft: { selectors, trusted, returnedAt } | null,
+       ← { capture, snapshotDate, outcome, url, document: inert HTML,
+            outline: { root, truncated, unreachableTextLength } — the reused documentOutline over
+            the decoded document, never the inert one,
+            rulesInForce: [{ ruleId, selector, trusted }],
+            draft: { capture, selectors, trusted, returnedAt } | null,
             stop: { gates: [{ gate, material }, …] } | null }
+       `url` is the page's url, exact — what the approve line below is shown with; `outline` is
+       what the page offers to click (amended 2026-09-05: MARKING already said "plus its outline")
        404 when no row; 409 for every outcome that holds no bytes: UNFETCHED, UNSERVABLE, IDENTICAL,
        DUPLICATE, SKIPPED
        bytes come from heldBody (PENDING_JUDGEMENT) or the UrlSnapshot's document (ACQUIRED)
@@ -1064,6 +1074,11 @@ PUT    /pages/:trackedUrlId/draft
 
 DELETE /pages/:trackedUrlId/draft                     the researcher's cancel; the log is untouched
 ```
+
+Status bodies are A5's `{ error, code }`: 400 INVALID_BODY (a malformed request body — the one code
+the routes add to A5's set); 404 NOT_SURVEYED for a page id with no TrackedUrl, CAPTURE_NOT_MARKABLE
+for a capture with no row; 409 CAPTURE_NOT_MARKABLE for a row that holds no bytes. A row that claims
+bytes it does not hold is a walk defect and is not a refusal (ruled 2026-09-05).
 
 The marking URL, carried in every stop and composed in exactly ONE module under src/walk, through
 the reused `publicUrl` with the default locale:
