@@ -175,7 +175,7 @@ describe('classifyEntry: which column produced the hash', () => {
       { id: 's1', waybackTimestamp: '20220724130104', url: 'https://x/', documentHash: hash(1).slice(2), contentHash: hash(2).slice(2) },
       { id: 's2', waybackTimestamp: '20220805053301', url: 'https://x/', documentHash: hash(3).slice(2), contentHash: hash(2).slice(2) },
     ],
-    evidence: [{ id: 'e1', fileHash: hash(4), previousFileHash: hash(5) }],
+    evidence: [{ id: 'e1', fileHash: hash(4), previousFileHash: hash(5), evidenceType: 'FORENSIC_DIFF' }],
   };
 
   it('DOCUMENT_HASH — the payload anchor, the target scheme', () => {
@@ -213,7 +213,7 @@ describe('classifyEntry: which column produced the hash', () => {
     // resolved by picking the first match.
     const collided: CorpusHashes = {
       snapshots: corpus.snapshots,
-      evidence: [{ id: 'e2', fileHash: hash(1), previousFileHash: null }],
+      evidence: [{ id: 'e2', fileHash: hash(1), previousFileHash: null, evidenceType: 'DOCUMENT' }],
     };
     expect(classifyEntry(entry(0, { fileHash: hash(1) }), collided).kind).toBe('AMBIGUOUS');
   });

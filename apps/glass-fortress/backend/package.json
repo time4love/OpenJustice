@@ -46,7 +46,8 @@
     "forensics:measure-era-detectors": "node dist/scripts/measureEraDetectors.js",
     "forensics:measure-gate5": "node dist/scripts/measureGate5.js",
     "forensics:read-registry": "node dist/scripts/readRegistryState.js",
-    "forensics:measure-custody": "node dist/scripts/measureCaptureCustody.js"
+    "forensics:measure-custody": "node dist/scripts/measureCaptureCustody.js",
+    "forensics:registry-ledger": "node dist/scripts/emitRegistryLedger.js"
   },
   "keywords": [],
   "author": "",
