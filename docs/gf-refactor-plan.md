@@ -255,6 +255,13 @@ deploy is one-shot, and staging is its rehearsal. Not before step 8 has served o
 > the new registry `0xDA3B858CA9CC3F1C5cE60Bb4D343bC6E58aa4C73` on 84532, `REGISTRAR_ROLE` read true,
 > `totalEvidence()` 0; staging rotated; the freeze in force; the old address only in the ledger, whose
 > `successor` now names the new one. Steps 5 and 6 are the cleanup session's (`handoffs/R28`).
+>
+> **Steps 5 and 6 on staging 2026-09-06** — `docs/gf-rebuild-staging-drop-and-survey-2026-09-06.md`:
+> the database dropped whole under the cleanup protocol (2,008 rows across 41 tables, simulated then
+> executed) and rebuilt by the pipeline's 64 migrations, legacy tables included; the researcher
+> bootstrapped and the connector re-authorized; the three pages re-surveyed, 169 work-list rows,
+> `held` 0, nothing anchored — corona `20250423145731` is a known loss until a dump-import tool exists.
+> **Sub-step 6 resumes after step 5 lands**; the freeze holds until then.
 
 ### 10 · Vocabulary
 
