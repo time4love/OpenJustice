@@ -82,6 +82,55 @@ Then report exactly what was written and where, and name anything deliberately n
 significant decision, bug found and deferred — **without being asked**, so `CHECKPOINT` usually finds
 little left to do.
 
+### `REVDEV` — the executing session becomes the orchestrator of a DEV and a REVIEW session
+
+When the user writes **`REVDEV <scope>`** (a PR, a step, a chunk), this session becomes the
+ORCHESTRATOR of `docs/gf-refactor-plan.md` §9.2 — the plan's conductor — over two other sessions
+sharing the same worktree: a **DEV** session that writes, and a **REVIEW** session that reads. What the
+user used to do by hand — copying one session's output into the other — the orchestrator does. It never
+writes code itself; it briefs, relays, verifies, and routes.
+
+**The orchestrator's acts, in order:**
+
+1. **Brief both sessions from files, never from memory.** Write `handoffs/<R>-dev-brief.md` (the
+   contract files that must turn green, the rulings that bind, the chunks, the traps) and
+   `handoffs/<R>-review-brief.md` (the contract sections, §4's test rules, the finding shape, the
+   read-only checks it may run). Hand each verbatim. Precedent: `handoffs/R30-*`.
+2. **Relay in the four-line block.** DEV ends every chunk with `REPORT FOR THE REVIEWER` (files /
+   observed / questions / next); the orchestrator hands it to REVIEW with the brief; REVIEW returns
+   findings; the orchestrator hands them to DEV as a numbered prompt. No code travels in the chat.
+3. **Verify mechanically, after every DEV round**, from `apps/glass-fortress/backend` by absolute path:
+   `tsc`, `npm test`, `npm run test:walk`; `git diff <base> -- <every KEEP path>` empty; every accepted
+   finding's test exists and FAILED on the code before the fix; every scan's decoy still catches.
+   **The developer's acknowledgement is never evidence.**
+4. **Read once per chunk to the researcher**: the diff stat, REVIEW's findings with accepted / pushed
+   back, VERIFY's results, the questions batched. `COMMIT` / `PR` / `LAND` stay the researcher's keywords.
+
+**Four rules, written in before the first round — without them the loop is worse than copy-paste:**
+
+- **Stop rule.** A finding cites a contract clause, a plan rule, or a test by name, or it is not a
+  finding. HIGH (a contract broken, a KEEP file edited, a decoy blinded, a chain write outside the
+  anchoring module) and MEDIUM (a defect a test can state) are applied; LOW is recorded. The loop ends
+  when no HIGH or MEDIUM remains; rounds cap at three; a fourth is the researcher's call.
+- **Design catches are the researcher's.** Anything touching a design doc, a migration's SQL, staging,
+  git, or visible Hebrew is shown to the researcher and waited on — by the orchestrator, never resolved
+  by DEV in code or ruled by REVIEW.
+- **One writer.** DEV is the only session that writes the tree; REVIEW is read-only by construction;
+  the orchestrator serialises so REVIEW never reads a half-written file.
+- **State on disk at every chunk boundary** — `handoffs/<R>-orchestrator-state.md` — so a session
+  that dies mid-loop loses nothing (the handoff-early rule).
+
+**Refuse to run `REVDEV`, and say why, when:** the scope has no contract files (nothing to turn green,
+so REVIEW has nothing to cite); the executing session's context is already too large to hold a loop
+(say the number; hand the briefs to a fresh session instead); or the base branch is not clean.
+
+**Why:** the plan's §9.1 records that a fresh context reading a diff cold finds what the author's
+cannot, every time — and that the relaying, not the reviewing, is what did not scale. Its §9.3 names
+the three things that make an automated loop worse than the manual one when left out: no stop rule,
+the developer's word taken as evidence, design questions answered by an agent. The first `REVDEV`
+target was PR 1 of refactor step 5 (2026-09-06), briefed by a 631k-token session that could not itself
+drive it — which is the third refusal above, learned that day.
+
 ## Branching & Deployment Protocol
 
 **Branches**
