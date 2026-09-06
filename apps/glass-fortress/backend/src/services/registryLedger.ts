@@ -135,8 +135,11 @@ const FORENSIC_NAME_FORMULA =
   '(src/services/forensicEvidence.ts), stored as Evidence.fileHash';
 
 const DOCUMENT_NAME_FORMULA =
-  'sha256 of the submitted payload — the bytes fetched from a URL, an uploaded file, or url + "\\n\\n" + text ' +
-  '(Web3Service.hashFile); which writer produced it is not recorded on the row; stored as Evidence.fileHash';
+  'sha256 of the submitted payload via Web3Service.hashFile, by one of its five writers: ' +
+  'createEvidenceFromUrl (the bytes fetched from the URL); evidenceRoutes (an uploaded file); ' +
+  'createEvidenceFromText (url + "\\n\\n" + text.slice(0, 40000) — the 40,000-character bound is part of the formula); ' +
+  'persistScreenshotEvidence (the concatenated image buffers); thesisRoutes (a document\'s ciphertext, base64-decoded). ' +
+  'Which writer produced it is not recorded on the row; stored as Evidence.fileHash';
 
 const EVIDENCE_ATTESTED =
   'a SELECTION: that this deployment named a record as evidence under a formula that is leaving the code, ' +

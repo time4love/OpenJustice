@@ -130,6 +130,24 @@ describe('the ledger explains every entry by the column that produced it', () =>
     expect(ledger.entries.at(3)?.inputs).toEqual([{ evidenceId: 'e1', evidenceType: 'FORENSIC_DIFF' }]);
   });
 
+  it('the DOCUMENT formula names every writer of Web3Service.hashFile and the text bound', () => {
+    // Five callers in the code, and the 40,000-character slice is part of the
+    // formula: a recomputation over the unbounded text would fail on a hash the
+    // formula claims to explain. Reviewer finding 5, 2026-09-06.
+    const formula = buildRegistryLedger(input()).entries.at(4)?.formula ?? '';
+    expect(formula).toMatch(/40[, _]?000/);
+    for (const writer of [
+      'createEvidenceFromUrl',
+      'evidenceRoutes',
+      'createEvidenceFromText',
+      'persistScreenshotEvidence',
+      'thesisRoutes',
+    ]) {
+      expect(formula).toContain(writer);
+    }
+    expect(formula).toMatch(/not recorded on the row/);
+  });
+
   it('carries the registry, chain, registrar, total, readAt and commit at file level; testnet by chain id; successor null', () => {
     const ledger = buildRegistryLedger(input());
     expect(ledger.registry).toBe(REGISTRY.toLowerCase());
