@@ -2,7 +2,6 @@ import { Router, Request, Response } from 'express';
 import { evidenceWhereForViewer } from '../lib/evidenceVisibility';
 import { identifyResearcher } from '../middleware/researcherIdentity';
 import { z } from 'zod';
-import { WaybackScraper } from '../services/WaybackScraper';
 import { prisma } from '../lib/prisma';
 import {
   diffSurvivalView,
@@ -10,9 +9,6 @@ import {
 } from '../services/auditDiffSurvival';
 import { type DiffItem } from '../services/ForensicAgent';
 import { parseDiffItems } from '../lib/diffItems';
-import { scanLimiter } from '../middleware/rateLimiting';
-import { admitUrl } from '../services/admitUrl';
-import { fetchContentForRelevanceCheck } from '../services/fetchContentForRelevanceCheck';
 import { getStoredClaimTrajectories } from '../services/claimTrajectory';
 
 const router = Router();
@@ -21,121 +17,9 @@ const router = Router();
 // Request schemas
 // ---------------------------------------------------------------------------
 
-const WaybackQuerySchema = z.object({
-  url: z.string().url('A valid URL is required'),
-});
-
-const ScanBodySchema = z.object({
-  url: z.string().url('A valid URL is required'),
-});
-
 const DiffPageQuerySchema = z.object({
   cursor: z.string().optional(),
   limit: z.coerce.number().int().min(1).max(100).default(20),
-});
-
-// ---------------------------------------------------------------------------
-// Lazy singletons
-// ---------------------------------------------------------------------------
-
-let _waybackScraper: WaybackScraper | null = null;
-
-function getWaybackScraper(): WaybackScraper {
-  if (!_waybackScraper) _waybackScraper = new WaybackScraper();
-  return _waybackScraper;
-}
-
-// ---------------------------------------------------------------------------
-// POST /api/forensics/scan
-//
-// Start (or resume) a forensic scan for a URL.
-//
-// - If a TrackedUrl already exists for this URL, resumes it — already vetted
-//   the first time, so the relevance check below only runs once per URL.
-// - Otherwise: screens the URL with ScanRelevanceAgent (one cheap call) before
-//   creating a TrackedUrl (status=SCANNING) and starting the scan (which can
-//   run hundreds of LLM calls) — see docs/gf-cost-exposure-dev-plan.md.
-//
-// Returns immediately with { trackedUrlId }. Processing runs server-side via
-// runFullScan() (fire-and-forget). Poll GET /api/forensics/tracked/:id/status
-// to track progress.
-// ---------------------------------------------------------------------------
-
-router.post('/scan', scanLimiter, async (req: Request, res: Response): Promise<void> => {
-  const parsed = ScanBodySchema.safeParse(req.body);
-  if (!parsed.success) {
-    res.status(400).json({ error: 'Invalid request', details: parsed.error.flatten() });
-    return;
-  }
-
-  const { url } = parsed.data;
-
-  try {
-    // ONE ADMISSION PATH. This route was the only one that gated; the two MCP
-    // tools and GET /wayback did not. The check now lives in admitUrl, which a
-    // source scan makes the only writer of TrackedUrl.
-    const admission = await admitUrl({ url, fetchContent: fetchContentForRelevanceCheck });
-    if (!admission.admitted) {
-      res
-        .status(admission.verdict === 'UNREADABLE' ? 502 : 422)
-        .json({
-          error:
-            admission.verdict === 'UNREADABLE'
-              ? admission.reason
-              : 'URL not relevant to this investigation',
-          verdict: admission.verdict,
-          reason: admission.reason,
-        });
-      return;
-    }
-    const trackedUrl = { id: admission.trackedUrlId };
-
-    res.status(201).json({ trackedUrlId: trackedUrl.id });
-
-    // Fire-and-forget — concurrent-guard inside runFullScan prevents double-runs
-    void getWaybackScraper()
-      .runFullScan(trackedUrl.id, url)
-      .catch((err: unknown) => {
-        console.error('[forensics/scan] runFullScan error:', err instanceof Error ? err.stack : err);
-      });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    console.error('[forensics/scan] Error:', err instanceof Error ? err.stack : err);
-    res.status(500).json({ error: 'Failed to start scan', message });
-  }
-});
-
-// ---------------------------------------------------------------------------
-// POST /api/forensics/pause/:id
-//
-// Signals a running scan to stop at its next snapshot boundary and set the
-// TrackedUrl status to PAUSED. Resume by calling POST /scan with the same URL.
-// ---------------------------------------------------------------------------
-
-router.post('/pause/:id', async (req: Request, res: Response): Promise<void> => {
-  const trackedUrlId = String(req.params['id'] ?? '');
-  if (!trackedUrlId) {
-    res.status(400).json({ error: 'Missing trackedUrl id' });
-    return;
-  }
-
-  try {
-    const trackedUrl = await prisma.trackedUrl.findUnique({ where: { id: trackedUrlId } });
-    if (!trackedUrl) {
-      res.status(404).json({ error: 'TrackedUrl not found' });
-      return;
-    }
-    if (trackedUrl.status !== 'SCANNING') {
-      res.status(409).json({ error: 'Scan is not currently running', status: trackedUrl.status });
-      return;
-    }
-
-    getWaybackScraper().pauseScan(trackedUrlId);
-    res.status(200).json({ paused: true, trackedUrlId });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    res.status(500).json({ error: 'Failed to pause scan', message });
-  }
 });
 
 // ---------------------------------------------------------------------------
@@ -162,19 +46,7 @@ router.get('/tracked/:id/status', async (req: Request, res: Response): Promise<v
       return;
     }
 
-    const [activeJob, rawDiffs] = await Promise.all([
-      prisma.waybackScrapeJob.findUnique({
-        where: { trackedUrlId },
-        select: {
-          id: true,
-          status: true,
-          totalSnapshots: true,
-          processedSnapshots: true,
-          updatedAt: true,
-          failureReason: true,
-        },
-      }),
-      prisma.urlVersionDiff.findMany({
+    const rawDiffs = await prisma.urlVersionDiff.findMany({
         where: { trackedUrlId, isLegallySignificant: true },
         orderBy: { afterDate: 'asc' },
         select: {
@@ -190,8 +62,7 @@ router.get('/tracked/:id/status', async (req: Request, res: Response): Promise<v
           // inputs, so naming them twice would let the two uses drift.
           ...SURVIVAL_VIEW_SELECT,
         },
-      }),
-    ]);
+      });
 
     const liveDiffs = rawDiffs.map((d) => ({
       id: d.id,
@@ -210,40 +81,11 @@ router.get('/tracked/:id/status', async (req: Request, res: Response): Promise<v
       id: trackedUrl.id,
       url: trackedUrl.url,
       status: trackedUrl.status,
-      activeJob: activeJob ?? null,
       liveDiffs,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     res.status(500).json({ error: 'Failed to fetch scan status', message });
-  }
-});
-
-// ---------------------------------------------------------------------------
-// GET /api/forensics/wayback?url=<target-url>
-//
-// Legacy synchronous pipeline (kept for backward compatibility).
-// NOTE: This blocks for 1–3 minutes. Prefer POST /scan for new usage.
-// ---------------------------------------------------------------------------
-
-router.get('/wayback', async (req: Request, res: Response): Promise<void> => {
-  const parsed = WaybackQuerySchema.safeParse(req.query);
-  if (!parsed.success) {
-    res.status(400).json({ error: 'Invalid query', details: parsed.error.flatten() });
-    return;
-  }
-
-  const { url } = parsed.data;
-
-  try {
-    console.log(`[forensics/wayback] Starting scan for: ${url}`);
-    const { trackedUrlId, diffs } = await getWaybackScraper().analyzePageHistory(url);
-    console.log(`[forensics/wayback] Complete — ${diffs.length} significant changes for: ${url}`);
-    res.status(200).json({ url, trackedUrlId, count: diffs.length, diffs });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    console.error('[forensics/wayback] Error:', err instanceof Error ? err.stack : err);
-    res.status(500).json({ error: 'Wayback forensic scan failed', message });
   }
 });
 
@@ -273,41 +115,6 @@ router.get('/tracked', async (_req: Request, res: Response): Promise<void> => {
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     res.status(500).json({ error: 'Failed to list tracked URLs', message });
-  }
-});
-
-// ---------------------------------------------------------------------------
-// GET /api/forensics/tracked/:id/jobs
-//
-// Returns all WaybackScrapeJob records for a TrackedUrl, ordered oldest-first.
-// Used by the history panel to show per-batch progress in the expanded view.
-// ---------------------------------------------------------------------------
-
-router.get('/tracked/:id/jobs', async (req: Request, res: Response): Promise<void> => {
-  const trackedUrlId = String(req.params['id'] ?? '');
-  if (!trackedUrlId) {
-    res.status(400).json({ error: 'Missing trackedUrl id' });
-    return;
-  }
-
-  try {
-    const jobs = await prisma.waybackScrapeJob.findMany({
-      where: { trackedUrlId },
-      orderBy: { createdAt: 'asc' },
-      select: {
-        id: true,
-        status: true,
-        fromDate: true,
-        totalSnapshots: true,
-        processedSnapshots: true,
-        createdAt: true,
-        failureReason: true,
-      },
-    });
-    res.status(200).json({ jobs });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    res.status(500).json({ error: 'Failed to fetch jobs', message });
   }
 });
 
@@ -430,8 +237,7 @@ router.get('/tracked/:id', identifyResearcher, async (req: Request, res: Respons
 // ---------------------------------------------------------------------------
 // DELETE /api/forensics/tracked/:id
 //
-// Deletes a TrackedUrl, all its UrlVersionDiff children, and all associated
-// WaybackScrapeJob records. Evidence records promoted from this TrackedUrl
+// Deletes a TrackedUrl and all its UrlVersionDiff children. Evidence records promoted from this TrackedUrl
 // are NOT deleted — they are on-chain and must remain.
 // ---------------------------------------------------------------------------
 

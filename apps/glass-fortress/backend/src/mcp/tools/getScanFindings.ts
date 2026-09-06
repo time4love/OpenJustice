@@ -77,7 +77,7 @@ export async function getScanFindingsHandler(input: { url: string }): Promise<st
   if (!tracked) {
     return JSON.stringify({
       error: `No tracked URL found for: ${input.url}`,
-      explanation: 'Nothing has scanned this page. Run start_forensic_scan first.',
+      explanation: 'Nothing has walked this page. Survey it (survey_wayback_captures), then walk it (scan_captures).',
     });
   }
 

@@ -12,7 +12,7 @@
     },
     "note": "evidenceRoutes carries 6 in total; only 2 of them come from that migration. The rest of this baseline is pre-existing debt that predates Level 5 and is bounded here rather than endorsed."
   },
-  "total": 51,
+  "total": 47,
   "files": {
     "src/services/measureExtractionDivergence.ts": 9,
     "src/services/resummarizeDiffs.ts": 7,
@@ -20,7 +20,6 @@
     "src/routes/forensicsRoutes.ts": 4,
     "src/services/rediffFromSnapshots.ts": 4,
     "src/utils/tipTapUtils.ts": 4,
-    "src/services/WaybackScraper.ts": 3,
     "src/routes/thesisRoutes.ts": 2,
     "src/services/VectorStoreService.ts": 2,
     "src/services/reportPatternService.ts": 2,
@@ -30,7 +29,6 @@
     "src/middleware/supabaseAuth.ts": 1,
     "src/routes/authRoutes.ts": 1,
     "src/services/diffDebate.ts": 1,
-    "src/services/fetchContentForRelevanceCheck.ts": 1,
     "src/utils/parseMentions.ts": 1
   }
 }

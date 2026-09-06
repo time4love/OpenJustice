@@ -2,18 +2,10 @@
 // MCP write-tool integration tests
 //
 // Tests the full stack: HTTP → auth guard → MCP transport → tool handler.
-// Only mocked at service boundaries (Prisma, IntakeAgent, WaybackScraper).
+// Only mocked at service boundaries (Prisma, IntakeAgent).
 // VectorStoreService and Web3Service are mocked and asserted NOT called —
 // this is the staging gate: write tools must never touch on-chain or Pinecone.
 // ---------------------------------------------------------------------------
-
-jest.mock('../src/services/admitUrl', () => ({
-  admitUrl: jest.fn(async () => ({
-    admitted: true,
-    trackedUrlId: 'tu-int-1',
-    alreadyTracked: false,
-  })),
-}));
 
 jest.mock('../src/lib/prisma', () => ({
   prisma: {
@@ -77,12 +69,6 @@ jest.mock('../src/services/IntakeAgent', () => ({
       euaOmissionStatus: 'Not Applicable',
       missingInformation: '',
     }),
-  })),
-}));
-
-jest.mock('../src/services/WaybackScraper', () => ({
-  WaybackScraper: jest.fn().mockImplementation(() => ({
-    runFullScan: jest.fn().mockResolvedValue(undefined),
   })),
 }));
 
@@ -287,14 +273,13 @@ afterEach(() => {
 describe('write tool auth enforcement', () => {
   const writeTools = [
     { name: 'create_evidence_from_url', args: { url: 'https://example.gov' } },
-    { name: 'start_forensic_scan', args: { url: 'https://corona.health.gov.il/' } },
+    { name: 'survey_wayback_captures', args: { url: 'https://corona.health.gov.il/' } },
     { name: 'create_thesis_draft', args: { title: 'Test', body: 'Test thesis.' } },
     { name: 'add_thesis_version', args: { thesisId: 'thesis-int-1', body: 'Updated.' } },
     { name: 'run_ai_analysis', args: { thesisId: 'thesis-int-1' } },
     { name: 'create_research_session', args: { thesisId: 'thesis-int-1' } },
     { name: 'add_session_note', args: { thesisId: 'thesis-int-1', note: 'test' } },
     { name: 'close_research_session', args: { thesisId: 'thesis-int-1' } },
-    { name: 'enrich_evidence_with_history', args: { fileHash: '0xdeadbeef' } },
   ];
 
   for (const { name, args } of writeTools) {
@@ -370,40 +355,6 @@ describe('create_evidence_from_url integration', () => {
   });
 });
 
-// ===========================================================================
-// start_forensic_scan — staging gate integration
-// ===========================================================================
-
-describe('start_forensic_scan integration', () => {
-  const args = { url: 'https://corona.health.gov.il/' };
-
-  it('returns trackedUrlId and SCANNING status in tool output', async () => {
-    const res = await request(app)
-      .post('/api/mcp')
-      .set('Accept', MCP_ACCEPT)
-      .set('Authorization', `Bearer ${VALID_TOKEN}`)
-      .send(mcpCall('start_forensic_scan', args));
-
-    const result = parseMcpToolResult(res.text) as Record<string, unknown>;
-    expect(result['trackedUrlId']).toBe('tu-int-1');
-    expect(result['status']).toBe('SCANNING');
-  });
-
-  it('ADMITS the URL rather than upserting a TrackedUrl directly', async () => {
-    // Replaces an assertion that pinned the bypass: the tool used to create a
-    // TrackedUrl itself, with no relevance check and no recorded verdict.
-    const { admitUrl } = await import('../src/services/admitUrl');
-    await request(app)
-      .post('/api/mcp')
-      .set('Accept', MCP_ACCEPT)
-      .set('Authorization', `Bearer ${VALID_TOKEN}`)
-      .send(mcpCall('start_forensic_scan', args));
-
-    expect(admitUrl).toHaveBeenCalledWith(expect.objectContaining({ url: args.url }));
-  });
-});
-
-// ===========================================================================
 // create_thesis_draft — staging gate integration
 // ===========================================================================
 

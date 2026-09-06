@@ -169,32 +169,6 @@ export function deriveTextUnderRuleset(
   };
 }
 
-/**
- * The share of a capture's derived text a ruleset removed, in `[0, 1]`.
- *
- * ONE IMPORTABLE SYMBOL, and that is the whole reason it exists rather than
- * being two lines at each callsite. Four separate mechanisms read this number —
- * the deviation pause, the sample audit's ordering, the stored observation and
- * whatever the researcher is shown — and a fraction computed slightly
- * differently in two of them is a pause that fires against a baseline it does
- * not share. See [[gf-one-importable-name]].
- *
- * MEASURED OVER THE DERIVED TEXT, not the raw HTML, because that is the input
- * the explosion happens on: `text` is the novelty key. Markup weight varies by
- * an order of magnitude between a hand-written page and a framework's output,
- * so a fraction of the bytes would say nothing comparable across captures.
- *
- * Returns 0 when a capture derives to nothing at all — an empty page cannot have
- * had a share of it removed, and reporting `NaN` as a deviation would pause a
- * scan on a division rather than on a finding.
- */
-export function chromeRemovalFraction(derived: DerivedText & { chrome: ChromeApplication }): number {
-  const kept = derived.text.length;
-  const removed = derived.chrome.removedText.length;
-  const total = kept + removed;
-  return total === 0 ? 0 : removed / total;
-}
-
 // ---------------------------------------------------------------------------
 // THE OUTLINE — what the researcher clicks, instead of the page itself.
 //

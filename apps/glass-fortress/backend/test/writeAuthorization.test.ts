@@ -50,8 +50,6 @@ const ANONYMOUS_WRITES_ALLOWED: Record<string, string> = {
     'read-shaped aggregate, POSTed for its filter body',
   'chatRoutes.ts POST /': 'public assistant, rate limited',
   'argumentRoutes.ts POST /generate': 'public argument generation, rate limited',
-  'forensicsRoutes.ts POST /scan': 'starts a scan; writes only archived material, rate limited',
-  'forensicsRoutes.ts POST /pause/:id': 'stops a running scan — halts writing, cannot destroy',
   'oauthInteractionRoutes.ts POST /:uid/login': 'the login form itself',
   'oauthInteractionRoutes.ts POST /:uid/confirm': 'the consent form itself',
   // Thesis authoring is not yet gated. Recorded here deliberately rather than

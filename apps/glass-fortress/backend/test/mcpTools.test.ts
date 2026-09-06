@@ -70,20 +70,6 @@ jest.mock('../src/services/IntakeAgent', () => ({
   })),
 }));
 
-// Admission is mocked, not bypassed. Both MCP tools now go through admitUrl —
-// they used to upsert a TrackedUrl directly, with no relevance check and no
-// recorded verdict, which is the bypass this mock exists to represent rather
-// than to hide.
-jest.mock('../src/services/admitUrl', () => ({
-  admitUrl: jest.fn(),
-}));
-
-jest.mock('../src/services/WaybackScraper', () => ({
-  WaybackScraper: jest.fn().mockImplementation(() => ({
-    runFullScan: jest.fn().mockResolvedValue(undefined),
-  })),
-}));
-
 jest.mock('../src/services/VectorStoreService', () => ({
   VectorStoreService: {
     create: jest.fn(),
@@ -99,21 +85,16 @@ jest.mock('../src/services/GapRevisionAgent', () => ({
 import { prisma } from '../src/lib/prisma';
 import { survivalFixture, TEXT_VERSION } from './helpers/survivalFixture';
 import { SURVIVAL_CHECK_VERSION, survivalSourceStateHash } from '../src/lib/diffSurvival';
-import { admitUrl } from '../src/services/admitUrl';
 import { triggerAIAnalysis } from '../src/services/thesisAnalysis';
 import { VectorStoreService } from '../src/services/VectorStoreService';
 import { IntakeAgent } from '../src/services/IntakeAgent';
-import { WaybackScraper } from '../src/services/WaybackScraper';
 
 // Re-import handlers AFTER mocks are in place
 import { searchEvidenceHandler } from '../src/mcp/tools/searchEvidence';
 
-const admitMock = admitUrl as unknown as jest.Mock;
 import { getForensicTimelineHandler } from '../src/mcp/tools/getForensicTimeline';
 import { getFigureDossierHandler } from '../src/mcp/tools/getFigureDossier';
 import { createEvidenceFromUrlHandler } from '../src/mcp/tools/createEvidenceFromUrl';
-import { startForensicScanHandler } from '../src/mcp/tools/startForensicScan';
-import { enrichEvidenceWithHistoryHandler } from '../src/mcp/tools/enrichEvidenceWithHistory';
 import { createThesisDraftHandler } from '../src/mcp/tools/createThesisDraft';
 import { addThesisVersionHandler } from '../src/mcp/tools/addThesisVersion';
 import { getResearchAgendaHandler } from '../src/mcp/tools/getResearchAgenda';
@@ -133,7 +114,6 @@ const mockTrackedUrlUpsert = prisma.trackedUrl.upsert as jest.Mock;
 const mockThesisFindUnique = prisma.thesis.findUnique as jest.Mock;
 const mockVectorStoreCreate = VectorStoreService.create as jest.Mock;
 const MockIntakeAgent = IntakeAgent as jest.MockedClass<typeof IntakeAgent>;
-const MockWaybackScraper = WaybackScraper as jest.MockedClass<typeof WaybackScraper>;
 const mockThesisCreate = prisma.thesis.create as jest.Mock;
 const mockThesisUpdate = prisma.thesis.update as jest.Mock;
 const mockThesisVersionCreate = prisma.thesisVersion.create as jest.Mock;
@@ -769,99 +749,6 @@ describe('createEvidenceFromUrlHandler', () => {
   });
 });
 
-// ===========================================================================
-// start_forensic_scan
-// ===========================================================================
-
-describe('startForensicScanHandler', () => {
-  beforeEach(() => {
-    admitMock.mockResolvedValue({
-      admitted: true,
-      trackedUrlId: 'tu-uuid-1',
-      alreadyTracked: false,
-    });
-  });
-
-  const testUrl = 'https://corona.health.gov.il/vaccine-for-covid/';
-  const trackedUrlFixture = { id: 'tu-uuid-1', url: testUrl, status: 'SCANNING' };
-
-  let mockRunFullScan: jest.Mock;
-
-  beforeEach(() => {
-    mockRunFullScan = jest.fn().mockResolvedValue(undefined);
-    MockWaybackScraper.mockImplementation(
-      () => ({ runFullScan: mockRunFullScan }) as unknown as WaybackScraper,
-    );
-    mockTrackedUrlUpsert.mockResolvedValue(trackedUrlFixture);
-  });
-
-  it('returns trackedUrlId, url, and SCANNING status', async () => {
-    const raw = await startForensicScanHandler({ url: testUrl });
-    const result = JSON.parse(raw);
-
-    expect(result.trackedUrlId).toBe('tu-uuid-1');
-    expect(result.url).toBe(testUrl);
-    expect(result.status).toBe('SCANNING');
-  });
-
-  it('ADMITS the URL rather than upserting a TrackedUrl directly', async () => {
-    admitMock.mockResolvedValue({ admitted: true, trackedUrlId: 'tu-uuid-1', alreadyTracked: false });
-    // REPLACES an assertion that pinned the bypass. The tool used to call
-    // prisma.trackedUrl.upsert itself — no relevance check, no recorded verdict —
-    // so the admission gate existed on the path the WEBSITE uses and not on the
-    // path the RESEARCHER uses. The old test asserted that direct upsert, which
-    // made it a test that held the gap open.
-    const { admitUrl } = await import('../src/services/admitUrl');
-    await startForensicScanHandler({ url: 'https://corona.health.gov.il/vaccine-for-covid/' });
-    expect(admitUrl).toHaveBeenCalledWith(
-      expect.objectContaining({ url: 'https://corona.health.gov.il/vaccine-for-covid/' }),
-    );
-  });
-
-  it('fires runFullScan as fire-and-forget', async () => {
-    await startForensicScanHandler({ url: testUrl });
-
-    // Allow microtask queue to flush the void promise
-    await Promise.resolve();
-
-    expect(mockRunFullScan).toHaveBeenCalledWith('tu-uuid-1', testUrl);
-  });
-
-  it('returns the trackedUrlId and points at a tool the caller can actually reach', async () => {
-    const raw = await startForensicScanHandler({ url: testUrl });
-    const result = JSON.parse(raw);
-
-    expect(result.trackedUrlId).toBe('tu-uuid-1');
-    // FINDING 7: the REST status endpoint sits behind the staging access gate, so a
-    // researcher working through MCP cannot reach it. Guidance must name the MCP tool.
-    expect(result.message).toContain('get_forensic_timeline');
-    expect(result.message).not.toContain('/api/forensics/');
-  });
-
-  it('returns without throwing even when runFullScan rejects', async () => {
-    mockRunFullScan.mockRejectedValue(new Error('CDX unreachable'));
-
-    // Should not throw — fire-and-forget swallows the error
-    await expect(startForensicScanHandler({ url: testUrl })).resolves.toBeDefined();
-  });
-
-  it('is idempotent — an already-tracked URL is admitted without re-assessment', async () => {
-    // Re-gating an admitted URL would let a later model draw a different
-    // conclusion and strand a corpus already built on it. Changing an admission
-    // is a deliberate act, which is what the HUMAN author on UrlAssessment is for.
-    admitMock.mockResolvedValue({
-      admitted: true,
-      trackedUrlId: 'tu-uuid-1',
-      alreadyTracked: true,
-    });
-    const out = JSON.parse(
-      await startForensicScanHandler({ url: 'https://corona.health.gov.il/vaccine-for-covid/' }),
-    ) as { trackedUrlId: string };
-    expect(out.trackedUrlId).toBe('tu-uuid-1');
-  });
-});
-
-// ===========================================================================
 // create_thesis_draft
 // ===========================================================================
 
@@ -1847,95 +1734,5 @@ describe('getSessionSummaryHandler', () => {
     expect(result.session.events).toHaveLength(2);
     expect(result.session.summary.versionsCreated).toBe(1);
     expect(result.totalSessions).toBe(1);
-  });
-});
-
-
-// ===========================================================================
-// enrich_evidence_with_history
-// ===========================================================================
-
-describe('enrichEvidenceWithHistoryHandler', () => {
-  beforeEach(() => {
-    admitMock.mockResolvedValue({
-      admitted: true,
-      trackedUrlId: 'tu-enrich-1',
-      alreadyTracked: false,
-    });
-  });
-
-  const fileHash = '0xdeadbeef';
-  const sourceUrl = 'https://corona.health.gov.il/vaccine-page/';
-  const evidenceFixture = { id: 'ev-1', fileHash, sourceUrl };
-  const trackedUrlFixture = { id: 'tu-enrich-1', url: sourceUrl, status: 'SCANNING' };
-
-  let mockRunFullScan: jest.Mock;
-
-  beforeEach(() => {
-    mockRunFullScan = jest.fn().mockResolvedValue(undefined);
-    MockWaybackScraper.mockImplementation(
-      () => ({ runFullScan: mockRunFullScan }) as unknown as WaybackScraper,
-    );
-    mockEvidenceFindUnique.mockResolvedValue(evidenceFixture);
-    mockTrackedUrlUpsert.mockResolvedValue(trackedUrlFixture);
-  });
-
-  it('returns trackedUrlId and SCANNING status', async () => {
-    const result = JSON.parse(await enrichEvidenceWithHistoryHandler({ fileHash }));
-    expect(result.trackedUrlId).toBe('tu-enrich-1');
-    expect(result.status).toBe('SCANNING');
-    expect(result.url).toBe(sourceUrl);
-  });
-
-  it('ADMITS the source URL rather than upserting a TrackedUrl directly', async () => {
-    // Same replacement as in startForensicScanHandler: the old assertion pinned a
-    // direct upsert, which is the bypass rather than the behaviour.
-    await enrichEvidenceWithHistoryHandler({ fileHash: '0xabc' });
-    expect(admitMock).toHaveBeenCalledWith(
-      expect.objectContaining({ url: 'https://corona.health.gov.il/vaccine-page/' }),
-    );
-  });
-
-  it('fires runFullScan fire-and-forget', async () => {
-    await enrichEvidenceWithHistoryHandler({ fileHash });
-    await Promise.resolve();
-    expect(mockRunFullScan).toHaveBeenCalledWith('tu-enrich-1', sourceUrl);
-  });
-
-  it('returns error when evidence not found', async () => {
-    mockEvidenceFindUnique.mockResolvedValue(null);
-    const result = JSON.parse(await enrichEvidenceWithHistoryHandler({ fileHash }));
-    expect(result.error).toContain(fileHash);
-  });
-
-  it('returns error when evidence has no sourceUrl', async () => {
-    mockEvidenceFindUnique.mockResolvedValue({ ...evidenceFixture, sourceUrl: null });
-    const result = JSON.parse(await enrichEvidenceWithHistoryHandler({ fileHash }));
-    expect(result.error).toContain('no sourceUrl');
-  });
-
-  it('does not throw when runFullScan rejects', async () => {
-    mockRunFullScan.mockRejectedValue(new Error('CDX unreachable'));
-    await expect(enrichEvidenceWithHistoryHandler({ fileHash })).resolves.toBeDefined();
-  });
-
-  it('returns the trackedUrlId and points at a tool the caller can actually reach', async () => {
-    const result = JSON.parse(await enrichEvidenceWithHistoryHandler({ fileHash }));
-
-    expect(result.trackedUrlId).toBe('tu-enrich-1');
-    // FINDING 7 — see startForensicScanHandler above.
-    expect(result.message).toContain('get_forensic_timeline');
-    expect(result.message).not.toContain('/api/forensics/');
-  });
-
-  it('does not claim scan findings are auto-promoted', async () => {
-    const result = JSON.parse(await enrichEvidenceWithHistoryHandler({ fileHash }));
-
-    // FINDING 9 removed auto-promotion: recordScanFinding writes PENDING_REVIEW and
-    // stops. A message promising promotion overstates what the call writes, and the
-    // session protocol requires announcing that accurately before every call.
-    expect(result.message).toMatch(/PENDING_REVIEW/);
-    expect(result.message).not.toMatch(/auto-promot/i);
-    expect(result.message).toContain('promote_scan_findings');
   });
 });

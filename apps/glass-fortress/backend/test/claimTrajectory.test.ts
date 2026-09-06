@@ -506,7 +506,7 @@ describe('get_claim_trajectories', () => {
     ) as { error: string; explanation: string };
 
     expect(r.error).toBe('NOT_TRACKED');
-    expect(r.explanation).toContain('start_forensic_scan');
+    expect(r.explanation).toContain('survey_wayback_captures');
   });
 });
 

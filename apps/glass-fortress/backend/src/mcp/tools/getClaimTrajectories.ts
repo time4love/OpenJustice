@@ -61,7 +61,7 @@ export async function getClaimTrajectoriesHandler(input: {
     return JSON.stringify({
       error: 'NOT_TRACKED',
       message: err instanceof Error ? err.message : String(err),
-      explanation: 'Nothing has scanned this page. Run start_forensic_scan first.',
+      explanation: 'Nothing has walked this page. Survey it (survey_wayback_captures), then walk it (scan_captures).',
     });
   }
 

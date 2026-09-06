@@ -81,44 +81,13 @@ export const WRITE_TOOLS = new Set([
   'get_claim_trajectories',
   'create_evidence_from_url',
   'create_evidence_from_text',
-  'start_forensic_scan',
-  // Level 4's marking tools, ALL THREE GATED — including the one whose name
-  // reads like a read.
-  //
-  // The two start tools write a CalibrationRun, and calibrate_article_rules can
-  // admit a URL into the corpus. get_article_rules writes nothing, and is gated
-  // anyway: it returns a researcher's in-progress working state — which URLs are
-  // being marked and how often their rules needed fixing — which is not
-  // published evidence. "An anonymous caller would have to guess a cuid" is
-  // obscurity, not a gate, and `get_claim_trajectories` above is the standing
-  // precedent for gating a read-named tool with the reason written down.
-  'calibrate_article_rules',
-  'correct_article_rules',
+  // The walk's two READS, gated by the standing precedent: a researcher's
+  // working state — which pages are being marked, where the rules failed, what
+  // is held at a stop — is not published evidence (flows A5).
   'get_article_rules',
-  // The RESEARCH ACT of this flow and its refusal. `commit_article_rules` saves a
-  // versioned ruleset and sets it active for the URL; the other
-  // closes the run. Both are obviously gated — they are here so the set names
-  // them explicitly rather than by omission, which is how a tool ends up
-  // unclassified.
-  'commit_article_rules',
-  'abandon_article_rules',
-  // Writes nothing, and gated for the same reason `get_article_rules` is: it
-  // returns a researcher's in-progress working state — which captures of which
-  // page are being marked, and where the rules are failing.
-  'next_article_capture',
-  // Writes a decision and an observation. The verdict of the calibration flow.
-  'judge_article_capture',
-  // Reads only, gated like the rest: it exposes a researcher's working state.
-  'open_article_capture',
-  // Reads only, and gated for the same reason: it reports which captures of which
-  // page were accepted and where a later rule has since changed their text.
-  'check_ruleset_survival',
-  // Writes a decision, and the ONLY one that can open an era. Obviously gated; it
-  // is named here rather than by omission, which is how a tool ends up
-  // unclassified.
-  'resolve_era_boundary',
-  // Ends the authority of every calibration decision on a URL. Gated for the
-  // obvious reason, and named rather than omitted.
+  'list_captures',
+  // One RESET decision; every rule created before it loses authority. Gated for
+  // the obvious reason, and named rather than omitted.
   'reset_article_calibration',
   // The walk's entry to the corpus (refactor step 2). Creates a TrackedUrl
   // attributed to the researcher and writes work-list rows — a write on its
@@ -143,7 +112,6 @@ export const WRITE_TOOLS = new Set([
   'create_research_session',
   'add_session_note',
   'close_research_session',
-  'enrich_evidence_with_history',
   'promote_evidence',
   'generate_foia_request',
   'recover_evidence_from_screenshot',
@@ -199,7 +167,6 @@ export const WRITE_TOOLS = new Set([
   // which is unbounded per-call work against a free third-party service. An
   // anonymous caller could walk a decade of captures through them, which is the
   // same exposure that gated get_research_agenda and check_on_chain_status.
-  'list_captures',
   'verify_claim_text',
   'audit_thesis_claims',
 

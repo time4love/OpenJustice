@@ -96,7 +96,7 @@ describe('isWriteToolCall', () => {
   it('returns tool name for all four write tools', () => {
     const writeTools = [
       'create_evidence_from_url',
-      'start_forensic_scan',
+      'survey_wayback_captures',
       'create_thesis_draft',
       'add_thesis_version',
     ];

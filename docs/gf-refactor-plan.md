@@ -37,6 +37,16 @@ Three properties follow:
 The cost is a stretch where two implementations coexist. The discipline that stretch needs is a
 source scan, from the first step: no file under the new walk imports a retired module.
 
+> **Coexistence RETIRED 2026-09-06, on the researcher's word.** The stretch existed to keep the old
+> path serving a researcher while the new one was built. After the rebuild's drop on staging (step 9,
+> sub-steps 5 and 6) the old path serves nobody on any environment: staging holds no row the old path
+> wrote, production runs the old code until `SHIP` deploys the whole branch at once, and there are no
+> users. What remained was coexistence in code only, and every hard question at step 5's opening was
+> a question about it. So the switch (step 8) runs FIRST, as step 5's opening PR, before the writes;
+> its list is unchanged. The source scan from step 0 stays as the guard that the new walk imports
+> nothing retired; the three properties above hold with "the old path" read as "the acceptance
+> suite": nothing is weakened to pass, and the switch is still one reviewable diff.
+
 ## 2. THE TRANSLATION TABLE — OLD TO NEW, ONE ROW EACH
 
 | old | new | verb |
@@ -160,6 +170,15 @@ walk is allowed to store anything.
 > rules go with the database, as step 9 already sends them. Production's rebuild stays at SHIP.
 > Ruled in `docs/gf-walk-step-2-survey-verified-2026-09-05.md`.
 
+> **DECIDED 2026-09-06 — the switch (step 8) runs first, as this step's opening PR.** The
+> researcher's word for step 8 was given at step 5's opening: no users on staging or production, only
+> the researcher; nobody calls a legacy tool or route; the database is empty. Consequences for this
+> step's code: `recordDiff` is rewritten outright to the pair plus a `DiffContentVersion` (evidence
+> A2), `recordCapture` becomes the store-and-anchor function the walk calls, and the anchoring module
+> keeps ONE function, registering under `ANCHOR_SCHEME` with `WRITES_ALLOWED` evaluated inside it
+> (evidence A7). Between the switch landing and this step's writes landing the platform has no
+> working scan; nobody is affected, and the acceptance suite green remains what makes this step done.
+
 The outcomes on the work-list row; held bytes while PENDING_JUDGEMENT; digest verification; the
 store-and-anchor step, which needs `recordCapture` split so the walk can call storage and anchoring
 without the derivation and novelty it also performs — the one change to a reused module, and its
@@ -209,6 +228,16 @@ that supersedes stored text with the previous version retained and the anchors u
 promoted record entering NEEDS_REVIEW on staging with old and new versions both readable.
 
 ### 8 · THE SWITCH — the researcher's word
+
+> **DECIDED 2026-09-06 — pulled forward: this step runs BEFORE step 5's writes, as step 5's opening
+> PR, on the researcher's word ("retire coexistence, switch first").** The list below is unchanged.
+> What changes is the precondition: §4 rule 4 allowed the switch once the acceptance suite was green;
+> here the switch precedes green, and the suite's red files (`scanCaptures.test.ts`, invariants I3
+> and I6, the five-handler count) are step 5's to turn green on clean ground. *Verified by:* the
+> retired-names scan green with its decoy; the whole suite green with the RETIRE files gone;
+> `mcpToolClassification`'s expected set updated; the integrity board. The PR's summary carries one
+> line per deleted test file naming the new suite that holds its surviving assertion, or "none, and
+> why" — a file with no line is a file the reviewer can refuse.
 
 Register the new tools and unregister the old; `WRITE_TOOLS` and the classification test's expected
 set updated; the old scan job, calibration service, era fold, detectors, sampling, admission and
@@ -331,6 +360,12 @@ or left asserting the old model so the new one cannot land. Four rules, none wit
 4. **The acceptance suite is written first, from the contract, and fails until the walk reaches it.**
    It never imports a retired module, which the source scan holds from step 0. When it is green, the
    switch is allowed; until it is green, no step may claim to be done.
+
+> **Amended 2026-09-06 (the switch first).** Rule 3's stretch is gone: a REWRITE file's old version
+> is deleted at the switch with the code it tested, and its successor is written in the step that
+> lands the new shape; between the two, the acceptance suite is the only assertion of that contract,
+> which is what rule 4 built it for. Rule 4's "when it is green, the switch is allowed" is read the
+> other way: the switch runs first, and green is what makes step 5 done. Rules 1 and 2 are unchanged.
 
 **What a source scan holds, and why it is a test and not a review note:** that no new file imports
 `calibrationRun`, `rulesetForCapture`, `calibrationFold`, `admitUrl` or the scan job, from step 0;
@@ -475,7 +510,8 @@ its own session after that.
   statement is written with the Write tool and committed with `git commit -F`.
 - **Tool-name collisions during coexistence.** `reset_article_calibration` and `get_article_rules`
   keep their old handlers until step 8; the new ones are built unregistered. Registering both would
-  make the MCP surface answer the same name two ways.
+  make the MCP surface answer the same name two ways. *Moot from 2026-09-06: the switch runs first,
+  and the unregistered handlers go with it.*
 - **A `railway ssh` pipe swallows the exit code.** Capture first, filter after, whenever the exit code
   is the gate.
 - **Route coexistence (step 6).** Measured 2026-09-05, correcting this bullet's earlier claim that the
@@ -483,7 +519,8 @@ its own session after that.
   `runId = 'pages'`: it cannot, in either mount order — a static segment matches literally, and the
   legacy route needs `captures` where the new path carries the page id. The new router is still
   mounted BEFORE the legacy one at the same base, and a server-level test holds the order so that
-  step 8's removal of the legacy mount changes nothing observable; the test goes with it.
+  step 8's removal of the legacy mount changes nothing observable; the test goes with it. *Moot from
+  2026-09-06: the switch runs first, and the legacy mount and the order test go with it.*
 
 **What is already measured, so it is cited and not re-derived** (recompute before relying, never
 restate): drift is 0 to 1 segments across a stable stretch and 129 segments at a real break, which is
@@ -584,4 +621,5 @@ steps 1–5 on staging before the evidence and thesis tracks, so they build agai
 on the target schema written as one baseline migration, instead of additive steps followed by a
 drop. It removes the coexistence stretch on staging at the cost of the three marking walks' rules,
 which §3's step 9 already sends with the database. It is the researcher's call and changes §3's
-order if taken; it changes nothing in this section.
+order if taken; it changes nothing in this section. On 2026-09-06 the same reasoning retired
+coexistence in code: step 8 runs first inside step 5 (the notes at steps 5 and 8, and §1).
