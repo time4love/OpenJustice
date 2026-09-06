@@ -158,6 +158,7 @@ describe('the archive still serving (c)', () => {
     expect(report.rows.at(0)?.serving).toEqual({
       outcome: 'RATE_LIMITED',
       status: 429,
+      detail: 'HTTP 429',
       fetchedDocumentHash: null,
       cdxDigestMatch: null,
     });
@@ -225,6 +226,28 @@ describe('the archive still serving (c)', () => {
     fetchBytes.mockRejectedValue(new TypeError('bug in the caller'));
 
     await expect(measureCaptureCustody(PAGE, { fetch: true, delayMs: 0 })).rejects.toThrow(TypeError);
+  });
+
+  it('UNAVAILABLE carries the fetch error’s own message, and a 200 carries none', async () => {
+    // Measured on staging 2026-09-06: seven UNAVAILABLE rows with status null and
+    // nothing else, and the doc could not say whether the container ever reached
+    // the archive or the archive timed out. A container that cannot reach the
+    // archive and an archive that did not answer must not share one line.
+    findMany.mockResolvedValue([
+      row({ id: 'a', waybackTimestamp: '20220724130104' }),
+      row({ id: 'b', waybackTimestamp: '20220805053301' }),
+    ]);
+    fetchBytes
+      .mockRejectedValueOnce(
+        new WaybackFetchError('no response from the archive (ECONNRESET: socket hang up)', true, null),
+      )
+      .mockResolvedValueOnce({ bytes: RAW, contentType: null, contentEncoding: 'identity' });
+
+    const report = await measureCaptureCustody(PAGE, { fetch: true, delayMs: 0 });
+    expect(report.rows.map((r) => [r.serving.outcome, r.serving.detail])).toEqual([
+      ['UNAVAILABLE', 'no response from the archive (ECONNRESET: socket hang up)'],
+      ['SERVED_VERIFIED', null],
+    ]);
   });
 
   it('NOT_FETCHED for every row when fetching is off', async () => {

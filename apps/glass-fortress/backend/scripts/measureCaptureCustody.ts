@@ -69,12 +69,12 @@ async function main(): Promise<number | undefined> {
     console.log(`  ${outcome.padEnd(18)} ${String(n)}`);
   }
 
-  console.log('\ntimestamp        extraction  serving           status  cdx');
+  console.log('\ntimestamp        extraction  serving           status  cdx       detail (non-200 only)');
   for (const r of report.rows) {
     const cdx = r.serving.cdxDigestMatch === null ? '-' : r.serving.cdxDigestMatch ? 'match' : 'MISMATCH';
     console.log(
       `${r.waybackTimestamp}  ${r.extraction.padEnd(10)}  ${r.serving.outcome.padEnd(16)}  ` +
-        `${String(r.serving.status ?? '-').padStart(6)}  ${cdx}`,
+        `${String(r.serving.status ?? '-').padStart(6)}  ${cdx.padEnd(8)}  ${r.serving.detail ?? ''}`,
     );
   }
 
