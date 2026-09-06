@@ -247,6 +247,9 @@ deploy is one-shot, and staging is its rehearsal. Not before step 8 has served o
 > capture (111 of 112 served as held; corona `20250423145731` is held from the dump). **Ruled the same
 > day, the freeze between steps 4 and 5:** no write tool and no `--apply` script that reaches the
 > chain runs on staging between the rotation and step 5's landing.
+>
+> **Step 2 emitted and committed 2026-09-06** — `docs/gf-rebuild-staging-ledger-2026-09-06.md`: 44 of 44
+> explained, none refused; the file under `registry-ledger/`, TESTNET, `successor` null until step 4.
 
 ### 10 · Vocabulary
 

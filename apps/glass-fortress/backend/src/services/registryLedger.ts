@@ -100,8 +100,8 @@ export interface RegistryLedger {
   readAt: string;
   /** The commit the emitting container was built from; null when Railway did not say. */
   commit: string | null;
-  /** The registry that replaced this one, once step 4 has rotated. Filled in a second commit. */
-  successor: null;
+  /** The registry that replaced this one, once step 4 has rotated. Null until then; filled in its own commit. */
+  successor: string | null;
   entries: LedgerEntry[];
 }
 
