@@ -134,6 +134,8 @@ export function MarkingClient({ trackedUrlId, capture }: { trackedUrlId: string;
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [canvas, setCanvas] = useState<'page' | 'text'>('page');
   const [panelOpen, setPanelOpen] = useState(true);
+  /** The interim trust section, folded by default — opened only when a stop has named a rule (ruled 2026-09-06). */
+  const [trustOpen, setTrustOpen] = useState(false);
   const autosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const call = useCallback(
@@ -528,9 +530,13 @@ export function MarkingClient({ trackedUrlId, capture }: { trackedUrlId: string;
             failed={previewFailed}
             focused={focused}
             open={panelOpen}
+            trustOpen={trustOpen}
             disabled={busy}
             onToggleOpen={() => {
               setPanelOpen((v) => !v);
+            }}
+            onToggleTrust={() => {
+              setTrustOpen((v) => !v);
             }}
             onFocus={focus}
             onRemove={toggle}
@@ -850,8 +856,10 @@ function MarkedPanel({
   failed,
   focused,
   open,
+  trustOpen,
   disabled,
   onToggleOpen,
+  onToggleTrust,
   onFocus,
   onRemove,
   onRestore,
@@ -869,8 +877,10 @@ function MarkedPanel({
   failed: boolean;
   focused: string | null;
   open: boolean;
+  trustOpen: boolean;
   disabled: boolean;
   onToggleOpen: () => void;
+  onToggleTrust: () => void;
   onFocus: (selector: string) => void;
   onRemove: (selector: string) => void;
   onRestore: (selector: string) => void;
@@ -886,6 +896,11 @@ function MarkedPanel({
     (preview?.removedSegments ?? []).filter((s) => s.selector === selector).map((s) => s.text);
   const chars = preview?.removedText.length ?? 0;
   const empty = selectors.length === 0 && ended.length === 0;
+  /** Rules in force AND still in the draft — the only ones a trust tick can name (A5 maps trust to a live rule). */
+  const trustable = selectors.flatMap((selector) => {
+    const rule = inForce.get(selector);
+    return rule === undefined ? [] : [[selector, rule] as const];
+  });
 
   return (
     <section className="rounded border border-amber-400">
@@ -931,20 +946,8 @@ function MarkedPanel({
                   ) : (
                     <span className="text-xs text-gray-600">{t('matched', { count })}</span>
                   )}
-                  {rule !== undefined && (
-                    <label className="flex items-center gap-1 text-xs">
-                      <input
-                        type="checkbox"
-                        checked={locked || ticked.includes(selector)}
-                        disabled={disabled || locked}
-                        onChange={(e) => {
-                          if (e.target.checked) onTick(selector);
-                          else onUntick(selector);
-                        }}
-                      />
-                      {locked ? t('trustLocked') : t('trustTick')}
-                    </label>
-                  )}
+                  {locked && <span className="text-xs text-green-800">{t('trustLocked')}</span>}
+                  {!locked && ticked.includes(selector) && <span className="text-xs text-green-800">{t('trustPending')}</span>}
                   <button type="button" disabled={disabled} onClick={() => { onRemove(selector); }} className="ms-auto text-xs underline">
                     {t('remove')}
                   </button>
@@ -978,6 +981,55 @@ function MarkedPanel({
             </li>
           ))}
         </ul>
+      )}
+      {/*
+        THE INTERIM TRUST SECTION (ruled 2026-09-06). A tick beside every rule in force asked for a
+        judgement the page gives no basis for — a rule's history is not on this page. So the tick
+        lives here, FOLDED, opened only when the walk has named a rule at a stop and the researcher
+        has seen its removals before (the Gate 4 material is in the chat until step 5 writes a stop
+        on the row). At step 5 this section is replaced by the JUDGING moment, where the tick sits
+        beside the rule's history. Only rules already in force are listed: a rule created in this
+        draft has no history to trust.
+      */}
+      {open && trustable.length > 0 && (
+        <div className="border-t border-amber-300">
+          <button
+            type="button"
+            onClick={onToggleTrust}
+            aria-expanded={trustOpen}
+            className="flex w-full items-center gap-2 px-3 py-2 text-start text-sm"
+          >
+            <span aria-hidden="true">{trustOpen ? '▾' : '▸'}</span>
+            <span className="font-semibold">{t('trustHeading')}</span>
+            {ticked.length > 0 && <span className="text-xs text-green-800">{t('trustCount', { count: ticked.length })}</span>}
+          </button>
+          {trustOpen && (
+            <ul className="flex max-h-[24vh] flex-col gap-1 overflow-auto px-3 pb-2 text-sm">
+              <li className="text-xs text-gray-600">{t('trustNote')}</li>
+              {trustable.map(([selector, rule]) => (
+                <li key={selector} className="flex flex-wrap items-center gap-2">
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={rule.trusted || ticked.includes(selector)}
+                      disabled={disabled || rule.trusted}
+                      onChange={(e) => {
+                        if (e.target.checked) onTick(selector);
+                        else onUntick(selector);
+                      }}
+                    />
+                    <span className="font-semibold" title={selector}>
+                      {nameOf(selector)}
+                    </span>
+                  </label>
+                  <span className="text-xs text-gray-600">
+                    {rule.trusted ? t('trustLocked') : t('removedHere', { count: removedBy(selector).length })}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       )}
     </section>
   );

@@ -1893,7 +1893,6 @@
     "newRule": "new in this draft",
     "willEnd": "ends from this date",
     "restore": "Restore",
-    "trustTick": "Trust — this rule's removals need no more review",
     "trustLocked": "already trusted",
     "matched": "{count} matches",
     "matchedNothing": "matched nothing",
@@ -1929,6 +1928,11 @@
     "markedBar": "{rules} rules · {chars} characters will be removed",
     "markedEmpty": "Nothing marked yet — click an element in the structure.",
     "collapseToolbox": "Collapse the toolbox",
-    "expandToolbox": "Expand the toolbox"
+    "expandToolbox": "Expand the toolbox",
+    "trustHeading": "Trust a rule — only after you have seen what it removed more than once",
+    "trustNote": "A trusted rule no longer stops the walk on new text it removes. Gate 1 still checks it against the previous capture.",
+    "trustCount": "{count} will be trusted",
+    "trustPending": "trusted on this approval",
+    "removedHere": "removed {count} blocks here"
   }
 }
