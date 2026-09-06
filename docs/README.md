@@ -42,6 +42,7 @@ is reachable from here and that everything in the archive says where its subject
 
 ## Findings, by date — newest first, never edited
 
+- [gf-rebuild-staging-measure-2026-09-06.md](gf-rebuild-staging-measure-2026-09-06.md) — refactor step 9, sub-step 1 on staging: the old registry read from STATE (44 entries, 7 explained by no column), extractor equality 112 of 112, the archive serving 111 of 112 as held; the freeze rule between rotation and step 5
 - [gf-walk-step-6-measurements-part-2-2026-09-06.md](gf-walk-step-6-measurements-part-2-2026-09-06.md) — refactor step 4 on staging, PART 2: Gates 1, 2 and 4 under rules created by MARKING; six stops, none preventable by trust (derived); walla's stops are CSS-hash churn, corona's a permanent Gate 1 alarm read from the code; two findings for the flows doc
 - [gf-walk-step-6-marking-verified-2026-09-06.md](gf-walk-step-6-marking-verified-2026-09-06.md) — refactor step 6 on staging: walla and corona each marked in the new page from a stored capture, promoted by `approve_article_rules`, read back three ways; the approval's transaction window found and fixed (PR #360); the page reshaped in three rounds; part 2's opening stops
 - [gf-walk-step-4-measurements-2026-09-05.md](gf-walk-step-4-measurements-2026-09-05.md) — refactor step 4 on staging, PART 1: Gate 5's confusion table over twenty labelled diffs (the premise holds on the sample; five empty-input diffs are step 5's finding) and the reporting walk's first stops; part 2 (Gates 1, 2, 4) is its own dated record after step 6
