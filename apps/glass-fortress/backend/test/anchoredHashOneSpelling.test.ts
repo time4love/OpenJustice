@@ -39,12 +39,28 @@ jest.mock('../src/services/onChainVerification', () => ({
 
 import { Prisma } from '@prisma/client';
 import { prisma } from '../src/lib/prisma';
-import { anchorOneSnapshot } from '../src/services/anchorSnapshots';
+import {
+  anchorAcquiredCapture,
+  openRegistryWindow,
+  type CaptureRegistrar,
+} from '../src/services/anchorSnapshots';
 import { confirmAnchors } from '../src/services/confirmAnchors';
 import { capturesAnchoredBy } from '../src/lib/anchoredCaptureHash';
 
 /** The document hash a capture carries, as the database stores it: bare hex. */
 const DOCUMENT = 'a'.repeat(64);
+
+/** An EMPTY registry, so WRITES_ALLOWED passes and the write path reaches its one write. */
+function emptyRegistrar(): CaptureRegistrar {
+  return {
+    registryAddress: '0xregistry',
+    registrarAddress: '0xus',
+    getTotalEvidence: jest.fn().mockResolvedValue(BigInt(0)),
+    readEvidenceRecord: jest.fn(),
+    isHashRegistered: mockWeb3.isHashRegistered,
+    registerEvidenceHash: mockWeb3.registerEvidenceHash,
+  };
+}
 
 beforeEach(() => jest.clearAllMocks());
 
@@ -62,13 +78,11 @@ function lookupMatches(where: Prisma.UrlSnapshotWhereInput, value: string): bool
   return arms.some((arm) => arm.anchoredHash === value);
 }
 
-/** What `anchorOneSnapshot` actually wrote to `anchoredHash`. */
+/** What `anchorAcquiredCapture` actually wrote to `anchoredHash`. */
 async function whatTheWritePathStored(): Promise<string> {
-  (prisma.urlSnapshot.findFirst as jest.Mock).mockResolvedValue(null); // no twin
-  mockWeb3.isHashRegistered.mockResolvedValue({ registered: false });
   mockWeb3.registerEvidenceHash.mockResolvedValue('0xtx');
 
-  await anchorOneSnapshot(mockWeb3 as never, 'snap-1', { documentHash: DOCUMENT });
+  await anchorAcquiredCapture(openRegistryWindow(emptyRegistrar), 'snap-1', { documentHash: DOCUMENT });
 
   const call = (prisma.urlSnapshot.update as jest.Mock).mock.calls.at(0) as
     | [{ data: { anchoredHash: string } }]

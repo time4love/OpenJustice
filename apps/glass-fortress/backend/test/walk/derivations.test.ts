@@ -13,6 +13,7 @@ import {
   predecessor,
   knownText,
   nextRow,
+  supersedingDecision,
   type Outcome,
 } from '../../src/walk/derivations';
 import { T09, T14, T2, T3, T4, T5, BASE, EMPTY_ID, OUTCOMES, rule, D, log, row, ids, sequences } from './fixtures';
@@ -450,5 +451,70 @@ describe('NEXT_ROW — the earliest row in timestamp order that is UNFETCHED, PE
   it('timestamp order, not insertion order', () => {
     const rows = [row(T3, 'UNFETCHED'), row(T2, 'UNFETCHED'), row(T09, 'ACQUIRED')];
     expect(nextRow(rows, [], [], BASE)?.waybackTimestamp).toBe(T2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// SUPERSEDING_DECISION(page, t) — RULED 2026-09-06 (Q4): the newest decision in
+// the log after which RULESET_ID(page, t) changed, found by REPLAYING the log
+// with these derivations — a rule exists from its creating decision, ends at
+// its RULE_ENDED, reaches back at its RULE_EXTENDED, loses authority at a
+// RETIRED or a RESET. Null when no decision changed the ruleset in force at t:
+// an extractor-only supersession, which the nullable column records as such.
+// ---------------------------------------------------------------------------
+describe('SUPERSEDING_DECISION(t) — the newest decision after which RULESET_ID(t) changed, by replay', () => {
+  const r1 = rule('r1', '.ad', T09, 'd1');
+
+  it('the correction that created the rule in force at t', () => {
+    const decisions = log([r1], [D.corrected(T09), D.accepted(T09)]);
+    expect(supersedingDecision([r1], decisions, T14)?.id).toBe('d1');
+  });
+
+  it('a decision that changes no ruleset — TRUST, ACCEPT — is never the answer', () => {
+    const decisions = log([r1], [D.corrected(T09), D.accepted(T09), D.trusted('r1', T14), D.accepted(T14)]);
+    expect(supersedingDecision([r1], decisions, T14)?.id).toBe('d1');
+  });
+
+  it('RULE_ENDED changes the ruleset FROM its timestamp: the answer at T3 is the ending, at T14 still the creation', () => {
+    const ended = rule('r1', '.ad', T09, 'd1', T2);
+    const decisions = log([ended], [D.corrected(T09), D.accepted(T09), D.ended('r1', T2)]);
+    expect(supersedingDecision([ended], decisions, T3)?.id).toBe('d3');
+    expect(supersedingDecision([ended], decisions, T14)?.id).toBe('d1');
+  });
+
+  it('RULE_EXTENDED reaches back: a rule created against T3 and extended to T09 governs T14 from the extension', () => {
+    // The row's validFrom is already T09 — the extension moved it. The replay
+    // reads the creating decision's capture (T3) until the RULE_EXTENDED lands.
+    const extended = rule('r1', '.ad', T09, 'd1');
+    const decisions = log([extended], [D.corrected(T3), D.accepted(T3), { type: 'RULE_EXTENDED', waybackTimestamp: T09, ruleId: 'r1' }, D.accepted(T09)]);
+    expect(supersedingDecision([extended], decisions, T14)?.id).toBe('d3');
+    expect(supersedingDecision([extended], decisions, T4)?.id).toBe('d1');
+  });
+
+  it('RULE_RETIRED ends the rule for every t: the retirement is the answer everywhere', () => {
+    const decisions = log([r1], [D.corrected(T09), D.accepted(T09), D.retired('r1', T14)]);
+    expect(supersedingDecision([r1], decisions, T14)?.id).toBe('d3');
+    expect(supersedingDecision([r1], decisions, T2)?.id).toBe('d3');
+  });
+
+  it('a RESET that emptied the ruleset is the decision after which it changed', () => {
+    // The boundary of AUTHORITY is still the decision that changed the rules in
+    // force — a re-walk after a reset re-derives under no rules because of it.
+    const decisions = log([r1], [D.corrected(T09), D.accepted(T09), D.reset()]);
+    expect(supersedingDecision([r1], decisions, T14)?.id).toBe('d3');
+  });
+
+  it('null when no decision changed the ruleset at t — an extractor-only supersession', () => {
+    expect(supersedingDecision([], [], T14)).toBeNull();
+    expect(supersedingDecision([], log([], [D.accepted(T09)]), T14)).toBeNull();
+    // A rule created AFTER t never governed t.
+    const later = rule('r1', '.ad', T2, 'd1');
+    expect(supersedingDecision([later], log([later], [D.corrected(T2), D.accepted(T2)]), T14)).toBeNull();
+  });
+
+  it('the NEWEST change wins when several decisions moved the ruleset at t', () => {
+    const r2 = rule('r2', '.share', T09, 'd3');
+    const decisions = log([r1, r2], [D.corrected(T09), D.accepted(T09), D.corrected(T09), D.accepted(T09)]);
+    expect(supersedingDecision([r1, r2], decisions, T14)?.id).toBe('d3');
   });
 });

@@ -543,6 +543,12 @@ model UrlVersionDiff {
   createdAt               DateTime            @default(now())
   evidence                Evidence[]
   summaryCorrections      SummaryCorrection[]
+  /// The diff's CONTENT, one row per distinct derivation (evidence A2). The
+  /// pair is the identity; everything the walk derived from the two texts —
+  /// chunks, survival, the classifier's opinion — is a version here, written
+  /// at acquisition and never overwritten. The legacy columns below are the old
+  /// path's and leave at evidence step 11.
+  contentVersions         DiffContentVersion[]
 
   // --- LEVEL 5: does this diff's own report survive the documents it spans? ---
   //
@@ -604,6 +610,41 @@ model UrlVersionDiff {
   /// environments, so it applies to the existing corpus untouched.
   @@unique([beforeSnapshotId, afterSnapshotId])
   @@index([trackedUrlId, afterDate])
+}
+
+/// ONE ROW PER DISTINCT DERIVED CONTENT OF A DIFF — docs/gf-evidence-flows.md
+/// §3 and A2. The diff row is the PAIR and holds no content; this is what a
+/// thesis pins (`contentVersionHash`) and what check 17 judges. A version is
+/// named by what it CONTAINS: the hash covers the chunks alone (A1), so a
+/// re-derivation yielding the same chunks writes nothing and a changed opinion
+/// never moves a citation. Two registers, one pinned: `chunks` are computed;
+/// `classification` is the OPINION register — a model's draw, labelled, never
+/// in the hash. Written by the walk at acquisition (and by the re-walk at
+/// re-derivation); no research act writes one, nothing overwrites one.
+model DiffContentVersion {
+  id                 String         @id @default(cuid())
+  diffId             String
+  diff               UrlVersionDiff @relation(fields: [diffId], references: [id], onDelete: Cascade)
+  /// Provenance: the two texts this content was derived from, by their hashes.
+  beforeTextHash     String
+  afterTextHash      String
+  /// Provenance: the differ and the classifier together — DIFF_VERSION.
+  diffVersion        String
+  /// [{ side: 'REMOVED' | 'ADDED', text, survival: SURVIVES | CONTRADICTED | UNCHECKABLE }, …]
+  /// in the differ's output order.
+  chunks             Json
+  /// A1: sha256 over the JSON of [{ side, text } …] — no survival, no opinion,
+  /// no version label in the hash.
+  contentVersionHash String
+  /// The OPINION register: the classifier's whole output for this content, with
+  /// classifierVersion, classifierModel, classifierPromptHash, draws and
+  /// summaryVersion. NULL when nothing classified this derivation.
+  classification     Json?
+  /// SURVIVAL_CHECK_VERSION at derivation — which rule judged each chunk.
+  survivalVersion    String
+  derivedAt          DateTime       @default(now())
+
+  @@unique([diffId, contentVersionHash])
 }
 
 // Mirrors the pgvector table created via raw SQL in the baseline migration
@@ -2182,8 +2223,13 @@ model TextVersion {
   /// When this version was the current one.
   derivedAt              DateTime
   supersededAt           DateTime     @default(now())
-  supersededByDecisionId String
-  supersededByDecision   PageDecision @relation(fields: [supersededByDecisionId], references: [id])
+  /// The newest decision under AUTHORITY after which RULESET_ID at this
+  /// capture's timestamp changed — what made the re-walk re-derive it. NULL for
+  /// a supersession the rules had no part in: a new extractor moved the text
+  /// (ruled 2026-09-06, Q4). RESTRICT, as every reference to a decision: an
+  /// attribution is never blanked silently.
+  supersededByDecisionId String?
+  supersededByDecision   PageDecision? @relation(fields: [supersededByDecisionId], references: [id], onDelete: Restrict)
 
   @@unique([snapshotId, textHash])
 }

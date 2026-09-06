@@ -10,17 +10,20 @@ import { StaleSequenceError } from './pageLog';
 // ---------------------------------------------------------------------------
 
 /**
- * Every code A5 and A6 name, transcribed whole — the survey's, this step's
- * four tools', the two reads', scan_captures' and the marking routes'
- * (INVALID_BODY for a 400; 404 and 409 reuse NOT_SURVEYED and
- * CAPTURE_NOT_MARKABLE) — so step 5 adds nothing here and the set cannot
- * drift from the contract one tool at a time. A refusal with a code the
+ * Every code A5 and A6 name, transcribed whole — the survey's, step 3's four
+ * tools', the two reads', scan_captures' and the marking routes' (INVALID_BODY
+ * for a 400; 404 and 409 reuse NOT_SURVEYED and CAPTURE_NOT_MARKABLE) — plus
+ * the one step 5 added by ruling: CHAIN_UNAVAILABLE (2026-09-06, Q8), the
+ * walk's answer when the chain cannot be reached, read or written, returned
+ * like ARCHIVE_UNAVAILABLE with everything before the halted row kept. The set
+ * cannot drift from the contract one tool at a time: a refusal with a code the
  * contract does not name fails to compile.
  */
 export type RefusalCode =
   | 'NO_RESEARCHER'
   | 'NOT_SURVEYED'
   | 'ARCHIVE_UNAVAILABLE'
+  | 'CHAIN_UNAVAILABLE'
   | 'INVALID_MAX_CAPTURES'
   | 'REGISTRY_FROZEN'
   | 'STALE_SEQUENCE'

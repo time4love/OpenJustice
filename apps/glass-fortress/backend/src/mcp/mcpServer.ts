@@ -679,25 +679,30 @@ export function createMcpServer(): McpServer {
   );
 
   // -------------------------------------------------------------------------
-  // Tool: scan_captures  [WRITE — spends; stores nothing until refactor step 5]
+  // Tool: scan_captures  [WRITE — spends; stores, anchors, diffs]
   //
-  // THE WALK — docs/gf-interaction-flows.md Phase 2 and Flow 3, built at
-  // refactor step 4 in REPORTING form: every step but the writes. Step 5 adds
-  // the writes to the same handler.
+  // THE WALK — docs/gf-interaction-flows.md Phase 2 and Flow 3, WRITING since
+  // refactor step 5: every outcome on the work-list row, the capture stored
+  // and anchored on ACQUIRED, its diff written with the verdict.
   // -------------------------------------------------------------------------
   server.registerTool(
     'scan_captures',
     {
       description:
-        'WALK A SURVEYED PAGE\'S CAPTURES IN DATE ORDER — REPORTING ONLY UNTIL REFACTOR STEP 5: this ' +
-        'call fetches, derives under the rules in force for each capture\'s date, compares with the ' +
-        'predecessor, runs every gate and reports what the walk WOULD do — IDENTICAL, DUPLICATE, ' +
-        'ACQUIRED, UNSERVABLE — and STORES NOTHING: no row, no held bytes, no snapshot, no anchor, ' +
-        'no decision. Calling it twice answers the same twice. A gate firing halts the chunk and ' +
-        'returns the stop with its material and the marking URL; resolve it there, or with ' +
-        'resolve_scan_stop. SPENDS one classifier call per novel capture that reaches Gate 5. ' +
-        '`maxCaptures` is how many rows this call may walk. Refuses NOT_SURVEYED, ' +
-        'INVALID_MAX_CAPTURES, and ARCHIVE_UNAVAILABLE at the row the archive did not serve.',
+        'WALK A SURVEYED PAGE\'S CAPTURES IN DATE ORDER: this call fetches each capture\'s raw replay, ' +
+        'derives its text under the rules in force for its date, compares it with its predecessor, runs ' +
+        'every gate, and WRITES the outcome on the work-list row — IDENTICAL, DUPLICATE, UNSERVABLE, or ' +
+        'ACQUIRED, on which the capture is stored, anchored on chain as it is stored (the anchor is ' +
+        'awaited), and diffed against its predecessor with the classifier\'s verdict. A gate firing halts ' +
+        'the chunk: the capture is held on its row as PENDING_JUDGEMENT with the stop\'s material, and the ' +
+        'marking URL is returned; resolve it there, or with resolve_scan_stop, then call again — the ' +
+        'held capture is acquired without re-running the gates. A stale stored capture is re-derived: ' +
+        'its previous text kept as a version (superseded) or its ruleset stamp moved (restamped). ' +
+        'SPENDS one classifier call per acquired novel capture. `maxCaptures` is how many rows this ' +
+        'call may walk; the walk resumes from where it got to. Refuses NOT_SURVEYED, INVALID_MAX_CAPTURES, ' +
+        'ARCHIVE_UNAVAILABLE at the row the archive did not serve, REGISTRY_FROZEN when the registry is ' +
+        'neither empty nor scheme-stamped at index 0 (nothing acquired), and CHAIN_UNAVAILABLE when the ' +
+        'chain cannot be reached — everything before the halted row is kept.',
       inputSchema: scanCapturesSchema,
     },
     async (input) => ({

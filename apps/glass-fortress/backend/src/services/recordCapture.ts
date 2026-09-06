@@ -1,110 +1,91 @@
-import { prisma } from '../lib/prisma';
-import { deriveText, sha256Bytes, sha256Text } from '../lib/captureDocument';
 import { CaptureProvenance } from '@prisma/client';
-import { registerSnapshotOnChain, type SnapshotAnchorOutcome } from './anchorSnapshots';
-import {
-  ANCHORABLE_CAPTURE_SELECT,
-  type AnchorableCapture,
-} from '../lib/anchoredCaptureHash';
+import { prisma } from '../lib/prisma';
+import { captureHtml, sha256Bytes, sha256Text, type DerivedText } from '../lib/captureDocument';
+import { rawCaptureUrl, viewerCaptureUrl } from '../lib/archiveHttp';
+import { ANCHORABLE_CAPTURE_SELECT } from '../lib/anchoredCaptureHash';
+import { anchorAcquiredCapture, requireWritable, type RegistryWindow } from './anchorSnapshots';
 
 /**
- * The one way a capture is written.
+ * THE STORE — the one way a capture is written, and anchored as it is written.
  *
- * Level 1 of docs/gf-factual-layer-rebuild-dev-plan.md. Two properties matter,
- * and neither survives being spread across call sites:
+ * The walk derives and decides (docs/gf-interaction-flows.md Phase 2): it
+ * fetches the raw replay, derives text under RULES_IN_FORCE at the capture's
+ * timestamp, compares with the predecessor, runs the gates, and only then —
+ * every gate quiet, or the capture RESOLVED — hands the bytes here. This module
+ * decides nothing about novelty or rules. It holds two properties that do not
+ * survive being spread across call sites:
  *
  *   1. A capture holds the document it was extracted from. `document` is a
- *      required parameter, so no code path can construct an incomplete capture
- *      — the schema's NOT NULL is the backstop, not the control.
+ *      required `Buffer`, so no path can construct an incomplete capture — the
+ *      schema's NOT NULL is the backstop, not the control.
  *
- *   2. "Is this capture new?" has exactly ONE answer. Before this module there
- *      were three, and they disagreed: CDX's server-side `collapse=digest`
- *      (consecutive only), WaybackScraper's client-side `seenDigests` set (any
- *      repeat within one batch of 50), and the write path itself, which keyed
- *      on (trackedUrlId, waybackTimestamp) and was digest-blind. The middle one
- *      discarded 11 real captures of the staging corpus; a twelfth survived
- *      only because a CDX page boundary happened to separate it from its twin.
- *      Whether a page state was recorded therefore depended on pagination.
+ *   2. `fullText` and `contentHash` — evidence identity — are composed HERE,
+ *      through the one Readability construction in `lib/archiveText`, and by
+ *      no rule and no walk (architecture §6, walk invariant I1). The walk's
+ *      derivation is stored as handed over; the identity is the store's.
+ *
+ * The anchor is AWAITED (Phase 2, ruled 2026-09-02). A chain failure throws
+ * with its reason; the snapshot row stays; the next call finds it through the
+ * existing-row path below and retries the anchor.
  */
-export interface RecordCaptureInput {
+export interface StoreCaptureInput {
   trackedUrlId: string;
-  provenance: CaptureProvenance;
-  /** When the capture was TAKEN. Derived from waybackTimestamp for archived captures. */
-  capturedAt: Date;
-  /** The Archive's identifier. Present only when provenance is WAYBACK. */
-  waybackTimestamp?: string;
-  /** Where this was fetched from — Wayback canonical URL, or the live URL. */
-  sourceUrl: string;
+  /**
+   * The page's URL, exact — flows A1. It names the raw replay the bytes came
+   * from, which is the base Readability reads the article under, and the
+   * viewer URL a reader opens to check.
+   */
+  url: string;
+  /** The capture's name in the archive — 14 digits, YYYYMMDDHHMMSS. */
+  waybackTimestamp: string;
   /**
    * THE PAYLOAD AS FETCHED. Bytes, never a decoded or filtered view of them.
    *
    * Typed `Buffer` rather than `string` so the compiler refuses the mistake that
-   * reopened this level: a caller cannot hand text here and have it stored under
+   * reopened Level 1: a caller cannot hand text here and have it stored under
    * the name of the document.
    */
   document: Buffer;
   /** The Content-Type header verbatim — what makes the bytes decodable later. */
-  documentContentType?: string | null;
+  contentType: string | null;
   /**
-   * The Content-Encoding header verbatim.
-   *
-   * `document` is the payload AS SERVED, so this is what says how to read it.
-   * Both headers are stored on the same rule: keep every response header without
-   * which the bytes cannot be interpreted.
+   * The Content-Encoding header, normalised: `document` is the payload AS
+   * SERVED, so this is what says how to read it. Both headers are stored on the
+   * same rule: keep every response header without which the bytes cannot be
+   * interpreted.
    */
-  documentContentEncoding?: string | null;
-  /** Readability's article view of that same payload. */
-  extraction: string;
+  contentEncoding: string | null;
+  /** The walk's derivation under RULES_IN_FORCE at the capture's timestamp. */
+  derived: DerivedText;
+  /** The registry as this walk call sees it — WRITES_ALLOWED evaluated once. */
+  window: RegistryWindow;
 }
 
-/** The verdict of comparing a refetched payload against the stored one. */
-export type DocumentComparison = 'MATCHES' | 'DIVERGED' | 'UNAVAILABLE';
+/**
+ * The verdict of comparing a refetched payload against the stored one.
+ *
+ * `DIVERGED` is a finding rather than an error: either the Archive's own copy
+ * changed or our fetch is faulty, and stored bytes are never rewritten on the
+ * strength of it. Always `MATCHES` on a created row, where nothing was compared
+ * because nothing conflicting was stored.
+ */
+export type DocumentComparison = 'MATCHES' | 'DIVERGED';
 
-export interface RecordedCapture {
-  id: string;
-  waybackTimestamp: string | null;
-  capturedAt: Date;
-  /** SHA-256(extraction) — what the chain currently attests to. */
-  contentHash: string;
-  /** SHA-256 of the payload, whole and untruncated. */
-  documentHash: string;
-  /** SHA-256 of the derived normalised text — the novelty and diffing key. */
-  textHash: string;
-  /**
-   * Whether the payload just fetched matches the one already stored.
-   *
-   * `DIVERGED` is a finding rather than an error: either the Archive's own copy
-   * changed or our fetch is faulty, and stored bytes are never rewritten on the
-   * strength of it. `UNAVAILABLE` means the comparison could not be made — a row
-   * predating the payload column — and is deliberately NOT collapsed into
-   * `MATCHES`, per §3: UNAVAILABLE is a verdict about a CHECK, never about data.
-   *
-   * Always `MATCHES` on CREATED and UNCHANGED, where nothing was compared
-   * because nothing conflicting was stored. Persisting the verdict waits on §3's
-   * open decision about where check results live.
-   */
+export interface StoredCapture {
+  snapshotId: string;
+  /** False when this instant was already recorded — a retry, or a lost race. */
+  created: boolean;
   documentComparison: DocumentComparison;
-  /**
-   * Why this call did not create a row.
-   *
-   * `UNCHANGED` — identical to the immediately preceding capture.
-   * `EXISTS`    — already recorded; a resumed scan re-reaching the same capture.
-   */
-  outcome: 'CREATED' | 'UNCHANGED' | 'EXISTS';
-  /**
-   * How anchoring resolved — present only when an attempt was made.
-   *
-   * Anchoring stays fire-and-forget for the scanner: a chain hiccup must not
-   * fail a write that already holds the irreplaceable half, and the scanner
-   * ignores this field exactly as before. A maintenance run may AWAIT it to
-   * report what actually happened per capture, which is otherwise unobservable
-   * — the outcome was previously logged and discarded.
-   *
-   * The promise never rejects (see registerSnapshotOnChain), so ignoring it
-   * cannot produce an unhandled rejection. `null` resolves when the attempt
-   * itself failed, as distinct from an attempt that reached a conclusion.
-   */
-  anchoring?: Promise<SnapshotAnchorOutcome | null>;
+}
+
+/** The columns an existing row needs to be compared, and anchored if it never was. */
+const EXISTING_ROW_SELECT = { id: true, textHash: true, onChainTxHash: true, ...ANCHORABLE_CAPTURE_SELECT } as const;
+
+interface ExistingRow {
+  id: string;
+  textHash: string;
+  onChainTxHash: string | null;
+  documentHash: string;
 }
 
 /**
@@ -113,40 +94,10 @@ export interface RecordedCapture {
  * `instanceof PrismaClientKnownRequestError` is avoided deliberately: it fails
  * when more than one @prisma/client instance is resolved, which is exactly the
  * condition a monorepo with workspace hoisting can produce, and it would fail
- * OPEN here — turning a lost race into a thrown scan.
+ * OPEN here — turning a lost race into a thrown walk.
  */
 function isUniqueViolation(err: unknown): boolean {
   return typeof err === 'object' && err !== null && 'code' in err && err.code === 'P2002';
-}
-
-/**
- * Anchor, and guarantee the returned promise never rejects.
- *
- * `RecordedCapture.anchoring` is handed to callers who may ignore it — the
- * scanner does, deliberately, so a chain hiccup cannot fail a write that already
- * holds the irreplaceable half. An ignored promise that rejects is an unhandled
- * rejection, which in Node ends the process.
- *
- * registerSnapshotOnChain already catches internally, so this looks redundant.
- * It is not: that is a property of ANOTHER MODULE, and this one documents the
- * no-reject guarantee as its own. Depending on a neighbour to hold an invariant
- * you promise is how a comment becomes the only thing enforcing it — the exact
- * pattern this level exists to stop repeating. Proven by a test that makes
- * anchoring reject.
- */
-function anchorNeverRejecting(
-  snapshotId: string,
-  capture: AnchorableCapture,
-): Promise<SnapshotAnchorOutcome | null> {
-  return registerSnapshotOnChain(snapshotId, capture).catch((err: unknown) => {
-    console.warn(
-      '[recordCapture] anchoring rejected for',
-      snapshotId,
-      ':',
-      err instanceof Error ? err.message : err,
-    );
-    return null;
-  });
 }
 
 /** YYYY-MM-DD in UTC. capturedAt is UTC by construction. */
@@ -155,61 +106,47 @@ function toSnapshotDate(capturedAt: Date): string {
 }
 
 /**
- * A capture already exists at this instant — a resumed scan re-reaching it.
+ * A capture already exists at this instant — a walk call re-reaching it after
+ * a halt, or a lost race. Three things happen that a bare early return would skip:
  *
- * Two things must happen here that a bare early return would skip, and both
- * were properties the `upsert` this replaced had in CODE before they were
- * demoted to prose:
+ *  - REFUSE A MOVED TEXT (ruled 2026-09-06, M1). This path exists for the SAME
+ *    capture reached twice: the same bytes under the same rules derive the same
+ *    text. A stored textHash that differs from the derivation handed over means
+ *    the walk is re-storing a capture whose text has moved under it — that is
+ *    supersession's job (flows Flow 3, a TextVersion in one transaction), and
+ *    silently keeping either text would be a stored capture whose `text` no
+ *    longer says what the walk believes. A walk defect throws.
  *
- *  - COMPARE. Stored text is never rewritten, but the refetch is still an
- *    observation. If it disagrees with what we hold, the Archive's own copy
- *    changed, and that is a finding. Claiming so in a comment while never
- *    comparing is the "documented in a comment, mistaken for a control" pattern
- *    that Level 1 exists to stop repeating.
+ *  - COMPARE, on the PAYLOAD. Stored bytes are never rewritten, but the refetch
+ *    is still an observation. Comparing normalised text is what let three CDX
+ *    rows with two distinct payload digests collapse to one stored hash — a real
+ *    difference in the archived bytes, invisible to the check meant to detect
+ *    exactly that. The verdict is logged, not yet persisted.
  *
- *  - RETRY THE ANCHOR. The old path anchored whenever `onChainTxHash` was null,
- *    including on rows it did not create, so a resumed scan repaired a capture
- *    stored but never anchored. Anchoring only on creation loses that repair —
- *    against a corpus where 83 captures once sat unanchored and 71 production
- *    rows still hold a null for text that IS on-chain.
- *
- * The divergence verdict is surfaced and logged, not yet persisted: where check
- * verdicts live (one polymorphic IntegrityCheck table, or verdict columns per
- * subject) is an open decision in §3 of the plan, and inventing a third shape
- * here would prejudge it.
+ *  - RETRY THE ANCHOR, awaited. A row whose anchor threw on the call that
+ *    created it is the row this path exists for: the bytes are the irreplaceable
+ *    half and they are held; the anchor is owed, and this is where it is paid —
+ *    after the window is asked, so a frozen registry retries nothing.
  */
-function finishExisting(
-  existing: {
-    id: string;
-    waybackTimestamp: string | null;
-    contentHash: string;
-    documentHash: string | null;
-    onChainTxHash: string | null;
-  },
-  fetched: { documentHash: string; contentHash: string; textHash: string; capturedAt: Date },
-): RecordedCapture {
-  // Compared on the PAYLOAD, not on the derived text.
-  //
-  // This is the whole lesson of Level 1's reopening. Comparing normalised text
-  // is what let three CDX rows with two distinct payload digests collapse to one
-  // stored hash — a real difference in the archived bytes, invisible to the
-  // check meant to detect exactly that.
-  //
-  // UNAVAILABLE is a verdict about the CHECK, never about the data (§3). A row
-  // stored before the payload column existed has no hash to compare, and saying
-  // so is the difference between "we compared and they match" and "we could not
-  // compare". Reporting the second as the first is how a silent pass wears the
-  // face of a real one.
+async function finishExisting(
+  existing: ExistingRow,
+  fetched: { documentHash: string; textHash: string; waybackTimestamp: string },
+  window: RegistryWindow,
+): Promise<StoredCapture> {
+  if (existing.textHash !== fetched.textHash) {
+    throw new Error(
+      `Walk defect: capture ${fetched.waybackTimestamp} is already stored as snapshot ${existing.id} with ` +
+        `textHash ${existing.textHash}, but the walk handed over a derivation hashing to ${fetched.textHash}. ` +
+        'A stored text changes only by a versioned supersession, never through the store.',
+    );
+  }
+
   const documentComparison: DocumentComparison =
-    existing.documentHash === null
-      ? 'UNAVAILABLE'
-      : existing.documentHash === fetched.documentHash
-        ? 'MATCHES'
-        : 'DIVERGED';
+    existing.documentHash === fetched.documentHash ? 'MATCHES' : 'DIVERGED';
 
   if (documentComparison === 'DIVERGED') {
     console.warn(
-      '[recordCapture] DIVERGENCE: capture',
+      '[storeCapture] DIVERGENCE: capture',
       existing.id,
       'holds a payload hashing to',
       existing.documentHash,
@@ -219,278 +156,108 @@ function finishExisting(
     );
   }
 
-  // A row with no stored document hash cannot be anchored under the document
-  // rule, and saying so is better than anchoring something else. Unreachable
-  // while the column is NOT NULL (20260827180000), and the declared type still
-  // permits it — tightening that type means removing the UNAVAILABLE comparison
-  // above, which is its own change rather than a side effect of moving the anchor.
-  const anchoring =
-    existing.onChainTxHash !== null || existing.documentHash === null
-      ? undefined
-      : anchorNeverRejecting(existing.id, { documentHash: existing.documentHash });
-
-  return {
-    id: existing.id,
-    waybackTimestamp: existing.waybackTimestamp,
-    capturedAt: fetched.capturedAt,
-    contentHash: existing.contentHash,
-    documentHash: fetched.documentHash,
-    textHash: fetched.textHash,
-    documentComparison,
-    outcome: 'EXISTS',
-    ...(anchoring ? { anchoring } : {}),
-  };
-}
-
-/** The capture immediately preceding an instant, and whether text is unchanged from it. */
-export interface PrecedingCapture {
-  id: string;
-  waybackTimestamp: string | null;
-  capturedAt: Date;
-  contentHash: string;
-  textHash: string;
-}
-
-/**
- * IS THIS CAPTURE NEW? — the one implementation of that question.
- *
- * Exported so nothing else has to re-derive it. `backfillCdxIndex` must classify
- * indexed captures it holds no row for, and the honest answer ("fetched,
- * compared, identical to its predecessor") is exactly this rule. A second copy
- * would be one rule with two implementations, which is this repository's dominant
- * defect shape — and here the two copies would be *the definition of unchanged*,
- * so any drift between them would mislabel index entries rather than merely
- * duplicating logic.
- *
- * Ordered by `capturedAt` rather than by insertion, so the answer does not depend
- * on the order captures arrive in — which is what made the rule this replaced
- * depend on CDX pagination.
- */
-export async function noveltyAgainstPredecessor(input: {
-  trackedUrlId: string;
-  capturedAt: Date;
-  textHash: string;
-}): Promise<{ preceding: PrecedingCapture | null; unchanged: boolean }> {
-  const preceding = await prisma.urlSnapshot.findFirst({
-    where: { trackedUrlId: input.trackedUrlId, capturedAt: { lt: input.capturedAt } },
-    orderBy: { capturedAt: 'desc' },
-    select: {
-      id: true,
-      waybackTimestamp: true,
-      capturedAt: true,
-      contentHash: true,
-      textHash: true,
-    },
-  });
-  return { preceding, unchanged: preceding?.textHash === input.textHash };
-}
-
-export async function recordCapture(input: RecordCaptureInput): Promise<RecordedCapture> {
-  const {
-    trackedUrlId,
-    provenance,
-    capturedAt,
-    waybackTimestamp,
-    sourceUrl,
-    document,
-    documentContentType,
-    documentContentEncoding,
-    extraction,
-  } = input;
-
-  if (provenance === CaptureProvenance.WAYBACK && !waybackTimestamp) {
-    throw new Error('recordCapture: a WAYBACK capture requires its waybackTimestamp.');
+  // Anchored on the bytes the ROW holds, never the refetched ones: the anchor
+  // attests what the corpus keeps, and `anchoredCaptureHash` reads it off the
+  // row as written.
+  if (existing.onChainTxHash === null) {
+    await requireWritable(window);
+    await anchorAcquiredCapture(window, existing.id, existing);
   }
-  if (provenance !== CaptureProvenance.WAYBACK && waybackTimestamp) {
-    throw new Error(
-      `recordCapture: waybackTimestamp is meaningless for a ${provenance} capture — ` +
-        'it asserts the Archive holds a capture it does not hold.',
-    );
-  }
-  // Emptiness is judged on the PAYLOAD and on the text it yields, because they
-  // fail differently: zero bytes is a fetch that returned nothing, while bytes
-  // that derive to pure whitespace is a page that rendered to nothing. Either
-  // way there is no document to store, and a capture without one is exactly what
-  // this level makes impossible.
+
+  return { snapshotId: existing.id, created: false, documentComparison };
+}
+
+export async function storeCapture(input: StoreCaptureInput): Promise<StoredCapture> {
+  const { trackedUrlId, url, waybackTimestamp, document, contentType, contentEncoding, derived, window } =
+    input;
+
+  const capturedAt = waybackTimestampToDate(waybackTimestamp);
+  // Zero bytes is a fetch that returned nothing. There is no document to store,
+  // and a capture without one is exactly what this module makes impossible.
   if (document.length === 0) {
-    throw new Error('recordCapture: refusing to record a capture with an empty document.');
+    throw new Error('storeCapture: refusing to store a capture with an empty document.');
   }
-
-  const contentHash = sha256Text(extraction);
   const documentHash = sha256Bytes(document);
-  // DERIVED UNDER NO RULES. The era model this branch derived under is retired
-  // (refactor plan §3 step 8, pulled before step 5 on 2026-09-06); the walk
-  // derives under RULES_IN_FORCE at the capture's timestamp and hands the
-  // store its derivation at step 5, when this function becomes the store.
-  const derived = deriveText(document, documentContentType ?? null, documentContentEncoding ?? null);
 
   const existing = await prisma.urlSnapshot.findUnique({
     where: { trackedUrlId_capturedAt: { trackedUrlId, capturedAt } },
-    select: {
-      id: true,
-      waybackTimestamp: true,
-      contentHash: true,
-      documentHash: true,
-      onChainTxHash: true,
-    },
+    select: EXISTING_ROW_SELECT,
   });
-  if (existing) {
-    return finishExisting(existing, {
-      documentHash,
-      contentHash,
-      textHash: derived.textHash,
-      capturedAt,
-    });
-  }
+  const fetched = { documentHash, textHash: derived.textHash, waybackTimestamp };
+  if (existing) return finishExisting(existing, fetched, window);
 
-  /**
-   * Is this capture new?
-   *
-   * A capture is new unless it is identical to the one immediately preceding it
-   * in time for the same TrackedUrl. Two consequences, both deliberate:
-   *
-   *   - An unchanged re-fetch is dropped. It adds a row and no information, and
-   *     CDX has already collapsed the archived equivalent before we see it.
-   *
-   *   - A NON-CONSECUTIVE revert is KEPT. A page returning to a former state is
-   *     forensically significant — it is the whole-page form of what claim
-   *     trajectories detect, and on this corpus it is not hypothetical: the
-   *     tracked MOH page returned to an earlier state twice within six hours on
-   *     2022-06-22, and to another earlier state three times across May 2022.
-   *     Every one of those observations was discarded by the rule this replaces.
-   *
-   * Ordering by capturedAt rather than by insertion makes the answer independent
-   * of the order captures arrive in, which is what made the old rule depend on
-   * CDX pagination.
-   *
-   * THIS IS A TRANSITION-DERIVED FACT, and the repository has a hard-won rule
-   * against those — derive from state, not from a transition, learned three times
-   * in one day. The decision is made once, at write, against whatever preceded the
-   * capture at that moment, and it is never revisited.
-   *
-   * Kept deliberately, and the reason is the direction of the error. A capture
-   * inserted BETWEEN two existing ones is compared against its predecessor only,
-   * so it can leave its SUCCESSOR as a now-redundant row. It cannot cause an
-   * observation to be dropped: a redundant row costs a duplicate in a report,
-   * a dropped one costs something unrecoverable, and this level exists because the
-   * unrecoverable direction was chosen once already.
-   *
-   * That case is imminent rather than theoretical. Removing the digest filter
-   * means a rescan inserts the eleven reverts the old rule discarded, each landing
-   * between captures already stored — so the redundancy above is the expected
-   * outcome of the very next scan, not a hypothetical. Anything that needs an
-   * order-independent answer must recompute from the stored captures rather than
-   * read these outcomes back.
-   */
-  const { preceding, unchanged } = await noveltyAgainstPredecessor({
-    trackedUrlId,
-    capturedAt,
-    textHash: derived.textHash,
-  });
-  // Novelty on the derived TEXT, not on the payload — decided explicitly rather
-  // than inherited. Byte-identity is too sensitive to be the novelty key: a
-  // rotating cache-buster or a timestamp inside a comment would make every
-  // capture distinct and store hundreds of near-identical payloads. Nothing is
-  // discarded by choosing text here, because the payload is kept whole either
-  // way; what changes is only whether a NEW ROW is created.
-  if (unchanged && preceding) {
-    // Every field describes the row named by `id` — the capture that already
-    // holds this document — so the result is internally consistent rather than
-    // mixing the request with the row it resolved to.
-    return {
-      id: preceding.id,
-      waybackTimestamp: preceding.waybackTimestamp,
-      capturedAt: preceding.capturedAt,
-      contentHash: preceding.contentHash,
-      documentHash,
-      textHash: derived.textHash,
-      documentComparison: 'MATCHES',
-      outcome: 'UNCHANGED',
-    };
-  }
+  // WRITES_ALLOWED, BEFORE THE ROW EXISTS (ruled 2026-09-06, M2). Flows A5: on
+  // a frozen registry "nothing is acquired". A snapshot created and then
+  // refused its anchor would be a capture the corpus holds under a custody
+  // claim the registry will never take; asked here, the refusal leaves no row.
+  // The window memoises the verdict, so the anchoring module's own ask is free.
+  await requireWritable(window);
 
-  let created: { id: string; waybackTimestamp: string | null } & AnchorableCapture;
+  // EVIDENCE IDENTITY, composed once, here. Readability's article over the
+  // decoded payload, under the raw replay URL — the formula the registry ledger
+  // states and the rebuild's extractor-equality measurement reproduced 112 of
+  // 112 with. A dynamic import, because `archiveText` constructs jsdom, whose
+  // dependency chain is ESM-only: the walk imports this module statically, every
+  // walk tool test imports the walk's barrel, and one static edge here would
+  // break them all (refactor plan §8, the jsdom boundary).
+  const { extractArticleText } = await import('../lib/archiveText');
+  const fullText = extractArticleText(
+    captureHtml({ document, documentContentType: contentType, documentContentEncoding: contentEncoding }),
+    rawCaptureUrl(waybackTimestamp, url),
+  );
+  const contentHash = sha256Text(fullText);
+
+  let created: { id: string; documentHash: string };
   try {
     created = await prisma.urlSnapshot.create({
       data: {
         trackedUrlId,
-        provenance,
+        provenance: CaptureProvenance.WAYBACK,
         capturedAt,
-        waybackTimestamp: waybackTimestamp ?? null,
+        waybackTimestamp,
         snapshotDate: toSnapshotDate(capturedAt),
-        snapshotUrl: sourceUrl,
-        fullText: extraction,
+        snapshotUrl: viewerCaptureUrl(waybackTimestamp, url),
+        fullText,
         contentHash,
         document,
         documentHash,
-        documentContentType: documentContentType ?? null,
-        documentContentEncoding: documentContentEncoding ?? null,
+        documentContentType: contentType,
+        documentContentEncoding: contentEncoding,
         text: derived.text,
         textHash: derived.textHash,
         textExtractionVersion: derived.textExtractionVersion,
       },
-      // The anchorable columns are read back from the row AS WRITTEN, not
-      // reused from the local variables that produced it. Anchoring records what
-      // was OBSERVED in the database rather than what this function believed it
+      // The anchorable columns are read back from the row AS WRITTEN, not reused
+      // from the local variables that produced it. Anchoring records what was
+      // OBSERVED in the database rather than what this function believed it
       // stored — the same rule that makes a chain-provenance stamp worth having.
-      select: { id: true, waybackTimestamp: true, ...ANCHORABLE_CAPTURE_SELECT },
+      select: { id: true, ...ANCHORABLE_CAPTURE_SELECT },
     });
   } catch (err) {
     // The existence check above and this create are two statements, so a
-    // concurrent writer can insert the same capture in between. The `upsert`
-    // this replaced was one atomic statement and was documented as
-    // "idempotent — safe to call again on resume"; splitting it reintroduced a
-    // race that the comment still promised was handled.
-    //
-    // P2002 is the unique violation on (trackedUrlId, capturedAt). It means the
-    // other writer won, so re-read and finish on the existing row — which also
-    // runs the divergence comparison and the anchor retry, rather than
-    // reporting a failure for a capture that IS now stored.
+    // concurrent writer can insert the same capture in between. P2002 is the
+    // unique violation on (trackedUrlId, capturedAt): the other writer won, so
+    // re-read and finish on the existing row — which also runs the divergence
+    // comparison and the anchor retry, rather than reporting a failure for a
+    // capture that IS now stored.
     if (!isUniqueViolation(err)) throw err;
     const raced = await prisma.urlSnapshot.findUnique({
       where: { trackedUrlId_capturedAt: { trackedUrlId, capturedAt } },
-      select: {
-        id: true,
-        waybackTimestamp: true,
-        contentHash: true,
-        documentHash: true,
-        onChainTxHash: true,
-      },
+      select: EXISTING_ROW_SELECT,
     });
     // Losing the race and then not finding the winner's row means the conflict
     // was on something other than this key — surface it rather than invent a
     // result.
     if (!raced) throw err;
-    return finishExisting(raced, {
-      documentHash,
-      contentHash,
-      textHash: derived.textHash,
-      capturedAt,
-    });
+    return finishExisting(raced, fetched, window);
   }
 
-  // Anchoring belongs to the write path, not to its callers. A capture stored
-  // but never anchored is the gap that left 83 snapshots unanchored while an
-  // empty catch reported success — so the call lives here, where every caller
-  // gets it, and its rejection is LOGGED rather than discarded.
-  //
-  // Fire-and-forget on purpose: a chain hiccup must not fail a scan that has
-  // already stored the irreplaceable half. Whether it actually worked is
-  // answered by counting unanchored snapshots from state, never by trusting this
-  // call. See countUnanchoredSnapshots.
-  const anchoring = anchorNeverRejecting(created.id, created);
+  // Awaited. A chain failure throws out of here with the row already written:
+  // the walk halts having changed only its own row, and the next call reaches
+  // `finishExisting` above and retries the anchor on the bytes held.
+  await anchorAcquiredCapture(window, created.id, created);
 
-  return {
-    id: created.id,
-    waybackTimestamp: created.waybackTimestamp,
-    capturedAt,
-    contentHash,
-    documentHash,
-    textHash: derived.textHash,
-    documentComparison: 'MATCHES',
-    outcome: 'CREATED',
-    anchoring,
-  };
+  return { snapshotId: created.id, created: true, documentComparison: 'MATCHES' };
 }
 
 /** YYYYMMDDHHMMSS (UTC) -> Date. The one place that conversion is defined. */

@@ -23,7 +23,6 @@
     "researcher:bootstrap": "node dist/scripts/bootstrapResearcher.js",
     "forensics:reclassify": "node dist/scripts/reclassifyDiffs.js",
     "forensics:resummarize": "node dist/scripts/resummarizeDiffs.js",
-    "forensics:anchor-snapshots": "node dist/scripts/anchorSnapshots.js",
     "forensics:rehash-evidence": "node dist/scripts/rehashEvidence.js",
     "forensics:trajectories": "node dist/scripts/claimTrajectories.js",
     "entities:canonicalise": "node dist/scripts/canonicaliseTargetEntities.js",

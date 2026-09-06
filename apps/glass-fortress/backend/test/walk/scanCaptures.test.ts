@@ -44,12 +44,26 @@ jest.mock('../../src/services/ForensicAgent', () => ({
 const mockEvaluate = jest.fn();
 jest.mock('../../src/walk/evaluate', () => ({ evaluateCapture: mockEvaluate }));
 
+import { Prisma } from '@prisma/client';
 import { WaybackFetchError } from '../../src/lib/archiveHttp';
 import { TEXT_EXTRACTION_VERSION } from '../../src/lib/captureDocument';
+import { ChainUnavailableError, RegistryFrozenError } from '../../src/services/anchorSnapshots';
 import { prisma } from '../../src/lib/prisma';
 import { rulesetId } from '../../src/walk/derivations';
 import { scanCapturesHandler } from '../../src/walk/tools';
-import { T09, T14, T2, T3, BASE, EMPTY_ID, rule, D, log } from './fixtures';
+import { T09, T14, T2, T3, EMPTY_ID, rule, D, log } from './fixtures';
+
+/**
+ * THE CURRENT EXTRACTOR, in this file, IS THE CONSTANT (amended 2026-09-06,
+ * step 5). The shared fixtures' `BASE` is a stand-in the derivation tests pass
+ * to STALE explicitly; the walk reads CURRENT_EXTRACTOR from the pipeline, so a
+ * stored row stamped with the stand-in is stale on the extractor axis, is
+ * NEXT_ROW before anything else, and is re-derived to the stand-in again —
+ * forever. Every case below that expects the predecessor left alone (the
+ * IDENTICAL shortcut derives nothing at all) needs the rows and the derivation
+ * to agree with the walk about which extractor is current.
+ */
+const BASE = TEXT_EXTRACTION_VERSION;
 
 // ---------------------------------------------------------------------------
 // scan_captures — A5. Phases 1–4 and Flow 3: the walk, bootstrap included.
@@ -383,7 +397,10 @@ describe('scan_captures — derive and compare', () => {
     expect(mockRecordDiff.mock.calls[0]?.[0]).toEqual(
       expect.objectContaining({ beforeSnapshotId: 'snap-' + T09, afterSnapshotId: 'snap-new', editorial: true }),
     );
-    expect(updatesTo(T14)).toEqual(expect.objectContaining({ status: 'ACQUIRED', snapshotId: 'snap-new', heldBody: null, stop: null }));
+    // The stop CLEARED is SQL NULL — Prisma.DbNull, never JsonNull, as every
+    // sibling tool writes it (amended 2026-09-06: a plain null is not a value a
+    // Json column takes).
+    expect(updatesTo(T14)).toEqual(expect.objectContaining({ status: 'ACQUIRED', snapshotId: 'snap-new', heldBody: null, stop: Prisma.DbNull }));
     expect(result['outcomes']).toEqual(expect.objectContaining({ acquired: 1 }));
   });
 
@@ -394,12 +411,58 @@ describe('scan_captures — derive and compare', () => {
     decisionsFind.mockResolvedValue(log([], [D.accepted(T09), D.accepted(T14)]));
     mockAnalyzeChange.mockResolvedValue({ editorial: false, deletedItems: [], addedItems: [], legalSignificance: '', investigativeCategories: [], isLegallySignificant: false });
     const result = await scan();
-    expect(mockEvaluate).not.toHaveBeenCalled();
+    // The evaluator IS asked — it holds the DIGEST check, which runs on every
+    // fresh fetch before any gate (A4) — and answers null for a RESOLVED row
+    // without deriving or spending (gateOrder holds that). Amended 2026-09-06:
+    // the walk no longer keeps a second copy of the RESOLVED skip.
+    expect(mockEvaluate).toHaveBeenCalledTimes(1);
     expect(mockStoreCapture).toHaveBeenCalledTimes(1);
     expect(mockAnalyzeChange).toHaveBeenCalledTimes(1);
     expect(mockRecordDiff.mock.calls[0]?.[0]).toEqual(expect.objectContaining({ editorial: false }));
     expect(result['stop']).toBeNull();
     expect(updatesTo(T14)).toEqual(expect.objectContaining({ status: 'ACQUIRED' }));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// THE CHAIN HALTS — A5's REGISTRY_FROZEN (evidence §8) and CHAIN_UNAVAILABLE
+// (ruled 2026-09-06, Q8): the store throws the refusal, and the walk returns it
+// like ARCHIVE_UNAVAILABLE — at the row it halted on, everything before it
+// kept, the halted row untouched, no diff written. Added 2026-09-06 (the final
+// review): the walk's catch had no case.
+// ---------------------------------------------------------------------------
+describe('scan_captures — the chain halts', () => {
+  const halted = () =>
+    page([T09_ACQUIRED.row, row(T14, 'UNFETCHED'), row(T2, 'UNFETCHED', { digest: 'Y' })], [T09_ACQUIRED.snapshot]);
+
+  it('returns REGISTRY_FROZEN naming index 0’s category when the store refuses a frozen registry, keeping the rows before it', async () => {
+    halted();
+    mockStoreCapture.mockRejectedValueOnce(new RegistryFrozenError('0xregistry', 'Financial Misconduct, Public Health'));
+    const result = await scan();
+    expect(result).toEqual(expect.objectContaining({ code: 'REGISTRY_FROZEN', capture: T2, walked: 1, next: T2 }));
+    expect(result['error']).toContain('Financial Misconduct, Public Health');
+    expect(updatesTo(T14)).toEqual(expect.objectContaining({ status: 'IDENTICAL' }));
+    expect(updatesTo(T2)['status']).toBeUndefined();
+    expect(mockRecordDiff).not.toHaveBeenCalled();
+  });
+
+  it('returns CHAIN_UNAVAILABLE when the chain cannot be reached, read or written — the halted row untouched, the next call asks again', async () => {
+    halted();
+    mockStoreCapture.mockRejectedValueOnce(new ChainUnavailableError('WRITE', new Error('could not detect network')));
+    const result = await scan();
+    expect(result).toEqual(expect.objectContaining({ code: 'CHAIN_UNAVAILABLE', capture: T2, walked: 1, next: T2 }));
+    expect(result['error']).toContain('could not detect network');
+    expect(updatesTo(T14)).toEqual(expect.objectContaining({ status: 'IDENTICAL' }));
+    expect(updatesTo(T2)['status']).toBeUndefined();
+    expect(mockRecordDiff).not.toHaveBeenCalled();
+  });
+
+  it('a store failure that is neither is not a refusal: it throws', async () => {
+    // Vacuity guard for the two above: the catch narrows to the two chain
+    // errors, and everything else surfaces as the defect it is.
+    halted();
+    mockStoreCapture.mockRejectedValueOnce(new Error('Walk defect: something else'));
+    await expect(scan()).rejects.toThrow('Walk defect: something else');
   });
 });
 
@@ -430,6 +493,27 @@ describe('scan_captures — stops', () => {
     const material = { expected: 'X', got: DIGEST_OF_ABC };
     mockEvaluate.mockResolvedValue(fired(T14, 'DIGEST', material));
     const result = await scan();
+    expect(updatesTo(T14)).toEqual(
+      expect.objectContaining({ status: 'PENDING_JUDGEMENT', digestVerified: false, heldBody: ABC, stop: { gates: [{ gate: 'DIGEST', material }] } }),
+    );
+    expect(result['stop']).toEqual(expect.objectContaining({ gates: [{ gate: 'DIGEST', material }] }));
+  });
+
+  it('runs the DIGEST check on a RESOLVED capture fetched fresh: the evaluator sees the fresh bytes, and a mismatch stops', async () => {
+    // A4: RESOLVED skips the five gates; DIGEST is not one of them and runs on
+    // every fresh fetch. Reachable: a DUPLICATE accepted at a stop, then made
+    // stale by an extractor bump, is re-fetched RESOLVED — and its bytes must
+    // still be compared with the index (added 2026-09-06, the final review).
+    // A digest of its own, so the IDENTICAL shortcut does not take the row
+    // before it is fetched.
+    page([T09_ACQUIRED.row, row(T14, 'UNFETCHED', { digest: 'Y' })], [T09_ACQUIRED.snapshot]);
+    decisionsFind.mockResolvedValue(log([], [D.accepted(T09), D.accepted(T14)]));
+    const material = { expected: 'Y', got: DIGEST_OF_ABC };
+    mockEvaluate.mockResolvedValue(fired(T14, 'DIGEST', material));
+    const result = await scan();
+    expect(mockEvaluate).toHaveBeenCalledTimes(1);
+    expect(mockEvaluate.mock.calls[0]?.[0]).toEqual(expect.objectContaining({ fetched: { bytes: ABC, expectedDigest: 'Y' } }));
+    expect(mockStoreCapture).not.toHaveBeenCalled();
     expect(updatesTo(T14)).toEqual(
       expect.objectContaining({ status: 'PENDING_JUDGEMENT', digestVerified: false, heldBody: ABC, stop: { gates: [{ gate: 'DIGEST', material }] } }),
     );

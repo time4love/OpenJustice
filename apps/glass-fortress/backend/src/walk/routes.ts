@@ -34,8 +34,9 @@ import { refusal, type Refusal } from './refusals';
 // A CAPTURE IS NAMED BY ITS PAGE AND ITS WAYBACK TIMESTAMP. Routes name the
 // page by id — the marking URL carries it — and the capture by its 14 digits;
 // the snapshot id appears on no route. Bytes come from the held body of a
-// PENDING_JUDGEMENT row or the UrlSnapshot's document of an ACQUIRED row; every
-// other outcome holds no bytes and is answered 409, exhaustively.
+// PENDING_JUDGEMENT row, or the UrlSnapshot's document of an ACQUIRED row and
+// of a PENDING_JUDGEMENT row on a stored capture (Q7); every other outcome
+// holds no bytes and is answered 409, exhaustively.
 //
 // REFUSALS ARE HTTP STATUSES WITH A5's `{ error, code }` BODY, never a throw:
 // 401 is the middleware's, 404 the page (NOT_SURVEYED) or the row, 409 a row
@@ -102,8 +103,11 @@ const noBytes = (row: LoadedRow): Refusal =>
 
 /**
  * The bytes a capture holds, as the decoder reads them: the held body of a
- * PENDING_JUDGEMENT row, or the UrlSnapshot's document of an ACQUIRED row.
- * Null for every other outcome, which the caller answers 409.
+ * PENDING_JUDGEMENT row, or the UrlSnapshot's document of an ACQUIRED row — and
+ * of a PENDING_JUDGEMENT row that names a snapshot and holds no body (ruled
+ * 2026-09-06, Q7): a stop on a STORED capture, the re-walk's Gate 1' on a stale
+ * ACQUIRED row, keeps its snapshotId and holds nothing twice. Null for every
+ * other outcome, which the caller answers 409.
  *
  * A ROW THAT CLAIMS BYTES IT DOES NOT HOLD IS A WALK DEFECT, AND A DEFECT
  * THROWS (A2: heldBody is non-null only while PENDING_JUDGEMENT; snapshotId is
@@ -113,18 +117,23 @@ const noBytes = (row: LoadedRow): Refusal =>
  */
 async function bytesOf(row: LoadedRow): Promise<DecodableCapture | null> {
   const t = row.waybackTimestamp;
-  if (row.outcome === 'PENDING_JUDGEMENT') {
-    if (row.heldBody === null) throw new Error(`Walk defect: capture ${t} is PENDING_JUDGEMENT with no heldBody.`);
+  if (row.outcome === 'PENDING_JUDGEMENT' && row.heldBody !== null) {
     return {
       document: Buffer.from(row.heldBody),
       documentContentType: row.contentType,
       documentContentEncoding: row.contentEncoding,
     };
   }
-  if (row.outcome === 'ACQUIRED') {
-    if (row.snapshotId === null) throw new Error(`Walk defect: capture ${t} is ACQUIRED with no snapshotId.`);
+  if (row.outcome === 'PENDING_JUDGEMENT' || row.outcome === 'ACQUIRED') {
+    if (row.snapshotId === null) {
+      throw new Error(
+        row.outcome === 'ACQUIRED'
+          ? `Walk defect: capture ${t} is ACQUIRED with no snapshotId.`
+          : `Walk defect: capture ${t} is PENDING_JUDGEMENT with neither a heldBody nor a snapshotId.`,
+      );
+    }
     const snapshot = await prisma.urlSnapshot.findUnique({ where: { id: row.snapshotId }, select: DECODABLE_CAPTURE_SELECT });
-    if (snapshot === null) throw new Error(`Walk defect: capture ${t} is ACQUIRED but its snapshot ${row.snapshotId} does not exist.`);
+    if (snapshot === null) throw new Error(`Walk defect: capture ${t} names snapshot ${row.snapshotId}, which does not exist.`);
     return snapshot;
   }
   return null;
