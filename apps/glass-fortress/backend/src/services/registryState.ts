@@ -1,3 +1,4 @@
+import type { EvidenceType } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { toBytes32 } from '../lib/bytes32';
 import { Web3Service, type OnChainEvidenceRecord } from './Web3Service';
@@ -167,6 +168,8 @@ export interface CorpusHashes {
     /** 0x-prefixed, as stored. */
     fileHash: string;
     previousFileHash: string | null;
+    /** Which writer named the row — the ledger states the formula per row from it. */
+    evidenceType: EvidenceType;
   }[];
 }
 
@@ -247,7 +250,7 @@ export async function loadCorpusHashes(): Promise<CorpusHashes> {
     }),
     prisma.evidence.findMany({
       orderBy: { createdAt: 'asc' },
-      select: { id: true, fileHash: true, previousFileHash: true },
+      select: { id: true, fileHash: true, previousFileHash: true, evidenceType: true },
     }),
   ]);
   return {
