@@ -132,8 +132,14 @@ describe('every committed registry ledger', () => {
       expect(ledger.registrar).toMatch(/^0x[0-9a-f]{40}$/);
       expect(ledger.readAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
       expect(ledger.commit).toMatch(/^[0-9a-f]{40}$/);
-      // Filled by step 4 in its own commit; until then null, never a guess.
-      expect(ledger.successor === null || typeof ledger.successor === 'string').toBe(true);
+      // Filled by step 4 in its own commit; until then null, never a guess. Once
+      // set it is an address in the ledger's own spelling — lower-case — and it is
+      // not this registry: a successor equal to itself would say the rotation
+      // never happened while reading as complete.
+      if (ledger.successor !== null) {
+        expect(ledger.successor).toMatch(/^0x[0-9a-f]{40}$/);
+        expect(ledger.successor).not.toBe(ledger.registry);
+      }
     },
   );
 });
