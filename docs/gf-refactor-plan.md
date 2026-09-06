@@ -131,7 +131,10 @@ The write paths are exercised at steps 5 and 6.
 > rebuild on staging (measure, ledger, fresh registry, rotate, the DROP in its own cleanup session,
 > survey) — now runs AFTER step 6's measurement part 2 and BEFORE step 5, which walks the empty
 > database onto the fresh registry. Part 1 recorded: `docs/gf-walk-step-4-measurements-2026-09-05.md`
-> — the premise holds on the sample; the empty-input case is step 5's.
+> — the premise holds on the sample; the empty-input case is step 5's. Part 2 recorded:
+> `docs/gf-walk-step-6-measurements-part-2-2026-09-06.md` — six stops, none preventable by trust
+> (derived); the stop rate is set by selector mortality and by A4's set semantics, both ruled in the
+> flows doc before step 5.
 
 `scan_captures` with every step of Phase 2 EXCEPT the writes: fetch, derive, compare, all five gates,
 and the stop's material — reported, storing nothing. Reuses `archiveHttp`, `deriveTextUnderRuleset`,
