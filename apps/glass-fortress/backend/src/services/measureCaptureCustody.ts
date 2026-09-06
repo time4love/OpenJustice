@@ -75,6 +75,16 @@ export type ServingOutcome =
 export interface ServingVerdict {
   outcome: ServingOutcome;
   status: number | null;
+  /**
+   * The fetch error's own message on every non-200, null on a 200.
+   *
+   * Measured on staging 2026-09-06: seven UNAVAILABLE rows, status null, and
+   * nothing that said whether the container reached the archive at all. The
+   * message names the cause — `no response from the archive (ECONNRESET: …)`
+   * against `HTTP 503` — so a container that cannot reach the archive and an
+   * archive that did not answer no longer share one representation.
+   */
+  detail: string | null;
   /** SHA-256 of what the Archive served, on a 200. */
   fetchedDocumentHash: string | null;
   /** Fetched bytes against the CDX row's digest; null without a 200 or a row. */
@@ -133,6 +143,7 @@ async function dryFetch(
     return {
       outcome: fetchedDocumentHash === storedDocumentHash ? 'SERVED_VERIFIED' : 'SERVED_DIFFERENT',
       status: 200,
+      detail: null,
       fetchedDocumentHash,
       cdxDigestMatch: cdxDigest === null ? null : cdxDigestOf(bytes) === cdxDigest,
     };
@@ -149,7 +160,7 @@ async function dryFetch(
           : status !== null && NOT_HELD_STATUSES.includes(status)
             ? 'NOT_FOUND'
             : 'UNCLASSIFIED';
-    return { outcome, status, fetchedDocumentHash: null, cdxDigestMatch: null };
+    return { outcome, status, detail: err.message, fetchedDocumentHash: null, cdxDigestMatch: null };
   }
 }
 
@@ -194,6 +205,7 @@ export async function measureCaptureCustody(
     let serving: ServingVerdict = {
       outcome: 'NOT_FETCHED',
       status: null,
+      detail: null,
       fetchedDocumentHash: null,
       cdxDigestMatch: null,
     };
