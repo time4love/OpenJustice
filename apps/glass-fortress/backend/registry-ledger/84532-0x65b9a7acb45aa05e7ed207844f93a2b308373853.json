@@ -4,8 +4,8 @@
   "testnet": true,
   "registrar": "0x9de2e74b3c5dac4c3e2a0d18a5b76eeac8989a28",
   "totalEvidence": 44,
-  "readAt": "2026-09-06T08:58:21.687Z",
-  "commit": "4e6e8d95abcd7dd92d0133f7b2eac6defc9b411a",
+  "readAt": "2026-09-06T09:25:02.659Z",
+  "commit": "265c7ff18ca0ccbf1c854ec0ceaeb84ad456ea65",
   "successor": null,
   "entries": [
     {
@@ -39,7 +39,7 @@
       "blockTime": "2026-08-22T09:53:38.000Z",
       "category": "ACCOUNTABILITY_EROSION,INFORMED_CONSENT,SAFETY_CLAIM_ALTERATION,STATISTICAL_MANIPULATION,WITHHOLDING_INFORMATION",
       "kind": "EVIDENCE_FILE_HASH",
-      "formula": "sha256 of the submitted payload — the bytes fetched from a URL, an uploaded file, or url + \"\\n\\n\" + text (Web3Service.hashFile); which writer produced it is not recorded on the row; stored as Evidence.fileHash",
+      "formula": "sha256 of the submitted payload via Web3Service.hashFile, by one of its five writers: createEvidenceFromUrl (the bytes fetched from the URL); evidenceRoutes (an uploaded file); createEvidenceFromText (url + \"\\n\\n\" + text.slice(0, 40000) — the 40,000-character bound is part of the formula); persistScreenshotEvidence (the concatenated image buffers); thesisRoutes (a document's ciphertext, base64-decoded). Which writer produced it is not recorded on the row; stored as Evidence.fileHash",
       "inputs": [
         {
           "evidenceId": "1fba0dcb-f240-482b-86ab-45953760c13a",

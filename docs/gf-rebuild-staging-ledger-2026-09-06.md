@@ -12,21 +12,25 @@ production ledger, emitted at SHIP by the same script, is the one that is read.
 `category`, `kind`, `formula`, `inputs`, `attested`, `replacedBy`; file-level `registry`, `chainId`,
 `testnet`, `registrar`, `totalEvidence`, `readAt`, `commit`, `successor`. Written on the laptop from
 the emitter's delimited block, byte-identical to it (`cmp`); the raw run is
-`handoffs/R27-registry-ledger-2026-09-06.txt`, outside this repository.
+`handoffs/R27-registry-ledger-rerun-2026-09-06.txt`, outside this repository (the first emission is
+`R27-registry-ledger-2026-09-06.txt` beside it).
 
 ## 1 — the run
 
-`forensics:registry-ledger --env staging` (PR #368, `4e6e8d9`), in the staging container under the
-guard — *environment staging — agreed by Railway, APP_ENV, the database and the chain*, deployment
-`e84ef893 @ 4e6e8d9` — exit 0.
+`forensics:registry-ledger --env staging` (PR #368 with finding 5 of PR #369, `265c7ff`), in the
+staging container under the guard — *environment staging — agreed by Railway, APP_ENV, the database
+and the chain*, deployment `04b05b13 @ 265c7ff` — exit 0. A first emission on `4e6e8d9` at
+08:58:21Z carried a DOCUMENT formula naming three of `Web3Service.hashFile`'s five writers; the
+reviewer's finding 5 corrected the constant and the file was re-emitted, never hand-edited; the
+committed-file test now holds every entry's formula equal to the code's.
 
 | fact | value |
 |---|---|
 | registry | `0x65b9a7acb45aa05e7ed207844f93a2b308373853`, Base Sepolia (84532), `testnet: true` |
 | registrar | `0x9de2e74b3c5dac4c3e2a0d18a5b76eeac8989a28` — every entry's submitter |
-| `totalEvidence()` | **44** at 2026-09-06T08:58:21Z, re-read unchanged after every index |
+| `totalEvidence()` | **44** at 2026-09-06T09:25:02Z, re-read unchanged after every index |
 | entries | 44, indexes 0–43 contiguous, 44 distinct hashes |
-| `commit` | `4e6e8d95abcd7dd92d0133f7b2eac6defc9b411a` |
+| `commit` | `265c7ff18ca0ccbf1c854ec0ceaeb84ad456ea65` |
 | `successor` | `null` — filled by step 4 in its own commit |
 
 ## 2 — the 44 entries by kind
@@ -58,8 +62,9 @@ the chain and address the file claims; the entries are exactly `0..totalEvidence
 hashes; every kind is one of the six, never UNEXPLAINED or AMBIGUOUS; the ORPHANED indexes are exactly
 `ORPHANED_BY_REGISTRY` for that address; PRE_WIPE only on the testnet and only before 2026-08-21;
 every entry carries a formula, an attestation and a replacement; the registrar, the read time and the
-emitting commit are present. Observed red with the directory absent (the vacuity case and every
-per-file case), green with this file. The emitter's own refusals — count ≠ `totalEvidence()`, an
+emitting commit are present; every entry's `formula` equals `formulaFor(kind, inputs)` in the code.
+Observed red with the directory absent (the vacuity case and every per-file case), and red again on
+the first emission's file once the formula case existed; green with this file. The emitter's own refusals — count ≠ `totalEvidence()`, an
 empty registry, AMBIGUOUS, an unlisted UNEXPLAINED index, every offending index named — are
 `test/registryLedger.test.ts`.
 

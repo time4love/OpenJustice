@@ -1,7 +1,12 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { EXPECTED_CHAIN_ID } from '../src/lib/chainIdentity';
-import { ORPHANED_BY_REGISTRY, type LedgerKind, type RegistryLedger } from '../src/services/registryLedger';
+import {
+  formulaFor,
+  ORPHANED_BY_REGISTRY,
+  type LedgerKind,
+  type RegistryLedger,
+} from '../src/services/registryLedger';
 
 // ---------------------------------------------------------------------------
 // THE COMMITTED LEDGER IS COMPLETE — evidence flows §8, the rebuild's step 2.
@@ -104,6 +109,20 @@ describe('every committed registry ledger', () => {
         expect(ledger.chainId).toBe(EXPECTED_CHAIN_ID.staging);
         expect(new Date(e.blockTime).getTime()).toBeLessThan(STAGING_WIPE);
       }
+    },
+  );
+
+  it.each(all.map((l) => [l.file, l.ledger] as const))(
+    "%s: every entry's formula is the code's formula for its kind — the file was emitted by this code, not by an earlier one",
+    (_file, ledger) => {
+      // Reviewer finding 5, 2026-09-06: a ledger landed whose DOCUMENT formula
+      // named three writers after the code had been corrected to name five. A
+      // committed file that disagrees with the constant is stale, and stale reads
+      // as complete unless something compares the two.
+      const stale = ledger.entries
+        .filter((e) => e.formula !== formulaFor(e.kind, e.inputs))
+        .map((e) => `index ${String(e.index)} (${e.kind})`);
+      expect(stale).toEqual([]);
     },
   );
 
