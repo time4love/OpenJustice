@@ -809,7 +809,10 @@ WorkListRow             one per capture the archive reported          ⚠️ on 
   rulesetId             hash of the selectors in force for this date (DUPLICATE, ACQUIRED)
   textHash              (DUPLICATE)
   snapshotId            (ACQUIRED) — the UrlSnapshot it became
-  heldBody              Bytes | null — non-null ONLY while PENDING_JUDGEMENT
+  heldBody              Bytes | null — non-null ONLY while PENDING_JUDGEMENT. A stop on a STORED
+                        capture — the re-walk's Gate 1' on a stale ACQUIRED row — is PENDING_JUDGEMENT
+                        with snapshotId kept and heldBody null; the marking page and the retry read
+                        the snapshot's bytes for it (ruled 2026-09-06, Q7)
   stop                  Json | null — { gates: [{ gate, material }, …] }, gate ∈ 0|1|2|4|5|'DIGEST';
                         written with PENDING_JUDGEMENT, cleared with it; a pending stop is returned
                         VERBATIM from it, so nothing recomputes material. A PENDING row with stop =
@@ -851,7 +854,10 @@ TextVersion             one row per SUPERSEDED derivation of a capture
   id · snapshotId
   text · textHash · textExtractionVersion · rulesetId
   derivedAt             when this version was the current one
-  supersededAt · supersededByDecisionId
+  supersededAt
+  supersededByDecisionId  the newest decision in the log after which RULESET_ID(page, t) changed,
+                        found by replaying the log; NULL for a supersession the rules had no part
+                        in — a new extractor moved the text (ruled 2026-09-06, Q4)
   @@unique([snapshotId, textHash])
   A thesis cites (snapshotId, textHash), which pins the version it read. On supersession the walk
   copies the current row here and writes the new text onto the snapshot, in ONE transaction. A
@@ -1007,6 +1013,11 @@ scan_captures({ url, maxCaptures })
             REGISTRY_FROZEN — NOT WRITES_ALLOWED(registry), evaluated once per call before the
             first anchor: the registry is neither empty nor scheme-stamped at index 0, nothing is
             acquired, and the message names index 0's category (evidence doc §8)
+            CHAIN_UNAVAILABLE — the chain could not be reached, read or written (the registrar
+            cannot be constructed, the registry cannot be read, or the transaction cannot be
+            sent): returned like ARCHIVE_UNAVAILABLE at the row it halted on, everything before
+            it kept, the row itself untouched; a snapshot the store wrote before its anchor
+            failed stays, and the next call retries the anchor on it (ruled 2026-09-06, Q8)
 
 approve_article_rules({ url, capture, rules?: 0 })
   does      ONE transaction, in order, t = the capture's timestamp:

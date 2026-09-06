@@ -217,7 +217,7 @@ describe('GET /pages/:trackedUrlId/captures/:capture', () => {
   // default 500 and the body carries no code.
   it('a row that claims bytes it does not hold is a walk defect: 500, no refusal code', async () => {
     const defects = [
-      { name: 'PENDING_JUDGEMENT with heldBody null', status: 'PENDING_JUDGEMENT', heldBody: null, snapshotId: null },
+      { name: 'PENDING_JUDGEMENT with neither heldBody nor snapshotId', status: 'PENDING_JUDGEMENT', heldBody: null, snapshotId: null },
       { name: 'ACQUIRED with snapshotId null', status: 'ACQUIRED', heldBody: null, snapshotId: null },
     ];
     for (const defect of defects) {
@@ -253,6 +253,29 @@ describe('GET /pages/:trackedUrlId/captures/:capture', () => {
     // inert render receives — never over the inert one.
     expect(mockOutline).toHaveBeenCalledWith('<html>held</html>');
     expect(res.body.outline).toEqual({ root: { tag: 'body', children: [] }, truncated: false, unreachableTextLength: 0 });
+  });
+
+  // RULED 2026-09-06 (Q7): a stop on a STORED capture — the re-walk's Gate 1'
+  // on a stale ACQUIRED row — keeps its snapshotId and holds no body; the
+  // marking page reads the snapshot's bytes for it.
+  it('serves a PENDING_JUDGEMENT capture that names a snapshot and holds no body from the snapshot’s document', async () => {
+    rowFind.mockResolvedValue({
+      id: `row-${T14}`,
+      trackedUrlId: TRACKED,
+      waybackTimestamp: T14,
+      digest: 'A',
+      status: 'PENDING_JUDGEMENT',
+      heldBody: null,
+      contentType: null,
+      contentEncoding: null,
+      stop: STOP,
+      snapshotId: 'snap-14',
+    });
+    snapshotFind.mockResolvedValue({ id: 'snap-14', document: STORED, documentContentType: 'text/html', documentContentEncoding: null });
+    const res = await request(app).get(`${BASE}/captures/${T14}`);
+    expect(res.status).toBe(200);
+    expect(mockCaptureHtml).toHaveBeenCalledWith(expect.objectContaining({ document: STORED }));
+    expect(res.body).toEqual(expect.objectContaining({ outcome: 'PENDING_JUDGEMENT', stop: STOP }));
   });
 
   it('serves an ACQUIRED capture from the snapshot’s document', async () => {

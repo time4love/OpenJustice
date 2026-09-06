@@ -1,64 +1,45 @@
 import { IntegrityCheckSubject } from '@prisma/client';
+import { ethers } from 'ethers';
 import { prisma } from '../lib/prisma';
 import { Web3Service } from './Web3Service';
+import type { RegistryReader } from './registryState';
 import { recordOnChainCheckNeverThrowing } from './onChainVerification';
 import { toBytes32 } from '../lib/bytes32';
 import {
-  ANCHORABLE_CAPTURE_SELECT,
+  ANCHOR_SCHEME,
   anchoredCaptureHash,
-  capturesAnchoredBy,
   storedAnchorHash,
   type AnchorableCapture,
   type StoredAnchorHash,
 } from '../lib/anchoredCaptureHash';
 
 // ---------------------------------------------------------------------------
-// Anchoring archived snapshots that were never anchored.
+// THE ANCHORING MODULE — the registry's submit has ONE caller, and it is here.
 //
-// UrlSnapshot.contentHash is the factual layer — "this page held exactly this
-// text on this date" — and the forensic model argues from its being on-chain.
-// FINDING 41: none of it was. The scan ran while staging's RPC was answering
-// "no backend is currently healthy", registerSnapshotOnChain is fire-and-forget
-// with a swallowed rejection, and nothing ever asked afterwards.
+// A capture is anchored AS IT IS STORED, and the anchor is AWAITED
+// (docs/gf-interaction-flows.md Phase 2, ruled 2026-09-02; architecture §5).
+// The fire-and-forget path this replaces stored 83 captures, anchored none, and
+// reported success while the RPC answered "no backend is currently healthy" —
+// then grew a twin copy, a log recovery, a copy-only mode and a repair pass to
+// find out afterwards what it had done. On a registry that starts at zero
+// (evidence flows §8) there is nothing to recover and nothing to copy: every
+// entry is ours, every acquired capture is one entry, and a duplicate is a walk
+// defect. So the module keeps one function that writes, and a chain failure
+// throws with its reason. The walk halts having changed only its row; the
+// snapshot row stays; the next call retries the anchor through the store's
+// existing-row path.
 //
-// Fire-and-forget during a scan remains right: a chain hiccup must not fail a
-// run that successfully fetched and stored archived text, because the text is
-// the irreplaceable half. What was missing is a way to notice, and a way to
-// repair. countUnanchoredSnapshots is the first; this is the second.
+// WRITES_ALLOWED IS EVALUATED HERE (evidence A7, architecture §9.8), once per
+// walk call before the first anchor (flows A5), through the window the walk
+// opens. A registry accepts writes only while it is empty or its index 0
+// carries the anchoring scheme — derived from the chain, with no flag to set
+// and no old address in code. On the old contracts index 0 carries a
+// classifier's category list, so every write refuses, and the clean cut a
+// fresh registry gives a verifier stays clean whatever the configuration says.
 //
-// Idempotent and resumable. Anchoring 83 hashes is 83 transactions, so it is
-// expected to be run repeatedly, interrupted, and run again.
+// A document's receipt is this module's second caller (document flows §4), on
+// its own category; it is not built yet, and nothing here presumes its shape.
 // ---------------------------------------------------------------------------
-
-export interface AnchorReport {
-  examined: number;
-  anchored: number;
-  /** Already on-chain from another snapshot with identical text — tx copied, no new transaction. */
-  copiedFromTwin: number;
-  /** On-chain already, tx hash recovered by log scan rather than re-registered. */
-  recovered: number;
-  /**
-   * copyOnly only. Texts anchored nowhere, which a copy-only run refuses to
-   * publish. NOT counted as failures: the run did exactly what it promised. They
-   * are listed so the operator sees which captures would cost money, and can
-   * decide separately rather than inside a repair.
-   */
-  needsRegistration: { snapshotId: string; anchoredHash: string }[];
-  /** copyOnly with no chain configured and no twin — undetermined, not unanchored. */
-  chainNotConsulted: number;
-  failed: number;
-  /**
-   * Why each failure happened.
-   *
-   * The first version of this counted failures and discarded the reason, which is
-   * the same defect it was written to repair: a swallowed error that leaves only
-   * a number. A count tells you something is wrong; only the message tells you
-   * what, and without it the operator is where the scan was.
-   */
-  failures: { snapshotId: string; reason: string }[];
-  dryRun: boolean;
-  chainAvailable: boolean;
-}
 
 /**
  * How many snapshots claim no anchor. Derived from state, never tracked through
@@ -71,63 +52,168 @@ export async function countUnanchoredSnapshots(trackedUrlId?: string): Promise<n
   });
 }
 
-/** What anchoring one snapshot actually did. Named for the cost, not the field written. */
-export type SnapshotAnchorOutcome =
-  | { kind: 'COPIED_FROM_TWIN'; txHash: string }
-  | { kind: 'RECOVERED'; txHash: string }
-  | { kind: 'REGISTERED'; txHash: string }
-  | { kind: 'REGISTERED_TX_UNKNOWN' }
-  /**
-   * copyOnly only. The text is on no twin and the registry does not hold it, so
-   * publishing it would cost a real transaction. Reported instead of spent.
-   *
-   * This is the interesting outcome, not a failure to handle: it means a capture
-   * whose text has never been anchored anywhere, which is a genuine gap in the
-   * factual layer rather than a missing pointer.
-   */
-  | { kind: 'NEEDS_REGISTRATION' }
-  /**
-   * copyOnly with no chain configured, and no twin to copy. Nothing can be
-   * concluded — distinct from NEEDS_REGISTRATION, which is a definite answer.
-   * Collapsing the two would report "needs money" for a row that may well be
-   * anchored already.
-   */
-  | { kind: 'CHAIN_NOT_CONSULTED' };
+/** The chain as this module needs it: the registry read from state, and its one write. */
+export type CaptureRegistrar = RegistryReader & Pick<Web3Service, 'registerEvidenceHash'>;
+
+/** WRITES_ALLOWED, with what index 0 carries when it refuses — the message names it. */
+export type RegistryWritability = { allowed: true } | { allowed: false; indexZeroCategory: string };
 
 /**
- * Anchor one snapshot's text, spending a transaction only if the fact is not
- * already on-chain.
+ * WRITES_ALLOWED(registry) = totalEvidence() = 0 OR getEvidence(0).category = ANCHOR_SCHEME.
  *
- * Extracted so the SCAN and the REPAIR cannot diverge, because they had. The
- * repair checked for a twin first; the scan called registerEvidenceHash
- * unconditionally, the registry rejected the duplicate, the rejection was
- * logged, and the row kept its null forever. Production still carries 71 of
- * those, every one of them a capture whose text IS on-chain under an earlier
- * twin, with nothing pointing at it.
- *
- * That is this repository's most-repeated defect: one rule, two
- * implementations, and the copies drift. The evidence-visibility rule reached
- * five copies; the MCP tool classification reached three. One function, two
- * callers.
- *
- * Order matters and each step is cheaper than the next:
- *   1. a twin in the database — free, no chain call at all
- *   2. the chain, in case an interrupted run registered without recording
- *   3. an actual registration
+ * Evidence flows §8, verbatim. Read from STATE — `totalEvidence()` and the
+ * entry at index 0 are readable forever, where a receipt is readable only inside
+ * the RPC's retention horizon. An empty registry is written to without reading
+ * an entry it does not have; the first write stamps the scheme, and from then
+ * on index 0 says what the contract means.
  */
+export async function writesAllowed(reader: RegistryReader): Promise<RegistryWritability> {
+  const total = await reader.getTotalEvidence();
+  if (total === BigInt(0)) return { allowed: true };
+  const first = await reader.readEvidenceRecord(BigInt(0));
+  return first.category === ANCHOR_SCHEME
+    ? { allowed: true }
+    : { allowed: false, indexZeroCategory: first.category };
+}
+
+/**
+ * The refusal that holds the registry window shut. Thrown by the anchoring path
+ * before its chain write; the walk answers `REGISTRY_FROZEN` naming index 0's
+ * category, and acquires nothing.
+ */
+export class RegistryFrozenError extends Error {
+  constructor(
+    public readonly registryAddress: string,
+    public readonly indexZeroCategory: string,
+  ) {
+    super(
+      `Registry ${registryAddress} is frozen: index 0 carries the category ` +
+        `"${indexZeroCategory}", not ${ANCHOR_SCHEME}. It holds another meaning, and this ` +
+        'module will not add a second one to it. Nothing was anchored.',
+    );
+    this.name = 'RegistryFrozenError';
+  }
+}
+
+/**
+ * The chain could not be asked — as distinct from the chain having ANSWERED.
+ *
+ * Three ways, and the walk answers all three with one refusal, CHAIN_UNAVAILABLE
+ * (ruled 2026-09-06, Q8): the registrar cannot be constructed (a variable the
+ * deployment did not supply), the registry cannot be read (the RPC is down, or
+ * the configured address holds no contract), or the transaction cannot be sent
+ * (a network failure on the write). Every one is an outage or a configuration,
+ * never a fact about the capture; the row stays where it was and the next call
+ * asks again. A chain that DID answer — a duplicate, a revert, a rejected
+ * argument — is not this error: that is a defect to surface, and it propagates
+ * as itself.
+ */
+export class ChainUnavailableError extends Error {
+  constructor(
+    public readonly phase: 'CONNECT' | 'READ' | 'WRITE',
+    public readonly cause: unknown,
+  ) {
+    super(
+      `The chain could not be ${phase === 'CONNECT' ? 'reached' : phase === 'READ' ? 'read' : 'written'}: ` +
+        `${cause instanceof Error ? cause.message : String(cause)}. Nothing was anchored; the walk stops here ` +
+        'and the next call asks the chain again.',
+    );
+    this.name = 'ChainUnavailableError';
+  }
+}
+
+/**
+ * The registry as ONE walk call sees it.
+ *
+ * The registrar is CONNECTED on first need, never at the call's start: a walk
+ * call that acquires nothing — every row IDENTICAL, or a stop on the first
+ * capture — never touches the chain's configuration, and a test that stores
+ * nothing constructs no provider.
+ *
+ * WRITES_ALLOWED is memoised for the window's lifetime: the walk opens a window
+ * per call, the store asks it before the first row it creates, and every anchor
+ * of that call asks it again for free. Index 0 cannot change under a call — an
+ * entry is forever, and a registry that was empty gains our own scheme at index
+ * 0 on the first write — so one read per call is one read too many only in the
+ * sense that zero would be a guess.
+ *
+ * The REJECTION is memoised too, and it is a ChainUnavailableError whichever
+ * step failed: a registry that could not be reached or read refuses every
+ * anchor of the call with the same reason rather than asking the chain once per
+ * capture; the next call opens a new window and asks again.
+ */
+export interface RegistryWindow {
+  registrar(): Promise<CaptureRegistrar>;
+  writable(): Promise<RegistryWritability>;
+}
+
+export function openRegistryWindow(connect: () => CaptureRegistrar): RegistryWindow {
+  let registrar: Promise<CaptureRegistrar> | null = null;
+  let verdict: Promise<RegistryWritability> | null = null;
+  const connected = (): Promise<CaptureRegistrar> =>
+    (registrar ??= new Promise<CaptureRegistrar>((resolve, reject) => {
+      try {
+        resolve(connect());
+      } catch (err) {
+        reject(new ChainUnavailableError('CONNECT', err));
+      }
+    }));
+  return {
+    registrar: connected,
+    writable: () =>
+      (verdict ??= connected().then((reader) =>
+        writesAllowed(reader).catch((err: unknown) => {
+          throw new ChainUnavailableError('READ', err);
+        }),
+      )),
+  };
+}
+
+/**
+ * The registry window a walk call opens: the deployment's registrar, connected
+ * on first need. The one place the walk's path names the chain's client, so
+ * the walk itself imports nothing of it — the chain is this module's.
+ */
+export function openWalkRegistryWindow(): RegistryWindow {
+  return openRegistryWindow(() => new Web3Service());
+}
+
+/**
+ * WRITES_ALLOWED, or the refusal. The one place the frozen registry becomes an
+ * error: the store asks it before the row it is about to create (flows A5,
+ * "nothing is acquired"), and the anchoring path asks it before its one chain
+ * write — the same memoised answer, so the second ask costs nothing.
+ */
+export async function requireWritable(window: RegistryWindow): Promise<void> {
+  const writability = await window.writable();
+  if (!writability.allowed) {
+    const { registryAddress } = await window.registrar();
+    throw new RegistryFrozenError(registryAddress, writability.indexZeroCategory);
+  }
+}
+
+/**
+ * The write-phase failures that mean the chain did not answer. ethers names
+ * them; everything else — a duplicate, a revert, a rejected argument — is the
+ * chain's answer and propagates as the defect it is.
+ */
+function chainDidNotAnswer(err: unknown): boolean {
+  return ethers.isError(err, 'NETWORK_ERROR') || ethers.isError(err, 'TIMEOUT') || ethers.isError(err, 'SERVER_ERROR');
+}
+
+/**
+ * Off-chain submitter, informational: the on-chain `msg.sender` is always the
+ * registrar wallet, and a capture has no citizen behind it.
+ */
+const NO_SUBMITTER = '0x0000000000000000000000000000000000000000';
+
 /**
  * Write an anchoring claim — the transaction AND the hash it registered,
- * together or not at all.
- *
- * Three outcomes leave a row asserting an anchor, and before this each wrote
- * `onChainTxHash` on its own. That is the gap `anchoredHash` exists to close, so
- * closing it with three more copies of the same pair would rebuild the defect
- * one layer up. One function, three callers.
+ * together or not at all. The one writer of both columns (walk invariant I2).
  *
  * The hash is OBSERVED here in the only sense available at write time: it is the
- * value this code just asked the registry about. `forensics:confirm-anchors`
- * checks it against the transaction's own log afterwards, which is the stronger
- * observation and the one that can disagree.
+ * value this code just registered. The verdict recorded after it reads the
+ * receipt back, which is the stronger observation and the one that can disagree.
  */
 async function claimAnchor(
   snapshotId: string,
@@ -140,273 +226,51 @@ async function claimAnchor(
   });
 }
 
-export async function anchorOneSnapshot(
-  web3: Web3Service | null,
-  snapshotId: string,
-  capture: AnchorableCapture,
-  opts: { copyOnly?: boolean } = {},
-): Promise<SnapshotAnchorOutcome> {
-  // The CAPTURE is the parameter, never the hash. Which of a capture's hashes
-  // the chain attests to is one rule with one home (`anchoredCaptureHash`), and
-  // a caller that picks the hash itself is a caller that keeps its own answer
-  // when the rule moves at Level 3.
-  // Normalised HERE rather than at each of the three `claimAnchor` calls, so the
-  // value that reaches the chain and the value that reaches the column are the
-  // same object. The brand then makes a fourth call site impossible to write
-  // without passing through this line.
-  const anchoredHash = storedAnchorHash(anchoredCaptureHash(capture));
-  /**
-   * LEVEL 3a — every outcome that WRITES A POINTER is checked against the chain
-   * and the verdict stored.
-   *
-   * Wrapped around the returns rather than appended after each `update`, because
-   * there are three of them and this rule must not be one a fourth can miss.
-   * The three that qualify are exactly the ones that leave the row asserting an
-   * anchor: COPIED_FROM_TWIN, RECOVERED and REGISTERED. The rest assert nothing
-   * — NEEDS_REGISTRATION and CHAIN_NOT_CONSULTED are honest reports that no
-   * anchor was claimed, and REGISTERED_TX_UNKNOWN deliberately writes nothing.
-   *
-   * `toBytes32`, not the bare hex. Passing bare hex where bytes32 was required
-   * is what made snapshot anchoring silently fail for 83 captures, and a
-   * verification that repeated the mistake would confirm the wrong hash.
-   */
-  const verified = async (outcome: SnapshotAnchorOutcome): Promise<SnapshotAnchorOutcome> => {
-    await recordOnChainCheckNeverThrowing({
-      subjectType: IntegrityCheckSubject.URL_SNAPSHOT,
-      subjectId: snapshotId,
-      fileHash: toBytes32(anchoredHash),
-    });
-    return outcome;
-  };
-
-  // Two captures sharing an anchored hash are one fact to the registry, which
-  // rejects the duplicate. A twin already anchored means the fact is on-chain
-  // and only this row's pointer is missing — no transaction needed.
-  //
-  // How MANY captures share one is a property of the rule, not of this code:
-  // measured on staging 2026-08-29, 105 captures collapse onto 15 `contentHash`
-  // values and onto 104 `documentHash` values. Moving the anchor to the document
-  // therefore makes twins nearly extinct and every capture cost a transaction.
-  // That is a price, not a defect — the extraction's cheapness comes precisely
-  // from its being blind to what it discards.
-  const twin = await prisma.urlSnapshot.findFirst({
-    where: {
-      ...capturesAnchoredBy(anchoredHash),
-      NOT: { onChainTxHash: null },
-      id: { not: snapshotId },
-    },
-    select: { onChainTxHash: true },
-  });
-  if (twin?.onChainTxHash) {
-    await claimAnchor(snapshotId, twin.onChainTxHash, anchoredHash);
-    return verified({ kind: 'COPIED_FROM_TWIN', txHash: twin.onChainTxHash });
-  }
-
-  // No twin. Everything past this point needs the chain — and a twin copy did
-  // not, which is why the chain is optional: a run whose every null has a twin
-  // completes without an RPC endpoint at all.
-  if (!web3) return { kind: 'CHAIN_NOT_CONSULTED' };
-
-  // Then the chain, because a previous interrupted run may have registered this
-  // hash without recording the result. Re-registering would revert.
-  const { registered } = await web3.isHashRegistered(toBytes32(anchoredHash));
-  if (registered) {
-    const recoveredTx = await web3.findRegisteringTxHash(toBytes32(anchoredHash));
-    if (recoveredTx) {
-      await claimAnchor(snapshotId, recoveredTx, anchoredHash);
-      return verified({ kind: 'RECOVERED', txHash: recoveredTx });
-    }
-    // Registered but the transaction could not be located. Recording a null
-    // would read as "never anchored" and invite a duplicate registration, so the
-    // caller is told plainly rather than handed a false negative.
-    return { kind: 'REGISTERED_TX_UNKNOWN' };
-  }
-
-  // The register call is UNREACHABLE under copyOnly rather than guarded after
-  // the fact. Everything above this line either reads the chain or copies a
-  // pointer, so a copyOnly run cannot send a transaction by any path — which is
-  // the property that makes it safe to run against production without deciding,
-  // per row, whether spending is acceptable.
-  if (opts.copyOnly) return { kind: 'NEEDS_REGISTRATION' };
-
-  const txHash = await web3.registerEvidenceHash(
-    toBytes32(anchoredHash),
-    '0x0000000000000000000000000000000000000000',
-    'Wayback Snapshot',
-  );
-  await claimAnchor(snapshotId, txHash, anchoredHash);
-  return verified({ kind: 'REGISTERED', txHash });
-}
-
-export async function anchorSnapshots(opts: {
-  url?: string;
-  dryRun: boolean;
-  limit?: number;
-  /**
-   * Fill pointers, never publish. The run becomes structurally incapable of
-   * sending a transaction, so it can be pointed at production without deciding
-   * row by row whether spending is acceptable.
-   *
-   * Also makes the chain optional: a twin copy is pure database work, so a
-   * population whose every null has an anchored twin repairs completely with no
-   * RPC endpoint configured.
-   */
-  copyOnly?: boolean;
-}): Promise<AnchorReport> {
-  const snapshots = await prisma.urlSnapshot.findMany({
-    where: {
-      onChainTxHash: null,
-      ...(opts.url ? { trackedUrl: { url: opts.url } } : {}),
-    },
-    // `snapshotDate` was selected here and never read. Ordering is by
-    // `capturedAt` (below) and the loop uses only the id and the anchorable
-    // columns.
-    select: { id: true, ...ANCHORABLE_CAPTURE_SELECT },
-    // capturedAt, not snapshotDate. snapshotDate is day-granular, so captures
-    // sharing a day sort equal and Postgres may return them in any order —
-    // which makes `take: limit` select a different subset between runs.
-    orderBy: { capturedAt: 'asc' },
-    ...(opts.limit ? { take: opts.limit } : {}),
-  });
-
-  const report: AnchorReport = {
-    examined: snapshots.length,
-    anchored: 0,
-    copiedFromTwin: 0,
-    recovered: 0,
-    needsRegistration: [],
-    chainNotConsulted: 0,
-    failed: 0,
-    failures: [],
-    dryRun: opts.dryRun,
-    chainAvailable: true,
-  };
-
-  if (opts.dryRun || snapshots.length === 0) return report;
-
-  let web3: Web3Service | null = null;
-  try {
-    web3 = new Web3Service();
-  } catch (err) {
-    report.chainAvailable = false;
-    // Under copyOnly this is survivable rather than fatal: every twin copy is
-    // pure database work. The run continues, and anything it could not decide
-    // without the chain is counted in chainNotConsulted rather than guessed at.
-    if (!opts.copyOnly) {
-      report.failures.push({
-        snapshotId: '-',
-        reason: err instanceof Error ? err.message : String(err),
-      });
-      // Distinct from "nothing to anchor". Reporting an unconfigured chain as a
-      // clean run is precisely how this went unnoticed for a whole scan.
-      return report;
-    }
-  }
-
-  for (const snap of snapshots) {
-    try {
-      const outcome = await anchorOneSnapshot(web3, snap.id, snap, {
-        ...(opts.copyOnly ? { copyOnly: true } : {}),
-      });
-      switch (outcome.kind) {
-        case 'COPIED_FROM_TWIN':
-          report.copiedFromTwin++;
-          break;
-        case 'RECOVERED':
-          report.recovered++;
-          break;
-        case 'REGISTERED':
-          report.anchored++;
-          break;
-        case 'REGISTERED_TX_UNKNOWN':
-          // On-chain, but the transaction could not be located. Counted as a
-          // failure and left visible: writing nothing would read as "never
-          // anchored" and invite a duplicate registration.
-          report.failed++;
-          report.failures.push({
-            snapshotId: snap.id,
-            reason: 'on-chain but registering tx not found',
-          });
-          break;
-        case 'NEEDS_REGISTRATION':
-          // Not a failure. The run promised not to spend and did not spend.
-          report.needsRegistration.push({
-            snapshotId: snap.id,
-            anchoredHash: anchoredCaptureHash(snap),
-          });
-          break;
-        case 'CHAIN_NOT_CONSULTED':
-          report.chainNotConsulted++;
-          break;
-      }
-    } catch (err) {
-      // One snapshot must not abort the pass — but it is counted WITH its reason,
-      // and the script exits non-zero on any failure.
-      report.failed++;
-      report.failures.push({
-        snapshotId: snap.id,
-        reason: err instanceof Error ? err.message : String(err),
-      });
-    }
-  }
-
-  return report;
-}
-
 /**
- * Anchor a newly recorded capture, without letting a chain problem fail the write.
+ * Anchor an acquired capture: WRITES_ALLOWED, then the registration, awaited,
+ * then the claim, then the verdict. Throws on every failure, with its reason.
  *
- * Moved here from WaybackScraper when recordCapture became the single write
- * path (Level 1). It was a private function there, so the URL-tracking path
- * could not have reused it — anchoring would have been reimplemented or, more
- * likely, forgotten, which is precisely how 83 snapshots came to be stored
- * unanchored while an empty catch reported success.
+ * The CAPTURE is the parameter, never the hash. Which of a capture's hashes the
+ * chain attests to is one rule with one home (`anchoredCaptureHash`), and a
+ * caller that picks the hash itself is a caller that keeps its own answer when
+ * the rule moves. Normalised once here so the value that reaches the chain and
+ * the value that reaches the column are the same object; the brand makes a
+ * second write site impossible to spell without passing through this line.
  *
- * Its own Web3Service is constructed lazily and treated as optional: an
- * environment without chain credentials records captures and anchors nothing,
- * rather than refusing to record.
+ * `toBytes32` at the chain boundary, not the bare hex: passing bare hex where
+ * bytes32 was required is what made 83 snapshot anchorings silently no-op, and
+ * a verification that repeated the mistake would confirm the wrong hash.
+ *
+ * A `DuplicateEvidenceError` propagates. On a registry that starts at zero it
+ * means the walk registered the same bytes twice — a defect to surface, never a
+ * pointer to recover — and recovering it would be the log scan this module
+ * retired, wearing a new name.
  */
-let _anchorWeb3: Web3Service | null = null;
-let _anchorWeb3Attempted = false;
-
-function anchorWeb3Service(): Web3Service | null {
-  if (_anchorWeb3Attempted) return _anchorWeb3;
-  _anchorWeb3Attempted = true;
-  try {
-    _anchorWeb3 = new Web3Service();
-  } catch {
-    // env vars not set — on-chain registration disabled
-  }
-  return _anchorWeb3;
-}
-
-export async function registerSnapshotOnChain(
+export async function anchorAcquiredCapture(
+  window: RegistryWindow,
   snapshotId: string,
   capture: AnchorableCapture,
-): Promise<SnapshotAnchorOutcome | null> {
-  const web3 = anchorWeb3Service();
-  if (!web3) return { kind: 'CHAIN_NOT_CONSULTED' };
+): Promise<void> {
+  await requireWritable(window);
+  const registrar = await window.registrar();
 
+  const anchoredHash = storedAnchorHash(anchoredCaptureHash(capture));
+  let txHash: string;
   try {
-    // Shared with the repair pass rather than reimplemented here. This used to
-    // call registerEvidenceHash unconditionally: for a capture whose text a twin
-    // had already anchored, the registry rejected the duplicate, the rejection
-    // was logged as a failure, and the row kept its null forever — even though
-    // the fact was on-chain the whole time. Production still holds 71 rows in
-    // that state. anchorOneSnapshot checks for the twin first and copies its
-    // transaction, so no transaction is spent and no pointer is lost.
-    return await anchorOneSnapshot(web3, snapshotId, capture);
+    txHash = await registrar.registerEvidenceHash(toBytes32(anchoredHash), NO_SUBMITTER, ANCHOR_SCHEME);
   } catch (err) {
-    console.warn(
-      '[anchorSnapshots] On-chain snapshot registration failed for',
-      snapshotId,
-      ':',
-      err instanceof Error ? err.message : err,
-    );
-    // null means "the attempt failed", distinct from every SnapshotAnchorOutcome,
-    // all of which describe an attempt that reached a conclusion. It never
-    // rejects, so a caller that ignores the return is unchanged and a caller
-    // that awaits it cannot be handed an unhandled rejection.
-    return null;
+    if (chainDidNotAnswer(err)) throw new ChainUnavailableError('WRITE', err);
+    throw err;
   }
+  await claimAnchor(snapshotId, txHash, anchoredHash);
+
+  // LEVEL 3a — a write that leaves a row asserting an anchor is checked against
+  // the chain and the verdict stored, seconds after the write: the receipt is
+  // inside the RPC's horizon by construction, which is the property the
+  // receipt-horizon lesson wanted. Never throws — the anchor is already true.
+  await recordOnChainCheckNeverThrowing({
+    subjectType: IntegrityCheckSubject.URL_SNAPSHOT,
+    subjectId: snapshotId,
+    fileHash: toBytes32(anchoredHash),
+  });
 }

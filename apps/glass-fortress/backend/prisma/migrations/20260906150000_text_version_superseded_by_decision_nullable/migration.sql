@@ -1,0 +1,22 @@
+-- THE WALK, STEP 5 OF docs/gf-refactor-plan.md — TextVersion.supersededByDecisionId
+-- becomes NULLABLE (ruled 2026-09-06, Q4).
+--
+-- A superseded text version names the decision that made the re-walk re-derive
+-- it: the newest decision under AUTHORITY after which RULESET_ID at the
+-- capture's timestamp changed (src/walk/derivations.ts, supersedingDecision).
+-- A supersession the rules had no part in — a new extractor moved the text —
+-- has no such decision, and the column records that as NULL rather than
+-- pointing at a decision that did not cause it.
+--
+-- The foreign key is unchanged: the relation stays RESTRICT (declared
+-- explicitly in schema.prisma so this diff is exactly one statement), because
+-- an attribution is never blanked silently. Nothing is dropped, renamed or
+-- narrowed; a NOT NULL column becomes nullable and every existing row keeps
+-- its value.
+--
+-- Generated OFFLINE with `prisma migrate diff` between the committed schema
+-- and the amended one — no database was consulted. `db:check-drift` reported
+-- "No difference detected." on staging before the schema was edited.
+
+-- AlterTable
+ALTER TABLE "TextVersion" ALTER COLUMN "supersededByDecisionId" DROP NOT NULL;

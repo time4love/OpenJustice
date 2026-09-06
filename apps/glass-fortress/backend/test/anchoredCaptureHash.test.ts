@@ -58,15 +58,6 @@ describe('anchoredCaptureHash is the only answer to "which hash is anchored"', (
     }
   });
 
-  it('the write path anchors a CAPTURE, never a hash it chose itself', () => {
-    // `registerSnapshotOnChain(id, capture)` rather than
-    // `registerSnapshotOnChain(id, contentHash)`. Passing the hash would put the
-    // choice back at the call site, which is where it was.
-    const code = stripComments(sourceOf(['src', 'services', 'recordCapture.ts']));
-    expect(code).toMatch(/registerSnapshotOnChain\(snapshotId, capture\)/);
-    expect(code).not.toMatch(/anchorNeverRejecting\([^)]*\.contentHash\)/);
-  });
-
   it('DETECTS a re-inlined column — proven against a decoy', () => {
     // Without this the guard could stop matching anything and report a clean
     // codebase forever. The repository has already shipped a source-hash guard

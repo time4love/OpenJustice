@@ -282,3 +282,54 @@ export function nextRow<T extends WorkListRow>(
     ) ?? null
   );
 }
+
+/**
+ * The rules as the log had them after a PREFIX of decisions — what a replay
+ * needs. A rule's row carries its CURRENT dates; the log carries how they got
+ * there: `validFrom` is the creating decision's capture, moved earlier by each
+ * RULE_EXTENDED; `validTo` is set by RULE_ENDED. Authority and retirement are
+ * the prefix's, through the same predicates every reader uses.
+ */
+function rulesAsOf(rules: readonly Rule[], prefix: readonly Decision[]): Rule[] {
+  const byId = new Map(prefix.map((d) => [d.id, d]));
+  return rules.map((rule) => {
+    const creating = byId.get(rule.createdByDecisionId);
+    const extensions = prefix
+      .filter((d) => d.type === 'RULE_EXTENDED' && d.ruleId === rule.id && d.waybackTimestamp !== null)
+      .map((d) => d.waybackTimestamp);
+    const ended = prefix.find((d) => d.type === 'RULE_ENDED' && d.ruleId === rule.id);
+    const from = [creating?.waybackTimestamp ?? rule.validFrom, ...extensions].filter((t): t is string => t !== null);
+    return {
+      ...rule,
+      validFrom: from.reduce((earliest, t) => (t < earliest ? t : earliest)),
+      validTo: ended?.waybackTimestamp ?? null,
+    };
+  });
+}
+
+/**
+ * SUPERSEDING_DECISION(page, t) — ruled 2026-09-06 (Q4): the newest decision
+ * in the log after which RULESET_ID(page, t) changed, found by REPLAYING the
+ * log through these derivations, one prefix at a time. What a re-walk names as
+ * the cause of a superseded text version.
+ *
+ * Null when no decision changed the ruleset in force at t: the extractor moved
+ * the text, not the rules, and the column records that as such rather than
+ * naming a decision that did not cause it.
+ *
+ * A RESET is the boundary of AUTHORITY, and a re-walk after one re-derives
+ * under no rules because of it — so where a RESET emptied the ruleset in force
+ * at t, the RESET is the answer.
+ */
+export function supersedingDecision(rules: readonly Rule[], decisions: readonly Decision[], t: string): Decision | null {
+  const ordered = [...decisions].sort((a, b) => a.sequence - b.sequence);
+  let previous = rulesetId([]);
+  let newest: Decision | null = null;
+  ordered.forEach((decision, index) => {
+    const prefix = ordered.slice(0, index + 1);
+    const current = rulesetIdAt(rulesAsOf(rules, prefix), prefix, t);
+    if (current !== previous) newest = decision;
+    previous = current;
+  });
+  return newest;
+}

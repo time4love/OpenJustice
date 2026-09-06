@@ -184,6 +184,32 @@ describe('evaluateCapture — the digest check, then Gate 0, then 1, 2, 4 togeth
     expect(classify).not.toHaveBeenCalled();
   });
 
+  // DIGEST is not one of the five. It runs at fetch, before any gate, on every
+  // fresh fetch — a RESOLVED row's included (A4; added 2026-09-06, step 5's
+  // final review): bytes the index does not describe are never derived, and
+  // a human's ruling on the capture is not a ruling on the archive's copy.
+  it('the DIGEST check runs on a RESOLVED row fetched fresh — before the skip, deriving and spending nothing', async () => {
+    const resolvedLog = log([r1], [D.corrected(T09), D.accepted(T09), D.accepted(T2)]);
+    const derive = jest.fn(quiet);
+    const classify = notEditorial();
+    const result = await evaluateCapture(
+      input({
+        decisions: resolvedLog,
+        row: row(T2, 'UNFETCHED'),
+        fetched: { bytes: ABC, expectedDigest: DIGEST_OF_XYZ },
+        derive,
+        classify,
+        novel: true,
+      }),
+    );
+    expect(result).toEqual({
+      capture: T2,
+      gates: [{ gate: 'DIGEST', material: { expected: DIGEST_OF_XYZ, got: DIGEST_OF_ABC } }],
+    });
+    expect(derive).not.toHaveBeenCalled();
+    expect(classify).not.toHaveBeenCalled();
+  });
+
   // A CAPTURE MAY HAVE NO PREDECESSOR PAST GATE 0 (ruled 2026-09-05): the first
   // stored capture of a page is stale the moment a rule exists, its own
   // acceptance keeps Gate 0 quiet, and Flow 3's re-walk starts there. With

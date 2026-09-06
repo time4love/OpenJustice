@@ -154,6 +154,37 @@ describe('every path to the classifier goes through the one selection step', () 
   });
 });
 
+// ---------------------------------------------------------------------------
+// THE ONE DIFF SITE RECORDS DIFF_VERSION — the successor of "every diff
+// creation stamps the input version", deleted at the switch with the eight
+// scan-job sites it scanned. Under docs/gf-evidence-flows.md A2 a diff's
+// content is a version keyed by DIFF_VERSION — the differ and the classifier
+// named together — and the walk reaches the writer from exactly one site
+// (test/walk/diffOneSite.test.ts). So the rule has one place to hold: the
+// writer stamps `diffVersion: DIFF_VERSION` on the version it creates, and
+// the constant it stamps is composed from the two it names.
+// ---------------------------------------------------------------------------
+describe('the walk’s one diff site records DIFF_VERSION', () => {
+  it('the writer stamps DIFF_VERSION on the content version, in the create itself', () => {
+    const writer = readSource('src/services/recordDiff.ts');
+    const create = writer.slice(writer.indexOf('diffContentVersion.createMany('));
+    const statement = create.slice(0, create.indexOf('skipDuplicates'));
+    expect(statement).toContain('diffVersion: DIFF_VERSION');
+    expect(writer).toMatch(/import \{ DIFF_VERSION \} from '\.\.\/lib\/diffVersion'/u);
+  });
+
+  it('DIFF_VERSION is composed from the input rule and the classifier version, never typed beside them', () => {
+    const module = readSource('src/lib/diffVersion.ts');
+    expect(module).toMatch(/export const DIFF_VERSION = `\$\{DIFF_INPUT_VERSION\}\+\$\{CLASSIFIER_VERSION\}`/u);
+  });
+
+  it('the walk hands the writer the classification it drew, from its one site', () => {
+    const walk = readSource('src/walk/tools/scanCaptures.ts');
+    expect(walk.split('recordDiff(').length - 1).toBe(1);
+    expect(walk).toMatch(/import \{ recordDiff, type DiffClassification \} from '\.\.\/\.\.\/services\/recordDiff'/u);
+  });
+});
+
 describe('every classification records which model produced it', () => {
   it('stamps classifierModel wherever classifierVersion is written to a diff row', () => {
     for (const relative of ['src/services/reclassifyDiffs.ts']) {

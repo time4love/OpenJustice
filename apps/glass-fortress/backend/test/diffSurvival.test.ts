@@ -1,55 +1,20 @@
-jest.mock('../src/lib/prisma', () => ({
-  prisma: {
-    urlVersionDiff: { upsert: jest.fn() },
-    urlSnapshot: { findUniqueOrThrow: jest.fn() },
-  },
-}));
-
-import { createHash } from 'crypto';
-import { prisma } from '../src/lib/prisma';
-import { recordDiff } from '../src/services/recordDiff';
 import {
   checkDiffSurvival,
   survivalSourceStateHash,
   PRESENCE_FLOOR_CHARS,
 } from '../src/lib/diffSurvival';
 
-const upsert = prisma.urlVersionDiff.upsert as unknown as jest.Mock;
-const findSnapshot = prisma.urlSnapshot.findUniqueOrThrow as unknown as jest.Mock;
+// The checker, and only the checker. Its one write-time caller — the diff
+// writer of docs/gf-evidence-flows.md A2, which judges every chunk of a content
+// version through it — is asserted in test/recordDiff.test.ts; the groups that
+// asserted the retired writer's survival COLUMNS on the pair went with those
+// columns' writer at refactor step 5 (plan §4, rule 1).
 
 const V2 = 'v2-inflate-decode-htmltotext-normalised';
 
 /** Long enough to clear the presence floor, so a match is a finding not a coincidence. */
 const SENTENCE =
   'The Ministry stated that side effects are mild and temporary in all reported cases.';
-
-function snapshot(text: string, o: Record<string, unknown> = {}) {
-  return {
-    text,
-    textHash: createHash('sha256').update(text).digest('hex'),
-    textExtractionVersion: V2,
-    ...o,
-  };
-}
-
-function diffWrite(o: Record<string, unknown> = {}) {
-  return {
-    trackedUrlId: 'tracked-1',
-    beforeSnapshotId: 'snap-before',
-    afterSnapshotId: 'snap-after',
-    beforeDate: '2022-05-03',
-    afterDate: '2022-05-04',
-    snapshotUrl: 'https://web.archive.org/web/x/',
-    rawDeletedText: '[]',
-    rawAddedText: '[]',
-    ...o,
-  };
-}
-
-beforeEach(() => {
-  jest.clearAllMocks();
-  upsert.mockResolvedValue({ id: 'diff-1' });
-});
 
 // ---------------------------------------------------------------------------
 // THE INVARIANT ITSELF
@@ -149,84 +114,10 @@ describe('mixed extraction versions are UNCHECKABLE, not passed or failed', () =
 });
 
 // ---------------------------------------------------------------------------
-// THE WRITE PATH STORES IT — testing the CALLER, not the checker
+// THE COMMITMENT'S FRAMING
 // ---------------------------------------------------------------------------
-describe('recordDiff runs the check and stores its verdict', () => {
-  // Three mutations survived in earlier sessions with one shape: a collaborator
-  // tested in isolation while nothing asserted its caller reaches it. These
-  // assert the caller.
-  it('stores CONTRADICTED rather than refusing the write', async () => {
-    findSnapshot
-      .mockResolvedValueOnce(snapshot(`intro\n${SENTENCE}`))
-      .mockResolvedValueOnce(snapshot(`intro\n${SENTENCE}`));
-
-    await recordDiff(diffWrite({ rawDeletedText: JSON.stringify([SENTENCE]) }));
-
-    const { create } = upsert.mock.calls[0][0] as { create: Record<string, unknown> };
-    // WRITTEN, NOT REFUSED — refusing would delete the evidence that the pipeline
-    // is wrong, which is how this was found.
-    expect(upsert).toHaveBeenCalledTimes(1);
-    expect(create['survivalVerdict']).toBe('CONTRADICTED');
-    expect(create['survivalChunksChecked']).toBe(1);
-    expect(create['survivalContradicted']).toEqual([
-      expect.objectContaining({ side: 'REMOVED' }),
-    ]);
-  });
-
-  it('stores SURVIVES when the report holds', async () => {
-    findSnapshot
-      .mockResolvedValueOnce(snapshot(`intro\n${SENTENCE}`))
-      .mockResolvedValueOnce(snapshot('intro'));
-
-    await recordDiff(diffWrite({ rawDeletedText: JSON.stringify([SENTENCE]) }));
-
-    const { create } = upsert.mock.calls[0][0] as { create: Record<string, unknown> };
-    expect(create['survivalVerdict']).toBe('SURVIVES');
-    expect(create['survivalContradicted']).toEqual([]);
-  });
-
-  it('stores the sourceStateHash the verdict was computed against', async () => {
-    const before = snapshot('before text');
-    const after = snapshot('after text');
-    findSnapshot.mockResolvedValueOnce(before).mockResolvedValueOnce(after);
-
-    await recordDiff(diffWrite());
-
-    const { create } = upsert.mock.calls[0][0] as { create: Record<string, unknown> };
-    // §3's sourceStateHash: staleness becomes computable rather than assumed.
-    // Level 4 changes what text a diff compares; without this, that change
-    // silently invalidates every verdict while the counts stay green.
-    expect(create['survivalSourceStateHash']).toBe(
-      survivalSourceStateHash({
-        beforeTextHash: before.textHash,
-        afterTextHash: after.textHash,
-        rawDeletedText: '[]',
-        rawAddedText: '[]',
-      }),
-    );
-    expect(create['survivalTextVersion']).toBe(V2);
-  });
-
-  it('commits the hash to the DIFF’S OWN CHUNKS, not only to the captures', async () => {
-    // FOUND BY READING THE CALLERS, NOT THE CHECKER. `rediffFromSnapshots`
-    // rewrites rawDeletedText / rawAddedText — two of the checker's four inputs —
-    // while the captures it re-derives them from do not move. A hash over the
-    // captures alone would be IDENTICAL before and after that rewrite, so a
-    // verdict about chunks that no longer exist would report itself as current.
-    findSnapshot.mockResolvedValue(snapshot('some stored capture text'));
-    await recordDiff(diffWrite({ rawDeletedText: JSON.stringify([SENTENCE]) }));
-    const first = (upsert.mock.calls[0][0] as { create: Record<string, unknown> }).create;
-
-    upsert.mockClear();
-    findSnapshot.mockResolvedValue(snapshot('some stored capture text'));
-    await recordDiff(diffWrite({ rawDeletedText: JSON.stringify([`${SENTENCE} And more.`]) }));
-    const second = (upsert.mock.calls[0][0] as { create: Record<string, unknown> }).create;
-
-    // Same captures, different reported chunks: the commitment must differ.
-    expect(second['survivalSourceStateHash']).not.toBe(first['survivalSourceStateHash']);
-  });
-
-  it('cannot be spoofed by moving content across the separator', async () => {
+describe('survivalSourceStateHash', () => {
+  it('cannot be spoofed by moving content across the separator', () => {
     // Every component is hashed to fixed-length hex before being joined, so no
     // payload can contain the delimiter and shift the framing — two different
     // input sets cannot collide by rearranging where one value ends.
@@ -243,17 +134,6 @@ describe('recordDiff runs the check and stores its verdict', () => {
       rawAddedText: 'y|z',
     });
     expect(a).not.toBe(b);
-  });
-
-  it('computes against STORED text, not text handed in by the caller', async () => {
-    // The verdict must be re-derivable from stored state, so it has to be
-    // computed against stored state. A verdict computed from in-memory text would
-    // carry a hash nothing could reproduce.
-    findSnapshot.mockResolvedValue(snapshot('stored'));
-    await recordDiff(diffWrite());
-    expect(findSnapshot).toHaveBeenCalledTimes(2);
-    expect(findSnapshot.mock.calls[0][0].where).toEqual({ id: 'snap-before' });
-    expect(findSnapshot.mock.calls[1][0].where).toEqual({ id: 'snap-after' });
   });
 });
 
@@ -321,34 +201,5 @@ describe('zero chunks checked is UNCHECKABLE, never SURVIVES', () => {
       afterVersion: V2,
     });
     expect(result.verdict).toBe('UNCHECKABLE');
-  });
-});
-
-// ---------------------------------------------------------------------------
-// A DIFF SPANS TWO CAPTURES
-// ---------------------------------------------------------------------------
-describe('recordDiff refuses a capture paired with itself', () => {
-  it('throws rather than writing a transition that never happened', async () => {
-    // Unfalsifiable by construction: a document always contains itself, so every
-    // reported change would be refuted and every empty one would vacuously pass.
-    await expect(
-      recordDiff(diffWrite({ beforeSnapshotId: 'snap-x', afterSnapshotId: 'snap-x' })),
-    ).rejects.toThrow(/same capture/);
-    expect(upsert).not.toHaveBeenCalled();
-  });
-
-  it('refuses BEFORE reading the captures — nothing is loaded for a row it will not write', async () => {
-    await expect(
-      recordDiff(diffWrite({ beforeSnapshotId: 'snap-x', afterSnapshotId: 'snap-x' })),
-    ).rejects.toThrow();
-    expect(findSnapshot).not.toHaveBeenCalled();
-  });
-
-  it('still writes an ordinary two-capture diff', async () => {
-    // Vacuity guard: a recordDiff that threw on everything would pass the two
-    // assertions above.
-    findSnapshot.mockResolvedValue(snapshot('stored text'));
-    await recordDiff(diffWrite({ rawDeletedText: JSON.stringify([SENTENCE]) }));
-    expect(upsert).toHaveBeenCalledTimes(1);
   });
 });

@@ -49,6 +49,23 @@ import { Prisma } from '@prisma/client';
 // ---------------------------------------------------------------------------
 
 /**
+ * THE REGISTRY CATEGORY ON EVERY CAPTURE ENTRY — the anchoring scheme.
+ *
+ * Evidence flows A1: one constant, one importable symbol, written on every
+ * entry the walk registers and read by WRITES_ALLOWED (§8). It is what gives a
+ * fresh registry one meaning from index zero — every entry is the SHA-256 of a
+ * page as served — and what lets a registry refuse itself: index 0 carrying
+ * anything else is a contract with another meaning, and the anchoring module
+ * will not add a second one to it.
+ *
+ * Named beside the hash it describes on purpose. A scheme string spelled in
+ * the anchoring module would be a second place to change when the rule moves,
+ * and the rule and its name have to move together or the registry's own
+ * category stops describing what it holds.
+ */
+export const ANCHOR_SCHEME = 'DOCUMENT_SHA256';
+
+/**
  * A capture, reduced to what the anchoring rule reads.
  *
  * The type is the enumeration mechanism. When the anchor moves to
