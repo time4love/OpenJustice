@@ -575,6 +575,17 @@ refuses a zero-rule approval that does not carry it. A statement, not a threshol
 tool exists to produce it. Nothing records that a capture was shown; the decision that resolves the
 stop is the record of having looked.
 
+**THE SELECTOR THE PAGE OFFERS NAMES WHAT IS STABLE ABOUT THE ELEMENT.** The id, then the tag with
+its classes, then a position — the order in which they survive a redesign — and a class that is a
+BUILD ARTEFACT is not a name. Classes matching a build-hash family (A8 lists the families) are set
+aside before the class candidate is formed, so `header.no-mobile-app.css-1mryvlz.main-header` is
+offered as `header.no-mobile-app.main-header`. When the hashless candidate is not unique in the
+document, the hashed one is offered next and TAGGED as hashed, the way a positional selector is
+tagged as positional: a rule that will die at the next build is a rule the researcher knowingly
+takes. Amended 2026-09-06: in measurement part 2, 34 of walla's 37 Gate 2 silent-rule entries
+carried a build hash across four redesigns, and every hashless sibling (`main-header`,
+`breadcrumb`, `tags-list`, `left-side`, `tags-and-breadcrumbs`) survived every one.
+
 **It always ends by handing back to `scan_captures`.** Bootstrap, a stop and a correction differ at the
 start and converge here: the rules now in force are known, the capture is RESOLVED, and the walk
 acquires it. Nothing else in any flow acquires a capture.
@@ -756,6 +767,10 @@ checks are the dev plan's:
 - Gate 2's stop rate and Gate 4's stop volume, on the walla timeline, with the drift instrument.
 - Gate 5's false-positive rate, on stored diffs already classified.
 - Replay-equals-crawl, on every fetch, by the walk itself (A5).
+- Measured 2026-09-05 and 2026-09-06 (`docs/gf-walk-step-4-measurements-2026-09-05.md`,
+  `docs/gf-walk-step-6-measurements-part-2-2026-09-06.md`): six stops under rules created by
+  MARKING, none preventable by trust; the stop rate was set by selector mortality and by Gate 1's
+  set semantics. The two amendments dated 2026-09-06, in MARKING and A4, are what changed.
 
 ---
 
@@ -888,16 +903,25 @@ under RULES_IN_FORCE for its timestamp `t`; `p` = PREDECESSOR(c). Every gate tak
 
 ```
 GATE 0   NOT APPROVED_BEFORE(page, c.t)
-GATE 1   (removed(c) ∩ kept(p)) ∪ (kept(c) ∩ removed(p)) ≠ ∅
+GATE 1   (removed*(c) ∩ kept*(p)) ∪ (kept*(c) ∩ removed*(p)) ≠ ∅
+         where for any capture x: kept*(x) = kept(x) \ removed(x), removed*(x) = removed(x) \ kept(x).
+         A segment on BOTH sides of one capture — a word that is a nav item and a heading — is in
+         neither exclusive set, so it cannot "change sides"; only a segment wholly on one side that
+         is now wholly on the other fires.
          material { against: 'PREDECESSOR', nowRemoved: [{ text, ruleId|null }], nowKept: [text] }
+         Amended 2026-09-06: measurement part 2 observed the unamended predicate fire on corona's
+         `חיסונים` at two consecutive stops, and the code shows it fires on EVERY consecutive pair
+         for as long as the word sits on both sides — a permanent stop with CONTINUE the only
+         answer, the shape the 2026-09-05 amendment to Gate 1' was written to remove
 GATE 1'  on a STALE ACQUIRED row that carries a CAPTURE_ACCEPTED under AUTHORITY only:
-         removed(c_new) ∩ kept(c_previous_version) ≠ ∅ — one direction —
+         removed*(c_new) ∩ kept(c_previous_version) ≠ ∅ — one direction —
          material { against: 'OWN_PREVIOUS_TEXT', nowRemoved, nowKept: [] }.
          Approved text is text a human accepted at a stop. A capture acquired quietly, or one
          derived under no rules before any marking (the legacy corpus), has no approved text of
          its own and is superseded by the re-walk without a stop (Flow 3). A DUPLICATE has no
          text of its own. Amended 2026-09-05: read from the code, the unamended predicate would
-         have stopped on every legacy row with CONTINUE the only answer
+         have stopped on every legacy row with CONTINUE the only answer. Amended 2026-09-06 with
+         Gate 1: the exclusive set, for the same reason
 GATE 2   ∃ rule r in force at both timestamps: RuleMatch(r, p) > 0 AND RuleMatch(r, c) = 0.
          A rule in force at p or c with NO RuleMatch row for that timestamp is a WALK DEFECT: the
          gate THROWS naming the rule and the timestamp — never read as 0, never as quiet
@@ -1096,3 +1120,8 @@ page serialise on it; nothing else is locked. Every decision carries the researc
 
 `maxCaptures` is the caller's; a tool call must return, and the walk resumes from NEXT_ROW. There is no
 default in the design; the MCP layer may choose one and it changes nothing about the corpus.
+
+**Build-hash class families** (MARKING, "the selector the page offers"): a LIST of patterns naming
+classes that are build artefacts, not names. One entry today, from measurement part 2 (2026-09-06):
+`^css-[0-9a-z]+$`, the emotion/styled-components family. A new site with a new family adds an entry
+here; the design does not change.
