@@ -4,8 +4,9 @@ import { join } from 'path';
 // ---------------------------------------------------------------------------
 // THE GUARD FOR THE DEFECT THAT STARTED ALL OF THIS.
 //
-// Two paths classify a diff — a scan (WaybackScraper) and a reclassification
-// (reclassifyDiffs) — and they are supposed to be able to reproduce each other.
+// Two paths classify a diff — the walk's Gate 5 (scanCaptures, through the
+// `ClassifierDiff` that gates.ts builds) and a reclassification (reclassifyDiffs)
+// — and they are supposed to be able to reproduce each other.
 // They could not: the scan filtered its input through a 40-character floor and
 // reclassification passed the stored chunks straight through, because the floor
 // lived in a module-private constant the second path could not see.
@@ -28,7 +29,7 @@ const SELECTOR = 'classifierInputChunks';
 
 /** Source files permitted to call ForensicAgent.analyzeChange. */
 const CLASSIFYING_PATHS = [
-  'src/services/WaybackScraper.ts',
+  'src/walk/tools/scanCaptures.ts',
   'src/services/reclassifyDiffs.ts',
   'src/services/previewDiffClassification.ts',
 ];
@@ -92,6 +93,14 @@ function topLevelArgs(args: string): string[] {
  */
 function isSelected(expression: string, source: string): boolean {
   if (expression.includes(SELECTOR)) return true;
+  // The walk's Gate 5 hands the classifier a `ClassifierDiff` — `diff.removed`
+  // and `diff.added` — built in ONE place, gates.ts's `classifierDiffOf`, from
+  // the selector. The member is selected iff that builder is.
+  if (/^diff\.(?:removed|added)$/u.test(expression)) {
+    const gates = readSource('src/walk/gates.ts');
+    const builder = gates.slice(gates.indexOf('export function classifierDiffOf('));
+    return builder.slice(0, builder.indexOf('\n}')).includes(`${SELECTOR}(`);
+  }
   if (!/^[A-Za-z_$][\w$]*$/u.test(expression)) return false;
   return new RegExp(`(const|let|var)\\s+${expression}\\s*=\\s*${SELECTOR}\\(`, 'u').test(source);
 }
@@ -145,28 +154,9 @@ describe('every path to the classifier goes through the one selection step', () 
   });
 });
 
-describe('every diff that gets created records the input rule that produced it', () => {
-  it('stamps diffInputVersion at every UrlVersionDiff creation', () => {
-    const source = readSource('src/services/WaybackScraper.ts');
-
-    // Follows the WRITER, which is now recordDiff: diffs used to be created from
-    // eight direct `urlVersionDiff.create` call sites and are funnelled through
-    // one function so a rescan converges on the capture pair rather than
-    // duplicating. Counting the old expression here would have silently dropped
-    // to zero and made the assertion below vacuous.
-    const creates = source.split('recordDiff({').length - 1;
-    const stamps = source.split('diffInputVersion: DIFF_INPUT_VERSION').length - 1;
-
-    // A row without it is indistinguishable from a row written under the
-    // truncating rule, which is exactly what null is reserved to mean.
-    expect(creates).toBeGreaterThan(0);
-    expect(stamps).toBe(creates);
-  });
-});
-
 describe('every classification records which model produced it', () => {
   it('stamps classifierModel wherever classifierVersion is written to a diff row', () => {
-    for (const relative of ['src/services/WaybackScraper.ts', 'src/services/reclassifyDiffs.ts']) {
+    for (const relative of ['src/services/reclassifyDiffs.ts']) {
       const source = readSource(relative);
       // The run record in reclassifyDiffs also carries classifierVersion but is
       // not a diff row, so compare against writes that set the prompt hash — the

@@ -338,7 +338,7 @@ export async function listCaptures(
       url,
       message:
         'This URL is not tracked, so nothing can be said about which captures are stored. ' +
-        'Run start_forensic_scan on it first. This is NOT a statement that the archive holds no captures.',
+        'Survey it first (survey_wayback_captures). This is NOT a statement that the archive holds no captures.',
     };
   }
 
@@ -540,7 +540,7 @@ export async function verifyClaimText(input: {
       status: 'NOT_TRACKED',
       url,
       message:
-        'This URL is not tracked. Run start_forensic_scan on it first. This is NOT a statement ' +
+        'This URL is not tracked. Survey it first (survey_wayback_captures). This is NOT a statement ' +
         'that the phrase is absent — nothing was checked.',
     };
   }

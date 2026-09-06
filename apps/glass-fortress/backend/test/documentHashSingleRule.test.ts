@@ -110,9 +110,10 @@ describe('every write to documentHash routes through sha256Bytes', () => {
     .filter((w) => w.writes.length > 0);
 
   it('finds the writers at all — a silent zero would make this vacuous', () => {
-    // Four are known. Fewer means the patterns above stopped matching, which
-    // would turn every assertion below into a pass that proves nothing.
-    expect(writers.length).toBeGreaterThanOrEqual(4);
+    // Three are known after the switch retired the recovery instrument. Fewer
+    // means the patterns above stopped matching, which would turn every
+    // assertion below into a pass that proves nothing.
+    expect(writers.length).toBeGreaterThanOrEqual(3);
   });
 
   it.each(

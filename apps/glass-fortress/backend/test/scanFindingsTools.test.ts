@@ -103,7 +103,7 @@ describe('get_scan_findings', () => {
     const r = JSON.parse(await getScanFindingsHandler({ url: URL }));
 
     expect(r.error).toContain(URL);
-    expect(r.explanation).toContain('start_forensic_scan');
+    expect(r.explanation).toContain('survey_wayback_captures');
   });
 });
 

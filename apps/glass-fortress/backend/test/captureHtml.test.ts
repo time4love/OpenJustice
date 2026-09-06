@@ -34,7 +34,6 @@ const DECODE_OWNER = ['src', 'lib', 'captureDocument.ts'];
 const PAYLOAD_READERS = [
   ['src', 'services', 'measureHrefChanges.ts'],
   ['src', 'services', 'WaybackScraper.ts'],
-  ['src', 'services', 'recoverMissingCaptures.ts'],
 ];
 
 function sourceOf(parts: string[]): string {

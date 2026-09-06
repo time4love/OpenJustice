@@ -192,6 +192,13 @@ the file is rewritten to the flows appendix in the step that changes the shape. 
 retired concept; deleted in the same commit as the code it tests, never weakened to pass. A file can
 split: its groups are tagged separately below.
 
+> **Amended 2026-09-06 (refactor plan §3 step 8, pulled forward).** RETIRE files go at the switch,
+> before step 5's writes; a REWRITE file's old version goes with them and its successor lands in the
+> step that lands the shape. One tag moves because the evidence design (2026-09-03, §8) retired a
+> behaviour after this table was written: `anchorSnapshots` becomes REWRITE — the twin copy, the log
+> recovery and the `'Wayback Snapshot'` category are retired, and on a registry that starts at zero a
+> duplicate is a walk defect. `anchoredCaptureHash` stays KEEP.
+
 | test file | lines | tag | what it holds |
 |---|---|---|---|
 | `anchorSnapshots` | 370 | KEEP | the anchoring path, twin recovery, the write path owns anchoring |

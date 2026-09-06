@@ -7,31 +7,6 @@ import { getThesisContextSchema, getThesisContextHandler } from './tools/getThes
 import { getResearchAgendaSchema, getResearchAgendaHandler } from './tools/getResearchAgenda';
 import { createEvidenceFromUrlSchema, createEvidenceFromUrlHandler } from './tools/createEvidenceFromUrl';
 import { createEvidenceFromTextSchema, createEvidenceFromTextHandler } from './tools/createEvidenceFromText';
-import { startForensicScanSchema, startForensicScanHandler } from './tools/startForensicScan';
-import {
-  calibrateArticleRulesSchema,
-  calibrateArticleRulesHandler,
-  correctArticleRulesSchema,
-  correctArticleRulesHandler,
-  getArticleRulesSchema,
-  getArticleRulesHandler,
-  checkRulesetSurvivalHandler,
-  checkRulesetSurvivalSchema,
-  resolveEraBoundaryHandler,
-  resolveEraBoundarySchema,
-  resetArticleCalibrationHandler,
-  resetArticleCalibrationSchema,
-  openArticleCaptureSchema,
-  openArticleCaptureHandler,
-  judgeArticleCaptureSchema,
-  judgeArticleCaptureHandler,
-  nextArticleCaptureSchema,
-  nextArticleCaptureHandler,
-  commitArticleRulesSchema,
-  commitArticleRulesHandler,
-  abandonArticleRulesSchema,
-  abandonArticleRulesHandler,
-} from './tools/articleRuleTools';
 import {
   surveyWaybackCapturesSchema,
   surveyWaybackCapturesHandler,
@@ -41,6 +16,12 @@ import {
   resolveScanStopHandler,
   scanCapturesSchema,
   scanCapturesHandler,
+  getArticleRulesSchema,
+  getArticleRulesHandler,
+  resetArticleCalibrationSchema,
+  resetArticleCalibrationHandler,
+  listCapturesSchema,
+  listCapturesHandler,
 } from '../walk/tools';
 import { createThesisDraftSchema, createThesisDraftHandler } from './tools/createThesisDraft';
 import { addThesisVersionSchema, addThesisVersionHandler } from './tools/addThesisVersion';
@@ -54,7 +35,6 @@ import { createResearchSessionSchema, createResearchSessionHandler } from './too
 import { addSessionNoteSchema, addSessionNoteHandler } from './tools/addSessionNote';
 import { closeResearchSessionSchema, closeResearchSessionHandler } from './tools/closeResearchSession';
 import { getSessionSummarySchema, getSessionSummaryHandler } from './tools/getSessionSummary';
-import { enrichEvidenceWithHistorySchema, enrichEvidenceWithHistoryHandler } from './tools/enrichEvidenceWithHistory';
 import { promoteEvidenceSchema, promoteEvidenceHandler } from './tools/promoteEvidence';
 import { deleteEvidenceSchema, deleteEvidenceHandler } from './tools/deleteEvidence';
 import { generateFoiaRequestSchema, generateFoiaRequestHandler } from './tools/generateFoiaRequest';
@@ -82,7 +62,6 @@ import {
   getDiffDebateSchema,
   getDiffDebateHandler,
 } from './tools/diffDebateTools';
-import { listCapturesSchema, listCapturesHandler } from './tools/listCaptures';
 import { startTutorialSchema, startTutorialHandler } from './tools/startTutorial';
 import { verifyClaimTextSchema, verifyClaimTextHandler } from './tools/verifyClaimText';
 import {
@@ -567,179 +546,23 @@ export function createMcpServer(): McpServer {
   );
 
   // -------------------------------------------------------------------------
-  // Tool: start_forensic_scan  [WRITE — FIRE-AND-FORGET]
-  // Upserts a TrackedUrl, sets status to SCANNING, and fires runFullScan().
-  // Idempotent — calling again for an in-progress URL resumes where it left off.
+  // Tools: get_article_rules · reset_article_calibration · list_captures
+  //
+  // THE WALK'S TWO READS AND ITS RESET — docs/gf-interaction-flows.md A5. The
+  // reads are GATED in WRITE_TOOLS by the standing precedent: a researcher's
+  // working state is not published evidence. Registered at the switch
+  // (refactor plan §3 step 8, 2026-09-06), under the names the retired tools
+  // owned until then.
   // -------------------------------------------------------------------------
-  server.tool(
-    'start_forensic_scan',
-    'Start (or resume) a Wayback Machine forensic diff scan for a URL. Returns immediately ' +
-      'with a trackedUrlId — the scan runs asynchronously server-side. Call ' +
-      'get_forensic_timeline for progress; the REST status endpoint sits behind the staging ' +
-      'access gate and is not reachable from MCP. Calling this again for the same ' +
-      'URL while it is already scanning is safe — the concurrent-run guard prevents double-runs.',
-    startForensicScanSchema,
-    async (input) => ({
-      content: [{ type: 'text' as const, text: await startForensicScanHandler(input) }],
-    }),
-  );
-
-  // -------------------------------------------------------------------------
-  // Tools: calibrate_article_rules · correct_article_rules · get_article_rules
-  //        [WRITE — HANDS OFF TO A BROWSER, RETURNS IMMEDIATELY]
-  //
-  // Level 4's marking flow. An MCP call cannot wait for a human, so a start tool
-  // creates a run, returns its marking URL and returns now; the researcher marks
-  // in the browser; get_article_rules reads the outcome afterwards.
-  //
-  // THREE TOOLS RATHER THAN ONE WITH A MODE ENUM. The preconditions genuinely
-  // differ, and a tool description is how the model decides what to call: a
-  // wrong enum value is representable, a wrong tool is not.
-  //
-  // `scan_with_approval` is absent until ScanRun exists (step 2b). A stub
-  // describing a capability it does not have is worse than no tool at all.
-  //
-  // REGISTERED WITH `registerTool`, WHERE EVERY OTHER TOOL HERE USES `tool()`.
-  // `tool()` is deprecated in the SDK and the lint ratchet counts each use, so
-  // new tools take the supported API rather than adding to a debt that scales
-  // with tool count. The other 47 are a mechanical migration of their own —
-  // deliberately not bundled into a Level 4 change, where a slip would break
-  // every MCP tool at once. `mcpToolClassification.test.ts` matches BOTH
-  // spellings, so nothing added either way can escape classification.
-  // -------------------------------------------------------------------------
-  server.registerTool(
-    'calibrate_article_rules',
-    {
-      description:
-        'Start marking the page furniture — navigation, advertising, footers, timestamps — on a ' +
-        'URL, so that a rotating advert stops being recorded as a page change. Use this for a URL ' +
-        'that is NOT yet in the corpus, or that holds no captures; it admits the URL first, and ' +
-        'marks against freshly fetched pages that are NOT persisted. Returns a marking URL and ' +
-        'returns immediately — marking is visual and cannot be done through a chat tool. Nothing ' +
-        'is written until the researcher commits in the browser, and the reply states exactly ' +
-        'what committing will do.',
-      inputSchema: calibrateArticleRulesSchema,
-    },
-    async (input) => ({
-      content: [{ type: 'text' as const, text: await calibrateArticleRulesHandler(input) }],
-    }),
-  );
-
-  server.registerTool(
-    'correct_article_rules',
-    {
-      description:
-        'Correct the furniture rules for a URL ALREADY in the corpus, marking against captures ' +
-        'already stored. Needs no network and fetches nothing. Prefer this over ' +
-        'calibrate_article_rules whenever the URL has stored captures. Committing saves the ' +
-        'ruleset; the documents are stored whole, so any extraction can be re-derived from bytes ' +
-        'already held, which cannot ' +
-        'invalidate any snapshot anchor because the anchor commits to the raw bytes. Returns a ' +
-        'marking URL and returns immediately.',
-      inputSchema: correctArticleRulesSchema,
-    },
-    async (input) => ({
-      content: [{ type: 'text' as const, text: await correctArticleRulesHandler(input) }],
-    }),
-  );
-
-  server.registerTool(
-    'open_article_capture',
-    {
-      description:
-        'OPEN ONE CAPTURE for the researcher to look at, named by the snapshotId that ' +
-        'next_article_capture returns. Returns a deep ' +
-        'link to that single capture — not to the run — because checking and correcting a ruleset ' +
-        'against one capture is the whole of what the marking page is for. Also reports how many ' +
-        'selectors still match and how much text they remove, WITH the caveat that those numbers ' +
-        'say only whether the rules still MATCH: whether what was removed is furniture is the ' +
-        'judgement the page exists for.',
-      inputSchema: openArticleCaptureSchema,
-    },
-    async (input) => ({
-      content: [{ type: 'text' as const, text: await openArticleCaptureHandler(input) }],
-    }),
-  );
-
-  server.registerTool(
-    'judge_article_capture',
-    {
-      description:
-        'RECORD THE VERDICT on one capture, after looking at it in the marking page. ACCEPTED: ' +
-        'the rules are right here. REJECTED: the RULES are wrong — never that the capture is bad; ' +
-        'it routes back to calibration and does NOT advance, so correct the rules and judge the ' +
-        'same capture again. SKIPPED: the capture cannot be used, and a reason is REQUIRED. This ' +
-        'is where a judgement is written; the marking page checks and corrects a ruleset, it does ' +
-        'not decide. Returns the updated coverage, distinct captures first.',
-      inputSchema: judgeArticleCaptureSchema,
-    },
-    async (input) => ({
-      content: [{ type: 'text' as const, text: await judgeArticleCaptureHandler(input) }],
-    }),
-  );
-
-  server.registerTool(
-    'next_article_capture',
-    {
-      description:
-        'WHICH CAPTURE TO MARK NEXT, and why. Returns the coverage so far — DISTINCT captures ' +
-        'judged, with their dates and verdicts — and recommends the capture where the ruleset is ' +
-        'most likely to have STOPPED APPLYING: the one furthest in time from anything already ' +
-        'judged. It RECOMMENDS and does not sequence; the researcher may open any capture. Also ' +
-        'reports whether the stopping rule (no corrections on the last three) is satisfied, and ' +
-        'any selector that has stopped matching — a clean streak on a ruleset that no longer ' +
-        'matches is the emptiest kind of agreement.',
-      inputSchema: nextArticleCaptureSchema,
-    },
-    async (input) => ({
-      content: [{ type: 'text' as const, text: await nextArticleCaptureHandler(input) }],
-    }),
-  );
-
-  server.registerTool(
-    'commit_article_rules',
-    {
-      description:
-        'PUT THE MARKED RULES IN FORCE for this page: saves the ruleset as a new version and ' +
-        'sets it active for this URL. IT DOES NOT RE-DERIVE ANY CAPTURE — nothing applies a chrome ' +
-        'ruleset to a stored capture yet, so committing versions the rules and changes no text; ' +
-        'this tool claimed otherwise until 2026-09-01. THIS IS THE RESEARCH ACT of the ' +
-        'calibration flow and the researcher approves it HERE, not in the browser — the marking ' +
-        'page checks and corrects a ruleset, it does not decide. Read get_article_rules first and ' +
-        'show the effect and the selector list before calling this. Reversible: mark again and ' +
-        'commit. No snapshot anchor is affected, because an anchor commits to the raw bytes and ' +
-        'not to the derived text.',
-      inputSchema: commitArticleRulesSchema,
-    },
-    async (input) => ({
-      content: [{ type: 'text' as const, text: await commitArticleRulesHandler(input) }],
-    }),
-  );
-
-  server.registerTool(
-    'abandon_article_rules',
-    {
-      description:
-        'Close a calibration run WITHOUT applying its rules. No ruleset is saved and no capture ' +
-        'is re-derived. THE MARKING RECORD IS KEPT: the judged captures and their decisions stay ' +
-        'in the log, so this is "do not apply these rules", never "forget that this happened".',
-      inputSchema: abandonArticleRulesSchema,
-    },
-    async (input) => ({
-      content: [{ type: 'text' as const, text: await abandonArticleRulesHandler(input) }],
-    }),
-  );
-
   server.registerTool(
     'get_article_rules',
     {
       description:
-        'Read the state of a calibration run: the selectors in force, how many captures have ' +
-        'been marked, how often the rules needed correcting, and any selector that has stopped ' +
-        'matching anything (which is what a site redesign looks like). CALL THIS WHEN THE ' +
-        'RESEARCHER SAYS THEY ARE DONE — it is not to be polled on a timer. A null correction ' +
-        'rate means no capture has been marked yet and says NOTHING about the rules; it is not a ' +
-        'rate of zero.',
+        'READ A PAGE\'S RULES AND ITS LOG. Every rule under AUTHORITY — in force or ended, with ' +
+        'validFrom, validTo, whether it is trusted, and when it last matched a capture; the pending ' +
+        'stop, verbatim from the row, with its marking URL, or null; the count of every outcome ' +
+        'on the work-list and how many rows are stale; and every decision on the page. Names the ' +
+        'page by url. Writes nothing. Refuses NOT_SURVEYED.',
       inputSchema: getArticleRulesSchema,
     },
     async (input) => ({
@@ -751,14 +574,11 @@ export function createMcpServer(): McpServer {
     'reset_article_calibration',
     {
       description:
-        'DRAW A LINE UNDER A URL\'S CALIBRATION: nothing recorded before it governs. Use it when a ' +
-        'ruleset has become entangled past repair rather than merely wrong — an era\'s selectors ' +
-        'landed inside another era, say — because the log is APPEND-ONLY and a boundary recorded ' +
-        'afterwards gives the DATE and never the rule split. SUPERSEDES, NEVER DELETES: every decision ' +
-        'stays in the log and only its authority ends, so what was tried is still readable. NOTHING ' +
-        'SURVIVES IT, ERA BOUNDARIES INCLUDED — a reset is often reached for BECAUSE the era structure ' +
-        'is wrong, and re-recording a boundary you still believe costs one call and no marking. It ' +
-        'opens no run and marks nothing; calibrate afterwards as usual. A REASON IS REQUIRED.',
+        'START A PAGE\'S CALIBRATION AGAIN: one RESET decision, reason REQUIRED, after which every ' +
+        'rule created before it loses authority — the rules stay readable, nothing is deleted, and ' +
+        'the next scan_captures stops on Gate 0 like a page\'s first capture. Clears the draft and ' +
+        'the pending stop on every held capture (the bytes are kept and re-evaluated). Refuses ' +
+        'NOTHING_TO_RETIRE, REASON_REQUIRED and STALE_SEQUENCE.',
       inputSchema: resetArticleCalibrationSchema,
     },
     async (input) => ({
@@ -766,15 +586,30 @@ export function createMcpServer(): McpServer {
     }),
   );
 
+  server.registerTool(
+    'list_captures',
+    {
+      description:
+        'LIST A PAGE\'S WORK-LIST, one entry per capture the archive reported, in timestamp order: ' +
+        'the capture, its date, its outcome (UNFETCHED, UNSERVABLE, IDENTICAL, DUPLICATE, ACQUIRED, ' +
+        'PENDING_JUDGEMENT, SKIPPED), its digest, what it was compared to, the ruleset it was derived ' +
+        'under, its snapshot, whether it is stale, and the gates of its pending stop. Never the held ' +
+        'bytes. `outcome` filters to one outcome. Writes nothing. Refuses NOT_SURVEYED and ' +
+        'INVALID_OUTCOME.',
+      inputSchema: listCapturesSchema,
+    },
+    async (input) => ({
+      content: [{ type: 'text' as const, text: await listCapturesHandler(input) }],
+    }),
+  );
+
   // -------------------------------------------------------------------------
   // Tool: survey_wayback_captures  [WRITE — SYNCHRONOUS, ONE CDX QUERY]
   //
-  // THE WALK'S ENTRY TO THE CORPUS — docs/gf-interaction-flows.md Phase 0,
-  // built at refactor step 2 BESIDE the old path (docs/gf-refactor-plan.md
-  // §1). It admits nothing and fetches nothing: the first survey creates the
-  // TrackedUrl attributed to the researcher, every survey records what the
-  // archive's index said, one row per capture. The old scan and the
-  // calibration tools above keep working on their own tables until step 8.
+  // THE WALK'S ENTRY TO THE CORPUS — docs/gf-interaction-flows.md Phase 0
+  // (refactor step 2). It admits nothing and fetches nothing: the first survey
+  // creates the TrackedUrl attributed to the researcher, every survey records
+  // what the archive's index said, one row per capture.
   // -------------------------------------------------------------------------
   server.registerTool(
     'survey_wayback_captures',
@@ -799,12 +634,8 @@ export function createMcpServer(): McpServer {
   // Tools: approve_article_rules · resolve_scan_stop  [WRITE — the page's log]
   //
   // THE WALK'S TWO ANSWERS AT A STOP — docs/gf-interaction-flows.md MARKING
-  // and Flow 2, built at refactor step 3 BESIDE the old calibration. A capture
-  // is named by its page's URL and its wayback timestamp, nothing else (A1).
-  // Neither touches the old tables; the old marking tools above keep working
-  // until step 8. The new get_article_rules, list_captures and
-  // reset_article_calibration are built and NOT registered: the old handlers
-  // own those names until the switch (refactor plan §8).
+  // and Flow 2 (refactor step 3). A capture is named by its page's URL and its
+  // wayback timestamp, nothing else (A1).
   // -------------------------------------------------------------------------
   server.registerTool(
     'approve_article_rules',
@@ -852,7 +683,7 @@ export function createMcpServer(): McpServer {
   //
   // THE WALK — docs/gf-interaction-flows.md Phase 2 and Flow 3, built at
   // refactor step 4 in REPORTING form: every step but the writes. Step 5 adds
-  // the writes to the same handler; the old scan job keeps working until step 8.
+  // the writes to the same handler.
   // -------------------------------------------------------------------------
   server.registerTool(
     'scan_captures',
@@ -871,65 +702,6 @@ export function createMcpServer(): McpServer {
     },
     async (input) => ({
       content: [{ type: 'text' as const, text: await scanCapturesHandler(input) }],
-    }),
-  );
-
-  server.registerTool(
-    'resolve_era_boundary',
-    {
-      description:
-        'ANSWER THE ONE QUESTION A DETECTOR CANNOT: the rules stopped matching at this capture — is it ' +
-        'a REDESIGN, or a BAD CAPTURE? A redesign and a truncated archive page look identical to a ' +
-        'match rate, so the pass stops and asks rather than concluding. THIS IS THE ONLY WAY AN ERA ' +
-        'COMES INTO EXISTENCE: a boundary is always a decision and never an inference. REDESIGN ends ' +
-        'the era at this capture and opens the next one here, carrying the previous rules forward ' +
-        'UNCHANGED — it records that the page was rebuilt, it does not guess the new rules, and the ' +
-        'new era is UNCONFIRMED until marking. BAD_CAPTURE records the capture as unusable, REQUIRES a ' +
-        'reason, and continues IN THE SAME ERA however many consecutive bad captures occur — no number ' +
-        'of them adds up to a structural claim. It judges nothing about whether the rules are right; ' +
-        'that is judge_article_capture.',
-      inputSchema: resolveEraBoundarySchema,
-    },
-    async (input) => ({
-      content: [{ type: 'text' as const, text: await resolveEraBoundaryHandler(input) }],
-    }),
-  );
-
-  server.registerTool(
-    'check_ruleset_survival',
-    {
-      description:
-        'Re-derive every ACCEPTED capture under the ruleset in force now, and report any text a ' +
-        'confirmed capture no longer keeps. A calibration ruleset is the UNION of every era it ' +
-        'has met, and a selector that names a POSITION rather than a thing can start removing ' +
-        'article text on an older capture that nobody re-renders. ACCEPTANCE IS A COMMITMENT: any ' +
-        'loss on a confirmed capture is an alert, whether or not the text was furniture, because ' +
-        'an approved extraction that changed without re-approval no longer describes anything. ' +
-        'Clear an alert by re-judging that capture under the current rules, or by undoing the ' +
-        'selector. Writes nothing.',
-      inputSchema: checkRulesetSurvivalSchema,
-    },
-    async (input) => ({
-      content: [{ type: 'text' as const, text: await checkRulesetSurvivalHandler(input) }],
-    }),
-  );
-
-  // -------------------------------------------------------------------------
-  // Tool: enrich_evidence_with_history  [WRITE — FIRE-AND-FORGET]
-  // Given a fileHash, triggers a Wayback scan of the evidence's sourceUrl.
-  // Reverse enrichment: find the page history behind a submitted document.
-  // -------------------------------------------------------------------------
-  server.tool(
-    'enrich_evidence_with_history',
-    'Trigger a Wayback Machine forensic scan for the sourceUrl of an existing evidence record. ' +
-      'Given a fileHash, looks up the evidence sourceUrl, upserts a TrackedUrl, and starts ' +
-      'runFullScan() asynchronously. Legally significant page edits are recorded as ' +
-      'PENDING_REVIEW evidence — never promoted, never registered on-chain; review them with ' +
-      'get_scan_findings and confirm with promote_scan_findings. Returns a trackedUrlId; call ' +
-      'get_forensic_timeline for progress.',
-    enrichEvidenceWithHistorySchema,
-    async (input) => ({
-      content: [{ type: 'text' as const, text: await enrichEvidenceWithHistoryHandler(input) }],
     }),
   );
 
@@ -1084,18 +856,6 @@ export function createMcpServer(): McpServer {
     getEnvironmentSchema,
     async () => ({
       content: [{ type: 'text' as const, text: await getEnvironmentHandler() }],
-    }),
-  );
-
-  server.tool(
-    'list_captures',
-    'List every capture the Internet Archive holds for a tracked page, optionally within a date ' +
-      'range, marking which ones this platform has stored. Answers "is there a capture between ' +
-      'these two dates?" — which the forensic timeline (diffs) and claim trajectories (a count) ' +
-      'cannot. Writes nothing.',
-    listCapturesSchema,
-    async (input) => ({
-      content: [{ type: 'text' as const, text: await listCapturesHandler(input) }],
     }),
   );
 

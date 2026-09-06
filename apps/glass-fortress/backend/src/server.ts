@@ -20,7 +20,6 @@ import { evidenceRouter } from './routes/evidenceRoutes';
 import { argumentRouter } from './routes/argumentRoutes';
 import { chatRouter } from './routes/chatRoutes';
 import { forensicsRouter } from './routes/forensicsRoutes';
-import { articleRulesRouter } from './routes/articleRulesRoutes';
 import { walkArticleRulesRouter } from './walk/routes';
 import { figuresRouter } from './routes/figuresRoutes';
 import { mentionRouter } from './routes/mentionRoutes';
@@ -204,12 +203,8 @@ app.use('/api/arguments', argumentRouter);
 app.use('/api/chat', chatRouter);
 app.use('/api/forensics', forensicsRouter);
 // The marking page's surface, page-scoped (docs/gf-interaction-flows.md A6),
-// mounted BEFORE the legacy run-scoped router at the same base until step 8
-// retires that one; test/articleRulesRouteOrder.test.ts holds the order
-// (refactor plan §8). Both are behind requireResearcher inside the router.
+// behind requireResearcher inside the router.
 app.use('/api/article-rules', walkArticleRulesRouter);
-// Level 4's marking surface — the old tools' until step 8.
-app.use('/api/article-rules', articleRulesRouter);
 app.use('/api/figures', figuresRouter);
 app.use('/api/mentions', mentionRouter);
 app.use('/api/thesis', thesisRouter);

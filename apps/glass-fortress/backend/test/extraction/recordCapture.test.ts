@@ -16,13 +16,6 @@ jest.mock('../../src/lib/prisma', () => ({
       create: jest.fn(),
       findMany: jest.fn(),
     },
-    // WHICH ERA GOVERNS THIS CAPTURE. Recording one now looks up the URL's
-    // committed calibration; these fixtures describe an UNCALIBRATED url, so the
-    // lookup finds no runs, the ruleset is empty and the derivation is
-    // byte-identical to what it was before rulesets applied at all.
-    calibrationRun: { findMany: jest.fn() },
-    calibrationDecision: { findMany: jest.fn() },
-    calibrationReset: { findFirst: jest.fn() },
   },
 }));
 
@@ -83,9 +76,6 @@ beforeEach(() => {
   findFirst.mockResolvedValue(null);
   // An UNCALIBRATED url: no runs, so no eras, so an empty ruleset — and the
   // derivation these fixtures assert is byte-identical to the pre-ruleset one.
-  (prisma.calibrationRun.findMany as jest.Mock).mockResolvedValue([]);
-  (prisma.calibrationDecision.findMany as jest.Mock).mockResolvedValue([]);
-  (prisma.calibrationReset.findFirst as jest.Mock).mockResolvedValue(null);
   // Returns the ANCHORABLE COLUMNS too, because the real `create` is asked for
   // them by its `select` and the write path anchors the row as written rather
   // than the local variables that produced it. A mock that answered less would
@@ -443,57 +433,5 @@ describe('waybackTimestampToDate', () => {
 
   it('refuses 14 digits that are not a real instant', () => {
     expect(() => waybackTimestampToDate('20221345054435')).toThrow(/not a valid instant/);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// BUILD ORDER STEP 2 — the ruleset is actually applied.
-//
-// EVERY OTHER TEST HERE DESCRIBES AN UNCALIBRATED URL, where the derivation is
-// byte-identical to the pre-ruleset one — so they would all still pass if
-// recording ignored rulesets entirely, which is exactly what it did until now
-// (I16). This is the case that fails if it goes back to ignoring them.
-// ---------------------------------------------------------------------------
-describe('recordCapture derives under the era that governs the capture', () => {
-  const WITH_FURNITURE = html(
-    '<html><body><nav class="menu">home sport money</nav><p>the article</p></body></html>',
-  );
-
-  function calibrated(selectors: string[]) {
-    (prisma.calibrationRun.findMany as jest.Mock).mockResolvedValue([
-      { id: 'run-1', status: 'COMMITTED' },
-    ]);
-    (prisma.calibrationDecision.findMany as jest.Mock).mockResolvedValue([
-      { calibrationRunId: 'run-1', type: 'RULESET_CORRECTED', selectors, snapshotId: 'a' },
-    ]);
-  }
-
-  it('removes the marked furniture from `text`, and so from the novelty key', async () => {
-    calibrated(['nav.menu']);
-    await recordCapture(archived({ document: WITH_FURNITURE }));
-    const stored = create.mock.calls[0][0].data as Record<string, unknown>;
-
-    expect(stored['text']).toContain('the article');
-    // THE POINT OF THE WHOLE LEVEL: the navigation no longer reaches `text`, so
-    // it no longer reaches `textHash`, so a rotating strip stops making every
-    // capture look new.
-    expect(stored['text']).not.toContain('home sport money');
-  });
-
-  it('records WHICH ruleset produced the text, in the extraction version', async () => {
-    calibrated(['nav.menu']);
-    await recordCapture(archived({ document: WITH_FURNITURE }));
-    const stored = create.mock.calls[0][0].data as Record<string, unknown>;
-    // The stamp step 2 was written to add — and it already existed, naming the
-    // extraction version AND the ruleset, so a re-derivation forced by a pipeline
-    // change is distinguishable from one forced by a rules change.
-    expect(String(stored['textExtractionVersion'])).toContain('+chrome-');
-  });
-
-  it('an uncalibrated URL keeps the furniture, which is what makes the case above meaningful', async () => {
-    await recordCapture(archived({ document: WITH_FURNITURE }));
-    const stored = create.mock.calls[0][0].data as Record<string, unknown>;
-    expect(stored['text']).toContain('home sport money');
-    expect(String(stored['textExtractionVersion'])).not.toContain('+chrome-');
   });
 });

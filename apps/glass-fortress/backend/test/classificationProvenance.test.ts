@@ -122,8 +122,9 @@ describe('does the classification describe the chunks the row now holds', () => 
 // ---------------------------------------------------------------------------
 // A SOURCE SCAN, because this is a pairing and pairings drift.
 //
-// Four call sites write `classifierVersion` today — two on the scan path, two on
-// the reclassification path. One of them forgetting `classifiedInputVersion`
+// Two call sites write `classifierVersion` today, both on the reclassification
+// path; the scan's two went with the scan job at the switch (refactor plan §3
+// step 8, 2026-09-06), and step 5's walk adds its own diff write. One of them forgetting `classifiedInputVersion`
 // recreates the defect exactly: a classification whose input provenance is
 // silently absent reads as UNRECORDED forever, which is not a pass but is also
 // not the loud failure a missing stamp deserves. "One rule, many
@@ -160,8 +161,8 @@ describe('every writer of a classification records what it read', () => {
   });
 
   it('finds the write sites at all — a silent zero would make this vacuous', () => {
-    // Four at the time of writing: two in WaybackScraper, two in reclassifyDiffs.
-    expect(writes.length).toBeGreaterThanOrEqual(4);
+    // Two after the switch, both in reclassifyDiffs.
+    expect(writes.length).toBeGreaterThanOrEqual(2);
   });
 
   it.each(writes.map((w, i) => [`${w.path}#${String(i)}`, w] as const))(
