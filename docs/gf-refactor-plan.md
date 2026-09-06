@@ -186,6 +186,10 @@ routes and page stay for the old tools.
 
 *Leaves working:* the old marking flow. *Verified by:* A6 green; a stop resolved through the new page
 against staging.
+*Verified on staging 2026-09-06:* landed as PR #356 (`dc9c4a6`), the page reshaped in PRs #357–#359,
+the approval's transaction window fixed in PR #360; walla and corona each marked in the new page from
+a stored capture and promoted through the connector — `docs/gf-walk-step-6-marking-verified-2026-09-06.md`.
+A stop on a PENDING_JUDGEMENT capture, the page's judging moment, waits for step 5's first held row.
 
 ### 7 · The re-walk
 
