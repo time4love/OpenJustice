@@ -241,6 +241,13 @@ Steps 5 and 6 are the cleanup session; steps 1–4 precede it and write nothing 
 Production runs 3–6 at SHIP, after staging's six have been verified end to end — the mainnet
 deploy is one-shot, and staging is its rehearsal. Not before step 8 has served on staging.
 
+> **Step 1 measured on staging 2026-09-06** — `docs/gf-rebuild-staging-measure-2026-09-06.md`: the old
+> registry read from state (44 entries, one submitter, 7 unexplained by any column — PRE_WIPE 2,
+> ORPHANED 5 by the researcher's ruling), extractor equality 112 of 112, the archive's answer per
+> capture (111 of 112 served as held; corona `20250423145731` is held from the dump). **Ruled the same
+> day, the freeze between steps 4 and 5:** no write tool and no `--apply` script that reaches the
+> chain runs on staging between the rotation and step 5's landing.
+
 ### 10 · Vocabulary
 
 `era` out of identifiers, comments, tool text and docs. Last on purpose: renaming before the
