@@ -71,6 +71,17 @@ function messageOf(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
+/** One registry entry as the contract stores it, normalised at the boundary. */
+export interface OnChainEvidenceRecord {
+  /** 0x-prefixed, lower-case. */
+  fileHash: string;
+  /** Lower-case, so it compares equal to `registrarAddress` however either was typed. */
+  submitter: string;
+  /** Block time, seconds since the epoch. */
+  timestamp: number;
+  category: string;
+}
+
 export class Web3Service {
   /**
    * Half-width, in blocks, of the window scanned for a registering event.
@@ -338,7 +349,7 @@ export class Web3Service {
     // timestamp, then query a narrow window around it.
     let timestamp: number;
     try {
-      timestamp = Number((await this.getEvidenceRecord(evidenceId)).timestamp);
+      timestamp = (await this.readEvidenceRecord(evidenceId)).timestamp;
     } catch (err) {
       return { kind: 'LOOKUP_FAILED', step: 'RECORD', reason: messageOf(err) };
     }
@@ -438,11 +449,49 @@ export class Web3Service {
     return low;
   }
 
-  /** Reads a single on-chain evidence record by its sequential id. */
-  private async getEvidenceRecord(evidenceId: bigint): Promise<{ timestamp: bigint }> {
-    return await (
-      this.contract.getEvidence as (id: bigint) => Promise<{ timestamp: bigint }>
+  /** The registry this service reads and writes. */
+  get registryAddress(): string {
+    return this.contractAddress;
+  }
+
+  /**
+   * The account every registration from this deployment is submitted by.
+   *
+   * Read from the wallet, never from configuration: it is what the chain will
+   * record as `submitter`, so it is what attribution by state compares against.
+   */
+  get registrarAddress(): string {
+    return this.wallet.address;
+  }
+
+  /**
+   * Reads one on-chain evidence record WHOLE, from state.
+   *
+   * Until the rebuild this returned the timestamp alone, because its one caller
+   * wanted a block to search for a receipt. Evidence flows §8 makes state the
+   * attribution — `getEvidence(index).submitter` is readable forever, where a
+   * receipt is readable only inside the RPC's retention horizon — so the
+   * submitter and the category at an index are now what a ledger explains.
+   *
+   * Hash and submitter are lower-cased here, at the boundary, so that no reader
+   * compares a checksummed address against a bare one and calls them different.
+   */
+  async readEvidenceRecord(evidenceId: bigint): Promise<OnChainEvidenceRecord> {
+    await this.assertRegistryDeployed();
+    const record = await (
+      this.contract.getEvidence as (id: bigint) => Promise<{
+        fileHash: string;
+        submitter: string;
+        timestamp: bigint;
+        category: string;
+      }>
     )(evidenceId);
+    return {
+      fileHash: record.fileHash.toLowerCase(),
+      submitter: record.submitter.toLowerCase(),
+      timestamp: Number(record.timestamp),
+      category: record.category,
+    };
   }
 
   /**

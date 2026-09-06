@@ -82,7 +82,15 @@ function buildHarness(
   const contract = {
     filters: { EvidenceSubmitted: (hash: string) => ({ topic: hash }) },
     queryFilter,
-    getEvidence: jest.fn(async () => ({ timestamp: BigInt(anchorTimestamp) })),
+    // The whole struct, as the contract returns it — the record read normalises
+    // every field, so a fixture returning only the timestamp models a contract
+    // that does not exist.
+    getEvidence: jest.fn(async () => ({
+      fileHash: `0x${'ab'.repeat(32)}`,
+      submitter: '0x9DE2e74b3C5dAc4C3E2a0d18A5b76EEAc8989A28',
+      timestamp: BigInt(anchorTimestamp),
+      category: 'snapshot-anchor',
+    })),
     isRegistered: jest.fn(async () => [registered, 0n] as [boolean, bigint]),
   };
 
@@ -193,7 +201,12 @@ describe('Web3Service.findRegisteringTxHash', () => {
       value: {
         filters: { EvidenceSubmitted: (hash: string) => ({ topic: hash }) },
         queryFilter,
-        getEvidence: async () => ({ timestamp: BigInt(GENESIS_TIMESTAMP + 6) }),
+        getEvidence: async () => ({
+          fileHash: `0x${'ab'.repeat(32)}`,
+          submitter: '0x9DE2e74b3C5dAc4C3E2a0d18A5b76EEAc8989A28',
+          timestamp: BigInt(GENESIS_TIMESTAMP + 6),
+          category: 'snapshot-anchor',
+        }),
         isRegistered: async () => [true, 0n] as [boolean, bigint],
       },
     });
