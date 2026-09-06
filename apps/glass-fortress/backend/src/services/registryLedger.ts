@@ -149,6 +149,44 @@ const EVIDENCE_REPLACED_BY =
   "no row — evidence is rebuilt by the researcher's own hand from corpus records under evidence flows; " +
   'this entry stays on the frozen registry, explained here';
 
+const PRE_WIPE_FORMULA =
+  'unknown — the row that produced it went with the database destroyed on 2026-08-21 ' +
+  '(docs/gf-staging-data-loss-postmortem-2026-08-21.md)';
+
+const ORPHANED_FORMULA =
+  'unknown — no current or superseded row holds the hash; the row that produced it was rewritten ' +
+  'or removed by a later run, which one is archaeology under CLAUDE.md ' +
+  '(docs/gf-rebuild-staging-measure-2026-09-06.md §2)';
+
+/**
+ * THE formula string for a kind, given the entry's inputs.
+ *
+ * One function, two callers: the builder writes it into every entry, and
+ * `registryLedgerCommitted.test.ts` holds that every entry in a committed file
+ * still carries it. A ledger committed before a formula constant changed is then
+ * red until it is re-emitted — file and code cannot drift apart silently.
+ */
+export function formulaFor(kind: LedgerKind, inputs: LedgerEntry['inputs']): string {
+  const forensic = inputs.some((i) => 'evidenceType' in i && i.evidenceType === 'FORENSIC_DIFF');
+  switch (kind) {
+    case 'DOCUMENT_HASH':
+      return PAYLOAD_ANCHOR_FORMULA;
+    case 'CONTENT_HASH':
+      return EXTRACTION_ANCHOR_FORMULA;
+    case 'EVIDENCE_FILE_HASH':
+      return forensic ? FORENSIC_NAME_FORMULA : DOCUMENT_NAME_FORMULA;
+    case 'EVIDENCE_PREVIOUS_FILE_HASH':
+      return (
+        `${forensic ? FORENSIC_NAME_FORMULA : DOCUMENT_NAME_FORMULA} — over the inputs as they stood ` +
+        'before forensics:rehash-evidence re-derived them; stored as Evidence.previousFileHash'
+      );
+    case 'PRE_WIPE':
+      return PRE_WIPE_FORMULA;
+    case 'ORPHANED':
+      return ORPHANED_FORMULA;
+  }
+}
+
 function iso(seconds: number): string {
   return new Date(seconds * 1000).toISOString();
 }
@@ -176,7 +214,7 @@ function explained(
     case 'DOCUMENT_HASH':
       return {
         kind: 'DOCUMENT_HASH',
-        formula: PAYLOAD_ANCHOR_FORMULA,
+        formula: formulaFor('DOCUMENT_HASH', []),
         inputs: captureInputs(c),
         attested: `that this deployment held these exact bytes of the page, as the archive served them, on ${when}`,
         replacedBy:
@@ -186,7 +224,7 @@ function explained(
     case 'CONTENT_HASH':
       return {
         kind: 'CONTENT_HASH',
-        formula: EXTRACTION_ANCHOR_FORMULA,
+        formula: formulaFor('CONTENT_HASH', []),
         inputs: captureInputs(c),
         attested:
           `that this deployment held the EXTRACTION of these captures on ${when} — narrower than the ` +
@@ -198,10 +236,9 @@ function explained(
       };
     case 'EVIDENCE_FILE_HASH': {
       const inputs = evidenceInputs(c, corpus);
-      const forensic = inputs.some((i) => i.evidenceType === 'FORENSIC_DIFF');
       return {
         kind: 'EVIDENCE_FILE_HASH',
-        formula: forensic ? FORENSIC_NAME_FORMULA : DOCUMENT_NAME_FORMULA,
+        formula: formulaFor('EVIDENCE_FILE_HASH', inputs),
         inputs,
         attested: `${EVIDENCE_ATTESTED}, on ${when}`,
         replacedBy: EVIDENCE_REPLACED_BY,
@@ -209,12 +246,9 @@ function explained(
     }
     case 'EVIDENCE_PREVIOUS_FILE_HASH': {
       const inputs = evidenceInputs(c, corpus);
-      const forensic = inputs.some((i) => i.evidenceType === 'FORENSIC_DIFF');
       return {
         kind: 'EVIDENCE_PREVIOUS_FILE_HASH',
-        formula:
-          `${forensic ? FORENSIC_NAME_FORMULA : DOCUMENT_NAME_FORMULA} — over the inputs as they stood ` +
-          'before forensics:rehash-evidence re-derived them; stored as Evidence.previousFileHash',
+        formula: formulaFor('EVIDENCE_PREVIOUS_FILE_HASH', inputs),
         inputs,
         attested: `an earlier name of the same evidence row — ${EVIDENCE_ATTESTED}, on ${when}`,
         replacedBy: "the row's current fileHash entry on this registry, itself replaced by no row",
@@ -243,19 +277,14 @@ function ruledEntry(entry: RegistryEntry, kind: 'PRE_WIPE' | 'ORPHANED'): Pick<
   return kind === 'PRE_WIPE'
     ? {
         kind,
-        formula:
-          'unknown — the row that produced it went with the database destroyed on 2026-08-21 ' +
-          '(docs/gf-staging-data-loss-postmortem-2026-08-21.md)',
+        formula: formulaFor(kind, []),
         inputs: [],
         attested: `${onlyTheChain}; the block time precedes the 2026-08-21 wipe`,
         replacedBy: 'nothing',
       }
     : {
         kind,
-        formula:
-          'unknown — no current or superseded row holds the hash; the row that produced it was rewritten ' +
-          'or removed by a later run, which one is archaeology under CLAUDE.md ' +
-          '(docs/gf-rebuild-staging-measure-2026-09-06.md §2)',
+        formula: formulaFor(kind, []),
         inputs: [],
         attested: onlyTheChain,
         replacedBy: 'nothing',
