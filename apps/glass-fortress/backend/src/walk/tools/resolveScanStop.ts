@@ -25,10 +25,24 @@ import { answer, refusal, shared, type Refusal } from '../refusals';
 // verdict on one capture and says nothing about the rules, however many bad
 // captures occur in a row.
 //
+// AN UNFETCHED ROW MAY BE SKIPPED TOO (ruled 2026-09-07, step 5's staging
+// exercise; flows A5 amended). The archive answered 429 for one capture for
+// over an hour, from three clients, while its neighbours served — a third
+// archive answer, neither transient nor a durable 404, indistinguishable from
+// transient on any one call. The walk keeps asking, forever; NEXT_ROW is the
+// earliest UNFETCHED row, so the page waits behind it until a human says stop.
+// No count of attempts ever decides that: the researcher retries as often as
+// they like, and skips with a reason that says the archive would not serve it
+// — the one skip where the human has not seen the bytes. Same act, same
+// decision, same row update (nothing held, nothing to clear).
+//
 // INVALID_RESOLUTION and REASON_REQUIRED are decided on the input, before the
 // database is touched; NOT_PENDING is decided on the transaction's own
 // snapshot, like approve's row checks.
 // ---------------------------------------------------------------------------
+
+/** The outcomes a human may skip: held at a stop, or never served by the archive. */
+const SKIPPABLE: ReadonlySet<CdxEntryStatus> = new Set([CdxEntryStatus.PENDING_JUDGEMENT, CdxEntryStatus.UNFETCHED]);
 
 export const resolveScanStopSchema = {
   url: z.url().describe('The page — exact URL'),
@@ -88,10 +102,11 @@ async function skip(
   if (row === null) {
     return refusal('NOT_PENDING', `The page has no work-list row for capture ${t}; there is no stop to resolve.`);
   }
-  if (row.outcome !== 'PENDING_JUDGEMENT') {
+  if (!SKIPPABLE.has(row.outcome)) {
     return refusal(
       'NOT_PENDING',
-      `Capture ${t} is ${row.outcome}, not PENDING_JUDGEMENT; only a capture held at a stop can be skipped.`,
+      `Capture ${t} is ${row.outcome}; only a capture held at a stop (PENDING_JUDGEMENT) or one the archive ` +
+        'has not served (UNFETCHED) can be skipped.',
     );
   }
 

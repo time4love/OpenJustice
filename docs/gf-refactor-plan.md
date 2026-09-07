@@ -194,6 +194,12 @@ on production before any capture could be anchored there.
 
 *Leaves working:* the old scan, still on its own path. *Verified by:* A5's `scan_captures` contract
 green; a full walk of a small staging page end to end, stops resolved through the chat.
+*Verified on staging 2026-09-06:* PR 1 landed as PR #375 (`ce775b4`), the acceptance suite green, the two
+migrations applied by the deploy; walla walked through the connector, four captures acquired and anchored
+at registry indexes 0–3 under `DOCUMENT_SHA256`, three diffs written as pair + content version, four
+stops resolved in the marking page, every write verified from chain and database state —
+`docs/gf-walk-step-5-exercise-2026-09-06.md`. Two rows wait behind a capture the archive refuses; the
+skip was widened to an UNFETCHED row on the researcher's word (2026-09-07). PR 2 and PR 3 are still this step's.
 
 ### 6 · The marking page and its routes
 
