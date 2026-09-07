@@ -642,6 +642,27 @@ describe('scan_captures — Flow 3, the re-walk over rows that already have an o
     expect(evaluated()).toEqual({ keptText: stale.snapshot.text });
   });
 
+  // Q4 (ruled 2026-09-06): supersededByDecisionId is NULL for a supersession
+  // the rules had no part in — a new extractor moved the text. Found live on
+  // 2026-09-07: the first re-walk after extractor v3 named the 2020 correction
+  // as the cause of a supersession whose ruleset had not changed at all.
+  it('an extractor-only supersession names no decision — the rules had no part in it', async () => {
+    withRule();
+    const predecessor = acquired(T09, 'hash-09', NEW_ID);
+    // Stamped with the ruleset NOW in force at its date, but derived by an
+    // older extractor: stale on the extractor axis only.
+    const stale = acquired(T14, 'hash-old', NEW_ID);
+    stale.row.textExtractionVersion = 'v1-old-extractor';
+    stale.snapshot.textExtractionVersion = 'v1-old-extractor';
+    page([predecessor.row, stale.row], [predecessor.snapshot, stale.snapshot]);
+    mockDerive.mockReturnValue(derived('hash-new'));
+    const result = await scan();
+    expect(result['outcomes']).toEqual(expect.objectContaining({ superseded: 1 }));
+    expect(versionCreate.mock.calls[0]?.[0]).toEqual({
+      data: expect.objectContaining({ snapshotId: stale.snapshot.id, rulesetId: NEW_ID, supersededByDecisionId: null }),
+    });
+  });
+
   // RULED: the same textHash under the new rules is not a new version. The row
   // is re-stamped with the ruleset id and counted as `restamped`.
   it('re-stamps a STALE ACQUIRED capture whose text did not change: no version, the ruleset id moves', async () => {

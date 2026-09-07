@@ -550,16 +550,24 @@ class PageWalk {
       // Flow 3: a stored capture re-derived. Its snapshot and anchor STAY; the
       // text moves only by a versioned supersession, or not at all (restamped).
       const changed = extraction().textHash !== stored.textHash;
+      const previousRulesetId = this.requireStamp(row, 'rulesetId');
+      // Q4: the version names the newest decision after which the ruleset at
+      // this date changed — and NULL when the rules had no part in the
+      // supersession, i.e. the ruleset the previous text was derived under IS
+      // the one in force now, and only the extractor moved. Asked here, from
+      // the two stamps, because the replay alone always finds a decision once
+      // any rule exists (found live 2026-09-07 on the first re-walk after v3).
       const supersession: Supersession | null = changed
         ? {
             previous: stored,
-            rulesetId: this.requireStamp(row, 'rulesetId'),
+            rulesetId: previousRulesetId,
             next: {
               text: extraction().current.keptText,
               textHash: extraction().textHash,
               textExtractionVersion: extraction().textExtractionVersion,
             },
-            decisionId: supersedingDecision(this.rules, this.decisions, t)?.id ?? null,
+            decisionId:
+              previousRulesetId === stamp.rulesetId ? null : (supersedingDecision(this.rules, this.decisions, t)?.id ?? null),
             derivedAt: row.updatedAt,
           }
         : null;
