@@ -1,4 +1,5 @@
 import { JSDOM } from 'jsdom';
+import { isBuildHashClass } from './buildHashClasses';
 import { htmlToText, normaliseText } from './htmlText';
 import {
   captureHtml,
@@ -200,6 +201,13 @@ export interface OutlineNode {
    */
   positional: boolean;
   /**
+   * True when the selector needed a BUILD-HASH class to be unique (A8's
+   * families) — a name the next build will regenerate. Tagged like a positional
+   * selector, for the same reason: a rule that will die at the next build is a
+   * rule the researcher knowingly takes. MARKING, amended 2026-09-06.
+   */
+  hashed: boolean;
+  /**
    * What this element IS, in words a person can act on.
    *
    * THE TREE WAS UNUSABLE WITHOUT THIS. The first researcher to see it reported
@@ -259,18 +267,30 @@ const SAFE_NAME = /^[A-Za-z_-][\w-]*$/;
  * would cost a capture, and this module has no business shipping a hand-rolled
  * CSS escaper.
  */
-function selectorFor(el: Element, doc: Document): { selector: string; positional: boolean } {
+function selectorFor(el: Element, doc: Document): { selector: string; positional: boolean; hashed: boolean } {
   const tag = el.tagName.toLowerCase();
   const id = el.getAttribute('id');
   if (id !== null && SAFE_NAME.test(id) && doc.querySelectorAll(`#${id}`).length === 1) {
-    return { selector: `#${id}`, positional: false };
+    return { selector: `#${id}`, positional: false, hashed: false };
   }
 
+  // A CLASS THAT IS A BUILD ARTEFACT IS NOT A NAME (MARKING, amended
+  // 2026-09-06; A8's family list). The hashless classes are the candidate;
+  // only when they do not name the element uniquely is the hashed form offered,
+  // and then TAGGED as hashed — a rule that will die at the next build is a
+  // rule the researcher knowingly takes.
   const classes = [...el.classList].filter((c) => SAFE_NAME.test(c));
-  if (classes.length > 0) {
+  const hashless = classes.filter((c) => !isBuildHashClass(c));
+  if (hashless.length > 0) {
+    const candidate = `${tag}.${hashless.join('.')}`;
+    if (doc.querySelectorAll(candidate).length === 1) {
+      return { selector: candidate, positional: false, hashed: false };
+    }
+  }
+  if (classes.length > hashless.length) {
     const candidate = `${tag}.${classes.join('.')}`;
     if (doc.querySelectorAll(candidate).length === 1) {
-      return { selector: candidate, positional: false };
+      return { selector: candidate, positional: false, hashed: true };
     }
   }
 
@@ -281,7 +301,7 @@ function selectorFor(el: Element, doc: Document): { selector: string; positional
   const parent = el.parentElement;
   const parentPart =
     parent && parent.tagName !== 'HTML' ? `${selectorFor(parent, doc).selector} > ` : '';
-  return { selector: `${parentPart}${tag}:nth-of-type(${String(index)})`, positional: true };
+  return { selector: `${parentPart}${tag}:nth-of-type(${String(index)})`, positional: true, hashed: false };
 }
 
 /**
@@ -387,6 +407,7 @@ function collapseWrappers(
   skipped: string[];
   selector: string;
   positional: boolean;
+  hashed: boolean;
 } {
   const chain: Element[] = [el];
   let current = el;
@@ -429,6 +450,7 @@ function collapseWrappers(
     skipped: scored.filter((c) => c.el !== best.el).map((c) => c.selector),
     selector: best.selector,
     positional: best.positional,
+    hashed: best.hashed,
   };
 }
 
@@ -485,7 +507,7 @@ export function documentOutline(
   let unreachableTextLength = 0;
 
   const build = (el: Element): { node: OutlineNode; element: Element } => {
-    const { target, identity, skipped, selector, positional } = collapseWrappers(el, doc);
+    const { target, identity, skipped, selector, positional, hashed } = collapseWrappers(el, doc);
     // Identical for every element in a pass-through chain, by its definition.
     const text = normaliseText(htmlToText(target.outerHTML));
     return {
@@ -497,6 +519,7 @@ export function documentOutline(
         classes: [...identity.classList],
         textLength: text.length,
         positional,
+        hashed,
         label: labelFor(identity, text),
         collapsedFrom: skipped,
         children: [],

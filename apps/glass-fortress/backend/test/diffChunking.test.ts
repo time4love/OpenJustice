@@ -107,7 +107,7 @@ describe('classifierInputChunks — one rule, shared', () => {
 
 describe('DIFF_INPUT_VERSION', () => {
   it('is a non-empty string that names the current rule', () => {
-    expect(DIFF_INPUT_VERSION).toBe('v3-sentence-claims');
+    expect(DIFF_INPUT_VERSION).toBe('v4-sentence-claims-lettered');
   });
 
   it('is NOT the classifier version — three provenance axes move independently', () => {

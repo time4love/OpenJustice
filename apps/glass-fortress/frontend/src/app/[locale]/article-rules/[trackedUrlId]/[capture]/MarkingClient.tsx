@@ -42,6 +42,8 @@ interface OutlineNode {
   classes: string[];
   textLength: number;
   positional: boolean;
+  /** The selector needed a build-hash class to be unique — a name the next build regenerates (A8). */
+  hashed: boolean;
   label: string;
   collapsedFrom: string[];
   children: OutlineNode[];
@@ -809,6 +811,11 @@ function Outline({
           {node.positional && (
             <span className="ms-1 cursor-help text-xs text-amber-800" title={t('positionalWhy')}>
               {t('positional')}
+            </span>
+          )}
+          {node.hashed && (
+            <span className="ms-1 cursor-help text-xs text-amber-800" title={t('hashedWhy')}>
+              {t('hashed')}
             </span>
           )}
           {count !== undefined && isSelected && (

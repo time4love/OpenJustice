@@ -146,9 +146,9 @@ export const ON_CHAIN_EXPLANATIONS: Record<OnChainVerdict, string> = {
   ORPHANED_ANCHOR:
     'The registry holds this hash but no evidence record exists for it. Something anchored a record that cannot now be produced — investigate before registering anything else against this hash.',
   SNAPSHOT_ANCHOR:
-    'This is an archived capture, not an evidence record, and its text is registered on-chain exactly as intended. Nothing is wrong and nothing needs repairing. A capture is anchored by its TEXT, so several captures of an unchanged page share one registration and one transaction; `snapshot.onChainTxHash` is the transaction that anchors this text, whichever capture spent it. To see the evidence records derived from this page, use get_scan_findings or search_evidence.',
+    'This is an archived capture, not an evidence record, and its bytes are registered on-chain exactly as intended: the anchor is the SHA-256 of the page as served (documentHash), under the category DOCUMENT_SHA256, written by the walk as the capture was stored. Nothing is wrong and nothing needs repairing. `snapshot.onChainTxHash` is the transaction that registered it and `anchoredHash` is what it registered. To see the page as the corpus holds it, use list_captures.',
   SNAPSHOT_UNANCHORED:
-    'Captures holding this text exist, but the registry does not hold their hash — the chain of custody for these captures is incomplete. Re-run forensics:anchor-snapshots for this page.',
+    'A capture holds these bytes, but the registry does not hold their hash — its anchor is owed. The walk retries the anchor on the next scan_captures call, through the store’s existing-row path; nothing else writes it.',
 };
 
 /**

@@ -75,10 +75,29 @@ function ruleIdOf(selector: string | null, inForce: readonly Rule[]): string | n
 }
 
 /**
+ * The segments a capture carries on BOTH of its sides — a word that is a nav
+ * item and a headline. A4, amended 2026-09-06: the sides are EXCLUSIVE sets,
+ * kept*(x) = kept(x) \ removed(x) and removed*(x) = removed(x) \ kept(x), so
+ * such a segment is in neither and cannot "change sides". Read from the code
+ * before the amendment, the inclusive predicate fired on corona's `חיסונים` at
+ * EVERY consecutive pair for as long as the word sat on both sides — a
+ * permanent stop with CONTINUE the only answer. Built 2026-09-07.
+ */
+function onBothSides(kept: string, removed: string): string[] {
+  const keptSet = new Set(segments(kept));
+  return segments(removed).filter((s) => keptSet.has(s));
+}
+
+/**
  * The core shared by Gate 1 and Gate 1': the REUSED `compareExtractions`, whose
  * segment is A4's — a line, whitespace-normalised, carrying a letter or digit —
- * and whose sides are sets. `nowRemoved` is de-duplicated by text here because
- * A4 compares SETS: a segment repeated on the removed side moved once.
+ * and whose sides are sets, narrowed here to A4's EXCLUSIVE sets: a segment on
+ * both sides of either capture is subtracted from the drift, since
+ * `removed*(c) ∩ kept*(p)` is exactly `(removed(c) ∩ kept(p))` less the segments
+ * kept(c) or removed(p) also hold, and symmetrically for the other direction.
+ * The reused module's inclusive contract (KEEP, test/extractionDrift.test.ts)
+ * is untouched. `nowRemoved` is de-duplicated by text because A4 compares SETS:
+ * a segment repeated on the removed side moved once.
  */
 function changedSides(
   previous: CaptureExtraction,
@@ -88,11 +107,16 @@ function changedSides(
 ): Gate1Fired | null {
   const drift = compareExtractions(previous, current);
   if (drift.quiet) return null;
-  const nowRemoved = [...new Map(drift.nowRemoved.map((s) => [s.text, s])).values()].map((s) => ({
-    text: s.text,
-    ruleId: ruleIdOf(s.selector, inForce),
-  }));
-  return { gate: 1, material: { against, nowRemoved, nowKept: [...drift.nowKept] } };
+  const shared = new Set([
+    ...onBothSides(previous.keptText, previous.removedText),
+    ...onBothSides(current.keptText, current.removedText),
+  ]);
+  const nowRemoved = [...new Map(drift.nowRemoved.map((s) => [s.text, s])).values()]
+    .filter((s) => !shared.has(s.text))
+    .map((s) => ({ text: s.text, ruleId: ruleIdOf(s.selector, inForce) }));
+  const nowKept = [...drift.nowKept].filter((text) => !shared.has(text));
+  if (nowRemoved.length === 0 && nowKept.length === 0) return null;
+  return { gate: 1, material: { against, nowRemoved, nowKept } };
 }
 
 /**
