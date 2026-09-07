@@ -493,7 +493,8 @@ The refactor is done when every line below is a check that has run, not a senten
 - every RETIRE-tagged test in the as-built doc's §8 is gone, and every KEEP file is unchanged since
   step 0 — `git diff` against the step-0 commit shows no edit to a KEEP file;
 - the retired-names source scan is green, with its decoy;
-- the MCP surface is exactly the factual layer's five write tools and two reads plus the
+- the MCP surface is exactly the factual layer's five write tools and three reads (amended
+  2026-09-07: `get_rule_history`, flows A5) plus the
   evidence surface of the evidence doc's A4, and `mcpToolClassification` agrees;
 - the walla page has been re-walked from its first rule on staging: the survey, the bootstrap stop,
   the stops that followed, and the first re-walk after a correction, with the transcript in a dated

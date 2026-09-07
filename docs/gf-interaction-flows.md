@@ -57,7 +57,7 @@ scan_captures(url, maxCaptures)                 Phases 1–4 and Flow 3 · the w
 approve_article_rules(url, capture)             MARKING · every answer that is a draft
 resolve_scan_stop(url, capture, BAD_CAPTURE, reason)   Flow 2 · the one answer that is not
 reset_article_calibration(url, reason)          Flow 3 · one RESET; every earlier rule loses authority
-reads: get_article_rules(url) · list_captures(url)
+reads: get_article_rules(url) · list_captures(url) · get_rule_history(url, ruleId)   amended 2026-09-07
 ```
 
 **Retired:** `calibrate_article_rules`, `correct_article_rules`, `open_article_capture`,
@@ -317,8 +317,9 @@ backend      per capture, in DATE order, over rows that are UNFETCHED, PENDING_J
                the never-seen removals, each with its rule (4) ·
                the diff and the verdict (5)
 
-Claude       shows the material and hands over the marking URL — Flow 2
-             the stop is resolved there, with ONE of:
+Claude       shows the material, rule by rule, in the chat — Flow 2 (amended 2026-09-07);
+             the marking URL is handed over for CORRECT
+             the stop is resolved with ONE of (CORRECT in the page, the rest in the chat):
                  CONTINUE     the rules are right here             → CAPTURE_ACCEPTED
                  CORRECT      the rules are wrong here             → RULESET_CORRECTED,
                               Rule rows, validFrom = THIS capture's date, then CAPTURE_ACCEPTED
@@ -538,19 +539,18 @@ browser      → POST /api/article-rules/pages/:trackedUrlId/captures/:capture/p
                     { selectors }                      on EVERY edit, PURE, stores nothing
              ← keptText · removedText · removedSegments by rule · matchCounts
 researcher   answers ONE of, in the page:
-               CONTINUE   approves as is                                          ⚠️ affordance
+               CONTINUE   approves as is (or, amended 2026-09-07, in the chat — Flow 2)
                CORRECT    marks furniture, or unmarks it
-               TRUST      ticks any rules whose removals need no more review      ⚠️ affordance
+               TRUST      amended 2026-09-07: given in the chat, not here — Flow 2
              and presses שמור טיוטא חדשה של חוקי חילוץ הטקסט
 browser      → PUT  /api/article-rules/pages/:trackedUrlId/draft
-                    { capture, selectors, trusted: [selector…], returned: true }
+                    { capture, selectors, returned: true }        trusted left 2026-09-07
              ← the draft, handed back
 researcher   pastes into the chat:  approve_article_rules url=… capture=…
 Claude       → approve_article_rules(url, capture)                     MCP
 backend      promotes the draft, in order and as ONE transaction:
                new selectors  → Rule rows, validFrom = THIS capture's date · RULESET_CORRECTED
-               trusted rules  → RULE_TRUSTED, one per rule
-               then           → CAPTURE_ACCEPTED
+               then           → CAPTURE_ACCEPTED        (RULE_TRUSTED is resolve_scan_stop's, 2026-09-07)
              every decision attributed to the researcher in context
              ← the rules now in force, and what changed
 Claude       → scan_captures(url, …)         the held row is now RESOLVED
@@ -563,8 +563,14 @@ STATE        draft (written by the BROWSER) · Rule rows · the decisions
 
 **ONE COMMAND, WHICHEVER ANSWER IT WAS.** CONTINUE hands back an unchanged draft, CORRECT a changed one,
 TRUST a draft carrying rule ids; the same approval promotes all of it. A rule created in this draft can
-be trusted in this draft. BAD CAPTURE is the one answer that is not a draft: the researcher looks here,
+be trusted in this draft (both amended 2026-09-07, below: trust is the chat's). BAD CAPTURE is the one answer that is not a draft: the researcher looks here,
 then pastes `resolve_scan_stop url=… capture=… BAD_CAPTURE reason=…` instead.
+
+**Amended 2026-09-07: TRUST leaves the page.** `draftTrusted` is retired, and with it "a rule created
+in this draft can be trusted in this draft" — a rule is trusted at a stop, in the chat, after its
+removals have been read. CONTINUE no longer needs a returned draft: it is `resolve_scan_stop`
+CONTINUE. The page's stop panel says why the walk stopped and what to mark — the gate, and Gate 1's
+lines that entered the text — and asks nothing.
 
 **AN EMPTY DRAFT IS APPROVED EXPLICITLY OR NOT AT ALL.** A page with no furniture exists, so zero rules
 cannot be refused outright — but an approval of nothing has twice gone through unnoticed. On a
@@ -622,15 +628,21 @@ researcher   opens MARKING and answers ONE of four
 
 CONTINUE     the rules are right here — a widget legitimately left the page, the
              verdict was wrong, the removal is furniture after all
-             → MARKING, unchanged draft → CAPTURE_ACCEPTED → the walk acquires it
+             → in the chat: resolve_scan_stop CONTINUE → CAPTURE_ACCEPTED → the walk
+               acquires it (amended 2026-09-07; MARKING with an unchanged draft still resolves it)
 
 CORRECT      the rules are wrong here
              → MARKING, changed draft → Rule rows, validFrom = THIS capture's date,
                RULESET_CORRECTED, CAPTURE_ACCEPTED → the walk re-derives and acquires it
 
 TRUST        Gate 4 only: these rules' removals need no more review
-             → MARKING, draft carrying selectors → RULE_TRUSTED per rule,
-               CAPTURE_ACCEPTED → the walk acquires it
+             → in the chat: resolve_scan_stop CONTINUE trust=[selector…] → RULE_TRUSTED per
+               rule, CAPTURE_ACCEPTED → the walk acquires it (amended 2026-09-07)
+
+END          a rule is taking article text
+             → in the chat: resolve_scan_stop CONTINUE end=[selector…] → RULE_ENDED per rule,
+               validTo = THIS capture's date, CAPTURE_ACCEPTED (amended 2026-09-07; unmarking
+               in MARKING is the same decision with the element under the cursor)
 
 BAD CAPTURE  this capture does not speak; reason REQUIRED
              researcher pastes:  resolve_scan_stop url=… capture=… BAD_CAPTURE reason=…
@@ -642,6 +654,26 @@ BAD CAPTURE  this capture does not speak; reason REQUIRED
 
 STATE        one decision, always · Rule rows only on CORRECT
 ```
+
+**JUDGEMENT IN THE CHAT, MARKING ON THE PAGE. Amended 2026-09-07**, after the first live stop under
+PR 3's panel: a researcher was asked to make several judgements at once, on a page, with no one to
+ask. A stop is a task inside the walk, and the chat is where a task with judgement in it is done. So:
+CONTINUE, TRUST per rule, END per rule and BAD CAPTURE are given in the chat and recorded by ONE
+`resolve_scan_stop` call per stop; only CORRECT — marking or unmarking with the element under the
+cursor — goes through MARKING, which then ends as before. When a stop needs marking as well, MARKING
+comes first and the chat's decisions after it, against the ruleset the marking left.
+
+Claude drives the stop RULE BY RULE, from the stop's material joined with `get_rule_history`, and
+decides nothing. For each rule: the element in words — its tag and the first text it removed, never
+the selector as the name; the rule's history — created against which capture, matched since, trusted
+or not; the first 5 removed texts VERBATIM from the return, the rest on request, never a summary in
+their place; and the three answers with what each means — TRUST: Gate 4 stops asking about this
+element's contents on later captures, Gate 1 still catches its text if it changes sides, reversible by
+a later decision; CONTINUE without trust: this capture is accepted and the element's new contents will
+stop the walk again; END: the rule stops from this capture's date, its text enters the article from
+here, earlier captures untouched. Gate 2's rule shows what it removed on the previous capture, from its
+history. This script is part of the tool contract (A5), not of any session, so every connector session
+drives a stop the same way.
 
 **Both directions stop.** `kept → removed` is DATA LOSS; `removed → kept` is CORPUS POLLUTION, because
 `text` feeds `textHash` and every later capture then looks novel.
@@ -796,9 +828,9 @@ rule        ruleId (cuid)
 ```
 TrackedUrl              + createdById (researcher) · createdAt
                         + draftCapture (timestamp | null) · draftSelectors String[] ·
-                          draftTrusted SELECTOR[] · draftReturnedAt (DateTime | null)
-                          — trust is named by selector: one live rule per selector makes a
-                          selector a unique name, and it is what the page has
+                          draftReturnedAt (DateTime | null)
+                          — draftTrusted RETIRED 2026-09-07: trust is given in the chat (Flow 2),
+                          named by selector on resolve_scan_stop; PR 4 drops the column
 
 WorkListRow             one per capture the archive reported          ⚠️ on the existing index table
   KEY                   @@unique([trackedUrlId, waybackTimestamp])
@@ -1038,27 +1070,38 @@ approve_article_rules({ url, capture, rules?: 0 })
                                                  STALE by predicate; the re-walk takes them
                                                one RULESET_CORRECTED names the capture
               selectors removed                → RULE_ENDED each, validTo = t
-              draftTrusted (selectors)         → RULE_TRUSTED each, mapped to the live rule — created
-                                                 by this approval or existing; a rule created in a
-                                                 draft can be trusted in that draft
+              draftTrusted                     — retired 2026-09-07: trust is resolve_scan_stop's (Flow 2)
               then CAPTURE_ACCEPTED, rulesetId = RULESET_ID(page, t) after the changes
               draft cleared
   returns   { rules: RULES_IN_FORCE(page, t) after the approval, each { ruleId, selector, validFrom,
               validTo, trusted },
-              changes: { added, ended, trusted, extended } each [{ ruleId, selector }],
+              changes: { added, ended, extended } each [{ ruleId, selector }]   (trusted left 2026-09-07),
               decisionSequence }
             — "the rules now in force, and what changed" are literally the two fields
   refuses   NO_DRAFT · DRAFT_NOT_RETURNED · DRAFT_FOR_OTHER_CAPTURE · CAPTURE_NOT_MARKABLE
             (row not PENDING_JUDGEMENT and not ACQUIRED) · EMPTY_RULESET_UNCONFIRMED
             (zero rules in force after this approval and rules≠0) · STALE_SEQUENCE
 
-resolve_scan_stop({ url, capture, resolution: 'BAD_CAPTURE', reason })
-  does      ONE transaction: CAPTURE_SKIPPED with rulesetId = RULESET_ID(page, t) · row := SKIPPED,
-            heldBody and stop cleared, reason stored · the draft cleared IF it names this capture —
-            a draft naming a skipped capture is void — and left if it names another
-  returns   { capture, outcome: 'SKIPPED', decisionSequence }
-  refuses   NOT_PENDING · REASON_REQUIRED · INVALID_RESOLUTION (anything but BAD_CAPTURE) ·
-            STALE_SEQUENCE
+resolve_scan_stop({ url, capture, resolution: 'CONTINUE' | 'BAD_CAPTURE',
+                    trust?: selector[], end?: selector[], reason? })       amended 2026-09-07 (Flow 2)
+  does      ONE transaction, t = the capture's timestamp:
+            CONTINUE → RULE_TRUSTED for each trust entry, mapped to the live rule at t ·
+                       RULE_ENDED for each end entry, validTo = t ·
+                       then CAPTURE_ACCEPTED, rulesetId = RULESET_ID(page, t) after the changes ·
+                       stop cleared; the row stays PENDING_JUDGEMENT holding its bytes until the
+                       retry acquires it, exactly as after approve_article_rules.
+                       On a row already RESOLVED (approve_article_rules ran first, for CORRECT), the
+                       rule decisions are written and no second CAPTURE_ACCEPTED; on a stop that
+                       needs both, marking comes first
+            BAD_CAPTURE → CAPTURE_SKIPPED with rulesetId = RULESET_ID(page, t) · row := SKIPPED,
+                       heldBody and stop cleared, reason stored · the draft cleared IF it names this
+                       capture — a draft naming a skipped capture is void — and left if it names
+                       another; trust and end are refused with it
+  returns   CONTINUE: { capture, resolution, changes: { trusted, ended } each [{ ruleId, selector }],
+                       decisionSequence }
+            BAD_CAPTURE: { capture, outcome: 'SKIPPED', decisionSequence }
+  refuses   NOT_PENDING · REASON_REQUIRED · INVALID_RESOLUTION · NO_SUCH_RULE (a selector with no
+            live rule at t) · STALE_SEQUENCE
             Amended 2026-09-07 (step 5's staging exercise): an UNFETCHED row may be skipped too,
             the same act with the same reason required — for a capture the archive refuses with
             429 indefinitely (a third archive answer, below), only the researcher's explicit word
@@ -1088,6 +1131,18 @@ list_captures({ url, outcome? })                                           read,
               comparedTo, rulesetId, snapshotId, stale: bool, stopGates: gate[] | null }]
             — never the held bytes
   refuses   NOT_SURVEYED · INVALID_OUTCOME
+
+get_rule_history({ url, ruleId })                                          read, GATED · amended 2026-09-07
+  returns   { rule: { ruleId, selector, validFrom, validTo, trusted, createdAt, createdById,
+                      decisions: [{ type, waybackTimestamp, researcherId, createdAt }] },
+              matches: [{ capture, outcome, matchedNodes,
+                          removed: [text…] | null, removedCount: n | null }] }
+            in timestamp order; removed is re-derived under RULES_IN_FORCE for that date from the
+            bytes held (ACQUIRED, PENDING_JUDGEMENT) and null where no body is held (DUPLICATE,
+            IDENTICAL — the 2026-09-02 ruling); the latest maxCaptures rows, an operational
+            parameter (A8), never a judgement. What Flow 2's per-rule script reads: Claude says
+            what the series shows and turns it into no verdict and no threshold
+  refuses   NOT_SURVEYED · NO_SUCH_RULE
 ```
 
 ### A6. Routes — the marking page's only surface
@@ -1100,7 +1155,7 @@ GET    /pages/:trackedUrlId/captures/:capture
             outline: { root, truncated, unreachableTextLength } — the reused documentOutline over
             the decoded document, never the inert one,
             rulesInForce: [{ ruleId, selector, trusted }],
-            draft: { capture, selectors, trusted, returnedAt } | null,
+            draft: { capture, selectors, returnedAt } | null,        trusted left 2026-09-07
             stop: { gates: [{ gate, material }, …] } | null }
        `url` is the page's url, exact — what the approve line below is shown with; `outline` is
        what the page offers to click (amended 2026-09-05: MARKING already said "plus its outline")
@@ -1114,10 +1169,10 @@ POST   /pages/:trackedUrlId/captures/:capture/preview
        pure; writes nothing
 
 GET    /pages/:trackedUrlId/draft
-       ← { capture, selectors, trusted, returnedAt } | null
+       ← { capture, selectors, returnedAt } | null                  trusted left 2026-09-07
 
 PUT    /pages/:trackedUrlId/draft
-       → { capture, selectors: string[], trusted: selector[], returned: bool }
+       → { capture, selectors: string[], returned: bool }           trusted left 2026-09-07
        ← the draft; last write wins, no version
 
 DELETE /pages/:trackedUrlId/draft                     the researcher's cancel; the log is untouched
