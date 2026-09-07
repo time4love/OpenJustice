@@ -27,7 +27,12 @@ import { htmlToText, normaliseText } from './htmlText';
  * this repository has already done four times (`classifierVersion`,
  * `summaryVersion`, `diffInputVersion`, `DETECTION_VERSION`).
  */
-export const TEXT_EXTRACTION_VERSION = 'v2-inflate-decode-htmltotext-normalised';
+/**
+ * v3 (2026-09-07): the document head is dropped before html-to-text — see
+ * `htmlToText`. Every text derived under v2 is STALE by the extractor axis
+ * (flows A3) and is superseded by the re-walk, its previous text kept.
+ */
+export const TEXT_EXTRACTION_VERSION = 'v3-inflate-decode-nohead-htmltotext-normalised';
 
 /** SHA-256 hex digest of bytes. Bare hex — see toBytes32 before any chain call. */
 export function sha256Bytes(bytes: Buffer): string {
