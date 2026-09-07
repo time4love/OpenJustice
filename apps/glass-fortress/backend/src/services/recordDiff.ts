@@ -1,4 +1,5 @@
 import { createHash } from 'crypto';
+import type { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { diffChunkPair } from '../lib/diffChunking';
 import { checkDiffSurvival, SURVIVAL_CHECK_VERSION, type SurvivalVerdict } from '../lib/diffSurvival';
@@ -136,8 +137,14 @@ interface StoredSide {
  * holds under a different text than the walk compared, is a walk defect: a diff
  * spans two stored texts, and its chunks must be cut from exactly those.
  */
-async function storedPair(input: DiffWrite): Promise<{ before: StoredSide; after: StoredSide }> {
-  const rows = await prisma.urlSnapshot.findMany({
+async function storedPair(
+  input: DiffWrite,
+  client: Prisma.TransactionClient | typeof prisma,
+): Promise<{ before: StoredSide; after: StoredSide }> {
+  // Read through the caller's transaction when there is one: inside a
+  // supersession the snapshot's text has just moved on that client, and the
+  // guard below must see the text the version is being cut from.
+  const rows = await client.urlSnapshot.findMany({
     where: { id: { in: [input.beforeSnapshotId, input.afterSnapshotId] } },
     select: PAIR_SELECT,
   });
@@ -197,7 +204,7 @@ function chunksWithSurvival(before: StoredSide, after: StoredSide, input: DiffWr
  * whether this content was new, so "a re-derivation whose hash exists writes
  * nothing" is the index's answer, not a read-then-write race.
  */
-export async function recordDiff(input: DiffWrite): Promise<WrittenDiff> {
+export async function recordDiff(input: DiffWrite, tx?: Prisma.TransactionClient): Promise<WrittenDiff> {
   if (input.beforeSnapshotId === input.afterSnapshotId) {
     throw new Error(
       `recordDiff: refusing a diff whose two sides are the same capture ` +
@@ -207,12 +214,17 @@ export async function recordDiff(input: DiffWrite): Promise<WrittenDiff> {
   }
 
   const { trackedUrlId, beforeSnapshotId, afterSnapshotId, before, after, ...classification } = input;
-  const stored = await storedPair(input);
+  const stored = await storedPair(input, tx ?? prisma);
   const chunks = chunksWithSurvival(stored.before, stored.after, input);
   const hash = contentVersionHash(chunks);
 
-  return prisma.$transaction(async (tx) => {
-    const pair = await tx.urlVersionDiff.upsert({
+  // THE CALLER'S TRANSACTION, WHEN IT HAS ONE (step 7). A supersession
+  // re-derives every diff spanning the superseded text in the SAME transaction
+  // as the text version and the snapshot's new text (evidence flows §3), so the
+  // walk hands its client in and this opens none; the acquisition's diff, with
+  // no transaction to join, gets its own under the shared window.
+  const writeIn = async (client: Prisma.TransactionClient): Promise<WrittenDiff> => {
+    const pair = await client.urlVersionDiff.upsert({
       where: { beforeSnapshotId_afterSnapshotId: { beforeSnapshotId, afterSnapshotId } },
       // The pair, and the three legacy NOT NULL columns filled from the
       // captures; every other legacy column keeps its default — the content is
@@ -228,7 +240,7 @@ export async function recordDiff(input: DiffWrite): Promise<WrittenDiff> {
       update: {},
       select: { id: true },
     });
-    const version = await tx.diffContentVersion.createMany({
+    const version = await client.diffContentVersion.createMany({
       data: [
         {
           diffId: pair.id,
@@ -244,5 +256,6 @@ export async function recordDiff(input: DiffWrite): Promise<WrittenDiff> {
       skipDuplicates: true,
     });
     return { id: pair.id, contentVersionHash: hash, created: version.count === 1 };
-  }, WRITE_TRANSACTION);
+  };
+  return tx === undefined ? prisma.$transaction(writeIn, WRITE_TRANSACTION) : writeIn(tx);
 }

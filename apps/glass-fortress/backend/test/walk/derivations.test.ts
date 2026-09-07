@@ -11,6 +11,7 @@ import {
   stale,
   extractorOf,
   predecessor,
+  successor,
   knownText,
   nextRow,
   supersedingDecision,
@@ -363,6 +364,26 @@ describe('STALE(row) — derived under a ruleset or extractor that is no longer 
         stale: outcome === 'ACQUIRED' || outcome === 'DUPLICATE',
       });
     }
+  });
+});
+
+// The mirror of PREDECESSOR, for A5's clause (evidence flows §7) and step 7's
+// re-derivation: the nearest LATER ACQUIRED row. Built 2026-09-07.
+describe('successor(row) — the earliest later row in timestamp order with outcome ACQUIRED', () => {
+  it('null when nothing ACQUIRED follows', () => {
+    const last = row(T3, 'UNFETCHED');
+    expect(successor([row(T09, 'ACQUIRED'), row(T2, 'DUPLICATE'), last], last)).toBeNull();
+  });
+
+  it('the nearest later ACQUIRED, skipping outcomes that hold no text of their own', () => {
+    const subject = row(T09, 'UNFETCHED');
+    const rows = [subject, row(T14, 'DUPLICATE'), row(T2, 'ACQUIRED'), row(T3, 'ACQUIRED')];
+    expect(successor(rows, subject)?.waybackTimestamp).toBe(T2);
+  });
+
+  it('an ACQUIRED subject is not its own successor — the re-walk case', () => {
+    const subject = row(T2, 'ACQUIRED');
+    expect(successor([row(T09, 'ACQUIRED'), subject, row(T3, 'ACQUIRED')], subject)?.waybackTimestamp).toBe(T3);
   });
 });
 
