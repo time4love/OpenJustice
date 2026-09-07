@@ -973,9 +973,13 @@ DiffContentVersion                                                    ⚠️ to 
                           legallySignificant, editorial, summary, classifierVersion,
                           classifierModel, draws, summaryVersion
   survivalVersion         SURVIVAL_CHECK_VERSION at derivation. Amended 2026-09-07 (step 5's
-                          exercise): survival compares the EXTRACTOR alone — a rule change between
-                          the two captures leaves every chunk checkable; only a different extractor
-                          makes them UNCHECKABLE
+                          exercise), twice: survival compares the EXTRACTOR alone — a rule change
+                          between the two captures leaves every chunk checkable; and it is checked
+                          AGAINST THE DOCUMENTS' OWN TEXT (the page as served, no rule applied), as
+                          §3 says, on BOTH halves of a chunk's claim — a "removed" chunk the after
+                          page still shows, or one the before page never showed, is CONTRADICTED;
+                          likewise an "added" one. A rule that cuts a sentence is thereby
+                          CONTRADICTED on its face, never SURVIVES
   derivedAt
   @@unique([diffId, contentVersionHash])
   a re-derivation whose contentVersionHash exists is NOT a row: nothing is written and CURRENT

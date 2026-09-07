@@ -44,6 +44,8 @@ interface OutlineNode {
   positional: boolean;
   /** The selector needed a build-hash class to be unique — a name the next build regenerates (A8). */
   hashed: boolean;
+  /** The rules in force that match this element, matched in the backend against the real DOM — the page highlights by this, never by comparing selector strings (F1). */
+  matchedBy: { ruleId: string; selector: string }[];
   label: string;
   collapsedFrom: string[];
   children: OutlineNode[];
@@ -766,8 +768,14 @@ function Outline({
   t: ReturnType<typeof useTranslations>;
 }) {
   const [open, setOpen] = useState(depth < OPEN_TO_DEPTH);
-  const isSelected = selected.includes(node.selector);
-  const count = preview?.matchCounts[node.selector];
+  // THE SELECTOR THIS NODE STANDS FOR: a selected rule that MATCHES the element
+  // (matched in the backend against the real DOM) owns it, whatever string the
+  // outline would offer today — so a hashed rule still shows on the element it
+  // removes, and a click unmarks THAT rule rather than adding a second one (F1).
+  const owning = node.matchedBy.map((r) => r.selector).find((s) => selected.includes(s));
+  const effective = owning ?? node.selector;
+  const isSelected = selected.includes(effective);
+  const count = preview?.matchCounts[effective];
   // MARKING THE WHOLE DOCUMENT IS NOT A FURNITURE RULE, it is "delete the page".
   // Judged by TEXT rather than by depth, so a body with one all-containing
   // wrapper is refused too.
@@ -795,7 +803,7 @@ function Outline({
           type="button"
           disabled={disabled || wholeDocument}
           onClick={() => {
-            onToggle(node.selector);
+            onToggle(effective);
           }}
           title={
             wholeDocument

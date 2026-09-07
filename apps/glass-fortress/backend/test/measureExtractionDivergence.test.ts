@@ -68,6 +68,8 @@ describe('measureExtractionDivergence — per-diff verdicts', () => {
     diffFindMany.mockResolvedValue([
       diff({
         rawDeletedText: JSON.stringify([GENUINELY_REMOVED]),
+        // The before page showed what the diff says was removed (F2: a chunk is held to its own side too).
+        beforeSnapshot: snap(`intro\n${GENUINELY_REMOVED}`),
         afterSnapshot: snap('a document that says something else entirely'),
       }),
     ]);
@@ -89,6 +91,7 @@ describe('measureExtractionDivergence — per-diff verdicts', () => {
     diffFindMany.mockResolvedValue([
       diff({
         rawDeletedText: JSON.stringify([`${GENUINELY_REMOVED} ${SURVIVING_SENTENCE}`]),
+        beforeSnapshot: snap(`${GENUINELY_REMOVED} ${SURVIVING_SENTENCE}`),
         afterSnapshot: snap(`כותרת אחרת\n${SURVIVING_SENTENCE}`),
       }),
     ]);

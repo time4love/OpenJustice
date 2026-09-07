@@ -251,7 +251,7 @@ describe('GET /pages/:trackedUrlId/captures/:capture', () => {
     expect(res.body.document).toBe('<inert><html>held</html></inert>');
     // The outline is built over the decoded document — the same string the
     // inert render receives — never over the inert one.
-    expect(mockOutline).toHaveBeenCalledWith('<html>held</html>');
+    expect(mockOutline).toHaveBeenCalledWith('<html>held</html>', expect.anything());
     expect(res.body.outline).toEqual({ root: { tag: 'body', children: [] }, truncated: false, unreachableTextLength: 0 });
   });
 
@@ -303,6 +303,17 @@ describe('GET /pages/:trackedUrlId/captures/:capture', () => {
         stop: STOP,
       }),
     );
+  });
+
+  // F1 (2026-09-07): the outline is built WITH the rules in force, so each node
+  // can say which rule matches its element — the page highlights by that, not
+  // by comparing selector strings, which broke the moment the outline offered
+  // a hashless selector for an element a hashed rule still removes.
+  it('hands the outline the rules in force at the capture’s timestamp', async () => {
+    page();
+    rowOf('PENDING_JUDGEMENT');
+    await request(app).get(`${BASE}/captures/${T14}`);
+    expect(mockOutline).toHaveBeenCalledWith(expect.any(String), { rules: [{ ruleId: 'r1', selector: '.ticker' }] });
   });
 
   it('draft is null when the page holds none, and stop is null on an ACQUIRED capture', async () => {
