@@ -28,6 +28,13 @@ export function timestampToDate(ts: string): string {
  */
 export function htmlToText(html: string): string {
   return html
+    // The document head is markup, not page text: the title a browser shows in
+    // its tab, meta, scripts, styles. A rule cannot reach it — the marking
+    // page's outline is the body's — so until 2026-09-07 it survived every
+    // calibration and moved with the site's suffix at every redesign. Dropped
+    // by construction, before any rule; `<header>` is not a head (the \b), and
+    // a head the author never closed ends where the body begins.
+    .replace(/<head\b[^>]*>[\s\S]*?(?:<\/head>|(?=<body\b))/i, ' ')
     // Script and style bodies are markup, not page text. Harmless in
     // Readability's output (it strips them) but not in a raw-body read, where
     // an inline <script> would otherwise contribute its source to the text and

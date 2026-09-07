@@ -96,9 +96,9 @@ describe('deriveText runs the whole chain', () => {
   it('names the whole chain in its version, pinned to the literal', () => {
     // Pinned to the value, not to the constant — comparing the constant to
     // itself passes for any value including ''.
-    expect(TEXT_EXTRACTION_VERSION).toBe('v2-inflate-decode-htmltotext-normalised');
+    expect(TEXT_EXTRACTION_VERSION).toBe('v3-inflate-decode-nohead-htmltotext-normalised');
     expect(deriveText(PAGE, CT, null).textExtractionVersion).toBe(
-      'v2-inflate-decode-htmltotext-normalised',
+      'v3-inflate-decode-nohead-htmltotext-normalised',
     );
   });
 });

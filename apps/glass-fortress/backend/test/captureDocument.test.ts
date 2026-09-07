@@ -52,11 +52,29 @@ describe('deriveText', () => {
     // same shape as the hash-shape assertions mutation testing already caught
     // here once. Blanking the constant survived that assertion; it does not
     // survive this one.
-    expect(TEXT_EXTRACTION_VERSION).toBe('v2-inflate-decode-htmltotext-normalised');
+    expect(TEXT_EXTRACTION_VERSION).toBe('v3-inflate-decode-nohead-htmltotext-normalised');
     expect(TEXT_EXTRACTION_VERSION.length).toBeGreaterThan(0);
     expect(deriveText(html('<p>x</p>'), UTF8).textExtractionVersion).toBe(
-      'v2-inflate-decode-htmltotext-normalised',
+      'v3-inflate-decode-nohead-htmltotext-normalised',
     );
+  });
+
+  it('DROPS the document head — the title, meta and everything else in it are markup, not page text', () => {
+    // RULED 2026-09-07 (step 5's staging exercise): a rule cannot reach
+    // `<title>` — the marking page's outline is the body's — so it survived
+    // four calibrations of walla and produced a chunk at every redesign as the
+    // site suffix moved ("וואלה!" → "וואלה חדשות"). What a reader sees on the
+    // page is the body; the head is dropped by construction, before any rule.
+    const page = html(
+      '<html><head><title>headline - site</title><meta name="description" content="hidden">' +
+        '<script>var x = "script text"</script></head><body><h1>headline</h1><p>body</p></body></html>',
+    );
+    expect(deriveText(page, UTF8).text).toBe('headline\n\nbody');
+    // A head the author never closed — legal HTML — still ends where the body begins.
+    const unclosed = html('<html><head><title>headline - site</title><body><p>body</p></body></html>');
+    expect(deriveText(unclosed, UTF8).text).toBe('body');
+    // And a `<header>` is not a head.
+    expect(deriveText(html('<body><header>nav</header><p>body</p></body>'), UTF8).text).toBe('nav\nbody');
   });
 
   it('hashes the text it returns, not the bytes it was given', () => {
