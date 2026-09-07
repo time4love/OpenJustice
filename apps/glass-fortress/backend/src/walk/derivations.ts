@@ -213,14 +213,12 @@ export function seen(captures: readonly CaptureRemovals[], decisions: readonly D
 }
 
 /**
- * The EXTRACTOR of a text version: the base before the ruleset suffix the
- * reused `chromeTextVersion` appends (`<base>+chrome-<id>`). The suffix names
- * the ruleset, which STALE's other axis already compares.
+ * The EXTRACTOR of a text version — one rule, homed beside the composer that
+ * appends the ruleset suffix (`chromeTextVersion`), re-exported here because
+ * STALE's extractor axis reads it. Survival reads the same rule (2026-09-07).
  */
-export function extractorOf(textExtractionVersion: string): string {
-  const suffix = textExtractionVersion.indexOf('+chrome-');
-  return suffix < 0 ? textExtractionVersion : textExtractionVersion.slice(0, suffix);
-}
+import { extractorOf } from '../lib/chromeRuleset';
+export { extractorOf };
 
 /**
  * STALE(row): outcome ∈ {DUPLICATE, ACQUIRED} AND (its rulesetId is not

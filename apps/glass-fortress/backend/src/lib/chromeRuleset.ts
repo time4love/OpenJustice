@@ -74,11 +74,11 @@ export function chromeRulesetId(ruleset: ChromeRuleset): string {
  * the whole corpus depends on: every capture derived so far stays exactly as it
  * is, comparable to every other, with no recompute and no stale verdict.
  *
- * A non-empty ruleset appends its identity, so `survivalTextVersion` can do what
- * it already does — a diff whose two sides were derived under different rules is
- * UNCHECKABLE rather than silently compared. The first diff spanning the
- * un-ruled era and a ruled one will read UNCHECKABLE, which is that state
- * working, not a defect to explain away.
+ * A non-empty ruleset appends its identity, so a stored text says which rules
+ * cut it. The suffix names the RULESET, not the extractor: STALE compares it on
+ * its own axis (flows A3), and survival compares the extractor alone
+ * (`extractorOf`, below) — ruled 2026-09-07, when comparing whole version
+ * strings had made every chunk of every diff spanning a rule change UNCHECKABLE.
  */
 export function chromeTextVersion(baseVersion: string, ruleset: ChromeRuleset | null): string {
   // Narrowed by hand rather than through `isEmptyRuleset`, so no non-null
@@ -86,4 +86,14 @@ export function chromeTextVersion(baseVersion: string, ruleset: ChromeRuleset | 
   // guard that replaces it. See [[gf-two-lint-ratchets]].
   if (ruleset === null || ruleset.selectors.length === 0) return baseVersion;
   return `${baseVersion}+chrome-${chromeRulesetId(ruleset)}`;
+}
+
+/**
+ * The EXTRACTOR of a text version: the base before the ruleset suffix
+ * `chromeTextVersion` appends (`<base>+chrome-<id>`). The composer and its
+ * inverse live together so the suffix has one spelling.
+ */
+export function extractorOf(textExtractionVersion: string): string {
+  const suffix = textExtractionVersion.indexOf('+chrome-');
+  return suffix < 0 ? textExtractionVersion : textExtractionVersion.slice(0, suffix);
 }

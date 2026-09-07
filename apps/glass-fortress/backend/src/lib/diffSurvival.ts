@@ -1,4 +1,5 @@
 import { createHash } from 'crypto';
+import { extractorOf } from './chromeRuleset';
 import { normaliseForPresence } from './htmlText';
 import { sentencesOf } from './textSegments';
 
@@ -39,7 +40,7 @@ import { sentencesOf } from './textSegments';
  * backfill recomputes them — which is what makes a rule change reach the corpus
  * instead of quietly disagreeing with it.
  */
-export const SURVIVAL_CHECK_VERSION = 'v2-zero-chunks-uncheckable';
+export const SURVIVAL_CHECK_VERSION = 'v3-extractor-compared';
 
 /** Verdicts a diff can receive. */
 export type SurvivalVerdict = 'SURVIVES' | 'CONTRADICTED' | 'UNCHECKABLE';
@@ -147,12 +148,17 @@ export function survivalSourceStateHash(input: {
  * Does this diff's own report survive the documents it spans?
  *
  * `beforeVersion` / `afterVersion` are the snapshots' extraction versions. When
- * they DISAGREE the result is `UNCHECKABLE`, not a verdict: the two sides were
- * produced by different rules, so a presence test across them compares text that
- * was never comparable. That is a verdict about the CHECK, which §3 requires be
- * recorded rather than collapsed into a pass or a failure — and it is the reason
- * `UNCHECKABLE` remains reachable now that a diff cannot exist without both
- * captures.
+ * their EXTRACTORS disagree the result is `UNCHECKABLE`, not a verdict: the two
+ * texts were produced by different pipelines, so a presence test across them
+ * compares text that was never comparable. That is a verdict about the CHECK,
+ * which §3 requires be recorded rather than collapsed into a pass or a failure.
+ *
+ * THE EXTRACTOR ALONE — ruled 2026-09-07 (v3). A version carries the ruleset
+ * that cut the text as a suffix (`chromeTextVersion`), and under the walk a rule
+ * change is every redesign; comparing whole strings had made every chunk of
+ * every diff spanning one UNCHECKABLE (24 of 24 on walla's first walk). Whether
+ * a chunk is present in the other side's text is a fact about the texts,
+ * whichever rules cut them.
  */
 export function checkDiffSurvival(input: {
   rawDeletedText: string;
@@ -162,13 +168,13 @@ export function checkDiffSurvival(input: {
   beforeVersion: string;
   afterVersion: string;
 }): SurvivalResult {
-  if (input.beforeVersion !== input.afterVersion) {
+  if (extractorOf(input.beforeVersion) !== extractorOf(input.afterVersion)) {
     return {
       verdict: 'UNCHECKABLE',
       chunksChecked: 0,
       contradicted: [],
       reason:
-        `The two captures were extracted under different rules ` +
+        `The two captures were extracted by different extractors ` +
         `(${input.beforeVersion} vs ${input.afterVersion}), so a presence test across them ` +
         `compares text that was never comparable.`,
     };
