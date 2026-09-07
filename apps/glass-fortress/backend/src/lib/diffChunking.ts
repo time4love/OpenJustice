@@ -1,4 +1,5 @@
 import { diffArrays, diffLines, type Change } from 'diff';
+import { hasContent } from './claimSurvival';
 import { sentencesOf } from './textSegments';
 
 // Pure text-processing helpers over a line-diff result. Deliberately dependency-free
@@ -66,7 +67,17 @@ import { sentencesOf } from './textSegments';
  * are understated at the storage layer and cannot be corrected by reclassification;
  * the diff has to be recomputed from its snapshots.
  */
-export const DIFF_INPUT_VERSION = 'v3-sentence-claims';
+export const DIFF_INPUT_VERSION = 'v4-sentence-claims-lettered';
+
+/**
+ * v4-sentence-claims-lettered (2026-09-07): a chunk carries a claim only if it
+ * contains a LETTER OR A DIGIT — the gates' segment rule (A4), applied to the
+ * differ's output. Walla's first diffs under the new walk held "•" and "• • •"
+ * as chunks, list markers the gates already ignore, and a thesis could have
+ * cited them. Every diff's content version is named by its chunks, so this
+ * moves DIFF_VERSION and every diff gains a version at the next re-walk
+ * (evidence flows §3); done while no diff is cited, which is when it is free.
+ */
 
 /**
  * v3-sentence-claims: a changed region whose two sides are BOTH non-empty is
@@ -215,5 +226,9 @@ export function diffChunkPair(before: string, after: string): DiffChunks {
     }
   }
 
-  return { removed, added };
+  // A4's segment rule, at the chunk: a marker or a separator carrying no letter
+  // and no digit is not a claim and is not emitted. The region it came from was
+  // still examined — nothing skips the differ — so the no-unexamined-tail rule
+  // above holds; what is dropped could never have been checked or cited.
+  return { removed: removed.filter(hasContent), added: added.filter(hasContent) };
 }

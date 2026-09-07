@@ -68,6 +68,23 @@ describe('Gate 1 — a segment present in both captures changed sides', () => {
     });
   });
 
+  // A4, AMENDED 2026-09-06: the sides are EXCLUSIVE sets — kept*(x) = kept(x) \
+  // removed(x), removed*(x) = removed(x) \ kept(x). A segment on BOTH sides of
+  // one capture (a word that is a nav item and a headline) is in neither
+  // exclusive set, so it cannot "change sides". Measurement part 2 saw the
+  // unamended predicate fire on corona's `חיסונים` at two consecutive stops, and
+  // the code showed it firing on EVERY pair for as long as the word sat on both
+  // sides — a permanent stop with CONTINUE the only answer. Built 2026-09-07.
+  it('quiet on a segment that sits on BOTH sides of one capture — exclusive sets, never a permanent stop', () => {
+    // Before: 'חיסונים' is a headline (kept) AND a nav item (removed). Now: the
+    // headline moved on and the nav item is still removed — nothing changed sides.
+    expect(gate1(previous('חיסונים\nbody', 'חיסונים'), current('body', [{ selector: '.ticker', text: 'חיסונים' }]), inForce)).toBeNull();
+    // Before: on both sides. Now: kept only — the nav item left, the headline stays.
+    expect(gate1(previous('חיסונים\nbody', 'חיסונים'), current('חיסונים\nbody'), inForce)).toBeNull();
+    // Before: kept only. Now: on both sides — a nav item appeared with the same words.
+    expect(gate1(previous('חיסונים\nbody'), current('חיסונים\nbody', [{ selector: '.ticker', text: 'חיסונים' }]), inForce)).toBeNull();
+  });
+
   // An editorial deletion leaves the text in NEITHER side. That is the whole
   // discrimination: an article being edited never calls a human.
   it('quiet when text kept before is absent from both sides now', () => {

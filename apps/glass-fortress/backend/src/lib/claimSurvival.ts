@@ -59,6 +59,6 @@ export function segments(text: string): string[] {
  *
  * `\p{L}` and `\p{N}` rather than `[a-zA-Z0-9]`, because this corpus is Hebrew.
  */
-function hasContent(line: string): boolean {
+export function hasContent(line: string): boolean {
   return /[\p{L}\p{N}]/u.test(line);
 }

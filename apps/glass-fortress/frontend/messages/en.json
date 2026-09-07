@@ -1796,6 +1796,8 @@
     "outlineTruncated": "The structure was cut short. {chars} characters are not reachable in the tree.",
     "positional": "⚠ positional",
     "positionalWhy": "The element is identified by its position, not by a name. After a redesign the rule may point at a different element or at nothing. Prefer an element with a name or an id, if one removes the same text.",
+    "hashed": "⚠ build hash",
+    "hashedWhy": "The element is identified by a class the site's build tool generates, which changes at the next build. The rule will stop matching then. Prefer an element with a stable name or an id, if one removes the same text.",
     "wholeDocument": "The whole document — cannot be marked",
     "collapsedFrom": "Folded wrappers: {selectors}",
     "expand": "Expand",

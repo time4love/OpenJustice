@@ -89,6 +89,19 @@ describe('decideOnChainVerdict', () => {
     },
   ];
 
+  // A STORED VERDICT MAKES A CLAIM, and a false one is not archaeology
+  // (CLAUDE.md). Found 2026-09-06 in the first anchor's stored explanation:
+  // "anchored by its TEXT" — the anchor is over the BYTES (documentHash, the
+  // scheme DOCUMENT_SHA256) — and two retired tools named as the way on.
+  it('the capture explanations name the bytes, not the text, and no retired tool', () => {
+    const anchored = ON_CHAIN_EXPLANATIONS[ON_CHAIN_VERDICTS.SNAPSHOT_ANCHOR];
+    const owed = ON_CHAIN_EXPLANATIONS[ON_CHAIN_VERDICTS.SNAPSHOT_UNANCHORED];
+    expect(anchored).toMatch(/bytes/i);
+    expect(anchored).not.toMatch(/by its TEXT|get_scan_findings|search_evidence/);
+    expect(owed).not.toMatch(/forensics:anchor-snapshots/);
+    expect(owed).toMatch(/scan_captures/);
+  });
+
   for (const c of cases) {
     it(c.name, () => {
       expect(decideOnChainVerdict(c.claim, c.registered)).toBe(c.expected);

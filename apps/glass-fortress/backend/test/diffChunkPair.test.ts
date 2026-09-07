@@ -142,10 +142,22 @@ describe('the claim granularity and the check granularity are the same rule', ()
     expect(removed).toEqual(['Four.']);
   });
 
+  // A4's segment rule, applied to chunks (ruled 2026-09-07, from step 5's
+  // staging exercise): a chunk carries a claim only if it contains a LETTER OR
+  // A DIGIT. Walla's first diffs held "•" and "• • •" as chunks — list markers
+  // the gates already ignore as segments — and a thesis could have cited them.
+  it('emits no chunk without a letter or digit — a lone bullet or separator is not a claim', () => {
+    const { removed, added } = diffChunkPair('headline\n•\nbody', 'headline\n• • •\n—\nbody');
+    expect(removed).toEqual([]);
+    expect(added).toEqual([]);
+    // A chunk that carries words beside its marker is kept whole.
+    expect(diffChunkPair('a\n• item one\nb', 'a\nb').removed).toEqual(['• item one']);
+  });
+
   it('DIFF_INPUT_VERSION names the rule that produced these chunks', () => {
     // The cascade key. A chunk set computed under one rule and stamped with
     // another is the two-paths-one-version-string defect, and it is what made a
     // 40-character floor invisible across two classification paths.
-    expect(DIFF_INPUT_VERSION).toBe('v3-sentence-claims');
+    expect(DIFF_INPUT_VERSION).toBe('v4-sentence-claims-lettered');
   });
 });

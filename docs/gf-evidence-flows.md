@@ -911,7 +911,11 @@ contentVersionHash      CAPTURE: the TextVersion's textHash, unchanged (flows A2
                         DIFF:    sha256( utf8( JSON of [ { side: 'REMOVED'|'ADDED', text } … ] ) )
                                  — the differ's raw segments in the differ's output order,
                                    text whitespace-normalised as the differ emits it;
-                                   NO survival, NO opinion, NO version label in the hash
+                                   NO survival, NO opinion, NO version label in the hash.
+                                   Amended 2026-09-07 (step 5's exercise): a chunk carries a
+                                   claim only if it contains a letter or a digit — the flows'
+                                   A4 segment rule, applied at the differ; DIFF_INPUT_VERSION
+                                   moved, so every diff gains a version at the next re-walk
 ANCHOR_SCHEME           the registry category written on every entry: 'DOCUMENT_SHA256'
                         — one constant, one importable symbol, read by WRITES_ALLOWED
 ```
