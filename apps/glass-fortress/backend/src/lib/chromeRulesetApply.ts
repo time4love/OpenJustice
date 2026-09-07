@@ -208,6 +208,15 @@ export interface OutlineNode {
    */
   hashed: boolean;
   /**
+   * The rules in force that MATCH this element, by matching against the real
+   * DOM — never by comparing selector strings. The page highlights by this and
+   * unmarks the matching rule on a click. Added 2026-09-07 (F1): once the
+   * hashless tier offered `header.no-mobile-app.main-header`, a rule approved
+   * as `header.no-mobile-app.css-gf5unx.main-header` still removed the element
+   * and showed as nothing, and a click would have added a second rule for it.
+   */
+  matchedBy: { ruleId: string; selector: string }[];
+  /**
    * What this element IS, in words a person can act on.
    *
    * THE TREE WAS UNUSABLE WITHOUT THIS. The first researcher to see it reported
@@ -486,10 +495,26 @@ function collapseWrappers(
  * `maxDepth` survives only as a guard against pathological nesting; `maxNodes`
  * is the real bound, and `unreachableTextLength` reports what a cut cost.
  */
+/** A rule in force, as the outline needs it to say which element each one matches. */
+export interface OutlineRule {
+  ruleId: string;
+  selector: string;
+}
+
+/** Does this element match the selector — false, never a throw, for a selector the parser rejects. */
+function matchesSafely(el: Element, selector: string): boolean {
+  try {
+    return el.matches(selector);
+  } catch {
+    return false;
+  }
+}
+
 export function documentOutline(
   html: string,
-  options: { maxDepth?: number; maxNodes?: number } = {},
+  options: { maxDepth?: number; maxNodes?: number; rules?: readonly OutlineRule[] } = {},
 ): DocumentOutline {
+  const rules = options.rules ?? [];
   // MEASURED ON THE TWO REAL PAGES THIS CORPUS HOLDS, not chosen for roundness.
   // The MOH vaccine page needs depth 9 and 294 nodes; the Walla news page —
   // which carries real ad slots and is the harder shape — needs depth 16 and
@@ -520,6 +545,7 @@ export function documentOutline(
         textLength: text.length,
         positional,
         hashed,
+        matchedBy: rules.filter((r) => matchesSafely(identity, r.selector)).map((r) => ({ ruleId: r.ruleId, selector: r.selector })),
         label: labelFor(identity, text),
         collapsedFrom: skipped,
         children: [],

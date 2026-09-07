@@ -40,7 +40,18 @@ import { sentencesOf } from './textSegments';
  * backfill recomputes them — which is what makes a rule change reach the corpus
  * instead of quietly disagreeing with it.
  */
-export const SURVIVAL_CHECK_VERSION = 'v3-extractor-compared';
+export const SURVIVAL_CHECK_VERSION = 'v4-against-documents';
+
+/**
+ * v4-against-documents (2026-09-07, F2): the writer hands the checker the two
+ * DOCUMENTS' own text — the page as served, html-to-text with no rule applied
+ * — never the other side's rule-cut text, which is what evidence flows §3
+ * meant by "against the raw documents". And a chunk is held to its own side's
+ * document too (`kind: ABSENT_FROM_OWN`). Read from the corpus of step 5's
+ * exercise: a sentence "removed" in 2021 that the 2021 page still showed, cut
+ * by a positional rule, read SURVIVES against the text and is CONTRADICTED
+ * against the document — the state that refuses promotion.
+ */
 
 /** Verdicts a diff can receive. */
 export type SurvivalVerdict = 'SURVIVES' | 'CONTRADICTED' | 'UNCHECKABLE';
@@ -48,6 +59,14 @@ export type SurvivalVerdict = 'SURVIVES' | 'CONTRADICTED' | 'UNCHECKABLE';
 export interface ContradictedChunk {
   side: 'REMOVED' | 'ADDED';
   excerpt: string;
+  /**
+   * Which half of the chunk's claim the documents contradict (F2, 2026-09-07).
+   * PRESENT_IN_OTHER: a "removed" chunk the after document still shows, or an
+   * "added" one the before document already showed. ABSENT_FROM_OWN: a
+   * "removed" chunk the before document never showed, or an "added" one the
+   * after document does not show — a sentence the rules manufactured.
+   */
+  kind: 'PRESENT_IN_OTHER' | 'ABSENT_FROM_OWN';
 }
 
 export interface SurvivalResult {
@@ -186,20 +205,29 @@ export function checkDiffSurvival(input: {
   const contradicted: ContradictedChunk[] = [];
   let chunksChecked = 0;
 
-  for (const [side, json, haystack] of [
-    ['REMOVED', input.rawDeletedText, afterNormalised],
-    ['ADDED', input.rawAddedText, beforeNormalised],
+  // BOTH HALVES OF THE CLAIM (F2, 2026-09-07). "Removed" says the before page
+  // showed it and the after page does not; "added" the reverse. A rule that
+  // cuts an inline link out of a sentence breaks both: it leaves a "removed"
+  // fragment the after page still shows, and an "added" fragment the after
+  // page never displayed. Each chunk is held to its own side's document as
+  // well as to the other's; one contradiction per chunk — the finding is that
+  // the chunk's claim is not supported, and listing every sentence inside it
+  // would inflate the count without adding a fact.
+  for (const [side, json, own, other] of [
+    ['REMOVED', input.rawDeletedText, beforeNormalised, afterNormalised],
+    ['ADDED', input.rawAddedText, afterNormalised, beforeNormalised],
   ] as const) {
     for (const chunk of parseChunks(json)) {
       chunksChecked += 1;
       for (const segment of segmentsOf(chunk)) {
         const needle = normaliseForPresence(segment);
         if (needle.length < PRESENCE_FLOOR_CHARS) continue;
-        if (haystack.includes(needle)) {
-          contradicted.push({ side, excerpt: needle.slice(0, 120) });
-          // One contradiction per chunk: the finding is that this chunk's removal
-          // is not supported, and listing every sentence inside it would inflate
-          // the count without adding a fact.
+        if (other.includes(needle)) {
+          contradicted.push({ side, excerpt: needle.slice(0, 120), kind: 'PRESENT_IN_OTHER' });
+          break;
+        }
+        if (!own.includes(needle)) {
+          contradicted.push({ side, excerpt: needle.slice(0, 120), kind: 'ABSENT_FROM_OWN' });
           break;
         }
       }

@@ -43,13 +43,23 @@ const ADDED = 'The campaign for the fourth dose opens next week for everyone ove
 const BEFORE_TEXT = `${KEPT}\n${REMOVED}`;
 const AFTER_TEXT = `${KEPT}\n${ADDED}`;
 
-const stored = (id: string, text: string, version = 'v2-fixture-extractor') => ({
+/**
+ * A stored capture as the writer reads it: its derived text, and the DOCUMENT
+ * the text was cut from — survival is checked against the document (F2,
+ * 2026-09-07; evidence flows §3 "against the raw documents"). By default the
+ * document shows exactly the text; a case that wants the page to have said
+ * more than the rules kept passes `pageText`.
+ */
+const stored = (id: string, text: string, version = 'v2-fixture-extractor', pageText = text) => ({
   id,
   text,
   textHash: sha256(text),
   textExtractionVersion: version,
   snapshotDate: id === 'snap-before' ? '2022-05-03' : '2022-05-25',
   snapshotUrl: `https://web.archive.org/web/2022/${id}`,
+  document: Buffer.from(`<html><head><title>t</title></head><body>${pageText.split('\n').map((l) => `<p>${l}</p>`).join('')}</body></html>`, 'utf8'),
+  documentContentType: 'text/html; charset=utf-8',
+  documentContentEncoding: null,
 });
 
 function write(overrides: Partial<DiffWrite> = {}): DiffWrite {
@@ -200,6 +210,38 @@ describe('recordDiff — the content version', () => {
     ]);
   });
 
+  // F2 (2026-09-07): SURVIVAL IS CHECKED AGAINST THE DOCUMENTS, not against the
+  // other side's extracted text. The exercise's corpus held a sentence "removed"
+  // in 2021 that the 2021 page still showed — a positional rule had cut an inline
+  // link out of it — and the text-based check called that SURVIVES. Against the
+  // document it is CONTRADICTED: the page never lost it. And the "added" half
+  // of the same artefact never appeared on the after page either.
+  it('a removal the after DOCUMENT still shows — a rule cut it, not the page — is CONTRADICTED', async () => {
+    snapshotsFind.mockResolvedValue([
+      stored('snap-before', BEFORE_TEXT),
+      // The rules kept AFTER_TEXT; the page itself still says REMOVED.
+      stored('snap-after', AFTER_TEXT, 'v2-fixture-extractor', `${AFTER_TEXT}\n${REMOVED}`),
+    ]);
+    await recordDiff(write());
+    const chunks = (versionCreate.mock.calls[0]?.[0] as { data: Record<string, unknown>[] }).data[0]?.['chunks'] as ContentChunk[];
+    expect(chunks).toEqual([
+      { side: 'REMOVED', text: REMOVED, survival: 'CONTRADICTED' },
+      { side: 'ADDED', text: ADDED, survival: 'SURVIVES' },
+    ]);
+  });
+
+  it('an addition the after document never showed — a rule-manufactured sentence — is CONTRADICTED', async () => {
+    const manufactured = 'The campaign opens next week for everyone over sixty in every district.';
+    snapshotsFind.mockResolvedValue([
+      stored('snap-before', BEFORE_TEXT),
+      // The derived text carries a sentence the page never displayed in that form.
+      { ...stored('snap-after', `${KEPT}\n${manufactured}`, 'v2-fixture-extractor', AFTER_TEXT) },
+    ]);
+    await recordDiff(write({ after: { waybackTimestamp: '20220525102648', text: `${KEPT}\n${manufactured}`, textHash: sha256(`${KEPT}\n${manufactured}`) } }));
+    const chunks = (versionCreate.mock.calls[0]?.[0] as { data: Record<string, unknown>[] }).data[0]?.['chunks'] as ContentChunk[];
+    expect(chunks.find((c) => c.side === 'ADDED')).toEqual({ side: 'ADDED', text: manufactured, survival: 'CONTRADICTED' });
+  });
+
   // RULED 2026-09-07: survival compares the extractor alone — a rule change
   // (the `+chrome-<id>` suffix) leaves every chunk checkable.
   it('two captures under different RULES by one extractor are checked chunk by chunk', async () => {
@@ -210,13 +252,6 @@ describe('recordDiff — the content version', () => {
     await recordDiff(write());
     const chunks = (versionCreate.mock.calls[0]?.[0] as { data: Record<string, unknown>[] }).data[0]?.['chunks'] as ContentChunk[];
     expect(chunks.map((c) => c.survival)).toEqual(['SURVIVES', 'SURVIVES']);
-  });
-
-  it('two captures extracted by different EXTRACTORS make every chunk UNCHECKABLE — the checker’s rule', async () => {
-    snapshotsFind.mockResolvedValue([stored('snap-before', BEFORE_TEXT, 'v1'), stored('snap-after', AFTER_TEXT, 'v2')]);
-    await recordDiff(write());
-    const chunks = (versionCreate.mock.calls[0]?.[0] as { data: Record<string, unknown>[] }).data[0]?.['chunks'] as ContentChunk[];
-    expect(chunks.map((c) => c.survival)).toEqual(['UNCHECKABLE', 'UNCHECKABLE']);
   });
 
   it('is cut from the texts the corpus HOLDS: a side compared under a text the snapshot does not hold is a walk defect', async () => {

@@ -43,6 +43,41 @@ describe('the build-hash family list — one importable symbol (A8)', () => {
   });
 });
 
+// F1 (2026-09-07, found by the researcher on the marking page): the page had
+// highlighted a node iff its OFFERED selector string equalled a rule's — so
+// once the hashless tier offered `header.no-mobile-app.main-header`, the 2020
+// rule `header.no-mobile-app.css-gf5unx.main-header`, which still MATCHES the
+// element and still removes it, showed as nothing. The outline now says, per
+// node, which rules in force match its element, by matching against the real
+// DOM; the page highlights by that and unmarks THAT rule on a click.
+describe('the outline names the rules in force that match each node', () => {
+  const rules = [
+    { ruleId: 'r-header', selector: 'header.no-mobile-app.css-gf5unx.main-header' },
+    { ruleId: 'r-links', selector: 'section.section-links' },
+    { ruleId: 'r-broken', selector: 'header[[' },
+  ];
+  const withRules = flatten(documentOutline(PAGE, { rules }).root);
+
+  it('a rule whose HASHED selector matches an element the page offers hashless is named on that node', () => {
+    const header = withRules.find((n) => n.tag === 'header');
+    expect(header?.selector).toBe('header.no-mobile-app.main-header');
+    expect(header?.matchedBy).toEqual([{ ruleId: 'r-header', selector: 'header.no-mobile-app.css-gf5unx.main-header' }]);
+  });
+
+  it('a rule matching several elements is named on each; an element no rule matches names none', () => {
+    expect(withRules.filter((n) => n.tag === 'section').map((n) => n.matchedBy.map((r) => r.ruleId))).toEqual([['r-links'], ['r-links']]);
+    expect(withRules.find((n) => n.tag === 'nav')?.matchedBy).toEqual([]);
+  });
+
+  it('a selector the parser rejects matches nothing and breaks nothing', () => {
+    expect(withRules.every((n) => !n.matchedBy.some((r) => r.ruleId === 'r-broken'))).toBe(true);
+  });
+
+  it('with no rules given, every node names none', () => {
+    expect(nodes.every((n) => n.matchedBy.length === 0)).toBe(true);
+  });
+});
+
 describe('the selector the page offers sets build hashes aside', () => {
   it('offers the hashless classes when they are unique, and does not call it hashed', () => {
     const header = byTag('header').at(0);

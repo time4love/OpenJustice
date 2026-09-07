@@ -197,6 +197,7 @@ walkArticleRulesRouter.get(
     // on — and the render is the inert one; the same string feeds both (A6).
     const { documentOutline, inertDocument } = await import('../lib/chromeRulesetApply');
     const html = captureHtml(bytes);
+    const inForce = rulesInForce(rules, decisions, row.waybackTimestamp);
 
     res.json({
       capture: row.waybackTimestamp,
@@ -204,8 +205,10 @@ walkArticleRulesRouter.get(
       outcome: row.outcome,
       url: page.url,
       document: inertDocument(html),
-      outline: documentOutline(html),
-      rulesInForce: rulesInForce(rules, decisions, row.waybackTimestamp).map((rule) => ({
+      // The outline is handed the rules in force so each node names the rules
+      // that MATCH its element (F1, 2026-09-07) — the page highlights by that.
+      outline: documentOutline(html, { rules: inForce.map((rule) => ({ ruleId: rule.id, selector: rule.selector })) }),
+      rulesInForce: inForce.map((rule) => ({
         ruleId: rule.id,
         selector: rule.selector,
         trusted: trusted(rule, decisions) === 'TRUSTED',

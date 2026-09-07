@@ -101,6 +101,39 @@ describe('a reported change must survive the documents', () => {
 // diff UNCHECKABLE (24 of 24 on walla). A chunk's presence in the other side's
 // text is a fact about the texts, whichever rules cut them; only a different
 // extractor makes two texts incomparable.
+// F2 (2026-09-07): a chunk's claim has TWO halves the documents can contradict.
+// "Removed" claims the before page showed it and the after page does not;
+// "added" claims the after page shows it and the before page did not. The
+// checker had tested only the second clause of each. A rule that cuts an
+// inline link out of a sentence manufactures both an "added" fragment the
+// after page never displayed and a "removed" one the after page still shows.
+describe('a chunk absent from its OWN side’s document is contradicted too', () => {
+  it('a removal the before document never showed is CONTRADICTED, naming the side', () => {
+    const result = checkDiffSurvival({
+      rawDeletedText: JSON.stringify([SENTENCE]),
+      rawAddedText: '[]',
+      beforeText: 'a page that never said it',
+      afterText: 'a page that never said it',
+      beforeVersion: V2,
+      afterVersion: V2,
+    });
+    expect(result.verdict).toBe('CONTRADICTED');
+    expect(result.contradicted).toEqual([{ side: 'REMOVED', excerpt: expect.stringContaining('The Ministry'), kind: 'ABSENT_FROM_OWN' }]);
+  });
+
+  it('a genuine removal — shown before, gone after — still SURVIVES', () => {
+    const result = checkDiffSurvival({
+      rawDeletedText: JSON.stringify([SENTENCE]),
+      rawAddedText: '[]',
+      beforeText: `intro\n${SENTENCE}`,
+      afterText: 'intro',
+      beforeVersion: V2,
+      afterVersion: V2,
+    });
+    expect(result.verdict).toBe('SURVIVES');
+  });
+});
+
 describe('two rulesets under one extractor are compared; two extractors are not', () => {
   it('checks a chunk across a rule change — the ruleset suffix is not the extractor', () => {
     const result = checkDiffSurvival({

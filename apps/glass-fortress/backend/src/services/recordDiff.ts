@@ -1,6 +1,7 @@
 import { createHash } from 'crypto';
 import type { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
+import { captureHtml, deriveTextFromHtml, TEXT_EXTRACTION_VERSION } from '../lib/captureDocument';
 import { diffChunkPair } from '../lib/diffChunking';
 import { checkDiffSurvival, SURVIVAL_CHECK_VERSION, type SurvivalVerdict } from '../lib/diffSurvival';
 import { DIFF_VERSION } from '../lib/diffVersion';
@@ -113,23 +114,43 @@ export function contentVersionHash(chunks: readonly { side: 'REMOVED' | 'ADDED';
   return createHash('sha256').update(JSON.stringify(named), 'utf8').digest('hex');
 }
 
-/** The columns the writer reads off each stored capture of the pair. */
+/** The columns the writer reads off each stored capture of the pair — its text, and the document the text was cut from. */
 const PAIR_SELECT = {
   id: true,
   text: true,
   textHash: true,
-  textExtractionVersion: true,
   snapshotDate: true,
   snapshotUrl: true,
+  document: true,
+  documentContentType: true,
+  documentContentEncoding: true,
 } as const;
 
 interface StoredSide {
   id: string;
   text: string;
   textHash: string;
-  textExtractionVersion: string;
   snapshotDate: string;
   snapshotUrl: string;
+  document: Uint8Array;
+  documentContentType: string | null;
+  documentContentEncoding: string | null;
+}
+
+/**
+ * THE DOCUMENT'S OWN TEXT — the page as served, html-to-text with no rule
+ * applied (F2, 2026-09-07; evidence flows §3: survival is "against the raw
+ * documents"). Survival checked against the other side's rule-cut text called
+ * a rule-induced removal SURVIVES; against the document it is CONTRADICTED.
+ */
+function documentText(side: StoredSide): string {
+  return deriveTextFromHtml(
+    captureHtml({
+      document: Buffer.from(side.document),
+      documentContentType: side.documentContentType,
+      documentContentEncoding: side.documentContentEncoding,
+    }),
+  ).text;
 }
 
 /**
@@ -173,14 +194,19 @@ async function storedPair(
  */
 function chunksWithSurvival(before: StoredSide, after: StoredSide, input: DiffWrite): ContentChunk[] {
   const cut = diffChunkPair(input.before.text, input.after.text);
+  // Both documents' own text, derived once under the current extractor — the
+  // same pipeline on both sides, so the checker's extractor comparison is
+  // satisfied by construction and every chunk is held to the pages themselves.
+  const beforeDocument = documentText(before);
+  const afterDocument = documentText(after);
   const survivalOf = (side: ContentChunk['side'], text: string): SurvivalVerdict =>
     checkDiffSurvival({
       rawDeletedText: side === 'REMOVED' ? JSON.stringify([text]) : '[]',
       rawAddedText: side === 'ADDED' ? JSON.stringify([text]) : '[]',
-      beforeText: before.text,
-      afterText: after.text,
-      beforeVersion: before.textExtractionVersion,
-      afterVersion: after.textExtractionVersion,
+      beforeText: beforeDocument,
+      afterText: afterDocument,
+      beforeVersion: TEXT_EXTRACTION_VERSION,
+      afterVersion: TEXT_EXTRACTION_VERSION,
     }).verdict;
   return [
     ...cut.removed.map((text): ContentChunk => ({ side: 'REMOVED', text, survival: survivalOf('REMOVED', text) })),
