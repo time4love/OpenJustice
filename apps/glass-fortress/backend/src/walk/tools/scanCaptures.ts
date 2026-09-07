@@ -30,6 +30,7 @@ import {
   rulesInForce,
   rulesetIdAt,
   seen,
+  successor,
   supersedingDecision,
   type CaptureRemovals,
   type Decision,
@@ -217,10 +218,18 @@ interface Supersession {
   derivedAt: Date;
 }
 
-/** ONE classifier per capture: Gate 5 and the acquisition share its one paid call. */
-interface CaptureClassifier {
-  classify: Classify;
-  opinion(diff: ClassifierDiff): Promise<DiffClassification>;
+/** One side of a diff as the walk hands it to the writer: the stored capture and the text the corpus holds for it. */
+interface DiffSide {
+  snapshotId: string;
+  waybackTimestamp: string;
+  text: string;
+  textHash: string;
+}
+
+/** A diff a supersession owes: re-derived against the new text, written inside the capture's transaction (step 7). */
+interface Rederived {
+  before: DiffSide;
+  after: DiffSide;
 }
 
 type Derive = typeof deriveTextUnderRuleset;
@@ -313,6 +322,8 @@ class PageWalk {
   /** The captures a human ACCEPTED under AUTHORITY, folded once: SEEN's captures, and the rows that have approved text. */
   private readonly accepted: Set<string>;
   private agent: ForensicAgent | null = null;
+  /** The classifier's draws this call, one per pair — see `draw`. */
+  private readonly draws = new Map<string, Promise<DiffClassification>>();
   private readonly outcomes = zeroOutcomes();
   private walked = 0;
 
@@ -354,7 +365,13 @@ class PageWalk {
    * supersession the TextVersion beside the snapshot's new text. Writes go
    * through `tx`; the in-memory view moves with the commit.
    */
-  private async write(row: LoadedRow, change: RowChange, matches: readonly Matched[], supersession: Supersession | null): Promise<void> {
+  private async write(
+    row: LoadedRow,
+    change: RowChange,
+    matches: readonly Matched[],
+    supersession: Supersession | null,
+    rederive: readonly Rederived[] = [],
+  ): Promise<void> {
     const t = row.waybackTimestamp;
     await prisma.$transaction(async (tx) => {
       await tx.cdxIndexEntry.update({ where: { id: row.id }, data: rowData(change) });
@@ -389,6 +406,12 @@ class PageWalk {
             textExtractionVersion: supersession.next.textExtractionVersion,
           },
         });
+        // STEP 7: every diff spanning the superseded text gains a content
+        // version cut from the NEW text, the old kept (evidence flows §3) — in
+        // this transaction, after the text moved, so the writer's guard reads
+        // the text the version is cut from. Their classifications were drawn
+        // before the transaction opened; nothing paid runs inside it.
+        for (const diff of rederive) await this.writeDiff(tx, diff.before, diff.after);
       }
     }, WRITE_TRANSACTION);
     // The view moves with the commit. A WRITTEN stop is not kept on it — the
@@ -452,7 +475,9 @@ class PageWalk {
       return derived;
     };
     const novel = (): boolean => before?.textHash !== extraction().textHash;
-    const classifier = this.classifier(t);
+    // Gate 5's draw is the acquisition's: one paid call per acquired novel
+    // capture, keyed by the pair it judges.
+    const classify = this.classifyFor(pred?.waybackTimestamp ?? null, t);
 
     // The one composition of the gates (A4): the DIGEST check first, on a fresh
     // fetch; then RESOLVED — a human just ruled on this capture under the
@@ -474,7 +499,7 @@ class PageWalk {
       get novel() {
         return novel();
       },
-      classify: classifier.classify,
+      classify,
     });
 
     // What a fresh fetch observed, written with whatever outcome follows (A2).
@@ -538,7 +563,18 @@ class PageWalk {
             derivedAt: row.updatedAt,
           }
         : null;
-      await this.write(row, { ...stamp, outcome: 'ACQUIRED', heldBody: null, stop: null }, matches(), supersession);
+      // STEP 7: the diffs the new text spans — with the predecessor and with the
+      // successor — re-derived as new content versions. Their paid draws happen
+      // HERE, before the transaction; the versions are written inside it.
+      const rederive: Rederived[] = [];
+      if (changed) {
+        const renewed = this.sideOf(stored.snapshotId, t, extraction());
+        if (pred !== null && before !== null) rederive.push({ before: this.sideOfExtraction(pred, before), after: renewed });
+        const next = successor(rows, row);
+        if (next !== null) rederive.push({ before: renewed, after: await this.storedSide(next) });
+        await Promise.all(rederive.map((d) => this.opinion(d.before, d.after)));
+      }
+      await this.write(row, { ...stamp, outcome: 'ACQUIRED', heldBody: null, stop: null }, matches(), supersession, rederive);
       this.extractions.set(t, extraction());
       this.outcomes[changed ? 'superseded' : 'restamped'] += 1;
       this.walked += 1;
@@ -580,19 +616,18 @@ class PageWalk {
       throw err;
     }
 
+    const acquiredSide = this.sideOf(snapshotId, t, extraction());
     if (pred !== null && before !== null) {
       // The diff against the predecessor, with the verdict: Gate 5's when it
       // ran, one classification at acquisition when RESOLVED skipped the gates.
-      const opinion = await classifier.opinion(classifierDiffOf(before.current.keptText, extraction().current.keptText));
-      await recordDiff({
-        trackedUrlId: this.trackedUrlId,
-        beforeSnapshotId: this.requireStamp(pred, 'snapshotId'),
-        afterSnapshotId: snapshotId,
-        before: { waybackTimestamp: pred.waybackTimestamp, text: before.current.keptText, textHash: before.textHash },
-        after: { waybackTimestamp: t, text: extraction().current.keptText, textHash: extraction().textHash },
-        ...opinion,
-      });
+      await this.writeDiff(null, this.sideOfExtraction(pred, before), acquiredSide);
     }
+    // A5's clause owed by evidence flows §7: a capture acquired BETWEEN two
+    // ACQUIRED captures — a re-walk turning a DUPLICATE novel, or a capture the
+    // index gained with an old date — re-diffs its successor against it, so the
+    // timeline stays a consecutive chain; the old pair's row stays.
+    const next = successor(rows, row);
+    if (next !== null) await this.writeDiff(null, acquiredSide, await this.storedSide(next));
 
     await this.write(
       row,
@@ -783,17 +818,24 @@ class PageWalk {
   }
 
   /**
-   * The one paid call for capture `t`, memoised: Gate 5 asks through `classify`
-   * and reads the editorial answer (R-C); the acquisition asks through
-   * `opinion` and stores the whole output with its provenance. Whichever asks
-   * first pays; the other reads the same draw.
+   * THE ONE PAID CALL PER PAIR, memoised for the call. Gate 5 asks through
+   * `classifyFor` and reads the editorial answer (R-C); the acquisition asks
+   * through `opinion` for the same pair and stores the whole output with its
+   * provenance — whichever asks first pays, the other reads the same draw. A
+   * supersession's re-derived diffs are other pairs, each one draw (evidence
+   * flows §3: the price of a better derivation, paid once per record).
    */
-  private classifier(t: string): CaptureClassifier {
-    let drawn: Promise<DiffClassification> | null = null;
-    const draw = (diff: ClassifierDiff): Promise<DiffClassification> =>
-      (drawn ??= (async (): Promise<DiffClassification> => {
+  private draw(beforeTs: string | null, afterTs: string, diffOf: () => ClassifierDiff): Promise<DiffClassification> {
+    const key = `${beforeTs ?? ''}→${afterTs}`;
+    let drawn = this.draws.get(key);
+    if (drawn === undefined) {
+      drawn = (async (): Promise<DiffClassification> => {
         this.agent ??= new ForensicAgent();
-        const verdict = await this.agent.analyzeChange(diff.removed, diff.added, this.url, snapshotDateOf(t), []);
+        // A `ClassifierDiff`, built in ONE place (`classifierDiffOf`) from the
+        // shared selection rule — which test/classifierInputRule.test.ts reads
+        // off this very call.
+        const diff = diffOf();
+        const verdict = await this.agent.analyzeChange(diff.removed, diff.added, this.url, snapshotDateOf(afterTs), []);
         return {
           ...verdict,
           classifierVersion: CLASSIFIER_VERSION,
@@ -804,13 +846,59 @@ class PageWalk {
           classifierPromptHash: classifierPromptHash(),
           summaryVersion: SUMMARY_VERSION,
         };
-      })());
-    return {
-      classify: async (diff) => {
-        const verdict = await draw(diff);
-        return { editorial: verdict.editorial, reason: verdict.editorialReason };
-      },
-      opinion: draw,
+      })();
+      this.draws.set(key, drawn);
+    }
+    return drawn;
+  }
+
+  /** Gate 5's view of the pair's draw: the editorial answer, nothing else (R-C). */
+  private classifyFor(beforeTs: string | null, afterTs: string): Classify {
+    return async (diff) => {
+      const verdict = await this.draw(beforeTs, afterTs, () => diff);
+      return { editorial: verdict.editorial, reason: verdict.editorialReason };
     };
+  }
+
+  /** The pair's whole opinion, from the two texts the corpus holds for it. */
+  private opinion(before: DiffSide, after: DiffSide): Promise<DiffClassification> {
+    return this.draw(before.waybackTimestamp, after.waybackTimestamp, () => classifierDiffOf(before.text, after.text));
+  }
+
+  /**
+   * THE ONE SITE THAT WRITES A DIFF (test/walk/diffOneSite.test.ts): the pair
+   * and its content version, with the pair's opinion. `tx` is the capture's
+   * transaction when the write belongs inside it (a supersession's
+   * re-derivation), null for the acquisition's own, which the writer wraps.
+   */
+  private async writeDiff(tx: Prisma.TransactionClient | null, before: DiffSide, after: DiffSide): Promise<void> {
+    const opinion = await this.opinion(before, after);
+    await recordDiff(
+      {
+        trackedUrlId: this.trackedUrlId,
+        beforeSnapshotId: before.snapshotId,
+        afterSnapshotId: after.snapshotId,
+        before: { waybackTimestamp: before.waybackTimestamp, text: before.text, textHash: before.textHash },
+        after: { waybackTimestamp: after.waybackTimestamp, text: after.text, textHash: after.textHash },
+        ...opinion,
+      },
+      tx ?? undefined,
+    );
+  }
+
+  /** A capture as one side of a diff, from the extraction this call derived for it. */
+  private sideOf(snapshotId: string, t: string, extraction: Extraction): DiffSide {
+    return { snapshotId, waybackTimestamp: t, text: extraction.current.keptText, textHash: extraction.textHash };
+  }
+
+  /** A stored ACQUIRED row as one side of a diff, from the extraction already loaded for it. */
+  private sideOfExtraction(row: LoadedRow, extraction: Extraction): DiffSide {
+    return this.sideOf(this.requireStamp(row, 'snapshotId'), row.waybackTimestamp, extraction);
+  }
+
+  /** A stored ACQUIRED row as one side of a diff, from the text its snapshot holds. */
+  private async storedSide(row: LoadedRow): Promise<DiffSide> {
+    const snapshot = await this.snapshotOf(row);
+    return { snapshotId: snapshot.id, waybackTimestamp: row.waybackTimestamp, text: snapshot.text, textHash: snapshot.textHash };
   }
 }

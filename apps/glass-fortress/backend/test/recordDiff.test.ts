@@ -112,6 +112,17 @@ describe('recordDiff — the pair', () => {
     expect(transaction.mock.calls[0]?.[1]).toBe(WRITE_TRANSACTION);
   });
 
+  // STEP 7 (refactor plan §3): a supersession re-derives every diff spanning
+  // the superseded text as a new content version IN THE SAME TRANSACTION as
+  // the text version and the snapshot's new text (evidence flows §3). The
+  // walk hands its transaction in; the writer opens none of its own.
+  it('writes through the caller’s transaction when given one, opening none of its own', async () => {
+    await recordDiff(write(), prisma as unknown as Parameters<typeof recordDiff>[1]);
+    expect(transaction).not.toHaveBeenCalled();
+    expect(pairUpsert).toHaveBeenCalledTimes(1);
+    expect(versionCreate).toHaveBeenCalledTimes(1);
+  });
+
   it('refuses a pair whose two sides are the same capture, reading and writing nothing', async () => {
     await expect(recordDiff(write({ afterSnapshotId: 'snap-before' }))).rejects.toThrow(/same capture/);
     expect(snapshotsFind).not.toHaveBeenCalled();

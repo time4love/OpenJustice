@@ -653,8 +653,73 @@ describe('scan_captures — Flow 3, the re-walk over rows that already have an o
     const result = await scan();
     expect(versionCreate).not.toHaveBeenCalled();
     expect(snapshotUpdate).not.toHaveBeenCalled();
+    expect(mockRecordDiff).not.toHaveBeenCalled();
     expect(updatesTo(T14)).toEqual(expect.objectContaining({ rulesetId: NEW_ID }));
     expect(result['outcomes']).toEqual(expect.objectContaining({ restamped: 1, superseded: 0 }));
+  });
+
+  // STEP 7 — the re-walk's diff side (refactor plan §3 step 7; evidence flows
+  // §3): a superseded text re-derives EVERY diff spanning it as a new content
+  // version, the old kept, in the same transaction as the text version — the
+  // pair with its predecessor and the pair with its successor, each classified
+  // once. Built 2026-09-07; the acceptance suite's cases were written first.
+  it('re-derives every diff spanning a superseded text as a new content version, in the same transaction, each classified once', async () => {
+    withRule();
+    const predecessor = acquired(T09, 'hash-09', NEW_ID);
+    const stale = acquired(T14, 'hash-old', EMPTY_ID);
+    const successor = acquired(T2, 'hash-2', NEW_ID);
+    page([predecessor.row, stale.row, successor.row], [predecessor.snapshot, stale.snapshot, successor.snapshot]);
+    mockDerive.mockReturnValue(derived('hash-new'));
+    const result = await scan();
+    expect(result['outcomes']).toEqual(expect.objectContaining({ superseded: 1 }));
+    expect(mockRecordDiff).toHaveBeenCalledTimes(2);
+    expect(mockRecordDiff.mock.calls[0]?.[0]).toEqual(
+      expect.objectContaining({
+        beforeSnapshotId: predecessor.snapshot.id,
+        afterSnapshotId: stale.snapshot.id,
+        before: expect.objectContaining({ textHash: 'hash-09' }),
+        after: expect.objectContaining({ waybackTimestamp: T14, textHash: 'hash-new', text: 'derived hash-new' }),
+      }),
+    );
+    expect(mockRecordDiff.mock.calls[1]?.[0]).toEqual(
+      expect.objectContaining({
+        beforeSnapshotId: stale.snapshot.id,
+        afterSnapshotId: successor.snapshot.id,
+        before: expect.objectContaining({ textHash: 'hash-new' }),
+        after: expect.objectContaining({ waybackTimestamp: T2, textHash: 'hash-2' }),
+      }),
+    );
+    // Inside the per-capture transaction: the writer is handed the transaction
+    // client (the mock passes prisma itself), after the snapshot's text moved.
+    expect(mockRecordDiff.mock.calls[0]?.[1]).toBe(prisma);
+    expect(mockRecordDiff.mock.calls[1]?.[1]).toBe(prisma);
+    expect(snapshotUpdate).toHaveBeenCalledTimes(1);
+    expect(mockAnalyzeChange).toHaveBeenCalledTimes(2);
+  });
+
+  // A5's clause owed by evidence flows §7: on acquiring a capture that has an
+  // ACQUIRED successor, the successor's diff is written against it as well, so
+  // the timeline stays a consecutive chain; the old pair's row stays.
+  it('acquiring a capture with an ACQUIRED successor re-diffs the successor against it — the chain stays consecutive', async () => {
+    const successor = acquired(T2, 'hash-2');
+    page([T09_ACQUIRED.row, row(T14, 'UNFETCHED', { digest: 'X' }), successor.row], [T09_ACQUIRED.snapshot, successor.snapshot]);
+    mockDerive.mockReturnValue(derived('hash-new'));
+    const result = await scan();
+    expect(updatesTo(T14)).toEqual(expect.objectContaining({ status: 'ACQUIRED', snapshotId: 'snap-new' }));
+    expect(result['outcomes']).toEqual(expect.objectContaining({ acquired: 1 }));
+    expect(mockRecordDiff).toHaveBeenCalledTimes(2);
+    expect(mockRecordDiff.mock.calls[0]?.[0]).toEqual(
+      expect.objectContaining({ beforeSnapshotId: T09_ACQUIRED.snapshot.id, afterSnapshotId: 'snap-new' }),
+    );
+    expect(mockRecordDiff.mock.calls[1]?.[0]).toEqual(
+      expect.objectContaining({
+        beforeSnapshotId: 'snap-new',
+        afterSnapshotId: successor.snapshot.id,
+        before: expect.objectContaining({ textHash: 'hash-new' }),
+        after: expect.objectContaining({ waybackTimestamp: T2, textHash: 'hash-2' }),
+      }),
+    );
+    expect(mockAnalyzeChange).toHaveBeenCalledTimes(2);
   });
 
   it('leaves IDENTICAL, SKIPPED and UNSERVABLE rows untouched by a re-walk', async () => {

@@ -232,6 +232,14 @@ clause owed by the evidence doc §7).
 *Leaves working:* everything. *Verified by:* A4's re-walk case green; a correction on a staging page
 that supersedes stored text with the previous version retained and the anchors untouched; one
 promoted record entering NEEDS_REVIEW on staging with old and new versions both readable.
+*Built 2026-09-07, after PR 2 of step 5:* a supersession re-derives every diff spanning the superseded
+text as a new content version inside the capture's transaction, the old kept, each pair classified
+once with the paid draw taken before the transaction opens; a capture acquired with an ACQUIRED
+successor re-diffs the successor against it (A5's clause). `RULE_ENDED` from unmarking and the
+RESET were step 3's. The acceptance cases are in `test/walk/scanCaptures.test.ts` (Flow 3). The
+staging correction exercise is the ONE re-walk of walla the researcher ruled for after every
+extraction change landed (`docs/gf-walk-step-5-exercise-2026-09-06.md`); the NEEDS_REVIEW half
+waits for evidence step 11's review list.
 
 ### 8 · THE SWITCH — the researcher's word
 

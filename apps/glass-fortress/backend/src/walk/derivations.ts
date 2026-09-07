@@ -257,6 +257,20 @@ export function predecessor<T extends WorkListRow>(rows: readonly T[], row: Work
   return earlier.at(-1) ?? null;
 }
 
+/**
+ * The mirror of PREDECESSOR: the earliest ACQUIRED row after this one in
+ * timestamp order, or null. Not an A3 predicate — it serves one clause of A5
+ * (owed by evidence flows §7): on acquiring a capture that has an ACQUIRED
+ * successor, the successor's diff is written against it as well, so the
+ * timeline stays a consecutive chain; and step 7's re-derivation, which
+ * re-diffs a superseded text with both its neighbours.
+ */
+export function successor<T extends WorkListRow>(rows: readonly T[], row: WorkListRow): T | null {
+  return (
+    inTimestampOrder(rows).find((r) => r.outcome === 'ACQUIRED' && r.waybackTimestamp > row.waybackTimestamp) ?? null
+  );
+}
+
 /** KNOWN_TEXT(row): the row's text is known — ACQUIRED, DUPLICATE or IDENTICAL. */
 export function knownText(row: WorkListRow): boolean {
   return row.outcome === 'ACQUIRED' || row.outcome === 'DUPLICATE' || row.outcome === 'IDENTICAL';
