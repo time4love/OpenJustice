@@ -240,6 +240,11 @@ RESET were step 3's. The acceptance cases are in `test/walk/scanCaptures.test.ts
 staging correction exercise is the ONE re-walk of walla the researcher ruled for after every
 extraction change landed (`docs/gf-walk-step-5-exercise-2026-09-06.md`); the NEEDS_REVIEW half
 waits for evidence step 11's review list.
+*Verified on staging 2026-09-07:* the ONE re-walk of walla, driven through the connector — four texts
+superseded to v3 with the previous kept and no anchor touched, every spanning diff re-derived; the Q4
+attribution defect found live and landed mid-walk (PR #381), F1 and F2 landed after it (PR #382); the
+corrective pass restamped 12-09 and holds a Gate 2 + Gate 4 stop on 12-18 —
+`docs/gf-walk-step-5-rewalk-2026-09-07.md`.
 
 ### 8 · THE SWITCH — the researcher's word
 

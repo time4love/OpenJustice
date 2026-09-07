@@ -401,6 +401,37 @@ describe('PUT /pages/:trackedUrlId/draft — last write wins, no version', () =>
     expect(trackedUpdate.mock.calls[1]?.[0]).toEqual({ where: { id: TRACKED }, data: expect.objectContaining({ draftSelectors: ['.b'] }) });
   });
 
+  // THE SWITCH BETWEEN CAPTURES — the half of "last write wins" the suite did
+  // not hold. The case above writes T14 twice; this one writes T14 over a draft
+  // naming T09, which is what actually happens when a researcher opens another
+  // capture and starts marking. A6 gives the page ONE draft and no version, so
+  // the write replaces every field and keeps nothing of the draft it displaces
+  // — including `draftReturnedAt`, so a draft that was handed back does not
+  // leave a stale returnedAt on the one that replaces it.
+  //
+  // IT IS A GUARD, NOT A FIX, so it passes on the code as it stands: the
+  // handler writes the four fields unconditionally and never reads the draft it
+  // overwrites. Red-first is therefore unavailable, and non-vacuity was proven
+  // by decoy instead, 2026-09-07: a handler keeping `draftSelectors` when the
+  // page already holds a draft for ANOTHER capture fails exactly this case and
+  // no other, naming `.a` where `.b` is expected. (The looser decoy — keep them
+  // whenever the capture differs — fails three, because the two cases above run
+  // with no draft on the page at all; the tighter one is the honest proof.)
+  //
+  // WHY IT IS WORTH A CASE ANYWAY: the marking page's draft moment rests on
+  // this behaviour, and a change to the page that made the loss a choice must
+  // not be free to change the route underneath it.
+  it('a write for another capture replaces every field; nothing of the displaced draft survives', async () => {
+    page({ draftCapture: T09, draftSelectors: ['.a'], draftTrusted: ['.a'], draftReturnedAt: RETURNED_AT });
+    const res = await request(app).put(`${BASE}/draft`).send({ capture: T14, selectors: ['.b'], trusted: [], returned: false });
+    expect(res.status).toBe(200);
+    expect(trackedUpdate).toHaveBeenCalledWith({
+      where: { id: TRACKED },
+      data: { draftCapture: T14, draftSelectors: ['.b'], draftTrusted: [], draftReturnedAt: null },
+    });
+    expect(res.body).toEqual({ capture: T14, selectors: ['.b'], trusted: [], returnedAt: null });
+  });
+
   it('400 on a malformed body', async () => {
     for (const body of [{}, { capture: T14 }, { capture: T14, selectors: 'x', trusted: [], returned: true }, { capture: 12, selectors: [], trusted: [], returned: true }]) {
       expect((await request(app).put(`${BASE}/draft`).send(body)).status).toBe(400);

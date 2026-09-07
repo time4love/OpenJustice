@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useTranslations } from 'next-intl';
 import { authedFetch, authHeaders } from '@/lib/api';
 import { Link, usePathname } from '@/i18n/navigation';
@@ -32,7 +32,15 @@ import { Link, usePathname } from '@/i18n/navigation';
 // A DRAFT IS SAVED AS IT IS MADE (returned: false, debounced) so a reload costs
 // no marks, and HANDED BACK by the one button (returned: true). Only a
 // returned draft can be approved; approve refuses DRAFT_NOT_RETURNED. A draft
-// this page holds for ANOTHER capture is shown as such and never adopted.
+// this page holds for ANOTHER capture is shown as such, never adopted, and —
+// ruled 2026-09-07 — SUSPENDS THE AUTOSAVE until the researcher says to start
+// one here: the page keeps one draft, as A6 gives it, and losing the other
+// capture's is an act rather than a side effect of the first click.
+//
+// A STOP IS A QUESTION. When the row carries one, the JUDGING moment leads: one
+// block per gate that fired, each with the gate's question and its answer beside
+// it, and the trust tick sitting beside the Gate 4 rule it is about, with the
+// sentence that says what trusting means. See StopPanel.
 // ---------------------------------------------------------------------------
 
 interface OutlineNode {
@@ -138,8 +146,6 @@ export function MarkingClient({ trackedUrlId, capture }: { trackedUrlId: string;
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [canvas, setCanvas] = useState<'page' | 'text'>('page');
   const [panelOpen, setPanelOpen] = useState(true);
-  /** The interim trust section, folded by default — opened only when a stop has named a rule (ruled 2026-09-06). */
-  const [trustOpen, setTrustOpen] = useState(false);
   const autosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const call = useCallback(
@@ -250,8 +256,19 @@ export function MarkingClient({ trackedUrlId, capture }: { trackedUrlId: string;
 
   // The autosave: returned false, after the researcher stops clicking, and
   // only when the set on screen differs from what the server holds.
+  //
+  // SUSPENDED WHILE THE PAGE'S DRAFT NAMES ANOTHER CAPTURE (ruled 2026-09-07,
+  // shape b). A6 gives the page ONE draft and last write wins, so the first
+  // autosave here would replace an unapproved draft for another capture with no
+  // act by the researcher — which is what happened on 2026-09-07: a correct
+  // 2020 draft was replaced by opening 2022, and its approval then refused
+  // DRAFT_NOT_RETURNED. The draft stays one per page and the route is unchanged;
+  // what changes is that nothing is written for this capture until the
+  // researcher presses `draftSwitchStartHere`, which is an act rather than a
+  // side effect of clicking in the tree.
   useEffect(() => {
     if (view === null) return;
+    if (otherDraft !== null) return;
     const unchanged = saved !== null && sameSet(saved.selectors, selectors) && sameSet(saved.trusted, ticked);
     if (unchanged) return;
     if (saved === null && sameSet(selectors, view.rulesInForce.map((r) => r.selector)) && ticked.length === 0) return;
@@ -263,7 +280,7 @@ export function MarkingClient({ trackedUrlId, capture }: { trackedUrlId: string;
       if (autosaveTimer.current !== null) clearTimeout(autosaveTimer.current);
       autosaveTimer.current = null;
     };
-  }, [view, selectors, ticked, saved, writeDraft]);
+  }, [view, selectors, ticked, saved, otherDraft, writeDraft]);
 
   const handBack = async () => {
     if (autosaveTimer.current !== null) {
@@ -316,6 +333,13 @@ export function MarkingClient({ trackedUrlId, capture }: { trackedUrlId: string;
   };
 
   const inForce = useMemo(() => new Map((view?.rulesInForce ?? []).map((r) => [r.selector, r])), [view]);
+  // The same rules keyed the other way: A5's gate material names a RULE ID and
+  // everything else on this page — the draft, the preview, trust — names a
+  // SELECTOR, so a stop's rule is resolved here and nowhere else.
+  const liveRules = useMemo(
+    () => new Map((view?.rulesInForce ?? []).map((r) => [r.ruleId, r.selector])),
+    [view],
+  );
   // WORDS, NOT CODE: the outline's label for every selector it offers, so the
   // draft and the removed pane name an element the way the tree does. A rule
   // whose element is not in this capture's outline — what a redesign looks
@@ -398,11 +422,42 @@ export function MarkingClient({ trackedUrlId, capture }: { trackedUrlId: string;
       {signedOutBanner}
       {error !== null && <p className="rounded bg-red-50 p-2 text-sm text-red-800">{error}</p>}
 
-      {view.stop !== null && <StopPanel gates={view.stop.gates} t={t} />}
+      {view.stop !== null && (
+        <StopPanel
+          gates={view.stop.gates}
+          selectors={selectors}
+          ticked={ticked}
+          liveRules={liveRules}
+          nameOf={nameOf}
+          disabled={busy}
+          onTick={tick}
+          onUntick={untick}
+          onToggleRule={toggle}
+          t={t}
+        />
+      )}
 
       {otherDraft !== null && (
         <div className="flex flex-wrap items-center gap-3 rounded bg-amber-50 p-2 text-sm text-amber-900">
           <span>{t('otherDraft', { capture: otherDraft.capture })}</span>
+          {/*
+            THE EXPLICIT START (ruled 2026-09-07, shape b). While this banner is
+            up the autosave writes nothing, so the other capture's unapproved
+            draft survives every click here. Pressing this clears the banner and
+            the autosave resumes as it always did — it writes no draft itself,
+            because the write is still the autosave's and still carries whatever
+            the researcher has marked by then.
+          */}
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => {
+              setOtherDraft(null);
+            }}
+            className="text-xs font-semibold underline"
+          >
+            {t('draftSwitchStartHere')}
+          </button>
           <button type="button" disabled={busy} onClick={() => void cancelDraft()} className="text-xs underline">
             {t('cancelDraft')}
           </button>
@@ -427,6 +482,18 @@ export function MarkingClient({ trackedUrlId, capture }: { trackedUrlId: string;
             {(added.length > 0 || ended.length > 0) && <li>{t('answerCorrect', { added: added.length, ended: ended.length })}</li>}
             {ticked.length > 0 && <li>{t('answerTrust', { count: ticked.length })}</li>}
           </ul>
+          {/*
+            WHAT THE ONE COMMAND MEANS — MARKING's "one command, whichever answer
+            it was", said to the person pasting it, and then what the approval
+            does to the capture. ONE sentence for that second half, not two
+            chosen on `outcome`: A2's Q7 makes a stop on a STORED capture
+            PENDING_JUDGEMENT with its snapshotId kept, and A6's GET carries
+            `outcome` and nothing else — so the page cannot tell "will acquire"
+            from "will supersede", and must not pretend to. What is true in every
+            case is A3's RESOLVED and A4's skip of all five gates.
+          */}
+          <p className="mt-3 text-xs text-gray-600">{t('approveMeaningOneCommand')}</p>
+          <p className="mt-1 text-xs text-gray-600">{t('approveMeaning')}</p>
           <button
             type="button"
             onClick={() => {
@@ -534,19 +601,13 @@ export function MarkingClient({ trackedUrlId, capture }: { trackedUrlId: string;
             failed={previewFailed}
             focused={focused}
             open={panelOpen}
-            trustOpen={trustOpen}
             disabled={busy}
             onToggleOpen={() => {
               setPanelOpen((v) => !v);
             }}
-            onToggleTrust={() => {
-              setTrustOpen((v) => !v);
-            }}
             onFocus={focus}
             onRemove={toggle}
             onRestore={toggle}
-            onTick={tick}
-            onUntick={untick}
             t={t}
           />
 
@@ -649,17 +710,64 @@ function CommandBlock({
 
 
 /**
- * The gates that stopped the walk here, with their material — A5's shapes,
- * rendered as facts: nothing on this page concludes anything from them.
+ * THE JUDGING MOMENT — one BLOCK per gate that fired, each with the gate's
+ * QUESTION and its ANSWER beside it, then the material A5 defines for it.
+ *
+ * WHY IT IS NOT A LIST OF FACTS. Until 2026-09-07 this panel rendered every
+ * gate as a bold sentence plus its material as bullets: ~70 flat lines at a
+ * three-gate stop, selectors raw, and no connection between a line here and the
+ * act it asks for. The researcher's finding at the first such stop is the whole
+ * reason for this shape — a stop is a QUESTION, and a question with no answer
+ * beside it is a dump. Nothing here concludes anything: every block states what
+ * the walk observed and what the two or three answers are, and the researcher
+ * answers in the toolbox or with the one command.
+ *
+ * IT READS A5's MATERIAL AND NOTHING ELSE. `stop` is returned verbatim from the
+ * row, so a field this panel wanted and A5 does not carry would be a flows
+ * amendment, not a render.
  */
-function StopPanel({ gates, t }: { gates: StopGate[]; t: ReturnType<typeof useTranslations> }) {
+function StopPanel({
+  gates,
+  selectors,
+  ticked,
+  liveRules,
+  nameOf,
+  disabled,
+  onTick,
+  onUntick,
+  onToggleRule,
+  t,
+}: {
+  gates: StopGate[];
+  selectors: readonly string[];
+  ticked: readonly string[];
+  /** ruleId -> selector, for the rules in force at this capture: A5's material names a RULE, the draft names a SELECTOR. */
+  liveRules: ReadonlyMap<string, string>;
+  nameOf: (selector: string) => string;
+  disabled: boolean;
+  onTick: (selector: string) => void;
+  onUntick: (selector: string) => void;
+  onToggleRule: (selector: string) => void;
+  t: ReturnType<typeof useTranslations>;
+}) {
   return (
     <section className="rounded border-2 border-amber-500 bg-amber-50 p-3 text-sm">
       <h2 className="font-semibold">{t('stopHeading')}</h2>
-      <ul className="mt-1 flex flex-col gap-2">
+      <ul className="mt-2 flex flex-col gap-3">
         {gates.map((fired, index) => (
-          <li key={index}>
-            <GateLine fired={fired} t={t} />
+          <li key={index} className="rounded border border-amber-300 bg-white p-2">
+            <GateBlock
+              fired={fired}
+              selectors={selectors}
+              ticked={ticked}
+              liveRules={liveRules}
+              nameOf={nameOf}
+              disabled={disabled}
+              onTick={onTick}
+              onUntick={onUntick}
+              onToggleRule={onToggleRule}
+              t={t}
+            />
           </li>
         ))}
       </ul>
@@ -667,28 +775,151 @@ function StopPanel({ gates, t }: { gates: StopGate[]; t: ReturnType<typeof useTr
   );
 }
 
-function GateLine({ fired, t }: { fired: StopGate; t: ReturnType<typeof useTranslations> }) {
+/** The question, then the answer under it — the two lines every block opens with. */
+function Ask({ question, answer }: { question: string; answer: string }) {
+  return (
+    <>
+      <p className="font-semibold">{question}</p>
+      <p className="mt-0.5 text-gray-700">{answer}</p>
+    </>
+  );
+}
+
+/** A list that shows its first two items and holds the rest behind one button. */
+function Collapsed({ items, render, t }: { items: string[]; render: (text: string, i: number) => ReactNode; t: ReturnType<typeof useTranslations> }) {
+  const [open, setOpen] = useState(false);
+  const shown = open ? items : items.slice(0, 2);
+  return (
+    <>
+      <ul className="ms-4 mt-1 list-disc">{shown.map((text, i) => render(text, i))}</ul>
+      {items.length > shown.length && (
+        <button
+          type="button"
+          onClick={() => {
+            setOpen(true);
+          }}
+          className="mt-1 text-xs underline"
+        >
+          {t('showAll')}
+        </button>
+      )}
+    </>
+  );
+}
+
+function GateBlock({
+  fired,
+  selectors,
+  ticked,
+  liveRules,
+  nameOf,
+  disabled,
+  onTick,
+  onUntick,
+  onToggleRule,
+  t,
+}: {
+  fired: StopGate;
+  selectors: readonly string[];
+  ticked: readonly string[];
+  liveRules: ReadonlyMap<string, string>;
+  nameOf: (selector: string) => string;
+  disabled: boolean;
+  onTick: (selector: string) => void;
+  onUntick: (selector: string) => void;
+  onToggleRule: (selector: string) => void;
+  t: ReturnType<typeof useTranslations>;
+}) {
   const m = fired.material as Record<string, unknown>;
-  const list = (value: unknown): string[] => (Array.isArray(value) ? value.map((v) => String(v)) : []);
-  const removals = (value: unknown): { text: string; selector?: string; ruleId?: string | null }[] =>
-    Array.isArray(value) ? (value as { text: string; selector?: string; ruleId?: string | null }[]) : [];
+  const strings = (value: unknown): string[] => (Array.isArray(value) ? value.map((v) => String(v)) : []);
   switch (fired.gate) {
     case 0:
-      return <p>{t('gate0')}</p>;
-    case 1:
+      return <Ask question={t('gate0')} answer={t('gate0Answer')} />;
+    case 1: {
+      // A5: `nowRemoved` carries the RULE that took each segment; `nowKept` cannot,
+      // because text entering the article was removed by nothing. The two sides are
+      // different findings — data loss and corpus pollution — so they are asked
+      // separately, and the removed side names its rule and offers to end it.
+      //
+      // GATE 1' (against = OWN_PREVIOUS_TEXT, A4) is the re-walk's alarm: the new
+      // extraction ate text a human approved on THIS capture. It is louder, so its
+      // own sentence IS the question and the generic heading is not shown; A4 gives
+      // it one direction, so `nowKept` is empty there by construction.
+      const own = m['against'] === 'OWN_PREVIOUS_TEXT';
+      const nowRemoved = Array.isArray(m['nowRemoved'])
+        ? (m['nowRemoved'] as { text: string; ruleId: string | null }[])
+        : [];
+      const nowKept = strings(m['nowKept']);
       return (
         <div>
-          <p className="font-semibold">{m['against'] === 'OWN_PREVIOUS_TEXT' ? t('gate1Own') : t('gate1Predecessor')}</p>
-          <Segments heading={t('nowRemoved')} items={removals(m['nowRemoved']).map((r) => r.text)} />
-          <Segments heading={t('nowKept')} items={list(m['nowKept'])} />
+          {!own && <p className="font-semibold">{t('gate1Predecessor')}</p>}
+          {nowRemoved.length > 0 && (
+            <div className="mt-1">
+              <Ask question={own ? t('gate1Own') : t('gate1RemovedQuestion')} answer={t('gate1RemovedAnswer')} />
+              <p className="mt-1 text-xs">{t('nowRemoved')}</p>
+              <Collapsed
+                items={nowRemoved.map((r) => r.text)}
+                t={t}
+                render={(text, i) => {
+                  // A5 allows a null ruleId — text with no rule shows the text alone.
+                  // A rule id the page cannot resolve to a live rule is shown AS
+                  // RECEIVED and visibly: it is a fact about the stop, and hiding it
+                  // would leave the researcher a removal with no author.
+                  const ruleId = nowRemoved.at(i)?.ruleId ?? null;
+                  const selector = ruleId === null ? undefined : liveRules.get(ruleId);
+                  const marked = selector !== undefined && selectors.includes(selector);
+                  return (
+                    <li key={i} className="whitespace-pre-wrap">
+                      {text}
+                      {ruleId !== null && (
+                        <span className="text-xs text-gray-600">
+                          {' — '}
+                          {t('gate1RemovedBy', { rule: selector === undefined ? ruleId : nameOf(selector) })}
+                          {selector !== undefined && (
+                            <>
+                              {' '}
+                              {marked ? (
+                                <button type="button" disabled={disabled} onClick={() => { onToggleRule(selector); }} className="underline">
+                                  {t('answerEndRule')}
+                                </button>
+                              ) : (
+                                <>
+                                  {t('willEnd')}{' '}
+                                  <button type="button" disabled={disabled} onClick={() => { onToggleRule(selector); }} className="underline">
+                                    {t('restore')}
+                                  </button>
+                                </>
+                              )}
+                            </>
+                          )}
+                        </span>
+                      )}
+                    </li>
+                  );
+                }}
+              />
+            </div>
+          )}
+          {nowKept.length > 0 && (
+            <div className="mt-2">
+              <Ask question={t('gate1KeptQuestion')} answer={t('gate1KeptAnswer')} />
+              <p className="mt-1 text-xs">{t('nowKept')}</p>
+              <Collapsed items={nowKept} t={t} render={(text, i) => <li key={i} className="whitespace-pre-wrap">{text}</li>} />
+            </div>
+          )}
         </div>
       );
-    case 2:
+    }
+    case 2: {
+      // The selector is shown AS RECEIVED (ruled 2026-09-07, shape ii): deciding
+      // which part of it is a build hash is the backend's one symbol, and a second
+      // implementation here is the defect shape this repository names first.
+      const rules = Array.isArray(m['rules']) ? (m['rules'] as { selector: string; matchedOnPredecessor: number }[]) : [];
       return (
         <div>
-          <p className="font-semibold">{t('gate2')}</p>
-          <ul className="ms-4 list-disc">
-            {(Array.isArray(m['rules']) ? (m['rules'] as { selector: string; matchedOnPredecessor: number }[]) : []).map((r) => (
+          <Ask question={t('gate2')} answer={t('gate2Answer')} />
+          <ul className="ms-4 mt-1 list-disc">
+            {rules.map((r) => (
               <li key={r.selector}>
                 <code dir="ltr">{r.selector}</code> — {t('silentRules', { count: r.matchedOnPredecessor })}
               </li>
@@ -696,52 +927,124 @@ function GateLine({ fired, t }: { fired: StopGate; t: ReturnType<typeof useTrans
           </ul>
         </div>
       );
-    case 4:
+    }
+    case 4: {
+      // PER RULE, because trust is per rule: A4 lists a segment once per claiming
+      // rule, so the flat array is grouped here and a segment claimed twice is
+      // shown under both — said out loud, or it reads as a duplicate.
+      const removals = Array.isArray(m['removals']) ? (m['removals'] as { text: string; ruleId: string; selector: string }[]) : [];
+      const byRule = new Map<string, { selector: string; texts: string[] }>();
+      for (const r of removals) {
+        const seen = byRule.get(r.ruleId);
+        if (seen === undefined) byRule.set(r.ruleId, { selector: r.selector, texts: [r.text] });
+        else seen.texts.push(r.text);
+      }
+      const claimedTwice = removals.length > new Set(removals.map((r) => r.text)).size;
       return (
         <div>
           <p className="font-semibold">{t('gate4')}</p>
           <p className="text-xs">{t('unseenRemovals')}</p>
-          <ul className="ms-4 list-disc">
-            {removals(m['removals']).map((r, i) => (
-              <li key={i}>
-                <code dir="ltr">{r.selector}</code>: <span className="whitespace-pre-wrap">{r.text}</span>
-              </li>
-            ))}
-          </ul>
+          {[...byRule.entries()].map(([ruleId, { selector, texts }]) => {
+            const marked = selectors.includes(selector);
+            return (
+              <div key={ruleId} className="mt-2 border-t border-amber-200 pt-2">
+                <p className="font-semibold" title={selector}>
+                  {nameOf(selector)}
+                </p>
+                <Ask question={t('gate4Question')} answer={t('gate4RuleCount', { count: texts.length })} />
+                <Collapsed items={texts} t={t} render={(text, i) => <li key={i} className="whitespace-pre-wrap">{text}</li>} />
+                {marked ? (
+                  <>
+                    <label className="mt-2 flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={ticked.includes(selector)}
+                        disabled={disabled}
+                        onChange={(e) => {
+                          if (e.target.checked) onTick(selector);
+                          else onUntick(selector);
+                        }}
+                      />
+                      <span className="font-semibold">{t('gate4TrustTick')}</span>
+                    </label>
+                    {/* THE SENTENCE THAT SAYS WHAT TRUSTING MEANS, at the moment it means something. */}
+                    <p className="text-xs text-gray-600">{t('trustNote')}</p>
+                    <ul className="mt-1 text-xs text-gray-700">
+                      <li>{t('gate4AnswerContinue')}</li>
+                      <li>
+                        <button type="button" disabled={disabled} onClick={() => { onToggleRule(selector); }} className="underline">
+                          {t('answerEndRule')}
+                        </button>
+                      </li>
+                    </ul>
+                  </>
+                ) : (
+                  <p className="mt-2 text-xs text-gray-600">
+                    {t('willEnd')}{' '}
+                    <button type="button" disabled={disabled} onClick={() => { onToggleRule(selector); }} className="underline">
+                      {t('restore')}
+                    </button>
+                  </p>
+                )}
+              </div>
+            );
+          })}
+          {claimedTwice && <p className="mt-2 text-xs text-gray-600">{t('gate4MultiRule')}</p>}
         </div>
       );
-    case 5:
+    }
+    case 5: {
+      // A5's gate 5 material is `{ diff, editorial: false, reason }`, and Flow 2
+      // says a stop shows "the diff and the verdict". The chunk lists are what the
+      // model actually read; without them the researcher cannot check it.
+      const diff = (m['diff'] ?? {}) as { removed?: unknown; added?: unknown };
+      const removed = strings(diff.removed);
+      const added = strings(diff.added);
       return (
         <div>
-          <p className="font-semibold">{t('gate5')}</p>
-          <p>
+          <Ask question={t('gate5')} answer={t('gate5Answer')} />
+          <p className="mt-1">
             {t('verdictReason')}: {String(m['reason'] ?? '')}
           </p>
+          {(removed.length > 0 || added.length > 0) && (
+            <div className="mt-2">
+              <p className="text-xs font-semibold">{t('gate5DiffHeading')}</p>
+              {/*
+                THE CLASSIFIER'S INPUT, LABELLED AS ITS OWN. Gate 1's `nowRemoved`
+                and `nowKept` say "now" because they compare two captures; these
+                two lists are the chunks a model was handed, and borrowing the
+                gate's words for them would claim a comparison nobody made.
+              */}
+              {removed.length > 0 && (
+                <>
+                  <p className="mt-1 text-xs">{t('gate5ChunksRemoved')}</p>
+                  <Collapsed items={removed} t={t} render={(text, i) => <li key={i} className="whitespace-pre-wrap">{text}</li>} />
+                </>
+              )}
+              {added.length > 0 && (
+                <>
+                  <p className="mt-1 text-xs">{t('gate5ChunksAdded')}</p>
+                  <Collapsed items={added} t={t} render={(text, i) => <li key={i} className="whitespace-pre-wrap">{text}</li>} />
+                </>
+              )}
+            </div>
+          )}
         </div>
       );
+    }
     default:
       return (
-        <p className="font-semibold">
-          {t('gateDigest')} <code dir="ltr">{String(m['expected'] ?? '')} ≠ {String(m['got'] ?? '')}</code>
-        </p>
+        <div>
+          <Ask question={t('gateDigest')} answer={t('gateDigestAnswer')} />
+          <dl className="mt-1 text-xs">
+            <dt className="font-semibold">{t('gateDigestExpected')}</dt>
+            <dd dir="ltr"><code>{String(m['expected'] ?? '')}</code></dd>
+            <dt className="mt-1 font-semibold">{t('gateDigestGot')}</dt>
+            <dd dir="ltr"><code>{String(m['got'] ?? '')}</code></dd>
+          </dl>
+        </div>
       );
   }
-}
-
-function Segments({ heading, items }: { heading: string; items: string[] }) {
-  if (items.length === 0) return null;
-  return (
-    <div>
-      <p className="text-xs">{heading}</p>
-      <ul className="ms-4 list-disc">
-        {items.map((text, i) => (
-          <li key={i} className="whitespace-pre-wrap">
-            {text}
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
 }
 
 /**
@@ -871,15 +1174,11 @@ function MarkedPanel({
   failed,
   focused,
   open,
-  trustOpen,
   disabled,
   onToggleOpen,
-  onToggleTrust,
   onFocus,
   onRemove,
   onRestore,
-  onTick,
-  onUntick,
   t,
 }: {
   nameOf: (selector: string) => string;
@@ -892,15 +1191,11 @@ function MarkedPanel({
   failed: boolean;
   focused: string | null;
   open: boolean;
-  trustOpen: boolean;
   disabled: boolean;
   onToggleOpen: () => void;
-  onToggleTrust: () => void;
   onFocus: (selector: string) => void;
   onRemove: (selector: string) => void;
   onRestore: (selector: string) => void;
-  onTick: (selector: string) => void;
-  onUntick: (selector: string) => void;
   t: ReturnType<typeof useTranslations>;
 }) {
   const firstFocused = useRef<HTMLLIElement | null>(null);
@@ -911,12 +1206,6 @@ function MarkedPanel({
     (preview?.removedSegments ?? []).filter((s) => s.selector === selector).map((s) => s.text);
   const chars = preview?.removedText.length ?? 0;
   const empty = selectors.length === 0 && ended.length === 0;
-  /** Rules in force AND still in the draft — the only ones a trust tick can name (A5 maps trust to a live rule). */
-  const trustable = selectors.flatMap((selector) => {
-    const rule = inForce.get(selector);
-    return rule === undefined ? [] : [[selector, rule] as const];
-  });
-
   return (
     <section className="rounded border border-amber-400">
       <button
@@ -996,55 +1285,6 @@ function MarkedPanel({
             </li>
           ))}
         </ul>
-      )}
-      {/*
-        THE INTERIM TRUST SECTION (ruled 2026-09-06). A tick beside every rule in force asked for a
-        judgement the page gives no basis for — a rule's history is not on this page. So the tick
-        lives here, FOLDED, opened only when the walk has named a rule at a stop and the researcher
-        has seen its removals before (the Gate 4 material is in the chat until step 5 writes a stop
-        on the row). At step 5 this section is replaced by the JUDGING moment, where the tick sits
-        beside the rule's history. Only rules already in force are listed: a rule created in this
-        draft has no history to trust.
-      */}
-      {open && trustable.length > 0 && (
-        <div className="border-t border-amber-300">
-          <button
-            type="button"
-            onClick={onToggleTrust}
-            aria-expanded={trustOpen}
-            className="flex w-full items-center gap-2 px-3 py-2 text-start text-sm"
-          >
-            <span aria-hidden="true">{trustOpen ? '▾' : '▸'}</span>
-            <span className="font-semibold">{t('trustHeading')}</span>
-            {ticked.length > 0 && <span className="text-xs text-green-800">{t('trustCount', { count: ticked.length })}</span>}
-          </button>
-          {trustOpen && (
-            <ul className="flex max-h-[24vh] flex-col gap-1 overflow-auto px-3 pb-2 text-sm">
-              <li className="text-xs text-gray-600">{t('trustNote')}</li>
-              {trustable.map(([selector, rule]) => (
-                <li key={selector} className="flex flex-wrap items-center gap-2">
-                  <label className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={rule.trusted || ticked.includes(selector)}
-                      disabled={disabled || rule.trusted}
-                      onChange={(e) => {
-                        if (e.target.checked) onTick(selector);
-                        else onUntick(selector);
-                      }}
-                    />
-                    <span className="font-semibold" title={selector}>
-                      {nameOf(selector)}
-                    </span>
-                  </label>
-                  <span className="text-xs text-gray-600">
-                    {rule.trusted ? t('trustLocked') : t('removedHere', { count: removedBy(selector).length })}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
       )}
     </section>
   );
