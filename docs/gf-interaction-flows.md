@@ -636,6 +636,9 @@ BAD CAPTURE  this capture does not speak; reason REQUIRED
              researcher pastes:  resolve_scan_stop url=… capture=… BAD_CAPTURE reason=…
              → CAPTURE_SKIPPED, attributed · row := SKIPPED, body cleared,
                no UrlSnapshot ever → the walk moves on
+             also given for an UNFETCHED capture the archive will not serve (A5, amended
+             2026-09-07) — the one case where the human has not seen the bytes, and the
+             reason says so
 
 STATE        one decision, always · Rule rows only on CORRECT
 ```
@@ -986,6 +989,11 @@ scan_captures({ url, maxCaptures })
             a TRANSIENT fetch failure (isTransientWaybackError) leaves the row UNFETCHED and the call
             returns { code: 'ARCHIVE_UNAVAILABLE' } at that row, everything before it kept; a durable
             404 is UNSERVABLE and the walk continues
+            a THIRD archive answer exists, observed 2026-09-06 on walla's 20250208221410: a 429 held
+            for a single capture across hours and clients while its neighbours serve. On any one
+            call it is indistinguishable from transient, so the walk treats it as one, forever;
+            what ends it is the researcher skipping the capture (resolve_scan_stop, above), never a
+            threshold
             on acquiring a capture that has an ACQUIRED successor — a re-walk turning a DUPLICATE
             novel, or a capture the index gained with an old date — the successor's diff is
             written against it as well, classified like any other, so the timeline stays a
@@ -1051,6 +1059,11 @@ resolve_scan_stop({ url, capture, resolution: 'BAD_CAPTURE', reason })
   returns   { capture, outcome: 'SKIPPED', decisionSequence }
   refuses   NOT_PENDING · REASON_REQUIRED · INVALID_RESOLUTION (anything but BAD_CAPTURE) ·
             STALE_SEQUENCE
+            Amended 2026-09-07 (step 5's staging exercise): an UNFETCHED row may be skipped too,
+            the same act with the same reason required — for a capture the archive refuses with
+            429 indefinitely (a third archive answer, below), only the researcher's explicit word
+            moves the page past it; NOT_PENDING now names every outcome but PENDING_JUDGEMENT and
+            UNFETCHED. No count of attempts ever decides it: the walk keeps asking until a human says stop
 
 reset_article_calibration({ url, reason })
   does      ONE transaction: one RESET decision — every rule created before it loses authority by

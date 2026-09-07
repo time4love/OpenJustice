@@ -137,8 +137,13 @@ describe('resolve_scan_stop — refusals, as JSON, with nothing written', () => 
     for (const write of WRITES) expect(write).not.toHaveBeenCalled();
   });
 
-  it('refuses NOT_PENDING for every outcome but PENDING_JUDGEMENT', async () => {
-    for (const outcome of OUTCOMES.filter((o) => o !== 'PENDING_JUDGEMENT')) {
+  // RULED 2026-09-07 (step 5's staging exercise): an UNFETCHED row may be
+  // skipped too — the archive refused capture 20250208221410 with 429 for over
+  // an hour, from three clients, while its neighbours served; a third archive
+  // answer A5 had not named, and only the researcher's word moves the page
+  // past it. No threshold, ever: the walk keeps asking until a human says stop.
+  it('refuses NOT_PENDING for every outcome but PENDING_JUDGEMENT and UNFETCHED', async () => {
+    for (const outcome of OUTCOMES.filter((o) => o !== 'PENDING_JUDGEMENT' && o !== 'UNFETCHED')) {
       jest.clearAllMocks();
       pageWith(outcome);
       const result = await resolve();
@@ -202,6 +207,19 @@ describe('resolve_scan_stop — the decision', () => {
 });
 
 describe('resolve_scan_stop — the row', () => {
+  it('skips an UNFETCHED row the archive will not serve: CAPTURE_SKIPPED with the reason, the row SKIPPED, nothing held to clear', async () => {
+    pageWith('UNFETCHED');
+    const result = await resolve('the archive answers 429 for this capture, for over an hour, from three clients');
+    expect(result).toEqual({ capture: T14, outcome: 'SKIPPED', decisionSequence: 3 });
+    expect(decisionsCreated()).toEqual([
+      expect.objectContaining({ type: 'CAPTURE_SKIPPED', waybackTimestamp: T14, researcherId: RESEARCHER }),
+    ]);
+    expect(rowUpdate).toHaveBeenCalledWith({
+      where: { id: `row-${T14}` },
+      data: { status: 'SKIPPED', reason: expect.any(String), heldBody: null, stop: Prisma.DbNull },
+    });
+  });
+
   it('records SKIPPED with the reason, and clears the held bytes and the stop', async () => {
     await resolve();
     expect(rowUpdate).toHaveBeenCalledWith({

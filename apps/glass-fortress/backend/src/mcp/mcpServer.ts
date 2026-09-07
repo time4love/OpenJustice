@@ -668,9 +668,12 @@ export function createMcpServer(): McpServer {
         'outcome this corpus does not permit. The capture becomes SKIPPED, its held bytes are ' +
         'discarded, no snapshot is ever made of it, and the rules are untouched however many bad ' +
         'captures occur in a row. Every other answer — CONTINUE, CORRECT, TRUST — is given in the ' +
-        'marking page and promoted by approve_article_rules. Names the page by url and the capture ' +
-        'by its 14-digit wayback timestamp. Refuses NOT_PENDING, REASON_REQUIRED, INVALID_RESOLUTION ' +
-        'and STALE_SEQUENCE.',
+        'marking page and promoted by approve_article_rules. Also the answer for an UNFETCHED capture ' +
+        'the archive will not serve (a 429 that holds for one capture while its neighbours serve): the ' +
+        'walk keeps retrying it forever and no count of attempts ever skips it — only your explicit word ' +
+        'does, with the reason saying so. Names the page by url and the capture by its 14-digit wayback ' +
+        'timestamp. Refuses NOT_PENDING (any outcome but PENDING_JUDGEMENT or UNFETCHED), ' +
+        'REASON_REQUIRED, INVALID_RESOLUTION and STALE_SEQUENCE.',
       inputSchema: resolveScanStopSchema,
     },
     async (input) => ({
