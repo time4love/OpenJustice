@@ -569,8 +569,11 @@ then pastes `resolve_scan_stop url=… capture=… BAD_CAPTURE reason=…` inste
 **Amended 2026-09-07: TRUST leaves the page.** `draftTrusted` is retired, and with it "a rule created
 in this draft can be trusted in this draft" — a rule is trusted at a stop, in the chat, after its
 removals have been read. CONTINUE no longer needs a returned draft: it is `resolve_scan_stop`
-CONTINUE. The page's stop panel says why the walk stopped and what to mark — the gate, and Gate 1's
-lines that entered the text — and asks nothing.
+CONTINUE. The page explains nothing about the stop — why the walk stopped is the chat's, and the
+page is for marking rules (ruled 2026-09-07, the same evening): the stop panel is gone and nothing of
+the stop is rendered. Claude gives the instructions before handing over the URL — which element to
+find, by the text it begins with, and whether to mark or unmark it — and the conversation continues
+with the page open, so anything unclear on the page is asked in the chat, not read off the page.
 
 **AN EMPTY DRAFT IS APPROVED EXPLICITLY OR NOT AT ALL.** A page with no furniture exists, so zero rules
 cannot be refused outright — but an approval of nothing has twice gone through unnoticed. On a
