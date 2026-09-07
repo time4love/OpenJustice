@@ -972,7 +972,10 @@ DiffContentVersion                                                    ⚠️ to 
   classification          Json | null — the OPINION register: significance, categories,
                           legallySignificant, editorial, summary, classifierVersion,
                           classifierModel, draws, summaryVersion
-  survivalVersion         SURVIVAL_CHECK_VERSION at derivation
+  survivalVersion         SURVIVAL_CHECK_VERSION at derivation. Amended 2026-09-07 (step 5's
+                          exercise): survival compares the EXTRACTOR alone — a rule change between
+                          the two captures leaves every chunk checkable; only a different extractor
+                          makes them UNCHECKABLE
   derivedAt
   @@unique([diffId, contentVersionHash])
   a re-derivation whose contentVersionHash exists is NOT a row: nothing is written and CURRENT

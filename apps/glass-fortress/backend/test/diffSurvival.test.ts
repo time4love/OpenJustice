@@ -94,6 +94,28 @@ describe('a reported change must survive the documents', () => {
 // ---------------------------------------------------------------------------
 // UNCHECKABLE IS A VERDICT ABOUT THE CHECK
 // ---------------------------------------------------------------------------
+// RULED 2026-09-07 (step 5's staging exercise, finding 2): survival compares
+// the EXTRACTOR alone. `chromeTextVersion` appends the ruleset id to the
+// version (`<base>+chrome-<id>`), and under the walk a rule change is every
+// redesign — so comparing whole version strings made every chunk of every
+// diff UNCHECKABLE (24 of 24 on walla). A chunk's presence in the other side's
+// text is a fact about the texts, whichever rules cut them; only a different
+// extractor makes two texts incomparable.
+describe('two rulesets under one extractor are compared; two extractors are not', () => {
+  it('checks a chunk across a rule change — the ruleset suffix is not the extractor', () => {
+    const result = checkDiffSurvival({
+      rawDeletedText: JSON.stringify([SENTENCE]),
+      rawAddedText: '[]',
+      beforeText: SENTENCE,
+      afterText: SENTENCE,
+      beforeVersion: `${V2}+chrome-58404310`,
+      afterVersion: `${V2}+chrome-567ddbb3`,
+    });
+    expect(result.verdict).toBe('CONTRADICTED');
+    expect(result.chunksChecked).toBe(1);
+  });
+});
+
 describe('mixed extraction versions are UNCHECKABLE, not passed or failed', () => {
   it('refuses to compare text produced by different rules', () => {
     const result = checkDiffSurvival({
@@ -108,7 +130,7 @@ describe('mixed extraction versions are UNCHECKABLE, not passed or failed', () =
     // one, because the two sides were never comparable — and it is not reported
     // as SURVIVES either, which is the failure §3 exists to prevent.
     expect(result.verdict).toBe('UNCHECKABLE');
-    expect(result.reason).toContain('different rules');
+    expect(result.reason).toContain('different extractors');
     expect(result.contradicted).toEqual([]);
   });
 });

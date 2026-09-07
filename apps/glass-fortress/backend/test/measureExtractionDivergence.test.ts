@@ -28,14 +28,17 @@ const SURVIVING_SENTENCE =
 const GENUINELY_REMOVED =
   'המידע הזה הוסר מן הדף לחלוטין ואינו מופיע בשום צילום מאוחר יותר של העמוד הזה.';
 
+/** A snapshot as the measurement selects it — text AND the extractor version the checker compares (2026-09-07). */
+const snap = (text: string) => ({ text, textExtractionVersion: 'v2-fixture-extractor' });
+
 const diff = (over: Record<string, unknown> = {}) => ({
   id: 'diff-1',
   beforeDate: '2022-07-24',
   afterDate: '2022-08-05',
   rawDeletedText: '[]',
   rawAddedText: '[]',
-  beforeSnapshot: { text: 'before document' },
-  afterSnapshot: { text: 'after document' },
+  beforeSnapshot: snap('before document'),
+  afterSnapshot: snap('after document'),
   ...over,
 });
 
@@ -50,7 +53,7 @@ describe('measureExtractionDivergence — per-diff verdicts', () => {
     diffFindMany.mockResolvedValue([
       diff({
         rawDeletedText: JSON.stringify([SURVIVING_SENTENCE]),
-        afterSnapshot: { text: `כותרת\n${SURVIVING_SENTENCE}\nעוד טקסט` },
+        afterSnapshot: snap(`כותרת\n${SURVIVING_SENTENCE}\nעוד טקסט`),
       }),
     ]);
 
@@ -65,7 +68,7 @@ describe('measureExtractionDivergence — per-diff verdicts', () => {
     diffFindMany.mockResolvedValue([
       diff({
         rawDeletedText: JSON.stringify([GENUINELY_REMOVED]),
-        afterSnapshot: { text: 'a document that says something else entirely' },
+        afterSnapshot: snap('a document that says something else entirely'),
       }),
     ]);
 
@@ -86,7 +89,7 @@ describe('measureExtractionDivergence — per-diff verdicts', () => {
     diffFindMany.mockResolvedValue([
       diff({
         rawDeletedText: JSON.stringify([`${GENUINELY_REMOVED} ${SURVIVING_SENTENCE}`]),
-        afterSnapshot: { text: `כותרת אחרת\n${SURVIVING_SENTENCE}` },
+        afterSnapshot: snap(`כותרת אחרת\n${SURVIVING_SENTENCE}`),
       }),
     ]);
 
@@ -100,7 +103,7 @@ describe('measureExtractionDivergence — per-diff verdicts', () => {
     diffFindMany.mockResolvedValue([
       diff({
         rawDeletedText: JSON.stringify([`${SURVIVING_SENTENCE} ${SURVIVING_SENTENCE}`]),
-        afterSnapshot: { text: SURVIVING_SENTENCE },
+        afterSnapshot: snap(SURVIVING_SENTENCE),
       }),
     ]);
 
@@ -113,7 +116,7 @@ describe('measureExtractionDivergence — per-diff verdicts', () => {
     diffFindMany.mockResolvedValue([
       diff({
         rawDeletedText: JSON.stringify(['החיסון']),
-        afterSnapshot: { text: 'החיסון ניתן בשתי מנות' },
+        afterSnapshot: snap('החיסון ניתן בשתי מנות'),
       }),
     ]);
 
@@ -126,8 +129,8 @@ describe('measureExtractionDivergence — per-diff verdicts', () => {
     diffFindMany.mockResolvedValue([
       diff({
         rawAddedText: JSON.stringify([SURVIVING_SENTENCE]),
-        beforeSnapshot: { text: `כבר היה שם: ${SURVIVING_SENTENCE}` },
-        afterSnapshot: { text: 'irrelevant' },
+        beforeSnapshot: snap(`כבר היה שם: ${SURVIVING_SENTENCE}`),
+        afterSnapshot: snap('irrelevant'),
       }),
     ]);
 

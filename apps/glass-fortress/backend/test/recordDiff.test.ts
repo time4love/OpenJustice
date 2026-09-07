@@ -200,7 +200,19 @@ describe('recordDiff — the content version', () => {
     ]);
   });
 
-  it('two captures extracted under different rules make every chunk UNCHECKABLE — the checker’s rule, unchanged', async () => {
+  // RULED 2026-09-07: survival compares the extractor alone — a rule change
+  // (the `+chrome-<id>` suffix) leaves every chunk checkable.
+  it('two captures under different RULES by one extractor are checked chunk by chunk', async () => {
+    snapshotsFind.mockResolvedValue([
+      stored('snap-before', BEFORE_TEXT, 'v2-fixture-extractor+chrome-58404310'),
+      stored('snap-after', AFTER_TEXT, 'v2-fixture-extractor+chrome-567ddbb3'),
+    ]);
+    await recordDiff(write());
+    const chunks = (versionCreate.mock.calls[0]?.[0] as { data: Record<string, unknown>[] }).data[0]?.['chunks'] as ContentChunk[];
+    expect(chunks.map((c) => c.survival)).toEqual(['SURVIVES', 'SURVIVES']);
+  });
+
+  it('two captures extracted by different EXTRACTORS make every chunk UNCHECKABLE — the checker’s rule', async () => {
     snapshotsFind.mockResolvedValue([stored('snap-before', BEFORE_TEXT, 'v1'), stored('snap-after', AFTER_TEXT, 'v2')]);
     await recordDiff(write());
     const chunks = (versionCreate.mock.calls[0]?.[0] as { data: Record<string, unknown>[] }).data[0]?.['chunks'] as ContentChunk[];
