@@ -1,6 +1,6 @@
 # Walla's corrective pass, and what the surface could not tell the researcher — 2026-09-08
 
-**A dated record, never edited.** Three findings from one short session at the connector, none of
+**A dated record, never edited.** Four findings from one short session at the connector, none of
 which a test could have produced: the suite was green, every instrument agreed with itself, and a
 researcher still could not find out whether their own correction had worked. Every number below is a
 return read on the day; nothing is recomputed. The corrective pass this closes was opened in
@@ -36,8 +36,8 @@ change working rather than the walk skipping.
 
 **What that does NOT establish, and it matters:** "quiet because you already judged these" and "quiet
 because it lost track" are indistinguishable from the return alone. The check that separates them is
-whether every diff now re-derives to zero chunks — the thing the corrective pass was for — and §2 is
-why the researcher could not run it.
+whether every diff now re-derives to zero chunks — the thing the corrective pass was for. §2 is why
+the researcher could not run it through any tool, and §4 is the answer, run as a query.
 
 **Still unexercised by this pass:** PR 4's per-rule script, `get_rule_history`, and TRUST/END given in
 the chat. No gate fired, so none of them ran against real data. The BAD_CAPTURE half of the script
@@ -117,13 +117,46 @@ code. Here the session's own surface was **behind** the code, so quoting the too
 promised a script and a tool that session could not reach. A tool list is a cache, and after a deploy
 it is a stale one.
 
+## 4. The corrective pass is proven — and the walk paid a classifier call for each empty diff
+
+The zero-chunk check §2 could not run through any tool was run as a read-only query against
+`DiffContentVersion`, newest version per diff:
+
+| before | after | diffVersion | survivalVersion | chunks | classified | derivedAt |
+|---|---|---|---|---|---|---|
+| 2020-12-09 | 2021-06-12 | `v4-sentence-claims-lettered+v5-editorial-verdict` | `v4-against-documents` | **0** | true | 07:00:49 |
+| 2021-06-12 | 2022-05-23 | same | same | **0** | true | 07:00:51 |
+| 2022-05-23 | 2024-05-20 | same | same | **0** | true | 08:41:23 |
+
+**The corrective pass worked.** Both positional link rules are ended, all four texts are derived
+without them, and every diff now holds zero chunks: the article never changed, and for the first time
+the corpus says so. The last row is today's walk (§1), which derived the 2022→2024 pair at 08:41.
+
+`classified: true` also settles §2 from the DATA rather than from a reading of the code: the
+classifier ran on every one of these. The session's *"the classifier never ran on it at all"* was the
+legacy columns talking, exactly as §2 concluded, and this is the independent confirmation.
+
+**And it is the finding.** Read from `src/walk/tools/scanCaptures.ts:883–905`: `draw` builds the
+`ClassifierDiff` and calls `analyzeChange` with no check that either side holds anything. Three paid
+calls were spent this morning asking a model whether an empty change was editorial, and the verdict
+bought is meaningless.
+
+**It recurs for future state, which is what makes it work rather than archaeology.** Every corrective
+pass that SUCCEEDS ends in zero-chunk diffs, and every one of them pays — the better the marking, the
+more the walk spends on nothing. The design already knows an empty diff is empty from the other side:
+evidence A4 refuses `NOTHING_TO_PROMOTE` for *"a diff whose CURRENT has no chunk"*, so evidence calls
+it evidence of nothing while acquisition pays to have it judged. A2 already defines the state the fix
+would write — `classification Json?`, *"NULL when nothing classified this derivation"* — and nothing
+produces it.
+
+**Whose it is:** acquisition's, not evidence's. The draw is the walk's, so the fix belongs in the
+corpus track and not in steps 11 or 12, which are about reading what the walk wrote.
+
 ## What remains
 
-- **The zero-chunk check is still owed** — whether every diff re-derives to zero chunks now that both
-  positional link rules are ended. Not answerable through any tool today; it needs a read-only query
-  against `DiffContentVersion`, or step 12.
 - **`20250208221410`** still answers 429, as it has since 2026-09-06. Retry, or the researcher's
   explicit skip with a reason; no count of attempts ever decides it.
 - **PR 4's judging surface has never run.** The next real stop is its first.
+- **The empty-diff draw is unfixed**, recorded here and owned by the corpus track.
 
 **Plan `docs/gf-refactor-plan.md` §3b points here from its 2026-09-08 note.**
