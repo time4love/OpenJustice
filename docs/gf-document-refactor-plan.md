@@ -339,10 +339,12 @@ held document with a reason, then `get_arrivals` still listing its arrival.
 > KEEP file edited beyond the planned MOVE, or a module deleted that no tag names, is a finding.
 > It lands with its own dated record of what left.
 >
-> **The HIDE half is thereby a DELETION, not a withdrawal:** the gap modal and the `/submit` page go
-> in the frontend's DARK change, landed with the first deletion PR, and no appeal on any page can
-> point at a door because there is none. The OPEN half is unchanged and still lands with the intake
-> dialog after step 32. `directProvenanceUnused` (KEEP until this step) stays until step 28 drops
+> **The HIDE half is thereby a DELETION, not a withdrawal:** the gap modal and the `/submit` page are
+> deleted — and, ruled 2026-09-08, in the frontend's ONE cut-over after the backend migration
+> (refactor plan §3b, the note above step 11), not in a change beside the first deletion PR. Until
+> then the door's routes are gone from the backend and the page answers nothing, on staging, where
+> nobody knocks; no appeal on any page can point at a door because there is none. The OPEN half is
+> unchanged and still lands with the intake dialog after step 32. `directProvenanceUnused` (KEEP until this step) stays until step 28 drops
 > the values it holds absent.
 >
 > Steps 27–35 and 37 are unchanged. What remains of this step is the `document` project joining the

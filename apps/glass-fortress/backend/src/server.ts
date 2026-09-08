@@ -16,7 +16,6 @@ process.on('unhandledRejection', (reason) => {
 process.on('uncaughtException', (err) => {
   console.error('[process] Uncaught exception (process kept alive):', err);
 });
-import { evidenceRouter } from './routes/evidenceRoutes';
 import { forensicsRouter } from './routes/forensicsRoutes';
 import { walkArticleRulesRouter } from './walk/routes';
 import { mcpRouter } from './mcp/mcpRoutes';
@@ -29,7 +28,6 @@ import { generalLimiter } from './middleware/rateLimiting';
 import { oidcProvider } from './oauth/oidcProvider';
 import { oauthInteractionRouter } from './routes/oauthInteractionRoutes';
 import { wellKnownRouter } from './routes/wellKnownRoutes';
-import { VectorStoreService } from './services/VectorStoreService';
 
 // ---------------------------------------------------------------------------
 // Refuse to run against the wrong database. Must happen before anything opens a
@@ -195,7 +193,6 @@ app.get('/api/stats', async (_req: Request, res: Response) => {
   }
 });
 
-app.use('/api/evidence', evidenceRouter);
 app.use('/api/forensics', forensicsRouter);
 // The marking page's surface, page-scoped (docs/gf-interaction-flows.md A6),
 // behind requireResearcher inside the router.
@@ -237,18 +234,13 @@ app.listen(PORT, () => {
   console.log(`Glass Fortress backend running on http://localhost:${PORT}`);
   console.log(`[startup] Build: ${new Date().toISOString()} | Node: ${process.version}`);
 
-  // Semantic search degrades silently when its tables are missing — surface it here.
-  void VectorStoreService.healthCheck().then((health) => {
-    if (health.ok) {
-      console.log('[startup] Vector store: OK');
-      return;
-    }
-    console.error(
-      `[startup] VECTOR STORE UNAVAILABLE — semantic search will return no results ` +
-        `without erroring. Missing: ${health.missing.join(', ')}. ` +
-        `Fix with: npx prisma migrate deploy`,
-    );
-  });
+  // THE VECTOR STORE'S STARTUP HEALTH CHECK WENT WITH THE STORE AT EVIDENCE STEP
+  // 11a. It existed because semantic search degraded SILENTLY when its tables
+  // were missing — returning no results without erroring — and that warning was
+  // the only thing that made the failure visible. There is nothing left to warn
+  // about: evidence flows §5 retires `search_evidence` and the public evidence
+  // surface it ranked, and with no prose on an evidence row the embedding has no
+  // source and no reader. The table itself is dropped by 11b's migration.
 });
 
 export { app };

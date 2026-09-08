@@ -22,7 +22,6 @@
     "db:deploy": "prisma migrate deploy",
     "researcher:bootstrap": "node dist/scripts/bootstrapResearcher.js",
     "forensics:trajectories": "node dist/scripts/claimTrajectories.js",
-    "entities:canonicalise": "node dist/scripts/canonicaliseTargetEntities.js",
     "forensics:backfill-document-bytes": "node dist/scripts/backfillDocumentBytes.js",
     "forensics:verify-against-cdx": "node dist/scripts/verifyAgainstCdx.js",
     "forensics:rehash-documents": "node dist/scripts/rehashDocuments.js",

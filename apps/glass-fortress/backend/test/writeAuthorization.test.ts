@@ -38,11 +38,6 @@ import { join } from 'node:path';
  * that wants to be here has to be argued for in this list.
  */
 const ANONYMOUS_WRITES_ALLOWED: Record<string, string> = {
-  'evidenceRoutes.ts POST /intake': 'public submission — writes PENDING_REVIEW',
-  'evidenceRoutes.ts POST /confirm': 'public submission — writes PENDING_REVIEW',
-  'evidenceRoutes.ts POST /recover-intake': 'blocked-URL recovery — always PENDING_REVIEW',
-  'evidenceRoutes.ts POST /recover-confirm': 'blocked-URL recovery — always PENDING_REVIEW',
-  'evidenceRoutes.ts POST /contact': 'contact form',
   'reportRoutes.ts POST /medical': 'public adverse-outcome self-report',
   'reportRoutes.ts POST /social-economic': 'public adverse-outcome self-report',
   'reportRoutes.ts POST /medical/aggregate': 'read-shaped aggregate, POSTed for its filter body',
@@ -159,14 +154,17 @@ describe('the parser understands a router-level gate, and only where it applies'
 describe('no state-changing route is reachable anonymously without a stated reason', () => {
   it('finds routes at all — a scan that matches nothing would pass by not looking', () => {
     const routes = allRoutes();
-    // FOURTEEN AT EVIDENCE STEP 11a, twenty-nine before it: five route modules
-    // left with the thesis layer (`thesisRoutes`, `chatRoutes`, `argumentRoutes`,
-    // `mentionRoutes`, `figuresRoutes`), and thesis flows A5 replaces none of
-    // them — every research act is an MCP tool. The floor moves WITH the tree and
-    // never below it: its job is to catch a scan that stopped matching, not to
-    // assert a count, and a floor left at twenty would be the assertion weakened
-    // to pass.
-    expect(routes.length).toBeGreaterThan(10);
+    // NINE AT THE END OF THE LEGACY SWITCH, twenty-nine before it. Five route
+    // modules left with the thesis layer (`thesisRoutes`, `chatRoutes`,
+    // `argumentRoutes`, `mentionRoutes`, `figuresRoutes`) and `evidenceRoutes`
+    // with the document layer; thesis A5 and evidence A5 replace none of them —
+    // every research act is an MCP tool, and the evidence routes are the
+    // FRONTEND's to replace with corpus reads. What remains is the public report
+    // intake, the OAuth interaction forms and auth. The floor moves WITH the tree
+    // and never below it: its job is to catch a scan that stopped matching, not
+    // to assert a count, and a floor left where the routes used to be would be
+    // the assertion weakened to pass.
+    expect(routes.length).toBeGreaterThan(5);
     expect(routes.some((r) => r.gated)).toBe(true);
   });
 

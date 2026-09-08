@@ -42,10 +42,13 @@ function importsInOrder(source: string): string[] {
 
 describe('every operational script loads its environment before anything else', () => {
   it('finds the scripts at all — a silent zero would make this vacuous', () => {
-    // Sixteen at the time of writing. A collapse to zero means the directory
-    // moved or the pattern broke, which would turn every case below into a pass
-    // that proves nothing.
-    expect(files.length).toBeGreaterThanOrEqual(16);
+    // Fifteen in the document third of the legacy switch, sixteen after the
+    // evidence third. `entities:canonicalise` went with `lib/targetEntity.ts`,
+    // whose subject is a column evidence A2 removes. A collapse to zero means the
+    // directory moved or the pattern broke, which would turn every case below
+    // into a pass that proves nothing; the floor moves with the tree and never
+    // below it.
+    expect(files.length).toBeGreaterThanOrEqual(15);
   });
 
   it.each(files)('%s imports dotenv/config first', (file) => {

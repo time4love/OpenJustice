@@ -1,10 +1,26 @@
 // ---------------------------------------------------------------------------
-// MCP write-tool integration tests
+// THE MCP WRITE GATE: HTTP → auth guard → transport → handler.
 //
-// Tests the full stack: HTTP → auth guard → MCP transport → tool handler.
-// Only mocked at service boundaries (Prisma, IntakeAgent).
-// VectorStoreService and Web3Service are mocked and asserted NOT called —
-// this is the staging gate: write tools must never touch on-chain or Pinecone.
+// MOVED HERE AT EVIDENCE STEP 11a from `mcpIntegration.test.ts`, which is
+// deleted. Document refactor plan §5 planned this move for step 36 and named the
+// reason: that file mocked `IntakeAgent` BY PATH, and a KEEP group cannot stay
+// green in a file whose `jest.mock` targets a module the step deletes — it throws
+// at load, before a single assertion runs. The plan's hazard list calls it "mock
+// by path"; this is it, paid rather than tripped over.
+//
+// WHAT MOVED IS THE GATE'S CONTRACT, NOT ITS FIXTURES. The tools named below are
+// whatever the surface still carries: the list has been re-pointed at every one
+// of the three deletion PRs, because a gate list that only ever shrinks
+// eventually tests nothing, and a fixture naming a retired tool is a gate tested
+// against something nobody can call.
+//
+// The second KEEP group the plan expected to move — evidence creation — went
+// with `create_evidence_from_url` at 11a-evidence, so one group moved, not two.
+//
+// Mocked at service boundaries only. `Web3Service` is mocked and asserted NOT
+// called: that is the staging gate, which forbids a write tool touching the
+// chain. The Pinecone half of that assertion left with `VectorStoreService` in
+// 11a-document — evidence §5 leaves the embedding no source and no reader.
 // ---------------------------------------------------------------------------
 
 jest.mock('../src/lib/prisma', () => ({
@@ -21,60 +37,12 @@ jest.mock('../src/lib/prisma', () => ({
   },
 }));
 
-// oidc-provider is pure ESM — see test/oauthInteractionRoutes.test.ts for why
-// this needs mocking under Jest even though the real runtime loads it fine.
-// This suite exercises the legacy static-token path only, so AccessToken.find
-// resolving undefined (not a recognized OAuth token) is all it needs.
 jest.mock('../src/oauth/oidcProvider', () => ({
   oidcProvider: {
     issuer: 'https://backend.test/oauth',
     AccessToken: { find: jest.fn().mockResolvedValue(undefined) },
   },
   resolveOrigin: jest.fn().mockReturnValue('https://backend.test'),
-}));
-
-jest.mock('../src/services/IntakeAgent', () => ({
-  IntakeAgent: jest.fn().mockImplementation(() => ({
-    analyzeText: jest.fn().mockResolvedValue({
-      isRelevant: true,
-      evidenceRole: 'Incriminating',
-      investigativeCategories: ['WITHHOLDING_INFORMATION'],
-      targetEntity: 'Ministry of Health',
-      evidenceTier: 'Tier 1: Smoking Gun',
-      evidencePerspective: 'Internal Knowledge',
-      tierReasoning: 'Leaked internal data.',
-      summary: 'Ministry suppressed side effect findings.',
-      evidenceDate: '2022-08-01',
-      keyFigures: ['Prof. Barkovitz'],
-      medicalConditions: ['myocarditis'],
-      statisticalClaims: [],
-      regulatoryMentions: [],
-      euaOmissionStatus: 'Not Applicable',
-      missingInformation: '',
-    }),
-    analyzeEvidence: jest.fn().mockResolvedValue({
-      isRelevant: true,
-      evidenceRole: 'Incriminating',
-      investigativeCategories: ['WITHHOLDING_INFORMATION'],
-      targetEntity: 'Ministry of Health',
-      evidenceTier: 'Tier 1: Smoking Gun',
-      evidencePerspective: 'Internal Knowledge',
-      tierReasoning: 'Leaked internal data.',
-      summary: 'Ministry suppressed side effect findings.',
-      evidenceDate: '2022-08-01',
-      keyFigures: ['Prof. Barkovitz'],
-      medicalConditions: ['myocarditis'],
-      statisticalClaims: [],
-      regulatoryMentions: [],
-      euaOmissionStatus: 'Not Applicable',
-      missingInformation: '',
-    }),
-  })),
-}));
-
-// Staging gate mocks — asserted NOT called in write-tool tests
-jest.mock('../src/services/VectorStoreService', () => ({
-  VectorStoreService: { create: jest.fn() },
 }));
 
 jest.mock('../src/services/Web3Service', () => {
@@ -89,21 +57,10 @@ jest.mock('../src/services/Web3Service', () => {
   return { Web3Service: MockWeb3Service };
 });
 
-// The `DevilsAdvocateAgent` mock left with the module at evidence step 11a:
-// the critic is thesis §5 REWRITE, its successor landing at thesis step 22 over
-// computed content. Nothing in this file reaches it any more — the two thesis
-// integration groups went with their tools.
-
 // The verification tools reach the archived-page extractor, which loads jsdom —
 // ESM-only in its dependency chain and unparseable by ts-jest, the same reason
 // every scraper test stubs it. Nothing here exercises extraction; what the real
 // extractor does is measured in test/extraction/ against a frozen capture.
-// The stub echoes the HTML it was given back as the document body, so
-// extractArticleText's fallback path yields real text. It used to return an
-// empty body, which made every extraction produce '' — harmless while the URL
-// intake did its own tag-stripping, and an immediate "content too short" once
-// that path moved onto the shared extractor. A stub that silently returns
-// nothing is not a cheaper extractor, it is a different code path.
 jest.mock('jsdom', () => ({
   JSDOM: jest.fn().mockImplementation((html: string) => ({
     window: { document: { body: { innerHTML: html ?? '' } } },
@@ -116,7 +73,6 @@ jest.mock('@mozilla/readability', () => ({
 import request from 'supertest';
 import express from 'express';
 import { prisma } from '../src/lib/prisma';
-import { VectorStoreService } from '../src/services/VectorStoreService';
 import { Web3Service } from '../src/services/Web3Service';
 import { hashToken } from '../src/lib/tokenHash';
 
@@ -175,7 +131,6 @@ const mockThesisFindUnique = prisma.thesis.findUnique as jest.Mock;
 const mockThesisVersionCreate = prisma.thesisVersion.create as jest.Mock;
 const mockTransaction = prisma.$transaction as jest.Mock;
 const mockResearcherFindFirst = prisma.researcher.findFirst as jest.Mock;
-const mockVectorStoreCreate = VectorStoreService.create as jest.Mock;
 const MockWeb3Service = Web3Service as jest.MockedClass<typeof Web3Service>;
 
 const TEST_HMAC_SECRET = 'test-hmac-secret-for-jest';
@@ -275,15 +230,21 @@ describe('write tool auth enforcement', () => {
     // shortened — a gate list that only shrinks eventually tests nothing.
     { name: 'scan_captures', args: { url: 'https://corona.health.gov.il/' } },
     { name: 'survey_wayback_captures', args: { url: 'https://corona.health.gov.il/' } },
-    // THE SIX THESIS TOOLS LEFT THE SURFACE AT EVIDENCE STEP 11a AND ARE REPLACED,
-    // NOT DROPPED. Between this PR and thesis step 20 there is no thesis write
-    // tool at all, so the list is made from what the gate must still refuse
-    // anonymously: the walk's five writes and the one document write PR 3 takes.
-    // A gate list that only ever shrinks eventually tests nothing.
+    // RE-POINTED AT EVERY ONE OF THE THREE DELETION PRs, AND THAT IS THE POINT.
+    // `create_evidence_from_url` went in 11a-evidence, six thesis tools in
+    // 11a-thesis, `create_evidence_from_text` here — document flows §9 retires it
+    // for `add_document`. The gate's rule never changed; what a gate list must
+    // name is a tool somebody can actually call, and a list that only ever
+    // shrinks eventually tests nothing.
+    //
+    // EVERY WRITE TOOL THE SURFACE HAS IS HERE, which is the strongest form this
+    // case has ever taken: until the thesis and document doors are rebuilt at
+    // steps 20 and 30, the walk's five writes ARE the write surface.
+    { name: 'scan_captures', args: { url: 'https://corona.health.gov.il/' } },
+    { name: 'survey_wayback_captures', args: { url: 'https://corona.health.gov.il/' } },
     { name: 'approve_article_rules', args: { url: 'https://corona.health.gov.il/', capture: '20220101000000' } },
     { name: 'resolve_scan_stop', args: { url: 'https://corona.health.gov.il/', capture: '20220101000000', resolution: 'CONTINUE' } },
     { name: 'reset_article_calibration', args: { url: 'https://corona.health.gov.il/', reason: 'test' } },
-    { name: 'create_evidence_from_text', args: { url: 'https://example.gov', text: 'text' } },
   ];
 
   for (const { name, args } of writeTools) {

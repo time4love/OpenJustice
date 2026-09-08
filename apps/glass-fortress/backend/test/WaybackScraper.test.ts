@@ -41,13 +41,11 @@ jest.mock('@mozilla/readability', () => ({
     })),
 }));
 jest.mock('../src/services/ForensicAgent');
-jest.mock('../src/services/VectorStoreService', () => ({
-  VectorStoreService: {
-    create: jest.fn().mockResolvedValue({
-      upsertEvidence: jest.fn().mockResolvedValue(undefined),
-    }),
-  },
-}));
+// The `VectorStoreService` mock left with the module at evidence step 11a:
+// evidence flows §5 retires the evidence surface it served, and with no prose
+// on an evidence row the embedding has no source and no reader. Nothing in
+// this file reaches it — the scraper never did; the mock guarded a transitive
+// import through the evidence path that no longer exists.
 
 // analyzePageHistory now ADMITS rather than upserting a TrackedUrl directly —
 

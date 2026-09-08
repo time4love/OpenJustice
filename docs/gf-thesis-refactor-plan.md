@@ -71,11 +71,13 @@ every one, and a RETIRE file still present after step 25 is a defect in step 25.
 > in between. Its review is a list check against §5 and this list; a KEEP file edited, or a module
 > deleted that no tag names, is a finding. It lands with its own dated record of what left.
 >
-> **The frontend goes DARK on the thesis pages** — its 21 calls into `/api/thesis` have no server
-> until step 23's public reads — by a deliberate change of its own, landed with the first deletion
-> PR: the pages hidden or unlinked, never left to break. §8's first hazard (the public page reads
-> TipTap) is thereby met by absence rather than by ordering; the T5 page is built when step 23 gives
-> it a contract. **SHIP stays gated behind step 26**, as it was.
+> **The frontend's thesis pages have no server** — their 21 calls into `/api/thesis` answer nothing
+> from the deletion until step 23's public reads. This note first ordered a DARK change with the
+> first deletion PR; **ruled 2026-09-08: the frontend waits for the backend migration** (refactor
+> plan §3b, the note above step 11) — no frontend file before step 12, the T5 page built at step 23
+> when it has a contract, the legacy pages deleted in one cut-over at the end. §8's first hazard (the
+> public page reads TipTap) is met by absence, on staging, where nobody reads it. **SHIP stays gated
+> behind step 26**, as it was.
 >
 > Steps 17–24 are unchanged in content and order, and step 21's dependence on evidence step 13
 > (§8) still binds. What step 25 keeps is the migration's half — moved to step 18 — and the

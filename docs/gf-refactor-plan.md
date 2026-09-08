@@ -396,8 +396,17 @@ and the breakage that proves the instrument (evidence doc A7).
 > thesis-owned module that reads `Evidence` is therefore retired in 11a-thesis, not edited around;
 > the boundary rule this note first carried is moot. Code and tests only, in every one of the three:
 > each layer's schema drops stay with its build step — 11b, thesis step 18, document step 28 — so
-> every migration remains one file in the step that owns it. The frontend's DARK change — the
-> pages whose APIs leave, hidden or unlinked — lands with the first deletion PR, its own change.
+> every migration remains one file in the step that owns it. **The frontend waits for the backend
+> migration — ruled 2026-09-08, after PR 1 and PR 2 landed without it.** This note first said a
+> DARK change (the pages whose APIs leave, hidden or unlinked) lands with the first deletion PR; that
+> change would be edited three times and then deleted, since every page it would hide gets its real
+> replacement at a named step — the corpus timeline at step 12, the public thesis page at thesis
+> step 23, the intake dialog at document step 32. So NO frontend file is touched before step 12; each
+> surface is rebuilt in the step that gives it a contract; the legacy pages leave in ONE cut-over at
+> the end, the document plan's word for it. What this costs is nothing measured: staging has no
+> users, the frontend's build and deploy are untouched by backend deletions (both deployed SKIPPED),
+> production is consistent with itself at the old code, and SHIP was already gated behind thesis
+> step 26. What it forbids is the mid-step "just fix that page".
 > The trajectory detector (`claimTrajectory.ts`), which no design retires and none rebases, was
 > ruled the same evening: **REBASED in 11b**, its candidate source onto CURRENT(diff)'s chunks on
 > `DiffContentVersion`; its test becomes REWRITE there. `preview_diff_classification` is RETIRED by
@@ -416,7 +425,9 @@ and the breakage that proves the instrument (evidence doc A7).
 > the embedding no source and no reader. The debate's one-OPEN-per-(thesis,
 > record) rule is a nullable `openKey` column with a unique index (ruled the same evening: Prisma
 > cannot express a partial index and raw SQL would keep `db:check-drift` dirty). 11a lands with its
-> own dated record of what left and why, pointed at from here.
+> own dated record of what left and why, pointed at from here: `docs/gf-legacy-switch-2026-09-08.md`,
+> written with the third PR — what left each layer by tag, the lint debt's fall by deletion,
+> the scan's three halves, and what each build step still owes.
 >
 > **11b — the build, on the emptied ground.** The migration (the drops are provably unread — the
 > compiler said so in 11a), the identity module, both instruments, the acceptance suite; the rest
