@@ -1,8 +1,5 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { resolveOrigin } from '../oauth/oidcProvider';
-import { getFigureDossierSchema, getFigureDossierHandler } from './tools/getFigureDossier';
-import { getThesisContextSchema, getThesisContextHandler } from './tools/getThesisContext';
-import { getResearchAgendaSchema, getResearchAgendaHandler } from './tools/getResearchAgenda';
 import { createEvidenceFromTextSchema, createEvidenceFromTextHandler } from './tools/createEvidenceFromText';
 import {
   surveyWaybackCapturesSchema,
@@ -22,46 +19,15 @@ import {
   listCapturesSchema,
   listCapturesHandler,
 } from '../walk/tools';
-import { createThesisDraftSchema, createThesisDraftHandler } from './tools/createThesisDraft';
-import { addThesisVersionSchema, addThesisVersionHandler } from './tools/addThesisVersion';
-import { citeTrajectoriesSchema, citeTrajectoriesHandler } from './tools/citeTrajectories';
 import {
   getThesisTrajectoryCitationsSchema,
   getThesisTrajectoryCitationsHandler,
 } from './tools/getThesisTrajectoryCitations';
-import { runAiAnalysisSchema, runAiAnalysisHandler } from './tools/runAiAnalysis';
-import { createResearchSessionSchema, createResearchSessionHandler } from './tools/createResearchSession';
-import { addSessionNoteSchema, addSessionNoteHandler } from './tools/addSessionNote';
-import { closeResearchSessionSchema, closeResearchSessionHandler } from './tools/closeResearchSession';
-import { getSessionSummarySchema, getSessionSummaryHandler } from './tools/getSessionSummary';
-import { generateFoiaRequestSchema, generateFoiaRequestHandler } from './tools/generateFoiaRequest';
 import { recoverEvidenceFromScreenshotSchema, recoverEvidenceFromScreenshotHandler } from './tools/recoverEvidenceFromScreenshot';
-import { getWhistleblowerCallSchema, getWhistleblowerCallHandler } from './tools/getWhistleblowerCall';
-import {
-  openThesisFramingSchema,
-  openThesisFramingHandler,
-  assessThesisFramingSchema,
-  assessThesisFramingHandler,
-  getThesisFramingSchema,
-  getThesisFramingHandler,
-} from './tools/thesisFramingTools';
 import { getClaimTrajectoriesSchema, getClaimTrajectoriesHandler } from './tools/getClaimTrajectories';
-import { startTutorialSchema, startTutorialHandler } from './tools/startTutorial';
 import { verifyClaimTextSchema, verifyClaimTextHandler } from './tools/verifyClaimText';
-import {
-  previewDiffClassificationSchema,
-  previewDiffClassificationHandler,
-} from './tools/previewDiffClassification';
 import { getEnvironmentSchema, getEnvironmentHandler } from './tools/getEnvironment';
 import { auditThesisClaimsSchema, auditThesisClaimsHandler } from './tools/auditThesisClaims';
-import {
-  checkPublicationReadinessSchema,
-  checkPublicationReadinessHandler,
-  publishThesisSchema,
-  publishThesisHandler,
-  unpublishThesisSchema,
-  unpublishThesisHandler,
-} from './tools/thesisPublicationTools';
 
 // ---------------------------------------------------------------------------
 // Factory — creates a fresh McpServer per request.
@@ -103,25 +69,6 @@ export function createMcpServer(): McpServer {
   });
 
   // -------------------------------------------------------------------------
-  // Tool: get_whistleblower_call
-  // The public Call for Whistleblowers is derived from the head version's
-  // evidence gaps — there is no stored record, so this is a read.
-  // -------------------------------------------------------------------------
-  server.tool(
-    'get_whistleblower_call',
-    'Return the Call for Whistleblowers for a thesis — its shareable URL, whether it is live, ' +
-      'and every evidence gap it publishes as an appeal. The call is derived from a version\'s ' +
-      'Devil\'s Advocate analysis rather than stored. Anonymous callers see the call the public ' +
-      'sees (derived from the PUBLISHED version, or UNPUBLISHED); an authenticated researcher sees ' +
-      'the call the head version would produce, and whether the public is behind it. Each gapIndex ' +
-      'returned can also be passed to generate_foia_request.',
-    getWhistleblowerCallSchema,
-    async (input) => ({
-      content: [{ type: 'text' as const, text: await getWhistleblowerCallHandler(input) }],
-    }),
-  );
-
-  // -------------------------------------------------------------------------
   // Tool: get_claim_trajectories
   // What a single claim did across a page's whole archived history.
   // -------------------------------------------------------------------------
@@ -139,227 +86,22 @@ export function createMcpServer(): McpServer {
   );
 
   // -------------------------------------------------------------------------
-  // Tools: thesis framing — deciding what to argue, before writing it.
-  // -------------------------------------------------------------------------
-  server.tool(
-    'open_thesis_framing',
-    'Open a session to decide what a thesis should argue, BEFORE writing one. The topic string a ' +
-      'thesis is built from determines which evidence gets pulled and what the Devil\'s Advocate ' +
-      'attacks, so a wrong framing produces a well-argued thesis about the wrong thing. This session ' +
-      'has no thesis attached; the thesis attaches to it when created.',
-    openThesisFramingSchema,
-    async (input) => ({
-      content: [{ type: 'text' as const, text: await openThesisFramingHandler(input) }],
-    }),
-  );
-
-  server.tool(
-    'assess_thesis_framing',
-    'Check a proposed thesis framing against confirmed evidence. Returns candidate framings anchored ' +
-      'in specific records, assumptions that need verifying — and, most importantly, CONTRADICTIONS: ' +
-      'where your own evidence points the other way. Finding that now is far cheaper than hearing it ' +
-      'from the Devil\'s Advocate after a thesis is written, or from the opposing side. The whole ' +
-      'exchange is recorded and attaches to the thesis.',
-    assessThesisFramingSchema,
-    async (input) => ({
-      content: [{ type: 'text' as const, text: await assessThesisFramingHandler(input) }],
-    }),
-  );
-
-  server.tool(
-    'get_thesis_framing',
-    'Read a thesis framing session — its full turn-by-turn record of proposed framings and the ' +
-      'assessments of them, and the thesis it produced if any.',
-    getThesisFramingSchema,
-    async (input) => ({
-      content: [{ type: 'text' as const, text: await getThesisFramingHandler(input) }],
-    }),
-  );
-
-  // -------------------------------------------------------------------------
-  // Tool: get_figure_dossier
-  // Returns all evidence linked to a named key figure.
-  // -------------------------------------------------------------------------
-  server.tool(
-    'get_figure_dossier',
-    'Retrieve all evidence records associated with a named public figure (official, politician, ' +
-      'doctor). Supports partial name matching in Hebrew or English.',
-    getFigureDossierSchema,
-    async (input) => ({
-      content: [{ type: 'text' as const, text: await getFigureDossierHandler(input) }],
-    }),
-  );
-
-  // -------------------------------------------------------------------------
-  // Tool: get_thesis_context
-  // Returns a full thesis with its head version, evidence citations, and AI critique.
-  // -------------------------------------------------------------------------
-  server.tool(
-    'get_thesis_context',
-    'Retrieve a legal thesis by ID — the version body, all cited evidence summaries, key figures ' +
-      'mentioned, and the Devil\'s Advocate AI critique. Anonymous callers receive the PUBLISHED ' +
-      'version only (or viewer: PUBLIC with status UNPUBLISHED); an authenticated researcher ' +
-      'receives the head version plus publication state and how far the public is behind it.',
-    getThesisContextSchema,
-    async (input) => ({
-      content: [{ type: 'text' as const, text: await getThesisContextHandler(input) }],
-    }),
-  );
-
-  // -------------------------------------------------------------------------
-  // Tool: get_research_agenda
-  // Returns the AI critique gaps for a thesis, each enriched with vault hits
-  // (evidence already in the vault that may address the gap). Flags which hits
-  // are already cited vs. new. Includes instructions for the next action.
-  // -------------------------------------------------------------------------
-  server.tool(
-    'get_research_agenda',
-    'Given a thesis ID, returns the Devil\'s Advocate gaps with vault evidence hits for each gap. ' +
-      'Use this after get_thesis_context to know exactly what evidence is missing and whether the ' +
-      'vault already contains records that address each gap. Returns alreadyCited flags so you ' +
-      'can focus on new evidence only.',
-    getResearchAgendaSchema,
-    async (input) => ({
-      content: [{ type: 'text' as const, text: await getResearchAgendaHandler(input) }],
-    }),
-  );
-
-  // -------------------------------------------------------------------------
-  // Tool: create_thesis_draft  [WRITE — STAGING GATE]
-  // Creates a Thesis + ThesisVersion (PENDING_AI). Does NOT trigger AI
-  // analysis — human opens in UI, reviews, then triggers analysis.
-  // -------------------------------------------------------------------------
-  server.tool(
-    'create_thesis_draft',
-    'Create a new legal thesis draft pre-populated with evidence and key-figure mentions. ' +
-      'Saved as PENDING_AI — no Devil\'s Advocate analysis is triggered automatically. ' +
-      'Open the thesis in the UI to edit and trigger AI review before publishing.',
-    createThesisDraftSchema,
-    async (input) => ({
-      content: [{ type: 'text' as const, text: await createThesisDraftHandler(input) }],
-    }),
-  );
-
-  // -------------------------------------------------------------------------
-  // Tool: add_thesis_version  [WRITE — STAGING GATE]
-  // Appends a new ThesisVersion (wiki edit) to an existing thesis. The new
-  // version immediately becomes the head. Does NOT trigger AI analysis.
-  // -------------------------------------------------------------------------
-  server.tool(
-    'add_thesis_version',
-    'Append a new version (wiki edit) to an existing thesis. The previous head becomes the ' +
-      'parent; the new version immediately becomes the head. Saved as PENDING_AI — ' +
-      'call run_ai_analysis immediately after to get Devil\'s Advocate critique. ' +
-      'Body supports Markdown (# headings, **bold**, - bullets).',
-    addThesisVersionSchema,
-    async (input) => ({
-      content: [{ type: 'text' as const, text: await addThesisVersionHandler(input) }],
-    }),
-  );
-
-  // -------------------------------------------------------------------------
   // Tool: get_thesis_trajectory_citations  [READ]
-  // The deterministic citations behind a thesis, resolved in full. Separate
-  // from get_thesis_context because this answer grows with how thoroughly a
-  // thesis is cited, and the context tool has to stay bounded.
+  // The deterministic citations behind a thesis, resolved in full. It was
+  // separate from the thesis context read because that answer had to stay
+  // bounded while this one grows with how thoroughly a thesis is cited; the
+  // context read left the surface in the thesis half of the legacy switch and
+  // returns at thesis step 20, under T2's shape.
   // -------------------------------------------------------------------------
   server.tool(
     'get_thesis_trajectory_citations',
     'Resolve the claim trajectories a thesis cites: which claims, which archived captures each one ' +
       'appeared and vanished on, how much of each co-movement was cited, and whether a later ' +
-      'detection pass still agrees. get_thesis_context summarises these; this returns them in full.',
+      'detection pass still agrees. This is the full answer, not a summary: no other read ' +
+      'returns a thesis\'s trajectory citations resolved.',
     getThesisTrajectoryCitationsSchema,
     async (input) => ({
       content: [{ type: 'text' as const, text: await getThesisTrajectoryCitationsHandler(input) }],
-    }),
-  );
-
-  // -------------------------------------------------------------------------
-  // Tool: cite_trajectories  [WRITE — STAGING GATE]
-  // Attaches claim trajectories to claims already written, WITHOUT re-authoring
-  // the thesis. add_thesis_version takes the body as Markdown, and nothing hands
-  // the stored document back in that form, so adding one citation through it
-  // means retyping the whole thesis by hand past every working citation in it.
-  // -------------------------------------------------------------------------
-  server.tool(
-    'cite_trajectories',
-    'Attach claim trajectories to sentences already written, without touching the prose. Anchors ' +
-      'on an exact substring of the existing text and splices the citation in after it; the prose is ' +
-      'asserted byte-identical afterwards, and an anchor matching zero times or more than once is ' +
-      'refused rather than guessed. Writes a new PENDING_AI version — use this instead of ' +
-      'add_thesis_version when only the CITATIONS change, never to edit what the thesis says.',
-    citeTrajectoriesSchema,
-    async (input) => ({
-      content: [{ type: 'text' as const, text: await citeTrajectoriesHandler(input) }],
-    }),
-  );
-
-  // -------------------------------------------------------------------------
-  // Tool: run_ai_analysis  [WRITE — requires auth]
-  // Synchronously runs Devil's Advocate AI analysis on the head version of a
-  // thesis and returns the full critique. Unlike POST /analyze (202 async),
-  // this tool awaits completion so the LLM can continue the research loop.
-  // -------------------------------------------------------------------------
-  server.tool(
-    'run_ai_analysis',
-    'Run Devil\'s Advocate AI analysis on the current head version of a thesis. ' +
-      'Waits for analysis to complete and returns the full critique including strength ' +
-      'assessment, counter-arguments, and evidence gaps. If already analysed, returns ' +
-      'the cached result. Use after add_thesis_version to close the research loop.',
-    runAiAnalysisSchema,
-    async (input) => ({
-      content: [{ type: 'text' as const, text: await runAiAnalysisHandler(input) }],
-    }),
-  );
-
-  // -------------------------------------------------------------------------
-  // Tools: Research Sessions  [WRITE: create, note, close / READ: summary]
-  // Track the arc of a Claude+human research sprint on a thesis.
-  // Events (VERSION_CREATED, GAP_RESOLVED, AI_ANALYSIS_RUN) are logged
-  // automatically — no explicit logging needed.
-  // -------------------------------------------------------------------------
-  server.tool(
-    'create_research_session',
-    'Start a new named research session on a thesis. You may hold ONE active session at a time, and ' +
-      'a thesis may be held by ONE researcher at a time — if either is taken this refuses and says ' +
-      'which. Pass closeActiveSession: true to close your own; another researcher\'s session never ' +
-      'blocks you unless it is on this same thesis, and you cannot close theirs. Publishing must ' +
-      'happen inside an active session on that thesis. Events are logged automatically. Name defaults ' +
-      'to the current date/time.',
-    createResearchSessionSchema,
-    async (input) => ({
-      content: [{ type: 'text' as const, text: await createResearchSessionHandler(input) }],
-    }),
-  );
-
-  server.tool(
-    'add_session_note',
-    'Add a manual note to the active research session for a thesis. Use to record observations, ' +
-      'dead ends, hypotheses, or next steps that are not captured by automatic events.',
-    addSessionNoteSchema,
-    async (input) => ({
-      content: [{ type: 'text' as const, text: await addSessionNoteHandler(input) }],
-    }),
-  );
-
-  server.tool(
-    'close_research_session',
-    'Close the active research session — by thesisId, or by sessionId for a framing session that ' +
-      'has no thesis yet — and return a full summary of what was accomplished: versions created, ' +
-      'gaps resolved, AI analyses run, and the event timeline.',
-    closeResearchSessionSchema,
-    async (input) => ({
-      content: [{ type: 'text' as const, text: await closeResearchSessionHandler(input) }],
-    }),
-  );
-
-  server.tool(
-    'get_session_summary',
-    'Return the current (or most recent) research session for a thesis, including the full ' +
-      'event timeline and activity summary. Useful for resuming work after a break.',
-    getSessionSummarySchema,
-    async (input) => ({
-      content: [{ type: 'text' as const, text: await getSessionSummaryHandler(input) }],
     }),
   );
 
@@ -647,24 +389,6 @@ export function createMcpServer(): McpServer {
   );
 
   // -------------------------------------------------------------------------
-  // Tool: generate_foia_request  [WRITE — synchronous LLM call]
-  // Given a thesis ID and gap index, generates a formal Hebrew FOIA request
-  // letter targeting the Israeli ministry most likely to hold the missing
-  // evidence. Requires the thesis to have a completed Devil's Advocate analysis.
-  // -------------------------------------------------------------------------
-  server.tool(
-    'generate_foia_request',
-    'Generate a formal Hebrew Freedom of Information (חוק חופש המידע) request letter for a ' +
-      'specific evidence gap in a thesis. The LLM identifies the target Israeli ministry and ' +
-      'drafts numbered, specific requests derived from the gap description. ' +
-      'Requires a completed Devil\'s Advocate analysis on the thesis head version.',
-    generateFoiaRequestSchema,
-    async (input) => ({
-      content: [{ type: 'text' as const, text: await generateFoiaRequestHandler(input) }],
-    }),
-  );
-
-  // -------------------------------------------------------------------------
   // Tool: recover_evidence_from_screenshot  [WRITE — STAGING GATE]
   // For when a source URL is blocked or unarchived: accepts one or more
   // screenshots (in reading order) in place of a direct fetch. Synthesizes
@@ -681,47 +405,6 @@ export function createMcpServer(): McpServer {
     recoverEvidenceFromScreenshotSchema,
     async (input) => ({
       content: [{ type: 'text' as const, text: await recoverEvidenceFromScreenshotHandler(input) }],
-    }),
-  );
-
-  // -------------------------------------------------------------------------
-  // Thesis publication (docs/gf-thesis-publication-gate-dev-plan.md)
-  // Publication is a pinned version behind thirteen individually-reported
-  // checks. All three tools are gated.
-  // -------------------------------------------------------------------------
-  server.tool(
-    'check_publication_readiness',
-    'Run every publication check on a thesis\'s head version and report each one, pass or fail, ' +
-      'WITHOUT publishing. Hard checks block publication; advisory checks are recorded with it. ' +
-      'Use before publish_thesis to see exactly what is missing. Pass a rationale to have it ' +
-      'assessed in advance. Writes nothing.',
-    checkPublicationReadinessSchema,
-    async (input) => ({
-      content: [{ type: 'text' as const, text: await checkPublicationReadinessHandler(input) }],
-    }),
-  );
-
-  server.tool(
-    'publish_thesis',
-    'Publish the HEAD version of a thesis: pins that exact version as what the public sees until ' +
-      'publish_thesis is called again — later edits and re-analyses change nothing public. Requires ' +
-      'an active research session on this thesis, an argued rationale (substance is a hard gate, ' +
-      'merit is advisory and recorded), and every hard check to pass; refuses with the full list ' +
-      'otherwise. The rationale and assessment are recorded on the session either way.',
-    publishThesisSchema,
-    async (input) => ({
-      content: [{ type: 'text' as const, text: await publishThesisHandler(input) }],
-    }),
-  );
-
-  server.tool(
-    'unpublish_thesis',
-    'Withdraw a thesis from public view: sets the published pin to null and deletes nothing. ' +
-      'Requires no session — retraction must never wait on one. The reason is recorded on the ' +
-      'active session on this thesis if there is one, otherwise on the session that published.',
-    unpublishThesisSchema,
-    async (input) => ({
-      content: [{ type: 'text' as const, text: await unpublishThesisHandler(input) }],
     }),
   );
 
@@ -784,46 +467,6 @@ export function createMcpServer(): McpServer {
     auditThesisClaimsSchema,
     async (input) => ({
       content: [{ type: 'text' as const, text: await auditThesisClaimsHandler(input) }],
-    }),
-  );
-
-  server.tool(
-    'preview_diff_classification',
-    'Re-run the forensic classifier over a stored diff and return what it says, WITHOUT writing ' +
-      'anything — the stored verdict is left exactly as it was. Answers "what would the classifier ' +
-      'decide about this change today?", which reading a stored verdict cannot. Identify the diff by ' +
-      'diffId, or by url + afterDate to ask two environments about the same change. `runs` draws ' +
-      'several independent samples, because the classifier is non-deterministic at temperature 0. ' +
-      'Returns the correlated evidence it was given: that input is queried live and differs between ' +
-      'environments, so it must be compared before concluding two classifiers disagreed.',
-    previewDiffClassificationSchema,
-    async (input) => ({
-      content: [{ type: 'text' as const, text: await previewDiffClassificationHandler(input) }],
-    }),
-  );
-
-  // -------------------------------------------------------------------------
-  // Tutorial (docs/gf-chat-tutorial-dev-plan.md)
-  //
-  // A curriculum in the repository does not exist for someone working in a chat
-  // client. Without this, "start the tutorial" makes an assistant infer a
-  // syllabus from the tool descriptions and lecture — the old guide relocated
-  // into a chat, which is the thing being replaced.
-  //
-  // Serves a static string: no model, no RPC, no database, no network. Open
-  // rather than gated, deliberately, so an account still awaiting approval has
-  // something real to do.
-  // -------------------------------------------------------------------------
-  server.tool(
-    'start_tutorial',
-    'Begin the guided researcher tutorial, which teaches how to verify this platform\'s evidence ' +
-      'rather than trust it. Returns instructions for the assistant to follow — not text to show ' +
-      'the learner. Call this whenever someone asks to learn the platform, to be onboarded, or how ' +
-      'to get started; do not assemble a lesson from the tool list instead. Writes nothing, and ' +
-      'needs no approved researcher account.',
-    startTutorialSchema,
-    (input) => ({
-      content: [{ type: 'text' as const, text: startTutorialHandler(input) }],
     }),
   );
 

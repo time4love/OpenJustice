@@ -25,22 +25,9 @@ const router = Router();
 // ---------------------------------------------------------------------------
 
 export const READ_TOOLS = new Set([
-  // Derived entirely from data GET /api/thesis/:id already serves anonymously,
-  // with no LLM call and no RPC call. Gating it would hide a page that is
-  // deliberately public from the tool that describes it.
-  'get_whistleblower_call',
-  'get_thesis_framing',
-  'get_figure_dossier',
-  'get_thesis_context',
   // Reads stored trajectories and resolves them; writes nothing, invokes no
   // model. Unlike get_claim_trajectories, it can never trigger a detection pass.
   'get_thesis_trajectory_citations',
-  'get_session_summary',
-  // Serves a static curriculum string: no model, no RPC, no database, no
-  // network — the cheapest tool here by construction. Open on purpose as well as
-  // by cost: its audience is an account that has signed up and is awaiting
-  // approval, which under requireResearcher can do nothing at all.
-  'start_tutorial',
   // Open on purpose, and the one tool where gating would be self-defeating:
   // "which environment am I talking to?" must be answerable BEFORE authenticating
   // into it. A caller who has to obtain a credential first has already had to
@@ -96,51 +83,12 @@ export const WRITE_TOOLS = new Set([
   // SPENDS: one classifier call per novel capture that reaches Gate 5 — and
   // from step 5 it stores, anchors and writes rows besides.
   'scan_captures',
-  'create_thesis_draft',
-  'add_thesis_version',
-  // Writes a new ThesisVersion. Cheaper and narrower than add_thesis_version —
-  // it cannot change the prose — but it is still a write on the one artifact
-  // that names living officials.
-  'cite_trajectories',
-  'run_ai_analysis',
-  'create_research_session',
-  'add_session_note',
-  'close_research_session',
-  'generate_foia_request',
   'recover_evidence_from_screenshot',
 
-  // Writes nothing at all — no diff update, no finding, no evidence row — and is
-  // still here, because the rule at the top of this file is what it SPENDS.
-  // Every `runs` is a full LLM call, and `runs` is caller-controlled, so a single
-  // anonymous request could bill MAX_PREVIEW_RUNS classifications of the largest
-  // diff in the corpus. Same reason get_research_agenda sits below.
-  'preview_diff_classification',
-
-  // Persists nothing, and was therefore unauthenticated until 2026-08-21 — but
-  // spends real money on every call, with no account and (until the limiter
-  // below) no cap:
-  //
-  //   get_research_agenda — embeds each gap, and with includeSuggestions:true
-  //                         runs GapRevisionAgent once PER OPEN GAP, so the
-  //                         cost of a single call scales with thesis state
-  //                         rather than being fixed.
-  //
-  // suggest_thesis sat here too until it was retired — see
-  // docs/gf-prosecutor-dev-plan.md §11.1.
-  //
-  // search_evidence stays open deliberately: it embeds a query and nothing
-  // more (cents), it is the core public read, and it is what the anonymous
-  // ChatGPT integration depends on. Gating it would break a working consumer
-  // to solve a problem it is not causing.
-  'get_research_agenda',
 
 
 
-  // The diff debate. open/respond each run an LLM assessment; promote registers
-  // on-chain. All gated — get_diff_debate is a plain read and sits above.
-  // Embeds the question and runs a long-context assessment — real money per call.
-  'open_thesis_framing',
-  'assess_thesis_framing',
+
 
   // The verification tools (docs/gf-verification-tools-dev-plan.md). All three
   // write nothing — and all three are gated anyway, because "write" is not the
@@ -151,13 +99,6 @@ export const WRITE_TOOLS = new Set([
   'verify_claim_text',
   'audit_thesis_claims',
 
-  // The publication gate. publish/unpublish move what the public sees and
-  // write to the session log; check_publication_readiness writes nothing but
-  // runs the assessor, which is an LLM call. All three gated — the thesis is the
-  // one artifact that assembles a narrative naming living officials.
-  'check_publication_readiness',
-  'publish_thesis',
-  'unpublish_thesis',
 ]);
 
 // ---------------------------------------------------------------------------

@@ -28,14 +28,14 @@ import { join } from 'path';
 const SELECTOR = 'classifierInputChunks';
 
 /** Source files permitted to call ForensicAgent.analyzeChange. */
-const CLASSIFYING_PATHS = [
-  'src/walk/tools/scanCaptures.ts',
-  // `reclassifyDiffs` left this list at evidence step 11a with the legacy
-  // columns it rewrote; `previewDiffClassification` is retired by thesis A4 and
-  // leaves in 11a-thesis. The rule is unchanged and the list shrinks toward the
-  // one path the design has: the walk classifies once, at acquisition.
-  'src/services/previewDiffClassification.ts',
-];
+// ONE PATH, WHICH IS WHAT THE DESIGN SAYS AND NOT A SHRUNKEN LIST.
+// `reclassifyDiffs` left at evidence step 11a with the legacy columns it
+// rewrote, and `previewDiffClassification` in 11a-thesis — thesis A4 retires it
+// ("an instrument, not a research act"). What remains is the walk, which
+// classifies once, at acquisition, and that is the whole of the target: the
+// rule is unchanged, and the list now equals what the design permits rather
+// than bounding what history left.
+const CLASSIFYING_PATHS = ['src/walk/tools/scanCaptures.ts'];
 
 function readSource(relative: string): string {
   return readFileSync(join(__dirname, '..', relative), 'utf8');

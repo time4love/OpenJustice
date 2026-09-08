@@ -47,7 +47,6 @@ export interface CorpusFingerprint {
   evidence: number;
   theses: number;
   thesesPublished: number;
-  activeResearchSessions: number;
 }
 
 export interface EnvironmentReport {
@@ -149,7 +148,6 @@ async function readCorpusFingerprint(): Promise<CorpusFingerprint> {
     evidence,
     theses,
     thesesPublished,
-    activeResearchSessions,
   ] = await Promise.all([
     prisma.trackedUrl.count(),
     prisma.urlSnapshot.count(),
@@ -158,7 +156,6 @@ async function readCorpusFingerprint(): Promise<CorpusFingerprint> {
     prisma.evidence.count(),
     prisma.thesis.count(),
     prisma.thesis.count({ where: { publishedVersionId: { not: null } } }),
-    prisma.researchSession.count({ where: { status: 'ACTIVE' } }),
   ]);
 
   return {
@@ -169,6 +166,5 @@ async function readCorpusFingerprint(): Promise<CorpusFingerprint> {
     evidence,
     theses,
     thesesPublished,
-    activeResearchSessions,
   };
 }

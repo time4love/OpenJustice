@@ -94,15 +94,16 @@ describe('isWriteToolCall', () => {
   });
 
   it('returns tool name for all four write tools', () => {
-    // `create_evidence_from_url` left the surface at evidence step 11a; the
-    // fixture names a live write tool in its place. What is asserted is the
-    // GATE's behaviour, never the tool — a fixture naming a retired tool is a
-    // gate tested against something nobody can call.
+    // The fixture names LIVE write tools, and it has been re-pointed twice: at
+    // evidence step 11a `create_evidence_from_url` left, and in the thesis half
+    // `create_thesis_draft` and `add_thesis_version` left with the layer. What is
+    // asserted is the GATE's behaviour, never the tools — a fixture naming a
+    // retired tool is a gate tested against something nobody can call.
     const writeTools = [
       'scan_captures',
       'survey_wayback_captures',
-      'create_thesis_draft',
-      'add_thesis_version',
+      'approve_article_rules',
+      'resolve_scan_stop',
     ];
     for (const name of writeTools) {
       expect(isWriteToolCall({ method: 'tools/call', params: { name } })).toBe(name);
