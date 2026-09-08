@@ -704,7 +704,9 @@ export function createMcpServer(): McpServer {
         'its held bytes are discarded, no snapshot is ever made of it, and the rules are untouched ' +
         'however many bad captures occur in a row; it carries no rule decision. CORRECT — marking or ' +
         'unmarking an element — is the one answer given in the marking page, and on a stop that needs ' +
-        'both, MARKING COMES FIRST and this call follows it. Also the answer for an UNFETCHED capture ' +
+        'both — one answer is CORRECT and others are trust or end — MARKING COMES FIRST and this call ' +
+        'follows it; a stop with no CORRECT answer needs no marking and the URL in the return is only an ' +
+        'address. Also the answer for an UNFETCHED capture ' +
         'the archive will not serve (a 429 that holds for one capture while its neighbours serve): the ' +
         'walk keeps retrying it forever and no count of attempts ever skips it — only your explicit word ' +
         'does, with the reason saying so. Names the page by url and the capture by its 14-digit wayback ' +
@@ -733,12 +735,19 @@ export function createMcpServer(): McpServer {
       description:
         'WALK A SURVEYED PAGE\'S CAPTURES IN DATE ORDER: this call fetches each capture\'s raw replay, ' +
         'derives its text under the rules in force for its date, compares it with its predecessor, runs ' +
-        'every gate, and WRITES the outcome on the work-list row — IDENTICAL, DUPLICATE, UNSERVABLE, or ' +
-        'ACQUIRED, on which the capture is stored, anchored on chain as it is stored (the anchor is ' +
+        'every gate, and WRITES the outcome on the work-list row — IDENTICAL (the archive\'s digest equals ' +
+        'the previous capture\'s: same bytes, nothing fetched), DUPLICATE (fetched; the text derived under ' +
+        'the rules equals the predecessor\'s; nothing stored), UNSERVABLE (the archive refuses it durably), ' +
+        'or ACQUIRED, on which the capture is stored, anchored on chain as it is stored (the anchor is ' +
         'awaited), and diffed against its predecessor with the classifier\'s verdict. A gate firing halts ' +
         'the chunk: the capture is held on its row as PENDING_JUDGEMENT with the stop\'s material, and the ' +
-        'marking URL is returned; resolve it there, or with resolve_scan_stop, then call again — the ' +
-        'held capture is acquired without re-running the gates. A stale stored capture is re-derived: ' +
+        'marking URL is returned. THE MARKING URL COMES WITH EVERY STOP AND IS AN ADDRESS, NOT AN ' +
+        'INSTRUCTION: do not send the researcher to the page on seeing it. Read the rules first; marking is ' +
+        'needed only if one of the researcher\'s answers turns out to be CORRECT, and only then does it come ' +
+        'first. A stop with no CORRECT answer is resolved wholly in the chat with resolve_scan_stop, then ' +
+        'call again — the held capture is acquired without re-running the gates. AFTER EVERY CALL, SHOW ' +
+        'THE RETURN AS IT CAME — the counts, the stop, `next` — never only your account of it. A stale ' +
+        'stored capture is re-derived: ' +
         'its previous text kept as a version (superseded) or its ruleset stamp moved (restamped). ' +
         'SPENDS one classifier call per acquired novel capture. `maxCaptures` is how many rows this ' +
         'call may walk; the walk resumes from where it got to. Refuses NOT_SURVEYED, INVALID_MAX_CAPTURES, ' +
@@ -771,9 +780,9 @@ export function createMcpServer(): McpServer {
         'lines from the stop\'s material first; then only the answers that apply to ITS gate, ' +
         'with what each means; then STOP and wait for the researcher\'s answer before the next rule. Never ' +
         'read several histories in one turn. After the last rule, record the whole stop with ONE ' +
-        'resolve_scan_stop call. When the stop also needs marking, MARKING COMES FIRST and the chat\'s ' +
-        'decisions follow it, against the ruleset the marking left. Decide nothing yourself: every answer ' +
-        'here is the researcher\'s.',
+        'resolve_scan_stop call. Only when one of the answers IS CORRECT does the stop need marking; then ' +
+        'MARKING COMES FIRST and the chat\'s decisions follow it, against the ruleset the marking left. ' +
+        'Decide nothing yourself: every answer here is the researcher\'s.',
       inputSchema: scanCapturesSchema,
     },
     async (input) => ({
