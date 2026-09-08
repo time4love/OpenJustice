@@ -202,6 +202,8 @@ split: its groups are tagged separately below.
 | test file | lines | tag | what it holds |
 |---|---|---|---|
 | `anchorSnapshots` | 370 | KEEP | the anchoring path, twin recovery, the write path owns anchoring |
+| `auditOnChainAnchors` · `onChainVerification` · `onChainVerdict` · `registryState` · `registryLedger` | — | KEEP → REWRITE at evidence 11b | each read `Evidence`'s chain columns or hash columns; rebased onto CAPTURES alone, since nothing above the corpus is anchored — amended 2026-09-08 (docs/gf-evidence-step-11b-2026-09-08.md) |
+| `claimTrajectory` · `compareCandidateSources` | 858 · — | REWRITE / RETIRE at evidence 11b | the detector's candidates move to CURRENT(diff)'s chunks and `DETECTION_VERSION` moves v2 → v3; the candidate-source comparison is retired, its measurement already recorded — amended 2026-09-08 (docs/gf-evidence-step-11b-2026-09-08.md) |
 | `anchoredCaptureHash` | 202 | KEEP | one rule names the anchored hash; a superseded hash is its own answer |
 | `documentHashSingleRule` | 129 | KEEP | every `documentHash` write routes through `sha256Bytes` |
 | `evidenceIdentityDrift` | 98 | KEEP one group, RETIRE-AT-11 one group | one Readability construction stays; "one evidence hash function" is `create_evidence_from_text`'s url+text formula and goes with it at refactor step 11 — amended 2026-09-05 (document refactor plan §5) |
@@ -211,7 +213,7 @@ split: its groups are tagged separately below.
 | `extraction/emptyRulesetDerivation` | 36 | KEEP | an empty ruleset derives what no ruleset does |
 | `extractionDrift` | 149 | KEEP | Gate 1's contract, exactly; add cases for A4's set semantics if any are missing |
 | `previewDiffClassification` | 396 | KEEP | writes nothing; off the walk's path |
-| `thesisClaimAudit` | 464 | KEEP | reads captures; unaffected |
+| `thesisClaimAudit` | 464 | KEEP → REWRITE at evidence 11b | reads captures; unaffected — until the record key replaced `Evidence.sourceUrl` as the way it reaches a page — amended 2026-09-08 (docs/gf-evidence-step-11b-2026-09-08.md) |
 | `mcpToolClassification` | 157 | KEEP | the assertions stay; the expected set changes in the switch step |
 | `extraction/chromeRuleset` | 323 | KEEP, one group RETIRE | derivation, removal attribution, ruleset identity, malformed selectors all stay; "the removal fraction — four readers" goes with `RulesetObservation` |
 | `extraction/recordCapture` | 499 | KEEP three groups, REWRITE two | payload, provenance, anchoring and the race stay; "decides novelty in one place" and "derives under the era" are rewritten: novelty and RULES_IN_FORCE belong to the walk |

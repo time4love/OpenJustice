@@ -41,13 +41,13 @@ model Researcher {
   theses             Thesis[]            @relation("ThesisAuthor")
   publishedTheses    Thesis[]            @relation("ThesisPublisher")
   researchSessions   ResearchSession[]
-  summaryCorrections SummaryCorrection[]
   articleRulesets    ArticleRuleset[]
   calibrationRuns    CalibrationRun[]
   calibrationResets  CalibrationReset[]
   createdTrackedUrls TrackedUrl[]        @relation("TrackedUrlCreator")
   rules              Rule[]
   pageDecisions      PageDecision[]
+  evidenceDecisions EvidenceDecision[]
 }
 
 // ---------------------------------------------------------------------------
@@ -379,6 +379,8 @@ model UrlSnapshot {
   rulesetObservations  RulesetObservation[]
   calibrationDecisions CalibrationDecision[]
 
+  evidence         Evidence[]
+  recordOfDebates  DiffDebateSession[]
   @@unique([trackedUrlId, waybackTimestamp])
   // A TrackedUrl cannot hold two captures of the same instant. This is the
   // constraint that makes capturedAt a usable timeline key across provenances,
@@ -408,207 +410,42 @@ model WaybackScrapeJob {
 // Records a single detected change between two consecutive archived snapshots of a TrackedUrl.
 // A row is created for every processed snapshot pair, not only legally significant ones —
 // isLegallySignificant just marks which are AI-flagged; see ForensicAgent.deriveSignificance.
+/// A DIFF IS THE PAIR IT SPANS — evidence flows A2, built at refactor step 11b.
+///
+/// The row holds NO CONTENT. Everything the walk derives from the two texts —
+/// the chunks, each chunk's survival verdict, the classifier's whole opinion —
+/// is a `DiffContentVersion`, appended and never overwritten, and a thesis pins
+/// one by its `contentVersionHash`. Twenty-five legacy columns left here at
+/// step 11b: four raw/extracted text columns, the classifier's five provenance
+/// axes and its prose, seven survival columns, `investigativeCategories`, the
+/// two date strings and `snapshotUrl`. Each was a version's, and holding them
+/// on the row is what let `rediffFromSnapshots` move a verdict under a promoted
+/// record after the fact (finding 27).
+///
+/// CHECK `UrlVersionDiff_pair_is_two_captures` lives in the migration, not here:
+/// Prisma cannot express a CHECK constraint. It holds `beforeSnapshotId <>
+/// afterSnapshotId` — a row whose two sides are one capture describes a
+/// transition that did not happen and is unfalsifiable by construction, since a
+/// document always contains itself. Ruled 2026-09-04, pre-design triage.
 model UrlVersionDiff {
-  id                      String              @id @default(uuid())
-  trackedUrlId            String
-  trackedUrl              TrackedUrl          @relation(fields: [trackedUrlId], references: [id])
-  beforeDate              String
-  afterDate               String
-  snapshotUrl             String
-  deletedText             String              @default("[]") // JSON array of AI-extracted claim strings (Hebrew summaries)
-  addedText               String              @default("[]") // JSON array of AI-extracted claim strings (Hebrew summaries)
-  rawDeletedText          String              @default("[]") // JSON array of raw page text chunks that were removed
-  rawAddedText            String              @default("[]") // JSON array of raw page text chunks that were added
-  aiSignificance          String              @default("") // Hebrew forensic explanation
-  isLegallySignificant    Boolean             @default(false)
-  // Which classifier produced the classification on this row.
-  //
-  // Stored LLM-derived columns drift the moment the prompt changes: without
-  // provenance, isLegallySignificant silently means different things on
-  // different rows depending on when they were scanned, and nothing can tell a
-  // stale row from a fresh one. classifierVersion is the human-readable
-  // targeting key ("reclassify everything below v2"); classifierPromptHash is
-  // the proof, since a version string is a promise and a hash is checkable — if
-  // the prompt at that version does not hash to this value, something else
-  // judged this row. Null on rows classified before provenance was recorded.
-  classifierVersion       String?
-  // Provenance for the SUMMARY alone, which moves independently of the
-  // classification. `forensics:resummarize` rewrites aiSignificance from the
-  // already-extracted items and does NOT re-extract, so the items stay at
-  // whatever classifierVersion produced them while the prose becomes
-  // self-contained. Stamping classifierVersion in that case would claim the
-  // items had been re-judged, which they have not.
-  //
-  // null means the summary predates the self-contained rule — written under a
-  // prompt that instructed cross-referencing other evidence records inside it.
-  summaryVersion          String?
-  // Which INPUT RULE produced this row's raw chunks — a third provenance axis,
-  // separate from classifierVersion and summaryVersion because all three move
-  // independently and one string covering them would have to lie about two.
-  //
-  // classifierPromptHash cannot see this: the prompt is byte-identical across the
-  // change it records. What differs is what was FED to that prompt. A row written
-  // under the old rule holds at most 8 chunks per side (longest-first, the rest
-  // discarded before the write) and was classified over only those ≥ 40 chars.
-  // Measured: 159 of 290 detected changes never reached the database at all.
-  //
-  // null means the row predates input provenance — i.e. it was computed under the
-  // truncating rule and its raw chunks are UNDERSTATED. Not a cosmetic gap: such a
-  // row cannot be brought up to date by reclassification, only by recomputing the
-  // diff from its snapshots. See docs/gf-diff-truncation-dev-plan.md.
-  diffInputVersion        String?
-  /// WHICH INPUT RULE THE CLASSIFIER ACTUALLY READ — not the row's current one.
-  ///
-  /// `diffInputVersion` above says which rule produced the chunks the row holds
-  /// NOW. This says which rule produced the chunks the stored classification was
-  /// made from, and they go stale independently — exactly as
-  /// `survivalCheckVersion` is separate from `survivalTextVersion` one level up.
-  ///
-  /// ADDED AFTER THE GRANULARITY CASCADE, which is what proved a single field
-  /// cannot carry both. `applyRediff` rewrote chunks v2 -> v3 and updated
-  /// `diffInputVersion`, deliberately leaving the classification alone so that
-  /// "chunks current, classification not" would be visible in the data. It was
-  /// not: `classifierVersion` was ALREADY at v4 and stayed there, so ten rows
-  /// came to assert a pairing that never happened — a v4 classification over v3
-  /// chunks, when the v4 run had seen v2 chunks that no longer exist. Seven
-  /// CONFIRMED, anchored records sit downstream of those ten.
-  ///
-  /// The lesson is [[gf-sourcestate-hash-must-cover-all-inputs]] one layer down:
-  /// a version for the PROCEDURE is not a version for what the procedure was
-  /// FED, and a field that names one while being read as both reports currency
-  /// it never measured.
-  ///
-  /// NULL means the row predates this column, which is not the same as stale and
-  /// is emphatically not current: what the classifier saw is unrecorded, and
-  /// unrecorded may not read as agreement. It is not backfilled, because the
-  /// value is not recoverable from the row — writing `diffInputVersion` into it
-  /// would manufacture the very provenance this column exists to stop assuming.
-  classifiedInputVersion  String?
-  // Which MODEL produced the classification, as `provider:model`.
-  //
-  // The fourth provenance axis, and the one nothing else can express:
-  // classifierVersion names the procedure and classifierPromptHash proves the
-  // prompt TEXT, so a row judged by gemini-flash and a row judged by
-  // claude-sonnet carry byte-identical provenance. The provider is chosen by an
-  // env var (<AGENT>_PROVIDER) that can change between two runs of the same
-  // commit, so a corpus can become mixed with nothing in the data to show it.
-  //
-  // null means the row predates model provenance.
-  classifierModel         String?
-  // How many draws the classifier took before the best-covering one was kept.
-  //
-  // Stored because it is the one thing about a classification that CANNOT be
-  // derived afterwards. Coverage itself is derived on read from the raw chunks
-  // and the items — that way it answers for rows written long before the check
-  // existed, and cannot go stale. The draw count is process, not product: no
-  // amount of reading the row recovers whether it was a first draw or the best of
-  // three.
-  //
-  // null means the row predates best-of-N, i.e. it is a single draw stored as
-  // though it were a measurement.
-  classifierDraws         Int?
-  classifierPromptHash    String?
-  // ForensicAgent classification. Stored on the diff (not only on the promoted
-  // Evidence) because a researcher may promote a diff manually via
-  // /forensics/promote, and that path needs the classification without re-running
-  // the agent. isLegallySignificant is derived from this being non-empty.
-  investigativeCategories String[]            @default([])
-  debates                 DiffDebateSession[]
-  /// THE CAPTURES THIS DIFF SPANS — its identity, and NOT NULL for that reason.
-  ///
-  /// Identity is the capture pair rather than the date pair, decided by
-  /// measurement rather than preference. Both environments hold a date pair that
-  /// spans two DIFFERENT transitions:
-  ///
-  ///   2022-05-03 -> 2022-05-03   20220503051621 -> 20220503102648
-  ///                              20220503102648 -> 20220503165508
-  ///
-  /// Three captures on one day, two consecutive diffs, one date pair. Keying on
-  /// dates collapses them into one and discards a real transition — and it
-  /// discards precisely the same-day revert material `recordCapture`'s novelty
-  /// rule exists to preserve. That would be Level 1's defect one layer up.
-  ///
-  /// NOT NULL because a diff whose captures we do not hold is UNVERIFIABLE BY
-  /// CONSTRUCTION: Level 5's invariant is that a reported change survives the
-  /// documents, and there are no documents to check it against. The gap is not
-  /// lost by declining to write such a row — it lives at the capture layer, where
-  /// `CdxIndexEntry` records UNSERVABLE/UNFETCHED as first-class queryable state.
-  /// Measured before the constraint: 81 of 81 rows populated in BOTH environments,
-  /// so nothing existing is excluded.
-  beforeSnapshotId        String
-  beforeSnapshot          UrlSnapshot         @relation("BeforeSnapshot", fields: [beforeSnapshotId], references: [id])
-  afterSnapshotId         String
-  afterSnapshot           UrlSnapshot         @relation("AfterSnapshot", fields: [afterSnapshotId], references: [id])
-  createdAt               DateTime            @default(now())
-  evidence                Evidence[]
-  summaryCorrections      SummaryCorrection[]
-  /// The diff's CONTENT, one row per distinct derivation (evidence A2). The
-  /// pair is the identity; everything the walk derived from the two texts —
-  /// chunks, survival, the classifier's opinion — is a version here, written
-  /// at acquisition and never overwritten. The legacy columns below are the old
-  /// path's and leave at evidence step 11.
-  contentVersions         DiffContentVersion[]
+  id              String               @id @default(uuid())
+  trackedUrlId    String
+  trackedUrl      TrackedUrl           @relation(fields: [trackedUrlId], references: [id])
+  /// THE CAPTURES THIS DIFF SPANS — its whole identity, and NOT NULL for that
+  /// reason. Keyed on the capture pair rather than the date pair because three
+  /// captures on one day give two consecutive diffs and one date pair, and
+  /// keying on dates discards a real transition.
+  beforeSnapshotId String
+  beforeSnapshot   UrlSnapshot         @relation("BeforeSnapshot", fields: [beforeSnapshotId], references: [id])
+  afterSnapshotId  String
+  afterSnapshot    UrlSnapshot         @relation("AfterSnapshot", fields: [afterSnapshotId], references: [id])
+  createdAt        DateTime            @default(now())
+  /// The diff's CONTENT, one row per distinct derivation (evidence A2).
+  contentVersions  DiffContentVersion[]
+  evidence         Evidence[]
+  debates          DiffDebateSession[]
 
-  // --- LEVEL 5: does this diff's own report survive the documents it spans? ---
-  //
-  // The check runs AT WRITE and its verdict is stored, because a check that runs
-  // and is not recorded has not been performed as far as anything downstream can
-  // tell (§3). A CONTRADICTED diff is WRITTEN, NOT REFUSED — refusing it would
-  // delete the evidence that the pipeline is wrong, which is how this was found.
-  // It is simply never promotable.
-  //
-  // Nullable only because rows written before this level exist; a row without a
-  // verdict is unchecked, which is not the same as passing.
-  survivalVerdict         SurvivalVerdict?
-  survivalCheckedAt       DateTime?
-  /// SHA-256 over the two captures' `textHash` values — what the verdict was
-  /// computed against.
-  ///
-  /// §3's sourceStateHash discipline, and it is what makes running Level 5 ahead
-  /// of Levels 3 and 4 safe. Level 4 changes what counts as chrome and therefore
-  /// what text a diff compares; without this, that change silently invalidates
-  /// every Level 5 verdict while all the counts stay green — the exact shape this
-  /// plan descends from.
-  survivalSourceStateHash String?
-  /// The extraction rule both captures were produced under.
-  ///
-  /// The hash above says the text MOVED; this says which rule produced it, so
-  /// "re-check everything decided under v2" is a query rather than an
-  /// archaeology exercise. A diff whose two sides disagree on this is UNCHECKABLE
-  /// rather than passed or failed.
-  survivalTextVersion     String?
-  /// The rule that reached the verdict — SURVIVAL_CHECK_VERSION.
-  ///
-  /// `survivalTextVersion` above says which rule produced the TEXT. This says
-  /// which rule produced the JUDGEMENT, and they go stale independently.
-  ///
-  /// Added after a rule change reached no data. When zero-chunk diffs stopped
-  /// counting as SURVIVES, 88 of 103 stored verdicts on staging became wrong
-  /// while `survivalSourceStateHash` still matched — the hash commits to the
-  /// check's INPUTS and nothing committed to its RULE, so the audit read every
-  /// one of them CURRENT and all the counts stayed green.
-  ///
-  /// NULL means a verdict written before this column existed, which is a rule
-  /// older than any named one — the audit treats it as STALE rather than as
-  /// current, on the same reasoning that makes a NULL verdict UNCHECKED.
-  survivalCheckVersion    String?
-  /// For CONTRADICTED, WHAT DISAGREED — the pipeline-defect record itself.
-  ///
-  /// §3: the detail is the point of storing a contradiction. A count says the
-  /// pipeline is wrong somewhere; this says where, so the next person can check
-  /// the claim rather than re-derive it.
-  survivalContradicted    Json?
-  survivalChunksChecked   Int?
-
-  /// A DIFF IS THE PAIR IT SPANS. Nothing enforced this, and diffs are written
-  /// from eight call sites, so a from-scratch rescan duplicated every diff it
-  /// re-derived. The constraint removes the hazard rather than avoiding it: with
-  /// it, a rescan CONVERGES instead of accumulating.
-  ///
-  /// Measured before adding: 0 duplicate groups under this key in both
-  /// environments, so it applies to the existing corpus untouched.
   @@unique([beforeSnapshotId, afterSnapshotId])
-  @@index([trackedUrlId, afterDate])
 }
 
 /// ONE ROW PER DISTINCT DERIVED CONTENT OF A DIFF — docs/gf-evidence-flows.md
@@ -659,14 +496,6 @@ model DiffContentVersion {
 // reinvented. Do not add relations to this model or query it via Prisma
 // Client — `embedding`'s Unsupported() type cannot be selected, and the
 // `match_evidence()` SQL function it backs is not representable here at all.
-model EvidenceEmbedding {
-  id        String                      @id
-  content   String
-  embedding Unsupported("vector(3072)")
-
-  @@map("evidence_embeddings")
-}
-
 // A named public figure (official, politician, senior doctor, journalist) extracted
 // from evidence by the AI. Normalized here so every mention of the same person
 // across all evidence records links to a single canonical entity.
@@ -674,7 +503,6 @@ model KeyFigure {
   id        String     @id @default(cuid())
   name      String     @unique
   createdAt DateTime   @default(now())
-  evidence  Evidence[]
 }
 
 model Whistleblower {
@@ -688,142 +516,131 @@ model Whistleblower {
 // Public evidence registry — structured metadata for stats and timeline queries.
 // Pinecone stores ONLY the embedding + fileHash; all queryable fields live here.
 // Linked to Whistleblower only by fileHash — never joined directly.
-enum EvidenceStatus {
-  // Created via an MCP write tool, or auto-promoted while on-chain registration
-  // was unavailable/failed — awaits human review + registration (onChainTxHash is null).
-  PENDING_REVIEW
-  CONFIRMED // Registered on-chain (onChainTxHash set) and indexed in Pinecone
-}
-
-enum EvidenceType {
-  DOCUMENT // File upload or URL submission
-  FORENSIC_DIFF // Auto-promoted from UrlVersionDiff (isLegallySignificant=true)
-}
-
+/// A CORPUS RECORD A RESEARCHER HAS PROMOTED — the record, MARKED.
+///
+/// Evidence flows §1, built at refactor step 11b. It adds nothing to the page
+/// and everything about the SELECTION: who promoted it, when, and which version
+/// of its derived content they stood behind. The bytes, the anchor, the diff and
+/// its survival verdict are the corpus's, written by the walk before any research
+/// act; the classifier's opinion is the version's; the rationale is the
+/// citation's, on `ThesisMention`.
+///
+/// TWENTY-SEVEN COLUMNS LEFT THIS ROW AT STEP 11b, and each was one of three
+/// things the design keeps elsewhere or nowhere. PROSE and OPINION — summary,
+/// tier, role, categories, date, entity, perspective, tier reasoning, the four
+/// medical/statistical/regulatory/EUA fields, the intake stamps: a tier is a
+/// strength score nothing verifies and was dropped rather than moved; a role is
+/// relative to a thesis; the rest is a model's reading of a page. CHAIN STATE —
+/// `onChainTxHash`, `anchoredHash`, `anchorCheck`, `previousFileHash` and its tx:
+/// nothing above the corpus is anchored (§5), so an evidence row has no chain
+/// state to hold. STORAGE — `sourceUrl`, `fileUrl`, the screenshot array, the
+/// IPFS cid: a document's bytes are the document layer's.
+///
+/// TWO CHECK CONSTRAINTS LIVE IN THE MIGRATION, not here — Prisma cannot express
+/// one. `Evidence_one_record_key`: exactly one of `snapshotId`,
+/// `urlVersionDiffId`, `documentCommitment` is set AND it matches `kind`. That is
+/// the invariant, not a convention: a row that fails it is malformed, and a tool
+/// that repaired it would hide how it got that way (§9.8).
 model Evidence {
-  id                       String                @id @default(uuid())
-  fileHash                 String                @unique
-  // Fails closed, not open: a create() that forgets to set this explicitly
-  // becomes PENDING_REVIEW, never a silent false claim of on-chain registration.
-  // See onChainTxHash — CONFIRMED must only ever be set alongside a real tx hash.
-  status                   EvidenceStatus        @default(PENDING_REVIEW)
-  onChainTxHash            String? // Blockchain tx hash once fileHash is registered on-chain — mirrors UrlSnapshot.onChainTxHash
-  /// What `onChainTxHash` actually registered, observed from the transaction.
-  ///
-  /// The same column as `UrlSnapshot.anchoredHash`, for the same reason, and it
-  /// is needed here for a reason `previousFileHash` does not cover:
-  /// `previousFileHash` records that identity was SUPERSEDED, never what a given
-  /// transaction anchored. `fileHash` asserts identity and is read as if it also
-  /// asserted registration — true today only because `rehashEvidence` happens to
-  /// register before it writes, which is a property of one function rather than
-  /// of the model.
-  ///
-  /// It is what allows evidence identity to move at all without the anchor audit
-  /// going red, which is the mechanism §2's permission needs: "Identity may
-  /// change. It may not change unrecorded."
-  ///
-  /// Null means not yet confirmed against the chain. Never backfilled from
-  /// `fileHash` — see `UrlSnapshot.anchoredHash`.
-  anchoredHash             String?
-  /// The terminal verdict behind `anchoredHash`. See `UrlSnapshot.anchorCheck`.
-  anchorCheck              AnchorCheckOutcome?
-  // The identity this record carried before the evidence hash moved to being
-  // derived from its two archived snapshots, and the anchor registered under it.
-  //
-  // Kept rather than discarded because that anchor is a real, permanent
-  // transaction that now matches nothing derivable — precisely the
-  // ORPHANED_ANCHOR condition check_on_chain_status exists to flag. Recording it
-  // here says the orphan was created deliberately, by a known migration, instead
-  // of leaving a future audit to find an unexplained one and reasonably conclude
-  // the vault had been tampered with.
-  //
-  // Null on every record created after the change, which is the normal state.
-  previousFileHash         String?
-  previousOnChainTxHash    String?
-  evidenceType             EvidenceType          @default(DOCUMENT)
-  evidenceRole             String                @default("Incriminating")
-  // The evidence's classification — see src/lib/investigativeCategories.ts.
-  // Intrinsic to the evidence and fixed at creation; deliberately NOT a link to
-  // Thesis, since evidence normally predates the theses that cite it and one
-  // record may support several.
-  //
-  // This is the ONLY classification axis. A coarser `category` field was removed:
-  // it restated this at lower resolution and could contradict it.
-  investigativeCategories  String[]              @default([])
-  // What the intake model SAID this document is about. Freeform by design: it is
-  // an observation about the document, and re-running intake to tidy it would
-  // re-roll tier, date, figures and summary too.
-  targetEntity             String
-  // The KEY. Resolved from `targetEntity` by a deterministic lookup — no model —
-  // in lib/targetEntity.
-  //
-  // These were one field, doing two incompatible jobs: display label and
-  // exact-match filter key, with nothing pinning the form. One prompt produced
-  // "Ministry of Health" and "משרד הבריאות" for the same body, so
-  // `?targetEntity=` returned half the evidence under each spelling with no
-  // indication the other half existed. Seven more records named
-  // `corona.health.gov.il`, which is a source rather than an entity at all.
-  //
-  // Null means NOT YET RESOLVED — a gap in the vocabulary to fix, never
-  // "unknown entity". Same discipline as an absent EvidenceCapture.
-  canonicalTargetEntity    String?
-  evidenceTier             String
-  evidencePerspective      String?
-  tierReasoning            String?
-  summary                  String
-  evidenceDate             String
-  figures                  KeyFigure[]
-  medicalConditions        String
-  statisticalClaims        String                @default("[]")
-  regulatoryMentions       String                @default("[]")
-  euaOmissionStatus        String                @default("Not Applicable")
-  sourceUrl                String?
-  fileUrl                  String?
-  // Screenshot 2..N when this evidence was recovered from a page that needed
-  // multiple captures (e.g. a blocked/unfetchable URL too long for one
-  // screenshot). fileUrl always holds the first/primary capture; this array
-  // holds the rest, in the same reading order they were submitted in — the
-  // combined set is treated as one document, analyzed together, not as
-  // separate pieces of evidence. Empty for every ordinary single-file record.
-  additionalScreenshotUrls String[]              @default([])
-  ipfsCid                  String? // IPFS CID of the encrypted evidence blob (null if not yet anchored)
-  // @unique enforces the true 1:1 with UrlVersionDiff at the DB level — previously
-  // only an application-level check in POST /forensics/promote prevented a diff
-  // from being promoted to more than one Evidence row.
-  urlVersionDiffId         String?               @unique
-  urlVersionDiff           UrlVersionDiff?       @relation(fields: [urlVersionDiffId], references: [id])
-  // Present only for evidence a researcher argued into existence over the
-  // forensic classifier's judgment — the full debate that justified it.
-  debateSession            DiffDebateSession?
-  gapResolutions           ThesisGapResolution[]
-  // Which intake rubric produced this record's classification.
-  //
-  // evidenceTier, evidenceRole, investigativeCategories, summary, evidenceDate
-  // and the figures relation are all LLM output, written once and never
-  // recomputed. When the rubric changes they mean different things on different
-  // rows — the same article classified either side of the 2026-08-25 change gave
-  // Tier 3 with four figures and Tier 1 with two, and both rows would have looked
-  // equally authoritative. Mirrors UrlVersionDiff.classifierVersion.
-  //
-  // Null on every record created before this existed. That reads as "unknown",
-  // never as "current" — the same discipline as an absent EvidenceCapture.
-  //
-  // One known imprecision, recorded rather than hidden: POST /confirm receives an
-  // `analysis` the client obtained from an earlier /intake call, so if those two
-  // requests straddle a deploy the stamp names the prompt live at confirm time
-  // rather than the one that judged it. A narrow window, and still far better
-  // than no stamp at all.
-  intakeVersion            String?
-  // SHA-256 of the system prompt actually sent to the model. The version string
-  // is a promise; this is the proof, checkable against git.
-  intakePromptHash         String?
-  createdById              String? // Researcher.id — null for legacy records
-  createdBy                Researcher?           @relation(fields: [createdById], references: [id])
-  // The stored document this record's fileHash was computed over. Absent on
-  // every record created before captures existed, and on paths that do not
-  // produce one — absence means "cannot be checked", never "does not match".
-  capture                  EvidenceCapture?
-  createdAt                DateTime              @default(now())
+  id                         String             @id @default(uuid())
+  /// ID(the record this row marks) — the PUBLIC name, and the only name a tool,
+  /// a thesis or a stranger uses for a record once it is evidence. Derived from
+  /// the corpus by `src/lib/evidenceIdentity.ts` and held at every write:
+  /// RECOMPUTABLE is a predicate a row satisfies or is malformed by, never a
+  /// rate — nothing legitimate makes it false.
+  fileHash                   String             @unique
+  kind                       EvidenceKind
+  /// Set iff kind = CAPTURE.
+  snapshotId                 String?            @unique
+  snapshot                   UrlSnapshot?       @relation(fields: [snapshotId], references: [id])
+  /// Set iff kind = DIFF.
+  urlVersionDiffId           String?            @unique
+  urlVersionDiff             UrlVersionDiff?    @relation(fields: [urlVersionDiffId], references: [id])
+  /// Set iff kind = DOCUMENT; `fileHash` = the commitment. NO foreign key: the
+  /// `Document` table is document refactor step 28's, and a key to a table that
+  /// does not exist cannot be declared. The CHECK still holds the arm.
+  documentCommitment         String?            @unique
+  /// NO DEFAULT, deliberately. The old column defaulted to PENDING_REVIEW and the
+  /// comment said why — "fails closed, not open: a create() that forgets to set
+  /// this becomes PENDING_REVIEW, never a silent false claim". The target has no
+  /// state to fail closed INTO: both values are live claims about a human's
+  /// standing decision, so a default would let a forgetful write assert one.
+  /// Every write states it.
+  status                     EvidenceStatus
+  /// The version a human LAST STOOD BEHIND — the one thing on this row only a
+  /// human can produce. CURRENT is derived, never stored: a pointer the walk had
+  /// to move would be acquisition writing evidence.
+  affirmedContentVersionHash String
+  promotedById               String
+  promotedBy                 Researcher         @relation(fields: [promotedById], references: [id])
+  promotedAt                 DateTime
+  createdAt                  DateTime           @default(now())
+  decisions                  EvidenceDecision[]
+  debateSession              DiffDebateSession?
+  gapResolutions             ThesisGapResolution[]
+}
+
+/// The kind of corpus record an `Evidence` row marks — evidence A2, with the
+/// third arm from document flows A2. One kind, one record key, held by
+/// `Evidence_one_record_key` in the migration.
+/// TWO STATUSES, AND THERE IS NO THIRD — evidence flows §6.
+///
+/// PENDING_REVIEW and CONFIRMED went with the confirmation act: nothing above the
+/// corpus is anchored, so the write those states described does not happen, and
+/// a record's standing for publication is DERIVED (PUBLISHABLE, A3) rather than
+/// stored. There is no SUPERSEDED either — identity never moves, and the legacy
+/// names are explained in the registry ledger in git rather than carried as a
+/// status with no population.
+///
+/// Nothing moves WITHDRAWN back. A withdrawn record keeps its name, its argument
+/// and its citations, so that a reader of the thesis that cited it can find out
+/// what happened.
+enum EvidenceStatus {
+  PROMOTED
+  WITHDRAWN
+}
+
+enum EvidenceKind {
+  CAPTURE
+  DIFF
+  DOCUMENT
+}
+
+/// THE RECORD'S REVIEW LOG, append-only — evidence A2 and Flow E3.
+///
+/// A re-walk supersedes a text version, Level 5 re-derives every diff spanning
+/// it, and the version a researcher affirmed is no longer CURRENT. Nothing was
+/// overwritten and nothing is wrong yet; what is owed is a judgement no pass can
+/// make, and NO AUTOMATIC RE-AFFIRMATION, EVER. This is where that judgement
+/// lands.
+///
+/// `sequence` is the compare-and-set, as the page's decision log is: a write that
+/// finds it moved refuses STALE_SEQUENCE and the researcher re-reads.
+///
+/// CHECK `EvidenceDecision_fields_by_type` lives in the migration: REAFFIRM
+/// requires both version hashes — the log says what was stood behind AND what
+/// replaced it — and WITHDRAW requires a reason. Neither arm forbids the other's
+/// fields: A2 states what is required and excludes nothing, and this is not the
+/// place to invent a rule the contract does not carry.
+model EvidenceDecision {
+  id              String               @id @default(cuid())
+  fileHash        String
+  evidence        Evidence             @relation(fields: [fileHash], references: [fileHash])
+  sequence        Int
+  type            EvidenceDecisionType
+  researcherId    String
+  researcher      Researcher           @relation(fields: [researcherId], references: [id])
+  fromVersionHash String?
+  toVersionHash   String?
+  reason          String?
+  createdAt       DateTime             @default(now())
+
+  @@unique([fileHash, sequence])
+}
+
+enum EvidenceDecisionType {
+  REAFFIRM
+  WITHDRAW
 }
 
 /// The exact text an Evidence.fileHash was computed from, kept so the identity
@@ -838,42 +655,6 @@ model Evidence {
 /// Separate table rather than a column on Evidence on purpose: the text runs to
 /// tens of kilobytes, and Prisma selects every scalar by default, so a column
 /// would put the whole document into every evidence list query.
-model EvidenceCapture {
-  id         String   @id @default(cuid())
-  evidenceId String   @unique
-  evidence   Evidence @relation(fields: [evidenceId], references: [id], onDelete: Cascade)
-  /// The address the capture was taken from — part of the hashed payload, so it
-  /// is stored here rather than read back off Evidence, which is nullable.
-  sourceUrl  String
-  /// Which extraction produced `text`. Recorded per capture, so a later change
-  /// of extractor leaves old hashes explainable rather than merely superseded.
-  extractor  String
-  /// Exactly what was extracted. The identity covers its first HASHED_PREFIX_CHARS
-  /// characters; the remainder is stored so nothing captured is thrown away.
-  text       String
-  /// The fetched document itself, so ANY extraction can be re-derived later.
-  ///
-  /// Hashing and analysis want opposite things from a page. Hashing wants the
-  /// narrowest stable text — page furniture like a view counter must not reach
-  /// it. Analysis wants the widest text, because a fact the model is not shown
-  /// is a fact it will either miss or invent: the first production record got a
-  /// wrong `evidenceDate` because Readability discards the byline as chrome, and
-  /// the model filled the gap rather than reporting the absence.
-  ///
-  /// Storing the source is what lets both be served from one captured artifact
-  /// without either becoming unverifiable. It is also the lesson from
-  /// UrlSnapshot.fullText, where keeping only the extraction is exactly why the
-  /// discarded third of each page can never be recovered.
-  ///
-  /// Null on captures taken before this was stored, and on the website's
-  /// submission route, where the text arrives from the client and the server
-  /// never holds the document.
-  html       String?
-  /// When the source was fetched — NOT when the row was written.
-  capturedAt DateTime
-  createdAt  DateTime @default(now())
-}
-
 enum ThesisVersionStatus {
   PENDING_AI // AI devil's advocate analysis not yet complete
   COMPLETE // aiAnalysis populated, ready to display
@@ -922,6 +703,7 @@ model Thesis {
   // than free text in the body: structurally guaranteed to exist on a published
   // thesis and rendered consistently on every thesis and call page.
   publicInterestStatement String?
+  debateSessions   DiffDebateSession[]
 }
 
 // One row per edit. userContent is TipTap JSON; aiAnalysis is devil's advocate output.
@@ -980,6 +762,24 @@ model ThesisMention {
   thesisVersion   ThesisVersion @relation(fields: [thesisVersionId], references: [id], onDelete: Cascade)
   type            MentionType
   refId           String // KeyFigure.name | Evidence.fileHash | TrackedUrl.id | ClaimTrajectory.id
+  /// THE PIN — evidence A2, required on an EVIDENCE mention. A citation names a
+  /// record AND the version of its content the argument was made against, as a
+  /// text citation pins (snapshotId, textHash). It may only equal the record's
+  /// `affirmedContentVersionHash`: a thesis cannot cite a version nobody stood
+  /// behind. Nullable in the column because the thesis layer's own steps (20)
+  /// give it the shape that makes it required per kind.
+  contentVersionHash String?
+  /// THE ARGUMENT, BY REFERENCE. One "why", written once and assessed once;
+  /// a second thesis citing the same record argues its own. Written by
+  /// promote_from_debate on the head version's mention (evidence step 13) and
+  /// copied forward while (name, pin) is unchanged.
+  ///
+  /// NO `role`. Evidence A2 offered one and the thesis flows WITHDREW it (T2,
+  /// prosecutor plan §4.1): a role is meaningful only relative to a provision,
+  /// the element a record fills is the framing's, and what the record does here
+  /// is the argument.
+  debateSessionId    String?
+  debateSession      DiffDebateSession? @relation(fields: [debateSessionId], references: [id])
 }
 
 // ---------------------------------------------------------------------------
@@ -1665,22 +1465,54 @@ enum DiffDebateEventType {
 }
 
 // One debate per diff at a time — mirroring one ACTIVE ResearchSession per thesis.
+/// THE ARGUMENT FOR ONE RECORD, IN ONE THESIS — evidence flows §4, A2.
+///
+/// The debate keeps its shape as built — a session with a goal, a lifecycle, an
+/// event log, SUBSTANCE a hard gate and a sustained objection carried forever —
+/// and gains the two columns that make it thesis-scoped. "Is this change
+/// evidence?" is retired: §1 leaves that question no answer outside a claim
+/// someone is trying to establish, so the question it puts is "does this record
+/// support what thesis T says it does?".
+///
+/// THE MODEL KEEPS ITS NAME UNTIL STEP 13, where evidence A4 renames it
+/// `DebateSession` with the tools that drop 'diff' from their own names. A
+/// rename here would touch every caller in a PR whose subject is the schema.
+///
+/// `openKey` IS THE PARTIAL UNIQUE INDEX PRISMA CANNOT EXPRESS. A2 asks for one
+/// OPEN debate per (thesis, record). Written as a partial index in raw SQL it
+/// would leave `db:check-drift` permanently dirty, and "No difference detected."
+/// is the standing precondition of every future migration. So the condition is a
+/// nullable column — `thesisId:recordFileHash` while OPEN, NULL once the session
+/// closes — with an ordinary unique index over it; Postgres does not collide
+/// NULLs, so any number of closed sessions coexist for one pair. Ruled
+/// 2026-09-08, option (i). Its one writer is the debate module, held by a scan.
+///
+/// CHECK `DiffDebateSession_one_record_key` lives in the migration: exactly one
+/// of `recordSnapshotId` and `recordDiffId` is set. The third arm,
+/// `recordCommitment`, is document refactor step 28's and is added by addition
+/// there.
 model DiffDebateSession {
   id                    String                      @id @default(cuid())
-  urlVersionDiffId      String
-  urlVersionDiff        UrlVersionDiff              @relation(fields: [urlVersionDiffId], references: [id], onDelete: Cascade)
+  /// The thesis this record is argued FOR. Importance is a relation, and the
+  /// relation is the thesis's (§1) — there is no promotion that does not name one.
+  thesisId              String
+  thesis                Thesis                      @relation(fields: [thesisId], references: [id])
+  /// ID(record), computed at open — before any `Evidence` row exists, which is
+  /// what lets the citation come first and the argument be made on it.
+  recordFileHash        String
+  recordSnapshotId      String?
+  recordSnapshot        UrlSnapshot?                @relation(fields: [recordSnapshotId], references: [id])
+  recordDiffId          String?
+  recordDiff            UrlVersionDiff?             @relation(fields: [recordDiffId], references: [id])
+  openKey               String?                     @unique
   status                DiffDebateStatus            @default(OPEN)
-  // The assessor's standing verdict on the most recent argument. Null until the
-  // first assessment returns.
   verdict               PromotionAssessmentVerdict?
-  // Whether the most recent argument cleared the substance gate. Promotion is
-  // impossible while this is false.
   hasSubstance          Boolean                     @default(false)
-  // Set only when the debate ends in promotion.
   evidenceId            String?                     @unique
   evidence              Evidence?                   @relation(fields: [evidenceId], references: [id])
   promotedOverObjection Boolean                     @default(false)
   events                DiffDebateEvent[]
+  mentions              ThesisMention[]
   createdAt             DateTime                    @default(now())
   closedAt              DateTime?
 }
@@ -1810,25 +1642,6 @@ enum ClaimFinalState {
 // trace is exactly the "trust us" this platform exists not to be.
 //
 // Append-only. A later correction writes another row; nothing here is updated.
-model SummaryCorrection {
-  id               String         @id @default(cuid())
-  urlVersionDiffId String
-  urlVersionDiff   UrlVersionDiff @relation(fields: [urlVersionDiffId], references: [id], onDelete: Cascade)
-  // Denormalised so a correction stays legible if the diff is ever detached.
-  fileHash         String
-  previousText     String
-  correctedText    String
-  // Why, in the corrector's own words. A correction with no stated reason is
-  // indistinguishable from a quiet rewrite.
-  reason           String
-  correctedById    String?
-  correctedBy      Researcher?    @relation(fields: [correctedById], references: [id])
-  createdAt        DateTime       @default(now())
-
-  @@index([urlVersionDiffId, createdAt])
-  @@index([fileHash])
-}
-
 model ClaimTrajectoryComputation {
   id                   String            @id @default(cuid())
   trackedUrlId         String
@@ -2320,21 +2133,6 @@ model ScanRelevanceAssessment {
 }
 
 /// Whether a diff's own report survives the documents it spans.
-enum SurvivalVerdict {
-  /// Every reported change is supported by the raw documents.
-  SURVIVES
-  /// At least one chunk said to be REMOVED is present in the after document, or
-  /// one said to be ADDED was already in the before one. WRITTEN, NOT REFUSED —
-  /// and never promotable.
-  CONTRADICTED
-  /// The check could not be made. A verdict about the CHECK, never about the
-  /// data: the two captures were extracted under different rules, so a presence
-  /// test across them compares text that was never comparable. Kept distinct
-  /// because an unavailable check counting as a pass is the failure §3 exists to
-  /// prevent.
-  UNCHECKABLE
-}
-
 // ---------------------------------------------------------------------------
 // LEVEL 3 — the anchor. §3's check record, made general.
 // ---------------------------------------------------------------------------

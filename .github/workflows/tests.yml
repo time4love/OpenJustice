@@ -85,6 +85,43 @@ jobs:
         run: npm run test:walk -- --json --outputFile=walk-results.json
         working-directory: apps/glass-fortress/backend
 
+      # NON-GATING, exactly as the walk's is, and for the same reason: the
+      # evidence acceptance suite is written from docs/gf-evidence-flows.md's
+      # appendix BEFORE the code and is RED by design until steps 12-15 build
+      # what it names (refactor plan §4 rule 4). `continue-on-error` is what makes
+      # "red on purpose" reportable instead of a broken build — and `npm test`,
+      # the required check, does not run these files at all: `unit`'s
+      # testPathIgnorePatterns excludes test/evidence/.
+      - name: Run the evidence acceptance suite
+        continue-on-error: true
+        run: npm run test:evidence -- --json --outputFile=evidence-results.json
+        working-directory: apps/glass-fortress/backend
+
+      - name: Which evidence files are green, and which are red
+        if: always()
+        run: |
+          node -e '
+            const { readFileSync, existsSync } = require("node:fs");
+            const { relative } = require("node:path");
+            const path = "apps/glass-fortress/backend/evidence-results.json";
+            if (!existsSync(path)) process.exit(0);
+            const results = JSON.parse(readFileSync(path, "utf8"));
+            const rows = results.testResults
+              .map((f) => ({ file: relative(process.cwd(), f.name), status: f.status, passed: f.assertionResults.filter((a) => a.status === "passed").length, failed: f.assertionResults.filter((a) => a.status === "failed").length }))
+              .sort((a, b) => a.file.localeCompare(b.file));
+            const green = rows.filter((r) => r.status === "passed").length;
+            const lines = [
+              `## Evidence acceptance suite — ${green} of ${rows.length} files green`,
+              "",
+              "| file | | passed | failed |",
+              "|---|---|---|---|",
+              ...rows.map((r) => `| \`${r.file}\` | ${r.status === "passed" ? "🟢 green" : r.passed + r.failed === 0 ? "🔴 red — module not built yet" : "🔴 red"} | ${r.passed} | ${r.failed} |`),
+              "",
+              "_Red is expected until the step that builds what each file names: the debate at 13, review at 14, the gate at 15._",
+            ];
+            require("node:fs").appendFileSync(process.env.GITHUB_STEP_SUMMARY, lines.join("\n") + "\n");
+          '
+
       - name: Which walk files are green, and which are red
         if: always()
         run: |

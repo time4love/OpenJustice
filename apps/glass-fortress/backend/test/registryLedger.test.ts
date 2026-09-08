@@ -65,20 +65,33 @@ const corpus: CorpusHashes = {
     { id: 's1', waybackTimestamp: '20220724130104', url: 'https://x/', documentHash: hash(1).slice(2), contentHash: hash(2).slice(2) },
     { id: 's2', waybackTimestamp: '20220805053301', url: 'https://x/', documentHash: hash(3).slice(2), contentHash: hash(2).slice(2) },
   ],
-  evidence: [
-    { id: 'e1', fileHash: hash(4), previousFileHash: hash(5), evidenceType: 'FORENSIC_DIFF' },
-    { id: 'e2', fileHash: hash(6), previousFileHash: null, evidenceType: 'DOCUMENT' },
-  ],
 };
+
+// THE EVIDENCE FIXTURE WENT WITH THE ARM AT EVIDENCE STEP 11b. `CorpusHashes`
+// held evidence rows so an entry could be explained as a name under the retired
+// formula, from `fileHash` and `previousFileHash`. Both columns left the row:
+// identity never moves under the target, and no evidence row is registered at
+// all — nothing above the corpus is anchored (evidence §5).
+//
+// THE ENTRIES ARE STILL EXPLAINED, in the place §8 puts them: "every old entry
+// is explained in GIT, not in a table". Each frozen registry's ledger is emitted
+// once, before its database is dropped, and committed —
+// `registry-ledger/84532-0x65b9….json` for staging's, written at refactor step 9.
+// `registryLedgerCommitted.test.ts` holds that file complete against
+// `totalEvidence()`, and it is untouched by this change: the explanations
+// outlive the rows that produced them, which is the whole reason the design put
+// them in a file.
 
 function input(overrides: Partial<LedgerInput> = {}): LedgerInput {
   return {
     state: state([
       entry(0, { fileHash: hash(1) }),
       entry(1, { fileHash: hash(2) }),
-      entry(2, { fileHash: hash(4), category: 'Forensic Evidence' }),
-      entry(3, { fileHash: hash(5), category: 'A,B' }),
-      entry(4, { fileHash: hash(6), category: 'C' }),
+      // THE THREE EVIDENCE-NAME ENTRIES LEFT THIS FIXTURE AT EVIDENCE STEP 11b.
+      // They were explained by `Evidence.fileHash` and `previousFileHash`, and
+      // both columns are gone. On a real frozen registry such an entry is now
+      // ORPHANED — unexplained by any column and carried on the committed list —
+      // which the group below asserts against the list this repository ships.
     ]),
     corpus,
     chainId: BASE_SEPOLIA,
@@ -91,14 +104,8 @@ describe('the ledger explains every entry by the column that produced it', () =>
   it('one line per index, with kind, formula, inputs, attested and replacedBy', () => {
     const ledger = buildRegistryLedger(input());
 
-    expect(ledger.entries.map((e) => e.index)).toEqual([0, 1, 2, 3, 4]);
-    expect(ledger.entries.map((e) => e.kind)).toEqual([
-      'DOCUMENT_HASH',
-      'CONTENT_HASH',
-      'EVIDENCE_FILE_HASH',
-      'EVIDENCE_PREVIOUS_FILE_HASH',
-      'EVIDENCE_FILE_HASH',
-    ]);
+    expect(ledger.entries.map((e) => e.index)).toEqual([0, 1]);
+    expect(ledger.entries.map((e) => e.kind)).toEqual(['DOCUMENT_HASH', 'CONTENT_HASH']);
     for (const e of ledger.entries) {
       expect(e.formula.length).toBeGreaterThan(0);
       expect(e.attested.length).toBeGreaterThan(0);
@@ -119,41 +126,28 @@ describe('the ledger explains every entry by the column that produced it', () =>
     ]);
   });
 
-  it('an evidence name states the formula by the row’s type, and its inputs name the row', () => {
-    const ledger = buildRegistryLedger(input());
-    const forensic = ledger.entries.at(2);
-    const document = ledger.entries.at(4);
-    expect(forensic?.formula).toMatch(/forensicEvidenceFileHash/);
-    expect(document?.formula).toMatch(/sha256/);
-    expect(document?.formula).not.toMatch(/forensicEvidenceFileHash/);
-    expect(forensic?.inputs).toEqual([{ evidenceId: 'e1', evidenceType: 'FORENSIC_DIFF' }]);
-    expect(ledger.entries.at(3)?.inputs).toEqual([{ evidenceId: 'e1', evidenceType: 'FORENSIC_DIFF' }]);
-  });
+  // THE EVIDENCE-FORMULA CASE WENT WITH THE ARM AT EVIDENCE STEP 11b. It held
+  // that an entry explained as an evidence name stated the formula BY THE ROW'S
+  // TYPE — `url + "\n\n" + text.slice(0, 40000)` for a document, the four-input
+  // diff formula for a forensic one — read from `Evidence.evidenceType`. The
+  // column and both hash columns left the row, so no live registry classifies an
+  // entry that way: the walk is the only chain writer, and it writes a capture's
+  // `documentHash` under one scheme. A frozen registry's evidence entries are
+  // ORPHANED and explained by the committed list, asserted below.
 
-  it('the DOCUMENT formula names every writer of Web3Service.hashFile and the text bound', () => {
-    // Five callers in the code, and the 40,000-character slice is part of the
-    // formula: a recomputation over the unbounded text would fail on a hash the
-    // formula claims to explain. Reviewer finding 5, 2026-09-06.
-    const formula = buildRegistryLedger(input()).entries.at(4)?.formula ?? '';
-    expect(formula).toMatch(/40[, _]?000/);
-    for (const writer of [
-      'createEvidenceFromUrl',
-      'evidenceRoutes',
-      'createEvidenceFromText',
-      'persistScreenshotEvidence',
-      'thesisRoutes',
-    ]) {
-      expect(formula).toContain(writer);
-    }
-    expect(formula).toMatch(/not recorded on the row/);
-  });
+  // THE DOCUMENT-FORMULA CASE WENT WITH THE EVIDENCE ARM. It held that the
+  // formula naming `url + "\n\n" + text.slice(0, 40000)` stated the 40,000-char
+  // bound it claims to explain (reviewer finding 5, 2026-09-06) — a property of
+  // a formula string only an evidence-name entry carries. `create_evidence_from_text`
+  // and its identity were retired in 11a-document, and no live registry entry is
+  // an evidence name. The bound itself is no longer computed anywhere.
 
   it('carries the registry, chain, registrar, total, readAt and commit at file level; testnet by chain id; successor null', () => {
     const ledger = buildRegistryLedger(input());
     expect(ledger.registry).toBe(REGISTRY.toLowerCase());
     expect(ledger.chainId).toBe(BASE_SEPOLIA);
     expect(ledger.registrar).toBe(REGISTRAR);
-    expect(ledger.totalEvidence).toBe(5);
+    expect(ledger.totalEvidence).toBe(2);
     expect(ledger.readAt).toBe('2026-09-06T08:00:00.000Z');
     expect(ledger.commit).toBe('abc1234');
     expect(ledger.testnet).toBe(true);
@@ -229,9 +223,14 @@ describe('the ledger refuses rather than emits', () => {
   });
 
   it('when an entry is AMBIGUOUS', () => {
+    // Collided between the two CAPTURE columns now that evidence has none: one
+    // capture's `documentHash` equals another's `contentHash`, so the entry is
+    // explained two ways and the emitter must refuse rather than pick.
     const collided: CorpusHashes = {
-      snapshots: corpus.snapshots,
-      evidence: [{ id: 'e9', fileHash: hash(1), previousFileHash: null, evidenceType: 'DOCUMENT' }],
+      snapshots: [
+        corpus.snapshots[0]!,
+        { id: 's9', waybackTimestamp: '20220901000000', url: 'https://x/', documentHash: hash(9).slice(2), contentHash: hash(1).slice(2) },
+      ],
     };
     expect(() =>
       buildRegistryLedger(input({ corpus: collided, state: state([entry(0, { fileHash: hash(1) })]) })),

@@ -195,9 +195,20 @@ describe('getClaimTrajectories', () => {
 
   function withCandidates(quotes: string[]): void {
     (prisma.urlVersionDiff.findMany as jest.Mock).mockResolvedValue([
+      // REBASED AT EVIDENCE STEP 11b: CANDIDATES COME FROM THE CONTENT VERSION.
+      // They were the classifier's ITEMS — `deletedText` / `addedText`, its
+      // Hebrew summaries with an `exactQuote` each — and those columns left the
+      // diff row with everything else a version owns. A candidate is now taken
+      // from CURRENT(diff)'s COMPUTED chunks: the differ's own segments, the
+      // page's own text, verbatim by construction where a paraphrase never was.
+      // `DETECTION_VERSION` moved v2 → v3 with this, because it changes which
+      // claims are found.
       {
-        deletedText: JSON.stringify(quotes.map((q) => ({ summary: 's', exactQuote: q }))),
-        addedText: '[]',
+        contentVersions: [
+          {
+            chunks: quotes.map((q: string) => ({ side: 'REMOVED', text: q })),
+          },
+        ],
       },
     ]);
   }
@@ -301,8 +312,8 @@ describe('getClaimTrajectories', () => {
   it('dedupes identical candidates extracted from several diffs', async () => {
     withSnapshots([['2022-05-25', true]]);
     (prisma.urlVersionDiff.findMany as jest.Mock).mockResolvedValue([
-      { deletedText: JSON.stringify([{ summary: 's', exactQuote: CLAIM }]), addedText: '[]' },
-      { deletedText: JSON.stringify([{ summary: 's', exactQuote: `  ${CLAIM}  ` }]), addedText: '[]' },
+      { contentVersions: [{ chunks: [{ side: 'REMOVED', text: CLAIM }] }] },
+      { contentVersions: [{ chunks: [{ side: 'REMOVED', text: `  ${CLAIM}  ` }] }] },
     ]);
 
     const r = await getClaimTrajectories('https://health.gov.il/x');
@@ -467,7 +478,7 @@ describe('get_claim_trajectories', () => {
       })),
     );
     (prisma.urlVersionDiff.findMany as jest.Mock).mockResolvedValue([
-      { deletedText: JSON.stringify([{ summary: 's', exactQuote: CLAIM }]), addedText: '[]' },
+      { contentVersions: [{ chunks: [{ side: 'REMOVED', text: CLAIM }] }] },
     ]);
   }
 
@@ -488,7 +499,7 @@ describe('get_claim_trajectories', () => {
       { snapshotDate: '2022-01-01', waybackTimestamp: 'x', snapshotUrl: 'u', fullText: 'nothing here' },
     ]);
     (prisma.urlVersionDiff.findMany as jest.Mock).mockResolvedValue([
-      { deletedText: JSON.stringify([{ summary: 's', exactQuote: CLAIM }]), addedText: '[]' },
+      { contentVersions: [{ chunks: [{ side: 'REMOVED', text: CLAIM }] }] },
     ]);
 
     const r = JSON.parse(
@@ -624,11 +635,7 @@ describe('get_claim_trajectories grouping', () => {
     );
     (prisma.urlVersionDiff.findMany as jest.Mock).mockResolvedValue([
       {
-        deletedText: JSON.stringify([
-          { summary: 's', exactQuote: CLAIM },
-          { summary: 's', exactQuote: OTHER },
-        ]),
-        addedText: '[]',
+        contentVersions: [{ chunks: [{ side: 'REMOVED', text: CLAIM }, { side: 'REMOVED', text: OTHER }] }],
       },
     ]);
 
@@ -659,7 +666,7 @@ describe('get_claim_trajectories grouping', () => {
       })),
     );
     (prisma.urlVersionDiff.findMany as jest.Mock).mockResolvedValue([
-      { deletedText: JSON.stringify([{ summary: 's', exactQuote: CLAIM }]), addedText: '[]' },
+      { contentVersions: [{ chunks: [{ side: 'REMOVED', text: CLAIM }] }] },
     ]);
 
     const r = JSON.parse(await getClaimTrajectoriesHandler({ url: 'https://health.gov.il/x' })) as {
@@ -702,12 +709,7 @@ describe('stored patternHash', () => {
     );
     (prisma.urlVersionDiff.findMany as jest.Mock).mockResolvedValue([
       {
-        deletedText: JSON.stringify([
-          { summary: 's', exactQuote: CLAIM },
-          { summary: 's', exactQuote: TOGETHER },
-          { summary: 's', exactQuote: ALONE },
-        ]),
-        addedText: '[]',
+        contentVersions: [{ chunks: [{ side: 'REMOVED', text: CLAIM }, { side: 'REMOVED', text: TOGETHER }, { side: 'REMOVED', text: ALONE }] }],
       },
     ]);
 

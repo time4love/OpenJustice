@@ -1,4 +1,3 @@
-import type { EvidenceType } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { toBytes32 } from '../lib/bytes32';
 import { Web3Service, type OnChainEvidenceRecord } from './Web3Service';
@@ -163,14 +162,23 @@ export interface CorpusHashes {
     /** Bare hex, as stored. */
     contentHash: string;
   }[];
-  evidence: {
-    id: string;
-    /** 0x-prefixed, as stored. */
-    fileHash: string;
-    previousFileHash: string | null;
-    /** Which writer named the row — the ledger states the formula per row from it. */
-    evidenceType: EvidenceType;
-  }[];
+  // THE EVIDENCE ARM LEFT AT EVIDENCE STEP 11b, AND ITS ENTRIES ARE STILL
+  // EXPLAINED — in the place evidence §8 says they are explained.
+  //
+  // It matched a frozen registry's entry against `Evidence.fileHash` and
+  // `previousFileHash`, to say "index 14 is an evidence name under the retired
+  // formula". Both columns are gone: identity never moves under the target, so
+  // there is no previous name, and no evidence row is registered at all —
+  // nothing above the corpus is anchored (§5).
+  //
+  // §8 ANTICIPATED EXACTLY THIS: "every old entry is explained in GIT, not in a
+  // table". The ledger for each frozen registry is emitted ONCE, before its
+  // database is dropped, and committed — staging's is
+  // `registry-ledger/84532-0x65b9….json`, written at refactor step 9. Those
+  // explanations survive the rows that produced them, which is the entire reason
+  // the design put them in a file rather than in a query. What this module still
+  // does is explain the entries of a LIVE registry, where every entry is a
+  // capture's `documentHash` under one scheme.
 }
 
 export type EntryKind =
@@ -201,14 +209,10 @@ export function classifyEntry(entry: RegistryEntry, corpus: CorpusHashes): Entry
 
   const byDocument = corpus.snapshots.filter((s) => same(s.documentHash));
   const byContent = corpus.snapshots.filter((s) => same(s.contentHash));
-  const byFile = corpus.evidence.filter((e) => same(e.fileHash));
-  const byPrevious = corpus.evidence.filter((e) => same(e.previousFileHash));
 
   const kinds: EntryKind[] = [];
   if (byDocument.length > 0) kinds.push('DOCUMENT_HASH');
   if (byContent.length > 0) kinds.push('CONTENT_HASH');
-  if (byFile.length > 0) kinds.push('EVIDENCE_FILE_HASH');
-  if (byPrevious.length > 0) kinds.push('EVIDENCE_PREVIOUS_FILE_HASH');
 
   const snapshot = (s: CorpusHashes['snapshots'][number]): EntryClassification['snapshots'][number] => ({
     id: s.id,
@@ -221,7 +225,7 @@ export function classifyEntry(entry: RegistryEntry, corpus: CorpusHashes): Entry
     return {
       kind: 'AMBIGUOUS',
       snapshots: [...byDocument, ...byContent].map(snapshot),
-      evidence: [...byFile, ...byPrevious].map((e) => ({ id: e.id })),
+      evidence: [],
     };
   }
   return {
@@ -229,15 +233,13 @@ export function classifyEntry(entry: RegistryEntry, corpus: CorpusHashes): Entry
     snapshots: (only === 'DOCUMENT_HASH' ? byDocument : only === 'CONTENT_HASH' ? byContent : []).map(
       snapshot,
     ),
-    evidence: (only === 'EVIDENCE_FILE_HASH' ? byFile : only === 'EVIDENCE_PREVIOUS_FILE_HASH' ? byPrevious : []).map(
-      (e) => ({ id: e.id }),
-    ),
+    evidence: [],
   };
 }
 
 /** Every hash column the corpus holds, for the join and for the claim walk. */
 export async function loadCorpusHashes(): Promise<CorpusHashes> {
-  const [snapshots, evidence] = await Promise.all([
+  const [snapshots] = await Promise.all([
     prisma.urlSnapshot.findMany({
       orderBy: [{ trackedUrlId: 'asc' }, { capturedAt: 'asc' }],
       select: {
@@ -248,10 +250,6 @@ export async function loadCorpusHashes(): Promise<CorpusHashes> {
         trackedUrl: { select: { url: true } },
       },
     }),
-    prisma.evidence.findMany({
-      orderBy: { createdAt: 'asc' },
-      select: { id: true, fileHash: true, previousFileHash: true, evidenceType: true },
-    }),
   ]);
   return {
     snapshots: snapshots.map((s) => ({
@@ -261,7 +259,6 @@ export async function loadCorpusHashes(): Promise<CorpusHashes> {
       documentHash: s.documentHash,
       contentHash: s.contentHash,
     })),
-    evidence,
   };
 }
 
@@ -425,22 +422,9 @@ export async function readRegistryAttribution(
       attribution: await attributeClaim(reader, state.entries, s.contentHash),
     });
   }
-  for (const e of corpus.evidence) {
-    claims.push({
-      subject: 'Evidence',
-      subjectId: e.id,
-      column: 'fileHash',
-      attribution: await attributeClaim(reader, state.entries, e.fileHash),
-    });
-    if (e.previousFileHash !== null) {
-      claims.push({
-        subject: 'Evidence',
-        subjectId: e.id,
-        column: 'previousFileHash',
-        attribution: await attributeClaim(reader, state.entries, e.previousFileHash),
-      });
-    }
-  }
+  // The evidence claims left with the columns that made them (above). A frozen
+  // registry's evidence entries are explained by its committed ledger file, and a
+  // live registry has none to explain: the walk is the only chain writer.
   return {
     state,
     entries: entries.map(({ entry, classification }) => ({ ...entry, classification })),

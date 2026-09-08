@@ -362,16 +362,23 @@ describe('scope and unavailable states', () => {
   it('derives scope from forensic evidence citations when no tracked URL is mentioned', async () => {
     givenBody('הטענה הוסרה ב-05.08.2022.');
     givenCaptures(['20220805111109']);
+    // REBASED AT EVIDENCE STEP 11b: THROUGH THE RECORD KEY, NOT A URL STRING.
+    // The scope used to come from `Evidence.sourceUrl` — a Wayback replay URL
+    // stored on the row — parsed back to the original page and matched against
+    // `TrackedUrl.url` as text. The column left the row and the parse with it; a
+    // record's key names its capture or its pair, and a capture names its page by
+    // foreign key. The join is now exact: no replay prefix to strip, and no page
+    // missed because two spellings of one URL differ by a trailing slash.
     findMentions.mockResolvedValue([{ type: 'EVIDENCE', refId: 'hash-1' }]);
     findEvidence.mockResolvedValue([
-      { sourceUrl: `https://web.archive.org/web/20220805111109/${URL}` },
+      { snapshot: { trackedUrlId: 'tracked-1' }, urlVersionDiff: null },
     ]);
 
     ok(await auditThesisClaims('thesis-1'));
 
     expect(findTrackedMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { OR: [{ url: { in: [URL] } }] },
+        where: { OR: [{ id: { in: ['tracked-1'] } }] },
       }),
     );
   });

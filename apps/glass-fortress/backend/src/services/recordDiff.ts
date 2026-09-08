@@ -1,4 +1,3 @@
-import { createHash } from 'crypto';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { captureHtml, deriveTextFromHtml, TEXT_EXTRACTION_VERSION } from '../lib/captureDocument';
@@ -160,17 +159,14 @@ interface ContentChunk {
 }
 
 /**
- * A1's `contentVersionHash`: sha256 over the UTF-8 of the JSON of
- * `[{ side, text } …]` — the differ's raw segments in the differ's output
- * order, removed then added, the text as the differ emits it. Nothing else:
- * not survival, not opinion, not a version label. Bare lowercase hex, the
- * spelling every hash column of the corpus stores (`textHash`, its sibling
- * content version, included); `0x` is the display form.
+ * A1's `contentVersionHash`, RE-EXPORTED. The function moved to
+ * `src/lib/evidenceIdentity.ts` at evidence step 11b, where A1's byte layouts
+ * are stated once; this writer is its one caller and keeps the name it imports
+ * under, so the walk reads the same symbol it always did.
  */
-export function contentVersionHash(chunks: readonly { side: 'REMOVED' | 'ADDED'; text: string }[]): string {
-  const named = chunks.map(({ side, text }) => ({ side, text }));
-  return createHash('sha256').update(JSON.stringify(named), 'utf8').digest('hex');
-}
+import { contentVersionHash } from '../lib/evidenceIdentity';
+export { contentVersionHash } from '../lib/evidenceIdentity';
+
 
 /** The columns the writer reads off each stored capture of the pair — its text, and the document the text was cut from. */
 const PAIR_SELECT = {

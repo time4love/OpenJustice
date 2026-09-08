@@ -1,11 +1,6 @@
-import { EvidenceType } from '@prisma/client';
+import { EvidenceKind } from '@prisma/client';
 import { prisma } from '../lib/prisma';
-import {
-  diffSurvivalView,
-  promotionBlockFor,
-  SURVIVAL_VIEW_SELECT,
-  type DiffSurvivalView,
-} from './diffSurvivalView';
+import type { SurvivalVerdict } from '../lib/diffSurvival';
 
 // ---------------------------------------------------------------------------
 // IS THE INPUT BEHIND THIS EVIDENCE RECORD SOUND?
@@ -15,10 +10,24 @@ import {
 // rather than at the diff. It is what `EVIDENCE_DIFF_INPUT_SOUND`, check 17 of
 // the publication gate, is computed from.
 //
+// REBASED AT EVIDENCE STEP 11b ONTO THE CONTENT VERSION, WHICH IS WHERE A
+// SURVIVAL VERDICT NOW LIVES — and evidence A6 says it in one line: check 17
+// "judges CURRENT(e.record)'s chunks, so it binds on every DIFF record".
+//
+// The old shape asked the DIFF ROW for one verdict about the whole diff, and
+// asked three more columns whether that verdict was still about the inputs the
+// row held. All of that was the row carrying content it should not have: a
+// verdict per row cannot say WHICH chunk the documents refute, and the staleness
+// question existed only because a re-derivation overwrote the row in place.
+// Under A2 a derivation is an APPENDED version, its chunks each carrying their
+// own survival, so the current version is the answer and there is no stale one
+// to detect. `diffSurvivalView` — the display the deleted audit left behind at
+// 11a-evidence — had this as its last consumer and goes with the columns.
+//
 // WHY THIS EXISTS AS ITS OWN MODULE AND NOT AS A SECOND COPY OF THE RULE.
-// The rule already lives in `lib/diffSurvival` and is rendered once, by
-// `diffSurvivalView`. Promotion consumes it through `promotionBlockFor`. What
-// was missing was never the rule: it was a CALLER at the evidence layer.
+// The rule lives in `lib/diffSurvival`, which the walk applies per chunk at
+// derivation. What was missing was never the rule: it was a CALLER at the
+// evidence layer.
 // `assessPublication` read `status` and `onChainTxHash` and nothing else, so a
 // record promoted before Level 5's gate existed — or one whose diff became
 // CONTRADICTED afterwards — was citable in a published thesis. Measured on
@@ -44,12 +53,23 @@ import {
 // the thesis published on 2026-08-30 cites.
 // ---------------------------------------------------------------------------
 
+/** What CURRENT(diff) says about its own chunks — the COMPUTED register, per chunk. */
+export interface DiffSurvivalView {
+  /** AWAITING_DERIVATION when the walk owes this diff a version at all (A3). */
+  state: 'AWAITING_DERIVATION' | 'SURVIVES' | 'CONTRADICTED' | 'UNCHECKABLE';
+  /** How many chunks the current version holds — a denominator. */
+  chunksChecked: number;
+  /** How many of them the documents refute. */
+  contradictedCount: number;
+  reason?: string;
+}
+
 export interface EvidenceInputRow {
   fileHash: string;
-  evidenceType: EvidenceType;
+  evidenceKind: EvidenceKind;
   /** Null for DOCUMENT evidence — nothing was derived, so there is nothing to check. */
   urlVersionDiffId: string | null;
-  /** The diff's Level 5 state. Null when the record is not diff-derived. */
+  /** The diff's Level 5 state, read from CURRENT(diff). Null when not diff-derived. */
   survival: DiffSurvivalView | null;
   /** Why this record's input is not sound. Absent when it is, or when it is out of scope. */
   unsoundReason?: string;
@@ -87,35 +107,69 @@ export interface EvidenceInputSoundnessReport {
  * The CONTRADICTED sentence is borrowed from `promotionBlockFor` rather than
  * rewritten, so the two gates can never describe a contradiction differently.
  */
+/**
+ * CURRENT(diff)'s per-chunk survival, folded into one verdict about the record.
+ *
+ * THE FOLD IS DELIBERATELY PESSIMISTIC and in one direction only: one
+ * CONTRADICTED chunk contradicts the record, because a thesis citing a change
+ * cites the change as a whole. UNCHECKABLE outranks SURVIVES for the same reason
+ * the five-state display did — an unavailable check must not count as a result.
+ */
+function currentDiffSurvival(chunks: unknown): DiffSurvivalView {
+  if (chunks === undefined) {
+    return {
+      state: 'AWAITING_DERIVATION',
+      chunksChecked: 0,
+      contradictedCount: 0,
+      reason:
+        'This diff has no content version, so there is nothing to judge yet. The walk owes it a ' +
+        'derivation; awaiting is not the same as unsound, and nobody is asked to judge a version ' +
+        'that does not exist.',
+    };
+  }
+  const parsed: SurvivalVerdict[] = Array.isArray(chunks)
+    ? chunks.flatMap((c) =>
+        typeof c === 'object' && c !== null && typeof (c as { survival?: unknown }).survival === 'string'
+          ? [(c as { survival: SurvivalVerdict }).survival]
+          : [],
+      )
+    : [];
+  const contradicted = parsed.filter((v) => v === 'CONTRADICTED').length;
+  if (contradicted > 0) {
+    return { state: 'CONTRADICTED', chunksChecked: parsed.length, contradictedCount: contradicted };
+  }
+  const uncheckable = parsed.filter((v) => v === 'UNCHECKABLE').length;
+  if (uncheckable > 0) {
+    return {
+      state: 'UNCHECKABLE',
+      chunksChecked: parsed.length,
+      contradictedCount: 0,
+      reason: `${String(uncheckable)} of ${String(parsed.length)} chunks could not be checked against the documents.`,
+    };
+  }
+  return { state: 'SURVIVES', chunksChecked: parsed.length, contradictedCount: 0 };
+}
+
 function unsoundReasonFor(survival: DiffSurvivalView): string | null {
   switch (survival.state) {
     case 'SURVIVES':
       return null;
     case 'CONTRADICTED':
-      // Non-null by construction: promotionBlockFor returns a sentence for
-      // exactly this state. Asserted rather than defaulted — a fallback here
-      // would invent a second wording for the one verdict that refutes.
       return (
-        promotionBlockFor(survival) ??
-        'This diff is CONTRADICTED by the archived documents it spans.'
+        `The archived documents this diff spans refute ${String(survival.contradictedCount)} of ` +
+        `${String(survival.chunksChecked)} reported chunks. A record whose own report the documents ` +
+        'contradict is evidence of a pipeline defect, not of a change.'
       );
     case 'UNCHECKABLE':
       return (
-        'No check of this record\'s input could be made. ' +
-        (survival.reason ?? 'The stored row does not say which cause applied.') +
+        "No check of this record's input could be made. " +
+        (survival.reason ?? 'The version does not say which cause applied.') +
         ' A thesis may not assert in public a change the platform cannot check.'
       );
-    case 'UNCHECKED':
+    case 'AWAITING_DERIVATION':
       return (
-        'The diff behind this record has never been checked against the documents it spans. ' +
-        'Never checked is not the same as supported.'
-      );
-    case 'STALE':
-      return (
-        'The stored check behind this record is about inputs the diff no longer holds, so the ' +
-        'platform has no current answer about it. No tool recomputes one: the backfill was retired ' +
-        'at evidence step 11a with the legacy survival columns, and a re-derivation is the walk\'s, ' +
-        'as a new content version.'
+        survival.reason ??
+        'This diff has no content version, so its input has never been checked at all.'
       );
   }
 }
@@ -143,16 +197,24 @@ export async function assessEvidenceInputSoundness(
           where: { fileHash: { in: [...fileHashes] } },
           select: {
             fileHash: true,
-            evidenceType: true,
+            kind: true,
             urlVersionDiffId: true,
-            urlVersionDiff: { select: SURVIVAL_VIEW_SELECT },
+            urlVersionDiff: {
+              select: {
+                contentVersions: {
+                  select: { chunks: true },
+                  orderBy: { derivedAt: 'desc' },
+                  take: 1,
+                },
+              },
+            },
           },
         });
 
   const rows: EvidenceInputRow[] = records.map((record) => {
     const base = {
       fileHash: record.fileHash,
-      evidenceType: record.evidenceType,
+      evidenceKind: record.kind,
       urlVersionDiffId: record.urlVersionDiffId,
     };
 
@@ -172,7 +234,7 @@ export async function assessEvidenceInputSoundness(
       };
     }
 
-    const survival = diffSurvivalView(record.urlVersionDiff);
+    const survival = currentDiffSurvival(record.urlVersionDiff.contentVersions.at(0)?.chunks);
     const unsoundReason = unsoundReasonFor(survival);
     return { ...base, survival, ...(unsoundReason === null ? {} : { unsoundReason }) };
   });

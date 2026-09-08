@@ -323,6 +323,20 @@ deploy is one-shot, and staging is its rehearsal. Not before step 8 has served o
 > `held` 0, nothing anchored — corona `20250423145731` is a known loss until a dump-import tool exists.
 > **Sub-step 6 resumes after step 5 lands**; the freeze holds until then.
 
+> **PRODUCTION'S ORDER HAS A HOLE, FOUND 2026-09-08 IN THE REVIEW OF EVIDENCE STEP 11b, AND IT IS
+> RECORDED HERE BEFORE `SHIP` RATHER THAN MET AT IT.** Step 11b's migration adds NOT NULL columns to
+> `Evidence`, so it ABORTS on production's non-empty table — the safe direction, the previous version
+> keeps serving — until production's database is dropped (sub-step 5). The drop needs production's
+> registry ledger emitted first (sub-step 2). But 11b also rebases the ledger emitter onto the target
+> schema, which no longer carries `evidenceType` or `previousFileHash`, so the emitter at head cannot
+> read production's eight legacy evidence rows to explain their entries; and production at `9661206`
+> predates the emitter entirely. So at `SHIP` nothing deployable can emit production's ledger. **The
+> order at `SHIP` therefore gains one deploy:** deploy to production the last commit BEFORE the legacy
+> switch (`0ca8d72`, which has the emitter, the old schema and the measurement scripts), run sub-steps
+> 1 and 2 there in the container, environment stated twice; commit the ledger; then sub-steps 3–5;
+> then deploy head, whose migrations apply on the emptied database; then sub-step 6. Ruled recorded,
+> not yet performed; the `SHIP` keyword's checklist reads this note before it prints what deploys.
+
 ### 10 · Vocabulary
 
 > **DECIDED 2026-09-08 — evidence steps 11 and 12 run BEFORE this one.** The note at §3b records
@@ -439,6 +453,7 @@ and the breakage that proves the instrument (evidence doc A7).
 mention's pin and argument — no role, withdrawn by the thesis flows A2; the identity module as
 one importable symbol;
 `evidence-recomputable` and `evidence-no-prose` green on an empty database.
+Built 2026-09-08; what it measured and what the instruments caught is `docs/gf-evidence-step-11b-2026-09-08.md`.
 The as-built document writers retire in this step — which ones, and their tests, is
 `docs/gf-document-refactor-plan.md` §5's RETIRE-AT-11 tag, never a list here — amended 2026-09-05
 (document refactor plan).

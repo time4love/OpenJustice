@@ -291,14 +291,19 @@ export function formatAnchorAuditSummary(report: AnchorAuditReport): string {
 }
 
 export async function auditOnChainAnchorSubjects(): Promise<AnchorClaimingSubject[]> {
-  const [evidence, snapshots] = await Promise.all([
-    prisma.evidence.findMany({
-      where: { status: 'CONFIRMED' },
-      // `previousFileHash` is the superseded identity — an anchor still pointing
-      // at it attests something this record really was, which is explainable
-      // rather than wrong. Selecting it is what lets those be told apart.
-      select: { id: true, fileHash: true, previousFileHash: true, anchoredHash: true },
-    }),
+  // CAPTURES ALONE, FROM EVIDENCE STEP 11b. This asked about two subject types
+  // and the second no longer exists: NOTHING ABOVE THE CORPUS IS ANCHORED
+  // (evidence flows §5), so an evidence row has no anchor to audit — no
+  // `onChainTxHash`, no `anchoredHash`, no `anchorCheck`, no CONFIRMED status,
+  // and no `previousFileHash`, because identity never moves either.
+  //
+  // THE QUESTION SHRANK AND GOT STRONGER. It used to be "does every anchoring
+  // CLAIM carry a check?", over a population that mixed the corpus's real
+  // anchors with a derived fact somebody had written on chain. It is now "does
+  // every capture's anchor attest that capture's bytes?" — which is the whole
+  // of what the chain is for under this design, and the class that produced the
+  // false-CONFIRMED audit has no subject left to appear in.
+  const [snapshots] = await Promise.all([
     prisma.urlSnapshot.findMany({
       where: { NOT: { onChainTxHash: null } },
       select: {
@@ -320,20 +325,6 @@ export async function auditOnChainAnchorSubjects(): Promise<AnchorClaimingSubjec
   // contract speaks: the capture columns are bare hex, and that mismatch is what
   // made 83 anchorings silently no-op.
   return [
-    ...evidence.map((e) => {
-      const { hash, confirmed } = hashUnderAudit(e, e.fileHash);
-      return {
-        subjectType: IntegrityCheckSubject.EVIDENCE,
-        subjectId: e.id,
-        fileHash: toBytes32(hash),
-        anchorConfirmed: confirmed,
-        attestation: attestationOf({
-          anchoredHash: e.anchoredHash,
-          current: e.fileHash,
-          known: e.previousFileHash === null ? [e.fileHash] : [e.fileHash, e.previousFileHash],
-        }),
-      };
-    }),
     ...snapshots.map((s) => {
       const { hash, confirmed } = hashUnderAudit(s, anchoredCaptureHash(s));
       return {
