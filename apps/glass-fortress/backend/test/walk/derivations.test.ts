@@ -8,6 +8,8 @@ import {
   approvedBefore,
   resolved,
   seen,
+  seenForJudging,
+  judgedSilences,
   stale,
   extractorOf,
   predecessor,
@@ -258,7 +260,7 @@ describe('RESOLVED(row) — an ACCEPTED or SKIPPED whose rulesetId is RULESET_ID
   });
 });
 
-describe('SEEN — removed-side segments of judged ACQUIRED captures, plus the PENDING one', () => {
+describe('SEEN — the fold: removed-side segments of judged ACQUIRED captures (the capture being judged is seenForJudging’s, amended 2026-09-08)', () => {
   const judged = (outcome: Outcome, removed: string[]) => ({ waybackTimestamp: T2, outcome, removed });
 
   it('an ACQUIRED capture with a decision under AUTHORITY contributes its removed side', () => {
@@ -271,10 +273,6 @@ describe('SEEN — removed-side segments of judged ACQUIRED captures, plus the P
 
   it('an ACQUIRED capture with no decision contributes nothing', () => {
     expect(seen([judged('ACQUIRED', ['ticker line'])], []).size).toBe(0);
-  });
-
-  it('the PENDING_JUDGEMENT capture being judged contributes, decision or not', () => {
-    expect(seen([judged('PENDING_JUDGEMENT', ['ticker line'])], []).has('ticker line')).toBe(true);
   });
 
   // A SKIPPED capture holds no bytes, so its removed side cannot be recomputed;
@@ -300,14 +298,14 @@ describe('SEEN — removed-side segments of judged ACQUIRED captures, plus the P
     expect(seen([judged('ACQUIRED', ['ticker line'])], decisions).size).toBe(0);
   });
 
-  it('exhaustively: only ACQUIRED (with a decision) and PENDING_JUDGEMENT contribute', () => {
+  // Amended 2026-09-08: the capture being judged is seenForJudging's, which
+  // adds its own side only once it carries an acceptance. The fold itself is
+  // pure over judged ACQUIRED captures — a PENDING one contributes nothing here.
+  it('exhaustively: only ACQUIRED with an acceptance contributes — a PENDING capture no longer does', () => {
     const decisions = log([], [D.accepted(T2)]);
     for (const outcome of OUTCOMES) {
       const contributes = seen([judged(outcome, ['segment'])], decisions).has('segment');
-      expect({ outcome, contributes }).toEqual({
-        outcome,
-        contributes: outcome === 'ACQUIRED' || outcome === 'PENDING_JUDGEMENT',
-      });
+      expect({ outcome, contributes }).toEqual({ outcome, contributes: outcome === 'ACQUIRED' });
     }
   });
 });
@@ -537,5 +535,91 @@ describe('SUPERSEDING_DECISION(t) — the newest decision after which RULESET_ID
     const r2 = rule('r2', '.share', T09, 'd3');
     const decisions = log([r1, r2], [D.corrected(T09), D.accepted(T09), D.corrected(T09), D.accepted(T09)]);
     expect(supersedingDecision([r1, r2], decisions, T14)?.id).toBe('d3');
+  });
+});
+
+// SEEN FOR JUDGING — A3, amended 2026-09-08 from the first re-walk driven from
+// the chat. A capture a human has JUDGED contributes its OWN removed side when
+// it is itself re-walked; the exclusion of the capture being judged applies
+// only to a capture with no CAPTURE_ACCEPTED under AUTHORITY. The own side is
+// handed from the derivation in hand, so a judged DUPLICATE — no body, not in
+// the fold — contributes from its re-fetch; and the fold is read without the
+// capture whatever it holds, so two readings of one capture cannot disagree.
+describe('SEEN for judging a capture — its own removed side counts once it is judged (amended 2026-09-08)', () => {
+  const other = { waybackTimestamp: T3, outcome: 'ACQUIRED' as const, removed: ['related box'] };
+
+  it('a judged ACQUIRED capture contributes its own removals, beside every other judged capture’s', () => {
+    const decisions = log([], [D.accepted(T2), D.accepted(T3)]);
+    const set = seenForJudging(T2, [other], ['ticker item'], decisions);
+    expect(set.has('ticker item')).toBe(true);
+    expect(set.has('related box')).toBe(true);
+  });
+
+  it('a fresh capture — no acceptance — contributes nothing of its own; the others still count', () => {
+    const decisions = log([], [D.accepted(T3)]);
+    const set = seenForJudging(T2, [other], ['ticker item'], decisions);
+    expect(set.has('ticker item')).toBe(false);
+    expect(set.has('related box')).toBe(true);
+  });
+
+  it('a judged DUPLICATE, absent from the fold, contributes from the derivation in hand', () => {
+    const decisions = log([], [D.accepted(T2)]);
+    expect(seenForJudging(T2, [], ['ticker item'], decisions).has('ticker item')).toBe(true);
+  });
+
+  it('after a RESET the acceptance is gone and the capture is fresh again', () => {
+    const decisions = log([], [D.accepted(T2), D.reset()]);
+    expect(seenForJudging(T2, [], ['ticker item'], decisions).size).toBe(0);
+  });
+
+  it('the fold’s own copy of the capture is ignored — the derivation in hand is the one reading', () => {
+    const decisions = log([], [D.accepted(T2)]);
+    const staleCopy = { waybackTimestamp: T2, outcome: 'ACQUIRED' as const, removed: ['old reading'] };
+    const set = seenForJudging(T2, [staleCopy], ['new reading'], decisions);
+    expect(set.has('new reading')).toBe(true);
+    expect(set.has('old reading')).toBe(false);
+  });
+});
+
+// JUDGED SILENCES — A4 Gate 2, amended 2026-09-08. A rule whose match row
+// (r, t) = 0 was observed BEFORE a CAPTURE_ACCEPTED for t under AUTHORITY was
+// written has had its silence judged. The row is written at the evaluation that
+// stopped, the acceptance follows it; compared by time across two tables written
+// by two actors that never share a transaction. A rule EXTENDED back to t after
+// the acceptance writes a new row, observed later, and its silence is unjudged.
+describe('judged silences — a silence observed before the capture’s acceptance (amended 2026-09-08)', () => {
+  const at = (iso: string) => new Date(iso);
+  const silent = (ruleId: string, ts: string, observedAt: string) => ({ ruleId, waybackTimestamp: ts, matchedNodes: 0, observedAt: at(observedAt) });
+  const accepted = (ts: string, createdAt: string) => ({ waybackTimestamp: ts, createdAt: at(createdAt) });
+
+  it('a zero row observed before the acceptance is judged', () => {
+    expect(judgedSilences(T2, [silent('r1', T2, '2026-09-07T10:00:00Z')], [accepted(T2, '2026-09-07T10:05:00Z')])).toEqual(new Set(['r1']));
+  });
+
+  it('a zero row observed after the acceptance — a rule extended back to the capture — is not judged', () => {
+    expect(judgedSilences(T2, [silent('r1', T2, '2026-09-07T10:10:00Z')], [accepted(T2, '2026-09-07T10:05:00Z')]).size).toBe(0);
+  });
+
+  it('a row that matched is not a silence', () => {
+    const matched = { ruleId: 'r1', waybackTimestamp: T2, matchedNodes: 1, observedAt: at('2026-09-07T10:00:00Z') };
+    expect(judgedSilences(T2, [matched], [accepted(T2, '2026-09-07T10:05:00Z')]).size).toBe(0);
+  });
+
+  it('with no acceptance for the capture, nothing is judged', () => {
+    expect(judgedSilences(T2, [silent('r1', T2, '2026-09-07T10:00:00Z')], []).size).toBe(0);
+  });
+
+  it('an acceptance of ANOTHER capture does not judge this one’s silence', () => {
+    expect(judgedSilences(T2, [silent('r1', T2, '2026-09-07T10:00:00Z')], [accepted(T3, '2026-09-07T10:05:00Z')]).size).toBe(0);
+  });
+
+  it('a row on another capture is not this capture’s silence', () => {
+    expect(judgedSilences(T2, [silent('r1', T3, '2026-09-07T10:00:00Z')], [accepted(T2, '2026-09-07T10:05:00Z')]).size).toBe(0);
+  });
+
+  it('the latest acceptance is what counts — a row between two acceptances is judged by the second', () => {
+    const rows = [silent('r1', T2, '2026-09-07T10:03:00Z')];
+    const twice = [accepted(T2, '2026-09-07T10:00:00Z'), accepted(T2, '2026-09-07T10:05:00Z')];
+    expect(judgedSilences(T2, rows, twice)).toEqual(new Set(['r1']));
   });
 });

@@ -51,6 +51,7 @@ const quiet = (): Derived => ({
   },
   matches: { p: [m('r1', 1)], c: [m('r1', 1)] },
   seen: new Set(['ticker item']),
+  judgedSilent: new Set<string>(),
 });
 
 /** Gate 1: furniture removed before is kept now. */
@@ -224,6 +225,7 @@ describe('evaluateCapture — the digest check, then Gate 0, then 1, 2, 4 togeth
       },
       matches: { p: null, c: [m('r1', 1)] },
       seen: new Set<string>(),
+      judgedSilent: new Set<string>(),
     });
     const classify = notEditorial();
     const stop = await evaluateCapture(input({ predecessor: null, derive: jest.fn(first), novel: true, classify }));

@@ -4,7 +4,7 @@ jest.mock('../../src/lib/prisma', () => {
     cdxIndexEntry: { findMany: jest.fn(), update: jest.fn() },
     rule: { findMany: jest.fn() },
     pageDecision: { findMany: jest.fn() },
-    ruleMatch: { createMany: jest.fn() },
+    ruleMatch: { createMany: jest.fn(), findMany: jest.fn() },
     urlSnapshot: { findUnique: jest.fn(), findMany: jest.fn(), update: jest.fn() },
     textVersion: { create: jest.fn() },
   };
@@ -106,6 +106,7 @@ const rowsFind = delegate('cdxIndexEntry')['findMany'] as Mock;
 const rowUpdate = delegate('cdxIndexEntry')['update'] as Mock;
 const rulesFind = delegate('rule')['findMany'] as Mock;
 const decisionsFind = delegate('pageDecision')['findMany'] as Mock;
+const matchesFind = delegate('ruleMatch')['findMany'] as Mock;
 const snapshotFind = delegate('urlSnapshot')['findUnique'] as Mock;
 const snapshotsFind = delegate('urlSnapshot')['findMany'] as Mock;
 const snapshotUpdate = delegate('urlSnapshot')['update'] as Mock;
@@ -214,6 +215,7 @@ beforeEach(() => {
   trackedFind.mockResolvedValue({ id: TRACKED, url: URL });
   rulesFind.mockResolvedValue([]);
   decisionsFind.mockResolvedValue(log([], [D.accepted(T09)]));
+  matchesFind.mockResolvedValue([]);
   rowUpdate.mockResolvedValue({});
   snapshotUpdate.mockResolvedValue({});
   versionCreate.mockResolvedValue({ id: 'version-1' });
@@ -640,6 +642,59 @@ describe('scan_captures — Flow 3, the re-walk over rows that already have an o
     mockEvaluate.mockResolvedValue(null);
     await scan();
     expect(evaluated()).toEqual({ keptText: stale.snapshot.text });
+  });
+
+  // A3 SEEN and A4 Gate 2, amended 2026-09-08 from the first re-walk driven
+  // from the chat: what the walk hands the evaluation for a re-walked capture —
+  // its OWN removals in SEEN once a human has accepted it, and the silences
+  // that human judged, read from the match rows observed BEFORE the acceptance
+  // was written. Nothing of either for a capture nobody accepted.
+  it('hands the evaluation the judged capture’s own removals in SEEN and its judged silences; nothing of either for one nobody accepted', async () => {
+    const evaluated = () => {
+      const call = mockEvaluate.mock.calls.find(([arg]: [{ t: string }]) => arg.t === T14);
+      if (call === undefined) throw new Error('the stale row was not evaluated');
+      const [arg] = call as [{ derive: () => { seen: Set<string>; judgedSilent: ReadonlySet<string> } }];
+      return arg.derive();
+    };
+    const predecessor = acquired(T09, 'hash-09', NEW_ID);
+    const stale = acquired(T14, 'hash-old', EMPTY_ID);
+    const current = {
+      ...derived('hash-new', [{ selector: '.ticker', text: 'ticker item' }]),
+      textExtractionVersion: TEXT_EXTRACTION_VERSION,
+    };
+    const observedBefore = { ruleId: 'r1', waybackTimestamp: T14, matchedNodes: 0, observedAt: new Date('2026-09-07T10:00:00Z') };
+
+    // The predecessor is never accepted in this case, so the fold contributes
+    // nothing and the only way its removal can enter SEEN is the judged
+    // capture's OWN side. The derive mock is shared by every capture.
+    rulesFind.mockResolvedValue([r1]);
+    decisionsFind.mockResolvedValue(log([r1], [D.corrected(T09)]));
+    page([predecessor.row, stale.row], [predecessor.snapshot, stale.snapshot]);
+    mockDerive.mockReturnValue(current);
+    matchesFind.mockResolvedValue([observedBefore]);
+    await scan();
+    expect(evaluated().seen.has('ticker item')).toBe(false);
+    expect(evaluated().judgedSilent.size).toBe(0);
+
+    jest.clearAllMocks();
+    rulesFind.mockResolvedValue([r1]);
+    decisionsFind.mockResolvedValue(
+      log([r1], [D.corrected(T09), D.accepted(T14, EMPTY_ID)]).map((d) => ({
+        ...d,
+        createdAt: new Date('2026-09-07T10:05:00Z'),
+      })),
+    );
+    page([predecessor.row, stale.row], [predecessor.snapshot, stale.snapshot]);
+    mockDerive.mockReturnValue(current);
+    mockEvaluate.mockResolvedValue(null);
+    matchesFind.mockResolvedValue([observedBefore]);
+    await scan();
+    expect(evaluated().seen.has('ticker item')).toBe(true);
+    expect(evaluated().judgedSilent).toEqual(new Set(['r1']));
+    // Only zeros can answer the question, so only zeros are asked for — a
+    // 3,400-capture page under ~58 rules is ~200,000 rows otherwise (A8: a call's
+    // work is bounded). The Gate 2 defect check reads `matches`, never this list.
+    expect(matchesFind).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ matchedNodes: 0 }) }));
   });
 
   // Q4 (ruled 2026-09-06): supersededByDecisionId is NULL for a supersession

@@ -22,18 +22,22 @@ import { storeCapture } from '../../services/recordCapture';
 import { recordDiff, type DiffClassification } from '../../services/recordDiff';
 import {
   acceptedCaptures,
+  authority,
   inTimestampOrder,
+  judgedSilences,
   knownText,
   nextRow,
   predecessor,
   resolved,
   rulesInForce,
   rulesetIdAt,
-  seen,
+  seenForJudging,
   successor,
   supersedingDecision,
+  type Acceptance,
   type CaptureRemovals,
   type Decision,
+  type MatchObservation,
   type Rule,
 } from '../derivations';
 import { evaluateCapture, type Derived, type Matched } from '../evaluate';
@@ -283,9 +287,31 @@ export async function scanCapturesHandler(input: ScanInput): Promise<string> {
 
     const stored = await loadWorkListRows(prisma, page.id);
     const rules: Rule[] = await prisma.rule.findMany({ where: { trackedUrlId: page.id } });
-    const decisions: Decision[] = await prisma.pageDecision.findMany({
+    const decisionRows = await prisma.pageDecision.findMany({
       where: { trackedUrlId: page.id },
       orderBy: { sequence: 'asc' },
+    });
+    const decisions: Decision[] = decisionRows;
+    // WHEN each acceptance under AUTHORITY was written — what a judged silence
+    // is compared against (A4 Gate 2, amended 2026-09-08). AUTHORITY through the
+    // one predicate, by id; the time is the stored row's.
+    const writtenAt = new Map(decisionRows.map((d) => [d.id, d.createdAt]));
+    const acceptances: Acceptance[] = authority(decisions).flatMap((d) => {
+      const createdAt = writtenAt.get(d.id);
+      return d.type === 'CAPTURE_ACCEPTED' && d.waybackTimestamp !== null && createdAt !== undefined
+        ? [{ waybackTimestamp: d.waybackTimestamp, createdAt }]
+        : [];
+    });
+    // The match rows the walk wrote at every evaluation, with WHEN — the other
+    // half of that comparison. Once per call, for the page, and ZEROS ONLY: a
+    // judged silence is a zero observed before the acceptance, so nothing else
+    // can answer, and a 3,400-capture page under ~58 rules is ~200,000 rows
+    // otherwise (A8: a call's work is bounded). This list is never how Gate 2
+    // learns a rule's count — that is `matches`, derived, and a missing count
+    // there still throws as a walk defect.
+    const observations: MatchObservation[] = await prisma.ruleMatch.findMany({
+      where: { rule: { trackedUrlId: page.id }, matchedNodes: 0 },
+      select: { ruleId: true, waybackTimestamp: true, matchedNodes: true, observedAt: true },
     });
 
     // A stop already pending is returned VERBATIM from its row; nothing walks.
@@ -309,9 +335,17 @@ export async function scanCapturesHandler(input: ScanInput): Promise<string> {
     }
 
     const { deriveTextUnderRuleset } = await import('../../lib/chromeRulesetApply');
-    return new PageWalk(page.id, input.url, stored, rules, decisions, deriveTextUnderRuleset, openWalkRegistryWindow()).run(
-      input.maxCaptures,
-    );
+    return new PageWalk(
+      page.id,
+      input.url,
+      stored,
+      rules,
+      decisions,
+      acceptances,
+      observations,
+      deriveTextUnderRuleset,
+      openWalkRegistryWindow(),
+    ).run(input.maxCaptures);
   });
 }
 
@@ -333,6 +367,10 @@ class PageWalk {
     stored: readonly LoadedRow[],
     private readonly rules: readonly Rule[],
     private readonly decisions: readonly Decision[],
+    /** Every CAPTURE_ACCEPTED under AUTHORITY, with when it was written (A4 Gate 2, amended 2026-09-08). */
+    private readonly acceptances: readonly Acceptance[],
+    /** Every RuleMatch row of the page, with when it was observed. */
+    private readonly observations: readonly MatchObservation[],
     private readonly derive: Derive,
     private readonly window: RegistryWindow,
   ) {
@@ -469,7 +507,8 @@ class PageWalk {
         previous: before === null ? null : { keptText: before.current.keptText, removedText: before.current.removedText },
         current: extraction().current,
         matches: { p: before === null ? null : before.matches, c: extraction().matches },
-        seen: this.seenExcluding(t),
+        seen: this.seenForJudging(t, extraction().current.removedText),
+        judgedSilent: judgedSilences(t, this.observations, this.acceptances),
         ownPrevious: approvedText,
       };
       return derived;
@@ -816,13 +855,21 @@ class PageWalk {
     );
   }
 
-  /** SEEN(page) for judging capture `t`: every accepted capture's removals but its own. */
-  private seenExcluding(t: string): Set<string> {
+  /**
+   * SEEN for judging capture `t` (A3, amended 2026-09-08): every other judged
+   * capture's removals from the fold, plus t's OWN when t is judged — handed
+   * from the derivation in hand, so a judged DUPLICATE, which holds no body and
+   * is not in the fold, contributes from its re-fetch. The predicate is
+   * `seenForJudging`'s; this only shapes the fold for it.
+   */
+  private seenForJudging(t: string, ownRemovedText: string): Set<string> {
     const folded = this.removedByAccepted ?? new Map<string, readonly string[]>();
-    const captures: CaptureRemovals[] = [...folded]
-      .filter(([capture]) => capture !== t)
-      .map(([waybackTimestamp, removed]) => ({ waybackTimestamp, outcome: 'ACQUIRED', removed }));
-    return seen(captures, this.decisions);
+    const captures: CaptureRemovals[] = [...folded].map(([waybackTimestamp, removed]) => ({
+      waybackTimestamp,
+      outcome: 'ACQUIRED',
+      removed,
+    }));
+    return seenForJudging(t, captures, segments(ownRemovedText), this.decisions);
   }
 
   /**
