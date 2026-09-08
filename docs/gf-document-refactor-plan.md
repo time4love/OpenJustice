@@ -315,6 +315,40 @@ held document with a reason, then `get_arrivals` still listing its arrival.
 
 ### 36 · THE DOCUMENT SWITCH — the researcher's word
 
+> **DECIDED 2026-09-08 — THE CODE HALF OF THIS STEP IS PULLED FORWARD, BESIDE EVIDENCE STEP 11a, AS
+> THE DOCUMENT THIRD OF THE LEGACY SWITCH (`docs/gf-refactor-plan.md` §3b, the note above step 11;
+> the thesis plan's note above step 17).** §1 already builds on clean ground; this makes the ground
+> clean on the day the evidence ground is, on the researcher's word, and for the reason §1 gives:
+> from step 11 to this plan's door there is no document path at all, so what stood in between was
+> a model-only half with no writer behind it, a contact channel §5 retires, and a public door the
+> HIDE half was to withdraw.
+>
+> **11a-document — the deletion, no migration and no new code.** Everything this step lists as
+> removed CODE, and everything §5 tags RETIRE: the model-only halves (`POST /api/evidence/intake`,
+> `/recover-intake`, the gap `/whistleblower/preview`), `/contact` with `encryptContact` and
+> `PII_SECRET_KEY`, `IntakeAgent`, `EphemeralAnalysisService`, every `/api/evidence` read that served
+> a DOCUMENT row; the RETIRE-AT-11 writers and tests of §5, which were this step's precondition and
+> now go in the same act; the RETIRE files and groups of §5 with their code (§4, refactor plan §4
+> rule 1); the `mcpIntegration` KEEP groups MOVED now to a file without the `IntakeAgent` mock, as
+> §5 planned for this step; the retired-names scan extended with A4's two tools and A5's routes;
+> `get_environment`'s counts edited. **The schema stays**: `Whistleblower`, `CaptureProvenance`'s
+> `DIRECT` and `ASSERTED`, and every column evidence A2 removes drop at the build steps that own
+> them — evidence 11b for `Evidence`'s columns, step 28 for `Whistleblower` and the provenance
+> values — on a database that holds nothing they describe, with the zero counts read on staging
+> before that PR opens, as this step wrote. Its review is a list check against §5 and this list; a
+> KEEP file edited beyond the planned MOVE, or a module deleted that no tag names, is a finding.
+> It lands with its own dated record of what left.
+>
+> **The HIDE half is thereby a DELETION, not a withdrawal:** the gap modal and the `/submit` page go
+> in the frontend's DARK change, landed with the first deletion PR, and no appeal on any page can
+> point at a door because there is none. The OPEN half is unchanged and still lands with the intake
+> dialog after step 32. `directProvenanceUnused` (KEEP until this step) stays until step 28 drops
+> the values it holds absent.
+>
+> Steps 27–35 and 37 are unchanged. What remains of this step is the `document` project joining the
+> required run, the set-equality assertion on `mcpToolClassification`, the tutorial re-read, and
+> the browser exercise of the three dialogs.
+
 Two preconditions, both frontend changes landed before this commit and named in §7: the HIDE half
 of §1 — the gap modal and the `/submit` page withdrawn — landed with step 11; and the OPEN half —
 the intake dialog after step 32, the public page's rendering of a `#doc_` citation after step 34,

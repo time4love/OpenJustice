@@ -368,6 +368,45 @@ and the breakage that proves the instrument (evidence doc A7).
 > these two are what let a researcher see the corpus they just corrected. The findings are recorded
 > in `docs/gf-walk-corrective-pass-2026-09-08.md`.
 
+> **DECIDED 2026-09-08, the same evening — STEP 11 RUNS AS TWO PRs: 11a THE EVIDENCE SWITCH, THEN
+> 11b THE BUILD.** Step 16's un-registration is pulled forward into 11a, on the researcher's word,
+> for the reason the corpus track already paid for on 2026-09-06 (§4, amended: the switch first) and
+> the document plan states as its strategy (its §1, clean ground): nothing in the evidence design
+> needs the old path standing while the new one is built, the database was rebuilt at step 9 and
+> holds no evidence row, and there are no users the gap between the two PRs would cost. The single
+> PR the step 11 sketch first proposed had to hold the column drops and every reader of the dropped
+> columns at once, and the sketch's attempt to keep some readers alive produced a window that was
+> neither the plan's step nor a working coexistence (`handoffs/R32-chunk-1-sketch.md`, reviewed
+> 2026-09-08).
+>
+> **11a — the deletion, no migration and no new code.** Every module evidence A4 retires; every
+> module under `src/` that exists only to read the legacy `UrlVersionDiff` or `Evidence` columns;
+> the document writers of the RETIRE-AT-11 tag; the tests of each, by plan §4 rule 1; the tool
+> registrations and `WRITE_TOOLS` entries; the retired-names scan extended. Its review is a list
+> check: everything deleted is tagged RETIRE or RETIRE-AT-11 or owned by evidence steps 13–16, and
+> nothing KEEP is touched — a KEEP test of a retired module goes with the module, as the switch
+> ruled. **Widened the same evening to THE LEGACY SWITCH — three deletion PRs, one per layer, all
+> before 11b:** 11a-evidence (this note), 11a-thesis (thesis plan step 25 pulled forward, its own
+> dated note there) and 11a-document (document plan step 36 pulled forward, its note there). A
+> thesis-owned module that reads `Evidence` is therefore retired in 11a-thesis, not edited around;
+> the boundary rule this note first carried is moot. Code and tests only, in every one of the three:
+> each layer's schema drops stay with its build step — 11b, thesis step 18, document step 28 — so
+> every migration remains one file in the step that owns it. The frontend's DARK change — the
+> pages whose APIs leave, hidden or unlinked — lands with the first deletion PR, its own change.
+> Two readers no design retires — the trajectory detector (`claimTrajectory.ts`)
+> and `preview_diff_classification`, which thesis A4 keeps as an instrument — were ruled the same
+> evening: **both are REBASED in 11b**, the detector's candidate source onto CURRENT(diff)'s chunks
+> on `DiffContentVersion`, the preview resolving a diff by its PAIR as A4 names every diff; neither
+> is deleted in 11a, and their KEEP tests become REWRITE in 11b. The debate's one-OPEN-per-(thesis,
+> record) rule is a nullable `openKey` column with a unique index (ruled the same evening: Prisma
+> cannot express a partial index and raw SQL would keep `db:check-drift` dirty). 11a lands with its
+> own dated record of what left and why, pointed at from here.
+>
+> **11b — the build, on the emptied ground.** The migration (the drops are provably unread — the
+> compiler said so in 11a), the identity module, both instruments, the acceptance suite; the rest
+> of step 11 as written below. **Step 16 is thereby DONE at 11a**, except for handing the evidence
+> routes to the frontend's change, which stays where it is.
+
 ### 11 · Schema
 `Evidence` as the marked record, `EvidenceDecision`, the debate's thesis and record columns, the
 mention's pin and argument — no role, withdrawn by the thesis flows A2; the identity module as
@@ -397,6 +436,8 @@ The six checks of A6 calling A3's predicates, check 6 gone; `audit-theses`.
 ### 16 · The evidence switch
 The retired names of A4 unregistered, the retired-names scan extended, the evidence routes handed
 to the frontend's change. **Next: `docs/gf-thesis-refactor-plan.md`, step 17 onward.**
+Pulled forward into step 11a — decided 2026-09-08, the note above step 11; what remains here is the
+routes' hand-over.
 
 ## 4. THE TEST RULES
 

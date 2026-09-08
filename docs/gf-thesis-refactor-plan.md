@@ -49,6 +49,38 @@ every one, and a RETIRE file still present after step 25 is a defect in step 25.
 
 ## 3. THE STEPS — EACH LEAVES THE OLD PATH WORKING; THE TWENTY-FIFTH SWITCHES
 
+> **DECIDED 2026-09-08 — STEP 25 IS PULLED FORWARD, BESIDE EVIDENCE STEP 11a, AS THE THESIS HALF
+> OF THE LEGACY SWITCH (`docs/gf-refactor-plan.md` §3b, the note above step 11).** The strategy
+> above — beside, not through — is retired for this layer on the researcher's word, for the reasons
+> §1 already states: the data story is empty, the layer feeds nothing beneath it, and there are no
+> users. What §1 calls the switch's one risk, a researcher's workflow, is a calendar: no thesis tool
+> exists between the deletion and steps 19–23, and no thesis exists today to lose.
+>
+> **11a-thesis — the deletion, no migration and no new code.** Everything step 25 lists as removed
+> CODE: the retired tools of A4 unregistered and `WRITE_TOOLS` moved, the retired routes of A5,
+> `RevisionAgent`, `GapRevisionAgent`, `ThesisValidatorAgent`, `tipTapUtils`, `thesisCitationSplice`,
+> `mentionRoutes`, `figuresRoutes`, `researchSessions`, `chatRoutes`, `argumentRoutes`; every RETIRE
+> file and RETIRE group of §5 with its code (plan §4 rule 1); the retired-names scan extended;
+> `start_tutorial` unregistered until its COMMON_RULES are rewritten against A4 (the tutorial's own
+> change) — a tutorial that teaches a surface that does not exist is worse than none;
+> `get_environment`'s counts edited to name no removed module. **The schema stays**: `ResearchSession`,
+> `KeyFigure`, `ThesisGapResolution`, the TipTap and status columns drop at step 18's migration, on
+> a database that holds nothing they describe, as step 25 wrote. A REWRITE file's old version goes
+> with the code it tested and its successor lands in the step that lands the shape (refactor plan
+> §4, amended 2026-09-06) — the acceptance suite of step 17 is the only assertion of that contract
+> in between. Its review is a list check against §5 and this list; a KEEP file edited, or a module
+> deleted that no tag names, is a finding. It lands with its own dated record of what left.
+>
+> **The frontend goes DARK on the thesis pages** — its 21 calls into `/api/thesis` have no server
+> until step 23's public reads — by a deliberate change of its own, landed with the first deletion
+> PR: the pages hidden or unlinked, never left to break. §8's first hazard (the public page reads
+> TipTap) is thereby met by absence rather than by ordering; the T5 page is built when step 23 gives
+> it a contract. **SHIP stays gated behind step 26**, as it was.
+>
+> Steps 17–24 are unchanged in content and order, and step 21's dependence on evidence step 13
+> (§8) still binds. What step 25 keeps is the migration's half — moved to step 18 — and the
+> assertion that `mcpToolClassification`'s set equals A4's surface exactly.
+
 ### 17 · The acceptance suite, failing
 
 A jest project `thesis`, like `walk`: A3's derivations as pure functions over fixtures — CLAIM_FRAMED,
@@ -148,6 +180,9 @@ public page reads TipTap today and would break at this commit otherwise.
 
 *Verified by:* every KEEP file unchanged since step 17; every RETIRE file gone; `npm test` green
 with `thesis` in it; `get_environment`'s counts no longer name a removed table.
+Pulled forward as 11a-thesis — decided 2026-09-08, the note above step 17; the code half is done
+there, the schema half at step 18, and what remains here is the `thesis` project joining the
+required run and the set-equality assertion on `mcpToolClassification`.
 
 ### 26 · The one thesis, rewritten
 
