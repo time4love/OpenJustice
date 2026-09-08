@@ -40,9 +40,6 @@ export const READ_TOOLS = new Set([
 ]);
 
 export const WRITE_TOOLS = new Set([
-  // Retired by document flows §9 and tagged RETIRE-AT-11; the tool and this
-  // entry leave together in 11a-document (document refactor plan §5).
-  'create_evidence_from_text',
   // Rewrites the prose on an evidence record and its source diff.
   // Gated despite the name. It was in READ_TOOLS while detection recomputed on
   // every call: no LLM, no RPC, and its whole value is that anyone can re-run
@@ -83,7 +80,6 @@ export const WRITE_TOOLS = new Set([
   // SPENDS: one classifier call per novel capture that reaches Gate 5 — and
   // from step 5 it stores, anchors and writes rows besides.
   'scan_captures',
-  'recover_evidence_from_screenshot',
 
 
 

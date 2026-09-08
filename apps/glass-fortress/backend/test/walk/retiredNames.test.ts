@@ -142,6 +142,54 @@ const RETIRED_THESIS_MODULES = [
   'lib/summaryProvenance',
 ];
 
+// THE DOCUMENT TOOLS RETIRED BY document flows §9, added in the document third
+// of the legacy switch (document refactor plan, the DECIDED note above step 36).
+//
+// TWO NAMES, AND THEY ARE THE PARKED CLASS. Both made an evidence row out of
+// bytes with no corpus record beneath it — a file, pasted text, a screenshot —
+// and both are replaced by `add_document`, whose identity is `sha256(bytes)`:
+// one file, one document, no url in the name. They are listed here rather than
+// merged into the evidence list because their successor lands on a different
+// step (document 30), and a merged list would have to be un-merged the day it
+// does.
+const RETIRED_DOCUMENT_TOOLS = ['create_evidence_from_text', 'recover_evidence_from_screenshot'];
+
+// The modules the document path stood on: the two tools' own, the intake
+// classifier and its prompt, the ephemeral analysis service, the contact
+// cipher, the storage and vector clients, and every lib shaper of the evidence
+// row whose last caller left with them.
+const RETIRED_DOCUMENT_MODULES = [
+  'routes/evidenceRoutes',
+  'services/IntakeAgent',
+  'services/EphemeralAnalysisService',
+  'services/StorageService',
+  'services/VectorStoreService',
+  'prompts/intakeAgentClassification',
+  'lib/encrypt',
+  'lib/intakeVersion',
+  'lib/persistScreenshotEvidence',
+  'lib/evidenceCapture',
+  'lib/evidenceCreateData',
+  'lib/evidenceFileConstraints',
+  'lib/evidenceRecord',
+  'lib/evidenceTier',
+  'lib/evidenceVisibility',
+  'lib/targetEntity',
+  'lib/upsertKeyFigures',
+];
+
+// The five routes that went with `evidenceRoutes`, as PATHS a surviving file
+// might still send a reader to. The tool half cannot see these: they are not
+// tool names, and a description or an error message that still says "POST to
+// /api/evidence/intake" is the same live promise the script half was added for.
+const RETIRED_DOCUMENT_ROUTES = [
+  '/api/evidence/intake',
+  '/api/evidence/confirm',
+  '/api/evidence/recover-intake',
+  '/api/evidence/recover-confirm',
+  '/api/evidence/contact',
+];
+
 // THE NINE OPERATIONAL SCRIPTS RETIRED WITH THOSE MODULES, AS npm ENTRY NAMES.
 //
 // A THIRD HALF, AND IT CATCHES WHAT NEITHER OTHER HALF CAN. A retired tool is a
@@ -295,6 +343,30 @@ describe('EXPECTED RED UNTIL STEP 8 — no file under src names a retired concep
     expect(offenders).toEqual([]);
   });
 
+  it('no file names a retired DOCUMENT tool', () => {
+    const offenders = srcModules()
+      .map(({ file, code }) => ({ file, tools: RETIRED_DOCUMENT_TOOLS.filter((t) => code.includes(t)) }))
+      .filter((m) => m.tools.length > 0);
+    expect(offenders).toEqual([]);
+  });
+
+  it('no file imports a retired DOCUMENT module', () => {
+    const offenders = srcModules()
+      .map(({ file, code }) => ({
+        file,
+        modules: RETIRED_DOCUMENT_MODULES.filter((m) => importedModules(file, code).includes(m)),
+      }))
+      .filter((m) => m.modules.length > 0);
+    expect(offenders).toEqual([]);
+  });
+
+  it('no file sends a reader to a retired document ROUTE', () => {
+    const offenders = srcModules()
+      .map(({ file, code }) => ({ file, routes: RETIRED_DOCUMENT_ROUTES.filter((r) => code.includes(r)) }))
+      .filter((m) => m.routes.length > 0);
+    expect(offenders).toEqual([]);
+  });
+
   it('no file promises a retired operational script', () => {
     const offenders = srcModules()
       .filter(({ file }) => file !== LEDGER)
@@ -333,6 +405,14 @@ describe('EXPECTED RED UNTIL STEP 8 — no file under src names a retired concep
       .toEqual(['publish_thesis']);
     expect(importedModules('services/x.ts', `import { p } from './thesisPublication';`))
       .toContain('services/thesisPublication');
+    // The document halves — one assertion per shape, the module one in the
+    // sibling spelling, the route one against a message rather than a mount.
+    expect(RETIRED_DOCUMENT_TOOLS.filter((t) => `server.tool('create_evidence_from_text', …)`.includes(t)))
+      .toEqual(['create_evidence_from_text']);
+    expect(importedModules('services/x.ts', `import { S } from './StorageService';`))
+      .toContain('services/StorageService');
+    expect(RETIRED_DOCUMENT_ROUTES.filter((r) => `Send the file to /api/evidence/intake instead.`.includes(r)))
+      .toEqual(['/api/evidence/intake']);
     // The script half, against the shape the reviewer found three times.
     expect(RETIRED_SCRIPT_NAMES.filter((n) => `Run npm run forensics:backfill-survival to fix it.`.includes(n)))
       .toEqual(['forensics:backfill-survival']);

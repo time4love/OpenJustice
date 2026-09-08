@@ -1,6 +1,5 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { resolveOrigin } from '../oauth/oidcProvider';
-import { createEvidenceFromTextSchema, createEvidenceFromTextHandler } from './tools/createEvidenceFromText';
 import {
   surveyWaybackCapturesSchema,
   surveyWaybackCapturesHandler,
@@ -23,7 +22,6 @@ import {
   getThesisTrajectoryCitationsSchema,
   getThesisTrajectoryCitationsHandler,
 } from './tools/getThesisTrajectoryCitations';
-import { recoverEvidenceFromScreenshotSchema, recoverEvidenceFromScreenshotHandler } from './tools/recoverEvidenceFromScreenshot';
 import { getClaimTrajectoriesSchema, getClaimTrajectoriesHandler } from './tools/getClaimTrajectories';
 import { verifyClaimTextSchema, verifyClaimTextHandler } from './tools/verifyClaimText';
 import { getEnvironmentSchema, getEnvironmentHandler } from './tools/getEnvironment';
@@ -102,25 +100,6 @@ export function createMcpServer(): McpServer {
     getThesisTrajectoryCitationsSchema,
     async (input) => ({
       content: [{ type: 'text' as const, text: await getThesisTrajectoryCitationsHandler(input) }],
-    }),
-  );
-
-  // -------------------------------------------------------------------------
-  // Tool: create_evidence_from_text  [WRITE — STAGING GATE]
-  // Accepts raw text + source URL (for pages behind bot protection, paywalls,
-  // or dynamic SPAs that can't be fetched server-side). Retired by document
-  // flows §9 and replaced by `add_document`; it leaves in 11a-document with the
-  // rest of the RETIRE-AT-11 set (document refactor plan §5).
-  // -------------------------------------------------------------------------
-  server.tool(
-    'create_evidence_from_text',
-    'Submit evidence as raw text when the source URL cannot be fetched directly (e.g. behind ' +
-      'bot protection, JavaScript SPA, or paywall). Provide the plain text content and the ' +
-      'canonical source URL for provenance. Runs the AI intake analysis behind the staging gate — ' +
-      'saved as PENDING_REVIEW, not registered on-chain until promoted.',
-    createEvidenceFromTextSchema,
-    async (input) => ({
-      content: [{ type: 'text' as const, text: await createEvidenceFromTextHandler(input) }],
     }),
   );
 
@@ -385,26 +364,6 @@ export function createMcpServer(): McpServer {
     },
     async (input) => ({
       content: [{ type: 'text' as const, text: await scanCapturesHandler(input) }],
-    }),
-  );
-
-  // -------------------------------------------------------------------------
-  // Tool: recover_evidence_from_screenshot  [WRITE — STAGING GATE]
-  // For when a source URL is blocked or unarchived: accepts one or more
-  // screenshots (in reading order) in place of a direct fetch. Synthesizes
-  // them into a single analysis and saves as PENDING_REVIEW — same rule as
-  // create_evidence_from_text, since the paired URL is asserted, not fetched.
-  // -------------------------------------------------------------------------
-  server.tool(
-    'recover_evidence_from_screenshot',
-    'Submit one or more screenshots of a page that could not be fetched directly (blocked, not in ' +
-      'the Wayback Machine). Screenshots are treated as sequential parts of one document and ' +
-      'synthesized into a single AI analysis. Saved as PENDING_REVIEW — the paired source URL is ' +
-      'asserted, not verified by a server fetch, same rule that governs create_evidence_from_text. ' +
-      'Not registered on-chain or indexed for search until a human reviewer promotes it via the UI.',
-    recoverEvidenceFromScreenshotSchema,
-    async (input) => ({
-      content: [{ type: 'text' as const, text: await recoverEvidenceFromScreenshotHandler(input) }],
     }),
   );
 

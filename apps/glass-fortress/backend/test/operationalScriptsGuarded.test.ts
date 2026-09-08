@@ -43,7 +43,12 @@ describe('every operational script is guarded', () => {
     // chain state. The floor moves WITH the tree and never below it: its job is
     // to catch a broken glob, not to assert a count, and a floor left at twenty
     // would have been the assertion weakened to pass.
-    expect(files.length).toBeGreaterThanOrEqual(16);
+    // Fifteen in the document third of the legacy switch; sixteen after the
+    // evidence third, twenty-five before it. `entities:canonicalise` went with
+    // `lib/targetEntity.ts`, whose subject — the canonical entity an evidence row
+    // names — is a column evidence A2 removes. The floor moves WITH the tree and
+    // never below it: its job is to catch a broken glob, not to assert a count.
+    expect(files.length).toBeGreaterThanOrEqual(15);
   });
 
   it.each(files)('%s imports the shared guard', (file) => {

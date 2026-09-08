@@ -4,7 +4,6 @@ import {
   investigativeCategoriesField,
 } from '../src/lib/investigativeCategories';
 import { ForensicOutputSchema } from '../src/services/ForensicAgent';
-import { IntakeOutputSchema } from '../src/services/IntakeAgent';
 
 describe('investigative categories', () => {
   // -------------------------------------------------------------------------
@@ -29,15 +28,17 @@ describe('investigative categories', () => {
       expect(result.success).toBe(true);
     });
 
-    it('IntakeAgent accepts the full taxonomy', () => {
-      const field = IntakeOutputSchema.shape.investigativeCategories;
-      expect(field.safeParse(sample).success).toBe(true);
-    });
+    // `IntakeAgent`'s two cases went with the agent at evidence step 11a. This
+    // group asserted that TWO classifying agents shared ONE taxonomy — the point
+    // being that a category accepted by one and rejected by the other is a
+    // vocabulary with two meanings. The intake classifier is retired by document
+    // flows §3: what a document says is a `DocumentContentVersion` under
+    // `CURRENT_EXTRACTOR`, computed and pinned, with the model's reading beside
+    // it as a labelled opinion. One agent classifies now, and the field below is
+    // still the one definition it and every future one must parse.
 
-    it('both agents reject the same unknown category', () => {
-      const bogus = ['NOT_A_CATEGORY'];
-      expect(investigativeCategoriesField.safeParse(bogus).success).toBe(false);
-      expect(IntakeOutputSchema.shape.investigativeCategories.safeParse(bogus).success).toBe(false);
+    it('the shared field rejects an unknown category', () => {
+      expect(investigativeCategoriesField.safeParse(['NOT_A_CATEGORY']).success).toBe(false);
     });
 
     it('every category has a Hebrew label', () => {
