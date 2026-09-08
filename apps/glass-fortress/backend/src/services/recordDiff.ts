@@ -98,8 +98,13 @@ export interface DiffWrite extends Partial<DiffClassification> {
  * from the type. A key added to the type and forgotten here would let a write
  * missing it pass as whole — so this list is the one place that says what whole
  * means, and `satisfies` holds it to the type at compile time.
+ *
+ * EXPORTED AT EVIDENCE STEP 12, unchanged otherwise. `list_findings` reads this
+ * column back and republishes six of its keys, so the READER needs the same
+ * notion of "whole" the writer refuses to violate — a reader with its own copy
+ * of the list is how the two come to disagree about what a half row is.
  */
-const CLASSIFICATION_KEYS = [
+export const CLASSIFICATION_KEYS = [
   'deletedItems',
   'addedItems',
   'legalSignificance',

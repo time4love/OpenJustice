@@ -15,6 +15,7 @@ import {
   type OnChainVerdict,
 } from '../lib/onChainVerdict';
 import { Web3Service } from './Web3Service';
+import { attributeClaim, entryFromChain, type ClaimAttribution } from './registryState';
 import { normaliseAddress } from '../lib/anchoringTarget';
 import { readChainIdentity } from '../lib/chainIdentity';
 import { capturesAnchoredBy } from '../lib/anchoredCaptureHash';
@@ -66,6 +67,14 @@ export type OnChainObservation =
       consistent: boolean;
       registered: boolean;
       registryEvidenceId: string | null;
+      /**
+       * WHO SUBMITTED IT — read from chain STATE, through the one function that
+       * spells ATTRIBUTED (`attributeClaim`). Added at evidence step 12: a check
+       * that asked only whether a hash is registered cannot answer the conjunct
+       * VERIFIED(e) rests on, and every read that reports attribution reads it
+       * from the verdict this arm stores.
+       */
+      attribution: ClaimAttribution;
       claim: OnChainClaim;
       explanation: string;
       registry: ObservedRegistry;
@@ -161,13 +170,20 @@ export async function observeOnChainStatus(fileHash: string): Promise<OnChainObs
     return { reachable: false, message: messageOf(err), claim, registry };
   }
 
-  let registered: boolean;
-  let registryEvidenceId: bigint;
+  // ONE CALL PATH, AND ONE SPELLING OF ATTRIBUTED. `attributeClaim` asks
+  // `isRegistered` and then reads the entry at the index it named, comparing the
+  // submitter with our registrar — so registration and attribution come from one
+  // reading of one state rather than from two questions that could disagree. A
+  // `RegistryReadError` (the two reads contradicting each other) lands in the
+  // unreachable arm on purpose: it is not a negative answer, and this check must
+  // never let one be read as agreement.
+  let attribution: ClaimAttribution;
   try {
-    ({ registered, evidenceId: registryEvidenceId } = await web3.isHashRegistered(fileHash));
+    attribution = await attributeClaim(web3, entryFromChain(web3), fileHash);
   } catch (err) {
     return { reachable: false, message: messageOf(err), claim, registry };
   }
+  const registered = attribution.verdict !== 'UNREGISTERED';
 
   const verdict = decideOnChainVerdict(claim, registered);
   return {
@@ -175,7 +191,8 @@ export async function observeOnChainStatus(fileHash: string): Promise<OnChainObs
     verdict,
     consistent: CONSISTENT_VERDICTS.has(verdict),
     registered,
-    registryEvidenceId: registered ? registryEvidenceId.toString() : null,
+    registryEvidenceId: attribution.index === null ? null : String(attribution.index),
+    attribution,
     claim,
     explanation: ON_CHAIN_EXPLANATIONS[verdict],
     registry,
@@ -249,6 +266,14 @@ export async function recordOnChainCheck(input: {
         onChainVerdict: observation.verdict,
         registered: observation.registered,
         registryEvidenceId: observation.registryEvidenceId,
+        // THE STORED ANSWER TO ATTRIBUTED, which every later read reports rather
+        // than asking the chain again. `attributed` is a boolean HERE because
+        // the check was made; a READ that finds no verdict, or one written under
+        // an older ON_CHAIN_CHECK_VERSION, reports null — "never asked" is not
+        // "not attributed".
+        attributed: observation.attribution.verdict === 'ATTRIBUTED',
+        attributionVerdict: observation.attribution.verdict,
+        submitter: observation.attribution.submitter,
         fileHash: input.fileHash,
         explanation: observation.explanation,
       }

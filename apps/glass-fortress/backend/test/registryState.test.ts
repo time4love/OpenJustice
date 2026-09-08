@@ -24,6 +24,8 @@
 
 import {
   attributeClaim,
+  entriesAlreadyRead,
+  entryFromChain,
   classifyEntry,
   readRegistryState,
   RegistryReadError,
@@ -131,7 +133,7 @@ describe('attributeClaim: by state, against our registrar', () => {
     const r = reader({ records: entries });
     (r.isHashRegistered as jest.Mock).mockResolvedValue({ registered: true, evidenceId: 0n });
 
-    const verdict = await attributeClaim(r, entries, hash(1).slice(2));
+    const verdict = await attributeClaim(r, entriesAlreadyRead(entries), hash(1).slice(2));
     expect(verdict).toEqual({ hash: hash(1), verdict: 'ATTRIBUTED', index: 0, submitter: REGISTRAR.toLowerCase() });
   });
 
@@ -139,7 +141,7 @@ describe('attributeClaim: by state, against our registrar', () => {
     const r = reader({ records: entries });
     (r.isHashRegistered as jest.Mock).mockResolvedValue({ registered: true, evidenceId: 1n });
 
-    const verdict = await attributeClaim(r, entries, hash(2));
+    const verdict = await attributeClaim(r, entriesAlreadyRead(entries), hash(2));
     expect(verdict.verdict).toBe('FOREIGN_SUBMITTER');
     expect(verdict.submitter).toBe(STRANGER.toLowerCase());
   });
@@ -148,7 +150,7 @@ describe('attributeClaim: by state, against our registrar', () => {
     const r = reader({ records: entries });
     (r.isHashRegistered as jest.Mock).mockResolvedValue({ registered: false, evidenceId: 0n });
 
-    const verdict = await attributeClaim(r, entries, hash(9));
+    const verdict = await attributeClaim(r, entriesAlreadyRead(entries), hash(9));
     expect(verdict).toEqual({ hash: hash(9), verdict: 'UNREGISTERED', index: null, submitter: null });
   });
 
@@ -156,7 +158,7 @@ describe('attributeClaim: by state, against our registrar', () => {
     const r = reader({ records: entries });
     (r.isHashRegistered as jest.Mock).mockResolvedValue({ registered: false, evidenceId: 0n });
 
-    await attributeClaim(r, entries, 'ab'.repeat(32));
+    await attributeClaim(r, entriesAlreadyRead(entries), 'ab'.repeat(32));
     expect(r.isHashRegistered).toHaveBeenCalledWith(`0x${'ab'.repeat(32)}`);
   });
 
@@ -165,7 +167,66 @@ describe('attributeClaim: by state, against our registrar', () => {
     const r = reader({ records: entries });
     (r.isHashRegistered as jest.Mock).mockResolvedValue({ registered: true, evidenceId: 0n });
 
-    await expect(attributeClaim(r, entries, hash(2))).rejects.toBeInstanceOf(RegistryReadError);
+    await expect(attributeClaim(r, entriesAlreadyRead(entries), hash(2))).rejects.toBeInstanceOf(RegistryReadError);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// THE ENTRY LOOKUP — added at evidence step 12 so ATTRIBUTED keeps ONE spelling.
+//
+// The ledger and the audits have already read the whole registry; the
+// anchor-time check and the per-capture reads have one hash in hand and must not
+// walk the contract to answer about it. Those are two ways to FETCH AN ENTRY,
+// not two definitions of attribution — so the definition stayed put and the
+// fetch became the parameter. These cases hold that the two lookups agree about
+// the same state and differ only in what they cost.
+// ---------------------------------------------------------------------------
+describe('the entry lookup: one predicate, two ways to reach an entry', () => {
+  const entries = [entry(0), entry(1, { submitter: STRANGER.toLowerCase() })];
+
+  it('entryFromChain reads ONE entry, at the index isRegistered named', async () => {
+    const r = reader({ records: entries });
+    (r.isHashRegistered as jest.Mock).mockResolvedValue({ registered: true, evidenceId: 0n });
+
+    const verdict = await attributeClaim(r, entryFromChain(r), hash(1));
+
+    expect(verdict.verdict).toBe('ATTRIBUTED');
+    expect(r.readEvidenceRecord).toHaveBeenCalledTimes(1);
+    expect(r.readEvidenceRecord).toHaveBeenCalledWith(0n);
+    // The whole point of the second lookup: a per-capture question must not
+    // become a walk of the registry.
+    expect(r.getTotalEvidence).not.toHaveBeenCalled();
+  });
+
+  it('entriesAlreadyRead reads NOTHING from the chain beyond isRegistered', async () => {
+    const r = reader({ records: entries });
+    (r.isHashRegistered as jest.Mock).mockResolvedValue({ registered: true, evidenceId: 0n });
+
+    await attributeClaim(r, entriesAlreadyRead(entries), hash(1));
+
+    expect(r.readEvidenceRecord).not.toHaveBeenCalled();
+  });
+
+  it('the two lookups reach the SAME verdict for the same state', async () => {
+    const r = reader({ records: entries });
+    (r.isHashRegistered as jest.Mock).mockResolvedValue({ registered: true, evidenceId: 1n });
+
+    const fromChain = await attributeClaim(r, entryFromChain(r), hash(2));
+    const fromState = await attributeClaim(r, entriesAlreadyRead(entries), hash(2));
+
+    expect(fromChain).toEqual(fromState);
+    expect(fromChain.verdict).toBe('FOREIGN_SUBMITTER');
+  });
+
+  it('a lookup that cannot produce the entry is a REFUSAL, never an answer', async () => {
+    // An index the chain names and the lookup cannot return is the same
+    // contradiction as an entry holding another hash: no verdict.
+    const r = reader({ records: entries });
+    (r.isHashRegistered as jest.Mock).mockResolvedValue({ registered: true, evidenceId: 9n });
+
+    await expect(attributeClaim(r, entriesAlreadyRead(entries), hash(1))).rejects.toBeInstanceOf(
+      RegistryReadError,
+    );
   });
 });
 
