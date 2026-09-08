@@ -1,6 +1,6 @@
 {
   "target": "glass-fortress-backend",
-  "total": 105,
+  "total": 92,
   "rules": {
     "(parse-error)": 1,
     "@typescript-eslint/array-type": 2,
@@ -15,12 +15,12 @@
     "@typescript-eslint/no-unnecessary-condition": 5,
     "@typescript-eslint/no-unnecessary-template-expression": 0,
     "@typescript-eslint/no-unnecessary-type-assertion": 3,
-    "@typescript-eslint/no-unnecessary-type-conversion": 1,
+    "@typescript-eslint/no-unnecessary-type-conversion": 0,
     "@typescript-eslint/no-unsafe-assignment": 0,
     "@typescript-eslint/prefer-nullish-coalescing": 0,
     "@typescript-eslint/prefer-optional-chain": 1,
     "@typescript-eslint/require-await": 0,
-    "@typescript-eslint/restrict-template-expressions": 18,
+    "@typescript-eslint/restrict-template-expressions": 6,
     "@typescript-eslint/use-unknown-in-catch-callback-variable": 0,
     "no-useless-assignment": 0,
     "no-useless-escape": 1,
