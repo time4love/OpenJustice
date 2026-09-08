@@ -381,9 +381,14 @@ and the breakage that proves the instrument (evidence doc A7).
 >
 > **11a — the deletion, no migration and no new code.** Every module evidence A4 retires; every
 > module under `src/` that exists only to read the legacy `UrlVersionDiff` or `Evidence` columns;
-> the document writers of the RETIRE-AT-11 tag; the tests of each, by plan §4 rule 1; the tool
-> registrations and `WRITE_TOOLS` entries; the retired-names scan extended. Its review is a list
-> check: everything deleted is tagged RETIRE or RETIRE-AT-11 or owned by evidence steps 13–16, and
+> `WaybackScraper.recordScanFinding`, the classifier selecting evidence (target §9.9); the tests of
+> each, by plan §4 rule 1; the tool registrations and `WRITE_TOOLS` entries; the retired-names scan
+> extended. The RETIRE-AT-11 writers are 11a-document's, whose §5 tags them (corrected 2026-09-08,
+> the DEV session's cold review of this note); `evidenceRoutes.ts` therefore loses its read routes
+> here and the file itself there. Each deletion PR edits only its own layer's counts in
+> `get_environment`; `/api/stats` loses its two evidence counts here. `VectorStoreService` loses
+> its evidence callers here and is deleted in 11a-thesis after its last caller. Its review is a list
+> check: everything deleted is tagged RETIRE or RETIRE-AT-11 or owned by evidence steps 12–16, and
 > nothing KEEP is touched — a KEEP test of a retired module goes with the module, as the switch
 > ruled. **Widened the same evening to THE LEGACY SWITCH — three deletion PRs, one per layer, all
 > before 11b:** 11a-evidence (this note), 11a-thesis (thesis plan step 25 pulled forward, its own
@@ -393,11 +398,22 @@ and the breakage that proves the instrument (evidence doc A7).
 > each layer's schema drops stay with its build step — 11b, thesis step 18, document step 28 — so
 > every migration remains one file in the step that owns it. The frontend's DARK change — the
 > pages whose APIs leave, hidden or unlinked — lands with the first deletion PR, its own change.
-> Two readers no design retires — the trajectory detector (`claimTrajectory.ts`)
-> and `preview_diff_classification`, which thesis A4 keeps as an instrument — were ruled the same
-> evening: **both are REBASED in 11b**, the detector's candidate source onto CURRENT(diff)'s chunks
-> on `DiffContentVersion`, the preview resolving a diff by its PAIR as A4 names every diff; neither
-> is deleted in 11a, and their KEEP tests become REWRITE in 11b. The debate's one-OPEN-per-(thesis,
+> The trajectory detector (`claimTrajectory.ts`), which no design retires and none rebases, was
+> ruled the same evening: **REBASED in 11b**, its candidate source onto CURRENT(diff)'s chunks on
+> `DiffContentVersion`; its test becomes REWRITE there. `preview_diff_classification` is RETIRED by
+> thesis A4 (its retired block, "an instrument, not a research act") and goes in 11a-thesis with
+> its test — the first draft of this note said A4 keeps it, having read `docs/gf-researcher-day.md`
+> instead of the appendix; corrected 2026-09-08 on the DEV session's cold review, and an instrument
+> is an operational script, never a tool. **Six further modules the designs keep read columns 11b
+> drops** — `thesisClaimAudit`, `evidenceInputSoundness`, `auditOnChainAnchors`, `onChainVerification`,
+> `registryState`, and `checkOnChainStatus`, which is deleted in 11a-evidence and rebuilt at step 12 as
+> `get_diff_input` is — and are REBASED in 11b to what the designs already say (check 17 over
+> CURRENT(diff)'s chunks, A6; the claim audit reaching the page through the record key; the anchor
+> audit over captures alone, §5). Two of their tests are KEEP in two tables; the contract they held
+> moved by the ruling of 2026-09-03, a day after the tags were written, so the tags move to REWRITE
+> at 11b and §4 rule 2 is not the wrong step's evidence. `evidence_embeddings`, `match_evidence()`
+> and the `EvidenceEmbedding` model drop in 11b's migration, named line by line — evidence §5 leaves
+> the embedding no source and no reader. The debate's one-OPEN-per-(thesis,
 > record) rule is a nullable `openKey` column with a unique index (ruled the same evening: Prisma
 > cannot express a partial index and raw SQL would keep `db:check-drift` dirty). 11a lands with its
 > own dated record of what left and why, pointed at from here.
