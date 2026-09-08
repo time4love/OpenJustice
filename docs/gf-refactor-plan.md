@@ -313,6 +313,11 @@ deploy is one-shot, and staging is its rehearsal. Not before step 8 has served o
 
 ### 10 · Vocabulary
 
+> **DECIDED 2026-09-08 — evidence steps 11 and 12 run BEFORE this one.** The note at §3b records
+> why. Nothing about this step changes: it is still last among the steps that touch the corpus
+> path, and its reasoning — a rename before the behaviour is gone is a diff nobody can review — is
+> untouched by two steps that add a reader and drop dead columns.
+
 `era` out of identifiers, comments, tool text and docs. Last on purpose: renaming before the
 behaviour is gone produces a diff nobody can review, and the word is harmless while it is still true
 of code that is about to be deleted.
@@ -327,6 +332,29 @@ next.** §3 above is the corpus; this section is evidence; the thesis steps are
 
 Each is one PR, each leaves the suite green, and each lands with the instrument that proves it
 and the breakage that proves the instrument (evidence doc A7).
+
+> **DECIDED 2026-09-08 — STEPS 11 AND 12 RUN BEFORE CORPUS STEP 10, on the researcher's word, and
+> the reason was read from a live session rather than argued.** Driving walla's corrective pass
+> through the connector, a researcher asked what changed between two captures and was told the
+> corpus held nothing: `raw` empty on both sides, `diffInputVersion` null, the classification
+> `UNCLASSIFIED`, survival `UNCHECKED`, and "3 of 3 carry no Level 5 verdict". Every one of those
+> readings was accurate and the conclusion drawn from them — that nothing had been looked at — was
+> false. `get_diff_input` reads `UrlVersionDiff`'s LEGACY columns (`rawDeletedText`, `deletedText`,
+> `addedText`, `diffInputVersion`); since step 5's PR 1 the walk writes none of them, and puts every
+> chunk, every survival verdict and the whole classification on a `DiffContentVersion` — which, as
+> of today, has ONE WRITER AND NO READER anywhere under `src/`.
+>
+> **Two things follow, and neither is a new task.** The corpus's real content is invisible to every
+> tool, route and read the platform has, so a researcher cannot check their own corrective pass —
+> that is step 12's `list_findings`, already scoped. And the surface that answered instead returned
+> a shape indistinguishable from a real negative, with no refusal code and no way for the reader to
+> tell — that is step 11's dropping of those columns, already scoped.
+>
+> **11 BEFORE 12, and both before 10.** Dropping the columns first makes `get_diff_input` fail at
+> compile time instead of continuing to answer emptily, and step 12's replacement is then written
+> against a schema with nothing left to read wrongly. Step 10 is a rename with no behaviour in it;
+> these two are what let a researcher see the corpus they just corrected. The findings are recorded
+> in `docs/gf-walk-corrective-pass-2026-09-08.md`.
 
 ### 11 · Schema
 `Evidence` as the marked record, `EvidenceDecision`, the debate's thesis and record columns, the
