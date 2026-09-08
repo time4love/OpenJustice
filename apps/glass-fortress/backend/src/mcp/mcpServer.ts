@@ -693,8 +693,10 @@ export function createMcpServer(): McpServer {
         'captures; Gate 1 still catches its text if it changes sides; a later decision can reverse it. ' +
         'CONTINUE WITHOUT TRUST: this capture is accepted and the element\'s new contents will stop the ' +
         'walk again. END: the rule stops applying from this capture\'s date, its text enters the article ' +
-        'from here, and earlier captures are untouched. Read the rule\'s removals from get_rule_history ' +
-        'first — the first 5 verbatim — and never ask for trust on a rule the researcher has not seen. ' +
+        'from here, and earlier captures are untouched. TRUST and END name GATE 4 rules only — a Gate 2 ' +
+        'rule, one that matched nothing on this capture, goes in neither list and needs no decision; CONTINUE ' +
+        'covers it. Read the rule\'s removals from get_rule_history first — the first 5 verbatim — and never ' +
+        'ask for trust on a rule the researcher has not seen; one rule per turn. ' +
         'BAD_CAPTURE: this capture does not speak — a truncated archive page, a paywall redirect, ' +
         'anything a human has looked at and judged unusable — with a REQUIRED reason, because a silent ' +
         'hole in the record is the one outcome this corpus does not permit. The capture becomes SKIPPED, ' +
@@ -740,13 +742,28 @@ export function createMcpServer(): McpServer {
         'ARCHIVE_UNAVAILABLE at the row the archive did not serve, REGISTRY_FROZEN when the registry is ' +
         'neither empty nor scheme-stamped at index 0 (nothing acquired), and CHAIN_UNAVAILABLE when the ' +
         'chain cannot be reached — everything before the halted row is kept. ' +
-        'AT A STOP, DRIVE IT RULE BY RULE, IN THE CHAT (flows Flow 2): for each rule the material names, read ' +
-        'get_rule_history and say the element in words — its tag and the first text it removed, never the ' +
-        'selector as its name — then its history, then the FIRST 5 removed texts VERBATIM with the rest on ' +
-        'request, and never a summary in their place. Then give the three answers with what each means and ' +
-        'let the researcher choose. Record the whole stop with ONE resolve_scan_stop call. When the stop also ' +
-        'needs marking, MARKING COMES FIRST and the chat\'s decisions follow it, against the ruleset the ' +
-        'marking left. Decide nothing yourself: every answer here is the researcher\'s.',
+        'AT A STOP, DRIVE IT IN THE CHAT, ONE RULE PER TURN (flows Flow 2). THE GATES, IN WORDS — say the ' +
+        'gate\'s sentence, never your own: GATE 0 — no human has approved any capture up to this date, the ' +
+        'first calibration: the researcher opens the marking URL and marks. GATE 1 — a line of text changed ' +
+        'sides against the previous capture: removed now but kept before means a rule is taking article text ' +
+        '(END that rule, or unmark it on the page); kept now but removed before means furniture entered the ' +
+        'text (CORRECT: mark its element on the page). GATE 2 — a rule that matched the previous capture ' +
+        'matches nothing here: the element left the page or changed its class; the answers are CONTINUE, or ' +
+        'CORRECT on the page if the element is still there under another name — TRUST and END do not apply ' +
+        'to a silent rule, and a Gate 2 rule goes in neither list. GATE 4 — a rule not yet trusted removed text ' +
+        'no human has seen: for each such rule, TRUST, CONTINUE without trust, or END. GATE 5 — the ' +
+        'classifier judged this capture\'s diff not editorial: a symptom of furniture entering the text, so ' +
+        'CORRECT on the page if there is, else CONTINUE; the verdict decides nothing. DIGEST — the bytes ' +
+        'received do not match the archive index\'s digest for this capture: CONTINUE, or BAD_CAPTURE. ' +
+        'FOR EACH RULE the material names, IN ITS OWN TURN: read get_rule_history; say the element in words — ' +
+        'its tag and the first text it removed, never the selector as its name; then its history — created ' +
+        'against which capture, matched since, trusted or not; then the FIRST 5 removed texts VERBATIM with ' +
+        'the rest on request, never a summary in their place; then only the answers that apply to ITS gate, ' +
+        'with what each means; then STOP and wait for the researcher\'s answer before the next rule. Never ' +
+        'read several histories in one turn. After the last rule, record the whole stop with ONE ' +
+        'resolve_scan_stop call. When the stop also needs marking, MARKING COMES FIRST and the chat\'s ' +
+        'decisions follow it, against the ruleset the marking left. Decide nothing yourself: every answer ' +
+        'here is the researcher\'s.',
       inputSchema: scanCapturesSchema,
     },
     async (input) => ({
