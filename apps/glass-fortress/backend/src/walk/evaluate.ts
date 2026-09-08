@@ -66,8 +66,10 @@ export interface Derived {
   current: CurrentExtraction;
   /** Match counts per rule in force, on the predecessor (null with no predecessor) and on this capture. */
   matches: { p: Matched[] | null; c: Matched[] };
-  /** SEEN(page): the removed-side segments a human has looked at, normalised. */
+  /** SEEN for judging THIS capture: every other judged capture's removed side, plus its own when it is judged (A3, amended 2026-09-08). */
   seen: Set<string>;
+  /** The rules whose silence on this capture a human has already judged — Gate 2 does not re-fire on them (A4, amended 2026-09-08). */
+  judgedSilent: ReadonlySet<string>;
   /** The capture's own approved text — REQUIRED on an ACQUIRED row accepted under AUTHORITY, absent otherwise. */
   ownPrevious?: { keptText: string } | null;
 }
@@ -136,6 +138,7 @@ export async function evaluateCapture(input: EvaluateInput): Promise<CaptureStop
       decisions,
       { waybackTimestamp: input.predecessor, matches: derived.matches.p },
       { waybackTimestamp: t, matches: derived.matches.c },
+      derived.judgedSilent,
     );
     if (silent !== null) fired.push(silent);
   }

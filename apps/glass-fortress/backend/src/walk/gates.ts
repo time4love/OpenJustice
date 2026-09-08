@@ -190,12 +190,25 @@ function matchedNodes(capture: CaptureMatches, rule: Rule): number {
  * retired under AUTHORITY is not in force at both and is not asked. Every rule
  * in force at p is owed a count at p and every rule in force at c one at c,
  * whether or not it is asked — the defect surfaces where it happened.
+ *
+ * A SILENCE A HUMAN HAS ALREADY JUDGED DOES NOT FIRE AGAIN (A4, amended
+ * 2026-09-08): `judged` is the set of rules whose silence on c was observed
+ * before a CAPTURE_ACCEPTED for c under AUTHORITY — `judgedSilences` folds it
+ * from the match rows and the log, and the walk hands it here — REQUIRED, no
+ * default: a caller that forgot it would silently restore the old behaviour,
+ * and a required argument refuses that the way `Derived.judgedSilent` does.
+ * Read from the first re-walk driven from the chat: ending one rule un-resolved
+ * every later capture, and the re-walk re-fired at 2021-06-12 the same ten
+ * silences the first walk had already put to the researcher. The counts are
+ * still owed for every rule in force, judged or not — the defect check runs
+ * before the filter.
  */
 export function gate2(
   rules: readonly Rule[],
   decisions: readonly Decision[],
   p: CaptureMatches,
   c: CaptureMatches,
+  judged: ReadonlySet<string>,
 ): Gate2Fired | null {
   const atP = rulesInForce(rules, decisions, p.waybackTimestamp);
   const atC = rulesInForce(rules, decisions, c.waybackTimestamp);
@@ -204,7 +217,7 @@ export function gate2(
   const silent = atC.flatMap((r) => {
     const before = onP.get(r.id);
     const now = onC.get(r.id);
-    return before !== undefined && before > 0 && now === 0
+    return before !== undefined && before > 0 && now === 0 && !judged.has(r.id)
       ? [{ ruleId: r.id, selector: r.selector, matchedOnPredecessor: before }]
       : [];
   });

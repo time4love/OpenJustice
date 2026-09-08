@@ -267,3 +267,27 @@ describe('the walk imports no retired module — refactor plan §1, from step 0'
     expect(JOB_METHODS.test(`await scraper.runFullScan(trackedUrlId, url);`)).toBe(true);
   });
 });
+
+// THE WALK WRITES NO DECISION — what the Gate 2 amendment of 2026-09-08 rests
+// on: a judged silence is a match row observed before the capture's acceptance,
+// compared BY TIME across two tables. A3 forbids createdAt within one table
+// because rows in one transaction share now(); across the walk's and the tools'
+// tables the comparison holds only while the two never share a transaction —
+// which is this invariant, held here rather than assumed. `judgedSilences` in
+// src/walk/derivations.ts is the reader.
+describe('I4b · the walk writes no decision — the match row and the acceptance never share a transaction', () => {
+  const WRITES_A_DECISION = /\bappendDecisions\(|\.pageDecision\.create(?:Many)?\(/;
+  const walkTools = () => walkModules().filter(({ file }) => file === 'scanCaptures.ts');
+
+  it('scanCaptures.ts neither appends a decision nor creates a PageDecision', () => {
+    const tools = walkTools();
+    expect(tools.length).toBe(1);
+    expect(tools.filter(({ code }) => WRITES_A_DECISION.test(codeOf(code))).map(({ file }) => file)).toEqual([]);
+  });
+
+  it('DETECTS both spellings — proven against decoys', () => {
+    expect(WRITES_A_DECISION.test(codeOf(`const written = await appendDecisions(tx, page.id, [entry]);`))).toBe(true);
+    expect(WRITES_A_DECISION.test(codeOf(`await tx.pageDecision.create({ data });`))).toBe(true);
+    expect(WRITES_A_DECISION.test(codeOf(`await tx.ruleMatch.createMany({ data, skipDuplicates: true });`))).toBe(false);
+  });
+});

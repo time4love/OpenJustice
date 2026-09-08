@@ -189,10 +189,13 @@ export function acceptedCaptures(decisions: readonly Decision[]): Set<string> {
 }
 
 /**
- * SEEN(page): the removed-side segments of every ACQUIRED capture a human has
- * judged — a CAPTURE_ACCEPTED for it under AUTHORITY — plus the
- * PENDING_JUDGEMENT capture being judged. Computed from bytes held, so a
- * SKIPPED capture contributes nothing and its removals may be shown again.
+ * SEEN(page), THE FOLD: the removed-side segments of every ACQUIRED capture a
+ * human has judged — a CAPTURE_ACCEPTED for it under AUTHORITY. Computed from
+ * bytes held, so a SKIPPED capture contributes nothing and its removals may be
+ * shown again. The capture BEING JUDGED is `seenForJudging`'s and not this
+ * fold's (amended 2026-09-08): it contributes its own side only once it is
+ * judged, and a second arm here saying otherwise was the repository's named
+ * defect shape — one rule, two implementations — so it was removed with its case.
  *
  * "Has a decision" is an ACCEPTANCE, not any row naming the timestamp (ruled
  * 2026-09-05): a RULE_EXTENDED carries the rule's NEW validFrom, a capture the
@@ -204,12 +207,80 @@ export function seen(captures: readonly CaptureRemovals[], decisions: readonly D
   const judged = acceptedCaptures(decisions);
   const out = new Set<string>();
   for (const capture of captures) {
-    const contributes =
-      capture.outcome === 'PENDING_JUDGEMENT' ||
-      (capture.outcome === 'ACQUIRED' && judged.has(capture.waybackTimestamp));
+    const contributes = capture.outcome === 'ACQUIRED' && judged.has(capture.waybackTimestamp);
     if (contributes) for (const segment of capture.removed) out.add(segment);
   }
   return out;
+}
+
+/**
+ * SEEN for JUDGING capture `t` (A3, amended 2026-09-08). The fold over every
+ * other judged capture, plus t's OWN removed side when t itself carries a
+ * CAPTURE_ACCEPTED under AUTHORITY: a fresh capture must be asked about its own
+ * removals, and a judged one has been. The caller hands t's removed side from
+ * the derivation it has in hand — an ACQUIRED capture's from its snapshot, a
+ * judged DUPLICATE's from the re-fetch, since a DUPLICATE holds no body — and
+ * the fold is read WITHOUT t whatever it holds, so the two readings of one
+ * capture cannot disagree.
+ *
+ * Read from the first re-walk driven from the chat: excluding every capture's
+ * own removals re-asked Gate 4 about every rule created at that capture's
+ * stop — 12-18 (a judged DUPLICATE) and 2021-06-12 (a judged ACQUIRED capture,
+ * its new header's menu items asked about twice).
+ */
+export function seenForJudging(
+  t: string,
+  folded: readonly CaptureRemovals[],
+  ownRemoved: readonly string[],
+  decisions: readonly Decision[],
+): Set<string> {
+  const out = seen(
+    folded.filter((capture) => capture.waybackTimestamp !== t),
+    decisions,
+  );
+  if (acceptedCaptures(decisions).has(t)) for (const segment of ownRemoved) out.add(segment);
+  return out;
+}
+
+/** One RuleMatch row as the walk wrote it: the count, and WHEN it was observed. */
+export interface MatchObservation {
+  ruleId: string;
+  waybackTimestamp: string;
+  matchedNodes: number;
+  observedAt: Date;
+}
+
+/** A CAPTURE_ACCEPTED under AUTHORITY, with when it was written. */
+export interface Acceptance {
+  waybackTimestamp: string;
+  createdAt: Date;
+}
+
+/**
+ * The rules whose SILENCE on capture `t` a human has already judged (A4 Gate 2,
+ * amended 2026-09-08): a match row (r, t) = 0 observed BEFORE a CAPTURE_ACCEPTED
+ * for t under AUTHORITY was written. The row is written at the evaluation that
+ * stopped and the acceptance follows it; compared by time across two tables
+ * written by two actors that never share a transaction — the walk writes no
+ * decision, which invariants.test.ts holds. A rule EXTENDED back to t after
+ * that acceptance writes a new row, observed later, and its silence is unjudged.
+ *
+ * The caller hands only acceptances under AUTHORITY: `acceptedCaptures` is the
+ * one implementation of "judged", and this predicate does not re-derive it.
+ */
+export function judgedSilences(
+  t: string,
+  observations: readonly MatchObservation[],
+  acceptances: readonly Acceptance[],
+): Set<string> {
+  const acceptedAt = acceptances.filter((a) => a.waybackTimestamp === t).map((a) => a.createdAt.getTime());
+  if (acceptedAt.length === 0) return new Set();
+  const latest = Math.max(...acceptedAt);
+  return new Set(
+    observations
+      .filter((o) => o.waybackTimestamp === t && o.matchedNodes === 0 && o.observedAt.getTime() < latest)
+      .map((o) => o.ruleId),
+  );
 }
 
 /**

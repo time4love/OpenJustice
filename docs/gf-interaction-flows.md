@@ -936,9 +936,10 @@ RESOLVED(row)           a CAPTURE_ACCEPTED or CAPTURE_SKIPPED for its capture, u
                         whose rulesetId = RULESET_ID(page, row.waybackTimestamp). Trust does not
                         change the text, so RULE_TRUSTED never un-resolves a capture
 SEEN(page)              the removed-side segments of every ACQUIRED capture that has a decision
-                        under AUTHORITY, plus the PENDING_JUDGEMENT capture being judged — computed
-                        from bytes held, so a SKIPPED capture contributes nothing and its removals
-                        may be shown again; cached per page, invalidated by any decision.
+                        under AUTHORITY — the capture being judged contributes its own side only
+                        once it is judged (amended 2026-09-08, below) — computed from bytes held,
+                        so a SKIPPED capture contributes nothing and its removals may be shown
+                        again; cached per page, invalidated by any decision.
                         Amended 2026-09-08, from the first re-walk driven from the chat: a capture a
                         human has JUDGED contributes its OWN removed side to SEEN when it is itself
                         re-walked. The exclusion of the capture being judged applies only to a capture

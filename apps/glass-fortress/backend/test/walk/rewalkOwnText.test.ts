@@ -109,6 +109,7 @@ describe('evaluateCapture — the own-text check runs with 1, 2 and 4, on a STAL
     },
     matches: { p: [m('r1', 1), m('r2', 0)], c: [m('r1', 0), m('r2', 1)] },
     seen: new Set(['ticker item', 'by the correspondent']),
+    judgedSilent: new Set<string>(),
     ownPrevious: approved('headline\nbody\nby the correspondent'),
   });
 
