@@ -200,6 +200,12 @@ at registry indexes 0–3 under `DOCUMENT_SHA256`, three diffs written as pair +
 stops resolved in the marking page, every write verified from chain and database state —
 `docs/gf-walk-step-5-exercise-2026-09-06.md`. Two rows wait behind a capture the archive refuses; the
 skip was widened to an UNFETCHED row on the researcher's word (2026-09-07). PR 2 and PR 3 are still this step's.
+*Closed 2026-09-08:* PR 2 landed as #377 and #378; PR 3 landed as #383 and was SUPERSEDED the same evening
+by the researcher's ruling that judgement is the chat's and marking the page's (flows Flow 2, MARKING, A5,
+amended 2026-09-07 — PRs #384–#386; the descriptions in #387–#389, #393; the code in #391 and #394). The
+first two stops driven from a claude.ai session, and the corrective pass they closed, are
+`docs/gf-walk-corrective-pass-2026-09-08.md`. Step 5 is complete; two 2025 captures remain UNFETCHED on
+walla and are the researcher's next walk.
 
 ### 6 · The marking page and its routes
 
@@ -218,6 +224,12 @@ against staging.
 the approval's transaction window fixed in PR #360; walla and corona each marked in the new page from
 a stored capture and promoted through the connector — `docs/gf-walk-step-6-marking-verified-2026-09-06.md`.
 A stop on a PENDING_JUDGEMENT capture, the page's judging moment, waits for step 5's first held row.
+*Amended 2026-09-08:* there is no judging moment on the page. PR 3 (#383) built one and its first live
+look produced the ruling that retired it: the page marks and unmarks, renders NOTHING of a stop, and every
+other answer — CONTINUE, TRUST and END per rule, BAD CAPTURE — is given in the chat and recorded by one
+`resolve_scan_stop` call (flows Flow 2 and MARKING as amended 2026-09-07; PR #386 the code, #385 the
+page). What the page kept from PR 3: the draft-switch moment, the catalogue parity suite, and rule names by
+the rule that matches the element.
 
 ### 7 · The re-walk
 
