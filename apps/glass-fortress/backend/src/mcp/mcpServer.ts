@@ -665,13 +665,14 @@ export function createMcpServer(): McpServer {
     'approve_article_rules',
     {
       description:
-        'PROMOTE THE DRAFT YOU HANDED BACK FROM THE MARKING PAGE — the one command whichever answer ' +
-        'it was. CONTINUE (unchanged draft), CORRECT (changed selectors) and TRUST (rules whose removals ' +
-        'need no more review) all end here: new selectors become rules in force from THIS capture; ' +
-        'removed ones end here; trusted ones are recorded; the capture is accepted under the rules ' +
-        'now in force; the draft is cleared. Names the page by url and the capture by its 14-digit ' +
-        'wayback timestamp — paste the line the page shows. A draft that leaves NO rule in force ' +
-        'needs `rules: 0`, stated, never assumed. Refuses NO_DRAFT, DRAFT_NOT_RETURNED, ' +
+        'PROMOTE THE DRAFT YOU HANDED BACK FROM THE MARKING PAGE — CORRECT, the one answer given on ' +
+        'the page: new selectors become rules in force from THIS capture; removed ones end here; the ' +
+        'capture is accepted under the rules now in force; the draft is cleared. TRUST is not given ' +
+        'here — it is resolve_scan_stop\'s, in the chat, and on a stop that needs both this call comes ' +
+        'first. Names the page by url and the capture by its 14-digit wayback timestamp — paste the ' +
+        'line the page shows. A draft that leaves NO rule in force needs `rules: 0`, stated, never ' +
+        'assumed. AFTER THE CALL, SHOW THE RETURN AS IT CAME — `changes` and `decisionSequence`. ' +
+        'Refuses NO_DRAFT, DRAFT_NOT_RETURNED, ' +
         'DRAFT_FOR_OTHER_CAPTURE (the wrong page is open), CAPTURE_NOT_MARKABLE, ' +
         'EMPTY_RULESET_UNCONFIRMED and STALE_SEQUENCE (someone else decided on this page first — ' +
         're-read). Then scan_captures acquires the capture; nothing else does.',
@@ -707,7 +708,9 @@ export function createMcpServer(): McpServer {
         'the archive will not serve (a 429 that holds for one capture while its neighbours serve): the ' +
         'walk keeps retrying it forever and no count of attempts ever skips it — only your explicit word ' +
         'does, with the reason saying so. Names the page by url and the capture by its 14-digit wayback ' +
-        'timestamp. Refuses NOT_PENDING (any outcome but PENDING_JUDGEMENT or UNFETCHED), ' +
+        'timestamp. AFTER THE CALL, SHOW THE RETURN AS IT CAME — `changes.trusted`, `changes.ended` and ' +
+        '`decisionSequence` — so the researcher checks the record against what they said; never only your ' +
+        'account of it. Refuses NOT_PENDING (any outcome but PENDING_JUDGEMENT or UNFETCHED), ' +
         'REASON_REQUIRED, NO_SUCH_RULE (a selector naming no rule in force at this capture), ' +
         'INVALID_RESOLUTION and STALE_SEQUENCE.',
       inputSchema: resolveScanStopSchema,
@@ -750,15 +753,22 @@ export function createMcpServer(): McpServer {
         'text (CORRECT: mark its element on the page). GATE 2 — a rule that matched the previous capture ' +
         'matches nothing here: the element left the page or changed its class; the answers are CONTINUE, or ' +
         'CORRECT on the page if the element is still there under another name — TRUST and END do not apply ' +
-        'to a silent rule, and a Gate 2 rule goes in neither list. GATE 4 — a rule not yet trusted removed text ' +
+        'to a silent rule, and a Gate 2 rule goes in neither list. VERIFY WHICH before offering CONTINUE, ' +
+        'never guess: get_article_rules lists the rules created against THIS capture (validFrom equal to it); ' +
+        'read get_rule_history on each and look for the text the silent rule removed on the previous capture ' +
+        'among what the new rule removes here. Found — say "covered by the rule created on this capture" and ' +
+        'CONTINUE is verified. Not found — the element may still be on the page unmarked, and the answer is ' +
+        'CORRECT: the researcher marks it on the page. GATE 4 — a rule not yet trusted removed text ' +
         'no human has seen: for each such rule, TRUST, CONTINUE without trust, or END. GATE 5 — the ' +
         'classifier judged this capture\'s diff not editorial: a symptom of furniture entering the text, so ' +
         'CORRECT on the page if there is, else CONTINUE; the verdict decides nothing. DIGEST — the bytes ' +
         'received do not match the archive index\'s digest for this capture: CONTINUE, or BAD_CAPTURE. ' +
         'FOR EACH RULE the material names, IN ITS OWN TURN: read get_rule_history; say the element in words — ' +
         'its tag and the first text it removed, never the selector as its name; then its history — created ' +
-        'against which capture, matched since, trusted or not; then the FIRST 5 removed texts VERBATIM with ' +
-        'the rest on request, never a summary in their place; then only the answers that apply to ITS gate, ' +
+        'against which capture, matched since, trusted or not; then its removals VERBATIM — `removed` is one ' +
+        'text per matched element and a menu or a sidebar is hundreds of lines, so quote the FIRST 5 LINES of ' +
+        'each and offer the rest, never a summary in their place; for a Gate 4 rule name the never-seen ' +
+        'lines from the stop\'s material first; then only the answers that apply to ITS gate, ' +
         'with what each means; then STOP and wait for the researcher\'s answer before the next rule. Never ' +
         'read several histories in one turn. After the last rule, record the whole stop with ONE ' +
         'resolve_scan_stop call. When the stop also needs marking, MARKING COMES FIRST and the chat\'s ' +
