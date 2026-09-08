@@ -118,16 +118,38 @@ export interface ClaimAttribution {
 }
 
 /**
+ * How the entry at an index is obtained — the one thing that differs between
+ * ATTRIBUTED's callers.
+ *
+ * ADDED AT EVIDENCE STEP 12, and it is what keeps ATTRIBUTED at ONE SPELLING.
+ * The ledger and the audits have already read the whole registry and look the
+ * index up in what they hold; the anchor-time check and the per-capture reads
+ * have one hash in hand and must not walk the contract to answer about it. Those
+ * are two ways to FETCH AN ENTRY, not two definitions of attribution — so the
+ * definition stays here, once, and the fetch is the parameter.
+ */
+export type EntryLookup = (index: number) => Promise<RegistryEntry | undefined>;
+
+/** The lookup for a caller that has already read the registry's whole state. */
+export function entriesAlreadyRead(entries: readonly RegistryEntry[]): EntryLookup {
+  return (index) => Promise.resolve(entries.at(index));
+}
+
+/** The lookup for a caller asking about ONE hash: one read, at the index the chain named. */
+export function entryFromChain(reader: RegistryReader): EntryLookup {
+  return async (index) => ({ index, ...(await reader.readEvidenceRecord(BigInt(index))) });
+}
+
+/**
  * ATTRIBUTED(hash) = isRegistered(hash) AND getEvidence(index).submitter = our registrar.
  *
- * `entries` are the state already read, so the second conjunct costs no call;
- * the index the chain returns is checked against what was read at it, and a
- * disagreement is a refusal — two reads of one state that contradict each
- * other are not a verdict.
+ * `entryAt` says where the entry comes from (above); the index the chain returns
+ * is checked against what was read at it, and a disagreement is a refusal — two
+ * reads of one state that contradict each other are not a verdict.
  */
 export async function attributeClaim(
   reader: RegistryReader,
-  entries: readonly RegistryEntry[],
+  entryAt: EntryLookup,
   hash: string,
 ): Promise<ClaimAttribution> {
   const asBytes32 = toBytes32(hash).toLowerCase();
@@ -135,7 +157,7 @@ export async function attributeClaim(
   if (!registered) return { hash: asBytes32, verdict: 'UNREGISTERED', index: null, submitter: null };
 
   const index = Number(evidenceId);
-  const entry = entries.at(index);
+  const entry = await entryAt(index);
   if (entry?.fileHash !== asBytes32) {
     throw new RegistryReadError(
       `isRegistered says ${asBytes32} sits at index ${String(index)}, but the entry read there ` +
@@ -413,13 +435,13 @@ export async function readRegistryAttribution(
       subject: 'UrlSnapshot',
       subjectId: s.id,
       column: 'documentHash',
-      attribution: await attributeClaim(reader, state.entries, s.documentHash),
+      attribution: await attributeClaim(reader, entriesAlreadyRead(state.entries), s.documentHash),
     });
     claims.push({
       subject: 'UrlSnapshot',
       subjectId: s.id,
       column: 'contentHash',
-      attribution: await attributeClaim(reader, state.entries, s.contentHash),
+      attribution: await attributeClaim(reader, entriesAlreadyRead(state.entries), s.contentHash),
     });
   }
   // The evidence claims left with the columns that made them (above). A frozen

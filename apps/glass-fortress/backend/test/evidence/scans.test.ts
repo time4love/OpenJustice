@@ -138,11 +138,37 @@ describe('every predicate of A3 has ONE importable symbol', () => {
   // PUBLISHABLE" — the publication gate CALLS the predicates and never
   // re-derives them, because a second spelling inside the gate is the copy that
   // drifts. The predicate and the gate are one implementation.
-  const SPELLINGS = [
-    /function\s+verified\s*\(/,
-    /function\s+publishable\s*\(/,
-    /function\s+currentVersionOf\s*\(/,
+  //
+  // EXTENDED AT EVIDENCE STEP 12 with every predicate the reads build, and the
+  // PATTERN was widened with them: the first spelling required `(` immediately
+  // after the name, so `function currentVersionOf<V extends …>(` — a GENERIC
+  // declaration, which three of these are — matched nothing. A scan that cannot
+  // see the shape the code is actually written in is the vacuity this file's
+  // header names, arriving as a green test. `[<(]` is what closes it, and the
+  // decoy below is planted in BOTH shapes so it cannot narrow again silently.
+  const NAMES = [
+    'verified',
+    'publishable',
+    'currentVersionOf',
+    'needsReview',
+    'citationCurrent',
+    'narrowed',
+    'intervening',
+    'publicPage',
+    'recomputable',
+    'flagged',
+    // ATTRIBUTED IS THE ONE WHOSE CORRECT COUNT IN THE TREE IS ZERO, and that is
+    // the point rather than an oversight. Its single implementation is
+    // `attributeClaim` in services/registryState.ts — one function serving the
+    // ledger, the audits, the anchor-time check and the per-capture reads
+    // through an entry-lookup parameter. A module declaring `function
+    // attributed(` would be a SECOND spelling of a predicate that reads the
+    // chain, which is exactly the drift this scan exists to catch.
+    'attributed',
   ];
+
+  /** One list, one set of patterns — a second list is the copy that drifts. */
+  const SPELLINGS = NAMES.map((name) => new RegExp(`function\\s+${name}\\s*[<(]`));
 
   it('no module but evidencePredicates declares one', () => {
     const offenders = modules()
@@ -155,5 +181,42 @@ describe('every predicate of A3 has ONE importable symbol', () => {
   it('DETECTS a second spelling, and does not fire on a call', () => {
     expect(SPELLINGS.some((re) => re.test('export function verified(e: Evidence) { return true; }'))).toBe(true);
     expect(SPELLINGS.some((re) => re.test('const isVerified = await verified(e);'))).toBe(false);
+  });
+
+  it('DETECTS a planted declaration of EVERY name it lists, GENERIC OR PLAIN', () => {
+    // A list is only a rule if every entry can fire, in every shape the codebase
+    // writes. Written as a property over the list itself, so a name added
+    // tomorrow gets its decoys for free.
+    for (const name of NAMES) {
+      const plain = `export function ${name}(input: unknown) { return true; }`;
+      const generic = `export function ${name}<V extends Row>(input: V) { return true; }`;
+      expect(SPELLINGS.some((re) => re.test(plain))).toBe(true);
+      expect(SPELLINGS.some((re) => re.test(generic))).toBe(true);
+      expect(SPELLINGS.some((re) => re.test(`const answer = await ${name}(input);`))).toBe(false);
+    }
+  });
+
+  it('the predicates module DECLARES the ones this step built, so the rule has a subject', () => {
+    // A scan whose allow-listed module declares nothing would pass over an empty
+    // tree. These are the names step 12 put there; `attributed`, `argued` and
+    // `publishable` are deliberately NOT among them — the first has its one
+    // spelling elsewhere, the other two are steps 13 and 15.
+    const predicates = modules().find(({ file }) => file === 'services/evidencePredicates.ts');
+    expect(predicates).toBeDefined();
+    const built = [
+      'currentVersionOf',
+      'needsReview',
+      'citationCurrent',
+      'narrowed',
+      'intervening',
+      'publicPage',
+      'recomputable',
+      'verified',
+      'flagged',
+    ];
+    const declared = built.filter((name) =>
+      new RegExp(`function\\s+${name}\\s*[<(]`).test(predicates?.code ?? ''),
+    );
+    expect(declared).toEqual(built);
   });
 });

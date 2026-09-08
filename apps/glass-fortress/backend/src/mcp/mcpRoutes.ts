@@ -13,7 +13,9 @@ const router = Router();
 // ---------------------------------------------------------------------------
 // Gated tool names — any tools/call for one of these requires a valid per-user
 // bearer token (looked up in the Researcher table).
-// Read tools (search_evidence, get_forensic_timeline, etc.) are unauthenticated.
+// Read tools (the corpus reads: list_findings, get_diff_input, resolve_record,
+// check_on_chain_status) are unauthenticated — and gate their own ACCESS by
+// PUBLIC_PAGE, which is a question about the page and never about the caller.
 //
 // "Write" is the common case but not the criterion. What is actually gated is
 // anything that COSTS: a tool that spends money or does unbounded work belongs
@@ -37,6 +39,33 @@ export const READ_TOOLS = new Set([
   // No LLM, no archive fetch, no log scan, no write. Behind the staging access
   // gate on staging regardless, and under the rate limiter on both.
   'get_environment',
+  // THE CORPUS READS — evidence step 12, docs/gf-evidence-flows.md A4 and §5.
+  //
+  // OPEN BECAUSE THE PUBLIC SURFACE IS THE CORPUS. "An outsider verifies a
+  // thesis against the corpus … Public reads are corpus reads: a page's
+  // timeline, search by text over the corpus, and a diff's input." Gating them
+  // would leave a published thesis citing records nobody outside could check,
+  // which is the counterweight §1 rests the whole selection argument on.
+  //
+  // ACCESS IS GATED INSIDE THE HANDLER, BY PUBLIC_PAGE, NOT HERE — and the
+  // distinction is the design's: "that is access, not a second behaviour: the
+  // output never depends on who asks". A page no published thesis cites refuses
+  // NOT_PUBLIC to an anonymous caller; a researcher's bearer token, when one is
+  // present, is resolved by identifyViewer and opens every page. Nothing below
+  // this line returns different CONTENT to the two.
+  //
+  // AND THE COST WAS THE DECIDING QUESTION, as this file's header says: ask what
+  // a tool SPENDS. None of the four invokes a model or fetches the archive.
+  // `list_findings` reads the STORED anchor verdict per capture — one query for
+  // the page, no chain call — precisely so a timeline stays bounded; the two
+  // that do read the chain are bounded by ONE RECORD (two hashes at most, two
+  // calls each). A timeline that asked the chain per capture would be the
+  // unbounded anonymous path this set exists to keep out, and that is why the
+  // attribution is stored at anchor time instead.
+  'list_findings',
+  'get_diff_input',
+  'resolve_record',
+  'check_on_chain_status',
 ]);
 
 export const WRITE_TOOLS = new Set([

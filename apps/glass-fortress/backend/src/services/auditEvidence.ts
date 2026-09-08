@@ -1,5 +1,5 @@
 import { prisma } from '../lib/prisma';
-import { recordId } from '../lib/evidenceIdentity';
+import { recomputable } from './evidencePredicates';
 
 // ---------------------------------------------------------------------------
 // IS EVERY EVIDENCE ROW THE RECORD IT CLAIMS TO BE?
@@ -123,13 +123,18 @@ export async function auditEvidence(): Promise<EvidenceAuditReport> {
         fail(row, 'RECORD_MISSING', `snapshot ${row.snapshotId} is absent, or holds no waybackTimestamp`);
         continue;
       }
-      const expected = recordId({
+      // THROUGH THE PREDICATE — extracted at evidence step 12 and called here.
+      // RECOMPUTABLE was spelled inline once per kind in this file; the reads
+      // need the same equality, and two spellings of one predicate is the copy
+      // that drifts. The instrument keeps what only it needs: the EXPECTED name,
+      // for a report that says what the record is actually called.
+      const capture = recomputable(row.fileHash, {
         kind: 'CAPTURE',
         url: c.trackedUrl.url,
         capture: { waybackTimestamp: c.waybackTimestamp, documentHash: c.documentHash },
       });
-      if (expected !== row.fileHash) {
-        fail(row, 'NOT_RECOMPUTABLE', `the record it is keyed to names ${expected}`);
+      if (!capture.recomputable) {
+        fail(row, 'NOT_RECOMPUTABLE', `the record it is keyed to names ${capture.expected}`);
       }
       continue;
     }
@@ -152,14 +157,14 @@ export async function auditEvidence(): Promise<EvidenceAuditReport> {
         fail(row, 'RECORD_MISSING', `diff ${row.urlVersionDiffId} is absent, or an endpoint holds no waybackTimestamp`);
         continue;
       }
-      const expected = recordId({
+      const pair = recomputable(row.fileHash, {
         kind: 'DIFF',
         url: before.trackedUrl.url,
         before: { waybackTimestamp: before.waybackTimestamp, documentHash: before.documentHash },
         after: { waybackTimestamp: after.waybackTimestamp, documentHash: after.documentHash },
       });
-      if (expected !== row.fileHash) {
-        fail(row, 'NOT_RECOMPUTABLE', `the pair it is keyed to names ${expected}`);
+      if (!pair.recomputable) {
+        fail(row, 'NOT_RECOMPUTABLE', `the pair it is keyed to names ${pair.expected}`);
         continue;
       }
       const versions = d.contentVersions.map((v) => v.contentVersionHash);

@@ -26,6 +26,10 @@ import { getClaimTrajectoriesSchema, getClaimTrajectoriesHandler } from './tools
 import { verifyClaimTextSchema, verifyClaimTextHandler } from './tools/verifyClaimText';
 import { getEnvironmentSchema, getEnvironmentHandler } from './tools/getEnvironment';
 import { auditThesisClaimsSchema, auditThesisClaimsHandler } from './tools/auditThesisClaims';
+import { listFindingsSchema, listFindingsHandler } from './tools/listFindings';
+import { getDiffInputSchema, getDiffInputHandler } from './tools/getDiffInput';
+import { resolveRecordSchema, resolveRecordHandler } from './tools/resolveRecord';
+import { checkOnChainStatusSchema, checkOnChainStatusHandler } from './tools/checkOnChainStatus';
 
 // ---------------------------------------------------------------------------
 // Factory — creates a fresh McpServer per request.
@@ -364,6 +368,115 @@ export function createMcpServer(): McpServer {
     },
     async (input) => ({
       content: [{ type: 'text' as const, text: await scanCapturesHandler(input) }],
+    }),
+  );
+
+  // -------------------------------------------------------------------------
+  // THE CORPUS READS — docs/gf-evidence-flows.md A4, evidence step 12.
+  //
+  // PUBLIC, AND IDENTICAL FOR EVERYONE. "PUBLIC reads take no identity and
+  // answer identically for everyone. Access to a page's timeline is gated by
+  // PUBLIC_PAGE for a caller without identity — that is ACCESS, not a second
+  // behaviour: the output never depends on who asks." A page becomes public in
+  // full, every capture and every diff, the moment a published thesis cites any
+  // record of it; before that it is a researcher's working corpus and an
+  // anonymous caller is refused NOT_PUBLIC.
+  //
+  // THE PUBLIC SURFACE IS THE CORPUS (§5). There is no public evidence surface
+  // to replace: `search_evidence` ranked selections by an embedding of prose,
+  // with everything unselected hidden, and it is retired. What an outsider reads
+  // is the same timeline the researcher reads, which is what makes the corpus
+  // the counterweight to a thesis's selection rather than a promise about one.
+  // -------------------------------------------------------------------------
+  server.registerTool(
+    'list_findings',
+    {
+      description:
+        'A PAGE\'S WHOLE TIMELINE, IN DATE ORDER — every archived capture this platform holds and ' +
+        'every change between consecutive ones. Per capture: its 14-digit archive timestamp, the ' +
+        'hash of its current extracted text, and its anchor — the SHA-256 of the bytes as served, ' +
+        'with `attributed` saying whether the registry holds it under our registrar (TRUE, FALSE, ' +
+        'or NULL meaning no anchor check has been stored — null is never "no"). Per change: the ' +
+        'PAIR of captures it spans (never a date pair), the current version\'s computed chunks, ' +
+        'whether a later capture now falls between the two (`narrowed`), and the promotion linkage ' +
+        '— which theses cite it, PUBLISHED ones only, for every caller. Each entry also carries ' +
+        '`fileHash`, the record\'s own name, which is what a thesis cites as #ev_<fileHash> whether ' +
+        'or not anyone has promoted it. `opinion` IS A MODEL\'S OPINION AND IS SHOWN AS ONE: a ' +
+        'separate object, null when nothing classified that derivation, never mixed into the ' +
+        'computed chunks and never the ordering — significance is the classifier\'s judgement, the ' +
+        'order is always chronological, and the researcher ranks. `awaitingDerivation` means the ' +
+        'walk owes a re-derivation, NOT that nothing changed. THE ANSWER IS THE SAME FOR EVERYONE: ' +
+        'this read has no second behaviour by identity. Writes nothing. Refuses NOT_SURVEYED and ' +
+        'NOT_PUBLIC (no published thesis cites any record of this page).',
+      inputSchema: listFindingsSchema,
+    },
+    async (input) => ({
+      content: [{ type: 'text' as const, text: await listFindingsHandler(input) }],
+    }),
+  );
+
+  server.registerTool(
+    'get_diff_input',
+    {
+      description:
+        'WHAT THE DIFFER AND THE CLASSIFIER WERE ACTUALLY GIVEN for one change: both captures\' ' +
+        'current extracted text in full, and the current version\'s chunks with each chunk\'s ' +
+        'survival verdict against the raw archived documents. NAMED BY THE PAIR — the two 14-digit ' +
+        'wayback timestamps, never a date pair, because three captures on one day are three ' +
+        'captures. Use it to check a change yourself rather than taking a summary for it. Writes ' +
+        'nothing. Refuses NOT_SURVEYED, NOT_PUBLIC, NOT_A_CAPTURE (a date, or a timestamp this page ' +
+        'holds no acquired capture for — the message says which), NO_SUCH_DIFF (two real captures ' +
+        'the walk never diffed as a pair) and AWAITING_DERIVATION, which NAMES THE DIFF and means ' +
+        'the walk owes a re-derivation — it is not a finding that nothing changed.',
+      inputSchema: getDiffInputSchema,
+    },
+    async (input) => ({
+      content: [{ type: 'text' as const, text: await getDiffInputHandler(input) }],
+    }),
+  );
+
+  server.registerTool(
+    'resolve_record',
+    {
+      description:
+        'WHAT A CITATION POINTS AT. Given the name a thesis cites (#ev_<fileHash>), returns the ' +
+        'corpus record it resolves to — a capture or a pair of captures, with its page and ' +
+        'timestamps — whether the name is RECOMPUTABLE from that record, whether it is VERIFIED ' +
+        '(every capture beneath it registered on chain under our registrar, with the anchored hash ' +
+        'equal to the hash of the bytes as served) with the per-capture attribution behind that ' +
+        'answer, and the PUBLISHED thesis versions that cite it — each with its text and with any ' +
+        'FLAG the platform has since raised: the record was withdrawn, or its content moved and ' +
+        'nobody has re-affirmed it. A published version is never edited and never unpublished by ' +
+        'this platform; the flag is derived on every read and shown beside the citation. Reads the ' +
+        'chain for the record\'s own captures and nothing else. Writes nothing. Refuses ' +
+        'NOT_A_RECORD and NOT_PUBLIC.',
+      inputSchema: resolveRecordSchema,
+    },
+    async (input) => ({
+      content: [{ type: 'text' as const, text: await resolveRecordHandler(input) }],
+    }),
+  );
+
+  server.registerTool(
+    'check_on_chain_status',
+    {
+      description:
+        'ASK THE REGISTRY ABOUT A CAPTURE — never about a thesis, an argument or an evidence row: ' +
+        'the chain attests the corpus, and nothing above it is anchored. Give a page and a capture ' +
+        '(url, capture), or a record name (fileHash), which answers about every capture beneath it. ' +
+        'Per capture: whether the registry holds the SHA-256 of its bytes as served, at which ' +
+        'index, submitted by whom, whether that submitter is our registrar (ATTRIBUTED), whether ' +
+        'the hash the platform recorded as anchored is that same hash, and the last stored anchor ' +
+        'check with its version and date. READ FROM CHAIN STATE, NEVER FROM A TRANSACTION RECEIPT: ' +
+        'state answers forever, a receipt only inside the RPC\'s retention window. Reports the ' +
+        'chain id and registry address it actually reached, so a wrong environment shows itself. ' +
+        'Writes nothing. Refuses NOT_SURVEYED, NOT_PUBLIC, NOT_A_CAPTURE, NOT_A_RECORD and ' +
+        'CHAIN_UNAVAILABLE — which is a verdict about the CHECK and is never evidence that a hash ' +
+        'is unregistered.',
+      inputSchema: checkOnChainStatusSchema,
+    },
+    async (input) => ({
+      content: [{ type: 'text' as const, text: await checkOnChainStatusHandler(input) }],
     }),
   );
 

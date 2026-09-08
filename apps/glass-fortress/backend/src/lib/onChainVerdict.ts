@@ -34,8 +34,18 @@ import { createHash } from 'crypto';
  * BUMP THIS whenever `decideOnChainVerdict` can return a different verdict, or
  * `CONSISTENT_VERDICTS` a different answer, for unchanged inputs. Stored checks
  * at an older version are then reported stale rather than believed.
+ *
+ * MOVED v1 → v2 AT EVIDENCE STEP 12, and the reason is what the check now ASKS.
+ * The v1 check asked whether the registry holds a hash; it never asked WHO
+ * submitted it, so a verdict written under it cannot answer ATTRIBUTED —
+ * `isRegistered(hash) AND getEvidence(index).submitter = our registrar` (A3, §8)
+ * — which is the conjunct VERIFIED(e) rests on. A row at v1 is therefore not
+ * "attributed: false"; it is a row that never asked, and every read that reports
+ * attribution from a stored verdict reads an older version as `null` for exactly
+ * that reason. Captures anchored before this moved are re-checked by a
+ * maintenance pass in the deployment, on the researcher's instruction.
  */
-export const ON_CHAIN_CHECK_VERSION = 'v1-decide-verdict-positive-consistency';
+export const ON_CHAIN_CHECK_VERSION = 'v2-attribution-from-chain-state';
 
 /**
  * Verdicts are named for the operator decision they imply, not for the field

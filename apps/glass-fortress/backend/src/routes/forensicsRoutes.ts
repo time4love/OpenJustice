@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { prisma } from '../lib/prisma';
 import { getStoredClaimTrajectories } from '../services/claimTrajectory';
+import { publicPage } from '../services/evidencePredicates';
 
 const router = Router();
 // ---------------------------------------------------------------------------
@@ -66,6 +67,26 @@ router.get('/tracked/:id/trajectories', async (req: Request, res: Response): Pro
     });
     if (!trackedUrl) {
       res.status(404).json({ error: 'TrackedUrl not found' });
+      return;
+    }
+
+    // PUBLIC_PAGE, ADDED AT EVIDENCE STEP 12 (refactor plan §3b step 12; the
+    // ruling is docs/gf-pre-design-plans-triage-2026-09-04.md §7). This route is
+    // anonymous, and evidence §5 rules what an anonymous caller may read: a
+    // page's corpus is public in full from the moment a published thesis cites
+    // any record of it, and not before. Surveying a page is a research act, and
+    // "a public list of surveyed pages says 'under investigation' before any
+    // thesis says why" — the framing risk the defamation rules rank first.
+    //
+    // The gate decides ACCESS, not content: what a reader gets after it is what
+    // every reader gets, which is why nothing below branches on who asked.
+    if (!(await publicPage(trackedUrlId))) {
+      res.status(404).json({
+        error:
+          `${trackedUrl.url} is a researcher's working corpus: no published thesis cites any ` +
+          'record of it, so its trajectories are not public.',
+        code: 'NOT_PUBLIC',
+      });
       return;
     }
 

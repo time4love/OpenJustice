@@ -66,8 +66,21 @@ function bytes32(hex: string): Buffer {
   return Buffer.from(lower, 'hex');
 }
 
-/** Fourteen ASCII digits, YYYYMMDDHHMMSS — the archive's name for a capture. */
+/**
+ * Fourteen ASCII digits, YYYYMMDDHHMMSS — the archive's name for a capture, and
+ * the ONE place that says what one looks like (flows A1).
+ *
+ * EXPORTED AS A FUNCTION at evidence step 12, not as the regex: a shared
+ * `RegExp` object is shared MUTABLE STATE — `lastIndex` on a global one, and a
+ * caller free to `.test` it into a different meaning. Callers ask the question;
+ * they do not borrow the pattern.
+ */
 const WAYBACK_TIMESTAMP = /^[0-9]{14}$/;
+
+/** Whether a string is a capture's archive name — 14 digits, and nothing else. */
+export function isWaybackTimestamp(value: string): boolean {
+  return WAYBACK_TIMESTAMP.test(value);
+}
 
 function digest(parts: readonly Buffer[]): RecordId {
   return `0x${createHash('sha256').update(Buffer.concat([...parts])).digest('hex')}`;
