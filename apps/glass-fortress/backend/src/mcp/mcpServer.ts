@@ -18,6 +18,8 @@ import {
   scanCapturesHandler,
   getArticleRulesSchema,
   getArticleRulesHandler,
+  getRuleHistoryHandler,
+  getRuleHistorySchema,
   resetArticleCalibrationSchema,
   resetArticleCalibrationHandler,
   listCapturesSchema,
@@ -571,6 +573,28 @@ export function createMcpServer(): McpServer {
   );
 
   server.registerTool(
+    'get_rule_history',
+    {
+      description:
+        'READ ONE RULE\'S HISTORY, so a stop can be judged. Returns the rule — its selector, the capture it ' +
+        'was created against, when it was ended if it was, whether it is trusted, who made it — every decision ' +
+        'about it, and the series of captures it matched: each capture, that capture\'s outcome, how many nodes ' +
+        'it matched, and THE TEXTS IT REMOVED THERE, re-derived under the ruleset in force for that capture\'s ' +
+        'own date. `removed` is null where the corpus holds no body (DUPLICATE, IDENTICAL), which is not the ' +
+        'same as removing nothing. `maxCaptures` bounds it to the latest n. NAME THE ELEMENT IN WORDS when you ' +
+        'read this out — its tag and the first text it removed — never the selector as the name. Quote the ' +
+        'FIRST 5 removed texts VERBATIM and offer the rest; never summarise them in their place. Gate 2\'s ' +
+        'silent rule shows what it removed on the previous capture, from here. This read decides nothing: it ' +
+        'is a series and its texts, and it must not be turned into a verdict or a threshold. Writes nothing. ' +
+        'Refuses NOT_SURVEYED and NO_SUCH_RULE.',
+      inputSchema: getRuleHistorySchema,
+    },
+    async (input) => ({
+      content: [{ type: 'text' as const, text: await getRuleHistoryHandler(input) }],
+    }),
+  );
+
+  server.registerTool(
     'reset_article_calibration',
     {
       description:
@@ -662,18 +686,28 @@ export function createMcpServer(): McpServer {
     'resolve_scan_stop',
     {
       description:
-        'THE ONE ANSWER AT A STOP THAT IS NOT A DRAFT: this capture does not speak. BAD_CAPTURE ' +
-        'records a truncated archive page, a paywall redirect, anything a human has looked at and ' +
-        'judged unusable — with a REQUIRED reason, because a silent hole in the record is the one ' +
-        'outcome this corpus does not permit. The capture becomes SKIPPED, its held bytes are ' +
-        'discarded, no snapshot is ever made of it, and the rules are untouched however many bad ' +
-        'captures occur in a row. Every other answer — CONTINUE, CORRECT, TRUST — is given in the ' +
-        'marking page and promoted by approve_article_rules. Also the answer for an UNFETCHED capture ' +
+        'RECORD THE RESEARCHER\'S ANSWER AT A STOP — every answer but CORRECT, in ONE call. ' +
+        'CONTINUE: the rules are right here, so the capture is accepted, and with it the rules the ' +
+        'researcher chose to TRUST or to END, each named by its selector. Say what each answer means ' +
+        'before they choose. TRUST: Gate 4 stops asking about that element\'s contents on later ' +
+        'captures; Gate 1 still catches its text if it changes sides; a later decision can reverse it. ' +
+        'CONTINUE WITHOUT TRUST: this capture is accepted and the element\'s new contents will stop the ' +
+        'walk again. END: the rule stops applying from this capture\'s date, its text enters the article ' +
+        'from here, and earlier captures are untouched. Read the rule\'s removals from get_rule_history ' +
+        'first — the first 5 verbatim — and never ask for trust on a rule the researcher has not seen. ' +
+        'BAD_CAPTURE: this capture does not speak — a truncated archive page, a paywall redirect, ' +
+        'anything a human has looked at and judged unusable — with a REQUIRED reason, because a silent ' +
+        'hole in the record is the one outcome this corpus does not permit. The capture becomes SKIPPED, ' +
+        'its held bytes are discarded, no snapshot is ever made of it, and the rules are untouched ' +
+        'however many bad captures occur in a row; it carries no rule decision. CORRECT — marking or ' +
+        'unmarking an element — is the one answer given in the marking page, and on a stop that needs ' +
+        'both, MARKING COMES FIRST and this call follows it. Also the answer for an UNFETCHED capture ' +
         'the archive will not serve (a 429 that holds for one capture while its neighbours serve): the ' +
         'walk keeps retrying it forever and no count of attempts ever skips it — only your explicit word ' +
         'does, with the reason saying so. Names the page by url and the capture by its 14-digit wayback ' +
         'timestamp. Refuses NOT_PENDING (any outcome but PENDING_JUDGEMENT or UNFETCHED), ' +
-        'REASON_REQUIRED, INVALID_RESOLUTION and STALE_SEQUENCE.',
+        'REASON_REQUIRED, NO_SUCH_RULE (a selector naming no rule in force at this capture), ' +
+        'INVALID_RESOLUTION and STALE_SEQUENCE.',
       inputSchema: resolveScanStopSchema,
     },
     async (input) => ({
@@ -705,7 +739,14 @@ export function createMcpServer(): McpServer {
         'call may walk; the walk resumes from where it got to. Refuses NOT_SURVEYED, INVALID_MAX_CAPTURES, ' +
         'ARCHIVE_UNAVAILABLE at the row the archive did not serve, REGISTRY_FROZEN when the registry is ' +
         'neither empty nor scheme-stamped at index 0 (nothing acquired), and CHAIN_UNAVAILABLE when the ' +
-        'chain cannot be reached — everything before the halted row is kept.',
+        'chain cannot be reached — everything before the halted row is kept. ' +
+        'AT A STOP, DRIVE IT RULE BY RULE, IN THE CHAT (flows Flow 2): for each rule the material names, read ' +
+        'get_rule_history and say the element in words — its tag and the first text it removed, never the ' +
+        'selector as its name — then its history, then the FIRST 5 removed texts VERBATIM with the rest on ' +
+        'request, and never a summary in their place. Then give the three answers with what each means and ' +
+        'let the researcher choose. Record the whole stop with ONE resolve_scan_stop call. When the stop also ' +
+        'needs marking, MARKING COMES FIRST and the chat\'s decisions follow it, against the ruleset the ' +
+        'marking left. Decide nothing yourself: every answer here is the researcher\'s.',
       inputSchema: scanCapturesSchema,
     },
     async (input) => ({

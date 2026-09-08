@@ -22,10 +22,19 @@ import he from '../../frontend/messages/he.json';
 // the keys are scanned out of `MarkingClient.tsx` itself, and a key that stops
 // being read simply stops being checked.
 //
-// OBSERVED RED BEFORE GREEN, 2026-09-07. With `gate4TrustTick` deleted from
-// `en.json`, the second case failed naming exactly that key and that locale;
-// restored, both passed. That is the plan's decoy rule: a scan nobody has seen
-// fail is a scan that may be looking at nothing.
+// OBSERVED RED BEFORE GREEN, TWICE. 2026-09-07: with `gate4TrustTick` deleted
+// from `en.json`, the second case failed naming exactly that key and that
+// locale. 2026-09-08: with `stopHeading` — retired when the stop panel went —
+// left in the last case's list, that case failed naming it. A scan nobody has
+// seen fail is a scan that may be looking at nothing.
+//
+// WHAT IT CANNOT SEE, stated so nobody reads it as more than it is: the scan
+// matches `t('literal')` only. `t(moment)` — the page's one dynamic lookup,
+// whose value is `momentDefining` or `momentCorrecting` — is invisible to it,
+// so those two keys are checked by nothing here. Found 2026-09-07 while
+// retiring keys: they came back as "unread" from this same regex and were kept
+// only because the page was read. A scan over computed keys would need the
+// page's control flow, which is a type-checker's job and not a regex's.
 //
 // THE VACUITY GUARD IS NOT OPTIONAL. An empty scan reporting success is this
 // repository's recurring defect, so the last case asserts the scan found a
@@ -80,8 +89,8 @@ describe('the marking page’s labels exist in both catalogues', () => {
   }
 
   it('the scan examined the page and found the judging moment’s keys', () => {
-    expect(keys.length).toBeGreaterThan(40);
-    for (const key of ['gate4TrustTick', 'trustNote', 'approveMeaning', 'gateDigestExpected', 'draftSwitchStartHere']) {
+    expect(keys.length).toBeGreaterThan(55);
+    for (const key of ['approveMeaning', 'draftSwitchStartHere', 'save', 'markedHeading', 'otherDraft']) {
       expect(keys).toContain(key);
     }
   });

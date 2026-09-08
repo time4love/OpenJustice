@@ -86,7 +86,6 @@ function pageWith(rules = RULES, decisions = LOG, draftCapture: string | null = 
     url: URL,
     draftCapture,
     draftSelectors: draftCapture === null ? [] : ['.ticker'],
-    draftTrusted: [],
     draftReturnedAt: draftCapture === null ? null : new Date('2026-09-03T10:00:00Z'),
   });
   rulesFind.mockResolvedValue(rules);
@@ -280,7 +279,7 @@ describe('reset_article_calibration — pending stops, the draft, and the transa
     await reset();
     expect(trackedUpdate).toHaveBeenCalledWith({
       where: { id: TRACKED },
-      data: { draftCapture: null, draftSelectors: [], draftTrusted: [], draftReturnedAt: null },
+      data: { draftCapture: null, draftSelectors: [], draftReturnedAt: null },
     });
   });
 

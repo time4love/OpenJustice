@@ -11,5 +11,6 @@ export { approveArticleRulesSchema, approveArticleRulesHandler } from './approve
 export { resolveScanStopSchema, resolveScanStopHandler } from './resolveScanStop';
 export { resetArticleCalibrationSchema, resetArticleCalibrationHandler } from './resetArticleCalibration';
 export { getArticleRulesSchema, getArticleRulesHandler } from './getArticleRules';
+export { getRuleHistorySchema, getRuleHistoryHandler } from './getRuleHistory';
 export { listCapturesSchema, listCapturesHandler } from './listCaptures';
 export { scanCapturesSchema, scanCapturesHandler } from './scanCaptures';

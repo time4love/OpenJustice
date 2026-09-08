@@ -5,10 +5,11 @@ import type { TrackedUrl } from '@prisma/client';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma';
 import { requireResearcher } from '../middleware/researcherIdentity';
-import { captureHtml, DECODABLE_CAPTURE_SELECT, type DecodableCapture } from '../lib/captureDocument';
+import { captureHtml, type DecodableCapture } from '../lib/captureDocument';
 import { rulesInForce, trusted, type Decision, type Rule } from './derivations';
 import { loadWorkListRow, snapshotDateOf, type LoadedRow } from './rows';
 import { pendingStopOf } from './stop';
+import { bytesOf } from './captureBytes';
 import { clearDraft } from './draft';
 import { refusal, type Refusal } from './refusals';
 
@@ -63,10 +64,11 @@ const CAPTURE = z.string().regex(/^\d{14}$/);
 
 const previewBody = z.object({ selectors: z.array(z.string()) });
 
+// A6, amended 2026-09-07: `trusted` left the body with the column. The page
+// marks; trust is given at a stop, in the chat.
 const draftBody = z.object({
   capture: CAPTURE,
   selectors: z.array(z.string()),
-  trusted: z.array(z.string()),
   returned: z.boolean(),
 });
 
@@ -74,7 +76,6 @@ const draftBody = z.object({
 interface Draft {
   capture: string;
   selectors: string[];
-  trusted: string[];
   returnedAt: Date | null;
 }
 
@@ -83,7 +84,6 @@ function draftOf(page: TrackedUrl): Draft | null {
   return {
     capture: page.draftCapture,
     selectors: page.draftSelectors,
-    trusted: page.draftTrusted,
     returnedAt: page.draftReturnedAt,
   };
 }
@@ -101,44 +101,6 @@ const noBytes = (row: LoadedRow): Refusal =>
     `Capture ${row.waybackTimestamp} is ${row.outcome}; only a PENDING_JUDGEMENT or an ACQUIRED capture holds bytes to show.`,
   );
 
-/**
- * The bytes a capture holds, as the decoder reads them: the held body of a
- * PENDING_JUDGEMENT row, or the UrlSnapshot's document of an ACQUIRED row — and
- * of a PENDING_JUDGEMENT row that names a snapshot and holds no body (ruled
- * 2026-09-06, Q7): a stop on a STORED capture, the re-walk's Gate 1' on a stale
- * ACQUIRED row, keeps its snapshotId and holds nothing twice. Null for every
- * other outcome, which the caller answers 409.
- *
- * A ROW THAT CLAIMS BYTES IT DOES NOT HOLD IS A WALK DEFECT, AND A DEFECT
- * THROWS (A2: heldBody is non-null only while PENDING_JUDGEMENT; snapshotId is
- * set on ACQUIRED; the recurring ruling of steps 3–4 — never a refusal). A 409
- * here would tell the researcher the capture is unmarkable when the truth is
- * that the walk wrote a row it cannot serve.
- */
-async function bytesOf(row: LoadedRow): Promise<DecodableCapture | null> {
-  const t = row.waybackTimestamp;
-  if (row.outcome === 'PENDING_JUDGEMENT' && row.heldBody !== null) {
-    return {
-      document: Buffer.from(row.heldBody),
-      documentContentType: row.contentType,
-      documentContentEncoding: row.contentEncoding,
-    };
-  }
-  if (row.outcome === 'PENDING_JUDGEMENT' || row.outcome === 'ACQUIRED') {
-    if (row.snapshotId === null) {
-      throw new Error(
-        row.outcome === 'ACQUIRED'
-          ? `Walk defect: capture ${t} is ACQUIRED with no snapshotId.`
-          : `Walk defect: capture ${t} is PENDING_JUDGEMENT with neither a heldBody nor a snapshotId.`,
-      );
-    }
-    const snapshot = await prisma.urlSnapshot.findUnique({ where: { id: row.snapshotId }, select: DECODABLE_CAPTURE_SELECT });
-    if (snapshot === null) throw new Error(`Walk defect: capture ${t} names snapshot ${row.snapshotId}, which does not exist.`);
-    return snapshot;
-  }
-  return null;
-}
-
 /** The row and its bytes, or the refusal already sent. */
 async function markableCapture(
   req: Request<CaptureParams>,
@@ -149,7 +111,7 @@ async function markableCapture(
     refuse(res, 404, noRow(req.params.capture));
     return null;
   }
-  const bytes = await bytesOf(row);
+  const bytes = await bytesOf(prisma, row);
   if (bytes === null) {
     refuse(res, 409, noBytes(row));
     return null;
@@ -276,7 +238,6 @@ walkArticleRulesRouter.put(
       data: {
         draftCapture: parsed.data.capture,
         draftSelectors: parsed.data.selectors,
-        draftTrusted: parsed.data.trusted,
         draftReturnedAt,
       },
     });
