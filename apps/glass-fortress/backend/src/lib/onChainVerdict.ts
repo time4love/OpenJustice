@@ -41,27 +41,25 @@ export const ON_CHAIN_CHECK_VERSION = 'v1-decide-verdict-positive-consistency';
  * Verdicts are named for the operator decision they imply, not for the field
  * values that produced them.
  */
+// FIVE VERDICTS LEFT THIS MAP AT EVIDENCE STEP 11b, AND THE REACHABILITY GUARD
+// IS WHY THEY COULD NOT SIMPLY BE LEFT.
+//
+// CONSISTENT, UNANCHORED_CONFIRMED, MISSING_TX_HASH, PENDING_UNREGISTERED and
+// PENDING_BUT_ANCHORED were all about an EVIDENCE ROW'S OWN REGISTRATION —
+// whether a CONFIRMED row's anchor existed, whether its transaction was
+// recorded, what a pending row's registration meant. Nothing above the corpus is
+// anchored (evidence flows §5), the two statuses are PROMOTED and WITHDRAWN, and
+// the transaction column is gone: not one of the five can be produced.
+//
+// `every verdict the rule can name is reachable and explained` is the case that
+// forced the choice, and it names the failure mode exactly — "a verdict that
+// exists, is never produced, and is therefore never questioned". Leaving them
+// would have meant weakening that guard to accommodate dead vocabulary, which is
+// the assertion-weakened-to-pass this repository does not do.
+//
+// NOTHING STORED IS ORPHANED BY THE REMOVAL: the database was rebuilt at refactor
+// step 9 and holds no integrity check row carrying one of these strings.
 export const ON_CHAIN_VERDICTS = {
-  /** DB CONFIRMED, chain registered, tx hash recorded. Nothing to do. */
-  CONSISTENT: 'CONSISTENT',
-  /**
-   * DB says CONFIRMED but the contract has never seen this hash. The record
-   * asserts an anchor that does not exist. This is the fake-CONFIRMED class.
-   */
-  UNANCHORED_CONFIRMED: 'UNANCHORED_CONFIRMED',
-  /**
-   * Chain agrees the hash is registered, but the row records no tx hash, so
-   * the anchor cannot be cited. Recoverable — pass recoverTxHash: true.
-   */
-  MISSING_TX_HASH: 'MISSING_TX_HASH',
-  /** PENDING_REVIEW and unregistered. The normal pre-promotion state. */
-  PENDING_UNREGISTERED: 'PENDING_UNREGISTERED',
-  /**
-   * PENDING_REVIEW, but the contract already holds this hash. Either a prior
-   * promotion half-completed, or the hash collides with an orphaned anchor.
-   * Promoting will revert as a duplicate — investigate before promoting.
-   */
-  PENDING_BUT_ANCHORED: 'PENDING_BUT_ANCHORED',
   /** No Evidence row and no registration. Nothing anywhere — nothing to reconcile. */
   NOT_IN_VAULT: 'NOT_IN_VAULT',
   /**
@@ -115,8 +113,6 @@ export type OnChainVerdict = (typeof ON_CHAIN_VERDICTS)[keyof typeof ON_CHAIN_VE
  * a verdict added later is inconsistent until someone says otherwise.
  */
 export const CONSISTENT_VERDICTS: ReadonlySet<OnChainVerdict> = new Set([
-  ON_CHAIN_VERDICTS.CONSISTENT,
-  ON_CHAIN_VERDICTS.PENDING_UNREGISTERED,
   ON_CHAIN_VERDICTS.NOT_IN_VAULT,
   // The database and the chain agree completely: the capture exists, its text is
   // registered. Reporting `consistent: false` here is what sent a researcher
@@ -131,16 +127,6 @@ export const ON_CHAIN_EXPLANATIONS: Record<OnChainVerdict, string> = {
   // `confirm-anchors` calls TX_UNREADABLE — during the session that had just
   // published a thesis citing it. The verdict was right; the sentence claimed
   // a second thing the verdict never asked.
-  CONSISTENT:
-    'The database and the contract agree, and the anchoring transaction is recorded. That is a check on CONSISTENCY, not on ATTRIBUTION: it does not establish that the recorded transaction is the one that registered this hash. Read `attribution`, which is decided from CHAIN STATE — the registry says who registered a hash and when, forever, where a receipt is readable only inside the RPC\'s retention horizon.',
-  UNANCHORED_CONFIRMED:
-    'The record claims CONFIRMED but the contract has no registration for this hash. The evidentiary claim is unsupported — treat the record as unverified until it is registered.',
-  MISSING_TX_HASH:
-    'The hash is registered on-chain but the row does not record which transaction did it, so the anchor cannot be cited. Re-run with recoverTxHash: true.',
-  PENDING_UNREGISTERED:
-    'Awaiting review, not yet anchored. This is the expected state before promotion.',
-  PENDING_BUT_ANCHORED:
-    'The contract already holds this hash while the row is still PENDING_REVIEW. Promotion would revert as a duplicate. Investigate the existing anchor before promoting.',
   NOT_IN_VAULT:
     'No evidence record exists for this hash, and the registry does not hold it either. There is nothing to reconcile.',
   ORPHANED_ANCHOR:
@@ -161,7 +147,6 @@ export const ON_CHAIN_EXPLANATIONS: Record<OnChainVerdict, string> = {
 export interface OnChainClaim {
   inVault: boolean;
   status: string | null;
-  txHash: string | null;
   snapshots: number;
 }
 
@@ -179,14 +164,19 @@ export function decideOnChainVerdict(claim: OnChainClaim, registered: boolean): 
     return registered ? ON_CHAIN_VERDICTS.ORPHANED_ANCHOR : ON_CHAIN_VERDICTS.NOT_IN_VAULT;
   }
 
-  if (claim.status === 'CONFIRMED') {
-    if (!registered) return ON_CHAIN_VERDICTS.UNANCHORED_CONFIRMED;
-    return claim.txHash ? ON_CHAIN_VERDICTS.CONSISTENT : ON_CHAIN_VERDICTS.MISSING_TX_HASH;
-  }
-
-  return registered
-    ? ON_CHAIN_VERDICTS.PENDING_BUT_ANCHORED
-    : ON_CHAIN_VERDICTS.PENDING_UNREGISTERED;
+  // THE CONFIRMED BRANCH WENT AT EVIDENCE STEP 11b, WITH THE COLUMNS IT READ.
+  //
+  // It asked whether a CONFIRMED evidence row's registration was consistent with
+  // the chain, and returned CONSISTENT or MISSING_TX_HASH from `txHash`. There is
+  // no CONFIRMED status and no transaction column: nothing above the corpus is
+  // anchored (evidence §5), so an evidence row has no registration to be
+  // consistent with. An evidence row that a registry nonetheless holds a hash for
+  // is an ORPHANED_ANCHOR — a real custody question, and the honest one.
+  //
+  // The verdicts themselves stay in the enum with their explanations: legacy
+  // check rows carry them, and `check_on_chain_status` is rebuilt at step 12
+  // re-scoped to CAPTURES, which is where the remaining ones belong.
+  return registered ? ON_CHAIN_VERDICTS.ORPHANED_ANCHOR : ON_CHAIN_VERDICTS.NOT_IN_VAULT;
 }
 
 /**
@@ -215,7 +205,6 @@ export function onChainSourceStateHash(input: { fileHash: string; claim: OnChain
     sha(input.fileHash),
     input.claim.inVault ? '1' : '0',
     sha(input.claim.status ?? ''),
-    sha(input.claim.txHash ?? ''),
     String(input.claim.snapshots),
   ];
   return sha(parts.join('|'));

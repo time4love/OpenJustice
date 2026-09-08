@@ -63,20 +63,25 @@ const DETECTION_FUNCTIONS = [
  * says so, and updating this without the bump is the one way past the guard.
  */
 const PINNED = {
-  version: 'v2-collapse-ws-containment-substring-presence',
-  // Regenerated 2026-08-30 WITHOUT a version bump, deliberately and for one
-  // reason: `detect` became parameterised by `DETECTION_LAYER`, and that constant
-  // is still `EXTRACTION`, so `presenceText` returns `fullText` exactly as the
-  // code it replaced did. The source moved; the behaviour provably did not.
+  version: 'v3-candidates-from-content-version-chunks',
+  // REGENERATED 2026-09-08 WITH A VERSION BUMP — v2 → v3 — and the bump is the
+  // point rather than a formality. At evidence step 11b the candidate source
+  // MOVED: it was `deletedText` / `addedText`, the classifier's Hebrew summaries
+  // of what changed, and those columns left the diff row with every other
+  // version's field. Candidates now come from CURRENT(diff)'s COMPUTED chunks on
+  // `DiffContentVersion` — the differ's own segments, the page's own text.
   //
-  // Bumping the version here would have invalidated every stored trajectory and
-  // forced the full recompute that `forensics:compare-detection-layers` exists to
-  // measure BEFORE it is paid for.
+  // THAT CHANGES WHICH CLAIMS ARE FOUND, so every stored trajectory computed
+  // under v2 is about a different question and must not be read as current. This
+  // pin is what made that unavoidable: the 2026-08-30 regeneration was allowed
+  // without a bump because the source moved and the BEHAVIOUR provably did not
+  // (`presenceText` returned `fullText` exactly as before). Here the behaviour is
+  // what moved, so the version moves with it and the recompute is paid.
   //
-  // The property that makes this defensible is now itself pinned, below — so the
-  // Level 6 flip cannot reach `DOCUMENT` without failing a test that names the
-  // version bump as its price.
-  sourceHash: '99d020ccf1f2f8b64109ff31fc39343b05522c16e384b1dc4936415d7c16950d',
+  // A candidate drawn from a chunk is verbatim by construction, where a
+  // paraphrase never was — which is why the pass recorded `candidatesUnmatched`
+  // at all.
+  sourceHash: '52d47212c4ba11bf1cd6d3374a8bc3a2b41238806da7baeaeb6386a92bf50da8',
 };
 
 describe('the detection LAYER cannot move silently either', () => {

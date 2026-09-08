@@ -101,7 +101,7 @@ export interface ObservedRegistry {
 export async function readOnChainClaim(fileHash: string): Promise<OnChainClaim> {
   const record = await prisma.evidence.findUnique({
     where: { fileHash },
-    select: { status: true, onChainTxHash: true },
+    select: { status: true },
   });
 
   // Only when there is no Evidence row. A hash is one or the other, and the
@@ -119,7 +119,6 @@ export async function readOnChainClaim(fileHash: string): Promise<OnChainClaim> 
   return {
     inVault: Boolean(record),
     status: record?.status ?? null,
-    txHash: record?.onChainTxHash ?? null,
     snapshots,
   };
 }

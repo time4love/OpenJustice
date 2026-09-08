@@ -257,22 +257,36 @@ async function resolveScope(
   const trackedIds = mentions.filter((m) => m.type === 'TRACKED_URL').map((m) => m.refId);
   const evidenceHashes = mentions.filter((m) => m.type === 'EVIDENCE').map((m) => m.refId);
 
-  const evidence = evidenceHashes.length
+  // REBASED AT EVIDENCE STEP 11b: THROUGH THE RECORD KEY, NOT THROUGH A URL
+  // STRING. This read `Evidence.sourceUrl` — a Wayback replay URL stored on the
+  // row — and parsed the original page out of it with `originUrlFromWayback`,
+  // then matched that text against `TrackedUrl.url`. The column left the row
+  // with the rest of the storage fields, and the parse went with it.
+  //
+  // AND THE JOIN IS NOW EXACT RATHER THAN TEXTUAL. A record's key names the
+  // capture or the pair; a capture names its `TrackedUrl` by foreign key. There
+  // is no string to normalise, no replay prefix to strip, and no way for a page
+  // to be missed because its stored URL and its surveyed URL differ by a
+  // trailing slash.
+  const evidencePages = evidenceHashes.length
     ? await prisma.evidence.findMany({
         where: { fileHash: { in: evidenceHashes } },
-        select: { sourceUrl: true },
+        select: {
+          snapshot: { select: { trackedUrlId: true } },
+          urlVersionDiff: { select: { trackedUrlId: true } },
+        },
       })
     : [];
 
-  const originUrls = evidence
-    .map((e) => (e.sourceUrl ? originUrlFromWayback(e.sourceUrl) : null))
-    .filter((u): u is string => u !== null);
+  const evidencePageIds = evidencePages
+    .map((e) => e.snapshot?.trackedUrlId ?? e.urlVersionDiff?.trackedUrlId ?? null)
+    .filter((id): id is string => id !== null);
 
   const pages = await prisma.trackedUrl.findMany({
     where: {
       OR: [
         ...(trackedIds.length ? [{ id: { in: trackedIds } }] : []),
-        ...(originUrls.length ? [{ url: { in: originUrls } }] : []),
+        ...(evidencePageIds.length ? [{ id: { in: evidencePageIds } }] : []),
       ],
     },
     select: { id: true, url: true },

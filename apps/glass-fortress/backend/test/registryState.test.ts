@@ -175,7 +175,6 @@ describe('classifyEntry: which column produced the hash', () => {
       { id: 's1', waybackTimestamp: '20220724130104', url: 'https://x/', documentHash: hash(1).slice(2), contentHash: hash(2).slice(2) },
       { id: 's2', waybackTimestamp: '20220805053301', url: 'https://x/', documentHash: hash(3).slice(2), contentHash: hash(2).slice(2) },
     ],
-    evidence: [{ id: 'e1', fileHash: hash(4), previousFileHash: hash(5), evidenceType: 'FORENSIC_DIFF' }],
   };
 
   it('DOCUMENT_HASH — the payload anchor, the target scheme', () => {
@@ -192,12 +191,11 @@ describe('classifyEntry: which column produced the hash', () => {
     expect(c.snapshots.map((s) => s.id)).toEqual(['s1', 's2']);
   });
 
-  it('EVIDENCE_FILE_HASH and EVIDENCE_PREVIOUS_FILE_HASH name the evidence row', () => {
-    expect(classifyEntry(entry(0, { fileHash: hash(4) }), corpus).kind).toBe('EVIDENCE_FILE_HASH');
-    const prev = classifyEntry(entry(0, { fileHash: hash(5) }), corpus);
-    expect(prev.kind).toBe('EVIDENCE_PREVIOUS_FILE_HASH');
-    expect(prev.evidence).toEqual([{ id: 'e1' }]);
-  });
+  // THE TWO EVIDENCE KINDS WENT WITH THE ARM AT EVIDENCE STEP 11b. They were
+  // classified from `Evidence.fileHash` and `previousFileHash`; identity never
+  // moves under the target and no evidence row is registered, so no live entry
+  // is classified that way. A frozen registry's are ORPHANED and explained by the
+  // committed ledger file — `registryLedgerCommitted.test.ts` holds it complete.
 
   it('UNEXPLAINED when no column holds the hash — the state the ledger refuses on', () => {
     expect(classifyEntry(entry(0, { fileHash: hash(77) }), corpus)).toEqual({
@@ -208,12 +206,19 @@ describe('classifyEntry: which column produced the hash', () => {
   });
 
   it('AMBIGUOUS when two different columns hold the same hash', () => {
-    // A documentHash equal to some evidence fileHash would make "which formula"
-    // unanswerable from the join alone. Not expected; reported rather than
-    // resolved by picking the first match.
+    // One capture's `documentHash` equal to another's `contentHash` makes "which
+    // formula produced this entry" unanswerable from the join alone. Not
+    // expected; reported rather than resolved by picking the first match.
+    //
+    // RE-POINTED AT THE TWO CAPTURE COLUMNS AT EVIDENCE STEP 11b: the collision
+    // used to be between a `documentHash` and an evidence `fileHash`, and evidence
+    // has no hash columns left. The property is unchanged — two columns, one hash,
+    // a refusal — and it now has the only two columns that can still collide.
     const collided: CorpusHashes = {
-      snapshots: corpus.snapshots,
-      evidence: [{ id: 'e2', fileHash: hash(1), previousFileHash: null, evidenceType: 'DOCUMENT' }],
+      snapshots: [
+        corpus.snapshots[0]!,
+        { ...corpus.snapshots[0]!, id: 's9', contentHash: corpus.snapshots[0]!.documentHash },
+      ],
     };
     expect(classifyEntry(entry(0, { fileHash: hash(1) }), collided).kind).toBe('AMBIGUOUS');
   });

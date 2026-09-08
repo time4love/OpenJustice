@@ -35,43 +35,45 @@ const CHUNKS = JSON.stringify([
   'The Ministry stated that side effects are mild and temporary in all reported cases.',
 ]);
 
-/** A stored verdict `survivalStateOf` reads as CURRENT — the provenance must match. */
-function currentVerdict(
+/**
+ * A content version's chunks, each carrying its own survival — the COMPUTED
+ * register of `DiffContentVersion` (evidence A2).
+ *
+ * REBASED AT EVIDENCE STEP 11b. This built a stored ROW verdict and the four
+ * columns that said whether it was still about the row's inputs. Both went: a
+ * verdict per row cannot say WHICH chunk the documents refute, and the staleness
+ * question existed only because a re-derivation overwrote the row in place. A
+ * derivation is now an APPENDED version, so the current one IS the answer and
+ * there is no stale one to detect.
+ */
+function chunksWith(
   value: 'SURVIVES' | 'CONTRADICTED' | 'UNCHECKABLE',
-): Record<string, unknown> {
+): Record<string, unknown>[] {
+  return [{ side: 'REMOVED', text: 'הוסר משפט', survival: value }];
+}
+
+/** A DIFF record whose current version holds one chunk in the given state. */
+function diffDerived(fileHash: string, chunks: Record<string, unknown>[]): Record<string, unknown> {
   return {
-    survivalVerdict: value,
-    survivalCheckVersion: SURVIVAL_CHECK_VERSION,
-    survivalTextVersion: TEXT_VERSION,
-    survivalCheckedAt: new Date('2026-08-28'),
-    survivalChunksChecked: value === 'UNCHECKABLE' ? 0 : 1,
-    survivalContradicted: value === 'CONTRADICTED' ? [{ side: 'REMOVED', excerpt: 'x' }] : [],
-    survivalSourceStateHash: survivalSourceStateHash({
-      beforeTextHash: BEFORE_HASH,
-      afterTextHash: AFTER_HASH,
-      rawDeletedText: CHUNKS,
-      rawAddedText: '[]',
-    }),
+    fileHash,
+    kind: 'DIFF',
+    urlVersionDiffId: `diff-for-${fileHash}`,
+    urlVersionDiff: { contentVersions: [{ chunks }] },
   };
 }
 
-function diffDerived(fileHash: string, survival: Record<string, unknown>): Record<string, unknown> {
+/** A DIFF record the walk has not derived yet — AWAITING_DERIVATION, not unsound. */
+function awaitingDerivation(fileHash: string): Record<string, unknown> {
   return {
     fileHash,
-    evidenceType: 'FORENSIC_DIFF',
+    kind: 'DIFF',
     urlVersionDiffId: `diff-for-${fileHash}`,
-    urlVersionDiff: survivalFixture({
-      rawDeletedText: CHUNKS,
-      rawAddedText: '[]',
-      beforeSnapshot: { textHash: BEFORE_HASH, textExtractionVersion: TEXT_VERSION },
-      afterSnapshot: { textHash: AFTER_HASH, textExtractionVersion: TEXT_VERSION },
-      ...survival,
-    }),
+    urlVersionDiff: { contentVersions: [] },
   };
 }
 
 function documentEvidence(fileHash: string): Record<string, unknown> {
-  return { fileHash, evidenceType: 'DOCUMENT', urlVersionDiffId: null, urlVersionDiff: null };
+  return { fileHash, kind: 'DOCUMENT', urlVersionDiffId: null, urlVersionDiff: null };
 }
 
 beforeEach(() => {
@@ -83,7 +85,7 @@ describe('the four states that fail, named apart', () => {
     // Asserted first and deliberately: a check with no reachable passing state
     // is worse than no check, and this is the state 14 of staging's 109 diffs
     // currently hold.
-    db.evidence = [diffDerived('0xsound', currentVerdict('SURVIVES'))];
+    db.evidence = [diffDerived('0xsound', chunksWith('SURVIVES'))];
 
     const report = await assessEvidenceInputSoundness(['0xsound']);
 
@@ -94,22 +96,27 @@ describe('the four states that fail, named apart', () => {
   });
 
   it('CONTRADICTED fails, in the same words the promotion gate refuses with', async () => {
-    db.evidence = [diffDerived('0xrefuted', currentVerdict('CONTRADICTED'))];
+    db.evidence = [diffDerived('0xrefuted', chunksWith('CONTRADICTED'))];
 
     const report = await assessEvidenceInputSoundness(['0xrefuted']);
 
     expect(report.passed).toBe(false);
-    expect(report.unsound[0]?.unsoundReason).toContain('CONTRADICTED');
-    // The sentence is borrowed from promotionBlockFor rather than rewritten, so
-    // the two gates cannot come to describe one verdict differently.
-    expect(report.unsound[0]?.unsoundReason).toContain('cannot support evidence');
+    expect(report.unsound[0]?.unsoundReason).toContain('refute 1 of 1');
+    // WHAT THE SENTENCE MUST SAY, rather than which function wrote it. It was
+    // borrowed verbatim from `promotionBlockFor` so the promotion gate and this
+    // one could not describe a verdict differently; that display module went at
+    // evidence step 11b with the columns it read. The property that mattered is
+    // kept as a property: the refusal names the DEFECT — a record whose own
+    // report the documents refute is evidence of a pipeline fault, not of a
+    // change — and never lets a reader take it for a weaker record.
+    expect(report.unsound[0]?.unsoundReason).toContain('pipeline defect, not of a change');
   });
 
   it('UNCHECKABLE fails as ITS OWN outcome, never folded into refutation', async () => {
     // The distinction the researcher asked to keep: a diff nothing could be
     // checked about is not a diff the documents refute, and a refusal that said
     // so would send someone hunting for a contradiction that does not exist.
-    db.evidence = [diffDerived('0xunverifiable', currentVerdict('UNCHECKABLE'))];
+    db.evidence = [diffDerived('0xunverifiable', chunksWith('UNCHECKABLE'))];
 
     const report = await assessEvidenceInputSoundness(['0xunverifiable']);
 
@@ -117,36 +124,38 @@ describe('the four states that fail, named apart', () => {
     const reason = report.unsound[0]?.unsoundReason ?? '';
     expect(reason).toContain('No check of this record');
     expect(reason).not.toContain('CONTRADICTED');
-    // The row's own cause is carried through, not a fixed sentence: this diff
-    // reported nothing to compare, which is 88 of staging's 109.
-    expect(reason).toContain('reports no changes');
+    // The cause is carried through with a COUNT rather than a fixed sentence,
+    // which is what a per-chunk register makes possible: the row-level verdict
+    // could only say "something was uncheckable", and this says how much of the
+    // record it was.
+    expect(reason).toContain('1 of 1 chunks could not be checked');
   });
 
-  it('UNCHECKED fails — never checked is not supported', async () => {
-    // survivalFixture defaults to no verdict at all, which is what an untouched
-    // row genuinely is.
-    db.evidence = [diffDerived('0xunchecked', {})];
+  it('AWAITING_DERIVATION fails — a diff with no version has never been checked', async () => {
+    // The state the two row-level ones collapse into. `UNCHECKED` and `STALE`
+    // were both "the platform has no current answer": the first because no
+    // verdict had ever been written, the second because the one written was about
+    // inputs the row no longer held. Under evidence A2 a derivation is APPENDED,
+    // so the current version IS the answer and staleness is unrepresentable —
+    // what remains is a diff the walk has not derived at all.
+    //
+    // AND IT IS STILL A FAILURE, not a shrug: a thesis may not assert in public a
+    // change the platform has never checked.
+    db.evidence = [awaitingDerivation('0xawaiting')];
 
-    const report = await assessEvidenceInputSoundness(['0xunchecked']);
+    const report = await assessEvidenceInputSoundness(['0xawaiting']);
 
     expect(report.passed).toBe(false);
-    expect(report.unsound[0]?.survival?.state).toBe('UNCHECKED');
-    expect(report.unsound[0]?.unsoundReason).toContain('never been checked');
+    expect(report.unsound[0]?.survival?.state).toBe('AWAITING_DERIVATION');
+    expect(report.unsound[0]?.unsoundReason).toContain('nothing to judge yet');
   });
 
-  it('STALE fails — a verdict about inputs the row no longer holds', async () => {
-    // The verdict says SURVIVES and the provenance no longer matches the chunks.
-    // A gate reading the stored verdict alone would publish on this.
-    db.evidence = [
-      diffDerived('0xstale', { ...currentVerdict('SURVIVES'), rawDeletedText: JSON.stringify(['rewritten since']) }),
-    ];
-
-    const report = await assessEvidenceInputSoundness(['0xstale']);
-
-    expect(report.passed).toBe(false);
-    expect(report.unsound[0]?.survival?.state).toBe('STALE');
-    expect(report.unsound[0]?.unsoundReason).toContain('no current answer');
-  });
+  // THE `STALE` CASE RETIRES WITH THE STATE AT EVIDENCE STEP 11b. It held that a
+  // verdict saying SURVIVES over provenance that no longer matched the chunks
+  // must not pass — the shape a gate reading the stored verdict alone would
+  // publish on. That shape is now unconstructible: a re-derivation appends a
+  // version rather than overwriting a row, so a verdict and the chunks it judged
+  // cannot come apart. The defect is designed out rather than tested for.
 });
 
 describe('scope, and saying so', () => {
@@ -165,7 +174,7 @@ describe('scope, and saying so', () => {
   });
 
   it('judges the diff-derived records and counts the rest as uncovered', async () => {
-    db.evidence = [documentEvidence('0xdoc'), diffDerived('0xsound', currentVerdict('SURVIVES'))];
+    db.evidence = [documentEvidence('0xdoc'), diffDerived('0xsound', chunksWith('SURVIVES'))];
 
     const report = await assessEvidenceInputSoundness(['0xdoc', '0xsound']);
 

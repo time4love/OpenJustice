@@ -213,8 +213,8 @@ with its code at step 25, never weakened.
 
 | test file | lines | tag | what it holds |
 |---|---|---|---|
-| `thesisClaimAudit` | 464 | KEEP | the archive audit of quotes, dates, intervals; unchanged (T5) |
-| `evidenceInputSoundness` | — | KEEP | check 17; evidence A6's |
+| `thesisClaimAudit` | 464 | KEEP → REWRITE at evidence 11b | the archive audit of quotes, dates, intervals; unchanged (T5) — its SCOPE now reaches a page through the record key rather than a stored replay URL — amended 2026-09-08 (docs/gf-evidence-step-11b-2026-09-08.md) |
+| `evidenceInputSoundness` | — | KEEP → REWRITE at evidence 11b | check 17; evidence A6's — rebased onto CURRENT(diff)'s per-chunk survival when the row's verdict columns left, exactly as A6 words it — amended 2026-09-08 (docs/gf-evidence-step-11b-2026-09-08.md) |
 | `mcpToolClassification` | 157 | KEEP | the assertions stay; the expected set moves at step 25 |
 | `publicationLanguage` | 207 | KEEP one group, RETIRE one | the public-interest statement check stays; `HEDGE_MARKERS` and per-sentence hedging go with the figure |
 | `trajectoryCitation` | 358 | KEEP, one group REWRITE | currency states stay; the mention kind is `TRAJECTORY` and the token `#tr_` (step 20) |

@@ -66,7 +66,13 @@ export interface CaptureInput {
 }
 export interface EvidenceInput {
   evidenceId: string;
-  evidenceType: CorpusHashes['evidence'][number]['evidenceType'];
+  /**
+   * The writer that named the row, so the ledger states the formula per row.
+   * A plain string from evidence step 11b: `Evidence.evidenceType` left the
+   * schema with the class it described, and the ledgers that used it are already
+   * emitted and committed (evidence §8 — "explained in git, not in a table").
+   */
+  evidenceType: string;
 }
 
 export interface LedgerEntry {
@@ -195,19 +201,19 @@ function captureInputs(c: EntryClassification): CaptureInput[] {
   return c.snapshots.map((s) => ({ snapshotId: s.id, url: s.url, waybackTimestamp: s.waybackTimestamp }));
 }
 
-function evidenceInputs(c: EntryClassification, corpus: CorpusHashes): EvidenceInput[] {
+function evidenceInputs(c: EntryClassification): EvidenceInput[] {
   return c.evidence.map((e) => ({
     evidenceId: e.id,
-    // The join found the row by id; its type is read back from the corpus so the
-    // formula can be stated per row rather than per table.
-    evidenceType: corpus.evidence.find((row) => row.id === e.id)?.evidenceType ?? 'DOCUMENT',
+    // A live registry classifies no entry as an evidence name — nothing above the
+    // corpus is anchored — so this arm has no producer and the constant says so
+    // rather than reaching for a column that has left.
+    evidenceType: 'RETIRED_FORMULA',
   }));
 }
 
 function explained(
   entry: RegistryEntry,
   c: EntryClassification,
-  corpus: CorpusHashes,
 ): Pick<LedgerEntry, 'kind' | 'formula' | 'inputs' | 'attested' | 'replacedBy'> | null {
   const when = iso(entry.timestamp);
   switch (c.kind) {
@@ -235,7 +241,7 @@ function explained(
           'to the text attested here',
       };
     case 'EVIDENCE_FILE_HASH': {
-      const inputs = evidenceInputs(c, corpus);
+      const inputs = evidenceInputs(c);
       return {
         kind: 'EVIDENCE_FILE_HASH',
         formula: formulaFor('EVIDENCE_FILE_HASH', inputs),
@@ -245,7 +251,7 @@ function explained(
       };
     }
     case 'EVIDENCE_PREVIOUS_FILE_HASH': {
-      const inputs = evidenceInputs(c, corpus);
+      const inputs = evidenceInputs(c);
       return {
         kind: 'EVIDENCE_PREVIOUS_FILE_HASH',
         formula: formulaFor('EVIDENCE_PREVIOUS_FILE_HASH', inputs),
@@ -317,7 +323,7 @@ export function buildRegistryLedger(input: LedgerInput): RegistryLedger {
   const entries: LedgerEntry[] = [];
   for (const entry of state.entries) {
     const classification = classifyEntry(entry, corpus);
-    let explanation = explained(entry, classification, corpus);
+    let explanation = explained(entry, classification);
     if (explanation === null && classification.kind === 'AMBIGUOUS') {
       refusals.push(
         `  index ${String(entry.index)} is AMBIGUOUS — ${String(classification.snapshots.length)} capture(s) and ` +
