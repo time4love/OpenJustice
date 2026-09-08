@@ -44,10 +44,7 @@ export interface CorpusFingerprint {
   snapshots: number;
   snapshotsUnanchored: number;
   diffs: number;
-  diffsSignificant: number;
   evidence: number;
-  evidenceConfirmed: number;
-  evidencePendingReview: number;
   theses: number;
   thesesPublished: number;
   activeResearchSessions: number;
@@ -136,15 +133,20 @@ export async function describeEnvironment(): Promise<EnvironmentReport> {
  * used as intended.
  */
 async function readCorpusFingerprint(): Promise<CorpusFingerprint> {
+  // THE EVIDENCE LAYER'S THREE COUNTS LEFT AT EVIDENCE STEP 11a, and each was
+  // an answer about a retired concept: `diffsSignificant` counts a classifier's
+  // opinion stored on the diff row (evidence A2 removes the column),
+  // `evidenceConfirmed` and `evidencePendingReview` count statuses the target
+  // has no spelling for — there is no confirmation act (§5) and evidence has
+  // two statuses, PROMOTED and WITHDRAWN. `evidence` itself stays: a row count
+  // is colour, and the table survives into the target. The thesis layer's
+  // `activeResearchSessions` leaves in 11a-thesis, which owns it.
   const [
     trackedUrls,
     snapshots,
     snapshotsUnanchored,
     diffs,
-    diffsSignificant,
     evidence,
-    evidenceConfirmed,
-    evidencePendingReview,
     theses,
     thesesPublished,
     activeResearchSessions,
@@ -153,10 +155,7 @@ async function readCorpusFingerprint(): Promise<CorpusFingerprint> {
     prisma.urlSnapshot.count(),
     prisma.urlSnapshot.count({ where: { onChainTxHash: null } }),
     prisma.urlVersionDiff.count(),
-    prisma.urlVersionDiff.count({ where: { isLegallySignificant: true } }),
     prisma.evidence.count(),
-    prisma.evidence.count({ where: { status: 'CONFIRMED' } }),
-    prisma.evidence.count({ where: { status: 'PENDING_REVIEW' } }),
     prisma.thesis.count(),
     prisma.thesis.count({ where: { publishedVersionId: { not: null } } }),
     prisma.researchSession.count({ where: { status: 'ACTIVE' } }),
@@ -167,10 +166,7 @@ async function readCorpusFingerprint(): Promise<CorpusFingerprint> {
     snapshots,
     snapshotsUnanchored,
     diffs,
-    diffsSignificant,
     evidence,
-    evidenceConfirmed,
-    evidencePendingReview,
     theses,
     thesesPublished,
     activeResearchSessions,

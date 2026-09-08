@@ -5,7 +5,7 @@ import {
   promotionBlockFor,
   SURVIVAL_VIEW_SELECT,
   type DiffSurvivalView,
-} from './auditDiffSurvival';
+} from './diffSurvivalView';
 
 // ---------------------------------------------------------------------------
 // IS THE INPUT BEHIND THIS EVIDENCE RECORD SOUND?
@@ -113,7 +113,9 @@ function unsoundReasonFor(survival: DiffSurvivalView): string | null {
     case 'STALE':
       return (
         'The stored check behind this record is about inputs the diff no longer holds, so the ' +
-        'platform has no current answer about it. Run forensics:backfill-survival to recompute it.'
+        'platform has no current answer about it. No tool recomputes one: the backfill was retired ' +
+        'at evidence step 11a with the legacy survival columns, and a re-derivation is the walk\'s, ' +
+        'as a new content version.'
       );
   }
 }

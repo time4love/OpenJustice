@@ -161,8 +161,13 @@ describe('every writer of a classification records what it read', () => {
   });
 
   it('finds the write sites at all — a silent zero would make this vacuous', () => {
-    // Two after the switch, both in reclassifyDiffs.
-    expect(writes.length).toBeGreaterThanOrEqual(2);
+    // ONE AT EVIDENCE STEP 11a; two before it, both in `reclassifyDiffs`, which
+    // was retired with the legacy columns it rewrote. The one left is the walk's
+    // own write, which is what the rule was always about: a classification is
+    // written once, at derivation, beside what it read. The floor moves WITH the
+    // tree and never below it — its job is to catch a broken pattern, not to
+    // assert a count.
+    expect(writes.length).toBeGreaterThanOrEqual(1);
   });
 
   it.each(writes.map((w, i) => [`${w.path}#${String(i)}`, w] as const))(

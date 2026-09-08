@@ -90,11 +90,8 @@ import { VectorStoreService } from '../src/services/VectorStoreService';
 import { IntakeAgent } from '../src/services/IntakeAgent';
 
 // Re-import handlers AFTER mocks are in place
-import { searchEvidenceHandler } from '../src/mcp/tools/searchEvidence';
 
-import { getForensicTimelineHandler } from '../src/mcp/tools/getForensicTimeline';
 import { getFigureDossierHandler } from '../src/mcp/tools/getFigureDossier';
-import { createEvidenceFromUrlHandler } from '../src/mcp/tools/createEvidenceFromUrl';
 import { createThesisDraftHandler } from '../src/mcp/tools/createThesisDraft';
 import { addThesisVersionHandler } from '../src/mcp/tools/addThesisVersion';
 import { getResearchAgendaHandler } from '../src/mcp/tools/getResearchAgenda';
@@ -154,303 +151,9 @@ beforeEach(() => {
 // search_evidence
 // ===========================================================================
 
-describe('searchEvidenceHandler', () => {
-  it('returns correctly shaped evidence records', async () => {
-    mockEvidenceFindMany.mockResolvedValue([evidenceFixture]);
-
-    const raw = await searchEvidenceHandler({ query: 'adverse events removed' });
-    const result = JSON.parse(raw);
-
-    expect(result.total).toBe(1);
-    expect(result.results[0]).toMatchObject({
-      fileHash: 'abc123',
-      evidenceDate: '2022-06-01',
-      summary: 'Health ministry removed adverse event data',
-      evidenceTier: 'Tier 1',
-      evidenceRole: 'Incriminating',
-      investigativeCategories: ['WITHHOLDING_INFORMATION'],
-      targetEntity: 'משרד הבריאות',
-      keyFigures: ['שרון אלרועי-פרייס'],
-      sourceUrl: 'https://gov.il/evidence',
-    });
-  });
-
-  it('excludes PII fields from output', async () => {
-    mockEvidenceFindMany.mockResolvedValue([evidenceFixture]);
-
-    const raw = await searchEvidenceHandler({ query: 'test' });
-    const result = JSON.parse(raw);
-    const record = result.results[0];
-
-    expect(record).not.toHaveProperty('submitterAddress');
-    expect(record).not.toHaveProperty('fileUrl');
-    expect(record).not.toHaveProperty('medicalConditions');
-  });
-
-  it('passes targetEntity filter to Prisma query', async () => {
-    mockEvidenceFindMany.mockResolvedValue([evidenceFixture]);
-
-    await searchEvidenceHandler({ query: 'test', targetEntity: 'משרד הבריאות' });
-
-    const callArgs = mockEvidenceFindMany.mock.calls[0][0];
-    expect(callArgs.where.targetEntity).toEqual({ contains: 'משרד הבריאות' });
-  });
-
-  it('passes tier filter to Prisma query as "Tier N" string', async () => {
-    mockEvidenceFindMany.mockResolvedValue([evidenceFixture]);
-
-    await searchEvidenceHandler({ query: 'test', tier: 1 });
-
-    const callArgs = mockEvidenceFindMany.mock.calls[0][0];
-    expect(callArgs.where.evidenceTier).toBe('Tier 1');
-  });
-
-  it('respects custom limit', async () => {
-    mockEvidenceFindMany.mockResolvedValue([]);
-    mockSearchEvidence.mockResolvedValue([]);
-
-    await searchEvidenceHandler({ query: 'test', limit: 3 });
-
-    // VectorStore should be called with limit * 2 for over-fetching
-    expect(mockSearchEvidence).toHaveBeenCalledWith('test', 6);
-  });
-
-  it('returns empty results when Pinecone finds nothing', async () => {
-    mockSearchEvidence.mockResolvedValue([]);
-
-    const raw = await searchEvidenceHandler({ query: 'nothing matches' });
-    const result = JSON.parse(raw);
-
-    expect(result.results).toEqual([]);
-    expect(result.total).toBe(0);
-    // Prisma should not be called
-    expect(mockEvidenceFindMany).not.toHaveBeenCalled();
-  });
-
-  it('preserves Pinecone semantic ranking order', async () => {
-    mockSearchEvidence.mockResolvedValue([
-      { fileHash: 'hash_b', score: 0.95 },
-      { fileHash: 'hash_a', score: 0.80 },
-    ]);
-    mockEvidenceFindMany.mockResolvedValue([
-      { ...evidenceFixture, fileHash: 'hash_a' },
-      { ...evidenceFixture, fileHash: 'hash_b' },
-    ]);
-
-    const raw = await searchEvidenceHandler({ query: 'test' });
-    const result = JSON.parse(raw);
-
-    expect(result.results[0].fileHash).toBe('hash_b');
-    expect(result.results[1].fileHash).toBe('hash_a');
-  });
-
-  it('handles null sourceUrl gracefully', async () => {
-    mockEvidenceFindMany.mockResolvedValue([{ ...evidenceFixture, sourceUrl: null }]);
-
-    const raw = await searchEvidenceHandler({ query: 'test' });
-    const result = JSON.parse(raw);
-
-    expect(result.results[0].sourceUrl).toBeNull();
-  });
-});
-
 // ===========================================================================
 // get_forensic_timeline
 // ===========================================================================
-
-describe('getForensicTimelineHandler', () => {
-  const trackedUrlFixture = {
-    url: 'https://health.gov.il/corona',
-    title: 'Corona page',
-    status: 'COMPLETED',
-    diffs: [
-      {
-        id: 'diff-1',
-        beforeDate: '20220501',
-        afterDate: '20220601',
-        snapshotUrl: 'https://web.archive.org/web/20220601/...',
-        deletedText: JSON.stringify([{ summary: 'Removed efficacy claim', exactQuote: 'original text' }]),
-        addedText: '[]',
-        aiSignificance: 'מחיקה של טענת יעילות',
-        isLegallySignificant: true,
-        createdAt: new Date('2022-06-15'),
-        ...survivalFixture(),
-      },
-      {
-        id: 'diff-2',
-        beforeDate: '20220601',
-        afterDate: '20220701',
-        snapshotUrl: 'https://web.archive.org/web/20220701/...',
-        deletedText: '[]',
-        addedText: '[]',
-        aiSignificance: '',
-        isLegallySignificant: false,
-        createdAt: new Date('2022-07-15'),
-        ...survivalFixture(),
-      },
-    ],
-  };
-
-  // -------------------------------------------------------------------------
-  // LEVEL 5 IN THE TIMELINE SUMMARY
-  //
-  // A source scan asserting these fields EXIST cannot fail when the count is
-  // hard-coded to zero — which a mutation proved, by surviving. These assert the
-  // number is computed from the rows.
-  // -------------------------------------------------------------------------
-  function contradictedDiff(over: Record<string, unknown> = {}): Record<string, unknown> {
-    const rawDeletedText = JSON.stringify(['a sentence long enough to clear the presence floor']);
-    return {
-      id: 'diff-c',
-      beforeDate: '20220701',
-      afterDate: '20220801',
-      snapshotUrl: 'https://web.archive.org/web/20220801/...',
-      deletedText: '[]',
-      addedText: '[]',
-      aiSignificance: 'x',
-      isLegallySignificant: true,
-      createdAt: new Date('2022-08-15'),
-      ...survivalFixture({
-        rawDeletedText,
-        survivalVerdict: 'CONTRADICTED',
-        survivalCheckVersion: SURVIVAL_CHECK_VERSION,
-        survivalTextVersion: TEXT_VERSION,
-        survivalCheckedAt: new Date('2026-08-28'),
-        survivalChunksChecked: 1,
-        survivalContradicted: [{ side: 'REMOVED', excerpt: 'still on the page' }],
-        survivalSourceStateHash: survivalSourceStateHash({
-          beforeTextHash: 'a'.repeat(64),
-          afterTextHash: 'b'.repeat(64),
-          rawDeletedText,
-          rawAddedText: '[]',
-        }),
-      }),
-      ...over,
-    };
-  }
-
-  it('COUNTS contradicted diffs and warns, rather than merely naming the field', async () => {
-    mockTrackedUrlFindFirst.mockResolvedValue({
-      ...trackedUrlFixture,
-      diffs: [...trackedUrlFixture.diffs, contradictedDiff()],
-    });
-
-    const result = JSON.parse(await getForensicTimelineHandler({ url: 'https://health.gov.il/corona' }));
-
-    expect(result.contradictedDiffs).toBe(1);
-    expect(result.survivalWarning).toContain('CONTRADICTED');
-    // The row carries it too, so the headline and the detail cannot disagree.
-    expect(result.timeline[2].survival.state).toBe('CONTRADICTED');
-  });
-
-  it('counts the unchecked separately, and never folds them together', async () => {
-    // The base fixture's two diffs are UNCHECKED. A diff nobody has checked and a
-    // diff the documents refute are different problems with different remedies.
-    mockTrackedUrlFindFirst.mockResolvedValue({
-      ...trackedUrlFixture,
-      diffs: [...trackedUrlFixture.diffs, contradictedDiff()],
-    });
-
-    const result = JSON.parse(await getForensicTimelineHandler({ url: 'https://health.gov.il/corona' }));
-
-    expect(result.uncheckedDiffs).toBe(2);
-    expect(result.contradictedDiffs).toBe(1);
-    expect(result.uncheckedWarning).toContain('NOT A PASS');
-  });
-
-  it('omits the survival warning when nothing is contradicted', async () => {
-    // Vacuity guard for the two tests above: if the warning were unconditional,
-    // asserting its presence would prove nothing.
-    mockTrackedUrlFindFirst.mockResolvedValue(trackedUrlFixture);
-
-    const result = JSON.parse(await getForensicTimelineHandler({ url: 'https://health.gov.il/corona' }));
-
-    expect(result.contradictedDiffs).toBe(0);
-    expect(result.survivalWarning).toBeUndefined();
-  });
-
-  it('returns full timeline with diff count and significance stats', async () => {
-    mockTrackedUrlFindFirst.mockResolvedValue(trackedUrlFixture);
-
-    const raw = await getForensicTimelineHandler({ url: 'https://health.gov.il/corona' });
-    const result = JSON.parse(raw);
-
-    expect(result.url).toBe('https://health.gov.il/corona');
-    expect(result.status).toBe('COMPLETED');
-    expect(result.totalDiffs).toBe(2);
-    expect(result.significantDiffs).toBe(1);
-    expect(result.timeline).toHaveLength(2);
-  });
-
-  it('reports unanchored snapshots, with a warning when any exist', async () => {
-    // Snapshot anchoring is fire-and-forget with a swallowed rejection, so a scan
-    // that ran while the RPC was down stored 83 snapshots, anchored none, and
-    // reported success. Nothing asked afterwards. This is the asking.
-    mockTrackedUrlFindFirst.mockResolvedValue(trackedUrlFixture);
-    (prisma.urlSnapshot.count as jest.Mock).mockResolvedValueOnce(83).mockResolvedValueOnce(83);
-
-    const result = JSON.parse(await getForensicTimelineHandler({ url: 'https://health.gov.il/corona' }));
-
-    expect(result.snapshotsStored).toBe(83);
-    expect(result.unanchoredSnapshots).toBe(83);
-    expect(result.anchoringWarning).toMatch(/not registered on-chain/);
-    expect(result.anchoringWarning).toMatch(/forensics:anchor-snapshots/);
-  });
-
-  it('omits the anchoring warning when every snapshot is anchored', async () => {
-    // A field that is always present stops being read. Absence is the signal.
-    mockTrackedUrlFindFirst.mockResolvedValue(trackedUrlFixture);
-    (prisma.urlSnapshot.count as jest.Mock).mockResolvedValueOnce(83).mockResolvedValueOnce(0);
-
-    const result = JSON.parse(await getForensicTimelineHandler({ url: 'https://health.gov.il/corona' }));
-
-    expect(result.unanchoredSnapshots).toBe(0);
-    expect(result.anchoringWarning).toBeUndefined();
-  });
-
-  it('parses deletedItems and addedItems from JSON strings', async () => {
-    mockTrackedUrlFindFirst.mockResolvedValue(trackedUrlFixture);
-
-    const raw = await getForensicTimelineHandler({ url: 'https://health.gov.il/corona' });
-    const result = JSON.parse(raw);
-
-    expect(result.timeline[0].deletedItems).toEqual([
-      { summary: 'Removed efficacy claim', exactQuote: 'original text' },
-    ]);
-    expect(result.timeline[0].addedItems).toEqual([]);
-  });
-
-  it('returns error object for unknown URL', async () => {
-    mockTrackedUrlFindFirst.mockResolvedValue(null);
-
-    const raw = await getForensicTimelineHandler({ url: 'https://unknown.gov' });
-    const result = JSON.parse(raw);
-
-    expect(result.error).toContain('https://unknown.gov');
-  });
-
-  it('returns empty timeline array when no diffs exist', async () => {
-    mockTrackedUrlFindFirst.mockResolvedValue({ ...trackedUrlFixture, diffs: [] });
-
-    const raw = await getForensicTimelineHandler({ url: 'https://health.gov.il/corona' });
-    const result = JSON.parse(raw);
-
-    expect(result.totalDiffs).toBe(0);
-    expect(result.significantDiffs).toBe(0);
-    expect(result.timeline).toEqual([]);
-  });
-
-  it('handles malformed JSON in deletedText gracefully', async () => {
-    const badDiff = { ...trackedUrlFixture.diffs[0], deletedText: 'not-json', addedText: 'also-bad' };
-    mockTrackedUrlFindFirst.mockResolvedValue({ ...trackedUrlFixture, diffs: [badDiff] });
-
-    const raw = await getForensicTimelineHandler({ url: 'https://health.gov.il/corona' });
-    const result = JSON.parse(raw);
-
-    expect(result.timeline[0].deletedItems).toEqual([]);
-    expect(result.timeline[0].addedItems).toEqual([]);
-  });
-});
 
 // ===========================================================================
 // get_figure_dossier
@@ -528,227 +231,6 @@ describe('getFigureDossierHandler', () => {
 // create_evidence_from_url
 // ===========================================================================
 
-describe('createEvidenceFromUrlHandler', () => {
-  const testUrl = 'https://example.gov/article';
-
-  const analysisFixture = {
-    isRelevant: true,
-    evidenceRole: 'Incriminating',
-    investigativeCategories: ['WITHHOLDING_INFORMATION'],
-    targetEntity: 'Ministry of Health',
-    evidenceTier: 'Tier 2: Material',
-    evidencePerspective: 'Internal Knowledge',
-    tierReasoning: 'Contains leaked internal data.',
-    summary: 'Ministry suppressed side effect data.',
-    evidenceDate: '2022-08-01',
-    keyFigures: ['Prof. Barkovitz'],
-    medicalConditions: ['myocarditis'],
-    statisticalClaims: ['65% of neurological cases unresolved'],
-    regulatoryMentions: [],
-    euaOmissionStatus: 'Omits EUA (Misleading)' as const,
-    missingInformation: '',
-    rejectionReason: undefined,
-  };
-
-  const createdRecordFixture = {
-    id: 'ev-uuid-1',
-    fileHash: '0xabc',
-    status: 'PENDING_REVIEW',
-    evidenceRole: 'Incriminating',
-    investigativeCategories: ['WITHHOLDING_INFORMATION'],
-    targetEntity: 'Ministry of Health',
-    evidenceTier: 'Tier 2: Material',
-    summary: 'Ministry suppressed side effect data.',
-    evidenceDate: '2022-08-01',
-    figures: [{ name: 'Prof. Barkovitz' }],
-    sourceUrl: testUrl,
-  };
-
-  let mockAnalyzeText: jest.Mock;
-  let mockAnalyzeEvidence: jest.Mock;
-
-  beforeEach(() => {
-    mockAnalyzeText = jest.fn().mockResolvedValue(analysisFixture);
-    mockAnalyzeEvidence = jest.fn().mockResolvedValue(analysisFixture);
-    MockIntakeAgent.mockImplementation(
-      () => ({ analyzeText: mockAnalyzeText, analyzeEvidence: mockAnalyzeEvidence }) as unknown as IntakeAgent,
-    );
-
-    // Default: no existing record
-    mockEvidenceFindUnique.mockResolvedValue(null);
-    mockKeyFigureCreateMany.mockResolvedValue({ count: 1 });
-    mockEvidenceCreate.mockResolvedValue(createdRecordFixture);
-
-    // Mock global fetch — default HTML response
-    global.fetch = jest.fn().mockResolvedValue({
-      ok: true,
-      headers: { get: jest.fn().mockReturnValue('text/html; charset=utf-8') },
-      text: jest.fn().mockResolvedValue('<html><body><p>Health ministry leaked recording shows serious side effects were hidden from the public. Prof. Barkovitz presented findings.</p></body></html>'),
-    } as unknown as Response);
-  });
-
-  it('returns PENDING_REVIEW record with analysis summary', async () => {
-    const raw = await createEvidenceFromUrlHandler({ url: testUrl });
-    const result = JSON.parse(raw);
-
-    expect(result.status).toBe('PENDING_REVIEW');
-    expect(result.evidenceId).toBe('ev-uuid-1');
-    expect(result.summary).toBe('Ministry suppressed side effect data.');
-    expect(result.sourceUrl).toBe(testUrl);
-  });
-
-  it('calls IntakeAgent.analyzeText with stripped text and URL', async () => {
-    await createEvidenceFromUrlHandler({ url: testUrl });
-
-    expect(mockAnalyzeText).toHaveBeenCalledWith(
-      expect.stringContaining('Health ministry leaked recording'),
-      testUrl,
-    );
-    // HTML tags should be stripped
-    expect(mockAnalyzeText.mock.calls[0][0]).not.toContain('<html>');
-  });
-
-  it('saves to Prisma with status PENDING_REVIEW', async () => {
-    await createEvidenceFromUrlHandler({ url: testUrl });
-
-    expect(mockEvidenceCreate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({ status: 'PENDING_REVIEW', sourceUrl: testUrl }),
-      }),
-    );
-  });
-
-  it('does NOT call VectorStore or Web3 (staging gate)', async () => {
-    await createEvidenceFromUrlHandler({ url: testUrl });
-
-    expect(mockVectorStoreCreate).not.toHaveBeenCalled();
-  });
-
-  it('upserts KeyFigure records for extracted figures', async () => {
-    await createEvidenceFromUrlHandler({ url: testUrl });
-
-    expect(mockKeyFigureCreateMany).toHaveBeenCalledWith({
-      data: [{ name: 'Prof. Barkovitz' }],
-      skipDuplicates: true,
-    });
-  });
-
-  it('skips KeyFigure createMany when no figures extracted', async () => {
-    mockAnalyzeText.mockResolvedValue({ ...analysisFixture, keyFigures: [] });
-    mockEvidenceCreate.mockResolvedValue({ ...createdRecordFixture, figures: [] });
-
-    await createEvidenceFromUrlHandler({ url: testUrl });
-
-    expect(mockKeyFigureCreateMany).not.toHaveBeenCalled();
-  });
-
-  it('returns existing record without creating duplicate', async () => {
-    mockEvidenceFindUnique.mockResolvedValue({
-      ...createdRecordFixture,
-      status: 'PENDING_REVIEW',
-    });
-
-    const raw = await createEvidenceFromUrlHandler({ url: testUrl });
-    const result = JSON.parse(raw);
-
-    expect(result.evidenceId).toBe('ev-uuid-1');
-    expect(result.message).toContain('already exists');
-    expect(mockEvidenceCreate).not.toHaveBeenCalled();
-  });
-
-  it('throws when fetch returns non-ok status', async () => {
-    global.fetch = jest.fn().mockResolvedValue({ ok: false, status: 403 } as Response);
-
-    await expect(createEvidenceFromUrlHandler({ url: testUrl }))
-      .rejects.toThrow('HTTP 403');
-  });
-
-  it('throws when fetched content is too short to analyse', async () => {
-    global.fetch = jest.fn().mockResolvedValue({
-      ok: true,
-      headers: { get: jest.fn().mockReturnValue('text/html') },
-      text: jest.fn().mockResolvedValue('<html><body>Hi</body></html>'),
-    } as unknown as Response);
-
-    await expect(createEvidenceFromUrlHandler({ url: testUrl }))
-      .rejects.toThrow('too short');
-  });
-
-  it('includes message reminding reviewer that on-chain registration is required', async () => {
-    const raw = await createEvidenceFromUrlHandler({ url: testUrl });
-    const result = JSON.parse(raw);
-
-    expect(result.message).toContain('PENDING_REVIEW');
-    expect(result.message).toContain('on-chain');
-  });
-
-  // ── PDF branch ─────────────────────────────────────────────────────────────
-
-  it('PDF: calls analyzeEvidence with buffer when Content-Type is application/pdf', async () => {
-    const pdfUrl = 'https://example.gov/report.pdf';
-    const fakePdfBuffer = Buffer.alloc(500, 0x25); // 500 bytes of '%'
-
-    global.fetch = jest.fn().mockResolvedValue({
-      ok: true,
-      headers: { get: jest.fn().mockReturnValue('application/pdf') },
-      arrayBuffer: jest.fn().mockResolvedValue(fakePdfBuffer.buffer),
-    } as unknown as Response);
-
-    await createEvidenceFromUrlHandler({ url: pdfUrl });
-
-    expect(mockAnalyzeEvidence).toHaveBeenCalledWith(expect.any(Buffer), 'application/pdf');
-    expect(mockAnalyzeText).not.toHaveBeenCalled();
-  });
-
-  it('PDF: does not call analyzeText for PDF URLs', async () => {
-    const pdfUrl = 'https://example.gov/report.pdf';
-    const fakePdfBuffer = Buffer.alloc(500, 0x25);
-
-    global.fetch = jest.fn().mockResolvedValue({
-      ok: true,
-      headers: { get: jest.fn().mockReturnValue('application/pdf; name=report.pdf') },
-      arrayBuffer: jest.fn().mockResolvedValue(fakePdfBuffer.buffer),
-    } as unknown as Response);
-
-    await createEvidenceFromUrlHandler({ url: pdfUrl });
-
-    expect(mockAnalyzeText).not.toHaveBeenCalled();
-  });
-
-  it('PDF: throws when PDF buffer is too small', async () => {
-    const pdfUrl = 'https://example.gov/tiny.pdf';
-    const tinyBuffer = Buffer.alloc(10, 0x25); // only 10 bytes
-
-    global.fetch = jest.fn().mockResolvedValue({
-      ok: true,
-      headers: { get: jest.fn().mockReturnValue('application/pdf') },
-      arrayBuffer: jest.fn().mockResolvedValue(tinyBuffer.buffer),
-    } as unknown as Response);
-
-    await expect(createEvidenceFromUrlHandler({ url: pdfUrl })).rejects.toThrow('too small');
-  });
-
-  it('PDF: saves record with PENDING_REVIEW status and no Web3/Pinecone calls', async () => {
-    const pdfUrl = 'https://example.gov/report.pdf';
-    const fakePdfBuffer = Buffer.alloc(500, 0x25);
-
-    global.fetch = jest.fn().mockResolvedValue({
-      ok: true,
-      headers: { get: jest.fn().mockReturnValue('application/pdf') },
-      arrayBuffer: jest.fn().mockResolvedValue(fakePdfBuffer.buffer),
-    } as unknown as Response);
-
-    await createEvidenceFromUrlHandler({ url: pdfUrl });
-
-    expect(mockEvidenceCreate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({ status: 'PENDING_REVIEW' }),
-      }),
-    );
-    expect(mockVectorStoreCreate).not.toHaveBeenCalled();
-  });
-});
-
 // create_thesis_draft
 // ===========================================================================
 
@@ -775,6 +257,13 @@ describe('createThesisDraftHandler', () => {
     mockThesisCreate.mockResolvedValue({ id: 'thesis-draft-1', createdAt: new Date() });
     mockThesisVersionCreate.mockResolvedValue(versionFixture);
     mockThesisUpdate.mockResolvedValue(thesisFixture);
+    // SET HERE FROM EVIDENCE STEP 11a, AND IT IS A DEFECT THE DELETION EXPOSED.
+    // These cases passed on a value set by the `searchEvidenceHandler` group's
+    // beforeEach: jest's `clearMocks` clears CALLS, not IMPLEMENTATIONS, so a
+    // `mockResolvedValue` set in any earlier test stood for every later one. When
+    // that group went with its tool the handler received `undefined` and threw.
+    // The dependency was always there and was always invisible; it is stated now.
+    mockEvidenceFindMany.mockResolvedValue([evidenceFixture]);
   });
 
   it('returns thesisId, headVersionId, and PENDING_AI status', async () => {
@@ -1393,7 +882,11 @@ describe('getResearchAgendaHandler', () => {
     const result = JSON.parse(raw);
 
     expect(result.instructions).toContain('add_thesis_version');
-    expect(result.instructions).toContain('create_evidence_from_url');
+    // `create_evidence_from_url` left the description at evidence step 11a with
+    // the tool (evidence A4: a selection with nothing to select). The assertion
+    // is that the instructions NAME A ROUTE THE CALLER CAN TAKE, so it moves to
+    // the one that is still there rather than being dropped.
+    expect(result.instructions).toContain('create_evidence_from_text');
   });
 
   it('includes counterArguments and alternativeInterpretations', async () => {
@@ -1736,3 +1229,10 @@ describe('getSessionSummaryHandler', () => {
     expect(result.totalSessions).toBe(1);
   });
 });
+
+// THREE GROUPS LEFT THIS FILE AT EVIDENCE STEP 11a, WITH THEIR TOOLS:
+// `searchEvidenceHandler`, `getForensicTimelineHandler` and
+// `createEvidenceFromUrlHandler` — retired by evidence flows A4 (an evidence
+// surface ranked by an embedding of prose; opinion beside fact with no linkage,
+// replaced by `list_findings` at step 12; a selection with nothing to select).
+// Deleted with the concept, never weakened to pass — refactor plan §4 rule 1.

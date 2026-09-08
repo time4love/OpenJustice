@@ -132,7 +132,7 @@ export const ON_CHAIN_EXPLANATIONS: Record<OnChainVerdict, string> = {
   // published a thesis citing it. The verdict was right; the sentence claimed
   // a second thing the verdict never asked.
   CONSISTENT:
-    'The database and the contract agree, and the anchoring transaction is recorded. That is a check on CONSISTENCY, not on ATTRIBUTION: it does not establish that the recorded transaction is the one that registered this hash. Read `attribution`, or run forensics:confirm-anchors.',
+    'The database and the contract agree, and the anchoring transaction is recorded. That is a check on CONSISTENCY, not on ATTRIBUTION: it does not establish that the recorded transaction is the one that registered this hash. Read `attribution`, which is decided from CHAIN STATE — the registry says who registered a hash and when, forever, where a receipt is readable only inside the RPC\'s retention horizon.',
   UNANCHORED_CONFIRMED:
     'The record claims CONFIRMED but the contract has no registration for this hash. The evidentiary claim is unsupported — treat the record as unverified until it is registered.',
   MISSING_TX_HASH:

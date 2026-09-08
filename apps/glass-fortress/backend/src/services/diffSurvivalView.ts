@@ -3,20 +3,26 @@ import { prisma } from '../lib/prisma';
 import { SURVIVAL_CHECK_VERSION, survivalSourceStateHash } from '../lib/diffSurvival';
 
 /**
- * IS EVERY DIFF'S VERDICT PRESENT, AND IS IT STILL ABOUT THIS DIFF?
+ * WHAT A READER IS SHOWN ABOUT A DIFF'S LEVEL 5 VERDICT — and whether the
+ * platform has a current answer at all.
  *
- * Level 5 stores a verdict. Storing one is not the same as HAVING one, and this
- * is the module that can tell the difference — for the whole corpus, in either
- * environment, without the Archive, a model or a network.
+ * SPLIT OUT OF `auditDiffSurvival.ts` AT EVIDENCE STEP 11a, which is deleted.
+ * That module held two things: the INSTRUMENT `forensics:audit-survival`, whose
+ * question is "does every diff carry a verdict?", and the VIEW below, whose
+ * question is "what may this reader be told?". The instrument reads the legacy
+ * survival columns evidence A2 removes and is retired with them (refactor plan
+ * §3b, the note above step 11); A7 re-bases it over content VERSIONS when a step
+ * names that work. The view has four callers that outlive the instrument, so it
+ * keeps its own module rather than dying with a question it never asked.
  *
- * THREE STATES, AND THE FIRST TWO ARE THE POINT.
+ * THREE STATES BEHIND THE FIVE, AND THE FIRST TWO ARE THE POINT.
  *
  *   UNCHECKED  no verdict at all. `survivalVerdict` is nullable because rows
  *              written before the check existed do exist — and NULL MEANS NEVER
  *              CHECKED, WHICH IS NOT THE SAME AS PASSING. Without something that
  *              names this state, a diff that was never checked is indistinguish-
- *              able from one that passed, which is the exact failure §3 exists to
- *              prevent: an unavailable check counting as a result.
+ *              able from one that passed: an unavailable check counting as a
+ *              result.
  *
  *   STALE      a verdict computed against inputs the row no longer holds. Made
  *              COMPUTABLE rather than assumed by recomputing the source-state
@@ -24,42 +30,13 @@ import { SURVIVAL_CHECK_VERSION, survivalSourceStateHash } from '../lib/diffSurv
  *              to all four of the checker's inputs precisely so this comparison
  *              can be made.
  *
- *   CURRENT    a verdict, computed against what the row holds now. Only these
- *              are counted into the SURVIVES / CONTRADICTED / UNCHECKABLE
- *              distribution, because only these are answers to the question
- *              being asked today.
+ *   CURRENT    a verdict, computed against what the row holds now.
  *
- * READ-ONLY, AND THAT IS LOAD-BEARING. It writes nothing, so it can be re-run to
- * check the backfill that acts on it. A measurement that repairs as it goes
- * cannot be used to verify its own repair.
+ * READ-ONLY. Nothing here writes.
  */
 
 export type SurvivalState = 'UNCHECKED' | 'STALE' | 'CURRENT';
 
-export interface DiffSurvivalState {
-  diffId: string;
-  beforeDate: string;
-  afterDate: string;
-  state: SurvivalState;
-  /** Null exactly when the state is UNCHECKED. */
-  verdict: SurvivalVerdict | null;
-  /** Why it is STALE — populated for that state alone. */
-  reason?: string;
-}
-
-export interface SurvivalAuditReport {
-  diffs: DiffSurvivalState[];
-  summary: {
-    total: number;
-    unchecked: number;
-    stale: number;
-    current: number;
-    /** Among CURRENT only: a stale or absent verdict is not a result. */
-    survives: number;
-    contradicted: number;
-    uncheckable: number;
-  };
-}
 
 /**
  * The inputs a stored verdict must still match.
@@ -113,8 +90,9 @@ export function survivalStateOf(diff: {
       state: 'STALE',
       reason:
         `The verdict was reached under check rule ${diff.survivalCheckVersion ?? '(none recorded)'}, ` +
-        `and the current rule is ${SURVIVAL_CHECK_VERSION}. Re-run ` +
-        'npm run forensics:backfill-survival to re-derive it.',
+        `and the current rule is ${SURVIVAL_CHECK_VERSION}. There is no current answer, ` +
+        'and no tool re-derives one: the backfill was retired at evidence step 11a with the ' +
+        'legacy survival columns. A re-derivation is the walk\'s, as a new content version.',
     };
   }
 
@@ -133,54 +111,6 @@ export function survivalStateOf(diff: {
   }
 
   return { state: 'CURRENT' };
-}
-
-export async function auditDiffSurvival(): Promise<SurvivalAuditReport> {
-  const diffs = await prisma.urlVersionDiff.findMany({
-    select: {
-      id: true,
-      beforeDate: true,
-      afterDate: true,
-      rawDeletedText: true,
-      rawAddedText: true,
-      survivalVerdict: true,
-      survivalSourceStateHash: true,
-      survivalTextVersion: true,
-      survivalCheckVersion: true,
-      beforeSnapshot: { select: { textHash: true, textExtractionVersion: true } },
-      afterSnapshot: { select: { textHash: true, textExtractionVersion: true } },
-    },
-    orderBy: { beforeDate: 'asc' },
-  });
-
-  const states: DiffSurvivalState[] = diffs.map((diff) => {
-    const { state, reason } = survivalStateOf(diff);
-    return {
-      diffId: diff.id,
-      beforeDate: diff.beforeDate,
-      afterDate: diff.afterDate,
-      state,
-      verdict: diff.survivalVerdict,
-      ...(reason === undefined ? {} : { reason }),
-    };
-  });
-
-  const current = states.filter((s) => s.state === 'CURRENT');
-  const countVerdict = (v: SurvivalVerdict): number =>
-    current.filter((s) => s.verdict === v).length;
-
-  return {
-    diffs: states,
-    summary: {
-      total: states.length,
-      unchecked: states.filter((s) => s.state === 'UNCHECKED').length,
-      stale: states.filter((s) => s.state === 'STALE').length,
-      current: current.length,
-      survives: countVerdict('SURVIVES'),
-      contradicted: countVerdict('CONTRADICTED'),
-      uncheckable: countVerdict('UNCHECKABLE'),
-    },
-  };
 }
 
 // ---------------------------------------------------------------------------

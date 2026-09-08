@@ -30,7 +30,10 @@ const SELECTOR = 'classifierInputChunks';
 /** Source files permitted to call ForensicAgent.analyzeChange. */
 const CLASSIFYING_PATHS = [
   'src/walk/tools/scanCaptures.ts',
-  'src/services/reclassifyDiffs.ts',
+  // `reclassifyDiffs` left this list at evidence step 11a with the legacy
+  // columns it rewrote; `previewDiffClassification` is retired by thesis A4 and
+  // leaves in 11a-thesis. The rule is unchanged and the list shrinks toward the
+  // one path the design has: the walk classifies once, at acquisition.
   'src/services/previewDiffClassification.ts',
 ];
 
@@ -186,12 +189,15 @@ describe('the walk’s one diff site records DIFF_VERSION', () => {
 });
 
 describe('every classification records which model produced it', () => {
-  it('stamps classifierModel wherever classifierVersion is written to a diff row', () => {
-    for (const relative of ['src/services/reclassifyDiffs.ts']) {
+  it('stamps classifierModel wherever classifierVersion is written to a classification', () => {
+    // THE SUBJECT MOVED AT EVIDENCE STEP 11a. It was `reclassifyDiffs`, which
+    // wrote provenance onto a diff ROW; that tool and those columns are gone,
+    // and the one writer of a classification is now the walk's, which writes it
+    // as the OPINION register of a `DiffContentVersion` (evidence A2). The RULE
+    // is unchanged — a recorded version must be recorded with the model that
+    // produced it, or two rows carry byte-identical provenance for two models.
+    for (const relative of ['src/walk/tools/scanCaptures.ts']) {
       const source = readSource(relative);
-      // The run record in reclassifyDiffs also carries classifierVersion but is
-      // not a diff row, so compare against writes that set the prompt hash — the
-      // marker of a row whose classification provenance is being recorded.
       const hashWrites = source.split('classifierPromptHash:').length - 1;
       const modelWrites = source.split('classifierModel:').length - 1;
       expect([relative, modelWrites]).toEqual([relative, hashWrites]);

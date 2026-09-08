@@ -186,12 +186,14 @@ app.use('/api', generalLimiter);
 
 app.get('/api/stats', async (_req: Request, res: Response) => {
   try {
-    const [evidenceCount, thesisCount, forensicDiffCount] = await Promise.all([
-      prisma.evidence.count({ where: { status: 'CONFIRMED' } }),
-      prisma.thesis.count(),
-      prisma.urlVersionDiff.count({ where: { isLegallySignificant: true } }),
-    ]);
-    res.json({ evidenceCount, thesisCount, forensicDiffCount });
+    // THE TWO EVIDENCE COUNTS LEFT AT EVIDENCE STEP 11a. `status = CONFIRMED`
+    // is a status the target has no spelling for (evidence flows §5: there is
+    // no confirmation act), and `isLegallySignificant` is a classifier opinion
+    // stored on the diff row, which A2 removes — a page's headline number must
+    // not be a model's verdict counted as a fact. What replaces them is step
+    // 12's `list_findings`, and the frontend's own change reads it.
+    const thesisCount = await prisma.thesis.count();
+    res.json({ thesisCount });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     res.status(500).json({ error: 'Failed to load stats', message });

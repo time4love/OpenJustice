@@ -147,11 +147,10 @@ describe('MCP tool classification', () => {
     expect(READ_TOOLS.has('get_claim_trajectories')).toBe(false);
   });
 
-  it('keeps search_evidence open', () => {
-    // Deliberate: it embeds a query and nothing more, it is the core public
-    // read, and the anonymous ChatGPT integration depends on it. Asserted so
-    // that a future tightening pass has to make that trade-off consciously.
-    expect(READ_TOOLS.has('search_evidence')).toBe(true);
-    expect(WRITE_TOOLS.has('search_evidence')).toBe(false);
-  });
+  // THE `search_evidence` CASE WENT WITH THE TOOL AT EVIDENCE STEP 11a.
+  // It held the tool open deliberately, for the anonymous ChatGPT integration.
+  // Evidence flows §5 retires the tool itself: an evidence surface ranked by an
+  // embedding of prose, over a row that now carries no prose. The public read is
+  // the CORPUS — `list_findings`, `resolve_record`, `verify_claim_text` — and the
+  // trade-off this case existed to keep conscious is made there, at step 12.
 });

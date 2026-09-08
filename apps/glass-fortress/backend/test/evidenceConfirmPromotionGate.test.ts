@@ -46,9 +46,11 @@ jest.mock('../src/lib/prisma', () => ({
   },
 }));
 
-jest.mock('../src/services/evidenceOnChain', () => ({
-  registerEvidenceOnChain: registerOnChain,
-}));
+// The `evidenceOnChain` mock left at evidence step 11a with the module:
+// `registerEvidenceOnChain` was the evidence chain write, retired by evidence
+// flows §5. `/confirm` never called it — the mock was insurance against a path
+// that did not exist — and this file goes whole in 11a-document with the rest
+// of the RETIRE-AT-11 set (document refactor plan §5).
 
 // THE CHAIN IS MOCKED, AND THAT IS A FIX RATHER THAN A CONVENIENCE.
 //
