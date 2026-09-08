@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { prisma } from '../../lib/prisma';
 import { authority, rulesInForce, rulesUnderAuthority, trusted, type Decision, type Outcome, type Rule } from '../derivations';
+import { segments } from '../../lib/claimSurvival';
 import { bytesOf } from '../captureBytes';
 import { loadWorkListRows, type LoadedRow } from '../rows';
 import { answer, refusal, shared, type Refusal } from '../refusals';
@@ -69,7 +70,7 @@ interface MatchEntry {
   capture: string;
   outcome: Outcome;
   matchedNodes: number;
-  /** The texts this rule removed from that capture, re-derived; null where the corpus holds no body. */
+  /** The LINES this rule removed from that capture, re-derived; null where the corpus holds no body. */
   removed: string[] | null;
   removedCount: number | null;
 }
@@ -173,9 +174,18 @@ export async function getRuleHistoryHandler(input: HistoryInput): Promise<string
 }
 
 /**
- * What this rule removed from that capture, derived from the bytes the corpus
- * holds under the ruleset in force FOR THAT CAPTURE'S DATE; null where no body
- * is held.
+ * What this rule removed from that capture, AS SEGMENTS, derived from the bytes
+ * the corpus holds under the ruleset in force FOR THAT CAPTURE'S DATE; null
+ * where no body is held.
+ *
+ * SEGMENTS, NOT ONE TEXT PER MATCHED ELEMENT (amended 2026-09-08, read from the
+ * live run). A header matches once and its `text` runs to 150 lines, so the
+ * script's "quote the first 5 and offer the rest" could not be applied to it at
+ * all. And Gate 4's material is per SEGMENT — A4: "∃ segment s ∈ removed(c)" —
+ * so a read at element granularity and the gate that shows removals disagreed
+ * about what a rule takes. The splitter is `segments`, the one Gate 4 and SEEN
+ * use, so all three agree by construction; de-duplicated per capture, because a
+ * line repeated across two matched elements is one line a human reads once.
  *
  * The whole ruleset is applied and this rule's segments are then selected,
  * rather than applying the rule alone: a segment is attributed to a selector by
@@ -194,5 +204,11 @@ async function removedBy(
   const derived = deriveTextUnderRuleset(bytes.document, bytes.documentContentType, bytes.documentContentEncoding, {
     selectors: rulesInForce(rules, decisions, row.waybackTimestamp).map((r) => r.selector),
   });
-  return derived.chrome.removedSegments.filter((segment) => segment.selector === rule.selector).map((segment) => segment.text);
+  return [
+    ...new Set(
+      derived.chrome.removedSegments
+        .filter((removal) => removal.selector === rule.selector)
+        .flatMap((removal) => segments(removal.text)),
+    ),
+  ];
 }

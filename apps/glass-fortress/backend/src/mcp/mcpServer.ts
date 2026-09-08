@@ -579,13 +579,14 @@ export function createMcpServer(): McpServer {
         'READ ONE RULE\'S HISTORY, so a stop can be judged. Returns the rule — its selector, the capture it ' +
         'was created against, when it was ended if it was, whether it is trusted, who made it — every decision ' +
         'about it, and the series of captures it matched: each capture, that capture\'s outcome, how many nodes ' +
-        'it matched, and THE TEXTS IT REMOVED THERE, re-derived under the ruleset in force for that capture\'s ' +
+        'it matched, and THE LINES IT REMOVED THERE, re-derived under the ruleset in force for that capture\'s ' +
         'own date. `removed` is null where the corpus holds no body (DUPLICATE, IDENTICAL), which is not the ' +
         'same as removing nothing. `maxCaptures` bounds it to the latest n. NAME THE ELEMENT IN WORDS when you ' +
-        'read this out — its tag and the first text it removed — never the selector as the name. Quote the ' +
-        'FIRST 5 removed texts VERBATIM and offer the rest; never summarise them in their place. Gate 2\'s ' +
+        'read this out — its tag and the first line it removed — never the selector as the name. `removed` is ' +
+        'the LINES the rule took, de-duplicated, at the same granularity Gate 4 shows them. Quote the ' +
+        'FIRST 5 VERBATIM and offer the rest; never summarise them in their place. Gate 2\'s ' +
         'silent rule shows what it removed on the previous capture, from here. This read decides nothing: it ' +
-        'is a series and its texts, and it must not be turned into a verdict or a threshold. Writes nothing. ' +
+        'is a series and its lines, and it must not be turned into a verdict or a threshold. Writes nothing. ' +
         'Refuses NOT_SURVEYED and NO_SUCH_RULE.',
       inputSchema: getRuleHistorySchema,
     },
@@ -791,10 +792,11 @@ export function createMcpServer(): McpServer {
         'the text, so CORRECT on the page if there is, else CONTINUE; the verdict decides nothing. DIGEST — ' +
         'the bytes received do not match the archive index\'s digest for this capture: CONTINUE, or ' +
         'BAD_CAPTURE. FOR EACH RULE the material names, IN ITS OWN TURN: read get_rule_history; say the ' +
-        'element in words — its tag and the first text it removed, never the selector as its name; then its ' +
+        'element in words — its tag and the first line it removed, never the selector as its name; then its ' +
         'history — created against which capture, matched since, trusted or not; then its removals VERBATIM — ' +
-        '`removed` is one text per matched element and a menu or a sidebar is hundreds of lines, so quote ' +
-        'the FIRST 5 LINES of each and offer the rest, never a summary in their place; for a Gate 4 rule ' +
+        '`removed` is the LINES the rule took, de-duplicated, at the same granularity Gate 4 shows them, ' +
+        'and a menu or a sidebar is hundreds of them, so quote the FIRST 5 and offer the rest, never a ' +
+        'summary in their place; for a Gate 4 rule ' +
         'name the never-seen lines from the stop\'s material first; then only the answers that apply to ITS ' +
         'gate, with what each means; then STOP and wait for the researcher\'s answer before the next rule. ' +
         'Never read several histories in one turn. After the last rule, record the whole stop with ONE ' +

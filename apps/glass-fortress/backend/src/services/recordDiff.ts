@@ -1,5 +1,5 @@
 import { createHash } from 'crypto';
-import type { Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { captureHtml, deriveTextFromHtml, TEXT_EXTRACTION_VERSION } from '../lib/captureDocument';
 import { diffChunkPair } from '../lib/diffChunking';
@@ -77,13 +77,71 @@ export type DiffClassification = ForensicOutput & ClassifierProvenance;
  * classification — spread at the top level, so `editorial` (Gate 5's answer)
  * sits beside the pair it was given for, which is the shape the acceptance
  * suite fixes for the walk's one call.
+ *
+ * THE CLASSIFICATION IS OPTIONAL (2026-09-08): a diff with no chunk on either
+ * side has nothing to classify, so the walk makes no draw for it and hands none
+ * here, and the version is written with `classification` NULL — the state A2
+ * already defines as "NULL when nothing classified this derivation" and which
+ * nothing produced until now. Evidence A4 refuses NOTHING_TO_PROMOTE for such a
+ * diff, so the two halves of the design now agree: an empty diff is evidence of
+ * nothing, and nobody pays a model to say so.
  */
-export interface DiffWrite extends DiffClassification {
+export interface DiffWrite extends Partial<DiffClassification> {
   trackedUrlId: string;
   beforeSnapshotId: string;
   afterSnapshotId: string;
   before: DiffText;
   after: DiffText;
+}
+
+/**
+ * Every key of `DiffClassification`, listed once so the check below cannot drift
+ * from the type. A key added to the type and forgotten here would let a write
+ * missing it pass as whole — so this list is the one place that says what whole
+ * means, and `satisfies` holds it to the type at compile time.
+ */
+const CLASSIFICATION_KEYS = [
+  'deletedItems',
+  'addedItems',
+  'legalSignificance',
+  'investigativeCategories',
+  'isLegallySignificant',
+  'editorial',
+  'editorialReason',
+  'coverage',
+  'draws',
+  'classifierVersion',
+  'classifiedInputVersion',
+  'classifierModel',
+  'classifierPromptHash',
+  'summaryVersion',
+] as const satisfies readonly (keyof DiffClassification)[];
+
+/**
+ * THE CLASSIFICATION IS WHOLE OR ABSENT (2026-09-08). Making it optional so an
+ * empty diff can be written without one also made a HALF classification
+ * expressible, and half is the worst of the three states: a version carrying
+ * `editorial` with no `classifierVersion` beside it stores a verdict with no way
+ * to say which model under which prompt gave it, which is the provenance A2
+ * exists to keep — and the row would be indistinguishable from one properly
+ * judged. Absent is a FACT ("nothing classified this derivation"); whole is a
+ * judgement with its provenance; between them is nothing the design names.
+ *
+ * A WALK DEFECT, so it THROWS naming what is missing, as `matchedNodes`,
+ * `bytesOf` and Gate 4 do. A refusal would tell the caller the diff was
+ * unwritable; the truth is that the caller built something the design has no
+ * state for.
+ */
+function assertWholeOrAbsent(classification: Partial<DiffClassification>): void {
+  const present = CLASSIFICATION_KEYS.filter((key) => classification[key] !== undefined);
+  if (present.length === 0 || present.length === CLASSIFICATION_KEYS.length) return;
+  const missing = CLASSIFICATION_KEYS.filter((key) => classification[key] === undefined);
+  throw new Error(
+    `Walk defect: recordDiff was given a HALF classification — ${String(present.length)} of ` +
+      `${String(CLASSIFICATION_KEYS.length)} keys, missing ${missing.join(', ')}. A classification is whole ` +
+      'or absent: absent says nothing classified this derivation, whole carries the provenance that says ' +
+      'which model under which prompt judged it.',
+  );
 }
 
 export interface WrittenDiff {
@@ -240,6 +298,7 @@ export async function recordDiff(input: DiffWrite, tx?: Prisma.TransactionClient
   }
 
   const { trackedUrlId, beforeSnapshotId, afterSnapshotId, before, after, ...classification } = input;
+  assertWholeOrAbsent(classification);
   const stored = await storedPair(input, tx ?? prisma);
   const chunks = chunksWithSurvival(stored.before, stored.after, input);
   const hash = contentVersionHash(chunks);
@@ -275,7 +334,9 @@ export async function recordDiff(input: DiffWrite, tx?: Prisma.TransactionClient
           diffVersion: DIFF_VERSION,
           chunks: asJsonColumn(chunks),
           contentVersionHash: hash,
-          classification: asJsonColumn(classification),
+          // SQL NULL, not `{}`: an empty object would read as "a classifier
+          // answered and said nothing", which is a different fact.
+          classification: Object.keys(classification).length === 0 ? Prisma.DbNull : asJsonColumn(classification),
           survivalVersion: SURVIVAL_CHECK_VERSION,
         },
       ],
