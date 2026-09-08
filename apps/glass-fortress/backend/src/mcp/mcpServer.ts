@@ -1,11 +1,8 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { resolveOrigin } from '../oauth/oidcProvider';
-import { searchEvidenceSchema, searchEvidenceHandler } from './tools/searchEvidence';
-import { getForensicTimelineSchema, getForensicTimelineHandler } from './tools/getForensicTimeline';
 import { getFigureDossierSchema, getFigureDossierHandler } from './tools/getFigureDossier';
 import { getThesisContextSchema, getThesisContextHandler } from './tools/getThesisContext';
 import { getResearchAgendaSchema, getResearchAgendaHandler } from './tools/getResearchAgenda';
-import { createEvidenceFromUrlSchema, createEvidenceFromUrlHandler } from './tools/createEvidenceFromUrl';
 import { createEvidenceFromTextSchema, createEvidenceFromTextHandler } from './tools/createEvidenceFromText';
 import {
   surveyWaybackCapturesSchema,
@@ -37,13 +34,9 @@ import { createResearchSessionSchema, createResearchSessionHandler } from './too
 import { addSessionNoteSchema, addSessionNoteHandler } from './tools/addSessionNote';
 import { closeResearchSessionSchema, closeResearchSessionHandler } from './tools/closeResearchSession';
 import { getSessionSummarySchema, getSessionSummaryHandler } from './tools/getSessionSummary';
-import { promoteEvidenceSchema, promoteEvidenceHandler } from './tools/promoteEvidence';
-import { deleteEvidenceSchema, deleteEvidenceHandler } from './tools/deleteEvidence';
 import { generateFoiaRequestSchema, generateFoiaRequestHandler } from './tools/generateFoiaRequest';
 import { recoverEvidenceFromScreenshotSchema, recoverEvidenceFromScreenshotHandler } from './tools/recoverEvidenceFromScreenshot';
-import { checkOnChainStatusSchema, checkOnChainStatusHandler } from './tools/checkOnChainStatus';
 import { getWhistleblowerCallSchema, getWhistleblowerCallHandler } from './tools/getWhistleblowerCall';
-import { getScanFindingsSchema, getScanFindingsHandler } from './tools/getScanFindings';
 import {
   openThesisFramingSchema,
   openThesisFramingHandler,
@@ -53,24 +46,12 @@ import {
   getThesisFramingHandler,
 } from './tools/thesisFramingTools';
 import { getClaimTrajectoriesSchema, getClaimTrajectoriesHandler } from './tools/getClaimTrajectories';
-import { promoteScanFindingsSchema, promoteScanFindingsHandler } from './tools/promoteScanFindings';
-import {
-  openDiffDebateSchema,
-  openDiffDebateHandler,
-  respondInDiffDebateSchema,
-  respondInDiffDebateHandler,
-  promoteFromDiffDebateSchema,
-  promoteFromDiffDebateHandler,
-  getDiffDebateSchema,
-  getDiffDebateHandler,
-} from './tools/diffDebateTools';
 import { startTutorialSchema, startTutorialHandler } from './tools/startTutorial';
 import { verifyClaimTextSchema, verifyClaimTextHandler } from './tools/verifyClaimText';
 import {
   previewDiffClassificationSchema,
   previewDiffClassificationHandler,
 } from './tools/previewDiffClassification';
-import { getDiffInputSchema, getDiffInputHandler } from './tools/getDiffInput';
 import { getEnvironmentSchema, getEnvironmentHandler } from './tools/getEnvironment';
 import { auditThesisClaimsSchema, auditThesisClaimsHandler } from './tools/auditThesisClaims';
 import {
@@ -122,53 +103,6 @@ export function createMcpServer(): McpServer {
   });
 
   // -------------------------------------------------------------------------
-  // Tool: search_evidence
-  // Semantic search over the evidence vault (Pinecone + Prisma).
-  // PII-free: no submitterAddress, fileUrl, or raw medicalConditions returned.
-  // -------------------------------------------------------------------------
-  server.tool(
-    'search_evidence',
-    'Semantic search over the Glass Fortress evidence vault. Returns public evidence metadata ' +
-      'ranked by relevance. Filter by entity or tier. Never returns PII.',
-    searchEvidenceSchema,
-    async (input) => ({
-      content: [{ type: 'text' as const, text: await searchEvidenceHandler(input) }],
-    }),
-  );
-
-  // -------------------------------------------------------------------------
-  // Tool: get_forensic_timeline
-  // Returns the full Wayback Machine diff history for a tracked URL.
-  // -------------------------------------------------------------------------
-  server.tool(
-    'get_forensic_timeline',
-    'Retrieve the forensic diff timeline for a tracked URL — all detected content changes ' +
-      'between archived snapshots, including AI-assessed legal significance.',
-    getForensicTimelineSchema,
-    async (input) => ({
-      content: [{ type: 'text' as const, text: await getForensicTimelineHandler(input) }],
-    }),
-  );
-
-  // -------------------------------------------------------------------------
-  // Tool: check_on_chain_status
-  // Compares the vault's claim about a record against the registry contract.
-  // Read-only against both — it never registers anything.
-  // -------------------------------------------------------------------------
-  server.tool(
-    'check_on_chain_status',
-    'Verify an evidence record against the blockchain registry. Compares what the database claims ' +
-      '(PENDING_REVIEW / CONFIRMED, recorded tx hash) against what the EvidenceRegistry contract ' +
-      'actually holds, and returns a verdict naming any discrepancy. Call it BEFORE promote_evidence ' +
-      'to confirm the hash is not already anchored, and AFTER to confirm the anchor landed. ' +
-      'Read-only — it never registers anything.',
-    checkOnChainStatusSchema,
-    async (input) => ({
-      content: [{ type: 'text' as const, text: await checkOnChainStatusHandler(input) }],
-    }),
-  );
-
-  // -------------------------------------------------------------------------
   // Tool: get_whistleblower_call
   // The public Call for Whistleblowers is derived from the head version's
   // evidence gaps — there is no stored record, so this is a read.
@@ -184,89 +118,6 @@ export function createMcpServer(): McpServer {
     getWhistleblowerCallSchema,
     async (input) => ({
       content: [{ type: 'text' as const, text: await getWhistleblowerCallHandler(input) }],
-    }),
-  );
-
-  // -------------------------------------------------------------------------
-  // Tool: get_scan_findings
-  // What a page's forensic scans found and nobody has reviewed yet.
-  // -------------------------------------------------------------------------
-  server.tool(
-    'get_scan_findings',
-    'List every finding from a tracked page\'s forensic scans that is still awaiting human review. ' +
-      'Forensic scans do NOT promote their own findings: they classify page changes and record the ' +
-      'significant ones as PENDING_REVIEW, with nothing on-chain and nothing publicly searchable ' +
-      'until a person confirms them. Returns the classifier\'s reasoning with each finding so the ' +
-      'decisions can be reviewed, not just the rows. Confirm them with promote_scan_findings.',
-    getScanFindingsSchema,
-    async (input) => ({
-      content: [{ type: 'text' as const, text: await getScanFindingsHandler(input) }],
-    }),
-  );
-
-  // -------------------------------------------------------------------------
-  // Tool: promote_scan_findings
-  // The human decision a scan deliberately does not make for itself.
-  // -------------------------------------------------------------------------
-  server.tool(
-    'promote_scan_findings',
-    'Confirm every pending finding from a tracked page\'s forensic scans — registering each on-chain, ' +
-      'indexing it for search, and marking it CONFIRMED. Promotes exactly what the classifier flagged ' +
-      'as legally significant. Irreversible: on-chain registration cannot be undone. Call ' +
-      'get_scan_findings first and review what it returns.',
-    promoteScanFindingsSchema,
-    async (input) => ({
-      content: [{ type: 'text' as const, text: await promoteScanFindingsHandler(input) }],
-    }),
-  );
-
-  // -------------------------------------------------------------------------
-  // Tools: the diff debate — arguing a passed-over change into evidence.
-  // -------------------------------------------------------------------------
-  server.tool(
-    'open_diff_debate',
-    'Open a debate arguing that a page change the forensic classifier passed over should become ' +
-      'evidence. Requires a rationale making specific, falsifiable claims about the changed content — ' +
-      'bare assertion is refused. Returns the assessor\'s response and a session id. Promotion is a ' +
-      'separate call: this one never writes evidence and never touches the chain. Use this when you ' +
-      'disagree with the classifier; promote_scan_findings confirms what it DID flag.',
-    openDiffDebateSchema,
-    async (input) => ({
-      content: [{ type: 'text' as const, text: await openDiffDebateHandler(input) }],
-    }),
-  );
-
-  server.tool(
-    'respond_in_diff_debate',
-    'Reply within an open diff debate — answering the assessor\'s objection, or supplying the ' +
-      'specificity its substanceGaps asked for. Re-assessed and recorded as another round. The ' +
-      'assessor cannot veto: once your argument has substance you may promote even over a sustained ' +
-      'objection, and the objection is then carried on the evidence permanently.',
-    respondInDiffDebateSchema,
-    async (input) => ({
-      content: [{ type: 'text' as const, text: await respondInDiffDebateHandler(input) }],
-    }),
-  );
-
-  server.tool(
-    'promote_from_diff_debate',
-    'Promote the debated change to evidence, registering it on-chain. Requires that the argument ' +
-      'cleared the substance gate and, if the assessor disputes it, that you answered the objection. ' +
-      'Irreversible. If the assessor still disagrees, the promotion is recorded as made over its ' +
-      'objection and that stays attached to the evidence.',
-    promoteFromDiffDebateSchema,
-    async (input) => ({
-      content: [{ type: 'text' as const, text: await promoteFromDiffDebateHandler(input) }],
-    }),
-  );
-
-  server.tool(
-    'get_diff_debate',
-    'Read a diff debate — its full turn-by-turn record of arguments, assessments and responses, ' +
-      'whether it can be promoted yet, and what is blocking it if not.',
-    getDiffDebateSchema,
-    async (input) => ({
-      content: [{ type: 'text' as const, text: await getDiffDebateHandler(input) }],
     }),
   );
 
@@ -370,23 +221,6 @@ export function createMcpServer(): McpServer {
     getResearchAgendaSchema,
     async (input) => ({
       content: [{ type: 'text' as const, text: await getResearchAgendaHandler(input) }],
-    }),
-  );
-
-  // -------------------------------------------------------------------------
-  // Tool: create_evidence_from_url  [WRITE — STAGING GATE]
-  // Fetches a URL, runs IntakeAgent analysis, and saves as PENDING_REVIEW.
-  // NEVER registers on-chain or indexes in Pinecone — human promotion required.
-  // -------------------------------------------------------------------------
-  server.tool(
-    'create_evidence_from_url',
-    'Fetch a public URL, run AI intake analysis, and save the result as PENDING_REVIEW in the ' +
-      'evidence vault. The evidence is NOT registered on-chain or indexed for search until a ' +
-      'human reviewer explicitly promotes it via the UI. Safe to call multiple times — ' +
-      'duplicate URLs return the existing record.',
-    createEvidenceFromUrlSchema,
-    async (input) => ({
-      content: [{ type: 'text' as const, text: await createEvidenceFromUrlHandler(input) }],
     }),
   );
 
@@ -532,15 +366,16 @@ export function createMcpServer(): McpServer {
   // -------------------------------------------------------------------------
   // Tool: create_evidence_from_text  [WRITE — STAGING GATE]
   // Accepts raw text + source URL (for pages behind bot protection, paywalls,
-  // or dynamic SPAs that can't be fetched server-side). Same analysis pipeline
-  // and staging gate as create_evidence_from_url.
+  // or dynamic SPAs that can't be fetched server-side). Retired by document
+  // flows §9 and replaced by `add_document`; it leaves in 11a-document with the
+  // rest of the RETIRE-AT-11 set (document refactor plan §5).
   // -------------------------------------------------------------------------
   server.tool(
     'create_evidence_from_text',
     'Submit evidence as raw text when the source URL cannot be fetched directly (e.g. behind ' +
       'bot protection, JavaScript SPA, or paywall). Provide the plain text content and the ' +
-      'canonical source URL for provenance. Runs the same AI intake analysis and staging gate ' +
-      'as create_evidence_from_url — saved as PENDING_REVIEW, not registered on-chain until promoted.',
+      'canonical source URL for provenance. Runs the AI intake analysis behind the staging gate — ' +
+      'saved as PENDING_REVIEW, not registered on-chain until promoted.',
     createEvidenceFromTextSchema,
     async (input) => ({
       content: [{ type: 'text' as const, text: await createEvidenceFromTextHandler(input) }],
@@ -812,45 +647,6 @@ export function createMcpServer(): McpServer {
   );
 
   // -------------------------------------------------------------------------
-  // Tool: promote_evidence  [WRITE — SYNCHRONOUS]
-  // Promotes a PENDING_REVIEW evidence record to CONFIRMED:
-  //   1. Registers the fileHash on-chain (Web3Service)
-  //   2. Upserts the summary embedding to the vector store
-  //   3. Sets status = CONFIRMED in Prisma
-  // Idempotent — safe to call on already-CONFIRMED records.
-  // -------------------------------------------------------------------------
-  server.tool(
-    'promote_evidence',
-    'Promote a PENDING_REVIEW evidence record to CONFIRMED. Registers the file hash on the ' +
-      'blockchain, upserts the embedding into the vector store, and marks the record as CONFIRMED ' +
-      'in the database. Idempotent — safe to call if already confirmed. Requires evidenceId (UUID).',
-    promoteEvidenceSchema,
-    async (input) => ({
-      content: [{ type: 'text' as const, text: await promoteEvidenceHandler(input) }],
-    }),
-  );
-
-  // -------------------------------------------------------------------------
-  // Tool: delete_evidence  [WRITE — SYNCHRONOUS, DESTRUCTIVE]
-  // Permanently deletes a PENDING_REVIEW evidence record and its Storage
-  // file(s). Refuses CONFIRMED records (immutable once on-chain), records
-  // still cited by a thesis, and records with a Pinata IPFS pin (no verified
-  // unpin implementation yet — see deleteEvidence.ts).
-  // -------------------------------------------------------------------------
-  server.tool(
-    'delete_evidence',
-    'Permanently delete a PENDING_REVIEW evidence record — removes its file(s) from Storage and ' +
-      'the database row. Refuses to delete CONFIRMED records (already registered on-chain, meant to ' +
-      'be immutable), records still cited by a thesis, or records with an IPFS pin from the ' +
-      'whistleblower attachment path. Requires evidenceId (UUID). Irreversible — use for cleaning up ' +
-      'test, rejected, or mistakenly-submitted PENDING_REVIEW records, not as a general moderation tool.',
-    deleteEvidenceSchema,
-    async (input) => ({
-      content: [{ type: 'text' as const, text: await deleteEvidenceHandler(input) }],
-    }),
-  );
-
-  // -------------------------------------------------------------------------
   // Tool: generate_foia_request  [WRITE — synchronous LLM call]
   // Given a thesis ID and gap index, generates a formal Hebrew FOIA request
   // letter targeting the Israeli ministry most likely to hold the missing
@@ -992,25 +788,10 @@ export function createMcpServer(): McpServer {
   );
 
   server.tool(
-    'get_diff_input',
-    'The page text a diff detected as changed — what the classifier was GIVEN — beside the items it ' +
-      'produced. get_forensic_timeline shows items only, so a detected change that no item describes ' +
-      'is invisible there. Reports which input rule produced the row: rows below the current ' +
-      'diffInputVersion were computed under a chunk cap that discarded changes at write time and are ' +
-      'understated until the diff is recomputed from its snapshots. No model, no archive fetch, no ' +
-      'write.',
-    getDiffInputSchema,
-    async (input) => ({
-      content: [{ type: 'text' as const, text: await getDiffInputHandler(input) }],
-    }),
-  );
-
-  server.tool(
     'preview_diff_classification',
     'Re-run the forensic classifier over a stored diff and return what it says, WITHOUT writing ' +
       'anything — the stored verdict is left exactly as it was. Answers "what would the classifier ' +
-      'decide about this change today?", which the forensic timeline (stored verdict only) and ' +
-      'forensics:reclassify (overwrites the verdict to tell you) cannot. Identify the diff by ' +
+      'decide about this change today?", which reading a stored verdict cannot. Identify the diff by ' +
       'diffId, or by url + afterDate to ask two environments about the same change. `runs` draws ' +
       'several independent samples, because the classifier is non-deterministic at temperature 0. ' +
       'Returns the correlated evidence it was given: that input is queried live and differs between ' +

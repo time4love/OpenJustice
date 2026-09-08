@@ -20,7 +20,7 @@
 import { SurvivalVerdict } from '@prisma/client';
 import en from '../../frontend/messages/en.json';
 import he from '../../frontend/messages/he.json';
-import type { SurvivalDisplayState } from '../src/services/auditDiffSurvival';
+import type { SurvivalDisplayState } from '../src/services/diffSurvivalView';
 
 const CATALOGS: [locale: string, messages: typeof en | typeof he][] = [
   ['en', en],

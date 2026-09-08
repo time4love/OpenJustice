@@ -164,7 +164,7 @@ export async function createThesisDraftHandler(input: {
     warning:
       allHashes.length === 0
         ? 'No evidence hashes provided. Theses without evidence citations produce weaker legal arguments. ' +
-          'Find relevant vault evidence with search_evidence, then add hashes via evidenceHashes or citations. ' +
+          'Add evidence hashes via evidenceHashes or citations. ' +
           'A thesis cannot be published on trajectories alone: the gate requires at least one cited ' +
           'record that is CONFIRMED and anchored on-chain.'
         : undefined,

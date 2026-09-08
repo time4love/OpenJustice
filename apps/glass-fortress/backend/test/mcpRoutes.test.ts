@@ -89,13 +89,17 @@ afterEach(() => {
 
 describe('isWriteToolCall', () => {
   it('returns the tool name for a write tool call', () => {
-    const body = { method: 'tools/call', params: { name: 'create_evidence_from_url' } };
-    expect(isWriteToolCall(body)).toBe('create_evidence_from_url');
+    const body = { method: 'tools/call', params: { name: 'scan_captures' } };
+    expect(isWriteToolCall(body)).toBe('scan_captures');
   });
 
   it('returns tool name for all four write tools', () => {
+    // `create_evidence_from_url` left the surface at evidence step 11a; the
+    // fixture names a live write tool in its place. What is asserted is the
+    // GATE's behaviour, never the tool — a fixture naming a retired tool is a
+    // gate tested against something nobody can call.
     const writeTools = [
-      'create_evidence_from_url',
+      'scan_captures',
       'survey_wayback_captures',
       'create_thesis_draft',
       'add_thesis_version',
@@ -106,7 +110,7 @@ describe('isWriteToolCall', () => {
   });
 
   it('returns null for a read tool call', () => {
-    const body = { method: 'tools/call', params: { name: 'search_evidence' } };
+    const body = { method: 'tools/call', params: { name: 'get_environment' } };
     expect(isWriteToolCall(body)).toBeNull();
   });
 
@@ -139,14 +143,14 @@ describe('POST /api/mcp — write tool auth', () => {
     jsonrpc: '2.0',
     id: 1,
     method: 'tools/call',
-    params: { name: 'create_evidence_from_url', arguments: { url: 'https://example.com' } },
+    params: { name: 'scan_captures', arguments: { url: 'https://example.com' } },
   };
 
   const readCallBody = {
     jsonrpc: '2.0',
     id: 1,
     method: 'tools/call',
-    params: { name: 'search_evidence', arguments: { query: 'test' } },
+    params: { name: 'get_environment', arguments: {} },
   };
 
   it('returns 401 for write tool call with no Authorization header', async () => {
@@ -221,7 +225,7 @@ describe('POST /api/mcp — OAuth access token auth', () => {
     jsonrpc: '2.0',
     id: 1,
     method: 'tools/call',
-    params: { name: 'create_evidence_from_url', arguments: { url: 'https://example.com' } },
+    params: { name: 'scan_captures', arguments: { url: 'https://example.com' } },
   };
 
   it('accepts a valid OAuth token with mcp:write scope, never touching the legacy lookup', async () => {
@@ -358,8 +362,8 @@ describe('GET /api/mcp', () => {
   it('lists read and write tools separately', async () => {
     const res = await request(app).get('/api/mcp');
     expect(res.status).toBe(200);
-    expect(res.body.readTools).toContain('search_evidence');
-    expect(res.body.writeTools).toContain('create_evidence_from_url');
+    expect(res.body.readTools).toContain('get_environment');
+    expect(res.body.writeTools).toContain('scan_captures');
   });
 
   it('documents that write tools require auth', async () => {

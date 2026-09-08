@@ -234,7 +234,7 @@ export async function getResearchAgendaHandler(input: {
       'Focus on gaps where resolved=false. For each open gap, review vaultHits where ' +
       'alreadyCited=false — these are evidence records already in the vault that may address the gap. ' +
       'To cite one, call add_thesis_version with the existing body plus an evidenceMention for that ' +
-      'fileHash. If vaultHits is empty or insufficient, use create_evidence_from_url / ' +
+      'fileHash. If vaultHits is empty or insufficient, use ' +
       'create_evidence_from_text to submit new evidence, then call get_research_agenda again. ' +
       'Gaps where resolved=true have already been addressed — skip them unless resolutionSummary ' +
       'suggests the resolution was partial.',

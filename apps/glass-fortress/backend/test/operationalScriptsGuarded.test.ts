@@ -35,10 +35,15 @@ function source(file: string): string {
 
 describe('every operational script is guarded', () => {
   it('finds the scripts at all — a silent zero would make this vacuous', () => {
-    // Twenty at the time of writing. A collapse to zero means the directory
-    // moved or the pattern broke, which would turn every case below into a pass
-    // that proves nothing.
-    expect(files.length).toBeGreaterThanOrEqual(20);
+    // Sixteen at evidence step 11a, twenty-five before it. NINE OPERATIONAL
+    // SCRIPTS WERE RETIRED IN ONE COMMIT — reclassify, resummarize,
+    // rehash-evidence, rediff, measure-divergence, audit-survival,
+    // backfill-survival, confirm-anchors and measure-gate5 — each of which read
+    // the legacy columns evidence A2 removes, or read receipts where §8 reads
+    // chain state. The floor moves WITH the tree and never below it: its job is
+    // to catch a broken glob, not to assert a count, and a floor left at twenty
+    // would have been the assertion weakened to pass.
+    expect(files.length).toBeGreaterThanOrEqual(16);
   });
 
   it.each(files)('%s imports the shared guard', (file) => {
@@ -85,17 +90,25 @@ function walk(dir: string): string[] {
 }
 
 describe('a check that examined nothing refuses to pass', () => {
-  // ONE RULE, THREE CHECKS. `auditDiffSurvival` said it first — "No diffs found.
-  // This report says nothing; it is not a pass." — and `auditOnChainAnchors` guards
-  // `subjects === 0`. `confirmAnchors` had no such arm until 2026-08-30, and its
-  // empty run exited 0, which the public integrity board scored as full proof.
+  // ONE RULE, ONE CHECK LEFT — and the shrinking is the record, not an erosion.
+  // `auditDiffSurvival` said it first ("No diffs found. This report says nothing;
+  // it is not a pass.") and `confirmAnchors` had no such arm until 2026-08-30,
+  // when its empty run exited 0 and the public integrity board scored that as
+  // full proof. Both instruments were retired at evidence step 11a — the first
+  // reads the legacy survival columns evidence A2 removes, the second reads
+  // receipts where §8 reads chain state — so `auditOnChainAnchors` is the one
+  // subject this rule still has.
   //
-  // A source scan rather than three behavioural tests, because the property is
-  // "every check has this arm", and only reading the sources can say that.
-  const CHECKS = [
-    ['scripts', 'auditDiffSurvival.ts'],
-    ['scripts', 'auditOnChainAnchors.ts'],
-  ];
+  // IT IS RESTATED, NOT WEAKENED. `forensics:audit-evidence` and every later
+  // instrument lands under this rule at 11b (evidence A7), and the list is where
+  // it is added. A source scan rather than a behavioural test, because the
+  // property is "every check has this arm", and only reading the sources can say
+  // that.
+  const CHECKS = [['scripts', 'auditOnChainAnchors.ts']];
+
+  it('finds the checks at all — a silent zero would make this vacuous', () => {
+    expect(CHECKS.length).toBeGreaterThan(0);
+  });
 
   it.each(CHECKS.map((p) => [p.join('/'), p] as const))(
     '%s refuses an empty subject set',
@@ -104,12 +117,4 @@ describe('a check that examined nothing refuses to pass', () => {
       expect(code).toMatch(/(total === 0|subjects === 0)/);
     },
   );
-
-  it('confirmAnchors refuses it in its exit code, where its verdict lives', () => {
-    // It has no `main`-level guard because its verdict is computed by a pure
-    // function the script exits with. The arm belongs there, and a test that only
-    // grepped the script would have missed it and passed.
-    const code = readFileSync(join(__dirname, '..', 'src', 'services', 'confirmAnchors.ts'), 'utf8');
-    expect(code).toMatch(/report\.examined === 0/);
-  });
 });

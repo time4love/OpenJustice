@@ -62,17 +62,10 @@ describe('classifierPromptHash', () => {
   });
 });
 
-describe('a version bump actually targets rows', () => {
-  it('reclassification selects on CLASSIFIER_VERSION', () => {
-    const source = readFileSync(
-      join(__dirname, '..', 'src/services/reclassifyDiffs.ts'),
-      'utf8',
-    );
-
-    // Without this the bump is decorative: rows below the current version would
-    // never be selected, and bringing a corpus forward would need --force, which
-    // is exactly what happened when the budget change shipped without a bump.
-    expect(source).toMatch(/NOT:\s*\{\s*classifierVersion:\s*CLASSIFIER_VERSION\s*\}/u);
-    expect(source).toMatch(/classifierVersion:\s*null/u);
-  });
-});
+// THE RECLASSIFICATION GROUP WENT WITH `reclassifyDiffs` AT EVIDENCE STEP 11a.
+// It held that a CLASSIFIER_VERSION bump actually selects rows below it — a
+// property of a re-derivation tool that rewrote a stored classification in
+// place. Under evidence A2 a classification is the OPINION register of a
+// `DiffContentVersion`, nothing overwrites one, and a version move is a new
+// derivation the walk writes: the bump has no rows to target and no --force to
+// need. The version's own contract, above, is untouched.

@@ -272,7 +272,11 @@ afterEach(() => {
 
 describe('write tool auth enforcement', () => {
   const writeTools = [
-    { name: 'create_evidence_from_url', args: { url: 'https://example.gov' } },
+    // `create_evidence_from_url` left the surface at evidence step 11a (evidence
+    // A4: a selection with nothing to select). The gate's rule is unchanged and
+    // the list keeps a write tool of every layer, so it is replaced rather than
+    // shortened — a gate list that only shrinks eventually tests nothing.
+    { name: 'scan_captures', args: { url: 'https://corona.health.gov.il/' } },
     { name: 'survey_wayback_captures', args: { url: 'https://corona.health.gov.il/' } },
     { name: 'create_thesis_draft', args: { title: 'Test', body: 'Test thesis.' } },
     { name: 'add_thesis_version', args: { thesisId: 'thesis-int-1', body: 'Updated.' } },
@@ -301,59 +305,11 @@ describe('write tool auth enforcement', () => {
     });
   }
 });
-
-// ===========================================================================
-// create_evidence_from_url — staging gate integration
-// ===========================================================================
-
-describe('create_evidence_from_url integration', () => {
-  const args = { url: 'https://example.gov/article' };
-
-  it('returns PENDING_REVIEW status in tool output', async () => {
-    const res = await request(app)
-      .post('/api/mcp')
-      .set('Accept', MCP_ACCEPT)
-      .set('Authorization', `Bearer ${VALID_TOKEN}`)
-      .send(mcpCall('create_evidence_from_url', args));
-
-    const result = parseMcpToolResult(res.text) as Record<string, unknown>;
-    expect(result['status']).toBe('PENDING_REVIEW');
-  });
-
-  it('staging gate: VectorStoreService.create is never called', async () => {
-    await request(app)
-      .post('/api/mcp')
-      .set('Accept', MCP_ACCEPT)
-      .set('Authorization', `Bearer ${VALID_TOKEN}`)
-      .send(mcpCall('create_evidence_from_url', args));
-
-    expect(mockVectorStoreCreate).not.toHaveBeenCalled();
-  });
-
-  it('staging gate: Web3Service is never instantiated', async () => {
-    await request(app)
-      .post('/api/mcp')
-      .set('Accept', MCP_ACCEPT)
-      .set('Authorization', `Bearer ${VALID_TOKEN}`)
-      .send(mcpCall('create_evidence_from_url', args));
-
-    expect(MockWeb3Service).not.toHaveBeenCalled();
-  });
-
-  it('persists to Prisma with PENDING_REVIEW', async () => {
-    await request(app)
-      .post('/api/mcp')
-      .set('Accept', MCP_ACCEPT)
-      .set('Authorization', `Bearer ${VALID_TOKEN}`)
-      .send(mcpCall('create_evidence_from_url', args));
-
-    expect(mockEvidenceCreate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({ status: 'PENDING_REVIEW' }),
-      }),
-    );
-  });
-});
+// THE STAGING-GATE INTEGRATION GROUP WENT WITH `create_evidence_from_url` AT
+// EVIDENCE STEP 11a. It held that the tool wrote PENDING_REVIEW and did not
+// register on chain — a status the target has no spelling for, over a tool
+// evidence flows §1 calls a category error. The staging gate itself is
+// unchanged and is still exercised by the auth-enforcement group above.
 
 // create_thesis_draft — staging gate integration
 // ===========================================================================

@@ -25,17 +25,11 @@ const router = Router();
 // ---------------------------------------------------------------------------
 
 export const READ_TOOLS = new Set([
-  'search_evidence',
-  'get_forensic_timeline',
   // Derived entirely from data GET /api/thesis/:id already serves anonymously,
   // with no LLM call and no RPC call. Gating it would hide a page that is
   // deliberately public from the tool that describes it.
   'get_whistleblower_call',
-  // Reads recorded scan output — no LLM, no RPC. The scan that produced it was
-  // already gated; listing what it found for review is not the expensive part.
-  'get_scan_findings',
   'get_thesis_framing',
-  'get_diff_debate',
   'get_figure_dossier',
   'get_thesis_context',
   // Reads stored trajectories and resolves them; writes nothing, invokes no
@@ -47,11 +41,6 @@ export const READ_TOOLS = new Set([
   // by cost: its audience is an account that has signed up and is awaiting
   // approval, which under requireResearcher can do nothing at all.
   'start_tutorial',
-  // Two stored columns and a count. No model, no archive fetch, no write — the
-  // cheapest possible read, and the one that makes the layer beneath the
-  // classifier visible at all. Gating it would put the raw record further out of
-  // reach than the REST route that already serves it anonymously.
-  'get_diff_input',
   // Open on purpose, and the one tool where gating would be self-defeating:
   // "which environment am I talking to?" must be answerable BEFORE authenticating
   // into it. A caller who has to obtain a credential first has already had to
@@ -64,6 +53,9 @@ export const READ_TOOLS = new Set([
 ]);
 
 export const WRITE_TOOLS = new Set([
+  // Retired by document flows §9 and tagged RETIRE-AT-11; the tool and this
+  // entry leave together in 11a-document (document refactor plan §5).
+  'create_evidence_from_text',
   // Rewrites the prose on an evidence record and its source diff.
   // Gated despite the name. It was in READ_TOOLS while detection recomputed on
   // every call: no LLM, no RPC, and its whole value is that anyone can re-run
@@ -79,8 +71,6 @@ export const WRITE_TOOLS = new Set([
   // The public read-only path is getStoredClaimTrajectories, served by
   // GET /api/forensics/tracked/:id/trajectories, which never computes.
   'get_claim_trajectories',
-  'create_evidence_from_url',
-  'create_evidence_from_text',
   // The walk's two READS, gated by the standing precedent: a researcher's
   // working state — which pages are being marked, where the rules failed, what
   // is held at a stop — is not published evidence (flows A5).
@@ -116,10 +106,8 @@ export const WRITE_TOOLS = new Set([
   'create_research_session',
   'add_session_note',
   'close_research_session',
-  'promote_evidence',
   'generate_foia_request',
   'recover_evidence_from_screenshot',
-  'delete_evidence',
 
   // Writes nothing at all — no diff update, no finding, no evidence row — and is
   // still here, because the rule at the top of this file is what it SPENDS.
@@ -146,24 +134,13 @@ export const WRITE_TOOLS = new Set([
   // to solve a problem it is not causing.
   'get_research_agenda',
 
-  // Persists nothing either, and is semantically a read — but every call hits
-  // the chain RPC, and recoverTxHash:true issues a bounded eth_getLogs scan.
-  // An anonymous caller could drain the project's RPC quota through it, which
-  // is the same exposure that gated the two tools above.
-  'check_on_chain_status',
 
-  // Registers every pending finding for a page on-chain. Irreversible, spends
-  // gas, and asserts CONFIRMED — the most consequential write in the toolset.
-  'promote_scan_findings',
 
   // The diff debate. open/respond each run an LLM assessment; promote registers
   // on-chain. All gated — get_diff_debate is a plain read and sits above.
   // Embeds the question and runs a long-context assessment — real money per call.
   'open_thesis_framing',
   'assess_thesis_framing',
-  'open_diff_debate',
-  'respond_in_diff_debate',
-  'promote_from_diff_debate',
 
   // The verification tools (docs/gf-verification-tools-dev-plan.md). All three
   // write nothing — and all three are gated anyway, because "write" is not the

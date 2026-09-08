@@ -1,7 +1,7 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
-import { diffSurvivalView } from './auditDiffSurvival';
-import type { DiffSurvivalView } from './auditDiffSurvival';
+import { diffSurvivalView } from './diffSurvivalView';
+import type { DiffSurvivalView } from './diffSurvivalView';
 import { ForensicAgent, type DiffItem, type RelatedEvidenceContext } from './ForensicAgent';
 import { WaybackScraper } from './WaybackScraper';
 import { CLASSIFIER_VERSION, classifierPromptHash } from '../lib/classifierVersion';
@@ -170,7 +170,7 @@ export async function previewDiffClassification(
         ? `No diff with id ${opts.diffId}. Diff ids are per-environment: the same page change has a ` +
           'different id in each database, so an id copied from another environment will not resolve ' +
           'here. Identify the diff by url + afterDate instead.'
-        : 'No diff on that url with that afterDate. get_forensic_timeline lists every diff with its ' +
+        : 'No diff on that url with that afterDate. The page\'s timeline lists every diff with its ' +
           'beforeDate and afterDate.',
     };
   }

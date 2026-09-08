@@ -480,8 +480,10 @@ async function classify(
       onChainVerdict: null,
       staleReason:
         'This subject claims an anchor and what that anchor attests has never been observed. ' +
-        'Run forensics:confirm-anchors; where the chain no longer remembers the transaction, ' +
-        'this is permanent and true rather than a gap to be closed.',
+        'Attribution is read from CHAIN STATE — the registry says who registered a hash and when, ' +
+        'forever — and the receipt-reading tool that used to close this was retired at evidence ' +
+        'step 11a. Where the chain no longer remembers the transaction, this is permanent and true ' +
+        'rather than a gap to be closed.',
     };
   }
 

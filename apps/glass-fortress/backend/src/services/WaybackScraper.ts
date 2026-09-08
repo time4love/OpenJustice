@@ -11,10 +11,6 @@ import {
 } from '../lib/archiveHttp';
 import { type RelatedEvidenceContext } from './ForensicAgent';
 import { prisma } from '../lib/prisma';
-import {
-  buildForensicEvidence,
-  type ForensicEvidenceSource,
-} from './forensicEvidence';
 import { recordCdxObservation } from './recordCdxObservation';
 
 // ---------------------------------------------------------------------------
@@ -53,72 +49,6 @@ const MAX_CONTEXT_RECORDS = 5;
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-/**
- * Record a classified UrlVersionDiff as a PENDING_REVIEW Evidence record.
- *
- * This deliberately does NOT promote. Until 2026-08-22 it registered the hash
- * on-chain, wrote CONFIRMED, and indexed the record for public search — all on
- * the strength of an LLM classification, with no human ever seeing it.
- *
- * The reason that was wrong is visible in the data model. A UrlSnapshot's
- * contentHash is anchored automatically and correctly: it claims "this page
- * held exactly this text on this date", a factual observation anyone can
- * re-verify, and its value depends on being anchored promptly. An Evidence
- * record claims "this change is evidence in this investigation" — a legal
- * characterization. Automating the first is chain of custody; automating the
- * second is asserting a legal conclusion nobody reviewed.
- *
- * Nothing evidential is lost by waiting, because the snapshot anchor already
- * froze the underlying fact at scan time. What is gained is that CONFIRMED
- * keeps meaning what it says.
- *
- * Findings are reviewed and promoted per tracked URL — see the get_scan_findings
- * and promote_scan_findings MCP tools.
- *
- * Only diffs that advance at least one standing investigative concern are
- * recorded at all: a change can be unusual, or even legally interesting, and
- * still not be evidence for THIS investigation. Callers gate on
- * isLegallySignificant, which derives from the same classification; the guard
- * below makes the invariant explicit at the boundary rather than relying on
- * every caller to hold it.
- *
- * Idempotent — upserts by fileHash so re-runs are safe. Non-fatal — logs and
- * continues on failure, so one bad diff cannot abort a scan.
- */
-export async function recordScanFinding(source: ForensicEvidenceSource): Promise<void> {
-  // The automatic path only. Manual promotion via /forensics/promote is a
-  // researcher's deliberate override and is intentionally not gated on this.
-  if (source.investigativeCategories.length === 0) {
-    console.warn(
-      `[WaybackScraper] Refusing to record diff ${source.diffId} — no investigative category matched.`,
-    );
-    return;
-  }
-
-  const { fileHash, data } = buildForensicEvidence(source);
-
-  try {
-    await prisma.evidence.upsert({
-      where: { fileHash },
-      // An existing row is left exactly as it is. If it was already reviewed and
-      // confirmed, a re-scan must not quietly reopen it; if it is still pending,
-      // there is nothing new to write.
-      update: {},
-      create: { ...data, status: 'PENDING_REVIEW' },
-    });
-  } catch (err) {
-    console.warn(
-      '[WaybackScraper] Recording scan finding failed for diff', source.diffId,
-      ':', err instanceof Error ? err.message : err,
-    );
-    return;
-  }
-
-  console.info(
-    `[WaybackScraper] Recorded scan finding ${fileHash} as PENDING_REVIEW — awaiting review.`,
-  );
-}
 
 /**
  * Compute the date string for a point N days offset from a YYYY-MM-DD date.

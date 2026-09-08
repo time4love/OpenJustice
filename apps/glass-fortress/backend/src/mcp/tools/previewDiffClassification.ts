@@ -9,7 +9,7 @@ import {
 //
 // "Given a diff, show me what the classifier says — without touching state."
 //
-// Nothing exposed this. get_forensic_timeline returns the STORED verdict, which
+// Nothing exposed this. The stored-verdict reads returned the STORED verdict, which
 // is whatever was written at scan time by whatever prompt was current then;
 // `forensics:reclassify` re-runs the classifier but OVERWRITES that verdict, so
 // asking the question destroyed the previous answer, and it cannot run against
@@ -29,7 +29,7 @@ export const previewDiffClassificationSchema = {
     .string()
     .optional()
     .describe(
-      'The diff to classify, from get_forensic_timeline. Diff ids are per-environment — the same ' +
+      'The diff to classify, named by its id. Diff ids are per-environment — the same ' +
         'page change has a different id in each database — so use url + afterDate to ask two ' +
         'environments about the same change.',
     ),

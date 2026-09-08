@@ -28,12 +28,14 @@ const DIFF_WRITER = 'services/recordDiff.ts';
  * re-derivation tools that exist to replace a classification on a diff already
  * keyed to its captures. Listed explicitly so a new one is a decision.
  */
-const UPDATERS = [
-  'services/backfillDiffSurvival.ts',
-  'services/reclassifyDiffs.ts',
-  'services/rediffFromSnapshots.ts',
-  'services/resummarizeDiffs.ts',
-];
+// EMPTY AT EVIDENCE STEP 11a, AND THAT IS THE STRONGER RULE. The four
+// re-derivation tools that updated a diff row in place — backfillDiffSurvival,
+// reclassifyDiffs, rediffFromSnapshots, resummarizeDiffs — were retired with the
+// legacy columns they rewrote. Under evidence A2 the diff row IS the pair and
+// holds no content, so a derivation appends a `DiffContentVersion` and NOTHING
+// updates a diff. The list stays as a list rather than becoming `toEqual([])`
+// inline: a future updater is added here, deliberately, with its reason.
+const UPDATERS: string[] = [];
 
 function tsFiles(dir: string): string[] {
   return readdirSync(dir).flatMap((entry) => {
