@@ -17,13 +17,8 @@ process.on('uncaughtException', (err) => {
   console.error('[process] Uncaught exception (process kept alive):', err);
 });
 import { evidenceRouter } from './routes/evidenceRoutes';
-import { argumentRouter } from './routes/argumentRoutes';
-import { chatRouter } from './routes/chatRoutes';
 import { forensicsRouter } from './routes/forensicsRoutes';
 import { walkArticleRulesRouter } from './walk/routes';
-import { figuresRouter } from './routes/figuresRoutes';
-import { mentionRouter } from './routes/mentionRoutes';
-import { thesisRouter } from './routes/thesisRoutes';
 import { mcpRouter } from './mcp/mcpRoutes';
 import { authRouter } from './routes/authRoutes';
 import { reportRouter } from './routes/reportRoutes';
@@ -201,15 +196,10 @@ app.get('/api/stats', async (_req: Request, res: Response) => {
 });
 
 app.use('/api/evidence', evidenceRouter);
-app.use('/api/arguments', argumentRouter);
-app.use('/api/chat', chatRouter);
 app.use('/api/forensics', forensicsRouter);
 // The marking page's surface, page-scoped (docs/gf-interaction-flows.md A6),
 // behind requireResearcher inside the router.
 app.use('/api/article-rules', walkArticleRulesRouter);
-app.use('/api/figures', figuresRouter);
-app.use('/api/mentions', mentionRouter);
-app.use('/api/thesis', thesisRouter);
 app.use('/api/auth', authRouter);
 app.use('/api/reports', reportRouter);
 

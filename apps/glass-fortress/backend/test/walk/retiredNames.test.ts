@@ -71,6 +71,77 @@ const RETIRED_EVIDENCE_TOOLS = [
   'get_diff_debate',
 ];
 
+// THE THESIS TOOLS RETIRED BY thesis flows A4's retired block, added in the
+// thesis half of the legacy switch (thesis refactor plan, the DECIDED note above
+// step 17).
+//
+// A SEPARATE LIST FROM THE EVIDENCE ONE, DELIBERATELY. The two layers retire on
+// different steps and their successors land on different ones — `add_thesis_
+// version` returns at thesis step 20, `run_analysis` at 22, the framing tools at
+// 19 — so a single merged list would have to be un-merged the first time a name
+// comes back. Each list leaves when its layer's successors land.
+//
+// `suggest_thesis` is on A4's retired block and has never been registered in this
+// tree; it is listed for the reason `enrich_evidence_with_history` is — a name
+// held absent costs nothing, and the one nobody wrote down is the one that
+// returns.
+const RETIRED_THESIS_TOOLS = [
+  'create_thesis_draft',
+  'add_thesis_version',
+  'run_ai_analysis',
+  'get_research_agenda',
+  'generate_foia_request',
+  'get_figure_dossier',
+  'get_thesis_context',
+  'open_thesis_framing',
+  'assess_thesis_framing',
+  'get_thesis_framing',
+  'create_research_session',
+  'close_research_session',
+  'get_session_summary',
+  'add_session_note',
+  'cite_trajectories',
+  'get_whistleblower_call',
+  'publish_thesis',
+  'unpublish_thesis',
+  'check_publication_readiness',
+  'suggest_thesis',
+  'start_tutorial',
+  'preview_diff_classification',
+];
+
+// The modules those tools stood on, plus the thesis-layer modules whose old
+// versions go with the code they served (thesis plan §5's RETIRE and REWRITE).
+const RETIRED_THESIS_MODULES = [
+  'services/thesisPublication',
+  'services/thesisFraming',
+  'services/thesisAnalysis',
+  'services/thesisProvenance',
+  'services/thesisCitationSplice',
+  'services/whistleblowerCall',
+  'services/researchSessions',
+  'services/sessionService',
+  'services/previewDiffClassification',
+  'services/DevilsAdvocateAgent',
+  'services/RevisionAgent',
+  'services/GapRevisionAgent',
+  'services/ThesisValidatorAgent',
+  'services/ThesisFramingAssessorAgent',
+  'services/ThesisPublicationAssessorAgent',
+  'services/FoiaLetterAgent',
+  'services/LegalMasterAgent',
+  'services/TrustAgent',
+  'routes/thesisRoutes',
+  'routes/mentionRoutes',
+  'routes/figuresRoutes',
+  'routes/chatRoutes',
+  'routes/argumentRoutes',
+  'utils/tipTapUtils',
+  'utils/parseMentions',
+  'lib/evidenceRecord',
+  'lib/summaryProvenance',
+];
+
 // THE NINE OPERATIONAL SCRIPTS RETIRED WITH THOSE MODULES, AS npm ENTRY NAMES.
 //
 // A THIRD HALF, AND IT CATCHES WHAT NEITHER OTHER HALF CAN. A retired tool is a
@@ -207,6 +278,23 @@ describe('EXPECTED RED UNTIL STEP 8 — no file under src names a retired concep
     expect(srcModules().map((m) => m.file)).toContain(LEDGER);
   });
 
+  it('no file names a retired THESIS tool', () => {
+    const offenders = srcModules()
+      .map(({ file, code }) => ({ file, tools: RETIRED_THESIS_TOOLS.filter((t) => code.includes(t)) }))
+      .filter((m) => m.tools.length > 0);
+    expect(offenders).toEqual([]);
+  });
+
+  it('no file imports a retired THESIS module', () => {
+    const offenders = srcModules()
+      .map(({ file, code }) => ({
+        file,
+        modules: RETIRED_THESIS_MODULES.filter((m) => importedModules(file, code).includes(m)),
+      }))
+      .filter((m) => m.modules.length > 0);
+    expect(offenders).toEqual([]);
+  });
+
   it('no file promises a retired operational script', () => {
     const offenders = srcModules()
       .filter(({ file }) => file !== LEDGER)
@@ -239,6 +327,12 @@ describe('EXPECTED RED UNTIL STEP 8 — no file under src names a retired concep
     // PROSE IS NOT AN IMPORT: the descriptions still explain why diffInput left.
     expect(importedModules('services/x.ts', `// services/diffInput was retired at step 11a`))
       .toEqual([]);
+    // The thesis halves — one assertion per new shape, and the module one uses the
+    // sibling form, which is the spelling this scan was corrected for.
+    expect(RETIRED_THESIS_TOOLS.filter((t) => `server.tool('publish_thesis', …)`.includes(t)))
+      .toEqual(['publish_thesis']);
+    expect(importedModules('services/x.ts', `import { p } from './thesisPublication';`))
+      .toContain('services/thesisPublication');
     // The script half, against the shape the reviewer found three times.
     expect(RETIRED_SCRIPT_NAMES.filter((n) => `Run npm run forensics:backfill-survival to fix it.`.includes(n)))
       .toEqual(['forensics:backfill-survival']);

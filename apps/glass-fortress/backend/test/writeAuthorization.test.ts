@@ -48,24 +48,15 @@ const ANONYMOUS_WRITES_ALLOWED: Record<string, string> = {
   'reportRoutes.ts POST /medical/aggregate': 'read-shaped aggregate, POSTed for its filter body',
   'reportRoutes.ts POST /social-economic/aggregate':
     'read-shaped aggregate, POSTed for its filter body',
-  'chatRoutes.ts POST /': 'public assistant, rate limited',
-  'argumentRoutes.ts POST /generate': 'public argument generation, rate limited',
   'oauthInteractionRoutes.ts POST /:uid/login': 'the login form itself',
   'oauthInteractionRoutes.ts POST /:uid/confirm': 'the consent form itself',
-  // Thesis authoring is not yet gated. Recorded here deliberately rather than
-  // omitted: publish and unpublish DO require a researcher, so the act that
-  // makes a thesis public is gated while the acts that shape its content are
-  // not. That is a real inconsistency and it belongs in front of whoever reads
-  // this list, not hidden by a looser pattern.
-  'thesisRoutes.ts POST /:id/analyze': 'UNGATED — see note above',
-  'thesisRoutes.ts POST /:id/version': 'UNGATED — see note above',
-  'thesisRoutes.ts POST /:id/suggest-revision': 'UNGATED — see note above',
-  'thesisRoutes.ts POST /draft': 'UNGATED — see note above',
-  'thesisRoutes.ts POST /:id/foia-request': 'UNGATED — see note above',
-  'thesisRoutes.ts POST /:id/gaps/:gapIndex/resolve': 'UNGATED — see note above',
-  'thesisRoutes.ts DELETE /:id/gaps/:gapIndex/resolve': 'UNGATED — see note above',
-  'thesisRoutes.ts POST /:id/gaps/:gapIndex/whistleblower': 'UNGATED — see note above',
-  'thesisRoutes.ts POST /:id/gaps/:gapIndex/whistleblower/preview': 'UNGATED — see note above',
+  // THE THESIS BLOCK LEFT THIS LIST AT EVIDENCE STEP 11a, with the routes.
+  // It recorded a real inconsistency — publish and unpublish required a
+  // researcher while the acts that shaped a thesis's content did not — and it
+  // is answered by the design rather than by a gate: thesis flows A5 adds no
+  // route at all, every research act is an MCP tool behind the write gate, and
+  // the public page is a READ. The inconsistency cannot return as a route,
+  // which is why nothing replaces these entries when step 23 lands the reads.
 };
 
 /** Middleware that establishes who the caller is. Rate limiters are NOT gates. */
@@ -168,7 +159,14 @@ describe('the parser understands a router-level gate, and only where it applies'
 describe('no state-changing route is reachable anonymously without a stated reason', () => {
   it('finds routes at all — a scan that matches nothing would pass by not looking', () => {
     const routes = allRoutes();
-    expect(routes.length).toBeGreaterThan(20);
+    // FOURTEEN AT EVIDENCE STEP 11a, twenty-nine before it: five route modules
+    // left with the thesis layer (`thesisRoutes`, `chatRoutes`, `argumentRoutes`,
+    // `mentionRoutes`, `figuresRoutes`), and thesis flows A5 replaces none of
+    // them — every research act is an MCP tool. The floor moves WITH the tree and
+    // never below it: its job is to catch a scan that stopped matching, not to
+    // assert a count, and a floor left at twenty would be the assertion weakened
+    // to pass.
+    expect(routes.length).toBeGreaterThan(10);
     expect(routes.some((r) => r.gated)).toBe(true);
   });
 

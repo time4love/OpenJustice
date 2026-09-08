@@ -122,7 +122,13 @@ describe('MCP tool classification', () => {
     // Named explicitly rather than derived, so that moving any of these back to
     // the open set is a deliberate edit to this list with a test failure to
     // explain. Each embeds input and then invokes an LLM.
-    for (const tool of ['get_research_agenda', 'run_ai_analysis', 'scan_captures']) {
+    // `get_research_agenda` and `run_ai_analysis` left the surface in the thesis
+    // half of the legacy switch (thesis A4 retires both). `scan_captures` is the
+    // one paid tool the platform still has, and it is the whole of the rule for
+    // now: one classifier call per novel capture that reaches Gate 5. The thesis
+    // successors — `run_analysis` at step 22, the framing assessor at 19 — land
+    // under this same case, and it fails until they are classified.
+    for (const tool of ['scan_captures']) {
       expect(WRITE_TOOLS.has(tool)).toBe(true);
     }
   });

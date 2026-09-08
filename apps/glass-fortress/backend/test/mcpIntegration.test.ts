@@ -89,11 +89,10 @@ jest.mock('../src/services/Web3Service', () => {
   return { Web3Service: MockWeb3Service };
 });
 
-jest.mock('../src/services/DevilsAdvocateAgent', () => ({
-  DevilsAdvocateAgent: jest.fn().mockImplementation(() => ({
-    analyze: jest.fn(),
-  })),
-}));
+// The `DevilsAdvocateAgent` mock left with the module at evidence step 11a:
+// the critic is thesis §5 REWRITE, its successor landing at thesis step 22 over
+// computed content. Nothing in this file reaches it any more — the two thesis
+// integration groups went with their tools.
 
 // The verification tools reach the archived-page extractor, which loads jsdom —
 // ESM-only in its dependency chain and unparseable by ts-jest, the same reason
@@ -119,7 +118,6 @@ import express from 'express';
 import { prisma } from '../src/lib/prisma';
 import { VectorStoreService } from '../src/services/VectorStoreService';
 import { Web3Service } from '../src/services/Web3Service';
-import { DevilsAdvocateAgent } from '../src/services/DevilsAdvocateAgent';
 import { hashToken } from '../src/lib/tokenHash';
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -179,7 +177,6 @@ const mockTransaction = prisma.$transaction as jest.Mock;
 const mockResearcherFindFirst = prisma.researcher.findFirst as jest.Mock;
 const mockVectorStoreCreate = VectorStoreService.create as jest.Mock;
 const MockWeb3Service = Web3Service as jest.MockedClass<typeof Web3Service>;
-const MockDevilsAdvocate = DevilsAdvocateAgent as jest.MockedClass<typeof DevilsAdvocateAgent>;
 
 const TEST_HMAC_SECRET = 'test-hmac-secret-for-jest';
 const MOCK_RESEARCHER = { id: 'researcher-1', handle: 'test_researcher', role: 'RESEARCHER', approved: true };
@@ -278,12 +275,15 @@ describe('write tool auth enforcement', () => {
     // shortened — a gate list that only shrinks eventually tests nothing.
     { name: 'scan_captures', args: { url: 'https://corona.health.gov.il/' } },
     { name: 'survey_wayback_captures', args: { url: 'https://corona.health.gov.il/' } },
-    { name: 'create_thesis_draft', args: { title: 'Test', body: 'Test thesis.' } },
-    { name: 'add_thesis_version', args: { thesisId: 'thesis-int-1', body: 'Updated.' } },
-    { name: 'run_ai_analysis', args: { thesisId: 'thesis-int-1' } },
-    { name: 'create_research_session', args: { thesisId: 'thesis-int-1' } },
-    { name: 'add_session_note', args: { thesisId: 'thesis-int-1', note: 'test' } },
-    { name: 'close_research_session', args: { thesisId: 'thesis-int-1' } },
+    // THE SIX THESIS TOOLS LEFT THE SURFACE AT EVIDENCE STEP 11a AND ARE REPLACED,
+    // NOT DROPPED. Between this PR and thesis step 20 there is no thesis write
+    // tool at all, so the list is made from what the gate must still refuse
+    // anonymously: the walk's five writes and the one document write PR 3 takes.
+    // A gate list that only ever shrinks eventually tests nothing.
+    { name: 'approve_article_rules', args: { url: 'https://corona.health.gov.il/', capture: '20220101000000' } },
+    { name: 'resolve_scan_stop', args: { url: 'https://corona.health.gov.il/', capture: '20220101000000', resolution: 'CONTINUE' } },
+    { name: 'reset_article_calibration', args: { url: 'https://corona.health.gov.il/', reason: 'test' } },
+    { name: 'create_evidence_from_text', args: { url: 'https://example.gov', text: 'text' } },
   ];
 
   for (const { name, args } of writeTools) {
@@ -305,129 +305,10 @@ describe('write tool auth enforcement', () => {
     });
   }
 });
-// THE STAGING-GATE INTEGRATION GROUP WENT WITH `create_evidence_from_url` AT
-// EVIDENCE STEP 11a. It held that the tool wrote PENDING_REVIEW and did not
-// register on chain — a status the target has no spelling for, over a tool
-// evidence flows §1 calls a category error. The staging gate itself is
-// unchanged and is still exercised by the auth-enforcement group above.
 
-// create_thesis_draft — staging gate integration
-// ===========================================================================
 
-describe('create_thesis_draft integration', () => {
-  const args = {
-    title: 'MOH Concealment of Vaccine Side Effects',
-    body: 'The Ministry of Health concealed serious vaccine side effects.',
-    evidenceHashes: ['0xabc123'],
-    keyFigures: ['Prof. Barkovitz'],
-  };
-
-  it('returns thesisId and PENDING_AI status in tool output', async () => {
-    const res = await request(app)
-      .post('/api/mcp')
-      .set('Accept', MCP_ACCEPT)
-      .set('Authorization', `Bearer ${VALID_TOKEN}`)
-      .send(mcpCall('create_thesis_draft', args));
-
-    const result = parseMcpToolResult(res.text) as Record<string, unknown>;
-    expect(result['thesisId']).toBe('thesis-int-1');
-    expect(result['status']).toBe('PENDING_AI');
-  });
-
-  it('staging gate: DevilsAdvocateAgent.analyze is never called', async () => {
-    await request(app)
-      .post('/api/mcp')
-      .set('Accept', MCP_ACCEPT)
-      .set('Authorization', `Bearer ${VALID_TOKEN}`)
-      .send(mcpCall('create_thesis_draft', args));
-
-    expect(MockDevilsAdvocate).not.toHaveBeenCalled();
-  });
-
-  it('persists ThesisVersion with PENDING_AI', async () => {
-    await request(app)
-      .post('/api/mcp')
-      .set('Accept', MCP_ACCEPT)
-      .set('Authorization', `Bearer ${VALID_TOKEN}`)
-      .send(mcpCall('create_thesis_draft', args));
-
-    expect(mockThesisVersionCreate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({ status: 'PENDING_AI' }),
-      }),
-    );
-  });
-
-  it('reports correct evidence and figure link counts', async () => {
-    const res = await request(app)
-      .post('/api/mcp')
-      .set('Accept', MCP_ACCEPT)
-      .set('Authorization', `Bearer ${VALID_TOKEN}`)
-      .send(mcpCall('create_thesis_draft', args));
-
-    const result = parseMcpToolResult(res.text) as Record<string, unknown>;
-    expect(result['evidenceLinked']).toBe(1);
-    expect(result['keyFiguresLinked']).toBe(1);
-  });
-});
-
-// ===========================================================================
-// add_thesis_version — staging gate integration
-// ===========================================================================
-
-describe('add_thesis_version integration', () => {
-  const args = {
-    thesisId: 'thesis-int-1',
-    body: 'Revised: statistical manipulation confirmed by leaked Zoom recording.',
-    evidenceHashes: ['0xdef456'],
-  };
-
-  it('returns new headVersionId and PENDING_AI status', async () => {
-    const res = await request(app)
-      .post('/api/mcp')
-      .set('Accept', MCP_ACCEPT)
-      .set('Authorization', `Bearer ${VALID_TOKEN}`)
-      .send(mcpCall('add_thesis_version', args));
-
-    const result = parseMcpToolResult(res.text) as Record<string, unknown>;
-    expect(result['thesisId']).toBe('thesis-int-1');
-    expect(result['status']).toBe('PENDING_AI');
-  });
-
-  it('sets parentVersionId from existing headVersionId', async () => {
-    await request(app)
-      .post('/api/mcp')
-      .set('Accept', MCP_ACCEPT)
-      .set('Authorization', `Bearer ${VALID_TOKEN}`)
-      .send(mcpCall('add_thesis_version', args));
-
-    expect(mockThesisVersionCreate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({ parentVersionId: 'ver-int-1' }),
-      }),
-    );
-  });
-
-  it('staging gate: DevilsAdvocateAgent.analyze is never called', async () => {
-    await request(app)
-      .post('/api/mcp')
-      .set('Accept', MCP_ACCEPT)
-      .set('Authorization', `Bearer ${VALID_TOKEN}`)
-      .send(mcpCall('add_thesis_version', args));
-
-    expect(MockDevilsAdvocate).not.toHaveBeenCalled();
-  });
-
-  it('returns error JSON (not HTTP error) for unknown thesis ID', async () => {
-    mockThesisFindUnique.mockResolvedValue(null);
-
-    const res = await request(app)
-      .post('/api/mcp')
-      .set('Accept', MCP_ACCEPT)
-      .set('Authorization', `Bearer ${VALID_TOKEN}`)
-      .send(mcpCall('add_thesis_version', { ...args, thesisId: 'nonexistent' }));
-
-    const result = parseMcpToolResult(res.text) as Record<string, unknown>;
-    expect(result['error']).toContain('nonexistent');
-  });
-});
+// THE TWO THESIS INTEGRATION GROUPS WENT WITH THEIR TOOLS AT EVIDENCE STEP 11a:
+// `create_thesis_draft` is retired by thesis A4 (the framing is named, not derived)
+// and `add_thesis_version` is REWRITE, its successor landing at thesis step 20 over
+// T2's shape. The write-tool auth group above is KEEP and stays: it asserts the
+// GATE, which is unchanged, and its list keeps a live tool of every layer.
