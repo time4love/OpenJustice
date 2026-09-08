@@ -678,6 +678,15 @@ here, earlier captures untouched. Gate 2's rule shows what it removed on the pre
 history. This script is part of the tool contract (A5), not of any session, so every connector session
 drives a stop the same way.
 
+**Amended 2026-09-08: the stop's shape follows Gate 1.** When Gate 1 lists lines that ENTERED the
+text (`nowKept`), the stop's answer is CORRECT on the page for the stop as a whole — Claude names
+the elements by their first lines and hands over the URL, and no per-rule Gate 2 check is made,
+since the marking is the covering. Gate 1's removed side — text kept before and removed now — is a
+rule taking article text: END it in the chat, or unmark it on the page. The per-rule verification
+of a silent rule is for a stop where Gate 1 is quiet: the re-walk after the marking has already
+happened. A fresh walk of a page is page-shaped at every redesign and chat-shaped only where a
+rule's contents are judged.
+
 **Both directions stop.** `kept → removed` is DATA LOSS; `removed → kept` is CORPUS POLLUTION, because
 `text` feeds `textHash` and every later capture then looks novel.
 
@@ -929,7 +938,20 @@ RESOLVED(row)           a CAPTURE_ACCEPTED or CAPTURE_SKIPPED for its capture, u
 SEEN(page)              the removed-side segments of every ACQUIRED capture that has a decision
                         under AUTHORITY, plus the PENDING_JUDGEMENT capture being judged — computed
                         from bytes held, so a SKIPPED capture contributes nothing and its removals
-                        may be shown again; cached per page, invalidated by any decision
+                        may be shown again; cached per page, invalidated by any decision.
+                        Amended 2026-09-08, from the first re-walk driven from the chat: a capture a
+                        human has JUDGED contributes its OWN removed side to SEEN when it is itself
+                        re-walked. The exclusion of the capture being judged applies only to a capture
+                        with no CAPTURE_ACCEPTED under AUTHORITY — a fresh capture must be asked about
+                        its own removals, and a judged one has been. Its removed side is taken under
+                        the rules in force today, as the fold takes every other capture's; removals a
+                        rule added to it after the acceptance are therefore not shown at that capture —
+                        Gate 1' shows them where they were approved text, and the first unjudged
+                        capture shows the rest. A judged DUPLICATE contributes from the derivation the
+                        re-walk has in hand, since it holds no body. As built, the walk excluded every
+                        capture's own removals, so a re-walk re-asked Gate 4 about every rule created at
+                        that capture's stop: seen on 12-18 (a judged DUPLICATE) and on 2021-06-12 (a
+                        judged ACQUIRED capture, its new header's menu items asked about twice)
 STALE(row)              outcome ∈ {DUPLICATE, ACQUIRED} AND
                         (row.rulesetId ≠ RULESET_ID(page, row.waybackTimestamp)
                          OR row.textExtractionVersion's extractor ≠ CURRENT_EXTRACTOR)
@@ -968,7 +990,16 @@ GATE 1'  on a STALE ACQUIRED row that carries a CAPTURE_ACCEPTED under AUTHORITY
          Gate 1: the exclusive set, for the same reason
 GATE 2   ∃ rule r in force at both timestamps: RuleMatch(r, p) > 0 AND RuleMatch(r, c) = 0.
          A rule in force at p or c with NO RuleMatch row for that timestamp is a WALK DEFECT: the
-         gate THROWS naming the rule and the timestamp — never read as 0, never as quiet
+         gate THROWS naming the rule and the timestamp — never read as 0, never as quiet.
+         Amended 2026-09-08: a silence a human has already judged does not fire again. The gate
+         fires for r on c only if no CAPTURE_ACCEPTED for c under AUTHORITY was written AFTER the
+         RuleMatch(r, c) = 0 was observed — compared by time, observedAt against createdAt, across
+         two tables written by two actors that never share a transaction (the walk writes no
+         decision, which a source scan holds). The match row is written at the evaluation that
+         stopped and the acceptance follows it; a rule EXTENDED back to c after that acceptance
+         writes a new match row, observed later, and its silence fires. As built, ending one rule
+         un-resolved every later capture and the re-walk re-fired at 2021-06-12 the same ten
+         silences the first walk had already put to the researcher
 GATE 4   ∃ segment s ∈ removed(c) removed by a REVIEWED rule AND s ∉ SEEN(page).
          Derivation runs under RULES_IN_FORCE, so every selector in removedSegments names a live
          rule; one that does not is a WALK DEFECT and the gate THROWS. A segment claimed by more
