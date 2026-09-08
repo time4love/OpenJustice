@@ -158,7 +158,10 @@ aggregated evidence by named official and loses half its source when figures lea
 row — RETIRED by the thesis flows T2 with the key figure itself; the name search is the corpus
 search, gated, the Prosecutor's (thesis flows §10).
 `preview_diff_classification`, a diagnostic that previews the classifier — under the design the
-classifier runs once at acquisition, so it is an instrument, not a research act. `reset_article_
+classifier runs once at acquisition, so it is an instrument, not a research act — and thesis A4
+RETIRES it as a tool for exactly that reason; this paragraph's heading was wrong about it
+(corrected 2026-09-08: an instrument is an operational script, never on the MCP surface; the
+refactor plan §3b note above step 11 places its deletion). `reset_article_
 calibration` and `start_tutorial`, a recovery act and onboarding, correctly absent from a normal
 day. `create_evidence_from_text` and `recover_evidence_from_screenshot`, the parked class.
 
