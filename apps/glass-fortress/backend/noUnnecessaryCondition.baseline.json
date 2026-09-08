@@ -1,9 +1,8 @@
 {
   "_comment": "RATCHET BASELINE. Regenerate with: UPDATE_BASELINE=1 npx jest test/noUnnecessaryConditionRatchet.test.ts — never edit by hand to make a failure go away.",
   "_why": "18 of these entries were DELIBERATE guards rather than accidents: migration 20260828120000_diff_identity_is_its_capture_pair made UrlVersionDiff.beforeSnapshotId and afterSnapshotId NOT NULL, so the UNCHECKABLE / unlinkedDiffs / refusedDiffIds branches in the diff-readers became branches the TYPES say can never run. They were kept because the type was enforced by a constraint that shipped with the code but was NOT YET APPLIED, and the local re-derivation tools ran against real environments outside the deploy ordering that guarantees migrations land first: between merge and migration the runtime could produce what the type called impossible. Deleting a guard because a linter argues from a type that does not yet describe reality is the extractHrefs near-miss, recorded in the plan. AMENDED AT EVIDENCE STEP 11a: two of the three modules that reasoning named are GONE — the re-derivation tools were retired with the legacy columns they rewrote — and the third, the evidence read routes, went with them. The condition to drop the rest is unchanged and is now the surviving readers' alone: when 20260828120000 is applied in EVERY environment, read from the _prisma_migrations ledger rather than from a deploy status, set those entries to 0, and let the ratchet report a REGRESSION until the dead branches are actually removed — which is what turns 'delete them later' from an intention into a condition. NO NUMBER IN THIS FILE IS TOUCHED BY THIS EDIT. The entries fall when the baselines are set from CI's output after the push, never from a laptop: the local pass under-reports type-aware rules SILENTLY, and that cost a CI failure on PR #281 on a change of exactly this shape.",
-  "total": 7,
+  "total": 5,
   "files": {
-    "src/services/VectorStoreService.ts": 2,
     "src/services/reportPatternService.ts": 2,
     "src/lib/appEnv.ts": 1,
     "src/middleware/supabaseAuth.ts": 1,
