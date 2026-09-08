@@ -11,9 +11,8 @@ import { answer, refusal, shared, type Refusal } from '../refusals';
 // ---------------------------------------------------------------------------
 // approve_article_rules — docs/gf-interaction-flows.md MARKING and A5.
 //
-// MARKING'S ONE COMMAND, WHICHEVER ANSWER IT WAS. CONTINUE hands back an
-// unchanged draft, CORRECT a changed one, TRUST a draft carrying selectors;
-// this promotes all of it, in order, as ONE transaction:
+// MARKING'S ONE COMMAND — CORRECT, from 2026-09-07. The page marks and
+// unmarks; this promotes the draft, in order, as ONE transaction:
 //
 //   new selectors        → Rule rows, validFrom = THIS capture's timestamp,
 //                          created by ONE RULESET_CORRECTED naming the capture
@@ -21,11 +20,16 @@ import { answer, refusal, shared, type Refusal } from '../refusals';
 //   later validFrom        RULE_EXTENDED; no second row — one live rule per
 //                          selector (ruled 2026-09-03)
 //   selectors removed    → RULE_ENDED each, validTo = this timestamp
-//   draftTrusted         → RULE_TRUSTED each, mapped to the live rule — created
-//                          here or existing; a rule can be created and trusted
-//                          in one draft
 //   then                 → CAPTURE_ACCEPTED, carrying RULESET_ID after the changes
 //   the draft cleared
+//
+// TRUST LEFT THIS TOOL ON 2026-09-07 (Flow 2, A5, A2). `draftTrusted` is
+// retired with the column: a rule is trusted at a stop, in the chat, after its
+// removals have been read — which is a thing the marking page could not show,
+// and the reason the tick was there was that the draft was the only vehicle
+// back. `resolve_scan_stop` CONTINUE carries it now, and "a rule created in
+// this draft can be trusted in this draft" goes with it: a rule created a
+// moment ago has no history to trust.
 //
 // The work-list row is never written here: acquisition is the walk's retry.
 // An empty ruleset is approved explicitly or not at all — `rules: 0` — because
@@ -63,7 +67,7 @@ interface RuleInForce extends NamedRule {
 
 interface Approval {
   rules: RuleInForce[];
-  changes: { added: NamedRule[]; ended: NamedRule[]; trusted: NamedRule[]; extended: NamedRule[] };
+  changes: { added: NamedRule[]; ended: NamedRule[]; extended: NamedRule[] };
   decisionSequence: number;
 }
 
@@ -217,22 +221,10 @@ async function approve(tx: Prisma.TransactionClient, researcherId: string, input
     }),
     ...created,
   ];
-  const inForceAfter = governing(rulesInForce(rulesAfter, log, t));
-  const toTrust = selectorSet(page.draftTrusted).map((selector) => {
-    const rule = inForceAfter.get(selector);
-    if (rule === undefined) {
-      throw new Error(
-        `The draft trusts selector ${selector}, which names no rule in force at ${t} after this approval; the page handed back a selector it does not have.`,
-      );
-    }
-    return rule;
-  });
-
-  // 3. Everything else in A5's order, one append: EXTENDED, ENDED, TRUSTED, ACCEPTED.
+  // 3. Everything else in A5's order, one append: EXTENDED, ENDED, ACCEPTED.
   const written = await appendDecisions(tx, page.id, [
     ...toExtend.map((rule) => stamp({ type: 'RULE_EXTENDED', waybackTimestamp: t, ruleId: rule.id })),
     ...toEnd.map((rule) => stamp({ type: 'RULE_ENDED', waybackTimestamp: t, ruleId: rule.id })),
-    ...toTrust.map((rule) => stamp({ type: 'RULE_TRUSTED', waybackTimestamp: t, ruleId: rule.id })),
     stamp({ type: 'CAPTURE_ACCEPTED', waybackTimestamp: t, rulesetId: rulesetIdAt(rulesAfter, log, t) }),
   ]);
   log.push(...written.map(asDecision));
@@ -256,7 +248,6 @@ async function approve(tx: Prisma.TransactionClient, researcherId: string, input
     changes: {
       added: created.map(named),
       ended: toEnd.map(named),
-      trusted: toTrust.map(named),
       extended: toExtend.map(named),
     },
     decisionSequence: last.sequence,

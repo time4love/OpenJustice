@@ -13,10 +13,10 @@ import type { Prisma } from '@prisma/client';
 // reference.
 // ---------------------------------------------------------------------------
 
-/** Clear the page's draft — all four of A2's draft columns, in the caller's transaction. */
+/** Clear the page's draft — all three of A2's draft columns, in the caller's transaction. */
 export async function clearDraft(tx: Prisma.TransactionClient, trackedUrlId: string): Promise<void> {
   await tx.trackedUrl.update({
     where: { id: trackedUrlId },
-    data: { draftCapture: null, draftSelectors: [], draftTrusted: [], draftReturnedAt: null },
+    data: { draftCapture: null, draftSelectors: [], draftReturnedAt: null },
   });
 }

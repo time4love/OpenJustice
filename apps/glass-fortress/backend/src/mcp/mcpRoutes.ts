@@ -86,6 +86,10 @@ export const WRITE_TOOLS = new Set([
   // is held at a stop — is not published evidence (flows A5).
   'get_article_rules',
   'list_captures',
+  // The third read, added 2026-09-07 with judgement in the chat: one rule's
+  // history, including what it removed from each capture it matched. Gated for
+  // the same reason as the other two — and this one re-derives held bytes.
+  'get_rule_history',
   // One RESET decision; every rule created before it loses authority. Gated for
   // the obvious reason, and named rather than omitted.
   'reset_article_calibration',

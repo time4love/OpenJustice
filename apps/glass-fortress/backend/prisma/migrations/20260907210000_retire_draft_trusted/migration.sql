@@ -1,0 +1,12 @@
+-- Retire TrackedUrl.draftTrusted (flows A2, amended 2026-09-07).
+--
+-- Trust left the marking page: a rule is trusted at a stop, in the chat, after
+-- its removals have been read, and resolve_scan_stop CONTINUE records it. The
+-- column was the draft's only vehicle back for a judgement the page could give
+-- no basis for, and nothing reads it after this change.
+--
+-- The draft is TRANSIENT state by A2 — one per page, overwritten as it is made,
+-- discarded on promotion — so this column holds no decision, no rule and no
+-- capture. Every judgement it ever carried is already a RULE_TRUSTED row in the
+-- append-only decision log, which this does not touch.
+ALTER TABLE "TrackedUrl" DROP COLUMN "draftTrusted";

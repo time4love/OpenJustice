@@ -245,7 +245,7 @@ describe('resolve_scan_stop — the draft', () => {
     await resolve();
     expect(trackedUpdate).toHaveBeenCalledWith({
       where: { id: TRACKED },
-      data: { draftCapture: null, draftSelectors: [], draftTrusted: [], draftReturnedAt: null },
+      data: { draftCapture: null, draftSelectors: [], draftReturnedAt: null },
     });
   });
 
@@ -286,5 +286,129 @@ describe('resolve_scan_stop — the return', () => {
   it('returns exactly { capture, outcome: SKIPPED, decisionSequence }', async () => {
     const result = await resolve();
     expect(result).toEqual({ capture: T14, outcome: 'SKIPPED', decisionSequence: 3 });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// CONTINUE — A5, amended 2026-09-07 (Flow 2, "judgement in the chat").
+//
+// A stop is a task inside the walk, and the chat is where a task with
+// judgement in it is done. CONTINUE, TRUST per rule and END per rule are given
+// there and recorded by ONE call; only CORRECT — marking with the element under
+// the cursor — still goes through the page. So this tool gains the three
+// answers that are not a draft, in A5's order: RULE_TRUSTED, then RULE_ENDED,
+// then CAPTURE_ACCEPTED carrying the ruleset id AFTER the changes.
+//
+// THE ROW STAYS PENDING_JUDGEMENT, HOLDING ITS BYTES. CONTINUE resolves the
+// stop; it does not acquire the capture. The retry does, exactly as after
+// approve_article_rules — which is what keeps "no capture is stored under rules
+// a gate has doubted" true with a second way to resolve a stop.
+//
+// AND ON AN ALREADY-RESOLVED ROW, NO SECOND CAPTURE_ACCEPTED. A mixed stop is
+// marked first and answered after, so approve_article_rules has already
+// accepted the capture under the ruleset the marking left; a second acceptance
+// would be a decision nobody made, and RESOLVED is the predicate that says so.
+// ---------------------------------------------------------------------------
+
+const rShare = rule('r2', '.share', T09, 'd1');
+
+/** CONTINUE, with whatever the researcher answered in the chat. */
+async function cont(body: { trust?: string[]; end?: string[] } = {}): Promise<Record<string, unknown>> {
+  return JSON.parse(
+    await resolveScanStopHandler({ url: URL, capture: T14, resolution: 'CONTINUE', ...body }),
+  ) as Record<string, unknown>;
+}
+
+describe('resolve_scan_stop — CONTINUE', () => {
+  beforeEach(() => {
+    rulesFind.mockResolvedValue([r1, rShare]);
+    decisionsFind.mockResolvedValue(log([r1, rShare], [D.corrected(T09), D.accepted(T09)]));
+  });
+
+  it('with neither list: one CAPTURE_ACCEPTED carrying the ruleset in force at the capture, and nothing else', async () => {
+    await cont();
+    expect(decisionsCreated().map((d) => d['type'])).toEqual(['CAPTURE_ACCEPTED']);
+    expect(decisionsCreated().at(0)).toEqual(
+      expect.objectContaining({ waybackTimestamp: T14, researcherId: RESEARCHER, rulesetId: rulesetId(['.ticker', '.share']) }),
+    );
+  });
+
+  it('clears the stop and LEAVES the row PENDING_JUDGEMENT holding its bytes — the retry acquires it', async () => {
+    await cont();
+    expect(rowUpdate).toHaveBeenCalledWith({ where: { id: `row-${T14}` }, data: { stop: Prisma.DbNull } });
+  });
+
+  it('trust: one RULE_TRUSTED per selector, mapped to the live rule, before the acceptance', async () => {
+    await cont({ trust: ['.ticker'] });
+    expect(decisionsCreated().map((d) => [d['type'], d['ruleId']])).toEqual([
+      ['RULE_TRUSTED', 'r1'],
+      ['CAPTURE_ACCEPTED', null],
+    ]);
+  });
+
+  it('end: one RULE_ENDED per selector, validTo = this capture, and the Rule row follows its decision', async () => {
+    await cont({ end: ['.share'] });
+    expect(decisionsCreated().map((d) => [d['type'], d['ruleId']])).toEqual([
+      ['RULE_ENDED', 'r2'],
+      ['CAPTURE_ACCEPTED', null],
+    ]);
+    expect(ruleUpdate).toHaveBeenCalledWith({ where: { id: 'r2' }, data: { validTo: T14 } });
+  });
+
+  it('both, in A5’s order: TRUSTED, ENDED, then ACCEPTED with the ruleset AFTER the changes', async () => {
+    await cont({ trust: ['.ticker'], end: ['.share'] });
+    expect(decisionsCreated().map((d) => d['type'])).toEqual(['RULE_TRUSTED', 'RULE_ENDED', 'CAPTURE_ACCEPTED']);
+    expect(decisionsCreated().at(-1)?.['rulesetId']).toBe(rulesetId(['.ticker']));
+  });
+
+  it('refuses NO_SUCH_RULE for a selector with no live rule at the capture, and writes nothing', async () => {
+    const result = await cont({ trust: ['.nothing'] });
+    expect(result).toEqual({ error: expect.stringContaining('.nothing'), code: 'NO_SUCH_RULE' });
+    for (const write of WRITES) expect(write).not.toHaveBeenCalled();
+  });
+
+  it('refuses INVALID_RESOLUTION naming a selector given in BOTH trust and end, and writes nothing', async () => {
+    const result = await cont({ trust: ['.ticker'], end: ['.ticker'] });
+    expect(result).toEqual({ error: expect.stringContaining('.ticker'), code: 'INVALID_RESOLUTION' });
+    for (const write of WRITES) expect(write).not.toHaveBeenCalled();
+    expect(decisionFindFirst).not.toHaveBeenCalled();
+  });
+
+  it('on an already-RESOLVED row writes the rule decisions and NO second CAPTURE_ACCEPTED', async () => {
+    // approve_article_rules ran first, for CORRECT: the capture is accepted
+    // under the ruleset now in force, so RESOLVED is true.
+    decisionsFind.mockResolvedValue(
+      log([r1, rShare], [D.corrected(T09), D.accepted(T09), D.accepted(T14, rulesetId(['.ticker', '.share']))]),
+    );
+    await cont({ trust: ['.ticker'] });
+    expect(decisionsCreated().map((d) => d['type'])).toEqual(['RULE_TRUSTED']);
+  });
+
+  it('refuses trust or end given with BAD_CAPTURE', async () => {
+    const result = JSON.parse(
+      await resolveScanStopHandler({ url: URL, capture: T14, resolution: 'BAD_CAPTURE', reason: REASON, trust: ['.ticker'] }),
+    ) as Record<string, unknown>;
+    expect(result).toEqual({ error: expect.any(String), code: 'INVALID_RESOLUTION' });
+    for (const write of WRITES) expect(write).not.toHaveBeenCalled();
+  });
+
+  it('refuses NOT_PENDING on an UNFETCHED row — only a skip may take one', async () => {
+    pageWith('UNFETCHED');
+    expect(await cont()).toEqual({ error: expect.any(String), code: 'NOT_PENDING' });
+  });
+
+  it('runs as ONE transaction', async () => {
+    await cont({ trust: ['.ticker'] });
+    expect(transaction).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns { capture, resolution, changes: { trusted, ended }, decisionSequence }', async () => {
+    const result = await cont({ trust: ['.ticker'], end: ['.share'] });
+    expect(result).toEqual({
+      capture: T14,
+      resolution: 'CONTINUE',
+      changes: { trusted: [{ ruleId: 'r1', selector: '.ticker' }], ended: [{ ruleId: 'r2', selector: '.share' }] },
+      decisionSequence: expect.any(Number),
+    });
   });
 });

@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { authedFetch, authHeaders } from '@/lib/api';
 import { Link, usePathname } from '@/i18n/navigation';
@@ -13,10 +13,11 @@ import { Link, usePathname } from '@/i18n/navigation';
 // previews the rules the researcher marks; and hands back a DRAFT. The one
 // command the researcher then pastes — `approve_article_rules url=… capture=…`
 // — is what promotes the draft to Rule rows and decisions, and the walk is what
-// acquires the capture. Whichever of the three answers it was, CONTINUE (an
-// unchanged draft), CORRECT (changed selectors) or TRUST (newly ticked rules),
-// it is the same button and the same command. BAD CAPTURE is not a draft and
-// not on this page: the page names the command to paste instead.
+// acquires the capture. CORRECT — marking or unmarking with the element under
+// the cursor — is the one answer given HERE, from 2026-09-07: CONTINUE, TRUST,
+// END and BAD CAPTURE are given in the chat and recorded by resolve_scan_stop,
+// because each of them needs a rule's history read out and a page cannot do
+// that. On a stop that needs both, marking comes first.
 //
 // THE REMOVED TEXT, BESIDE THE KEPT TEXT, ALWAYS. Over-matching is the
 // dangerous direction and it is invisible in what survives: a rule that
@@ -37,10 +38,14 @@ import { Link, usePathname } from '@/i18n/navigation';
 // one here: the page keeps one draft, as A6 gives it, and losing the other
 // capture's is an act rather than a side effect of the first click.
 //
-// A STOP IS A QUESTION. When the row carries one, the JUDGING moment leads: one
-// block per gate that fired, each with the gate's question and its answer beside
-// it, and the trust tick sitting beside the Gate 4 rule it is about, with the
-// sentence that says what trusting means. See StopPanel.
+// THE PAGE EXPLAINS NOTHING ABOUT THE STOP (ruled 2026-09-07, MARKING amended).
+// Why the walk stopped is the chat's: Claude names the element to find, by the
+// text it begins with, and says whether to mark or unmark it, BEFORE handing
+// over this URL — and the conversation continues with the page open, so what is
+// unclear here is asked there. A6's GET still carries `stop`, and this page
+// reads none of it: a second telling of the stop is the copy that disagrees
+// with the chat the day one of them changes, in front of the researcher
+// deciding what a rule may take.
 // ---------------------------------------------------------------------------
 
 interface OutlineNode {
@@ -68,14 +73,17 @@ interface RuleInForce {
 interface Draft {
   capture: string;
   selectors: string[];
-  trusted: string[];
   returnedAt: string | null;
 }
 
-type Gate = 0 | 1 | 2 | 4 | 5 | 'DIGEST';
-
+/**
+ * A6's GET carries the stop; this page READS NONE OF IT (MARKING, amended
+ * 2026-09-07). The shape stays typed because the body has it — a page that
+ * silently dropped a field from its own view type would hide the day the route
+ * stopped sending one.
+ */
 interface StopGate {
-  gate: Gate;
+  gate: 0 | 1 | 2 | 4 | 5 | 'DIGEST';
   material: unknown;
 }
 
@@ -124,8 +132,6 @@ export function MarkingClient({ trackedUrlId, capture }: { trackedUrlId: string;
 
   const [view, setView] = useState<CaptureView | null>(null);
   const [selectors, setSelectors] = useState<string[]>([]);
-  /** Selectors ticked for trust IN THIS DRAFT — already-trusted rules are not among them (ruled 2026-09-05). */
-  const [ticked, setTicked] = useState<string[]>([]);
   const [preview, setPreview] = useState<Preview | null>(null);
   const [previewFor, setPreviewFor] = useState<string[] | null>(null);
   const [previewFailed, setPreviewFailed] = useState(false);
@@ -195,7 +201,6 @@ export function MarkingClient({ trackedUrlId, capture }: { trackedUrlId: string;
         const draft = loaded.draft;
         if (draft !== null && draft.capture === capture) {
           setSelectors(draft.selectors);
-          setTicked(draft.trusted);
           setSaved(draft);
         } else {
           setSelectors(loaded.rulesInForce.map((r) => r.selector));
@@ -241,7 +246,7 @@ export function MarkingClient({ trackedUrlId, capture }: { trackedUrlId: string;
       try {
         const written = await call<Draft>(`${base}/draft`, {
           method: 'PUT',
-          body: JSON.stringify({ capture, selectors, trusted: ticked, returned }),
+          body: JSON.stringify({ capture, selectors, returned }),
         });
         setSaved(written);
         setOtherDraft(null);
@@ -251,7 +256,7 @@ export function MarkingClient({ trackedUrlId, capture }: { trackedUrlId: string;
         reportError(err);
       }
     },
-    [base, capture, selectors, ticked, call, reportError],
+    [base, capture, selectors, call, reportError],
   );
 
   // The autosave: returned false, after the researcher stops clicking, and
@@ -269,9 +274,9 @@ export function MarkingClient({ trackedUrlId, capture }: { trackedUrlId: string;
   useEffect(() => {
     if (view === null) return;
     if (otherDraft !== null) return;
-    const unchanged = saved !== null && sameSet(saved.selectors, selectors) && sameSet(saved.trusted, ticked);
+    const unchanged = saved !== null && sameSet(saved.selectors, selectors);
     if (unchanged) return;
-    if (saved === null && sameSet(selectors, view.rulesInForce.map((r) => r.selector)) && ticked.length === 0) return;
+    if (saved === null && sameSet(selectors, view.rulesInForce.map((r) => r.selector))) return;
     autosaveTimer.current = setTimeout(() => {
       autosaveTimer.current = null;
       void writeDraft(false);
@@ -280,7 +285,7 @@ export function MarkingClient({ trackedUrlId, capture }: { trackedUrlId: string;
       if (autosaveTimer.current !== null) clearTimeout(autosaveTimer.current);
       autosaveTimer.current = null;
     };
-  }, [view, selectors, ticked, saved, otherDraft, writeDraft]);
+  }, [view, selectors, saved, otherDraft, writeDraft]);
 
   const handBack = async () => {
     if (autosaveTimer.current !== null) {
@@ -303,7 +308,6 @@ export function MarkingClient({ trackedUrlId, capture }: { trackedUrlId: string;
       setSaved(null);
       setOtherDraft(null);
       setSelectors(view.rulesInForce.map((r) => r.selector));
-      setTicked([]);
       setDraftState('idle');
     } catch (err) {
       reportError(err);
@@ -312,34 +316,16 @@ export function MarkingClient({ trackedUrlId, capture }: { trackedUrlId: string;
     }
   };
 
-  // Unmarking a rule takes its trust tick with it: a trust names a rule in
-  // the draft, and this one is leaving it.
   const toggle = (selector: string) => {
     const removing = selectors.includes(selector);
     setSelectors((current) => (removing ? current.filter((s) => s !== selector) : [...current, selector]));
-    if (removing) {
-      setTicked((current) => current.filter((s) => s !== selector));
-      setFocused((current) => (current === selector ? null : current));
-    }
+    if (removing) setFocused((current) => (current === selector ? null : current));
   };
   const focus = (selector: string) => {
     setFocused((current) => (current === selector ? null : selector));
   };
-  const untick = (selector: string) => {
-    setTicked((current) => current.filter((s) => s !== selector));
-  };
-  const tick = (selector: string) => {
-    setTicked((current) => (current.includes(selector) ? current : [...current, selector]));
-  };
 
   const inForce = useMemo(() => new Map((view?.rulesInForce ?? []).map((r) => [r.selector, r])), [view]);
-  // The same rules keyed the other way: A5's gate material names a RULE ID and
-  // everything else on this page — the draft, the preview, trust — names a
-  // SELECTOR, so a stop's rule is resolved here and nowhere else.
-  const liveRules = useMemo(
-    () => new Map((view?.rulesInForce ?? []).map((r) => [r.ruleId, r.selector])),
-    [view],
-  );
   // WORDS, NOT CODE: the outline's label for every selector it offers, so the
   // draft and the removed pane name an element the way the tree does. A rule
   // whose element is not in this capture's outline — what a redesign looks
@@ -356,10 +342,10 @@ export function MarkingClient({ trackedUrlId, capture }: { trackedUrlId: string;
   const nameOf = (selector: string): string => labels.get(selector) ?? selector;
   const added = selectors.filter((s) => !inForce.has(s));
   const ended = [...inForce.keys()].filter((s) => !selectors.includes(s));
-  const continueAsIs = added.length === 0 && ended.length === 0 && ticked.length === 0;
+  const continueAsIs = added.length === 0 && ended.length === 0;
 
   const returned = saved !== null && saved.returnedAt !== null;
-  const returnedThenEdited = returned && !(sameSet(saved.selectors, selectors) && sameSet(saved.trusted, ticked));
+  const returnedThenEdited = returned && !sameSet(saved.selectors, selectors);
   // HANDED BACK: the draft is returned and untouched since, and the researcher
   // has not asked to edit it again — the page shows the command and nothing to
   // edit, as the old page did. Reopening and changing anything un-returns the
@@ -422,20 +408,6 @@ export function MarkingClient({ trackedUrlId, capture }: { trackedUrlId: string;
       {signedOutBanner}
       {error !== null && <p className="rounded bg-red-50 p-2 text-sm text-red-800">{error}</p>}
 
-      {view.stop !== null && (
-        <StopPanel
-          gates={view.stop.gates}
-          selectors={selectors}
-          ticked={ticked}
-          liveRules={liveRules}
-          nameOf={nameOf}
-          disabled={busy}
-          onTick={tick}
-          onUntick={untick}
-          onToggleRule={toggle}
-          t={t}
-        />
-      )}
 
       {otherDraft !== null && (
         <div className="flex flex-wrap items-center gap-3 rounded bg-amber-50 p-2 text-sm text-amber-900">
@@ -480,20 +452,18 @@ export function MarkingClient({ trackedUrlId, capture }: { trackedUrlId: string;
           <ul className="mt-3 text-sm">
             {continueAsIs && <li>{t('answerContinue')}</li>}
             {(added.length > 0 || ended.length > 0) && <li>{t('answerCorrect', { added: added.length, ended: ended.length })}</li>}
-            {ticked.length > 0 && <li>{t('answerTrust', { count: ticked.length })}</li>}
           </ul>
           {/*
-            WHAT THE ONE COMMAND MEANS — MARKING's "one command, whichever answer
-            it was", said to the person pasting it, and then what the approval
-            does to the capture. ONE sentence for that second half, not two
-            chosen on `outcome`: A2's Q7 makes a stop on a STORED capture
+            WHAT THE APPROVAL DOES TO THE CAPTURE. ONE sentence, not two chosen
+            on `outcome`: A2's Q7 makes a stop on a STORED capture
             PENDING_JUDGEMENT with its snapshotId kept, and A6's GET carries
             `outcome` and nothing else — so the page cannot tell "will acquire"
             from "will supersede", and must not pretend to. What is true in every
-            case is A3's RESOLVED and A4's skip of all five gates.
+            case is A3's RESOLVED and A4's skip of all five gates. The three
+            answers this command could carry are no longer the page's to explain
+            (MARKING, amended 2026-09-07): only CORRECT is given here.
           */}
-          <p className="mt-3 text-xs text-gray-600">{t('approveMeaningOneCommand')}</p>
-          <p className="mt-1 text-xs text-gray-600">{t('approveMeaning')}</p>
+          <p className="mt-3 text-xs text-gray-600">{t('approveMeaning')}</p>
           <button
             type="button"
             onClick={() => {
@@ -595,7 +565,6 @@ export function MarkingClient({ trackedUrlId, capture }: { trackedUrlId: string;
             selectors={selectors}
             ended={ended}
             inForce={inForce}
-            ticked={ticked}
             preview={preview}
             pending={previewStale}
             failed={previewFailed}
@@ -616,7 +585,6 @@ export function MarkingClient({ trackedUrlId, capture }: { trackedUrlId: string;
             <div className="text-sm">
               {continueAsIs && <span>{t('answerContinue')}</span>}
               {(added.length > 0 || ended.length > 0) && <span>{t('answerCorrect', { added: added.length, ended: ended.length })}</span>}
-              {ticked.length > 0 && <span> · {t('answerTrust', { count: ticked.length })}</span>}
               <span className="ms-2 text-xs text-gray-600">
                 {draftState === 'saving' && t('draftSaving')}
                 {draftState === 'saved' && !returned && t('draftSaved')}
@@ -708,344 +676,6 @@ function CommandBlock({
   );
 }
 
-
-/**
- * THE JUDGING MOMENT — one BLOCK per gate that fired, each with the gate's
- * QUESTION and its ANSWER beside it, then the material A5 defines for it.
- *
- * WHY IT IS NOT A LIST OF FACTS. Until 2026-09-07 this panel rendered every
- * gate as a bold sentence plus its material as bullets: ~70 flat lines at a
- * three-gate stop, selectors raw, and no connection between a line here and the
- * act it asks for. The researcher's finding at the first such stop is the whole
- * reason for this shape — a stop is a QUESTION, and a question with no answer
- * beside it is a dump. Nothing here concludes anything: every block states what
- * the walk observed and what the two or three answers are, and the researcher
- * answers in the toolbox or with the one command.
- *
- * IT READS A5's MATERIAL AND NOTHING ELSE. `stop` is returned verbatim from the
- * row, so a field this panel wanted and A5 does not carry would be a flows
- * amendment, not a render.
- */
-function StopPanel({
-  gates,
-  selectors,
-  ticked,
-  liveRules,
-  nameOf,
-  disabled,
-  onTick,
-  onUntick,
-  onToggleRule,
-  t,
-}: {
-  gates: StopGate[];
-  selectors: readonly string[];
-  ticked: readonly string[];
-  /** ruleId -> selector, for the rules in force at this capture: A5's material names a RULE, the draft names a SELECTOR. */
-  liveRules: ReadonlyMap<string, string>;
-  nameOf: (selector: string) => string;
-  disabled: boolean;
-  onTick: (selector: string) => void;
-  onUntick: (selector: string) => void;
-  onToggleRule: (selector: string) => void;
-  t: ReturnType<typeof useTranslations>;
-}) {
-  return (
-    <section className="rounded border-2 border-amber-500 bg-amber-50 p-3 text-sm">
-      <h2 className="font-semibold">{t('stopHeading')}</h2>
-      <ul className="mt-2 flex flex-col gap-3">
-        {gates.map((fired, index) => (
-          <li key={index} className="rounded border border-amber-300 bg-white p-2">
-            <GateBlock
-              fired={fired}
-              selectors={selectors}
-              ticked={ticked}
-              liveRules={liveRules}
-              nameOf={nameOf}
-              disabled={disabled}
-              onTick={onTick}
-              onUntick={onUntick}
-              onToggleRule={onToggleRule}
-              t={t}
-            />
-          </li>
-        ))}
-      </ul>
-    </section>
-  );
-}
-
-/** The question, then the answer under it — the two lines every block opens with. */
-function Ask({ question, answer }: { question: string; answer: string }) {
-  return (
-    <>
-      <p className="font-semibold">{question}</p>
-      <p className="mt-0.5 text-gray-700">{answer}</p>
-    </>
-  );
-}
-
-/** A list that shows its first two items and holds the rest behind one button. */
-function Collapsed({ items, render, t }: { items: string[]; render: (text: string, i: number) => ReactNode; t: ReturnType<typeof useTranslations> }) {
-  const [open, setOpen] = useState(false);
-  const shown = open ? items : items.slice(0, 2);
-  return (
-    <>
-      <ul className="ms-4 mt-1 list-disc">{shown.map((text, i) => render(text, i))}</ul>
-      {items.length > shown.length && (
-        <button
-          type="button"
-          onClick={() => {
-            setOpen(true);
-          }}
-          className="mt-1 text-xs underline"
-        >
-          {t('showAll')}
-        </button>
-      )}
-    </>
-  );
-}
-
-function GateBlock({
-  fired,
-  selectors,
-  ticked,
-  liveRules,
-  nameOf,
-  disabled,
-  onTick,
-  onUntick,
-  onToggleRule,
-  t,
-}: {
-  fired: StopGate;
-  selectors: readonly string[];
-  ticked: readonly string[];
-  liveRules: ReadonlyMap<string, string>;
-  nameOf: (selector: string) => string;
-  disabled: boolean;
-  onTick: (selector: string) => void;
-  onUntick: (selector: string) => void;
-  onToggleRule: (selector: string) => void;
-  t: ReturnType<typeof useTranslations>;
-}) {
-  const m = fired.material as Record<string, unknown>;
-  const strings = (value: unknown): string[] => (Array.isArray(value) ? value.map((v) => String(v)) : []);
-  switch (fired.gate) {
-    case 0:
-      return <Ask question={t('gate0')} answer={t('gate0Answer')} />;
-    case 1: {
-      // A5: `nowRemoved` carries the RULE that took each segment; `nowKept` cannot,
-      // because text entering the article was removed by nothing. The two sides are
-      // different findings — data loss and corpus pollution — so they are asked
-      // separately, and the removed side names its rule and offers to end it.
-      //
-      // GATE 1' (against = OWN_PREVIOUS_TEXT, A4) is the re-walk's alarm: the new
-      // extraction ate text a human approved on THIS capture. It is louder, so its
-      // own sentence IS the question and the generic heading is not shown; A4 gives
-      // it one direction, so `nowKept` is empty there by construction.
-      const own = m['against'] === 'OWN_PREVIOUS_TEXT';
-      const nowRemoved = Array.isArray(m['nowRemoved'])
-        ? (m['nowRemoved'] as { text: string; ruleId: string | null }[])
-        : [];
-      const nowKept = strings(m['nowKept']);
-      return (
-        <div>
-          {!own && <p className="font-semibold">{t('gate1Predecessor')}</p>}
-          {nowRemoved.length > 0 && (
-            <div className="mt-1">
-              <Ask question={own ? t('gate1Own') : t('gate1RemovedQuestion')} answer={t('gate1RemovedAnswer')} />
-              <p className="mt-1 text-xs">{t('nowRemoved')}</p>
-              <Collapsed
-                items={nowRemoved.map((r) => r.text)}
-                t={t}
-                render={(text, i) => {
-                  // A5 allows a null ruleId — text with no rule shows the text alone.
-                  // A rule id the page cannot resolve to a live rule is shown AS
-                  // RECEIVED and visibly: it is a fact about the stop, and hiding it
-                  // would leave the researcher a removal with no author.
-                  const ruleId = nowRemoved.at(i)?.ruleId ?? null;
-                  const selector = ruleId === null ? undefined : liveRules.get(ruleId);
-                  const marked = selector !== undefined && selectors.includes(selector);
-                  return (
-                    <li key={i} className="whitespace-pre-wrap">
-                      {text}
-                      {ruleId !== null && (
-                        <span className="text-xs text-gray-600">
-                          {' — '}
-                          {t('gate1RemovedBy', { rule: selector === undefined ? ruleId : nameOf(selector) })}
-                          {selector !== undefined && (
-                            <>
-                              {' '}
-                              {marked ? (
-                                <button type="button" disabled={disabled} onClick={() => { onToggleRule(selector); }} className="underline">
-                                  {t('answerEndRule')}
-                                </button>
-                              ) : (
-                                <>
-                                  {t('willEnd')}{' '}
-                                  <button type="button" disabled={disabled} onClick={() => { onToggleRule(selector); }} className="underline">
-                                    {t('restore')}
-                                  </button>
-                                </>
-                              )}
-                            </>
-                          )}
-                        </span>
-                      )}
-                    </li>
-                  );
-                }}
-              />
-            </div>
-          )}
-          {nowKept.length > 0 && (
-            <div className="mt-2">
-              <Ask question={t('gate1KeptQuestion')} answer={t('gate1KeptAnswer')} />
-              <p className="mt-1 text-xs">{t('nowKept')}</p>
-              <Collapsed items={nowKept} t={t} render={(text, i) => <li key={i} className="whitespace-pre-wrap">{text}</li>} />
-            </div>
-          )}
-        </div>
-      );
-    }
-    case 2: {
-      // The selector is shown AS RECEIVED (ruled 2026-09-07, shape ii): deciding
-      // which part of it is a build hash is the backend's one symbol, and a second
-      // implementation here is the defect shape this repository names first.
-      const rules = Array.isArray(m['rules']) ? (m['rules'] as { selector: string; matchedOnPredecessor: number }[]) : [];
-      return (
-        <div>
-          <Ask question={t('gate2')} answer={t('gate2Answer')} />
-          <ul className="ms-4 mt-1 list-disc">
-            {rules.map((r) => (
-              <li key={r.selector}>
-                <code dir="ltr">{r.selector}</code> — {t('silentRules', { count: r.matchedOnPredecessor })}
-              </li>
-            ))}
-          </ul>
-        </div>
-      );
-    }
-    case 4: {
-      // PER RULE, because trust is per rule: A4 lists a segment once per claiming
-      // rule, so the flat array is grouped here and a segment claimed twice is
-      // shown under both — said out loud, or it reads as a duplicate.
-      const removals = Array.isArray(m['removals']) ? (m['removals'] as { text: string; ruleId: string; selector: string }[]) : [];
-      const byRule = new Map<string, { selector: string; texts: string[] }>();
-      for (const r of removals) {
-        const seen = byRule.get(r.ruleId);
-        if (seen === undefined) byRule.set(r.ruleId, { selector: r.selector, texts: [r.text] });
-        else seen.texts.push(r.text);
-      }
-      const claimedTwice = removals.length > new Set(removals.map((r) => r.text)).size;
-      return (
-        <div>
-          <p className="font-semibold">{t('gate4')}</p>
-          <p className="text-xs">{t('unseenRemovals')}</p>
-          {[...byRule.entries()].map(([ruleId, { selector, texts }]) => {
-            const marked = selectors.includes(selector);
-            return (
-              <div key={ruleId} className="mt-2 border-t border-amber-200 pt-2">
-                <p className="font-semibold" title={selector}>
-                  {nameOf(selector)}
-                </p>
-                <Ask question={t('gate4Question')} answer={t('gate4RuleCount', { count: texts.length })} />
-                <Collapsed items={texts} t={t} render={(text, i) => <li key={i} className="whitespace-pre-wrap">{text}</li>} />
-                {marked ? (
-                  <>
-                    <label className="mt-2 flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        checked={ticked.includes(selector)}
-                        disabled={disabled}
-                        onChange={(e) => {
-                          if (e.target.checked) onTick(selector);
-                          else onUntick(selector);
-                        }}
-                      />
-                      <span className="font-semibold">{t('gate4TrustTick')}</span>
-                    </label>
-                    {/* THE SENTENCE THAT SAYS WHAT TRUSTING MEANS, at the moment it means something. */}
-                    <p className="text-xs text-gray-600">{t('trustNote')}</p>
-                    <ul className="mt-1 text-xs text-gray-700">
-                      <li>{t('gate4AnswerContinue')}</li>
-                      <li>
-                        <button type="button" disabled={disabled} onClick={() => { onToggleRule(selector); }} className="underline">
-                          {t('answerEndRule')}
-                        </button>
-                      </li>
-                    </ul>
-                  </>
-                ) : (
-                  <p className="mt-2 text-xs text-gray-600">
-                    {t('willEnd')}{' '}
-                    <button type="button" disabled={disabled} onClick={() => { onToggleRule(selector); }} className="underline">
-                      {t('restore')}
-                    </button>
-                  </p>
-                )}
-              </div>
-            );
-          })}
-          {claimedTwice && <p className="mt-2 text-xs text-gray-600">{t('gate4MultiRule')}</p>}
-        </div>
-      );
-    }
-    case 5: {
-      // A5's gate 5 material is `{ diff, editorial: false, reason }`, and Flow 2
-      // says a stop shows "the diff and the verdict". The chunk lists are what the
-      // model actually read; without them the researcher cannot check it.
-      const diff = (m['diff'] ?? {}) as { removed?: unknown; added?: unknown };
-      const removed = strings(diff.removed);
-      const added = strings(diff.added);
-      return (
-        <div>
-          <Ask question={t('gate5')} answer={t('gate5Answer')} />
-          <p className="mt-1">
-            {t('verdictReason')}: {String(m['reason'] ?? '')}
-          </p>
-          {(removed.length > 0 || added.length > 0) && (
-            <div className="mt-2">
-              <p className="text-xs font-semibold">{t('gate5DiffHeading')}</p>
-              {/*
-                THE CLASSIFIER'S INPUT, LABELLED AS ITS OWN. Gate 1's `nowRemoved`
-                and `nowKept` say "now" because they compare two captures; these
-                two lists are the chunks a model was handed, and borrowing the
-                gate's words for them would claim a comparison nobody made.
-              */}
-              {removed.length > 0 && (
-                <>
-                  <p className="mt-1 text-xs">{t('gate5ChunksRemoved')}</p>
-                  <Collapsed items={removed} t={t} render={(text, i) => <li key={i} className="whitespace-pre-wrap">{text}</li>} />
-                </>
-              )}
-              {added.length > 0 && (
-                <>
-                  <p className="mt-1 text-xs">{t('gate5ChunksAdded')}</p>
-                  <Collapsed items={added} t={t} render={(text, i) => <li key={i} className="whitespace-pre-wrap">{text}</li>} />
-                </>
-              )}
-            </div>
-          )}
-        </div>
-      );
-    }
-    default:
-      return (
-        <div>
-          <Ask question={t('gateDigest')} answer={t('gateDigestAnswer')} />
-          <dl className="mt-1 text-xs">
-            <dt className="font-semibold">{t('gateDigestExpected')}</dt>
-            <dd dir="ltr"><code>{String(m['expected'] ?? '')}</code></dd>
-            <dt className="mt-1 font-semibold">{t('gateDigestGot')}</dt>
-            <dd dir="ltr"><code>{String(m['got'] ?? '')}</code></dd>
-          </dl>
-        </div>
-      );
-  }
-}
 
 /**
  * The structure, to click. A selector is chosen HERE and nowhere else — never
@@ -1168,7 +798,6 @@ function MarkedPanel({
   selectors,
   ended,
   inForce,
-  ticked,
   preview,
   pending,
   failed,
@@ -1185,7 +814,6 @@ function MarkedPanel({
   selectors: string[];
   ended: string[];
   inForce: Map<string, RuleInForce>;
-  ticked: string[];
   preview: Preview | null;
   pending: boolean;
   failed: boolean;
@@ -1251,7 +879,6 @@ function MarkedPanel({
                     <span className="text-xs text-gray-600">{t('matched', { count })}</span>
                   )}
                   {locked && <span className="text-xs text-green-800">{t('trustLocked')}</span>}
-                  {!locked && ticked.includes(selector) && <span className="text-xs text-green-800">{t('trustPending')}</span>}
                   <button type="button" disabled={disabled} onClick={() => { onRemove(selector); }} className="ms-auto text-xs underline">
                     {t('remove')}
                   </button>

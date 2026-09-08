@@ -113,13 +113,12 @@ const LOG = log(RULES, [D.corrected(T09), D.accepted(T09), D.corrected(T2), D.tr
 
 const STOP = { gates: [{ gate: 4, material: { removals: [{ text: 'never seen', ruleId: 'r1', selector: '.ticker' }] } }] };
 
-function page(draft: { draftCapture: string | null; draftSelectors: string[]; draftTrusted: string[]; draftReturnedAt: Date | null } | null = null) {
+function page(draft: { draftCapture: string | null; draftSelectors: string[]; draftReturnedAt: Date | null } | null = null) {
   trackedFind.mockResolvedValue({
     id: TRACKED,
     url: URL,
     draftCapture: draft?.draftCapture ?? null,
     draftSelectors: draft?.draftSelectors ?? [],
-    draftTrusted: draft?.draftTrusted ?? [],
     draftReturnedAt: draft?.draftReturnedAt ?? null,
   });
 }
@@ -174,7 +173,7 @@ describe('all five routes', () => {
     request(app).get(`${BASE}/captures/${T14}`),
     request(app).post(`${BASE}/captures/${T14}/preview`).send({ selectors: ['.ticker'] }),
     request(app).get(`${BASE}/draft`),
-    request(app).put(`${BASE}/draft`).send({ capture: T14, selectors: ['.ticker'], trusted: [], returned: true }),
+    request(app).put(`${BASE}/draft`).send({ capture: T14, selectors: ['.ticker'], returned: true }),
     request(app).delete(`${BASE}/draft`),
   ];
 
@@ -287,7 +286,7 @@ describe('GET /pages/:trackedUrlId/captures/:capture', () => {
   });
 
   it('answers A6’s body: the rules in force at the capture’s timestamp with their trust, the draft, and the stop', async () => {
-    page({ draftCapture: T14, draftSelectors: ['.ticker', '.new'], draftTrusted: ['.new'], draftReturnedAt: RETURNED_AT });
+    page({ draftCapture: T14, draftSelectors: ['.ticker', '.new'], draftReturnedAt: RETURNED_AT });
     rowOf('PENDING_JUDGEMENT');
     const res = await request(app).get(`${BASE}/captures/${T14}`);
     expect(Object.keys(res.body as object).sort()).toEqual(['capture', 'document', 'draft', 'outcome', 'outline', 'rulesInForce', 'snapshotDate', 'stop', 'url']);
@@ -299,7 +298,7 @@ describe('GET /pages/:trackedUrlId/captures/:capture', () => {
         url: URL,
         // r2 is created at T2, after T14: not in force here.
         rulesInForce: [{ ruleId: 'r1', selector: '.ticker', trusted: true }],
-        draft: { capture: T14, selectors: ['.ticker', '.new'], trusted: ['.new'], returnedAt: RETURNED_AT.toISOString() },
+        draft: { capture: T14, selectors: ['.ticker', '.new'], returnedAt: RETURNED_AT.toISOString() },
         stop: STOP,
       }),
     );
@@ -363,10 +362,10 @@ describe('POST /pages/:trackedUrlId/captures/:capture/preview — pure', () => {
 
 describe('GET /pages/:trackedUrlId/draft', () => {
   it('answers the draft', async () => {
-    page({ draftCapture: T14, draftSelectors: ['.ticker'], draftTrusted: ['.ticker'], draftReturnedAt: RETURNED_AT });
+    page({ draftCapture: T14, draftSelectors: ['.ticker'], draftReturnedAt: RETURNED_AT });
     const res = await request(app).get(`${BASE}/draft`);
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ capture: T14, selectors: ['.ticker'], trusted: ['.ticker'], returnedAt: RETURNED_AT.toISOString() });
+    expect(res.body).toEqual({ capture: T14, selectors: ['.ticker'], returnedAt: RETURNED_AT.toISOString() });
   });
 
   it('answers null when there is none', async () => {
@@ -378,25 +377,25 @@ describe('GET /pages/:trackedUrlId/draft', () => {
 
 describe('PUT /pages/:trackedUrlId/draft — last write wins, no version', () => {
   it('writes the four fields, returnedAt set when returned is true', async () => {
-    const res = await request(app).put(`${BASE}/draft`).send({ capture: T14, selectors: ['.ticker', '.new'], trusted: ['.new'], returned: true });
+    const res = await request(app).put(`${BASE}/draft`).send({ capture: T14, selectors: ['.ticker', '.new'], returned: true });
     expect(res.status).toBe(200);
     expect(trackedUpdate).toHaveBeenCalledWith({
       where: { id: TRACKED },
-      data: { draftCapture: T14, draftSelectors: ['.ticker', '.new'], draftTrusted: ['.new'], draftReturnedAt: expect.any(Date) },
+      data: { draftCapture: T14, draftSelectors: ['.ticker', '.new'], draftReturnedAt: expect.any(Date) },
     });
-    expect(res.body).toEqual({ capture: T14, selectors: ['.ticker', '.new'], trusted: ['.new'], returnedAt: expect.any(String) });
+    expect(res.body).toEqual({ capture: T14, selectors: ['.ticker', '.new'], returnedAt: expect.any(String) });
   });
 
   it('returnedAt is null when returned is false', async () => {
-    const res = await request(app).put(`${BASE}/draft`).send({ capture: T14, selectors: ['.ticker'], trusted: [], returned: false });
+    const res = await request(app).put(`${BASE}/draft`).send({ capture: T14, selectors: ['.ticker'], returned: false });
     expect(res.status).toBe(200);
     expect(trackedUpdate.mock.calls[0]?.[0]).toEqual({ where: { id: TRACKED }, data: expect.objectContaining({ draftReturnedAt: null }) });
     expect(res.body.returnedAt).toBeNull();
   });
 
   it('a second write overwrites the first without a version', async () => {
-    await request(app).put(`${BASE}/draft`).send({ capture: T14, selectors: ['.a'], trusted: [], returned: false });
-    await request(app).put(`${BASE}/draft`).send({ capture: T14, selectors: ['.b'], trusted: [], returned: true });
+    await request(app).put(`${BASE}/draft`).send({ capture: T14, selectors: ['.a'], returned: false });
+    await request(app).put(`${BASE}/draft`).send({ capture: T14, selectors: ['.b'], returned: true });
     expect(trackedUpdate).toHaveBeenCalledTimes(2);
     expect(trackedUpdate.mock.calls[1]?.[0]).toEqual({ where: { id: TRACKED }, data: expect.objectContaining({ draftSelectors: ['.b'] }) });
   });
@@ -422,18 +421,18 @@ describe('PUT /pages/:trackedUrlId/draft — last write wins, no version', () =>
   // this behaviour, and a change to the page that made the loss a choice must
   // not be free to change the route underneath it.
   it('a write for another capture replaces every field; nothing of the displaced draft survives', async () => {
-    page({ draftCapture: T09, draftSelectors: ['.a'], draftTrusted: ['.a'], draftReturnedAt: RETURNED_AT });
-    const res = await request(app).put(`${BASE}/draft`).send({ capture: T14, selectors: ['.b'], trusted: [], returned: false });
+    page({ draftCapture: T09, draftSelectors: ['.a'], draftReturnedAt: RETURNED_AT });
+    const res = await request(app).put(`${BASE}/draft`).send({ capture: T14, selectors: ['.b'], returned: false });
     expect(res.status).toBe(200);
     expect(trackedUpdate).toHaveBeenCalledWith({
       where: { id: TRACKED },
-      data: { draftCapture: T14, draftSelectors: ['.b'], draftTrusted: [], draftReturnedAt: null },
+      data: { draftCapture: T14, draftSelectors: ['.b'], draftReturnedAt: null },
     });
-    expect(res.body).toEqual({ capture: T14, selectors: ['.b'], trusted: [], returnedAt: null });
+    expect(res.body).toEqual({ capture: T14, selectors: ['.b'], returnedAt: null });
   });
 
   it('400 on a malformed body', async () => {
-    for (const body of [{}, { capture: T14 }, { capture: T14, selectors: 'x', trusted: [], returned: true }, { capture: 12, selectors: [], trusted: [], returned: true }]) {
+    for (const body of [{}, { capture: T14 }, { capture: T14, selectors: 'x', returned: true }, { capture: 12, selectors: [], returned: true }]) {
       expect((await request(app).put(`${BASE}/draft`).send(body)).status).toBe(400);
     }
     expect(trackedUpdate).not.toHaveBeenCalled();
@@ -441,24 +440,24 @@ describe('PUT /pages/:trackedUrlId/draft — last write wins, no version', () =>
 
   it('404 for a capture the page has no row for', async () => {
     rowFind.mockResolvedValue(null);
-    expect((await request(app).put(`${BASE}/draft`).send({ capture: '20300101000000', selectors: [], trusted: [], returned: true })).status).toBe(404);
+    expect((await request(app).put(`${BASE}/draft`).send({ capture: '20300101000000', selectors: [], returned: true })).status).toBe(404);
     expect(trackedUpdate).not.toHaveBeenCalled();
   });
 
   it('writes no decision, rule or row', async () => {
-    await request(app).put(`${BASE}/draft`).send({ capture: T14, selectors: ['.ticker'], trusted: [], returned: true });
+    await request(app).put(`${BASE}/draft`).send({ capture: T14, selectors: ['.ticker'], returned: true });
     for (const write of DECIDING_WRITES) expect(write).not.toHaveBeenCalled();
   });
 });
 
 describe('DELETE /pages/:trackedUrlId/draft — the researcher’s cancel', () => {
-  it('clears the four fields, touches the log not at all, and answers 204', async () => {
-    page({ draftCapture: T14, draftSelectors: ['.ticker'], draftTrusted: [], draftReturnedAt: RETURNED_AT });
+  it('clears the three fields, touches the log not at all, and answers 204', async () => {
+    page({ draftCapture: T14, draftSelectors: ['.ticker'], draftReturnedAt: RETURNED_AT });
     const res = await request(app).delete(`${BASE}/draft`);
     expect(res.status).toBe(204);
     expect(trackedUpdate).toHaveBeenCalledWith({
       where: { id: TRACKED },
-      data: { draftCapture: null, draftSelectors: [], draftTrusted: [], draftReturnedAt: null },
+      data: { draftCapture: null, draftSelectors: [], draftReturnedAt: null },
     });
     for (const write of DECIDING_WRITES) expect(write).not.toHaveBeenCalled();
   });

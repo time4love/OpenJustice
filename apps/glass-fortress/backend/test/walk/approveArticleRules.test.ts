@@ -29,7 +29,6 @@ import { T09, T14, T2, T3, T5, EMPTY_ID, OUTCOMES, rule, D, log } from './fixtur
 //               selectors added vs RULES_IN_FORCE(page, t)  → Rule rows (validFrom = t),
 //                                                              one RULESET_CORRECTED
 //               selectors removed                             → RULE_ENDED each, validTo = t
-//               draftTrusted (SELECTORS)                       → RULE_TRUSTED each, mapped to the
 //                                                              live rule — created here or existing
 //               then CAPTURE_ACCEPTED, carrying RULESET_ID(page, t) after the changes
 //               draft cleared
@@ -86,7 +85,6 @@ const WRITES = [trackedUpdate, rowUpdate, ruleCreate, ruleCreateMany, ruleUpdate
 interface Draft {
   draftCapture: string | null;
   draftSelectors: string[];
-  draftTrusted: string[];
   draftReturnedAt: Date | null;
 }
 
@@ -96,7 +94,6 @@ function pageWith(draft: Partial<Draft> = {}, rowStatus = 'PENDING_JUDGEMENT') {
     url: URL,
     draftCapture: T14,
     draftSelectors: ['.ticker'],
-    draftTrusted: [],
     draftReturnedAt: RETURNED_AT,
     ...draft,
   });
@@ -257,23 +254,6 @@ describe('approve_article_rules — the promotion, in order', () => {
     ]);
   });
 
-  it('trusts every selector the draft names, mapped to its live rule, one RULE_TRUSTED each', async () => {
-    pageWith({ draftTrusted: ['.ticker'] });
-    await approve();
-    expect(decisionsCreated().filter((d) => d['type'] === 'RULE_TRUSTED')).toEqual([
-      expect.objectContaining({ ruleId: 'r1', waybackTimestamp: T14 }),
-    ]);
-  });
-
-  it('a selector created and trusted in one draft: the RULE_TRUSTED names the rule this approval created', async () => {
-    pageWith({ draftSelectors: ['.ticker', '.share'], draftTrusted: ['.share'] });
-    await approve();
-    expect(rulesCreated()).toEqual([expect.objectContaining({ selector: '.share' })]);
-    expect(decisionsCreated().filter((d) => d['type'] === 'RULE_TRUSTED')).toEqual([
-      expect.objectContaining({ ruleId: 'rule-new-1', waybackTimestamp: T14 }),
-    ]);
-  });
-
   it('accepts the capture last, carrying the ruleset id in force at its timestamp AFTER the changes', async () => {
     pageWith({ draftSelectors: ['.ticker', '.share'] });
     await approve();
@@ -293,25 +273,25 @@ describe('approve_article_rules — the promotion, in order', () => {
     const result = await approve(0);
     expect(ruleUpdates()).toEqual([expect.objectContaining({ id: 'r1', validTo: T14 })]);
     expect(decisionsCreated().at(-1)).toEqual(expect.objectContaining({ type: 'CAPTURE_ACCEPTED', rulesetId: EMPTY_ID }));
-    expect(result['changes']).toEqual({ added: [], ended: [{ ruleId: 'r1', selector: '.ticker' }], trusted: [], extended: [] });
+    expect(result['changes']).toEqual({ added: [], ended: [{ ruleId: 'r1', selector: '.ticker' }], extended: [] });
     expect(result['rules']).toEqual([]);
   });
 });
 
 describe('approve_article_rules — the log', () => {
-  /** r1 ended, '.share' created and trusted in the same draft. */
-  const everything = () => pageWith({ draftSelectors: ['.share'], draftTrusted: ['.share'] });
+  /** r1 ended and '.share' created in the same draft. */
+  const everything = () => pageWith({ draftSelectors: ['.share'] });
 
-  it('writes the decisions in the order RULESET_CORRECTED, RULE_ENDED, RULE_TRUSTED, CAPTURE_ACCEPTED', async () => {
+  it('writes the decisions in the order RULESET_CORRECTED, RULE_ENDED, CAPTURE_ACCEPTED', async () => {
     everything();
     await approve();
-    expect(decisionsCreated().map((d) => d['type'])).toEqual(['RULESET_CORRECTED', 'RULE_ENDED', 'RULE_TRUSTED', 'CAPTURE_ACCEPTED']);
+    expect(decisionsCreated().map((d) => d['type'])).toEqual(['RULESET_CORRECTED', 'RULE_ENDED', 'CAPTURE_ACCEPTED']);
   });
 
   it('numbers them contiguously from the page’s last sequence', async () => {
     everything();
     await approve();
-    expect(decisionsCreated().map((d) => d['sequence'])).toEqual([3, 4, 5, 6]);
+    expect(decisionsCreated().map((d) => d['sequence'])).toEqual([3, 4, 5]);
   });
 
   it('attributes every decision and names the capture on every one', async () => {
@@ -371,7 +351,7 @@ describe('approve_article_rules — one selector, one live rule', () => {
     expect(decisionsCreated().map((d) => d['type'])).toEqual(['CAPTURE_ACCEPTED']);
     expect(rulesCreated()).toEqual([]);
     expect(ruleUpdates()).toEqual([]);
-    expect(result['changes']).toEqual({ added: [], ended: [], trusted: [], extended: [] });
+    expect(result['changes']).toEqual({ added: [], ended: [], extended: [] });
   });
 
   // At T14 neither governs; both are live. Only the one with the EARLIEST
@@ -386,7 +366,7 @@ describe('approve_article_rules — one selector, one live rule', () => {
       expect.objectContaining({ ruleId: 'r_a', waybackTimestamp: T14 }),
     ]);
     expect(ruleUpdates()).toEqual([{ id: 'r_a', validFrom: T14 }]);
-    expect(result['changes']).toEqual({ added: [], ended: [], trusted: [], extended: [{ ruleId: 'r_a', selector: '.x' }] });
+    expect(result['changes']).toEqual({ added: [], ended: [], extended: [{ ruleId: 'r_a', selector: '.x' }] });
   });
 });
 
@@ -411,7 +391,7 @@ describe('approve_article_rules — the draft and the return', () => {
     await approve();
     expect(trackedUpdate).toHaveBeenCalledWith({
       where: { id: TRACKED },
-      data: { draftCapture: null, draftSelectors: [], draftTrusted: [], draftReturnedAt: null },
+      data: { draftCapture: null, draftSelectors: [], draftReturnedAt: null },
     });
   });
 
@@ -419,17 +399,18 @@ describe('approve_article_rules — the draft and the return', () => {
   // approval — an ended rule is not — and `changes` names every rule touched,
   // by id and selector, under the decision that touched it.
   it('returns the rules in force after the approval, the changes by rule, and the sequence it reached', async () => {
-    pageWith({ draftSelectors: ['.share'], draftTrusted: ['.share'] });
+    pageWith({ draftSelectors: ['.share'] });
     const result = await approve();
     expect(Object.keys(result).sort()).toEqual(['changes', 'decisionSequence', 'rules']);
-    expect(result['decisionSequence']).toBe(6);
+    expect(result['decisionSequence']).toBe(5);
+    // `trusted` is false now: a rule created by this approval carries no
+    // RULE_TRUSTED, because trust is a stop's decision (Flow 2, 2026-09-07).
     expect(result['rules']).toEqual([
-      { ruleId: 'rule-new-1', selector: '.share', validFrom: T14, validTo: null, trusted: true },
+      { ruleId: 'rule-new-1', selector: '.share', validFrom: T14, validTo: null, trusted: false },
     ]);
     expect(result['changes']).toEqual({
       added: [{ ruleId: 'rule-new-1', selector: '.share' }],
       ended: [{ ruleId: 'r1', selector: '.ticker' }],
-      trusted: [{ ruleId: 'rule-new-1', selector: '.share' }],
       extended: [],
     });
   });
@@ -440,7 +421,7 @@ describe('approve_article_rules — the draft and the return', () => {
     decisionsFind.mockResolvedValue(log([r1, later], [D.corrected(T09), D.accepted(T09), D.corrected(T3)]));
     pageWith({ draftSelectors: ['.ticker', '.x'] });
     const result = await approve();
-    expect(result['changes']).toEqual({ added: [], ended: [], trusted: [], extended: [{ ruleId: 'r2', selector: '.x' }] });
+    expect(result['changes']).toEqual({ added: [], ended: [], extended: [{ ruleId: 'r2', selector: '.x' }] });
     expect(result['rules']).toEqual(
       expect.arrayContaining([expect.objectContaining({ ruleId: 'r2', selector: '.x', validFrom: T14 })]),
     );

@@ -186,12 +186,11 @@ model TrackedUrl {
   createdBy     Researcher? @relation("TrackedUrlCreator", fields: [createdById], references: [id], onDelete: Restrict)
   // THE DRAFT — the marking page's working state, ONE PER PAGE, written by the
   // browser and discarded on promotion. Not a judgement: the log is append-only
-  // and attributed; this is transient and overwritten. `draftTrusted` names
-  // SELECTORS, because one live rule per selector makes a selector a unique
-  // name, and it is what the page has.
+  // and attributed; this is transient and overwritten. `draftTrusted` was
+  // RETIRED 2026-09-07: trust is given at a stop, in the chat, and recorded by
+  // resolve_scan_stop CONTINUE (flows Flow 2, A2, A5).
   draftCapture    String?
   draftSelectors  String[]  @default([])
-  draftTrusted    String[]  @default([])
   draftReturnedAt DateTime?
   rules           Rule[]
   pageDecisions   PageDecision[]
