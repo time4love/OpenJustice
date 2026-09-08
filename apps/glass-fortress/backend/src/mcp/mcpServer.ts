@@ -691,7 +691,8 @@ export function createMcpServer(): McpServer {
         'CONTINUE: the rules are right here, so the capture is accepted, and with it the rules the ' +
         'researcher chose to TRUST or to END, each named by its selector. Say what each answer means ' +
         'before they choose. TRUST: Gate 4 stops asking about that element\'s contents on later ' +
-        'captures; Gate 1 still catches its text if it changes sides; a later decision can reverse it. ' +
+        'captures; Gate 1 still catches its text if it changes sides. There is no untrust decision: the way ' +
+        'back is to END or retire the rule and mark the element afresh, which starts REVIEWED again. ' +
         'CONTINUE WITHOUT TRUST: this capture is accepted and the element\'s new contents will stop the ' +
         'walk again. END: the rule stops applying from this capture\'s date, its text enters the article ' +
         'from here, and earlier captures are untouched. TRUST and END name GATE 4 rules only — a Gate 2 ' +
@@ -746,7 +747,8 @@ export function createMcpServer(): McpServer {
         'needed only if one of the researcher\'s answers turns out to be CORRECT, and only then does it come ' +
         'first. A stop with no CORRECT answer is resolved wholly in the chat with resolve_scan_stop, then ' +
         'call again — the held capture is acquired without re-running the gates. AFTER EVERY CALL, SHOW ' +
-        'THE RETURN AS IT CAME — the counts, the stop, `next` — never only your account of it. A stale ' +
+        'THE RETURN — the counts, `next`, and for a stop the gates that fired with the number of rules or ' +
+        'lines under each; the material itself is read rule by rule below, never printed whole. A stale ' +
         'stored capture is re-derived: ' +
         'its previous text kept as a version (superseded) or its ruleset stamp moved (restamped). ' +
         'SPENDS one classifier call per acquired novel capture. `maxCaptures` is how many rows this ' +
@@ -754,35 +756,52 @@ export function createMcpServer(): McpServer {
         'ARCHIVE_UNAVAILABLE at the row the archive did not serve, REGISTRY_FROZEN when the registry is ' +
         'neither empty nor scheme-stamped at index 0 (nothing acquired), and CHAIN_UNAVAILABLE when the ' +
         'chain cannot be reached — everything before the halted row is kept. ' +
-        'AT A STOP, DRIVE IT IN THE CHAT, ONE RULE PER TURN (flows Flow 2). THE GATES, IN WORDS — say the ' +
-        'gate\'s sentence, never your own: GATE 0 — no human has approved any capture up to this date, the ' +
-        'first calibration: the researcher opens the marking URL and marks. GATE 1 — a line of text changed ' +
-        'sides against the previous capture: removed now but kept before means a rule is taking article text ' +
-        '(END that rule, or unmark it on the page); kept now but removed before means furniture entered the ' +
-        'text (CORRECT: mark its element on the page). GATE 2 — a rule that matched the previous capture ' +
-        'matches nothing here: the element left the page or changed its class; the answers are CONTINUE, or ' +
-        'CORRECT on the page if the element is still there under another name — TRUST and END do not apply ' +
-        'to a silent rule, and a Gate 2 rule goes in neither list. VERIFY WHICH before offering CONTINUE, ' +
-        'never guess: get_article_rules lists the rules created against THIS capture (validFrom equal to it); ' +
-        'read get_rule_history on each and look for the text the silent rule removed on the previous capture ' +
-        'among what the new rule removes here. Found — say "covered by the rule created on this capture" and ' +
-        'CONTINUE is verified. Not found — the element may still be on the page unmarked, and the answer is ' +
-        'CORRECT: the researcher marks it on the page. GATE 4 — a rule not yet trusted removed text ' +
-        'no human has seen: for each such rule, TRUST, CONTINUE without trust, or END. GATE 5 — the ' +
-        'classifier judged this capture\'s diff not editorial: a symptom of furniture entering the text, so ' +
-        'CORRECT on the page if there is, else CONTINUE; the verdict decides nothing. DIGEST — the bytes ' +
-        'received do not match the archive index\'s digest for this capture: CONTINUE, or BAD_CAPTURE. ' +
-        'FOR EACH RULE the material names, IN ITS OWN TURN: read get_rule_history; say the element in words — ' +
-        'its tag and the first text it removed, never the selector as its name; then its history — created ' +
-        'against which capture, matched since, trusted or not; then its removals VERBATIM — `removed` is one ' +
-        'text per matched element and a menu or a sidebar is hundreds of lines, so quote the FIRST 5 LINES of ' +
-        'each and offer the rest, never a summary in their place; for a Gate 4 rule name the never-seen ' +
-        'lines from the stop\'s material first; then only the answers that apply to ITS gate, ' +
-        'with what each means; then STOP and wait for the researcher\'s answer before the next rule. Never ' +
-        'read several histories in one turn. After the last rule, record the whole stop with ONE ' +
-        'resolve_scan_stop call. Only when one of the answers IS CORRECT does the stop need marking; then ' +
-        'MARKING COMES FIRST and the chat\'s decisions follow it, against the ruleset the marking left. ' +
-        'Decide nothing yourself: every answer here is the researcher\'s.',
+        'AT A STOP, DRIVE IT IN THE CHAT (flows Flow 2, amended 2026-09-08). "THE PREVIOUS CAPTURE" in every ' +
+        'gate is the PREDECESSOR: the last ACQUIRED capture before this one — a DUPLICATE or IDENTICAL row ' +
+        'between them is stepped over, so a count "on the predecessor" may name a capture two rows back. ' +
+        'THE STOP\'S SHAPE FOLLOWS GATE 1. FIRST READ GATE 1. If it lists lines that ENTERED the text ' +
+        '(`nowKept` non-empty), the stop\'s answer is CORRECT ON THE PAGE for the stop as a whole: name the ' +
+        'elements by their first lines, hand over the marking URL, and make NO per-rule Gate 2 check — the ' +
+        'marking is the covering, and the retry acquires the capture without re-running the gates. Gate 1\'s ' +
+        'REMOVED side (kept before, removed now) is a rule taking article text: END it in the chat, or the ' +
+        'researcher unmarks it on the page. The per-rule walk below applies whenever Gate 1 lists NO ' +
+        'kept-side lines — Gate 1 quiet, or fired on its removed side alone, which is chat-shaped: each ' +
+        'removed-side rule is END or CONTINUE in its own turn — ' +
+        'the re-walk after the marking has already happened. THE GATES, IN WORDS — say the gate\'s sentence, ' +
+        'never your own: GATE 0 — no human has approved any capture up to this date, the first calibration: ' +
+        'the researcher opens the marking URL and marks. GATE 1 — a line of text changed sides against the ' +
+        'predecessor, as above. GATE 2 — a rule that matched the predecessor matches nothing here: the ' +
+        'element left the page or changed its class; the answers are CONTINUE, or CORRECT on the page if ' +
+        'the element is still there unmarked — TRUST and END do not apply to a silent rule, and a Gate 2 ' +
+        'rule goes in neither list. VERIFY WHICH before offering CONTINUE, never guess, in this order: (1) ' +
+        'COVERED — some rule in force at this capture removes here the text the silent rule removed on the ' +
+        'predecessor; look at the rules created against this capture first (get_article_rules, validFrom ' +
+        'equal to it) and then at any other rule in force that matches here (lastMatched at or after this ' +
+        'capture), reading get_rule_history on each; found → say "covered by <the rule>" and CONTINUE is ' +
+        'verified. (2) NOT COVERED — then CONTINUE, and say why it is not a guess: the per-rule walk runs ' +
+        'only when Gate 1 listed no kept-side lines, and Gate 1 lists every line that was removed on the ' +
+        'predecessor and is kept here — so a silent rule\'s previous text is NOT on this capture\'s kept side, ' +
+        'or Gate 1 would have named it. The element left the page, or its wording changed (a ticker, a ' +
+        'related box, a headline list changes every capture, so a text match can only fail there), and ' +
+        'either way nothing of it enters the article. CORRECT never comes from this branch; it comes from ' +
+        'Gate 1\'s kept side, above. Never say the stop "needs marking" without a CORRECT from the ' +
+        'researcher. GATE 4 — a rule not yet ' +
+        'trusted removed text no human has seen: for each such rule, TRUST, CONTINUE without trust, or END. ' +
+        'GATE 5 — the classifier judged this capture\'s diff not editorial: a symptom of furniture entering ' +
+        'the text, so CORRECT on the page if there is, else CONTINUE; the verdict decides nothing. DIGEST — ' +
+        'the bytes received do not match the archive index\'s digest for this capture: CONTINUE, or ' +
+        'BAD_CAPTURE. FOR EACH RULE the material names, IN ITS OWN TURN: read get_rule_history; say the ' +
+        'element in words — its tag and the first text it removed, never the selector as its name; then its ' +
+        'history — created against which capture, matched since, trusted or not; then its removals VERBATIM — ' +
+        '`removed` is one text per matched element and a menu or a sidebar is hundreds of lines, so quote ' +
+        'the FIRST 5 LINES of each and offer the rest, never a summary in their place; for a Gate 4 rule ' +
+        'name the never-seen lines from the stop\'s material first; then only the answers that apply to ITS ' +
+        'gate, with what each means; then STOP and wait for the researcher\'s answer before the next rule. ' +
+        'Never read several histories in one turn. After the last rule, record the whole stop with ONE ' +
+        'resolve_scan_stop call; when one answer is CORRECT, MARKING COMES FIRST and the chat\'s decisions ' +
+        'follow it, against the ruleset the marking left. Do not call scan_captures again until the ' +
+        'researcher says so: each call may spend and may anchor. Decide nothing yourself: every answer here ' +
+        'is the researcher\'s.',
       inputSchema: scanCapturesSchema,
     },
     async (input) => ({

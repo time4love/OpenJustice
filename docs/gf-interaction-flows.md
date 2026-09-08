@@ -254,7 +254,9 @@ so what Gate 4 protects is the derived view.
 furniture whatever it contains. Gate 4 keeps showing them that element's contents until they say so
 explicitly, at a stop, looking at one: *this element is furniture whatever it contains, stop showing
 me its removals.* That is a decision, logged like any other — who, when, which rule, against which
-capture — and reversible by a later one. A rule's REVIEWED or TRUSTED state is folded from its
+capture — and reversible by a later one: RULE_ENDED or RULE_RETIRED, then a fresh rule for the
+element, which starts REVIEWED (ruled 2026-09-08; there is no untrust decision, and the log's
+eight types are A2's). A rule's REVIEWED or TRUSTED state is folded from its
 decisions, exactly as the rules themselves are. On a news page the first stretch trusts the ticker,
 the related box and the rest, a few decisions each made once; on a stable page there is little to
 trust and little to show.
@@ -682,10 +684,12 @@ drives a stop the same way.
 text (`nowKept`), the stop's answer is CORRECT on the page for the stop as a whole — Claude names
 the elements by their first lines and hands over the URL, and no per-rule Gate 2 check is made,
 since the marking is the covering. Gate 1's removed side — text kept before and removed now — is a
-rule taking article text: END it in the chat, or unmark it on the page. The per-rule verification
-of a silent rule is for a stop where Gate 1 is quiet: the re-walk after the marking has already
-happened. A fresh walk of a page is page-shaped at every redesign and chat-shaped only where a
-rule's contents are judged.
+rule taking article text: END it in the chat, or unmark it on the page. A stop where Gate 1 fired
+on its removed side alone is CHAT-SHAPED (ruled 2026-09-08): the per-rule walk applies whenever
+Gate 1 lists no kept-side lines, and each removed-side rule is END or CONTINUE in its own turn. The
+per-rule verification of a silent rule is for a stop where Gate 1 lists no kept-side lines: the
+re-walk after the marking has already happened. A fresh walk of a page is page-shaped at every
+redesign and chat-shaped only where a rule's contents are judged.
 
 **Both directions stop.** `kept → removed` is DATA LOSS; `removed → kept` is CORPUS POLLUTION, because
 `text` feeds `textHash` and every later capture then looks novel.
