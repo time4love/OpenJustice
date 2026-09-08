@@ -119,7 +119,7 @@ export async function auditEvidence(): Promise<EvidenceAuditReport> {
         continue;
       }
       const c = row.snapshot;
-      if (c === null || c.waybackTimestamp === null) {
+      if (c?.waybackTimestamp == null) {
         fail(row, 'RECORD_MISSING', `snapshot ${row.snapshotId} is absent, or holds no waybackTimestamp`);
         continue;
       }
