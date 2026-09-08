@@ -330,9 +330,21 @@ export function MarkingClient({ trackedUrlId, capture }: { trackedUrlId: string;
   // draft and the removed pane name an element the way the tree does. A rule
   // whose element is not in this capture's outline — what a redesign looks
   // like — has no label and shows its selector, its only name.
+  //
+  // AND BY EVERY SELECTOR THAT MATCHES THE NODE, not only the one it OFFERS
+  // (2026-09-08). A rule's stored selector and the outline's offered selector
+  // are different strings whenever the tier that produced them differs — a 2020
+  // rule reading `header.no-mobile-app.css-gf5unx.main-header` against an
+  // outline now offering `header.no-mobile-app.main-header` — so a rule that
+  // still MATCHES its element was shown by its raw selector, the one thing
+  // MARKING says is never its name. `matchedBy` is that relation, computed in
+  // the backend against the real DOM (F1), and it is what makes the label reach
+  // the rule. The offered selector is set FIRST so it wins where both exist:
+  // the node's own name is the tree's, and a matching rule borrows it.
   const labels = useMemo(() => {
     const out = new Map<string, string>();
     const walk = (node: OutlineNode): void => {
+      for (const matched of node.matchedBy) out.set(matched.selector, node.label);
       out.set(node.selector, node.label);
       node.children.forEach(walk);
     };
@@ -922,12 +934,22 @@ function MarkedPanel({
  * heavier. One rule per selector, so one selector the parser refuses does not
  * silence the others; nothing here runs, and a selector carrying markup is
  * dropped rather than injected.
+ *
+ * THE DESCENDANTS ARE TINTED TOO (2026-09-08). An element whose children all
+ * float has no box of its own, so an outline on it paints a line of zero height
+ * and the researcher sees NOTHING where they just marked — the mark is real,
+ * the feedback is absent, and the only way to tell is the removed pane. Tinting
+ * `${s} > *` puts the colour where the content actually is. Tint only, no second
+ * outline: an outline per child would draw a box around every one of them and
+ * read as many marks instead of one.
  */
 function highlighted(html: string, selectors: readonly string[], focused: string | null): string {
   const safe = selectors.filter((s) => !/[<>{}]/.test(s));
   if (safe.length === 0) return html;
   const rules = safe.map(
-    (s) => `${s}{outline:3px solid #d97706 !important;outline-offset:-3px !important;background:rgba(217,119,6,.18) !important;}`,
+    (s) =>
+      `${s}{outline:3px solid #d97706 !important;outline-offset:-3px !important;background:rgba(217,119,6,.18) !important;}` +
+      `${s} > *{background:rgba(217,119,6,.18) !important;}`,
   );
   if (focused !== null && safe.includes(focused)) {
     rules.push(`${focused}{outline:5px solid #b91c1c !important;background:rgba(185,28,28,.22) !important;}`);

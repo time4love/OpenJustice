@@ -819,3 +819,52 @@ describe('scan_captures — the return', () => {
     );
   });
 });
+
+// NO CLASSIFIER CALL ON AN EMPTY DIFF — docs/gf-walk-corrective-pass-2026-09-08.md
+// §4, read from the live run: three paid calls were spent asking a model whether
+// an empty change was editorial, and the verdict bought is meaningless. It
+// recurs for future state, which is what makes it work rather than archaeology —
+// every corrective pass that SUCCEEDS ends in zero-chunk diffs and every one of
+// them pays. Evidence A4 already refuses NOTHING_TO_PROMOTE for a diff whose
+// CURRENT has no chunk; A2 already defines the state to write, `classification`
+// NULL when nothing classified this derivation.
+describe('scan_captures — an empty diff is not classified (2026-09-08)', () => {
+  // The re-walk's ruleset, as the Flow 3 block above names it: the stale row is
+  // stamped under the empty set and the rules in force now are ['.ad'].
+  const NEW_ID = rulesetId(['.ad']);
+
+  /**
+   * Two texts that DIFFER — so the row supersedes and a diff is written — but
+   * differ only by a line the differ drops: `diffChunkPair` has filtered by
+   * `hasContent` since DIFF_INPUT_VERSION v4, so a lone bullet is no chunk. The
+   * pair therefore has a new content version with NOTHING in it, which is
+   * exactly the state the live run produced and paid for.
+   */
+  const differsByNothingTheDifferKeeps = (...snapshots: { text: string }[]) => {
+    for (const snapshot of snapshots) snapshot.text = 'the article';
+    mockDerive.mockReturnValue({ ...derived('hash-new'), text: 'the article\n•' });
+  };
+
+  it('a re-derived diff with no chunks calls analyzeChange ZERO times and writes no classification', async () => {
+    const predecessor = acquired(T09, 'hash-09', NEW_ID);
+    const stale = acquired(T14, 'hash-old', EMPTY_ID);
+    differsByNothingTheDifferKeeps(predecessor.snapshot, stale.snapshot);
+    page([predecessor.row, stale.row], [predecessor.snapshot, stale.snapshot]);
+    await scan();
+    expect(mockAnalyzeChange).not.toHaveBeenCalled();
+    expect(mockRecordDiff).toHaveBeenCalled();
+    for (const [call] of mockRecordDiff.mock.calls as [Record<string, unknown>][]) {
+      expect(call['editorial']).toBeUndefined();
+      expect(call['classifierVersion']).toBeUndefined();
+    }
+  });
+
+  it('a diff WITH chunks still draws — the guard is on emptiness, not on re-derivation', async () => {
+    const predecessor = acquired(T09, 'hash-09', NEW_ID);
+    const stale = acquired(T14, 'hash-old', EMPTY_ID);
+    page([predecessor.row, stale.row], [predecessor.snapshot, stale.snapshot]);
+    mockDerive.mockReturnValue(derived('hash-new'));
+    await scan();
+    expect(mockAnalyzeChange).toHaveBeenCalled();
+  });
+});

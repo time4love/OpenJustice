@@ -1012,7 +1012,13 @@ GATE 4   ∃ segment s ∈ removed(c) removed by a REVIEWED rule AND s ∉ SEEN(
 GATE 5   classify(diff(text(p), text(c))).editorial = false      — evaluated LAST, only if 0–4 quiet
          and the capture is NOVEL. The classifier's output gains `editorial: boolean`, asked in the
          same call as significance and categories; CLASSIFIER_VERSION and the prompt hash move.
-         One paid call per novel capture, one more question. Gate 5 never reads a stored diff
+         One paid call per novel capture, one more question. Gate 5 never reads a stored diff.
+         Amended 2026-09-08 (read from the corrective pass: three paid calls asking whether an
+         empty change was editorial): a diff with NO chunk on either side makes NO draw and the
+         gate is QUIET — there is no change to call not-editorial — and its content version is
+         written with `classification` NULL, the state evidence A2 already defines. The same
+         holds for every diff a supersession re-derives to nothing: the better the marking, the
+         less is paid, never more
 ```
 
 **Order of evaluation, and the stop.** 0 alone; then 1, 1', 2 and 4 are ALL evaluated; then 5. The

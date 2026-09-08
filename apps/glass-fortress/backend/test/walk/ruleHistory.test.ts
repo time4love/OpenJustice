@@ -142,6 +142,7 @@ beforeEach(() => {
       removedText: '',
       removedSegments: [
         ...(ruleset.selectors.includes('.ticker') ? [{ selector: '.ticker', text: 'ticker item' }] : []),
+        ...(ruleset.selectors.includes('.menu') ? [{ selector: '.menu', text: 'home\nnews\nsport' }] : []),
         ...(ruleset.selectors.includes('p') ? [{ selector: 'p', text: 'article' }] : []),
       ],
       matchCounts: {},
@@ -253,5 +254,61 @@ describe('get_rule_history — the match series', () => {
     rowsFind.mockResolvedValue([{ ...ROWS[0], snapshotId: null }]);
     matchesFind.mockResolvedValue([{ ruleId: 'r1', waybackTimestamp: T09, matchedNodes: 2 }]);
     await expect(history()).rejects.toThrow(/Walk defect/);
+  });
+});
+
+// A5, amended 2026-09-08: `removed` is the LINES a rule took, not one text per
+// matched element. Read from the live run — a header's single "text" ran to 150
+// lines, so the first-5 rule the script states could not be applied to it, and
+// Gate 4's material is per SEGMENT (A4: "∃ segment s ∈ removed(c)"), which this
+// read must agree with or the two disagree about what a rule removed.
+describe('get_rule_history — removed is segments, at Gate 4’s granularity (amended 2026-09-08)', () => {
+  const menu = rule('r-menu', '.menu', T09, 'd3');
+
+  beforeEach(() => {
+    ruleFind.mockResolvedValue({ ...menu, trackedUrlId: TRACKED, createdAt: new Date(Date.UTC(2026, 8, 1)) });
+    rulesFind.mockResolvedValue([...RULES, menu]);
+    matchesFind.mockResolvedValue([{ ruleId: 'r-menu', waybackTimestamp: T09, matchedNodes: 1 }]);
+  });
+
+  it('an element whose removed text is three lines yields three entries, and removedCount counts them', async () => {
+    const first = matchesOf(await history({ ruleId: 'r-menu' })).at(0);
+    expect(first?.['removed']).toEqual(['home', 'news', 'sport']);
+    expect(first?.['removedCount']).toBe(3);
+  });
+
+  it('de-duplicates within a capture — one line repeated across matched elements is one entry', async () => {
+    mockDerive.mockImplementation(() => ({
+      text: 'article',
+      textHash: 'hash',
+      textExtractionVersion: 'v2-fixture-extractor',
+      chrome: {
+        html: '<html/>',
+        removedText: '',
+        removedSegments: [
+          { selector: '.menu', text: 'home\nnews' },
+          { selector: '.menu', text: 'news\nsport' },
+        ],
+        matchCounts: {},
+        invalidSelectors: [],
+      },
+    }));
+    expect(matchesOf(await history({ ruleId: 'r-menu' })).at(0)?.['removed']).toEqual(['home', 'news', 'sport']);
+  });
+
+  it('blank and punctuation-only lines are dropped, as the gates drop them', async () => {
+    mockDerive.mockImplementation(() => ({
+      text: 'article',
+      textHash: 'hash',
+      textExtractionVersion: 'v2-fixture-extractor',
+      chrome: {
+        html: '<html/>',
+        removedText: '',
+        removedSegments: [{ selector: '.menu', text: 'home\n\n  \n•\nnews' }],
+        matchCounts: {},
+        invalidSelectors: [],
+      },
+    }));
+    expect(matchesOf(await history({ ruleId: 'r-menu' })).at(0)?.['removed']).toEqual(['home', 'news']);
   });
 });

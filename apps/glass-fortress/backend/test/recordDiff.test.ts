@@ -12,6 +12,7 @@ jest.mock('../src/lib/prisma', () => {
   return { prisma };
 });
 
+import { Prisma } from '@prisma/client';
 import { prisma } from '../src/lib/prisma';
 import { diffChunkPair } from '../src/lib/diffChunking';
 import { SURVIVAL_CHECK_VERSION } from '../src/lib/diffSurvival';
@@ -311,5 +312,45 @@ describe('contentVersionHash — A1, the byte layout stated once', () => {
     const plain = contentVersionHash([{ side: 'REMOVED', text: REMOVED }]);
     const judged: ContentChunk = { side: 'REMOVED', text: REMOVED, survival: 'CONTRADICTED' };
     expect(contentVersionHash([judged])).toBe(plain);
+  });
+});
+
+// THE CLASSIFICATION IS WHOLE OR ABSENT — 2026-09-08, with the empty-diff guard.
+// Making it `Partial` so an unclassified diff can be written also made a HALF
+// classification expressible, and a half one is the worst of the three: the
+// version would carry `editorial` with no `classifierVersion` beside it, so a
+// verdict would be stored with no way to say which model under which prompt
+// gave it — the provenance A2 exists to keep. Absent is a fact (nothing
+// classified this derivation); whole is a judgement with its provenance; the
+// state between is a walk defect and THROWS, naming what is missing, as every
+// other defect in this layer does.
+describe('recordDiff — the classification is whole or absent (2026-09-08)', () => {
+  /** Every key of DiffClassification, from the fixture that carries them all. */
+  const classificationKeys = (): string[] => {
+    const { trackedUrlId, beforeSnapshotId, afterSnapshotId, before, after, ...classification } = write();
+    void trackedUrlId, beforeSnapshotId, afterSnapshotId, before, after;
+    return Object.keys(classification);
+  };
+
+  it('absent: no classification key at all writes the version with classification NULL', async () => {
+    const { deletedItems, addedItems, legalSignificance, investigativeCategories, isLegallySignificant, editorial, editorialReason, coverage, draws, classifierVersion, classifiedInputVersion, classifierModel, classifierPromptHash, summaryVersion, ...bare } = write();
+    void deletedItems, addedItems, legalSignificance, investigativeCategories, isLegallySignificant, editorial, editorialReason, coverage, draws, classifierVersion, classifiedInputVersion, classifierModel, classifierPromptHash, summaryVersion;
+    await recordDiff(bare);
+    const call = versionCreate.mock.calls[0]?.[0] as { data: Record<string, unknown>[] };
+    expect(call.data[0]?.['classification']).toBe(Prisma.DbNull);
+  });
+
+  it('half: a write carrying editorial alone THROWS naming the missing keys, and writes nothing', async () => {
+    const { deletedItems, addedItems, legalSignificance, investigativeCategories, isLegallySignificant, editorialReason, coverage, draws, classifierVersion, classifiedInputVersion, classifierModel, classifierPromptHash, summaryVersion, ...half } = write();
+    void deletedItems, addedItems, legalSignificance, investigativeCategories, isLegallySignificant, editorialReason, coverage, draws, classifierVersion, classifiedInputVersion, classifierModel, classifierPromptHash, summaryVersion;
+    await expect(recordDiff(half)).rejects.toThrow(/classifierVersion/);
+    await expect(recordDiff(half)).rejects.toThrow(/Walk defect/);
+    expect(versionCreate).not.toHaveBeenCalled();
+  });
+
+  it('whole: every key present writes the opinion, as before', async () => {
+    await recordDiff(write());
+    const call = versionCreate.mock.calls[0]?.[0] as { data: Record<string, unknown>[] };
+    expect(Object.keys(call.data[0]?.['classification'] as object).sort()).toEqual(classificationKeys().sort());
   });
 });

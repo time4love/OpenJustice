@@ -357,7 +357,7 @@ class PageWalk {
   private readonly accepted: Set<string>;
   private agent: ForensicAgent | null = null;
   /** The classifier's draws this call, one per pair — see `draw`. */
-  private readonly draws = new Map<string, Promise<DiffClassification>>();
+  private readonly draws = new Map<string, Promise<DiffClassification | null>>();
   private readonly outcomes = zeroOutcomes();
   private walked = 0;
 
@@ -880,16 +880,25 @@ class PageWalk {
    * supersession's re-derived diffs are other pairs, each one draw (evidence
    * flows §3: the price of a better derivation, paid once per record).
    */
-  private draw(beforeTs: string | null, afterTs: string, diffOf: () => ClassifierDiff): Promise<DiffClassification> {
+  private draw(beforeTs: string | null, afterTs: string, diffOf: () => ClassifierDiff): Promise<DiffClassification | null> {
     const key = `${beforeTs ?? ''}→${afterTs}`;
     let drawn = this.draws.get(key);
     if (drawn === undefined) {
-      drawn = (async (): Promise<DiffClassification> => {
-        this.agent ??= new ForensicAgent();
+      drawn = (async (): Promise<DiffClassification | null> => {
         // A `ClassifierDiff`, built in ONE place (`classifierDiffOf`) from the
         // shared selection rule — which test/classifierInputRule.test.ts reads
         // off this very call.
         const diff = diffOf();
+        // NOTHING TO CLASSIFY, NOTHING TO PAY (2026-09-08, read from the live
+        // run: three calls spent asking a model whether an empty change was
+        // editorial). It recurs for future state — every corrective pass that
+        // SUCCEEDS ends in zero-chunk diffs — and the verdict bought is
+        // meaningless. The guard reads what the MODEL would read, which is the
+        // question being asked; `classifierInputChunks` drops only blanks and
+        // `diffChunkPair` has dropped those since DIFF_INPUT_VERSION v4, so
+        // "nothing to classify" and "no chunk stored" are one condition today.
+        if (diff.removed.length === 0 && diff.added.length === 0) return null;
+        this.agent ??= new ForensicAgent();
         const verdict = await this.agent.analyzeChange(diff.removed, diff.added, this.url, snapshotDateOf(afterTs), []);
         return {
           ...verdict,
@@ -907,16 +916,30 @@ class PageWalk {
     return drawn;
   }
 
-  /** Gate 5's view of the pair's draw: the editorial answer, nothing else (R-C). */
+  /**
+   * Gate 5's view of the pair's draw: the editorial answer, nothing else (R-C).
+   *
+   * A diff with nothing on either side makes no draw (2026-09-08), and the gate
+   * is QUIET for it: there is no change to call not-editorial, and a gate that
+   * fired on the absence of a verdict would stop a human over nothing. Gate 5
+   * runs only on a NOVEL capture — one whose textHash differs from its
+   * predecessor's — so a null here means the differ found no chunk in texts that
+   * do differ, which is a question for the differ and not a stop for a human.
+   */
   private classifyFor(beforeTs: string | null, afterTs: string): Classify {
     return async (diff) => {
       const verdict = await this.draw(beforeTs, afterTs, () => diff);
-      return { editorial: verdict.editorial, reason: verdict.editorialReason };
+      return verdict === null
+        ? { editorial: true, reason: 'no chunk on either side; nothing was classified' }
+        : { editorial: verdict.editorial, reason: verdict.editorialReason };
     };
   }
 
-  /** The pair's whole opinion, from the two texts the corpus holds for it. */
-  private opinion(before: DiffSide, after: DiffSide): Promise<DiffClassification> {
+  /**
+   * The pair's whole opinion, from the two texts the corpus holds for it — NULL
+   * when the diff has nothing on either side and no draw was made (2026-09-08).
+   */
+  private opinion(before: DiffSide, after: DiffSide): Promise<DiffClassification | null> {
     return this.draw(before.waybackTimestamp, after.waybackTimestamp, () => classifierDiffOf(before.text, after.text));
   }
 
@@ -935,7 +958,9 @@ class PageWalk {
         afterSnapshotId: after.snapshotId,
         before: { waybackTimestamp: before.waybackTimestamp, text: before.text, textHash: before.textHash },
         after: { waybackTimestamp: after.waybackTimestamp, text: after.text, textHash: after.textHash },
-        ...opinion,
+        // Nothing spread when there was no draw: `recordDiff` writes
+        // `classification` NULL, the state A2 defines (2026-09-08).
+        ...(opinion ?? {}),
       },
       tx ?? undefined,
     );
