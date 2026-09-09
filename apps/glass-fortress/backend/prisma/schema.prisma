@@ -552,7 +552,7 @@ model Evidence {
   kind                       EvidenceKind
   /// Set iff kind = CAPTURE.
   snapshotId                 String?            @unique
-  snapshot                   UrlSnapshot?       @relation(fields: [snapshotId], references: [id])
+  snapshot                   UrlSnapshot?       @relation(fields: [snapshotId], references: [id], onDelete: Restrict)
   /// Set iff kind = DIFF.
   urlVersionDiffId           String?            @unique
   urlVersionDiff             UrlVersionDiff?    @relation(fields: [urlVersionDiffId], references: [id])
@@ -779,7 +779,7 @@ model ThesisMention {
   /// the element a record fills is the framing's, and what the record does here
   /// is the argument.
   debateSessionId    String?
-  debateSession      DiffDebateSession? @relation(fields: [debateSessionId], references: [id])
+  debateSession      DiffDebateSession? @relation(fields: [debateSessionId], references: [id], onDelete: Restrict)
 }
 
 // ---------------------------------------------------------------------------
@@ -1501,9 +1501,9 @@ model DiffDebateSession {
   /// what lets the citation come first and the argument be made on it.
   recordFileHash        String
   recordSnapshotId      String?
-  recordSnapshot        UrlSnapshot?                @relation(fields: [recordSnapshotId], references: [id])
+  recordSnapshot        UrlSnapshot?                @relation(fields: [recordSnapshotId], references: [id], onDelete: Restrict)
   recordDiffId          String?
-  recordDiff            UrlVersionDiff?             @relation(fields: [recordDiffId], references: [id])
+  recordDiff            UrlVersionDiff?             @relation(fields: [recordDiffId], references: [id], onDelete: Restrict)
   openKey               String?                     @unique
   status                DiffDebateStatus            @default(OPEN)
   verdict               PromotionAssessmentVerdict?
