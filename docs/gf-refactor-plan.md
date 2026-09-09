@@ -463,6 +463,8 @@ The as-built document writers retire in this step — which ones, and their test
 by pair, `check_on_chain_status` re-scoped to captures, PUBLIC_PAGE gating; `opinions-not-facts`
 as the shape test.
 The anonymous trajectory read (`GET /tracked/:id/trajectories` today) survives as a PUBLIC read under the same PUBLIC_PAGE rule, bounded to one page — amended 2026-09-04 (pre-design triage, docs/gf-pre-design-plans-triage-2026-09-04.md).
+Built 2026-09-09 (PR #402); the six rulings that shaped it, what the review found, what the decoys
+proved, and the anchor re-check that closed it are `docs/gf-evidence-step-12-2026-09-09.md`.
 
 ### 13 · The debate on a citation
 `open_debate`, `respond_in_debate`, `promote_from_debate`, `get_debate`, the assessor reading the
