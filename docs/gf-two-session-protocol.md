@@ -4,7 +4,7 @@
 
 ## The shape
 
-One refactor step = one round `R<n>` = three files, written by the outgoing REVIEW seat at ~450k
+One refactor step = one round `R<n>` = three files, written by the outgoing REVIEW seat at ~850k
 tokens of its own context, BEFORE its last keyword flow:
 
 | file | read by | carries |
@@ -16,6 +16,98 @@ tokens of its own context, BEFORE its last keyword flow:
 **Self-contained, every time.** No file says "as R<n-1>'s prompt said"; a chain to an older prompt
 is a reading nobody does. The previous round's `R<n-1>-review-state.md` is in the reading list as a
 LOG to read once, not as a source of instructions.
+
+## Every unverifiable instruction gets an output field
+
+**Added 2026-09-09 by the R38 REVIEW seat, which did not read the designs whole and produced four
+reports before anyone could tell.** Four grading rounds against that step's sketch found SEVENTEEN
+real defects and NOT ONE contract clause — because a seat that verifies only what the chunk cites
+can find inaccuracy and can never find omission. Two hundred lines of evidence A3 and one line of
+A6, read afterwards, found four MEDIUM, none of them a line the sketch had cited.
+
+Every other instruction in that prompt held, and the reason is uniform: each carried a number the
+report had to print. The baseline has counts. A decoy has a firing count measured against a stated
+baseline. A KEEP sweep has a subject count, per-subject existence and a positive control. **The
+reading list had nothing that failed when it was skipped.**
+
+So: **a seat prompt may not carry an instruction whose performance cannot be read from the seat's
+own output.** For each such instruction the prompt names the FIELD its FIRST report must carry, and
+a first report missing a field is INCOMPLETE — the researcher returns it rather than reading its
+findings.
+
+| instruction | the field its FIRST report must carry |
+|---|---|
+| the reading list, the designs WHOLE | per document: the line range read, AND **one ruling it names that the chunk under review does not cite** |
+| "grep EVERY design and the triage by name before saying KEEP or RETIRE" | which documents say **nothing** — the silent ones, named |
+| "read every changed file IN FULL" | each changed file, with its line count |
+
+**The fields go in the report block's `observed:` line**, which is where a seat already states what it
+ran. The block ends the report and nothing follows it, so a field with no named home would have none —
+DEV's cold read of this section, 2026-09-09.
+
+**The reading field is the load-bearing one, because it is the only one skimming cannot satisfy.**
+A ruling the chunk does not cite is exactly what a whole read produces and a section read cannot:
+evidence A3's *"no evidence predicate below evaluates until it does"*, evidence A6 `:1214`'s fourth
+ARGUED clause, thesis A7 naming `PUBLISHABLE(v)` in its one-symbol scan. Any one of them fails the
+field in round 1 instead of surfacing in round 4.
+
+**What this does NOT do, stated so nobody trusts it further than it goes.** A seat that ignores the
+field still ignores it; nothing here makes a session read. **And a whole read is NECESSARY, not
+SUFFICIENT** — the R38 seat read evidence A3 whole and still surfaced its `CURRENT(diff)` clause only
+a round later, so the field catches the reading that never happened, never the reading that missed. What changes is that the omission is
+visible in the FIRST report instead of four rounds later — it moves the researcher's catch earlier,
+it does not replace the researcher as the catch.
+
+## When the reading completes, every open question is re-asked against it
+
+**Added 2026-09-09, the same day and by the same failure.** The R38 seat carried two questions to the
+researcher for five rounds — does `audit-theses` exit 0 over zero subjects, and who writes the ledger
+entry — and both were already answered: evidence A6 `:1202`, thesis A6 `:1588` and thesis A7
+`:1656-1657` (*"a pass that examined nothing says zero, never nothing"*) answer the first in terms,
+and `gf-thesis-refactor-plan.md:245` (*"gains its command at step 24"*) answers the second. The seat
+read all four clauses during the whole read and never went back to the standing questions.
+
+**So the reading has a second act, and it is not optional:** when the reading list is finished, every
+question the seat is holding — its own and the other seat's — is re-asked against what was just read,
+BEFORE it is relayed. A question the designs answer is a FOUND, reported, never asked; relaying it
+spends the researcher's ruling on something already ruled.
+
+This is what "a whole read is necessary, not sufficient" means in practice. The output field catches
+the reading that never happened. Only the re-ask catches the reading that happened and went unused.
+
+## One ordering, not two
+
+A prompt states ONE order of first acts, in these words:
+
+```
+FIRST   verify the baseline from the tree, and the READ FIRST block
+SECOND  the reading list, WHOLE, with the fields above
+THEN    the first report
+```
+
+**The block above is REQUIRED in every seat prompt, in those words** — a prompt stating NO order
+passes a check that only looks for two competing ones, which is what the first version of this rule
+did (DEV's cold read, 2026-09-09).
+
+`R38-review-prompt.md` carried both *"READ, IN THIS ORDER — BEFORE THE FIRST REPORT"* and, further
+down, *"FIRST ACT: verify the baseline from the tree ... before reading anything else"*. The seat
+followed the second, went into command-running mode, and never re-entered the list as a blocking
+step. **A prompt asserting an order in two different phrasings is a defect and `check-handoff.py`
+refuses it.** The checker holds a FAMILY of ordering phrasings and refuses a prompt matching two of
+them; that list is an ENUMERATION under a property, declared as one, because a regex cannot decide
+"states one order". Its first version held exactly two literals and missed `R38-dev-prompt.md`'s
+*"BEFORE WRITING ANYTHING"*, a third — found by DEV's cold read, and the same shape
+`gf-property-implemented-as-enumeration` records. A new phrasing joins the family; the property does
+not change.
+
+## The report waits for the reading
+
+**A prompt that arrives in the same message as a DEV report does not start the grading.** The
+reading comes first, and the reply says so before its first finding. A pasted artifact is not a
+reason to begin: it is what will be graded once the seat holds the standard to grade it against.
+
+Written for the SEAT rather than for the researcher, deliberately — the protocol has to hold
+however the message arrives, not only when it is delivered in two parts.
 
 ## What goes where — the required elements
 
@@ -42,7 +134,7 @@ checker looks for, e.g. "no migration") or forgot it.
 ### `R<n>-dev-prompt.md`
 1. The seat: DEVELOPER; NEVER runs git (no add, commit, push, checkout, branch, stash);
    `git show/diff/status` only; never a design doc, a migration (unless ruled), staging, a frontend
-   file; batch questions, never resolve in code; context size in every report, bold past ~450k.
+   file; batch questions, never resolve in code; context size in every report, bold past ~850k.
 2. READ IN THIS ORDER, the designs WHOLE never by section: CLAUDE.md · docs/README.md ·
    `R<n>-state.md` · `R<n-1>-review-state.md` · `R<n-1>-chunk-1-sketch.md` (the sketch's shape) ·
    architecture target §9–§11 · THE FOUR DESIGNS EACH WHOLE in dependency order (interaction,
@@ -50,6 +142,8 @@ checker looks for, e.g. "no migration") or forgot it.
    WHOLE · as-built §7–§8 · thesis plan §5 · document plan §5 (the KEEP tables) · the triage doc ·
    the legacy-switch record · the step's own dated docs · the memory rulings · the tree at named
    paths. "A ruling you find that the state file does not carry is REPORTED as FOUND, never asked."
+   **And the FIELD the first report must carry for it** — per document, the line range read and
+   one ruling it names that this step's chunk does not cite.
 3. RULES THAT BIND THE CODE: no chain write (`registerEvidenceHash` one caller); KEEP files
    byte-identical or DECLARED with authority; `src/walk` byte-identical; `mcpToolClassification`
    KEEP; predicates CALLED never re-spelled; the step's own invariants (no re-pin, WITHDRAWN never
@@ -63,6 +157,8 @@ checker looks for, e.g. "no migration") or forgot it.
    ratchets REPORTED never set; eslint with the pre-existing errors named by file.
 6. The REPORT block (files / observed / questions / next) and "paste this block into the REVIEWER
    session now".
+7. **EVIDENCE THE FIRST REPORT MUST CARRY**, one line per unverifiable instruction, naming every
+   document of the READ list — the section above. A first report missing a field is incomplete.
 
 ### `R<n>-review-prompt.md`
 1. The seat: REVIEWER, HOLDS THE TREE, every git command here on the keywords; never edits DEV's
@@ -72,6 +168,8 @@ checker looks for, e.g. "no migration") or forgot it.
    `R<n>-dev-prompt.md` (its scope binds; its reading list is yours) · the sketch precedent and the
    sketch path that MUST be on disk · the memory files. "Grep EVERY design and the triage by name
    before saying KEEP or RETIRE."
+   **And the FIELDS the first report must carry** — per document, the line range read and one
+   ruling it names that the chunk does not cite; and which documents say NOTHING.
 3. WHAT A FINDING IS: the shape (`[LEVEL] file:line — defect / cites / held by`); HIGH, MEDIUM,
    LOW lists rewritten for THIS step's contract; "a design question is not a finding".
 4. STOP RULE: no HIGH or MEDIUM; three rounds; the fourth is the researcher's; write "LOOP ENDS".
@@ -86,7 +184,9 @@ checker looks for, e.g. "no migration") or forgot it.
 7. THE REPLY SHAPE: questions · findings ranked · "what I checked and found sound" · NEXT PROMPT
    FOR THE DEVELOPER as a pasteable numbered list · remaining steps · one recommended step.
 8. PERSIST: `R<n>-review-state.md` and memory at every chunk boundary; context size as the harness
-   shows it; write `R<n+1>-*` at ~450k before the last keyword flow.
+   shows it; write `R<n+1>-*` at ~850k before the last keyword flow.
+9. **EVIDENCE THE FIRST REPORT MUST CARRY**, one line per unverifiable instruction, naming every
+   document of the READ list — the section above. A first report missing a field is incomplete.
 
 ## The keyword
 
@@ -96,12 +196,22 @@ by eye against the previous set for the step's own content, then CHECKPOINTs. Re
 when the tree is not clean and undeclared, or when a keyword flow is mid-way (COMMIT done, PR not
 landed) — the handoff is written BEFORE the last keyword flow, never inside one.
 
+**THE THRESHOLD IS ~850k, RAISED FROM ~450k ON THE RESEARCHER'S RULING, 2026-09-09.** The old number
+was set before a seat was required to read the four designs whole, and that reading alone costs about
+250k measured by the DEV seat over the whole list, leaving a seat that has read at roughly 330k — so
+~450k triggered a handoff before the seat had done any work with what it had just read. The
+handoff exists so that a session does not die mid-loop with its findings unwritten; it does not exist
+to preserve design context, which is on disk and re-readable by the next seat at the same price. A
+seat that hands off early pays the reading twice and reviews nothing in between.
+
 ## The procedure
 
-1. At ~450k, the REVIEW seat writes the three files.
+1. At ~850k, the REVIEW seat writes the three files.
 2. It runs `python3 check-handoff.py R<n+1>` and fixes every MISSING line or writes the words that
    say why the element does not apply.
 3. It then diffs against the previous set by eye once — the checker holds the protocol; the eye
    holds the step.
-4. The researcher opens the next sessions from the files. The first act of the new REVIEW seat is
-   to verify the baseline from the tree and read the READ FIRST block.
+4. The researcher opens the next sessions from the files. The new REVIEW seat acts in ONE order:
+   FIRST the baseline from the tree and the READ FIRST block; SECOND the reading list, WHOLE,
+   with its output fields; THEN the first report, which carries them. A DEV report arriving in
+   the same message waits for the reading.
