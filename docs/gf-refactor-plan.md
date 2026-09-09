@@ -467,6 +467,9 @@ The anonymous trajectory read (`GET /tracked/:id/trajectories` today) survives a
 ### 13 · The debate on a citation
 `open_debate`, `respond_in_debate`, `promote_from_debate`, `get_debate`, the assessor reading the
 citing passage; `NOT_CITED` proven to refuse.
+Built 2026-09-09 (PR #404); what was ruled before the sketch, the drift 11b left and the control it
+added, what the decoys proved, and what the step does not claim is `docs/gf-evidence-step-13-2026-09-09.md`.
+No staging exercise until thesis step 20 creates a thesis.
 
 ### 14 · Review
 `list_evidence_reviews`, `review_evidence`; a re-walk on staging putting one promoted record into
