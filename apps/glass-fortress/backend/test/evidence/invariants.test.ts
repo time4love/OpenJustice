@@ -162,6 +162,54 @@ describe('§9.8 — nothing is deleted after the rebuild', () => {
     expect(added.filter(([, , action]) => action !== 'RESTRICT').map(([, name]) => name)).toEqual([]);
   });
 
+  it('the SCHEMA declares what the migration wrote — an optional relation says onDelete: Restrict', () => {
+    // THE OTHER HALF OF THE CASE ABOVE, and without it that one is only half a
+    // rule. The migration writes RESTRICT into the DATABASE; `schema.prisma` is
+    // what `prisma migrate diff` compares the database against, and Prisma's
+    // default for an OPTIONAL relation is SET NULL. So an optional relation whose
+    // FK the migration wrote RESTRICT, and whose `@relation` does not say
+    // `onDelete: Restrict`, leaves the datamodel asserting a deletion path the
+    // database refuses — and `db:check-drift` red for every step that follows.
+    //
+    // That is not hypothetical: it was true from 2026-09-08, when 11b landed,
+    // until this case was written. 11b ran the drift check BEFORE its own schema
+    // edit and recorded exit 0; nothing ran it after, so the drift its migration
+    // introduced stood unseen. A gate that only ever runs before a change cannot
+    // see the drift that change makes, which is why the rule is asserted here as
+    // a property of the two files rather than left to the next person to re-run.
+    //
+    // DERIVED FROM THE MIGRATION'S OWN CONSTRAINTS, never a hand-typed set: a
+    // rule stated as a property and implemented as an enumeration is tested
+    // against the same enumeration, and a fifth optional relation added tomorrow
+    // is covered without anyone editing this case.
+    const restricted = [
+      ...migration.matchAll(
+        /ALTER TABLE "(\w+)" ADD CONSTRAINT "(\w+_fkey)"\s*FOREIGN KEY \("(\w+)"\)[^;]*?ON DELETE RESTRICT/g,
+      ),
+    ];
+    // A silent zero would make every assertion below vacuously true — the shape
+    // this suite's scans each carry their own guard against.
+    expect(restricted.length).toBeGreaterThanOrEqual(6);
+
+    const underDeclared = restricted.flatMap(([, table, constraint, column]) => {
+      // The relation field that CARRIES this foreign key, found by the column it
+      // names rather than by the field's own name: `Evidence.snapshotId` is held
+      // by a field called `snapshot`, and only the `fields: [...]` says so.
+      const field = new RegExp(
+        `^\\s{2}(\\w+)\\s+\\w+(\\??)\\s+@relation\\(fields: \\[${column}\\][^)]*\\)`,
+        'm',
+      ).exec(block(table));
+      if (field === null) return [];
+      const [declaration, , optional] = field;
+      // A REQUIRED relation already defaults to Restrict in Prisma, so declaring
+      // it would change nothing and asserting it would demand a line the ruling
+      // of 2026-09-09 deliberately did not write. Only the optional ones diverge.
+      if (optional !== '?') return [];
+      return declaration.includes('onDelete: Restrict') ? [] : [constraint];
+    });
+    expect(underDeclared).toEqual([]);
+  });
+
   it('the review log is append-only, keyed by a compare-and-set', () => {
     expect(block('EvidenceDecision')).toContain('@@unique([fileHash, sequence])');
   });
