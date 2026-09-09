@@ -310,6 +310,63 @@ export function opinionOf(classification: Prisma.JsonValue, diffName: string): O
   };
 }
 
+/**
+ * A chunk of a content version, as the COMPUTED register stores it — A2's shape,
+ * whole. `survival` is REQUIRED because the writer writes it on every chunk:
+ * "chunks Json — [ { side, text, survival: SURVIVES|CONTRADICTED|UNCHECKABLE } … ]".
+ */
+export interface StoredChunk {
+  side: string;
+  text: string;
+  survival: string;
+}
+
+/**
+ * The chunks of a stored version — WHOLE, or a walk defect that THROWS, naming
+ * the pair.
+ *
+ * The first draft of this function dropped anything that did not match the shape,
+ * and that is the silent filter CLAUDE.md forbids: "a subject quietly dropped
+ * from a pass is a subject reported as nothing to check". Here it would change
+ * the ANSWER, not just the report — a CONTRADICTED chunk with a malformed `text`
+ * would vanish, so CONTRADICTED would not refuse, NOTHING_TO_PROMOTE could fire
+ * on a diff that has chunks, and the assessor would be handed partial content as
+ * though it were all of it.
+ *
+ * It is the same rule `opinionOf` above holds over the OTHER register of the same
+ * row, for the same reason and in the same words: absent is a FACT, whole is a
+ * derivation with its provenance, and between them is nothing the design names.
+ *
+ * MOVED HERE FROM `services/openDebate.ts` AT EVIDENCE STEP 14, where it was
+ * private with one caller. The review list reads the same column under the same
+ * rule — a diff's `chunks` are what `moved` is computed over (§6) and what §7's
+ * narrowing material asks about — and a second copy would be exactly the silent
+ * filter this function's own comment is written against. `openDebate.ts` imports
+ * it, and `test/debate.test.ts`'s two chunk cases stay green untouched, which is
+ * what proves the move.
+ */
+export function chunksOf(stored: Prisma.JsonValue, pair: string): StoredChunk[] {
+  const defect = (detail: string): never => {
+    throw new Error(
+      `Walk defect: the content version stored for diff ${pair} ${detail}. A chunk is whole — ` +
+        'side, text and its survival verdict — because that is what the walk writes on every one.',
+    );
+  };
+  if (!Array.isArray(stored)) {
+    return stored === null ? [] : defect('does not hold an array of chunks');
+  }
+  return stored.map((c, i) => {
+    if (typeof c !== 'object' || c === null || Array.isArray(c)) {
+      return defect(`holds a chunk at index ${String(i)} that is not an object`);
+    }
+    const { side, text, survival } = c as Record<string, unknown>;
+    if (typeof side !== 'string' || typeof text !== 'string' || typeof survival !== 'string') {
+      return defect(`holds a HALF chunk at index ${String(i)}`);
+    }
+    return { side, text, survival };
+  });
+}
+
 /** How a diff is named in a message: by its pair, which is its identity (A1). */
 export function pairName(diff: { before: { capture: string }; after: { capture: string } }): string {
   return `${diff.before.capture} → ${diff.after.capture}`;

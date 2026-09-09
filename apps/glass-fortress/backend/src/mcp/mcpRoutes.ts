@@ -139,6 +139,16 @@ export const WRITE_TOOLS = new Set([
   'respond_in_debate',
   'promote_from_debate',
   'get_debate',
+  // THE REVIEW — evidence step 14, docs/gf-evidence-flows.md §6.
+  //
+  // `review_evidence` writes: a decision on the record's append-only log and the
+  // row's own standing. `list_evidence_reviews` writes nothing and calls no
+  // model, and is gated all the same — A4 calls it a GATED read, and it names
+  // DRAFT citations of unpublished theses, which is exactly the working state a
+  // corpus read may never reveal (§5) and exactly the citation a REAFFIRM
+  // protects. The standing precedent is `get_debate` and the walk's three reads.
+  'list_evidence_reviews',
+  'review_evidence',
 ]);
 
 // ---------------------------------------------------------------------------

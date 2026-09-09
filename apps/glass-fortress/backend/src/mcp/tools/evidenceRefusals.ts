@@ -65,7 +65,17 @@ export type EvidenceWriteCode =
   | 'SESSION_NOT_FOUND'
   | 'SESSION_CLOSED'
   | 'NOT_READY'
-  | 'STALE_PIN';
+  | 'STALE_PIN'
+  // THE REVIEW'S OWN FOUR — evidence step 14, A4's `review_evidence`. Three name
+  // states no debate tool can be in (a name the corpus does not hold at all; a
+  // record nobody promoted or one already withdrawn; a record whose CURRENT is
+  // what a human already affirmed), and the fourth is the compare-and-set on the
+  // record's review log, which `EvidenceDecision.@@unique([fileHash, sequence])`
+  // enforces from the database side.
+  | 'NOT_A_RECORD'
+  | 'NOT_PROMOTED'
+  | 'NOTHING_TO_REVIEW'
+  | 'STALE_SEQUENCE';
 
 /**
  * The seven checks a RECORD must pass to be argued or promoted (§4.1's rows
