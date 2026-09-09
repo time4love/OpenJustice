@@ -49,7 +49,7 @@ function soundCapture(over: Record<string, unknown> = {}): Record<string, unknow
     affirmedContentVersionHash: 'aa'.repeat(32),
     snapshot: capture,
     urlVersionDiff: null,
-    debateSession: null,
+    debateSessions: [],
     ...over,
   };
 }
@@ -69,7 +69,7 @@ function soundDiff(over: Record<string, unknown> = {}): Record<string, unknown> 
       afterSnapshot: after,
       contentVersions: [{ contentVersionHash: 'bb'.repeat(32) }],
     },
-    debateSession: null,
+    debateSessions: [],
     ...over,
   };
 }
@@ -140,13 +140,13 @@ describe('OBSERVED TO FAIL — one planted defect per way a row can be wrong', (
   });
 
   it('a debate that is not PROMOTED is DEBATE_NOT_PROMOTED', async () => {
-    given([soundCapture({ debateSession: { status: 'OPEN', recordFileHash: CAPTURE_HASH } })]);
+    given([soundCapture({ debateSessions: [{ status: 'OPEN', recordFileHash: CAPTURE_HASH }] })]);
     const { malformed } = await auditEvidence();
     expect(malformed.at(0)?.reason).toBe('DEBATE_NOT_PROMOTED');
   });
 
   it('a debate PROMOTED for a DIFFERENT record is DEBATE_NOT_PROMOTED, and names which', async () => {
-    given([soundCapture({ debateSession: { status: 'PROMOTED', recordFileHash: PAIR_HASH } })]);
+    given([soundCapture({ debateSessions: [{ status: 'PROMOTED', recordFileHash: PAIR_HASH }] })]);
     const { malformed } = await auditEvidence();
     expect(malformed.at(0)?.reason).toBe('DEBATE_NOT_PROMOTED');
     expect(malformed.at(0)?.detail).toContain(PAIR_HASH);

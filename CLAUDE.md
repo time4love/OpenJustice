@@ -163,7 +163,7 @@ they mean or what to include.
 |---|---|
 | `COMMIT` | Stage the relevant changes, write the message, commit, push. **If on `master` or `staging`, create a feature branch first** — the protocol must not be violated by accident. |
 | `PR` | Push and open a pull request against `staging`, or update the existing one. |
-| `LAND` | Merge the open PR into `staging`, delete the branch, confirm the staging deploy is green. |
+| `LAND` | Merge the open PR into `staging`, delete the branch, confirm the staging deploy is green — **then run `npm run db:check-drift` from `apps/glass-fortress/backend` and print its output: `LAND` is not done until it says "No difference detected."** The check is specified everywhere as a PRE-condition and was never a post-condition, so evidence step 11b's migration left the schema and the database disagreeing from 2026-09-08 until the NEXT step's pre-condition met it a day later (PR #403). A step that introduces drift passes its own gate; only the closing check sees it. Production has no laptop path to this check; at `SHIP` it runs in the container, environment stated twice. |
 | `SHIP` | Merge `staging` → `master`. **This is a production deploy and the keyword is the approval** — do not ask again, but do print what is about to deploy. |
 | `SYNC` | Fetch, bring `staging` up to date with `master`, update the current branch. |
 

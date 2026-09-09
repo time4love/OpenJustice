@@ -22,11 +22,11 @@ import { recordId, type RecordId, type Record as CorpusRecord } from '../lib/evi
 // function this step's tools ask and cannot load it differently. The acceptance
 // suite already types `publicPage` that way (test/evidence/predicates.test.ts).
 //
-// WHAT IS NOT HERE, AND WHOSE IT IS. `argued` is evidence step 13's — it reads a
-// debate session that no tool creates yet. `publishable` is step 15's and
-// composes ARGUED, so it cannot be honest before it. Both have red cases by name
-// in the acceptance suite, and adding a stub for either would turn a failing
-// test into a passing one that asserts nothing.
+// WHAT IS NOT HERE, AND WHOSE IT IS. `publishable` is step 15's and composes
+// ARGUED, VERIFIED, CITATION_CURRENT and the survival of CURRENT; it cannot be
+// honest before the gate that consumes it exists, and adding a stub would turn a
+// failing test into a passing one that asserts nothing. `argued` arrived at
+// evidence step 13 with the debate that gives it a subject.
 //
 // ATTRIBUTED IS NOT SPELLED HERE. Its one implementation is `attributeClaim` in
 // `src/services/registryState.ts`, which serves the ledger, the audits, the
@@ -126,6 +126,46 @@ export function citationCurrent<V extends ContentVersionProvenance>(
 ): Evaluated<boolean> {
   if (!current.defined) return { evaluable: false, reason: current.reason };
   return { evaluable: true, value: mention.contentVersionHash === current.contentVersionHash };
+}
+
+// ---------------------------------------------------------------------------
+// ARGUED — the citation's own argument (A3), built at evidence step 13.
+// ---------------------------------------------------------------------------
+
+/** A citation and the debate it references, as ARGUED reads them. */
+export interface ArguedMention {
+  /** The record the citation names — `ThesisMention.refId` under this schema. */
+  name: string;
+  /** The thesis of the version this mention sits on. */
+  thesisId: string;
+  /** The debate the mention references, loaded by the caller; null when it has none. */
+  debate: { status: string; recordFileHash: string; thesisId: string } | null;
+}
+
+/**
+ * ARGUED(m) — the mention's debate is PROMOTED, for THIS record and THIS thesis.
+ *
+ * A3 states all three clauses and each removes a different way of being wrong: a
+ * mention with no debate is a draft's citation nobody has argued for (T2 allows
+ * it in the head and PUBLISHABLE refuses it); an OPEN or ABANDONED debate is an
+ * argument that never cleared; a debate PROMOTED for a DIFFERENT record, or for a
+ * different thesis, is someone else's argument standing in for this one — which
+ * is precisely what "importance is a relation, and the relation is the thesis's"
+ * (§1) forbids. A second thesis citing the same record argues its own (T3).
+ *
+ * PURE AND SYNC over rows the caller loaded, by the purity rule this module
+ * states once: the caller already holds the mention and its version to know
+ * which thesis is asking, so a predicate that re-read them could read them
+ * differently from the gate that calls it.
+ */
+export function argued(mention: ArguedMention): boolean {
+  const debate = mention.debate;
+  if (debate === null) return false;
+  return (
+    debate.status === 'PROMOTED' &&
+    debate.recordFileHash === mention.name &&
+    debate.thesisId === mention.thesisId
+  );
 }
 
 // ---------------------------------------------------------------------------

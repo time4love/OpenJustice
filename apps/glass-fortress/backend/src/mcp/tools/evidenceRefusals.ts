@@ -1,6 +1,6 @@
 import { getResearcherId } from '../../context/researcherContext';
 import { publicPage } from '../../services/evidencePredicates';
-import type { Page } from '../../services/corpusReads';
+import type { CaptureLookup, Page } from '../../services/corpusReads';
 
 // ---------------------------------------------------------------------------
 // THE EVIDENCE READS' REFUSALS — docs/gf-evidence-flows.md A4's conventions.
@@ -37,23 +37,90 @@ export type EvidenceReadCode =
   | 'NOT_A_RECORD'
   | 'CHAIN_UNAVAILABLE';
 
-export interface Refusal {
+/**
+ * Every code evidence A4 and thesis T3 name for the debate's four WRITES —
+ * `open_debate`, `respond_in_debate`, `promote_from_debate`, `get_debate` —
+ * transcribed whole, in a SECOND closed set beside the reads' rather than in a
+ * third module. The reads' set stays exactly what A4 gives those four tools; a
+ * refusal with a code its own contract does not name fails to compile either way.
+ *
+ * `NOT_AUTHOR` is here because THE THESIS FLOWS AMEND A4, which was silent:
+ * "versions, ARGUMENTS, decisions … are theirs" (§9), and A7 asks for "a test
+ * that calls each write tool as a second researcher".
+ */
+export type EvidenceWriteCode =
+  | 'NO_RESEARCHER'
+  | 'REASON_REQUIRED'
+  | 'NO_THESIS'
+  | 'NOT_AUTHOR'
+  | 'NOT_SURVEYED'
+  | 'NOT_A_CAPTURE'
+  | 'NOT_ACQUIRED'
+  | 'NO_SUCH_DIFF'
+  | 'NOT_CITED'
+  | 'AWAITING_DERIVATION'
+  | 'CONTRADICTED'
+  | 'NOTHING_TO_PROMOTE'
+  | 'NARROWED'
+  | 'SESSION_NOT_FOUND'
+  | 'SESSION_CLOSED'
+  | 'NOT_READY'
+  | 'STALE_PIN';
+
+/**
+ * The seven checks a RECORD must pass to be argued or promoted (§4.1's rows
+ * 5–13), as their own type: `recordChecks` produces exactly these and both
+ * `open_debate` and `promotionBlockers` consume them.
+ */
+export type RecordCode = Extract<
+  EvidenceWriteCode,
+  | 'NOT_SURVEYED'
+  | 'NOT_A_CAPTURE'
+  | 'NOT_ACQUIRED'
+  | 'NO_SUCH_DIFF'
+  | 'NOT_CITED'
+  | 'AWAITING_DERIVATION'
+  | 'CONTRADICTED'
+  | 'NOTHING_TO_PROMOTE'
+  | 'NARROWED'
+>;
+
+/**
+ * What `blockedBy` may say — NOT `EvidenceWriteCode`.
+ *
+ * The last two are what `NOT_READY` is ABOUT and are never refusals themselves,
+ * so typing the field over the refusal union would make two words refusable that
+ * no tool ever returns.
+ */
+export type BlockerCode = RecordCode | 'STALE_PIN' | 'NO_SUBSTANCE' | 'OBJECTION_UNANSWERED';
+
+/** Every code either layer may return — the two closed sets, together. */
+export type EvidenceCode = EvidenceReadCode | EvidenceWriteCode;
+
+export interface Refusal<C extends EvidenceCode = EvidenceReadCode> {
   error: string;
-  code: EvidenceReadCode;
+  code: C;
 }
 
-export function refusal(code: EvidenceReadCode, error: string): Refusal {
+export function refusal<C extends EvidenceCode>(code: C, error: string): Refusal<C> {
   return { error, code };
 }
 
-/** The refusals these reads share, worded once. */
+/**
+ * The refusals these tools share, worded once.
+ *
+ * Typed to the LITERAL code rather than to a union, so one value satisfies a read
+ * tool and a write tool without either closed set widening to admit the other's
+ * words — `NOT_SURVEYED` is in both contracts and `NOT_PUBLIC` is in neither's
+ * write half.
+ */
 export const shared = {
-  notSurveyed: (url: string): Refusal =>
+  notSurveyed: (url: string): Refusal<'NOT_SURVEYED'> =>
     refusal(
       'NOT_SURVEYED',
       `${url} is not in the corpus. Survey it first: survey_wayback_captures url=${url}`,
     ),
-  notPublic: (url: string): Refusal =>
+  notPublic: (url: string): Refusal<'NOT_PUBLIC'> =>
     refusal(
       'NOT_PUBLIC',
       `${url} is a researcher's working corpus: no published thesis cites any record of it, so ` +
@@ -61,6 +128,44 @@ export const shared = {
         'the moment a published thesis cites any record of it.',
     ),
 };
+
+/**
+ * A named timestamp that is not a capture of this page — the three negatives,
+ * worded ONCE and shared by both layers.
+ *
+ * MOVED HERE VERBATIM from `get_diff_input` at evidence step 13, because the
+ * debate's writes ask the same question of the same work-list row: one state
+ * must not acquire two wordings by being asked from two files. Which CODE the
+ * three states map to still belongs to the caller — the read calls all three
+ * NOT_A_CAPTURE, the write separates NOT_ACQUIRED (`corpusReads.CaptureLookup`).
+ */
+export function notACapture(
+  page: Page,
+  role: string,
+  value: string,
+  lookup: Exclude<CaptureLookup, { state: 'ACQUIRED' }>,
+): Refusal<'NOT_A_CAPTURE'> {
+  if (lookup.state === 'MALFORMED') {
+    return refusal(
+      'NOT_A_CAPTURE',
+      `${role}=${value} is not a capture. A capture is named by its 14-digit wayback timestamp ` +
+        '(YYYYMMDDHHMMSS), never by a date: three captures on one day are three captures. ' +
+        `list_findings url=${page.url} lists every one this page holds.`,
+    );
+  }
+  if (lookup.state === 'UNKNOWN') {
+    return refusal(
+      'NOT_A_CAPTURE',
+      `${role}=${value} is not on this page's work-list at all: the archive never reported a ` +
+        'capture at that timestamp. Re-survey the page if you expect the archive to have added it.',
+    );
+  }
+  return refusal(
+    'NOT_A_CAPTURE',
+    `${role}=${value} is on this page's work-list with outcome ${lookup.outcome}, so the corpus holds ` +
+      'no text for it. Only an ACQUIRED capture has a text version to diff.',
+  );
+}
 
 /**
  * The PUBLIC_PAGE gate — asked ONCE per call, answering both questions it
@@ -82,6 +187,6 @@ export async function openPage(page: Page): Promise<PageAccess> {
 }
 
 /** A tool's answer as the MCP text: the value, or the refusal, as JSON. */
-export async function answer<T>(body: () => Promise<T | Refusal>): Promise<string> {
+export async function answer<T>(body: () => Promise<T>): Promise<string> {
   return JSON.stringify(await body());
 }

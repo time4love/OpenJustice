@@ -1,9 +1,8 @@
 import { z } from 'zod';
-import { isWaybackTimestamp } from '../../lib/evidenceIdentity';
 import { prisma } from '../../lib/prisma';
-import { loadDiffByPair, loadPage, pairName, type Page } from '../../services/corpusReads';
+import { loadDiffByPair, loadPage, lookupCapture, pairName, type Page } from '../../services/corpusReads';
 import { currentVersionOf } from '../../services/evidencePredicates';
-import { answer, refusal, openPage, shared, type Refusal } from './evidenceRefusals';
+import { answer, refusal, notACapture, openPage, shared, type Refusal } from './evidenceRefusals';
 
 // ---------------------------------------------------------------------------
 // get_diff_input({ url, before, after }) — PUBLIC — docs/gf-evidence-flows.md A4.
@@ -54,32 +53,23 @@ interface DiffInput {
  * guessing"), and a well-formed one that names no ACQUIRED capture SAYS WHICH IT
  * IS — the page holds the capture but the corpus holds no text for it, or the
  * page's work-list has no such timestamp at all. Two states, two sentences.
+ *
+ * THE LOOKUP AND THE WORDING MOVED OUT AT EVIDENCE STEP 13, unchanged: the
+ * debate's writes ask the same question of the same row and must not grow a
+ * second wording for it. This read still calls ALL THREE negatives
+ * NOT_A_CAPTURE, which is its own contract; the write layer separates
+ * NOT_ACQUIRED, which is A4's.
  */
 async function captureRefusal(page: Page, role: string, value: string): Promise<Refusal> {
-  if (!isWaybackTimestamp(value)) {
-    return refusal(
-      'NOT_A_CAPTURE',
-      `${role}=${value} is not a capture. A capture is named by its 14-digit wayback timestamp ` +
-        '(YYYYMMDDHHMMSS), never by a date: three captures on one day are three captures. ' +
-        `list_findings url=${page.url} lists every one this page holds.`,
+  const lookup = await lookupCapture(page, value);
+  if (lookup.state === 'ACQUIRED') {
+    throw new Error(
+      `get_diff_input: ${role}=${value} is an ACQUIRED capture of ${page.url}, so there is no ` +
+        'refusal to word. This is reached only when the pair lookup and the capture lookup ' +
+        'disagree, which is a defect in the reader rather than an answerable state.',
     );
   }
-  const row = await prisma.cdxIndexEntry.findFirst({
-    where: { trackedUrlId: page.id, waybackTimestamp: value },
-    select: { status: true },
-  });
-  if (row === null) {
-    return refusal(
-      'NOT_A_CAPTURE',
-      `${role}=${value} is not on this page's work-list at all: the archive never reported a ` +
-        'capture at that timestamp. Re-survey the page if you expect the archive to have added it.',
-    );
-  }
-  return refusal(
-    'NOT_A_CAPTURE',
-    `${role}=${value} is on this page's work-list with outcome ${row.status}, so the corpus holds ` +
-      'no text for it. Only an ACQUIRED capture has a text version to diff.',
-  );
+  return notACapture(page, role, value, lookup);
 }
 
 export async function getDiffInputHandler(input: {

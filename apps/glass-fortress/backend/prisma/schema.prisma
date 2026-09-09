@@ -576,7 +576,11 @@ model Evidence {
   promotedAt                 DateTime
   createdAt                  DateTime           @default(now())
   decisions                  EvidenceDecision[]
-  debateSession              DiffDebateSession?
+  /// EVERY debate that promoted INTO this row — one per thesis that argued for the
+  /// record. Plural since evidence step 13: A2 calls `evidenceId` "the row this
+  /// argument created OR JOINED", and thesis T3 has a second thesis joining the
+  /// row rather than creating it, which a unique index refused.
+  debateSessions             DiffDebateSession[]
   gapResolutions             ThesisGapResolution[]
 }
 
@@ -1508,13 +1512,19 @@ model DiffDebateSession {
   status                DiffDebateStatus            @default(OPEN)
   verdict               PromotionAssessmentVerdict?
   hasSubstance          Boolean                     @default(false)
-  evidenceId            String?                     @unique
+  /// The row this argument CREATED OR JOINED (evidence A2). NOT @unique: a second
+  /// thesis citing the same record argues its own debate and joins the row
+  /// (thesis T3), so many debates legitimately name one Evidence row. Indexed
+  /// because it stays the join key the standing audit reads the relation through.
+  evidenceId            String?
   evidence              Evidence?                   @relation(fields: [evidenceId], references: [id])
   promotedOverObjection Boolean                     @default(false)
   events                DiffDebateEvent[]
   mentions              ThesisMention[]
   createdAt             DateTime                    @default(now())
   closedAt              DateTime?
+
+  @@index([evidenceId])
 }
 
 // One row per turn. Content is stored verbatim — this is the record, not a log.
