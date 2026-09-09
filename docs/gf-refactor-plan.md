@@ -476,6 +476,11 @@ No staging exercise until thesis step 20 creates a thesis.
 ### 14 · Review
 `list_evidence_reviews`, `review_evidence`; a re-walk on staging putting one promoted record into
 review and both decisions exercised.
+Built 2026-09-09 (PR #407); what was ruled before the sketch, the precedent the sketch named wrongly,
+the four instruments that reported green over nothing, and the five stale KEEP tags are
+`docs/gf-evidence-step-14-2026-09-09.md`.
+The staging half — one promoted record put into review, both decisions exercised — waits for thesis
+step 20, which is the first act that can create a thesis.
 
 ### 15 · The gate
 The six checks of A6 calling A3's predicates, check 6 gone; `audit-theses`.
