@@ -165,6 +165,7 @@ they mean or what to include.
 | `PR` | Push and open a pull request against `staging`, or update the existing one. |
 | `LAND` | Merge the open PR into `staging`, delete the branch, confirm the staging deploy is green — **then run `npm run db:check-drift` from `apps/glass-fortress/backend` and print its output: `LAND` is not done until it says "No difference detected."** The check is specified everywhere as a PRE-condition and was never a post-condition, so evidence step 11b's migration left the schema and the database disagreeing from 2026-09-08 until the NEXT step's pre-condition met it a day later (PR #403). A step that introduces drift passes its own gate; only the closing check sees it. Production has no laptop path to this check; at `SHIP` it runs in the container, environment stated twice. |
 | `SHIP` | Merge `staging` → `master`. **This is a production deploy and the keyword is the approval** — do not ask again, but do print what is about to deploy. |
+| `HANDOFF <R>` | The REVIEW seat writes `R<n>-state.md`, `R<n>-dev-prompt.md` and `R<n>-review-prompt.md` under `~/.claude/projects/-Users-jonathand-OpenJustice/handoffs/` (outside this public repo) per `docs/gf-two-session-protocol.md`, runs `python3 ~/.claude/projects/-Users-jonathand-OpenJustice/handoffs/check-handoff.py R<n>` and prints its output, diffs once by eye against the previous set for the step's own content, then CHECKPOINTs. Written at ~450k, BEFORE the last keyword flow, never inside one. |
 | `SYNC` | Fetch, bring `staging` up to date with `master`, update the current branch. |
 
 **Refuse to execute, and say why, when:**
@@ -173,6 +174,8 @@ they mean or what to include.
 - `PR` / `LAND` — tests are failing, or the PR is not mergeable.
 - `SHIP` — tests not green, uncommitted changes present, staging's latest deploy is not `SUCCESS`,
   `staging` is not ahead of `master`, or anything secret-shaped is in the diff.
+- `HANDOFF` — the tree is not clean and undeclared, or a keyword flow is mid-way (`COMMIT` done,
+  `PR` not landed): the handoff is written before the last keyword flow, never inside one.
 
 Report what was actually done — branch names, commit SHAs, PR numbers, deploy status — never just
 "done". If a git command fails, say so plainly; never let a shell chain report success for a failed
