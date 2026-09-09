@@ -133,6 +133,165 @@ describe('openKey has ONE writer', () => {
   });
 });
 
+describe('the debate writes its own tables and nothing else does', () => {
+  // The three modules evidence step 13 builds are the only writers of the debate
+  // and its events. Nothing about `DiffDebateSession` was scanned before this
+  // step, because nothing wrote one: the tables existed with no writer since the
+  // legacy switch deleted `services/diffDebate`.
+  const DEBATE_TABLES = ['diffDebateSession', 'diffDebateEvent'] as const;
+  const ALLOWED = [
+    'services/openDebate.ts',
+    'services/respondInDebate.ts',
+    'services/promoteFromDebate.ts',
+  ];
+
+  it('no module outside the three writes a debate or an event', () => {
+    const offenders = modules()
+      .filter(({ file }) => !ALLOWED.includes(file))
+      .map(({ file, code }) => ({ file, tables: DEBATE_TABLES.filter((t) => writeTo(t).test(code)) }))
+      .filter((m) => m.tables.length > 0);
+    expect(offenders).toEqual([]);
+  });
+
+  it('the three exist and write — a scan over an empty allow-list holds nothing', () => {
+    const writers = modules()
+      .filter(({ file }) => ALLOWED.includes(file))
+      .filter(({ code }) => DEBATE_TABLES.some((t) => writeTo(t).test(code)))
+      .map(({ file }) => file);
+    expect(writers.sort()).toEqual([...ALLOWED].sort());
+  });
+
+  it('DETECTS a planted write in a fourth module', () => {
+    expect(writeTo('diffDebateSession').test('await prisma.diffDebateSession.update({ where });')).toBe(true);
+    expect(writeTo('diffDebateEvent').test('tx.diffDebateEvent.createMany({ data })')).toBe(true);
+    expect(writeTo('diffDebateSession').test('await prisma.diffDebateSession.findUnique({ where });')).toBe(false);
+  });
+});
+
+describe('every write tool opens its transaction with the shared window', () => {
+  // A8: the window is an operational parameter, stated ONCE in
+  // `src/walk/pageLog.ts` and passed by every write tool — the staging exercise
+  // of 2026-09-06 found a seventeen-rule approval rolling back under Prisma's
+  // unstated five-second default.
+  //
+  // SCOPED BY NAME, and the three files outside it are named with their reasons.
+  // `test/walk/pageLog.test.ts` holds this over `src/walk/tools/*.ts` only — an
+  // invariant scoped to the wrong axis, which is why evidence step 13's three
+  // services sat outside a parameter bought with a real rollback. What is NOT in
+  // the list: `services/dbSimulation.ts`, whose transaction exists to measure a
+  // statement and roll back rather than to write; `services/claimTrajectory.ts`,
+  // Level 6's detection writer, outside this step and the walk's tool surface;
+  // and `services/recordDiff.ts`, which already carries the window and opens no
+  // transaction at all when it is handed a client.
+  const WINDOWED = [
+    'services/openDebate.ts',
+    'services/respondInDebate.ts',
+    'services/promoteFromDebate.ts',
+  ];
+  const OPENS = /\$transaction\(/g;
+  const WITH_WINDOW = /,\s*WRITE_TRANSACTION\s*\)/g;
+
+  it('every $transaction in the debate services and the walk tools carries it', () => {
+    const scanned = modules().filter(
+      ({ file }) => WINDOWED.includes(file) || (file.startsWith('walk/tools/') && !file.endsWith('index.ts')),
+    );
+    const bare = scanned
+      .map(({ file, code }) => ({
+        file,
+        opened: (code.match(OPENS) ?? []).length,
+        windowed: (code.match(WITH_WINDOW) ?? []).length,
+      }))
+      .filter((m) => m.opened !== m.windowed);
+    expect(bare).toEqual([]);
+  });
+
+  it('finds transactions at all — a silent zero would make it vacuous', () => {
+    const opened = modules()
+      .filter(({ file }) => WINDOWED.includes(file))
+      .reduce((n, { code }) => n + (code.match(OPENS) ?? []).length, 0);
+    expect(opened).toBeGreaterThan(0);
+  });
+
+  it('DETECTS a bare transaction — the decoy pair', () => {
+    expect(('return prisma.$transaction((tx) => promote(tx));'.match(WITH_WINDOW) ?? []).length).toBe(0);
+    expect(
+      ('return prisma.$transaction((tx) => promote(tx), WRITE_TRANSACTION);'.match(WITH_WINDOW) ?? []).length,
+    ).toBe(1);
+  });
+});
+
+describe("the debate's own refusal codes are produced in ONE module", () => {
+  // A4 gives `open_debate` seven record checks and `promote_from_debate` re-runs
+  // "every refusal of open_debate at this moment". Two implementations of "every
+  // refusal" is the drift that sentence is written against, so the codes are
+  // produced by `recordChecks` alone.
+  //
+  // MATCHED AS THE CONSTRUCTOR CALL, never as the bare word: `CONTRADICTED` is
+  // also a `SurvivalVerdict` value in `lib/diffSurvival.ts` and `NARROWED` is
+  // predicate vocabulary, so a scan on the word would fire on modules that are
+  // right and be unfixable without a comment that lied.
+  //
+  // THREE CODES ARE EXCLUDED BY NAME, with the reason: `NOT_A_CAPTURE`,
+  // `NO_SUCH_DIFF` and `AWAITING_DERIVATION` are legitimately produced by
+  // `get_diff_input` for its own contract, and the last is also `Current`'s own
+  // reason in the predicates module.
+  const DEBATE_ONLY = ['NOT_ACQUIRED', 'NOT_CITED', 'CONTRADICTED', 'NOTHING_TO_PROMOTE', 'NARROWED'];
+  const produces = (code: string): RegExp => new RegExp(`refusal\\(\\s*'${code}'`);
+
+  it('only services/openDebate.ts produces them', () => {
+    const offenders = modules()
+      .filter(({ file }) => file !== 'services/openDebate.ts')
+      .map(({ file, code }) => ({ file, codes: DEBATE_ONLY.filter((c) => produces(c).test(code)) }))
+      .filter((m) => m.codes.length > 0);
+    expect(offenders).toEqual([]);
+  });
+
+  it('and it produces every one of them — the rule has a subject', () => {
+    const checks = modules().find(({ file }) => file === 'services/openDebate.ts');
+    expect(DEBATE_ONLY.filter((c) => produces(c).test(checks?.code ?? ''))).toEqual(DEBATE_ONLY);
+  });
+
+  it('DETECTS a planted production, and does not fire on the bare word', () => {
+    expect(produces('NARROWED').test("return refusal('NARROWED', 'the pair is no longer finest');")).toBe(true);
+    expect(produces('CONTRADICTED').test("const v: SurvivalVerdict = 'CONTRADICTED';")).toBe(false);
+  });
+});
+
+describe('the debate reaches no chain', () => {
+  // §5: "No research act writes to the chain." The registry's one caller is held
+  // above; this is the narrower rule for the three modules a research act runs
+  // through, and it catches an IMPORT rather than a call — a module that imports
+  // the anchoring path has already made the mistake reachable.
+  const DEBATE_MODULES = [
+    'services/openDebate.ts',
+    'services/respondInDebate.ts',
+    'services/promoteFromDebate.ts',
+    'services/promotionAssessor.ts',
+    'services/debateState.ts',
+    'services/debatePassage.ts',
+  ];
+  const CHAIN = /from '[^']*(?:Web3Service|anchorSnapshots)'/;
+
+  it('no debate module imports Web3Service or the anchoring module', () => {
+    const offenders = modules()
+      .filter(({ file }) => DEBATE_MODULES.includes(file))
+      .filter(({ code }) => CHAIN.test(code))
+      .map(({ file }) => file);
+    expect(offenders).toEqual([]);
+  });
+
+  it('finds the modules at all', () => {
+    const found = modules().filter(({ file }) => DEBATE_MODULES.includes(file)).map(({ file }) => file);
+    expect(found.sort()).toEqual([...DEBATE_MODULES].sort());
+  });
+
+  it('DETECTS a planted import', () => {
+    expect(CHAIN.test("import { Web3Service } from '../services/Web3Service';")).toBe(true);
+    expect(CHAIN.test("import { writesAllowed } from './anchorSnapshots';")).toBe(true);
+    expect(CHAIN.test("import { recordId } from '../lib/evidenceIdentity';")).toBe(false);
+  });
+});
+
 describe('every predicate of A3 has ONE importable symbol', () => {
   // "A source scan that fails on a second spelling of VERIFIED, CURRENT or
   // PUBLISHABLE" — the publication gate CALLS the predicates and never
@@ -157,6 +316,7 @@ describe('every predicate of A3 has ONE importable symbol', () => {
     'publicPage',
     'recomputable',
     'flagged',
+    'argued',
     // ATTRIBUTED IS THE ONE WHOSE CORRECT COUNT IN THE TREE IS ZERO, and that is
     // the point rather than an oversight. Its single implementation is
     // `attributeClaim` in services/registryState.ts — one function serving the
@@ -198,9 +358,9 @@ describe('every predicate of A3 has ONE importable symbol', () => {
 
   it('the predicates module DECLARES the ones this step built, so the rule has a subject', () => {
     // A scan whose allow-listed module declares nothing would pass over an empty
-    // tree. These are the names step 12 put there; `attributed`, `argued` and
+    // tree. These are the names steps 12 and 13 put there; `attributed` and
     // `publishable` are deliberately NOT among them — the first has its one
-    // spelling elsewhere, the other two are steps 13 and 15.
+    // spelling elsewhere (registryState.attributeClaim), the second is step 15's.
     const predicates = modules().find(({ file }) => file === 'services/evidencePredicates.ts');
     expect(predicates).toBeDefined();
     const built = [
@@ -213,6 +373,7 @@ describe('every predicate of A3 has ONE importable symbol', () => {
       'recomputable',
       'verified',
       'flagged',
+      'argued',
     ];
     const declared = built.filter((name) =>
       new RegExp(`function\\s+${name}\\s*[<(]`).test(predicates?.code ?? ''),

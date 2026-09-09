@@ -30,6 +30,10 @@ import { listFindingsSchema, listFindingsHandler } from './tools/listFindings';
 import { getDiffInputSchema, getDiffInputHandler } from './tools/getDiffInput';
 import { resolveRecordSchema, resolveRecordHandler } from './tools/resolveRecord';
 import { checkOnChainStatusSchema, checkOnChainStatusHandler } from './tools/checkOnChainStatus';
+import { openDebateSchema, openDebateHandler } from './tools/openDebate';
+import { respondInDebateSchema, respondInDebateHandler } from './tools/respondInDebate';
+import { promoteFromDebateSchema, promoteFromDebateHandler } from './tools/promoteFromDebate';
+import { getDebateSchema, getDebateHandler } from './tools/getDebate';
 
 // ---------------------------------------------------------------------------
 // Factory — creates a fresh McpServer per request.
@@ -539,6 +543,96 @@ export function createMcpServer(): McpServer {
     auditThesisClaimsSchema,
     async (input) => ({
       content: [{ type: 'text' as const, text: await auditThesisClaimsHandler(input) }],
+    }),
+  );
+
+  // -------------------------------------------------------------------------
+  // THE DEBATE ON A CITATION — evidence step 13, docs/gf-evidence-flows.md §4
+  // and A4, docs/gf-thesis-flows.md T3.
+  //
+  // "Why is this diff important? The question has no answer outside a claim
+  // someone is trying to establish" — so a record is argued FOR A THESIS, on a
+  // citation the thesis's text already carries, and the assessor judges whether
+  // the researcher ARGUED, never whether they are right.
+  // -------------------------------------------------------------------------
+  server.registerTool(
+    'open_debate',
+    {
+      description:
+        'ARGUE FOR A CORPUS RECORD, FOR ONE THESIS. Give the thesis, the record — a page and one ' +
+        '14-digit capture, or a page and the PAIR of captures a change spans, never a row id — and ' +
+        'your rationale: what the record shows, why it carries the passage that cites it, and what ' +
+        "would prove it wrong. THE CITATION COMES FIRST: the thesis's head version must already " +
+        'mention the record (#ev_<fileHash>), or this refuses NOT_CITED — there is no promotion of a ' +
+        'record no text cites. A PAID ASSESSOR then judges two separate things: SUBSTANCE, whether ' +
+        'the argument can be checked at all, which is a hard gate; and MERIT, whether it agrees, ' +
+        'which is ADVISORY — you may promote over its objection and the dissent is recorded beside ' +
+        'the evidence forever. One OPEN debate per (thesis, record): calling again with a new ' +
+        'rationale adds it to the same debate as a revision and re-assesses the accumulated ' +
+        'argument. Refuses NO_RESEARCHER, REASON_REQUIRED, NO_THESIS, NOT_AUTHOR (a thesis has one ' +
+        'author), NOT_SURVEYED, NOT_A_CAPTURE, NOT_ACQUIRED (naming the work-list outcome), ' +
+        'NO_SUCH_DIFF, NOT_CITED, AWAITING_DERIVATION (naming the pair — the walk owes a version), ' +
+        'CONTRADICTED (carrying the chunks the documents refute), NOTHING_TO_PROMOTE and NARROWED ' +
+        '(naming the captures that now fall between the pair).',
+      inputSchema: openDebateSchema,
+    },
+    async (input) => ({
+      content: [{ type: 'text' as const, text: await openDebateHandler(input) }],
+    }),
+  );
+
+  server.registerTool(
+    'respond_in_debate',
+    {
+      description:
+        'ANSWER THE ASSESSOR — as many rounds as it takes. Supply what its substance gaps asked for, ' +
+        'or answer the objection it raised. A PAID call: it re-reads the ACCUMULATED argument, not ' +
+        'your last message alone, so you need not repeat what you already quoted. An objection you ' +
+        'have answered once no longer blocks promotion; one you never answer is carried on the ' +
+        'record forever. Refuses NO_RESEARCHER, REASON_REQUIRED, SESSION_NOT_FOUND, NOT_AUTHOR and ' +
+        'SESSION_CLOSED, plus every record refusal re-checked now — the corpus can move under an ' +
+        'argument.',
+      inputSchema: respondInDebateSchema,
+    },
+    async (input) => ({
+      content: [{ type: 'text' as const, text: await respondInDebateHandler(input) }],
+    }),
+  );
+
+  server.registerTool(
+    'promote_from_debate',
+    {
+      description:
+        'PROMOTE THE RECORD ON A CLEARED ARGUMENT — the act that makes a corpus record EVIDENCE: the ' +
+        'record, marked, with who promoted it, when, and which version of its content they stood ' +
+        'behind. Writes the evidence row on the FIRST cleared argument for a record and JOINS it on ' +
+        'every later one, so a second thesis citing the same record argues its own case without ' +
+        'creating a second row. NOTHING IS WRITTEN TO ANY CHAIN: the chain attests the corpus, the ' +
+        'bytes were anchored when the capture was acquired, and nothing above the corpus is ' +
+        'anchored. Refuses NO_RESEARCHER, SESSION_NOT_FOUND, NOT_AUTHOR, SESSION_CLOSED, NOT_READY ' +
+        '(with blockedBy: NO_SUBSTANCE, OBJECTION_UNANSWERED), STALE_PIN (the citation pins a ' +
+        "version that is no longer the record's current one — write a new version, which re-pins), " +
+        'and every refusal of open_debate re-checked at this moment.',
+      inputSchema: promoteFromDebateSchema,
+    },
+    async (input) => ({
+      content: [{ type: 'text' as const, text: await promoteFromDebateHandler(input) }],
+    }),
+  );
+
+  server.registerTool(
+    'get_debate',
+    {
+      description:
+        'READ ONE DEBATE: its record, its status, every turn in order — the rationales, the ' +
+        "assessor's answers verbatim, the responses — whether SUBSTANCE cleared, the current " +
+        'verdict, and whether it can promote yet with the list of what blocks it. Any researcher may ' +
+        "read any thesis's debates: working state is gated from the public, not from colleagues. " +
+        'Calls no model and writes nothing. Refuses NO_RESEARCHER and SESSION_NOT_FOUND.',
+      inputSchema: getDebateSchema,
+    },
+    async (input) => ({
+      content: [{ type: 'text' as const, text: await getDebateHandler(input) }],
     }),
   );
 

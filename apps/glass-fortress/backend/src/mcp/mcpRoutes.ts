@@ -123,7 +123,22 @@ export const WRITE_TOOLS = new Set([
   // same exposure that gated get_research_agenda and check_on_chain_status.
   'verify_claim_text',
   'audit_thesis_claims',
-
+  // THE DEBATE — evidence step 13, docs/gf-evidence-flows.md §4 and A4.
+  //
+  // Three of the four WRITE: a session, its events, and on promotion the
+  // evidence row, the debate's close and the head mention's argument. Two of
+  // them also SPEND — one assessor call per round, which is the only paid point
+  // in the evidence layer and the reason a debate cannot be opened anonymously.
+  //
+  // `get_debate` writes nothing and calls no model, and is gated all the same:
+  // it is a researcher's working state and it carries a model's OPINIONS — the
+  // assessment, the objection, the verdict — which thesis T5 lists among the
+  // things a published page never shows. The standing precedent is the walk's
+  // three reads, gated on the same ground.
+  'open_debate',
+  'respond_in_debate',
+  'promote_from_debate',
+  'get_debate',
 ]);
 
 // ---------------------------------------------------------------------------

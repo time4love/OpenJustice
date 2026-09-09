@@ -90,7 +90,7 @@ export async function auditEvidence(): Promise<EvidenceAuditReport> {
           contentVersions: { select: { contentVersionHash: true } },
         },
       },
-      debateSession: { select: { status: true, recordFileHash: true } },
+      debateSessions: { select: { status: true, recordFileHash: true } },
     },
     orderBy: { fileHash: 'asc' },
   });
@@ -189,13 +189,19 @@ export async function auditEvidence(): Promise<EvidenceAuditReport> {
     }
   }
 
+  // EVERY debate that names the row, not one — evidence step 13 dropped the
+  // unique index on `evidenceId` so that a second thesis citing the same record
+  // JOINS the row rather than creating a second (evidence A2, thesis T3). A check
+  // that read one debate would have gone on passing while the second, argued for
+  // a different record, sat beside it: a subject quietly dropped from a pass is a
+  // subject reported as nothing to check.
   for (const row of rows) {
-    const debate = row.debateSession;
-    if (debate === null) continue;
-    if (debate.status !== 'PROMOTED') {
-      fail(row, 'DEBATE_NOT_PROMOTED', `its debate is ${debate.status}; a row exists only from a cleared argument`);
-    } else if (debate.recordFileHash !== row.fileHash) {
-      fail(row, 'DEBATE_NOT_PROMOTED', `its debate argued for ${debate.recordFileHash}`);
+    for (const debate of row.debateSessions) {
+      if (debate.status !== 'PROMOTED') {
+        fail(row, 'DEBATE_NOT_PROMOTED', `its debate is ${debate.status}; a row exists only from a cleared argument`);
+      } else if (debate.recordFileHash !== row.fileHash) {
+        fail(row, 'DEBATE_NOT_PROMOTED', `its debate argued for ${debate.recordFileHash}`);
+      }
     }
   }
 

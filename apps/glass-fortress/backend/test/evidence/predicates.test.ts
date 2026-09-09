@@ -187,6 +187,7 @@ describe('FLAGGED — what a published page shows beside a citation', () => {
 
 import { DIFF_VERSION } from '../../src/lib/diffVersion';
 import {
+  argued,
   citationCurrent,
   currentVersionOf,
   intervening,
@@ -371,6 +372,44 @@ describe('RECOMPUTABLE — and it returns the name the record actually has', () 
     // ask this. A second spelling is what the one-symbol scan forbids.
     const mod = await import('../../src/services/evidencePredicates');
     expect(typeof mod.recomputable).toBe('function');
+  });
+});
+
+describe('ARGUED — three clauses, and each one removes a different way of being wrong', () => {
+  // A3: "DebateSession(m.debateSessionId).status = PROMOTED AND that session's
+  // recordFileHash = m.fileHash AND thesisId = m's thesis." The `typeof` case
+  // above holds that the symbol EXISTS; these hold what it says. A predicate
+  // whose clauses no case exercises is a predicate that can lose one silently —
+  // the third clause was verifiably droppable with every suite still green.
+  const debate = { status: 'PROMOTED', recordFileHash: '0xrecord', thesisId: 'thesis-1' };
+  const mention = { name: '0xrecord', thesisId: 'thesis-1', debate };
+
+  it('PROMOTED, for this record and this thesis', () => {
+    expect(argued(mention)).toBe(true);
+  });
+
+  it('the SAME debate, for ANOTHER thesis, does not argue this citation', () => {
+    // "Importance is a relation, and the relation is the thesis's" (§1). A second
+    // thesis citing the same record argues its own (T3); inheriting the first's
+    // argument is exactly what the pair-scoped debate exists to prevent.
+    expect(argued({ ...mention, thesisId: 'thesis-2' })).toBe(false);
+  });
+
+  it('a debate PROMOTED for ANOTHER record does not argue this one', () => {
+    expect(argued({ ...mention, name: '0xanother-record' })).toBe(false);
+  });
+
+  it('an OPEN debate has not cleared — an argument that never finished argues nothing', () => {
+    expect(argued({ ...mention, debate: { ...debate, status: 'OPEN' } })).toBe(false);
+  });
+
+  it('an ABANDONED debate argues nothing either', () => {
+    expect(argued({ ...mention, debate: { ...debate, status: 'ABANDONED' } })).toBe(false);
+  });
+
+  it('a mention with NO debate is a citation nobody has argued for', () => {
+    // Legal in a draft's head version (T2), refused by PUBLISHABLE at the gate.
+    expect(argued({ ...mention, debate: null })).toBe(false);
   });
 });
 

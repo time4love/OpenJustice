@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
-import { recordId, type RecordId } from '../lib/evidenceIdentity';
+import { recordId, isWaybackTimestamp, type RecordId } from '../lib/evidenceIdentity';
 import { CLASSIFICATION_KEYS } from './recordDiff';
 import { recomputable, type ContentVersionProvenance } from './evidencePredicates';
 
@@ -162,6 +162,50 @@ export async function loadDiffs(trackedUrlId: string): Promise<TimelineDiff[]> {
     if (a.before.capture === b.before.capture) return 0;
     return a.before.capture < b.before.capture ? -1 : 1;
   });
+}
+
+// ---------------------------------------------------------------------------
+// ONE CAPTURE, AND WHAT THE WORK-LIST SAYS ABOUT IT.
+// ---------------------------------------------------------------------------
+
+/**
+ * What a page holds for one named timestamp — the four states, told apart ONCE.
+ *
+ * Two tools ask this and answer differently, which is exactly why the DECIDING
+ * is here and only the WORDING is theirs: `get_diff_input` calls all three
+ * negatives NOT_A_CAPTURE, because a public read is asked "is this a capture of
+ * this page whose text I can diff?" and the answer is no in all three; the
+ * debate's writes separate NOT_ACQUIRED, because evidence A4 names it for a
+ * record whose capture "is not ACQUIRED — a SKIPPED capture does not speak, an
+ * UNSERVABLE one holds nothing", and a researcher promoting a record needs to
+ * know which of those it was. One state must not have two codes by accident;
+ * these two have different codes on purpose, from one lookup.
+ */
+export type CaptureLookup =
+  | { state: 'MALFORMED' }
+  | { state: 'UNKNOWN' }
+  | { state: 'NOT_ACQUIRED'; outcome: string }
+  | { state: 'ACQUIRED'; capture: TimelineCapture };
+
+export async function lookupCapture(page: Page, value: string): Promise<CaptureLookup> {
+  if (!isWaybackTimestamp(value)) return { state: 'MALFORMED' };
+
+  // THROUGH `loadCaptures`, not a second query. "This page's ACQUIRED captures"
+  // already has one spelling — the one NARROWED reads and `check_on_chain_status`
+  // asks — and a `findFirst` beside it would be a second answer to one question,
+  // free to drift in its filter (`waybackTimestamp: { not: null }`) the day that
+  // filter changes.
+  const capture = (await loadCaptures(page.id)).find((c) => c.capture === value);
+  if (capture !== undefined) return { state: 'ACQUIRED', capture };
+
+  // No snapshot: the work-list says whether the archive ever reported it, and
+  // what the walk decided if it did. Read here rather than inferred from the
+  // snapshot's absence — "a permanent gap and a judgement must never collapse".
+  const workList = await prisma.cdxIndexEntry.findFirst({
+    where: { trackedUrlId: page.id, waybackTimestamp: value },
+    select: { status: true },
+  });
+  return workList === null ? { state: 'UNKNOWN' } : { state: 'NOT_ACQUIRED', outcome: workList.status };
 }
 
 /** One pair, by the two captures it spans — never by a date pair, never by a diff id (A1). */
