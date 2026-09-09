@@ -34,6 +34,11 @@ import { openDebateSchema, openDebateHandler } from './tools/openDebate';
 import { respondInDebateSchema, respondInDebateHandler } from './tools/respondInDebate';
 import { promoteFromDebateSchema, promoteFromDebateHandler } from './tools/promoteFromDebate';
 import { getDebateSchema, getDebateHandler } from './tools/getDebate';
+import {
+  listEvidenceReviewsSchema,
+  listEvidenceReviewsHandler,
+} from './tools/listEvidenceReviews';
+import { reviewEvidenceSchema, reviewEvidenceHandler } from './tools/reviewEvidence';
 
 // ---------------------------------------------------------------------------
 // Factory — creates a fresh McpServer per request.
@@ -633,6 +638,60 @@ export function createMcpServer(): McpServer {
     },
     async (input) => ({
       content: [{ type: 'text' as const, text: await getDebateHandler(input) }],
+    }),
+  );
+
+  // -------------------------------------------------------------------------
+  // THE REVIEW — evidence step 14, docs/gf-evidence-flows.md §6 (Flow E3).
+  //
+  // A re-walk moves a cited record's content and nothing is wrong yet: the old
+  // version is kept and every citation still pins it. What is owed is a
+  // judgement no pass can make — does the new version still support what the
+  // thesis says — so the list is STOP-SHAPED and the decision is a researcher's.
+  // NO AUTOMATIC RE-AFFIRMATION, EVER.
+  // -------------------------------------------------------------------------
+  server.registerTool(
+    'list_evidence_reviews',
+    {
+      description:
+        'WHAT YOU OWE: every promoted record whose content has MOVED off the version a human stood ' +
+        'behind. Stop-shaped, like a walk stop — the count first, then one entry per record oldest ' +
+        'first, each with the affirmed version beside the current one, WHAT MOVED between them ' +
+        '(the chunks or segments that entered and left, computed by containment, no model), WHY it ' +
+        'moved (a page decision with its researcher, a new extractor, or a new differ — all of them ' +
+        'where more than one applies), every thesis whose head or published version cites it with ' +
+        'whether that citation was argued, the narrower diffs where the pair is no longer the ' +
+        "finest record, and TWO COMMANDS THAT PASTE AS WRITTEN. Records that cannot be judged are " +
+        'NAMED in notEvaluable rather than dropped. An empty list is an answer: owed: 0 means ' +
+        'nothing moved. Writes nothing and calls no model. Refuses NO_RESEARCHER and nothing else.',
+      inputSchema: listEvidenceReviewsSchema,
+    },
+    async () => ({
+      content: [{ type: 'text' as const, text: await listEvidenceReviewsHandler() }],
+    }),
+  );
+
+  server.registerTool(
+    'review_evidence',
+    {
+      description:
+        'DECIDE ON A RECORD WHOSE CONTENT MOVED. REAFFIRM: the current version still carries every ' +
+        'citing passage — the record now stands behind it, and its citations are NOT re-pinned by ' +
+        'this act (re-pinning is a new thesis version, by the thesis\'s author, who may not be ' +
+        'you). WITHDRAW: it no longer carries them, or never did; a reason is REQUIRED and every ' +
+        'thesis citing it on a published version is FLAGGED from that moment — visibly, never ' +
+        'unpublished by the platform. NOTHING IS DELETED: a withdrawn record keeps its name, its ' +
+        'argument and its citations so a reader of the thesis that cited it can find out what ' +
+        'happened, and nothing moves it back. ANY researcher may review ANY record. Paste the ' +
+        'command from list_evidence_reviews — it carries expectedSequence, the compare-and-set on ' +
+        "the record's review log. Refuses NO_RESEARCHER, REASON_REQUIRED, NOT_A_RECORD, " +
+        'NOT_PROMOTED (naming whether it was never promoted or already withdrawn), ' +
+        'AWAITING_DERIVATION, NOTHING_TO_REVIEW (REAFFIRM only — a WITHDRAW of a current record is ' +
+        'allowed) and STALE_SEQUENCE.',
+      inputSchema: reviewEvidenceSchema,
+    },
+    async (input) => ({
+      content: [{ type: 'text' as const, text: await reviewEvidenceHandler(input) }],
     }),
   );
 

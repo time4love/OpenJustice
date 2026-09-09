@@ -2,6 +2,7 @@ import { prisma } from '../lib/prisma';
 import { DIFF_VERSION } from '../lib/diffVersion';
 import { ON_CHAIN_CHECK_VERSION } from '../lib/onChainVerdict';
 import { recordId, type RecordId, type Record as CorpusRecord } from '../lib/evidenceIdentity';
+import { normaliseForPresence } from '../lib/htmlText';
 
 // ---------------------------------------------------------------------------
 // A3'S DERIVATIONS, AS PREDICATES — docs/gf-evidence-flows.md A3, and the one
@@ -27,6 +28,20 @@ import { recordId, type RecordId, type Record as CorpusRecord } from '../lib/evi
 // honest before the gate that consumes it exists, and adding a stub would turn a
 // failing test into a passing one that asserts nothing. `argued` arrived at
 // evidence step 13 with the debate that gives it a subject.
+//
+// AND THE CONVERSE: WHY TWO FUNCTIONS A3 DOES NOT NAME ARE PRESENT.
+// `movedBetween` and `whereChunksWent` are §6's containment rule and §7's
+// narrowing material, not A3 predicates — and they live here on the ruling of
+// 2026-09-09, because the ONE-SYMBOL RULE IS ABOUT A SPELLING THAT CAN DRIFT
+// rather than about A3's list. The rule has A3's exact failure mode: §7's
+// narrowing clause is already a SECOND consumer inside evidence step 14, and
+// thesis T6's own reviews list is a third when it is built, so a second spelling
+// in any of them is the copy that drifts. They enter the scan's `NAMES` for that
+// reason. `contains` does NOT: it is module-private, and the scan's own sentence
+// is "every predicate of A3 has ONE IMPORTABLE symbol" — a non-exported helper
+// cannot be a second spelling anyone imports, and a generic name in `NAMES`
+// would one day fire on an unrelated `function contains(` with no way to satisfy
+// it but a comment that lied about what it checks.
 //
 // ATTRIBUTED IS NOT SPELLED HERE. Its one implementation is `attributeClaim` in
 // `src/services/registryState.ts`, which serves the ledger, the audits, the
@@ -166,6 +181,140 @@ export function argued(mention: ArguedMention): boolean {
     debate.recordFileHash === mention.name &&
     debate.thesisId === mention.thesisId
   );
+}
+
+// ---------------------------------------------------------------------------
+// THE CONTAINMENT RULE — what moved between two versions (§6), and where the
+// chunks of a wide record went (§7).
+//
+// A3 does not name these three, and they are here on the RULING of 2026-09-09:
+// the one-symbol rule is about a spelling that can DRIFT, and §6's containment
+// is one — §7's narrowing material is a second consumer inside this very step,
+// and thesis T6's own reviews list is a third when it is built. `movedBetween`
+// and `whereChunksWent` are EXPORTED and enter the scan's `NAMES`; `contains` is
+// MODULE-PRIVATE and stays out of it, because a non-exported helper cannot be a
+// second spelling anyone imports.
+//
+// PURE AND SYNC over values the caller loaded, by this module's own purity rule.
+// No Prisma import is added by any of the three.
+// ---------------------------------------------------------------------------
+
+/**
+ * A unit of a version's computed content, in the shape its record gives it.
+ *
+ * A DIFF's units are the stored chunks and carry a `side`; a CAPTURE's are its
+ * SEGMENTS through `lib/claimSurvival.segments` and have none — "a capture's
+ * text has no sides". One rule over both shapes, and the shape is the caller's.
+ */
+export interface ContentUnit {
+  /** REMOVED | ADDED for a diff's chunk; ABSENT for a capture's segment. */
+  side?: string;
+  text: string;
+  /**
+   * SURVIVES | CONTRADICTED | UNCHECKABLE — a DIFF's chunk carries the walk's
+   * verdict, as A2 stores it; a CAPTURE's segment has none, because survival is a
+   * verdict about a diff's chunk.
+   *
+   * CARRIED, NEVER COMPARED. `contains` reads `side` and `text` alone, so the
+   * verdict changes no answer about what moved — it is material a reviewer reads
+   * beside the two versions, and a CONTRADICTED chunk in the CURRENT version is
+   * exactly what a WITHDRAW rests on.
+   */
+  survival?: string;
+}
+
+/** What moved between the affirmed version and the current one (§6). */
+export interface Moved {
+  entered: ContentUnit[];
+  left: ContentUnit[];
+}
+
+/** One narrower record, and the units of its current version (§7). */
+export interface NarrowerRecord {
+  before: string;
+  after: string;
+  units: readonly ContentUnit[];
+}
+
+/** Where ONE unit of the wide record went — an empty list is an ANSWER (§7). */
+export interface CarriedChunk {
+  text: string;
+  carriedBy: { before: string; after: string }[];
+}
+
+/**
+ * Does `container` hold `contained`, as text?
+ *
+ * MODULE-PRIVATE, and normalised through `normaliseForPresence` — the one
+ * spelling this platform already has for "is this phrase present in that text",
+ * shared with claim-trajectory detection on its own stated ground: "a phrase this
+ * platform reports as present in a capture must mean the same thing whichever
+ * tool reported it." A fourth `replace(/\s+/g, ' ')` here would be that
+ * disagreement.
+ */
+function contains(container: ContentUnit, contained: ContentUnit): boolean {
+  // WITHIN SIDE, where a side exists. Two capture segments both have `undefined`
+  // and compare as one bag; a diff's REMOVED chunk is never contained by an ADDED
+  // one, which is what makes a side-flip TWO facts rather than none.
+  if (container.side !== contained.side) return false;
+  return normaliseForPresence(container.text).includes(normaliseForPresence(contained.text));
+}
+
+/**
+ * WHAT MOVED — the units that ENTERED the current version and those that LEFT
+ * the affirmed one, by containment.
+ *
+ * WHY CONTAINMENT AND NOT EQUALITY, PROVEN BY A REAL CASE. The re-walk of
+ * 2026-09-07 (docs/gf-walk-step-5-rewalk-2026-09-07.md) found two positional
+ * rules mutilating one sentence: the old derivation held a FRAGMENT, the new one
+ * holds the whole SENTENCE containing it. Under equality that reads as one unit
+ * left and one entered — the same text reported as two movements, and a
+ * researcher asked to judge a change that did not happen. Under containment it
+ * reads as one unit entering and nothing leaving, which is what the bytes say.
+ *
+ * A unit whose only container sits on the OTHER SIDE appears in BOTH lists,
+ * because a chunk that moved from REMOVED to ADDED is two facts and a researcher
+ * re-affirming must see both.
+ */
+export function movedBetween(
+  affirmed: readonly ContentUnit[],
+  current: readonly ContentUnit[],
+): Moved {
+  return {
+    entered: current.filter((c) => !affirmed.some((a) => contains(a, c))),
+    left: affirmed.filter((a) => !current.some((c) => contains(c, a))),
+  };
+}
+
+/**
+ * WHERE EACH CHUNK OF THE WIDE RECORD WENT — ONE ROW PER WIDE UNIT, ALWAYS.
+ *
+ * §7: "where each chunk of the wide record went, computed by containment with no
+ * model."
+ *
+ * THE DIRECTION IS FIXED AND IT IS NOT SYMMETRIC: a wide unit is CARRIED when a
+ * NARROWER unit CONTAINS IT — never the other way round. A narrower diff spans a
+ * shorter interval, so it holds the wide record's change in equal or finer
+ * grain; a wide chunk that merely contains some narrower fragment has not been
+ * carried by it, and reporting that as carriage would tell a researcher the
+ * narrower records replace the wide one when they do not. One row per unit of
+ * the wide version, IN ITS ORDER, and an empty
+ * `carriedBy` means that chunk is in no narrower diff — **which is an ANSWER and
+ * not an absence**. A mapping that listed only what was carried would leave the
+ * reader unable to tell "went nowhere" from "not computed", and *went nowhere* is
+ * the fact that matters most to a researcher deciding whether the narrower
+ * records replace the wide one.
+ */
+export function whereChunksWent(
+  wide: readonly ContentUnit[],
+  narrower: readonly NarrowerRecord[],
+): CarriedChunk[] {
+  return wide.map((unit) => ({
+    text: unit.text,
+    carriedBy: narrower
+      .filter((n) => n.units.some((u) => contains(u, unit)))
+      .map((n) => ({ before: n.before, after: n.after })),
+  }));
 }
 
 // ---------------------------------------------------------------------------

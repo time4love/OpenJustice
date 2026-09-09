@@ -90,6 +90,59 @@ describe('§9.8 — the evidence row carries no prose and no opinion', () => {
   });
 });
 
+describe('§9.8 — a derived predicate is never a column — the SCHEMA half', () => {
+  // §9: "Derived, never stored: CURRENT, NEEDS_REVIEW, NARROWED, RECOMPUTABLE,
+  // VERIFIED, CITATION_CURRENT, PUBLISHABLE, ATTRIBUTED … A predicate a pass
+  // computed and stored would be a judgement the pass made." NEEDS_REVIEW is the
+  // one this step's tools ask on every row, so it is the one a cache would be
+  // written for — and a cached NEEDS_REVIEW is the walk deciding what a human
+  // owes, which is the authority §9 keeps apart.
+  //
+  // THE OTHER HALF IS `test/evidence/scans.test.ts` — no write names one as a
+  // field. Neither implies the other: a column can exist with nothing writing it,
+  // and a write can name a field the schema does not have.
+  const DERIVED = [
+    'needsReview',
+    'citationCurrent',
+    'narrowed',
+    'verified',
+    'publishable',
+    'flagged',
+    'recomputable',
+  ];
+
+  /** Does the model declare a field whose name STARTS with this word? */
+  const declares = (model: string, name: string): boolean =>
+    new RegExp(`^\\s{2}${name}\\w*\\s`, 'im').test(block(model));
+
+  /** Every field the block declares — `///` docblocks and `@@` attributes are not fields. */
+  const columnsOf = (model: string): string[] =>
+    [...block(model).matchAll(/^\s{2}(\w+)\s+\w/gm)].map(([, field]) => field ?? '');
+
+  it('the Evidence block declares no field named for a derived predicate', () => {
+    const stored = DERIVED.filter((name) => declares('Evidence', name));
+    expect(stored).toEqual([]);
+  });
+
+  it('the SAME matcher fires on the block\'s own columns — the positive control', () => {
+    // A list that matched nothing would pass the case above over any schema at
+    // all. The control is the block's OWN real column names, read from the file
+    // rather than typed here, so it cannot go stale and cannot be satisfied by a
+    // matcher that has stopped matching.
+    const columns = columnsOf('Evidence');
+    expect(columns.length).toBeGreaterThan(5);
+    const missed = columns.filter((column) => !declares('Evidence', column));
+    expect(missed).toEqual([]);
+  });
+
+  it('the decision log stores no predicate either — it stores what a human DID', () => {
+    // A2: `EvidenceDecision` carries the type, the researcher, the two hashes and
+    // the reason. A predicate on the log would be the answer beside the act.
+    const stored = DERIVED.filter((name) => declares('EvidenceDecision', name));
+    expect(stored).toEqual([]);
+  });
+});
+
 describe('§9.8 — nothing above the corpus is anchored', () => {
   it('Evidence holds no chain state at all', () => {
     const evidence = block('Evidence');

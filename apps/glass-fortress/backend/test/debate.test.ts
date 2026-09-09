@@ -31,125 +31,47 @@ jest.mock('../src/services/thesisClaimAudit', () => ({ extractText }));
 const mockResearcherId = jest.fn<string | null, []>();
 jest.mock('../src/context/researcherContext', () => ({ getResearcherId: mockResearcherId }));
 
-interface Row {
-  [key: string]: unknown;
-}
+// THE PRISMA DOUBLE IS `test/helpers/evidenceDouble.ts` — EXTRACTED at evidence
+// step 14, never copied: step 14's suite needs this exact shape, and two doubles
+// would be free to disagree about what the database does. NOT ONE CASE BELOW
+// CHANGED, and their staying green is what proves the move.
+//
+// THE FACTORY REACHES IT BY `require`, AND THAT IS THE ONLY FORM THAT WORKS.
+// Jest hoists `jest.mock` above the `require` an `import` compiles to, so an
+// imported `db` is still unassigned when the factory runs. (Measured: this file
+// already closed over three non-`mock`-prefixed consts and was green, so
+// babel-plugin-jest-hoist's out-of-scope guard is not what bites in this ts-jest
+// setup — initialisation ORDER is.)
+jest.mock('../src/lib/prisma', () => ({
+  prisma: (require('./helpers/evidenceDouble') as typeof import('./helpers/evidenceDouble')).db,
+}));
 
-/** Every write the handlers make, in order — what "ONE transaction" is checked against. */
-let written: { model: string; op: string; data: Row }[] = [];
-let transactions = 0;
-let windows: unknown[] = [];
-
-const store = {
-  thesis: null as Row | null,
-  mention: null as Row | null,
-  version: null as Row | null,
-  /** What `findUnique({ where: { id } })` answers — the session as it is read back. */
-  session: null as Row | null,
-  /** What `findUnique({ where: { openKey } })` answers — the OPEN one for the pair, or none. */
-  openByKey: null as Row | null,
-  evidence: null as Row | null,
-  workList: null as Row | null,
-  captures: [] as Row[],
-  diffs: [] as Row[],
-  collideOnCreate: null as Prisma.PrismaClientKnownRequestError | null,
-};
-
-const record = (model: string, op: string, data: Row): void => {
-  written.push({ model, op, data });
-};
+import {
+  db,
+  defaultSessionLookup,
+  defaultTransaction,
+  resetDouble,
+  store,
+  windows,
+  written,
+  type Row,
+} from './helpers/evidenceDouble';
 
 /**
- * THE DEFAULTS, NAMED, BECAUSE `clearAllMocks` CLEARS CALLS AND NOT
- * IMPLEMENTATIONS.
+ * HOW MANY TRANSACTIONS WERE OPENED — this suite's own observation, not the
+ * double's.
  *
- * A `mockImplementation` set inside one case stands for every later one, which is
- * the cross-describe dependency `docs/gf-legacy-switch-2026-09-08.md` §5 records
- * this repository paying for once already: a value set in an earlier test held
- * for every test after it, and the failure surfaced only when the earlier group
- * was deleted. Two cases here override these, so both are re-established in
- * `corpus()` rather than left to Jest.
+ * The double records the WINDOW of every transaction it opens; the count is
+ * this file's, because one case below installs its own `$transaction` and
+ * counts through it. What must not be duplicated is the double — what the
+ * database does — and a counter over it is not that.
  */
-const defaultSessionLookup = (args: { where: { id?: string; openKey?: string } }): Promise<Row | null> => {
-  if (args.where.openKey !== undefined) return Promise.resolve(store.openByKey);
-  if (store.session === null) return Promise.resolve(null);
-  // The read-back reflects what was just WRITTEN: a double whose events were
-  // frozen would let `priorTurns` look right while the handler passed the
-  // assessor the wrong turns.
-  const base = (store.session['events'] ?? []) as Row[];
-  const appended = written
-    .filter((w) => w.model === 'diffDebateEvent')
-    .map((w) => ({ type: w.data['type'], content: w.data['content'], createdAt: new Date() }));
-  return Promise.resolve({ ...store.session, events: [...base, ...appended] });
-};
+let transactions = 0;
 
-const defaultTransaction = async (fn: unknown, options?: unknown): Promise<unknown> => {
+const countingTransaction = async (fn: unknown, options?: unknown): Promise<unknown> => {
   transactions += 1;
-  windows.push(options);
-  return typeof fn === 'function' ? (fn as (tx: unknown) => Promise<unknown>)(db) : undefined;
+  return defaultTransaction(fn, options);
 };
-
-const db = {
-  thesis: { findUnique: jest.fn(() => Promise.resolve(store.thesis)) },
-  thesisVersion: { findUnique: jest.fn(() => Promise.resolve(store.version)) },
-  thesisMention: {
-    findFirst: jest.fn(() => Promise.resolve(store.mention)),
-    update: jest.fn((args: { data: Row }) => {
-      record('thesisMention', 'update', args.data);
-      return Promise.resolve({});
-    }),
-  },
-  trackedUrl: {
-    findUnique: jest.fn(() => Promise.resolve({ id: 'page-1', url: URL })),
-    findMany: jest.fn(() => Promise.resolve([{ id: 'page-1', url: URL }])),
-  },
-  urlSnapshot: {
-    findMany: jest.fn(() => Promise.resolve(store.captures)),
-    findUnique: jest.fn(() => Promise.resolve({ text: 'the capture text' })),
-  },
-  urlVersionDiff: { findMany: jest.fn(() => Promise.resolve(store.diffs)) },
-  cdxIndexEntry: { findFirst: jest.fn(() => Promise.resolve(store.workList)) },
-  evidence: {
-    findUnique: jest.fn(() => Promise.resolve(store.evidence)),
-    create: jest.fn((args: { data: Row }) => {
-      record('evidence', 'create', args.data);
-      return Promise.resolve({
-        id: 'ev-1',
-        status: args.data['status'],
-        affirmedContentVersionHash: args.data['affirmedContentVersionHash'],
-      });
-    }),
-  },
-  diffDebateSession: {
-    // TWO LOOKUPS, ONE DELEGATE: `openOrRevise` asks by `openKey` (is there an
-    // OPEN debate for this pair?) and `loadDebate` asks by `id`. A double that
-    // answered both the same way would make the open path and the read-back move
-    // together, which is exactly what they must not do.
-    findUnique: jest.fn(defaultSessionLookup),
-    create: jest.fn((args: { data: Row }) => {
-      if (store.collideOnCreate !== null) return Promise.reject(store.collideOnCreate);
-      record('diffDebateSession', 'create', args.data);
-      return Promise.resolve({ id: 'session-1' });
-    }),
-    update: jest.fn((args: { data: Row }) => {
-      record('diffDebateSession', 'update', args.data);
-      return Promise.resolve({});
-    }),
-  },
-  diffDebateEvent: {
-    create: jest.fn((args: { data: Row }) => {
-      record('diffDebateEvent', 'create', args.data);
-      return Promise.resolve({});
-    }),
-    createMany: jest.fn((args: { data: Row[] }) => {
-      for (const d of args.data) record('diffDebateEvent', 'create', d);
-      return Promise.resolve({ count: args.data.length });
-    }),
-  },
-  $transaction: jest.fn(defaultTransaction),
-};
-
-jest.mock('../src/lib/prisma', () => ({ prisma: db }));
 
 import {
   AFTER,
@@ -183,9 +105,8 @@ const eventTypes = (): unknown[] => events().map((e) => e['type']);
 
 /** The corpus every case starts from: one page, two captures, the pair, a citing head. */
 function corpus(): void {
-  written = [];
+  resetDouble();
   transactions = 0;
-  windows = [];
   store.thesis = { createdById: RESEARCHER, headVersionId: 'version-1' };
   store.version = { id: 'version-1', userContent: body([`the ministry said so #ev_${DIFF_NAME}`]) };
   store.mention = { id: 'mention-1', thesisVersionId: 'version-1', contentVersionHash: CURRENT_VERSION.contentVersionHash };
@@ -200,8 +121,7 @@ function corpus(): void {
   store.collideOnCreate = null;
   // Re-established, not assumed — see `defaultSessionLookup`.
   db.diffDebateSession.findUnique.mockImplementation(defaultSessionLookup);
-  db.$transaction.mockImplementation(defaultTransaction);
-  db.trackedUrl.findUnique.mockResolvedValue({ id: 'page-1', url: URL });
+  db.$transaction.mockImplementation(countingTransaction);
   mockResearcherId.mockReturnValue(RESEARCHER);
   // The one walker's contract, as this suite needs it: a paragraph node renders
   // to the text of its children. `extractText` itself is `thesisClaimAudit`'s and
