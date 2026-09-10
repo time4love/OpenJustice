@@ -1,3 +1,5 @@
+import { withoutEnvFiles } from './prismaEnvFile';
+
 // Runs before each test file's own imports are evaluated (Jest `setupFiles`,
 // not `setupFilesAfterEnv`) — required because src/oauth/oidcProvider.ts
 // reads OAUTH_JWKS/OAUTH_COOKIE_KEYS eagerly at module load (it constructs a
@@ -40,12 +42,26 @@ process.env['OAUTH_JWKS'] ??= JSON.stringify({
 process.env['OAUTH_COOKIE_KEYS'] ??= 'jest-oauth-cookie-key';
 
 // ---------------------------------------------------------------------------
+// NO UNIT TEST READS A `.env` FILE. The generated Prisma client loads
+// `backend/.env` at import and again at construction; this hands it the paths
+// of a checkout that has none, so a laptop's run sees what CI's does. The rule,
+// and why it is a seam rather than a cleanup: ./prismaEnvFile.
+jest.mock('@prisma/client/runtime/library', () =>
+  withoutEnvFiles(
+    jest.requireActual<typeof import('@prisma/client/runtime/library')>(
+      '@prisma/client/runtime/library',
+    ),
+  ),
+);
+
+// ---------------------------------------------------------------------------
 // NO UNIT TEST MAY REACH A REAL CHAIN — enforced here, not remembered per file.
 //
 // The three variables `Web3Service`'s constructor requires are deleted before
 // any test module is evaluated, so a test that forgets to mock the chain fails
 // loudly at construction instead of quietly spending a request — or, worse,
-// getting a real answer.
+// getting a real answer. The deletion holds because nothing loads `.env`
+// afterwards — the section above; before it, Prisma's import put them back.
 //
 // FOUND, NOT ANTICIPATED. `evidenceConfirmPromotionGate` asserted that the
 // /confirm route does NOT answer 409 for a non-contradicted diff, and it passed
