@@ -102,6 +102,25 @@ narrative. **A citation to a narrative document is not authority.** Where a pre-
 looks live, `docs/gf-pre-design-plans-triage-2026-09-04.md` is where it was already dispositioned,
 and the disposition is the ruling.
 
+**A dated findings doc CORROBORATES; it never DECIDES. Where one is the ONLY ground, the question
+is OPEN and goes to the researcher.** Added 2026-09-10, from the R39 REVIEW seat's first report,
+and it is the line that stops the rule above from throwing measurements away. Evidence step 15's
+strict fold on check 17 — CONTRADICTED, UNCHECKABLE and AWAITING_DERIVATION all fail — was grounded
+for five rounds in `docs/gf-evidence-input-soundness-2026-08-30.md:44–:45`, a dated findings doc,
+which the block above files under DESCRIBE. The obvious rescue did not hold either: evidence A6
+`:1210` fixes check 17's NAME and its SELECT and says nothing about which states fail. What decides
+it is two PLAN steps — `docs/gf-refactor-plan.md` §4 rule 3 (a REWRITE file is rewritten to the
+appendix, which asks for the rebase and not a new fold) and `docs/gf-thesis-refactor-plan.md` §5
+(*"rebased … exactly as A6 words it"*). The measurement stays, as the reason the fold is what it is;
+it is not what makes the fold binding.
+
+So a dated findings doc is cited BESIDE an appendix clause or a plan step, never alone. A ruling with
+no ground but a dated doc is neither obeyed on that ground nor discarded: it is a question, and it is
+the researcher's. **The re-ask above cannot catch this class** — it re-asks the questions a seat is
+HOLDING, and a ruled question is not held, which is how a mis-grounded ruling survived six rounds.
+The authority has to be checked at the moment a dated doc is CITED. The whole account is
+`docs/gf-evidence-step-15-2026-09-10.md` §1.
+
 ## One ordering, not two
 
 A prompt states ONE order of first acts, in these words:
@@ -173,6 +192,8 @@ checker looks for, e.g. "no migration") or forgot it.
    one ruling it names that this step's chunk does not cite.
    **A ruling is grounded in an APPENDIX or a PLAN STEP, never in a narrative document** — the
    section above; a citation to `gf-researcher-day.md` or a pre-design plan is not authority.
+   **A dated findings doc CORROBORATES; it never DECIDES** — where one is the only ground, the
+   question is open and goes to the researcher.
 3. RULES THAT BIND THE CODE: no chain write (`registerEvidenceHash` one caller); KEEP files
    byte-identical or DECLARED with authority; `src/walk` byte-identical; `mcpToolClassification`
    KEEP; predicates CALLED never re-spelled; the step's own invariants (no re-pin, WITHDRAWN never
@@ -201,6 +222,8 @@ checker looks for, e.g. "no migration") or forgot it.
    ruling it names that the chunk does not cite; and which documents say NOTHING.
    **A ruling is grounded in an APPENDIX or a PLAN STEP, never in a narrative document** — the
    section above; a citation to `gf-researcher-day.md` or a pre-design plan is not authority.
+   **A dated findings doc CORROBORATES; it never DECIDES** — where one is the only ground, the
+   question is open and goes to the researcher.
 3. WHAT A FINDING IS: the shape (`[LEVEL] file:line — defect / cites / held by`); HIGH, MEDIUM,
    LOW lists rewritten for THIS step's contract; "a design question is not a finding".
 4. STOP RULE: no HIGH or MEDIUM; three rounds; the fourth is the researcher's; write "LOOP ENDS".
