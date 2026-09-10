@@ -92,6 +92,9 @@ document plan's; A7's scans with decoys —
 `thesis-no-log`, `versions-immutable`, `models-write-no-state`, `one-symbol`, `names-vacuity`,
 `gap-id-stable`; the nine invariants of target §10.5. Every file red. Informational in CI until
 step 25.
+Built 2026-09-10 (PR #413, corrected by PR #416); the rulings — one of them with its ground corrected —
+what the review rounds and two cold reads found, why a satisfiable case is not a conformant one, the
+appendix amendments now owed, and what is still the researcher's are `docs/gf-thesis-step-17-2026-09-10.md`.
 
 *Leaves working:* everything.
 
