@@ -11,6 +11,7 @@ import {
   AS_PUBLISHED,
   MISSING_FRAMING,
   MISSING_THESIS,
+  NAMES_THE_DIFF,
   ON_THE_FIXTURE,
   UNKNOWN_TRAJECTORY,
   answerOf,
@@ -161,7 +162,8 @@ describe('assess_framing — A4 :1442–:1450, WRITE and paid (thesis step 19)',
     },
     {
       code: 'AWAITING_DERIVATION',
-      why: 'a pair the walk owes a content version — no CURRENT to load',
+      why: 'a pair the walk owes a content version — no CURRENT to load — and the refusal NAMES the diff (A4 :1422–:1423)',
+      names: NAMES_THE_DIFF,
       as: AUTHOR,
       seed: () => {
         seedThesis();

@@ -55,7 +55,7 @@ describe("target §10.5 — the invariants held HERE (sketch §5h)", () => {
     });
   });
 
-  it("row 2, a citation's pin is computed by the write: NO thesis tool's zod schema has a key that could carry one (T2 :429) (thesis step 20)", async () => {
+  it("row 2, a citation's pin is computed by the write: NO thesis tool's zod schema has a key that could carry one (T2 :429) (thesis step 24 — it loads every tool's schema, and the last, list_thesis_reviews', is step 24's)", async () => {
     const keys: string[] = [];
     for (const [tool, contract] of Object.entries(TOOLS)) {
       const schemaName = Object.keys(MODULES[contract.module].exports).find((key) => key.endsWith('Schema'));

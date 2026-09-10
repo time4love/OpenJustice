@@ -12,6 +12,7 @@ import { ANALYSIS, AUTHOR, OPEN_GAP, OPEN_GAP_DESCRIPTION_SPACED, OTHER_RESEARCH
 import {
   MISSING_THESIS,
   NAMELESS_RECORD,
+  NAMES_THE_DIFF,
   ON_THE_FIXTURE,
   answerOf,
   call,
@@ -27,9 +28,10 @@ import {
 // sketch §3b. THESIS STEP 22 builds the three tools.
 //
 // NO_HEAD IS THE FLOW'S (§0g): T4 :583, :626 and :665 refuse NO_HEAD where A4's
-// lists do not, and the flows win. `decide_gap`'s NAMES_PERSON is OWED to step 22
-// (§8): its rule is T5's publication assessor — a model nothing mocks here — so it
-// is in the code set as owed, never claimed tested. `run_analysis` and
+// lists do not, and the flows win. `decide_gap`'s NAMES_PERSON is OWED to step 23
+// (the R42 follow-up, REVIEW's ruling): A4 :1494 checks it "by the same rule as T5" —
+// the publication assessor, which plan step 23 builds — a model nothing mocks here,
+// so it is in the code set as owed, never claimed tested. `run_analysis` and
 // `draft_foia_request` are paid; nothing past their model is written at step 17,
 // and the TRIPWIRE holds that no refusal — ANALYSIS_CURRENT above all — spent a call.
 // ---------------------------------------------------------------------------
@@ -101,7 +103,8 @@ describe('run_analysis — T4 :580–:584, A4 :1481–:1486, WRITE and paid (the
     },
     {
       code: 'AWAITING_DERIVATION',
-      why: 'a cited pair the walk owes a version — the critic is never handed content that does not exist',
+      why: 'a cited pair the walk owes a version — the critic is never handed content that does not exist — and the refusal NAMES the diff (T4 :583; A4 :1423)',
+      names: NAMES_THE_DIFF,
       as: AUTHOR,
       seed: () => {
         seedThesis();

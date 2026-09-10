@@ -7,10 +7,11 @@ jest.mock('../../src/factories/LLMFactory', () => (require('./tools') as typeof 
 import type { Router } from 'express';
 import express from 'express';
 import request from 'supertest';
+import { DIFF_NAME } from '../helpers/corpusFixture';
 import { resetDouble, store } from '../helpers/evidenceDouble';
 import { built } from './absent';
-import { ANALYSIS, ATTEMPT, AUTHOR, DEBATE, NEXT_VERSION, NOTE, ROUNDS, THESIS, VERSION, WITHDRAWAL } from './fixtures';
-import { AS_PUBLISHED, actAs, resetTools, seedThesis, tripped } from './tools';
+import { ANALYSIS, ATTEMPT, AUTHOR, DEBATE, MENTION, NEXT_VERSION, NOTE, ROUNDS, THESIS, VERSION, WITHDRAWAL } from './fixtures';
+import { AS_PUBLISHED, actAs, containsDeep, resetTools, seedThesis, tripped } from './tools';
 
 // ---------------------------------------------------------------------------
 // A5's THREE PUBLIC READS — docs/gf-thesis-flows.md A5 (:1559–:1570), T6
@@ -97,6 +98,25 @@ describe("A5's public reads — identical for everyone (thesis step 23)", () => 
     const never = await request(server).get(`/api/thesis/${THESIS.id}`);
     const none = await request(server).get('/api/thesis/thesis-that-does-not-exist');
     expect([never.status, none.status]).toEqual([404, 404]);
+  });
+
+  it("GET /:id carries the PUBLISHED version by VALUE — its text and contentHash, its citation resolved with its pin, and the rationale — never the head's, which moved on after it (sketch §5i; A5 :1565–:1568; T5 :811–:814, :822, :801–:802; plan step 23 :149–:150)", async () => {
+    const server = await app();
+    // Published at VERSION; the head is NEXT_VERSION, written after and never published.
+    seedThesis({ ...AS_PUBLISHED, headVersionId: NEXT_VERSION.id });
+    store.versions = [VERSION, NEXT_VERSION];
+    store.attempts = [ATTEMPT];
+    const res = await request(server).get(`/api/thesis/${THESIS.id}`);
+    const body: unknown = res.body;
+    expect(res.status).toBe(200);
+    expect([containsDeep(body, VERSION.text), containsDeep(body, VERSION.contentHash)]).toEqual([true, true]);
+    // EACH MENTION RESOLVED WITH ITS PIN (A5 :1566; T5 :812–:814): the record's name and
+    // the pinned content version, each a VALUE of its own — deep equality, so the token
+    // inside the text does not stand in for either.
+    expect([containsDeep(body, DIFF_NAME), containsDeep(body, MENTION.contentVersionHash)]).toEqual([true, true]);
+    // THE RATIONALE (A5 :1567; T5 :822) is the researcher's words, the attempt's `rationale` and never its `assessment`, where the shape test's markers sit — so the two cases do not conflict.
+    expect(containsDeep(body, ATTEMPT.rationale)).toBe(true);
+    expect([containsDeep(body, NEXT_VERSION.text), containsDeep(body, NEXT_VERSION.contentHash)]).toEqual([false, false]);
   });
 
   it('a WITHDRAWN thesis answers the NOTICE — not 404, and neither its text nor the reason (T6 :914–:916; A5 :1568–:1569)', async () => {
