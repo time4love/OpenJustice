@@ -17,6 +17,7 @@
     "test": "jest --config jest.config.ts --selectProjects unit extraction",
     "test:walk": "jest --config jest.config.ts --selectProjects walk",
     "test:evidence": "jest --config jest.config.ts --selectProjects evidence",
+    "test:thesis": "jest --config jest.config.ts --selectProjects thesis",
     "db:check-drift": "prisma migrate diff --from-schema-datasource prisma/schema.prisma --to-schema-datamodel prisma/schema.prisma --exit-code",
     "db:verify-migrations": "node scripts/verifyMigrations.js",
     "db:simulate": "node dist/scripts/dbSimulate.js",
