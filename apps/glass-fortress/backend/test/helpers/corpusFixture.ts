@@ -127,6 +127,12 @@ export function anchorCheck(
 ) {
   return {
     subjectId,
+    // NAMED, because the reader names them: `storedAttributionFor` asks
+    // `subjectType: 'URL_SNAPSHOT'` and `checkType: 'ON_CHAIN_ANCHOR'`, and a
+    // fixture row that declared neither would be answered by a double that
+    // ignored the `where` — which is the trap the double stopped having.
+    subjectType: 'URL_SNAPSHOT',
+    checkType: 'ON_CHAIN_ANCHOR',
     verdict: 'VERIFIED',
     detail: { attributed: over.attributed ?? true, attributionVerdict: 'ATTRIBUTED' },
     verifierVersion: over.verifierVersion ?? ON_CHAIN_CHECK_VERSION,

@@ -29,6 +29,7 @@
     "forensics:measure-href-changes": "node dist/scripts/measureHrefChanges.js",
     "forensics:measure-claim-length": "node dist/scripts/measureClaimLength.js",
     "forensics:audit-evidence": "node dist/scripts/auditEvidence.js",
+    "forensics:audit-theses": "node dist/scripts/auditTheses.js",
     "forensics:audit-anchors": "node dist/scripts/auditOnChainAnchors.js",
     "forensics:backfill-anchor-checks": "node dist/scripts/backfillOnChainChecks.js",
     "forensics:compare-detection-layers": "node dist/scripts/compareDetectionLayers.js",

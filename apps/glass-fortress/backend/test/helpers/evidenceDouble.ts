@@ -69,9 +69,36 @@ export const record = (model: string, op: string, data: Row): void => {
   written.push({ model, op, data });
 };
 
+/**
+ * WHAT THE CODE UNDER TEST ASKED FOR, in order — every READ, with its arguments.
+ *
+ * `written` records what was written; nothing recorded what was ASKED, so a case
+ * could only assert what the double answered. That is not the same question: a
+ * `select` that loads a column it must not load, or a `where` the double ignores,
+ * is invisible to an assertion about the answer. §7.1's "`chunks` is not selected
+ * by `publishable`'s own query" is exactly that assertion, and it needs this.
+ */
+export interface Asked {
+  model: string;
+  op: string;
+  args: unknown;
+}
+export const asked: Asked[] = [];
+
+const ask = <A, R>(model: string, op: string, answer: (args: A) => R) => (args: A): R => {
+  asked.push({ model, op, args });
+  return answer(args);
+};
+
 /** Everything a suite may stand a query on. A field left null is a row that is not there. */
 export const store = {
   thesis: null as Row | null,
+  /**
+   * Every thesis `audit-theses` may be asked about — `findMany` answers the ones
+   * whose publication pin is set, because that is the `where` the instrument
+   * sends. ADDED AT EVIDENCE STEP 15.
+   */
+  theses: [] as Row[],
   mention: null as Row | null,
   mentions: [] as Row[],
   version: null as Row | null,
@@ -89,6 +116,18 @@ export const store = {
   workList: null as Row | null,
   captures: [] as Row[],
   diffs: [] as Row[],
+  /**
+   * The stored anchor-time verdicts `storedAttributionFor` folds — subjectId,
+   * verdict, detail, verifierVersion, checkedAt.
+   *
+   * ADDED AT EVIDENCE STEP 15, AND ITS ABSENCE WAS A TRAP. `integrityCheck.
+   * findMany` answered `[]` unconditionally, so every capture read as
+   * NEVER_CHECKED and `verified()` could never return `verified: true` — which
+   * makes the "all six conjuncts PASS" case UNREACHABLE against the double
+   * rather than failing. A conjunct stubbed to get past that would not be the
+   * CALL §1d requires, so the double gains the rows instead.
+   */
+  integrityChecks: [] as Row[],
   /**
    * ARMED PER DELEGATE, never once for both. A case that arms the decision log's
    * race must not also arm the debate session's create: one flag for two writers
@@ -204,12 +243,57 @@ function decisionsFor(fileHash: string, orderBy?: { sequence?: 'asc' | 'desc' })
 }
 
 export const db = {
-  thesis: { findUnique: jest.fn(() => Promise.resolve(store.thesis)) },
+  thesis: {
+    findUnique: jest.fn(() => Promise.resolve(store.thesis)),
+    // HONOURS `publishedVersionId: { not: null }` — the one question the
+    // instrument asks. A double that returned every thesis would let a HEAD-only
+    // citation be examined, and the non-firing control that holds the instrument
+    // to PUBLISHED versions could not fire.
+    findMany: jest.fn(
+      ask('thesis', 'findMany', (args: { where?: { publishedVersionId?: { not?: null } } }) => {
+        const pinnedOnly = args.where?.publishedVersionId !== undefined;
+        return Promise.resolve(
+          pinnedOnly ? store.theses.filter((t) => t['publishedVersionId'] != null) : store.theses,
+        );
+      }),
+    ),
+  },
   thesisVersion: { findUnique: jest.fn(() => Promise.resolve(store.version)) },
   thesisMention: {
     findFirst: jest.fn(() => Promise.resolve(store.mention)),
-    findMany: jest.fn(() => Promise.resolve(store.mentions)),
-    findUnique: jest.fn(() => Promise.resolve(store.mention)),
+    // FILTERED ONLY WHEN THE CALLER NAMES A VERSION. `publishableEvidence` asks
+    // `{ thesisVersionId, type }`; `evidenceReviews.citationsOf` asks by
+    // `refId` and a version relation, and answers as it always did.
+    findMany: jest.fn(
+      ask('thesisMention', 'findMany', (args: { where?: { thesisVersionId?: string; type?: string } }) => {
+        const version = args.where?.thesisVersionId;
+        if (version === undefined) return Promise.resolve(store.mentions);
+        return Promise.resolve(
+          store.mentions.filter(
+            (m) =>
+              m['thesisVersionId'] === version &&
+              (args.where?.type === undefined || m['type'] === args.where.type),
+          ),
+        );
+      }),
+    ),
+    // BY ID, from the same list `findMany` answers with, so a version with two
+    // mentions cannot silently grade one of them twice.
+    //
+    // THE FALLBACK IS SCOPED TO A SUITE THAT SET NO LIST. An unconditional
+    // `?? store.mention` would answer a row for an id the store does not hold —
+    // the ignored-`where` trap one level along, and it made "a mention that does
+    // not exist" unwritable: the case resolved to a full report about a citation
+    // the store never had. A suite that populates `mentions` gets a strict
+    // lookup; one that uses the single-row fixture answers as it always did.
+    findUnique: jest.fn(
+      ask('thesisMention', 'findUnique', (args: { where?: { id?: string } }) => {
+        if (store.mentions.length > 0) {
+          return Promise.resolve(store.mentions.find((m) => m['id'] === args.where?.id) ?? null);
+        }
+        return Promise.resolve(store.mention);
+      }),
+    ),
     count: jest.fn(() => Promise.resolve(store.mentions.length)),
     update: jest.fn((args: { data: Row }) => {
       record('thesisMention', 'update', args.data);
@@ -259,10 +343,65 @@ export const db = {
     }),
   },
   pageDecision: { findUnique: jest.fn(() => Promise.resolve(store.pageDecisions.at(0) ?? null)) },
-  integrityCheck: { findMany: jest.fn(() => Promise.resolve([])) },
+  integrityCheck: {
+    // NEWEST FIRST and filtered by subject, because that is what
+    // `storedAttributionFor` asks: it folds "newest wins" over the answer, so a
+    // double that returned them in insertion order would let a stale verdict
+    // stand in for a current one and the fold would never be exercised.
+    findMany: jest.fn(
+      ask(
+        'integrityCheck',
+        'findMany',
+        (args: { where?: { subjectId?: { in?: string[] }; subjectType?: string; checkType?: string } }) => {
+          const wanted = args.where?.subjectId?.in ?? null;
+          const rows = store.integrityChecks.filter(
+            (c) =>
+              (wanted === null || wanted.includes(String(c['subjectId']))) &&
+              (args.where?.subjectType === undefined || c['subjectType'] === args.where.subjectType) &&
+              (args.where?.checkType === undefined || c['checkType'] === args.where.checkType),
+          );
+          return Promise.resolve(
+            [...rows].sort((a, b) => Number(b['checkedAt']) - Number(a['checkedAt'])),
+          );
+        },
+      ),
+    ),
+  },
   evidence: {
-    findUnique: jest.fn(() => Promise.resolve(store.evidence)),
-    findMany: jest.fn(() => Promise.resolve(store.evidenceRows)),
+    // HONOURS ITS `where`. It answered `store.evidence` whatever it was asked,
+    // so the row `publishable` loads and the row `verified()` loads were the
+    // same object however the case set them up — and a NO-EVIDENCE-ROW case
+    // could not be written at all. The fallback keeps every suite written
+    // against the single-row fixture green: a candidate with no `fileHash` of
+    // its own answers as before, and one that HAS a name must match the name it
+    // was asked for.
+    findUnique: jest.fn(
+      ask('evidence', 'findUnique', (args: { where?: { fileHash?: string } }) => {
+        const wanted = args.where?.fileHash;
+        const named = store.evidenceRows.find((r) => r['fileHash'] === wanted);
+        if (named !== undefined) return Promise.resolve(named);
+        const held = store.evidence;
+        if (held === null) return Promise.resolve(null);
+        const its = held['fileHash'];
+        if (wanted !== undefined && its !== undefined && its !== wanted) return Promise.resolve(null);
+        return Promise.resolve(held);
+      }),
+    ),
+    // LIKEWISE, and it is a SEPARATE field from `store.evidence`: a case that
+    // says "there is no row for this record" must not leave one reachable
+    // through the other delegate, or check 17 answers from a row the case says
+    // does not exist and `evidenceInputSoundness.ts:185-188`'s "absent from
+    // rows" rule goes unexercised.
+    findMany: jest.fn(
+      ask('evidence', 'findMany', (args: { where?: { fileHash?: { in?: string[] } } }) => {
+        const wanted = args.where?.fileHash?.in ?? null;
+        return Promise.resolve(
+          wanted === null
+            ? store.evidenceRows
+            : store.evidenceRows.filter((r) => wanted.includes(String(r['fileHash']))),
+        );
+      }),
+    ),
     create: jest.fn((args: { data: Row }) => {
       record('evidence', 'create', args.data);
       return Promise.resolve({
@@ -334,7 +473,9 @@ export function resetDouble(): void {
   written.length = 0;
   writtenViaTx.length = 0;
   windows.length = 0;
+  asked.length = 0;
   store.thesis = null;
+  store.theses = [];
   store.mention = null;
   store.mentions = [];
   store.version = null;
@@ -349,6 +490,7 @@ export function resetDouble(): void {
   store.workList = null;
   store.captures = [];
   store.diffs = [];
+  store.integrityChecks = [];
   store.collideOnCreate = null;
   store.collideOnDecisionCreate = null;
   db.diffDebateSession.findUnique.mockImplementation(defaultSessionLookup);
