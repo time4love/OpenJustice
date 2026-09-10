@@ -52,6 +52,9 @@ const config: Config = {
         // the required CI check — runs those files and `npm test` goes red on a
         // suite that is doing its job.
         '<rootDir>/test/evidence/',
+        // And the THESIS acceptance suite, for the same reason: red by design
+        // until thesis steps 18-24 build what it names (thesis plan §3 step 17).
+        '<rootDir>/test/thesis/',
       ],
     },
     {
@@ -68,6 +71,20 @@ const config: Config = {
       // progress on every PR without gating the required run.
       displayName: 'evidence',
       testMatch: ['<rootDir>/test/evidence/**/*.test.ts'],
+    },
+    {
+      ...shared,
+      // `thesis` is the acceptance suite of thesis steps 17-26, written from
+      // docs/gf-thesis-flows.md's appendix BEFORE the code (thesis plan §3 step
+      // 17) and red until each step builds the module it names. Every absent
+      // module is reached through test/thesis/absent.ts, never a literal
+      // `import()`: a literal specifier to a missing module is a file-level
+      // TS2307 that sinks the whole file uncounted, where the loader fails each
+      // case BY NAME with the step that owes it. Its own project so `npm run
+      // test:thesis` reports progress without gating; it joins the required run
+      // at step 25's remainder, in the commit that turns it green.
+      displayName: 'thesis',
+      testMatch: ['<rootDir>/test/thesis/**/*.test.ts'],
     },
     {
       ...shared,

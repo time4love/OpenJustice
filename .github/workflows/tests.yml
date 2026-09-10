@@ -122,6 +122,42 @@ jobs:
             require("node:fs").appendFileSync(process.env.GITHUB_STEP_SUMMARY, lines.join("\n") + "\n");
           '
 
+      # NON-GATING, exactly as the evidence suite's is, and for the same reason:
+      # the thesis acceptance suite is written from docs/gf-thesis-flows.md's
+      # appendix BEFORE the code and is RED by design until thesis steps 18-24
+      # build what it names (thesis plan §3 step 17). `npm test`, the required
+      # check, does not run these files: `unit`'s testPathIgnorePatterns excludes
+      # test/thesis/. It joins the required run at step 25's remainder.
+      - name: Run the thesis acceptance suite
+        continue-on-error: true
+        run: npm run test:thesis -- --json --outputFile=thesis-results.json
+        working-directory: apps/glass-fortress/backend
+
+      - name: Which thesis files are green, and which are red
+        if: always()
+        run: |
+          node -e '
+            const { readFileSync, existsSync } = require("node:fs");
+            const { relative } = require("node:path");
+            const path = "apps/glass-fortress/backend/thesis-results.json";
+            if (!existsSync(path)) process.exit(0);
+            const results = JSON.parse(readFileSync(path, "utf8"));
+            const rows = results.testResults
+              .map((f) => ({ file: relative(process.cwd(), f.name), status: f.status, passed: f.assertionResults.filter((a) => a.status === "passed").length, failed: f.assertionResults.filter((a) => a.status === "failed").length }))
+              .sort((a, b) => a.file.localeCompare(b.file));
+            const green = rows.filter((r) => r.status === "passed").length;
+            const lines = [
+              `## Thesis acceptance suite — ${green} of ${rows.length} files green`,
+              "",
+              "| file | | passed | failed |",
+              "|---|---|---|---|",
+              ...rows.map((r) => `| \`${r.file}\` | ${r.status === "passed" ? "🟢 green" : r.passed + r.failed === 0 ? "🔴 red — did not run" : "🔴 red"} | ${r.passed} | ${r.failed} |`),
+              "",
+              "_Red is expected until the step that builds what each file names: framing at 19, the version write at 20, gaps at 22, the gate at 23, reviews at 24._",
+            ];
+            require("node:fs").appendFileSync(process.env.GITHUB_STEP_SUMMARY, lines.join("\n") + "\n");
+          '
+
       - name: Which walk files are green, and which are red
         if: always()
         run: |
