@@ -417,4 +417,74 @@ describe('EXPECTED RED UNTIL STEP 8 — no file under src names a retired concep
     expect(RETIRED_SCRIPT_NAMES.filter((n) => `Run npm run forensics:backfill-survival to fix it.`.includes(n)))
       .toEqual(['forensics:backfill-survival']);
   });
+
+  // THESIS STEP 17 (7.5a) — THE HALVES OF THE THESIS LAYER'S RETIRED NAMES THAT HOLD
+  // TODAY (R40 sketch §5g, §6-4). What is red until thesis step 18 — the schema's
+  // removed models, enums and columns, and the source words — lives in
+  // `test/thesis/scans.test.ts` under `retired-names`, and moves here in the commit
+  // that turns it green: a red case in this green project would hide a walk
+  // regression behind an expected red.
+  //
+  // THE ROUTE SENTENCES, the half the document layer already has: the research-act
+  // mounts thesis A5 retires, read from the mounts at 0ca8d72 (server.ts :202–:210).
+  // REGEXES over the code's strings, so `/api/thesis/${id}/publish` in a template fires
+  // as the mount does — and the survivors do not: A5's three public reads, `GET
+  // /api/thesis/:id/versions/:v` among them, and the tool name `publish_thesis`. The
+  // whistleblower routes are document A5's, reshaped into `/intake`, and not listed.
+  const RETIRED_THESIS_ROUTES = [
+    /\/api\/thesis\/draft\b/,
+    /\/api\/thesis\/[^/\s'"`]+\/(?:version(?!s)|analyze|suggest-revision|publication-readiness|publish|unpublish|foia-request|provenance)\b/,
+    /\/api\/thesis\/[^/\s'"`]+\/gaps\/[^/\s'"`]+\/resolve\b/,
+    /\/api\/mentions\/(?:figures|evidence)\b/,
+    /\/api\/figures\b/,
+    /\/api\/chat\b/,
+    /\/api\/arguments\/generate\b/,
+  ];
+
+  // THE RETIRED DELEGATES — the session, its events, the key figures and the gap
+  // resolution thesis A2 removes. Zero uses in code today; this holds it.
+  const RETIRED_THESIS_DELEGATES = /\.(?:researchSession|researchSessionEvent|keyFigure|thesisGapResolution)\./;
+
+  it('no file sends a reader to a retired THESIS route', () => {
+    const offenders = srcModules()
+      .map(({ file, code }) => ({ file, routes: RETIRED_THESIS_ROUTES.filter((r) => r.test(code)).map(String) }))
+      .filter((m) => m.routes.length > 0);
+    expect(offenders).toEqual([]);
+  });
+
+  it('no file reaches a retired THESIS delegate', () => {
+    expect(srcModules().filter(({ code }) => RETIRED_THESIS_DELEGATES.test(code)).map((m) => m.file)).toEqual([]);
+  });
+
+  it('DETECTS the thesis routes and delegates — and the survivors, the bare mount and the tool name do not fire', () => {
+    for (const sentence of [
+      'POST /api/thesis/draft',
+      'fetch(`/api/thesis/${thesis.id}/publish`)',
+      "router.post('/api/thesis/:id/version', add)",
+      '/api/thesis/:id/analyze',
+      '/api/thesis/:id/suggest-revision',
+      '/api/thesis/:id/publication-readiness',
+      '/api/thesis/:id/unpublish',
+      '/api/thesis/:id/gaps/:gapIndex/resolve',
+      '/api/thesis/:id/foia-request',
+      '/api/thesis/:id/provenance/repair',
+      '/api/mentions/evidence',
+      '/api/figures/:id',
+      "app.use('/api/chat', chatRoutes)",
+      '/api/arguments/generate',
+    ]) {
+      expect(RETIRED_THESIS_ROUTES.some((r) => r.test(sentence))).toBe(true);
+    }
+    for (const survivor of [
+      'GET /api/thesis/:id/versions/:v',
+      "router.get('/api/thesis', list)",
+      'GET /api/thesis/:id',
+      "server.tool('publish_thesis', …)",
+    ]) {
+      expect(RETIRED_THESIS_ROUTES.some((r) => r.test(survivor))).toBe(false);
+    }
+    expect(RETIRED_THESIS_DELEGATES.test('await tx.researchSessionEvent.create({ data });')).toBe(true);
+    expect(RETIRED_THESIS_DELEGATES.test('await prisma.keyFigure.findMany({});')).toBe(true);
+    expect(RETIRED_THESIS_DELEGATES.test('await prisma.diffDebateSession.findUnique({ where });')).toBe(false);
+  });
 });

@@ -326,4 +326,5 @@ export const DATED_ROWS: readonly { id: string; createdAt: Date }[] = [
   WITHDRAWAL,
   TRAJECTORY_VERSION,
   NEXT_VERSION,
+  CITING_BOTH_VERSION,
 ];

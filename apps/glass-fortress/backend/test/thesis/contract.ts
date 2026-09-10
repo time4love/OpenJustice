@@ -358,6 +358,16 @@ export interface ThesisGateModule {
   thesisChecks(versionId: string, assessment: PublicationAssessment | null): Promise<ThesisCheckRow[]>;
 }
 
+/**
+ * `lib/thesisIdentity` (sketch §5f, A1 :1231–:1235): a version's contentHash is
+ * sha256(utf8(text)) and a gap's id is sha256(utf8(NORMALISE(description))), each
+ * displayed 0x + 64 lowercase hex. Held by VECTORS derived at a shell (7.5a).
+ */
+export interface ThesisIdentityModule {
+  contentHash(text: string): string;
+  gapId(description: string): string;
+}
+
 /** PUBLISHABLE(v) as a report; `failed` names A6's check names (§4). */
 export interface VersionPublishability {
   publishable: boolean;
