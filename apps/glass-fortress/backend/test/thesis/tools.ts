@@ -181,7 +181,28 @@ export interface RefusalCase {
    * `add_note`'s NEITHER is (it decides which row to look up). NO_RESEARCHER always is.
    */
   beforeAnyQuery?: boolean;
+  /**
+   * What the refusal's `error` must NAME (the R42 follow-up, M5): any ONE of these
+   * spellings, each a set of strings that must ALL appear in it. An `error` is
+   * otherwise only non-empty — its words are the builder's — but where the contract
+   * says what a refusal names, the case holds it by VALUE.
+   */
+  names?: readonly (readonly string[])[];
 }
+
+/**
+ * THE FIXTURE'S DIFF, as a refusal may name it. AWAITING_DERIVATION "names the diff"
+ * (thesis A4 :1422–:1423; T2 :414; T4 :583), and a record is named as evidence A1 says:
+ * by its computed name — DIFF_NAME, the first spelling — or as `{ url, before, after }`
+ * (evidence A1 :890–:891), "by page and timestamps" (evidence A4 :1069) — the second,
+ * which therefore carries the PAGE with the pair's two timestamps (round 4). The
+ * REVIEWER's round-1 ruling that admitted the timestamps alone rested on built code
+ * (`pairName`), which is not a ground under the house rule; the appendix wins.
+ */
+export const NAMES_THE_DIFF: readonly (readonly string[])[] = [
+  [DIFF_NAME],
+  [URL, BEFORE.waybackTimestamp, AFTER.waybackTimestamp],
+];
 
 /** One case per refusal, each asserting §3a's four things — and, for NO_RESEARCHER, the ORDER. */
 export function refusals(tool: ToolName, cases: readonly RefusalCase[]): void {
@@ -190,6 +211,11 @@ export function refusals(tool: ToolName, cases: readonly RefusalCase[]): void {
       await c.seed?.();
       const out = await call(tool, c.input, c.as);
       expectRefusal(tool, out, c.code);
+      if (c.names !== undefined) {
+        // The error rides in the failure line, so a miss shows what WAS said.
+        const error = String((JSON.parse(out) as { error: unknown }).error);
+        expect([error, c.names.some((spelling) => spelling.every((s) => error.includes(s)))]).toEqual([error, true]);
+      }
       if (c.code === 'NO_RESEARCHER' || c.beforeAnyQuery === true) {
         // THE ORDER: decided before any query — nothing asked, no delegate called.
         expect(asked).toEqual([]);

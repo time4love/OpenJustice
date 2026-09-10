@@ -18,6 +18,7 @@ import {
   OTHER_RESEARCHER,
   PROVISION,
   ROUNDS,
+  THESIS,
   TRAJECTORY_ID,
   VERSION,
   VERSION_TEXT,
@@ -25,8 +26,11 @@ import {
 import { mentionRow } from './rows';
 import {
   AFFIRMED_BEFORE,
+  AS_PUBLISHED,
+  MISSING_FRAMING,
   MISSING_THESIS,
   NAMELESS_RECORD,
+  NAMES_THE_DIFF,
   ON_THE_FIXTURE,
   UNKNOWN_TRAJECTORY,
   answerOf,
@@ -59,7 +63,13 @@ import {
 //
 // `create_thesis`'s set is NARROWED from A4's (§6-13): no NOT_AUTHOR and no STALE_HEAD,
 // which a call that creates the thesis cannot reach; no NO_THESIS, since it takes no
-// `thesisId`; NO_PROVISION_SHAPE by Q2.
+// `thesisId`; NO_PROVISION_SHAPE by Q2; NO_FRAMING for a `framingId` naming none (the
+// R42 follow-up's ruling, declared — A4 :1465 names no such code).
+//
+// THE R42 FOLLOW-UP (a post-merge cold read, verified by REVIEW): the return is the
+// UNION of T2 :422 and A4 :1471, since the flows win (:1225); the version row's own
+// columns are asserted (T2 :420–:421); what the write does NOT refuse has its cases
+// (T2 :405–:406, :438–:441); and AWAITING_DERIVATION names the diff (T2 :414).
 // ---------------------------------------------------------------------------
 
 beforeEach(() => {
@@ -95,6 +105,13 @@ describe('create_thesis — A4 :1461–:1466 (thesis step 20)', () => {
   refusals('create_thesis', [
     { code: 'NO_RESEARCHER', why: 'no researcher in context', as: null, seed: seedFraming, input: first },
     {
+      code: 'NO_FRAMING',
+      why: "a framingId naming none — never CLAIM_MISMATCH about a framing that is not there (the R42 follow-up's ruling; declared, A4 :1465 names no such code)",
+      as: AUTHOR,
+      seed: seedFraming,
+      input: { ...first, framingId: MISSING_FRAMING },
+    },
+    {
       code: 'NO_PROVISION_SHAPE',
       why: 'a provision the table does not know (Q2)',
       as: AUTHOR,
@@ -121,7 +138,8 @@ describe('create_thesis — A4 :1461–:1466 (thesis step 20)', () => {
     },
     {
       code: 'AWAITING_DERIVATION',
-      why: 'a pair the walk owes a content version — no pin can be computed',
+      why: 'a pair the walk owes a content version — no pin can be computed — and the refusal NAMES the diff (T2 :414; A4 :1423)',
+      names: NAMES_THE_DIFF,
       as: AUTHOR,
       seed: () => {
         seedFraming();
@@ -218,7 +236,8 @@ describe('add_thesis_version — A4 :1468–:1474 (thesis step 20)', () => {
     },
     {
       code: 'AWAITING_DERIVATION',
-      why: 'a pair the walk owes a content version',
+      why: 'a pair the walk owes a content version — and the refusal NAMES the diff (T2 :414; A4 :1423)',
+      names: NAMES_THE_DIFF,
       as: AUTHOR,
       seed: () => {
         seedThesis();
@@ -238,12 +257,21 @@ describe('add_thesis_version — A4 :1468–:1474 (thesis step 20)', () => {
   ]);
 
   describe('the version write — T2 :398–:436, sketch §3c', () => {
-    it('writes the version, its mentions and the head pointer in ONE transaction — by equality with what went through its client', async () => {
+    it('writes the version, its mentions and the head pointer in ONE transaction — by equality with what went through its client — and the version row carries its six columns: thesisId, text, contentHash, claim, parentVersionId = the head and createdById = the author (T2 :420–:421; A2 :1270–:1276; §12 :1136)', async () => {
       seedThesis();
       const out = answerOf(await call('add_thesis_version', next, AUTHOR));
       expect(new Set(written.map((w) => w.model))).toEqual(new Set(['thesisVersion', 'thesisMention', 'thesis']));
       expect(writtenViaTx).toEqual(written);
       expect(written.find((w) => w.model === 'thesis')?.data['headVersionId']).toBe(out['versionId']);
+      // `next` is VERSION_TEXT and CLAIM, written by AUTHOR against VERSION — seedThesis's head.
+      expect(written.find((w) => w.model === 'thesisVersion')?.data).toMatchObject({
+        thesisId: THESIS.id,
+        createdById: AUTHOR,
+        text: VERSION_TEXT,
+        contentHash: VERSION.contentHash,
+        claim: CLAIM,
+        parentVersionId: VERSION.id,
+      });
     });
 
     it('answers contentHash = sha256(utf8(text)) — the shell-derived vector of VERSION_TEXT (A1 :1231)', async () => {
@@ -324,13 +352,48 @@ describe('add_thesis_version — A4 :1468–:1474 (thesis step 20)', () => {
       expect(lost).toContain(String(won['versionId']));
     });
 
-    it('answers { versionId, contentHash, mentions, unargued, gapsNowOpen } — a CITED gap whose citation left the text is now open (A4 :1471–:1472)', async () => {
+    it('answers the UNION of T2 :422 and A4 :1471, by equality — { thesisId, versionId, contentHash, mentions, unargued, gapsNowOpen }, the flows winning where the appendix omits (:1225) — and a CITED gap whose citation left the text is now open (A4 :1472)', async () => {
       seedThesis();
       store.gapDecisions = [{ ...OPEN_GAP, id: 'gap-decision-cited', sequence: 2, decision: 'CITED', citedName: DIFF_NAME }];
       const out = answerOf(await call('add_thesis_version', { ...next, text: NEXT_VERSION_TEXT }, AUTHOR));
-      expect(Object.keys(out).sort()).toEqual(['contentHash', 'gapsNowOpen', 'mentions', 'unargued', 'versionId']);
+      expect(Object.keys(out).sort()).toEqual(['contentHash', 'gapsNowOpen', 'mentions', 'thesisId', 'unargued', 'versionId']);
+      expect(out['thesisId']).toBe(THESIS.id);
       expect(out['gapsNowOpen']).toEqual([OPEN_GAP.gapId]);
       expect(out['mentions']).toEqual([]);
+    });
+
+    describe('what the write does NOT refuse — the head is always a draft (T2 :405–:406, :438–:441)', () => {
+      /** The three models T2's transaction writes — the proof the call WROTE, and was not a refusal in disguise. */
+      const wroteTheVersion = (): string[] => [...new Set(written.map((w) => w.model))].sort();
+
+      it('a head that IS its published version is written past: the new version becomes the head, and the published pin stays where it was (T2 :405–:406)', async () => {
+        seedThesis(AS_PUBLISHED);
+        const out = answerOf(await call('add_thesis_version', next, AUTHOR));
+        expect(wroteTheVersion()).toEqual(['thesis', 'thesisMention', 'thesisVersion']);
+        expect(store.theses.find((t) => t['id'] === THESIS.id)).toMatchObject({
+          headVersionId: out['versionId'],
+          publishedVersionId: VERSION.id,
+        });
+      });
+
+      it('a citation of a WITHDRAWN record is written — the head may hold what a published version may not (T2 :438–:440)', async () => {
+        seedThesis();
+        seedEvidence(AFFIRMED_BEFORE);
+        store.evidenceRows = store.evidenceRows.map((row) => ({ ...row, status: 'WITHDRAWN' }));
+        const out = answerOf(await call('add_thesis_version', next, AUTHOR));
+        expect(wroteTheVersion()).toEqual(['thesis', 'thesisMention', 'thesisVersion']);
+        expect(mentionsIn(out).map((m) => m['name'])).toEqual([DIFF_NAME]);
+        // An Evidence row exists, so the pin is its `affirmedContentVersionHash` (T2 :408–:411);
+        // the row's status is not the write's concern.
+        expect(mentionsIn(out).find((m) => m['name'] === DIFF_NAME)?.['pin']).toBe(AFFIRMED_BEFORE);
+      });
+
+      it("an UNARGUED citation of a record nobody has promoted is written, and reported in `unargued` — T3's work-list, never a refusal (T2 :422–:423, :438–:441)", async () => {
+        seedThesis();
+        const out = answerOf(await call('add_thesis_version', next, AUTHOR));
+        expect(wroteTheVersion()).toEqual(['thesis', 'thesisMention', 'thesisVersion']);
+        expect(out['unargued']).toEqual([DIFF_NAME]);
+      });
     });
 
     describe('pin-equals-affirmed', () => {

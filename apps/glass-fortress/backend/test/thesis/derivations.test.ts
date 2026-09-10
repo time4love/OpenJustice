@@ -54,9 +54,12 @@ import { mentionRow } from './rows';
 //
 // RED BY DESIGN: every case reaches `services/thesisPredicates` through `built`,
 // naming the exports IT needs, so each fails BY NAME on the step that owes the
-// EARLIEST of them (`built`'s rule, ruled at 7.2) — CLAIM_FRAMED at 19, UNARGUED
-// and HISTORY at 20, FINGERPRINT and the gap list at 22, TRAJECTORY_CURRENT at 23,
-// REVIEWS at 24.
+// EARLIEST of them (`built`'s rule, ruled at 7.2) — CLAIM_FRAMED at 19, UNARGUED,
+// HISTORY and the gap list at 20, FINGERPRINT at 22, TRAJECTORY_CURRENT at 23,
+// REVIEWS at 24. THE GAP LIST IS STEP 20's (the R42 follow-up, H2): plan step 20
+// builds `get_thesis_context` with it. GAPS_DECIDED, THE_CALL and THE_REQUESTS stay
+// 22's, and their cases ask for the gap list too — so until step 20 lands their red
+// line names 20, the shape the PUBLISHABLE(v) note below states for 22 and 23.
 //
 // PUBLISHABLE(v) IS STEP 23's, AND ITS CASES NAME STEP 22 — both true (L3). Each
 // of them also asks for `fingerprint` and `CRITIC_PROMPT_VERSION`, step 22's, to
@@ -308,10 +311,12 @@ describe('CURRENT_ANALYSIS(v) — the analysis whose fingerprint is the version\
 });
 
 // ---------------------------------------------------------------------------
-// GAP_IN_FORCE · GAP_LIST · GAPS_DECIDED — A3 :1381–:1384 · thesis step 22
+// GAP_IN_FORCE · GAP_LIST · GAPS_DECIDED — A3 :1381–:1384 · GAP_IN_FORCE and
+// GAP_LIST thesis step 20 (plan step 20's gap list — the R42 follow-up, H2),
+// GAPS_DECIDED thesis step 22
 // ---------------------------------------------------------------------------
 
-describe('GAP_IN_FORCE(t, gapId) — the decision with the highest sequence (thesis step 22)', () => {
+describe('GAP_IN_FORCE(t, gapId) — the decision with the highest sequence (thesis step 20)', () => {
   it('the later decision is in force', async () => {
     const p = await predicates('gapInForce');
     const inForce = p.gapInForce([gap(1, 'OPEN'), gap(2, 'DISMISSED', { reason: 'לא רלוונטי' })], THESIS.id, GAP_ID);
@@ -332,7 +337,7 @@ describe('GAP_IN_FORCE(t, gapId) — the decision with the highest sequence (the
   });
 });
 
-describe('GAP_LIST(t) — every gap at its decision in force (thesis step 22)', () => {
+describe('GAP_LIST(t) — every gap at its decision in force (thesis step 20)', () => {
   it('lists each gap once, at its decision in force', async () => {
     const p = await predicates('gapList');
     const rows = [gap(1, 'OPEN'), gap(2, 'DISMISSED', { reason: 'לא רלוונטי' }), gap(1, 'OPEN', { gapId: '0xsecond' })];

@@ -208,10 +208,14 @@ export const MODULES = {
       claimFramed: fn(19),
       unargued: fn(20),
       history: fn(20),
+      // THE GAP LIST IS STEP 20's (the R42 follow-up, H2): plan step 20 (:120–:121)
+      // builds `get_thesis_context` "with HISTORY, UNARGUED and the gap list", and a
+      // gap is listed at its decision in force. GAPS_DECIDED and the two appeals stay
+      // step 22's, with `decide_gap` and `get_whistleblower_call` (plan step 22).
+      gapInForce: fn(20),
+      gapList: fn(20),
       fingerprint: fn(22),
       currentAnalysis: fn(22),
-      gapInForce: fn(22),
-      gapList: fn(22),
       gapsDecided: fn(22),
       theCall: fn(22),
       theRequests: fn(22),
@@ -559,9 +563,15 @@ export const TOOLS: Readonly<Record<ToolName, ToolContract>> = {
     access: 'WRITE',
     paid: false,
     // add_thesis_version's MINUS NOT_AUTHOR and STALE_HEAD, which a call that
-    // creates the thesis cannot reach (§6-13), PLUS A4's two and Q2's one.
+    // creates the thesis cannot reach (§6-13), PLUS A4's two and Q2's one — and
+    // NO_FRAMING for a `framingId` naming none (the R42 follow-up, REVIEW's ruling:
+    // Q2's reasoning, as Q3a gave `add_note`). DECLARED: A4 :1465 names no such code;
+    // the A4 amendment is owed beside the framing tools' NO_FRAMING, this narrowed set
+    // and `since`. It sits where the framing tools' ruled order puts the framing's
+    // lookup, first after NO_RESEARCHER (§6-14).
     codes: [
       'NO_RESEARCHER',
+      'NO_FRAMING',
       'NO_PROVISION_SHAPE',
       'EMPTY',
       'NOT_A_RECORD',
@@ -629,8 +639,9 @@ export const TOOLS: Readonly<Record<ToolName, ToolContract>> = {
       'STALE_SEQUENCE',
     ],
     // A4 :1494: "checked by the same rule as T5" — T5's rule is the publication
-    // assessor's name list, a model nothing mocks at step 17.
-    owed: [{ code: 'NAMES_PERSON', step: 22 }],
+    // assessor's name list, a model nothing mocks at step 17. OWED TO 23, not 22 (the
+    // R42 follow-up, REVIEW's ruling): plan step 23 builds that assessor and its rule.
+    owed: [{ code: 'NAMES_PERSON', step: 23 }],
   },
   draft_foia_request: {
     module: 'mcp/tools/draftFoiaRequest',
@@ -650,6 +661,8 @@ export const TOOLS: Readonly<Record<ToolName, ToolContract>> = {
   check_publication_readiness: {
     module: 'mcp/tools/checkPublicationReadiness',
     access: 'GATED',
+    // PAID IFF A RATIONALE is given (A4 :1506): `paid` names the tool's costliest
+    // path. Without one it asks no model, which publication.test.ts holds.
     paid: true,
     // NO NO_RESEARCHER (round 2, L2): a GATED read's handler answers without an
     // identity — interaction flows A5 :1037–:1038. `draft_foia_request` and

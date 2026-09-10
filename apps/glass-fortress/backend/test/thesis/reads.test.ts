@@ -10,14 +10,21 @@ import { built } from './absent';
 import type { ThesisGapDecisionRow, ThesisPredicatesModule, ThesisRow, ThesisVersionRow } from './contract';
 import {
   AUTHOR,
+  BOTH_EVIDENCE_MENTION,
+  BOTH_TRAJECTORY_MENTION,
+  CITING_BOTH_VERSION,
   CLAIM,
   FRAMING,
   MENTION,
+  NEXT_VERSION,
   NOTE,
   OPEN_GAP,
   OTHER_RESEARCHER,
   PROVISION,
   THESIS,
+  TRAJECTORY_ID,
+  TRAJECTORY_MENTION,
+  TRAJECTORY_VERSION,
   VERSION,
   VERSION_TEXT,
 } from './fixtures';
@@ -80,6 +87,38 @@ afterEach(() => {
 
 const at = (minute: number): Date => new Date(Date.UTC(2026, 8, 10, 9, minute));
 
+/**
+ * A SECOND gap. Its description is the sketch §5f's input `c` and its gapId is
+ * gapId(c), derived at the same shell as OPEN_GAP's — a gap row whose id is not its
+ * description's would be a malformed row. One spelling for the two worlds holding
+ * two gaps: `list_theses`' open-gap count and the whistleblower call's request.
+ */
+const SECOND_GAP = {
+  gapId: '0x925e813b18233dc71792ff6d237b1a4032eda5d1bd5625ce0b938f7fda2c8626',
+  description: 'מסמך הצגת הנתונים למשרד הבריאות לפני 6 באוגוסט 2022',
+} as const;
+
+/**
+ * A THIRD gap — DISMISSED in `list_theses`' world, so two of its three gaps read OPEN
+ * (round 2, F6). Its description is single-spaced and trimmed, so NORMALISE
+ * (`normaliseClaim`, services/claimTrajectory.ts :90–:92; thesis A1 :1234, :1247)
+ * returns it unchanged and its gapId is sha256 over its own UTF-8 bytes — a VECTOR
+ * DERIVED OUTSIDE THE IMPLEMENTATION, 2026-09-10, at a zsh shell (89 bytes):
+ *
+ *   D='מסמך הצגת הנתונים למשרד הבריאות לפני 7 באוגוסט 2022'
+ *   python3 -c 'import hashlib, sys; print("0x" + hashlib.sha256(sys.argv[1].encode("utf-8")).hexdigest())' "$D"
+ *   printf '%s' "$D" | shasum -a 256
+ *   printf '%s' "$D" | openssl dgst -sha256
+ *
+ * All three agree; the same commands over SECOND_GAP's description reproduce its
+ * committed vector, and the one character between the two descriptions is the control
+ * that differs.
+ */
+const THIRD_GAP = {
+  gapId: '0x3d9b7ce0234a939b4c212ede5f59c339dd7b956bd9c549de1edee5cbea741307',
+  description: 'מסמך הצגת הנתונים למשרד הבריאות לפני 7 באוגוסט 2022',
+} as const;
+
 describe('list_theses — A4 :1426–:1431, T5 :840–:842, PUBLIC (thesis step 20)', () => {
   const DRAFT_ID = 'thesis-draft';
 
@@ -128,6 +167,50 @@ describe('list_theses — A4 :1426–:1431, T5 :840–:842, PUBLIC (thesis step 
     expect(own(THESIS.id)).toEqual([true]);
     expect(written).toEqual([]);
     expect(tripped).toEqual([]);
+  });
+
+  it("a RESEARCHER's own entry holds, by VALUE, its head, its published version, the framing attached, and the counts of unargued mentions and open gaps — each count as the ONE predicate computes it (A4 :1429–:1431; sketch §3b)", async () => {
+    // Published at VERSION; the head moved on to CITING_BOTH_VERSION — the chain held
+    // whole — citing the diff with no argument and a trajectory; three gaps, two OPEN
+    // and one DISMISSED.
+    seedThesis({ ...AS_PUBLISHED, headVersionId: CITING_BOTH_VERSION.id });
+    store.versions = [VERSION, TRAJECTORY_VERSION, NEXT_VERSION, CITING_BOTH_VERSION];
+    const headMentions = [BOTH_EVIDENCE_MENTION, BOTH_TRAJECTORY_MENTION];
+    store.mentions = [...store.mentions, mentionRow(TRAJECTORY_MENTION, false), ...headMentions.map((m) => mentionRow(m, false))];
+    const gaps: ThesisGapDecisionRow[] = [
+      OPEN_GAP,
+      { ...OPEN_GAP, ...SECOND_GAP, id: 'gap-decision-second', createdAt: at(33) },
+      { ...OPEN_GAP, ...THIRD_GAP, id: 'gap-decision-third', decision: 'DISMISSED', reason: 'לא רלוונטי', createdAt: at(34) },
+    ];
+    store.gapDecisions = [...gaps];
+    const p = await built<ThesisPredicatesModule>('services/thesisPredicates', ['unargued', 'gapList']);
+    const unargued = p.unargued(CITING_BOTH_VERSION, headMentions.map((m) => ({ ...m, debate: null }))).length;
+    const list = p.gapList(gaps, THESIS.id, headMentions.map((m) => m.name));
+    const open = list.filter((e) => e.readsAs === 'OPEN').length;
+    // THE VACUITY GUARD: the world holds something to count on each side; the two
+    // counts DIFFER, so the /unargued/ and /gap/ fields below cannot pass on each other's
+    // value; and the OPEN gaps are FEWER than every gap on GAP_LIST, so a count of all
+    // gaps under a /gap/ field is not the open-gap count and fails.
+    expect([unargued > 0, open > 0, unargued !== open, open !== list.length]).toEqual([true, true, true, true]);
+    const theirs: unknown = JSON.parse(await call('list_theses', {}, AUTHOR));
+    const own = objectsWhere(theirs, (o) => o['thesisId'] === THESIS.id && 'headIsPublished' in o);
+    expect(own).toHaveLength(1);
+    const entry = own.at(0);
+    expect(entry?.['headIsPublished']).toBe(false);
+    // EACH VALUE UNDER ITS FIELD (A4 :1429–:1431): held by a key, at any depth of the
+    // entry, whose NAME carries A4's word — its spelling the builder's, read by pattern
+    // as versionWrite.test.ts's "takes NO pin" reads a schema's keys. A head and a
+    // published version swapped, or the two counts swapped, fail on the field's name.
+    const heldUnder = (key: RegExp, value: unknown): boolean =>
+      objectsWhere(entry, () => true).some((o) => Object.entries(o).some(([k, v]) => key.test(k) && containsDeep(v, value)));
+    expect({
+      head: heldUnder(/head/i, CITING_BOTH_VERSION.id),
+      published: heldUnder(/publish/i, VERSION.id),
+      framing: heldUnder(/framing/i, FRAMING.id),
+      unargued: heldUnder(/unargued/i, unargued),
+      openGaps: heldUnder(/gap/i, open),
+    }).toEqual({ head: true, published: true, framing: true, unargued: true, openGaps: true });
+    expect(written).toEqual([]);
   });
 
   codeSetEquality('list_theses');
@@ -194,16 +277,11 @@ describe('get_whistleblower_call — A4 :1501–:1504, PUBLIC, refuses nothing (
     createdAt: at(31),
   };
 
-  /**
-   * A SECOND gap, REQUESTED. Its description is the sketch §5f's input `c` and its
-   * gapId is gapId(c), derived at the same shell as OPEN_GAP's — a gap row whose id
-   * is not its description's would be a malformed row.
-   */
+  /** SECOND_GAP, REQUESTED. */
   const REQUESTED: ThesisGapDecisionRow = {
     ...OPEN_GAP,
+    ...SECOND_GAP,
     id: 'gap-decision-requested',
-    gapId: '0x925e813b18233dc71792ff6d237b1a4032eda5d1bd5625ce0b938f7fda2c8626',
-    description: 'מסמך הצגת הנתונים למשרד הבריאות לפני 6 באוגוסט 2022',
     decision: 'REQUESTED',
     request: REQUEST,
     createdAt: at(32),

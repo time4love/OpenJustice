@@ -189,7 +189,7 @@ describe('one FAIL per check, each naming its subject (A6 :1587–:1588; sketch 
     expectFails(rows, 'CLAIM_FRAMED', FRAMING.id);
   });
 
-  it('3 CITES_EVIDENCE — a version citing no record (A6 :1203 assigns it here, not to the evidence six)', async () => {
+  it('3 CITES_EVIDENCE — a version citing no record (evidence A6 :1203 assigns it here, not to the evidence six)', async () => {
     const { rows } = await gateOver({ seed: { version: NEXT_VERSION } });
     expectFails(rows, 'CITES_EVIDENCE', NEXT_VERSION.id);
   });
