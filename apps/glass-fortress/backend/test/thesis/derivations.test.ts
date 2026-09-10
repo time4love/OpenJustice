@@ -3,33 +3,10 @@ jest.mock('../../src/lib/prisma', () => ({
 }));
 
 import * as evidencePredicates from '../../src/services/evidencePredicates';
-import type {
-  Conjunct,
-  ConjunctId,
-  ConjunctReason,
-  ExaminedMention,
-  VersionPublishableReport,
-} from '../../src/services/evidencePredicates';
-import * as trajectoryCitation from '../../src/services/trajectoryCitation';
-import type { ResolvedTrajectoryCitation, TrajectoryCurrency } from '../../src/services/trajectoryCitation';
-import { AFTER, BEFORE, CAPTURE_NAME, CURRENT_VERSION, DIFF_NAME, DIFF_ROW, PAGE, URL } from '../helpers/corpusFixture';
+import { AFTER, BEFORE, CAPTURE_NAME, CURRENT_VERSION, DIFF_NAME, DIFF_ROW } from '../helpers/corpusFixture';
 import { resetDouble, store, written } from '../helpers/evidenceDouble';
 import { built } from './absent';
-import type {
-  CitedMention,
-  DebateRef,
-  FingerprintInput,
-  Fingerprinted,
-  FramingRoundRow,
-  FramingRoundType,
-  GapDecisionValue,
-  ReviewEntry,
-  ThesisAnalysisRow,
-  ThesisGapDecisionRow,
-  ThesisPredicatesModule,
-  ThesisVersionRow,
-} from './contract';
-import { mentionRow } from './rows';
+import type { CitedMention, DebateRef, FingerprintInput, ReviewEntry, ThesisPredicatesModule, ThesisVersionRow } from './contract';
 import {
   ANALYSIS,
   ATTEMPT,
@@ -50,6 +27,27 @@ import {
   VERSION,
   WITHDRAWAL,
 } from './fixtures';
+import {
+  CHOSEN,
+  CONJUNCTS_ALONE,
+  CURRENCIES,
+  EVIDENCE_FAILS,
+  EVIDENCE_NOT_EVALUABLE,
+  EVIDENCE_PASSES,
+  GAP_ID,
+  MENTION_ROW,
+  PASSING,
+  analysis,
+  at,
+  capture,
+  defined,
+  diffRecord,
+  gap,
+  round,
+  seedPublishable,
+  trajectoriesAre,
+} from './gateWorld';
+import { mentionRow } from './rows';
 
 // ---------------------------------------------------------------------------
 // A3's DERIVATIONS — docs/gf-thesis-flows.md A3, the R40 sketch §2.
@@ -103,23 +101,11 @@ afterEach(() => {
   jest.restoreAllMocks();
 });
 
-const at = (hour: number, minute: number, second = 0): Date => new Date(Date.UTC(2026, 8, 10, hour, minute, second));
+// `at`, `round`, `gap`, `analysis`, `diffRecord` and the rest are `test/thesis/gateWorld.ts`'s (7.4).
 
 // ---------------------------------------------------------------------------
 // CLAIM_FRAMED(v) — A3 :1366–:1368 · thesis step 19
 // ---------------------------------------------------------------------------
-
-const round = (sequence: number, type: FramingRoundType, content: unknown, framingId = FRAMING.id): FramingRoundRow => ({
-  id: `round-${framingId}-${String(sequence)}`,
-  framingId,
-  sequence,
-  type,
-  content,
-  researcherId: AUTHOR,
-  createdAt: at(8, sequence),
-});
-
-const CHOSEN = { claim: CLAIM, provision: PROVISION, elements: [] };
 
 const framedInput = (over: Partial<Parameters<P['claimFramed']>[0]> = {}): Parameters<P['claimFramed']>[0] => ({
   version: { thesisId: THESIS.id, claim: CLAIM },
@@ -232,17 +218,6 @@ describe("UNARGUED(v) — the version's EVIDENCE citations nobody has argued for
 // fingerprint is compared only with itself (sketch §6-10). Step 22 states it.
 // ---------------------------------------------------------------------------
 
-const GAP_ID = '0xb7e3de92429f145655225b425edb907f0740fb6cad838ac5ee2de3b03678d8eb';
-const capture = (row: { textHash: string; textExtractionVersion: string }) => ({
-  textHash: row.textHash,
-  textExtractionVersion: row.textExtractionVersion,
-});
-const diffRecord = (versions: readonly (typeof CURRENT_VERSION)[] = [CURRENT_VERSION], after = capture(AFTER)) => ({
-  kind: 'DIFF' as const,
-  before: capture(BEFORE),
-  after,
-  versions,
-});
 const fpInput = (over: Partial<FingerprintInput> = {}): FingerprintInput => ({
   contentHash: VERSION.contentHash,
   evidence: [{ name: DIFF_NAME, record: diffRecord() }],
@@ -251,10 +226,6 @@ const fpInput = (over: Partial<FingerprintInput> = {}): FingerprintInput => ({
   promptVersion: 'critic-v1',
   ...over,
 });
-const defined = (f: Fingerprinted): string => {
-  if (!f.defined) throw new Error(`FINGERPRINT undefined: ${f.reason} for ${f.name}`);
-  return f.fingerprint;
-};
 
 describe('FINGERPRINT(v) — the input an analysis was about (thesis step 22)', () => {
   it('is deterministic over the same input', async () => {
@@ -314,16 +285,6 @@ describe('FINGERPRINT(v) — the input an analysis was about (thesis step 22)', 
   });
 });
 
-const analysis = (inputFingerprint: string, versionId = VERSION.id): ThesisAnalysisRow => ({
-  id: `analysis-${versionId}-${inputFingerprint}`,
-  versionId,
-  inputFingerprint,
-  opinion: {},
-  model: 'critic-model',
-  promptVersion: 'critic-v1',
-  runAt: at(9, 30),
-});
-
 describe('CURRENT_ANALYSIS(v) — the analysis whose fingerprint is the version\'s now (thesis step 22)', () => {
   it('is the analysis carrying the current fingerprint', async () => {
     const p = await predicates('currentAnalysis');
@@ -349,22 +310,6 @@ describe('CURRENT_ANALYSIS(v) — the analysis whose fingerprint is the version\
 // ---------------------------------------------------------------------------
 // GAP_IN_FORCE · GAP_LIST · GAPS_DECIDED — A3 :1381–:1384 · thesis step 22
 // ---------------------------------------------------------------------------
-
-const gap = (sequence: number, decision: GapDecisionValue, over: Partial<ThesisGapDecisionRow> = {}): ThesisGapDecisionRow => ({
-  id: `gap-${String(sequence)}-${decision}`,
-  thesisId: THESIS.id,
-  gapId: GAP_ID,
-  description: 'מסמך הצגת הנתונים למשרד הבריאות לפני 5 באוגוסט 2022',
-  sequence,
-  decision,
-  citedName: null,
-  request: null,
-  callItem: null,
-  reason: null,
-  researcherId: AUTHOR,
-  createdAt: at(10, sequence),
-  ...over,
-});
 
 describe('GAP_IN_FORCE(t, gapId) — the decision with the highest sequence (thesis step 22)', () => {
   it('the later decision is in force', async () => {
@@ -429,36 +374,6 @@ describe('GAPS_DECIDED(v) — no gap reads OPEN (thesis step 22)', () => {
 // ---------------------------------------------------------------------------
 // TRAJECTORY_CURRENT(m) — A3 :1386–:1388 · thesis step 23
 // ---------------------------------------------------------------------------
-
-/**
- * The trajectory service's four states, one of each — a RECORD over the union's own
- * discriminant, so a fifth state added to `TrajectoryCurrency` fails this file's
- * compile rather than arriving unmapped. At module scope because REVIEWS' own
- * STALE_TRAJECTORY arm resolves to them too.
- */
-const CURRENCIES: Record<TrajectoryCurrency['state'], TrajectoryCurrency> = {
-  PINNED_IS_LATEST: { state: 'PINNED_IS_LATEST', computedAt: '2026-09-01T00:00:00.000Z' },
-  RECOMPUTED_AGREES: {
-    state: 'RECOMPUTED_AGREES',
-    latestComputationId: 'computation-2',
-    latestComputedAt: '2026-09-05T00:00:00.000Z',
-    latestSnapshotsExamined: 9,
-  },
-  RECOMPUTED_DISAGREES: {
-    state: 'RECOMPUTED_DISAGREES',
-    latestComputationId: 'computation-2',
-    latestComputedAt: '2026-09-05T00:00:00.000Z',
-    latestSnapshotsExamined: 9,
-    difference: 'the claim was restored',
-    latestFinalState: 'PRESENT',
-    latestFlips: [],
-  },
-  NOT_FOLLOWED_BY_LATEST: {
-    state: 'NOT_FOLLOWED_BY_LATEST',
-    latestComputationId: 'computation-2',
-    latestComputedAt: '2026-09-05T00:00:00.000Z',
-  },
-};
 
 describe("TRAJECTORY_CURRENT(m) — the trajectory service's four states, mapped (thesis step 23)", () => {
   it('PINNED_IS_LATEST and RECOMPUTED_AGREES are current; the other two are STALE_TRAJECTORY', async () => {
@@ -528,108 +443,12 @@ describe('THE_CALL(t) and THE_REQUESTS(t) — the two appeals of a PUBLISHED ver
 // publishable.
 // ---------------------------------------------------------------------------
 
-/** The version's one citation, as `publishableEvidence` names what it examined (A6 :1201). */
-const EXAMINED: ExaminedMention = {
-  mentionId: MENTION.id,
-  fileHash: DIFF_NAME,
-  contentVersionHash: MENTION.contentVersionHash,
-};
-
-const conjunct = (id: ConjunctId, verdict: Conjunct['verdict'] = 'PASS', reason: ConjunctReason | null = null): Conjunct => ({
-  id,
-  verdict,
-  reason,
-  detail: reason,
-});
-
-/** A3's five clauses and A6's promoted precondition, every one a PASS. */
-const SIX_PASS: readonly Conjunct[] = (
-  ['RECORD_PROMOTED', 'ARGUED', 'VERIFIED', 'CITATION_CURRENT', 'DERIVED', 'INPUT_SOUND'] as const
-).map((id) => conjunct(id));
-
-const EVIDENCE_PASSES: VersionPublishableReport = {
-  evaluable: true,
-  versionId: VERSION.id,
-  mentionsExamined: 1,
-  publishable: true,
-  mentions: [{ evaluable: true, examined: EXAMINED, publishable: true, conjuncts: [...SIX_PASS] }],
-};
-
-/** The cited record was WITHDRAWN: RECORD_PROMOTED fails, and nothing else does. */
-const EVIDENCE_FAILS: VersionPublishableReport = {
-  evaluable: true,
-  versionId: VERSION.id,
-  mentionsExamined: 1,
-  publishable: false,
-  mentions: [
-    {
-      evaluable: true,
-      examined: EXAMINED,
-      publishable: false,
-      conjuncts: SIX_PASS.map((c) => (c.id === 'RECORD_PROMOTED' ? conjunct(c.id, 'FAIL', 'WITHDRAWN') : c)),
-    },
-  ],
-};
-
-/**
- * A DOCUMENT citation that failed nothing: four conjuncts examined none, so the
- * report cannot be graded. NO VERSION IN THIS TREE CAN CITE ONE — `#doc_` is
- * document step 33's — so the mention this stub names is not the fixture
- * version's; it is the one shape of the state, stated whole.
- */
-const DOCUMENT_EXAMINED: ExaminedMention = {
-  mentionId: 'mention-document',
-  fileHash: `0x${'dc'.repeat(32)}`,
-  contentVersionHash: `0x${'de'.repeat(32)}`,
-};
-const EVIDENCE_NOT_EVALUABLE: VersionPublishableReport = {
-  evaluable: false,
-  versionId: VERSION.id,
-  mentionsExamined: 1,
-  reason: 'DOCUMENT_CLASS_NOT_BUILT',
-  notEvaluable: [DOCUMENT_EXAMINED],
-  mentions: [
-    {
-      evaluable: false,
-      examined: DOCUMENT_EXAMINED,
-      reason: 'DOCUMENT_CLASS_NOT_BUILT',
-      conjuncts: SIX_PASS.map((c) =>
-        c.id === 'RECORD_PROMOTED' || c.id === 'ARGUED' ? c : conjunct(c.id, 'EXAMINED_NONE', 'DOCUMENT_CLASS_NOT_BUILT'),
-      ),
-    },
-  ],
-};
-
-const DECIDED = gap(1, 'DISMISSED', { reason: 'לא רלוונטי' });
-const PASSING: { substance: boolean; names: readonly string[] } = { substance: true, names: [] };
-
-// The mention row as the double's delegates read it is `test/thesis/rows.ts`'s —
-// moved there at 7.3, when the tool files needed the same row.
-const MENTION_ROW = mentionRow(MENTION, false);
-
-async function seedPublishable(over: { statement?: string | null; rounds?: readonly FramingRoundRow[]; gaps?: readonly ThesisGapDecisionRow[]; analysed?: boolean } = {}): Promise<P> {
-  const p = await predicates('publishableVersion', 'fingerprint', 'CRITIC_PROMPT_VERSION');
-  const thesis = { ...THESIS, publicInterestStatement: over.statement === undefined ? 'עניין ציבורי מובהק' : over.statement };
-  store.thesis = thesis;
-  store.theses = [thesis];
-  store.versions = [VERSION];
-  store.framings = [FRAMING];
-  store.framingRounds = [...(over.rounds ?? ROUNDS)];
-  store.gapDecisions = [...(over.gaps ?? [DECIDED])];
-  store.mentions = [MENTION_ROW];
-  store.evidenceRows = [{ fileHash: DIFF_NAME, kind: 'DIFF', status: 'PROMOTED', snapshot: null, urlVersionDiff: DIFF_ROW }];
-  const fingerprint = defined(
-    p.fingerprint({
-      contentHash: VERSION.contentHash,
-      evidence: [{ name: DIFF_NAME, record: diffRecord() }],
-      trajectoryIds: [],
-      gaps: [{ gapId: GAP_ID, decision: 'DISMISSED' }],
-      promptVersion: p.CRITIC_PROMPT_VERSION,
-    }),
-  );
-  store.analyses = over.analysed === false ? [] : [analysis(fingerprint)];
-  return p;
-}
+// THE WORLD THESE CASES STAND ON — the evidence half's stub reports, `seedPublishable`
+// and `CONJUNCTS_ALONE` — is `test/thesis/gateWorld.ts`'s, moved there at 7.4 so the
+// gate's agreement runs over THESE fixtures, never a copy of them. Its fingerprint is
+// now seeded over the world's OWN gap decisions: at 7.2 a DISMISSED gap was
+// fingerprinted whatever the case seeded, so "a gap reading OPEN" also left the
+// analysis stale — two conjuncts false where the case claims one.
 
 describe('PUBLISHABLE(v) — every conjunct, each held alone (thesis step 23)', () => {
   it('every conjunct true is publishable, and the evidence half is asked for THIS version (L6)', async () => {
@@ -651,15 +470,7 @@ describe('PUBLISHABLE(v) — every conjunct, each held alone (thesis step 23)', 
     expect((await p.publishableVersion(VERSION.id, PASSING)).publishable).toBe(false);
   });
 
-  const alone: readonly [string, Parameters<typeof seedPublishable>[0], typeof PASSING, string][] = [
-    ['a claim no assessed round chose', { rounds: [round(1, 'PROPOSED', { framing: CLAIM }), round(2, 'CHOSEN', CHOSEN)] }, PASSING, 'CLAIM_FRAMED'],
-    ['no CURRENT analysis', { analysed: false }, PASSING, 'ANALYSIS_CURRENT'],
-    ['a gap reading OPEN', { gaps: [gap(1, 'OPEN')] }, PASSING, 'GAPS_DECIDED'],
-    ['no public-interest statement', { statement: null }, PASSING, 'PUBLIC_INTEREST_STATEMENT'],
-    ['a rationale without substance', {}, { substance: false, names: [] }, 'RATIONALE_SUBSTANCE'],
-    ['an assessment that names a person', {}, { substance: true, names: ['ישראל ישראלי'] }, 'NAMES_NO_PERSON'],
-  ];
-  for (const [what, seed, assessment, check] of alone) {
+  for (const [what, seed, assessment, check] of CONJUNCTS_ALONE) {
     it(`${what} ALONE makes it not publishable, and the report names ${check}`, async () => {
       const p = await seedPublishable(seed);
       jest.spyOn(evidencePredicates, 'publishableEvidence').mockResolvedValue(EVIDENCE_PASSES);
@@ -834,47 +645,6 @@ function seedReviews(over: {
       ? []
       : [{ fileHash: DIFF_NAME, kind: 'DIFF', status: over.record, snapshot: null, urlVersionDiff: DIFF_ROW }];
 }
-
-/** A cited trajectory as the ONE resolver returns it, carrying the currency a case names. */
-const resolvedAt = (id: string, currency: TrajectoryCurrency): ResolvedTrajectoryCitation => ({
-  id,
-  claimHash: `claim-of-${id}`,
-  claimText: 'הקישור לדיווח על תופעות לוואי',
-  url: URL,
-  trackedUrlId: PAGE.id,
-  observations: [],
-  changes: [],
-  transitions: 2,
-  firstSeen: '2020-12-09',
-  lastSeen: '2021-06-12',
-  finalState: 'REMOVED',
-  computation: {
-    id: 'computation-1',
-    sourceStateHash: 'state-1',
-    detectionVersion: 'v3',
-    computedAt: '2026-09-01T00:00:00.000Z',
-    snapshotsExamined: 9,
-  },
-  coMovement: { patternHash: 'pattern-1', claimCount: 1, members: [{ id, claimText: 'הקישור', cited: true }] },
-  currency,
-  caveat: trajectoryCitation.TRAJECTORY_EXTRACTION_CAVEAT,
-});
-
-/**
- * STALE_TRAJECTORY is TRAJECTORY_CURRENT over the currency the trajectory service
- * computes, and that service's one entry is `resolveTrajectoryCitations` (sketch
- * §2). STUBBED AT THAT SYMBOL, as PUBLISHABLE(v)'s evidence half is: the double
- * holds no ClaimTrajectory table, the four states are
- * `test/trajectoryCitation.test.ts`'s to derive, and a REVIEWS that re-derived a
- * currency instead of asking the resolver would meet the missing table — so the
- * stub doubles as the call proof its builder owes.
- */
-const trajectoriesAre = (currency: TrajectoryCurrency) =>
-  jest
-    .spyOn(trajectoryCitation, 'resolveTrajectoryCitations')
-    .mockImplementation((ids) =>
-      Promise.resolve({ resolved: [...new Set(ids)].map((id) => resolvedAt(id, currency)), missing: [] }),
-    );
 
 /** What the list OWES, as (kind, name) — every entry on the thesis, and each with its ONE command (A4 :1523–:1525). */
 const owedOnTheThesis = (entries: readonly ReviewEntry[]): [string, string][] => {

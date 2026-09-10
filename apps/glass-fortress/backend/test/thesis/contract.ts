@@ -314,10 +314,48 @@ export interface GapEntry {
   inForce: ThesisGapDecisionRow;
 }
 
-/** The publication assessor's two answers PUBLISHABLE(v) composes (A3 :1395). */
+/**
+ * The publication assessor's answers the gate reads (A3 :1394; A6 :1599–:1601): the
+ * two PUBLISHABLE(v) composes, and the advisory third.
+ *
+ * `allegationsFramed` IS COINED (7.4). A6's check 17 is "the assessor's opinion that
+ * claims are framed as allegations under investigation" (T5 :758), and neither A2 nor
+ * A4 names the field that carries it. The gate reads it; PUBLISHABLE(v) does not — an
+ * advisory check binds nothing.
+ */
 export interface PublicationAssessment {
   substance: boolean;
   names: readonly string[];
+  allegationsFramed: boolean;
+}
+
+/** One of A6's check NAMES — the `id` a gate row carries, as evidence's `EvidenceCheck` carries its. */
+export type CheckName = (typeof CHECKS)[number]['name'];
+
+/**
+ * ONE ROW OF THE GATE (sketch §4) — `services/evidenceChecks.ts`'s `EvidenceCheck`
+ * shape, so that rows 5–10 can BE evidenceChecks' rows, deep-equal. `verdict` is
+ * three-valued and the third is not a pass (evidence §0b); `examined` is present at
+ * zero (A6 :1588, "an empty scope says so"); `failures` name their subjects. What an
+ * entry of `examined` or `failures` looks like is each check's, the builder's: the
+ * suite asks only that a failure NAMES its subject, and looks for the subject's
+ * VALUE, never a field name. There is no binding flag (A6 :1605–:1608).
+ */
+export interface ThesisCheckRow {
+  id: CheckName;
+  kind: 'hard' | 'advisory';
+  verdict: 'PASS' | 'FAIL' | 'EXAMINED_NONE';
+  examined: readonly unknown[];
+  failures: readonly unknown[];
+}
+
+/**
+ * `services/thesisGate` (sketch §4): it MAPS one evaluation and does not load; the
+ * publication assessor's answer is an INPUT — null when no rationale was given — so
+ * the gate asks no model.
+ */
+export interface ThesisGateModule {
+  thesisChecks(versionId: string, assessment: PublicationAssessment | null): Promise<ThesisCheckRow[]>;
 }
 
 /** PUBLISHABLE(v) as a report; `failed` names A6's check names (§4). */

@@ -280,6 +280,38 @@ export const WITHDRAWAL: WithdrawalRow = {
   createdAt: at(14, 40),
 };
 
+/**
+ * A HEAD CITING BOTH KINDS — the diff VERSION cites AND the trajectory
+ * TRAJECTORY_VERSION cites (7.4). The gate's checks 11 and 12 must each fail ALONE,
+ * and a version citing a trajectory and no record would fail CITES_EVIDENCE beside
+ * them. Its contentHash is a vector derived OUTSIDE the implementation, as the
+ * others are: at a zsh shell, `printf '%s\n' "$TEXT"` through `shasum -a 256` and
+ * through `openssl dgst -sha256`, and Python's `hashlib.sha256` over the text typed
+ * afresh — all three agree, and a one-character control differs:
+ *
+ *   CITING_BOTH_VERSION  197 bytes  0x915cb427e2c61b9df1a1197ea58a0cdc3d0d7fba909ec4153de90084d33f1ec1
+ */
+export const CITING_BOTH_TEXT = `כפי שהעמוד הראה בין 9 בדצמבר 2020 ל-12 ביוני 2021 #ev_${DIFF_NAME} ולא שוחזר #tr_${TRAJECTORY_ID}\n`;
+
+export const CITING_BOTH_VERSION: ThesisVersionRow = {
+  id: 'version-4',
+  thesisId: THESIS.id,
+  parentVersionId: NEXT_VERSION.id,
+  text: CITING_BOTH_TEXT,
+  contentHash: '0x915cb427e2c61b9df1a1197ea58a0cdc3d0d7fba909ec4153de90084d33f1ec1',
+  claim: CLAIM,
+  createdById: AUTHOR,
+  createdAt: at(17),
+};
+
+/** CITING_BOTH_VERSION's two citations: the diff at CURRENT's pin, not yet argued, and the trajectory (no pin). */
+export const BOTH_EVIDENCE_MENTION: ThesisMentionRow = { ...MENTION, id: 'mention-3', versionId: CITING_BOTH_VERSION.id };
+export const BOTH_TRAJECTORY_MENTION: ThesisMentionRow = {
+  ...TRAJECTORY_MENTION,
+  id: 'mention-4',
+  versionId: CITING_BOTH_VERSION.id,
+};
+
 /** Every fixture row that carries a `createdAt` — what the distinctness case reads; an analysis's instant is its `runAt`. */
 export const DATED_ROWS: readonly { id: string; createdAt: Date }[] = [
   THESIS,
