@@ -484,6 +484,11 @@ step 20, which is the first act that can create a thesis.
 
 ### 15 · The gate
 The six checks of A6 calling A3's predicates, check 6 gone; `audit-theses`.
+Built 2026-09-10 (PR #411); the four rulings — one of them with its grounding corrected — what six review
+rounds found, what the decoys proved — every predicate the gate composes proven a CALL by breaking it at
+its own definition — and what is still the researcher's are `docs/gf-evidence-step-15-2026-09-10.md`.
+No staging exercise until thesis step 20 creates a thesis; `audit-theses` gains its subject, and its ledger
+command, at thesis step 24.
 
 ### 16 · The evidence switch
 The retired names of A4 unregistered, the retired-names scan extended, the evidence routes handed
