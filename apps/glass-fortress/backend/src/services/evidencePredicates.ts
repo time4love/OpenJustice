@@ -3,6 +3,7 @@ import { DIFF_VERSION } from '../lib/diffVersion';
 import { ON_CHAIN_CHECK_VERSION } from '../lib/onChainVerdict';
 import { recordId, type RecordId, type Record as CorpusRecord } from '../lib/evidenceIdentity';
 import { normaliseForPresence } from '../lib/htmlText';
+import { assessEvidenceInputSoundness } from './evidenceInputSoundness';
 
 // ---------------------------------------------------------------------------
 // A3'S DERIVATIONS, AS PREDICATES — docs/gf-evidence-flows.md A3, and the one
@@ -23,11 +24,25 @@ import { normaliseForPresence } from '../lib/htmlText';
 // function this step's tools ask and cannot load it differently. The acceptance
 // suite already types `publicPage` that way (test/evidence/predicates.test.ts).
 //
-// WHAT IS NOT HERE, AND WHOSE IT IS. `publishable` is step 15's and composes
-// ARGUED, VERIFIED, CITATION_CURRENT and the survival of CURRENT; it cannot be
-// honest before the gate that consumes it exists, and adding a stub would turn a
-// failing test into a passing one that asserts nothing. `argued` arrived at
-// evidence step 13 with the debate that gives it a subject.
+// WHAT `publishable` IS, AND WHY EVERY CONJUNCT IS A CALL. Built at evidence
+// step 15, the step that gives it the gate to consume it. It composes A3's five
+// clauses plus the precondition A6 promotes to a check of its own, and it
+// computes NONE of them: `RECORD_PROMOTED` reads the loaded row's two statuses,
+// `ARGUED` calls `argued`, `VERIFIED` calls `verified`, `DERIVED` calls
+// `currentVersionOf` over the same `RecordContent` shape `flagged` builds,
+// `CITATION_CURRENT` calls `citationCurrent` over the `Current` that produced,
+// and `INPUT_SOUND` calls `assessEvidenceInputSoundness` — check 17, whose scope
+// rule stays in its own module rather than being re-decided here. A6 :1217 asks
+// for exactly that: "the checks CALL the predicates of A3 and never re-derive
+// them". A second spelling of VERIFIED, CURRENT or PUBLISHABLE inside the gate is
+// the copy that drifts, and that is what the one-symbol scan catches.
+//
+// IT RETURNS A REPORT, NOT A BOOLEAN, because A6 :1201-:1202 requires each check
+// to name the mention it examined and the version it examined it at, and a
+// `Promise<boolean>` cannot carry that — so the gate would have to re-derive the
+// detail, which is the second spelling A6 forbids in the same paragraph.
+//
+// `argued` arrived at evidence step 13 with the debate that gives it a subject.
 //
 // AND THE CONVERSE: WHY TWO FUNCTIONS A3 DOES NOT NAME ARE PRESENT.
 // `movedBetween` and `whereChunksWent` are §6's containment rule and §7's
@@ -756,4 +771,459 @@ function recordContentOf(evidence: {
     };
   }
   return null;
+}
+
+// ---------------------------------------------------------------------------
+// PUBLISHABLE — A3's five clauses, plus the precondition A6 promotes to a check
+// of its own (evidence step 15).
+//
+// A3 :1045-:1048 states FIVE clauses; A6 :1217 states SIX checks, and it is not
+// a bijection: the sixth, `DERIVED`, is the PRECONDITION of the fifth — that
+// CURRENT is defined at all — promoted so that its failure gets its own
+// sentence. A6 :1214 says why in its own words: "the failure says the walk owes
+// a version and names the diff, so nobody hunts for a contradiction that does
+// not exist."
+//
+// So the gate is a PROJECTION OF ONE EVALUATION, not a second pass: five clauses
+// computed once, six rows rendered from them, and the sixth read off the
+// discriminant of the fifth. Any design in which the six checks each re-ask a
+// predicate is a design with six chances to ask it differently.
+// ---------------------------------------------------------------------------
+
+/** A3's clauses, and A6's promoted precondition, by the name each check reports. */
+export type ConjunctId =
+  | 'RECORD_PROMOTED' // e exists AND status = PROMOTED
+  | 'ARGUED'
+  | 'VERIFIED'
+  | 'CITATION_CURRENT'
+  | 'DERIVED' // CURRENT(e.record) is defined — A6's promoted precondition
+  | 'INPUT_SOUND'; // CURRENT's chunks, through check 17's fold
+
+/** The order a report renders them in: A3's clauses, then the precondition. */
+const CONJUNCT_ORDER: readonly ConjunctId[] = [
+  'RECORD_PROMOTED',
+  'ARGUED',
+  'VERIFIED',
+  'CITATION_CURRENT',
+  'DERIVED',
+  'INPUT_SOUND',
+];
+
+/**
+ * WHY a conjunct is not a PASS, as a KEY — never as prose.
+ *
+ * The FAIL keys BEGIN with `FlagReason`, deliberately: the three reasons FLAGGED
+ * names are the three a failure can carry that route to exit 2, and one spelling
+ * of them is what lets `audit-theses` ask "does the flag name this failure's
+ * reason?" by EQUALITY rather than by a table beside the predicate. The day
+ * document step 28 gives FLAGGED its SHED arm, `FlagReason` gains `'SHED'`, this
+ * type gains it with it, `DERIVED` renders it — and NOTHING IN THE EXIT FOLD
+ * CHANGES, which is §0e's claim made true by a type rather than by a promise.
+ *
+ * The EXAMINED_NONE keys are the words `verified` and check 17 already use for
+ * a conjunct that had no subject, borrowed rather than re-coined.
+ */
+export type ConjunctReason =
+  // FAIL — the keys the exit rule routes on
+  | FlagReason
+  | 'NO_EVIDENCE_ROW'
+  | 'NOT_ARGUED'
+  | 'NOT_VERIFIED'
+  | 'INPUT_UNSOUND'
+  // EXAMINED_NONE — why nothing was examined
+  | 'NOT_PROMOTED'
+  | 'MALFORMED_RECORD_KEY'
+  | 'DOCUMENT_CLASS_NOT_BUILT'
+  | 'NOT_DIFF_DERIVED';
+
+export interface Conjunct {
+  id: ConjunctId;
+  /**
+   * PASS · FAIL · EXAMINED_NONE — never a boolean.
+   *
+   * A6 :1222 and document A6 :1533 forbid a non-binding pass and require a check
+   * with no subject to "report that it examined none — a check with no subject,
+   * never a pass". Two booleans (`binding`, `passed`) cannot express that: their
+   * `(false, true)` state reads as a pass everywhere it is rendered, which is
+   * exactly what check 6 did before it was retired with the tier.
+   */
+  verdict: 'PASS' | 'FAIL' | 'EXAMINED_NONE';
+  /**
+   * The KEY behind a verdict that is not a PASS; null on a PASS. What a program
+   * routes on — `detail` is what a person reads, and nothing compares it.
+   */
+  reason: ConjunctReason | null;
+  /** What a reader is owed when it is not a PASS: the reason, and the hashes or status behind it. */
+  detail: string | null;
+}
+
+/** The mention examined, and the version it was examined at — A6 :1201-:1202. */
+export interface ExaminedMention {
+  mentionId: string;
+  fileHash: string;
+  contentVersionHash: string | null;
+}
+
+/**
+ * A DISCRIMINATED UNION, as `Current`, `Evaluated` and `VerifiedReport` already
+ * are in this module: a record whose CLASS has no predicate yet is NOT
+ * `publishable: false`.
+ *
+ * `evaluable: false` IS CONDITIONAL, and the condition is that nothing FAILED:
+ *
+ *   some conjunct FAILed                    → evaluable: true, publishable: false
+ *   no conjunct FAILed, and one examined     → evaluable: false
+ *     nothing because its CLASS has no
+ *     predicate yet
+ *
+ * A DOCUMENT record whose debate is OPEN is therefore `evaluable: true` with
+ * `publishable: false`: `ARGUED` and `RECORD_PROMOTED` are kind-independent, so
+ * that citation HAS been judged, completely, and reporting "we cannot tell" over
+ * one the platform just refused would be the honest word used dishonestly.
+ *
+ * A MISSING ROW NEVER REACHES `evaluable: false` AT ALL, and it is the same rule
+ * rather than an exception to it: `RECORD_PROMOTED` always FAILs there, so the
+ * first arm always fires. *There is no row* is a judgement this tree makes
+ * completely, and A3 makes it PUBLISHABLE's first clause.
+ */
+export type PublishableReport =
+  | { evaluable: true; examined: ExaminedMention; publishable: boolean; conjuncts: Conjunct[] }
+  | {
+      evaluable: false;
+      examined: ExaminedMention;
+      reason: 'DOCUMENT_CLASS_NOT_BUILT';
+      conjuncts: Conjunct[];
+    };
+
+/** The word `verified` refuses a class or a broken row with — borrowed, never re-coined. */
+type NotEvaluableReason = 'NOT_PROMOTED' | 'MALFORMED_RECORD_KEY' | 'DOCUMENT_CLASS_NOT_BUILT';
+
+const EXAMINED_NONE_DETAIL: Record<NotEvaluableReason | 'NOT_DIFF_DERIVED' | 'AWAITING_DERIVATION', string> = {
+  NOT_PROMOTED:
+    'NOT_PROMOTED — no evidence row names this record. A record nobody selected has not failed a ' +
+    'check, it has not been put to one; RECORD_PROMOTED is the conjunct that answers it.',
+  MALFORMED_RECORD_KEY:
+    'MALFORMED_RECORD_KEY — the row names a record key the corpus cannot resolve. ' +
+    'forensics:audit-evidence reports it; it is a write defect, not a verdict about the citation.',
+  DOCUMENT_CLASS_NOT_BUILT:
+    'DOCUMENT_CLASS_NOT_BUILT — VERIFIED, CURRENT and derivation are defined for a document by ' +
+    'document flows §3 and §4, and the class gets its table and its predicates at document step 28.',
+  NOT_DIFF_DERIVED:
+    'NOT_DIFF_DERIVED — check 17 judges the chunks of CURRENT(diff), and this record names no diff, ' +
+    'so it examined none. A check with no subject, never a check that passed.',
+  AWAITING_DERIVATION:
+    'AWAITING_DERIVATION — CURRENT is not defined, so a pin cannot be compared against it. The walk ' +
+    'owes this diff a version; DERIVED is the conjunct that says so.',
+};
+
+/**
+ * PUBLISHABLE(m) — the report, one `Conjunct` per clause, every one a CALL.
+ *
+ * FIVE ROUND TRIPS PER MENTION, DECLARED. Two are this function's — the mention
+ * with its debate, and the record's PROVENANCE (never its chunks) — and three are
+ * the price of CALLING rather than re-spelling: `verified` re-reads the row and
+ * reads the stored attribution, and `assessEvidenceInputSoundness` reads the row
+ * a third time for its chunks. That is the cost A6 :1217 asks for in terms, and
+ * it is bounded in a way a public read is not: the gate runs once per publication
+ * attempt, over a handful of mentions, for a researcher who asked.
+ *
+ * `assessEvidenceInputSoundness` IS CALLED EVEN FOR A CAPTURE. Check 17's scope
+ * rule — "names a diff, NOT typed FORENSIC_DIFF" — lives in that module, and
+ * deciding here that a capture need not be asked would put one rule in two files.
+ * One query is cheaper than one more copy of a rule.
+ */
+export async function publishable(mentionId: string): Promise<PublishableReport> {
+  const mention = await prisma.thesisMention.findUnique({
+    where: { id: mentionId },
+    select: {
+      id: true,
+      refId: true,
+      contentVersionHash: true,
+      debateSessionId: true,
+      thesisVersion: { select: { thesisId: true } },
+      debateSession: { select: { status: true, recordFileHash: true, thesisId: true } },
+    },
+  });
+  // A LOUD GUARD, NOT A VERDICT. Every field of the report names the mention it
+  // examined (A6 :1201), so a mention that does not exist has no report to be
+  // the subject of — the shape cannot be built. `publishableEvidence` passes ids
+  // it has just read, so this is a malformed call rather than an answerable
+  // state, and it is the `nameOf` / `promotionBlockers` shape: throw naming the
+  // subject rather than choose a verdict for a citation that is not there.
+  if (mention === null) {
+    throw new Error(
+      `evidencePredicates: no ThesisMention ${mentionId}. PUBLISHABLE is a question about a ` +
+        'citation, and every check it renders names the mention it examined; a mention that does ' +
+        'not exist is a malformed call, not a citation that failed.',
+    );
+  }
+
+  // PROVENANCE ONLY. `chunks` is NOT selected: `assessEvidenceInputSoundness`
+  // does its own `findMany` for them, so loading them here would be either dead
+  // or the beginning of a second spelling of the last clause.
+  const row = await prisma.evidence.findUnique({
+    where: { fileHash: mention.refId },
+    select: {
+      fileHash: true,
+      kind: true,
+      status: true,
+      snapshot: { select: { textHash: true, textExtractionVersion: true } },
+      urlVersionDiff: {
+        select: {
+          beforeSnapshot: { select: { textHash: true, textExtractionVersion: true } },
+          afterSnapshot: { select: { textHash: true, textExtractionVersion: true } },
+          contentVersions: {
+            select: {
+              contentVersionHash: true,
+              beforeTextHash: true,
+              afterTextHash: true,
+              diffVersion: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
+  const examined: ExaminedMention = {
+    mentionId: mention.id,
+    fileHash: mention.refId,
+    contentVersionHash: mention.contentVersionHash,
+  };
+
+  const verdicts = new Map<ConjunctId, Conjunct>();
+  // THE REASON IS A REQUIRED ARGUMENT, so a FAIL rendered without one does not
+  // compile: the rule "every FAIL carries its key" is held by the type checker at
+  // every site, rather than by whoever next adds a branch remembering it.
+  const say = (
+    id: ConjunctId,
+    verdict: Conjunct['verdict'],
+    detail: string | null,
+    reason: ConjunctReason | null,
+  ): void => {
+    verdicts.set(id, { id, verdict, reason, detail });
+  };
+  const examinedNone = (id: ConjunctId, reason: keyof typeof EXAMINED_NONE_DETAIL): void => {
+    say(id, 'EXAMINED_NONE', EXAMINED_NONE_DETAIL[reason], reason);
+  };
+
+  // RECORD_PROMOTED — A3's first clause: the row EXISTS and its status is
+  // PROMOTED. The one conjunct answerable without a record, and the only one
+  // that fails on a missing row.
+  if (row === null) {
+    say('RECORD_PROMOTED', 'FAIL', 'No evidence row names this record: nobody has promoted it.', 'NO_EVIDENCE_ROW');
+  } else if (row.status === 'PROMOTED') {
+    say('RECORD_PROMOTED', 'PASS', null, null);
+  } else {
+    say(
+      'RECORD_PROMOTED',
+      'FAIL',
+      `The record is ${row.status}, and a withdrawn record is not cited afresh.`,
+      'WITHDRAWN',
+    );
+  }
+
+  // ARGUED — kind-independent and row-independent, so it is computed in every
+  // arm: a reader is owed what was actually asked.
+  const isArgued = argued({
+    name: mention.refId,
+    thesisId: mention.thesisVersion.thesisId,
+    debate: mention.debateSession,
+  });
+  say(
+    'ARGUED',
+    isArgued ? 'PASS' : 'FAIL',
+    isArgued
+      ? null
+      : mention.debateSession === null
+        ? 'This citation references no debate: nobody has argued for it on this thesis.'
+        : `Its debate is ${mention.debateSession.status} for record ${mention.debateSession.recordFileHash} ` +
+          `on thesis ${mention.debateSession.thesisId}; an argument is PROMOTED, for this record and this thesis.`,
+    isArgued ? null : 'NOT_ARGUED',
+  );
+
+  // VERIFIED — the async predicate, reading the stored attribution verdict. Its
+  // own discriminated union carries the word for a class it cannot answer for,
+  // and that word is borrowed here rather than re-coined.
+  const verification = await verified(mention.refId);
+  if (!verification.evaluable) {
+    examinedNone('VERIFIED', verification.reason);
+  } else if (verification.verified) {
+    say('VERIFIED', 'PASS', null, null);
+  } else {
+    const unattributed = verification.captures.filter((c) => c.attributed !== true).map((c) => c.capture);
+    const mismatched = verification.captures
+      .filter((c) => !c.anchoredHashMatchesDocumentHash)
+      .map((c) => c.capture);
+    say(
+      'VERIFIED',
+      'FAIL',
+      [
+        verification.recomputable ? null : `the row's name is not the record's: the record names ${verification.expected}`,
+        unattributed.length === 0 ? null : `no stored attribution for ${unattributed.join(', ')}`,
+        mismatched.length === 0 ? null : `the anchored hash is not the document hash for ${mismatched.join(', ')}`,
+      ]
+        .filter((part): part is string => part !== null)
+        .join('; '),
+      'NOT_VERIFIED',
+    );
+  }
+
+  // DERIVED and CITATION_CURRENT — over the SAME `RecordContent` shape `flagged`
+  // builds, through the module's own functions. `recordContentOf` returns null
+  // for a DOCUMENT row and for a row with no key at all, and `verified` has
+  // already named which of the two this is: keying both on its word is what
+  // makes the three arms agree by construction rather than by three decisions.
+  const content = row === null ? null : recordContentOf(row);
+  if (row === null) {
+    examinedNone('DERIVED', 'NOT_PROMOTED');
+    examinedNone('CITATION_CURRENT', 'NOT_PROMOTED');
+  } else if (content === null) {
+    const reason: NotEvaluableReason = verification.evaluable ? 'MALFORMED_RECORD_KEY' : verification.reason;
+    examinedNone('DERIVED', reason);
+    examinedNone('CITATION_CURRENT', reason);
+  } else {
+    const current = currentVersionOf(content);
+    if (current.defined) {
+      say('DERIVED', 'PASS', null, null);
+    } else {
+      say(
+        'DERIVED',
+        'FAIL',
+        `CURRENT is not defined for record ${row.fileHash}: the walk owes this diff a version, and ` +
+          'until it has one there is no content for a citation to name.',
+        current.reason,
+      );
+    }
+    const pinned = citationCurrent(mention, current);
+    if (!pinned.evaluable) {
+      // A pin cannot be compared against a version that does not exist — the one
+      // EXAMINED_NONE arm that is about the record's CONTENT rather than its
+      // class or its absence.
+      examinedNone('CITATION_CURRENT', 'AWAITING_DERIVATION');
+    } else if (pinned.value) {
+      say('CITATION_CURRENT', 'PASS', null, null);
+    } else {
+      say(
+        'CITATION_CURRENT',
+        'FAIL',
+        `The citation pins ${String(mention.contentVersionHash)} and CURRENT is ` +
+          `${current.defined ? current.contentVersionHash : 'undefined'}.`,
+        'NOT_CITATION_CURRENT',
+      );
+    }
+  }
+
+  // INPUT_SOUND — check 17, called for every record and answered from ITS row.
+  // The scope decision is read from what that module returned, never re-made
+  // here: a record it did not judge has `urlVersionDiffId` null on its own row,
+  // and a hash it holds no row for is one its rule at :185-:188 leaves to check 5.
+  const soundness = await assessEvidenceInputSoundness([mention.refId]);
+  const judged = soundness.rows.find((r) => r.fileHash === mention.refId);
+  if (judged === undefined) {
+    examinedNone('INPUT_SOUND', 'NOT_PROMOTED');
+  } else if (judged.urlVersionDiffId === null) {
+    examinedNone('INPUT_SOUND', row?.kind === 'DOCUMENT' ? 'DOCUMENT_CLASS_NOT_BUILT' : 'NOT_DIFF_DERIVED');
+  } else if (judged.unsoundReason !== undefined) {
+    say(
+      'INPUT_SOUND',
+      'FAIL',
+      judged.unsoundReason,
+      judged.survival?.state === 'AWAITING_DERIVATION' ? 'AWAITING_DERIVATION' : 'INPUT_UNSOUND',
+    );
+  } else {
+    say('INPUT_SOUND', 'PASS', null, null);
+  }
+
+  const conjuncts = CONJUNCT_ORDER.map((id) => {
+    const held = verdicts.get(id);
+    if (held === undefined) {
+      throw new Error(`evidencePredicates: PUBLISHABLE rendered no verdict for ${id}.`);
+    }
+    return held;
+  });
+
+  const failed = conjuncts.some((c) => c.verdict === 'FAIL');
+  const classNotBuilt = conjuncts.some(
+    (c) => c.verdict === 'EXAMINED_NONE' && c.reason === 'DOCUMENT_CLASS_NOT_BUILT',
+  );
+  if (!failed && classNotBuilt) {
+    return { evaluable: false, examined, reason: 'DOCUMENT_CLASS_NOT_BUILT', conjuncts };
+  }
+  return { evaluable: true, examined, publishable: !failed, conjuncts };
+}
+
+/**
+ * A3 :1048 — "a thesis version is publishable iff every EVIDENCE mention is."
+ *
+ * IT IS NOT `publishableVersion`, AND THE NAME MATTERS. Thesis A3 owns
+ * `PUBLISHABLE(v)` for the WHOLE gate — these six checks AND TRAJECTORY_CURRENT,
+ * CLAIM_FRAMED, CURRENT_ANALYSIS, GAPS_DECIDED, the public-interest statement and
+ * the assessor's two answers — and thesis A7's own one-symbol scan names
+ * `PUBLISHABLE(v)` in its list. A `publishableVersion` in the evidence layer
+ * would be a second symbol for a predicate another layer already owns, arriving
+ * as a name. This is the EVIDENCE HALF, and it says so; thesis step 23's
+ * `PUBLISHABLE(v)` calls it as its first conjunct and adds its own.
+ *
+ * `mentionsExamined` PRECEDES the verdict in the shape, which is 11b's rule: an
+ * instrument over an empty subject set is honest only when the count comes before
+ * the answer. A version with no EVIDENCE mention folds vacuously true — A6 :1203
+ * assigns that failure to `CITES_EVIDENCE`, which is thesis A6's check 3 and
+ * thesis step 23's, so this fold does not steal it.
+ *
+ * IT FOLDS OVER `EVIDENCE` MENTIONS TODAY AND OVER `EVIDENCE`-OR-`DOCUMENT` FROM
+ * DOCUMENT STEP 28, when document A6 amends `CITES_EVIDENCE`. A fold that
+ * silently skipped DOCUMENT mentions would report a version publishable while a
+ * document citation went ungraded — not a wrong answer, an unasked question
+ * presented as an answer — so the line is named here rather than left to be
+ * found.
+ */
+export type VersionPublishableReport =
+  | {
+      evaluable: true;
+      versionId: string;
+      mentionsExamined: number;
+      publishable: boolean;
+      mentions: PublishableReport[];
+    }
+  | {
+      evaluable: false;
+      versionId: string;
+      mentionsExamined: number;
+      reason: 'DOCUMENT_CLASS_NOT_BUILT';
+      notEvaluable: ExaminedMention[];
+      mentions: PublishableReport[];
+    };
+
+export async function publishableEvidence(versionId: string): Promise<VersionPublishableReport> {
+  const mentions = await prisma.thesisMention.findMany({
+    where: { thesisVersionId: versionId, type: 'EVIDENCE' },
+    select: { id: true },
+    orderBy: { id: 'asc' },
+  });
+
+  const reports: PublishableReport[] = [];
+  for (const mention of mentions) reports.push(await publishable(mention.id));
+
+  const notEvaluable = reports.filter((r) => !r.evaluable).map((r) => r.examined);
+  if (notEvaluable.length > 0) {
+    // ANY non-evaluable mention makes the VERSION non-evaluable, by the same
+    // reasoning one level up: the answer is not known, and asserting either
+    // verdict over it would be the platform claiming a check it never made.
+    return {
+      evaluable: false,
+      versionId,
+      mentionsExamined: mentions.length,
+      reason: 'DOCUMENT_CLASS_NOT_BUILT',
+      notEvaluable,
+      mentions: reports,
+    };
+  }
+  return {
+    evaluable: true,
+    versionId,
+    mentionsExamined: mentions.length,
+    publishable: reports.every((r) => r.evaluable && r.publishable),
+    mentions: reports,
+  };
 }

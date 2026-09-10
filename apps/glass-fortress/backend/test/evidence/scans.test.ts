@@ -17,6 +17,49 @@ import { SRC, tsFiles, readCode } from '../walk/scan';
 // that is merely unexercised.
 // ---------------------------------------------------------------------------
 
+// THE ONE LIST OF A3's NAMES, at file scope since evidence step 15 — the
+// one-symbol scan and the gate's own rule both read it (§5b: "over the same
+// NAMES list the one-symbol scan uses"). Its reasoning is in the one-symbol
+// block below, where it was written; only its position moved.
+const NAMES = [
+  'verified',
+  'publishable',
+  'currentVersionOf',
+  'needsReview',
+  'citationCurrent',
+  'narrowed',
+  'intervening',
+  'publicPage',
+  'recomputable',
+  'flagged',
+  'argued',
+  // EXTENDED AT EVIDENCE STEP 14 WITH TWO NAMES THAT ARE NOT A3 PREDICATES,
+  // and that is a fact about A3's list rather than about their shape. §6's
+  // containment rule has A3's exact failure mode: §7's narrowing material is
+  // already a SECOND consumer inside this very step, and thesis T6's own
+  // reviews list is a third when it is built, so a second spelling in any of
+  // them is the copy that drifts. Both are EXPORTED from
+  // `services/evidencePredicates.ts` on the ruling of 2026-09-09.
+  'movedBetween',
+  'whereChunksWent',
+  // AND `contains` IS DELIBERATELY NOT HERE. It is module-private, and this
+  // scan's own sentence is "every predicate of A3 has ONE **importable**
+  // symbol" — a helper nobody can import cannot be a second spelling anyone
+  // imports. A generic name in this list would also carry a false positive it
+  // could never shed: the pattern is `function <name>\s*[<(]` over EVERY
+  // module, so an unrelated `function contains(` written tomorrow would fire a
+  // case with no way to satisfy it but a comment that lied about what it
+  // checks — the shape step 13 rejected for the bare-word refusal codes.
+  // ATTRIBUTED IS THE ONE WHOSE CORRECT COUNT IN THE TREE IS ZERO, and that is
+  // the point rather than an oversight. Its single implementation is
+  // `attributeClaim` in services/registryState.ts — one function serving the
+  // ledger, the audits, the anchor-time check and the per-capture reads
+  // through an entry-lookup parameter. A module declaring `function
+  // attributed(` would be a SECOND spelling of a predicate that reads the
+  // chain, which is exactly the drift this scan exists to catch.
+  'attributed',
+];
+
 const modules = () =>
   tsFiles(SRC).map((file) => ({ file: relative(SRC, file), code: readCode(file) }));
 
@@ -518,6 +561,14 @@ describe('the research-act modules reach no chain', () => {
     'services/evidenceReviews.ts',
     'mcp/tools/reviewEvidence.ts',
     'mcp/tools/listEvidenceReviews.ts',
+    // EVIDENCE STEP 15's TWO. The gate and the instrument read the stored
+    // attribution verdict through `verified` and never ask the chain themselves;
+    // an import of the anchoring path here would make a chain call reachable from
+    // a publication check. `evidencePredicates.ts` is deliberately NOT added — it
+    // is not a research-act module, and adding it would make the list mean two
+    // things.
+    'services/evidenceChecks.ts',
+    'services/auditTheses.ts',
   ];
   const CHAIN = /from '[^']*(?:Web3Service|anchorSnapshots)'/;
 
@@ -556,44 +607,6 @@ describe('every predicate of A3 has ONE importable symbol', () => {
   // see the shape the code is actually written in is the vacuity this file's
   // header names, arriving as a green test. `[<(]` is what closes it, and the
   // decoy below is planted in BOTH shapes so it cannot narrow again silently.
-  const NAMES = [
-    'verified',
-    'publishable',
-    'currentVersionOf',
-    'needsReview',
-    'citationCurrent',
-    'narrowed',
-    'intervening',
-    'publicPage',
-    'recomputable',
-    'flagged',
-    'argued',
-    // EXTENDED AT EVIDENCE STEP 14 WITH TWO NAMES THAT ARE NOT A3 PREDICATES,
-    // and that is a fact about A3's list rather than about their shape. §6's
-    // containment rule has A3's exact failure mode: §7's narrowing material is
-    // already a SECOND consumer inside this very step, and thesis T6's own
-    // reviews list is a third when it is built, so a second spelling in any of
-    // them is the copy that drifts. Both are EXPORTED from
-    // `services/evidencePredicates.ts` on the ruling of 2026-09-09.
-    'movedBetween',
-    'whereChunksWent',
-    // AND `contains` IS DELIBERATELY NOT HERE. It is module-private, and this
-    // scan's own sentence is "every predicate of A3 has ONE **importable**
-    // symbol" — a helper nobody can import cannot be a second spelling anyone
-    // imports. A generic name in this list would also carry a false positive it
-    // could never shed: the pattern is `function <name>\s*[<(]` over EVERY
-    // module, so an unrelated `function contains(` written tomorrow would fire a
-    // case with no way to satisfy it but a comment that lied about what it
-    // checks — the shape step 13 rejected for the bare-word refusal codes.
-    // ATTRIBUTED IS THE ONE WHOSE CORRECT COUNT IN THE TREE IS ZERO, and that is
-    // the point rather than an oversight. Its single implementation is
-    // `attributeClaim` in services/registryState.ts — one function serving the
-    // ledger, the audits, the anchor-time check and the per-capture reads
-    // through an entry-lookup parameter. A module declaring `function
-    // attributed(` would be a SECOND spelling of a predicate that reads the
-    // chain, which is exactly the drift this scan exists to catch.
-    'attributed',
-  ];
 
   /** One list, one set of patterns — a second list is the copy that drifts. */
   const SPELLINGS = NAMES.map((name) => new RegExp(`function\\s+${name}\\s*[<(]`));
@@ -626,9 +639,12 @@ describe('every predicate of A3 has ONE importable symbol', () => {
 
   it('the predicates module DECLARES the ones this step built, so the rule has a subject', () => {
     // A scan whose allow-listed module declares nothing would pass over an empty
-    // tree. These are the names steps 12 and 13 put there; `attributed` and
-    // `publishable` are deliberately NOT among them — the first has its one
-    // spelling elsewhere (registryState.attributeClaim), the second is step 15's.
+    // tree. These are the names steps 12 to 15 put there. `attributed` is
+    // deliberately NOT among them — its one spelling is elsewhere
+    // (registryState.attributeClaim), and its correct count here is zero.
+    // `publishable` JOINED AT EVIDENCE STEP 15, the step that built it: `NAMES`
+    // had forbidden a second spelling of it since step 12, and until it was
+    // declared here that half forbade a second spelling of NOTHING.
     const predicates = modules().find(({ file }) => file === 'services/evidencePredicates.ts');
     expect(predicates).toBeDefined();
     const built = [
@@ -647,10 +663,76 @@ describe('every predicate of A3 has ONE importable symbol', () => {
       // one implementation is nowhere would forbid a second spelling of nothing.
       'movedBetween',
       'whereChunksWent',
+      // Evidence step 15's — A3's PUBLISHABLE(m), every conjunct a CALL.
+      'publishable',
     ];
     const declared = built.filter((name) =>
       new RegExp(`function\\s+${name}\\s*[<(]`).test(predicates?.code ?? ''),
     );
     expect(declared).toEqual(built);
+  });
+});
+
+describe('the gate MAPS and does not LOAD — services/evidenceChecks.ts (§5b)', () => {
+  // The one-symbol scan forbids a second `function <name>` anywhere but the
+  // predicates module. It does NOT forbid the gate from re-deriving a predicate
+  // INLINE — a `row.status === 'PROMOTED'` or a
+  // `chunks.some((c) => c.survival === 'CONTRADICTED')` written into the gate
+  // would pass every other scan in the tree. So the gate module gets its own rule,
+  // and it is stricter than the global one on purpose: a module that may declare
+  // NOTHING can be held to BOTH declaration spellings, where the global scan
+  // cannot (a bare local `const narrowed = …` is legitimate in files this step
+  // does not own — recorded as still carried for the global scan).
+  //
+  // A SOURCE SCAN AND A CASE, NEITHER ENOUGH ALONE. `test/evidence/
+  // evidenceChecks.test.ts` asserts on what a RUN asked; this holds that the
+  // FILE cannot ask anything — including tomorrow's edit that nobody runs.
+  const GATE = 'services/evidenceChecks.ts';
+  const PRISMA_IMPORT = /from '(?:[^']*\/lib\/prisma|@prisma\/client)'/;
+  const DELEGATE = /\.(?:evidence|thesisMention|urlVersionDiff|diffContentVersion|integrityCheck)\./;
+  const DECLARES = NAMES.flatMap((name) => [
+    new RegExp(`function\\s+${name}\\s*[<(]`),
+    new RegExp(`\\b(?:const|let|var)\\s+${name}\\s*[:=]`),
+  ]);
+  const CALLS_THE_FOLD = /\bpublishableEvidence\s*\(/;
+
+  const gate = (): string => {
+    const held = modules().find(({ file }) => file === GATE);
+    if (held === undefined) throw new Error(`${GATE} is not in the tree — the rule has no subject`);
+    return held.code;
+  };
+
+  it('imports no Prisma client and no lib/prisma', () => {
+    expect(PRISMA_IMPORT.test(gate())).toBe(false);
+  });
+
+  it('names no Prisma delegate at all', () => {
+    expect(DELEGATE.test(gate())).toBe(false);
+  });
+
+  it('declares no predicate under EITHER spelling — `function <name>` AND `const <name> =`', () => {
+    expect(DECLARES.filter((re) => re.test(gate())).map(String)).toEqual([]);
+  });
+
+  it('CALLS publishableEvidence — the rule has a subject', () => {
+    expect(CALLS_THE_FOLD.test(gate())).toBe(true);
+  });
+
+  it('DETECTS each shape it forbids, and does not fire on a CALL to an imported predicate', () => {
+    expect(PRISMA_IMPORT.test("import { prisma } from '../lib/prisma';")).toBe(true);
+    expect(PRISMA_IMPORT.test("import { Prisma } from '@prisma/client';")).toBe(true);
+    expect(DELEGATE.test('await prisma.evidence.findUnique({ where });')).toBe(true);
+    expect(DELEGATE.test('await tx.thesisMention.findMany({ where });')).toBe(true);
+    expect(DECLARES.some((re) => re.test('const publishable = async () => true;'))).toBe(true);
+    expect(DECLARES.some((re) => re.test('export function verified(e: Row) { return true; }'))).toBe(true);
+    expect(CALLS_THE_FOLD.test('const report = await publishableEvidence(versionId);')).toBe(true);
+    // THE NON-FIRING CONTROL: calling an imported predicate is what the gate is
+    // FOR, and a rule that fired on it could only be satisfied by a lie.
+    for (const call of ['const report = await publishableEvidence(id);', 'const ok = argued(mention);']) {
+      expect(PRISMA_IMPORT.test(call) || DELEGATE.test(call) || DECLARES.some((re) => re.test(call))).toBe(false);
+    }
+    // A TYPE position is not a call: `typeof publishableEvidence` must not count
+    // as the gate calling the fold.
+    expect(CALLS_THE_FOLD.test('type R = Awaited<ReturnType<typeof publishableEvidence>>;')).toBe(false);
   });
 });
