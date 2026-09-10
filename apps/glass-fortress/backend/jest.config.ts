@@ -31,6 +31,9 @@ const shared = {
   rootDir: '.',
   moduleFileExtensions: ['ts', 'js', 'json'],
   setupFiles: ['<rootDir>/test/setupEnv.ts'],
+  // Hides the chain variables at the moments a `.env` loader can bring them
+  // back — after the test file's imports, not only before them. See its header.
+  setupFilesAfterEnv: ['<rootDir>/test/setupNoRealChain.ts'],
   clearMocks: true,
   transform: {
     '^.+\\.tsx?$': ['ts-jest', { tsconfig: 'tsconfig.test.json' }],
