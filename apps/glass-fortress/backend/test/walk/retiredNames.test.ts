@@ -417,7 +417,11 @@ describe('EXPECTED RED UNTIL STEP 8 — no file under src names a retired concep
     expect(RETIRED_SCRIPT_NAMES.filter((n) => `Run npm run forensics:backfill-survival to fix it.`.includes(n)))
       .toEqual(['forensics:backfill-survival']);
   });
+});
 
+// ITS OWN DESCRIBE (7.5a's L1): these cases hold TODAY, and a title reading "EXPECTED
+// RED UNTIL STEP 8" above green thesis cases would say something false about them.
+describe("the THESIS layer's retired names that hold today — routes and delegates (thesis step 17, sketch §5g)", () => {
   // THESIS STEP 17 (7.5a) — THE HALVES OF THE THESIS LAYER'S RETIRED NAMES THAT HOLD
   // TODAY (R40 sketch §5g, §6-4). What is red until thesis step 18 — the schema's
   // removed models, enums and columns, and the source words — lives in

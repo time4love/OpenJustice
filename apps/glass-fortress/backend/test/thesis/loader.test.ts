@@ -202,6 +202,23 @@ describe("the shared double's 7.3 additions — each held here, so none can loos
       status: 'SKIPPED',
     });
   });
+
+  it("a mention COUNT honours its `where` — PUBLIC_PAGE's question, the pin, told from a citation that is no longer the pin; an unmodelled shape rejects (7.5b)", async () => {
+    resetDouble();
+    store.mentions = [
+      { id: 'on-the-pin', type: 'EVIDENCE', refId: 'record-1', thesisVersion: { isPublished: { id: 'thesis-1' } } },
+      { id: 'superseded', type: 'EVIDENCE', refId: 'record-1', thesisVersion: { isPublished: null } },
+      { id: 'another-record', type: 'EVIDENCE', refId: 'record-2', thesisVersion: { isPublished: null } },
+    ];
+    const pinOnly = { isPublished: { isNot: null } };
+    expect(await db.thesisMention.count({ where: { type: 'EVIDENCE', refId: { in: ['record-1'] }, thesisVersion: pinOnly } })).toBe(1);
+    expect(await db.thesisMention.count({ where: { type: 'EVIDENCE', refId: { in: ['record-1'] } } })).toBe(2);
+    // THE FALLBACK: no `where` answers every row, as the delegate always did.
+    expect(await db.thesisMention.count({})).toBe(3);
+    await expect(db.thesisMention.count({ where: { thesisVersion: { isPublished: { is: null } } } })).rejects.toThrow(
+      'does not model',
+    );
+  });
 });
 
 describe('the fixtures — the vectors were derived OUTSIDE the implementation (round 2, Q3)', () => {

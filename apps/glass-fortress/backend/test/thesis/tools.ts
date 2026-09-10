@@ -75,6 +75,15 @@ export const llmFactoryTripwire = {
   resolveModelId: (): never => trip('resolveModelId'),
 };
 
+/**
+ * Put `researcher` in context (null: no one) for a call that is not a tool's — a
+ * PUBLIC route, which must answer identically either way (7.5b). A tool call sets it
+ * through `call`.
+ */
+export function actAs(researcher: string | null): void {
+  identity.researcherId = researcher;
+}
+
 /** From each file's `beforeEach`, after `resetDouble`. */
 export function resetTools(): void {
   tripped.length = 0;

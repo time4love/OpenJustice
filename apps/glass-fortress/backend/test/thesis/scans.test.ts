@@ -2,14 +2,14 @@ jest.mock('../../src/lib/prisma', () => ({
   prisma: (require('../helpers/evidenceDouble') as typeof import('../helpers/evidenceDouble')).db,
 }));
 
-import { existsSync, readFileSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { join } from 'node:path';
 import { DIFF_NAME } from '../helpers/corpusFixture';
-import { BACKEND, SRC, codeOf, readCode, tsFiles } from '../walk/scan';
+import { SRC, codeOf, readCode } from '../walk/scan';
 import { built } from './absent';
 import { MODEL_ACTORS, MODULES, type ThesisIdentityModule, type ThesisPredicatesModule } from './contract';
 import { OPEN_GAP, OPEN_GAP_DESCRIPTION_SPACED, THESIS, TRAJECTORY_ID } from './fixtures';
 import { gap } from './gateWorld';
+import { SCHEMA, blockNamed, blocksOf, fieldsOf, modules, sourceOf, valuesOf } from './scanning';
 
 // ---------------------------------------------------------------------------
 // A7's SCANS FOR THE THESIS LAYER — docs/gf-thesis-flows.md A7 (:1630–:1660), the
@@ -30,50 +30,8 @@ import { gap } from './gateWorld';
 //   - a half the tree already holds, and every decoy case — GREEN, declared ground.
 // ---------------------------------------------------------------------------
 
-const modules = () => tsFiles(SRC).map((file) => ({ file: relative(SRC, file), code: readCode(file) }));
-
-/** A source file a later step builds: its code, or red BY NAME with the step that owes it. */
-function sourceOf(path: string, step: number): string {
-  const full = join(SRC, path);
-  if (!existsSync(full)) throw new Error(`${path.replace(/\.ts$/, '')} is not built — thesis step ${String(step)} builds it`);
-  return readCode(full);
-}
-
-// --- the schema, read as blocks --------------------------------------------------
-
-const SCHEMA = readFileSync(join(BACKEND, 'prisma', 'schema.prisma'), 'utf8');
-
-interface Block {
-  kind: 'model' | 'enum';
-  name: string;
-  /** The body's lines, comments stripped, block attributes (`@@…`) dropped. */
-  lines: string[];
-}
-
-/** Every model and enum of a schema text. */
-function blocksOf(schema: string): Block[] {
-  return [...schema.matchAll(/^(model|enum)\s+(\w+)\s*\{([\s\S]*?)^\}/gm)].map((m) => ({
-    kind: m[1] === 'enum' ? 'enum' : 'model',
-    name: m[2] ?? '',
-    lines: (m[3] ?? '')
-      .split('\n')
-      .map((line) => line.replace(/\/\/.*$/, '').trim())
-      .filter((line) => line.length > 0 && !line.startsWith('@@')),
-  }));
-}
-
-/** A model's fields: the name, and the type with its `?` and `[]` removed. */
-const fieldsOf = (block: Block | undefined): { name: string; type: string }[] =>
-  (block?.lines ?? []).map((line) => {
-    const [name = '', type = ''] = line.split(/\s+/);
-    return { name, type: type.replace(/[?[\]]/g, '') };
-  });
-
-/** An enum's values. */
-const valuesOf = (block: Block | undefined): string[] => (block?.lines ?? []).map((line) => line.split(/\s+/).at(0) ?? '');
-
-const blockNamed = (kind: Block['kind'], name: string): Block | undefined =>
-  blocksOf(SCHEMA).find((b) => b.kind === kind && b.name === name);
+// `modules`, `sourceOf` and the schema reader are `test/thesis/scanning.ts`'s — moved
+// there at 7.5b, verbatim, when `invariants.test.ts` needed the same.
 
 // ---------------------------------------------------------------------------
 // thesis-no-log — A7 :1630–:1632, §9 :981–:984 · sketch §5a

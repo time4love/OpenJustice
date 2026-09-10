@@ -525,7 +525,37 @@ export const db = {
       }
       return Promise.resolve({ count: args.data.length });
     }),
-    count: jest.fn(() => Promise.resolve(store.mentions.length)),
+    // HONOURS ITS `where` — thesis step 17, additive (7.5b; 7.2 round 1, Q3). It
+    // answered `store.mentions.length` whatever it was asked, so `publicPage` — "is a
+    // record of this page cited by a version that IS the pin?" — was answered by the
+    // number of rows, and PUBLIC_PAGE's arms could not be told apart. It now applies
+    // the shapes that question sends: a plain equality, `{ in }` on a field, and the
+    // relation `thesisVersion: { isPublished: { isNot: null } }` over the relation a
+    // mention row carries (`test/thesis/rows.ts`). Any other shape REJECTS rather
+    // than agreeing; no `where` at all answers every row, as it always did.
+    count: jest.fn(
+      ask('thesisMention', 'count', (args?: { where?: Row }) => {
+        const tests: ((row: Row) => boolean)[] = [];
+        for (const [field, cond] of Object.entries(args?.where ?? {})) {
+          if (typeof cond !== 'object' || cond === null) {
+            tests.push((row) => row[field] === cond);
+          } else if ('in' in cond && Array.isArray(cond.in) && Object.keys(cond).length === 1) {
+            const wanted: readonly unknown[] = cond.in;
+            tests.push((row) => wanted.includes(row[field]));
+          } else if (field === 'thesisVersion' && JSON.stringify(cond) === JSON.stringify({ isPublished: { isNot: null } })) {
+            tests.push((row) => {
+              const version = row['thesisVersion'];
+              return typeof version === 'object' && version !== null && 'isPublished' in version && version.isPublished != null;
+            });
+          } else {
+            return Promise.reject(
+              new Error(`the double does not model a thesisMention count where on ${field}: ${JSON.stringify(cond)}`),
+            );
+          }
+        }
+        return Promise.resolve(store.mentions.filter((row) => tests.every((test) => test(row))).length);
+      }),
+    ),
     update: jest.fn((args: { data: Row }) => {
       record('thesisMention', 'update', args.data);
       return Promise.resolve({});
