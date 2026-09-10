@@ -75,6 +75,33 @@ spends the researcher's ruling on something already ruled.
 This is what "a whole read is necessary, not sufficient" means in practice. The output field catches
 the reading that never happened. Only the re-ask catches the reading that happened and went unused.
 
+## A ruling is grounded in an APPENDIX or a PLAN STEP, never in a narrative document
+
+**Ruled by the researcher 2026-09-10, on the rulings audit** (`docs/gf-rulings-audit-2026-09-10.md`).
+Of roughly forty implementation-time rulings, ONE contradicted a design — evidence step 11's first
+ruling rebased `preview_diff_classification` on the grounds that "no design retires it", while
+thesis A4 `:1551` lists it in the RETIRED block. The ruling had been formed from
+`docs/gf-researcher-day.md:160`, a NARRATIVE document, rather than from the appendix. DEV's cold
+read caught it the same evening and nothing was built on the wrong side of it.
+
+**That class is why this rule exists, and it is not the same class the other rules cover.** A
+ruling formed from a narrative doc does not look like a mistake: it is well-founded, it arrives
+with a real citation to a real sentence, and only a second seat reading the appendix cold will
+catch it. The reading field catches a reading that never happened; the re-ask catches a reading
+that went unused; neither sees a reading of the wrong document.
+
+```
+DECIDE      the four designs' appendices A1–A7 · the numbered plan steps · CLAUDE.md
+DESCRIBE    gf-researcher-day.md · gf-prosecutor-dev-plan.md · every pre-design plan ·
+            every dated findings doc
+```
+
+Each appendix says this of itself in terms — *"where the flows above and this appendix disagree,
+the flows win and this is wrong"* — so a flows section beats its own appendix, and BOTH beat a
+narrative. **A citation to a narrative document is not authority.** Where a pre-design plan's item
+looks live, `docs/gf-pre-design-plans-triage-2026-09-04.md` is where it was already dispositioned,
+and the disposition is the ruling.
+
 ## One ordering, not two
 
 A prompt states ONE order of first acts, in these words:
@@ -144,6 +171,8 @@ checker looks for, e.g. "no migration") or forgot it.
    paths. "A ruling you find that the state file does not carry is REPORTED as FOUND, never asked."
    **And the FIELD the first report must carry for it** — per document, the line range read and
    one ruling it names that this step's chunk does not cite.
+   **A ruling is grounded in an APPENDIX or a PLAN STEP, never in a narrative document** — the
+   section above; a citation to `gf-researcher-day.md` or a pre-design plan is not authority.
 3. RULES THAT BIND THE CODE: no chain write (`registerEvidenceHash` one caller); KEEP files
    byte-identical or DECLARED with authority; `src/walk` byte-identical; `mcpToolClassification`
    KEEP; predicates CALLED never re-spelled; the step's own invariants (no re-pin, WITHDRAWN never
@@ -170,6 +199,8 @@ checker looks for, e.g. "no migration") or forgot it.
    before saying KEEP or RETIRE."
    **And the FIELDS the first report must carry** — per document, the line range read and one
    ruling it names that the chunk does not cite; and which documents say NOTHING.
+   **A ruling is grounded in an APPENDIX or a PLAN STEP, never in a narrative document** — the
+   section above; a citation to `gf-researcher-day.md` or a pre-design plan is not authority.
 3. WHAT A FINDING IS: the shape (`[LEVEL] file:line — defect / cites / held by`); HIGH, MEDIUM,
    LOW lists rewritten for THIS step's contract; "a design question is not a finding".
 4. STOP RULE: no HIGH or MEDIUM; three rounds; the fourth is the researcher's; write "LOOP ENDS".
