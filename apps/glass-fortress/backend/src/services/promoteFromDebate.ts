@@ -140,7 +140,7 @@ export async function promote(
       data: { debateSessionId: debate.id },
     });
 
-    await tx.diffDebateEvent.create({
+    await tx.debateEvent.create({
       data: {
         sessionId: debate.id,
         type: 'PROMOTED',

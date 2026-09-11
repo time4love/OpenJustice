@@ -40,7 +40,13 @@ model Researcher {
   thesisVersions     ThesisVersion[]
   theses             Thesis[]            @relation("ThesisAuthor")
   publishedTheses    Thesis[]            @relation("ThesisPublisher")
-  researchSessions   ResearchSession[]
+  framings           Framing[]
+  framingRounds      FramingRound[]
+  gapDecisions       ThesisGapDecision[]
+  publicationAttempts PublicationAttempt[]
+  withdrawals        Withdrawal[]
+  notes              Note[]
+  debateSessions     DebateSession[]
   articleRulesets    ArticleRuleset[]
   calibrationRuns    CalibrationRun[]
   calibrationResets  CalibrationReset[]
@@ -380,7 +386,7 @@ model UrlSnapshot {
   calibrationDecisions CalibrationDecision[]
 
   evidence         Evidence[]
-  recordOfDebates  DiffDebateSession[]
+  recordOfDebates  DebateSession[]
   @@unique([trackedUrlId, waybackTimestamp])
   // A TrackedUrl cannot hold two captures of the same instant. This is the
   // constraint that makes capturedAt a usable timeline key across provenances,
@@ -443,7 +449,7 @@ model UrlVersionDiff {
   /// The diff's CONTENT, one row per distinct derivation (evidence A2).
   contentVersions  DiffContentVersion[]
   evidence         Evidence[]
-  debates          DiffDebateSession[]
+  debates          DebateSession[]
 
   @@unique([beforeSnapshotId, afterSnapshotId])
 }
@@ -496,15 +502,6 @@ model DiffContentVersion {
 // reinvented. Do not add relations to this model or query it via Prisma
 // Client — `embedding`'s Unsupported() type cannot be selected, and the
 // `match_evidence()` SQL function it backs is not representable here at all.
-// A named public figure (official, politician, senior doctor, journalist) extracted
-// from evidence by the AI. Normalized here so every mention of the same person
-// across all evidence records links to a single canonical entity.
-model KeyFigure {
-  id        String     @id @default(cuid())
-  name      String     @unique
-  createdAt DateTime   @default(now())
-}
-
 model Whistleblower {
   id               String   @id @default(uuid())
   fileHash         String   @unique
@@ -580,8 +577,7 @@ model Evidence {
   /// record. Plural since evidence step 13: A2 calls `evidenceId` "the row this
   /// argument created OR JOINED", and thesis T3 has a second thesis joining the
   /// row rather than creating it, which a unique index refused.
-  debateSessions             DiffDebateSession[]
-  gapResolutions             ThesisGapResolution[]
+  debateSessions             DebateSession[]
 }
 
 /// The kind of corpus record an `Evidence` row marks — evidence A2, with the
@@ -647,263 +643,220 @@ enum EvidenceDecisionType {
   WITHDRAW
 }
 
-/// The exact text an Evidence.fileHash was computed from, kept so the identity
-/// can be recomputed from the database alone.
-///
-/// FINDING 79: article evidence hashed a LIVE fetch and stored nothing, so a page
-/// carrying a view counter produced a new identity on every call and the record
-/// could be re-derived from nothing at all. Storing the capture is what makes
-/// "does this hash still hold?" answerable years later, against an artifact
-/// rather than against a page that has since moved.
-///
-/// Separate table rather than a column on Evidence on purpose: the text runs to
-/// tens of kilobytes, and Prisma selects every scalar by default, so a column
-/// would put the whole document into every evidence list query.
-enum ThesisVersionStatus {
-  PENDING_AI // AI devil's advocate analysis not yet complete
-  COMPLETE // aiAnalysis populated, ready to display
-}
-
+/// What a citation names — thesis A2. DOCUMENT is added by document refactor
+/// step 33, by addition (document flows A2).
 enum MentionType {
-  KEY_FIGURE // @name — references a KeyFigure.name
-  EVIDENCE // #ev_ — references an Evidence.fileHash
-  TRACKED_URL // #url_ — references a TrackedUrl.id
-  // A ClaimTrajectory.id, NOT a claimHash. The id pins the detection pass, so a
-  // cited trajectory keeps resolving to what was cited; claimHash follows the
-  // claim across recomputations and would let "removed and never restored"
-  // become silently false when a later scan finds the claim back.
-  CLAIM_TRAJECTORY
+  EVIDENCE // #ev_ — an Evidence.fileHash, ID(record)
+  // #tr_ — a ClaimTrajectory.id, NOT a claimHash: the id pins the detection pass.
+  TRAJECTORY
 }
 
-// A crowdsourced legal thesis — wiki-style versioned narrative that anchors
-// claims to evidence via @keyFigure and #evidence mentions.
-// headVersionId points to the canonical (latest-wins) version.
+
+/// THE THESIS — thesis A2. One author (§9); the claim is the heading, so no title.
 model Thesis {
-  id            String            @id @default(cuid())
-  title         String?
-  headVersionId String?           @unique
-  headVersion   ThesisVersion?    @relation("ThesisHead", fields: [headVersionId], references: [id])
-  versions      ThesisVersion[]   @relation("ThesisVersions")
-  sessions      ResearchSession[]
-  createdById   String? // Researcher.id — null for legacy records
-  createdBy     Researcher?       @relation("ThesisAuthor", fields: [createdById], references: [id])
-  createdAt     DateTime          @default(now())
-
-  // Publication is a PINNED VERSION, not a flag and not a consequence of analysis.
-  //
-  // null ⇒ DRAFT: visible to approved researchers only. Set ⇒ the public sees
-  // exactly this version, and ONLY this version, until a researcher publishes
-  // again. Editing the head and re-running the Devil's Advocate changes nothing
-  // public. With a boolean flag the public would silently follow every later
-  // edit, so a researcher publishes one text and the public reads another.
-  // Unpublishing sets the pin back to null and deletes nothing.
-  // Preconditions: services/thesisPublication.ts.
-  publishedVersionId      String?        @unique
-  publishedVersion        ThesisVersion? @relation("ThesisPublished", fields: [publishedVersionId], references: [id])
+  id                      String               @id @default(cuid())
+  /// A key of lib/provisions.ts PROVISIONS (thesis A1); never updated.
+  provision               String?
+  createdById             String
+  createdBy               Researcher           @relation("ThesisAuthor", fields: [createdById], references: [id])
+  headVersionId           String?              @unique
+  headVersion             ThesisVersion?       @relation("ThesisHead", fields: [headVersionId], references: [id], onDelete: Restrict)
+  versions                ThesisVersion[]      @relation("ThesisVersions")
+  publishedVersionId      String?              @unique
+  publishedVersion        ThesisVersion?       @relation("ThesisPublished", fields: [publishedVersionId], references: [id], onDelete: Restrict)
   publishedAt             DateTime?
-  publishedById           String? // Researcher.id of whoever published
-  publishedBy             Researcher?    @relation("ThesisPublisher", fields: [publishedById], references: [id])
-  // The public-interest anchor (COMPLIANCE.md Rule 5) as a dedicated field rather
-  // than free text in the body: structurally guaranteed to exist on a published
-  // thesis and rendered consistently on every thesis and call page.
+  publishedById           String?
+  publishedBy             Researcher?          @relation("ThesisPublisher", fields: [publishedById], references: [id], onDelete: Restrict)
   publicInterestStatement String?
-  debateSessions   DiffDebateSession[]
+  createdAt               DateTime             @default(now())
+  debateSessions          DebateSession[]
+  framings                Framing[]
+  gapDecisions            ThesisGapDecision[]
+  publicationAttempts     PublicationAttempt[]
+  withdrawals             Withdrawal[]
+  notes                   Note[]
 }
 
-// One row per edit. userContent is TipTap JSON; aiAnalysis is devil's advocate output.
-// contentHash = SHA-256(userContent + aiAnalysis) for tamper evidence.
+
+
+/// A VERSION — thesis A2. IMMUTABLE after the write: no column is ever updated.
 model ThesisVersion {
-  id                String                @id @default(cuid())
-  thesisId          String
-  thesis            Thesis                @relation("ThesisVersions", fields: [thesisId], references: [id], onDelete: Cascade)
-  parentVersionId   String?
-  parentVersion     ThesisVersion?        @relation("VersionTree", fields: [parentVersionId], references: [id])
-  childVersions     ThesisVersion[]       @relation("VersionTree")
-  userContent       Json // TipTap document JSON
-  aiAnalysis        Json? // DevilsAdvocateAgent output, null until COMPLETE
-  // SHA-256 of the EXACT message array sent to the critic — thesis text as it was
-  // serialised, evidence block, resolved gaps, rendered trajectory block, summary
-  // caveat and the system prompt. Null on every version analysed before this
-  // existed, which reads as "unknown, so not proven current" and re-runs.
-  //
-  // contentHash below hashes the OUTPUT, for publication pinning, and can say
-  // nothing about whether the analysis still answers the facts. Status could not
-  // either: PENDING_AI is set only when a version is CREATED, so a critique
-  // survived its evidence summaries being corrected, a new detection pass, and
-  // two changes to what the critic is given — while check 2 kept passing.
-  analysisInputHash String?
-  contentHash       String // SHA-256 of userContent + aiAnalysis
-  status            ThesisVersionStatus   @default(PENDING_AI)
-  mentions          ThesisMention[]
-  gapResolutions    ThesisGapResolution[]
-  isHead            Thesis?               @relation("ThesisHead")
-  isPublished       Thesis?               @relation("ThesisPublished")
-  createdById       String? // Researcher.id — null for legacy records
-  createdBy         Researcher?           @relation(fields: [createdById], references: [id])
-  createdAt         DateTime              @default(now())
+  id                  String               @id @default(cuid())
+  thesisId            String
+  thesis              Thesis               @relation("ThesisVersions", fields: [thesisId], references: [id], onDelete: Restrict)
+  parentVersionId     String?
+  parentVersion       ThesisVersion?       @relation("VersionTree", fields: [parentVersionId], references: [id], onDelete: Restrict)
+  childVersions       ThesisVersion[]      @relation("VersionTree")
+  /// Markdown with citation tokens — the record.
+  text                String
+  /// sha256(utf8(text)).
+  contentHash         String
+  /// The sentence the thesis argues, verbatim from the framing's choice.
+  claim               String
+  createdById         String
+  createdBy           Researcher           @relation(fields: [createdById], references: [id])
+  createdAt           DateTime             @default(now())
+  mentions            ThesisMention[]
+  analyses            ThesisAnalysis[]
+  gapDecisions        ThesisGapDecision[]
+  publicationAttempts PublicationAttempt[]
+  withdrawals         Withdrawal[]
+  isHead              Thesis?              @relation("ThesisHead")
+  isPublished         Thesis?              @relation("ThesisPublished")
 }
 
-// Records which AI-identified evidence gap has been addressed by a specific evidence record.
-// Linked to a specific ThesisVersion so resolutions are version-scoped.
-// On next AI analysis, resolutions are passed as context so DevilsAdvocate can assess whether the gap is truly closed.
-model ThesisGapResolution {
-  id              String        @id @default(cuid())
-  thesisVersionId String
-  thesisVersion   ThesisVersion @relation(fields: [thesisVersionId], references: [id], onDelete: Cascade)
-  gapIndex        Int // index into aiAnalysis.evidenceGaps[]
-  evidenceId      String // Evidence.fileHash
-  evidence        Evidence      @relation(fields: [evidenceId], references: [fileHash])
-  createdAt       DateTime      @default(now())
-
-  @@unique([thesisVersionId, gapIndex])
-}
-
-// Extracted first-class references from ThesisVersion.userContent nodes.
-// Queryable index — avoids parsing JSON at query time.
+/// A CITATION — thesis A2. One row per (version, kind, name). CHECK `ThesisMention_fields_by_kind`
+/// lives in the migration: an EVIDENCE mention carries its pin (A2 :1284).
 model ThesisMention {
-  id              String        @id @default(cuid())
-  thesisVersionId String
-  thesisVersion   ThesisVersion @relation(fields: [thesisVersionId], references: [id], onDelete: Cascade)
-  type            MentionType
-  refId           String // KeyFigure.name | Evidence.fileHash | TrackedUrl.id | ClaimTrajectory.id
-  /// THE PIN — evidence A2, required on an EVIDENCE mention. A citation names a
-  /// record AND the version of its content the argument was made against, as a
-  /// text citation pins (snapshotId, textHash). It may only equal the record's
-  /// `affirmedContentVersionHash`: a thesis cannot cite a version nobody stood
-  /// behind. Nullable in the column because the thesis layer's own steps (20)
-  /// give it the shape that makes it required per kind.
+  id                 String         @id @default(cuid())
+  versionId          String
+  thesisVersion      ThesisVersion  @relation(fields: [versionId], references: [id], onDelete: Restrict)
+  kind               MentionType
+  /// The record's fileHash, or the ClaimTrajectory id.
+  name               String
   contentVersionHash String?
-  /// THE ARGUMENT, BY REFERENCE. One "why", written once and assessed once;
-  /// a second thesis citing the same record argues its own. Written by
-  /// promote_from_debate on the head version's mention (evidence step 13) and
-  /// copied forward while (name, pin) is unchanged.
-  ///
-  /// NO `role`. Evidence A2 offered one and the thesis flows WITHDREW it (T2,
-  /// prosecutor plan §4.1): a role is meaningful only relative to a provision,
-  /// the element a record fills is the framing's, and what the record does here
-  /// is the argument.
   debateSessionId    String?
-  debateSession      DiffDebateSession? @relation(fields: [debateSessionId], references: [id], onDelete: Restrict)
+  debateSession      DebateSession? @relation(fields: [debateSessionId], references: [id], onDelete: Restrict)
+
+  @@unique([versionId, kind, name])
 }
 
-// ---------------------------------------------------------------------------
-// Research Sessions
-// ---------------------------------------------------------------------------
-
-enum ResearchSessionStatus {
-  ACTIVE
-  CLOSED
-}
-
-enum ResearchSessionEventType {
-  SESSION_STARTED // logged automatically on session creation
-  VERSION_CREATED // logged automatically when a thesis version is created
-  GAP_RESOLVED // logged automatically when a gap resolution is saved
-  AI_ANALYSIS_RUN // logged automatically when AI analysis completes
-  NOTE // logged manually via add_session_note MCP tool
-  SESSION_CLOSED // logged automatically on session close
-  // Deciding WHAT the thesis should argue, before one exists.
-  FRAMING_PROPOSED // a researcher's proposed framing of the question
-  FRAMING_ASSESSED // the adversarial response to it
-  THESIS_ATTACHED // the framing produced a thesis; refId is the Thesis id
-  // Publication is a deliberate, gated act and belongs in the record of the
-  // session that did it. refId is the ThesisVersion id that was pinned/unpinned.
-  PUBLICATION_RATIONALE // the researcher's argued case for publishing
-  PUBLICATION_ASSESSED // the assessor's response to it; description is the assessment JSON
-  THESIS_PUBLISHED
-  THESIS_UNPUBLISHED
-  // Written onto a session that ANOTHER researcher closed to open their own,
-  // naming who closed it and why, so its owner returns to a record rather than a guess.
-  SESSION_CLOSED_BY_OTHER
-}
-
-// A named Claude+human research sprint on a thesis.
-// Only one ACTIVE session per thesis at a time; creating a new one auto-closes the previous.
-model ResearchSession {
-  id String @id @default(cuid())
-
-  // Nullable so a session can open on a QUESTION before any thesis exists.
-  //
-  // Deciding what a thesis should argue is the most consequential step in the
-  // workflow — the topic string determines which evidence is pulled semantically
-  // and what the Devil's Advocate attacks, and a wrong framing produces a
-  // well-argued thesis about the wrong thing that no later iteration rescues.
-  // Until 2026-08-22 that decision happened entirely outside the system:
-  // suggest_thesis interpolated its `topic` into a prompt and discarded it, and
-  // a session could not exist without a thesisId, so the conversation that chose
-  // the framing left no trace anywhere.
-  //
-  // Deliberately NOT a third session type. ResearchSession and DiffDebateSession
-  // already exist; a third would be a smell. A framing session IS a research
-  // session — it just starts before its subject does, and the thesis attaches to
-  // it when created.
+/// A FRAMING — thesis A2; replaces the thesis-less session. Nothing opens or closes.
+model Framing {
+  id           String         @id @default(cuid())
+  question     String
+  provision    String?
+  researcherId String
+  researcher   Researcher     @relation(fields: [researcherId], references: [id], onDelete: Restrict)
   thesisId     String?
-  thesis       Thesis?               @relation(fields: [thesisId], references: [id], onDelete: Cascade)
-  // The question the session opened on, when it opened before a thesis.
-  question     String?
-  name         String
-  status       ResearchSessionStatus @default(ACTIVE)
-  // Who opened it. Still nullable, and deliberately so: two staging sessions
-  // predate ownership, and assigning them a researcher would put a name on work
-  // nobody can attribute — falsifying provenance on a platform whose premise is
-  // that custody is verifiable. They read as legacy, the same pattern as
-  // Evidence.createdById.
-  //
-  // A session with no owner belongs to NOBODY, not to everyone. That was the
-  // opposite before 2026-08-25, when exclusivity was global and a null owner
-  // therefore matched every caller.
-  //
-  // Opening a session now REQUIRES a researcher, so no new row can be ownerless.
-  researcherId String?
-  researcher   Researcher?           @relation(fields: [researcherId], references: [id])
-
-  // ---------------------------------------------------------------------
-  // ⚠️  TWO CONSTRAINTS EXIST ON THIS TABLE THAT PRISMA CANNOT SHOW YOU.
-  //
-  //   ResearchSession_one_active_per_researcher  UNIQUE (researcherId) WHERE status = 'ACTIVE'
-  //   ResearchSession_one_active_per_thesis      UNIQUE (thesisId)     WHERE status = 'ACTIVE'
-  //
-  // Declared in migrations/20260825190000_session_active_locks. They enforce
-  // "one ACTIVE session per researcher, and one per thesis" — uniqueness over a
-  // SUBSET of rows, which is exactly what a partial index is for. The row itself
-  // is never deleted on close: a publication attaches to the session that
-  // performed it and its events hang off it, so it is the audit trail rather
-  // than a lock.
-  //
-  // `@@index` in Prisma 5.22 rejects a `where:` argument ("No such argument"),
-  // so these can only be raw SQL. VERIFIED against live staging 2026-08-25:
-  // Prisma does not see a partial index at all — db:check-drift still reported
-  // "No difference detected" with one present, and a generated migration did not
-  // propose dropping it. Invisible, not endangered. (An earlier design added two
-  // nullable @unique columns to emulate this; it was abandoned once the drift
-  // assumption behind it was tested and turned out to be false.)
-  //
-  // Because they are invisible they cannot be assumed. Two consequences:
-  //   1. Inserting a second ACTIVE session raises Prisma error P2002. That is
-  //      the constraint working — translate it into a named refusal, never a 500.
-  //   2. A Prisma version that DOES understand partial indexes would start
-  //      reporting them as drift. Re-check after any major upgrade.
-  //
-  // thesisId is NULL for a framing session, which opens before its thesis
-  // exists. Postgres treats NULLs as DISTINCT in a unique index, so several
-  // researchers may frame concurrently while no two can hold the same thesis —
-  // that falls out rather than needing a special case.
-  // ---------------------------------------------------------------------
-
-  events    ResearchSessionEvent[]
-  createdAt DateTime               @default(now())
-  closedAt  DateTime?
+  thesis       Thesis?        @relation(fields: [thesisId], references: [id], onDelete: Restrict)
+  fromRunId    String?
+  clusterIndex Int?
+  createdAt    DateTime       @default(now())
+  rounds       FramingRound[]
+  notes        Note[]
 }
 
-// One event per significant action that occurred during a session.
-model ResearchSessionEvent {
-  id          String                   @id @default(cuid())
-  sessionId   String
-  session     ResearchSession          @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  type        ResearchSessionEventType
-  description String
-  refId       String? // ThesisVersion.id | Evidence.fileHash | ThesisGapResolution.id
-  createdAt   DateTime                 @default(now())
+enum FramingRoundType {
+  PROPOSED
+  ASSESSED
+  CHOSEN
+}
+
+/// A FRAMING ROUND — thesis A2, append-only.
+model FramingRound {
+  id           String           @id @default(cuid())
+  framingId    String
+  framing      Framing          @relation(fields: [framingId], references: [id], onDelete: Restrict)
+  sequence     Int
+  type         FramingRoundType
+  content      Json
+  researcherId String
+  researcher   Researcher       @relation(fields: [researcherId], references: [id], onDelete: Restrict)
+  createdAt    DateTime         @default(now())
+
+  @@unique([framingId, sequence])
+}
+
+/// AN ANALYSIS — thesis A2, append-only; the same input is never paid for twice.
+model ThesisAnalysis {
+  id               String        @id @default(cuid())
+  versionId        String
+  version          ThesisVersion @relation(fields: [versionId], references: [id], onDelete: Restrict)
+  inputFingerprint String
+  opinion          Json
+  model            String
+  promptVersion    String
+  runAt            DateTime      @default(now())
+
+  @@unique([versionId, inputFingerprint])
+}
+
+enum GapDecisionValue {
+  OPEN
+  CITED
+  REQUESTED
+  CALLED
+  CONCEDED
+  DISMISSED
+}
+
+/// A GAP DECISION — thesis A2 (T4 :628 names its versionId), append-only. CHECK
+/// `ThesisGapDecision_fields_by_decision` lives in the migration: each decision's REQUIRED field is
+/// present (A2 :1324–:1329); none forbids another's.
+model ThesisGapDecision {
+  id           String           @id @default(cuid())
+  thesisId     String
+  thesis       Thesis           @relation(fields: [thesisId], references: [id], onDelete: Restrict)
+  versionId    String
+  version      ThesisVersion    @relation(fields: [versionId], references: [id], onDelete: Restrict)
+  gapId        String
+  description  String
+  sequence     Int
+  decision     GapDecisionValue
+  citedName    String?
+  request      Json?
+  callItem     Json?
+  reason       String?
+  researcherId String
+  researcher   Researcher       @relation(fields: [researcherId], references: [id], onDelete: Restrict)
+  createdAt    DateTime         @default(now())
+
+  @@unique([thesisId, gapId, sequence])
+}
+
+enum PublicationVerdict {
+  SUPPORTS
+  DISPUTES
+}
+
+enum PublicationOutcome {
+  PUBLISHED
+  REFUSED
+}
+
+/// A PUBLICATION ATTEMPT — thesis A2, append-only; written refused or not.
+model PublicationAttempt {
+  id           String              @id @default(cuid())
+  thesisId     String
+  thesis       Thesis              @relation(fields: [thesisId], references: [id], onDelete: Restrict)
+  versionId    String
+  version      ThesisVersion       @relation(fields: [versionId], references: [id], onDelete: Restrict)
+  rationale    String
+  assessment   Json
+  verdict      PublicationVerdict?
+  outcome      PublicationOutcome
+  refusedBy    String[]
+  researcherId String
+  researcher   Researcher          @relation(fields: [researcherId], references: [id], onDelete: Restrict)
+  createdAt    DateTime            @default(now())
+}
+
+/// A WITHDRAWAL — thesis A2, append-only; the reason is required.
+model Withdrawal {
+  id           String        @id @default(cuid())
+  thesisId     String
+  thesis       Thesis        @relation(fields: [thesisId], references: [id], onDelete: Restrict)
+  versionId    String
+  version      ThesisVersion @relation(fields: [versionId], references: [id], onDelete: Restrict)
+  reason       String
+  researcherId String
+  researcher   Researcher    @relation(fields: [researcherId], references: [id], onDelete: Restrict)
+  createdAt    DateTime      @default(now())
+}
+
+/// A NOTE — thesis A2. CHECK `Note_one_target` lives in the migration: exactly
+/// one of `thesisId` and `framingId` is set.
+model Note {
+  id           String     @id @default(cuid())
+  thesisId     String?
+  thesis       Thesis?    @relation(fields: [thesisId], references: [id], onDelete: Restrict)
+  framingId    String?
+  framing      Framing?   @relation(fields: [framingId], references: [id], onDelete: Restrict)
+  text         String
+  researcherId String
+  researcher   Researcher @relation(fields: [researcherId], references: [id], onDelete: Restrict)
+  createdAt    DateTime   @default(now())
 }
 
 // ---------------------------------------------------------------------------
@@ -1427,9 +1380,9 @@ model SocialEconomicImpactReport {
 // that every status traces to something checkable. So promotion by hand requires
 // an argument — and the argument is what gets kept.
 //
-// Modelled as a session rather than a rationale column, for the same reason
-// ResearchSession exists for a thesis: it has a goal (decide this diff), a
-// lifecycle, and a sequence of events that IS the record. A court reading it
+// Modelled as a session rather than a rationale column: it has a goal (does this
+// record support what the thesis says?), a lifecycle, and a sequence of events
+// that IS the record. A court reading it
 // should see what was claimed, what was objected to, and how that was answered —
 // not one summary field written at the end. It also survives a restart, which an
 // in-memory token would not.
@@ -1442,8 +1395,7 @@ model SocialEconomicImpactReport {
 //   is never the final authority on significance.
 //
 //   MERIT is advisory. The assessor may disagree, the researcher may proceed,
-//   and promotedOverObjection records that they did. Mirrors DevilsAdvocateAgent,
-//   which critiques a thesis without blocking it. An override that is permitted
+//   and promotedOverObjection records that they did. An override that is permitted
 //   but permanently visible deters better than a refusal — and unlike a refusal,
 //   it cannot be defeated by rephrasing until the model yields.
 // ---------------------------------------------------------------------------
@@ -1453,13 +1405,13 @@ enum PromotionAssessmentVerdict {
   DISPUTES // the researcher argued properly, but the assessor disagrees on the merits
 }
 
-enum DiffDebateStatus {
+enum DebateStatus {
   OPEN // under argument — no evidence exists yet
   PROMOTED // ended in promotion; evidenceId is set
   ABANDONED // the researcher withdrew the argument
 }
 
-enum DiffDebateEventType {
+enum DebateEventType {
   DEBATE_OPENED // logged automatically when the session is created
   RATIONALE_SUBMITTED // a researcher argument — the opening one or a revision
   ASSESSMENT_RETURNED // the assessor's response to that argument
@@ -1468,7 +1420,6 @@ enum DiffDebateEventType {
   ABANDONED // ended without promotion
 }
 
-// One debate per diff at a time — mirroring one ACTIVE ResearchSession per thesis.
 /// THE ARGUMENT FOR ONE RECORD, IN ONE THESIS — evidence flows §4, A2.
 ///
 /// The debate keeps its shape as built — a session with a goal, a lifecycle, an
@@ -1478,9 +1429,11 @@ enum DiffDebateEventType {
 /// someone is trying to establish, so the question it puts is "does this record
 /// support what thesis T says it does?".
 ///
-/// THE MODEL KEEPS ITS NAME UNTIL STEP 13, where evidence A4 renames it
-/// `DebateSession` with the tools that drop 'diff' from their own names. A
-/// rename here would touch every caller in a PR whose subject is the schema.
+/// RENAMED FROM `DiffDebateSession` AT THESIS STEP 18 — evidence A2's name, the
+/// rename evidence step 13 deferred there — with its event table and both enums.
+/// Its opener is stored (`researcherId`, written by open_debate at create), so
+/// HISTORY attributes the argument (evidence T3 :371). Every key it holds is
+/// RESTRICT: nothing is deleted after the rebuild (thesis flows A2 :1355).
 ///
 /// `openKey` IS THE PARTIAL UNIQUE INDEX PRISMA CANNOT EXPRESS. A2 asks for one
 /// OPEN debate per (thesis, record). Written as a partial index in raw SQL it
@@ -1491,16 +1444,19 @@ enum DiffDebateEventType {
 /// NULLs, so any number of closed sessions coexist for one pair. Ruled
 /// 2026-09-08, option (i). Its one writer is the debate module, held by a scan.
 ///
-/// CHECK `DiffDebateSession_one_record_key` lives in the migration: exactly one
+/// CHECK `DebateSession_one_record_key` lives in the migration: exactly one
 /// of `recordSnapshotId` and `recordDiffId` is set. The third arm,
 /// `recordCommitment`, is document refactor step 28's and is added by addition
 /// there.
-model DiffDebateSession {
+model DebateSession {
   id                    String                      @id @default(cuid())
   /// The thesis this record is argued FOR. Importance is a relation, and the
   /// relation is the thesis's (§1) — there is no promotion that does not name one.
   thesisId              String
   thesis                Thesis                      @relation(fields: [thesisId], references: [id])
+  /// Who opened the argument — HISTORY attributes it (evidence T3 :371); written by open_debate.
+  researcherId          String
+  researcher            Researcher                  @relation(fields: [researcherId], references: [id], onDelete: Restrict)
   /// ID(record), computed at open — before any `Evidence` row exists, which is
   /// what lets the citation come first and the argument be made on it.
   recordFileHash        String
@@ -1509,7 +1465,7 @@ model DiffDebateSession {
   recordDiffId          String?
   recordDiff            UrlVersionDiff?             @relation(fields: [recordDiffId], references: [id], onDelete: Restrict)
   openKey               String?                     @unique
-  status                DiffDebateStatus            @default(OPEN)
+  status                DebateStatus                @default(OPEN)
   verdict               PromotionAssessmentVerdict?
   hasSubstance          Boolean                     @default(false)
   /// The row this argument CREATED OR JOINED (evidence A2). NOT @unique: a second
@@ -1517,9 +1473,9 @@ model DiffDebateSession {
   /// (thesis T3), so many debates legitimately name one Evidence row. Indexed
   /// because it stays the join key the standing audit reads the relation through.
   evidenceId            String?
-  evidence              Evidence?                   @relation(fields: [evidenceId], references: [id])
+  evidence              Evidence?                   @relation(fields: [evidenceId], references: [id], onDelete: Restrict)
   promotedOverObjection Boolean                     @default(false)
-  events                DiffDebateEvent[]
+  events                DebateEvent[]
   mentions              ThesisMention[]
   createdAt             DateTime                    @default(now())
   closedAt              DateTime?
@@ -1528,11 +1484,11 @@ model DiffDebateSession {
 }
 
 // One row per turn. Content is stored verbatim — this is the record, not a log.
-model DiffDebateEvent {
+model DebateEvent {
   id        String              @id @default(cuid())
   sessionId String
-  session   DiffDebateSession   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  type      DiffDebateEventType
+  session   DebateSession       @relation(fields: [sessionId], references: [id], onDelete: Restrict)
+  type      DebateEventType
   content   String
   refId     String? // Evidence.id on PROMOTED
   createdAt DateTime            @default(now())
@@ -1597,10 +1553,9 @@ model ReclassificationRun {
 // raw text makes it a string search anyone can repeat against web.archive.org.
 // Extraction is used only to DISCOVER which claims are worth following.
 //
-// Citation is deliberately left open. A thesis cites by fileHash and
-// ThesisMention knows KEY_FIGURE | EVIDENCE | TRACKED_URL; a trajectory is none
-// of those. That decision is better made against real trajectories than against
-// an imagined use.
+// A thesis cites a trajectory by its id — `#tr_<cuid>`, a ThesisMention of kind
+// TRAJECTORY (thesis flows A1, A2) — never by claimHash, so a cited trajectory
+// keeps resolving to the detection pass that was cited.
 // ---------------------------------------------------------------------------
 
 enum ClaimFinalState {

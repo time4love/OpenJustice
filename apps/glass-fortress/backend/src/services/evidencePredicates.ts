@@ -164,7 +164,7 @@ export function citationCurrent<V extends ContentVersionProvenance>(
 
 /** A citation and the debate it references, as ARGUED reads them. */
 export interface ArguedMention {
-  /** The record the citation names — `ThesisMention.refId` under this schema. */
+  /** The record the citation names — `ThesisMention.name` — the fileHash (thesis flows A2 :1283). */
   name: string;
   /** The thesis of the version this mention sits on. */
   thesisId: string;
@@ -421,8 +421,8 @@ export async function publicPage(trackedUrlId: string): Promise<boolean> {
 
   const citedByAPublishedVersion = await prisma.thesisMention.count({
     where: {
-      type: 'EVIDENCE',
-      refId: { in: records.map((r) => r.fileHash) },
+      kind: 'EVIDENCE',
+      name: { in: records.map((r) => r.fileHash) },
       // The version IS the published one of its thesis — `isPublished` is the
       // back-relation of `Thesis.publishedVersionId`, so this is the pin itself
       // rather than a status anyone could set separately.
@@ -704,7 +704,7 @@ export async function flagged(mentionId: string): Promise<FlagReport> {
   const mention = await prisma.thesisMention.findUnique({
     where: { id: mentionId },
     select: {
-      refId: true,
+      name: true,
       contentVersionHash: true,
       thesisVersion: { select: { isPublished: { select: { id: true } } } },
     },
@@ -713,7 +713,7 @@ export async function flagged(mentionId: string): Promise<FlagReport> {
   if (mention?.thesisVersion.isPublished == null) return unflagged;
 
   const evidence = await prisma.evidence.findUnique({
-    where: { fileHash: mention.refId },
+    where: { fileHash: mention.name },
     select: {
       status: true,
       snapshot: { select: { textHash: true, textExtractionVersion: true } },
@@ -937,7 +937,7 @@ export async function publishable(mentionId: string): Promise<PublishableReport>
     where: { id: mentionId },
     select: {
       id: true,
-      refId: true,
+      name: true,
       contentVersionHash: true,
       debateSessionId: true,
       thesisVersion: { select: { thesisId: true } },
@@ -962,7 +962,7 @@ export async function publishable(mentionId: string): Promise<PublishableReport>
   // does its own `findMany` for them, so loading them here would be either dead
   // or the beginning of a second spelling of the last clause.
   const row = await prisma.evidence.findUnique({
-    where: { fileHash: mention.refId },
+    where: { fileHash: mention.name },
     select: {
       fileHash: true,
       kind: true,
@@ -987,7 +987,7 @@ export async function publishable(mentionId: string): Promise<PublishableReport>
 
   const examined: ExaminedMention = {
     mentionId: mention.id,
-    fileHash: mention.refId,
+    fileHash: mention.name,
     contentVersionHash: mention.contentVersionHash,
   };
 
@@ -1026,7 +1026,7 @@ export async function publishable(mentionId: string): Promise<PublishableReport>
   // ARGUED — kind-independent and row-independent, so it is computed in every
   // arm: a reader is owed what was actually asked.
   const isArgued = argued({
-    name: mention.refId,
+    name: mention.name,
     thesisId: mention.thesisVersion.thesisId,
     debate: mention.debateSession,
   });
@@ -1045,7 +1045,7 @@ export async function publishable(mentionId: string): Promise<PublishableReport>
   // VERIFIED — the async predicate, reading the stored attribution verdict. Its
   // own discriminated union carries the word for a class it cannot answer for,
   // and that word is borrowed here rather than re-coined.
-  const verification = await verified(mention.refId);
+  const verification = await verified(mention.name);
   if (!verification.evaluable) {
     examinedNone('VERIFIED', verification.reason);
   } else if (verification.verified) {
@@ -1118,8 +1118,8 @@ export async function publishable(mentionId: string): Promise<PublishableReport>
   // The scope decision is read from what that module returned, never re-made
   // here: a record it did not judge has `urlVersionDiffId` null on its own row,
   // and a hash it holds no row for is one its rule at :185-:188 leaves to check 5.
-  const soundness = await assessEvidenceInputSoundness([mention.refId]);
-  const judged = soundness.rows.find((r) => r.fileHash === mention.refId);
+  const soundness = await assessEvidenceInputSoundness([mention.name]);
+  const judged = soundness.rows.find((r) => r.fileHash === mention.name);
   if (judged === undefined) {
     examinedNone('INPUT_SOUND', 'NOT_PROMOTED');
   } else if (judged.urlVersionDiffId === null) {
@@ -1197,7 +1197,7 @@ export type VersionPublishableReport =
 
 export async function publishableEvidence(versionId: string): Promise<VersionPublishableReport> {
   const mentions = await prisma.thesisMention.findMany({
-    where: { thesisVersionId: versionId, type: 'EVIDENCE' },
+    where: { versionId, kind: 'EVIDENCE' },
     select: { id: true },
     orderBy: { id: 'asc' },
   });

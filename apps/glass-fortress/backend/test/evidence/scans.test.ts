@@ -409,10 +409,10 @@ describe('openKey has ONE writer', () => {
 
 describe('the debate writes its own tables and nothing else does', () => {
   // The three modules evidence step 13 builds are the only writers of the debate
-  // and its events. Nothing about `DiffDebateSession` was scanned before this
+  // and its events. Nothing about `DebateSession` was scanned before this
   // step, because nothing wrote one: the tables existed with no writer since the
   // legacy switch deleted `services/diffDebate`.
-  const DEBATE_TABLES = ['diffDebateSession', 'diffDebateEvent'] as const;
+  const DEBATE_TABLES = ['debateSession', 'debateEvent'] as const;
   const ALLOWED = [
     'services/openDebate.ts',
     'services/respondInDebate.ts',
@@ -436,9 +436,9 @@ describe('the debate writes its own tables and nothing else does', () => {
   });
 
   it('DETECTS a planted write in a fourth module', () => {
-    expect(writeTo('diffDebateSession').test('await prisma.diffDebateSession.update({ where });')).toBe(true);
-    expect(writeTo('diffDebateEvent').test('tx.diffDebateEvent.createMany({ data })')).toBe(true);
-    expect(writeTo('diffDebateSession').test('await prisma.diffDebateSession.findUnique({ where });')).toBe(false);
+    expect(writeTo('debateSession').test('await prisma.debateSession.update({ where });')).toBe(true);
+    expect(writeTo('debateEvent').test('tx.debateEvent.createMany({ data })')).toBe(true);
+    expect(writeTo('debateSession').test('await prisma.debateSession.findUnique({ where });')).toBe(false);
   });
 });
 

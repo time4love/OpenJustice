@@ -59,7 +59,7 @@ export interface DebateState {
 }
 
 export async function loadDebate(sessionId: string): Promise<LoadedDebate | null> {
-  const row = await prisma.diffDebateSession.findUnique({
+  const row = await prisma.debateSession.findUnique({
     where: { id: sessionId },
     select: {
       id: true,

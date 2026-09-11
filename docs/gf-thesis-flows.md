@@ -1244,10 +1244,10 @@ the citation tokens, in the text:
   #tr_<cuid>         a ClaimTrajectory.id — the detection pass's row, never a claimHash
   a token the parser cannot resolve is a refusal at the version write, never a plain string
 
-NORMALISE(text)      whitespace collapsed to one space, trimmed — `normaliseClaim` in the
-                     trajectory service, and ONE importable symbol: the substring checks of
-                     T1 and T4, the gap id, and the trajectory probe all call it; a second
-                     spelling of it is a scan failure (A7)
+NORMALISE(text)      whitespace collapsed to one space, trimmed — `normaliseClaim`, declared in `lib/normalise.ts`, a module
+                     that imports nothing; the trajectory service and every other caller import it — ONE importable symbol:
+                     the substring checks of T1 and T4, the gap id, and the trajectory probe all call it; a second spelling
+                     of it is a scan failure (A7) — amended 2026-09-11 (thesis step 18): a module that holds a database client depends on the pure one, never the reverse
 PROVISION            a value from ONE importable table naming each provision and its element
                      shapes (prosecutor plan §5) — e.g. NUREMBERG_1 → [DUTY_HOLDER,
                      KNOWLEDGE_POINT, DISCLOSURE_TIMELINE, DIVERGENCE]; extending the table is

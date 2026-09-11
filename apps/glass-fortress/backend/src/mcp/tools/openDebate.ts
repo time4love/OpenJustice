@@ -86,9 +86,9 @@ export async function requireAuthor(
   }
   // NOT_AUTHOR — thesis §9: "A thesis has one author, and every write on it
   // refuses NOT_AUTHOR … versions, arguments, decisions, framings, notes,
-  // publication and withdrawal are theirs." A thesis with no author has nobody it
-  // could be: a null is not a match.
-  if (thesis.createdById === null || thesis.createdById !== researcher.researcherId) {
+  // publication and withdrawal are theirs." The author is REQUIRED (thesis A2
+  // :1263), so every thesis has one to compare.
+  if (thesis.createdById !== researcher.researcherId) {
     return refusal(
       'NOT_AUTHOR',
       `Thesis ${thesisId} is not yours to argue for. A thesis has one author and every write on it ` +
@@ -128,7 +128,7 @@ export async function openDebateHandler(input: DebateInput): Promise<string> {
     }
     const version = await prisma.thesisVersion.findUnique({
       where: { id: checked.mention.versionId },
-      select: { id: true, userContent: true },
+      select: { id: true, text: true },
     });
     if (version === null) {
       throw new Error(
@@ -140,7 +140,7 @@ export async function openDebateHandler(input: DebateInput): Promise<string> {
     await assessAndRecord(sessionId, {
       url: checked.page.url,
       content: await assessedContent(checked),
-      passages: await passagesCiting(version, checked.fileHash),
+      passages: passagesCiting(version, checked.fileHash),
       rationale: input.rationale,
       // The turns BEFORE this round — the rationale just written is passed as the
       // argument, not as a prior, so the assessor is never handed it twice.

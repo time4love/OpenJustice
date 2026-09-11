@@ -24,7 +24,7 @@ import { PromotionAssessor, type AssessedContent } from './promotionAssessor';
 
 /** The researcher's answer, recorded verbatim before any model reads it. */
 export async function recordResponse(sessionId: string, response: string): Promise<void> {
-  await prisma.diffDebateEvent.create({
+  await prisma.debateEvent.create({
     data: { sessionId, type: 'RESPONSE_SUBMITTED', content: response },
   });
 }
@@ -59,7 +59,7 @@ export async function assessAndRecord(sessionId: string, round: AssessmentRound)
   // verdict never landed would be a debate that says one thing in its log and
   // another in its state. One transaction, under the shared window.
   await prisma.$transaction(async (tx) => {
-    await tx.diffDebateEvent.create({
+    await tx.debateEvent.create({
       data: {
         sessionId,
         type: 'ASSESSMENT_RETURNED',
@@ -72,7 +72,7 @@ export async function assessAndRecord(sessionId: string, round: AssessmentRound)
         }),
       },
     });
-    await tx.diffDebateSession.update({
+    await tx.debateSession.update({
       where: { id: sessionId },
       data: {
         hasSubstance: assessment.hasSubstance,

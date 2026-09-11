@@ -245,7 +245,7 @@ export const defaultSessionLookup = (args: {
   // assessor the wrong turns.
   const base = (store.session['events'] ?? []) as Row[];
   const appended = written
-    .filter((w) => w.model === 'diffDebateEvent')
+    .filter((w) => w.model === 'debateEvent')
     .map((w) => ({ type: w.data['type'], content: w.data['content'], createdAt: new Date() }));
   return Promise.resolve({ ...store.session, events: [...base, ...appended] });
 };
@@ -459,38 +459,25 @@ export const db = {
   thesisMention: {
     findFirst: jest.fn(() => Promise.resolve(store.mention)),
     // FILTERED ONLY WHEN THE CALLER NAMES A VERSION. `publishableEvidence` asks
-    // `{ thesisVersionId, type }`; `evidenceReviews.citationsOf` asks by
-    // `refId` and a version relation, and answers as it always did.
+    // `{ versionId, kind }`; `evidenceReviews.citationsOf` asks by `name` and a
+    // version relation, and answers as it always did.
     //
-    // THESIS STEP 17, additive (7.2 round 2): A2's TARGET names — `versionId`,
-    // `kind` — are honoured exactly as today's are. The thesis suite seeds its
-    // mention rows under both until step 18 renames the columns, and a thesis
-    // predicate asking in the target's words must see the one version it names:
-    // REVIEWS reads HEAD's mentions and PUBLISHED's apart, and a double that
-    // answered every row to `{ versionId }` would let a head-only reading pass a
-    // case about the published version. No evidence-layer caller can send the
-    // target names — they are not columns of today's schema — so every answer
-    // those callers get is unchanged.
+    // A2's NAMES ONLY, since thesis step 18 renamed the columns (thesis flows A2
+    // :1280–:1283). The arms that honoured the built names beside them lost their
+    // last caller in that rename, and went with it. A predicate asking for one
+    // version must see that version's rows: REVIEWS reads HEAD's mentions and
+    // PUBLISHED's apart, and a double that answered every row to `{ versionId }`
+    // would let a head-only reading pass a case about the published version.
     findMany: jest.fn(
-      ask(
-        'thesisMention',
-        'findMany',
-        (args: { where?: { thesisVersionId?: string; type?: string; versionId?: string; kind?: string } }) => {
-          const where = args.where ?? {};
-          if (where.thesisVersionId === undefined && where.versionId === undefined) {
-            return Promise.resolve(store.mentions);
-          }
-          return Promise.resolve(
-            store.mentions.filter(
-              (m) =>
-                (where.thesisVersionId === undefined || m['thesisVersionId'] === where.thesisVersionId) &&
-                (where.versionId === undefined || m['versionId'] === where.versionId) &&
-                (where.type === undefined || m['type'] === where.type) &&
-                (where.kind === undefined || m['kind'] === where.kind),
-            ),
-          );
-        },
-      ),
+      ask('thesisMention', 'findMany', (args: { where?: { versionId?: string; kind?: string } }) => {
+        const where = args.where ?? {};
+        if (where.versionId === undefined) return Promise.resolve(store.mentions);
+        return Promise.resolve(
+          store.mentions.filter(
+            (m) => m['versionId'] === where.versionId && (where.kind === undefined || m['kind'] === where.kind),
+          ),
+        );
+      }),
     ),
     // BY ID, from the same list `findMany` answers with, so a version with two
     // mentions cannot silently grade one of them twice.
@@ -718,7 +705,7 @@ export const db = {
       return Promise.resolve(created);
     }),
   },
-  diffDebateSession: {
+  debateSession: {
     // TWO LOOKUPS, ONE DELEGATE: `openOrRevise` asks by `openKey` (is there an
     // OPEN debate for this pair?) and `loadDebate` asks by `id`. A double that
     // answered both the same way would make the open path and the read-back move
@@ -735,21 +722,21 @@ export const db = {
     }),
     create: jest.fn((args: { data: Row }) => {
       if (store.collideOnCreate !== null) return Promise.reject(store.collideOnCreate);
-      record('diffDebateSession', 'create', args.data);
+      record('debateSession', 'create', args.data);
       return Promise.resolve({ id: 'session-1' });
     }),
     update: jest.fn((args: { data: Row }) => {
-      record('diffDebateSession', 'update', args.data);
+      record('debateSession', 'update', args.data);
       return Promise.resolve({});
     }),
   },
-  diffDebateEvent: {
+  debateEvent: {
     create: jest.fn((args: { data: Row }) => {
-      record('diffDebateEvent', 'create', args.data);
+      record('debateEvent', 'create', args.data);
       return Promise.resolve({});
     }),
     createMany: jest.fn((args: { data: Row[] }) => {
-      for (const d of args.data) record('diffDebateEvent', 'create', d);
+      for (const d of args.data) record('debateEvent', 'create', d);
       return Promise.resolve({ count: args.data.length });
     }),
   },
@@ -851,7 +838,7 @@ export function resetDouble(): void {
   store.notes = [];
   store.debates = [];
   store.trajectories = [];
-  db.diffDebateSession.findUnique.mockImplementation(defaultSessionLookup);
+  db.debateSession.findUnique.mockImplementation(defaultSessionLookup);
   db.$transaction.mockImplementation(defaultTransaction);
   db.trackedUrl.findUnique.mockReturnValue(Promise.resolve(PAGE));
 }

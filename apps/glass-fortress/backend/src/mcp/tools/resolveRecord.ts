@@ -82,25 +82,16 @@ export async function resolveRecordHandler(input: { fileHash: string }): Promise
     const report = await verified(resolved.fileHash);
     const mentions = await prisma.thesisMention.findMany({
       where: {
-        type: 'EVIDENCE',
-        refId: resolved.fileHash,
+        kind: 'EVIDENCE',
+        name: resolved.fileHash,
         thesisVersion: { isPublished: { isNot: null } },
       },
       select: {
         id: true,
         contentVersionHash: true,
-        thesisVersion: { select: { id: true, thesisId: true, contentHash: true, userContent: true } },
+        thesisVersion: { select: { id: true, thesisId: true, contentHash: true, text: true } },
       },
     });
-
-    // THE jsdom BOUNDARY, dynamically — refactor plan §8's named hazard: a
-    // static import of `thesisClaimAudit` pulls `archiveVerification` →
-    // `archiveText` → jsdom, which is ESM-only and drags itself into every unit
-    // suite that touches this module. It has broken the suite twice, and the
-    // plan's own remedy is this pattern. `extractText` is IMPORTED, never moved:
-    // it is a published version's one text extractor, and a second copy of it
-    // here would be the spelling that drifts.
-    const { extractText } = await import('../../services/thesisClaimAudit');
 
     const citedBy: Citation[] = [];
     for (const mention of mentions) {
@@ -110,13 +101,10 @@ export async function resolveRecordHandler(input: { fileHash: string }): Promise
         contentHash: mention.thesisVersion.contentHash,
         pin: mention.contentVersionHash,
         flagged: await flagged(mention.id),
-        // PLAIN TEXT, through the one extractor a published version already has.
-        // `extractText` resolves each mention node to the token the text carried
-        // (`#ev_…`), which is what a reader of a citation needs to see; the body
-        // is TipTap JSON until thesis step 20 gives a version its Markdown text,
-        // and serving that JSON to a stranger would be serving an editor's
-        // format as the record.
-        text: extractText(mention.thesisVersion.userContent),
+        // THE VERSION'S TEXT, AS IT IS — thesis A2 :1273: Markdown with citation
+        // tokens is the record, so what a reader of a citation sees is what the
+        // author wrote, `#ev_…` tokens included, and no renderer stands between.
+        text: mention.thesisVersion.text,
       });
     }
 

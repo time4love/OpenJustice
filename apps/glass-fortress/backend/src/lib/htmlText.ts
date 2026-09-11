@@ -12,6 +12,8 @@
  * stored beside this derivation rather than replaced by it — see captureDocument.
  */
 
+import { normaliseClaim } from './normalise';
+
 /** Convert a raw Wayback timestamp (YYYYMMDDHHMMSS) to YYYY-MM-DD. */
 export function timestampToDate(ts: string): string {
   return `${ts.slice(0, 4)}-${ts.slice(4, 6)}-${ts.slice(6, 8)}`;
@@ -77,10 +79,11 @@ export function normaliseText(text: string): string {
  * Collapse every run of whitespace so a phrase matches across re-wrapping,
  * re-indentation and block boundaries.
  *
- * The same normalisation claim-trajectory detection uses (`normaliseClaim`),
- * and deliberately so: a phrase this platform reports as present in a capture
- * must mean the same thing whichever tool reported it.
+ * A CALL of NORMALISE (`lib/normalise.ts`), never a second spelling of it — thesis
+ * flows A1 :1247–:1250: a phrase this platform reports as present in a capture
+ * must mean the same thing whichever tool reported it. Pure calls pure: this
+ * module stays free of anything that holds a database client.
  */
 export function normaliseForPresence(text: string): string {
-  return text.replace(/\s+/g, ' ').trim();
+  return normaliseClaim(text);
 }

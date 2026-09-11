@@ -9,7 +9,7 @@ import { built } from './absent';
 import { MODEL_ACTORS, MODULES, type ThesisIdentityModule, type ThesisPredicatesModule } from './contract';
 import { OPEN_GAP, OPEN_GAP_DESCRIPTION_SPACED, THESIS, TRAJECTORY_ID } from './fixtures';
 import { gap } from './gateWorld';
-import { SCHEMA, blockNamed, blocksOf, fieldsOf, modules, sourceOf, valuesOf } from './scanning';
+import { SCHEMA, blockNamed, blocksOf, fieldsOf, modules, sourceOf } from './scanning';
 
 // ---------------------------------------------------------------------------
 // A7's SCANS FOR THE THESIS LAYER — docs/gf-thesis-flows.md A7 (:1630–:1660), the
@@ -43,11 +43,10 @@ describe('thesis-no-log', () => {
   /**
    * THE DEBATE'S TWO TABLES, one entry each (sketch §0c). The flows keep the debate
    * "as built — a session with a goal, a lifecycle and an event log" (evidence §4
-   * :334–:336; thesis §12 :1145), and each appendix says the flows win. Named as
-   * built; evidence A2 renames the first `DebateSession` at thesis step 18, and the
-   * entry follows it.
+   * :334–:336; thesis §12 :1145), and each appendix says the flows win. Evidence
+   * A2's `DebateSession` and its events, both renamed at thesis step 18.
    */
-  const DEBATE_TABLES = ['DiffDebateSession', 'DiffDebateEvent'];
+  const DEBATE_TABLES = ['DebateSession', 'DebateEvent'];
 
   /**
    * Every model named `*Session` or `*Event` that references a thesis, a version, a
@@ -79,7 +78,7 @@ describe('thesis-no-log', () => {
 
   /** A write to a `*Session` or `*Event` delegate — the debate's are the evidence scan's to pin. */
   const LOG_WRITE = /\.([a-z]\w*(?:Session|Event))\.(?:create|createMany|update|updateMany|upsert)\s*\(/g;
-  const DEBATE_DELEGATES = ['diffDebateSession', 'diffDebateEvent'];
+  const DEBATE_DELEGATES = ['debateSession', 'debateEvent'];
   const logWrites = (code: string): string[] =>
     [...code.matchAll(LOG_WRITE)].map((m) => m[1] ?? '').filter((d) => !DEBATE_DELEGATES.includes(d));
 
@@ -104,11 +103,11 @@ describe('thesis-no-log', () => {
       'NoteEvent',
       'NoteSession',
     ]);
-    expect(logModels('model DiffDebateSession {\n  id String\n  thesisId String\n}\n', DEBATE_TABLES)).toEqual([]);
+    expect(logModels('model DebateSession {\n  id String\n  thesisId String\n}\n', DEBATE_TABLES)).toEqual([]);
     expect(logModels('model Session {\n  id String\n  sid String\n  data String\n}\n', [])).toEqual([]);
     expect(logModels('model AuditEvent {\n  id String // the thesisId lives elsewhere\n}\n', [])).toEqual([]);
     expect(logWrites('await tx.researchSessionEvent.create({ data });')).toEqual(['researchSessionEvent']);
-    expect(logWrites('await prisma.diffDebateEvent.create({ data });')).toEqual([]);
+    expect(logWrites('await prisma.debateEvent.create({ data });')).toEqual([]);
     expect(logWrites('await prisma.researchSession.findMany({});')).toEqual([]);
   });
 });
@@ -188,12 +187,12 @@ describe('one-symbol', () => {
   /**
    * THE SIX, each with its module and the step that owes it — read from
    * `contract.ts`'s MODULES where the module is the thesis layer's, never re-listed.
-   * NORMALISE is present (thesis A1 :1247–:1250); its step is plan step 18's, which
-   * makes it "one importable symbol" and is named only for the message a missing
-   * module would carry.
+   * NORMALISE lives in `lib/normalise.ts`, a module that imports nothing (thesis A1
+   * :1247–:1250, as amended at step 18); `test/thesisGuards.test.ts` holds that it
+   * imports nothing, in the run that gates.
    */
   const SYMBOLS: readonly OneSymbol[] = [
-    { name: 'normaliseClaim', module: 'services/claimTrajectory.ts', kind: 'function', step: 18 },
+    { name: 'normaliseClaim', module: 'lib/normalise.ts', kind: 'function', step: MODULES['lib/normalise'].exports.normaliseClaim.step },
     { name: 'PROVISIONS', module: 'lib/provisions.ts', kind: 'table', step: MODULES['lib/provisions'].exports.PROVISIONS.step },
     ...(['claimFramed', 'fingerprint', 'gapInForce', 'publishableVersion'] as const).map(
       (name): OneSymbol => ({
@@ -232,7 +231,7 @@ describe('one-symbol', () => {
     /\.split\(\s*\/\\s\+\/\s*\)\s*\.join\(\s*(['"]) \1\s*\)/,
   ];
   const spells = (code: string): boolean => SECOND_SPELLINGS.some((re) => re.test(code));
-  const NORMALISE_MODULE = 'services/claimTrajectory.ts';
+  const NORMALISE_MODULE = 'lib/normalise.ts';
 
   /**
    * NOT NORMALISE, each for sketch §0a's reason: the collapsed text feeds no fact
@@ -252,7 +251,7 @@ describe('one-symbol', () => {
     'lib/diffCoverage.ts': "the classifier's coverage: a chunk against the classifier's quotes (a corpus measurement)",
   };
 
-  it('NORMALISE is spelled in no module but services/claimTrajectory.ts — RED at lib/htmlText.ts and services/thesisClaimAudit.ts until step 18 makes each a call (thesis step 18)', () => {
+  it('NORMALISE is spelled in no module but lib/normalise.ts — RED at lib/htmlText.ts and services/thesisClaimAudit.ts until step 18 makes each a call (thesis step 18)', () => {
     const offenders = modules()
       .filter(({ file }) => file !== NORMALISE_MODULE && !(file in NOT_NORMALISE))
       .filter(({ code }) => spells(code))
@@ -274,7 +273,7 @@ describe('one-symbol', () => {
   const GATE_STEP = MODULES['services/thesisGate'].step;
   const PRISMA_IMPORT = /from '(?:[^']*\/lib\/prisma|@prisma\/client)'/;
   const DELEGATE =
-    /\.(?:thesis|thesisVersion|thesisMention|framing|framingRound|thesisAnalysis|thesisGapDecision|publicationAttempt|withdrawal|note|evidence|evidenceDecision|urlVersionDiff|diffContentVersion|integrityCheck|claimTrajectory|diffDebateSession)\./;
+    /\.(?:thesis|thesisVersion|thesisMention|framing|framingRound|thesisAnalysis|thesisGapDecision|publicationAttempt|withdrawal|note|evidence|evidenceDecision|urlVersionDiff|diffContentVersion|integrityCheck|claimTrajectory|debateSession)\./;
   /**
    * EITHER NAMES LIST: every function `services/evidencePredicates.ts` exports — READ
    * from the module, never re-listed, so the evidence suite's list and this one cannot
@@ -381,86 +380,5 @@ describe('gap-id-stable', () => {
   it('contentHash is over the BYTES exactly — a trailing newline is a different version (thesis step 20)', async () => {
     const { contentHash } = await identity('contentHash');
     expect([contentHash(`${CITING}\n`), contentHash(CITING)]).toEqual([WITH_NEWLINE, WITHOUT_NEWLINE]);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// retired-names — A7 :1659–:1660 · sketch §5g, §6-4 — THE RED HALF
-//
-// SPLIT, AS §6-4 RULES. What holds today is in `test/walk/retiredNames.test.ts` (the
-// thesis route sentences and the retired delegates, green); what is red until step 18
-// is HERE, and moves into the walk file in the commit that turns it green. A red case
-// in the walk's green project would hide a walk regression behind an expected red.
-// ---------------------------------------------------------------------------
-
-describe('retired-names', () => {
-  // THESIS A2's REMOVED LIST, one case per name. `Whistleblower` is the document plan's (step 28).
-  const REMOVED_MODELS = ['ResearchSession', 'ResearchSessionEvent', 'ThesisGapResolution', 'KeyFigure'];
-  const REMOVED_ENUMS = ['ResearchSessionEventType', 'ResearchSessionStatus', 'ThesisVersionStatus'];
-  const REMOVED_VALUES: readonly (readonly [string, string])[] = [
-    ['MentionType', 'KEY_FIGURE'],
-    ['MentionType', 'TRACKED_URL'],
-  ];
-  const REMOVED_FIELDS: readonly (readonly [string, string])[] = [
-    ['ThesisVersion', 'userContent'],
-    ['ThesisVersion', 'aiAnalysis'],
-    ['ThesisVersion', 'analysisInputHash'],
-    ['ThesisVersion', 'status'],
-    ['Thesis', 'title'],
-    ['Thesis', 'sessions'],
-    ['ThesisMention', 'type'],
-    ['ThesisMention', 'refId'],
-  ];
-  /**
-   * THE SOURCE WORDS, in CODE under src/ (sketch §5g). `refId` and `type` are NOT
-   * scanned as words — `DiffDebateEvent.refId` is a live column, and the schema half
-   * above already holds the mention's.
-   */
-  const RETIRED_WORDS = ['userContent', 'aiAnalysis', 'analysisInputHash', 'gapIndex', 'KEY_FIGURE', 'TRACKED_URL', 'CLAIM_TRAJECTORY'];
-  const wordsIn = (code: string): string[] => RETIRED_WORDS.filter((w) => new RegExp(`\\b${w}\\b`).test(code));
-
-  for (const name of REMOVED_MODELS) {
-    it(`schema: no model ${name} (thesis step 18)`, () => {
-      expect(blockNamed('model', name)?.name).toBeUndefined();
-    });
-  }
-  for (const name of REMOVED_ENUMS) {
-    it(`schema: no enum ${name} (thesis step 18)`, () => {
-      expect(blockNamed('enum', name)?.name).toBeUndefined();
-    });
-  }
-  for (const [enumName, value] of REMOVED_VALUES) {
-    it(`schema: ${enumName} has no ${value} (thesis step 18)`, () => {
-      expect(valuesOf(blockNamed('enum', enumName))).not.toContain(value);
-    });
-  }
-  for (const [model, field] of REMOVED_FIELDS) {
-    it(`schema: ${model} has no ${field} (thesis step 18)`, () => {
-      expect(fieldsOf(blockNamed('model', model)).map((f) => f.name)).not.toContain(field);
-    });
-  }
-
-  it('source: no retired word in the CODE under src/ — red at the readers step 18 rebases (sketch §0h) (thesis step 18)', () => {
-    const offenders = modules()
-      .map(({ file, code }) => ({ file, words: wordsIn(code) }))
-      .filter((m) => m.words.length > 0);
-    expect(offenders).toEqual([]);
-  });
-
-  it('DETECTS a planted model, enum value and field, and a word — and a longer name, a comment and a lookalike do not fire', () => {
-    const planted = blocksOf(
-      [
-        'model KeyFigure {\n  name String\n}',
-        'model KeyFigureLink {\n  id String\n}',
-        'enum MentionType {\n  KEY_FIGURE // @name\n  EVIDENCE\n}',
-        'model ThesisVersion {\n  id String\n  userContent Json // TipTap document JSON\n  @@index([id])\n}',
-      ].join('\n'),
-    );
-    expect(planted.filter((b) => b.kind === 'model' && b.name === 'KeyFigure')).toHaveLength(1);
-    expect(valuesOf(planted.find((b) => b.name === 'MentionType'))).toEqual(['KEY_FIGURE', 'EVIDENCE']);
-    expect(fieldsOf(planted.find((b) => b.name === 'ThesisVersion')).map((f) => f.name)).toEqual(['id', 'userContent']);
-    expect(wordsIn('const doc = version.userContent;')).toEqual(['userContent']);
-    expect(wordsIn('const h = row.userContentHash;')).toEqual([]);
-    expect(wordsIn(codeOf('// userContent left the version at 11b\nconst x = 1;'))).toEqual([]);
   });
 });

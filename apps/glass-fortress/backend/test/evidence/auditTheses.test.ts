@@ -66,21 +66,21 @@ const documentRow = (): Row => ({
 /** A citation on a version — PUBLISHED when `published` is set, which is what FLAGGED reads. */
 function mention(
   id: string,
-  refId: string,
+  name: string,
   over: { thesisId?: string; versionId?: string; published?: boolean; pin?: string; debate?: Row | null } = {},
 ): Row {
   const thesisId = over.thesisId ?? 'thesis-1';
   return {
     id,
-    thesisVersionId: over.versionId ?? 'version-1',
-    type: 'EVIDENCE',
-    refId,
+    versionId: over.versionId ?? 'version-1',
+    kind: 'EVIDENCE',
+    name,
     contentVersionHash:
-      over.pin ?? (refId === CAPTURE_NAME ? BEFORE.textHash : CURRENT_VERSION.contentVersionHash),
+      over.pin ?? (name === CAPTURE_NAME ? BEFORE.textHash : CURRENT_VERSION.contentVersionHash),
     debateSessionId: `session-${id}`,
     thesisVersion: { thesisId, isPublished: over.published === false ? null : { id: thesisId } },
     debateSession:
-      over.debate === undefined ? { status: 'PROMOTED', recordFileHash: refId, thesisId } : over.debate,
+      over.debate === undefined ? { status: 'PROMOTED', recordFileHash: name, thesisId } : over.debate,
   };
 }
 

@@ -76,7 +76,7 @@ export async function respondInDebateHandler(input: {
 
     const version = await prisma.thesisVersion.findUnique({
       where: { id: checked.mention.versionId },
-      select: { id: true, userContent: true },
+      select: { id: true, text: true },
     });
     if (version === null) {
       throw new Error(
@@ -88,7 +88,7 @@ export async function respondInDebateHandler(input: {
     await assessAndRecord(input.sessionId, {
       url: checked.page.url,
       content: await assessedContent(checked),
-      passages: await passagesCiting(version, checked.fileHash),
+      passages: passagesCiting(version, checked.fileHash),
       rationale: input.response,
       // EVERY EARLIER TURN — the assessor judges the ACCUMULATED argument, not
       // this response alone. Without the priors "a researcher defending an

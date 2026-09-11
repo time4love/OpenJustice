@@ -717,14 +717,14 @@ async function decisionSequenceOf(fileHash: string): Promise<number> {
 async function citationsOf(fileHash: string): Promise<Citation[]> {
   const mentions = await prisma.thesisMention.findMany({
     where: {
-      type: 'EVIDENCE',
-      refId: fileHash,
+      kind: 'EVIDENCE',
+      name: fileHash,
       // The PIN itself decides, rather than a status anyone could set separately:
       // `isHead` and `isPublished` are the back-relations of the two pointers.
       thesisVersion: { OR: [{ isHead: { isNot: null } }, { isPublished: { isNot: null } }] },
     },
     select: {
-      refId: true,
+      name: true,
       debateSessionId: true,
       thesisVersion: {
         select: { id: true, thesisId: true, isPublished: { select: { id: true } } },
@@ -744,7 +744,7 @@ async function citationsOf(fileHash: string): Promise<Citation[]> {
             debateSessionId: m.debateSessionId,
             // CALLED, never re-spelled — the three-clause predicate step 13 built.
             argued: argued({
-              name: m.refId,
+              name: m.name,
               thesisId: m.thesisVersion.thesisId,
               debate: m.debateSession,
             }),

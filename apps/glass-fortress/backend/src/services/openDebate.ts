@@ -55,7 +55,7 @@ export function openKeyFor(thesisId: string, recordFileHash: string): string {
 
 /** The narrow client `closeDebate` needs — testable with a hand-built `tx`. */
 export interface DebateTx {
-  diffDebateSession: {
+  debateSession: {
     // Typed over the GENERATED input, as `pageLog.PageDecisionData` is: a column
     // renamed in the schema fails to compile here rather than drifting. The
     // UNCHECKED variant, because this writes the foreign key as a SCALAR —
@@ -63,7 +63,7 @@ export interface DebateTx {
     // accepts only the relation form.
     update(args: {
       where: { id: string };
-      data: Prisma.DiffDebateSessionUncheckedUpdateInput;
+      data: Prisma.DebateSessionUncheckedUpdateInput;
     }): Promise<unknown>;
   };
 }
@@ -71,7 +71,7 @@ export interface DebateTx {
 /**
  * Closes the debate as PROMOTED, INSIDE the caller's transaction: the evidence
  * row it created or joined, the objection it was promoted over, the moment, and
- * the key released — ONE `diffDebateSession.update`.
+ * the key released — ONE `debateSession.update`.
  *
  * It is one act, so it is one write: a release beside a separate status update
  * is two writes to one row where the second's failure leaves the first's meaning
@@ -84,7 +84,7 @@ export async function closeDebate(
   sessionId: string,
   outcome: { evidenceId: string; promotedOverObjection: boolean },
 ): Promise<void> {
-  await tx.diffDebateSession.update({
+  await tx.debateSession.update({
     where: { id: sessionId },
     data: {
       status: 'PROMOTED',
@@ -235,8 +235,8 @@ export async function recordChecks(
     input.headVersionId === null
       ? null
       : await prisma.thesisMention.findFirst({
-          where: { thesisVersionId: input.headVersionId, type: 'EVIDENCE', refId: fileHash },
-          select: { id: true, thesisVersionId: true, contentVersionHash: true },
+          where: { versionId: input.headVersionId, kind: 'EVIDENCE', name: fileHash },
+          select: { id: true, versionId: true, contentVersionHash: true },
         });
   if (mention === null) {
     return refusal(
@@ -317,7 +317,7 @@ export async function recordChecks(
     chunks,
     mention: {
       id: mention.id,
-      versionId: mention.thesisVersionId,
+      versionId: mention.versionId,
       contentVersionHash: mention.contentVersionHash,
     },
     captureName: diff === null ? first.capture : null,
@@ -381,7 +381,7 @@ export async function openOrRevise(
 ): Promise<OpenedDebate> {
   const key = openKeyFor(input.thesisId, input.checked.fileHash);
 
-  const existing = await prisma.diffDebateSession.findUnique({
+  const existing = await prisma.debateSession.findUnique({
     where: { openKey: key },
     select: { id: true },
   });
@@ -389,9 +389,10 @@ export async function openOrRevise(
 
   try {
     return await prisma.$transaction(async (tx) => {
-      const session = await tx.diffDebateSession.create({
+      const session = await tx.debateSession.create({
         data: {
           thesisId: input.thesisId,
+          researcherId: input.researcherId,
           recordFileHash: input.checked.fileHash,
           recordSnapshotId: input.checked.snapshotId,
           recordDiffId: input.checked.diffId,
@@ -401,7 +402,7 @@ export async function openOrRevise(
         },
         select: { id: true },
       });
-      await tx.diffDebateEvent.createMany({
+      await tx.debateEvent.createMany({
         data: [
           { sessionId: session.id, type: 'DEBATE_OPENED', content: `Opened for record ${input.checked.fileHash}` },
           { sessionId: session.id, type: 'RATIONALE_SUBMITTED', content: input.rationale },
@@ -420,7 +421,7 @@ export async function openOrRevise(
     // swallowed into "someone else opened this debate" would be a wrong answer
     // built out of a right catch.
     if (!isOpenKeyCollision(err)) throw err;
-    const raced = await prisma.diffDebateSession.findUnique({
+    const raced = await prisma.debateSession.findUnique({
       where: { openKey: key },
       select: { id: true },
     });
@@ -431,7 +432,7 @@ export async function openOrRevise(
 
 /** A further rationale on a session that is already OPEN — one event, no second row. */
 async function reviseOn(sessionId: string, rationale: string): Promise<OpenedDebate> {
-  await prisma.diffDebateEvent.create({
+  await prisma.debateEvent.create({
     data: { sessionId, type: 'RATIONALE_SUBMITTED', content: rationale },
   });
   return { sessionId, existed: true };

@@ -106,17 +106,17 @@ const documentRow = (over: Row = {}): Row => ({
 });
 
 function mentionRow(over: Row = {}): Row {
-  const refId = (over['refId'] as string | undefined) ?? DIFF_NAME;
+  const name = (over['name'] as string | undefined) ?? DIFF_NAME;
   return {
     id: 'mention-1',
-    thesisVersionId: 'version-1',
-    type: 'EVIDENCE',
+    versionId: 'version-1',
+    kind: 'EVIDENCE',
     contentVersionHash: CURRENT_VERSION.contentVersionHash,
     debateSessionId: 'session-1',
     thesisVersion: { thesisId: 'thesis-1' },
-    debateSession: { status: 'PROMOTED', recordFileHash: refId, thesisId: 'thesis-1' },
+    debateSession: { status: 'PROMOTED', recordFileHash: name, thesisId: 'thesis-1' },
     ...over,
-    refId,
+    name,
   };
 }
 
@@ -348,7 +348,7 @@ describe('DERIVED and INPUT_SOUND — the precondition A6 promotes, and check 17
     // Document A6 :1533's rule applied to the kind it was written about: a check
     // with no subject, never a check that passed.
     given({
-      mention: mentionRow({ refId: CAPTURE_NAME, contentVersionHash: BEFORE.textHash }),
+      mention: mentionRow({ name: CAPTURE_NAME, contentVersionHash: BEFORE.textHash }),
       row: captureRow(),
       checks: [anchorCheck(BEFORE.id)],
     });
@@ -362,7 +362,7 @@ describe('DERIVED and INPUT_SOUND — the precondition A6 promotes, and check 17
 
 describe('a DOCUMENT record — the class whose predicates document step 28 builds', () => {
   it('failing nothing: FOUR conjuncts examined none, and the report is NOT EVALUABLE', async () => {
-    given({ mention: mentionRow({ refId: DOCUMENT_NAME }), row: documentRow(), checks: [] });
+    given({ mention: mentionRow({ name: DOCUMENT_NAME }), row: documentRow(), checks: [] });
     const report = await publishable('mention-1');
 
     for (const id of ['VERIFIED', 'CITATION_CURRENT', 'DERIVED', 'INPUT_SOUND']) {
@@ -382,7 +382,7 @@ describe('a DOCUMENT record — the class whose predicates document step 28 buil
     // dishonestly.
     given({
       mention: mentionRow({
-        refId: DOCUMENT_NAME,
+        name: DOCUMENT_NAME,
         debateSession: { status: 'OPEN', recordFileHash: DOCUMENT_NAME, thesisId: 'thesis-1' },
       }),
       row: documentRow(),
@@ -465,7 +465,7 @@ describe('every verdict that is not a PASS carries its KEY — the reason a prog
       'a CAPTURE record',
       () =>
         given({
-          mention: mentionRow({ refId: CAPTURE_NAME, contentVersionHash: BEFORE.textHash }),
+          mention: mentionRow({ name: CAPTURE_NAME, contentVersionHash: BEFORE.textHash }),
           row: captureRow(),
           checks: [anchorCheck(BEFORE.id)],
         }),
@@ -473,7 +473,7 @@ describe('every verdict that is not a PASS carries its KEY — the reason a prog
     ],
     [
       'a DOCUMENT record',
-      () => given({ mention: mentionRow({ refId: DOCUMENT_NAME }), row: documentRow(), checks: [] }),
+      () => given({ mention: mentionRow({ name: DOCUMENT_NAME }), row: documentRow(), checks: [] }),
       {
         ...ALL_PASS,
         VERIFIED: 'DOCUMENT_CLASS_NOT_BUILT',
@@ -508,7 +508,7 @@ describe('what publishable LOADS — five round trips, and not one chunk of its 
     // module; deciding here that a capture need not be asked would put one rule
     // in two files.
     given({
-      mention: mentionRow({ refId: CAPTURE_NAME, contentVersionHash: BEFORE.textHash }),
+      mention: mentionRow({ name: CAPTURE_NAME, contentVersionHash: BEFORE.textHash }),
       row: captureRow(),
       checks: [anchorCheck(BEFORE.id)],
     });
@@ -528,7 +528,7 @@ describe('what publishable LOADS — five round trips, and not one chunk of its 
 
 describe('publishableEvidence — the EVIDENCE half of PUBLISHABLE(v)', () => {
   const second = (over: Row = {}): Row =>
-    mentionRow({ id: 'mention-2', refId: CAPTURE_NAME, contentVersionHash: BEFORE.textHash, ...over });
+    mentionRow({ id: 'mention-2', name: CAPTURE_NAME, contentVersionHash: BEFORE.textHash, ...over });
 
   function twoMentions(rows: Row[], mentions: Row[], checks: Row[]): void {
     store.mentions = mentions;
@@ -592,13 +592,13 @@ describe('publishableEvidence — the EVIDENCE half of PUBLISHABLE(v)', () => {
     await publishableEvidence('version-1');
 
     const query = asked.find((a) => a.model === 'thesisMention' && a.op === 'findMany');
-    expect(query?.args).toMatchObject({ where: { thesisVersionId: 'version-1', type: 'EVIDENCE' } });
+    expect(query?.args).toMatchObject({ where: { versionId: 'version-1', kind: 'EVIDENCE' } });
   });
 
   it('a version citing a DOCUMENT record is NOT EVALUABLE, and names the mention it could not grade', async () => {
     twoMentions(
       [diffRow(), documentRow()],
-      [mentionRow(), second({ refId: DOCUMENT_NAME })],
+      [mentionRow(), second({ name: DOCUMENT_NAME })],
       [anchorCheck(BEFORE.id), anchorCheck(AFTER.id)],
     );
     const report = await publishableEvidence('version-1');

@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
 // ---------------------------------------------------------------------------
@@ -18,6 +18,27 @@ const migration = readFileSync(
   join(BACKEND, 'prisma', 'migrations', '20260908205356_evidence_step_11b', 'migration.sql'),
   'utf8',
 );
+
+/**
+ * A TABLE'S NAME NOW. A later migration may rename what 11b wrote — thesis step 18 renamed the debate to
+ * evidence A2's `DebateSession` — so a table 11b named is followed through every migration's
+ * `ALTER TABLE … RENAME TO`, in order. DERIVED FROM THE FILES, never a hand-typed map: a rename added tomorrow
+ * is followed without anyone editing a case.
+ */
+const MIGRATIONS = join(BACKEND, 'prisma', 'migrations');
+const RENAMED = new Map(
+  readdirSync(MIGRATIONS)
+    .sort()
+    .map((dir) => join(MIGRATIONS, dir, 'migration.sql'))
+    .filter((file) => existsSync(file))
+    .flatMap((file) => [...readFileSync(file, 'utf8').matchAll(/ALTER TABLE "(\w+)" RENAME TO "(\w+)"/g)])
+    .map((m) => [m[1] ?? '', m[2] ?? ''] as const),
+);
+function currentName(table: string): string {
+  let name = table;
+  for (let hops = 0; RENAMED.has(name) && hops < RENAMED.size; hops++) name = RENAMED.get(name) ?? name;
+  return name;
+}
 
 /** The body of a model or enum block, by name. */
 function block(name: string): string {
@@ -251,7 +272,7 @@ describe('§9.8 — nothing is deleted after the rebuild', () => {
       const field = new RegExp(
         `^\\s{2}(\\w+)\\s+\\w+(\\??)\\s+@relation\\(fields: \\[${column}\\][^)]*\\)`,
         'm',
-      ).exec(block(table));
+      ).exec(block(currentName(table)));
       if (field === null) return [];
       const [declaration, , optional] = field;
       // A REQUIRED relation already defaults to Restrict in Prisma, so declaring

@@ -34,7 +34,17 @@ import {
 // one layer down, and the same one the lint ratchets make.
 // ---------------------------------------------------------------------------
 
-const SOURCE = join(__dirname, '..', 'src', 'services', 'claimTrajectory.ts');
+/**
+ * The detection functions live in the trajectory service, and NORMALISE — the first of them — in the pure
+ * module the service imports (thesis flows A1 :1247–:1250, as amended at thesis step 18). Both are read and
+ * joined: the hash composes bodies in `DETECTION_FUNCTIONS` order, never file order, so a function moved
+ * between the two files with its body unchanged leaves the pin unchanged — the proof that it moved and
+ * detection did not.
+ */
+const SOURCES = [
+  join(__dirname, '..', 'src', 'services', 'claimTrajectory.ts'),
+  join(__dirname, '..', 'src', 'lib', 'normalise.ts'),
+];
 
 /**
  * The functions that decide what a trajectory IS.
@@ -145,7 +155,7 @@ export function detectionSourceHash(rawSource: string): string {
   return createHash('sha256').update(bodies, 'utf8').digest('hex');
 }
 
-const source = readFileSync(SOURCE, 'utf8');
+const source = SOURCES.map((file) => readFileSync(file, 'utf8')).join('\n');
 
 describe('detection cannot change without DETECTION_VERSION moving', () => {
   it('finds every detection function — a missing one would hash less than it claims', () => {
