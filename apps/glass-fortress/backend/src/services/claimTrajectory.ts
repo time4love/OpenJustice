@@ -1,6 +1,7 @@
 import { createHash } from 'crypto';
 import { prisma } from '../lib/prisma';
 import { ARCHIVED_CAPTURES_ONLY, requireArchived } from '../lib/archivedCaptures';
+import { normaliseClaim } from '../lib/normalise';
 
 // ---------------------------------------------------------------------------
 // Following one claim across a page's whole archived history.
@@ -86,11 +87,6 @@ export const CONTAINMENT_MATCH_MIN_LENGTH = 40;
  * pattern no single diff can express.
  */
 export const MIN_TRANSITIONS = 2;
-
-/** Collapses whitespace so re-indented or re-wrapped text still matches itself. */
-export function normaliseClaim(text: string): string {
-  return text.replace(/\s+/g, ' ').trim();
-}
 
 export function claimHash(normalised: string): string {
   return createHash('sha256').update(normalised, 'utf8').digest('hex');

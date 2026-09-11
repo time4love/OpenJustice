@@ -34,14 +34,6 @@ jest.mock('../src/services/Web3Service', () => ({
   },
 }));
 
-// THE jsdom BOUNDARY (refactor plan §8). `thesisClaimAudit` reaches
-// `archiveText` → jsdom, which is ESM-only and unparseable in this project.
-// `resolve_record` imports `extractText` DYNAMICALLY so no consumer drags it
-// into a static graph; a case that actually resolves a citation still executes
-// it, so it is mocked here exactly as every other suite mocks jsdom away.
-const mockExtractText = jest.fn((_doc: unknown) => 'the published version, as plain text #ev_…');
-jest.mock('../src/services/thesisClaimAudit', () => ({ extractText: mockExtractText }));
-
 jest.mock('../src/lib/chainIdentity', () => ({
   readChainIdentity: jest.fn().mockResolvedValue({
     reachable: true,
@@ -262,7 +254,7 @@ describe('list_findings — the page\'s timeline, in date order and no other', (
 
   it('linkage lists PUBLISHED citations only, for every caller', async () => {
     promotedRows([{ fileHash: DIFF_NAME, status: 'PROMOTED' }]);
-    mentions.mockResolvedValue([{ refId: DIFF_NAME, thesisVersion: { thesisId: 'thesis-1' } }]);
+    mentions.mockResolvedValue([{ name: DIFF_NAME, thesisVersion: { thesisId: 'thesis-1' } }]);
 
     const out = JSON.parse(await listFindingsHandler({ url: URL }));
 
@@ -623,7 +615,6 @@ describe('a PUBLIC read answers IDENTICALLY, with and without an identity', () =
       timestamp: 1,
       category: 'DOCUMENT_SHA256',
     });
-    mockExtractText.mockReturnValue('the published version, as plain text #ev_…');
     asResearcher();
     const identified = await call();
 

@@ -1,5 +1,6 @@
 import { dirname, posix, relative } from 'node:path';
-import { SRC, tsFiles, readCode, identifiersWithWord } from './scan';
+import { SRC, codeOf, tsFiles, readCode, identifiersWithWord } from './scan';
+import { blockNamed, blocksOf, fieldsOf, modules, valuesOf } from '../thesis/scanning';
 
 // ---------------------------------------------------------------------------
 // EXPECTED RED UNTIL STEP 8 — THE SWITCH.
@@ -489,6 +490,88 @@ describe("the THESIS layer's retired names that hold today — routes and delega
     }
     expect(RETIRED_THESIS_DELEGATES.test('await tx.researchSessionEvent.create({ data });')).toBe(true);
     expect(RETIRED_THESIS_DELEGATES.test('await prisma.keyFigure.findMany({});')).toBe(true);
-    expect(RETIRED_THESIS_DELEGATES.test('await prisma.diffDebateSession.findUnique({ where });')).toBe(false);
+    expect(RETIRED_THESIS_DELEGATES.test('await prisma.debateSession.findUnique({ where });')).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// retired-names — A7 :1659–:1660 · sketch §5g, §6-4 — THE HALF THAT WAS RED UNTIL THESIS STEP 18
+//
+// MOVED HERE FROM `test/thesis/scans.test.ts` IN THE COMMIT THAT TURNED IT GREEN —
+// thesis step 18, as the R40 sketch §6-4 ruled: while it was red it lived in the
+// thesis project, because a red case in the walk's green project would hide a walk
+// regression behind an expected red. Its titles are kept verbatim, so each case is
+// traceable to the step that owed it.
+// ---------------------------------------------------------------------------
+
+describe('retired-names', () => {
+  // THESIS A2's REMOVED LIST, one case per name. `Whistleblower` is the document plan's (step 28).
+  const REMOVED_MODELS = ['ResearchSession', 'ResearchSessionEvent', 'ThesisGapResolution', 'KeyFigure'];
+  const REMOVED_ENUMS = ['ResearchSessionEventType', 'ResearchSessionStatus', 'ThesisVersionStatus'];
+  const REMOVED_VALUES: readonly (readonly [string, string])[] = [
+    ['MentionType', 'KEY_FIGURE'],
+    ['MentionType', 'TRACKED_URL'],
+  ];
+  const REMOVED_FIELDS: readonly (readonly [string, string])[] = [
+    ['ThesisVersion', 'userContent'],
+    ['ThesisVersion', 'aiAnalysis'],
+    ['ThesisVersion', 'analysisInputHash'],
+    ['ThesisVersion', 'status'],
+    ['Thesis', 'title'],
+    ['Thesis', 'sessions'],
+    ['ThesisMention', 'type'],
+    ['ThesisMention', 'refId'],
+  ];
+  /**
+   * THE SOURCE WORDS, in CODE under src/ (sketch §5g). `refId` and `type` are NOT
+   * scanned as words — `DiffDebateEvent.refId` is a live column, and the schema half
+   * above already holds the mention's.
+   */
+  const RETIRED_WORDS = ['userContent', 'aiAnalysis', 'analysisInputHash', 'gapIndex', 'KEY_FIGURE', 'TRACKED_URL', 'CLAIM_TRAJECTORY'];
+  const wordsIn = (code: string): string[] => RETIRED_WORDS.filter((w) => new RegExp(`\\b${w}\\b`).test(code));
+
+  for (const name of REMOVED_MODELS) {
+    it(`schema: no model ${name} (thesis step 18)`, () => {
+      expect(blockNamed('model', name)?.name).toBeUndefined();
+    });
+  }
+  for (const name of REMOVED_ENUMS) {
+    it(`schema: no enum ${name} (thesis step 18)`, () => {
+      expect(blockNamed('enum', name)?.name).toBeUndefined();
+    });
+  }
+  for (const [enumName, value] of REMOVED_VALUES) {
+    it(`schema: ${enumName} has no ${value} (thesis step 18)`, () => {
+      expect(valuesOf(blockNamed('enum', enumName))).not.toContain(value);
+    });
+  }
+  for (const [model, field] of REMOVED_FIELDS) {
+    it(`schema: ${model} has no ${field} (thesis step 18)`, () => {
+      expect(fieldsOf(blockNamed('model', model)).map((f) => f.name)).not.toContain(field);
+    });
+  }
+
+  it('source: no retired word in the CODE under src/ — red at the readers step 18 rebases (sketch §0h) (thesis step 18)', () => {
+    const offenders = modules()
+      .map(({ file, code }) => ({ file, words: wordsIn(code) }))
+      .filter((m) => m.words.length > 0);
+    expect(offenders).toEqual([]);
+  });
+
+  it('DETECTS a planted model, enum value and field, and a word — and a longer name, a comment and a lookalike do not fire', () => {
+    const planted = blocksOf(
+      [
+        'model KeyFigure {\n  name String\n}',
+        'model KeyFigureLink {\n  id String\n}',
+        'enum MentionType {\n  KEY_FIGURE // @name\n  EVIDENCE\n}',
+        'model ThesisVersion {\n  id String\n  userContent Json // TipTap document JSON\n  @@index([id])\n}',
+      ].join('\n'),
+    );
+    expect(planted.filter((b) => b.kind === 'model' && b.name === 'KeyFigure')).toHaveLength(1);
+    expect(valuesOf(planted.find((b) => b.name === 'MentionType'))).toEqual(['KEY_FIGURE', 'EVIDENCE']);
+    expect(fieldsOf(planted.find((b) => b.name === 'ThesisVersion')).map((f) => f.name)).toEqual(['id', 'userContent']);
+    expect(wordsIn('const doc = version.userContent;')).toEqual(['userContent']);
+    expect(wordsIn('const h = row.userContentHash;')).toEqual([]);
+    expect(wordsIn(codeOf('// userContent left the version at 11b\nconst x = 1;'))).toEqual([]);
   });
 });

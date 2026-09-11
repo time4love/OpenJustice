@@ -1,3 +1,4 @@
+import type { Prisma } from '@prisma/client';
 import type {
   Conjunct,
   ConjunctId,
@@ -60,7 +61,7 @@ import { mentionRow } from './rows';
 
 export const at = (hour: number, minute: number, second = 0): Date => new Date(Date.UTC(2026, 8, 10, hour, minute, second));
 
-export const round = (sequence: number, type: FramingRoundType, content: unknown, framingId = FRAMING.id): FramingRoundRow => ({
+export const round = (sequence: number, type: FramingRoundType, content: Prisma.JsonValue, framingId = FRAMING.id): FramingRoundRow => ({
   id: `round-${framingId}-${String(sequence)}`,
   framingId,
   sequence,
@@ -105,6 +106,7 @@ export const analysis = (inputFingerprint: string, versionId = VERSION.id): Thes
 export const gap = (sequence: number, decision: GapDecisionValue, over: Partial<ThesisGapDecisionRow> = {}): ThesisGapDecisionRow => ({
   id: `gap-${String(sequence)}-${decision}`,
   thesisId: THESIS.id,
+  versionId: VERSION.id,
   gapId: GAP_ID,
   description: OPEN_GAP.description,
   sequence,

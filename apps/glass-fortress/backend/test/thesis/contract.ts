@@ -1,3 +1,16 @@
+import type {
+  DebateSession,
+  Framing,
+  FramingRound,
+  Note,
+  PublicationAttempt,
+  Thesis,
+  ThesisAnalysis,
+  ThesisGapDecision,
+  ThesisMention,
+  ThesisVersion,
+  Withdrawal,
+} from '@prisma/client';
 import type { ContentVersionProvenance, RecordContent } from '../../src/services/evidencePredicates';
 import type { TrajectoryCurrency } from '../../src/services/trajectoryCitation';
 
@@ -5,13 +18,11 @@ import type { TrajectoryCurrency } from '../../src/services/trajectoryCitation';
 // THE THESIS CONTRACT, TRANSCRIBED FOR THE ACCEPTANCE SUITE — docs/gf-thesis-flows.md
 // A2, A4, A6 and A7, composed with evidence A1–A7 and document A6.
 //
-// WHY A TRANSCRIPTION EXISTS AT ALL. The suite TYPES against A2's target, and the
-// generated Prisma client does not have those models until thesis step 18; a type
-// imported from an absent module would sink its file (test/thesis/absent.ts says
-// why). So the rows are declared here, and so are the SPEC SIDE of every equality
-// the suite polices: each tool's closed refusal set, the gate's ids and kinds, the
-// module every case loads and the step that owes it. When step 18 lands the
-// models, that step replaces the row types with Prisma's generated ones.
+// THE ROWS ARE PRISMA'S since thesis step 18 landed A2's models; until then they
+// were transcribed here, because a type imported from an absent module would sink
+// its file (test/thesis/absent.ts says why). What this file still declares is the
+// SPEC SIDE of every equality the suite polices: each tool's closed refusal set,
+// the gate's ids and kinds, the module every case loads and the step that owes it.
 //
 // ONE VALUE, ONE PLACE. A module path, a tool's code set and a check id each live
 // here once; a builder step that renames a path or amends a code edits one line.
@@ -28,148 +39,38 @@ import type { TrajectoryCurrency } from '../../src/services/trajectoryCitation';
 // A2 — THE ROWS, AS THE TARGET SHAPES THEM.
 // ---------------------------------------------------------------------------
 
-/** A value from the ONE provision table (A1) — `lib/provisions.ts` at step 18. */
-export type Provision = string;
-
-export type ThesisRow = {
-  id: string;
-  provision: Provision | null;
-  createdById: string;
-  headVersionId: string | null;
-  publishedVersionId: string | null;
-  publishedAt: Date | null;
-  publishedById: string | null;
-  publicInterestStatement: string | null;
-  createdAt: Date;
-};
-
-/** Immutable after the write: no column is ever updated (A2, `versions-immutable`). */
-export type ThesisVersionRow = {
-  id: string;
-  thesisId: string;
-  parentVersionId: string | null;
-  /** Markdown with citation tokens — the record. */
-  text: string;
-  /** sha256(utf8(text)), displayed 0x + 64 lowercase hex. */
-  contentHash: string;
-  /** The sentence the thesis argues, verbatim from the framing's choice. */
-  claim: string;
-  createdById: string;
-  createdAt: Date;
-};
-
-/** EVIDENCE | TRAJECTORY here; DOCUMENT is added by the document plan, by addition. */
-export type MentionKind = 'EVIDENCE' | 'TRAJECTORY';
-
-export type ThesisMentionRow = {
-  id: string;
-  versionId: string;
-  kind: MentionKind;
-  /** The record's fileHash, or the ClaimTrajectory id. */
-  name: string;
-  /** The pin — REQUIRED on EVIDENCE, computed by the write, never supplied. */
-  contentVersionHash: string | null;
-  debateSessionId: string | null;
-};
-
-export type FramingRow = {
-  id: string;
-  question: string;
-  provision: Provision | null;
-  researcherId: string;
-  thesisId: string | null;
-  fromRunId: string | null;
-  clusterIndex: number | null;
-  createdAt: Date;
-};
-
-export type FramingRoundType = 'PROPOSED' | 'ASSESSED' | 'CHOSEN';
-
-export type FramingRoundRow = {
-  id: string;
-  framingId: string;
-  sequence: number;
-  type: FramingRoundType;
-  content: unknown;
-  researcherId: string;
-  createdAt: Date;
-};
-
-export type ThesisAnalysisRow = {
-  id: string;
-  versionId: string;
-  inputFingerprint: string;
-  opinion: unknown;
-  model: string;
-  promptVersion: string;
-  runAt: Date;
-};
-
-export type GapDecisionValue = 'OPEN' | 'CITED' | 'REQUESTED' | 'CALLED' | 'CONCEDED' | 'DISMISSED';
-
-export type ThesisGapDecisionRow = {
-  id: string;
-  thesisId: string;
-  gapId: string;
-  description: string;
-  sequence: number;
-  decision: GapDecisionValue;
-  citedName: string | null;
-  request: unknown;
-  callItem: unknown;
-  reason: string | null;
-  researcherId: string;
-  createdAt: Date;
-};
-
-/** `rationale` and `assessment` are NON-NULL (A2 :1332–:1336) — why no refusal before the gate writes one. */
-export type PublicationAttemptRow = {
-  id: string;
-  thesisId: string;
-  versionId: string;
-  rationale: string;
-  assessment: unknown;
-  verdict: 'SUPPORTS' | 'DISPUTES' | null;
-  outcome: 'PUBLISHED' | 'REFUSED';
-  refusedBy: string[];
-  researcherId: string;
-  createdAt: Date;
-};
-
-export type WithdrawalRow = {
-  id: string;
-  thesisId: string;
-  versionId: string;
-  reason: string;
-  researcherId: string;
-  createdAt: Date;
-};
-
 /**
- * The debate AS BUILT — `DiffDebateSession`, evidence A2's `DebateSession`, renamed
- * at thesis step 18 (step 13's ruling 4). The columns HISTORY reads; the schema
- * gives it NO researcher column, and evidence A2 takes it "as built".
+ * PRISMA'S GENERATED MODELS, since thesis step 18 landed A2's schema — no longer a transcription. What stays
+ * here is what the schema cannot say: a provision arrives as a STRING and is validated against
+ * `lib/provisions.ts` at the write (so a case may pass one the table does not know), and the debate row
+ * HISTORY reads is the columns it reads, not the whole model.
  */
-export type DebateSessionRow = {
-  id: string;
-  thesisId: string;
-  recordFileHash: string;
-  recordSnapshotId: string | null;
-  recordDiffId: string | null;
-  status: 'OPEN' | 'PROMOTED' | 'ABANDONED';
-  createdAt: Date;
-  closedAt: Date | null;
-};
-
-/** Exactly one of `thesisId` and `framingId` is set — a CHECK in A2. */
-export type NoteRow = {
-  id: string;
-  thesisId: string | null;
-  framingId: string | null;
-  text: string;
-  researcherId: string;
-  createdAt: Date;
-};
+export type Provision = string;
+export type ThesisRow = Thesis;
+/** Immutable after the write: no column is ever updated (A2, `versions-immutable`). */
+export type ThesisVersionRow = ThesisVersion;
+/** EVIDENCE | TRAJECTORY here; DOCUMENT is added by the document plan, by addition. */
+export type MentionKind = ThesisMention['kind'];
+export type ThesisMentionRow = ThesisMention;
+export type FramingRow = Framing;
+export type FramingRoundType = FramingRound['type'];
+export type FramingRoundRow = FramingRound;
+export type ThesisAnalysisRow = ThesisAnalysis;
+export type GapDecisionValue = ThesisGapDecision['decision'];
+export type ThesisGapDecisionRow = ThesisGapDecision;
+/** `rationale` and `assessment` are NON-NULL (A2 :1332–:1336) — why no refusal before the gate writes one. */
+export type PublicationAttemptRow = PublicationAttempt;
+export type WithdrawalRow = Withdrawal;
+/**
+ * The debate as HISTORY reads it — evidence A2's `DebateSession`, renamed at thesis step 18, when it also gained
+ * its opener (`researcherId`, the researcher's ruling of 2026-09-11) so HISTORY can attribute it.
+ */
+export type DebateSessionRow = Pick<
+  DebateSession,
+  'id' | 'thesisId' | 'researcherId' | 'recordFileHash' | 'recordSnapshotId' | 'recordDiffId' | 'status' | 'createdAt' | 'closedAt'
+>;
+/** Exactly one of `thesisId` and `framingId` is set — CHECK `Note_one_target`. */
+export type NoteRow = Note;
 
 // ---------------------------------------------------------------------------
 // THE MODULES THE SUITE LOADS, AND THE STEP THAT OWES EACH EXPORT.
@@ -228,6 +129,8 @@ export const MODULES = {
     },
   },
   'lib/provisions': { step: 18, exports: { PROVISIONS: table(18) } },
+  // NORMALISE's one module (thesis A1 :1247–:1250, as amended at step 18) — a module that imports nothing.
+  'lib/normalise': { step: 18, exports: { normaliseClaim: fn(18) } },
   'lib/thesisIdentity': { step: 20, exports: { contentHash: fn(20), gapId: fn(22) } },
   'services/thesisVersionWrite': { step: 20, exports: { writeThesisVersion: fn(20) } },
   'services/thesisGate': { step: 23, exports: { thesisChecks: fn(23) } },

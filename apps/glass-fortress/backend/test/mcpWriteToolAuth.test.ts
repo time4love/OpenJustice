@@ -26,7 +26,6 @@
 jest.mock('../src/lib/prisma', () => ({
   prisma: {
     evidence: { findUnique: jest.fn(), create: jest.fn(), findMany: jest.fn() },
-    keyFigure: { createMany: jest.fn() },
     trackedUrl: { upsert: jest.fn() },
     thesis: { create: jest.fn(), update: jest.fn(), findUnique: jest.fn() },
     thesisVersion: { create: jest.fn() },
@@ -123,7 +122,6 @@ function mcpCall(toolName: string, args: Record<string, unknown>) {
 const mockEvidenceFindUnique = prisma.evidence.findUnique as jest.Mock;
 const mockEvidenceFindMany = prisma.evidence.findMany as jest.Mock;
 const mockEvidenceCreate = prisma.evidence.create as jest.Mock;
-const mockKeyFigureCreateMany = prisma.keyFigure.createMany as jest.Mock;
 const mockTrackedUrlUpsert = prisma.trackedUrl.upsert as jest.Mock;
 const mockThesisCreate = prisma.thesis.create as jest.Mock;
 const mockThesisUpdate = prisma.thesis.update as jest.Mock;
@@ -164,7 +162,6 @@ beforeEach(() => {
   mockEvidenceFindMany.mockResolvedValue([
     { fileHash: '0xabc123', summary: 'Ministry suppressed side effect findings.' },
   ]);
-  mockKeyFigureCreateMany.mockResolvedValue({ count: 1 });
   mockEvidenceCreate.mockResolvedValue({
     id: 'ev-int-1',
     fileHash: '0xabc',

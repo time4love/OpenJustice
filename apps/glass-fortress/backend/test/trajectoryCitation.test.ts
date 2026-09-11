@@ -76,7 +76,8 @@ jest.mock('../src/lib/prisma', () => ({
   },
 }));
 
-import { claimHash, normaliseClaim, presencePatternHash } from '../src/services/claimTrajectory';
+import { claimHash, presencePatternHash } from '../src/services/claimTrajectory';
+import { normaliseClaim } from '../src/lib/normalise';
 import {
   loadTrajectoryCitationLabels,
   resolveTrajectoryCitations,

@@ -29,9 +29,9 @@ import {
   getStoredClaimTrajectories,
   computeSourceStateHash,
   DETECTION_VERSION,
-  normaliseClaim,
   claimHash,
 } from '../src/services/claimTrajectory';
+import { normaliseClaim } from '../src/lib/normalise';
 import { changeSpans, groupByMovement, presencePatternHash, type Observation } from '../src/services/claimTrajectory';
 import { getClaimTrajectoriesHandler } from '../src/mcp/tools/getClaimTrajectories';
 

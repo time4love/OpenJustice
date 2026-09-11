@@ -159,7 +159,7 @@ describe('row 9, opened pages stay open — the SUPERSEDED arm of PUBLIC_PAGE', 
     // THE FIXTURE, CHECKED BEFORE THE PREDICATE IS ASKED: the page's record IS cited,
     // by a version that is NOT the pin now — so a PUBLIC_PAGE that asks only for the
     // pin answers false, and the case is red on that behaviour and nothing else.
-    const onThePage = { type: 'EVIDENCE', refId: { in: [DIFF_NAME] } };
+    const onThePage = { kind: 'EVIDENCE', name: { in: [DIFF_NAME] } };
     expect(await db.thesisMention.count({ where: onThePage })).toBe(1);
     expect(await db.thesisMention.count({ where: { ...onThePage, thesisVersion: { isPublished: { isNot: null } } } })).toBe(0);
     await expect(publicPage(PAGE.id)).resolves.toBe(true);
@@ -170,15 +170,20 @@ describe('row 9, opened pages stay open — the SUPERSEDED arm of PUBLIC_PAGE', 
 // A7 — the meta-case
 // ---------------------------------------------------------------------------
 
-describe("A7 — every suite name is a describe under test/thesis/ (sketch §5h)", () => {
+describe("A7 — every suite name is a describe under test/thesis/, or in the walk file `retired-names` moved to (sketch §5h, §6-4)", () => {
   const THESIS_TESTS = join(BACKEND, 'test', 'thesis');
+  /**
+   * `retired-names` MOVED to the walk file at thesis step 18, in the commit that turned it green — the R40
+   * sketch §6-4 ruling. It is searched there, by that one file, and nowhere else.
+   */
+  const MOVED_TO_WALK = join(BACKEND, 'test', 'walk', 'retiredNames.test.ts');
   /** Every `describe` title in a file's code — a string literal's first argument, comments stripped. */
   const describeTitles = (code: string): string[] =>
     [...code.matchAll(/\bdescribe\(\s*(['"`])(.*?)\1/g)].map((m) => m[2] ?? '');
   const titles = (): string[] =>
-    tsFiles(THESIS_TESTS)
-      .filter((file) => file.endsWith('.test.ts'))
-      .flatMap((file) => describeTitles(readCode(file)));
+    [...tsFiles(THESIS_TESTS).filter((file) => file.endsWith('.test.ts')), MOVED_TO_WALK].flatMap((file) =>
+      describeTitles(readCode(file)),
+    );
 
   it("each of A7's EIGHT suite names is a describe title, EXACTLY — an A7 name with no test is a red (A7 :1630–:1660)", () => {
     const held = titles();

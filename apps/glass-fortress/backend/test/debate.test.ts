@@ -22,12 +22,6 @@ jest.mock('../src/services/promotionAssessor', () => ({
   },
 }));
 
-// The jsdom boundary (refactor plan §8): `debatePassage` reaches `extractText`
-// dynamically so no consumer drags jsdom into a static graph; the cases still
-// execute it, so it is mocked exactly as every other suite mocks jsdom away.
-const extractText = jest.fn();
-jest.mock('../src/services/thesisClaimAudit', () => ({ extractText }));
-
 const mockResearcherId = jest.fn<string | null, []>();
 jest.mock('../src/context/researcherContext', () => ({ getResearcherId: mockResearcherId }));
 
@@ -93,14 +87,11 @@ const RESEARCHER = 'researcher-1';
 const THESIS = 'thesis-1';
 const PAIR = { url: URL, before: BEFORE.waybackTimestamp, after: AFTER.waybackTimestamp };
 
-/** A TipTap body whose one paragraph carries the citation. */
-const body = (paragraphs: string[]): Row => ({
-  type: 'doc',
-  content: paragraphs.map((text) => ({ type: 'paragraph', content: [{ type: 'text', text }] })),
-});
+/** A version's text (thesis A2 :1273): Markdown paragraphs, blank-line separated. */
+const body = (paragraphs: string[]): string => paragraphs.join('\n\n');
 
 const parse = (json: string): Row => JSON.parse(json) as Row;
-const events = (): Row[] => written.filter((w) => w.model === 'diffDebateEvent').map((w) => w.data);
+const events = (): Row[] => written.filter((w) => w.model === 'debateEvent').map((w) => w.data);
 const eventTypes = (): unknown[] => events().map((e) => e['type']);
 
 /** The corpus every case starts from: one page, two captures, the pair, a citing head. */
@@ -108,8 +99,8 @@ function corpus(): void {
   resetDouble();
   transactions = 0;
   store.thesis = { createdById: RESEARCHER, headVersionId: 'version-1' };
-  store.version = { id: 'version-1', userContent: body([`the ministry said so #ev_${DIFF_NAME}`]) };
-  store.mention = { id: 'mention-1', thesisVersionId: 'version-1', contentVersionHash: CURRENT_VERSION.contentVersionHash };
+  store.version = { id: 'version-1', text: body([`the ministry said so #ev_${DIFF_NAME}`]) };
+  store.mention = { id: 'mention-1', versionId: 'version-1', contentVersionHash: CURRENT_VERSION.contentVersionHash };
   // Nothing OPEN for the pair yet; the session exists to be read back after the
   // create, which is the order the handler actually runs in.
   store.openByKey = null;
@@ -120,16 +111,9 @@ function corpus(): void {
   store.diffs = [DIFF_ROW];
   store.collideOnCreate = null;
   // Re-established, not assumed — see `defaultSessionLookup`.
-  db.diffDebateSession.findUnique.mockImplementation(defaultSessionLookup);
+  db.debateSession.findUnique.mockImplementation(defaultSessionLookup);
   db.$transaction.mockImplementation(countingTransaction);
   mockResearcherId.mockReturnValue(RESEARCHER);
-  // The one walker's contract, as this suite needs it: a paragraph node renders
-  // to the text of its children. `extractText` itself is `thesisClaimAudit`'s and
-  // is mocked away with jsdom.
-  extractText.mockImplementation((node: unknown) => {
-    const children = (node as { content?: unknown[] }).content ?? [];
-    return children.map((c) => (c as { text?: string }).text ?? '').join(' ');
-  });
   assess.mockResolvedValue({
     hasSubstance: true,
     substanceGaps: [],
@@ -252,7 +236,7 @@ describe('open_debate — the refusals, in the contract’s order', () => {
     const refused = parse(await open());
     expect(refused['code']).toBe('NOT_CITED');
     expect(String(refused['error'])).toContain(`#ev_${DIFF_NAME}`);
-    expect(db.diffDebateSession.create).not.toHaveBeenCalled();
+    expect(db.debateSession.create).not.toHaveBeenCalled();
     expect(assess).not.toHaveBeenCalled();
   });
 
@@ -321,7 +305,7 @@ describe('the refusal ORDER is part of the contract', () => {
     // The identity is in memory and the session is a query: an anonymous caller
     // must not cost a round trip, and must not be able to probe which session ids
     // exist by timing or by error.
-    expect(db.diffDebateSession.findUnique).not.toHaveBeenCalled();
+    expect(db.debateSession.findUnique).not.toHaveBeenCalled();
   });
 
   it('promote_from_debate: an ANONYMOUS call reads NOTHING before it refuses', async () => {
@@ -329,7 +313,7 @@ describe('the refusal ORDER is part of the contract', () => {
     mockResearcherId.mockReturnValue(null);
     const refused = parse(await promoteFromDebateHandler({ sessionId: 'session-1' }));
     expect(refused['code']).toBe('NO_RESEARCHER');
-    expect(db.diffDebateSession.findUnique).not.toHaveBeenCalled();
+    expect(db.debateSession.findUnique).not.toHaveBeenCalled();
   });
 });
 
@@ -340,6 +324,15 @@ describe('open_debate — what it writes, and what it spends', () => {
     expect(assess).toHaveBeenCalledTimes(1);
     expect(state['sessionId']).toBe('session-1');
     expect(state['hasSubstance']).toBe(true);
+  });
+
+  it('the debate row records its OPENER as researcherId — the caller (the researcher\'s ruling 2 of 2026-09-11; evidence T3 :371, "attributed")', async () => {
+    // PRESENCE is held by the compiler — the column is REQUIRED — and the VALUE by
+    // nothing but this case: a write of any other string would compile and pass.
+    await open();
+    const created = written.filter((w) => w.model === 'debateSession' && w.op === 'create');
+    expect(created).toHaveLength(1);
+    expect(created.at(0)?.data['researcherId']).toBe(RESEARCHER);
   });
 
   it('THE PAID DRAW IS BETWEEN THE TRANSACTIONS, never inside one', async () => {
@@ -384,7 +377,7 @@ describe('open_debate — what it writes, and what it spends', () => {
   it('REOPENING WITH A NEW RATIONALE IS A REVISION: one event, ONE session, one call', async () => {
     store.openByKey = { id: 'session-1' };
     await open({ rationale: 'a second, sharper argument' });
-    expect(db.diffDebateSession.create).not.toHaveBeenCalled();
+    expect(db.debateSession.create).not.toHaveBeenCalled();
     const rationales = events().filter((e) => e['type'] === 'RATIONALE_SUBMITTED');
     expect(rationales).toHaveLength(1);
     expect(rationales[0]?.['content']).toBe('a second, sharper argument');
@@ -403,7 +396,7 @@ describe('open_debate — what it writes, and what it spends', () => {
     });
     // Nothing OPEN when we looked; the winner's row is there when we re-read.
     let seen = 0;
-    db.diffDebateSession.findUnique.mockImplementation((args: { where: { openKey?: string } }) => {
+    db.debateSession.findUnique.mockImplementation((args: { where: { openKey?: string } }) => {
       if (args.where.openKey === undefined) return Promise.resolve(session());
       seen += 1;
       return Promise.resolve(seen === 1 ? null : { id: 'session-1' });
@@ -468,32 +461,33 @@ describe('a stored chunk is whole, or the read of it is a walk defect', () => {
 });
 
 describe('the PASSAGE — the paragraph that cites, never the whole thesis', () => {
-  it('is taken PER NODE, before extractText collapses the document to one line', async () => {
+  it('is the PARAGRAPH that carries the token — a block of the text between blank lines, never the whole text', () => {
     const version = {
       id: 'version-1',
-      userContent: body(['an unrelated paragraph', `the ministry said so #ev_${DIFF_NAME}`]),
+      text: body(['an unrelated paragraph', `the ministry said so #ev_${DIFF_NAME}`]),
     };
-    expect(await passagesCiting(version, DIFF_NAME)).toEqual([`the ministry said so #ev_${DIFF_NAME}`]);
+    expect(passagesCiting(version, DIFF_NAME)).toEqual([`the ministry said so #ev_${DIFF_NAME}`]);
   });
 
-  it('CITED IN TWO PARAGRAPHS: both are handed over, in document order', async () => {
+  it('CITED IN TWO PARAGRAPHS: both are handed over, in document order', () => {
     // A thesis that cites one record in two places says two things with it, and
     // the assessor is asked whether the record supports what the thesis says.
     const version = {
       id: 'version-1',
-      userContent: body([`first #ev_${DIFF_NAME}`, 'unrelated', `second #ev_${DIFF_NAME}`]),
+      text: body([`first #ev_${DIFF_NAME}`, 'unrelated', `second #ev_${DIFF_NAME}`]),
     };
-    expect(await passagesCiting(version, DIFF_NAME)).toEqual([
+    expect(passagesCiting(version, DIFF_NAME)).toEqual([
       `first #ev_${DIFF_NAME}`,
       `second #ev_${DIFF_NAME}`,
     ]);
   });
 
-  it('THROWS when the mention says CITED and no paragraph carries the token', async () => {
+  it('THROWS when the mention says CITED and no paragraph carries the token', () => {
     // Under the target the mentions are parsed FROM the text, so the two cannot
     // disagree; a disagreement is a malformed version, not an answerable state.
-    await expect(passagesCiting({ id: 'version-1', userContent: body(['nothing here']) }, DIFF_NAME))
-      .rejects.toThrow('malformed version');
+    expect(() => passagesCiting({ id: 'version-1', text: body(['nothing here']) }, DIFF_NAME)).toThrow(
+      'malformed version',
+    );
   });
 });
 
@@ -556,7 +550,7 @@ describe('promote_from_debate — one transaction, three rows, nothing on chain'
     expect(evidence?.data['affirmedContentVersionHash']).toBe(CURRENT_VERSION.contentVersionHash);
     expect(evidence?.data['promotedById']).toBe(RESEARCHER);
 
-    const close = written.filter((w) => w.model === 'diffDebateSession' && w.op === 'update');
+    const close = written.filter((w) => w.model === 'debateSession' && w.op === 'update');
     expect(close).toHaveLength(1); // ONE update per promotion
     expect(close[0]?.data['status']).toBe('PROMOTED');
     expect(close[0]?.data['evidenceId']).toBe('ev-1');
@@ -581,8 +575,8 @@ describe('promote_from_debate — one transaction, three rows, nothing on chain'
     // fourth kind of write or as a call this double never provided.
     await promoteFromDebateHandler({ sessionId: 'session-1' });
     expect([...new Set(written.map((w) => w.model))].sort()).toEqual([
-      'diffDebateEvent',
-      'diffDebateSession',
+      'debateEvent',
+      'debateSession',
       'evidence',
       'thesisMention',
     ]);
@@ -595,7 +589,7 @@ describe('promote_from_debate — one transaction, three rows, nothing on chain'
     expect(promoted['created']).toBe(false);
     // The debate still closes onto the row it joined — what the dropped unique
     // index on `evidenceId` made expressible.
-    expect(written.find((w) => w.model === 'diffDebateSession')?.data['evidenceId']).toBe('ev-1');
+    expect(written.find((w) => w.model === 'debateSession')?.data['evidenceId']).toBe('ev-1');
   });
 
   it('JOINS a WITHDRAWN row and returns WITHDRAWN — nothing moves it back', async () => {
@@ -637,7 +631,7 @@ describe('promote_from_debate — one transaction, three rows, nothing on chain'
   });
 
   it('STALE_PIN when the head’s citation pins a version that is not CURRENT', async () => {
-    store.mention = { id: 'mention-1', thesisVersionId: 'version-1', contentVersionHash: 'content-older' };
+    store.mention = { id: 'mention-1', versionId: 'version-1', contentVersionHash: 'content-older' };
     const refused = parse(await promoteFromDebateHandler({ sessionId: 'session-1' }));
     expect(refused['code']).toBe('STALE_PIN');
     expect(String(refused['error'])).toContain('re-pins');

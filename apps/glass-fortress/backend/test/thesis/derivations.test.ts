@@ -86,10 +86,9 @@ import { mentionRow } from './rows';
 //       call by the version id — never as a count of calls.
 //
 // THE DATABASE-BACKED THREE — PUBLISHABLE(v), HISTORY, REVIEWS — stand on the
-// shared double. Its mention rows carry BOTH today's columns (`thesisVersionId`,
-// `type`, `refId`) and A2's target (`versionId`, `kind`, `name`), because the
-// double's evidence-layer delegates filter by today's names until step 18 renames
-// them; the step that builds each of the three reads the double as it then is.
+// shared double. Its mention rows carry A2's columns (`versionId`, `kind`, `name`),
+// the names the evidence layer's queries send since thesis step 18 renamed them;
+// the step that builds each of the three reads the double as it then is.
 // ---------------------------------------------------------------------------
 
 type P = ThesisPredicatesModule;

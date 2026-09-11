@@ -415,7 +415,7 @@ describe('THE FLAGGED CASE — a WITHDRAW is what flags a published citation', (
     // that silently unpublished would be rewriting its public record; one that
     // stayed silent would be misleading its readers."
     store.mention = {
-      refId: DIFF_NAME,
+      name: DIFF_NAME,
       contentVersionHash: AFFIRMED,
       thesisVersion: { isPublished: { id: 'thesis-1' } },
     };
@@ -436,7 +436,7 @@ describe('THE FLAGGED CASE — a WITHDRAW is what flags a published citation', (
 
   it('the two arms this tree can evaluate are named in every answer, SHED absent', async () => {
     store.mention = {
-      refId: DIFF_NAME,
+      name: DIFF_NAME,
       contentVersionHash: AFFIRMED,
       thesisVersion: { isPublished: { id: 'thesis-1' } },
     };

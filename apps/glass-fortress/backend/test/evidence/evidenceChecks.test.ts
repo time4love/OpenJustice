@@ -75,16 +75,16 @@ const documentRow = (): Row => ({
   documentCommitment: DOCUMENT_NAME,
 });
 
-function mentionRow(id: string, refId: string, over: Row = {}): Row {
+function mentionRow(id: string, name: string, over: Row = {}): Row {
   return {
     id,
-    thesisVersionId: 'version-1',
-    type: 'EVIDENCE',
-    refId,
-    contentVersionHash: refId === CAPTURE_NAME ? BEFORE.textHash : CURRENT_VERSION.contentVersionHash,
+    versionId: 'version-1',
+    kind: 'EVIDENCE',
+    name,
+    contentVersionHash: name === CAPTURE_NAME ? BEFORE.textHash : CURRENT_VERSION.contentVersionHash,
     debateSessionId: `session-${id}`,
     thesisVersion: { thesisId: 'thesis-1' },
-    debateSession: { status: 'PROMOTED', recordFileHash: refId, thesisId: 'thesis-1' },
+    debateSession: { status: 'PROMOTED', recordFileHash: name, thesisId: 'thesis-1' },
     ...over,
   };
 }
@@ -155,7 +155,7 @@ describe('the gate MAPS and does not LOAD', () => {
     const versionQueries = asked.filter((a) => a.model === 'thesisMention' && a.op === 'findMany');
     expect(versionQueries).toHaveLength(1);
     expect(versionQueries[0]?.args).toMatchObject({
-      where: { thesisVersionId: 'version-1', type: 'EVIDENCE' },
+      where: { versionId: 'version-1', kind: 'EVIDENCE' },
     });
   });
 

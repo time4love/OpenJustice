@@ -144,6 +144,8 @@ export const MENTION: ThesisMentionRow = {
 export const OPEN_GAP: ThesisGapDecisionRow = {
   id: 'gap-decision-1',
   thesisId: THESIS.id,
+  // The head at the decision (thesis T4 :628) — A2's row carries it since step 18.
+  versionId: VERSION.id,
   gapId: '0xb7e3de92429f145655225b425edb907f0740fb6cad838ac5ee2de3b03678d8eb',
   description: 'מסמך הצגת הנתונים למשרד הבריאות לפני 5 באוגוסט 2022',
   sequence: 1,
@@ -239,6 +241,7 @@ export const TRAJECTORY_MENTION: ThesisMentionRow = {
 export const DEBATE: DebateSessionRow = {
   id: 'debate-1',
   thesisId: THESIS.id,
+  researcherId: AUTHOR,
   recordFileHash: DIFF_NAME,
   recordSnapshotId: null,
   recordDiffId: DIFF_ROW.id,

@@ -32,9 +32,9 @@ describe("the thesis layer's modules — each red by name until the step that bu
 
 describe('the loader — its four arms, held against modules that exist today', () => {
   it('passes a present module through, with the export the contract names', async () => {
-    // NORMALISE's one symbol is present (thesis A1 :1247–:1250), so this arm has a
-    // real subject at step 17.
-    const loaded = await load<{ normaliseClaim: (t: string) => string }>('services/claimTrajectory', 18, {
+    // NORMALISE's one symbol is present (thesis A1 :1247–:1250), in `lib/normalise.ts`
+    // since step 18, so this arm has a real subject.
+    const loaded = await load<{ normaliseClaim: (t: string) => string }>('lib/normalise', 18, {
       normaliseClaim: { step: 18, kind: 'function' },
     });
     expect(loaded.normaliseClaim('  a \n b ')).toBe('a b');
@@ -75,17 +75,16 @@ describe("the shared double's thesis tables — `findMany` honours its `where` (
     expect(rows.map((row) => row['id'])).toEqual(['decision-of-thesis-1']);
   });
 
-  it("the mention table answers A2's target names as it answers today's — only the version asked for (7.2 round 2)", async () => {
+  it("the mention table answers A2's names — only the version asked for (7.2 round 2; A2's names only since step 18)", async () => {
     // REVIEWS reads HEAD's mentions and PUBLISHED's apart; this is the double
     // behaviour its cases stand on, held here so it cannot loosen unnoticed.
     resetDouble();
     store.mentions = [
-      { id: 'mention-of-version-1', versionId: 'version-1', kind: 'EVIDENCE', thesisVersionId: 'version-1', type: 'EVIDENCE' },
-      { id: 'mention-of-version-2', versionId: 'version-2', kind: 'TRAJECTORY', thesisVersionId: 'version-2', type: 'CLAIM_TRAJECTORY' },
+      { id: 'mention-of-version-1', versionId: 'version-1', kind: 'EVIDENCE' },
+      { id: 'mention-of-version-2', versionId: 'version-2', kind: 'TRAJECTORY' },
     ];
     const ids = (rows: readonly Record<string, unknown>[]): unknown[] => rows.map((row) => row['id']);
     expect(ids(await db.thesisMention.findMany({ where: { versionId: 'version-2' } }))).toEqual(['mention-of-version-2']);
-    expect(ids(await db.thesisMention.findMany({ where: { thesisVersionId: 'version-2' } }))).toEqual(['mention-of-version-2']);
     expect(ids(await db.thesisMention.findMany({ where: { versionId: 'version-1', kind: 'TRAJECTORY' } }))).toEqual([]);
   });
 
@@ -102,12 +101,12 @@ describe("the shared double's thesis tables — `findMany` honours its `where` (
 
   it('the debates answer from their list, only the thesis asked for — and `[]` when none is seeded (7.2 round 3)', async () => {
     resetDouble();
-    expect(await db.diffDebateSession.findMany({ where: { thesisId: 'thesis-1' } })).toEqual([]);
+    expect(await db.debateSession.findMany({ where: { thesisId: 'thesis-1' } })).toEqual([]);
     store.debates = [
       { id: 'debate-of-thesis-1', thesisId: 'thesis-1' },
       { id: 'debate-of-thesis-2', thesisId: 'thesis-2' },
     ];
-    const rows = await db.diffDebateSession.findMany({ where: { thesisId: 'thesis-1' } });
+    const rows = await db.debateSession.findMany({ where: { thesisId: 'thesis-1' } });
     expect(rows.map((row) => row['id'])).toEqual(['debate-of-thesis-1']);
   });
 });
@@ -206,13 +205,13 @@ describe("the shared double's 7.3 additions — each held here, so none can loos
   it("a mention COUNT honours its `where` — PUBLIC_PAGE's question, the pin, told from a citation that is no longer the pin; an unmodelled shape rejects (7.5b)", async () => {
     resetDouble();
     store.mentions = [
-      { id: 'on-the-pin', type: 'EVIDENCE', refId: 'record-1', thesisVersion: { isPublished: { id: 'thesis-1' } } },
-      { id: 'superseded', type: 'EVIDENCE', refId: 'record-1', thesisVersion: { isPublished: null } },
-      { id: 'another-record', type: 'EVIDENCE', refId: 'record-2', thesisVersion: { isPublished: null } },
+      { id: 'on-the-pin', kind: 'EVIDENCE', name: 'record-1', thesisVersion: { isPublished: { id: 'thesis-1' } } },
+      { id: 'superseded', kind: 'EVIDENCE', name: 'record-1', thesisVersion: { isPublished: null } },
+      { id: 'another-record', kind: 'EVIDENCE', name: 'record-2', thesisVersion: { isPublished: null } },
     ];
     const pinOnly = { isPublished: { isNot: null } };
-    expect(await db.thesisMention.count({ where: { type: 'EVIDENCE', refId: { in: ['record-1'] }, thesisVersion: pinOnly } })).toBe(1);
-    expect(await db.thesisMention.count({ where: { type: 'EVIDENCE', refId: { in: ['record-1'] } } })).toBe(2);
+    expect(await db.thesisMention.count({ where: { kind: 'EVIDENCE', name: { in: ['record-1'] }, thesisVersion: pinOnly } })).toBe(1);
+    expect(await db.thesisMention.count({ where: { kind: 'EVIDENCE', name: { in: ['record-1'] } } })).toBe(2);
     // THE FALLBACK: no `where` answers every row, as the delegate always did.
     expect(await db.thesisMention.count({})).toBe(3);
     await expect(db.thesisMention.count({ where: { thesisVersion: { isPublished: { is: null } } } })).rejects.toThrow(

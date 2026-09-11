@@ -529,16 +529,16 @@ export async function loadEvidenceLinkage(
 
   const mentions = await prisma.thesisMention.findMany({
     where: {
-      type: 'EVIDENCE',
-      refId: { in: rows.map((r) => r.fileHash) },
+      kind: 'EVIDENCE',
+      name: { in: rows.map((r) => r.fileHash) },
       thesisVersion: { isPublished: { isNot: null } },
     },
-    select: { refId: true, thesisVersion: { select: { thesisId: true } } },
+    select: { name: true, thesisVersion: { select: { thesisId: true } } },
   });
 
   for (const row of rows) {
     const citedBy = mentions
-      .filter((m) => m.refId === row.fileHash)
+      .filter((m) => m.name === row.fileHash)
       .map((m) => ({ thesisId: m.thesisVersion.thesisId, published: true }));
     linkage.set(row.fileHash, { fileHash: row.fileHash, status: row.status, citedBy });
   }

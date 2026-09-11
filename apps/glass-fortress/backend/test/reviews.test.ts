@@ -606,7 +606,7 @@ describe('list_evidence_reviews — what is NOT owed, and what cannot be judged'
 
 describe('list_evidence_reviews — the citations, one row per MENTION', () => {
   const mention = (over: Row = {}): Row => ({
-    refId: DIFF_NAME,
+    name: DIFF_NAME,
     debateSessionId: null,
     thesisVersion: { id: 'version-head', thesisId: 'thesis-1', isPublished: null },
     debateSession: null,

@@ -112,9 +112,8 @@ const CHECKS: readonly { id: CheckId; conjunct: ConjunctId; why: string }[] = [
     // A6 :1211 asks this "for every EVIDENCE mention AND EVERY GAP RESOLUTION".
     // IT EXAMINES MENTIONS ONLY, and the second subject is answered through the
     // first: evidence A2 rules that "a gap resolved by the corpus names a mention
-    // of the head version, AND THE PIN IS THE MENTION'S", thesis A2's
-    // `ThesisGapDecision.citedName` carries no hash of its own, and the tree's
-    // `ThesisGapResolution` holds no `contentVersionHash` for a check to compare.
+    // of the head version, AND THE PIN IS THE MENTION'S", and thesis A2's
+    // `ThesisGapDecision.citedName` carries no hash of its own for a check to compare.
     // Stated here so a later reader does not read the clause as unimplemented.
     why: 'CITATION_CURRENT(m) for every EVIDENCE mention; a stale pin names the pinned and current hashes',
   },
