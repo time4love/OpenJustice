@@ -312,16 +312,19 @@ export async function recordDiff(input: DiffWrite, tx?: Prisma.TransactionClient
   const writeIn = async (client: Prisma.TransactionClient): Promise<WrittenDiff> => {
     const pair = await client.urlVersionDiff.upsert({
       where: { beforeSnapshotId_afterSnapshotId: { beforeSnapshotId, afterSnapshotId } },
-      // The pair, and the three legacy NOT NULL columns filled from the
-      // captures; every other legacy column keeps its default — the content is
-      // the version's.
+      // THE PAIR, AND NOTHING ELSE. This wrote `beforeDate`, `afterDate` and
+      // `snapshotUrl` too — "the three legacy NOT NULL columns" — and evidence
+      // step 11b DROPPED those columns on 2026-09-08 without removing the write.
+      // It threw on staging on 2026-09-12, on the first diff anyone had written
+      // since: `Unknown argument 'beforeDate'`. Nothing caught it for four days
+      // because this site is reached ONLY by an acquisition that HAS A
+      // PREDECESSOR — walla's three diffs predate the migration, rtmag holds one
+      // capture — and because a Prisma create payload is NOT excess-property
+      // checked (test/prismaPayloadFields.test.ts now holds that line).
       create: {
         trackedUrlId,
         beforeSnapshotId,
         afterSnapshotId,
-        beforeDate: stored.before.snapshotDate,
-        afterDate: stored.after.snapshotDate,
-        snapshotUrl: stored.after.snapshotUrl,
       },
       update: {},
       select: { id: true },
