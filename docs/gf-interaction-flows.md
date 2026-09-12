@@ -669,16 +669,50 @@ cursor — goes through MARKING, which then ends as before. When a stop needs ma
 comes first and the chat's decisions after it, against the ruleset the marking left.
 
 Claude drives the stop RULE BY RULE, from the stop's material joined with `get_rule_history`, and
-decides nothing. For each rule: the element in words — its tag and the first text it removed, never
-the selector as the name; the rule's history — created against which capture, matched since, trusted
-or not; the first 5 removed texts VERBATIM from the return, the rest on request, never a summary in
-their place; and the three answers with what each means — TRUST: Gate 4 stops asking about this
-element's contents on later captures, Gate 1 still catches its text if it changes sides, reversible by
-a later decision; CONTINUE without trust: this capture is accepted and the element's new contents will
+decides nothing. For each rule, IN THIS ORDER: for a Gate 4 rule the NEVER-SEEN LINES FIRST, every one
+of them verbatim with their count, because they are the question and all the rest is context; the
+element in words — its tag and the first text it removed, never the selector as the name; the rule's
+history — created against which capture, matched since, trusted or not; a SPREAD of removed texts
+VERBATIM showing the RANGE of what the rule takes, with the total, the rest on request, never a
+summary in their place and never the first five merely because they are first; and the three answers
+with what each means AND WHAT EACH COSTS FOR THIS RULE — TRUST: Gate 4 stops asking about this
+element's contents on later captures, Gate 1 still catches its text if it changes sides — but ONLY if
+it changes sides, so text appearing inside a trusted element, never having been kept, is seen by
+nothing; and there is NO UNTRUST DECISION, the way back being to END or retire the rule and mark the
+element afresh, which starts REVIEWED again; CONTINUE without trust: this capture is accepted and the element's new contents will
 stop the walk again; END: the rule stops from this capture's date, its text enters the article from
 here, earlier captures untouched. Gate 2's rule shows what it removed on the previous capture, from its
 history. This script is part of the tool contract (A5), not of any session, so every connector session
 drives a stop the same way.
+
+**Amended 2026-09-12, from the first Gate 4 stop ever driven against real data** (corona
+`20220105113501`, the MOH footer, one never-seen line: the copyright year rolling `© 2021` → `© 2022`).
+Three changes, all to the ORDER and the CONTENT of what Claude reads out, none to who decides. The
+never-seen lines now come FIRST: reported last, the one line the judgement turned on was what the
+researcher had to hunt for. "The first 5 removed texts" became a SPREAD showing the range: the first
+five of a footer were `שירותים ומידע · חו"ל · תו ירוק · תעודת קורונה · חיסונים` — the top of a nav
+list, saying nothing about whether the rule was safe to trust, while the only thing that helped was
+the kind of sweep this script forbids in their place. And each answer now carries WHAT IT COSTS for
+that rule, not only what it means: Gate 1 catches text that CHANGES SIDES, so text appearing INSIDE a
+trusted element was never kept and is seen by nothing — the actual risk of a TRUST, which the script
+never asked anyone to say. **A consequence is not a recommendation**; the researcher still decides.
+
+**And one correction, not a change: this passage said TRUST was "reversible by a later decision",
+full stop.** `trusted()` returns TRUSTED if ANY `RULE_TRUSTED` decision exists for the rule and no
+decision type ever removes it (`src/walk/derivations.ts`), and `resolve_scan_stop` has always said so
+— *"There is no untrust decision"*.
+
+**The instructive part is that THIS DOCUMENT ALREADY SAID IT CORRECTLY**, under *A RULE IS REVIEWED
+UNTIL A HUMAN TRUSTS IT*: *"reversible by a later one: RULE_ENDED or RULE_RETIRED, then a fresh rule
+for the element, which starts REVIEWED (ruled 2026-09-08; there is no untrust decision)"*. The stop
+script then ABBREVIATED that to a bare "reversible by a later decision", dropping both the route and
+the caveat — and an abbreviation that loses its qualification does not read as shorter, it reads as
+something else. **One rule written twice, and the second copy drifted.** The clause is struck and the
+route is spelled out where it is stated.
+
+It mattered on the day it was found: the researcher had just weighed a one-way blind spot before
+trusting the MOH footer, having been told the truth by the tool, and would have been told otherwise by
+this passage.
 
 **Amended 2026-09-08: the stop's shape follows Gate 1.** When Gate 1 lists lines that ENTERED the
 text (`nowKept`), the stop's answer is CORRECT on the page for the stop as a whole — Claude names

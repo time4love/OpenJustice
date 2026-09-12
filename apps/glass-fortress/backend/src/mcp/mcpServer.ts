@@ -156,8 +156,10 @@ export function createMcpServer(): McpServer {
         'own date. `removed` is null where the corpus holds no body (DUPLICATE, IDENTICAL), which is not the ' +
         'same as removing nothing. `maxCaptures` bounds it to the latest n. NAME THE ELEMENT IN WORDS when you ' +
         'read this out — its tag and the first line it removed — never the selector as the name. `removed` is ' +
-        'the LINES the rule took, de-duplicated, at the same granularity Gate 4 shows them. Quote the ' +
-        'FIRST 5 VERBATIM and offer the rest; never summarise them in their place. Gate 2\'s ' +
+        'the LINES the rule took, de-duplicated, at the same granularity Gate 4 shows them. For a Gate 4 ' +
+        'rule the NEVER-SEEN lines come FIRST, in full, before the element and the history. Quote a SPREAD ' +
+        'THAT SHOWS THE RANGE of what the rule takes, give the total, and offer the rest; never summarise ' +
+        'them in their place, and never the first five merely because they are first (2026-09-12). Gate 2\'s ' +
         'silent rule shows what it removed on the previous capture, from here. This read decides nothing: it ' +
         'is a series and its lines, and it must not be turned into a verdict or a threshold. Writes nothing. ' +
         'Refuses NOT_SURVEYED and NO_SUCH_RULE.',
@@ -263,16 +265,19 @@ export function createMcpServer(): McpServer {
       description:
         'RECORD THE RESEARCHER\'S ANSWER AT A STOP — every answer but CORRECT, in ONE call. ' +
         'CONTINUE: the rules are right here, so the capture is accepted, and with it the rules the ' +
-        'researcher chose to TRUST or to END, each named by its selector. Say what each answer means ' +
-        'before they choose. TRUST: Gate 4 stops asking about that element\'s contents on later ' +
-        'captures; Gate 1 still catches its text if it changes sides. There is no untrust decision: the way ' +
+        'researcher chose to TRUST or to END, each named by its selector. Say what each answer means AND ' +
+        'WHAT IT COSTS before they choose. TRUST: Gate 4 stops asking about that element\'s contents on ' +
+        'later captures; Gate 1 still catches its text if it changes sides — but ONLY if it changes sides, ' +
+        'so text appearing INSIDE a trusted element, never having been kept, is seen by nothing. Name that ' +
+        'cost when asking (2026-09-12). There is no untrust decision: the way ' +
         'back is to END or retire the rule and mark the element afresh, which starts REVIEWED again. ' +
         'CONTINUE WITHOUT TRUST: this capture is accepted and the element\'s new contents will stop the ' +
         'walk again. END: the rule stops applying from this capture\'s date, its text enters the article ' +
         'from here, and earlier captures are untouched. TRUST and END name GATE 4 rules only — a Gate 2 ' +
         'rule, one that matched nothing on this capture, goes in neither list and needs no decision; CONTINUE ' +
-        'covers it. Read the rule\'s removals from get_rule_history first — the first 5 verbatim — and never ' +
-        'ask for trust on a rule the researcher has not seen; one rule per turn. ' +
+        'covers it. Read the rule\'s removals from get_rule_history first — the never-seen lines in full, ' +
+        'then a spread showing the range — and never ask for trust on a rule the researcher has not seen; ' +
+        'one rule per turn. ' +
         'BAD_CAPTURE: this capture does not speak — a truncated archive page, a paywall redirect, ' +
         'anything a human has looked at and judged unusable — with a REQUIRED reason, because a silent ' +
         'hole in the record is the one outcome this corpus does not permit. The capture becomes SKIPPED, ' +
@@ -364,14 +369,23 @@ export function createMcpServer(): McpServer {
         'GATE 5 — the classifier judged this capture\'s diff not editorial: a symptom of furniture entering ' +
         'the text, so CORRECT on the page if there is, else CONTINUE; the verdict decides nothing. DIGEST — ' +
         'the bytes received do not match the archive index\'s digest for this capture: CONTINUE, or ' +
-        'BAD_CAPTURE. FOR EACH RULE the material names, IN ITS OWN TURN: read get_rule_history; say the ' +
-        'element in words — its tag and the first line it removed, never the selector as its name; then its ' +
-        'history — created against which capture, matched since, trusted or not; then its removals VERBATIM — ' +
-        '`removed` is the LINES the rule took, de-duplicated, at the same granularity Gate 4 shows them, ' +
-        'and a menu or a sidebar is hundreds of them, so quote the FIRST 5 and offer the rest, never a ' +
-        'summary in their place; for a Gate 4 rule ' +
-        'name the never-seen lines from the stop\'s material first; then only the answers that apply to ITS ' +
-        'gate, with what each means; then STOP and wait for the researcher\'s answer before the next rule. ' +
+        'BAD_CAPTURE. FOR EACH RULE the material names, IN ITS OWN TURN: read get_rule_history. THE ' +
+        'NEVER-SEEN LINES COME FIRST for a Gate 4 rule — every one of them, verbatim, with their count — ' +
+        'because they ARE the question and all the rest is context (amended 2026-09-12, read from the live ' +
+        'run: reported last, after the element and the history, they were what the researcher had to hunt ' +
+        'for, and the whole judgement turned on one line of twenty-eight). Then say the element in words — ' +
+        'its tag and the first line it removed, never the selector as its name; then its history — created ' +
+        'against which capture, matched since, trusted or not; then its removals VERBATIM — `removed` is ' +
+        'the LINES the rule took, de-duplicated, at the same granularity Gate 4 shows them, and a menu or a ' +
+        'sidebar is hundreds of them, so quote a SPREAD ACROSS THEM THAT SHOWS THE RANGE of what the rule ' +
+        'takes, give the total, and offer the rest; never a summary in their place, and never the first ' +
+        'five merely because they are first — a nav list\'s first five are its least telling, and on ' +
+        '2026-09-12 they said nothing about whether the rule was safe to trust. Then only the answers that ' +
+        'apply to ITS gate, with what each MEANS and WHAT EACH COSTS FOR THIS RULE: for TRUST, name what ' +
+        'stops being shown and what net is left, because Gate 1 catches only text that CHANGES SIDES, so ' +
+        'text appearing INSIDE a trusted element, never having been kept, is seen by nothing. A CONSEQUENCE ' +
+        'IS NOT A RECOMMENDATION: state it, and still decide nothing. Then STOP and wait for the ' +
+        'researcher\'s answer before the next rule. ' +
         'Never read several histories in one turn. After the last rule, record the whole stop with ONE ' +
         'resolve_scan_stop call; when one answer is CORRECT, MARKING COMES FIRST and the chat\'s decisions ' +
         'follow it, against the ruleset the marking left. Do not call scan_captures again until the ' +
