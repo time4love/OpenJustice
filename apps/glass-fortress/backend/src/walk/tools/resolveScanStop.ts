@@ -78,7 +78,10 @@ export const resolveScanStopSchema = {
     .describe(
       'CONTINUE: the rules are right here — accept the capture, and with it any rules you TRUST (Gate 4 stops ' +
         "asking about that element's contents on later captures; Gate 1 still catches its text if it changes " +
-        'sides; reversible by a later decision) or END (the rule stops from this capture\'s date, its text ' +
+        'sides — but ONLY if it changes sides, so text appearing inside a trusted element, never having been ' +
+        'kept, is seen by nothing; and there is NO UNTRUST DECISION, the way back being END or retiring the ' +
+        'rule and marking the element afresh, which starts REVIEWED) or END (the rule stops from this ' +
+        'capture\'s date, its text ' +
         'enters the article from here, earlier captures untouched). CONTINUE without trust accepts this capture ' +
         "and the element's new contents will stop the walk again. BAD_CAPTURE: this capture does not speak; " +
         'reason REQUIRED. CORRECT is the one answer given in the marking page, and on a stop that needs both, ' +
