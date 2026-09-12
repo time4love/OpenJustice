@@ -254,3 +254,62 @@ describe('a ruleset identity commits to the view, not to how it was written', ()
     expect(isEmptyRuleset(CHROME)).toBe(false);
   });
 });
+// ---------------------------------------------------------------------------
+// ORDER-INDEPENDENCE — the property `chromeRulesetId` ALREADY ASSERTS.
+//
+// That function is order- and duplicate-insensitive "because ['a','b'] and
+// ['b','a','b'] remove exactly the same elements and must not produce two
+// version strings for one view" (chromeRuleset.ts:59). Application did not hold
+// it: the loop queried a document it was already mutating, so `:nth-of-type(N)`
+// — the tier `selectorFor` reaches on a page with no ids — counted against a DOM
+// whose earlier siblings had already gone. Two rulesets with ONE id could
+// therefore derive DIFFERENT text and stamp it with the same
+// `textExtractionVersion`, which is what staleness and comparability rest on.
+//
+// MEASURED LIVE on rtmag 20220821171223 (2026-09-12): under one parent,
+// `div:nth-of-type(12)` matched, `div:nth-of-type(13)` and `div:nth-of-type(15)`
+// matched NOTHING, and 2,381 characters of related articles the researcher had
+// marked stayed in the text. `matchCounts` is Gate 2's input, so the same defect
+// told the walk an element had left a page it was still on.
+// ---------------------------------------------------------------------------
+
+/** Three siblings under one parent and no ids — the positional tier, as rtmag serves it. */
+const SIBLINGS = `<!doctype html><html><body><section>
+  <div>רשימת כתבות קשורות</div>
+  <div>גוף הכתבה</div>
+  <div>כל הזכויות שמורות</div>
+</section></body></html>`;
+
+const FIRST = 'section > div:nth-of-type(1)';
+const THIRD = 'section > div:nth-of-type(3)';
+
+describe('applying a ruleset is independent of the order its selectors are listed in', () => {
+  it('derives the same document whichever order two sibling rules are listed in', () => {
+    const forwards = applyChromeRuleset(SIBLINGS, { selectors: [FIRST, THIRD] });
+    const backwards = applyChromeRuleset(SIBLINGS, { selectors: [THIRD, FIRST] });
+
+    expect(forwards.html).toBe(backwards.html);
+    expect(chromeRulesetId({ selectors: [FIRST, THIRD] })).toBe(chromeRulesetId({ selectors: [THIRD, FIRST] }));
+  });
+
+  it('removes a later sibling whose index an earlier rule would otherwise have shifted', () => {
+    const applied = applyChromeRuleset(SIBLINGS, { selectors: [FIRST, THIRD] });
+
+    expect(applied.matchCounts[THIRD]).toBe(1);
+    expect(applied.html).not.toContain('כל הזכויות שמורות');
+    expect(applied.html).not.toContain('רשימת כתבות קשורות');
+    expect(applied.html).toContain('גוף הכתבה');
+  });
+
+  it('reports a rule an ancestor already removed as MATCHED but removing nothing', () => {
+    // Gate 2's sentence is "the element left the page". A rule shadowed by an
+    // ancestor is still ON the page, so it must not read as zero — it is
+    // REDUNDANT, and the two facts are answered differently by a researcher.
+    const nested = '<!doctype html><html><body><section class="related"><div class="teaser">כותרת קשורה</div></section></body></html>';
+    const applied = applyChromeRuleset(nested, { selectors: ['section.related', 'div.teaser'] });
+
+    expect(applied.matchCounts['div.teaser']).toBe(1);
+    expect(applied.removedSegments.map((r) => r.selector)).toEqual(['section.related']);
+    expect(applied.removedText).toBe('כותרת קשורה');
+  });
+});
