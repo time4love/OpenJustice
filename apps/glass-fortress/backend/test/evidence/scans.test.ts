@@ -518,9 +518,20 @@ describe("the debate's own refusal codes are produced in ONE module", () => {
   const DEBATE_ONLY = ['NOT_ACQUIRED', 'NOT_CITED', 'CONTRADICTED', 'NOTHING_TO_PROMOTE', 'NARROWED'];
   const produces = (code: string): RegExp => new RegExp(`refusal\\(\\s*'${code}'`);
 
+  // A FOURTH EXCLUSION, BY NAME AND FOR THE SAME REASON — thesis step 19.
+  // `services/framingRounds.ts` produces `NOT_ACQUIRED` for `assess_framing`,
+  // which thesis A4 :1449 gives that tool by name and which
+  // `test/thesis/framing.test.ts` holds it to. It is a DIFFERENT contract, in a
+  // different layer, reusing one word — exactly the case the three codes above
+  // are excluded for ("legitimately produced by `get_diff_input` for its own
+  // contract"). The debate's rule is untouched: `openDebate.ts` is still the one
+  // module that produces the debate's record checks, and the case below still
+  // holds that it produces every one of them.
+  const NOT_THE_DEBATE_S = ['services/openDebate.ts', 'services/framingRounds.ts'];
+
   it('only services/openDebate.ts produces them', () => {
     const offenders = modules()
-      .filter(({ file }) => file !== 'services/openDebate.ts')
+      .filter(({ file }) => !NOT_THE_DEBATE_S.includes(file))
       .map(({ file, code }) => ({ file, codes: DEBATE_ONLY.filter((c) => produces(c).test(code)) }))
       .filter((m) => m.codes.length > 0);
     expect(offenders).toEqual([]);

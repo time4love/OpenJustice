@@ -29,6 +29,7 @@
     "forensics:rehash-documents": "node dist/scripts/rehashDocuments.js",
     "forensics:measure-href-changes": "node dist/scripts/measureHrefChanges.js",
     "forensics:measure-claim-length": "node dist/scripts/measureClaimLength.js",
+    "forensics:measure-assessor-verbatim": "node dist/scripts/measureAssessorVerbatim.js",
     "forensics:audit-evidence": "node dist/scripts/auditEvidence.js",
     "forensics:audit-theses": "node dist/scripts/auditTheses.js",
     "forensics:audit-anchors": "node dist/scripts/auditOnChainAnchors.js",
