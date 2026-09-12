@@ -39,6 +39,10 @@ import {
   listEvidenceReviewsHandler,
 } from './tools/listEvidenceReviews';
 import { reviewEvidenceSchema, reviewEvidenceHandler } from './tools/reviewEvidence';
+import { openFramingSchema, openFramingHandler } from './tools/openFraming';
+import { assessFramingSchema, assessFramingHandler } from './tools/assessFraming';
+import { chooseFramingSchema, chooseFramingHandler } from './tools/chooseFraming';
+import { getFramingSchema, getFramingHandler } from './tools/getFraming';
 
 // ---------------------------------------------------------------------------
 // Factory — creates a fresh McpServer per request.
@@ -692,6 +696,91 @@ export function createMcpServer(): McpServer {
     },
     async (input) => ({
       content: [{ type: 'text' as const, text: await reviewEvidenceHandler(input) }],
+    }),
+  );
+
+  // -------------------------------------------------------------------------
+  // FRAMING — thesis step 19, docs/gf-thesis-flows.md T1 and A4 :1434–:1459.
+  // The glasses go on before the thesis is written: a provision says what kind of
+  // record demonstrates a violation, so it says what to look for before anything
+  // is found.
+  // -------------------------------------------------------------------------
+
+  server.registerTool(
+    'open_framing',
+    {
+      description:
+        'OPEN A FRAMING — the question you want to establish, and the glasses you read the corpus ' +
+        'through. Returns the framing and the PROVISION\'S REQUIRED ELEMENTS, each unfilled: what ' +
+        'kind of record would demonstrate each part of the violation. A framing needs no thesis — ' +
+        'open one before any thesis exists, or on an unpublished thesis of your own to re-frame it. ' +
+        'Nothing opens and nothing closes: a framing with rounds and no choice is a discussion that ' +
+        'ended without a decision, which is a legitimate record. Writes one row, spends nothing. ' +
+        'Refuses NO_RESEARCHER, NO_THESIS, NOT_AUTHOR, NO_PROVISION_SHAPE, PUBLISHED (the thesis\'s ' +
+        'head IS its published version — frame the next one) and NO_SUCH_RUN.',
+      inputSchema: openFramingSchema,
+    },
+    async (input) => ({
+      content: [{ type: 'text' as const, text: await openFramingHandler(input) }],
+    }),
+  );
+
+  server.registerTool(
+    'assess_framing',
+    {
+      description:
+        'PROPOSE A FRAMING AND HAVE IT ARGUED WITH. PAID — one assessor call per round. Name the ' +
+        'records you have been reading and the trajectories; the platform loads each one\'s CURRENT ' +
+        'COMPUTED CONTENT — never a summary, never a classifier\'s opinion — records your proposal ' +
+        'VERBATIM, and hands both to the assessor. EVERY ASSERTION IT MAKES IS THEN AUDITED ' +
+        'MECHANICALLY, with no model: a contradiction quoting you is checked as a substring of what ' +
+        'you actually wrote (quoteVerified), a phrase it attributes to a record is checked against ' +
+        'that record\'s content (phraseVerified: PRESENT, ABSENT or UNCHECKED), and an element is ' +
+        'filled only by a record you supplied. NOTHING IS DROPPED and nothing gates on a verdict: a ' +
+        'contradiction that misquotes you is SHOWN, labelled. AN ELEMENT WITH NO RECORD BEHIND IT ' +
+        'IS THE HONEST OUTPUT, not a failure — it becomes a FOIA target or a call item later. As ' +
+        'many rounds as it takes; you stop. Refuses NO_RESEARCHER, NO_FRAMING, NOT_YOURS, ' +
+        'NO_RECORDS, NOT_A_RECORD, NOT_ACQUIRED, AWAITING_DERIVATION (naming the diff) and ' +
+        'UNKNOWN_TRAJECTORY_ID.',
+      inputSchema: assessFramingSchema,
+    },
+    async (input) => ({
+      content: [{ type: 'text' as const, text: await assessFramingHandler(input) }],
+    }),
+  );
+
+  server.registerTool(
+    'choose_framing',
+    {
+      description:
+        'DECIDE THE FRAMING — IN YOUR OWN WORDS. The claim you record here is the sentence the ' +
+        'thesis will argue and it is stored VERBATIM, because a version must restate it exactly for ' +
+        'the publication gate to recognise it as framed. The choice is yours: it may be your ' +
+        'framing, the assessor\'s, or a third. Record the element map as it stands, MISSING ' +
+        'elements included — a thesis is opened with its gaps on record from its first day. Writes ' +
+        'one row, spends nothing. Refuses NO_RESEARCHER, NO_FRAMING, NOT_YOURS, NOT_ASSESSED (no ' +
+        'assessed round yet) and PROVISION_MISMATCH (the thesis this framing is attached to asserts ' +
+        'another provision — a different provision is a different thesis).',
+      inputSchema: chooseFramingSchema,
+    },
+    async (input) => ({
+      content: [{ type: 'text' as const, text: await chooseFramingHandler(input) }],
+    }),
+  );
+
+  server.registerTool(
+    'get_framing',
+    {
+      description:
+        'READ A FRAMING AND EVERY ROUND OF IT, in sequence, with every audit verdict beside its ' +
+        'assertion, and the thesis it attaches to. ANY researcher may read ANY framing: working ' +
+        'state is gated from the public, not from colleagues. A round whose stored content is ' +
+        'malformed is reported AS MALFORMED, never as empty. Writes nothing, spends nothing. ' +
+        'Refuses NO_FRAMING.',
+      inputSchema: getFramingSchema,
+    },
+    async (input) => ({
+      content: [{ type: 'text' as const, text: await getFramingHandler(input) }],
     }),
   );
 

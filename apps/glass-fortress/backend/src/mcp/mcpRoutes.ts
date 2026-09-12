@@ -149,6 +149,23 @@ export const WRITE_TOOLS = new Set([
   // protects. The standing precedent is `get_debate` and the walk's three reads.
   'list_evidence_reviews',
   'review_evidence',
+  // FRAMING — thesis step 19, docs/gf-thesis-flows.md T1 and A4 :1434–:1459.
+  //
+  // Three WRITE: the framing row, and its append-only rounds. `assess_framing`
+  // also SPENDS — one assessor call per round, the thesis layer's first paid
+  // point (A4 :1442, "WRITE · paid"), which is why `test/mcpToolClassification`'s
+  // paid-tool case names it beside `scan_captures`.
+  //
+  // `get_framing` writes nothing and calls no model, and is gated all the same:
+  // A4 :1458 calls it a GATED read, and a framing is a researcher's working state
+  // carrying a model's OPINIONS — the candidate framings, the contradictions, the
+  // recommendation — which thesis T5 lists among the things a published page
+  // never shows. The standing precedent is `get_debate`, `list_evidence_reviews`
+  // and the walk's three reads, gated on the same ground.
+  'open_framing',
+  'assess_framing',
+  'choose_framing',
+  'get_framing',
 ]);
 
 // ---------------------------------------------------------------------------

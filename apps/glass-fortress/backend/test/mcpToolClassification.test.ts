@@ -123,12 +123,15 @@ describe('MCP tool classification', () => {
     // the open set is a deliberate edit to this list with a test failure to
     // explain. Each embeds input and then invokes an LLM.
     // `get_research_agenda` and `run_ai_analysis` left the surface in the thesis
-    // half of the legacy switch (thesis A4 retires both). `scan_captures` is the
-    // one paid tool the platform still has, and it is the whole of the rule for
-    // now: one classifier call per novel capture that reaches Gate 5. The thesis
-    // successors — `run_analysis` at step 22, the framing assessor at 19 — land
-    // under this same case, and it fails until they are classified.
-    for (const tool of ['scan_captures']) {
+    // half of the legacy switch (thesis A4 retires both). `scan_captures` is one
+    // classifier call per novel capture that reaches Gate 5.
+    //
+    // `assess_framing` ADDED AT THESIS STEP 19 — one framing-assessor call per
+    // round, and the thesis layer's first paid point. Its AUTHORITY is thesis A4
+    // :1442, which marks the tool "WRITE · paid", with thesis refactor plan §7
+    // :262 ("the MCP surface is exactly A4's, and mcpToolClassification agrees").
+    // `run_analysis` lands under this same case at step 22.
+    for (const tool of ['scan_captures', 'assess_framing']) {
       expect(WRITE_TOOLS.has(tool)).toBe(true);
     }
   });

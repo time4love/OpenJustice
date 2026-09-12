@@ -152,6 +152,17 @@ export const store = {
   collideOnCreate: null as Error | null,
   collideOnDecisionCreate: null as Error | null,
   /**
+   * THE FRAMING ROUND'S — thesis step 19, ADDITIVELY, and a THIRD flag rather than a reuse of
+   * either above, for the rule this block already states.
+   *
+   * It arms exactly ONE collision and CLEARS ITSELF when it fires, because that is what a race on
+   * `FramingRound @@unique([framingId, sequence])` produces: the loser recomputes its sequence and
+   * the second insert succeeds. A flag that stayed armed would make the retry fail too, and the
+   * case that asserts the paid call is drawn exactly once ACROSS the retry could never reach its
+   * second write.
+   */
+  collideOnFramingRoundCreate: null as Error | null,
+  /**
    * THE THESIS LAYER'S ROWS — added at thesis step 17, ADDITIVELY, for the
    * thesis acceptance suite (handoffs/R40-chunk-1-sketch.md §6-6). One double for
    * both layers, as step 14 ruled: a second would be two doubles free to
@@ -787,7 +798,20 @@ export const db = {
       return Promise.resolve(updated);
     }),
   },
-  framingRound: appendOnly('framingRound', 'framingRounds'),
+  framingRound: {
+    ...appendOnly('framingRound', 'framingRounds'),
+    create: jest.fn((args: { data: Row }) => {
+      const armed = store.collideOnFramingRoundCreate;
+      if (armed !== null) {
+        store.collideOnFramingRoundCreate = null;
+        return Promise.reject(armed);
+      }
+      record('framingRound', 'create', args.data);
+      const created = { id: `framingRound-${String(store.framingRounds.length + 1)}`, ...args.data };
+      store.framingRounds.push(created);
+      return Promise.resolve(created);
+    }),
+  },
   thesisAnalysis: appendOnly('thesisAnalysis', 'analyses'),
   thesisGapDecision: appendOnly('thesisGapDecision', 'gapDecisions'),
   publicationAttempt: appendOnly('publicationAttempt', 'attempts'),
@@ -828,6 +852,7 @@ export function resetDouble(): void {
   store.integrityChecks = [];
   store.collideOnCreate = null;
   store.collideOnDecisionCreate = null;
+  store.collideOnFramingRoundCreate = null;
   store.versions = [];
   store.framings = [];
   store.framingRounds = [];
