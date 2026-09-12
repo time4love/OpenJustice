@@ -64,7 +64,7 @@ it does not replace the researcher as the catch.
 researcher for five rounds — does `audit-theses` exit 0 over zero subjects, and who writes the ledger
 entry — and both were already answered: evidence A6 `:1202`, thesis A6 `:1588` and thesis A7
 `:1656-1657` (*"a pass that examined nothing says zero, never nothing"*) answer the first in terms,
-and `gf-thesis-refactor-plan.md:245` (*"gains its command at step 24"*) answers the second. The seat
+and `gf-thesis-refactor-plan.md:253` (*"gains its command at step 24"*) answers the second. The seat
 read all four clauses during the whole read and never went back to the standing questions.
 
 **So the reading has a second act, and it is not optional:** when the reading list is finished, every

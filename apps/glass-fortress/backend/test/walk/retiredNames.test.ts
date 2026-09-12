@@ -524,7 +524,7 @@ describe('retired-names', () => {
   ];
   /**
    * THE SOURCE WORDS, in CODE under src/ (sketch §5g). `refId` and `type` are NOT
-   * scanned as words — `DiffDebateEvent.refId` is a live column, and the schema half
+   * scanned as words — `DebateEvent.refId` is a live column, and the schema half
    * above already holds the mention's.
    */
   const RETIRED_WORDS = ['userContent', 'aiAnalysis', 'analysisInputHash', 'gapIndex', 'KEY_FIGURE', 'TRACKED_URL', 'CLAIM_TRAJECTORY'];

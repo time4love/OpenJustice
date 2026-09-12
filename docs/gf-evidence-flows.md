@@ -955,8 +955,8 @@ EvidenceDecision        the record's review log, append-only
   reason                  REQUIRED on WITHDRAW
   createdAt
 
-DebateSession           as built, with the thesis and the record                  ⚠️ two columns
-  + thesisId              REQUIRED
+DebateSession           as built, with the thesis and the record                ⚠️ three columns
+  + thesisId              REQUIRED · + researcherId REQUIRED — the opener, HISTORY attributes it
   + recordFileHash        ID(record) — computed at open, before any Evidence row exists
   urlVersionDiffId → recordSnapshotId? · recordDiffId?   one set, matching the record's kind
   @@unique([thesisId, recordFileHash]) among status = OPEN — one open debate per (thesis, record)

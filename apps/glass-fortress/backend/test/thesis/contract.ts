@@ -109,7 +109,7 @@ export const MODULES = {
       claimFramed: fn(19),
       unargued: fn(20),
       history: fn(20),
-      // THE GAP LIST IS STEP 20's (the R42 follow-up, H2): plan step 20 (:120–:121)
+      // THE GAP LIST IS STEP 20's (the R42 follow-up, H2): plan step 20 (:128–:129)
       // builds `get_thesis_context` "with HISTORY, UNARGUED and the gap list", and a
       // gap is listed at its decision in force. GAPS_DECIDED and the two appeals stay
       // step 22's, with `decide_gap` and `get_whistleblower_call` (plan step 22).

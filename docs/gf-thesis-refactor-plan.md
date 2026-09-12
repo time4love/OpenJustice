@@ -103,10 +103,15 @@ appendix amendments now owed, and what is still the researcher's are `docs/gf-th
 After the rebuild, so nothing is migrated: `Framing`, `FramingRound`, `ThesisAnalysis`,
 `ThesisGapDecision`, `PublicationAttempt`, `Withdrawal`, `Note`; `Thesis.provision`,
 `ThesisVersion.text` and `.claim`, the mention's `kind`, `name`, `contentVersionHash`,
-`debateSessionId` beside the old columns; the `PROVISION` table and `NORMALISE` as one importable
-symbol each. The old tables and columns stay until step 25.
+`debateSessionId` — the mention RENAMED IN PLACE; the `PROVISION` table and `NORMALISE` as one
+importable symbol each. **The old tables and columns are REMOVED HERE, not at step 25** — the
+DECIDED note above step 17 (`:52–:84`) moved step 25's schema half here; RULED 2026-09-11.
 
 *Verified by:* `db:check-drift` clean before writing; the migration read; deploys itself.
+Landed 2026-09-11 (PR #418 → `bb77a9f`): one migration of 94 statements; the researcher's rulings —
+the debate's opener stored, its companions renamed, RESTRICT never CASCADE and never SET NULL, A2's
+"REQUIRED on X" arms as CHECKs — and what the step does not claim are
+`docs/gf-thesis-step-18-2026-09-11.md`.
 
 ### 19 · Framing
 
@@ -216,7 +221,7 @@ with its code at step 25, never weakened.
 
 | test file | lines | tag | what it holds |
 |---|---|---|---|
-| `thesisClaimAudit` | 464 | KEEP → REWRITE at evidence 11b | the archive audit of quotes, dates, intervals; unchanged (T5) — its SCOPE now reaches a page through the record key rather than a stored replay URL — amended 2026-09-08 (docs/gf-evidence-step-11b-2026-09-08.md) |
+| `thesisClaimAudit` | 464 | KEEP → REWRITE at evidence 11b, and again at thesis 18 | the archive audit of quotes, dates, intervals; unchanged (T5) — its SCOPE now reaches a page through the record key rather than a stored replay URL — amended 2026-09-08 (docs/gf-evidence-step-11b-2026-09-08.md); REWRITTEN at thesis step 18, its input `ThesisVersion.text` and EVIDENCE mentions, every assertion unchanged — amended 2026-09-11 (docs/gf-thesis-step-18-2026-09-11.md) |
 | `evidenceInputSoundness` | — | KEEP → REWRITE at evidence 11b, and again at 15 | check 17; evidence A6's — rebased onto CURRENT(diff)'s per-chunk survival when the row's verdict columns left, exactly as A6 words it — amended 2026-09-08 (docs/gf-evidence-step-11b-2026-09-08.md); rewritten a SECOND time at evidence step 15, because 11b's SELECT read the NEWEST content version and not CURRENT(diff): the version now chosen by `currentVersionOf`, the report three-valued with `binding` gone, the fold unchanged — amended 2026-09-10 (docs/gf-evidence-step-15-2026-09-10.md) |
 | `mcpToolClassification` | 157 | KEEP | the assertions stay; the expected set moves at step 25 |
 | `publicationLanguage` | 207 | KEEP one group, RETIRE one | the public-interest statement check stays; `HEDGE_MARKERS` and per-sentence hedging go with the figure |
@@ -238,7 +243,7 @@ with its code at step 25, never weakened.
 | `thesisCitationSplice` | 175 | RETIRE | `cite_trajectories` is retired |
 | `RevisionAgent` · `GapRevisionAgent` | 161 · 138 | RETIRE | the ratchet |
 | `ThesisValidatorAgent` | 245 | RETIRE | no caller today |
-| `thesisAssertions` | 132 | READ AT STEP 17 | tagged when the acceptance suite is written, by what it asserts |
+| `thesisAssertions` | 132 | KEEP | `lib/thesisAssertions`' seven exports — the mechanical front half of `audit_thesis_claims`, which A4 :1529–:1531 and T5 :767–:770 keep unchanged; the module imports nothing and no step 18–24 changes its shape — tagged 2026-09-11 (thesis step 18) |
 
 ## 6. VERIFICATION — WHAT "VERIFIED" MEANS AT EACH STEP
 
