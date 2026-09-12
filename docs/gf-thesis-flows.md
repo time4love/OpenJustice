@@ -1283,7 +1283,7 @@ ThesisMention                                                      ⚠️ re-sha
   name                    String — the fileHash, or the trajectory id
   contentVersionHash      String? — REQUIRED on EVIDENCE; the pin, computed at the write:
                           Evidence(name).affirmedContentVersionHash if the row exists, else
-                          CURRENT(record).hash
+                          CURRENT(record).hash — held by CHECK `ThesisMention_fields_by_kind` (18)
   debateSessionId         String? — the argument, by reference; written by promote_from_debate
                           on the head's mention, copied forward while (name, pin) is unchanged
   @@unique([versionId, kind, name])
@@ -1326,7 +1326,7 @@ ThesisGapDecision       append-only                                ⚠️ replac
                           addresses, restsOn: [name…] }
   callItem                Json? — REQUIRED on CALLED: { whatIsNeeded, whoWouldHaveSeenIt,
                           unit, window }
-  reason                  String? — REQUIRED on CONCEDED, DISMISSED
+  reason                  String? — REQUIRED on CONCEDED, DISMISSED · the four: CHECK (step 18)
   researcherId · createdAt
 
 PublicationAttempt      append-only                                ⚠️ to build
@@ -1340,7 +1340,7 @@ Withdrawal              append-only
   id · thesisId · versionId · reason REQUIRED · researcherId · createdAt
 
 Note
-  id · thesisId? · framingId? — exactly one set, a CHECK constraint · text · researcherId ·
+  id · thesisId? · framingId? — exactly one set, CHECK `Note_one_target` · text · researcherId ·
   createdAt
 
 ProsecutionRun                                                     later (§10)
