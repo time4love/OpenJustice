@@ -96,7 +96,17 @@ beforeEach(() => {
 });
 
 describe('recordDiff — the pair', () => {
-  it('creates the pair once, keyed on the two captures, with its legacy NOT NULL columns filled from them and nothing else', async () => {
+  // AMENDED 2026-09-12. This asserted that the create payload carried
+  // `beforeDate`, `afterDate` and `snapshotUrl` — "its legacy NOT NULL columns
+  // filled from them". Evidence step 11b DROPPED those columns on 2026-09-08 and
+  // this test went on requiring them, green, because it asserts against a MOCKED
+  // Prisma client: a mock validates a payload against nothing. It was therefore
+  // pinning the defect in place, and `recordDiff` threw `Unknown argument
+  // 'beforeDate'` the first time a walk wrote a diff against the real database
+  // (corona 20220105113501, staging). A test that asserts the shape of a write
+  // to a mock is a test about this file, never about the schema —
+  // test/prismaPayloadFields.test.ts is what holds it to the schema now.
+  it('creates the pair once, keyed on the two captures, and carries THE PAIR AND NOTHING ELSE', async () => {
     const result = await recordDiff(write());
 
     expect(pairUpsert).toHaveBeenCalledTimes(1);
@@ -106,9 +116,6 @@ describe('recordDiff — the pair', () => {
         trackedUrlId: 'page-1',
         beforeSnapshotId: 'snap-before',
         afterSnapshotId: 'snap-after',
-        beforeDate: '2022-05-03',
-        afterDate: '2022-05-25',
-        snapshotUrl: 'https://web.archive.org/web/2022/snap-after',
       },
       // Reused, never rewritten: an existing pair is left exactly as it is.
       update: {},
