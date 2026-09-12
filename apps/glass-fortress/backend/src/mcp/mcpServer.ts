@@ -803,5 +803,47 @@ export function createMcpServer(): McpServer {
     }),
   );
 
+  // -------------------------------------------------------------------------
+  // THE PROBE — one PROMPT and one RESOURCE, each returning MCP_INSTRUCTIONS.
+  //
+  // claude.ai was shown three times (2026-09-13, three fresh conversations, the
+  // third with this connector alone) NOT to surface the initialize result's
+  // `instructions` to the model, while this server provably returns it over
+  // HTTP. The spec offers two more primitives that could carry a "start here":
+  // a PROMPT (a user-invocable template) and a RESOURCE (addressable content).
+  // Whether claude.ai surfaces either from a custom connector is documented
+  // loosely and was never observed. These two registrations exist to observe
+  // it: same text, two more channels, no new rule anywhere. Prompts and
+  // resources are not tools — `mcpToolClassification` does not see them, and
+  // `isWriteToolCall` gates nothing here, correctly: the text is public.
+  // -------------------------------------------------------------------------
+
+  server.registerPrompt(
+    'start_here',
+    {
+      title: 'Start here — how this platform works',
+      description:
+        'CALL THIS FIRST — how this platform works, the order of its flows, what is PAID. ' +
+        'The same text the server sends as its instructions at the handshake.',
+      argsSchema: {},
+    },
+    () => ({
+      messages: [{ role: 'user' as const, content: { type: 'text' as const, text: MCP_INSTRUCTIONS } }],
+    }),
+  );
+
+  server.registerResource(
+    'platform-protocol',
+    'protocol://start-here',
+    {
+      title: 'Start here — how this platform works',
+      description:
+        'CALL THIS FIRST — how this platform works, the order of its flows, what is PAID. ' +
+        'The same text the server sends as its instructions at the handshake.',
+      mimeType: 'text/plain',
+    },
+    (uri) => ({ contents: [{ uri: uri.href, mimeType: 'text/plain', text: MCP_INSTRUCTIONS }] }),
+  );
+
   return server;
 }

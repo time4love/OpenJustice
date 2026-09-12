@@ -108,6 +108,18 @@ describe('the instructions reach the server, and from one pure module', () => {
     }
   });
 
+  it('registers the probe PROMPT and RESOURCE, each returning the same string', () => {
+    // 2026-09-13: claude.ai does not surface `instructions`; a prompt and a
+    // resource are the two other primitives that could carry "start here". They
+    // exist to be OBSERVED in a live conversation. Held here so that removing
+    // them is a deliberate edit with a failure to explain, and so that neither
+    // ever returns a second spelling of the text.
+    const prompt = serverSource.match(/registerPrompt\(\s*'start_here'[\s\S]*?\n  \);/);
+    const resource = serverSource.match(/registerResource\(\s*'platform-protocol'[\s\S]*?\n  \);/);
+    expect(prompt?.[0]).toMatch(/text: MCP_INSTRUCTIONS/);
+    expect(resource?.[0]).toMatch(/text: MCP_INSTRUCTIONS/);
+  });
+
   it('states its one limit with the step that lifts it', () => {
     // The paragraph that names tools with no path today is edited when that
     // path lands; the step number is how the editor finds it.
