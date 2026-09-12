@@ -1,5 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { resolveOrigin } from '../oauth/oidcProvider';
+import { MCP_INSTRUCTIONS } from './instructions';
 import {
   surveyWaybackCapturesSchema,
   surveyWaybackCapturesHandler,
@@ -81,7 +82,11 @@ export function createMcpServer(): McpServer {
         sizes: ['480x480'],
       },
     ],
-  });
+  },
+  // THE CONNECTOR'S INSTRUCTIONS — returned in the initialize result, read by the
+  // model once, before any tool. The flow map and the protocol live in
+  // ./instructions and nowhere else; a description says what its own tool does.
+  { instructions: MCP_INSTRUCTIONS });
 
   // -------------------------------------------------------------------------
   // Tool: get_claim_trajectories
