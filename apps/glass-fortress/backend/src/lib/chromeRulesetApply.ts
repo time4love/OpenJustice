@@ -105,8 +105,24 @@ export function applyChromeRuleset(html: string, ruleset: ChromeRuleset): Chrome
     }
   };
 
-  for (const selector of ruleset.selectors) {
-    const matched = tryQuery(selector);
+  // RESOLVE EVERY SELECTOR AGAINST THE PRISTINE DOCUMENT, THEN REMOVE — two
+  // passes, because the order the ruleset lists its selectors in must not decide
+  // what they match. `chromeRulesetId` already asserts exactly that property
+  // ("['a','b'] and ['b','a','b'] remove exactly the same elements"), and one
+  // pass did not hold it: the loop queried a document it was itself mutating, so
+  // `:nth-of-type(N)` — the tier `selectorFor` reaches on a page with no ids —
+  // counted against a DOM whose earlier siblings had already gone. Two rulesets
+  // with ONE id could derive DIFFERENT text under the SAME
+  // `textExtractionVersion`, which is what staleness and comparability rest on.
+  //
+  // MEASURED LIVE on rtmag 20220821171223 (2026-09-12): under one parent,
+  // `div:nth-of-type(12)` matched, `div:nth-of-type(13)` and `div:nth-of-type(15)`
+  // matched NOTHING, and 2,381 characters of related articles the researcher had
+  // marked stayed in the derived text. `matchCounts` is Gate 2's input, so the
+  // same defect told the walk an element had left a page it was still on.
+  const resolved = ruleset.selectors.map((selector) => ({ selector, matched: tryQuery(selector) }));
+
+  for (const { selector, matched } of resolved) {
     if (matched === null) {
       // A malformed selector. Recorded and skipped — see `invalidSelectors`.
       invalidSelectors.push(selector);
@@ -115,6 +131,15 @@ export function applyChromeRuleset(html: string, ruleset: ChromeRuleset): Chrome
     matchCounts[selector] = matched.length;
     const forThisSelector: string[] = [];
     for (const element of matched) {
+      // AN ELEMENT AN EARLIER RULE ALREADY TOOK WITH ITS SUBTREE. It is not a
+      // removal this rule can claim: `removedText` would carry the text twice
+      // and Gate 4 would ask a human to judge the same lines under two
+      // selectors. The count above still reports it, so a rule shadowed by an
+      // ancestor reads as MATCHED-AND-REMOVED-NOTHING — redundant — and never as
+      // "matched nothing", which is Gate 2's sentence for an element that has
+      // left the page. The two are different facts and a researcher answers them
+      // differently.
+      if (!element.isConnected) continue;
       // The element's own markup, so the removed text is derived by the SAME
       // path as the kept text. Reading `textContent` here instead would give the
       // reviewer a differently-derived string from the one the rules acted on.
