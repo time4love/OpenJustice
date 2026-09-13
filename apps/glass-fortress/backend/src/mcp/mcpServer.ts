@@ -99,8 +99,8 @@ export function createMcpServer(): McpServer {
       'the pattern no single diff can show. COMPUTED OVER THE STORED DERIVED TEXT, not the raw archive: ' +
       'a transition it reports is only as true as the derivation at that capture, so verify each ' +
       'transition you will rely on with verify_claim_text (which reads the RAW document) before citing ' +
-      'it — a trajectory on this page asserted a claim absent at a capture whose raw page carried it ' +
-      '(2026-09-13). String search, no AI judgment; every result names the snapshots it read.',
+      'it — a stored text can lack what the raw page carried, and before 2026-09-13 trajectories read ' +
+      'a narrower one that did. String search, no AI judgment; every result names the snapshots it read.',
     getClaimTrajectoriesSchema,
     async (input) => ({
       content: [{ type: 'text' as const, text: stampEnvironment(await getClaimTrajectoriesHandler(input)) }],
@@ -563,8 +563,9 @@ export function createMcpServer(): McpServer {
   server.tool(
     'verify_claim_text',
     'WAS THIS EXACT PHRASE ON THE PAGE at a capture? Reads the RAW archived document — the check ' +
-      'that beats the derivation and works on ANY archived capture, held or not. Reports both plus an ' +
-      'EXTRACTION_DIVERGENCE flag when they disagree — the condition that let a false claim survive ' +
+      'that beats the derivation and works on ANY archived capture, held or not. Reports it beside the ' +
+      'text this platform stored for the capture (when held), plus an EXTRACTION_DIVERGENCE flag when ' +
+      'they disagree — the condition that let a false claim survive ' +
       'into a real thesis. Distinguishes "not in the archive" and "fetch failed" from "phrase ' +
       'absent". Writes nothing.',
     verifyClaimTextSchema,

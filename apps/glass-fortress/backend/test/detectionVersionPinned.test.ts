@@ -1,11 +1,8 @@
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import {
-  DETECTION_LAYER,
-  DETECTION_VERSION,
-  presenceText,
-} from '../src/services/claimTrajectory';
+import * as claimTrajectory from '../src/services/claimTrajectory';
+import { DETECTION_VERSION } from '../src/services/claimTrajectory';
 
 // ---------------------------------------------------------------------------
 // CHANGE DETECTION, BUMP DETECTION_VERSION. This is what makes that true.
@@ -62,9 +59,9 @@ const DETECTION_FUNCTIONS = [
   'isDerivativeTrajectory',
   'loadDetectionInputs',
   // WHICH TEXT presence is tested against is as much "what a trajectory is" as
-  // the presence test itself. Added 2026-08-30 with the layer parameter: a
-  // change here silently re-decides every trajectory in the corpus.
-  'presenceText',
+  // the presence test itself. It was a function of its own, `presenceText`, from
+  // 2026-08-30 until R45 retired the layer switch (2026-09-13); the choice now
+  // lives in `detect`'s own select and map, which this list already hashes.
   'detect',
 ];
 
@@ -73,7 +70,23 @@ const DETECTION_FUNCTIONS = [
  * says so, and updating this without the bump is the one way past the guard.
  */
 const PINNED = {
-  version: 'v3-candidates-from-content-version-chunks',
+  version: 'v4-presence-in-current-text',
+  // REGENERATED 2026-09-13 WITH A VERSION BUMP — v3 → v4 (R45, the register
+  // correction) — once, by this file's own `detectionSourceHash`, and the bump is
+  // the point again. PRESENCE moved from Readability's `fullText` to the capture's
+  // current `text`: `detect` selects `text` and nothing else, the layer switch
+  // (`DETECTION_LAYER`, `presenceText`) is gone, and the observation's
+  // `snapshotUrl` is COMPUTED as the viewer URL `recordCapture` writes, so no
+  // detection function reads a legacy column. Previous hash 52d47212…f50da8.
+  //
+  // THE BEHAVIOUR MOVED, AND IT WAS MEASURED BEFORE IT MOVED — staging,
+  // deployment cd0e6def @ 69072a1, 2026-09-13, one candidate set detected in both
+  // registers: corona 200 candidates, `fullText` 172 trajectories / 28 unmatched,
+  // `text` 200 / 0 — lost 0, gained 28, reshaped 7; rtmag and walla 0 candidates.
+  // The 28 gained are exactly the 28 unmatched, the FDA sentence among them, whose
+  // trajectory had asserted it absent at 20220805053301 where the page held it. So
+  // every v3 trajectory answers a different question, and the recompute is paid.
+  //
   // REGENERATED 2026-09-08 WITH A VERSION BUMP — v2 → v3 — and the bump is the
   // point rather than a formality. At evidence step 11b the candidate source
   // MOVED: it was `deletedText` / `addedText`, the classifier's Hebrew summaries
@@ -91,24 +104,24 @@ const PINNED = {
   // A candidate drawn from a chunk is verbatim by construction, where a
   // paraphrase never was — which is why the pass recorded `candidatesUnmatched`
   // at all.
-  sourceHash: '52d47212c4ba11bf1cd6d3374a8bc3a2b41238806da7baeaeb6386a92bf50da8',
+  sourceHash: '004d39abc37db98b9b613ae76d185940f4acf55a0563ffa2438989a79c68eef3',
 };
 
-describe('the detection LAYER cannot move silently either', () => {
-  it('production detection still reads the EXTRACTION', () => {
-    // The pin above was regenerated without a version bump on the strength of
-    // this being true. If Level 6 flips it to DOCUMENT, this fails first and
-    // says so — which is the point: the flip changes what every trajectory IS,
-    // so it must arrive with a DETECTION_VERSION bump and a full recompute.
-    expect(DETECTION_LAYER).toBe('EXTRACTION');
+describe('the detection REGISTER cannot move silently either', () => {
+  it('detection reads the current text, and no layer switch remains', () => {
+    // A layer switch that came back — a constant choosing between `fullText` and
+    // `text` — would let one line re-decide every trajectory while the pin's
+    // functions stayed byte-identical. The register is `detect`'s own select.
+    expect(Object.keys(claimTrajectory)).not.toContain('DETECTION_LAYER');
+    expect(Object.keys(claimTrajectory)).not.toContain('presenceText');
+    const detect = bodyOf(stripComments(source), 'detect');
+    expect(detect).toContain('r.text');
+    expect(detect).not.toContain('fullText');
+    expect(detect).not.toContain('snapshotUrl: true');
   });
 
-  it('EXTRACTION means fullText, unchanged and byte-for-byte', () => {
-    // A refactor that quietly changed which column EXTRACTION names would keep
-    // the constant, keep the source hash plausible, and change every trajectory.
-    const capture = { fullText: 'the article', text: 'the whole page' };
-    expect(presenceText(capture, 'EXTRACTION')).toBe('the article');
-    expect(presenceText(capture, 'DOCUMENT')).toBe('the whole page');
+  it('the version names the register', () => {
+    expect(DETECTION_VERSION).toContain('current-text');
   });
 });
 

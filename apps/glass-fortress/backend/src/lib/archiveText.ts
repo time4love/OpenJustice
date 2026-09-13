@@ -3,27 +3,25 @@ import { htmlToText, normaliseText } from './htmlText';
 import { Readability } from '@mozilla/readability';
 
 // ---------------------------------------------------------------------------
-// Turning archived HTML into text — the two readings, side by side.
+// Readability's reading of an archived page — the LEGACY register.
 //
-// The scanner stores ONE of them: Readability's article, which is what
-// UrlSnapshot.fullText holds and therefore what every diff, trajectory and
-// on-chain contentHash is derived from. That is a deliberate choice for
-// diffing (boilerplate churn would swamp the signal) and a blind spot for
-// verification: on capture 20220905111109 of corona.health.gov.il it kept
-// 4,330 of the page's 6,266 characters — measured against the live archive on
-// 2026-08-23 — and among the 31% it dropped was the sentence a real thesis went
-// on to claim had been ADDED the following day.
+// Readability's article is what `UrlSnapshot.fullText` holds, composed by
+// `recordCapture` at acquisition, and what the old registries' extraction anchors
+// hashed as `contentHash`. It is NOT what any finding is derived from: every
+// diff, every trajectory and `verify_claim_text`'s stored answer read the
+// capture's current `text` (docs/gf-interaction-flows.md A2) since R45. Its blind
+// spot is measured, not assumed: on capture 20220905111109 of
+// corona.health.gov.il it kept 4,330 of the page's 6,266 characters, and among
+// the 31% it dropped was the sentence a real thesis went on to claim had been
+// ADDED the following day.
 //
-// So both readings live here, exported, with the same tag-to-text conversion
-// applied to each. A verification tool asks for `rawText` and compares it
-// against `extractedText`; the scanner asks only for the extraction. Neither
-// re-implements the other, which is the point of moving them out of
-// WaybackScraper: a divergence check built on a second copy of the extractor
-// would eventually stop measuring the extractor that actually runs.
+// Who still loads it, and so jsdom, statically — named so nobody fixes the jsdom
+// boundary twice: `services/WaybackScraper.ts`, `services/measureCaptureCustody.ts`
+// (the extractor-equality instrument, which must run THE function the writers
+// ran), and `utils/webScraper.ts`. `services/recordCapture.ts` imports it
+// dynamically. The raw reading needs no DOM and lives in `./htmlText`; it is
+// re-exported below so existing imports keep working.
 // ---------------------------------------------------------------------------
-
-
-
 
 export interface ExtractedArticle {
   /** Readability's title, or '' when it found none. */
@@ -33,7 +31,7 @@ export interface ExtractedArticle {
 }
 
 /**
- * The platform's ONE reading of a page: Readability's article, converted to text.
+ * Readability's article, converted to text — the one construction of it.
  *
  * Sole implementation on purpose. `utils/webScraper.ts` used to carry a second
  * JSDOM+Readability block returning `article.textContent`, which is a different
@@ -58,21 +56,13 @@ export function extractArticle(html: string, sourceUrl: string): ExtractedArticl
 }
 
 /**
- * The article as text. This is the exact path that produces UrlSnapshot.fullText.
+ * The article as text — the LEGACY register: the exact path that composes
+ * UrlSnapshot.fullText, and that the old registries' extraction anchors hashed.
  */
 export function extractArticleText(html: string, sourceUrl: string): string {
   return extractArticle(html, sourceUrl).text;
 }
 
-/**
- * Everything the archived page said — the whole document, with no article
- * selection applied. Readability is never consulted, so nothing is discarded
- * for looking like navigation, a sidebar, or an accordion panel.
- */
-export function extractRawText(html: string): string {
-  return normaliseText(htmlToText(html));
-}
-
 // Re-exported so existing imports keep working: these moved to ./htmlText to
 // keep the DOM dependency out of everything that only needs text.
-export { timestampToDate, htmlToText, normaliseText, normaliseForPresence } from './htmlText';
+export { timestampToDate, htmlToText, normaliseText, normaliseForPresence, extractRawText } from './htmlText';

@@ -37,9 +37,9 @@ const SRC = join(__dirname, '..', 'src');
  * Files whose whole purpose is to observe the Archive AS IT IS NOW.
  *
  * `verifyAgainstCdx` computes Level 1's completion criterion.
- * `archiveVerification` backs `list_captures`, which deliberately queries CDX
- * live and un-collapsed so a researcher sees what the Archive holds rather than
- * what we recorded.
+ * `archiveVerification` runs `fetchCaptureIndex` and `checkPhraseAtCaptures`, which
+ * deliberately query CDX live and un-collapsed and fetch the raw capture, so a
+ * researcher sees what the Archive holds rather than what we recorded.
  */
 const LIVE_OBSERVERS = [
   'services/verifyAgainstCdx.ts',

@@ -1,6 +1,5 @@
 import axios from 'axios';
 import { prisma } from '../lib/prisma';
-import { CaptureProvenance } from '@prisma/client';
 import {
   CDX_TIMEOUT_MS,
   CDX_USER_AGENT,
@@ -11,12 +10,9 @@ import {
   WaybackFetchError,
   withRetry,
 } from '../lib/archiveHttp';
-import {
-  extractArticleText,
-  extractRawText,
-  normaliseForPresence,
-  timestampToDate,
-} from '../lib/archiveText';
+// FROM `htmlText`, NOT `archiveText`: the raw reading needs no DOM, and a verifier
+// that loaded Readability's module would load jsdom for nothing (R45).
+import { extractRawText, normaliseForPresence, timestampToDate } from '../lib/htmlText';
 
 // ---------------------------------------------------------------------------
 // Checking a claim against the archive.
@@ -30,10 +26,13 @@ import {
 // Two rules govern everything below, and both were learned from specific
 // failures:
 //
-//   1. Go to the RAW archived HTML, never to UrlSnapshot.fullText. That column
-//      is a Readability extraction which, on capture 20220905111109, dropped
-//      the very sentence a thesis then claimed had been added the next day. A
-//      verification tool built on it would have CONFIRMED the false claim.
+//   1. The RAW archived HTML is the authority. The second answer is the text
+//      this platform STORED for the capture — its current `text`, what every
+//      diff and trajectory reads — so a disagreement between the two says the
+//      platform's derivation is blind to something the page said. The legacy
+//      Readability column is read by nothing here: on capture 20220905111109 it
+//      dropped the very sentence a thesis then claimed had been added the next
+//      day, and a verifier built on it would have CONFIRMED the false claim.
 //
 //   2. "Could not check" is never "checked and found nothing." Every failure
 //      here is a named outcome carried in the result, not an exception and
@@ -174,283 +173,6 @@ export async function fetchCaptureIndex(
 }
 
 // ---------------------------------------------------------------------------
-// list_captures
-// ---------------------------------------------------------------------------
-
-export interface ListedCapture extends ArchiveCapture {
-  /**
-   * True when this platform holds the archived text for this capture.
-   *
-   * The distinction matters and is not cosmetic: the vault holds 83 captures
-   * for the corona page while the archive holds more, so an interval computed
-   * from stored captures alone is WIDER than the truth. A researcher reading
-   * "nothing changed between these two stored snapshots" may be reading over
-   * an archive capture nobody scanned.
-   */
-  storedLocally: boolean;
-  /** Set when stored — the platform's SHA-256 over its extracted text. */
-  storedContentHash?: string;
-  /** Set when stored — the anchoring transaction, or null if never anchored. */
-  storedOnChainTxHash?: string | null;
-}
-
-export type ListCapturesResult =
-  | { status: 'NOT_TRACKED'; url: string; message: string }
-  | {
-      status: 'ARCHIVE_UNAVAILABLE';
-      url: string;
-      reason: string;
-      offline: boolean;
-      message: string;
-      storedCaptures: ListedCapture[];
-    }
-  | {
-      status: 'OK';
-      url: string;
-      range: { from: string | null; to: string | null };
-      truncated: boolean;
-      counts: {
-        inArchive: number;
-        storedLocally: number;
-        /** Captures this platform holds that the archive index did not return. */
-        storedNotInArchiveIndex: number;
-        /**
-         * Captures this platform holds that the Archive does NOT hold at all.
-         *
-         * Distinct from `storedNotInArchiveIndex`, which counts ARCHIVED captures
-         * the index did not return — a disagreement between two sources about the
-         * same page. This counts captures that were never archived, so no
-         * disagreement is possible and none should be reported.
-         */
-        notArchived: number;
-      };
-      captures: ListedCapture[];
-      /**
-       * Captures held but never archived, in their own section.
-       *
-       * A PARTITION, NOT AN EXCLUSION. Cross-checking these against CDX would
-       * report each as a gap in the Archive — a fabricated finding from the tool
-       * built to detect fabricated findings — so they are correctly kept out of
-       * `captures`. But dropping them from the answer entirely makes
-       * `list_captures` UNDER-REPORT what the platform holds, which is the same
-       * failure in the other direction.
-       *
-       * The distinction a reader needs is re-checkability: everything in
-       * `captures` can be verified by a stranger against a public archive, and
-       * nothing here can.
-       */
-      notArchived: NotArchivedCapture[];
-    };
-
-/** A capture this platform holds that the Internet Archive does not. */
-export interface NotArchivedCapture {
-  capturedAt: string;
-  provenance: string;
-  /**
-   * Always false, and stated rather than implied.
-   *
-   * A reader scanning two lists needs the difference between them to be on the
-   * row, not inferred from which array it came out of.
-   */
-  independentlyRecheckable: false;
-}
-
-interface StoredSnapshotRow {
-  waybackTimestamp: string;
-  snapshotDate: string;
-  snapshotUrl: string;
-  contentHash: string;
-  onChainTxHash: string | null;
-}
-
-async function loadStoredSnapshots(
-  trackedUrlId: string,
-  range: { from?: string; to?: string },
-): Promise<StoredSnapshotRow[]> {
-  const rows = await prisma.urlSnapshot.findMany({
-    where: {
-      trackedUrlId,
-      // Archived captures ONLY, and this is a correctness constraint rather than
-      // a filter of convenience.
-      //
-      // These rows are cross-checked against the CDX index to find captures the
-      // Archive holds that this platform does not. A DIRECT capture is by
-      // definition absent from CDX, so including one here would report it as a
-      // gap in the Archive — a fabricated finding, emitted by the tool built to
-      // detect fabricated findings.
-      //
-      // LEVEL 2 OWES A PARTITION, NOT A WIDENING: list_captures must report
-      // non-archived captures in their own section rather than folding them in
-      // here. Today the distinction costs nothing to defer, because every stored
-      // capture is WAYBACK.
-      provenance: CaptureProvenance.WAYBACK,
-      waybackTimestamp: { not: null },
-      ...(range.from || range.to
-        ? {
-            snapshotDate: {
-              ...(range.from ? { gte: range.from } : {}),
-              ...(range.to ? { lte: range.to } : {}),
-            },
-          }
-        : {}),
-    },
-    select: {
-      waybackTimestamp: true,
-      snapshotDate: true,
-      snapshotUrl: true,
-      contentHash: true,
-      onChainTxHash: true,
-    },
-    orderBy: { waybackTimestamp: 'asc' },
-  });
-  return rows.map((row) => {
-    if (row.waybackTimestamp === null) {
-      // Excluded by the where clause above, so reaching this means the QUERY is
-      // wrong, not the data. Throwing says so; dropping the row would quietly
-      // shrink the comparison set and turn a bug into a missing capture.
-      throw new Error(
-        `loadStoredSnapshots: archived capture ${row.snapshotUrl} has no waybackTimestamp.`,
-      );
-    }
-    return { ...row, waybackTimestamp: row.waybackTimestamp };
-  });
-}
-
-/**
- * What captures exist for this page, and which of them this platform holds.
- *
- * Nothing exposed this before. `get_forensic_timeline` returns diffs;
- * `get_claim_trajectories` returns `snapshotsExamined` as a bare count. Neither
- * can answer "is there a capture between the publication and the change?" —
- * the question the central temporal claim of the first real thesis turned on.
- */
-export async function listCaptures(
-  url: string,
-  range: { from?: string; to?: string } = {},
-): Promise<ListCapturesResult> {
-  const tracked = await prisma.trackedUrl.findFirst({
-    where: { url },
-    select: { id: true },
-  });
-  if (!tracked) {
-    return {
-      status: 'NOT_TRACKED',
-      url,
-      message:
-        'This URL is not tracked, so nothing can be said about which captures are stored. ' +
-        'Survey it first (survey_wayback_captures). This is NOT a statement that the archive holds no captures.',
-    };
-  }
-
-  const [stored, index] = await Promise.all([
-    loadStoredSnapshots(tracked.id, range),
-    fetchCaptureIndex(url, range),
-  ]);
-
-  const storedByTimestamp = new Map(stored.map((s) => [s.waybackTimestamp, s]));
-
-  if (!index.available) {
-    return {
-      status: 'ARCHIVE_UNAVAILABLE',
-      url,
-      reason: index.reason,
-      offline: index.offline,
-      message:
-        'The Internet Archive did not answer, so the capture list below is only what this platform ' +
-        'has STORED. It is not the archive’s full list and must not be read as one: any interval ' +
-        'computed from it is wider than the truth.',
-      storedCaptures: stored.map((s) => ({
-        waybackTimestamp: s.waybackTimestamp,
-        date: s.snapshotDate,
-        digest: null,
-        statusCode: null,
-        snapshotUrl: s.snapshotUrl,
-        storedLocally: true,
-        storedContentHash: s.contentHash,
-        storedOnChainTxHash: s.onChainTxHash,
-      })),
-    };
-  }
-
-  const seen = new Set<string>();
-  const captures: ListedCapture[] = index.captures.map((c) => {
-    seen.add(c.waybackTimestamp);
-    const local = storedByTimestamp.get(c.waybackTimestamp);
-    return {
-      ...c,
-      storedLocally: local !== undefined,
-      ...(local
-        ? { storedContentHash: local.contentHash, storedOnChainTxHash: local.onChainTxHash }
-        : {}),
-    };
-  });
-
-  // A capture this platform stored but the archive index did not return.
-  // Reported rather than dropped: it means the two sources disagree about the
-  // page's history, which is itself a finding.
-  const storedOnly = stored
-    .filter((s) => !seen.has(s.waybackTimestamp))
-    .map((s) => ({
-      waybackTimestamp: s.waybackTimestamp,
-      date: s.snapshotDate,
-      digest: null,
-      statusCode: null,
-      snapshotUrl: s.snapshotUrl,
-      storedLocally: true,
-      storedContentHash: s.contentHash,
-      storedOnChainTxHash: s.onChainTxHash,
-    }));
-
-  const all = [...captures, ...storedOnly].sort((a, b) =>
-    a.waybackTimestamp.localeCompare(b.waybackTimestamp),
-  );
-
-  // The partition the archived-only scoping above owes. Built now, while the
-  // answer is always empty, for the same reason the UNCHANGED status landed
-  // before the backfill wrote a row: the first DIRECT capture Level 2 Phase B
-  // creates must appear in this tool on the day it is created, not the day
-  // somebody notices it is missing.
-  const notArchivedRows = await prisma.urlSnapshot.findMany({
-    where: {
-      trackedUrlId: tracked.id,
-      NOT: { provenance: CaptureProvenance.WAYBACK },
-      // Same `snapshotDate` bound the archived query uses, so the two sections of
-      // one answer cover the same interval.
-      ...(range.from || range.to
-        ? {
-            snapshotDate: {
-              ...(range.from ? { gte: range.from } : {}),
-              ...(range.to ? { lte: range.to } : {}),
-            },
-          }
-        : {}),
-    },
-    orderBy: { capturedAt: 'asc' },
-    select: { capturedAt: true, provenance: true },
-  });
-  const notArchived: NotArchivedCapture[] = notArchivedRows.map((r) => ({
-    capturedAt: r.capturedAt.toISOString(),
-    provenance: r.provenance,
-    independentlyRecheckable: false,
-  }));
-
-  return {
-    status: 'OK',
-    url,
-    range: { from: range.from ?? null, to: range.to ?? null },
-    truncated: index.truncated,
-    counts: {
-      inArchive: index.captures.length,
-      storedLocally: captures.filter((c) => c.storedLocally).length + storedOnly.length,
-      storedNotInArchiveIndex: storedOnly.length,
-      notArchived: notArchived.length,
-    },
-    captures: all,
-    notArchived,
-  };
-}
-
-// ---------------------------------------------------------------------------
 // verify_claim_text
 // ---------------------------------------------------------------------------
 
@@ -470,23 +192,27 @@ export interface CaptureCheck {
   reason?: string;
   /** Present in the WHOLE archived document. The authoritative answer. */
   presentInRawArchive?: boolean;
-  /** Present in Readability's article — what the scan pipeline would have seen. */
-  presentInPlatformExtraction?: boolean;
   /**
-   * Present in the text this platform actually STORED for this capture, or
-   * null when this capture was never scanned. Distinct from the line above:
-   * that one re-runs the extractor now, this one reads what was banked then,
-   * so the two disagreeing means the stored text is stale.
+   * Present in the text this platform STORED for this capture — its current
+   * `text`, what every diff and trajectory is derived from — or null when this
+   * capture is not held. ONE stored register (evidence flows A4: the corpus read
+   * by text, over current text versions); the Readability re-run it once sat
+   * beside is gone with the legacy register.
    */
   presentInStoredSnapshot?: boolean | null;
   /**
-   * The finding this tool exists for. True when the raw page and the
-   * platform's extraction disagree about the phrase — the pipeline is blind to
-   * something the page said.
+   * The finding this tool exists for. True when the raw page and the stored
+   * text disagree about the phrase — the platform's derivation is blind to
+   * something the page said. Null when the capture is not held: there is no
+   * stored text to disagree with, and "no divergence" would claim a check that
+   * was never made.
    */
-  extractionDivergence?: boolean;
-  /** How much of the page the extractor kept, in characters. */
-  characters?: { raw: number; extracted: number; retainedPercent: number };
+  extractionDivergence?: boolean | null;
+  /**
+   * The raw reading's length, and the stored text's — null when not held — in
+   * characters, with the share of the raw reading the stored text keeps.
+   */
+  characters?: { raw: number; stored: number | null; retainedPercent: number | null };
 }
 
 export type VerifyClaimTextResult =
@@ -520,9 +246,8 @@ function isWaybackTimestamp(value: string): boolean {
 /**
  * Was this exact string on this page at this capture?
  *
- * Answered three ways on purpose — the raw document, the platform's extraction
- * of it, and the text the platform stored — because the interesting case is
- * when they disagree.
+ * Answered two ways on purpose — the raw document and the text the platform
+ * stored for it — because the interesting case is when they disagree.
  */
 export async function verifyClaimText(input: {
   url: string;
@@ -633,9 +358,9 @@ export async function checkPhraseAtCaptures(
       trackedUrlId,
       waybackTimestamp: { in: captures.map((c) => c.waybackTimestamp) },
     },
-    select: { waybackTimestamp: true, fullText: true },
+    select: { waybackTimestamp: true, text: true },
   });
-  const storedByTimestamp = new Map(storedRows.map((r) => [r.waybackTimestamp, r.fullText]));
+  const storedByTimestamp = new Map(storedRows.map((r) => [r.waybackTimestamp, r.text]));
 
   const needle = normaliseForPresence(phrase);
   const checks: CaptureCheck[] = [];
@@ -688,26 +413,32 @@ async function checkOneCapture(
   }
 
   const rawText = normaliseForPresence(extractRawText(html));
-  const extractedText = normaliseForPresence(
-    extractArticleText(html, rawCaptureUrl(target.waybackTimestamp, url)),
-  );
-
   const presentInRawArchive = rawText.includes(needle);
-  const presentInPlatformExtraction = extractedText.includes(needle);
+
+  if (storedText === undefined) {
+    return {
+      ...base,
+      outcome: 'CHECKED',
+      presentInRawArchive,
+      presentInStoredSnapshot: null,
+      extractionDivergence: null,
+      characters: { raw: rawText.length, stored: null, retainedPercent: null },
+    };
+  }
+
+  const stored = normaliseForPresence(storedText);
+  const presentInStoredSnapshot = stored.includes(needle);
 
   return {
     ...base,
     outcome: 'CHECKED',
     presentInRawArchive,
-    presentInPlatformExtraction,
-    presentInStoredSnapshot:
-      storedText === undefined ? null : normaliseForPresence(storedText).includes(needle),
-    extractionDivergence: presentInRawArchive !== presentInPlatformExtraction,
+    presentInStoredSnapshot,
+    extractionDivergence: presentInRawArchive !== presentInStoredSnapshot,
     characters: {
       raw: rawText.length,
-      extracted: extractedText.length,
-      retainedPercent:
-        rawText.length === 0 ? 0 : Math.round((extractedText.length / rawText.length) * 100),
+      stored: stored.length,
+      retainedPercent: rawText.length === 0 ? 0 : Math.round((stored.length / rawText.length) * 100),
     },
   };
 }

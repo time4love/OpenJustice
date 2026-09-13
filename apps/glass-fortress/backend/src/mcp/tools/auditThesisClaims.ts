@@ -61,8 +61,8 @@ export async function auditThesisClaimsHandler(input: {
         ? 'Nothing this tool checks came back wrong. That is not the same as the thesis being right — ' +
           'read `notChecked`, and read `quotationsNotChecked`, before treating it as clearance.'
         : `${String(flagged)} dated/interval assertion(s) claim more than the archive supports, and ` +
-          `${String(unresolved)} quotation(s) are absent from the raw archived page or invisible to this ` +
-          'platform’s extraction of it.',
+          `${String(unresolved)} quotation(s) are absent from the raw archived page or missing from the ` +
+          'text this platform stored for it.',
     ...(result.pagesUnavailable.length > 0
       ? {
           coverageWarning:

@@ -19,10 +19,12 @@ import { anchorAcquiredCapture, requireWritable, type RegistryWindow } from './a
  *      required `Buffer`, so no path can construct an incomplete capture — the
  *      schema's NOT NULL is the backstop, not the control.
  *
- *   2. `fullText` and `contentHash` — evidence identity — are composed HERE,
- *      through the one Readability construction in `lib/archiveText`, and by
- *      no rule and no walk (architecture §6, walk invariant I1). The walk's
- *      derivation is stored as handed over; the identity is the store's.
+ *   2. `fullText` and `contentHash` — the LEGACY register, Readability's article
+ *      and its hash — are composed HERE, through the one Readability construction
+ *      in `lib/archiveText`, and by no rule and no walk (architecture §6, walk
+ *      invariant I1). Nothing reads them for a finding: evidence identity is
+ *      `documentHash` (evidence flows A1), and every diff and trajectory reads the
+ *      walk's derivation, stored as handed over.
  *
  * The anchor is AWAITED (Phase 2, ruled 2026-09-02). A chain failure throws
  * with its reason; the snapshot row stays; the next call finds it through the
@@ -193,7 +195,7 @@ export async function storeCapture(input: StoreCaptureInput): Promise<StoredCapt
   // The window memoises the verdict, so the anchoring module's own ask is free.
   await requireWritable(window);
 
-  // EVIDENCE IDENTITY, composed once, here. Readability's article over the
+  // THE LEGACY REGISTER, composed once, here. Readability's article over the
   // decoded payload, under the raw replay URL — the formula the registry ledger
   // states and the rebuild's extractor-equality measurement reproduced 112 of
   // 112 with. A dynamic import, because `archiveText` constructs jsdom, whose

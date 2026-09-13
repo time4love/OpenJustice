@@ -2,16 +2,17 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 // ---------------------------------------------------------------------------
-// verify_claim_text against a REAL archived capture, with the REAL extractor.
+// verify_claim_text against a REAL archived capture, read by the REAL raw reader.
 //
-// The plan's first test: "A phrase present in raw HTML but dropped by
-// Readability returns EXTRACTION_DIVERGENCE — build the fixture from capture
+// The plan's first test: "A phrase present in raw HTML but dropped by the
+// platform's text returns EXTRACTION_DIVERGENCE — build the fixture from capture
 // 20220905111109 and נמצאו יעילים ובטוחים לשימוש, which is a real instance."
 //
-// Only the network and the database are stubbed. jsdom and Readability are the
-// genuine articles, which is the whole point and is why this file lives in the
-// `extraction` jest project: divergence is a measurement of what the real
-// extractor really drops.
+// Since R45 the second answer is the text the platform STORED for the capture —
+// its current `text` — not a re-run of Readability. The stored text below is a
+// frozen text of that capture that lacks the phrase (Readability's, as banked
+// in 2022): the shape of any stored text blind to something the page said. Only
+// the network and the database are stubbed; the raw reading is the genuine one.
 // ---------------------------------------------------------------------------
 
 jest.mock('axios');
@@ -34,6 +35,11 @@ const URL = 'https://corona.health.gov.il/vaccine-for-covid/';
 const TIMESTAMP = '20220905111109';
 const DIVERGENT_PHRASE = 'נמצאו יעילים ובטוחים לשימוש';
 
+/** The capture held, with a stored text that lacks DIVERGENT_PHRASE. */
+function storedBlindText(): void {
+  findSnapshots.mockResolvedValue([{ waybackTimestamp: TIMESTAMP, text: fixture('wayback-vaccine-2022-09-05.txt') }]);
+}
+
 function fixture(name: string): string {
   return fs.readFileSync(path.join(__dirname, '..', 'fixtures', name), 'utf-8');
 }
@@ -45,10 +51,9 @@ interface OkResult {
   checks: Array<{
     outcome: string;
     presentInRawArchive?: boolean;
-    presentInPlatformExtraction?: boolean;
     presentInStoredSnapshot?: boolean | null;
-    extractionDivergence?: boolean;
-    characters?: { raw: number; extracted: number; retainedPercent: number };
+    extractionDivergence?: boolean | null;
+    characters?: { raw: number; stored: number | null; retainedPercent: number | null };
   }>;
 }
 
@@ -65,7 +70,8 @@ describe('verifyClaimText — the real divergence', () => {
       .mockReturnValue(false);
   });
 
-  it('reports the phrase present in raw and absent from the extraction, flagged as divergence', async () => {
+  it('reports the phrase present in raw and absent from the stored text, flagged as divergence', async () => {
+    storedBlindText();
     const result = (await verifyClaimText({
       url: URL,
       capture: TIMESTAMP,
@@ -78,7 +84,7 @@ describe('verifyClaimText — the real divergence', () => {
     const [check] = result.checks;
     expect(check.outcome).toBe('CHECKED');
     expect(check.presentInRawArchive).toBe(true);
-    expect(check.presentInPlatformExtraction).toBe(false);
+    expect(check.presentInStoredSnapshot).toBe(false);
     expect(check.extractionDivergence).toBe(true);
     expect(result.anyExtractionDivergence).toBe(true);
   });
@@ -90,10 +96,8 @@ describe('verifyClaimText — the real divergence', () => {
     expect(requested).toBe(`http://web.archive.org/web/${TIMESTAMP}id_/${URL}`);
   });
 
-  it('reports the phrase absent from the text the scanner actually stored', async () => {
-    findSnapshots.mockResolvedValue([
-      { waybackTimestamp: TIMESTAMP, fullText: fixture('wayback-vaccine-2022-09-05.txt') },
-    ]);
+  it('reports the phrase absent from the text the platform actually stored', async () => {
+    storedBlindText();
 
     const result = (await verifyClaimText({
       url: URL,
@@ -101,12 +105,12 @@ describe('verifyClaimText — the real divergence', () => {
       phrase: DIVERGENT_PHRASE,
     })) as unknown as OkResult;
 
-    // The banked text is the extraction, so it is blind here too. This is the
-    // column every diff, trajectory and contentHash for this page derives from.
+    // The stored text is what every diff and trajectory for this page reads, so
+    // a phrase absent from it is invisible to all of them.
     expect(result.checks[0].presentInStoredSnapshot).toBe(false);
   });
 
-  it('says the capture was never scanned rather than answering false for stored text', async () => {
+  it('says the capture is not held rather than answering false for stored text — and claims no divergence', async () => {
     findSnapshots.mockResolvedValue([]);
 
     const result = (await verifyClaimText({
@@ -116,9 +120,14 @@ describe('verifyClaimText — the real divergence', () => {
     })) as unknown as OkResult;
 
     expect(result.checks[0].presentInStoredSnapshot).toBeNull();
+    // No stored text to disagree with: null, never `false`, which would claim a check.
+    expect(result.checks[0].extractionDivergence).toBeNull();
+    expect(result.checks[0].characters?.stored).toBeNull();
+    expect(result.anyExtractionDivergence).toBe(false);
   });
 
-  it('finds a phrase the extraction DOES keep in both readings, with no divergence', async () => {
+  it('finds a phrase the stored text DOES keep in both readings, with no divergence', async () => {
+    storedBlindText();
     const kept = 'משרד הבריאות ממליץ לחסן פעוטות';
 
     const result = (await verifyClaimText({
@@ -128,12 +137,13 @@ describe('verifyClaimText — the real divergence', () => {
     })) as unknown as OkResult;
 
     expect(result.checks[0].presentInRawArchive).toBe(true);
-    expect(result.checks[0].presentInPlatformExtraction).toBe(true);
+    expect(result.checks[0].presentInStoredSnapshot).toBe(true);
     expect(result.checks[0].extractionDivergence).toBe(false);
     expect(result.anyExtractionDivergence).toBe(false);
   });
 
-  it('measures how much of the page the extractor kept', async () => {
+  it('measures how much of the raw reading the stored text keeps', async () => {
+    storedBlindText();
     const result = (await verifyClaimText({
       url: URL,
       capture: TIMESTAMP,
@@ -142,7 +152,8 @@ describe('verifyClaimText — the real divergence', () => {
 
     const chars = result.checks[0].characters;
     expect(chars).toBeDefined();
-    expect(chars!.extracted).toBeLessThan(chars!.raw);
+    expect(chars!.stored).not.toBeNull();
+    expect(chars!.stored!).toBeLessThan(chars!.raw);
     expect(chars!.retainedPercent).toBeLessThan(100);
   });
 });
