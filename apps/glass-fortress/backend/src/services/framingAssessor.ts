@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { PROVISIONS, type ProvisionShape } from '../lib/provisions';
 import { LLMFactory, resolveModelId } from '../factories/LLMFactory';
 import { assertSchemaCompatibility } from '../lib/assertSchemaCompatibility';
 import { FRAMING_ASSESSMENT_PROMPT } from '../prompts/framingAssessment';
@@ -48,8 +49,12 @@ export interface AssessedTrajectory {
 export interface FramingAssessmentInput {
   question: string;
   provision: string | null;
-  /** The provision's required record shapes — the TEST, as structure (prosecutor plan §5). */
-  elementShapes: readonly string[];
+  /**
+   * The provision's required record shapes — the TEST, as structure (prosecutor plan §5) — each
+   * element WITH ITS MEANING from lib/provisions, since 2026-09-13: a test whose elements are bare
+   * tokens can be applied only to the one provision its reader already knows by heart.
+   */
+  elements: readonly { element: string; means: string }[];
   proposedFraming: string;
   proposedElements: readonly { element: string; records: readonly string[] }[];
   records: readonly AssessedRecord[];
@@ -160,6 +165,13 @@ function trajectoryBlock(t: AssessedTrajectory): string {
   return `- "${t.claimText}" — נצפתה לראשונה ${t.firstSeen}, לאחרונה ${t.lastSeen}, מצב סופי ${t.finalState}, ${String(t.transitions)} מעברים`;
 }
 
+/** The table's title for a known provision, as one parenthetical — empty for a key the table lacks. */
+function provisionTitle(provision: string): string {
+  const shapes: Readonly<Record<string, ProvisionShape | undefined>> = PROVISIONS;
+  const shape = shapes[provision];
+  return shape === undefined ? '' : ` (${shape.title})`;
+}
+
 export class FramingAssessor {
   private readonly chain: { invoke(input: unknown): Promise<unknown> };
 
@@ -175,7 +187,9 @@ export class FramingAssessor {
     const provision =
       input.provision === null
         ? 'לא נבחרה הוראה משפטית. אל תמציא יסודות; דווח על רשימת יסודות ריקה.'
-        : `ההוראה: ${input.provision}\nהיסודות שהיא דורשת: ${input.elementShapes.join(' · ')}`;
+        : `ההוראה: ${input.provision}${provisionTitle(input.provision)}\nהיסודות שהיא דורשת, וכל אחד — מה ממלא אותו:\n${input.elements
+            .map((e) => `- ${e.element}: ${e.means}`)
+            .join('\n')}`;
 
     const proposedElements =
       input.proposedElements.length === 0

@@ -423,7 +423,7 @@ describe('assess_framing · the two rounds', () => {
     await call();
     const content = roundsWritten().at(1)?.data['content'] as { model: unknown; promptVersion: unknown };
     expect(typeof content.model).toBe('string');
-    expect(content.promptVersion).toBe('v1-provision-elements-verbatim-claim');
+    expect(content.promptVersion).toBe('v2-provision-element-meanings');
   });
 
   // ---------------------------------------------------------------------------
