@@ -85,6 +85,12 @@ interface DiffEntry {
 
 interface Findings {
   page: { url: string; public: boolean };
+  /**
+   * The sizes, counted here so no reader counts by hand (a live model miscounted 21 diffs as 19
+   * and eight rows as seven, 2026-09-13). `captures` is what the platform HOLDS — the moments the
+   * page moved — not the archive's total; `list_captures` carries every archived row.
+   */
+  counts: { captures: number; diffs: number; awaitingDerivation: number };
   captures: CaptureEntry[];
   diffs: DiffEntry[];
 }
@@ -116,8 +122,13 @@ export async function listFindingsHandler(input: { url: string }): Promise<strin
     // endpoints narrows the pair only if the corpus holds its text (§7).
     const acquired = captures.map((c) => c.capture);
 
+    const awaitingDerivation = diffs.filter(
+      (diff) => !currentVersionOf({ kind: 'DIFF', before: diff.before, after: diff.after, versions: diff.versions }).defined,
+    ).length;
+
     return {
       page: { url: page.url, public: access.public },
+      counts: { captures: captures.length, diffs: diffs.length, awaitingDerivation },
       captures: captures.map((capture) => {
         const fileHash = captureName(page, capture);
         return {
