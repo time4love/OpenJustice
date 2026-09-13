@@ -2,7 +2,7 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { asJsonColumn } from '../lib/jsonColumn';
 import { recordId, type Record as CorpusRecord } from '../lib/evidenceIdentity';
-import { chunksOf, loadDiffByPair, loadPage, lookupCapture, pairName } from './corpusReads';
+import { acquiredNeighbours, chunksOf, loadDiffByPair, loadPage, lookupCapture, pairName } from './corpusReads';
 import { currentVersionOf } from './evidencePredicates';
 import { resolveTrajectoryCitations } from './trajectoryCitation';
 import type { AssessedRecord, AssessedTrajectory } from './framingAssessor';
@@ -185,11 +185,20 @@ export async function loadRecords(
         );
       }
       if (lookup.state === 'NOT_ACQUIRED') {
+        const { before, after } = await acquiredNeighbours(page, value);
+        const unchanged = lookup.outcome === 'DUPLICATE' || lookup.outcome === 'IDENTICAL';
         return refusal(
           'NOT_ACQUIRED',
           `${role}=${value} is on this page's work-list with outcome ${lookup.outcome}, so the corpus ` +
-            'holds no bytes and no text for it. A SKIPPED capture does not speak and an UNSERVABLE ' +
-            'one holds nothing.',
+            'holds no bytes and no text for it. ' +
+            (unchanged
+              ? 'DUPLICATE and IDENTICAL mean the page did not change, in what the rules keep, since the ' +
+                'acquired capture before it — that capture IS this one\'s text. '
+              : 'A SKIPPED capture does not speak and an UNSERVABLE one holds nothing. ') +
+            `The acquired capture before it is ${before ?? 'none'}, the one after it is ${after ?? 'none'}` +
+            (before !== null && after !== null ? `, and the diff ${before} → ${after} spans it` : '') +
+            '. Name those as the records; to establish what this capture itself showed, verify the ' +
+            'phrase against the raw archive with verify_claim_text and state the boundary in the proposal.',
         );
       }
       resolved.push(lookup.capture);

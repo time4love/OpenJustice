@@ -208,6 +208,23 @@ export async function lookupCapture(page: Page, value: string): Promise<CaptureL
   return workList === null ? { state: 'UNKNOWN' } : { state: 'NOT_ACQUIRED', outcome: workList.status };
 }
 
+/**
+ * The ACQUIRED captures on either side of a capture the corpus holds no body for — what a
+ * researcher names INSTEAD when a round refuses NOT_ACQUIRED on an unchanged capture. Through
+ * `loadCaptures`, the one spelling of "this page's ACQUIRED captures", never a second query.
+ * Added 2026-09-13, from the first live framing run: the refusal named the outcome and left the
+ * model guessing which record carries the boundary it had verified against the raw archive.
+ */
+export async function acquiredNeighbours(
+  page: Page,
+  value: string,
+): Promise<{ before: string | null; after: string | null }> {
+  const captures = (await loadCaptures(page.id)).map((c) => c.capture).sort();
+  const before = captures.filter((c) => c < value).at(-1) ?? null;
+  const after = captures.find((c) => c > value) ?? null;
+  return { before, after };
+}
+
 /** One pair, by the two captures it spans — never by a date pair, never by a diff id (A1). */
 export async function loadDiffByPair(
   trackedUrlId: string,

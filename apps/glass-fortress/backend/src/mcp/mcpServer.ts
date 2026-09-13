@@ -1,6 +1,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { resolveOrigin } from '../oauth/oidcProvider';
 import { MCP_INSTRUCTIONS } from './instructions';
+import { stampEnvironment } from './stampEnvironment';
 import {
   surveyWaybackCapturesSchema,
   surveyWaybackCapturesHandler,
@@ -94,14 +95,15 @@ export function createMcpServer(): McpServer {
   // -------------------------------------------------------------------------
   server.tool(
     'get_claim_trajectories',
-    'Follow individual claims across a tracked page\'s entire archived history — every assertion ' +
-      'that was added and removed more than once. This is the pattern no single diff can show: a diff ' +
-      'compares two snapshots, while a trajectory shows that a claim was removed, restored and removed ' +
-      'again. Computed by string search against the archived page text with no AI judgment, so every ' +
-      'result is verifiable by opening the snapshot URLs it returns.',
+    'WHAT ONE CLAIM DID across a page\'s whole history — added, removed, restored, removed again: ' +
+      'the pattern no single diff can show. COMPUTED OVER THE STORED DERIVED TEXT, not the raw archive: ' +
+      'a transition it reports is only as true as the derivation at that capture, so verify each ' +
+      'transition you will rely on with verify_claim_text (which reads the RAW document) before citing ' +
+      'it — a trajectory on this page asserted a claim absent at a capture whose raw page carried it ' +
+      '(2026-09-13). String search, no AI judgment; every result names the snapshots it read.',
     getClaimTrajectoriesSchema,
     async (input) => ({
-      content: [{ type: 'text' as const, text: await getClaimTrajectoriesHandler(input) }],
+      content: [{ type: 'text' as const, text: stampEnvironment(await getClaimTrajectoriesHandler(input)) }],
     }),
   );
 
@@ -115,13 +117,13 @@ export function createMcpServer(): McpServer {
   // -------------------------------------------------------------------------
   server.tool(
     'get_thesis_trajectory_citations',
-    'Resolve the claim trajectories a thesis cites: which claims, which archived captures each one ' +
-      'appeared and vanished on, how much of each co-movement was cited, and whether a later ' +
+    'THE TRAJECTORIES A THESIS CITES, resolved to their captures: which claims, on which archived ' +
+      'captures each appeared and vanished, how much of each co-movement was cited, and whether a later ' +
       'detection pass still agrees. This is the full answer, not a summary: no other read ' +
       'returns a thesis\'s trajectory citations resolved.',
     getThesisTrajectoryCitationsSchema,
     async (input) => ({
-      content: [{ type: 'text' as const, text: await getThesisTrajectoryCitationsHandler(input) }],
+      content: [{ type: 'text' as const, text: stampEnvironment(await getThesisTrajectoryCitationsHandler(input)) }],
     }),
   );
 
@@ -146,7 +148,7 @@ export function createMcpServer(): McpServer {
       inputSchema: getArticleRulesSchema,
     },
     async (input) => ({
-      content: [{ type: 'text' as const, text: await getArticleRulesHandler(input) }],
+      content: [{ type: 'text' as const, text: stampEnvironment(await getArticleRulesHandler(input)) }],
     }),
   );
 
@@ -171,7 +173,7 @@ export function createMcpServer(): McpServer {
       inputSchema: getRuleHistorySchema,
     },
     async (input) => ({
-      content: [{ type: 'text' as const, text: await getRuleHistoryHandler(input) }],
+      content: [{ type: 'text' as const, text: stampEnvironment(await getRuleHistoryHandler(input)) }],
     }),
   );
 
@@ -187,7 +189,7 @@ export function createMcpServer(): McpServer {
       inputSchema: resetArticleCalibrationSchema,
     },
     async (input) => ({
-      content: [{ type: 'text' as const, text: await resetArticleCalibrationHandler(input) }],
+      content: [{ type: 'text' as const, text: stampEnvironment(await resetArticleCalibrationHandler(input)) }],
     }),
   );
 
@@ -204,7 +206,7 @@ export function createMcpServer(): McpServer {
       inputSchema: listCapturesSchema,
     },
     async (input) => ({
-      content: [{ type: 'text' as const, text: await listCapturesHandler(input) }],
+      content: [{ type: 'text' as const, text: stampEnvironment(await listCapturesHandler(input)) }],
     }),
   );
 
@@ -220,9 +222,11 @@ export function createMcpServer(): McpServer {
     'survey_wayback_captures',
     {
       description:
-        'SIZE THE JOB BEFORE ANYTHING IS FETCHED, STORED OR SPENT. Asks the Internet Archive\'s ' +
-        'index for every capture of a URL — one query, no page fetches — and records one work-list ' +
-        'row per capture. The first survey of a URL brings it into the corpus, attributed to you; ' +
+        'ADMITS A PAGE INTO THE CORPUS — only on the researcher\'s explicit word, and never a URL ' +
+        'you chose for them: the first survey brings the page in, attributed to them, and nothing ' +
+        'enters as a side effect. Sizes the job before anything is fetched, stored or spent: asks the ' +
+        'Internet Archive\'s index for every capture of a URL — one query, no page fetches — and ' +
+        'records one work-list row per capture. A later survey appends what the archive added; ' +
         'a later survey appends captures the archive has added and rewrites nothing. Returns two ' +
         'sizes: `captures`, the archive\'s activity, and `byteDistinct`, captures whose bytes differ ' +
         'from the one before — the upper bound on fetches and on your attention. Also `held` (captures ' +
@@ -231,7 +235,7 @@ export function createMcpServer(): McpServer {
       inputSchema: surveyWaybackCapturesSchema,
     },
     async (input) => ({
-      content: [{ type: 'text' as const, text: await surveyWaybackCapturesHandler(input) }],
+      content: [{ type: 'text' as const, text: stampEnvironment(await surveyWaybackCapturesHandler(input)) }],
     }),
   );
 
@@ -260,7 +264,7 @@ export function createMcpServer(): McpServer {
       inputSchema: approveArticleRulesSchema,
     },
     async (input) => ({
-      content: [{ type: 'text' as const, text: await approveArticleRulesHandler(input) }],
+      content: [{ type: 'text' as const, text: stampEnvironment(await approveArticleRulesHandler(input)) }],
     }),
   );
 
@@ -303,7 +307,7 @@ export function createMcpServer(): McpServer {
       inputSchema: resolveScanStopSchema,
     },
     async (input) => ({
-      content: [{ type: 'text' as const, text: await resolveScanStopHandler(input) }],
+      content: [{ type: 'text' as const, text: stampEnvironment(await resolveScanStopHandler(input)) }],
     }),
   );
 
@@ -318,8 +322,11 @@ export function createMcpServer(): McpServer {
     'scan_captures',
     {
       description:
-        'WALK A SURVEYED PAGE\'S CAPTURES IN DATE ORDER: this call fetches each capture\'s raw replay, ' +
-        'derives its text under the rules in force for its date, compares it with its predecessor, runs ' +
+        'WALK A SURVEYED PAGE\'S CAPTURES IN DATE ORDER, spending and anchoring as it goes. It resumes ' +
+        'from the first unwalked or stale row — which may be far from the window you care about: read ' +
+        'list_captures first. A re-walk never stores a capture whose text did not change, so scanning ' +
+        'cannot create a record for a date the page did not move. Each call fetches each capture\'s raw ' +
+        'replay, derives its text under the rules in force for its date, compares it with its predecessor, runs ' +
         'every gate, and WRITES the outcome on the work-list row — IDENTICAL (the archive\'s digest equals ' +
         'the previous capture\'s: same bytes, nothing fetched), DUPLICATE (fetched; the text derived under ' +
         'the rules equals the predecessor\'s; nothing stored), UNSERVABLE (the archive refuses it durably), ' +
@@ -399,7 +406,7 @@ export function createMcpServer(): McpServer {
       inputSchema: scanCapturesSchema,
     },
     async (input) => ({
-      content: [{ type: 'text' as const, text: await scanCapturesHandler(input) }],
+      content: [{ type: 'text' as const, text: stampEnvironment(await scanCapturesHandler(input)) }],
     }),
   );
 
@@ -424,8 +431,11 @@ export function createMcpServer(): McpServer {
     'list_findings',
     {
       description:
-        'A PAGE\'S WHOLE TIMELINE, IN DATE ORDER — every archived capture this platform holds and ' +
-        'every change between consecutive ones. Per capture: its 14-digit archive timestamp, the ' +
+        'THE CAPTURES THIS PLATFORM HOLDS — the moments the page MOVED — in date order, and every ' +
+        'change between them. NOT the archive\'s every capture: a capture whose text did not change ' +
+        '(DUPLICATE, IDENTICAL) is on list_captures, not here, so a gap between two held captures is ' +
+        'NOT a gap in the archive — it is a stretch the page did not move. `counts` gives the sizes; ' +
+        'do not count rows by hand. Per capture: its 14-digit archive timestamp, the ' +
         'hash of its current extracted text, and its anchor — the SHA-256 of the bytes as served, ' +
         'with `attributed` saying whether the registry holds it under our registrar (TRUE, FALSE, ' +
         'or NULL meaning no anchor check has been stored — null is never "no"). Per change: the ' +
@@ -443,7 +453,7 @@ export function createMcpServer(): McpServer {
       inputSchema: listFindingsSchema,
     },
     async (input) => ({
-      content: [{ type: 'text' as const, text: await listFindingsHandler(input) }],
+      content: [{ type: 'text' as const, text: stampEnvironment(await listFindingsHandler(input)) }],
     }),
   );
 
@@ -463,7 +473,7 @@ export function createMcpServer(): McpServer {
       inputSchema: getDiffInputSchema,
     },
     async (input) => ({
-      content: [{ type: 'text' as const, text: await getDiffInputHandler(input) }],
+      content: [{ type: 'text' as const, text: stampEnvironment(await getDiffInputHandler(input)) }],
     }),
   );
 
@@ -471,7 +481,8 @@ export function createMcpServer(): McpServer {
     'resolve_record',
     {
       description:
-        'WHAT A CITATION POINTS AT. Given the name a thesis cites (#ev_<fileHash>), returns the ' +
+        'WHAT A CITATION POINTS AT — the record behind an #ev_ name, and who cites it. Given the ' +
+        'name a thesis cites (#ev_<fileHash>), returns the ' +
         'corpus record it resolves to — a capture or a pair of captures, with its page and ' +
         'timestamps — whether the name is RECOMPUTABLE from that record, whether it is VERIFIED ' +
         '(every capture beneath it registered on chain under our registrar, with the anchored hash ' +
@@ -485,7 +496,7 @@ export function createMcpServer(): McpServer {
       inputSchema: resolveRecordSchema,
     },
     async (input) => ({
-      content: [{ type: 'text' as const, text: await resolveRecordHandler(input) }],
+      content: [{ type: 'text' as const, text: stampEnvironment(await resolveRecordHandler(input)) }],
     }),
   );
 
@@ -508,7 +519,7 @@ export function createMcpServer(): McpServer {
       inputSchema: checkOnChainStatusSchema,
     },
     async (input) => ({
-      content: [{ type: 'text' as const, text: await checkOnChainStatusHandler(input) }],
+      content: [{ type: 'text' as const, text: stampEnvironment(await checkOnChainStatusHandler(input)) }],
     }),
   );
 
@@ -537,40 +548,41 @@ export function createMcpServer(): McpServer {
   // -------------------------------------------------------------------------
   server.tool(
     'get_environment',
-    'Which environment is this — production or staging? Answers from the deployment\'s own ' +
-      'configuration (APP_ENV, already validated at startup against the database it is actually ' +
-      'connected to) cross-checked against the chain its evidence registry sits on. Call this ' +
-      'FIRST, before any write: a connector name is a local label and proves nothing, and evidence ' +
+    'CALL THIS FIRST — which environment is this, production or staging? Answers from the ' +
+      'deployment\'s own configuration (APP_ENV, already validated at startup against the database it ' +
+      'is actually connected to) cross-checked against the chain its evidence registry sits on. Every ' +
+      'other tool\'s answer names its environment too, from configuration alone; this is the read that ' +
+      'confirms both axes. Before any write: a connector name is a local label and proves nothing, and evidence ' +
       'counts or content hashes are checks with an expiry date. Takes no arguments. Writes nothing.',
     getEnvironmentSchema,
     async () => ({
-      content: [{ type: 'text' as const, text: await getEnvironmentHandler() }],
+      content: [{ type: 'text' as const, text: stampEnvironment(await getEnvironmentHandler()) }],
     }),
   );
 
   server.tool(
     'verify_claim_text',
-    'Check whether an exact phrase was on a tracked page at a given capture. Searches the RAW ' +
-      'archived document, not this platform\'s stored extraction, and reports both plus an ' +
+    'WAS THIS EXACT PHRASE ON THE PAGE at a capture? Reads the RAW archived document — the check ' +
+      'that beats the derivation and works on ANY archived capture, held or not. Reports both plus an ' +
       'EXTRACTION_DIVERGENCE flag when they disagree — the condition that let a false claim survive ' +
       'into a real thesis. Distinguishes "not in the archive" and "fetch failed" from "phrase ' +
       'absent". Writes nothing.',
     verifyClaimTextSchema,
     async (input) => ({
-      content: [{ type: 'text' as const, text: await verifyClaimTextHandler(input) }],
+      content: [{ type: 'text' as const, text: stampEnvironment(await verifyClaimTextHandler(input)) }],
     }),
   );
 
   server.tool(
     'audit_thesis_claims',
-    'Check every mechanically checkable assertion in a thesis\'s head version against the archive: ' +
-      'dates (does a capture exist, and does the sentence assert an act on a day nobody captured?), ' +
+    'CHECK A THESIS AGAINST THE ARCHIVE, no model: every mechanically checkable assertion in its ' +
+      'head version — dates (does a capture exist, and does the sentence assert an act on a day nobody captured?), ' +
       'quotations (is the quoted text really in those captures?), and intervals (are the endpoints ' +
       'adjacent captures?). No model is involved. Reports what it could NOT check, including Hebrew ' +
       'number-word spans and counts. Reports only — it never blocks publication.',
     auditThesisClaimsSchema,
     async (input) => ({
-      content: [{ type: 'text' as const, text: await auditThesisClaimsHandler(input) }],
+      content: [{ type: 'text' as const, text: stampEnvironment(await auditThesisClaimsHandler(input)) }],
     }),
   );
 
@@ -605,7 +617,7 @@ export function createMcpServer(): McpServer {
       inputSchema: openDebateSchema,
     },
     async (input) => ({
-      content: [{ type: 'text' as const, text: await openDebateHandler(input) }],
+      content: [{ type: 'text' as const, text: stampEnvironment(await openDebateHandler(input)) }],
     }),
   );
 
@@ -623,7 +635,7 @@ export function createMcpServer(): McpServer {
       inputSchema: respondInDebateSchema,
     },
     async (input) => ({
-      content: [{ type: 'text' as const, text: await respondInDebateHandler(input) }],
+      content: [{ type: 'text' as const, text: stampEnvironment(await respondInDebateHandler(input)) }],
     }),
   );
 
@@ -644,7 +656,7 @@ export function createMcpServer(): McpServer {
       inputSchema: promoteFromDebateSchema,
     },
     async (input) => ({
-      content: [{ type: 'text' as const, text: await promoteFromDebateHandler(input) }],
+      content: [{ type: 'text' as const, text: stampEnvironment(await promoteFromDebateHandler(input)) }],
     }),
   );
 
@@ -660,7 +672,7 @@ export function createMcpServer(): McpServer {
       inputSchema: getDebateSchema,
     },
     async (input) => ({
-      content: [{ type: 'text' as const, text: await getDebateHandler(input) }],
+      content: [{ type: 'text' as const, text: stampEnvironment(await getDebateHandler(input)) }],
     }),
   );
 
@@ -690,7 +702,7 @@ export function createMcpServer(): McpServer {
       inputSchema: listEvidenceReviewsSchema,
     },
     async () => ({
-      content: [{ type: 'text' as const, text: await listEvidenceReviewsHandler() }],
+      content: [{ type: 'text' as const, text: stampEnvironment(await listEvidenceReviewsHandler()) }],
     }),
   );
 
@@ -714,7 +726,7 @@ export function createMcpServer(): McpServer {
       inputSchema: reviewEvidenceSchema,
     },
     async (input) => ({
-      content: [{ type: 'text' as const, text: await reviewEvidenceHandler(input) }],
+      content: [{ type: 'text' as const, text: stampEnvironment(await reviewEvidenceHandler(input)) }],
     }),
   );
 
@@ -744,7 +756,7 @@ export function createMcpServer(): McpServer {
       inputSchema: openFramingSchema,
     },
     async (input) => ({
-      content: [{ type: 'text' as const, text: await openFramingHandler(input) }],
+      content: [{ type: 'text' as const, text: stampEnvironment(await openFramingHandler(input)) }],
     }),
   );
 
@@ -768,7 +780,7 @@ export function createMcpServer(): McpServer {
       inputSchema: assessFramingSchema,
     },
     async (input) => ({
-      content: [{ type: 'text' as const, text: await assessFramingHandler(input) }],
+      content: [{ type: 'text' as const, text: stampEnvironment(await assessFramingHandler(input)) }],
     }),
   );
 
@@ -787,7 +799,7 @@ export function createMcpServer(): McpServer {
       inputSchema: chooseFramingSchema,
     },
     async (input) => ({
-      content: [{ type: 'text' as const, text: await chooseFramingHandler(input) }],
+      content: [{ type: 'text' as const, text: stampEnvironment(await chooseFramingHandler(input)) }],
     }),
   );
 
@@ -803,7 +815,7 @@ export function createMcpServer(): McpServer {
       inputSchema: getFramingSchema,
     },
     async (input) => ({
-      content: [{ type: 'text' as const, text: await getFramingHandler(input) }],
+      content: [{ type: 'text' as const, text: stampEnvironment(await getFramingHandler(input)) }],
     }),
   );
 

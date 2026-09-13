@@ -174,6 +174,15 @@ describe('list_findings — the page\'s timeline, in date order and no other', (
     expect(out.diffs[0].after).toBe(AFTER.waybackTimestamp);
   });
 
+  it('carries `counts` so no reader counts rows by hand — the sizes of what the platform HOLDS', async () => {
+    // 2026-09-13: a live model miscounted 21 diffs as 19 and eight rows as seven,
+    // and read the absence of unchanged captures here as "38 days with no
+    // capture". The counts are of HELD captures and diffs; the archive's total
+    // is list_captures'.
+    const out = JSON.parse(await listFindingsHandler({ url: URL }));
+    expect(out.counts).toEqual({ captures: out.captures.length, diffs: out.diffs.length, awaitingDerivation: 0 });
+  });
+
   it('names a diff by its PAIR of timestamps — never by a date and never by a row id', async () => {
     const out = JSON.parse(await listFindingsHandler({ url: URL }));
     expect(out.diffs[0]).not.toHaveProperty('id');
