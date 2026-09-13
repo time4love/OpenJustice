@@ -42,7 +42,7 @@ import { AFTER, BEFORE, URL, PAGE, DIFF_ROW, CURRENT_VERSION } from './helpers/c
 // PLAN §5's `thesisFraming` ROW, REWRITTEN: "step 19: rounds on a `Framing`,
 // computed content, the audit, `choose_framing`; the session and `NO_EVIDENCE`
 // go." Its predecessor went with the code it tested at evidence step 11a
-// (refactor plan §4 rule 3 as amended :523–:527), so this is the successor, on
+// (refactor plan §4 rule 3 as amended :534–:538), so this is the successor, on
 // clean ground.
 //
 // WHAT WENT WITH THE SESSION: `openThesisFraming`'s one-active-session refusal,

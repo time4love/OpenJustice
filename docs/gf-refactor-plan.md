@@ -338,6 +338,17 @@ deploy is one-shot, and staging is its rehearsal. Not before step 8 has served o
 > not yet performed; the `SHIP` keyword's checklist reads this note before it prints what deploys.
 >
 > **Amended 2026-09-13 (R45-B, PR #433), the failure direction QUALIFIED.** Today a head deploy to production before the drop still aborts FIRST at 11b (#68); R45-B's migration (#71) REFUSES ON ITS OWN before its first drop, for every table and value it removes, if a row holds legacy state — so the abort is the platform's act twice over. What no refusal can protect is the three `UrlSnapshot` columns the ledger reads (`fullText`, `contentHash`, `snapshotUrl`), populated on every capture of every environment: for those THE ORDER ABOVE REMAINS THE ONLY CONTROL. The rebuild runs BEFORE R45-B reaches production (thesis plan, the step-26 gate lifted).
+>
+> **`SHIP` PERFORMED AND SUB-STEP 6 STARTED ON PRODUCTION, 2026-09-13** — the order above was run as
+> written, in three sessions with four records (`docs/gf-rebuild-production-{measure,ledger,new-registry,drop}-2026-09-13.md`)
+> and `docs/gf-rebuild-production-ship-and-walk-2026-09-13.md`: `0ca8d72` deployed first and measured;
+> the mainnet ledger committed; the new registry `0xDE42…9823` deployed and rotated; the database
+> dropped whole and rebuilt; then head `c2c8933` deployed, its four migrations applied on the emptied
+> database and taken; the researcher bootstrapped and the connector re-authorized; corona surveyed
+> (133 · 95); **index 0 written on the new registry, stamped `DOCUMENT_SHA256`, ATTRIBUTED** — the freeze
+> ended at head's deploy, by refusal. The walk was stopped by the researcher after index 0: 132 rows
+> UNFETCHED, resumable from `20220105113501` under the four rules in force; the rest of sub-step 6 is
+> scheduled later, before thesis steps 20–26 run on production.
 
 ### 10 · Vocabulary
 
