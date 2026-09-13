@@ -236,7 +236,7 @@ one, however temporarily, is not a step.
 
 | invariant | why it is absolute |
 |---|---|
-| `fullText` and `contentHash` are never written by any rule or any walk | evidence identity is composed from them; if they move, published evidence moves |
+| ~~`fullText` and `contentHash` are never written by any rule or any walk~~ — RETIRED 2026-09-13 (R45-B): both columns left the schema with `snapshotUrl`; evidence identity is `documentHash` (evidence flows A1, 2026-09-03), written by the walk on ACQUIRED and held by the next row | its WHY was superseded when identity moved to `documentHash`; the columns held a legacy register nothing read for a finding, and the acceptance suite's I1 retired with them (refactor plan §4 rule 1) |
 | no `UrlSnapshot` is ever deleted, and no anchor is ever rewritten | the chain attests bytes at a timestamp; a deleted row is an orphaned attestation, which a court reads as tampering |
 | a stored capture's `text` changes only by a versioned supersession that keeps what it replaces | a thesis may cite the old text; a silent overwrite makes the citation false |
 | the decision log is append-only, and every decision names the researcher who made it | the log's only purpose is immutable attribution of human judgement |

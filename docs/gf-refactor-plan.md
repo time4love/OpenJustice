@@ -336,6 +336,8 @@ deploy is one-shot, and staging is its rehearsal. Not before step 8 has served o
 > 1 and 2 there in the container, environment stated twice; commit the ledger; then sub-steps 3–5;
 > then deploy head, whose migrations apply on the emptied database; then sub-step 6. Ruled recorded,
 > not yet performed; the `SHIP` keyword's checklist reads this note before it prints what deploys.
+>
+> **Amended 2026-09-13 (R45-B, PR #433), the failure direction QUALIFIED.** Today a head deploy to production before the drop still aborts FIRST at 11b (#68); R45-B's migration (#71) REFUSES ON ITS OWN before its first drop, for every table and value it removes, if a row holds legacy state — so the abort is the platform's act twice over. What no refusal can protect is the three `UrlSnapshot` columns the ledger reads (`fullText`, `contentHash`, `snapshotUrl`), populated on every capture of every environment: for those THE ORDER ABOVE REMAINS THE ONLY CONTROL. The rebuild runs BEFORE R45-B reaches production (thesis plan, the step-26 gate lifted).
 
 ### 10 · Vocabulary
 

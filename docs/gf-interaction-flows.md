@@ -826,7 +826,7 @@ in force from creation, so there is nothing to activate.
 | work-list rows: outcome, held bytes | the walk | the marking page; any rule |
 | `UrlSnapshot` bytes and hashes | the walk, on ACQUIRED | the marking page |
 | `text` / `textHash` / `textExtractionVersion` | the walk at acquisition; a NEW VERSION by the re-walk, the previous kept | any rule directly; nothing overwrites a version |
-| `fullText` / `contentHash` | capture recording | **any ruleset — evidence identity cannot move** |
+| ~~`fullText` / `contentHash`~~ — RETIRED 2026-09-13 (R45-B): the legacy register left the schema; evidence identity is `documentHash` (evidence flows A1), the row above | — | — |
 | `Rule` rows | `approve_article_rules` | acquisition |
 | the decision log | `approve_article_rules` · `resolve_scan_stop` · `reset_article_calibration` | the browser; any automatic path |
 | the draft | the marking page | — |
@@ -932,7 +932,7 @@ RuleMatch               one row per rule per capture examined
   ruleId · waybackTimestamp · matchedNodes Int · observedAt
   @@unique([ruleId, waybackTimestamp])
 
-UrlSnapshot             unchanged in identity: document · documentHash · fullText · contentHash
+UrlSnapshot             unchanged in identity: document · documentHash — fullText · contentHash · snapshotUrl RETIRED 2026-09-13 (R45-B), the legacy register left the schema
   text · textHash · textExtractionVersion     the CURRENT version
 
 TextVersion             one row per SUPERSEDED derivation of a capture
