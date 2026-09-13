@@ -604,15 +604,14 @@ function quoteVerdict(
   }
 
   // Divergence outranks presence: the phrase being in the raw page but not in
-  // the platform's extraction is the condition that produced a false claim in a
+  // the text the platform stored is the condition that produced a false claim in a
   // real thesis, and it must not be smoothed into a plain PRESENT.
   if (checked.some((c) => c.extractionDivergence)) {
     return {
       verdict: 'EXTRACTION_DIVERGENCE',
       reason:
-        'The raw archived page and this platform’s extraction of it disagree about this quotation. ' +
-        'Whatever the diffs and trajectories say about it is derived from the extraction, and the ' +
-        'extraction is blind here.',
+        'The raw archived page and the text this platform stored for it disagree about this ' +
+        'quotation. Diffs and trajectories read the stored text, and it is blind here.',
     };
   }
 

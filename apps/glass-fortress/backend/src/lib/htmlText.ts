@@ -76,6 +76,19 @@ export function normaliseText(text: string): string {
 }
 
 /**
+ * Everything an archived page said — the whole document, with no article
+ * selection applied, so nothing is discarded for looking like navigation, a
+ * sidebar or an accordion panel. The RAW reading every verification rests on.
+ *
+ * Lives here, not beside Readability in `archiveText`, because it needs no DOM:
+ * a verifier that reads the raw page must not load jsdom to do it (R45; the
+ * jsdom boundary, refactor plan §8). `archiveText` re-exports it.
+ */
+export function extractRawText(html: string): string {
+  return normaliseText(htmlToText(html));
+}
+
+/**
  * Collapse every run of whitespace so a phrase matches across re-wrapping,
  * re-indentation and block boundaries.
  *

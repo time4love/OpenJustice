@@ -214,6 +214,8 @@ const RETIRED_SCRIPT_NAMES = [
   'forensics:backfill-survival',
   'forensics:confirm-anchors',
   'forensics:measure-gate5',
+  // R45: the detection-layer comparison, retired with the layer switch once its measurement was recorded.
+  'forensics:compare-detection-layers',
 ];
 
 // The modules those tools stood on, plus the readers that existed only to read

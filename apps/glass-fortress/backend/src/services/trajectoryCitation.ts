@@ -21,15 +21,17 @@ import { changeSpans, type Observation, type Trajectory } from './claimTrajector
 /**
  * What a rendered trajectory citation is allowed to claim.
  *
- * Trajectories are computed over UrlSnapshot.fullText, which is a Readability
- * extraction of the archived page, not the page. It discards a substantial
- * fraction of the document (measured at 31% of one real capture), mixing
- * boilerplate it is meant to drop with substantive sentences it is not. Two
- * consequences, and both are why this string exists:
+ * Trajectories are computed over each capture's stored TEXT — the text this
+ * platform extracted from the archived page under the rules in force for its
+ * date — not over the page. Until R45 (2026-09-13) that was Readability's
+ * article, which discarded ~31% of one measured capture and whose boundaries
+ * produced flips that were layout, not content (seven such on corona, measured
+ * when detection moved). The current text keeps far more, and it is still an
+ * extraction: markup, link targets and whatever a rule removes are not in it.
+ * Two consequences, and both are why this string exists:
  *
- *   - a change inside a discarded region is invisible to detection;
- *   - because Readability's boundaries follow page structure, a trajectory can
- *     show a flip that is a LAYOUT change rather than a content change.
+ *   - a change inside a region the extraction drops is invisible to detection;
+ *   - a flip can follow a change in page STRUCTURE rather than in content.
  *
  * So a citation says what the extraction contained and links the capture, and
  * never says what the page contained. Getting this wrong would give an
@@ -37,10 +39,10 @@ import { changeSpans, type Observation, type Trajectory } from './claimTrajector
  * platform presents as requiring no trust.
  */
 export const TRAJECTORY_EXTRACTION_CAVEAT =
-  'Computed by string search over the archived TEXT EXTRACTION of each capture, not over the page ' +
-  'itself. The extraction discards part of every page, so a claim can be absent from it while ' +
-  'present on the page, and a flip can reflect a layout change rather than an edit. Open the ' +
-  'linked capture and check the page before relying on this.';
+  'Computed by string search over the TEXT this platform extracted and stored for each capture, ' +
+  'not over the page itself. The extraction drops part of every page, so a claim can be absent from ' +
+  'it while present on the page, and a flip can reflect a layout change rather than an edit. Open ' +
+  'the linked capture and check the page before relying on this.';
 
 /** One presence flip: the snapshot at which the claim appeared or disappeared. */
 export interface Flip {

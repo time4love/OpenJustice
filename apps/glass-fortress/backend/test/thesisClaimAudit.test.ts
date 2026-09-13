@@ -180,7 +180,6 @@ describe('quotations', () => {
         rawUrl: 'y',
         outcome: 'CHECKED',
         presentInRawArchive: true,
-        presentInPlatformExtraction: false,
         presentInStoredSnapshot: false,
         extractionDivergence: true,
       },
@@ -213,9 +212,8 @@ describe('quotations', () => {
         rawUrl: 'y',
         outcome: 'CHECKED',
         presentInRawArchive: false,
-        presentInPlatformExtraction: false,
         presentInStoredSnapshot: null,
-        extractionDivergence: false,
+        extractionDivergence: null,
       },
     ]);
 
@@ -266,7 +264,6 @@ describe('quotations', () => {
         rawUrl: 'y',
         outcome: 'CHECKED',
         presentInRawArchive: true,
-        presentInPlatformExtraction: true,
         presentInStoredSnapshot: true,
         extractionDivergence: false,
       },
@@ -414,9 +411,8 @@ describe('partial coverage', () => {
         rawUrl: 'y',
         outcome: 'CHECKED',
         presentInRawArchive: false,
-        presentInPlatformExtraction: false,
         presentInStoredSnapshot: null,
-        extractionDivergence: false,
+        extractionDivergence: null,
       },
     ]);
 
@@ -438,7 +434,6 @@ describe('partial coverage', () => {
         rawUrl: 'y',
         outcome: 'CHECKED',
         presentInRawArchive: true,
-        presentInPlatformExtraction: true,
         presentInStoredSnapshot: true,
         extractionDivergence: false,
       },
