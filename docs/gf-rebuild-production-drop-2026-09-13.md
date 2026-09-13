@@ -187,9 +187,13 @@ the container pinned to `fqmc…lo`.
 **Acceptance, in the rotated container** (§1's "after"): the identity read at 15:00:23Z — the masked
 ref still `fqmc…lo`, `current_database()` answering, so the connection works on the new credential;
 `forensics:read-registry` at 15:00:48Z, the four axes agreed; the structural check "No difference
-detected." Bronze Fortress and staging are separate Supabase projects, untouched. On the laptop, by name
-only: `apps/glass-fortress/backend/.env`, `.env.dev-jwks.json`, `.env.example`, `.env.staging` — no
-`.env.production.local`, and nothing carrying a production `DATABASE_URL`.
+detected." Bronze Fortress — production only, not developed and absent from staging — is a separate Supabase
+project, untouched. **Staging's database password was rotated in the same act, by the researcher, and its
+Railway variables with it (deployment `d76ebf3f @ f10fb08`, 14:57:47Z, SUCCESS; the structural check in the
+staging container "No difference detected." at 15:12Z) — recorded here after landing, 2026-09-13; the
+laptop's `.env` and `.env.staging` then held the old staging password and were updated by the researcher.** On
+the laptop, by name only: `apps/glass-fortress/backend/.env`, `.env.dev-jwks.json`, `.env.example`,
+`.env.staging` — no `.env.production.local`, and nothing carrying a production `DATABASE_URL`.
 
 ## 7 — what this session did not do, and what session 3 takes
 
