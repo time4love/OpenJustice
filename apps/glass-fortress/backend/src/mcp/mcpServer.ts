@@ -729,9 +729,13 @@ export function createMcpServer(): McpServer {
     'open_framing',
     {
       description:
-        'OPEN A FRAMING — the question you want to establish, and the glasses you read the corpus ' +
-        'through. Returns the framing and the PROVISION\'S REQUIRED ELEMENTS, each unfilled: what ' +
-        'kind of record would demonstrate each part of the violation. A framing needs no thesis — ' +
+        'RECORD THE RESEARCHER\'S QUESTION AS THEY WROTE IT, and the glasses they read the corpus ' +
+        'through. The question is stored VERBATIM and attributed to them — show any rewording and get ' +
+        'their yes before calling; never record words they have not seen. Returns the framing and the ' +
+        'PROVISION\'S REQUIRED ELEMENTS, each unfilled and each WITH ITS MEANING — what kind of record ' +
+        'would demonstrate that part of the violation. The known provisions and their elements are the ' +
+        'table\'s; an unknown one is refused NO_PROVISION_SHAPE naming the known ones, and a framing may ' +
+        'open with no provision, its elements then the researcher\'s to state. A framing needs no thesis — ' +
         'open one before any thesis exists, or on an unpublished thesis of your own to re-frame it. ' +
         'Nothing opens and nothing closes: a framing with rounds and no choice is a discussion that ' +
         'ended without a decision, which is a legitimate record. Writes one row, spends nothing. ' +

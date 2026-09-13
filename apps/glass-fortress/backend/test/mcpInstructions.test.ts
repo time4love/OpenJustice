@@ -102,9 +102,13 @@ describe('the instructions reach the server, and from one pure module', () => {
     // worked example, never the platform's scope. The list in the text is built
     // from PROVISIONS at load; this holds that the build happened and that the
     // prose gloss of each element still names it.
-    for (const [provision, elements] of Object.entries(PROVISIONS)) {
+    for (const [provision, shape] of Object.entries(PROVISIONS)) {
       expect(MCP_INSTRUCTIONS).toContain(provision);
-      for (const element of elements) expect(MCP_INSTRUCTIONS).toContain(element);
+      expect(MCP_INSTRUCTIONS).toContain(shape.title);
+      for (const [element, means] of Object.entries(shape.elements)) {
+        expect(MCP_INSTRUCTIONS).toContain(element);
+        expect(MCP_INSTRUCTIONS).toContain(means);
+      }
     }
   });
 

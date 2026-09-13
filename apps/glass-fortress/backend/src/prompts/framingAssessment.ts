@@ -92,4 +92,4 @@ reasoning — נמק בעברית משפטית מקצועית, בקצרה, את 
  * Recorded on every ASSESSED round beside the model (A2 :1308), so a rate measured over rounds can
  * say which prompt produced it. It changes when the prompt's ASKS change, never on a typo.
  */
-export const FRAMING_ASSESSOR_PROMPT_VERSION = 'v1-provision-elements-verbatim-claim';
+export const FRAMING_ASSESSOR_PROMPT_VERSION = 'v2-provision-element-meanings';

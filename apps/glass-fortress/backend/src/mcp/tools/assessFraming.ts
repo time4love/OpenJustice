@@ -11,6 +11,7 @@ import {
   type NamedRecord,
 } from '../../services/framingRounds';
 import { elementShapesOf, requireResearcher } from './openFraming';
+import { elementsOf } from '../../lib/provisions';
 import { answer, refusal, type Refusal } from './thesisRefusals';
 
 // ---------------------------------------------------------------------------
@@ -122,7 +123,7 @@ export async function assessFramingHandler(input: AssessFramingInput): Promise<s
     const assessment = await new FramingAssessor().assess({
       question: framing.question,
       provision: framing.provision,
-      elementShapes: elementShapesOf(framing.provision),
+      elements: elementsOf(framing.provision),
       proposedFraming: input.proposedFraming,
       proposedElements: input.elements,
       records,

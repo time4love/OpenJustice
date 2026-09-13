@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { prisma } from '../../lib/prisma';
 import { getResearcherId } from '../../context/researcherContext';
-import { PROVISIONS } from '../../lib/provisions';
+import { PROVISIONS, elementNamesOf, elementsOf } from '../../lib/provisions';
 import { answer, refusal, type Refusal } from './thesisRefusals';
 
 // ---------------------------------------------------------------------------
@@ -18,7 +18,13 @@ import { answer, refusal, type Refusal } from './thesisRefusals';
 // ---------------------------------------------------------------------------
 
 export const openFramingSchema = {
-  question: z.string().describe('What you want to establish — the question, in your words'),
+  question: z
+    .string()
+    .describe(
+      'The question EXACTLY AS THE RESEARCHER WROTE IT. It is stored verbatim and attributed to them: if you ' +
+        'would reword it, show them the rewording and get their yes BEFORE this call — never record words they ' +
+        'have not seen',
+    ),
   provision: z
     .string()
     .optional()
@@ -40,7 +46,8 @@ interface OpenFramingAnswer {
   framingId: string;
   question: string;
   provision: string | null;
-  elements: { element: string; records: string[] }[];
+  /** Each required element with what it MEANS (the table's words) and, at open, no records. */
+  elements: { element: string; means: string; records: string[] }[];
 }
 
 /**
@@ -57,11 +64,9 @@ export function requireResearcher(act: string): Refusal | { researcherId: string
   return { researcherId };
 }
 
-/** The provision's element shapes, from A1's ONE importable table — never a second list. */
+/** The provision's element NAMES, from A1's ONE importable table — never a second list. */
 export function elementShapesOf(provision: string | null): readonly string[] {
-  if (provision === null) return [];
-  const shapes: Readonly<Record<string, readonly string[]>> = PROVISIONS;
-  return shapes[provision] ?? [];
+  return elementNamesOf(provision);
 }
 
 export function knownProvision(provision: string): boolean {
@@ -137,9 +142,10 @@ export async function openFramingHandler(input: OpenFramingInput): Promise<strin
       framingId: created.id,
       question: input.question,
       provision,
-      // EACH UNFILLED (A4 :1437; T1 :239–:240). With no provision there are no
-      // required shapes, so the list is empty rather than absent.
-      elements: elementShapesOf(provision).map((element) => ({ element, records: [] })),
+      // EACH UNFILLED (A4 :1437; T1 :239–:240), each with its MEANING from the
+      // table, so the skeleton the researcher receives says what fills it. With no
+      // provision there are no required shapes, so the list is empty rather than absent.
+      elements: elementsOf(provision).map(({ element, means }) => ({ element, means, records: [] })),
     };
   });
 }
