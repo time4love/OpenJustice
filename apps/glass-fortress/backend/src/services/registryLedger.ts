@@ -18,8 +18,13 @@ import {
 // from a tampered one (Level 10), so this module REFUSES rather than emits when
 // one exists, and names every offending index rather than the first.
 //
-// THE KINDS. Four are read from the corpus by `classifyEntry` — the column that
-// holds the hash says which formula produced it. Two are the researcher's
+// THE KINDS. Six are carried, because a COMMITTED ledger file carries them and
+// `registryLedgerCommitted.test.ts` holds every committed entry to its formula.
+// One is read from the corpus by `classifyEntry` at emission today — a capture's
+// `documentHash`, the live scheme (evidence flows A7 :1268–:1273). CONTENT_HASH and
+// the two evidence kinds were read from columns that left the schema (evidence
+// step 11b, R45-B); they survive as the vocabulary of ledgers already emitted,
+// and production's is emitted at `0ca8d72`, which still holds them. Two are the researcher's
 // ruling of 2026-09-06 for entries no column explains, recorded verbatim in
 // docs/gf-rebuild-staging-measure-2026-09-06.md §2:
 //
@@ -147,14 +152,6 @@ const DOCUMENT_NAME_FORMULA =
   'persistScreenshotEvidence (the concatenated image buffers); thesisRoutes (a document\'s ciphertext, base64-decoded). ' +
   'Which writer produced it is not recorded on the row; stored as Evidence.fileHash';
 
-const EVIDENCE_ATTESTED =
-  'a SELECTION: that this deployment named a record as evidence under a formula that is leaving the code, ' +
-  "with the classifier's categories written as its public label";
-
-const EVIDENCE_REPLACED_BY =
-  "no row — evidence is rebuilt by the researcher's own hand from corpus records under evidence flows; " +
-  'this entry stays on the frozen registry, explained here';
-
 const PRE_WIPE_FORMULA =
   'unknown — the row that produced it went with the database destroyed on 2026-08-21 ' +
   '(docs/gf-staging-data-loss-postmortem-2026-08-21.md)';
@@ -201,16 +198,6 @@ function captureInputs(c: EntryClassification): CaptureInput[] {
   return c.snapshots.map((s) => ({ snapshotId: s.id, url: s.url, waybackTimestamp: s.waybackTimestamp }));
 }
 
-function evidenceInputs(c: EntryClassification): EvidenceInput[] {
-  return c.evidence.map((e) => ({
-    evidenceId: e.id,
-    // A live registry classifies no entry as an evidence name — nothing above the
-    // corpus is anchored — so this arm has no producer and the constant says so
-    // rather than reaching for a column that has left.
-    evidenceType: 'RETIRED_FORMULA',
-  }));
-}
-
 function explained(
   entry: RegistryEntry,
   c: EntryClassification,
@@ -227,41 +214,7 @@ function explained(
           'the same documentHash registered afresh on the successor registry with its own block time, ' +
           'its category carrying the anchoring scheme; this entry stays as the earlier date',
       };
-    case 'CONTENT_HASH':
-      return {
-        kind: 'CONTENT_HASH',
-        formula: formulaFor('CONTENT_HASH', []),
-        inputs: captureInputs(c),
-        attested:
-          `that this deployment held the EXTRACTION of these captures on ${when} — narrower than the ` +
-          'payload, not false',
-        replacedBy:
-          "each listed capture's documentHash on the successor registry; the extractor-equality " +
-          'measurement (docs/gf-rebuild-staging-measure-2026-09-06.md §3) ties the bytes registered there ' +
-          'to the text attested here',
-      };
-    case 'EVIDENCE_FILE_HASH': {
-      const inputs = evidenceInputs(c);
-      return {
-        kind: 'EVIDENCE_FILE_HASH',
-        formula: formulaFor('EVIDENCE_FILE_HASH', inputs),
-        inputs,
-        attested: `${EVIDENCE_ATTESTED}, on ${when}`,
-        replacedBy: EVIDENCE_REPLACED_BY,
-      };
-    }
-    case 'EVIDENCE_PREVIOUS_FILE_HASH': {
-      const inputs = evidenceInputs(c);
-      return {
-        kind: 'EVIDENCE_PREVIOUS_FILE_HASH',
-        formula: formulaFor('EVIDENCE_PREVIOUS_FILE_HASH', inputs),
-        inputs,
-        attested: `an earlier name of the same evidence row — ${EVIDENCE_ATTESTED}, on ${when}`,
-        replacedBy: "the row's current fileHash entry on this registry, itself replaced by no row",
-      };
-    }
     case 'UNEXPLAINED':
-    case 'AMBIGUOUS':
       return null;
   }
 }
@@ -322,16 +275,7 @@ export function buildRegistryLedger(input: LedgerInput): RegistryLedger {
   const refusals: string[] = [];
   const entries: LedgerEntry[] = [];
   for (const entry of state.entries) {
-    const classification = classifyEntry(entry, corpus);
-    let explanation = explained(entry, classification);
-    if (explanation === null && classification.kind === 'AMBIGUOUS') {
-      refusals.push(
-        `  index ${String(entry.index)} is AMBIGUOUS — ${String(classification.snapshots.length)} capture(s) and ` +
-          `${String(classification.evidence.length)} evidence row(s) hold ${entry.fileHash}; which formula produced it ` +
-          'cannot be read from the join',
-      );
-      continue;
-    }
+    let explanation = explained(entry, classifyEntry(entry, corpus));
     if (explanation === null) {
       const kind = ruled(entry, registry, chainId);
       if (kind === null) {

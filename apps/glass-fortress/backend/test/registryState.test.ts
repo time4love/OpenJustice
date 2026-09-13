@@ -15,11 +15,12 @@
 //      state is readable forever, and the design replaces the former with the
 //      latter here.
 //
-//   3. AN ENTRY IS EXPLAINED BY WHICH COLUMN PRODUCED IT, or it is UNEXPLAINED.
-//      The three kinds the design names — extraction anchors over contentHash,
-//      payload anchors over documentHash, evidence names over fileHash — are
-//      found by joining the chain's hash against the corpus's hash columns.
-//      A hash matching none is a finding, and the one state step 2 refuses on.
+//   3. A LIVE REGISTRY'S ENTRY IS A CAPTURE'S documentHash, or it is UNEXPLAINED
+//      (evidence flows A7 :1268–:1273). The extraction anchors over `contentHash`
+//      and the evidence names over `fileHash` are a FROZEN registry's, explained by
+//      its committed ledger file; the columns that once explained them left the
+//      schema (evidence step 11b, R45-B). A hash no capture holds is a finding,
+//      and the one state step 2 refuses on.
 // ---------------------------------------------------------------------------
 
 import {
@@ -33,11 +34,7 @@ import {
   type RegistryEntry,
   type RegistryReader,
 } from '../src/services/registryState';
-import {
-  countByVerdict,
-  rollUpBySubject,
-  type CorpusClaim,
-} from '../src/services/registryState';
+import { countByVerdict, type CorpusClaim } from '../src/services/registryState';
 import type { OnChainEvidenceRecord } from '../src/services/Web3Service';
 
 const REGISTRAR = '0x9DE2e74b3C5dAc4C3E2a0d18A5b76EEAc8989A28';
@@ -230,11 +227,11 @@ describe('the entry lookup: one predicate, two ways to reach an entry', () => {
   });
 });
 
-describe('classifyEntry: which column produced the hash', () => {
+describe('classifyEntry: a live entry is a capture\'s documentHash, or it is unexplained', () => {
   const corpus: CorpusHashes = {
     snapshots: [
-      { id: 's1', waybackTimestamp: '20220724130104', url: 'https://x/', documentHash: hash(1).slice(2), contentHash: hash(2).slice(2) },
-      { id: 's2', waybackTimestamp: '20220805053301', url: 'https://x/', documentHash: hash(3).slice(2), contentHash: hash(2).slice(2) },
+      { id: 's1', waybackTimestamp: '20220724130104', url: 'https://x/', documentHash: hash(1).slice(2) },
+      { id: 's2', waybackTimestamp: '20220805053301', url: 'https://x/', documentHash: hash(3).slice(2) },
     ],
   };
 
@@ -242,116 +239,42 @@ describe('classifyEntry: which column produced the hash', () => {
     expect(classifyEntry(entry(0, { fileHash: hash(1) }), corpus)).toEqual({
       kind: 'DOCUMENT_HASH',
       snapshots: [{ id: 's1', waybackTimestamp: '20220724130104', url: 'https://x/' }],
-      evidence: [],
     });
   });
 
-  it('CONTENT_HASH — one extraction anchor covering every twin', () => {
-    const c = classifyEntry(entry(0, { fileHash: hash(2) }), corpus);
-    expect(c.kind).toBe('CONTENT_HASH');
-    expect(c.snapshots.map((s) => s.id)).toEqual(['s1', 's2']);
-  });
+  // CONTENT_HASH AND AMBIGUOUS LEFT AT R45-B, WITH THE COLUMN. An extraction anchor
+  // was explained by a capture's `contentHash`, and a hash two columns held was
+  // AMBIGUOUS; with `documentHash` the only hash a capture carries, neither answer
+  // has a subject on a live registry. A frozen registry's extraction anchors are
+  // explained by its committed ledger — `registryLedgerCommitted.test.ts` holds it.
 
-  // THE TWO EVIDENCE KINDS WENT WITH THE ARM AT EVIDENCE STEP 11b. They were
-  // classified from `Evidence.fileHash` and `previousFileHash`; identity never
-  // moves under the target and no evidence row is registered, so no live entry
-  // is classified that way. A frozen registry's are ORPHANED and explained by the
-  // committed ledger file — `registryLedgerCommitted.test.ts` holds it complete.
-
-  it('UNEXPLAINED when no column holds the hash — the state the ledger refuses on', () => {
+  it('UNEXPLAINED when no capture holds the hash — the state the ledger refuses on', () => {
     expect(classifyEntry(entry(0, { fileHash: hash(77) }), corpus)).toEqual({
       kind: 'UNEXPLAINED',
       snapshots: [],
-      evidence: [],
     });
-  });
-
-  it('AMBIGUOUS when two different columns hold the same hash', () => {
-    // One capture's `documentHash` equal to another's `contentHash` makes "which
-    // formula produced this entry" unanswerable from the join alone. Not
-    // expected; reported rather than resolved by picking the first match.
-    //
-    // RE-POINTED AT THE TWO CAPTURE COLUMNS AT EVIDENCE STEP 11b: the collision
-    // used to be between a `documentHash` and an evidence `fileHash`, and evidence
-    // has no hash columns left. The property is unchanged — two columns, one hash,
-    // a refusal — and it now has the only two columns that can still collide.
-    const collided: CorpusHashes = {
-      snapshots: [
-        corpus.snapshots[0]!,
-        { ...corpus.snapshots[0]!, id: 's9', contentHash: corpus.snapshots[0]!.documentHash },
-      ],
-    };
-    expect(classifyEntry(entry(0, { fileHash: hash(1) }), collided).kind).toBe('AMBIGUOUS');
   });
 });
 
-describe('rollUpBySubject: the number a reader acts on is per subject, not per claim', () => {
-  const claim = (
-    subject: CorpusClaim['subject'],
-    subjectId: string,
-    column: CorpusClaim['column'],
-    verdict: CorpusClaim['attribution']['verdict'],
-  ): CorpusClaim => ({
-    subject,
-    subjectId,
-    column,
+describe('countByVerdict: one claim per capture', () => {
+  // THE PER-SUBJECT ROLL-UP LEFT AT R45-B. It existed because every capture was asked
+  // twice — `documentHash` and `contentHash` — and a legacy row was registered on one
+  // of them, so a per-claim count over-read UNREGISTERED. With one column asked per
+  // capture, the per-claim count IS the per-capture count, and a second function
+  // computing it would be one rule with two implementations.
+  const claim = (snapshotId: string, verdict: CorpusClaim['attribution']['verdict']): CorpusClaim => ({
+    snapshotId,
     attribution: { hash: hash(1), verdict, index: verdict === 'UNREGISTERED' ? null : 0, submitter: null },
   });
 
-  it('two snapshots, one anchored by documentHash and one by contentHash, roll up to one each', () => {
-    // Every snapshot is asked twice and a legacy row is registered on exactly
-    // one column, so byVerdict reads UNREGISTERED 2 here — true, and the wrong
-    // number to act on. The roll-up is what the dated doc records.
-    const claims: CorpusClaim[] = [
-      claim('UrlSnapshot', 's1', 'documentHash', 'ATTRIBUTED'),
-      claim('UrlSnapshot', 's1', 'contentHash', 'UNREGISTERED'),
-      claim('UrlSnapshot', 's2', 'documentHash', 'UNREGISTERED'),
-      claim('UrlSnapshot', 's2', 'contentHash', 'ATTRIBUTED'),
-    ];
-    expect(countByVerdict(claims).UNREGISTERED).toBe(2);
-    expect(rollUpBySubject(claims)).toEqual({
-      snapshots: {
-        ATTRIBUTED_BY_DOCUMENT_HASH: 1,
-        ATTRIBUTED_BY_CONTENT_HASH: 1,
-        BOTH: 0,
-        FOREIGN: 0,
-        NEITHER: 0,
-      },
-      evidence: { BY_FILE_HASH: 0, BY_PREVIOUS_FILE_HASH: 0, BOTH: 0, FOREIGN: 0, NEITHER: 0 },
-    });
-  });
-
-  it('BOTH, FOREIGN and NEITHER for snapshots; the evidence columns likewise', () => {
-    const claims: CorpusClaim[] = [
-      claim('UrlSnapshot', 's1', 'documentHash', 'ATTRIBUTED'),
-      claim('UrlSnapshot', 's1', 'contentHash', 'ATTRIBUTED'),
-      claim('UrlSnapshot', 's2', 'documentHash', 'FOREIGN_SUBMITTER'),
-      claim('UrlSnapshot', 's2', 'contentHash', 'UNREGISTERED'),
-      claim('UrlSnapshot', 's3', 'documentHash', 'UNREGISTERED'),
-      claim('UrlSnapshot', 's3', 'contentHash', 'UNREGISTERED'),
-      claim('Evidence', 'e1', 'fileHash', 'ATTRIBUTED'),
-      claim('Evidence', 'e2', 'fileHash', 'UNREGISTERED'),
-      claim('Evidence', 'e2', 'previousFileHash', 'ATTRIBUTED'),
-      claim('Evidence', 'e3', 'fileHash', 'ATTRIBUTED'),
-      claim('Evidence', 'e3', 'previousFileHash', 'ATTRIBUTED'),
-      claim('Evidence', 'e4', 'fileHash', 'FOREIGN_SUBMITTER'),
-      claim('Evidence', 'e5', 'fileHash', 'UNREGISTERED'),
-    ];
-    expect(rollUpBySubject(claims)).toEqual({
-      snapshots: { ATTRIBUTED_BY_DOCUMENT_HASH: 0, ATTRIBUTED_BY_CONTENT_HASH: 0, BOTH: 1, FOREIGN: 1, NEITHER: 1 },
-      evidence: { BY_FILE_HASH: 1, BY_PREVIOUS_FILE_HASH: 1, BOTH: 1, FOREIGN: 1, NEITHER: 1 },
-    });
-  });
-
-  it('a subject attributed on one column and foreign on the other counts as attributed', () => {
-    // The foreign registration is still visible in byVerdict; the subject's own
-    // custody is answered by the column that is ours.
-    const claims: CorpusClaim[] = [
-      claim('UrlSnapshot', 's1', 'documentHash', 'ATTRIBUTED'),
-      claim('UrlSnapshot', 's1', 'contentHash', 'FOREIGN_SUBMITTER'),
-    ];
-    const r = rollUpBySubject(claims).snapshots;
-    expect(r.ATTRIBUTED_BY_DOCUMENT_HASH).toBe(1);
-    expect(r.FOREIGN).toBe(0);
+  it('counts each capture once, by the verdict on its documentHash', () => {
+    expect(
+      countByVerdict([
+        claim('s1', 'ATTRIBUTED'),
+        claim('s2', 'ATTRIBUTED'),
+        claim('s3', 'FOREIGN_SUBMITTER'),
+        claim('s4', 'UNREGISTERED'),
+      ]),
+    ).toEqual({ ATTRIBUTED: 2, FOREIGN_SUBMITTER: 1, UNREGISTERED: 1 });
   });
 });

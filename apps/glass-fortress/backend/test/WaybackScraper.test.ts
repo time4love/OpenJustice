@@ -114,10 +114,6 @@ jest.mock('../src/lib/prisma', () => ({
       // NEVER called. Nothing in the service reaches it any more.
       updateMany: jest.fn().mockResolvedValue({ count: 1 }),
     },
-    waybackScrapeJob: {
-      findUnique: jest.fn(),
-      update: jest.fn().mockImplementation(({ data }) => Promise.resolve({ id: 'job-id-789', ...data })),
-    },
   },
 }));
 
@@ -126,8 +122,6 @@ import { prisma } from '../src/lib/prisma';
 
 const mockAxiosGet = axios.get as jest.Mock;
 const mockPrismaFindMany = prisma.evidence.findMany as jest.Mock;
-const mockJobFindUnique = prisma.waybackScrapeJob.findUnique as jest.Mock;
-const mockJobUpdate = prisma.waybackScrapeJob.update as jest.Mock;
 const MockForensicAgent = ForensicAgent as jest.MockedClass<typeof ForensicAgent>;
 
 // ---------------------------------------------------------------------------

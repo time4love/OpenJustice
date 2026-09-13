@@ -62,8 +62,8 @@ function state(entries: RegistryEntry[], totalEvidence = entries.length): Regist
 
 const corpus: CorpusHashes = {
   snapshots: [
-    { id: 's1', waybackTimestamp: '20220724130104', url: 'https://x/', documentHash: hash(1).slice(2), contentHash: hash(2).slice(2) },
-    { id: 's2', waybackTimestamp: '20220805053301', url: 'https://x/', documentHash: hash(3).slice(2), contentHash: hash(2).slice(2) },
+    { id: 's1', waybackTimestamp: '20220724130104', url: 'https://x/', documentHash: hash(1).slice(2) },
+    { id: 's2', waybackTimestamp: '20220805053301', url: 'https://x/', documentHash: hash(3).slice(2) },
   ],
 };
 
@@ -86,7 +86,7 @@ function input(overrides: Partial<LedgerInput> = {}): LedgerInput {
   return {
     state: state([
       entry(0, { fileHash: hash(1) }),
-      entry(1, { fileHash: hash(2) }),
+      entry(1, { fileHash: hash(3) }),
       // THE THREE EVIDENCE-NAME ENTRIES LEFT THIS FIXTURE AT EVIDENCE STEP 11b.
       // They were explained by `Evidence.fileHash` and `previousFileHash`, and
       // both columns are gone. On a real frozen registry such an entry is now
@@ -100,12 +100,12 @@ function input(overrides: Partial<LedgerInput> = {}): LedgerInput {
   };
 }
 
-describe('the ledger explains every entry by the column that produced it', () => {
+describe('the ledger explains every entry by the capture whose bytes it registered', () => {
   it('one line per index, with kind, formula, inputs, attested and replacedBy', () => {
     const ledger = buildRegistryLedger(input());
 
     expect(ledger.entries.map((e) => e.index)).toEqual([0, 1]);
-    expect(ledger.entries.map((e) => e.kind)).toEqual(['DOCUMENT_HASH', 'CONTENT_HASH']);
+    expect(ledger.entries.map((e) => e.kind)).toEqual(['DOCUMENT_HASH', 'DOCUMENT_HASH']);
     for (const e of ledger.entries) {
       expect(e.formula.length).toBeGreaterThan(0);
       expect(e.attested.length).toBeGreaterThan(0);
@@ -115,16 +115,21 @@ describe('the ledger explains every entry by the column that produced it', () =>
     }
   });
 
-  it('a CONTENT_HASH entry lists every twin capture it covers; a DOCUMENT_HASH entry the one', () => {
+  it('a DOCUMENT_HASH entry lists the capture whose bytes it registered', () => {
     const ledger = buildRegistryLedger(input());
-    expect(ledger.entries.at(1)?.inputs).toEqual([
-      { snapshotId: 's1', url: 'https://x/', waybackTimestamp: '20220724130104' },
-      { snapshotId: 's2', url: 'https://x/', waybackTimestamp: '20220805053301' },
-    ]);
     expect(ledger.entries.at(0)?.inputs).toEqual([
       { snapshotId: 's1', url: 'https://x/', waybackTimestamp: '20220724130104' },
     ]);
+    expect(ledger.entries.at(1)?.inputs).toEqual([
+      { snapshotId: 's2', url: 'https://x/', waybackTimestamp: '20220805053301' },
+    ]);
   });
+
+  // THE CONTENT_HASH CASE LEFT AT R45-B. It held that an extraction anchor listed every
+  // twin capture its `contentHash` covered; the column left the schema, so no live
+  // registry entry is explained that way. The KIND stays in `LedgerKind` and its
+  // formula in `formulaFor`: committed ledgers carry it, and
+  // `registryLedgerCommitted.test.ts` holds every committed entry to its formula.
 
   // THE EVIDENCE-FORMULA CASE WENT WITH THE ARM AT EVIDENCE STEP 11b. It held
   // that an entry explained as an evidence name stated the formula BY THE ROW'S
@@ -222,20 +227,8 @@ describe('the ledger refuses rather than emits', () => {
     );
   });
 
-  it('when an entry is AMBIGUOUS', () => {
-    // Collided between the two CAPTURE columns now that evidence has none: one
-    // capture's `documentHash` equals another's `contentHash`, so the entry is
-    // explained two ways and the emitter must refuse rather than pick.
-    const collided: CorpusHashes = {
-      snapshots: [
-        corpus.snapshots[0]!,
-        { id: 's9', waybackTimestamp: '20220901000000', url: 'https://x/', documentHash: hash(9).slice(2), contentHash: hash(1).slice(2) },
-      ],
-    };
-    expect(() =>
-      buildRegistryLedger(input({ corpus: collided, state: state([entry(0, { fileHash: hash(1) })]) })),
-    ).toThrow(/AMBIGUOUS/);
-  });
+  // THE AMBIGUOUS REFUSAL LEFT AT R45-B: an entry two hash columns explained cannot be
+  // built once a capture carries one hash column.
 
   it('a ledger of nothing: an empty registry has no history to explain', () => {
     expect(() => buildRegistryLedger(input({ state: state([]) }))).toThrow(/nothing to explain/);

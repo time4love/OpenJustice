@@ -103,7 +103,7 @@ beforeEach(() => {
   // unanswerable, decided under an older rule — and those were never properties
   // of which subject carried the anchor.
   snapshotMany.mockResolvedValue([
-    { id: 'snap-1', contentHash: HASH.slice(2), documentHash: HASH.slice(2), anchoredHash: HASH.slice(2) },
+    { id: 'snap-1', documentHash: HASH.slice(2), anchoredHash: HASH.slice(2) },
   ]);
   // What `readOnChainClaim` sees when the audit recomputes the source state.
   evidenceUnique.mockResolvedValue(null);
@@ -318,14 +318,13 @@ describe('which subjects are asked for a verdict at all', () => {
   });
 
   it('an anchored capture is a subject, with its hash normalised to 0x', async () => {
-    // `contentHash` is stored bare hex and the contract speaks bytes32. The
+    // `documentHash` is stored bare hex and the contract speaks bytes32. The
     // mismatch between the two is what made 83 anchorings silently no-op, and a
     // verification repeating it would confirm the wrong hash.
     snapshotMany.mockResolvedValue([]);
     snapshotMany.mockResolvedValue([
       {
         id: 'snap-1',
-        contentHash: 'a'.repeat(64),
         documentHash: 'a'.repeat(64),
         anchoredHash: 'a'.repeat(64),
       },
@@ -380,50 +379,26 @@ describe('the newest check wins', () => {
 // were a hash of the page title." These are the cases that make it not silent.
 // ---------------------------------------------------------------------------
 describe('a current, correct verdict about the WRONG hash is not a pass', () => {
-  const SUPERSEDED = `0x${'b'.repeat(64)}`;
   const STRANGER = `0x${'c'.repeat(64)}`;
 
-  it('EXPLAINABLE IS NOT PASSING: an anchor on a superseded identity', () => {
-    // The exact shape every legacy capture takes the moment Level 3 flips the
-    // anchor to the document. If this read VERIFIED the audit would go green on a
-    // corpus where clause 1 is false for every row.
+  it('a hash that is not the capture’s bytes is misanchored, and says so', () => {
     return (async () => {
-      // Anchored on the SUPERSEDED rule's hash — the extraction — while the
-      // current rule anchors the document. That is the exact shape every legacy
-      // capture takes the moment Level 3 flips the anchor, and it is why the two
-      // columns must differ here.
       snapshotMany.mockResolvedValue([
-      { id: 'snap-1', contentHash: bare(SUPERSEDED), documentHash: bare(HASH), anchoredHash: bare(SUPERSEDED) },
+      { id: 'snap-1', documentHash: bare(HASH), anchoredHash: bare(STRANGER) },
     ]);
       checkMany.mockResolvedValue([check()]);
 
       const report = await auditOnChainAnchors(MAINNET);
 
       expect(report.byState.MISATTESTING).toBe(1);
-      expect(report.byState.VERIFIED).toBe(0);
-      expect(report.unverified[0]?.staleReason).toContain('superseded rule');
-    })();
-  });
-
-  it('a hash the record does not have by any rule is misanchored, and says so differently', () => {
-    return (async () => {
-      snapshotMany.mockResolvedValue([
-      { id: 'snap-1', contentHash: bare(HASH), documentHash: bare(HASH), anchoredHash: bare(STRANGER) },
-    ]);
-      checkMany.mockResolvedValue([check()]);
-
-      const report = await auditOnChainAnchors(MAINNET);
-
-      expect(report.byState.MISATTESTING).toBe(1);
-      // Same state, different remedy — one is Level 10's to supersede, the other
-      // is a custody incident. Collapsing the reasons would name the wrong fix.
-      expect(report.unverified[0]?.staleReason).toContain('does not have by any rule');
+      // One cause since R45-B: no other column of the capture can explain an anchor.
+      expect(report.unverified[0]?.staleReason).toContain('is not this capture’s bytes');
     })();
   });
 
   it('an anchor on the CURRENT hash still passes — the guard is not vacuous', async () => {
     snapshotMany.mockResolvedValue([
-      { id: 'snap-1', contentHash: bare(HASH), documentHash: bare(HASH), anchoredHash: bare(HASH) },
+      { id: 'snap-1', documentHash: bare(HASH), anchoredHash: bare(HASH) },
     ]);
     checkMany.mockResolvedValue([check()]);
 
@@ -438,7 +413,7 @@ describe('a current, correct verdict about the WRONG hash is not a pass', () => 
     // rule's hash, which was sound only until the rule moved — then 91 staging
     // subjects were judged against a hash nothing had registered.
     snapshotMany.mockResolvedValue([
-      { id: 'snap-1', contentHash: bare(HASH), documentHash: bare(HASH), anchoredHash: null },
+      { id: 'snap-1', documentHash: bare(HASH), anchoredHash: null },
     ]);
     checkMany.mockResolvedValue([check()]);
 
@@ -455,7 +430,7 @@ describe('a current, correct verdict about the WRONG hash is not a pass', () => 
     // were, a re-check would mint a confident verdict about a hash nothing
     // registered — a true finding laundered into a durable false pass.
     snapshotMany.mockResolvedValue([
-      { id: 'snap-1', contentHash: bare(HASH), documentHash: bare(HASH), anchoredHash: null },
+      { id: 'snap-1', documentHash: bare(HASH), anchoredHash: null },
     ]);
     checkMany.mockResolvedValue([check()]);
 

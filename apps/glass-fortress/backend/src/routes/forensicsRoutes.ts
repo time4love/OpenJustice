@@ -21,7 +21,6 @@ router.get('/tracked', async (_req: Request, res: Response): Promise<void> => {
       id: t.id,
       url: t.url,
       title: t.title,
-      status: t.status,
       createdAt: t.createdAt,
       totalDiffs: t._count.diffs,
     }));

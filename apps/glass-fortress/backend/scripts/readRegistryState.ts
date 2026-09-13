@@ -6,8 +6,8 @@
  * The rebuild's step 1(b) (evidence flows §8; refactor plan §3 step 9). For
  * every index below totalEvidence(): the hash, the submitter, the block time and
  * the category, read from the contract's storage — never from a receipt or a
- * log. Then every hash column of every corpus row asked of the registry, and
- * each entry classified by which column produced it.
+ * log. Then every capture's documentHash asked of the registry, and each entry
+ * classified by the captures that hold its hash.
  *
  * READ-ONLY. RPC reads and database reads; no transaction, no write, no spend.
  *
@@ -37,15 +37,7 @@ async function main(): Promise<void> {
   for (const [kind, n] of Object.entries(report.byKind)) {
     console.log(`  ${kind.padEnd(28)} ${String(n)}`);
   }
-  console.log('\nsnapshots, per subject');
-  for (const [k, n] of Object.entries(report.bySubject.snapshots)) {
-    console.log(`  ${k.padEnd(28)} ${String(n)}`);
-  }
-  console.log('evidence rows, per subject');
-  for (const [k, n] of Object.entries(report.bySubject.evidence)) {
-    console.log(`  ${k.padEnd(28)} ${String(n)}`);
-  }
-  console.log('\ncorpus hashes by verdict  (per column asked — a legacy row is registered on ONE of its two)');
+  console.log('\ncaptures by verdict  (one documentHash asked per capture)');
   for (const [verdict, n] of Object.entries(report.byVerdict)) {
     console.log(`  ${verdict.padEnd(28)} ${String(n)}`);
   }
@@ -61,7 +53,7 @@ async function main(): Promise<void> {
   const unexplained = report.entries.filter((e) => e.classification.kind === 'UNEXPLAINED');
   if (unexplained.length > 0) {
     console.log(
-      `\n${String(unexplained.length)} entr${unexplained.length === 1 ? 'y' : 'ies'} match no hash column ` +
+      `\n${String(unexplained.length)} entr${unexplained.length === 1 ? 'y' : 'ies'} match no capture's documentHash ` +
         'in this database. Recorded here; step 2 refuses to emit a ledger while any remains.',
     );
   }

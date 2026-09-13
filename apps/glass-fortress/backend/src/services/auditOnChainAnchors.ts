@@ -10,10 +10,8 @@ import { anchoringTarget, chainProvenanceGap, type AnchoringTarget } from '../li
 import { readOnChainClaim } from './onChainVerification';
 import {
   ANCHORABLE_CAPTURE_SELECT,
-  CAPTURE_HASHES_SELECT,
   anchoredCaptureHash,
   attestationOf,
-  capturesKnownHashes,
   hashUnderAudit,
   type AnchorAttestation,
 } from '../lib/anchoredCaptureHash';
@@ -88,10 +86,10 @@ export type AnchorCheckState =
    * Level 3 being done. It is silent on WHAT was anchored, and would stay green
    * if the answer were a hash of the page title."
    *
-   * Two causes, distinguished in the reason because their remedies are opposite:
-   * an anchor made under a SUPERSEDED rule is explainable and Level 10's to
-   * supersede; one attesting a hash the subject does not have by any rule is
-   * misanchored and is a custody incident.
+   * One cause since R45-B: the anchor attests a hash that is not the capture's
+   * `documentHash`, and no other column of the capture can explain it — a custody
+   * incident. (An anchor under a superseded rule was the second cause until the
+   * legacy `contentHash` left the schema.)
    */
   | 'MISATTESTING'
   /**
@@ -249,7 +247,7 @@ const STATE_MEANING: Record<AnchorCheckState, string> = {
   UNAVAILABLE: 'chain unreachable — NOT a pass',
   UNCHECKED: 'no verdict ever recorded — NOT a pass',
   STALE: 'the claim moved, the rule moved, or the verdict does not name this chain',
-  MISATTESTING: 'anchored to a hash the current rule does not name — explainable is not passing',
+  MISATTESTING: 'anchored to a hash that is not the capture’s bytes',
   UNATTRIBUTED: 'claims an anchor; what it attests has never been observed',
 };
 
@@ -310,7 +308,6 @@ export async function auditOnChainAnchorSubjects(): Promise<AnchorClaimingSubjec
         id: true,
         anchoredHash: true,
         ...ANCHORABLE_CAPTURE_SELECT,
-        ...CAPTURE_HASHES_SELECT,
       },
     }),
   ]);
@@ -335,7 +332,6 @@ export async function auditOnChainAnchorSubjects(): Promise<AnchorClaimingSubjec
         attestation: attestationOf({
           anchoredHash: s.anchoredHash,
           current: anchoredCaptureHash(s),
-          known: capturesKnownHashes(s),
         }),
       };
     }),
@@ -478,19 +474,15 @@ async function classify(
     };
   }
 
-  if (subject.attestation === 'ATTESTS_SUPERSEDED' || subject.attestation === 'UNRECOGNISED') {
+  if (subject.attestation === 'UNRECOGNISED') {
     return {
       ...base,
       state: 'MISATTESTING',
       checkedAt: check?.checkedAt.toISOString() ?? null,
       onChainVerdict: null,
       staleReason:
-        subject.attestation === 'ATTESTS_SUPERSEDED'
-          ? 'The anchor attests a hash this subject really has, but not the one the current rule ' +
-            'names. Explainable — an anchor made under a superseded rule — and not a pass. ' +
-            'Superseding it is Level 10.'
-          : 'The anchor attests a hash this subject does not have by any rule. Misanchored: the ' +
-            'transaction is real and does not attest this record.',
+        'The anchor attests a hash that is not this capture’s bytes. Misanchored: the ' +
+        'transaction is real and does not attest this record.',
     };
   }
 

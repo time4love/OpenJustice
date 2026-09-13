@@ -35,7 +35,6 @@
     "forensics:audit-anchors": "node dist/scripts/auditOnChainAnchors.js",
     "forensics:backfill-anchor-checks": "node dist/scripts/backfillOnChainChecks.js",
     "forensics:read-registry": "node dist/scripts/readRegistryState.js",
-    "forensics:measure-custody": "node dist/scripts/measureCaptureCustody.js",
     "forensics:registry-ledger": "node dist/scripts/emitRegistryLedger.js"
   },
   "keywords": [],

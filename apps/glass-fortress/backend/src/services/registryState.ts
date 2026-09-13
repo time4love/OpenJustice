@@ -26,12 +26,13 @@ import { Web3Service, type OnChainEvidenceRecord } from './Web3Service';
 //   index was submitted by OUR registrar. A hash someone else registered is not
 //   ours to claim, and the two reads must agree about what sits at the index.
 //
-//   AN ENTRY IS EXPLAINED BY THE COLUMN THAT PRODUCED IT. The design names three
-//   kinds — extraction anchors over contentHash, payload anchors over
-//   documentHash, evidence names over fileHash — and the join finds which. A
-//   hash matching no column is UNEXPLAINED, the one state step 2 refuses on;
-//   a hash matching two columns is AMBIGUOUS, reported rather than resolved by
-//   picking the first.
+//   A LIVE ENTRY IS A CAPTURE'S documentHash, OR IT IS UNEXPLAINED. Evidence
+//   flows A7 :1268–:1273: a live registry's every entry is the SHA-256 of a page
+//   as served, and a capture row holds it as `documentHash`. A frozen registry's
+//   other kinds — extraction anchors over `contentHash`, evidence names over
+//   `fileHash` — are explained by its COMMITTED LEDGER, never by a row: the columns
+//   that once explained them left the schema (evidence step 11b, R45-B). A hash no
+//   capture holds is UNEXPLAINED, the one state step 2 refuses on.
 //
 // Pure functions over a small reader interface, so the suite proves the three
 // rules without a chain; `readRegistryAttribution` is the one orchestrator, and
@@ -181,85 +182,31 @@ export interface CorpusHashes {
     url: string;
     /** Bare hex, as stored. */
     documentHash: string;
-    /** Bare hex, as stored. */
-    contentHash: string;
   }[];
-  // THE EVIDENCE ARM LEFT AT EVIDENCE STEP 11b, AND ITS ENTRIES ARE STILL
-  // EXPLAINED — in the place evidence §8 says they are explained.
-  //
-  // It matched a frozen registry's entry against `Evidence.fileHash` and
-  // `previousFileHash`, to say "index 14 is an evidence name under the retired
-  // formula". Both columns are gone: identity never moves under the target, so
-  // there is no previous name, and no evidence row is registered at all —
-  // nothing above the corpus is anchored (§5).
-  //
-  // §8 ANTICIPATED EXACTLY THIS: "every old entry is explained in GIT, not in a
-  // table". The ledger for each frozen registry is emitted ONCE, before its
-  // database is dropped, and committed — staging's is
-  // `registry-ledger/84532-0x65b9….json`, written at refactor step 9. Those
-  // explanations survive the rows that produced them, which is the entire reason
-  // the design put them in a file rather than in a query. What this module still
-  // does is explain the entries of a LIVE registry, where every entry is a
-  // capture's `documentHash` under one scheme.
 }
 
 export type EntryKind =
   /** The payload anchor — the target's scheme, SHA-256 of the bytes as served. */
   | 'DOCUMENT_HASH'
-  /** The extraction anchor — SHA-256 of Readability's article; one entry covers every twin. */
-  | 'CONTENT_HASH'
-  /** An evidence name under the retired formula. */
-  | 'EVIDENCE_FILE_HASH'
-  /** An evidence name the row has since moved off. */
-  | 'EVIDENCE_PREVIOUS_FILE_HASH'
-  /** No column holds it. The state step 2 refuses on. */
-  | 'UNEXPLAINED'
-  /** More than one column holds it. Reported, never resolved by picking one. */
-  | 'AMBIGUOUS';
+  /** No capture holds it. The state step 2 refuses on. */
+  | 'UNEXPLAINED';
 
 export interface EntryClassification {
   kind: EntryKind;
   snapshots: { id: string; waybackTimestamp: string | null; url: string }[];
-  evidence: { id: string }[];
 }
 
-/** Which column of the corpus produced this entry's hash. */
+/** Which captures, if any, hold this entry's hash as their `documentHash`. */
 export function classifyEntry(entry: RegistryEntry, corpus: CorpusHashes): EntryClassification {
-  const hash = entry.fileHash;
-  const same = (stored: string | null): boolean =>
-    stored !== null && toBytes32(stored).toLowerCase() === hash;
-
-  const byDocument = corpus.snapshots.filter((s) => same(s.documentHash));
-  const byContent = corpus.snapshots.filter((s) => same(s.contentHash));
-
-  const kinds: EntryKind[] = [];
-  if (byDocument.length > 0) kinds.push('DOCUMENT_HASH');
-  if (byContent.length > 0) kinds.push('CONTENT_HASH');
-
-  const snapshot = (s: CorpusHashes['snapshots'][number]): EntryClassification['snapshots'][number] => ({
-    id: s.id,
-    waybackTimestamp: s.waybackTimestamp,
-    url: s.url,
-  });
-  const only = kinds.at(0);
-  if (only === undefined) return { kind: 'UNEXPLAINED', snapshots: [], evidence: [] };
-  if (kinds.length > 1) {
-    return {
-      kind: 'AMBIGUOUS',
-      snapshots: [...byDocument, ...byContent].map(snapshot),
-      evidence: [],
-    };
-  }
-  return {
-    kind: only,
-    snapshots: (only === 'DOCUMENT_HASH' ? byDocument : only === 'CONTENT_HASH' ? byContent : []).map(
-      snapshot,
-    ),
-    evidence: [],
-  };
+  const holders = corpus.snapshots
+    .filter((s) => toBytes32(s.documentHash).toLowerCase() === entry.fileHash)
+    .map((s) => ({ id: s.id, waybackTimestamp: s.waybackTimestamp, url: s.url }));
+  return holders.length === 0
+    ? { kind: 'UNEXPLAINED', snapshots: [] }
+    : { kind: 'DOCUMENT_HASH', snapshots: holders };
 }
 
-/** Every hash column the corpus holds, for the join and for the claim walk. */
+/** Every capture's hash, for the join and for the claim walk. */
 export async function loadCorpusHashes(): Promise<CorpusHashes> {
   const [snapshots] = await Promise.all([
     prisma.urlSnapshot.findMany({
@@ -268,7 +215,6 @@ export async function loadCorpusHashes(): Promise<CorpusHashes> {
         id: true,
         waybackTimestamp: true,
         documentHash: true,
-        contentHash: true,
         trackedUrl: { select: { url: true } },
       },
     }),
@@ -279,7 +225,6 @@ export async function loadCorpusHashes(): Promise<CorpusHashes> {
       waybackTimestamp: s.waybackTimestamp,
       url: s.trackedUrl.url,
       documentHash: s.documentHash,
-      contentHash: s.contentHash,
     })),
   };
 }
@@ -288,46 +233,27 @@ export interface ClassifiedEntry extends RegistryEntry {
   classification: EntryClassification;
 }
 
-/** One corpus hash asked of the chain, and where it came from. */
+/** One capture's `documentHash` asked of the chain. */
 export interface CorpusClaim {
-  subject: 'UrlSnapshot' | 'Evidence';
-  subjectId: string;
-  column: 'documentHash' | 'contentHash' | 'fileHash' | 'previousFileHash';
+  snapshotId: string;
   attribution: ClaimAttribution;
-}
-
-export type SnapshotAttribution =
-  | 'ATTRIBUTED_BY_DOCUMENT_HASH'
-  | 'ATTRIBUTED_BY_CONTENT_HASH'
-  | 'BOTH'
-  | 'FOREIGN'
-  | 'NEITHER';
-
-export type EvidenceAttribution =
-  | 'BY_FILE_HASH'
-  | 'BY_PREVIOUS_FILE_HASH'
-  | 'BOTH'
-  | 'FOREIGN'
-  | 'NEITHER';
-
-/** The registry explained per SUBJECT — the number a reader of the dated doc acts on. */
-export interface SubjectRollUp {
-  snapshots: Record<SnapshotAttribution, number>;
-  evidence: Record<EvidenceAttribution, number>;
 }
 
 export interface RegistryAttributionReport {
   state: RegistryState;
   entries: ClassifiedEntry[];
   byKind: Record<EntryKind, number>;
-  /** Every hash column of every row, asked of the chain — the reverse join. */
+  /** Every capture's `documentHash`, asked of the chain — the reverse join. */
   claims: CorpusClaim[];
-  /** Per claim. True, and by construction ~one UNREGISTERED per legacy row — read bySubject. */
+  /**
+   * One claim per capture, so this IS the per-capture count. A per-subject roll-up
+   * stood beside it until R45-B, when every capture was asked twice — `documentHash`
+   * and `contentHash` — and a per-claim count over-read UNREGISTERED.
+   */
   byVerdict: Record<AttributionVerdict, number>;
-  bySubject: SubjectRollUp;
 }
 
-/** Claims by verdict — one count per hash column asked. */
+/** Claims by verdict — one count per capture asked. */
 export function countByVerdict(claims: readonly CorpusClaim[]): Record<AttributionVerdict, number> {
   const byVerdict: Record<AttributionVerdict, number> = {
     ATTRIBUTED: 0,
@@ -336,75 +262,6 @@ export function countByVerdict(claims: readonly CorpusClaim[]): Record<Attributi
   };
   for (const c of claims) byVerdict[c.attribution.verdict] += 1;
   return byVerdict;
-}
-
-/**
- * Claims rolled up per subject.
- *
- * WHY THIS EXISTS BESIDE byVerdict. Every snapshot is asked twice — documentHash
- * and contentHash — and a legacy row is registered on exactly one of them, so on
- * a fully anchored corpus UNREGISTERED ≈ the snapshot count. That is a true
- * number and the wrong one to act on. Evidence flows §8 explains the registry
- * per subject ("12 entries covering all 83 captures"), and "recompute, never
- * restate" wants that number in the raw output, not derived by hand from the
- * claims table.
- *
- * A subject attributed on one column and foreign on the other counts as
- * attributed: its own custody is answered by the column that is ours, and the
- * foreign registration stays visible in byVerdict and in the claims.
- */
-export function rollUpBySubject(claims: readonly CorpusClaim[]): SubjectRollUp {
-  const snapshots: Record<SnapshotAttribution, number> = {
-    ATTRIBUTED_BY_DOCUMENT_HASH: 0,
-    ATTRIBUTED_BY_CONTENT_HASH: 0,
-    BOTH: 0,
-    FOREIGN: 0,
-    NEITHER: 0,
-  };
-  const evidence: Record<EvidenceAttribution, number> = {
-    BY_FILE_HASH: 0,
-    BY_PREVIOUS_FILE_HASH: 0,
-    BOTH: 0,
-    FOREIGN: 0,
-    NEITHER: 0,
-  };
-
-  const bySubject = new Map<string, CorpusClaim[]>();
-  for (const c of claims) {
-    const key = `${c.subject}:${c.subjectId}`;
-    bySubject.set(key, [...(bySubject.get(key) ?? []), c]);
-  }
-
-  const verdictOf = (own: readonly CorpusClaim[], column: CorpusClaim['column']): AttributionVerdict | null =>
-    own.find((c) => c.column === column)?.attribution.verdict ?? null;
-
-  for (const own of bySubject.values()) {
-    const subject = own.at(0)?.subject;
-    if (subject === undefined) continue;
-    const [first, second] =
-      subject === 'UrlSnapshot'
-        ? [verdictOf(own, 'documentHash'), verdictOf(own, 'contentHash')]
-        : [verdictOf(own, 'fileHash'), verdictOf(own, 'previousFileHash')];
-    const a = first === 'ATTRIBUTED';
-    const b = second === 'ATTRIBUTED';
-    const foreign = first === 'FOREIGN_SUBMITTER' || second === 'FOREIGN_SUBMITTER';
-
-    if (subject === 'UrlSnapshot') {
-      if (a && b) snapshots.BOTH += 1;
-      else if (a) snapshots.ATTRIBUTED_BY_DOCUMENT_HASH += 1;
-      else if (b) snapshots.ATTRIBUTED_BY_CONTENT_HASH += 1;
-      else if (foreign) snapshots.FOREIGN += 1;
-      else snapshots.NEITHER += 1;
-    } else {
-      if (a && b) evidence.BOTH += 1;
-      else if (a) evidence.BY_FILE_HASH += 1;
-      else if (b) evidence.BY_PREVIOUS_FILE_HASH += 1;
-      else if (foreign) evidence.FOREIGN += 1;
-      else evidence.NEITHER += 1;
-    }
-  }
-
-  return { snapshots, evidence };
 }
 
 /**
@@ -419,40 +276,21 @@ export async function readRegistryAttribution(
   const [state, corpus] = await Promise.all([readRegistryState(reader), loadCorpusHashes()]);
 
   const entries = state.entries.map((entry) => ({ entry, classification: classifyEntry(entry, corpus) }));
-  const byKind: Record<EntryKind, number> = {
-    DOCUMENT_HASH: 0,
-    CONTENT_HASH: 0,
-    EVIDENCE_FILE_HASH: 0,
-    EVIDENCE_PREVIOUS_FILE_HASH: 0,
-    UNEXPLAINED: 0,
-    AMBIGUOUS: 0,
-  };
+  const byKind: Record<EntryKind, number> = { DOCUMENT_HASH: 0, UNEXPLAINED: 0 };
   for (const e of entries) byKind[e.classification.kind] += 1;
 
   const claims: CorpusClaim[] = [];
   for (const s of corpus.snapshots) {
     claims.push({
-      subject: 'UrlSnapshot',
-      subjectId: s.id,
-      column: 'documentHash',
+      snapshotId: s.id,
       attribution: await attributeClaim(reader, entriesAlreadyRead(state.entries), s.documentHash),
     });
-    claims.push({
-      subject: 'UrlSnapshot',
-      subjectId: s.id,
-      column: 'contentHash',
-      attribution: await attributeClaim(reader, entriesAlreadyRead(state.entries), s.contentHash),
-    });
   }
-  // The evidence claims left with the columns that made them (above). A frozen
-  // registry's evidence entries are explained by its committed ledger file, and a
-  // live registry has none to explain: the walk is the only chain writer.
   return {
     state,
     entries: entries.map(({ entry, classification }) => ({ ...entry, classification })),
     byKind,
     claims,
     byVerdict: countByVerdict(claims),
-    bySubject: rollUpBySubject(claims),
   };
 }
