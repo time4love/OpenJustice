@@ -47,9 +47,6 @@ model Researcher {
   withdrawals        Withdrawal[]
   notes              Note[]
   debateSessions     DebateSession[]
-  articleRulesets    ArticleRuleset[]
-  calibrationRuns    CalibrationRun[]
-  calibrationResets  CalibrationReset[]
   createdTrackedUrls TrackedUrl[]        @relation("TrackedUrlCreator")
   rules              Rule[]
   pageDecisions      PageDecision[]
@@ -57,36 +54,13 @@ model Researcher {
 }
 
 // ---------------------------------------------------------------------------
-// Wayback Machine forensic scan entities.
+// Wayback Machine forensic entities.
 //
-// TrackedUrl       — primary entity: a URL being tracked for silent edits.
-// WaybackScrapeJob — internal batch unit; multiple per TrackedUrl for paginated
-//                    CDX scans. Chained server-side by runFullScan(), not exposed
-//                    directly in the UI.
+// TrackedUrl — primary entity: a URL being tracked for silent edits. The walk's
+//              state is its work-list (CdxIndexEntry), never a status on the page
+//              (docs/gf-refactor-plan.md §2; the old scan job and the page status
+//              left at R45-B).
 // ---------------------------------------------------------------------------
-
-enum WaybackJobStatus {
-  PENDING
-  IN_PROGRESS
-  COMPLETED
-  FAILED
-}
-
-// Why a job ended FAILED — lets the frontend distinguish an outage on
-// archive.org's end (retry later, nothing wrong with our pipeline) from an
-// unexpected failure worth investigating.
-enum WaybackFailureReason {
-  WAYBACK_OFFLINE // every fetch in this batch hit HTTP 503 from web.archive.org
-  ALL_FETCHES_FAILED // every fetch in this batch failed, but not via 503
-}
-
-enum TrackedUrlStatus {
-  IDLE // created via legacy sync endpoint; no async status tracking
-  SCANNING // runFullScan is active (or was interrupted — resumable)
-  PAUSED // user paused mid-scan; resumable via POST /scan
-  COMPLETED // all CDX batches processed
-  FAILED // unrecoverable error during processing
-}
 
 // How a capture came into our possession — see docs/gf-factual-layer-rebuild-dev-plan.md §2.
 //
@@ -163,24 +137,13 @@ model TrackedUrl {
   id                     String                       @id @default(uuid())
   url                    String                       @unique
   title                  String?
-  status                 TrackedUrlStatus             @default(IDLE)
   createdAt              DateTime                     @default(now())
   diffs                  UrlVersionDiff[]
   snapshots              UrlSnapshot[]
-  job                    WaybackScrapeJob?
   trajectories           ClaimTrajectory[]
   trajectoryComputations ClaimTrajectoryComputation[]
   cdxIndexEntries        CdxIndexEntry[]
   cdxQueries             CdxQuery[]
-  // Level 4 — the view. Every ruleset ever committed for this page...
-  articleRulesets        ArticleRuleset[]             @relation("TrackedUrlRulesets")
-  calibrationRuns        CalibrationRun[]
-  calibrationResets      CalibrationReset[]
-  // ...and which one is IN FORCE, as a FACT rather than an inference from
-  // ordering. Unique because a ruleset is scoped to one page, so it can be
-  // active for at most one.
-  activeArticleRulesetId String?                      @unique
-  activeArticleRuleset   ArticleRuleset?              @relation("ActiveArticleRuleset", fields: [activeArticleRulesetId], references: [id])
 
   // THE WALK (docs/gf-interaction-flows.md A2) — additive, refactor step 1.
   //
@@ -203,8 +166,10 @@ model TrackedUrl {
 }
 
 // One record per unique archived snapshot of a TrackedUrl.
-// fullText is stored locally — immune to Wayback Machine takedowns.
-// contentHash (SHA-256 of fullText) can be registered on-chain for immutable chain of custody.
+// `document` is stored locally — the payload as served, immune to Wayback Machine takedowns.
+// `documentHash` (SHA-256 of it) is what the chain attests and what evidence identity is
+// composed from (docs/gf-evidence-flows.md A1). The legacy register — Readability's
+// `fullText`, its `contentHash` and the stored viewer `snapshotUrl` — left at R45-B.
 // Shared across diffs: two diffs spanning the same snapshot reference the same row.
 model UrlSnapshot {
   id                      String              @id @default(cuid())
@@ -228,21 +193,6 @@ model UrlSnapshot {
   // number of non-archived captures coexist under one TrackedUrl.
   waybackTimestamp        String? // YYYYMMDDHHMMSS — unique Wayback archive identifier
   snapshotDate            String // YYYY-MM-DD — human-readable date
-  // Where this capture was fetched FROM — the Wayback canonical URL for an
-  // archived capture, the live URL for a direct one.
-  snapshotUrl             String
-  fullText                String // Readability's article — NOT the page. See `text` and `document`.
-  // SHA-256(fullText) — Readability's article, NOT the page.
-  //
-  // NO LONGER THE ANCHORED HASH. This said "the only hash anchored today" until
-  // 2026-08-30, when Level 3 clause 1 moved the anchor to `documentHash`; the
-  // comment outlived the fact by exactly as long as nobody reread it.
-  //
-  // It keeps its OTHER jobs, and they are why it is not going anywhere:
-  // `rediffFromSnapshots` re-verifies its inputs against it, and
-  // `forensicEvidenceFileHash` composes evidence identity from it. Whether that
-  // identity should follow the anchor is §2's decision and the researcher's.
-  contentHash             String
   // THE PAYLOAD AS FETCHED. Bytes, not text, and nothing derived from it.
   //
   // This column exists because the first attempt at Level 1 REPRODUCED THE BUG IT
@@ -340,7 +290,7 @@ model UrlSnapshot {
   // can be true of a row anchored under a superseded rule. That is also what
   // makes Level 10's supersession auditable rather than merely documented.
   //
-  // DELIBERATELY NOT BACKFILLED from `contentHash`. Writing the value we expect
+  // DELIBERATELY NOT BACKFILLED from the legacy `contentHash`. Writing the value we expect
   // is stamping a BELIEF, and this repository has already paid for that once:
   // 91 integrity verdicts were written carrying a chain they had never been
   // reached against, and were indistinguishable from correct ones afterwards.
@@ -376,14 +326,8 @@ model UrlSnapshot {
   // SHA-256 column, and stayed there across both environments. The digest lives
   // on CdxIndexEntry, one join away, where nothing can mistake it for ours.
   cdxIndexEntry        CdxIndexEntry?        @relation("CdxEntryCapture")
-  /// Index entries whose UNCHANGED verdict was computed against this capture.
-  cdxComparisons       CdxIndexEntry[]       @relation("CdxEntryComparedTo")
   // Every SUPERSEDED derivation of this capture — the re-walk keeps what it replaces.
   textVersions         TextVersion[]
-  /// Level 4 — what each ruleset did to this capture, and the marking decisions
-  /// taken about it.
-  rulesetObservations  RulesetObservation[]
-  calibrationDecisions CalibrationDecision[]
 
   evidence         Evidence[]
   recordOfDebates  DebateSession[]
@@ -392,25 +336,6 @@ model UrlSnapshot {
   // constraint that makes capturedAt a usable timeline key across provenances,
   // where waybackTimestamp only ever constrained archived ones.
   @@unique([trackedUrlId, capturedAt])
-}
-
-// Internal scan-state record. One per TrackedUrl — updated in-place across
-// CDX batch iterations rather than creating new records per batch.
-model WaybackScrapeJob {
-  id                 String                @id @default(uuid())
-  url                String
-  status             WaybackJobStatus      @default(PENDING)
-  totalSnapshots     Int                   @default(0)
-  processedSnapshots Int                   @default(0)
-  // Set only when status is FAILED — null for every other status.
-  failureReason      WaybackFailureReason?
-  // JSON: Array<{ timestamp: string; digest: string; status: 'PENDING' | 'DONE' | 'FAILED' }>
-  snapshotsList      String                @default("[]")
-  trackedUrlId       String                @unique
-  trackedUrl         TrackedUrl            @relation(fields: [trackedUrlId], references: [id], onDelete: Cascade)
-  fromDate           String? // YYYYMMDD — CDX query start date for the current batch
-  createdAt          DateTime              @default(now())
-  updatedAt          DateTime              @updatedAt
 }
 
 // Records a single detected change between two consecutive archived snapshots of a TrackedUrl.
@@ -1547,7 +1472,7 @@ model ReclassificationRun {
 // for the claim text, and recompute this exactly. An anchor would add nothing
 // but the appearance of authority.
 //
-// That verifiability is why presence is computed against UrlSnapshot.fullText
+// That verifiability is why presence is computed against UrlSnapshot.text
 // rather than against the AI-extracted diff items. Extracted items would make a
 // trajectory depend on extraction quality and drift when the prompt changes;
 // raw text makes it a string search anyone can repeat against web.archive.org.
@@ -1690,8 +1615,8 @@ model ClaimTrajectory {
 
 /// What became of a capture the CDX index told us exists.
 enum CdxEntryStatus {
-  // THE WALK'S OUTCOMES (docs/gf-interaction-flows.md A2), added at refactor
-  // step 1. UNFETCHED and UNSERVABLE below are shared with the old path.
+  // THE WALK'S SEVEN OUTCOMES (docs/gf-interaction-flows.md A2). The old path's
+  // STORED and UNCHANGED left at R45-B, when no row held either.
   /// Bytes equal to the predecessor's, by digest; nothing fetched; rule-free; terminal.
   IDENTICAL
   /// Text equal to the predecessor's under a named ruleset; fetched and derived; revisitable.
@@ -1702,8 +1627,6 @@ enum CdxEntryStatus {
   PENDING_JUDGEMENT
   /// A human's verdict that this capture does not speak; reason REQUIRED.
   SKIPPED
-  /// We hold it. `snapshotId` points at the capture.
-  STORED
   /// CDX indexes it and the replay will not serve it — HTTP 404, reproduced and
   /// durable. `20240829085520` on the tracked MOH page is the known instance.
   /// A THIRD-PARTY FACT rather than a transient failure, so nobody keeps retrying
@@ -1713,28 +1636,13 @@ enum CdxEntryStatus {
   /// that may be transient. Distinct from UNSERVABLE deliberately — collapsing
   /// them makes a permanent gap and a retryable one indistinguishable.
   UNFETCHED
-  /// Fetched, compared, and found identical AT THE TEXT LEVEL to the capture
-  /// immediately preceding it — so no separate capture exists. THE NOVELTY RULE
-  /// WORKING, NOT A FAILURE.
-  ///
-  /// The name is deliberately the write path's own: `RecordedCapture.outcome` is
-  /// already `CREATED | UNCHANGED | EXISTS`, and UNCHANGED there means exactly
-  /// this. One concept, one word, in both layers.
-  ///
-  /// It exists because UNFETCHED would assert "we never looked" about eleven of
-  /// the twelve indexed captures this corpus holds no row for, when the truth is
-  /// "we looked and decided" — the same never-looked-versus-nothing-there
-  /// conflation this table was built to end, one layer down. A note in a plan
-  /// does not protect a query: without this, "which entries have we never looked
-  /// at" returns eleven false positives.
-  UNCHANGED
 }
 
 /// ONE ENTRY THE CDX INDEX REPORTED, AND WHEN IT REPORTED IT.
 ///
 /// Models what the Archive says EXISTS, as opposed to what we managed to store —
-/// something this platform has never modelled. Three facts previously discarded
-/// or trapped inside `WaybackScrapeJob.snapshotsList` JSON live here: the
+/// something this platform had never modelled. Three facts previously discarded
+/// or trapped inside the retired scan job's JSON live here: the
 /// published digest, the unservable capture, and the link from an index entry to
 /// the capture made from it.
 ///
@@ -1763,36 +1671,14 @@ model CdxIndexEntry {
   /// The capture we made from this entry, when we hold one.
   snapshotId           String?        @unique
   snapshot             UrlSnapshot?   @relation("CdxEntryCapture", fields: [snapshotId], references: [id], onDelete: SetNull)
-  /// WHAT AN `UNCHANGED` VERDICT WAS COMPUTED AGAINST.
-  ///
-  /// Three of the four statuses are FACTS and stay true: a row exists or it does
-  /// not (STORED), the Archive serves it or refuses (UNSERVABLE), we looked or we
-  /// did not (UNFETCHED). `UNCHANGED` is the odd one — it is a JUDGEMENT relative
-  /// to a corpus state, meaning "its text equals the capture immediately
-  /// preceding it". Store a capture between those two timestamps and the
-  /// predecessor changes, and the judgement may no longer hold.
-  ///
-  /// Unlikely but not hypothetical: the Archive can back-fill an OLDER capture,
-  /// which is precisely the case that would invalidate a neighbour's verdict
-  /// silently. §3 answers it — record what the verdict was computed against — and
-  /// this is the same discipline as `sourceStateHash` on trajectory computations.
-  /// Without it the system would carry one verdict that can quietly stop being
-  /// true.
-  ///
-  /// Deliberately NOT unique: many entries can be judged against one predecessor.
-  comparedToSnapshotId String?
-  comparedToSnapshot   UrlSnapshot?   @relation("CdxEntryComparedTo", fields: [comparedToSnapshotId], references: [id], onDelete: SetNull)
 
-  // THE WORK-LIST ROW (docs/gf-interaction-flows.md A2) — additive, refactor
+  // THE WORK-LIST ROW (docs/gf-interaction-flows.md A2) — built at refactor
   // step 1. This table IS the existence row: written by the survey before any
   // fetch, updated by the walk with what it observed getting to an outcome.
   //
-  // The seven outcomes the walk writes are the five values added to
-  // CdxEntryStatus below plus UNFETCHED and UNSERVABLE. STORED and UNCHANGED
-  // stay for the old path until step 8 retires it; while the two coexist the
-  // walk reads them as ACQUIRED and DUPLICATE at one boundary. Nothing converts
-  // them: at step 9 the database is dropped and rebuilt from the archive on a
-  // fresh registry (docs/gf-evidence-flows.md §8), and the old values go with it.
+  // `status` holds the seven outcomes the walk writes. The old path's STORED and
+  // UNCHANGED, and its `comparedToSnapshotId`, left at R45-B on a database
+  // rebuilt from the archive (docs/gf-evidence-flows.md §8) where no row held them.
   //
   // At fetch — observed, never assumed from the digest.
   fetchedAt             DateTime?
@@ -1806,9 +1692,8 @@ model CdxIndexEntry {
   // The extractor that produced the text (DUPLICATE, ACQUIRED) — what STALE
   // reads, for both outcomes, so a DUPLICATE can go stale on the extractor axis.
   textExtractionVersion String?
-  // The predecessor's waybackTimestamp (IDENTICAL, DUPLICATE). The legacy
-  // `comparedToSnapshotId` above is the old path's; the new one names the
-  // capture the way every tool does — by timestamp.
+  // The predecessor's waybackTimestamp (IDENTICAL, DUPLICATE) — the capture named
+  // the way every tool names it, by timestamp.
   comparedTo            String?
   // The ruleset id in force at this row's timestamp when it was derived
   // (DUPLICATE, ACQUIRED); STALE compares it with RULESET_ID now.
@@ -1857,10 +1742,10 @@ model CdxIndexEntry {
 /// because it cannot be re-derived.
 ///
 /// It also removes the inference left behind by the fix to "a scan that fetches
-/// nothing reports success". `WaybackScrapeJob.totalSnapshots` carries a
+/// nothing reports success". The retired scan job's `totalSnapshots` carried a
 /// pagination sentinel (MAX_SNAPSHOTS + 1) AND a row count, so reading "we asked
-/// and there is nothing newer" out of it would be one field carrying two
-/// meanings — the exact defect that produced that bug.
+/// and there is nothing newer" out of it was one field carrying two meanings —
+/// the exact defect that produced that bug.
 ///
 /// APPEND-ONLY, AND NOT MERELY BECAUSE IT IS CONVENIENT. Nothing in this system
 /// is deleted; Level 10 supersedes rather than removes, and an append-only log of
@@ -2011,92 +1896,6 @@ model TextVersion {
   @@unique([snapshotId, textHash])
 }
 
-/// Whether a submitted URL is within the platform's stated purpose.
-enum MissionVerdict {
-  ON_MISSION
-  OFF_MISSION
-  /// The assessment ran and could not decide.
-  UNCLEAR
-  /// NOTHING COULD BE READ, so nothing was judged.
-  ///
-  /// A verdict about the CHECK rather than about the URL — §3's own distinction,
-  /// and §3 stores it rather than leaving an absence. Recording nothing would make
-  /// "did we try to admit this URL?" unanswerable, which is the
-  /// never-looked-versus-nothing-there family at the front door.
-  ///
-  /// Kept out of OFF_MISSION deliberately: collapsing them would make an
-  /// unavailable check indistinguishable from a refusal, exactly as UNAVAILABLE
-  /// must never count as VERIFIED.
-  UNREADABLE
-}
-
-/// Who made the judgement.
-enum AssessmentAuthor {
-  MODEL
-  /// A human overturning or confirming a model verdict. A NEW ROW, never an edit
-  /// — the model's verdict stays on the record beside the correction.
-  HUMAN
-}
-
-/// ONE ASSESSMENT OF ONE SUBMITTED URL, KEPT WHATEVER IT DECIDED.
-///
-/// `POST /api/forensics/scan` already screened submissions and returned 422 for an
-/// off-mission URL. What it did not do is LEAVE A TRACE: the verdict and its
-/// reason existed only in an HTTP response body, so §3 applied — a check that runs
-/// and is not recorded has not been performed.
-///
-/// It is also the one place this platform FILTERS ITS OWN INPUTS, which is the
-/// standard attack on curated evidence: "you kept what suited you." The answer is
-/// a queryable record of everything turned away and everything let through.
-///
-/// `url` IS A PLAIN STRING, NOT A RELATION TO TrackedUrl. A rejected URL never
-/// becomes a TrackedUrl, so a foreign key would make exactly the rejections
-/// unrepresentable — the "zero rows create zero entries" trap one layer up, which
-/// would produce a selection-bias record with selection bias in it.
-///
-/// APPEND-ONLY. Re-assessment creates a new row; the operative verdict is the
-/// latest by `assessedAt`, DERIVED rather than stored.
-///
-/// NOTE: carries a CHECK constraint Prisma cannot declare —
-/// `ScanRelevanceAssessment_provenance_complete`, hand-written in
-/// 20260828010000. A MODEL row holds its full provenance, a HUMAN row names its
-/// actor. Recorded here because a database object invented in raw SQL and
-/// unmentioned in this file is how `evidence_embeddings` went unmodelled for
-/// months.
-model ScanRelevanceAssessment {
-  id         String           @id @default(cuid())
-  url        String
-  verdict    MissionVerdict
-  /// The judgement in its author's own words. Required for EVERY verdict — a
-  /// filter that explains only its rejections cannot be audited for what it let
-  /// through.
-  reason     String
-  author     AssessmentAuthor
-  assessedAt DateTime
-
-  // MODEL provenance. Null on HUMAN rows — a real distinction rather than a
-  // missing value.
-  model            String?
-  agentVersion     String?
-  /// SHA-256 of the criterion the verdict was reached under — the prompt itself.
-  promptHash       String?
-  /// How many characters the model was given, and whether the page was longer. A
-  /// bound on what a JUDGEMENT reads is defensible in a way a bound on what is
-  /// STORED is not — but only while it is visible.
-  contentChars     Int?
-  contentTruncated Boolean?
-
-  /// Who overturned or confirmed it.
-  actorId     String?
-  /// Who submitted the URL, when known.
-  submitterId String?
-
-  createdAt DateTime @default(now())
-
-  @@index([url, assessedAt])
-  @@index([verdict, assessedAt])
-}
-
 /// Whether a diff's own report survives the documents it spans.
 // ---------------------------------------------------------------------------
 // LEVEL 3 — the anchor. §3's check record, made general.
@@ -2217,311 +2016,4 @@ model IntegrityCheck {
   /// The coverage report: how many subjects of this check type stand at each
   /// verdict. Free, and the reason the plan chose a table.
   @@index([checkType, verdict, checkedAt])
-}
-
-// ---------------------------------------------------------------------------
-// LEVEL 4 — THE VIEW. The rules a human marked, and the loop that produced them.
-//
-// Signed off for all three modes on 2026-08-31 before any of it was written; the
-// reasoning is `docs/gf-factual-layer-rebuild-dev-plan.md`, Level 4,
-// `##### THE DATA MODEL`. Read that before changing anything here.
-//
-// THE SPLIT IS NOT COSMETIC. An earlier draft held one "session row" carrying the
-// mode, the ruleset under construction and the decision log. Level 4 requires a
-// scan to PIN the ruleset version it was approved under — and one row cannot both
-// pin a ruleset and be the ruleset under construction. `REJECT ROUTES BACK TO
-// CALIBRATION` puts that collision on the normal path, so the pin and the draft
-// are separate records with opposite lifetimes:
-//
-//     ArticleRuleset    the committed artifact — content-addressed, append-only
-//        ^ commits            ^ pins
-//     CalibrationRun    a human building or fixing rules      (here)
-//     ScanRun           a run that fetches and persists       (step 2b)
-//
-// THERE IS NO MODE ENUM. "Mode 1 is mode 3 with a fetch" is exact, and the effect
-// side collapses with it: committing a ruleset re-derives every stored capture,
-// which is a no-op when there are none. So the document source is a property of
-// each CAPTURE SHOWN, not of the run — which also permits the case a per-run
-// enum forecloses, a URL whose stored captures are all one era and can only be
-// calibrated adversarially by reaching outside the corpus for a fetch.
-// ---------------------------------------------------------------------------
-
-enum CalibrationRunStatus {
-  /// Under construction. The current ruleset is the newest decision's.
-  OPEN
-  /// Closed having committed a ruleset. `committedRulesetId` is set.
-  COMMITTED
-  /// Closed without committing. Deliberately distinct from COMMITTED: a run that
-  /// produced nothing is a fact about the calibration, not a missing value.
-  ABANDONED
-}
-
-enum CalibrationDecisionType {
-  /// Logged when the run is created, carrying the seed ruleset (empty, or the
-  /// rules already in force when correcting an existing URL).
-  RUN_OPENED
-  /// The system chose this capture and showed it. Nothing is judged yet.
-  CAPTURE_SHOWN
-  /// The human changed the selectors. This is the event the stopping indicator
-  /// counts, and the only one that changes what the rules are.
-  RULESET_CORRECTED
-  /// Under these rules, this capture is right.
-  CAPTURE_ACCEPTED
-  /// The RULES are wrong — never that the capture is bad. Level 4: "REJECT
-  /// ROUTES BACK TO CALIBRATION. It never skips a capture."
-  CAPTURE_REJECTED
-  /// The capture genuinely cannot be taken. `reason` is REQUIRED, because a
-  /// silent hole in the record is the one outcome this corpus does not permit.
-  CAPTURE_SKIPPED
-  /// THE RESEARCHER SAID THIS CAPTURE IS A REDESIGN — the first one the previous
-  /// era's rules do not describe, so it OPENS an era rather than closing one.
-  ///
-  /// This is the only way an era comes into existence: a boundary is always a
-  /// decision and never an inference, which is why the detectors STOP and ask
-  /// rather than concluding. There is no era table — every other property of an
-  /// era (its range, its ruleset, whether it is confirmed) is derived from this
-  /// log, and a stored status is a claim about history that can disagree with
-  /// the history.
-  ERA_BOUNDARY
-  RUN_CLOSED
-}
-
-/// A COMMITTED RULESET — the artifact a calibration produces and a scan pins.
-///
-/// APPEND-ONLY. Nothing here is ever edited: `rulesetId` is
-/// `chromeRulesetId(selectors)`, so changing the selectors is a different row by
-/// construction, and the whole point of a versioned view is that the previous
-/// version still names what was derived under it. Level 10 supersedes rather
-/// than removes; this is that rule applied to a view specification.
-///
-/// SCOPED TO ONE TrackedUrl. Whether a ruleset can be inherited by a second URL
-/// on the same site is OPEN in the plan and deliberately not decided here — a
-/// table keyed on `trackedUrlId` can gain a site-level parent later, whereas a
-/// site-level table would have had to guess the inheritance rule now.
-model ArticleRuleset {
-  id           String     @id @default(cuid())
-  trackedUrlId String
-  trackedUrl   TrackedUrl @relation("TrackedUrlRulesets", fields: [trackedUrlId], references: [id], onDelete: Cascade)
-  /// `chromeRulesetId(selectors)` — sha256 over the sorted, de-duplicated
-  /// selectors, first 8 hex. Order- and duplicate-insensitive, so two spellings
-  /// of one view do not produce two rulesets.
-  rulesetId    String
-  selectors    String[]
-  /// Attributed, because a mark is a JUDGEMENT and this platform records who
-  /// made every judgement it acts on.
-  createdById  String
-  createdBy    Researcher @relation(fields: [createdById], references: [id])
-  createdAt    DateTime   @default(now())
-
-  observations   RulesetObservation[]
-  seededRuns     CalibrationRun[]     @relation("CalibrationSeed")
-  committingRuns CalibrationRun[]     @relation("CalibrationCommit")
-  /// Set when this is the ruleset currently IN FORCE for its TrackedUrl.
-  activeFor      TrackedUrl?          @relation("ActiveArticleRuleset")
-
-  /// Recommitting an identical view is the SAME row, not a second one — the
-  /// same discipline as capture novelty one layer out.
-  @@unique([trackedUrlId, rulesetId])
-  @@index([trackedUrlId, createdAt])
-}
-
-/// WHAT ONE RULESET DID TO ONE CAPTURE. The single shared table of this level.
-///
-/// FOUR REQUIREMENTS ARE THE SAME FACT, and finding that out is what corrected
-/// the model:
-///
-///   - the null check      — "this rule has matched nothing since <date>"
-///   - the deviation pause — "12% on every approved page and then 61%"
-///   - the sample audit    — K captures "biased toward the highest-deviation ones"
-///   - the next-capture policy — "step changes in derived-text length"
-///
-/// All four are per-`(ruleset, capture)`, and BOTH the calibration loop and the
-/// headless scan produce them. Two producers writing one fact into two tables is
-/// this repository's dominant defect shape, so: one table, two writers, four
-/// readers.
-///
-/// EXACTLY ONE OF `snapshotId` AND `waybackTimestamp` IS SET. A stored capture is
-/// identified by its snapshot, which already carries its timestamp; a capture
-/// fetched for marking and deliberately NOT persisted (calibration mode) has no
-/// snapshot and is identified by the timestamp alone. Enforced by
-/// `requireObservationSubject` in the service rather than by a CHECK constraint —
-/// Prisma does not model CHECK constraints, and one added by raw SQL cannot be
-/// shown not to register as drift without a shadow database to test it against.
-/// A loud guard plus a test is this repository's named pattern for exactly that.
-model RulesetObservation {
-  id                String         @id @default(cuid())
-  articleRulesetId  String
-  articleRuleset    ArticleRuleset @relation(fields: [articleRulesetId], references: [id], onDelete: Cascade)
-  /// A capture we hold.
-  snapshotId        String?
-  snapshot          UrlSnapshot?   @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
-  /// A capture fetched for marking and not persisted.
-  waybackTimestamp  String?
-  /// Elements matched per selector — the NULL CHECK's input, and the only
-  /// automated part of this level. A count, never a judgement.
-  matchCounts       Json
-  /// The share of the capture's derived text this ruleset removed, `[0, 1]`.
-  /// Defined once, by `chromeRemovalFraction` — never recomputed at a callsite.
-  removalFraction   Float
-  /// Length of the text that SURVIVED. A step change here is what the
-  /// next-capture policy reaches for.
-  derivedTextLength Int
-  observedAt        DateTime       @default(now())
-
-  decisions CalibrationDecision[]
-
-  /// One observation per capture per ruleset, under either identity. Postgres
-  /// does not treat NULLs as colliding, so the two uniques do not constrain each
-  /// other — the same property `UrlSnapshot`'s composite unique relies on.
-  @@unique([articleRulesetId, snapshotId])
-  @@unique([articleRulesetId, waybackTimestamp])
-  /// The audit sample: highest deviation first.
-  @@index([articleRulesetId, removalFraction])
-  @@index([articleRulesetId, observedAt])
-}
-
-/// ONE PASS OF A HUMAN BUILDING OR FIXING A RULESET — modes 1 and 3.
-///
-/// THE RUN HOLDS NO SELECTORS. Its decisions do, and the current ruleset is the
-/// newest decision's. That is Level 4's own anti-pattern — "do not let the UI
-/// hold state the session row does not" — taken one level further: the run holds
-/// no state its log does not, so nothing can drift and resumption is a fold.
-///
-/// THERE IS NO `version` COLUMN EITHER, and the sign-off named one. Implementing
-/// it showed the column would be both redundant with `CalibrationDecision.sequence`
-/// and unable to be updated atomically without a transaction; the unique index on
-/// `(calibrationRunId, sequence)` IS the compare-and-set, since a second browser
-/// writing the same sequence loses on the constraint. Removing it is more
-/// faithful to the decision above than keeping it would have been.
-model CalibrationRun {
-  id                  String               @id @default(cuid())
-  trackedUrlId        String
-  trackedUrl          TrackedUrl           @relation(fields: [trackedUrlId], references: [id], onDelete: Cascade)
-  researcherId        String
-  researcher          Researcher           @relation(fields: [researcherId], references: [id])
-  status              CalibrationRunStatus @default(OPEN)
-  /// The rules in force when the run opened, when correcting an existing URL.
-  seededFromRulesetId String?
-  seededFrom          ArticleRuleset?      @relation("CalibrationSeed", fields: [seededFromRulesetId], references: [id])
-  /// What the run committed, on close. Null while OPEN and on ABANDONED.
-  committedRulesetId  String?
-  committed           ArticleRuleset?      @relation("CalibrationCommit", fields: [committedRulesetId], references: [id])
-  createdAt           DateTime             @default(now())
-  closedAt            DateTime?
-
-  /// THE DRAFT THE MARKING PAGE HANDS BACK, and the reason it is not a decision.
-  ///
-  /// The page is a visual instrument for checking and correcting a ruleset
-  /// against one capture: it takes a ruleset in and returns a corrected ruleset.
-  /// It decides nothing — the verdict and the approval are the researcher's, made
-  /// through a tool. Writing a `RULESET_CORRECTED` per edit made the browser a
-  /// writer of decisions, which is what produced this level's swallowed clicks,
-  /// its eight correction rows for one capture of exploration, and a page that
-  /// raced itself into a 409.
-  ///
-  /// A DRAFT IS NOT A DECISION. It records nothing about whether the rules are
-  /// right; it is the researcher's work in progress, kept so that a dying tab
-  /// does not take twenty minutes of marking with it.
-  draftSelectors      String[]
-  /// Which capture the draft was marked against. NULL means there is no draft.
-  draftSnapshotId     String?
-  /// Set when the researcher hands the draft back. NULL while it is still being
-  /// edited — which is how "saved as I go" is told apart from "I am done".
-  draftReturnedAt     DateTime?
-
-  decisions CalibrationDecision[]
-
-  @@index([trackedUrlId, status])
-}
-
-/// ONE DECISION IN A CALIBRATION. Append-only, and the only place selectors live.
-///
-/// `sequence` IS THE RUN'S VERSION. It starts at 1 with `RUN_OPENED` and is
-/// unique per run, so an append carrying a stale expected version collides
-/// rather than overwriting — the "two browsers on one session" failure mode,
-/// answered by a constraint instead of by a read-modify-write.
-///
-/// THE NUMBERS ARE NOT HERE. `observationId` points at what was measured;
-/// copying `removalFraction` or `matchCounts` onto the decision would be the
-/// same fact in two places, free to disagree.
-/// A LINE DRAWN UNDER A URL'S CALIBRATION — nothing recorded before it governs.
-///
-/// SUPERSEDES, NEVER DELETES. Every decision stays in the log with its authority
-/// ended, so the record of what was tried survives. Level 10 rules the same way
-/// for the corpus; this is that rule applied to a calibration.
-///
-/// AN EVENT ON THE URL, NOT A DECISION IN A RUN, and the difference is load-bearing.
-/// A run is a WORKING SESSION and its decisions inherit its lifecycle; a reset has
-/// no work attached and no lifecycle — it either happened or it did not. Modelling
-/// it inside a run forced the question "does abandoning that run un-reset the URL",
-/// which has no good answer, and a question with no good answer is how a wrong
-/// model announces itself.
-///
-/// NOTHING SURVIVES IT, ERA BOUNDARIES INCLUDED. A boundary survives an ABANDONED
-/// RUN because a session is not a page, but that is a rule about runs and does not
-/// transfer here. A reset is often wanted BECAUSE the era structure is wrong — a
-/// redesign answered where there was none — and a reset that spared boundaries
-/// would preserve exactly the corruption it was reached for. Re-recording a known
-/// boundary costs one tool call, not a marking pass.
-model CalibrationReset {
-  id           String     @id @default(cuid())
-  trackedUrlId String
-  trackedUrl   TrackedUrl @relation(fields: [trackedUrlId], references: [id], onDelete: Cascade)
-  /// Who drew the line. Every judgement this platform acts on names who made it.
-  researcherId String
-  researcher   Researcher @relation(fields: [researcherId], references: [id])
-  /// REQUIRED. A reset ends the authority of real work, and why is not optional —
-  /// the same rule that makes a skipped capture carry its reason.
-  reason       String
-  createdAt    DateTime   @default(now())
-
-  @@index([trackedUrlId, createdAt])
-}
-
-model CalibrationDecision {
-  id               String                  @id @default(cuid())
-  calibrationRunId String
-  calibrationRun   CalibrationRun          @relation(fields: [calibrationRunId], references: [id], onDelete: Cascade)
-  sequence         Int
-  type             CalibrationDecisionType
-  /// The selectors in force AFTER this decision. Stored in full rather than as a
-  /// delta: a correction IS a new list, and a fold that replays deltas is a fold
-  /// that can be replayed wrongly.
-  selectors        String[]
-  /// `chromeRulesetId(selectors)` — identifies "the approved set" a scan's
-  /// deviation baseline is computed over.
-  rulesetId        String
-  /// Which capture this decision is about, under the same two identities
-  /// `RulesetObservation` uses. Both null on RUN_OPENED and RUN_CLOSED, and
-  /// exactly one set on every CAPTURE_* type — held by `requireSubjectForType`,
-  /// which keys the rule on the decision TYPE rather than on whether the caller
-  /// happened to supply an identity.
-  ///
-  /// `SetNull` HERE AND `Cascade` ON THE OBSERVATION, DELIBERATELY. A decision
-  /// is the record of a human judgement and must survive; an observation is a
-  /// measurement that can be recomputed from bytes we still hold. Deleting a
-  /// capture is a destructive-database session either way, and this asymmetry
-  /// is what keeps the judgement rather than the arithmetic.
-  snapshotId       String?
-  snapshot         UrlSnapshot?            @relation(fields: [snapshotId], references: [id], onDelete: SetNull)
-  waybackTimestamp String?
-  observationId    String?
-  observation      RulesetObservation?     @relation(fields: [observationId], references: [id], onDelete: SetNull)
-  /// REQUIRED on CAPTURE_SKIPPED. A capture that cannot be taken is recorded
-  /// with its reason; a silent hole is the one outcome this corpus forbids.
-  reason           String?
-  createdAt        DateTime                @default(now())
-
-  @@unique([calibrationRunId, sequence])
-  @@index([calibrationRunId, type])
-  /// THE ERA FOLD'S QUERY. `governingEras` reads a URL's decisions across runs
-  /// filtered by the newest reset and ordered in time — `calibrationRunId IN (…)
-  /// AND createdAt > reset ORDER BY createdAt`. The two indexes above cover the
-  /// run lookup and leave the filter and the sort uncovered.
-  ///
-  /// A decision log is SMALL — one row per marking action, low hundreds per URL —
-  /// so this is not what would ever hurt. It is here because it is free and
-  /// because the fold is on the capture-recording path, which is the one place in
-  /// this system that runs thousands of times.
-  @@index([calibrationRunId, createdAt])
 }

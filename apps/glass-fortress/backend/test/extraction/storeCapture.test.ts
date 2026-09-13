@@ -1,8 +1,8 @@
-// IN THE `extraction` PROJECT because the store reaches Readability: `fullText`
-// and `contentHash` — evidence identity — are composed HERE, through the one
-// construction in lib/archiveText, and a test running against a stubbed
-// Readability would assert the stub. The walk's suite mocks this module by
-// path, so jsdom never loads there.
+// IN THE `extraction` PROJECT because the store is exercised over the REAL text
+// derivation (`deriveText`, `captureDocument`), never a stub of it. Until R45-B it
+// also composed Readability's legacy register here; that left the schema, and
+// this file now holds that nothing of it is written. The walk's suite mocks this
+// module by path.
 import { createHash } from 'crypto';
 
 jest.mock('../../src/lib/prisma', () => ({
@@ -17,9 +17,7 @@ jest.mock('../../src/services/anchorSnapshots', () => ({
 
 import { CaptureProvenance } from '@prisma/client';
 import { prisma } from '../../src/lib/prisma';
-import { rawCaptureUrl, viewerCaptureUrl } from '../../src/lib/archiveHttp';
-import { extractArticleText } from '../../src/lib/archiveText';
-import { captureHtml, deriveText, TEXT_EXTRACTION_VERSION } from '../../src/lib/captureDocument';
+import { deriveText, TEXT_EXTRACTION_VERSION } from '../../src/lib/captureDocument';
 import { RegistryFrozenError, type RegistryWindow } from '../../src/services/anchorSnapshots';
 import { storeCapture, waybackTimestampToDate } from '../../src/services/recordCapture';
 
@@ -48,13 +46,8 @@ const windowWritable = jest.fn();
 const windowRegistrar = jest.fn();
 const WINDOW = { writable: windowWritable, registrar: windowRegistrar } as unknown as RegistryWindow;
 
-/** Readability's article of a payload, exactly as the store must compose it. */
-function articleOf(document: Buffer, timestamp = TS): string {
-  return extractArticleText(
-    captureHtml({ document, documentContentType: CT, documentContentEncoding: null }),
-    rawCaptureUrl(timestamp, PAGE),
-  );
-}
+/** The legacy register R45-B dropped — no column of it may be written again. */
+const LEGACY_REGISTER = ['fullText', 'contentHash', 'snapshotUrl'];
 
 function capture(overrides: Partial<Parameters<typeof storeCapture>[0]> = {}) {
   return {
@@ -116,11 +109,9 @@ describe('storeCapture stores the payload, not a view of it', () => {
     expect(data['text']).toBe(DOC_TEXT.text);
     expect(data['textHash']).toBe(sha256(DOC_TEXT.text));
     expect(data['textExtractionVersion']).toBe(TEXT_EXTRACTION_VERSION);
-    // Evidence identity: Readability's article over the decoded payload, under
-    // the raw replay URL — the formula the registry ledger states and the
-    // rebuild's extractor-equality measurement reproduced 112 of 112 with.
-    expect(data['fullText']).toBe(articleOf(DOC));
-    expect(data['contentHash']).toBe(sha256(articleOf(DOC)));
+    // And nothing of the legacy register: evidence identity is documentHash
+    // (evidence flows A1), and the columns left the schema at R45-B.
+    expect(LEGACY_REGISTER.filter((column) => column in data)).toEqual([]);
   });
 
   it('KEEPS what the text derivation discards — the defect that reopened Level 1', async () => {
@@ -171,12 +162,12 @@ describe('storeCapture stores the payload, not a view of it', () => {
 // ---------------------------------------------------------------------------
 
 describe('storeCapture keeps provenance honest', () => {
-  it('records WAYBACK provenance, the Archive timestamp, and the viewer URL a reader opens', async () => {
+  it('records WAYBACK provenance and the Archive timestamp — the viewer URL is computed from them, never stored', async () => {
     await storeCapture(capture());
     const data = create.mock.calls[0][0].data as Record<string, unknown>;
     expect(data['provenance']).toBe(CaptureProvenance.WAYBACK);
     expect(data['waybackTimestamp']).toBe(TS);
-    expect(data['snapshotUrl']).toBe(viewerCaptureUrl(TS, PAGE));
+    expect('snapshotUrl' in data).toBe(false);
   });
 
   it('refuses a malformed Archive timestamp before anything is read', async () => {

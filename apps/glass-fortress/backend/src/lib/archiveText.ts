@@ -5,21 +5,19 @@ import { Readability } from '@mozilla/readability';
 // ---------------------------------------------------------------------------
 // Readability's reading of an archived page — the LEGACY register.
 //
-// Readability's article is what `UrlSnapshot.fullText` holds, composed by
-// `recordCapture` at acquisition, and what the old registries' extraction anchors
-// hashed as `contentHash`. It is NOT what any finding is derived from: every
-// diff, every trajectory and `verify_claim_text`'s stored answer read the
-// capture's current `text` (docs/gf-interaction-flows.md A2) since R45. Its blind
+// Readability's article is what `UrlSnapshot.fullText` held until R45-B dropped the
+// column, and what the old registries' extraction anchors hashed as `contentHash` —
+// the formula the committed registry ledgers state, which is why this construction
+// stays in the tree. It is NOT what any finding is derived from: every diff, every
+// trajectory and `verify_claim_text`'s stored answer read the capture's current
+// `text` (docs/gf-interaction-flows.md A2) since R45. Its blind
 // spot is measured, not assumed: on capture 20220905111109 of
 // corona.health.gov.il it kept 4,330 of the page's 6,266 characters, and among
 // the 31% it dropped was the sentence a real thesis went on to claim had been
 // ADDED the following day.
 //
 // Who still loads it, and so jsdom, statically — named so nobody fixes the jsdom
-// boundary twice: `services/WaybackScraper.ts`, `services/measureCaptureCustody.ts`
-// (the extractor-equality instrument, which must run THE function the writers
-// ran), and `utils/webScraper.ts`. `services/recordCapture.ts` imports it
-// dynamically. The raw reading needs no DOM and lives in `./htmlText`; it is
+// boundary twice: `services/WaybackScraper.ts` and `utils/webScraper.ts`. The raw reading needs no DOM and lives in `./htmlText`; it is
 // re-exported below so existing imports keep working.
 // ---------------------------------------------------------------------------
 
@@ -56,7 +54,7 @@ export function extractArticle(html: string, sourceUrl: string): ExtractedArticl
 }
 
 /**
- * The article as text — the LEGACY register: the exact path that composes
+ * The article as text — the LEGACY register: the exact path that composed
  * UrlSnapshot.fullText, and that the old registries' extraction anchors hashed.
  */
 export function extractArticleText(html: string, sourceUrl: string): string {

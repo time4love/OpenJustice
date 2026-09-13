@@ -1,7 +1,6 @@
 import { CaptureProvenance } from '@prisma/client';
 import { prisma } from '../lib/prisma';
-import { captureHtml, sha256Bytes, sha256Text, type DerivedText } from '../lib/captureDocument';
-import { rawCaptureUrl, viewerCaptureUrl } from '../lib/archiveHttp';
+import { sha256Bytes, type DerivedText } from '../lib/captureDocument';
 import { ANCHORABLE_CAPTURE_SELECT } from '../lib/anchoredCaptureHash';
 import { anchorAcquiredCapture, requireWritable, type RegistryWindow } from './anchorSnapshots';
 
@@ -19,12 +18,11 @@ import { anchorAcquiredCapture, requireWritable, type RegistryWindow } from './a
  *      required `Buffer`, so no path can construct an incomplete capture — the
  *      schema's NOT NULL is the backstop, not the control.
  *
- *   2. `fullText` and `contentHash` — the LEGACY register, Readability's article
- *      and its hash — are composed HERE, through the one Readability construction
- *      in `lib/archiveText`, and by no rule and no walk (architecture §6, walk
- *      invariant I1). Nothing reads them for a finding: evidence identity is
- *      `documentHash` (evidence flows A1), and every diff and trajectory reads the
- *      walk's derivation, stored as handed over.
+ *   2. The text is the walk's derivation, stored as handed over, and nothing
+ *      else is derived here. Evidence identity is `documentHash` (evidence flows
+ *      A1); the legacy register this module once composed beside it —
+ *      Readability's `fullText`, its `contentHash`, the stored viewer URL — left
+ *      the schema at R45-B.
  *
  * The anchor is AWAITED (Phase 2, ruled 2026-09-02). A chain failure throws
  * with its reason; the snapshot row stays; the next call finds it through the
@@ -33,9 +31,11 @@ import { anchorAcquiredCapture, requireWritable, type RegistryWindow } from './a
 export interface StoreCaptureInput {
   trackedUrlId: string;
   /**
-   * The page's URL, exact — flows A1. It names the raw replay the bytes came
-   * from, which is the base Readability reads the article under, and the
-   * viewer URL a reader opens to check.
+   * The page's URL, exact — flows A1. UNREAD since R45-B: it named the base the
+   * legacy extraction read the article under and the viewer URL stored beside it,
+   * and both left with the register. It stays on the input only because the walk's
+   * one call site passes it and `src/walk` is held byte-identical in that round;
+   * removing it is that call site's one-line change.
    */
   url: string;
   /** The capture's name in the archive — 14 digits, YYYYMMDDHHMMSS. */
@@ -170,8 +170,7 @@ async function finishExisting(
 }
 
 export async function storeCapture(input: StoreCaptureInput): Promise<StoredCapture> {
-  const { trackedUrlId, url, waybackTimestamp, document, contentType, contentEncoding, derived, window } =
-    input;
+  const { trackedUrlId, waybackTimestamp, document, contentType, contentEncoding, derived, window } = input;
 
   const capturedAt = waybackTimestampToDate(waybackTimestamp);
   // Zero bytes is a fetch that returned nothing. There is no document to store,
@@ -195,20 +194,6 @@ export async function storeCapture(input: StoreCaptureInput): Promise<StoredCapt
   // The window memoises the verdict, so the anchoring module's own ask is free.
   await requireWritable(window);
 
-  // THE LEGACY REGISTER, composed once, here. Readability's article over the
-  // decoded payload, under the raw replay URL — the formula the registry ledger
-  // states and the rebuild's extractor-equality measurement reproduced 112 of
-  // 112 with. A dynamic import, because `archiveText` constructs jsdom, whose
-  // dependency chain is ESM-only: the walk imports this module statically, every
-  // walk tool test imports the walk's barrel, and one static edge here would
-  // break them all (refactor plan §8, the jsdom boundary).
-  const { extractArticleText } = await import('../lib/archiveText');
-  const fullText = extractArticleText(
-    captureHtml({ document, documentContentType: contentType, documentContentEncoding: contentEncoding }),
-    rawCaptureUrl(waybackTimestamp, url),
-  );
-  const contentHash = sha256Text(fullText);
-
   let created: { id: string; documentHash: string };
   try {
     created = await prisma.urlSnapshot.create({
@@ -218,9 +203,6 @@ export async function storeCapture(input: StoreCaptureInput): Promise<StoredCapt
         capturedAt,
         waybackTimestamp,
         snapshotDate: toSnapshotDate(capturedAt),
-        snapshotUrl: viewerCaptureUrl(waybackTimestamp, url),
-        fullText,
-        contentHash,
         document,
         documentHash,
         documentContentType: contentType,

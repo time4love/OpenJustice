@@ -179,7 +179,6 @@ const PAIR_SELECT = {
   text: true,
   textHash: true,
   snapshotDate: true,
-  snapshotUrl: true,
   document: true,
   documentContentType: true,
   documentContentEncoding: true,
@@ -190,7 +189,6 @@ interface StoredSide {
   text: string;
   textHash: string;
   snapshotDate: string;
-  snapshotUrl: string;
   document: Uint8Array;
   documentContentType: string | null;
   documentContentEncoding: string | null;

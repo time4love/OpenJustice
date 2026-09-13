@@ -216,6 +216,8 @@ const RETIRED_SCRIPT_NAMES = [
   'forensics:measure-gate5',
   // R45: the detection-layer comparison, retired with the layer switch once its measurement was recorded.
   'forensics:compare-detection-layers',
+  // R45-B: the custody instrument, retired whole with the legacy register its extractor-equality half measured.
+  'forensics:measure-custody',
 ];
 
 // The modules those tools stood on, plus the readers that existed only to read
@@ -507,23 +509,67 @@ describe("the THESIS layer's retired names that hold today — routes and delega
 // ---------------------------------------------------------------------------
 
 describe('retired-names', () => {
-  // THESIS A2's REMOVED LIST, one case per name. `Whistleblower` is the document plan's (step 28).
-  const REMOVED_MODELS = ['ResearchSession', 'ResearchSessionEvent', 'ThesisGapResolution', 'KeyFigure'];
-  const REMOVED_ENUMS = ['ResearchSessionEventType', 'ResearchSessionStatus', 'ThesisVersionStatus'];
-  const REMOVED_VALUES: readonly (readonly [string, string])[] = [
-    ['MentionType', 'KEY_FIGURE'],
-    ['MentionType', 'TRACKED_URL'],
+  // THESIS A2's REMOVED LIST, one case per name, each tagged with the step that removed it. `Whistleblower` is
+  // the document plan's (step 28). R45-B's names are refactor plan §2's retire and transform rows (:54–:73) and
+  // the legacy register evidence A1 superseded — the migration 20260914120000_r45_legacy_register_and_calibration.
+  const THESIS_18 = 'thesis step 18';
+  const R45_B = 'R45-B';
+  const REMOVED_MODELS: readonly (readonly [string, string])[] = [
+    ['ResearchSession', THESIS_18],
+    ['ResearchSessionEvent', THESIS_18],
+    ['ThesisGapResolution', THESIS_18],
+    ['KeyFigure', THESIS_18],
+    ['ArticleRuleset', R45_B],
+    ['RulesetObservation', R45_B],
+    ['CalibrationRun', R45_B],
+    ['CalibrationReset', R45_B],
+    ['CalibrationDecision', R45_B],
+    ['WaybackScrapeJob', R45_B],
+    ['ScanRelevanceAssessment', R45_B],
   ];
-  const REMOVED_FIELDS: readonly (readonly [string, string])[] = [
-    ['ThesisVersion', 'userContent'],
-    ['ThesisVersion', 'aiAnalysis'],
-    ['ThesisVersion', 'analysisInputHash'],
-    ['ThesisVersion', 'status'],
-    ['Thesis', 'title'],
-    ['Thesis', 'sessions'],
-    ['ThesisMention', 'type'],
-    ['ThesisMention', 'refId'],
+  const REMOVED_ENUMS: readonly (readonly [string, string])[] = [
+    ['ResearchSessionEventType', THESIS_18],
+    ['ResearchSessionStatus', THESIS_18],
+    ['ThesisVersionStatus', THESIS_18],
+    ['CalibrationRunStatus', R45_B],
+    ['CalibrationDecisionType', R45_B],
+    ['WaybackJobStatus', R45_B],
+    ['WaybackFailureReason', R45_B],
+    ['MissionVerdict', R45_B],
+    ['AssessmentAuthor', R45_B],
+    ['TrackedUrlStatus', R45_B],
   ];
+  const REMOVED_VALUES: readonly (readonly [string, string, string])[] = [
+    ['MentionType', 'KEY_FIGURE', THESIS_18],
+    ['MentionType', 'TRACKED_URL', THESIS_18],
+    ['CdxEntryStatus', 'STORED', R45_B],
+    ['CdxEntryStatus', 'UNCHANGED', R45_B],
+  ];
+  const REMOVED_FIELDS: readonly (readonly [string, string, string])[] = [
+    ['ThesisVersion', 'userContent', THESIS_18],
+    ['ThesisVersion', 'aiAnalysis', THESIS_18],
+    ['ThesisVersion', 'analysisInputHash', THESIS_18],
+    ['ThesisVersion', 'status', THESIS_18],
+    ['Thesis', 'title', THESIS_18],
+    ['Thesis', 'sessions', THESIS_18],
+    ['ThesisMention', 'type', THESIS_18],
+    ['ThesisMention', 'refId', THESIS_18],
+    ['TrackedUrl', 'activeArticleRulesetId', R45_B],
+    ['TrackedUrl', 'status', R45_B],
+    ['TrackedUrl', 'job', R45_B],
+    ['CdxIndexEntry', 'comparedToSnapshotId', R45_B],
+    ['UrlSnapshot', 'fullText', R45_B],
+    ['UrlSnapshot', 'contentHash', R45_B],
+    ['UrlSnapshot', 'snapshotUrl', R45_B],
+  ];
+  // Every model a removed field names must still exist, or its case passes over nothing.
+  it('each model a removed field or value names still exists — the vacuity check', () => {
+    const missing = [
+      ...REMOVED_FIELDS.map(([model]) => ['model', model] as const),
+      ...REMOVED_VALUES.map(([enumName]) => ['enum', enumName] as const),
+    ].filter(([kind, name]) => blockNamed(kind, name)?.name !== name);
+    expect(missing).toEqual([]);
+  });
   /**
    * THE SOURCE WORDS, in CODE under src/ (sketch §5g). `refId` and `type` are NOT
    * scanned as words — `DebateEvent.refId` is a live column, and the schema half
@@ -532,23 +578,23 @@ describe('retired-names', () => {
   const RETIRED_WORDS = ['userContent', 'aiAnalysis', 'analysisInputHash', 'gapIndex', 'KEY_FIGURE', 'TRACKED_URL', 'CLAIM_TRAJECTORY'];
   const wordsIn = (code: string): string[] => RETIRED_WORDS.filter((w) => new RegExp(`\\b${w}\\b`).test(code));
 
-  for (const name of REMOVED_MODELS) {
-    it(`schema: no model ${name} (thesis step 18)`, () => {
+  for (const [name, step] of REMOVED_MODELS) {
+    it(`schema: no model ${name} (${step})`, () => {
       expect(blockNamed('model', name)?.name).toBeUndefined();
     });
   }
-  for (const name of REMOVED_ENUMS) {
-    it(`schema: no enum ${name} (thesis step 18)`, () => {
+  for (const [name, step] of REMOVED_ENUMS) {
+    it(`schema: no enum ${name} (${step})`, () => {
       expect(blockNamed('enum', name)?.name).toBeUndefined();
     });
   }
-  for (const [enumName, value] of REMOVED_VALUES) {
-    it(`schema: ${enumName} has no ${value} (thesis step 18)`, () => {
+  for (const [enumName, value, step] of REMOVED_VALUES) {
+    it(`schema: ${enumName} has no ${value} (${step})`, () => {
       expect(valuesOf(blockNamed('enum', enumName))).not.toContain(value);
     });
   }
-  for (const [model, field] of REMOVED_FIELDS) {
-    it(`schema: ${model} has no ${field} (thesis step 18)`, () => {
+  for (const [model, field, step] of REMOVED_FIELDS) {
+    it(`schema: ${model} has no ${field} (${step})`, () => {
       expect(fieldsOf(blockNamed('model', model)).map((f) => f.name)).not.toContain(field);
     });
   }

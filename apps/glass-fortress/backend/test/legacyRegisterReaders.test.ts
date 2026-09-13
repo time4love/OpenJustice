@@ -2,55 +2,57 @@ import { posix, relative } from 'node:path';
 import { SRC, codeOf, readCode, tsFiles } from './walk/scan';
 
 // ---------------------------------------------------------------------------
-// NOTHING READS THE LEGACY REGISTER OFF A CAPTURE — R45, THE REGISTER CORRECTION.
+// NOTHING READS THE LEGACY REGISTER — R45, THE REGISTER CORRECTION, WIDENED AT R45-B.
 //
-// `UrlSnapshot` carries two registers. The CURRENT one — `text`, `textHash`,
+// `UrlSnapshot` carried two registers. The CURRENT one — `text`, `textHash`,
 // `textExtractionVersion` — is what every diff and trajectory is derived from
-// (docs/gf-interaction-flows.md A2; docs/gf-evidence-flows.md A3 CURRENT(capture)).
-// The LEGACY one — `fullText`, Readability's article — was what trajectories and
-// `verify_claim_text` still read until R45, and the step-19 staging walk found the
-// cost: a trajectory asserted the FDA sentence absent at 20220805053301 while the
-// page and the current `text` both held it (docs/gf-thesis-step-19-2026-09-12.md §3).
-// R45 moved those readers; this holds that no module drifts back.
+// (docs/gf-interaction-flows.md A2; docs/gf-evidence-flows.md A3 CURRENT(capture)), and
+// evidence identity is `documentHash` (evidence A1). The LEGACY one — `fullText`,
+// Readability's article, its `contentHash`, and the stored viewer `snapshotUrl` — was
+// read by trajectories and `verify_claim_text` until R45-A, and the step-19 staging walk
+// found the cost: a trajectory asserted the FDA sentence absent at 20220805053301 while
+// the page and the current `text` both held it (docs/gf-thesis-step-19-2026-09-12.md §3).
+// R45-B's migration dropped the three columns and the old path's `comparedToSnapshotId`
+// on `CdxIndexEntry`. This holds that no module names them again.
 //
 // TWO HALVES, AND NEITHER IMPLIES THE OTHER:
 //
-//   PAYLOAD      `fullText` named as a KEY inside a `urlSnapshot` call's arguments —
-//                select, data, where, orderBy, include, at any depth — or inside a
-//                constant such a call spreads or passes by name as one of those keys,
-//                declared in the same module or imported from another through a
-//                relative specifier (followed through the constants IT spreads or
-//                names), or inside an object declared `satisfies Prisma.UrlSnapshot…`.
+//   PAYLOAD      a legacy column named as a KEY inside a call's arguments on its model's
+//                delegate — select, data, where, orderBy, include, at any depth — or
+//                inside a constant such a call spreads or passes by name as one of those
+//                keys, declared in the same module or imported from another through a
+//                relative specifier (followed through the constants IT spreads or names),
+//                or inside an object declared `satisfies Prisma.<Model>…`.
 //   MEMBER       the member access `.fullText` anywhere in a module's code.
 //
-// The payload half alone cannot see a whole-row read (no select) followed by
-// `row.fullText` — the exact shape that hid a live read of `TrackedUrl.status` from a
-// select grep. The member half alone cannot see a select that is never dereferenced
-// by that name (a destructure, a bracket read). Nested reads inside an `include` are
-// reported whatever relation they follow: only `UrlSnapshot` has a `fullText` field.
+// The member half is `.fullText` ALONE, deliberately. `contentHash` is a live column of
+// `ThesisVersion`, and `snapshotUrl` a computed field of the archive and trajectory
+// reads, so a name-wide member scan for either would fire on correct code. A member
+// read of either off a CAPTURE row is held elsewhere: the generated client no longer
+// types the column, so `tsc` refuses a typed row's `.contentHash` / `.snapshotUrl`; and
+// `retired-names` (test/walk/retiredNames.test.ts) holds, field by field, that the
+// schema does not carry them again.
+//
+// Nested reads inside an `include` are reported whatever relation they follow — the
+// conservative reading: no other model carries these names on those delegates' payloads.
 //
 // WHAT NEITHER HALF SEES, stated so nobody trusts it further: a select built by a
-// function; raw SQL. The other legacy columns —
-// `contentHash`, `snapshotUrl`, `comparedToSnapshotId` — are not scanned here; their
-// readers move with the columns in R45's migration, where this widens and both
-// allow-lists empty.
+// function; raw SQL.
 //
-// THE ALLOW-LISTS ARE EXACTLY THE ENTRIES THAT FIRE. An entry that matches nothing
-// is a hole (test/migrationsOneTransaction.test.ts), so each half has its own list
-// and a case holding that every entry still fires.
+// THE ALLOW-LISTS ARE EMPTY. The writer stopped composing the register in the commit
+// that dropped it, and the custody instrument that read it retired whole.
 // ---------------------------------------------------------------------------
 
-/** The writer composes `fullText` into the capture row until the migration drops it. */
-const RECORD_CAPTURE = 'services/recordCapture.ts';
-/** The extractor-equality instrument (evidence A7) reads it until the migration retires it. */
-const MEASURE_CUSTODY = 'services/measureCaptureCustody.ts';
+/** Each model's legacy columns, keyed by the delegate that names the model in a call. */
+const LEGACY: readonly { delegate: string; model: string; columns: readonly string[] }[] = [
+  { delegate: 'urlSnapshot', model: 'UrlSnapshot', columns: ['fullText', 'contentHash', 'snapshotUrl'] },
+  { delegate: 'cdxIndexEntry', model: 'CdxIndexEntry', columns: ['comparedToSnapshotId'] },
+];
 
-const PAYLOAD_ALLOWED: readonly string[] = [RECORD_CAPTURE, MEASURE_CUSTODY];
-// `recordCapture.ts` writes a local variable and never dereferences `.fullText`, so it
-// does not fire on this half and is not listed.
-const MEMBER_ALLOWED: readonly string[] = [MEASURE_CUSTODY];
+const PAYLOAD_ALLOWED: readonly string[] = [];
+const MEMBER_ALLOWED: readonly string[] = [];
 
-const KEY = /(?:^|[{,\s])fullText\s*(?::|,|\})/;
+const keyOf = (column: string): RegExp => new RegExp(`(?:^|[{,\\s])${column}\\s*(?::|,|\\})`);
 const MEMBER = /\.fullText\b/;
 
 /** The substring from the brace at `open` to its matching close, or null when unbalanced. */
@@ -131,81 +133,110 @@ function followedFrom(object: string, code: string, file: string, read: ModuleRe
 }
 
 /**
- * Every `urlSnapshot` payload in a module's code: call arguments; every constant they
- * spread or pass by name as `select` / `data` / `where` / `orderBy` / `include`, from
- * this module or imported from another; and objects declared `satisfies Prisma.UrlSnapshot…`.
+ * Every payload of one model in a module's code: call arguments on its delegate; every
+ * constant they spread or pass by name as `select` / `data` / `where` / `orderBy` /
+ * `include`, from this module or imported from another; and objects declared
+ * `satisfies Prisma.<Model>…`.
  */
-export function urlSnapshotPayloads(code: string, file = '', read: ModuleReader = () => undefined): string[] {
+export function payloadsOf(
+  delegate: string,
+  model: string,
+  code: string,
+  file = '',
+  read: ModuleReader = () => undefined,
+): string[] {
   const payloads: string[] = [];
-  for (const call of code.matchAll(/\.urlSnapshot\.\w+\s*\(\s*\{/g)) {
+  for (const call of code.matchAll(new RegExp(`\\.${delegate}\\.\\w+\\s*\\(\\s*\\{`, 'g'))) {
     const args = objectAt(code, call.index + call[0].length - 1);
     if (args === null) continue;
     payloads.push(args, ...followedFrom(args, code, file, read, new Set()));
   }
-  for (const typed of code.matchAll(/\}\s*satisfies\s+Prisma\.UrlSnapshot\w*/g)) {
+  for (const typed of code.matchAll(new RegExp(`\\}\\s*satisfies\\s+Prisma\\.${model}\\w*`, 'g'))) {
     const object = objectEndingAt(code, typed.index);
     if (object !== null) payloads.push(object);
   }
   return payloads;
 }
 
-export const readsFullTextAsKey = (code: string, file = '', read: ModuleReader = () => undefined): boolean =>
-  urlSnapshotPayloads(code, file, read).some((p) => KEY.test(p));
+/** Every legacy column a module names as a payload key, as `Model.column`. */
+export const legacyKeysIn = (code: string, file = '', read: ModuleReader = () => undefined): string[] =>
+  LEGACY.flatMap(({ delegate, model, columns }) => {
+    const payloads = payloadsOf(delegate, model, code, file, read);
+    return columns.filter((column) => payloads.some((p) => keyOf(column).test(p))).map((column) => `${model}.${column}`);
+  });
 export const readsFullTextAsMember = (code: string): boolean => MEMBER.test(code);
 
 const modules = (): { file: string; code: string }[] =>
   tsFiles(SRC).map((file) => ({ file: relative(SRC, file).split('\\').join('/'), code: readCode(file) }));
 
-describe('nothing reads the legacy register (`fullText`) off a capture — R45', () => {
+describe('nothing reads the legacy register off a capture or an index entry — R45', () => {
   const all = modules();
   const byFile = new Map(all.map(({ file, code }) => [file, code]));
   const read: ModuleReader = (file) => byFile.get(file);
 
   it('parsed the modules at all — the vacuity check', () => {
     expect(all.length).toBeGreaterThan(150);
-    expect(all.flatMap(({ file, code }) => urlSnapshotPayloads(code, file, read)).length).toBeGreaterThanOrEqual(2);
-  });
-
-  it('no module outside the allow-list reads fullText off a capture', () => {
-    const offenders = all.filter(({ file, code }) => readsFullTextAsKey(code, file, read) && !PAYLOAD_ALLOWED.includes(file));
-    expect(offenders.map(({ file }) => file)).toEqual([]);
-  });
-
-  it('each allow-list entry still fires — an entry that matches nothing is a hole', () => {
-    const firing = all.filter(({ file, code }) => readsFullTextAsKey(code, file, read)).map(({ file }) => file);
-    expect(PAYLOAD_ALLOWED.filter((entry) => !firing.includes(entry))).toEqual([]);
-  });
-
-  it('DETECTS a planted read of each key kind', () => {
-    const planted: Record<string, string> = {
-      select: 'await prisma.urlSnapshot.findMany({ where: { id }, select: { id: true, fullText: true } });',
-      data: 'await tx.urlSnapshot.create({ data: { trackedUrlId, fullText: text } });',
-      where: "await prisma.urlSnapshot.findFirst({ where: { fullText: { contains: phrase } } });",
-      orderBy: "await client.urlSnapshot.findMany({ orderBy: { fullText: 'asc' } });",
-      include: 'await prisma.urlSnapshot.findUnique({ where: { id }, include: { cdxIndexEntry: { select: { fullText: true } } } });',
-      shorthand: 'await tx.urlSnapshot.create({ data: { trackedUrlId, fullText, text } });',
-      spread: 'const LEGACY_SELECT = { id: true, fullText: true } as const;\nawait prisma.urlSnapshot.findMany({ select: { ...LEGACY_SELECT } });',
-      satisfies: 'const S = { fullText: true } satisfies Prisma.UrlSnapshotSelect;',
-      byName: 'const S = { fullText: true } as const;\nawait prisma.urlSnapshot.findMany({ select: S });',
-    };
-    for (const [kind, code] of Object.entries(planted)) {
-      expect({ kind, fires: readsFullTextAsKey(code) }).toEqual({ kind, fires: true });
+    for (const { delegate, model } of LEGACY) {
+      const found = all.flatMap(({ file, code }) => payloadsOf(delegate, model, code, file, read)).length;
+      expect({ delegate, atLeastTwo: found >= 2 }).toEqual({ delegate, atLeastTwo: true });
     }
-    // An IMPORTED constant, resolved through the importing file's relative specifier.
+  });
+
+  it('no module outside the allow-list reads a legacy column', () => {
+    const offenders = all
+      .map(({ file, code }) => ({ file, keys: legacyKeysIn(code, file, read) }))
+      .filter(({ file, keys }) => keys.length > 0 && !PAYLOAD_ALLOWED.includes(file));
+    expect(offenders).toEqual([]);
+  });
+
+  it('the allow-list is empty', () => {
+    expect(PAYLOAD_ALLOWED).toEqual([]);
+  });
+
+  // One decoy per key shape for `fullText`, and one per column for the rest.
+  const planted: readonly (readonly [string, string, string])[] = [
+    ['UrlSnapshot.fullText', 'select', 'await prisma.urlSnapshot.findMany({ where: { id }, select: { id: true, fullText: true } });'],
+    ['UrlSnapshot.fullText', 'data', 'await tx.urlSnapshot.create({ data: { trackedUrlId, fullText: text } });'],
+    ['UrlSnapshot.fullText', 'where', "await prisma.urlSnapshot.findFirst({ where: { fullText: { contains: phrase } } });"],
+    ['UrlSnapshot.fullText', 'orderBy', "await client.urlSnapshot.findMany({ orderBy: { fullText: 'asc' } });"],
+    ['UrlSnapshot.fullText', 'include', 'await prisma.urlSnapshot.findUnique({ where: { id }, include: { cdxIndexEntry: { select: { fullText: true } } } });'],
+    ['UrlSnapshot.fullText', 'shorthand', 'await tx.urlSnapshot.create({ data: { trackedUrlId, fullText, text } });'],
+    ['UrlSnapshot.fullText', 'spread', 'const LEGACY_SELECT = { id: true, fullText: true } as const;\nawait prisma.urlSnapshot.findMany({ select: { ...LEGACY_SELECT } });'],
+    ['UrlSnapshot.fullText', 'satisfies', 'const S = { fullText: true } satisfies Prisma.UrlSnapshotSelect;'],
+    ['UrlSnapshot.fullText', 'byName', 'const S = { fullText: true } as const;\nawait prisma.urlSnapshot.findMany({ select: S });'],
+    ['UrlSnapshot.contentHash', 'select', 'await prisma.urlSnapshot.findMany({ where: { id }, select: { id: true, contentHash: true } });'],
+    ['UrlSnapshot.contentHash', 'satisfies', 'const S = { contentHash: true, documentHash: true } satisfies Prisma.UrlSnapshotSelect;'],
+    ['UrlSnapshot.snapshotUrl', 'data', 'await tx.urlSnapshot.create({ data: { trackedUrlId, snapshotUrl: viewer } });'],
+    ['CdxIndexEntry.comparedToSnapshotId', 'data', 'await prisma.cdxIndexEntry.updateMany({ where, data: { status, comparedToSnapshotId: id } });'],
+    ['CdxIndexEntry.comparedToSnapshotId', 'where', 'await tx.cdxIndexEntry.findMany({ where: { comparedToSnapshotId: { not: null } } });'],
+  ];
+  for (const [column, shape, code] of planted) {
+    it(`DETECTS a planted read of ${column} (${shape})`, () => {
+      expect(legacyKeysIn(code)).toContain(column);
+    });
+  }
+
+  it('DETECTS a legacy column in an IMPORTED constant, resolved through the relative specifier', () => {
     const virtual: Record<string, string> = {
       'services/reader.ts':
         "import { LEGACY_SELECT } from '../lib/legacySelect';\nawait prisma.urlSnapshot.findMany({ where: { id }, select: LEGACY_SELECT });",
-      'lib/legacySelect.ts': 'export const LEGACY_SELECT = { id: true, fullText: true } as const;',
+      'lib/legacySelect.ts': 'export const LEGACY_SELECT = { id: true, contentHash: true } as const;',
     };
-    const imported = readsFullTextAsKey(virtual['services/reader.ts'] ?? '', 'services/reader.ts', (f) => virtual[f]);
-    expect({ kind: 'imported', fires: imported }).toEqual({ kind: 'imported', fires: true });
+    expect(legacyKeysIn(virtual['services/reader.ts'] ?? '', 'services/reader.ts', (f) => virtual[f])).toEqual([
+      'UrlSnapshot.contentHash',
+    ]);
   });
 
-  it('does not fire on a comment, a string, or another model', () => {
-    expect(readsFullTextAsKey(codeOf('// fullText left at R45\nawait prisma.urlSnapshot.findMany({ select: { text: true } });'))).toBe(false);
-    expect(readsFullTextAsKey("await prisma.urlSnapshot.findMany({ where: { note: 'fullText: gone' }, select: { text: true } });")).toBe(false);
-    expect(readsFullTextAsKey('await prisma.urlSnapshot.findMany({ select: { text: true, fullTextHash: true } });')).toBe(false);
-    expect(readsFullTextAsKey('await prisma.evidence.findMany({ select: { fullText: true } });')).toBe(false);
+  it('does not fire on a comment, a string, a longer name, another model, or the live successor columns', () => {
+    expect(legacyKeysIn(codeOf('// fullText left at R45\nawait prisma.urlSnapshot.findMany({ select: { text: true } });'))).toEqual([]);
+    expect(legacyKeysIn("await prisma.urlSnapshot.findMany({ where: { note: 'fullText: gone' }, select: { text: true } });")).toEqual([]);
+    expect(legacyKeysIn('await prisma.urlSnapshot.findMany({ select: { text: true, fullTextHash: true } });')).toEqual([]);
+    expect(legacyKeysIn('await prisma.evidence.findMany({ select: { fullText: true } });')).toEqual([]);
+    // `ThesisVersion.contentHash` is a live column; `CdxIndexEntry.comparedTo` is the walk's successor.
+    expect(legacyKeysIn('await tx.thesisVersion.create({ data: { thesisId, text, contentHash } });')).toEqual([]);
+    expect(legacyKeysIn('await tx.cdxIndexEntry.update({ where: { id }, data: { comparedTo: previous } });')).toEqual([]);
+    // A column is legacy on ITS model's delegate only: a capture payload naming the index entry's column is not scanned.
+    expect(legacyKeysIn('await prisma.urlSnapshot.findMany({ where: { comparedToSnapshotId: id } });')).toEqual([]);
   });
 
   it('no module outside the member-access allow-list reads .fullText off a row', () => {
@@ -213,9 +244,8 @@ describe('nothing reads the legacy register (`fullText`) off a capture — R45',
     expect(offenders.map(({ file }) => file)).toEqual([]);
   });
 
-  it('the member-access allow-list entry still fires', () => {
-    const firing = all.filter(({ code }) => readsFullTextAsMember(code)).map(({ file }) => file);
-    expect(MEMBER_ALLOWED.filter((entry) => !firing.includes(entry))).toEqual([]);
+  it('the member-access allow-list is empty', () => {
+    expect(MEMBER_ALLOWED).toEqual([]);
   });
 
   it('DETECTS a planted member access — and a comment and a longer name do not fire', () => {

@@ -57,7 +57,6 @@ const stored = (id: string, text: string, version = 'v2-fixture-extractor', page
   textHash: sha256(text),
   textExtractionVersion: version,
   snapshotDate: id === 'snap-before' ? '2022-05-03' : '2022-05-25',
-  snapshotUrl: `https://web.archive.org/web/2022/${id}`,
   document: Buffer.from(`<html><head><title>t</title></head><body>${pageText.split('\n').map((l) => `<p>${l}</p>`).join('')}</body></html>`, 'utf8'),
   documentContentType: 'text/html; charset=utf-8',
   documentContentEncoding: null,

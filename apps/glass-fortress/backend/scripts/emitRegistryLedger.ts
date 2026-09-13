@@ -4,8 +4,8 @@
  *   npm run forensics:registry-ledger -- --env staging
  *
  * The rebuild's step 2 (evidence flows §8; refactor plan §3 step 9). Every index
- * on the registry read from STATE, each explained by the corpus column that
- * produced its hash or by the researcher's ruled kinds, verified complete against
+ * on the registry read from STATE, each explained by the capture whose documentHash
+ * it is or by the researcher's ruled kinds, verified complete against
  * totalEvidence(), and printed as JSON between the two delimiters below. The
  * container cannot commit, so the file under registry-ledger/ is written from
  * exactly that block by whoever ran this, and a test holds it complete.
@@ -14,8 +14,8 @@
  *
  * REFUSES — exit 2, no JSON — when the entry count is not totalEvidence(), when
  * any index matches no hash column and is not on the ORPHANED list for this
- * registry (or, on the testnet, is not before the 2026-08-21 wipe), when an
- * index is AMBIGUOUS, or when the registry is empty. Every offending index is
+ * registry (or, on the testnet, is not before the 2026-08-21 wipe), or when the
+ * registry is empty. Every offending index is
  * named. Nothing below step 2 runs while an index is unexplained.
  */
 import 'dotenv/config';
