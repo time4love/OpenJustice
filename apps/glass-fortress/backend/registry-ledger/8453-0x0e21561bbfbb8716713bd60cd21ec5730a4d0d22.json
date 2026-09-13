@@ -1,0 +1,719 @@
+{
+  "registry": "0x0e21561bbfbb8716713bd60cd21ec5730a4d0d22",
+  "chainId": 8453,
+  "testnet": false,
+  "registrar": "0x19a4385405643682607c78d7e5c3a940ba2cccc8",
+  "totalEvidence": 20,
+  "readAt": "2026-09-13T13:16:31.917Z",
+  "commit": "0ca8d721011a23d00c8b3f5ebf09bc72c413dafc",
+  "successor": null,
+  "entries": [
+    {
+      "index": 0,
+      "hash": "0x3a1093b2dd6c2a466d5bd57cfc7f2266c64aec0f2827ec1bc7073392ae8f1bce",
+      "submitter": "0x19a4385405643682607c78d7e5c3a940ba2cccc8",
+      "blockTime": "2026-08-25T09:19:17.000Z",
+      "category": "INFORMED_CONSENT,SAFETY_CLAIM_ALTERATION,STATISTICAL_MANIPULATION,WITHHOLDING_INFORMATION",
+      "kind": "EVIDENCE_FILE_HASH",
+      "formula": "sha256 of the submitted payload via Web3Service.hashFile, by one of its five writers: createEvidenceFromUrl (the bytes fetched from the URL); evidenceRoutes (an uploaded file); createEvidenceFromText (url + \"\\n\\n\" + text.slice(0, 40000) — the 40,000-character bound is part of the formula); persistScreenshotEvidence (the concatenated image buffers); thesisRoutes (a document's ciphertext, base64-decoded). Which writer produced it is not recorded on the row; stored as Evidence.fileHash",
+      "inputs": [
+        {
+          "evidenceId": "f3a5545a-5b4f-472e-8932-f51c8cc6480b",
+          "evidenceType": "DOCUMENT"
+        }
+      ],
+      "attested": "a SELECTION: that this deployment named a record as evidence under a formula that is leaving the code, with the classifier's categories written as its public label, on 2026-08-25T09:19:17.000Z",
+      "replacedBy": "no row — evidence is rebuilt by the researcher's own hand from corpus records under evidence flows; this entry stays on the frozen registry, explained here"
+    },
+    {
+      "index": 1,
+      "hash": "0x0a68d7663a8d9232d3564fddd79477e5ec5d19735b75ccf6a73745c7128a4379",
+      "submitter": "0x19a4385405643682607c78d7e5c3a940ba2cccc8",
+      "blockTime": "2026-08-25T11:39:03.000Z",
+      "category": "Wayback Snapshot",
+      "kind": "CONTENT_HASH",
+      "formula": "sha256(extractArticleText(captureHtml(document), rawCaptureUrl(waybackTimestamp, url))) — Readability's article text of the page (src/lib/archiveText.ts), stored as UrlSnapshot.contentHash; one entry covers every capture whose extraction is byte-identical",
+      "inputs": [
+        {
+          "snapshotId": "cmt8ldqht0001ymeuxq6gl0dl",
+          "url": "https://corona.health.gov.il/vaccine-for-covid/",
+          "waybackTimestamp": "20211223211940"
+        }
+      ],
+      "attested": "that this deployment held the EXTRACTION of these captures on 2026-08-25T11:39:03.000Z — narrower than the payload, not false",
+      "replacedBy": "each listed capture's documentHash on the successor registry; the extractor-equality measurement (docs/gf-rebuild-staging-measure-2026-09-06.md §3) ties the bytes registered there to the text attested here"
+    },
+    {
+      "index": 2,
+      "hash": "0x1359af3aa18f5529b00096c182e15a4cf20b8f1b3b1118f7d7c9238874dc4e23",
+      "submitter": "0x19a4385405643682607c78d7e5c3a940ba2cccc8",
+      "blockTime": "2026-08-25T11:39:09.000Z",
+      "category": "Wayback Snapshot",
+      "kind": "CONTENT_HASH",
+      "formula": "sha256(extractArticleText(captureHtml(document), rawCaptureUrl(waybackTimestamp, url))) — Readability's article text of the page (src/lib/archiveText.ts), stored as UrlSnapshot.contentHash; one entry covers every capture whose extraction is byte-identical",
+      "inputs": [
+        {
+          "snapshotId": "cmt8lduil0003ymeue9hkgxwx",
+          "url": "https://corona.health.gov.il/vaccine-for-covid/",
+          "waybackTimestamp": "20220105113501"
+        },
+        {
+          "snapshotId": "cmt8le57c0005ymeu5o597fpn",
+          "url": "https://corona.health.gov.il/vaccine-for-covid/",
+          "waybackTimestamp": "20220109225622"
+        },
+        {
+          "snapshotId": "cmt8le95u0007ymeufbjjbgaf",
+          "url": "https://corona.health.gov.il/vaccine-for-covid/",
+          "waybackTimestamp": "20220110070843"
+        },
+        {
+          "snapshotId": "cmt8lecob0009ymeus8u5vyhg",
+          "url": "https://corona.health.gov.il/vaccine-for-covid/",
+          "waybackTimestamp": "20220120193832"
+        }
+      ],
+      "attested": "that this deployment held the EXTRACTION of these captures on 2026-08-25T11:39:09.000Z — narrower than the payload, not false",
+      "replacedBy": "each listed capture's documentHash on the successor registry; the extractor-equality measurement (docs/gf-rebuild-staging-measure-2026-09-06.md §3) ties the bytes registered there to the text attested here"
+    },
+    {
+      "index": 3,
+      "hash": "0x37937bbf4145070077536d45222a16e9791012c2378a39c400288dca18afedb3",
+      "submitter": "0x19a4385405643682607c78d7e5c3a940ba2cccc8",
+      "blockTime": "2026-08-25T11:39:37.000Z",
+      "category": "Wayback Snapshot",
+      "kind": "CONTENT_HASH",
+      "formula": "sha256(extractArticleText(captureHtml(document), rawCaptureUrl(waybackTimestamp, url))) — Readability's article text of the page (src/lib/archiveText.ts), stored as UrlSnapshot.contentHash; one entry covers every capture whose extraction is byte-identical",
+      "inputs": [
+        {
+          "snapshotId": "cmt8legn8000bymeue982q4ol",
+          "url": "https://corona.health.gov.il/vaccine-for-covid/",
+          "waybackTimestamp": "20220127180426"
+        }
+      ],
+      "attested": "that this deployment held the EXTRACTION of these captures on 2026-08-25T11:39:37.000Z — narrower than the payload, not false",
+      "replacedBy": "each listed capture's documentHash on the successor registry; the extractor-equality measurement (docs/gf-rebuild-staging-measure-2026-09-06.md §3) ties the bytes registered there to the text attested here"
+    },
+    {
+      "index": 4,
+      "hash": "0x5a51aa384d8ebffc740c11a4982389edec004631c39c87c81ad785ea5f26f8d9",
+      "submitter": "0x19a4385405643682607c78d7e5c3a940ba2cccc8",
+      "blockTime": "2026-08-25T11:39:49.000Z",
+      "category": "Wayback Snapshot",
+      "kind": "CONTENT_HASH",
+      "formula": "sha256(extractArticleText(captureHtml(document), rawCaptureUrl(waybackTimestamp, url))) — Readability's article text of the page (src/lib/archiveText.ts), stored as UrlSnapshot.contentHash; one entry covers every capture whose extraction is byte-identical",
+      "inputs": [
+        {
+          "snapshotId": "cmt8lep9f000dymeurs74opif",
+          "url": "https://corona.health.gov.il/vaccine-for-covid/",
+          "waybackTimestamp": "20220306141507"
+        },
+        {
+          "snapshotId": "cmt8lewsd000fymeu2pxdr0yb",
+          "url": "https://corona.health.gov.il/vaccine-for-covid/",
+          "waybackTimestamp": "20220307051457"
+        },
+        {
+          "snapshotId": "cmt8lf0it000hymeurh6mdl53",
+          "url": "https://corona.health.gov.il/vaccine-for-covid/",
+          "waybackTimestamp": "20220310011137"
+        },
+        {
+          "snapshotId": "cmt8lf6ud000jymeueb2u8rfv",
+          "url": "https://corona.health.gov.il/vaccine-for-covid/",
+          "waybackTimestamp": "20220317093755"
+        },
+        {
+          "snapshotId": "cmt8lfb7m000lymeuqttp2mto",
+          "url": "https://corona.health.gov.il/vaccine-for-covid/",
+          "waybackTimestamp": "20220321094754"
+        },
+        {
+          "snapshotId": "cmt8lfesx000nymeukr7ijfwb",
+          "url": "https://corona.health.gov.il/vaccine-for-covid/",
+          "waybackTimestamp": "20220324050808"
+        },
+        {
+          "snapshotId": "cmt8lflpn000pymeumscq4rra",
+          "url": "https://corona.health.gov.il/vaccine-for-covid/",
+          "waybackTimestamp": "20220325101511"
+        },
+        {
+          "snapshotId": "cmt8lfpji000rymeumt24jxlg",
+          "url": "https://corona.health.gov.il/vaccine-for-covid/",
+          "waybackTimestamp": "20220328055933"
+        },
+        {
+          "snapshotId": "cmt8lfvqa000tymeu2sb4j4p7",
+          "url": "https://corona.health.gov.il/vaccine-for-covid/",
+          "waybackTimestamp": "20220331095546"
+        },
+        {
+          "snapshotId": "cmt8lfze8000vymeuiocs1dqp",
+          "url": "https://corona.health.gov.il/vaccine-for-covid/",
+          "waybackTimestamp": "20220401125114"
+        },
+        {
+          "snapshotId": "cmt8lg2zd000xymeu8tnrsozj",
+          "url": "https://corona.health.gov.il/vaccine-for-covid/",
+          "waybackTimestamp": "20220403152841"
+        },
+        {
+          "snapshotId": "cmt8lg6qo000zymeu6tz0fr5x",
+          "url": "https://corona.health.gov.il/vaccine-for-covid/",
+          "waybackTimestamp": "20220407034423"
+        },
+        {
+          "snapshotId": "cmt8lgaof0011ymeugsoac3d0",
+          "url": "https://corona.health.gov.il/vaccine-for-covid/",
+          "waybackTimestamp": "20220407202405"
+        },
+        {
+          "snapshotId": "cmt8lgeal0013ymeu18vau26j",
+          "url": "https://corona.health.gov.il/vaccine-for-covid/",
+          "waybackTimestamp": "20220416020540"
+        },
+        {
+          "snapshotId": "cmt8lgi2a0015ymeutd0ibjxq",
+          "url": "https://corona.health.gov.il/vaccine-for-covid/",
+          "waybackTimestamp": "20220424143257"
+        },
+        {
+          "snapshotId": "cmt8lgluy0017ymeuyb2t9b79",
+          "url": "https://corona.health.gov.il/vaccine-for-covid/",
+          "waybackTimestamp": "20220501133802"
+        },
+        {
+          "snapshotId": "cmt8lgq760019ymeuurnwu977",
+          "url": "https://corona.health.gov.il/vaccine-for-covid/",
+          "waybackTimestamp": "20220502150503"
+        },
+        {
+          "snapshotId": "cmt8lgtp3001bymeuz15t9aoi",
+          "url": "https://corona.health.gov.il/vaccine-for-covid/",
+          "waybackTimestamp": "20220503051621"
+        },
+        {
+          "snapshotId": "cmt8lgxah001dymeu8e5oudv6",
+          "url": "https://corona.health.gov.il/vaccine-for-covid/",
+          "waybackTimestamp": "20220503102648"
+        },
+        {
+          "snapshotId": "cmt8lh0t4001fymeutb8ivsw5",
+          "url": "https://corona.health.gov.il/vaccine-for-covid/",
+          "waybackTimestamp": "20220503165508"
+        },
+        {
+          "snapshotId": "cmt8lh4ec001hymeuplpo3cte",
+          "url": "https://corona.health.gov.il/vaccine-for-covid/",
+          "waybackTimestamp": "20220516071941"
+        },
+        {
+          "snapshotId": "cmt8lh832001jymeu11ecyep1",
+          "url": "https://corona.health.gov.il/vaccine-for-covid/",
+          "waybackTimestamp": "20220521115125"
+        },
+        {
+          "snapshotId": "cmt8lhbms001lymeu842ot9gd",
+          "url": "https://corona.health.gov.il/vaccine-for-covid/",
+          "waybackTimestamp": "20220522045300"
+        },
+        {
+          "snapshotId": "cmt8lhf5h001nymeu3yzgtdy0",
+          "url": "https://corona.health.gov.il/vaccine-for-covid/",
+          "waybackTimestamp": "20220524070111"
+        },
+        {
+          "snapshotId": "cmt8li61s001vymeuir5qu6hw",
+          "url": "https://corona.health.gov.il/vaccine-for-covid/",
+          "waybackTimestamp": "20220529034526"
+        }
+      ],
+      "attested": "that this deployment held the EXTRACTION of these captures on 2026-08-25T11:39:49.000Z — narrower than the payload, not false",
+      "replacedBy": "each listed capture's documentHash on the successor registry; the extractor-equality measurement (docs/gf-rebuild-staging-measure-2026-09-06.md §3) ties the bytes registered there to the text attested here"
+    },
+    {
+      "index": 5,
+      "hash": "0x972c22830a3a1035cad7e3334167b3d0a452685ef6dc0d99b1f356d445f2dd51",
+      "submitter": "0x19a4385405643682607c78d7e5c3a940ba2cccc8",
+      "blockTime": "2026-08-25T11:42:03.000Z",
+      "category": "Wayback Snapshot",
+      "kind": "CONTENT_HASH",
+      "formula": "sha256(extractArticleText(captureHtml(document), rawCaptureUrl(waybackTimestamp, url))) — Readability's article text of the page (src/lib/archiveText.ts), stored as UrlSnapshot.contentHash; one entry covers every capture whose extraction is byte-identical",
+      "inputs": [
+        {
+          "snapshotId": "cmt8lhkx2001pymeu6jxcom6s",
+          "url": "https://corona.health.gov.il/vaccine-for-covid/",
+          "waybackTimestamp": "20220525073305"
+        }
+      ],
+      "attested": "that this deployment held the EXTRACTION of these captures on 2026-08-25T11:42:03.000Z — narrower than the payload, not false",
+      "replacedBy": "each listed capture's documentHash on the successor registry; the extractor-equality measurement (docs/gf-rebuild-staging-measure-2026-09-06.md §3) ties the bytes registered there to the text attested here"
+    },
+    {
+      "index": 6,
+      "hash": "0x6cf389c4130e81cf000357d40d6e9deba82c10b19808750c85562f1cbff9a93b",
+      "submitter": "0x19a4385405643682607c78d7e5c3a940ba2cccc8",
+      "blockTime": "2026-08-25T11:42:21.000Z",
+      "category": "Wayback Snapshot",
+      "kind": "CONTENT_HASH",
+      "formula": "sha256(extractArticleText(captureHtml(document), rawCaptureUrl(waybackTimestamp, url))) — Readability's article text of the page (src/lib/archiveText.ts), stored as UrlSnapshot.contentHash; one entry covers every capture whose extraction is byte-identical",
+      "inputs": [
+        {
+          "snapshotId": "cmt8lhyn7001rymeujmo9ofkw",
+          "url": "https://corona.health.gov.il/vaccine-for-covid/",
+          "waybackTimestamp": "20220526070453"
+        },
+        {
+          "snapshotId": "cmt8li29h001tymeui2m0gamj",
+          "url": "https://corona.health.gov.il/vaccine-for-covid/",
+          "waybackTimestamp": "20220526115821"
+        },
+        {
+          "snapshotId": "cmt8likc8001xymeun4myajw4",
+          "url": "https://corona.health.gov.il/vaccine-for-covid/",
+          "waybackTimestamp": "20220530072708"
+        },
+        {
+          "snapshotId": "cmt8lj00t001zymeuj88eurb1",
+          "url": "https://corona.health.gov.il/vaccine-for-covid/",
+          "waybackTimestamp": "20220601051009"
+        },
+        {
+          "snapshotId": "cmt8lj3p20021ymeu014mj6d9",
+          "url": "https://corona.health.gov.il/vaccine-for-covid/",
+          "waybackTimestamp": "20220613113551"
+        },
+        {
+          "snapshotId": "cmt8lj7f70023ymeuz7vmsqcn",
+          "url": "https://corona.health.gov.il/vaccine-for-covid/",
+          "waybackTimestamp": "20220620061146"
+        },
+        {
+          "snapshotId": "cmt8ljawl0025ymeucw941as7",
+          "url": "https://corona.health.gov.il/vaccine-for-covid/",
+          "waybackTimestamp": "20220625064541"
+        },
+        {
+          "snapshotId": "cmt8ljees0027ymeuw3t1tzpf",
+          "url": "https://corona.health.gov.il/vaccine-for-covid/",
+          "waybackTimestamp": "20220625192535"
+        },
+        {
+          "snapshotId": "cmt8ljhyw0029ymeucmo6wv0t",
+          "url": "https://corona.health.gov.il/vaccine-for-covid/",
+          "waybackTimestamp": "20220626023211"
+        }
+      ],
+      "attested": "that this deployment held the EXTRACTION of these captures on 2026-08-25T11:42:21.000Z — narrower than the payload, not false",
+      "replacedBy": "each listed capture's documentHash on the successor registry; the extractor-equality measurement (docs/gf-rebuild-staging-measure-2026-09-06.md §3) ties the bytes registered there to the text attested here"
+    },
+    {
+      "index": 7,
+      "hash": "0xbac53d24813bc35652d0d935defa69a9c35274ca6a51e1227f90dc6634a6cdf6",
+      "submitter": "0x19a4385405643682607c78d7e5c3a940ba2cccc8",
+      "blockTime": "2026-08-25T11:43:37.000Z",
+      "category": "Wayback Snapshot",
+      "kind": "CONTENT_HASH",
+      "formula": "sha256(extractArticleText(captureHtml(document), rawCaptureUrl(waybackTimestamp, url))) — Readability's article text of the page (src/lib/archiveText.ts), stored as UrlSnapshot.contentHash; one entry covers every capture whose extraction is byte-identical",
+      "inputs": [
+        {
+          "snapshotId": "cmt8ljlhr002bymeutj9794ku",
+          "url": "https://corona.health.gov.il/vaccine-for-covid/",
+          "waybackTimestamp": "20220628073145"
+        },
+        {
+          "snapshotId": "cmt8ljp3x002dymeu0al5cqdh",
+          "url": "https://corona.health.gov.il/vaccine-for-covid/",
+          "waybackTimestamp": "20220703000203"
+        },
+        {
+          "snapshotId": "cmt8lkfh4003dymeumakuffit",
+          "url": "https://corona.health.gov.il/vaccine-for-covid/",
+          "waybackTimestamp": "20220703090600"
+        },
+        {
+          "snapshotId": "cmt8lkioi003fymeu5lrq929r",
+          "url": "https://corona.health.gov.il/vaccine-for-covid/",
+          "waybackTimestamp": "20220708063632"
+        },
+        {
+          "snapshotId": "cmt8lkmbo003hymeuedilsn5y",
+          "url": "https://corona.health.gov.il/vaccine-for-covid/",
+          "waybackTimestamp": "20220709032032"
+        },
+        {
+          "snapshotId": "cmt8lkpuw003jymeuh8nx4vh5",
+          "url": "https://corona.health.gov.il/vaccine-for-covid/",
+          "waybackTimestamp": "20220712033038"
+        },
+        {
+          "snapshotId": "cmt8lktkt003lymeu04mxmz53",
+          "url": "https://corona.health.gov.il/vaccine-for-covid/",
+          "waybackTimestamp": "20220712072632"
+        },
+        {
+          "snapshotId": "cmt8lkxhz003nymeuuylnvyl2",
+          "url": "https://corona.health.gov.il/vaccine-for-covid/",
+          "waybackTimestamp": "20220724130104"
+        }
+      ],
+      "attested": "that this deployment held the EXTRACTION of these captures on 2026-08-25T11:43:37.000Z — narrower than the payload, not false",
+      "replacedBy": "each listed capture's documentHash on the successor registry; the extractor-equality measurement (docs/gf-rebuild-staging-measure-2026-09-06.md §3) ties the bytes registered there to the text attested here"
+    },
+    {
+      "index": 8,
+      "hash": "0xb5c0dd130ac0c2a86d45bcc7178628a32141ff33a49d7a524e44a16d0765db12",
+      "submitter": "0x19a4385405643682607c78d7e5c3a940ba2cccc8",
+      "blockTime": "2026-08-25T11:44:43.000Z",
+      "category": "Wayback Snapshot",
+      "kind": "CONTENT_HASH",
+      "formula": "sha256(extractArticleText(captureHtml(document), rawCaptureUrl(waybackTimestamp, url))) — Readability's article text of the page (src/lib/archiveText.ts), stored as UrlSnapshot.contentHash; one entry covers every capture whose extraction is byte-identical",
+      "inputs": [
+        {
+          "snapshotId": "cmt8ll10w003pymeufp31y2np",
+          "url": "https://corona.health.gov.il/vaccine-for-covid/",
+          "waybackTimestamp": "20220805053301"
+        },
+        {
+          "snapshotId": "cmt8llevm003rymeu7j9ww4zx",
+          "url": "https://corona.health.gov.il/vaccine-for-covid/",
+          "waybackTimestamp": "20220805093544"
+        },
+        {
+          "snapshotId": "cmt8llimz003tymeuhr1cbqww",
+          "url": "https://corona.health.gov.il/vaccine-for-covid/",
+          "waybackTimestamp": "20220807093047"
+        },
+        {
+          "snapshotId": "cmt8llmai003vymeuoy4wdjsm",
+          "url": "https://corona.health.gov.il/vaccine-for-covid/",
+          "waybackTimestamp": "20220810044648"
+        },
+        {
+          "snapshotId": "cmt8llpxy003xymeud3lgp4tt",
+          "url": "https://corona.health.gov.il/vaccine-for-covid/",
+          "waybackTimestamp": "20220813205312"
+        },
+        {
+          "snapshotId": "cmt8lltpd003zymeummzoq4z1",
+          "url": "https://corona.health.gov.il/vaccine-for-covid/",
+          "waybackTimestamp": "20220815175138"
+        },
+        {
+          "snapshotId": "cmt8llxb50041ymeunoddsgaq",
+          "url": "https://corona.health.gov.il/vaccine-for-covid/",
+          "waybackTimestamp": "20220816130658"
+        },
+        {
+          "snapshotId": "cmt8lm1360043ymeux44xblf8",
+          "url": "https://corona.health.gov.il/vaccine-for-covid/",
+          "waybackTimestamp": "20220816235351"
+        },
+        {
+          "snapshotId": "cmt8lm51a0045ymeuuhq9j8b7",
+          "url": "https://corona.health.gov.il/vaccine-for-covid/",
+          "waybackTimestamp": "20220905111109"
+        }
+      ],
+      "attested": "that this deployment held the EXTRACTION of these captures on 2026-08-25T11:44:43.000Z — narrower than the payload, not false",
+      "replacedBy": "each listed capture's documentHash on the successor registry; the extractor-equality measurement (docs/gf-rebuild-staging-measure-2026-09-06.md §3) ties the bytes registered there to the text attested here"
+    },
+    {
+      "index": 9,
+      "hash": "0x5060ae31a045d29dccb9dc2bf363322741417dfd36f8eb4a9d2347ea026a1072",
+      "submitter": "0x19a4385405643682607c78d7e5c3a940ba2cccc8",
+      "blockTime": "2026-08-25T11:45:41.000Z",
+      "category": "Wayback Snapshot",
+      "kind": "CONTENT_HASH",
+      "formula": "sha256(extractArticleText(captureHtml(document), rawCaptureUrl(waybackTimestamp, url))) — Readability's article text of the page (src/lib/archiveText.ts), stored as UrlSnapshot.contentHash; one entry covers every capture whose extraction is byte-identical",
+      "inputs": [
+        {
+          "snapshotId": "cmt8lm8p00047ymeuynn3y90v",
+          "url": "https://corona.health.gov.il/vaccine-for-covid/",
+          "waybackTimestamp": "20220906232435"
+        },
+        {
+          "snapshotId": "cmt8lmnt00049ymeui93uvdzl",
+          "url": "https://corona.health.gov.il/vaccine-for-covid/",
+          "waybackTimestamp": "20220911042042"
+        },
+        {
+          "snapshotId": "cmt8lmrhe004bymeux5ia4gvh",
+          "url": "https://corona.health.gov.il/vaccine-for-covid/",
+          "waybackTimestamp": "20220921153631"
+        }
+      ],
+      "attested": "that this deployment held the EXTRACTION of these captures on 2026-08-25T11:45:41.000Z — narrower than the payload, not false",
+      "replacedBy": "each listed capture's documentHash on the successor registry; the extractor-equality measurement (docs/gf-rebuild-staging-measure-2026-09-06.md §3) ties the bytes registered there to the text attested here"
+    },
+    {
+      "index": 10,
+      "hash": "0x173f1e0ebd4c036fd719fa61259897f1d3e22df48b3fd6885e4671dfefec6fa3",
+      "submitter": "0x19a4385405643682607c78d7e5c3a940ba2cccc8",
+      "blockTime": "2026-08-25T11:46:09.000Z",
+      "category": "Wayback Snapshot",
+      "kind": "CONTENT_HASH",
+      "formula": "sha256(extractArticleText(captureHtml(document), rawCaptureUrl(waybackTimestamp, url))) — Readability's article text of the page (src/lib/archiveText.ts), stored as UrlSnapshot.contentHash; one entry covers every capture whose extraction is byte-identical",
+      "inputs": [
+        {
+          "snapshotId": "cmt8lmv1i004dymeupsinxvbc",
+          "url": "https://corona.health.gov.il/vaccine-for-covid/",
+          "waybackTimestamp": "20221129135816"
+        },
+        {
+          "snapshotId": "cmt8ln796004fymeuoqwehtc2",
+          "url": "https://corona.health.gov.il/vaccine-for-covid/",
+          "waybackTimestamp": "20221206084840"
+        },
+        {
+          "snapshotId": "cmt8lnb2f004hymeukt81y9lr",
+          "url": "https://corona.health.gov.il/vaccine-for-covid/",
+          "waybackTimestamp": "20221213051341"
+        },
+        {
+          "snapshotId": "cmt8lnel0004jymeuuwxug9j3",
+          "url": "https://corona.health.gov.il/vaccine-for-covid/",
+          "waybackTimestamp": "20221227183419"
+        }
+      ],
+      "attested": "that this deployment held the EXTRACTION of these captures on 2026-08-25T11:46:09.000Z — narrower than the payload, not false",
+      "replacedBy": "each listed capture's documentHash on the successor registry; the extractor-equality measurement (docs/gf-rebuild-staging-measure-2026-09-06.md §3) ties the bytes registered there to the text attested here"
+    },
+    {
+      "index": 11,
+      "hash": "0x1d2b92f6fdc219c2c19265eee65ff7f2f990981a2b26fa26fdb074dfce28c04b",
+      "submitter": "0x19a4385405643682607c78d7e5c3a940ba2cccc8",
+      "blockTime": "2026-08-25T11:46:39.000Z",
+      "category": "Wayback Snapshot",
+      "kind": "CONTENT_HASH",
+      "formula": "sha256(extractArticleText(captureHtml(document), rawCaptureUrl(waybackTimestamp, url))) — Readability's article text of the page (src/lib/archiveText.ts), stored as UrlSnapshot.contentHash; one entry covers every capture whose extraction is byte-identical",
+      "inputs": [
+        {
+          "snapshotId": "cmt8lni6r004lymeu72yb7507",
+          "url": "https://corona.health.gov.il/vaccine-for-covid/",
+          "waybackTimestamp": "20230103003746"
+        },
+        {
+          "snapshotId": "cmt8lnqby004nymeug1rq2wx8",
+          "url": "https://corona.health.gov.il/vaccine-for-covid/",
+          "waybackTimestamp": "20230106182925"
+        },
+        {
+          "snapshotId": "cmt8lntyt004pymeubnb1aob5",
+          "url": "https://corona.health.gov.il/vaccine-for-covid/",
+          "waybackTimestamp": "20230316124416"
+        },
+        {
+          "snapshotId": "cmt8lny0f004rymeujhnaxikx",
+          "url": "https://corona.health.gov.il/vaccine-for-covid/",
+          "waybackTimestamp": "20230327192436"
+        },
+        {
+          "snapshotId": "cmt8lo26w004tymeusria5tyj",
+          "url": "https://corona.health.gov.il/vaccine-for-covid/",
+          "waybackTimestamp": "20230528004431"
+        },
+        {
+          "snapshotId": "cmt8lo5vg004vymeuyzg78tqp",
+          "url": "https://corona.health.gov.il/vaccine-for-covid/",
+          "waybackTimestamp": "20231004055937"
+        },
+        {
+          "snapshotId": "cmt8locwj004xymeupe4u9noj",
+          "url": "https://corona.health.gov.il/vaccine-for-covid/",
+          "waybackTimestamp": "20231129211127"
+        },
+        {
+          "snapshotId": "cmt8loiu6004zymeujc3k9zkp",
+          "url": "https://corona.health.gov.il/vaccine-for-covid/",
+          "waybackTimestamp": "20240117025856"
+        },
+        {
+          "snapshotId": "cmt8lomc30051ymeus0jiem0n",
+          "url": "https://corona.health.gov.il/vaccine-for-covid/",
+          "waybackTimestamp": "20240305045153"
+        },
+        {
+          "snapshotId": "cmt8lotmw0053ymeurgkpmle5",
+          "url": "https://corona.health.gov.il/vaccine-for-covid/",
+          "waybackTimestamp": "20250111140058"
+        },
+        {
+          "snapshotId": "cmt8lox9b0055ymeuanqlmqmv",
+          "url": "https://corona.health.gov.il/vaccine-for-covid/",
+          "waybackTimestamp": "20250421134822"
+        },
+        {
+          "snapshotId": "cmt8lp17p0057ymeug4cgwqas",
+          "url": "https://corona.health.gov.il/vaccine-for-covid/",
+          "waybackTimestamp": "20250423145731"
+        },
+        {
+          "snapshotId": "cmt8lp4s90059ymeu9jykxvki",
+          "url": "https://corona.health.gov.il/vaccine-for-covid/",
+          "waybackTimestamp": "20250425035258"
+        }
+      ],
+      "attested": "that this deployment held the EXTRACTION of these captures on 2026-08-25T11:46:39.000Z — narrower than the payload, not false",
+      "replacedBy": "each listed capture's documentHash on the successor registry; the extractor-equality measurement (docs/gf-rebuild-staging-measure-2026-09-06.md §3) ties the bytes registered there to the text attested here"
+    },
+    {
+      "index": 12,
+      "hash": "0x08e753a359d21d1257150861578285bce123c7970472c4dd56869d389a521a9d",
+      "submitter": "0x19a4385405643682607c78d7e5c3a940ba2cccc8",
+      "blockTime": "2026-08-25T11:47:59.000Z",
+      "category": "Wayback Snapshot",
+      "kind": "CONTENT_HASH",
+      "formula": "sha256(extractArticleText(captureHtml(document), rawCaptureUrl(waybackTimestamp, url))) — Readability's article text of the page (src/lib/archiveText.ts), stored as UrlSnapshot.contentHash; one entry covers every capture whose extraction is byte-identical",
+      "inputs": [
+        {
+          "snapshotId": "cmt8lp8o3005bymeupv4ovu78",
+          "url": "https://corona.health.gov.il/vaccine-for-covid/",
+          "waybackTimestamp": "20250601000101"
+        },
+        {
+          "snapshotId": "cmt8lpn95005dymeu5sx0hqit",
+          "url": "https://corona.health.gov.il/vaccine-for-covid/",
+          "waybackTimestamp": "20250625005751"
+        },
+        {
+          "snapshotId": "cmt8lpr3f005fymeuqofpwc4u",
+          "url": "https://corona.health.gov.il/vaccine-for-covid/",
+          "waybackTimestamp": "20260106053445"
+        },
+        {
+          "snapshotId": "cmt8lputv005hymeuv8puh6u5",
+          "url": "https://corona.health.gov.il/vaccine-for-covid/",
+          "waybackTimestamp": "20260304101427"
+        },
+        {
+          "snapshotId": "cmt8lpynv005jymeufmrubw9r",
+          "url": "https://corona.health.gov.il/vaccine-for-covid/",
+          "waybackTimestamp": "20260305020413"
+        }
+      ],
+      "attested": "that this deployment held the EXTRACTION of these captures on 2026-08-25T11:47:59.000Z — narrower than the payload, not false",
+      "replacedBy": "each listed capture's documentHash on the successor registry; the extractor-equality measurement (docs/gf-rebuild-staging-measure-2026-09-06.md §3) ties the bytes registered there to the text attested here"
+    },
+    {
+      "index": 13,
+      "hash": "0xf6e755b59c06d64d9ef2e335f250b13e57231bc77c1871c0f500e381e6250441",
+      "submitter": "0x19a4385405643682607c78d7e5c3a940ba2cccc8",
+      "blockTime": "2026-08-25T14:55:49.000Z",
+      "category": "INFORMED_CONSENT,SAFETY_CLAIM_ALTERATION,STATISTICAL_MANIPULATION,WITHHOLDING_INFORMATION",
+      "kind": "EVIDENCE_FILE_HASH",
+      "formula": "forensicEvidenceFileHash(url, before, after) = sha256(url + \"\\n\" + before.waybackTimestamp + \"\\n\" + before.contentHash + \"\\n\" + after.waybackTimestamp + \"\\n\" + after.contentHash) (src/services/forensicEvidence.ts), stored as Evidence.fileHash",
+      "inputs": [
+        {
+          "evidenceId": "9ad9ed62-e7e3-4989-8b65-4573d4496837",
+          "evidenceType": "FORENSIC_DIFF"
+        }
+      ],
+      "attested": "a SELECTION: that this deployment named a record as evidence under a formula that is leaving the code, with the classifier's categories written as its public label, on 2026-08-25T14:55:49.000Z",
+      "replacedBy": "no row — evidence is rebuilt by the researcher's own hand from corpus records under evidence flows; this entry stays on the frozen registry, explained here"
+    },
+    {
+      "index": 14,
+      "hash": "0x5cfa25276fc4ab600c720fb8abc8dd3b004c4706bbca51df6d22ea441f6a4431",
+      "submitter": "0x19a4385405643682607c78d7e5c3a940ba2cccc8",
+      "blockTime": "2026-08-25T14:55:55.000Z",
+      "category": "INFORMED_CONSENT,SAFETY_CLAIM_ALTERATION,STATISTICAL_MANIPULATION,WITHHOLDING_INFORMATION",
+      "kind": "EVIDENCE_FILE_HASH",
+      "formula": "forensicEvidenceFileHash(url, before, after) = sha256(url + \"\\n\" + before.waybackTimestamp + \"\\n\" + before.contentHash + \"\\n\" + after.waybackTimestamp + \"\\n\" + after.contentHash) (src/services/forensicEvidence.ts), stored as Evidence.fileHash",
+      "inputs": [
+        {
+          "evidenceId": "025cfb51-688e-4411-bee8-09699c2c3b7f",
+          "evidenceType": "FORENSIC_DIFF"
+        }
+      ],
+      "attested": "a SELECTION: that this deployment named a record as evidence under a formula that is leaving the code, with the classifier's categories written as its public label, on 2026-08-25T14:55:55.000Z",
+      "replacedBy": "no row — evidence is rebuilt by the researcher's own hand from corpus records under evidence flows; this entry stays on the frozen registry, explained here"
+    },
+    {
+      "index": 15,
+      "hash": "0x9b06b575c1d328365a59b3d2f9a2546a1f83e3ad86237d0af9546de33403f3ee",
+      "submitter": "0x19a4385405643682607c78d7e5c3a940ba2cccc8",
+      "blockTime": "2026-08-25T14:55:59.000Z",
+      "category": "INFORMED_CONSENT,SAFETY_CLAIM_ALTERATION,STATISTICAL_MANIPULATION,WITHHOLDING_INFORMATION",
+      "kind": "EVIDENCE_FILE_HASH",
+      "formula": "forensicEvidenceFileHash(url, before, after) = sha256(url + \"\\n\" + before.waybackTimestamp + \"\\n\" + before.contentHash + \"\\n\" + after.waybackTimestamp + \"\\n\" + after.contentHash) (src/services/forensicEvidence.ts), stored as Evidence.fileHash",
+      "inputs": [
+        {
+          "evidenceId": "38576704-fda9-448f-85f5-fb7561a4bba2",
+          "evidenceType": "FORENSIC_DIFF"
+        }
+      ],
+      "attested": "a SELECTION: that this deployment named a record as evidence under a formula that is leaving the code, with the classifier's categories written as its public label, on 2026-08-25T14:55:59.000Z",
+      "replacedBy": "no row — evidence is rebuilt by the researcher's own hand from corpus records under evidence flows; this entry stays on the frozen registry, explained here"
+    },
+    {
+      "index": 16,
+      "hash": "0x66acc98f8bef48a2c16b8b8f78647cdb83698894eb9c9e0690c1aa84fbea2f61",
+      "submitter": "0x19a4385405643682607c78d7e5c3a940ba2cccc8",
+      "blockTime": "2026-08-25T14:56:05.000Z",
+      "category": "ACCOUNTABILITY_EROSION,INFORMED_CONSENT,SAFETY_CLAIM_ALTERATION,STATISTICAL_MANIPULATION,WITHHOLDING_INFORMATION",
+      "kind": "EVIDENCE_FILE_HASH",
+      "formula": "forensicEvidenceFileHash(url, before, after) = sha256(url + \"\\n\" + before.waybackTimestamp + \"\\n\" + before.contentHash + \"\\n\" + after.waybackTimestamp + \"\\n\" + after.contentHash) (src/services/forensicEvidence.ts), stored as Evidence.fileHash",
+      "inputs": [
+        {
+          "evidenceId": "08432961-66cf-4ef0-9e9c-82718e8cdd40",
+          "evidenceType": "FORENSIC_DIFF"
+        }
+      ],
+      "attested": "a SELECTION: that this deployment named a record as evidence under a formula that is leaving the code, with the classifier's categories written as its public label, on 2026-08-25T14:56:05.000Z",
+      "replacedBy": "no row — evidence is rebuilt by the researcher's own hand from corpus records under evidence flows; this entry stays on the frozen registry, explained here"
+    },
+    {
+      "index": 17,
+      "hash": "0x7517947a3d70258567e0e02aa5737668c58ae24b5ee1dfef46eba3b737df2ac9",
+      "submitter": "0x19a4385405643682607c78d7e5c3a940ba2cccc8",
+      "blockTime": "2026-08-25T14:56:07.000Z",
+      "category": "EXPERIMENTAL_STATUS_CONCEALMENT,INFORMED_CONSENT,SAFETY_CLAIM_ALTERATION,STATISTICAL_MANIPULATION,WITHHOLDING_INFORMATION",
+      "kind": "EVIDENCE_FILE_HASH",
+      "formula": "forensicEvidenceFileHash(url, before, after) = sha256(url + \"\\n\" + before.waybackTimestamp + \"\\n\" + before.contentHash + \"\\n\" + after.waybackTimestamp + \"\\n\" + after.contentHash) (src/services/forensicEvidence.ts), stored as Evidence.fileHash",
+      "inputs": [
+        {
+          "evidenceId": "12bca702-d59b-42f4-8a59-2cdb3ca992be",
+          "evidenceType": "FORENSIC_DIFF"
+        }
+      ],
+      "attested": "a SELECTION: that this deployment named a record as evidence under a formula that is leaving the code, with the classifier's categories written as its public label, on 2026-08-25T14:56:07.000Z",
+      "replacedBy": "no row — evidence is rebuilt by the researcher's own hand from corpus records under evidence flows; this entry stays on the frozen registry, explained here"
+    },
+    {
+      "index": 18,
+      "hash": "0x088e501eb2e5e77380c5b8fb19aa98fe5a94f27a5940e7551d0d3590fadc6f3a",
+      "submitter": "0x19a4385405643682607c78d7e5c3a940ba2cccc8",
+      "blockTime": "2026-08-25T14:56:15.000Z",
+      "category": "SAFETY_CLAIM_ALTERATION,STATISTICAL_MANIPULATION,WITHHOLDING_INFORMATION",
+      "kind": "EVIDENCE_FILE_HASH",
+      "formula": "forensicEvidenceFileHash(url, before, after) = sha256(url + \"\\n\" + before.waybackTimestamp + \"\\n\" + before.contentHash + \"\\n\" + after.waybackTimestamp + \"\\n\" + after.contentHash) (src/services/forensicEvidence.ts), stored as Evidence.fileHash",
+      "inputs": [
+        {
+          "evidenceId": "d6341be5-5631-4039-9c44-1c07651bbbf6",
+          "evidenceType": "FORENSIC_DIFF"
+        }
+      ],
+      "attested": "a SELECTION: that this deployment named a record as evidence under a formula that is leaving the code, with the classifier's categories written as its public label, on 2026-08-25T14:56:15.000Z",
+      "replacedBy": "no row — evidence is rebuilt by the researcher's own hand from corpus records under evidence flows; this entry stays on the frozen registry, explained here"
+    },
+    {
+      "index": 19,
+      "hash": "0x8b814765297a097988280da80c4ae655547c13ae135178fa614838b6d1002a34",
+      "submitter": "0x19a4385405643682607c78d7e5c3a940ba2cccc8",
+      "blockTime": "2026-08-26T09:38:49.000Z",
+      "category": "ACCOUNTABILITY_EROSION,SAFETY_CLAIM_ALTERATION,WITHHOLDING_INFORMATION",
+      "kind": "EVIDENCE_FILE_HASH",
+      "formula": "forensicEvidenceFileHash(url, before, after) = sha256(url + \"\\n\" + before.waybackTimestamp + \"\\n\" + before.contentHash + \"\\n\" + after.waybackTimestamp + \"\\n\" + after.contentHash) (src/services/forensicEvidence.ts), stored as Evidence.fileHash",
+      "inputs": [
+        {
+          "evidenceId": "940a54e9-f0f8-4ecd-87c1-7a2896a33261",
+          "evidenceType": "FORENSIC_DIFF"
+        }
+      ],
+      "attested": "a SELECTION: that this deployment named a record as evidence under a formula that is leaving the code, with the classifier's categories written as its public label, on 2026-08-26T09:38:49.000Z",
+      "replacedBy": "no row — evidence is rebuilt by the researcher's own hand from corpus records under evidence flows; this entry stays on the frozen registry, explained here"
+    }
+  ]
+}
