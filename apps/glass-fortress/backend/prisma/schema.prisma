@@ -40,47 +40,27 @@ model Researcher {
   thesisVersions     ThesisVersion[]
   theses             Thesis[]            @relation("ThesisAuthor")
   publishedTheses    Thesis[]            @relation("ThesisPublisher")
-  researchSessions   ResearchSession[]
-  summaryCorrections SummaryCorrection[]
-  articleRulesets    ArticleRuleset[]
-  calibrationRuns    CalibrationRun[]
-  calibrationResets  CalibrationReset[]
+  framings           Framing[]
+  framingRounds      FramingRound[]
+  gapDecisions       ThesisGapDecision[]
+  publicationAttempts PublicationAttempt[]
+  withdrawals        Withdrawal[]
+  notes              Note[]
+  debateSessions     DebateSession[]
   createdTrackedUrls TrackedUrl[]        @relation("TrackedUrlCreator")
   rules              Rule[]
   pageDecisions      PageDecision[]
+  evidenceDecisions EvidenceDecision[]
 }
 
 // ---------------------------------------------------------------------------
-// Wayback Machine forensic scan entities.
+// Wayback Machine forensic entities.
 //
-// TrackedUrl       — primary entity: a URL being tracked for silent edits.
-// WaybackScrapeJob — internal batch unit; multiple per TrackedUrl for paginated
-//                    CDX scans. Chained server-side by runFullScan(), not exposed
-//                    directly in the UI.
+// TrackedUrl — primary entity: a URL being tracked for silent edits. The walk's
+//              state is its work-list (CdxIndexEntry), never a status on the page
+//              (docs/gf-refactor-plan.md §2; the old scan job and the page status
+//              left at R45-B).
 // ---------------------------------------------------------------------------
-
-enum WaybackJobStatus {
-  PENDING
-  IN_PROGRESS
-  COMPLETED
-  FAILED
-}
-
-// Why a job ended FAILED — lets the frontend distinguish an outage on
-// archive.org's end (retry later, nothing wrong with our pipeline) from an
-// unexpected failure worth investigating.
-enum WaybackFailureReason {
-  WAYBACK_OFFLINE // every fetch in this batch hit HTTP 503 from web.archive.org
-  ALL_FETCHES_FAILED // every fetch in this batch failed, but not via 503
-}
-
-enum TrackedUrlStatus {
-  IDLE // created via legacy sync endpoint; no async status tracking
-  SCANNING // runFullScan is active (or was interrupted — resumable)
-  PAUSED // user paused mid-scan; resumable via POST /scan
-  COMPLETED // all CDX batches processed
-  FAILED // unrecoverable error during processing
-}
 
 // How a capture came into our possession — see docs/gf-factual-layer-rebuild-dev-plan.md §2.
 //
@@ -157,24 +137,13 @@ model TrackedUrl {
   id                     String                       @id @default(uuid())
   url                    String                       @unique
   title                  String?
-  status                 TrackedUrlStatus             @default(IDLE)
   createdAt              DateTime                     @default(now())
   diffs                  UrlVersionDiff[]
   snapshots              UrlSnapshot[]
-  job                    WaybackScrapeJob?
   trajectories           ClaimTrajectory[]
   trajectoryComputations ClaimTrajectoryComputation[]
   cdxIndexEntries        CdxIndexEntry[]
   cdxQueries             CdxQuery[]
-  // Level 4 — the view. Every ruleset ever committed for this page...
-  articleRulesets        ArticleRuleset[]             @relation("TrackedUrlRulesets")
-  calibrationRuns        CalibrationRun[]
-  calibrationResets      CalibrationReset[]
-  // ...and which one is IN FORCE, as a FACT rather than an inference from
-  // ordering. Unique because a ruleset is scoped to one page, so it can be
-  // active for at most one.
-  activeArticleRulesetId String?                      @unique
-  activeArticleRuleset   ArticleRuleset?              @relation("ActiveArticleRuleset", fields: [activeArticleRulesetId], references: [id])
 
   // THE WALK (docs/gf-interaction-flows.md A2) — additive, refactor step 1.
   //
@@ -197,8 +166,10 @@ model TrackedUrl {
 }
 
 // One record per unique archived snapshot of a TrackedUrl.
-// fullText is stored locally — immune to Wayback Machine takedowns.
-// contentHash (SHA-256 of fullText) can be registered on-chain for immutable chain of custody.
+// `document` is stored locally — the payload as served, immune to Wayback Machine takedowns.
+// `documentHash` (SHA-256 of it) is what the chain attests and what evidence identity is
+// composed from (docs/gf-evidence-flows.md A1). The legacy register — Readability's
+// `fullText`, its `contentHash` and the stored viewer `snapshotUrl` — left at R45-B.
 // Shared across diffs: two diffs spanning the same snapshot reference the same row.
 model UrlSnapshot {
   id                      String              @id @default(cuid())
@@ -222,21 +193,6 @@ model UrlSnapshot {
   // number of non-archived captures coexist under one TrackedUrl.
   waybackTimestamp        String? // YYYYMMDDHHMMSS — unique Wayback archive identifier
   snapshotDate            String // YYYY-MM-DD — human-readable date
-  // Where this capture was fetched FROM — the Wayback canonical URL for an
-  // archived capture, the live URL for a direct one.
-  snapshotUrl             String
-  fullText                String // Readability's article — NOT the page. See `text` and `document`.
-  // SHA-256(fullText) — Readability's article, NOT the page.
-  //
-  // NO LONGER THE ANCHORED HASH. This said "the only hash anchored today" until
-  // 2026-08-30, when Level 3 clause 1 moved the anchor to `documentHash`; the
-  // comment outlived the fact by exactly as long as nobody reread it.
-  //
-  // It keeps its OTHER jobs, and they are why it is not going anywhere:
-  // `rediffFromSnapshots` re-verifies its inputs against it, and
-  // `forensicEvidenceFileHash` composes evidence identity from it. Whether that
-  // identity should follow the anchor is §2's decision and the researcher's.
-  contentHash             String
   // THE PAYLOAD AS FETCHED. Bytes, not text, and nothing derived from it.
   //
   // This column exists because the first attempt at Level 1 REPRODUCED THE BUG IT
@@ -334,7 +290,7 @@ model UrlSnapshot {
   // can be true of a row anchored under a superseded rule. That is also what
   // makes Level 10's supersession auditable rather than merely documented.
   //
-  // DELIBERATELY NOT BACKFILLED from `contentHash`. Writing the value we expect
+  // DELIBERATELY NOT BACKFILLED from the legacy `contentHash`. Writing the value we expect
   // is stamping a BELIEF, and this repository has already paid for that once:
   // 91 integrity verdicts were written carrying a chain they had never been
   // reached against, and were indistinguishable from correct ones afterwards.
@@ -370,15 +326,11 @@ model UrlSnapshot {
   // SHA-256 column, and stayed there across both environments. The digest lives
   // on CdxIndexEntry, one join away, where nothing can mistake it for ours.
   cdxIndexEntry        CdxIndexEntry?        @relation("CdxEntryCapture")
-  /// Index entries whose UNCHANGED verdict was computed against this capture.
-  cdxComparisons       CdxIndexEntry[]       @relation("CdxEntryComparedTo")
   // Every SUPERSEDED derivation of this capture — the re-walk keeps what it replaces.
   textVersions         TextVersion[]
-  /// Level 4 — what each ruleset did to this capture, and the marking decisions
-  /// taken about it.
-  rulesetObservations  RulesetObservation[]
-  calibrationDecisions CalibrationDecision[]
 
+  evidence         Evidence[]
+  recordOfDebates  DebateSession[]
   @@unique([trackedUrlId, waybackTimestamp])
   // A TrackedUrl cannot hold two captures of the same instant. This is the
   // constraint that makes capturedAt a usable timeline key across provenances,
@@ -386,229 +338,45 @@ model UrlSnapshot {
   @@unique([trackedUrlId, capturedAt])
 }
 
-// Internal scan-state record. One per TrackedUrl — updated in-place across
-// CDX batch iterations rather than creating new records per batch.
-model WaybackScrapeJob {
-  id                 String                @id @default(uuid())
-  url                String
-  status             WaybackJobStatus      @default(PENDING)
-  totalSnapshots     Int                   @default(0)
-  processedSnapshots Int                   @default(0)
-  // Set only when status is FAILED — null for every other status.
-  failureReason      WaybackFailureReason?
-  // JSON: Array<{ timestamp: string; digest: string; status: 'PENDING' | 'DONE' | 'FAILED' }>
-  snapshotsList      String                @default("[]")
-  trackedUrlId       String                @unique
-  trackedUrl         TrackedUrl            @relation(fields: [trackedUrlId], references: [id], onDelete: Cascade)
-  fromDate           String? // YYYYMMDD — CDX query start date for the current batch
-  createdAt          DateTime              @default(now())
-  updatedAt          DateTime              @updatedAt
-}
-
 // Records a single detected change between two consecutive archived snapshots of a TrackedUrl.
 // A row is created for every processed snapshot pair, not only legally significant ones —
 // isLegallySignificant just marks which are AI-flagged; see ForensicAgent.deriveSignificance.
+/// A DIFF IS THE PAIR IT SPANS — evidence flows A2, built at refactor step 11b.
+///
+/// The row holds NO CONTENT. Everything the walk derives from the two texts —
+/// the chunks, each chunk's survival verdict, the classifier's whole opinion —
+/// is a `DiffContentVersion`, appended and never overwritten, and a thesis pins
+/// one by its `contentVersionHash`. Twenty-five legacy columns left here at
+/// step 11b: four raw/extracted text columns, the classifier's five provenance
+/// axes and its prose, seven survival columns, `investigativeCategories`, the
+/// two date strings and `snapshotUrl`. Each was a version's, and holding them
+/// on the row is what let `rediffFromSnapshots` move a verdict under a promoted
+/// record after the fact (finding 27).
+///
+/// CHECK `UrlVersionDiff_pair_is_two_captures` lives in the migration, not here:
+/// Prisma cannot express a CHECK constraint. It holds `beforeSnapshotId <>
+/// afterSnapshotId` — a row whose two sides are one capture describes a
+/// transition that did not happen and is unfalsifiable by construction, since a
+/// document always contains itself. Ruled 2026-09-04, pre-design triage.
 model UrlVersionDiff {
-  id                      String              @id @default(uuid())
-  trackedUrlId            String
-  trackedUrl              TrackedUrl          @relation(fields: [trackedUrlId], references: [id])
-  beforeDate              String
-  afterDate               String
-  snapshotUrl             String
-  deletedText             String              @default("[]") // JSON array of AI-extracted claim strings (Hebrew summaries)
-  addedText               String              @default("[]") // JSON array of AI-extracted claim strings (Hebrew summaries)
-  rawDeletedText          String              @default("[]") // JSON array of raw page text chunks that were removed
-  rawAddedText            String              @default("[]") // JSON array of raw page text chunks that were added
-  aiSignificance          String              @default("") // Hebrew forensic explanation
-  isLegallySignificant    Boolean             @default(false)
-  // Which classifier produced the classification on this row.
-  //
-  // Stored LLM-derived columns drift the moment the prompt changes: without
-  // provenance, isLegallySignificant silently means different things on
-  // different rows depending on when they were scanned, and nothing can tell a
-  // stale row from a fresh one. classifierVersion is the human-readable
-  // targeting key ("reclassify everything below v2"); classifierPromptHash is
-  // the proof, since a version string is a promise and a hash is checkable — if
-  // the prompt at that version does not hash to this value, something else
-  // judged this row. Null on rows classified before provenance was recorded.
-  classifierVersion       String?
-  // Provenance for the SUMMARY alone, which moves independently of the
-  // classification. `forensics:resummarize` rewrites aiSignificance from the
-  // already-extracted items and does NOT re-extract, so the items stay at
-  // whatever classifierVersion produced them while the prose becomes
-  // self-contained. Stamping classifierVersion in that case would claim the
-  // items had been re-judged, which they have not.
-  //
-  // null means the summary predates the self-contained rule — written under a
-  // prompt that instructed cross-referencing other evidence records inside it.
-  summaryVersion          String?
-  // Which INPUT RULE produced this row's raw chunks — a third provenance axis,
-  // separate from classifierVersion and summaryVersion because all three move
-  // independently and one string covering them would have to lie about two.
-  //
-  // classifierPromptHash cannot see this: the prompt is byte-identical across the
-  // change it records. What differs is what was FED to that prompt. A row written
-  // under the old rule holds at most 8 chunks per side (longest-first, the rest
-  // discarded before the write) and was classified over only those ≥ 40 chars.
-  // Measured: 159 of 290 detected changes never reached the database at all.
-  //
-  // null means the row predates input provenance — i.e. it was computed under the
-  // truncating rule and its raw chunks are UNDERSTATED. Not a cosmetic gap: such a
-  // row cannot be brought up to date by reclassification, only by recomputing the
-  // diff from its snapshots. See docs/gf-diff-truncation-dev-plan.md.
-  diffInputVersion        String?
-  /// WHICH INPUT RULE THE CLASSIFIER ACTUALLY READ — not the row's current one.
-  ///
-  /// `diffInputVersion` above says which rule produced the chunks the row holds
-  /// NOW. This says which rule produced the chunks the stored classification was
-  /// made from, and they go stale independently — exactly as
-  /// `survivalCheckVersion` is separate from `survivalTextVersion` one level up.
-  ///
-  /// ADDED AFTER THE GRANULARITY CASCADE, which is what proved a single field
-  /// cannot carry both. `applyRediff` rewrote chunks v2 -> v3 and updated
-  /// `diffInputVersion`, deliberately leaving the classification alone so that
-  /// "chunks current, classification not" would be visible in the data. It was
-  /// not: `classifierVersion` was ALREADY at v4 and stayed there, so ten rows
-  /// came to assert a pairing that never happened — a v4 classification over v3
-  /// chunks, when the v4 run had seen v2 chunks that no longer exist. Seven
-  /// CONFIRMED, anchored records sit downstream of those ten.
-  ///
-  /// The lesson is [[gf-sourcestate-hash-must-cover-all-inputs]] one layer down:
-  /// a version for the PROCEDURE is not a version for what the procedure was
-  /// FED, and a field that names one while being read as both reports currency
-  /// it never measured.
-  ///
-  /// NULL means the row predates this column, which is not the same as stale and
-  /// is emphatically not current: what the classifier saw is unrecorded, and
-  /// unrecorded may not read as agreement. It is not backfilled, because the
-  /// value is not recoverable from the row — writing `diffInputVersion` into it
-  /// would manufacture the very provenance this column exists to stop assuming.
-  classifiedInputVersion  String?
-  // Which MODEL produced the classification, as `provider:model`.
-  //
-  // The fourth provenance axis, and the one nothing else can express:
-  // classifierVersion names the procedure and classifierPromptHash proves the
-  // prompt TEXT, so a row judged by gemini-flash and a row judged by
-  // claude-sonnet carry byte-identical provenance. The provider is chosen by an
-  // env var (<AGENT>_PROVIDER) that can change between two runs of the same
-  // commit, so a corpus can become mixed with nothing in the data to show it.
-  //
-  // null means the row predates model provenance.
-  classifierModel         String?
-  // How many draws the classifier took before the best-covering one was kept.
-  //
-  // Stored because it is the one thing about a classification that CANNOT be
-  // derived afterwards. Coverage itself is derived on read from the raw chunks
-  // and the items — that way it answers for rows written long before the check
-  // existed, and cannot go stale. The draw count is process, not product: no
-  // amount of reading the row recovers whether it was a first draw or the best of
-  // three.
-  //
-  // null means the row predates best-of-N, i.e. it is a single draw stored as
-  // though it were a measurement.
-  classifierDraws         Int?
-  classifierPromptHash    String?
-  // ForensicAgent classification. Stored on the diff (not only on the promoted
-  // Evidence) because a researcher may promote a diff manually via
-  // /forensics/promote, and that path needs the classification without re-running
-  // the agent. isLegallySignificant is derived from this being non-empty.
-  investigativeCategories String[]            @default([])
-  debates                 DiffDebateSession[]
-  /// THE CAPTURES THIS DIFF SPANS — its identity, and NOT NULL for that reason.
-  ///
-  /// Identity is the capture pair rather than the date pair, decided by
-  /// measurement rather than preference. Both environments hold a date pair that
-  /// spans two DIFFERENT transitions:
-  ///
-  ///   2022-05-03 -> 2022-05-03   20220503051621 -> 20220503102648
-  ///                              20220503102648 -> 20220503165508
-  ///
-  /// Three captures on one day, two consecutive diffs, one date pair. Keying on
-  /// dates collapses them into one and discards a real transition — and it
-  /// discards precisely the same-day revert material `recordCapture`'s novelty
-  /// rule exists to preserve. That would be Level 1's defect one layer up.
-  ///
-  /// NOT NULL because a diff whose captures we do not hold is UNVERIFIABLE BY
-  /// CONSTRUCTION: Level 5's invariant is that a reported change survives the
-  /// documents, and there are no documents to check it against. The gap is not
-  /// lost by declining to write such a row — it lives at the capture layer, where
-  /// `CdxIndexEntry` records UNSERVABLE/UNFETCHED as first-class queryable state.
-  /// Measured before the constraint: 81 of 81 rows populated in BOTH environments,
-  /// so nothing existing is excluded.
-  beforeSnapshotId        String
-  beforeSnapshot          UrlSnapshot         @relation("BeforeSnapshot", fields: [beforeSnapshotId], references: [id])
-  afterSnapshotId         String
-  afterSnapshot           UrlSnapshot         @relation("AfterSnapshot", fields: [afterSnapshotId], references: [id])
-  createdAt               DateTime            @default(now())
-  evidence                Evidence[]
-  summaryCorrections      SummaryCorrection[]
-  /// The diff's CONTENT, one row per distinct derivation (evidence A2). The
-  /// pair is the identity; everything the walk derived from the two texts —
-  /// chunks, survival, the classifier's opinion — is a version here, written
-  /// at acquisition and never overwritten. The legacy columns below are the old
-  /// path's and leave at evidence step 11.
-  contentVersions         DiffContentVersion[]
+  id              String               @id @default(uuid())
+  trackedUrlId    String
+  trackedUrl      TrackedUrl           @relation(fields: [trackedUrlId], references: [id])
+  /// THE CAPTURES THIS DIFF SPANS — its whole identity, and NOT NULL for that
+  /// reason. Keyed on the capture pair rather than the date pair because three
+  /// captures on one day give two consecutive diffs and one date pair, and
+  /// keying on dates discards a real transition.
+  beforeSnapshotId String
+  beforeSnapshot   UrlSnapshot         @relation("BeforeSnapshot", fields: [beforeSnapshotId], references: [id])
+  afterSnapshotId  String
+  afterSnapshot    UrlSnapshot         @relation("AfterSnapshot", fields: [afterSnapshotId], references: [id])
+  createdAt        DateTime            @default(now())
+  /// The diff's CONTENT, one row per distinct derivation (evidence A2).
+  contentVersions  DiffContentVersion[]
+  evidence         Evidence[]
+  debates          DebateSession[]
 
-  // --- LEVEL 5: does this diff's own report survive the documents it spans? ---
-  //
-  // The check runs AT WRITE and its verdict is stored, because a check that runs
-  // and is not recorded has not been performed as far as anything downstream can
-  // tell (§3). A CONTRADICTED diff is WRITTEN, NOT REFUSED — refusing it would
-  // delete the evidence that the pipeline is wrong, which is how this was found.
-  // It is simply never promotable.
-  //
-  // Nullable only because rows written before this level exist; a row without a
-  // verdict is unchecked, which is not the same as passing.
-  survivalVerdict         SurvivalVerdict?
-  survivalCheckedAt       DateTime?
-  /// SHA-256 over the two captures' `textHash` values — what the verdict was
-  /// computed against.
-  ///
-  /// §3's sourceStateHash discipline, and it is what makes running Level 5 ahead
-  /// of Levels 3 and 4 safe. Level 4 changes what counts as chrome and therefore
-  /// what text a diff compares; without this, that change silently invalidates
-  /// every Level 5 verdict while all the counts stay green — the exact shape this
-  /// plan descends from.
-  survivalSourceStateHash String?
-  /// The extraction rule both captures were produced under.
-  ///
-  /// The hash above says the text MOVED; this says which rule produced it, so
-  /// "re-check everything decided under v2" is a query rather than an
-  /// archaeology exercise. A diff whose two sides disagree on this is UNCHECKABLE
-  /// rather than passed or failed.
-  survivalTextVersion     String?
-  /// The rule that reached the verdict — SURVIVAL_CHECK_VERSION.
-  ///
-  /// `survivalTextVersion` above says which rule produced the TEXT. This says
-  /// which rule produced the JUDGEMENT, and they go stale independently.
-  ///
-  /// Added after a rule change reached no data. When zero-chunk diffs stopped
-  /// counting as SURVIVES, 88 of 103 stored verdicts on staging became wrong
-  /// while `survivalSourceStateHash` still matched — the hash commits to the
-  /// check's INPUTS and nothing committed to its RULE, so the audit read every
-  /// one of them CURRENT and all the counts stayed green.
-  ///
-  /// NULL means a verdict written before this column existed, which is a rule
-  /// older than any named one — the audit treats it as STALE rather than as
-  /// current, on the same reasoning that makes a NULL verdict UNCHECKED.
-  survivalCheckVersion    String?
-  /// For CONTRADICTED, WHAT DISAGREED — the pipeline-defect record itself.
-  ///
-  /// §3: the detail is the point of storing a contradiction. A count says the
-  /// pipeline is wrong somewhere; this says where, so the next person can check
-  /// the claim rather than re-derive it.
-  survivalContradicted    Json?
-  survivalChunksChecked   Int?
-
-  /// A DIFF IS THE PAIR IT SPANS. Nothing enforced this, and diffs are written
-  /// from eight call sites, so a from-scratch rescan duplicated every diff it
-  /// re-derived. The constraint removes the hazard rather than avoiding it: with
-  /// it, a rescan CONVERGES instead of accumulating.
-  ///
-  /// Measured before adding: 0 duplicate groups under this key in both
-  /// environments, so it applies to the existing corpus untouched.
   @@unique([beforeSnapshotId, afterSnapshotId])
-  @@index([trackedUrlId, afterDate])
 }
 
 /// ONE ROW PER DISTINCT DERIVED CONTENT OF A DIFF — docs/gf-evidence-flows.md
@@ -659,24 +427,6 @@ model DiffContentVersion {
 // reinvented. Do not add relations to this model or query it via Prisma
 // Client — `embedding`'s Unsupported() type cannot be selected, and the
 // `match_evidence()` SQL function it backs is not representable here at all.
-model EvidenceEmbedding {
-  id        String                      @id
-  content   String
-  embedding Unsupported("vector(3072)")
-
-  @@map("evidence_embeddings")
-}
-
-// A named public figure (official, politician, senior doctor, journalist) extracted
-// from evidence by the AI. Normalized here so every mention of the same person
-// across all evidence records links to a single canonical entity.
-model KeyFigure {
-  id        String     @id @default(cuid())
-  name      String     @unique
-  createdAt DateTime   @default(now())
-  evidence  Evidence[]
-}
-
 model Whistleblower {
   id               String   @id @default(uuid())
   fileHash         String   @unique
@@ -688,418 +438,350 @@ model Whistleblower {
 // Public evidence registry — structured metadata for stats and timeline queries.
 // Pinecone stores ONLY the embedding + fileHash; all queryable fields live here.
 // Linked to Whistleblower only by fileHash — never joined directly.
-enum EvidenceStatus {
-  // Created via an MCP write tool, or auto-promoted while on-chain registration
-  // was unavailable/failed — awaits human review + registration (onChainTxHash is null).
-  PENDING_REVIEW
-  CONFIRMED // Registered on-chain (onChainTxHash set) and indexed in Pinecone
-}
-
-enum EvidenceType {
-  DOCUMENT // File upload or URL submission
-  FORENSIC_DIFF // Auto-promoted from UrlVersionDiff (isLegallySignificant=true)
-}
-
+/// A CORPUS RECORD A RESEARCHER HAS PROMOTED — the record, MARKED.
+///
+/// Evidence flows §1, built at refactor step 11b. It adds nothing to the page
+/// and everything about the SELECTION: who promoted it, when, and which version
+/// of its derived content they stood behind. The bytes, the anchor, the diff and
+/// its survival verdict are the corpus's, written by the walk before any research
+/// act; the classifier's opinion is the version's; the rationale is the
+/// citation's, on `ThesisMention`.
+///
+/// TWENTY-SEVEN COLUMNS LEFT THIS ROW AT STEP 11b, and each was one of three
+/// things the design keeps elsewhere or nowhere. PROSE and OPINION — summary,
+/// tier, role, categories, date, entity, perspective, tier reasoning, the four
+/// medical/statistical/regulatory/EUA fields, the intake stamps: a tier is a
+/// strength score nothing verifies and was dropped rather than moved; a role is
+/// relative to a thesis; the rest is a model's reading of a page. CHAIN STATE —
+/// `onChainTxHash`, `anchoredHash`, `anchorCheck`, `previousFileHash` and its tx:
+/// nothing above the corpus is anchored (§5), so an evidence row has no chain
+/// state to hold. STORAGE — `sourceUrl`, `fileUrl`, the screenshot array, the
+/// IPFS cid: a document's bytes are the document layer's.
+///
+/// TWO CHECK CONSTRAINTS LIVE IN THE MIGRATION, not here — Prisma cannot express
+/// one. `Evidence_one_record_key`: exactly one of `snapshotId`,
+/// `urlVersionDiffId`, `documentCommitment` is set AND it matches `kind`. That is
+/// the invariant, not a convention: a row that fails it is malformed, and a tool
+/// that repaired it would hide how it got that way (§9.8).
 model Evidence {
-  id                       String                @id @default(uuid())
-  fileHash                 String                @unique
-  // Fails closed, not open: a create() that forgets to set this explicitly
-  // becomes PENDING_REVIEW, never a silent false claim of on-chain registration.
-  // See onChainTxHash — CONFIRMED must only ever be set alongside a real tx hash.
-  status                   EvidenceStatus        @default(PENDING_REVIEW)
-  onChainTxHash            String? // Blockchain tx hash once fileHash is registered on-chain — mirrors UrlSnapshot.onChainTxHash
-  /// What `onChainTxHash` actually registered, observed from the transaction.
-  ///
-  /// The same column as `UrlSnapshot.anchoredHash`, for the same reason, and it
-  /// is needed here for a reason `previousFileHash` does not cover:
-  /// `previousFileHash` records that identity was SUPERSEDED, never what a given
-  /// transaction anchored. `fileHash` asserts identity and is read as if it also
-  /// asserted registration — true today only because `rehashEvidence` happens to
-  /// register before it writes, which is a property of one function rather than
-  /// of the model.
-  ///
-  /// It is what allows evidence identity to move at all without the anchor audit
-  /// going red, which is the mechanism §2's permission needs: "Identity may
-  /// change. It may not change unrecorded."
-  ///
-  /// Null means not yet confirmed against the chain. Never backfilled from
-  /// `fileHash` — see `UrlSnapshot.anchoredHash`.
-  anchoredHash             String?
-  /// The terminal verdict behind `anchoredHash`. See `UrlSnapshot.anchorCheck`.
-  anchorCheck              AnchorCheckOutcome?
-  // The identity this record carried before the evidence hash moved to being
-  // derived from its two archived snapshots, and the anchor registered under it.
-  //
-  // Kept rather than discarded because that anchor is a real, permanent
-  // transaction that now matches nothing derivable — precisely the
-  // ORPHANED_ANCHOR condition check_on_chain_status exists to flag. Recording it
-  // here says the orphan was created deliberately, by a known migration, instead
-  // of leaving a future audit to find an unexplained one and reasonably conclude
-  // the vault had been tampered with.
-  //
-  // Null on every record created after the change, which is the normal state.
-  previousFileHash         String?
-  previousOnChainTxHash    String?
-  evidenceType             EvidenceType          @default(DOCUMENT)
-  evidenceRole             String                @default("Incriminating")
-  // The evidence's classification — see src/lib/investigativeCategories.ts.
-  // Intrinsic to the evidence and fixed at creation; deliberately NOT a link to
-  // Thesis, since evidence normally predates the theses that cite it and one
-  // record may support several.
-  //
-  // This is the ONLY classification axis. A coarser `category` field was removed:
-  // it restated this at lower resolution and could contradict it.
-  investigativeCategories  String[]              @default([])
-  // What the intake model SAID this document is about. Freeform by design: it is
-  // an observation about the document, and re-running intake to tidy it would
-  // re-roll tier, date, figures and summary too.
-  targetEntity             String
-  // The KEY. Resolved from `targetEntity` by a deterministic lookup — no model —
-  // in lib/targetEntity.
-  //
-  // These were one field, doing two incompatible jobs: display label and
-  // exact-match filter key, with nothing pinning the form. One prompt produced
-  // "Ministry of Health" and "משרד הבריאות" for the same body, so
-  // `?targetEntity=` returned half the evidence under each spelling with no
-  // indication the other half existed. Seven more records named
-  // `corona.health.gov.il`, which is a source rather than an entity at all.
-  //
-  // Null means NOT YET RESOLVED — a gap in the vocabulary to fix, never
-  // "unknown entity". Same discipline as an absent EvidenceCapture.
-  canonicalTargetEntity    String?
-  evidenceTier             String
-  evidencePerspective      String?
-  tierReasoning            String?
-  summary                  String
-  evidenceDate             String
-  figures                  KeyFigure[]
-  medicalConditions        String
-  statisticalClaims        String                @default("[]")
-  regulatoryMentions       String                @default("[]")
-  euaOmissionStatus        String                @default("Not Applicable")
-  sourceUrl                String?
-  fileUrl                  String?
-  // Screenshot 2..N when this evidence was recovered from a page that needed
-  // multiple captures (e.g. a blocked/unfetchable URL too long for one
-  // screenshot). fileUrl always holds the first/primary capture; this array
-  // holds the rest, in the same reading order they were submitted in — the
-  // combined set is treated as one document, analyzed together, not as
-  // separate pieces of evidence. Empty for every ordinary single-file record.
-  additionalScreenshotUrls String[]              @default([])
-  ipfsCid                  String? // IPFS CID of the encrypted evidence blob (null if not yet anchored)
-  // @unique enforces the true 1:1 with UrlVersionDiff at the DB level — previously
-  // only an application-level check in POST /forensics/promote prevented a diff
-  // from being promoted to more than one Evidence row.
-  urlVersionDiffId         String?               @unique
-  urlVersionDiff           UrlVersionDiff?       @relation(fields: [urlVersionDiffId], references: [id])
-  // Present only for evidence a researcher argued into existence over the
-  // forensic classifier's judgment — the full debate that justified it.
-  debateSession            DiffDebateSession?
-  gapResolutions           ThesisGapResolution[]
-  // Which intake rubric produced this record's classification.
-  //
-  // evidenceTier, evidenceRole, investigativeCategories, summary, evidenceDate
-  // and the figures relation are all LLM output, written once and never
-  // recomputed. When the rubric changes they mean different things on different
-  // rows — the same article classified either side of the 2026-08-25 change gave
-  // Tier 3 with four figures and Tier 1 with two, and both rows would have looked
-  // equally authoritative. Mirrors UrlVersionDiff.classifierVersion.
-  //
-  // Null on every record created before this existed. That reads as "unknown",
-  // never as "current" — the same discipline as an absent EvidenceCapture.
-  //
-  // One known imprecision, recorded rather than hidden: POST /confirm receives an
-  // `analysis` the client obtained from an earlier /intake call, so if those two
-  // requests straddle a deploy the stamp names the prompt live at confirm time
-  // rather than the one that judged it. A narrow window, and still far better
-  // than no stamp at all.
-  intakeVersion            String?
-  // SHA-256 of the system prompt actually sent to the model. The version string
-  // is a promise; this is the proof, checkable against git.
-  intakePromptHash         String?
-  createdById              String? // Researcher.id — null for legacy records
-  createdBy                Researcher?           @relation(fields: [createdById], references: [id])
-  // The stored document this record's fileHash was computed over. Absent on
-  // every record created before captures existed, and on paths that do not
-  // produce one — absence means "cannot be checked", never "does not match".
-  capture                  EvidenceCapture?
-  createdAt                DateTime              @default(now())
+  id                         String             @id @default(uuid())
+  /// ID(the record this row marks) — the PUBLIC name, and the only name a tool,
+  /// a thesis or a stranger uses for a record once it is evidence. Derived from
+  /// the corpus by `src/lib/evidenceIdentity.ts` and held at every write:
+  /// RECOMPUTABLE is a predicate a row satisfies or is malformed by, never a
+  /// rate — nothing legitimate makes it false.
+  fileHash                   String             @unique
+  kind                       EvidenceKind
+  /// Set iff kind = CAPTURE.
+  snapshotId                 String?            @unique
+  snapshot                   UrlSnapshot?       @relation(fields: [snapshotId], references: [id], onDelete: Restrict)
+  /// Set iff kind = DIFF.
+  urlVersionDiffId           String?            @unique
+  urlVersionDiff             UrlVersionDiff?    @relation(fields: [urlVersionDiffId], references: [id])
+  /// Set iff kind = DOCUMENT; `fileHash` = the commitment. NO foreign key: the
+  /// `Document` table is document refactor step 28's, and a key to a table that
+  /// does not exist cannot be declared. The CHECK still holds the arm.
+  documentCommitment         String?            @unique
+  /// NO DEFAULT, deliberately. The old column defaulted to PENDING_REVIEW and the
+  /// comment said why — "fails closed, not open: a create() that forgets to set
+  /// this becomes PENDING_REVIEW, never a silent false claim". The target has no
+  /// state to fail closed INTO: both values are live claims about a human's
+  /// standing decision, so a default would let a forgetful write assert one.
+  /// Every write states it.
+  status                     EvidenceStatus
+  /// The version a human LAST STOOD BEHIND — the one thing on this row only a
+  /// human can produce. CURRENT is derived, never stored: a pointer the walk had
+  /// to move would be acquisition writing evidence.
+  affirmedContentVersionHash String
+  promotedById               String
+  promotedBy                 Researcher         @relation(fields: [promotedById], references: [id])
+  promotedAt                 DateTime
+  createdAt                  DateTime           @default(now())
+  decisions                  EvidenceDecision[]
+  /// EVERY debate that promoted INTO this row — one per thesis that argued for the
+  /// record. Plural since evidence step 13: A2 calls `evidenceId` "the row this
+  /// argument created OR JOINED", and thesis T3 has a second thesis joining the
+  /// row rather than creating it, which a unique index refused.
+  debateSessions             DebateSession[]
 }
 
-/// The exact text an Evidence.fileHash was computed from, kept so the identity
-/// can be recomputed from the database alone.
+/// The kind of corpus record an `Evidence` row marks — evidence A2, with the
+/// third arm from document flows A2. One kind, one record key, held by
+/// `Evidence_one_record_key` in the migration.
+/// TWO STATUSES, AND THERE IS NO THIRD — evidence flows §6.
 ///
-/// FINDING 79: article evidence hashed a LIVE fetch and stored nothing, so a page
-/// carrying a view counter produced a new identity on every call and the record
-/// could be re-derived from nothing at all. Storing the capture is what makes
-/// "does this hash still hold?" answerable years later, against an artifact
-/// rather than against a page that has since moved.
+/// PENDING_REVIEW and CONFIRMED went with the confirmation act: nothing above the
+/// corpus is anchored, so the write those states described does not happen, and
+/// a record's standing for publication is DERIVED (PUBLISHABLE, A3) rather than
+/// stored. There is no SUPERSEDED either — identity never moves, and the legacy
+/// names are explained in the registry ledger in git rather than carried as a
+/// status with no population.
 ///
-/// Separate table rather than a column on Evidence on purpose: the text runs to
-/// tens of kilobytes, and Prisma selects every scalar by default, so a column
-/// would put the whole document into every evidence list query.
-model EvidenceCapture {
-  id         String   @id @default(cuid())
-  evidenceId String   @unique
-  evidence   Evidence @relation(fields: [evidenceId], references: [id], onDelete: Cascade)
-  /// The address the capture was taken from — part of the hashed payload, so it
-  /// is stored here rather than read back off Evidence, which is nullable.
-  sourceUrl  String
-  /// Which extraction produced `text`. Recorded per capture, so a later change
-  /// of extractor leaves old hashes explainable rather than merely superseded.
-  extractor  String
-  /// Exactly what was extracted. The identity covers its first HASHED_PREFIX_CHARS
-  /// characters; the remainder is stored so nothing captured is thrown away.
-  text       String
-  /// The fetched document itself, so ANY extraction can be re-derived later.
-  ///
-  /// Hashing and analysis want opposite things from a page. Hashing wants the
-  /// narrowest stable text — page furniture like a view counter must not reach
-  /// it. Analysis wants the widest text, because a fact the model is not shown
-  /// is a fact it will either miss or invent: the first production record got a
-  /// wrong `evidenceDate` because Readability discards the byline as chrome, and
-  /// the model filled the gap rather than reporting the absence.
-  ///
-  /// Storing the source is what lets both be served from one captured artifact
-  /// without either becoming unverifiable. It is also the lesson from
-  /// UrlSnapshot.fullText, where keeping only the extraction is exactly why the
-  /// discarded third of each page can never be recovered.
-  ///
-  /// Null on captures taken before this was stored, and on the website's
-  /// submission route, where the text arrives from the client and the server
-  /// never holds the document.
-  html       String?
-  /// When the source was fetched — NOT when the row was written.
-  capturedAt DateTime
-  createdAt  DateTime @default(now())
+/// Nothing moves WITHDRAWN back. A withdrawn record keeps its name, its argument
+/// and its citations, so that a reader of the thesis that cited it can find out
+/// what happened.
+enum EvidenceStatus {
+  PROMOTED
+  WITHDRAWN
 }
 
-enum ThesisVersionStatus {
-  PENDING_AI // AI devil's advocate analysis not yet complete
-  COMPLETE // aiAnalysis populated, ready to display
+enum EvidenceKind {
+  CAPTURE
+  DIFF
+  DOCUMENT
 }
 
+/// THE RECORD'S REVIEW LOG, append-only — evidence A2 and Flow E3.
+///
+/// A re-walk supersedes a text version, Level 5 re-derives every diff spanning
+/// it, and the version a researcher affirmed is no longer CURRENT. Nothing was
+/// overwritten and nothing is wrong yet; what is owed is a judgement no pass can
+/// make, and NO AUTOMATIC RE-AFFIRMATION, EVER. This is where that judgement
+/// lands.
+///
+/// `sequence` is the compare-and-set, as the page's decision log is: a write that
+/// finds it moved refuses STALE_SEQUENCE and the researcher re-reads.
+///
+/// CHECK `EvidenceDecision_fields_by_type` lives in the migration: REAFFIRM
+/// requires both version hashes — the log says what was stood behind AND what
+/// replaced it — and WITHDRAW requires a reason. Neither arm forbids the other's
+/// fields: A2 states what is required and excludes nothing, and this is not the
+/// place to invent a rule the contract does not carry.
+model EvidenceDecision {
+  id              String               @id @default(cuid())
+  fileHash        String
+  evidence        Evidence             @relation(fields: [fileHash], references: [fileHash])
+  sequence        Int
+  type            EvidenceDecisionType
+  researcherId    String
+  researcher      Researcher           @relation(fields: [researcherId], references: [id])
+  fromVersionHash String?
+  toVersionHash   String?
+  reason          String?
+  createdAt       DateTime             @default(now())
+
+  @@unique([fileHash, sequence])
+}
+
+enum EvidenceDecisionType {
+  REAFFIRM
+  WITHDRAW
+}
+
+/// What a citation names — thesis A2. DOCUMENT is added by document refactor
+/// step 33, by addition (document flows A2).
 enum MentionType {
-  KEY_FIGURE // @name — references a KeyFigure.name
-  EVIDENCE // #ev_ — references an Evidence.fileHash
-  TRACKED_URL // #url_ — references a TrackedUrl.id
-  // A ClaimTrajectory.id, NOT a claimHash. The id pins the detection pass, so a
-  // cited trajectory keeps resolving to what was cited; claimHash follows the
-  // claim across recomputations and would let "removed and never restored"
-  // become silently false when a later scan finds the claim back.
-  CLAIM_TRAJECTORY
+  EVIDENCE // #ev_ — an Evidence.fileHash, ID(record)
+  // #tr_ — a ClaimTrajectory.id, NOT a claimHash: the id pins the detection pass.
+  TRAJECTORY
 }
 
-// A crowdsourced legal thesis — wiki-style versioned narrative that anchors
-// claims to evidence via @keyFigure and #evidence mentions.
-// headVersionId points to the canonical (latest-wins) version.
+
+/// THE THESIS — thesis A2. One author (§9); the claim is the heading, so no title.
 model Thesis {
-  id            String            @id @default(cuid())
-  title         String?
-  headVersionId String?           @unique
-  headVersion   ThesisVersion?    @relation("ThesisHead", fields: [headVersionId], references: [id])
-  versions      ThesisVersion[]   @relation("ThesisVersions")
-  sessions      ResearchSession[]
-  createdById   String? // Researcher.id — null for legacy records
-  createdBy     Researcher?       @relation("ThesisAuthor", fields: [createdById], references: [id])
-  createdAt     DateTime          @default(now())
-
-  // Publication is a PINNED VERSION, not a flag and not a consequence of analysis.
-  //
-  // null ⇒ DRAFT: visible to approved researchers only. Set ⇒ the public sees
-  // exactly this version, and ONLY this version, until a researcher publishes
-  // again. Editing the head and re-running the Devil's Advocate changes nothing
-  // public. With a boolean flag the public would silently follow every later
-  // edit, so a researcher publishes one text and the public reads another.
-  // Unpublishing sets the pin back to null and deletes nothing.
-  // Preconditions: services/thesisPublication.ts.
-  publishedVersionId      String?        @unique
-  publishedVersion        ThesisVersion? @relation("ThesisPublished", fields: [publishedVersionId], references: [id])
+  id                      String               @id @default(cuid())
+  /// A key of lib/provisions.ts PROVISIONS (thesis A1); never updated.
+  provision               String?
+  createdById             String
+  createdBy               Researcher           @relation("ThesisAuthor", fields: [createdById], references: [id])
+  headVersionId           String?              @unique
+  headVersion             ThesisVersion?       @relation("ThesisHead", fields: [headVersionId], references: [id], onDelete: Restrict)
+  versions                ThesisVersion[]      @relation("ThesisVersions")
+  publishedVersionId      String?              @unique
+  publishedVersion        ThesisVersion?       @relation("ThesisPublished", fields: [publishedVersionId], references: [id], onDelete: Restrict)
   publishedAt             DateTime?
-  publishedById           String? // Researcher.id of whoever published
-  publishedBy             Researcher?    @relation("ThesisPublisher", fields: [publishedById], references: [id])
-  // The public-interest anchor (COMPLIANCE.md Rule 5) as a dedicated field rather
-  // than free text in the body: structurally guaranteed to exist on a published
-  // thesis and rendered consistently on every thesis and call page.
+  publishedById           String?
+  publishedBy             Researcher?          @relation("ThesisPublisher", fields: [publishedById], references: [id], onDelete: Restrict)
   publicInterestStatement String?
+  createdAt               DateTime             @default(now())
+  debateSessions          DebateSession[]
+  framings                Framing[]
+  gapDecisions            ThesisGapDecision[]
+  publicationAttempts     PublicationAttempt[]
+  withdrawals             Withdrawal[]
+  notes                   Note[]
 }
 
-// One row per edit. userContent is TipTap JSON; aiAnalysis is devil's advocate output.
-// contentHash = SHA-256(userContent + aiAnalysis) for tamper evidence.
+
+
+/// A VERSION — thesis A2. IMMUTABLE after the write: no column is ever updated.
 model ThesisVersion {
-  id                String                @id @default(cuid())
-  thesisId          String
-  thesis            Thesis                @relation("ThesisVersions", fields: [thesisId], references: [id], onDelete: Cascade)
-  parentVersionId   String?
-  parentVersion     ThesisVersion?        @relation("VersionTree", fields: [parentVersionId], references: [id])
-  childVersions     ThesisVersion[]       @relation("VersionTree")
-  userContent       Json // TipTap document JSON
-  aiAnalysis        Json? // DevilsAdvocateAgent output, null until COMPLETE
-  // SHA-256 of the EXACT message array sent to the critic — thesis text as it was
-  // serialised, evidence block, resolved gaps, rendered trajectory block, summary
-  // caveat and the system prompt. Null on every version analysed before this
-  // existed, which reads as "unknown, so not proven current" and re-runs.
-  //
-  // contentHash below hashes the OUTPUT, for publication pinning, and can say
-  // nothing about whether the analysis still answers the facts. Status could not
-  // either: PENDING_AI is set only when a version is CREATED, so a critique
-  // survived its evidence summaries being corrected, a new detection pass, and
-  // two changes to what the critic is given — while check 2 kept passing.
-  analysisInputHash String?
-  contentHash       String // SHA-256 of userContent + aiAnalysis
-  status            ThesisVersionStatus   @default(PENDING_AI)
-  mentions          ThesisMention[]
-  gapResolutions    ThesisGapResolution[]
-  isHead            Thesis?               @relation("ThesisHead")
-  isPublished       Thesis?               @relation("ThesisPublished")
-  createdById       String? // Researcher.id — null for legacy records
-  createdBy         Researcher?           @relation(fields: [createdById], references: [id])
-  createdAt         DateTime              @default(now())
+  id                  String               @id @default(cuid())
+  thesisId            String
+  thesis              Thesis               @relation("ThesisVersions", fields: [thesisId], references: [id], onDelete: Restrict)
+  parentVersionId     String?
+  parentVersion       ThesisVersion?       @relation("VersionTree", fields: [parentVersionId], references: [id], onDelete: Restrict)
+  childVersions       ThesisVersion[]      @relation("VersionTree")
+  /// Markdown with citation tokens — the record.
+  text                String
+  /// sha256(utf8(text)).
+  contentHash         String
+  /// The sentence the thesis argues, verbatim from the framing's choice.
+  claim               String
+  createdById         String
+  createdBy           Researcher           @relation(fields: [createdById], references: [id])
+  createdAt           DateTime             @default(now())
+  mentions            ThesisMention[]
+  analyses            ThesisAnalysis[]
+  gapDecisions        ThesisGapDecision[]
+  publicationAttempts PublicationAttempt[]
+  withdrawals         Withdrawal[]
+  isHead              Thesis?              @relation("ThesisHead")
+  isPublished         Thesis?              @relation("ThesisPublished")
 }
 
-// Records which AI-identified evidence gap has been addressed by a specific evidence record.
-// Linked to a specific ThesisVersion so resolutions are version-scoped.
-// On next AI analysis, resolutions are passed as context so DevilsAdvocate can assess whether the gap is truly closed.
-model ThesisGapResolution {
-  id              String        @id @default(cuid())
-  thesisVersionId String
-  thesisVersion   ThesisVersion @relation(fields: [thesisVersionId], references: [id], onDelete: Cascade)
-  gapIndex        Int // index into aiAnalysis.evidenceGaps[]
-  evidenceId      String // Evidence.fileHash
-  evidence        Evidence      @relation(fields: [evidenceId], references: [fileHash])
-  createdAt       DateTime      @default(now())
-
-  @@unique([thesisVersionId, gapIndex])
-}
-
-// Extracted first-class references from ThesisVersion.userContent nodes.
-// Queryable index — avoids parsing JSON at query time.
+/// A CITATION — thesis A2. One row per (version, kind, name). CHECK `ThesisMention_fields_by_kind`
+/// lives in the migration: an EVIDENCE mention carries its pin (A2 :1284).
 model ThesisMention {
-  id              String        @id @default(cuid())
-  thesisVersionId String
-  thesisVersion   ThesisVersion @relation(fields: [thesisVersionId], references: [id], onDelete: Cascade)
-  type            MentionType
-  refId           String // KeyFigure.name | Evidence.fileHash | TrackedUrl.id | ClaimTrajectory.id
+  id                 String         @id @default(cuid())
+  versionId          String
+  thesisVersion      ThesisVersion  @relation(fields: [versionId], references: [id], onDelete: Restrict)
+  kind               MentionType
+  /// The record's fileHash, or the ClaimTrajectory id.
+  name               String
+  contentVersionHash String?
+  debateSessionId    String?
+  debateSession      DebateSession? @relation(fields: [debateSessionId], references: [id], onDelete: Restrict)
+
+  @@unique([versionId, kind, name])
 }
 
-// ---------------------------------------------------------------------------
-// Research Sessions
-// ---------------------------------------------------------------------------
-
-enum ResearchSessionStatus {
-  ACTIVE
-  CLOSED
-}
-
-enum ResearchSessionEventType {
-  SESSION_STARTED // logged automatically on session creation
-  VERSION_CREATED // logged automatically when a thesis version is created
-  GAP_RESOLVED // logged automatically when a gap resolution is saved
-  AI_ANALYSIS_RUN // logged automatically when AI analysis completes
-  NOTE // logged manually via add_session_note MCP tool
-  SESSION_CLOSED // logged automatically on session close
-  // Deciding WHAT the thesis should argue, before one exists.
-  FRAMING_PROPOSED // a researcher's proposed framing of the question
-  FRAMING_ASSESSED // the adversarial response to it
-  THESIS_ATTACHED // the framing produced a thesis; refId is the Thesis id
-  // Publication is a deliberate, gated act and belongs in the record of the
-  // session that did it. refId is the ThesisVersion id that was pinned/unpinned.
-  PUBLICATION_RATIONALE // the researcher's argued case for publishing
-  PUBLICATION_ASSESSED // the assessor's response to it; description is the assessment JSON
-  THESIS_PUBLISHED
-  THESIS_UNPUBLISHED
-  // Written onto a session that ANOTHER researcher closed to open their own,
-  // naming who closed it and why, so its owner returns to a record rather than a guess.
-  SESSION_CLOSED_BY_OTHER
-}
-
-// A named Claude+human research sprint on a thesis.
-// Only one ACTIVE session per thesis at a time; creating a new one auto-closes the previous.
-model ResearchSession {
-  id String @id @default(cuid())
-
-  // Nullable so a session can open on a QUESTION before any thesis exists.
-  //
-  // Deciding what a thesis should argue is the most consequential step in the
-  // workflow — the topic string determines which evidence is pulled semantically
-  // and what the Devil's Advocate attacks, and a wrong framing produces a
-  // well-argued thesis about the wrong thing that no later iteration rescues.
-  // Until 2026-08-22 that decision happened entirely outside the system:
-  // suggest_thesis interpolated its `topic` into a prompt and discarded it, and
-  // a session could not exist without a thesisId, so the conversation that chose
-  // the framing left no trace anywhere.
-  //
-  // Deliberately NOT a third session type. ResearchSession and DiffDebateSession
-  // already exist; a third would be a smell. A framing session IS a research
-  // session — it just starts before its subject does, and the thesis attaches to
-  // it when created.
+/// A FRAMING — thesis A2; replaces the thesis-less session. Nothing opens or closes.
+model Framing {
+  id           String         @id @default(cuid())
+  question     String
+  provision    String?
+  researcherId String
+  researcher   Researcher     @relation(fields: [researcherId], references: [id], onDelete: Restrict)
   thesisId     String?
-  thesis       Thesis?               @relation(fields: [thesisId], references: [id], onDelete: Cascade)
-  // The question the session opened on, when it opened before a thesis.
-  question     String?
-  name         String
-  status       ResearchSessionStatus @default(ACTIVE)
-  // Who opened it. Still nullable, and deliberately so: two staging sessions
-  // predate ownership, and assigning them a researcher would put a name on work
-  // nobody can attribute — falsifying provenance on a platform whose premise is
-  // that custody is verifiable. They read as legacy, the same pattern as
-  // Evidence.createdById.
-  //
-  // A session with no owner belongs to NOBODY, not to everyone. That was the
-  // opposite before 2026-08-25, when exclusivity was global and a null owner
-  // therefore matched every caller.
-  //
-  // Opening a session now REQUIRES a researcher, so no new row can be ownerless.
-  researcherId String?
-  researcher   Researcher?           @relation(fields: [researcherId], references: [id])
-
-  // ---------------------------------------------------------------------
-  // ⚠️  TWO CONSTRAINTS EXIST ON THIS TABLE THAT PRISMA CANNOT SHOW YOU.
-  //
-  //   ResearchSession_one_active_per_researcher  UNIQUE (researcherId) WHERE status = 'ACTIVE'
-  //   ResearchSession_one_active_per_thesis      UNIQUE (thesisId)     WHERE status = 'ACTIVE'
-  //
-  // Declared in migrations/20260825190000_session_active_locks. They enforce
-  // "one ACTIVE session per researcher, and one per thesis" — uniqueness over a
-  // SUBSET of rows, which is exactly what a partial index is for. The row itself
-  // is never deleted on close: a publication attaches to the session that
-  // performed it and its events hang off it, so it is the audit trail rather
-  // than a lock.
-  //
-  // `@@index` in Prisma 5.22 rejects a `where:` argument ("No such argument"),
-  // so these can only be raw SQL. VERIFIED against live staging 2026-08-25:
-  // Prisma does not see a partial index at all — db:check-drift still reported
-  // "No difference detected" with one present, and a generated migration did not
-  // propose dropping it. Invisible, not endangered. (An earlier design added two
-  // nullable @unique columns to emulate this; it was abandoned once the drift
-  // assumption behind it was tested and turned out to be false.)
-  //
-  // Because they are invisible they cannot be assumed. Two consequences:
-  //   1. Inserting a second ACTIVE session raises Prisma error P2002. That is
-  //      the constraint working — translate it into a named refusal, never a 500.
-  //   2. A Prisma version that DOES understand partial indexes would start
-  //      reporting them as drift. Re-check after any major upgrade.
-  //
-  // thesisId is NULL for a framing session, which opens before its thesis
-  // exists. Postgres treats NULLs as DISTINCT in a unique index, so several
-  // researchers may frame concurrently while no two can hold the same thesis —
-  // that falls out rather than needing a special case.
-  // ---------------------------------------------------------------------
-
-  events    ResearchSessionEvent[]
-  createdAt DateTime               @default(now())
-  closedAt  DateTime?
+  thesis       Thesis?        @relation(fields: [thesisId], references: [id], onDelete: Restrict)
+  fromRunId    String?
+  clusterIndex Int?
+  createdAt    DateTime       @default(now())
+  rounds       FramingRound[]
+  notes        Note[]
 }
 
-// One event per significant action that occurred during a session.
-model ResearchSessionEvent {
-  id          String                   @id @default(cuid())
-  sessionId   String
-  session     ResearchSession          @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  type        ResearchSessionEventType
-  description String
-  refId       String? // ThesisVersion.id | Evidence.fileHash | ThesisGapResolution.id
-  createdAt   DateTime                 @default(now())
+enum FramingRoundType {
+  PROPOSED
+  ASSESSED
+  CHOSEN
+}
+
+/// A FRAMING ROUND — thesis A2, append-only.
+model FramingRound {
+  id           String           @id @default(cuid())
+  framingId    String
+  framing      Framing          @relation(fields: [framingId], references: [id], onDelete: Restrict)
+  sequence     Int
+  type         FramingRoundType
+  content      Json
+  researcherId String
+  researcher   Researcher       @relation(fields: [researcherId], references: [id], onDelete: Restrict)
+  createdAt    DateTime         @default(now())
+
+  @@unique([framingId, sequence])
+}
+
+/// AN ANALYSIS — thesis A2, append-only; the same input is never paid for twice.
+model ThesisAnalysis {
+  id               String        @id @default(cuid())
+  versionId        String
+  version          ThesisVersion @relation(fields: [versionId], references: [id], onDelete: Restrict)
+  inputFingerprint String
+  opinion          Json
+  model            String
+  promptVersion    String
+  runAt            DateTime      @default(now())
+
+  @@unique([versionId, inputFingerprint])
+}
+
+enum GapDecisionValue {
+  OPEN
+  CITED
+  REQUESTED
+  CALLED
+  CONCEDED
+  DISMISSED
+}
+
+/// A GAP DECISION — thesis A2 (T4 :628 names its versionId), append-only. CHECK
+/// `ThesisGapDecision_fields_by_decision` lives in the migration: each decision's REQUIRED field is
+/// present (A2 :1324–:1329); none forbids another's.
+model ThesisGapDecision {
+  id           String           @id @default(cuid())
+  thesisId     String
+  thesis       Thesis           @relation(fields: [thesisId], references: [id], onDelete: Restrict)
+  versionId    String
+  version      ThesisVersion    @relation(fields: [versionId], references: [id], onDelete: Restrict)
+  gapId        String
+  description  String
+  sequence     Int
+  decision     GapDecisionValue
+  citedName    String?
+  request      Json?
+  callItem     Json?
+  reason       String?
+  researcherId String
+  researcher   Researcher       @relation(fields: [researcherId], references: [id], onDelete: Restrict)
+  createdAt    DateTime         @default(now())
+
+  @@unique([thesisId, gapId, sequence])
+}
+
+enum PublicationVerdict {
+  SUPPORTS
+  DISPUTES
+}
+
+enum PublicationOutcome {
+  PUBLISHED
+  REFUSED
+}
+
+/// A PUBLICATION ATTEMPT — thesis A2, append-only; written refused or not.
+model PublicationAttempt {
+  id           String              @id @default(cuid())
+  thesisId     String
+  thesis       Thesis              @relation(fields: [thesisId], references: [id], onDelete: Restrict)
+  versionId    String
+  version      ThesisVersion       @relation(fields: [versionId], references: [id], onDelete: Restrict)
+  rationale    String
+  assessment   Json
+  verdict      PublicationVerdict?
+  outcome      PublicationOutcome
+  refusedBy    String[]
+  researcherId String
+  researcher   Researcher          @relation(fields: [researcherId], references: [id], onDelete: Restrict)
+  createdAt    DateTime            @default(now())
+}
+
+/// A WITHDRAWAL — thesis A2, append-only; the reason is required.
+model Withdrawal {
+  id           String        @id @default(cuid())
+  thesisId     String
+  thesis       Thesis        @relation(fields: [thesisId], references: [id], onDelete: Restrict)
+  versionId    String
+  version      ThesisVersion @relation(fields: [versionId], references: [id], onDelete: Restrict)
+  reason       String
+  researcherId String
+  researcher   Researcher    @relation(fields: [researcherId], references: [id], onDelete: Restrict)
+  createdAt    DateTime      @default(now())
+}
+
+/// A NOTE — thesis A2. CHECK `Note_one_target` lives in the migration: exactly
+/// one of `thesisId` and `framingId` is set.
+model Note {
+  id           String     @id @default(cuid())
+  thesisId     String?
+  thesis       Thesis?    @relation(fields: [thesisId], references: [id], onDelete: Restrict)
+  framingId    String?
+  framing      Framing?   @relation(fields: [framingId], references: [id], onDelete: Restrict)
+  text         String
+  researcherId String
+  researcher   Researcher @relation(fields: [researcherId], references: [id], onDelete: Restrict)
+  createdAt    DateTime   @default(now())
 }
 
 // ---------------------------------------------------------------------------
@@ -1623,9 +1305,9 @@ model SocialEconomicImpactReport {
 // that every status traces to something checkable. So promotion by hand requires
 // an argument — and the argument is what gets kept.
 //
-// Modelled as a session rather than a rationale column, for the same reason
-// ResearchSession exists for a thesis: it has a goal (decide this diff), a
-// lifecycle, and a sequence of events that IS the record. A court reading it
+// Modelled as a session rather than a rationale column: it has a goal (does this
+// record support what the thesis says?), a lifecycle, and a sequence of events
+// that IS the record. A court reading it
 // should see what was claimed, what was objected to, and how that was answered —
 // not one summary field written at the end. It also survives a restart, which an
 // in-memory token would not.
@@ -1638,8 +1320,7 @@ model SocialEconomicImpactReport {
 //   is never the final authority on significance.
 //
 //   MERIT is advisory. The assessor may disagree, the researcher may proceed,
-//   and promotedOverObjection records that they did. Mirrors DevilsAdvocateAgent,
-//   which critiques a thesis without blocking it. An override that is permitted
+//   and promotedOverObjection records that they did. An override that is permitted
 //   but permanently visible deters better than a refusal — and unlike a refusal,
 //   it cannot be defeated by rephrasing until the model yields.
 // ---------------------------------------------------------------------------
@@ -1649,13 +1330,13 @@ enum PromotionAssessmentVerdict {
   DISPUTES // the researcher argued properly, but the assessor disagrees on the merits
 }
 
-enum DiffDebateStatus {
+enum DebateStatus {
   OPEN // under argument — no evidence exists yet
   PROMOTED // ended in promotion; evidenceId is set
   ABANDONED // the researcher withdrew the argument
 }
 
-enum DiffDebateEventType {
+enum DebateEventType {
   DEBATE_OPENED // logged automatically when the session is created
   RATIONALE_SUBMITTED // a researcher argument — the opening one or a revision
   ASSESSMENT_RETURNED // the assessor's response to that argument
@@ -1664,33 +1345,75 @@ enum DiffDebateEventType {
   ABANDONED // ended without promotion
 }
 
-// One debate per diff at a time — mirroring one ACTIVE ResearchSession per thesis.
-model DiffDebateSession {
+/// THE ARGUMENT FOR ONE RECORD, IN ONE THESIS — evidence flows §4, A2.
+///
+/// The debate keeps its shape as built — a session with a goal, a lifecycle, an
+/// event log, SUBSTANCE a hard gate and a sustained objection carried forever —
+/// and gains the two columns that make it thesis-scoped. "Is this change
+/// evidence?" is retired: §1 leaves that question no answer outside a claim
+/// someone is trying to establish, so the question it puts is "does this record
+/// support what thesis T says it does?".
+///
+/// RENAMED FROM `DiffDebateSession` AT THESIS STEP 18 — evidence A2's name, the
+/// rename evidence step 13 deferred there — with its event table and both enums.
+/// Its opener is stored (`researcherId`, written by open_debate at create), so
+/// HISTORY attributes the argument (evidence T3 :371). Every key it holds is
+/// RESTRICT: nothing is deleted after the rebuild (thesis flows A2 :1355).
+///
+/// `openKey` IS THE PARTIAL UNIQUE INDEX PRISMA CANNOT EXPRESS. A2 asks for one
+/// OPEN debate per (thesis, record). Written as a partial index in raw SQL it
+/// would leave `db:check-drift` permanently dirty, and "No difference detected."
+/// is the standing precondition of every future migration. So the condition is a
+/// nullable column — `thesisId:recordFileHash` while OPEN, NULL once the session
+/// closes — with an ordinary unique index over it; Postgres does not collide
+/// NULLs, so any number of closed sessions coexist for one pair. Ruled
+/// 2026-09-08, option (i). Its one writer is the debate module, held by a scan.
+///
+/// CHECK `DebateSession_one_record_key` lives in the migration: exactly one
+/// of `recordSnapshotId` and `recordDiffId` is set. The third arm,
+/// `recordCommitment`, is document refactor step 28's and is added by addition
+/// there.
+model DebateSession {
   id                    String                      @id @default(cuid())
-  urlVersionDiffId      String
-  urlVersionDiff        UrlVersionDiff              @relation(fields: [urlVersionDiffId], references: [id], onDelete: Cascade)
-  status                DiffDebateStatus            @default(OPEN)
-  // The assessor's standing verdict on the most recent argument. Null until the
-  // first assessment returns.
+  /// The thesis this record is argued FOR. Importance is a relation, and the
+  /// relation is the thesis's (§1) — there is no promotion that does not name one.
+  thesisId              String
+  thesis                Thesis                      @relation(fields: [thesisId], references: [id])
+  /// Who opened the argument — HISTORY attributes it (evidence T3 :371); written by open_debate.
+  researcherId          String
+  researcher            Researcher                  @relation(fields: [researcherId], references: [id], onDelete: Restrict)
+  /// ID(record), computed at open — before any `Evidence` row exists, which is
+  /// what lets the citation come first and the argument be made on it.
+  recordFileHash        String
+  recordSnapshotId      String?
+  recordSnapshot        UrlSnapshot?                @relation(fields: [recordSnapshotId], references: [id], onDelete: Restrict)
+  recordDiffId          String?
+  recordDiff            UrlVersionDiff?             @relation(fields: [recordDiffId], references: [id], onDelete: Restrict)
+  openKey               String?                     @unique
+  status                DebateStatus                @default(OPEN)
   verdict               PromotionAssessmentVerdict?
-  // Whether the most recent argument cleared the substance gate. Promotion is
-  // impossible while this is false.
   hasSubstance          Boolean                     @default(false)
-  // Set only when the debate ends in promotion.
-  evidenceId            String?                     @unique
-  evidence              Evidence?                   @relation(fields: [evidenceId], references: [id])
+  /// The row this argument CREATED OR JOINED (evidence A2). NOT @unique: a second
+  /// thesis citing the same record argues its own debate and joins the row
+  /// (thesis T3), so many debates legitimately name one Evidence row. Indexed
+  /// because it stays the join key the standing audit reads the relation through.
+  evidenceId            String?
+  evidence              Evidence?                   @relation(fields: [evidenceId], references: [id], onDelete: Restrict)
   promotedOverObjection Boolean                     @default(false)
-  events                DiffDebateEvent[]
+  events                DebateEvent[]
+  mentions              ThesisMention[]
   createdAt             DateTime                    @default(now())
   closedAt              DateTime?
+
+  @@index([evidenceId])
 }
 
 // One row per turn. Content is stored verbatim — this is the record, not a log.
-model DiffDebateEvent {
+model DebateEvent {
   id        String              @id @default(cuid())
   sessionId String
-  session   DiffDebateSession   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  type      DiffDebateEventType
+  session   DebateSession       @relation(fields: [sessionId], references: [id], onDelete: Restrict)
+  type      DebateEventType
   content   String
   refId     String? // Evidence.id on PROMOTED
   createdAt DateTime            @default(now())
@@ -1749,16 +1472,15 @@ model ReclassificationRun {
 // for the claim text, and recompute this exactly. An anchor would add nothing
 // but the appearance of authority.
 //
-// That verifiability is why presence is computed against UrlSnapshot.fullText
+// That verifiability is why presence is computed against UrlSnapshot.text
 // rather than against the AI-extracted diff items. Extracted items would make a
 // trajectory depend on extraction quality and drift when the prompt changes;
 // raw text makes it a string search anyone can repeat against web.archive.org.
 // Extraction is used only to DISCOVER which claims are worth following.
 //
-// Citation is deliberately left open. A thesis cites by fileHash and
-// ThesisMention knows KEY_FIGURE | EVIDENCE | TRACKED_URL; a trajectory is none
-// of those. That decision is better made against real trajectories than against
-// an imagined use.
+// A thesis cites a trajectory by its id — `#tr_<cuid>`, a ThesisMention of kind
+// TRAJECTORY (thesis flows A1, A2) — never by claimHash, so a cited trajectory
+// keeps resolving to the detection pass that was cited.
 // ---------------------------------------------------------------------------
 
 enum ClaimFinalState {
@@ -1810,25 +1532,6 @@ enum ClaimFinalState {
 // trace is exactly the "trust us" this platform exists not to be.
 //
 // Append-only. A later correction writes another row; nothing here is updated.
-model SummaryCorrection {
-  id               String         @id @default(cuid())
-  urlVersionDiffId String
-  urlVersionDiff   UrlVersionDiff @relation(fields: [urlVersionDiffId], references: [id], onDelete: Cascade)
-  // Denormalised so a correction stays legible if the diff is ever detached.
-  fileHash         String
-  previousText     String
-  correctedText    String
-  // Why, in the corrector's own words. A correction with no stated reason is
-  // indistinguishable from a quiet rewrite.
-  reason           String
-  correctedById    String?
-  correctedBy      Researcher?    @relation(fields: [correctedById], references: [id])
-  createdAt        DateTime       @default(now())
-
-  @@index([urlVersionDiffId, createdAt])
-  @@index([fileHash])
-}
-
 model ClaimTrajectoryComputation {
   id                   String            @id @default(cuid())
   trackedUrlId         String
@@ -1912,8 +1615,8 @@ model ClaimTrajectory {
 
 /// What became of a capture the CDX index told us exists.
 enum CdxEntryStatus {
-  // THE WALK'S OUTCOMES (docs/gf-interaction-flows.md A2), added at refactor
-  // step 1. UNFETCHED and UNSERVABLE below are shared with the old path.
+  // THE WALK'S SEVEN OUTCOMES (docs/gf-interaction-flows.md A2). The old path's
+  // STORED and UNCHANGED left at R45-B, when no row held either.
   /// Bytes equal to the predecessor's, by digest; nothing fetched; rule-free; terminal.
   IDENTICAL
   /// Text equal to the predecessor's under a named ruleset; fetched and derived; revisitable.
@@ -1924,8 +1627,6 @@ enum CdxEntryStatus {
   PENDING_JUDGEMENT
   /// A human's verdict that this capture does not speak; reason REQUIRED.
   SKIPPED
-  /// We hold it. `snapshotId` points at the capture.
-  STORED
   /// CDX indexes it and the replay will not serve it — HTTP 404, reproduced and
   /// durable. `20240829085520` on the tracked MOH page is the known instance.
   /// A THIRD-PARTY FACT rather than a transient failure, so nobody keeps retrying
@@ -1935,28 +1636,13 @@ enum CdxEntryStatus {
   /// that may be transient. Distinct from UNSERVABLE deliberately — collapsing
   /// them makes a permanent gap and a retryable one indistinguishable.
   UNFETCHED
-  /// Fetched, compared, and found identical AT THE TEXT LEVEL to the capture
-  /// immediately preceding it — so no separate capture exists. THE NOVELTY RULE
-  /// WORKING, NOT A FAILURE.
-  ///
-  /// The name is deliberately the write path's own: `RecordedCapture.outcome` is
-  /// already `CREATED | UNCHANGED | EXISTS`, and UNCHANGED there means exactly
-  /// this. One concept, one word, in both layers.
-  ///
-  /// It exists because UNFETCHED would assert "we never looked" about eleven of
-  /// the twelve indexed captures this corpus holds no row for, when the truth is
-  /// "we looked and decided" — the same never-looked-versus-nothing-there
-  /// conflation this table was built to end, one layer down. A note in a plan
-  /// does not protect a query: without this, "which entries have we never looked
-  /// at" returns eleven false positives.
-  UNCHANGED
 }
 
 /// ONE ENTRY THE CDX INDEX REPORTED, AND WHEN IT REPORTED IT.
 ///
 /// Models what the Archive says EXISTS, as opposed to what we managed to store —
-/// something this platform has never modelled. Three facts previously discarded
-/// or trapped inside `WaybackScrapeJob.snapshotsList` JSON live here: the
+/// something this platform had never modelled. Three facts previously discarded
+/// or trapped inside the retired scan job's JSON live here: the
 /// published digest, the unservable capture, and the link from an index entry to
 /// the capture made from it.
 ///
@@ -1985,36 +1671,14 @@ model CdxIndexEntry {
   /// The capture we made from this entry, when we hold one.
   snapshotId           String?        @unique
   snapshot             UrlSnapshot?   @relation("CdxEntryCapture", fields: [snapshotId], references: [id], onDelete: SetNull)
-  /// WHAT AN `UNCHANGED` VERDICT WAS COMPUTED AGAINST.
-  ///
-  /// Three of the four statuses are FACTS and stay true: a row exists or it does
-  /// not (STORED), the Archive serves it or refuses (UNSERVABLE), we looked or we
-  /// did not (UNFETCHED). `UNCHANGED` is the odd one — it is a JUDGEMENT relative
-  /// to a corpus state, meaning "its text equals the capture immediately
-  /// preceding it". Store a capture between those two timestamps and the
-  /// predecessor changes, and the judgement may no longer hold.
-  ///
-  /// Unlikely but not hypothetical: the Archive can back-fill an OLDER capture,
-  /// which is precisely the case that would invalidate a neighbour's verdict
-  /// silently. §3 answers it — record what the verdict was computed against — and
-  /// this is the same discipline as `sourceStateHash` on trajectory computations.
-  /// Without it the system would carry one verdict that can quietly stop being
-  /// true.
-  ///
-  /// Deliberately NOT unique: many entries can be judged against one predecessor.
-  comparedToSnapshotId String?
-  comparedToSnapshot   UrlSnapshot?   @relation("CdxEntryComparedTo", fields: [comparedToSnapshotId], references: [id], onDelete: SetNull)
 
-  // THE WORK-LIST ROW (docs/gf-interaction-flows.md A2) — additive, refactor
+  // THE WORK-LIST ROW (docs/gf-interaction-flows.md A2) — built at refactor
   // step 1. This table IS the existence row: written by the survey before any
   // fetch, updated by the walk with what it observed getting to an outcome.
   //
-  // The seven outcomes the walk writes are the five values added to
-  // CdxEntryStatus below plus UNFETCHED and UNSERVABLE. STORED and UNCHANGED
-  // stay for the old path until step 8 retires it; while the two coexist the
-  // walk reads them as ACQUIRED and DUPLICATE at one boundary. Nothing converts
-  // them: at step 9 the database is dropped and rebuilt from the archive on a
-  // fresh registry (docs/gf-evidence-flows.md §8), and the old values go with it.
+  // `status` holds the seven outcomes the walk writes. The old path's STORED and
+  // UNCHANGED, and its `comparedToSnapshotId`, left at R45-B on a database
+  // rebuilt from the archive (docs/gf-evidence-flows.md §8) where no row held them.
   //
   // At fetch — observed, never assumed from the digest.
   fetchedAt             DateTime?
@@ -2028,9 +1692,8 @@ model CdxIndexEntry {
   // The extractor that produced the text (DUPLICATE, ACQUIRED) — what STALE
   // reads, for both outcomes, so a DUPLICATE can go stale on the extractor axis.
   textExtractionVersion String?
-  // The predecessor's waybackTimestamp (IDENTICAL, DUPLICATE). The legacy
-  // `comparedToSnapshotId` above is the old path's; the new one names the
-  // capture the way every tool does — by timestamp.
+  // The predecessor's waybackTimestamp (IDENTICAL, DUPLICATE) — the capture named
+  // the way every tool names it, by timestamp.
   comparedTo            String?
   // The ruleset id in force at this row's timestamp when it was derived
   // (DUPLICATE, ACQUIRED); STALE compares it with RULESET_ID now.
@@ -2079,10 +1742,10 @@ model CdxIndexEntry {
 /// because it cannot be re-derived.
 ///
 /// It also removes the inference left behind by the fix to "a scan that fetches
-/// nothing reports success". `WaybackScrapeJob.totalSnapshots` carries a
+/// nothing reports success". The retired scan job's `totalSnapshots` carried a
 /// pagination sentinel (MAX_SNAPSHOTS + 1) AND a row count, so reading "we asked
-/// and there is nothing newer" out of it would be one field carrying two
-/// meanings — the exact defect that produced that bug.
+/// and there is nothing newer" out of it was one field carrying two meanings —
+/// the exact defect that produced that bug.
 ///
 /// APPEND-ONLY, AND NOT MERELY BECAUSE IT IS CONVENIENT. Nothing in this system
 /// is deleted; Level 10 supersedes rather than removes, and an append-only log of
@@ -2233,108 +1896,7 @@ model TextVersion {
   @@unique([snapshotId, textHash])
 }
 
-/// Whether a submitted URL is within the platform's stated purpose.
-enum MissionVerdict {
-  ON_MISSION
-  OFF_MISSION
-  /// The assessment ran and could not decide.
-  UNCLEAR
-  /// NOTHING COULD BE READ, so nothing was judged.
-  ///
-  /// A verdict about the CHECK rather than about the URL — §3's own distinction,
-  /// and §3 stores it rather than leaving an absence. Recording nothing would make
-  /// "did we try to admit this URL?" unanswerable, which is the
-  /// never-looked-versus-nothing-there family at the front door.
-  ///
-  /// Kept out of OFF_MISSION deliberately: collapsing them would make an
-  /// unavailable check indistinguishable from a refusal, exactly as UNAVAILABLE
-  /// must never count as VERIFIED.
-  UNREADABLE
-}
-
-/// Who made the judgement.
-enum AssessmentAuthor {
-  MODEL
-  /// A human overturning or confirming a model verdict. A NEW ROW, never an edit
-  /// — the model's verdict stays on the record beside the correction.
-  HUMAN
-}
-
-/// ONE ASSESSMENT OF ONE SUBMITTED URL, KEPT WHATEVER IT DECIDED.
-///
-/// `POST /api/forensics/scan` already screened submissions and returned 422 for an
-/// off-mission URL. What it did not do is LEAVE A TRACE: the verdict and its
-/// reason existed only in an HTTP response body, so §3 applied — a check that runs
-/// and is not recorded has not been performed.
-///
-/// It is also the one place this platform FILTERS ITS OWN INPUTS, which is the
-/// standard attack on curated evidence: "you kept what suited you." The answer is
-/// a queryable record of everything turned away and everything let through.
-///
-/// `url` IS A PLAIN STRING, NOT A RELATION TO TrackedUrl. A rejected URL never
-/// becomes a TrackedUrl, so a foreign key would make exactly the rejections
-/// unrepresentable — the "zero rows create zero entries" trap one layer up, which
-/// would produce a selection-bias record with selection bias in it.
-///
-/// APPEND-ONLY. Re-assessment creates a new row; the operative verdict is the
-/// latest by `assessedAt`, DERIVED rather than stored.
-///
-/// NOTE: carries a CHECK constraint Prisma cannot declare —
-/// `ScanRelevanceAssessment_provenance_complete`, hand-written in
-/// 20260828010000. A MODEL row holds its full provenance, a HUMAN row names its
-/// actor. Recorded here because a database object invented in raw SQL and
-/// unmentioned in this file is how `evidence_embeddings` went unmodelled for
-/// months.
-model ScanRelevanceAssessment {
-  id         String           @id @default(cuid())
-  url        String
-  verdict    MissionVerdict
-  /// The judgement in its author's own words. Required for EVERY verdict — a
-  /// filter that explains only its rejections cannot be audited for what it let
-  /// through.
-  reason     String
-  author     AssessmentAuthor
-  assessedAt DateTime
-
-  // MODEL provenance. Null on HUMAN rows — a real distinction rather than a
-  // missing value.
-  model            String?
-  agentVersion     String?
-  /// SHA-256 of the criterion the verdict was reached under — the prompt itself.
-  promptHash       String?
-  /// How many characters the model was given, and whether the page was longer. A
-  /// bound on what a JUDGEMENT reads is defensible in a way a bound on what is
-  /// STORED is not — but only while it is visible.
-  contentChars     Int?
-  contentTruncated Boolean?
-
-  /// Who overturned or confirmed it.
-  actorId     String?
-  /// Who submitted the URL, when known.
-  submitterId String?
-
-  createdAt DateTime @default(now())
-
-  @@index([url, assessedAt])
-  @@index([verdict, assessedAt])
-}
-
 /// Whether a diff's own report survives the documents it spans.
-enum SurvivalVerdict {
-  /// Every reported change is supported by the raw documents.
-  SURVIVES
-  /// At least one chunk said to be REMOVED is present in the after document, or
-  /// one said to be ADDED was already in the before one. WRITTEN, NOT REFUSED —
-  /// and never promotable.
-  CONTRADICTED
-  /// The check could not be made. A verdict about the CHECK, never about the
-  /// data: the two captures were extracted under different rules, so a presence
-  /// test across them compares text that was never comparable. Kept distinct
-  /// because an unavailable check counting as a pass is the failure §3 exists to
-  /// prevent.
-  UNCHECKABLE
-}
-
 // ---------------------------------------------------------------------------
 // LEVEL 3 — the anchor. §3's check record, made general.
 // ---------------------------------------------------------------------------
@@ -2454,311 +2016,4 @@ model IntegrityCheck {
   /// The coverage report: how many subjects of this check type stand at each
   /// verdict. Free, and the reason the plan chose a table.
   @@index([checkType, verdict, checkedAt])
-}
-
-// ---------------------------------------------------------------------------
-// LEVEL 4 — THE VIEW. The rules a human marked, and the loop that produced them.
-//
-// Signed off for all three modes on 2026-08-31 before any of it was written; the
-// reasoning is `docs/gf-factual-layer-rebuild-dev-plan.md`, Level 4,
-// `##### THE DATA MODEL`. Read that before changing anything here.
-//
-// THE SPLIT IS NOT COSMETIC. An earlier draft held one "session row" carrying the
-// mode, the ruleset under construction and the decision log. Level 4 requires a
-// scan to PIN the ruleset version it was approved under — and one row cannot both
-// pin a ruleset and be the ruleset under construction. `REJECT ROUTES BACK TO
-// CALIBRATION` puts that collision on the normal path, so the pin and the draft
-// are separate records with opposite lifetimes:
-//
-//     ArticleRuleset    the committed artifact — content-addressed, append-only
-//        ^ commits            ^ pins
-//     CalibrationRun    a human building or fixing rules      (here)
-//     ScanRun           a run that fetches and persists       (step 2b)
-//
-// THERE IS NO MODE ENUM. "Mode 1 is mode 3 with a fetch" is exact, and the effect
-// side collapses with it: committing a ruleset re-derives every stored capture,
-// which is a no-op when there are none. So the document source is a property of
-// each CAPTURE SHOWN, not of the run — which also permits the case a per-run
-// enum forecloses, a URL whose stored captures are all one era and can only be
-// calibrated adversarially by reaching outside the corpus for a fetch.
-// ---------------------------------------------------------------------------
-
-enum CalibrationRunStatus {
-  /// Under construction. The current ruleset is the newest decision's.
-  OPEN
-  /// Closed having committed a ruleset. `committedRulesetId` is set.
-  COMMITTED
-  /// Closed without committing. Deliberately distinct from COMMITTED: a run that
-  /// produced nothing is a fact about the calibration, not a missing value.
-  ABANDONED
-}
-
-enum CalibrationDecisionType {
-  /// Logged when the run is created, carrying the seed ruleset (empty, or the
-  /// rules already in force when correcting an existing URL).
-  RUN_OPENED
-  /// The system chose this capture and showed it. Nothing is judged yet.
-  CAPTURE_SHOWN
-  /// The human changed the selectors. This is the event the stopping indicator
-  /// counts, and the only one that changes what the rules are.
-  RULESET_CORRECTED
-  /// Under these rules, this capture is right.
-  CAPTURE_ACCEPTED
-  /// The RULES are wrong — never that the capture is bad. Level 4: "REJECT
-  /// ROUTES BACK TO CALIBRATION. It never skips a capture."
-  CAPTURE_REJECTED
-  /// The capture genuinely cannot be taken. `reason` is REQUIRED, because a
-  /// silent hole in the record is the one outcome this corpus does not permit.
-  CAPTURE_SKIPPED
-  /// THE RESEARCHER SAID THIS CAPTURE IS A REDESIGN — the first one the previous
-  /// era's rules do not describe, so it OPENS an era rather than closing one.
-  ///
-  /// This is the only way an era comes into existence: a boundary is always a
-  /// decision and never an inference, which is why the detectors STOP and ask
-  /// rather than concluding. There is no era table — every other property of an
-  /// era (its range, its ruleset, whether it is confirmed) is derived from this
-  /// log, and a stored status is a claim about history that can disagree with
-  /// the history.
-  ERA_BOUNDARY
-  RUN_CLOSED
-}
-
-/// A COMMITTED RULESET — the artifact a calibration produces and a scan pins.
-///
-/// APPEND-ONLY. Nothing here is ever edited: `rulesetId` is
-/// `chromeRulesetId(selectors)`, so changing the selectors is a different row by
-/// construction, and the whole point of a versioned view is that the previous
-/// version still names what was derived under it. Level 10 supersedes rather
-/// than removes; this is that rule applied to a view specification.
-///
-/// SCOPED TO ONE TrackedUrl. Whether a ruleset can be inherited by a second URL
-/// on the same site is OPEN in the plan and deliberately not decided here — a
-/// table keyed on `trackedUrlId` can gain a site-level parent later, whereas a
-/// site-level table would have had to guess the inheritance rule now.
-model ArticleRuleset {
-  id           String     @id @default(cuid())
-  trackedUrlId String
-  trackedUrl   TrackedUrl @relation("TrackedUrlRulesets", fields: [trackedUrlId], references: [id], onDelete: Cascade)
-  /// `chromeRulesetId(selectors)` — sha256 over the sorted, de-duplicated
-  /// selectors, first 8 hex. Order- and duplicate-insensitive, so two spellings
-  /// of one view do not produce two rulesets.
-  rulesetId    String
-  selectors    String[]
-  /// Attributed, because a mark is a JUDGEMENT and this platform records who
-  /// made every judgement it acts on.
-  createdById  String
-  createdBy    Researcher @relation(fields: [createdById], references: [id])
-  createdAt    DateTime   @default(now())
-
-  observations   RulesetObservation[]
-  seededRuns     CalibrationRun[]     @relation("CalibrationSeed")
-  committingRuns CalibrationRun[]     @relation("CalibrationCommit")
-  /// Set when this is the ruleset currently IN FORCE for its TrackedUrl.
-  activeFor      TrackedUrl?          @relation("ActiveArticleRuleset")
-
-  /// Recommitting an identical view is the SAME row, not a second one — the
-  /// same discipline as capture novelty one layer out.
-  @@unique([trackedUrlId, rulesetId])
-  @@index([trackedUrlId, createdAt])
-}
-
-/// WHAT ONE RULESET DID TO ONE CAPTURE. The single shared table of this level.
-///
-/// FOUR REQUIREMENTS ARE THE SAME FACT, and finding that out is what corrected
-/// the model:
-///
-///   - the null check      — "this rule has matched nothing since <date>"
-///   - the deviation pause — "12% on every approved page and then 61%"
-///   - the sample audit    — K captures "biased toward the highest-deviation ones"
-///   - the next-capture policy — "step changes in derived-text length"
-///
-/// All four are per-`(ruleset, capture)`, and BOTH the calibration loop and the
-/// headless scan produce them. Two producers writing one fact into two tables is
-/// this repository's dominant defect shape, so: one table, two writers, four
-/// readers.
-///
-/// EXACTLY ONE OF `snapshotId` AND `waybackTimestamp` IS SET. A stored capture is
-/// identified by its snapshot, which already carries its timestamp; a capture
-/// fetched for marking and deliberately NOT persisted (calibration mode) has no
-/// snapshot and is identified by the timestamp alone. Enforced by
-/// `requireObservationSubject` in the service rather than by a CHECK constraint —
-/// Prisma does not model CHECK constraints, and one added by raw SQL cannot be
-/// shown not to register as drift without a shadow database to test it against.
-/// A loud guard plus a test is this repository's named pattern for exactly that.
-model RulesetObservation {
-  id                String         @id @default(cuid())
-  articleRulesetId  String
-  articleRuleset    ArticleRuleset @relation(fields: [articleRulesetId], references: [id], onDelete: Cascade)
-  /// A capture we hold.
-  snapshotId        String?
-  snapshot          UrlSnapshot?   @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
-  /// A capture fetched for marking and not persisted.
-  waybackTimestamp  String?
-  /// Elements matched per selector — the NULL CHECK's input, and the only
-  /// automated part of this level. A count, never a judgement.
-  matchCounts       Json
-  /// The share of the capture's derived text this ruleset removed, `[0, 1]`.
-  /// Defined once, by `chromeRemovalFraction` — never recomputed at a callsite.
-  removalFraction   Float
-  /// Length of the text that SURVIVED. A step change here is what the
-  /// next-capture policy reaches for.
-  derivedTextLength Int
-  observedAt        DateTime       @default(now())
-
-  decisions CalibrationDecision[]
-
-  /// One observation per capture per ruleset, under either identity. Postgres
-  /// does not treat NULLs as colliding, so the two uniques do not constrain each
-  /// other — the same property `UrlSnapshot`'s composite unique relies on.
-  @@unique([articleRulesetId, snapshotId])
-  @@unique([articleRulesetId, waybackTimestamp])
-  /// The audit sample: highest deviation first.
-  @@index([articleRulesetId, removalFraction])
-  @@index([articleRulesetId, observedAt])
-}
-
-/// ONE PASS OF A HUMAN BUILDING OR FIXING A RULESET — modes 1 and 3.
-///
-/// THE RUN HOLDS NO SELECTORS. Its decisions do, and the current ruleset is the
-/// newest decision's. That is Level 4's own anti-pattern — "do not let the UI
-/// hold state the session row does not" — taken one level further: the run holds
-/// no state its log does not, so nothing can drift and resumption is a fold.
-///
-/// THERE IS NO `version` COLUMN EITHER, and the sign-off named one. Implementing
-/// it showed the column would be both redundant with `CalibrationDecision.sequence`
-/// and unable to be updated atomically without a transaction; the unique index on
-/// `(calibrationRunId, sequence)` IS the compare-and-set, since a second browser
-/// writing the same sequence loses on the constraint. Removing it is more
-/// faithful to the decision above than keeping it would have been.
-model CalibrationRun {
-  id                  String               @id @default(cuid())
-  trackedUrlId        String
-  trackedUrl          TrackedUrl           @relation(fields: [trackedUrlId], references: [id], onDelete: Cascade)
-  researcherId        String
-  researcher          Researcher           @relation(fields: [researcherId], references: [id])
-  status              CalibrationRunStatus @default(OPEN)
-  /// The rules in force when the run opened, when correcting an existing URL.
-  seededFromRulesetId String?
-  seededFrom          ArticleRuleset?      @relation("CalibrationSeed", fields: [seededFromRulesetId], references: [id])
-  /// What the run committed, on close. Null while OPEN and on ABANDONED.
-  committedRulesetId  String?
-  committed           ArticleRuleset?      @relation("CalibrationCommit", fields: [committedRulesetId], references: [id])
-  createdAt           DateTime             @default(now())
-  closedAt            DateTime?
-
-  /// THE DRAFT THE MARKING PAGE HANDS BACK, and the reason it is not a decision.
-  ///
-  /// The page is a visual instrument for checking and correcting a ruleset
-  /// against one capture: it takes a ruleset in and returns a corrected ruleset.
-  /// It decides nothing — the verdict and the approval are the researcher's, made
-  /// through a tool. Writing a `RULESET_CORRECTED` per edit made the browser a
-  /// writer of decisions, which is what produced this level's swallowed clicks,
-  /// its eight correction rows for one capture of exploration, and a page that
-  /// raced itself into a 409.
-  ///
-  /// A DRAFT IS NOT A DECISION. It records nothing about whether the rules are
-  /// right; it is the researcher's work in progress, kept so that a dying tab
-  /// does not take twenty minutes of marking with it.
-  draftSelectors      String[]
-  /// Which capture the draft was marked against. NULL means there is no draft.
-  draftSnapshotId     String?
-  /// Set when the researcher hands the draft back. NULL while it is still being
-  /// edited — which is how "saved as I go" is told apart from "I am done".
-  draftReturnedAt     DateTime?
-
-  decisions CalibrationDecision[]
-
-  @@index([trackedUrlId, status])
-}
-
-/// ONE DECISION IN A CALIBRATION. Append-only, and the only place selectors live.
-///
-/// `sequence` IS THE RUN'S VERSION. It starts at 1 with `RUN_OPENED` and is
-/// unique per run, so an append carrying a stale expected version collides
-/// rather than overwriting — the "two browsers on one session" failure mode,
-/// answered by a constraint instead of by a read-modify-write.
-///
-/// THE NUMBERS ARE NOT HERE. `observationId` points at what was measured;
-/// copying `removalFraction` or `matchCounts` onto the decision would be the
-/// same fact in two places, free to disagree.
-/// A LINE DRAWN UNDER A URL'S CALIBRATION — nothing recorded before it governs.
-///
-/// SUPERSEDES, NEVER DELETES. Every decision stays in the log with its authority
-/// ended, so the record of what was tried survives. Level 10 rules the same way
-/// for the corpus; this is that rule applied to a calibration.
-///
-/// AN EVENT ON THE URL, NOT A DECISION IN A RUN, and the difference is load-bearing.
-/// A run is a WORKING SESSION and its decisions inherit its lifecycle; a reset has
-/// no work attached and no lifecycle — it either happened or it did not. Modelling
-/// it inside a run forced the question "does abandoning that run un-reset the URL",
-/// which has no good answer, and a question with no good answer is how a wrong
-/// model announces itself.
-///
-/// NOTHING SURVIVES IT, ERA BOUNDARIES INCLUDED. A boundary survives an ABANDONED
-/// RUN because a session is not a page, but that is a rule about runs and does not
-/// transfer here. A reset is often wanted BECAUSE the era structure is wrong — a
-/// redesign answered where there was none — and a reset that spared boundaries
-/// would preserve exactly the corruption it was reached for. Re-recording a known
-/// boundary costs one tool call, not a marking pass.
-model CalibrationReset {
-  id           String     @id @default(cuid())
-  trackedUrlId String
-  trackedUrl   TrackedUrl @relation(fields: [trackedUrlId], references: [id], onDelete: Cascade)
-  /// Who drew the line. Every judgement this platform acts on names who made it.
-  researcherId String
-  researcher   Researcher @relation(fields: [researcherId], references: [id])
-  /// REQUIRED. A reset ends the authority of real work, and why is not optional —
-  /// the same rule that makes a skipped capture carry its reason.
-  reason       String
-  createdAt    DateTime   @default(now())
-
-  @@index([trackedUrlId, createdAt])
-}
-
-model CalibrationDecision {
-  id               String                  @id @default(cuid())
-  calibrationRunId String
-  calibrationRun   CalibrationRun          @relation(fields: [calibrationRunId], references: [id], onDelete: Cascade)
-  sequence         Int
-  type             CalibrationDecisionType
-  /// The selectors in force AFTER this decision. Stored in full rather than as a
-  /// delta: a correction IS a new list, and a fold that replays deltas is a fold
-  /// that can be replayed wrongly.
-  selectors        String[]
-  /// `chromeRulesetId(selectors)` — identifies "the approved set" a scan's
-  /// deviation baseline is computed over.
-  rulesetId        String
-  /// Which capture this decision is about, under the same two identities
-  /// `RulesetObservation` uses. Both null on RUN_OPENED and RUN_CLOSED, and
-  /// exactly one set on every CAPTURE_* type — held by `requireSubjectForType`,
-  /// which keys the rule on the decision TYPE rather than on whether the caller
-  /// happened to supply an identity.
-  ///
-  /// `SetNull` HERE AND `Cascade` ON THE OBSERVATION, DELIBERATELY. A decision
-  /// is the record of a human judgement and must survive; an observation is a
-  /// measurement that can be recomputed from bytes we still hold. Deleting a
-  /// capture is a destructive-database session either way, and this asymmetry
-  /// is what keeps the judgement rather than the arithmetic.
-  snapshotId       String?
-  snapshot         UrlSnapshot?            @relation(fields: [snapshotId], references: [id], onDelete: SetNull)
-  waybackTimestamp String?
-  observationId    String?
-  observation      RulesetObservation?     @relation(fields: [observationId], references: [id], onDelete: SetNull)
-  /// REQUIRED on CAPTURE_SKIPPED. A capture that cannot be taken is recorded
-  /// with its reason; a silent hole is the one outcome this corpus forbids.
-  reason           String?
-  createdAt        DateTime                @default(now())
-
-  @@unique([calibrationRunId, sequence])
-  @@index([calibrationRunId, type])
-  /// THE ERA FOLD'S QUERY. `governingEras` reads a URL's decisions across runs
-  /// filtered by the newest reset and ordered in time — `calibrationRunId IN (…)
-  /// AND createdAt > reset ORDER BY createdAt`. The two indexes above cover the
-  /// run lookup and leave the filter and the sort uncovered.
-  ///
-  /// A decision log is SMALL — one row per marking action, low hundreds per URL —
-  /// so this is not what would ever hurt. It is here because it is free and
-  /// because the fold is on the capture-recording path, which is the one place in
-  /// this system that runs thousands of times.
-  @@index([calibrationRunId, createdAt])
 }

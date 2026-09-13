@@ -6,12 +6,7 @@ jest.mock('../src/lib/prisma', () => ({
 }));
 
 import { prisma } from '../src/lib/prisma';
-import {
-  recordCdxObservation,
-  markCdxEntryStored,
-  markCdxEntryUnchanged,
-  markCdxEntryUnservable,
-} from '../src/services/recordCdxObservation';
+import { recordCdxObservation } from '../src/services/recordCdxObservation';
 
 const queryCreate = prisma.cdxQuery.create as unknown as jest.Mock;
 const entryCreateMany = prisma.cdxIndexEntry.createMany as unknown as jest.Mock;
@@ -103,88 +98,5 @@ describe('index entries are appended, never overwritten', () => {
       hasMore: true,
     });
     expect(entryUpdateMany).not.toHaveBeenCalled();
-  });
-});
-
-describe('an entry is keyed on the digest when its status advances', () => {
-  it('links a stored capture to the entry whose digest it actually came from', async () => {
-    await markCdxEntryStored({
-      trackedUrlId: TRACKED,
-      waybackTimestamp: '20220403152841',
-      digest: 'AAA',
-      snapshotId: 'snap-1',
-    });
-
-    const { where, data } = entryUpdateMany.mock.calls[0][0];
-    // Without the digest in the key, a drifted re-observation of the same instant
-    // could receive the link — attaching our capture to an index entry it did not
-    // come from, which is the drift-detection capability defeating itself.
-    expect(where.digest).toBe('AAA');
-    expect(where.waybackTimestamp).toBe('20220403152841');
-    expect(data).toEqual({ status: 'STORED', snapshotId: 'snap-1' });
-  });
-
-  it('marks UNSERVABLE without ever demoting a capture we hold', async () => {
-    await markCdxEntryUnservable({
-      trackedUrlId: TRACKED,
-      waybackTimestamp: '20240829085520',
-      digest: 'CCC',
-    });
-
-    const { where, data } = entryUpdateMany.mock.calls[0][0];
-    expect(data).toEqual({ status: 'UNSERVABLE' });
-    // A 404 on a re-fetch of something already stored is a fact about the replay,
-    // not a reason to forget the bytes.
-    expect(where.status).toEqual({ not: 'STORED' });
-  });
-});
-
-
-describe('UNCHANGED is the novelty rule working, and it never links a capture', () => {
-  it('marks the entry UNCHANGED without a snapshotId', async () => {
-    await markCdxEntryUnchanged({
-      trackedUrlId: TRACKED,
-      waybackTimestamp: '20220703090600',
-      digest: 'DDD',
-      comparedToSnapshotId: 'predecessor-1',
-    });
-
-    const { where, data } = entryUpdateMany.mock.calls[0][0];
-    // recordCapture returns the PRECEDING capture's id on an UNCHANGED outcome —
-    // that is what UNCHANGED means — so writing a snapshotId here would attach
-    // this entry to a capture it did not produce, and every "which capture came
-    // from this entry" answer would be wrong for exactly the rows this status
-    // describes.
-    expect(data).toEqual({ status: 'UNCHANGED', comparedToSnapshotId: 'predecessor-1' });
-    expect(data).not.toHaveProperty('snapshotId');
-    expect(where.digest).toBe('DDD');
-  });
-
-  it('never demotes a capture we hold', async () => {
-    await markCdxEntryUnchanged({
-      trackedUrlId: TRACKED,
-      waybackTimestamp: '20220703090600',
-      digest: 'DDD',
-      comparedToSnapshotId: 'predecessor-1',
-    });
-    expect(entryUpdateMany.mock.calls[0][0].where.status).toEqual({ not: 'STORED' });
-  });
-});
-
-
-describe('UNCHANGED is a judgement, so it records what it was judged against', () => {
-  it('stores comparedToSnapshotId — the only status that can stop being true', async () => {
-    // STORED, UNSERVABLE and UNFETCHED are facts and stay true. UNCHANGED means
-    // "text equals the capture immediately preceding it", which a later
-    // back-filled capture between the two can invalidate silently. Recording the
-    // predecessor makes that staleness detectable instead of invisible — the same
-    // discipline as sourceStateHash on trajectory computations.
-    await markCdxEntryUnchanged({
-      trackedUrlId: TRACKED,
-      waybackTimestamp: '20220703090600',
-      digest: 'DDD',
-      comparedToSnapshotId: 'snap-predecessor',
-    });
-    expect(entryUpdateMany.mock.calls[0][0].data.comparedToSnapshotId).toBe('snap-predecessor');
   });
 });

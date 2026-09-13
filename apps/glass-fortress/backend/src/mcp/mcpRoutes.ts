@@ -13,7 +13,9 @@ const router = Router();
 // ---------------------------------------------------------------------------
 // Gated tool names — any tools/call for one of these requires a valid per-user
 // bearer token (looked up in the Researcher table).
-// Read tools (search_evidence, get_forensic_timeline, etc.) are unauthenticated.
+// Read tools (the corpus reads: list_findings, get_diff_input, resolve_record,
+// check_on_chain_status) are unauthenticated — and gate their own ACCESS by
+// PUBLIC_PAGE, which is a question about the page and never about the caller.
 //
 // "Write" is the common case but not the criterion. What is actually gated is
 // anything that COSTS: a tool that spends money or does unbounded work belongs
@@ -25,33 +27,9 @@ const router = Router();
 // ---------------------------------------------------------------------------
 
 export const READ_TOOLS = new Set([
-  'search_evidence',
-  'get_forensic_timeline',
-  // Derived entirely from data GET /api/thesis/:id already serves anonymously,
-  // with no LLM call and no RPC call. Gating it would hide a page that is
-  // deliberately public from the tool that describes it.
-  'get_whistleblower_call',
-  // Reads recorded scan output — no LLM, no RPC. The scan that produced it was
-  // already gated; listing what it found for review is not the expensive part.
-  'get_scan_findings',
-  'get_thesis_framing',
-  'get_diff_debate',
-  'get_figure_dossier',
-  'get_thesis_context',
   // Reads stored trajectories and resolves them; writes nothing, invokes no
   // model. Unlike get_claim_trajectories, it can never trigger a detection pass.
   'get_thesis_trajectory_citations',
-  'get_session_summary',
-  // Serves a static curriculum string: no model, no RPC, no database, no
-  // network — the cheapest tool here by construction. Open on purpose as well as
-  // by cost: its audience is an account that has signed up and is awaiting
-  // approval, which under requireResearcher can do nothing at all.
-  'start_tutorial',
-  // Two stored columns and a count. No model, no archive fetch, no write — the
-  // cheapest possible read, and the one that makes the layer beneath the
-  // classifier visible at all. Gating it would put the raw record further out of
-  // reach than the REST route that already serves it anonymously.
-  'get_diff_input',
   // Open on purpose, and the one tool where gating would be self-defeating:
   // "which environment am I talking to?" must be answerable BEFORE authenticating
   // into it. A caller who has to obtain a credential first has already had to
@@ -61,6 +39,33 @@ export const READ_TOOLS = new Set([
   // No LLM, no archive fetch, no log scan, no write. Behind the staging access
   // gate on staging regardless, and under the rate limiter on both.
   'get_environment',
+  // THE CORPUS READS — evidence step 12, docs/gf-evidence-flows.md A4 and §5.
+  //
+  // OPEN BECAUSE THE PUBLIC SURFACE IS THE CORPUS. "An outsider verifies a
+  // thesis against the corpus … Public reads are corpus reads: a page's
+  // timeline, search by text over the corpus, and a diff's input." Gating them
+  // would leave a published thesis citing records nobody outside could check,
+  // which is the counterweight §1 rests the whole selection argument on.
+  //
+  // ACCESS IS GATED INSIDE THE HANDLER, BY PUBLIC_PAGE, NOT HERE — and the
+  // distinction is the design's: "that is access, not a second behaviour: the
+  // output never depends on who asks". A page no published thesis cites refuses
+  // NOT_PUBLIC to an anonymous caller; a researcher's bearer token, when one is
+  // present, is resolved by identifyViewer and opens every page. Nothing below
+  // this line returns different CONTENT to the two.
+  //
+  // AND THE COST WAS THE DECIDING QUESTION, as this file's header says: ask what
+  // a tool SPENDS. None of the four invokes a model or fetches the archive.
+  // `list_findings` reads the STORED anchor verdict per capture — one query for
+  // the page, no chain call — precisely so a timeline stays bounded; the two
+  // that do read the chain are bounded by ONE RECORD (two hashes at most, two
+  // calls each). A timeline that asked the chain per capture would be the
+  // unbounded anonymous path this set exists to keep out, and that is why the
+  // attribution is stored at anchor time instead.
+  'list_findings',
+  'get_diff_input',
+  'resolve_record',
+  'check_on_chain_status',
 ]);
 
 export const WRITE_TOOLS = new Set([
@@ -79,8 +84,6 @@ export const WRITE_TOOLS = new Set([
   // The public read-only path is getStoredClaimTrajectories, served by
   // GET /api/forensics/tracked/:id/trajectories, which never computes.
   'get_claim_trajectories',
-  'create_evidence_from_url',
-  'create_evidence_from_text',
   // The walk's two READS, gated by the standing precedent: a researcher's
   // working state — which pages are being marked, where the rules failed, what
   // is held at a stop — is not published evidence (flows A5).
@@ -106,64 +109,11 @@ export const WRITE_TOOLS = new Set([
   // SPENDS: one classifier call per novel capture that reaches Gate 5 — and
   // from step 5 it stores, anchors and writes rows besides.
   'scan_captures',
-  'create_thesis_draft',
-  'add_thesis_version',
-  // Writes a new ThesisVersion. Cheaper and narrower than add_thesis_version —
-  // it cannot change the prose — but it is still a write on the one artifact
-  // that names living officials.
-  'cite_trajectories',
-  'run_ai_analysis',
-  'create_research_session',
-  'add_session_note',
-  'close_research_session',
-  'promote_evidence',
-  'generate_foia_request',
-  'recover_evidence_from_screenshot',
-  'delete_evidence',
 
-  // Writes nothing at all — no diff update, no finding, no evidence row — and is
-  // still here, because the rule at the top of this file is what it SPENDS.
-  // Every `runs` is a full LLM call, and `runs` is caller-controlled, so a single
-  // anonymous request could bill MAX_PREVIEW_RUNS classifications of the largest
-  // diff in the corpus. Same reason get_research_agenda sits below.
-  'preview_diff_classification',
 
-  // Persists nothing, and was therefore unauthenticated until 2026-08-21 — but
-  // spends real money on every call, with no account and (until the limiter
-  // below) no cap:
-  //
-  //   get_research_agenda — embeds each gap, and with includeSuggestions:true
-  //                         runs GapRevisionAgent once PER OPEN GAP, so the
-  //                         cost of a single call scales with thesis state
-  //                         rather than being fixed.
-  //
-  // suggest_thesis sat here too until it was retired — see
-  // docs/gf-prosecutor-dev-plan.md §11.1.
-  //
-  // search_evidence stays open deliberately: it embeds a query and nothing
-  // more (cents), it is the core public read, and it is what the anonymous
-  // ChatGPT integration depends on. Gating it would break a working consumer
-  // to solve a problem it is not causing.
-  'get_research_agenda',
 
-  // Persists nothing either, and is semantically a read — but every call hits
-  // the chain RPC, and recoverTxHash:true issues a bounded eth_getLogs scan.
-  // An anonymous caller could drain the project's RPC quota through it, which
-  // is the same exposure that gated the two tools above.
-  'check_on_chain_status',
 
-  // Registers every pending finding for a page on-chain. Irreversible, spends
-  // gas, and asserts CONFIRMED — the most consequential write in the toolset.
-  'promote_scan_findings',
 
-  // The diff debate. open/respond each run an LLM assessment; promote registers
-  // on-chain. All gated — get_diff_debate is a plain read and sits above.
-  // Embeds the question and runs a long-context assessment — real money per call.
-  'open_thesis_framing',
-  'assess_thesis_framing',
-  'open_diff_debate',
-  'respond_in_diff_debate',
-  'promote_from_diff_debate',
 
   // The verification tools (docs/gf-verification-tools-dev-plan.md). All three
   // write nothing — and all three are gated anyway, because "write" is not the
@@ -173,14 +123,49 @@ export const WRITE_TOOLS = new Set([
   // same exposure that gated get_research_agenda and check_on_chain_status.
   'verify_claim_text',
   'audit_thesis_claims',
-
-  // The publication gate. publish/unpublish move what the public sees and
-  // write to the session log; check_publication_readiness writes nothing but
-  // runs the assessor, which is an LLM call. All three gated — the thesis is the
-  // one artifact that assembles a narrative naming living officials.
-  'check_publication_readiness',
-  'publish_thesis',
-  'unpublish_thesis',
+  // THE DEBATE — evidence step 13, docs/gf-evidence-flows.md §4 and A4.
+  //
+  // Three of the four WRITE: a session, its events, and on promotion the
+  // evidence row, the debate's close and the head mention's argument. Two of
+  // them also SPEND — one assessor call per round, which is the only paid point
+  // in the evidence layer and the reason a debate cannot be opened anonymously.
+  //
+  // `get_debate` writes nothing and calls no model, and is gated all the same:
+  // it is a researcher's working state and it carries a model's OPINIONS — the
+  // assessment, the objection, the verdict — which thesis T5 lists among the
+  // things a published page never shows. The standing precedent is the walk's
+  // three reads, gated on the same ground.
+  'open_debate',
+  'respond_in_debate',
+  'promote_from_debate',
+  'get_debate',
+  // THE REVIEW — evidence step 14, docs/gf-evidence-flows.md §6.
+  //
+  // `review_evidence` writes: a decision on the record's append-only log and the
+  // row's own standing. `list_evidence_reviews` writes nothing and calls no
+  // model, and is gated all the same — A4 calls it a GATED read, and it names
+  // DRAFT citations of unpublished theses, which is exactly the working state a
+  // corpus read may never reveal (§5) and exactly the citation a REAFFIRM
+  // protects. The standing precedent is `get_debate` and the walk's three reads.
+  'list_evidence_reviews',
+  'review_evidence',
+  // FRAMING — thesis step 19, docs/gf-thesis-flows.md T1 and A4 :1434–:1459.
+  //
+  // Three WRITE: the framing row, and its append-only rounds. `assess_framing`
+  // also SPENDS — one assessor call per round, the thesis layer's first paid
+  // point (A4 :1442, "WRITE · paid"), which is why `test/mcpToolClassification`'s
+  // paid-tool case names it beside `scan_captures`.
+  //
+  // `get_framing` writes nothing and calls no model, and is gated all the same:
+  // A4 :1458 calls it a GATED read, and a framing is a researcher's working state
+  // carrying a model's OPINIONS — the candidate framings, the contradictions, the
+  // recommendation — which thesis T5 lists among the things a published page
+  // never shows. The standing precedent is `get_debate`, `list_evidence_reviews`
+  // and the walk's three reads, gated on the same ground.
+  'open_framing',
+  'assess_framing',
+  'choose_framing',
+  'get_framing',
 ]);
 
 // ---------------------------------------------------------------------------

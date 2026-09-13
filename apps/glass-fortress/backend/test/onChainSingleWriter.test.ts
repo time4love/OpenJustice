@@ -99,15 +99,12 @@ describe('every anchoring path records a check', () => {
     expect(missing).toEqual([]);
   });
 
-  it('records a check wherever it calls the shared registration helper', () => {
-    // The helper's callers are anchoring paths too — they simply anchor through
-    // one function rather than reaching for the contract themselves.
-    const callers = filesMatching(/registerEvidenceOnChain\s*\(/).filter(
-      (f) => f !== REGISTRATION_HELPER,
-    );
-    expect(callers.length).toBeGreaterThan(0);
+  // THE HELPER'S CASE WENT WITH THE HELPER AT EVIDENCE STEP 11a.
+  // `registerEvidenceOnChain` was the evidence chain write, retired by evidence
+  // flows §5 — nothing above the corpus is anchored — so there is no shared
+  // registration helper left to have callers. What replaces this case is 11b's
+  // caller-count scan (A7): the registry's `submit` has ONE caller, the
+  // anchoring module, and that module has exactly two. Asserting zero callers
+  // of a deleted function would be a case that can never fail.
 
-    const records = new Set(filesMatching(/recordOnChainCheck(NeverThrowing)?\s*\(/));
-    expect(callers.filter((f) => !records.has(f))).toEqual([]);
-  });
 });

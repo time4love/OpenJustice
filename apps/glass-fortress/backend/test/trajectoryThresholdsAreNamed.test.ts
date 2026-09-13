@@ -29,8 +29,7 @@ const BACKEND = join(__dirname, '..');
 /** The modules that decide what a trajectory IS, and therefore hold its knobs. */
 const TRAJECTORY_PATH = [
   'src/services/claimTrajectory.ts',
-  'src/lib/trajectoryContext.ts',
-  'src/services/measureClaimLength.ts',
+    'src/services/measureClaimLength.ts',
 ];
 
 /** `.length >= 40` — a threshold. Zero is excluded: that is emptiness, not a knob. */

@@ -564,6 +564,7 @@ export function MarkingClient({ trackedUrlId, capture }: { trackedUrlId: string;
                     selected={selectors}
                     preview={previewStale ? null : preview}
                     disabled={busy}
+                    coveredBy={null}
                     onToggle={toggle}
                     t={t}
                   />
@@ -700,6 +701,7 @@ function Outline({
   selected,
   preview,
   disabled,
+  coveredBy,
   onToggle,
   t,
 }: {
@@ -709,6 +711,26 @@ function Outline({
   selected: string[];
   preview: Preview | null;
   disabled: boolean;
+  /**
+   * The label of the nearest MARKED ancestor, or null. A rule against a node
+   * under one removes nothing — the ancestor's rule already takes the whole
+   * subtree — so the node is NOT A CHOICE and must not be offerable.
+   *
+   * The same sentence `documentOutline` already applies to a node with no text:
+   * "a node that can never affect the derived text, and therefore is not a
+   * choice". It was applied to the EMPTY class and not to the COVERED one, and
+   * the gap cost a live marking: on rtmag 20220821171223 the researcher clicked
+   * children of blocks they had already marked and created eleven rules that
+   * could remove nothing (2026-09-12).
+   *
+   * DISABLED HERE RATHER THAN OMITTED, which is the opposite of the empty-node
+   * choice and deliberately so. An empty node is noise — 36 blank `<script>`
+   * tags above Walla's article. A covered node carries REAL TEXT the researcher
+   * needs to see to check that the ancestor takes the right things, and a
+   * subtree that vanished on marking its parent and reappeared on unmarking it
+   * would make that check impossible.
+   */
+  coveredBy: string | null;
   onToggle: (selector: string) => void;
   t: ReturnType<typeof useTranslations>;
 }) {
@@ -725,6 +747,19 @@ function Outline({
   // Judged by TEXT rather than by depth, so a body with one all-containing
   // wrapper is refused too.
   const wholeDocument = node.textLength >= documentTextLength;
+  // COVERED: an ancestor's rule already removes this element with its subtree.
+  const covered = coveredBy !== null;
+  // REDUNDANT: this node IS marked, its selector matches the element, and the
+  // derivation removed no text under it — because an ancestor's rule took it
+  // first. Since `matchCounts` became order-independent it reports the honest
+  // count (the element IS on the page), so "matched nothing" no longer tells a
+  // researcher that a rule of theirs is doing nothing. `removedSegments` is
+  // what says it, and this is where it gets said.
+  const redundant =
+    isSelected &&
+    preview !== null &&
+    (count ?? 0) > 0 &&
+    !preview.removedSegments.some((segment) => segment.selector === effective);
 
   return (
     <div className={depth === 0 ? '' : 'ps-3'}>
@@ -746,18 +781,20 @@ function Outline({
         )}
         <button
           type="button"
-          disabled={disabled || wholeDocument}
+          disabled={disabled || wholeDocument || covered}
           onClick={() => {
             onToggle(effective);
           }}
           title={
             wholeDocument
               ? t('wholeDocument')
-              : node.collapsedFrom.length > 0
-                ? `${node.selector}\n${t('collapsedFrom', { selectors: node.collapsedFrom.join(' › ') })}`
-                : node.selector
+              : covered
+                ? t('coveredWhy', { label: coveredBy })
+                : node.collapsedFrom.length > 0
+                  ? `${node.selector}\n${t('collapsedFrom', { selectors: node.collapsedFrom.join(' › ') })}`
+                  : node.selector
           }
-          className={`min-w-0 text-start ${isSelected ? 'bg-amber-100 font-semibold' : ''} ${wholeDocument ? 'cursor-not-allowed text-gray-400' : ''}`}
+          className={`min-w-0 text-start ${isSelected ? 'bg-amber-100 font-semibold' : ''} ${wholeDocument || covered ? 'cursor-not-allowed text-gray-400' : ''}`}
         >
           {/* WORDS, NOT CODE: the label and the character count — what a click removes. The selector is the tooltip. */}
           <span>{node.label}</span> <span className="text-gray-500">({node.textLength})</span>
@@ -771,7 +808,9 @@ function Outline({
               {t('hashed')}
             </span>
           )}
-          {count !== undefined && isSelected && (
+          {covered && <span className="ms-1 text-xs text-gray-500">{t('covered', { label: coveredBy })}</span>}
+          {redundant && <span className="ms-1 text-xs text-amber-800">{t('redundant')}</span>}
+          {count !== undefined && isSelected && !redundant && (
             <span className="ms-1 text-xs text-gray-600">{count === 0 ? t('matchedNothing') : t('matched', { count })}</span>
           )}
         </button>
@@ -786,6 +825,9 @@ function Outline({
             selected={selected}
             preview={preview}
             disabled={disabled}
+            // ONCE COVERED, COVERED ALL THE WAY DOWN: the nearest marked
+            // ancestor keeps its name for the whole subtree beneath it.
+            coveredBy={isSelected ? node.label : coveredBy}
             onToggle={onToggle}
             t={t}
           />

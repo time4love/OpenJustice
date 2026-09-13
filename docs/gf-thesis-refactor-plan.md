@@ -49,6 +49,57 @@ every one, and a RETIRE file still present after step 25 is a defect in step 25.
 
 ## 3. THE STEPS — EACH LEAVES THE OLD PATH WORKING; THE TWENTY-FIFTH SWITCHES
 
+> **DECIDED 2026-09-08 — STEP 25 IS PULLED FORWARD, BESIDE EVIDENCE STEP 11a, AS THE THESIS HALF
+> OF THE LEGACY SWITCH (`docs/gf-refactor-plan.md` §3b, the note above step 11).** The strategy
+> above — beside, not through — is retired for this layer on the researcher's word, for the reasons
+> §1 already states: the data story is empty, the layer feeds nothing beneath it, and there are no
+> users. What §1 calls the switch's one risk, a researcher's workflow, is a calendar: no thesis tool
+> exists between the deletion and steps 19–23, and no thesis exists today to lose.
+>
+> **11a-thesis — the deletion, no migration and no new code.** Everything step 25 lists as removed
+> CODE: the retired tools of A4 unregistered and `WRITE_TOOLS` moved, the retired routes of A5,
+> `RevisionAgent`, `GapRevisionAgent`, `ThesisValidatorAgent`, `tipTapUtils`, `thesisCitationSplice`,
+> `mentionRoutes`, `figuresRoutes`, `researchSessions`, `chatRoutes`, `argumentRoutes`; every RETIRE
+> file and RETIRE group of §5 with its code (plan §4 rule 1); the retired-names scan extended;
+> `start_tutorial` unregistered until its COMMON_RULES are rewritten against A4 (the tutorial's own
+> change) — a tutorial that teaches a surface that does not exist is worse than none;
+> `get_environment`'s counts edited to name no removed module. **The schema stays**: `ResearchSession`,
+> `KeyFigure`, `ThesisGapResolution`, the TipTap and status columns drop at step 18's migration, on
+> a database that holds nothing they describe, as step 25 wrote. A REWRITE file's old version goes
+> with the code it tested and its successor lands in the step that lands the shape (refactor plan
+> §4, amended 2026-09-06) — the acceptance suite of step 17 is the only assertion of that contract
+> in between. Its review is a list check against §5 and this list; a KEEP file edited, or a module
+> deleted that no tag names, is a finding. It lands with its own dated record of what left.
+>
+> **The frontend's thesis pages have no server** — their 21 calls into `/api/thesis` answer nothing
+> from the deletion until step 23's public reads. This note first ordered a DARK change with the
+> first deletion PR; **ruled 2026-09-08: the frontend waits for the backend migration** (refactor
+> plan §3b, the note above step 11) — no frontend file before step 12, the T5 page built at step 23
+> when it has a contract, the legacy pages deleted in one cut-over at the end. §8's first hazard (the
+> public page reads TipTap) is met by absence, on staging, where nobody reads it. **SHIP stays gated
+> behind step 26**, as it was — **LIFTED 2026-09-13, the researcher's ruling (R45), below.**
+>
+> **THE STEP-26 GATE IS LIFTED — ruled 2026-09-13, the register correction (R45), after PR #431.** The
+> gate guarded the frontend's thesis pages going dark at the cut-over. Production holds NO published
+> thesis and no draft, so the pages are empty either way, and the production rebuild (evidence §8's
+> six sub-steps in the refactor plan's step 9 order) depends on no thesis step. It runs BEFORE R45-B
+> and before steps 20–26, in dedicated sessions with the mainnet spend named. What head keeps and
+> drops on production at that `SHIP`, read from `server.ts` at `7c08157`: KEPT `/api/mcp`,
+> `/api/forensics` (`/tracked`, `/tracked/:id/trajectories` only), `/api/article-rules`, `/api/auth`,
+> `/api/reports`, the OAuth mounts and `/.well-known`; DROPPED `/api/evidence`, `/api/arguments`,
+> `/api/chat`, `/api/figures`, `/api/mentions`, `/api/thesis`. The frontend pages those routes served —
+> `/evidence`, `/figures`, `/theses` and its edit and history pages, `/call`, `/submit`, and `/forensics`
+> (which also calls `/tracked/:id/jobs`, `/:id/status` and `/:id/report`, none registered at head, and
+> reads the `status` field R45-B removes) — are already dark on staging and go dark on production at
+> that `SHIP`; each is rebuilt at the step that gives it a contract, and the legacy pages leave in the
+> one cut-over the document plan names. `/reports`, `/article-rules`, `/guide`, `/about`, `/login` and
+> `/profile` keep their servers. The order with its gates is the refactor plan's step 9 note
+> (`:327–:338` at `7c08157`) and evidence §8; nothing here changes it.
+>
+> Steps 17–24 are unchanged in content and order, and step 21's dependence on evidence step 13
+> (§8) still binds. What step 25 keeps is the migration's half — moved to step 18 — and the
+> assertion that `mcpToolClassification`'s set equals A4's surface exactly.
+
 ### 17 · The acceptance suite, failing
 
 A jest project `thesis`, like `walk`: A3's derivations as pure functions over fixtures — CLAIM_FRAMED,
@@ -58,6 +109,9 @@ document plan's; A7's scans with decoys —
 `thesis-no-log`, `versions-immutable`, `models-write-no-state`, `one-symbol`, `names-vacuity`,
 `gap-id-stable`; the nine invariants of target §10.5. Every file red. Informational in CI until
 step 25.
+Built 2026-09-10 (PR #413, corrected by PR #416); the rulings — one of them with its ground corrected —
+what the review rounds and two cold reads found, why a satisfiable case is not a conformant one, the
+appendix amendments now owed, and what is still the researcher's are `docs/gf-thesis-step-17-2026-09-10.md`.
 
 *Leaves working:* everything.
 
@@ -66,10 +120,15 @@ step 25.
 After the rebuild, so nothing is migrated: `Framing`, `FramingRound`, `ThesisAnalysis`,
 `ThesisGapDecision`, `PublicationAttempt`, `Withdrawal`, `Note`; `Thesis.provision`,
 `ThesisVersion.text` and `.claim`, the mention's `kind`, `name`, `contentVersionHash`,
-`debateSessionId` beside the old columns; the `PROVISION` table and `NORMALISE` as one importable
-symbol each. The old tables and columns stay until step 25.
+`debateSessionId` — the mention RENAMED IN PLACE; the `PROVISION` table and `NORMALISE` as one
+importable symbol each. **The old tables and columns are REMOVED HERE, not at step 25** — the
+DECIDED note above step 17 (`:52–:84`) moved step 25's schema half here; RULED 2026-09-11.
 
 *Verified by:* `db:check-drift` clean before writing; the migration read; deploys itself.
+Landed 2026-09-11 (PR #418 → `bb77a9f`): one migration of 94 statements; the researcher's rulings —
+the debate's opener stored, its companions renamed, RESTRICT never CASCADE and never SET NULL, A2's
+"REQUIRED on X" arms as CHECKs — and what the step does not claim are
+`docs/gf-thesis-step-18-2026-09-11.md`.
 
 ### 19 · Framing
 
@@ -79,6 +138,10 @@ provision's elements — with the assessor's output audited before it is recorde
 
 *Verified by:* the T1 contract green; on staging, one framing walked against the MOH page with a
 round whose contradiction fails the substring check and is shown flagged.
+Landed 2026-09-12 (PR #420 → `66b121e`); walked on staging 2026-09-13 — one framing CHOSEN under
+`PATIENT_RIGHTS_13` with a MISSING element and the missing document named; the flagged-contradiction
+clause NOT MET (no contradiction produced, none manufactured); what claude.ai sees, the four PRs the
+walk landed (#426–#429) and the findings by owner are `docs/gf-thesis-step-19-2026-09-12.md`.
 
 ### 20 · The version write
 
@@ -148,6 +211,9 @@ public page reads TipTap today and would break at this commit otherwise.
 
 *Verified by:* every KEEP file unchanged since step 17; every RETIRE file gone; `npm test` green
 with `thesis` in it; `get_environment`'s counts no longer name a removed table.
+Pulled forward as 11a-thesis — decided 2026-09-08, the note above step 17; the code half is done
+there, the schema half at step 18, and what remains here is the `thesis` project joining the
+required run and the set-equality assertion on `mcpToolClassification`.
 
 ### 26 · The one thesis, rewritten
 
@@ -176,8 +242,8 @@ with its code at step 25, never weakened.
 
 | test file | lines | tag | what it holds |
 |---|---|---|---|
-| `thesisClaimAudit` | 464 | KEEP | the archive audit of quotes, dates, intervals; unchanged (T5) |
-| `evidenceInputSoundness` | — | KEEP | check 17; evidence A6's |
+| `thesisClaimAudit` | 464 | KEEP → REWRITE at evidence 11b, and again at thesis 18 | the archive audit of quotes, dates, intervals; unchanged (T5) — its SCOPE now reaches a page through the record key rather than a stored replay URL — amended 2026-09-08 (docs/gf-evidence-step-11b-2026-09-08.md); REWRITTEN at thesis step 18, its input `ThesisVersion.text` and EVIDENCE mentions, every assertion unchanged — amended 2026-09-11 (docs/gf-thesis-step-18-2026-09-11.md) |
+| `evidenceInputSoundness` | — | KEEP → REWRITE at evidence 11b, and again at 15 | check 17; evidence A6's — rebased onto CURRENT(diff)'s per-chunk survival when the row's verdict columns left, exactly as A6 words it — amended 2026-09-08 (docs/gf-evidence-step-11b-2026-09-08.md); rewritten a SECOND time at evidence step 15, because 11b's SELECT read the NEWEST content version and not CURRENT(diff): the version now chosen by `currentVersionOf`, the report three-valued with `binding` gone, the fold unchanged — amended 2026-09-10 (docs/gf-evidence-step-15-2026-09-10.md) |
 | `mcpToolClassification` | 157 | KEEP | the assertions stay; the expected set moves at step 25 |
 | `publicationLanguage` | 207 | KEEP one group, RETIRE one | the public-interest statement check stays; `HEDGE_MARKERS` and per-sentence hedging go with the figure |
 | `trajectoryCitation` | 358 | KEEP, one group REWRITE | currency states stay; the mention kind is `TRAJECTORY` and the token `#tr_` (step 20) |
@@ -198,7 +264,7 @@ with its code at step 25, never weakened.
 | `thesisCitationSplice` | 175 | RETIRE | `cite_trajectories` is retired |
 | `RevisionAgent` · `GapRevisionAgent` | 161 · 138 | RETIRE | the ratchet |
 | `ThesisValidatorAgent` | 245 | RETIRE | no caller today |
-| `thesisAssertions` | 132 | READ AT STEP 17 | tagged when the acceptance suite is written, by what it asserts |
+| `thesisAssertions` | 132 | KEEP | `lib/thesisAssertions`' seven exports — the mechanical front half of `audit_thesis_claims`, which A4 :1529–:1531 and T5 :767–:770 keep unchanged; the module imports nothing and no step 18–24 changes its shape — tagged 2026-09-11 (thesis step 18) |
 
 ## 6. VERIFICATION — WHAT "VERIFIED" MEANS AT EACH STEP
 

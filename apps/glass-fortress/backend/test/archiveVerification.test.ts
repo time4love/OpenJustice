@@ -7,20 +7,12 @@
 // nobody tracks, and a capture list cut short must each be a distinct, named
 // outcome — never a `false` that reads as a finding.
 //
-// jsdom and Readability are mocked away here, as in every other unit test in
-// this suite. What the extractor really does is measured in
-// test/extraction/, against a frozen real capture.
+// No jsdom mock: since R45 this module reads the raw page through `lib/htmlText`
+// and never loads Readability. What the raw reader does against a frozen real
+// capture is measured in test/extraction/.
 // ---------------------------------------------------------------------------
 
 jest.mock('axios');
-jest.mock('jsdom', () => ({
-  JSDOM: jest.fn().mockImplementation((html: string) => ({
-    window: { document: { body: { innerHTML: html } } },
-  })),
-}));
-jest.mock('@mozilla/readability', () => ({
-  Readability: jest.fn().mockImplementation(() => ({ parse: () => null })),
-}));
 jest.mock('../src/lib/prisma', () => ({
   prisma: {
     trackedUrl: { findFirst: jest.fn() },
@@ -30,30 +22,12 @@ jest.mock('../src/lib/prisma', () => ({
 
 import axios from 'axios';
 import { prisma } from '../src/lib/prisma';
-import {
-  fetchCaptureIndex,
-  listCaptures,
-  verifyClaimText,
-} from '../src/services/archiveVerification';
+import { fetchCaptureIndex, verifyClaimText } from '../src/services/archiveVerification';
 import { WaybackFetchError } from '../src/lib/archiveHttp';
 
 const mockedAxios = axios as jest.Mocked<typeof axios>;
 const findTracked = prisma.trackedUrl.findFirst as jest.Mock;
 const findSnapshots = prisma.urlSnapshot.findMany as jest.Mock;
-
-/**
- * `listCaptures` issues TWO snapshot queries: the archived captures it
- * cross-checks against CDX, and the never-archived ones it reports in their own
- * section. Routing the mock on the WHERE clause rather than on call order keeps
- * these tests describing intent instead of sequence — and a shared
- * `mockResolvedValue` would hand archived rows to the non-archived query, which
- * is exactly what it did before this helper existed.
- */
-function mockSnapshots(archived: unknown[], notArchived: unknown[] = []): void {
-  findSnapshots.mockImplementation((args: { where?: Record<string, unknown> }) =>
-    Promise.resolve(args?.where && 'NOT' in args.where ? notArchived : archived),
-  );
-}
 
 const URL = 'https://corona.health.gov.il/vaccine-for-covid/';
 
@@ -77,7 +51,7 @@ beforeEach(() => {
     e: unknown,
   ) => Boolean((e as { isAxiosError?: boolean })?.isAxiosError)) as never;
   findTracked.mockResolvedValue({ id: 'tracked-1' });
-  mockSnapshots([]);
+  findSnapshots.mockResolvedValue([]);
 });
 
 describe('fetchCaptureIndex', () => {
@@ -142,149 +116,6 @@ describe('fetchCaptureIndex', () => {
     expect(index.available).toBe(false);
     if (index.available) throw new Error('unreachable');
     expect(index.offline).toBe(true);
-  });
-});
-
-describe('listCaptures', () => {
-  it('refuses to answer for an untracked URL rather than implying an empty archive', async () => {
-    findTracked.mockResolvedValue(null);
-
-    const result = await listCaptures(URL);
-
-    expect(result.status).toBe('NOT_TRACKED');
-    if (result.status !== 'NOT_TRACKED') throw new Error('unreachable');
-    expect(result.message).toContain('NOT a statement');
-  });
-
-  it('distinguishes stored captures from archive-only ones', async () => {
-    mockedAxios.get.mockResolvedValue({
-      data: cdxRows([
-        ['20220805010101', 'AAA', '200'],
-        ['20220806010101', 'BBB', '200'],
-      ]),
-    });
-    mockSnapshots([
-      {
-        waybackTimestamp: '20220805010101',
-        snapshotDate: '2022-08-05',
-        snapshotUrl: 'https://web.archive.org/web/20220805010101/x',
-        contentHash: 'hash-a',
-        onChainTxHash: '0xabc',
-      },
-    ]);
-
-    const result = await listCaptures(URL);
-
-    if (result.status !== 'OK') throw new Error('unreachable');
-    expect(result.counts).toEqual({
-      inArchive: 2,
-      storedLocally: 1,
-      storedNotInArchiveIndex: 0,
-      notArchived: 0,
-    });
-    expect(result.captures.map((c) => c.storedLocally)).toEqual([true, false]);
-    expect(result.captures[0].storedOnChainTxHash).toBe('0xabc');
-  });
-
-  // -------------------------------------------------------------------------
-  // A PARTITION, NOT AN EXCLUSION.
-  //
-  // Cross-checking a never-archived capture against CDX would report it as a gap
-  // in the Archive — a fabricated finding from the tool built to detect
-  // fabricated findings — so it is correctly kept OUT of `captures`. But dropping
-  // it from the answer entirely makes list_captures UNDER-REPORT what the
-  // platform holds, which is the same failure in the other direction.
-  //
-  // Built while the answer is always empty, for the same reason the UNCHANGED
-  // status landed before the backfill wrote a row: the first DIRECT capture
-  // Level 2 Phase B creates must appear here on the day it is created.
-  // -------------------------------------------------------------------------
-  it('reports a never-archived capture in its own section, not among the archived ones', async () => {
-    mockedAxios.get.mockResolvedValue({ data: cdxRows([['20220403152841', 'AAA', '200']]) });
-    mockSnapshots(
-      [
-        {
-          waybackTimestamp: '20220403152841',
-          snapshotDate: '2022-04-03',
-          snapshotUrl: 'u',
-          contentHash: 'h',
-          onChainTxHash: null,
-        },
-      ],
-      [{ capturedAt: new Date('2026-08-28T09:00:00Z'), provenance: 'DIRECT' }],
-    );
-
-    const result = await listCaptures(URL, {});
-    if (result.status !== 'OK') throw new Error('unreachable');
-
-    expect(result.counts.notArchived).toBe(1);
-    expect(result.notArchived).toHaveLength(1);
-    expect(result.notArchived[0]).toEqual({
-      capturedAt: '2026-08-28T09:00:00.000Z',
-      provenance: 'DIRECT',
-      // Stated on the row rather than inferred from which array it came out of.
-      independentlyRecheckable: false,
-    });
-
-    // It must NOT appear among the archived captures, or it would be reported as
-    // a gap in the Archive.
-    expect(result.captures.every((c) => c.waybackTimestamp !== undefined)).toBe(true);
-    expect(result.counts.storedNotInArchiveIndex).toBe(0);
-  });
-
-  it('scopes the never-archived query to non-WAYBACK captures only', async () => {
-    mockedAxios.get.mockResolvedValue({ data: cdxRows([['20220403152841', 'AAA', '200']]) });
-    mockSnapshots([], []);
-    await listCaptures(URL, {});
-
-    const notArchivedCall = findSnapshots.mock.calls.find(
-      (c) => (c[0] as { where?: Record<string, unknown> }).where?.['NOT'] !== undefined,
-    );
-    expect(notArchivedCall).toBeDefined(); // vacuity guard: the query must exist
-    const where = (notArchivedCall?.[0] as { where: Record<string, unknown> }).where;
-    expect(where['NOT']).toEqual({ provenance: 'WAYBACK' });
-  });
-
-  it('reports a stored capture the archive index did not return — the two sources disagreeing is itself a finding', async () => {
-    mockedAxios.get.mockResolvedValue({ data: cdxRows([['20220805010101', 'AAA', '200']]) });
-    mockSnapshots([
-      {
-        waybackTimestamp: '20220901010101',
-        snapshotDate: '2022-09-01',
-        snapshotUrl: 'https://web.archive.org/web/20220901010101/x',
-        contentHash: 'hash-z',
-        onChainTxHash: null,
-      },
-    ]);
-
-    const result = await listCaptures(URL);
-
-    if (result.status !== 'OK') throw new Error('unreachable');
-    expect(result.counts.storedNotInArchiveIndex).toBe(1);
-    expect(result.captures.map((c) => c.waybackTimestamp)).toEqual([
-      '20220805010101',
-      '20220901010101',
-    ]);
-  });
-
-  it('returns stored captures with an explicit warning when the archive is unreachable', async () => {
-    mockedAxios.get.mockRejectedValue(axiosError(503));
-    mockSnapshots([
-      {
-        waybackTimestamp: '20220805010101',
-        snapshotDate: '2022-08-05',
-        snapshotUrl: 'https://web.archive.org/web/20220805010101/x',
-        contentHash: 'hash-a',
-        onChainTxHash: null,
-      },
-    ]);
-
-    const result = await listCaptures(URL);
-
-    expect(result.status).toBe('ARCHIVE_UNAVAILABLE');
-    if (result.status !== 'ARCHIVE_UNAVAILABLE') throw new Error('unreachable');
-    expect(result.storedCaptures).toHaveLength(1);
-    expect(result.message).toContain('wider than the truth');
   });
 });
 

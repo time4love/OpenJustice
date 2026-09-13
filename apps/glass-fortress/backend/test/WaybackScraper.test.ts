@@ -41,13 +41,11 @@ jest.mock('@mozilla/readability', () => ({
     })),
 }));
 jest.mock('../src/services/ForensicAgent');
-jest.mock('../src/services/VectorStoreService', () => ({
-  VectorStoreService: {
-    create: jest.fn().mockResolvedValue({
-      upsertEvidence: jest.fn().mockResolvedValue(undefined),
-    }),
-  },
-}));
+// The `VectorStoreService` mock left with the module at evidence step 11a:
+// evidence flows §5 retires the evidence surface it served, and with no prose
+// on an evidence row the embedding has no source and no reader. Nothing in
+// this file reaches it — the scraper never did; the mock guarded a transitive
+// import through the evidence path that no longer exists.
 
 // analyzePageHistory now ADMITS rather than upserting a TrackedUrl directly —
 
@@ -116,10 +114,6 @@ jest.mock('../src/lib/prisma', () => ({
       // NEVER called. Nothing in the service reaches it any more.
       updateMany: jest.fn().mockResolvedValue({ count: 1 }),
     },
-    waybackScrapeJob: {
-      findUnique: jest.fn(),
-      update: jest.fn().mockImplementation(({ data }) => Promise.resolve({ id: 'job-id-789', ...data })),
-    },
   },
 }));
 
@@ -128,8 +122,6 @@ import { prisma } from '../src/lib/prisma';
 
 const mockAxiosGet = axios.get as jest.Mock;
 const mockPrismaFindMany = prisma.evidence.findMany as jest.Mock;
-const mockJobFindUnique = prisma.waybackScrapeJob.findUnique as jest.Mock;
-const mockJobUpdate = prisma.waybackScrapeJob.update as jest.Mock;
 const MockForensicAgent = ForensicAgent as jest.MockedClass<typeof ForensicAgent>;
 
 // ---------------------------------------------------------------------------
@@ -423,52 +415,24 @@ describe('isWaybackOffline', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Tests: fetchCorrelatedEvidence
+// THE `fetchCorrelatedEvidence` GROUP WENT WITH THE METHOD AT EVIDENCE STEP 11b.
+//
+// It held that the ±60-day context query excluded the page being classified and
+// bounded what it returned. Every column that query selected — summary, tier,
+// role, categories, entity, date — left the evidence row: they are prose and
+// opinion the design keeps on a version or a citation, or nowhere (evidence §3).
+//
+// IT IS NOT ONE OF as-built §8's FOUR KEEP GROUPS. That tag names
+// `getSnapshotsList`, `scrapeSnapshot`, `isWaybackOffline` and
+// `isTransientWaybackError`, all below and untouched; this group is the
+// classifier's context, and it is deleted with the concept (plan §4 rule 1)
+// rather than weakened to pass.
+//
+// The method's own docblock had already said why it should not exist: correlation
+// is worth something only from a DIFFERENT source, and corona.health.gov.il's
+// 2026-05-29 classification cited its own page's earlier diffs as outside
+// support. The walk has always passed `[]`.
 // ---------------------------------------------------------------------------
-
-describe('WaybackScraper.fetchCorrelatedEvidence', () => {
-  beforeEach(() => jest.clearAllMocks());
-
-  it('queries Prisma with the correct ±60-day window', async () => {
-    mockPrismaFindMany.mockResolvedValueOnce([]);
-    const scraper = new WaybackScraper();
-    await scraper.fetchCorrelatedEvidence('2021-06-01');
-
-    expect(mockPrismaFindMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({
-          AND: expect.arrayContaining([
-            { evidenceDate: { gte: '2021-04-02' } },
-            { evidenceDate: { lte: '2021-07-31' } },
-          ]),
-        }),
-        take: 5,
-      }),
-    );
-  });
-
-  it('maps Prisma rows to RelatedEvidenceContext shape', async () => {
-    mockPrismaFindMany.mockResolvedValueOnce([
-      {
-        evidenceDate: '2021-05-15',
-        summary: 'דו"ח פנימי',
-        investigativeCategories: ['WITHHOLDING_INFORMATION'],
-        targetEntity: 'Ministry of Health',
-        evidenceRole: 'Incriminating',
-      },
-    ]);
-    const scraper = new WaybackScraper();
-    const result = await scraper.fetchCorrelatedEvidence('2021-06-01');
-    expect(result).toHaveLength(1);
-    expect(result[0]).toMatchObject({
-      date: '2021-05-15',
-      summary: 'דו"ח פנימי',
-      investigativeCategories: ['WITHHOLDING_INFORMATION'],
-      targetEntity: 'Ministry of Health',
-      evidenceRole: 'Incriminating',
-    });
-  });
-});
 
 // ---------------------------------------------------------------------------
 // Transient-failure classification.

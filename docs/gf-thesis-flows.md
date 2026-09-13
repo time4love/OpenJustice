@@ -1244,10 +1244,10 @@ the citation tokens, in the text:
   #tr_<cuid>         a ClaimTrajectory.id — the detection pass's row, never a claimHash
   a token the parser cannot resolve is a refusal at the version write, never a plain string
 
-NORMALISE(text)      whitespace collapsed to one space, trimmed — `normaliseClaim` in the
-                     trajectory service, and ONE importable symbol: the substring checks of
-                     T1 and T4, the gap id, and the trajectory probe all call it; a second
-                     spelling of it is a scan failure (A7)
+NORMALISE(text)      whitespace collapsed to one space, trimmed — `normaliseClaim`, declared in `lib/normalise.ts`, a module
+                     that imports nothing; the trajectory service and every other caller import it — ONE importable symbol:
+                     the substring checks of T1 and T4, the gap id, and the trajectory probe all call it; a second spelling
+                     of it is a scan failure (A7) — amended 2026-09-11 (thesis step 18): a module that holds a database client depends on the pure one, never the reverse
 PROVISION            a value from ONE importable table naming each provision and its element
                      shapes (prosecutor plan §5) — e.g. NUREMBERG_1 → [DUTY_HOLDER,
                      KNOWLEDGE_POINT, DISCLOSURE_TIMELINE, DIVERGENCE]; extending the table is
@@ -1283,7 +1283,7 @@ ThesisMention                                                      ⚠️ re-sha
   name                    String — the fileHash, or the trajectory id
   contentVersionHash      String? — REQUIRED on EVIDENCE; the pin, computed at the write:
                           Evidence(name).affirmedContentVersionHash if the row exists, else
-                          CURRENT(record).hash
+                          CURRENT(record).hash — held by CHECK `ThesisMention_fields_by_kind` (18)
   debateSessionId         String? — the argument, by reference; written by promote_from_debate
                           on the head's mention, copied forward while (name, pin) is unchanged
   @@unique([versionId, kind, name])
@@ -1326,7 +1326,7 @@ ThesisGapDecision       append-only                                ⚠️ replac
                           addresses, restsOn: [name…] }
   callItem                Json? — REQUIRED on CALLED: { whatIsNeeded, whoWouldHaveSeenIt,
                           unit, window }
-  reason                  String? — REQUIRED on CONCEDED, DISMISSED
+  reason                  String? — REQUIRED on CONCEDED, DISMISSED · the four: CHECK (step 18)
   researcherId · createdAt
 
 PublicationAttempt      append-only                                ⚠️ to build
@@ -1340,7 +1340,7 @@ Withdrawal              append-only
   id · thesisId · versionId · reason REQUIRED · researcherId · createdAt
 
 Note
-  id · thesisId? · framingId? — exactly one set, a CHECK constraint · text · researcherId ·
+  id · thesisId? · framingId? — exactly one set, CHECK `Note_one_target` · text · researcherId ·
   createdAt
 
 ProsecutionRun                                                     later (§10)

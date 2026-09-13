@@ -71,8 +71,8 @@ export async function scrapeUrl(url: string): Promise<ScrapedPage> {
 
   // Extraction is NOT done here. This module used to run its own
   // JSDOM + Readability pass and return `article.textContent`, which is a
-  // different string from the one the archive path stores as
-  // UrlSnapshot.fullText — so the same URL produced different text, and
+  // different string from Readability's article as the archive path composed it
+  // (the legacy register) — so the same URL produced different text, and
   // therefore a different evidence identity, depending on whether it arrived
   // through the website or through MCP. One extractor, in one place.
   const article = extractArticle(html, fetchUrl);

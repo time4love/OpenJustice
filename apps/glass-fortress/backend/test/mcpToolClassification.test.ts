@@ -122,7 +122,16 @@ describe('MCP tool classification', () => {
     // Named explicitly rather than derived, so that moving any of these back to
     // the open set is a deliberate edit to this list with a test failure to
     // explain. Each embeds input and then invokes an LLM.
-    for (const tool of ['get_research_agenda', 'run_ai_analysis', 'scan_captures']) {
+    // `get_research_agenda` and `run_ai_analysis` left the surface in the thesis
+    // half of the legacy switch (thesis A4 retires both). `scan_captures` is one
+    // classifier call per novel capture that reaches Gate 5.
+    //
+    // `assess_framing` ADDED AT THESIS STEP 19 — one framing-assessor call per
+    // round, and the thesis layer's first paid point. Its AUTHORITY is thesis A4
+    // :1442, which marks the tool "WRITE · paid", with thesis refactor plan §7
+    // :262 ("the MCP surface is exactly A4's, and mcpToolClassification agrees").
+    // `run_analysis` lands under this same case at step 22.
+    for (const tool of ['scan_captures', 'assess_framing']) {
       expect(WRITE_TOOLS.has(tool)).toBe(true);
     }
   });
@@ -147,11 +156,10 @@ describe('MCP tool classification', () => {
     expect(READ_TOOLS.has('get_claim_trajectories')).toBe(false);
   });
 
-  it('keeps search_evidence open', () => {
-    // Deliberate: it embeds a query and nothing more, it is the core public
-    // read, and the anonymous ChatGPT integration depends on it. Asserted so
-    // that a future tightening pass has to make that trade-off consciously.
-    expect(READ_TOOLS.has('search_evidence')).toBe(true);
-    expect(WRITE_TOOLS.has('search_evidence')).toBe(false);
-  });
+  // THE `search_evidence` CASE WENT WITH THE TOOL AT EVIDENCE STEP 11a.
+  // It held the tool open deliberately, for the anonymous ChatGPT integration.
+  // Evidence flows §5 retires the tool itself: an evidence surface ranked by an
+  // embedding of prose, over a row that now carries no prose. The public read is
+  // the CORPUS — `list_findings`, `resolve_record`, `verify_claim_text` — and the
+  // trade-off this case existed to keep conscious is made there, at step 12.
 });

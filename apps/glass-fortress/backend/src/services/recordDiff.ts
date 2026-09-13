@@ -1,4 +1,3 @@
-import { createHash } from 'crypto';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { captureHtml, deriveTextFromHtml, TEXT_EXTRACTION_VERSION } from '../lib/captureDocument';
@@ -99,8 +98,13 @@ export interface DiffWrite extends Partial<DiffClassification> {
  * from the type. A key added to the type and forgotten here would let a write
  * missing it pass as whole — so this list is the one place that says what whole
  * means, and `satisfies` holds it to the type at compile time.
+ *
+ * EXPORTED AT EVIDENCE STEP 12, unchanged otherwise. `list_findings` reads this
+ * column back and republishes six of its keys, so the READER needs the same
+ * notion of "whole" the writer refuses to violate — a reader with its own copy
+ * of the list is how the two come to disagree about what a half row is.
  */
-const CLASSIFICATION_KEYS = [
+export const CLASSIFICATION_KEYS = [
   'deletedItems',
   'addedItems',
   'legalSignificance',
@@ -160,17 +164,14 @@ interface ContentChunk {
 }
 
 /**
- * A1's `contentVersionHash`: sha256 over the UTF-8 of the JSON of
- * `[{ side, text } …]` — the differ's raw segments in the differ's output
- * order, removed then added, the text as the differ emits it. Nothing else:
- * not survival, not opinion, not a version label. Bare lowercase hex, the
- * spelling every hash column of the corpus stores (`textHash`, its sibling
- * content version, included); `0x` is the display form.
+ * A1's `contentVersionHash`, RE-EXPORTED. The function moved to
+ * `src/lib/evidenceIdentity.ts` at evidence step 11b, where A1's byte layouts
+ * are stated once; this writer is its one caller and keeps the name it imports
+ * under, so the walk reads the same symbol it always did.
  */
-export function contentVersionHash(chunks: readonly { side: 'REMOVED' | 'ADDED'; text: string }[]): string {
-  const named = chunks.map(({ side, text }) => ({ side, text }));
-  return createHash('sha256').update(JSON.stringify(named), 'utf8').digest('hex');
-}
+import { contentVersionHash } from '../lib/evidenceIdentity';
+export { contentVersionHash } from '../lib/evidenceIdentity';
+
 
 /** The columns the writer reads off each stored capture of the pair — its text, and the document the text was cut from. */
 const PAIR_SELECT = {
@@ -178,7 +179,6 @@ const PAIR_SELECT = {
   text: true,
   textHash: true,
   snapshotDate: true,
-  snapshotUrl: true,
   document: true,
   documentContentType: true,
   documentContentEncoding: true,
@@ -189,7 +189,6 @@ interface StoredSide {
   text: string;
   textHash: string;
   snapshotDate: string;
-  snapshotUrl: string;
   document: Uint8Array;
   documentContentType: string | null;
   documentContentEncoding: string | null;
@@ -311,16 +310,19 @@ export async function recordDiff(input: DiffWrite, tx?: Prisma.TransactionClient
   const writeIn = async (client: Prisma.TransactionClient): Promise<WrittenDiff> => {
     const pair = await client.urlVersionDiff.upsert({
       where: { beforeSnapshotId_afterSnapshotId: { beforeSnapshotId, afterSnapshotId } },
-      // The pair, and the three legacy NOT NULL columns filled from the
-      // captures; every other legacy column keeps its default — the content is
-      // the version's.
+      // THE PAIR, AND NOTHING ELSE. This wrote `beforeDate`, `afterDate` and
+      // `snapshotUrl` too — "the three legacy NOT NULL columns" — and evidence
+      // step 11b DROPPED those columns on 2026-09-08 without removing the write.
+      // It threw on staging on 2026-09-12, on the first diff anyone had written
+      // since: `Unknown argument 'beforeDate'`. Nothing caught it for four days
+      // because this site is reached ONLY by an acquisition that HAS A
+      // PREDECESSOR — walla's three diffs predate the migration, rtmag holds one
+      // capture — and because a Prisma create payload is NOT excess-property
+      // checked (test/prismaPayloadFields.test.ts now holds that line).
       create: {
         trackedUrlId,
         beforeSnapshotId,
         afterSnapshotId,
-        beforeDate: stored.before.snapshotDate,
-        afterDate: stored.after.snapshotDate,
-        snapshotUrl: stored.after.snapshotUrl,
       },
       update: {},
       select: { id: true },

@@ -9,12 +9,6 @@ import {
   rawCaptureUrl,
   withRetry,
 } from '../lib/archiveHttp';
-import { type RelatedEvidenceContext } from './ForensicAgent';
-import { prisma } from '../lib/prisma';
-import {
-  buildForensicEvidence,
-  type ForensicEvidenceSource,
-} from './forensicEvidence';
 import { recordCdxObservation } from './recordCdxObservation';
 
 // ---------------------------------------------------------------------------
@@ -44,90 +38,9 @@ interface RawSnapshot {
 /** Captures per CDX page — the survey's page size. */
 const MAX_SNAPSHOTS = 50;
 
-/** Days on each side of the snapshot date to search for correlated DB evidence. */
-const CONTEXT_WINDOW_DAYS = 60;
-
-/** Maximum correlated evidence records to pass to the AI (keep prompt manageable). */
-const MAX_CONTEXT_RECORDS = 5;
-
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-/**
- * Record a classified UrlVersionDiff as a PENDING_REVIEW Evidence record.
- *
- * This deliberately does NOT promote. Until 2026-08-22 it registered the hash
- * on-chain, wrote CONFIRMED, and indexed the record for public search — all on
- * the strength of an LLM classification, with no human ever seeing it.
- *
- * The reason that was wrong is visible in the data model. A UrlSnapshot's
- * contentHash is anchored automatically and correctly: it claims "this page
- * held exactly this text on this date", a factual observation anyone can
- * re-verify, and its value depends on being anchored promptly. An Evidence
- * record claims "this change is evidence in this investigation" — a legal
- * characterization. Automating the first is chain of custody; automating the
- * second is asserting a legal conclusion nobody reviewed.
- *
- * Nothing evidential is lost by waiting, because the snapshot anchor already
- * froze the underlying fact at scan time. What is gained is that CONFIRMED
- * keeps meaning what it says.
- *
- * Findings are reviewed and promoted per tracked URL — see the get_scan_findings
- * and promote_scan_findings MCP tools.
- *
- * Only diffs that advance at least one standing investigative concern are
- * recorded at all: a change can be unusual, or even legally interesting, and
- * still not be evidence for THIS investigation. Callers gate on
- * isLegallySignificant, which derives from the same classification; the guard
- * below makes the invariant explicit at the boundary rather than relying on
- * every caller to hold it.
- *
- * Idempotent — upserts by fileHash so re-runs are safe. Non-fatal — logs and
- * continues on failure, so one bad diff cannot abort a scan.
- */
-export async function recordScanFinding(source: ForensicEvidenceSource): Promise<void> {
-  // The automatic path only. Manual promotion via /forensics/promote is a
-  // researcher's deliberate override and is intentionally not gated on this.
-  if (source.investigativeCategories.length === 0) {
-    console.warn(
-      `[WaybackScraper] Refusing to record diff ${source.diffId} — no investigative category matched.`,
-    );
-    return;
-  }
-
-  const { fileHash, data } = buildForensicEvidence(source);
-
-  try {
-    await prisma.evidence.upsert({
-      where: { fileHash },
-      // An existing row is left exactly as it is. If it was already reviewed and
-      // confirmed, a re-scan must not quietly reopen it; if it is still pending,
-      // there is nothing new to write.
-      update: {},
-      create: { ...data, status: 'PENDING_REVIEW' },
-    });
-  } catch (err) {
-    console.warn(
-      '[WaybackScraper] Recording scan finding failed for diff', source.diffId,
-      ':', err instanceof Error ? err.message : err,
-    );
-    return;
-  }
-
-  console.info(
-    `[WaybackScraper] Recorded scan finding ${fileHash} as PENDING_REVIEW — awaiting review.`,
-  );
-}
-
-/**
- * Compute the date string for a point N days offset from a YYYY-MM-DD date.
- */
-function offsetDate(dateStr: string, days: number): string {
-  const d = new Date(dateStr);
-  d.setDate(d.getDate() + days);
-  return d.toISOString().slice(0, 10);
-}
 
 // ---------------------------------------------------------------------------
 // WaybackScraper
@@ -327,56 +240,20 @@ export class WaybackScraper {
     };
   }
 
-  /**
-   * Query the evidence database for records whose `evidenceDate` falls within
-   * ±CONTEXT_WINDOW_DAYS of the given snapshot date.
-   *
-   * `excludeTrackedUrlId` keeps a page from corroborating itself.
-   *
-   * Correlation is only worth anything when it comes from a DIFFERENT source
-   * than the page being classified. Evidence derived from this same tracked URL
-   * is not independent support — it is the same page, one snapshot earlier.
-   *
-   * This is not hypothetical. Because recordScanFinding writes evidence as the
-   * scan walks forward, later diffs find earlier ones already in their ±60-day
-   * window, and the 2022-05-29 classification of corona.health.gov.il cited
-   * "הראיות הפנימיות שנרשמו בימים 25 ו-29 במאי" — its own page's prior diffs,
-   * described as internal corroborating evidence. A page could inflate the
-   * significance of every one of its changes on the strength of its neighbours.
-   *
-   * The oscillation such neighbours reveal is a genuine finding — deleted,
-   * restored, deleted again within six days. It belongs at the thesis level,
-   * where a researcher cites several records and the pattern reads as a pattern,
-   * not inside a per-diff verdict dressed as outside support.
-   */
-  async fetchCorrelatedEvidence(
-    snapshotDate: string,
-    excludeTrackedUrlId?: string,
-  ): Promise<RelatedEvidenceContext[]> {
-    const windowStart = offsetDate(snapshotDate, -CONTEXT_WINDOW_DAYS);
-    const windowEnd = offsetDate(snapshotDate, +CONTEXT_WINDOW_DAYS);
-
-    const rows = await prisma.evidence.findMany({
-      where: {
-        AND: [
-          { evidenceDate: { gte: windowStart } },
-          { evidenceDate: { lte: windowEnd } },
-          { NOT: { evidenceDate: 'Unknown' } },
-          ...(excludeTrackedUrlId
-            ? [{ NOT: { urlVersionDiff: { trackedUrlId: excludeTrackedUrlId } } }]
-            : []),
-        ],
-      },
-      orderBy: { evidenceDate: 'asc' },
-      take: MAX_CONTEXT_RECORDS,
-    });
-
-    return rows.map((r) => ({
-      date: r.evidenceDate,
-      summary: r.summary,
-      investigativeCategories: r.investigativeCategories,
-      targetEntity: r.targetEntity,
-      evidenceRole: r.evidenceRole,
-    }));
-  }
+  // `fetchCorrelatedEvidence` LEFT AT EVIDENCE STEP 11b, WITH THE PROSE IT READ.
+  //
+  // It searched a ±60-day window for other evidence about the same page and
+  // handed the classifier their summaries as context. Every column it selected —
+  // summary, tier, role, categories, entity, date — left the evidence row: they
+  // are prose and opinion the design keeps on a version or a citation, or nowhere
+  // (evidence flows §3).
+  //
+  // AND THE DOCBLOCK BELOW IT ALREADY SAID WHY IT SHOULD NOT EXIST. Correlation
+  // is worth something only from a DIFFERENT source, and on 2026-05-29 the
+  // classification of corona.health.gov.il cited "the internal evidence recorded
+  // on 25 and 29 May" — its own page's earlier diffs, described as outside
+  // support. `excludeTrackedUrlId` was the guard; deleting the reader is the fix.
+  // The oscillation such neighbours reveal is a genuine finding and belongs at
+  // the thesis level, where a researcher cites several records and the pattern
+  // reads as a pattern.
 }

@@ -1,50 +1,159 @@
 import { z } from 'zod';
-import { getDiffInput } from '../../services/diffInput';
+import { prisma } from '../../lib/prisma';
+import { loadDiffByPair, loadPage, lookupCapture, pairName, type Page } from '../../services/corpusReads';
+import { currentVersionOf } from '../../services/evidencePredicates';
+import { answer, refusal, notACapture, openPage, shared, type Refusal } from './evidenceRefusals';
 
 // ---------------------------------------------------------------------------
-// get_diff_input
+// get_diff_input({ url, before, after }) — PUBLIC — docs/gf-evidence-flows.md A4.
 //
-// The page text a diff detected as changed — the classifier's INPUT — beside the
-// items it produced.
+// "The pair's two current texts and the CURRENT version's chunks — named by the
+// PAIR, never by a date pair; an ambiguous name is impossible by construction."
 //
-// Nothing exposed this. get_forensic_timeline returns deletedText/addedText,
-// which is classifier OUTPUT, so a change that was detected and then described by
-// nobody is invisible there. The raw columns were reachable over REST and through
-// no MCP tool, which is why the 2026-08-26 truncation defect took a curl loop
-// against production's public endpoint to find, and could not be reproduced
-// against staging at all — its REST surface is behind the access gate.
+// A DIFF IS ITS PAIR. §7: as built, "the timeline displays `beforeDate`/
+// `afterDate` strings that can name a capture the corpus does not hold" — Level
+// 8's boundary defect. Here the two parameters are wayback timestamps, which are
+// unique per page, so the interval a caller asks about is the interval the
+// corpus holds.
 //
-// READ tool: two stored columns, no model, no archive fetch, no write. Unlike
-// preview_diff_classification, which is gated because it SPENDS.
+// EVERY NEGATIVE CARRIES A NAME. `NOT_A_CAPTURE` and `NO_SUCH_DIFF` are
+// different answers and are kept apart: "you named something that is not a
+// capture of this page" and "these two captures are not a pair the walk wrote"
+// are different facts, and the tool this one replaces collapsed exactly that
+// kind of distinction into an empty answer.
 // ---------------------------------------------------------------------------
 
 export const getDiffInputSchema = {
-  diffId: z
+  url: z.url().describe('The page — exact URL, as it was surveyed'),
+  before: z
     .string()
-    .optional()
-    .describe(
-      'The diff, from get_forensic_timeline. Diff ids are per-environment — the same page change ' +
-        'has a different id in each database — so use url + afterDate to ask two environments about ' +
-        'the same change.',
-    ),
-  url: z.string().url().optional().describe('Tracked URL. Use with afterDate instead of diffId.'),
-  afterDate: z
+    .describe('The EARLIER capture, by its 14-digit wayback timestamp — never a date'),
+  after: z
     .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/, 'afterDate must be YYYY-MM-DD')
-    .optional()
-    .describe('The snapshot date the change was detected in, YYYY-MM-DD. Use with url.'),
+    .describe('The LATER capture, by its 14-digit wayback timestamp — never a date'),
 };
 
+interface Side {
+  capture: string;
+  textHash: string;
+  textExtractionVersion: string;
+  text: string;
+}
+
+interface DiffInput {
+  page: { url: string; public: boolean };
+  before: Side;
+  after: Side;
+  current: { contentVersionHash: string; diffVersion: string; chunks: unknown };
+}
+
+/**
+ * A timestamp that is not fourteen digits is refused rather than guessed at (A4:
+ * "a tool given a date instead of a timestamp refuses NOT_A_CAPTURE rather than
+ * guessing"), and a well-formed one that names no ACQUIRED capture SAYS WHICH IT
+ * IS — the page holds the capture but the corpus holds no text for it, or the
+ * page's work-list has no such timestamp at all. Two states, two sentences.
+ *
+ * THE LOOKUP AND THE WORDING MOVED OUT AT EVIDENCE STEP 13, unchanged: the
+ * debate's writes ask the same question of the same row and must not grow a
+ * second wording for it. This read still calls ALL THREE negatives
+ * NOT_A_CAPTURE, which is its own contract; the write layer separates
+ * NOT_ACQUIRED, which is A4's.
+ */
+async function captureRefusal(page: Page, role: string, value: string): Promise<Refusal> {
+  const lookup = await lookupCapture(page, value);
+  if (lookup.state === 'ACQUIRED') {
+    throw new Error(
+      `get_diff_input: ${role}=${value} is an ACQUIRED capture of ${page.url}, so there is no ` +
+        'refusal to word. This is reached only when the pair lookup and the capture lookup ' +
+        'disagree, which is a defect in the reader rather than an answerable state.',
+    );
+  }
+  return notACapture(page, role, value, lookup);
+}
+
 export async function getDiffInputHandler(input: {
-  diffId?: string;
-  url?: string;
-  afterDate?: string;
+  url: string;
+  before: string;
+  after: string;
 }): Promise<string> {
-  return JSON.stringify(
-    await getDiffInput({
-      ...(input.diffId !== undefined ? { diffId: input.diffId } : {}),
-      ...(input.url !== undefined ? { url: input.url } : {}),
-      ...(input.afterDate !== undefined ? { afterDate: input.afterDate } : {}),
-    }),
-  );
+  return answer(async (): Promise<DiffInput | Refusal> => {
+    const page = await loadPage(input.url);
+    if (page === null) return shared.notSurveyed(input.url);
+
+    const access = await openPage(page);
+    if (access.refused !== null) return access.refused;
+
+    const diff = await loadDiffByPair(page.id, input.before, input.after);
+    if (diff === null) {
+      // Which of the three it is, in order: a name that is not a capture at all,
+      // then a pair the walk never wrote.
+      const captures = await prisma.urlSnapshot.findMany({
+        where: {
+          trackedUrlId: page.id,
+          waybackTimestamp: { in: [input.before, input.after] },
+        },
+        select: { waybackTimestamp: true },
+      });
+      const held = new Set(captures.map((c) => c.waybackTimestamp));
+      if (!held.has(input.before)) return captureRefusal(page, 'before', input.before);
+      if (!held.has(input.after)) return captureRefusal(page, 'after', input.after);
+      return refusal(
+        'NO_SUCH_DIFF',
+        `${input.before} → ${input.after} is not a pair the walk wrote. Both captures are in the ` +
+          'corpus, but a diff spans two CONSECUTIVE acquired captures; list_findings shows every ' +
+          'pair this page holds.',
+      );
+    }
+
+    const current = currentVersionOf({
+      kind: 'DIFF',
+      before: diff.before,
+      after: diff.after,
+      versions: diff.versions,
+    });
+    if (!current.defined || current.kind !== 'DIFF') {
+      return refusal(
+        'AWAITING_DERIVATION',
+        `The diff ${pairName(diff)} has no current content version: its endpoints' text has moved ` +
+          'and the walk owes a re-derivation. This is not a finding about the change — nothing has ' +
+          'been derived to look at yet. Run scan_captures on this page and ask again.',
+      );
+    }
+
+    const texts = await prisma.urlSnapshot.findMany({
+      where: { id: { in: [diff.before.id, diff.after.id] } },
+      select: { id: true, text: true },
+    });
+    const textOf = (id: string): string => {
+      const row = texts.find((t) => t.id === id);
+      if (row === undefined) {
+        throw new Error(
+          `Walk defect: the diff ${pairName(diff)} names a capture the corpus does not hold.`,
+        );
+      }
+      return row.text;
+    };
+
+    return {
+      page: { url: page.url, public: access.public },
+      before: {
+        capture: diff.before.capture,
+        textHash: diff.before.textHash,
+        textExtractionVersion: diff.before.textExtractionVersion,
+        text: textOf(diff.before.id),
+      },
+      after: {
+        capture: diff.after.capture,
+        textHash: diff.after.textHash,
+        textExtractionVersion: diff.after.textExtractionVersion,
+        text: textOf(diff.after.id),
+      },
+      current: {
+        contentVersionHash: current.contentVersionHash,
+        diffVersion: current.version.diffVersion,
+        chunks: current.version.chunks,
+      },
+    };
+  });
 }

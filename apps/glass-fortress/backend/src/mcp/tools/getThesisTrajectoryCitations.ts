@@ -46,10 +46,10 @@ export async function getThesisTrajectoryCitationsHandler(input: { thesisId: str
   }
 
   const mentions = await prisma.thesisMention.findMany({
-    where: { thesisVersionId: versionId, type: 'CLAIM_TRAJECTORY' },
-    select: { refId: true },
+    where: { versionId, kind: 'TRAJECTORY' },
+    select: { name: true },
   });
-  const { resolved, missing } = await resolveTrajectoryCitations(mentions.map((m) => m.refId));
+  const { resolved, missing } = await resolveTrajectoryCitations(mentions.map((m) => m.name));
 
   // One entry per movement: members of a co-movement share their captures by
   // definition, so repeating the list per member says nothing extra.

@@ -1,265 +1,242 @@
 import { z } from 'zod';
-import { prisma } from '../../lib/prisma';
-import {
-  ON_CHAIN_EXPLANATIONS,
-  ON_CHAIN_VERDICTS,
-  type OnChainVerdict,
-} from '../../lib/onChainVerdict';
-import { observeOnChainStatus } from '../../services/onChainVerification';
+import { isWaybackTimestamp } from '../../lib/evidenceIdentity';
+import { toBytes32 } from '../../lib/bytes32';
+import { normaliseAddress } from '../../lib/anchoringTarget';
+import { readChainIdentity } from '../../lib/chainIdentity';
 import { Web3Service } from '../../services/Web3Service';
-import { capturesAnchoredBy } from '../../lib/anchoredCaptureHash';
+import {
+  attributeClaim,
+  entryFromChain,
+  RegistryReadError,
+  type ClaimAttribution,
+} from '../../services/registryState';
+import { storedAttributionFor, type StoredAttribution } from '../../services/evidencePredicates';
+import {
+  loadCaptures,
+  loadPage,
+  resolveRecordByName,
+  type Page,
+  type TimelineCapture,
+} from '../../services/corpusReads';
+import { answer, refusal, openPage, shared, type Refusal } from './evidenceRefusals';
 
 // ---------------------------------------------------------------------------
-// check_on_chain_status
+// check_on_chain_status — PUBLIC, RE-SCOPED TO A CAPTURE — evidence A4, §5.
 //
-// Compares what the database CLAIMS about an evidence record against what the
-// EvidenceRegistry contract actually holds, and names the discrepancy.
+// "A check on a CAPTURE: isRegistered · ATTRIBUTED · anchoredHash =
+// documentHash · the stored verdict and its version; asked about a record's
+// fileHash it answers about every capture beneath it."
 //
-// This exists because the two can disagree, and did: a 2026-08-20 audit found
-// 5 of 7 staging Evidence rows marked CONFIRMED with no matching on-chain
-// registration. `CONFIRMED` is the platform's strongest evidentiary claim, so
-// a row asserting it without an anchor is worse than an unpromoted row — it
-// looks verified. Nothing reachable from MCP could detect that, which is why
-// it went unnoticed for two months.
+// WHY A CAPTURE AND NOT AN EVIDENCE ROW. §5: "The chain attests the CORPUS …
+// Everything above the corpus — selection, argument, version, citation — is
+// derived from it, and a chain entry for a derived fact attests only that
+// someone wrote it." There is no evidence registration left to check, so the
+// question this tool asks is the only one the chain can answer.
 //
-// THE RULE NO LONGER LIVES HERE. Level 3a moved the verdict decision to
-// lib/onChainVerdict.ts and the observation to services/onChainVerification.ts,
-// so the write path reaches the same conclusion by the same code instead of a
-// second copy of it. What remains here is this tool's own job: the human-facing
-// report, including the capture summary the write path has no use for.
+// CHAIN STATE, NEVER A RECEIPT. §8: "`isRegistered(hash)` returns an entry's
+// index and `getEvidence(index)` returns its submitter and block time, forever;
+// a receipt is readable only inside the RPC's retention horizon. The audit's
+// `TX_UNREADABLE` was a fact about the transaction our row named, not about the
+// chain's attestation." `forensics:confirm-anchors`, which read receipts, is
+// retired and held absent by the retired-names scan.
 //
-// Read-only against both sources. It never writes and never registers — which
-// is why it calls `observeOnChainStatus` and not `recordOnChainCheck`.
+// ONE SPELLING OF ATTRIBUTED. This tool composes nothing: it calls
+// `attributeClaim`, the same function the ledger, the audits and the anchor-time
+// check call, through the entry lookup that reads ONE entry at the index
+// `isRegistered` returned — so a per-capture question costs two calls rather
+// than a walk of the whole registry.
+//
+// THE CHAIN IS NEVER READ AS AGREEMENT. An unreachable chain, or two reads of
+// one state that disagree, is `CHAIN_UNAVAILABLE` — "a verdict about the CHECK",
+// never a `registered: false` a caller could mistake for a negative.
 // ---------------------------------------------------------------------------
-
-export { ON_CHAIN_VERDICTS, type OnChainVerdict } from '../../lib/onChainVerdict';
 
 export const checkOnChainStatusSchema = {
+  url: z.url().optional().describe('The page — exact URL. With `capture`, checks that one capture'),
+  capture: z
+    .string()
+    .optional()
+    .describe('One capture, by its 14-digit wayback timestamp — with `url`'),
   fileHash: z
     .string()
-    .regex(/^0x[0-9a-fA-F]{64}$/, 'fileHash must be a 0x-prefixed 32-byte hex string')
-    .describe('SHA-256 fileHash of the evidence record to verify, as returned by any create_evidence_* tool'),
-  recoverTxHash: z
-    .boolean()
     .optional()
-    .describe(
-      'When true, and the hash is registered on-chain but the row records no tx hash, scan the ' +
-        'contract logs to recover it. Costs a bounded eth_getLogs query (a few seconds). Default false.',
-    ),
+    .describe("A record's name instead: answers about every capture beneath it"),
 };
 
-interface OnChainStatusResult {
-  fileHash: string;
-  verdict: OnChainVerdict;
-  safeToPromote: boolean;
-  consistent: boolean;
-  database: {
-    inVault: boolean;
-    evidenceId: string | null;
-    status: string | null;
-    onChainTxHash: string | null;
-  };
-  chain: {
-    registered: boolean;
-    /** The registry's own sequential id. Stringified — it is a uint256. */
-    registryEvidenceId: string | null;
-    recoveredTxHash?: string | null;
-    /** Set when a tx-hash recovery scan failed, so `null` is not read as "none found". */
-    recoveryError?: string;
-  };
-  /**
-   * Present when this hash belongs to archived captures rather than an evidence
-   * record.
-   *
-   * Carries the transaction because the Evidence lookup cannot: a caller was
-   * previously shown `database.onChainTxHash: null` for a hash that
-   * `list_captures` reports with a transaction, which reads as a contradiction
-   * inside one system and is really two tables being asked one question.
-   */
-  snapshot?: {
-    captures: number;
-    url: string;
-    /** ISO-8601. When the earliest capture holding this text was TAKEN. */
-    firstCapture: string;
-    /** ISO-8601. When the latest capture holding this text was TAKEN. */
-    lastCapture: string;
-    onChainTxHash: string | null;
-  };
-  /**
-   * WHAT THIS ROW'S OWN TRANSACTION WAS OBSERVED TO REGISTER — the question
-   * `verdict` does not ask.
-   *
-   * `verdict: CONSISTENT` means the hash is registered and the row carries a
-   * transaction hash. It never asks whether THAT transaction registered THIS
-   * hash, which is the question that can fail and the one
-   * `forensics:confirm-anchors` exists for. Surfacing the two columns it writes
-   * is what stops a caller reading consistency as attribution — a reading this
-   * tool actively invited on 2026-08-30, about a record the audit calls
-   * UNATTRIBUTED, to a session that had just published a thesis citing it.
-   */
-  attribution: {
-    /** The hash observed in the transaction's own log. Null when never observed. */
-    anchoredHash: string | null;
-    /**
-     * The stored terminal verdict from `forensics:confirm-anchors`. Null means
-     * the question has never been asked — which is NOT the same as an answer,
-     * and TX_UNREADABLE is an answer rather than a gap.
-     */
-    anchorCheck: string | null;
-    /** True only when the recorded transaction was observed registering THIS hash. */
-    confirmed: boolean;
-  };
-  explanation: string;
+interface CaptureStatus {
+  capture: string;
+  documentHash: string;
+  isRegistered: boolean;
+  registryIndex: number | null;
+  submitter: string | null;
+  attributed: boolean;
+  anchoredHash: string | null;
+  anchoredHashMatchesDocumentHash: boolean;
+  storedVerdict: {
+    verdict: string;
+    verifierVersion: string;
+    checkedAt: Date;
+    attributed: boolean | null;
+  } | null;
 }
 
-/**
- * One sentence naming what attribution is known, appended to the verdict's own
- * explanation. Never silent: "not asked" and "asked, terminally unanswerable"
- * license different decisions and must not collapse into the same absence.
- */
-export function attributionSentence(
-  a: { anchoredHash: string | null; anchorCheck: string | null; confirmed: boolean },
-  fileHash: string,
-): string {
-  if (a.confirmed) {
-    return 'ATTRIBUTION CONFIRMED: the transaction this row records was observed registering this hash.';
-  }
-  if (a.anchoredHash !== null && a.anchoredHash !== fileHash) {
-    return `ATTRIBUTION MISMATCH: the transaction this row records was observed registering ${a.anchoredHash}, not this hash. Do not cite it for this hash.`;
-  }
-  if (a.anchorCheck !== null) {
-    return `ATTRIBUTION NOT ESTABLISHED, and the answer is terminal: anchorCheck is ${a.anchorCheck}. The registration is real; which transaction made it is not recoverable. Do not cite this as a verified anchor.`;
-  }
-  return 'ATTRIBUTION NEVER OBSERVED: nothing has checked whether the recorded transaction registered this hash. Run forensics:confirm-anchors before citing it as verified.';
-}
-
-/**
- * The only honest answer when the registry cannot be questioned.
- *
- * Never collapse a chain failure into `registered: false`. Absence of an answer
- * and a definitive negative license opposite decisions about an irreversible
- * write, and the caller cannot tell them apart once the distinction is lost.
- */
-function chainUnavailable(fileHash: string, message: string): string {
-  return JSON.stringify({
-    fileHash,
-    error: 'CHAIN_UNAVAILABLE',
-    message,
-    explanation:
-      'The on-chain registry could not be reached, so no verdict is possible. This is not evidence that the hash is unregistered.',
-  });
+interface OnChainStatus {
+  page: { url: string; public: boolean };
+  captures: CaptureStatus[];
+  /** OBSERVED, never configured — the 2026-08-29 rule: a wrong environment records itself. */
+  registry: { chainId: number | null; registryAddress: string | null };
 }
 
 export async function checkOnChainStatusHandler(input: {
-  fileHash: string;
-  recoverTxHash?: boolean;
+  url?: string;
+  capture?: string;
+  fileHash?: string;
 }): Promise<string> {
-  const observation = await observeOnChainStatus(input.fileHash);
-  if (!observation.reachable) return chainUnavailable(input.fileHash, observation.message);
+  return answer(async (): Promise<OnChainStatus | Refusal> => {
+    const subject = await subjectOf(input);
+    if ('error' in subject) return subject;
 
-  // The identity behind the claim, for the report only. `observeOnChainStatus`
-  // reduces the local side to what the RULE needs — a status, a transaction, a
-  // count — and this tool additionally names the record and the captures, which
-  // is presentation rather than verdict.
-  const record = observation.claim.inVault
-    ? await prisma.evidence.findUnique({
-        where: { fileHash: input.fileHash },
-        // anchoredHash / anchorCheck are what `forensics:confirm-anchors` writes,
-        // and until 2026-08-30 no tool exposed either — so a row's attribution
-        // state had to be believed rather than read.
-        select: { id: true, anchoredHash: true, anchorCheck: true },
-      })
-    : null;
+    const access = await openPage(subject.page);
+    if (access.refused !== null) return access.refused;
 
-  const snapshots =
-    observation.claim.snapshots > 0
-      ? await prisma.urlSnapshot.findMany({
-          where: capturesAnchoredBy(input.fileHash),
-          select: {
-            capturedAt: true,
-            onChainTxHash: true,
-            anchoredHash: true,
-            anchorCheck: true,
-            trackedUrl: { select: { url: true } },
-          },
-          // capturedAt, not waybackTimestamp. This summary reports WHEN the text
-          // was captured, which every capture has; only archived ones have an
-          // Archive timestamp. Ordering by a nullable column would also sort
-          // non-archived captures to the end regardless of when they were taken
-          // (Postgres ASC is NULLS LAST), making "lastCapture" report a null for
-          // a corpus that simply contains a direct capture.
-          orderBy: { capturedAt: 'asc' },
-        })
-      : [];
+    const identity = await readChainIdentity();
+    const registry = {
+      chainId: identity.reachable ? identity.chainId : null,
+      registryAddress:
+        identity.registryAddress === null ? null : normaliseAddress(identity.registryAddress),
+    };
 
-  // Summarised here rather than inline: guarding on `length` is the only honest
-  // test, because without noUncheckedIndexedAccess the element type claims
-  // snapshots[0] is always defined and a `first && last` check reads to the
-  // compiler as dead code while being the thing that stops a crash on an empty
-  // array.
-  //
-  // Built whenever captures hold this text, including when the chain does NOT —
-  // a capture whose text was never registered is a real gap, and hiding the
-  // captures would leave the caller unable to see which page it belongs to.
-  const snapshotSummary =
-    snapshots.length > 0
-      ? {
-          captures: snapshots.length,
-          url: snapshots[0].trackedUrl.url,
-          firstCapture: snapshots[0].capturedAt.toISOString(),
-          lastCapture: snapshots[snapshots.length - 1].capturedAt.toISOString(),
-          // The transaction from whichever capture spent it — the twins record
-          // the same value, and null means no capture of this text is anchored.
-          onChainTxHash: snapshots.find((s) => s.onChainTxHash)?.onChainTxHash ?? null,
-        }
-      : null;
-
-  // The subject the verdict is ABOUT: the evidence row when there is one, else
-  // whichever capture carries an observed hash, else any capture. `.at(0)`
-  // rather than `[0]` — the two debt ratchets disagree about indexed access and
-  // only `.at` is typed `T | undefined` unconditionally.
-  const attributionSource: { anchoredHash: string | null; anchorCheck: string | null } | null =
-    record ?? snapshots.find((s) => s.anchoredHash !== null) ?? snapshots.at(0) ?? null;
-  const attribution = {
-    anchoredHash: attributionSource?.anchoredHash ?? null,
-    anchorCheck: attributionSource?.anchorCheck ?? null,
-    confirmed: attributionSource?.anchoredHash === input.fileHash,
-  };
-
-  const result: OnChainStatusResult = {
-    fileHash: input.fileHash,
-    verdict: observation.verdict,
-    safeToPromote: observation.verdict === ON_CHAIN_VERDICTS.PENDING_UNREGISTERED,
-    consistent: observation.consistent,
-    database: {
-      inVault: observation.claim.inVault,
-      evidenceId: record?.id ?? null,
-      status: observation.claim.status,
-      onChainTxHash: observation.claim.txHash,
-    },
-    chain: {
-      registered: observation.registered,
-      registryEvidenceId: observation.registryEvidenceId,
-    },
-    ...(snapshotSummary ? { snapshot: snapshotSummary } : {}),
-    attribution,
-    explanation: `${ON_CHAIN_EXPLANATIONS[observation.verdict]} ${attributionSentence(attribution, input.fileHash)}`,
-  };
-
-  if (input.recoverTxHash && observation.registered && !observation.claim.txHash) {
+    let web3: Web3Service;
     try {
-      // Constructed rather than carried: `observeOnChainStatus` returns an
-      // answer, not a live connection, and this optional second query is the
-      // only reason a caller would need one.
-      result.chain.recoveredTxHash = await new Web3Service().findRegisteringTxHash(input.fileHash);
+      web3 = new Web3Service();
     } catch (err) {
-      // The verdict above is already established and stays valid — only the
-      // convenience lookup failed. But an unannotated null would read as "no
-      // registering transaction exists", which is a different claim entirely.
-      result.chain.recoveredTxHash = null;
-      result.chain.recoveryError = err instanceof Error ? err.message : String(err);
+      return chainUnavailable(err);
     }
+
+    const stored = await storedAttributionFor(subject.captures.map((c) => c.id));
+    const captures: CaptureStatus[] = [];
+    for (const capture of subject.captures) {
+      let claim: ClaimAttribution;
+      try {
+        claim = await attributeClaim(web3, entryFromChain(web3), toBytes32(capture.documentHash));
+      } catch (err) {
+        return chainUnavailable(err);
+      }
+      captures.push(statusOf(capture, claim, stored.get(capture.id)));
+    }
+
+    return { page: { url: subject.page.url, public: access.public }, captures, registry };
+  });
+}
+
+/** One capture's answer: what the chain holds, and what the last stored check said. */
+function statusOf(
+  capture: TimelineCapture,
+  claim: ClaimAttribution,
+  stored: StoredAttribution | undefined,
+): CaptureStatus {
+  return {
+    capture: capture.capture,
+    documentHash: capture.documentHash,
+    isRegistered: claim.verdict !== 'UNREGISTERED',
+    registryIndex: claim.index,
+    submitter: claim.submitter,
+    attributed: claim.verdict === 'ATTRIBUTED',
+    anchoredHash: capture.anchoredHash,
+    anchoredHashMatchesDocumentHash: capture.anchoredHash === capture.documentHash,
+    storedVerdict: reportable(stored),
+  };
+}
+
+/**
+ * A chain that would not answer, or answered inconsistently, is a verdict about
+ * the CHECK. `RegistryReadError` is the second case — "two reads of one state
+ * that contradict each other are not a verdict" — and it is reported here rather
+ * than swallowed, because the safe direction is to decide nothing.
+ */
+function chainUnavailable(err: unknown): Refusal {
+  const message = err instanceof Error ? err.message : String(err);
+  const kind = err instanceof RegistryReadError ? 'The registry answered inconsistently' : 'The registry could not be reached';
+  return refusal(
+    'CHAIN_UNAVAILABLE',
+    `${kind}: ${message}. This is a verdict about the CHECK, not about the capture: it is NOT ` +
+      'evidence that the hash is unregistered.',
+  );
+}
+
+/**
+ * The stored verdict as a caller reads it, or null where none was ever written.
+ *
+ * A row exists or it does not; `verdict`, `verifierVersion` and `checkedAt`
+ * arrive together or the read never asked. Narrowed once, here, so the three
+ * are not re-checked at the point of use.
+ */
+function reportable(stored: StoredAttribution | undefined): CaptureStatus['storedVerdict'] {
+  if (stored?.verdict == null || stored.verifierVersion === null || stored.checkedAt === null) {
+    return null;
+  }
+  return {
+    verdict: stored.verdict,
+    verifierVersion: stored.verifierVersion,
+    checkedAt: stored.checkedAt,
+    attributed: stored.attributed,
+  };
+}
+
+/** What was asked about: a page and the captures beneath it. */
+interface Subject {
+  page: Page;
+  captures: TimelineCapture[];
+}
+
+async function subjectOf(input: {
+  url?: string;
+  capture?: string;
+  fileHash?: string;
+}): Promise<Subject | Refusal> {
+  if (input.fileHash !== undefined && input.fileHash !== '') {
+    const resolved = await resolveRecordByName(input.fileHash);
+    if (resolved === null) {
+      return refusal(
+        'NOT_A_RECORD',
+        `${input.fileHash} names nothing the corpus holds, so there are no captures beneath it ` +
+          'to ask the chain about.',
+      );
+    }
+    const captures =
+      resolved.capture !== null
+        ? [resolved.capture]
+        : resolved.pair === null
+          ? []
+          : [resolved.pair.before, resolved.pair.after];
+    return { page: resolved.page, captures };
   }
 
-  return JSON.stringify(result);
+  if (input.url === undefined || input.url === '') {
+    return refusal(
+      'NOT_A_CAPTURE',
+      'Name what to check: a page and a capture (url, capture), or a record (fileHash).',
+    );
+  }
+  const page = await loadPage(input.url);
+  if (page === null) return shared.notSurveyed(input.url);
+
+  const capture = input.capture;
+  if (capture === undefined || !isWaybackTimestamp(capture)) {
+    return refusal(
+      'NOT_A_CAPTURE',
+      `${capture ?? '(none)'} is not a capture. A capture is named by its 14-digit wayback ` +
+        'timestamp (YYYYMMDDHHMMSS), never by a date.',
+    );
+  }
+  const held = (await loadCaptures(page.id)).find((c) => c.capture === capture);
+  if (held === undefined) {
+    return refusal(
+      'NOT_A_CAPTURE',
+      `${capture} is not an acquired capture of ${page.url}: the corpus holds no bytes for it, so ` +
+        'there is no documentHash to ask the registry about. list_captures shows what the ' +
+        "page's work-list says about it.",
+    );
+  }
+  return { page, captures: [held] };
 }

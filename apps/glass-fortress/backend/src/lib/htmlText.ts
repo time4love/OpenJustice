@@ -12,6 +12,8 @@
  * stored beside this derivation rather than replaced by it — see captureDocument.
  */
 
+import { normaliseClaim } from './normalise';
+
 /** Convert a raw Wayback timestamp (YYYYMMDDHHMMSS) to YYYY-MM-DD. */
 export function timestampToDate(ts: string): string {
   return `${ts.slice(0, 4)}-${ts.slice(4, 6)}-${ts.slice(6, 8)}`;
@@ -74,13 +76,27 @@ export function normaliseText(text: string): string {
 }
 
 /**
+ * Everything an archived page said — the whole document, with no article
+ * selection applied, so nothing is discarded for looking like navigation, a
+ * sidebar or an accordion panel. The RAW reading every verification rests on.
+ *
+ * Lives here, not beside Readability in `archiveText`, because it needs no DOM:
+ * a verifier that reads the raw page must not load jsdom to do it (R45; the
+ * jsdom boundary, refactor plan §8). `archiveText` re-exports it.
+ */
+export function extractRawText(html: string): string {
+  return normaliseText(htmlToText(html));
+}
+
+/**
  * Collapse every run of whitespace so a phrase matches across re-wrapping,
  * re-indentation and block boundaries.
  *
- * The same normalisation claim-trajectory detection uses (`normaliseClaim`),
- * and deliberately so: a phrase this platform reports as present in a capture
- * must mean the same thing whichever tool reported it.
+ * A CALL of NORMALISE (`lib/normalise.ts`), never a second spelling of it — thesis
+ * flows A1 :1247–:1250: a phrase this platform reports as present in a capture
+ * must mean the same thing whichever tool reported it. Pure calls pure: this
+ * module stays free of anything that holds a database client.
  */
 export function normaliseForPresence(text: string): string {
-  return text.replace(/\s+/g, ' ').trim();
+  return normaliseClaim(text);
 }

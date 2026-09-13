@@ -1,4 +1,3 @@
-import type { EvidenceType } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { toBytes32 } from '../lib/bytes32';
 import { Web3Service, type OnChainEvidenceRecord } from './Web3Service';
@@ -27,12 +26,13 @@ import { Web3Service, type OnChainEvidenceRecord } from './Web3Service';
 //   index was submitted by OUR registrar. A hash someone else registered is not
 //   ours to claim, and the two reads must agree about what sits at the index.
 //
-//   AN ENTRY IS EXPLAINED BY THE COLUMN THAT PRODUCED IT. The design names three
-//   kinds — extraction anchors over contentHash, payload anchors over
-//   documentHash, evidence names over fileHash — and the join finds which. A
-//   hash matching no column is UNEXPLAINED, the one state step 2 refuses on;
-//   a hash matching two columns is AMBIGUOUS, reported rather than resolved by
-//   picking the first.
+//   A LIVE ENTRY IS A CAPTURE'S documentHash, OR IT IS UNEXPLAINED. Evidence
+//   flows A7 :1268–:1273: a live registry's every entry is the SHA-256 of a page
+//   as served, and a capture row holds it as `documentHash`. A frozen registry's
+//   other kinds — extraction anchors over `contentHash`, evidence names over
+//   `fileHash` — are explained by its COMMITTED LEDGER, never by a row: the columns
+//   that once explained them left the schema (evidence step 11b, R45-B). A hash no
+//   capture holds is UNEXPLAINED, the one state step 2 refuses on.
 //
 // Pure functions over a small reader interface, so the suite proves the three
 // rules without a chain; `readRegistryAttribution` is the one orchestrator, and
@@ -119,16 +119,38 @@ export interface ClaimAttribution {
 }
 
 /**
+ * How the entry at an index is obtained — the one thing that differs between
+ * ATTRIBUTED's callers.
+ *
+ * ADDED AT EVIDENCE STEP 12, and it is what keeps ATTRIBUTED at ONE SPELLING.
+ * The ledger and the audits have already read the whole registry and look the
+ * index up in what they hold; the anchor-time check and the per-capture reads
+ * have one hash in hand and must not walk the contract to answer about it. Those
+ * are two ways to FETCH AN ENTRY, not two definitions of attribution — so the
+ * definition stays here, once, and the fetch is the parameter.
+ */
+export type EntryLookup = (index: number) => Promise<RegistryEntry | undefined>;
+
+/** The lookup for a caller that has already read the registry's whole state. */
+export function entriesAlreadyRead(entries: readonly RegistryEntry[]): EntryLookup {
+  return (index) => Promise.resolve(entries.at(index));
+}
+
+/** The lookup for a caller asking about ONE hash: one read, at the index the chain named. */
+export function entryFromChain(reader: RegistryReader): EntryLookup {
+  return async (index) => ({ index, ...(await reader.readEvidenceRecord(BigInt(index))) });
+}
+
+/**
  * ATTRIBUTED(hash) = isRegistered(hash) AND getEvidence(index).submitter = our registrar.
  *
- * `entries` are the state already read, so the second conjunct costs no call;
- * the index the chain returns is checked against what was read at it, and a
- * disagreement is a refusal — two reads of one state that contradict each
- * other are not a verdict.
+ * `entryAt` says where the entry comes from (above); the index the chain returns
+ * is checked against what was read at it, and a disagreement is a refusal — two
+ * reads of one state that contradict each other are not a verdict.
  */
 export async function attributeClaim(
   reader: RegistryReader,
-  entries: readonly RegistryEntry[],
+  entryAt: EntryLookup,
   hash: string,
 ): Promise<ClaimAttribution> {
   const asBytes32 = toBytes32(hash).toLowerCase();
@@ -136,7 +158,7 @@ export async function attributeClaim(
   if (!registered) return { hash: asBytes32, verdict: 'UNREGISTERED', index: null, submitter: null };
 
   const index = Number(evidenceId);
-  const entry = entries.at(index);
+  const entry = await entryAt(index);
   if (entry?.fileHash !== asBytes32) {
     throw new RegistryReadError(
       `isRegistered says ${asBytes32} sits at index ${String(index)}, but the entry read there ` +
@@ -160,97 +182,41 @@ export interface CorpusHashes {
     url: string;
     /** Bare hex, as stored. */
     documentHash: string;
-    /** Bare hex, as stored. */
-    contentHash: string;
-  }[];
-  evidence: {
-    id: string;
-    /** 0x-prefixed, as stored. */
-    fileHash: string;
-    previousFileHash: string | null;
-    /** Which writer named the row — the ledger states the formula per row from it. */
-    evidenceType: EvidenceType;
   }[];
 }
 
 export type EntryKind =
   /** The payload anchor — the target's scheme, SHA-256 of the bytes as served. */
   | 'DOCUMENT_HASH'
-  /** The extraction anchor — SHA-256 of Readability's article; one entry covers every twin. */
-  | 'CONTENT_HASH'
-  /** An evidence name under the retired formula. */
-  | 'EVIDENCE_FILE_HASH'
-  /** An evidence name the row has since moved off. */
-  | 'EVIDENCE_PREVIOUS_FILE_HASH'
-  /** No column holds it. The state step 2 refuses on. */
-  | 'UNEXPLAINED'
-  /** More than one column holds it. Reported, never resolved by picking one. */
-  | 'AMBIGUOUS';
+  /** No capture holds it. The state step 2 refuses on. */
+  | 'UNEXPLAINED';
 
 export interface EntryClassification {
   kind: EntryKind;
   snapshots: { id: string; waybackTimestamp: string | null; url: string }[];
-  evidence: { id: string }[];
 }
 
-/** Which column of the corpus produced this entry's hash. */
+/** Which captures, if any, hold this entry's hash as their `documentHash`. */
 export function classifyEntry(entry: RegistryEntry, corpus: CorpusHashes): EntryClassification {
-  const hash = entry.fileHash;
-  const same = (stored: string | null): boolean =>
-    stored !== null && toBytes32(stored).toLowerCase() === hash;
-
-  const byDocument = corpus.snapshots.filter((s) => same(s.documentHash));
-  const byContent = corpus.snapshots.filter((s) => same(s.contentHash));
-  const byFile = corpus.evidence.filter((e) => same(e.fileHash));
-  const byPrevious = corpus.evidence.filter((e) => same(e.previousFileHash));
-
-  const kinds: EntryKind[] = [];
-  if (byDocument.length > 0) kinds.push('DOCUMENT_HASH');
-  if (byContent.length > 0) kinds.push('CONTENT_HASH');
-  if (byFile.length > 0) kinds.push('EVIDENCE_FILE_HASH');
-  if (byPrevious.length > 0) kinds.push('EVIDENCE_PREVIOUS_FILE_HASH');
-
-  const snapshot = (s: CorpusHashes['snapshots'][number]): EntryClassification['snapshots'][number] => ({
-    id: s.id,
-    waybackTimestamp: s.waybackTimestamp,
-    url: s.url,
-  });
-  const only = kinds.at(0);
-  if (only === undefined) return { kind: 'UNEXPLAINED', snapshots: [], evidence: [] };
-  if (kinds.length > 1) {
-    return {
-      kind: 'AMBIGUOUS',
-      snapshots: [...byDocument, ...byContent].map(snapshot),
-      evidence: [...byFile, ...byPrevious].map((e) => ({ id: e.id })),
-    };
-  }
-  return {
-    kind: only,
-    snapshots: (only === 'DOCUMENT_HASH' ? byDocument : only === 'CONTENT_HASH' ? byContent : []).map(
-      snapshot,
-    ),
-    evidence: (only === 'EVIDENCE_FILE_HASH' ? byFile : only === 'EVIDENCE_PREVIOUS_FILE_HASH' ? byPrevious : []).map(
-      (e) => ({ id: e.id }),
-    ),
-  };
+  const holders = corpus.snapshots
+    .filter((s) => toBytes32(s.documentHash).toLowerCase() === entry.fileHash)
+    .map((s) => ({ id: s.id, waybackTimestamp: s.waybackTimestamp, url: s.url }));
+  return holders.length === 0
+    ? { kind: 'UNEXPLAINED', snapshots: [] }
+    : { kind: 'DOCUMENT_HASH', snapshots: holders };
 }
 
-/** Every hash column the corpus holds, for the join and for the claim walk. */
+/** Every capture's hash, for the join and for the claim walk. */
 export async function loadCorpusHashes(): Promise<CorpusHashes> {
-  const [snapshots, evidence] = await Promise.all([
+  const [snapshots] = await Promise.all([
     prisma.urlSnapshot.findMany({
       orderBy: [{ trackedUrlId: 'asc' }, { capturedAt: 'asc' }],
       select: {
         id: true,
         waybackTimestamp: true,
         documentHash: true,
-        contentHash: true,
         trackedUrl: { select: { url: true } },
       },
-    }),
-    prisma.evidence.findMany({
-      orderBy: { createdAt: 'asc' },
-      select: { id: true, fileHash: true, previousFileHash: true, evidenceType: true },
     }),
   ]);
   return {
@@ -259,9 +225,7 @@ export async function loadCorpusHashes(): Promise<CorpusHashes> {
       waybackTimestamp: s.waybackTimestamp,
       url: s.trackedUrl.url,
       documentHash: s.documentHash,
-      contentHash: s.contentHash,
     })),
-    evidence,
   };
 }
 
@@ -269,46 +233,27 @@ export interface ClassifiedEntry extends RegistryEntry {
   classification: EntryClassification;
 }
 
-/** One corpus hash asked of the chain, and where it came from. */
+/** One capture's `documentHash` asked of the chain. */
 export interface CorpusClaim {
-  subject: 'UrlSnapshot' | 'Evidence';
-  subjectId: string;
-  column: 'documentHash' | 'contentHash' | 'fileHash' | 'previousFileHash';
+  snapshotId: string;
   attribution: ClaimAttribution;
-}
-
-export type SnapshotAttribution =
-  | 'ATTRIBUTED_BY_DOCUMENT_HASH'
-  | 'ATTRIBUTED_BY_CONTENT_HASH'
-  | 'BOTH'
-  | 'FOREIGN'
-  | 'NEITHER';
-
-export type EvidenceAttribution =
-  | 'BY_FILE_HASH'
-  | 'BY_PREVIOUS_FILE_HASH'
-  | 'BOTH'
-  | 'FOREIGN'
-  | 'NEITHER';
-
-/** The registry explained per SUBJECT — the number a reader of the dated doc acts on. */
-export interface SubjectRollUp {
-  snapshots: Record<SnapshotAttribution, number>;
-  evidence: Record<EvidenceAttribution, number>;
 }
 
 export interface RegistryAttributionReport {
   state: RegistryState;
   entries: ClassifiedEntry[];
   byKind: Record<EntryKind, number>;
-  /** Every hash column of every row, asked of the chain — the reverse join. */
+  /** Every capture's `documentHash`, asked of the chain — the reverse join. */
   claims: CorpusClaim[];
-  /** Per claim. True, and by construction ~one UNREGISTERED per legacy row — read bySubject. */
+  /**
+   * One claim per capture, so this IS the per-capture count. A per-subject roll-up
+   * stood beside it until R45-B, when every capture was asked twice — `documentHash`
+   * and `contentHash` — and a per-claim count over-read UNREGISTERED.
+   */
   byVerdict: Record<AttributionVerdict, number>;
-  bySubject: SubjectRollUp;
 }
 
-/** Claims by verdict — one count per hash column asked. */
+/** Claims by verdict — one count per capture asked. */
 export function countByVerdict(claims: readonly CorpusClaim[]): Record<AttributionVerdict, number> {
   const byVerdict: Record<AttributionVerdict, number> = {
     ATTRIBUTED: 0,
@@ -317,75 +262,6 @@ export function countByVerdict(claims: readonly CorpusClaim[]): Record<Attributi
   };
   for (const c of claims) byVerdict[c.attribution.verdict] += 1;
   return byVerdict;
-}
-
-/**
- * Claims rolled up per subject.
- *
- * WHY THIS EXISTS BESIDE byVerdict. Every snapshot is asked twice — documentHash
- * and contentHash — and a legacy row is registered on exactly one of them, so on
- * a fully anchored corpus UNREGISTERED ≈ the snapshot count. That is a true
- * number and the wrong one to act on. Evidence flows §8 explains the registry
- * per subject ("12 entries covering all 83 captures"), and "recompute, never
- * restate" wants that number in the raw output, not derived by hand from the
- * claims table.
- *
- * A subject attributed on one column and foreign on the other counts as
- * attributed: its own custody is answered by the column that is ours, and the
- * foreign registration stays visible in byVerdict and in the claims.
- */
-export function rollUpBySubject(claims: readonly CorpusClaim[]): SubjectRollUp {
-  const snapshots: Record<SnapshotAttribution, number> = {
-    ATTRIBUTED_BY_DOCUMENT_HASH: 0,
-    ATTRIBUTED_BY_CONTENT_HASH: 0,
-    BOTH: 0,
-    FOREIGN: 0,
-    NEITHER: 0,
-  };
-  const evidence: Record<EvidenceAttribution, number> = {
-    BY_FILE_HASH: 0,
-    BY_PREVIOUS_FILE_HASH: 0,
-    BOTH: 0,
-    FOREIGN: 0,
-    NEITHER: 0,
-  };
-
-  const bySubject = new Map<string, CorpusClaim[]>();
-  for (const c of claims) {
-    const key = `${c.subject}:${c.subjectId}`;
-    bySubject.set(key, [...(bySubject.get(key) ?? []), c]);
-  }
-
-  const verdictOf = (own: readonly CorpusClaim[], column: CorpusClaim['column']): AttributionVerdict | null =>
-    own.find((c) => c.column === column)?.attribution.verdict ?? null;
-
-  for (const own of bySubject.values()) {
-    const subject = own.at(0)?.subject;
-    if (subject === undefined) continue;
-    const [first, second] =
-      subject === 'UrlSnapshot'
-        ? [verdictOf(own, 'documentHash'), verdictOf(own, 'contentHash')]
-        : [verdictOf(own, 'fileHash'), verdictOf(own, 'previousFileHash')];
-    const a = first === 'ATTRIBUTED';
-    const b = second === 'ATTRIBUTED';
-    const foreign = first === 'FOREIGN_SUBMITTER' || second === 'FOREIGN_SUBMITTER';
-
-    if (subject === 'UrlSnapshot') {
-      if (a && b) snapshots.BOTH += 1;
-      else if (a) snapshots.ATTRIBUTED_BY_DOCUMENT_HASH += 1;
-      else if (b) snapshots.ATTRIBUTED_BY_CONTENT_HASH += 1;
-      else if (foreign) snapshots.FOREIGN += 1;
-      else snapshots.NEITHER += 1;
-    } else {
-      if (a && b) evidence.BOTH += 1;
-      else if (a) evidence.BY_FILE_HASH += 1;
-      else if (b) evidence.BY_PREVIOUS_FILE_HASH += 1;
-      else if (foreign) evidence.FOREIGN += 1;
-      else evidence.NEITHER += 1;
-    }
-  }
-
-  return { snapshots, evidence };
 }
 
 /**
@@ -400,46 +276,15 @@ export async function readRegistryAttribution(
   const [state, corpus] = await Promise.all([readRegistryState(reader), loadCorpusHashes()]);
 
   const entries = state.entries.map((entry) => ({ entry, classification: classifyEntry(entry, corpus) }));
-  const byKind: Record<EntryKind, number> = {
-    DOCUMENT_HASH: 0,
-    CONTENT_HASH: 0,
-    EVIDENCE_FILE_HASH: 0,
-    EVIDENCE_PREVIOUS_FILE_HASH: 0,
-    UNEXPLAINED: 0,
-    AMBIGUOUS: 0,
-  };
+  const byKind: Record<EntryKind, number> = { DOCUMENT_HASH: 0, UNEXPLAINED: 0 };
   for (const e of entries) byKind[e.classification.kind] += 1;
 
   const claims: CorpusClaim[] = [];
   for (const s of corpus.snapshots) {
     claims.push({
-      subject: 'UrlSnapshot',
-      subjectId: s.id,
-      column: 'documentHash',
-      attribution: await attributeClaim(reader, state.entries, s.documentHash),
+      snapshotId: s.id,
+      attribution: await attributeClaim(reader, entriesAlreadyRead(state.entries), s.documentHash),
     });
-    claims.push({
-      subject: 'UrlSnapshot',
-      subjectId: s.id,
-      column: 'contentHash',
-      attribution: await attributeClaim(reader, state.entries, s.contentHash),
-    });
-  }
-  for (const e of corpus.evidence) {
-    claims.push({
-      subject: 'Evidence',
-      subjectId: e.id,
-      column: 'fileHash',
-      attribution: await attributeClaim(reader, state.entries, e.fileHash),
-    });
-    if (e.previousFileHash !== null) {
-      claims.push({
-        subject: 'Evidence',
-        subjectId: e.id,
-        column: 'previousFileHash',
-        attribution: await attributeClaim(reader, state.entries, e.previousFileHash),
-      });
-    }
   }
   return {
     state,
@@ -447,6 +292,5 @@ export async function readRegistryAttribution(
     byKind,
     claims,
     byVerdict: countByVerdict(claims),
-    bySubject: rollUpBySubject(claims),
   };
 }

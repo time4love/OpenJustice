@@ -91,25 +91,3 @@ export function onChainCategoryLabel(
   if (categories.length > 0) return [...categories].sort().join(',');
   return evidenceRole === 'ContextAnchor' ? 'CONTEXT_ANCHOR' : 'UNCLASSIFIED';
 }
-
-/**
- * Hebrew tier reasoning for evidence promoted from a forensic page diff.
- *
- * States what the change was and which concerns it advances. Says nothing about
- * intent, motive, or knowledge — those are inferences for a court to draw, and
- * asserting them on an automatically created record is exposure with no upside.
- */
-export function forensicTierReasoning(
-  url: string,
-  afterDate: string,
-  categories: readonly InvestigativeCategory[],
-): string {
-  if (categories.length === 0) {
-    return `שינוי מתועד בדף ממשלתי רשמי (${url}) בתאריך ${afterDate}.`;
-  }
-  const labels = categories.map((c) => INVESTIGATIVE_CATEGORY_LABELS[c]).join('; ');
-  return (
-    `שינוי מתועד בדף ממשלתי רשמי (${url}) בתאריך ${afterDate}. ` +
-    `רלוונטי לתחומי החקירה: ${labels}.`
-  );
-}

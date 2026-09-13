@@ -27,7 +27,6 @@ jest.mock('../src/services/archiveVerification', () => ({
 import { prisma } from '../src/lib/prisma';
 import {
   auditThesisClaims,
-  originUrlFromWayback,
   type AuditThesisClaimsResult,
 } from '../src/services/thesisClaimAudit';
 import {
@@ -44,11 +43,6 @@ const mockIndex = fetchCaptureIndex as jest.Mock;
 const mockCheck = checkPhraseAtCaptures as jest.Mock;
 
 const URL = 'https://corona.health.gov.il/vaccine-for-covid/';
-
-/** A TipTap document holding one paragraph of the given text. */
-function doc(text: string): unknown {
-  return { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text }] }] };
-}
 
 function capture(timestamp: string): {
   waybackTimestamp: string;
@@ -70,7 +64,7 @@ function givenBody(text: string): void {
   findThesis.mockResolvedValue({
     id: 'thesis-1',
     headVersionId: 'version-1',
-    headVersion: { id: 'version-1', userContent: doc(text) },
+    headVersion: { id: 'version-1', text },
   });
 }
 
@@ -88,8 +82,10 @@ function ok(result: AuditThesisClaimsResult): Extract<AuditThesisClaimsResult, {
 }
 
 beforeEach(() => {
-  findMentions.mockResolvedValue([{ type: 'TRACKED_URL', refId: 'tracked-1' }]);
-  findEvidence.mockResolvedValue([]);
+  // THE DEFAULT SCOPE: one EVIDENCE citation reaching the tracked page through the record key — the one
+  // kind of citation that names a page (thesis A1 :1242–:1245; A2 removed TRACKED_URL at thesis step 18).
+  findMentions.mockResolvedValue([{ name: 'hash-1' }]);
+  findEvidence.mockResolvedValue([{ snapshot: { trackedUrlId: 'tracked-1' }, urlVersionDiff: null }]);
   findTrackedMany.mockResolvedValue([{ id: 'tracked-1', url: URL }]);
   mockCheck.mockResolvedValue([]);
 });
@@ -184,7 +180,6 @@ describe('quotations', () => {
         rawUrl: 'y',
         outcome: 'CHECKED',
         presentInRawArchive: true,
-        presentInPlatformExtraction: false,
         presentInStoredSnapshot: false,
         extractionDivergence: true,
       },
@@ -217,9 +212,8 @@ describe('quotations', () => {
         rawUrl: 'y',
         outcome: 'CHECKED',
         presentInRawArchive: false,
-        presentInPlatformExtraction: false,
         presentInStoredSnapshot: null,
-        extractionDivergence: false,
+        extractionDivergence: null,
       },
     ]);
 
@@ -270,7 +264,6 @@ describe('quotations', () => {
         rawUrl: 'y',
         outcome: 'CHECKED',
         presentInRawArchive: true,
-        presentInPlatformExtraction: true,
         presentInStoredSnapshot: true,
         extractionDivergence: false,
       },
@@ -359,19 +352,26 @@ describe('scope and unavailable states', () => {
     expect(result.dates[0].note).toContain('could not be reached');
   });
 
-  it('derives scope from forensic evidence citations when no tracked URL is mentioned', async () => {
+  it("derives scope from the version's evidence citations, through the record key", async () => {
     givenBody('הטענה הוסרה ב-05.08.2022.');
     givenCaptures(['20220805111109']);
-    findMentions.mockResolvedValue([{ type: 'EVIDENCE', refId: 'hash-1' }]);
+    // REBASED AT EVIDENCE STEP 11b: THROUGH THE RECORD KEY, NOT A URL STRING.
+    // The scope used to come from `Evidence.sourceUrl` — a Wayback replay URL
+    // stored on the row — parsed back to the original page and matched against
+    // `TrackedUrl.url` as text. The column left the row and the parse with it; a
+    // record's key names its capture or its pair, and a capture names its page by
+    // foreign key. The join is now exact: no replay prefix to strip, and no page
+    // missed because two spellings of one URL differ by a trailing slash.
+    findMentions.mockResolvedValue([{ name: 'hash-1' }]);
     findEvidence.mockResolvedValue([
-      { sourceUrl: `https://web.archive.org/web/20220805111109/${URL}` },
+      { snapshot: { trackedUrlId: 'tracked-1' }, urlVersionDiff: null },
     ]);
 
     ok(await auditThesisClaims('thesis-1'));
 
     expect(findTrackedMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { OR: [{ url: { in: [URL] } }] },
+        where: { id: { in: ['tracked-1'] } },
       }),
     );
   });
@@ -397,20 +397,6 @@ describe('scope and unavailable states', () => {
   });
 });
 
-describe('originUrlFromWayback', () => {
-  it('recovers the origin URL from a viewer URL', () => {
-    expect(originUrlFromWayback(`https://web.archive.org/web/20220805111109/${URL}`)).toBe(URL);
-  });
-
-  it('recovers it from an id_ URL too', () => {
-    expect(originUrlFromWayback(`https://web.archive.org/web/20220805111109id_/${URL}`)).toBe(URL);
-  });
-
-  it('returns null for a URL that is not a Wayback capture', () => {
-    expect(originUrlFromWayback('https://example.com/report.pdf')).toBeNull();
-  });
-});
-
 describe('partial coverage', () => {
   it('does not call a quotation ABSENT when the fetch budget stopped it mid-check', async () => {
     // Two dates in one sentence, budget for one capture. Not finding the text in
@@ -425,9 +411,8 @@ describe('partial coverage', () => {
         rawUrl: 'y',
         outcome: 'CHECKED',
         presentInRawArchive: false,
-        presentInPlatformExtraction: false,
         presentInStoredSnapshot: null,
-        extractionDivergence: false,
+        extractionDivergence: null,
       },
     ]);
 
@@ -449,7 +434,6 @@ describe('partial coverage', () => {
         rawUrl: 'y',
         outcome: 'CHECKED',
         presentInRawArchive: true,
-        presentInPlatformExtraction: true,
         presentInStoredSnapshot: true,
         extractionDivergence: false,
       },

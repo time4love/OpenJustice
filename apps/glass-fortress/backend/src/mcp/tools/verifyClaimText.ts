@@ -6,18 +6,20 @@ import { verifyClaimText } from '../../services/archiveVerification';
 //
 // Was this exact string on this page at this capture?
 //
-// Answered against the RAW archived HTML, never against UrlSnapshot.fullText.
-// That column is a Readability extraction which discards a large fraction of
-// the page — on capture 20220905111109 of corona.health.gov.il, 4,330 of 6,266
-// characters kept, measured by this tool against the live archive on
-// 2026-08-23 — and among the part it discarded was the sentence a real thesis
-// then claimed had been ADDED the following day. A verification tool built on
-// the extraction would have confirmed the false claim it was checking.
+// Answered against the RAW archived HTML first. A platform's own text of a page
+// can be blind to part of it — Readability's article, the legacy register, kept
+// 4,330 of 6,266 characters of capture 20220905111109 of corona.health.gov.il, and
+// among the part it discarded was the sentence a real thesis then claimed had been
+// ADDED the following day. A verification tool built on a platform's text would
+// have confirmed the false claim it was checking.
 //
 // So the answer has three parts, and the third is the point:
-//   presentInRawArchive          — what the page actually said
-//   presentInPlatformExtraction  — what the scan pipeline could see
-//   extractionDivergence         — they disagree, and the pipeline is blind here
+//   presentInRawArchive      — what the page actually said
+//   presentInStoredSnapshot  — what the text this platform STORED for the capture
+//                              says: its current `text`, what every diff and
+//                              trajectory reads; null when the capture is not held
+//   extractionDivergence     — they disagree, and the platform is blind here; null
+//                              when the capture is not held
 //
 // Reports, never blocks.
 // ---------------------------------------------------------------------------
@@ -56,11 +58,10 @@ export async function verifyClaimTextHandler(input: {
     ...result,
     explanation:
       '`presentInRawArchive` is the authoritative answer: it is a search over the WHOLE archived ' +
-      'document. `presentInPlatformExtraction` is the same search over Readability’s article — what ' +
-      'the scan pipeline sees, and therefore what every diff, trajectory and on-chain contentHash ' +
-      'for this page is derived from. `presentInStoredSnapshot` is the text actually banked at scan ' +
-      'time, or null when this capture was never scanned. Fetch `rawUrl` yourself to reproduce any ' +
-      'of it.',
+      'document. `presentInStoredSnapshot` is the same search over the text this platform stored for ' +
+      'the capture — its current derived text, which every diff and trajectory for this page reads — ' +
+      'or null when the capture is not held. `extractionDivergence` is true when the two disagree and ' +
+      'null when the capture is not held. Fetch `rawUrl` yourself to reproduce the raw answer.',
     ...(result.capturesNotChecked > 0
       ? {
           coverageWarning:
@@ -72,10 +73,10 @@ export async function verifyClaimTextHandler(input: {
     ...(result.anyExtractionDivergence
       ? {
           divergenceWarning:
-            'EXTRACTION_DIVERGENCE: the raw page and this platform’s extraction disagree about this ' +
-            'phrase. The pipeline is blind to something the page said, so any claim about this text ' +
-            'that rests on a diff, a trajectory, or an evidence summary is resting on the half that ' +
-            'cannot see it. This exact condition produced a false claim in a real thesis.',
+            'EXTRACTION_DIVERGENCE: the raw page and the text this platform stored for it disagree about ' +
+            'this phrase. The platform is blind to something the page said, so any claim about this text ' +
+            'that rests on a diff or a trajectory is resting on the half that cannot see it. This exact ' +
+            'condition produced a false claim in a real thesis.',
         }
       : {}),
   });

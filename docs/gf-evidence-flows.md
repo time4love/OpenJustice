@@ -709,12 +709,12 @@ be lost with a database.
 **The rebuild registers every capture fresh, and inherits its dates through the ledger.** The
 re-walk fetches the same raw bytes, hashes them to the same `documentHash`, and registers it
 on the new contract with today's block time. The date a page was first held is attested by
-the old contract's extraction anchor, tied to the new entry by one measurement per capture:
-does `extract(document)` under the pinned extractor equal the stored `contentHash`? Where it
-does, an outsider can verify that the bytes registered today produce the text registered then,
-and custody is whole. Where it does not, the ledger records a text the bytes no longer
-reproduce — still custody, weaker, and said so. Nothing is claimed from the old contract and
-nothing is migrated.
+the old contract's extraction anchor, tied to the new entry by one measurement per capture, taken
+BEFORE the drop from the deploy still holding the column (`0ca8d72` — R45-B retired `contentHash`
+from head, 2026-09-13): does `extract(document)` under the pinned extractor equal the stored
+`contentHash`? Where it does, an outsider can verify that the bytes registered today produce the
+text registered then, and custody is whole. Where it does not, the ledger records a text the bytes
+no longer reproduce — still custody, weaker, and said so. Nothing is claimed and nothing migrated.
 
 **The DOCUMENT record and the published thesis are rebuilt or not, by the researcher.** The
 thesis is theirs to write again under the design, citing corpus records; the DOCUMENT class
@@ -955,8 +955,8 @@ EvidenceDecision        the record's review log, append-only
   reason                  REQUIRED on WITHDRAW
   createdAt
 
-DebateSession           as built, with the thesis and the record                  ⚠️ two columns
-  + thesisId              REQUIRED
+DebateSession           as built, with the thesis and the record                ⚠️ three columns
+  + thesisId              REQUIRED · + researcherId REQUIRED — the opener, HISTORY attributes it
   + recordFileHash        ID(record) — computed at open, before any Evidence row exists
   urlVersionDiffId → recordSnapshotId? · recordDiffId?   one set, matching the record's kind
   @@unique([thesisId, recordFileHash]) among status = OPEN — one open debate per (thesis, record)
@@ -1281,7 +1281,7 @@ audit-survival             Level 5        over versions: every diff has a CURREN
 **The measurements of §10 are instruments too**, and they are read-only by construction:
 
 ```
-forensics:measure-extractor-equality -- --env <env>    per capture: extract(document) = contentHash
+forensics:measure-extractor-equality                   RETIRED 2026-09-13 (R45-B) with its subject, contentHash; production's run is at 0ca8d72 (§8)
 forensics:count-index-lag -- --env <env>               from the survey's rows: appended earlier
                                                         than the page's latest ACQUIRED
 forensics:emit-registry-ledger -- --env <env>          §8 step 2: writes a FILE for git, never a

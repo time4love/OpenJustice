@@ -1,5 +1,5 @@
+import { normaliseClaim } from '../lib/normalise';
 import { prisma } from '../lib/prisma';
-import { extractText } from './thesisAnalysis';
 import {
   actVerbsIn,
   extractDates,
@@ -16,6 +16,13 @@ import {
   type CaptureCheck,
   type CaptureHtmlCache,
 } from './archiveVerification';
+
+// ---------------------------------------------------------------------------
+// REBASED AT THESIS STEP 18 onto thesis A2's `ThesisVersion.text` — Markdown with citation tokens, the
+// record — and its EVIDENCE mentions. The TipTap walker that read `userContent` left with the column, and so
+// did the tracked-URL scope arm: A1's tokens are `#ev_` and `#tr_` only (:1242–:1245). What the audit
+// REPORTS is unchanged (thesis T5 :767, A4 :1529–:1531).
+// ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
 // audit_thesis_claims — which factual assertions in this body can be checked
@@ -155,12 +162,6 @@ export type AuditThesisClaimsResult =
 // Scope resolution
 // ---------------------------------------------------------------------------
 
-/** Pull the origin URL back out of a Wayback viewer/raw URL, or null. */
-export function originUrlFromWayback(sourceUrl: string): string | null {
-  const match = /^https?:\/\/web\.archive\.org\/web\/\d{14}(?:id_)?\/(.+)$/.exec(sourceUrl);
-  return match ? match[1] : null;
-}
-
 /**
  * Which tracked pages this thesis is about.
  *
@@ -181,31 +182,38 @@ async function resolveScope(
   }
 
   const mentions = await prisma.thesisMention.findMany({
-    where: { thesisVersionId: versionId, type: { in: ['TRACKED_URL', 'EVIDENCE'] } },
-    select: { type: true, refId: true },
+    where: { versionId, kind: 'EVIDENCE' },
+    select: { name: true },
   });
+  const evidenceHashes = mentions.map((m) => m.name);
 
-  const trackedIds = mentions.filter((m) => m.type === 'TRACKED_URL').map((m) => m.refId);
-  const evidenceHashes = mentions.filter((m) => m.type === 'EVIDENCE').map((m) => m.refId);
-
-  const evidence = evidenceHashes.length
+  // REBASED AT EVIDENCE STEP 11b: THROUGH THE RECORD KEY, NOT THROUGH A URL
+  // STRING. This read `Evidence.sourceUrl` — a Wayback replay URL stored on the
+  // row — and parsed the original page out of it,
+  // then matched that text against `TrackedUrl.url`. The column left the row
+  // with the rest of the storage fields, and the parse went with it.
+  //
+  // AND THE JOIN IS NOW EXACT RATHER THAN TEXTUAL. A record's key names the
+  // capture or the pair; a capture names its `TrackedUrl` by foreign key. There
+  // is no string to normalise, no replay prefix to strip, and no way for a page
+  // to be missed because its stored URL and its surveyed URL differ by a
+  // trailing slash.
+  const evidencePages = evidenceHashes.length
     ? await prisma.evidence.findMany({
         where: { fileHash: { in: evidenceHashes } },
-        select: { sourceUrl: true },
+        select: {
+          snapshot: { select: { trackedUrlId: true } },
+          urlVersionDiff: { select: { trackedUrlId: true } },
+        },
       })
     : [];
 
-  const originUrls = evidence
-    .map((e) => (e.sourceUrl ? originUrlFromWayback(e.sourceUrl) : null))
-    .filter((u): u is string => u !== null);
+  const evidencePageIds = evidencePages
+    .map((e) => e.snapshot?.trackedUrlId ?? e.urlVersionDiff?.trackedUrlId ?? null)
+    .filter((id): id is string => id !== null);
 
   const pages = await prisma.trackedUrl.findMany({
-    where: {
-      OR: [
-        ...(trackedIds.length ? [{ id: { in: trackedIds } }] : []),
-        ...(originUrls.length ? [{ url: { in: originUrls } }] : []),
-      ],
-    },
+    where: { id: { in: evidencePageIds } },
     select: { id: true, url: true },
     orderBy: { url: 'asc' },
   });
@@ -242,7 +250,7 @@ export async function auditThesisClaims(
 ): Promise<AuditThesisClaimsResult> {
   const thesis = await prisma.thesis.findUnique({
     where: { id: thesisId },
-    select: { id: true, headVersionId: true, headVersion: { select: { id: true, userContent: true } } },
+    select: { id: true, headVersionId: true, headVersion: { select: { id: true, text: true } } },
   });
 
   if (!thesis) {
@@ -261,7 +269,7 @@ export async function auditThesisClaims(
   }
 
   const versionId = thesis.headVersion.id;
-  const body = extractText(thesis.headVersion.userContent);
+  const body = normaliseClaim(thesis.headVersion.text);
   const scope = await resolveScope(versionId, opts.url);
 
   if (scope.pages.length === 0) {
@@ -272,7 +280,7 @@ export async function auditThesisClaims(
         opts.url
           ? `${opts.url} is not tracked, so no captures can be listed for it. This is NOT a finding ` +
             'about the thesis — nothing was checked.'
-          : 'This version cites no tracked page (directly or through forensic evidence), so there is ' +
+          : 'This version cites no record of a tracked page, so there is ' +
             'no archive to check its dates and quotations against. Nothing was checked. Pass `url` ' +
             'explicitly to audit against a specific tracked page.',
     };
@@ -596,15 +604,14 @@ function quoteVerdict(
   }
 
   // Divergence outranks presence: the phrase being in the raw page but not in
-  // the platform's extraction is the condition that produced a false claim in a
+  // the text the platform stored is the condition that produced a false claim in a
   // real thesis, and it must not be smoothed into a plain PRESENT.
   if (checked.some((c) => c.extractionDivergence)) {
     return {
       verdict: 'EXTRACTION_DIVERGENCE',
       reason:
-        'The raw archived page and this platform’s extraction of it disagree about this quotation. ' +
-        'Whatever the diffs and trajectories say about it is derived from the extraction, and the ' +
-        'extraction is blind here.',
+        'The raw archived page and the text this platform stored for it disagree about this ' +
+        'quotation. Diffs and trajectories read the stored text, and it is blind here.',
     };
   }
 

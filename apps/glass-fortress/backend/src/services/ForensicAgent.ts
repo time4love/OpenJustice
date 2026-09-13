@@ -7,17 +7,40 @@ import {
 import { assertSchemaCompatibility } from '../lib/assertSchemaCompatibility';
 import { FORENSIC_DIFF_CLASSIFICATION_PROMPT } from '../prompts/forensicDiffClassification';
 import { computeDiffCoverage, type DiffCoverage } from '../lib/diffCoverage';
-import type { EvidenceContext } from '../lib/evidenceContext';
 import { FORENSIC_SUMMARY_REWRITE_PROMPT } from '../prompts/forensicSummaryRewrite';
 
 // ---------------------------------------------------------------------------
 // Related evidence context — summarised DB records passed to the agent
 // ---------------------------------------------------------------------------
 
-export type RelatedEvidenceContext = Pick<
-  EvidenceContext,
-  'summary' | 'investigativeCategories' | 'targetEntity' | 'evidenceRole'
-> & { date: string };
+/**
+ * WHAT A CORRELATED EVIDENCE RECORD USED TO LOOK LIKE — and it has no producer.
+ *
+ * It was `Pick<EvidenceContext, …>` off the Prisma model, so a schema change
+ * could not silently desync it. At evidence step 11b the schema change is that
+ * EVERY FIELD IT PICKED LEFT THE ROW: summary, tier, role, categories, entity are
+ * prose and opinion the design keeps on a version or a citation, or nowhere
+ * (evidence §3). It is declared here as a plain shape so the classifier's
+ * signature does not move.
+ *
+ * ITS ONE PRODUCER WENT WITH THE PROSE. `fetchCorrelatedEvidence` searched a
+ * ±60-day window for other evidence about the same page — and that was the
+ * defect, not the feature: on 2026-05-29 corona.health.gov.il's classification
+ * cited "the internal evidence recorded on 25 and 29 May", its OWN page's prior
+ * diffs, as outside corroboration. The walk has always passed `[]` here, and it
+ * is now the only thing that can be passed.
+ *
+ * The parameter itself outlives this PR because removing it would edit
+ * `src/walk/tools/scanCaptures.ts`, which must stay byte-identical to staging
+ * through the schema step. It goes with the walk's next change.
+ */
+export interface RelatedEvidenceContext {
+  summary: string;
+  investigativeCategories: string[];
+  targetEntity: string;
+  evidenceRole: string;
+  date: string;
+}
 
 // ---------------------------------------------------------------------------
 // Output schema

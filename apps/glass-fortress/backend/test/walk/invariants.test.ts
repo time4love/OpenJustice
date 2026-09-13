@@ -3,14 +3,20 @@ import { basename, join } from 'node:path';
 import { SRC, WALK, tsFiles, readCode, codeOf, writesTo, columnsWritten, importSpecifiers } from './scan';
 
 // ---------------------------------------------------------------------------
-// THE TEN INVARIANTS OF docs/gf-architecture-target.md §6 — "true after every
-// step, not only at the end" — as checks that run on any step.
+// NINE OF THE INVARIANTS OF docs/gf-architecture-target.md §6 — "true after
+// every step, not only at the end" — as checks that run on any step.
 //
-// Nine are source scans over src/walk, each with a DECOY proving the scan sees
+// Eight are source scans over src/walk, each with a DECOY proving the scan sees
 // what it scans for, and each with a VACUITY GUARD: the module it scans must
-// exist, so every one is RED today and turns green at its own step, rather
-// than passing on an empty directory. The tenth — `textHash` is the novelty
-// key — is behavioural and is held by A5's scan_captures file, not repeated.
+// exist, so none passes on an empty directory. The ninth — `textHash` is the
+// novelty key — is behavioural and is held by A5's scan_captures file, not repeated.
+//
+// I1 — "`fullText` and `contentHash` are never written by any rule or any walk"
+// (§6 :239) — RETIRED AT R45-B, by refactor plan §4 rule 1: its two columns left the
+// schema, so the scan held a property over names nothing can write, which is the
+// vacuity this file refuses. Evidence identity is `documentHash` (evidence flows A1);
+// `test/walk/retiredNames.test.ts` holds that the columns stay gone. §6 :239 is
+// amended to say so in R45-B's docs PR, which follows this one.
 //
 // The last group is the walk-scope import scan the refactor plan §1 requires
 // from step 0: nothing under src/walk imports a retired module.
@@ -29,25 +35,6 @@ function writersOf(delegate: string, columns: readonly string[]) {
 describe('the walk exists — the guard every scan below rests on', () => {
   it('src/walk holds at least one module', () => {
     expect(tsFiles(WALK).length).toBeGreaterThan(0);
-  });
-});
-
-describe('I1 · fullText and contentHash are never written by any rule or any walk', () => {
-  const IDENTITY = ['fullText', 'contentHash'];
-
-  it('no write payload under src/walk names either column', () => {
-    expect(tsFiles(WALK).length).toBeGreaterThan(0);
-    const offenders = walkModules().filter(({ code }) =>
-      ['urlSnapshot', 'cdxIndexEntry', 'textVersion'].some((delegate) =>
-        writesTo(code, delegate).some((region) => columnsWritten(region).some((c) => IDENTITY.includes(c))),
-      ),
-    );
-    expect(offenders.map((m) => m.file)).toEqual([]);
-  });
-
-  it('DETECTS such a write — proven against a decoy', () => {
-    const decoy = `await prisma.urlSnapshot.update({ where: { id }, data: { text, contentHash: h } });`;
-    expect(writesTo(decoy, 'urlSnapshot').flatMap(columnsWritten)).toEqual(expect.arrayContaining(['contentHash']));
   });
 });
 

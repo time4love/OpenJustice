@@ -44,12 +44,47 @@ const config: Config = {
       ...shared,
       displayName: 'unit',
       testMatch: ['<rootDir>/test/**/*.test.ts'],
-      testPathIgnorePatterns: ['<rootDir>/test/extraction/', '<rootDir>/test/walk/'],
+      testPathIgnorePatterns: [
+        '<rootDir>/test/extraction/',
+        '<rootDir>/test/walk/',
+        // The evidence acceptance suite is RED BY DESIGN until steps 12-15 build
+        // what it asserts (refactor plan §4 rule 4). Without this line `unit` —
+        // the required CI check — runs those files and `npm test` goes red on a
+        // suite that is doing its job.
+        '<rootDir>/test/evidence/',
+        // And the THESIS acceptance suite, for the same reason: red by design
+        // until thesis steps 18-24 build what it names (thesis plan §3 step 17).
+        '<rootDir>/test/thesis/',
+      ],
     },
     {
       ...shared,
       displayName: 'walk',
       testMatch: ['<rootDir>/test/walk/**/*.test.ts'],
+    },
+    {
+      ...shared,
+      // `evidence` is the acceptance suite of evidence steps 11-16, written from
+      // docs/gf-evidence-flows.md's appendix BEFORE the code and red until each
+      // step builds the module it names — the same shape, and the same reason,
+      // as `walk` above. Its own project so `npm run test:evidence` reports its
+      // progress on every PR without gating the required run.
+      displayName: 'evidence',
+      testMatch: ['<rootDir>/test/evidence/**/*.test.ts'],
+    },
+    {
+      ...shared,
+      // `thesis` is the acceptance suite of thesis steps 17-26, written from
+      // docs/gf-thesis-flows.md's appendix BEFORE the code (thesis plan §3 step
+      // 17) and red until each step builds the module it names. Every absent
+      // module is reached through test/thesis/absent.ts, never a literal
+      // `import()`: a literal specifier to a missing module is a file-level
+      // TS2307 that sinks the whole file uncounted, where the loader fails each
+      // case BY NAME with the step that owes it. Its own project so `npm run
+      // test:thesis` reports progress without gating; it joins the required run
+      // at step 25's remainder, in the commit that turns it green.
+      displayName: 'thesis',
+      testMatch: ['<rootDir>/test/thesis/**/*.test.ts'],
     },
     {
       ...shared,

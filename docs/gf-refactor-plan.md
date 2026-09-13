@@ -323,6 +323,22 @@ deploy is one-shot, and staging is its rehearsal. Not before step 8 has served o
 > `held` 0, nothing anchored — corona `20250423145731` is a known loss until a dump-import tool exists.
 > **Sub-step 6 resumes after step 5 lands**; the freeze holds until then.
 
+> **PRODUCTION'S ORDER HAS A HOLE, FOUND 2026-09-08 IN THE REVIEW OF EVIDENCE STEP 11b, AND IT IS
+> RECORDED HERE BEFORE `SHIP` RATHER THAN MET AT IT.** Step 11b's migration adds NOT NULL columns to
+> `Evidence`, so it ABORTS on production's non-empty table — the safe direction, the previous version
+> keeps serving — until production's database is dropped (sub-step 5). The drop needs production's
+> registry ledger emitted first (sub-step 2). But 11b also rebases the ledger emitter onto the target
+> schema, which no longer carries `evidenceType` or `previousFileHash`, so the emitter at head cannot
+> read production's eight legacy evidence rows to explain their entries; and production at `9661206`
+> predates the emitter entirely. So at `SHIP` nothing deployable can emit production's ledger. **The
+> order at `SHIP` therefore gains one deploy:** deploy to production the last commit BEFORE the legacy
+> switch (`0ca8d72`, which has the emitter, the old schema and the measurement scripts), run sub-steps
+> 1 and 2 there in the container, environment stated twice; commit the ledger; then sub-steps 3–5;
+> then deploy head, whose migrations apply on the emptied database; then sub-step 6. Ruled recorded,
+> not yet performed; the `SHIP` keyword's checklist reads this note before it prints what deploys.
+>
+> **Amended 2026-09-13 (R45-B, PR #433), the failure direction QUALIFIED.** Today a head deploy to production before the drop still aborts FIRST at 11b (#68); R45-B's migration (#71) REFUSES ON ITS OWN before its first drop, for every table and value it removes, if a row holds legacy state — so the abort is the platform's act twice over. What no refusal can protect is the three `UrlSnapshot` columns the ledger reads (`fullText`, `contentHash`, `snapshotUrl`), populated on every capture of every environment: for those THE ORDER ABOVE REMAINS THE ONLY CONTROL. The rebuild runs BEFORE R45-B reaches production (thesis plan, the step-26 gate lifted).
+
 ### 10 · Vocabulary
 
 > **DECIDED 2026-09-08 — evidence steps 11 and 12 run BEFORE this one.** The note at §3b records
@@ -368,11 +384,78 @@ and the breakage that proves the instrument (evidence doc A7).
 > these two are what let a researcher see the corpus they just corrected. The findings are recorded
 > in `docs/gf-walk-corrective-pass-2026-09-08.md`.
 
+> **DECIDED 2026-09-08, the same evening — STEP 11 RUNS AS TWO PRs: 11a THE EVIDENCE SWITCH, THEN
+> 11b THE BUILD.** Step 16's un-registration is pulled forward into 11a, on the researcher's word,
+> for the reason the corpus track already paid for on 2026-09-06 (§4, amended: the switch first) and
+> the document plan states as its strategy (its §1, clean ground): nothing in the evidence design
+> needs the old path standing while the new one is built, the database was rebuilt at step 9 and
+> holds no evidence row, and there are no users the gap between the two PRs would cost. The single
+> PR the step 11 sketch first proposed had to hold the column drops and every reader of the dropped
+> columns at once, and the sketch's attempt to keep some readers alive produced a window that was
+> neither the plan's step nor a working coexistence (`handoffs/R32-chunk-1-sketch.md`, reviewed
+> 2026-09-08).
+>
+> **11a — the deletion, no migration and no new code.** Every module evidence A4 retires; every
+> module under `src/` that exists only to read the legacy `UrlVersionDiff` or `Evidence` columns;
+> `WaybackScraper.recordScanFinding`, the classifier selecting evidence (target §9.9); the tests of
+> each, by plan §4 rule 1; the tool registrations and `WRITE_TOOLS` entries; the retired-names scan
+> extended. The RETIRE-AT-11 writers are 11a-document's, whose §5 tags them (corrected 2026-09-08,
+> the DEV session's cold review of this note); `evidenceRoutes.ts` therefore loses its read routes
+> here and the file itself there. Each deletion PR edits only its own layer's counts in
+> `get_environment`; `/api/stats` loses its two evidence counts here. `VectorStoreService` loses
+> its evidence callers here and is deleted in 11a-thesis after its last caller. Its review is a list
+> check: everything deleted is tagged RETIRE or RETIRE-AT-11 or owned by evidence steps 12–16, and
+> nothing KEEP is touched — a KEEP test of a retired module goes with the module, as the switch
+> ruled. **Widened the same evening to THE LEGACY SWITCH — three deletion PRs, one per layer, all
+> before 11b:** 11a-evidence (this note), 11a-thesis (thesis plan step 25 pulled forward, its own
+> dated note there) and 11a-document (document plan step 36 pulled forward, its note there). A
+> thesis-owned module that reads `Evidence` is therefore retired in 11a-thesis, not edited around;
+> the boundary rule this note first carried is moot. Code and tests only, in every one of the three:
+> each layer's schema drops stay with its build step — 11b, thesis step 18, document step 28 — so
+> every migration remains one file in the step that owns it. **The frontend waits for the backend
+> migration — ruled 2026-09-08, after PR 1 and PR 2 landed without it.** This note first said a
+> DARK change (the pages whose APIs leave, hidden or unlinked) lands with the first deletion PR; that
+> change would be edited three times and then deleted, since every page it would hide gets its real
+> replacement at a named step — the corpus timeline at step 12, the public thesis page at thesis
+> step 23, the intake dialog at document step 32. So NO frontend file is touched before step 12; each
+> surface is rebuilt in the step that gives it a contract; the legacy pages leave in ONE cut-over at
+> the end, the document plan's word for it. What this costs is nothing measured: staging has no
+> users, the frontend's build and deploy are untouched by backend deletions (both deployed SKIPPED),
+> production is consistent with itself at the old code, and SHIP was already gated behind thesis
+> step 26. What it forbids is the mid-step "just fix that page".
+> The trajectory detector (`claimTrajectory.ts`), which no design retires and none rebases, was
+> ruled the same evening: **REBASED in 11b**, its candidate source onto CURRENT(diff)'s chunks on
+> `DiffContentVersion`; its test becomes REWRITE there. `preview_diff_classification` is RETIRED by
+> thesis A4 (its retired block, "an instrument, not a research act") and goes in 11a-thesis with
+> its test — the first draft of this note said A4 keeps it, having read `docs/gf-researcher-day.md`
+> instead of the appendix; corrected 2026-09-08 on the DEV session's cold review, and an instrument
+> is an operational script, never a tool. **Six further modules the designs keep read columns 11b
+> drops** — `thesisClaimAudit`, `evidenceInputSoundness`, `auditOnChainAnchors`, `onChainVerification`,
+> `registryState`, and `checkOnChainStatus`, which is deleted in 11a-evidence and rebuilt at step 12 as
+> `get_diff_input` is — and are REBASED in 11b to what the designs already say (check 17 over
+> CURRENT(diff)'s chunks, A6; the claim audit reaching the page through the record key; the anchor
+> audit over captures alone, §5). Two of their tests are KEEP in two tables; the contract they held
+> moved by the ruling of 2026-09-03, a day after the tags were written, so the tags move to REWRITE
+> at 11b and §4 rule 2 is not the wrong step's evidence. `evidence_embeddings`, `match_evidence()`
+> and the `EvidenceEmbedding` model drop in 11b's migration, named line by line — evidence §5 leaves
+> the embedding no source and no reader. The debate's one-OPEN-per-(thesis,
+> record) rule is a nullable `openKey` column with a unique index (ruled the same evening: Prisma
+> cannot express a partial index and raw SQL would keep `db:check-drift` dirty). 11a lands with its
+> own dated record of what left and why, pointed at from here: `docs/gf-legacy-switch-2026-09-08.md`,
+> written with the third PR — what left each layer by tag, the lint debt's fall by deletion,
+> the scan's three halves, and what each build step still owes.
+>
+> **11b — the build, on the emptied ground.** The migration (the drops are provably unread — the
+> compiler said so in 11a), the identity module, both instruments, the acceptance suite; the rest
+> of step 11 as written below. **Step 16 is thereby DONE at 11a**, except for handing the evidence
+> routes to the frontend's change, which stays where it is.
+
 ### 11 · Schema
 `Evidence` as the marked record, `EvidenceDecision`, the debate's thesis and record columns, the
 mention's pin and argument — no role, withdrawn by the thesis flows A2; the identity module as
 one importable symbol;
 `evidence-recomputable` and `evidence-no-prose` green on an empty database.
+Built 2026-09-08; what it measured and what the instruments caught is `docs/gf-evidence-step-11b-2026-09-08.md`.
 The as-built document writers retire in this step — which ones, and their tests, is
 `docs/gf-document-refactor-plan.md` §5's RETIRE-AT-11 tag, never a list here — amended 2026-09-05
 (document refactor plan).
@@ -382,21 +465,38 @@ The as-built document writers retire in this step — which ones, and their test
 by pair, `check_on_chain_status` re-scoped to captures, PUBLIC_PAGE gating; `opinions-not-facts`
 as the shape test.
 The anonymous trajectory read (`GET /tracked/:id/trajectories` today) survives as a PUBLIC read under the same PUBLIC_PAGE rule, bounded to one page — amended 2026-09-04 (pre-design triage, docs/gf-pre-design-plans-triage-2026-09-04.md).
+Built 2026-09-09 (PR #402); the six rulings that shaped it, what the review found, what the decoys
+proved, and the anchor re-check that closed it are `docs/gf-evidence-step-12-2026-09-09.md`.
 
 ### 13 · The debate on a citation
 `open_debate`, `respond_in_debate`, `promote_from_debate`, `get_debate`, the assessor reading the
 citing passage; `NOT_CITED` proven to refuse.
+Built 2026-09-09 (PR #404); what was ruled before the sketch, the drift 11b left and the control it
+added, what the decoys proved, and what the step does not claim is `docs/gf-evidence-step-13-2026-09-09.md`.
+No staging exercise until thesis step 20 creates a thesis.
 
 ### 14 · Review
 `list_evidence_reviews`, `review_evidence`; a re-walk on staging putting one promoted record into
 review and both decisions exercised.
+Built 2026-09-09 (PR #407); what was ruled before the sketch, the precedent the sketch named wrongly,
+the four instruments that reported green over nothing, and the five stale KEEP tags are
+`docs/gf-evidence-step-14-2026-09-09.md`.
+The staging half — one promoted record put into review, both decisions exercised — waits for thesis
+step 20, which is the first act that can create a thesis.
 
 ### 15 · The gate
 The six checks of A6 calling A3's predicates, check 6 gone; `audit-theses`.
+Built 2026-09-10 (PR #411); the four rulings — one of them with its grounding corrected — what six review
+rounds found, what the decoys proved — every predicate the gate composes proven a CALL by breaking it at
+its own definition — and what is still the researcher's are `docs/gf-evidence-step-15-2026-09-10.md`.
+No staging exercise until thesis step 20 creates a thesis; `audit-theses` gains its subject, and its ledger
+command, at thesis step 24.
 
 ### 16 · The evidence switch
 The retired names of A4 unregistered, the retired-names scan extended, the evidence routes handed
 to the frontend's change. **Next: `docs/gf-thesis-refactor-plan.md`, step 17 onward.**
+Pulled forward into step 11a — decided 2026-09-08, the note above step 11; what remains here is the
+routes' hand-over.
 
 ## 4. THE TEST RULES
 

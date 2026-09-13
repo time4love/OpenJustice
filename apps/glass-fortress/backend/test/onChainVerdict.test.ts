@@ -20,7 +20,7 @@ import {
 const HASH = `0x${'a'.repeat(64)}`;
 
 function claim(over: Partial<OnChainClaim> = {}): OnChainClaim {
-  return { inVault: false, status: null, txHash: null, snapshots: 0, ...over };
+  return { inVault: false, status: null, snapshots: 0, ...over };
 }
 
 describe('decideOnChainVerdict', () => {
@@ -33,35 +33,28 @@ describe('decideOnChainVerdict', () => {
     registered: boolean;
     expected: OnChainVerdict;
   }[] = [
+    // THE FIVE EVIDENCE-STATUS ROWS LEFT THIS TABLE AT EVIDENCE STEP 11b, with
+    // the statuses and the column they named. They asked what a CONFIRMED or
+    // PENDING_REVIEW row deserves given a registration and a recorded
+    // transaction; there is no CONFIRMED, no PENDING_REVIEW and no
+    // `onChainTxHash`, because nothing above the corpus is anchored (evidence
+    // §5) — so an evidence row has no registration to be consistent with.
+    //
+    // WHAT REPLACES THEM IS THE HONEST PAIR: a hash a registry holds that the
+    // corpus explains as NOTHING is an ORPHANED_ANCHOR, and a promoted record the
+    // registry has never seen is the NORMAL state rather than a defect. The
+    // capture rows below are untouched and are what this check is about now.
     {
-      name: 'CONFIRMED, registered, tx recorded',
-      claim: claim({ inVault: true, status: 'CONFIRMED', txHash: '0xtx' }),
+      name: 'an evidence row the registry also holds a hash for — an orphan, not a confirmation',
+      claim: claim({ inVault: true, status: 'PROMOTED' }),
       registered: true,
-      expected: ON_CHAIN_VERDICTS.CONSISTENT,
+      expected: ON_CHAIN_VERDICTS.ORPHANED_ANCHOR,
     },
     {
-      name: 'CONFIRMED with no registration — the fake-CONFIRMED class',
-      claim: claim({ inVault: true, status: 'CONFIRMED', txHash: '0xtx' }),
+      name: 'a promoted record the registry has never seen — the normal state, not a defect',
+      claim: claim({ inVault: true, status: 'PROMOTED' }),
       registered: false,
-      expected: ON_CHAIN_VERDICTS.UNANCHORED_CONFIRMED,
-    },
-    {
-      name: 'CONFIRMED and registered but the transaction is not recorded',
-      claim: claim({ inVault: true, status: 'CONFIRMED', txHash: null }),
-      registered: true,
-      expected: ON_CHAIN_VERDICTS.MISSING_TX_HASH,
-    },
-    {
-      name: 'PENDING_REVIEW and unregistered — the normal pre-promotion state',
-      claim: claim({ inVault: true, status: 'PENDING_REVIEW' }),
-      registered: false,
-      expected: ON_CHAIN_VERDICTS.PENDING_UNREGISTERED,
-    },
-    {
-      name: 'PENDING_REVIEW while the contract already holds the hash',
-      claim: claim({ inVault: true, status: 'PENDING_REVIEW' }),
-      registered: true,
-      expected: ON_CHAIN_VERDICTS.PENDING_BUT_ANCHORED,
+      expected: ON_CHAIN_VERDICTS.NOT_IN_VAULT,
     },
     {
       name: 'nothing anywhere',
@@ -130,10 +123,12 @@ describe('decideOnChainVerdict', () => {
   it('no verdict naming a disagreement is ever consistent', () => {
     // Stated as a property rather than a list, so a verdict added later has to
     // be admitted to the consistent set deliberately rather than by default.
+    // The three evidence-registration disagreements left the vocabulary at
+    // evidence step 11b — an evidence row has no registration to disagree with —
+    // so the list is the two the corpus can still produce. The property is
+    // unchanged and is why it was written as a property: a verdict added later
+    // has to be admitted to the consistent set deliberately.
     for (const verdict of [
-      ON_CHAIN_VERDICTS.UNANCHORED_CONFIRMED,
-      ON_CHAIN_VERDICTS.MISSING_TX_HASH,
-      ON_CHAIN_VERDICTS.PENDING_BUT_ANCHORED,
       ON_CHAIN_VERDICTS.ORPHANED_ANCHOR,
       ON_CHAIN_VERDICTS.SNAPSHOT_UNANCHORED,
     ]) {
@@ -143,7 +138,7 @@ describe('decideOnChainVerdict', () => {
 });
 
 describe('onChainSourceStateHash', () => {
-  const base = { fileHash: HASH, claim: claim({ inVault: true, status: 'CONFIRMED' }) };
+  const base = { fileHash: HASH, claim: claim({ inVault: true, status: 'PROMOTED' }) };
 
   it('is stable for an unchanged claim', () => {
     expect(onChainSourceStateHash(base)).toBe(onChainSourceStateHash(base));
@@ -154,10 +149,9 @@ describe('onChainSourceStateHash', () => {
   // freshness it cannot see. Each field is asserted separately so that dropping
   // one from the hash fails a named test rather than silently narrowing it.
   const moves: { field: string; claim: OnChainClaim }[] = [
-    { field: 'inVault', claim: claim({ inVault: false, status: 'CONFIRMED' }) },
-    { field: 'status', claim: claim({ inVault: true, status: 'PENDING_REVIEW' }) },
-    { field: 'txHash', claim: claim({ inVault: true, status: 'CONFIRMED', txHash: '0xtx' }) },
-    { field: 'snapshots', claim: claim({ inVault: true, status: 'CONFIRMED', snapshots: 1 }) },
+    { field: 'inVault', claim: claim({ inVault: false, status: 'PROMOTED' }) },
+    { field: 'status', claim: claim({ inVault: true, status: 'WITHDRAWN' }) },
+    { field: 'snapshots', claim: claim({ inVault: true, status: 'PROMOTED', snapshots: 1 }) },
   ];
   for (const m of moves) {
     it(`moves when ${m.field} changes`, () => {
@@ -190,3 +184,21 @@ describe('onChainSourceStateHash', () => {
     expect(onChainSourceStateHash.length).toBe(1);
   });
 });
+
+
+  // THE FIVE EVIDENCE-STATUS CASES AND THE txHash SOURCE-STATE CASE WENT AT
+  // EVIDENCE STEP 11b, WITH THE COLUMNS AND STATUSES THEY NAMED.
+  //
+  // They asked what verdict a CONFIRMED or PENDING_REVIEW evidence row deserves
+  // given a registration and a recorded transaction. There is no CONFIRMED
+  // status, no PENDING_REVIEW, and no transaction column: nothing above the
+  // corpus is anchored (evidence §5), so an evidence row has no registration to
+  // be consistent with. What survives is the branch that matters — a hash a
+  // registry holds that the corpus explains as a CAPTURE is a SNAPSHOT_ANCHOR,
+  // and one it explains as nothing is an ORPHANED_ANCHOR — and those cases are
+  // above, untouched.
+  //
+  // THE VERDICT VALUES THEMSELVES STAY, with their explanations: stored check
+  // rows carry them, and `check_on_chain_status` is rebuilt at step 12 re-scoped
+  // to captures. `onChainVerdictExplanations.test.ts` holds that none of them
+  // promises citability.

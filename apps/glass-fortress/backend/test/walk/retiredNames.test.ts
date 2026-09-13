@@ -1,5 +1,6 @@
-import { relative } from 'node:path';
-import { SRC, tsFiles, readCode, identifiersWithWord } from './scan';
+import { dirname, posix, relative } from 'node:path';
+import { SRC, codeOf, tsFiles, readCode, identifiersWithWord } from './scan';
+import { blockNamed, blocksOf, fieldsOf, modules, valuesOf } from '../thesis/scanning';
 
 // ---------------------------------------------------------------------------
 // EXPECTED RED UNTIL STEP 8 — THE SWITCH.
@@ -21,6 +22,229 @@ import { SRC, tsFiles, readCode, identifiersWithWord } from './scan';
 const srcModules = () => tsFiles(SRC).map((file) => ({ file: relative(SRC, file), code: readCode(file) }));
 
 const TRACKED_URL_WRITE = /\.trackedUrl\.(?:create|createMany|upsert)\s*\(/;
+
+/**
+ * Every module `file` imports, as a path relative to `src/` — never a name in prose.
+ *
+ * RESOLVED, NOT MATCHED. The first spelling of this required a `../` prefix, and
+ * a sibling import — `from './diffInput'` inside `src/services/` — passed every
+ * case while naming exactly what the scan exists to forbid. A regex over the
+ * SPECIFIER cannot know where the importing file sits; only resolving against its
+ * directory can. The decoy in the DETECTS case is that sibling form, so this
+ * cannot regress to the prefix rule silently.
+ */
+function importedModules(file: string, code: string): string[] {
+  const dir = dirname(file);
+  return [...code.matchAll(/from '(\.{1,2}\/[^']+)'/g)].map((m) =>
+    // POSIX-normalised: `resolve` on a relative pair gives a path with no leading
+    // slash and no `..` left, which is the form RETIRED_EVIDENCE_MODULES is
+    // written in — one spelling for the comparison, as `relative(SRC, file)` is.
+    posix.normalize(posix.join(dir, m[1])),
+  );
+}
+
+// EVIDENCE STEP 11a — the retired names of evidence flows A4, added to the scan
+// the factual layer's step 0 already runs (evidence A7: "the retired-names scan
+// the factual layer's step 0 already runs, extended by this list").
+//
+// TOOLS the MCP surface must not name again, and MODULES no file may import.
+// Both halves are needed and neither implies the other: a tool can be
+// unregistered while its service still compiles, and a service can be deleted
+// while a description still names its tool — the first is how a retired concept
+// keeps a live code path, the second is how it keeps a live promise.
+//
+// `enrich_evidence_with_history` is on A4's retired list and has never existed
+// under src/ in this tree. It is listed anyway: this scan holds a name absent,
+// and a name that was never present is held absent at no cost. What it must not
+// become is a name nobody wrote down because nobody found it.
+const RETIRED_EVIDENCE_TOOLS = [
+  'search_evidence',
+  'get_forensic_timeline',
+  'get_scan_findings',
+  'promote_scan_findings',
+  'promote_evidence',
+  'create_evidence_from_url',
+  'delete_evidence',
+  'enrich_evidence_with_history',
+  'open_diff_debate',
+  'respond_in_diff_debate',
+  'promote_from_diff_debate',
+  'get_diff_debate',
+];
+
+// THE THESIS TOOLS RETIRED BY thesis flows A4's retired block, added in the
+// thesis half of the legacy switch (thesis refactor plan, the DECIDED note above
+// step 17).
+//
+// A SEPARATE LIST FROM THE EVIDENCE ONE, DELIBERATELY. The two layers retire on
+// different steps and their successors land on different ones — `add_thesis_
+// version` returns at thesis step 20, `run_analysis` at 22, the framing tools at
+// 19 — so a single merged list would have to be un-merged the first time a name
+// comes back. Each list leaves when its layer's successors land.
+//
+// `suggest_thesis` is on A4's retired block and has never been registered in this
+// tree; it is listed for the reason `enrich_evidence_with_history` is — a name
+// held absent costs nothing, and the one nobody wrote down is the one that
+// returns.
+const RETIRED_THESIS_TOOLS = [
+  'create_thesis_draft',
+  'add_thesis_version',
+  'run_ai_analysis',
+  'get_research_agenda',
+  'generate_foia_request',
+  'get_figure_dossier',
+  'get_thesis_context',
+  'open_thesis_framing',
+  'assess_thesis_framing',
+  'get_thesis_framing',
+  'create_research_session',
+  'close_research_session',
+  'get_session_summary',
+  'add_session_note',
+  'cite_trajectories',
+  'get_whistleblower_call',
+  'publish_thesis',
+  'unpublish_thesis',
+  'check_publication_readiness',
+  'suggest_thesis',
+  'start_tutorial',
+  'preview_diff_classification',
+];
+
+// The modules those tools stood on, plus the thesis-layer modules whose old
+// versions go with the code they served (thesis plan §5's RETIRE and REWRITE).
+const RETIRED_THESIS_MODULES = [
+  'services/thesisPublication',
+  'services/thesisFraming',
+  'services/thesisAnalysis',
+  'services/thesisProvenance',
+  'services/thesisCitationSplice',
+  'services/whistleblowerCall',
+  'services/researchSessions',
+  'services/sessionService',
+  'services/previewDiffClassification',
+  'services/DevilsAdvocateAgent',
+  'services/RevisionAgent',
+  'services/GapRevisionAgent',
+  'services/ThesisValidatorAgent',
+  'services/ThesisFramingAssessorAgent',
+  'services/ThesisPublicationAssessorAgent',
+  'services/FoiaLetterAgent',
+  'services/LegalMasterAgent',
+  'services/TrustAgent',
+  'routes/thesisRoutes',
+  'routes/mentionRoutes',
+  'routes/figuresRoutes',
+  'routes/chatRoutes',
+  'routes/argumentRoutes',
+  'utils/tipTapUtils',
+  'utils/parseMentions',
+  'lib/evidenceRecord',
+  'lib/summaryProvenance',
+];
+
+// THE DOCUMENT TOOLS RETIRED BY document flows §9, added in the document third
+// of the legacy switch (document refactor plan, the DECIDED note above step 36).
+//
+// TWO NAMES, AND THEY ARE THE PARKED CLASS. Both made an evidence row out of
+// bytes with no corpus record beneath it — a file, pasted text, a screenshot —
+// and both are replaced by `add_document`, whose identity is `sha256(bytes)`:
+// one file, one document, no url in the name. They are listed here rather than
+// merged into the evidence list because their successor lands on a different
+// step (document 30), and a merged list would have to be un-merged the day it
+// does.
+const RETIRED_DOCUMENT_TOOLS = ['create_evidence_from_text', 'recover_evidence_from_screenshot'];
+
+// The modules the document path stood on: the two tools' own, the intake
+// classifier and its prompt, the ephemeral analysis service, the contact
+// cipher, the storage and vector clients, and every lib shaper of the evidence
+// row whose last caller left with them.
+const RETIRED_DOCUMENT_MODULES = [
+  'routes/evidenceRoutes',
+  'services/IntakeAgent',
+  'services/EphemeralAnalysisService',
+  'services/StorageService',
+  'services/VectorStoreService',
+  'prompts/intakeAgentClassification',
+  'lib/encrypt',
+  'lib/intakeVersion',
+  'lib/persistScreenshotEvidence',
+  'lib/evidenceCapture',
+  'lib/evidenceCreateData',
+  'lib/evidenceFileConstraints',
+  'lib/evidenceRecord',
+  'lib/evidenceTier',
+  'lib/evidenceVisibility',
+  'lib/targetEntity',
+  'lib/upsertKeyFigures',
+];
+
+// The five routes that went with `evidenceRoutes`, as PATHS a surviving file
+// might still send a reader to. The tool half cannot see these: they are not
+// tool names, and a description or an error message that still says "POST to
+// /api/evidence/intake" is the same live promise the script half was added for.
+const RETIRED_DOCUMENT_ROUTES = [
+  '/api/evidence/intake',
+  '/api/evidence/confirm',
+  '/api/evidence/recover-intake',
+  '/api/evidence/recover-confirm',
+  '/api/evidence/contact',
+];
+
+// THE NINE OPERATIONAL SCRIPTS RETIRED WITH THOSE MODULES, AS npm ENTRY NAMES.
+//
+// A THIRD HALF, AND IT CATCHES WHAT NEITHER OTHER HALF CAN. A retired tool is a
+// name on the MCP surface; a retired module is an import. This is neither: it is
+// a SENTENCE a live surface says to a person — "run npm run forensics:backfill-
+// survival to re-derive it" — pointing at a command that no longer exists. The
+// reviewer found three in one round: a STALE survival reason, the CONSISTENT
+// verdict's explanation, and a tool description. Each compiled, each passed every
+// other case, and each was a live promise the platform could not keep.
+//
+// MATCHED IN STRINGS, WHICH IS THE POINT: `readCode` has already stripped block
+// and line comments, so a paragraph explaining why a script left does not fire,
+// and a message telling a reader to run it does.
+const RETIRED_SCRIPT_NAMES = [
+  'forensics:reclassify',
+  'forensics:resummarize',
+  'forensics:rehash-evidence',
+  'forensics:rediff',
+  'forensics:measure-divergence',
+  'forensics:audit-survival',
+  'forensics:backfill-survival',
+  'forensics:confirm-anchors',
+  'forensics:measure-gate5',
+  // R45: the detection-layer comparison, retired with the layer switch once its measurement was recorded.
+  'forensics:compare-detection-layers',
+  // R45-B: the custody instrument, retired whole with the legacy register its extractor-equality half measured.
+  'forensics:measure-custody',
+];
+
+// The modules those tools stood on, plus the readers that existed only to read
+// the legacy columns evidence A2 removes. Matched as an IMPORT PATH, not as a
+// word: `promoteEvidence` is also a sentence in three descriptions, and a scan
+// that fired on prose would be unfixable without lying in a comment.
+const RETIRED_EVIDENCE_MODULES = [
+  'services/promoteForensicDiff',
+  'services/promoteEvidence',
+  'services/deleteEvidence',
+  'services/diffDebate',
+  'services/ForensicPromotionAssessorAgent',
+  'services/forensicEvidence',
+  'services/evidenceOnChain',
+  'services/rehashEvidence',
+  'services/confirmAnchors',
+  'services/reclassifyDiffs',
+  'services/resummarizeDiffs',
+  'services/rediffFromSnapshots',
+  'services/auditDiffSurvival',
+  'services/backfillDiffSurvival',
+  'services/computeDiffSurvival',
+  'services/diffInput',
+  'services/diffLookup',
+  'services/measureGate5',
+  'services/measureExtractionDivergence',
+];
 
 const RETIRED_TOOLS = [
   'calibrate_article_rules',
@@ -71,6 +295,94 @@ describe('EXPECTED RED UNTIL STEP 8 — no file under src names a retired concep
     expect(writers.map((m) => m.file)).toHaveLength(1);
   });
 
+  it('no file names a retired EVIDENCE tool', () => {
+    const offenders = srcModules()
+      .map(({ file, code }) => ({ file, tools: RETIRED_EVIDENCE_TOOLS.filter((t) => code.includes(t)) }))
+      .filter((m) => m.tools.length > 0);
+    expect(offenders).toEqual([]);
+  });
+
+  it('no file imports a retired EVIDENCE module', () => {
+    const offenders = srcModules()
+      .map(({ file, code }) => ({
+        file,
+        modules: RETIRED_EVIDENCE_MODULES.filter((m) => importedModules(file, code).includes(m)),
+      }))
+      .filter((m) => m.modules.length > 0);
+    expect(offenders).toEqual([]);
+  });
+
+  // ONE FILE MAY NAME THEM, AND IT IS NAMED HERE RATHER THAN MATCHED AROUND.
+  //
+  // The registry ledger's whole subject is what PRODUCED the entries on a frozen
+  // contract — "over the inputs as they stood before forensics:rehash-evidence
+  // re-derived them" is a fact about history, committed to git as the public
+  // explanation of an index nobody can re-derive. It is the one place where
+  // naming a retired tool is the point rather than a broken promise, and evidence
+  // §8 requires the explanation to be complete.
+  //
+  // AN ALLOW-LIST OF ONE, PINNED TO ONE. A rule that tried to tell an imperative
+  // from a past tense would be a rule with a bypass in it: "see forensics:rediff"
+  // reads as history and works as an instruction. So the exception is a file, it
+  // is visible, and the length assertion below stops it growing by habit.
+  const LEDGER = 'services/registryLedger.ts';
+
+  it('the ledger exception is one file, and it exists', () => {
+    expect(srcModules().map((m) => m.file)).toContain(LEDGER);
+  });
+
+  it('no file names a retired THESIS tool', () => {
+    const offenders = srcModules()
+      .map(({ file, code }) => ({ file, tools: RETIRED_THESIS_TOOLS.filter((t) => code.includes(t)) }))
+      .filter((m) => m.tools.length > 0);
+    expect(offenders).toEqual([]);
+  });
+
+  it('no file imports a retired THESIS module', () => {
+    const offenders = srcModules()
+      .map(({ file, code }) => ({
+        file,
+        modules: RETIRED_THESIS_MODULES.filter((m) => importedModules(file, code).includes(m)),
+      }))
+      .filter((m) => m.modules.length > 0);
+    expect(offenders).toEqual([]);
+  });
+
+  it('no file names a retired DOCUMENT tool', () => {
+    const offenders = srcModules()
+      .map(({ file, code }) => ({ file, tools: RETIRED_DOCUMENT_TOOLS.filter((t) => code.includes(t)) }))
+      .filter((m) => m.tools.length > 0);
+    expect(offenders).toEqual([]);
+  });
+
+  it('no file imports a retired DOCUMENT module', () => {
+    const offenders = srcModules()
+      .map(({ file, code }) => ({
+        file,
+        modules: RETIRED_DOCUMENT_MODULES.filter((m) => importedModules(file, code).includes(m)),
+      }))
+      .filter((m) => m.modules.length > 0);
+    expect(offenders).toEqual([]);
+  });
+
+  it('no file sends a reader to a retired document ROUTE', () => {
+    const offenders = srcModules()
+      .map(({ file, code }) => ({ file, routes: RETIRED_DOCUMENT_ROUTES.filter((r) => code.includes(r)) }))
+      .filter((m) => m.routes.length > 0);
+    expect(offenders).toEqual([]);
+  });
+
+  it('no file promises a retired operational script', () => {
+    const offenders = srcModules()
+      .filter(({ file }) => file !== LEDGER)
+      .map(({ file, code }) => ({
+        file,
+        scripts: RETIRED_SCRIPT_NAMES.filter((n) => code.includes(n)),
+      }))
+      .filter((m) => m.scripts.length > 0);
+    expect(offenders).toEqual([]);
+  });
+
   it('DETECTS each — proven against decoys, and the era scan does not fire on camera or general', () => {
     expect(identifiersWithWord(`const eras = deriveEras(log); const b = ERA_BOUNDARY; type D = DatedEra;`, ['era', 'eras']).sort())
       .toEqual(['DatedEra', 'ERA_BOUNDARY', 'deriveEras', 'eras']);
@@ -80,5 +392,234 @@ describe('EXPECTED RED UNTIL STEP 8 — no file under src names a retired concep
     expect(TRACKED_URL_WRITE.test(`await prisma.trackedUrl.create({ data })`)).toBe(true);
     expect(TRACKED_URL_WRITE.test(`const page = await prisma.trackedUrl.upsert({ where, create, update });`)).toBe(true);
     expect(TRACKED_URL_WRITE.test(`createdAt: trackedUrl.createdAt,`)).toBe(false);
+    // The evidence halves, each against the shape it exists to catch.
+    expect(RETIRED_EVIDENCE_TOOLS.filter((t) => `server.tool('promote_scan_findings', …)`.includes(t)))
+      .toEqual(['promote_scan_findings']);
+    expect(importedModules('mcp/tools/x.ts', `import { d } from '../../services/diffInput';`))
+      .toContain('services/diffInput');
+    // THE SIBLING FORM, and the one the first spelling of this scan let through:
+    // no `../` prefix, and the importing file's own directory supplies the rest.
+    expect(importedModules('services/x.ts', `import { d } from './diffInput';`))
+      .toContain('services/diffInput');
+    // PROSE IS NOT AN IMPORT: the descriptions still explain why diffInput left.
+    expect(importedModules('services/x.ts', `// services/diffInput was retired at step 11a`))
+      .toEqual([]);
+    // The thesis halves — one assertion per new shape, and the module one uses the
+    // sibling form, which is the spelling this scan was corrected for.
+    expect(RETIRED_THESIS_TOOLS.filter((t) => `server.tool('publish_thesis', …)`.includes(t)))
+      .toEqual(['publish_thesis']);
+    expect(importedModules('services/x.ts', `import { p } from './thesisPublication';`))
+      .toContain('services/thesisPublication');
+    // The document halves — one assertion per shape, the module one in the
+    // sibling spelling, the route one against a message rather than a mount.
+    expect(RETIRED_DOCUMENT_TOOLS.filter((t) => `server.tool('create_evidence_from_text', …)`.includes(t)))
+      .toEqual(['create_evidence_from_text']);
+    expect(importedModules('services/x.ts', `import { S } from './StorageService';`))
+      .toContain('services/StorageService');
+    expect(RETIRED_DOCUMENT_ROUTES.filter((r) => `Send the file to /api/evidence/intake instead.`.includes(r)))
+      .toEqual(['/api/evidence/intake']);
+    // The script half, against the shape the reviewer found three times.
+    expect(RETIRED_SCRIPT_NAMES.filter((n) => `Run npm run forensics:backfill-survival to fix it.`.includes(n)))
+      .toEqual(['forensics:backfill-survival']);
+  });
+});
+
+// ITS OWN DESCRIBE (7.5a's L1): these cases hold TODAY, and a title reading "EXPECTED
+// RED UNTIL STEP 8" above green thesis cases would say something false about them.
+describe("the THESIS layer's retired names that hold today — routes and delegates (thesis step 17, sketch §5g)", () => {
+  // THESIS STEP 17 (7.5a) — THE HALVES OF THE THESIS LAYER'S RETIRED NAMES THAT HOLD
+  // TODAY (R40 sketch §5g, §6-4). What is red until thesis step 18 — the schema's
+  // removed models, enums and columns, and the source words — lives in
+  // `test/thesis/scans.test.ts` under `retired-names`, and moves here in the commit
+  // that turns it green: a red case in this green project would hide a walk
+  // regression behind an expected red.
+  //
+  // THE ROUTE SENTENCES, the half the document layer already has: the research-act
+  // mounts thesis A5 retires, read from the mounts at 0ca8d72 (server.ts :202–:210).
+  // REGEXES over the code's strings, so `/api/thesis/${id}/publish` in a template fires
+  // as the mount does — and the survivors do not: A5's three public reads, `GET
+  // /api/thesis/:id/versions/:v` among them, and the tool name `publish_thesis`. The
+  // whistleblower routes are document A5's, reshaped into `/intake`, and not listed.
+  const RETIRED_THESIS_ROUTES = [
+    /\/api\/thesis\/draft\b/,
+    /\/api\/thesis\/[^/\s'"`]+\/(?:version(?!s)|analyze|suggest-revision|publication-readiness|publish|unpublish|foia-request|provenance)\b/,
+    /\/api\/thesis\/[^/\s'"`]+\/gaps\/[^/\s'"`]+\/resolve\b/,
+    /\/api\/mentions\/(?:figures|evidence)\b/,
+    /\/api\/figures\b/,
+    /\/api\/chat\b/,
+    /\/api\/arguments\/generate\b/,
+  ];
+
+  // THE RETIRED DELEGATES — the session, its events, the key figures and the gap
+  // resolution thesis A2 removes. Zero uses in code today; this holds it.
+  const RETIRED_THESIS_DELEGATES = /\.(?:researchSession|researchSessionEvent|keyFigure|thesisGapResolution)\./;
+
+  it('no file sends a reader to a retired THESIS route', () => {
+    const offenders = srcModules()
+      .map(({ file, code }) => ({ file, routes: RETIRED_THESIS_ROUTES.filter((r) => r.test(code)).map(String) }))
+      .filter((m) => m.routes.length > 0);
+    expect(offenders).toEqual([]);
+  });
+
+  it('no file reaches a retired THESIS delegate', () => {
+    expect(srcModules().filter(({ code }) => RETIRED_THESIS_DELEGATES.test(code)).map((m) => m.file)).toEqual([]);
+  });
+
+  it('DETECTS the thesis routes and delegates — and the survivors, the bare mount and the tool name do not fire', () => {
+    for (const sentence of [
+      'POST /api/thesis/draft',
+      'fetch(`/api/thesis/${thesis.id}/publish`)',
+      "router.post('/api/thesis/:id/version', add)",
+      '/api/thesis/:id/analyze',
+      '/api/thesis/:id/suggest-revision',
+      '/api/thesis/:id/publication-readiness',
+      '/api/thesis/:id/unpublish',
+      '/api/thesis/:id/gaps/:gapIndex/resolve',
+      '/api/thesis/:id/foia-request',
+      '/api/thesis/:id/provenance/repair',
+      '/api/mentions/evidence',
+      '/api/figures/:id',
+      "app.use('/api/chat', chatRoutes)",
+      '/api/arguments/generate',
+    ]) {
+      expect(RETIRED_THESIS_ROUTES.some((r) => r.test(sentence))).toBe(true);
+    }
+    for (const survivor of [
+      'GET /api/thesis/:id/versions/:v',
+      "router.get('/api/thesis', list)",
+      'GET /api/thesis/:id',
+      "server.tool('publish_thesis', …)",
+    ]) {
+      expect(RETIRED_THESIS_ROUTES.some((r) => r.test(survivor))).toBe(false);
+    }
+    expect(RETIRED_THESIS_DELEGATES.test('await tx.researchSessionEvent.create({ data });')).toBe(true);
+    expect(RETIRED_THESIS_DELEGATES.test('await prisma.keyFigure.findMany({});')).toBe(true);
+    expect(RETIRED_THESIS_DELEGATES.test('await prisma.debateSession.findUnique({ where });')).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// retired-names — A7 :1659–:1660 · sketch §5g, §6-4 — THE HALF THAT WAS RED UNTIL THESIS STEP 18
+//
+// MOVED HERE FROM `test/thesis/scans.test.ts` IN THE COMMIT THAT TURNED IT GREEN —
+// thesis step 18, as the R40 sketch §6-4 ruled: while it was red it lived in the
+// thesis project, because a red case in the walk's green project would hide a walk
+// regression behind an expected red. Its titles are kept verbatim, so each case is
+// traceable to the step that owed it.
+// ---------------------------------------------------------------------------
+
+describe('retired-names', () => {
+  // THESIS A2's REMOVED LIST, one case per name, each tagged with the step that removed it. `Whistleblower` is
+  // the document plan's (step 28). R45-B's names are refactor plan §2's retire and transform rows (:54–:73) and
+  // the legacy register evidence A1 superseded — the migration 20260914120000_r45_legacy_register_and_calibration.
+  const THESIS_18 = 'thesis step 18';
+  const R45_B = 'R45-B';
+  const REMOVED_MODELS: readonly (readonly [string, string])[] = [
+    ['ResearchSession', THESIS_18],
+    ['ResearchSessionEvent', THESIS_18],
+    ['ThesisGapResolution', THESIS_18],
+    ['KeyFigure', THESIS_18],
+    ['ArticleRuleset', R45_B],
+    ['RulesetObservation', R45_B],
+    ['CalibrationRun', R45_B],
+    ['CalibrationReset', R45_B],
+    ['CalibrationDecision', R45_B],
+    ['WaybackScrapeJob', R45_B],
+    ['ScanRelevanceAssessment', R45_B],
+  ];
+  const REMOVED_ENUMS: readonly (readonly [string, string])[] = [
+    ['ResearchSessionEventType', THESIS_18],
+    ['ResearchSessionStatus', THESIS_18],
+    ['ThesisVersionStatus', THESIS_18],
+    ['CalibrationRunStatus', R45_B],
+    ['CalibrationDecisionType', R45_B],
+    ['WaybackJobStatus', R45_B],
+    ['WaybackFailureReason', R45_B],
+    ['MissionVerdict', R45_B],
+    ['AssessmentAuthor', R45_B],
+    ['TrackedUrlStatus', R45_B],
+  ];
+  const REMOVED_VALUES: readonly (readonly [string, string, string])[] = [
+    ['MentionType', 'KEY_FIGURE', THESIS_18],
+    ['MentionType', 'TRACKED_URL', THESIS_18],
+    ['CdxEntryStatus', 'STORED', R45_B],
+    ['CdxEntryStatus', 'UNCHANGED', R45_B],
+  ];
+  const REMOVED_FIELDS: readonly (readonly [string, string, string])[] = [
+    ['ThesisVersion', 'userContent', THESIS_18],
+    ['ThesisVersion', 'aiAnalysis', THESIS_18],
+    ['ThesisVersion', 'analysisInputHash', THESIS_18],
+    ['ThesisVersion', 'status', THESIS_18],
+    ['Thesis', 'title', THESIS_18],
+    ['Thesis', 'sessions', THESIS_18],
+    ['ThesisMention', 'type', THESIS_18],
+    ['ThesisMention', 'refId', THESIS_18],
+    ['TrackedUrl', 'activeArticleRulesetId', R45_B],
+    ['TrackedUrl', 'status', R45_B],
+    ['TrackedUrl', 'job', R45_B],
+    ['CdxIndexEntry', 'comparedToSnapshotId', R45_B],
+    ['UrlSnapshot', 'fullText', R45_B],
+    ['UrlSnapshot', 'contentHash', R45_B],
+    ['UrlSnapshot', 'snapshotUrl', R45_B],
+  ];
+  // Every model a removed field names must still exist, or its case passes over nothing.
+  it('each model a removed field or value names still exists — the vacuity check', () => {
+    const missing = [
+      ...REMOVED_FIELDS.map(([model]) => ['model', model] as const),
+      ...REMOVED_VALUES.map(([enumName]) => ['enum', enumName] as const),
+    ].filter(([kind, name]) => blockNamed(kind, name)?.name !== name);
+    expect(missing).toEqual([]);
+  });
+  /**
+   * THE SOURCE WORDS, in CODE under src/ (sketch §5g). `refId` and `type` are NOT
+   * scanned as words — `DebateEvent.refId` is a live column, and the schema half
+   * above already holds the mention's.
+   */
+  const RETIRED_WORDS = ['userContent', 'aiAnalysis', 'analysisInputHash', 'gapIndex', 'KEY_FIGURE', 'TRACKED_URL', 'CLAIM_TRAJECTORY'];
+  const wordsIn = (code: string): string[] => RETIRED_WORDS.filter((w) => new RegExp(`\\b${w}\\b`).test(code));
+
+  for (const [name, step] of REMOVED_MODELS) {
+    it(`schema: no model ${name} (${step})`, () => {
+      expect(blockNamed('model', name)?.name).toBeUndefined();
+    });
+  }
+  for (const [name, step] of REMOVED_ENUMS) {
+    it(`schema: no enum ${name} (${step})`, () => {
+      expect(blockNamed('enum', name)?.name).toBeUndefined();
+    });
+  }
+  for (const [enumName, value, step] of REMOVED_VALUES) {
+    it(`schema: ${enumName} has no ${value} (${step})`, () => {
+      expect(valuesOf(blockNamed('enum', enumName))).not.toContain(value);
+    });
+  }
+  for (const [model, field, step] of REMOVED_FIELDS) {
+    it(`schema: ${model} has no ${field} (${step})`, () => {
+      expect(fieldsOf(blockNamed('model', model)).map((f) => f.name)).not.toContain(field);
+    });
+  }
+
+  it('source: no retired word in the CODE under src/ — red at the readers step 18 rebases (sketch §0h) (thesis step 18)', () => {
+    const offenders = modules()
+      .map(({ file, code }) => ({ file, words: wordsIn(code) }))
+      .filter((m) => m.words.length > 0);
+    expect(offenders).toEqual([]);
+  });
+
+  it('DETECTS a planted model, enum value and field, and a word — and a longer name, a comment and a lookalike do not fire', () => {
+    const planted = blocksOf(
+      [
+        'model KeyFigure {\n  name String\n}',
+        'model KeyFigureLink {\n  id String\n}',
+        'enum MentionType {\n  KEY_FIGURE // @name\n  EVIDENCE\n}',
+        'model ThesisVersion {\n  id String\n  userContent Json // TipTap document JSON\n  @@index([id])\n}',
+      ].join('\n'),
+    );
+    expect(planted.filter((b) => b.kind === 'model' && b.name === 'KeyFigure')).toHaveLength(1);
+    expect(valuesOf(planted.find((b) => b.name === 'MentionType'))).toEqual(['KEY_FIGURE', 'EVIDENCE']);
+    expect(fieldsOf(planted.find((b) => b.name === 'ThesisVersion')).map((f) => f.name)).toEqual(['id', 'userContent']);
+    expect(wordsIn('const doc = version.userContent;')).toEqual(['userContent']);
+    expect(wordsIn('const h = row.userContentHash;')).toEqual([]);
+    expect(wordsIn(codeOf('// userContent left the version at 11b\nconst x = 1;'))).toEqual([]);
   });
 });

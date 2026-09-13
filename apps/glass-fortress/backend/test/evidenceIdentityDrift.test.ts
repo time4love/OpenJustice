@@ -69,30 +69,19 @@ describe('there is one extraction of "the article", and one evidence hash', () =
     expect(parsers.sort()).toEqual(['lib/archiveText.ts', 'lib/chromeRulesetApply.ts']);
   });
 
-  it('the url+text evidence hash is computed only through the shared function', () => {
-    // The inline copy in evidenceRoutes.ts omitted the 40,000-character bound
-    // that the MCP path applied. Same url, same text, two identities.
-    //
-    // ALLOWED holds the one remaining copy, with the reason it is still here:
-    // create_evidence_from_text relies on a researcher pasting text by hand, the
-    // mode is under review (a saved PDF is the likely replacement), and
-    // refactoring something that may be deleted is wasted work. Listed rather
-    // than pattern-excluded so that decision stays visible in code.
-    const ALLOWED = new Set(['mcp/tools/createEvidenceFromText.ts']);
 
-    const inlineHash = /hashFile\(\s*Buffer\.from\(\s*`\$\{[^`]*\}\\n\\n/;
-    const offenders = files
-      .filter((f) => inlineHash.test(readFileSync(f, 'utf8')))
-      .map(rel)
-      .filter((f) => !ALLOWED.has(f));
-
-    expect(offenders).toEqual([]);
-  });
-
-  it('the guard can actually see an inline copy — it is not a regex that matches nothing', () => {
-    // A drift guard that cannot fail is decoration. This asserts the pattern
-    // still matches the one known copy the allowlist is excusing.
-    const known = readFileSync(join(SRC, 'mcp/tools/createEvidenceFromText.ts'), 'utf8');
-    expect(/hashFile\(\s*Buffer\.from\(\s*`\$\{[^`]*\}\\n\\n/.test(known)).toBe(true);
-  });
+  // THE URL+TEXT GROUP WENT AT EVIDENCE STEP 11a, WITH ITS DECOY CASE.
+  // It held that `url + "\n\n" + text.slice(0, 40000)` was computed in one place,
+  // and excused ONE inline copy in `create_evidence_from_text` on the ground that
+  // the mode was under review. Both are gone: document flows §9 retires the tool
+  // and replaces it with `add_document`, whose identity is `sha256(bytes)` — one
+  // file, one document, no url in the name and no character bound to disagree
+  // about. The formula has no second spelling because it has no first one.
+  //
+  // THE DECOY CASE GOES WITH IT AND MUST: it read the allowed copy to prove the
+  // regex still matched something. With the copy deleted it would assert a
+  // pattern against a file that does not exist — a guard that cannot fail,
+  // which is the thing it was written to prevent.
+  //
+  // The Readability group above is KEEP and is untouched.
 });

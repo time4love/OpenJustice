@@ -10,10 +10,8 @@ import { anchoringTarget, chainProvenanceGap, type AnchoringTarget } from '../li
 import { readOnChainClaim } from './onChainVerification';
 import {
   ANCHORABLE_CAPTURE_SELECT,
-  CAPTURE_HASHES_SELECT,
   anchoredCaptureHash,
   attestationOf,
-  capturesKnownHashes,
   hashUnderAudit,
   type AnchorAttestation,
 } from '../lib/anchoredCaptureHash';
@@ -88,10 +86,10 @@ export type AnchorCheckState =
    * Level 3 being done. It is silent on WHAT was anchored, and would stay green
    * if the answer were a hash of the page title."
    *
-   * Two causes, distinguished in the reason because their remedies are opposite:
-   * an anchor made under a SUPERSEDED rule is explainable and Level 10's to
-   * supersede; one attesting a hash the subject does not have by any rule is
-   * misanchored and is a custody incident.
+   * One cause since R45-B: the anchor attests a hash that is not the capture's
+   * `documentHash`, and no other column of the capture can explain it — a custody
+   * incident. (An anchor under a superseded rule was the second cause until the
+   * legacy `contentHash` left the schema.)
    */
   | 'MISATTESTING'
   /**
@@ -249,7 +247,7 @@ const STATE_MEANING: Record<AnchorCheckState, string> = {
   UNAVAILABLE: 'chain unreachable — NOT a pass',
   UNCHECKED: 'no verdict ever recorded — NOT a pass',
   STALE: 'the claim moved, the rule moved, or the verdict does not name this chain',
-  MISATTESTING: 'anchored to a hash the current rule does not name — explainable is not passing',
+  MISATTESTING: 'anchored to a hash that is not the capture’s bytes',
   UNATTRIBUTED: 'claims an anchor; what it attests has never been observed',
 };
 
@@ -291,21 +289,25 @@ export function formatAnchorAuditSummary(report: AnchorAuditReport): string {
 }
 
 export async function auditOnChainAnchorSubjects(): Promise<AnchorClaimingSubject[]> {
-  const [evidence, snapshots] = await Promise.all([
-    prisma.evidence.findMany({
-      where: { status: 'CONFIRMED' },
-      // `previousFileHash` is the superseded identity — an anchor still pointing
-      // at it attests something this record really was, which is explainable
-      // rather than wrong. Selecting it is what lets those be told apart.
-      select: { id: true, fileHash: true, previousFileHash: true, anchoredHash: true },
-    }),
+  // CAPTURES ALONE, FROM EVIDENCE STEP 11b. This asked about two subject types
+  // and the second no longer exists: NOTHING ABOVE THE CORPUS IS ANCHORED
+  // (evidence flows §5), so an evidence row has no anchor to audit — no
+  // `onChainTxHash`, no `anchoredHash`, no `anchorCheck`, no CONFIRMED status,
+  // and no `previousFileHash`, because identity never moves either.
+  //
+  // THE QUESTION SHRANK AND GOT STRONGER. It used to be "does every anchoring
+  // CLAIM carry a check?", over a population that mixed the corpus's real
+  // anchors with a derived fact somebody had written on chain. It is now "does
+  // every capture's anchor attest that capture's bytes?" — which is the whole
+  // of what the chain is for under this design, and the class that produced the
+  // false-CONFIRMED audit has no subject left to appear in.
+  const [snapshots] = await Promise.all([
     prisma.urlSnapshot.findMany({
       where: { NOT: { onChainTxHash: null } },
       select: {
         id: true,
         anchoredHash: true,
         ...ANCHORABLE_CAPTURE_SELECT,
-        ...CAPTURE_HASHES_SELECT,
       },
     }),
   ]);
@@ -320,20 +322,6 @@ export async function auditOnChainAnchorSubjects(): Promise<AnchorClaimingSubjec
   // contract speaks: the capture columns are bare hex, and that mismatch is what
   // made 83 anchorings silently no-op.
   return [
-    ...evidence.map((e) => {
-      const { hash, confirmed } = hashUnderAudit(e, e.fileHash);
-      return {
-        subjectType: IntegrityCheckSubject.EVIDENCE,
-        subjectId: e.id,
-        fileHash: toBytes32(hash),
-        anchorConfirmed: confirmed,
-        attestation: attestationOf({
-          anchoredHash: e.anchoredHash,
-          current: e.fileHash,
-          known: e.previousFileHash === null ? [e.fileHash] : [e.fileHash, e.previousFileHash],
-        }),
-      };
-    }),
     ...snapshots.map((s) => {
       const { hash, confirmed } = hashUnderAudit(s, anchoredCaptureHash(s));
       return {
@@ -344,7 +332,6 @@ export async function auditOnChainAnchorSubjects(): Promise<AnchorClaimingSubjec
         attestation: attestationOf({
           anchoredHash: s.anchoredHash,
           current: anchoredCaptureHash(s),
-          known: capturesKnownHashes(s),
         }),
       };
     }),
@@ -480,24 +467,22 @@ async function classify(
       onChainVerdict: null,
       staleReason:
         'This subject claims an anchor and what that anchor attests has never been observed. ' +
-        'Run forensics:confirm-anchors; where the chain no longer remembers the transaction, ' +
-        'this is permanent and true rather than a gap to be closed.',
+        'Attribution is read from CHAIN STATE — the registry says who registered a hash and when, ' +
+        'forever — and the receipt-reading tool that used to close this was retired at evidence ' +
+        'step 11a. Where the chain no longer remembers the transaction, this is permanent and true ' +
+        'rather than a gap to be closed.',
     };
   }
 
-  if (subject.attestation === 'ATTESTS_SUPERSEDED' || subject.attestation === 'UNRECOGNISED') {
+  if (subject.attestation === 'UNRECOGNISED') {
     return {
       ...base,
       state: 'MISATTESTING',
       checkedAt: check?.checkedAt.toISOString() ?? null,
       onChainVerdict: null,
       staleReason:
-        subject.attestation === 'ATTESTS_SUPERSEDED'
-          ? 'The anchor attests a hash this subject really has, but not the one the current rule ' +
-            'names. Explainable — an anchor made under a superseded rule — and not a pass. ' +
-            'Superseding it is Level 10.'
-          : 'The anchor attests a hash this subject does not have by any rule. Misanchored: the ' +
-            'transaction is real and does not attest this record.',
+        'The anchor attests a hash that is not this capture’s bytes. Misanchored: the ' +
+        'transaction is real and does not attest this record.',
     };
   }
 

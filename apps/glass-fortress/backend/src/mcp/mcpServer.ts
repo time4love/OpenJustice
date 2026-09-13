@@ -1,12 +1,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { resolveOrigin } from '../oauth/oidcProvider';
-import { searchEvidenceSchema, searchEvidenceHandler } from './tools/searchEvidence';
-import { getForensicTimelineSchema, getForensicTimelineHandler } from './tools/getForensicTimeline';
-import { getFigureDossierSchema, getFigureDossierHandler } from './tools/getFigureDossier';
-import { getThesisContextSchema, getThesisContextHandler } from './tools/getThesisContext';
-import { getResearchAgendaSchema, getResearchAgendaHandler } from './tools/getResearchAgenda';
-import { createEvidenceFromUrlSchema, createEvidenceFromUrlHandler } from './tools/createEvidenceFromUrl';
-import { createEvidenceFromTextSchema, createEvidenceFromTextHandler } from './tools/createEvidenceFromText';
+import { MCP_INSTRUCTIONS } from './instructions';
+import { stampEnvironment } from './stampEnvironment';
 import {
   surveyWaybackCapturesSchema,
   surveyWaybackCapturesHandler,
@@ -25,62 +20,31 @@ import {
   listCapturesSchema,
   listCapturesHandler,
 } from '../walk/tools';
-import { createThesisDraftSchema, createThesisDraftHandler } from './tools/createThesisDraft';
-import { addThesisVersionSchema, addThesisVersionHandler } from './tools/addThesisVersion';
-import { citeTrajectoriesSchema, citeTrajectoriesHandler } from './tools/citeTrajectories';
 import {
   getThesisTrajectoryCitationsSchema,
   getThesisTrajectoryCitationsHandler,
 } from './tools/getThesisTrajectoryCitations';
-import { runAiAnalysisSchema, runAiAnalysisHandler } from './tools/runAiAnalysis';
-import { createResearchSessionSchema, createResearchSessionHandler } from './tools/createResearchSession';
-import { addSessionNoteSchema, addSessionNoteHandler } from './tools/addSessionNote';
-import { closeResearchSessionSchema, closeResearchSessionHandler } from './tools/closeResearchSession';
-import { getSessionSummarySchema, getSessionSummaryHandler } from './tools/getSessionSummary';
-import { promoteEvidenceSchema, promoteEvidenceHandler } from './tools/promoteEvidence';
-import { deleteEvidenceSchema, deleteEvidenceHandler } from './tools/deleteEvidence';
-import { generateFoiaRequestSchema, generateFoiaRequestHandler } from './tools/generateFoiaRequest';
-import { recoverEvidenceFromScreenshotSchema, recoverEvidenceFromScreenshotHandler } from './tools/recoverEvidenceFromScreenshot';
-import { checkOnChainStatusSchema, checkOnChainStatusHandler } from './tools/checkOnChainStatus';
-import { getWhistleblowerCallSchema, getWhistleblowerCallHandler } from './tools/getWhistleblowerCall';
-import { getScanFindingsSchema, getScanFindingsHandler } from './tools/getScanFindings';
-import {
-  openThesisFramingSchema,
-  openThesisFramingHandler,
-  assessThesisFramingSchema,
-  assessThesisFramingHandler,
-  getThesisFramingSchema,
-  getThesisFramingHandler,
-} from './tools/thesisFramingTools';
 import { getClaimTrajectoriesSchema, getClaimTrajectoriesHandler } from './tools/getClaimTrajectories';
-import { promoteScanFindingsSchema, promoteScanFindingsHandler } from './tools/promoteScanFindings';
-import {
-  openDiffDebateSchema,
-  openDiffDebateHandler,
-  respondInDiffDebateSchema,
-  respondInDiffDebateHandler,
-  promoteFromDiffDebateSchema,
-  promoteFromDiffDebateHandler,
-  getDiffDebateSchema,
-  getDiffDebateHandler,
-} from './tools/diffDebateTools';
-import { startTutorialSchema, startTutorialHandler } from './tools/startTutorial';
 import { verifyClaimTextSchema, verifyClaimTextHandler } from './tools/verifyClaimText';
-import {
-  previewDiffClassificationSchema,
-  previewDiffClassificationHandler,
-} from './tools/previewDiffClassification';
-import { getDiffInputSchema, getDiffInputHandler } from './tools/getDiffInput';
 import { getEnvironmentSchema, getEnvironmentHandler } from './tools/getEnvironment';
 import { auditThesisClaimsSchema, auditThesisClaimsHandler } from './tools/auditThesisClaims';
+import { listFindingsSchema, listFindingsHandler } from './tools/listFindings';
+import { getDiffInputSchema, getDiffInputHandler } from './tools/getDiffInput';
+import { resolveRecordSchema, resolveRecordHandler } from './tools/resolveRecord';
+import { checkOnChainStatusSchema, checkOnChainStatusHandler } from './tools/checkOnChainStatus';
+import { openDebateSchema, openDebateHandler } from './tools/openDebate';
+import { respondInDebateSchema, respondInDebateHandler } from './tools/respondInDebate';
+import { promoteFromDebateSchema, promoteFromDebateHandler } from './tools/promoteFromDebate';
+import { getDebateSchema, getDebateHandler } from './tools/getDebate';
 import {
-  checkPublicationReadinessSchema,
-  checkPublicationReadinessHandler,
-  publishThesisSchema,
-  publishThesisHandler,
-  unpublishThesisSchema,
-  unpublishThesisHandler,
-} from './tools/thesisPublicationTools';
+  listEvidenceReviewsSchema,
+  listEvidenceReviewsHandler,
+} from './tools/listEvidenceReviews';
+import { reviewEvidenceSchema, reviewEvidenceHandler } from './tools/reviewEvidence';
+import { openFramingSchema, openFramingHandler } from './tools/openFraming';
+import { assessFramingSchema, assessFramingHandler } from './tools/assessFraming';
+import { chooseFramingSchema, chooseFramingHandler } from './tools/chooseFraming';
+import { getFramingSchema, getFramingHandler } from './tools/getFraming';
 
 // ---------------------------------------------------------------------------
 // Factory — creates a fresh McpServer per request.
@@ -119,156 +83,11 @@ export function createMcpServer(): McpServer {
         sizes: ['480x480'],
       },
     ],
-  });
-
-  // -------------------------------------------------------------------------
-  // Tool: search_evidence
-  // Semantic search over the evidence vault (Pinecone + Prisma).
-  // PII-free: no submitterAddress, fileUrl, or raw medicalConditions returned.
-  // -------------------------------------------------------------------------
-  server.tool(
-    'search_evidence',
-    'Semantic search over the Glass Fortress evidence vault. Returns public evidence metadata ' +
-      'ranked by relevance. Filter by entity or tier. Never returns PII.',
-    searchEvidenceSchema,
-    async (input) => ({
-      content: [{ type: 'text' as const, text: await searchEvidenceHandler(input) }],
-    }),
-  );
-
-  // -------------------------------------------------------------------------
-  // Tool: get_forensic_timeline
-  // Returns the full Wayback Machine diff history for a tracked URL.
-  // -------------------------------------------------------------------------
-  server.tool(
-    'get_forensic_timeline',
-    'Retrieve the forensic diff timeline for a tracked URL — all detected content changes ' +
-      'between archived snapshots, including AI-assessed legal significance.',
-    getForensicTimelineSchema,
-    async (input) => ({
-      content: [{ type: 'text' as const, text: await getForensicTimelineHandler(input) }],
-    }),
-  );
-
-  // -------------------------------------------------------------------------
-  // Tool: check_on_chain_status
-  // Compares the vault's claim about a record against the registry contract.
-  // Read-only against both — it never registers anything.
-  // -------------------------------------------------------------------------
-  server.tool(
-    'check_on_chain_status',
-    'Verify an evidence record against the blockchain registry. Compares what the database claims ' +
-      '(PENDING_REVIEW / CONFIRMED, recorded tx hash) against what the EvidenceRegistry contract ' +
-      'actually holds, and returns a verdict naming any discrepancy. Call it BEFORE promote_evidence ' +
-      'to confirm the hash is not already anchored, and AFTER to confirm the anchor landed. ' +
-      'Read-only — it never registers anything.',
-    checkOnChainStatusSchema,
-    async (input) => ({
-      content: [{ type: 'text' as const, text: await checkOnChainStatusHandler(input) }],
-    }),
-  );
-
-  // -------------------------------------------------------------------------
-  // Tool: get_whistleblower_call
-  // The public Call for Whistleblowers is derived from the head version's
-  // evidence gaps — there is no stored record, so this is a read.
-  // -------------------------------------------------------------------------
-  server.tool(
-    'get_whistleblower_call',
-    'Return the Call for Whistleblowers for a thesis — its shareable URL, whether it is live, ' +
-      'and every evidence gap it publishes as an appeal. The call is derived from a version\'s ' +
-      'Devil\'s Advocate analysis rather than stored. Anonymous callers see the call the public ' +
-      'sees (derived from the PUBLISHED version, or UNPUBLISHED); an authenticated researcher sees ' +
-      'the call the head version would produce, and whether the public is behind it. Each gapIndex ' +
-      'returned can also be passed to generate_foia_request.',
-    getWhistleblowerCallSchema,
-    async (input) => ({
-      content: [{ type: 'text' as const, text: await getWhistleblowerCallHandler(input) }],
-    }),
-  );
-
-  // -------------------------------------------------------------------------
-  // Tool: get_scan_findings
-  // What a page's forensic scans found and nobody has reviewed yet.
-  // -------------------------------------------------------------------------
-  server.tool(
-    'get_scan_findings',
-    'List every finding from a tracked page\'s forensic scans that is still awaiting human review. ' +
-      'Forensic scans do NOT promote their own findings: they classify page changes and record the ' +
-      'significant ones as PENDING_REVIEW, with nothing on-chain and nothing publicly searchable ' +
-      'until a person confirms them. Returns the classifier\'s reasoning with each finding so the ' +
-      'decisions can be reviewed, not just the rows. Confirm them with promote_scan_findings.',
-    getScanFindingsSchema,
-    async (input) => ({
-      content: [{ type: 'text' as const, text: await getScanFindingsHandler(input) }],
-    }),
-  );
-
-  // -------------------------------------------------------------------------
-  // Tool: promote_scan_findings
-  // The human decision a scan deliberately does not make for itself.
-  // -------------------------------------------------------------------------
-  server.tool(
-    'promote_scan_findings',
-    'Confirm every pending finding from a tracked page\'s forensic scans — registering each on-chain, ' +
-      'indexing it for search, and marking it CONFIRMED. Promotes exactly what the classifier flagged ' +
-      'as legally significant. Irreversible: on-chain registration cannot be undone. Call ' +
-      'get_scan_findings first and review what it returns.',
-    promoteScanFindingsSchema,
-    async (input) => ({
-      content: [{ type: 'text' as const, text: await promoteScanFindingsHandler(input) }],
-    }),
-  );
-
-  // -------------------------------------------------------------------------
-  // Tools: the diff debate — arguing a passed-over change into evidence.
-  // -------------------------------------------------------------------------
-  server.tool(
-    'open_diff_debate',
-    'Open a debate arguing that a page change the forensic classifier passed over should become ' +
-      'evidence. Requires a rationale making specific, falsifiable claims about the changed content — ' +
-      'bare assertion is refused. Returns the assessor\'s response and a session id. Promotion is a ' +
-      'separate call: this one never writes evidence and never touches the chain. Use this when you ' +
-      'disagree with the classifier; promote_scan_findings confirms what it DID flag.',
-    openDiffDebateSchema,
-    async (input) => ({
-      content: [{ type: 'text' as const, text: await openDiffDebateHandler(input) }],
-    }),
-  );
-
-  server.tool(
-    'respond_in_diff_debate',
-    'Reply within an open diff debate — answering the assessor\'s objection, or supplying the ' +
-      'specificity its substanceGaps asked for. Re-assessed and recorded as another round. The ' +
-      'assessor cannot veto: once your argument has substance you may promote even over a sustained ' +
-      'objection, and the objection is then carried on the evidence permanently.',
-    respondInDiffDebateSchema,
-    async (input) => ({
-      content: [{ type: 'text' as const, text: await respondInDiffDebateHandler(input) }],
-    }),
-  );
-
-  server.tool(
-    'promote_from_diff_debate',
-    'Promote the debated change to evidence, registering it on-chain. Requires that the argument ' +
-      'cleared the substance gate and, if the assessor disputes it, that you answered the objection. ' +
-      'Irreversible. If the assessor still disagrees, the promotion is recorded as made over its ' +
-      'objection and that stays attached to the evidence.',
-    promoteFromDiffDebateSchema,
-    async (input) => ({
-      content: [{ type: 'text' as const, text: await promoteFromDiffDebateHandler(input) }],
-    }),
-  );
-
-  server.tool(
-    'get_diff_debate',
-    'Read a diff debate — its full turn-by-turn record of arguments, assessments and responses, ' +
-      'whether it can be promoted yet, and what is blocking it if not.',
-    getDiffDebateSchema,
-    async (input) => ({
-      content: [{ type: 'text' as const, text: await getDiffDebateHandler(input) }],
-    }),
-  );
+  },
+  // THE CONNECTOR'S INSTRUCTIONS — returned in the initialize result, read by the
+  // model once, before any tool. The flow map and the protocol live in
+  // ./instructions and nowhere else; a description says what its own tool does.
+  { instructions: MCP_INSTRUCTIONS });
 
   // -------------------------------------------------------------------------
   // Tool: get_claim_trajectories
@@ -276,274 +95,35 @@ export function createMcpServer(): McpServer {
   // -------------------------------------------------------------------------
   server.tool(
     'get_claim_trajectories',
-    'Follow individual claims across a tracked page\'s entire archived history — every assertion ' +
-      'that was added and removed more than once. This is the pattern no single diff can show: a diff ' +
-      'compares two snapshots, while a trajectory shows that a claim was removed, restored and removed ' +
-      'again. Computed by string search against the archived page text with no AI judgment, so every ' +
-      'result is verifiable by opening the snapshot URLs it returns.',
+    'WHAT ONE CLAIM DID across a page\'s whole history — added, removed, restored, removed again: ' +
+      'the pattern no single diff can show. COMPUTED OVER THE STORED DERIVED TEXT, not the raw archive: ' +
+      'a transition it reports is only as true as the derivation at that capture, so verify each ' +
+      'transition you will rely on with verify_claim_text (which reads the RAW document) before citing ' +
+      'it — a stored text can lack what the raw page carried, and before 2026-09-13 trajectories read ' +
+      'a narrower one that did. String search, no AI judgment; every result names the snapshots it read.',
     getClaimTrajectoriesSchema,
     async (input) => ({
-      content: [{ type: 'text' as const, text: await getClaimTrajectoriesHandler(input) }],
-    }),
-  );
-
-  // -------------------------------------------------------------------------
-  // Tools: thesis framing — deciding what to argue, before writing it.
-  // -------------------------------------------------------------------------
-  server.tool(
-    'open_thesis_framing',
-    'Open a session to decide what a thesis should argue, BEFORE writing one. The topic string a ' +
-      'thesis is built from determines which evidence gets pulled and what the Devil\'s Advocate ' +
-      'attacks, so a wrong framing produces a well-argued thesis about the wrong thing. This session ' +
-      'has no thesis attached; the thesis attaches to it when created.',
-    openThesisFramingSchema,
-    async (input) => ({
-      content: [{ type: 'text' as const, text: await openThesisFramingHandler(input) }],
-    }),
-  );
-
-  server.tool(
-    'assess_thesis_framing',
-    'Check a proposed thesis framing against confirmed evidence. Returns candidate framings anchored ' +
-      'in specific records, assumptions that need verifying — and, most importantly, CONTRADICTIONS: ' +
-      'where your own evidence points the other way. Finding that now is far cheaper than hearing it ' +
-      'from the Devil\'s Advocate after a thesis is written, or from the opposing side. The whole ' +
-      'exchange is recorded and attaches to the thesis.',
-    assessThesisFramingSchema,
-    async (input) => ({
-      content: [{ type: 'text' as const, text: await assessThesisFramingHandler(input) }],
-    }),
-  );
-
-  server.tool(
-    'get_thesis_framing',
-    'Read a thesis framing session — its full turn-by-turn record of proposed framings and the ' +
-      'assessments of them, and the thesis it produced if any.',
-    getThesisFramingSchema,
-    async (input) => ({
-      content: [{ type: 'text' as const, text: await getThesisFramingHandler(input) }],
-    }),
-  );
-
-  // -------------------------------------------------------------------------
-  // Tool: get_figure_dossier
-  // Returns all evidence linked to a named key figure.
-  // -------------------------------------------------------------------------
-  server.tool(
-    'get_figure_dossier',
-    'Retrieve all evidence records associated with a named public figure (official, politician, ' +
-      'doctor). Supports partial name matching in Hebrew or English.',
-    getFigureDossierSchema,
-    async (input) => ({
-      content: [{ type: 'text' as const, text: await getFigureDossierHandler(input) }],
-    }),
-  );
-
-  // -------------------------------------------------------------------------
-  // Tool: get_thesis_context
-  // Returns a full thesis with its head version, evidence citations, and AI critique.
-  // -------------------------------------------------------------------------
-  server.tool(
-    'get_thesis_context',
-    'Retrieve a legal thesis by ID — the version body, all cited evidence summaries, key figures ' +
-      'mentioned, and the Devil\'s Advocate AI critique. Anonymous callers receive the PUBLISHED ' +
-      'version only (or viewer: PUBLIC with status UNPUBLISHED); an authenticated researcher ' +
-      'receives the head version plus publication state and how far the public is behind it.',
-    getThesisContextSchema,
-    async (input) => ({
-      content: [{ type: 'text' as const, text: await getThesisContextHandler(input) }],
-    }),
-  );
-
-  // -------------------------------------------------------------------------
-  // Tool: get_research_agenda
-  // Returns the AI critique gaps for a thesis, each enriched with vault hits
-  // (evidence already in the vault that may address the gap). Flags which hits
-  // are already cited vs. new. Includes instructions for the next action.
-  // -------------------------------------------------------------------------
-  server.tool(
-    'get_research_agenda',
-    'Given a thesis ID, returns the Devil\'s Advocate gaps with vault evidence hits for each gap. ' +
-      'Use this after get_thesis_context to know exactly what evidence is missing and whether the ' +
-      'vault already contains records that address each gap. Returns alreadyCited flags so you ' +
-      'can focus on new evidence only.',
-    getResearchAgendaSchema,
-    async (input) => ({
-      content: [{ type: 'text' as const, text: await getResearchAgendaHandler(input) }],
-    }),
-  );
-
-  // -------------------------------------------------------------------------
-  // Tool: create_evidence_from_url  [WRITE — STAGING GATE]
-  // Fetches a URL, runs IntakeAgent analysis, and saves as PENDING_REVIEW.
-  // NEVER registers on-chain or indexes in Pinecone — human promotion required.
-  // -------------------------------------------------------------------------
-  server.tool(
-    'create_evidence_from_url',
-    'Fetch a public URL, run AI intake analysis, and save the result as PENDING_REVIEW in the ' +
-      'evidence vault. The evidence is NOT registered on-chain or indexed for search until a ' +
-      'human reviewer explicitly promotes it via the UI. Safe to call multiple times — ' +
-      'duplicate URLs return the existing record.',
-    createEvidenceFromUrlSchema,
-    async (input) => ({
-      content: [{ type: 'text' as const, text: await createEvidenceFromUrlHandler(input) }],
-    }),
-  );
-
-  // -------------------------------------------------------------------------
-  // Tool: create_thesis_draft  [WRITE — STAGING GATE]
-  // Creates a Thesis + ThesisVersion (PENDING_AI). Does NOT trigger AI
-  // analysis — human opens in UI, reviews, then triggers analysis.
-  // -------------------------------------------------------------------------
-  server.tool(
-    'create_thesis_draft',
-    'Create a new legal thesis draft pre-populated with evidence and key-figure mentions. ' +
-      'Saved as PENDING_AI — no Devil\'s Advocate analysis is triggered automatically. ' +
-      'Open the thesis in the UI to edit and trigger AI review before publishing.',
-    createThesisDraftSchema,
-    async (input) => ({
-      content: [{ type: 'text' as const, text: await createThesisDraftHandler(input) }],
-    }),
-  );
-
-  // -------------------------------------------------------------------------
-  // Tool: add_thesis_version  [WRITE — STAGING GATE]
-  // Appends a new ThesisVersion (wiki edit) to an existing thesis. The new
-  // version immediately becomes the head. Does NOT trigger AI analysis.
-  // -------------------------------------------------------------------------
-  server.tool(
-    'add_thesis_version',
-    'Append a new version (wiki edit) to an existing thesis. The previous head becomes the ' +
-      'parent; the new version immediately becomes the head. Saved as PENDING_AI — ' +
-      'call run_ai_analysis immediately after to get Devil\'s Advocate critique. ' +
-      'Body supports Markdown (# headings, **bold**, - bullets).',
-    addThesisVersionSchema,
-    async (input) => ({
-      content: [{ type: 'text' as const, text: await addThesisVersionHandler(input) }],
+      content: [{ type: 'text' as const, text: stampEnvironment(await getClaimTrajectoriesHandler(input)) }],
     }),
   );
 
   // -------------------------------------------------------------------------
   // Tool: get_thesis_trajectory_citations  [READ]
-  // The deterministic citations behind a thesis, resolved in full. Separate
-  // from get_thesis_context because this answer grows with how thoroughly a
-  // thesis is cited, and the context tool has to stay bounded.
+  // The deterministic citations behind a thesis, resolved in full. It was
+  // separate from the thesis context read because that answer had to stay
+  // bounded while this one grows with how thoroughly a thesis is cited; the
+  // context read left the surface in the thesis half of the legacy switch and
+  // returns at thesis step 20, under T2's shape.
   // -------------------------------------------------------------------------
   server.tool(
     'get_thesis_trajectory_citations',
-    'Resolve the claim trajectories a thesis cites: which claims, which archived captures each one ' +
-      'appeared and vanished on, how much of each co-movement was cited, and whether a later ' +
-      'detection pass still agrees. get_thesis_context summarises these; this returns them in full.',
+    'THE TRAJECTORIES A THESIS CITES, resolved to their captures: which claims, on which archived ' +
+      'captures each appeared and vanished, how much of each co-movement was cited, and whether a later ' +
+      'detection pass still agrees. This is the full answer, not a summary: no other read ' +
+      'returns a thesis\'s trajectory citations resolved.',
     getThesisTrajectoryCitationsSchema,
     async (input) => ({
-      content: [{ type: 'text' as const, text: await getThesisTrajectoryCitationsHandler(input) }],
-    }),
-  );
-
-  // -------------------------------------------------------------------------
-  // Tool: cite_trajectories  [WRITE — STAGING GATE]
-  // Attaches claim trajectories to claims already written, WITHOUT re-authoring
-  // the thesis. add_thesis_version takes the body as Markdown, and nothing hands
-  // the stored document back in that form, so adding one citation through it
-  // means retyping the whole thesis by hand past every working citation in it.
-  // -------------------------------------------------------------------------
-  server.tool(
-    'cite_trajectories',
-    'Attach claim trajectories to sentences already written, without touching the prose. Anchors ' +
-      'on an exact substring of the existing text and splices the citation in after it; the prose is ' +
-      'asserted byte-identical afterwards, and an anchor matching zero times or more than once is ' +
-      'refused rather than guessed. Writes a new PENDING_AI version — use this instead of ' +
-      'add_thesis_version when only the CITATIONS change, never to edit what the thesis says.',
-    citeTrajectoriesSchema,
-    async (input) => ({
-      content: [{ type: 'text' as const, text: await citeTrajectoriesHandler(input) }],
-    }),
-  );
-
-  // -------------------------------------------------------------------------
-  // Tool: run_ai_analysis  [WRITE — requires auth]
-  // Synchronously runs Devil's Advocate AI analysis on the head version of a
-  // thesis and returns the full critique. Unlike POST /analyze (202 async),
-  // this tool awaits completion so the LLM can continue the research loop.
-  // -------------------------------------------------------------------------
-  server.tool(
-    'run_ai_analysis',
-    'Run Devil\'s Advocate AI analysis on the current head version of a thesis. ' +
-      'Waits for analysis to complete and returns the full critique including strength ' +
-      'assessment, counter-arguments, and evidence gaps. If already analysed, returns ' +
-      'the cached result. Use after add_thesis_version to close the research loop.',
-    runAiAnalysisSchema,
-    async (input) => ({
-      content: [{ type: 'text' as const, text: await runAiAnalysisHandler(input) }],
-    }),
-  );
-
-  // -------------------------------------------------------------------------
-  // Tools: Research Sessions  [WRITE: create, note, close / READ: summary]
-  // Track the arc of a Claude+human research sprint on a thesis.
-  // Events (VERSION_CREATED, GAP_RESOLVED, AI_ANALYSIS_RUN) are logged
-  // automatically — no explicit logging needed.
-  // -------------------------------------------------------------------------
-  server.tool(
-    'create_research_session',
-    'Start a new named research session on a thesis. You may hold ONE active session at a time, and ' +
-      'a thesis may be held by ONE researcher at a time — if either is taken this refuses and says ' +
-      'which. Pass closeActiveSession: true to close your own; another researcher\'s session never ' +
-      'blocks you unless it is on this same thesis, and you cannot close theirs. Publishing must ' +
-      'happen inside an active session on that thesis. Events are logged automatically. Name defaults ' +
-      'to the current date/time.',
-    createResearchSessionSchema,
-    async (input) => ({
-      content: [{ type: 'text' as const, text: await createResearchSessionHandler(input) }],
-    }),
-  );
-
-  server.tool(
-    'add_session_note',
-    'Add a manual note to the active research session for a thesis. Use to record observations, ' +
-      'dead ends, hypotheses, or next steps that are not captured by automatic events.',
-    addSessionNoteSchema,
-    async (input) => ({
-      content: [{ type: 'text' as const, text: await addSessionNoteHandler(input) }],
-    }),
-  );
-
-  server.tool(
-    'close_research_session',
-    'Close the active research session — by thesisId, or by sessionId for a framing session that ' +
-      'has no thesis yet — and return a full summary of what was accomplished: versions created, ' +
-      'gaps resolved, AI analyses run, and the event timeline.',
-    closeResearchSessionSchema,
-    async (input) => ({
-      content: [{ type: 'text' as const, text: await closeResearchSessionHandler(input) }],
-    }),
-  );
-
-  server.tool(
-    'get_session_summary',
-    'Return the current (or most recent) research session for a thesis, including the full ' +
-      'event timeline and activity summary. Useful for resuming work after a break.',
-    getSessionSummarySchema,
-    async (input) => ({
-      content: [{ type: 'text' as const, text: await getSessionSummaryHandler(input) }],
-    }),
-  );
-
-  // -------------------------------------------------------------------------
-  // Tool: create_evidence_from_text  [WRITE — STAGING GATE]
-  // Accepts raw text + source URL (for pages behind bot protection, paywalls,
-  // or dynamic SPAs that can't be fetched server-side). Same analysis pipeline
-  // and staging gate as create_evidence_from_url.
-  // -------------------------------------------------------------------------
-  server.tool(
-    'create_evidence_from_text',
-    'Submit evidence as raw text when the source URL cannot be fetched directly (e.g. behind ' +
-      'bot protection, JavaScript SPA, or paywall). Provide the plain text content and the ' +
-      'canonical source URL for provenance. Runs the same AI intake analysis and staging gate ' +
-      'as create_evidence_from_url — saved as PENDING_REVIEW, not registered on-chain until promoted.',
-    createEvidenceFromTextSchema,
-    async (input) => ({
-      content: [{ type: 'text' as const, text: await createEvidenceFromTextHandler(input) }],
+      content: [{ type: 'text' as const, text: stampEnvironment(await getThesisTrajectoryCitationsHandler(input)) }],
     }),
   );
 
@@ -568,7 +148,7 @@ export function createMcpServer(): McpServer {
       inputSchema: getArticleRulesSchema,
     },
     async (input) => ({
-      content: [{ type: 'text' as const, text: await getArticleRulesHandler(input) }],
+      content: [{ type: 'text' as const, text: stampEnvironment(await getArticleRulesHandler(input)) }],
     }),
   );
 
@@ -583,15 +163,17 @@ export function createMcpServer(): McpServer {
         'own date. `removed` is null where the corpus holds no body (DUPLICATE, IDENTICAL), which is not the ' +
         'same as removing nothing. `maxCaptures` bounds it to the latest n. NAME THE ELEMENT IN WORDS when you ' +
         'read this out — its tag and the first line it removed — never the selector as the name. `removed` is ' +
-        'the LINES the rule took, de-duplicated, at the same granularity Gate 4 shows them. Quote the ' +
-        'FIRST 5 VERBATIM and offer the rest; never summarise them in their place. Gate 2\'s ' +
+        'the LINES the rule took, de-duplicated, at the same granularity Gate 4 shows them. For a Gate 4 ' +
+        'rule the NEVER-SEEN lines come FIRST, in full, before the element and the history. Quote a SPREAD ' +
+        'THAT SHOWS THE RANGE of what the rule takes, give the total, and offer the rest; never summarise ' +
+        'them in their place, and never the first five merely because they are first (2026-09-12). Gate 2\'s ' +
         'silent rule shows what it removed on the previous capture, from here. This read decides nothing: it ' +
         'is a series and its lines, and it must not be turned into a verdict or a threshold. Writes nothing. ' +
         'Refuses NOT_SURVEYED and NO_SUCH_RULE.',
       inputSchema: getRuleHistorySchema,
     },
     async (input) => ({
-      content: [{ type: 'text' as const, text: await getRuleHistoryHandler(input) }],
+      content: [{ type: 'text' as const, text: stampEnvironment(await getRuleHistoryHandler(input)) }],
     }),
   );
 
@@ -607,7 +189,7 @@ export function createMcpServer(): McpServer {
       inputSchema: resetArticleCalibrationSchema,
     },
     async (input) => ({
-      content: [{ type: 'text' as const, text: await resetArticleCalibrationHandler(input) }],
+      content: [{ type: 'text' as const, text: stampEnvironment(await resetArticleCalibrationHandler(input)) }],
     }),
   );
 
@@ -624,7 +206,7 @@ export function createMcpServer(): McpServer {
       inputSchema: listCapturesSchema,
     },
     async (input) => ({
-      content: [{ type: 'text' as const, text: await listCapturesHandler(input) }],
+      content: [{ type: 'text' as const, text: stampEnvironment(await listCapturesHandler(input)) }],
     }),
   );
 
@@ -640,9 +222,11 @@ export function createMcpServer(): McpServer {
     'survey_wayback_captures',
     {
       description:
-        'SIZE THE JOB BEFORE ANYTHING IS FETCHED, STORED OR SPENT. Asks the Internet Archive\'s ' +
-        'index for every capture of a URL — one query, no page fetches — and records one work-list ' +
-        'row per capture. The first survey of a URL brings it into the corpus, attributed to you; ' +
+        'ADMITS A PAGE INTO THE CORPUS — only on the researcher\'s explicit word, and never a URL ' +
+        'you chose for them: the first survey brings the page in, attributed to them, and nothing ' +
+        'enters as a side effect. Sizes the job before anything is fetched, stored or spent: asks the ' +
+        'Internet Archive\'s index for every capture of a URL — one query, no page fetches — and ' +
+        'records one work-list row per capture. A later survey appends what the archive added; ' +
         'a later survey appends captures the archive has added and rewrites nothing. Returns two ' +
         'sizes: `captures`, the archive\'s activity, and `byteDistinct`, captures whose bytes differ ' +
         'from the one before — the upper bound on fetches and on your attention. Also `held` (captures ' +
@@ -651,7 +235,7 @@ export function createMcpServer(): McpServer {
       inputSchema: surveyWaybackCapturesSchema,
     },
     async (input) => ({
-      content: [{ type: 'text' as const, text: await surveyWaybackCapturesHandler(input) }],
+      content: [{ type: 'text' as const, text: stampEnvironment(await surveyWaybackCapturesHandler(input)) }],
     }),
   );
 
@@ -680,7 +264,7 @@ export function createMcpServer(): McpServer {
       inputSchema: approveArticleRulesSchema,
     },
     async (input) => ({
-      content: [{ type: 'text' as const, text: await approveArticleRulesHandler(input) }],
+      content: [{ type: 'text' as const, text: stampEnvironment(await approveArticleRulesHandler(input)) }],
     }),
   );
 
@@ -690,16 +274,19 @@ export function createMcpServer(): McpServer {
       description:
         'RECORD THE RESEARCHER\'S ANSWER AT A STOP — every answer but CORRECT, in ONE call. ' +
         'CONTINUE: the rules are right here, so the capture is accepted, and with it the rules the ' +
-        'researcher chose to TRUST or to END, each named by its selector. Say what each answer means ' +
-        'before they choose. TRUST: Gate 4 stops asking about that element\'s contents on later ' +
-        'captures; Gate 1 still catches its text if it changes sides. There is no untrust decision: the way ' +
+        'researcher chose to TRUST or to END, each named by its selector. Say what each answer means AND ' +
+        'WHAT IT COSTS before they choose. TRUST: Gate 4 stops asking about that element\'s contents on ' +
+        'later captures; Gate 1 still catches its text if it changes sides — but ONLY if it changes sides, ' +
+        'so text appearing INSIDE a trusted element, never having been kept, is seen by nothing. Name that ' +
+        'cost when asking (2026-09-12). There is no untrust decision: the way ' +
         'back is to END or retire the rule and mark the element afresh, which starts REVIEWED again. ' +
         'CONTINUE WITHOUT TRUST: this capture is accepted and the element\'s new contents will stop the ' +
         'walk again. END: the rule stops applying from this capture\'s date, its text enters the article ' +
         'from here, and earlier captures are untouched. TRUST and END name GATE 4 rules only — a Gate 2 ' +
         'rule, one that matched nothing on this capture, goes in neither list and needs no decision; CONTINUE ' +
-        'covers it. Read the rule\'s removals from get_rule_history first — the first 5 verbatim — and never ' +
-        'ask for trust on a rule the researcher has not seen; one rule per turn. ' +
+        'covers it. Read the rule\'s removals from get_rule_history first — the never-seen lines in full, ' +
+        'then a spread showing the range — and never ask for trust on a rule the researcher has not seen; ' +
+        'one rule per turn. ' +
         'BAD_CAPTURE: this capture does not speak — a truncated archive page, a paywall redirect, ' +
         'anything a human has looked at and judged unusable — with a REQUIRED reason, because a silent ' +
         'hole in the record is the one outcome this corpus does not permit. The capture becomes SKIPPED, ' +
@@ -720,7 +307,7 @@ export function createMcpServer(): McpServer {
       inputSchema: resolveScanStopSchema,
     },
     async (input) => ({
-      content: [{ type: 'text' as const, text: await resolveScanStopHandler(input) }],
+      content: [{ type: 'text' as const, text: stampEnvironment(await resolveScanStopHandler(input)) }],
     }),
   );
 
@@ -735,8 +322,11 @@ export function createMcpServer(): McpServer {
     'scan_captures',
     {
       description:
-        'WALK A SURVEYED PAGE\'S CAPTURES IN DATE ORDER: this call fetches each capture\'s raw replay, ' +
-        'derives its text under the rules in force for its date, compares it with its predecessor, runs ' +
+        'WALK A SURVEYED PAGE\'S CAPTURES IN DATE ORDER, spending and anchoring as it goes. It resumes ' +
+        'from the first unwalked or stale row — which may be far from the window you care about: read ' +
+        'list_captures first. A re-walk never stores a capture whose text did not change, so scanning ' +
+        'cannot create a record for a date the page did not move. Each call fetches each capture\'s raw ' +
+        'replay, derives its text under the rules in force for its date, compares it with its predecessor, runs ' +
         'every gate, and WRITES the outcome on the work-list row — IDENTICAL (the archive\'s digest equals ' +
         'the previous capture\'s: same bytes, nothing fetched), DUPLICATE (fetched; the text derived under ' +
         'the rules equals the predecessor\'s; nothing stored), UNSERVABLE (the archive refuses it durably), ' +
@@ -791,14 +381,23 @@ export function createMcpServer(): McpServer {
         'GATE 5 — the classifier judged this capture\'s diff not editorial: a symptom of furniture entering ' +
         'the text, so CORRECT on the page if there is, else CONTINUE; the verdict decides nothing. DIGEST — ' +
         'the bytes received do not match the archive index\'s digest for this capture: CONTINUE, or ' +
-        'BAD_CAPTURE. FOR EACH RULE the material names, IN ITS OWN TURN: read get_rule_history; say the ' +
-        'element in words — its tag and the first line it removed, never the selector as its name; then its ' +
-        'history — created against which capture, matched since, trusted or not; then its removals VERBATIM — ' +
-        '`removed` is the LINES the rule took, de-duplicated, at the same granularity Gate 4 shows them, ' +
-        'and a menu or a sidebar is hundreds of them, so quote the FIRST 5 and offer the rest, never a ' +
-        'summary in their place; for a Gate 4 rule ' +
-        'name the never-seen lines from the stop\'s material first; then only the answers that apply to ITS ' +
-        'gate, with what each means; then STOP and wait for the researcher\'s answer before the next rule. ' +
+        'BAD_CAPTURE. FOR EACH RULE the material names, IN ITS OWN TURN: read get_rule_history. THE ' +
+        'NEVER-SEEN LINES COME FIRST for a Gate 4 rule — every one of them, verbatim, with their count — ' +
+        'because they ARE the question and all the rest is context (amended 2026-09-12, read from the live ' +
+        'run: reported last, after the element and the history, they were what the researcher had to hunt ' +
+        'for, and the whole judgement turned on one line of twenty-eight). Then say the element in words — ' +
+        'its tag and the first line it removed, never the selector as its name; then its history — created ' +
+        'against which capture, matched since, trusted or not; then its removals VERBATIM — `removed` is ' +
+        'the LINES the rule took, de-duplicated, at the same granularity Gate 4 shows them, and a menu or a ' +
+        'sidebar is hundreds of them, so quote a SPREAD ACROSS THEM THAT SHOWS THE RANGE of what the rule ' +
+        'takes, give the total, and offer the rest; never a summary in their place, and never the first ' +
+        'five merely because they are first — a nav list\'s first five are its least telling, and on ' +
+        '2026-09-12 they said nothing about whether the rule was safe to trust. Then only the answers that ' +
+        'apply to ITS gate, with what each MEANS and WHAT EACH COSTS FOR THIS RULE: for TRUST, name what ' +
+        'stops being shown and what net is left, because Gate 1 catches only text that CHANGES SIDES, so ' +
+        'text appearing INSIDE a trusted element, never having been kept, is seen by nothing. A CONSEQUENCE ' +
+        'IS NOT A RECOMMENDATION: state it, and still decide nothing. Then STOP and wait for the ' +
+        'researcher\'s answer before the next rule. ' +
         'Never read several histories in one turn. After the last rule, record the whole stop with ONE ' +
         'resolve_scan_stop call; when one answer is CORRECT, MARKING COMES FIRST and the chat\'s decisions ' +
         'follow it, against the ruleset the marking left. Do not call scan_captures again until the ' +
@@ -807,125 +406,120 @@ export function createMcpServer(): McpServer {
       inputSchema: scanCapturesSchema,
     },
     async (input) => ({
-      content: [{ type: 'text' as const, text: await scanCapturesHandler(input) }],
+      content: [{ type: 'text' as const, text: stampEnvironment(await scanCapturesHandler(input)) }],
     }),
   );
 
   // -------------------------------------------------------------------------
-  // Tool: promote_evidence  [WRITE — SYNCHRONOUS]
-  // Promotes a PENDING_REVIEW evidence record to CONFIRMED:
-  //   1. Registers the fileHash on-chain (Web3Service)
-  //   2. Upserts the summary embedding to the vector store
-  //   3. Sets status = CONFIRMED in Prisma
-  // Idempotent — safe to call on already-CONFIRMED records.
+  // THE CORPUS READS — docs/gf-evidence-flows.md A4, evidence step 12.
+  //
+  // PUBLIC, AND IDENTICAL FOR EVERYONE. "PUBLIC reads take no identity and
+  // answer identically for everyone. Access to a page's timeline is gated by
+  // PUBLIC_PAGE for a caller without identity — that is ACCESS, not a second
+  // behaviour: the output never depends on who asks." A page becomes public in
+  // full, every capture and every diff, the moment a published thesis cites any
+  // record of it; before that it is a researcher's working corpus and an
+  // anonymous caller is refused NOT_PUBLIC.
+  //
+  // THE PUBLIC SURFACE IS THE CORPUS (§5). There is no public evidence surface
+  // to replace: `search_evidence` ranked selections by an embedding of prose,
+  // with everything unselected hidden, and it is retired. What an outsider reads
+  // is the same timeline the researcher reads, which is what makes the corpus
+  // the counterweight to a thesis's selection rather than a promise about one.
   // -------------------------------------------------------------------------
-  server.tool(
-    'promote_evidence',
-    'Promote a PENDING_REVIEW evidence record to CONFIRMED. Registers the file hash on the ' +
-      'blockchain, upserts the embedding into the vector store, and marks the record as CONFIRMED ' +
-      'in the database. Idempotent — safe to call if already confirmed. Requires evidenceId (UUID).',
-    promoteEvidenceSchema,
+  server.registerTool(
+    'list_findings',
+    {
+      description:
+        'THE CAPTURES THIS PLATFORM HOLDS — the moments the page MOVED — in date order, and every ' +
+        'change between them. NOT the archive\'s every capture: a capture whose text did not change ' +
+        '(DUPLICATE, IDENTICAL) is on list_captures, not here, so a gap between two held captures is ' +
+        'NOT a gap in the archive — it is a stretch the page did not move. `counts` gives the sizes; ' +
+        'do not count rows by hand. Per capture: its 14-digit archive timestamp, the ' +
+        'hash of its current extracted text, and its anchor — the SHA-256 of the bytes as served, ' +
+        'with `attributed` saying whether the registry holds it under our registrar (TRUE, FALSE, ' +
+        'or NULL meaning no anchor check has been stored — null is never "no"). Per change: the ' +
+        'PAIR of captures it spans (never a date pair), the current version\'s computed chunks, ' +
+        'whether a later capture now falls between the two (`narrowed`), and the promotion linkage ' +
+        '— which theses cite it, PUBLISHED ones only, for every caller. Each entry also carries ' +
+        '`fileHash`, the record\'s own name, which is what a thesis cites as #ev_<fileHash> whether ' +
+        'or not anyone has promoted it. `opinion` IS A MODEL\'S OPINION AND IS SHOWN AS ONE: a ' +
+        'separate object, null when nothing classified that derivation, never mixed into the ' +
+        'computed chunks and never the ordering — significance is the classifier\'s judgement, the ' +
+        'order is always chronological, and the researcher ranks. `awaitingDerivation` means the ' +
+        'walk owes a re-derivation, NOT that nothing changed. THE ANSWER IS THE SAME FOR EVERYONE: ' +
+        'this read has no second behaviour by identity. Writes nothing. Refuses NOT_SURVEYED and ' +
+        'NOT_PUBLIC (no published thesis cites any record of this page).',
+      inputSchema: listFindingsSchema,
+    },
     async (input) => ({
-      content: [{ type: 'text' as const, text: await promoteEvidenceHandler(input) }],
+      content: [{ type: 'text' as const, text: stampEnvironment(await listFindingsHandler(input)) }],
     }),
   );
 
-  // -------------------------------------------------------------------------
-  // Tool: delete_evidence  [WRITE — SYNCHRONOUS, DESTRUCTIVE]
-  // Permanently deletes a PENDING_REVIEW evidence record and its Storage
-  // file(s). Refuses CONFIRMED records (immutable once on-chain), records
-  // still cited by a thesis, and records with a Pinata IPFS pin (no verified
-  // unpin implementation yet — see deleteEvidence.ts).
-  // -------------------------------------------------------------------------
-  server.tool(
-    'delete_evidence',
-    'Permanently delete a PENDING_REVIEW evidence record — removes its file(s) from Storage and ' +
-      'the database row. Refuses to delete CONFIRMED records (already registered on-chain, meant to ' +
-      'be immutable), records still cited by a thesis, or records with an IPFS pin from the ' +
-      'whistleblower attachment path. Requires evidenceId (UUID). Irreversible — use for cleaning up ' +
-      'test, rejected, or mistakenly-submitted PENDING_REVIEW records, not as a general moderation tool.',
-    deleteEvidenceSchema,
+  server.registerTool(
+    'get_diff_input',
+    {
+      description:
+        'WHAT THE DIFFER AND THE CLASSIFIER WERE ACTUALLY GIVEN for one change: both captures\' ' +
+        'current extracted text in full, and the current version\'s chunks with each chunk\'s ' +
+        'survival verdict against the raw archived documents. NAMED BY THE PAIR — the two 14-digit ' +
+        'wayback timestamps, never a date pair, because three captures on one day are three ' +
+        'captures. Use it to check a change yourself rather than taking a summary for it. Writes ' +
+        'nothing. Refuses NOT_SURVEYED, NOT_PUBLIC, NOT_A_CAPTURE (a date, or a timestamp this page ' +
+        'holds no acquired capture for — the message says which), NO_SUCH_DIFF (two real captures ' +
+        'the walk never diffed as a pair) and AWAITING_DERIVATION, which NAMES THE DIFF and means ' +
+        'the walk owes a re-derivation — it is not a finding that nothing changed.',
+      inputSchema: getDiffInputSchema,
+    },
     async (input) => ({
-      content: [{ type: 'text' as const, text: await deleteEvidenceHandler(input) }],
+      content: [{ type: 'text' as const, text: stampEnvironment(await getDiffInputHandler(input)) }],
     }),
   );
 
-  // -------------------------------------------------------------------------
-  // Tool: generate_foia_request  [WRITE — synchronous LLM call]
-  // Given a thesis ID and gap index, generates a formal Hebrew FOIA request
-  // letter targeting the Israeli ministry most likely to hold the missing
-  // evidence. Requires the thesis to have a completed Devil's Advocate analysis.
-  // -------------------------------------------------------------------------
-  server.tool(
-    'generate_foia_request',
-    'Generate a formal Hebrew Freedom of Information (חוק חופש המידע) request letter for a ' +
-      'specific evidence gap in a thesis. The LLM identifies the target Israeli ministry and ' +
-      'drafts numbered, specific requests derived from the gap description. ' +
-      'Requires a completed Devil\'s Advocate analysis on the thesis head version.',
-    generateFoiaRequestSchema,
+  server.registerTool(
+    'resolve_record',
+    {
+      description:
+        'WHAT A CITATION POINTS AT — the record behind an #ev_ name, and who cites it. Given the ' +
+        'name a thesis cites (#ev_<fileHash>), returns the ' +
+        'corpus record it resolves to — a capture or a pair of captures, with its page and ' +
+        'timestamps — whether the name is RECOMPUTABLE from that record, whether it is VERIFIED ' +
+        '(every capture beneath it registered on chain under our registrar, with the anchored hash ' +
+        'equal to the hash of the bytes as served) with the per-capture attribution behind that ' +
+        'answer, and the PUBLISHED thesis versions that cite it — each with its text and with any ' +
+        'FLAG the platform has since raised: the record was withdrawn, or its content moved and ' +
+        'nobody has re-affirmed it. A published version is never edited and never unpublished by ' +
+        'this platform; the flag is derived on every read and shown beside the citation. Reads the ' +
+        'chain for the record\'s own captures and nothing else. Writes nothing. Refuses ' +
+        'NOT_A_RECORD and NOT_PUBLIC.',
+      inputSchema: resolveRecordSchema,
+    },
     async (input) => ({
-      content: [{ type: 'text' as const, text: await generateFoiaRequestHandler(input) }],
+      content: [{ type: 'text' as const, text: stampEnvironment(await resolveRecordHandler(input)) }],
     }),
   );
 
-  // -------------------------------------------------------------------------
-  // Tool: recover_evidence_from_screenshot  [WRITE — STAGING GATE]
-  // For when a source URL is blocked or unarchived: accepts one or more
-  // screenshots (in reading order) in place of a direct fetch. Synthesizes
-  // them into a single analysis and saves as PENDING_REVIEW — same rule as
-  // create_evidence_from_text, since the paired URL is asserted, not fetched.
-  // -------------------------------------------------------------------------
-  server.tool(
-    'recover_evidence_from_screenshot',
-    'Submit one or more screenshots of a page that could not be fetched directly (blocked, not in ' +
-      'the Wayback Machine). Screenshots are treated as sequential parts of one document and ' +
-      'synthesized into a single AI analysis. Saved as PENDING_REVIEW — the paired source URL is ' +
-      'asserted, not verified by a server fetch, same rule that governs create_evidence_from_text. ' +
-      'Not registered on-chain or indexed for search until a human reviewer promotes it via the UI.',
-    recoverEvidenceFromScreenshotSchema,
+  server.registerTool(
+    'check_on_chain_status',
+    {
+      description:
+        'ASK THE REGISTRY ABOUT A CAPTURE — never about a thesis, an argument or an evidence row: ' +
+        'the chain attests the corpus, and nothing above it is anchored. Give a page and a capture ' +
+        '(url, capture), or a record name (fileHash), which answers about every capture beneath it. ' +
+        'Per capture: whether the registry holds the SHA-256 of its bytes as served, at which ' +
+        'index, submitted by whom, whether that submitter is our registrar (ATTRIBUTED), whether ' +
+        'the hash the platform recorded as anchored is that same hash, and the last stored anchor ' +
+        'check with its version and date. READ FROM CHAIN STATE, NEVER FROM A TRANSACTION RECEIPT: ' +
+        'state answers forever, a receipt only inside the RPC\'s retention window. Reports the ' +
+        'chain id and registry address it actually reached, so a wrong environment shows itself. ' +
+        'Writes nothing. Refuses NOT_SURVEYED, NOT_PUBLIC, NOT_A_CAPTURE, NOT_A_RECORD and ' +
+        'CHAIN_UNAVAILABLE — which is a verdict about the CHECK and is never evidence that a hash ' +
+        'is unregistered.',
+      inputSchema: checkOnChainStatusSchema,
+    },
     async (input) => ({
-      content: [{ type: 'text' as const, text: await recoverEvidenceFromScreenshotHandler(input) }],
-    }),
-  );
-
-  // -------------------------------------------------------------------------
-  // Thesis publication (docs/gf-thesis-publication-gate-dev-plan.md)
-  // Publication is a pinned version behind thirteen individually-reported
-  // checks. All three tools are gated.
-  // -------------------------------------------------------------------------
-  server.tool(
-    'check_publication_readiness',
-    'Run every publication check on a thesis\'s head version and report each one, pass or fail, ' +
-      'WITHOUT publishing. Hard checks block publication; advisory checks are recorded with it. ' +
-      'Use before publish_thesis to see exactly what is missing. Pass a rationale to have it ' +
-      'assessed in advance. Writes nothing.',
-    checkPublicationReadinessSchema,
-    async (input) => ({
-      content: [{ type: 'text' as const, text: await checkPublicationReadinessHandler(input) }],
-    }),
-  );
-
-  server.tool(
-    'publish_thesis',
-    'Publish the HEAD version of a thesis: pins that exact version as what the public sees until ' +
-      'publish_thesis is called again — later edits and re-analyses change nothing public. Requires ' +
-      'an active research session on this thesis, an argued rationale (substance is a hard gate, ' +
-      'merit is advisory and recorded), and every hard check to pass; refuses with the full list ' +
-      'otherwise. The rationale and assessment are recorded on the session either way.',
-    publishThesisSchema,
-    async (input) => ({
-      content: [{ type: 'text' as const, text: await publishThesisHandler(input) }],
-    }),
-  );
-
-  server.tool(
-    'unpublish_thesis',
-    'Withdraw a thesis from public view: sets the published pin to null and deletes nothing. ' +
-      'Requires no session — retraction must never wait on one. The reason is recorded on the ' +
-      'active session on this thesis if there is one, otherwise on the session that published.',
-    unpublishThesisSchema,
-    async (input) => ({
-      content: [{ type: 'text' as const, text: await unpublishThesisHandler(input) }],
+      content: [{ type: 'text' as const, text: stampEnvironment(await checkOnChainStatusHandler(input)) }],
     }),
   );
 
@@ -954,96 +548,318 @@ export function createMcpServer(): McpServer {
   // -------------------------------------------------------------------------
   server.tool(
     'get_environment',
-    'Which environment is this — production or staging? Answers from the deployment\'s own ' +
-      'configuration (APP_ENV, already validated at startup against the database it is actually ' +
-      'connected to) cross-checked against the chain its evidence registry sits on. Call this ' +
-      'FIRST, before any write: a connector name is a local label and proves nothing, and evidence ' +
+    'CALL THIS FIRST — which environment is this, production or staging? Answers from the ' +
+      'deployment\'s own configuration (APP_ENV, already validated at startup against the database it ' +
+      'is actually connected to) cross-checked against the chain its evidence registry sits on. Every ' +
+      'other tool\'s answer names its environment too, from configuration alone; this is the read that ' +
+      'confirms both axes. Before any write: a connector name is a local label and proves nothing, and evidence ' +
       'counts or content hashes are checks with an expiry date. Takes no arguments. Writes nothing.',
     getEnvironmentSchema,
     async () => ({
-      content: [{ type: 'text' as const, text: await getEnvironmentHandler() }],
+      content: [{ type: 'text' as const, text: stampEnvironment(await getEnvironmentHandler()) }],
     }),
   );
 
   server.tool(
     'verify_claim_text',
-    'Check whether an exact phrase was on a tracked page at a given capture. Searches the RAW ' +
-      'archived document, not this platform\'s stored extraction, and reports both plus an ' +
-      'EXTRACTION_DIVERGENCE flag when they disagree — the condition that let a false claim survive ' +
+    'WAS THIS EXACT PHRASE ON THE PAGE at a capture? Reads the RAW archived document — the check ' +
+      'that beats the derivation and works on ANY archived capture, held or not. Reports it beside the ' +
+      'text this platform stored for the capture (when held), plus an EXTRACTION_DIVERGENCE flag when ' +
+      'they disagree — the condition that let a false claim survive ' +
       'into a real thesis. Distinguishes "not in the archive" and "fetch failed" from "phrase ' +
       'absent". Writes nothing.',
     verifyClaimTextSchema,
     async (input) => ({
-      content: [{ type: 'text' as const, text: await verifyClaimTextHandler(input) }],
+      content: [{ type: 'text' as const, text: stampEnvironment(await verifyClaimTextHandler(input)) }],
     }),
   );
 
   server.tool(
     'audit_thesis_claims',
-    'Check every mechanically checkable assertion in a thesis\'s head version against the archive: ' +
-      'dates (does a capture exist, and does the sentence assert an act on a day nobody captured?), ' +
+    'CHECK A THESIS AGAINST THE ARCHIVE, no model: every mechanically checkable assertion in its ' +
+      'head version — dates (does a capture exist, and does the sentence assert an act on a day nobody captured?), ' +
       'quotations (is the quoted text really in those captures?), and intervals (are the endpoints ' +
       'adjacent captures?). No model is involved. Reports what it could NOT check, including Hebrew ' +
       'number-word spans and counts. Reports only — it never blocks publication.',
     auditThesisClaimsSchema,
     async (input) => ({
-      content: [{ type: 'text' as const, text: await auditThesisClaimsHandler(input) }],
-    }),
-  );
-
-  server.tool(
-    'get_diff_input',
-    'The page text a diff detected as changed — what the classifier was GIVEN — beside the items it ' +
-      'produced. get_forensic_timeline shows items only, so a detected change that no item describes ' +
-      'is invisible there. Reports which input rule produced the row: rows below the current ' +
-      'diffInputVersion were computed under a chunk cap that discarded changes at write time and are ' +
-      'understated until the diff is recomputed from its snapshots. No model, no archive fetch, no ' +
-      'write.',
-    getDiffInputSchema,
-    async (input) => ({
-      content: [{ type: 'text' as const, text: await getDiffInputHandler(input) }],
-    }),
-  );
-
-  server.tool(
-    'preview_diff_classification',
-    'Re-run the forensic classifier over a stored diff and return what it says, WITHOUT writing ' +
-      'anything — the stored verdict is left exactly as it was. Answers "what would the classifier ' +
-      'decide about this change today?", which the forensic timeline (stored verdict only) and ' +
-      'forensics:reclassify (overwrites the verdict to tell you) cannot. Identify the diff by ' +
-      'diffId, or by url + afterDate to ask two environments about the same change. `runs` draws ' +
-      'several independent samples, because the classifier is non-deterministic at temperature 0. ' +
-      'Returns the correlated evidence it was given: that input is queried live and differs between ' +
-      'environments, so it must be compared before concluding two classifiers disagreed.',
-    previewDiffClassificationSchema,
-    async (input) => ({
-      content: [{ type: 'text' as const, text: await previewDiffClassificationHandler(input) }],
+      content: [{ type: 'text' as const, text: stampEnvironment(await auditThesisClaimsHandler(input)) }],
     }),
   );
 
   // -------------------------------------------------------------------------
-  // Tutorial (docs/gf-chat-tutorial-dev-plan.md)
+  // THE DEBATE ON A CITATION — evidence step 13, docs/gf-evidence-flows.md §4
+  // and A4, docs/gf-thesis-flows.md T3.
   //
-  // A curriculum in the repository does not exist for someone working in a chat
-  // client. Without this, "start the tutorial" makes an assistant infer a
-  // syllabus from the tool descriptions and lecture — the old guide relocated
-  // into a chat, which is the thing being replaced.
-  //
-  // Serves a static string: no model, no RPC, no database, no network. Open
-  // rather than gated, deliberately, so an account still awaiting approval has
-  // something real to do.
+  // "Why is this diff important? The question has no answer outside a claim
+  // someone is trying to establish" — so a record is argued FOR A THESIS, on a
+  // citation the thesis's text already carries, and the assessor judges whether
+  // the researcher ARGUED, never whether they are right.
   // -------------------------------------------------------------------------
-  server.tool(
-    'start_tutorial',
-    'Begin the guided researcher tutorial, which teaches how to verify this platform\'s evidence ' +
-      'rather than trust it. Returns instructions for the assistant to follow — not text to show ' +
-      'the learner. Call this whenever someone asks to learn the platform, to be onboarded, or how ' +
-      'to get started; do not assemble a lesson from the tool list instead. Writes nothing, and ' +
-      'needs no approved researcher account.',
-    startTutorialSchema,
-    (input) => ({
-      content: [{ type: 'text' as const, text: startTutorialHandler(input) }],
+  server.registerTool(
+    'open_debate',
+    {
+      description:
+        'ARGUE FOR A CORPUS RECORD, FOR ONE THESIS. Give the thesis, the record — a page and one ' +
+        '14-digit capture, or a page and the PAIR of captures a change spans, never a row id — and ' +
+        'your rationale: what the record shows, why it carries the passage that cites it, and what ' +
+        "would prove it wrong. THE CITATION COMES FIRST: the thesis's head version must already " +
+        'mention the record (#ev_<fileHash>), or this refuses NOT_CITED — there is no promotion of a ' +
+        'record no text cites. A PAID ASSESSOR then judges two separate things: SUBSTANCE, whether ' +
+        'the argument can be checked at all, which is a hard gate; and MERIT, whether it agrees, ' +
+        'which is ADVISORY — you may promote over its objection and the dissent is recorded beside ' +
+        'the evidence forever. One OPEN debate per (thesis, record): calling again with a new ' +
+        'rationale adds it to the same debate as a revision and re-assesses the accumulated ' +
+        'argument. Refuses NO_RESEARCHER, REASON_REQUIRED, NO_THESIS, NOT_AUTHOR (a thesis has one ' +
+        'author), NOT_SURVEYED, NOT_A_CAPTURE, NOT_ACQUIRED (naming the work-list outcome), ' +
+        'NO_SUCH_DIFF, NOT_CITED, AWAITING_DERIVATION (naming the pair — the walk owes a version), ' +
+        'CONTRADICTED (carrying the chunks the documents refute), NOTHING_TO_PROMOTE and NARROWED ' +
+        '(naming the captures that now fall between the pair).',
+      inputSchema: openDebateSchema,
+    },
+    async (input) => ({
+      content: [{ type: 'text' as const, text: stampEnvironment(await openDebateHandler(input)) }],
     }),
+  );
+
+  server.registerTool(
+    'respond_in_debate',
+    {
+      description:
+        'ANSWER THE ASSESSOR — as many rounds as it takes. Supply what its substance gaps asked for, ' +
+        'or answer the objection it raised. A PAID call: it re-reads the ACCUMULATED argument, not ' +
+        'your last message alone, so you need not repeat what you already quoted. An objection you ' +
+        'have answered once no longer blocks promotion; one you never answer is carried on the ' +
+        'record forever. Refuses NO_RESEARCHER, REASON_REQUIRED, SESSION_NOT_FOUND, NOT_AUTHOR and ' +
+        'SESSION_CLOSED, plus every record refusal re-checked now — the corpus can move under an ' +
+        'argument.',
+      inputSchema: respondInDebateSchema,
+    },
+    async (input) => ({
+      content: [{ type: 'text' as const, text: stampEnvironment(await respondInDebateHandler(input)) }],
+    }),
+  );
+
+  server.registerTool(
+    'promote_from_debate',
+    {
+      description:
+        'PROMOTE THE RECORD ON A CLEARED ARGUMENT — the act that makes a corpus record EVIDENCE: the ' +
+        'record, marked, with who promoted it, when, and which version of its content they stood ' +
+        'behind. Writes the evidence row on the FIRST cleared argument for a record and JOINS it on ' +
+        'every later one, so a second thesis citing the same record argues its own case without ' +
+        'creating a second row. NOTHING IS WRITTEN TO ANY CHAIN: the chain attests the corpus, the ' +
+        'bytes were anchored when the capture was acquired, and nothing above the corpus is ' +
+        'anchored. Refuses NO_RESEARCHER, SESSION_NOT_FOUND, NOT_AUTHOR, SESSION_CLOSED, NOT_READY ' +
+        '(with blockedBy: NO_SUBSTANCE, OBJECTION_UNANSWERED), STALE_PIN (the citation pins a ' +
+        "version that is no longer the record's current one — write a new version, which re-pins), " +
+        'and every refusal of open_debate re-checked at this moment.',
+      inputSchema: promoteFromDebateSchema,
+    },
+    async (input) => ({
+      content: [{ type: 'text' as const, text: stampEnvironment(await promoteFromDebateHandler(input)) }],
+    }),
+  );
+
+  server.registerTool(
+    'get_debate',
+    {
+      description:
+        'READ ONE DEBATE: its record, its status, every turn in order — the rationales, the ' +
+        "assessor's answers verbatim, the responses — whether SUBSTANCE cleared, the current " +
+        'verdict, and whether it can promote yet with the list of what blocks it. Any researcher may ' +
+        "read any thesis's debates: working state is gated from the public, not from colleagues. " +
+        'Calls no model and writes nothing. Refuses NO_RESEARCHER and SESSION_NOT_FOUND.',
+      inputSchema: getDebateSchema,
+    },
+    async (input) => ({
+      content: [{ type: 'text' as const, text: stampEnvironment(await getDebateHandler(input)) }],
+    }),
+  );
+
+  // -------------------------------------------------------------------------
+  // THE REVIEW — evidence step 14, docs/gf-evidence-flows.md §6 (Flow E3).
+  //
+  // A re-walk moves a cited record's content and nothing is wrong yet: the old
+  // version is kept and every citation still pins it. What is owed is a
+  // judgement no pass can make — does the new version still support what the
+  // thesis says — so the list is STOP-SHAPED and the decision is a researcher's.
+  // NO AUTOMATIC RE-AFFIRMATION, EVER.
+  // -------------------------------------------------------------------------
+  server.registerTool(
+    'list_evidence_reviews',
+    {
+      description:
+        'WHAT YOU OWE: every promoted record whose content has MOVED off the version a human stood ' +
+        'behind. Stop-shaped, like a walk stop — the count first, then one entry per record oldest ' +
+        'first, each with the affirmed version beside the current one, WHAT MOVED between them ' +
+        '(the chunks or segments that entered and left, computed by containment, no model), WHY it ' +
+        'moved (a page decision with its researcher, a new extractor, or a new differ — all of them ' +
+        'where more than one applies), every thesis whose head or published version cites it with ' +
+        'whether that citation was argued, the narrower diffs where the pair is no longer the ' +
+        "finest record, and TWO COMMANDS THAT PASTE AS WRITTEN. Records that cannot be judged are " +
+        'NAMED in notEvaluable rather than dropped. An empty list is an answer: owed: 0 means ' +
+        'nothing moved. Writes nothing and calls no model. Refuses NO_RESEARCHER and nothing else.',
+      inputSchema: listEvidenceReviewsSchema,
+    },
+    async () => ({
+      content: [{ type: 'text' as const, text: stampEnvironment(await listEvidenceReviewsHandler()) }],
+    }),
+  );
+
+  server.registerTool(
+    'review_evidence',
+    {
+      description:
+        'DECIDE ON A RECORD WHOSE CONTENT MOVED. REAFFIRM: the current version still carries every ' +
+        'citing passage — the record now stands behind it, and its citations are NOT re-pinned by ' +
+        'this act (re-pinning is a new thesis version, by the thesis\'s author, who may not be ' +
+        'you). WITHDRAW: it no longer carries them, or never did; a reason is REQUIRED and every ' +
+        'thesis citing it on a published version is FLAGGED from that moment — visibly, never ' +
+        'unpublished by the platform. NOTHING IS DELETED: a withdrawn record keeps its name, its ' +
+        'argument and its citations so a reader of the thesis that cited it can find out what ' +
+        'happened, and nothing moves it back. ANY researcher may review ANY record. Paste the ' +
+        'command from list_evidence_reviews — it carries expectedSequence, the compare-and-set on ' +
+        "the record's review log. Refuses NO_RESEARCHER, REASON_REQUIRED, NOT_A_RECORD, " +
+        'NOT_PROMOTED (naming whether it was never promoted or already withdrawn), ' +
+        'AWAITING_DERIVATION, NOTHING_TO_REVIEW (REAFFIRM only — a WITHDRAW of a current record is ' +
+        'allowed) and STALE_SEQUENCE.',
+      inputSchema: reviewEvidenceSchema,
+    },
+    async (input) => ({
+      content: [{ type: 'text' as const, text: stampEnvironment(await reviewEvidenceHandler(input)) }],
+    }),
+  );
+
+  // -------------------------------------------------------------------------
+  // FRAMING — thesis step 19, docs/gf-thesis-flows.md T1 and A4 :1434–:1459.
+  // The glasses go on before the thesis is written: a provision says what kind of
+  // record demonstrates a violation, so it says what to look for before anything
+  // is found.
+  // -------------------------------------------------------------------------
+
+  server.registerTool(
+    'open_framing',
+    {
+      description:
+        'RECORD THE RESEARCHER\'S QUESTION AS THEY WROTE IT, and the glasses they read the corpus ' +
+        'through. The question is stored VERBATIM and attributed to them — show any rewording and get ' +
+        'their yes before calling; never record words they have not seen. Returns the framing and the ' +
+        'PROVISION\'S REQUIRED ELEMENTS, each unfilled and each WITH ITS MEANING — what kind of record ' +
+        'would demonstrate that part of the violation. The known provisions and their elements are the ' +
+        'table\'s; an unknown one is refused NO_PROVISION_SHAPE naming the known ones, and a framing may ' +
+        'open with no provision, its elements then the researcher\'s to state. A framing needs no thesis — ' +
+        'open one before any thesis exists, or on an unpublished thesis of your own to re-frame it. ' +
+        'Nothing opens and nothing closes: a framing with rounds and no choice is a discussion that ' +
+        'ended without a decision, which is a legitimate record. Writes one row, spends nothing. ' +
+        'Refuses NO_RESEARCHER, NO_THESIS, NOT_AUTHOR, NO_PROVISION_SHAPE, PUBLISHED (the thesis\'s ' +
+        'head IS its published version — frame the next one) and NO_SUCH_RUN.',
+      inputSchema: openFramingSchema,
+    },
+    async (input) => ({
+      content: [{ type: 'text' as const, text: stampEnvironment(await openFramingHandler(input)) }],
+    }),
+  );
+
+  server.registerTool(
+    'assess_framing',
+    {
+      description:
+        'PROPOSE A FRAMING AND HAVE IT ARGUED WITH. PAID — one assessor call per round. Name the ' +
+        'records you have been reading and the trajectories; the platform loads each one\'s CURRENT ' +
+        'COMPUTED CONTENT — never a summary, never a classifier\'s opinion — records your proposal ' +
+        'VERBATIM, and hands both to the assessor. EVERY ASSERTION IT MAKES IS THEN AUDITED ' +
+        'MECHANICALLY, with no model: a contradiction quoting you is checked as a substring of what ' +
+        'you actually wrote (quoteVerified), a phrase it attributes to a record is checked against ' +
+        'that record\'s content (phraseVerified: PRESENT, ABSENT or UNCHECKED), and an element is ' +
+        'filled only by a record you supplied. NOTHING IS DROPPED and nothing gates on a verdict: a ' +
+        'contradiction that misquotes you is SHOWN, labelled. AN ELEMENT WITH NO RECORD BEHIND IT ' +
+        'IS THE HONEST OUTPUT, not a failure — it becomes a FOIA target or a call item later. As ' +
+        'many rounds as it takes; you stop. Refuses NO_RESEARCHER, NO_FRAMING, NOT_YOURS, ' +
+        'NO_RECORDS, NOT_A_RECORD, NOT_ACQUIRED, AWAITING_DERIVATION (naming the diff) and ' +
+        'UNKNOWN_TRAJECTORY_ID.',
+      inputSchema: assessFramingSchema,
+    },
+    async (input) => ({
+      content: [{ type: 'text' as const, text: stampEnvironment(await assessFramingHandler(input)) }],
+    }),
+  );
+
+  server.registerTool(
+    'choose_framing',
+    {
+      description:
+        'DECIDE THE FRAMING — IN YOUR OWN WORDS. The claim you record here is the sentence the ' +
+        'thesis will argue and it is stored VERBATIM, because a version must restate it exactly for ' +
+        'the publication gate to recognise it as framed. The choice is yours: it may be your ' +
+        'framing, the assessor\'s, or a third. Record the element map as it stands, MISSING ' +
+        'elements included — a thesis is opened with its gaps on record from its first day. Writes ' +
+        'one row, spends nothing. Refuses NO_RESEARCHER, NO_FRAMING, NOT_YOURS, NOT_ASSESSED (no ' +
+        'assessed round yet) and PROVISION_MISMATCH (the thesis this framing is attached to asserts ' +
+        'another provision — a different provision is a different thesis).',
+      inputSchema: chooseFramingSchema,
+    },
+    async (input) => ({
+      content: [{ type: 'text' as const, text: stampEnvironment(await chooseFramingHandler(input)) }],
+    }),
+  );
+
+  server.registerTool(
+    'get_framing',
+    {
+      description:
+        'READ A FRAMING AND EVERY ROUND OF IT, in sequence, with every audit verdict beside its ' +
+        'assertion, and the thesis it attaches to. ANY researcher may read ANY framing: working ' +
+        'state is gated from the public, not from colleagues. A round whose stored content is ' +
+        'malformed is reported AS MALFORMED, never as empty. Writes nothing, spends nothing. ' +
+        'Refuses NO_FRAMING.',
+      inputSchema: getFramingSchema,
+    },
+    async (input) => ({
+      content: [{ type: 'text' as const, text: stampEnvironment(await getFramingHandler(input)) }],
+    }),
+  );
+
+  // -------------------------------------------------------------------------
+  // THE PROBE — one PROMPT and one RESOURCE, each returning MCP_INSTRUCTIONS.
+  //
+  // claude.ai was shown three times (2026-09-13, three fresh conversations, the
+  // third with this connector alone) NOT to surface the initialize result's
+  // `instructions` to the model, while this server provably returns it over
+  // HTTP. The spec offers two more primitives that could carry a "start here":
+  // a PROMPT (a user-invocable template) and a RESOURCE (addressable content).
+  // Whether claude.ai surfaces either from a custom connector is documented
+  // loosely and was never observed. These two registrations exist to observe
+  // it: same text, two more channels, no new rule anywhere. Prompts and
+  // resources are not tools — `mcpToolClassification` does not see them, and
+  // `isWriteToolCall` gates nothing here, correctly: the text is public.
+  // -------------------------------------------------------------------------
+
+  server.registerPrompt(
+    'start_here',
+    {
+      title: 'Start here — how this platform works',
+      description:
+        'CALL THIS FIRST — how this platform works, the order of its flows, what is PAID. ' +
+        'The same text the server sends as its instructions at the handshake.',
+      argsSchema: {},
+    },
+    () => ({
+      messages: [{ role: 'user' as const, content: { type: 'text' as const, text: MCP_INSTRUCTIONS } }],
+    }),
+  );
+
+  server.registerResource(
+    'platform-protocol',
+    'protocol://start-here',
+    {
+      title: 'Start here — how this platform works',
+      description:
+        'CALL THIS FIRST — how this platform works, the order of its flows, what is PAID. ' +
+        'The same text the server sends as its instructions at the handshake.',
+      mimeType: 'text/plain',
+    },
+    (uri) => ({ contents: [{ uri: uri.href, mimeType: 'text/plain', text: MCP_INSTRUCTIONS }] }),
   );
 
   return server;
