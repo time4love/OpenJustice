@@ -121,6 +121,10 @@ provision's elements — with the assessor's output audited before it is recorde
 
 *Verified by:* the T1 contract green; on staging, one framing walked against the MOH page with a
 round whose contradiction fails the substring check and is shown flagged.
+Landed 2026-09-12 (PR #420 → `66b121e`); walked on staging 2026-09-13 — one framing CHOSEN under
+`PATIENT_RIGHTS_13` with a MISSING element and the missing document named; the flagged-contradiction
+clause NOT MET (no contradiction produced, none manufactured); what claude.ai sees, the four PRs the
+walk landed (#426–#429) and the findings by owner are `docs/gf-thesis-step-19-2026-09-12.md`.
 
 ### 20 · The version write
 
