@@ -77,7 +77,24 @@ every one, and a RETIRE file still present after step 25 is a defect in step 25.
 > plan §3b, the note above step 11) — no frontend file before step 12, the T5 page built at step 23
 > when it has a contract, the legacy pages deleted in one cut-over at the end. §8's first hazard (the
 > public page reads TipTap) is met by absence, on staging, where nobody reads it. **SHIP stays gated
-> behind step 26**, as it was.
+> behind step 26**, as it was — **LIFTED 2026-09-13, the researcher's ruling (R45), below.**
+>
+> **THE STEP-26 GATE IS LIFTED — ruled 2026-09-13, the register correction (R45), after PR #431.** The
+> gate guarded the frontend's thesis pages going dark at the cut-over. Production holds NO published
+> thesis and no draft, so the pages are empty either way, and the production rebuild (evidence §8's
+> six sub-steps in the refactor plan's step 9 order) depends on no thesis step. It runs BEFORE R45-B
+> and before steps 20–26, in dedicated sessions with the mainnet spend named. What head keeps and
+> drops on production at that `SHIP`, read from `server.ts` at `7c08157`: KEPT `/api/mcp`,
+> `/api/forensics` (`/tracked`, `/tracked/:id/trajectories` only), `/api/article-rules`, `/api/auth`,
+> `/api/reports`, the OAuth mounts and `/.well-known`; DROPPED `/api/evidence`, `/api/arguments`,
+> `/api/chat`, `/api/figures`, `/api/mentions`, `/api/thesis`. The frontend pages those routes served —
+> `/evidence`, `/figures`, `/theses` and its edit and history pages, `/call`, `/submit`, and `/forensics`
+> (which also calls `/tracked/:id/jobs`, `/:id/status` and `/:id/report`, none registered at head, and
+> reads the `status` field R45-B removes) — are already dark on staging and go dark on production at
+> that `SHIP`; each is rebuilt at the step that gives it a contract, and the legacy pages leave in the
+> one cut-over the document plan names. `/reports`, `/article-rules`, `/guide`, `/about`, `/login` and
+> `/profile` keep their servers. The order with its gates is the refactor plan's step 9 note
+> (`:327–:338` at `7c08157`) and evidence §8; nothing here changes it.
 >
 > Steps 17–24 are unchanged in content and order, and step 21's dependence on evidence step 13
 > (§8) still binds. What step 25 keeps is the migration's half — moved to step 18 — and the
