@@ -1,6 +1,6 @@
 {
   "target": "glass-fortress-backend",
-  "total": 85,
+  "total": 84,
   "rules": {
     "(parse-error)": 1,
     "@typescript-eslint/array-type": 2,
@@ -8,7 +8,7 @@
     "@typescript-eslint/dot-notation": 41,
     "@typescript-eslint/no-base-to-string": 1,
     "@typescript-eslint/no-confusing-void-expression": 2,
-    "@typescript-eslint/no-deprecated": 13,
+    "@typescript-eslint/no-deprecated": 12,
     "@typescript-eslint/no-extraneous-class": 1,
     "@typescript-eslint/no-floating-promises": 2,
     "@typescript-eslint/no-non-null-assertion": 4,
