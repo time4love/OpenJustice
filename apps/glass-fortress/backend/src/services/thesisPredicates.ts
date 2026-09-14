@@ -1,6 +1,9 @@
-import type { Framing, FramingRound, ThesisGapDecision, ThesisMention } from '@prisma/client';
+import { createHash } from 'node:crypto';
+import type { Framing, FramingRound, ThesisAnalysis, ThesisGapDecision, ThesisMention, ThesisVersion } from '@prisma/client';
 import { prisma } from '../lib/prisma';
-import { argued } from './evidencePredicates';
+import { argued, currentVersionOf, type ContentVersionProvenance, type RecordContent } from './evidencePredicates';
+
+export { CRITIC_PROMPT_VERSION } from '../prompts/thesisCritique';
 
 // ---------------------------------------------------------------------------
 // THE THESIS LAYER'S DERIVATIONS — docs/gf-thesis-flows.md A3.
@@ -13,8 +16,9 @@ import { argued } from './evidencePredicates';
 // each to its step by name.
 //
 // EVERY PREDICATE IS COMPUTED ON READ AND NONE IS STORED (A3 :1413). CLAIM_FRAMED,
-// UNARGUED, GAP_IN_FORCE and GAP_LIST are PURE and SYNC over rows the caller
-// loaded; HISTORY is a question about the database, async, and loads for itself —
+// UNARGUED, GAP_IN_FORCE, GAP_LIST, FINGERPRINT, CURRENT_ANALYSIS, GAPS_DECIDED,
+// THE_CALL and THE_REQUESTS are PURE and SYNC over rows the caller loaded; HISTORY
+// is a question about the database, async, and loads for itself —
 // `evidencePredicates.ts`' purity rule, both arms, stated there once.
 // ---------------------------------------------------------------------------
 
@@ -168,6 +172,157 @@ export function gapList(decisions: readonly ThesisGapDecision[], thesisId: strin
     const citationLeft = inForce.decision === 'CITED' && (inForce.citedName === null || !headNames.includes(inForce.citedName));
     return [{ gapId, readsAs: citationLeft ? 'OPEN' : inForce.decision, inForce }];
   });
+}
+
+// ---------------------------------------------------------------------------
+// FINGERPRINT(v) · CURRENT_ANALYSIS(v) — A3 :1376–:1379 · thesis step 22
+// ---------------------------------------------------------------------------
+
+/** What FINGERPRINT reads — each cited record's content, so CURRENT is asked of `currentVersionOf`, never assumed. */
+export interface FingerprintInput {
+  contentHash: string;
+  evidence: readonly { name: string; record: RecordContent<ContentVersionProvenance> }[];
+  trajectoryIds: readonly string[];
+  /** GAP_LIST(thesis) in ENTRY order, each at what it READS AS — the caller passes `readsAs` (R48 §c1). */
+  gaps: readonly { gapId: string; decision: ThesisGapDecision['decision'] }[];
+  promptVersion: string;
+}
+
+export type Fingerprinted =
+  | { defined: true; fingerprint: string }
+  | { defined: false; reason: 'AWAITING_DERIVATION'; name: string };
+
+/** The byte that separates two parts of the layout — no part (a hash, a cuid, a decision, a version) can hold it. */
+const PART = '\u0000';
+
+/** Code-unit order — the order the layout states, never the caller's. */
+const byCodeUnit = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
+
+/**
+ * FINGERPRINT(v) — what an analysis was ABOUT (A3 :1376–:1378; T4 :586–:588):
+ *
+ *   sha256( utf8( contentHash ‖ n ‖ CURRENT(record).hash, for each EVIDENCE mention in NAME order
+ *                             ‖ m ‖ each TRAJECTORY id, deduplicated, SORTED
+ *                             ‖ k ‖ gapId ‖ decision, for each GAP_LIST entry in ENTRY order
+ *                             ‖ CRITIC_PROMPT_VERSION ) )          ‖ = the single byte 0x00; n, m, k in ASCII decimal
+ *
+ * A3 STATES THE INPUTS AND NO BYTE LAYOUT; THIS IS THE LAYOUT, STATED ONCE (R48 §c1, the R-rulings). The COUNTS
+ * before each list make the SECTIONS unambiguous as well as the parts: a content hash, a capture's text hash and a
+ * gap id share an alphabet, so without them the layout would be injective only by the formats' accident (R26).
+ *
+ * CURRENT IS CALLED — `currentVersionOf`, once per record. A record whose CURRENT is undefined makes the
+ * fingerprint UNDEFINED and names it: the FIRST such record in name order, so the name is the same whatever order
+ * the mentions were discovered in. PURE AND SYNC over rows the caller loaded.
+ */
+export function fingerprint(input: FingerprintInput): Fingerprinted {
+  const evidence = [...input.evidence].sort((a, b) => byCodeUnit(a.name, b.name));
+
+  const hashes: string[] = [];
+  for (const { name, record } of evidence) {
+    const current = currentVersionOf(record);
+    if (!current.defined) return { defined: false, reason: 'AWAITING_DERIVATION', name };
+    hashes.push(current.contentVersionHash);
+  }
+  const trajectoryIds = [...new Set(input.trajectoryIds)].sort(byCodeUnit);
+
+  const parts = [
+    input.contentHash,
+    String(hashes.length),
+    ...hashes,
+    String(trajectoryIds.length),
+    ...trajectoryIds,
+    String(input.gaps.length),
+    ...input.gaps.flatMap((gap) => [gap.gapId, gap.decision]),
+    input.promptVersion,
+  ];
+  return { defined: true, fingerprint: `0x${createHash('sha256').update(parts.join(PART), 'utf8').digest('hex')}` };
+}
+
+/**
+ * CURRENT_ANALYSIS(v) — the analysis of v whose `inputFingerprint` is FINGERPRINT(v) now, or none (A3 :1379).
+ *
+ * `@@unique([versionId, inputFingerprint])` says there is at most one; should the rows handed in hold two, the newest
+ * `runAt` answers. None — never run, or every analysis stale — is null, which T5 reports by name (T4 :604–:606).
+ */
+export function currentAnalysis(
+  versionId: string,
+  analyses: readonly ThesisAnalysis[],
+  fingerprint: string,
+): ThesisAnalysis | null {
+  let found: ThesisAnalysis | null = null;
+  for (const analysis of analyses) {
+    if (analysis.versionId !== versionId || analysis.inputFingerprint !== fingerprint) continue;
+    if (found === null || analysis.runAt.getTime() > found.runAt.getTime()) found = analysis;
+  }
+  return found;
+}
+
+// ---------------------------------------------------------------------------
+// GAPS_DECIDED · THE_CALL · THE_REQUESTS — A3 :1384, :1404–:1406 · thesis step 22
+// ---------------------------------------------------------------------------
+
+/**
+ * GAPS_DECIDED(v) — no gap of GAP_LIST reads OPEN (A3 :1384), with how many it examined: an EMPTY list is decided and
+ * says it examined ZERO, never nothing (A7 :1656–:1657). It READS the list GAP_LIST computed; it never re-derives it.
+ */
+export function gapsDecided(list: readonly GapEntry[]): { decided: boolean; examined: number } {
+  return { decided: list.every((entry) => entry.readsAs !== 'OPEN'), examined: list.length };
+}
+
+/** The Json a decision in force carries for its appeal — a missing one is a malformed row, and THROWS. */
+function appealOf(entry: GapEntry, field: 'callItem' | 'request'): unknown {
+  const value = entry.inForce[field];
+  if (value === null) {
+    throw new Error(
+      `thesisPredicates: gap ${entry.gapId} is in force ${entry.readsAs} with no ${field} — ` +
+        '`ThesisGapDecision_fields_by_decision` makes that row impossible, so it is malformed, not an empty appeal.',
+    );
+  }
+  return value;
+}
+
+/**
+ * THE_CALL(t) — when a version is published, each gap READING CALLED, its call item; else none (A3 :1404–:1405).
+ *
+ * WHICH decisions the list holds is the CALLER's (the researcher's ruling, 2026-09-14): those decided at or before the
+ * publication — `decisionsAtPublication` — never a gap called since, which waits for a publication act.
+ */
+export function theCall(published: boolean, list: readonly GapEntry[]): unknown[] {
+  if (!published) return [];
+  return list.filter((entry) => entry.readsAs === 'CALLED').map((entry) => appealOf(entry, 'callItem'));
+}
+
+/** THE_REQUESTS(t) — likewise, each gap READING REQUESTED, its request (A3 :1406). */
+export function theRequests(published: boolean, list: readonly GapEntry[]): unknown[] {
+  if (!published) return [];
+  return list.filter((entry) => entry.readsAs === 'REQUESTED').map((entry) => appealOf(entry, 'request'));
+}
+
+/**
+ * The decisions DECIDED AT OR BEFORE THE PUBLICATION — those whose `versionId` is the published version or an ANCESTOR
+ * of it (A3 :1404 as amended 2026-09-14, the researcher's ruling). What THE_CALL and THE_REQUESTS are read over.
+ *
+ * THE CHAIN IS WALKED from the published version by `parentVersionId`, never inferred from dates: versions written in one
+ * instant could not be ordered by time, and the chain never branches (T2 :463–:470). A parent the rows handed in do not
+ * hold THROWS — a chain with a hole is a malformed load, and a silent stop would drop an ancestor's decisions.
+ */
+export function decisionsAtPublication(
+  decisions: readonly ThesisGapDecision[],
+  versions: readonly Pick<ThesisVersion, 'id' | 'parentVersionId'>[],
+  publishedVersionId: string,
+): ThesisGapDecision[] {
+  const byId = new Map(versions.map((v) => [v.id, v]));
+  const chain = new Set<string>();
+  let at: string | null = publishedVersionId;
+  while (at !== null) {
+    const version = byId.get(at);
+    if (version === undefined) {
+      throw new Error(`thesisPredicates: the version chain from ${publishedVersionId} names ${at}, which the rows do not hold.`);
+    }
+    chain.add(version.id);
+    at = version.parentVersionId;
+  }
+  return decisions.filter((decision) => chain.has(decision.versionId));
 }
 
 // ---------------------------------------------------------------------------

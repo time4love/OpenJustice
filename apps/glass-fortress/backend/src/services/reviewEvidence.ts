@@ -1,5 +1,5 @@
-import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
+import { isUniqueViolation } from '../lib/uniqueViolation';
 import { WRITE_TRANSACTION } from '../walk/pageLog';
 import { resolveRecordByName } from './corpusReads';
 import { currentVersionOf, needsReview } from './evidencePredicates';
@@ -359,7 +359,9 @@ async function commit(
       try {
         await tx.evidenceDecision.create({ data: entry });
       } catch (err) {
-        if (!isSequenceCollision(err)) throw err;
+        // A P2002 on `EvidenceDecision_fileHash_sequence_key` AND NOTHING ELSE — read from `meta.target`, never the
+        // code alone: the ONE spelling (thesis step 22, R18).
+        if (!isUniqueViolation(err, ['fileHash', 'sequence'])) throw err;
         // NULL, not `at`: `at` is the value this caller read and the race
         // invalidated between the read and the insert.
         throw new StaleSequence(input.expectedSequence, null);
@@ -395,33 +397,4 @@ async function commit(
         'decide against what the record says now.',
     );
   }
-}
-
-/**
- * A P2002 on `EvidenceDecision_fileHash_sequence_key`, AND NOTHING ELSE.
- *
- * The race half A cannot see: two callers who both read the same `last` both
- * insert `last + 1`, and the loser meets the unique index. IT READS
- * `meta.target`, NEVER THE CODE ALONE — P2002 is *a* unique violation, not *this*
- * one, and the same code from another constraint swallowed into "the log moved"
- * would be a wrong answer built out of a right catch. Any other P2002
- * propagates unchanged.
- *
- * The shape is `services/openDebate.ts`'s `isOpenKeyCollision`, which is the only
- * `meta.target` reader in this tree. `src/walk/pageLog.ts` is NOT the precedent:
- * it matches the code alone, which is sound there because the only index its
- * insert can collide on is the one it is writing, and is not sound here.
- */
-function isSequenceCollision(err: unknown): boolean {
-  if (!(err instanceof Prisma.PrismaClientKnownRequestError) || err.code !== 'P2002') return false;
-  const target = err.meta?.target;
-  // BOTH FORMS, because the driver reports either: the constraint's NAME
-  // (`EvidenceDecision_fileHash_sequence_key`) or the list of FIELDS it covers
-  // (`['fileHash', 'sequence']`). Taken together the target must name both
-  // columns, so `['fileHash']` alone, `['openKey']` and `EvidenceDecision_pkey`
-  // are all NOT this constraint and propagate.
-  const namesBoth = (t: string): boolean => t.includes('fileHash') && t.includes('sequence');
-  if (typeof target === 'string') return namesBoth(target);
-  if (!Array.isArray(target)) return false;
-  return namesBoth(target.filter((t): t is string => typeof t === 'string').join(','));
 }

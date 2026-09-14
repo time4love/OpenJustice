@@ -86,6 +86,9 @@ const RETIRED_EVIDENCE_TOOLS = [
 // both as re-shaped tools (:1468, :1476) and its retired block (:1539–:1551) names neither; their successors
 // land under the same names at step 20.
 //
+// `get_whistleblower_call` LEFT at thesis step 22 (R48 F2, REVIEW's ruling), for the same reason: A4 :1501 keeps it
+// re-shaped — PUBLIC, derived from CALLED and REQUESTED gaps, no model — and the retired block names it not.
+//
 // `suggest_thesis` is on A4's retired block and has never been registered in this
 // tree; it is listed for the reason `enrich_evidence_with_history` is — a name
 // held absent costs nothing, and the one nobody wrote down is the one that
@@ -104,7 +107,6 @@ const RETIRED_THESIS_TOOLS = [
   'get_session_summary',
   'add_session_note',
   'cite_trajectories',
-  'get_whistleblower_call',
   'publish_thesis',
   'unpublish_thesis',
   'check_publication_readiness',
@@ -143,6 +145,13 @@ const RETIRED_THESIS_MODULES = [
   'utils/parseMentions',
   'lib/evidenceRecord',
   'lib/summaryProvenance',
+  // THE CRITIC'S TWO LEGACY PROMPTS — retired at thesis step 22 with their successor `prompts/thesisCritique`
+  // (thesis T4 :589, :712–:714; R48 §6-R25, §9-9, the `prompts/intakeAgentClassification` precedent below).
+  'prompts/devilsAdvocateCritique',
+  'prompts/thesisFalsification',
+  // THE DRAFTER'S LEGACY PROMPT — retired at thesis step 22 with its successor `prompts/foiaRequestDrafting` (T4
+  // :715–:716: the gap's two strings and no record).
+  'prompts/foiaLetterDrafting',
 ];
 
 // THE DOCUMENT TOOLS RETIRED BY document flows §9, added in the document third

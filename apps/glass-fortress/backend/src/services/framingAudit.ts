@@ -1,5 +1,5 @@
 import { normaliseClaim } from '../lib/normalise';
-import { verdict, type Verdict } from '../lib/verdict';
+import { verdictInAny, type Verdict } from '../lib/verdict';
 import type { AssessedRecord, FramingAssessment } from './framingAssessor';
 
 // ---------------------------------------------------------------------------
@@ -79,16 +79,11 @@ function textsOf(record: AssessedRecord): string[] {
 }
 
 /**
- * The verdict rule over a record's current content — a CALL of `lib/verdict`,
- * never a second spelling of it. PRESENT iff any one text carries the phrase.
+ * The verdict rule over a record's current content — a CALL of `lib/verdict`'s fold over several texts, never a second
+ * spelling of it (thesis step 22, L1). PRESENT iff any one text carries the phrase; an empty collection is ABSENT.
  */
 function phraseIn(phrase: string, record: AssessedRecord): Verdict {
-  const texts = textsOf(record);
-  // An empty collection is a record whose current content says nothing; the rule
-  // is asked once against an empty text so the answer is ABSENT, never UNCHECKED
-  // — the content was read, and it does not contain the phrase.
-  if (texts.length === 0) return verdict(phrase, '');
-  return texts.some((text) => verdict(phrase, text) === 'PRESENT') ? 'PRESENT' : 'ABSENT';
+  return verdictInAny(phrase, textsOf(record));
 }
 
 export interface AuditInput {

@@ -532,7 +532,16 @@ describe("the debate's own refusal codes are produced in ONE module", () => {
   // `NOT_ACQUIRED` for `add_thesis_version` and `create_thesis`, which thesis A4 :1473 gives the version write
   // by name — a citation over a capture the corpus never acquired (R47 §6-R1). The framingRounds precedent,
   // exactly: a different contract reusing one word.
-  const NOT_THE_DEBATE_S = ['services/openDebate.ts', 'services/framingRounds.ts', 'services/thesisVersionWrite.ts'];
+  //
+  // AND `mcp/tools/decideGap.ts`, BY NAME AND FOR THE SAME REASON — thesis step 22. It produces `NOT_CITED` for
+  // `decide_gap`, which thesis A4 :1492 gives that tool by name: a gap decided CITED naming a record the head does not
+  // cite (R48 F5). A different contract reusing one word; the debate's rule below is untouched.
+  const NOT_THE_DEBATE_S = [
+    'services/openDebate.ts',
+    'services/framingRounds.ts',
+    'services/thesisVersionWrite.ts',
+    'mcp/tools/decideGap.ts',
+  ];
 
   it('only services/openDebate.ts produces them', () => {
     const offenders = modules()

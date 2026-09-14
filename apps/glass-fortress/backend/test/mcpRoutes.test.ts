@@ -185,6 +185,10 @@ describe('POST /api/mcp — write tool auth', () => {
   for (const [tool, why] of [
     ['list_framings', 'every framing is working state carrying a model\'s opinions (thesis §9 :1002–:1004)'],
     ['list_pages', 'the set of surveyed pages is working state until a thesis publishes (evidence §5)'],
+    // THESIS STEP 22 (A4 :1481–:1499): a paid critic draw, a decision written, a paid drafter draw.
+    ['run_analysis', 'it writes an analysis and spends one critic call (A4 :1481)'],
+    ['decide_gap', 'it writes a gap decision, attributed (A4 :1488)'],
+    ['draft_foia_request', 'it spends one drafter call though it writes nothing (A4 :1496, GATED · paid)'],
   ] as const) {
     it(`returns 401 with WWW-Authenticate for an anonymous ${tool} — a GATED read, gated at the route: ${why}`, async () => {
       const res = await request(app)
@@ -371,6 +375,14 @@ describe('POST /api/mcp — read tool viewer identification', () => {
 
   it('treats an invalid token as anonymous on a read — never 401', async () => {
     const res = await request(app).post('/api/mcp').set('Authorization', 'Bearer wrong').send(readCallBody);
+    expect(res.status).toBe(200);
+    expect(seenResearcherId()).toBeNull();
+  });
+
+  it('answers an anonymous get_whistleblower_call — a PUBLIC read, never 401 (thesis A4 :1501; step 17 Q3b)', async () => {
+    const res = await request(app)
+      .post('/api/mcp')
+      .send({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'get_whistleblower_call', arguments: { thesisId: 't1' } } });
     expect(res.status).toBe(200);
     expect(seenResearcherId()).toBeNull();
   });

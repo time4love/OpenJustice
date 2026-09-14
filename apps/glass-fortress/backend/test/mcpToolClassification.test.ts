@@ -130,8 +130,10 @@ describe('MCP tool classification', () => {
     // round, and the thesis layer's first paid point. Its AUTHORITY is thesis A4
     // :1442, which marks the tool "WRITE · paid", with thesis refactor plan §7
     // :262 ("the MCP surface is exactly A4's, and mcpToolClassification agrees").
-    // `run_analysis` lands under this same case at step 22.
-    for (const tool of ['scan_captures', 'assess_framing']) {
+    //
+    // `run_analysis` and `draft_foia_request` ADDED AT THESIS STEP 22 — one critic call and one drafter call. Their
+    // AUTHORITY is thesis A4 :1481 ("WRITE · paid") and :1496 ("GATED · paid"), never this comment.
+    for (const tool of ['scan_captures', 'assess_framing', 'run_analysis', 'draft_foia_request']) {
       expect(WRITE_TOOLS.has(tool)).toBe(true);
     }
   });

@@ -1,5 +1,6 @@
-import { Prisma } from '@prisma/client';
+import type { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
+import { isUniqueViolation } from '../lib/uniqueViolation';
 import { recordId, type Record as CorpusRecord, type RecordId } from '../lib/evidenceIdentity';
 import { WRITE_TRANSACTION } from '../walk/pageLog';
 import {
@@ -420,7 +421,8 @@ export async function openOrRevise(
     // violation, not *this* one, and the same code from another constraint
     // swallowed into "someone else opened this debate" would be a wrong answer
     // built out of a right catch.
-    if (!isOpenKeyCollision(err)) throw err;
+    // `isUniqueViolation` is the ONE spelling of that reading (thesis step 22, R48 Q2).
+    if (!isUniqueViolation(err, ['openKey'])) throw err;
     const raced = await prisma.debateSession.findUnique({
       where: { openKey: key },
       select: { id: true },
@@ -436,12 +438,4 @@ async function reviseOn(sessionId: string, rationale: string): Promise<OpenedDeb
     data: { sessionId, type: 'RATIONALE_SUBMITTED', content: rationale },
   });
   return { sessionId, existed: true };
-}
-
-/** A P2002 whose target is `openKey`, and nothing else. */
-function isOpenKeyCollision(err: unknown): boolean {
-  if (!(err instanceof Prisma.PrismaClientKnownRequestError) || err.code !== 'P2002') return false;
-  const target = err.meta?.target;
-  if (typeof target === 'string') return target.includes('openKey');
-  return Array.isArray(target) && target.some((t) => typeof t === 'string' && t.includes('openKey'));
 }

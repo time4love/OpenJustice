@@ -18,8 +18,11 @@
 /**
  * Every code thesis A4 names for the thesis tools built so far, transcribed whole — the four FRAMING tools
  * (step 19): `open_framing` :1434–:1440 · `assess_framing` :1442–:1450 · `choose_framing` :1452–:1456 ·
- * `get_framing` :1458–:1459 — and the VERSION WRITE and its reads (step 20): `create_thesis` :1461–:1466 ·
- * `add_thesis_version` :1468–:1474 · `get_thesis_context` :1476–:1479 · `add_note` :1520–:1521.
+ * `get_framing` :1458–:1459 — the VERSION WRITE and its reads (step 20): `create_thesis` :1461–:1466 ·
+ * `add_thesis_version` :1468–:1474 · `get_thesis_context` :1476–:1479 · `add_note` :1520–:1521 — and ANALYSIS AND
+ * GAPS (step 22): `run_analysis` :1481–:1486 · `decide_gap` :1488–:1494 · `draft_foia_request` :1496–:1499, with
+ * NO_HEAD the flows' (T4 :583, :626, :665) and NO_SUCH_GAP on `decide_gap` the researcher's (2026-09-14). NAMES_PERSON
+ * is OWED to step 23 and is not in this set until a tool can produce it.
  *
  * `NO_FRAMING` is COINED — ruled at thesis step 17: `NOT_YOURS` would call a framing that does not exist
  * someone else's, which is a false statement to a researcher. `NO_THESIS` for a `thesisId` naming none is
@@ -46,7 +49,15 @@ export type ThesisToolCode =
   | 'CLAIM_MISMATCH'
   | 'FRAMING_ATTACHED'
   | 'EMPTY'
-  | 'NEITHER';
+  | 'NEITHER'
+  | 'NO_HEAD'
+  | 'ANALYSIS_CURRENT'
+  | 'NO_SUCH_GAP'
+  | 'NOT_CITED'
+  | 'REASON_REQUIRED'
+  | 'REQUEST_REQUIRED'
+  | 'CALL_ITEM_REQUIRED'
+  | 'STALE_SEQUENCE';
 
 export interface Refusal<C extends ThesisToolCode = ThesisToolCode> {
   error: string;

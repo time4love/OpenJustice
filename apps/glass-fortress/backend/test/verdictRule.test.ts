@@ -1,4 +1,4 @@
-import { verdict } from '../src/lib/verdict';
+import { verdict, verdictInAny } from '../src/lib/verdict';
 
 // ---------------------------------------------------------------------------
 // THE ONE VERDICT RULE — thesis step 19 builds it (docs/gf-document-refactor-plan.md
@@ -44,5 +44,19 @@ describe('the ONE verdict rule — PRESENT · ABSENT · UNCHECKED', () => {
   it('CALLS NORMALISE — whitespace differing on either side does not change the verdict', () => {
     expect(verdict('הבטחת   הבטיחות', 'משרד הבריאות\n\nהסיר את\tהבטחת הבטיחות  שלו')).toBe('PRESENT');
     expect(verdict('  הבטחת הבטיחות  ', 'משרד הבריאות הסיר את הבטחת הבטיחות שלו')).toBe('PRESENT');
+  });
+});
+
+describe('verdictInAny — the verdict over SEVERAL texts, each apart (thesis step 22, L1)', () => {
+  it('PRESENT when ONE text carries the phrase, whitespace collapsed', () => {
+    expect(verdictInAny('הטקסט   שהוסר', ['אחר', 'הטקסט שהוסר'])).toBe('PRESENT');
+  });
+
+  it('ABSENT for a phrase STRADDLING two texts — no join, so no text says it', () => {
+    expect(verdictInAny('שהוסר הטקסט', ['הטקסט שהוסר', 'הטקסט שנוסף'])).toBe('ABSENT');
+  });
+
+  it('ABSENT, never UNCHECKED, over an EMPTY collection — content read that says nothing', () => {
+    expect(verdictInAny('כל ביטוי', [])).toBe('ABSENT');
   });
 });

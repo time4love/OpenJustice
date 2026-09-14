@@ -6,10 +6,12 @@ jest.mock('../src/factories/LLMFactory', () => (require('./thesis/tools') as typ
 
 import { addNoteHandler } from '../src/mcp/tools/addNote';
 import { getThesisContextHandler } from '../src/mcp/tools/getThesisContext';
-import { history } from '../src/services/thesisPredicates';
+import { CRITIC_PROMPT_VERSION, fingerprint, history } from '../src/services/thesisPredicates';
+import { DIFF_NAME } from './helpers/corpusFixture';
 import { resetDouble, store, written } from './helpers/evidenceDouble';
-import { ANALYSIS, AUTHOR, FRAMING, NOTE, THESIS } from './thesis/fixtures';
-import { actAs, resetTools, seedThesis } from './thesis/tools';
+import { ANALYSIS, AUTHOR, FRAMING, NOTE, THESIS, VERSION } from './thesis/fixtures';
+import { diffRecord } from './thesis/gateWorld';
+import { actAs, resetTools, seedCorpus, seedThesis } from './thesis/tools';
 
 // ---------------------------------------------------------------------------
 // HISTORY AND THE READS — what `test/thesis/` cannot see. docs/gf-thesis-flows.md A3 :1407, §9 :971–:997;
@@ -20,7 +22,8 @@ import { actAs, resetTools, seedThesis } from './thesis/tools';
 //   D11  a note on the thesis's FRAMING is its history — the acceptance world seeds thesis notes only
 //   R6   `since` is STRICT — the acceptance cases put the date BETWEEN two rows, so `>=` passes them
 //        the note's text VERBATIM — the acceptance note has no leading or trailing whitespace
-//   R15  an analysis of HEAD before thesis step 22 THROWS — the acceptance world holds no analysis
+//   Q7   the analysis arm's CURRENT, STALE and AWAITING_DERIVATION — the acceptance world holds no analysis and asks
+//        only NONE (thesis step 22, R48 §6-7; step 20's R15 throw left with the writer it waited for)
 // ---------------------------------------------------------------------------
 
 beforeEach(() => {
@@ -62,10 +65,45 @@ describe('the note, stored VERBATIM', () => {
   });
 });
 
-describe('get_thesis_context — an analysis before thesis step 22 (R15)', () => {
-  it('an analysis row of HEAD THROWS naming step 22 — a malformed state, not an answer', async () => {
+describe("get_thesis_context — the analysis arm: CURRENT, STALE, AWAITING_DERIVATION (A4 :1478; R48 §6-7)", () => {
+  /** The analysis state `get_thesis_context` answers on the fixture thesis. */
+  const analysisState = async (): Promise<Record<string, unknown>> => {
+    const body = JSON.parse(await getThesisContextHandler({ thesisId: THESIS.id })) as { analysis: Record<string, unknown> };
+    return body.analysis;
+  };
+
+  /** FINGERPRINT(HEAD) on `seedThesis`'s world, computed by the ONE symbol over the fixture's own record — never a literal. */
+  const headFingerprint = (): string => {
+    const f = fingerprint({
+      contentHash: VERSION.contentHash,
+      evidence: [{ name: DIFF_NAME, record: diffRecord() }],
+      trajectoryIds: [],
+      gaps: [],
+      promptVersion: CRITIC_PROMPT_VERSION,
+    });
+    if (!f.defined) throw new Error(`the fixture head has no fingerprint: ${f.name}`);
+    return f.fingerprint;
+  };
+
+  it('an analysis of HEAD carrying its fingerprint now is CURRENT, and the answer carries it', async () => {
     seedThesis();
-    store.analyses = [{ ...ANALYSIS, versionId: THESIS.headVersionId }];
-    await expect(getThesisContextHandler({ thesisId: THESIS.id })).rejects.toThrow('step 22');
+    store.analyses = [{ ...ANALYSIS, versionId: VERSION.id, inputFingerprint: headFingerprint() }];
+    expect(await analysisState()).toMatchObject({ state: 'CURRENT', fingerprint: headFingerprint(), analysisId: ANALYSIS.id });
+  });
+
+  it('an analysis of HEAD whose fingerprint has moved is STALE, naming the latest — never NONE', async () => {
+    seedThesis();
+    store.analyses = [{ ...ANALYSIS, versionId: VERSION.id, inputFingerprint: 'a-fingerprint-that-moved' }];
+    expect(await analysisState()).toMatchObject({
+      state: 'STALE',
+      fingerprint: headFingerprint(),
+      latest: { analysisId: ANALYSIS.id, inputFingerprint: 'a-fingerprint-that-moved' },
+    });
+  });
+
+  it('a cited diff the walk owes a version is AWAITING_DERIVATION, naming it — never NONE', async () => {
+    seedThesis();
+    seedCorpus({ derived: false });
+    expect(await analysisState()).toEqual({ state: 'AWAITING_DERIVATION', name: DIFF_NAME });
   });
 });
