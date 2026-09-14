@@ -1314,7 +1314,7 @@ ThesisAnalysis          append-only                                ⚠️ to bui
   id · versionId · inputFingerprint (A3)
   opinion                 Json — counter-arguments (each with quoteVerified, phraseVerified),
                           suggested gaps, alternative readings, strength
-  model · promptVersion · runAt
+  model · promptVersion · runAt · researcherId (who spent the call — a paid act always records it, 2026-09-14)
   @@unique([versionId, inputFingerprint]) — the same input is never paid for twice
 
 ThesisGapDecision       append-only                                ⚠️ replaces ThesisGapResolution
@@ -1495,7 +1495,7 @@ decide_gap({ thesisId, gapId | description, decision, citedName?, request?, call
 
 draft_foia_request({ thesisId, gapId })                               GATED · paid · ⚠️ re-shaped
   does      → the drafter, with the gap, the claim and the records it rests on; writes nothing
-  returns   { text, authority, legalBasis, addresses, restsOn }  — passed to decide_gap REQUESTED
+  returns   { text, authority, legalBasis, addresses, restsOn, unresolvedLabels — a label the drafter named that the call did not hand, said, never dropped (2026-09-14) }  — passed to decide_gap REQUESTED
   refuses   NO_SUCH_GAP · NOT_AUTHOR · AWAITING_DERIVATION (the drafter is never handed content that does not exist — 2026-09-14)
 
 get_whistleblower_call({ thesisId })                                  PUBLIC · re-shaped
