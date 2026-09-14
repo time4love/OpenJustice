@@ -183,12 +183,20 @@ FINDINGS 77 and 78 of the staging critique runs — absence rendered as a durati
 *Verified by:* the T4 contract; `gap-id-stable`; a second `run_analysis` on the same input refused
 `ANALYSIS_CURRENT` — no call spent twice.
 
+Landed 2026-09-14 (PR #444 → `866e57d`, surface 34 → 38, no migration); exercised on staging 2026-09-14 through the
+connector, unsteered — the critic run once, two gaps entered by their words, a request drafted and recorded, the
+stale sequence refused, the public call empty to an anonymous caller; ten of twelve predictions held. Record:
+`docs/gf-thesis-step-22-2026-09-14.md` (its §3: a paid act with no author; the naming session; the placeholders).
+
 ### 23 · The gate, publication, the public reads
 
 The seventeen checks of A6 calling A3's predicates, `NAMES_NO_PERSON` with its examined count;
 `publish_thesis` writing a `PublicationAttempt`, refused or not; `unpublish_thesis` writing a
 `Withdrawal`; the three public routes of A5 serving text and resolved mentions, never TipTap and
 never model prose; PUBLIC_PAGE amended in evidence's predicate module.
+A PAID ACT RECORDS WHO SPENT IT: `ThesisAnalysis` gains `researcherId` (A2 amended 2026-09-14 on step 22's live run —
+the history's ANALYSIS row read `researcherId: null`); the column's migration lands here, the first since step 18 —
+amended 2026-09-14 (docs/gf-thesis-step-22-2026-09-14.md §3, Live-5).
 Checks 18 and 19 of the amended A6, and `CITES_EVIDENCE`'s document arm, are added by
 `docs/gf-document-refactor-plan.md` step 34: they read tables that plan creates — amended
 2026-09-05 (document refactor plan).
