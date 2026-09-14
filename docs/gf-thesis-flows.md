@@ -1566,7 +1566,7 @@ GET /api/thesis/:id                the PUBLISHED version resolved as T5's page s
                                    text, each mention resolved with its pin, VERIFIED and FLAGGED,
                                    the appeals, the rationale, the history of published versions,
                                    the withdrawal notice when PUBLISHED(t) is none and a
-                                   Withdrawal exists; 404 only for a thesis never published
+                                   Withdrawal exists; 404 only for a thesis never published; the one source of the public-interest statement a call page shows (COMPLIANCE.md rule 5, 2026-09-14)
 GET /api/thesis/:id/versions/:v    a version that was ever published — the history's reads; while the thesis is withdrawn every version, and after it a version named by a Withdrawal, answers the notice, never its text (2026-09-14)
 ```
 

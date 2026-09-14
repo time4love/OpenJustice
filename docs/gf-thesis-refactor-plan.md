@@ -205,6 +205,12 @@ Checks 18 and 19 of the amended A6, and `CITES_EVIDENCE`'s document arm, are add
 objection field reaches `GET /api/thesis/:id`; a withdrawn thesis answers a notice, a never-published
 one 404.
 
+Landed 2026-09-14 (PR #446 → `4b0dacf`, surface 38 → 41, one migration: `ThesisAnalysis.researcherId`, taken in the
+container); exercised on staging the same evening through the connector, unsteered — readiness free and paid, a
+publication refused and its attempt recorded, the public reads 404 to an anonymous caller, a withdrawal refused; every
+prediction held but two. Nothing was published: the run stopped before a publication, by the researcher's choice. Record:
+`docs/gf-thesis-step-23-2026-09-14.md`.
+
 ### 24 · After publication
 
 `list_thesis_reviews` — FLAGGED, STALE_TRAJECTORY, UNARGUED; `audit-theses` as A7 specifies, with
