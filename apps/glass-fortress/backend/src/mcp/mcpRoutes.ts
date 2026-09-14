@@ -97,6 +97,10 @@ export const WRITE_TOOLS = new Set([
   // history, including what it removed from each capture it matched. Gated for
   // the same reason as the other two — and this one re-derives held bytes.
   'get_rule_history',
+  // THE PAGE LIST — 2026-09-14, the researcher's ruling (the step-19 record's F3). Writes nothing and
+  // calls no model; gated on the walk reads' ground: the SET of surveyed pages is a researcher's working
+  // state until a thesis publishes — `list_findings` refuses NOT_PUBLIC per page for the same reason.
+  'list_pages',
   // One RESET decision; every rule created before it loses authority. Gated for
   // the obvious reason, and named rather than omitted.
   'reset_article_calibration',
@@ -170,6 +174,11 @@ export const WRITE_TOOLS = new Set([
   'assess_framing',
   'choose_framing',
   'get_framing',
+  // THE FRAMING LIST — 2026-09-14, the researcher's ruling (the step-19 record's F3): a session driven by
+  // the tools alone had no way to find a framing. Writes nothing and calls no model; gated as `get_framing`
+  // is — every framing is working state carrying a model's opinions, gated from the public, not from
+  // colleagues (thesis §9 :1002–:1004).
+  'list_framings',
   // THE VERSION WRITE — thesis step 20, docs/gf-thesis-flows.md T2, §9 and A4 :1461–:1479, :1520.
   //
   // Three WRITE, attributed and refused without a researcher: the thesis and its versions, and a note.

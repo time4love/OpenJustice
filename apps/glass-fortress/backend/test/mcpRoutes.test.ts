@@ -182,6 +182,19 @@ describe('POST /api/mcp — write tool auth', () => {
     expect(res.headers['www-authenticate']).toContain('resource_metadata=');
   });
 
+  for (const [tool, why] of [
+    ['list_framings', 'every framing is working state carrying a model\'s opinions (thesis §9 :1002–:1004)'],
+    ['list_pages', 'the set of surveyed pages is working state until a thesis publishes (evidence §5)'],
+  ] as const) {
+    it(`returns 401 with WWW-Authenticate for an anonymous ${tool} — a GATED read, gated at the route: ${why}`, async () => {
+      const res = await request(app)
+        .post('/api/mcp')
+        .send({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: tool, arguments: {} } });
+      expect(res.status).toBe(401);
+      expect(res.headers['www-authenticate']).toContain('resource_metadata=');
+    });
+  }
+
   it('returns 401 for write tool call with wrong token', async () => {
     const res = await request(app)
       .post('/api/mcp')

@@ -50,6 +50,8 @@ import { addThesisVersionSchema, addThesisVersionHandler } from './tools/addThes
 import { getThesisContextSchema, getThesisContextHandler } from './tools/getThesisContext';
 import { listThesesSchema, listThesesHandler } from './tools/listTheses';
 import { addNoteSchema, addNoteHandler } from './tools/addNote';
+import { listFramingsSchema, listFramingsHandler } from './tools/listFramings';
+import { listPagesSchema, listPagesHandler } from './tools/listPages';
 
 // ---------------------------------------------------------------------------
 // Factory — creates a fresh McpServer per request.
@@ -432,6 +434,21 @@ export function createMcpServer(): McpServer {
   // is the same timeline the researcher reads, which is what makes the corpus
   // the counterweight to a thesis's selection rather than a promise about one.
   // -------------------------------------------------------------------------
+  server.registerTool(
+    'list_pages',
+    {
+      description:
+        'LIST THE PAGES THE CORPUS HOLDS — every surveyed page by its exact URL, with when it was surveyed ' +
+        'and its captures counted per outcome (ACQUIRED is what the corpus holds; UNFETCHED what a walk ' +
+        'still owes). Free; writes nothing. Start here when the researcher names no URL: every other read ' +
+        'takes a page as this returns it. Refuses nothing — an empty list is an answer.',
+      inputSchema: listPagesSchema,
+    },
+    async () => ({
+      content: [{ type: 'text' as const, text: stampEnvironment(await listPagesHandler()) }],
+    }),
+  );
+
   server.registerTool(
     'list_findings',
     {
@@ -822,6 +839,22 @@ export function createMcpServer(): McpServer {
     },
     async (input) => ({
       content: [{ type: 'text' as const, text: stampEnvironment(await getFramingHandler(input)) }],
+    }),
+  );
+
+  server.registerTool(
+    'list_framings',
+    {
+      description:
+        'LIST EVERY FRAMING — its question, provision, author, the thesis it is attached to (or none), when ' +
+        'it was opened, its round count and latest round, and the claim it CHOSE, verbatim. Free; writes ' +
+        'nothing. Start here when the researcher wants to continue a framing or turn one into a thesis: ' +
+        'the framingId for get_framing and the exact claim create_thesis must restate both come from this ' +
+        'list. Refuses nothing — an empty list is an answer.',
+      inputSchema: listFramingsSchema,
+    },
+    async () => ({
+      content: [{ type: 'text' as const, text: stampEnvironment(await listFramingsHandler()) }],
     }),
   );
 
