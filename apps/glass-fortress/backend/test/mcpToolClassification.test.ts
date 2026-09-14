@@ -136,16 +136,23 @@ describe('MCP tool classification', () => {
     //
     // `check_publication_readiness` and `publish_thesis` ADDED AT THESIS STEP 23 — one publication-assessor call each.
     // Their AUTHORITY is thesis A4 :1506 ("GATED · paid iff rationale") and :1510 ("WRITE · paid"), never this comment.
-    for (const tool of [
+    //
+    // `open_debate` and `respond_in_debate` ADDED 2026-09-15 (#454) — each ends in one promotion-assessor call
+    // (`assessAndRecord`, `services/respondInDebate.ts`), and both were gated with no case holding them there. Their
+    // AUTHORITY is evidence A4 :1117 and :1129 ("WRITE"), whose `does` sends the argument to the ASSESSOR; unlike
+    // thesis A4, evidence A4 carries no "paid" marker on either line.
+    const ungated = [
       'scan_captures',
       'assess_framing',
       'run_analysis',
       'draft_foia_request',
       'check_publication_readiness',
       'publish_thesis',
-    ]) {
-      expect(WRITE_TOOLS.has(tool)).toBe(true);
-    }
+      'open_debate',
+      'respond_in_debate',
+    ].filter((tool) => !WRITE_TOOLS.has(tool));
+    // Collected rather than asserted in a loop, so a failure NAMES the paid tool that lost its gate.
+    expect(ungated).toEqual([]);
   });
 
   it('gates the tools that persist rows on an otherwise read-shaped call', () => {
