@@ -266,9 +266,13 @@
       "level": 9,
       "role": "invariant",
       "claim": "A thesis cites nothing that is not VERIFIED.",
-      "command": null,
+      "command": "npm run forensics:audit-theses -- --env <env>",
       "dependsOn": [
-        "src/services/thesisPublication.ts"
+        "src/services/thesisPredicates.ts",
+        "src/services/evidencePredicates.ts",
+        "src/services/publicationEvaluation.ts",
+        "src/services/auditTheses.ts",
+        "scripts/auditTheses.ts"
       ],
       "lastRun": null
     },

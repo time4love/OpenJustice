@@ -1,50 +1,44 @@
 import { prisma } from '../lib/prisma';
-import {
-  flagged,
-  publishableEvidence,
-  type Conjunct,
-  type ConjunctId,
-  type ConjunctReason,
-  type ExaminedMention,
-  type FlagReason,
-} from './evidencePredicates';
+import { flagged, type Conjunct, type ConjunctId, type ConjunctReason, type ExaminedMention, type FlagReason } from './evidencePredicates';
+import { evaluatePublication } from './publicationEvaluation';
+import { trajectoryCurrent } from './thesisPredicates';
+import type { TrajectoryCurrency } from './trajectoryCitation';
 
 // ---------------------------------------------------------------------------
 // DOES EVERY PUBLISHED CITATION STAND? — `thesis-cites-verified`, Level 9.
 //
-// docs/gf-evidence-flows.md A7 and docs/gf-thesis-flows.md A7: "For every
-// version that is PUBLISHED(t): PUBLISHABLE(v) … and FLAGGED per mention." This
-// is the EVIDENCE HALF — the six evidence predicates per EVIDENCE mention;
-// TRAJECTORY_CURRENT and CLAIM_FRAMED are thesis step 23's, and the report NAMES
-// them as not examined rather than passing over them.
+// docs/gf-thesis-flows.md A7 :1621–:1628 and docs/gf-evidence-flows.md A7: "For every version that is PUBLISHED(t):
+// PUBLISHABLE(v) — the six evidence predicates per EVIDENCE mention, TRAJECTORY_CURRENT per trajectory, CLAIM_FRAMED — and
+// FLAGGED per mention." All of it, since thesis step 24 (the R50 sketch §d): the evidence half evidence step 15 built, the
+// trajectories and the framed claim joined to it.
 //
-// IT WALKS PUBLISHED VERSIONS, AND THE PIN DECIDES. `Thesis.publishedVersionId`
-// is `@unique` with `isPublished` as its back-relation, so the subject set is
-// the published versions themselves and not a status anyone could set beside
-// one. A draft's head is never examined: an unpublishable citation on a head is
-// the ordinary state of a draft, and an instrument that counted it would have
-// the wrong subject.
+// IT WALKS PUBLISHED VERSIONS, AND THE PIN DECIDES — the current pin only (the researcher's ruling R-iv; A3 :1364).
+// `Thesis.publishedVersionId` is `@unique` with `isPublished` as its back-relation, so the subject set is the published
+// versions themselves and not a status anyone could set beside one. A draft's head is never examined.
 //
-// IT CALLS TWO FUNCTIONS AND NOTHING ELSE. `publishableEvidence` per version and
-// `flagged` per mention — no chain read of its own (`verified` reads the stored
-// verdict), no model, and NO WRITE. It REFUSES NOTHING either: an empty subject
-// set is a pass that prints its zero (below), and there is no input to refuse.
+// ONE EVALUATION PER VERSION (A7 :1646; A6 :1586). `evaluatePublication(versionId, null)` is the ONE load of PUBLISHABLE(v),
+// every conjunct CALLED there; this pass reads `report` (the evidence half), `claimFramed`, `currencies` and
+// `missingTrajectoryIds` from it and asks `trajectoryCurrent` of each currency, plus `flagged` per EVIDENCE mention. No
+// chain read of its own, no model, NO WRITE, and it REFUSES NOTHING: an empty subject set is a pass that prints its zero.
+// A malformed load inside the evaluation — a citation no corpus record resolves — THROWS, and the throw is not caught:
+// `runOperationalScript` exits 1 on it, so the answer is never "the gate held".
+//
+// A7 AUDITS THREE FAMILIES AND NO MORE. CURRENT_ANALYSIS, GAPS_DECIDED, the public-interest statement and the publication
+// assessment are facts of the moment of publication, or move legitimately after it; the report names them NOT EXAMINED.
+// A version citing a DOCUMENT is audited when documents are citable — document refactor plan :396 (step 34); until then a
+// DOCUMENT citation cannot be resolved by the corpus and its version THROWS with the rest of the malformed loads.
 //
 // THE EXITS, KEYED ON THE FAILURE'S REASON — never on the conjunct's id:
 //
-//   exit 0   every published citation is PUBLISHABLE and unflagged
-//   exit 2   a failure whose REASON the flag names — an EXPECTED state, listed
-//            with its flag: WITHDRAWN · NOT_CITATION_CURRENT · AWAITING_DERIVATION
-//   exit 1   a failure whose REASON no flag names — the gate did not hold — or a
-//            version the gate cannot answer for, printed under its own heading
+//   exit 0   every published version publishable and unflagged — including none
+//   exit 2   an EXPECTED state, listed: an evidence failure whose REASON the flag names (WITHDRAWN · NOT_CITATION_CURRENT ·
+//            AWAITING_DERIVATION), or a trajectory the newest pass does not stand behind (STALE_TRAJECTORY)
+//   exit 1   the gate did not hold: an evidence failure whose REASON no flag names, a trajectory no stored pass holds, a
+//            claim no framing chose
 //
-// Thesis A7 :1627: "exit 1: a published version that is not PUBLISHABLE by any
-// conjunct the flag does not cover". Document A6 :1531 gives ONE conjunct TWO
-// causes, and a rule keyed on the id cannot express that; keyed on the reason,
-// `RECORD_PROMOTED` exits 2 when the row is WITHDRAWN and 1 when there is no
-// row, and `INPUT_SOUND` exits 2 on AWAITING_DERIVATION and 1 on CONTRADICTED.
-// EXIT 1 OUTRANKS EXIT 2: a version whose gate failed is not described by the
-// word for an expected state.
+// Thesis A7 :1627: "exit 1: a published version that is not PUBLISHABLE by any conjunct the flag does not cover". Document
+// A6 :1531 gives ONE conjunct TWO causes, and a rule keyed on the id cannot express that; keyed on the reason,
+// `RECORD_PROMOTED` exits 2 when the row is WITHDRAWN and 1 when there is no row. EXIT 1 OUTRANKS EXIT 2.
 // ---------------------------------------------------------------------------
 
 /** One failed conjunct of one published citation. */
@@ -59,20 +53,21 @@ export interface CitationFailure {
   detail: string;
 }
 
-/** A citation the gate could not grade — printed under NOT ANSWERABLE, never among the failures. */
-export interface NotAnswerable {
+/** One trajectory citation of a published version that is stale (exit 2) or that no stored pass holds (exit 1). */
+export interface TrajectoryFailure {
   thesisId: string;
   versionId: string;
-  mentionId: string;
-  fileHash: string;
-  reason: 'DOCUMENT_CLASS_NOT_BUILT';
+  trajectoryId: string;
+  state: TrajectoryCurrency['state'] | 'MISSING';
 }
 
-/** One published version: what it cited, each citation's six verdicts, and its flag. */
+/** One published version: what it cited, each citation's six verdicts and its flag, its trajectories, its framing. */
 export interface VersionBlock {
   thesisId: string;
   versionId: string;
   mentions: { examined: ExaminedMention; conjuncts: Conjunct[]; flag: FlagReason[] }[];
+  trajectories: { id: string; state: TrajectoryCurrency['state'] | 'MISSING' }[];
+  claimFramed: boolean;
 }
 
 export interface ThesisAuditReport {
@@ -80,19 +75,24 @@ export interface ThesisAuditReport {
   versions: number;
   /** EVIDENCE citations examined across them — the SECOND. */
   citations: number;
+  /** TRAJECTORY citations examined across them — the THIRD. */
+  trajectories: number;
   blocks: VersionBlock[];
-  /** Failures no flag names: exit 1, the gate did not hold. */
+  /** Evidence failures no flag names: exit 1, the gate did not hold. */
   unpublishable: CitationFailure[];
-  /** Failures the flag names: exit 2, an expected state. */
+  /** Evidence failures the flag names: exit 2, an expected state. */
   flagged: CitationFailure[];
-  /** Citations the gate could not grade: exit 1, under its own heading. */
-  notAnswerable: NotAnswerable[];
+  /** Trajectories the newest pass does not stand behind: exit 2, an expected state. */
+  stale: TrajectoryFailure[];
+  /** Trajectories no stored pass holds: exit 1, the gate did not hold. */
+  unresolved: TrajectoryFailure[];
+  /** Published versions whose claim no framing chose: exit 1, the gate did not hold. */
+  unframed: { thesisId: string; versionId: string }[];
 }
 
 /**
- * The conjuncts FLAGGED is BOUND to cover. A failure of one of these that the
- * flag does not name is a contradiction between two functions reading the same
- * rows — and the fold THROWS naming the mention rather than silently choosing an
+ * The conjuncts FLAGGED is BOUND to cover. A failure of one of these that the flag does not name is a contradiction
+ * between two functions reading the same rows — and the fold THROWS naming the mention rather than silently choosing an
  * exit: the walk-defect shape `chunksOf` and Gate 2 already use.
  */
 const FLAG_MUST_COVER: readonly ConjunctId[] = ['DERIVED', 'CITATION_CURRENT'];
@@ -108,10 +108,13 @@ export async function auditTheses(): Promise<ThesisAuditReport> {
   const report: ThesisAuditReport = {
     versions: 0,
     citations: 0,
+    trajectories: 0,
     blocks: [],
     unpublishable: [],
     flagged: [],
-    notAnswerable: [],
+    stale: [],
+    unresolved: [],
+    unframed: [],
   };
 
   for (const thesis of theses) {
@@ -119,30 +122,28 @@ export async function auditTheses(): Promise<ThesisAuditReport> {
     if (versionId === null) continue; // the `where` already says so; the compiler does not know it
     report.versions += 1;
 
-    const evaluated = await publishableEvidence(versionId);
-    report.citations += evaluated.mentionsExamined;
-    const block: VersionBlock = { thesisId: thesis.id, versionId, mentions: [] };
+    const evaluation = await evaluatePublication(versionId, null);
+    const evidence = evaluation.report;
+    report.citations += evidence.mentionsExamined;
+    const block: VersionBlock = { thesisId: thesis.id, versionId, mentions: [], trajectories: [], claimFramed: evaluation.claimFramed };
 
-    for (const mention of evaluated.mentions) {
+    for (const mention of evidence.mentions) {
       const flag = (await flagged(mention.examined.mentionId)).reasons;
       block.mentions.push({ examined: mention.examined, conjuncts: mention.conjuncts, flag });
-      const where = {
-        thesisId: thesis.id,
-        versionId,
-        mentionId: mention.examined.mentionId,
-        fileHash: mention.examined.fileHash,
-      };
-
       if (!mention.evaluable) {
-        report.notAnswerable.push({ ...where, reason: mention.reason });
-        continue;
+        // UNREACHABLE (the R50 sketch §6-D18): the only not-evaluable citation is a DOCUMENT's, and `evaluatePublication`
+        // cannot resolve one — it threw before this line. A LOUD GUARD, never a silent pass over a citation nobody graded.
+        throw new Error(
+          `auditTheses: mention ${mention.examined.mentionId} of version ${versionId} could not be graded (${mention.reason}) ` +
+            'and the evaluation did not throw — a DOCUMENT citation is audited from document refactor plan step 34.',
+        );
       }
+      const where = { thesisId: thesis.id, versionId, mentionId: mention.examined.mentionId, fileHash: mention.examined.fileHash };
 
       for (const conjunct of mention.conjuncts.filter((c) => c.verdict === 'FAIL')) {
-        // THE REASON IS READ, NEVER RE-DERIVED. `publishable` renders it at the one
-        // place the failure is decided, so the exit rule and the predicate cannot
-        // disagree about why a citation failed. A FAIL without one is a defect in
-        // the predicate, and it is named rather than guessed.
+        // THE REASON IS READ, NEVER RE-DERIVED. `publishable` renders it at the one place the failure is decided, so the
+        // exit rule and the predicate cannot disagree about why a citation failed. A FAIL without one is a defect in the
+        // predicate, and it is named rather than guessed.
         const reason = conjunct.reason;
         if (reason === null) {
           throw new Error(
@@ -162,21 +163,40 @@ export async function auditTheses(): Promise<ThesisAuditReport> {
         (covered ? report.flagged : report.unpublishable).push(failure);
       }
     }
+
+    // TRAJECTORY_CURRENT per cited trajectory — CALLED on each currency the ONE resolver computed inside the evaluation.
+    report.trajectories += evaluation.trajectoryIds.length;
+    for (const { id, currency } of evaluation.currencies) {
+      block.trajectories.push({ id, state: currency.state });
+      if (!trajectoryCurrent(currency)) report.stale.push({ thesisId: thesis.id, versionId, trajectoryId: id, state: currency.state });
+    }
+    for (const id of evaluation.missingTrajectoryIds) {
+      block.trajectories.push({ id, state: 'MISSING' });
+      report.unresolved.push({ thesisId: thesis.id, versionId, trajectoryId: id, state: 'MISSING' });
+    }
+
+    // CLAIM_FRAMED, as the evaluation asked it of `claimFramed`.
+    if (!evaluation.claimFramed) report.unframed.push({ thesisId: thesis.id, versionId });
+
     report.blocks.push(block);
   }
   return report;
 }
 
-/** §4c's three exits. Exit 1 outranks exit 2. */
+/** A7's three exits. Exit 1 outranks exit 2. */
 export function exitCodeFor(report: ThesisAuditReport): 0 | 1 | 2 {
-  if (report.unpublishable.length > 0 || report.notAnswerable.length > 0) return 1;
-  if (report.flagged.length > 0) return 2;
+  if (report.unpublishable.length > 0 || report.unresolved.length > 0 || report.unframed.length > 0) return 1;
+  if (report.flagged.length > 0 || report.stale.length > 0) return 2;
   return 0;
 }
 
-/** The report as a person reads it — the TWO COUNTS FIRST, then everything else. */
+/** The report as a person reads it — the THREE COUNTS FIRST, then everything else. */
 export function formatThesisAudit(report: ThesisAuditReport): string {
-  const lines = [`Published versions: ${String(report.versions)}`, `EVIDENCE citations: ${String(report.citations)}`];
+  const lines = [
+    `Published versions: ${String(report.versions)}`,
+    `EVIDENCE citations: ${String(report.citations)}`,
+    `TRAJECTORY citations: ${String(report.trajectories)}`,
+  ];
 
   if (report.versions === 0) {
     lines.push('');
@@ -187,21 +207,26 @@ export function formatThesisAudit(report: ThesisAuditReport): string {
 
   for (const block of report.blocks) {
     lines.push('');
-    lines.push(`version ${block.versionId}  (thesis ${block.thesisId})`);
+    lines.push(`version ${block.versionId}  (thesis ${block.thesisId})  CLAIM_FRAMED=${block.claimFramed ? 'PASS' : 'FAIL'}`);
     for (const m of block.mentions) {
       const verdicts = m.conjuncts.map((c) => `${c.id}=${c.verdict}`).join(' ');
       lines.push(`  mention ${m.examined.mentionId}  ${m.examined.fileHash}  ${verdicts}`);
       if (m.flag.length > 0) lines.push(`    FLAGGED: ${m.flag.join(', ')}`);
     }
+    for (const t of block.trajectories) lines.push(`  trajectory ${t.id}  ${t.state}`);
   }
 
-  if (report.unpublishable.length > 0) {
+  if (report.unpublishable.length > 0 || report.unresolved.length > 0 || report.unframed.length > 0) {
     lines.push('');
-    lines.push('THE GATE DID NOT HOLD — a published citation fails a conjunct no flag covers:');
+    lines.push('THE GATE DID NOT HOLD — a published version fails a conjunct no flag covers:');
     for (const f of report.unpublishable) {
       lines.push(`  version ${f.versionId}  mention ${f.mentionId}  ${f.conjunct} (${f.reason})`);
       lines.push(`    ${f.detail}`);
     }
+    for (const t of report.unresolved) {
+      lines.push(`  version ${t.versionId}  trajectory ${t.trajectoryId}  TRAJECTORIES_RESOLVE (no stored detection pass holds it)`);
+    }
+    for (const u of report.unframed) lines.push(`  version ${u.versionId}  CLAIM_FRAMED (no framing chose this claim)`);
   }
   if (report.flagged.length > 0) {
     lines.push('');
@@ -210,18 +235,15 @@ export function formatThesisAudit(report: ThesisAuditReport): string {
       lines.push(`  version ${f.versionId}  mention ${f.mentionId}  ${f.conjunct} (${f.reason})`);
     }
   }
+  if (report.stale.length > 0) {
+    lines.push('');
+    lines.push("STALE_TRAJECTORY — an expected state, the author's to answer with a new version:");
+    for (const t of report.stale) lines.push(`  version ${t.versionId}  trajectory ${t.trajectoryId}  ${t.state}`);
+  }
 
   lines.push('');
-  lines.push('NOT EXAMINED, and named rather than passed over: TRAJECTORY_CURRENT per cited trajectory');
-  lines.push("and CLAIM_FRAMED (thesis A7) — thesis step 23's; SHED (document flows A3's third arm) —");
-  lines.push("document step 28's.");
-  lines.push('');
-  lines.push(`NOT ANSWERABLE: ${String(report.notAnswerable.length)} citations.`);
-  if (report.notAnswerable.length > 0) {
-    lines.push('The gate could not be run on these citations, and this is not a failure of theirs:');
-    for (const n of report.notAnswerable) {
-      lines.push(`  version ${n.versionId}  mention ${n.mentionId}  ${n.fileHash} — ${n.reason} (document step 28)`);
-    }
-  }
+  lines.push('NOT EXAMINED, and named rather than passed over: CURRENT_ANALYSIS, GAPS_DECIDED, the public-interest');
+  lines.push('statement and the publication assessment — thesis A7 audits none of them (each is a fact of the moment of');
+  lines.push("publication, or moves legitimately after it); SHED — document flows A3's third arm, document step 28's.");
   return lines.join('\n');
 }

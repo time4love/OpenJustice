@@ -181,6 +181,9 @@ const STEP_20_MODULES = [
   'mcp/tools/checkPublicationReadiness.ts',
   'mcp/tools/publishThesis.ts',
   'mcp/tools/unpublishThesis.ts',
+  // THESIS STEP 24 (the R50 sketch §f2): the author's list and its tool are reads and open no transaction — held not bare.
+  'services/thesisReviews.ts',
+  'mcp/tools/listThesisReviews.ts',
 ] as const;
 /** The acts that must OPEN a transaction — so a case cannot pass because the write lost its transaction altogether. */
 const OPENS_ONE = ['services/thesisVersionWrite.ts', 'mcp/tools/publishThesis.ts', 'mcp/tools/unpublishThesis.ts'] as const;

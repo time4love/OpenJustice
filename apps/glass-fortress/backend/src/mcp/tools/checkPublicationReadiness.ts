@@ -1,11 +1,10 @@
 import { z } from 'zod';
 import { prisma } from '../../lib/prisma';
-import { flagged } from '../../services/evidencePredicates';
 import { assess, projectionOf, type PublicationAssessorOutput } from '../../services/publicationAssessor';
 import { evaluatePublication, publishabilityOf, rowsOf, type ThesisCheck } from '../../services/publicationEvaluation';
 import { assessorMaterial } from '../../services/publishedThesis';
-import { trajectoryCurrent } from '../../services/thesisPredicates';
-import { resolveTrajectoryCitations, type TrajectoryCurrency } from '../../services/trajectoryCitation';
+import { flaggedCitations, staleTrajectories } from '../../services/thesisPredicates';
+import type { TrajectoryCurrency } from '../../services/trajectoryCitation';
 import { answer, refusal, type Refusal } from './thesisRefusals';
 
 // ---------------------------------------------------------------------------
@@ -25,7 +24,8 @@ import { answer, refusal, type Refusal } from './thesisRefusals';
 //
 // AFTER PUBLICATION NOTHING RE-RUNS (A6 :1610–:1611): on a head that IS its published version, FLAGGED and
 // STALE_TRAJECTORY are reported as INFORMATION, each read from its own predicate — `flagged` per EVIDENCE citation,
-// `trajectoryCurrent` over the ONE resolver's currency — never from the rows of checks 5–10 or 12 (D2).
+// `trajectoryCurrent` over the ONE resolver's currency — never from the rows of checks 5–10 or 12 (D2). Both through the
+// two readings REVIEWS owes them by, `flaggedCitations` and `staleTrajectories` (thesis step 24, the R50 sketch §6-D16).
 // ---------------------------------------------------------------------------
 
 export const checkPublicationReadinessSchema = {
@@ -89,20 +89,14 @@ export async function checkPublicationReadinessHandler(input: CheckPublicationRe
   });
 }
 
-/** FLAGGED(m) for each EVIDENCE citation and TRAJECTORY_CURRENT for each TRAJECTORY citation of the published head. */
+/**
+ * FLAGGED(m) for each EVIDENCE citation and TRAJECTORY_CURRENT for each TRAJECTORY citation of the published head.
+ *
+ * A trajectory NO stored pass holds is not STALE_TRAJECTORY and is not listed here — and it is not silent: the SAME reply
+ * carries the gate's rows over this head, and check 11 TRAJECTORIES_RESOLVE names it as its failure's subject.
+ */
 async function informationOn(versionId: string): Promise<Information> {
-  const mentions = await prisma.thesisMention.findMany({ where: { versionId }, select: { id: true, kind: true, name: true } });
-
-  const FLAGGED: Information['FLAGGED'] = [];
-  for (const mention of mentions.filter((m) => m.kind === 'EVIDENCE')) {
-    const report = await flagged(mention.id);
-    if (report.flagged) FLAGGED.push({ name: mention.name, reasons: report.reasons });
-  }
-
-  const { resolved } = await resolveTrajectoryCitations(mentions.filter((m) => m.kind === 'TRAJECTORY').map((m) => m.name));
-  const STALE_TRAJECTORY = resolved
-    .filter((t) => !trajectoryCurrent(t.currency))
-    .map((t) => ({ name: t.id, currency: t.currency }));
-
-  return { FLAGGED, STALE_TRAJECTORY };
+  const FLAGGED = (await flaggedCitations(versionId)).map((citation) => ({ name: citation.name, reasons: citation.reasons }));
+  const { stale } = await staleTrajectories(versionId);
+  return { FLAGGED, STALE_TRAJECTORY: stale.map((t) => ({ name: t.id, currency: t.currency })) };
 }

@@ -191,7 +191,8 @@ interface LoadedVersion {
   derivedAt: Date;
 }
 
-interface LoadedRow {
+/** An evidence row as this module loads it — the record's keys, its endpoints' current text, its stored versions. */
+interface RecordRow {
   fileHash: string;
   kind: string;
   affirmedContentVersionHash: string;
@@ -207,6 +208,30 @@ interface LoadedRow {
   } | null;
 }
 
+/** Phase 1's select — ONE spelling for the pass over every row and for the one row `recordRowOf` reads. */
+const ROW_SELECT = {
+  fileHash: true,
+  kind: true,
+  status: true,
+  affirmedContentVersionHash: true,
+  snapshot: { select: CAPTURE_SELECT },
+  urlVersionDiff: {
+    select: {
+      id: true,
+      trackedUrlId: true,
+      trackedUrl: { select: { url: true } },
+      beforeSnapshot: { select: CAPTURE_SELECT },
+      afterSnapshot: { select: CAPTURE_SELECT },
+      contentVersions: { select: VERSION_SELECT },
+    },
+  },
+} as const;
+
+/** One evidence row by its record's name, as the pass loads every row — or null when nobody promoted the record. */
+export async function recordRowOf(fileHash: string): Promise<RecordRow | null> {
+  return prisma.evidence.findUnique({ where: { fileHash }, select: ROW_SELECT });
+}
+
 /**
  * Every record owed a review, oldest first, with what cannot be judged named
  * beside them.
@@ -219,25 +244,7 @@ interface LoadedRow {
  * rule, and the silent-filter rule generally).
  */
 export async function listEvidenceReviews(): Promise<ReviewsList> {
-  const rows: LoadedRow[] = await prisma.evidence.findMany({
-    select: {
-      fileHash: true,
-      kind: true,
-      status: true,
-      affirmedContentVersionHash: true,
-      snapshot: { select: CAPTURE_SELECT },
-      urlVersionDiff: {
-        select: {
-          id: true,
-          trackedUrlId: true,
-          trackedUrl: { select: { url: true } },
-          beforeSnapshot: { select: CAPTURE_SELECT },
-          afterSnapshot: { select: CAPTURE_SELECT },
-          contentVersions: { select: VERSION_SELECT },
-        },
-      },
-    },
-  });
+  const rows: RecordRow[] = await prisma.evidence.findMany({ select: ROW_SELECT });
 
   const reviews: ReviewEntry[] = [];
   const notEvaluable: NotEvaluable[] = [];
@@ -276,7 +283,7 @@ class PageCache {
 }
 
 /** One row: the entry it owes, the reason it cannot be judged, or nothing at all. */
-async function evaluate(row: LoadedRow, pages: PageCache): Promise<ReviewEntry | NotEvaluable | null> {
+async function evaluate(row: RecordRow, pages: PageCache): Promise<ReviewEntry | NotEvaluable | null> {
   const capture = row.snapshot;
   const diff = row.urlVersionDiff;
 
@@ -327,11 +334,8 @@ async function evaluate(row: LoadedRow, pages: PageCache): Promise<ReviewEntry |
     };
   }
   if (!owedNow.value) return null;
-  if (!current.defined) return null; // unreachable: `needsReview` evaluated
 
-  return diff === null
-    ? entryForCapture(row, record, requireCapture(capture), current.contentVersionHash)
-    : entryForDiff(row, record, diff, current.contentVersionHash, pages);
+  return diff === null ? entryForCapture(row, record, requireCapture(capture)) : entryForDiff(row, record, diff, pages);
 }
 
 /** A capture the archive named — the only kind that can key a CAPTURE or a DIFF record. */
@@ -385,42 +389,66 @@ function pairOf(record: NamedRecord): string {
  */
 const asSegments = (text: string): ContentUnit[] => segments(text).map((t) => ({ text: t }));
 
-async function entryForCapture(
-  row: LoadedRow,
-  record: NamedRecord,
-  capture: LoadedCapture,
-  currentHash: string,
-): Promise<ReviewEntry | NotEvaluable> {
-  const affirmed = await prisma.textVersion.findUnique({
-    where: { snapshotId_textHash: { snapshotId: capture.id, textHash: row.affirmedContentVersionHash } },
-    select: {
-      text: true,
-      textExtractionVersion: true,
-      supersededAt: true,
-      supersededByDecisionId: true,
-      supersededByDecision: {
+// ---------------------------------------------------------------------------
+// THE ONE LOADER OF "A RECORD'S CONTENT BETWEEN A STORED VERSION AND CURRENT" — thesis step 24 (the R50 sketch §e1, the
+// researcher's ruling R-iii). Extracted from this list's two entry builders, never copied: evidence asks it from the
+// version a human AFFIRMED, thesis T6's FLAGGED from the version a published citation PINS. Old beside new, what moved,
+// why, and when — one spelling for both, so the two lists cannot tell a researcher different things about one record.
+// ---------------------------------------------------------------------------
+
+/** A record's content between a stored version and CURRENT. */
+interface MovedMaterial {
+  from: { hash: string; chunks: ContentUnit[] };
+  /** Null only when CURRENT is undefined — a diff the walk owes a version (evidence A3). */
+  current: { hash: string; chunks: ContentUnit[] } | null;
+  /** `movedBetween(from, current)` — null exactly when `current` is. */
+  moved: Moved | null;
+  cause: Cause[];
+  /**
+   * The moment CURRENT moved off `from` (§2e): the newest cause that carries a moment, else the kept version's
+   * `supersededAt` (a capture) or CURRENT's `derivedAt` (a diff). Null when `from` IS CURRENT (nothing moved) or when
+   * CURRENT is undefined and no cause carries a moment.
+   */
+  movedAt: Date | null;
+}
+
+/**
+ * The record's content from `fromHash` to CURRENT — or null when `fromHash` is not a stored version of the record, which
+ * each caller names in its own words (evidence: AFFIRMED_VERSION_MISSING; the thesis list: a malformed pin).
+ */
+export async function movedFrom(row: RecordRow, fromHash: string): Promise<MovedMaterial | null> {
+  if (row.urlVersionDiff !== null) return movedFromDiff(row.urlVersionDiff, fromHash);
+  if (row.snapshot !== null) return movedFromCapture(requireCapture(row.snapshot), fromHash);
+  throw new Error(
+    `evidenceReviews: ${row.fileHash} is a DOCUMENT row — its content is document refactor step 28's, and no stored ` +
+      'version of it can be read beside CURRENT yet.',
+  );
+}
+
+async function movedFromCapture(capture: LoadedCapture, fromHash: string): Promise<MovedMaterial | null> {
+  const unmoved = fromHash === capture.textHash;
+  const kept = unmoved
+    ? null
+    : await prisma.textVersion.findUnique({
+        where: { snapshotId_textHash: { snapshotId: capture.id, textHash: fromHash } },
         select: {
-          id: true,
-          type: true,
-          waybackTimestamp: true,
-          sequence: true,
-          researcherId: true,
-          createdAt: true,
+          text: true,
+          textExtractionVersion: true,
+          supersededAt: true,
+          supersededByDecisionId: true,
+          supersededByDecision: {
+            select: {
+              id: true,
+              type: true,
+              waybackTimestamp: true,
+              sequence: true,
+              researcherId: true,
+              createdAt: true,
+            },
+          },
         },
-      },
-    },
-  });
-  if (affirmed === null) {
-    return {
-      fileHash: row.fileHash,
-      record,
-      reason: 'AFFIRMED_VERSION_MISSING',
-      detail:
-        `The version a human affirmed (${row.affirmedContentVersionHash}) is not among the text ` +
-        `versions of capture ${nameOf(capture)}. The row cannot be judged old-beside-new; ` +
-        'forensics:audit-evidence names this state.',
-    };
-  }
+      });
+  if (!unmoved && kept === null) return null;
 
   const snapshot = await prisma.urlSnapshot.findUnique({
     where: { id: capture.id },
@@ -433,24 +461,71 @@ async function entryForCapture(
     );
   }
 
-  const cause = captureCause(nameOf(capture), affirmed, capture.textExtractionVersion);
-  const affirmedUnits = asSegments(affirmed.text);
   const currentUnits = asSegments(snapshot.text);
+  if (kept === null) {
+    return {
+      from: { hash: fromHash, chunks: currentUnits },
+      current: { hash: capture.textHash, chunks: currentUnits },
+      moved: movedBetween(currentUnits, currentUnits),
+      cause: [],
+      movedAt: null,
+    };
+  }
+
+  const cause = captureCause(nameOf(capture), kept, capture.textExtractionVersion);
+  const fromUnits = asSegments(kept.text);
+  return {
+    from: { hash: fromHash, chunks: fromUnits },
+    current: { hash: capture.textHash, chunks: currentUnits },
+    moved: movedBetween(fromUnits, currentUnits),
+    cause,
+    // A capture's kept version stopped being current AT `supersededAt` — which is the definition of `owedSince` (§2e),
+    // available whether or not the cause can be explained.
+    movedAt: newestMoment(cause) ?? kept.supersededAt,
+  };
+}
+
+/** The evidence entry's material or its not-evaluable reason — the loader's answer, never re-derived. */
+function requireMoved(material: MovedMaterial, fileHash: string): { current: NonNullable<MovedMaterial['current']>; moved: Moved; owedSince: Date } {
+  if (material.current === null || material.moved === null || material.movedAt === null) {
+    throw new Error(
+      `evidenceReviews: ${fileHash} is owed a review and its content could not be read beside CURRENT — ` +
+        '`needsReview` evaluated, so CURRENT is defined and differs from what a human affirmed.',
+    );
+  }
+  return { current: material.current, moved: material.moved, owedSince: material.movedAt };
+}
+
+async function entryForCapture(
+  row: RecordRow,
+  record: NamedRecord,
+  capture: LoadedCapture,
+): Promise<ReviewEntry | NotEvaluable> {
+  const material = await movedFrom(row, row.affirmedContentVersionHash);
+  if (material === null) {
+    return {
+      fileHash: row.fileHash,
+      record,
+      reason: 'AFFIRMED_VERSION_MISSING',
+      detail:
+        `The version a human affirmed (${row.affirmedContentVersionHash}) is not among the text ` +
+        `versions of capture ${nameOf(capture)}. The row cannot be judged old-beside-new; ` +
+        'forensics:audit-evidence names this state.',
+    };
+  }
+  const { current, moved, owedSince } = requireMoved(material, row.fileHash);
   const decisionSequence = await decisionSequenceOf(row.fileHash);
 
   return {
     kind: 'CONTENT_MOVED',
     fileHash: row.fileHash,
     record,
-    // A capture's affirmed version stopped being current AT `supersededAt` —
-    // which is the definition of `owedSince` (§2e), available whether or not the
-    // cause can be explained.
-    owedSince: newestMoment(cause) ?? affirmed.supersededAt,
+    owedSince,
     decisionSequence,
-    affirmed: { hash: row.affirmedContentVersionHash, chunks: affirmedUnits },
-    current: { hash: currentHash, chunks: currentUnits },
-    moved: movedBetween(affirmedUnits, currentUnits),
-    cause,
+    affirmed: material.from,
+    current,
+    moved,
+    cause: material.cause,
     citedBy: await citationsOf(row.fileHash),
     // "A CAPTURE record is never narrowed" (§7), so the field is null BY
     // CONSTRUCTION rather than by an unasked question.
@@ -522,84 +597,103 @@ function captureCause(
   ];
 }
 
-// ---------------------------------------------------------------------------
-// A DIFF'S ENTRY — the version label and each endpoint, asked INDEPENDENTLY.
-// ---------------------------------------------------------------------------
+async function movedFromDiff(diff: NonNullable<RecordRow['urlVersionDiff']>, fromHash: string): Promise<MovedMaterial | null> {
+  const name = `${nameOf(diff.beforeSnapshot)} → ${nameOf(diff.afterSnapshot)}`;
+  const from = diff.contentVersions.find((v) => v.contentVersionHash === fromHash);
+  if (from === undefined) return null;
 
-async function entryForDiff(
-  row: LoadedRow,
-  record: NamedRecord,
-  diff: NonNullable<LoadedRow['urlVersionDiff']>,
-  currentHash: string,
-  pages: PageCache,
-): Promise<ReviewEntry | NotEvaluable> {
-  const name = pairOf(record);
-  const affirmed = diff.contentVersions.find(
-    (v) => v.contentVersionHash === row.affirmedContentVersionHash,
-  );
-  if (affirmed === undefined) {
-    return {
-      fileHash: row.fileHash,
-      record,
-      reason: 'AFFIRMED_VERSION_MISSING',
-      detail:
-        `The version a human affirmed (${row.affirmedContentVersionHash}) is not among the content ` +
-        `versions of ${name}. The row cannot be judged old-beside-new; forensics:audit-evidence ` +
-        'names this state.',
-    };
-  }
-  const current = diff.contentVersions.find((v) => v.contentVersionHash === currentHash);
-  if (current === undefined) {
-    throw new Error(
-      `evidenceReviews: CURRENT resolved to ${currentHash} for ${name} and the version is not among ` +
-        'the ones loaded. `currentVersionOf` chose it from this very list.',
-    );
-  }
+  const resolved = currentVersionOf({
+    kind: 'DIFF',
+    before: diff.beforeSnapshot,
+    after: diff.afterSnapshot,
+    versions: diff.contentVersions,
+  });
+  const current = resolved.defined && resolved.kind === 'DIFF' ? resolved.version : null;
 
   const cause: Cause[] = [];
   // 1. THE VERSION LABEL, ASKED ON ITS OWN — different means a DIFF_VERSION
   //    cause WHATEVER THE ENDPOINTS DID. §3: "every CITED DIFF enters review —
   //    the price of a better differ, paid by a human once per record, and stated
-  //    here so nobody pays it by surprise."
-  if (affirmed.diffVersion !== DIFF_VERSION) {
+  //    here so nobody pays it by surprise." Its moment is CURRENT's derivation, so
+  //    it is asked only where CURRENT is defined.
+  if (current !== null && from.diffVersion !== DIFF_VERSION) {
     cause.push({
       kind: 'DIFF_VERSION',
-      from: affirmed.diffVersion,
+      from: from.diffVersion,
       to: DIFF_VERSION,
       at: current.derivedAt,
     });
   }
   // 2. EACH ENDPOINT, ASKED ON ITS OWN, in pair order: before, then after.
   for (const side of [
-    { snapshot: diff.beforeSnapshot, affirmedHash: affirmed.beforeTextHash },
-    { snapshot: diff.afterSnapshot, affirmedHash: affirmed.afterTextHash },
+    { snapshot: diff.beforeSnapshot, fromHash: from.beforeTextHash },
+    { snapshot: diff.afterSnapshot, fromHash: from.afterTextHash },
   ]) {
-    if (side.affirmedHash === side.snapshot.textHash) continue;
-    cause.push(...(await endpointCause(side.snapshot, side.affirmedHash)));
+    if (side.fromHash === side.snapshot.textHash) continue;
+    cause.push(...(await endpointCause(side.snapshot, side.fromHash)));
   }
 
-  // PHASE 2, AND ONLY NOW: the computed register of the two versions this entry
+  // PHASE 2, AND ONLY NOW: the computed register of the versions this material
   // shows, for THIS record. One query for both.
-  const content = await contentOf(diff.id, [affirmed.contentVersionHash, current.contentVersionHash]);
-  const affirmedUnits = asDiffUnits(chunksOf(content.get(affirmed.contentVersionHash) ?? null, name));
+  const content = await contentOf(
+    diff.id,
+    current === null ? [from.contentVersionHash] : [from.contentVersionHash, current.contentVersionHash],
+  );
+  const fromUnits = asDiffUnits(chunksOf(content.get(from.contentVersionHash) ?? null, name));
+  if (current === null) {
+    return { from: { hash: fromHash, chunks: fromUnits }, current: null, moved: null, cause, movedAt: newestMoment(cause) };
+  }
   const currentUnits = asDiffUnits(chunksOf(content.get(current.contentVersionHash) ?? null, name));
+
+  return {
+    from: { hash: fromHash, chunks: fromUnits },
+    current: { hash: current.contentVersionHash, chunks: currentUnits },
+    moved: movedBetween(fromUnits, currentUnits),
+    cause,
+    // Where every cause is UNREADABLE — or the only cause is the version label —
+    // the moment falls back to the CURRENT version's `derivedAt`: the moment the
+    // new derivation arrived is the moment CURRENT moved (§2e).
+    movedAt: from.contentVersionHash === current.contentVersionHash ? null : (newestMoment(cause) ?? current.derivedAt),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// A DIFF'S ENTRY — the version label and each endpoint, asked INDEPENDENTLY.
+// ---------------------------------------------------------------------------
+
+async function entryForDiff(
+  row: RecordRow,
+  record: NamedRecord,
+  diff: NonNullable<RecordRow['urlVersionDiff']>,
+  pages: PageCache,
+): Promise<ReviewEntry | NotEvaluable> {
+  const material = await movedFrom(row, row.affirmedContentVersionHash);
+  if (material === null) {
+    return {
+      fileHash: row.fileHash,
+      record,
+      reason: 'AFFIRMED_VERSION_MISSING',
+      detail:
+        `The version a human affirmed (${row.affirmedContentVersionHash}) is not among the content ` +
+        `versions of ${pairOf(record)}. The row cannot be judged old-beside-new; forensics:audit-evidence ` +
+        'names this state.',
+    };
+  }
+  const { current, moved, owedSince } = requireMoved(material, row.fileHash);
   const decisionSequence = await decisionSequenceOf(row.fileHash);
 
   return {
     kind: 'CONTENT_MOVED',
     fileHash: row.fileHash,
     record,
-    // Where every cause is UNREADABLE — or the only cause is the version label —
-    // `owedSince` falls back to the CURRENT version's `derivedAt`: the moment the
-    // new derivation arrived is the moment CURRENT moved (§2e).
-    owedSince: newestMoment(cause) ?? current.derivedAt,
+    owedSince,
     decisionSequence,
-    affirmed: { hash: row.affirmedContentVersionHash, chunks: affirmedUnits },
-    current: { hash: currentHash, chunks: currentUnits },
-    moved: movedBetween(affirmedUnits, currentUnits),
-    cause,
+    affirmed: material.from,
+    current,
+    moved,
+    cause: material.cause,
     citedBy: await citationsOf(row.fileHash),
-    narrowed: await narrowingFor(diff, record, currentUnits, pages),
+    narrowed: await narrowingFor(diff, record, current.chunks, pages),
     commands: commandsFor(row.fileHash, decisionSequence),
   };
 }
@@ -687,14 +781,32 @@ function newestMoment(causes: readonly Cause[]): Date | null {
 // THE MATERIAL A REVIEWER READS BESIDE THE TWO VERSIONS.
 // ---------------------------------------------------------------------------
 
-/** The record's LATEST review decision sequence — 0 when it has never been reviewed. */
-async function decisionSequenceOf(fileHash: string): Promise<number> {
+/** A record's latest review decision — what E3 last decided about it (thesis T6 :871). */
+export interface LatestDecision {
+  sequence: number;
+  type: 'REAFFIRM' | 'WITHDRAW';
+  fromVersionHash: string | null;
+  toVersionHash: string | null;
+  reason: string | null;
+  researcherId: string;
+  at: Date;
+}
+
+/** The record's LATEST review decision, by sequence — null when it has never been reviewed. */
+export async function latestDecisionOf(fileHash: string): Promise<LatestDecision | null> {
   const last = await prisma.evidenceDecision.findFirst({
     where: { fileHash },
     orderBy: { sequence: 'desc' },
-    select: { sequence: true },
+    select: { sequence: true, type: true, fromVersionHash: true, toVersionHash: true, reason: true, researcherId: true, createdAt: true },
   });
-  return last?.sequence ?? 0;
+  if (last === null) return null;
+  const { createdAt, ...decision } = last;
+  return { ...decision, at: createdAt };
+}
+
+/** The record's LATEST review decision sequence — 0 when it has never been reviewed. */
+async function decisionSequenceOf(fileHash: string): Promise<number> {
+  return (await latestDecisionOf(fileHash))?.sequence ?? 0;
 }
 
 /**
@@ -763,7 +875,7 @@ async function citationsOf(fileHash: string): Promise<Citation[]> {
  * with the computed chunks (A7's `opinions-not-facts`).
  */
 async function narrowingFor(
-  diff: NonNullable<LoadedRow['urlVersionDiff']>,
+  diff: NonNullable<RecordRow['urlVersionDiff']>,
   record: NamedRecord,
   wideUnits: ContentUnit[],
   pages: PageCache,

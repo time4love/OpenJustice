@@ -84,6 +84,14 @@ describe('the number a body resolves to IS the process exit', () => {
     expect(exit).toHaveBeenCalledWith(1);
   });
 
+  it('a body that THROWS makes runOperationalScript call process.exit(1) — a malformed load is never a clean run (thesis step 24, the R50 sketch §0e)', async () => {
+    // `forensics:audit-theses` lets a malformed load inside `evaluatePublication` propagate (a citation the corpus
+    // cannot resolve, a DOCUMENT citation among them): this is the line that turns that throw into the shell's 1.
+    jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    await runOperationalScript(() => Promise.reject(new Error('a malformed load')), ['--env', 'production'], CONTAINER);
+    expect(exit).toHaveBeenCalledWith(1);
+  });
+
   it('a body resolving to NOTHING exits by finishing — no code is invented for it', async () => {
     // "Anything else means the script had none to give and a clean run exits 0."
     // The non-firing control: an exit with a number here would be the guard
