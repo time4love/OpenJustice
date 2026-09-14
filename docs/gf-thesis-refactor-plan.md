@@ -153,6 +153,11 @@ resolves against a table that plan creates — amended 2026-09-05 (document refa
 
 *Verified by:* the T2 contract; two writes against one head, the second refused; `affirmed` moved
 between two writes, the second refused; `versions-immutable` green.
+Landed 2026-09-14 (PR #440 → `5280f54`); exercised on staging 2026-09-14 through the connector, unsteered — the
+first thesis, CLAIM_MISMATCH on one changed character, STALE_HEAD against a moved head, both pins computed and
+matched by data, the draft invisible to an anonymous `list_theses`; `STALE_PIN` not reachable live until a record is
+promoted. The two reads the run needed first (`list_framings`, `list_pages`, PR #441) and the findings by owner are
+`docs/gf-thesis-step-20-2026-09-14.md`.
 
 ### 21 · The argument's thesis side
 
@@ -161,6 +166,12 @@ After evidence step 13: the citing paragraph handed to the assessor by `open_deb
 
 *Verified by:* the T3 contract; `EVIDENCE_ARGUED` proven to fail on a re-pinned mention until it is
 argued again.
+Closed 2026-09-14 by this note, the researcher's ruling: built before its turn — evidence step 13 (PR #403; `open_debate`
+hands the assessor the citing paragraph and refuses NOT_CITED from the head's mention, `promote_from_debate` writes
+`debateSessionId` on the head's mention with STALE_PIN at promotion), evidence step 15 (PR #411; check 7 `EVIDENCE_ARGUED`)
+and thesis step 20 (PR #440; a re-pinned mention carries no argument). No case of the thesis suite names this step and
+its contract owes it no export; check 7 failing through the thesis GATE is step 23's case. Recorded in
+`docs/gf-thesis-step-20-2026-09-14.md` §4.
 
 ### 22 · Analysis and gaps
 
