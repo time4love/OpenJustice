@@ -550,9 +550,9 @@ describe('HISTORY(t) — every row naming the thesis, in time order, attributed 
       ATTEMPT.id,
       WITHDRAWAL.id,
     ]);
-    // An act names the researcher who made it; an ANALYSIS names a model — A2 gives
-    // it `model · promptVersion · runAt` and no researcher (:1313–:1318), so none is
-    // invented. THE DEBATE IS NOT ASSERTED: evidence A2's DebateSession has no
+    // An act names the researcher who made it; an ANALYSIS names who spent the call —
+    // A2 :1317 as amended 2026-09-14, the column landed at thesis step 23 (declared edit,
+    // the R49 sketch §f2), where until then A2 gave it no researcher and none was invented. THE DEBATE IS NOT ASSERTED: evidence A2's DebateSession has no
     // researcher column, and whether HISTORY names the thesis's author for it — its
     // only writer under NOT_AUTHOR — or no one is the researcher's to rule (7.2
     // round 3's report, question 1).
@@ -564,7 +564,7 @@ describe('HISTORY(t) — every row naming the thesis, in time order, attributed 
       [VERSION.id, AUTHOR],
       ['gap-1-DISMISSED', AUTHOR],
       [NOTE.id, AUTHOR],
-      [ANALYSIS.id, null],
+      [ANALYSIS.id, AUTHOR],
       [ATTEMPT.id, AUTHOR],
       [WITHDRAWAL.id, AUTHOR],
     ]);

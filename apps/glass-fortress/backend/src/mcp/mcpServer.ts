@@ -56,6 +56,9 @@ import { runAnalysisSchema, runAnalysisHandler } from './tools/runAnalysis';
 import { decideGapSchema, decideGapHandler } from './tools/decideGap';
 import { draftFoiaRequestSchema, draftFoiaRequestHandler } from './tools/draftFoiaRequest';
 import { getWhistleblowerCallSchema, getWhistleblowerCallHandler } from './tools/getWhistleblowerCall';
+import { checkPublicationReadinessSchema, checkPublicationReadinessHandler } from './tools/checkPublicationReadiness';
+import { publishThesisSchema, publishThesisHandler } from './tools/publishThesis';
+import { unpublishThesisSchema, unpublishThesisHandler } from './tools/unpublishThesis';
 
 // ---------------------------------------------------------------------------
 // Factory — creates a fresh McpServer per request.
@@ -1029,6 +1032,63 @@ export function createMcpServer(): McpServer {
     },
     async (input) => ({
       content: [{ type: 'text' as const, text: stampEnvironment(await getWhistleblowerCallHandler(input)) }],
+    }),
+  );
+
+  // -------------------------------------------------------------------------
+  // PUBLICATION — thesis step 23, docs/gf-thesis-flows.md T5, T6 and A4 :1506–:1518.
+  // The gate is read before the act; the act records its attempt refused or not and moves the pin only when the gate
+  // passes; the withdrawal is the author's and leaves a notice where the page was.
+  // -------------------------------------------------------------------------
+
+  server.registerTool(
+    'check_publication_readiness',
+    {
+      description:
+        'CHECK WHETHER A THESIS\'S HEAD CAN BE PUBLISHED — any researcher may ask; writes nothing. Free without a ' +
+        'rationale; PAID with one: one publication-assessor call. Answers every check of the gate in order — pass, ' +
+        'fail or examined none, what each examined and each failure\'s subject — and whether the head is publishable; ' +
+        'with a rationale, the assessor\'s opinion of it in advance, labelled as its opinion. On a head that is ' +
+        'already the published version it also reports FLAGGED citations and STALE_TRAJECTORY as information. ' +
+        'Refuses NO_THESIS.',
+      inputSchema: checkPublicationReadinessSchema,
+    },
+    async (input) => ({
+      content: [{ type: 'text' as const, text: stampEnvironment(await checkPublicationReadinessHandler(input)) }],
+    }),
+  );
+
+  server.registerTool(
+    'publish_thesis',
+    {
+      description:
+        'PUBLISH YOUR THESIS\'S HEAD — the author\'s act. PAID: one publication-assessor call. Stores the ' +
+        'public-interest statement given, has the assessor read the rationale against the version and the appeals ' +
+        'that would publish with it, runs the gate, and records ONE attempt either way; only when every hard check ' +
+        'passes does the head become the published version, publicly and with no chain write. Answers the version, ' +
+        'its hash, when, overObjection (the assessor disputed the rationale and it was published anyway) and the ' +
+        'pages this made public. Refuses NO_RESEARCHER, NO_THESIS, NOT_AUTHOR, REASON_REQUIRED, NOTHING_NEW (the head ' +
+        'is already published) and NOT_PUBLISHABLE (each failed check with its subject — the draw was spent and the ' +
+        'attempt recorded).',
+      inputSchema: publishThesisSchema,
+    },
+    async (input) => ({
+      content: [{ type: 'text' as const, text: stampEnvironment(await publishThesisHandler(input)) }],
+    }),
+  );
+
+  server.registerTool(
+    'unpublish_thesis',
+    {
+      description:
+        'WITHDRAW YOUR PUBLISHED THESIS — the author\'s act. Free; writes one withdrawal and clears the published ' +
+        'version. The public page then shows a notice with the date — never the text, never the reason — and the ' +
+        'pages it opened stay public; nothing is deleted. A withdrawn version is never published again: write a new ' +
+        'version. Refuses NO_RESEARCHER, NO_THESIS, NOT_AUTHOR, NOT_PUBLISHED and REASON_REQUIRED.',
+      inputSchema: unpublishThesisSchema,
+    },
+    async (input) => ({
+      content: [{ type: 'text' as const, text: stampEnvironment(await unpublishThesisHandler(input)) }],
     }),
   );
 

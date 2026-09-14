@@ -16,7 +16,10 @@ import { answer, refusal, type Refusal } from './thesisRefusals';
 // `test/thesis/contract.ts` TOOLS':
 //
 //   NO_RESEARCHER · NO_THESIS · NOT_AUTHOR · NO_HEAD · NO_SUCH_GAP · NOT_CITED · REASON_REQUIRED · REQUEST_REQUIRED ·
-//   CALL_ITEM_REQUIRED · STALE_SEQUENCE        (NAMES_PERSON is OWED to step 23 and not built here)
+//   CALL_ITEM_REQUIRED · STALE_SEQUENCE
+//
+// NO NAMES_PERSON (the researcher's ruling, 2026-09-14): a person named in a call item is checked at PUBLICATION, by
+// check 16 NAMES_NO_PERSON over the appeals that publish with the version — never refused here, so this tool spends nothing.
 //
 // NO_HEAD is the flow's (T4 :626). NO_SUCH_GAP is the researcher's (2026-09-14): a gapId the log does not hold with no
 // description, a gapId and a description that disagree, and a call naming neither (REVIEW, R48 §6-R25).

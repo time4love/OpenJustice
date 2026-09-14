@@ -396,7 +396,6 @@ export type ThesisCode =
   | 'REQUEST_REQUIRED'
   | 'CALL_ITEM_REQUIRED'
   | 'STALE_SEQUENCE'
-  | 'NAMES_PERSON'
   | 'NO_SUCH_GAP'
   | 'NOTHING_NEW'
   | 'NOT_PUBLISHABLE'
@@ -549,10 +548,10 @@ export const TOOLS: Readonly<Record<ToolName, ToolContract>> = {
       'CALL_ITEM_REQUIRED',
       'STALE_SEQUENCE',
     ],
-    // A4 :1494: "checked by the same rule as T5" — T5's rule is the publication
-    // assessor's name list, a model nothing mocks at step 17. OWED TO 23, not 22 (the
-    // R42 follow-up, REVIEW's ruling): plan step 23 builds that assessor and its rule.
-    owed: [{ code: 'NAMES_PERSON', step: 23 }],
+    // NO NAMES_PERSON (the researcher's ruling, 2026-09-14, thesis step 23): a person named in a call item fails
+    // check 16 NAMES_NO_PERSON at publication, which examines the text AND the appeals that publish with it — so no
+    // decision refuses it and `decide_gap` stays unpaid. A4 :1494 amended in place 2026-09-14.
+    owed: [],
   },
   draft_foia_request: {
     module: 'mcp/tools/draftFoiaRequest',

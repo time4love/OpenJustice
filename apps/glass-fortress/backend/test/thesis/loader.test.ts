@@ -220,6 +220,50 @@ describe("the shared double's 7.3 additions — each held here, so none can loos
   });
 });
 
+describe("the shared double's step-23 additions — E8 and E9, each held here (the R49 sketch §e6)", () => {
+  const EVER_PUBLISHED = { publicationAttempts: { some: { outcome: 'PUBLISHED' } } };
+
+  it('E8 — a mention COUNT answers the EVER-PUBLISHED arm over the attempts: a version with a PUBLISHED attempt counts, a REFUSED one does not; the pin arm and an unmodelled shape unchanged', async () => {
+    resetDouble();
+    store.mentions = [
+      { id: 'on-published', kind: 'EVIDENCE', name: 'record-1', versionId: 'version-published', thesisVersion: { isPublished: null } },
+      { id: 'on-refused', kind: 'EVIDENCE', name: 'record-1', versionId: 'version-refused', thesisVersion: { isPublished: null } },
+      { id: 'on-the-pin', kind: 'EVIDENCE', name: 'record-1', versionId: 'version-pin', thesisVersion: { isPublished: { id: 'thesis-1' } } },
+    ];
+    store.attempts = [
+      { id: 'a1', versionId: 'version-published', outcome: 'PUBLISHED' },
+      { id: 'a2', versionId: 'version-refused', outcome: 'REFUSED' },
+    ];
+    expect(await db.thesisMention.count({ where: { kind: 'EVIDENCE', name: { in: ['record-1'] }, thesisVersion: EVER_PUBLISHED } })).toBe(1);
+    expect(await db.thesisMention.count({ where: { thesisVersion: { isPublished: { isNot: null } } } })).toBe(1);
+    await expect(db.thesisMention.count({ where: { thesisVersion: { publicationAttempts: { none: {} } } } })).rejects.toThrow(
+      'does not model',
+    );
+  });
+
+  it('E9 — thesisVersion.findMany and findFirst answer equality, `in` and the EVER-PUBLISHED arm; a key the double does not model is IGNORED, as every key but `thesisId` was before', async () => {
+    resetDouble();
+    store.versions = [
+      { id: 'v1', thesisId: 'thesis-1', createdById: 'r1' },
+      { id: 'v2', thesisId: 'thesis-1', createdById: 'r1' },
+      { id: 'v3', thesisId: 'thesis-2', createdById: 'r1' },
+    ];
+    store.attempts = [
+      { id: 'a1', versionId: 'v2', outcome: 'PUBLISHED' },
+      { id: 'a2', versionId: 'v1', outcome: 'REFUSED' },
+    ];
+    const ids = (rows: readonly Record<string, unknown>[]): unknown[] => rows.map((row) => row['id']);
+    expect(ids(await db.thesisVersion.findMany({ where: { thesisId: 'thesis-1' } }))).toEqual(['v1', 'v2']);
+    expect(ids(await db.thesisVersion.findMany({ where: { id: { in: ['v1', 'v3'] } } }))).toEqual(['v1', 'v3']);
+    expect(ids(await db.thesisVersion.findMany({ where: { thesisId: 'thesis-1', ...EVER_PUBLISHED } }))).toEqual(['v2']);
+    expect(await db.thesisVersion.findFirst({ where: { id: 'v1', thesisId: 'thesis-1', ...EVER_PUBLISHED } })).toBeNull();
+    expect(await db.thesisVersion.findFirst({ where: { id: 'v2', thesisId: 'thesis-1', ...EVER_PUBLISHED } })).toEqual(store.versions[1]);
+    // AN UNMODELLED KEY IS IGNORED — never a rejection, so no caller written against the old double changes its answer.
+    expect(ids(await db.thesisVersion.findMany({ where: { thesisId: 'thesis-1', createdAt: { gt: new Date(0) } } }))).toEqual(['v1', 'v2']);
+    expect(ids(await db.thesisVersion.findMany({}))).toEqual(['v1', 'v2', 'v3']);
+  });
+});
+
 describe('the fixtures — the vectors were derived OUTSIDE the implementation (round 2, Q3)', () => {
   it("the corpus fixture's DIFF record name IS the shell-derived vector the version's contentHash was computed over", () => {
     // `recordId` computes DIFF_NAME; the shell computed DIFF_NAME_VECTOR from

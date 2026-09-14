@@ -89,6 +89,10 @@ const RETIRED_EVIDENCE_TOOLS = [
 // `get_whistleblower_call` LEFT at thesis step 22 (R48 F2, REVIEW's ruling), for the same reason: A4 :1501 keeps it
 // re-shaped — PUBLIC, derived from CALLED and REQUESTED gaps, no model — and the retired block names it not.
 //
+// `check_publication_readiness`, `publish_thesis` AND `unpublish_thesis` LEFT at thesis step 23, for the same reason:
+// A4 :1506–:1518 keeps all three re-shaped — readiness over A6's gate, the act with its attempt and its pin, the
+// withdrawal — and the retired block names none of them; their successors land under the same names at step 23.
+//
 // `suggest_thesis` is on A4's retired block and has never been registered in this
 // tree; it is listed for the reason `enrich_evidence_with_history` is — a name
 // held absent costs nothing, and the one nobody wrote down is the one that
@@ -107,9 +111,6 @@ const RETIRED_THESIS_TOOLS = [
   'get_session_summary',
   'add_session_note',
   'cite_trajectories',
-  'publish_thesis',
-  'unpublish_thesis',
-  'check_publication_readiness',
   'suggest_thesis',
   'start_tutorial',
   'preview_diff_classification',
@@ -152,6 +153,9 @@ const RETIRED_THESIS_MODULES = [
   // THE DRAFTER'S LEGACY PROMPT — retired at thesis step 22 with its successor `prompts/foiaRequestDrafting` (T4
   // :715–:716: the gap's two strings and no record).
   'prompts/foiaLetterDrafting',
+  // THE PUBLICATION ASSESSOR'S LEGACY PROMPT — retired at thesis step 23 with its successor `prompts/publicationAssessment`
+  // (T5 :763–:765: OFFICIAL_CAPACITY and GAP_ACTIONABILITY retired; the R49 sketch §d3, approved 2026-09-14).
+  'prompts/thesisPublicationAssessment',
 ];
 
 // THE DOCUMENT TOOLS RETIRED BY document flows §9, added in the document third
@@ -417,8 +421,8 @@ describe('EXPECTED RED UNTIL STEP 8 — no file under src names a retired concep
       .toEqual([]);
     // The thesis halves — one assertion per new shape, and the module one uses the
     // sibling form, which is the spelling this scan was corrected for.
-    expect(RETIRED_THESIS_TOOLS.filter((t) => `server.tool('publish_thesis', …)`.includes(t)))
-      .toEqual(['publish_thesis']);
+    expect(RETIRED_THESIS_TOOLS.filter((t) => `server.tool('run_ai_analysis', …)`.includes(t)))
+      .toEqual(['run_ai_analysis']);
     expect(importedModules('services/x.ts', `import { p } from './thesisPublication';`))
       .toContain('services/thesisPublication');
     // The document halves — one assertion per shape, the module one in the

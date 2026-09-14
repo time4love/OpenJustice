@@ -104,6 +104,8 @@ describe('run_analysis — ONE draw, the audit, ONE analysis row (T4 :595–:602
       inputFingerprint: HEAD_FINGERPRINT(),
       model: 'model-of-THESIS_CRITIC',
       promptVersion: CRITIC_PROMPT_VERSION,
+      // A PAID ACT RECORDS WHO SPENT IT — A2 :1317 as amended, thesis step 23.
+      researcherId: AUTHOR,
       opinion: {
         counterArguments: [{ quoteVerified: true, phraseVerified: 'PRESENT', phraseVerifiedReason: null }],
         strength: { by: 'the critic' },

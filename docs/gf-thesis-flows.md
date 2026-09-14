@@ -743,7 +743,7 @@ that says so:
 
 | check | kind | what it asks |
 |---|---|---|
-| `HEAD_VERSION` | hard | a version exists and is not the published one — publishing the published version is NOTHING_NEW |
+| `HEAD_VERSION` | hard | a version exists, is not the published one — publishing the published version is NOTHING_NEW — and names no Withdrawal: a withdrawn version is never published again, the answer is a new version (2026-09-14) |
 | `CLAIM_FRAMED` | hard | CLAIM_FRAMED(head) (T1): the claim was chosen after an assessed round, under this provision |
 | `CITES_EVIDENCE` | hard | at least one EVIDENCE or DOCUMENT mention (document flows A6) — a thesis with none argues from nothing the corpus holds |
 | `TRAJECTORIES_RESOLVE` | hard | every cited trajectory id resolves to a stored detection pass |
@@ -754,7 +754,7 @@ that says so:
 | `DOCUMENT_QUOTES_PRESENT` | hard | every quoted span of a paragraph carrying a `#doc_` token is PRESENT or UNCHECKED in the content the platform holds; ABSENT refuses — document flows §7, A6 |
 | `RATIONALE_SUBSTANCE` | hard | the publication assessor: did the rationale ARGUE — the debate's question of the whole; MERIT is advisory and recorded |
 | `PUBLIC_INTEREST_STATEMENT` | hard | present on the thesis (COMPLIANCE.md rule 5) |
-| `NAMES_NO_PERSON` | hard | the assessor lists every personal name in the text; the list is empty. A published version names offices, units and roles (T2); the corpus records beneath it carry the names as the pages said them |
+| `NAMES_NO_PERSON` | hard | the assessor lists every personal name in the text and in the call items and requests that publish with it; the list is empty. A published version and its appeals name offices, units and roles (T2); the corpus records beneath it carry the names as the pages said them — no gap decision is refused for a name, it is caught here (2026-09-14) |
 | `ALLEGATIONS_FRAMED` | advisory | the assessor's opinion that claims are framed as allegations under investigation (COMPLIANCE.md rule 1); recorded with the publication |
 
 **Every check names what it examined, and an empty scope says so.** `NAMES_NO_PERSON` reports the
@@ -1132,7 +1132,7 @@ document performs nothing.
 | the framing's rounds: PROPOSED (verbatim), ASSESSED (with every audit verdict), CHOSEN | `assess_framing` · `choose_framing` — the assessment is the assessor's words, recorded by the tool the researcher called | the assessor directly · anything after the thesis is published, on that framing — no tool refuses this yet; the hole is DECLARED (2026-09-12) and closes when a refusal word is ruled |
 | the Thesis: provision, author | `create_thesis` — once | anything; a different provision is a different thesis |
 | `Thesis.headVersionId` | the version write, compare-and-set | any read · any model |
-| `Thesis.publishedVersionId`, `publishedAt`, `publishedById` | `publish_thesis` (set) · `unpublish_thesis` (null) | the platform on its own — a flag is derived, a withdrawal is the author's |
+| `Thesis.publishedVersionId`, `publishedAt`, `publishedById` — and `publicInterestStatement` | `publish_thesis` (the three set together on success; the statement, when given and not blank, stored past the refusals and BEFORE the gate, so a refused attempt keeps the approved words — 2026-09-14) · `unpublish_thesis` (the three null, together) | the platform on its own — a flag is derived, a withdrawal is the author's |
 | the ThesisVersion: text, `contentHash`, claim, parent, author | the version write — ONE transaction, immutable after | any update, ever; an analysis is its own row |
 | the ThesisMention: kind, name, pin | the version write — the pin computed, never supplied | any evidence tool · any model |
 | `ThesisMention.debateSessionId` | `promote_from_debate`, on the head's mention · copied by the next version write when (name, pin) is unchanged | anything else — the one write a mention receives after creation |
@@ -1399,7 +1399,7 @@ FLAGGED(m)              evidence A3, unchanged
 PUBLIC_PAGE(page)       ∃ a version v that was EVER published — v = PUBLISHED(t) now, or v
                         names a Withdrawal or is superseded by a later publication — with an
                         EVIDENCE mention whose record is a capture or diff of the page
-                        — evidence A3 AMENDED by T6: opened pages stay open
+                        — evidence A3 AMENDED by T6: opened pages stay open; EVER published = the version has a PublicationAttempt with outcome PUBLISHED, which covers all three arms (2026-09-14)
 
 THE_CALL(t)             PUBLISHED(t) exists → the GAP_LIST computed over the decisions whose versionId is PUBLISHED(t) or an ancestor of it — decided at or before the publication — entries in force CALLED,
                         each callItem; else none — the flows' reading, ruled 2026-09-14: a gap CALLED after publication waits for a publication act (T4)
@@ -1491,7 +1491,7 @@ decide_gap({ thesisId, gapId | description, decision, citedName?, request?, call
   returns   { gapId, decision, sequence }
   refuses   NOT_AUTHOR · NO_HEAD · NO_SUCH_GAP (a gapId the log does not hold, with no description; or a gapId and a description that disagree — 2026-09-14) · NOT_CITED (CITED names a record the head does not mention) ·
             REASON_REQUIRED · REQUEST_REQUIRED · CALL_ITEM_REQUIRED · STALE_SEQUENCE ·
-            NAMES_PERSON (a callItem naming a person, T2 — checked by the same rule as T5)
+            — NAMES_PERSON RETIRED here (2026-09-14): a callItem naming a person fails NAMES_NO_PERSON at publication, over the appeals that publish; decide_gap spends nothing
 
 draft_foia_request({ thesisId, gapId })                               GATED · paid · ⚠️ re-shaped
   does      → the drafter, with the gap, the claim and the records it rests on; writes nothing
@@ -1508,8 +1508,8 @@ check_publication_readiness({ thesisId, rationale? })                 GATED · p
             a rationale, the assessor's verdict in advance; writes nothing
 
 publish_thesis({ thesisId, rationale, publicInterestStatement? })     WRITE · paid
-  does      T5: readiness · → the assessor · a PublicationAttempt, refused or not · the pin
-  returns   { publishedVersionId, contentHash, publishedAt, overObjection, opened: [url…] }
+  does      T5: the statement stored · → the assessor · the gate · ONE transaction: the pin's compare-and-set, then ONE PublicationAttempt, refused (by the gate, or HEAD_VERSION on a lost race) or published
+  returns   { thesisId, publishedVersionId, contentHash, publishedAt, overObjection (verdict = DISPUTES), opened: [url…] }
   refuses   NOT_AUTHOR · REASON_REQUIRED · NOTHING_NEW · NOT_PUBLISHABLE (with refusedBy and
             each failure's subject)
 
@@ -1567,7 +1567,7 @@ GET /api/thesis/:id                the PUBLISHED version resolved as T5's page s
                                    the appeals, the rationale, the history of published versions,
                                    the withdrawal notice when PUBLISHED(t) is none and a
                                    Withdrawal exists; 404 only for a thesis never published
-GET /api/thesis/:id/versions/:v    a version that was ever published — the history's reads
+GET /api/thesis/:id/versions/:v    a version that was ever published — the history's reads; while the thesis is withdrawn every version, and after it a version named by a Withdrawal, answers the notice, never its text (2026-09-14)
 ```
 
 **Retired routes** — each was the browser performing a research act, which the prosecutor plan
@@ -1597,7 +1597,7 @@ evidence checks are evidence A6's, unchanged, and run first. Order and ids:
                                  10 EVIDENCE_DIFF_INPUT_SOUND hard  ⎭
 11 TRAJECTORIES_RESOLVE    hard  14 GAPS_DECIDED             hard
 12 TRAJECTORIES_CURRENT    hard  15 RATIONALE_SUBSTANCE      hard   the assessor; MERIT advisory
-13 ANALYSIS_CURRENT        hard  16 NAMES_NO_PERSON          hard   the assessor's list, empty
+13 ANALYSIS_CURRENT        hard  16 NAMES_NO_PERSON          hard   the assessor's list over the text and the appeals, empty
                                  17 ALLEGATIONS_FRAMED       advisory
 18 DOCUMENT_OPENING_DECIDED hard 19 DOCUMENT_QUOTES_PRESENT  hard   document flows A6
 ```
@@ -1643,7 +1643,7 @@ models-write-no-state      §2          a source scan, in the suite
 
 one-symbol                 A1, A3      a source scan, in the suite
   NORMALISE · PROVISION · CLAIM_FRAMED · FINGERPRINT · GAP_IN_FORCE · PUBLISHABLE(v) each have
-  one importable symbol and the gate calls it; a second `replace(/\s+/g, ' ')` in a verbatim
+  one importable symbol and the gate calls it — PUBLISHABLE(v) through the ONE evaluation it is folded from (2026-09-14); a second `replace(/\s+/g, ' ')` in a verbatim
   or identity path is the copy that drifts, and today there are three
 
 pin-equals-affirmed        T2          evidence A7's test, unchanged and owned here: move

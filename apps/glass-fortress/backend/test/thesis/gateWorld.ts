@@ -40,6 +40,7 @@ import {
   VERSION,
 } from './fixtures';
 import { mentionRow } from './rows';
+import { seedCorpus } from './tools';
 
 // ---------------------------------------------------------------------------
 // PUBLISHABLE(v)'s WORLD — the R40 sketch §2's fixtures, ONE spelling for
@@ -101,6 +102,8 @@ export const analysis = (inputFingerprint: string, versionId = VERSION.id): Thes
   model: 'critic-model',
   promptVersion: 'critic-v1',
   runAt: at(9, 30),
+  // WHO SPENT THE CALL — A2 :1317 as amended, the column landed at thesis step 23 (declared edit, R49 sketch §f2).
+  researcherId: AUTHOR,
 });
 
 export const gap = (sequence: number, decision: GapDecisionValue, over: Partial<ThesisGapDecisionRow> = {}): ThesisGapDecisionRow => ({
@@ -332,6 +335,11 @@ export async function seedPublishable(over: PublishableSeed = {}): Promise<Thesi
     'fingerprint',
     'CRITIC_PROMPT_VERSION',
   ]);
+  // THE CORPUS BENEATH THE CITATIONS — thesis step 23, additive (the R49 sketch §0b, §6 R12). Check 13 reads FINGERPRINT
+  // through the ONE loader, `criticMaterial.headFingerprint`, which resolves each cited name against the page's captures
+  // and diffs; a world holding only the evidence row would make that loader's guard throw. `seedCorpus` holds exactly the
+  // rows `diffRecord()` fingerprints below, so the analysis this world seeds is current by the loader's own reading.
+  seedCorpus();
   const version = over.version ?? VERSION;
   const gaps = over.gaps ?? [DECIDED];
   const thesis = {

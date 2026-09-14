@@ -104,6 +104,8 @@ export async function runAnalysisHandler(input: RunAnalysisInput): Promise<strin
           opinion: asJsonColumn(opinion),
           model: THESIS_CRITIC_MODEL(),
           promptVersion: CRITIC_PROMPT_VERSION,
+          // A PAID ACT RECORDS WHO SPENT IT — thesis A2 :1317 as amended 2026-09-14 (thesis step 23).
+          researcherId: researcher.researcherId,
         },
         select: { id: true },
       });

@@ -174,7 +174,16 @@ const STEP_20_MODULES = [
   'mcp/tools/decideGap.ts',
   'mcp/tools/draftFoiaRequest.ts',
   'mcp/tools/getWhistleblowerCall.ts',
+  // THESIS STEP 23 (the R49 sketch §f2): the one evaluation of PUBLISHABLE(v) and the appeals' loader open no
+  // transaction; readiness opens none; the two publication acts open ONE each — every one held not bare.
+  'services/publicationEvaluation.ts',
+  'services/publishedThesis.ts',
+  'mcp/tools/checkPublicationReadiness.ts',
+  'mcp/tools/publishThesis.ts',
+  'mcp/tools/unpublishThesis.ts',
 ] as const;
+/** The acts that must OPEN a transaction — so a case cannot pass because the write lost its transaction altogether. */
+const OPENS_ONE = ['services/thesisVersionWrite.ts', 'mcp/tools/publishThesis.ts', 'mcp/tools/unpublishThesis.ts'] as const;
 const VERSION_WRITE = 'services/thesisVersionWrite.ts';
 
 const moduleCode = (module: string): string => readCode(join(BACKEND, 'src', module));
@@ -184,8 +193,8 @@ const createsMentionsInBulk = (code: string): boolean => /\.thesisMention\.creat
 const createsMentionsOneByOne = (code: string): boolean => /\.thesisMention\.create\s*\(/.test(codeOf(code));
 
 describe('the version write — one window, one bulk call (thesis step 20)', () => {
-  it('(i) every $transaction( in the step-20 modules carries WRITE_TRANSACTION — and the version write opens one', () => {
-    expect(transactions(moduleCode(VERSION_WRITE))).toBeGreaterThan(0);
+  it('(i) every $transaction( in the step-20 modules carries WRITE_TRANSACTION — and the version write and the two publication acts each open one', () => {
+    expect(OPENS_ONE.filter((m) => transactions(moduleCode(m)) === 0)).toEqual([]);
     const unwindowed = STEP_20_MODULES.filter((m) => transactions(moduleCode(m)) !== windowed(moduleCode(m)));
     expect(unwindowed).toEqual([]);
   });

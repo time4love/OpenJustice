@@ -200,6 +200,14 @@ export const WRITE_TOOLS = new Set([
   'run_analysis',
   'decide_gap',
   'draft_foia_request',
+  // PUBLICATION — thesis step 23, A4 :1506–:1518. `check_publication_readiness` writes nothing and SPENDS one
+  // publication-assessor call when given a rationale — A4 :1506 calls it GATED, and a draw an anonymous caller could
+  // trigger is the exposure this set exists to keep out; without one it still returns a draft thesis's working state.
+  // `publish_thesis` WRITES an attempt and the pin, attributed, and SPENDS one assessor call (A4 :1510);
+  // `unpublish_thesis` nulls the pin and WRITES a withdrawal, attributed (A4 :1516).
+  'check_publication_readiness',
+  'publish_thesis',
+  'unpublish_thesis',
 ]);
 
 // ---------------------------------------------------------------------------

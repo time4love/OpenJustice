@@ -1,6 +1,7 @@
 import { prisma } from '../../lib/prisma';
 import { getResearcherId } from '../../context/researcherContext';
 import { publicationState } from '../../lib/thesisView';
+import { handleOf, handlesOf, publishedEntries, type PublishedEntry } from '../../services/publishedThesis';
 import { gapList, unargued } from '../../services/thesisPredicates';
 import { answer } from './thesisRefusals';
 
@@ -20,19 +21,11 @@ import { answer } from './thesisRefusals';
 // THE AUTHOR IS `Researcher.handle` — the self-chosen pseudonym, the only public identifier (schema :33). A
 // published thesis whose author row is missing is a foreign-key violation, not an answer: it THROWS, never
 // `author: null` (R47 §6-R8). `headIsPublished` is `lib/thesisView`'s, the one rule for what the public sees;
-// the two counts are UNARGUED and GAP_LIST, CALLED.
+// the two counts are UNARGUED and GAP_LIST, CALLED. The published list is `services/publishedThesis`'s
+// `publishedEntries`, which `GET /api/thesis` answers too (thesis step 23): the tool and the route cannot differ.
 // ---------------------------------------------------------------------------
 
 export const listThesesSchema = {};
-
-interface PublishedEntry {
-  thesisId: string;
-  claim: string;
-  provision: string | null;
-  publishedAt: Date | null;
-  author: string;
-  contentHash: string;
-}
 
 interface OwnEntry {
   thesisId: string;
@@ -48,41 +41,11 @@ interface OwnEntry {
 
 export async function listThesesHandler(): Promise<string> {
   return answer(async (): Promise<PublishedEntry[] | { theses: OwnEntry[]; published: PublishedEntry[] }> => {
-    const published = await publishedTheses();
+    const published = await publishedEntries();
     const researcherId = getResearcherId();
     if (researcherId === null) return published;
     return { theses: await ownTheses(researcherId), published };
   });
-}
-
-/** Every thesis with PUBLISHED(t), as A4 :1427 shapes it — identical for every caller. */
-async function publishedTheses(): Promise<PublishedEntry[]> {
-  const theses = await prisma.thesis.findMany({
-    where: { publishedVersionId: { not: null } },
-    select: { id: true, provision: true, createdById: true, publishedVersionId: true, publishedAt: true },
-  });
-  const handles = await handlesOf(theses.map((t) => t.createdById));
-
-  const entries: PublishedEntry[] = [];
-  for (const thesis of theses) {
-    if (thesis.publishedVersionId === null) continue;
-    const version = await prisma.thesisVersion.findUnique({
-      where: { id: thesis.publishedVersionId },
-      select: { claim: true, contentHash: true },
-    });
-    if (version === null) {
-      throw new Error(`list_theses: thesis ${thesis.id} is published at ${thesis.publishedVersionId}, which does not exist.`);
-    }
-    entries.push({
-      thesisId: thesis.id,
-      claim: version.claim,
-      provision: thesis.provision,
-      publishedAt: thesis.publishedAt,
-      author: handleOf(handles, thesis.createdById, thesis.id),
-      contentHash: version.contentHash,
-    });
-  }
-  return entries;
 }
 
 /** The caller's own theses, each with its standing (A4 :1429–:1431). */
@@ -137,23 +100,4 @@ async function ownTheses(researcherId: string): Promise<OwnEntry[]> {
     });
   }
   return entries;
-}
-
-/** The handles of these researchers, by id — one query. */
-async function handlesOf(ids: readonly string[]): Promise<Map<string, string>> {
-  if (ids.length === 0) return new Map();
-  const rows = await prisma.researcher.findMany({ where: { id: { in: [...new Set(ids)] } }, select: { id: true, handle: true } });
-  return new Map(rows.map((r) => [r.id, r.handle]));
-}
-
-/** A researcher's handle — a missing row is a broken foreign key, and says so. */
-function handleOf(handles: ReadonlyMap<string, string>, researcherId: string, thesisId: string): string {
-  const handle = handles.get(researcherId);
-  if (handle === undefined) {
-    throw new Error(
-      `list_theses: thesis ${thesisId} names researcher ${researcherId}, and no such researcher exists. ` +
-        'A thesis cannot outlive its author row; this is a broken foreign key, not an anonymous author.',
-    );
-  }
-  return handle;
 }

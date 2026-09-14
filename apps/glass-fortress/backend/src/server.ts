@@ -20,6 +20,7 @@ import { forensicsRouter } from './routes/forensicsRoutes';
 import { walkArticleRulesRouter } from './walk/routes';
 import { mcpRouter } from './mcp/mcpRoutes';
 import { authRouter } from './routes/authRoutes';
+import { publicThesisRouter } from './routes/publicThesisRoutes';
 import { reportRouter } from './routes/reportRoutes';
 import { prisma } from './lib/prisma';
 import { verifyEnvironmentIdentityAtStartup } from './lib/appEnv';
@@ -199,6 +200,8 @@ app.use('/api/forensics', forensicsRouter);
 app.use('/api/article-rules', walkArticleRulesRouter);
 app.use('/api/auth', authRouter);
 app.use('/api/reports', reportRouter);
+// The published theses — PUBLIC, identity-free (thesis A5 :1559–:1570).
+app.use('/api/thesis', publicThesisRouter);
 
 // ---------------------------------------------------------------------------
 // Global error handler — must be registered AFTER all routes.
