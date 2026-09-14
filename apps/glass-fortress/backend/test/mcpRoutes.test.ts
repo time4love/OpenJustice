@@ -193,6 +193,8 @@ describe('POST /api/mcp — write tool auth', () => {
     ['check_publication_readiness', 'it spends one assessor call when given a rationale, writing nothing (A4 :1506, GATED · paid iff rationale)'],
     ['publish_thesis', 'it writes an attempt and the pin, and spends one assessor call (A4 :1510)'],
     ['unpublish_thesis', 'it nulls the pin and writes a withdrawal, attributed (A4 :1516)'],
+    // THESIS STEP 24 (A4 :1523–:1525): the author's list names the draft citations of unpublished theses.
+    ['list_thesis_reviews', "it names the draft citations of an author's unpublished theses (A4 :1523)"],
   ] as const) {
     it(`returns 401 with WWW-Authenticate for an anonymous ${tool} — a GATED read, gated at the route: ${why}`, async () => {
       const res = await request(app)

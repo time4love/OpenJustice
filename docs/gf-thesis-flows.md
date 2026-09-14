@@ -1520,9 +1520,9 @@ unpublish_thesis({ thesisId, reason })                                WRITE
 add_note({ thesisId | framingId, text })                              WRITE · ⚠️ replaces add_session_note
   refuses   NO_RESEARCHER · NEITHER · NO_THESIS · NO_FRAMING · NOT_AUTHOR · EMPTY (2026-09-10)
 
-list_thesis_reviews({})                                               GATED read · ⚠️ to build
-  returns   REVIEWS(caller), oldest first, each with its material and one command; an empty
-            list is an answer
+list_thesis_reviews({})                                               GATED read
+  returns   { owed, reviews } — REVIEWS(caller), oldest first, each with its material and one
+            command; { owed: 0, reviews: [] } is an answer, never a refusal (2026-09-14)
 
 run_prosecutor({ provision, window, pages })                          WRITE · paid · later (§10)
 

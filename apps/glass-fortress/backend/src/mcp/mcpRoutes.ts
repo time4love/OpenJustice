@@ -208,6 +208,11 @@ export const WRITE_TOOLS = new Set([
   'check_publication_readiness',
   'publish_thesis',
   'unpublish_thesis',
+  // AFTER PUBLICATION — thesis step 24, A4 :1523–:1525. `list_thesis_reviews` writes nothing and calls no model, and is
+  // gated all the same: A4 calls it a GATED read, and it names the DRAFT citations of an author's unpublished theses —
+  // working state a public read never reveals. It refuses without a researcher, since REVIEWS(caller) has no subject
+  // otherwise. The standing precedent is `list_evidence_reviews`.
+  'list_thesis_reviews',
 ]);
 
 // ---------------------------------------------------------------------------

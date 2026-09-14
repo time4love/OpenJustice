@@ -1,9 +1,17 @@
 import { createHash } from 'node:crypto';
 import type { Framing, FramingRound, ThesisAnalysis, ThesisGapDecision, ThesisMention, ThesisVersion } from '@prisma/client';
 import { prisma } from '../lib/prisma';
-import { argued, currentVersionOf, type ContentVersionProvenance, type RecordContent } from './evidencePredicates';
+import type { NamedRecord } from './evidenceReviews';
+import {
+  argued,
+  currentVersionOf,
+  flagged,
+  type ContentVersionProvenance,
+  type FlagReason,
+  type RecordContent,
+} from './evidencePredicates';
 import { evaluatePublication, publishabilityOf, type PublicationAssessment } from './publicationEvaluation';
-import type { TrajectoryCurrency } from './trajectoryCitation';
+import { resolveTrajectoryCitations, type TrajectoryCurrency } from './trajectoryCitation';
 
 export { CRITIC_PROMPT_VERSION } from '../prompts/thesisCritique';
 
@@ -20,7 +28,7 @@ export { CRITIC_PROMPT_VERSION } from '../prompts/thesisCritique';
 // EVERY PREDICATE IS COMPUTED ON READ AND NONE IS STORED (A3 :1413). CLAIM_FRAMED,
 // UNARGUED, GAP_IN_FORCE, GAP_LIST, FINGERPRINT, CURRENT_ANALYSIS, GAPS_DECIDED,
 // THE_CALL and THE_REQUESTS are PURE and SYNC over rows the caller loaded; HISTORY
-// is a question about the database, async, and loads for itself —
+// and REVIEWS are questions about the database, async, and load for themselves —
 // `evidencePredicates.ts`' purity rule, both arms, stated there once.
 // ---------------------------------------------------------------------------
 
@@ -357,6 +365,182 @@ export async function publishableVersion(
   assessment: PublicationAssessment | null,
 ): Promise<{ publishable: boolean; failed: string[] }> {
   return publishabilityOf(await evaluatePublication(versionId, assessment));
+}
+
+// ---------------------------------------------------------------------------
+// FLAGGED · STALE_TRAJECTORY OVER ONE VERSION — A3 :1386–:1388, :1398, :1408–:1409 · thesis step 24
+//
+// THE TWO READINGS REVIEWS AND READINESS SHARE (the R50 sketch §a, q6): `check_publication_readiness` reports them as
+// information on a published head (A6 :1610–:1612) and REVIEWS owes them — ONE function each, both callers, so the two
+// surfaces cannot disagree about which citation is flagged or which trajectory is stale.
+// ---------------------------------------------------------------------------
+
+/** One EVIDENCE citation of a version that FLAGGED(m) holds for, with the arms `flagged` named. */
+interface FlaggedCitation {
+  mentionId: string;
+  name: string;
+  reasons: FlagReason[];
+}
+
+/** FLAGGED(m) for each EVIDENCE citation of the version — `flagged` CALLED per mention, the flagged ones kept. */
+export async function flaggedCitations(versionId: string): Promise<FlaggedCitation[]> {
+  const mentions = await prisma.thesisMention.findMany({ where: { versionId, kind: 'EVIDENCE' }, select: { id: true, name: true } });
+  const found: FlaggedCitation[] = [];
+  for (const mention of mentions) {
+    const report = await flagged(mention.id);
+    if (report.flagged) found.push({ mentionId: mention.id, name: mention.name, reasons: report.reasons });
+  }
+  return found;
+}
+
+/** A version's trajectory citations the newest pass does not stand behind — and the ones no pass holds at all. */
+interface StaleTrajectories {
+  stale: { id: string; currency: TrajectoryCurrency }[];
+  /** Returned WHOLE, never filtered: each caller says what a citation no stored pass holds means (the R50 sketch §0g). */
+  missing: string[];
+}
+
+/**
+ * STALE_TRAJECTORY over the version's TRAJECTORY citations: ONE call to the ONE resolver, `trajectoryCurrent` CALLED on
+ * each resolved currency. A MISSING id has no currency, so it is not STALE_TRAJECTORY (A3 :1386–:1388) — and it is not
+ * dropped: it comes back in `missing`.
+ */
+export async function staleTrajectories(versionId: string): Promise<StaleTrajectories> {
+  const mentions = await prisma.thesisMention.findMany({ where: { versionId, kind: 'TRAJECTORY' }, select: { name: true } });
+  const { resolved, missing } = await resolveTrajectoryCitations(mentions.map((m) => m.name));
+  return {
+    stale: resolved.filter((t) => !trajectoryCurrent(t.currency)).map((t) => ({ id: t.id, currency: t.currency })),
+    missing,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// REVIEWS(researcher) — A3 :1408–:1410 · thesis step 24 · computed on read, none stored (A3 :1413)
+// ---------------------------------------------------------------------------
+
+/** Which pointer of the thesis a citing version is: PUBLISHED(t) (`published: true`) or HEAD(t). */
+export interface CitedOn {
+  versionId: string;
+  published: boolean;
+}
+
+/**
+ * One thing an author owes. JSON-PLAIN BY CONSTRUCTION — strings, booleans and arrays of them — because the tool's entry
+ * carries it verbatim beside the instant and the material it renders (the R50 sketch §0b). `name` is the record's name
+ * (FLAGGED, UNARGUED) or the trajectory id (STALE_TRAJECTORY). ARRIVED is document plan step 32's member, by addition.
+ */
+export type ReviewEntry =
+  | { kind: 'FLAGGED'; thesisId: string; name: string; versionId: string; mentionId: string; reasons: FlagReason[]; command: string }
+  | {
+      kind: 'STALE_TRAJECTORY';
+      thesisId: string;
+      name: string;
+      citedOn: CitedOn[];
+      state: TrajectoryCurrency['state'];
+      command: string;
+    }
+  | { kind: 'UNARGUED'; thesisId: string; name: string; versionId: string; mentionId: string; command: string };
+
+type ReviewKind = ReviewEntry['kind'];
+
+/** A3 :1408–:1410's listing order — the tie-break the list sorts by after its instant. */
+export const REVIEW_KINDS: readonly ReviewKind[] = ['FLAGGED', 'STALE_TRAJECTORY', 'UNARGUED'];
+
+/**
+ * THE ONE COMMAND an entry owes, and the ONE builder of it (the R50 sketch §6-D9): FLAGGED and STALE_TRAJECTORY are
+ * answered by a new version (T6 :871, :889; document flows :903) — re-pin, drop, or concede in the text; UNARGUED by
+ * `open_debate`, which returns a debate already OPEN on the record and thesis rather than refusing (evidence A4 :1119).
+ * REVIEWS holds no corpus, so it passes `record: null` and the command carries `record=…` as a placeholder, as evidence's
+ * `reason=…` does; the tool passes the record the ONE resolver named, and the command pastes as written.
+ */
+export function reviewCommand(kind: ReviewKind, thesisId: string, headVersionId: string, record: NamedRecord | null): string {
+  switch (kind) {
+    case 'FLAGGED':
+    case 'STALE_TRAJECTORY':
+      return `add_thesis_version thesisId=${thesisId} expectedHeadVersionId=${headVersionId} claim=… text=…`;
+    case 'UNARGUED':
+      return `open_debate thesisId=${thesisId} record=${record === null ? '…' : JSON.stringify(record)} rationale=…`;
+  }
+}
+
+/**
+ * REVIEWS(researcher) — for each thesis they AUTHOR (A3 :1361): the FLAGGED citations of PUBLISHED(t) · the
+ * STALE_TRAJECTORY citations of PUBLISHED(t) and HEAD(t), ONE entry per trajectory with the pointers that cite it · the
+ * UNARGUED citations of HEAD(t). Every arm CALLS its predicate — `flagged`, `trajectoryCurrent` over the ONE resolver,
+ * `unargued` over `argued` — and nothing is written.
+ *
+ * A trajectory citation NO stored pass holds THROWS, naming the thesis and the id: it was resolved when the version was
+ * written and `ClaimTrajectory` rows are never deleted, so it is a malformed citation — and an obligation quietly dropped
+ * from this list is an obligation reported as none. The ORDER here is the thesis id, then A3's kinds; "oldest first" is
+ * the tool's (A4 :1524).
+ */
+export async function reviews(researcherId: string): Promise<ReviewEntry[]> {
+  const theses = await prisma.thesis.findMany({
+    where: { createdById: researcherId },
+    select: { id: true, headVersionId: true, publishedVersionId: true },
+    orderBy: { id: 'asc' },
+  });
+
+  const entries: ReviewEntry[] = [];
+  for (const thesis of theses) {
+    const head = thesis.headVersionId;
+    if (head === null) {
+      // A LOUD GUARD: `create_thesis` writes the thesis, its first version and the head in ONE transaction.
+      throw new Error(`reviews: thesis ${thesis.id} has no head version — a malformed thesis, not an obligation.`);
+    }
+    const published = thesis.publishedVersionId;
+    const command = (kind: ReviewKind): string => reviewCommand(kind, thesis.id, head, null);
+
+    if (published !== null) {
+      for (const citation of await flaggedCitations(published)) {
+        entries.push({ kind: 'FLAGGED', thesisId: thesis.id, name: citation.name, versionId: published, mentionId: citation.mentionId, reasons: citation.reasons, command: command('FLAGGED') });
+      }
+    }
+
+    const pointers: CitedOn[] =
+      published === null
+        ? [{ versionId: head, published: false }]
+        : published === head
+          ? [{ versionId: published, published: true }]
+          : [
+              { versionId: published, published: true },
+              { versionId: head, published: false },
+            ];
+    const stale = new Map<string, { citedOn: CitedOn[]; state: TrajectoryCurrency['state'] }>();
+    for (const pointer of pointers) {
+      const read = await staleTrajectories(pointer.versionId);
+      const missing = read.missing.at(0);
+      if (missing !== undefined) {
+        throw new Error(
+          `reviews: thesis ${thesis.id} cites trajectory ${missing} (version ${pointer.versionId}), which no stored ` +
+            'detection pass holds — a malformed citation, not an obligation.',
+        );
+      }
+      for (const trajectory of read.stale) {
+        const held = stale.get(trajectory.id);
+        if (held === undefined) stale.set(trajectory.id, { citedOn: [pointer], state: trajectory.currency.state });
+        else held.citedOn.push(pointer);
+      }
+    }
+    for (const [id, { citedOn, state }] of stale) {
+      entries.push({ kind: 'STALE_TRAJECTORY', thesisId: thesis.id, name: id, citedOn, state, command: command('STALE_TRAJECTORY') });
+    }
+
+    const headMentions = await prisma.thesisMention.findMany({
+      where: { versionId: head },
+      select: { id: true, kind: true, name: true, debateSession: { select: { status: true, recordFileHash: true, thesisId: true } } },
+    });
+    const owed = new Set(
+      unargued(
+        { thesisId: thesis.id },
+        headMentions.map((m) => ({ kind: m.kind, name: m.name, debate: m.debateSession })),
+      ),
+    );
+    for (const mention of headMentions.filter((m) => owed.has(m.name))) {
+      entries.push({ kind: 'UNARGUED', thesisId: thesis.id, name: mention.name, versionId: head, mentionId: mention.id, command: command('UNARGUED') });
+    }
+  }
+  return entries;
 }
 
 // ---------------------------------------------------------------------------

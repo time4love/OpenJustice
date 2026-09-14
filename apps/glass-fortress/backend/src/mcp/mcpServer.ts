@@ -57,6 +57,7 @@ import { decideGapSchema, decideGapHandler } from './tools/decideGap';
 import { draftFoiaRequestSchema, draftFoiaRequestHandler } from './tools/draftFoiaRequest';
 import { getWhistleblowerCallSchema, getWhistleblowerCallHandler } from './tools/getWhistleblowerCall';
 import { checkPublicationReadinessSchema, checkPublicationReadinessHandler } from './tools/checkPublicationReadiness';
+import { listThesisReviewsSchema, listThesisReviewsHandler } from './tools/listThesisReviews';
 import { publishThesisSchema, publishThesisHandler } from './tools/publishThesis';
 import { unpublishThesisSchema, unpublishThesisHandler } from './tools/unpublishThesis';
 
@@ -1055,6 +1056,24 @@ export function createMcpServer(): McpServer {
     },
     async (input) => ({
       content: [{ type: 'text' as const, text: stampEnvironment(await checkPublicationReadinessHandler(input)) }],
+    }),
+  );
+
+  // AFTER PUBLICATION — thesis step 24, docs/gf-thesis-flows.md T6 :863–:882, A4 :1523–:1525. A GATED read that returns
+  // work and changes nothing: REVIEWS(caller), oldest first, stop-shaped. ARRIVED joins it at document plan step 32.
+  server.registerTool(
+    'list_thesis_reviews',
+    {
+      description:
+        'WHAT YOU OWE ON YOUR THESES — every published citation now FLAGGED, every cited trajectory the newest detection ' +
+        'pass no longer stands behind, every head citation not yet argued; oldest first, each with its material — for a ' +
+        'flagged citation, the pinned version beside the current one, why it moved and the review decision — and ONE ' +
+        'command to paste. The count comes first, and an empty list is an answer. Writes nothing and calls no model. ' +
+        'Refuses NO_RESEARCHER.',
+      inputSchema: listThesisReviewsSchema,
+    },
+    async () => ({
+      content: [{ type: 'text' as const, text: stampEnvironment(await listThesisReviewsHandler()) }],
     }),
   );
 
