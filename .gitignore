@@ -47,3 +47,5 @@ yarn-error.log*
 coverage/
 apps/bronze-fortress/backend/src/generated/
 .claude/DB_CLEANUP_SESSION
+# Claude Code saves approved commands here verbatim, credentials included — never commit it
+.claude/settings.local.json
