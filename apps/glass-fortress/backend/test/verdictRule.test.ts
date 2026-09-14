@@ -4,10 +4,10 @@ import { verdict, verdictInAny } from '../src/lib/verdict';
 // THE ONE VERDICT RULE — thesis step 19 builds it (docs/gf-document-refactor-plan.md
 // :56, :162, :411), and these four cases are its whole contract.
 //
-// IN THE UNIT PROJECT, which is the only run that gates (`npm run test:gf`;
+// IN THE UNIT PROJECT, written when it was the only run that gated (`npm run test:gf`;
 // docs/gf-thesis-step-18-2026-09-11.md §7 — "a case in a job that cannot block a
-// merge holds nothing"). The thesis acceptance project runs continue-on-error
-// until step 25 and cannot hold this.
+// merge holds nothing"). Since thesis step 25's remainder (2026-09-15) the thesis
+// acceptance project gates too.
 //
 // THE ONE-SPELLING SCAN IS DOCUMENT STEP 29's, not this step's. What holds the
 // rule here is that its callers CALL it: break `verdict` at its definition and

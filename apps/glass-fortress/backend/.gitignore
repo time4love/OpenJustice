@@ -3,5 +3,3 @@
 prisma/*.db
 prisma/*.db-journal
 
-# The acceptance-suite CI job writes jest's JSON report here; never committed.
-walk-results.json

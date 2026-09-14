@@ -244,6 +244,11 @@ with `thesis` in it; `get_environment`'s counts no longer name a removed table.
 Pulled forward as 11a-thesis — decided 2026-09-08, the note above step 17; the code half is done
 there, the schema half at step 18, and what remains here is the `thesis` project joining the
 required run and the set-equality assertion on `mcpToolClassification`.
+The remainder landed 2026-09-15: `npm test` — the required check — selects `thesis`, and with it `walk` and `evidence`,
+all green on every file (the two beyond this step's text on the researcher's ruling of the same day; the non-gating CI job
+retired); `mcpToolClassification` asserts the registered surface equals a list of the designed tools, each beside the
+interaction A5, evidence A4 or thesis A4 line that names it — moved at every step that registers a tool, asserted against
+A4 in full at document refactor plan step 36. With it, step 25 is closed by the note above.
 
 ### 26 · The one thesis, rewritten
 

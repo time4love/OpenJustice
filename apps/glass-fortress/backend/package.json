@@ -14,7 +14,7 @@
     "lint:fix": "eslint src/ --fix",
     "format": "prettier --write src/",
     "format:check": "prettier --check src/",
-    "test": "jest --config jest.config.ts --selectProjects unit extraction",
+    "test": "jest --config jest.config.ts --selectProjects unit extraction walk evidence thesis",
     "test:walk": "jest --config jest.config.ts --selectProjects walk",
     "test:evidence": "jest --config jest.config.ts --selectProjects evidence",
     "test:thesis": "jest --config jest.config.ts --selectProjects thesis",
