@@ -70,6 +70,10 @@ export const READ_TOOLS = new Set([
   // published entries are the same for everyone; a researcher's bearer token, resolved by identifyViewer,
   // adds their own theses beside them — access, not a second behaviour.
   'list_theses',
+  // THE WHISTLEBLOWER CALL — thesis step 22, A4 :1501: PUBLIC. It writes nothing, calls no model and reads no caller:
+  // the two appeals of a PUBLISHED thesis, the same bytes for everyone, and `{ live: false }` for an unpublished or
+  // missing one alike — so it tells an anonymous caller nothing about drafts (step 17's Q3b).
+  'get_whistleblower_call',
 ]);
 
 export const WRITE_TOOLS = new Set([
@@ -190,6 +194,12 @@ export const WRITE_TOOLS = new Set([
   'add_thesis_version',
   'add_note',
   'get_thesis_context',
+  // ANALYSIS AND GAPS — thesis step 22, A4 :1481–:1499. `run_analysis` WRITES an analysis and SPENDS one critic call;
+  // `decide_gap` WRITES a decision, attributed; `draft_foia_request` writes nothing and SPENDS one drafter call — A4
+  // :1496 calls it GATED, and a draw paid for by an anonymous caller is the exposure this set exists to keep out.
+  'run_analysis',
+  'decide_gap',
+  'draft_foia_request',
 ]);
 
 // ---------------------------------------------------------------------------

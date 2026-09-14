@@ -540,6 +540,9 @@ export const TOOLS: Readonly<Record<ToolName, ToolContract>> = {
       'NO_THESIS',
       'NOT_AUTHOR',
       'NO_HEAD',
+      // ADDED AT THESIS STEP 22, the researcher's ruling of 2026-09-14 (A4 :1492 as amended): a gapId the log does not
+      // hold with no description, or a gapId and a description that disagree — after NO_HEAD, before NOT_CITED.
+      'NO_SUCH_GAP',
       'NOT_CITED',
       'REASON_REQUIRED',
       'REQUEST_REQUIRED',
@@ -555,7 +558,9 @@ export const TOOLS: Readonly<Record<ToolName, ToolContract>> = {
     module: 'mcp/tools/draftFoiaRequest',
     access: 'GATED',
     paid: true,
-    codes: ['NO_RESEARCHER', 'NO_THESIS', 'NOT_AUTHOR', 'NO_HEAD', 'NO_SUCH_GAP'],
+    // AWAITING_DERIVATION ADDED AT THESIS STEP 22 (the researcher's ruling on R48 chunk 4's Q4; A4 :1499 amended in
+    // place): the drafter is never handed content that does not exist, as the critic is not.
+    codes: ['NO_RESEARCHER', 'NO_THESIS', 'NOT_AUTHOR', 'NO_HEAD', 'NO_SUCH_GAP', 'AWAITING_DERIVATION'],
     owed: [],
   },
   // Q3b: a PUBLIC read refuses nothing — an id naming no thesis is `{ live: false }`.

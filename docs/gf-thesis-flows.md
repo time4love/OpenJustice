@@ -662,7 +662,7 @@ call's exact shape, and what happens after is the public's.
 
 ```
 Claude       → draft_foia_request(thesisId, gapId)                          ⚠️ re-shaped
-backend      REFUSES NO_HEAD · NOT_AUTHOR · NO_SUCH_GAP
+backend      REFUSES NO_HEAD · NOT_AUTHOR · NO_SUCH_GAP · AWAITING_DERIVATION (naming the diff — 2026-09-14)
              hands the DRAFTER: the gap · the claim · the records the gap rests on — the head
                version's citations whose passages the gap concerns, by name, with their
                computed content — so the request carries the proof that the change happened
@@ -1496,7 +1496,7 @@ decide_gap({ thesisId, gapId | description, decision, citedName?, request?, call
 draft_foia_request({ thesisId, gapId })                               GATED · paid · ⚠️ re-shaped
   does      → the drafter, with the gap, the claim and the records it rests on; writes nothing
   returns   { text, authority, legalBasis, addresses, restsOn }  — passed to decide_gap REQUESTED
-  refuses   NO_SUCH_GAP · NOT_AUTHOR
+  refuses   NO_SUCH_GAP · NOT_AUTHOR · AWAITING_DERIVATION (the drafter is never handed content that does not exist — 2026-09-14)
 
 get_whistleblower_call({ thesisId })                                  PUBLIC · re-shaped
   returns   THE_CALL(t) and THE_REQUESTS(t) — both appeals of the published version, with the

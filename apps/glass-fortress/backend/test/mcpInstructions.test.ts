@@ -127,6 +127,6 @@ describe('the instructions reach the server, and from one pure module', () => {
   it('states its one limit with the step that lifts it', () => {
     // The paragraph that names tools with no path today is edited when that
     // path lands; the step number is how the editor finds it.
-    expect(instructionsSource).toMatch(/Edit this paragraph at steps 22 and 23/);
+    expect(instructionsSource).toMatch(/Edit this paragraph at step 23/);
   });
 });

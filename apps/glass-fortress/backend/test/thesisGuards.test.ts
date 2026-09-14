@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { normaliseClaim } from '../src/lib/normalise';
-import { codeOf, readCode } from './walk/scan';
+import { codeOf, readCode, tsFiles } from './walk/scan';
 
 // ---------------------------------------------------------------------------
 // THE THESIS LAYER'S GUARDS THAT A MERGE MUST PASS — thesis step 18.
@@ -157,7 +157,7 @@ describe('lib/normalise.ts imports nothing — thesis flows A1 :1247–:1250, as
 //        — Prisma's 5 s default is invisible to a suite that mocks Prisma (memory: the transaction window)
 //   (ii) the version write creates a version's mentions in ONE `createMany`, never a `create` per row
 //
-// THE SUBJECTS are step 20's six modules: the version write and its five tools.
+// THE SUBJECTS are step 20's six modules — the version write and its five tools — and step 22's successors.
 // ---------------------------------------------------------------------------
 
 const STEP_20_MODULES = [
@@ -167,6 +167,13 @@ const STEP_20_MODULES = [
   'mcp/tools/getThesisContext.ts',
   'mcp/tools/listTheses.ts',
   'mcp/tools/addNote.ts',
+  // THE STEP-22 SUCCESSORS (R48 §6-11): none opens a transaction today — the analysis is ONE create and the loaders
+  // read — so the case holds that none is bare, and a planted bare one reddens it.
+  'services/criticMaterial.ts',
+  'mcp/tools/runAnalysis.ts',
+  'mcp/tools/decideGap.ts',
+  'mcp/tools/draftFoiaRequest.ts',
+  'mcp/tools/getWhistleblowerCall.ts',
 ] as const;
 const VERSION_WRITE = 'services/thesisVersionWrite.ts';
 
@@ -201,5 +208,40 @@ describe('the version write — one window, one bulk call (thesis step 20)', () 
     expect(createsMentionsOneByOne('await tx.thesisMention.createMany({ data: rows });')).toBe(false);
     expect(createsMentionsOneByOne('// never tx.thesisMention.create( per row\nconst a = 1;')).toBe(false);
     expect(createsMentionsInBulk('await tx.thesisMention.createMany({ data: rows });')).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// NO INVISIBLE CONTROL CHARACTER IN THE SOURCE — thesis step 22 (R48 chunk 2, REVIEW's M1).
+//
+// A raw NUL byte written as FINGERPRINT's part separator compiled, passed every case and read as an empty string in
+// every editor and every diff: a byte the layout depends on, that no reviewer could see. The rule is over the WHOLE
+// tree, never the one file it was found in — a code unit below 0x20 other than tab, LF and CR belongs in a source file
+// only as an ESCAPE (`'\u0000'`), where it can be read.
+// ---------------------------------------------------------------------------
+
+/** Every code unit below 0x20 that is not tab, LF or CR — with its line. */
+const invisibles = (text: string): { line: number; code: number }[] =>
+  text.split('\n').flatMap((line, index) =>
+    [...line]
+      .map((ch) => ch.charCodeAt(0))
+      .filter((code) => code < 0x20 && code !== 0x09 && code !== 0x0d)
+      .map((code) => ({ line: index + 1, code })),
+  );
+
+describe('no invisible control character in src/ or test/ (thesis step 22)', () => {
+  it('no .ts file under src/ or test/ holds a code unit below 0x20 other than tab, LF and CR', () => {
+    const files = [...tsFiles(join(BACKEND, 'src')), ...tsFiles(join(BACKEND, 'test'))];
+    expect(files.length).toBeGreaterThan(100);
+    const offenders = files.flatMap((file) =>
+      invisibles(readFileSync(file, 'utf8')).map(({ line, code }) => `${file.slice(BACKEND.length + 1)}:${String(line)} U+${code.toString(16).padStart(4, '0')}`),
+    );
+    expect(offenders).toEqual([]);
+  });
+
+  it('DETECTS a NUL and a bell planted in a line — and tab, LF, CR and the ESCAPE spelling do not fire', () => {
+    expect(invisibles(`const PART = '${String.fromCharCode(0)}';`)).toEqual([{ line: 1, code: 0 }]);
+    expect(invisibles(`a\nb${String.fromCharCode(7)}`)).toEqual([{ line: 2, code: 7 }]);
+    expect(invisibles("const PART = '\\u0000';\tconst b = 1;\r\nconst c = 2;\n")).toEqual([]);
   });
 });

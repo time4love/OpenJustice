@@ -25,6 +25,7 @@
 // hoisting (the factory runs before an `import`ed binding is assigned).
 // ---------------------------------------------------------------------------
 
+import { Prisma } from '@prisma/client';
 import { PAGE, URL } from './corpusFixture';
 
 export interface Row {
@@ -226,7 +227,7 @@ type ThesisRowsKey =
  * The rows are reached through `store[key]` at CALL time, never captured,
  * because `resetDouble` replaces each array.
  */
-function appendOnly(model: string, key: ThesisRowsKey) {
+function appendOnly(model: string, key: ThesisRowsKey, unique: readonly string[] = []) {
   return {
     // HONOURS ITS `where` — equality over every field it names, as
     // `thesisVersion.findMany` does (round 2, M2). A double that answered every
@@ -250,7 +251,21 @@ function appendOnly(model: string, key: ThesisRowsKey) {
         Promise.resolve(store[key].find((r) => r['id'] === args.where?.id) ?? null),
       ),
     ),
+    // THE UNIQUE INDEX, MODELLED — thesis step 22, additive (R48 E7, REVIEW's Q5). Where the table declares one
+    // (`ThesisGapDecision @@unique([thesisId, gapId, sequence])`, `ThesisAnalysis @@unique([versionId,
+    // inputFingerprint])`), a row equal on every indexed column to a held row REJECTS with the P2002 Prisma raises,
+    // its `meta.target` naming the columns — and records nothing. Not an armed flag: a flag lets ANY caught error
+    // pass for the collision, and a caller that forgot to read `meta.target` would pass with it.
     create: jest.fn((args: { data: Row }) => {
+      if (unique.length > 0 && store[key].some((row) => unique.every((field) => row[field] === args.data[field]))) {
+        return Promise.reject(
+          new Prisma.PrismaClientKnownRequestError(`Unique constraint failed on the fields: (${unique.join(', ')})`, {
+            code: 'P2002',
+            clientVersion: 'double',
+            meta: { target: [...unique] },
+          }),
+        );
+      }
       record(model, 'create', args.data);
       const created = { id: `${model}-${String(store[key].length + 1)}`, ...args.data };
       store[key].push(created);
@@ -915,8 +930,8 @@ export const db = {
       return Promise.resolve(created);
     }),
   },
-  thesisAnalysis: appendOnly('thesisAnalysis', 'analyses'),
-  thesisGapDecision: appendOnly('thesisGapDecision', 'gapDecisions'),
+  thesisAnalysis: appendOnly('thesisAnalysis', 'analyses', ['versionId', 'inputFingerprint']),
+  thesisGapDecision: appendOnly('thesisGapDecision', 'gapDecisions', ['thesisId', 'gapId', 'sequence']),
   publicationAttempt: appendOnly('publicationAttempt', 'attempts'),
   withdrawal: appendOnly('withdrawal', 'withdrawals'),
   note: appendOnly('note', 'notes'),

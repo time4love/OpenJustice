@@ -1,6 +1,8 @@
 import { z } from 'zod';
 import { prisma } from '../../lib/prisma';
-import { gapList, history, unargued, type GapEntry, type HistoryEntry } from '../../services/thesisPredicates';
+import type { Prisma } from '@prisma/client';
+import { headFingerprint } from '../../services/criticMaterial';
+import { currentAnalysis, gapList, history, unargued, type GapEntry, type HistoryEntry } from '../../services/thesisPredicates';
 import { argued } from '../../services/evidencePredicates';
 import { resolveTrajectoryCitations, type TrajectoryCurrency } from '../../services/trajectoryCitation';
 import { answer, refusal, type Refusal } from './thesisRefusals';
@@ -18,9 +20,12 @@ import { answer, refusal, type Refusal } from './thesisRefusals';
 //
 // `since` IS COINED (REVIEW, R41 7.3 round 2) — A4's input line names no parameter for "since a date".
 //
-// UNARGUED, GAP_LIST AND HISTORY ARE CALLED, never re-derived here. THE ANALYSIS AT STEP 20: FINGERPRINT is
-// step 22's, so CURRENT and STALE cannot be told apart yet — and no writer of an analysis exists before 22
-// either. An analysis of HEAD is therefore a malformed state and THROWS (R47 §6-R15); none is `NONE`.
+// UNARGUED, GAP_LIST AND HISTORY ARE CALLED, never re-derived here. THE ANALYSIS (A4 :1478, thesis step 22): the
+// fingerprint of HEAD from `services/criticMaterial.headFingerprint` — the ONE loader `run_analysis` refuses on, so the
+// read and the refusal cannot disagree — and CURRENT_ANALYSIS CALLED over HEAD's analyses. Four states: CURRENT (with
+// the analysis), STALE (analyses exist, none carries the fingerprint), NONE (never run, or no head), and
+// AWAITING_DERIVATION naming the cited record whose CURRENT is undefined (REVIEW's Q7, R48 §6-7). Step 20's throw on
+// an analysis row (R47 §6-R15) is gone with the writer it waited for.
 // ---------------------------------------------------------------------------
 
 export const getThesisContextSchema = {
@@ -57,6 +62,20 @@ interface VersionView {
   mentions: ResolvedMention[];
 }
 
+type AnalysisState =
+  | { state: 'NONE'; fingerprint?: string }
+  | { state: 'AWAITING_DERIVATION'; name: string }
+  | {
+      state: 'CURRENT';
+      fingerprint: string;
+      analysisId: string;
+      runAt: Date;
+      model: string;
+      promptVersion: string;
+      opinion: Prisma.JsonValue;
+    }
+  | { state: 'STALE'; fingerprint: string; latest: { analysisId: string; inputFingerprint: string; runAt: Date } };
+
 interface ThesisContext {
   thesis: {
     thesisId: string;
@@ -72,7 +91,7 @@ interface ThesisContext {
   published: VersionView | null;
   unargued: string[];
   gapList: GapEntry[];
-  analysis: { state: 'NONE' };
+  analysis: AnalysisState;
   framings: { framingId: string; question: string; provision: string | null; researcherId: string; createdAt: Date }[];
   history: HistoryEntry[];
 }
@@ -100,16 +119,7 @@ export async function getThesisContextHandler(input: GetThesisContextInput): Pro
     const published =
       thesis.publishedVersionId === null ? null : await versionView(thesis.id, thesis.publishedVersionId);
 
-    if (head !== null) {
-      const analyses = await prisma.thesisAnalysis.findMany({ where: { versionId: head.view.versionId }, select: { id: true } });
-      if (analyses.length > 0) {
-        throw new Error(
-          `get_thesis_context: thesis ${thesis.id}'s head ${head.view.versionId} has ${String(analyses.length)} analysis ` +
-            'row(s), and nothing writes an analysis before thesis step 22 — which also lands FINGERPRINT, without ' +
-            'which CURRENT and STALE cannot be told apart. A malformed state, not an answer.',
-        );
-      }
-    }
+    const analysis = head === null ? ({ state: 'NONE' } as const) : await analysisOf(thesis.id, head.view.versionId);
 
     const decisions = await prisma.thesisGapDecision.findMany({ where: { thesisId: thesis.id } });
     const framings = await prisma.framing.findMany({
@@ -132,7 +142,7 @@ export async function getThesisContextHandler(input: GetThesisContextInput): Pro
       published: published?.view ?? null,
       unargued: head === null ? [] : unargued({ thesisId: thesis.id }, head.cited),
       gapList: gapList(decisions, thesis.id, head?.view.mentions.map((m) => m.name) ?? []),
-      analysis: { state: 'NONE' },
+      analysis,
       framings: framings.map((f) => ({
         framingId: f.id,
         question: f.question,
@@ -143,6 +153,33 @@ export async function getThesisContextHandler(input: GetThesisContextInput): Pro
       history: await history(thesis.id, input.since === undefined ? undefined : new Date(input.since)),
     };
   });
+}
+
+/** The analysis arm: HEAD's fingerprint through the one loader, and CURRENT_ANALYSIS called over HEAD's analyses. */
+async function analysisOf(thesisId: string, headVersionId: string): Promise<AnalysisState> {
+  const headed = await headFingerprint(thesisId, headVersionId);
+  if (!headed.defined) return { state: 'AWAITING_DERIVATION', name: headed.name };
+
+  const analyses = await prisma.thesisAnalysis.findMany({ where: { versionId: headVersionId } });
+  const current = currentAnalysis(headVersionId, analyses, headed.fingerprint);
+  if (current !== null) {
+    return {
+      state: 'CURRENT',
+      fingerprint: headed.fingerprint,
+      analysisId: current.id,
+      runAt: current.runAt,
+      model: current.model,
+      promptVersion: current.promptVersion,
+      opinion: current.opinion,
+    };
+  }
+  const latest = [...analyses].sort((a, b) => b.runAt.getTime() - a.runAt.getTime()).at(0);
+  if (latest === undefined) return { state: 'NONE', fingerprint: headed.fingerprint };
+  return {
+    state: 'STALE',
+    fingerprint: headed.fingerprint,
+    latest: { analysisId: latest.id, inputFingerprint: latest.inputFingerprint, runAt: latest.runAt },
+  };
 }
 
 /** One version with its mentions resolved — and the mentions as UNARGUED reads them. */

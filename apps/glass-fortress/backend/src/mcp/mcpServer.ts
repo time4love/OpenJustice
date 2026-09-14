@@ -52,6 +52,10 @@ import { listThesesSchema, listThesesHandler } from './tools/listTheses';
 import { addNoteSchema, addNoteHandler } from './tools/addNote';
 import { listFramingsSchema, listFramingsHandler } from './tools/listFramings';
 import { listPagesSchema, listPagesHandler } from './tools/listPages';
+import { runAnalysisSchema, runAnalysisHandler } from './tools/runAnalysis';
+import { decideGapSchema, decideGapHandler } from './tools/decideGap';
+import { draftFoiaRequestSchema, draftFoiaRequestHandler } from './tools/draftFoiaRequest';
+import { getWhistleblowerCallSchema, getWhistleblowerCallHandler } from './tools/getWhistleblowerCall';
 
 // ---------------------------------------------------------------------------
 // Factory — creates a fresh McpServer per request.
@@ -951,6 +955,80 @@ export function createMcpServer(): McpServer {
     },
     async (input) => ({
       content: [{ type: 'text' as const, text: stampEnvironment(await addNoteHandler(input)) }],
+    }),
+  );
+
+  // -------------------------------------------------------------------------
+  // ANALYSIS AND GAPS — thesis step 22, docs/gf-thesis-flows.md T4 and A4 :1481–:1504.
+  // The critic reads the head and its opinion is stored beside it, audited; the researcher decides each gap; a
+  // FOIA request is drafted and written nowhere; the two appeals of a published thesis are a PUBLIC read.
+  // -------------------------------------------------------------------------
+
+  server.registerTool(
+    'run_analysis',
+    {
+      description:
+        'RUN THE CRITIC ON YOUR THESIS\'S HEAD — what a hostile reader would say. PAID: one critic call. It ' +
+        'reads the head\'s text, each cited record\'s current computed content, each cited trajectory and the gap ' +
+        'list, and stores ONE analysis with a verdict beside every assertion: each quoted sentence checked against ' +
+        'the text, each phrase attributed to a record PRESENT, ABSENT or UNCHECKED. Its suggested gaps are candidates ' +
+        'for decide_gap, not gaps; its strength grade gates nothing. Nothing is spent twice on the same input. ' +
+        'Refuses NO_RESEARCHER, NO_THESIS, NOT_AUTHOR, NO_HEAD, ANALYSIS_CURRENT (this exact input was analysed — ' +
+        'read it with get_thesis_context) and AWAITING_DERIVATION (naming the diff).',
+      inputSchema: runAnalysisSchema,
+    },
+    async (input) => ({
+      content: [{ type: 'text' as const, text: stampEnvironment(await runAnalysisHandler(input)) }],
+    }),
+  );
+
+  server.registerTool(
+    'decide_gap',
+    {
+      description:
+        'DECIDE ONE GAP OF YOUR THESIS — the researcher\'s decision, recorded. Free; writes one decision. A gap is ' +
+        'named by its gapId, or entered by its description. OPEN accepts it; CITED names a record the head cites ' +
+        '(no pin of its own); REQUESTED carries the FOIA request the researcher approved; CALLED carries the call ' +
+        'item — units and roles, never a person; CONCEDED and DISMISSED carry a reason. expectedSequence is the ' +
+        'sequence of the decision in force you read (0 for a new gap). Refuses NO_RESEARCHER, NO_THESIS, NOT_AUTHOR, ' +
+        'NO_HEAD, NO_SUCH_GAP, NOT_CITED, REASON_REQUIRED, REQUEST_REQUIRED, CALL_ITEM_REQUIRED and STALE_SEQUENCE ' +
+        '(the log moved — read and decide again).',
+      inputSchema: decideGapSchema,
+    },
+    async (input) => ({
+      content: [{ type: 'text' as const, text: stampEnvironment(await decideGapHandler(input)) }],
+    }),
+  );
+
+  server.registerTool(
+    'draft_foia_request',
+    {
+      description:
+        'DRAFT A FREEDOM-OF-INFORMATION REQUEST FOR ONE GAP — nothing is recorded. PAID: one drafter call. The ' +
+        'drafter reads the gap, the claim and each record the head cites with the paragraphs citing it, and returns ' +
+        'the letter, the authority, the legal basis and the records it rests on; the addresses come from the ' +
+        'platform\'s table, never the model, and a label it invented comes back in unresolvedLabels. The researcher ' +
+        'amends and approves it, then records it with decide_gap REQUESTED. Refuses NO_RESEARCHER, NO_THESIS, ' +
+        'NOT_AUTHOR, NO_HEAD and NO_SUCH_GAP.',
+      inputSchema: draftFoiaRequestSchema,
+    },
+    async (input) => ({
+      content: [{ type: 'text' as const, text: stampEnvironment(await draftFoiaRequestHandler(input)) }],
+    }),
+  );
+
+  server.registerTool(
+    'get_whistleblower_call',
+    {
+      description:
+        'READ A PUBLISHED THESIS\'S TWO APPEALS — its call and its FOIA requests. Free; public; no model. The call ' +
+        'is each gap CALLED and the requests each gap REQUESTED, as decided at or before the publication, in the ' +
+        'researcher\'s words, with the instruction to send a request under your own name. Anyone gets the same ' +
+        'answer; { live: false } when the thesis is unpublished, has no appeal, or does not exist. Refuses nothing.',
+      inputSchema: getWhistleblowerCallSchema,
+    },
+    async (input) => ({
+      content: [{ type: 'text' as const, text: stampEnvironment(await getWhistleblowerCallHandler(input)) }],
     }),
   );
 

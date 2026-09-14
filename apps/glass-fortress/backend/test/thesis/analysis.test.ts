@@ -134,6 +134,15 @@ describe('decide_gap — T4 :625–:634, A4 :1488–:1494 (thesis step 22)', () 
     { code: 'NOT_AUTHOR', why: "another researcher's thesis", as: OTHER_RESEARCHER, seed: seedGapped, input: onTheGap },
     { code: 'NO_HEAD', why: 'a thesis with no version (T4 :626, §0g)', as: AUTHOR, seed: seedHeadless, input: entering },
     {
+      // ADDED AT THESIS STEP 22, the researcher's ruling of 2026-09-14 (A4 :1492 as amended); the disagree arm and a
+      // call naming neither are `test/decideGap.test.ts`'.
+      code: 'NO_SUCH_GAP',
+      why: 'a gapId the log does not hold, with no description',
+      as: AUTHOR,
+      seed: seedGapped,
+      input: { ...onTheGap, gapId: `0x${'ef'.repeat(32)}` },
+    },
+    {
       code: 'NOT_CITED',
       why: 'CITED naming a record the head does not mention',
       as: AUTHOR,
@@ -221,6 +230,18 @@ describe('draft_foia_request — T4 :663–:666, A4 :1496–:1499, GATED and pai
       as: AUTHOR,
       seed: seedGapped,
       input: { ...ask, gapId: `0x${'cd'.repeat(32)}` },
+    },
+    {
+      // ADDED AT THESIS STEP 22, the researcher's ruling (R48 chunk 4 Q4; A4 :1499 amended in place).
+      code: 'AWAITING_DERIVATION',
+      why: 'a cited pair the walk owes a version — the drafter is never handed content that does not exist — and the refusal NAMES the diff',
+      names: NAMES_THE_DIFF,
+      as: AUTHOR,
+      seed: () => {
+        seedGapped();
+        seedCorpus({ derived: false });
+      },
+      input: ask,
     },
   ]);
 
