@@ -155,6 +155,10 @@ export const MODULES = {
     exports: { getThesisContextHandler: fn(20), getThesisContextSchema: table(20) },
   },
   'mcp/tools/addNote': { step: 20, exports: { addNoteHandler: fn(20), addNoteSchema: table(20) } },
+  // ADDED 2026-09-14, between steps 20 and 22, on the researcher's ruling: the step-19 record's F3 — nothing
+  // listed a researcher's framings, and step 20's staging exercise stopped on its first step for want of an
+  // id no tool could give. Carried as step 20's, the layer it reads; thesis A4 owes the amendment.
+  'mcp/tools/listFramings': { step: 20, exports: { listFramingsHandler: fn(20), listFramingsSchema: table(20) } },
   'mcp/tools/runAnalysis': { step: 22, exports: { runAnalysisHandler: fn(22), runAnalysisSchema: table(22) } },
   'mcp/tools/decideGap': { step: 22, exports: { decideGapHandler: fn(22), decideGapSchema: table(22) } },
   'mcp/tools/draftFoiaRequest': {
@@ -416,6 +420,7 @@ export type ToolName =
   | 'publish_thesis'
   | 'unpublish_thesis'
   | 'add_note'
+  | 'list_framings'
   | 'list_thesis_reviews';
 
 export interface ToolContract {
@@ -598,6 +603,10 @@ export const TOOLS: Readonly<Record<ToolName, ToolContract>> = {
     codes: ['NO_RESEARCHER', 'NEITHER', 'NO_THESIS', 'NO_FRAMING', 'NOT_AUTHOR', 'EMPTY'],
     owed: [],
   },
+  // A GATED read that refuses nothing (2026-09-14, the researcher's ruling — see MODULES): every framing to
+  // any researcher, the same bytes with and without an identity; held in the unit project
+  // (`test/listFramings.test.ts`), which gates.
+  list_framings: { module: 'mcp/tools/listFramings', access: 'GATED', paid: false, codes: [], owed: [] },
   list_thesis_reviews: {
     module: 'mcp/tools/listThesisReviews',
     access: 'GATED',
