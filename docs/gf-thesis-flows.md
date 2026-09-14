@@ -267,7 +267,7 @@ backend      REFUSES NO_RECORDS · NOT_ACQUIRED · AWAITING_DERIVATION · NOT_YO
              ← the assessment, each assertion labelled; the elements, filled or not; the round
 researcher   answers, revises, proposes again — as many rounds as it takes — or stops
 Claude       → choose_framing(framingId, provision?, claim, elements)         ⚠️ to build
-backend      REFUSES NOT_ASSESSED (no round in this framing) · NOT_YOURS
+backend      REFUSES NOT_ASSESSED (no ASSESSED round in this framing) · NOT_YOURS
              records FRAMING_CHOSEN, attributed — the researcher's words, whether their own,
              the assessor's, or a third; the provision; the element map, MISSING included
              ← { framingId, provision, claim, elements }
@@ -1129,7 +1129,7 @@ document performs nothing.
 | state | written by | never written by |
 |---|---|---|
 | the FRAMING record: question, provision, author, the thesis it attaches to | `open_framing` · attached by `create_thesis` or by `open_framing` on an existing thesis | any model · the version write |
-| the framing's rounds: PROPOSED (verbatim), ASSESSED (with every audit verdict), CHOSEN | `assess_framing` · `choose_framing` — the assessment is the assessor's words, recorded by the tool the researcher called | the assessor directly · anything after the thesis is published, on that framing |
+| the framing's rounds: PROPOSED (verbatim), ASSESSED (with every audit verdict), CHOSEN | `assess_framing` · `choose_framing` — the assessment is the assessor's words, recorded by the tool the researcher called | the assessor directly · anything after the thesis is published, on that framing — no tool refuses this yet; the hole is DECLARED (2026-09-12) and closes when a refusal word is ruled |
 | the Thesis: provision, author | `create_thesis` — once | anything; a different provision is a different thesis |
 | `Thesis.headVersionId` | the version write, compare-and-set | any read · any model |
 | `Thesis.publishedVersionId`, `publishedAt`, `publishedById` | `publish_thesis` (set) · `unpublish_thesis` (null) | the platform on its own — a flag is derived, a withdrawal is the author's |
@@ -1401,8 +1401,8 @@ PUBLIC_PAGE(page)       ∃ a version v that was EVER published — v = PUBLISHE
                         EVIDENCE mention whose record is a capture or diff of the page
                         — evidence A3 AMENDED by T6: opened pages stay open
 
-THE_CALL(t)             PUBLISHED(t) exists → its thesis's GAP_LIST entries in force CALLED,
-                        each callItem; else none                                        (T4)
+THE_CALL(t)             PUBLISHED(t) exists → the GAP_LIST computed over the decisions whose versionId is PUBLISHED(t) or an ancestor of it — decided at or before the publication — entries in force CALLED,
+                        each callItem; else none — the flows' reading, ruled 2026-09-14: a gap CALLED after publication waits for a publication act (T4)
 THE_REQUESTS(t)         likewise, REQUESTED, each request
 HISTORY(t)              every row naming t, in createdAt order, attributed              (§9)
 REVIEWS(researcher)     for each thesis they author: FLAGGED mentions of PUBLISHED(t) ·
@@ -1429,7 +1429,7 @@ list_theses({})                                                       PUBLIC · 
             researcher: their own theses — each with head, published, headIsPublished, the
               framing attached, counts of unargued mentions and open gaps — and every published
               thesis as above
-  closes    finding 30: every thesis tool needs an id nobody could list
+  closes    finding 30: every thesis tool needs an id nobody could list — and list_framings({}) GATED (2026-09-14, the step-20 record §2): every framing, oldest first, with its question, provision, author, the thesis it is attached to, its latest round and its CHOSEN claim verbatim; refuses nothing
 
 open_framing({ question, provision?, thesisId?, fromRunId?, clusterIndex? })   WRITE · ⚠️ renamed
   does      creates the Framing; with thesisId, attaches it to an existing unpublished thesis
@@ -1437,7 +1437,7 @@ open_framing({ question, provision?, thesisId?, fromRunId?, clusterIndex? })   W
   returns   { framingId, question, provision, elements: [{ element, records: [] | MISSING }] }
   refuses   NO_PROVISION_SHAPE (a provision the table does not know) · NOT_AUTHOR · PUBLISHED
             (the thesis's head is its published version — frame the next version, not this)
-            · NO_SUCH_RUN
+            · NO_SUCH_RUN · NO_FRAMING (a framingId naming none — coined 2026-09-10, so that NOT_YOURS never calls a missing framing someone else's; on every framing tool and on create_thesis and add_note)
 
 assess_framing({ framingId, proposedFraming, elements, records: [record…], trajectoryIds })
                                                                       WRITE · paid · ⚠️ re-shaped
@@ -1462,8 +1462,8 @@ create_thesis({ claim, provision?, text, framingId? })                WRITE · �
   does      ONE transaction: the Thesis (provision, author) · the first version by the rules of
             add_thesis_version · attaches the framing (its CHOSEN claim must equal claim)
   returns   add_thesis_version's return plus { thesisId, framingId | null }
-  refuses   add_thesis_version's · CLAIM_MISMATCH (framing chosen a different claim) ·
-            FRAMING_ATTACHED (to another thesis)
+  refuses   add_thesis_version's · CLAIM_MISMATCH (no CHOSEN round of the framing carries this claim character for character; the provision is NOT compared here — a disagreeing provision fails CLAIM_FRAMED at the gate, 2026-09-13) ·
+            FRAMING_ATTACHED (to another thesis) — NARROWED (2026-09-10): no NOT_AUTHOR, no STALE_HEAD, no NO_THESIS, which a call that creates the thesis cannot reach; NO_FRAMING for a framingId naming none
 
 add_thesis_version({ thesisId, text, claim, expectedHeadVersionId })  WRITE · ⚠️ re-shaped
   does      T2's transaction: parse tokens · compute each pin · carry arguments · write the
@@ -1471,12 +1471,12 @@ add_thesis_version({ thesisId, text, claim, expectedHeadVersionId })  WRITE · �
   returns   { versionId, contentHash, mentions: [{ kind, name, pin, argued }], unargued: [name…],
               gapsNowOpen: [gapId…] (CITED gaps whose citation left the text) }
   refuses   NOT_AUTHOR · STALE_HEAD (with the current head) · NOT_A_RECORD · NOT_ACQUIRED ·
-            AWAITING_DERIVATION · UNKNOWN_TRAJECTORY_ID · EMPTY (no text, or no claim)
+            AWAITING_DERIVATION · UNKNOWN_TRAJECTORY_ID · EMPTY (no text, or no claim) · NO_THESIS (a thesisId naming none — on every tool that takes one, ordered NO_RESEARCHER · NO_THESIS · NOT_AUTHOR, 2026-09-10) · STALE_PIN (affirmed moved between the write's two reads — the race, T2)
 
-get_thesis_context({ thesisId })                                      GATED read · re-shaped
+get_thesis_context({ thesisId, since? })                              GATED read · re-shaped
   returns   the thesis · HEAD and PUBLISHED with their texts and resolved mentions · UNARGUED ·
             GAP_LIST with decisions in force · CURRENT_ANALYSIS or STALE/NONE with the
-            fingerprint · the framings · HISTORY(t), optionally since a date
+            fingerprint · the framings · HISTORY(t), optionally since `since`, ISO-8601, strictly after — coined 2026-09-10
 
 run_analysis({ thesisId })                                            WRITE · paid · ⚠️ re-shaped
   does      T4: FINGERPRINT(head) · → the critic · AUDITS · appends ThesisAnalysis
@@ -1489,7 +1489,7 @@ decide_gap({ thesisId, gapId | description, decision, citedName?, request?, call
              expectedSequence })                                      WRITE · ⚠️ the new tool
   does      appends a ThesisGapDecision; a description with no known gapId enters the list
   returns   { gapId, decision, sequence }
-  refuses   NOT_AUTHOR · NOT_CITED (CITED names a record the head does not mention) ·
+  refuses   NOT_AUTHOR · NO_HEAD · NO_SUCH_GAP (a gapId the log does not hold, with no description; or a gapId and a description that disagree — 2026-09-14) · NOT_CITED (CITED names a record the head does not mention) ·
             REASON_REQUIRED · REQUEST_REQUIRED · CALL_ITEM_REQUIRED · STALE_SEQUENCE ·
             NAMES_PERSON (a callItem naming a person, T2 — checked by the same rule as T5)
 
@@ -1518,7 +1518,7 @@ unpublish_thesis({ thesisId, reason })                                WRITE
   refuses   NOT_AUTHOR · NOT_PUBLISHED · REASON_REQUIRED
 
 add_note({ thesisId | framingId, text })                              WRITE · ⚠️ replaces add_session_note
-  refuses   NEITHER · NOT_AUTHOR · EMPTY
+  refuses   NO_RESEARCHER · NEITHER · NO_THESIS · NO_FRAMING · NOT_AUTHOR · EMPTY (2026-09-10)
 
 list_thesis_reviews({})                                               GATED read · ⚠️ to build
   returns   REVIEWS(caller), oldest first, each with its material and one command; an empty
