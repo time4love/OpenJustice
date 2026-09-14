@@ -57,6 +57,25 @@ Above all else, code must be clean and written to the highest standards:
 - Tests: Jest for TS, Forge for Solidity. Always run tests after changes.
 - Never skip hooks (`--no-verify`) — fix the underlying issue instead.
 
+## The backlog lives in GitHub Issues. Decisions live in git.
+
+- **Issues hold WORK** — deferred items, LOWs, owed rulings, chores. Plan steps, designs, rulings and
+  findings stay in `docs/`. A plan step is never an issue.
+- **An issue links its source** — the dated doc, record or code line it came from — and never restates
+  the reasoning. A ruling made in an issue thread is not a ruling until it is written to its dated doc.
+- **New items go straight to Issues.** A LOW or deferred item found during a step is filed as an issue;
+  the handoff state file carries only `#N`. The handoff protocol itself is unchanged until the refactor
+  completes.
+- **An issue closes through a PR** (`Closes #N`) or with a link to the doc that ruled it will not be done.
+- **Waiting on a plan step** → a `gate:<step>` label; the step's closing record searches that label.
+- **Labels:** type (`security` · `ruling-owed` · `engineering` · `docs-amendment` · `low`), area
+  (`area:walk|evidence|thesis|mcp|infra|frontend`), priority (`p:now` · `p:next` · `p:later`), and
+  `gate:<step>` created only when needed.
+- **Issues are public the moment they are filed.** Same check as a commit: no secrets, project refs,
+  named persons or defamation-sensitive wording. Credential and legal items are never filed — they stay
+  in `handoffs/private-backlog.md`, beside the memory, outside this repo.
+- **Filing is outward-facing:** the issue text is shown before it is filed.
+
 ## Memory & Continuity
 
 ### `CHECKPOINT` — the save-everything code word
