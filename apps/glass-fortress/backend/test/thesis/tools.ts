@@ -3,7 +3,21 @@ import { AFTER, BEFORE, DIFF_NAME, DIFF_ROW, CURRENT_VERSION, PAGE, URL } from '
 import { asked, db, rolledBack, store, written, writtenViaTx, type Row, type Write } from '../helpers/evidenceDouble';
 import { built } from './absent';
 import { MODULES, TOOLS, type ThesisCode, type ThesisRow, type ToolName, type WriteToolOnAThesis } from './contract';
-import { CLAIM, FRAMING, MENTION, NOTE, OPEN_GAP, PROVISION, ROUNDS, THESIS, TRAJECTORY_ID, VERSION, VERSION_TEXT } from './fixtures';
+import {
+  AUTHOR,
+  CLAIM,
+  FRAMING,
+  MENTION,
+  NOTE,
+  OPEN_GAP,
+  OTHER_RESEARCHER,
+  PROVISION,
+  ROUNDS,
+  THESIS,
+  TRAJECTORY_ID,
+  VERSION,
+  VERSION_TEXT,
+} from './fixtures';
 import { mentionRow } from './rows';
 
 // ---------------------------------------------------------------------------
@@ -367,6 +381,13 @@ export function seedThesis(over: Partial<ThesisRow> = {}): ThesisRow {
   store.mentions = thesis.headVersionId === null ? [] : [mentionRow(MENTION, thesis.publishedVersionId === VERSION.id)];
   store.framings = [FRAMING];
   store.framingRounds = [...ROUNDS];
+  // THE TWO RESEARCHERS, each with a handle — thesis step 20, additive (R47 §6-R8): `list_theses` names a
+  // published thesis's author by `Researcher.handle` (A4 :1427), and an author the store does not hold is an
+  // FK violation the handler refuses to paper over.
+  store.researchers = [
+    { id: AUTHOR, handle: 'חוקר_א' },
+    { id: OTHER_RESEARCHER, handle: 'watchdog_7' },
+  ];
   return thesis;
 }
 

@@ -140,6 +140,7 @@ const SHA256_CALL = /createHash\(\s*['"]sha256['"]\s*\)|ethers\.sha256\s*\(/;
 /** Every sha256 call site under `src/`, with what it hashes. A new one fails until it is named. */
 const NAMED_HASHERS: Record<string, string> = {
   'lib/evidenceIdentity.ts': "A RECORD'S IDENTITY — A1's byte layout, stated once",
+  'lib/thesisIdentity.ts': "a thesis version's contentHash — the approved text's UTF-8 bytes (thesis A1 :1231)",
   'lib/captureDocument.ts': 'the bytes as served, and a text — sha256Bytes / sha256Text',
   'lib/chromeRuleset.ts': 'a ruleset id over its sorted selectors',
   'lib/classifierVersion.ts': 'the classifier prompt, as proof beside its version string',

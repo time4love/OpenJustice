@@ -527,7 +527,12 @@ describe("the debate's own refusal codes are produced in ONE module", () => {
   // contract"). The debate's rule is untouched: `openDebate.ts` is still the one
   // module that produces the debate's record checks, and the case below still
   // holds that it produces every one of them.
-  const NOT_THE_DEBATE_S = ['services/openDebate.ts', 'services/framingRounds.ts'];
+  //
+  // A FIFTH, BY NAME AND FOR THE SAME REASON — thesis step 20. `services/thesisVersionWrite.ts` produces
+  // `NOT_ACQUIRED` for `add_thesis_version` and `create_thesis`, which thesis A4 :1473 gives the version write
+  // by name — a citation over a capture the corpus never acquired (R47 §6-R1). The framingRounds precedent,
+  // exactly: a different contract reusing one word.
+  const NOT_THE_DEBATE_S = ['services/openDebate.ts', 'services/framingRounds.ts', 'services/thesisVersionWrite.ts'];
 
   it('only services/openDebate.ts produces them', () => {
     const offenders = modules()

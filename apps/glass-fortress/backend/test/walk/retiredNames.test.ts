@@ -82,18 +82,20 @@ const RETIRED_EVIDENCE_TOOLS = [
 // 19 — so a single merged list would have to be un-merged the first time a name
 // comes back. Each list leaves when its layer's successors land.
 //
+// `add_thesis_version` AND `get_thesis_context` LEFT at thesis step 20 (R47, REVIEW's ruling): thesis A4 keeps
+// both as re-shaped tools (:1468, :1476) and its retired block (:1539–:1551) names neither; their successors
+// land under the same names at step 20.
+//
 // `suggest_thesis` is on A4's retired block and has never been registered in this
 // tree; it is listed for the reason `enrich_evidence_with_history` is — a name
 // held absent costs nothing, and the one nobody wrote down is the one that
 // returns.
 const RETIRED_THESIS_TOOLS = [
   'create_thesis_draft',
-  'add_thesis_version',
   'run_ai_analysis',
   'get_research_agenda',
   'generate_foia_request',
   'get_figure_dossier',
-  'get_thesis_context',
   'open_thesis_framing',
   'assess_thesis_framing',
   'get_thesis_framing',

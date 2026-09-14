@@ -491,6 +491,74 @@ async function searchPage(pageId: string, fileHash: string): Promise<ResolvedRec
   return null;
 }
 
+/** A record name over a capture the corpus holds no body for — what a citation of it is refused with. */
+export interface UnacquiredRecord {
+  page: Page;
+  /** The capture that was never ACQUIRED, by its archive timestamp. */
+  capture: string;
+  /** Its work-list outcome — SKIPPED, DUPLICATE, IDENTICAL, … never ACQUIRED. */
+  outcome: string;
+  /** The ACQUIRED captures on either side of it, as `acquiredNeighbours` names them. */
+  neighbours: { before: string | null; after: string | null };
+}
+
+/**
+ * A record name that `resolveRecordByName` could not find, read against what the walk FETCHED and did not
+ * keep — thesis step 20, the researcher's ruling (R47 §6-R1).
+ *
+ * A name is derived from a url, a timestamp and the SHA-256 of the bytes as served (evidence A1), and a
+ * work-list row that the walk fetched carries exactly that digest as `rawBytesHash` whatever its outcome.
+ * So a name may be over a capture the corpus never ACQUIRED: the CAPTURE name over the row, or a DIFF name
+ * over the row and an acquired neighbour — the pair the walk would have written had it kept the capture.
+ * Such a citation names something real that the corpus holds no text for, which is NOT_ACQUIRED, never
+ * NOT_A_RECORD. Anything else is null.
+ *
+ * THROUGH THE PREDICATE, as `searchPage` asks it: each candidate is `recomputable`'s equality. Linear in
+ * the work-list, and reached only after the corpus pass missed. The page's ACQUIRED captures are loaded ONCE
+ * through `loadCaptures` — the one spelling of that list — and each row's neighbours are read from it.
+ */
+export async function resolveUnacquiredByName(fileHash: string): Promise<UnacquiredRecord | null> {
+  const pages = await prisma.trackedUrl.findMany({ select: { id: true, url: true } });
+  for (const page of pages) {
+    const rows = await prisma.cdxIndexEntry.findMany({
+      where: { trackedUrlId: page.id },
+      select: { waybackTimestamp: true, status: true, rawBytesHash: true },
+    });
+    const unkept = rows.filter(
+      (row): row is typeof row & { rawBytesHash: string } => row.status !== 'ACQUIRED' && row.rawBytesHash !== null,
+    );
+    if (unkept.length === 0) continue;
+
+    // Timestamp order: fourteen fixed-width digits, so `<` is chronological (`loadDiffs`' one spelling).
+    const acquired = await loadCaptures(page.id);
+    for (const row of unkept) {
+      const capture = { waybackTimestamp: row.waybackTimestamp, documentHash: row.rawBytesHash };
+      const before = acquired.filter((c) => c.capture < row.waybackTimestamp).at(-1) ?? null;
+      const after = acquired.find((c) => c.capture > row.waybackTimestamp) ?? null;
+      const endpoint = (c: TimelineCapture): { waybackTimestamp: string; documentHash: string } => ({
+        waybackTimestamp: c.capture,
+        documentHash: c.documentHash,
+      });
+
+      const names =
+        recomputable(fileHash, { kind: 'CAPTURE', url: page.url, capture }).recomputable ||
+        (before !== null &&
+          recomputable(fileHash, { kind: 'DIFF', url: page.url, before: endpoint(before), after: capture }).recomputable) ||
+        (after !== null &&
+          recomputable(fileHash, { kind: 'DIFF', url: page.url, before: capture, after: endpoint(after) }).recomputable);
+      if (names) {
+        return {
+          page,
+          capture: row.waybackTimestamp,
+          outcome: row.status,
+          neighbours: { before: before?.capture ?? null, after: after?.capture ?? null },
+        };
+      }
+    }
+  }
+  return null;
+}
+
 /**
  * The record's derived NAME for every entry of a timeline.
  *

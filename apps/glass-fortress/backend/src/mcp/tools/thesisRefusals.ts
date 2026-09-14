@@ -16,15 +16,16 @@
 // ---------------------------------------------------------------------------
 
 /**
- * Every code thesis A4 names for the four FRAMING tools, transcribed whole:
- * `open_framing` :1434–:1440 · `assess_framing` :1442–:1450 ·
- * `choose_framing` :1452–:1456 · `get_framing` :1458–:1459.
+ * Every code thesis A4 names for the thesis tools built so far, transcribed whole — the four FRAMING tools
+ * (step 19): `open_framing` :1434–:1440 · `assess_framing` :1442–:1450 · `choose_framing` :1452–:1456 ·
+ * `get_framing` :1458–:1459 — and the VERSION WRITE and its reads (step 20): `create_thesis` :1461–:1466 ·
+ * `add_thesis_version` :1468–:1474 · `get_thesis_context` :1476–:1479 · `add_note` :1520–:1521.
  *
- * `NO_FRAMING` is COINED — ruled at thesis step 17: `NOT_YOURS` would call a
- * framing that does not exist someone else's, which is a false statement to a
- * researcher. The A4 amendment naming it is owed with four others.
+ * `NO_FRAMING` is COINED — ruled at thesis step 17: `NOT_YOURS` would call a framing that does not exist
+ * someone else's, which is a false statement to a researcher. `NO_THESIS` for a `thesisId` naming none is
+ * step 17's Q2. The A4 amendments naming them are owed with the others (`test/thesis/contract.ts` TOOLS).
  */
-export type FramingCode =
+export type ThesisToolCode =
   | 'NO_RESEARCHER'
   | 'NO_THESIS'
   | 'NO_FRAMING'
@@ -39,14 +40,20 @@ export type FramingCode =
   | 'AWAITING_DERIVATION'
   | 'UNKNOWN_TRAJECTORY_ID'
   | 'NOT_ASSESSED'
-  | 'PROVISION_MISMATCH';
+  | 'PROVISION_MISMATCH'
+  | 'STALE_HEAD'
+  | 'STALE_PIN'
+  | 'CLAIM_MISMATCH'
+  | 'FRAMING_ATTACHED'
+  | 'EMPTY'
+  | 'NEITHER';
 
-export interface Refusal<C extends FramingCode = FramingCode> {
+export interface Refusal<C extends ThesisToolCode = ThesisToolCode> {
   error: string;
   code: C;
 }
 
-export function refusal<C extends FramingCode>(code: C, error: string): Refusal<C> {
+export function refusal<C extends ThesisToolCode>(code: C, error: string): Refusal<C> {
   return { error, code };
 }
 

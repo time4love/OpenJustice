@@ -25,10 +25,18 @@ import { SRC, tsFiles, readCode } from './walk/scan';
 // asks for a guard rather than a fix for the symptom. This is the guard.
 //
 // WHAT IT COVERS, stated so nobody trusts it further than it goes: the top-level
-// keys of a `data:` / `create:` / `update:` payload on `.create()`, `.upsert()`
-// and `.update()`, for models it can resolve. It skips spreads and computed
-// keys, which it cannot resolve, and it does not descend into nested writes.
-// Code only, and it carries a DECOY.
+// keys of a `data:` / `create:` / `update:` payload on `.create()`, `.upsert()`,
+// `.update()` and `.updateMany()`, for models it can resolve. It skips spreads and
+// computed keys, which it cannot resolve, and it does not descend into nested
+// writes. Code only, and it carries a DECOY.
+//
+// ITS BLIND SPOT: `.createMany()`. That payload is an ARRAY — `data: [...]` — so
+// there is no `data: {` block to read, and the scan does not see its columns. A
+// `createMany` payload's element is therefore a literal whose OWN type is Prisma's
+// `…CreateManyInput` — the return type of the callback that builds it — where an
+// excess key IS a compile error. An annotation on the ARRAY alone checks nothing:
+// the element is inferred from the literal first (measured at thesis step 20 with
+// a planted key: exit 0 typed on the array, TS2353 typed on the callback).
 // ---------------------------------------------------------------------------
 
 const SCHEMA = join(SRC, '..', 'prisma', 'schema.prisma');
@@ -92,7 +100,7 @@ function topLevelKeys(body: string): string[] {
 /** Every unknown column a file's Prisma writes name, as `delegate.field`. */
 export function unknownColumns(code: string, fields: Map<string, Set<string>>): string[] {
   const bad: string[] = [];
-  for (const call of code.matchAll(/\.(\w+)\.(create|upsert|update)\s*\(\s*\{/g)) {
+  for (const call of code.matchAll(/\.(\w+)\.(create|upsert|updateMany|update)\s*\(\s*\{/g)) {
     const delegate = call[1];
     if (delegate === undefined) continue;
     const known = fields.get(delegate);
@@ -144,6 +152,19 @@ describe('a Prisma write names only columns the schema has', () => {
       create: { trackedUrlId, beforeSnapshotId, afterSnapshotId },
       update: {},
     });`;
+    expect(unknownColumns(good, fields)).toEqual([]);
+  });
+
+  it('reads an updateMany payload — the compare-and-set shape thesis step 20 writes — and catches a planted column', () => {
+    const decoy = `await tx.thesis.updateMany({
+      where: { id, headVersionId: expected },
+      data: { headVersionId: version.id, zzzBogus: 1 },
+    });`;
+    const good = `await tx.thesis.updateMany({
+      where: { id, headVersionId: expected },
+      data: { headVersionId: version.id },
+    });`;
+    expect(unknownColumns(decoy, fields)).toEqual(['thesis.zzzBogus']);
     expect(unknownColumns(good, fields)).toEqual([]);
   });
 });
