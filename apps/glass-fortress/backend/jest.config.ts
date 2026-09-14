@@ -1,7 +1,7 @@
 import type { Config } from 'jest';
 
 // ---------------------------------------------------------------------------
-// Two projects, one suite.
+// Five projects, one suite — `npm test` selects them all.
 //
 // `unit` is everything as it has always been: node_modules untransformed, which
 // is fast and is why every test touching the scraper mocks jsdom and
@@ -18,11 +18,12 @@ import type { Config } from 'jest';
 //
 // `walk` is the acceptance suite of the article-rules refactor
 // (docs/gf-refactor-plan.md, step 0): written from the flows appendix before
-// the code, and RED by design until each step builds the module it names. It is
-// its own project so `npm test` — the required CI check — keeps running `unit`
-// and `extraction` only, while `npm run test:walk` reports the walk's progress
-// on every PR without gating it. At step 8, the switch, it joins the required
-// run in the same commit that turns it green.
+// the code, and RED by design until each step built the module it names. It is
+// its own project so `npm run test:walk` runs it alone. This comment said it
+// would join the required run at step 8, the switch; it did not — it ran in a
+// non-gating CI job, green, until thesis refactor plan step 25's remainder
+// (2026-09-15) put `walk`, `evidence` and `thesis` into `npm test`, which the
+// required check runs.
 // ---------------------------------------------------------------------------
 
 const shared = {
@@ -47,13 +48,9 @@ const config: Config = {
       testPathIgnorePatterns: [
         '<rootDir>/test/extraction/',
         '<rootDir>/test/walk/',
-        // The evidence acceptance suite is RED BY DESIGN until steps 12-15 build
-        // what it asserts (refactor plan §4 rule 4). Without this line `unit` —
-        // the required CI check — runs those files and `npm test` goes red on a
-        // suite that is doing its job.
+        // The three acceptance suites are their OWN projects below, and `npm test`
+        // selects all of them — ignored here only so no file runs twice.
         '<rootDir>/test/evidence/',
-        // And the THESIS acceptance suite, for the same reason: red by design
-        // until thesis steps 18-24 build what it names (thesis plan §3 step 17).
         '<rootDir>/test/thesis/',
       ],
     },
@@ -66,9 +63,9 @@ const config: Config = {
       ...shared,
       // `evidence` is the acceptance suite of evidence steps 11-16, written from
       // docs/gf-evidence-flows.md's appendix BEFORE the code and red until each
-      // step builds the module it names — the same shape, and the same reason,
-      // as `walk` above. Its own project so `npm run test:evidence` reports its
-      // progress on every PR without gating the required run.
+      // step built the module it names — the same shape as `walk` above. Its own
+      // project so `npm run test:evidence` runs it alone; green on every file, it
+      // is in `npm test` and the required run since 2026-09-15.
       displayName: 'evidence',
       testMatch: ['<rootDir>/test/evidence/**/*.test.ts'],
     },
@@ -81,8 +78,8 @@ const config: Config = {
       // `import()`: a literal specifier to a missing module is a file-level
       // TS2307 that sinks the whole file uncounted, where the loader fails each
       // case BY NAME with the step that owes it. Its own project so `npm run
-      // test:thesis` reports progress without gating; it joins the required run
-      // at step 25's remainder, in the commit that turns it green.
+      // test:thesis` runs it alone; green on every file since thesis step 24, it
+      // joined `npm test` and the required run at step 25's remainder (2026-09-15).
       displayName: 'thesis',
       testMatch: ['<rootDir>/test/thesis/**/*.test.ts'],
     },

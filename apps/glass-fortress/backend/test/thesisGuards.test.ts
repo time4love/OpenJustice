@@ -6,11 +6,11 @@ import { codeOf, readCode, tsFiles } from './walk/scan';
 // ---------------------------------------------------------------------------
 // THE THESIS LAYER'S GUARDS THAT A MERGE MUST PASS — thesis step 18.
 //
-// WHY THIS FILE IS IN THE UNIT PROJECT. Only `npm run test:gf` is a required check
-// (.github/workflows/tests.yml); the thesis acceptance suite runs beside it,
-// continue-on-error, until thesis step 25. A CHECK constraint is invisible to Prisma
-// and to `db:check-drift`, so a case holding one is the ONLY thing that holds it —
-// and a case in a project that gates nothing holds nothing a merge must pass.
+// WHY THIS FILE IS IN THE UNIT PROJECT. It was written when only `unit` gated a merge and the
+// thesis acceptance suite ran continue-on-error; since thesis step 25's remainder (2026-09-15)
+// `npm run test:gf` runs every project, `thesis` included. A CHECK constraint is invisible to
+// Prisma and to `db:check-drift`, so a case holding one is the ONLY thing that holds it — and a
+// case in a project that gates nothing holds nothing a merge must pass.
 //
 // Each CHECK is held across the WHOLE ordered migration history, never one folder by
 // name: it is ADDED by exactly one migration, every arm of it sits inside THAT
