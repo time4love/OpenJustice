@@ -1,0 +1,282 @@
+import { prisma } from '../lib/prisma';
+import { headFingerprint, type HeadFingerprint } from './criticMaterial';
+import { checksOf, type EvidenceCheck } from './evidenceChecks';
+import { publishableEvidence, type VersionPublishableReport } from './evidencePredicates';
+import { claimFramed, currentAnalysis, gapsDecided, trajectoryCurrent, type GapEntry } from './thesisPredicates';
+import { resolveTrajectoryCitations, type TrajectoryCurrency } from './trajectoryCitation';
+
+// ---------------------------------------------------------------------------
+// THE ONE EVALUATION OF PUBLISHABLE(v) — docs/gf-thesis-flows.md A3 :1390–:1396, A6 :1584–:1612; thesis step 23.
+//
+// ONE LOAD, EVERY CONJUNCT CALLED. `evaluatePublication` reads everything PUBLISHABLE(v) reads, once, and asks each
+// conjunct of the predicate that owns it: CLAIM_FRAMED `claimFramed`, the evidence half `publishableEvidence` (ONCE —
+// rows 5–10 are `checksOf` over the same report), the trajectories `resolveTrajectoryCitations` and
+// `trajectoryCurrent`, FINGERPRINT the ONE loader `headFingerprint` with `currentAnalysis`, GAP_LIST as that loader
+// computed it with `gapsDecided`. The publication assessor's answer is an INPUT, so nothing here asks a model.
+//
+// THE MAP AND THE FOLD LIVE HERE, TOGETHER (the R49 sketch §6 R9, the researcher's §9-1 (ii)): `rowsOf` renders A6's first
+// seventeen rows and `publishabilityOf` folds THOSE rows, so the gate's rows and the predicate's verdict are one spelling
+// read twice — never two derivations that happen to agree. `services/thesisGate.ts` maps; `thesisPredicates.
+// publishableVersion` folds; each calls `evaluatePublication` once.
+//
+// A CALL-TIME CYCLE, DECLARED (R13): `thesisPredicates` imports this module for `publishableVersion`, and this module and
+// `criticMaterial` import `thesisPredicates`' pure predicates. Every cross-module use is inside a function, so the modules
+// load in either order; `test/publicationEvaluation.test.ts` holds both orders under `jest.isolateModules`. A top-level
+// READ of a `thesisPredicates` export in any module on the cycle would make it a load-time cycle.
+//
+// IT WRITES NOTHING AND OPENS NO TRANSACTION.
+// ---------------------------------------------------------------------------
+
+/**
+ * The publication assessor's answers the gate reads (A3 :1394; A6 :1599–:1601) — null when no rationale was given, so the
+ * assessor was not asked. `allegationsFramed` is COINED (step 17, 7.4): check 17's advisory opinion.
+ */
+export interface PublicationAssessment {
+  substance: boolean;
+  names: readonly string[];
+  allegationsFramed: boolean;
+}
+
+/** A6's ids 1–4 and 11–17 — the thesis layer's own rows; 5–10 are evidence A6's `CheckId`. */
+type ThesisCheckId =
+  | 'HEAD_VERSION'
+  | 'CLAIM_FRAMED'
+  | 'CITES_EVIDENCE'
+  | 'PUBLIC_INTEREST_STATEMENT'
+  | 'TRAJECTORIES_RESOLVE'
+  | 'TRAJECTORIES_CURRENT'
+  | 'ANALYSIS_CURRENT'
+  | 'GAPS_DECIDED'
+  | 'RATIONALE_SUBSTANCE'
+  | 'NAMES_NO_PERSON'
+  | 'ALLEGATIONS_FRAMED';
+
+/** One row of the gate — `EvidenceCheck`'s shape, so rows 5–10 are evidence's own rows, deep-equal. No binding flag. */
+export type ThesisCheck =
+  | EvidenceCheck
+  | {
+      id: ThesisCheckId;
+      kind: 'hard' | 'advisory';
+      verdict: 'PASS' | 'FAIL' | 'EXAMINED_NONE';
+      examined: unknown[];
+      failures: unknown[];
+    };
+
+/** What PUBLISHABLE(v) read, loaded once. */
+export interface PublicationEvaluation {
+  versionId: string;
+  thesis: { id: string; headVersionId: string | null; publishedVersionId: string | null; publicInterestStatement: string | null };
+  /** The `Withdrawal` rows naming this version — a withdrawn head is not publishable again (R16). */
+  withdrawalIds: string[];
+  framingIds: string[];
+  claimFramed: boolean;
+  report: VersionPublishableReport;
+  evidenceNames: string[];
+  trajectoryIds: string[];
+  currencies: { id: string; currency: TrajectoryCurrency }[];
+  missingTrajectoryIds: string[];
+  headed: HeadFingerprint;
+  analysisCurrent: boolean;
+  list: GapEntry[];
+  assessment: PublicationAssessment | null;
+}
+
+/** The loud guard every loader here shares: a row the write guaranteed and the database does not hold is malformed. */
+function required<T>(row: T | null, what: string): T {
+  if (row === null) throw new Error(`publicationEvaluation: ${what} does not exist — a malformed load, not a check that failed.`);
+  return row;
+}
+
+/** Everything PUBLISHABLE(v) reads for `versionId`, once, with each conjunct asked of the predicate that owns it. */
+export async function evaluatePublication(
+  versionId: string,
+  assessment: PublicationAssessment | null,
+): Promise<PublicationEvaluation> {
+  const version = required(
+    await prisma.thesisVersion.findUnique({ where: { id: versionId }, select: { id: true, thesisId: true, claim: true } }),
+    `version ${versionId}`,
+  );
+  const thesis = required(
+    await prisma.thesis.findUnique({
+      where: { id: version.thesisId },
+      select: { id: true, provision: true, headVersionId: true, publishedVersionId: true, publicInterestStatement: true },
+    }),
+    `thesis ${version.thesisId}`,
+  );
+
+  const withdrawals = await prisma.withdrawal.findMany({ where: { thesisId: thesis.id, versionId }, select: { id: true } });
+  const framings = await prisma.framing.findMany({ where: { thesisId: thesis.id } });
+  const rounds =
+    framings.length === 0 ? [] : await prisma.framingRound.findMany({ where: { framingId: { in: framings.map((f) => f.id) } } });
+
+  const report = await publishableEvidence(versionId);
+  const headed = await headFingerprint(thesis.id, versionId);
+  const { resolved, missing } = await resolveTrajectoryCitations(headed.head.trajectoryIds);
+  const analyses = headed.defined ? await prisma.thesisAnalysis.findMany({ where: { versionId } }) : [];
+
+  return {
+    versionId,
+    thesis: {
+      id: thesis.id,
+      headVersionId: thesis.headVersionId,
+      publishedVersionId: thesis.publishedVersionId,
+      publicInterestStatement: thesis.publicInterestStatement,
+    },
+    withdrawalIds: withdrawals.map((w) => w.id),
+    framingIds: framings.map((f) => f.id),
+    claimFramed: claimFramed({
+      version: { thesisId: version.thesisId, claim: version.claim },
+      thesis: { id: thesis.id, provision: thesis.provision },
+      framings,
+      rounds,
+    }),
+    report,
+    evidenceNames: headed.head.records.map((r) => r.name),
+    trajectoryIds: [...new Set(headed.head.trajectoryIds)],
+    currencies: resolved.map((t) => ({ id: t.id, currency: t.currency })),
+    missingTrajectoryIds: missing,
+    headed,
+    analysisCurrent: headed.defined && currentAnalysis(versionId, analyses, headed.fingerprint) !== null,
+    list: headed.head.list,
+    assessment,
+  };
+}
+
+const row = (
+  id: ThesisCheckId,
+  kind: 'hard' | 'advisory',
+  examined: unknown[],
+  failures: unknown[],
+  none = false,
+): ThesisCheck => ({ id, kind, verdict: failures.length > 0 ? 'FAIL' : none ? 'EXAMINED_NONE' : 'PASS', examined, failures });
+
+/**
+ * A6's FIRST SEVENTEEN ROWS, in A6's order (:1591–:1601), each naming what it examined and each failure its subject; an
+ * empty scope is EXAMINED_NONE with `examined` present at zero. Checks 18 and 19 are document plan step 34's, by addition.
+ */
+export function rowsOf(e: PublicationEvaluation): ThesisCheck[] {
+  const { versionId, thesis, assessment } = e;
+
+  const headFailure =
+    thesis.headVersionId !== versionId
+      ? `version ${versionId} is not the head (${String(thesis.headVersionId)}) — only the head is published`
+      : thesis.publishedVersionId === versionId
+        ? `version ${versionId} IS the published version — publishing it again is nothing new`
+        : e.withdrawalIds.length > 0
+          ? `version ${versionId} was withdrawn — write a new version`
+          : null;
+
+  const gaps = gapsDecided(e.list);
+  const open = e.list.filter((g) => g.readsAs === 'OPEN');
+  // THE VERDICT IS THE PREDICATE'S, THE SUBJECTS ARE ITS LIST (R49 chunk 2, REVIEW's H1): GAPS_DECIDED decides whether row
+  // 14 fails; the entries reading OPEN are what it names. The two are one fact read twice, so a disagreement is a defect in
+  // one of them — a LOUD GUARD, never a verdict with no subject or a subject under a pass.
+  if (gaps.decided === open.length > 0) {
+    throw new Error(
+      `publicationEvaluation: GAPS_DECIDED answers decided=${String(gaps.decided)} while ${String(open.length)} gap(s) of ` +
+        'the list read OPEN — the predicate and the list it read disagree, so row 14 has no honest verdict.',
+    );
+  }
+  const stale = e.currencies.filter((t) => !trajectoryCurrent(t.currency));
+
+  return [
+    row(
+      'HEAD_VERSION',
+      'hard',
+      [{ versionId, headVersionId: thesis.headVersionId, publishedVersionId: thesis.publishedVersionId, withdrawalIds: e.withdrawalIds }],
+      headFailure === null ? [] : [{ versionId, detail: headFailure }],
+    ),
+    row(
+      'CLAIM_FRAMED',
+      'hard',
+      e.framingIds.map((framingId) => ({ framingId })),
+      e.claimFramed
+        ? []
+        : e.framingIds.length === 0
+          ? [{ versionId, detail: 'no framing is attached to the thesis, so no framing chose this claim' }]
+          : e.framingIds.map((framingId) => ({ framingId, detail: 'chose no ASSESSED claim equal to this version\'s under this provision' })),
+    ),
+    row(
+      'CITES_EVIDENCE',
+      'hard',
+      e.evidenceNames.map((name) => ({ name })),
+      e.evidenceNames.length === 0 ? [{ versionId, detail: 'the version cites no record the corpus holds' }] : [],
+    ),
+    row(
+      'PUBLIC_INTEREST_STATEMENT',
+      'hard',
+      [{ thesisId: thesis.id }],
+      (thesis.publicInterestStatement ?? '').trim() === '' ? [{ thesisId: thesis.id, detail: 'the thesis has no public-interest statement' }] : [],
+    ),
+    ...checksOf(e.report),
+    row(
+      'TRAJECTORIES_RESOLVE',
+      'hard',
+      e.trajectoryIds.map((trajectoryId) => ({ trajectoryId })),
+      e.missingTrajectoryIds.map((trajectoryId) => ({ trajectoryId, detail: 'no stored detection pass holds this trajectory' })),
+      e.trajectoryIds.length === 0,
+    ),
+    row(
+      'TRAJECTORIES_CURRENT',
+      'hard',
+      e.currencies.map((t) => ({ trajectoryId: t.id, state: t.currency.state })),
+      stale.map((t) => ({ trajectoryId: t.id, state: t.currency.state, detail: 'the newest detection pass does not agree with the cited one' })),
+      e.currencies.length === 0,
+    ),
+    row(
+      'ANALYSIS_CURRENT',
+      'hard',
+      [{ versionId, fingerprint: e.headed.defined ? e.headed.fingerprint : null }],
+      e.analysisCurrent
+        ? []
+        : [
+            {
+              versionId,
+              detail: e.headed.defined
+                ? 'no analysis of this version read its current input — run the critic (a stale analysis is named, never run)'
+                : `the input cannot be fingerprinted: ${e.headed.named} awaits derivation`,
+            },
+          ],
+    ),
+    row(
+      'GAPS_DECIDED',
+      'hard',
+      e.list.map((g) => ({ gapId: g.gapId, readsAs: g.readsAs })),
+      gaps.decided ? [] : open.map((g) => ({ gapId: g.gapId, readsAs: g.readsAs })),
+      gaps.examined === 0,
+    ),
+    row(
+      'RATIONALE_SUBSTANCE',
+      'hard',
+      assessment === null ? [] : [{ versionId }],
+      assessment === null || assessment.substance ? [] : [{ versionId, detail: 'the assessor found no argued rationale for this version' }],
+      assessment === null,
+    ),
+    row(
+      'NAMES_NO_PERSON',
+      'hard',
+      assessment === null ? [] : [...assessment.names],
+      assessment === null ? [] : assessment.names.map((name) => ({ name })),
+      assessment === null,
+    ),
+    row(
+      'ALLEGATIONS_FRAMED',
+      'advisory',
+      assessment === null ? [] : [{ versionId }],
+      assessment === null || assessment.allegationsFramed ? [] : [{ versionId, detail: 'the assessor found a claim not framed as an allegation' }],
+      assessment === null,
+    ),
+  ];
+}
+
+/**
+ * PUBLISHABLE(v), folded from THE ROWS (A3 :1390–:1396): the HARD rows that FAIL, in A6's order — an advisory row binds
+ * nothing (A6 :1605–:1608) — and publishable only when none fails AND the evidence half could be graded at all: a
+ * not-evaluable half is not publishable and names nothing (the §2b seam, the researcher's; `derivations.test.ts` L1).
+ */
+export function publishabilityOf(e: PublicationEvaluation): { publishable: boolean; failed: string[] } {
+  const failed = rowsOf(e)
+    .filter((r) => r.kind === 'hard' && r.verdict === 'FAIL')
+    .map((r) => r.id);
+  return { publishable: failed.length === 0 && e.report.evaluable, failed };
+}

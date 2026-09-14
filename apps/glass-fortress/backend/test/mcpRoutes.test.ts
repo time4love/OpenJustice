@@ -189,6 +189,10 @@ describe('POST /api/mcp — write tool auth', () => {
     ['run_analysis', 'it writes an analysis and spends one critic call (A4 :1481)'],
     ['decide_gap', 'it writes a gap decision, attributed (A4 :1488)'],
     ['draft_foia_request', 'it spends one drafter call though it writes nothing (A4 :1496, GATED · paid)'],
+    // THESIS STEP 23 (A4 :1506–:1518): readiness spends with a rationale, the act writes and spends, the withdrawal writes.
+    ['check_publication_readiness', 'it spends one assessor call when given a rationale, writing nothing (A4 :1506, GATED · paid iff rationale)'],
+    ['publish_thesis', 'it writes an attempt and the pin, and spends one assessor call (A4 :1510)'],
+    ['unpublish_thesis', 'it nulls the pin and writes a withdrawal, attributed (A4 :1516)'],
   ] as const) {
     it(`returns 401 with WWW-Authenticate for an anonymous ${tool} — a GATED read, gated at the route: ${why}`, async () => {
       const res = await request(app)

@@ -3,6 +3,7 @@ import {
   type Conjunct,
   type ConjunctId,
   type ExaminedMention,
+  type VersionPublishableReport,
 } from './evidencePredicates';
 
 // ---------------------------------------------------------------------------
@@ -162,8 +163,17 @@ const CHECKS: readonly { id: CheckId; conjunct: ConjunctId; why: string }[] = [
  * three-valued (§0b).
  */
 export async function evidenceChecks(versionId: string): Promise<EvidenceCheck[]> {
-  const report = await publishableEvidence(versionId);
+  return checksOf(await publishableEvidence(versionId));
+}
 
+/**
+ * THE SIX ROWS OF ONE REPORT — the mapping above, PURE, over a `publishableEvidence` answer the caller already holds.
+ *
+ * ADDED AT THESIS STEP 23 (the R49 sketch §e1): the thesis gate's ONE evaluation asks `publishableEvidence` once and
+ * hands the same report here for rows 5–10 and to PUBLISHABLE(v)'s fold, so the evidence half is evaluated once per
+ * gate call rather than once by `evidenceChecks` and again by the predicate. `evidenceChecks` is this, unchanged.
+ */
+export function checksOf(report: VersionPublishableReport): EvidenceCheck[] {
   return CHECKS.map(({ id, conjunct }) => {
     const examined: ExaminedMention[] = [];
     const failures: EvidenceCheck['failures'] = [];

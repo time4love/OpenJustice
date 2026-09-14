@@ -2,6 +2,8 @@ import { createHash } from 'node:crypto';
 import type { Framing, FramingRound, ThesisAnalysis, ThesisGapDecision, ThesisMention, ThesisVersion } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { argued, currentVersionOf, type ContentVersionProvenance, type RecordContent } from './evidencePredicates';
+import { evaluatePublication, publishabilityOf, type PublicationAssessment } from './publicationEvaluation';
+import type { TrajectoryCurrency } from './trajectoryCitation';
 
 export { CRITIC_PROMPT_VERSION } from '../prompts/thesisCritique';
 
@@ -326,6 +328,38 @@ export function decisionsAtPublication(
 }
 
 // ---------------------------------------------------------------------------
+// TRAJECTORY_CURRENT(m) — A3 :1386–:1388 · thesis step 23
+// ---------------------------------------------------------------------------
+
+/**
+ * TRAJECTORY_CURRENT(m) — the cited computation's currency is PINNED_IS_LATEST or RECOMPUTED_AGREES; RECOMPUTED_DISAGREES
+ * and NOT_FOLLOWED_BY_LATEST are STALE_TRAJECTORY (A3 :1386–:1388). PURE AND SYNC over the currency the ONE resolver,
+ * `resolveTrajectoryCitations`, computed — the trajectory service's states, unchanged, never re-derived here.
+ */
+export function trajectoryCurrent(currency: TrajectoryCurrency): boolean {
+  return currency.state === 'PINNED_IS_LATEST' || currency.state === 'RECOMPUTED_AGREES';
+}
+
+// ---------------------------------------------------------------------------
+// PUBLISHABLE(v) — A3 :1390–:1396 · thesis step 23
+// ---------------------------------------------------------------------------
+
+/**
+ * PUBLISHABLE(v) — every conjunct of A3 :1390–:1394, as a report: publishable, and the A6 check names that failed.
+ *
+ * THE FOLD OF THE ONE EVALUATION (the R49 sketch §6 R9): `evaluatePublication` loads once and CALLS each conjunct's
+ * predicate; `publishabilityOf` folds the rows the gate renders from the same evaluation, so the gate and this predicate
+ * cannot disagree by construction. ASYNC over a version id — a question about the database, by the purity rule
+ * `evidencePredicates.ts` states once. A CALL-TIME import cycle with `publicationEvaluation` (R13), declared there.
+ */
+export async function publishableVersion(
+  versionId: string,
+  assessment: PublicationAssessment | null,
+): Promise<{ publishable: boolean; failed: string[] }> {
+  return publishabilityOf(await evaluatePublication(versionId, assessment));
+}
+
+// ---------------------------------------------------------------------------
 // HISTORY(t) — A3 :1407, §9 :971–:984 · thesis step 20 · derived, never logged
 // ---------------------------------------------------------------------------
 
@@ -344,12 +378,12 @@ const HISTORY_KINDS = [
 
 export type HistoryKind = (typeof HISTORY_KINDS)[number];
 
-/** One act on a thesis: what kind of row, which, when, and who — null where A2 records no researcher. */
+/** One act on a thesis: what kind of row, which, when, and who — since thesis step 23 every kind A2 lists records its researcher. */
 export interface HistoryEntry {
   kind: HistoryKind;
   id: string;
   createdAt: Date;
-  researcherId: string | null;
+  researcherId: string;
 }
 
 /**
@@ -360,8 +394,8 @@ export interface HistoryEntry {
  *
  * DERIVED, NEVER LOGGED (§9 :981–:984; `thesis-no-log`): every entry is a row that already exists as
  * its own act, read back, and nothing is written to produce it. Each is attributed AS A2 RECORDS IT —
- * a debate to its opener (`researcherId`, the researcher's ruling at step 18), an analysis to NO ONE
- * (A2 :1313–:1318 gives it a model and `runAt`, whose instant is its `createdAt` here).
+ * a debate to its opener (`researcherId`, the researcher's ruling at step 18), an analysis to WHO SPENT
+ * THE CALL (A2 :1317 as amended 2026-09-14, the column since thesis step 23; its instant is `runAt`).
  *
  * A framing's rounds and its notes name the FRAMING, not the thesis; they are the thesis's history
  * because the framing is attached to it (R47 D11). ORDER: `createdAt`, then A3's listing order, then id
@@ -391,7 +425,10 @@ export async function history(thesisId: string, since?: Date): Promise<HistoryEn
     await prisma.debateSession.findMany(byThesis),
     versionIds.length === 0
       ? []
-      : await prisma.thesisAnalysis.findMany({ where: { versionId: { in: versionIds } }, select: { id: true, runAt: true } }),
+      : await prisma.thesisAnalysis.findMany({
+          where: { versionId: { in: versionIds } },
+          select: { id: true, researcherId: true, runAt: true },
+        }),
     await prisma.thesisGapDecision.findMany(byThesis),
     await prisma.publicationAttempt.findMany(byThesis),
     await prisma.withdrawal.findMany(byThesis),
@@ -412,7 +449,7 @@ export async function history(thesisId: string, since?: Date): Promise<HistoryEn
     ...attributed('FRAMING_ROUND', rounds),
     ...versions.map((v): HistoryEntry => ({ kind: 'VERSION', id: v.id, createdAt: v.createdAt, researcherId: v.createdById })),
     ...attributed('DEBATE', debates),
-    ...analyses.map((a): HistoryEntry => ({ kind: 'ANALYSIS', id: a.id, createdAt: a.runAt, researcherId: null })),
+    ...analyses.map((a): HistoryEntry => ({ kind: 'ANALYSIS', id: a.id, createdAt: a.runAt, researcherId: a.researcherId })),
     ...attributed('GAP_DECISION', gaps),
     ...attributed('PUBLICATION_ATTEMPT', attempts),
     ...attributed('WITHDRAWAL', withdrawals),

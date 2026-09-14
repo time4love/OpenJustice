@@ -133,7 +133,17 @@ describe('MCP tool classification', () => {
     //
     // `run_analysis` and `draft_foia_request` ADDED AT THESIS STEP 22 — one critic call and one drafter call. Their
     // AUTHORITY is thesis A4 :1481 ("WRITE · paid") and :1496 ("GATED · paid"), never this comment.
-    for (const tool of ['scan_captures', 'assess_framing', 'run_analysis', 'draft_foia_request']) {
+    //
+    // `check_publication_readiness` and `publish_thesis` ADDED AT THESIS STEP 23 — one publication-assessor call each.
+    // Their AUTHORITY is thesis A4 :1506 ("GATED · paid iff rationale") and :1510 ("WRITE · paid"), never this comment.
+    for (const tool of [
+      'scan_captures',
+      'assess_framing',
+      'run_analysis',
+      'draft_foia_request',
+      'check_publication_readiness',
+      'publish_thesis',
+    ]) {
       expect(WRITE_TOOLS.has(tool)).toBe(true);
     }
   });

@@ -1,3 +1,4 @@
+import type { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { DIFF_VERSION } from '../lib/diffVersion';
 import { ON_CHAIN_CHECK_VERSION } from '../lib/onChainVerdict';
@@ -390,6 +391,16 @@ export function recomputable(
 // ---------------------------------------------------------------------------
 
 /**
+ * EVER PUBLISHED(v) — the version has a PublicationAttempt whose outcome is PUBLISHED (thesis A3 :1399–:1402 as amended by
+ * T6; ruled 2026-09-14, the R49 sketch §6 R3). ONE spelling, as a relation filter on `ThesisVersion`, shared by
+ * `publicPage`, the public version read and the public history; `test/everPublished.test.ts` holds that no other module
+ * spells it. An attempt is written only by `publish_thesis`, and never updated or deleted, so what it says stays true.
+ */
+export const EVER_PUBLISHED = {
+  publicationAttempts: { some: { outcome: 'PUBLISHED' } },
+} as const satisfies Prisma.ThesisVersionWhereInput;
+
+/**
  * PUBLIC_PAGE(page) — a page is public in full from the moment a published
  * thesis version cites any record of it.
  *
@@ -398,15 +409,15 @@ export function recomputable(
  * outsider." A page no published thesis touches is a researcher's working
  * corpus, and saying otherwise in public is the framing risk §9.5 ranks first.
  *
- * ⚠️ THE "EVER PUBLISHED" ARM IS OWED TO THE THESIS STEPS. Thesis T6 amends this
- * predicate to hold for a page any version EVER published cited — "opened pages
- * stay open" — which reads `Withdrawal` rows and superseded publications. This
- * tree has neither: thesis A2's `Withdrawal` lands at thesis step 24, and no act
- * here can move `Thesis.publishedVersionId` at all (there is no writer of it
- * under `src/`, and `publish_thesis`/`unpublish_thesis` are on the retired-names
- * scan until thesis step 23). So the two readings cannot yet differ, and the arm
- * is held by a RED CASE BY NAME in the acceptance suite rather than by this
- * comment.
+ * THE "EVER PUBLISHED" ARM — built at thesis step 23 (plan step 23 :196, "PUBLIC_PAGE
+ * amended in evidence's predicate module"). Thesis T6 :920–:924 amends this predicate
+ * to hold for a page any version EVER published cited — "opened pages stay open",
+ * through a withdrawal and past a later publication citing nothing of it (thesis A3
+ * :1399–:1402). RULED 2026-09-14 (the R49 sketch §6 R3): a version was ever published
+ * iff it has a PublicationAttempt with outcome PUBLISHED — `EVER_PUBLISHED`, the one
+ * spelling. The pin arm is SUBSUMED rather than dropped: `publish_thesis` is the one
+ * writer of the pin and writes a PUBLISHED attempt in the same transaction, so a
+ * version that IS the pin is a version ever published.
  *
  * A DOCUMENT record opens no page: what publication opens for a document is
  * decided per document (document flows §7, `OPENED(d)`), and its `Evidence` row
@@ -419,17 +430,14 @@ export async function publicPage(trackedUrlId: string): Promise<boolean> {
   });
   if (records.length === 0) return false;
 
-  const citedByAPublishedVersion = await prisma.thesisMention.count({
+  const citedByAVersionEverPublished = await prisma.thesisMention.count({
     where: {
       kind: 'EVIDENCE',
       name: { in: records.map((r) => r.fileHash) },
-      // The version IS the published one of its thesis — `isPublished` is the
-      // back-relation of `Thesis.publishedVersionId`, so this is the pin itself
-      // rather than a status anyone could set separately.
-      thesisVersion: { isPublished: { isNot: null } },
+      thesisVersion: EVER_PUBLISHED,
     },
   });
-  return citedByAPublishedVersion > 0;
+  return citedByAVersionEverPublished > 0;
 }
 
 // ---------------------------------------------------------------------------

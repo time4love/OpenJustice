@@ -294,6 +294,47 @@ function whereTests(model: string, where: Row | undefined): ((row: Row) => boole
 }
 
 /**
+ * `{ publicationAttempts: { some: { outcome: X } } }` — `EVER_PUBLISHED`'s shape (services/evidencePredicates.ts) — as its
+ * outcome, or null for any other condition. Thesis step 23, additive (R49 §e6 E8, E9): one reader of the shape for both
+ * delegates that answer it, so the two cannot model it differently.
+ */
+function everPublishedOutcome(cond: unknown): string | null {
+  if (typeof cond !== 'object' || cond === null) return null;
+  const keys = Object.keys(cond);
+  if (keys.length !== 1 || keys[0] !== 'publicationAttempts') return null;
+  const attempts = (cond as { publicationAttempts: unknown }).publicationAttempts;
+  if (typeof attempts !== 'object' || attempts === null || JSON.stringify(Object.keys(attempts)) !== '["some"]') return null;
+  const some = (attempts as { some: unknown }).some;
+  if (typeof some !== 'object' || some === null || JSON.stringify(Object.keys(some)) !== '["outcome"]') return null;
+  const outcome = (some as { outcome: unknown }).outcome;
+  return typeof outcome === 'string' ? outcome : null;
+}
+
+/**
+ * THE VERSION LIST, as `thesisVersion.findMany` and `findFirst` read it — thesis step 23, ADDITIVE (R49 §e6 E9).
+ *
+ * THREE ARMS: a plain value is an EQUALITY (`thesisId` exactly as before, `id` newly), `{ in: [...] }` is membership, and
+ * `publicationAttempts: { some: { outcome } }` holds for a version the store's attempts name with that outcome. ANY OTHER
+ * KEY IS IGNORED — never a rejection — because before this every key but `thesisId` was ignored, and a caller written
+ * against that double must keep its answer (the R49 round-1 M1).
+ */
+function versionsWhere(where: Row | undefined): Row[] {
+  const tests: ((row: Row) => boolean)[] = [];
+  for (const [field, cond] of Object.entries(where ?? {})) {
+    if (field === 'publicationAttempts') {
+      const outcome = everPublishedOutcome({ publicationAttempts: cond });
+      if (outcome !== null) tests.push((row) => store.attempts.some((a) => a['versionId'] === row['id'] && a['outcome'] === outcome));
+    } else if (typeof cond !== 'object' || cond === null) {
+      tests.push((row) => row[field] === cond);
+    } else if ('in' in cond && Array.isArray(cond.in) && Object.keys(cond).length === 1) {
+      const wanted: readonly unknown[] = cond.in;
+      tests.push((row) => wanted.includes(row[field]));
+    }
+  }
+  return store.versions.filter((row) => tests.every((test) => test(row)));
+}
+
+/**
  * A COMPARE-AND-SET, as Prisma's `updateMany` answers one — thesis step 20, additive (R47 E1, E2).
  *
  * Every `where` field is an EQUALITY, and a column the row does not carry reads as NULL — a database row has
@@ -532,13 +573,13 @@ export const db = {
     }),
     // THESIS STEP 17, additive. A version is created and never updated (A2), so
     // there is no `update` here for a writer to reach.
+    // THESIS STEP 23, ADDITIVE (R49 §e6 E9): equality, `in` and the EVER-PUBLISHED arm; any other key ignored, as
+    // every key but `thesisId` always was — `versionsWhere` says why.
     findMany: jest.fn(
-      ask('thesisVersion', 'findMany', (args: { where?: { thesisId?: string } }) => {
-        const thesisId = args.where?.thesisId;
-        return Promise.resolve(
-          thesisId === undefined ? store.versions : store.versions.filter((v) => v['thesisId'] === thesisId),
-        );
-      }),
+      ask('thesisVersion', 'findMany', (args?: { where?: Row }) => Promise.resolve(versionsWhere(args?.where))),
+    ),
+    findFirst: jest.fn(
+      ask('thesisVersion', 'findFirst', (args?: { where?: Row }) => Promise.resolve(versionsWhere(args?.where).at(0) ?? null)),
     ),
     create: jest.fn((args: { data: Row }) => {
       record('thesisVersion', 'create', args.data);
@@ -625,6 +666,11 @@ export const db = {
               const version = row['thesisVersion'];
               return typeof version === 'object' && version !== null && 'isPublished' in version && version.isPublished != null;
             });
+          } else if (field === 'thesisVersion' && everPublishedOutcome(cond) !== null) {
+            // THE EVER-PUBLISHED ARM — thesis step 23, additive (R49 §e6 E8): `publicPage` asks whether a version that
+            // ever had a PUBLISHED attempt cites a record of the page, over the attempts the store holds.
+            const outcome = everPublishedOutcome(cond);
+            tests.push((row) => store.attempts.some((a) => a['versionId'] === row['versionId'] && a['outcome'] === outcome));
           } else {
             return Promise.reject(
               new Error(`the double does not model a thesisMention count where on ${field}: ${JSON.stringify(cond)}`),

@@ -268,7 +268,12 @@ describe('one-symbol', () => {
 
   // THE THESIS GATE'S OWN RULE — evidence §5b's shape over `services/thesisGate.ts`:
   // it MAPS and does not LOAD. It imports no client, names no delegate, declares no
-  // predicate of EITHER names list under either spelling, and CALLS publishableVersion.
+  // predicate of EITHER names list under either spelling, and CALLS the ONE evaluation
+  // PUBLISHABLE(v) is folded from — `evaluatePublication`. RETARGETED AT THESIS STEP 23
+  // (the R49 sketch §6 R9, the researcher's §9-1 (ii)): `publishableVersion` must answer
+  // exactly `{ publishable, failed }` (derivations.test.ts), so the gate cannot read its rows'
+  // subjects from it; the gate maps and the predicate folds ONE evaluation, and a gate that
+  // called both would evaluate twice. A7 :1646 amended in place 2026-09-14.
   const GATE = 'services/thesisGate.ts';
   const GATE_STEP = MODULES['services/thesisGate'].step;
   const PRISMA_IMPORT = /from '(?:[^']*\/lib\/prisma|@prisma\/client)'/;
@@ -286,7 +291,7 @@ describe('one-symbol', () => {
     functionDeclaration(name),
     constDeclaration(name),
   ]);
-  const CALLS_THE_PREDICATE = /\bpublishableVersion\s*\(/;
+  const CALLS_THE_PREDICATE = /\bevaluatePublication\s*\(/;
 
   it('the gate imports no Prisma client and no lib/prisma (thesis step 23)', () => {
     expect(PRISMA_IMPORT.test(sourceOf(GATE, GATE_STEP))).toBe(false);
@@ -301,7 +306,7 @@ describe('one-symbol', () => {
     expect(FORBIDDEN.filter((re) => re.test(code)).map(String)).toEqual([]);
   });
 
-  it('the gate CALLS publishableVersion — the rule has a subject (thesis step 23)', () => {
+  it('the gate CALLS evaluatePublication, the one evaluation PUBLISHABLE(v) is folded from — the rule has a subject (thesis step 23)', () => {
     expect(CALLS_THE_PREDICATE.test(sourceOf(GATE, GATE_STEP))).toBe(true);
   });
 
@@ -330,11 +335,11 @@ describe('one-symbol', () => {
     expect(DELEGATE.test('await prisma.thesisGapDecision.findMany({ where });')).toBe(true);
     expect(FORBIDDEN.some((re) => re.test('const fingerprint = computeIt(v);'))).toBe(true);
     expect(FORBIDDEN.some((re) => re.test('export function argued(m: Row) { return true; }'))).toBe(true);
-    expect(CALLS_THE_PREDICATE.test('const report = await publishableVersion(versionId, assessment);')).toBe(true);
+    expect(CALLS_THE_PREDICATE.test('const evaluation = await evaluatePublication(versionId, assessment);')).toBe(true);
     for (const call of ['const rows = await evidenceChecks(versionId);', 'const ok = claimFramed(input);']) {
       expect(PRISMA_IMPORT.test(call) || DELEGATE.test(call) || FORBIDDEN.some((re) => re.test(call))).toBe(false);
     }
-    expect(CALLS_THE_PREDICATE.test('type R = ReturnType<typeof publishableVersion>;')).toBe(false);
+    expect(CALLS_THE_PREDICATE.test('type R = ReturnType<typeof evaluatePublication>;')).toBe(false);
   });
 });
 

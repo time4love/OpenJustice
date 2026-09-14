@@ -28,10 +28,10 @@ import {
 // sketch §3b. THESIS STEP 22 builds the three tools.
 //
 // NO_HEAD IS THE FLOW'S (§0g): T4 :583, :626 and :665 refuse NO_HEAD where A4's
-// lists do not, and the flows win. `decide_gap`'s NAMES_PERSON is OWED to step 23
-// (the R42 follow-up, REVIEW's ruling): A4 :1494 checks it "by the same rule as T5" —
-// the publication assessor, which plan step 23 builds — a model nothing mocks here,
-// so it is in the code set as owed, never claimed tested. `run_analysis` and
+// lists do not, and the flows win. `decide_gap` refuses no NAMES_PERSON (the
+// researcher's ruling, 2026-09-14): a person named in a call item fails check 16
+// NAMES_NO_PERSON at PUBLICATION, over the appeals that publish with the version —
+// `test/publishThesis.test.ts` holds it past the assessor. `run_analysis` and
 // `draft_foia_request` are paid; nothing past their model is written at step 17,
 // and the TRIPWIRE holds that no refusal — ANALYSIS_CURRENT above all — spent a call.
 // ---------------------------------------------------------------------------
