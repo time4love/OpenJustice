@@ -221,6 +221,11 @@ plan creates — amended 2026-09-05 (document refactor plan).
 *Verified by:* on staging, a re-walk moving one cited record's content; the author's list shows it;
 `audit-theses` exits 2 before the new version and 0 after.
 
+Landed 2026-09-15 (PR #448 → `25e28e9`, surface 41 → 42, no migration): `audit-theses` run in the staging container over zero
+published versions, exit 0, not recorded on the board (a vacuous run is never proof); `list_thesis_reviews` read through the
+connector, unsteered, every prediction held and nothing written. The *Verified by* exercise needs a published thesis and is OWED
+to the first real publication. Record: `docs/gf-thesis-step-24-2026-09-15.md`.
+
 ### 25 · THE THESIS SWITCH — the researcher's word
 
 One commit: the retired tools of A4 unregistered and `mcpToolClassification`'s expected set moved;

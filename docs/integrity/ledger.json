@@ -274,7 +274,13 @@
         "src/services/auditTheses.ts",
         "scripts/auditTheses.ts"
       ],
-      "lastRun": null
+      "lastRun": null,
+      "runner": "auditTheses",
+      "exitMeans": {
+        "0": "CLEAN",
+        "1": "FINDING",
+        "2": "FINDING"
+      }
     },
     {
       "id": "anchors-explainable",
