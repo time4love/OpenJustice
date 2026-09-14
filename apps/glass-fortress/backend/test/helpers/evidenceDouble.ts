@@ -192,6 +192,19 @@ export const store = {
    * nothing is answered `[]`.
    */
   trajectories: [] as Row[],
+  /**
+   * The researchers `researcher.findMany` answers — thesis step 20, additive (R47 §6-R8): `list_theses` names
+   * a published thesis's author by HANDLE (thesis A4 :1427; `Researcher.handle`). Empty by default, so a suite
+   * that seeds nothing is answered `[]` — and a handler that needs an author the store does not hold throws.
+   */
+  researchers: [] as Row[],
+  /**
+   * The detection passes `claimTrajectoryComputation.findFirst` answers — thesis step 20, additive (R47 E6): a
+   * `#tr_` citation resolves through THE ONE RESOLVER, `resolveTrajectoryCitations`, which asks for each cited
+   * page's newest pass. Empty by default, so the answer is `null` — "no newer pass" — exactly as a database
+   * holding none would answer.
+   */
+  computations: [] as Row[],
 };
 
 type ThesisRowsKey =
@@ -219,10 +232,17 @@ function appendOnly(model: string, key: ThesisRowsKey) {
     // `thesisVersion.findMany` does (round 2, M2). A double that answered every
     // row whatever it was asked would let a query that forgot its `thesisId`
     // read another thesis's rows and pass.
+    //
+    // AND `{ in: [...] }` ON A FIELD — thesis step 20, additive (R47 E3): HISTORY
+    // reads a thesis's rounds by its framings' ids and its analyses by its
+    // versions' ids. Before this an `{ in }` condition was compared by `===` and
+    // answered `[]` SILENTLY. Any OTHER object condition REJECTS, so a query this
+    // double does not model fails loudly instead of agreeing with it.
     findMany: jest.fn(
       ask(model, 'findMany', (args?: { where?: Row }) => {
-        const where = Object.entries(args?.where ?? {});
-        return Promise.resolve(store[key].filter((row) => where.every(([field, value]) => row[field] === value)));
+        const tests = whereTests(model, args?.where);
+        if (!Array.isArray(tests)) return Promise.reject(tests);
+        return Promise.resolve(store[key].filter((row) => tests.every((test) => test(row))));
       }),
     ),
     findUnique: jest.fn(
@@ -237,6 +257,42 @@ function appendOnly(model: string, key: ThesisRowsKey) {
       return Promise.resolve(created);
     }),
   };
+}
+
+/**
+ * A `where` as row tests: a plain value is an EQUALITY, `{ in: [...] }` is membership, and any other object
+ * condition is an Error naming what the double does not model — thesis step 20, additive (R47 E3–E5).
+ */
+function whereTests(model: string, where: Row | undefined): ((row: Row) => boolean)[] | Error {
+  const tests: ((row: Row) => boolean)[] = [];
+  for (const [field, cond] of Object.entries(where ?? {})) {
+    if (typeof cond !== 'object' || cond === null) {
+      tests.push((row) => row[field] === cond);
+    } else if ('in' in cond && Array.isArray(cond.in) && Object.keys(cond).length === 1) {
+      const wanted: readonly unknown[] = cond.in;
+      tests.push((row) => wanted.includes(row[field]));
+    } else {
+      return new Error(`the double does not model a ${model} where on ${field}: ${JSON.stringify(cond)}`);
+    }
+  }
+  return tests;
+}
+
+/**
+ * A COMPARE-AND-SET, as Prisma's `updateMany` answers one — thesis step 20, additive (R47 E1, E2).
+ *
+ * Every `where` field is an EQUALITY, and a column the row does not carry reads as NULL — a database row has
+ * null, never "absent", and a thesis the double created without a head must match `headVersionId: null`.
+ * The rows matched are replaced in `rows` with `data` applied; the write is RECORDED only when a row was
+ * touched, since an `updateMany` that matched nothing wrote nothing. Answers `{ count }`, never a throw:
+ * the caller decides what a count of zero means.
+ */
+function compareAndSet(model: string, rows: Row[], args: { where: Row; data: Row }): { rows: Row[]; count: number } {
+  const matches = (row: Row): boolean =>
+    Object.entries(args.where).every(([field, value]) => (row[field] ?? null) === value);
+  const count = rows.filter(matches).length;
+  if (count > 0) record(model, 'updateMany', args.data);
+  return { rows: rows.map((row) => (matches(row) ? { ...row, ...args.data } : row)), count };
 }
 
 /**
@@ -436,6 +492,15 @@ export const db = {
       if (store.thesis?.['id'] === id) store.thesis = updated;
       return Promise.resolve(updated);
     }),
+    // THE HEAD'S COMPARE-AND-SET — thesis step 20, additive (R47 E1). `update` above honours `where.id` alone,
+    // so a write against a head that moved could never lose; this honours every `where` field.
+    updateMany: jest.fn((args: { where: Row; data: Row }) => {
+      const { rows, count } = compareAndSet('thesis', store.theses, args);
+      store.theses = rows;
+      const held = store.thesis;
+      if (held !== null) store.thesis = rows.find((t) => t['id'] === held['id']) ?? held;
+      return Promise.resolve({ count });
+    }),
   },
   thesisVersion: {
     // BY ID ONCE A SUITE HOLDS THE VERSION LIST — thesis step 17, additive (7.2
@@ -612,6 +677,18 @@ export const db = {
         return Promise.resolve(disagrees ? null : held);
       }),
     ),
+    // A PAGE'S WORK-LIST — thesis step 20, additive (R47 E4): the version write's second pass over a page's
+    // rows, for a record name over a capture that was never ACQUIRED (§6-R1). Equality only — the pass
+    // filters outcome and hash in code — and any object condition REJECTS. The held row answers only a
+    // `where` naming ITS page.
+    findMany: jest.fn(
+      ask('cdxIndexEntry', 'findMany', (args?: { where?: Row }) => {
+        const tests = whereTests('cdxIndexEntry', args?.where);
+        if (!Array.isArray(tests)) return Promise.reject(tests);
+        const held = store.workList;
+        return Promise.resolve(held !== null && tests.every((test) => test(held)) ? [held] : []);
+      }),
+    ),
   },
   textVersion: {
     findFirst: jest.fn(() => Promise.resolve(store.textVersions.at(0) ?? null)),
@@ -777,6 +854,25 @@ export const db = {
       }),
     ),
   },
+  // A PAGE'S NEWEST DETECTION PASS — thesis step 20, additive (R47 E6). Equality on the `where`, the newest by
+  // `computedAt` when the caller orders `desc` (the one order the resolver sends), and any other `orderBy`
+  // REJECTS rather than agreeing with it.
+  claimTrajectoryComputation: {
+    findFirst: jest.fn(
+      ask('claimTrajectoryComputation', 'findFirst', (args?: { where?: Row; orderBy?: Row }) => {
+        const tests = whereTests('claimTrajectoryComputation', args?.where);
+        if (!Array.isArray(tests)) return Promise.reject(tests);
+        const order = JSON.stringify(args?.orderBy ?? null);
+        if (order !== JSON.stringify({ computedAt: 'desc' })) {
+          return Promise.reject(new Error(`the double does not model a claimTrajectoryComputation orderBy ${order}`));
+        }
+        const newest = store.computations
+          .filter((row) => tests.every((test) => test(row)))
+          .sort((a, b) => Number(b['computedAt']) - Number(a['computedAt']));
+        return Promise.resolve(newest.at(0) ?? null);
+      }),
+    ),
+  },
   // THE THESIS LAYER'S APPEND-ONLY TABLES — thesis step 17, additive (A2).
   //
   // THE FRAMING ALONE ALSO UPDATES (7.3). A2 marks its ROUNDS append-only
@@ -796,6 +892,13 @@ export const db = {
       const updated = { ...held, ...args.data };
       store.framings = store.framings.map((f) => (f['id'] === id ? updated : f));
       return Promise.resolve(updated);
+    }),
+    // THE ATTACHMENT'S COMPARE-AND-SET — thesis step 20, additive (R47 E2): `create_thesis` attaches a framing
+    // only while it is attached to nothing (`where: { id, thesisId: null }`).
+    updateMany: jest.fn((args: { where: Row; data: Row }) => {
+      const { rows, count } = compareAndSet('framing', store.framings, args);
+      store.framings = rows;
+      return Promise.resolve({ count });
     }),
   },
   framingRound: {
@@ -817,6 +920,17 @@ export const db = {
   publicationAttempt: appendOnly('publicationAttempt', 'attempts'),
   withdrawal: appendOnly('withdrawal', 'withdrawals'),
   note: appendOnly('note', 'notes'),
+  // THE AUTHORS `list_theses` names — thesis step 20, additive (R47 E5): `{ id: { in } }` and equality, any
+  // other operator REJECTS.
+  researcher: {
+    findMany: jest.fn(
+      ask('researcher', 'findMany', (args?: { where?: Row }) => {
+        const tests = whereTests('researcher', args?.where);
+        if (!Array.isArray(tests)) return Promise.reject(tests);
+        return Promise.resolve(store.researchers.filter((row) => tests.every((test) => test(row))));
+      }),
+    ),
+  },
   $transaction: jest.fn(defaultTransaction),
 };
 
@@ -863,6 +977,8 @@ export function resetDouble(): void {
   store.notes = [];
   store.debates = [];
   store.trajectories = [];
+  store.researchers = [];
+  store.computations = [];
   db.debateSession.findUnique.mockImplementation(defaultSessionLookup);
   db.$transaction.mockImplementation(defaultTransaction);
   db.trackedUrl.findUnique.mockReturnValue(Promise.resolve(PAGE));

@@ -145,3 +145,61 @@ describe('lib/normalise.ts imports nothing — thesis flows A1 :1247–:1250, as
     expect(importsSomething("// import { x } from './y';\nexport const a = 1;")).toBe(false);
   });
 });
+
+// ---------------------------------------------------------------------------
+// THE VERSION WRITE'S TWO SOURCE RULES — thesis step 20 (the R47 sketch §6-R9).
+//
+// Held HERE, in the project that gates, and not by widening `test/walk/pageLog.test.ts`, whose scan reads
+// `src/walk/tools/` only. Both read CODE, comments stripped: a comment naming `prisma.$transaction(` is not a
+// call (`resolveScanStop.ts` carries exactly such a comment).
+//
+//   (i)  every `$transaction(` in the step-20 thesis modules carries the shared window, `WRITE_TRANSACTION`
+//        — Prisma's 5 s default is invisible to a suite that mocks Prisma (memory: the transaction window)
+//   (ii) the version write creates a version's mentions in ONE `createMany`, never a `create` per row
+//
+// THE SUBJECTS are step 20's six modules: the version write and its five tools.
+// ---------------------------------------------------------------------------
+
+const STEP_20_MODULES = [
+  'services/thesisVersionWrite.ts',
+  'mcp/tools/createThesis.ts',
+  'mcp/tools/addThesisVersion.ts',
+  'mcp/tools/getThesisContext.ts',
+  'mcp/tools/listTheses.ts',
+  'mcp/tools/addNote.ts',
+] as const;
+const VERSION_WRITE = 'services/thesisVersionWrite.ts';
+
+const moduleCode = (module: string): string => readCode(join(BACKEND, 'src', module));
+const transactions = (code: string): number => (codeOf(code).match(/\$transaction\s*\(/g) ?? []).length;
+const windowed = (code: string): number => (codeOf(code).match(/,\s*WRITE_TRANSACTION\s*\)/g) ?? []).length;
+const createsMentionsInBulk = (code: string): boolean => /\.thesisMention\.createMany\s*\(/.test(codeOf(code));
+const createsMentionsOneByOne = (code: string): boolean => /\.thesisMention\.create\s*\(/.test(codeOf(code));
+
+describe('the version write — one window, one bulk call (thesis step 20)', () => {
+  it('(i) every $transaction( in the step-20 modules carries WRITE_TRANSACTION — and the version write opens one', () => {
+    expect(transactions(moduleCode(VERSION_WRITE))).toBeGreaterThan(0);
+    const unwindowed = STEP_20_MODULES.filter((m) => transactions(moduleCode(m)) !== windowed(moduleCode(m)));
+    expect(unwindowed).toEqual([]);
+  });
+
+  it('(i) DETECTS a bare transaction — and a windowed one and a comment naming one do not fire', () => {
+    const bare = 'return prisma.$transaction(async (tx) => write(tx));';
+    const good = 'return prisma.$transaction(async (tx) => write(tx), WRITE_TRANSACTION);';
+    expect(transactions(bare) === windowed(bare)).toBe(false);
+    expect(transactions(good) === windowed(good)).toBe(true);
+    expect(transactions('// two `prisma.$transaction(` sites would be two spellings\nconst a = 1;')).toBe(0);
+  });
+
+  it('(ii) services/thesisVersionWrite.ts calls thesisMention.createMany and never thesisMention.create(', () => {
+    const code = moduleCode(VERSION_WRITE);
+    expect({ bulk: createsMentionsInBulk(code), oneByOne: createsMentionsOneByOne(code) }).toEqual({ bulk: true, oneByOne: false });
+  });
+
+  it('(ii) DETECTS a create per row — and the bulk call and a comment naming create do not fire', () => {
+    expect(createsMentionsOneByOne('for (const row of rows) await tx.thesisMention.create({ data: row });')).toBe(true);
+    expect(createsMentionsOneByOne('await tx.thesisMention.createMany({ data: rows });')).toBe(false);
+    expect(createsMentionsOneByOne('// never tx.thesisMention.create( per row\nconst a = 1;')).toBe(false);
+    expect(createsMentionsInBulk('await tx.thesisMention.createMany({ data: rows });')).toBe(true);
+  });
+});

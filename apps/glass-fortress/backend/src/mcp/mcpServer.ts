@@ -45,6 +45,11 @@ import { openFramingSchema, openFramingHandler } from './tools/openFraming';
 import { assessFramingSchema, assessFramingHandler } from './tools/assessFraming';
 import { chooseFramingSchema, chooseFramingHandler } from './tools/chooseFraming';
 import { getFramingSchema, getFramingHandler } from './tools/getFraming';
+import { createThesisSchema, createThesisHandler } from './tools/createThesis';
+import { addThesisVersionSchema, addThesisVersionHandler } from './tools/addThesisVersion';
+import { getThesisContextSchema, getThesisContextHandler } from './tools/getThesisContext';
+import { listThesesSchema, listThesesHandler } from './tools/listTheses';
+import { addNoteSchema, addNoteHandler } from './tools/addNote';
 
 // ---------------------------------------------------------------------------
 // Factory — creates a fresh McpServer per request.
@@ -817,6 +822,102 @@ export function createMcpServer(): McpServer {
     },
     async (input) => ({
       content: [{ type: 'text' as const, text: stampEnvironment(await getFramingHandler(input)) }],
+    }),
+  );
+
+  // -------------------------------------------------------------------------
+  // THE VERSION WRITE — thesis step 20, docs/gf-thesis-flows.md T2, §9 and A4 :1426–:1479, :1520.
+  // A thesis is created from a framing's CHOSEN claim; every version is one transaction whose
+  // citations are tokens in its text and whose pins the write computes.
+  // -------------------------------------------------------------------------
+
+  server.registerTool(
+    'create_thesis',
+    {
+      description:
+        'CREATE A THESIS FROM A CHOSEN FRAMING, with its first version. Free; writes the thesis. ' +
+        'The claim must be the framing\'s CHOSEN claim CHARACTER FOR CHARACTER — restate it exactly, ' +
+        'never tidied — and the provision the thesis asserts is set once, here. The text is the version ' +
+        'the researcher approved, stored verbatim; each citation is a token inside it: #ev_ followed by ' +
+        'a record\'s name exactly as list_findings returns it, or #tr_ followed by a trajectory id. The ' +
+        'platform COMPUTES every citation\'s pin — the content version the researcher stands behind — ' +
+        'and nothing you send can set one. Unargued citations are legal in a draft and come back in ' +
+        '`unargued`. Refuses NO_RESEARCHER, NO_FRAMING, NO_PROVISION_SHAPE, EMPTY, NOT_A_RECORD (a name the ' +
+        'corpus does not hold, or a #doc_ token — documents are not citable yet), NOT_ACQUIRED, ' +
+        'AWAITING_DERIVATION (naming the diff), UNKNOWN_TRAJECTORY_ID, CLAIM_MISMATCH, FRAMING_ATTACHED ' +
+        'and STALE_PIN.',
+      inputSchema: createThesisSchema,
+    },
+    async (input) => ({
+      content: [{ type: 'text' as const, text: stampEnvironment(await createThesisHandler(input)) }],
+    }),
+  );
+
+  server.registerTool(
+    'add_thesis_version',
+    {
+      description:
+        'WRITE THE NEXT VERSION OF YOUR THESIS, against the head you read. Free; writes one version. ' +
+        'The version is ONE transaction: the text verbatim, its hash, a citation per #ev_ or #tr_ token, ' +
+        'each pin computed by the platform, and the head moved. An argument made for a citation CARRIES ' +
+        'to the new version only while the record and its pin are unchanged; otherwise the citation ' +
+        'comes back in `unargued`. Nothing is ever edited: a version that disagrees with the head is a ' +
+        'new version after it. STALE_HEAD means another write landed first — read get_thesis_context and ' +
+        'write again. STALE_PIN means a review re-affirmed a cited record mid-write — write again and it ' +
+        're-pins. Refuses NO_RESEARCHER, NO_THESIS, NOT_AUTHOR, STALE_HEAD, NOT_A_RECORD, NOT_ACQUIRED, ' +
+        'AWAITING_DERIVATION, UNKNOWN_TRAJECTORY_ID, EMPTY and STALE_PIN.',
+      inputSchema: addThesisVersionSchema,
+    },
+    async (input) => ({
+      content: [{ type: 'text' as const, text: stampEnvironment(await addThesisVersionHandler(input)) }],
+    }),
+  );
+
+  server.registerTool(
+    'get_thesis_context',
+    {
+      description:
+        'READ A THESIS\'S WORKING STATE: head, citations, gaps, history. Free; writes nothing. ANY ' +
+        'researcher may read ANY thesis — working state is gated from the public, not from colleagues. ' +
+        'Returns the thesis; the HEAD and the PUBLISHED version with their texts and each citation\'s pin ' +
+        'and whether it is argued; the unargued citations; the gap list at each decision in force; the ' +
+        'analysis state; the framings; and the HISTORY — every act on the thesis as its own attributed ' +
+        'row, derived and never logged — optionally only what happened after `since`. Refuses NO_THESIS.',
+      inputSchema: getThesisContextSchema,
+    },
+    async (input) => ({
+      content: [{ type: 'text' as const, text: stampEnvironment(await getThesisContextHandler(input)) }],
+    }),
+  );
+
+  server.registerTool(
+    'list_theses',
+    {
+      description:
+        'LIST THE PUBLISHED THESES, and your own when you are signed in. Free; writes nothing. Anyone ' +
+        'sees each PUBLISHED thesis — its claim, provision, publication date, author\'s handle and ' +
+        'version hash. A signed-in researcher also sees every thesis of their own, drafts included, ' +
+        'each with its head, its published version, whether the public sees the head, the framings ' +
+        'attached, and how many citations are unargued and gaps open. Refuses nothing.',
+      inputSchema: listThesesSchema,
+    },
+    async () => ({
+      content: [{ type: 'text' as const, text: stampEnvironment(await listThesesHandler()) }],
+    }),
+  );
+
+  server.registerTool(
+    'add_note',
+    {
+      description:
+        'NOTE AN OBSERVATION ON A THESIS OR A FRAMING — the researcher\'s words. Free; writes one note. ' +
+        'A note is attributed, never public, and never state: a note saying a gap is resolved resolves ' +
+        'nothing. Name exactly one target. Stored verbatim. Refuses NO_RESEARCHER, NEITHER (not exactly ' +
+        'one target), NO_THESIS, NO_FRAMING, NOT_AUTHOR and EMPTY.',
+      inputSchema: addNoteSchema,
+    },
+    async (input) => ({
+      content: [{ type: 'text' as const, text: stampEnvironment(await addNoteHandler(input)) }],
     }),
   );
 

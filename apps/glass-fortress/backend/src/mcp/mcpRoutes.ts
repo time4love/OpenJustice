@@ -66,6 +66,10 @@ export const READ_TOOLS = new Set([
   'get_diff_input',
   'resolve_record',
   'check_on_chain_status',
+  // THE THESIS LIST — thesis step 20, A4 :1426: PUBLIC. It writes nothing and spends nothing, and its
+  // published entries are the same for everyone; a researcher's bearer token, resolved by identifyViewer,
+  // adds their own theses beside them — access, not a second behaviour.
+  'list_theses',
 ]);
 
 export const WRITE_TOOLS = new Set([
@@ -166,6 +170,17 @@ export const WRITE_TOOLS = new Set([
   'assess_framing',
   'choose_framing',
   'get_framing',
+  // THE VERSION WRITE — thesis step 20, docs/gf-thesis-flows.md T2, §9 and A4 :1461–:1479, :1520.
+  //
+  // Three WRITE, attributed and refused without a researcher: the thesis and its versions, and a note.
+  // None spends. `get_thesis_context` writes nothing and calls no model, and is gated all the same: A4
+  // :1476 calls it a GATED read, and it returns a thesis's working state — its head, unargued citations,
+  // gaps and history — which is exactly what a published page never shows. The standing precedent is
+  // `get_framing`, `get_debate` and the walk's three reads (interaction A5 :1071–:1072).
+  'create_thesis',
+  'add_thesis_version',
+  'add_note',
+  'get_thesis_context',
 ]);
 
 // ---------------------------------------------------------------------------
@@ -308,13 +323,12 @@ async function resolveResearcher(req: Request, res: Response): Promise<{ researc
 // ---------------------------------------------------------------------------
 // identifyViewer
 //
-// Read tools stay open, but some are VIEWER-DEPENDENT: get_thesis_context and
-// get_whistleblower_call show an anonymous caller the published version and an
-// approved researcher the head. So a read call that carries a bearer token is
-// identified if it can be, and treated as anonymous if it cannot — never
-// refused. The tool output names the viewer it answered for, so a researcher
-// whose token has lapsed sees `viewer: PUBLIC` rather than mistaking the
-// public view for the head.
+// Read tools stay open, but some are VIEWER-DEPENDENT: list_theses shows an
+// anonymous caller the published theses and a researcher their own beside them,
+// and the corpus reads open every page to a researcher. So a read call that
+// carries a bearer token is identified if it can be, and treated as anonymous if
+// it cannot — never refused. (get_thesis_context is not among them: it is a
+// GATED read in WRITE_TOOLS, thesis A4 :1476.)
 // ---------------------------------------------------------------------------
 
 async function identifyViewer(req: Request): Promise<string | undefined> {

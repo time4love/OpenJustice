@@ -171,6 +171,17 @@ describe('POST /api/mcp — write tool auth', () => {
     );
   });
 
+  it('returns 401 with WWW-Authenticate for an anonymous get_thesis_context — a GATED read, gated at the route (thesis A4 :1476; interaction A5 :1071–:1072)', async () => {
+    // Its handler asks no identity, so the ROUTE is the only thing between an
+    // anonymous caller and a thesis's working state — heads, unargued citations,
+    // gaps and history that a published page never shows.
+    const res = await request(app)
+      .post('/api/mcp')
+      .send({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'get_thesis_context', arguments: { thesisId: 't1' } } });
+    expect(res.status).toBe(401);
+    expect(res.headers['www-authenticate']).toContain('resource_metadata=');
+  });
+
   it('returns 401 for write tool call with wrong token', async () => {
     const res = await request(app)
       .post('/api/mcp')
@@ -296,8 +307,10 @@ describe('POST /api/mcp — OAuth access token auth', () => {
 
 // ===========================================================================
 // Read tools are open but VIEWER-DEPENDENT: a valid token identifies the
-// caller for get_thesis_context / get_whistleblower_call; an absent or bad
-// token means anonymous — never a refusal.
+// caller for list_theses, which adds a researcher's own theses beside the
+// published ones; an absent or bad token means anonymous — never a refusal.
+// (get_thesis_context was this describe's subject until thesis step 20 made it
+// the GATED read thesis A4 :1476 calls it.)
 // ===========================================================================
 
 describe('POST /api/mcp — read tool viewer identification', () => {
@@ -305,7 +318,7 @@ describe('POST /api/mcp — read tool viewer identification', () => {
     jsonrpc: '2.0',
     id: 1,
     method: 'tools/call',
-    params: { name: 'get_thesis_context', arguments: { thesisId: 't1' } },
+    params: { name: 'list_theses', arguments: {} },
   };
 
   /** The researcher id visible to the tool handler at the moment the server is created. */
