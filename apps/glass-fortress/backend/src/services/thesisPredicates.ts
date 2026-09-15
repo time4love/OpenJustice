@@ -447,6 +447,14 @@ type ReviewKind = ReviewEntry['kind'];
 export const REVIEW_KINDS: readonly ReviewKind[] = ['FLAGGED', 'STALE_TRAJECTORY', 'UNARGUED'];
 
 /**
+ * WHOSE THESES the two lists run over — docs/gf-ui-flows.md §7.1 :320–:324 (UI-2, 2026-09-15), one name for both
+ * `list_theses` and `list_thesis_reviews`: `mine`, the default — the theses the caller AUTHORS, A3 :1408's
+ * REVIEWS(researcher) as written; `all`, EVERY thesis, the read view's — the same arms, one spelling, a different
+ * subject set. Every command an entry carries still writes only as the author (thesis A7 :1685).
+ */
+export type ListScope = 'mine' | 'all';
+
+/**
  * THE ONE COMMAND an entry owes, and the ONE builder of it (the R50 sketch §6-D9): FLAGGED and STALE_TRAJECTORY are
  * answered by a new version (T6 :871, :889; document flows :903) — re-pin, drop, or concede in the text; UNARGUED by
  * `open_debate`, which returns a debate already OPEN on the record and thesis rather than refusing (evidence A4 :1119).
@@ -474,9 +482,9 @@ export function reviewCommand(kind: ReviewKind, thesisId: string, headVersionId:
  * from this list is an obligation reported as none. The ORDER here is the thesis id, then A3's kinds; "oldest first" is
  * the tool's (A4 :1524).
  */
-export async function reviews(researcherId: string): Promise<ReviewEntry[]> {
+export async function reviews(researcherId: string, scope: ListScope = 'mine'): Promise<ReviewEntry[]> {
   const theses = await prisma.thesis.findMany({
-    where: { createdById: researcherId },
+    where: scope === 'mine' ? { createdById: researcherId } : {},
     select: { id: true, headVersionId: true, publishedVersionId: true },
     orderBy: { id: 'asc' },
   });

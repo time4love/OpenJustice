@@ -206,6 +206,13 @@ export const store = {
    * holding none would answer.
    */
   computations: [] as Row[],
+  /**
+   * THE PAGES a corpus-wide read finds — UI-2 (R52 sketch §e2), additive. Empty by default, and while empty the
+   * `trackedUrl` delegates answer `PAGE` / `[PAGE]` to any `where`, as they always did; a suite that seeds the list
+   * gets a lookup by `id` or `url` and a `findMany` over it — the `thesis.findUnique` :498–:505 fallback shape. A
+   * two-page world (a public page beside a private one) is unwritable without it.
+   */
+  pages: [] as Row[],
 };
 
 type ThesisRowsKey =
@@ -357,6 +364,66 @@ function compareAndSet(model: string, rows: Row[], args: { where: Row; data: Row
  * this?", free to drift from the one the record names are computed against.
  */
 export { PAGE, URL };
+
+/**
+ * A page by `id` or `url` once a suite holds the page list; the one page to ANY `where` while it holds none — UI-2,
+ * additive. `resetDouble` re-installs it as `trackedUrl.findUnique`'s implementation (a `mockReturnValue` there would
+ * stand for every case after one that set it, and would answer PAGE to a url the list does not hold).
+ */
+export const defaultPageLookup = (args?: { where?: { id?: string; url?: string } }): Promise<Row | null> => {
+  if (store.pages.length === 0) return Promise.resolve(PAGE);
+  const where = args?.where ?? {};
+  return Promise.resolve(store.pages.find((p) => (where.id !== undefined ? p['id'] === where.id : p['url'] === where.url)) ?? null);
+};
+
+/**
+ * A `where` over rows that may LACK the fields it names — UI-2, additive, for the three corpus delegates that ignored
+ * every condition before (`urlSnapshot`, `urlVersionDiff` and the page-shaped arm of `evidence`): an EQUALITY is
+ * applied only where the row CARRIES the field, `{ in }` likewise, and every other condition is IGNORED — never a
+ * rejection, because the consumers of those delegates were written against a double that ignored everything
+ * (`ARCHIVED_CAPTURES_ONLY` sends `provenance` and `{ not: null }`, and no fixture row carries either). A row carrying
+ * the field asked for must match it, so a corpus of two pages answers each page its own rows.
+ */
+function carriedWhere(row: Row, where: Row | undefined): boolean {
+  for (const [field, cond] of Object.entries(where ?? {})) {
+    if (!(field in row)) continue;
+    if (typeof cond !== 'object' || cond === null) {
+      if (row[field] !== cond) return false;
+    } else if ('in' in cond && Array.isArray(cond.in) && Object.keys(cond).length === 1) {
+      const wanted: readonly unknown[] = cond.in;
+      if (!wanted.includes(row[field])) return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * The page `publicPage` asks about — `{ OR: [{ snapshot: { trackedUrlId } }, { urlVersionDiff: { trackedUrlId } }] }`
+ * (services/evidencePredicates.ts :427–:430) — or null for any other `where`. UI-2, additive.
+ */
+function pageOfOr(where: Row | undefined): string | null {
+  const or = where?.['OR'];
+  if (!Array.isArray(or)) return null;
+  for (const arm of or) {
+    if (typeof arm !== 'object' || arm === null) continue;
+    for (const relation of ['snapshot', 'urlVersionDiff']) {
+      const inner = (arm as Row)[relation];
+      const id = typeof inner === 'object' && inner !== null ? (inner as Row)['trackedUrlId'] : undefined;
+      if (typeof id === 'string') return id;
+    }
+  }
+  return null;
+}
+
+/** An evidence row's page, through either relation — `undefined` when neither relation carries one (a legacy fixture). */
+function evidencePageOf(row: Row): string | undefined {
+  for (const relation of ['snapshot', 'urlVersionDiff']) {
+    const inner = row[relation];
+    const id = typeof inner === 'object' && inner !== null ? (inner as Row)['trackedUrlId'] : undefined;
+    if (typeof id === 'string') return id;
+  }
+  return undefined;
+}
 
 export const defaultSessionLookup = (args: {
   where: { id?: string; openKey?: string };
@@ -686,11 +753,19 @@ export const db = {
     }),
   },
   trackedUrl: {
-    findUnique: jest.fn(() => Promise.resolve(PAGE)),
-    findMany: jest.fn(() => Promise.resolve([PAGE])),
+    // BY ID OR URL ONCE A SUITE HOLDS THE PAGE LIST — UI-2, additive (`defaultPageLookup` says why).
+    findUnique: jest.fn(defaultPageLookup),
+    // `verify_claim_text` asks `findFirst({ where: { url } })` (services/archiveVerification.ts :259) — the same lookup.
+    findFirst: jest.fn(ask('trackedUrl', 'findFirst', defaultPageLookup)),
+    // EVERY SURVEYED PAGE — `[PAGE]` while no list is held, as always; the list, equality `where` honoured, once it is.
+    findMany: jest.fn((args?: { where?: Row }) =>
+      Promise.resolve(store.pages.length === 0 ? [PAGE] : store.pages.filter((p) => carriedWhere(p, args?.where))),
+    ),
   },
   urlSnapshot: {
-    findMany: jest.fn(() => Promise.resolve(store.captures)),
+    // A PAGE'S OWN CAPTURES once the rows carry `trackedUrlId` — UI-2, additive: equality and `{ in }` on fields the
+    // row carries, every other condition ignored as before (`carriedWhere`).
+    findMany: jest.fn((args?: { where?: Row }) => Promise.resolve(store.captures.filter((c) => carriedWhere(c, args?.where)))),
     // BY ID, from the same list `findMany` answers with. A double that returned
     // one fixed row would let a case about two captures pass while the code read
     // the wrong one.
@@ -698,7 +773,8 @@ export const db = {
       Promise.resolve(store.captures.find((c) => c['id'] === args.where.id) ?? null),
     ),
   },
-  urlVersionDiff: { findMany: jest.fn(() => Promise.resolve(store.diffs)) },
+  // A PAGE'S OWN DIFFS once the rows carry `trackedUrlId` — UI-2, additive, as `urlSnapshot` above.
+  urlVersionDiff: { findMany: jest.fn((args?: { where?: Row }) => Promise.resolve(store.diffs.filter((d) => carriedWhere(d, args?.where)))) },
   diffContentVersion: {
     // HONOURS ITS `where`, so a case can assert that phase 2 asked for the two
     // versions the entry shows and no others.
@@ -814,13 +890,22 @@ export const db = {
     // through the other delegate, or check 17 answers from a row the case says
     // does not exist and `evidenceInputSoundness.ts:185-188`'s "absent from
     // rows" rule goes unexercised.
+    // AND THE PAGE-SHAPED `where` `publicPage` sends — UI-2, additive: a row whose relation carries the page asked for
+    // answers; a row whose relations carry NO page (every legacy fixture) answers as it always did. Without this a
+    // second page read PUBLIC through the first page's evidence rows.
     findMany: jest.fn(
-      ask('evidence', 'findMany', (args: { where?: { fileHash?: { in?: string[] } } }) => {
-        const wanted = args.where?.fileHash?.in ?? null;
+      ask('evidence', 'findMany', (args: { where?: Row }) => {
+        const named = args.where?.['fileHash'];
+        const wanted =
+          typeof named === 'object' && named !== null && Array.isArray((named as Row)['in']) ? ((named as Row)['in'] as unknown[]) : null;
+        const page = pageOfOr(args.where);
         return Promise.resolve(
-          wanted === null
-            ? store.evidenceRows
-            : store.evidenceRows.filter((r) => wanted.includes(String(r['fileHash']))),
+          store.evidenceRows.filter((r) => {
+            if (wanted !== null && !wanted.includes(String(r['fileHash']))) return false;
+            if (page === null) return true;
+            const own = evidencePageOf(r);
+            return own === undefined || own === page;
+          }),
         );
       }),
     ),
@@ -933,6 +1018,18 @@ export const db = {
         return Promise.resolve(newest.at(0) ?? null);
       }),
     ),
+    // THE PASS FOR ONE STATE — UI-2, additive: `readComputation` (services/claimTrajectory.ts :768–:776) asks by the
+    // compound key `trackedUrlId_sourceStateHash` and includes the pass's rows; the stored read `list_trajectories`
+    // and the KEEP tool's cache hit both go through it, and a HIT is what lets the equality case run with no write.
+    findUnique: jest.fn(
+      ask('claimTrajectoryComputation', 'findUnique', (args: { where: { trackedUrlId_sourceStateHash?: { trackedUrlId: string; sourceStateHash: string } } }) => {
+        const key = args.where.trackedUrlId_sourceStateHash;
+        if (key === undefined) return Promise.reject(new Error('the double models claimTrajectoryComputation.findUnique by trackedUrlId_sourceStateHash only'));
+        const row = store.computations.find((c) => c['trackedUrlId'] === key.trackedUrlId && c['sourceStateHash'] === key.sourceStateHash);
+        if (row === undefined) return Promise.resolve(null);
+        return Promise.resolve({ ...row, trajectories: store.trajectories.filter((t) => t['computationId'] === row['id']) });
+      }),
+    ),
   },
   // THE THESIS LAYER'S APPEND-ONLY TABLES — thesis step 17, additive (A2).
   //
@@ -1040,7 +1137,8 @@ export function resetDouble(): void {
   store.trajectories = [];
   store.researchers = [];
   store.computations = [];
+  store.pages = [];
   db.debateSession.findUnique.mockImplementation(defaultSessionLookup);
   db.$transaction.mockImplementation(defaultTransaction);
-  db.trackedUrl.findUnique.mockReturnValue(Promise.resolve(PAGE));
+  db.trackedUrl.findUnique.mockImplementation(defaultPageLookup);
 }

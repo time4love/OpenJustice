@@ -1,21 +1,17 @@
 import { z } from 'zod';
 import {
   captureName,
+  captureRow,
   diffName,
+  diffRow,
   loadCaptures,
   loadDiffs,
   loadEvidenceLinkage,
   loadPage,
-  opinionOf,
-  pairName,
-  type EvidenceLinkage,
-  type Opinion,
+  type CaptureEntry,
+  type DiffEntry,
 } from '../../services/corpusReads';
-import {
-  currentVersionOf,
-  narrowed,
-  storedAttributionFor,
-} from '../../services/evidencePredicates';
+import { currentVersionOf, storedAttributionFor } from '../../services/evidencePredicates';
 import { answer, openPage, shared, type Refusal } from './evidenceRefusals';
 
 // ---------------------------------------------------------------------------
@@ -50,38 +46,6 @@ import { answer, openPage, shared, type Refusal } from './evidenceRefusals';
 export const listFindingsSchema = {
   url: z.url().describe('The page — exact URL, as it was surveyed'),
 };
-
-interface AnchorReport {
-  documentHash: string;
-  /**
-   * THREE VALUES, THREE FACTS. true — the registry holds this capture's
-   * `documentHash` and our registrar submitted it. false — it does not, or
-   * someone else did. null — no verdict was ever stored under the current rule,
-   * which is neither of those and must never be read as "no".
-   */
-  attributed: boolean | null;
-}
-
-interface CaptureEntry {
-  capture: string;
-  snapshotDate: string;
-  fileHash: string;
-  textHash: string;
-  textExtractionVersion: string;
-  anchor: AnchorReport;
-  evidence: EvidenceLinkage | null;
-}
-
-interface DiffEntry {
-  before: string;
-  after: string;
-  fileHash: string;
-  current: { contentVersionHash: string; chunks: unknown } | null;
-  awaitingDerivation: boolean;
-  opinion: Opinion | null;
-  narrowed: boolean;
-  evidence: EvidenceLinkage | null;
-}
 
 interface Findings {
   page: { url: string; public: boolean };
@@ -129,48 +93,9 @@ export async function listFindingsHandler(input: { url: string }): Promise<strin
     return {
       page: { url: page.url, public: access.public },
       counts: { captures: captures.length, diffs: diffs.length, awaitingDerivation },
-      captures: captures.map((capture) => {
-        const fileHash = captureName(page, capture);
-        return {
-          capture: capture.capture,
-          snapshotDate: capture.snapshotDate,
-          fileHash,
-          textHash: capture.textHash,
-          textExtractionVersion: capture.textExtractionVersion,
-          anchor: {
-            documentHash: capture.documentHash,
-            attributed: attribution.get(capture.id)?.attributed ?? null,
-          },
-          evidence: linkage.get(fileHash) ?? null,
-        };
-      }),
-      diffs: diffs.map((diff) => {
-        const fileHash = diffName(page, diff);
-        const current = currentVersionOf({
-          kind: 'DIFF',
-          before: diff.before,
-          after: diff.after,
-          versions: diff.versions,
-        });
-        return {
-          before: diff.before.capture,
-          after: diff.after.capture,
-          fileHash,
-          current: current.defined
-            ? {
-                contentVersionHash: current.contentVersionHash,
-                chunks: current.kind === 'DIFF' ? current.version.chunks : null,
-              }
-            : null,
-          awaitingDerivation: !current.defined,
-          opinion:
-            current.defined && current.kind === 'DIFF'
-              ? opinionOf(current.version.classification, pairName(diff))
-              : null,
-          narrowed: narrowed({ before: diff.before.capture, after: diff.after.capture }, acquired),
-          evidence: linkage.get(fileHash) ?? null,
-        };
-      }),
+      // THE ROWS ARE `corpusReads`' — one composition for this read and for `list_corpus` across pages (UI-2).
+      captures: captures.map((capture) => captureRow(page, capture, attribution, linkage)),
+      diffs: diffs.map((diff) => diffRow(page, diff, acquired, linkage)),
     };
   });
 }

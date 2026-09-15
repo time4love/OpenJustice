@@ -2,8 +2,18 @@ import { z } from 'zod';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { recordId, isWaybackTimestamp, type RecordId } from '../lib/evidenceIdentity';
+import { phrasePresent } from '../lib/htmlText';
+import type { ComputeResult, ChangeSpan } from './claimTrajectory';
 import { CLASSIFICATION_KEYS } from './recordDiff';
-import { recomputable, type ContentVersionProvenance } from './evidencePredicates';
+import {
+  currentVersionOf,
+  narrowed,
+  publicPage,
+  recomputable,
+  storedAttributionFor,
+  type ContentVersionProvenance,
+  type StoredAttribution,
+} from './evidencePredicates';
 
 // ---------------------------------------------------------------------------
 // THE CORPUS, AS THE PUBLIC READS IT — docs/gf-evidence-flows.md §5 and A4.
@@ -628,4 +638,387 @@ export async function loadEvidenceLinkage(
     linkage.set(row.fileHash, { fileHash: row.fileHash, status: row.status, citedBy });
   }
   return linkage;
+}
+
+// ---------------------------------------------------------------------------
+// THE ROWS A TIMELINE IS MADE OF — composed ONCE, for the per-page read and
+// for the corpus across pages (UI-2, docs/gf-ui-refactor-plan.md UI-2
+// :178–:183 "one loader, three callers, no second query"). Moved here from
+// `mcp/tools/listFindings.ts` and `mcp/tools/getClaimTrajectories.ts` on the
+// researcher's ruling of 2026-09-15, so that `list_corpus` at one page and
+// `list_findings` are one composition and not two held equal by a test alone.
+// ---------------------------------------------------------------------------
+
+export interface AnchorReport {
+  documentHash: string;
+  /**
+   * THREE VALUES, THREE FACTS. true — the registry holds this capture's
+   * `documentHash` and our registrar submitted it. false — it does not, or
+   * someone else did. null — no verdict was ever stored under the current rule,
+   * which is neither of those and must never be read as "no".
+   */
+  attributed: boolean | null;
+}
+
+export interface CaptureEntry {
+  capture: string;
+  snapshotDate: string;
+  fileHash: string;
+  textHash: string;
+  textExtractionVersion: string;
+  anchor: AnchorReport;
+  evidence: EvidenceLinkage | null;
+}
+
+export interface DiffEntry {
+  before: string;
+  after: string;
+  fileHash: string;
+  current: { contentVersionHash: string; chunks: unknown } | null;
+  awaitingDerivation: boolean;
+  opinion: Opinion | null;
+  narrowed: boolean;
+  evidence: EvidenceLinkage | null;
+}
+
+/** A capture's row of the timeline (evidence A4 :1082–:1083), from the stored anchor verdict and the promotion linkage. */
+export function captureRow(
+  page: Page,
+  capture: TimelineCapture,
+  attribution: ReadonlyMap<string, StoredAttribution>,
+  linkage: ReadonlyMap<string, EvidenceLinkage>,
+): CaptureEntry {
+  const fileHash = captureName(page, capture);
+  return {
+    capture: capture.capture,
+    snapshotDate: capture.snapshotDate,
+    fileHash,
+    textHash: capture.textHash,
+    textExtractionVersion: capture.textExtractionVersion,
+    anchor: {
+      documentHash: capture.documentHash,
+      attributed: attribution.get(capture.id)?.attributed ?? null,
+    },
+    evidence: linkage.get(fileHash) ?? null,
+  };
+}
+
+/**
+ * A diff's row of the timeline (evidence A4 :1084–:1090): the pair, CURRENT's chunks or the named absence, the opinion
+ * in its own register, NARROWED over the page's ACQUIRED captures, and the promotion linkage.
+ */
+export function diffRow(
+  page: Page,
+  diff: TimelineDiff,
+  acquired: readonly string[],
+  linkage: ReadonlyMap<string, EvidenceLinkage>,
+): DiffEntry {
+  const fileHash = diffName(page, diff);
+  const current = currentVersionOf({
+    kind: 'DIFF',
+    before: diff.before,
+    after: diff.after,
+    versions: diff.versions,
+  });
+  return {
+    before: diff.before.capture,
+    after: diff.after.capture,
+    fileHash,
+    current: current.defined
+      ? {
+          contentVersionHash: current.contentVersionHash,
+          chunks: current.kind === 'DIFF' ? current.version.chunks : null,
+        }
+      : null,
+    awaitingDerivation: !current.defined,
+    opinion:
+      current.defined && current.kind === 'DIFF'
+        ? opinionOf(current.version.classification, pairName(diff))
+        : null,
+    narrowed: narrowed({ before: diff.before.capture, after: diff.after.capture }, acquired),
+    evidence: linkage.get(fileHash) ?? null,
+  };
+}
+
+/** One finding of a detection pass as `get_claim_trajectories` reports it: a group of claims that moved as a unit. */
+export interface TrajectoryFinding {
+  patternHash: string;
+  /** The state this group was detected against — travels with the finding, which gets copied out of its envelope. */
+  sourceStateHash: string;
+  transitions: number;
+  firstSeen: string;
+  lastSeen: string;
+  finalState: 'PRESENT' | 'REMOVED';
+  claimCount: number;
+  changes: ChangeSpan[];
+  /** trajectoryId is the citable identity; a group has none of its own, so every member is cited. */
+  claims: { trajectoryId: string; claimHash: string; claimText: string }[];
+}
+
+/** The findings of a pass, one per group, each carrying the pass's state hash (evidence A4 :1103). */
+export function trajectoryFindings(result: ComputeResult): TrajectoryFinding[] {
+  return result.groups.map((g) => ({
+    patternHash: g.patternHash,
+    sourceStateHash: result.provenance.sourceStateHash,
+    transitions: g.transitions,
+    firstSeen: g.firstSeen,
+    lastSeen: g.lastSeen,
+    finalState: g.finalState,
+    claimCount: g.claims.length,
+    changes: g.changes,
+    claims: g.claims.map((c) => ({
+      trajectoryId: c.id,
+      claimHash: c.claimHash,
+      claimText: c.claimText,
+    })),
+  }));
+}
+
+// ---------------------------------------------------------------------------
+// THE CORPUS ACROSS PAGES — docs/gf-ui-flows.md §6.1 :226–:257 and §28
+// :746–:753; docs/gf-ui-refactor-plan.md UI-2 (2026-09-15). `list_corpus`,
+// `list_trajectories` and `search_corpus` are this module's loaders over EVERY
+// page of a scope, with the per-page rows above composed once for both. Still
+// no refusal is decided here (the tools do that, through `evidenceRefusals`)
+// and nothing is written: a corpus-wide read is a read, never a transaction.
+//
+// `scope` DECIDES, NEVER IDENTITY. `pagesInScope` reads no caller: `public` is
+// PUBLIC_PAGE's set (the predicate CALLED per page), `all` every surveyed page.
+// ---------------------------------------------------------------------------
+
+/**
+ * How many entries one call answers, and the most a caller may ask for — ONE
+ * operational parameter (interaction flows A8; plan UI-2 :174), named in UI-2's
+ * dated doc and never a judgement about the corpus.
+ */
+export const CORPUS_READ_LIMIT = 100;
+
+/** A day, as `since` and `until` name one — YYYY-MM-DD, inclusive at both ends. */
+export const DAY = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'a day, YYYY-MM-DD');
+
+export type CorpusScope = 'public' | 'all';
+
+/** A page of the scope, with whether a published thesis has opened it — `publicPage`, CALLED. */
+export interface ScopedPage extends Page {
+  public: boolean;
+}
+
+/** Code-unit order — the order this module states, never the locale's. */
+const byCodeUnit = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
+
+/**
+ * Every surveyed page at `all`; exactly PUBLIC_PAGE's set at `public` — the predicate asked per page, never a second
+ * spelling of "is this page opened". Ordered by url, so a facet reads the same way every time.
+ */
+export async function pagesInScope(scope: CorpusScope): Promise<ScopedPage[]> {
+  const rows = await prisma.trackedUrl.findMany({ select: { id: true, url: true } });
+  const pages: ScopedPage[] = [];
+  for (const row of [...rows].sort((a, b) => byCodeUnit(a.url, b.url))) {
+    pages.push({ id: row.id, url: row.url, public: await publicPage(row.id) });
+  }
+  return scope === 'all' ? pages : pages.filter((p) => p.public);
+}
+
+/** The page an entry belongs to — the field the read view marks a row of a page not yet opened by (§27 :734). */
+export interface EntryPage {
+  trackedUrlId: string;
+  url: string;
+  public: boolean;
+}
+
+/** One entry of the corpus: a capture row or a diff row (A4 :1081–:1090), its kind, and its page. */
+export type CorpusEntry = (({ kind: 'CAPTURE' } & CaptureEntry) | ({ kind: 'DIFF' } & DiffEntry)) & { page: EntryPage };
+
+/** The `pages` facet (§28 :750): every page of the SCOPE, its held span and its entry count, never the call's filters. */
+export interface PageFacet extends EntryPage {
+  first: string | null;
+  last: string | null;
+  entries: number;
+}
+
+/** A diff's instant on the chronology is its `after` — the capture at which the page is seen to have moved. */
+export function entryInstant(entry: CorpusEntry): string {
+  return entry.kind === 'DIFF' ? entry.after : entry.capture;
+}
+
+/** The fields of a `list_corpus` cursor, in the order they sort — the entries' total order, as a key. */
+export const CORPUS_CURSOR_KEYS = ['t', 'k', 'p', 'b', 'h'] as const;
+/** The fields of a `list_trajectories` cursor: the instant the claim LEFT, the page, the pattern. */
+export const TRAJECTORY_CURSOR_KEYS = ['l', 'p', 'h'] as const;
+
+export type CorpusKey = Record<(typeof CORPUS_CURSOR_KEYS)[number], string>;
+export type TrajectoryKey = Record<(typeof TRAJECTORY_CURSOR_KEYS)[number], string>;
+
+/** An entry's key: its instant, its kind (CAPTURE before DIFF at one instant), its page, a diff's `before`, its name. */
+export function corpusKeyOf(entry: CorpusEntry): CorpusKey {
+  return { t: entryInstant(entry), k: entry.kind, p: entry.page.url, b: entry.kind === 'DIFF' ? entry.before : '', h: entry.fileHash };
+}
+
+/**
+ * TIMESTAMP ORDER ACROSS PAGES, OLDEST FIRST, and no other order (A4 :1091; §24 :682); the tie-breaks are declared,
+ * never argued: at one instant a CAPTURE before a DIFF (the capture is the record, the diff the change ending at it),
+ * then the page's url, then a diff's `before` ascending (the wider pair first, `loadDiffs`' own order), then the name.
+ */
+export function compareCorpusKeys(a: CorpusKey, b: CorpusKey): number {
+  for (const field of CORPUS_CURSOR_KEYS) {
+    const order = byCodeUnit(a[field], b[field]);
+    if (order !== 0) return order;
+  }
+  return 0;
+}
+
+export const compareEntries = (a: CorpusEntry, b: CorpusEntry): number => compareCorpusKeys(corpusKeyOf(a), corpusKeyOf(b));
+
+/** A finding of a page's stored pass, with its page. */
+export type TrajectoryEntry = TrajectoryFinding & { page: EntryPage };
+
+/**
+ * The instant a claim LEFT — the last span of `changes` in which it was absent, after the first (the first span is
+ * where the claim started). A finding lists only claims that flipped at least twice, so every one departed at least
+ * once; a finding with no departure is a malformed row, and this THROWS rather than placing it somewhere.
+ */
+export function leftAt(finding: TrajectoryFinding): string {
+  const gone = finding.changes.filter((span, index) => index > 0 && !span.present).at(-1);
+  if (gone === undefined) {
+    throw new Error(
+      `corpusReads: the finding ${finding.patternHash} (${String(finding.transitions)} transitions) never left the page — ` +
+        'a claim that flipped twice departed at least once; this row is malformed.',
+    );
+  }
+  return gone.waybackTimestamp;
+}
+
+export function trajectoryKeyOf(entry: TrajectoryEntry): TrajectoryKey {
+  return { l: leftAt(entry), p: entry.page.url, h: entry.patternHash };
+}
+
+/** By the date the claim LEFT, LATEST FIRST (§6.1 :245–:246), then the page's url, then the pattern. */
+export function compareTrajectoryKeys(a: TrajectoryKey, b: TrajectoryKey): number {
+  return byCodeUnit(b.l, a.l) || byCodeUnit(a.p, b.p) || byCodeUnit(a.h, b.h);
+}
+
+/** A day as fourteen digits at its start or its end — so a range is compared on the instant's own alphabet. */
+const dayStart = (day: string): string => `${day.replace(/-/g, '')}000000`;
+const dayEnd = (day: string): string => `${day.replace(/-/g, '')}235959`;
+
+/** Is a fourteen-digit instant within `since`..`until`, each a day, both inclusive — fixed-width digits, so `<` is chronological. */
+export function inRange(instant: string, since: string | undefined, until: string | undefined): boolean {
+  if (since !== undefined && instant < dayStart(since)) return false;
+  if (until !== undefined && instant > dayEnd(until)) return false;
+  return true;
+}
+
+/** A cursor is the read's own: the last entry's key, as base64url of its JSON (plan UI-2 :174). */
+export function encodeCursor(key: Record<string, string>): string {
+  return Buffer.from(JSON.stringify(key), 'utf8').toString('base64url');
+}
+
+/**
+ * The key a cursor carries, or null when the text is not a cursor THIS read issued: it must decode to an object whose
+ * keys are EXACTLY `keys`, every value a string. Each tool's schema `refine` passes its own tuple, so one read's cursor
+ * is a schema rejection on the other.
+ */
+export function decodeCursor<K extends readonly string[]>(text: string, keys: K): Record<K[number], string> | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(Buffer.from(text, 'base64url').toString('utf8'));
+  } catch {
+    return null;
+  }
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return null;
+  const object = parsed as Record<string, unknown>;
+  if (Object.keys(object).length !== keys.length) return null;
+  const key: Record<string, string> = {};
+  for (const field of keys) {
+    const value = object[field];
+    if (typeof value !== 'string') return null;
+    key[field] = value;
+  }
+  // Every field named by `keys` was found and is a string — the loop above is the check the type states.
+  return key;
+}
+
+/**
+ * One page of an ordered list: the entries strictly AFTER the cursor's key, `limit` of them, and the cursor for the
+ * next page when more remain — one paginator for both reads, each passing its own key and order.
+ */
+export function pageAfter<T, K extends Record<string, string>>(
+  entries: readonly T[],
+  cursor: K | null,
+  limit: number,
+  keyOf: (entry: T) => K,
+  compare: (a: K, b: K) => number,
+): { entries: T[]; nextCursor: string | null } {
+  const after = cursor === null ? [...entries] : entries.filter((entry) => compare(keyOf(entry), cursor) > 0);
+  const page = after.slice(0, limit);
+  const last = page.at(-1);
+  return { entries: page, nextCursor: after.length > limit && last !== undefined ? encodeCursor(keyOf(last)) : null };
+}
+
+/**
+ * THE ONE LOADER of the corpus across pages: per page the captures, the diffs and the stored anchor verdicts, ONE
+ * linkage query over every name, the rows composed by `captureRow` / `diffRow` — the per-page read's own — and the
+ * facet computed from the same rows (§28: "a facet on the one read, not a second read"). Entries in the total order.
+ */
+export async function loadCorpus(pages: readonly ScopedPage[]): Promise<{ entries: CorpusEntry[]; pages: PageFacet[] }> {
+  const loaded: { page: ScopedPage; captures: TimelineCapture[]; diffs: TimelineDiff[]; attribution: Map<string, StoredAttribution> }[] = [];
+  const names: string[] = [];
+  for (const page of pages) {
+    const captures = await loadCaptures(page.id);
+    const diffs = await loadDiffs(page.id);
+    const attribution = await storedAttributionFor(captures.map((c) => c.id));
+    names.push(...captures.map((c) => captureName(page, c)), ...diffs.map((d) => diffName(page, d)));
+    loaded.push({ page, captures, diffs, attribution });
+  }
+  const linkage = await loadEvidenceLinkage(names);
+
+  const entries: CorpusEntry[] = [];
+  const facet: PageFacet[] = [];
+  for (const { page, captures, diffs, attribution } of loaded) {
+    const entryPage: EntryPage = { trackedUrlId: page.id, url: page.url, public: page.public };
+    const acquired = captures.map((c) => c.capture);
+    for (const capture of captures) entries.push({ kind: 'CAPTURE', ...captureRow(page, capture, attribution, linkage), page: entryPage });
+    for (const diff of diffs) entries.push({ kind: 'DIFF', ...diffRow(page, diff, acquired, linkage), page: entryPage });
+    const held = [...acquired].sort(byCodeUnit);
+    facet.push({ ...entryPage, first: held.at(0) ?? null, last: held.at(-1) ?? null, entries: captures.length + diffs.length });
+  }
+  return { entries: entries.sort(compareEntries), pages: facet };
+}
+
+/** `verify_claim_text`'s stored-register verdict for one held capture, with its page (A4 :1101; §6.1 :249). */
+export interface SearchVerdict {
+  kind: 'CAPTURE';
+  page: EntryPage;
+  capture: string;
+  snapshotDate: string;
+  fileHash: string;
+  presentInStoredSnapshot: boolean;
+}
+
+/**
+ * The phrase against the STORED text of every held capture of a page in the range — `loadCaptures`, the one spelling
+ * of "this page's held captures", then the texts of those captures alone, then the ONE presence rule. No archive
+ * fetch: the raw register is `verify_claim_text`'s, one capture at a time. A held capture with no stored text is a
+ * malformed row and THROWS — never a verdict of "absent".
+ */
+export async function searchCaptures(page: ScopedPage, phrase: string, since: string | undefined, until: string | undefined): Promise<SearchVerdict[]> {
+  const captures = (await loadCaptures(page.id)).filter((c) => inRange(c.capture, since, until));
+  if (captures.length === 0) return [];
+  const rows = await prisma.urlSnapshot.findMany({ where: { id: { in: captures.map((c) => c.id) } }, select: { id: true, text: true } });
+  const textOf = new Map(rows.map((row) => [row.id, row.text]));
+  const entryPage: EntryPage = { trackedUrlId: page.id, url: page.url, public: page.public };
+  return captures.map((capture) => {
+    const text = textOf.get(capture.id);
+    if (text === undefined) {
+      throw new Error(`corpusReads: capture ${capture.capture} of ${page.url} is held with no stored text — a malformed row, not an absence.`);
+    }
+    return {
+      kind: 'CAPTURE',
+      page: entryPage,
+      capture: capture.capture,
+      snapshotDate: capture.snapshotDate,
+      fileHash: captureName(page, capture),
+      presentInStoredSnapshot: phrasePresent(text, phrase),
+    };
+  });
 }

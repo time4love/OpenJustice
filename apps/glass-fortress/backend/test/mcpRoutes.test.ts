@@ -393,6 +393,21 @@ describe('POST /api/mcp — read tool viewer identification', () => {
     expect(seenResearcherId()).toBeNull();
   });
 
+  // THE CORPUS ACROSS PAGES — UI-2 (docs/gf-ui-flows.md §6.1): three READ tools, open at the route as list_findings is;
+  // a bearer identifies the viewer, an absent one is anonymous — `scope` decides inside the handler, never the route.
+  it.each(['list_corpus', 'list_trajectories', 'search_corpus'])(
+    'passes through an anonymous %s — a READ tool, never 401 — and identifies a bearer for it (UI-2; ui flows §6.1)',
+    async (tool) => {
+      const body = { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: tool, arguments: { scope: 'public', phrase: 'x' } } };
+      const anonymous = await request(app).post('/api/mcp').send(body);
+      expect(anonymous.status).toBe(200);
+      expect(seenResearcherId()).toBeNull();
+      const signedIn = await request(app).post('/api/mcp').set('Authorization', `Bearer ${VALID_TOKEN}`).send(body);
+      expect(signedIn.status).toBe(200);
+      expect(seenResearcherId()).toBe('r-1');
+    },
+  );
+
   it('treats an unapproved researcher as anonymous on a read', async () => {
     mockAccessTokenFind.mockResolvedValueOnce({ accountId: 'r-oauth-2', scopes: new Set(['mcp:write']) });
     mockResearcherFindUnique.mockResolvedValueOnce({ ...MOCK_RESEARCHER, id: 'r-oauth-2', approved: false });

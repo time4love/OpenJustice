@@ -255,6 +255,20 @@ export function codeSetEquality(tool: ToolName): void {
   });
 }
 
+/**
+ * The tool's equality over the codes it refuses ONLY under a non-default `scope` — `scopeCodes` (UI-2, ruled
+ * 2026-09-15): the same produced map, read against `TOOLS[tool].scopeCodes` and nothing else. Held by
+ * `scope.test.ts`, never by `reads.test.ts` (KEEP), whose cases pass no `scope` and so produce none of these; a tool
+ * with no `scopeCodes` has an empty set to equal. DEFINED LAST in its describe, as `codeSetEquality` is.
+ */
+export function scopeCodeSetEquality(tool: ToolName): void {
+  it(`${tool} — the codes its scope cases produced are contract.ts's scopeCodes exactly`, async () => {
+    await handlerOf(tool);
+    const got = [...(produced.get(tool) ?? [])].sort();
+    expect(got).toEqual([...(TOOLS[tool].scopeCodes ?? [])].sort());
+  });
+}
+
 // --- answers -------------------------------------------------------------------
 
 /** An ANSWER — a JSON object that is not a refusal. */

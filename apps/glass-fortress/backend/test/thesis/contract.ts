@@ -430,10 +430,17 @@ export interface ToolContract {
   codes: readonly ThesisCode[];
   /** A code whose only arm crosses a model: in the set, OWED to its step, never claimed tested. */
   owed: readonly { code: ThesisCode; step: number }[];
+  /**
+   * The codes a tool refuses ONLY under a non-default `scope` — UI-2 (docs/gf-ui-refactor-plan.md UI-2 :161, §5 :903;
+   * docs/gf-ui-flows.md §7.1 :320–:321, A5 :1064): `scope: 'all'` without an identity is refused on every route and tool.
+   * Held by `test/thesis/scope.test.ts`' own equality and NEVER by `reads.test.ts` (KEEP), whose cases pass no `scope` and
+   * so produce none of these — which is why they are not in `codes`. Ruled 2026-09-15 (the researcher, R52).
+   */
+  scopeCodes?: readonly ThesisCode[];
 }
 
 export const TOOLS: Readonly<Record<ToolName, ToolContract>> = {
-  list_theses: { module: 'mcp/tools/listTheses', access: 'PUBLIC', paid: false, codes: [], owed: [] },
+  list_theses: { module: 'mcp/tools/listTheses', access: 'PUBLIC', paid: false, codes: [], owed: [], scopeCodes: ['NO_RESEARCHER'] },
   open_framing: {
     module: 'mcp/tools/openFraming',
     access: 'WRITE',

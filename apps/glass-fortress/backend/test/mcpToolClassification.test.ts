@@ -194,7 +194,8 @@ describe('MCP tool classification', () => {
 // land — so a registration without a design line, or a retirement without a list edit, fails here by name.
 //
 // The authorities are the tool-contract appendices: interaction flows A5 (the corpus, the walk, the marking), evidence
-// flows A4, thesis flows A4. Tools a design names but that are not built yet — document flows A4's, and `run_prosecutor`
+// flows A4, thesis flows A4 — and ui flows §6.1, the three corpus-wide reads that amend evidence A4 (UI-2, 2026-09-15).
+// Tools a design names but that are not built yet — document flows A4's, and `run_prosecutor`
 // ("later", thesis A4 :1527) — are NOT on the list: they join it at the step that registers them.
 // ---------------------------------------------------------------------------
 
@@ -217,6 +218,10 @@ const DESIGNED_SURFACE: Readonly<Record<string, string>> = {
   get_claim_trajectories: 'evidence A4 :1103',
   resolve_record: 'evidence A4 :1105',
   check_on_chain_status: 'evidence A4 :1111',
+  // ui flows §6.1 — the corpus across pages (UI-2)
+  list_corpus: 'ui flows §6.1 :236',
+  list_trajectories: 'ui flows §6.1 :244',
+  search_corpus: 'ui flows §6.1 :248',
   open_debate: 'evidence A4 :1117',
   respond_in_debate: 'evidence A4 :1129',
   promote_from_debate: 'evidence A4 :1132',

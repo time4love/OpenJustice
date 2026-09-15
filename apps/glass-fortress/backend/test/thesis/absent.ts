@@ -49,11 +49,17 @@ export async function built<T>(module: ModulePath, only?: readonly string[]): Pr
  * The loader itself, over ANY path under `src/` — exported so its four arms
  * can be held against modules that exist today (`test/thesis/loader.test.ts`).
  * Cases use `built`, whose paths are the contract's closed set.
+ *
+ * `owner` names the step that builds the module in a miss's message — "thesis
+ * step N" by default, from `step` and each export's own step. UI-2's evidence
+ * file (`test/evidence/corpusReads.test.ts`) passes its own label, so its reds
+ * read "UI-2 builds it" rather than naming a thesis step it is not.
  */
 export async function load<T>(
   module: string,
   step: number,
   exports: Readonly<Record<string, ExportContract>>,
+  owner?: string,
 ): Promise<T> {
   const specifier = join(SRC, module);
   let loaded: unknown;
@@ -61,7 +67,7 @@ export async function load<T>(
     loaded = await import(specifier);
   } catch (err) {
     if (isThisModuleNotFound(err, specifier)) {
-      throw new Error(`${module} is not built — thesis step ${String(step)} builds it`);
+      throw new Error(`${module} is not built — ${owner ?? `thesis step ${String(step)}`} builds it`);
     }
     throw err;
   }
@@ -72,13 +78,13 @@ export async function load<T>(
   const surface = loaded as Record<string, unknown>;
   const problems = Object.entries(exports).flatMap(([name, want]) => {
     const value = surface[name];
-    const owner = `thesis step ${String(want.step)}`;
-    if (value === undefined) return [`does not export ${name} (${owner})`];
+    const builder = owner ?? `thesis step ${String(want.step)}`;
+    if (value === undefined) return [`does not export ${name} (${builder})`];
     // A TABLE is an object and only a table; a FUNCTION is a function and only a
     // function. Either exported as the other is the stub-shaped green this
     // loader exists to refuse (round 2, M1).
     const actual = typeof value === 'function' ? 'function' : typeof value === 'object' && value !== null ? 'table' : 'value';
-    return actual === want.kind ? [] : [`exports ${name} as a ${actual}, not as a ${want.kind} (${owner})`];
+    return actual === want.kind ? [] : [`exports ${name} as a ${actual}, not as a ${want.kind} (${builder})`];
   });
   if (problems.length > 0) {
     throw new Error(`${module} exists but ${problems.join('; ')}`);

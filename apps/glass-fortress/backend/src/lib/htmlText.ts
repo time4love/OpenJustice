@@ -100,3 +100,15 @@ export function extractRawText(html: string): string {
 export function normaliseForPresence(text: string): string {
   return normaliseClaim(text);
 }
+
+/**
+ * THE ONE PRESENCE RULE — was this phrase in this text? Matched after collapsing whitespace on both sides, nothing
+ * else normalised, no fuzzy matching (evidence A4 :1101 "the corpus read by text"; thesis §10 :1053–:1055 "the one
+ * search rule `verify_claim_text` already implements"). Spelled ONCE, here beside the normalisation it rests on:
+ * called by both halves of `archiveVerification`'s capture check and by `search_corpus` over the stored register
+ * across pages (UI-2, ruled 2026-09-15), so the corpus search and the per-capture check cannot answer one question
+ * two ways. Pure: no DOM, no client.
+ */
+export function phrasePresent(text: string, phrase: string): boolean {
+  return normaliseForPresence(text).includes(normaliseForPresence(phrase));
+}
