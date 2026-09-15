@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { getResearcherId } from '../../context/researcherContext';
-import { answer, refusal, type EvidenceWriteCode, type Refusal } from './evidenceRefusals';
+import { answer, refusal, type Refusal } from './evidenceRefusals';
 import { loadDebate, type DebateState } from '../../services/debateState';
 import { state } from './openDebate';
 
@@ -21,15 +21,18 @@ export const getDebateSchema = {
   sessionId: z.string().describe('The debate to read'),
 };
 
+/** THE ONE FUNCTION behind the tool and `GET /api/research/debates/:sessionId` (UI-3). */
+export async function debateOf(input: { sessionId: string }): Promise<DebateState | Refusal<'NO_RESEARCHER' | 'SESSION_NOT_FOUND'>> {
+  if (getResearcherId() === null) {
+    return refusal('NO_RESEARCHER', "A debate is a researcher's working state. No researcher in context.");
+  }
+  const debate = await loadDebate(input.sessionId);
+  if (debate === null) {
+    return refusal('SESSION_NOT_FOUND', `No debate ${input.sessionId}.`);
+  }
+  return state(input.sessionId);
+}
+
 export async function getDebateHandler(input: { sessionId: string }): Promise<string> {
-  return answer(async (): Promise<DebateState | Refusal<EvidenceWriteCode>> => {
-    if (getResearcherId() === null) {
-      return refusal('NO_RESEARCHER', "A debate is a researcher's working state. No researcher in context.");
-    }
-    const debate = await loadDebate(input.sessionId);
-    if (debate === null) {
-      return refusal('SESSION_NOT_FOUND', `No debate ${input.sessionId}.`);
-    }
-    return state(input.sessionId);
-  });
+  return answer(() => debateOf(input));
 }

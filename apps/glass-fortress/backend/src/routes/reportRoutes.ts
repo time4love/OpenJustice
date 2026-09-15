@@ -128,7 +128,7 @@ router.post(
 // ---------------------------------------------------------------------------
 // Aggregate pattern endpoints — Phase 6 (§0, §5 of the dev plan).
 //
-// Public, no auth — same precedent as GET /api/stats (server.ts): this
+// Public, no auth — the shape of the public thesis reads (routes/publicThesisRoutes.ts): this
 // returns only aggregate counts that survived disclosure control (applied
 // inside reportPatternService.ts, never left to the caller), never anything
 // about an individual report. Cells below SUPPRESSION_THRESHOLD are not

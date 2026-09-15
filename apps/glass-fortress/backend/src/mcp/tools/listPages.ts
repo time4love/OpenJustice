@@ -34,20 +34,23 @@ interface PageEntry {
   outcomes: Record<Outcome, number>;
 }
 
-export async function listPagesHandler(): Promise<string> {
-  return answer(async (): Promise<PageEntry[]> => {
-    const pages = await prisma.trackedUrl.findMany({
-      select: { id: true, url: true, title: true, createdAt: true },
-      orderBy: [{ createdAt: 'asc' }, { url: 'asc' }],
-    });
-
-    const entries: PageEntry[] = [];
-    for (const page of pages) {
-      const rows = await prisma.cdxIndexEntry.findMany({ where: { trackedUrlId: page.id }, select: { status: true } });
-      const outcomes = Object.fromEntries(OUTCOMES.map((o) => [o, 0])) as Record<Outcome, number>;
-      for (const row of rows) outcomes[row.status] += 1;
-      entries.push({ url: page.url, title: page.title ?? null, surveyedAt: page.createdAt, total: rows.length, outcomes });
-    }
-    return entries;
+/** THE ONE FUNCTION behind the tool and `GET /api/research/pages` (UI-3). */
+export async function pagesOf(): Promise<PageEntry[]> {
+  const pages = await prisma.trackedUrl.findMany({
+    select: { id: true, url: true, title: true, createdAt: true },
+    orderBy: [{ createdAt: 'asc' }, { url: 'asc' }],
   });
+
+  const entries: PageEntry[] = [];
+  for (const page of pages) {
+    const rows = await prisma.cdxIndexEntry.findMany({ where: { trackedUrlId: page.id }, select: { status: true } });
+    const outcomes = Object.fromEntries(OUTCOMES.map((o) => [o, 0])) as Record<Outcome, number>;
+    for (const row of rows) outcomes[row.status] += 1;
+    entries.push({ url: page.url, title: page.title ?? null, surveyedAt: page.createdAt, total: rows.length, outcomes });
+  }
+  return entries;
+}
+
+export async function listPagesHandler(): Promise<string> {
+  return answer(() => pagesOf());
 }

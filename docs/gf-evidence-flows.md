@@ -1098,9 +1098,9 @@ get_diff_input({ url, before, after })                                    PUBLIC
   refuses   NOT_SURVEYED · NOT_PUBLIC · NOT_A_CAPTURE · NO_SUCH_DIFF (the pair is not one the
             walk wrote) · AWAITING_DERIVATION
 
-verify_claim_text({ url, phrase })                                         PUBLIC · unchanged
-  does      the corpus read by text, over current text versions; gated by PUBLIC_PAGE as above
-get_claim_trajectories({ url })  PUBLIC · one page's trajectories, identical for everyone, gated by PUBLIC_PAGE as above; its shape is the read-tool design §10 names · amended 2026-09-04 (pre-design triage, docs/gf-pre-design-plans-triage-2026-09-04.md)
+verify_claim_text({ url, phrase })                                         GATED — amended by docs/gf-ui-flows.md §6 (2026-09-15, #487): each call reaches the Internet Archive, unbounded work against a free service; one capture's raw-archive check, for a researcher
+  does      the corpus read by text against the raw archive and the stored text; the public search is search_corpus (the stored register)
+get_claim_trajectories({ url })  GATED — amended 2026-09-15 (docs/gf-ui-flows.md §6): it computes and writes on a miss; the public read of one page's trajectories is list_trajectories({ scope: 'public', page }) · its shape is the read-tool design §10 names · amended 2026-09-04 (pre-design triage, docs/gf-pre-design-plans-triage-2026-09-04.md)
 
 resolve_record({ fileHash })                                               PUBLIC · ⚠️ to build
   does      what a stranger holding a citation needs: the record the name resolves to — kind,

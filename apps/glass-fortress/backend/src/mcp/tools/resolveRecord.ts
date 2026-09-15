@@ -63,76 +63,79 @@ function recordNames(resolved: ResolvedRecord): { capture: string } | { before: 
   );
 }
 
-export async function resolveRecordHandler(input: { fileHash: string }): Promise<string> {
-  return answer(async (): Promise<Resolved | Refusal> => {
-    const resolved = await resolveRecordByName(input.fileHash);
-    if (resolved === null) {
-      return refusal(
-        'NOT_A_RECORD',
-        `${input.fileHash} names nothing the corpus holds. A record's name is composed from the ` +
-          "page's URL, the capture's archive timestamp and the SHA-256 of the bytes as served, so " +
-          'a name this platform cannot resolve is either a name from another corpus or a name ' +
-          'nothing ever had.',
-      );
-    }
+/** THE ONE FUNCTION behind the tool and `GET /api/records/:fileHash` (UI-3). */
+export async function resolvedRecordOf(input: { fileHash: string }): Promise<Resolved | Refusal<'NOT_A_RECORD' | 'NOT_PUBLIC'>> {
+  const resolved = await resolveRecordByName(input.fileHash);
+  if (resolved === null) {
+    return refusal(
+      'NOT_A_RECORD',
+      `${input.fileHash} names nothing the corpus holds. A record's name is composed from the ` +
+        "page's URL, the capture's archive timestamp and the SHA-256 of the bytes as served, so " +
+        'a name this platform cannot resolve is either a name from another corpus or a name ' +
+        'nothing ever had.',
+    );
+  }
 
-    const access = await openPage(resolved.page);
-    if (access.refused !== null) return access.refused;
+  const access = await openPage(resolved.page);
+  if (access.refused !== null) return access.refused;
 
-    const report = await verified(resolved.fileHash);
-    const mentions = await prisma.thesisMention.findMany({
-      where: {
-        kind: 'EVIDENCE',
-        name: resolved.fileHash,
-        thesisVersion: { isPublished: { isNot: null } },
-      },
-      select: {
-        id: true,
-        contentVersionHash: true,
-        thesisVersion: { select: { id: true, thesisId: true, contentHash: true, text: true } },
-      },
-    });
-
-    const citedBy: Citation[] = [];
-    for (const mention of mentions) {
-      citedBy.push({
-        thesisId: mention.thesisVersion.thesisId,
-        versionId: mention.thesisVersion.id,
-        contentHash: mention.thesisVersion.contentHash,
-        pin: mention.contentVersionHash,
-        flagged: await flagged(mention.id),
-        // THE VERSION'S TEXT, AS IT IS — thesis A2 :1273: Markdown with citation
-        // tokens is the record, so what a reader of a citation sees is what the
-        // author wrote, `#ev_…` tokens included, and no renderer stands between.
-        text: mention.thesisVersion.text,
-      });
-    }
-
-    return {
-      fileHash: resolved.fileHash,
-      kind: resolved.kind,
-      page: { url: resolved.page.url, public: access.public },
-      record: recordNames(resolved),
-      // RECOMPUTABLE IS A PROPERTY OF THE ROW WHERE THERE IS ONE, and of the
-      // resolution only where there is not.
-      //
-      // The two can disagree, and that disagreement is the whole reason to
-      // report the row's answer: a `fileHash` can be a VALID name — of some
-      // record the corpus holds — while the row's key points at a DIFFERENT
-      // record. The name then resolves through the corpus perfectly well, and
-      // reporting `true` from that resolution would publish a verified block
-      // computed over the row's captures beside a name that is not theirs.
-      // "A row that fails it is MALFORMED, never stale."
-      //
-      // With no evidence row there is nothing to be malformed: the name was
-      // reproduced from the record it names (`corpusReads.searchPage` asks the
-      // same predicate), and a name that could not be reproduced refuses
-      // NOT_A_RECORD above rather than arriving here.
-      recomputable: report.evaluable ? report.recomputable : true,
-      verified: report.evaluable
-        ? { verified: report.verified, captures: report.captures }
-        : { notEvaluable: report.reason },
-      citedBy,
-    };
+  const report = await verified(resolved.fileHash);
+  const mentions = await prisma.thesisMention.findMany({
+    where: {
+      kind: 'EVIDENCE',
+      name: resolved.fileHash,
+      thesisVersion: { isPublished: { isNot: null } },
+    },
+    select: {
+      id: true,
+      contentVersionHash: true,
+      thesisVersion: { select: { id: true, thesisId: true, contentHash: true, text: true } },
+    },
   });
+
+  const citedBy: Citation[] = [];
+  for (const mention of mentions) {
+    citedBy.push({
+      thesisId: mention.thesisVersion.thesisId,
+      versionId: mention.thesisVersion.id,
+      contentHash: mention.thesisVersion.contentHash,
+      pin: mention.contentVersionHash,
+      flagged: await flagged(mention.id),
+      // THE VERSION'S TEXT, AS IT IS — thesis A2 :1273: Markdown with citation
+      // tokens is the record, so what a reader of a citation sees is what the
+      // author wrote, `#ev_…` tokens included, and no renderer stands between.
+      text: mention.thesisVersion.text,
+    });
+  }
+
+  return {
+    fileHash: resolved.fileHash,
+    kind: resolved.kind,
+    page: { url: resolved.page.url, public: access.public },
+    record: recordNames(resolved),
+    // RECOMPUTABLE IS A PROPERTY OF THE ROW WHERE THERE IS ONE, and of the
+    // resolution only where there is not.
+    //
+    // The two can disagree, and that disagreement is the whole reason to
+    // report the row's answer: a `fileHash` can be a VALID name — of some
+    // record the corpus holds — while the row's key points at a DIFFERENT
+    // record. The name then resolves through the corpus perfectly well, and
+    // reporting `true` from that resolution would publish a verified block
+    // computed over the row's captures beside a name that is not theirs.
+    // "A row that fails it is MALFORMED, never stale."
+    //
+    // With no evidence row there is nothing to be malformed: the name was
+    // reproduced from the record it names (`corpusReads.searchPage` asks the
+    // same predicate), and a name that could not be reproduced refuses
+    // NOT_A_RECORD above rather than arriving here.
+    recomputable: report.evaluable ? report.recomputable : true,
+    verified: report.evaluable
+      ? { verified: report.verified, captures: report.captures }
+      : { notEvaluable: report.reason },
+    citedBy,
+  };
+}
+
+export async function resolveRecordHandler(input: { fileHash: string }): Promise<string> {
+  return answer(() => resolvedRecordOf(input));
 }

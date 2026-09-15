@@ -43,38 +43,41 @@ interface FramingEntry {
   claim: string | null;
 }
 
-export async function listFramingsHandler(): Promise<string> {
-  return answer(async (): Promise<FramingEntry[]> => {
-    const framings = await prisma.framing.findMany({
-      select: { id: true, question: true, provision: true, researcherId: true, thesisId: true, createdAt: true },
-    });
-    if (framings.length === 0) return [];
-
-    const rounds = await prisma.framingRound.findMany({
-      where: { framingId: { in: framings.map((f) => f.id) } },
-      select: { framingId: true, sequence: true, type: true, content: true },
-    });
-    const handles = await handlesOf(framings.map((f) => f.researcherId));
-
-    return [...framings]
-      .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime() || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
-      .map((framing): FramingEntry => {
-        const mine = rounds.filter((r) => r.framingId === framing.id).sort((a, b) => a.sequence - b.sequence);
-        const latest = mine.at(-1);
-        const chosen = [...mine].reverse().find((r) => r.type === 'CHOSEN');
-        return {
-          framingId: framing.id,
-          question: framing.question,
-          provision: framing.provision,
-          author: handleOf(handles, framing.researcherId, framing.id),
-          thesisId: framing.thesisId,
-          openedAt: framing.createdAt,
-          rounds: mine.length,
-          latest: latest === undefined ? null : { sequence: latest.sequence, type: latest.type },
-          claim: chosen === undefined ? null : (chosenContent(chosen.content)?.claim ?? null),
-        };
-      });
+/** THE ONE FUNCTION behind the tool and `GET /api/research/framings` (UI-3). */
+export async function framingsOf(): Promise<FramingEntry[]> {
+  const framings = await prisma.framing.findMany({
+    select: { id: true, question: true, provision: true, researcherId: true, thesisId: true, createdAt: true },
   });
+  if (framings.length === 0) return [];
+
+  const rounds = await prisma.framingRound.findMany({
+    where: { framingId: { in: framings.map((f) => f.id) } },
+    select: { framingId: true, sequence: true, type: true, content: true },
+  });
+  const handles = await handlesOf(framings.map((f) => f.researcherId));
+
+  return [...framings]
+    .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime() || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+    .map((framing): FramingEntry => {
+      const mine = rounds.filter((r) => r.framingId === framing.id).sort((a, b) => a.sequence - b.sequence);
+      const latest = mine.at(-1);
+      const chosen = [...mine].reverse().find((r) => r.type === 'CHOSEN');
+      return {
+        framingId: framing.id,
+        question: framing.question,
+        provision: framing.provision,
+        author: handleOf(handles, framing.researcherId, framing.id),
+        thesisId: framing.thesisId,
+        openedAt: framing.createdAt,
+        rounds: mine.length,
+        latest: latest === undefined ? null : { sequence: latest.sequence, type: latest.type },
+        claim: chosen === undefined ? null : (chosenContent(chosen.content)?.claim ?? null),
+      };
+    });
+}
+
+export async function listFramingsHandler(): Promise<string> {
+  return answer(() => framingsOf());
 }
 
 /** The handles of these researchers, by id — one query. */

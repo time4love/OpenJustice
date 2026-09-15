@@ -14,8 +14,9 @@ import {
   type CorpusKey,
   type CorpusScope,
   type PageFacet,
+  type PageRef,
 } from '../../services/corpusReads';
-import { answer, openScope, scopedPages, validRange, type CorpusReadCode, type Refusal } from './evidenceRefusals';
+import { answer, openScope, pageByUrl, scopedPages, validRange, type CorpusReadCode, type Refusal } from './evidenceRefusals';
 
 // ---------------------------------------------------------------------------
 // list_corpus({ scope, since?, until?, page?, kind?, cited?, cursor?, limit? }) — READ — docs/gf-ui-flows.md §6.1
@@ -62,6 +63,9 @@ export interface ListCorpusInput {
   limit?: number;
 }
 
+/** The core's input: the tool's, with the named page as a door's `PageRef` — the tool names it by url, a route by id (UI-3). */
+export type CorpusInput = Omit<ListCorpusInput, 'page'> & { page?: PageRef };
+
 interface CorpusList {
   entries: CorpusEntry[];
   pages: PageFacet[];
@@ -76,26 +80,29 @@ function cursorOf(cursor: string | undefined): CorpusKey | null {
   return key;
 }
 
+/** THE ONE FUNCTION behind the tool and both corpus routes (docs/gf-ui-flows.md §5 :184–:189): the read over a named page's ref. */
+export async function corpusOf(input: CorpusInput): Promise<CorpusList | Refusal<CorpusReadCode>> {
+  const gate = openScope(input.scope);
+  if (gate !== null) return gate;
+  const range = validRange(input.since, input.until);
+  if (range !== null) return range;
+  const cursor = cursorOf(input.cursor);
+
+  const scope = await scopedPages(input.scope, input.page);
+  if ('error' in scope) return scope;
+
+  const { entries, pages } = await loadCorpus(scope.scoped);
+  const kept = entries.filter(
+    (entry) =>
+      (scope.page === null || entry.page.trackedUrlId === scope.page.id) &&
+      (input.kind === undefined || entry.kind === input.kind) &&
+      (input.cited !== true || entry.evidence !== null) &&
+      inRange(entryInstant(entry), input.since, input.until),
+  );
+  const paged = pageAfter(kept, cursor, input.limit ?? CORPUS_READ_LIMIT, corpusKeyOf, compareCorpusKeys);
+  return { entries: paged.entries, pages, nextCursor: paged.nextCursor };
+}
+
 export async function listCorpusHandler(input: ListCorpusInput): Promise<string> {
-  return answer(async (): Promise<CorpusList | Refusal<CorpusReadCode>> => {
-    const gate = openScope(input.scope);
-    if (gate !== null) return gate;
-    const range = validRange(input.since, input.until);
-    if (range !== null) return range;
-    const cursor = cursorOf(input.cursor);
-
-    const scope = await scopedPages(input.scope, input.page);
-    if ('error' in scope) return scope;
-
-    const { entries, pages } = await loadCorpus(scope.scoped);
-    const kept = entries.filter(
-      (entry) =>
-        (scope.page === null || entry.page.trackedUrlId === scope.page.id) &&
-        (input.kind === undefined || entry.kind === input.kind) &&
-        (input.cited !== true || entry.evidence !== null) &&
-        inRange(entryInstant(entry), input.since, input.until),
-    );
-    const paged = pageAfter(kept, cursor, input.limit ?? CORPUS_READ_LIMIT, corpusKeyOf, compareCorpusKeys);
-    return { entries: paged.entries, pages, nextCursor: paged.nextCursor };
-  });
+  return answer(() => corpusOf({ ...input, page: input.page === undefined ? undefined : pageByUrl(input.page) }));
 }

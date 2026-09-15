@@ -51,6 +51,22 @@ export async function loadPage(url: string): Promise<Page | null> {
   return prisma.trackedUrl.findUnique({ where: { url }, select: { id: true, url: true } });
 }
 
+/** The page, by the name a ROUTE has for it (docs/gf-ui-flows.md §6 :221: routes name a page by `trackedUrlId`). */
+export async function loadPageById(trackedUrlId: string): Promise<Page | null> {
+  return prisma.trackedUrl.findUnique({ where: { id: trackedUrlId }, select: { id: true, url: true } });
+}
+
+/**
+ * A page NAMED AT A DOOR and not yet looked up: the one lookup of its row, and the refusal for its absence
+ * (docs/gf-ui-flows.md §6 :221–:223; UI-3). A read's core calls `load()` exactly where its refusal order places the
+ * lookup, so the tool (by url) and the route (by id) load one row once and refuse NOT_SURVEYED alike. The door
+ * supplies `missing` — this module words no refusal.
+ */
+export interface PageRef {
+  load(): Promise<Page | null>;
+  missing(): { error: string; code: 'NOT_SURVEYED' };
+}
+
 /** A capture as the public timeline shows it — the corpus record, never the work-list row. */
 export interface TimelineCapture {
   /** The database's key. Never returned by a tool: a capture is named by its timestamp (A1). */

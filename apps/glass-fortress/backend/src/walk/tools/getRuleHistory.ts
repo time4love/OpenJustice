@@ -4,6 +4,7 @@ import { authority, rulesInForce, rulesUnderAuthority, trusted, type Decision, t
 import { segments } from '../../lib/claimSurvival';
 import { bytesOf } from '../captureBytes';
 import { loadWorkListRows, type LoadedRow } from '../rows';
+import type { PageRef } from '../../services/corpusReads';
 import { answer, refusal, shared, type Refusal } from '../refusals';
 
 // ---------------------------------------------------------------------------
@@ -89,88 +90,95 @@ interface RuleHistory {
   matches: MatchEntry[];
 }
 
-export async function getRuleHistoryHandler(input: HistoryInput): Promise<string> {
-  return answer(async (): Promise<RuleHistory | Refusal> => {
-    const page = await prisma.trackedUrl.findUnique({ where: { url: input.url } });
-    if (page === null) return shared.notSurveyed(input.url);
+/** THE ONE FUNCTION behind the tool and `GET /api/research/pages/:trackedUrlId/rules/:ruleId/history` (UI-3): the page through its door's ref. */
+export async function ruleHistoryOf(
+  ref: PageRef,
+  input: { ruleId: string; maxCaptures?: number },
+): Promise<RuleHistory | Refusal<'NOT_SURVEYED' | 'NO_SUCH_RULE'>> {
+  const page = await ref.load();
+  if (page === null) return ref.missing();
 
-    // The page is checked as well as the id: a rule id from another page is not
-    // readable through this page's name, and the refusal says the same thing
-    // either way rather than confirming the id exists elsewhere.
-    const found = await prisma.rule.findUnique({ where: { id: input.ruleId } });
-    if (found?.trackedUrlId !== page.id) {
-      return refusal(
-        'NO_SUCH_RULE',
-        `The page has no rule ${input.ruleId}. get_article_rules lists every rule under AUTHORITY with its id.`,
-      );
-    }
-    // The stored rows, not the derivations' structural minimums: this read
-    // returns `createdAt`, `createdById` and each decision's researcher, none of
-    // which the predicates need and all of which a history is made of. The
-    // predicates take them structurally.
-    const rule = found;
-    const rules = await prisma.rule.findMany({ where: { trackedUrlId: page.id } });
-    const decisions = await prisma.pageDecision.findMany({
-      where: { trackedUrlId: page.id },
-      orderBy: { sequence: 'asc' },
-    });
-    const rows = await loadWorkListRows(prisma, page.id);
-    const matches = await prisma.ruleMatch.findMany({ where: { ruleId: rule.id } });
-
-    // A rule out of AUTHORITY — created before the newest RESET, or retired —
-    // still has a history worth reading; what it does NOT have is trust or
-    // decisions in force, and both are folded over AUTHORITY so they answer
-    // that way by construction.
-    const underAuthority = rulesUnderAuthority(rules, decisions).some((r) => r.id === rule.id);
-    const underAuthorityIds = new Set(authority(decisions).map((d) => d.id));
-
-    const rowByCapture = new Map<string, LoadedRow>(rows.map((row) => [row.waybackTimestamp, row]));
-    const series = matches
-      .filter((match) => rowByCapture.has(match.waybackTimestamp))
-      .sort((a, b) => (a.waybackTimestamp < b.waybackTimestamp ? -1 : 1));
-    // The bound keeps the LATEST captures — what a rule did recently is what a
-    // decision about it rests on — and the answer stays in timestamp order.
-    const bounded = input.maxCaptures === undefined ? series : series.slice(-input.maxCaptures);
-
-    const entries: MatchEntry[] = [];
-    for (const match of bounded) {
-      const row = rowByCapture.get(match.waybackTimestamp);
-      if (row === undefined) continue;
-      const removed = await removedBy(rule, rules, decisions, row);
-      entries.push({
-        capture: row.waybackTimestamp,
-        outcome: row.outcome,
-        matchedNodes: match.matchedNodes,
-        removed,
-        removedCount: removed === null ? null : removed.length,
-      });
-    }
-
-    return {
-      rule: {
-        ruleId: rule.id,
-        selector: rule.selector,
-        validFrom: rule.validFrom,
-        validTo: rule.validTo,
-        trusted: underAuthority && trusted(rule, decisions) === 'TRUSTED',
-        createdAt: rule.createdAt,
-        createdById: rule.createdById,
-        // AUTHORITY through the one predicate, applied to the STORED rows by id:
-        // `authority` answers in the derivations' narrow shape, which carries no
-        // researcher and no time, and re-deriving the boundary here would be a
-        // second implementation of the rule a RESET is made of.
-        decisions: decisions
-          .filter((d) => d.ruleId === rule.id && underAuthorityIds.has(d.id))
-          .map((d) => ({
-            type: d.type,
-            waybackTimestamp: d.waybackTimestamp,
-            researcherId: d.researcherId,
-            createdAt: d.createdAt,
-          })),
-      },
-      matches: entries,
-    };
+  // The page is checked as well as the id: a rule id from another page is not
+  // readable through this page's name, and the refusal says the same thing
+  // either way rather than confirming the id exists elsewhere.
+  const found = await prisma.rule.findUnique({ where: { id: input.ruleId } });
+  if (found?.trackedUrlId !== page.id) {
+    return refusal(
+      'NO_SUCH_RULE',
+      `The page has no rule ${input.ruleId}. get_article_rules lists every rule under AUTHORITY with its id.`,
+    );
+  }
+  // The stored rows, not the derivations' structural minimums: this read
+  // returns `createdAt`, `createdById` and each decision's researcher, none of
+  // which the predicates need and all of which a history is made of. The
+  // predicates take them structurally.
+  const rule = found;
+  const rules = await prisma.rule.findMany({ where: { trackedUrlId: page.id } });
+  const decisions = await prisma.pageDecision.findMany({
+    where: { trackedUrlId: page.id },
+    orderBy: { sequence: 'asc' },
   });
+  const rows = await loadWorkListRows(prisma, page.id);
+  const matches = await prisma.ruleMatch.findMany({ where: { ruleId: rule.id } });
+
+  // A rule out of AUTHORITY — created before the newest RESET, or retired —
+  // still has a history worth reading; what it does NOT have is trust or
+  // decisions in force, and both are folded over AUTHORITY so they answer
+  // that way by construction.
+  const underAuthority = rulesUnderAuthority(rules, decisions).some((r) => r.id === rule.id);
+  const underAuthorityIds = new Set(authority(decisions).map((d) => d.id));
+
+  const rowByCapture = new Map<string, LoadedRow>(rows.map((row) => [row.waybackTimestamp, row]));
+  const series = matches
+    .filter((match) => rowByCapture.has(match.waybackTimestamp))
+    .sort((a, b) => (a.waybackTimestamp < b.waybackTimestamp ? -1 : 1));
+  // The bound keeps the LATEST captures — what a rule did recently is what a
+  // decision about it rests on — and the answer stays in timestamp order.
+  const bounded = input.maxCaptures === undefined ? series : series.slice(-input.maxCaptures);
+
+  const entries: MatchEntry[] = [];
+  for (const match of bounded) {
+    const row = rowByCapture.get(match.waybackTimestamp);
+    if (row === undefined) continue;
+    const removed = await removedBy(rule, rules, decisions, row);
+    entries.push({
+      capture: row.waybackTimestamp,
+      outcome: row.outcome,
+      matchedNodes: match.matchedNodes,
+      removed,
+      removedCount: removed === null ? null : removed.length,
+    });
+  }
+
+  return {
+    rule: {
+      ruleId: rule.id,
+      selector: rule.selector,
+      validFrom: rule.validFrom,
+      validTo: rule.validTo,
+      trusted: underAuthority && trusted(rule, decisions) === 'TRUSTED',
+      createdAt: rule.createdAt,
+      createdById: rule.createdById,
+      // AUTHORITY through the one predicate, applied to the STORED rows by id:
+      // `authority` answers in the derivations' narrow shape, which carries no
+      // researcher and no time, and re-deriving the boundary here would be a
+      // second implementation of the rule a RESET is made of.
+      decisions: decisions
+        .filter((d) => d.ruleId === rule.id && underAuthorityIds.has(d.id))
+        .map((d) => ({
+          type: d.type,
+          waybackTimestamp: d.waybackTimestamp,
+          researcherId: d.researcherId,
+          createdAt: d.createdAt,
+        })),
+    },
+    matches: entries,
+  };
+}
+
+export async function getRuleHistoryHandler(input: HistoryInput): Promise<string> {
+  const ref: PageRef = { load: () => prisma.trackedUrl.findUnique({ where: { url: input.url } }), missing: () => shared.notSurveyed(input.url) };
+  return answer(() => ruleHistoryOf(ref, input));
 }
 
 /**

@@ -213,6 +213,15 @@ export const store = {
    * two-page world (a public page beside a private one) is unwritable without it.
    */
   pages: [] as Row[],
+  /**
+   * THE WALK'S READS, for the research routes — UI-3 (R53 sketch §e2), additive. `workListRows` is a page's whole work-list
+   * as `loadWorkListRows` reads it (the single `workList` row answers as it always did while this is empty); `rules` and
+   * `ruleMatches` are what `get_article_rules`, `list_captures` and `get_rule_history` ask for. Empty by default, so a
+   * suite that seeds none is answered as before.
+   */
+  workListRows: [] as Row[],
+  rules: [] as Row[],
+  ruleMatches: [] as Row[],
 };
 
 type ThesisRowsKey =
@@ -820,6 +829,9 @@ export const db = {
     // `where` naming ITS page.
     findMany: jest.fn(
       ask('cdxIndexEntry', 'findMany', (args?: { where?: Row }) => {
+        // A WHOLE WORK-LIST once a suite holds one — UI-3, additive: the rows the `where` names by a field they carry,
+        // in the order seeded (`loadWorkListRows` asks timestamp order; the suite seeds in it).
+        if (store.workListRows.length > 0) return Promise.resolve(store.workListRows.filter((r) => carriedWhere(r, args?.where)));
         const tests = whereTests('cdxIndexEntry', args?.where);
         if (!Array.isArray(tests)) return Promise.reject(tests);
         const held = store.workList;
@@ -840,7 +852,20 @@ export const db = {
       );
     }),
   },
-  pageDecision: { findUnique: jest.fn(() => Promise.resolve(store.pageDecisions.at(0) ?? null)) },
+  pageDecision: {
+    findUnique: jest.fn(() => Promise.resolve(store.pageDecisions.at(0) ?? null)),
+    // A PAGE'S DECISION LOG — UI-3, additive: the rows the `where` names by a field they carry, in the order seeded
+    // (the walk's reads ask `sequence` order; the suite seeds in it).
+    findMany: jest.fn(ask('pageDecision', 'findMany', (args?: { where?: Row }) => Promise.resolve(store.pageDecisions.filter((d) => carriedWhere(d, args?.where))))),
+  },
+  // THE PAGE'S RULES AND WHAT THEY MATCHED — UI-3, additive, for the walk's three reads behind the research routes.
+  rule: {
+    findMany: jest.fn(ask('rule', 'findMany', (args?: { where?: Row }) => Promise.resolve(store.rules.filter((r) => carriedWhere(r, args?.where))))),
+    findUnique: jest.fn(ask('rule', 'findUnique', (args?: { where?: { id?: string } }) => Promise.resolve(store.rules.find((r) => r['id'] === args?.where?.id) ?? null))),
+  },
+  ruleMatch: {
+    findMany: jest.fn(ask('ruleMatch', 'findMany', (args?: { where?: Row }) => Promise.resolve(store.ruleMatches.filter((m) => carriedWhere(m, args?.where))))),
+  },
   integrityCheck: {
     // NEWEST FIRST and filtered by subject, because that is what
     // `storedAttributionFor` asks: it folds "newest wins" over the answer, so a
@@ -1088,6 +1113,13 @@ export const db = {
         return Promise.resolve(store.researchers.filter((row) => tests.every((test) => test(row))));
       }),
     ),
+    // THE GATE'S LOOKUP — UI-3, additive: `requireResearcher` asks `{ supabaseUserId }`. STRICT equality on every field
+    // the `where` names — a researcher row lacking the field is not a match, or a login would find someone else.
+    findUnique: jest.fn(
+      ask('researcher', 'findUnique', (args?: { where?: Row }) =>
+        Promise.resolve(store.researchers.find((row) => Object.entries(args?.where ?? {}).every(([field, v]) => row[field] === v)) ?? null),
+      ),
+    ),
   },
   $transaction: jest.fn(defaultTransaction),
 };
@@ -1138,6 +1170,9 @@ export function resetDouble(): void {
   store.researchers = [];
   store.computations = [];
   store.pages = [];
+  store.workListRows = [];
+  store.rules = [];
+  store.ruleMatches = [];
   db.debateSession.findUnique.mockImplementation(defaultSessionLookup);
   db.$transaction.mockImplementation(defaultTransaction);
   db.trackedUrl.findUnique.mockImplementation(defaultPageLookup);

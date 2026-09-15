@@ -1,5 +1,5 @@
 import { listEvidenceReviews, type ReviewsList } from '../../services/evidenceReviews';
-import { answer, type EvidenceWriteCode, type Refusal } from './evidenceRefusals';
+import { answer, type Refusal } from './evidenceRefusals';
 import { requireResearcher } from './openDebate';
 
 // ---------------------------------------------------------------------------
@@ -23,10 +23,13 @@ import { requireResearcher } from './openDebate';
 /** A4 gives it no parameters: it is every NEEDS_REVIEW record across the corpus. */
 export const listEvidenceReviewsSchema = {};
 
+/** THE ONE FUNCTION behind the tool and `GET /api/research/evidence-reviews` (UI-3). */
+export async function evidenceReviewsOf(): Promise<ReviewsList | Refusal<'NO_RESEARCHER'>> {
+  const researcher = requireResearcher('Reading what a researcher owes');
+  if ('error' in researcher) return researcher;
+  return listEvidenceReviews();
+}
+
 export async function listEvidenceReviewsHandler(): Promise<string> {
-  return answer(async (): Promise<ReviewsList | Refusal<EvidenceWriteCode>> => {
-    const researcher = requireResearcher('Reading what a researcher owes');
-    if ('error' in researcher) return researcher;
-    return listEvidenceReviews();
-  });
+  return answer(() => evidenceReviewsOf());
 }

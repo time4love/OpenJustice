@@ -211,8 +211,8 @@ GET /api/corpus/claims?since&until&page&cursor&limit ⚠️
 GET /api/corpus/search?phrase&since&until&page     search_corpus({ scope: 'public', … })    §6.1 — evidence §5 :468–:470 ⚠️
 GET /api/pages/:trackedUrlId/findings              list_findings({ url })                   evidence A4 :1080 — one page ⚠️
 GET /api/pages/:trackedUrlId/diffs/:before/:after  get_diff_input({ url, before, after })   evidence A4 :1095 ⚠️
-GET /api/pages/:trackedUrlId/search?phrase=        verify_claim_text({ url, phrase })       evidence A4 :1101 ⚠️
-GET /api/pages/:trackedUrlId/trajectories          get_claim_trajectories({ url })          evidence A4 :1103 ⚠️
+(not mounted — amended 2026-09-15, #487: verify_claim_text is GATED; one page's search is /api/corpus/search?page=)
+GET /api/pages/:trackedUrlId/trajectories          list_trajectories({ scope: 'public', page })  §6.1 — amended 2026-09-15: stored passes only ⚠️
 GET /api/pages/:trackedUrlId/captures/:capture/chain ⚠️
                                                    check_on_chain_status({ url, capture })  evidence A4 :1111
 GET /api/records/:fileHash                         resolve_record({ fileHash })             evidence A4 :1105 ⚠️
@@ -254,7 +254,7 @@ search_corpus({ scope, phrase, since?, until?, page? }) ⚠️
 
 `list_findings`, `get_claim_trajectories` and `verify_claim_text` are unchanged: each is `list_corpus`,
 `list_trajectories` or `search_corpus` at one page, and the acceptance suite holds that by calling both on the
-same page and asserting equal rows.
+same page and asserting equal rows — amended 2026-09-15 (#487): search_corpus reads the stored text and verify_claim_text the raw archive, so the equality holds on the stored verdict.
 
 **Status, one table, every public route:**
 
@@ -285,9 +285,9 @@ prefix   /api/research/…    ONE mount-level gate: `requireResearcher` (researc
 ```
 
 ```
-GET /api/research/reviews?scope=                   list_thesis_reviews({ scope })           thesis A4 :1523 — §7.1 ⚠️
+GET /api/research/reviews                          list_thesis_reviews({ scope: 'all' })    thesis A4 :1523 — §7.1 ⚠️
 GET /api/research/evidence-reviews                 list_evidence_reviews({})               evidence A4 :1146 ⚠️
-GET /api/research/theses?scope=                    list_theses({ scope }), researcher       thesis A4 :1429 — §7.1 ⚠️
+GET /api/research/theses                           list_theses({ scope: 'all' }), researcher thesis A4 :1429 — §7.1 ⚠️
 GET /api/research/theses/:id?since=                get_thesis_context({ thesisId, since })  thesis A4 :1476 ⚠️
 GET /api/research/framings                         list_framings({})                       thesis A4 :1432 ⚠️
 GET /api/research/framings/:id                     get_framing({ framingId })              thesis A4 :1458 ⚠️
@@ -1040,7 +1040,7 @@ the commands labelled (§13).
 | evidence A4 (new) | — | `list_corpus`, `list_trajectories`, `search_corpus`, each with `scope: 'public' \| 'all'`; `list_corpus` returns the `pages` facet (§6.1, §28) |
 | thesis A5 :1565 `GET /api/thesis/:id` | `pages: [{ url }]` | `pages: [{ trackedUrlId, url }]` (§6) |
 | thesis T5 :824 | "a link to each cited page's public timeline (list_findings)" | the link is `/corpus?page=` (§17.7) |
-| evidence A4 :1080 `list_findings` · :1101 · :1103 | unchanged | held equal to the corpus read at one page (§6.1, §9) |
+| evidence A4 :1080 `list_findings` · :1101 · :1103 | unchanged | held equal to the corpus read at one page (§6.1, §9); :1101 and :1103 GATED 2026-09-15 (#487) |
 | routes at HEAD | `GET /api/forensics/tracked`, `…/trajectories`, `GET /api/stats` | RETIRED (§6) |
 | triage ruling 2 :31–:34 | the `/guide` pages removed (a dated doc) | restated as this design's (§3) |
 | COMPLIANCE.md "Required UI Elements" :88–:99 | the disclaimer on every thesis and call page | unchanged; §17.1 and §20.1 place it first; a docs amendment records the pages' new URLs |

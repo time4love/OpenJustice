@@ -34,18 +34,21 @@ type WhistleblowerCall =
   | { live: false }
   | { live: true; thesisId: string; publishedVersionId: string; call: unknown[]; requests: unknown[]; intake: string };
 
-export async function getWhistleblowerCallHandler(input: GetWhistleblowerCallInput): Promise<string> {
-  return answer(async (): Promise<WhistleblowerCall> => {
-    const thesis = await prisma.thesis.findUnique({
-      where: { id: input.thesisId },
-      select: { id: true, publishedVersionId: true },
-    });
-    const publishedVersionId = thesis?.publishedVersionId ?? null;
-    if (thesis === null || publishedVersionId === null) return { live: false };
-
-    const { call, requests } = await publishedAppeals(thesis.id, publishedVersionId);
-    if (call.length === 0 && requests.length === 0) return { live: false };
-
-    return { live: true, thesisId: thesis.id, publishedVersionId, call, requests, intake: INTAKE };
+/** THE ONE FUNCTION behind the tool and `GET /api/thesis/:id/call` (docs/gf-ui-flows.md §6 :205–:206; UI-3). */
+export async function whistleblowerCallOf(input: GetWhistleblowerCallInput): Promise<WhistleblowerCall> {
+  const thesis = await prisma.thesis.findUnique({
+    where: { id: input.thesisId },
+    select: { id: true, publishedVersionId: true },
   });
+  const publishedVersionId = thesis?.publishedVersionId ?? null;
+  if (thesis === null || publishedVersionId === null) return { live: false };
+
+  const { call, requests } = await publishedAppeals(thesis.id, publishedVersionId);
+  if (call.length === 0 && requests.length === 0) return { live: false };
+
+  return { live: true, thesisId: thesis.id, publishedVersionId, call, requests, intake: INTAKE };
+}
+
+export async function getWhistleblowerCallHandler(input: GetWhistleblowerCallInput): Promise<string> {
+  return answer(() => whistleblowerCallOf(input));
 }
