@@ -96,63 +96,66 @@ interface ThesisContext {
   history: HistoryEntry[];
 }
 
-export async function getThesisContextHandler(input: GetThesisContextInput): Promise<string> {
-  return answer(async (): Promise<ThesisContext | Refusal> => {
-    const thesis = await prisma.thesis.findUnique({
-      where: { id: input.thesisId },
-      select: {
-        id: true,
-        provision: true,
-        createdById: true,
-        headVersionId: true,
-        publishedVersionId: true,
-        publishedAt: true,
-        publicInterestStatement: true,
-        createdAt: true,
-      },
-    });
-    if (thesis === null) {
-      return refusal('NO_THESIS', `No thesis ${input.thesisId}. list_theses names the theses you can read.`);
-    }
-
-    const head = thesis.headVersionId === null ? null : await versionView(thesis.id, thesis.headVersionId);
-    const published =
-      thesis.publishedVersionId === null ? null : await versionView(thesis.id, thesis.publishedVersionId);
-
-    const analysis = head === null ? ({ state: 'NONE' } as const) : await analysisOf(thesis.id, head.view.versionId);
-
-    const decisions = await prisma.thesisGapDecision.findMany({ where: { thesisId: thesis.id } });
-    const framings = await prisma.framing.findMany({
-      where: { thesisId: thesis.id },
-      select: { id: true, question: true, provision: true, researcherId: true, createdAt: true },
-    });
-
-    return {
-      thesis: {
-        thesisId: thesis.id,
-        provision: thesis.provision,
-        createdById: thesis.createdById,
-        headVersionId: thesis.headVersionId,
-        publishedVersionId: thesis.publishedVersionId,
-        publishedAt: thesis.publishedAt,
-        publicInterestStatement: thesis.publicInterestStatement,
-        createdAt: thesis.createdAt,
-      },
-      head: head?.view ?? null,
-      published: published?.view ?? null,
-      unargued: head === null ? [] : unargued({ thesisId: thesis.id }, head.cited),
-      gapList: gapList(decisions, thesis.id, head?.view.mentions.map((m) => m.name) ?? []),
-      analysis,
-      framings: framings.map((f) => ({
-        framingId: f.id,
-        question: f.question,
-        provision: f.provision,
-        researcherId: f.researcherId,
-        createdAt: f.createdAt,
-      })),
-      history: await history(thesis.id, input.since === undefined ? undefined : new Date(input.since)),
-    };
+/** THE ONE FUNCTION behind the tool and `GET /api/research/theses/:id` (UI-3). */
+export async function thesisContextOf(input: GetThesisContextInput): Promise<ThesisContext | Refusal<'NO_THESIS'>> {
+  const thesis = await prisma.thesis.findUnique({
+    where: { id: input.thesisId },
+    select: {
+      id: true,
+      provision: true,
+      createdById: true,
+      headVersionId: true,
+      publishedVersionId: true,
+      publishedAt: true,
+      publicInterestStatement: true,
+      createdAt: true,
+    },
   });
+  if (thesis === null) {
+    return refusal('NO_THESIS', `No thesis ${input.thesisId}. list_theses names the theses you can read.`);
+  }
+
+  const head = thesis.headVersionId === null ? null : await versionView(thesis.id, thesis.headVersionId);
+  const published =
+    thesis.publishedVersionId === null ? null : await versionView(thesis.id, thesis.publishedVersionId);
+
+  const analysis = head === null ? ({ state: 'NONE' } as const) : await analysisOf(thesis.id, head.view.versionId);
+
+  const decisions = await prisma.thesisGapDecision.findMany({ where: { thesisId: thesis.id } });
+  const framings = await prisma.framing.findMany({
+    where: { thesisId: thesis.id },
+    select: { id: true, question: true, provision: true, researcherId: true, createdAt: true },
+  });
+
+  return {
+    thesis: {
+      thesisId: thesis.id,
+      provision: thesis.provision,
+      createdById: thesis.createdById,
+      headVersionId: thesis.headVersionId,
+      publishedVersionId: thesis.publishedVersionId,
+      publishedAt: thesis.publishedAt,
+      publicInterestStatement: thesis.publicInterestStatement,
+      createdAt: thesis.createdAt,
+    },
+    head: head?.view ?? null,
+    published: published?.view ?? null,
+    unargued: head === null ? [] : unargued({ thesisId: thesis.id }, head.cited),
+    gapList: gapList(decisions, thesis.id, head?.view.mentions.map((m) => m.name) ?? []),
+    analysis,
+    framings: framings.map((f) => ({
+      framingId: f.id,
+      question: f.question,
+      provision: f.provision,
+      researcherId: f.researcherId,
+      createdAt: f.createdAt,
+    })),
+    history: await history(thesis.id, input.since === undefined ? undefined : new Date(input.since)),
+  };
+}
+
+export async function getThesisContextHandler(input: GetThesisContextInput): Promise<string> {
+  return answer(() => thesisContextOf(input));
 }
 
 /** The analysis arm: HEAD's fingerprint through the one loader, and CURRENT_ANALYSIS called over HEAD's analyses. */

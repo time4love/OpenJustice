@@ -40,22 +40,27 @@ export type RefusalCode =
   | 'INVALID_OUTCOME'
   | 'INVALID_BODY';
 
-export interface Refusal {
+/**
+ * A refusal, typed to its CODE — generic with the whole set as its default, so every existing `Refusal` reads as
+ * before, and a read that names the codes it returns can say so (UI-3: the route adapter's table types a core's
+ * codes; `evidenceRefusals.ts` holds the same literal typing for its layer).
+ */
+export interface Refusal<C extends RefusalCode = RefusalCode> {
   error: string;
-  code: RefusalCode;
+  code: C;
 }
 
-export function refusal(code: RefusalCode, error: string): Refusal {
+export function refusal<C extends RefusalCode>(code: C, error: string): Refusal<C> {
   return { error, code };
 }
 
-/** The refusals every write tool shares, worded once. */
+/** The refusals every write tool shares, worded once — each typed to its literal code. */
 export const shared = {
-  noResearcher: (act: string): Refusal =>
+  noResearcher: (act: string): Refusal<'NO_RESEARCHER'> =>
     refusal('NO_RESEARCHER', `${act} is attributed to a researcher. No researcher in context.`),
-  notSurveyed: (url: string): Refusal =>
+  notSurveyed: (url: string): Refusal<'NOT_SURVEYED'> =>
     refusal('NOT_SURVEYED', `${url} is not in the corpus. Survey it first: survey_wayback_captures url=${url}`),
-  reasonRequired: (act: string): Refusal =>
+  reasonRequired: (act: string): Refusal<'REASON_REQUIRED'> =>
     refusal('REASON_REQUIRED', `${act} requires a reason; a blank one is no reason.`),
 };
 

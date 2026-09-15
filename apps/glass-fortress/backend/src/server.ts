@@ -16,15 +16,16 @@ process.on('unhandledRejection', (reason) => {
 process.on('uncaughtException', (err) => {
   console.error('[process] Uncaught exception (process kept alive):', err);
 });
-import { forensicsRouter } from './routes/forensicsRoutes';
 import { walkArticleRulesRouter } from './walk/routes';
 import { mcpRouter } from './mcp/mcpRoutes';
 import { authRouter } from './routes/authRoutes';
 import { publicThesisRouter } from './routes/publicThesisRoutes';
+import { corpusRouter, pagesRouter, recordsRouter } from './routes/corpusRoutes';
+import { researchRouter } from './routes/researchRoutes';
 import { reportRouter } from './routes/reportRoutes';
-import { prisma } from './lib/prisma';
 import { verifyEnvironmentIdentityAtStartup } from './lib/appEnv';
 import { requireStagingAccess } from './middleware/stagingAccess';
+import { requireResearcher } from './middleware/researcherIdentity';
 import { generalLimiter } from './middleware/rateLimiting';
 import { oidcProvider } from './oauth/oidcProvider';
 import { oauthInteractionRouter } from './routes/oauthInteractionRoutes';
@@ -174,27 +175,6 @@ app.use(requireStagingAccess);
 // tighter `aiCostLimiter` on top — see docs/gf-cost-exposure-dev-plan.md.
 app.use('/api', generalLimiter);
 
-// ---------------------------------------------------------------------------
-// GET /api/stats — platform-wide aggregate counts for the home page mission board
-// ---------------------------------------------------------------------------
-
-app.get('/api/stats', async (_req: Request, res: Response) => {
-  try {
-    // THE TWO EVIDENCE COUNTS LEFT AT EVIDENCE STEP 11a. `status = CONFIRMED`
-    // is a status the target has no spelling for (evidence flows §5: there is
-    // no confirmation act), and `isLegallySignificant` is a classifier opinion
-    // stored on the diff row, which A2 removes — a page's headline number must
-    // not be a model's verdict counted as a fact. What replaces them is step
-    // 12's `list_findings`, and the frontend's own change reads it.
-    const thesisCount = await prisma.thesis.count();
-    res.json({ thesisCount });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    res.status(500).json({ error: 'Failed to load stats', message });
-  }
-});
-
-app.use('/api/forensics', forensicsRouter);
 // The marking page's surface, page-scoped (docs/gf-interaction-flows.md A6),
 // behind requireResearcher inside the router.
 app.use('/api/article-rules', walkArticleRulesRouter);
@@ -202,6 +182,12 @@ app.use('/api/auth', authRouter);
 app.use('/api/reports', reportRouter);
 // The published theses — PUBLIC, identity-free (thesis A5 :1559–:1570).
 app.use('/api/thesis', publicThesisRouter);
+// The public corpus reads — PUBLIC, identity-free, each a tool's answer (docs/gf-ui-flows.md §6).
+app.use('/api/corpus', corpusRouter);
+app.use('/api/pages', pagesRouter);
+app.use('/api/records', recordsRouter);
+// The researcher's read view — ONE gate at the mount: 401 and 403 before any route runs (docs/gf-ui-flows.md §7).
+app.use('/api/research', requireResearcher, researchRouter);
 
 // ---------------------------------------------------------------------------
 // Global error handler — must be registered AFTER all routes.

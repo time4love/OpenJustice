@@ -4,6 +4,7 @@ import { TEXT_EXTRACTION_VERSION } from '../../lib/captureDocument';
 import { OUTCOMES, inTimestampOrder, stale, type Outcome, type Rule } from '../derivations';
 import { loadWorkListRows, snapshotDateOf } from '../rows';
 import { pendingStopOf, type Gate } from '../stop';
+import type { PageRef } from '../../services/corpusReads';
 import { answer, refusal, shared, type Refusal } from '../refusals';
 
 // ---------------------------------------------------------------------------
@@ -32,33 +33,40 @@ interface CaptureListed {
 
 const isOutcome = (value: string): value is Outcome => (OUTCOMES as readonly string[]).includes(value);
 
-export async function listCapturesHandler(input: { url: string; outcome?: string }): Promise<string> {
-  return answer(async (): Promise<CaptureListed[] | Refusal> => {
-    if (input.outcome !== undefined && !isOutcome(input.outcome)) {
-      return refusal('INVALID_OUTCOME', `${input.outcome} is not an outcome. One of: ${OUTCOMES.join(', ')}.`);
-    }
-    const page = await prisma.trackedUrl.findUnique({ where: { url: input.url } });
-    if (page === null) return shared.notSurveyed(input.url);
+/**
+ * THE ONE FUNCTION behind the tool and `GET /api/research/pages/:trackedUrlId/captures` (UI-3): INVALID_OUTCOME from
+ * the input, then the page through its door's ref.
+ */
+export async function capturesOf(ref: PageRef, outcome: string | undefined): Promise<CaptureListed[] | Refusal<'INVALID_OUTCOME' | 'NOT_SURVEYED'>> {
+  if (outcome !== undefined && !isOutcome(outcome)) {
+    return refusal('INVALID_OUTCOME', `${outcome} is not an outcome. One of: ${OUTCOMES.join(', ')}.`);
+  }
+  const page = await ref.load();
+  if (page === null) return ref.missing();
 
-    const rows = await loadWorkListRows(prisma, page.id);
-    const rules: Rule[] = await prisma.rule.findMany({ where: { trackedUrlId: page.id } });
-    const decisions = await prisma.pageDecision.findMany({
-      where: { trackedUrlId: page.id },
-      orderBy: { sequence: 'asc' },
-    });
-
-    return inTimestampOrder(rows)
-      .filter((row) => input.outcome === undefined || row.outcome === input.outcome)
-      .map((row) => ({
-        capture: row.waybackTimestamp,
-        snapshotDate: snapshotDateOf(row.waybackTimestamp),
-        outcome: row.outcome,
-        digest: row.digest,
-        comparedTo: row.comparedTo,
-        rulesetId: row.rulesetId,
-        snapshotId: row.snapshotId,
-        stale: stale(row, rules, decisions, TEXT_EXTRACTION_VERSION),
-        stopGates: pendingStopOf(row)?.gates.map((g) => g.gate) ?? null,
-      }));
+  const rows = await loadWorkListRows(prisma, page.id);
+  const rules: Rule[] = await prisma.rule.findMany({ where: { trackedUrlId: page.id } });
+  const decisions = await prisma.pageDecision.findMany({
+    where: { trackedUrlId: page.id },
+    orderBy: { sequence: 'asc' },
   });
+
+  return inTimestampOrder(rows)
+    .filter((row) => outcome === undefined || row.outcome === outcome)
+    .map((row) => ({
+      capture: row.waybackTimestamp,
+      snapshotDate: snapshotDateOf(row.waybackTimestamp),
+      outcome: row.outcome,
+      digest: row.digest,
+      comparedTo: row.comparedTo,
+      rulesetId: row.rulesetId,
+      snapshotId: row.snapshotId,
+      stale: stale(row, rules, decisions, TEXT_EXTRACTION_VERSION),
+      stopGates: pendingStopOf(row)?.gates.map((g) => g.gate) ?? null,
+    }));
+}
+
+export async function listCapturesHandler(input: { url: string; outcome?: string }): Promise<string> {
+  const ref: PageRef = { load: () => prisma.trackedUrl.findUnique({ where: { url: input.url } }), missing: () => shared.notSurveyed(input.url) };
+  return answer(() => capturesOf(ref, input.outcome));
 }

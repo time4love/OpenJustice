@@ -513,6 +513,40 @@ describe("the THESIS layer's retired names that hold today — routes and delega
   });
 });
 
+// UI-3 (docs/gf-ui-refactor-plan.md :261–:264, :944; docs/gf-ui-flows.md §6 :269–:273): the two routes the UI plan
+// retires, as SENTENCES no file under src may say again — `/api/forensics` (every surveyed page to anyone, and
+// trajectories with no PUBLIC_PAGE gate) and `/api/stats` (a count of drafts, served anonymously). Code only: a
+// comment recording the retirement is not a live surface.
+describe("the UI layer's retired routes (UI-3, the R53 sketch §c6)", () => {
+  const RETIRED_UI_ROUTES = [/\/api\/forensics\b/, /\/api\/stats\b/];
+
+  it('no file under src says a retired UI-3 route', () => {
+    const offenders = srcModules()
+      .map(({ file, code }) => ({ file, routes: RETIRED_UI_ROUTES.filter((r) => r.test(code)).map(String) }))
+      .filter((m) => m.routes.length > 0);
+    expect(offenders).toEqual([]);
+  });
+
+  it('DETECTS both sentences — and the survivors, and a comment recording the retirement, do not fire', () => {
+    for (const sentence of [
+      "app.use('/api/forensics', forensicsRouter)",
+      "app.get('/api/stats', h)",
+      'fetch(`/api/forensics/tracked/${id}/trajectories`)',
+    ]) {
+      expect(RETIRED_UI_ROUTES.some((r) => r.test(sentence))).toBe(true);
+    }
+    for (const survivor of [
+      "app.use('/api/corpus', corpusRouter)",
+      "'/api/pages/:trackedUrlId/trajectories'",
+      "'/api/research/pages'",
+      "'/api/reports/patterns'",
+      codeOf('// GET /api/stats was retired at UI-3\nconst a = 1;'),
+    ]) {
+      expect(RETIRED_UI_ROUTES.some((r) => r.test(survivor))).toBe(false);
+    }
+  });
+});
+
 // ---------------------------------------------------------------------------
 // retired-names — A7 :1659–:1660 · sketch §5g, §6-4 — THE HALF THAT WAS RED UNTIL THESIS STEP 18
 //

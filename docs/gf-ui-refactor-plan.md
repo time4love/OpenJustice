@@ -216,7 +216,7 @@ researcher's own `mine: true`. Nothing written, nothing paid, no chain call.
 **STATUS:** LANDED 2026-09-15 — PR #484, `staging` `625685e`; the surface 45; the staging reads predicted and scored.
 Findings: `docs/gf-ui-step-2-2026-09-15.md` (the `limit` default, the reads, the surface count).
 
-### UI-3 · The routes — thirteen public, fourteen gated, one mount
+### UI-3 · The routes — twelve public, fourteen gated, one mount
 
 **Contract:** §5 :184–:197 (a route IS a tool's answer: one function, no second query, shape or refusal set); §6 :199–:276
 (the public routes, the status table, the retirements, "no route is paid"); §7 :278–:310 (the gated routes, the one
@@ -242,10 +242,10 @@ A2 :1004–:1014 (the states a route must answer); A4 :1041, :1044 (thesis A5 :1
   route resolves `trackedUrlId` to the same row (`loadPageById`, one new function in `corpusReads.ts`) and calls the
   same core, so `NOT_SURVEYED` is one refusal from either door and no row is loaded twice. The acceptance cases of each
   tool stay green and unedited — the split moves no behaviour, and `git diff` on the acceptance suites is the proof.
-- **The thirteen public routes of §6**, no identity read — no `identifyResearcher`, no bearer, exactly as
+- **The twelve public routes of §6**, no identity read — no `identifyResearcher`, no bearer, exactly as
   `publicThesisRoutes.ts` :7–:9 already refuses to: `GET /api/thesis/:id/call` (`get_whistleblower_call`, added to the
   existing router); `/api/corpus`, `/api/corpus/claims`, `/api/corpus/search` (UI-2's three at `scope: 'public'`, fixed by
-  the route, never by the caller); `/api/pages/:trackedUrlId/findings` · `/diffs/:before/:after` · `/search` ·
+  the route, never by the caller); `/api/pages/:trackedUrlId/findings` · `/diffs/:before/:after` ·
   `/trajectories` · `/captures/:capture/chain`; `/api/records/:fileHash`. All below `requireStagingAccess` and under
   `generalLimiter` as `/api/*` already is (§6 :275–:276); no `aiCostLimiter`, because no route is paid. The thesis body's
   `pages` gains `trackedUrlId` beside `url` in `services/publishedThesis.ts` (A4 :1041) — the one field the browser needs

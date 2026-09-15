@@ -13,7 +13,8 @@ import { publicThesisRouter } from '../src/routes/publicThesisRoutes';
 import * as evidencePredicates from '../src/services/evidencePredicates';
 import * as publicationAssessor from '../src/services/publicationAssessor';
 import { INTAKE } from '../src/services/publishedThesis';
-import { BEFORE, CAPTURE_NAME, DIFF_NAME, SUPERSEDED_VERSION, URL } from './helpers/corpusFixture';
+import { getWhistleblowerCallHandler } from '../src/mcp/tools/getWhistleblowerCall';
+import { BEFORE, CAPTURE_NAME, DIFF_NAME, PAGE, SUPERSEDED_VERSION, URL } from './helpers/corpusFixture';
 import { store, resetDouble, type Row } from './helpers/evidenceDouble';
 import {
   ANALYSIS,
@@ -23,6 +24,7 @@ import {
   DEBATE,
   MENTION,
   NEXT_VERSION,
+  OPEN_GAP,
   THESIS,
   TRAJECTORY_MENTION,
   TRAJECTORY_VERSION,
@@ -45,6 +47,8 @@ import { SRC, codeOf, readCode } from './walk/scan';
 //                             superseded → its text — "withdrawn" read from the Withdrawal rows, never from dates
 //   a CITATION                resolved at its PIN, argued, and the FACT of an objection
 //   the R16 half              publish → unpublish → publish the same version: route 3 still answers the notice
+//   the CALL route            UI-3 (the R53 sketch §e): `GET /api/thesis/:id/call` is `get_whistleblower_call`'s answer,
+//                             `{ live: false }` a 200 for a draft and an id naming nothing alike (§6 :205–:206)
 // ---------------------------------------------------------------------------
 
 beforeEach(() => {
@@ -189,7 +193,9 @@ describe('a citation on the page — resolved at its PIN, with the facts beside 
         overObjection: true,
       }),
     ]);
-    expect(body['pages']).toEqual([{ url: URL }]);
+    // THE PAGE'S ID BESIDE ITS URL — thesis A5 :1569 as amended by docs/gf-ui-flows.md §6 :221–:224 (UI-3): the one field the
+    // browser needs to compose `/corpus?page=`.
+    expect(body['pages']).toEqual([{ trackedUrlId: PAGE.id, url: URL }]);
   });
 
   /** THESIS published citing the BEFORE capture at `pin`, the snapshot's current text marked, and `kept` text versions held. */
@@ -241,6 +247,29 @@ describe('the mount — the public reads live at /api/thesis, behind the staging
     expect(mountedBehindTheGate(`${GATE};\napp.use('/api/theses', publicThesisRouter);`)).toBe(false);
     expect(mountedBehindTheGate(`${MOUNT};\n${GATE};`)).toBe(false);
     expect(mountedBehindTheGate(codeOf(`${GATE};\n// ${MOUNT};\nconst x = 1;`))).toBe(false);
+  });
+});
+
+describe("the call page's read — GET /api/thesis/:id/call (thesis A4 :1501–:1504; ui-flows §6 :205–:206)", () => {
+  const CALL_ITEM = { whatIsNeeded: 'פרוטוקול הדיון', whoWouldHaveSeenIt: 'חברי הצוות', unit: 'אגף הרפואה', window: '2022-08' };
+  /** OPEN_GAP decided CALLED a second after it opened — before the publication, so the call is the published version's. */
+  const CALLED: Row = { ...OPEN_GAP, id: 'gap-decision-called', sequence: 2, decision: 'CALLED', callItem: CALL_ITEM, createdAt: new Date(OPEN_GAP.createdAt.getTime() + 1000) };
+
+  it("a PUBLISHED thesis with a gap CALLED answers 200 with get_whistleblower_call's answer, byte for byte — live, the item the researcher approved", async () => {
+    seedThesis(AS_PUBLISHED);
+    store.attempts = [ATTEMPT];
+    store.gapDecisions = [{ ...OPEN_GAP }, CALLED];
+    const { status, body, text } = await get(`/api/thesis/${THESIS.id}/call`);
+    expect([status, text]).toEqual([200, await getWhistleblowerCallHandler({ thesisId: THESIS.id })]);
+    expect(body).toMatchObject({ live: true, call: [CALL_ITEM] });
+  });
+
+  it('a DRAFT with a gap CALLED and an id naming no thesis answer the same 200 bytes, `{ live: false }` — never a 404 that tells a draft apart', async () => {
+    seedThesis();
+    store.gapDecisions = [{ ...OPEN_GAP }, CALLED];
+    const draft = await get(`/api/thesis/${THESIS.id}/call`);
+    const nothing = await get('/api/thesis/thesis-that-does-not-exist/call');
+    expect([draft.status, draft.text, nothing.status, nothing.text]).toEqual([200, '{"live":false}', 200, '{"live":false}']);
   });
 });
 

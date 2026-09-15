@@ -7,12 +7,12 @@ import {
   loadCaptures,
   loadDiffs,
   loadEvidenceLinkage,
-  loadPage,
   type CaptureEntry,
   type DiffEntry,
+  type PageRef,
 } from '../../services/corpusReads';
 import { currentVersionOf, storedAttributionFor } from '../../services/evidencePredicates';
-import { answer, openPage, shared, type Refusal } from './evidenceRefusals';
+import { answer, openPage, pageByUrl, type Refusal } from './evidenceRefusals';
 
 // ---------------------------------------------------------------------------
 // list_findings({ url }) — PUBLIC — docs/gf-evidence-flows.md A4.
@@ -59,43 +59,46 @@ interface Findings {
   diffs: DiffEntry[];
 }
 
+/** THE ONE FUNCTION behind the tool and `GET /api/pages/:trackedUrlId/findings` (docs/gf-ui-flows.md §6 :212, :221–:223). */
+export async function findingsOf(ref: PageRef): Promise<Findings | Refusal<'NOT_SURVEYED' | 'NOT_PUBLIC'>> {
+  const page = await ref.load();
+  if (page === null) return ref.missing();
+
+  const access = await openPage(page);
+  if (access.refused !== null) return access.refused;
+
+  const captures = await loadCaptures(page.id);
+  const diffs = await loadDiffs(page.id);
+
+  // ONE query for every capture's stored anchor verdict, and NO chain call:
+  // a public timeline that asked the chain once per capture would be
+  // unbounded work for an anonymous caller. `check_on_chain_status` is where
+  // the chain is asked, bounded by one record.
+  const attribution = await storedAttributionFor(captures.map((c) => c.id));
+
+  const names = [
+    ...captures.map((c) => captureName(page, c)),
+    ...diffs.map((d) => diffName(page, d)),
+  ];
+  const linkage = await loadEvidenceLinkage(names);
+
+  // The ACQUIRED captures are what NARROWED reads: a capture between two
+  // endpoints narrows the pair only if the corpus holds its text (§7).
+  const acquired = captures.map((c) => c.capture);
+
+  const awaitingDerivation = diffs.filter(
+    (diff) => !currentVersionOf({ kind: 'DIFF', before: diff.before, after: diff.after, versions: diff.versions }).defined,
+  ).length;
+
+  return {
+    page: { url: page.url, public: access.public },
+    counts: { captures: captures.length, diffs: diffs.length, awaitingDerivation },
+    // THE ROWS ARE `corpusReads`' — one composition for this read and for `list_corpus` across pages (UI-2).
+    captures: captures.map((capture) => captureRow(page, capture, attribution, linkage)),
+    diffs: diffs.map((diff) => diffRow(page, diff, acquired, linkage)),
+  };
+}
+
 export async function listFindingsHandler(input: { url: string }): Promise<string> {
-  return answer(async (): Promise<Findings | Refusal> => {
-    const page = await loadPage(input.url);
-    if (page === null) return shared.notSurveyed(input.url);
-
-    const access = await openPage(page);
-    if (access.refused !== null) return access.refused;
-
-    const captures = await loadCaptures(page.id);
-    const diffs = await loadDiffs(page.id);
-
-    // ONE query for every capture's stored anchor verdict, and NO chain call:
-    // a public timeline that asked the chain once per capture would be
-    // unbounded work for an anonymous caller. `check_on_chain_status` is where
-    // the chain is asked, bounded by one record.
-    const attribution = await storedAttributionFor(captures.map((c) => c.id));
-
-    const names = [
-      ...captures.map((c) => captureName(page, c)),
-      ...diffs.map((d) => diffName(page, d)),
-    ];
-    const linkage = await loadEvidenceLinkage(names);
-
-    // The ACQUIRED captures are what NARROWED reads: a capture between two
-    // endpoints narrows the pair only if the corpus holds its text (§7).
-    const acquired = captures.map((c) => c.capture);
-
-    const awaitingDerivation = diffs.filter(
-      (diff) => !currentVersionOf({ kind: 'DIFF', before: diff.before, after: diff.after, versions: diff.versions }).defined,
-    ).length;
-
-    return {
-      page: { url: page.url, public: access.public },
-      counts: { captures: captures.length, diffs: diffs.length, awaitingDerivation },
-      // THE ROWS ARE `corpusReads`' — one composition for this read and for `list_corpus` across pages (UI-2).
-      captures: captures.map((capture) => captureRow(page, capture, attribution, linkage)),
-      diffs: diffs.map((diff) => diffRow(page, diff, acquired, linkage)),
-    };
-  });
+  return answer(() => findingsOf(pageByUrl(input.url)));
 }

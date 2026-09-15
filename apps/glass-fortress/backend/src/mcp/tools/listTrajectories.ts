@@ -13,10 +13,11 @@ import {
   TRAJECTORY_CURSOR_KEYS,
   type CorpusScope,
   type EntryPage,
+  type PageRef,
   type TrajectoryEntry,
   type TrajectoryKey,
 } from '../../services/corpusReads';
-import { answer, openScope, scopedPages, validRange, type CorpusReadCode, type Refusal } from './evidenceRefusals';
+import { answer, openScope, pageByUrl, scopedPages, validRange, type CorpusReadCode, type Refusal } from './evidenceRefusals';
 
 // ---------------------------------------------------------------------------
 // list_trajectories({ scope, since?, until?, page?, cursor?, limit? }) — READ — docs/gf-ui-flows.md §6.1 :244–:247,
@@ -55,6 +56,9 @@ export interface ListTrajectoriesInput {
   limit?: number;
 }
 
+/** The core's input: the tool's, with the named page as a door's `PageRef` (UI-3). */
+export type TrajectoriesInput = Omit<ListTrajectoriesInput, 'page'> & { page?: PageRef };
+
 interface TrajectoryList {
   entries: TrajectoryEntry[];
   /** The pages in scope whose current state has no stored detection pass — named, so nothing reads as "nothing moved". */
@@ -69,34 +73,37 @@ function cursorOf(cursor: string | undefined): TrajectoryKey | null {
   return key;
 }
 
-export async function listTrajectoriesHandler(input: ListTrajectoriesInput): Promise<string> {
-  return answer(async (): Promise<TrajectoryList | Refusal<CorpusReadCode>> => {
-    const gate = openScope(input.scope);
-    if (gate !== null) return gate;
-    const range = validRange(input.since, input.until);
-    if (range !== null) return range;
-    const cursor = cursorOf(input.cursor);
+/** THE ONE FUNCTION behind the tool, `GET /api/corpus/claims` and `GET /api/pages/:trackedUrlId/trajectories` (UI-3). */
+export async function trajectoriesOf(input: TrajectoriesInput): Promise<TrajectoryList | Refusal<CorpusReadCode>> {
+  const gate = openScope(input.scope);
+  if (gate !== null) return gate;
+  const range = validRange(input.since, input.until);
+  if (range !== null) return range;
+  const cursor = cursorOf(input.cursor);
 
-    const scope = await scopedPages(input.scope, input.page);
-    if ('error' in scope) return scope;
-    const pages = scope.page === null ? scope.scoped : [scope.page];
+  const scope = await scopedPages(input.scope, input.page);
+  if ('error' in scope) return scope;
+  const pages = scope.page === null ? scope.scoped : [scope.page];
 
-    const entries: TrajectoryEntry[] = [];
-    const undetected: EntryPage[] = [];
-    for (const page of pages) {
-      const entryPage: EntryPage = { trackedUrlId: page.id, url: page.url, public: page.public };
-      const stored = await getStoredClaimTrajectories(page.url);
-      if (stored === null) {
-        undetected.push(entryPage);
-        continue;
-      }
-      for (const finding of trajectoryFindings(stored)) entries.push({ ...finding, page: entryPage });
+  const entries: TrajectoryEntry[] = [];
+  const undetected: EntryPage[] = [];
+  for (const page of pages) {
+    const entryPage: EntryPage = { trackedUrlId: page.id, url: page.url, public: page.public };
+    const stored = await getStoredClaimTrajectories(page.url);
+    if (stored === null) {
+      undetected.push(entryPage);
+      continue;
     }
+    for (const finding of trajectoryFindings(stored)) entries.push({ ...finding, page: entryPage });
+  }
 
-    const kept = entries
-      .filter((entry) => inRange(leftAt(entry), input.since, input.until))
-      .sort((a, b) => compareTrajectoryKeys(trajectoryKeyOf(a), trajectoryKeyOf(b)));
-    const paged = pageAfter(kept, cursor, input.limit ?? CORPUS_READ_LIMIT, trajectoryKeyOf, compareTrajectoryKeys);
-    return { entries: paged.entries, undetected, nextCursor: paged.nextCursor };
-  });
+  const kept = entries
+    .filter((entry) => inRange(leftAt(entry), input.since, input.until))
+    .sort((a, b) => compareTrajectoryKeys(trajectoryKeyOf(a), trajectoryKeyOf(b)));
+  const paged = pageAfter(kept, cursor, input.limit ?? CORPUS_READ_LIMIT, trajectoryKeyOf, compareTrajectoryKeys);
+  return { entries: paged.entries, undetected, nextCursor: paged.nextCursor };
+}
+
+export async function listTrajectoriesHandler(input: ListTrajectoriesInput): Promise<string> {
+  return answer(() => trajectoriesOf({ ...input, page: input.page === undefined ? undefined : pageByUrl(input.page) }));
 }

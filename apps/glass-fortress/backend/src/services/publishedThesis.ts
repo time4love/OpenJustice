@@ -4,6 +4,7 @@ import { argued, EVER_PUBLISHED, flagged, verified } from './evidencePredicates'
 import type { PublicationMaterial } from './publicationAssessor';
 import { decisionsAtPublication, gapList, theCall, theRequests, trajectoryCurrent } from './thesisPredicates';
 import { resolveTrajectoryCitations } from './trajectoryCitation';
+import { refusal, type Refusal } from '../mcp/tools/thesisRefusals';
 
 // ---------------------------------------------------------------------------
 // WHAT A VERSION PUBLISHES — docs/gf-thesis-flows.md T5 :795–:853, T6 :914–:918, A3 :1399–:1406 as amended, A5
@@ -185,7 +186,8 @@ interface ThesisPage {
   overObjection: boolean;
   analysisRun: boolean;
   history: HistoryEntry[];
-  pages: { url: string }[];
+  /** Each cited page by its id and its url — the id is what the browser composes `/corpus?page=` from (thesis A5 :1569 as amended, UI-3). */
+  pages: { trackedUrlId: string; url: string }[];
 }
 
 interface VersionBody {
@@ -242,7 +244,7 @@ async function citationRefsOf(versionId: string): Promise<CitationRef[]> {
  * Route 2's body (sketch §e4), decided in order: no thesis or nothing ever published → null (404, one answer for both) ·
  * the pin null with a withdrawal on record → the notice · published → the page.
  */
-export async function pageOf(thesisId: string): Promise<ThesisPage | WithdrawnNotice | null> {
+async function pageOf(thesisId: string): Promise<ThesisPage | WithdrawnNotice | null> {
   const loaded = await publicRecordOf(thesisId);
   if (loaded === null) return null;
   const { thesis, versions, attempts, withdrawals } = loaded;
@@ -275,7 +277,8 @@ export async function pageOf(thesisId: string): Promise<ThesisPage | WithdrawnNo
     },
   });
   const citations: (EvidenceCitation | TrajectoryCitation)[] = [];
-  const pages = new Set<string>();
+  // url → trackedUrlId, one entry per cited page.
+  const pages = new Map<string, string>();
   const trajectoryIds = mentions.filter((m) => m.kind === 'TRAJECTORY').map((m) => m.name);
   const { resolved } = await resolveTrajectoryCitations(trajectoryIds);
   for (const mention of mentions) {
@@ -292,7 +295,7 @@ export async function pageOf(thesisId: string): Promise<ThesisPage | WithdrawnNo
     if (record === null) {
       throw new Error(`publishedThesis: published version ${pin} cites #ev_${mention.name}, which no record of the corpus resolves.`);
     }
-    pages.add(record.page.url);
+    pages.set(record.page.url, record.page.id);
     citations.push(await evidenceCitation(thesis.id, mention, record));
   }
 
@@ -312,7 +315,7 @@ export async function pageOf(thesisId: string): Promise<ThesisPage | WithdrawnNo
     overObjection: attempt.verdict === 'DISPUTES',
     analysisRun: analyses.length > 0,
     history: await historyOf(versions, attempts, withdrawals),
-    pages: [...pages].map((url) => ({ url })),
+    pages: [...pages].map(([url, trackedUrlId]) => ({ trackedUrlId, url })),
   };
 }
 
@@ -409,7 +412,7 @@ async function pinnedContent(record: ResolvedRecord, pin: string): Promise<Evide
  * Route 3's body (sketch §e4, R11), decided in order: `v` not ever published on this thesis → null (404) · the thesis
  * withdrawn now → the thesis's notice, whatever `v` · `v` named by a withdrawal → ITS notice · else the version.
  */
-export async function versionPage(thesisId: string, versionId: string): Promise<VersionBody | WithdrawnNotice | null> {
+async function versionPage(thesisId: string, versionId: string): Promise<VersionBody | WithdrawnNotice | null> {
   const loaded = await publicRecordOf(thesisId);
   if (loaded === null) return null;
   const { thesis, versions, attempts, withdrawals } = loaded;
@@ -427,4 +430,22 @@ export async function versionPage(thesisId: string, versionId: string): Promise<
     publishedAt: publishedAtOf(attempts, version.id),
     citations: await citationRefsOf(version.id),
   };
+}
+
+// ---------------------------------------------------------------------------
+// THE TWO PUBLIC THESIS READS AS CORES — UI-3 (the R53 sketch §0h, round 2 M2). "A thesis never published" (docs/gf-ui-
+// flows.md §6's table) is `NOT_PUBLISHED`, the thesis layer's word for "nothing is published", decided HERE and nowhere
+// in a route module — the adapter's one table makes it the one 404.
+// ---------------------------------------------------------------------------
+
+const neverPublished = (thesisId: string): Refusal<'NOT_PUBLISHED'> => refusal('NOT_PUBLISHED', `No published thesis ${thesisId}.`);
+
+/** `GET /api/thesis/:id`'s core: the page, the notice, or NOT_PUBLISHED for a thesis never published. */
+export async function publishedPageOf(thesisId: string): Promise<ThesisPage | WithdrawnNotice | Refusal<'NOT_PUBLISHED'>> {
+  return (await pageOf(thesisId)) ?? neverPublished(thesisId);
+}
+
+/** `GET /api/thesis/:id/versions/:v`'s core: the version, its notice, or NOT_PUBLISHED. */
+export async function publishedVersionOf(thesisId: string, versionId: string): Promise<VersionBody | WithdrawnNotice | Refusal<'NOT_PUBLISHED'>> {
+  return (await versionPage(thesisId, versionId)) ?? neverPublished(thesisId);
 }

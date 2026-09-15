@@ -30,10 +30,13 @@ export interface ListThesisReviewsInput {
   scope?: ListScope;
 }
 
+/** THE ONE FUNCTION behind the tool and `GET /api/research/reviews` (UI-3). */
+export async function thesisReviewsOf(input: ListThesisReviewsInput = {}): Promise<ThesisReviewList | Refusal<'NO_RESEARCHER'>> {
+  const researcher = requireResearcher('Reading what an author owes');
+  if ('error' in researcher) return researcher;
+  return listThesisReviews(researcher.researcherId, input.scope ?? 'mine');
+}
+
 export async function listThesisReviewsHandler(input: ListThesisReviewsInput = {}): Promise<string> {
-  return answer(async (): Promise<ThesisReviewList | Refusal> => {
-    const researcher = requireResearcher('Reading what an author owes');
-    if ('error' in researcher) return researcher;
-    return listThesisReviews(researcher.researcherId, input.scope ?? 'mine');
-  });
+  return answer(() => thesisReviewsOf(input));
 }

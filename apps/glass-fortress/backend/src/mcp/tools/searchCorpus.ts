@@ -1,6 +1,6 @@
 import { z } from 'zod';
-import { compareCorpusKeys, DAY, searchCaptures, type CorpusKey, type CorpusScope, type SearchVerdict } from '../../services/corpusReads';
-import { answer, openScope, refusal, scopedPages, validRange, type CorpusReadCode, type Refusal } from './evidenceRefusals';
+import { compareCorpusKeys, DAY, searchCaptures, type CorpusKey, type CorpusScope, type PageRef, type SearchVerdict } from '../../services/corpusReads';
+import { answer, openScope, pageByUrl, refusal, scopedPages, validRange, type CorpusReadCode, type Refusal } from './evidenceRefusals';
 
 // ---------------------------------------------------------------------------
 // search_corpus({ scope, phrase, since?, until?, page? }) — READ — docs/gf-ui-flows.md §6.1 :248–:252; evidence A4
@@ -36,6 +36,9 @@ export interface SearchCorpusInput {
   page?: string;
 }
 
+/** The core's input: the tool's, with the named page as a door's `PageRef` (UI-3). */
+export type SearchInput = Omit<SearchCorpusInput, 'page'> & { page?: PageRef };
+
 interface SearchResult {
   phrase: string;
   entries: SearchVerdict[];
@@ -44,22 +47,25 @@ interface SearchResult {
 /** A verdict's place in the chronology — a capture's key, as `list_corpus` orders one. */
 const keyOf = (verdict: SearchVerdict): CorpusKey => ({ t: verdict.capture, k: verdict.kind, p: verdict.page.url, b: '', h: verdict.fileHash });
 
+/** THE ONE FUNCTION behind the tool and both search routes (UI-3). */
+export async function searchOf(input: SearchInput): Promise<SearchResult | Refusal<CorpusReadCode>> {
+  const gate = openScope(input.scope);
+  if (gate !== null) return gate;
+  const range = validRange(input.since, input.until);
+  if (range !== null) return range;
+  if (input.phrase.trim().length === 0) {
+    return refusal('PHRASE_REQUIRED', 'A phrase is required; a blank one is found everywhere and says nothing.');
+  }
+
+  const scope = await scopedPages(input.scope, input.page);
+  if ('error' in scope) return scope;
+  const pages = scope.page === null ? scope.scoped : [scope.page];
+
+  const entries: SearchVerdict[] = [];
+  for (const page of pages) entries.push(...(await searchCaptures(page, input.phrase, input.since, input.until)));
+  return { phrase: input.phrase, entries: entries.sort((a, b) => compareCorpusKeys(keyOf(a), keyOf(b))) };
+}
+
 export async function searchCorpusHandler(input: SearchCorpusInput): Promise<string> {
-  return answer(async (): Promise<SearchResult | Refusal<CorpusReadCode>> => {
-    const gate = openScope(input.scope);
-    if (gate !== null) return gate;
-    const range = validRange(input.since, input.until);
-    if (range !== null) return range;
-    if (input.phrase.trim().length === 0) {
-      return refusal('PHRASE_REQUIRED', 'A phrase is required; a blank one is found everywhere and says nothing.');
-    }
-
-    const scope = await scopedPages(input.scope, input.page);
-    if ('error' in scope) return scope;
-    const pages = scope.page === null ? scope.scoped : [scope.page];
-
-    const entries: SearchVerdict[] = [];
-    for (const page of pages) entries.push(...(await searchCaptures(page, input.phrase, input.since, input.until)));
-    return { phrase: input.phrase, entries: entries.sort((a, b) => compareCorpusKeys(keyOf(a), keyOf(b))) };
-  });
+  return answer(() => searchOf({ ...input, page: input.page === undefined ? undefined : pageByUrl(input.page) }));
 }

@@ -1,6 +1,15 @@
 import { getResearcherId } from '../../context/researcherContext';
 import { publicPage } from '../../services/evidencePredicates';
-import { loadPage, pagesInScope, type CaptureLookup, type CorpusScope, type Page, type ScopedPage } from '../../services/corpusReads';
+import {
+  loadPage,
+  loadPageById,
+  pagesInScope,
+  type CaptureLookup,
+  type CorpusScope,
+  type Page,
+  type PageRef,
+  type ScopedPage,
+} from '../../services/corpusReads';
 
 // ---------------------------------------------------------------------------
 // THE EVIDENCE READS' REFUSALS — docs/gf-evidence-flows.md A4's conventions.
@@ -146,7 +155,20 @@ export const shared = {
         'its timeline is not public. A page becomes public in full — every capture and every diff — ' +
         'the moment a published thesis cites any record of it.',
     ),
+  /** A page a ROUTE names by its id and no TrackedUrl holds (UI-3) — worded by the id, since that is what was named. */
+  notSurveyedId: (trackedUrlId: string): Refusal<'NOT_SURVEYED'> =>
+    refusal('NOT_SURVEYED', `${trackedUrlId} names no surveyed page. list_pages names every page the corpus holds.`),
 };
+
+/** A page a TOOL names — by its exact url (A1). */
+export function pageByUrl(url: string): PageRef {
+  return { load: () => loadPage(url), missing: () => shared.notSurveyed(url) };
+}
+
+/** A page a ROUTE names — by its `trackedUrlId` (docs/gf-ui-flows.md §6 :221). */
+export function pageById(trackedUrlId: string): PageRef {
+  return { load: () => loadPageById(trackedUrlId), missing: () => shared.notSurveyedId(trackedUrlId) };
+}
 
 /**
  * A named timestamp that is not a capture of this page — the three negatives,
@@ -197,7 +219,7 @@ export function notACapture(
  * researcher reading a private page is told `public: false` rather than shown
  * something an outsider would not see.
  */
-export type PageAccess = { refused: Refusal } | { refused: null; public: boolean };
+export type PageAccess = { refused: Refusal<'NOT_PUBLIC'> } | { refused: null; public: boolean };
 
 export async function openPage(page: Page): Promise<PageAccess> {
   const isPublic = await publicPage(page.id);
@@ -242,10 +264,10 @@ export function validRange(since: string | undefined, until: string | undefined)
  */
 export async function scopedPages(
   scope: CorpusScope,
-  url: string | undefined,
+  ref: PageRef | undefined,
 ): Promise<Refusal<'NOT_SURVEYED' | 'NOT_PUBLIC'> | { scoped: ScopedPage[]; page: ScopedPage | null }> {
-  const named = url === undefined ? null : await loadPage(url);
-  if (url !== undefined && named === null) return shared.notSurveyed(url);
+  const named = ref === undefined ? null : await ref.load();
+  if (ref !== undefined && named === null) return ref.missing();
   const scoped = await pagesInScope(scope);
   if (named === null) return { scoped, page: null };
   const page = scoped.find((p) => p.id === named.id);

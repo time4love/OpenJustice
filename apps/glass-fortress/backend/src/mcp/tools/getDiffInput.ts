@@ -1,8 +1,8 @@
 import { z } from 'zod';
 import { prisma } from '../../lib/prisma';
-import { loadDiffByPair, loadPage, lookupCapture, pairName, type Page } from '../../services/corpusReads';
+import { loadDiffByPair, lookupCapture, pairName, type Page, type PageRef } from '../../services/corpusReads';
 import { currentVersionOf } from '../../services/evidencePredicates';
-import { answer, refusal, notACapture, openPage, shared, type Refusal } from './evidenceRefusals';
+import { answer, refusal, notACapture, openPage, pageByUrl, type Refusal } from './evidenceRefusals';
 
 // ---------------------------------------------------------------------------
 // get_diff_input({ url, before, after }) — PUBLIC — docs/gf-evidence-flows.md A4.
@@ -60,7 +60,7 @@ interface DiffInput {
  * NOT_A_CAPTURE, which is its own contract; the write layer separates
  * NOT_ACQUIRED, which is A4's.
  */
-async function captureRefusal(page: Page, role: string, value: string): Promise<Refusal> {
+async function captureRefusal(page: Page, role: string, value: string): Promise<Refusal<'NOT_A_CAPTURE'>> {
   const lookup = await lookupCapture(page, value);
   if (lookup.state === 'ACQUIRED') {
     throw new Error(
@@ -72,88 +72,94 @@ async function captureRefusal(page: Page, role: string, value: string): Promise<
   return notACapture(page, role, value, lookup);
 }
 
+/** THE ONE FUNCTION behind the tool and `GET /api/pages/:trackedUrlId/diffs/:before/:after` (UI-3). */
+export async function diffInputOf(
+  ref: PageRef,
+  input: { before: string; after: string },
+): Promise<DiffInput | Refusal<'NOT_SURVEYED' | 'NOT_PUBLIC' | 'NOT_A_CAPTURE' | 'NO_SUCH_DIFF' | 'AWAITING_DERIVATION'>> {
+  const page = await ref.load();
+  if (page === null) return ref.missing();
+
+  const access = await openPage(page);
+  if (access.refused !== null) return access.refused;
+
+  const diff = await loadDiffByPair(page.id, input.before, input.after);
+  if (diff === null) {
+    // Which of the three it is, in order: a name that is not a capture at all,
+    // then a pair the walk never wrote.
+    const captures = await prisma.urlSnapshot.findMany({
+      where: {
+        trackedUrlId: page.id,
+        waybackTimestamp: { in: [input.before, input.after] },
+      },
+      select: { waybackTimestamp: true },
+    });
+    const held = new Set(captures.map((c) => c.waybackTimestamp));
+    if (!held.has(input.before)) return captureRefusal(page, 'before', input.before);
+    if (!held.has(input.after)) return captureRefusal(page, 'after', input.after);
+    return refusal(
+      'NO_SUCH_DIFF',
+      `${input.before} → ${input.after} is not a pair the walk wrote. Both captures are in the ` +
+        'corpus, but a diff spans two CONSECUTIVE acquired captures; list_findings shows every ' +
+        'pair this page holds.',
+    );
+  }
+
+  const current = currentVersionOf({
+    kind: 'DIFF',
+    before: diff.before,
+    after: diff.after,
+    versions: diff.versions,
+  });
+  if (!current.defined || current.kind !== 'DIFF') {
+    return refusal(
+      'AWAITING_DERIVATION',
+      `The diff ${pairName(diff)} has no current content version: its endpoints' text has moved ` +
+        'and the walk owes a re-derivation. This is not a finding about the change — nothing has ' +
+        'been derived to look at yet. Run scan_captures on this page and ask again.',
+    );
+  }
+
+  const texts = await prisma.urlSnapshot.findMany({
+    where: { id: { in: [diff.before.id, diff.after.id] } },
+    select: { id: true, text: true },
+  });
+  const textOf = (id: string): string => {
+    const row = texts.find((t) => t.id === id);
+    if (row === undefined) {
+      throw new Error(
+        `Walk defect: the diff ${pairName(diff)} names a capture the corpus does not hold.`,
+      );
+    }
+    return row.text;
+  };
+
+  return {
+    page: { url: page.url, public: access.public },
+    before: {
+      capture: diff.before.capture,
+      textHash: diff.before.textHash,
+      textExtractionVersion: diff.before.textExtractionVersion,
+      text: textOf(diff.before.id),
+    },
+    after: {
+      capture: diff.after.capture,
+      textHash: diff.after.textHash,
+      textExtractionVersion: diff.after.textExtractionVersion,
+      text: textOf(diff.after.id),
+    },
+    current: {
+      contentVersionHash: current.contentVersionHash,
+      diffVersion: current.version.diffVersion,
+      chunks: current.version.chunks,
+    },
+  };
+}
+
 export async function getDiffInputHandler(input: {
   url: string;
   before: string;
   after: string;
 }): Promise<string> {
-  return answer(async (): Promise<DiffInput | Refusal> => {
-    const page = await loadPage(input.url);
-    if (page === null) return shared.notSurveyed(input.url);
-
-    const access = await openPage(page);
-    if (access.refused !== null) return access.refused;
-
-    const diff = await loadDiffByPair(page.id, input.before, input.after);
-    if (diff === null) {
-      // Which of the three it is, in order: a name that is not a capture at all,
-      // then a pair the walk never wrote.
-      const captures = await prisma.urlSnapshot.findMany({
-        where: {
-          trackedUrlId: page.id,
-          waybackTimestamp: { in: [input.before, input.after] },
-        },
-        select: { waybackTimestamp: true },
-      });
-      const held = new Set(captures.map((c) => c.waybackTimestamp));
-      if (!held.has(input.before)) return captureRefusal(page, 'before', input.before);
-      if (!held.has(input.after)) return captureRefusal(page, 'after', input.after);
-      return refusal(
-        'NO_SUCH_DIFF',
-        `${input.before} → ${input.after} is not a pair the walk wrote. Both captures are in the ` +
-          'corpus, but a diff spans two CONSECUTIVE acquired captures; list_findings shows every ' +
-          'pair this page holds.',
-      );
-    }
-
-    const current = currentVersionOf({
-      kind: 'DIFF',
-      before: diff.before,
-      after: diff.after,
-      versions: diff.versions,
-    });
-    if (!current.defined || current.kind !== 'DIFF') {
-      return refusal(
-        'AWAITING_DERIVATION',
-        `The diff ${pairName(diff)} has no current content version: its endpoints' text has moved ` +
-          'and the walk owes a re-derivation. This is not a finding about the change — nothing has ' +
-          'been derived to look at yet. Run scan_captures on this page and ask again.',
-      );
-    }
-
-    const texts = await prisma.urlSnapshot.findMany({
-      where: { id: { in: [diff.before.id, diff.after.id] } },
-      select: { id: true, text: true },
-    });
-    const textOf = (id: string): string => {
-      const row = texts.find((t) => t.id === id);
-      if (row === undefined) {
-        throw new Error(
-          `Walk defect: the diff ${pairName(diff)} names a capture the corpus does not hold.`,
-        );
-      }
-      return row.text;
-    };
-
-    return {
-      page: { url: page.url, public: access.public },
-      before: {
-        capture: diff.before.capture,
-        textHash: diff.before.textHash,
-        textExtractionVersion: diff.before.textExtractionVersion,
-        text: textOf(diff.before.id),
-      },
-      after: {
-        capture: diff.after.capture,
-        textHash: diff.after.textHash,
-        textExtractionVersion: diff.after.textExtractionVersion,
-        text: textOf(diff.after.id),
-      },
-      current: {
-        contentVersionHash: current.contentVersionHash,
-        diffVersion: current.version.diffVersion,
-        chunks: current.version.chunks,
-      },
-    };
-  });
+  return answer(() => diffInputOf(pageByUrl(input.url), input));
 }

@@ -69,6 +69,22 @@ const identity: { researcherId: string | null } = { researcherId: null };
  */
 export const researcherContextDouble = {
   getResearcherId: (): string | null => identity.researcherId,
+  /**
+   * `researcherContext.run` — UI-3, additive (R53 sketch §6-D9): the gated route adapter enters the context once per
+   * request, as `mcpRoutes.ts` does. The researcher is in context for `fn` and the one before is restored when it
+   * settles, so a request leaves nobody behind it.
+   */
+  researcherContext: {
+    run: async <T>(store: { researcherId: string }, fn: () => T): Promise<Awaited<T>> => {
+      const before = identity.researcherId;
+      identity.researcherId = store.researcherId;
+      try {
+        return await fn();
+      } finally {
+        identity.researcherId = before;
+      }
+    },
+  },
 };
 
 // --- the tripwire ------------------------------------------------------------

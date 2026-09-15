@@ -63,20 +63,23 @@ interface ResearcherList {
   published: PublishedEntry[];
 }
 
+/** THE ONE FUNCTION behind the tool, `GET /api/thesis` (its anonymous answer) and `GET /api/research/theses` (UI-3). */
+export async function thesesListOf(input: ListThesesInput = {}): Promise<PublishedEntry[] | ResearcherList | Refusal<'NO_RESEARCHER'>> {
+  const scope = input.scope ?? 'mine';
+  const researcherId = getResearcherId();
+  if (scope === 'all' && researcherId === null) {
+    return refusal(
+      'NO_RESEARCHER',
+      "scope 'all' lists every researcher's theses — working state — and needs a signed-in researcher; with no scope, the published theses are listed to anyone.",
+    );
+  }
+  const published = await publishedEntries();
+  if (researcherId === null) return published;
+  return { theses: await thesesOf(researcherId, scope), published };
+}
+
 export async function listThesesHandler(input: ListThesesInput = {}): Promise<string> {
-  return answer(async (): Promise<PublishedEntry[] | ResearcherList | Refusal> => {
-    const scope = input.scope ?? 'mine';
-    const researcherId = getResearcherId();
-    if (scope === 'all' && researcherId === null) {
-      return refusal(
-        'NO_RESEARCHER',
-        "scope 'all' lists every researcher's theses — working state — and needs a signed-in researcher; with no scope, the published theses are listed to anyone.",
-      );
-    }
-    const published = await publishedEntries();
-    if (researcherId === null) return published;
-    return { theses: await thesesOf(researcherId, scope), published };
-  });
+  return answer(() => thesesListOf(input));
 }
 
 /**
