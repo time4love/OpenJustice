@@ -140,7 +140,7 @@ empty subject set; `npm run build` and `npm run lint` still green with the test 
 the PR and required on `staging`; the render helper exercised once against a KEEP component (`StagingBanner`) so the
 first page step inherits a helper that has rendered something.
 
-**STATUS:** OPEN. Closes with `docs/gf-ui-step-1-<date>.md`: the versions installed, the decoy's failure text, the CI run.
+**STATUS:** LANDED 2026-09-15 — PR #481, `staging` `6777a28`; the frontend job required on `staging`. Findings: `docs/gf-ui-step-1-2026-09-15.md`.
 
 ### UI-2 · The reads — three corpus tools and two `scope` amendments
 
