@@ -19,6 +19,12 @@
 # only `npm run build` does, and a clean checkout has no generated client. Locally
 # it survives in node_modules from an earlier build, which is exactly the kind of
 # ambient state a fresh runner exists to remove.
+#
+# THE FRONTEND SUITE IS ITS OWN JOB (UI refactor plan UI-1, 2026-09-15). The Glass
+# Fortress frontend's jest project — the harness and the instruments every page step
+# adds — runs as `glass-fortress-frontend`, so a red frontend case names its job. It
+# carries no `paths:` filter on purpose: once it is a required check, a job that does
+# not run on a pull request never reports, and that pull request cannot merge.
 name: tests
 
 on:
@@ -59,3 +65,18 @@ jobs:
       # cannot grow unnoticed while the cleanup PRs are still queued.
       - name: Lint debt may not grow
         run: npm run lint:ratchet
+
+  glass-fortress-frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Run the frontend suite
+        run: npm run test:gf:frontend
