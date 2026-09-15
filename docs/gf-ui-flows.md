@@ -235,7 +235,7 @@ identity; `scope: 'all'` answers over every surveyed page and is GATED (`NO_RESE
 ```
 list_corpus({ scope, since?, until?, page?: url, kind?: CAPTURE | DIFF, cited?: bool, cursor?, limit? }) ⚠️
   returns   { entries: [ list_findings' capture row | diff row (A4 :1081–:1090), each with
-              page: { trackedUrlId, url } ], nextCursor | null }
+              page: { trackedUrlId, url } ], nextCursor | null } — amended by docs/gf-ui-refactor-plan.md UI-2 (2026-09-15): `page` gains `public: bool`, so the gated door can mark a row of a page not yet opened (§27) without a second read; always true at `public`
             in TIMESTAMP order across pages; no other order exists (A4 :1091). `cited` keeps the entries
             with `evidence` ≠ null — the RECORDS lens, no second read. `limit` is an operational parameter
             (flows A8), never a judgement.
@@ -747,7 +747,7 @@ The same page at `scope: 'all'`, and three additions, none of them a page:
 
 The public page filter needs the set of pages in scope, and no public read lists pages (`list_pages` is
 GATED, and rightly: a public list of surveyed pages is the §9.5 leak). So `list_corpus` returns, beside
-`entries`, **`pages: [{ trackedUrlId, url, first, last, entries }]` — the pages of the SCOPE**, computed with the
+`entries`, **`pages: [{ trackedUrlId, url, public, first, last, entries }]` (`public` added by docs/gf-ui-refactor-plan.md UI-2, 2026-09-15) — the pages of the SCOPE**, computed with the
 read: at `public` exactly the opened pages, which are public by definition; at `all` every surveyed page. A
 facet on the one read, not a second read (§8), and at `public` it reveals nothing the thesis pages' links do
 not already reveal.
