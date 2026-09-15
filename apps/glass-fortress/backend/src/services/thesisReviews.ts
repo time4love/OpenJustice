@@ -9,7 +9,8 @@ import {
   type LatestDecision,
   type NamedRecord,
 } from './evidenceReviews';
-import { REVIEW_KINDS, reviewCommand, reviews, type CitedOn, type ReviewEntry } from './thesisPredicates';
+import { handleOf, handlesOf } from './publishedThesis';
+import { REVIEW_KINDS, reviewCommand, reviews, type CitedOn, type ReviewEntry, type ListScope } from './thesisPredicates';
 import { resolveTrajectoryCitations, type ResolvedTrajectoryCitation, type TrajectoryCurrency } from './trajectoryCitation';
 
 // ---------------------------------------------------------------------------
@@ -25,6 +26,11 @@ import { resolveTrajectoryCitations, type ResolvedTrajectoryCitation, type Traje
 // §6-D9). FLAGGED's material is evidence's ONE loader, asked from the PIN instead of from `affirmed` (R-iii).
 //
 // THE ENVELOPE IS `{ owed, reviews }`, THE COUNT FIRST (the researcher's ruling, 2026-09-14; A4 :1524 amended in place).
+//
+// `scope` (docs/gf-ui-flows.md §7.1 :320–:324; UI-2, 2026-09-15): `mine`, the default, is today's answer byte for byte;
+// `all` is REVIEWS over every thesis, `owed` counting all, and every entry carries its AUTHOR (the handle) and `mine`
+// — whether the thesis is the caller's — the two keys `list_theses` adds at `all`, with one meaning each. The commands
+// are unchanged: each still writes only as the author (thesis A7 :1685).
 // ---------------------------------------------------------------------------
 
 /** FLAGGED's material (R-iii): the pin beside CURRENT, what moved, why, and what E3 last decided about the record. */
@@ -54,21 +60,29 @@ interface UnarguedMaterial {
 
 type ThesisReview = ReviewEntry & { owedSince: Date; material: FlaggedMaterial | StaleMaterial | UnarguedMaterial };
 
+/** An entry at `scope: 'all'`: the review, and whose thesis it is on (§7.1 :323). */
+type AttributedReview = ThesisReview & { author: string; mine: boolean };
+
 export interface ThesisReviewList {
   owed: number;
-  reviews: ThesisReview[];
+  /** At `mine` every entry is a `ThesisReview`; at `all` every entry is an `AttributedReview`. */
+  reviews: (ThesisReview | AttributedReview)[];
 }
 
-/** The two instants an entry's pointers read from — loaded once per thesis. */
+/** The two instants an entry's pointers read from, and the thesis's author — loaded once per thesis. */
 interface ThesisInstants {
   headVersionId: string;
   headCreatedAt: Date;
   publishedAt: Date | null;
+  createdById: string;
 }
 
-/** REVIEWS(researcherId), oldest first, each with its material and ONE command. Writes nothing. */
-export async function listThesisReviews(researcherId: string): Promise<ThesisReviewList> {
-  const owed = await reviews(researcherId);
+/**
+ * REVIEWS over the scope's theses, oldest first, each with its material and ONE command. Writes nothing. At `all`
+ * each entry also names its author and whether the thesis is the caller's.
+ */
+export async function listThesisReviews(researcherId: string, scope: ListScope = 'mine'): Promise<ThesisReviewList> {
+  const owed = await reviews(researcherId, scope);
   const instants = new Map<string, ThesisInstants>();
   const staleIds = owed.filter((e) => e.kind === 'STALE_TRAJECTORY').map((e) => e.name);
   const { resolved } = await resolveTrajectoryCitations(staleIds);
@@ -106,23 +120,36 @@ export async function listThesisReviews(researcherId: string): Promise<ThesisRev
       byCodeUnit(a.thesisId, b.thesisId) ||
       byCodeUnit(a.name, b.name),
   );
-  return { owed: rendered.length, reviews: rendered };
+  if (scope === 'mine') return { owed: rendered.length, reviews: rendered };
+
+  // AT `all`, WHOSE THESIS EACH ENTRY IS ON: the author's handle (the only public identifier) through ONE query, and
+  // `mine` from the same column `list_theses` reads it from — `Thesis.createdById`, never the publisher.
+  const handles = await handlesOf([...instants.values()].map((at) => at.createdById));
+  const attributed: AttributedReview[] = rendered.map((entry) => {
+    const at = instants.get(entry.thesisId);
+    if (at === undefined) throw new Error(`thesisReviews: entry ${entry.name} on thesis ${entry.thesisId} was rendered with no instants loaded.`);
+    return { ...entry, author: handleOf(handles, at.createdById, entry.thesisId), mine: at.createdById === researcherId };
+  });
+  return { owed: attributed.length, reviews: attributed };
 }
 
 /** Code-unit order — the order the list states, never the locale's. */
 const byCodeUnit = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
 
 async function instantsOf(thesisId: string): Promise<ThesisInstants> {
-  const thesis = await prisma.thesis.findUnique({ where: { id: thesisId }, select: { headVersionId: true, publishedAt: true } });
+  const thesis = await prisma.thesis.findUnique({
+    where: { id: thesisId },
+    select: { headVersionId: true, publishedAt: true, createdById: true },
+  });
   const headVersionId = thesis?.headVersionId ?? null;
-  if (headVersionId === null) {
+  if (thesis === null || headVersionId === null) {
     throw new Error(`thesisReviews: thesis ${thesisId} was listed by REVIEWS and has no head version on a second read.`);
   }
   const head = await prisma.thesisVersion.findUnique({ where: { id: headVersionId }, select: { createdAt: true } });
   if (head === null) {
     throw new Error(`thesisReviews: thesis ${thesisId} points at head ${headVersionId}, which does not exist.`);
   }
-  return { headVersionId, headCreatedAt: head.createdAt, publishedAt: thesis?.publishedAt ?? null };
+  return { headVersionId, headCreatedAt: head.createdAt, publishedAt: thesis.publishedAt, createdById: thesis.createdById };
 }
 
 /** The published instant an entry on PUBLISHED(t) reads — a thesis with a published version has one, or it is malformed. */

@@ -32,6 +32,9 @@ import { listFindingsSchema, listFindingsHandler } from './tools/listFindings';
 import { getDiffInputSchema, getDiffInputHandler } from './tools/getDiffInput';
 import { resolveRecordSchema, resolveRecordHandler } from './tools/resolveRecord';
 import { checkOnChainStatusSchema, checkOnChainStatusHandler } from './tools/checkOnChainStatus';
+import { listCorpusSchema, listCorpusHandler } from './tools/listCorpus';
+import { listTrajectoriesSchema, listTrajectoriesHandler } from './tools/listTrajectories';
+import { searchCorpusSchema, searchCorpusHandler } from './tools/searchCorpus';
 import { openDebateSchema, openDebateHandler } from './tools/openDebate';
 import { respondInDebateSchema, respondInDebateHandler } from './tools/respondInDebate';
 import { promoteFromDebateSchema, promoteFromDebateHandler } from './tools/promoteFromDebate';
@@ -554,6 +557,61 @@ export function createMcpServer(): McpServer {
   );
 
   // -------------------------------------------------------------------------
+  // THE CORPUS ACROSS PAGES — UI-2, docs/gf-ui-flows.md §6.1 :226–:257, §28; docs/gf-ui-refactor-plan.md UI-2.
+  // Three reads over the same loader as list_findings, each the per-page read across every page of a SCOPE:
+  // `public` answers over the pages a published thesis has opened, identically for everyone and reading no caller;
+  // `all` answers over every surveyed page and refuses NO_RESEARCHER without one. None invokes a model, fetches the
+  // archive or writes. The wording below is the researcher's approved copy (2026-09-15).
+  // -------------------------------------------------------------------------
+  server.registerTool(
+    'list_corpus',
+    {
+      description:
+        'THE CORPUS ACROSS EVERY PAGE, in date order — the same rows list_findings gives for one page (captures with ' +
+        'their anchors, changes with their computed chunks and the classifier\'s opinion labelled as one, published ' +
+        'citations as linkage), each with its page, oldest first, paged on this read\'s own cursor, with a `pages` facet ' +
+        'naming every page in scope. `scope: \'public\'` answers over the pages a published thesis has opened, identically ' +
+        'for everyone; `scope: \'all\'` answers over every surveyed page and needs a signed-in researcher. Filter by `page`, ' +
+        '`kind`, `since`/`until`, `cited`. Free; writes nothing. Refuses INVALID_RANGE, NOT_SURVEYED, NOT_PUBLIC (a named ' +
+        'page not opened, at scope public) and NO_RESEARCHER (scope all without a researcher).',
+      inputSchema: listCorpusSchema,
+    },
+    async (input) => ({
+      content: [{ type: 'text' as const, text: stampEnvironment(await listCorpusHandler(input)) }],
+    }),
+  );
+
+  server.registerTool(
+    'list_trajectories',
+    {
+      description:
+        'WHAT CLAIMS DID ACROSS EVERY PAGE — get_claim_trajectories\' findings for every page in scope, each with its ' +
+        'page, ordered by the date the claim LEFT, latest first. Reads stored detection passes only and never computes ' +
+        'one: a page whose current state has no pass is NAMED in `undetected` — run get_claim_trajectories on it. Same ' +
+        'scopes, filters and refusals as list_corpus.',
+      inputSchema: listTrajectoriesSchema,
+    },
+    async (input) => ({
+      content: [{ type: 'text' as const, text: stampEnvironment(await listTrajectoriesHandler(input)) }],
+    }),
+  );
+
+  server.registerTool(
+    'search_corpus',
+    {
+      description:
+        'FIND AN EXACT PHRASE IN THE TEXT THE PLATFORM STORED for every held capture across the pages in scope — one ' +
+        'verdict per capture, in date order, each with its page. The STORED register only: to ask the raw archive about ' +
+        'one capture, use verify_claim_text. Same scopes and refusals as list_corpus, plus PHRASE_REQUIRED for a blank ' +
+        'phrase.',
+      inputSchema: searchCorpusSchema,
+    },
+    async (input) => ({
+      content: [{ type: 'text' as const, text: stampEnvironment(await searchCorpusHandler(input)) }],
+    }),
+  );
+
+  // -------------------------------------------------------------------------
   // Verification tools (docs/gf-verification-tools-dev-plan.md)
   //
   // The platform institutionalised ARGUMENT — framing session, diff debate,
@@ -939,11 +997,13 @@ export function createMcpServer(): McpServer {
         'sees each PUBLISHED thesis — its claim, provision, publication date, author\'s handle and ' +
         'version hash. A signed-in researcher also sees every thesis of their own, drafts included, ' +
         'each with its head, its published version, whether the public sees the head, the framings ' +
-        'attached, and how many citations are unargued and gaps open. Refuses nothing.',
+        'attached, and how many citations are unargued and gaps open — or, with `scope: \'all\'`, every ' +
+        'researcher\'s, each with its author\'s handle and whether it is theirs. Refuses NO_RESEARCHER at ' +
+        'scope all without a researcher, and nothing else.',
       inputSchema: listThesesSchema,
     },
-    async () => ({
-      content: [{ type: 'text' as const, text: stampEnvironment(await listThesesHandler()) }],
+    async (input) => ({
+      content: [{ type: 'text' as const, text: stampEnvironment(await listThesesHandler(input)) }],
     }),
   );
 
@@ -1068,12 +1128,13 @@ export function createMcpServer(): McpServer {
         'WHAT YOU OWE ON YOUR THESES — every published citation now FLAGGED, every cited trajectory the newest detection ' +
         'pass no longer stands behind, every head citation not yet argued; oldest first, each with its material — for a ' +
         'flagged citation, the pinned version beside the current one, why it moved and the review decision — and ONE ' +
-        'command to paste. The count comes first, and an empty list is an answer. Writes nothing and calls no model. ' +
-        'Refuses NO_RESEARCHER.',
+        'command to paste. The count comes first, and an empty list is an answer. With `scope: \'all\'`, what every ' +
+        'author owes, each entry naming its author and whether the thesis is yours; the commands stay the author\'s ' +
+        'to run. Writes nothing and calls no model. Refuses NO_RESEARCHER.',
       inputSchema: listThesisReviewsSchema,
     },
-    async () => ({
-      content: [{ type: 'text' as const, text: stampEnvironment(await listThesisReviewsHandler()) }],
+    async (input) => ({
+      content: [{ type: 'text' as const, text: stampEnvironment(await listThesisReviewsHandler(input)) }],
     }),
   );
 

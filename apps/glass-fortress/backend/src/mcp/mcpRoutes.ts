@@ -66,6 +66,13 @@ export const READ_TOOLS = new Set([
   'get_diff_input',
   'resolve_record',
   'check_on_chain_status',
+  // THE CORPUS ACROSS PAGES — UI-2, docs/gf-ui-flows.md §6.1 :226–:257, §28. Three reads over the same loader as
+  // list_findings; `scope` decides, never identity (evidence A4 :1074 as amended): `public` answers over PUBLIC_PAGE
+  // pages for everyone and reads no caller; `all` refuses NO_RESEARCHER without a bearer and answers over every
+  // surveyed page. None invokes a model, fetches the archive or writes — search_corpus reads the STORED text.
+  'list_corpus',
+  'list_trajectories',
+  'search_corpus',
   // THE THESIS LIST — thesis step 20, A4 :1426: PUBLIC. It writes nothing and spends nothing, and its
   // published entries are the same for everyone; a researcher's bearer token, resolved by identifyViewer,
   // adds their own theses beside them — access, not a second behaviour.
