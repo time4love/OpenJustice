@@ -176,6 +176,48 @@ export function importsOf(file: string): Import[] {
   });
 }
 
+export interface JsxTag {
+  /** An intrinsic element's tag — `html`, `a`, `form`. Components (capitalised or dotted) are not listed. */
+  tag: string;
+  line: number;
+  /**
+   * Each attribute's source: a string value as its text (`rtl`), an expression as the expression's source
+   * (`DIRECTION[locale]`), a bare attribute as `true`. Spread attributes are not listed.
+   */
+  attributes: Record<string, string>;
+}
+
+/**
+ * Every INTRINSIC JSX element a file renders, with its attributes — read from the AST, so `'<html'` inside a string is not a tag.
+ * Callers: the locale document's cases (UI-4: one file renders `<html>`, and its `dir` is the direction map's);
+ * UI-5 `no-door-before-it-exists` (`<a>`, `<form>`); UI-8 `no-write-from-research` (`<form>`).
+ */
+export function jsxTagsIn(file: string): JsxTag[] {
+  const source = parse(file);
+  const found: JsxTag[] = [];
+  const visit = (node: ts.Node): void => {
+    if ((ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) && ts.isIdentifier(node.tagName) && /^[a-z]/.test(node.tagName.text)) {
+      const attributes: Record<string, string> = {};
+      for (const property of node.attributes.properties) {
+        if (!ts.isJsxAttribute(property)) continue;
+        const { initializer } = property;
+        attributes[property.name.getText(source)] =
+          initializer === undefined
+            ? 'true'
+            : ts.isStringLiteral(initializer)
+              ? initializer.text
+              : ts.isJsxExpression(initializer)
+                ? (initializer.expression?.getText(source) ?? '')
+                : initializer.getText(source);
+      }
+      found.push({ tag: node.tagName.text, line: source.getLineAndCharacterOfPosition(node.getStart(source)).line + 1, attributes });
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(source);
+  return found;
+}
+
 /**
  * Every local module `file` reaches through its imports, TRANSITIVELY — each listed once, relative to the frontend, sorted —
  * through the vacuity guard. A module that is not `.ts` / `.tsx` (a stylesheet, a JSON file) is listed and not read. Built on

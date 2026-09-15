@@ -111,20 +111,28 @@ export const nextIntlServer: IntlServerDouble = {
 };
 
 /**
- * A server component rendered: the request locale set on the stand-in for the await and cleared after it, the
- * component awaited, its element rendered under the provider (an empty fragment for `null` — the tree's reader refuses it, not this).
- * Callers: the harness' H-3, H-4, H-5 (UI-1); UI-5's server pages, if its step renders them on the server; UI-9.
+ * A server component's ELEMENT, never rendered: the request locale set on the stand-in for the await and cleared after it.
+ * For a component whose element cannot go into jsdom's container — a root layout's `<html>`. The one spelling of the
+ * request-locale discipline: `renderServer` calls it. Callers: `renderServer`; the locale document's cases (UI-4).
  */
-export async function renderServer(component: () => Promise<ReactElement | null>, options: RenderOptions = {}): Promise<RenderResult> {
-  const locale = options.locale ?? routing.defaultLocale;
+export async function serverElement(component: () => Promise<ReactElement | null>, { locale = routing.defaultLocale }: Pick<RenderOptions, 'locale'> = {}): Promise<ReactElement | null> {
   nextIntlServer.setRequestLocale(locale);
-  let element: ReactElement | null;
   try {
-    element = await component();
+    return await component();
   } finally {
     // The locale belongs to ONE server render; a translation asked for outside one is a refusal, not the last case's locale.
     requestLocale = undefined;
   }
+}
+
+/**
+ * A server component rendered: `serverElement`'s element rendered under the provider (an empty fragment for `null` — the
+ * tree's reader refuses it, not this). Callers: the harness' H-3, H-4, H-5 (UI-1); UI-5's server pages, if its step renders
+ * them on the server; UI-9.
+ */
+export async function renderServer(component: () => Promise<ReactElement | null>, options: RenderOptions = {}): Promise<RenderResult> {
+  const locale = options.locale ?? routing.defaultLocale;
+  const element = await serverElement(component, { locale });
   return renderWithIntl(element ?? <></>, { ...options, locale });
 }
 
