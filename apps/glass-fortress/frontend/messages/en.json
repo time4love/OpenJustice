@@ -4,20 +4,29 @@
     "operational": "Operational",
     "nav": {
       "home": "Home",
-      "evidence": "Evidence",
-      "submitEvidence": "+ Submit Evidence",
+      "corpus": "Archive",
       "about": "About",
       "safety": "Protection",
-      "forensics": "Forensics",
-      "figures": "Figures",
-      "theses": "Theses",
-      "calls": "Investigations",
-      "login": "Login",
-      "guide": "Guide"
+      "researchers": "For researchers",
+      "research": "Research",
+      "admin": "Admin",
+      "figures": "Figures"
+    },
+    "chrome": {
+      "navLabel": "Main navigation",
+      "openNav": "Open menu",
+      "closeNav": "Close menu",
+      "otherLocale": "עברית"
+    },
+    "footer": {
+      "source": "This site's source code is public"
     },
     "copy": "Copy",
     "copied": "Copied",
     "copyFailed": "Copy failed — select the text and copy it manually"
+  },
+  "metadata": {
+    "description": "A public archive of Covid-era web pages as preserved by the Internet Archive and anchored by SHA-256 on Base, and the theses researchers build on it."
   },
   "dashboard": {
     "tagline": "Evidence · Legal Discovery Platform",

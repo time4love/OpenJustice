@@ -6,7 +6,6 @@ import Image from 'next/image';
 import { useParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { Link, useRouter } from '@/i18n/navigation';
-import { SiteHeader } from '@/components/SiteHeader';
 import { apiUrl, authHeaders } from '@/lib/api';
 import { displayUrl } from '@/lib/format';
 import { useTargetEntityName } from '@/lib/targetEntity';
@@ -103,7 +102,6 @@ export default function EvidencePage() {
 
   return (
     <div className="min-h-screen bg-slate-50" dir="rtl">
-      <SiteHeader current="evidence" maxWidth="max-w-3xl" />
       <main className="max-w-3xl mx-auto px-4 py-8 space-y-5">
         {/* Back — real browser back, not a fixed destination: this page can be
             reached from the timeline, a thesis citation, a search result, etc.,

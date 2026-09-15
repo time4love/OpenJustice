@@ -1,6 +1,7 @@
 import type { ComponentType, ReactElement, ReactNode } from 'react';
 import { render, type RenderResult } from '@testing-library/react';
 import { NextIntlClientProvider, createTranslator, type AbstractIntlMessages } from 'next-intl';
+import type { ResearcherProfile } from '@/context/AuthContext';
 import { routing } from '@/i18n/routing';
 import { messageCatalogs, requireSubjects } from './scan';
 
@@ -149,4 +150,99 @@ export function ancestorsOf(node: Node): Element[] {
   const found: Element[] = [];
   for (let at = node.parentElement; at !== null && at !== document.body; at = at.parentElement) found.push(at);
   return found;
+}
+
+// ---------------------------------------------------------------------------
+// THE CLIENT DOUBLES (UI-4). Two modules the chrome reads that a render outside Next cannot supply: AuthContext's
+// `useAuth` (the identity the nav is keyed by) and `next/navigation` (the path, which Next answers `null` for outside
+// an app router). Each is handed to a `jest.mock` factory in the test file that needs it, the way `test/setup.ts`
+// hands `nextIntlServer` over: the REAL module spread, one function replaced, and a case that forgets to set the
+// value REFUSES rather than inheriting the last case's. `src/context/AuthContext.tsx` is never edited (KEEP).
+// ---------------------------------------------------------------------------
+
+/** A callable that refuses: a double's act the subject must never perform. */
+function refuse(message: string): () => never {
+  return () => {
+    throw new Error(message);
+  };
+}
+
+type AuthModule = typeof import('@/context/AuthContext');
+type AuthValue = ReturnType<AuthModule['useAuth']>;
+
+/** The five states the nav is keyed by: A3's three identities, the signed-in unapproved account, and the provider's loading. */
+export type AuthState = 'anonymous' | 'loading' | 'signed-in-unapproved' | 'approved-researcher' | 'admin';
+
+function profile(approved: boolean, role: ResearcherProfile['role']): ResearcherProfile {
+  return { id: 'researcher-fixture', handle: 'handle-fixture', role, approved, createdAt: '2026-09-15T00:00:00.000Z' };
+}
+
+const AUTH_STATES: Record<AuthState, Pick<AuthValue, 'accessToken' | 'researcher' | 'loading'>> = {
+  anonymous: { accessToken: null, researcher: null, loading: false },
+  // The real provider's loading shape: no override yet and the restore pending, so no researcher (AuthContext.tsx :109–:111).
+  loading: { accessToken: null, researcher: null, loading: true },
+  'signed-in-unapproved': { accessToken: 'token-fixture', researcher: profile(false, 'RESEARCHER'), loading: false },
+  'approved-researcher': { accessToken: 'token-fixture', researcher: profile(true, 'RESEARCHER'), loading: false },
+  admin: { accessToken: 'token-fixture', researcher: profile(true, 'ADMIN'), loading: false },
+};
+
+let authState: AuthState | undefined;
+
+/** The identity `useAuth` answers until the next call; `undefined` makes it refuse. Callers: `nav-is-the-map` (UI-4); UI-8's gated pages. */
+export function setAuthState(state: AuthState | undefined): void {
+  authState = state;
+}
+
+/**
+ * The module `jest.mock('@/context/AuthContext', …)` returns: the real module, its `useAuth` answering the state a case set, and
+ * refusing when none was. `login` and `logout` refuse — the chrome performs no auth act. Callers: `nav-is-the-map` (UI-4); UI-8.
+ */
+export function authContextDouble(): AuthModule {
+  // Relative, not `@/`: a string jest resolves at run time is not rewritten by next/jest's transform (imports only).
+  const real = jest.requireActual<AuthModule>('../src/context/AuthContext');
+  return {
+    ...real,
+    useAuth: (): AuthValue => {
+      if (authState === undefined) throw new Error('useAuth double: no auth state — call setAuthState in the case');
+      return {
+        ...AUTH_STATES[authState],
+        login: refuse('useAuth double: login was called — the chrome performs no auth act'),
+        logout: refuse('useAuth double: logout was called — the chrome performs no auth act'),
+      };
+    },
+  };
+}
+
+type NavigationModule = typeof import('next/navigation');
+
+let pathname: string | undefined;
+
+/** The browser path `usePathname` answers, locale prefix included (`/he/about`); `undefined` makes it refuse. Callers: `nav-is-the-map` (UI-4). */
+export function setPathname(path: string | undefined): void {
+  pathname = path;
+}
+
+/**
+ * The module `jest.mock('next/navigation', …)` returns: the real module, `usePathname` answering the path a case set (refusing when
+ * none was), and `useRouter` a router whose every method refuses — the chrome navigates by anchors, never by the router.
+ * Callers: `nav-is-the-map` (UI-4).
+ */
+export function navigationDouble(): NavigationModule {
+  const real = jest.requireActual<NavigationModule>('next/navigation');
+  const refused = (method: string) => refuse(`navigation double: router.${method} was called — the chrome navigates by anchors only`);
+  return {
+    ...real,
+    usePathname: (): string => {
+      if (pathname === undefined) throw new Error('navigation double: no pathname — call setPathname in the case');
+      return pathname;
+    },
+    useRouter: () => ({
+      back: refused('back'),
+      forward: refused('forward'),
+      refresh: refused('refresh'),
+      push: refused('push'),
+      replace: refused('replace'),
+      prefetch: refused('prefetch'),
+    }),
+  };
 }

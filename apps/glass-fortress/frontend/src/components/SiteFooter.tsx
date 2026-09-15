@@ -1,3 +1,5 @@
+import { useTranslations } from 'next-intl';
+
 function GitHubIcon() {
   return (
     <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
@@ -6,30 +8,24 @@ function GitHubIcon() {
   );
 }
 
+/**
+ * THE FOOTER (docs/gf-ui-flows.md §32 :813–:815): the open-source link and nothing that names a person. No disclaimer —
+ * the researcher's ruling of 2026-09-15; each thesis and call page carries its own. Mounted once, by the locale layout.
+ */
 export function SiteFooter() {
+  const t = useTranslations('common.footer');
+
   return (
     <footer className="border-t border-slate-200 bg-white">
-      <div className="max-w-5xl mx-auto px-6 py-5 flex flex-wrap items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <a
-            href="https://github.com/time4love/OpenJustice"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-900 transition-colors font-mono"
-          >
-            <GitHubIcon />
-            Open Source
-          </a>
-          <span className="text-slate-200 select-none">·</span>
-          <span className="text-xs text-slate-400 font-mono">MIT License</span>
-        </div>
+      <div className="mx-auto max-w-5xl px-4 py-5">
         <a
-          href="https://github.com/time4love/OpenJustice/tree/master/apps/glass-fortress"
+          href="https://github.com/time4love/OpenJustice"
           target="_blank"
           rel="noopener noreferrer"
-          className="text-xs text-slate-400 hover:text-slate-700 transition-colors font-mono"
+          className="inline-flex items-center gap-1.5 text-sm text-slate-600 hover:text-slate-900"
         >
-          View source ↗
+          <GitHubIcon />
+          {t('source')}
         </a>
       </div>
     </footer>

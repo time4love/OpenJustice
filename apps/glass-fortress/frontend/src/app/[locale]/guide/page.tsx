@@ -2,7 +2,6 @@
 
 import { useTranslations } from 'next-intl';
 import { Link } from '@/i18n/navigation';
-import { SiteHeader } from '@/components/SiteHeader';
 import { GuideStatusBadge } from '@/components/GuideStatusBadge';
 import {
   GUIDE_ARC_ACCENT,
@@ -62,7 +61,6 @@ export default function GuideIndexPage() {
 
   return (
     <main className="min-h-screen bg-slate-50">
-      <SiteHeader current="guide" />
 
       {/* Hero */}
       <section className="bg-slate-900 text-white">

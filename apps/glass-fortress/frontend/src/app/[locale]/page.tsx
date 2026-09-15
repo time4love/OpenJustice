@@ -5,7 +5,6 @@ import Image from 'next/image';
 import { HeroSection } from '@/components/HeroSection';
 import { useTranslations } from 'next-intl';
 import { Link } from '@/i18n/navigation';
-import { SiteHeader } from '@/components/SiteHeader';
 import { apiUrl } from '@/lib/api';
 import { animate, useInView } from 'framer-motion';
 import { ScrollReveal, StaggerContainer, StaggerItem, ParallaxLayer } from '@/components/ScrollReveal';
@@ -116,8 +115,6 @@ export default function HomePage() {
 
   return (
     <main className="min-h-screen bg-white">
-      {/* Sticky nav header */}
-      <SiteHeader current="home" />
 
       {/* ── Hero ─────────────────────────────────────────────────────────── */}
       <HeroSection />

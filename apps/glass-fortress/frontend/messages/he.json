@@ -3,21 +3,30 @@
     "appName": "צדק לעם - תיק הקורונה",
     "operational": "פעיל",
     "nav": {
-      "home": "בית",
-      "evidence": "ראיות",
-      "submitEvidence": "+ הגש ראיה",
+      "home": "הבית",
+      "corpus": "הארכיון",
       "about": "אודות",
-      "forensics": "פורנזיקה",
-      "figures": "דמויות",
-      "theses": "תזות",
-      "calls": "חקירות",
-      "login": "כניסה",
       "safety": "הגנה",
-      "guide": "מדריך"
+      "researchers": "לחוקרים",
+      "research": "מחקר",
+      "admin": "ניהול",
+      "figures": "דמויות"
+    },
+    "chrome": {
+      "navLabel": "ניווט ראשי",
+      "openNav": "פתיחת התפריט",
+      "closeNav": "סגירת התפריט",
+      "otherLocale": "English"
+    },
+    "footer": {
+      "source": "קוד המקור של האתר פתוח לציבור"
     },
     "copy": "העתקה",
     "copied": "הועתק",
     "copyFailed": "ההעתקה נכשלה — סמנו את הטקסט והעתיקו ידנית"
+  },
+  "metadata": {
+    "description": "ארכיון ציבורי של עמודי אינטרנט מתקופת הקורונה, כפי שנשמרו בארכיון האינטרנט ועוגנו ב-SHA-256 ברשת Base, והתזות שחוקרים בונים עליו."
   },
   "dashboard": {
     "tagline": "ראיות · פלטפורמת גילוי משפטי",
