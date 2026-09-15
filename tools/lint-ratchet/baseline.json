@@ -1,11 +1,11 @@
 {
   "target": "glass-fortress-backend",
-  "total": 84,
+  "total": 82,
   "rules": {
     "(parse-error)": 1,
     "@typescript-eslint/array-type": 2,
     "@typescript-eslint/consistent-type-definitions": 0,
-    "@typescript-eslint/dot-notation": 41,
+    "@typescript-eslint/dot-notation": 39,
     "@typescript-eslint/no-base-to-string": 1,
     "@typescript-eslint/no-confusing-void-expression": 2,
     "@typescript-eslint/no-deprecated": 12,
