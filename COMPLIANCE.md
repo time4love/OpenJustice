@@ -201,5 +201,6 @@ Violation of these rules may result in access revocation and, if content causes 
 | 2026-08-09 | Initial version — defamation risk analysis, framing rules, UI requirements |
 | 2026-08-15 | Added: state secrets risk, privacy law exposure, press status gap, open tasks section. Safety page copy reviewed and neutralised (court-defiance framing removed, key-storage claim corrected). |
 | 2026-09-04 | Pointers to docs/gf-document-flows.md under the submission terms, state secrets, privacy and press-status sections: sealing, the opinion register, no sender data, no contact. |
+| 2026-09-15 | The UI design (docs/gf-ui-flows.md §17, §20) places the public-interest statement and the disclaimer first on every thesis page and every call page; no wording change. |
 
 *This document must be updated whenever new public-facing features are added that reference named individuals or make factual allegations.*
