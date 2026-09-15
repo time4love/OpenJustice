@@ -1,6 +1,8 @@
 import type { Metadata } from 'next';
 import { Geist, Geist_Mono } from 'next/font/google';
-import { getLocale } from 'next-intl/server';
+import { hasLocale } from 'next-intl';
+import { getLocale, getTranslations } from 'next-intl/server';
+import { routing } from '@/i18n/routing';
 import { isProduction } from '@/lib/appEnv';
 import './globals.css';
 
@@ -25,14 +27,21 @@ const metadataBase = process.env.RAILWAY_PUBLIC_DOMAIN
   ? new URL(`https://${process.env.RAILWAY_PUBLIC_DOMAIN}`)
   : new URL('http://localhost:3011');
 
-// A function rather than a static object so `APP_ENV` is read at request time:
-// the same build must be able to serve production and staging.
+/** The Open Graph locale of each site locale — keyed by routing's own list, so a locale added there without one does not compile. */
+const OPEN_GRAPH_LOCALE = { he: 'he_IL', en: 'en_US' } as const satisfies Record<(typeof routing.locales)[number], string>;
+
+// A function rather than a static object so `APP_ENV` and the request's locale are read at request time: the same
+// build serves production and staging, in both languages. The name and the one sentence are the approved copy
+// (messages/*.json `common.appName`, `metadata.description`), in the locale the request resolved, read once.
 export async function generateMetadata(): Promise<Metadata> {
-  // "Glass Fortress" is internal/backend naming only — never user-facing,
-  // including in link previews (WhatsApp, social shares).
-  const title = 'צדק לעם - תיק הקורונה';
-  const description =
-    'AI-powered legal evidence discovery & accountability platform for the Covid-19 class-action lawsuit.';
+  const locale = await getLocale();
+  if (!hasLocale(routing.locales, locale)) {
+    throw new Error(`generateMetadata: the request resolved '${locale}', which routing.locales does not name`);
+  }
+  const common = await getTranslations({ locale, namespace: 'common' });
+  const metadata = await getTranslations({ locale, namespace: 'metadata' });
+  const title = common('appName');
+  const description = metadata('description');
 
   return {
     metadataBase,
@@ -42,7 +51,7 @@ export async function generateMetadata(): Promise<Metadata> {
       title,
       description,
       siteName: title,
-      locale: 'he_IL',
+      locale: OPEN_GRAPH_LOCALE[locale],
       type: 'website',
     },
     twitter: {

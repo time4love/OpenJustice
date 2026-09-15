@@ -3,7 +3,6 @@
 import Image from 'next/image';
 import { useTranslations, useLocale } from 'next-intl';
 import { Link } from '@/i18n/navigation';
-import { SiteHeader } from '@/components/SiteHeader';
 import { useState, useCallback } from 'react';
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
@@ -148,8 +147,6 @@ export default function SafetyPage() {
   return (
     <main className="min-h-screen bg-slate-50">
 
-      {/* ── Header ─────────────────────────────────────────────────────── */}
-      <SiteHeader current="safety" maxWidth="max-w-5xl" />
 
       {/* ── Hero ───────────────────────────────────────────────────────── */}
       <section className="bg-slate-900 text-white">

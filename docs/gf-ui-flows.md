@@ -810,9 +810,9 @@ THE NAV        public, in this order: הבית · הארכיון (`/corpus`) · 
                → `/profile`; an admin gains `/admin`. Nothing else is in the nav: not a dialog (§1),
                not a lens, not a retired page. On a phone the nav is a sheet from one control.
 THE LOCALE     he default, en beside it, one control; the same URL under the other prefix (`routing.ts`).
-THE FOOTER     the disclaimer's short form on every page that renders a thesis or an appeal (COMPLIANCE
-               :92 requires the full text on those pages; the footer repeats the short form) · the
-               open-source link · nothing that names a person.
+THE FOOTER     the open-source link · nothing that names a person. The disclaimer's short form is the LAST
+               element of each page that renders a thesis or an appeal (§17.8, §20.6, §33.5), never the
+               footer's: a layout cannot know the page without a second list (UI plan UI-4, 2026-09-15).
 THE BANNER     staging only: the environment named, as today (`StagingBanner`), because a reader on
                staging must never mistake it for the public site; production has none.
 RETIRED        the floating chat widget (§3) · the mission statistics (`/api/stats`, §6) · every nav

@@ -4,7 +4,6 @@ import Image from 'next/image';
 import { useParams, notFound } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { Link } from '@/i18n/navigation';
-import { SiteHeader } from '@/components/SiteHeader';
 import { MCP_SERVER_URL } from '@/lib/api';
 import { GuideStatusBadge } from '@/components/GuideStatusBadge';
 import { CopyableCode } from '@/components/CopyableCode';
@@ -132,7 +131,6 @@ export default function GuidePhasePage() {
 
   return (
     <main className="min-h-screen bg-slate-50">
-      <SiteHeader current="guide" />
 
       {/* Hero */}
       <section className="bg-slate-900 text-white">

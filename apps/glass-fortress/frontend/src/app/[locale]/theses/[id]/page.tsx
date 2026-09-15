@@ -5,7 +5,6 @@ import Image from 'next/image';
 import { useSearchParams } from 'next/navigation';
 import { useTranslations, useLocale } from 'next-intl';
 import { Link } from '@/i18n/navigation';
-import { SiteHeader } from '@/components/SiteHeader';
 import { apiUrl, authHeaders, fetchJson } from '@/lib/api';
 import { useAsyncData, type AsyncFetcher } from '@/hooks/useAsyncData';
 import { truncateLabel } from '@/lib/format';
@@ -520,18 +519,6 @@ function ThesisPageInner({ id }: { id: string }) {
 
   return (
     <div className="min-h-screen bg-slate-50">
-      {/* Header — the shared site header, not a bespoke one. This page is
-          public (reached via citations, share links, /call), so it must not
-          carry a back-link to /theses (the researcher-gated thesis builder)
-          the way it used to — most visitors here can't use that page. */}
-      <SiteHeader
-        current="theses"
-        maxWidth="max-w-4xl"
-        // No actions. The header is for navigation, and both things that used to
-        // live here were something else: editing is an authoring act reached from
-        // the researcher's own surfaces, and the call for witnesses is an ASK,
-        // which now sits beneath the evidence gaps that motivate it.
-      />
 
       <main className="max-w-4xl mx-auto px-4 sm:px-6 py-10 space-y-8">
         {/* Thesis title */}

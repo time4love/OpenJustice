@@ -4,7 +4,6 @@ import { useState, useEffect, useMemo, useRef, useCallback, FormEvent } from 're
 import { useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { Link } from '@/i18n/navigation';
-import { SiteHeader } from '@/components/SiteHeader';
 import { apiUrl, authHeaders, fetchJson } from '@/lib/api';
 import { useAsyncData, type AsyncFetcher } from '@/hooks/useAsyncData';
 import { EmptyState } from '@/components/EmptyState';
@@ -61,7 +60,6 @@ type Mode = 'timeline' | 'search';
 
 export default function EvidencePage() {
   const t = useTranslations('dashboard');
-  const tc = useTranslations('common');
   const tTimeline = useTranslations('timeline');
 
   const searchParams = useSearchParams();
@@ -243,20 +241,6 @@ export default function EvidencePage() {
 
   return (
     <main className="min-h-screen bg-slate-50">
-      {/* Header */}
-      <SiteHeader
-        current="evidence"
-        tagline={t('tagline')}
-        showOperational
-        actions={
-          <Link
-            href="/submit"
-            className="hidden sm:flex px-3 py-1.5 rounded text-xs font-medium bg-blue-600 text-white border border-blue-700 hover:bg-blue-700 transition-colors"
-          >
-            {tc('nav.submitEvidence')}
-          </Link>
-        }
-      />
 
       <div className="max-w-7xl mx-auto px-6 py-8 space-y-8">
         {/* Search */}

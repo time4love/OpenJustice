@@ -304,7 +304,7 @@ the body and naming no person); §4 :152–:161 (mobile first: on a phone the na
 (`nav-is-the-map`), :904–:905 (`name-never-glass-fortress`); §39 :922 (the locale is a per-viewer convenience, the browser's,
 never the backend's); §40 :938–:940 (the copy is the researcher's; where the name leads was ruled 2026-09-15: this site's `/`);
 A3 :1019–:1025 (the three identities: anonymous · researcher · admin); COMPLIANCE.md :92 (the disclaimer on every thesis and
-call page — the footer repeats its short form). Frontend only; the first change under `src/`.
+call page — each page repeats its short form last, never the footer). Frontend only; the first change under `src/`.
 
 **What lands.**
 
@@ -332,9 +332,9 @@ call page — the footer repeats its short form). Frontend only; the first chang
   three times. On a phone the nav is a sheet from one control (§4 :154–:161); at width it is a row.
 - **The locale control** (§32 :812): he default, en beside it, one control, the same path under the other prefix through
   `i18n/navigation`'s `Link` and `routing.ts` — unchanged modules. The choice lives in the URL and nowhere on the server (§39).
-- **The footer** (§32 :813–:815): the disclaimer's short form on every page that renders a thesis or an appeal (its words
-  the researcher's — ruled 2026-09-15, drafted by the session for approval), the open-source link, nothing that names a person.
-  The full disclaimer stays each page's own first element (UI-5); the footer never replaces it.
+- **The footer** (§32 :813–:815): the open-source link, nothing that names a person — and no disclaimer (ruled 2026-09-15):
+  the short form is each thesis, call and door page's own LAST element (§17.8, §20.6, §33.5; UI-5, UI-6), its words the
+  researcher's at UI-5. The full disclaimer stays each page's own first element (UI-5); the footer carries neither form.
 - **The banner** (§32 :816–:817): `StagingBanner` as today, staging only. **The staging debug console is not in §32's list**
   and §32 is "nothing more": `StagingDebugConsole` and `DebugConsolePanel` are unmounted here and RETIRED at UI-10 — the
   instrument was built for phone-side debugging of the legacy pages, and the browser exercise of §6 reads the DOM directly.
@@ -813,7 +813,7 @@ and the earlier steps' ORPHANED lines: a file deleted that no tag names, or a KE
 - **Ten libraries and one type file**: `lib/citations.ts`, `lib/debugCapture.ts`, `lib/documentVault.ts`,
   `lib/evidencePerspective.ts`, `lib/guide.ts`, `lib/investigativeCategories.ts`, `lib/survivalLabels.ts`,
   `lib/targetEntity.ts`, `lib/thesisApi.ts`, `lib/thesisDocument.ts`; `types/evidence.ts`. `hooks/useAsyncData.ts`,
-  `useIsHydrated.ts`, `useMagicLinkFragment.ts` STAY — KEEP pages and `AuthContext` import them.
+  `useMagicLinkFragment.ts` STAY — KEEP pages and `AuthContext` import them (`useIsHydrated.ts` left with `TopNav`, UI-4).
 - **Message namespaces** — expected: `dashboard`, `submit`, `timeline`, `evidence`, `figures`, `forensics`, `chat`, `guide`,
   `categories`, `evidenceTiers`, `strengths`, `entityDisplayNames`, and the retired keys of `theses` and `home` UI-5 and UI-6
   left behind. **The scan is the authority, not this list**: a namespace is deleted only when no surviving file under `src`

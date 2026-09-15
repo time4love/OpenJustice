@@ -1,58 +1,23 @@
-import type { ReactNode } from 'react';
 import Image from 'next/image';
 import { useTranslations } from 'next-intl';
 import { Link } from '@/i18n/navigation';
-import { TopNav, type NavPage } from './TopNav';
+import { SiteNav } from './SiteNav';
 
-export function SiteHeader({
-  current,
-  maxWidth = 'max-w-7xl',
-  tagline,
-  showOperational = false,
-  actions,
-}: {
-  current: NavPage;
-  maxWidth?: string;
-  tagline?: string;
-  showOperational?: boolean;
-  actions?: ReactNode;
-}) {
-  const tc = useTranslations('common');
+/**
+ * THE NAME, at the top of every page, leading to this site's `/` (docs/gf-ui-flows.md §32 :805–:807; ruled 2026-09-15),
+ * then the nav. Mounted once, by `app/[locale]/layout.tsx`; no page renders it (test/navIsTheMap.test.tsx).
+ */
+export function SiteHeader() {
+  const t = useTranslations('common');
 
   return (
-    <header className="sticky top-0 z-20 bg-white/95 backdrop-blur border-b border-slate-200 shadow-sm">
-      <div className={`${maxWidth} mx-auto px-4 sm:px-6 h-14 flex items-center justify-between`}>
-        <Link href="/" className="flex items-center gap-3 hover:opacity-80 transition-opacity">
-          <Image src="/icon_dove.png" alt="" width={24} height={24} className="w-5 h-5" />
-          {tagline ? (
-            <div>
-              <span className="font-mono text-sm font-semibold tracking-widest text-slate-900 uppercase">
-                {tc('appName')}
-              </span>
-              <span className="ms-3 text-xs text-slate-400 tracking-wide hidden sm:inline">
-                {tagline}
-              </span>
-            </div>
-          ) : (
-            <span className="font-mono text-sm font-semibold tracking-widest text-slate-900 uppercase">
-              {tc('appName')}
-            </span>
-          )}
+    <header className="site-header border-b border-slate-200">
+      <div className="mx-auto flex h-full max-w-5xl items-center gap-2 px-4">
+        <Link href="/" className="flex min-w-0 flex-auto items-center gap-2 text-slate-900 hover:opacity-80">
+          <Image src="/icon_dove.png" alt="" width={20} height={20} className="h-5 w-5 flex-none" />
+          <span className="chrome-name font-semibold">{t('appName')}</span>
         </Link>
-        <div className="flex items-center gap-4">
-          {showOperational && (
-            <span className="hidden sm:flex items-center gap-1.5 text-xs text-slate-500">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              {tc('operational')}
-            </span>
-          )}
-          {/* actions before TopNav so the hamburger button always lands at the
-              true outer edge on mobile — with actions after it, a wide
-              actions block (e.g. multiple page buttons) stranded the
-              hamburger in the middle of the bar instead of the edge. */}
-          {actions}
-          <TopNav current={current} />
-        </div>
+        <SiteNav />
       </div>
     </header>
   );

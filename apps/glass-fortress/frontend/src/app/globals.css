@@ -10,6 +10,8 @@
 :root {
   --background: #f8fafc;
   --foreground: #0f172a;
+  /* The chrome's one row: the sticky line and the sheet sit against it. */
+  --chrome-height: 3.5rem;
 }
 
 body {
@@ -37,4 +39,58 @@ html, body {
 ::-webkit-scrollbar-thumb {
   background: #cbd5e1;
   border-radius: 3px;
+}
+
+/* THE MOBILE-FIRST BASE (docs/gf-ui-flows.md §4 :152–:161; docs/gf-ui-refactor-plan.md UI-4). Primitives every page
+   step reuses, and nothing page-specific. The chrome calls .site-header, .chrome-name and .sheet from UI-4;
+   .page-column and .sticky-line are first called by UI-5's pages. */
+@layer components {
+  /* One column at any width, at the reading measure. */
+  .page-column {
+    width: 100%;
+    max-width: 42rem;
+    margin-inline: auto;
+    padding-inline: 1rem;
+  }
+
+  /* A sheet: over the page, from the bottom edge, and back. */
+  .sheet {
+    position: fixed;
+    inset-inline: 0;
+    bottom: 0;
+    max-height: 85dvh;
+    overflow-y: auto;
+    background: var(--background);
+    border-start-start-radius: 1rem;
+    border-start-end-radius: 1rem;
+    z-index: 40;
+  }
+
+  /* The context line: under the chrome, never leaving the top. */
+  .sticky-line {
+    position: sticky;
+    top: var(--chrome-height);
+    z-index: 10;
+  }
+
+  /* The chrome's row: one fixed height, a solid ground (no backdrop filter, which would capture the fixed sheet). */
+  .site-header {
+    position: sticky;
+    top: 0;
+    z-index: 30;
+    height: var(--chrome-height);
+    background: #fff;
+  }
+
+  /* The name inside that row: it never widens the row, and wraps to at most two lines before clamping. */
+  .chrome-name {
+    min-width: 0;
+    font-size: 0.875rem;
+    line-height: 1.2;
+    overflow-wrap: anywhere;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    overflow: hidden;
+  }
 }

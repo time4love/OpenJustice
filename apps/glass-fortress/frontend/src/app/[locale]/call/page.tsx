@@ -3,7 +3,6 @@
 import { useState, useEffect } from 'react';
 import { useTranslations } from 'next-intl';
 import Image from 'next/image';
-import { SiteHeader } from '@/components/SiteHeader';
 import { ThesisHighlightCard } from '@/components/ThesisHighlightCard';
 import { Link } from '@/i18n/navigation';
 import type { ThesisSummary } from '@/types/thesis';
@@ -35,8 +34,6 @@ export default function CallIndexPage() {
 
   return (
     <main className="min-h-screen bg-slate-50">
-      {/* Header */}
-      <SiteHeader current="call" />
 
       <div className="max-w-7xl mx-auto px-6 py-10">
         {/* Page heading */}

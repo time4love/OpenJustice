@@ -177,6 +177,25 @@ export function importsOf(file: string): Import[] {
 }
 
 /**
+ * Every local module `file` reaches through its imports, TRANSITIVELY — each listed once, relative to the frontend, sorted —
+ * through the vacuity guard. A module that is not `.ts` / `.tsx` (a stylesheet, a JSON file) is listed and not read. Built on
+ * `importsOf`, so an unresolvable local import anywhere on the way still throws. Callers: `nav-is-the-map` (UI-4, the layout
+ * mounts neither retired component, directly or through anything it imports); `no-model-voice-public` (UI-5).
+ */
+export function importClosureOf(file: string): string[] {
+  const reached = new Set<string>();
+  const visit = (from: string): void => {
+    for (const { module } of importsOf(from)) {
+      if (module === null || reached.has(module)) continue;
+      reached.add(module);
+      if (module.endsWith('.ts') || module.endsWith('.tsx')) visit(join(FRONTEND, module));
+    }
+  };
+  visit(file);
+  return [...requireSubjects(`modules imported by ${relative(FRONTEND, file)}`, [...reached].sort())];
+}
+
+/**
  * The package a specifier names — `@scope/name/sub` → `@scope/name`, `name/sub` → `name` — or `null` for
  * a local specifier or a Node builtin. Callers: the harness' H-9 (UI-1); `retired-names` (UI-10).
  */

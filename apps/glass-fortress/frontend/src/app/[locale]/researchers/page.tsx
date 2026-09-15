@@ -1,7 +1,6 @@
 'use client';
 
 import { useTranslations, useLocale } from 'next-intl';
-import { SiteHeader } from '@/components/SiteHeader';
 import { MCP_SERVER_URL } from '@/lib/api';
 import { CopyableCode } from '@/components/CopyableCode';
 
@@ -28,8 +27,6 @@ export default function ResearchersPage() {
 
   return (
     <main className="min-h-screen bg-white">
-      {/* Header */}
-      <SiteHeader current="researchers" />
 
       {/* Hero */}
       <section className="bg-slate-900 text-white">

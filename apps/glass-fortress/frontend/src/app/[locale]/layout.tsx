@@ -2,12 +2,16 @@ import { NextIntlClientProvider, hasLocale } from 'next-intl';
 import { getMessages } from 'next-intl/server';
 import { notFound } from 'next/navigation';
 import { routing } from '@/i18n/routing';
-import FloatingChatWidget from '@/components/FloatingChatWidget';
 import { ClientProviders } from '@/components/ClientProviders';
 import { SiteFooter } from '@/components/SiteFooter';
+import { SiteHeader } from '@/components/SiteHeader';
 import { StagingBanner } from '@/components/StagingBanner';
-import { StagingDebugConsole } from '@/components/StagingDebugConsole';
 
+/**
+ * WHAT EVERY PAGE CARRIES, AND NOTHING MORE (docs/gf-ui-flows.md §32): the header — the name and the nav — the footer
+ * and, on staging, the banner. Mounted here once, OUTSIDE every page's `<main>`; no page renders chrome of its own. The
+ * header sits inside `ClientProviders` because the nav reads the signed-in identity from `AuthProvider`.
+ */
 export default async function LocaleLayout({
   children,
   params,
@@ -23,11 +27,10 @@ export default async function LocaleLayout({
   return (
     <NextIntlClientProvider messages={messages}>
       <ClientProviders>
+        <SiteHeader />
         {children}
         <SiteFooter />
-        <FloatingChatWidget />
         <StagingBanner />
-        <StagingDebugConsole />
       </ClientProviders>
     </NextIntlClientProvider>
   );
