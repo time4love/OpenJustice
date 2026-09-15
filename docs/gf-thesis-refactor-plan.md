@@ -225,6 +225,9 @@ Landed 2026-09-15 (PR #448 → `25e28e9`, surface 41 → 42, no migration): `aud
 published versions, exit 0, not recorded on the board (a vacuous run is never proof); `list_thesis_reviews` read through the
 connector, unsteered, every prediction held and nothing written. The *Verified by* exercise needs a published thesis and is OWED
 to the first real publication. Record: `docs/gf-thesis-step-24-2026-09-15.md`.
+The first real publication ran 2026-09-15 (run B): the one staging thesis published through the connector, `audit-theses` in the
+container over it exit 0 and recorded on the integrity board; the re-walk exercise stays owed, deferred until the corpus is expanded.
+Record: `docs/gf-thesis-run-b-2026-09-15.md`.
 
 ### 25 · THE THESIS SWITCH — the researcher's word
 

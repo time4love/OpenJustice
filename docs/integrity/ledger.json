@@ -274,7 +274,16 @@
         "src/services/auditTheses.ts",
         "scripts/auditTheses.ts"
       ],
-      "lastRun": null,
+      "lastRun": {
+        "commit": "644fcefb1ac15a501c4402e2a78c67e0e349376b",
+        "at": "2026-09-15",
+        "environment": "staging",
+        "exit": 0,
+        "outcome": "CLEAN",
+        "deploymentId": "215764ec-f4a7-40dd-96eb-e28944c8b8f7",
+        "summary": "Run B, staging: 1 published version (cmu268cij…), 3 EVIDENCE citations (capture records, all PROMOTED, ARGUED, VERIFIED, CITATION_CURRENT, DERIVED), 0 trajectory citations, CLAIM_FRAMED PASS, nothing flagged. The first non-vacuous run.",
+        "observed": true
+      },
       "runner": "auditTheses",
       "exitMeans": {
         "0": "CLEAN",
