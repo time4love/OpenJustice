@@ -293,8 +293,8 @@ connector, byte for byte; `GET /api/research/theses` 401 with no bearer, and wit
 id>/call` 200; `GET /api/thesis/<a made-up id>` and `…/<the draft's id, if any>` the same bytes. Nothing written, nothing
 paid, no chain call but the one the reader's own `…/chain` route makes when called.
 
-**STATUS:** OPEN. Closes with `docs/gf-ui-step-3-<date>.md`: the status table as landed, the staging reads with their
-predictions, the split's diff stat on the eight tool modules.
+**STATUS:** LANDED 2026-09-15 — PR #488, `staging` `43c417a`; twelve public routes (#487 ruled GATED), the surface 45; the
+staging reads predicted and scored. Findings: `docs/gf-ui-step-3-2026-09-15.md`.
 
 ### UI-4 · The layout — what every page carries, and nothing more
 
