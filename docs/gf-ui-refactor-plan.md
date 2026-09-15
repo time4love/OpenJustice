@@ -365,8 +365,8 @@ lint` green from `apps/glass-fortress/frontend`; the first browser exercise of �
 the nav sheet from one control, the locale switch keeping the path, the banner, the footer on `/about` (a live page), no
 horizontal scroll; and every legacy page still served with one header (`/about`, `/researchers`, `/reports/new` read).
 
-**STATUS:** OPEN. Closes with `docs/gf-ui-step-4-<date>.md`: the approved footer and metadata copy, the exercise, the
-two nav entries that 404 until UI-7 and UI-8.
+**STATUS:** LANDED 2026-09-15 — PRs #490, #491, #492, `staging` `8b3e5c5`; the approved copy, the exercise scored, two entries 404
+until UI-7 and UI-8. Findings: `docs/gf-ui-step-4-2026-09-15.md`.
 
 ### UI-5 · The public thesis page, the call page, the version page
 
