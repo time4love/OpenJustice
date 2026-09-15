@@ -213,8 +213,8 @@ opened (`docs/gf-thesis-run-b-2026-09-15.md`) in timestamp order and its `pages`
 what it answered before the deploy (the read taken and kept before `LAND`); `list_theses({ scope: 'all' })` marks the
 researcher's own `mine: true`. Nothing written, nothing paid, no chain call.
 
-**STATUS:** OPEN. Closes with `docs/gf-ui-step-2-<date>.md`: the `limit` default, the staging reads with their predictions,
-the surface count.
+**STATUS:** LANDED 2026-09-15 — PR #484, `staging` `625685e`; the surface 45; the staging reads predicted and scored.
+Findings: `docs/gf-ui-step-2-2026-09-15.md` (the `limit` default, the reads, the surface count).
 
 ### UI-3 · The routes — thirteen public, fourteen gated, one mount
 
