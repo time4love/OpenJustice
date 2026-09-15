@@ -22,6 +22,7 @@ is reachable from here and that everything in the archive says where its subject
 - [gf-refactor-plan.md](gf-refactor-plan.md) — corpus steps 0–10, evidence steps 11–16; the test rules in §4
 - [gf-thesis-refactor-plan.md](gf-thesis-refactor-plan.md) — thesis steps 17–26; the document plan chains after it
 - [gf-document-refactor-plan.md](gf-document-refactor-plan.md) — document steps 27–37, on clean ground; the seams to the three plans before it, and the switch
+- [gf-ui-refactor-plan.md](gf-ui-refactor-plan.md) — the browser, steps UI-1 to UI-10, before the document plan: the harness first, the routes before the pages, one cut-over at the end; every instrument of the UI design's A5 given a file and a step
 - [gf-factual-layer-rebuild-dev-plan.md](gf-factual-layer-rebuild-dev-plan.md) — the levels; `grep -n '^\*\*STATUS:'` is the level authority
 - [gf-researcher-day.md](gf-researcher-day.md) — the flows read as one working day, tool by tool
 - [gf-prosecutor-dev-plan.md](gf-prosecutor-dev-plan.md) — the Prosecutor design, re-read under thesis flows §10; deliberately not next
