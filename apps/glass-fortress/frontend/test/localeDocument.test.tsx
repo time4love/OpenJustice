@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { basename, join, relative } from 'node:path';
 import { isValidElement, type ReactElement, type ReactNode } from 'react';
 import * as localeLayout from '@/app/[locale]/layout';
 import { routing } from '@/i18n/routing';
@@ -21,6 +21,13 @@ import { FRONTEND, SRC, importsOf, jsxTagsIn, sourceFiles } from './scan';
 
 const LOCALE_LAYOUT = 'src/app/[locale]/layout.tsx';
 const LOCALE_FACTS = 'src/lib/localeFacts.ts';
+/**
+ * The share image's convention file. A metadata image file applies to its route segment (next docs,
+ * file-conventions/01-metadata/opengraph-image.md :6, :17, :82): at `src/app/`, with the root layout moved under the locale,
+ * no page's <head> carried og:image any more (the staging read after #491) — so it lives in the locale segment.
+ */
+const LOCALE_SHARE_IMAGE = 'src/app/[locale]/opengraph-image.tsx';
+const IMAGE_FILE_TYPES = ['.png', '.jpg', '.jpeg', '.gif'];
 
 /** The expected document per locale — literal. The locale set is asserted too, so a new locale forces these to be read. */
 const DOCUMENT = {
@@ -101,5 +108,15 @@ describe('the locale layout owns the document', () => {
     const html = jsxTagsIn(layout).find((found) => found.tag === 'html');
     const importsFacts = importsOf(layout).some((found) => found.module === LOCALE_FACTS);
     expect({ dir: html?.attributes.dir ?? null, importsFacts }).toEqual({ dir: 'DIRECTION[locale]', importsFacts: true });
+  });
+
+  it("the share image is the locale segment's: opengraph-image lives in src/app/[locale]/ and none remains at src/app/", () => {
+    const code = htmlScanSubjects()
+      .filter((file) => basename(file).startsWith('opengraph-image.'))
+      .map((file) => relative(FRONTEND, file));
+    const images = ['src/app', 'src/app/[locale]']
+      .flatMap((dir) => IMAGE_FILE_TYPES.map((type) => `${dir}/opengraph-image${type}`))
+      .filter((file) => existsSync(join(FRONTEND, file)));
+    expect([...code, ...images]).toEqual([LOCALE_SHARE_IMAGE]);
   });
 });
