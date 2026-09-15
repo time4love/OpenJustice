@@ -1226,7 +1226,7 @@ get_rule_history({ url, ruleId })                                          read,
 
 ### A6. Routes — the marking page's only surface
 
-All under `/api/article-rules`, all behind `requireResearcher`, all page-scoped.
+All under `/api/article-rules`, all behind `requireResearcher`, all page-scoped. Amended by docs/gf-ui-flows.md §5 (2026-09-15): the corpus's GATED reads and `list_pages` answer under `/api/research`; this prefix stays the marking page's only surface.
 
 ```
 GET    /pages/:trackedUrlId/captures/:capture

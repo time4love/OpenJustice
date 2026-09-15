@@ -822,7 +822,7 @@ the appeals  each REQUESTED gap: the request ready to send, its authority, legal
 the case     the publication rationale — the researcher's words
 history      every version that was published, by date, with what changed between them (T6)
 the pages    a link to each cited page's public timeline (list_findings): everything the
-             researcher looked at, selected or not
+             researcher looked at, selected or not — amended by docs/gf-ui-flows.md §17 (2026-09-15): the link is `/corpus?page=`
 NOT shown    the critic's analysis · the assessors' verdicts and objections · framing rounds ·
              the debates — model opinions, GATED, read by researchers; the page shows that an
              analysis was run and that a citation or the publication was made over objection,
@@ -865,7 +865,7 @@ withdrawal, not the arrival.
 ```
 researcher   "what do I owe?"                       — or Claude reports it when a conversation opens
 Claude       → list_thesis_reviews()                                         ⚠️ to build
-backend      ← one entry per thing owed on the caller's theses, oldest first:
+backend      ← one entry per thing owed on the caller's theses, oldest first (amended by docs/gf-ui-flows.md §7.1, 2026-09-15: every thesis under scope 'all'):
                FLAGGED       a PUBLISHED version's mention with FLAGGED(m): the record, why —
                              withdrawn (reason) or content moved (old beside new, the E3
                              decision that moved it) — and the command: a new version
@@ -1423,7 +1423,7 @@ evidence A1 says; a token the parser cannot resolve is `NOT_A_RECORD`; where CUR
 the tool refuses `AWAITING_DERIVATION` and names the diff. Every paid call is named as one.
 
 ```
-list_theses({})                                                       PUBLIC · ⚠️ to build
+list_theses({})                                                       PUBLIC · ⚠️ to build — amended by docs/gf-ui-flows.md §7.1 (2026-09-15): optional `scope: 'mine' | 'all'`, default `mine`; `all` adds every researcher's theses, with handle and `mine`
   returns   anonymous: [{ thesisId, claim, provision, publishedAt, author: handle, contentHash }]
               for theses with PUBLISHED(t); nothing else exists to an anonymous caller
             researcher: their own theses — each with head, published, headIsPublished, the
@@ -1520,7 +1520,7 @@ unpublish_thesis({ thesisId, reason })                                WRITE
 add_note({ thesisId | framingId, text })                              WRITE · ⚠️ replaces add_session_note
   refuses   NO_RESEARCHER · NEITHER · NO_THESIS · NO_FRAMING · NOT_AUTHOR · EMPTY (2026-09-10)
 
-list_thesis_reviews({})                                               GATED read
+list_thesis_reviews({})                                               GATED read — amended by docs/gf-ui-flows.md §7.1 (2026-09-15): optional `scope: 'mine' | 'all'`, default `mine`
   returns   { owed, reviews } — REVIEWS(caller), oldest first, each with its material and one
             command; { owed: 0, reviews: [] } is an answer, never a refusal (2026-09-14)
 
@@ -1556,7 +1556,7 @@ flows §9, replaced by `add_document`.
 
 ### A5. Routes
 
-**This design adds no route and no browser dialog.** Every research act is an MCP tool; the
+**This design adds no route and no browser dialog.** Every research act is an MCP tool; the — amended by docs/gf-ui-flows.md §5 (2026-09-15): no WRITE route; the GATED reads answer under `/api/research`, one function serving tool and route.
 public page is a READ. What the page needs is served by the corpus reads of evidence A4 and by
 these, all PUBLIC and identity-free:
 
@@ -1566,7 +1566,7 @@ GET /api/thesis/:id                the PUBLISHED version resolved as T5's page s
                                    text, each mention resolved with its pin, VERIFIED and FLAGGED,
                                    the appeals, the rationale, the history of published versions,
                                    the withdrawal notice when PUBLISHED(t) is none and a
-                                   Withdrawal exists; 404 only for a thesis never published; the one source of the public-interest statement a call page shows (COMPLIANCE.md rule 5, 2026-09-14)
+                                   Withdrawal exists; 404 only for a thesis never published; the one source of the public-interest statement a call page shows (COMPLIANCE.md rule 5, 2026-09-14); `pages` carries `trackedUrlId` beside `url` — amended by docs/gf-ui-flows.md §6 (2026-09-15)
 GET /api/thesis/:id/versions/:v    a version that was ever published — the history's reads; while the thesis is withdrawn every version, and after it a version named by a Withdrawal, answers the notice, never its text (2026-09-14)
 ```
 

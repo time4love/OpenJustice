@@ -2,17 +2,18 @@
 
 **How to read this folder.** `CLAUDE.md` at the repo root first. Then the design that owns the
 subject; then the plan that builds it. Findings are dated records, never edited, pointed at from the
-plan's `STATUS:` lines. Everything before the four designs is a pre-design plan: nothing in one is a
+plan's `STATUS:` lines. Everything before the five designs is a pre-design plan: nothing in one is a
 required task by virtue of being listed — its open items are triaged in the dated findings doc named
 below. This index carries pointers, never content; a test holds that every markdown file under `docs/`
 is reachable from here and that everything in the archive says where its subject lives now.
 
-## The four target designs — signed off, in dependency order
+## The five target designs — signed off, in dependency order
 
 - [gf-interaction-flows.md](gf-interaction-flows.md) — the corpus: survey, walk, the stops for judgement, the marking page
 - [gf-evidence-flows.md](gf-evidence-flows.md) — evidence: a promoted corpus record, its versions, the return path
 - [gf-thesis-flows.md](gf-thesis-flows.md) — the thesis: framing, versions, arguments, the gate, the public page
 - [gf-document-flows.md](gf-document-flows.md) — documents: the two doors, sealed intake, custody, citation
+- [gf-ui-flows.md](gf-ui-flows.md) — the browser: dialogs by link, the researcher's gated read view, the public surface; routes are tools' answers
 
 ## Reasoning, as-built, and the route between them
 
