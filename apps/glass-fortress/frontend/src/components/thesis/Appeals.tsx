@@ -46,8 +46,12 @@ export function Appeals({ call, requests, intake, citations, pages, locale, head
   return (
     <section className="space-y-4">
       <h2 className="text-lg font-semibold">{headings === null ? t('heading') : headings.call}</h2>
-      {call.map((item) => (
-        <article key={item.gapId} className="space-y-1 rounded-lg border border-slate-200 p-3">
+      {/* KEYED BY POSITION, because an appeal carries no id: thesis A2 :1325–:1327 shapes `callItem` and `request`
+          with no gapId, and the body renders them in the order it sent. The list is never sorted, filtered or
+          appended to in the browser, so position IS the identity here — and a key read off a field the body does
+          not carry would be `undefined` for every entry, which React silently replaces with this same index. */}
+      {call.map((item, index) => (
+        <article key={index} className="space-y-1 rounded-lg border border-slate-200 p-3">
           <h3 className="text-sm font-semibold">{t('call')}</h3>
           <Field label={t('whatIsNeeded')}>
             <ResearcherWords>{item.whatIsNeeded}</ResearcherWords>
@@ -64,8 +68,9 @@ export function Appeals({ call, requests, intake, citations, pages, locale, head
         </article>
       ))}
       {requests.length === 0 ? null : headings === null ? null : <h2 className="text-lg font-semibold">{headings.requests}</h2>}
-      {requests.map((request) => (
-        <article key={request.gapId} className="space-y-1 rounded-lg border border-slate-200 p-3">
+      {/* Keyed by position, for the reason the call list above states. */}
+      {requests.map((request, index) => (
+        <article key={index} className="space-y-1 rounded-lg border border-slate-200 p-3">
           <h3 className="text-sm font-semibold">{t('request')}</h3>
           <ResearcherWords className="text-sm leading-relaxed">{request.text}</ResearcherWords>
           <Field label={t('authority')}>

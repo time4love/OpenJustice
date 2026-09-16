@@ -147,7 +147,6 @@ export function parseThesisBody(value: unknown): ThesisBody {
         const at = `appeals.call[${String(index)}]`;
         const row_ = object(item, at);
         return {
-          gapId: text(row_.gapId, `${at}.gapId`),
           whatIsNeeded: text(row_.whatIsNeeded, `${at}.whatIsNeeded`),
           whoWouldHaveSeenIt: text(row_.whoWouldHaveSeenIt, `${at}.whoWouldHaveSeenIt`),
           unit: text(row_.unit, `${at}.unit`),
@@ -158,7 +157,6 @@ export function parseThesisBody(value: unknown): ThesisBody {
         const at = `appeals.requests[${String(index)}]`;
         const row_ = object(item, at);
         return {
-          gapId: text(row_.gapId, `${at}.gapId`),
           text: text(row_.text, `${at}.text`),
           authority: text(row_.authority, `${at}.authority`),
           legalBasis: text(row_.legalBasis, `${at}.legalBasis`),
