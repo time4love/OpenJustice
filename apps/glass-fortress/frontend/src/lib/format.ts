@@ -23,3 +23,29 @@ export function truncateLabel(text: string, maxLen = 35): string {
 export function displayUrl(url: string): string {
   return url.replace(/^https?:\/\//, '').split('?')[0] ?? url;
 }
+
+/**
+ * A page's DOMAIN — what a reader recognises a page by (docs/gf-ui-flows.md §4 :169). `www.` is noise, not a name.
+ * A URL the browser cannot parse is shown as written rather than dropped.
+ */
+export function domainOf(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, '');
+  } catch {
+    return url;
+  }
+}
+
+/** A Wayback timestamp (`yyyymmddhhmmss`, UTC) as the date a reader recognises — never the 14 digits (§4 :167–:170). */
+export function formatCaptureDate(timestamp: string, locale: string): string {
+  const match = /^(\d{4})(\d{2})(\d{2})/.exec(timestamp);
+  if (match === null) return timestamp;
+  return formatDate(`${match[1] ?? ''}-${match[2] ?? ''}-${match[3] ?? ''}T00:00:00.000Z`, locale);
+}
+
+/** An ISO instant as a date in the reader's locale, UTC — the form §17 :530 shows beside a version. */
+export function formatDate(iso: string, locale: string): string {
+  const at = new Date(iso);
+  if (Number.isNaN(at.getTime())) return iso;
+  return new Intl.DateTimeFormat(locale === 'he' ? 'he-IL' : 'en-GB', { year: 'numeric', month: 'numeric', day: 'numeric', timeZone: 'UTC' }).format(at);
+}

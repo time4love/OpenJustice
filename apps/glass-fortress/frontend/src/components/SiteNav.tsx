@@ -5,6 +5,7 @@ import { useLocale, useTranslations } from 'next-intl';
 import { Link, usePathname } from '@/i18n/navigation';
 import { routing } from '@/i18n/routing';
 import { useAuth, type ResearcherProfile } from '@/context/AuthContext';
+import { DOORS_OPEN } from '@/lib/doors';
 
 // ---------------------------------------------------------------------------
 // THE NAV — docs/gf-ui-flows.md §32 :808–:812; §4 :152–:161 (mobile first).
@@ -18,16 +19,18 @@ import { useAuth, type ResearcherProfile } from '@/context/AuthContext';
 /** Anonymous (or still loading) · signed in · approved researcher · admin — A3 :1019–:1024, with the researcher's ruling of 2026-09-15 on the signed-in, unapproved account. */
 type Level = 0 | 1 | 2 | 3;
 
-type Label = 'home' | 'corpus' | 'about' | 'researchers' | 'research' | 'admin';
+type Label = 'home' | 'corpus' | 'about' | 'safety' | 'researchers' | 'research' | 'admin';
 
 /**
- * §32 :808–:810, in its order. `/safety` (הגנה) joins WHEN LIVE — the document plan's flag, not this step's. No sign-in
- * entry (the researcher's ruling, 2026-09-15). The handle entry's text is the profile's handle, not a message.
+ * §32 :808–:810, in its order. `/safety` (הגנה) is drawn WHEN THE DOOR IS LIVE — `lib/doors.ts`, the one constant the
+ * document plan's step 32 sets (UI plan :416–:417; the researcher's ruling Q1 (a), 2026-09-16). No sign-in entry (the
+ * researcher's ruling, 2026-09-15). The handle entry's text is the profile's handle, not a message.
  */
-const NAV: readonly { href: string; label: Label | 'handle'; from: Level }[] = [
+const NAV: readonly { href: string; label: Label | 'handle'; from: Level; door?: true }[] = [
   { href: '/', label: 'home', from: 0 },
   { href: '/corpus', label: 'corpus', from: 0 },
   { href: '/about', label: 'about', from: 0 },
+  { href: '/safety', label: 'safety', from: 0, door: true },
   { href: '/researchers', label: 'researchers', from: 0 },
   { href: '/research', label: 'research', from: 2 },
   { href: '/profile', label: 'handle', from: 1 },
@@ -100,7 +103,7 @@ export function SiteNav() {
         aria-label={t('chrome.navLabel')}
         className={`sheet ${open ? 'flex' : 'hidden'} flex-col gap-1 p-4 shadow-lg md:static md:flex md:flex-row md:items-center md:gap-1 md:overflow-visible md:rounded-none md:bg-transparent md:p-0 md:shadow-none`}
       >
-        {NAV.filter((entry) => entry.from <= level).map((entry) => (
+        {NAV.filter((entry) => entry.from <= level && (entry.door !== true || DOORS_OPEN)).map((entry) => (
           <Link
             key={entry.href}
             href={entry.href}
