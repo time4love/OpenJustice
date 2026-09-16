@@ -26,12 +26,17 @@ export interface AppealsProps {
   headings: { call: string; requests: string; how: string } | null;
 }
 
+/**
+ * A field of an appeal card: its label, then the researcher's words, which are their own BLOCK (§16 :517–:521).
+ * A `<p>` here would be closed by the browser at that block's opening tag and React would hydrate against a DOM
+ * it never rendered — so the field is a `<div>`, and the label is the inline part.
+ */
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <p className="text-sm">
+    <div className="text-sm">
       <span className="text-slate-500">{label}: </span>
       {children}
-    </p>
+    </div>
   );
 }
 
