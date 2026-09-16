@@ -246,7 +246,6 @@ export type TrajectoryCitation =
 export type Citation = EvidenceCitation | TrajectoryCitation;
 
 export interface CallItem {
-  gapId: string;
   whatIsNeeded: string;
   whoWouldHaveSeenIt: string;
   unit: string;
@@ -254,7 +253,6 @@ export interface CallItem {
 }
 
 export interface RequestItem {
-  gapId: string;
   text: string;
   authority: string;
   legalBasis: string;

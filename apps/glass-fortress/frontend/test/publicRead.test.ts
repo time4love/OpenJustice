@@ -5,6 +5,7 @@ jest.mock('next/navigation', () => jest.requireActual<typeof import('./render')>
 
 import type { ReactElement } from 'react';
 import { apiCallsMade, globalFetchDouble, renderPage, setAuthState, setPathname, setPublicBodies, type PublicRead } from './render';
+import { parseThesisBody } from '../src/lib/thesisBody';
 import { importsOf, publicThesisModules, stringsIn, FRONTEND } from './scan';
 import published from './fixtures/thesis/published.json';
 import callLive from './fixtures/thesis/call-live.json';
@@ -159,6 +160,81 @@ describe('the public read: no identity, one parser', () => {
     setPublicBodies(undefined);
     setAuthState(undefined);
     setPathname(undefined);
+  });
+
+  // -------------------------------------------------------------------------
+  // THE APPEALS CARRY WHAT THE APPENDIX SHAPES, AND NOTHING MORE — docs/gf-thesis-flows.md A2 :1325–:1327:
+  // `request` is `{ text, authority, legalBasis, addresses, restsOn }` and `callItem` is `{ whatIsNeeded,
+  // whoWouldHaveSeenIt, unit, window }`. NEITHER CARRIES A gapId, and the backend adds none: `theCall` and
+  // `theRequests` (services/thesisPredicates.ts) both map through `appealOf`, which returns the stored Json
+  // VERBATIM. A parser that required one therefore refused every real body — the gap between a fixture written
+  // beside the code and a fixture written from the appendix (UI plan §4 :880–:883), which is what §8's staging
+  // exercise exists to catch.
+  //
+  // ONE CODE PATH, TWO ARMS, SO TWO CASES. Both appeals come through the same `appealOf`, so a parser repaired
+  // on the request arm alone still refuses the call arm — and `/call/[thesisId]` is the page that breaks on the
+  // first CALLED gap. Each case is reddened by its own arm's decoy.
+  //
+  // THE WORLD IS THE APPENDIX'S, NOT THE FIXTURE'S. The appeals below are written from A2 rather than copied
+  // from `published.json`, so the case states the contract even while a fixture disagrees with it.
+  // -------------------------------------------------------------------------
+
+  /** A REQUESTED gap's appeal — A2 :1325–:1326's five keys, and no more. */
+  const REQUEST = {
+    text: 'בהתאם לחוק חופש המידע, אבקש את ההנחיה שעל פיה נוסח העמוד בין התאריכים האמורים.',
+    authority: 'הממונה על חופש המידע',
+    legalBasis: 'חוק חופש המידע, התשנ"ח-1998',
+    addresses: ['foia@example.gov.il'],
+    restsOn: ['0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1'],
+  };
+
+  /** A CALLED gap's appeal — A2 :1327's four keys, and no more. */
+  const CALL_ITEM = {
+    whatIsNeeded: 'ההנחיה הפנימית שלפיה נוסחה ההודעה על תופעות הלוואי',
+    whoWouldHaveSeenIt: 'מי שערך את העמוד הציבורי באותה תקופה',
+    unit: 'היחידה לפרסומי אינטרנט',
+    window: '1.3.2021 – 30.4.2021',
+  };
+
+  /** The published fixture with ONE arm replaced by the appendix's shape — everything else is the body it always was. */
+  const withAppeals = (appeals: { call: unknown[]; requests: unknown[] }): unknown => ({
+    ...published,
+    appeals: { ...appeals, intake: published.appeals.intake },
+  });
+
+  /**
+   * The one entry, or a loud failure. An empty list would make `Object.keys` answer `[]` and the case pass over
+   * NOTHING — the vacuity a scan is never allowed to report as a pass.
+   */
+  const only = <T>(items: readonly T[], what: string): T => {
+    const one = items.at(0);
+    if (one === undefined) throw new Error(`${what}: the parsed body carries no entry, so this case examined nothing`);
+    return one;
+  };
+
+  /** The published body, or a loud failure — the fixture is a page, and a notice would answer neither arm. */
+  const publishedBody = (value: unknown) => {
+    const parsed = parseThesisBody(value);
+    if ('withdrawn' in parsed) throw new Error('the fixture parsed as a withdrawal notice, which carries no appeals');
+    return parsed;
+  };
+
+  it('a REQUESTED appeal parses with the appendix’s five keys and NO gapId', () => {
+    const parsed = publishedBody(withAppeals({ call: [], requests: [REQUEST] }));
+    const request = only(parsed.appeals.requests, 'appeals.requests');
+    expect([Object.keys(request).sort(), request]).toEqual([
+      ['addresses', 'authority', 'legalBasis', 'restsOn', 'text'],
+      REQUEST,
+    ]);
+  });
+
+  it('a CALLED appeal parses with the appendix’s four keys and NO gapId', () => {
+    const parsed = publishedBody(withAppeals({ call: [CALL_ITEM], requests: [] }));
+    const item = only(parsed.appeals.call, 'appeals.call');
+    expect([Object.keys(item).sort(), item]).toEqual([
+      ['unit', 'whatIsNeeded', 'whoWouldHaveSeenIt', 'window'],
+      CALL_ITEM,
+    ]);
   });
 
   it('no module of the public thesis surface reaches the signed-in session: no authHeaders, no lib/session, no AuthContext', () => {
