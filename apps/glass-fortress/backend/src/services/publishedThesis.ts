@@ -1,4 +1,5 @@
 import { prisma } from '../lib/prisma';
+import { provisionTitleOf } from '../lib/provisions';
 import { chunksOf, pairName, resolveRecordByName, type ResolvedRecord } from './corpusReads';
 import { argued, EVER_PUBLISHED, flagged, verified } from './evidencePredicates';
 import type { PublicationMaterial } from './publicationAssessor';
@@ -179,6 +180,8 @@ interface ThesisPage {
   publicInterestStatement: string | null;
   claim: string;
   provision: string | null;
+  /** The provision named by its table entry (docs/gf-ui-flows.md §17 :529–:530) — the page never spells a title of its own. */
+  provisionTitle: string | null;
   version: { versionId: string; text: string; contentHash: string; publishedAt: Date | null; author: string };
   citations: (EvidenceCitation | TrajectoryCitation)[];
   appeals: { call: unknown[]; requests: unknown[]; intake: string };
@@ -308,6 +311,7 @@ async function pageOf(thesisId: string): Promise<ThesisPage | WithdrawnNotice | 
     publicInterestStatement: thesis.publicInterestStatement,
     claim: version.claim,
     provision: thesis.provision,
+    provisionTitle: provisionTitleOf(thesis.provision),
     version: { versionId: pin, text: version.text, contentHash: version.contentHash, publishedAt: thesis.publishedAt, author: handleOf(handles, thesis.createdById, thesis.id) },
     citations,
     appeals: { call, requests, intake: INTAKE },

@@ -1038,7 +1038,7 @@ the commands labelled (§13).
 | thesis A4 :1426–:1431 `list_theses` | researcher: "their own theses" | + `scope: 'mine' \| 'all'`, default `mine`; `all` adds every researcher's, with handle and `mine` (§7.1) |
 | thesis A4 :1523 `list_thesis_reviews` · T6 :868 | "the caller's theses" | + `scope`, default `mine` (§7.1) |
 | evidence A4 (new) | — | `list_corpus`, `list_trajectories`, `search_corpus`, each with `scope: 'public' \| 'all'`; `list_corpus` returns the `pages` facet (§6.1, §28) |
-| thesis A5 :1565 `GET /api/thesis/:id` | `pages: [{ url }]` | `pages: [{ trackedUrlId, url }]` (§6) |
+| thesis A5 :1565 `GET /api/thesis/:id` | `pages: [{ url }]` | `pages: [{ trackedUrlId, url }]` (§6) · + `provisionTitle` (§17.2, UI-5) |
 | thesis T5 :824 | "a link to each cited page's public timeline (list_findings)" | the link is `/corpus?page=` (§17.7) |
 | evidence A4 :1080 `list_findings` · :1101 · :1103 | unchanged | held equal to the corpus read at one page (§6.1, §9); :1101 and :1103 GATED 2026-09-15 (#487) |
 | routes at HEAD | `GET /api/forensics/tracked`, `…/trajectories`, `GET /api/stats` | RETIRED (§6) |
