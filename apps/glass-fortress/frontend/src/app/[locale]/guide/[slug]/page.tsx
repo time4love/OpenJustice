@@ -119,6 +119,7 @@ function StepList({ phase }: { phase: GuidePhase }) {
 export default function GuidePhasePage() {
   const params = useParams<{ slug: string }>();
   const t = useTranslations('guide');
+  const tc = useTranslations('common');
   const phase = findGuidePhase(params.slug);
 
   if (!phase) notFound();
@@ -202,7 +203,7 @@ export default function GuidePhasePage() {
             <h2 className="text-xs font-semibold text-slate-400 uppercase tracking-widest mb-2.5">
               {t('endpointLabel')}
             </h2>
-            <CopyableCode value={MCP_SERVER_URL} />
+            <CopyableCode value={MCP_SERVER_URL} label={tc('copy')} showValue />
             <p className="text-xs text-slate-400 leading-relaxed mt-3">{t('endpointNote')}</p>
           </section>
         )}
@@ -288,6 +289,8 @@ export default function GuidePhasePage() {
             {prompts.map((promptId) => (
               <div key={promptId} className="space-y-1.5">
                 <CopyableCode
+                  label={tc('copy')}
+                  showValue
                   value={t(`phases.${phase.slug}.prompts.${promptId}.command`)}
                 />
                 <p className="text-xs text-slate-500 leading-relaxed ps-1">

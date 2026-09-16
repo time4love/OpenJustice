@@ -193,3 +193,119 @@ export interface ThesisProvenance {
   empty: boolean;
   recordedDissent: { sessionId: string; eventId: string; createdAt: string; objection: string }[];
 }
+
+// ---------------------------------------------------------------------------
+// THE PUBLIC BODIES — docs/gf-thesis-flows.md A5 :1565–:1570 and A4 :1501–:1504, as the routes of UI-3 answer
+// them; docs/gf-ui-flows.md §16 :507–:515, §17, §20. HAND-WRITTEN FROM THE APPENDIX (UI plan §4 :880–:883): the
+// backend's own types are never imported, so a body that drifts from the appendix fails at the parser
+// (`lib/thesisBody.ts`), loudly, instead of rendering half a page.
+//
+// The types above this line are the LEGACY thesis surface. They go at UI-10 with the pages that read them.
+// ---------------------------------------------------------------------------
+
+/** A citation as a version lists it: which record, at which pinned content version (thesis A4 :1471). */
+export interface CitationRef {
+  kind: string;
+  name: string;
+  pin: string | null;
+}
+
+export interface EvidenceRecord {
+  url: string;
+  /** A CAPTURE names one timestamp; a DIFF names the pair it spans (§18 :567). */
+  capture?: string;
+  before?: string;
+  after?: string;
+}
+
+export type CitedContent =
+  | { kind: 'CAPTURE'; text: string }
+  | { kind: 'DIFF'; chunks: { side: string; text: string }[] };
+
+export type CitationVerdict =
+  | { verified: boolean; captures: { capture: string; attributed: boolean | null; anchoredHashMatchesDocumentHash: boolean }[] }
+  | { notEvaluable: string };
+
+export interface EvidenceCitation {
+  kind: 'EVIDENCE';
+  name: string;
+  pin: string | null;
+  record: EvidenceRecord;
+  content: CitedContent;
+  verified: CitationVerdict;
+  flag: { flagged: boolean; reasons: string[] };
+  argued: boolean;
+  /** The FACT that the citation was promoted over the assessor's objection — never the objection (T5 :816). */
+  overObjection: boolean;
+}
+
+export type TrajectoryCitation =
+  | { kind: 'TRAJECTORY'; name: string; resolves: true; claimText: string; url: string; transitions: number; current: boolean }
+  | { kind: 'TRAJECTORY'; name: string; resolves: false };
+
+export type Citation = EvidenceCitation | TrajectoryCitation;
+
+export interface CallItem {
+  gapId: string;
+  whatIsNeeded: string;
+  whoWouldHaveSeenIt: string;
+  unit: string;
+  window: string;
+}
+
+export interface RequestItem {
+  gapId: string;
+  text: string;
+  authority: string;
+  legalBasis: string;
+  addresses: string[];
+  restsOn: string[];
+}
+
+export type HistoryEntry =
+  | { versionId: string; contentHash: string; publishedAt: string; citations: CitationRef[] }
+  | { versionId: string; contentHash: string; publishedAt: string; withdrawn: true; withdrawnAt: string };
+
+export interface PublishedThesis {
+  thesisId: string;
+  publicInterestStatement: string | null;
+  claim: string;
+  provision: string | null;
+  /** The provision named by its table entry (§17 :529–:530; the backend's `provisionTitleOf`). */
+  provisionTitle: string | null;
+  version: { versionId: string; text: string; contentHash: string; publishedAt: string | null; author: string };
+  citations: Citation[];
+  appeals: { call: CallItem[]; requests: RequestItem[]; intake: string };
+  rationale: string;
+  overObjection: boolean;
+  analysisRun: boolean;
+  history: HistoryEntry[];
+  pages: { trackedUrlId: string; url: string }[];
+}
+
+/** The notice where a withdrawn page was: the date alone (T6 :915–:917). */
+export interface WithdrawnNotice {
+  thesisId: string;
+  withdrawn: true;
+  withdrawnAt: string;
+}
+
+/** A version that was ever published — the history's read (A5 :1570). */
+export interface PublishedVersion {
+  thesisId: string;
+  versionId: string;
+  text: string;
+  contentHash: string;
+  publishedAt: string;
+  citations: CitationRef[];
+}
+
+/** `get_whistleblower_call`'s answer (A4 :1501–:1504): the appeals of the published version, or `{ live: false }`. */
+export type WhistleblowerCall =
+  | { live: false }
+  | { live: true; thesisId: string; publishedVersionId: string; call: CallItem[]; requests: RequestItem[]; intake: string };
+
+export type ThesisBody = PublishedThesis | WithdrawnNotice;
+export type VersionBody = PublishedVersion | WithdrawnNotice;
+
+export const isWithdrawn = (body: { withdrawn?: unknown }): body is WithdrawnNotice => body.withdrawn === true;

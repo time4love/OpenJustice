@@ -23,6 +23,14 @@ import { FRONTEND, SRC, importClosureOf, importsOf, sourceFiles } from './scan';
 // statements — so the path is written relative here; jest keys the mock by the resolved file, which the chrome's `@/` import reaches.
 jest.mock('../src/context/AuthContext', () => jest.requireActual<typeof import('./render')>('./render').authContextDouble());
 jest.mock('next/navigation', () => jest.requireActual<typeof import('./render')>('./render').navigationDouble());
+// The DOOR FLAG, read at render (UI-5's `lib/doors.ts`): a getter, so one case can hold "absent while false" and the
+// next "present when true" without re-importing the chrome into a second module registry.
+let doorsOpen = false;
+jest.mock('../src/lib/doors', () => ({
+  get DOORS_OPEN() {
+    return doorsOpen;
+  },
+}));
 
 const STATES: readonly AuthState[] = ['anonymous', 'loading', 'signed-in-unapproved', 'approved-researcher', 'admin'];
 
@@ -37,6 +45,8 @@ const PUBLIC = [
 const RESEARCH = ['מחקר', '/he/research'] as const;
 const PROFILE = ['handle-fixture', '/he/profile'] as const;
 const ADMIN = ['ניהול', '/he/admin'] as const;
+/** §32 :808's fourth public entry, drawn only when `lib/doors.ts` says the door is live (UI-5). */
+const SAFETY = ['הגנה', '/he/safety'] as const;
 
 /** Retired, dialog and sign-in URLs, unprefixed — plan :836–:837 (retired), ui-flows §2.2 :109 (the dialog), the researcher's Q7 (no sign-in). */
 const NOT_IN_THE_CHROME: readonly RegExp[] = [
@@ -125,13 +135,35 @@ describe('nav-is-the-map', () => {
     expect(navAnchors()).toEqual([...PUBLIC, RESEARCH, PROFILE, ADMIN]);
   });
 
-  it('every identity — /safety is not in the nav (§32 :808 "when live")', () => {
+  // §32 :808 lists הגנה `/safety` "when live", and UI-5's `lib/doors.ts` is the one place that says whether it is
+  // (UI plan :416–:417; the researcher's ruling Q1 (a), 2026-09-16). So the nav's entry is held BOTH WAYS: absent
+  // while the flag is false — which is the state the tree is in — and present, in §32's order, when it is true.
+  it('every identity — while the door flag is false, /safety is not in the nav (§32 :808 "when live"; lib/doors.ts)', () => {
+    // The REAL constant, past the double: the tree's flag is false until the document plan's step 32 sets it.
+    expect(jest.requireActual<{ DOORS_OPEN: boolean }>('../src/lib/doors').DOORS_OPEN).toBe(false);
+    doorsOpen = false;
     const problems = acrossStates((state) =>
       navAnchors()
         .filter(([, href]) => unprefixed(href) === '/safety')
         .map(([, href]) => `${state}: ${href} is in the nav`),
     );
     expect(problems).toEqual([]);
+  });
+
+  it('every identity — when the door flag is true, הגנה /safety is in the nav, between אודות and לחוקרים', () => {
+    doorsOpen = true;
+    try {
+      for (const state of STATES) {
+        const { unmount } = renderHeader(state);
+        try {
+          expect([state, navAnchors().slice(0, 5)]).toEqual([state, [PUBLIC[0], PUBLIC[1], PUBLIC[2], SAFETY, PUBLIC[3]]]);
+        } finally {
+          unmount();
+        }
+      }
+    } finally {
+      doorsOpen = false;
+    }
   });
 
   it('every identity — no anchor the chrome renders leaves the site; the open-source link is the footer\'s', () => {

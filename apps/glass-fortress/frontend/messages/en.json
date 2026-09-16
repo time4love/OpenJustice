@@ -23,7 +23,12 @@
     },
     "copy": "Copy",
     "copied": "Copied",
-    "copyFailed": "Copy failed — select the text and copy it manually"
+    "copyFailed": "Copy failed — select the text and copy it manually",
+    "disclaimer": {
+      "short": "Good-faith legal analysis on a matter of public interest, based on documented evidence. Not a judicial finding.",
+      "full": "All claims presented are based on documented evidence and constitute good-faith legal analysis on a matter of public interest. They do not constitute a judicial finding. This platform presents material for purposes of public investigation only."
+    },
+    "loading": "Loading"
   },
   "metadata": {
     "description": "A public archive of Covid-era web pages as preserved by the Internet Archive and anchored by SHA-256 on Base, and the theses researchers build on it."
@@ -593,7 +598,100 @@
     "viewsLabel": "Thesis views",
     "close": "Close",
     "openEvidence": "Open the record",
-    "sourcesTitle": "Sources"
+    "sourcesTitle": "Sources",
+    "page": {
+      "copyThesis": "Copy for a new conversation",
+      "byline": "{handle} · published {date}",
+      "notice": "Withdrawn by its author on {date}.",
+      "notFound": "No published thesis is at this address."
+    },
+    "marks": {
+      "verified": "Verified against its anchor",
+      "flagged": "Flagged",
+      "argued": "Argued",
+      "overObjection": "Over the assessor's objection",
+      "analysisRun": "An analysis was run on this version",
+      "publishedOverObjection": "Published over the assessor's objection",
+      "trajectoryCurrent": "The newest pass agrees",
+      "trajectoryStale": "The newest pass disagrees",
+      "trajectoryUnresolved": "A trajectory that does not resolve"
+    },
+    "chip": {
+      "unresolved": "A citation that does not resolve",
+      "repinned": "A different content version of this record was cited then",
+      "notCurrent": "A record the current version does not cite",
+      "capture": "{domain} · {date}",
+      "diff": "{domain} · {before}–{after}"
+    },
+    "sheet": {
+      "close": "Close",
+      "capture": "The page as captured on {date}",
+      "diff": "A change to the page between {before} and {after}",
+      "before": "Before",
+      "after": "After",
+      "attributed": "Anchored by the platform",
+      "hashMatches": "The anchored hash equals the document hash",
+      "attributionUnread": "The anchor has not been checked yet",
+      "notEvaluable": "Cannot be checked: {reason}",
+      "flag": {
+        "WITHDRAWN": "The record was withdrawn",
+        "NOT_CITATION_CURRENT": "The cited content moved and was not re-affirmed",
+        "SHED": "The platform no longer holds this record's content"
+      },
+      "argued": "Argued: yes",
+      "overObjection": "Over the assessor's objection: {answer}",
+      "yes": "yes",
+      "no": "no",
+      "openPage": "Everything kept from this page",
+      "openRecord": "The record's page",
+      "copyToken": "Copy the citation for a conversation",
+      "transitions": "{count, plural, one {one transition} other {# transitions}}"
+    },
+    "appeals": {
+      "heading": "Appeals to the public",
+      "request": "A freedom-of-information request, ready to send",
+      "authority": "To",
+      "legalBasis": "Legal basis",
+      "addresses": "Addresses",
+      "restsOn": "Rests on",
+      "copyRequest": "Copy the request text",
+      "call": "A document someone may have seen",
+      "whatIsNeeded": "What is needed",
+      "whoWouldHaveSeenIt": "Who would have seen it",
+      "unit": "Unit",
+      "window": "Period"
+    },
+    "case": {
+      "heading": "Why this version was published"
+    },
+    "history": {
+      "heading": "Published versions",
+      "row": "{date} · {handle}",
+      "current": "The current version",
+      "withdrawn": "Withdrawn by its author on {date}",
+      "whatChanged": "What changed",
+      "diffHeading": "What changed between {from} and {to}",
+      "movedPins": "Citations whose cited content version moved",
+      "pinMoved": "The cited version moved",
+      "diffUnavailable": "The version could not be loaded right now"
+    },
+    "pages": {
+      "heading": "The pages",
+      "counterweight": "Everything examined on these pages, cited or not, is open to read:"
+    },
+    "verify": {
+      "summary": "To check the values",
+      "versionHash": "The version's hash",
+      "recordName": "The record's name",
+      "trajectoryId": "The trajectory's identifier",
+      "pin": "The cited content version",
+      "copyValue": "Copy to check",
+      "how": "The version's hash is SHA-256 over the version's text and is not recorded on any chain. A record's name and its cited content version identify what was cited; the record's page shows how to check it against the Internet Archive and the chain."
+    },
+    "version": {
+      "banner": "This is a previous published version.",
+      "toCurrent": "The current version"
+    }
   },
   "call": {
     "heroLabel": "Call for Witnesses",
@@ -637,7 +735,14 @@
     "indexAllCases": "{count} {count, plural, one {investigation} other {investigations}}",
     "notPublished": "This thesis has not been published.",
     "researcherPreviewDraft": "Researcher preview — this thesis is a draft. The public sees no call.",
-    "researcherPreviewBehind": "Researcher preview — the public call is {count} version(s) behind this head."
+    "researcherPreviewBehind": "Researcher preview — the public call is {count} version(s) behind this head.",
+    "page": {
+      "toThesis": "The full thesis",
+      "callHeading": "A call to anyone who saw the documents",
+      "requestsHeading": "Freedom-of-information requests",
+      "howHeading": "How to send",
+      "notLive": "No appeal is open on this thesis."
+    }
   },
   "home": {
     "heroTag": "The Covid Case",

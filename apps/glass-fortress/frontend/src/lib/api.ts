@@ -22,10 +22,9 @@ export function apiUrl(path: string): string {
 
 /**
  * Authorization header for the signed-in researcher, if any. The token is the
- * Supabase session AuthContext stores; thesis reads are viewer-dependent on the
- * backend (the public gets the published version, a researcher the head), so
- * every thesis fetch sends it when present. Empty on the server and when
- * signed out.
+ * Supabase session AuthContext stores. It belongs to the GATED reads — the marking
+ * dialog and the research pages; a PUBLIC read never sends it (docs/gf-thesis-flows.md
+ * A5 :1561, and `readPublic` below). Empty on the server and when signed out.
  */
 export function authHeaders(): Record<string, string> {
   const token = currentAccessToken();
@@ -41,11 +40,11 @@ export function authHeaders(): Record<string, string> {
  * whose refresh timer a background throttle held back.
  *
  * IT AUTHENTICATES NOTHING THE CALLER DID NOT. A request that arrived without an
- * `Authorization` header is retried without one, because some reads are
- * deliberately made as the public — a thesis serves the PUBLISHED version to a
- * viewer and the head to a researcher, so quietly attaching a token here would
- * change which document a page displays. The retry replaces a header the caller
- * chose to send; it never adds one they didn't.
+ * `Authorization` header is retried without one, because some reads are deliberately
+ * made as the public — and a public read answers the same bytes whoever asks
+ * (docs/gf-ui-flows.md A3 :1019–:1021). Quietly attaching a token here would send an
+ * identity the route does not read, and make a public page depend on who is signed in.
+ * The retry replaces a header the caller chose to send; it never adds one they didn't.
  *
  * It also retries only when the refresh produced a token at all. A refusal
  * clears the session, and re-sending a dead token would turn one honest 401
@@ -108,6 +107,41 @@ export async function fetchJson<T>(
   }
   if (!res.ok) throw new Error(body.message ?? `Error ${String(res.status)}`);
   return body;
+}
+
+/** What a public read answers: the body, narrowed by the caller's parser, or THE ONE 404 (docs/gf-ui-flows.md §8 :334). */
+export type PublicRead<T> = { status: 200; body: T } | { status: 404 };
+
+/**
+ * A PUBLIC READ, FROM THE SERVER — docs/gf-ui-flows.md A3 :1019–:1021, §8 :329–:342; thesis A5 :1561.
+ *
+ * NO IDENTITY. No `Authorization`, ever: the route reads none, and a page that sent one would be asking for a
+ * behaviour that does not exist.
+ *
+ * THE STAGING TOKEN IS NOT AN IDENTITY, and this is the SECOND place it is attached. `lib/stagingApiAuth.ts`
+ * patches the browser's `fetch` and returns on the server (`typeof window === 'undefined'`), so a server render
+ * would otherwise reach the staging backend without the header its gate requires
+ * (`middleware/stagingAccess.ts`) and read nothing. The header says which DEPLOYMENT is being read; the bearer
+ * would say who is reading.
+ *
+ * SIXTY SECONDS. The body is cached for a minute (the researcher's ruling, 2026-09-16), so a publication, a
+ * withdrawal or a re-publication is visible within a minute and the same read serves `generateMetadata` and the
+ * page as one request.
+ *
+ * The parser is the caller's, and it is not optional: a body that drifted from the appendix fails here, naming
+ * the field (`lib/thesisBody.ts`).
+ */
+export async function readPublic<T>(path: string, parse: (body: unknown) => T): Promise<PublicRead<T>> {
+  const base = process.env.BACKEND_URL;
+  if (base === undefined) throw new Error('readPublic: BACKEND_URL is not set — the server cannot reach the backend');
+  const token = process.env.NEXT_PUBLIC_STAGING_API_TOKEN;
+  const res = await fetch(`${base.replace(/\/$/, '')}${path}`, {
+    headers: token === undefined || token === '' ? {} : { 'X-Staging-Token': token },
+    next: { revalidate: 60 },
+  });
+  if (res.status === 404) return { status: 404 };
+  if (!res.ok) throw new Error(`readPublic: ${path} answered ${String(res.status)}`);
+  return { status: 200, body: parse(await res.json()) };
 }
 
 /**

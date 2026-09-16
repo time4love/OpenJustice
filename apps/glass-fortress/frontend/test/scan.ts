@@ -246,3 +246,44 @@ export function packageNameOf(specifier: string): string | null {
   const parts = specifier.split('/');
   return (specifier.startsWith('@') ? parts.slice(0, 2) : parts.slice(0, 1)).join('/');
 }
+
+/**
+ * The three shapes §4 :167–:170 forbids as a text node — a 64-hex name (with or without `0x`), a cuid, a
+ * 14-digit Wayback timestamp — as ONE list, so `no-id-as-text` and `bidi-isolated` never spell them twice.
+ * Callers: `no-id-as-text`, `bidi-isolated` (UI-5, and every page step after).
+ */
+export const ID_SHAPES: readonly { name: string; pattern: RegExp }[] = [
+  { name: '64-hex', pattern: /(?:0x)?[0-9a-f]{64}/i },
+  { name: 'cuid', pattern: /\bc[a-z0-9]{24}\b/ },
+  { name: '14-digit timestamp', pattern: /\b\d{14}\b/ },
+];
+
+/** The three public thesis pages, by path — the subjects of every UI-5 source scan. */
+export const PUBLIC_THESIS_PAGES: readonly string[] = [
+  'src/app/[locale]/theses/[id]/page.tsx',
+  'src/app/[locale]/theses/[id]/versions/[v]/page.tsx',
+  'src/app/[locale]/call/[thesisId]/page.tsx',
+];
+
+/**
+ * Every module the public thesis surface is made of: the three pages, everything under `components/thesis/`, the
+ * libraries UI-5 adds, and the two components it rewrites. Each path is asserted to EXIST — a scan over a module
+ * that is not there examined nothing, which is never a pass. Callers: `no-model-voice-public`,
+ * `no-door-before-it-exists`, `publicRead` (UI-5).
+ */
+export function publicThesisModules(): string[] {
+  const named = [
+    ...PUBLIC_THESIS_PAGES,
+    'src/lib/doors.ts',
+    'src/lib/citationTokens.ts',
+    'src/lib/textDiff.ts',
+    'src/lib/markdownToReact.tsx',
+    'src/lib/thesisBody.ts',
+    'src/components/LegalDisclaimer.tsx',
+    'src/components/CopyableCode.tsx',
+  ];
+  const missing = named.filter((file) => !existsSync(join(FRONTEND, file)));
+  if (missing.length > 0) throw new Error(`publicThesisModules: ${missing.join(', ')} does not exist`);
+  const components = sourceFiles(join(SRC, 'components', 'thesis'), ['.ts', '.tsx']).map((file) => relative(FRONTEND, file));
+  return [...named, ...components].sort();
+}

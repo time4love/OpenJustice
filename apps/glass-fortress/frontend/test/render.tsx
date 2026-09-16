@@ -254,3 +254,129 @@ export function navigationDouble(): NavigationModule {
     }),
   };
 }
+
+// ---------------------------------------------------------------------------
+// THE PUBLIC READS (UI-5). A public page reads its body through `lib/api.ts`' `readPublic` on the server and, for the
+// reader's own act (the history's diff), through `fetchJson` in the browser. Both are doubled HERE, by ONE module the
+// test file hands `jest.mock('../src/lib/api', …)`: the real module spread, those two answering a path → body map set by
+// the case, each call recorded with its init. A path the case did not map REFUSES — a page that read something nobody
+// staged is a defect, not a blank.
+//
+// The real `readPublic` itself (its headers, its cache) is exercised the other way, against `globalFetchDouble` — the
+// module real, the network stubbed. Two doubles, two kinds, each named (plan §4, one helper per kind).
+// ---------------------------------------------------------------------------
+
+/** What `readPublic` answers: the body, or the one 404. */
+export type PublicRead = { status: 200; body: unknown } | { status: 404 };
+
+export interface ApiCall {
+  via: 'readPublic' | 'fetchJson';
+  path: string;
+  init: RequestInit | undefined;
+  /** Whether the caller handed `readPublic` a parser — a page that reads a body without one has no guard at its boundary. */
+  parsed: boolean;
+}
+
+let publicBodies: Record<string, PublicRead> | undefined;
+const apiCalls: ApiCall[] = [];
+
+/** The bodies the doubled reads answer, by path. Callers: every UI-5 page instrument. */
+export function setPublicBodies(bodies: Record<string, PublicRead> | undefined): void {
+  publicBodies = bodies;
+  apiCalls.length = 0;
+}
+
+/** Every read the render made, in order — the path and the init the caller passed. */
+export function apiCallsMade(): readonly ApiCall[] {
+  return apiCalls;
+}
+
+function answerFor(via: ApiCall['via'], path: string, init: RequestInit | undefined, parsed = false): PublicRead {
+  if (publicBodies === undefined) throw new Error('api double: no bodies — call setPublicBodies in the case');
+  apiCalls.push({ via, path, init, parsed });
+  const answer = publicBodies[path];
+  if (answer === undefined) throw new Error(`api double: no body for ${path} — the page read a path the case did not stage`);
+  return answer;
+}
+
+/** The module `jest.mock('../src/lib/api', …)` returns. Callers: UI-5's page instruments. */
+export function apiDouble(): Record<string, unknown> {
+  const real = jest.requireActual<Record<string, unknown>>('../src/lib/api');
+  return {
+    ...real,
+    // The double APPLIES the parser the page passed — so a body that drifted from the appendix fails inside the
+    // page's own guard, exactly as it would on staging, and a page that passed none is visible in `apiCallsMade`.
+    readPublic: (path: string, parse?: (body: unknown) => unknown): PublicRead => {
+      const answer = answerFor('readPublic', path, undefined, typeof parse === 'function');
+      if (answer.status === 404 || typeof parse !== 'function') return answer;
+      return { status: 200, body: parse(answer.body) };
+    },
+    fetchJson: (path: string, init?: RequestInit): unknown => {
+      const answer = answerFor('fetchJson', path, init);
+      if (answer.status === 404) throw new Error(`fetchJson double: ${path} answered 404`);
+      return answer.body;
+    },
+  };
+}
+
+export interface FetchDouble {
+  calls: { url: string; init: RequestInit | undefined }[];
+  restore(): void;
+}
+
+/**
+ * `global.fetch` answering by URL, recording every call — for the cases that exercise the REAL `readPublic`
+ * (its headers, its cache). A URL the case did not map refuses. Callers: `publicRead` (UI-5).
+ */
+export function globalFetchDouble(answers: Record<string, { status: number; body?: unknown }>): FetchDouble {
+  const calls: { url: string; init: RequestInit | undefined }[] = [];
+  const before = global.fetch;
+  global.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+    calls.push({ url, init });
+    const answer = answers[url];
+    if (answer === undefined) return Promise.reject(new Error(`fetch double: no answer for ${url}`));
+    return Promise.resolve({
+      ok: answer.status >= 200 && answer.status < 300,
+      status: answer.status,
+      json: () => Promise.resolve(answer.body),
+    } as Response);
+  }) as typeof fetch;
+  return {
+    calls,
+    restore(): void {
+      global.fetch = before;
+    },
+  };
+}
+
+/** What a page render answers: the one 404, or the rendered tree. */
+export type PageRender = { notFound: true } | ({ notFound: false } & RenderResult);
+
+/** `notFound()` throws this digest and terminates the segment (next/navigation). */
+const NOT_FOUND_DIGEST = 'NEXT_HTTP_ERROR_FALLBACK;404';
+
+function isNotFound(error: unknown): boolean {
+  return typeof (error as { digest?: unknown }).digest === 'string' && ((error as { digest: string }).digest).startsWith(NOT_FOUND_DIGEST);
+}
+
+/**
+ * A page rendered as Next renders it: awaited with its `params` promise, its element put into jsdom — and its
+ * `notFound()` answered as the ONE 404 rather than as a failure. Any other error is rethrown untouched.
+ * Callers: UI-5's eight page instruments.
+ */
+export async function renderPage<P extends Record<string, string>>(
+  // A page's own `params` type is its segment's (`{ locale, id }`), so the parameter is GENERIC in it: a helper
+  // typed to `Record<string, string>` would reject every real page, the parameter position being contravariant.
+  page: (props: { params: Promise<P> }) => Promise<ReactElement | null> | ReactElement | null,
+  params: P,
+  options: RenderOptions = {},
+): Promise<PageRender> {
+  try {
+    const rendered = await renderServer(async () => page({ params: Promise.resolve(params) }), options);
+    return { notFound: false, ...rendered };
+  } catch (error) {
+    if (isNotFound(error)) return { notFound: true };
+    throw error;
+  }
+}
