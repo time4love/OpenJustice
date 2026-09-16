@@ -365,7 +365,7 @@ lint` green from `apps/glass-fortress/frontend`; the first browser exercise of �
 the nav sheet from one control, the locale switch keeping the path, the banner, the footer on `/about` (a live page), no
 horizontal scroll; and every legacy page still served with one header (`/about`, `/researchers`, `/reports/new` read).
 
-**STATUS:** LANDED 2026-09-15 — PRs #490, #491, #492, `staging` `8b3e5c5`; the approved copy, the exercise scored, two entries 404
+**STATUS:** LANDED 2026-09-15 — PRs #490, #491, #492, `staging` `8b3e5c5`; the approved copy, the exercise scored, two entries 404 **AMENDED 2026-09-16:** the chrome becomes the three-pane shell, a step of its own before the re-briefed UI-5 — docs/gf-ui-design-session-2026-09-16.md §4.
 until UI-7 and UI-8. Findings: `docs/gf-ui-step-4-2026-09-15.md`.
 
 ### UI-5 · The public thesis page, the call page, the version page
@@ -455,7 +455,7 @@ words and the platform's marks read apart — recorded verbatim**; WITHDRAWN pro
 on staging is the author's act and not this step's. **With the page rendered, thesis plan :327 is CLOSED and the thesis plan's
 DoD line gains the pointer.**
 
-**STATUS:** OPEN. Closes with `docs/gf-ui-step-5-<date>.md`: the Markdown renderer and the runtime chosen, the approved copy,
+**STATUS:** OPEN. Closes with `docs/gf-ui-step-5-<date>.md`: the Markdown renderer and the runtime chosen, the approved copy, **RE-BRIEFED 2026-09-16** against the design canvas, pages 1–3 — docs/gf-ui-design-session-2026-09-16.md §4.
 the reading test, the exercise.
 
 ### UI-6 · The door `/`
@@ -509,7 +509,7 @@ archive entry opens `/corpus` (a 404 until UI-7, recorded); the two entries; the
 and naming no person. The EMPTY state is provoked in the fixture, not on staging, and is the live state of production at
 `SHIP` (A7 :1111; thesis plan :83–:84) — the exercise there is `SHIP`'s, and it is written into §7.
 
-**STATUS:** OPEN. Closes with `docs/gf-ui-step-6-<date>.md`: the approved paragraph in both languages, the exercise.
+**STATUS:** OPEN. Closes with `docs/gf-ui-step-6-<date>.md`: the approved paragraph in both languages, the exercise. **RE-BRIEFED 2026-09-16** against the design canvas, page 6 (and page 1, board A) — docs/gf-ui-design-session-2026-09-16.md §4.
 
 ### UI-7 · The chronology, the two lenses, the three record pages
 
@@ -614,7 +614,7 @@ to the connector's; one diff page; `/records/<one cited fileHash>`; a surveyed p
 (`corona`, if still unopened — the id read from `list_pages` through the connector, never typed); no horizontal scroll on any
 of the five; the density of §41 recorded in rows per month.
 
-**STATUS:** OPEN. Closes with `docs/gf-ui-step-7-<date>.md`: the initial axis granularity and `limit`, the density measured,
+**STATUS:** OPEN. Closes with `docs/gf-ui-step-7-<date>.md`: the initial axis granularity and `limit`, the density measured, **RE-BRIEFED 2026-09-16** against the design canvas, page 4 — docs/gf-ui-design-session-2026-09-16.md §4.
 the composed page labels as they read, the exercise.
 
 ### UI-8 · The read view — `/research`, the working view, the gated chronology
@@ -716,7 +716,7 @@ the extraction sheet opened three deep on one capture, its rules equal to `get_a
 provoked signed out and `returnTo` bringing the reader back; the 403 provoked in the fixture only (no unapproved account is
 created for it); the history's size at phone width recorded (§41). Nothing written, nothing paid.
 
-**STATUS:** OPEN. Closes with `docs/gf-ui-step-8-<date>.md`: the history size measured, the library chosen if any, the exercise.
+**STATUS:** OPEN. Closes with `docs/gf-ui-step-8-<date>.md`: the history size measured, the library chosen if any, the exercise. **RE-BRIEFED 2026-09-16** against the design canvas, pages 1 and 5 — docs/gf-ui-design-session-2026-09-16.md §4.
 
 ### UI-9 · `/about` rewritten, `/safety` interim, `/researchers` corrected
 
@@ -783,7 +783,7 @@ and nothing from the old page (Arbitrum, "ranks", "submit" searched in the rende
 absent from the nav, three lines; `/researchers` showing the STAGING MCP URL — read beside `get_environment`'s answer
 through the connector — and the corrected three sentences; the share metadata of each.
 
-**STATUS:** OPEN. Closes with `docs/gf-ui-step-9-<date>.md`: the approved copy of the three pages in both languages, the
+**STATUS:** OPEN. Closes with `docs/gf-ui-step-9-<date>.md`: the approved copy of the three pages in both languages, the **RE-BRIEFED 2026-09-16** against the design canvas, page 6 — docs/gf-ui-design-session-2026-09-16.md §4.
 exercise; the retired phrases as the fixture holds them.
 
 ### UI-10 · THE CUT-OVER — the researcher's word

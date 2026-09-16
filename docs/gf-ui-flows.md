@@ -149,7 +149,7 @@ above; none needs a new region.
 | REWRITTEN | `/safety` · `/about` | copy only |
 | NEW | `/corpus` · `/corpus/claims` · `/pages/[id]/captures/[c]` · `/pages/[id]/diffs/[b]/[a]` · `/records/[hash]` · `/research` · `/research/theses/[id]` · `/research/corpus` · `/research/corpus/claims` · `/theses/[id]/versions/[v]` | §2 |
 
-## 4. THE CONSTRAINT THAT SHAPES EVERY PAGE — MOBILE FIRST. Ruled 2026-09-15.
+## 4. THE CONSTRAINT THAT SHAPES EVERY PAGE — MOBILE FIRST. Ruled 2026-09-15. **AMENDED 2026-09-16** — the wide layout is its own three-pane shell, sidebar · centre · right pane, never the compact page widened; the phone keeps this section (docs/gf-ui-design-session-2026-09-16.md §3).
 
 Every page is designed at phone width first and widens; nothing is a desktop page reduced. What it means
 structurally, stated once so the later chunks obey it: one column by default, a master–detail pair collapses to a
@@ -476,7 +476,7 @@ both. Nothing on this page navigates away except the record links of chunk 2 and
 | WITHDRAWN | the context line says withdrawn on <date>; the stream carries the WITHDRAWAL with its reason; PUBLISHED reads none |
 | a colleague's thesis (`mine: false`) | identical, the commands labelled as the author's |
 
-## 14. WIDENING — tablet and desktop
+## 14. WIDENING — tablet and desktop — **AMENDED 2026-09-16:** the shell of docs/gf-ui-design-session-2026-09-16.md §1.1; a sheet at width is a right-pane tab.
 
 The compact page above is the design; wider windows rearrange it and add nothing. At medium width the STATE
 segments and the STREAM sit side by side (list–detail); at expanded width a sheet becomes a third column
@@ -520,7 +520,7 @@ objection, no framing round. What the page says of them is a FACT in the platfor
 run" · "argued" · "published over the assessor's objection" — and never the opinion itself. Chunk 3's three
 registers apply with the middle one removed; the same components, one fewer.
 
-## 17. THE PAGE AT PHONE WIDTH — top to bottom, T5's order
+## 17. THE PAGE AT PHONE WIDTH — top to bottom, T5's order **AMENDED 2026-09-16:** the preface (regions 1) is FOLDED to one line that opens; region 4 is removed (docs/gf-ui-design-session-2026-09-16.md §1.5, §3).
 
 ```
 1  FIRST, always       the PUBLIC-INTEREST STATEMENT (COMPLIANCE.md rule 5; T5 :796) and the LEGAL DISCLAIMER
@@ -536,7 +536,7 @@ registers apply with the middle one removed; the same components, one fewer.
                        restored" or the trajectory's own state; for #doc_ (reserved, document §7) the
                        commitment's short form. A chip carries its marks: VERIFIED · FLAGGED · argued.
                        Tap → THE CITATION SHEET (§18).
-4  THE APPEALS         one section, two kinds, each an item card (T5 :819–:821; T4):
+4  THE APPEALS         one section, two kinds, each an item card (T5 :819–:821; T4):   — REMOVED 2026-09-16 (R56 ruling; docs/gf-ui-design-session-2026-09-16.md §3): one card leads to the call page
      REQUESTED gap     the request READY TO SEND: text · the authority · legal basis · addresses · the records
                        it rests on (chips) · the instruction: send it under your own name; if you receive an
                        answer, submit it here (T4 :677–:679). One COPY of the request text — the moment is
@@ -561,7 +561,7 @@ registers apply with the middle one removed; the same components, one fewer.
                        public, the archive captures it for anyone who asks (T5 :795–:796).
 ```
 
-## 18. THE SHEETS
+## 18. THE SHEETS — **AMENDED 2026-09-16:** the citation record is a right-pane tab at width, full-screen on the phone; the chip is a dated tick (docs/gf-ui-design-session-2026-09-16.md §1.8, §3).
 
 **THE CITATION SHEET — an #ev_ chip.** Over the text, returning to the same place:
 - the record: page (url, as a link to `/corpus?page=`), kind CAPTURE or DIFF, its timestamp or its pair;
@@ -596,7 +596,7 @@ is listed beneath it (T6 :900–:901), read from the two versions' resolved ment
   banner first — "a previous published version; the current one is here" — and, while the thesis is withdrawn
   or for a version a Withdrawal names, the NOTICE and never its text (A5 :1570, 2026-09-14).
 
-## 20. THE CALL PAGE `/call/[id]`
+## 20. THE CALL PAGE `/call/[id]` — **AMENDED 2026-09-16:** the legacy shape, the letter in a dialog, also a right-pane tab beside the thesis (docs/gf-ui-design-session-2026-09-16.md §1.6, §3).
 
 **The appeals alone, shareable.** Two reads, both public and identity-free: `GET /api/thesis/:id` for the
 statement, the disclaimer's place, the claim and the provision (A5 :1569 — "the one source of the public-interest
@@ -626,7 +626,7 @@ never a call item's text — a call names units and roles (T4 :692), and the met
 - **No client-side re-verification**: VERIFIED is the body's; the reader who wants to check hashes is sent to
   the record's page and the archive, not given a button that computes trust.
 
-## 22. WIDENING
+## 22. WIDENING — **AMENDED 2026-09-16:** at width the record is a right-pane tab, not a margin panel (docs/gf-ui-design-session-2026-09-16.md §3).
 
 The text keeps a reading measure at every width; what widens is the margin: at expanded width the citation
 sheet becomes a margin panel beside the paragraph that cites it (the footnote-in-margin pattern), and the
@@ -650,7 +650,7 @@ T5's, and a wider screen does not reorder it.
 
 ---
 
-## 24. THE CHRONOLOGY — one stream, two doors
+## 24. THE CHRONOLOGY — one stream, two doors — **AMENDED 2026-09-16:** the page card with the time strip is the first region and the scrubber; a search page `/corpus/search` exists (docs/gf-ui-design-session-2026-09-16.md §3).
 
 **`/corpus` and `/research/corpus` are ONE page rendered from one read at two scopes** (§6.1): `list_corpus` at
 `public` over the opened pages, at `all` over every surveyed page. The page is the same component; the gated
@@ -775,7 +775,7 @@ not already reveal.
 The switch `mine` / `all` is one control on the page and it sets one parameter on two reads; it is
 navigation, not an act. Nothing on `/research` writes.
 
-## 30. WIDENING
+## 30. WIDENING — **AMENDED 2026-09-16:** the shell of docs/gf-ui-design-session-2026-09-16.md §1.1.
 
 At medium width the filters become a side rail and the date axis a column; the record sheet becomes a side
 panel beside the stream; at expanded width the extraction sheet nests as a third column. The stream's row
@@ -799,7 +799,7 @@ dashboard of four regions in the same order; the owed strip stays first and full
 
 ---
 
-## 32. THE LAYOUT — what every page carries, and nothing more
+## 32. THE LAYOUT — what every page carries, and nothing more — **AMENDED 2026-09-16:** the sidebar IS the nav, with the categories תזות · הארכיון and their last-watched lists; the dove is the door's, not the sidebar's (docs/gf-ui-design-session-2026-09-16.md §1.1, §1.3, §3).
 
 ```
 THE NAME       "צדק לעם - תיק הקורונה", the dove, at the top of every page; never "Glass Fortress" in
@@ -822,7 +822,7 @@ RETIRED        the floating chat widget (§3) · the mission statistics (`/api/s
 **Robots.** Staging disallows all, as today; production allows all. A public page's share metadata (title,
 description, image) is composed from the body — the claim, the statement — and names no person (§21).
 
-## 33. THE DOOR `/`
+## 33. THE DOOR `/` — **AMENDED 2026-09-16:** the centre's empty state, the dove and the glow above the paragraph (docs/gf-ui-design-session-2026-09-16.md §1.3).
 
 **The door is the published theses and one sentence about what this is.** `GET /api/thesis` (A4 :1427):
 each thesis a card — the claim as the heading · the provision · the author's handle · published <date> —
@@ -843,7 +843,7 @@ because the published theses are few by design and each is a commitment (T5 :729
 5  LAST — the disclaimer, short form
 ```
 
-## 34. `/about` — REWRITTEN. The facts it may state, and the three sentences it may not
+## 34. `/about` — REWRITTEN. The facts it may state, and the three sentences it may not — **AMENDED 2026-09-16:** the dove heads the page (docs/gf-ui-design-session-2026-09-16.md §1.3).
 
 The page is silent in every design and its copy today contradicts three of them: a registry on Arbitrum
 (evidence §8, the registry is on Base); "AI classifies, summarises and ranks every piece of evidence" (evidence
