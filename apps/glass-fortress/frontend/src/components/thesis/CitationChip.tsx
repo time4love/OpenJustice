@@ -1,6 +1,7 @@
 'use client';
 
 import { useId, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useTranslations } from 'next-intl';
 import { Link } from '@/i18n/navigation';
 import { CopyableCode } from '@/components/CopyableCode';
@@ -181,18 +182,25 @@ export function CitationChip({ kind, name, source, citation, pageId, locale }: C
       {kind === 'trajectory' && isTrajectory(citation) && citation.resolves ? (
         <PlatformMark kind={citation.current ? 'trajectoryCurrent' : 'trajectoryStale'} />
       ) : null}
-      {open && citation !== undefined ? (
-        <span id={id} role="dialog" aria-modal="true" className="sheet space-y-2 p-4 md:static md:rounded-lg md:border md:border-slate-200">
-          {isEvidence(citation) ? (
-            <EvidenceSheet citation={citation} pageId={pageId} source={source} locale={locale} />
-          ) : (
-            <TrajectorySheet citation={citation} source={source} locale={locale} />
-          )}
-          <button type="button" onClick={() => setOpen(false)} className="rounded border border-slate-300 px-2 py-1 text-xs">
-            {sheet('close')}
-          </button>
-        </span>
-      ) : null}
+      {/* PORTALLED to the document: the chip is INLINE inside a paragraph of the researcher's text, and a sheet
+          rendered there would be a block inside a `<p>` — which the browser re-parents and React then cannot
+          hydrate. It is also where a sheet over the page belongs (§4 :157–:158). */}
+      {/* A server render has no document; `open` is false until the reader presses, which is after hydration. */}
+      {open && citation !== undefined && typeof document !== 'undefined'
+        ? createPortal(
+            <div id={id} role="dialog" aria-modal="true" className="sheet space-y-2 p-4">
+              {isEvidence(citation) ? (
+                <EvidenceSheet citation={citation} pageId={pageId} source={source} locale={locale} />
+              ) : (
+                <TrajectorySheet citation={citation} source={source} locale={locale} />
+              )}
+              <button type="button" onClick={() => setOpen(false)} className="rounded border border-slate-300 px-2 py-1 text-xs">
+                {sheet('close')}
+              </button>
+            </div>,
+            document.body,
+          )
+        : null}
     </span>
   );
 }
